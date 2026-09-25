@@ -206,10 +206,13 @@ slot after `F`.
 | UI scale, colour-blind palette | 100 %, standard | `hud.md` |
 | assists | from the lobby | auto-trim and the HUD presets of `hud.md` §14 |
 
+The options are saved per player in the settings file and set in the settings screen (`menus.md` §3).
+
 ## 7. Pause, focus and menus
 
 - **Offline** (solo against AI): `pause_menu` pauses the simulation (no ticks), audio ducks to ambience, the cameras
-  can still orbit and zoom. Resuming continues from the same tick.
+  can still orbit and zoom. Resuming continues from the same tick. The menu holds resume, restart, settings and
+  quit to menu (`menus.md` §2).
 - **Online**: `pause_menu` opens the menu over the running race (banner "Race continues"); the boat keeps its last
   helm, sheet and let-fly while the menu is open, except that a held let-fly key or hold-to-steer key counts as
   released. The menu holds retire (with a confirmation) and settings.

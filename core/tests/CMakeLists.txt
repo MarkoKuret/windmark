@@ -6,6 +6,7 @@ add_executable(windmark_core_tests
   test_rng.cpp
   test_table.cpp
   test_checksum.cpp
+  test_json.cpp
 )
 target_link_libraries(windmark_core_tests PRIVATE windmark_core)
 target_include_directories(windmark_core_tests SYSTEM PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/doctest")

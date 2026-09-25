@@ -1,0 +1,257 @@
+#include "boat/boat.h"
+
+#include <cmath>
+
+#include "math/rng.h"
+#include "math/wm_math.h"
+
+namespace wm {
+
+namespace {
+
+constexpr float V_MAX = 40.0f;        // m/s, a data-error guard (boat.md §5.8)
+constexpr float CONTACT_KEEP = 0.9f;  // per tick (collisions.md §6)
+
+}  // namespace
+
+void Boat::init(const PerfData* perf, std::uint64_t race_seed, std::uint32_t index) {
+  perf_ = perf;
+  seed_ = race_seed;
+  index_ = index;
+  hull_ = make_hull_points(perf->dynamics);
+  sails_.init(perf);
+  s_ = BoatState{};
+  ctl_ = BoatControls{};
+  out_ = BoatOutputs{};
+}
+
+void Boat::set_helm(float h_cmd) { ctl_.h_cmd = std::isnan(h_cmd) ? 0.0f : clamp(h_cmd, -1.0f, 1.0f); }
+
+void Boat::set_sheet(float sheet_cmd) {
+  if (!std::isnan(sheet_cmd)) ctl_.sheet_cmd = clamp(sheet_cmd, 0.0f, 1.0f);
+}
+
+void Boat::set_performance_scale(float scale) {
+  // boat.md §2: (0, 2]. NaN is the neutral 1; zero and below are held at a small positive value.
+  ctl_.performance_scale = std::isnan(scale) ? 1.0f : clamp(scale, 0.01f, 2.0f);
+}
+
+// boat.md §5.1
+void Boat::wind_triangle(const BoatEnv& env) {
+  const SinCos wf = wm_sincos(env.wind_from);
+  const float wx = -env.wind_speed * wf.s;
+  const float wy = -env.wind_speed * wf.c;
+  const float tx = wx - env.current_x;
+  const float ty = wy - env.current_y;
+  s_.tws = std::sqrt(tx * tx + ty * ty);
+  if (s_.tws >= 1e-4f) s_.twd_from = compass({-tx, -ty});
+  const SinCos hs = wm_sincos(s_.psi);
+  const float bx = s_.v * hs.s;
+  const float by = s_.v * hs.c;
+  const float ax = tx - bx;
+  const float ay = ty - by;
+  s_.aws = std::sqrt(ax * ax + ay * ay);
+  if (s_.aws >= 1e-4f) s_.awd_from = compass({-ax, -ay});
+  s_.twa = wrap_pi(s_.twd_from - s_.psi);
+  s_.awa = wrap_pi(s_.awd_from - s_.psi);
+  out_.wind_speed_clean = env.wind_speed_clean;
+}
+
+// boat.md §6.6
+void Boat::reset(float pos_x, float pos_y, float psi, float v, std::int32_t front_sail, bool auto_trim,
+                 const BoatEnv& env) {
+  s_ = BoatState{};
+  s_.pos_x = pos_x;
+  s_.pos_y = pos_y;
+  s_.psi = wrap_2pi(psi);
+  s_.v = clamp(v, -V_MAX, V_MAX);
+  s_.wobble_phase = TWO_PI * rng_unit(seed_, RngStream::attitude_wobble, index_);
+  ctl_.h_cmd = 0.0f;
+  ctl_.auto_trim = auto_trim;
+  ctl_.let_fly = false;
+  const HullSample hs = sample_hull(hull_, env.sea, s_.pos_x, s_.pos_y, s_.psi);
+  s_.z = hs.hm + perf_->dynamics.waterline_offset;
+
+  sails_.reset(front_sail);
+  // A calm placement has no wind direction yet; start both directions from the given wind_from.
+  s_.twd_from = wrap_2pi(env.wind_from);
+  s_.awd_from = s_.twd_from;
+  wind_triangle(env);
+  TrimInput ti{s_.awa, s_.tws, s_.phi, ctl_.sheet_cmd, ctl_.auto_trim, ctl_.let_fly};
+  sails_.trim(ti, /*place=*/true);
+
+  const SinCos sc = wm_sincos(s_.psi);
+  s_.v_filt = s_.v;
+  s_.sog_filt_x = s_.v * sc.s + env.current_x;
+  s_.sog_filt_y = s_.v * sc.c + env.current_y;
+  out_ = BoatOutputs{};
+  out_.sog = std::sqrt(s_.sog_filt_x * s_.sog_filt_x + s_.sog_filt_y * s_.sog_filt_y);
+  out_.cog = out_.sog >= 1e-4f ? compass({s_.sog_filt_x, s_.sog_filt_y}) : s_.psi;
+  out_.wind_speed_clean = env.wind_speed_clean;
+}
+
+void Boat::step(const BoatEnv& env) {
+  const Dynamics& d = perf_->dynamics;
+  const DerivedDynamics& k = d.derived;
+
+  // 5.1 wind triangle
+  wind_triangle(env);
+  const float tack = sgn(s_.twa);
+  const bool upwind = std::fabs(s_.twa) < HALF_PI;
+
+  // 5.2 helm
+  const float dh = clamp(ctl_.h_cmd - s_.h, -d.helm_rate * DT, d.helm_rate * DT);
+  s_.h = s_.h + dh;
+
+  // 5.3 sail changes, 5.4 trim
+  sails_.advance(s_.tws, std::fabs(s_.twa));
+  const TrimInput ti{s_.awa, s_.tws, s_.phi, ctl_.sheet_cmd, ctl_.auto_trim, ctl_.let_fly};
+  sails_.trim(ti);
+  const float eps = sails_.driving_trim_error();
+
+  // 5.5 performance lookups
+  const ConfigPerf& c = sails_.config();
+  const float ta = std::fabs(s_.twa);
+  const float aa = std::fabs(s_.awa);
+  const float polar_speed = c.polar.at(s_.tws, ta);
+  const float heel_mag = c.heel.at(s_.tws, ta);
+  const float accel = c.accel.at(s_.tws, ta);
+  const float trim_speed = c.trim_speed.present ? c.trim_speed.table.at(s_.tws, aa, eps) : 1.0f;
+  const float trim_heel = c.trim_heel.present ? c.trim_heel.table.at(s_.tws, aa, eps) : 1.0f;
+  // sails.md §6: the weather-helm rate is scaled by trim_heel.
+  const float helm_luff = c.weather_helm.present ? c.weather_helm.table.at(s_.tws, ta) * trim_heel : 0.0f;
+  const float helm_fall = c.fall_off.present ? c.fall_off.table.at(s_.v, ta) : 0.0f;
+
+  // 5.6 waves: heave and pitch; wobble (§6.5)
+  const HullSample hs = sample_hull(hull_, env.sea, s_.pos_x, s_.pos_y, s_.psi);
+  s_.z = s_.z + k.heave_a * ((hs.hm + d.waterline_offset) - s_.z);
+  const float wk = 0.4f + s_.tws * 0.0388769f;
+  s_.wobble_phase = wrap_2pi(s_.wobble_phase + (d.wobble_freq * wk) * DT);
+  const float theta_target = d.wave_pitch_gain * hs.wave_pitch + (d.wobble_pitch * wk) * wm_sin(s_.wobble_phase);
+  s_.theta_rate = k.pitch_k2 * s_.theta_rate + k.pitch_k1 * (theta_target - s_.theta);
+  s_.theta = s_.theta + s_.theta_rate * DT;
+
+  // 5.7 heel
+  const float heel_sail = clamp((-tack * heel_mag) * trim_heel, -d.heel_max, d.heel_max);
+  const float heel_target = clamp(heel_sail + d.wave_roll_gain * hs.wave_roll, -d.heel_max, d.heel_max) +
+                            (d.wobble_heel * wk) * wm_sin(s_.wobble_phase + 1.7f);
+  s_.phi_rate = k.heel_k2 * s_.phi_rate + k.heel_k1 * (heel_target - s_.phi);
+  s_.phi = s_.phi + s_.phi_rate * DT;
+  if (std::fabs(s_.phi) > d.heel_limit) {
+    s_.phi = sgn(s_.phi) * d.heel_limit;
+    s_.phi_rate = 0.0f;
+  }
+
+  // 5.8 speed
+  const float man_coef = sails_.man_coef(s_.twa);
+  const float heel_coef = d.heel_speed_factor.at(std::fabs(s_.phi));
+  float surf_coef = 1.0f;
+  if (upwind) {
+    if (s_.theta > 0.0f) surf_coef = max(0.0f, 1.0f - d.surf_gain * s_.theta);
+  } else {
+    if (s_.theta < 0.0f) surf_coef = 1.0f + (0.5f * d.surf_gain) * (-s_.theta);
+  }
+  const float target_speed =
+      ((((polar_speed * trim_speed) * man_coef) * heel_coef) * surf_coef) * ctl_.performance_scale;
+  const float err = target_speed - s_.v;
+  float a = err > 0.0f ? accel : d.decel_linear * err - d.decel_const;
+  if (std::fabs(err) < DT * std::fabs(a)) a = err / DT;
+  s_.v = s_.v + DT * a;
+  const bool turning_up = (s_.h * tack) > 0.0f;
+  const Table& drag_t = turning_up ? d.rudder_drag_luff : d.rudder_drag_bear;
+  const float drag = drag_t.at(std::fabs(s_.v), std::fabs(s_.h));
+  s_.v = s_.v - sgn(s_.v) * min(DT * drag, std::fabs(s_.v));
+  s_.v = clamp(s_.v, -V_MAX, V_MAX);
+
+  // 5.9 turning and translation
+  const float n = std::fabs(s_.h);
+  float turn_arc = 0.0f;
+  if (n >= 1e-5f) {
+    const float r = max(k.turn_c / n - d.turn_radius_offset, 0.5f);
+    turn_arc = (s_.v / r) * sgn(s_.h);
+  }
+  const float turn_rate = ((turn_arc + tack * helm_luff) - tack * helm_fall) + s_.contact_yaw_rate;
+  const float dpsi = turn_rate * DT;
+  const float mid = s_.psi + 0.5f * dpsi;
+  const SinCos ms = wm_sincos(mid);
+  s_.pos_x = s_.pos_x + ((s_.v * ms.s + env.current_x) + s_.contact_vx) * DT;
+  s_.pos_y = s_.pos_y + ((s_.v * ms.c + env.current_y) + s_.contact_vy) * DT;
+  s_.psi = wrap_2pi(s_.psi + dpsi);
+
+  // 5.10 contacts and outputs
+  s_.contact_vx = s_.contact_vx * CONTACT_KEEP;
+  s_.contact_vy = s_.contact_vy * CONTACT_KEEP;
+  s_.contact_yaw_rate = s_.contact_yaw_rate * CONTACT_KEEP;
+  const SinCos ps = wm_sincos(s_.psi);
+  const float gx = (s_.v * ps.s + env.current_x) + s_.contact_vx;
+  const float gy = (s_.v * ps.c + env.current_y) + s_.contact_vy;
+  out_.sog = std::sqrt(gx * gx + gy * gy);
+  if (out_.sog >= 1e-4f) out_.cog = compass({gx, gy});
+  out_.vmg = s_.v * wm_cos(s_.twa);
+  s_.v_filt = s_.v_filt + DerivedDynamics::FILT_A * (s_.v - s_.v_filt);
+  s_.sog_filt_x = s_.sog_filt_x + DerivedDynamics::FILT_A * (gx - s_.sog_filt_x);
+  s_.sog_filt_y = s_.sog_filt_y + DerivedDynamics::FILT_A * (gy - s_.sog_filt_y);
+
+  out_.target_speed = target_speed;
+  out_.polar_speed = polar_speed;
+  out_.heel_target = heel_target;
+  out_.turn_rate = turn_rate;
+  out_.man_coef = man_coef;
+  out_.trim_speed = trim_speed;
+  out_.trim_heel = trim_heel;
+  out_.heel_coef = heel_coef;
+  out_.surf_coef = surf_coef;
+}
+
+float Boat::polar_at(float tws, float twa, std::int32_t front_sail) const {
+  const ConfigPerf* c = perf_->config_for(front_sail);
+  return c != nullptr ? c->polar.at(tws, std::fabs(twa)) : 0.0f;
+}
+
+float Boat::accel_at(float tws, float twa, std::int32_t front_sail) const {
+  const ConfigPerf* c = perf_->config_for(front_sail);
+  return c != nullptr ? c->accel.at(tws, std::fabs(twa)) : 0.0f;
+}
+
+float Boat::turn_radius(float helm) const {
+  const float n = std::fabs(helm);
+  if (!(n >= 1e-5f)) return 1e9f;
+  return max(perf_->dynamics.derived.turn_c / n - perf_->dynamics.turn_radius_offset, 0.5f);
+}
+
+void Boat::save(SnapshotWriter& w) const {
+  const float f[] = {s_.pos_x,      s_.pos_y,      s_.z,          s_.psi,        s_.v,
+                     s_.h,          s_.phi,        s_.phi_rate,   s_.theta,      s_.theta_rate,
+                     s_.wobble_phase, s_.contact_vx, s_.contact_vy, s_.contact_yaw_rate,
+                     s_.twd_from,   s_.awd_from,   s_.tws,        s_.twa,        s_.aws,
+                     s_.awa,        s_.v_filt,     s_.sog_filt_x, s_.sog_filt_y};
+  for (float x : f) w.put_f32(x);
+  w.put_f32(ctl_.h_cmd);
+  w.put_f32(ctl_.sheet_cmd);
+  w.put_bool(ctl_.auto_trim);
+  w.put_bool(ctl_.let_fly);
+  w.put_f32(ctl_.performance_scale);
+  sails_.save(w);
+}
+
+bool Boat::load(SnapshotReader& r) {
+  float* f[] = {&s_.pos_x,      &s_.pos_y,      &s_.z,          &s_.psi,        &s_.v,
+                &s_.h,          &s_.phi,        &s_.phi_rate,   &s_.theta,      &s_.theta_rate,
+                &s_.wobble_phase, &s_.contact_vx, &s_.contact_vy, &s_.contact_yaw_rate,
+                &s_.twd_from,   &s_.awd_from,   &s_.tws,        &s_.twa,        &s_.aws,
+                &s_.awa,        &s_.v_filt,     &s_.sog_filt_x, &s_.sog_filt_y};
+  for (float* x : f) *x = r.get_f32();
+  ctl_.h_cmd = r.get_f32();
+  ctl_.sheet_cmd = r.get_f32();
+  ctl_.auto_trim = r.get_bool();
+  ctl_.let_fly = r.get_bool();
+  ctl_.performance_scale = r.get_f32();
+  if (!sails_.load(r) || r.failed()) return false;
+  // Derived outputs that carry a previous value (cog when stopped) are rebuilt from the state.
+  const float gx = s_.sog_filt_x, gy = s_.sog_filt_y;
+  out_.sog = std::sqrt(gx * gx + gy * gy);
+  out_.cog = out_.sog >= 1e-4f ? compass({gx, gy}) : s_.psi;
+  return true;
+}
+
+}  // namespace wm

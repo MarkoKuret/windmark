@@ -62,6 +62,8 @@ func _init() -> void:
 	test_trim_gauge()
 	test_hud_text()
 	await test_scene()
+	await test_core_scene()
+	await test_core_scene_wm12()
 	t.finish(self, "hud_test")
 
 
@@ -276,11 +278,12 @@ func test_hud_text() -> void:
 
 
 func test_scene() -> void:
-	t.begin("sail test scene, live values")
+	t.begin("sail test scene on FakeSim, live values")
 	var packed := load("res://scenes/sail_test.tscn") as PackedScene
 	t.ok(packed != null, "scene loads")
 	var sc := packed.instantiate()
 	sc.auto_process = false
+	sc.sim_kind = sc.SimKind.FAKE
 	root.add_child(sc)
 	await process_frame  # _ready runs once the tree is up
 	t.ok(sc.boat_view.model != null, "generated boat loaded (run tests/run_boat_import_test.sh first)")
@@ -376,7 +379,7 @@ func test_scene() -> void:
 	t.ok(hud.text_of("hdg") == "HDG  %s" % HudFormat.compass_deg(hv.hdg), hud.text_of("hdg"))
 	t.ok(absf(hv.tws - s.tws) < 0.2, "TWS tracks tws")
 	t.ok(hud.text_of("twa") == "TWA  %s" % HudFormat.side_angle(hv.twa, "S", "P"), hud.text_of("twa"))
-	t.ok(hud.text_of("sheet") == "Sheet  %s %%" % HudFormat.percent(100.0 * sim.controls(0).sheet_cmd),
+	t.ok(hud.text_of("sheet") == "Sheet  %s %%" % HudFormat.percent(100.0 * sc.controls.sheet_cmd),
 		hud.text_of("sheet"))
 	t.ok(hud.rudder_bar.value == hv.h, "rudder bar live")
 	var shown := ""
@@ -386,9 +389,10 @@ func test_scene() -> void:
 	sc.queue_free()
 	await process_frame
 
-	t.begin("sail test scene, placeholder sea")
+	t.begin("sail test scene on FakeSim, placeholder sea")
 	var ph := packed.instantiate()
 	ph.auto_process = false
+	ph.sim_kind = ph.SimKind.FAKE
 	ph.sea_source = ph.SeaSource.PLACEHOLDER
 	root.add_child(ph)
 	await process_frame
@@ -401,3 +405,203 @@ func test_scene() -> void:
 	t.ok(absf(ph.sim.state(0).z) > 1e-4, "the hull rides the placeholder sea")
 	t.ok((ph.wakes.boat_ribbons(0)[0] as WakeRibbon).rows.size() > 0, "wakes on the placeholder sea")
 	ph.queue_free()
+
+
+## The sail test scene on the core (CoreSimSource, free sailing on example_bay): 40 s at 60 fps with a set-and-hold
+## tack, a kite hoist and auto-trim off. Every frame the boat node is where the core's render pose puts it, the
+## boom and the main follow the interpolated sail angle, the sails show their phases, the Sea's clock is the
+## core's render time; the Sea's source is the core; the HUD shows the core's values and the local commands.
+func test_core_scene() -> void:
+	t.begin("sail test scene on the core")
+	if not t.ok(CoreSimSource.available(), "GDExtension loaded (game/native/build.sh)"):
+		return
+	var packed := load("res://scenes/sail_test.tscn") as PackedScene
+	var sc := packed.instantiate()
+	sc.auto_process = false
+	sc.sim_kind = sc.SimKind.CORE
+	root.add_child(sc)
+	await process_frame
+	t.ok(sc.on_core and sc.sim is CoreSimSource, "the scene runs on CoreSimSource")
+	var sim: CoreSimSource = sc.sim
+	var sea: Sea = sc.sea
+	var bv: BoatView = sc.boat_view
+	t.ok(bv.model != null, "generated wm7 loaded")
+	t.ok(sim.class_info(0).id == "wm7" and sim.boat_count() == 1, "one wm7")
+	t.ok(not sim.core.has_race(), "free sailing, no race")
+	t.ok(sea.source == sc.core_env and sc.core_env.sim == sim, "the Sea's source is the core (CoreEnvSource)")
+	var comps := sim.sea_components()
+	var same_sea := comps.size() == sea.model.components.size() and comps.size() > 0
+	for i in mini(comps.size(), sea.model.components.size()):
+		for k in 4:
+			same_sea = same_sea and absf(float(comps[i][k]) - float(sea.model.components[i][k])) < 1e-9
+	t.ok(same_sea, "drawn sea on the core's wave components (%d)" % comps.size())
+	var r := RawInput.new()
+	sc.scripted_input = r
+	var dt := 1.0 / 60.0
+	var info := sim.class_info(0)
+	var main_i := info.main_sail
+	var twa0 := sim.state(0).twa
+	var err_pos := 0.0
+	var err_ang := 0.0
+	var err_clock := 0.0
+	var err_boom := 0.0
+	var err_main := 0.0
+	var err_rudder := 0.0
+	var err_mark := 0.0
+	var vis_ok := true
+	var side_ok := true
+	var side_n := 0
+	var lag_frames := 0
+	var tacked_at := -1
+	var centred := false
+	var hoist_seen := false
+	var hoist_scale_ok := true
+	var puff_ok := true
+	var sheet_instant := false
+	var beta_prev := sim.sails(0).sails[main_i].beta
+	var beta_cur := beta_prev
+	var last_tick := sim.tick()
+	var boom: Node3D = bv.model.find_child("boom", true, false)
+	var rudder: Node3D = bv.model.find_child("rudder", true, false)
+	var main_node: Node3D = bv.model.find_child("sail_main", true, false)
+	var axis := Frames.body_to_model(Vector3(0, 0, 1))
+	for i in 2400:
+		r.pressed = []
+		if i == 180:
+			r.hold(&"helm_right")  # set and hold: the command ramps while held and stays
+		if i == 200:
+			r.held.erase(&"helm_right")
+		if not centred and tacked_at >= 0 and sim.state(0).twa < deg_to_rad(-38.0):
+			r.press(&"helm_centre")
+			centred = true
+		if i == 1080:
+			r.press(&"sail_2")  # the kite: the jib comes down, the kite goes up
+		if i == 1800:
+			r.press(&"auto_trim")
+		if i == 1801:
+			r.press(&"sheet_out")
+		if i == 1830:
+			r.held.erase(&"sheet_out")
+		sc.step_frame(dt)
+		if sim.tick() != last_tick:
+			beta_prev = beta_cur if sim.tick() == last_tick + 1 else sim.sails(0).sails[main_i].beta
+			beta_cur = sim.sails(0).sails[main_i].beta
+			last_tick = sim.tick()
+		var alpha: float = sc.runner.alpha()
+		# the boat node against the core's own render pose record
+		var a: PackedFloat32Array = sim.core.render_pose(0, alpha)
+		var tr: Transform3D = bv.transform
+		err_pos = maxf(err_pos, tr.origin.distance_to(Vector3(a[0], a[2], -a[1])))
+		var bow := tr.basis.z
+		var port := tr.basis.x
+		err_ang = maxf(err_ang, absf(Frames.angle_diff(atan2(bow.x, -bow.z), a[3])))
+		err_ang = maxf(err_ang, absf(asin(clampf(bow.y, -1.0, 1.0)) - a[4]))
+		err_ang = maxf(err_ang, absf(port.y - cos(a[4]) * sin(a[5])))
+		err_rudder = maxf(err_rudder, (rudder.transform.basis * Vector3.BACK).distance_to(
+			Basis(axis, -a[6] * info.rudder_max) * Vector3.BACK))
+		if sim.tick() > 0:
+			err_clock = maxf(err_clock, absf(sea.render_time_ms - 50.0 * (sim.tick() - 1 + alpha)))
+			err_clock = maxf(err_clock, absf(sea.render_time_ms - sim.render_time_ms(alpha)))
+		# boom and main at the sail angle interpolated between the last two ticks
+		var beta := Frames.wrap_pi(beta_prev + Frames.angle_diff(beta_cur, beta_prev) * alpha)
+		err_boom = maxf(err_boom, absf(Frames.angle_diff(bv.boom_angle, beta)))
+		err_boom = maxf(err_boom, (boom.transform.basis * Vector3.BACK).distance_to(Basis(axis, beta) * Vector3.BACK))
+		err_main = maxf(err_main, (main_node.transform.basis * Vector3.BACK).distance_to(
+			boom.transform.basis * Vector3.BACK))
+		var sv := sim.sails(0)
+		for sp in bv.sail_parts:
+			var ph: int = sv.sails[sp.index].phase
+			vis_ok = vis_ok and sp.node.visible == (ph != SimSource.Phase.DOWN or sp.index == main_i)
+			if ph == SimSource.Phase.HOISTING and sp.index != main_i:
+				hoist_seen = true
+				hoist_scale_ok = hoist_scale_ok and sp.node.visible \
+					and (sp.luff_scale < 1.0 or sp.chord_scale < 1.0)
+			# sail angle sense (conventions.md §3): beta > 0 puts the clew on the starboard side (model -X)
+			var clew_c: Dictionary = info.physics["sails"][sp.id]["corners"]["clew"]
+			var clew := sp.node.transform * Frames.body_to_model(BoatView._vec(clew_c["position"]))
+			if sp.node.visible and absf(sp.beta) > 0.1 and ph == SimSource.Phase.UP:
+				side_ok = side_ok and signf(clew.x) == -signf(sp.beta)
+				side_n += 1
+		# HUD: the helm mark and sheet are the local commands at once; the core's controls lag a step
+		var hv: HudValues = sc.hud.values
+		err_mark = maxf(err_mark, absf(sc.hud.rudder_bar.mark - clampf(sc.controls.h_cmd, -1.0, 1.0)))
+		err_mark = maxf(err_mark, absf(hv.sheet_cmd - clampf(sc.controls.sheet_cmd, 0.0, 1.0)))
+		if absf(sim.controls(0).h_cmd - sc.controls.h_cmd) > 0.01:
+			lag_frames += 1
+		if i == 1800:
+			sheet_instant = not sc.hud.values.auto_trim and sc.hud.text_of("sheet") != "Sheet  AUTO"
+		if tacked_at < 0 and twa0 > 0.0 and sim.state(0).twa < 0.0:
+			tacked_at = i
+		await process_frame  # the Sea draws the frame: its wind state from the core at the render time
+		if i % 300 == 0:
+			var w := sim.wind_state(sea.render_time_ms)
+			puff_ok = puff_ok and sea.wind.get("patches", []) == w.get("patches", []) \
+				and is_equal_approx(float(sea.wind.get("base_speed", 0.0)), float(w["base_speed"]))
+	var tol := 1e-4
+	t.ok(err_pos < tol, "boat node origin = core render pose every frame (%.7f m)" % err_pos)
+	t.ok(err_ang < tol, "boat node heading, pitch and heel = core render pose (%.7f)" % err_ang)
+	t.ok(err_rudder < tol, "rudder at -h * rudder_max of the render pose (%.7f)" % err_rudder)
+	t.ok(err_clock < 1e-3, "Sea clock = core render_time_ms (%.7f ms)" % err_clock)
+	t.ok(err_boom < tol, "boom at the interpolated main beta (%.7f)" % err_boom)
+	t.ok(err_main < tol, "main turns with the boom (%.7f)" % err_main)
+	t.ok(vis_ok, "sails shown unless down")
+	t.ok(side_ok and side_n > 0, "placed clews on the side of the sail angle (%d samples)" % side_n)
+	t.ok(hoist_seen and hoist_scale_ok, "kite hoist drawn growing up its luff")
+	t.ok(puff_ok, "the Sea's wind state (puffs) is the core's at the render time")
+	t.ok(err_mark < 1e-6, "HUD helm mark and sheet are the local commands every frame (%.7f)" % err_mark)
+	t.ok(lag_frames > 0, "the core's controls lag the local command (%d frames), the HUD does not" % lag_frames)
+	t.ok(sheet_instant, "auto-trim off shows on the HUD in the same frame")
+	t.ok(tacked_at > 0 and centred, "tacked on set-and-hold helm (frame %d)" % tacked_at)
+	var s := sim.state(0)
+	t.ok(s.twa < 0.0 and twa0 > 0.0, "starboard to port tack (twa %.0f to %.0f deg)" % [rad_to_deg(twa0),
+		rad_to_deg(s.twa)])
+	t.ok(sim.tick() >= 799 and sim.tick() <= 801, "40 s at 60 fps is 800 ticks (%d)" % sim.tick())
+	t.ok(s.v > 1.0, "the boat sails (%.2f m/s)" % s.v)
+	var ribs: Array = sc.wakes.boat_ribbons(0)
+	t.ok(ribs.size() == 2 and (ribs[0] as WakeRibbon).rows.size() > 10, "wakes from CoreSimSource.wake_state")
+	var hud: Hud = sc.hud
+	hud.refresh_text()
+	var hv := hud.values
+	t.ok(hud.text_of("bsp") == "BSP  %s kn" % HudFormat.speed_kn(s.v_filt), "BSP shows the core's v_filt: "
+		+ hud.text_of("bsp"))
+	t.ok(absf(Frames.angle_diff(hv.hdg, s.psi)) < deg_to_rad(3.0), "HDG tracks the core's psi")
+	t.ok(absf(hv.tws - s.tws) < 0.3, "TWS tracks the core's tws (%.2f vs %.2f)" % [hv.tws, s.tws])
+	t.ok(absf(Frames.angle_diff(hv.twd, s.twd_from)) < deg_to_rad(5.0), "TWD tracks the core's twd_from")
+	t.ok(hv.h == s.h and hud.rudder_bar.value == s.h, "rudder bar is the core's h")
+	t.ok(hud.text_of("sheet") == "Sheet  %s %%" % HudFormat.percent(100.0 * sc.controls.sheet_cmd),
+		hud.text_of("sheet"))
+	t.ok(hv.sail_up == info.sails[sim.sails(0).front].name if sim.sails(0).front >= 0 else hv.sail_up == "",
+		"sail shown is the core's front sail (%s)" % hv.sail_up)
+	var shown := ""
+	for k in ["bsp", "hdg", "heel", "tws", "twa", "twd", "aws", "awa", "sail", "rudder", "sheet"]:
+		shown += hud.text_of(k) + " | "
+	print("  core pose errors: %.7f m, %.7f rad; boom %.7f; tack at frame %d; HUD: %s" % [err_pos, err_ang,
+		err_boom, tacked_at, shown])
+	sc.queue_free()
+	await process_frame
+
+
+func test_core_scene_wm12() -> void:
+	t.begin("sail test scene on the core, wm12")
+	if not CoreSimSource.available():
+		return
+	var sc := (load("res://scenes/sail_test.tscn") as PackedScene).instantiate()
+	sc.auto_process = false
+	sc.sim_kind = sc.SimKind.CORE
+	sc.class_id = "wm12"
+	root.add_child(sc)
+	await process_frame
+	var sim: CoreSimSource = sc.sim
+	t.ok(sc.on_core and sim.class_info(0).id == "wm12", "one wm12 on the core")
+	t.ok(sc.boat_view.model != null and sc.boat_view.model.find_child("wheel", true, false) != null,
+		"generated wm12 with its wheel")
+	var err := 0.0
+	for i in 300:
+		sc.step_frame(1.0 / 60.0)
+		var a: PackedFloat32Array = sim.core.render_pose(0, sc.runner.alpha())
+		err = maxf(err, sc.boat_view.transform.origin.distance_to(Vector3(a[0], a[2], -a[1])))
+		await process_frame
+	t.ok(err < 1e-4, "boat node origin = core render pose (%.7f m)" % err)
+	t.ok(sim.state(0).v > 1.0, "the wm12 sails (%.2f m/s)" % sim.state(0).v)
+	sc.queue_free()
+	await process_frame

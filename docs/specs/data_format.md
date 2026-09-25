@@ -103,7 +103,8 @@ compute its performance. Required fields are marked **R**; the rest have the sta
 
 ### 3.5 `sails`
 
-An array; exactly one entry of type `main`, any number of front sails.
+An array; exactly one entry of type `main`, any number of front sails. Its order is the class's **sail order**
+(§4.4).
 
 | field | | unit | meaning |
 | --- | --- | --- | --- |
@@ -230,7 +231,8 @@ Multihull defaults elsewhere: `crew.hiking_arm` [0.3 · `beam_max`], `vpp.max_he
 
 ### 3.10 `vpp`
 
-Settings of the VPP's equilibrium; ignored by the boat generator and absent from the performance file.
+Settings of the VPP's equilibrium; ignored by the boat generator and not copied into the performance file (whose
+own `vpp` blocks are VPP diagnostics, §4.1).
 
 | field | | unit | meaning |
 | --- | --- | --- | --- |
@@ -254,10 +256,15 @@ Schematic:
   "dynamics": { … },            // §4.2
   "sails":    { … },            // §4.4, keyed by sail id
   "configs":  [ … ],            // §4.3
-  "start":    { "front_sail": "jib" }
+  "start":    { "front_sail": "jib" },   // optional
+  "vpp":      { … }             // optional, VPP diagnostics, informational
 }
 ```
 `handling` records the feel multipliers the tables were written with (§3.7.1); the core does not apply them again.
+`start` is optional: absent, or `front_sail` absent or `null`, means no front sail at the start; otherwise
+`front_sail` names a front sail of `sails`. `vpp` (top level, and in each config, §4.3) holds VPP diagnostics
+(notes, VMG, righting moment, per-config tables): informational only, the core ignores it and does not
+validate it.
 In online play the server announces `(class_id, class_version, sha256 of the perf file)` for every class in the
 race; a client with a different file does not join (`networking.md`).
 
@@ -281,6 +288,9 @@ reference values are in the owning spec.
 | `collision` | `{ "outline": [[x, y], …], "mass": kg, "yaw_gyration": m }` | collisions.md §2.1 |
 | `wind_shadow` | object with every key of `wind_shadow.md` §2 | wind_shadow.md §2 |
 
+Ranges checked at load (besides those of the owning specs): `decel_linear`, `decel_const` ≥ 0;
+`rudder_drag_luff`, `rudder_drag_bear` any finite value (§5); `hull_points`, if present, at least one point.
+
 `collision.mass` = `displacement + crew.weight`. The VPP derives the dynamics values from the design where it can
 (turn radius from the rudder and hull length, heel spring from roll inertia and righting moment, shadow geometry
 from the rig) and uses the reference values of the owning spec otherwise; then the class file's `handling`
@@ -303,8 +313,16 @@ Schematic:
   "optimal_angle": { "main": { table }, "jib": { table } }   // Table2D(tws, awa_abs) -> rad
 }
 ```
-Semantics in `sails.md` §6. Coverage required: `tws` axis from 0 to at least 20.6 m/s (40 kn), `twa_abs` and
-`awa_abs` from 0 to π. `optimal_angle` holds the main and the config's front sail (only the main for main-only).
+Semantics in `sails.md` §6. `front_sail` is `null` or the id of a front sail in `sails` (never the main); there
+is exactly one main-only config and exactly one config per front sail.
+
+**Coverage** (config tables only: `polar`, `heel`, `accel`, `trim_*`, `weather_helm`, `fall_off`,
+`optimal_angle`; the `dynamics` and `sails` tables are not checked): every `tws` axis has its first point exactly
+0 and its last point ≥ `20.6f` m/s (40 kn, rounded up); every `twa_abs` and `awa_abs` axis has its first point
+exactly 0 and its last point exactly the binary32 π (`PI`, `conventions.md` §6). Other axes are not constrained.
+
+`optimal_angle` is keyed by sail id and holds exactly the main and the config's front sail (only the main for
+main-only). `weather_helm` values may be any finite number (signed); `fall_off` ≥ 0 (§5).
 
 Above the no-go step the `polar` is never 0. Where no depowering holds a config (heel beyond the limit, or no way
 made at that angle) the VPP writes a low **broached speed**, with the `heel` at the limit and the `accel` of the
@@ -313,7 +331,13 @@ wallows rather than stops. A config may carry a `vpp` block of diagnostic tables
 
 ### 4.4 `sails`
 
-Keyed by sail id (schematic):
+Keyed by sail id, with the members in the class's **sail order** (the order of the class file's `sails[]`,
+§3.5); the VPP writes them in that order and a reader keeps it. A **sail index** (`sails.md` §3, `networking.md`)
+is the position of a sail in this order, **counting the main**: a front-sail index is the index of that front
+sail in the full list, so it is never the main's index (with the main first, the first front sail is index 1).
+Exactly one sail has type `main`.
+
+Schematic:
 ```json
 "jib": {
   "type": "jib",
@@ -329,7 +353,13 @@ Keyed by sail id (schematic):
   }
 }
 ```
-Durations are numbers or Table2D(`tws`, `twa_abs`) → s (`sails.md` §4.4). The main has no `handling`.
+Durations are numbers or Table2D(`tws`, `twa_abs`) → s (`sails.md` §4.4). The main has no `handling` (a
+`handling` block on the main is a load error); every front sail has one with all eight keys: the four durations
+(≥ 0) and `slow_prepare_hoist`, `slow_hoist`, `slow_prepare_drop`, `slow_drop` (≥ 0).
+
+Other values: `sheet_min`, `sheet_max` in [0, π] with `sheet_min ≤ sheet_max`; `rate_in`, `rate_out` > 0;
+`sheet_max_by_heel`, `pole_angle` and `shiver_angle` values in [0, π]; `pole_rate` > 0, required when `pole_angle`
+is present (optional otherwise); `shiver_angle` and `shiver_free` required.
 
 ## 5. Table encoding
 
@@ -337,8 +367,8 @@ Schematic:
 ```json
 {
   "axes": [
-    { "q": "tws",     "points": [0, 2.06, 3.09, 4.12, 5.14, 6.17, 7.20, 8.23, 10.29, 12.35, 15.43, 20.58] },
-    { "q": "twa_abs", "points": [0, 0.122, 0.2618, 0.2618, 0.349, 0.524, 0.698, 0.785, …, 3.1416] }
+    { "q": "tws",     "points": [0, 2.06, 3.09, 4.12, 5.14, 6.17, 7.20, 8.23, 10.29, 12.35, 15.43, 20.6] },
+    { "q": "twa_abs", "points": [0, 0.122, 0.2618, 0.2618, 0.349, 0.524, 0.698, 0.785, …, 3.14159274] }
   ],
   "unit": "m/s",
   "values": [ … ]                      // row-major, last axis fastest: 12 × n values
@@ -361,7 +391,8 @@ Schematic:
 - Axes: 1 to 3, each with 1 to 256 points, non-decreasing, at most two equal points in a row (a step,
   `conventions.md` §8.1). The number of values is the product of the axis lengths.
 - Every value finite. Range checks per table: `polar` in [−5, 40], `heel` in [0, π/2], `accel` ≥ 0, `fall_off` ≥ 0,
-  durations ≥ 0, `trim_*` and `heel_speed_factor` in [0, 3], `optimal_angle` in [0, π].
+  durations ≥ 0, `trim_*` and `heel_speed_factor` in [0, 3], `optimal_angle`, `sheet_max_by_heel`, `pole_angle`,
+  `shiver_angle` in [0, π], `rudder_drag_*` and `weather_helm` any finite value.
 - Lookup and interpolation: `conventions.md` §8.
 
 Recommended axes for the VPP (fine where the tables bend):

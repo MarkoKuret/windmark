@@ -120,7 +120,9 @@ heave_a  = DT / (heave_time + DT)
 turn_c   = turn_radius_full + turn_radius_offset
 FILT_A   = 0.0243902430f                               // DT/(2 s + DT): output filter
 ```
-Validation at load: `heel_k2`, `pitch_k2` in `[0, 1)`, `heel_k1`, `pitch_k1` in `(0, 1]`, `turn_radius_full > 0`.
+Validation at load: `heel_k2`, `pitch_k2` in `[0, 1)`; `heel_k1*DT`, `pitch_k1*DT` in `(0, 1]`; `turn_radius_full > 0`.
+`k1` carries 1/s, so the bound is on the dimensionless per-tick gain `k1*DT = (freq*DT)²`; with `k2` in `[0, 1)` it
+also keeps the spring recurrences of §5.6 and §5.7 stable.
 
 ## 5. One tick
 

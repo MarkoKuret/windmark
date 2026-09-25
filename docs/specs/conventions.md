@@ -132,7 +132,8 @@ Constants: `PI = 3.14159274f`, `TWO_PI = 6.28318548f`, `HALF_PI = 1.57079637f`, 
 
 ### 6.1 `wm_sincos(x) → (s, c)`, `wm_sin`, `wm_cos`
 
-Domain `|x| ≤ 8192` (callers reduce larger phases first, `sea.md` §4 shows how).
+Accurate to about 1e-7 for `|x| ≤ 8192` and 1e-4 up to 65 536; deterministic for any finite `x`. Callers keep
+arguments below 65 536 and reduce larger phases first (`sea.md` §4 shows how).
 ```
 k  = round_half_even(x * 0.636619772f)          // 2/π
 q  = (int32)k

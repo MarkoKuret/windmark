@@ -80,6 +80,11 @@ func _init() -> void:
 		if o != null and not shared_ids.has(o.get_instance_id()):
 			alive += 1
 	check(alive == 0, "imported materials and duplicate textures released (%d of %d still alive)" % [alive, originals.size()])
+	var names := []
+	for u in BoatMaterials.SHADER.get_shader_uniform_list():
+		names.append(u["name"])
+	check(names.has("albedo_tex") and names.has("ao_strength") and names.has("albedo_max"),
+			"boat shader parses (%d uniforms)" % names.size())
 	var code := BoatMaterials.SHADER.code
 	check(code.contains("AO = mix(1.0, COLOR.r") and code.contains("AO_LIGHT_AFFECT = 0.0"),
 			"boat shader: baked AO on the ambient light only (AO, AO_LIGHT_AFFECT 0)")

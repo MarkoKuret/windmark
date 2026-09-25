@@ -1,6 +1,7 @@
 // Sailing the course (ai.md §4, §6, §7.6, §8, §9, §10) and the decision dispatch.
 #include <cmath>
 
+#include "ai/ai_predict.h"
 #include "ai/ai_steps.h"
 #include "math/rng.h"
 
@@ -31,6 +32,7 @@ struct MarkTarget {
   Vec2 M{0.0f, 0.0f};
   float sigma = 1.0f;  // +1 port rounding (anticlockwise), -1 starboard
   float rho = 0.0f;
+  float phi = 0.0f, phi_done = 1.0f;  // the race's winding around this buoy and its target (race.md §5.1)
 };
 
 float rounding_radius(AC& x, AB& a, const Me& m, std::int32_t mark) {
@@ -106,11 +108,15 @@ MarkTarget mark_target(AC& x, AB& a, const Me& m) {
     t.is_mark = true;
     t.mark = st.marks[0];
     t.sigma = st.sides[0] == Side::port ? 1.0f : -1.0f;
+    t.phi = m.rb.phi[0];
+    t.phi_done = m.rb.phi_done[0];
   } else if (st.kind == StepKind::gate) {
     const std::int32_t k = choose_gate(x, a, m, st, step);
     t.is_mark = true;
     t.mark = st.marks[k];
     t.sigma = st.sides[k] == Side::port ? 1.0f : -1.0f;
+    t.phi = m.rb.phi[k];
+    t.phi_done = m.rb.phi_done[k];
   } else {
     return t;
   }
@@ -149,34 +155,67 @@ float exit_heading(AC& x, const Me& m, const MarkTarget& t, float psi_tan) {
   return std::fabs(wrap_pi(o1 - bN)) < std::fabs(wrap_pi(o2 - bN)) ? o1 : o2;
 }
 
-// §6.1 inside the rounding circle's reach: follow the circle; false when the heading it asks for is not sailable
-// (upwind of close-hauled), then the beat logic takes over.
-bool follow_circle(AC& x, AB& a, const Me& m, const MarkTarget& t) {
-  const float alpha = bearing(t.M, m.c);
-  const float psi_tan = wrap_2pi(alpha - t.sigma * HALF_PI);
-  const float dist = v_dist(m.c, t.M);
-  // Aim at a point ahead on the circle (the look-ahead shrinks the path onto the circle).
-  const float ahead = 50.0f * DEG;
-  const float aa = wrap_2pi(alpha - t.sigma * ahead);
-  const Vec2 aim = v_add(t.M, v_scale(dir(aa), t.rho));
-  float psi = dist > 0.8f * t.rho ? bearing(m.c, aim) : wrap_2pi(psi_tan + t.sigma * 20.0f * DEG);
-  const float psi_exit = exit_heading(x, m, t, psi_tan);
-  // Past the exit heading: leave on it.
-  if (t.sigma * wrap_pi(psi - psi_exit) <= 0.0f && dist < t.rho + 2.0f * m.L) psi = psi_exit;
-  const float twa = wrap_pi(m.twd - psi);
-  if (std::fabs(twa) < m.theta_up - 2.0f * DEG) return false;
-  // Never turn through the wind in a rounding: go the way of the rounding.
-  a.turn_dir = static_cast<std::int8_t>(-t.sigma);
-  a.psi_target = psi;
-  a.tactic = AiTactic::Rounding;
-  a.dbg.aim = aim;
-  return true;
-}
-
 // The point to pass a mark at on a beat or a run (the circle's side of the approach).
 Vec2 pass_point(const MarkTarget& t, Vec2 d) {
   const Vec2 off = t.sigma > 0.0f ? right_of(d) : left_of(d);
   return v_add(t.M, v_scale(off, t.rho));
+}
+
+// §6.1 inside the rounding circle's reach: orbit the circle in the rounding direction, aiming a little ahead on it,
+// and leave on the exit heading once the rounding is nearly complete. The race's winding angle says how far round
+// the boat is: a boat that came in on the wrong side is behind (φ small or negative) and simply orbits on, which
+// takes her back the way she came and round, the way the winding test counts it.
+bool round_mark(AC& x, AB& a, const Me& m, const MarkTarget& t) {
+  const float alpha = bearing(t.M, m.c);
+  const float dist = v_dist(m.c, t.M);
+  const float rem = t.phi_done - t.phi;  // winding still to go
+  const float psi_tan = wrap_2pi(alpha - t.sigma * HALF_PI);
+  // Guide: outside the circle the tangent point ahead in the rounding direction, inside it a point 55° ahead.
+  Vec2 guide;
+  if (dist > 1.15f * t.rho) {
+    const float g = std::acos(clamp(t.rho / dist, -1.0f, 1.0f));
+    guide = v_add(t.M, v_scale(dir(wrap_2pi(alpha - t.sigma * g)), t.rho));
+  } else {
+    guide = v_add(t.M, v_scale(dir(wrap_2pi(alpha - t.sigma * 55.0f * DEG)), t.rho));
+  }
+  float psi = bearing(m.c, guide);
+  const float psi_exit = exit_heading(x, m, t, psi_tan);
+  // Nearly round: leave on the exit heading once the guide has turned past it.
+  if (rem < 70.0f * DEG && t.sigma * wrap_pi(psi - psi_exit) <= 0.0f) psi = psi_exit;
+  a.tactic = AiTactic::Rounding;
+  a.dbg.aim = guide;
+  float twa = wrap_pi(m.twd - psi);
+  if (std::fabs(twa) < m.theta_up) {
+    // Upwind of close-hauled: this tack if it carries round (moves in the rounding direction and passes the mark on
+    // the required side by the circle's radius, or the mark is already behind), else beat to the guide point on
+    // its laylines, so the tack comes where the other tack clears the mark.
+    const float pc = heading_for(m.twd, m.tack * m.theta_up);
+    const Vec2 to_m = v_sub(t.M, m.c);
+    const bool clears = t.sigma * v_cross(dir(pc), to_m) >= 0.9f * t.rho || v_dot(dir(pc), to_m) < 0.0f;
+    if ((v_dot(dir(pc), dir(psi_tan)) > 0.0f && clears) || a.man != Man::straight || dist <= 1.15f * t.rho) {
+      a.psi_target = pc;
+      return true;
+    }
+    beat_run(x, a, m, guide, true, 0.0f, false);
+    a.tactic = AiTactic::Rounding;
+    return true;
+  }
+  if (a.man == Man::straight && sgn(twa) != m.tack) {
+    // The other tack: a tack if the shorter turn passes head to wind and the boat has way on, else the turn goes
+    // round the other way (through a gybe).
+    const float e = wrap_pi(psi - m.s.psi);
+    const float twa_mid = wrap_pi(m.twd - (m.s.psi + 0.5f * e));
+    if (std::fabs(twa_mid) < HALF_PI) {
+      if (m.s.v >= 0.6f * polar_speed(a, m, std::fabs(m.twa)) && request_tack(x, a, m, AiTactic::Rounding, true)) {
+        a.tactic = AiTactic::Rounding;
+        a.psi_target = heading_for(m.twd, -m.tack * max(m.theta_up, std::fabs(twa)));
+        return true;
+      }
+      a.turn_dir = static_cast<std::int8_t>(e > 0.0f ? -1 : 1);
+    }
+  }
+  a.psi_target = psi;
+  return true;
 }
 
 // §4.5 finish aim.
@@ -209,32 +248,52 @@ Vec2 finish_aim(AC& x, AB& a, const Me& m, bool& beat) {
 }
 
 // §7.6 penalty turns. True while the turn owns the helm.
+float penalty_helm(const Me& m) { return m.tws < 9.0f * KNOT ? 0.6f : kPenaltyHelm; }
+
+// Within `extra` metres of the zone of the step's marks.
+bool near_zone(AC& x, const Me& m, std::int32_t step, float extra) {
+  const ResolvedCourse& co = x.course;
+  if (step <= 0 || step >= static_cast<std::int32_t>(co.steps.size()) - 1) return false;
+  const CourseStep& st = co.steps[static_cast<std::size_t>(step)];
+  const float Z = x.race.zone_lengths() * m.L;
+  for (const std::int32_t k : {st.marks[0], st.marks[1]}) {
+    if (k >= 0 && v_dist(m.c, co.marks[static_cast<std::size_t>(k)].pos) < Z + m.L + extra) return true;
+  }
+  return false;
+}
+
+}  // namespace
+
 bool penalty_turns(AC& x, AB& a, const Me& m, Leg leg) {
   const BoatRules& br = m.br;
-  if (br.pending.empty()) {
+  auto stop = [&]() {
     a.pen_on = false;
+    a.helm_fixed = NAN;
+    if (a.man == Man::penalty) a.man = Man::straight;
+  };
+  if (br.pending.empty() || !x.race.rules_live()) {
+    if (a.pen_on) stop();
     return false;
   }
+  // Entry penalties of a match race are taken after the gun (rules.md §9.6).
+  const RuleCode r0 = br.pending.front().rule;
+  if ((r0 == RuleCode::c_prep || r0 == RuleCode::c_entry) && !x.race.after_gun(x.n)) return false;
+  const float R = radius_for_helm(m.b.perf().dynamics, penalty_helm(m));
+  const std::int32_t next = m.rb.started ? m.rb.next : 0;
   if (a.pen_on) {
-    // Served: the pending list shrank.
     if (br.served > a.pen_served0) {
-      a.pen_on = false;
-      a.helm_fixed = NAN;
-      a.man = Man::straight;
+      stop();
       return false;
     }
     const float t = x.now - a.pen_t0;
-    if (br.turning_for_penalty) a.pen_seen_turning = true;
-    const bool reset = a.pen_seen_turning && !br.turning_for_penalty && t > 3.0f;
-    const bool stalled = m.s.v < 0.3f && t > 6.0f;
-    if (reset || stalled || t > 60.0f) {
-      a.pen_on = false;
-      a.helm_fixed = NAN;
-      a.man = Man::straight;
-      a.low_until = x.now + 8.0f;  // rebuild speed before trying again
+    // In irons: stopped for 4 s. Give up this turn, build speed and start again.
+    a.pen_stall_t = m.s.v < 0.3f ? a.pen_stall_t + 2.0f * DT : 0.0f;
+    if (a.pen_stall_t > 4.0f || t > 90.0f || near_zone(x, m, next, 0.0f) || near_zone(x, m, m.rb.last_rounded, 0.0f)) {
+      stop();
+      a.low_until = x.now + 5.0f;
       return false;
     }
-    a.helm_fixed = (m.s.v < 0.0f ? -a.pen_dir : a.pen_dir) * kPenaltyHelm;
+    a.helm_fixed = (m.s.v < 0.0f ? -a.pen_dir : a.pen_dir) * penalty_helm(m);
     a.forced = true;
     a.tactic = AiTactic::PenaltyTurn;
     a.man = Man::penalty;
@@ -242,36 +301,45 @@ bool penalty_turns(AC& x, AB& a, const Me& m, Leg leg) {
     if (m.tws > 10.0f * KNOT && m.b.sails().spinnaker_flying() && !m.b.sails().busy()) x.w.drop_front(a.i);
     return true;
   }
+  if (a.man != Man::straight) return false;
+  // The turn only counts outside the zones of the next mark and the last one rounded: stay clear of them by the
+  // turn's diameter.
+  if (near_zone(x, m, next, 2.0f * R) || near_zone(x, m, m.rb.last_rounded, 2.0f * R)) return false;
   const bool urgent = br.deadline_s >= 0.0f && br.deadline_s < 12.0f;
+  const float V = polar_speed(a, m, std::fabs(m.twa));
+  if (m.s.v < (urgent ? 0.5f : 0.75f) * V && x.now < a.low_until + 8.0f) return false;
   if (!urgent) {
     if (x.now < a.low_until) return false;
-    if (m.s.v < 0.6f * polar_speed(a, m, std::fabs(m.twa))) return false;
-    if (is_zone(x, m, m.rb.next) || is_zone(x, m, m.rb.last_rounded)) return false;
-    // Not within 30 s of the next rounding.
-    const CourseStep& st = x.course.steps[static_cast<std::size_t>(max(1, m.rb.next))];
-    if (st.kind != StepKind::finish && v_dist(m.c, st.ref) < 30.0f * max(1.0f, m.s.v)) return false;
+    if (m.s.v < 0.75f * V) return false;
+    // Not so close to the next zone that the turn could not be completed before it (about 20 s of sailing).
+    if (next > 0 && next < static_cast<std::int32_t>(x.course.steps.size()) - 1 &&
+        near_zone(x, m, next, 2.0f * R + 20.0f * max(1.0f, m.s.v))) {
+      return false;
+    }
     // Clear of other boats: none within 4 L ahead or 2 L around.
     const Vec2 f = dir(m.s.psi);
     for (std::size_t j = 0; j < x.w.boat_count(); ++j) {
       if (static_cast<std::int32_t>(j) == a.i || !x.race.racing(j)) continue;
       const Vec2 cj = x.race.boat(j).c;
       const float d = v_dist(cj, m.c);
-      if (d < 2.0f * m.L + x.r_hull[j]) return false;
+      if (d < 2.0f * m.L + x.r_hull[j] + R) return false;
       if (d < 4.0f * m.L + x.r_hull[j] && v_dot(v_sub(cj, m.c), f) > 0.0f) return false;
     }
   }
   // Start: on a beat or a reach luff into a tack, on a run bear away into a gybe.
   a.pen_on = true;
   a.pen_t0 = x.now;
-  a.pen_seen_turning = false;
+  a.pen_stall_t = 0.0f;
   a.pen_served0 = br.served;
   a.pen_dir = leg == Leg::run ? -m.tack : m.tack;
-  a.helm_fixed = (m.s.v < 0.0f ? -a.pen_dir : a.pen_dir) * kPenaltyHelm;
+  a.helm_fixed = (m.s.v < 0.0f ? -a.pen_dir : a.pen_dir) * penalty_helm(m);
   a.forced = true;
   a.tactic = AiTactic::PenaltyTurn;
   a.man = Man::penalty;
   return true;
 }
+
+namespace {
 
 // Mean clean wind speed sampled along a heading (§3.3 reading the water).
 float read_track(AC& x, const AB& a, const Me& m, float psi) {
@@ -755,7 +823,8 @@ void sail_to_point(AC& x, AB& a, const Me& m, Vec2 p) {
 // Racing after the start (§4, §6, §7.6, §8, §9).
 void racing(AC& x, AB& a, const Me& m) {
   const std::size_t nsteps = x.course.steps.size();
-  const std::int32_t next = max(1, min(m.rb.next, static_cast<std::int32_t>(nsteps) - 1));
+  const std::int32_t last_step = static_cast<std::int32_t>(nsteps) - 1;
+  const std::int32_t next = m.rb.next < 1 ? 1 : (m.rb.next > last_step ? last_step : m.rb.next);
   if (a.leg_step != next) {
     a.leg_step = next;
     a.headed_t = 0.0f;
@@ -798,7 +867,7 @@ void racing(AC& x, AB& a, const Me& m) {
     else if (leg == Leg::run) aim = pass_point(t, v_scale(w, -1.0f));
     const float dist = v_dist(m.c, t.M);
     a.dbg.aim = aim;
-    if (dist < t.rho + 4.0f * m.L && a.man == Man::straight && follow_circle(x, a, m, t)) {
+    if (dist < t.rho + 4.0f * m.L && a.man != Man::gybe && round_mark(x, a, m, t)) {
       sails(x, a, m, true, t, leg);
       return;
     }
@@ -870,6 +939,12 @@ void ai_decide(AC& x, AB& a) {
   if (rs == RaceState::created || rs == RaceState::free_sailing) {
     free_sailing(x, a, m);
   } else if (!m.rb.started && !m.rb.ocs_scored) {
+    // A pre-start penalty is taken before the start when clear (rules.md §9.3), not in the last 20 s.
+    if ((x.t_race < -20.0f || x.race.after_gun(x.n) || a.pen_on) &&
+        penalty_turns(x, a, m, std::fabs(m.twa) > HALF_PI ? Leg::run : Leg::beat)) {
+      rules_overlay(x, a, m, m.c);
+      return;
+    }
     if (!x.race.after_gun(x.n)) prestart(x, a, m);
     else after_gun(x, a, m);
     aim = a.dbg.spot;

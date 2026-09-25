@@ -94,6 +94,7 @@ void AiSkippers::add(std::int32_t boat, AiLevel level, bool speed_only) {
   Boat& a = get(boat);
   a.level = level;
   a.P = ai_level_params(level, speed_only);
+  a.speed_only = speed_only;
   a.autopilot_only = false;
   a.active = true;
 }
@@ -329,7 +330,7 @@ void helm(AiSkippers::Ctx& x, AiSkippers::Boat& a) {
 
 void AiSkippers::step(World& w) {
   const Race& race = w.race();
-  Ctx x{w, race, w.rules(), w.course()};
+  Ctx x{w, race, w.rules(), w.course(), 0u, 0.0f, 0.0f, false, {}, {}, {}, nullptr};
   x.n = w.tick();
   x.now = static_cast<float>(w.tick()) * DT;
   x.created = w.race_created();

@@ -43,7 +43,14 @@ void choose_spot(AC& x, AB& a, const Me& m, const Line& l) {
   }
   const Vec2 w = dir(a.twd_ref);
   const float beta = wrap_pi(compass(l.n) - a.twd_ref);
-  if (a.spot_fixed && std::fabs(wrap_pi(beta - a.spot_beta)) <= 5.0f * DEG) return;
+  // The spot is chosen once, again at -75 s (the mean wind is known better by then), and after that only when the
+  // bias changes by more than 5°.
+  const bool final_choice = x.created && x.race.state() == RaceState::sequence && x.t_race >= -75.0f;
+  if (a.spot_fixed && std::fabs(wrap_pi(beta - a.spot_beta)) <= 5.0f * DEG &&
+      (a.phase != StartPhase::free || !final_choice)) {
+    return;
+  }
+  if (final_choice) a.phase = StartPhase::hover;
   const float du = v_dot(v_sub(l.B, l.A), w);
   const bool significant = std::fabs(du) > max(m.L, 0.05f * l.len);
   float u = 0.5f;
@@ -53,25 +60,29 @@ void choose_spot(AC& x, AB& a, const Me& m, const Line& l) {
     u = du > 0.0f ? 0.85f : 0.15f;
   }
   u = clamp(u + a.P.spread * (a.spread_r - 0.5f), 0.05f, 0.95f);
-  // Crowding: more than 3 other AIs within 3 L of the spot moves it 3 L away from the favoured end.
-  const float step = 3.0f * m.L / l.len;
-  const float away = (significant && du < 0.0f) ? 1.0f : -1.0f;
-  for (std::int32_t tries = 0; tries < 20; ++tries) {
-    std::int32_t n = 0;
+  // Crowding: another AI's spot within 2 L moves this one 2 L on, away from the favoured end (towards the other
+  // end when there is no room left on that side). Spots are taken in boat order, so the result is deterministic.
+  const float step = 2.0f * m.L / l.len;
+  float away = (significant && du < 0.0f) ? 1.0f : -1.0f;
+  if (!significant) away = a.spread_r < 0.5f ? -1.0f : 1.0f;
+  for (std::int32_t tries = 0; tries < 60; ++tries) {
+    bool clash = false;
     for (const auto& o : *x.ai) {
-      if (o->i == a.i || !o->spot_fixed || !o->active) continue;
-      if (std::fabs(o->spot_u - u) * l.len < 3.0f * m.L) ++n;
+      if (o->i == a.i || !o->drawn || !o->active || o->autopilot_only) continue;
+      if (x.created && !x.race.racing(static_cast<std::size_t>(o->i)) && x.race.rules_live()) continue;
+      if (std::fabs(o->spot_u - u) < step * 0.999f) clash = true;
     }
-    if (n <= 3) break;
-    const float nu = u + away * step;
-    if (nu < 0.05f || nu > 0.95f) break;
+    if (!clash) break;
+    float nu = u + away * step;
+    if (nu < 0.05f || nu > 0.95f) {
+      away = -away;
+      nu = clamp(u + away * step, 0.05f, 0.95f);
+    }
     u = nu;
   }
   a.spot_u = u;
-  if (x.t_race >= -75.0f) {
-    a.spot_fixed = true;
-    a.spot_beta = beta;
-  }
+  a.spot_fixed = true;
+  a.spot_beta = beta;
 }
 
 Vec2 spot_point(const AB& a, const Line& l, float back) {
@@ -82,23 +93,26 @@ Vec2 spot_point(const AB& a, const Line& l, float back) {
 void return_and_start(AC& x, AB& a, const Me& m, const Line& l) {
   const float s = v_dot(v_sub(m.c, l.A), l.n);
   const float u = v_dot(v_sub(m.c, l.A), l.u) / l.len;
+  a.tactic = AiTactic::Start;
   if (m.rb.ocs_i) {
-    // Around the nearer end: 1.5 L beyond it on the extension, then 2 L behind the line.
+    // Around the nearer end (race.md §4.3): to the course side beyond the end, then across the extension to the
+    // pre-start side. A boat that came back through the line crosses it again first.
     const bool a_near = u < 0.5f;
     const Vec2 end = a_near ? l.A : l.B;
     const Vec2 out = a_near ? v_scale(l.u, -1.0f) : l.u;
-    const Vec2 p1 = v_add(v_add(end, v_scale(out, 1.5f * m.L + m.B)), v_scale(l.n, 0.5f * m.L));
-    const Vec2 p2 = v_sub(v_add(end, v_scale(out, 1.5f * m.L + m.B)), v_scale(l.n, 2.0f * m.L));
-    if (a.ret_stage == 0 && (v_dist(m.c, p1) < 1.5f * m.L || s < 0.0f)) a.ret_stage = 1;
+    const Vec2 wide = v_add(end, v_scale(out, 1.5f * m.L + m.B));
+    const Vec2 p1 = v_add(wide, v_scale(l.n, 1.0f * m.L));
+    const Vec2 p2 = v_sub(wide, v_scale(l.n, 2.5f * m.L));
+    const float beyond = v_dot(v_sub(m.c, end), out);  // > 0: outside the end
+    if (a.ret_stage == 0 && s > 0.3f * m.L && beyond > 0.5f * m.L) a.ret_stage = 1;
+    if (a.ret_stage == 1 && s < -0.5f * m.L && beyond < -1.0f * m.L) a.ret_stage = 0;  // came back through the band
     sail_to_point(x, a, m, a.ret_stage == 0 ? p1 : p2);
-    a.tactic = AiTactic::Start;
     return;
   }
-  if (m.rb.ocs || s > -0.5f * m.L && x.race.returning(static_cast<std::size_t>(a.i))) {
-    // Back to the pre-start side: bear away and gybe round (never tack), 2 L behind the line.
+  if (m.rb.ocs || (s > -0.5f * m.L && x.race.returning(static_cast<std::size_t>(a.i)))) {
+    // Back to the pre-start side, 2 L behind the line: bear away and gybe round (never tack).
     const Vec2 p = v_sub(m.c, v_scale(l.n, s + 2.0f * m.L));
     sail_to_point(x, a, m, p);
-    a.tactic = AiTactic::Start;
     return;
   }
   a.ret_stage = 0;
@@ -112,7 +126,6 @@ void return_and_start(AC& x, AB& a, const Me& m, const Line& l) {
   } else {
     sail_to_point(x, a, m, v_add(spot_point(a, l, 0.0f), v_scale(l.n, 2.0f * m.L)));
   }
-  a.tactic = AiTactic::Start;
 }
 
 }  // namespace
@@ -140,40 +153,32 @@ float time_to_spot(const AB& a, const Me& m, Vec2 spot, float psi_app) {
   return t;
 }
 
+// §5.4 staying near S: sail back to it when more than 2 L away (slowing on the way in), else park on starboard
+// close-hauled with the sails let fly. The way back never tacks (sail_to_point turns through a gybe).
 void hover(AC& x, AB& a, const Me& m, Vec2 S) {
   const float d = v_dist(m.c, S);
   const float V = polar_speed(a, m, 60.0f * DEG);
-  bool near_boat = false;
-  for (std::size_t j = 0; j < x.w.boat_count(); ++j) {
-    if (static_cast<std::int32_t>(j) == a.i || (x.created && x.race.boat(j).ghost)) continue;
-    const BoatState& o = x.w.boat(j).state();
-    if (v_dist({o.pos_x, o.pos_y}, m.c) < 5.0f * m.L) near_boat = true;
-  }
+  if (d > 3.0f * m.L) a.loop = true;
+  if (d < 1.0f * m.L) a.loop = false;
   if (a.loop) {
-    // The loop: back towards S the way that does not pass head to wind.
     sail_to_point(x, a, m, S);
-    if (d < 1.5f * m.L || (d < 3.0f * m.L && m.tack > 0.0f)) a.loop = false;
-    if (a.loop) return;
-  }
-  const bool away = v_dot(dir(m.b.outputs().cog), v_sub(m.c, S)) > 0.0f;
-  if (d > 3.0f * m.L && away && !near_boat && a.man == Man::straight) {
-    a.loop = true;
-    sail_to_point(x, a, m, S);
+    // Arrive slowly.
+    if (d < 5.0f * m.L && m.s.v > 0.6f * V) a.let_fly = true;
     return;
   }
-  // Starboard close reach with the sails let fly to 25–40 % of the target speed.
-  a.psi_target = heading_for(m.twd, 60.0f * DEG);
-  if (m.tack < 0.0f && !near_boat) a.turn_dir = 1;  // via the stern (port → starboard bears away first)
-  if (m.s.v > 0.4f * V) a.hover_fly = true;
-  if (m.s.v < 0.25f * V) a.hover_fly = false;
-  a.let_fly = a.hover_fly;
+  a.psi_target = heading_for(m.twd, 50.0f * DEG);
+  if (m.tack < 0.0f) a.turn_dir = 1;  // port: back to starboard by bearing away
+  a.let_fly = m.tack > 0.0f;
+  a.hover_fly = a.let_fly;
 }
 
 void free_sailing(AC& x, AB& a, const Me& m) {
+  // Near the own setup point, a little farther back (§5.1): each boat has its own, so the fleet does not bunch.
   const Line l = start_line(x);
+  choose_spot(x, a, m, l);
+  const Vec2 spot = spot_point(a, l, 0.3f * m.L);
   const float d_back = m.v_up * a.P.t_final;
-  const Vec2 P = v_sub(v_mid(l.A, l.B), v_scale(l.n, 0.7f * d_back));
-  hover(x, a, m, P);
+  hover(x, a, m, v_sub(spot, v_scale(dir(approach_heading(m)), 1.2f * d_back)));
   a.tactic = AiTactic::Start;
 }
 
@@ -181,9 +186,9 @@ void prestart(AC& x, AB& a, const Me& m) {
   const Line l = start_line(x);
   const float t = x.t_race;
   a.tactic = AiTactic::Start;
-  a.k16 = a.drawn ? a.k16 : 0;
   const bool match = x.race.race_type() == RaceType::match;
-  const float s_bow = v_dot(v_sub(v_add(m.c, v_scale(dir(m.s.psi), 0.5f * m.L)), l.A), l.n);
+  const Vec2 bow = v_add(m.c, v_scale(dir(m.s.psi), 0.5f * m.L));
+  const float s_bow = v_dot(v_sub(bow, l.A), l.n);
   // §5.8 match race entry.
   if (match && a.i < 2 && a.match_stage < 3) {
     const Vec2 end = a.i == 0 ? l.B : l.A;
@@ -212,38 +217,44 @@ void prestart(AC& x, AB& a, const Me& m) {
   const float psi_app = approach_heading(m);
   const float d_back = m.v_up * a.P.t_final;
   const Vec2 S = v_sub(spot, v_scale(dir(psi_app), d_back));
-  // Over the line before the gun: back to the pre-start side at once (I flag: around an end after the gun).
-  if (s_bow > 0.0f) {
-    sail_to_point(x, a, m, v_sub(m.c, v_scale(l.n, s_bow + 2.0f * m.L)));
+  // Over the line before the gun: back to the pre-start side at once.
+  if (v_dot(v_sub(m.c, l.A), l.n) > -0.5f * m.L && s_bow > -0.1f * m.L && !a.go) {
+    sail_to_point(x, a, m, v_sub(m.c, v_scale(l.n, s_bow + 3.0f * m.L)));
     return;
   }
   if (!a.go) {
-    if (t < -75.0f && v_dist(m.c, S) > 3.0f * m.L && !a.loop) {
-      sail_to_point(x, a, m, S);
-      return;
+    if (t >= -75.0f) {
+      const float t_run = time_to_spot(a, m, spot, psi_app);
+      if (-t <= t_run + 1.0f + a.e_start) {
+        a.go = true;
+        a.loop = false;
+      }
     }
-    const float t_run = time_to_spot(a, m, spot, psi_app);
-    if (t >= -75.0f && -t <= t_run + 1.0f + a.e_start) {
-      a.go = true;
-      a.loop = false;
-    } else {
+    if (!a.go) {
       hover(x, a, m, S);
       return;
     }
   }
-  // §5.6 final approach.
+  // §5.6 final approach on starboard towards the spot.
   const float brg = bearing(m.c, spot);
   float psi = psi_app;
-  if (std::fabs(wrap_pi(m.twd - brg)) >= m.theta_up + 2.0f * DEG && v_dist(m.c, spot) > 2.0f * m.L) psi = brg;
+  const float twa_brg = wrap_pi(m.twd - brg);
+  if (twa_brg >= m.theta_up + 2.0f * DEG && twa_brg < 120.0f * DEG && v_dist(m.c, spot) > 2.0f * m.L) psi = brg;
   const float t_run = time_to_spot(a, m, spot, psi_app);
-  const float early = (-t) - (t_run + a.e_start);
+  const float want = (-t) + a.e_start;  // arrival time wanted, from now
+  const float early = want - t_run;
   if (early > 1.0f) {
-    psi = heading_for(m.twd, 45.0f * DEG);
     a.let_fly = true;
+    if (early > 4.0f) psi = heading_for(m.twd, 45.0f * DEG);
   } else if (early < -1.0f) {
-    psi = heading_for(m.twd, m.theta_up + 16.0f * DEG);
+    psi = heading_for(m.twd, max(m.theta_up + 16.0f * DEG, twa_brg));
   }
-  if (t > -5.0f && s_bow > -0.3f * m.L && t < -0.5f) {
+  // Brake: at the present speed the bow would reach the line before the gun. The stopping distance with the
+  // sails let fly is about 2.5 s of the present speed.
+  const Vec2 vel = v_add(v_scale(dir(m.s.psi), max(0.0f, m.s.v)), m.cur);
+  const float v_n = max(0.05f, v_dot(vel, l.n));
+  const float D = max(0.0f, -s_bow);
+  if (t < -0.3f && D < v_n * 2.5f + 0.5f * m.L && D / v_n < -t - 0.3f) {
     psi = heading_for(m.twd, 40.0f * DEG);
     a.let_fly = true;
   }

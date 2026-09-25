@@ -81,3 +81,16 @@ add_executable(windmark_gen_sea_render_samples ../tools/gen_sea_render_samples.c
 target_link_libraries(windmark_gen_sea_render_samples PRIVATE windmark_core)
 target_include_directories(windmark_gen_sea_render_samples PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_options(windmark_gen_sea_render_samples PRIVATE ${WINDMARK_WARNINGS})
+# AI skippers (WM-010): ai.md. The fast checks and scenarios run in core_tests; the long fleet races of ai.md §15
+# are a separate executable and ctest entry with the label `ai_long` (ctest -L ai_long; ctest -LE ai_long skips them).
+target_sources(windmark_core_tests PRIVATE
+  test_ai.cpp
+)
+add_executable(windmark_ai_race_tests test_main.cpp test_ai_race.cpp)
+target_link_libraries(windmark_ai_race_tests PRIVATE windmark_core)
+target_include_directories(windmark_ai_race_tests SYSTEM PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/doctest")
+target_compile_options(windmark_ai_race_tests PRIVATE ${WINDMARK_WARNINGS})
+target_compile_definitions(windmark_ai_race_tests PRIVATE
+  WINDMARK_DATA_DIR="${WINDMARK_DATA_DIR}" WINDMARK_COURSES_DIR="${WINDMARK_COURSES_DIR}")
+add_test(NAME ai_races COMMAND windmark_ai_race_tests)
+set_tests_properties(ai_races PROPERTIES LABELS ai_long)

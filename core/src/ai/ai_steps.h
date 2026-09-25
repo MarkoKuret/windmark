@@ -52,6 +52,9 @@ void beat_run(AC& x, AB& a, const Me& m, Vec2 R, bool beat, float mlay, bool tri
 // Sail to a point: beat on laylines when it is upwind, else straight (current corrected).
 void sail_to_point(AC& x, AB& a, const Me& m, Vec2 p);
 
+// §7.6 penalty turns: true while a turn owns the helm (ai_course.cpp).
+bool penalty_turns(AC& x, AB& a, const Me& m, Leg leg);
+
 // Start (§5): ai_start.cpp.
 void free_sailing(AC& x, AB& a, const Me& m);
 void prestart(AC& x, AB& a, const Me& m);

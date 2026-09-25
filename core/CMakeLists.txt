@@ -76,6 +76,7 @@ target_sources(windmark_core PRIVATE
   src/ai/ai_start.cpp
   src/ai/ai_course.cpp
   src/ai/ai_rules.cpp
+  src/ai/ai_state.cpp
 )
 target_include_directories(windmark_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 # PUBLIC: every target that links the core (tests, server, engine bindings) builds with the same float rules.

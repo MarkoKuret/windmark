@@ -39,6 +39,7 @@ struct AiSkippers::Boat {
   std::int32_t i = -1;
   AiLevel level = AiLevel::intermediate;
   AiLevelParams P;
+  bool speed_only = false;
   bool autopilot_only = false;
   bool active = true;
   const AiPolar* pol = nullptr;
@@ -109,6 +110,7 @@ struct AiSkippers::Boat {
   bool pen_on = false;
   float pen_t0 = 0.0f, pen_dir = 1.0f;
   bool pen_seen_turning = false;
+  float pen_stall_t = 0.0f;
   std::int32_t pen_served0 = 0;
   // Sails (§6.2)
   float change_t = 0.0f;

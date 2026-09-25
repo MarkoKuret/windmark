@@ -15,6 +15,8 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <span>
+#include <string>
 #include <vector>
 
 #include "ai/ai_polar.h"
@@ -108,6 +110,13 @@ class AiSkippers {
 
   // Tick step 2: every AI boat decides and writes its controls (World::Controller).
   void step(World& w);
+
+  // ai.md §16: the skippers' memory, a block of its own next to the world snapshot (conventions.md §9.1 leaves
+  // controller memory out of the world snapshot and the tick checksum). Save between ticks, together with
+  // World::save; load into new skippers after World::load of the same snapshot, before the next step. `load`
+  // checks the tick, the race seed and the boats against the world and rejects a damaged block.
+  void save(SnapshotWriter& w, const World& world) const;
+  bool load(std::span<const std::uint8_t> bytes, const World& world, std::string& error);
 
   bool has(std::int32_t boat) const;
   const AiTelemetry& telemetry(std::int32_t boat) const;

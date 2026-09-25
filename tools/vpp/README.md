@@ -144,7 +144,8 @@ trimaran lifting its main hull. Appendage buoyancy sits at its centroid and roll
   Fn 0.15 to 0.75, made monotone and fading as Fn⁴ below the range.
 - Planing is gated on the hull's weight for its length, the displacement-length ratio
   `DLR = (displacement / 1016 kg) / (LWL / 30.48 m)³` on `hull.displacement` (without crew, the usual
-  convention): planing ability 1 up to DLR 90, 0 from DLR 105, smooth in between (wm7: 82, wm12: 108).
+  convention): planing ability 1 up to DLR 100, 0 from DLR 106, smooth in between (wm7: 82, a typical 7 m
+  sportsboat about 100, wm12: 108).
   - A hull that can plane holds the regression where it levels off; once the bottom's dynamic lift
     `0.5 ρ V² 0.08 Aw` reaches 30 % of the weight its coefficient blends towards `min(coefficient, 0.055)` (a
     planing hull's residuary drag/lift ratio), fully at 90 % (calibrated, below). The blend is scaled by the
@@ -257,4 +258,6 @@ code is included.
 - Sail handling times are reference values scaled by length, not a crew-work model.
 - The broached speed is a rule of thumb (a share of the last held speed), not a model of a broach.
 - Planing is a gate on the displacement-length ratio and a calibrated blend, not a planing-hull model (no
-  dynamic trim, no spray drag); a class near the gate (DLR 90 to 105) planes partly.
+  dynamic trim, no spray drag); a class near the gate (DLR 100 to 106) planes partly. The gate is
+  dimensionless, so it separates hulls by weight for their length, not by size: wm12 sits just past it (a wm12
+  some 2 % lighter would start to plane, smoothly).

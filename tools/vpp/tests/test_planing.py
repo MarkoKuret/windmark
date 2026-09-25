@@ -31,7 +31,7 @@ def _max_slope(tws, V):
 def test_planing_ability_gate():
     assert hydro.planing_ability(80.0) == 1.0
     assert hydro.planing_ability(hydro.PLANING_DLR_NONE) == 0.0
-    assert 0.0 < hydro.planing_ability(97.0) < 1.0
+    assert 0.0 < hydro.planing_ability(103.0) < 1.0
     # the conventional ratio: 1 long ton on a 10 ft waterline is 1000
     assert hydro.displacement_length_ratio(1016.047, 3.048) == pytest.approx(1000.0)
 

@@ -11,8 +11,8 @@ extends Control
 ## Numbers refresh at 4 Hz from HudValues and RaceHudValues; bars, needles and the radar every frame. The race
 ## side reads the sim it is ticked with (SimSource race readers), so a scene only calls tick() and frame(); the
 ## optional ui_input(raw) feeds the ranking, radar zoom and orientation keys (without it the Hud polls the
-## input map). It wires the protest and hail prompts into the PlayerControls it is given, and hides a
-## "RaceStatus" stand-in label next to it while it shows a race. Player-facing text has no em dashes.
+## input map). It wires the protest and hail prompts into the PlayerControls it is given. Player-facing text has
+## no em dashes.
 
 ## race events for audio and anything else that follows the race (RaceHudValues.hud_event)
 signal hud_event(kind: String, data: Dictionary)
@@ -436,9 +436,6 @@ func _race_frame() -> void:
 		if race_panel.visible:
 			_show_race(false)
 		return
-	var stand_in: Node = get_parent().get_node_or_null("RaceStatus") if get_parent() else null
-	if stand_in is CanvasItem:
-		(stand_in as CanvasItem).visible = false
 	if not race_panel.visible:
 		_show_race(true)
 		refresh_text()

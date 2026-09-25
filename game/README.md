@@ -334,8 +334,7 @@ every UI scale, and the pause menu over the sail scene on FakeSim. To look at th
   the Sea overlay hooks: the start line (white, red while over in the last minute, green until started), the
   gate line, the finish line on the last leg, the laylines (`hud.md` §6, from `CoreSim.polar_vmg` at the
   10 s smoothed clean wind, 2 Hz) and the zone circle within 6 L; in 3-D the rounding arrow on the next mark and
-  a bouncing marker with its name and distance beyond 500 m. A line of race status text at the top (countdown,
-  flags, OCS, next mark, lap) stood in for the race HUD; the `Hud` now hides it while it shows a race.
+  a bouncing marker with its name and distance beyond 500 m. The race HUD (see "Race HUD") shows the race state.
 - **Tests**: `tests/run_course_land_test.sh` (headless, `tests/course_land_test.gd`): the core's shapes equal the
   venue file, ground above water only inside the polygons, quay and rock on their obstacles, the camera never
   inside land, the reset key in free sailing (core and FakeSim) and in race mode, marks at the core's positions

@@ -26,9 +26,10 @@ def test_dsyhs_parent_like_hull():
 
 def test_resistance_monotone_and_components(raw):
     b, m = _model(raw)
-    V = np.linspace(0.3, 7.0, 40)
+    V = np.linspace(0.3, 4.5, 40)             # below the hump (Fn 0.45); beyond it a light hull may unload
     R = m.resistance(V, 0 * V, 0 * V)
     assert np.all(np.diff(R) > 0)
+    assert m.resistance(np.array([9.0]), np.zeros(1), np.zeros(1))[0] > R[-1]
     # friction dominates at low speed, waves near hull speed
     _, p = m.resistance(np.array([1.0, 4.2]), np.zeros(2), np.zeros(2), parts=True)
     assert p["friction"][0] > p["residuary"][0]
@@ -79,3 +80,9 @@ def test_thin_ship_agrees_with_dsyhs_in_magnitude(raw):
     a = m.upright_residuary(V)
     r = np.array([hydro._interp2(*t.mh_tables[0], v, b.volume) for v in V])
     assert np.all(r / a > 0.4) and np.all(r / a < 2.5)
+
+
+def test_planing_unloads_light_hulls_only():
+    w = hydro.planing_weight(np.array([5.0]), 8.5, 1150 * G)[0]       # sportsboat at 10 kn
+    h = hydro.planing_weight(np.array([6.0]), 50.0, 25500 * G)[0]     # 24 m keelboat at 12 kn
+    assert w > 0.5 and h < 0.1

@@ -33,6 +33,9 @@ WINDAGE_CD = 1.13        # Hazen/ORC windage coefficient on hull topsides and ma
 FLATS = np.linspace(0.1, 1.0, 16)
 REEFS = np.linspace(0.55, 1.0, 10)
 REEFABLE = ("main", "jib", "genoa")
+# A mainsail without a headsail in front loses the slot's upwash: its lift is scaled by MAIN_ALONE_CL close-hauled,
+# fading to no loss by 110 deg effective AWA (calibration, README).
+MAIN_ALONE_CL = 0.72
 
 
 def wind_at(tws, z):
@@ -76,11 +79,15 @@ class Rig:
         cl = 0.0
         cd = 0.0
         deltas = []
+        alone = not any(s.type in ("jib", "genoa") for s in self.sails)
         for s, e, a in zip(self.sails, self.env, areas):
             c_l, c_d, de = e.at(fi, beta_e)
             if eps is not None:
                 de = np.minimum(np.clip(de + eps, s.sheet_min, s.sheet_max), np.maximum(beta_e, s.sheet_min))
                 c_l, c_d = coefficients(COEFFS[s.coeff_type], beta_e - de, e.flat[fi], de)
+            if alone and s.type == "main":
+                u = np.clip((beta_e - np.radians(60)) / np.radians(50), 0, 1)
+                c_l = c_l * (MAIN_ALONE_CL + (1 - MAIN_ALONE_CL) * u * u * (3 - 2 * u))
             cl = cl + c_l * a
             cd = cd + c_d * a
             deltas.append(de)
@@ -157,7 +164,7 @@ class Solver:
         fx, fh, deltas = rig.forces(fi, reef, beta_e, aws_e, eps)
         return fx, fh, fh * (z + self.zclr), aws, beta, deltas
 
-    def solve_heel(self, rig, fi, reef, tws, twa, V, iters=26, eps=None):
+    def solve_heel(self, rig, fi, reef, tws, twa, V, iters=20, eps=None):
         rm = self.hull.hydro.righting_moment
         lo = np.zeros_like(V)
         hi = np.full_like(V, self.heel_top)
@@ -176,9 +183,30 @@ class Solver:
         fx, fh, _, _, _, _ = self.moment(rig, fi, reef, tws, twa, V, heel, eps)
         return fx - self.hull.resistance(V, heel, fh), fh
 
-    def solve_speed(self, rig, fi, reef, tws, twa, heel, vmax, iters=28, eps=None):
-        lo = np.zeros_like(heel)
-        hi = np.broadcast_to(vmax, heel.shape).astype(float).copy()
+    def solve_speed(self, rig, fi, reef, tws, twa, heel, vmax, iters=16, eps=None, scan=20):
+        """Lowest stable speed: the first crossing from surplus to deficit of drive over resistance, scanning up
+        from rest. A hull that cannot get over its wave hump stays below it even if a faster planing root exists;
+        the deficit a stalled keel shows at a crawl (before the boat first makes way) is not a root."""
+        shape = heel.shape
+        vmax = np.broadcast_to(vmax, shape).astype(float)
+        lo = np.zeros(shape)
+        hi = vmax.copy()
+        found = np.zeros(shape, bool)
+        seen = np.zeros(shape, bool)
+        last_pos = np.zeros(shape)
+        for k in range(1, scan + 1):
+            v = vmax * (k / scan) ** 1.5
+            f, _ = self.net_force(rig, fi, reef, tws, twa, v, heel, eps)
+            pos = f > 0
+            new = ~found & seen & ~pos
+            lo = np.where(new, last_pos, lo)
+            hi = np.where(new, v, hi)
+            found |= new
+            last_pos = np.where(pos & ~found, v, last_pos)
+            seen |= pos
+        # never made way: no speed; never fell short: the top of the range (flagged invalid by the caller)
+        lo = np.where(found, lo, np.where(seen, vmax, 0.0))
+        hi = np.where(found, hi, np.where(seen, vmax, 0.0))
         for _ in range(iters):
             mid = 0.5 * (lo + hi)
             f, _ = self.net_force(rig, fi, reef, tws, twa, mid, heel, eps)
@@ -187,7 +215,7 @@ class Solver:
             hi = np.where(up, hi, mid)
         return 0.5 * (lo + hi)
 
-    def solve(self, rig, fi, reef, tws, twa, outer=7, eps=None) -> State:
+    def solve(self, rig, fi, reef, tws, twa, outer=5, eps=None) -> State:
         shape = np.broadcast(fi, reef, tws, twa, 0.0 if eps is None else eps).shape
         fi = np.broadcast_to(fi, shape)
         reef = np.broadcast_to(reef, shape)

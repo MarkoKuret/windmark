@@ -41,7 +41,7 @@ SHEET_LIMITS = {
     "genoa": (math.radians(9.0), math.radians(68.0)),
     "code_zero": (math.radians(12.0), math.radians(55.0)),
     "spinnaker_sym": (math.radians(20.0), math.radians(79.0)),
-    "spinnaker_asym": (math.radians(15.0), math.radians(50.0)),
+    "spinnaker_asym": (math.radians(15.0), math.radians(64.0)),
 }
 
 
@@ -447,7 +447,7 @@ def from_dict(raw: dict) -> Boat:
         # data_format.md 3.4 default, shared with the boat generator
         boom_height = mast_height - P - 0.25 * (loa / 12.0) ** 0.6
         notes.append(f"rig.boom_height defaulted to {boom_height:.2f} m")
-    mast_chord = 0.012 * mast_height + 0.03
+    mast_chord = 0.0105 * mast_height + 0.02      # shared with the boat generator (visual.rig.mast_chord)
     bowsprit = _num(r, "bowsprit", "rig", 0.0)
     pole = _num(r, "pole", "rig", 0.0)
     rig_mass = _num(r, "rig_mass", "rig", None)

@@ -75,7 +75,13 @@ TE_B = np.array([
     [-0.7256, -1.2971, -1.5622, -1.3499],
 ])
 
-PLANING_DRAG_LIFT = 0.085   # residuary/weight ceiling once the hull is planing (trim ~5 deg, Windmark)
+# Planing: once the bottom's dynamic lift 0.5 rho V^2 PLANING_CL Aw is a sizeable share of the weight, the
+# residuary coefficient blends towards min(coefficient, PLANING_DRAG_LIFT), a planing hull's drag/lift ratio.
+# Light, wide boats (low weight per waterplane area) get there at moderate speed, heavy ones never do.
+PLANING_CL = 0.08           # lift coefficient of a planing bottom at about 4 deg trim
+PLANING_START = 0.30        # lift share where the blend starts ...
+PLANING_FULL = 0.90         # ... and where the hull is fully planing (calibrated, README)
+PLANING_DRAG_LIFT = 0.055   # residuary/weight of a planing hull (calibrated, README)
 FOIL_CL_MAX = 1.1           # keel + rudder lift coefficient where the side force starts to stall
 STALL_PENALTY = 12.0        # drag per unit of excess CL^2 beyond FOIL_CL_MAX (Windmark robustness term)
 DECK_EDGE_GAIN = 0.8        # residuary growth per (heel beyond deck-edge immersion / that angle)^2 (Windmark)
@@ -168,6 +174,8 @@ class HullModel:
         up = self.hydro.upright
         fn = np.asarray(V) / math.sqrt(G * up["lwl"])
         c = np.interp(fn, self.rr_fn, self.rr_coef)
+        w = planing_weight(V, up["aw"], self.boat.mass * G)
+        c = (1 - w) * c + w * np.minimum(c, PLANING_DRAG_LIFT)
         return c * RHO_WATER * G * self.boat.volume
 
     def resistance(self, V, heel, side_force, parts: bool = False):
@@ -237,23 +245,14 @@ class HullModel:
         return out
 
     def _keel_cb_depth(self):
-        """Depth of the keel's centre of buoyancy below the waterline (Tc + Zcbk), m."""
-        b = self.boat
-        tc = self.hydro.upright["tc"]
-        vf = b.keel.span * b.keel.chord ** 2 * b.keel.thickness * 0.68
-        num = vf * (tc + 0.45 * b.keel.span)
-        den = vf
-        if b.bulb is not None:
-            vb = math.pi / 6 * b.bulb.diameter ** 2 * b.bulb.length
-            num += vb * b.bulb.depth
-            den += vb
-        return num / den
+        """Depth of the fin's centre of buoyancy below the waterline (Tc + Zcbk), m."""
+        return self.hydro.upright["tc"] + 0.45 * self.boat.keel.span
 
     def _keel_volume(self):
+        """Fin volume for the keel regressions: the Delft keel series were fins; a deep bulb makes little wave
+        resistance and is charged through its friction and form drag instead (calibration, README)."""
         b = self.boat
         v = b.keel.span * b.keel.chord ** 2 * b.keel.thickness * 0.68
-        if b.bulb is not None:
-            v += math.pi / 6 * b.bulb.diameter ** 2 * b.bulb.length
         return max(v, 1e-4)
 
     def effective_draft(self, V, heel):
@@ -301,22 +300,24 @@ def dsyhs_coefficient(p: Dict[str, float]) -> np.ndarray:
 
 
 def residuary_curve(p: Dict[str, float]):
-    """Robust residuary coefficient Rr/(rho g V) on a Froude grid 0 ... 3 built around the regression.
+    """Delft residuary coefficient Rr/(rho g V) on a Froude grid 0 ... 3, made robust.
 
     Inside the series the regression is used as is, made monotone (it can dip when a hull sits at the edge of the
-    parameter range). Below Fn 0.15 it fades as Fn^4. Beyond Fn 0.75 a light hull starts planing: a coefficient
-    above the planing drag/lift ratio relaxes towards it, in proportion to the hull's lightness (full effect at
-    V^(1/3)/LWL <= 0.14, none at >= 0.19, where a heavy hull stays wave-bound); a lower coefficient is held.
+    parameter range); below Fn 0.15 it fades as Fn^4 and above Fn 0.75 it is held. Dynamic lift is applied on top
+    of this curve by HullModel.upright_residuary.
     """
     c = np.maximum.accumulate(np.maximum(dsyhs_coefficient(p), 0.0))
     fn_lo = np.linspace(0.0, 0.14, 8)
     fn_hi = np.linspace(0.8, 3.0, 23)
     fn = np.concatenate([fn_lo, DSYHS_FN, fn_hi])
-    c75 = c[-1]
-    light = float(np.clip((0.19 - p["V^(1/3)/LWL"]) / 0.05, 0.0, 1.0))
-    drop = max(c75 - PLANING_DRAG_LIFT, 0.0) * light
-    hi = c75 - drop * (1 - np.exp(-(fn_hi - DSYHS_FN[-1]) / 0.25))
-    return fn, np.concatenate([c[0] * (fn_lo / DSYHS_FN[0]) ** 4, c, hi])
+    return fn, np.concatenate([c[0] * (fn_lo / DSYHS_FN[0]) ** 4, c, np.full(len(fn_hi), c[-1])])
+
+
+def planing_weight(V, aw, weight):
+    """Share of the planing regime: dynamic lift of the bottom 0.5 rho V^2 CL Aw against the weight."""
+    lam = 0.5 * RHO_WATER * np.asarray(V) ** 2 * PLANING_CL * aw / weight
+    u = np.clip((lam - PLANING_START) / (PLANING_FULL - PLANING_START), 0.0, 1.0)
+    return u * u * (3 - 2 * u)
 
 
 def build(boat: Boat, hydro: Hydro, thin_ship: Optional[bool] = None) -> HullModel:

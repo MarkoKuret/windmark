@@ -39,6 +39,7 @@ class SailCoeffs:
     blend: float        # rad, width of the attached-to-stalled blend
     kt: float = 0.0     # twist drag: eased sheets open the leech, parasitic drag grows as kt delta^2
     cd_luff: float = 0.06   # flogging drag
+    blanket: float = 0.0    # share of a front sail's force lost in the mainsail's lee dead downwind (110-180 deg)
 
 
 # Per sail type, fitted to the ORC (2023) per-sail envelopes with the sheet limits in boatclass.SHEET_LIMITS_DEG
@@ -53,8 +54,8 @@ COEFFS: Dict[str, SailCoeffs] = {
                         cn_max=0.60, blend=30.0 * DEG, kt=0.20),
     "spinnaker": SailCoeffs(alpha_luff=5.3 * DEG, alpha_stall=38.8 * DEG, cl_max=0.96, cd0=0.123, kp=0.290,
                             cn_max=0.45, blend=43.3 * DEG, kt=0.072),
-    "gennaker": SailCoeffs(alpha_luff=8.0 * DEG, alpha_stall=50.0 * DEG, cl_max=1.06, cd0=0.157, kp=0.214,
-                           cn_max=0.30, blend=49.0 * DEG, kt=0.0),
+    "gennaker": SailCoeffs(alpha_luff=6.0 * DEG, alpha_stall=47.6 * DEG, cl_max=1.02, cd0=0.194, kp=0.155,
+                           cn_max=0.386, blend=30.4 * DEG, kt=0.037, blanket=0.557),
 }
 COEFFS["genoa"] = COEFFS["jib"]
 COEFFS["staysail"] = replace(COEFFS["jib"], cl_max=1.40)
@@ -131,4 +132,7 @@ def envelope(sail_type: str, sheet_min: float, sheet_max: float, flats, dbeta: f
     cx = cl * np.sin(beta)[None, :, None] - cd * np.cos(beta)[None, :, None]
     k = np.argmax(cx, axis=2)
     take = lambda a: np.take_along_axis(a, k[..., None], axis=2)[..., 0]
-    return Envelope(beta=beta, flat=flats, cl=take(cl), cd=take(cd), delta=deltas[k])
+    u = np.clip((beta - np.radians(110)) / np.radians(70), 0, 1)
+    keep = 1 - c.blanket * u * u * (3 - 2 * u)
+    return Envelope(beta=beta, flat=flats, cl=take(cl) * keep[None, :], cd=take(cd) * keep[None, :],
+                    delta=deltas[k])

@@ -42,8 +42,8 @@ From the course (`race.md`) and the venue (`data_format.md` §6.5):
 
 | kind | shape | data |
 | --- | --- | --- |
-| `mark` | circle | centre, radius (reference 0.8 m for an inflatable, 1.5 m for a large buoy) |
-| `mark` (every buoy: marks, pin end, gate buoys; radius at least 0.8 m) and `course_object` (committee and mark boats) | circle or convex polygon with a heading | course spec |
+| `mark` | circle | centre, radius (at least 0.8 m; reference 0.8 m for an inflatable, 1.5 m for a large buoy) |
+| `course_object` (committee and mark boats; every buoy, including pin end and gate buoys, is a `mark`) | circle or convex polygon with a heading | course spec |
 | `obstacle` (moored boats, piers, rocks) | convex polygon or circle | venue file |
 | `land` | polygon, counter-clockwise, interior = land; islands are separate polygons | venue file |
 

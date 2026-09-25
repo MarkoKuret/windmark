@@ -233,12 +233,13 @@ nodes of wind grids as `(1, 0)` so leaving the box is seamless.
 | query | returns | used by |
 | --- | --- | --- |
 | `wind_clean(x, y, t)` | `wind_speed`, `wind_from` without shadows | boat step input, AI, HUD wind arrows |
-| `global_from(t)`, `dir_offset(t)` and its three terms | the median direction and the current shift | HUD, AI (shift tracking), debug views |
+| `global_from(t)`, `dir_offset(t)` and its three terms | the median direction and the current shift | HUD, debug views |
 | `puff_factor(x, y, t)` | the puff/lull factor | AI, renderer (dark patches on the water) |
 | `puff_patches(t)` | each live patch `(px, py, R, s, e)` | renderer, debug views |
 | `current(x, y, t)` | current vector | boat step, AI, HUD |
 
-The AI may evaluate any of these at future times to look ahead; they are pure functions.
+They are pure functions, but the AI only reads what a sailor could observe: the wind at its own boat and nearby
+water now, and its own history. It never evaluates future times or `global_from` (`ai.md`).
 
 ## 10. Tests
 

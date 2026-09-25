@@ -8,7 +8,7 @@ Three kinds of files feed the simulation core:
 | performance `<class>.perf.json` | `windmark.perf/1` | VPP tool, **generated, never hand-edited** | core, AI, HUD |
 | venue physics `<venue>.venue.json` | `windmark.venue/1` | venue tools | core (wind field, current, sea exposure, land, obstacles) |
 
-Courses and marks are defined in `race.md`. The core never reads the class file directly: everything it needs is
+Courses and marks are defined in `courses.md` (`windmark.course/1`). The core never reads the class file directly: everything it needs is
 in the performance file, which carries the hash of the class file it was made from.
 
 ## 1. General rules

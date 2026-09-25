@@ -266,6 +266,7 @@ Check values:
 | 4 | puff generations (position, size, strength) | wind.md §6 |
 | 5 | wave component phases and direction jitter | sea.md §3 |
 | 6 | per-boat attitude wobble phase | boat.md §6.5 |
+| 7 | spawn order shuffle | race.md |
 | 16–31 | AI decisions | ai.md |
 
 ## 8. Tables and lookup

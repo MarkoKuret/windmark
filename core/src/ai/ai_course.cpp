@@ -973,20 +973,31 @@ void racing(AC& x, AB& a, const Me& m) {
   }
 }
 
-// race.md §6.2: 5 L beyond the finish line and 2·(place)·L along it, then stop there.
+// race.md §6.2 the finished-boat autopilot: 5 L beyond the finish line and 2·(i + 1)·L along it (i = the finishing
+// place), so finished boats spread out and leave the line clear; there she stops (luffed, sails let fly). A ghost
+// that did not finish (retired, disqualified) stops where she is.
 void finished_autopilot(AC& x, AB& a, const Me& m) {
+  a.tactic = AiTactic::None;
+  if (!m.rb.finished) {
+    a.psi_target = heading_for(m.twd, (m.tack != 0.0f ? m.tack : 1.0f) * 50.0f * DEG);
+    a.let_fly = true;
+    return;
+  }
   const CourseStep& st = x.course.steps.back();
   const Vec2 A = x.course.end_a(st), B = x.course.end_b(st);
   const Vec2 u = v_unit(v_sub(B, A), {1.0f, 0.0f});
-  const Vec2 beyond = right_of(u);
-  const float place = static_cast<float>(max(1, m.rb.place));
-  const Vec2 P = v_add(v_add(v_mid(A, B), v_scale(beyond, 5.0f * m.L)), v_scale(u, 2.0f * place * m.L));
+  const Vec2 mid = v_mid(A, B);
+  Vec2 beyond = right_of(u);
+  if (x.race.finish_s(v_add(mid, beyond)) < x.race.finish_s(mid)) beyond = v_scale(beyond, -1.0f);
+  const float place = static_cast<float>(m.rb.place > 0 ? m.rb.place : 1);
+  const Vec2 P = v_add(v_add(mid, v_scale(beyond, 5.0f * m.L)), v_scale(u, 2.0f * (place + 1.0f) * m.L));
   if (v_dist(m.c, P) < 2.0f * m.L) {
-    a.psi_target = heading_for(m.twd, m.tack * 60.0f * DEG);
+    a.psi_target = heading_for(m.twd, (m.tack != 0.0f ? m.tack : 1.0f) * 50.0f * DEG);
     a.let_fly = true;
   } else {
     sail_to_point(x, a, m, P);
   }
+  a.dbg.aim = P;
 }
 
 }  // namespace wm::ai_detail
@@ -1007,12 +1018,8 @@ void ai_decide(AC& x, AB& a) {
     return;
   }
   const RaceState rs = x.race.state();
-  if (rs == RaceState::closed || rs == RaceState::abandoned) {
-    a.psi_target = m.s.psi;
-    a.let_fly = true;
-    return;
-  }
-  if (m.rb.finished || m.rb.ghost) {
+  if (m.rb.finished || m.rb.ghost || rs == RaceState::closed || rs == RaceState::abandoned) {
+    // Finished: the autopilot (race.md §6.2), also after the close; anyone else stops where she is.
     if (a.man == Man::penalty) a.man = Man::straight;
     a.helm_fixed = NAN;
     finished_autopilot(x, a, m);

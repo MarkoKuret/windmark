@@ -382,6 +382,11 @@ void AiSkippers::step(World& w) {
       a.prev_tactic = a.tactic;
       a.dbg.tactic = a.tactic;
     }
+    // An autopilot-only boat (an offline human) is steered only once she has finished (race.md §6.2).
+    if (a.autopilot_only && !(x.created && (x.race.boat(static_cast<std::size_t>(a.i)).finished ||
+                                            x.race.boat(static_cast<std::size_t>(a.i)).ghost))) {
+      continue;
+    }
     helm(x, a);
     a.dbg.d = a.d_f;
     a.dbg.twd_ref = a.twd_ref;

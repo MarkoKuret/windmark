@@ -109,8 +109,8 @@ static void steer(wm_world* w, pilot* p, int i, float t) {
     helm_to(w, i, &s, wrap_2pi(twd - (twa >= 0.0f ? 1.0f : -1.0f) * 120.0f * DEG_F), 0.8f);
     return;
   }
-  /* Penalty turns (rules.md §9.3): a steady turn with way on, given up after 50 s. */
-  if (br.pending > 0 && rb.started) {
+  /* Penalty turns (rules.md §9.3), not while returning to start: a steady turn with way on, given up after 50 s. */
+  if (br.pending > 0 && !(t >= 0.0f && !rb.started && (rb.ocs || rb.ocs_i || rb.returning))) {
     if (!k->turning && s.v > 1.2f) {
       const float twa0 = wrap_pi(twd - s.psi);
       const float toward = twa0 >= 0.0f ? 1.0f : -1.0f;

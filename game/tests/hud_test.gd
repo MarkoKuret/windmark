@@ -284,11 +284,27 @@ func test_scene() -> void:
 	root.add_child(sc)
 	await process_frame  # _ready runs once the tree is up
 	t.ok(sc.boat_view.model != null, "generated boat loaded (run tests/run_boat_import_test.sh first)")
+	var sea: Sea = sc.sea
+	t.ok(sea != null and sc.get_node_or_null("SeaPlaceholder") == null, "Sea node in place of the placeholder plane")
+	t.ok(sc.get_node_or_null("SkyDay") is SkyRig and sea.sky == sc.sky, "SkyRig present and lighting the sea")
+	t.ok(sea.model.components.size() > 0, "sea has wave components (%d)" % sea.model.components.size())
+	var core := FileAccess.file_exists(sc.env_source.samples_path)
+	t.ok(sc.env_source.mode == (SeaEnvSource.Mode.CORE_SAMPLES if core else SeaEnvSource.Mode.PLACEHOLDER),
+		"sea source: %s" % ("core example bay samples" if core else "placeholder (no core samples)"))
+	print("  sea: %s, %d components, Hs %.2f m" % [sc.env_source.scenario if core else "placeholder",
+		sea.model.components.size(), sea.model.hs_eff])
+	t.ok(sc.sim.sea_model == sea.model, "fake sim runs on the drawn sea's model")
 	var r := RawInput.new()
 	sc.scripted_input = r
 	var dt := 1.0 / 60.0
 	var sim: FakeSim = sc.sim
 	var v0 := sim.state(0).v
+	var st0 := Vector2(sim.state(0).pos_x, sim.state(0).pos_y)
+	var clear_min := INF
+	var sea_diff := 0.0
+	var heave_err := 0.0
+	var z_min := INF
+	var z_max := -INF
 	# sail 20 s, bear away (helm to port on starboard tack) for a second at 5 s, auto-trim off at 10 s and ease, camera cycle at 15 s
 	for i in 1200:
 		r.pressed = []
@@ -311,6 +327,41 @@ func test_scene() -> void:
 		if i == 901:
 			r.held.erase(&"camera_next")
 		sc.step_frame(dt)
+		# the camera after the rig's clearance, against the drawn surface at the frame's render time
+		var eye: Vector3 = sc.rig.camera.global_position
+		var floor_y := sea.height_at(eye.x, -eye.z) + 0.99
+		if sc.rig.mode != CameraRig.Mode.ONBOARD:
+			clear_min = minf(clear_min, eye.y - floor_y)
+		# the hull on the sim's sea at its tick time, the drawn sea at the same time
+		var st := sim.state(0)
+		var tk := float(sim.tick())
+		sea_diff = maxf(sea_diff, absf(sim.sea_height(st.pos_x, st.pos_y)
+			- sea.height_at(st.pos_x, st.pos_y, sim.sea_time_ms(tk))))
+		heave_err = maxf(heave_err, absf(st.z - sim.boats[0].wave_hm))
+		z_min = minf(z_min, st.z)
+		z_max = maxf(z_max, st.z)
+		await process_frame  # Sea and SeaWakes draw the frame
+	t.ok(clear_min >= 0.0, "camera eye never below Sea.height_at + 0.99 (margin %.3f m)" % clear_min)
+	t.ok(sea_diff < 1e-9, "sim.sea_height matches Sea.height_at at the tick time (%s m)" % str(sea_diff))
+	t.ok(z_max - z_min > 0.02, "the hull heaves on the sea (z %.3f to %.3f m)" % [z_min, z_max])
+	t.ok(heave_err < 0.3, "heave follows the mean sea height under the hull (%.3f m)" % heave_err)
+	var hq := sc.target.sea_height as Callable
+	var same := true
+	var any_wave := false
+	for k in 8:
+		var px := st0.x + 37.0 * k - 120.0
+		var py := st0.y - 23.0 * k + 90.0
+		same = same and absf(hq.call(px, py) - sea.height_at(px, py)) < 1e-12
+		any_wave = any_wave or absf(sea.height_at(px, py)) > 1e-3
+	t.ok(same and any_wave, "camera target sea_height is Sea.height_at")
+	var low := Frames.enu_to_scene(st0.x + 5.0, st0.y + 5.0, -3.0)
+	var lifted := CamTypes.Clearance.new().apply(low, sc.target, dt)
+	t.near(lifted.y, sea.height_at(low.x, -low.z) + 1.0, 1e-5, "a low eye is lifted to Sea.height_at + 1 m")
+	var ribs: Array = sc.wakes.boat_ribbons(0)
+	t.ok(ribs.size() == 2 and (ribs[0] as WakeRibbon).rows.size() > 10 and (ribs[1] as WakeRibbon).rows.size() > 10,
+		"SeaWakes has the boat's bow and stern wakes (%s rows)" % [ribs.map(func(w): return w.rows.size())])
+	print("  sea checks: camera margin %.2f m, hull z %.3f to %.3f m, heave lag %.3f m, wake rows %s" % [clear_min,
+		z_min, z_max, heave_err, ribs.map(func(w): return w.rows.size())])
 	var s := sim.state(0)
 	t.ok(sim.tick() >= 399 and sim.tick() <= 401, "20 s at 60 fps is 400 ticks (%d)" % sim.tick())
 	t.ok(s.v > 1.0 and s.v != v0, "the boat sails (%.2f m/s)" % s.v)
@@ -333,3 +384,20 @@ func test_scene() -> void:
 		shown += hud.text_of(k) + " | "
 	print("  HUD: " + shown)
 	sc.queue_free()
+	await process_frame
+
+	t.begin("sail test scene, placeholder sea")
+	var ph := packed.instantiate()
+	ph.auto_process = false
+	ph.sea_source = ph.SeaSource.PLACEHOLDER
+	root.add_child(ph)
+	await process_frame
+	t.ok(ph.env_source.mode == SeaEnvSource.Mode.PLACEHOLDER, "placeholder source")
+	t.ok(ph.sea.model.components.size() > 0 and ph.sim.sea_model == ph.sea.model, "placeholder sea shared with the sim")
+	t.near(ph.sim.wind_speed, ph.wind_speed_kn * HudFormat.KNOT, 1e-9, "the scene's wind")
+	for i in 120:
+		ph.step_frame(dt)
+		await process_frame
+	t.ok(absf(ph.sim.state(0).z) > 1e-4, "the hull rides the placeholder sea")
+	t.ok((ph.wakes.boat_ribbons(0)[0] as WakeRibbon).rows.size() > 0, "wakes on the placeholder sea")
+	ph.queue_free()

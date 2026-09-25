@@ -40,6 +40,14 @@ func _ready() -> void:
 	_build()
 
 
+## Builds again after a change of mode, scenario or placeholder parameters (for owners that set them after
+## the node is ready).
+func rebuild() -> void:
+	_built = false
+	_core = {}
+	_build()
+
+
 func _build() -> void:
 	if _built:
 		return

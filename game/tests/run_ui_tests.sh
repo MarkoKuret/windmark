@@ -1,7 +1,8 @@
 #!/bin/sh
 # Headless tests of the controls (controls.md §8), cameras (cameras.md §10) and minimal HUD (hud.md), including
-# a run of scenes/sail_test.tscn with scripted input. Needs the generated boats: when game/generated/boats has
-# no wm7.glb, runs run_boat_import_test.sh first. Fails on any failed check, script error or engine error.
+# a run of scenes/sail_test.tscn with scripted input on the example bay sea. Needs the generated boats: when
+# game/generated/boats has no wm7.glb, runs run_boat_import_test.sh first; when game/generated/sea has no core
+# samples, writes them as run_water_test.sh does. Fails on any failed check, script error or engine error.
 # Nothing opens a window.
 set -eu
 here=$(cd "$(dirname "$0")/.." && pwd)
@@ -10,6 +11,18 @@ export GODOT="$godot"
 
 if [ ! -f "$here/generated/boats/wm7.glb" ]; then
     "$here/tests/run_boat_import_test.sh"
+fi
+
+if [ ! -f "$here/generated/sea/sea_render_samples.json" ]; then
+    repo=$(cd "$here/.." && pwd)
+    build="$repo/core/build"
+    if [ ! -f "$build/build.ninja" ]; then
+        cmake -S "$repo/core" -B "$build" -G Ninja >/dev/null
+    fi
+    cmake --build "$build" --target windmark_gen_sea_render_samples >/dev/null
+    mkdir -p "$here/generated/sea"
+    "$build/tests/windmark_gen_sea_render_samples" "$repo/data/venues/example_bay.venue.json" \
+        > "$here/generated/sea/sea_render_samples.json"
 fi
 
 # refresh the script class cache and the imports

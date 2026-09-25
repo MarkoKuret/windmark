@@ -1,7 +1,8 @@
 class_name FakeBoat
 extends RefCounted
 ## Placeholder boat for FakeSim: a GDScript sketch of boat.md §5 and sails.md §4-§5 driven by the class's
-## generated tables, flat water, no waves, collisions or wind shadow. Good enough to drive cameras, controls
+## generated tables, heave, pitch and wave roll on the sea it is given (§5.6, no wobble), no collisions or wind
+## shadow. Good enough to drive cameras, controls
 ## and the HUD until the core binding (WM-016.01) replaces it. Not deterministic across platforms and not the
 ## reference: the core is.
 
@@ -24,10 +25,19 @@ var sail_out: Array[SimSource.SailOutput] = []
 
 var prev_pose := SimSource.RenderPose.new()
 var cur_pose := SimSource.RenderPose.new()
+## sea.md §5.1 hull sample points (body x forward, y port) and their fit sums
+var hull_points := PackedVector2Array()
+var _hp_mx := 0.0
+var _hp_my := 0.0
+var _hp_sxx := 0.0
+var _hp_syy := 0.0
+## §5.6 mean sea height under the hull at the last tick (m)
+var wave_hm := 0.0
 
 
 func _init(data: BoatClassData) -> void:
 	d = data
+	_hull_points()
 	for i in d.info.sails.size():
 		sail_st.append(SimSource.SailState.new())
 		sail_out.append(SimSource.SailOutput.new())
@@ -139,7 +149,8 @@ func _set_queue(steps: Array) -> void:
 
 ## ---- one tick ----
 
-func step(wind_speed: float, wind_from: float) -> void:
+## One tick. `sea`: (x, y) -> sea height at this tick's time; an invalid Callable is flat water.
+func step(wind_speed: float, wind_from: float, sea := Callable()) -> void:
 	prev_pose = cur_pose
 	cur_pose = SimSource.RenderPose.new()
 	var dy: Dictionary = d.dyn
@@ -166,9 +177,12 @@ func step(wind_speed: float, wind_from: float) -> void:
 	var accel: float = cfg["accel"].at(s.tws, twa_abs)
 	var heel_mag: float = cfg["heel"].at(s.tws, twa_abs)
 	out.man_coef = _man_coef()
+	# 5.6 waves: heave and pitch (no wobble)
+	var wave_roll := _waves(sea)
 	# 5.7 heel: a damped spring toward the target
 	var heel_max := float(dy["heel_max"])
-	out.heel_target = clampf(-tack * heel_mag * out.trim_heel, -heel_max, heel_max)
+	var heel_sail := clampf(-tack * heel_mag * out.trim_heel, -heel_max, heel_max)
+	out.heel_target = clampf(heel_sail + float(dy.get("wave_roll_gain", 0.3)) * wave_roll, -heel_max, heel_max)
 	var w := float(dy["heel_freq"])
 	var k1 := w * w * DT
 	var k2 := 1.0 - 2.0 * float(dy["heel_damping"]) * w * DT
@@ -229,6 +243,70 @@ func step(wind_speed: float, wind_from: float) -> void:
 		out.cog = Frames.compass(s.sog_filt_x, s.sog_filt_y)
 	out.wind_speed_clean = wind_speed
 	_store_pose()
+
+
+## sea.md §5.1: the listed points, or 8 from lwl and bwl.
+func _hull_points() -> void:
+	var dy: Dictionary = d.dyn
+	hull_points.clear()
+	var listed = dy.get("hull_points")
+	if listed is Array and not listed.is_empty():
+		for q in listed:
+			hull_points.append(Vector2(float(q[0]), float(q[1])))
+	else:
+		var l := float(dy.get("lwl", d.info.loa * 0.9))
+		var w := float(dy.get("bwl", d.info.beam_max * 0.75))
+		for q in [[0.45, 0.0], [-0.45, 0.0], [0.25, 0.35], [0.25, -0.35], [0.0, 0.35], [0.0, -0.35],
+				[-0.25, 0.35], [-0.25, -0.35]]:
+			hull_points.append(Vector2(q[0] * l, q[1] * w))
+	_hp_mx = 0.0
+	_hp_my = 0.0
+	for q in hull_points:
+		_hp_mx += q.x
+		_hp_my += q.y
+	_hp_mx /= hull_points.size()
+	_hp_my /= hull_points.size()
+	_hp_sxx = 0.0
+	_hp_syy = 0.0
+	for q in hull_points:
+		_hp_sxx += (q.x - _hp_mx) * (q.x - _hp_mx)
+		_hp_syy += (q.y - _hp_my) * (q.y - _hp_my)
+
+
+## boat.md §5.6 heave and pitch springs, sea.md §5.2 sampling; returns the wave roll for the heel target.
+func _waves(sea: Callable) -> float:
+	var dy: Dictionary = d.dyn
+	var hm := 0.0
+	var wave_pitch := 0.0
+	var wave_roll := 0.0
+	if sea.is_valid():
+		var fx := sin(s.psi)
+		var fy := cos(s.psi)
+		var lx := -fy
+		var ly := fx
+		var h := PackedFloat64Array()
+		for q in hull_points:
+			var hk: float = sea.call(s.pos_x + q.x * fx + q.y * lx, s.pos_y + q.x * fy + q.y * ly)
+			h.append(hk)
+			hm += hk
+		hm /= hull_points.size()
+		var gx := 0.0
+		var gy := 0.0
+		for k in hull_points.size():
+			gx += (h[k] - hm) * (hull_points[k].x - _hp_mx)
+			gy += (h[k] - hm) * (hull_points[k].y - _hp_my)
+		wave_pitch = atan(gx / _hp_sxx) if _hp_sxx > 1e-6 else 0.0
+		wave_roll = atan(gy / _hp_syy) if _hp_syy > 1e-6 else 0.0
+	wave_hm = hm
+	var heave_a := DT / (float(dy.get("heave_time", 0.25)) + DT)
+	s.z += heave_a * ((hm + float(dy.get("waterline_offset", 0.0))) - s.z)
+	var w := float(dy.get("pitch_freq", 3.0))
+	var k1 := w * w * DT
+	var k2 := 1.0 - 2.0 * float(dy.get("pitch_damping", 0.7)) * w * DT
+	var theta_target := float(dy.get("wave_pitch_gain", 1.0)) * wave_pitch
+	s.theta_rate = k2 * s.theta_rate + k1 * (theta_target - s.theta)
+	s.theta += s.theta_rate * DT
+	return wave_roll
 
 
 func _store_pose() -> void:

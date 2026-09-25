@@ -17,7 +17,7 @@ class Target:
 	var loa := 7.2
 	var beam_max := 2.5
 	var geometry: BoatGeometry
-	## sea.md §7 height: (x east, y north) -> m; flat until the Sea node provides it
+	## sea.md §7 height: (x east, y north) -> m (the sail test sets Sea.height_at); flat by default
 	var sea_height: Callable = func(_x: float, _y: float) -> float: return 0.0
 
 	## cameras.md §2 default distance

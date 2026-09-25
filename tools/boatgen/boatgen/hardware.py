@@ -81,7 +81,7 @@ def track(length, width):
                      [width * 0.25, 0.75 * width], [-width * 0.25, 0.75 * width], [-width * 0.25, 0.45 * width],
                      [-width / 2, 0.35 * width]])
     path = np.array([[-length / 2, 0, 0], [length / 2, 0, 0]])
-    g = sweep(path, prof[:, [1, 0]], up=np.array([0, 0, 1.0]))
+    g = sweep(path, prof[::-1, ::-1], up=np.array([0, 0, 1.0]))   # (height, width), counter-clockwise
     p.add("metal", g)
     return p
 

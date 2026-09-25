@@ -1,9 +1,10 @@
 """Headless preview renderer for generated boats (OpenGL 4.1 core through moderngl's standalone context).
 
 Reads the GLB back (so the preview checks the exported file), then draws it with a sun shadow map, GGX
-specular, a sky-gradient reflection and screen-space ambient occlusion. Surface detail that a real texture set
-would provide (non-slip pattern, carbon weave, sail panel seams) is drawn procedurally from the mesh UVs, which
-doubles as a check of the UV layout. `uv_check=True` renders a metric checker on uv0 instead.
+specular, a sky-gradient reflection and screen-space ambient occlusion. The embedded texture set (base colour,
+metallic-roughness and normal maps on uv0 with the KHR_texture_transform scale) and the baked per-vertex AO
+(COLOR_0, multiplied into the base colour as glTF specifies) are used as written; sail panel seams, tapes and
+battens are drawn procedurally from the sail UVs. `uv_check=True` renders a metric checker on uv0 instead.
 """
 import numpy as np
 from PIL import Image
@@ -15,11 +16,11 @@ MAT_IDS = {"gelcoat": 0, "nonslip": 1, "antifouling": 2, "boottop": 3, "carbon":
 
 VS = """
 #version 410
-in vec3 in_pos; in vec3 in_nrm; in vec2 in_uv0; in vec2 in_uv1;
+in vec3 in_pos; in vec3 in_nrm; in vec2 in_uv0; in vec2 in_uv1; in float in_ao;
 uniform mat4 mvp; uniform mat4 light_mvp;
-out vec3 v_pos; out vec3 v_nrm; out vec2 v_uv0; out vec2 v_uv1; out vec4 v_lpos;
+out vec3 v_pos; out vec3 v_nrm; out vec2 v_uv0; out vec2 v_uv1; out vec4 v_lpos; out float v_ao;
 void main() {
-    v_pos = in_pos; v_nrm = in_nrm; v_uv0 = in_uv0; v_uv1 = in_uv1;
+    v_pos = in_pos; v_nrm = in_nrm; v_uv0 = in_uv0; v_uv1 = in_uv1; v_ao = in_ao;
     v_lpos = light_mvp * vec4(in_pos, 1.0);
     gl_Position = mvp * vec4(in_pos, 1.0);
 }
@@ -27,8 +28,10 @@ void main() {
 
 FS = """
 #version 410
-in vec3 v_pos; in vec3 v_nrm; in vec2 v_uv0; in vec2 v_uv1; in vec4 v_lpos;
+in vec3 v_pos; in vec3 v_nrm; in vec2 v_uv0; in vec2 v_uv1; in vec4 v_lpos; in float v_ao;
 uniform vec4 base_color; uniform float metallic; uniform float roughness; uniform int mat_id;
+uniform sampler2D tex_base; uniform sampler2D tex_mr; uniform sampler2D tex_nrm;
+uniform int has_tex; uniform int has_nrm; uniform float tex_scale; uniform int ao_on;
 uniform vec3 cam_pos; uniform vec3 sun_dir; uniform sampler2D shadow_map; uniform int uv_check;
 uniform int water_on; uniform int hull_livery; uniform int battens;
 layout(location = 0) out vec4 frag;
@@ -63,19 +66,37 @@ void main() {
     vec3 albedo = base_color.rgb;
     float rough = roughness, metal = metallic;
     vec2 uv = v_uv0;
+    if (has_tex == 1 && uv_check == 0) {
+        vec2 t = uv * tex_scale;
+        albedo *= pow(texture(tex_base, t).rgb, vec3(2.2));
+        vec3 mr = texture(tex_mr, t).rgb;
+        rough *= mr.g; metal *= mr.b;
+        if (has_nrm == 1) { // tangent frame from the screen-space derivatives of position and uv
+            vec3 dp1 = dFdx(v_pos), dp2 = dFdy(v_pos);
+            vec2 du1 = dFdx(t), du2 = dFdy(t);
+            vec3 T = dp1 * du2.y - dp2 * du1.y, B = dp2 * du1.x - dp1 * du2.x;
+            float det = du1.x * du2.y - du2.x * du1.y;
+            if (det < 0.0) { T = -T; B = -B; }
+            T = T - N * dot(N, T); B = B - N * dot(N, B);
+            float m = inversesqrt(max(max(dot(T, T), dot(B, B)), 1e-20));
+            vec3 tn = texture(tex_nrm, t).xyz * 2.0 - 1.0;
+            N = normalize(T * m * tn.x + B * m * tn.y + N * tn.z);
+        }
+    }
+    if (ao_on == 1 && uv_check == 0) albedo *= v_ao;
     if (uv_check == 1) {
         vec2 c = floor(uv / 0.25);
         float k = mod(c.x + c.y, 2.0);
         albedo = mix(vec3(0.15), vec3(0.85), k) * (0.6 + 0.4 * fract(vec3(0.13, 0.37, 0.71) * float(mat_id + 1) * 3.1));
         rough = 0.6; metal = 0.0;
-    } else if (mat_id == 1) { // non-slip: raised diamond pattern, faded out where it would alias
+    } else if (mat_id == 1 && has_tex == 0) { // non-slip: raised diamond pattern, faded out where it would alias
         float f = 2.0 * 3.14159 / 0.03;
         float w = length(fwidth(uv)) * f;
         float p = sin(uv.x * f + uv.y * f) * sin(uv.x * f - uv.y * f);
         float fade = clamp(1.5 - w * 0.5, 0.0, 1.0);
         albedo *= 1.0 + 0.10 * p * fade;
         rough = 0.85;
-    } else if (mat_id == 4) { // carbon twill
+    } else if (mat_id == 4 && has_tex == 0) { // carbon twill
         float f = 2.0 * 3.14159 / 0.012;
         float w = length(fwidth(uv)) * f;
         float fade = clamp(1.5 - w * 0.4, 0.0, 1.0);
@@ -121,6 +142,7 @@ void main() {
     vec3 Fr = F0 + (1.0 - F0) * pow(1.0 - NV, 5.0);
     vec3 env = sky(R) * Fr * pow(1.0 - rough, 2.2) * (metal > 0.5 ? 1.0 : 0.6);
     if (metal > 0.5) env = sky(R) * albedo * (1.0 - rough * 0.7) * 0.8;
+    if (ao_on == 1 && uv_check == 0) env *= v_ao;   // specular occlusion from the same bake
     vec3 col = (diff + spec) * sun * NL * sh + amb + env;
     if (mat_id == 6) { // sail translucency: light through the cloth from behind
         col += albedo * sun * max(dot(-N, L), 0.0) * 0.30 * sh;
@@ -135,7 +157,7 @@ void main() {
 
 WATER_FS = """
 #version 410
-in vec3 v_pos; in vec3 v_nrm; in vec2 v_uv0; in vec2 v_uv1; in vec4 v_lpos;
+in vec3 v_pos; in vec3 v_nrm; in vec2 v_uv0; in vec2 v_uv1; in vec4 v_lpos; in float v_ao;
 uniform vec3 cam_pos; uniform vec3 sun_dir; uniform sampler2D shadow_map;
 layout(location = 0) out vec4 frag;
 vec3 sky(vec3 d) {
@@ -271,7 +293,8 @@ class Renderer:
     def __init__(self, width=1600, height=1000, samples=8):
         import moderngl
         self.mgl = moderngl
-        self.ctx = moderngl.create_standalone_context(require=410)
+        from .bake import gl_context
+        self.ctx = gl_context()
         self.W, self.H = width, height
         ctx = self.ctx
         self.prog = ctx.program(vertex_shader=VS, fragment_shader=FS)
@@ -298,32 +321,58 @@ class Renderer:
         prims, doc = read_glb(glb_path)
         if transform is not None:
             R = np.asarray(transform, dtype=np.float64)
-            prims = [(n, m, P @ R.T, N @ R.T, u0, u1, I) for n, m, P, N, u0, u1, I in prims]
+            prims = [(n, m, P @ R.T, N @ R.T, u0, u1, I, a) for n, m, P, N, u0, u1, I, a in prims]
         if extra:
             prims = prims + extra
         mats = {m["name"]: m for m in doc["materials"]}
+        for t in getattr(self, "_texs", []):
+            t.release()
+        texs = self._texs = self._textures(doc)
         self.objs = []
         allP = []
-        for name, mat, P, N, uv0, uv1, I in prims:
+        for name, mat, P, N, uv0, uv1, I, ao in prims:
             if any(h in name for h in hide):
                 continue
-            data = np.hstack([P, N, uv0, uv1]).astype("f4")
+            ao = np.ones(len(P)) if ao is None else ao
+            data = np.hstack([P, N, uv0, uv1, ao[:, None]]).astype("f4")
             vbo = self.ctx.buffer(data.tobytes())
             ibo = self.ctx.buffer(I.astype("u4").tobytes())
-            fmt = [(vbo, "3f 3f 2f 2f", "in_pos", "in_nrm", "in_uv0", "in_uv1")]
+            fmt = [(vbo, "3f 3f 2f 2f 1f", "in_pos", "in_nrm", "in_uv0", "in_uv1", "in_ao")]
             vao = self.ctx.vertex_array(self.prog, fmt, ibo)
-            svao = self.ctx.vertex_array(self.shadow_prog, [(vbo, "3f 12x 8x 8x", "in_pos")], ibo)
+            svao = self.ctx.vertex_array(self.shadow_prog, [(vbo, "3f 12x 8x 8x 4x", "in_pos")], ibo)
             m = mats.get(mat, {"pbrMetallicRoughness": {"baseColorFactor": [0.8, 0.8, 0.8, 1],
                                                         "metallicFactor": 0, "roughnessFactor": 0.5}})
-            pbr = m["pbrMetallicRoughness"]
+            pbr = dict(m["pbrMetallicRoughness"])
+            info = pbr.get("baseColorTexture")
+            if info is not None:
+                pbr["_tex"] = (texs[info["index"]], texs[pbr["metallicRoughnessTexture"]["index"]],
+                               texs[m["normalTexture"]["index"]] if "normalTexture" in m else None,
+                               info.get("extensions", {}).get("KHR_texture_transform", {}).get("scale", [1, 1])[0])
             self.objs.append((name, mat, vao, svao, pbr))
             allP.append(P)
         allP = np.vstack(allP)
         self.bmin, self.bmax = allP.min(0), allP.max(0)
         self.tri_count = sum(len(p[6]) for p in prims)
 
+    def _textures(self, doc):
+        """moderngl textures (mipmapped, repeating, anisotropic) for the GLB's embedded images, by texture index."""
+        import io
+        out = []
+        for t in doc.get("textures", []):
+            img = doc["images"][t["source"]]
+            v = doc["bufferViews"][img["bufferView"]]
+            data = bytes(doc["_bin"][v["byteOffset"]:v["byteOffset"] + v["byteLength"]])
+            # glTF puts uv (0, 0) at the first row of the image, as OpenGL does with rows uploaded first to last
+            im = Image.open(io.BytesIO(data)).convert("RGB")
+            tx = self.ctx.texture(im.size, 3, im.tobytes())
+            tx.build_mipmaps()
+            tx.filter = (self.mgl.LINEAR_MIPMAP_LINEAR, self.mgl.LINEAR)
+            tx.anisotropy = 16.0
+            out.append(tx)
+        return out
+
     def render(self, path, eye, target, fov=30.0, water=True, sun=(0.45, 0.75, 0.35), uv_check=False,
-               livery=False, ground=False, background=None):
+               livery=False, ground=False, background=None, ao=True):
         ctx = self.ctx
         eye = np.asarray(eye, dtype=np.float64)
         sun = np.asarray(sun, dtype=np.float64)
@@ -361,7 +410,20 @@ class Renderer:
         _set(p, "uv_check", int(uv_check))
         _set(p, "water_on", int(water))
         _set(p, "hull_livery", int(livery))
+        _set(p, "ao_on", int(ao))
+        _set(p, "tex_base", 3)
+        _set(p, "tex_mr", 4)
+        _set(p, "tex_nrm", 5)
         for name, mat, vao, svao, pbr in self.objs:
+            t = pbr.get("_tex")
+            _set(p, "has_tex", int(t is not None))
+            _set(p, "has_nrm", int(t is not None and t[2] is not None))
+            if t is not None:
+                t[0].use(3)
+                t[1].use(4)
+                if t[2] is not None:
+                    t[2].use(5)
+                _set(p, "tex_scale", float(t[3]))
             _set(p, "base_color", tuple(pbr["baseColorFactor"]))
             _set(p, "metallic", pbr["metallicFactor"])
             _set(p, "roughness", pbr["roughnessFactor"])
@@ -372,7 +434,7 @@ class Renderer:
             S = 400.0
             y = 0.0 if water else float(self.bmin[1]) - 0.02
             q = np.array([[-S, y, -S], [S, y, -S], [S, y, S], [-S, y, S]], dtype=np.float64)
-            data = np.hstack([q, np.tile([0, 1, 0], (4, 1)), q[:, [0, 2]], q[:, [0, 2]]]).astype("f4")
+            data = np.hstack([q, np.tile([0, 1, 0], (4, 1)), q[:, [0, 2]], q[:, [0, 2]], np.ones((4, 1))]).astype("f4")
             I = np.array([0, 2, 1, 0, 3, 2], dtype="u4")
             if water:
                 prog = self.water_prog
@@ -392,8 +454,10 @@ class Renderer:
                 _set(prog, "mat_id", 0)
                 _set(prog, "hull_livery", 0)
                 _set(prog, "water_on", 0)
-            vao = ctx.vertex_array(prog, [(ctx.buffer(data.tobytes()), "3f 3f 2f 2f", "in_pos", "in_nrm", "in_uv0",
-                                           "in_uv1")], ctx.buffer(I.tobytes()))
+                _set(prog, "has_tex", 0)
+                _set(prog, "ao_on", 0)
+            vao = ctx.vertex_array(prog, [(ctx.buffer(data.tobytes()), "3f 3f 2f 2f 1f", "in_pos", "in_nrm", "in_uv0",
+                                           "in_uv1", "in_ao")], ctx.buffer(I.tobytes()))
             vao.render()
             ctx.disable(self.mgl.BLEND)
         # resolve and post-process (SSAO, tone map)

@@ -168,10 +168,12 @@ def smin(a, b, k):
 # ---------------------------------------------------------------------------------------------------------
 # surfaces
 
-def grid(P, uv0=None, uv1=None, close_u=False, close_v=False, N=None):
+def grid(P, uv0=None, uv1=None, close_u=False, close_v=False, N=None, keep_degenerate=False):
     """Quad grid surface from a (nu, nv, 3) array. Winding: (du x dv) is the outward normal.
 
-    Closing a direction welds the last row to the first by index (the arrays must not repeat the seam)."""
+    Closing a direction welds the last row to the first by index (the arrays must not repeat the seam).
+    Zero-area triangles (collapsed rows) are dropped unless `keep_degenerate`, which keeps the full two
+    triangles per cell so every vertex stays referenced (sail grids)."""
     P = np.asarray(P, dtype=np.float64)
     nu, nv = P.shape[:2]
     idx = np.arange(nu * nv).reshape(nu, nv)
@@ -184,8 +186,9 @@ def grid(P, uv0=None, uv1=None, close_u=False, close_v=False, N=None):
     I = np.concatenate([np.stack([A, B, C], -1).reshape(-1, 3), np.stack([A, C, D], -1).reshape(-1, 3)])
     # drop degenerate triangles (collapsed rows at a stem or apex)
     Pf = P.reshape(-1, 3)
-    area = np.linalg.norm(np.cross(Pf[I[:, 1]] - Pf[I[:, 0]], Pf[I[:, 2]] - Pf[I[:, 0]]), axis=-1)
-    I = I[area > 1e-12]
+    if not keep_degenerate:
+        area = np.linalg.norm(np.cross(Pf[I[:, 1]] - Pf[I[:, 0]], Pf[I[:, 2]] - Pf[I[:, 0]]), axis=-1)
+        I = I[area > 1e-12]
     f = lambda a: None if a is None else np.asarray(a).reshape(-1, 2)
     if N is None:
         N = grid_normals(P, close_u, close_v)
@@ -263,6 +266,9 @@ def disk(r, z, segments, sign):
     return Geom(P, I, N, P[:, :2].copy())
 
 
+SWEEP_MAX_SEG = 0.5
+
+
 def parallel_frames(path):
     path = np.asarray(path, dtype=np.float64)
     T = np.gradient(path, axis=0)
@@ -279,12 +285,22 @@ def parallel_frames(path):
     return T, Nn, B
 
 
-def sweep(path, profile, closed_profile=True, scale_along=None, caps=True, up=None):
+def sweep(path, profile, closed_profile=True, scale_along=None, caps=True, up=None, max_seg=SWEEP_MAX_SEG):
     """Sweep a 2D profile (m, 2) along a 3D path (n, 3). Profile x maps to the frame normal, y to binormal.
 
-    `up` (3,) pins the profile x axis to the direction closest to `up` (for non-circular sections)."""
+    `up` (3,) pins the profile x axis to the direction closest to `up` (for non-circular sections). Path segments
+    longer than `max_seg` are split evenly (so per-vertex data such as baked AO has rings to vary on)."""
     path = np.asarray(path, dtype=np.float64)
     prof = np.asarray(profile, dtype=np.float64)
+    if max_seg and len(path) > 1:
+        seg = np.linalg.norm(np.diff(path, axis=0), axis=-1)
+        k = np.maximum(1, np.ceil(seg / max_seg).astype(int))
+        if (k > 1).any():
+            t = np.concatenate([i + np.arange(k[i]) / k[i] for i in range(len(seg))] + [[len(seg)]])
+            idx = np.arange(len(path))
+            path = np.stack([np.interp(t, idx, path[:, c]) for c in range(3)], -1)
+            if scale_along is not None:
+                scale_along = np.interp(t, idx, np.broadcast_to(np.asarray(scale_along, dtype=np.float64), (len(idx),)))
     T, Nn, B = parallel_frames(path)
     if up is not None:
         up = np.asarray(up, dtype=np.float64)

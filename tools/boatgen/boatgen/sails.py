@@ -120,9 +120,11 @@ class Sail:
         u = np.broadcast_to(np.linspace(0, 1, nu)[None], (nv, nu))
         v = np.broadcast_to(np.linspace(0, 1, nv)[:, None], (nv, nu))
         # row-major grid: vertex (row i from the foot, col j from the luff) has index i * cols + j
-        g0 = grid(P, uv0, np.stack([u, 1 - v], -1))
+        # Full topology: two triangles per cell per layer, zero-area ones at a collapsed head included, so every
+        # grid vertex is referenced and survives an engine's re-indexing (docs/specs/sail_visuals.md 3.1).
+        g0 = grid(P, uv0, np.stack([u, 1 - v], -1), keep_degenerate=True)
         # layer normals: the surface normal and its opposite, each layer offset along its own normal
-        N = g0.N.copy()
+        N = _fill_normals(g0.N.reshape(nv, nu, 3)).reshape(-1, 3)
         port_sign = 1.0 if np.mean(N[:, 1]) >= 0 else -1.0
         Np = N * port_sign
         pa = Geom(g0.P + Np * gap, g0.I if port_sign > 0 else g0.I[:, ::-1], Np, g0.uv0, g0.uv1)
@@ -156,6 +158,21 @@ class Sail:
             R = _rot(axis, -ang)
             out[i] = (row2 - luff0) @ R.T + luff0
         return out
+
+
+def _fill_normals(N):
+    """Grid normals (rows, cols, 3) with every zero normal (a collapsed head vertex that no triangle with area
+    touches) replaced by the one below it in its column, rows from the foot up (sail_visuals.md 9)."""
+    N = N.copy()
+    ok = np.linalg.norm(N, axis=-1) > 0.5
+    for i in range(len(N)):
+        for j in np.nonzero(~ok[i])[0]:
+            if i > 0:
+                N[i, j] = N[i - 1, j]
+            else:
+                good = N[ok]
+                N[i, j] = normalize(good.mean(0)) if len(good) else (0.0, 1.0, 0.0)
+    return N
 
 
 def _rot(axis, a):

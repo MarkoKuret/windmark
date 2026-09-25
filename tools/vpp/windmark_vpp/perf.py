@@ -254,7 +254,7 @@ class Generator:
         shp = (T, A, E)
         fi = np.broadcast_to(r.fi[..., None], shp)
         rf = np.broadcast_to(r.reef[..., None], shp)
-        st = S.solve(r.rig, fi, rf, self.tws[:, None, None], self.twa[None, :, None], outer=5,
+        st = S.solve(r.rig, fi, rf, self.tws[:, None, None], self.twa[None, :, None],
                      eps=EPS[None, None, :])
         i0 = int(np.argmin(np.abs(EPS)))
         V, H = st.V, st.heel

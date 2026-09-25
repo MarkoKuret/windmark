@@ -6,8 +6,9 @@ Equilibrium (2 degrees of freedom, surge and roll, as in the classic VPPs):
     Fh(V, phi) * (z_CE + z_CLR) = RM(phi)                  roll
 
 with depowering controls flat (lift scale) and reef (area x reef^2, heights x reef) and each sail trimmed to its
-best sheet angle for the effective apparent wind. Speed and heel are solved by alternating bisections, fully
-vectorised over (TWS, TWA, flat, reef) so a whole boat solves in seconds.
+best sheet angle for the effective apparent wind. The roll equation is solved for the heel inside every speed
+probe, so the surge equation becomes one equation in the speed, solved by a scan and bisection; fully vectorised
+over (TWS, TWA, flat, reef) so a whole boat solves in well under a minute.
 
 Apparent wind (Kerwin/Jackson heeled-rig model): the rig sees the component of the apparent wind normal to the
 mast, beta_e = atan2(sin(beta) cos(phi), cos(beta)), AWS_e = AWS sqrt(cos^2 beta + sin^2 beta cos^2 phi). The
@@ -186,8 +187,22 @@ class Solver:
     def solve_speed(self, rig, fi, reef, tws, twa, heel, vmax, iters=16, eps=None, scan=20):
         """Lowest stable speed: the first crossing from surplus to deficit of drive over resistance, scanning up
         from rest. A hull that cannot get over its wave hump stays below it even if a faster planing root exists;
-        the deficit a stalled keel shows at a crawl (before the boat first makes way) is not a root."""
-        shape = heel.shape
+        the deficit a stalled keel shows at a crawl (before the boat first makes way) is not a root.
+
+        heel: the heel held at every probe speed, or None for the heel in roll equilibrium at each probe (the
+        coupled equilibrium; alternating separate speed and heel solutions can oscillate between two states when
+        the heel changes quickly with the speed)."""
+        if heel is None:
+            shape = np.broadcast(fi, reef, tws, twa, vmax, 0.0 if eps is None else eps).shape
+
+            def net(v):
+                h, _ = self.solve_heel(rig, fi, reef, tws, twa, v, iters=16, eps=eps)
+                return self.net_force(rig, fi, reef, tws, twa, v, h, eps)[0]
+        else:
+            shape = heel.shape
+
+            def net(v):
+                return self.net_force(rig, fi, reef, tws, twa, v, heel, eps)[0]
         vmax = np.broadcast_to(vmax, shape).astype(float)
         lo = np.zeros(shape)
         hi = vmax.copy()
@@ -196,7 +211,7 @@ class Solver:
         last_pos = np.zeros(shape)
         for k in range(1, scan + 1):
             v = vmax * (k / scan) ** 1.5
-            f, _ = self.net_force(rig, fi, reef, tws, twa, v, heel, eps)
+            f = net(v)
             pos = f > 0
             new = ~found & seen & ~pos
             lo = np.where(new, last_pos, lo)
@@ -209,13 +224,12 @@ class Solver:
         hi = np.where(found, hi, np.where(seen, vmax, 0.0))
         for _ in range(iters):
             mid = 0.5 * (lo + hi)
-            f, _ = self.net_force(rig, fi, reef, tws, twa, mid, heel, eps)
-            up = f > 0
+            up = net(mid) > 0
             lo = np.where(up, mid, lo)
             hi = np.where(up, hi, mid)
         return 0.5 * (lo + hi)
 
-    def solve(self, rig, fi, reef, tws, twa, outer=5, eps=None) -> State:
+    def solve(self, rig, fi, reef, tws, twa, eps=None) -> State:
         shape = np.broadcast(fi, reef, tws, twa, 0.0 if eps is None else eps).shape
         fi = np.broadcast_to(fi, shape)
         reef = np.broadcast_to(reef, shape)
@@ -224,12 +238,8 @@ class Solver:
         if eps is not None:
             eps = np.broadcast_to(eps, shape)
         vmax = np.maximum(2.2 * tws, 4.0)
-        heel = np.zeros(shape)
-        over = np.zeros(shape, bool)
-        for _ in range(outer):
-            V = self.solve_speed(rig, fi, reef, tws, twa, heel, vmax, eps=eps)
-            heel, over = self.solve_heel(rig, fi, reef, tws, twa, V, eps=eps)
-        V = self.solve_speed(rig, fi, reef, tws, twa, heel, vmax, eps=eps)
+        V = self.solve_speed(rig, fi, reef, tws, twa, None, vmax, eps=eps)
+        heel, over = self.solve_heel(rig, fi, reef, tws, twa, V, eps=eps)
         fx, fh, _, aws, beta, deltas = self.moment(rig, fi, reef, tws, twa, V, heel, eps)
         valid = ~over & (V < 0.98 * vmax)
         return State(V=V, heel=heel, valid=valid, aws=aws, awa=beta, fh=fh, fx=fx, deltas=deltas)

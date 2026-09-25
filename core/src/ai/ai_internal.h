@@ -83,6 +83,7 @@ struct AiSkippers::Boat {
   ai_detail::StartPhase phase = ai_detail::StartPhase::free;
   bool spot_fixed = false;
   float spot_u = 0.5f, spot_beta = 0.0f;
+  std::int32_t spot_rank = 0;      // the spot's place along the line among the fleet's
   bool drawn = false;
   float spread_r = 0.5f, e_start = 0.0f;
   bool go = false;
@@ -113,6 +114,7 @@ struct AiSkippers::Boat {
   bool pen_seen_turning = false;
   float pen_stall_t = 0.0f;
   bool pen_prepare = false;        // a penalty waits for speed or clear water
+  std::int32_t pen_block = -1;     // the boat in the way of the turn
   std::int32_t pen_served0 = 0;
   // Sails (§6.2)
   float change_t = 0.0f;

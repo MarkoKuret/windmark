@@ -1,6 +1,9 @@
 // The start (ai.md §5): free sailing, line analysis, setup point, hovering, the go decision, the final approach,
 // the launch, OCS returns and the match race entry.
+#include <algorithm>
 #include <cmath>
+#include <utility>
+#include <vector>
 
 #include "ai/ai_steps.h"
 #include "math/rng.h"
@@ -41,8 +44,8 @@ float approach_twa(const Me& m, Vec2 spot) {
   return clamp(wrap_pi(m.twd - bearing(m.c, spot)), m.theta_up + 2.0f * DEG, 115.0f * DEG);
 }
 
-// §5.2 line analysis and the target spot.
-void choose_spot(AC& x, AB& a, const Me& m, const Line& l) {
+// §5.2 line analysis: the spot each AI would like (the favoured end, or the middle, plus its own spread draw).
+float wanted_spot(AC& x, AB& a, const Line& l, float L) {
   if (!a.drawn) {
     a.drawn = true;
     a.spread_r = draw(x, a, RngStream::ai_first);
@@ -50,48 +53,81 @@ void choose_spot(AC& x, AB& a, const Me& m, const Line& l) {
                           (static_cast<std::uint64_t>(static_cast<std::uint32_t>(a.i)) << 32) | a.k16++);
   }
   const Vec2 w = dir(a.twd_ref);
-  const float beta = wrap_pi(compass(l.n) - a.twd_ref);
-  // The spot is chosen once, again at -75 s (the mean wind is known better by then), and after that only when the
-  // bias changes by more than 5°.
-  const bool final_choice = x.created && x.race.state() == RaceState::sequence && x.t_race >= -75.0f;
-  if (a.spot_fixed && std::fabs(wrap_pi(beta - a.spot_beta)) <= 5.0f * DEG &&
-      (a.phase != StartPhase::free || !final_choice)) {
-    return;
-  }
-  if (final_choice) a.phase = StartPhase::hover;
   const float du = v_dot(v_sub(l.B, l.A), w);
-  const bool significant = std::fabs(du) > max(m.L, 0.05f * l.len);
+  const bool significant = std::fabs(du) > max(L, 0.05f * l.len);
   float u = 0.5f;
-  if (x.race.race_type() == RaceType::match) {
-    u = a.i == 0 ? 0.62f : 0.38f;
-  } else if (significant) {
-    u = du > 0.0f ? 0.85f : 0.15f;
-  }
-  u = clamp(u + a.P.spread * (a.spread_r - 0.5f), 0.05f, 0.95f);
-  // Crowding: another AI's spot within 2 L moves this one 2 L on, away from the favoured end (towards the other
-  // end when there is no room left on that side). Spots are taken in boat order, so the result is deterministic.
-  const float step = 2.0f * m.L / l.len;
-  float away = (significant && du < 0.0f) ? 1.0f : -1.0f;
-  if (!significant) away = a.spread_r < 0.5f ? -1.0f : 1.0f;
-  for (std::int32_t tries = 0; tries < 60; ++tries) {
-    bool clash = false;
-    for (const auto& o : *x.ai) {
-      if (o->i == a.i || !o->drawn || !o->active || o->autopilot_only) continue;
-      if (x.created && !x.race.racing(static_cast<std::size_t>(o->i)) && x.race.rules_live()) continue;
-      if (std::fabs(o->spot_u - u) < step * 0.999f) clash = true;
-    }
-    if (!clash) break;
-    float nu = u + away * step;
-    if (nu < 0.05f || nu > 0.95f) {
-      away = -away;
-      nu = clamp(u + away * step, 0.05f, 0.95f);
-    }
-    u = nu;
-  }
-  a.spot_u = u;
-  a.spot_fixed = true;
-  a.spot_beta = beta;
+  if (significant) u = du > 0.0f ? 0.85f : 0.15f;
+  return clamp(u + a.P.spread * (a.spread_r - 0.5f), 0.05f, 0.95f);
 }
+
+void choose_spot(AC& x, AB& a, const Me& m, const Line& l) {
+  // Fleet spots are assigned jointly (assign_spots); a match race boat takes her side's.
+  if (x.race.race_type() == RaceType::match) {
+    (void)wanted_spot(x, a, l, m.L);
+    a.spot_u = a.i == 0 ? 0.62f : 0.38f;
+    a.spot_fixed = true;
+  }
+}
+
+}  // namespace
+
+// §5.2 fleet spots, for all AIs together: the spots are the AIs' wanted spots, spread to at least 2 L apart, and
+// they are handed out in the order of the boats' present positions along the line, so no two approaches cross.
+// Chosen when the race is created, again at -75 s (the mean wind is known better by then), and when an AI's
+// bias estimate changes by more than 5°.
+void assign_spots(AC& x) {
+  if (!x.created || x.race.race_type() == RaceType::match || x.ai == nullptr) return;
+  const RaceState rs = x.race.state();
+  if (!(rs == RaceState::free_sailing || rs == RaceState::sequence) || x.race.after_gun(x.n)) return;
+  const Line l = start_line(x);
+  const bool final_choice = rs == RaceState::sequence && x.t_race >= -75.0f;
+  std::vector<AB*> fleet;
+  bool need = false;
+  float L = 1.0f;
+  for (const auto& p : *x.ai) {
+    AB& a = *p;
+    const std::size_t i = static_cast<std::size_t>(a.i);
+    if (!a.active || a.autopilot_only || i >= x.w.boat_count() || !a.init) continue;
+    const RaceBoat& rb = x.race.boat(i);
+    if (rb.ghost || rb.started) continue;
+    fleet.push_back(&a);
+    L = max(L, rb.L);
+    const float beta = wrap_pi(compass(l.n) - a.twd_ref);
+    if (!a.spot_fixed || (final_choice && a.phase == StartPhase::free) ||
+        std::fabs(wrap_pi(beta - a.spot_beta)) > 5.0f * DEG) {
+      need = true;
+    }
+  }
+  if (!need || fleet.empty()) return;
+  std::vector<float> want;
+  for (AB* a : fleet) want.push_back(wanted_spot(x, *a, l, L));
+  std::sort(want.begin(), want.end());
+  const std::size_t n = want.size();
+  const float step = n > 1 ? min(2.0f * L / l.len, 0.9f / static_cast<float>(n - 1)) : 0.0f;
+  for (std::size_t k = 1; k < n; ++k) want[k] = max(want[k], want[k - 1] + step);
+  if (want[n - 1] > 0.95f) {
+    want[n - 1] = 0.95f;
+    for (std::size_t k = n - 1; k > 0; --k) want[k - 1] = min(want[k - 1], want[k] - step);
+  }
+  // Boats in the order of their positions along the line (ties by index).
+  std::vector<std::pair<float, std::int32_t>> order;
+  for (std::size_t k = 0; k < n; ++k) {
+    order.push_back({v_dot(v_sub(x.race.boat(static_cast<std::size_t>(fleet[k]->i)).c, l.A), l.u), static_cast<std::int32_t>(k)});
+  }
+  std::sort(order.begin(), order.end(), [&](const auto& p, const auto& q) {
+    return p.first != q.first ? p.first < q.first : fleet[static_cast<std::size_t>(p.second)]->i < fleet[static_cast<std::size_t>(q.second)]->i;
+  });
+  for (std::size_t k = 0; k < n; ++k) {
+    AB& a = *fleet[static_cast<std::size_t>(order[k].second)];
+    a.spot_u = clamp(want[k], 0.05f, 0.95f);
+    a.spot_rank = static_cast<std::int32_t>(k);
+    a.spot_fixed = true;
+    a.spot_beta = wrap_pi(compass(l.n) - a.twd_ref);
+    if (final_choice) a.phase = StartPhase::hover;
+  }
+}
+
+namespace {
 
 Vec2 spot_point(const AB& a, const Line& l, float back) {
   return v_sub(v_add(l.A, v_scale(v_sub(l.B, l.A), a.spot_u)), v_scale(l.n, back));
@@ -209,7 +245,8 @@ void free_sailing(AC& x, AB& a, const Me& m) {
   choose_spot(x, a, m, l);
   const Vec2 spot = spot_point(a, l, 0.3f * m.L);
   const float d_back = m.v_up * a.P.t_final;
-  hover(x, a, m, v_sub(spot, v_scale(dir(approach_heading(m)), 1.2f * d_back)), true);
+  const float stagger = static_cast<float>(a.spot_rank % 2) * 1.5f * m.L;
+  hover(x, a, m, v_sub(v_sub(spot, v_scale(dir(approach_heading(m)), 1.2f * d_back)), v_scale(l.n, stagger)), true);
   a.tactic = AiTactic::Start;
 }
 
@@ -247,7 +284,9 @@ void prestart(AC& x, AB& a, const Me& m) {
   a.dbg.spot = spot;
   const float psi_app = approach_heading(m);
   const float d_back = m.v_up * a.P.t_final;
-  const Vec2 S = v_sub(spot, v_scale(dir(psi_app), d_back));
+  // Neighbouring spots park at depths 1.5 L apart, so a boat on her way to her setup point passes the parked ones.
+  const Vec2 S = v_sub(v_sub(spot, v_scale(dir(psi_app), d_back)),
+                       v_scale(l.n, static_cast<float>(a.spot_rank % 2) * 1.5f * m.L));
   // Over the line before the gun: back to the pre-start side at once.
   if (v_dot(v_sub(m.c, l.A), l.n) > -0.5f * m.L && s_bow > -0.1f * m.L && !a.go) {
     sail_to_point(x, a, m, v_sub(m.c, v_scale(l.n, s_bow + 3.0f * m.L)));

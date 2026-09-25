@@ -57,6 +57,8 @@ bool penalty_turns(AC& x, AB& a, const Me& m, Leg leg);
 
 // Start (§5): ai_start.cpp.
 void free_sailing(AC& x, AB& a, const Me& m);
+// §5.2 the fleet's start spots, all AIs together (every decision tick, before the boats decide).
+void assign_spots(AC& x);
 void prestart(AC& x, AB& a, const Me& m);
 void after_gun(AC& x, AB& a, const Me& m);
 void hover(AC& x, AB& a, const Me& m, Vec2 S, bool may_loop);

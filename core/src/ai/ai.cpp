@@ -368,6 +368,11 @@ void AiSkippers::step(World& w) {
     if (!a.active || a.i < 0 || static_cast<std::size_t>(a.i) >= nb) continue;
     if (a.pol == nullptr) a.pol = &polar(&w.boat(static_cast<std::size_t>(a.i)).perf());
     perceive(x, a);
+  }
+  if (decide_tick) assign_spots(x);
+  for (auto& bp : boats_) {
+    Boat& a = *bp;
+    if (!a.active || a.i < 0 || static_cast<std::size_t>(a.i) >= nb) continue;
     if (decide_tick || !a.decided) {
       ai_decide(x, a);
       a.decided = true;

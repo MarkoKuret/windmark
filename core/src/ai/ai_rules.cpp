@@ -229,11 +229,11 @@ void avoid_objects(AC& x, AB& a, const Me& m, std::int32_t skip_mark) {
   const CourseObject* hit = nullptr;
   float need = 0.0f;
   for (const CourseObject& o : x.course.objects) {
-    if (o.mark == skip_mark) continue;
     const Vec2 d = v_sub(o.c, m.c);
     const float along = v_dot(d, f);
     if (along <= 0.0f || along > reach + o.r) continue;
-    const float clear = (o.r + 0.5f * m.B) + (1.0f + 0.15f * m.L);
+    // The mark being rounded: only a collision course (the rounding circle keeps the planned clearance).
+    const float clear = o.mark == skip_mark ? (o.r + 0.5f * m.B) + 0.5f : (o.r + 0.5f * m.B) + (1.0f + 0.15f * m.L);
     if (std::fabs(v_cross(f, d)) >= clear) continue;
     if (along < best_t) {
       best_t = along;

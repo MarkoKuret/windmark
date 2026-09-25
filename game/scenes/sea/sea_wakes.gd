@@ -18,13 +18,17 @@ const BUFFER_EXTENT := 400.0
 
 @export var sea_path: NodePath
 
-var sea: Sea
+var sea: Sea:
+	set = set_sea
 ## current: Callable(x, y) -> Vector2 (m/s), the surface current (wind.md §7); null = none.
 var current = null
 
+## Per boat: {bow, stern: WakeRibbon; mesh_bow, mesh_stern: MeshInstance3D (the ribbon, drawn on the sea);
+## buf_bow, buf_stern: MeshInstance3D in the wake buffer or null; state; emission bookkeeping}
 var _boats := {}
 var _material: ShaderMaterial
 var _spray_mm: MultiMeshInstance3D
+## The wake normal buffer (tiers M and H), created only while wakes are drawn on such a tier.
 var _buffer: SubViewport
 var _buffer_cam: Camera3D
 var _buffer_material: ShaderMaterial
@@ -32,6 +36,7 @@ var _last_t := -1.0
 
 const SHARED_UNIFORMS := ["n_comp", "comp", "sum_a", "sea_origin", "expo_tex", "expo_grid", "expo_size",
 		"expo_default", "foam_tex", "col_foam"]
+const RIBBONS := ["bow", "stern"]
 
 
 func _ready() -> void:
@@ -39,6 +44,8 @@ func _ready() -> void:
 		sea = get_node_or_null(sea_path) as Sea
 	_material = ShaderMaterial.new()
 	_material.shader = WAKE_SHADER
+	_buffer_material = ShaderMaterial.new()
+	_buffer_material.shader = WAKE_NORMAL_SHADER
 	_spray_mm = MultiMeshInstance3D.new()
 	_spray_mm.name = "Spray"
 	var mm := MultiMesh.new()
@@ -64,9 +71,18 @@ func _ready() -> void:
 	_spray_mm.multimesh = mm
 	_spray_mm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_spray_mm)
+
+
+## The Sea the wakes are drawn on (also settable after _ready).
+func set_sea(s: Sea) -> void:
+	if sea == s:
+		return
+	if sea and sea.quality_changed.is_connected(_on_quality_changed):
+		sea.quality_changed.disconnect(_on_quality_changed)
+	_drop_buffer()
+	sea = s
 	if sea:
-		sea.quality_changed.connect(func(_t): _setup_buffer())
-	_setup_buffer()
+		sea.quality_changed.connect(_on_quality_changed)
 
 
 ## Boat pose and dimensions for this frame (see the class comment).
@@ -74,60 +90,52 @@ func update_boat(id: int, state: Dictionary) -> void:
 	if not _boats.has(id):
 		var b := {
 			"bow": WakeRibbon.new(), "stern": WakeRibbon.new(), "last_t": -1.0, "last_bow": Vector2.ZERO,
-			"last_stern": Vector2.ZERO, "dist": 0.0, "pulse_off": randf() * 100.0,
-			"mesh_bow": _new_ribbon_instance(), "mesh_stern": _new_ribbon_instance(),
+			"last_stern": Vector2.ZERO, "dist": 0.0, "pulse_off": randf() * 100.0, "buf_bow": null, "buf_stern": null,
 		}
+		for r in RIBBONS:
+			var mi := MeshInstance3D.new()
+			mi.mesh = ArrayMesh.new()
+			mi.material_override = _material
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			add_child(mi)
+			b["mesh_" + r] = mi
 		_boats[id] = b
+		if _buffer:
+			_add_buffer_instances(b)
 	_boats[id]["state"] = state
 
 
 func remove_boat(id: int) -> void:
-	if _boats.has(id):
-		for k in ["mesh_bow", "mesh_stern"]:
-			var mi: Array = _boats[id][k]
-			for n in mi:
+	if not _boats.has(id):
+		return
+	for r in RIBBONS:
+		for k in ["mesh_", "buf_"]:
+			var n = _boats[id][k + r]
+			if n:
 				n.queue_free()
-		_boats.erase(id)
+	_boats.erase(id)
 
 
 func boat_ribbons(id: int) -> Array:
 	return [_boats[id]["bow"], _boats[id]["stern"]] if _boats.has(id) else []
 
 
-func _new_ribbon_instance() -> Array:
-	var mesh := ArrayMesh.new()
-	var mi := MeshInstance3D.new()
-	mi.mesh = mesh
-	mi.material_override = _material
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(mi)
-	var out := [mi]
-	if _buffer:
-		out.append(_buffer_instance(mesh))
-	return out
+## The wake normal buffer viewport, null while there is none (no wakes drawn, or tier L).
+func wake_buffer() -> SubViewport:
+	return _buffer
 
 
-func _buffer_instance(mesh: ArrayMesh) -> MeshInstance3D:
-	var bi := MeshInstance3D.new()
-	bi.mesh = mesh
-	bi.material_override = _buffer_material
-	bi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_buffer.add_child(bi)
-	return bi
+func _on_quality_changed(_tier: int) -> void:
+	_drop_buffer()
 
 
-## Wake normal buffer (tiers M, H): a 512 x 512 viewport of its own world over 400 m around the camera.
-func _setup_buffer() -> void:
-	var want: bool = sea != null and sea.get_tier()["wake_buffer"]
+## Wake normal buffer (tiers M, H): a 512 x 512 viewport of its own world over 400 m around the camera, made when
+## the first wake is drawn on such a tier and dropped when none is, or the tier changes.
+func _ensure_buffer(want: bool) -> void:
 	if want == (_buffer != null):
 		return
 	if not want:
-		for id in _boats:
-			for k in ["mesh_bow", "mesh_stern"]:
-				_boats[id][k].resize(1)
-		_buffer.queue_free()
-		_buffer = null
-		sea.set_wake_buffer(null, BUFFER_EXTENT, 0.0)
+		_drop_buffer()
 		return
 	_buffer = SubViewport.new()
 	_buffer.name = "WakeBuffer"
@@ -150,13 +158,34 @@ func _setup_buffer() -> void:
 	_buffer_cam.far = 1000.0
 	_buffer.add_child(_buffer_cam)
 	add_child(_buffer)
-	_buffer_material = ShaderMaterial.new()
-	_buffer_material.shader = WAKE_NORMAL_SHADER
 	for id in _boats:
-		for k in ["mesh_bow", "mesh_stern"]:
-			var arr: Array = _boats[id][k]
-			arr.append(_buffer_instance(arr[0].mesh))
-	sea.set_wake_buffer(_buffer.get_texture(), BUFFER_EXTENT, 0.35)
+		_add_buffer_instances(_boats[id])
+	if sea:
+		sea.set_wake_buffer(_buffer.get_texture(), BUFFER_EXTENT, 0.35)
+
+
+## The boat's ribbon meshes drawn a second time into the wake buffer (the meshes are shared).
+func _add_buffer_instances(b: Dictionary) -> void:
+	for r in RIBBONS:
+		var bi := MeshInstance3D.new()
+		bi.mesh = b["mesh_" + r].mesh
+		bi.material_override = _buffer_material
+		bi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_buffer.add_child(bi)
+		b["buf_" + r] = bi
+
+
+func _drop_buffer() -> void:
+	if _buffer == null:
+		return
+	for id in _boats:
+		for r in RIBBONS:
+			_boats[id]["buf_" + r] = null
+	_buffer.queue_free()
+	_buffer = null
+	_buffer_cam = null
+	if sea:
+		sea.set_wake_buffer(null, BUFFER_EXTENT, 0.0)
 
 
 func _height(x: float, y: float) -> float:
@@ -164,13 +193,15 @@ func _height(x: float, y: float) -> float:
 
 
 func _process(_delta: float) -> void:
-	if sea == null:
+	if sea == null or sea.material == null:
 		return
 	var t_s := sea.render_time_ms * 0.001
 	var dt := 0.0 if _last_t < 0.0 else maxf(t_s - _last_t, 0.0)
 	_last_t = t_s
 	var tier := sea.get_tier()
 	var o := sea.origin
+	var active := _select(tier, o)
+	_ensure_buffer(tier["wake_buffer"] and not active.is_empty())
 	if _buffer_cam:
 		_buffer_cam.global_transform = Transform3D(Basis.looking_at(Vector3.DOWN, Vector3.FORWARD),
 				Vector3(o.x, 500.0, -o.y))
@@ -179,25 +210,25 @@ func _process(_delta: float) -> void:
 	_material.set_shader_parameter("grid_q", sea.grid_ratio())
 	_material.set_shader_parameter("grid_segments", float(tier["segments"]))
 
-	var active := _select(tier, o)
 	var h := Callable(self, "_height")
 	var spray_pts := PackedVector3Array()
 	for id in _boats:
 		var b: Dictionary = _boats[id]
 		var on: bool = active.has(id)
-		for k in ["mesh_bow", "mesh_stern"]:
-			for mi in b[k]:
-				mi.visible = on
+		for r in RIBBONS:
+			b["mesh_" + r].visible = on
+			if b["buf_" + r]:
+				b["buf_" + r].visible = on
 		if not on:
 			continue
 		var st: Dictionary = b["state"]
 		var spray: bool = tier["spray"] == "all" or (tier["spray"] == "own" and st.get("own", false))
 		if b["last_t"] < 0.0 or t_s - b["last_t"] >= DT_EMIT:
 			_emit(b, st, t_s, spray)
-		for r in ["bow", "stern"]:
+		for r in RIBBONS:
 			var rib: WakeRibbon = b[r]
 			rib.step(t_s, dt, h, current)
-			var mesh: ArrayMesh = b["mesh_" + r][0].mesh
+			var mesh: ArrayMesh = b["mesh_" + r].mesh
 			mesh.clear_surfaces()
 			var arrays := rib.build_arrays(t_s)
 			if (arrays[Mesh.ARRAY_INDEX] as PackedInt32Array).size() > 0:

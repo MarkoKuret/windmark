@@ -206,6 +206,36 @@ func check_land_scene(sea: Sea, tier: String) -> void:
 	check(sea.land_upload()[0] == k_next, "scene tier %s: land texture follows the wind into the next sector" % tier)
 
 
+## A Sea with SeaWakes but no boat has no wake buffer; the first boat makes it, removing it drops it, and a tier
+## change drops it until wakes are drawn again.
+func check_wake_buffer_lifecycle() -> void:
+	var holder := Node3D.new()
+	var sea := Sea.new()
+	sea.quality = SeaQuality.Tier.M
+	holder.add_child(sea)
+	var wakes := SeaWakes.new()
+	holder.add_child(wakes)
+	wakes.sea = sea
+	root.add_child(holder)
+	sea.update_frame(Vector3.ZERO)
+	wakes._process(0.016)
+	check(wakes.wake_buffer() == null, "wakes: no wake buffer without boats")
+	wakes.update_boat(5, {"x": 0.0, "y": 0.0, "psi": 0.0, "own": true})
+	sea.render_time_ms += 16.0
+	wakes._process(0.016)
+	check(wakes.wake_buffer() != null, "wakes: the first boat makes the wake buffer")
+	sea.quality = SeaQuality.Tier.L
+	wakes._process(0.016)
+	check(wakes.wake_buffer() == null, "wakes: no wake buffer on tier L")
+	sea.quality = SeaQuality.Tier.H
+	wakes._process(0.016)
+	check(wakes.wake_buffer() != null, "wakes: wake buffer again on tier H")
+	wakes.remove_boat(5)
+	wakes._process(0.016)
+	check(wakes.wake_buffer() == null, "wakes: wake buffer dropped with the last boat")
+	holder.queue_free()
+
+
 func _land_emulated(x: float, y: float, g: Dictionary, rg: PackedFloat32Array, tw: float) -> float:
 	var nx: int = g["nx"]
 	var ny: int = g["ny"]
@@ -385,6 +415,11 @@ func _process(_delta: float) -> bool:
 		worst = maxf(worst, absf(comp[i].w - ph[i]))
 	check(worst < 1e-6, "scene tier %s: uploaded phases match (worst %s cycles)" % [t["name"], sci(worst)])
 	check_land_scene(sea, t["name"])
+	var wb: SubViewport = (_scene.get_node("Wakes") as SeaWakes).wake_buffer()
+	check((wb != null) == bool(t["wake_buffer"]), "scene tier %s: wake buffer %s" % [t["name"],
+			"made for the drawn wakes" if t["wake_buffer"] else "not made"])
+	if t["name"] == "M":
+		check_wake_buffer_lifecycle()
 	_scene.queue_free()
 	_scene = null
 	_start_scene()

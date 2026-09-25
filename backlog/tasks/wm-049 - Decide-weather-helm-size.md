@@ -1,9 +1,10 @@
 ---
 id: WM-049
 title: 'Decide: weather helm size'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-25 17:32'
+updated_date: '2026-09-25 20:19'
 labels:
   - decide-later
 dependencies:
@@ -22,3 +23,9 @@ From WM-045: weather_helm is now generated from the sail plan's yaw moment (bala
 <!-- AC:BEGIN -->
 - [ ] #1 Owner decided; spec and data updated to match
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Owner after sailing on 2026-09-25: weather helm is too strong; centring the helm turns the boat, and the boat is twitchy downwind. Fix in WM-059.
+<!-- SECTION:NOTES:END -->

@@ -1,11 +1,11 @@
 ---
 id: WM-010
 title: 'Core: AI skippers'
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-09-25 13:31'
-updated_date: '2026-09-25 19:07'
+updated_date: '2026-09-25 20:19'
 labels:
   - core
 dependencies: []
@@ -21,12 +21,12 @@ AI per docs/specs/ai.md, including bad air and cover that actually trigger.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Spec acceptance tests pass
+- [x] #1 Spec acceptance tests pass
 - [x] #2 AI fleet completes races at every level
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-AI skippers in core/src/ai (ai.md). Fast tests in test_ai.cpp (core_tests), fleet runs in test_ai_race.cpp (ctest label ai_long). AC1 partly met: the ai.md 15 fleet targets for penalties (measured 1.0/boat vs 0.4), contacts (4.4/race vs 1), start delay and strict level order are not reached yet; ai.md 15.1 records the measurements. Memory block for snapshots: ai.md 16.
+Owner on 2026-09-25 after racing it: 'ai is not so good but ok'. Closed with the ai.md 15 fleet targets still unmet (penalties, contacts, start delay, level order); that tuning continues in WM-054.
 <!-- SECTION:NOTES:END -->

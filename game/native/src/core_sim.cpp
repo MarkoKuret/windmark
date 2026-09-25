@@ -6,6 +6,7 @@
 #include <godot_cpp/variant/packed_int32_array.hpp>
 
 #include <cmath>
+#include <cstring>
 
 using namespace godot;
 
@@ -215,6 +216,140 @@ PackedByteArray CoreSim::encode_input(double h_cmd, double sheet_cmd, int64_t sa
 // ---- stepping -------------------------------------------------------------------------------------------------
 
 int64_t CoreSim::step() { return world_ != nullptr ? static_cast<int64_t>(wm_world_step(world_)) : 0; }
+
+// Fast-forward without rendering: n ticks (or until the race is closed); returns the ticks stepped. Only the last
+// tick's events remain readable.
+int64_t CoreSim::step_ticks(int64_t n, bool stop_when_closed) {
+  if (world_ == nullptr) return 0;
+  int64_t k = 0;
+  for (; k < n; ++k) {
+    if (stop_when_closed) {
+      wm_race_info ri;
+      if (wm_world_race(world_, &ri) == WM_OK && ri.state == WM_RACE_CLOSED) break;
+    }
+    wm_world_step(world_);
+  }
+  return k;
+}
+
+// ---- AI skippers ----------------------------------------------------------------------------------------------
+
+int64_t CoreSim::add_ai_boat(const String& perf_path, int64_t level, bool speed_only) {
+  if (world_ == nullptr) {
+    error_ = "no world";
+    return -1;
+  }
+  wm_perf* p = perf_for(perf_path);
+  if (p == nullptr) return -1;
+  int32_t idx = -1;
+  if (!ok(wm_world_add_ai_boat(world_, p, i32(level), speed_only ? 1 : 0, &idx))) return -1;
+  return idx;
+}
+
+bool CoreSim::ai_add(int64_t b, int64_t level, bool speed_only) {
+  return boat_ok(b) && ok(wm_world_ai_add(world_, i32(b), i32(level), speed_only ? 1 : 0));
+}
+bool CoreSim::ai_take_over(int64_t b) { return boat_ok(b) && ok(wm_world_ai_take_over(world_, i32(b))); }
+bool CoreSim::ai_release(int64_t b) { return boat_ok(b) && ok(wm_world_ai_release(world_, i32(b))); }
+bool CoreSim::ai_add_autopilot(int64_t b) { return boat_ok(b) && ok(wm_world_ai_add_autopilot(world_, i32(b))); }
+bool CoreSim::ai_has(int64_t b) const { return world_ != nullptr && wm_world_ai_has(world_, i32(b)) != 0; }
+int64_t CoreSim::ai_count() const { return wm_world_ai_count(world_); }
+
+Dictionary CoreSim::ai_telemetry(int64_t boat) const {
+  Dictionary d;
+  wm_ai_telemetry t;
+  if (!boat_ok(boat) || !ok(wm_world_ai_telemetry(world_, i32(boat), &t))) return d;
+  d["tacks"] = t.tacks;
+  d["gybes"] = t.gybes;
+  d["penalties"] = t.penalties;
+  d["ocs"] = t.ocs;
+  Dictionary act;
+  for (int k = 0; k < WM_AI_TACTIC_COUNT; ++k) act[String::utf8(wm_ai_tactic_name(k))] = t.activations[k];
+  d["activations"] = act;
+  d["stuck_s"] = t.stuck_s;
+  d["min_gap"] = t.min_gap;
+  d["sail_changes"] = t.sail_changes;
+  Array bad;
+  for (int32_t i = 0; i < t.bad_air_count; ++i) {
+    uint32_t tick = 0;
+    float at = 0.0f, after = 0.0f;
+    wm_world_ai_bad_air(world_, i32(boat), i, &tick, &at, &after);
+    Array r;
+    r.append(static_cast<int64_t>(tick));
+    r.append(at);
+    r.append(after);
+    bad.append(r);
+  }
+  d["bad_air"] = bad;
+  d["start_delay"] = t.start_delay;
+  return d;
+}
+
+Dictionary CoreSim::ai_debug(int64_t boat) const {
+  Dictionary d;
+  wm_ai_debug g;
+  if (!boat_ok(boat) || !ok(wm_world_ai_debug(world_, i32(boat), &g))) return d;
+  d["tactic"] = g.tactic;
+  d["tactic_name"] = String::utf8(wm_ai_tactic_name(g.tactic));
+  d["psi_target"] = g.psi_target;
+  d["d"] = g.d;
+  d["twd_ref"] = g.twd_ref;
+  d["twd_f"] = g.twd_f;
+  d["tws_f"] = g.tws_f;
+  d["leg"] = g.leg;
+  d["manoeuvre"] = g.manoeuvre;
+  d["aim"] = Vector2(g.aim_x, g.aim_y);
+  d["spot"] = Vector2(g.spot_x, g.spot_y);
+  return d;
+}
+
+double CoreSim::ai_performance_scale(int64_t level) { return wm_ai_performance_scale(i32(level)); }
+String CoreSim::ai_tactic_name(int64_t tactic) { return String::utf8(wm_ai_tactic_name(i32(tactic))); }
+
+// ---- snapshots ------------------------------------------------------------------------------------------------
+
+namespace {
+PackedByteArray bytes_of(const uint8_t* p, size_t n) {
+  PackedByteArray a;
+  a.resize(static_cast<int64_t>(n));
+  if (n > 0) std::memcpy(a.ptrw(), p, n);
+  return a;
+}
+}  // namespace
+
+PackedByteArray CoreSim::save_world() {
+  const uint8_t* p = nullptr;
+  size_t n = 0;
+  if (world_ == nullptr || !ok(wm_world_save(world_, &p, &n))) return PackedByteArray();
+  return bytes_of(p, n);
+}
+
+bool CoreSim::load_world(const String& course_path, const PackedByteArray& bytes) {
+  if (world_ == nullptr) {
+    error_ = "no world";
+    return false;
+  }
+  wm_course* c = nullptr;
+  if (!course_path.is_empty() && !ok(wm_course_load(os_path(course_path).c_str(), &c))) return false;
+  const bool r = ok(wm_world_load(world_, c, bytes.ptr(), static_cast<size_t>(bytes.size())));
+  wm_course_free(c);
+  return r;
+}
+
+PackedByteArray CoreSim::ai_save() {
+  const uint8_t* p = nullptr;
+  size_t n = 0;
+  if (world_ == nullptr || !ok(wm_world_ai_save(world_, &p, &n))) return PackedByteArray();
+  return bytes_of(p, n);
+}
+
+bool CoreSim::ai_load(const PackedByteArray& bytes) {
+  if (world_ == nullptr) {
+    error_ = "no world";
+    return false;
+  }
+  return ok(wm_world_ai_load(world_, bytes.ptr(), static_cast<size_t>(bytes.size())));
+}
 int64_t CoreSim::checksum() const { return static_cast<int64_t>(wm_world_checksum(world_)); }
 int64_t CoreSim::tick() const { return wm_world_tick(world_); }
 int64_t CoreSim::boat_count() const { return wm_world_boat_count(world_); }
@@ -811,7 +946,24 @@ void CoreSim::_bind_methods() {
   ClassDB::bind_static_method("CoreSim", D_METHOD("encode_input", "h_cmd", "sheet_cmd", "sail_req", "flags"),
                               &CoreSim::encode_input);
 
+  ClassDB::bind_method(D_METHOD("add_ai_boat", "perf_path", "level", "speed_only"), &CoreSim::add_ai_boat);
+  ClassDB::bind_method(D_METHOD("ai_add", "boat", "level", "speed_only"), &CoreSim::ai_add);
+  ClassDB::bind_method(D_METHOD("ai_take_over", "boat"), &CoreSim::ai_take_over);
+  ClassDB::bind_method(D_METHOD("ai_release", "boat"), &CoreSim::ai_release);
+  ClassDB::bind_method(D_METHOD("ai_add_autopilot", "boat"), &CoreSim::ai_add_autopilot);
+  ClassDB::bind_method(D_METHOD("ai_has", "boat"), &CoreSim::ai_has);
+  ClassDB::bind_method(D_METHOD("ai_count"), &CoreSim::ai_count);
+  ClassDB::bind_method(D_METHOD("ai_telemetry", "boat"), &CoreSim::ai_telemetry);
+  ClassDB::bind_method(D_METHOD("ai_debug", "boat"), &CoreSim::ai_debug);
+  ClassDB::bind_static_method("CoreSim", D_METHOD("ai_performance_scale", "level"), &CoreSim::ai_performance_scale);
+  ClassDB::bind_static_method("CoreSim", D_METHOD("ai_tactic_name", "tactic"), &CoreSim::ai_tactic_name);
+  ClassDB::bind_method(D_METHOD("save_world"), &CoreSim::save_world);
+  ClassDB::bind_method(D_METHOD("load_world", "course_path", "bytes"), &CoreSim::load_world);
+  ClassDB::bind_method(D_METHOD("ai_save"), &CoreSim::ai_save);
+  ClassDB::bind_method(D_METHOD("ai_load", "bytes"), &CoreSim::ai_load);
+
   ClassDB::bind_method(D_METHOD("step"), &CoreSim::step);
+  ClassDB::bind_method(D_METHOD("step_ticks", "n", "stop_when_closed"), &CoreSim::step_ticks);
   ClassDB::bind_method(D_METHOD("checksum"), &CoreSim::checksum);
   ClassDB::bind_method(D_METHOD("tick"), &CoreSim::tick);
   ClassDB::bind_method(D_METHOD("boat_count"), &CoreSim::boat_count);

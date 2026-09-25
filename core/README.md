@@ -39,8 +39,9 @@ Tests (`ctest`):
 - `core_no_fma`: disassembles `libwindmark_core.a` and fails on any fused multiply-add instruction.
 - `capi_race_example`: `examples/race_example.c` through the C API only: a race of four scripted boats on the
   example course from the spawn to the results (with the splits and start line status readers), run twice for
-  the same checksum, then a free-sailing boat
-  (render pose, input frame encoding, sail requests, trim_speed lookup).
+  the same checksum, then a free-sailing boat (render pose, input frame encoding, sail requests, trim_speed
+  lookup), then a race of six AI skippers (one a human entry taken over) that is saved a minute after the gun,
+  world and AI memory, and continued in a new world to the same final tick and checksum (about 15 s in all).
 
 ## Float rules
 
@@ -86,7 +87,7 @@ Sources live in `src/<module>/`, included as `"module/header.h"`, all in namespa
 | `src/ai/` | the AI skippers: `AiSkippers` (install as the world's controller), polar tables, perception, the start, sailing the course, marks, sails, rules-aware sailing, bad air, cover, penalty turns, the heading controller, the finished-boat autopilot, the memory block | ai.md |
 | `src/world/` | `World`: one tick in the order of `conventions.md` §4.1 over the boats, wind, sea, shadows, collisions, race and rules; creating a race, controls, events, the tick checksum; `world_state`: the world snapshot, save and load | conventions.md §4.1, §9.1; race.md §1 |
 | `include/windmark.h`, `src/capi/` | the C API over the world (below) | networking.md §4 |
-| `examples/` | `race_example.c`: a headless race and a free-sailing boat through the C API only | |
+| `examples/` | `race_example.c`: a headless race, a free-sailing boat and an AI fleet race through the C API only | |
 | `tests/` | doctest suite and the math vector file | |
 | `tools/` | `gen_math_vectors.cpp`, `gen_env_vectors.cpp`; `gen_sea_render_samples.cpp` (sea and puff samples for the front end's water checks, `game/tests/run_water_test.sh`) | |
 | `third_party/doctest/` | doctest 2.4.12 (MIT), test framework | |
@@ -129,6 +130,12 @@ hosts that link it in. Everything is built under the float rules; hosts must not
 | boats | state, controls, outputs, the environment at the boat, `wm_world_render_pose(alpha)` (interpolated between the last two ticks), `wm_world_trim_speed_at` (HUD trim tolerance), sails, per-sail state and outputs, sail phase events |
 | environment | clean wind, global direction, current, puff patches (now or at any `t_ms`), `wm_world_wind_state`, sea height (now or at any `t_ms`), slope, exposure and its grid, wave components |
 | race and rules | course marks, steps and boundary; race state, per-boat race state, order, results; per-boat rules state, pending penalties, pair records; race, rules and contact events of the last tick |
+| AI skippers | `wm_ai_entry_init`, `wm_world_add_ai_boat(perf, level, speed_only)`, `wm_world_ai_add` (any boat), `wm_world_ai_take_over` / `wm_world_ai_release` (ai.md §14), `wm_world_ai_add_autopilot`, `wm_world_ai_has`, `wm_world_ai_count`; telemetry (`wm_world_ai_telemetry`, `wm_world_ai_bad_air`) and the last decision (`wm_world_ai_debug`, `wm_ai_tactic_name`); `wm_ai_performance_scale(level)` |
+| snapshots | `wm_world_save` / `wm_world_load(course)` (the world snapshot, conventions.md §9.1, into a new world with the same settings and boats) and `wm_world_ai_save` / `wm_world_ai_load` (the skippers' memory, ai.md §16, taken at the same moment) |
+
+Every world holds one set of AI skippers (`AiSkippers`). Once a boat is given to them they run in step 2 of every
+tick, before the `wm_world_set_controller` callback and after the controls the host queued between ticks, so an
+AI boat's own controls win; hosts send no input for boats an AI sails.
 
 A world holds references to the data it was given, so callers may free their handles after passing them. The
 world's tick 0 is the environment clock's zero. Point queries use a second wind field with the same seed and

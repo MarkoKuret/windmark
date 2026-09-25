@@ -6,9 +6,11 @@
 #include <cmath>
 #include <cstring>
 #include <memory>
+#include <span>
 #include <string>
 #include <vector>
 
+#include "ai/ai.h"
 #include "course/course.h"
 #include "course/geometry.h"
 #include "data/perf.h"
@@ -47,6 +49,11 @@ struct wm_world {
   std::vector<std::uint8_t> last_flags;
   wm_controller_fn controller = nullptr;
   void* controller_user = nullptr;
+  // The AI skippers (ai.md), run in step 2 before the host's controller once any boat was given to them.
+  std::unique_ptr<wm::AiSkippers> ai = std::make_unique<wm::AiSkippers>();
+  bool ai_used = false;
+  std::vector<std::uint8_t> world_snapshot;  // the last wm_world_save
+  std::vector<std::uint8_t> ai_snapshot;     // the last wm_world_ai_save
 };
 
 namespace {
@@ -107,6 +114,18 @@ void sync_boats(wm_world* w) {
   w->req_sails.resize(n);
   w->req_valid.resize(n, 0);
   w->last_flags.resize(n, 0);
+}
+
+// Step 2 of the world: the AI skippers, then the host's callback. Installed only when one of them is set.
+void install_controller(wm_world* w) {
+  if (w->controller == nullptr && !w->ai_used) {
+    w->world->set_controller(nullptr);
+    return;
+  }
+  w->world->set_controller([w](wm::World& world) {
+    if (w->ai_used) w->ai->step(world);
+    if (w->controller != nullptr) w->controller(w, w->controller_user);
+  });
 }
 
 void refresh_prev(wm_world* w) {
@@ -560,11 +579,7 @@ void wm_world_set_controller(wm_world* w, wm_controller_fn fn, void* user) {
   if (w == nullptr) return;
   w->controller = fn;
   w->controller_user = user;
-  if (fn == nullptr) {
-    w->world->set_controller(nullptr);
-  } else {
-    w->world->set_controller([w](wm::World&) { w->controller(w, w->controller_user); });
-  }
+  install_controller(w);
 }
 
 // ---- stepping -----------------------------------------------------------------------------------------------
@@ -583,6 +598,202 @@ int32_t wm_world_boat_count(const wm_world* w) {
   return w != nullptr ? static_cast<int32_t>(w->world->boat_count()) : 0;
 }
 int32_t wm_world_has_race(const wm_world* w) { return w != nullptr && w->world->race_created() ? 1 : 0; }
+
+// ---- AI skippers --------------------------------------------------------------------------------------------
+
+static_assert(WM_AI_PRO == static_cast<int>(wm::AiLevel::pro));
+static_assert(WM_AI_TACTIC_LAND == static_cast<int>(wm::AiTactic::Land));
+static_assert(WM_AI_TACTIC_COUNT == wm::kAiTacticCount);
+
+namespace {
+bool bad_level(int32_t level) { return level < WM_AI_EASY || level > WM_AI_PRO; }
+wm::AiLevel ai_level(int32_t level) { return static_cast<wm::AiLevel>(level); }
+void ai_on(wm_world* w) {
+  if (!w->ai_used) {
+    w->ai_used = true;
+    install_controller(w);
+  }
+}
+}  // namespace
+
+const char* wm_ai_tactic_name(int32_t tactic) {
+  if (tactic < 0 || tactic >= WM_AI_TACTIC_COUNT) return "?";
+  return wm::ai_tactic_name(static_cast<wm::AiTactic>(tactic));
+}
+
+float wm_ai_performance_scale(int32_t level) {
+  return bad_level(level) ? NAN : wm::ai_level_params(ai_level(level)).performance_scale;
+}
+
+void wm_ai_entry_init(wm_boat_entry* e, const wm_perf* perf, int32_t level) {
+  if (e == nullptr) return;
+  wm_boat_entry_init(e, perf);
+  if (perf == nullptr || bad_level(level)) return;
+  const wm::BoatEntry d = wm::ai_entry(perf->p.get(), ai_level(level));
+  e->human = d.human ? 1 : 0;
+  e->ai = d.ai ? 1 : 0;
+  e->performance_scale = d.performance_scale;
+  e->auto_trim = d.auto_trim ? 1 : 0;
+  e->front_sail = d.front_sail;
+}
+
+wm_status wm_world_add_ai_boat(wm_world* w, const wm_perf* perf, int32_t level, int32_t speed_only,
+                               int32_t* index) {
+  if (w == nullptr || perf == nullptr) return fail(WM_ERR_ARG, "null argument");
+  if (bad_level(level)) return fail(WM_ERR_ARG, "bad AI level");
+  wm_boat_entry e;
+  wm_ai_entry_init(&e, perf, level);
+  int32_t i = -1;
+  if (const wm_status st = wm_world_add_boat(w, &e, &i); st != WM_OK) return st;
+  w->ai->add(i, ai_level(level), speed_only != 0);
+  ai_on(w);
+  if (index != nullptr) *index = i;
+  return WM_OK;
+}
+
+wm_status wm_world_ai_add(wm_world* w, int32_t boat, int32_t level, int32_t speed_only) {
+  if (bad_boat(w, boat)) return fail(WM_ERR_ARG, "bad boat index");
+  if (bad_level(level)) return fail(WM_ERR_ARG, "bad AI level");
+  w->ai->add(boat, ai_level(level), speed_only != 0);
+  ai_on(w);
+  return WM_OK;
+}
+
+wm_status wm_world_ai_take_over(wm_world* w, int32_t boat) {
+  if (bad_boat(w, boat)) return fail(WM_ERR_ARG, "bad boat index");
+  w->ai->take_over(boat);
+  ai_on(w);
+  return WM_OK;
+}
+
+wm_status wm_world_ai_release(wm_world* w, int32_t boat) {
+  if (bad_boat(w, boat)) return fail(WM_ERR_ARG, "bad boat index");
+  w->ai->release(boat);
+  return WM_OK;
+}
+
+wm_status wm_world_ai_add_autopilot(wm_world* w, int32_t boat) {
+  if (bad_boat(w, boat)) return fail(WM_ERR_ARG, "bad boat index");
+  w->ai->add_autopilot(boat);
+  ai_on(w);
+  return WM_OK;
+}
+
+int32_t wm_world_ai_has(const wm_world* w, int32_t boat) {
+  return !bad_boat(w, boat) && w->ai->has(boat) ? 1 : 0;
+}
+
+int32_t wm_world_ai_count(const wm_world* w) {
+  if (w == nullptr) return 0;
+  int32_t n = 0;
+  for (std::size_t i = 0; i < w->world->boat_count(); ++i) n += w->ai->has(static_cast<std::int32_t>(i)) ? 1 : 0;
+  return n;
+}
+
+namespace {
+// A boat the skippers know (added, taken over or autopilot, even when released): its records are kept.
+bool ai_known(const wm_world* w, int32_t boat) {
+  const wm::AiTelemetry& none = w->ai->telemetry(-1);
+  return &w->ai->telemetry(boat) != &none;
+}
+}  // namespace
+
+wm_status wm_world_ai_telemetry(const wm_world* w, int32_t boat, wm_ai_telemetry* out) {
+  if (const wm_status s = boat_arg(w, boat, out); s != WM_OK) return s;
+  std::memset(out, 0, sizeof *out);
+  if (!ai_known(w, boat)) return fail(WM_ERR_ABSENT, "no AI sailed this boat");
+  const wm::AiTelemetry& t = w->ai->telemetry(boat);
+  out->tacks = t.tacks;
+  out->gybes = t.gybes;
+  out->penalties = t.penalties;
+  out->ocs = t.ocs;
+  for (std::size_t k = 0; k < wm::kAiTacticCount; ++k) out->activations[k] = t.activations[k];
+  out->stuck_s = t.stuck_s;
+  out->min_gap = t.min_gap;
+  out->sail_changes = t.sail_changes;
+  out->bad_air_count = static_cast<int32_t>(t.bad_air.size());
+  out->start_delay = t.start_delay;
+  return WM_OK;
+}
+
+wm_status wm_world_ai_debug(const wm_world* w, int32_t boat, wm_ai_debug* out) {
+  if (const wm_status s = boat_arg(w, boat, out); s != WM_OK) return s;
+  std::memset(out, 0, sizeof *out);
+  if (!ai_known(w, boat)) return fail(WM_ERR_ABSENT, "no AI sailed this boat");
+  const wm::AiDebug& d = w->ai->debug(boat);
+  out->tactic = static_cast<int32_t>(d.tactic);
+  out->psi_target = d.psi_target;
+  out->d = d.d;
+  out->twd_ref = d.twd_ref;
+  out->twd_f = d.twd_f;
+  out->tws_f = d.tws_f;
+  out->leg = d.leg;
+  out->manoeuvre = d.manoeuvre;
+  out->aim_x = d.aim.x;
+  out->aim_y = d.aim.y;
+  out->spot_x = d.spot.x;
+  out->spot_y = d.spot.y;
+  return WM_OK;
+}
+
+wm_status wm_world_ai_bad_air(const wm_world* w, int32_t boat, int32_t i, uint32_t* tick, float* d_at,
+                              float* d_after) {
+  if (bad_boat(w, boat)) return fail(WM_ERR_ARG, "bad boat index");
+  const auto& v = w->ai->telemetry(boat).bad_air;
+  if (i < 0 || static_cast<std::size_t>(i) >= v.size()) return fail(WM_ERR_ARG, "bad record index");
+  const wm::AiBadAirRecord& r = v[static_cast<std::size_t>(i)];
+  if (tick != nullptr) *tick = r.tick;
+  if (d_at != nullptr) *d_at = r.d_at;
+  if (d_after != nullptr) *d_after = r.d_after;
+  return WM_OK;
+}
+
+// ---- snapshots ----------------------------------------------------------------------------------------------
+
+wm_status wm_world_save(wm_world* w, const uint8_t** data, size_t* size) {
+  if (w == nullptr || data == nullptr || size == nullptr) return fail(WM_ERR_ARG, "null argument");
+  wm::SnapshotWriter sw;
+  w->world->save(sw);
+  w->world_snapshot = sw.bytes();
+  *data = w->world_snapshot.data();
+  *size = w->world_snapshot.size();
+  return WM_OK;
+}
+
+wm_status wm_world_load(wm_world* w, const wm_course* course, const uint8_t* data, size_t size) {
+  if (w == nullptr || (data == nullptr && size > 0)) return fail(WM_ERR_ARG, "null argument");
+  if (w->world->race_created() || w->world->tick() != 0) return fail(WM_ERR_STATE, "load needs a new world");
+  std::string err;
+  if (!w->world->load(std::span<const std::uint8_t>(data, size), course != nullptr ? course->c.get() : nullptr, err))
+    return fail(WM_ERR_LOAD, "world snapshot: " + err);
+  if (w->world->race_created() && course != nullptr) w->course = course->c;
+  refresh_prev(w);
+  std::fill(w->req_valid.begin(), w->req_valid.end(), 0);
+  install_controller(w);
+  return WM_OK;
+}
+
+wm_status wm_world_ai_save(wm_world* w, const uint8_t** data, size_t* size) {
+  if (w == nullptr || data == nullptr || size == nullptr) return fail(WM_ERR_ARG, "null argument");
+  wm::SnapshotWriter sw;
+  w->ai->save(sw, *w->world);
+  w->ai_snapshot = sw.bytes();
+  *data = w->ai_snapshot.data();
+  *size = w->ai_snapshot.size();
+  return WM_OK;
+}
+
+wm_status wm_world_ai_load(wm_world* w, const uint8_t* data, size_t size) {
+  if (w == nullptr || (data == nullptr && size > 0)) return fail(WM_ERR_ARG, "null argument");
+  auto fresh = std::make_unique<wm::AiSkippers>();
+  std::string err;
+  if (!fresh->load(std::span<const std::uint8_t>(data, size), *w->world, err))
+    return fail(WM_ERR_LOAD, "AI memory: " + err);
+  w->ai = std::move(fresh);
+  w->ai_used = true;
+  install_controller(w);
+  return WM_OK;
+}
 
 // ---- boats --------------------------------------------------------------------------------------------------
 

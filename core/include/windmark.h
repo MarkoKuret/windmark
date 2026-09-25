@@ -231,10 +231,96 @@ WM_API wm_status wm_world_drop_front(wm_world* w, int32_t boat, int32_t* request
 WM_API wm_status wm_world_retire(wm_world* w, int32_t boat);  /* race.md §6.4 */
 WM_API wm_status wm_world_protest(wm_world* w, int32_t boat); /* rules.md §10 */
 
-/* Called in step 2 of every tick before the queued controls are applied: computer skippers and scripts read the
- * state (and step 1's race and rules results) and set controls here. Null removes it. */
+/* Called in step 2 of every tick before the queued controls are applied, after the AI skippers: scripts read
+ * the state (and step 1's race and rules results) and set controls here. Null removes it. */
 typedef void (*wm_controller_fn)(wm_world* w, void* user);
 WM_API void wm_world_set_controller(wm_world* w, wm_controller_fn fn, void* user);
+
+/* ---- AI skippers (ai.md) ----------------------------------------------------------------------------------- */
+
+/* Every world has one set of AI skippers. They decide in step 2 of every tick, before the callback of
+ * wm_world_set_controller (which may read or override what they set) and after the controls the host queued
+ * between ticks, so an AI boat's own controls win over queued ones: hosts send no input for a boat an AI sails.
+ * Deterministic: they read only the world and draw from the AI RNG streams with the race seed. */
+
+/* ai.md §13 levels. */
+enum { WM_AI_EASY = 0, WM_AI_INTERMEDIATE, WM_AI_EXPERT, WM_AI_PRO };
+/* ai.md §15 tactic reasons, in the spec's order. */
+enum { WM_AI_TACTIC_NONE = 0, WM_AI_TACTIC_START, WM_AI_TACTIC_ROUNDING, WM_AI_TACTIC_KEEP_CLEAR,
+       WM_AI_TACTIC_EMERGENCY, WM_AI_TACTIC_BAD_AIR, WM_AI_TACTIC_COVER, WM_AI_TACTIC_SHIFT, WM_AI_TACTIC_PRESSURE,
+       WM_AI_TACTIC_LAYLINE, WM_AI_TACTIC_CORRIDOR, WM_AI_TACTIC_PENALTY_TURN, WM_AI_TACTIC_LAND };
+#define WM_AI_TACTIC_COUNT 13
+WM_API const char* wm_ai_tactic_name(int32_t tactic);
+/* ai.md §13 the performance_scale of a level (the one physical difference between the levels). */
+WM_API float wm_ai_performance_scale(int32_t level);
+
+/* An entry for an AI boat of this level (ai.md §13): not human, protests on its own, the level's
+ * performance_scale; auto trim and the class's start sail. */
+WM_API void wm_ai_entry_init(wm_boat_entry* e, const wm_perf* perf, int32_t level);
+/* Adds a boat from wm_ai_entry_init and has an AI of `level` sail it (wm_world_ai_add). `speed_only`: the
+ * decisions of Intermediate with the level's performance_scale (ai.md §13). Same rules as wm_world_add_boat. */
+WM_API wm_status wm_world_add_ai_boat(wm_world* w, const wm_perf* perf, int32_t level, int32_t speed_only,
+                                      int32_t* index);
+/* Boat `boat` is sailed by an AI of this level from the next step on (any boat already added). */
+WM_API wm_status wm_world_ai_add(wm_world* w, int32_t boat, int32_t level, int32_t speed_only);
+/* ai.md §14: an AI at Intermediate decisions takes a boat over as it is (a disconnected human; its
+ * performance_scale stays), and release hands it back to its host. */
+WM_API wm_status wm_world_ai_take_over(wm_world* w, int32_t boat);
+WM_API wm_status wm_world_ai_release(wm_world* w, int32_t boat);
+/* race.md §6.2: only the finished-boat autopilot for this boat (an offline human boat after its finish). */
+WM_API wm_status wm_world_ai_add_autopilot(wm_world* w, int32_t boat);
+/* 1 when an AI sails the boat now (added or taken over, not released; the autopilot alone does not count). */
+WM_API int32_t wm_world_ai_has(const wm_world* w, int32_t boat);
+/* The number of boats an AI sails now. */
+WM_API int32_t wm_world_ai_count(const wm_world* w);
+
+/* ai.md §15 per boat and race. */
+typedef struct wm_ai_telemetry {
+  int32_t tacks, gybes, penalties, ocs;
+  int32_t activations[WM_AI_TACTIC_COUNT];  /* by WM_AI_TACTIC_* */
+  float stuck_s;                 /* below 0.3 m/s in spells longer than 5 s after the start */
+  float min_gap;                 /* smallest hull gap to a racing boat within 20 L after the warning, m (1e9: none) */
+  int32_t sail_changes;
+  int32_t bad_air_count;         /* records, wm_world_ai_bad_air */
+  float start_delay;             /* s after the gun (< 0: not started) */
+} wm_ai_telemetry;
+
+/* What the AI decided in the last tick, for tests and a debug overlay. */
+typedef struct wm_ai_debug {
+  int32_t tactic;                /* WM_AI_TACTIC_* */
+  float psi_target;              /* rad */
+  float d;                       /* smoothed wind deficit */
+  float twd_ref, twd_f, tws_f;   /* the AI's filtered wind */
+  int32_t leg;                   /* 0 beat, 1 reach, 2 run */
+  int32_t manoeuvre;
+  float aim_x, aim_y;            /* where it steers to */
+  float spot_x, spot_y;          /* its start spot */
+} wm_ai_debug;
+
+/* WM_ERR_ABSENT (zeroed record) for a boat no AI ever sailed. */
+WM_API wm_status wm_world_ai_telemetry(const wm_world* w, int32_t boat, wm_ai_telemetry* out);
+WM_API wm_status wm_world_ai_debug(const wm_world* w, int32_t boat, wm_ai_debug* out);
+/* ai.md §15 one bad-air record: the tick of the trigger, the deficit then and 20 s later (< 0: not yet). */
+WM_API wm_status wm_world_ai_bad_air(const wm_world* w, int32_t boat, int32_t i, uint32_t* tick, float* d_at,
+                                     float* d_after);
+
+/* ---- snapshots (conventions.md §9.1, ai.md §16) ------------------------------------------------------------ */
+
+/* The world snapshot between ticks: *data points at the bytes (valid until the next save or step of this world)
+ * and *size receives their count. */
+WM_API wm_status wm_world_save(wm_world* w, const uint8_t** data, size_t* size);
+/* Resumes a saved world in a new one: created with the same settings and venue, the same boats added in the same
+ * order (wm_world_add_boat or wm_world_add_ai_boat), no race, no step. `course` is the course the race was
+ * created with (null when the snapshot has no race). It then continues bit for bit. WM_ERR_LOAD with the reason
+ * when the snapshot does not match or is damaged; the world is then unusable. The controller callback and the AI
+ * skippers stay installed; load the skippers' memory with wm_world_ai_load before the next step. */
+WM_API wm_status wm_world_load(wm_world* w, const wm_course* course, const uint8_t* data, size_t size);
+/* ai.md §16 the AI skippers' memory, a block of its own taken with the world snapshot (same moment, between
+ * ticks); valid until the next save or step. */
+WM_API wm_status wm_world_ai_save(wm_world* w, const uint8_t** data, size_t* size);
+/* Replaces the skippers with the saved ones, after wm_world_load of the same snapshot and before the next step.
+ * WM_ERR_LOAD (the skippers unchanged) for a block of another tick, race seed or fleet, or a damaged one. */
+WM_API wm_status wm_world_ai_load(wm_world* w, const uint8_t* data, size_t size);
 
 /* ---- stepping ---------------------------------------------------------------------------------------------- */
 

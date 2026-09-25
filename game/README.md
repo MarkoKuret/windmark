@@ -13,12 +13,13 @@ controls, the cameras, the minimal HUD and a sail test scene that puts them toge
 | `scripts/sim/` | `SimSource` (the simulation interface), `CoreSimSource` (the core, through the GDExtension) and `CoreEnvSource` (its sea and wind for the Sea node), `FakeSim` and `FakeBoat` (placeholder), `SimRunner` (50 ms ticks), class loading |
 | `native/` | The GDExtension: `CoreSim` over `core/include/windmark.h` and `SailShape` (the per-vertex sail shapes) in `src/`, `build.sh`, `CMakeLists.txt`. Godot skips the folder (`.gdignore`) |
 | `bin/` | The built extension library and `windmark.gdextension`. Not committed |
+| `scripts/settings.gd` | `Settings`: the player's settings (`docs/specs/menus.md` §3), saved in `user://settings.cfg`, read through `Settings.current()` and applied with `apply_*` |
 | `scripts/controls/` | Input map defaults, device reader, `PlayerControls` (boat commands), sail key mapping, the input frame |
 | `scripts/cameras/` | `CameraRig` and the chase, onboard, aerial and free cameras, shake, onboard eye point |
 | `scripts/hud/` | `Hud`, `HudValues`, formats, bars and trim gauges; the race HUD: `RaceHudValues`, `RaceText` (rule texts, flags, signals), `RadarView`, `FlagsView`, `RoundingArrowView`, `PenaltyRingView` |
 | `scripts/venue/` | `VenueShapes` (the venue's land polygons and obstacles, from the core or the venue file), `LandTerrain` (the drawn ground height and colours), `ColorMesh` (vertex-coloured mesh builder) |
 | `shaders/` | Shaders. `sea_common`, `sky_common`, `wake_common` (`.gdshaderinc`) hold the water, sky and wake maths, written so the offline preview can compile them as GLSL too; `water_l/m/h` are the sea per quality tier, `sky`, `wake`, `wake_normal`; `boat` is the boat surface shader |
-| `scenes/` | Scenes. `sea/` is the sea (`sea.tscn`, `Sea`), its data source and wakes, and the daytime sky (`sky_day.tscn`, `SkyRig`, `env_day.tres`); `water_test.tscn` shows them together; `sail_test.tscn` is one boat sailing freely on the core (FakeSim as fallback), or racing alone on the example course, with cameras, controls and HUD on that sea and sky; `venue/` draws the venue land and obstacles (`VenueView`, `land.gdshader`); `course/` the course (`CourseView`, `CourseProps`) |
+| `scenes/` | Scenes. `sea/` is the sea (`sea.tscn`, `Sea`), its data source and wakes, and the daytime sky (`sky_day.tscn`, `SkyRig`, `env_day.tres`); `water_test.tscn` shows them together; `sail_test.tscn` is one boat sailing freely on the core (FakeSim as fallback), or racing alone on the example course, with cameras, controls and HUD on that sea and sky; `venue/` draws the venue land and obstacles (`VenueView`, `land.gdshader`); `course/` the course (`CourseView`, `CourseProps`); `menu/` the menus (`main_menu.tscn`, the main scene; `pause_menu.tscn`; the setup and settings panels, rows, theme and backdrop) |
 | `tests/` | Headless tests |
 | `generated/` | Build outputs staged for import (boatgen GLBs and sidecars). Not committed |
 | `.godot/` | Godot's import cache. Not committed |
@@ -136,6 +137,11 @@ components within 1 mm of the core's sea height.
 | `sea_height_at(x, y, t_s)` | sea height at any time (s since tick 0) |
 | `sea_components()`, `sea_exposure()`, `wind_state(t_ms)`, `current_at(x, y, t_ms)` | the Sea node's source calls (as `SeaEnvSource`), from the core: the drawn puffs are the ones the boats sail in. `CoreEnvSource` is the Node that hands them to the Sea (`source`) |
 | `boat_env(b)`, `wake_state(b, pose, own)`, `checksum()` | the wind, current and shadow the boat stepped in; the `SeaWakes.update_boat` state with the class waterline and transom; the tick checksum |
+| `add_ai(id, level, speed_only)` | an AI boat of class `id` sailed by the core's AI skippers (ai.md) at `level` (`AI_LEVELS`: easy, intermediate, expert, pro, or its index) |
+| `ai_take_over(b)`, `ai_release(b)`, `ai_has(b)` | an AI sails a boat as it is (a disconnected human, ai.md §14), hands it back; whether an AI sails it |
+| `ai_telemetry(b)`, `ai_debug(b)` | ai.md §15 per-race telemetry (tacks, gybes, penalties, OCS, tactic activations by name, stuck time, minimum gap, bad air records, start delay) and the last decision (tactic, target heading, filtered wind, leg, aim and start spot) |
+| `save_snapshot()`, `load_snapshot(snap, course)` | the world snapshot and the AI memory (`{world, ai}`, PackedByteArrays), into a new world with the same settings and boats |
+| `step_ticks(n, stop_when_closed)` | fast-forward without rendering (only the last tick's events stay readable) |
 | `core` | the `CoreSim` itself for everything else: race, course, results, splits (`race_split`), the start line status (`race_start_status`), rules state, pairs, race, rules and contact events, sail events, perf tables by name, polar |
 
 Records read every tick (`boat_state`, `boat_outputs`, `boat_controls`, `render_pose`, `sail`, `boat_env`) come from
@@ -149,6 +155,15 @@ others as Dictionaries with the C field names. `CoreSimSource` caches the per-bo
   frame, `apply_input`, `step`, `Hud.tick`, the sail snapshot), the Sea's render time, `render_pose`, the boat node
   (`BoatView.apply`, `apply_sails` between the last two sail snapshots) and `SeaWakes.update_boat`,
   `CameraRig.frame()`, `Hud.frame()`; the Sea and SeaWakes nodes then draw the frame.
+- **Race mode with AI** (`race_mode`, `fleet_size`, `ai_level`, `ai_speed_only`, `watch`): the player (boat 0)
+  and `fleet_size - 1` AI boats of the core's skippers on `course`, each drawn by its own `BoatView` (hull, rig,
+  sails at the distance update rates, wakes). The set-up comes from `GameSetup.current()` when the menus have
+  written one (`GameSetup.next`) or a test sets `setup`, else the scene's exports (free sailing); command-line
+  flags after `--` override both: `--race`, `--free`, `--fleet=10`, `--level=expert`, `--speed-only`, `--watch`
+  (an AI sails the player's boat too), `--class=wm12`, `--venue=`, `--course=<venue>/<id>`, `--seed=` (0: from
+  the clock), `--wind=<kn>`, `--wind-from=<deg>`, `--fake`, `--core`. Spectating (`spectate_next`, `prev`,
+  `leader` by race rank) works when not racing (`--watch`) or once the player has finished, retired or left.
+  To race in a window: `godot --path game res://scenes/sail_test.tscn -- --race --fleet=10 --level=intermediate`.
 - **Simulation** (`sim_kind`): `AUTO` (the default) runs the core through `CoreSimSource` when the GDExtension is
   loaded and `FakeSim` otherwise; `CORE` and `FAKE` force one. On the core the scene is free sailing without a race
   (`create(venue)`, `add_entry`, `place_boat` at `start_x`, `start_y`, `start_twa_deg` off the wind) on
@@ -284,6 +299,22 @@ runs on FakeSim), then `godot --path game res://scenes/sail_test.tscn` (after `-
 A/D helm (set and hold, ↓ centres), T auto-trim, W/S sheet, Space let fly, 1/2 sails, C camera, F5 to F8 camera
 modes, right mouse drag or IJKL orbit, wheel or O/U zoom, R recentre, Backspace reset (free sailing: back to the
 start point; race mode: restart the race), Esc pause, F10 hide HUD.
+
+## Menus
+
+`scenes/menu/main_menu.tscn` is the main scene (`docs/specs/menus.md`): Quick race, Free sail, Settings, Quit.
+Start writes `GameSetup.current()` and changes to `scenes/sail_test.tscn`. The pause menu is a scene of its own
+that the sail scene instances as a child; it follows the scene's pause, holds the boat's controls while open and
+applies the settings to the scene.
+
+```
+game/tests/run_menus_test.sh
+```
+
+checks that the lists match the files on disk, that a quick race and a free sail write `GameSetup` and ask for
+the sail scene, keyboard navigation, the settings file round trip, the apply calls, the layout at 1280 × 800 at
+every UI scale, and the pause menu over the sail scene on FakeSim. To look at the menus (opens a window):
+`godot --path game`.
 
 ## Venue land and the course
 

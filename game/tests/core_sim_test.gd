@@ -7,6 +7,8 @@ extends SceneTree
 ## - every SimSource call, the render pose between ticks, the input frame wire form, sail requests
 ## - a race world on example_bay: the sea renderer calls (components, exposure, wind state with puffs, current),
 ##   the sea clock, the drawn sea mirror against the core's height, race events, determinism
+## - AI boats (WM-016.24): add_ai, take over and release, telemetry and debug, and a race saved at the gun
+##   (world and AI memory) and continued in a new world to the same checksum
 
 const KNOT := 0.514444470
 
@@ -23,6 +25,7 @@ func _init() -> void:
 	t.ok(CoreSimSource.default_settings().has("race_seed"), "default settings")
 	_free_sailing()
 	_race_world()
+	_ai()
 	t.finish(self, "core sim test")
 
 
@@ -210,3 +213,48 @@ func _make_race() -> CoreSimSource:
 		t.ok(false, "create race: " + sim.last_error())
 		return null
 	return sim
+
+
+func _ai_world() -> CoreSimSource:
+	var sim := CoreSimSource.new()
+	sim.settings = {"race_seed": 5, "wind_speed": 11.0 * KNOT, "wind_from": 0.0, "shift_preset": 1,
+		"free_sailing_s": 5.0}
+	if not sim.create("example_bay"):
+		return null
+	sim.add_entry("wm7", {"human": true})
+	for i in 3:
+		sim.add_ai("wm7", ["intermediate", "expert", 3][i])
+	return sim
+
+
+func _ai() -> void:
+	t.begin("AI boats")
+	var a := _ai_world()
+	if not t.ok(a != null and a.create_race("example_bay/example_wl"), "race world with 3 AI boats"):
+		return
+	t.ok(a.boat_count() == 4 and not a.ai_has(0) and a.ai_has(1) and a.ai_has(3) and a.core.ai_count() == 3,
+		"boats 1 to 3 AI, the player not")
+	t.ok(CoreSimSource.ai_level_index("pro") == 3 and CoreSimSource.ai_level_index(2) == 2
+		and absf(CoreSim.ai_performance_scale(3) - 1.04) < 1e-6 and CoreSim.ai_tactic_name(1) == "Start",
+		"levels and tactic names")
+	var ctl: PackedFloat32Array = a.core.boat_controls(3)
+	t.ok(absf(ctl[4] - 1.04) < 1e-6, "the pro boat at its performance_scale")
+	t.ok(a.ai_telemetry(0).is_empty() and a.ai_telemetry(1).has("activations"), "telemetry only for AI boats")
+	t.ok(a.ai_take_over(0) and a.ai_has(0) and a.ai_release(0) and not a.ai_has(0), "take over and release")
+	var gun := int(a.core.race()["n_gun"])
+	a.step_ticks(gun - a.tick(), false)
+	var snap := a.save_snapshot()
+	t.ok(snap["world"].size() > 0 and snap["ai"].size() > 0, "snapshot at the gun (%d + %d bytes)"
+		% [snap["world"].size(), snap["ai"].size()])
+	a.step_ticks(1200, false)
+	var d := a.ai_debug(1)
+	var tel := a.ai_telemetry(1)
+	t.ok(tel["start_delay"] >= 0.0 and d.has("tactic_name") and d["aim"] is Vector2,
+		"AI started and decided (%s, start %.1f s after the gun)" % [d.get("tactic_name", "?"), tel["start_delay"]])
+	var b := _ai_world()
+	t.ok(b.load_snapshot(snap, "example_bay/example_wl") and b.tick() == gun, "loaded into a new world")
+	b.step_ticks(1200, false)
+	t.ok(b.checksum() == a.checksum() and b.tick() == a.tick(), "continues to the same checksum")
+	var c := _ai_world()
+	var bad := {"world": snap["world"], "ai": snap["ai"].slice(0, snap["ai"].size() - 3)}
+	t.ok(not c.load_snapshot(bad, "example_bay/example_wl"), "a damaged AI block is rejected")

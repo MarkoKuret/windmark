@@ -307,8 +307,9 @@ func test_race() -> void:
 	t.ok(bob_max - bob_min > 0.02, "the windward mark rides the sea (%.2f m)" % (bob_max - bob_min))
 	t.ok(started_seen, "the boat started")
 	t.ok(laylines_seen and layline_ok, "laylines at the polar VMG angles of the smoothed wind, red port, green starboard")
-	var txt: String = sc._race_label.text
-	t.ok(txt.contains("Next: Windward"), "race status names the next mark (%s)" % txt.replace("\n", " | "))
+	sc.hud.refresh_text()
+	var txt: String = sc.hud.text_of("next")
+	t.ok(txt == "Windward", "the race HUD names the next mark (%s)" % txt)
 	# reset restarts the race
 	r.pressed.clear()
 	r.pressed.append(&"reset_boat")

@@ -768,6 +768,28 @@ Array CoreSim::results() const {
   return out;
 }
 
+double CoreSim::race_split(int64_t boat, int64_t step) const {
+  float t = 0.0f;
+  if (world_ == nullptr || wm_world_race_split(world_, i32(boat), i32(step), &t) != WM_OK) return NAN;
+  return t;
+}
+
+Dictionary CoreSim::race_start_status(int64_t boat) const {
+  Dictionary d;
+  wm_start_status st{};
+  if (world_ == nullptr || wm_world_race_start_status(world_, i32(boat), &st) != WM_OK) return d;
+  d["a"] = Vector2(st.ax, st.ay);
+  d["b"] = Vector2(st.bx, st.by);
+  d["s_bow"] = st.s_bow;
+  d["u_bow"] = st.u_bow;
+  d["in_band"] = st.in_band != 0;
+  d["course_side"] = st.course_side != 0;
+  d["in_triangle"] = st.in_triangle != 0;
+  d["pre_start"] = st.pre_start != 0;
+  d["over"] = st.over != 0;
+  return d;
+}
+
 Dictionary CoreSim::boat_rules(int64_t boat) const {
   Dictionary d;
   wm_boat_rules r{};
@@ -980,6 +1002,8 @@ void CoreSim::_bind_methods() {
   ClassDB::bind_method(D_METHOD("race_boat", "boat"), &CoreSim::race_boat);
   ClassDB::bind_method(D_METHOD("race_order"), &CoreSim::race_order);
   ClassDB::bind_method(D_METHOD("results"), &CoreSim::results);
+  ClassDB::bind_method(D_METHOD("race_split", "boat", "step"), &CoreSim::race_split);
+  ClassDB::bind_method(D_METHOD("race_start_status", "boat"), &CoreSim::race_start_status);
   ClassDB::bind_method(D_METHOD("boat_rules", "boat"), &CoreSim::boat_rules);
   ClassDB::bind_method(D_METHOD("pairs"), &CoreSim::pairs);
   ClassDB::bind_method(D_METHOD("race_events"), &CoreSim::race_events);

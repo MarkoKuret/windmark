@@ -231,3 +231,101 @@ func apply_input(_boat: int, _frame: InputFrame) -> int:
 ## one 50 ms tick
 func step() -> void:
 	pass
+
+
+# ---- race and rules (race.md, rules.md §11): the HUD's readers. A sim without a race (FakeSim, free sailing)
+# returns the empty values below. Dictionaries carry the C API's field names (CoreSim, game/README.md).
+
+## whether a race exists
+func has_race() -> bool:
+	return false
+
+
+## race.md §3 race record: state, sequence, prep_flag, n_gun, race_time, x_flag, rules_live, twd_mean, ...
+func race() -> Dictionary:
+	return {}
+
+
+## race.md §4 to §8 per boat: started, ocs, ocs_i, returning, next, last_rounded, finished, t_finish_us, place,
+## ghost, retired, dsq, code, D, rank
+func race_boat(_boat: int) -> Dictionary:
+	return {}
+
+
+## boat indices by live rank (race.md §8.3)
+func race_order() -> PackedInt32Array:
+	return PackedInt32Array()
+
+
+## the resolved course: id, twd_c, laps, marks [{id, type, x, y, radius, ...}], steps [{kind, marks, sides,
+## lap, leg_in_lap, ref}], boundary
+func course() -> Dictionary:
+	return {}
+
+
+## display labels of the course file by mark id (courses.md §8), {} when none
+func course_labels() -> Dictionary:
+	return {}
+
+
+## race.md §9 results (after the close): [{boat, place, code, code_name, points, t_finish_us, projected}]
+func results() -> Array:
+	return []
+
+
+## race.md §8.4 race time (s) at which the boat completed step `step` (0: her start), NAN when not yet
+func race_split(_boat: int, _step: int) -> float:
+	return NAN
+
+
+## race.md §3.3 the rules hull against the start line now: a, b (oriented ends), s_bow, u_bow, in_band,
+## course_side, in_triangle, pre_start, over (under the race's prep flag); {} without a race
+func race_start_status(_boat: int) -> Dictionary:
+	return {}
+
+
+## rules.md §11.2 per boat: tack, tacking, turning_for_penalty, turn_progress (rad), turn_tacks, turn_gybes,
+## pending [{rule, rule_name, other, tick, count}], served, received, deadline_s (< 0 none), dsq, ...
+func boat_rules(_boat: int) -> Dictionary:
+	return {}
+
+
+## rules.md §11.1 pair records of the boats in range
+func pairs() -> Array:
+	return []
+
+
+## race.md §11 events of the last tick
+func race_events() -> Array:
+	return []
+
+
+## rules.md §11.3 events of the last tick
+func rules_events() -> Array:
+	return []
+
+
+## rules.md §7.9 hail for room to tack: {available (a valid hail can be made now), hailed_by (boat index or -1)};
+## {} while the core has no hail state
+func hail_state(_boat: int) -> Dictionary:
+	return {}
+
+
+## the AI level sailing boat b ("Expert"; "AI" for a boat an AI took over), "" for a human
+func ai_level(_boat: int) -> String:
+	return ""
+
+
+## ai.md §3.1 polar VMG optima at TWS: {up_twa, up_speed, down_twa, down_speed}, {} when unknown
+func polar_vmg(_boat: int, _tws: float) -> Dictionary:
+	return {}
+
+
+## polar speed of a config (front sail index, -1 main only) at TWS and TWA, NAN when unknown
+func polar(_boat: int, _tws: float, _twa: float, _front_sail: int) -> float:
+	return NAN
+
+
+## wind.md §7 current at a point and environment time (ms), Vector2(east, north) m/s
+func current_at(_x: float, _y: float, _t_ms: float) -> Vector2:
+	return Vector2.ZERO

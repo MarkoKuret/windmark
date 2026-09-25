@@ -1,9 +1,11 @@
 ---
 id: WM-017
 title: 'Boatgen: full grid topology for pointed-head sails'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-09-25 13:43'
+updated_date: '2026-09-25 16:42'
 labels:
   - boats
 dependencies: []
@@ -19,7 +21,7 @@ Jib, code zero and spinnaker heads are collapsed to one point, and the degenerat
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Every sail grid vertex is referenced by the index buffer (keep the full (rows-1) x (cols-1) x 2 triangles per layer, or reference the head corner)
-- [ ] #2 Collapsed head vertices carry the sail layer normal, never the fallback
-- [ ] #3 game/tests/run_boat_import_test.sh shows no sail WARN lines
+- [x] #1 Every sail grid vertex is referenced by the index buffer (keep the full (rows-1) x (cols-1) x 2 triangles per layer, or reference the head corner)
+- [x] #2 Collapsed head vertices carry the sail layer normal, never the fallback
+- [x] #3 game/tests/run_boat_import_test.sh shows no sail WARN lines
 <!-- AC:END -->

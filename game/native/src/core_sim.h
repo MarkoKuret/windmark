@@ -9,6 +9,7 @@
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
+#include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/packed_float32_array.hpp>
 #include <godot_cpp/variant/string.hpp>
 #include <godot_cpp/variant/vector2.hpp>
@@ -48,8 +49,28 @@ class CoreSim : public godot::RefCounted {
   bool protest(int64_t boat);
   static godot::PackedByteArray encode_input(double h_cmd, double sheet_cmd, int64_t sail_req, int64_t flags);
 
+  // AI skippers (ai.md; levels 0 easy, 1 intermediate, 2 expert, 3 pro)
+  int64_t add_ai_boat(const godot::String& perf_path, int64_t level, bool speed_only);
+  bool ai_add(int64_t boat, int64_t level, bool speed_only);
+  bool ai_take_over(int64_t boat);
+  bool ai_release(int64_t boat);
+  bool ai_add_autopilot(int64_t boat);
+  bool ai_has(int64_t boat) const;
+  int64_t ai_count() const;
+  godot::Dictionary ai_telemetry(int64_t boat) const;
+  godot::Dictionary ai_debug(int64_t boat) const;
+  static double ai_performance_scale(int64_t level);
+  static godot::String ai_tactic_name(int64_t tactic);
+
+  // snapshots
+  godot::PackedByteArray save_world();
+  bool load_world(const godot::String& course_path, const godot::PackedByteArray& bytes);
+  godot::PackedByteArray ai_save();
+  bool ai_load(const godot::PackedByteArray& bytes);
+
   // stepping
   int64_t step();
+  int64_t step_ticks(int64_t n, bool stop_when_closed);
   int64_t checksum() const;
   int64_t tick() const;
   int64_t boat_count() const;

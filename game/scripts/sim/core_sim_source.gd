@@ -30,6 +30,9 @@ const ENV_FIELDS := [
 	"shadow_header", "shadow_source",
 ]
 
+## AI levels by name, in the C API's order (WM_AI_*, ai.md §13)
+const AI_LEVELS := ["easy", "intermediate", "expert", "pro"]
+
 ## the CoreSim object (untyped: see above); null until create()
 var core: Object = null
 ## world settings used by the next create(), CoreSim.default_settings() keys (race_seed, wind_speed, wind_from,
@@ -113,6 +116,84 @@ func add_entry(id: String, entry := {}) -> int:
 	_boat_class[b] = id
 	_cache.clear()
 	return b
+
+
+## Adds an AI boat of class `id` sailed by the core's AI skippers (ai.md) at `level` (an AI_LEVELS name or its
+## index); `speed_only`: Intermediate decisions with the level's performance_scale. Returns the boat index.
+func add_ai(id: String, level: Variant = "intermediate", speed_only := false) -> int:
+	var lv := ai_level_index(level)
+	var b: int = core.add_ai_boat(BoatClassData.repo_path("data/perf/%s.perf.json" % id), lv, speed_only)
+	if b < 0:
+		_err = core.last_error()
+		push_error("CoreSimSource: add AI boat %s: %s" % [id, _err])
+		return -1
+	while _boat_class.size() <= b:
+		_boat_class.append("")
+	_boat_class[b] = id
+	_cache.clear()
+	return b
+
+
+## The C API level of a name ("expert") or index; unknown names give intermediate.
+static func ai_level_index(level: Variant) -> int:
+	if level is int:
+		return clampi(level, 0, AI_LEVELS.size() - 1)
+	var i := AI_LEVELS.find(String(level).to_lower())
+	return i if i >= 0 else 1
+
+
+## ai.md §14: an AI takes over boat b as it is (a disconnected human), release hands it back.
+func ai_take_over(b: int) -> bool:
+	return core.ai_take_over(b)
+
+
+func ai_release(b: int) -> bool:
+	return core.ai_release(b)
+
+
+## Whether an AI sails boat b now.
+func ai_has(b: int) -> bool:
+	return core != null and core.ai_has(b)
+
+
+## ai.md §15 telemetry of an AI boat ({} for a boat no AI sailed): tacks, gybes, penalties, ocs, activations
+## (tactic name -> count), stuck_s, min_gap, sail_changes, bad_air ([tick, d_at, d_after]), start_delay.
+func ai_telemetry(b: int) -> Dictionary:
+	return core.ai_telemetry(b)
+
+
+## The AI's last decision: tactic, tactic_name, psi_target, d, twd_ref, twd_f, tws_f, leg, manoeuvre, aim, spot.
+func ai_debug(b: int) -> Dictionary:
+	return core.ai_debug(b)
+
+
+## The world snapshot and the AI skippers' memory, taken between ticks (conventions.md §9.1, ai.md §16).
+func save_snapshot() -> Dictionary:
+	return {"world": core.save_world(), "ai": core.ai_save()}
+
+
+## Resumes a save_snapshot() in this world, which must be new: created with the same settings and venue and the same
+## boats added in the same order, no race. `course` as create_race takes it ("" when the save has no race).
+func load_snapshot(snap: Dictionary, course := "") -> bool:
+	var path := course
+	if course != "" and not course.ends_with(".json"):
+		path = BoatClassData.repo_path("game/data/courses/%s.course.json" % course)
+	_cache.clear()
+	if not core.load_world(path, snap.get("world", PackedByteArray())):
+		_err = core.last_error()
+		return false
+	if snap.has("ai") and not core.ai_load(snap["ai"]):
+		_err = core.last_error()
+		return false
+	return true
+
+
+## Fast-forward without rendering: n ticks, or fewer when the race closes first; returns the ticks stepped.
+## Only the last tick's events stay readable.
+func step_ticks(n: int, stop_when_closed := true) -> int:
+	var k: int = core.step_ticks(n, stop_when_closed)
+	_cache.clear()
+	return k
 
 
 func place_boat(b: int, x: float, y: float, psi: float) -> bool:

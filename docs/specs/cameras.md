@@ -120,7 +120,7 @@ A fly camera for looking around the course, spectating and replays.
 - Mouse look (0.15° per pixel) or right stick (90°/s yaw, 60°/s pitch); pitch limited to ±89°; roll 0.
 - Kept at least 1 m above the sea (§7) and within 10 km of the venue origin.
 - First selection in a race: 60 m behind and 40 m above the viewed boat, looking at it. Recentre: back to that pose.
-- Lobbies and ranked play may disable the free and aerial cameras (`hud.md` §14 presets, `networking.md` §12).
+- The free and aerial cameras are available in every mode, ranked play included (`networking.md` §12).
 
 ## 6. Switching and presets
 

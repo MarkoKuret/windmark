@@ -266,7 +266,7 @@ sail moves continuously through the gybe.
 
 | phase | main | jib, genoa, code zero on a halyard | on a furler (`furling`) | spinnakers |
 | --- | --- | --- | --- | --- |
-| `down` | (never) | hidden | drawn furled, `p = 0` of §8.3 | hidden |
+| `down` | (never) | hidden | hidden (for now; drawing it furled with `p = 0` of §8.3 is backlog work) | hidden |
 | `prepare_hoist` | – | §8.2 with `p = 0`: flaked on deck | §8.3 with `p = 0` | §8.4 with `c = 0`: a small bag at the tack |
 | `hoisting` | – | §8.2, `p = progress` | §8.3, `p = progress` | §8.4, `c = progress` |
 | `up`, `prepare_drop` | §6.1 | §6.2 | §6.2 | §6.3 / §6.4 |

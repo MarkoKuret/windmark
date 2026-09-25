@@ -119,11 +119,11 @@ the stick out of its dead zone takes it back. The source that moved last wins.
 
 ### 5.2 Helm keys
 Two modes (option, per player):
-- **Hold to steer** (default). While a helm key is held, `h_cmd = ±k(t)` with the ramp
+- **Set and hold** (default). A held key moves `h_cmd` at ±0.6 per second (±0.2 with `helm_fine`); on release the
+  helm stays where it is; `helm_centre` (↓) sets 0. Suited to long reaches and to players who helm like a tiller.
+- **Hold to steer.** While a helm key is held, `h_cmd = ±k(t)` with the ramp
   `k(t) = min(1, 0.25 + 0.75·t / 0.8 s)` (`t` = time held), limited to 0.35 with `helm_fine`. On release `h_cmd = 0`
   and the core brings the rudder back at `helm_rate`. Both keys held: the later one wins.
-- **Set and hold.** A held key moves `h_cmd` at ±0.6 per second (±0.2 with `helm_fine`); on release the helm stays
-  where it is; `helm_centre` sets 0. Suited to long reaches and to players who helm like a tiller.
 
 ### 5.3 Sheet
 `sheet_cmd = u` ∈ [0, 1], 0 = sheeted hard in, 1 = fully eased (`sails.md` §5.2). Only used with auto-trim off.
@@ -175,7 +175,7 @@ slot after `F`.
 | option | default | range / values |
 | --- | --- | --- |
 | rebinding | defaults of §3 | every action, two keyboard/mouse bindings and one gamepad binding; conflicts shown |
-| helm key mode | hold to steer | hold to steer, set and hold (§5.2) |
+| helm key mode | set and hold | set and hold, hold to steer (§5.2) |
 | helm stick dead zone, curve | 0.10, 1.6 | 0–0.30, 1.0–3.0 |
 | sheet key rate scale | 1.0 | 0.5–2.0 |
 | hold or toggle | hold | per action: `let_fly`, `helm_fine`, `rankings`, `camera_boost` |
@@ -213,3 +213,5 @@ slot after `F`.
 6. Focus: with let-fly held, opening chat clears `let_fly` in the next stamped frame.
 7. Last-moved source: a stick outside its dead zone overrides held helm keys; releasing the stick into its dead zone
    for 0.5 s gives the keys back.
+8. Set and hold: holding → for 0.5 s from centre gives `h_cmd = 0.30` and it stays 0.30 after release; ↓ gives 0 in
+   the next frame; the same at 30, 60 and 144 fps within 0.5 %.

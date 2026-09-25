@@ -17,7 +17,7 @@ bits on every platform. That requirement drives most of this document.
 
   | name | value | float32 |
   | --- | --- | --- |
-  | `KNOT` | 1852/3600 m/s | `0.514444470f` (0x3F03B3F9) |
+  | `KNOT` | 1852/3600 m/s | `0.514444470f` (0x3F03B2A2) |
   | `DEG` | π/180 rad | `0.0174532924f` (0x3C8EFA35) |
 
 - Gravity `G = 9.81f` m/s² (used by the sea, `sea.md`).

@@ -49,6 +49,12 @@ target_sources(windmark_core PRIVATE
   src/boat/boat.cpp
   src/sails/sails.cpp
 )
+
+# collisions (WM-008): collisions.md
+target_sources(windmark_core PRIVATE
+  src/collide/collide.cpp
+)
+
 # course files, race flow, racing rules and the world loop (WM-009): courses.md, race.md, rules.md
 target_sources(windmark_core PRIVATE
   src/course/geometry.cpp

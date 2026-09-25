@@ -67,6 +67,7 @@ Sources live in `src/<module>/`, included as `"module/header.h"`, all in namespa
 | `src/boat/` | `boat_env`: the environment a boat step reads (`BoatEnv`, `SeaSurface`); `hull_sampling`: hull points, mean height and wave pitch and roll; `boat`: state, controls, the tick, snapshot save and load, AI lookups | boat.md, sea.md §5 |
 | `src/sails/` | inventory, the sail-change queue (peels, cancels, timing, slowdown), trim, sail motion, trim error and luff outputs | sails.md |
 | `src/data/` | strict JSON reader with correctly rounded binary32 numbers, load errors with JSON paths, the `windmark.perf/1` loader and validator, the `windmark.boatclass/1` header reader and the perf-to-class check; `venue`: the `windmark.venue/1` loader and validator | data_format.md |
+| `src/collide/` | `collide`: shape tests (separating axes, circle, land with its band index), the static `CollisionScene`, the tick-6 step `Collisions::step` (detection, response, contact events) and the contact pair set | collisions.md |
 | `tests/` | doctest suite and the math vector file | |
 | `tools/` | `gen_math_vectors.cpp`, `gen_env_vectors.cpp` | |
 | `third_party/doctest/` | doctest 2.4.12 (MIT), test framework | |
@@ -75,7 +76,6 @@ Planned modules, one directory each under `src/`, in the tick order of `conventi
 
 | path | role | spec |
 | --- | --- | --- |
-| `src/collisions/` | detection, response, contact events | collisions.md |
 | `src/race/` | race state machine, course and marks | race.md, courses.md |
 | `src/rules/` | racing rules and penalties | rules.md |
 | `src/ai/` | AI helms | ai.md |

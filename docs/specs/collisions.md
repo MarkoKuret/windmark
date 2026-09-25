@@ -47,7 +47,9 @@ From the course (`race.md`) and the venue (`data_format.md` §6.5):
 | `obstacle` (moored boats, piers, rocks) | convex polygon or circle | venue file |
 | `land` | polygon, counter-clockwise, interior = land; islands are separate polygons | venue file |
 
-All of them are static (they never move and have infinite mass).
+All of them are static (they never move and have infinite mass). A course object's polygon is given in its own
+body frame (x forward, y port) around its position and placed with its heading like a hull (§2.1); obstacle and
+land polygons are in world coordinates.
 
 ## 3. Detection
 
@@ -78,8 +80,9 @@ normal = axis, flipped if dot(axis, centre_A - centre_B) < 0     // points from 
 point  = from_A ? the vertex of B with the largest projection on +normal    (the B vertex deepest inside A)
                 : the vertex of A with the largest projection on -normal    (the A vertex deepest inside B)
 ```
-Vertex ties go to the lower index. `centre` is the boat's `pos` (its hull reference point) or the polygon's
-centroid.
+Vertex ties go to the lower index. `centre` is the boat's `pos` (its hull reference point), a course object's
+position, or for an obstacle polygon the mean of its vertices (summed in order). The same centre and the largest
+vertex distance from it give a polygon's bounding circle for the broad phase.
 
 ### 3.3 Circle vs polygon
 Circle `(c, r)`, polygon `A`:
@@ -89,7 +92,8 @@ if c is inside A (all edge tests <= 0):
     normal = -outward_normal(e)            // from the circle toward the inside of A
     depth = r + dist(c, line(e)) ; point = c
 else:
-    q = the closest point to c on A's boundary (lowest edge index on ties)
+    q = the closest point to c on A's boundary (clamped projection on each edge; the smallest squared
+        distance wins, lowest edge index on ties)
     d = |q - c| ; if d >= r: no contact
     normal = (q - c) / d ; depth = r - d ; point = q
 ```
@@ -98,16 +102,26 @@ else:
 For boat `A` and land polygon `L`:
 ```
 candidates:
-  (a) each vertex w of A inside L (crossing-number test, below):
+  (a) each vertex w of A inside L (crossing-number test, below), in vertex order:
         e = the edge of L nearest to w ; depth = dist(w, e) ; normal = outward normal of e (toward water) ; point = w
-  (b) each vertex q of L inside A:
+  (b) each vertex q of L strictly inside A (every edge test < 0), in vertex order:
         e = the edge of A nearest to q ; depth = dist(q, line(e)) ; normal = -outward_normal(e) ; point = q
-contact = the candidate with the largest depth (first found on ties: (a) before (b), then by index)
+contact = the candidate with the largest depth (first found on ties: (a) before (b), then by index);
+          no contact if no candidate has depth > 0
 ```
 Crossing number of point `p` against `L` (half-open rule, deterministic on vertices):
 edge `(a, b)` crosses when `(a.y > p.y) != (b.y > p.y)` and
 `p.x < a.x + (p.y − a.y) * (b.x − a.x) / (b.y − a.y)`; `p` is inside when the count is odd.
-Distances to edges use the clamped projection on the segment.
+Distances to edges use the clamped projection on the segment; the nearest edge of `L` is the one with the smallest
+squared distance (lowest index on ties), and `depth` is the square root of it.
+
+Spatial index (built once when the scene is set up): the polygon's y range is cut into `clamp(n/8, 1, 1024)`
+equal bands; each band lists, in index order, the edges whose y range touches it and the vertices inside it. The
+crossing test reads only the edges of `p`'s band (every edge that can cross the horizontal through `p` is there);
+the nearest-edge search scans bands outward from `p`'s band and stops once the unscanned bands are more than the
+best distance away (with one band of slack for rounding); candidates (b) come from the bands the boat's bounding
+circle covers. A boat whose bounding circle misses the polygon's bounding box skips the polygon. The results are
+identical to testing every edge and vertex.
 
 ### 3.5 Tunnelling
 The fastest boats move under 1.2 m per tick and the smallest shape is about 1.6 m across, so discrete tests are
@@ -123,21 +137,26 @@ Constants:
 | `PUSH` | 0.8 | fraction of the remaining penetration removed per contact |
 | `PUSH_MAX` | 0.5 m | largest correction per contact |
 | `REST_BOAT`, `REST_MARK`, `REST_FIXED` | 0.2, 0.3, 0.1 | restitution boat–boat, boat–mark/course object, boat–obstacle/land |
-| `FRICTION_BOAT`, `FRICTION_FIXED` | 0.3, 0.5 | Coulomb friction coefficients |
+| `FRICTION_BOAT`, `FRICTION_FIXED` | 0.3, 0.5 | Coulomb friction coefficients: boat–boat, boat–any static shape (marks included) |
 | `YAW_KICK_MAX` | 1.0 rad/s | clamp of `contact_yaw_rate` |
 | `CONTACT_KEEP` | 0.9 per tick | decay of the contact velocity and yaw rate (`boat.md` §5.10; e-folding time 0.47 s) |
+| `CONTACT_GAP` | 30 ticks (1.5 s) | ticks without contact before the same pair gives a new `begin` (§5) |
 
-For each contact in list order (a single pass; each contact sees the velocities left by the previous ones):
+All contacts are detected first (§3.1, on the positions after the boat steps), then each is resolved in list order
+(a single pass; each contact sees the velocities left by the previous ones and moves the boats further, but its
+`point`, `normal` and `depth` stay as detected):
 
 ### 4.1 Separate
 ```
 corr = min(max(depth - SLOP, 0) * PUSH, PUSH_MAX)
-boat-boat: A.pos += normal * (corr * mB/(mA+mB)) ; B.pos -= normal * (corr * mA/(mA+mB))
+boat-boat: A.pos += normal * ((corr*mB) / (mA+mB)) ; B.pos -= normal * ((corr*mA) / (mA+mB))
 fixed:     A.pos += normal * corr
 ```
 
 ### 4.2 Impulse
-Ground velocity of a boat: `V = (v·f + current) + contact_v` (`boat.md` §5.10); fixed objects have `V = 0`.
+Ground velocity of a boat: `V = (v·f + current) + contact_v` (`boat.md` §5.10), with `current` the current at the
+boat that its step read this tick (step 5); fixed objects have `V = 0`. `vr` is taken before the separation of the
+same contact (the separation moves positions only).
 ```
 vr = V_A - V_B ; vn = dot(vr, normal)
 if vn < 0:                                              // closing
@@ -152,7 +171,7 @@ apply(boat, J):
     dv = dot(dV, f)                                      // forward part
     v  = v + dv
     contact_v = contact_v + (dV - f*dv)                  // the rest, over the ground
-    r = point - pos
+    r = point - pos                                      // pos as detected (before this tick's separations)
     torque = r.x*J.y - r.y*J.x                           // counter-clockwise positive
     contact_yaw_rate = clamp(contact_yaw_rate - torque / yaw_inertia, -YAW_KICK_MAX, YAW_KICK_MAX)
 ```
@@ -177,9 +196,12 @@ Every resolved contact produces one event, in list order:
 | `point`, `normal`, `depth` | as detected |
 | `closing_speed` | `max(0, −vn)` before the impulse, m/s |
 | `impulse` | `j` (0 when not closing) |
-| `begin` | true if the same pair had no contact in the previous tick |
+| `begin` | true if the same pair had no contact in the previous `CONTACT_GAP` ticks |
 
-The per-pair "in contact last tick" flags are state (a sorted list of pair keys, serialised after the boats).
+A pair is `(boat A, other_kind, other)`. `begin` is debounced so that a glancing touch that bounces off and
+touches again a moment later (a hull sliding past a mark, a boat grinding along a pier) is one incident for the
+rules, the audio and the camera: a pair gives a new `begin` only after `CONTACT_GAP` ticks without contact. The
+pair set is state (§6).
 Consumers: the rules engine (boat–boat contact, touching a mark or a course object, `rules.md`) in tick step 1 of
 the next tick, the audio and camera shake (`begin` with `closing_speed`), replays.
 
@@ -188,18 +210,27 @@ the next tick, the audio and camera shake (`begin` with `closing_speed`), replay
 | name | meaning |
 | --- | --- |
 | per boat: `collides` | set by the race layer |
-| contact pair set | pairs in contact at the end of the last tick, for `begin` |
+| contact pair set | pairs with a contact in the last `CONTACT_GAP` ticks, for `begin` |
+
+The pair set is a list of `(key, age)` sorted by `key`: `key = (uint64)boat << 36 | (uint64)kind << 32 |
+(uint32)other` with `kind` numbered `boat` 0, `mark` 1, `course_object` 2, `obstacle` 3, `land` 4, and `age` the
+ticks since the pair's last contact. At the end of each collision step every pair with a contact now gets
+`age = 0`, every other pair `age + 1`, and a pair whose age reaches `CONTACT_GAP` leaves the list. Serialised after
+the boats (conventions.md §9): `count` (uint32), then per pair `key` (uint64) and `age` (uint8), in list order.
+A new race starts with an empty list.
 
 The boat values changed by collisions (`pos`, `v`, `contact_vx/vy`, `contact_yaw_rate`) are boat state
 (`boat.md` §3).
 
 ## 7. Tests
 
-1. Head-on at 3 m/s each, equal masses: after the contact the closing speed is 0.2 × the initial one and both
-   boats' forward speeds dropped by the same amount.
+1. Head-on at 3 m/s each, equal masses: after the contact the closing speed along the contact normal is 0.2 × the
+   one before and both boats' forward speeds dropped by the same amount (momentum is kept). Pointed bows meeting
+   stem to stem touch along a bow edge, so the normal is oblique and the boats glance off each other.
 2. T-bone: the struck boat gains lateral `contact_v` and a yaw rate in the direction of the push; both decay to
    under 10 % within 1.1 s.
 3. A boat sailing into land at 45° slides along it without passing through for 30 s.
-4. Mark touch: a boat passing 0.5 m inside a mark's radius produces exactly one `begin` event.
+4. Mark touch: a boat whose track passes 0.5 m inside a mark's radius produces exactly one `begin` event (it may
+   graze the mark more than once as it bounces off).
 5. Rotating the vertex list of a land polygon (a different start vertex) does not change whether a contact is
    found or its depth.

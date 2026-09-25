@@ -129,6 +129,11 @@ components within 1 mm of the core's sea height.
 | `sea_height_at(x, y, t_s)` | sea height at any time (s since tick 0) |
 | `sea_components()`, `sea_exposure()`, `wind_state(t_ms)`, `current_at(x, y, t_ms)` | the Sea node's source calls (as `SeaEnvSource`), from the core: the drawn puffs are the ones the boats sail in. `CoreEnvSource` is the Node that hands them to the Sea (`source`) |
 | `boat_env(b)`, `wake_state(b, pose, own)`, `checksum()` | the wind, current and shadow the boat stepped in; the `SeaWakes.update_boat` state with the class waterline and transom; the tick checksum |
+| `add_ai(id, level, speed_only)` | an AI boat of class `id` sailed by the core's AI skippers (ai.md) at `level` (`AI_LEVELS`: easy, intermediate, expert, pro, or its index) |
+| `ai_take_over(b)`, `ai_release(b)`, `ai_has(b)` | an AI sails a boat as it is (a disconnected human, ai.md §14), hands it back; whether an AI sails it |
+| `ai_telemetry(b)`, `ai_debug(b)` | ai.md §15 per-race telemetry (tacks, gybes, penalties, OCS, tactic activations by name, stuck time, minimum gap, bad air records, start delay) and the last decision (tactic, target heading, filtered wind, leg, aim and start spot) |
+| `save_snapshot()`, `load_snapshot(snap, course)` | the world snapshot and the AI memory (`{world, ai}`, PackedByteArrays), into a new world with the same settings and boats |
+| `step_ticks(n, stop_when_closed)` | fast-forward without rendering (only the last tick's events stay readable) |
 | `core` | the `CoreSim` itself for everything else: race, course, results, rules state, pairs, race, rules and contact events, sail events, perf tables by name, polar |
 
 Records read every tick (`boat_state`, `boat_outputs`, `boat_controls`, `render_pose`, `sail`, `boat_env`) come from
@@ -142,6 +147,15 @@ others as Dictionaries with the C field names. `CoreSimSource` caches the per-bo
   frame, `apply_input`, `step`, `Hud.tick`, the sail snapshot), the Sea's render time, `render_pose`, the boat node
   (`BoatView.apply`, `apply_sails` between the last two sail snapshots) and `SeaWakes.update_boat`,
   `CameraRig.frame()`, `Hud.frame()`; the Sea and SeaWakes nodes then draw the frame.
+- **Race mode with AI** (`race_mode`, `fleet_size`, `ai_level`, `ai_speed_only`, `watch`): the player (boat 0)
+  and `fleet_size - 1` AI boats of the core's skippers on `course`, each drawn by its own `BoatView` (hull, rig,
+  sails at the distance update rates, wakes). The set-up comes from `GameSetup.current()` when the menus have
+  written one (`GameSetup.next`) or a test sets `setup`, else the scene's exports (free sailing); command-line
+  flags after `--` override both: `--race`, `--free`, `--fleet=10`, `--level=expert`, `--speed-only`, `--watch`
+  (an AI sails the player's boat too), `--class=wm12`, `--venue=`, `--course=<venue>/<id>`, `--seed=` (0: from
+  the clock), `--wind=<kn>`, `--wind-from=<deg>`, `--fake`, `--core`. Spectating (`spectate_next`, `prev`,
+  `leader` by race rank) works when not racing (`--watch`) or once the player has finished, retired or left.
+  To race in a window: `godot --path game res://scenes/sail_test.tscn -- --race --fleet=10 --level=intermediate`.
 - **Simulation** (`sim_kind`): `AUTO` (the default) runs the core through `CoreSimSource` when the GDExtension is
   loaded and `FakeSim` otherwise; `CORE` and `FAKE` force one. On the core the scene is free sailing without a race
   (`create(venue)`, `add_entry`, `place_boat` at `start_x`, `start_y`, `start_twa_deg` off the wind) on

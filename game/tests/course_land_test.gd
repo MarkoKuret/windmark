@@ -7,7 +7,10 @@ extends SceneTree
 ##   - reset_boat re-places the boat at its start point (free sailing) and restarts the race (race mode)
 ##   - race mode: marks at the core's course positions riding the sea, committee boat heading, start and finish
 ##     lines from the race state, flags per signal, laylines per hud.md §6, and a run through every start signal
-##   godot --headless --path game -s res://tests/course_land_test.gd
+##   - race mode with AI (WM-016.24): the player and 5 AI boats of the core's skippers through the start and the
+##     first mark in the scene, every boat's node at its core render pose with sails and wakes, the AI boats
+##     finishing when the sim is fast-forwarded headless; GameSetup read by the scene; the frame cost with 10 boats
+##   godot --headless --path game -s res://tests/course_land_test.gd [-- --only=ai]
 
 var t := TestLog.new()
 
@@ -16,18 +19,29 @@ func _init() -> void:
 	if not t.ok(CoreSimSource.available(), "GDExtension loaded (game/native/build.sh)"):
 		t.finish(self, "course land test")
 		return
-	test_shapes()
-	await test_land_scene()
-	await test_reset_free()
-	await test_race()
+	# `-- --only=ai` runs the AI race parts only (ai, setup, cost)
+	var only := ""
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--only="):
+			only = a.trim_prefix("--only=")
+	if only == "":
+		test_shapes()
+		await test_land_scene()
+		await test_reset_free()
+		await test_race()
+	await test_ai_race()
+	await test_setup()
+	await test_frame_cost()
 	t.finish(self, "course land test")
 
 
-func _scene(race: bool, x := 0.0, y := -300.0, twa := 45.0) -> Node:
+func _scene(race: bool, x := 0.0, y := -300.0, twa := 45.0, fleet := 1, level := "intermediate") -> Node:
 	var sc := (load("res://scenes/sail_test.tscn") as PackedScene).instantiate()
 	sc.auto_process = false
 	sc.sim_kind = sc.SimKind.CORE
 	sc.race_mode = race
+	sc.fleet_size = fleet
+	sc.ai_level = level
 	sc.core_settings = {"free_sailing_s": 5.0}
 	sc.start_x = x
 	sc.start_y = y
@@ -304,5 +318,193 @@ func test_race() -> void:
 	t.ok(sc.sim != sim and int(race2["state"]) <= CourseView.RACE_FREE and sc.course_view != cv,
 		"reset restarts the race (state %d)" % race2["state"])
 	sc.step_frame(0.1)
+	sc.queue_free()
+	await process_frame
+
+
+## The node of every boat against the core's render pose at the frame's alpha (conventions.md §11 axes).
+func _pose_err(sc: Node) -> float:
+	var err := 0.0
+	var alpha: float = sc.runner.alpha()
+	for b in sc.sim.boat_count():
+		var a: PackedFloat32Array = sc.sim.core.render_pose(b, alpha)
+		var v: BoatView = sc.boat_views[b]
+		var want := Frames.boat_transform(a[0], a[1], a[2], a[3], a[4], a[5])
+		err = maxf(err, v.transform.origin.distance_to(want.origin))
+		for k in 3:
+			err = maxf(err, (v.transform.basis[k] - want.basis[k]).length())
+	return err
+
+
+func test_ai_race() -> void:
+	t.begin("race mode with 5 AI boats")
+	var sc := _scene(true, 0.0, -300.0, 45.0, 6, "expert")
+	await process_frame
+	var sim: CoreSimSource = sc.sim
+	var n := sim.boat_count()
+	if not t.ok(sim.core.has_race() and n == 6, "a race of 6 boats on example_wl (%d)" % n):
+		sc.queue_free()
+		await process_frame
+		return
+	var ai_ok := not sim.ai_has(0)
+	for b in range(1, n):
+		ai_ok = ai_ok and sim.ai_has(b) and sim.class_info(b).id == "wm7"
+	t.ok(ai_ok and sim.core.ai_count() == 5, "the player is boat 0, boats 1 to 5 are AI skippers")
+	var views_ok: bool = sc.boat_views.size() == n and sc.boat_view == sc.boat_views[0]
+	for v in sc.boat_views:
+		views_ok = views_ok and v.model != null and v.sail_parts.size() >= 2 and v.is_inside_tree()
+	t.ok(views_ok, "a BoatView with its sails for every boat")
+	var started := {}
+	var rounded := {}
+	var race_ok := true
+	sc.runner.ticked.connect(func(_n: int) -> void:
+		for e in sim.core.race_events():
+			var k := int(e["kind"])
+			if k == 3:
+				started[int(e["boat"])] = true
+			elif k == 4 and int(e["step"]) == 1:
+				rounded[int(e["boat"])] = true)
+	var worst := 0.0
+	var dt := 0.1
+	var frames := 0
+	var sail_updates := {}
+	var taken := false
+	for i in 6000:
+		# the test's pilot helms the player through the sequence; at the gun an AI takes the boat over (ai.md
+		# §14), since a player who never starts ends the race for everyone at the start limit (race.md §4.4, §7.2)
+		if not taken and float(sim.core.race()["race_time"]) >= 0.0:
+			taken = sim.ai_take_over(0)
+		if not taken:
+			CoursePilot.steer(sc)
+		sc.step_frame(dt)
+		frames += 1
+		worst = maxf(worst, _pose_err(sc))
+		for b in n:
+			for sp in sc.boat_views[b].sail_parts:
+				if sp.updates > 0 and sp.node.visible:
+					sail_updates[b] = true
+		if i % 100 == 0:
+			await process_frame
+		var all_rounded := true
+		for b in range(1, n):
+			all_rounded = all_rounded and rounded.has(b)
+		if all_rounded:
+			break
+	await process_frame
+	var ai_started := 0
+	var ai_rounded := 0
+	for b in range(1, n):
+		ai_started += 1 if started.has(b) else 0
+		ai_rounded += 1 if rounded.has(b) else 0
+	print("  %d frames (%.0f s race time): AI started %d, rounded the first mark %d" % [frames,
+		float(sim.core.race()["race_time"]), ai_started, ai_rounded])
+	t.ok(ai_started == 5, "every AI boat started (%d)" % ai_started)
+	t.ok(ai_rounded == 5, "every AI boat rounded the first mark (%d)" % ai_rounded)
+	t.ok(worst < 1e-3, "every boat's node at its core render pose (worst %.5f)" % worst)
+	t.ok(sail_updates.size() == n, "sails bent on every boat (%d of %d)" % [sail_updates.size(), n])
+	var wakes_ok := true
+	for b in n:
+		wakes_ok = wakes_ok and sc.wakes.boat_ribbons(b).size() == 2
+	t.ok(wakes_ok, "a wake for every boat")
+	var tel := sim.ai_telemetry(1)
+	t.ok(tel.has("tacks") and tel["start_delay"] >= 0.0 and sim.ai_debug(1).has("tactic_name"),
+		"AI telemetry and debug readable (boat 1: %d tacks, start %.1f s after the gun)" % [tel.get("tacks", -1),
+		tel.get("start_delay", -1.0)])
+	# spectating is off while the player races; the leader is the first in the race order
+	t.ok(not sc.can_spectate() and sc.leader() == int(sim.core.race_order()[0]), "no spectating while racing")
+	t.ok(taken and sim.ai_has(0) and bool(sim.core.race_boat(0)["started"]), "the player's boat, taken over at the gun, started")
+	# fast-forward headless, no rendering: the AI boats finish
+	var t0 := Time.get_ticks_msec()
+	var k := sim.step_ticks(60000, true)
+	var ms := Time.get_ticks_msec() - t0
+	var finished := 0
+	for b in range(1, n):
+		if bool(sim.core.race_boat(b)["finished"]):
+			finished += 1
+	var race: Dictionary = sim.core.race()
+	print("  fast-forward: %d ticks in %d ms (%.0f x real time), race state %d" % [k, ms,
+		k * 50.0 / maxf(1.0, ms), int(race["state"])])
+	if finished < 5:
+		print("  results: %s" % str(sim.core.results()))
+		print("  race: %s" % str(race))
+	t.ok(finished == 5, "every AI boat finished (%d)" % finished)
+	t.ok(int(race["state"]) == CourseView.RACE_CLOSED, "the race closed")
+	sc.step_frame(0.05)
+	t.ok(_pose_err(sc) < 1e-3, "nodes follow the core after the fast-forward")
+	var rb0: Dictionary = sim.core.race_boat(0)
+	var over := bool(rb0["finished"]) or int(rb0["ghost"]) != 0 or bool(rb0["retired"])
+	t.ok(sc.can_spectate() == over, "spectating once the player's race is over (%s)" % over)
+	if over:
+		sc.view_boat(sc.leader())
+		sc.step_frame(0.05)
+		t.ok(sc.viewed == sc.leader() and sc.target.pose.pos_x == sim.render_pose(sc.viewed, sc.runner.alpha()).pos_x,
+			"the cameras follow the viewed boat")
+	sc.queue_free()
+	await process_frame
+
+
+func test_setup() -> void:
+	t.begin("GameSetup read by the scene")
+	var gs := GameSetup.new()
+	gs.mode = "race"
+	gs.fleet_size = 4
+	gs.ai_level = "pro"
+	gs.class_id = "wm7"
+	gs.wind_kn = 9.0
+	gs.wind_from_deg = 20.0
+	gs.seed = 99
+	var sc := (load("res://scenes/sail_test.tscn") as PackedScene).instantiate()
+	sc.auto_process = false
+	sc.sim_kind = sc.SimKind.CORE
+	sc.setup = gs
+	root.add_child(sc)
+	sc.scripted_input = RawInput.new()
+	await process_frame
+	var sim: CoreSimSource = sc.sim
+	t.ok(sc.race_mode and sim.core.has_race() and sim.boat_count() == 4, "race of 4 from GameSetup")
+	var ctl: PackedFloat32Array = sim.core.boat_controls(2)
+	t.ok(absf(ctl[4] - CoreSim.ai_performance_scale(3)) < 1e-6, "AI boats at the pro performance_scale (%.3f)" % ctl[4])
+	var ws: Dictionary = sim.wind_state(0)
+	t.ok(absf(ws["base_speed"] - 9.0 * HudFormat.KNOT) < 1e-4 and absf(ws["base_from"] - deg_to_rad(20.0)) < 1e-4,
+		"wind from GameSetup")
+	t.ok(sc.world_seed == 99, "seed from GameSetup")
+	sc.queue_free()
+	await process_frame
+	# the free-sailing default
+	var fs := (load("res://scenes/sail_test.tscn") as PackedScene).instantiate()
+	fs.auto_process = false
+	fs.sim_kind = fs.SimKind.CORE
+	fs.setup = GameSetup.new()
+	root.add_child(fs)
+	await process_frame
+	t.ok(not fs.race_mode and not fs.sim.core.has_race() and fs.sim.boat_count() == 1 and fs.world_seed != 0,
+		"GameSetup's default: free sailing, a seed picked")
+	fs.queue_free()
+	await process_frame
+
+
+## Headless frame cost of the scene with 10 boats (the player and 9 AI) at 60 fps: step_frame (ticks, render
+## poses, boat nodes, sails, wakes, cameras, HUD), without the GPU.
+func test_frame_cost() -> void:
+	t.begin("frame cost, 10 boats")
+	var sc := _scene(true, 0.0, -300.0, 45.0, 10)
+	await process_frame
+	var dt := 1.0 / 60.0
+	for i in 60:
+		sc.step_frame(dt)
+	var n := 600
+	var t0 := Time.get_ticks_usec()
+	for i in n:
+		CoursePilot.steer(sc)
+		sc.step_frame(dt)
+	var us := float(Time.get_ticks_usec() - t0) / n
+	var sim: CoreSimSource = sc.sim
+	var t1 := Time.get_ticks_usec()
+	for i in 200:
+		sim.core.step()
+	var step_us := float(Time.get_ticks_usec() - t1) / 200.0
+	print("  10 boats: %.2f ms per frame at 60 fps (headless, no GPU), core step %.2f ms per tick"
+		% [us / 1000.0, step_us / 1000.0])
+	t.ok(sim.boat_count() == 10 and us < 16000.0, "10 boats under one 60 fps frame (%.2f ms)" % (us / 1000.0))
 	sc.queue_free()
 	await process_frame

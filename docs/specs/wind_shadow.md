@@ -54,7 +54,7 @@ geometric ones from the rig; the rest are model constants with the defaults show
 ## 3. Snapshot
 
 In tick step 4 (`conventions.md` §4.1), for each boat, from its state at `t_n` (`boat.md` §3):
-`pos_x`, `pos_y`, `psi`, `aws`, `awd_from`, `twa`, `spinnaker` (the front sail is a spinnaker of either type and
+`pos_x`, `pos_y`, `psi`, `aws`, `awd_from`, `awa`, `twa`, `spinnaker` (the front sail is a spinnaker of either type and
 it is `up` or `prepare_drop`), and `casts` (the race layer may exclude boats: not yet launched, retired, ghost;
 `race.md`). All shadows of the tick are computed from this snapshot, so boat order does not matter and a boat's
 shadow lags its motion by one tick (50 ms, invisible).
@@ -143,6 +143,13 @@ wind_from  = wrap_2pi(from - best_tack * best_d)
 | to leeward and ahead ("safe leeward") | clear air; `B` sits in this boat's backwind |
 | to windward and abeam or ahead | clear air |
 Downwind, the blanket of a boat behind reaches ahead of it: the boat behind can blanket the boat in front.
+
+Where safe leeward starts: the leeward boat is clear of `B`'s blanket once its hull reference point is more than
+`blanket_reach_up · Lb` upwind of `B`'s centre of effort along `B`'s apparent wind (`ξ ≤ −blanket_reach_up · Lb`,
+§4), or wider than the blanket (`|η| ≥ W`). Close-hauled in 7 m/s true wind with the reference values of §2:
+S is clear about level with `B` at 3 m to leeward (1 m ahead at 2 m, already 3 m behind at 5 m); L about 8 m
+ahead at 2 to 5 m to leeward, 3 m ahead at 8 m. Closer to `B` or further back, the leeward boat sails in `B`'s
+blanket instead.
 
 ## 7. Queries
 

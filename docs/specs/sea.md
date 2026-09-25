@@ -27,7 +27,7 @@ Chosen by the race layer (`race.md`) and sent with the race seed:
 | --- | --- | --- |
 | `sea_hs`, `sea_tp` | m, s | significant height and peak period of the wind sea |
 | `sea_from` | rad | direction the wind sea comes from (default: `base_from` of the wind) |
-| `swells[0..3]` | {`hs`, `tp`, `from`} | optional swells |
+| `swells[0..3]` | {`hs`, `tp`, `from`} | optional swells, at most 4 (`hs ≥ 0`; `tp > 0` when `hs > 0`) |
 | `sea_scale` | – | overall multiplier (0 = flat water) [1] |
 | `venue_exposure` | ref | exposure grid of the venue (`data_format.md` §6.4) [none: E = 1] |
 

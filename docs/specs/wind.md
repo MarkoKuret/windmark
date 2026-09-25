@@ -130,6 +130,8 @@ top of the persistent shifts.
 
 Circular patches of stronger (puff) or weaker (lull) wind drift across the course with the wind, grow, hold and
 fade. They live on a square **tile** that repeats over the whole venue, so a fixed set of slots covers any course.
+Checked with the settings (when puffs are on): `puff_tile > 0`, `0 < puff_diameter_min ≤ puff_diameter_max`,
+lifetimes as in the table, `lull_strength_max < 1`, `puff_cap_up ≥ 0`, `0 ≤ puff_cap_down < 1`.
 
 ### 6.1 Parameters
 
@@ -140,7 +142,7 @@ fade. They live on a square **tile** that repeats over the whole venue, so a fix
 | `puff_diameter_min`, `_max` | 200, 300 m | patch diameter |
 | `puff_strength_min`, `_max` | 0.3, 0.5 | peak relative increase of a puff |
 | `lull_strength_min`, `_max` | 0.5, 0.7 | peak relative decrease of a lull |
-| `puff_life_min_ms`, `_max_ms` | 60 000, 120 000 | lifetime of a patch |
+| `puff_life_min_ms`, `_max_ms` | 60 000, 120 000 | lifetime of a patch; `0 < puff_life_min_ms ≤ puff_life_max_ms` |
 | `puff_cap_up`, `puff_cap_down` | 0.25, 0.4 | the combined factor is clamped to `[1 − cap_down, 1 + cap_up]` |
 
 ### 6.2 Slots and generations
@@ -173,6 +175,10 @@ px = cx + (-sb * wm_sin(fb)) * age_s ; py = cy + (-sb * wm_cos(fb)) * age_s
 fl = (float)life_j ; fa = (float)a
 e = fa < 0.1f*fl ? fa / (0.1f*fl) : (fa < 0.9f*fl ? 1.0f : (fl - fa) / (0.1f*fl))    // fade in 10 %, out 10 %
 ```
+`(px, py)` is not wrapped into the tile: it is one image of a pattern that repeats every `puff_tile` in x and y.
+The factor (§6.4) takes the nearest image; a renderer draws the patch at `(px + m·puff_tile, py + n·puff_tile)`
+for every tile it shows.
+
 The patch keeps its birth direction for its whole life; after a big shift, patches born before it still drift
 the old way for up to a minute or two, which reads as the new wind "filling in".
 
@@ -199,8 +205,9 @@ keeps the extremes playable (0.6 to 1.25 of the base with the defaults). The per
 ```
 current(x, y, t) = uniform + tide(t) * venue_current_field(x, y)          // m/s, east/north
 uniform = current_speed * (sin(current_to), cos(current_to))
-tide(t) = tide_scale * wm_cos(TWO_PI * ((float)((t + tide_phase_ms) % tide_period_ms) / (float)tide_period_ms))
+tide(t) = tide_scale * wm_cos(TWO_PI * ((float)(((uint64)t + tide_phase_ms) % tide_period_ms) / (float)tide_period_ms))
 ```
+The sum `t + tide_phase_ms` is taken in 64 bits, so it never wraps before the modulo; `tide_period_ms > 0`.
 `venue_current_field` is a grid of velocity vectors at the reference (spring) tide (`data_format.md` §6.3),
 bilinear, zero outside its box; absent = zero. `tide_period_ms` default 44 712 000 (12 h 25 min). The boat step
 takes the current at its hull reference point (`boat.md` §5.1): it drifts the boat and it changes the
@@ -218,7 +225,8 @@ f = lerp(f0, f1, tw) ; d = lerp(d0, d1, tw)
 ```
 
 ### 8.1 Grid sampling
-A grid has `nx × ny` nodes at `(x0 + i·dx, y0 + j·dy)`, values stored row by row (`j` major, `i` fastest).
+A grid has `nx × ny` nodes at `(x0 + i·dx, y0 + j·dy)`, values stored row by row (`j` major, `i` fastest), with
+`nx ≥ 2`, `ny ≥ 2` (a grid is at least one cell), `dx, dy > 0`, and every value finite.
 ```
 if x < x0 or y < y0 or x > x0 + (nx-1)*dx or y > y0 + (ny-1)*dy: return the default (1, 0)
 u = (x - x0) / dx ; i = min((int32)u, nx - 2) ; tx = u - (float)i          // likewise j, ty from y
@@ -235,7 +243,7 @@ nodes of wind grids as `(1, 0)` so leaving the box is seamless.
 | `wind_clean(x, y, t)` | `wind_speed`, `wind_from` without shadows | boat step input, AI, HUD wind arrows |
 | `global_from(t)`, `dir_offset(t)` and its three terms | the median direction and the current shift | HUD, debug views |
 | `puff_factor(x, y, t)` | the puff/lull factor | AI, renderer (dark patches on the water) |
-| `puff_patches(t)` | each live patch `(px, py, R, s, e)` | renderer, debug views |
+| `puff_patches(t)` | each live patch `(px, py, R, s, e)`, centres unwrapped (§6.3) | renderer, debug views |
 | `current(x, y, t)` | current vector | boat step, AI, HUD |
 
 They are pure functions, but the AI only reads what a sailor could observe: the wind at its own boat and nearby
@@ -243,10 +251,14 @@ water now, and its own history. It never evaluates future times or `global_from`
 
 ## 10. Tests
 
-1. Determinism: `wind_clean` over a 50 × 50 grid at 100 times equals a stored vector file bit for bit.
+1. Determinism: `wind_clean` over a 50 × 50 grid at 100 times equals a stored vector file bit for bit. The file
+   may store a hash of each time's grid (FNV-1a 64 over the bit patterns, `conventions.md` §9) instead of every
+   value.
 2. Shift statistics over 10⁵ segments for `shifty`: offsets stay within ±1.4 A, mean within 0.05 A of 0, and the
    distribution of hold times is uniform in `[hmin, hmax]`.
-3. Continuity: `global_from` has no jumps larger than `C · DT` between ticks with the oscillation off.
+3. Continuity: `global_from` has no jumps larger than `C · (DT + 0.5 ms)` between ticks with the oscillation off
+   (plus float rounding): ramps last a whole number of ms (§4.2 rounds `|step| / C`), so a ramp's rate can exceed
+   `C` by half a millisecond's worth.
 4. Puff factor: always within the caps; a patch's centre moves `sb · DT` per tick; a patch's envelope is 0 at birth
    and death.
 5. Cache: evaluating a race's wind tick by tick with the cache and from scratch at random times gives identical bits.

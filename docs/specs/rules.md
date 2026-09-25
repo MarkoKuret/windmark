@@ -203,7 +203,7 @@ boat has the extra duty to give room.
 
 ### 5.1 Rule 14: avoiding contact
 
-Every boat shall avoid contact if reasonably possible. A right-of-way or room-entitled boat need not act until it is
+In our words: every boat must avoid contact when she reasonably can. A right-of-way or room-entitled boat need not act until it is
 clear that the other is not keeping clear or giving room, and is exonerated for a contact that causes no damage
 (rule 21(c)).
 

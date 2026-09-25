@@ -58,3 +58,11 @@ if(WINDMARK_OBJDUMP)
            COMMAND ${CMAKE_COMMAND} -DOBJDUMP=${WINDMARK_OBJDUMP} -DLIB=$<TARGET_FILE:windmark_core>
                    -P "${CMAKE_CURRENT_SOURCE_DIR}/check_no_fma.cmake")
 endif()
+
+# course files, race flow, racing rules and the world loop (WM-009)
+set(WINDMARK_COURSES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../game/data/courses" CACHE PATH
+    "Course files directory (game/data/courses) the tests load")
+target_sources(windmark_core_tests PRIVATE
+  test_course.cpp
+)
+target_compile_definitions(windmark_core_tests PRIVATE WINDMARK_COURSES_DIR="${WINDMARK_COURSES_DIR}")

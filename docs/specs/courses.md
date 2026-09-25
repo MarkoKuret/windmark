@@ -86,7 +86,7 @@ numbered by its position in the `marks` array (the index is the `other` field of
 | Mark type | `other_kind` | Shape |
 | --- | --- | --- |
 | `buoy` | `mark` | circle, `radius` |
-| `committee_boat`, `mark_boat` | `course_object` | convex polygon with the heading: the generator outline of `collisions.md` §2.1 with `L = length`, `B = beam`, transom width `0.8·B`, `s_m = 0.5` |
+| `committee_boat`, `mark_boat` | `course_object` | convex polygon with the heading: the generator outline of `collisions.md` §2.1 with `L = length`, `B = beam`, transom width `0.8·B`, `s_m = 0.5`, stem at body `x = L/2`, transom at `−L/2` (the half-breadths are evaluated in binary64 at race creation and rounded once, `conventions.md` §5 rule 6) |
 
 Whether an object is a mark for rule 31 (touching) depends on the boat's progress (`rules.md` §8), not on its
 kind.
@@ -240,7 +240,7 @@ the random shift walk:
 TWD_c = wrap_2pi(base_from + trend(t_env at the start signal))      // wind.md §1, §3
 ```
 
-rounded to the nearest 0.01 rad. A committee lays the course to the median wind it expects; using the median (and
+rounded to the nearest 0.01 rad: `TWD_c = wrap_2pi(round_half_even(v · 100) · 0.01)` in binary32. A committee lays the course to the median wind it expects; using the median (and
 the deterministic trend) and not the shift walk means the course axis gives no hint of the shifts to come, which
 every boat must read from the water.
 
@@ -283,11 +283,14 @@ The loader rejects a file (error) or reports a warning:
 | Every mark, line end and the spawn polygon lie on water (venue land) with 2 L of clearance, inside the venue `bounds` | error |
 | A straight segment between consecutive reference points crosses land | warning (fixed courses around islands do this on purpose; the AI then needs waypoints, §8) |
 | The boundary polygon is simple and contains every mark with 3 L of margin | error |
-| `"finish": "start"`: the step before the finish lies on the pre-start side of the start line (boats finish in the opposite direction to the start) | error |
+| `"finish": "start"`: the step before the finish lies on the pre-start side of the start line (boats come back to the line from below it and finish crossing it in the same direction as they started) | error |
 
-Wind-frame courses are validated after resolution for every axis direction in steps of π/18 (10°): a course that
-becomes invalid in some wind is an error (such a course must be fixed-frame). The validator runs in the course tool
-and when the server loads a course.
+Wind-frame courses are validated after resolution for every axis direction in steps of π/18 (10°) at scale
+`k = 1`: a course that becomes invalid in some wind is an error (such a course must be fixed-frame). The validator
+runs in the course tool and when the server loads a course. Race creation checks the course it actually lays (its
+`TWD_c` and `k`, §6) with the same rules and refuses to create the race if that fails, so a scale factor that
+pushes a mark onto land or out of bounds is caught before any boat spawns. Warnings are reported once each, whatever
+the number of axes that raise them.
 
 ## 8. Display and AI hints
 
@@ -359,4 +362,6 @@ start line and 130 m to the right of the gate, and the last step (off) is upwind
 downwind; the gate is 80 m wide (about 10 hull lengths of an 8 m class). Gate sides (§4.3): coming down from off,
 g1 (on the right when looking upwind) is on the boat's left, so g1 is rounded to port and g2 to starboard.
 
-The example files in `game/data/courses/` are the reference and are validated in CI.
+The example files in `game/data/courses/` are the reference and are validated in CI. The shipped example is
+`game/data/courses/example_bay/example_wl.course.json` (the course above with a 700 m beat, laid on the
+`example_bay` venue); the core test suite loads it and validates it for every axis.

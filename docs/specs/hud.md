@@ -40,6 +40,11 @@ function; race and rules states (rank, penalties, right-of-way colours) come fro
 | Rudder | helm `h` as a bar, −1 … +1 (positive turns the bow to starboard), with a second mark at `h_cmd` | none |
 | Sail | the front sail that is up (or "Main only"), and the one being hoisted during a change with its progress | none |
 
+The player's own commands (the `h_cmd` mark, the sheet setting and its bar, `AUTO`, `LET FLY`) show the local
+command of the rendered frame, not the value the simulation last applied, so they answer the key at once; the
+simulation takes the command at its next tick. For any other boat (spectating, replays) they come from its
+controls record.
+
 ## 3. Wind
 
 ### 3.1 Numbers

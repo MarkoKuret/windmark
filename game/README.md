@@ -2,14 +2,14 @@
 
 Godot 4.6, Forward+ renderer. So far: the boat import test, the sea, sky and lighting (`docs/specs/water_render.md`),
 the core binding (a GDExtension over the core's C API) and a placeholder simulation behind the same interface, the
-controls, the cameras, the minimal HUD and a sail test scene that puts them together.
+controls, the cameras, the minimal HUD and a sail test scene that puts them together on the core.
 
 ## Layout
 
 | Path | Role |
 | --- | --- |
 | `project.godot` | Project settings |
-| `scripts/` | GDScript. `sail_grid.gd` (`SailGrid`) maps imported sail vertices back to the boatgen sail grid; `frames.gd` (`Frames`) holds the axes and angle helpers; `boat_view.gd` places the generated boat |
+| `scripts/` | GDScript. `sail_grid.gd` (`SailGrid`) maps imported sail vertices back to the boatgen sail grid; `frames.gd` (`Frames`) holds the axes and angle helpers; `boat_view.gd` (`BoatView`) places the generated boat, its rudder, wheel, boom, mainsheet and sails |
 | `scripts/sim/` | `SimSource` (the simulation interface), `CoreSimSource` (the core, through the GDExtension) and `CoreEnvSource` (its sea and wind for the Sea node), `FakeSim` and `FakeBoat` (placeholder), `SimRunner` (50 ms ticks), class loading |
 | `native/` | The GDExtension: `CoreSim` over `core/include/windmark.h` (`src/`), `build.sh`, `CMakeLists.txt`. Godot skips the folder (`.gdignore`) |
 | `bin/` | The built extension library and `windmark.gdextension`. Not committed |
@@ -17,7 +17,7 @@ controls, the cameras, the minimal HUD and a sail test scene that puts them toge
 | `scripts/cameras/` | `CameraRig` and the chase, onboard, aerial and free cameras, shake, onboard eye point |
 | `scripts/hud/` | `Hud`, `HudValues`, formats, bars and trim gauges |
 | `shaders/` | Shaders. `sea_common`, `sky_common`, `wake_common` (`.gdshaderinc`) hold the water, sky and wake maths, written so the offline preview can compile them as GLSL too; `water_l/m/h` are the sea per quality tier, `sky`, `wake`, `wake_normal` |
-| `scenes/` | Scenes. `sea/` is the sea (`sea.tscn`, `Sea`), its data source and wakes, and the daytime sky (`sky_day.tscn`, `SkyRig`, `env_day.tres`); `water_test.tscn` shows them together; `sail_test.tscn` is one boat with the fake sim, cameras, controls and HUD on that sea and sky |
+| `scenes/` | Scenes. `sea/` is the sea (`sea.tscn`, `Sea`), its data source and wakes, and the daytime sky (`sky_day.tscn`, `SkyRig`, `env_day.tres`); `water_test.tscn` shows them together; `sail_test.tscn` is one boat sailing freely on the core (FakeSim as fallback), with cameras, controls and HUD on that sea and sky |
 | `tests/` | Headless tests |
 | `generated/` | Build outputs staged for import (boatgen GLBs and sidecars). Not committed |
 | `.godot/` | Godot's import cache. Not committed |
@@ -137,8 +137,24 @@ others as Dictionaries with the C field names. `CoreSimSource` caches the per-bo
 
 - **Frame order** (`scenes/sail_test.gd`): `InputReader.read()` (devices through the input map into a `RawInput`),
   `PlayerControls.update()`, `SimRunner.advance()` (at each 50 ms boundary: `PlayerControls.stamp()` the input
-  frame, `apply_input`, `step`, `Hud.tick`), the Sea's render time, `render_pose`, the boat node and `SeaWakes.update_boat`,
+  frame, `apply_input`, `step`, `Hud.tick`, the sail snapshot), the Sea's render time, `render_pose`, the boat node
+  (`BoatView.apply`, `apply_sails` between the last two sail snapshots) and `SeaWakes.update_boat`,
   `CameraRig.frame()`, `Hud.frame()`; the Sea and SeaWakes nodes then draw the frame.
+- **Simulation** (`sim_kind`): `AUTO` (the default) runs the core through `CoreSimSource` when the GDExtension is
+  loaded and `FakeSim` otherwise; `CORE` and `FAKE` force one. On the core the scene is free sailing without a race
+  (`create(venue)`, `add_entry`, `place_boat` at `start_x`, `start_y`, `start_twa_deg` off the wind) on
+  `example_bay`, one `class_id` boat (`wm7`, or `wm12`), with the wind of `wind_speed_kn`, `wind_from_deg`,
+  `puffs`, `shift_preset` and `world_seed`. The Sea's source is a `CoreEnvSource`, its clock the core's
+  `render_time_ms`, the wakes `CoreSimSource.wake_state`, so the puffs drawn are the ones the boat sails in.
+- **Boat** (`BoatView`): the node at the render pose (`conventions.md` §11), the rudder (with the tiller it
+  carries) and the wheel from the helm `h`, the boom at the main's sail angle with the mainsheet sheared to follow
+  it, and every sail placed rigidly as `sail_visuals.md` §7 does (main about the boom axis, headsails about the
+  luff, spinnakers swung on the sprit tack line or the pole first), with the sail angles interpolated between the
+  last two ticks. The shape is the flat generated sail (the §6 shapes and flutter are WM-016.09); hoisting and
+  dropping (§8) scale it in its own frame: a headsail grows up its luff from the deck, a spinnaker climbs as a thin
+  bundle and widens over the last tenth, drops run back; a sail that is `down` is hidden.
+- **HUD commands**: the helm mark, the sheet bar and text, `AUTO` and `LET FLY` of the own boat come from the
+  local `PlayerControls` every frame (`Hud.local_commands`), since the core applies a command at its next step.
 - **Input map**: `scripts/controls/default_bindings.gd` is the one source of the defaults of `controls.md` §3.
   After changing it, rewrite the `[input]` section of `project.godot` (nothing else in the file is touched):
   `godot --headless --path game -s res://scripts/controls/write_input_map.gd`. Axis actions and device pairs carry
@@ -147,7 +163,7 @@ others as Dictionaries with the C field names. `CoreSimSource` caches the per-bo
 - **Steam Deck**: the default Steam Input template presents the gamepad bindings; its Deck-only items (L4 for
   `helm_fine`, right trackpad as `camera_orbit`, Steam + R1 for `screenshot`) belong in that template, which is
   not in the repo yet.
-- **Sea**: the scene holds the Sea node, its `SeaWakes` and the `SkyRig` of `scenes/sea/`. `sea_source` picks the
+- **Sea on FakeSim**: the scene holds the Sea node, its `SeaWakes` and the `SkyRig` of `scenes/sea/`. `sea_source` picks the
   example bay as the core writes it (`CORE_SAMPLES`, scenario `sea_scenario`, default `example_bay_10kn`; its wind
   replaces the scene's) or the placeholder sea from the scene's wind; `AUTO` (the default) takes the core samples
   when `generated/sea/sea_render_samples.json` exists (`tests/run_water_test.sh` writes it). The fake sim runs on
@@ -175,13 +191,20 @@ Runs headless, with scripted input at fixed frame rates:
   water clearance in a 1.5 m sea, onboard side change, aerial up modes, presets, shake), the free camera, near
   and far planes, cycling and the smooth switch.
 - `tests/hud_test.gd`: `hud.md` formats, filters and time constants, trim gauge colours, tell-tales, tolerance and
-  assist presets on a scripted boat state; then `scenes/sail_test.tscn` sails 20 s with scripted input on the
-  example bay sea and the HUD text is checked against the sim's values, with the sea checks: Sea and SkyRig in
-  place, the sim on the drawn sea's model, the camera never below `Sea.height_at + 0.99` and its clearance hook
-  being `Sea.height_at`, the hull heaving, both wakes of the boat laid; then a short run on the placeholder sea.
-  The script writes the core sea samples first when they are missing.
+  assist presets on a scripted boat state; then `scenes/sail_test.tscn` on FakeSim sails 20 s with scripted input
+  on the example bay sea and the HUD text is checked against the sim's values, with the sea checks: Sea and
+  SkyRig in place, the sim on the drawn sea's model, the camera never below `Sea.height_at + 0.99` and its
+  clearance hook being `Sea.height_at`, the hull heaving, both wakes of the boat laid; a short run on the
+  placeholder sea; then the scene on the core, 40 s with a set-and-hold tack, a kite hoist and auto-trim off:
+  every frame the boat node against the core's render pose record, the rudder, boom and main at the helm and the
+  interpolated sail angle, sails hidden only when down, clews on the side of the sail angle, the Sea's clock and
+  wind state the core's, the HUD commands the local ones (while the core's lag a step); at the end the HUD
+  numbers against the core's state; and a short wm12 run. The script writes the core sea samples first when they
+  are missing, and builds the GDExtension when `game/bin` has none.
 
-To sail the test scene yourself (opens a window): `godot --path game res://scenes/sail_test.tscn`. Keys: ←/→ or
+To sail the test scene yourself (opens a window): `game/native/build.sh` once (the core; without it the scene
+runs on FakeSim), then `godot --path game res://scenes/sail_test.tscn` (after `--`: `--class=wm12` for the
+12 m boat, `--fake` for FakeSim). Keys: ←/→ or
 A/D helm (set and hold, ↓ centres), T auto-trim, W/S sheet, Space let fly, 1/2 sails, C camera, F5 to F8 camera
 modes, right mouse drag or IJKL orbit, wheel or O/U zoom, R recentre, Esc pause, F10 hide HUD.
 

@@ -72,6 +72,7 @@ var _sails_cur: SimSource.SailsView
 
 
 func _ready() -> void:
+	_user_args()
 	on_core = sim_kind == SimKind.CORE or (sim_kind == SimKind.AUTO and CoreSimSource.available())
 	var b := _setup_core() if on_core else _setup_fake()
 	assert(b >= 0, "class %s did not load" % class_id)
@@ -119,6 +120,17 @@ func _ready() -> void:
 	_update_sea_time(0.0)
 	_update_target(0.0)
 	set_process(auto_process)
+
+
+## Command line after `--`: `--class=wm12`, `--fake` (FakeSim), `--core`.
+func _user_args() -> void:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--class="):
+			class_id = a.trim_prefix("--class=")
+		elif a == "--fake":
+			sim_kind = SimKind.FAKE
+		elif a == "--core":
+			sim_kind = SimKind.CORE
 
 
 ## The core world on the venue, free sailing (no race): the boat placed at the start point, the Sea on the

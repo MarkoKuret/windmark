@@ -74,3 +74,30 @@ if(WINDMARK_BUILD_TESTS)
   enable_testing()
   add_subdirectory(tests)
 endif()
+
+# The C API (WM-011): include/windmark.h over the world, as a shared library for the server and engine bindings.
+# The core objects go into it, so they are built position independent.
+option(WINDMARK_BUILD_CAPI "Build the C API shared library and its example" ON)
+if(WINDMARK_BUILD_CAPI)
+  set_target_properties(windmark_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
+  add_library(windmark SHARED src/capi/capi.cpp)
+  target_include_directories(windmark PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+  target_link_libraries(windmark PRIVATE windmark_core)
+  target_compile_definitions(windmark PRIVATE WINDMARK_CAPI_BUILD)
+  target_compile_options(windmark PRIVATE ${WINDMARK_WARNINGS})
+  set_target_properties(windmark PROPERTIES C_VISIBILITY_PRESET hidden CXX_VISIBILITY_PRESET hidden
+                                            VISIBILITY_INLINES_HIDDEN ON)
+  # Only the wm_* functions are exported, not the core's C++ symbols linked into it.
+  if(APPLE)
+    target_link_options(windmark PRIVATE "LINKER:-exported_symbol,_wm_*")
+  elseif(UNIX)
+    target_link_options(windmark PRIVATE "LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/src/capi/windmark.map")
+  endif()
+  # A static archive of the same for hosts that link it in (the Godot extension).
+  add_library(windmark_static STATIC src/capi/capi.cpp)
+  target_include_directories(windmark_static PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+  target_link_libraries(windmark_static PUBLIC windmark_core)
+  target_compile_options(windmark_static PRIVATE ${WINDMARK_WARNINGS})
+  set_target_properties(windmark_static PROPERTIES POSITION_INDEPENDENT_CODE ON)
+  add_subdirectory(examples)
+endif()

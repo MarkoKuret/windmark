@@ -313,8 +313,64 @@ rates). An absent table is not the same as an empty one: empty tables are a load
   loaded data plus the environment parameters fully determine the future; everything else is derived output.
 - A **snapshot** serialises the state in the order the specs list it, floats as their 32 raw bits (little
   endian), integers little endian, booleans as one byte.
-- The **checksum** of a tick is FNV-1a 64 over the snapshot bytes of every boat in index order, preceded by the
-  tick index (uint32). Server and clients compare checksums to detect divergence (`networking.md`).
+- The **checksum** of a tick is FNV-1a 64 over the tick index (uint32) followed by the **body** of the world
+  snapshot (§9.1): every boat in index order, the collision pair set, the race, the rules and the carried tick
+  outputs. Server and clients compare checksums to detect divergence (`networking.md` §10.2); the own-boat hash of
+  `networking.md` §5.5 is a separate, smaller hash.
+- Encodings: `vec2` = `x`, `y` as two floats; `list<T>` = uint32 count, then the items in order; an enum is one
+  byte with the numeric value of its declaration order; tick numbers are uint32 and signed tick numbers
+  (`n_gun` and the like) int64; infinities keep their raw bits like every float.
+
+### 9.1 World snapshot
+
+A world snapshot is everything a race world carries from one tick to the next, taken between ticks (after step 7
+of tick `n − 1`, before step 1 of tick `n`). Loaded into a world built from the same race parameters
+(`networking.md` §7.1: race seed, wind and sea settings, venue, course, rules parameters and the boat entries in
+index order), it continues with the same bits, tick for tick, as the run it was taken from: the same checksums,
+events and results. A reconnect or resync sends it (`networking.md` §9) and a replay can start from it
+(`networking.md` §14).
+
+Not state, never serialised: the loaded data and the environment parameters; the wind and the sea, which are pure
+functions of the race seed and the tick (`wind.md`, `sea.md`; the counter-based generator of §7 has no stream
+position to save); caches rebuilt before they are read (the wind's per-tick walk cache, the sea phases of the
+tick, the shadow snapshot of step 4, the rules engine's predicted poses and hulls and its escape manoeuvres, the
+race and rules inputs of the tick); the events of the last tick (published in step 7, then gone); and the memory
+of the controllers that decide in step 2 (computer skippers, `ai.md`, and scripts), which they keep themselves.
+
+Layout, in this order:
+
+```
+header (identity, not covered by the checksum)
+  uint32  magic 0x57574D57, uint32 version = 1
+  uint32  tick                     the next tick to run
+  uint64  race_seed (§7)
+  bool    race created; uint32 n_created (tick of creation, 0 without a race); uint32 entries at creation
+  uint64  FNV-1a 64 of the venue's file_sha256 text
+  uint64  FNV-1a 64 of the resolved course's hash text (courses.md §9), 0 without a race
+  list    boats: uint64 FNV-1a 64 of the performance file's file_sha256 text, bool human, bool ai,
+          float performance_scale, bool auto_trim, int32 front sail at spawn
+body (covered by the checksum, after the tick index)
+  per boat in index order: boat.md §3 then sails.md §3 (the boat snapshot)
+  the collision pair set (collisions.md §6)
+  the race block (race.md §13) and the rules block (rules.md §14), only when the race exists
+  carried tick outputs, per boat in index order:
+    the boat's derived outputs of its last step, boat.md §3 (target_speed, polar_speed, heel_target, turn_rate,
+      vmg, sog, cog, man_coef, trim_speed, trim_heel, heel_coef, surf_coef, wind_speed_clean): the next tick's
+      race and rules step reads turn_rate, cog and sog, and controllers read them in step 2
+    the environment at the boat of the last step 5, wind_shadow.md §5 (wind_speed, wind_from, wind_speed_clean,
+      wind_from_clean, current_x, current_y, shadow_loss, shadow_header, int32 shadow_source)
+  list    contact events of the last collision step (collisions.md §5), read by the next tick's rules:
+          uint64 tick, int32 boat, uint8 other_kind, int32 other, vec2 point, vec2 normal, float depth,
+          float closing_speed, float impulse, bool begin
+  list    queued controls for the next step 2, in arrival order: uint8 kind (helm, sheet, auto_trim, let_fly,
+          hoist, drop, retire, protest), int32 boat, float value, int32 sail
+```
+
+A load checks the header against the world it goes into (same race seed, venue, course, boat count and
+entries) and rejects a snapshot that does not match, is truncated, has bytes left over or holds a value out of
+range. A world whose race took joiners (`race.md` §3.5) is rebuilt as it was built: the race is created at
+`n_created` with the entries at creation, the later entries join after it, and the snapshot then overwrites every
+state value.
 
 ## 10. Naming
 

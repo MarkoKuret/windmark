@@ -540,3 +540,32 @@ The rules layer adds its own events (`rules.md` §11).
 - Ranking: two boats on a beat level on the wind axis but 300 m apart laterally have equal D (± 1 m).
 - A full headless race (the default course, 10 AI boats, `sim` harness) ends with every boat finished or scored,
   and the same seed reproduces the identical results table and final state hash.
+- Snapshot: the same race saved at several ticks (before the warning, in the sequence, mid-race, after the first
+  finish) and loaded into a new world continues with the same checksum every tick and the same results.
+
+## 13. State and snapshot
+
+The race block of the world snapshot (`conventions.md` §9.1), in this order. Entry data (class, `L`, `B`), the
+settings, the resolved course and the start and finish lines come from the race parameters and are not written;
+the events of the tick are not state.
+
+```
+uint8 race_type, uint8 sequence, uint8 prep_flag, uint8 state
+uint32 n_created; int64 n_gun, n_warning; int32 signals_done, general_recalls
+bool x_flag, rules_live, any_finished; int64 n_window_end, n_time_limit
+float L_max, twd_mean, legs_twd
+list  legs (§8.1): vec2 e, bool wind_axis, float length
+list  boats, per boat:
+  bool human; uint32 joined_tick
+  bool has_prev; vec2 c_prev, c; float psi_prev, psi; list<vec2> hull_prev, hull
+  bool came_near, pre_seen, ocs, ocs_i, i_around_end, z_flag, u_flag, black_flag, ocs_scored, started
+  float t_start; bool entry_crossed, entered
+  int32 next; float phi[2], phi_done[2]; int32 n_cross; bool finish_armed, rounded_this_tick
+  int32 last_rounded; list<float> splits
+  bool finished; int64 t_finish_us; int32 place; uint32 finish_tick; bool cleared, ghost; uint8 ghost_reason
+  bool retired, dsq; uint8 code; bool projected; float t_proj
+  float D; int32 rank
+list  order (int32 boat indices by rank, §8.3)
+list  results (§9): int32 boat, int32 place, uint8 code, float points, int64 t_finish_us, bool projected
+list  penalty requests of the tick to the rules (§3.4): int32 boat, uint8 rule
+```

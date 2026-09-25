@@ -57,6 +57,7 @@ compute its performance. Required fields are marked **R**; the rest have the sta
 | `lcb_x` | | m | body x of the centre of buoyancy [VPP estimate from Cp and rocker] |
 | `bow_fineness` | | – | exponent of the plan-view entry (`collisions.md` §2.1) [1.8] |
 | `hull_mass_z` | | m | vertical centre of gravity of the boat without crew above the DWL [VPP estimate] |
+| `type` | | – | `"monohull"` \| `"trimaran"` \| `"catamaran"` [`monohull`]; multihull fields in §3.9 |
 
 ### 3.2 `keel`
 
@@ -82,6 +83,7 @@ compute its performance. Required fields are marked **R**; the rest have the sta
 | `thickness` | | – | thickness/chord [0.11] |
 | `x` | R | m | body x of the stock |
 | `max_angle` | | rad | largest rudder angle [0.61] |
+| `count` | | – | rudders in the water at once (drag and lift counted per rudder, e.g. 2 on a catamaran or twin-rudder boat) [1] |
 
 ### 3.4 `rig`
 
@@ -129,10 +131,32 @@ matching `type`.
 | block | owner | meaning |
 | --- | --- | --- |
 | `start` | designer | `{ "front_sail": id \| null }`: sail up at a race start unless the race says otherwise |
-| `handling` | designer | overrides of any `dynamics` value of the performance file (§4.2), copied by the VPP |
+| `handling` | designer | feel multipliers and `dynamics` overrides (§3.7.1) |
+| `boards` | designer | daggerboards of a multihull, in place of `keel` (§3.9) |
+| `vpp` | designer | VPP settings (§3.10) |
 | `visual` | boat generator | liveries, deck layout, hardware; opaque to the core and the VPP |
 
 Top level: `"schema": "windmark.boatclass/1"`, `"id"`, `"name"`, `"version"` (integer, bumped on every change).
+
+#### 3.7.1 `handling`
+
+Optional. Tunes how a class **feels** without touching how fast it is: the VPP computes the physical tables and
+then applies these multipliers when it writes the performance file. None of them changes a `polar`, `trim_speed`
+or any other speed target, so a class's speeds (and the AI's and HUD's view of them) stay physical.
+
+| field | | unit | default | range | scales in the performance file |
+| --- | --- | --- | --- | --- | --- |
+| `accel` | | – | 1.0 | 0.2 to 5 | every config's `accel` table (how fast the boat builds speed towards the polar) |
+| `decel` | | – | 1.0 | 0.2 to 5 | `dynamics.decel_linear` and `decel_const` (how fast it slows above its target, coasting, in irons) |
+| `turn_rate` | | – | 1.0 | 0.2 to 5 | yaw rate at every helm and speed: `dynamics.turn_radius_full` and `turn_radius_offset` are divided by it (`boat.md` §5.9); `rudder_drag_*` unchanged |
+| `heel` | | – | 1.0 | 0.2 to 5 | every config's `heel` table (clamped to π/2) and `dynamics.heel_max` (kept below `heel_limit`); `heel_speed_factor` and the main's `sheet_max_by_heel` are stretched along their heel axes by the same factor, so the speed at the scaled heel is what it was at the physical heel |
+| `tack_time` | | – | 1.0 | 0.2 to 5 | crew and helm speed in manoeuvres (> 1 is slower): `dynamics.helm_rate` and every sail's `rate_in`, `rate_out` and `pole_rate` are divided by it |
+
+The multipliers used are recorded in the performance file's `handling` block (§4.1), all five, defaults included;
+with every multiplier 1.0 the tables are exactly the physical ones.
+
+Any other key of `handling` names a `dynamics` value (§4.2) and overrides it absolutely: the VPP writes it as
+given, after the multipliers, unscaled. Unknown keys are reported and ignored.
 
 ### 3.8 Example (sportsboat)
 
@@ -163,6 +187,55 @@ Top level: `"schema": "windmark.boatclass/1"`, `"id"`, `"name"`, `"version"` (in
 }
 ```
 
+### 3.9 Multihulls
+
+`hull.type` selects the hull arrangement. The VPP reads all three; the boat generator builds monohulls only.
+
+- **Trimaran**: the `hull` fields describe the main (centre) hull, which displaces the whole sailing mass at rest;
+  `hull.floats` (required) describes one float, mirrored to both sides.
+- **Catamaran**: the `hull` fields describe one of the two identical hulls, each displacing half the sailing mass;
+  `hull.hull_spacing` (required) places them.
+- For both, `hull.beam_max` is the overall beam; it is taken as at least the span of the hulls.
+
+`hull.floats`:
+
+| field | | unit | meaning |
+| --- | --- | --- | --- |
+| `lwl`, `bwl` | R | m | float waterline length and beam at its own design waterline |
+| `draft` | R | m | float canoe-body depth below its design waterline (`draft_canoe` is accepted too) |
+| `prismatic` | R | – | float prismatic coefficient |
+| `section_shape` | | object | as `hull.section_shape`; its `midship_coefficient` is used as given [0.70] |
+| `freeboard` | | object or m | `{ "bow", "mid", "stern" }` or one height for all three [0.09 · float `lwl` at mid-length, 1.3× bow, 0.85× stern] |
+| `beam_max` | | m | float beam at the sheer [1.15 · float `bwl`] |
+| `transom_width` | | m | float transom width at the sheer [0.5 · float `beam_max`] |
+| `rocker` | | object | `{ "fwd", "aft" }` as `hull.rocker`, of the float [fwd = `draft`, aft = 0.6 · `draft`] |
+| `spacing` | R | m | distance of each float's centreline from the boat centreline |
+| `clearance` | | m | height of the float keel above the DWL with the boat upright at rest (0 = touching) [0] |
+| `x` | | m | body x of the float's mid-waterline [−0.05 · `hull.lwl`] |
+
+`hull.hull_spacing` (catamaran, R, m): distance between the two hull centrelines.
+
+`boards` (multihulls, instead of `keel`; if absent the VPP reads `keel` the same way): the lifting foils that
+carry the side force.
+
+| field | | unit | meaning |
+| --- | --- | --- | --- |
+| `depth` | R | m | DWL to the board tip, board down |
+| `chord_root`, `chord_tip` | R | m | chords at the hull and at the tip [`chord_tip` = `chord_root`] |
+| `thickness` | | – | thickness/chord [0.12] |
+| `x` | | m | body x of the quarter chord [0] |
+| `count` | | – | boards in the water at once [1] |
+
+Multihull defaults elsewhere: `crew.hiking_arm` [0.3 · `beam_max`], `vpp.max_heel` [0.28 rad].
+
+### 3.10 `vpp`
+
+Settings of the VPP's equilibrium; ignored by the boat generator and absent from the performance file.
+
+| field | | unit | meaning |
+| --- | --- | --- | --- |
+| `max_heel` | | rad | heel the VPP equilibrium may not exceed; where no depowering keeps a config below it the VPP writes a broached speed (§4.3). The limit used is the lower of this and the heel of the maximum righting moment. [0.56 monohull, 0.28 multihull] |
+
 ## 4. Performance file (`windmark.perf/1`)
 
 Everything the core needs to sail a class: dynamics constants, per-sail parameters and the per-config tables.
@@ -177,12 +250,14 @@ Schematic:
   "class_id": "sb7", "class_version": 1,
   "class_sha256": "…",          // hash of the class file bytes it was generated from
   "generator": { "tool": "vpp", "version": "…" },
+  "handling": { "accel": 1.0, "decel": 1.0, "turn_rate": 1.0, "heel": 1.0, "tack_time": 1.0 },   // §3.7.1, record only
   "dynamics": { … },            // §4.2
   "sails":    { … },            // §4.4, keyed by sail id
   "configs":  [ … ],            // §4.3
   "start":    { "front_sail": "jib" }
 }
 ```
+`handling` records the feel multipliers the tables were written with (§3.7.1); the core does not apply them again.
 In online play the server announces `(class_id, class_version, sha256 of the perf file)` for every class in the
 race; a client with a different file does not join (`networking.md`).
 
@@ -208,7 +283,8 @@ reference values are in the owning spec.
 
 `collision.mass` = `displacement + crew.weight`. The VPP derives the dynamics values from the design where it can
 (turn radius from the rudder and hull length, heel spring from roll inertia and righting moment, shadow geometry
-from the rig) and uses the reference values of the owning spec otherwise; class-file `handling` overrides win.
+from the rig) and uses the reference values of the owning spec otherwise; then the class file's `handling`
+multipliers are applied and its `handling` overrides win (§3.7.1).
 
 ### 4.3 `configs`
 
@@ -229,6 +305,11 @@ Schematic:
 ```
 Semantics in `sails.md` §6. Coverage required: `tws` axis from 0 to at least 20.6 m/s (40 kn), `twa_abs` and
 `awa_abs` from 0 to π. `optimal_angle` holds the main and the config's front sail (only the main for main-only).
+
+Above the no-go step the `polar` is never 0. Where no depowering holds a config (heel beyond the limit, or no way
+made at that angle) the VPP writes a low **broached speed**, with the `heel` at the limit and the `accel` of the
+last wind strength the config still holds at that angle (`tools/vpp/README.md`, "Broached speed"): the boat
+wallows rather than stops. A config may carry a `vpp` block of diagnostic tables; the core ignores it.
 
 ### 4.4 `sails`
 

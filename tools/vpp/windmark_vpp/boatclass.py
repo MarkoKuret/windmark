@@ -4,16 +4,8 @@ SI units and radians throughout, body frame x forward / y port / z up with the o
 design waterline. Optional fields get the spec default or a documented VPP estimate; every estimate is reported
 in ``Boat.notes`` so a generated file always says what was assumed.
 
-VPP extensions (not yet in the spec; readers ignore unknown keys):
-
-* ``hull.type``: ``"monohull"`` (default) | ``"trimaran"`` | ``"catamaran"``;
-* ``hull.floats`` (trimaran): ``lwl``, ``bwl``, ``draft``, ``prismatic``, ``section_shape``, ``freeboard``,
-  ``beam_max``, ``transom_width``, ``rocker``, ``spacing`` (float centreline from the boat centreline),
-  ``clearance`` (float keel above the DWL at rest), ``x`` (body x of the float's mid-waterline);
-* ``hull.hull_spacing`` (catamaran): centreline distance of the two hulls;
-* ``boards``: daggerboard of a multihull, the ``keel`` fields without the bulb, plus ``count`` in the water;
-* ``rudder.count``: rudders in the water at once [1];
-* ``vpp.max_heel``: heel the equilibrium may not exceed [0.56 rad monohull, 0.28 multihull].
+Multihull fields (``hull.type``, ``hull.floats``, ``hull.hull_spacing``, ``boards``, ``rudder.count``) and the
+``vpp`` block (``max_heel``) are specified in data_format.md 3.9 and 3.10.
 """
 
 from __future__ import annotations
@@ -28,6 +20,11 @@ from .constants import RHO_WATER
 
 LEAD_DENSITY = 11300.0   # kg/m^3, bulb material when only the bulb mass is given
 SCHEMA = "windmark.boatclass/1"
+
+# Feel multipliers of the class file's handling block (data_format.md 3.7.1); every other handling key is an
+# absolute override of a dynamics value.
+FEEL_KEYS = ("accel", "decel", "turn_rate", "heel", "tack_time")
+FEEL_RANGE = (0.2, 5.0)
 
 SAIL_TYPES = ("main", "jib", "genoa", "code_zero", "spinnaker_sym", "spinnaker_asym")
 FRONT_TYPES = SAIL_TYPES[1:]
@@ -165,7 +162,8 @@ class Boat:
     sails: List[Sail]
     heel_max: float           # rad, the equilibrium never settles beyond this
     start: dict = field(default_factory=dict)
-    handling: dict = field(default_factory=dict)
+    handling: dict = field(default_factory=dict)   # absolute overrides of dynamics values
+    feel: dict = field(default_factory=lambda: {k: 1.0 for k in FEEL_KEYS})   # handling multipliers
     notes: List[str] = field(default_factory=list)
     source: dict = field(default_factory=dict)
     sha256: str = ""
@@ -508,6 +506,17 @@ def from_dict(raw: dict) -> Boat:
     vd = raw.get("vpp") or {}
     heel_max = _num(vd, "max_heel", "vpp", 0.56 if kind == "monohull" else 0.28)
 
+    hd = raw.get("handling") or {}
+    if not isinstance(hd, dict):
+        raise ClassFileError("handling: must be an object")
+    feel = {}
+    for k in FEEL_KEYS:
+        v = _num(hd, k, "handling", 1.0, positive=True)
+        if not FEEL_RANGE[0] <= v <= FEEL_RANGE[1]:
+            raise ClassFileError(f"handling.{k}: {v} outside {FEEL_RANGE[0]}..{FEEL_RANGE[1]}")
+        feel[k] = v
+    overrides = {k: v for k, v in hd.items() if k not in FEEL_KEYS}
+
     return Boat(id=cid, name=str(raw.get("name", cid)), version=int(raw.get("version", 1)), kind=kind, loa=loa,
                 lwl=lwl, bwl=main_body.bwl, beam_max=beam_max, stem_x=stem_x, transom_x=transom_x,
                 transom_width=_num(h, "transom_width", "hull", 0.5 * beam_max), max_beam_station=s_m,
@@ -517,6 +526,6 @@ def from_dict(raw: dict) -> Boat:
                 mast_height=mast_height, mast_x=mast_x, boom_height=boom_height, mast_chord=mast_chord,
                 bowsprit=bowsprit, pole=pole, freeboard=freeboard, app_volume=app_v, app_depth=app_depth,
                 sails=sails, heel_max=heel_max,
-                start=dict(raw.get("start") or {}), handling=dict(raw.get("handling") or {}), notes=notes,
+                start=dict(raw.get("start") or {}), handling=overrides, feel=feel, notes=notes,
                 source=raw,
                 sha256=hashlib.sha256(json.dumps(raw, sort_keys=True).encode()).hexdigest())

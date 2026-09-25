@@ -1,9 +1,11 @@
 ---
 id: WM-003
 title: 'VPP: handling block for feel'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-09-25 13:31'
+updated_date: '2026-09-25 14:08'
 labels:
   - vpp
   - spec
@@ -20,7 +22,7 @@ Optional per-class handling multipliers (accel, decel, turn_rate, heel, tack_tim
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Spec in docs/specs/data_format.md
-- [ ] #2 VPP applies and records the multipliers
-- [ ] #3 Tests show defaults leave tables unchanged
+- [x] #1 Spec in docs/specs/data_format.md
+- [x] #2 VPP applies and records the multipliers
+- [x] #3 Tests show defaults leave tables unchanged
 <!-- AC:END -->

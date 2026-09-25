@@ -3,7 +3,8 @@
 Per config (main alone, main + each front sail), on the spec's axes:
 
 * ``polar``: VPP boat speed at optimal trim and depowering; below the no-go edge the steady sternway the windage
-  drives, with a step up to +0.1 m/s at the edge (boat.md 7.4);
+  drives, with a step up to +0.1 m/s at the edge (boat.md 7.4); where no depowering holds the config, a low
+  broached speed (``_broached``);
 * ``heel``: equilibrium heel;
 * ``accel``: the constant acceleration that reproduces the time to build speed from 50 % to 95 % of the polar,
   integrating (drive - resistance) / (mass + added mass) with the heel in equilibrium at each speed;
@@ -13,8 +14,9 @@ Per config (main alone, main + each front sail), on the spec's axes:
 
 ``dynamics`` values are derived from the design where the VPP has the physics (turn radius, deceleration, heel
 and pitch springs, rudder drag, speed loss with heel, collision outline, wind-shadow geometry) and use the
-reference values of boat.md and wind_shadow.md scaled with the waterline length otherwise; class-file
-``handling`` overrides win. The ``vpp`` block (ignored by the core) records assumptions, VMG optima and
+reference values of boat.md and wind_shadow.md scaled with the waterline length otherwise. The class file's
+``handling`` multipliers scale the feel (``apply_handling``) and its other ``handling`` keys override dynamics
+values as given. The ``vpp`` block (ignored by the core) records assumptions, VMG optima and
 diagnostic tables.
 """
 
@@ -42,6 +44,12 @@ NF, NR = len(FLATS), len(REEFS)
 
 # reference archetypes of boat.md 4 (S = sportsboat, L = large monohull) by waterline length
 L_S, L_L = 6.4, 19.5
+
+# Broached speed (README "Output"): where no depowering keeps a config within the heel limit, or the boat cannot
+# make way at all at that angle, the polar holds this share of the speed the config made at the same TWA in the
+# strongest wind it could still hold, and at least the no-go edge value; the boat wallows instead of stopping.
+BROACH_SHARE = 0.4
+BROACH_MIN = 0.1            # m/s, the polar's value at the no-go edge
 
 
 def _by_size(lwl, s, l):
@@ -92,6 +100,9 @@ class ConfigResult:
     valid: np.ndarray
     deltas: List[np.ndarray]
     fh: np.ndarray
+    broached: np.ndarray     # no depowering holds the config: the polar holds the broached speed
+    src: np.ndarray          # row of the last sailing TWS at that TWA (-1: none), the broached speed's source
+    heel_limited: np.ndarray  # some control reached the heel limit
 
 
 class Generator:
@@ -123,6 +134,7 @@ class Generator:
             "class_version": b.version,
             "class_sha256": b.sha256,
             "generator": {"tool": "vpp", "version": __version__},
+            "handling": dict(b.feel),
             "dynamics": dyn,
             "sails": sails,
             "configs": configs,
@@ -132,6 +144,14 @@ class Generator:
                                         "moment": list(self.hydro.righting_moment(
                                             np.radians([0, 5, 10, 15, 20, 25, 30, 40, 50, 60, 70, 80, 90])))}},
         }
+        apply_handling(out, b.feel)
+        if any(v != 1.0 for v in b.feel.values()):
+            self.notes.append("handling multipliers " + ", ".join(f"{k} {v:g}" for k, v in b.feel.items()))
+        for k, v in (b.handling or {}).items():
+            if k in dyn:
+                dyn[k] = v
+            else:
+                self.notes.append(f"handling.{k}: not a dynamics key, ignored")
         return sig9(out)
 
     def _solve(self, front, rig: Rig) -> ConfigResult:
@@ -145,10 +165,28 @@ class Generator:
         k = np.argmax(score, axis=-1)
         take = lambda a: np.take_along_axis(np.asarray(a).reshape(T, A, NF * NR), k[..., None], -1)[..., 0]
         ok = take(st.valid) & (take(st.V) > 0.02)
+        limited = (st.heel >= self.solver.heel_top * (1 - 1e-6)).reshape(T, A, NF * NR).any(axis=-1)
+        rows = np.where(ok, np.arange(T)[:, None], -1)
+        src = np.maximum.accumulate(rows, axis=0)
         return ConfigResult(front=front, rig=rig, V=np.where(ok, take(st.V), 0.0),
                             heel=np.where(ok, take(st.heel), 0.0), awa=take(st.awa), aws=take(st.aws),
                             fi=k // NR, reef=REEFS[k % NR], valid=ok, deltas=[take(d) for d in st.deltas],
-                            fh=np.where(ok, take(st.fh), 0.0))
+                            fh=np.where(ok, take(st.fh), 0.0), broached=~ok, src=src, heel_limited=limited)
+
+    def _broached(self, r: ConfigResult, acc):
+        """Speed, heel and acceleration of the broached cells (r.broached), on the (tws, twa) solve grid.
+
+        Speed: BROACH_SHARE of the speed at the same TWA in the strongest wind the config still holds (the row
+        r.src), at least BROACH_MIN. Heel: at the heel limit where the heel is what failed, else as in that row.
+        Acceleration: as in that row, so the boat settles to its broached speed as quickly as it sailed there.
+        """
+        cols = np.arange(r.V.shape[1])[None, :]
+        s = np.maximum(r.src, 0)
+        has = r.src >= 0
+        V = np.maximum(np.where(has, BROACH_SHARE * r.V[s, cols], 0.0), BROACH_MIN)
+        heel = np.where(r.heel_limited, self.solver.heel_top, np.where(has, r.heel[s, cols], 0.0))
+        a = np.where(has, acc[s, cols], 0.005)
+        return V, heel, a
 
     # ---------------------------------------------------------------------------------------------------------
     def _config(self, r: ConfigResult) -> Dict:
@@ -168,12 +206,14 @@ class Generator:
         pol = np.zeros((T, len(twa_axis)))
         heel = np.zeros_like(pol)
         accel = np.zeros_like(pol)
+        bV, bh, ba = self._broached(r, acc)
+        b = r.broached[:, keep]
         pol[1:, :3] = drift
-        pol[1:, 3] = 0.1
-        pol[1:, 4:] = np.maximum(r.V[:, keep], 0.0)
-        heel[1:, 4:] = r.heel[:, keep]
+        pol[1:, 3] = BROACH_MIN
+        pol[1:, 4:] = np.where(b, bV[:, keep], np.maximum(r.V[:, keep], 0.0))
+        heel[1:, 4:] = np.where(b, bh[:, keep], r.heel[:, keep])
         accel[1:, :] = 0.005
-        accel[1:, 4:] = np.maximum(acc[:, keep], 0.005)
+        accel[1:, 4:] = np.maximum(np.where(b, ba[:, keep], acc[:, keep]), 0.005)
         ts, th = self._trim_tables(r)
         opt = {}
         for k, s in enumerate(rig.sails):
@@ -191,6 +231,7 @@ class Generator:
                 "reef": table([("tws", TWS[1:]), ("twa_abs", self.twa)], "1", r.reef),
                 "awa": table([("tws", TWS[1:]), ("twa_abs", self.twa)], "rad", r.awa),
                 "leeway": table([("tws", TWS[1:]), ("twa_abs", self.twa)], "rad", self._leeway(r)),
+                "broached": table([("tws", TWS[1:]), ("twa_abs", self.twa)], "1", r.broached.astype(float)),
             },
         }
         return out
@@ -254,7 +295,7 @@ class Generator:
         shp = (T, A, E)
         fi = np.broadcast_to(r.fi[..., None], shp)
         rf = np.broadcast_to(r.reef[..., None], shp)
-        st = S.solve(r.rig, fi, rf, self.tws[:, None, None], self.twa[None, :, None], outer=5,
+        st = S.solve(r.rig, fi, rf, self.tws[:, None, None], self.twa[None, :, None],
                      eps=EPS[None, None, :])
         i0 = int(np.argmin(np.abs(EPS)))
         V, H = st.V, st.heel
@@ -406,11 +447,6 @@ class Generator:
                 if v is not None:
                     dyn["wind_shadow"][k] = v
             self.notes.append("collision outline, hull points and wind-shadow geometry from the boat generator")
-        for k, v in (b.handling or {}).items():
-            if k in dyn:
-                dyn[k] = v
-            else:
-                self.notes.append(f"handling.{k}: not a dynamics key, ignored")
         return dyn
 
     def _rudder_drag(self, turn_full, shift):
@@ -521,6 +557,53 @@ class Generator:
             h.update(s.handling or {})
             out["handling"] = h
         return out
+
+
+# -------------------------------------------------------------------------------------------------------------
+# handling multipliers (data_format.md 3.7.1): feel only, never the polar
+
+
+def _stretch_heel_axis(t: Dict, k: float) -> Dict:
+    """A Table1D over heel_abs resampled so the value at heel k*phi is the old value at phi."""
+    ph = np.array(t["axes"][0]["points"])
+    v = np.array(t["values"])
+    return table([("heel_abs", ph)], t["unit"], np.interp(ph / k, ph, v))
+
+
+def apply_handling(out: Dict, feel: Dict[str, float]):
+    """Scale the feel of a generated performance file in place; every multiplier 1 leaves it untouched.
+
+    accel: every config's ``accel`` table. decel: ``decel_linear`` and ``decel_const``. turn_rate: the yaw rate at
+    every helm and speed, by dividing ``turn_radius_full`` and ``turn_radius_offset``. heel: every config's
+    ``heel`` table and ``heel_max`` (below ``heel_limit``), with ``heel_speed_factor`` and the main's
+    ``sheet_max_by_heel`` stretched along their heel axes so the speed at the scaled heel is unchanged. tack_time:
+    ``helm_rate`` and every sail's ``rate_in``, ``rate_out`` and ``pole_rate`` divided by it.
+    """
+    ka, kd, kt, kh, kc = (float(feel.get(k, 1.0)) for k in ("accel", "decel", "turn_rate", "heel", "tack_time"))
+    dyn = out["dynamics"]
+    if ka != 1.0:
+        for c in out["configs"]:
+            c["accel"]["values"] = [x * ka for x in c["accel"]["values"]]
+    if kd != 1.0:
+        dyn["decel_linear"] *= kd
+        dyn["decel_const"] *= kd
+    if kt != 1.0:
+        dyn["turn_radius_full"] /= kt
+        dyn["turn_radius_offset"] /= kt
+    if kh != 1.0:
+        for c in out["configs"]:
+            c["heel"]["values"] = [min(x * kh, math.pi / 2) for x in c["heel"]["values"]]
+        dyn["heel_max"] = min(dyn["heel_max"] * kh, 0.98 * dyn["heel_limit"])
+        dyn["heel_speed_factor"] = _stretch_heel_axis(dyn["heel_speed_factor"], kh)
+        for s in out["sails"].values():
+            if "sheet_max_by_heel" in s:
+                s["sheet_max_by_heel"] = _stretch_heel_axis(s["sheet_max_by_heel"], kh)
+    if kc != 1.0:
+        dyn["helm_rate"] /= kc
+        for s in out["sails"].values():
+            for k in ("rate_in", "rate_out", "pole_rate"):
+                if k in s:
+                    s[k] /= kc
 
 
 def generate(boat: Boat, thin_ship: Optional[bool] = None, physics: Optional[Dict] = None) -> Dict:

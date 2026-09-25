@@ -1,3 +1,4 @@
+import copy
 import json
 import math
 
@@ -113,3 +114,87 @@ def test_table_validation_rejects_bad_axes():
         perf.validate_table({"axes": [{"q": "tws", "points": [0, 1, 1, 1]}], "unit": "m/s", "values": [0] * 4}, "t")
     with pytest.raises(ValueError):
         perf.validate_table({"axes": [{"q": "tws", "points": [1, 0]}], "unit": "m/s", "values": [0, 0]}, "t")
+
+
+def test_no_zero_speed_above_the_no_go_zone(generated):
+    _, p = generated
+    for c in p["configs"]:
+        tws, twa, V = _t2(c["polar"])
+        k = int(np.flatnonzero(np.diff(twa) == 0)[0])          # the no-go step
+        assert np.all(V[1:, k + 1:] > 0), c["front_sail"]
+
+
+def test_gale_spinnaker_reach_broaches(generated):
+    """a2 at 90 deg TWA in 40 kn: no depowering holds the heel, so the boat wallows at a low broached speed at the
+    heel limit instead of stopping."""
+    _, p = generated
+    c = next(c for c in p["configs"] if c["front_sail"] == "a2")
+    tws, twa, V = _t2(c["polar"])
+    _, _, H = _t2(c["heel"])
+    _, btwa, B = _t2(c["vpp"]["broached"])
+    j = int(np.argmin(abs(twa - 90 * DEG)))
+    jb = int(np.argmin(abs(btwa - 90 * DEG)))
+    assert B[-1, jb] == 1.0 and B[3, jb] == 0.0                # broached in 40 kn, sailing in 8 kn
+    sailing = V[1:-1, j][B[:-1, jb] == 0]
+    assert 0.1 <= V[-1, j] <= 0.5 * sailing.max()
+    assert H[-1, j] == pytest.approx(H.max(), abs=1e-6)      # lying at the heel limit
+    _, _, A = _t2(c["accel"])
+    assert A[-1, j] > 0.005
+
+
+FEEL = ("accel", "decel", "turn_rate", "heel", "tack_time")
+
+
+def test_default_handling_leaves_tables_unchanged(generated, raw):
+    b, p = generated
+    assert p["handling"] == {k: 1.0 for k in FEEL}
+    q = copy.deepcopy(p)
+    perf.apply_handling(q, {k: 1.0 for k in FEEL})
+    assert q == p
+    raw["handling"] = {k: 1.0 for k in FEEL}
+    p1 = perf.generate(boatclass.from_dict(raw))
+    for key in ("dynamics", "sails", "configs", "start", "handling"):
+        assert p1[key] == p[key], key
+
+
+def test_handling_multipliers_scale_feel_only(generated):
+    _, p = generated
+    feel = {"accel": 2.0, "decel": 0.5, "turn_rate": 1.25, "heel": 1.2, "tack_time": 1.5}
+    q = copy.deepcopy(p)
+    perf.apply_handling(q, feel)
+    perf.validate(q)
+    d0, d1 = p["dynamics"], q["dynamics"]
+    for c0, c1 in zip(p["configs"], q["configs"]):
+        assert c1["polar"] == c0["polar"]                      # never the speed
+        assert c1["trim_speed"] == c0["trim_speed"]
+        assert np.allclose(c1["accel"]["values"], 2.0 * np.array(c0["accel"]["values"]))
+        assert np.allclose(c1["heel"]["values"], np.minimum(1.2 * np.array(c0["heel"]["values"]), math.pi / 2))
+    assert d1["decel_linear"] == pytest.approx(0.5 * d0["decel_linear"])
+    assert d1["decel_const"] == pytest.approx(0.5 * d0["decel_const"])
+    radius = lambda d, h: (d["turn_radius_full"] + d["turn_radius_offset"]) / h - d["turn_radius_offset"]
+    for h in (0.2, 0.5, 1.0):                                  # boat.md 5.9: yaw rate v / R at every helm
+        assert radius(d0, h) / radius(d1, h) == pytest.approx(1.25)
+    # the speed factor at the scaled heel is the old one at the physical heel
+    ph = np.array(d0["heel_speed_factor"]["axes"][0]["points"])
+    f0 = lambda x: np.interp(x, ph, d0["heel_speed_factor"]["values"])
+    f1 = lambda x: np.interp(x, ph, d1["heel_speed_factor"]["values"])
+    x = np.radians([20, 35, 45, 60])
+    assert np.allclose(f1(1.2 * x), f0(x), atol=0.03)
+    assert d1["heel_max"] <= d1["heel_limit"]
+    assert d1["helm_rate"] == pytest.approx(d0["helm_rate"] / 1.5)
+    for sid, s in p["sails"].items():
+        assert q["sails"][sid]["rate_in"] == pytest.approx(s["rate_in"] / 1.5)
+        assert q["sails"][sid]["rate_out"] == pytest.approx(s["rate_out"] / 1.5)
+
+
+def test_handling_block_parsing(raw):
+    raw["handling"] = {"accel": 1.3, "heel_limit": 1.3}
+    b = boatclass.from_dict(raw)
+    assert b.feel == {"accel": 1.3, "decel": 1.0, "turn_rate": 1.0, "heel": 1.0, "tack_time": 1.0}
+    assert b.handling == {"heel_limit": 1.3}
+    raw["handling"] = {"turn_rate": 0.0}
+    with pytest.raises(boatclass.ClassFileError):
+        boatclass.from_dict(raw)
+    raw["handling"] = {"tack_time": 9.0}
+    with pytest.raises(boatclass.ClassFileError):
+        boatclass.from_dict(raw)

@@ -1,9 +1,11 @@
 ---
 id: WM-004
 title: 'Spec: multihull fields in the boat class'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-09-25 13:31'
+updated_date: '2026-09-25 14:08'
 labels:
   - spec
 dependencies: []
@@ -19,6 +21,6 @@ Add hull.type, hull.floats, hull.hull_spacing, boards, rudder.count and vpp.max_
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Fields documented with units and defaults
-- [ ] #2 VPP README points to the spec
+- [x] #1 Fields documented with units and defaults
+- [x] #2 VPP README points to the spec
 <!-- AC:END -->

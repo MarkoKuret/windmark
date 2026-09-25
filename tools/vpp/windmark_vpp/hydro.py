@@ -5,7 +5,9 @@ Monohull canoe body (sources in README.md, "Hydrodynamics"):
 * friction: ITTC-57 line with the Reynolds number on 0.7 LWL and no form factor (the Delft convention the
   residuary regression was derived with), on the wetted area of the heeled lofted hull;
 * residuary: Delft Systematic Yacht Hull Series bare-hull regression of Keuning & Katgert (2008), Fn 0.15-0.75;
-  below Fn 0.15 it fades as Fn^4, above 0.75 it is held and softly capped at a planing drag/lift ratio;
+  below Fn 0.15 it fades as Fn^4; above 0.75 a hull that can plane holds it and blends towards a planing drag/lift
+  ratio, a hull too heavy for its length to plane keeps climbing its wave wall (see ``planing_ability``); the
+  upright resistance never falls with speed, so the equilibrium speed rises continuously with the wind;
 * keel residuary and its heel increment: Keuning & Sonnenberg (1998);
 * induced resistance: Fh^2 / (pi Te^2 q) with the effective draft Te of Keuning & Sonnenberg (1998);
 * deck-edge immersion: a Windmark term that grows the residuary resistance quadratically once the sheer line
@@ -77,11 +79,17 @@ TE_B = np.array([
 
 # Planing: once the bottom's dynamic lift 0.5 rho V^2 PLANING_CL Aw is a sizeable share of the weight, the
 # residuary coefficient blends towards min(coefficient, PLANING_DRAG_LIFT), a planing hull's drag/lift ratio.
-# Light, wide boats (low weight per waterplane area) get there at moderate speed, heavy ones never do.
+# Light, wide boats (low weight per waterplane area) get there at moderate speed. Whether the hull can plane at all
+# is gated on its displacement-length ratio (design displacement without crew, the usual convention): a hull
+# heavy for its length never gets over its wave wall however hard it is driven.
 PLANING_CL = 0.08           # lift coefficient of a planing bottom at about 4 deg trim
 PLANING_START = 0.30        # lift share where the blend starts ...
 PLANING_FULL = 0.90         # ... and where the hull is fully planing (calibrated, README)
 PLANING_DRAG_LIFT = 0.055   # residuary/weight of a planing hull (calibrated, README)
+PLANING_DLR_FULL = 100.0    # displacement-length ratio up to which a hull planes fully (sportsboats, GP) ...
+PLANING_DLR_NONE = 106.0    # ... and from which it never planes (moderate and heavy displacement boats)
+WAVE_WALL_SLOPE = (2.0, 6.0)  # bounds of the log slope d ln(Rr) / d ln(Fn) a non-planing hull keeps on its wave wall
+MIN_RESISTANCE_SLOPE = 1.0  # the upright resistance grows at least in proportion to the speed (Windmark, README)
 FOIL_CL_MAX = 1.1           # keel + rudder lift coefficient where the side force starts to stall
 STALL_PENALTY = 12.0        # drag per unit of excess CL^2 beyond FOIL_CL_MAX (Windmark robustness term)
 DECK_EDGE_GAIN = 0.8        # residuary growth per (heel beyond deck-edge immersion / that angle)^2 (Windmark)
@@ -170,12 +178,10 @@ class HullModel:
 
     # -----------------------------------------------------------------------------------------------------------
     def upright_residuary(self, V):
-        """Monohull canoe-body residuary resistance (N) at speed V (m/s)."""
+        """Monohull canoe-body residuary resistance (N) at speed V (m/s), planing included."""
         up = self.hydro.upright
         fn = np.asarray(V) / math.sqrt(G * up["lwl"])
         c = np.interp(fn, self.rr_fn, self.rr_coef)
-        w = planing_weight(V, up["aw"], self.boat.mass * G)
-        c = (1 - w) * c + w * np.minimum(c, PLANING_DRAG_LIFT)
         return c * RHO_WATER * G * self.boat.volume
 
     def resistance(self, V, heel, side_force, parts: bool = False):
@@ -299,18 +305,36 @@ def dsyhs_coefficient(p: Dict[str, float]) -> np.ndarray:
     return (x @ DSYHS_A) * p["V^(1/3)/LWL"]
 
 
-def residuary_curve(p: Dict[str, float]):
+def residuary_curve(p: Dict[str, float], ability: float = 1.0):
     """Delft residuary coefficient Rr/(rho g V) on a Froude grid 0 ... 3, made robust.
 
     Inside the series the regression is used as is, made monotone (it can dip when a hull sits at the edge of the
-    parameter range); below Fn 0.15 it fades as Fn^4 and above Fn 0.75 it is held. Dynamic lift is applied on top
-    of this curve by HullModel.upright_residuary.
+    parameter range); below Fn 0.15 it fades as Fn^4. Where the monotone curve stops rising (at the latest Fn
+    0.75) a hull that can plane (ability 1) holds it; one that cannot (ability 0) keeps climbing its wave wall
+    with the curve's log slope just before that point (bounded by WAVE_WALL_SLOPE); ability in between scales
+    the exponent. Dynamic lift is applied by ``build``.
     """
     c = np.maximum.accumulate(np.maximum(dsyhs_coefficient(p), 0.0))
     fn_lo = np.linspace(0.0, 0.14, 8)
     fn_hi = np.linspace(0.8, 3.0, 23)
     fn = np.concatenate([fn_lo, DSYHS_FN, fn_hi])
-    return fn, np.concatenate([c[0] * (fn_lo / DSYHS_FN[0]) ** 4, c, np.full(len(fn_hi), c[-1])])
+    out = np.concatenate([c[0] * (fn_lo / DSYHS_FN[0]) ** 4, c, np.full(len(fn_hi), c[-1])])
+    k = max(int(np.argmax(c >= c[-1] * (1 - 1e-9))), 1)        # where the monotone regression levels off
+    slope = math.log(max(c[k], 1e-9) / max(c[k - 1], 1e-9)) / math.log(DSYHS_FN[k] / DSYHS_FN[k - 1])
+    slope = min(max(slope, WAVE_WALL_SLOPE[0]), WAVE_WALL_SLOPE[1]) * (1.0 - ability)
+    wall = c[k] * (np.maximum(fn, DSYHS_FN[k]) / DSYHS_FN[k]) ** slope
+    return fn, np.maximum(out, wall * (fn >= DSYHS_FN[k]))
+
+
+def displacement_length_ratio(mass: float, lwl: float) -> float:
+    """Displacement-length ratio: displacement in long tons over (0.01 LWL in feet)^3, from SI inputs."""
+    return (mass / 1016.047) / (lwl / 30.48) ** 3
+
+
+def planing_ability(dlr: float) -> float:
+    """1 for a hull light enough for its length to plane, 0 for one that never does, smooth in between."""
+    u = min(max((PLANING_DLR_NONE - dlr) / (PLANING_DLR_NONE - PLANING_DLR_FULL), 0.0), 1.0)
+    return u * u * (3 - 2 * u)
 
 
 def planing_weight(V, aw, weight):
@@ -335,9 +359,16 @@ def build(boat: Boat, hydro: Hydro, thin_ship: Optional[bool] = None) -> HullMod
         for k, (lo, hi) in DSYHS_RANGE.items():
             if not lo * 0.97 <= p[k] <= hi * 1.03:
                 notes.append(f"hull {k} = {p[k]:.3f} outside the Delft series range {lo}-{hi}")
-    fn, curve = residuary_curve(p)
+    ability = 1.0
+    if not use_thin:
+        dlr = displacement_length_ratio(boat.mass_boat, boat.lwl)
+        ability = planing_ability(dlr)
+        notes.append(f"displacement-length ratio {dlr:.0f}: planing ability {ability:.2f}")
+    fn, curve = residuary_curve(p, ability)
     model = HullModel(boat=boat, hydro=hydro, lofts=lofts, rr_fn=fn, rr_coef=curve, dsyhs_params=p, notes=notes,
                       use_thin_ship=use_thin)
+    if not use_thin:
+        _apply_planing(model, ability)
     if use_thin:
         tables = []
         vmax = 3.2 * math.sqrt(G * max(b.lwl for b in boat.bodies))
@@ -357,6 +388,34 @@ def build(boat: Boat, hydro: Hydro, thin_ship: Optional[bool] = None) -> HullMod
         model.mh_speed = spd
         model.mh_tables = tables
     return model
+
+
+def _apply_planing(model: HullModel, ability: float):
+    """Fold the planing blend into the residuary curve, with the upright resistance kept non-decreasing.
+
+    The blend lowers the residuary drag once the bottom carries part of the weight, which alone would put a hump in
+    the resistance curve, and the Delft regression itself levels off over the hump of some hulls. The speed would
+    then jump where the wind first drives the boat over it (the drive of a reaching rig grows with the boat's
+    speed). Here the total upright resistance is made to grow at least in proportion to the speed
+    (MIN_RESISTANCE_SLOPE) by lowering the residuary part ahead of the hump to the largest such curve under it:
+    the hump is shaved, the planing branch beyond it is kept, and a planing hull's speed climbs steeply but
+    continuously with the wind to the same high-wind speeds.
+    """
+    b = model.boat
+    up = model.hydro.upright
+    vs = math.sqrt(G * up["lwl"])
+    fn = np.linspace(0.0, model.rr_fn[-1], 601)
+    V = np.maximum(fn * vs, 1e-3)
+    c = np.interp(fn, model.rr_fn, model.rr_coef)
+    w = ability * planing_weight(V, up["aw"], b.mass * G)
+    c = (1 - w) * c + w * np.minimum(c, PLANING_DRAG_LIFT)
+    wg = RHO_WATER * G * b.volume
+    model.rr_fn, model.rr_coef = fn, c
+    _, parts = model.resistance(V, np.zeros_like(V), np.zeros_like(V), parts=True)
+    other = sum(v for k, v in parts.items() if k not in ("residuary", "deck_edge", "induced"))
+    k = MIN_RESISTANCE_SLOPE
+    total = np.minimum.accumulate(((c * wg + other) / V ** k)[::-1])[::-1] * V ** k
+    model.rr_coef = np.maximum((total - other) / wg, 0.0)
 
 
 def _immersed_volume(lf: Loft, zw: float) -> float:

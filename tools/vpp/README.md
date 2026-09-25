@@ -8,7 +8,7 @@ driven (`docs/specs/boat.md`, `sails.md`); this tool is where the physics lives.
 It is a classic, simple VPP: sail force coefficients against the apparent wind, a published hull resistance
 regression, induced drag from the keel and rudder, heel from the righting moment of the lofted hull, and a
 surge/roll force and moment equilibrium solved for speed and heel with the depowering optimised. It runs in
-30 to 55 s per class on a laptop, fully vectorised in NumPy.
+15 to 60 s per class on a laptop, fully vectorised in NumPy.
 
 ## Running
 
@@ -56,24 +56,19 @@ All fields of `data_format.md` §3 are read as specified there. How the VPP uses
   of the mast height, the rest of the boat at a quarter of the freeboard.
 - `crew.hiking_arm` [0.45 `beam_max`]: the crew hikes as the heel asks, from a quarter of the arm upright to the
   full arm at 14° heel, so a light-air boat still heels a little.
-- `handling` overrides any `dynamics` value; `sails[].handling` overrides the sail's handling block.
-
-**VPP additions not yet in the spec** (readers ignore unknown keys; proposed for the spec):
-
-| field | meaning |
-| --- | --- |
-| `hull.type` | `monohull` (default), `trimaran` or `catamaran` |
-| `hull.floats` | trimaran floats: `lwl`, `bwl`, `draft`, `prismatic`, `section_shape`, `freeboard`, `beam_max`, `transom_width`, `rocker`, `spacing` (float centreline off the boat centreline), `clearance` (float keel above the DWL at rest), `x` (body x of the float's mid waterline) |
-| `hull.hull_spacing` | catamaran hull centreline distance |
-| `boards` | multihull daggerboard in place of `keel`: `depth`, `chord_root`, `chord_tip`, `thickness`, `x`, `count` |
-| `rudder.count` | rudders in the water at once [1] |
-| `vpp.max_heel` | heel the equilibrium may not exceed, rad [0.56 monohull, 0.28 multihull] |
+- `handling` (`data_format.md` §3.7.1): the five feel multipliers (`accel`, `decel`, `turn_rate`, `heel`,
+  `tack_time`, default 1.0) are applied to the physical tables as the file is written (`perf.apply_handling`) and
+  recorded in the performance file's `handling` block; they never change a speed table. Any other key overrides
+  that `dynamics` value as given. `sails[].handling` overrides the sail's handling block.
+- Multihulls (`hull.type`, `hull.floats`, `hull.hull_spacing`, `boards`, `rudder.count`) and the `vpp` block
+  (`max_heel`) are specified in `data_format.md` §3.9 and §3.10, with their units and defaults. The float
+  bodies are extra polygons of the same hydrostatics; the boards are read like a keel fin without a bulb.
 
 ## Output: performance file
 
-`windmark.perf/1` exactly as `data_format.md` §4 and §5 define it: header with the class hash, `dynamics`,
-`sails`, one entry per config (main alone, main + each front sail) with `polar`, `heel`, `accel`,
-`trim_speed`, `trim_heel`, `optimal_angle`, and `start`. Axes follow the spec's recommendation: TWS 0 to
+`windmark.perf/1` exactly as `data_format.md` §4 and §5 define it: header with the class hash and the
+`handling` multipliers used, `dynamics`, `sails`, one entry per config (main alone, main + each front sail) with
+`polar`, `heel`, `accel`, `trim_speed`, `trim_heel`, `optimal_angle`, and `start`. Axes follow the spec's recommendation: TWS 0 to
 20.6 m/s (40 kn), TWA 0°, 7°, the no-go edge twice, then 2° steps to 60° and 5° steps to 180°; AWA every 5°;
 trim error −60° to +120°. `weather_helm` and `fall_off` (optional) are not written yet.
 
@@ -81,7 +76,7 @@ What each table holds:
 
 - `polar`: equilibrium speed at the best depowering and trim. Below the no-go edge (1.5° below the first TWA
   where the config makes way at 8 kn or more) the steady sternway the windage drives, capped at 0.15 TWS, with
-  the spec's step to +0.1 m/s at the edge.
+  the spec's step to +0.1 m/s at the edge. Above the edge the polar is never 0: see "Broached speed".
 - `heel`: equilibrium heel. `accel`: the constant acceleration that reproduces the time to build speed from 50 %
   to 95 % of the polar, integrating (drive − resistance)/(mass + added mass) with the heel in equilibrium at
   each speed (8-point Gauss-Legendre); floor 0.005 m/s².
@@ -89,6 +84,25 @@ What each table holds:
   its optimum (the single manual sheet of `sails.md` §5.2), clamped to the sheet limits and the wind line,
   relative to the trimmed values; resampled from TWA onto AWA per TWS row.
 - `optimal_angle`: best sheet angle of each sail against AWA (resampled the same way).
+
+### Broached speed
+
+Some cells above the no-go edge have no equilibrium: no depowering keeps the config within the heel limit (a
+spinnaker close reaching in a gale), or the boat cannot make way at that angle at all (pinching in a strong
+breeze, where the keel stalls before the boat has speed). A real boat there broaches or wallows: it lies over,
+sails flogging or stalled, and crawls. The polar holds a low **broached speed** instead of 0, so the core slows
+the boat towards it rather than stopping it:
+
+- speed: 0.4 × the speed the config makes at the same TWA in the strongest wind it still holds there (the last
+  sailing TWS row below), at least 0.1 m/s (the value at the no-go edge);
+- heel: the heel limit (`vpp.max_heel`, or the heel of the maximum righting moment when lower) where it was the
+  heel that failed, else the heel of that last sailing row;
+- acceleration: that of the last sailing row, so the boat settles to its broached speed about as quickly as it
+  sailed there.
+
+The step down where a config stops holding is deliberate: it is the cost of carrying the wrong sail. Broached
+cells are marked in the config's `vpp.broached` table (1 = broached) and are left out of the trim and sheet-angle
+tables, the VMG optima and the `dynamics` fits.
 
 `dynamics` values derived from the design:
 
@@ -107,7 +121,8 @@ What each table holds:
 The rest (`helm_rate`, `pitch_damping`, `heave_time`, `surf_gain`, wobble, wave gains, sail rates, handling
 times, slowdowns) use the reference values of the owning specs, interpolated between the sportsboat and
 large-monohull archetypes by waterline length. The `vpp` block (ignored by the core) records the notes, VMG
-optima, the righting-moment curve, the added-mass coefficient and diagnostic tables (flat, reef, AWA, leeway).
+optima, the righting-moment curve, the added-mass coefficient and diagnostic tables (flat, reef, AWA, leeway,
+broached).
 
 ## Model
 
@@ -126,10 +141,24 @@ trimaran lifting its main hull. Appendage buoyancy sits at its centroid and roll
   (the convention of the Delft regression), on the heeled lofted wetted area. Fin, rudder: mean chord, Hoerner
   foil form factor `1 + 2t/c + 60(t/c)^4`; bulb: body-of-revolution form factor `1 + 1.5(d/l)^1.5 + 7(d/l)^3`.
 - Residuary, monohull: the Delft Systematic Yacht Hull Series bare-hull regression of Keuning and Katgert (2008),
-  Fn 0.15 to 0.75, made monotone, fading as Fn⁴ below the range and held above it. Planing: when the bottom's
-  dynamic lift `0.5 ρ V² 0.08 Aw` reaches 30 % of the weight the coefficient starts blending towards
-  `min(coefficient, 0.055)` (a planing hull's residuary drag/lift ratio), fully at 90 %. Light, wide boats get
-  there at moderate speed, heavy ones never do (calibrated, below).
+  Fn 0.15 to 0.75, made monotone and fading as Fn⁴ below the range.
+- Planing is gated on the hull's weight for its length, the displacement-length ratio
+  `DLR = (displacement / 1016 kg) / (LWL / 30.48 m)³` on `hull.displacement` (without crew, the usual
+  convention): planing ability 1 up to DLR 100, 0 from DLR 106, smooth in between (wm7: 82, a typical 7 m
+  sportsboat about 100, wm12: 108).
+  - A hull that can plane holds the regression where it levels off; once the bottom's dynamic lift
+    `0.5 ρ V² 0.08 Aw` reaches 30 % of the weight its coefficient blends towards `min(coefficient, 0.055)` (a
+    planing hull's residuary drag/lift ratio), fully at 90 % (calibrated, below). The blend is scaled by the
+    ability.
+  - A hull that cannot plane keeps climbing its wave wall from the point where the monotone regression levels
+    off, with the regression's log slope just before it (bounded to 2 to 6), so it never gets over the hump
+    however hard it is driven.
+  - The total upright resistance (canoe body, appendages) is made to grow at least in proportion to the speed:
+    where the planing blend or a levelling regression would make it flatter, the residuary part ahead of the hump
+    is lowered to the largest curve that does (the hump is shaved; the planing branch beyond it is kept). The
+    drive of a reaching rig grows with the boat's speed, so a flatter resistance curve has two speed roots and the
+    polar would jump where the lower one disappears; with this rule a planing boat's speed climbs steeply but
+    continuously with the wind, to the same high-wind speeds as before.
 - Keel residuary and its heel increment: Keuning and Sonnenberg (1998), on the fin volume (the Delft keel series
   were fins; a deep bulb is charged through its friction and form drag).
 - Induced resistance: `Fh² / (π Te² q)` with the effective draft `Te` of Keuning and Sonnenberg (1998) (heel and
@@ -165,10 +194,10 @@ main and jib or genoa). Every sail is trimmed to its best angle.
 
 ### Equilibrium and optimisation
 Two degrees of freedom: surge (drive = resistance) and roll (side force × (centre of effort + 0.45 draft) =
-righting moment). For each (TWS, TWA, flat, reef) speed and heel are solved by alternating root searches (5
-rounds), all combinations at once. The speed is the lowest stable root, scanning up from rest: a hull that cannot
-get over its wave hump stays below it, so a planing boat "takes off" at the wind strength where the hump
-disappears. The fastest valid combination (heel within `vpp.max_heel` and below the
+righting moment). For each (TWS, TWA, flat, reef) the roll equation is solved for the heel at every probe speed,
+so the surge balance is one equation in the speed, solved by a scan up from rest and a bisection, all
+combinations at once. The speed is the lowest stable root: a boat that cannot get over a resistance hump stays
+below it. The fastest valid combination (heel within `vpp.max_heel` and below the
 maximum righting moment) wins, ties going to more power. VMG optima are searched on a 0.5° grid around the table
 optimum with the neighbouring controls.
 
@@ -185,7 +214,10 @@ no table was copied. Changes it drove, all generic:
 - the keel regressions on the fin volume only;
 - the mainsail-alone slot loss (0.72);
 - the planing blend on the bottom's dynamic lift share (start 0.3, full 0.9, drag/lift 0.055), and the lowest
-  stable speed root.
+  stable speed root;
+- later, on owner decisions: planing gated on the displacement-length ratio, the upright resistance growing at
+  least with the speed, and speed and heel solved together (the alternating solution could settle on either of
+  two states near the heel limit). The comparison was rerun after these; see the calibration report.
 
 Resulting agreement: shape correlation of speed against TWA per TWS 0.71 to 0.97 per config, mean upwind VMG
 angle difference 3 to 8°, downwind 7 to 14°, sail crossovers 65 to 88 % in agreement. The remaining
@@ -225,7 +257,8 @@ code is included.
   edge of the Delft series.
 - Multihull resistance ignores hull interference; the float wave resistance uses the upright shape.
 - Sail handling times are reference values scaled by length, not a crew-work model.
-- Where no depowering keeps a config within the heel limit (a spinnaker close reaching in a gale) the polar holds
-  0; the core then slows the boat along its deceleration law. A "broached" speed could be modelled instead.
-- Speed steps where a hull starts or stops planing are real behaviour of the model; they show in the polars of
-  the sportsboats at 20 kn and above.
+- The broached speed is a rule of thumb (a share of the last held speed), not a model of a broach.
+- Planing is a gate on the displacement-length ratio and a calibrated blend, not a planing-hull model (no
+  dynamic trim, no spray drag); a class near the gate (DLR 100 to 106) planes partly. The gate is
+  dimensionless, so it separates hulls by weight for their length, not by size: wm12 sits just past it (a wm12
+  some 2 % lighter would start to plane, smoothly).

@@ -1,9 +1,11 @@
 ---
 id: WM-002
 title: 'VPP: gate and smooth planing'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-09-25 13:31'
+updated_date: '2026-09-25 14:08'
 labels:
   - vpp
 dependencies: []
@@ -19,7 +21,7 @@ Planing depends on hull weight relative to length so heavy displacement boats ne
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 wm12 shows no planing jump at 30 kn
-- [ ] #2 Sportsboat still takes off but continuously
-- [ ] #3 Tests for both
+- [x] #1 wm12 shows no planing jump at 30 kn
+- [x] #2 Sportsboat still takes off but continuously
+- [x] #3 Tests for both
 <!-- AC:END -->

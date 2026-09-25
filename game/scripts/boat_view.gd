@@ -2,16 +2,19 @@ class_name BoatView
 extends Node3D
 ## The generated boat in the scene (conventions.md §11): the boatgen GLB under a node placed at the render pose,
 ## the rudder (with the tiller it carries) and the wheel turned by the helm, the boom and the mainsheet following
-## the main's sail angle, and the sails placed rigidly from the sail state (sail_visuals.md §7, the static
-## generated shape; the per-vertex shapes of §6 and §8 come with the sail visuals task, WM-016.09). Hoisting and
-## dropping (§8) are shown by scaling the flat sail in its own frame: a headsail on a halyard grows up its luff
-## from the deck, a spinnaker climbs the luff as a thin bundle and widens over the last tenth, a drop runs back.
-
-## the flattest a sail is drawn while it lies on deck or climbs as a bundle (fraction of its luff or chord)
-const MIN_SCALE := 0.02
-const BUNDLE := 0.05
+## the main's sail angle, and the sails bent and placed per vertex every frame (docs/specs/sail_visuals.md): fill,
+## camber, twist, flutter, backing, hoist and drop and the flying spinnaker shapes, from the sail state and the
+## apparent wind. The per-vertex work runs in the native `SailShape` (game/native) when the GDExtension is loaded,
+## else in its GDScript reference `SailShapeRef`; each sail is its own grid-order mesh (§3.1) whose vertex buffer
+## is rewritten in one call per update, at a rate set by the distance to the camera (§11).
 
 enum Mode { BOOM, LUFF, SPRIT, POLE }
+
+## sail_visuals.md §11 update intervals by distance to the camera, s
+const NEAR_M := 200.0
+const MID_M := 800.0
+const MID_INTERVAL := 1.0 / 15.0
+const FAR_INTERVAL := 0.25
 
 ## one sail of the class and how it is placed
 class SailPart:
@@ -31,11 +34,27 @@ class SailPart:
 	var mode := 0
 	var tack_line_max := 0.0
 	var r_h := 1.0  # horizontal distance from the head to the rest tack
-	## drawn this frame (tests): sail angle, pole angle, luff and chord scale
+	## the per-vertex shape (SailShape or SailShapeRef), null when the sail mesh is not a usable grid
+	var shape: Variant = null
+	var mesh: ArrayMesh
+	## the mesh arrays when its vertex buffer cannot be rewritten in place (rebuilt instead, §11 fallback)
+	var arrays: Array = []
+	var rows := 0
+	var cols := 0
+	## a sphere around the sail at any angle (model axes), for the custom AABB, the distance and the frustum
+	var centre := Vector3.ZERO
+	var radius := 1.0
+	var since := INF  # s since the last shape update
+	var updates := 0
+	## drawn this frame (tests): sail angle, pole angle, hoisted fraction of the luff and fill of the flying shape
 	var beta := 0.0
 	var gamma := 0.0
 	var luff_scale := 1.0
 	var chord_scale := 1.0
+
+	## the placed clew (mid-surface, model axes)
+	func clew() -> Vector3:
+		return shape.mid()[cols - 1] if shape != null else Vector3.ZERO
 
 
 var info: SimSource.ClassInfo
@@ -67,12 +86,18 @@ var _sheet_rest := PackedVector3Array()
 var _sheet_w := PackedFloat32Array()
 var _sheet_top := Vector3.ZERO
 var _sheet_angle := 0.0
+## the sail material (§11), shared by the sails of this boat
+var _sail_mats := {}
+## the GDScript reference shapes even when the native SailShape is loaded (set by create)
+var use_reference := false
 
 
-static func create(class_info: SimSource.ClassInfo, rudder_max: float) -> BoatView:
+## `reference`: bend the sails with the GDScript SailShapeRef even when the native SailShape is loaded (tests).
+static func create(class_info: SimSource.ClassInfo, rudder_max: float, reference := false) -> BoatView:
 	var b := BoatView.new()
 	b.name = "Boat_" + class_info.id
 	b.info = class_info
+	b.use_reference = reference
 	b._rudder_max = rudder_max
 	var path := "res://generated/boats/%s.glb" % class_info.id
 	if ResourceLoader.exists(path):
@@ -125,6 +150,11 @@ func _find_parts() -> void:
 	_find_sheet()
 	var side_sails: Dictionary = info.physics.get("sails", {})
 	var pole_class := _pole != null or float(rig.get("pole_length", 0.0)) > 0.0
+	var furling := {}
+	var cls: Variant = BoatClassData._read_json(BoatClassData.repo_path("data/classes/%s.boat.json" % info.id))
+	if cls is Dictionary:
+		for cs in cls.get("sails", []):
+			furling[String(cs.get("id", ""))] = bool(cs.get("furling", false))
 	for i in info.sails.size():
 		var si: SimSource.SailInfo = info.sails[i]
 		var sp := SailPart.new()
@@ -162,6 +192,7 @@ func _find_parts() -> void:
 			sp.mode = Mode.SPRIT
 		else:
 			sp.mode = Mode.LUFF  # jib, genoa, code zero (tacked hard to the sprit end)
+		_setup_shape(sp, side, bool(furling.get(sp.id, false)))
 		sail_parts.append(sp)
 
 
@@ -218,23 +249,195 @@ func apply(p: SimSource.RenderPose) -> void:
 		_wheel.transform = _wheel_rest * Transform3D(Basis(_wheel_axis, p.h * PI), Vector3.ZERO)
 
 
+## The sail's own grid-order mesh (sail_visuals.md §3.1) and its per-vertex shape. The imported flat sail gives
+## the rest positions and the uv sets, SailGrid maps each imported vertex to its grid index, the triangles are the
+## imported ones re-indexed, and the node's transform is folded into the vertices (the node stays the identity).
+func _setup_shape(sp: SailPart, side: Dictionary, furling: bool) -> void:
+	var mi := sp.node as MeshInstance3D
+	sp.rows = int(side.get("grid_rows", 0))
+	sp.cols = int(side.get("grid_cols", 0))
+	if mi == null or mi.mesh == null or mi.mesh.get_surface_count() < 1 or sp.rows < 2 or sp.cols < 2:
+		return
+	var src := mi.mesh
+	var arrays := src.surface_get_arrays(0)
+	var gi := SailGrid.grid_index(src, sp.rows, sp.cols)
+	var n := sp.rows * sp.cols
+	var pos := PackedVector3Array()
+	var uv := PackedVector2Array()
+	var uv2 := PackedVector2Array()
+	pos.resize(2 * n)
+	uv.resize(2 * n)
+	uv2.resize(2 * n)
+	var seen := PackedByteArray()
+	seen.resize(2 * n)
+	var ipos: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var iuv: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV] if arrays[Mesh.ARRAY_TEX_UV] != null else PackedVector2Array()
+	var iuv2: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV2]
+	for v in ipos.size():
+		var g := gi[v]
+		if g < 0:
+			push_warning("%s: vertex %d is not on the sail grid; the sail stays flat" % [sp.node.name, v])
+			return
+		pos[g] = sp.rest * ipos[v]
+		if iuv.size() == ipos.size():
+			uv[g] = iuv[v]
+		uv2[g] = iuv2[v]
+		seen[g] = 1
+	if seen.count(1) != 2 * n:
+		push_warning("%s: the imported sail misses grid vertices; the sail stays flat" % sp.node.name)
+		return
+	var idx := PackedInt32Array()
+	var iidx: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	idx.resize(iidx.size())
+	for t in iidx.size():
+		idx[t] = gi[iidx[t]]
+	var nrm := PackedVector3Array()
+	nrm.resize(2 * n)
+	var rest_mid := PackedVector3Array()
+	rest_mid.resize(n)
+	for k in n:
+		rest_mid[k] = 0.5 * (pos[k] + pos[n + k])
+		nrm[k] = sp.nh
+		nrm[n + k] = -sp.nh
+	var out := []
+	out.resize(Mesh.ARRAY_MAX)
+	out[Mesh.ARRAY_VERTEX] = pos
+	out[Mesh.ARRAY_NORMAL] = nrm
+	out[Mesh.ARRAY_TEX_UV] = uv
+	out[Mesh.ARRAY_TEX_UV2] = uv2
+	out[Mesh.ARRAY_INDEX] = idx
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, out)  # no compression flags: plain floats (§11)
+	mesh.surface_set_material(0, _sail_material(mi.get_active_material(0)))
+	# a sphere around the sail at any angle: the rest sail about its luff centre, plus the belly, the swing
+	# and the twist
+	var lo := Vector3(INF, INF, INF)
+	var hi := -lo
+	for q in rest_mid:
+		lo = lo.min(q)
+		hi = hi.max(q)
+	sp.centre = 0.5 * (sp.tack + sp.head)
+	var r := 0.0
+	for q in rest_mid:
+		r = maxf(r, q.distance_to(sp.centre))
+	var extra := 0.0
+	if sp.mode == Mode.POLE:
+		extra = 2.0 * _mast_step.distance_to(sp.tack)
+	elif sp.mode == Mode.BOOM:
+		extra = _boom_pivot.distance_to(sp.tack)
+	sp.radius = r * 1.25 + extra + 0.5
+	mesh.custom_aabb = AABB(sp.centre - Vector3.ONE * sp.radius, Vector3.ONE * 2.0 * sp.radius)
+	var look: Dictionary = side.get("look", {}) if side.get("look") is Dictionary else {}
+	var params := _shape_params(sp, look, furling)
+	var shape: Variant = null
+	if not use_reference and ClassDB.class_exists("SailShape"):
+		shape = ClassDB.instantiate("SailShape")
+	else:
+		shape = SailShapeRef.new()
+	if not shape.configure(rest_mid, sp.rows, sp.cols, params):
+		push_warning("%s: sail shape set-up failed; the sail stays flat" % sp.node.name)
+		return
+	mi.mesh = mesh
+	mi.transform = Transform3D.IDENTITY
+	sp.rest = Transform3D.IDENTITY
+	if not shape.attach_mesh(mesh.get_rid()):
+		push_warning("%s: sail mesh layout not writable in place; rebuilding it each update" % sp.node.name)
+		sp.arrays = out
+	sp.mesh = mesh
+	sp.shape = shape
+
+
+## sail_visuals.md §4: the look block of the sidecar (the generator fills the defaults), with the table's
+## defaults and size rules for anything missing, and the rig numbers of §7.
+func _shape_params(sp: SailPart, look: Dictionary, furling: bool) -> Dictionary:
+	var kind := SailShapeRef.Kind.HEADSAIL
+	var t := sp.type
+	var d := {"fill_gain": 0.75, "fill_curve": 1.2, "flutter_amp": 0.07, "twist_top": 0.105}
+	if t == "main":
+		kind = SailShapeRef.Kind.MAIN
+		d = {"fill_gain": 0.6, "fill_curve": 4.0, "flutter_amp": 0.15, "twist_top": 0.070}
+	elif t == "code_zero":
+		d = {"fill_gain": 0.7, "fill_curve": 1.3, "flutter_amp": 0.08, "twist_top": 0.140}
+	elif t == "spinnaker_asym":
+		kind = SailShapeRef.Kind.ASYM
+		d = {"fill_gain": 1.0, "fill_curve": 1.0, "flutter_amp": 1.0, "twist_top": 0.0, "depth": 0.30,
+			"tack_line_max": 0.04}
+	elif t == "spinnaker_sym":
+		kind = SailShapeRef.Kind.SYM
+		d = {"fill_gain": 1.5, "fill_curve": 1.5, "flutter_amp": 1.0, "twist_top": 0.0, "depth": 0.35}
+	var loa := info.loa
+	d["flutter_rate"] = 0.6 + 2.4 * clampf((12.0 - loa) / 5.0, 0.0, 1.0)
+	d["flutter_rate_max"] = 9.0 + clampf((loa - 7.0) / 5.0, 0.0, 1.0)
+	var p := {}
+	for k in d:
+		p[k] = float(look.get(k, d[k]))
+	for k in ["depth", "tack_line_max", "furl_radius"]:
+		if look.has(k):
+			p[k] = float(look[k])
+	p["kind"] = kind
+	p["mode"] = sp.mode
+	p["furling"] = furling and kind == SailShapeRef.Kind.HEADSAIL
+	p["boom_pivot"] = _boom_pivot
+	p["boom_axis"] = _boom_axis
+	p["mast_step"] = _mast_step
+	p["mast_axis"] = _mast_axis
+	p["fwd"] = Frames.body_to_model(Vector3(1, 0, 0))
+	p["port"] = Frames.body_to_model(Vector3(0, 1, 0))
+	p["up"] = Frames.body_to_model(Vector3(0, 0, 1))
+	p["phi"] = randf() * TAU  # §5.2: boats and sails do not flutter in step
+	return p
+
+
+## §11: the generator's sailcloth, opaque, back faces culled, roughness about 0.55 and a back-light of about
+## 0.3 of the albedo so the sun shows through the cloth.
+func _sail_material(m: Material) -> Material:
+	if m == null or not (m is BaseMaterial3D):
+		return m
+	if _sail_mats.has(m):
+		return _sail_mats[m]
+	var s := (m as BaseMaterial3D).duplicate() as BaseMaterial3D
+	s.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+	s.cull_mode = BaseMaterial3D.CULL_BACK
+	s.roughness = 0.55
+	s.backlight_enabled = true
+	var a := s.albedo_color
+	s.backlight = Color(a.r * 0.3, a.g * 0.3, a.b * 0.3)
+	_sail_mats[m] = s
+	return s
+
+
 ## Places the boom, the mainsheet, the pole and the sails at the render fraction `alpha` between the sail states
-## of the last two ticks (`prev` may be null: the newest only). sail_visuals.md §2: beta and pole with angle
-## lerp, progress with lerp when both have the same phase, the phase the newer one's.
-func apply_sails(prev: SimSource.SailsView, cur: SimSource.SailsView, alpha: float) -> void:
+## of the last two ticks (`prev` may be null: the newest only). sail_visuals.md §2: beta, pole and awa with angle
+## lerp, progress with lerp when both have the same phase, luff shiver and the apparent wind speed with lerp, the
+## phase and backed the newer one's. `dt` is the frame time (s; negative: the node's process delta).
+func apply_sails(prev: SimSource.SailsView, cur: SimSource.SailsView, alpha: float, dt: float = -1.0) -> void:
 	if model == null or cur == null:
 		return
+	if dt < 0.0:
+		dt = get_process_delta_time() if is_inside_tree() else 0.0
+	dt = clampf(dt, 0.0, 0.1)
+	var p0 := prev if prev != null else cur
+	var awa := Frames.wrap_pi(p0.awa + Frames.angle_diff(cur.awa, p0.awa) * alpha)
+	var aws := lerpf(p0.aws, cur.aws, alpha)
+	var cam: Camera3D = get_viewport().get_camera_3d() if is_inside_tree() else null
 	for sp in sail_parts:
 		if sp.index >= cur.sails.size():
 			continue
 		var s1: SimSource.SailState = cur.sails[sp.index]
 		var s0: SimSource.SailState = s1
-		if prev != null and sp.index < prev.sails.size():
-			s0 = prev.sails[sp.index]
+		if sp.index < p0.sails.size():
+			s0 = p0.sails[sp.index]
 		sp.beta = Frames.wrap_pi(s0.beta + Frames.angle_diff(s1.beta, s0.beta) * alpha)
 		sp.gamma = Frames.wrap_pi(s0.pole + Frames.angle_diff(s1.pole, s0.pole) * alpha)
 		var prog := lerpf(s0.progress, s1.progress, alpha) if s0.phase == s1.phase else s1.progress
-		_place(sp, s1.phase, prog)
+		var shiver := 0.0
+		var backed := false
+		if sp.index < cur.out.size():
+			var o1: SimSource.SailOutput = cur.out[sp.index]
+			var o0: SimSource.SailOutput = p0.out[sp.index] if sp.index < p0.out.size() else o1
+			shiver = lerpf(o0.luff_shiver, o1.luff_shiver, alpha)
+			backed = o1.backed
+		_place(sp, s1.phase, prog, shiver, backed, awa, aws, dt, cam)
 		if sp.mode == Mode.BOOM:
 			boom_angle = sp.beta
 			if _boom:
@@ -246,61 +449,67 @@ func apply_sails(prev: SimSource.SailsView, cur: SimSource.SailsView, alpha: flo
 				_pole.transform = _pole_rest * Transform3D(Basis(_pole_axis, sp.gamma), Vector3.ZERO)
 
 
-func _place(sp: SailPart, phase: int, prog: float) -> void:
+func _place(sp: SailPart, phase: int, prog: float, shiver: float, backed: bool, awa: float, aws: float,
+		dt: float, cam: Camera3D) -> void:
 	sp.node.visible = phase != SimSource.Phase.DOWN or sp.mode == Mode.BOOM
-	if not sp.node.visible:
+	_hoist_fractions(sp, phase, prog)
+	if sp.shape == null:
 		return
-	_hoist_scale(sp, phase, prog)
-	var f := Basis(sp.ah, sp.lh, sp.nh)
-	var sb := f * Basis.from_scale(Vector3(sp.chord_scale, sp.luff_scale, sp.chord_scale)) * f.transposed()
-	var shape := Transform3D(sb, sp.tack - sb * sp.tack)
-	var place: Transform3D
-	match sp.mode:
-		Mode.BOOM:
-			place = _about(_boom_pivot, _boom_axis, sp.beta)
-		Mode.LUFF:
-			place = _about(sp.tack, sp.lh, sp.beta)
-		_:
-			var swing: Transform3D
-			var ge := sp.gamma
-			if sp.mode == Mode.POLE:
-				swing = _about(_mast_step, _mast_axis, ge)
-			else:
-				var lim := asin(minf(1.0, sp.tack_line_max * sp.sl / sp.r_h))
-				ge = Frames.sgn(sp.gamma) * minf(absf(sp.gamma), lim)
-				swing = _about(sp.head, Vector3.UP, ge)
-			var t2 := swing * sp.tack
-			place = _about(t2, (swing.basis * sp.lh).normalized(), sp.beta - ge) * swing
-	sp.node.transform = place * shape * sp.rest
+	sp.shape.advance(dt, aws, awa, backed)  # the flutter phase and the backed factor run on, drawn or not
+	sp.since += dt
+	if not sp.node.visible or not _due(sp, cam):
+		return
+	sp.since = 0.0
+	sp.updates += 1
+	sp.shape.update(phase, prog, sp.beta, sp.gamma, shiver, awa, aws)
+	if sp.arrays.is_empty():
+		sp.shape.write_mesh()
+	else:
+		var mat := sp.mesh.surface_get_material(0)
+		sp.arrays[Mesh.ARRAY_VERTEX] = sp.shape.positions()
+		sp.arrays[Mesh.ARRAY_NORMAL] = sp.shape.normals()
+		sp.mesh.clear_surfaces()
+		sp.mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, sp.arrays)
+		sp.mesh.surface_set_material(0, mat)
 
 
-## sail_visuals.md §8.1 phases as a scale of the flat sail about its tack: luff (along Lh) and chord (Ah, Nh).
-func _hoist_scale(sp: SailPart, phase: int, prog: float) -> void:
+## §11 update rate by distance: every frame nearer than 200 m, 15 Hz to 800 m, 4 Hz beyond, not at all outside
+## the view frustum (the next update in view comes at once).
+func _due(sp: SailPart, cam: Camera3D) -> bool:
+	if cam == null:
+		return true
+	var c := global_transform * sp.centre
+	for pl in cam.get_frustum():
+		if pl.distance_to(c) > sp.radius:
+			sp.since = INF
+			return false
+	var dist := cam.global_position.distance_to(c)
+	var interval := 0.0 if dist < NEAR_M else (MID_INTERVAL if dist < MID_M else FAR_INTERVAL)
+	return sp.since + 1e-6 >= interval
+
+
+## §8.1 for the tests: how much of the luff is hoisted and how far the flying shape has filled.
+func _hoist_fractions(sp: SailPart, phase: int, prog: float) -> void:
 	sp.luff_scale = 1.0
 	sp.chord_scale = 1.0
 	if sp.mode == Mode.BOOM or phase == SimSource.Phase.UP or phase == SimSource.Phase.PREPARE_DROP:
 		return
 	if not sp.type.begins_with("spinnaker"):
-		# §8.2 on a halyard: p = 0 flaked on deck, the head rises with the hoist, the drop runs it back
 		var p := 0.0
 		if phase == SimSource.Phase.HOISTING:
 			p = prog
 		elif phase == SimSource.Phase.DROPPING:
 			p = 1.0 - prog
-		sp.luff_scale = maxf(p, MIN_SCALE)
+		sp.luff_scale = clampf(p, 0.0, 1.0)
 		return
 	if phase == SimSource.Phase.DROPPING:
-		# §8.5: slides down the luff and gathers at the tack, quick to start
-		var k := pow(clampf(prog, 0.0, 1.0), 0.3)
-		sp.luff_scale = maxf(1.0 - prog, MIN_SCALE)
-		sp.chord_scale = lerpf(1.0, BUNDLE, k)
+		sp.luff_scale = clampf(1.0 - prog, 0.0, 1.0)
+		sp.chord_scale = 1.0 - pow(clampf(prog, 0.0, 1.0), 0.3)
 		return
-	# §8.4: a thin bundle climbs the luff to 90 %, then fills over the last tenth (c = 0: a bag at the tack)
 	var c := prog if phase == SimSource.Phase.HOISTING else 0.0
-	var hy := minf(c / 0.9, 1.0)
+	sp.luff_scale = minf(c / 0.9, 1.0)
 	var kk := clampf((c - 0.9) / 0.1, 0.0, 1.0)
-	sp.luff_scale = maxf(hy, MIN_SCALE)
-	sp.chord_scale = lerpf(BUNDLE, 1.0, kk * kk)
+	sp.chord_scale = kk * kk
 
 
 func _update_sheet(beta: float) -> void:

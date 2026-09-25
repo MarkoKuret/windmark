@@ -289,6 +289,10 @@ func _build_sails(boat: int) -> SailsView:
 	var d: Dictionary = core.sails(boat)
 	var v := SailsView.new()
 	v.front = d["front"]
+	var bs := state(boat)
+	v.awa = bs.awa
+	v.aws = bs.aws
+	v.tws = bs.tws
 	v.queue_len = d["queue_len"]
 	v.queue_pos = d["queue_pos"]
 	v.queue_progress = d["queue_progress"]

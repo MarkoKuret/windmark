@@ -1,0 +1,95 @@
+// SailShape: the per-vertex sail shapes of docs/specs/sail_visuals.md (§3 to §9) for one sail: fill, camber,
+// twist, flutter, backing, hoist and drop, the flying spinnaker shapes, the placement about the boom, the luff, the
+// sprit or the pole, and both cloth layers with their normals, written straight into the sail's grid-order mesh.
+// Presentation only: nothing here touches the core. game/scripts/sail_shape_ref.gd is the GDScript reference with
+// the same calls (tests compare the two); keep them in step.
+#pragma once
+
+#include <godot_cpp/classes/ref_counted.hpp>
+#include <godot_cpp/variant/basis.hpp>
+#include <godot_cpp/variant/dictionary.hpp>
+#include <godot_cpp/variant/packed_byte_array.hpp>
+#include <godot_cpp/variant/packed_vector3_array.hpp>
+#include <godot_cpp/variant/rid.hpp>
+#include <godot_cpp/variant/transform3d.hpp>
+#include <godot_cpp/variant/vector3.hpp>
+
+#include <vector>
+
+namespace windmark_godot {
+
+class SailShape : public godot::RefCounted {
+  GDCLASS(SailShape, godot::RefCounted)
+
+ public:
+  enum Kind { MAIN = 0, HEADSAIL = 1, ASYM = 2, SYM = 3 };
+  enum Mode { BOOM = 0, LUFF = 1, SPRIT = 2, POLE = 3 };
+
+  bool configure(const godot::PackedVector3Array& rest_mid, int64_t rows, int64_t cols,
+                 const godot::Dictionary& params);
+  void advance(double dt, double aws, double awa, bool backed);
+  void update(int64_t phase, double progress, double beta, double gamma, double luff_shiver, double awa,
+              double aws);
+
+  double get_phase() const { return phi_; }
+  void set_phase(double v) { phi_ = static_cast<float>(v); }
+  double get_backed_factor() const { return s_b_; }
+  void set_backed_factor(double v) { s_b_ = static_cast<float>(v); }
+  double get_twist_side() const { return tl_; }
+  void set_twist_side(double v) {
+    tl_ = static_cast<float>(v);
+    tl_set_ = true;
+  }
+
+  godot::Dictionary frame() const;
+  godot::PackedVector3Array local_shape() const;
+  godot::PackedVector3Array mid() const;
+  godot::PackedVector3Array positions() const;
+  godot::PackedVector3Array normals() const;
+
+  bool attach_mesh(const godot::RID& mesh);
+  godot::PackedByteArray vertex_bytes();
+  void write_mesh();
+
+  static double fill(double v, double g, double k);
+
+ protected:
+  static void _bind_methods();
+
+ private:
+  godot::Vector3 main_shape(int k, float d_cam, float amp, float shiver) const;
+  float head_n(float u, float a, float d_cam, float amp, float shiver) const;
+  godot::Vector3 halyard(int k, float p, float d_cam, float amp, float shiver) const;
+  godot::Vector3 furl(int k, float p, float d_cam, float amp, float shiver) const;
+  godot::Vector3 fly(int k, int i, const godot::Vector3& w, float shiver) const;
+  godot::Vector3 hoist(int k, float c, const godot::Vector3& f) const;
+  godot::Vector3 drop(int k, float c, const godot::Vector3& f) const;
+  void layers(const godot::Vector3& np);
+  void encode();
+
+  int rows_ = 0, cols_ = 0, n_ = 0;
+  int kind_ = MAIN, mode_ = BOOM;
+  bool furling_ = false;
+  float fill_gain_ = 0.6f, fill_curve_ = 4.0f, flutter_amp_ = 0.15f, flutter_rate_ = 0.6f;
+  float flutter_rate_max_ = 10.0f, twist_top_ = 0.0f, depth_ = 0.3f, tack_line_max_ = 0.0f;
+  float furl_radius_ = 0.05f;
+  godot::Vector3 fwd_{0, 0, 1}, port_{1, 0, 0}, up_{0, 1, 0};
+  godot::Vector3 boom_pivot_, boom_axis_{0, 1, 0}, mast_step_, mast_axis_{0, 1, 0};
+
+  godot::Vector3 tack_, head_, lh_{0, 1, 0}, ah_{0, 0, -1}, nh_{1, 0, 0};
+  float sa_ = 1.0f, sl_ = 1.0f, a_min_ = 0.0f, l_min_ = 0.0f, r_h_ = 1.0f, kappa_ = 0.0f;
+
+  std::vector<float> a_, l_, u_, h_, uc_;  // per vertex
+  std::vector<float> c_, amid_, hrow_;     // per row
+
+  float phi_ = 0.0f, s_b_ = 1.0f, tl_ = 0.0f;
+  bool tl_set_ = false;
+
+  std::vector<godot::Vector3> loc_, mid_, pos_, nrm_;
+
+  godot::RID mesh_;
+  godot::PackedByteArray bytes_;
+  int64_t noff_ = 0, nstride_ = 0;
+};
+
+}  // namespace windmark_godot

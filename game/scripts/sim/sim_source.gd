@@ -133,6 +133,10 @@ class SailStep:
 ## sails.md §3.2 per boat, plus every sail's state and output
 class SailsView:
 	var front := -1
+	## the boat's apparent and true wind at this tick (boat.md §3), for drawing the sails (sail_visuals.md §2)
+	var awa := 0.0
+	var aws := 0.0
+	var tws := 0.0
 	var queue: Array[SailStep] = []
 	var queue_len := 0
 	var queue_pos := 0

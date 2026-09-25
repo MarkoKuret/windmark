@@ -1,4 +1,4 @@
-// Entry point of the Windmark GDExtension (game/bin/windmark.gdextension): registers CoreSim.
+// Entry point of the Windmark GDExtension (game/bin/windmark.gdextension): registers CoreSim and SailShape.
 #include <gdextension_interface.h>
 
 #include <godot_cpp/core/class_db.hpp>
@@ -6,6 +6,7 @@
 #include <godot_cpp/godot.hpp>
 
 #include "core_sim.h"
+#include "sail_shape.h"
 
 using namespace godot;
 
@@ -14,6 +15,7 @@ namespace {
 void initialize(ModuleInitializationLevel level) {
   if (level != MODULE_INITIALIZATION_LEVEL_SCENE) return;
   GDREGISTER_CLASS(windmark_godot::CoreSim);
+  GDREGISTER_CLASS(windmark_godot::SailShape);
 }
 
 void uninitialize(ModuleInitializationLevel level) { (void)level; }

@@ -330,3 +330,53 @@ TEST_CASE("boat: in irons and recovery") {
     }
   }
 }
+
+// boat.md §8: in a calm the wind directions keep their last values and the boat coasts down along the
+// deceleration law; §5.1: the polar sees the wind over the water, so a current is felt as wind.
+TEST_CASE("boat: calm, current and invalid commands") {
+  const wm::PerfData& p = perf("wm7");
+  Sim sim("wm7", 10.0f, deg(90.0f));
+  sim.place(deg(90.0f), 3.0f, p.start_front_sail);
+  const float twd = sim.s().twd_from;
+  sim.env.wind_speed = 0.0f;
+  sim.env.wind_speed_clean = 0.0f;
+  float prev = sim.s().v;
+  bool monotonic = true;
+  for (int i = 0; i < static_cast<int>(30.0f / DT); ++i) {
+    sim.step();
+    if (sim.s().v > prev) monotonic = false;
+    prev = sim.s().v;
+  }
+  CHECK(sim.s().twd_from == twd);
+  CHECK(monotonic);
+  CHECK(sim.s().v >= 0.0f);
+  CHECK(sim.s().v < 0.3f);
+
+  // A current of 1 m/s toward the north in a calm: the boat drifts with the water and feels 1 m/s of true wind
+  // from the north (the air over the water).
+  Sim cur("wm7", 0.0f, 0.0f);
+  cur.env.current_y = 1.0f;
+  cur.place(0.0f, 0.0f, -1);
+  cur.run(10.0f);
+  CHECK(cur.s().tws == doctest::Approx(1.0f));
+  CHECK(wm::angle_diff(cur.s().twd_from, 0.0f) == doctest::Approx(0.0f).epsilon(1e-4));
+  // Head to that wind it drifts astern through the water, so it makes a little less than the current's 10 m.
+  CHECK(cur.s().v < 0.0f);
+  CHECK(cur.s().pos_y > 8.0f);
+  CHECK(cur.s().pos_y < 10.0f);
+
+  // Commands are clamped on write; NaN is the neutral value.
+  sim.boat.set_helm(5.0f);
+  CHECK(sim.boat.controls().h_cmd == 1.0f);
+  sim.boat.set_helm(std::nanf(""));
+  CHECK(sim.boat.controls().h_cmd == 0.0f);
+  sim.boat.set_sheet(0.4f);
+  sim.boat.set_sheet(std::nanf(""));
+  CHECK(sim.boat.controls().sheet_cmd == 0.4f);
+  sim.boat.set_sheet(-3.0f);
+  CHECK(sim.boat.controls().sheet_cmd == 0.0f);
+  sim.boat.set_performance_scale(std::nanf(""));
+  CHECK(sim.boat.controls().performance_scale == 1.0f);
+  sim.boat.set_performance_scale(9.0f);
+  CHECK(sim.boat.controls().performance_scale == 2.0f);
+}

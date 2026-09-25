@@ -67,6 +67,7 @@ class CoreSim : public godot::RefCounted {
   double trim_speed_at(int64_t boat, double tws, double awa_abs, double eps) const;
   double perf_table(int64_t boat, int64_t front_sail, const godot::String& name, double x, double y, double w) const;
   double polar(int64_t boat, double tws, double twa, int64_t front_sail) const;
+  godot::Dictionary polar_vmg(int64_t boat, double tws) const;
   godot::Dictionary sails(int64_t boat) const;
   godot::PackedFloat32Array sail(int64_t boat, int64_t sail) const;
   godot::Array sail_events(int64_t boat) const;
@@ -81,6 +82,10 @@ class CoreSim : public godot::RefCounted {
   godot::Vector2 sea_slope(double x, double y);
   godot::Array sea_components() const;
   godot::Dictionary sea_exposure() const;
+
+  // venue
+  godot::Array venue_land() const;
+  godot::Array venue_obstacles() const;
 
   // course, race and rules
   godot::Dictionary course() const;

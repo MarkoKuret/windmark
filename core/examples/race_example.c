@@ -249,6 +249,20 @@ static outcome run_race(const char* data, const char* courses, int verbose) {
   /* The world keeps what it was given: the caller's handles can go now. */
   wm_venue_free(venue);
   venue = NULL;
+  if (verbose) {
+    wm_land land;
+    wm_obstacle ob;
+    float x0 = 0.0f, y0 = 0.0f;
+    for (int32_t i = 0; i < wm_world_land_count(w); ++i) {
+      if (!check(wm_world_land(w, i, &land), "land") || !check(wm_world_land_point(w, i, 0, &x0, &y0), "land point"))
+        goto done;
+      printf("land %s: %d points from (%.1f, %.1f)\n", land.id, land.point_count, (double)x0, (double)y0);
+    }
+    for (int32_t i = 0; i < wm_world_obstacle_count(w); ++i) {
+      if (!check(wm_world_obstacle(w, i, &ob), "obstacle")) goto done;
+      printf("obstacle %s: %s\n", ob.id, ob.kind == WM_OBSTACLE_CIRCLE ? "circle" : "polygon");
+    }
+  }
   for (int i = 0; i < N_BOATS; ++i) {
     wm_boat_entry e;
     wm_boat_entry_init(&e, perf[i == N_BOATS - 1 ? 1 : 0]);

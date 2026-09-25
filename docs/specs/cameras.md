@@ -144,9 +144,11 @@ A fly camera for looking around the course, spectating and replays.
   and for the chase camera the aim point is kept, so the camera tilts down a little instead of dipping. At the 2°
   minimum elevation the chase eye is `R·sin 2° + lift` above the target, which the clearance only touches in a
   swell.
-- **Land and obstacles**: if the segment target → eye crosses a venue land polygon (`data_format.md` §6.5), the eye
-  is pulled toward the target to 2 m short of the crossing, and eased back out with `τ = 0.5 s`. Other boats are not
-  avoided.
+- **Land and obstacles**: if the segment target → eye enters the drawn land (the venue's land polygons and obstacles
+  of `data_format.md` §6.5 with the height the front end draws them at: terrain, quays, rocks), the eye is pulled
+  toward the target to 2 m short of the crossing at once, and eased back out with `τ = 0.5 s` (chase and aerial).
+  The free camera keeps 1 m above the drawn ground as it does above the water. A high camera above land is not
+  pulled in: only a segment that passes below the ground is. Other boats are not avoided.
 - **Near and far planes**: near = 0.1 m onboard; otherwise `0.5 + 119.5·clamp((eye.y − 80)/2000, 0, 1)` m (sharper
   depth at height). Far = 30 km (the horizon, `water_render.md` §5).
 

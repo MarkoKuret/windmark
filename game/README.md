@@ -16,8 +16,9 @@ controls, the cameras, the minimal HUD and a sail test scene that puts them toge
 | `scripts/controls/` | Input map defaults, device reader, `PlayerControls` (boat commands), sail key mapping, the input frame |
 | `scripts/cameras/` | `CameraRig` and the chase, onboard, aerial and free cameras, shake, onboard eye point |
 | `scripts/hud/` | `Hud`, `HudValues`, formats, bars and trim gauges |
+| `scripts/venue/` | `VenueShapes` (the venue's land polygons and obstacles, from the core or the venue file), `LandTerrain` (the drawn ground height and colours), `ColorMesh` (vertex-coloured mesh builder) |
 | `shaders/` | Shaders. `sea_common`, `sky_common`, `wake_common` (`.gdshaderinc`) hold the water, sky and wake maths, written so the offline preview can compile them as GLSL too; `water_l/m/h` are the sea per quality tier, `sky`, `wake`, `wake_normal`; `boat` is the boat surface shader |
-| `scenes/` | Scenes. `sea/` is the sea (`sea.tscn`, `Sea`), its data source and wakes, and the daytime sky (`sky_day.tscn`, `SkyRig`, `env_day.tres`); `water_test.tscn` shows them together; `sail_test.tscn` is one boat sailing freely on the core (FakeSim as fallback), with cameras, controls and HUD on that sea and sky |
+| `scenes/` | Scenes. `sea/` is the sea (`sea.tscn`, `Sea`), its data source and wakes, and the daytime sky (`sky_day.tscn`, `SkyRig`, `env_day.tres`); `water_test.tscn` shows them together; `sail_test.tscn` is one boat sailing freely on the core (FakeSim as fallback), or racing alone on the example course, with cameras, controls and HUD on that sea and sky; `venue/` draws the venue land and obstacles (`VenueView`, `land.gdshader`); `course/` the course (`CourseView`, `CourseProps`) |
 | `tests/` | Headless tests |
 | `generated/` | Build outputs staged for import (boatgen GLBs and sidecars). Not committed |
 | `.godot/` | Godot's import cache. Not committed |
@@ -173,8 +174,7 @@ others as Dictionaries with the C field names. `CoreSimSource` caches the per-bo
 - **Options** not wired to a settings screen yet: `PlayerControls` (helm key mode, dead zone and curve, sheet rate,
   hold or toggle, sheet turns auto-trim off), `CameraRig.options` (speed, invert, reduced motion, smooth switch,
   auto-recentre), `Hud.assist` (Full, Standard, Minimal). Not implemented yet: mouse helm, one-hand layout,
-  rebinding UI, vibration, land avoidance of the cameras (no venue land yet), the aerial next-mark framing (no
-  marks yet).
+  rebinding UI, vibration.
 
 ## UI tests
 
@@ -204,9 +204,39 @@ Runs headless, with scripted input at fixed frame rates:
 
 To sail the test scene yourself (opens a window): `game/native/build.sh` once (the core; without it the scene
 runs on FakeSim), then `godot --path game res://scenes/sail_test.tscn` (after `--`: `--class=wm12` for the
-12 m boat, `--fake` for FakeSim). Keys: ←/→ or
+12 m boat, `--fake` for FakeSim, `--race` to race alone on `example_bay/example_wl` through the start sequence,
+`--course=<venue>/<id>` for another course). Keys: ←/→ or
 A/D helm (set and hold, ↓ centres), T auto-trim, W/S sheet, Space let fly, 1/2 sails, C camera, F5 to F8 camera
-modes, right mouse drag or IJKL orbit, wheel or O/U zoom, R recentre, Esc pause, F10 hide HUD.
+modes, right mouse drag or IJKL orbit, wheel or O/U zoom, R recentre, Backspace reset (free sailing: back to the
+start point; race mode: restart the race), Esc pause, F10 hide HUD.
+
+## Venue land and the course
+
+- **Land** (`scenes/venue/venue_view.gd`): the venue's land polygons and obstacles come from the core
+  (`CoreSim.venue_land`, `venue_obstacles`, the shapes the collisions use; the venue file on FakeSim). Each land
+  polygon becomes a terrain mesh on a 5 m grid (`LandTerrain`): the waterline lies on the polygon or up to 2.5 m
+  inside it (never outside, so a boat never sails through drawn land), pebble beaches or low rocky shore under a
+  wet band, low hills (about 45 m) of dry grass and maquis with stone pines and shrubs. Polygon obstacles are
+  concrete quays (walls into the water, deck at 1.3 m, bollards, a harbour light at the seaward end), circle
+  obstacles limestone rocks whose waterline is the circle. The land shader's grain (`land_common.gdshaderinc`) is
+  shared with the offline preview. `VenueView.ground_height` is the drawn ground for the cameras (`cameras.md`
+  §7: chase and aerial pulled in 2 m short of land, eased out over 0.5 s; the free camera stays above it).
+- **Course** (`scenes/course/course_view.gd`, race mode): marks at the core's resolved positions (styles and
+  labels from the course file): inflatable and large cylinders and the tetra pin riding the drawn sea, the
+  committee and mark boats on the 17-point outline at their resolved heading, the committee boat's flags hoisted
+  per signal (class, prep, X; orange always) and blue on the finish boat after the start. On the water through
+  the Sea overlay hooks: the start line (white, red while over in the last minute, green until started), the
+  gate line, the finish line on the last leg, the laylines (`hud.md` §6, from `CoreSim.polar_vmg` at the
+  10 s smoothed clean wind, 2 Hz) and the zone circle within 6 L; in 3-D the rounding arrow on the next mark and
+  a bouncing marker with its name and distance beyond 500 m. A line of race status text at the top (countdown,
+  flags, OCS, next mark, lap) stands in for the race HUD (WM-016.11).
+- **Tests**: `tests/run_course_land_test.sh` (headless, `tests/course_land_test.gd`): the core's shapes equal the
+  venue file, ground above water only inside the polygons, quay and rock on their obstacles, the camera never
+  inside land, the reset key in free sailing (core and FakeSim) and in race mode, marks at the core's positions
+  riding the sea, the committee boat heading, start line state and flags against the race state through every
+  start signal, laylines at the polar VMG angles. `--preview` also writes the offline previews
+  (`tests/course_preview_dump.gd`, then `tests/course_preview.py`, which reuses `water_preview.py`) into
+  `generated/course_preview`; the committed ones are `tests/previews/course_*.jpg`.
 
 ## Notes on the imported boats
 

@@ -395,6 +395,31 @@ WM_API wm_status wm_world_sea_exposure_grid(const wm_world* w, wm_exposure_grid*
 /* sea.md §4 height at any time of the environment clock (renderers, cameras between ticks). */
 WM_API float wm_world_sea_height_at(wm_world* w, float x, float y, uint32_t t_ms);
 
+/* ---- venue ------------------------------------------------------------------------------------------------- */
+
+/* data_format.md §6.5 the venue's land polygons and obstacles, in file order: the shapes the collisions use
+ * (collisions.md §2.2), for renderers and cameras. Counts are 0 on open water. */
+enum { WM_OBSTACLE_POLYGON = 0, WM_OBSTACLE_CIRCLE };
+
+typedef struct wm_land {
+  const char* id;
+  int32_t point_count;           /* counter-clockwise, interior = land */
+} wm_land;
+
+typedef struct wm_obstacle {
+  const char* id;
+  int32_t kind;                  /* WM_OBSTACLE_* */
+  int32_t point_count;           /* polygon: convex, counter-clockwise; 0 for a circle */
+  float cx, cy, r;               /* circle: centre and radius, m; 0 for a polygon */
+} wm_obstacle;
+
+WM_API int32_t wm_world_land_count(const wm_world* w);
+WM_API wm_status wm_world_land(const wm_world* w, int32_t i, wm_land* out);
+WM_API wm_status wm_world_land_point(const wm_world* w, int32_t i, int32_t k, float* x, float* y);
+WM_API int32_t wm_world_obstacle_count(const wm_world* w);
+WM_API wm_status wm_world_obstacle(const wm_world* w, int32_t i, wm_obstacle* out);
+WM_API wm_status wm_world_obstacle_point(const wm_world* w, int32_t i, int32_t k, float* x, float* y);
+
 /* ---- course ------------------------------------------------------------------------------------------------ */
 
 enum { WM_MARK_BUOY = 0, WM_MARK_COMMITTEE_BOAT, WM_MARK_MARK_BOAT, WM_MARK_VIRTUAL };

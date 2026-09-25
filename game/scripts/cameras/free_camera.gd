@@ -81,7 +81,7 @@ func update(t: CamTypes.Target, _o: CamTypes.Options, dt: float) -> CamTypes.Vie
 	var want := (-b.z * _move.z + b.x * _move.x + Vector3.UP * _move.y) * speed
 	vel += (want - vel) * Frames.smooth_k(dt, TAU_V)
 	pos += vel * dt
-	var floor_y := t.sea_at(pos) + MIN_CLEARANCE
+	var floor_y := maxf(t.sea_at(pos), t.ground_at(pos)) + MIN_CLEARANCE
 	if pos.y < floor_y:
 		pos.y = floor_y
 		vel.y = maxf(vel.y, 0.0)

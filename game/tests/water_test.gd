@@ -245,6 +245,70 @@ func check_shadows(sea: Sea, t: Dictionary) -> void:
 	check(casts == 0, "scene tier %s: sea, wakes and spray cast no shadows" % t["name"])
 
 
+## §5 bow wave and mist: a boat sails straight on flat water at a set speed ratio for 3 s of render time on a
+## tier; returns {wave: bow wave vertex count, mist: sprites alive, min_size, max_alpha, spray_nodes}.
+func _sail_bow(tier: SeaQuality.Tier, ratio: float, heel := 0.0) -> Dictionary:
+	var holder := Node3D.new()
+	var sea := Sea.new()
+	sea.quality = tier
+	holder.add_child(sea)
+	var wakes := SeaWakes.new()
+	holder.add_child(wakes)
+	wakes.sea = sea
+	root.add_child(holder)
+	var lwl := 6.8
+	var v := ratio * 1.34 * sqrt(lwl / 0.3048) * 0.51444447
+	var out := {"wave": 0, "mist": 0, "min_size": INF, "max_alpha": 0.0, "lift": 0.0, "lee_lift": 0.0, "wind_lift": 0.0}
+	for f in 180:
+		var t := f / 60.0
+		sea.render_time_ms = 1000.0 * t
+		sea.update_frame(Vector3(0.0, 5.0, -v * t + 15.0))
+		wakes.update_boat(1, {"x": 0.0, "y": v * t, "z": 0.0, "psi": 0.0, "heel": heel, "pitch": 0.0, "lwl": lwl,
+			"bwl": 2.0, "transom_width": 1.6, "bow_x": 0.5 * lwl, "stern_x": -0.5 * lwl, "own": true})
+		wakes._process(1.0 / 60.0)
+	var wave: MeshInstance3D = wakes.get_node("BowWave1")
+	if wave.mesh.get_surface_count() > 0:
+		var arrays := wave.mesh.surface_get_arrays(0)
+		var pos: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var uv2: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV2]
+		out["wave"] = pos.size()
+		var half := pos.size() / 2
+		for k in pos.size():
+			out["lift"] = maxf(out["lift"], uv2[k].x)
+			# port sheet first; heel > 0 puts starboard down (lee)
+			if k < half:
+				out["wind_lift"] = maxf(out["wind_lift"], uv2[k].x)
+			else:
+				out["lee_lift"] = maxf(out["lee_lift"], uv2[k].x)
+	for m in wakes.mist_sprites():
+		var look := BowWave.mist_look(m)
+		out["min_size"] = minf(out["min_size"], look.x)
+		out["max_alpha"] = maxf(out["max_alpha"], look.y)
+	out["mist"] = wakes.mist_sprites().size()
+	out["spray_nodes"] = wakes.get_node_or_null("Spray") != null
+	holder.free()
+	return out
+
+
+func check_bow_spray() -> void:
+	var slow := _sail_bow(SeaQuality.Tier.H, 0.2)
+	check(slow["wave"] == 0 and slow["mist"] == 0, "bow: no bow wave and no mist at speed ratio 0.2")
+	var mid := _sail_bow(SeaQuality.Tier.H, 0.45)
+	check(mid["wave"] > 0 and mid["mist"] == 0, "bow: a bow wave and no mist at speed ratio 0.45 on flat water")
+	var fast := _sail_bow(SeaQuality.Tier.H, 1.0, 0.3)
+	check(fast["wave"] == 2 * BowWave.NS * BowWave.NT, "bow: two sheets of %d x %d at hull speed" % [BowWave.NS, BowWave.NT])
+	check(fast["lift"] > mid["lift"] and fast["lift"] > 0.15 and fast["lift"] < 0.08 * 6.8 + 0.2,
+		"bow: the crest rises with speed (%.2f m at 0.45, %.2f m at hull speed)" % [mid["lift"], fast["lift"]])
+	check(fast["lee_lift"] > fast["wind_lift"], "bow: heeled, the lee sheet is higher (%.2f m, windward %.2f m)" % [
+		fast["lee_lift"], fast["wind_lift"]])
+	check(fast["mist"] > 5 and fast["min_size"] >= 0.5 and fast["max_alpha"] <= BowWave.MIST_ALPHA + 1e-6,
+		"bow: mist at hull speed, %d soft sprites of at least 0.5 m (smallest %.2f m), alpha at most %.2f" % [
+		fast["mist"], fast["min_size"], fast["max_alpha"]])
+	check(not fast["spray_nodes"], "bow: no spray particles drawn (no dots)")
+	var low_tier := _sail_bow(SeaQuality.Tier.L, 1.0)
+	check(low_tier["wave"] > 0 and low_tier["mist"] == 0, "bow: tier L draws the bow wave without mist")
+
+
 ## A Sea with SeaWakes but no boat has no wake buffer; the first boat makes it, removing it drops it, and a tier
 ## change drops it until wakes are drawn again.
 func check_wake_buffer_lifecycle() -> void:
@@ -460,6 +524,7 @@ func _process(_delta: float) -> bool:
 	check_shadows(sea, t)
 	if t["name"] == "M":
 		check_wake_buffer_lifecycle()
+		check_bow_spray()
 	_scene.queue_free()
 	_scene = null
 	_start_scene()

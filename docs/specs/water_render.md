@@ -225,14 +225,51 @@ alpha       = (1 - t / 4 s) * min(1, ratio_row * 2)          // fades with age, 
 texture v   = distance sailed at emission / 10 m              // foam texture along the ribbon
 the row drifts with the surface current at its point (wind.md §7)
 ```
-**Spray** (quality H, and M for the own boat): each row launches two particles from its edges with speed
+**Spray reach** (quality H, and M for the own boat): each row launches two particles from its edges with speed
 `k_s·ratio²·pulse` (`k_s = 2.5 m/s`), direction 0.6 outward and 0.8 up in the boat frame, kept within 10° of the
 vertical when heeled, `pulse = max(0.01, 1 − (0.3·sin(0.07a + 1) + 0.4·sin(0.5a) + 0.4·sin(0.3a)))` with `a` the
 distance sailed times 1 rad/m plus a random offset per boat, so the spray comes in bursts. They fly under gravity,
 stick where they reach the surface and become the ribbon's outer vertices (pushed out to the particle's distance
 from the row, flying or landed, never inside the edge, so the strip does not fold; that reach is smoothed over the
 four rows either side with triangular weights, so the outer edge has no steps from row to row): the sheet of spray
-thrown off the bow lands and spreads into the wake.
+thrown off the bow lands and spreads into the wake. The particles themselves are **not drawn** (small sprites read
+as dots); what the eye sees is the bow wave and the mist below.
+
+**Bow wave** (every tier, every boat with a wake): on each side a sheet of water peels off the stem, rises along
+the bow and breaks into a foam crest that runs aft and outward into the ribbon's edge. It moves with the boat
+(rebuilt every frame from the pose, in world space, draped on the drawn sea like the ribbon) and is drawn with the
+wake's foam, transparent, no depth write, no shadows.
+```
+v, ratio  = the bow's speed and speed ratio of the last emission (above), smoothed over 0.3 s
+k         = smoothstep(0.25, 0.6, ratio)                       // nothing at low speed
+plunge    = the bow sinking into the sea: max(0, -d(bow height above the sea)/dt), m/s, smoothed over 0.3 s
+H         = min(0.08·lwl, 0.55·v²/(2g)) · (1 + 0.6·min(plunge, 1.5))          // crest height, m
+L         = lwl · (0.18 + 0.22·min(ratio, 1.3)) · (1 + 0.3·min(plunge, 1.5))  // length along the hull
+side s    = +1 lee, −1 windward: heel factor h_s = 1 + 0.6·s·|sin(heel)|
+grid      = 14 stations from the stem aft (σ = 0..1) × 7 across (τ = 0 at the hull .. 1 at the sea)
+station   x = bow_x − σ·L ; hull half breadth y_h = bwl/2 · min(1, σ·L / (0.5·lwl))^0.7 · (1 + 0.5·s·|sin(heel)|)
+across    y = y_h − 0.02 + τ · (0.12 + 0.5·σ·L) · (1 + 0.3·ratio)      // starts just inside the hull
+lift      at the hull H·h_s·(1 − σ)^1.6, crest (τ_c = 0.45) 0.75·H·h_s·(1 − σ)^0.7, 0 at τ = 1 (smoothstep between)
+alpha     k · smoothstep(0, 0.08, σ) · (1 − smoothstep(0.7, 1, σ))
+```
+The drape adds the lift to the sea height and keeps the ribbon's clearance pull, reduced by the lift above 0.1 m
+(so the high part is not pulled). Shading (`wm_bow_alpha`): a translucent, lighter water sheet between the hull and
+the crest (alpha 0.18), a broken foam band on the crest (τ 0.28 to 0.78) and foam spilling on its outer face, the
+foam texture flowing aft at the boat's speed; foam is the wake's colour, roughness 0.6.
+
+**Mist** (quality H, and M for the own boat): soft spray clouds, never dots. They appear only above
+`ratio = 0.55` or when the bow plunges:
+```
+rate      = 14 /s · (clamp((ratio − 0.55) / 0.5, 0, 1) · pulse + 0.8 · clamp(plunge, 0, 1.5))   // per boat
+spawn     on the crest, σ = 0.05..0.35, the lee side twice as often as the windward side
+velocity  outward (0.8..2.0)·ratio m/s, up 0.5..1.5 m/s (· (1 + plunge)), plus 0.7 of the boat's velocity
+motion    drag exp(−2.5 t) on the velocity, gravity 2 m/s² (fine droplets fall slowly), life 0.8..1.3 s
+size      0.5 m growing to (1.2 + 0.8·ratio) m over its life
+alpha     0.16 · fade in over 0.12 s · (1 − age/life)² ; at most 256 sprites in the scene
+```
+Each is a camera-facing quad with a soft round falloff broken up by the foam texture (`wm_mist_alpha`), unshaded
+with the sky's horizon colour plus a share of the sun that grows looking toward it (forward scattering), faded where
+it meets the water or the hull (depth fade over 0.6 m) and near the camera (under 3 m).
 
 A second, narrower ribbon from the **transom** (`w0 = 0.4·transom width`, no spray) gives the stern wake. On tiers
 M and H every ribbon is also drawn into a camera-centred **wake normal buffer** (RG8, 512 × 512 over 400 m, cleared
@@ -258,7 +295,8 @@ colour-blind palettes).
 | puffs and lulls (§4.3) | yes (gameplay information) | yes | yes |
 | whitecaps | yes, one texture | yes | yes |
 | wake ribbons | own boat | own + 6 nearest | all within 400 m |
-| spray particles | no | own boat | yes |
+| bow wave | all boats with a wake | all boats with a wake | all boats with a wake |
+| mist (and spray reach) | no | own boat | yes |
 | wake normal buffer | no | yes | yes |
 | screen-space reflections | no | no | yes |
 | sun shadows (§4.6) | 2 cascades to 60 m, no shadows on the sea | 4 cascades to 100 m | 4 blended cascades to 150 m |

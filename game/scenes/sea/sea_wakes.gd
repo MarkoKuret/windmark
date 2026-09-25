@@ -1,6 +1,6 @@
 class_name SeaWakes
 extends Node3D
-## Bow waves, wakes and spray (water_render.md §5) for the boats in the scene, drawn on a Sea.
+## Bow waves, wakes and mist (water_render.md §5) for the boats in the scene, drawn on a Sea.
 ##
 ## Feed it every frame with update_boat(id, state) (the core binding or the placeholder sim source), where
 ## state holds the interpolated physics pose and the class dimensions:
@@ -13,6 +13,8 @@ const SPRAY_K := 2.5
 const KNOT := 0.51444447
 const WAKE_SHADER := preload("res://shaders/wake.gdshader")
 const WAKE_NORMAL_SHADER := preload("res://shaders/wake_normal.gdshader")
+const BOW_SHADER := preload("res://shaders/bow_wave.gdshader")
+const MIST_SHADER := preload("res://shaders/mist.gdshader")
 const BUFFER_SIZE := 512
 const BUFFER_EXTENT := 400.0
 
@@ -24,10 +26,16 @@ var sea: Sea:
 var current = null
 
 ## Per boat: {bow, stern: WakeRibbon; mesh_bow, mesh_stern: MeshInstance3D (the ribbon, drawn on the sea);
-## buf_bow, buf_stern: MeshInstance3D in the wake buffer or null; state; emission bookkeeping}
+## buf_bow, buf_stern: MeshInstance3D in the wake buffer or null; wave: MeshInstance3D (the bow wave sheets);
+## drv: BowWave.Drivers; flow: foam flow distance; state; emission bookkeeping}
 var _boats := {}
 var _material: ShaderMaterial
-var _spray_mm: MultiMeshInstance3D
+var _bow_material: ShaderMaterial
+var _mist_material: ShaderMaterial
+## the mist sprites of every boat (BowWave.mist_sprite), drawn by _mist_mm
+var _mist: Array = []
+var _mist_mm: MultiMeshInstance3D
+var _rng := RandomNumberGenerator.new()
 ## The wake normal buffer (tiers M and H), created only while wakes are drawn on such a tier.
 var _buffer: SubViewport
 var _buffer_cam: Camera3D
@@ -46,31 +54,24 @@ func _ready() -> void:
 	_material.shader = WAKE_SHADER
 	_buffer_material = ShaderMaterial.new()
 	_buffer_material.shader = WAKE_NORMAL_SHADER
-	_spray_mm = MultiMeshInstance3D.new()
-	_spray_mm.name = "Spray"
+	_bow_material = ShaderMaterial.new()
+	_bow_material.shader = BOW_SHADER
+	_mist_material = ShaderMaterial.new()
+	_mist_material.shader = MIST_SHADER
+	_mist_mm = MultiMeshInstance3D.new()
+	_mist_mm.name = "Mist"
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_custom_data = true
 	var quad := QuadMesh.new()
-	quad.size = Vector2(0.22, 0.22)
-	var sm := StandardMaterial3D.new()
-	sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	sm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	sm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	sm.albedo_color = Color(0.92, 0.95, 0.97, 0.55)
-	var g := GradientTexture2D.new()
-	g.fill = GradientTexture2D.FILL_RADIAL
-	g.fill_from = Vector2(0.5, 0.5)
-	g.fill_to = Vector2(1.0, 0.5)
-	var grad := Gradient.new()
-	grad.set_color(0, Color(1, 1, 1, 1))
-	grad.set_color(1, Color(1, 1, 1, 0))
-	g.gradient = grad
-	sm.albedo_texture = g
-	quad.material = sm
+	quad.size = Vector2(1.0, 1.0)
 	mm.mesh = quad
-	_spray_mm.multimesh = mm
-	_spray_mm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(_spray_mm)
+	_mist_mm.multimesh = mm
+	_mist_mm.material_override = _mist_material
+	_mist_mm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# the sprites move every frame over the whole scene: never culled
+	_mist_mm.custom_aabb = AABB(Vector3(-1e5, -100.0, -1e5), Vector3(2e5, 200.0, 2e5))
+	add_child(_mist_mm)
 
 
 ## The Sea the wakes are drawn on (also settable after _ready).
@@ -91,6 +92,7 @@ func update_boat(id: int, state: Dictionary) -> void:
 		var b := {
 			"bow": WakeRibbon.new(), "stern": WakeRibbon.new(), "last_t": -1.0, "last_bow": Vector2.ZERO,
 			"last_stern": Vector2.ZERO, "dist": 0.0, "pulse_off": randf() * 100.0, "buf_bow": null, "buf_stern": null,
+			"drv": BowWave.Drivers.new(), "flow": 0.0,
 		}
 		for r in RIBBONS:
 			var mi := MeshInstance3D.new()
@@ -99,6 +101,13 @@ func update_boat(id: int, state: Dictionary) -> void:
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			add_child(mi)
 			b["mesh_" + r] = mi
+		var wave := MeshInstance3D.new()
+		wave.name = "BowWave%d" % id
+		wave.mesh = ArrayMesh.new()
+		wave.material_override = _bow_material
+		wave.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(wave)
+		b["wave"] = wave
 		_boats[id] = b
 		if _buffer:
 			_add_buffer_instances(b)
@@ -113,6 +122,7 @@ func remove_boat(id: int) -> void:
 			var n = _boats[id][k + r]
 			if n:
 				n.queue_free()
+	_boats[id]["wave"].queue_free()
 	_boats.erase(id)
 
 
@@ -205,13 +215,15 @@ func _process(_delta: float) -> void:
 	if _buffer_cam:
 		_buffer_cam.global_transform = Transform3D(Basis.looking_at(Vector3.DOWN, Vector3.FORWARD),
 				Vector3(o.x, 500.0, -o.y))
-	for n in SHARED_UNIFORMS:
-		_material.set_shader_parameter(n, sea.material.get_shader_parameter(n))
-	_material.set_shader_parameter("grid_q", sea.grid_ratio())
-	_material.set_shader_parameter("grid_segments", float(tier["segments"]))
+	for mat in [_material, _bow_material]:
+		for n in SHARED_UNIFORMS:
+			mat.set_shader_parameter(n, sea.material.get_shader_parameter(n))
+		mat.set_shader_parameter("grid_q", sea.grid_ratio())
+		mat.set_shader_parameter("grid_segments", float(tier["segments"]))
+	for n in ["foam_tex", "sky_horizon", "sun_color", "sun_dir"]:
+		_mist_material.set_shader_parameter(n, sea.material.get_shader_parameter(n))
 
 	var h := Callable(self, "_height")
-	var spray_pts := PackedVector3Array()
 	for id in _boats:
 		var b: Dictionary = _boats[id]
 		var on: bool = active.has(id)
@@ -219,6 +231,7 @@ func _process(_delta: float) -> void:
 			b["mesh_" + r].visible = on
 			if b["buf_" + r]:
 				b["buf_" + r].visible = on
+		b["wave"].visible = on
 		if not on:
 			continue
 		var st: Dictionary = b["state"]
@@ -233,12 +246,45 @@ func _process(_delta: float) -> void:
 			var arrays := rib.build_arrays(t_s)
 			if (arrays[Mesh.ARRAY_INDEX] as PackedInt32Array).size() > 0:
 				mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-			spray_pts.append_array(rib.flying_spray())
-	var mm := _spray_mm.multimesh
-	mm.instance_count = spray_pts.size()
-	for i in spray_pts.size():
-		var p := spray_pts[i]
-		mm.set_instance_transform(i, Transform3D(Basis.IDENTITY, Vector3(p.x, p.z, -p.y)))
+		_build_wave(b, st, dt)
+	_draw_mist(dt)
+
+
+## The bow wave sheets of a boat for this frame (BowWave), the foam flowing aft at the boat's speed.
+func _build_wave(b: Dictionary, st: Dictionary, dt: float) -> void:
+	var drv: BowWave.Drivers = b["drv"]
+	b["flow"] = fposmod(float(b["flow"]) + drv.v * dt, 20.0)
+	var mesh: ArrayMesh = b["wave"].mesh
+	mesh.clear_surfaces()
+	var arrays := BowWave.build_arrays(st, drv)
+	if arrays[Mesh.ARRAY_INDEX] != null and (arrays[Mesh.ARRAY_INDEX] as PackedInt32Array).size() > 0:
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		# every frame the sheet moves with the boat: keep it from being culled on stale bounds
+		var v: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		mesh.custom_aabb = AABB(v[0] - Vector3(20.0, 10.0, 20.0), Vector3(40.0, 20.0, 40.0))
+	(b["wave"] as MeshInstance3D).set_instance_shader_parameter("flow", b["flow"])
+
+
+## Moves the mist sprites and writes them into the MultiMesh (camera-facing in the shader).
+func _draw_mist(dt: float) -> void:
+	var live: Array = []
+	for m in _mist:
+		if BowWave.mist_step(m, dt):
+			live.append(m)
+	_mist = live
+	var mm := _mist_mm.multimesh
+	mm.instance_count = _mist.size()
+	for i in _mist.size():
+		var m: Dictionary = _mist[i]
+		var look := BowWave.mist_look(m)
+		var p: Vector3 = m["pos"]
+		mm.set_instance_transform(i, Transform3D(Basis.from_scale(Vector3.ONE * look.x), Vector3(p.x, p.z, -p.y)))
+		mm.set_instance_custom_data(i, Color(look.y, m["seed"], 0.0, 0.0))
+
+
+## Mist sprites in the scene (tests, previews): [{pos, vel, age, life, s0, s1, seed}].
+func mist_sprites() -> Array:
+	return _mist
 
 
 ## Boats that get wakes on this tier: own boat only (L), own and the 6 nearest (M), all within 400 m (H).
@@ -281,6 +327,7 @@ func _emit(b: Dictionary, st: Dictionary, t_s: float, spray: bool) -> void:
 	var dt: float = t_s - b["last_t"]
 	var v := 0.0 if first or dt <= 0.0 else bow.distance_to(b["last_bow"]) / dt
 	var v_s := 0.0 if first or dt <= 0.0 else stern.distance_to(b["last_stern"]) / dt
+	var bow_prev: Vector2 = b["last_bow"]
 	b["last_t"] = t_s
 	b["last_bow"] = bow
 	b["last_stern"] = stern
@@ -292,11 +339,18 @@ func _emit(b: Dictionary, st: Dictionary, t_s: float, spray: bool) -> void:
 	var sea_bow := _height(bow.x, bow.y)
 	var bow_z := z + bow_x * sin(pitch)
 	var visible := bow_z - sea_bow <= 1.0
+	var drv: BowWave.Drivers = b["drv"]
+	drv.advance(dt, v if visible else 0.0, ratio if visible else 0.0, bow_z - sea_bow)
 	var w0 := 0.35 * bwl * minf(1.0, ratio + 0.2)
 	var row := (b["bow"] as WakeRibbon).emit(t_s, bow, psi, v, w0, ratio, visible, b["dist"])
+	var a: float = b["dist"] + b["pulse_off"]
+	var pulse := maxf(0.01, 1.0 - (0.3 * sin(0.07 * a + 1.0) + 0.4 * sin(0.5 * a) + 0.4 * sin(0.3 * a)))
 	if spray and visible:
-		var a: float = b["dist"] + b["pulse_off"]
-		var pulse := maxf(0.01, 1.0 - (0.3 * sin(0.07 * a + 1.0) + 0.4 * sin(0.5 * a) + 0.4 * sin(0.3 * a)))
+		# the mist off the bow wave (drawn), and the spray reach of the ribbon (not drawn)
+		var boat_vel := (bow - bow_prev) / dt
+		for _k in BowWave.mist_count(drv, pulse, dt):
+			if _mist.size() < BowWave.MIST_MAX:
+				_mist.append(BowWave.mist_sprite(st, drv, sea_bow, boat_vel, _rng))
 		var e := WakeRibbon.edges(row, t_s)
 		var zs := [_height(e[0].x, e[0].y) + 0.1, _height(e[1].x, e[1].y) + 0.1]
 		(b["bow"] as WakeRibbon).launch_spray(row, SPRAY_K * ratio * ratio * pulse, st.get("heel", 0.0), zs)

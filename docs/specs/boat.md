@@ -397,7 +397,7 @@ along `accel_rest`, §5.8). Right head to wind with no helm the boat stays in ir
 - **Let-fly** (`sails.md` §5.3) puts every sail on the wind line: with the apparent wind forward of the beam the
   drive goes to zero (`trim_speed` is 0 there) and the boat coasts down along the deceleration law, braked by its
   flogging sails (§5.8): close-hauled at 10 kn an S boat is under 1 kn within about 8 s (half its speed in about
-  5 s); a heavy L boat carries its way about twice as long. Used to kill speed before the start or to avoid a
+  5 s); a heavy L boat carries its way about twice as long (under 1 kn within about 16 s). Used to kill speed before the start or to avoid a
   collision. Abaft the beam the windage and the flogging sails still push the boat along at the let-fly speed
   (reference S running in 10 kn: about 0.7 of the polar with the jib), so letting fly on a run slows the boat
   without stopping it.
@@ -453,7 +453,8 @@ start needs speed built before the gun.
    shipped classes within 17 s).
 5. **Determinism**: two runs with the same inputs give identical checksums every tick; a run split into two
    halves through a snapshot save/load gives the same checksum as an unbroken run.
-6. **Let-fly**: from steady close-hauled at 10 kn, let fly with helm 0: an S boat is under 1 kn within 12 s.
+6. **Let-fly**: from steady close-hauled at 10 kn, let fly with helm 0: an S boat is under 1 kn within 12 s, an L
+   boat within 20 s.
 7. **Helm balance**: close-hauled at 12 kn with the upwind config the helm balance is within 1°/s of 0 and the boat
    holds its course with the helm centred; on a spinnaker at 130° in 22 kn it rounds up with the helm centred (a
    broach) and holding the course takes helm to bear away and costs speed.

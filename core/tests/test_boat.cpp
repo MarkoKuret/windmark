@@ -340,7 +340,7 @@ float let_fly_time(const wm::PerfData& p, float tws, float below) {
 }  // namespace
 
 // §10.6: let fly on close-hauled at 10 kn, the flogging sails and the windage brake the boat: under 1 kn within
-// about 10 s.
+// 12 s for an S boat, 20 s for an L boat.
 TEST_CASE("boat: let fly slows the boat") {
   for (const std::string cls : kClasses) {
     const wm::PerfData& p = perf(cls);
@@ -353,7 +353,7 @@ TEST_CASE("boat: let fly slows the boat") {
               t1, " s");
       CHECK(t1 > 0.0f);
       CHECK(t_half < t1);
-      // S target at 10 kn; the heavier L boat carries its way longer (reported, see backlog WM-044).
+      // The heavier L boat carries its way about twice as long.
       if (tws == 10.0f && cls == "wm7") CHECK(t1 < 12.0f);
       if (tws == 10.0f && cls == "wm12") CHECK(t1 < 20.0f);
     }

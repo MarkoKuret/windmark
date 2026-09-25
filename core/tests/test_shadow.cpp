@@ -292,3 +292,30 @@ TEST_CASE("§3 casts = false and §7 zone outlines") {
   CHECK(wm::shadow(B, pk.x, pk.y).l == 0.0f);
   CHECK(wm::shadow_zones(B).blanket_left.empty());
 }
+
+TEST_CASE("tick step 5: env_at_boat combines the clean wind, the shadows and the current") {
+  const wm::ShadowClass cls = wm::make_shadow_class(wm_env::shadow_params_s());
+  wm::WindSettings s;
+  s.current_speed = 0.3f;
+  s.current_to = 1.0f;
+  wm::WindField w(8, s);
+  const wm::WindTick& tick = w.advance(120000);
+  const float psi = upwind_psi();
+  const wm::ShadowSource A = make_source(&cls, 0.0f, 0.0f, psi, 3.0f, s.base_speed, tick.global_from);
+  const Frame fr = blanket_frame(A);
+  const wm::Vec2 q = add(fr.ce, fr.a, 0.3f * wm::shadow_blanket_length(cls, A.aws));
+  const wm::ShadowSource Bq = make_source(&cls, q.x, q.y, psi, 3.0f, s.base_speed, tick.global_from);
+  const wm::ShadowSource snap[] = {A, Bq};
+  const wm::EnvAtBoat e = wm::env_at_boat(w, tick, snap, 1, q.x, q.y);
+  const wm::WindSample clean = w.wind_clean(tick, q.x, q.y);
+  CHECK(bits(e.wind_speed_clean) == bits(clean.speed));
+  CHECK(bits(e.wind_from_clean) == bits(clean.from));
+  CHECK(e.shadow_source == 0);
+  CHECK(bits(e.wind_speed) == bits(clean.speed * (1.0f - e.shadow_loss)));
+  const wm::Vec2 c = w.current(q.x, q.y, 120000);
+  CHECK(bits(e.current_x) == bits(c.x));
+  CHECK(bits(e.current_y) == bits(c.y));
+  const wm::EnvAtBoat ea = wm::env_at_boat(w, tick, snap, 0, 0.0f, 0.0f);
+  CHECK(ea.shadow_source == -1);
+  CHECK(bits(ea.wind_speed) == bits(ea.wind_speed_clean));
+}

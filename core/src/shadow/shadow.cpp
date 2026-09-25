@@ -99,6 +99,14 @@ ShadowedWind shadowed_wind(std::span<const ShadowSource> snapshot, std::int32_t 
   return {U * (1.0f - best_l), wrap_2pi(from - best_tack * best_d), best_l, best_d, best};
 }
 
+EnvAtBoat env_at_boat(const WindField& wind, const WindTick& tick, std::span<const ShadowSource> snapshot,
+                      std::int32_t self, float x, float y) {
+  const WindSample clean = wind.wind_clean(tick, x, y);
+  const ShadowedWind sw = shadowed_wind(snapshot, self, x, y, clean.speed, clean.from);
+  const Vec2 c = wind.current(x, y, tick.t);
+  return {sw.speed, sw.from, clean.speed, clean.from, c.x, c.y, sw.loss, sw.header, sw.source};
+}
+
 ShadowZones shadow_zones(const ShadowSource& B, std::uint32_t samples) {
   ShadowZones z;
   if (!B.cls || samples < 2) return z;

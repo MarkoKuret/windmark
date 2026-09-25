@@ -9,6 +9,7 @@
 
 #include "data/perf.h"
 #include "math/wm_math.h"
+#include "wind/wind.h"
 
 namespace wm {
 
@@ -49,6 +50,20 @@ struct ShadowedWind {
 
 ShadowedWind shadowed_wind(std::span<const ShadowSource> snapshot, std::int32_t self, float x, float y, float U,
                            float from);
+
+// Tick step 5 for receiving boat `self` at its hull reference point (x, y): the clean wind of the tick, the other
+// boats' shadows from the snapshot, and the current. The fields map one to one onto the boat's environment
+// input (boat.md §2).
+struct EnvAtBoat {
+  float wind_speed, wind_from;              // shadowed
+  float wind_speed_clean, wind_from_clean;  // wind.md §2, for the HUD, AI and the race layer
+  float current_x, current_y;               // m/s, east/north
+  float shadow_loss, shadow_header;
+  std::int32_t shadow_source;               // -1 = clear air
+};
+
+EnvAtBoat env_at_boat(const WindField& wind, const WindTick& tick, std::span<const ShadowSource> snapshot,
+                      std::int32_t self, float x, float y);
 
 // §7 outlines for drawing, world metres: the blanket's two edges |η| = W(ξ) for ξ in [−reach_up·Lb, Lb] and
 // the backwind's two edges |η_t| = turb_width + ξ_t·turb_spread for ξ_t in [0, Lt] (empty when the source has

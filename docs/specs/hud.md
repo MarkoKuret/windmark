@@ -4,15 +4,16 @@ What every in-race indicator means, how its value is computed, how it is smoothe
 Layout, art and fonts belong to the front end (`game/`); this file is the contract for the numbers and states behind
 them, so every front end (desktop, Steam Deck, a future browser client) shows the same values.
 
-Conventions: `race.md` §0. Knots `kn = m/s × 3600/1852`. Values come from the core: a `HudValues` record computed per
+Conventions: `conventions.md` and `race.md` §0 (`twa` positive = wind from starboard). Knots: `m/s / KNOT`.
+Player-facing strings below contain no em dashes (project rule). Values come from the core: a `HudValues` record computed per
 viewed boat each tick by a pure function of the boat state, the course, the race state and the rules records.
 Online the client computes it from its predicted own boat and the interpolated other boats with the same core
 function; race and rules states (rank, penalties, right-of-way colours) come from the server (`networking.md` §8).
 
 ## 1. Update, smoothing, formatting
 
-- **Filters**: "smoothed τ" means an exponential filter updated every tick, `y += (x − y)·(1 − e^(−DT/τ))`; angles are
-  filtered as unit vectors. Each value below states its τ.
+- **Filters**: "smoothed τ" means an exponential filter updated every tick, `y += (x − y)·k` with the constant
+  `k = 1 − wm_exp(−DT/τ)`; angles are filtered as unit vectors. Each value below states its τ.
 - **Refresh**: numeric text refreshes at 4 Hz from the filtered value (so digits do not flicker); needles, arrows and
   lines move every frame, interpolated between ticks.
 - **Formats**:
@@ -31,12 +32,12 @@ function; race and rules states (rank, penalties, right-of-way colours) come fro
 
 | Indicator | Definition | τ |
 | --- | --- | --- |
-| Boat speed (BSP) | speed through the water along the heading (`boat.md` surge speed) | 1.0 s |
-| Speed over ground (SOG) | `|v_ground|` | 1.0 s |
+| Boat speed (BSP) | the boat's `v_filt` (`boat.md` §5.10: speed through the water along the heading, filtered) | (boat filter) |
+| Speed over ground (SOG) | length of the boat's filtered ground velocity (`sog_filt_x`, `sog_filt_y`) | (boat filter) |
 | Heading (HDG) | ψ, compass | 0.3 s |
-| Course over ground (COG) | `bearing(v_ground)` (shown only when SOG > 0.3 kn) | 1.0 s |
-| Heel | heel angle, degrees, with side letter (the side that is down) | 0.5 s |
-| Rudder | rudder angle as a bar, −1 … +1 of full travel, and the target from the input (two marks: actual and target) | none |
+| Course over ground (COG) | `compass(sog_filt_x, sog_filt_y)` (shown only when SOG > 0.3 kn) | (boat filter) |
+| Heel | `|φ|`, degrees, with the letter of the side that is down (φ > 0: starboard down, `conventions.md` §3) | 0.5 s |
+| Rudder | helm `h` as a bar, −1 … +1 (positive turns the bow to starboard), with a second mark at `h_cmd` | none |
 | Sail | current headsail / downwind sail name, and the one being hoisted during a change with its progress | none |
 
 ## 3. Wind
@@ -45,11 +46,11 @@ function; race and rules states (rank, penalties, right-of-way colours) come fro
 
 | Indicator | Definition | τ |
 | --- | --- | --- |
-| TWS | true wind speed the boat feels: the local wind with puffs and other boats' shadow (`wind.md`, `wind_shadow.md`) | 2.0 s |
-| TWA | `|a|` with the tack letter, from the felt wind | 2.0 s |
-| TWD | felt true wind direction, compass FROM | 2.0 s |
+| TWS | the boat's `tws`: true wind the boat feels, relative to the water, with puffs and other boats' shadow (`boat.md` §5.1) | 2.0 s |
+| TWA | `|twa|` with the tack letter (`S` for `twa > 0`, `P` otherwise) | 2.0 s |
+| TWD | the boat's `twd_from`, compass | 2.0 s |
 | AWS, AWA | apparent wind at the masthead (`sails.md`), AWA with side letter | 1.0 s |
-| Shadow | `d = 1 − TWS_felt / TWS_free` as a percentage, shown only when ≥ 3 % ("Bad air −8 %") | 2.0 s |
+| Shadow | `d = 1 − wind_speed / wind_speed_clean` (`boat.md` §2) as a percentage, shown only when ≥ 3 % ("Bad air −8 %") | 2.0 s |
 
 ### 3.2 Wind indicators
 
@@ -58,60 +59,66 @@ function; race and rules states (rank, penalties, right-of-way colours) come fro
   with TWS (clamped between 0.6× and 1.5× of its base length over 0–30 kn).
 - **Shift meter**: how the wind has shifted for the current tack, from the boat's own history (what a sailor knows
   from the compass):
-  - `TWD_ref` = the boat's free-stream TWD averaged with τ = 180 s; `Δ = wrap(TWD_free,5s − TWD_ref)`.
+  - `TWD_ref` = the direction of the boat's clean wind (`wind_clean` at its position) averaged with τ = 180 s;
+    `Δ = wrap_pi(TWD_clean,5s − TWD_ref)`.
   - On a beat or run, the shift is a **lift** when it turns the current tack's optimal heading towards the next mark
-    and a **header** when away: header ⇔ `Δ · sign(wrap(ψ_opt − bearing(R − c))) > 0` (the same rule the AI uses,
+    and a **header** when away: header ⇔ `Δ · sgn(wrap_pi(ψ_opt − compass(R − c))) > 0` (the same rule the AI uses,
     `ai.md` §4.4), with `ψ_opt` the VMG heading of the current tack.
-  - Shown as `LIFT 6°` (green) or `HEADER 4°` (red) when `|Δ| ≥ 2°`, else `—`. Hidden on reaches.
+  - Shown as `LIFT 6°` (green) or `HEADER 4°` (red) when `|Δ| ≥ 2°`, else `--`. Hidden on reaches.
 
 ### 3.3 Wind shadow view (assist)
 
-With the assist on, each boat's shadow is drawn on the water as the region where its deficit exceeds `d_bad`
-(`ai.md` §8) for a boat sailing through it, from the shadow model (`wind_shadow.md` exposes the field). Own shadow
-is drawn fainter.
+With the assist on, each boat's blanket and backwind outlines (`wind_shadow.md` §7 `shadow_zones`) are drawn on the
+water, shaded by the loss `l` sampled at the outline's interior points; the part where `l ≥ d_bad` (`ai.md` §8) is
+drawn darker. The own boat's shadow is drawn fainter.
 
 ## 4. Performance
 
 With `θ_up`, `V_up`, `θ_dn`, `V_dn` the polar VMG optima of the boat's class at the felt TWS (`ai.md` §3.1) and
-`V_pol(TWS, TWA, sail)` the polar speed of the current sail. A human boat's speed factor is 1.
+`V_pol` the boat's `polar_speed` output (`boat.md` §5.4: the polar of the active config at the present `tws`, `twa`).
+A human boat's `performance_scale` is 1.
 
 | Indicator | Definition | τ |
 | --- | --- | --- |
-| VMG | on a beat: `BSP·cos(TWA)`; on a run: `−BSP·cos(TWA)`; positive = progress along the wind towards the mark. On a reach VMG is replaced by VMC. | 2.0 s |
-| VMC | velocity made good on course: `dot(v_ground, unit(R − c))`, R = the next step's target point (`race.md` §5; gate: the chosen buoy, see §7) | 2.0 s |
+| VMG | on a beat: the boat's `vmg` (`v·cos(twa)`, `boat.md` §5.10); on a run: `−vmg`; so the display is positive for progress along the wind towards the mark. On a reach VMG is replaced by VMC. | 2.0 s |
+| VMC | velocity made good on course: `dot((sog_filt_x, sog_filt_y), unit(R − c))`, R = the next step's target point (`race.md` §5; gate: the chosen buoy, see §7) | 2.0 s |
 | Target speed | beat: `V_up`; run: `V_dn`; reach: `V_pol` at the current TWA with the best sail | 2.0 s |
 | Target TWA | beat: `θ_up`; run: `θ_dn`; reach: none | 2.0 s |
 | VMG % | `100 · VMG / (V_up·cos θ_up)` on a beat, `100 · VMG / (−V_dn·cos θ_dn)` on a run | 3.0 s |
-| Polar % | `100 · BSP / V_pol(TWS_felt, TWA, current sail)`: how well the boat is sailed at the angle she is on, whatever the angle | 3.0 s |
-| Sail hint | when the best sail for the present TWA and TWS is ≥ 3 % faster than the current one for 5 s: "Gennaker +6 %" (the gain in polar speed) | — |
+| Polar % | `100 · v / polar_speed`: how well the boat is sailed at the angle she is on, whatever the angle | 3.0 s |
+| Sail hint | when the best config for the present TWA and TWS (`ai.md` §3.1) is ≥ 3 % faster than the current one for 5 s: "Code zero +6 %" (the gain in polar speed) | none |
 
 The leg type is `ai.md` §4.1 (beat / run / reach). Polar % above 100 is possible (surfing, puffs in the smoothing
 window); it is not clipped. VMG % measures the angle choice as well as the speed; polar % the speed only.
 
 ## 5. Trim gauge
 
-One gauge per trimmable sail (main and the current headsail or downwind sail), fed by the sail model (`sails.md`):
+One gauge per trimmable sail (the main and the front sail that is up), fed by the sail model (`sails.md` §5.6, §7):
 
-- `δ` = the sail's current sheet angle (angle of the boom or clew line to the centreline), `δ_opt(AWA, AWS)` = the
-  optimal sheet angle, and `δ_tol` = the half-width of the trim window in which the sail's drive is at least 95 % of
-  its maximum at this apparent wind (`sails.md` must publish all three; if the window is asymmetric, use the side the
-  error is on).
-- Error `e = (δ − δ_opt) / δ_tol`, clamped to [−2, +2]. Positive = eased too much, negative = sheeted too hard.
+- `eps` = the sail's `trim_error` (rad): **positive = eased beyond the optimum** (towards luffing), negative = sheeted
+  in beyond it (towards stall).
+- Tolerance: `eps_tol+` and `eps_tol−` = the positive and negative trim errors at which the config's `trim_speed`
+  table (`sails.md` §6) falls to 0.98 at the present `tws` and `|awa|`, found by stepping `eps` in 0.1° steps out to
+  ±30° (cached per 0.5 m/s of TWS and 1° of AWA). Without a `trim_speed` table: ±2°.
+- Normalised error `e = eps / eps_tol+` if `eps ≥ 0`, else `eps / |eps_tol−|`, clamped to [−2, +2].
 - **Needle** at `e`, τ = 0.3 s. **Colour** from `|e|`: ≤ 0.5 green, ≤ 1.0 yellow, > 1.0 red.
-- **Tell-tales** (text or icons): `e > 1.0` → "Luffing — sheet in"; `e < −1.0` → "Stalled — ease"; else "Flowing".
-- With **auto-trim** on (assist or AI), the gauge shows a neutral needle at 0 labelled `AUTO` and no colour.
-- While a sail is being hoisted or dropped its gauge is greyed.
+- **Tell-tales** (text or icons): `e > 1.0` or `luff_shiver > 0.5` → "Luffing: sheet in"; `e < −1.0` →
+  "Stalled: ease"; `backed` → "Aback"; else "Flowing".
+- With `auto_trim` on (assist, and always for AI), the gauge shows a neutral needle at 0 labelled `AUTO` and no
+  colour; a manual sheet control is hidden.
+- While a sail is in `prepare_hoist`, `hoisting`, `prepare_drop` or `dropping` its gauge is greyed.
 
 ## 6. Laylines
 
 Shown for the next step when the leg is a beat or a run (for a gate, one pair per buoy; for the finish on a beat,
 one pair per end) and the assist level allows (§14):
 
-- Wind for the laylines: the viewed boat's free-stream TWD smoothed with τ = 10 s and its felt TWS smoothed 10 s —
-  steady lines, not jumping with each puff. Angles `θ_up` / `θ_dn` from the polar at that TWS.
+- Wind for the laylines: the direction of the viewed boat's clean wind smoothed with τ = 10 s and its `tws`
+  smoothed 10 s, so the lines are steady and do not jump with each puff. Angles `θ_up` / `θ_dn` from the polar at
+  that TWS (`ai.md` §3.1).
 - Each layline is the ray from the mark backwards along the course over ground a boat would make on that tack:
-  heading `TWD ± θ` plus the boat's current drift angle on that tack (leeway and current; 0 if the boat has none
-  yet on that tack, then the leeway of the polar at `θ`).
+  `COG_t = compass(V_t·dir(ψ_t) + current)` with `ψ_t = TWD ± θ` and the current at the mark (`wind.md` §7); the
+  boat model has no leeway (`boat.md` §6.4), so without current it is simply `ψ_t`.
 - **Port-tack layline** (the line a boat sails on port tack to fetch the mark) in **red**, **starboard-tack** in
   **green**. Length `1.2 × max(|R − c|, 500 m)`.
 - **Distance to layline**: along the current COG to the other tack's layline (`ai.md` §4.3 tack point); shown as
@@ -169,7 +176,8 @@ drawn on the water when she is within `6·L`, and a bouncing marker over the nex
 - **Flags row**: class flag (up from the warning signal to the start); the prep flag with its letter (`P`, `I`, `Z`,
   `U`, black) from the preparatory signal to one minute; `X` (individual recall) while shown (`race.md` §4.3);
   first substitute during a general recall. Each signal plays its sound (`race.md` §3.2).
-- **Signal banner**: "Preparatory — I flag: over in the last minute = round an end" etc. for 3 s at each signal.
+- **Signal banner**: "Preparatory signal, I flag: over in the last minute means round an end" etc. for 3 s at each
+  signal.
 
 ### 9.2 Start line panel (from the warning signal until the boat starts)
 
@@ -178,9 +186,9 @@ drawn on the water when she is within `6·L`, and a bouncing marker over the nex
 | Distance to line | `s(bow)` (`race.md` §3.3): negative behind the line, positive over, when the bow's `u` is within [0, 1]; otherwise the distance to the nearer end, labelled "(end)" |
 | Time to line | the time to reach the line segment along the current COG at the current SOG: `t_line = distance along COG to the segment / SOG`; `--` if the COG ray misses the segment or SOG < 0.5 kn |
 | Time to burn | `(−t) − t_line`: positive = early by that much (burn it), negative = late |
-| Bias | `β = wrap(bearing(n̂) − TWD)` from the viewed boat's free-stream wind smoothed 10 s (`ai.md` §5.2 formula), shown as the favoured end and its advantage: `PIN +7° · 30 m` (the upwind distance `|Δu|` by which that end is ahead) |
+| Bias | `β = wrap_pi(compass(n̂) − TWD)` from the viewed boat's clean wind smoothed 10 s (`ai.md` §5.2 formula), shown as the favoured end and its advantage: `PIN +7° · 30 m` (the upwind distance `|Δu|` by which that end is ahead) |
 | Over | in the last minute and after the gun until started: `OVER` in red when the boat is over under the active flag rule (P: in the line band; I: course side incl. extensions; Z/U/black: in the triangle), with the consequence ("I flag: round an end") |
-| OCS | after the gun, when the boat is OCS: `OCS — return` with the specific instruction (`race.md` §4.3), until returned |
+| OCS | after the gun, when the boat is OCS: `OCS: return` with the specific instruction (`race.md` §4.3), until returned |
 
 ### 9.3 Line in the 3-D view
 
@@ -208,7 +216,7 @@ From the pair records of the viewed boat (`rules.md` §11.1), highest-priority f
 
 | Condition | Message | Colour |
 | --- | --- | --- |
-| I am the giver, state `Breach` | `KEEP CLEAR — <rule text>` with the other boat's name and a pointer to her | red |
+| I am the giver, state `Breach` | `KEEP CLEAR: <rule text>` with the other boat's name and a pointer to her | red |
 | I am the giver, state `Warning` | `Keep clear: <rule text>` | orange |
 | I owe room, room `Warning`/`Breach` | `Give mark-room to <name>` / `Give room at the obstruction` | orange / red |
 | I am entitled to room | `You have mark-room` (while the status holds) | cyan |
@@ -238,7 +246,7 @@ Visible while the boat has pending penalties, is taking one, or was penalised in
 
 ### 12.2 Messages
 
-On a `Penalty` event for the viewed boat: a 4 s banner `PENALTY — <rule text> (<other boat>)` and a sound; for other
+On a `Penalty` event for the viewed boat: a 4 s banner `PENALTY: <rule text> (<other boat>)` and a sound; for other
 boats, a fleet feed line `<boat> penalised, rule 10 (<other>)`. `PenaltyServed`: `Penalty done` banner 2 s.
 `PenaltyLate`: `Penalty not taken in time: +1 turn`. `Disqualified`: full-width banner with the reason.
 
@@ -304,7 +312,7 @@ Online lobbies may force a maximum preset (e.g. ranked "Minimal").
 - For a scripted boat state, `HudValues` matches hand-computed values for every field of §2–§7 and §9.2 (within
   the display rounding).
 - VMG on a run is positive when sailing towards the leeward mark; VMC is negative when sailing away from the mark.
-- Layline test: a boat placed on the computed starboard layline, sailing at `θ_up` with zero drift, reaches the mark
+- Layline test: a boat placed on the computed starboard layline, sailing at `θ_up` with no current, reaches the mark
   within 0.5 L in a steady wind (headless sim).
 - Radar colours follow the pair records for the port–starboard, windward–leeward and mark-room scenarios of
   `rules.md` §13.

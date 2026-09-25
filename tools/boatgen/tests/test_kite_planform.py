@@ -204,5 +204,19 @@ class ShapingKeysValidationTest(unittest.TestCase):
         self.bad("jib", r"code zeros and spinnakers only", luff_round=0.05)
 
 
+
+class KitePreviewCacheTest(unittest.TestCase):
+    """kite_preview reuses the built hull, deck and rig only when nothing but flying-sail settings changed."""
+
+    def test_cache_key(self):
+        from boatgen.kite_preview import _cache_key
+        base = _cache_key(_raw_with("kite"))
+        self.assertEqual(base, _cache_key(_raw_with("kite", foot=5.4, mid_girth_frac=0.7, area=40.0, tack_x=4.0)))
+        self.assertNotEqual(base, _cache_key(_raw_with("jib", area=14.0)))
+        raw = _raw_with("kite")
+        raw["hull"]["beam_max"] += 0.01
+        self.assertNotEqual(base, _cache_key(raw))
+
+
 if __name__ == "__main__":
     unittest.main()

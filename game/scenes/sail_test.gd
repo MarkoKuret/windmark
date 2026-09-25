@@ -29,6 +29,9 @@ extends Node3D
 ## tests/run_water_test.sh) or the placeholder sea built from wind_speed_kn and wind_from_deg; the fake sim runs
 ## on the same SeaModel the Sea draws (FakeSim.use_sea) and the Sea's clock follows the sim ticks.
 
+const PAUSE_MENU := "res://scenes/menu/pause_menu.tscn"
+const SETTINGS_SCRIPT := "res://scripts/settings.gd"
+
 enum SimKind { AUTO, CORE, FAKE }
 enum SeaSource { AUTO, CORE_SAMPLES, PLACEHOLDER }
 
@@ -59,6 +62,10 @@ enum SeaSource { AUTO, CORE_SAMPLES, PLACEHOLDER }
 @export var ai_speed_only := false
 @export var watch := false
 @export var auto_process := true
+## the pause menu of scenes/menu as a child (it applies the player's settings); without it, `apply_settings`
+## applies them at start
+@export var with_pause_menu := true
+@export var apply_settings := true
 ## FakeSim only. AUTO: the core's example bay samples when they exist, otherwise the placeholder sea
 @export var sea_source: SeaSource = SeaSource.AUTO
 ## FakeSim only: core sample scenario (CORE_SAMPLES); its wind replaces wind_speed_kn and wind_from_deg
@@ -174,6 +181,19 @@ func _ready() -> void:
 	_update_sea_time(0.0)
 	_update_target(0.0)
 	set_process(auto_process)
+	_add_pause_menu()
+
+
+## The pause menu (scenes/menu, menus.md §2): it follows the scene's pause key, holds the controls while open and
+## applies the player's settings (Settings.apply_to_scene) at start and after the settings screen. Without it
+## (`with_pause_menu` off, or a build without the menus) the settings are applied here at start. Loaded by path
+## so the scene runs where the menus are not there.
+func _add_pause_menu() -> void:
+	if with_pause_menu and ResourceLoader.exists(PAUSE_MENU):
+		add_child((load(PAUSE_MENU) as PackedScene).instantiate())
+	elif apply_settings and ResourceLoader.exists(SETTINGS_SCRIPT):
+		var settings: Variant = load(SETTINGS_SCRIPT)
+		settings.current().apply_to_scene(self)
 
 
 ## GameSetup (the menus' session set-up) onto the scene's settings: `setup`, else GameSetup.current() when the

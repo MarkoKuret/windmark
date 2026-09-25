@@ -97,6 +97,52 @@ def test_dynamics_ranges(generated):
     assert np.all(cr > 0)                                      # strictly convex, counter-clockwise
 
 
+def test_trim_tables_zero_on_the_wind_line(generated):
+    """sails.md 6: with the driving sail on the wind line (eps = AWA - m_opt) trim_speed and trim_heel are 0, on the
+    grid and in between (both brackets of the lookup are 0)."""
+    _, p = generated
+    for c in p["configs"]:
+        drive = c["front_sail"] or "main"
+        o = c["optimal_angle"][drive]
+        tws = np.array(o["axes"][0]["points"])
+        awa = np.array(o["axes"][1]["points"])
+        opt = np.array(o["values"]).reshape(len(tws), len(awa))
+        eps = np.array(c["trim_speed"]["axes"][2]["points"])
+        for name in ("trim_speed", "trim_heel"):
+            t = np.array(c[name]["values"]).reshape(len(tws), len(awa), len(eps))
+            for i in range(len(tws)):
+                for j in range(len(awa)):
+                    w = awa[j] - opt[i, j]
+                    if w < 0.5 * DEG:
+                        continue
+                    k = int(np.searchsorted(eps, w, side="right")) - 1
+                    assert np.all(t[i, j, k:] == 0.0), (c["front_sail"], name, i, j)
+
+
+def test_tack_dynamics(generated):
+    """boat.md 4, 5.8, 5.9: coasting deceleration, the stalled-rudder radius law and the fall_off table."""
+    b, p = generated
+    d = p["dynamics"]
+    r_full, off = d["turn_radius_full"], d["turn_radius_offset"]
+    assert -r_full < off <= 0.0                                # turn_c > 0; a rudder that stalls short of full helm
+    r_half = (r_full + off) / 0.5 - off
+    assert 1.2 * r_full <= r_half <= 2.0 * r_full
+    # coasting from the close-hauled speed: slower than the old tangent law, faster than no drag at all
+    assert 0.01 < d["decel_linear"] < 0.1
+    # a slammed turn bleeds more speed per second than a half-helm one
+    v, hh, rd = _t2(d["rudder_drag_luff"])
+    i3 = int(np.argmin(abs(v - 3.0)))
+    assert np.interp(1.0, hh, rd[i3]) > 2.5 * np.interp(0.5, hh, rd[i3])
+    for c in p["configs"]:
+        sp, twa, f = _t2(c["fall_off"])
+        assert np.all(f >= 0)
+        assert np.all(f[:, twa <= 10 * DEG + 1e-9] == 0)      # right head to wind: stays in irons
+        k0 = int(np.argmin(abs(sp)))
+        j45 = int(np.argmin(abs(twa - 45 * DEG)))
+        assert 2 * DEG < f[k0, j45] < 8 * DEG                 # stopped, bow off the wind: falls off
+        assert np.all(f[-1] == 0) and sp[-1] < 1.0            # the keel holds the heading once under way
+
+
 def test_physics_sidecar_copied(raw):
     b = boatclass.from_dict(raw)
     g = perf.Generator(b, physics={"perf_inputs": {"hull_points": [[1.0, 0.0], [-1.0, 0.0]],

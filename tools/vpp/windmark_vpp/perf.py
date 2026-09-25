@@ -6,17 +6,19 @@ Per config (main alone, main + each front sail), on the spec's axes:
   drives, with a step up to +0.1 m/s at the edge (boat.md 7.4); where no depowering holds the config, a low
   broached speed (``_broached``);
 * ``heel``: equilibrium heel;
-* ``accel``: the constant acceleration that reproduces the time to build speed from 50 % to 95 % of the polar,
+* ``accel``: the constant acceleration that reproduces the time to build speed from 50 % to 90 % of the polar,
   integrating (drive - resistance) / (mass + added mass) with the heel in equilibrium at each speed;
 * ``trim_speed``, ``trim_heel``: equilibrium speed and heel with every sail sheeted eps away from its optimum
-  (the single manual sheet of sails.md 5.2), relative to the trimmed values;
+  (the single manual sheet of sails.md 5.2), relative to the trimmed values, 0 with the driving sail on the wind
+  line;
+* ``fall_off``: turning away from the wind with no way on (boat.md 7.4);
 * ``optimal_angle``: best sheet angle of the main and the front sail against the apparent wind.
 
-``dynamics`` values are derived from the design where the VPP has the physics (turn radius, deceleration, heel
-and pitch springs, rudder drag, speed loss with heel, collision outline, wind-shadow geometry) and use the
-reference values of boat.md and wind_shadow.md scaled with the waterline length otherwise. The class file's
-``handling`` multipliers scale the feel (``apply_handling``) and its other ``handling`` keys override dynamics
-values as given. The ``vpp`` block (ignored by the core) records assumptions, VMG optima and
+``dynamics`` values are derived from the design where the VPP has the physics (turn radius and its law's offset,
+coasting deceleration, heel and pitch springs, rudder drag, speed loss with heel, collision outline, wind-shadow
+geometry) and use the reference values of boat.md and wind_shadow.md scaled with the waterline length otherwise.
+The class file's ``handling`` multipliers scale the feel (``apply_handling``) and its other ``handling`` keys
+override dynamics values as given. The ``vpp`` block (ignored by the core) records assumptions, VMG optima and
 diagnostic tables.
 """
 
@@ -39,7 +41,9 @@ SCHEMA = "windmark.perf/1"
 TWS = np.array([0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 20.6])
 TWA_SAIL = np.concatenate([np.arange(20, 60, 2), np.arange(60, 180.01, 5)]) * DEG
 AWA = np.concatenate([[0, 5], np.arange(10, 180.01, 5)]) * DEG
-EPS = np.array([-60, -20, -10, -5, -2, -0.5, 0, 0.5, 2, 5, 10, 20, 60, 120]) * DEG
+# trim error: fine round the optimum, then every 5 deg out to where the eased sail reaches the wind line (the
+# trim tables are 0 there, and the step before it must be close to the line), then 150 and 180 deg
+EPS = np.concatenate([[-60, -20, -10, -5, -2, -0.5, 0, 0.5, 2], np.arange(5, 131, 5), [150, 180]]) * DEG
 NF, NR = len(FLATS), len(REEFS)
 
 # reference archetypes of boat.md 4 (S = sportsboat, L = large monohull) by waterline length
@@ -50,6 +54,22 @@ L_S, L_L = 6.4, 19.5
 # strongest wind it could still hold, and at least the no-go edge value; the boat wallows instead of stopping.
 BROACH_SHARE = 0.4
 BROACH_MIN = 0.1            # m/s, the polar's value at the no-go edge
+
+# accel (README "Output"): the constant acceleration that reproduces the time to build speed between these shares
+# of the polar (a boat comes out of a tack or a gybe at about half its speed; the tack test measures 90 %)
+ACCEL_FROM, ACCEL_TO = 0.5, 0.9
+# Turning (README "dynamics"): in a steady turn about this share of the rudder angle reaches the blade as angle of
+# attack (the rest is the flow curving round the stern and the drift the turn needs); the rudder stalls at the helm
+# where that incidence reaches the stall of its lift line.
+RUDDER_AOA_SHARE = 0.5
+RUDDER_CL_MAX = 1.1
+# fall_off (README "Output"): turning away from the wind in sternway and at a crawl, reference rate of the S and L
+# archetypes, full from 20 to 90 deg TWA, none below 10 deg (a boat right head to wind stays in irons) and from
+# 120 deg; fading to 0 at a Froude number of FALL_OFF_FN ahead, where the keel starts to hold the heading.
+FALL_OFF_RATE = (8.0 * DEG, 5.0 * DEG)
+FALL_OFF_FN = 0.05
+FALL_OFF_TWA = np.array([0, 10, 20, 90, 120, 180]) * DEG
+FALL_OFF_SHAPE = np.array([0, 0, 1, 1, 0, 0.0])
 
 
 def _by_size(lwl, s, l):
@@ -225,6 +245,7 @@ class Generator:
             "accel": table([("tws", TWS), ("twa_abs", twa_axis)], "m/s2", accel),
             "trim_speed": table([("tws", TWS), ("awa_abs", AWA), ("trim_error", EPS)], "1", ts),
             "trim_heel": table([("tws", TWS), ("awa_abs", AWA), ("trim_error", EPS)], "1", th),
+            "fall_off": self._fall_off(),
             "optimal_angle": opt,
             "vpp": {
                 "flat": table([("tws", TWS[1:]), ("twa_abs", self.twa)], "1", FLATS[r.fi]),
@@ -236,13 +257,25 @@ class Generator:
         }
         return out
 
+    def _fall_off(self):
+        """Turning away from the wind (rad/s) against boat speed and TWA (boat.md 7.4, sails.md 6): the windage
+        of the rig and topsides forward of the keel swings the bow of a boat that has no way on; the keel holds the
+        heading once the boat moves ahead. The same for every config (the sails are flogging)."""
+        b = self.boat
+        rate = _by_size(b.lwl, *FALL_OFF_RATE)
+        vf = FALL_OFF_FN * math.sqrt(G * b.lwl)
+        speed = np.array([-6.0, 0.0, 0.5 * vf, vf])
+        fade = np.array([1.0, 1.0, 0.75, 0.0])          # 1 - (v / vf)^2 ahead
+        return table([("boat_speed", speed), ("twa_abs", FALL_OFF_TWA)], "rad/s",
+                     rate * fade[:, None] * FALL_OFF_SHAPE[None, :])
+
     def _accel(self, r: ConfigResult):
         S = self.solver
         rig = r.rig
         tws = self.tws[:, None, None]
         twa = self.twa[None, :, None]
         x, w = np.polynomial.legendre.leggauss(8)
-        f0, f1 = 0.5, 0.95
+        f0, f1 = ACCEL_FROM, ACCEL_TO
         frac = f0 + (f1 - f0) * (x + 1) / 2
         Vn = r.V[..., None] * frac[None, None, :]
         fi = r.fi[..., None]
@@ -303,7 +336,19 @@ class Generator:
         h0 = H[..., i0:i0 + 1]
         sf = np.where(v0 > 0.05, np.clip(V / np.maximum(v0, 1e-6), 0, 1.0), 1.0)
         hf = np.where(h0 > 0.2 * DEG, np.clip(H / np.maximum(h0, 1e-6), 0, 3.0), 1.0)
-        return self._to_awa(r, sf, 1.0), self._to_awa(r, hf, 1.0)
+        ts, th = self._to_awa(r, sf, 1.0), self._to_awa(r, hf, 1.0)
+        # On the wind line the driving sail flogs: no drive, no heel from the sails (sails.md 6). The core looks the
+        # tables up at the driving sail's error eps = |awa| - m_opt, which on the wind line is w = AWA - m_opt; the
+        # tables are 0 from the eps point at or below the smallest w of the neighbouring (tws, AWA) points, so the
+        # interpolated value at the wind line is exactly 0 wherever the core looks it up.
+        drive = len(r.rig.sails) - 1                    # the front sail if the config has one, else the main
+        w = AWA[None, :] - self._opt_angle(r, drive)
+        wp = np.pad(w, 1, mode="edge")
+        wmin = np.min([wp[1 + a:wp.shape[0] - 1 + a, 1 + b:wp.shape[1] - 1 + b]
+                       for a in (-1, 0, 1) for b in (-1, 0, 1)], axis=0)
+        k = np.clip(np.searchsorted(EPS, wmin, side="right") - 1, i0 + 1, len(EPS) - 1)
+        off = np.arange(len(EPS))[None, None, :] >= k[..., None]
+        return np.where(off, 0.0, ts), np.where(off, 0.0, th)
 
     # ---------------------------------------------------------------------------------------------------------
     def _vmg(self):
@@ -344,27 +389,20 @@ class Generator:
         me = self.mass_eff
         a_keel, a_rud = b.keel.area, b.rudder.area
 
-        # turning: radius from the lateral plane balance; helm speed scales with size
+        # turning: radius at full helm from the lateral plane balance; the shape of the radius law from the rudder's
+        # stall (the helm where it stops turning the boat harder); helm speed scales with size
         turn_full = 0.35 * lwl * math.sqrt((a_keel + a_rud) / a_rud)
+        turn_offset = self._turn_offset(turn_full)
         helm_rate = float(np.clip(_by_size(lwl, 1.65, 1.0), 0.6, 2.2))
 
-        # deceleration: linear rate from the resistance/drive slope at the polar, constant = coasting in irons
-        rates = []
-        for r in self.results:
-            dv = np.maximum(0.03 * r.V, 0.03)
-            tws = self.tws[:, None]
-            twa = self.twa[None, :]
-            fp, _ = self.solver.net_force(r.rig, r.fi, r.reef, tws, twa, r.V + dv, r.heel)
-            fm, _ = self.solver.net_force(r.rig, r.fi, r.reef, tws, twa, np.maximum(r.V - dv, 0), r.heel)
-            k = -(fp - fm) / (2 * dv) / me
-            sel = r.valid & (self.tws[:, None] >= 3.0) & (self.tws[:, None] <= 8.5) \
-                & (self.twa[None, :] >= 40 * DEG) & (self.twa[None, :] <= 150 * DEG)
-            rates.extend(k[sel].tolist())
-        decel_linear = float(np.median(rates)) if rates else 0.05
+        # deceleration: constant = the windage in irons plus the hull at a crawl; linear = the rate that
+        # reproduces the time the hull coasts from its close-hauled speed to half of it with the drive gone
+        # (a tack, a luff, let-fly), median over 6 to 16 kn TWS
         rig0 = self.results[0].rig
         aws = np.array([5.0])
         drag = rig0.windage_force(aws, np.zeros(1)) + self.hull.resistance(np.array([1.0]), np.zeros(1), np.zeros(1))
         decel_const = float(drag[0] / me)
+        decel_linear = self._coast_rate(decel_const)
 
         # heel speed factor: 1 up to the VPP heel limit, beyond it the surge equilibrium with the heel held there
         # (rig power falling with the heeled apparent wind, heeled hull and deck-edge drag), relative to the limit;
@@ -409,12 +447,12 @@ class Generator:
             "helm_rate": helm_rate,
             "rudder_max": b.rudder_max,
             "turn_radius_full": turn_full,
-            "turn_radius_offset": 3.07,
+            "turn_radius_offset": turn_offset,
             "decel_linear": decel_linear,
             "decel_const": decel_const,
             "heel_speed_factor": table([("heel_abs", hk)], "1", hsf),
-            "rudder_drag_luff": self._rudder_drag(turn_full, 0.0),
-            "rudder_drag_bear": self._rudder_drag(turn_full, 0.75),
+            "rudder_drag_luff": self._rudder_drag(turn_full, turn_offset, 0.0),
+            "rudder_drag_bear": self._rudder_drag(turn_full, turn_offset, 0.75),
             "heel_max": float(min(heel_rm_max, 65 * DEG)),
             "heel_limit": 1.40,
             "heel_freq": heel_freq,
@@ -449,7 +487,53 @@ class Generator:
             self.notes.append("collision outline, hull points and wind-shadow geometry from the boat generator")
         return dyn
 
-    def _rudder_drag(self, turn_full, shift):
+    def _rudder_lift_slope(self):
+        rd = self.boat.rudder
+        a1 = rd.span * rd.chord
+        ar = 2 * rd.span ** 2 / a1
+        return a1, ar, 2 * math.pi * ar / (ar + 2)
+
+    def _turn_offset(self, turn_full):
+        """turn_radius_offset of the radius law R = (R_full + offset)/|h| - offset (boat.md 5.9).
+
+        The turn rate grows in proportion to the helm until the rudder stalls, at the helm h_s where
+        RUDDER_AOA_SHARE of the rudder angle reaches the stall of the blade's lift line, and little beyond it. The
+        offset makes the law's half-helm radius that of this linear-then-stalled rudder, R(0.5) = 2 h_s R_full,
+        so offset = -2 (1 - h_s) R_full: 0 for a rudder that never stalls (radius in proportion to 1/helm),
+        negative when it stalls short of full helm. h_s is held in [0.6, 1] (turn_c >= 0.2 R_full)."""
+        _, _, cla = self._rudder_lift_slope()
+        h_s = RUDDER_CL_MAX / (cla * RUDDER_AOA_SHARE * self.boat.rudder_max)
+        h_s = float(np.clip(h_s, 0.6, 1.0))
+        return -2.0 * (1.0 - h_s) * turn_full
+
+    def _coast_rate(self, decel_const):
+        """decel_linear: the k for which dv/dt = -(k v + decel_const) coasts from the close-hauled VMG speed to half
+        of it in the time the upright hull takes with the drive gone, dv/dt = -(R(v)/(m + m_a) + decel_const);
+        median over the TWS rows from 6 to 16 kn."""
+        rates = []
+        for i, tws in enumerate(self.tws):
+            if not 3.0 <= tws <= 8.5:
+                continue
+            best = 0.0
+            for r in self.results:
+                vm = r.V[i] * np.cos(self.twa)
+                j = int(np.argmax(np.where(r.valid[i], vm, -1.0)))
+                if r.valid[i, j]:
+                    best = max(best, float(r.V[i, j]))
+            if best <= 0.1:
+                continue
+            v = np.linspace(0.5 * best, best, 201)
+            dec = self.hull.resistance(v, 0 * v, 0 * v) / self.mass_eff + decel_const
+            t_coast = float(np.trapezoid(1.0 / dec, v))
+            lo, hi = 1e-5, 5.0
+            for _ in range(60):
+                k = 0.5 * (lo + hi)
+                t = math.log((k * best + decel_const) / (0.5 * k * best + decel_const)) / k
+                lo, hi = (k, hi) if t > t_coast else (lo, k)
+            rates.append(0.5 * (lo + hi))
+        return float(np.median(rates)) if rates else 0.05
+
+    def _rudder_drag(self, turn_full, turn_offset, shift):
         """Speed loss (m/s^2) from the rudder and the keel's turning side force, per boat speed and helm."""
         b = self.boat
         v = np.array([0, 1, 2, 3, 4, 5, 6, 8, 10, 14, 20.0])
@@ -457,16 +541,14 @@ class Generator:
         V = np.maximum(v[:, None] - shift, 0.0) + 0 * hh[None, :]
         q = 0.5 * RHO_WATER * V * V
         rd = b.rudder
-        a1 = rd.span * rd.chord
-        ar = 2 * rd.span ** 2 / a1
-        cla = 2 * math.pi * ar / (ar + 2)
+        a1, ar, cla = self._rudder_lift_slope()
         delta = hh[None, :] * b.rudder_max
-        cl_max = 1.1
+        cl_max = RUDDER_CL_MAX
         cl = np.minimum(cla * delta, cl_max)
         stalled = np.clip((cla * delta - cl_max) / cl_max, 0, 1)
         cd = 0.012 + cl ** 2 / (math.pi * ar * 0.9) + stalled * 1.2 * np.sin(delta) ** 2
         d_rudder = q * a1 * rd.count * cd
-        R = (turn_full + 3.07) / np.maximum(hh[None, :], 1e-6) - 3.07
+        R = (turn_full + turn_offset) / np.maximum(hh[None, :], 1e-6) - turn_offset
         R = np.maximum(R, 0.5)
         fc = np.where(hh[None, :] > 0, b.mass * V ** 2 / R, 0.0)
         d_keel = self.hull.induced(np.maximum(V, 0.05), np.zeros_like(V), fc) * (V > 0)
@@ -613,7 +695,7 @@ def generate(boat: Boat, thin_ship: Optional[bool] = None, physics: Optional[Dic
 # -------------------------------------------------------------------------------------------------------------
 # validation of the written file (data_format.md 5)
 
-RANGES = {"polar": (-5, 40), "heel": (0, math.pi / 2), "accel": (0, None), "trim_speed": (0, 3),
+RANGES = {"polar": (-5, 40), "heel": (0, math.pi / 2), "accel": (0, None), "fall_off": (0, None), "trim_speed": (0, 3),
           "trim_heel": (0, 3), "heel_speed_factor": (0, 3), "optimal_angle": (0, math.pi)}
 
 

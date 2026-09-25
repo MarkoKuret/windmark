@@ -1,0 +1,23 @@
+---
+id: WM-028
+title: 'Spec: boat and sails fixes from WM-006'
+status: To Do
+assignee: []
+created_date: '2026-09-25 14:41'
+labels:
+  - spec
+dependencies: []
+priority: high
+ordinal: 22000
+---
+
+## Description
+
+<!-- SECTION:DESCRIPTION:BEGIN -->
+Boat.md 5.8 surfing factor from wave pitch only (not the wobble); trim_speed scales drive only, keeping no-go drift sternway; sails.md 5.3/5.4 let-fly releases past sheet_max to the wind line; sails.md 4.3 carry leftover time in seconds; boat.md 5.5 weather_helm uses trim_heel; 10.1 start at table speed; cog defined from the filtered ground velocity; calm placement uses given wind_from; drop_front() cancels a first hoist; hull_points max 64; peel test 'exactly' means within one tick. Also the tack law proposals in WM-027 (coast before drifting, class-scaled turn offset, reference retune, slammed tacks).
+<!-- SECTION:DESCRIPTION:END -->
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] #1 boat.md and sails.md match the implementation
+<!-- AC:END -->

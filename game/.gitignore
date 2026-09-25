@@ -2,3 +2,7 @@
 .godot/
 # Build outputs staged for import (boatgen GLBs, sidecars and their .import files)
 generated/
+# The GDExtension build: godot-cpp checkout (fetched by native/build.sh), the CMake build and the built library
+native/third_party/
+native/build/
+bin/

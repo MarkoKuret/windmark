@@ -1,8 +1,8 @@
 # Windmark front end (Godot)
 
 Godot 4.6, Forward+ renderer. So far: the boat import test, the sea, sky and lighting (`docs/specs/water_render.md`),
-a placeholder simulation behind the interface the core binding will fill, the controls, the cameras, the minimal
-HUD and a sail test scene that puts them together.
+the core binding (a GDExtension over the core's C API) and a placeholder simulation behind the same interface, the
+controls, the cameras, the minimal HUD and a sail test scene that puts them together.
 
 ## Layout
 
@@ -10,7 +10,9 @@ HUD and a sail test scene that puts them together.
 | --- | --- |
 | `project.godot` | Project settings |
 | `scripts/` | GDScript. `sail_grid.gd` (`SailGrid`) maps imported sail vertices back to the boatgen sail grid; `frames.gd` (`Frames`) holds the axes and angle helpers; `boat_view.gd` places the generated boat |
-| `scripts/sim/` | `SimSource` (the simulation interface), `FakeSim` and `FakeBoat` (placeholder), `SimRunner` (50 ms ticks), class loading |
+| `scripts/sim/` | `SimSource` (the simulation interface), `CoreSimSource` (the core, through the GDExtension) and `CoreEnvSource` (its sea and wind for the Sea node), `FakeSim` and `FakeBoat` (placeholder), `SimRunner` (50 ms ticks), class loading |
+| `native/` | The GDExtension: `CoreSim` over `core/include/windmark.h` (`src/`), `build.sh`, `CMakeLists.txt`. Godot skips the folder (`.gdignore`) |
+| `bin/` | The built extension library and `windmark.gdextension`. Not committed |
 | `scripts/controls/` | Input map defaults, device reader, `PlayerControls` (boat commands), sail key mapping, the input frame |
 | `scripts/cameras/` | `CameraRig` and the chase, onboard, aerial and free cameras, shake, onboard eye point |
 | `scripts/hud/` | `Hud`, `HudValues`, formats, bars and trim gauges |
@@ -56,16 +58,15 @@ Set `GODOT=/path/to/godot` if `godot` is not on the path. Everything runs headle
 
 ## Simulation interface (`SimSource`)
 
-Cameras, controls and HUD read the simulation only through `scripts/sim/sim_source.gd`. `FakeSim` implements it
-now; the core binding (WM-016.01) will be a second implementation (a `SimSource` subclass wrapping the
-GDExtension), and nothing else changes. Names and units are the core's (`boat.md` §3, `sails.md` §3 and §7):
+Cameras, controls and HUD read the simulation only through `scripts/sim/sim_source.gd`. `CoreSimSource` implements
+it on the core (below), `FakeSim` on a GDScript placeholder; switching one for the other changes nothing else. Names and units are the core's (`boat.md` §3, `sails.md` §3 and §7):
 world ENU metres, radians, compass angles clockwise from north, one tick = `DT` = 0.05 s.
 
 | Call | Returns |
 | --- | --- |
 | `tick()` | ticks stepped so far |
 | `boat_count()` | number of boats |
-| `class_info(b)` | `ClassInfo`: id, name, `loa`, `beam_max`, steering, sails (`SailInfo`: name, type, `sheet_min`, `sheet_max`) in sail order, `main_sail`, `front_sails` (sail slots), the boatgen physics sidecar |
+| `class_info(b)` | `ClassInfo`: id, name, `loa`, `beam_max`, `lwl`, `bwl` (perf file), `transom_width` (class file), `rudder_max`, steering, sails (`SailInfo`: name, type, `sheet_min`, `sheet_max`) in sail order, `main_sail`, `front_sails` (sail slots), the boatgen physics sidecar |
 | `state(b)` | `BoatState`: every field of `wm::BoatState` |
 | `controls(b)` | `BoatControls`: `h_cmd`, `sheet_cmd`, `auto_trim`, `let_fly`, `performance_scale` |
 | `outputs(b)` | `BoatOutputs`: every field of `wm::BoatOutputs` |
@@ -83,6 +84,54 @@ oscillation), and flat water, a test swell (the water only, the hulls stay level
 (`use_sea(model, t0_ms)`: the `SeaModel` of the Sea node, with heave, pitch and wave roll of `boat.md` §5.6 on the
 hull points of `sea.md` §5, no wobble), and no collisions or wind shadow. Tick n is at environment time
 `sea_time_ms(n) = t0_ms + 50 n`. It is not the reference and not deterministic across platforms.
+
+## Core binding (GDExtension)
+
+`native/` builds `CoreSim`, a Godot class over the core's C API (`core/include/windmark.h`, `core/README.md`), and
+`scripts/sim/core_sim_source.gd` (`CoreSimSource`) puts the `SimSource` interface on it. Requirements: CMake 3.22 or
+newer, Ninja, Clang, git, Godot 4.6 (tested with 4.6.3 on macOS arm64; the Linux and Windows library names are in
+`windmark.gdextension`, not built yet).
+
+```
+game/native/build.sh                   # template_debug (default): game/bin/libwindmark_godot.macos.template_debug.arm64.dylib
+game/native/build.sh template_release  # the release library
+game/tests/run_core_sim_test.sh        # builds when game/bin has no library, then the headless test
+```
+
+`build.sh` clones the pinned godot-cpp (10.0.0-stable, commit `507ed9d`, MIT) into `native/third_party/godot-cpp`
+when missing and checks the commit, configures `native/build/<target>` with CMake and Ninja, and builds the core
+(under its float rules, `windmark_static`) and the extension into `bin/`, together with `windmark.gdextension`.
+The first build takes a few minutes (godot-cpp), later ones seconds. It then runs `native/register.sh`, which lists
+the extension in `.godot/extension_list.cfg`: in Godot 4.6.3 a headless `--import` that discovers a new extension
+crashes on exit, and with the entry in place the extension loads at start-up instead. The test runners call it too.
+Without a built library the rest of the project runs as before: nothing refers to `CoreSim` by type, and
+`CoreSimSource.available()` is false.
+
+`tests/core_sim_test.gd` (run by `run_core_sim_test.sh`, headless): one wm7 sailing freely for 60 s exactly as the C
+API example does it (`core/examples/race_example.c`), and the runner checks that both end at the same place and
+speed; every `SimSource` call, the render pose between ticks, the input frame wire form against the core's, sail
+requests; a race world on `example_bay`: two runs with the same inputs give the same checksum, race signals, the
+sea components and exposure, the wind state with live puff patches, the current, and `SeaModel` on the core's
+components within 1 mm of the core's sea height.
+
+**`CoreSimSource`** (a `SimSource`; also what `FakeSim` offers besides it, so it drops in):
+
+| Call | Does |
+| --- | --- |
+| `settings` | world settings for `create()`, the keys of `CoreSimSource.default_settings()` (the C API's `wm_world_settings`: seed, wind, shift preset, puffs, sea, shadows, race and rules settings) |
+| `create(venue = "")` | the world on a venue (`example_bay` or a path; `""` open water); `last_error()` on failure |
+| `add_boat(id, x, y, psi, v, auto_trim)` | FakeSim's call: a free-sailing boat of class `id` (creates an open-water world when none exists); the core starts it at 60 % of its polar speed, so `v` is unused |
+| `add_entry(id, entry)`, `create_race(course)`, `place_boat(b, x, y, psi)` | a race entry (`human`, `ai`, `performance_scale`, `auto_trim`, `front_sail`), the race on `venue/course` or a path, free-sailing placement |
+| `apply_input(b, frame)` | applies the frame decoded from its 6-byte wire form, the values every peer applies; the controls take effect at the next step (`controls(b)` shows them after it) |
+| `sea_time_ms(ticks)`, `render_time_ms(alpha)` | the environment clock: tick n at 50 n ms (the world's tick 0 is its zero); a pose at alpha at `sea_time_ms(tick() - 1 + alpha)` |
+| `sea_height_at(x, y, t_s)` | sea height at any time (s since tick 0) |
+| `sea_components()`, `sea_exposure()`, `wind_state(t_ms)`, `current_at(x, y, t_ms)` | the Sea node's source calls (as `SeaEnvSource`), from the core: the drawn puffs are the ones the boats sail in. `CoreEnvSource` is the Node that hands them to the Sea (`source`) |
+| `boat_env(b)`, `wake_state(b, pose, own)`, `checksum()` | the wind, current and shadow the boat stepped in; the `SeaWakes.update_boat` state with the class waterline and transom; the tick checksum |
+| `core` | the `CoreSim` itself for everything else: race, course, results, rules state, pairs, race, rules and contact events, sail events, perf tables by name, polar |
+
+Records read every tick (`boat_state`, `boat_outputs`, `boat_controls`, `render_pose`, `sail`, `boat_env`) come from
+`CoreSim` as `PackedFloat32Array` in the C structs' field order (`CoreSimSource.STATE_FIELDS` and the rest), the
+others as Dictionaries with the C field names. `CoreSimSource` caches the per-boat records until the next step.
 
 ## Controls, cameras and HUD
 

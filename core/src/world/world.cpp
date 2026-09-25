@@ -176,6 +176,12 @@ bool World::create_race(const CourseData& course, std::string& error) {
   return true;
 }
 
+bool World::place_boat(std::int32_t boat, Vec2 p, float psi) {
+  if (created_ || boat < 0 || static_cast<std::size_t>(boat) >= boats_.size()) return false;
+  spawn(static_cast<std::size_t>(boat), p, wrap_2pi(psi), true);
+  return true;
+}
+
 void World::set_helm(std::int32_t b, float h) { queue({Command::Kind::helm, b, h, 0}); }
 void World::set_sheet(std::int32_t b, float s) { queue({Command::Kind::sheet, b, s, 0}); }
 void World::set_auto_trim(std::int32_t b, bool on) { queue({Command::Kind::auto_trim, b, on ? 1.0f : 0.0f, 0}); }

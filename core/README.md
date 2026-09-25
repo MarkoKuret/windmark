@@ -21,6 +21,7 @@ Options:
 | --- | --- | --- |
 | `WINDMARK_BUILD_TESTS` | `ON` | build the test suite |
 | `WINDMARK_WERROR` | `OFF` | warnings are errors |
+| `WINDMARK_BUILD_CAPI` | `ON` | build the C API (`libwindmark` shared, `windmark_static`) and its example |
 | `WINDMARK_DATA_DIR` | `<repo>/data` | where the tests find `classes/`, `perf/` and `venues/` |
 | `WINDMARK_COURSES_DIR` | `<repo>/game/data/courses` | where the tests find the course files |
 
@@ -33,6 +34,9 @@ Tests (`ctest`):
   headless race of six scripted boats with penalties on `example_bay`, run twice for determinism, and saved at
   nine ticks and loaded into a new world to continue bit for bit).
 - `core_no_fma`: disassembles `libwindmark_core.a` and fails on any fused multiply-add instruction.
+- `capi_race_example`: `examples/race_example.c` through the C API only: a race of four scripted boats on the
+  example course from the spawn to the results, run twice for the same checksum, then a free-sailing boat
+  (render pose, input frame encoding, sail requests, trim_speed lookup).
 
 ## Float rules
 
@@ -76,6 +80,8 @@ Sources live in `src/<module>/`, included as `"module/header.h"`, all in namespa
 | `src/race/` | the race flow: states, signals, prep flags, OCS and recalls, starting, the winding test for marks and gates, finishing, closing, ranking, results; spawn grid and order; `race_state`: the race block of the snapshot | race.md |
 | `src/rules/` | the racing rules engine: tack and tacking, relations, right of way, the keep-clear, escape and mark-room tests, rules 14 to 19, 22, 31 and boundaries, incidents, penalties, penalty turns, deadlines and disqualification; `rules_state`: the rules block of the snapshot | rules.md |
 | `src/world/` | `World`: one tick in the order of `conventions.md` §4.1 over the boats, wind, sea, shadows, collisions, race and rules; creating a race, controls, events, the tick checksum; `world_state`: the world snapshot, save and load | conventions.md §4.1, §9.1; race.md §1 |
+| `include/windmark.h`, `src/capi/` | the C API over the world (below) | networking.md §4 |
+| `examples/` | `race_example.c`: a headless race and a free-sailing boat through the C API only | |
 | `tests/` | doctest suite and the math vector file | |
 | `tools/` | `gen_math_vectors.cpp`, `gen_env_vectors.cpp`; `gen_sea_render_samples.cpp` (sea and puff samples for the front end's water checks, `game/tests/run_water_test.sh`) | |
 | `third_party/doctest/` | doctest 2.4.12 (MIT), test framework | |
@@ -85,7 +91,6 @@ Planned modules, one directory each under `src/`, in the tick order of `conventi
 | path | role | spec |
 | --- | --- | --- |
 | `src/ai/` | AI helms | ai.md |
-| `src/capi/`, `include/windmark.h` | the C API for the server and engine bindings | networking.md |
 
 ## World calls
 
@@ -96,6 +101,7 @@ is the environment clock's zero, `race.md` §0).
 | --- | --- | --- |
 | `World(WorldSetup)` | venue, seed, wind and sea settings (the venue's fields applied, the wind sea grown from the venue fetch), race settings, rules parameters | race.md §2 |
 | `add_boat(BoatEntry)` | an entry (class, human or AI, performance scale, auto trim, start sail); after `create_race` a joiner placed in the first free slot, until the prep signal | race.md §3.5 |
+| `place_boat(i, p, psi)` | free sailing: places a boat (60 % of its polar speed, sails up and trimmed); only before `create_race`. A world that never creates a race steps boats, wind, sea, shadows and collisions without race or rules | race.md §3.5 |
 | `create_race(CourseData, err)` | lays the course to the median wind at the gun and scales it, checks it on the venue, builds the collision scene, creates the race and the rules, spawns the boats | courses.md §6, §7; race.md §3.1 |
 | `set_helm`, `set_sheet`, `set_auto_trim`, `set_let_fly`, `hoist`, `drop_front`, `retire`, `protest` | controls queued for step 2 of the next tick | boat.md §2, race.md §6.4, rules.md §10 |
 | `set_controller(fn)` | called in step 2 before the queued controls: computer skippers and scripts decide there | ai.md |
@@ -105,6 +111,28 @@ is the environment clock's zero, `race.md` §0).
 
 `Race` and `Rules` can also be driven directly with poses (`RaceBoatInput`, `RulesBoatInput`), which is how the
 scenario tests script tracks without physics.
+
+## C API
+
+`include/windmark.h` is the stable C interface over the world, for the server and the engine bindings
+(`game/native`): opaque handles (`wm_perf`, `wm_venue`, `wm_course`, `wm_world`), plain structs of fixed-width
+types, `wm_status` codes with `wm_last_error()`, and `WM_API_VERSION` / `wm_api_version()` bumped on any struct or
+signature change. `libwindmark` (shared) exports only the `wm_*` functions; `windmark_static` is the same for
+hosts that link it in. Everything is built under the float rules; hosts must not enable flush-to-zero.
+
+| group | calls |
+| --- | --- |
+| data | `wm_perf_load/parse`, `wm_venue_load/parse`, `wm_course_load/parse`; `wm_perf_info`, `wm_perf_sail`, `wm_perf_polar`, `wm_perf_polar_vmg`, `wm_perf_trim_speed`, `wm_perf_table` (any config table by name, e.g. `weather_helm`, `flog_drag`) |
+| set-up | `wm_world_settings_init`, `wm_world_create(settings, venue or NULL)`, `wm_world_add_boat`, `wm_world_place_boat` (free sailing), `wm_world_create_race` |
+| controls | `wm_world_apply_input` (the input frame of networking.md §4.1; the sail request result is answered at once), `wm_input_encode/decode` (the 6-byte wire form), single controls, `wm_world_set_controller` (step-2 callback) |
+| step | `wm_world_step` (returns the tick checksum), `wm_world_checksum`, `wm_world_tick`, `wm_world_time_ms`, `wm_world_render_time_ms` |
+| boats | state, controls, outputs, the environment at the boat, `wm_world_render_pose(alpha)` (interpolated between the last two ticks), `wm_world_trim_speed_at` (HUD trim tolerance), sails, per-sail state and outputs, sail phase events |
+| environment | clean wind, global direction, current, puff patches (now or at any `t_ms`), `wm_world_wind_state`, sea height (now or at any `t_ms`), slope, exposure and its grid, wave components |
+| race and rules | course marks, steps and boundary; race state, per-boat race state, order, results; per-boat rules state, pending penalties, pair records; race, rules and contact events of the last tick |
+
+A world holds references to the data it was given, so callers may free their handles after passing them. The
+world's tick 0 is the environment clock's zero. Point queries use a second wind field with the same seed and
+settings (identical bits) and cached sea ticks, so they never touch the world's own caches.
 
 ## Boat calls
 

@@ -62,6 +62,11 @@ class World {
   // (courses.md §7), builds the collision scene, creates the race and the rules, and spawns the boats.
   bool create_race(const CourseData& course, std::string& error);
 
+  // Free sailing (no race): places boat `boat` at `p` on heading `psi` with the spawn speed of race.md §3.5 (60 %
+  // of the polar speed), sails up and trimmed. Only before create_race(), which places every boat itself; returns
+  // false after it or for a bad index. A world that never creates a race steps without race, rules or course.
+  bool place_boat(std::int32_t boat, Vec2 p, float psi);
+
   // Controls, applied in step 2 of the next tick (boat.md §2, sails.md §4.2).
   void set_helm(std::int32_t boat, float h);
   void set_sheet(std::int32_t boat, float s);

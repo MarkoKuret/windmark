@@ -20,6 +20,7 @@ if [ "${1:-}" != "--no-gen" ]; then
 fi
 
 log="$here/generated/import.log"
+sh "$here/native/register.sh"  # a built GDExtension loads at start-up (native/build.sh)
 "$godot" --headless --path "$here" --import >"$log" 2>&1 || { cat "$log"; echo "import failed"; exit 1; }
 if grep -E "ERROR|WARNING|SCRIPT ERROR" "$log"; then
     echo "import reported errors or warnings (full log: $log)"

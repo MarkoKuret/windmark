@@ -230,6 +230,11 @@ Schematic:
 Semantics in `sails.md` §6. Coverage required: `tws` axis from 0 to at least 20.6 m/s (40 kn), `twa_abs` and
 `awa_abs` from 0 to π. `optimal_angle` holds the main and the config's front sail (only the main for main-only).
 
+Above the no-go step the `polar` is never 0. Where no depowering holds a config (heel beyond the limit, or no way
+made at that angle) the VPP writes a low **broached speed**, with the `heel` at the limit and the `accel` of the
+last wind strength the config still holds at that angle (`tools/vpp/README.md`, "Broached speed"): the boat
+wallows rather than stops. A config may carry a `vpp` block of diagnostic tables; the core ignores it.
+
 ### 4.4 `sails`
 
 Keyed by sail id (schematic):

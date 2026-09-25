@@ -81,7 +81,7 @@ What each table holds:
 
 - `polar`: equilibrium speed at the best depowering and trim. Below the no-go edge (1.5° below the first TWA
   where the config makes way at 8 kn or more) the steady sternway the windage drives, capped at 0.15 TWS, with
-  the spec's step to +0.1 m/s at the edge.
+  the spec's step to +0.1 m/s at the edge. Above the edge the polar is never 0: see "Broached speed".
 - `heel`: equilibrium heel. `accel`: the constant acceleration that reproduces the time to build speed from 50 %
   to 95 % of the polar, integrating (drive − resistance)/(mass + added mass) with the heel in equilibrium at
   each speed (8-point Gauss-Legendre); floor 0.005 m/s².
@@ -89,6 +89,25 @@ What each table holds:
   its optimum (the single manual sheet of `sails.md` §5.2), clamped to the sheet limits and the wind line,
   relative to the trimmed values; resampled from TWA onto AWA per TWS row.
 - `optimal_angle`: best sheet angle of each sail against AWA (resampled the same way).
+
+### Broached speed
+
+Some cells above the no-go edge have no equilibrium: no depowering keeps the config within the heel limit (a
+spinnaker close reaching in a gale), or the boat cannot make way at that angle at all (pinching in a strong
+breeze, where the keel stalls before the boat has speed). A real boat there broaches or wallows: it lies over,
+sails flogging or stalled, and crawls. The polar holds a low **broached speed** instead of 0, so the core slows
+the boat towards it rather than stopping it:
+
+- speed: 0.4 × the speed the config makes at the same TWA in the strongest wind it still holds there (the last
+  sailing TWS row below), at least 0.1 m/s (the value at the no-go edge);
+- heel: the heel limit (`vpp.max_heel`, or the heel of the maximum righting moment when lower) where it was the
+  heel that failed, else the heel of that last sailing row;
+- acceleration: that of the last sailing row, so the boat settles to its broached speed about as quickly as it
+  sailed there.
+
+The step down where a config stops holding is deliberate: it is the cost of carrying the wrong sail. Broached
+cells are marked in the config's `vpp.broached` table (1 = broached) and are left out of the trim and sheet-angle
+tables, the VMG optima and the `dynamics` fits.
 
 `dynamics` values derived from the design:
 
@@ -107,7 +126,8 @@ What each table holds:
 The rest (`helm_rate`, `pitch_damping`, `heave_time`, `surf_gain`, wobble, wave gains, sail rates, handling
 times, slowdowns) use the reference values of the owning specs, interpolated between the sportsboat and
 large-monohull archetypes by waterline length. The `vpp` block (ignored by the core) records the notes, VMG
-optima, the righting-moment curve, the added-mass coefficient and diagnostic tables (flat, reef, AWA, leeway).
+optima, the righting-moment curve, the added-mass coefficient and diagnostic tables (flat, reef, AWA, leeway,
+broached).
 
 ## Model
 
@@ -240,7 +260,6 @@ code is included.
   edge of the Delft series.
 - Multihull resistance ignores hull interference; the float wave resistance uses the upright shape.
 - Sail handling times are reference values scaled by length, not a crew-work model.
-- Where no depowering keeps a config within the heel limit (a spinnaker close reaching in a gale) the polar holds
-  0; the core then slows the boat along its deceleration law. A "broached" speed could be modelled instead.
+- The broached speed is a rule of thumb (a share of the last held speed), not a model of a broach.
 - Planing is a gate on the displacement-length ratio and a calibrated blend, not a planing-hull model (no
   dynamic trim, no spray drag); a class near the gate (DLR 90 to 105) planes partly.

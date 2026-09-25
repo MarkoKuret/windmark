@@ -113,3 +113,29 @@ def test_table_validation_rejects_bad_axes():
         perf.validate_table({"axes": [{"q": "tws", "points": [0, 1, 1, 1]}], "unit": "m/s", "values": [0] * 4}, "t")
     with pytest.raises(ValueError):
         perf.validate_table({"axes": [{"q": "tws", "points": [1, 0]}], "unit": "m/s", "values": [0, 0]}, "t")
+
+
+def test_no_zero_speed_above_the_no_go_zone(generated):
+    _, p = generated
+    for c in p["configs"]:
+        tws, twa, V = _t2(c["polar"])
+        k = int(np.flatnonzero(np.diff(twa) == 0)[0])          # the no-go step
+        assert np.all(V[1:, k + 1:] > 0), c["front_sail"]
+
+
+def test_gale_spinnaker_reach_broaches(generated):
+    """a2 at 90 deg TWA in 40 kn: no depowering holds the heel, so the boat wallows at a low broached speed at the
+    heel limit instead of stopping."""
+    _, p = generated
+    c = next(c for c in p["configs"] if c["front_sail"] == "a2")
+    tws, twa, V = _t2(c["polar"])
+    _, _, H = _t2(c["heel"])
+    _, btwa, B = _t2(c["vpp"]["broached"])
+    j = int(np.argmin(abs(twa - 90 * DEG)))
+    jb = int(np.argmin(abs(btwa - 90 * DEG)))
+    assert B[-1, jb] == 1.0 and B[3, jb] == 0.0                # broached in 40 kn, sailing in 8 kn
+    sailing = V[1:-1, j][B[:-1, jb] == 0]
+    assert 0.1 <= V[-1, j] <= 0.5 * sailing.max()
+    assert H[-1, j] == pytest.approx(H.max(), abs=1e-6)      # lying at the heel limit
+    _, _, A = _t2(c["accel"])
+    assert A[-1, j] > 0.005

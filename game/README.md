@@ -15,7 +15,7 @@ controls, the cameras, the minimal HUD and a sail test scene that puts them toge
 | `bin/` | The built extension library and `windmark.gdextension`. Not committed |
 | `scripts/controls/` | Input map defaults, device reader, `PlayerControls` (boat commands), sail key mapping, the input frame |
 | `scripts/cameras/` | `CameraRig` and the chase, onboard, aerial and free cameras, shake, onboard eye point |
-| `scripts/hud/` | `Hud`, `HudValues`, formats, bars and trim gauges |
+| `scripts/hud/` | `Hud`, `HudValues`, formats, bars and trim gauges; the race HUD: `RaceHudValues`, `RaceText` (rule texts, flags, signals), `RadarView`, `FlagsView`, `RoundingArrowView`, `PenaltyRingView` |
 | `scripts/venue/` | `VenueShapes` (the venue's land polygons and obstacles, from the core or the venue file), `LandTerrain` (the drawn ground height and colours), `ColorMesh` (vertex-coloured mesh builder) |
 | `shaders/` | Shaders. `sea_common`, `sky_common`, `wake_common` (`.gdshaderinc`) hold the water, sky and wake maths, written so the offline preview can compile them as GLSL too; `water_l/m/h` are the sea per quality tier, `sky`, `wake`, `wake_normal`; `boat` is the boat surface shader |
 | `scenes/` | Scenes. `sea/` is the sea (`sea.tscn`, `Sea`), its data source and wakes, and the daytime sky (`sky_day.tscn`, `SkyRig`, `env_day.tres`); `water_test.tscn` shows them together; `sail_test.tscn` is one boat sailing freely on the core (FakeSim as fallback), or racing alone on the example course, with cameras, controls and HUD on that sea and sky; `venue/` draws the venue land and obstacles (`VenueView`, `land.gdshader`); `course/` the course (`CourseView`, `CourseProps`) |
@@ -79,6 +79,14 @@ world ENU metres, radians, compass angles clockwise from north, one tick = `DT` 
 | `apply_input(b, frame)` | applies an `InputFrame` (`networking.md` §4.1); returns the sail request result |
 | `step()` | one tick |
 
+Race and rules readers (empty without a race: `FakeSim`, free sailing), the Dictionaries of `CoreSim` with the C
+field names: `has_race()`, `race()`, `race_boat(b)`, `race_order()`, `course()`, `course_labels()` (the course
+file's display labels), `results()`, `race_split(b, step)` (race time at a completed step, `NAN` before),
+`race_start_status(b)` (the rules hull against the start line: oriented ends, `s_bow`, `u_bow`, `in_band`,
+`course_side`, `in_triangle`, `pre_start`, `over` under the prep flag), `boat_rules(b)`, `pairs()`, `race_events()`,
+`rules_events()`, `hail_state(b)` (`{}` until the core has rule 20 hails), `polar_vmg(b, tws)`,
+`polar(b, tws, twa, front)`, `current_at(x, y, t_ms)`. `CoreSimSource` caches them until the next step.
+
 `FakeSim` is a GDScript sketch of `boat.md` §5 and `sails.md` §4 to §5 on the class's generated tables (polar,
 heel, accel, trim and optimal-angle tables, sail change timing), with a uniform wind (optional slow direction
 oscillation), and flat water, a test swell (the water only, the hulls stay level) or the drawn sea
@@ -128,7 +136,7 @@ components within 1 mm of the core's sea height.
 | `sea_height_at(x, y, t_s)` | sea height at any time (s since tick 0) |
 | `sea_components()`, `sea_exposure()`, `wind_state(t_ms)`, `current_at(x, y, t_ms)` | the Sea node's source calls (as `SeaEnvSource`), from the core: the drawn puffs are the ones the boats sail in. `CoreEnvSource` is the Node that hands them to the Sea (`source`) |
 | `boat_env(b)`, `wake_state(b, pose, own)`, `checksum()` | the wind, current and shadow the boat stepped in; the `SeaWakes.update_boat` state with the class waterline and transom; the tick checksum |
-| `core` | the `CoreSim` itself for everything else: race, course, results, rules state, pairs, race, rules and contact events, sail events, perf tables by name, polar |
+| `core` | the `CoreSim` itself for everything else: race, course, results, splits (`race_split`), the start line status (`race_start_status`), rules state, pairs, race, rules and contact events, sail events, perf tables by name, polar |
 
 Records read every tick (`boat_state`, `boat_outputs`, `boat_controls`, `render_pose`, `sail`, `boat_env`) come from
 `CoreSim` as `PackedFloat32Array` in the C structs' field order (`CoreSimSource.STATE_FIELDS` and the rest), the
@@ -202,6 +210,37 @@ the core into trimmed, eased, let-fly, tacking, hoisting, reaching, running and 
 bent boat, `tests/sail_preview.py` renders them offscreen to `generated/sail_preview/` (with `--publish` the
 JPEGs in `tests/previews/sails_*.jpg`). Its lighting is a stand-in for Godot's: it is for judging shapes.
 
+## Race HUD
+
+`Hud` shows the race whenever the sim it is ticked with has one (`SimSource.has_race()`), so the sail scene needs
+no extra call; `RaceHudValues` (`Hud.race`) computes the values every tick from the race and rules readers, for the
+viewed boat. What it shows (`docs/specs/hud.md`):
+
+- **Start** (§9): the countdown ("Warning in", "Start in" with tenths in the last 10 s, then the race clock), the
+  flags row (class, the prep flag, X, first substitute), a 3 s banner at each signal, the start line panel
+  (distance to the line or to the nearer end, time to the line along the COG, time to burn, the bias with the
+  favoured end), `OVER` with the flag's consequence in the last minute, `OCS` with the way back after the gun.
+- **Next mark** (§7, §4, §6, §3.2): name (course file label), lap and leg, rounding arrows (red port, green
+  starboard; both for a gate), distance and bearing, leg type and ETA, VMG and VMG % (VMC on a reach) with the
+  target speed and angle, the distance and time to the layline or `OVERSTOOD`, the shift meter, the sail hint.
+- **Position** (§10): rank with the 2 s hysteresis (finishes at once), gap to the leader at the last common split or
+  as an estimate (`~`), the boats ahead and behind; the ranking list while `rankings` is held (Tab).
+- **Rules** (§11, §12): the highest priority awareness line, the protest prompt (8 s) and the hail button and reply,
+  both wired into `PlayerControls`; the penalty panel (rule text and other boat, turn ring with tack and gybe
+  ticks, zone and reset notes, deadline, the disqualification warning); penalty, served, late, finish blocked
+  and disqualification banners.
+- **Radar** (§8): heading-up or north-up (Z), range 100 m to 3 km in x1.5 steps (= and -), both remembered in
+  `user://hud.cfg`; boats coloured from the pair records (pulsing on Warning and Breach), marks, lines, laylines,
+  the wind arrow.
+- **Feed and results** (§13): six lines of 8 s; provisional results at the own finish, the core's results at the
+  close (AI badges, projected finishes marked `proj.`).
+- **Assists** (§14): `Hud.assist` and `Hud.shows(element)`; the wind shadow view is not drawn yet.
+
+Names, skippers and AI levels come from `Hud.race.names`, `skippers`, `ai_levels` (boat index to text; defaults
+"You" and "Boat n"). `Hud.hud_event(kind, data)` reports signals, OCS, penalties, served penalties, rule warnings,
+the finish, the protest prompt and the results for the audio. `Hud.ui_input(raw)` takes the ranking and radar keys
+from a `RawInput`; without it the Hud polls the input map (not headless).
+
 ## UI tests
 
 ```
@@ -216,6 +255,16 @@ Runs headless, with scripted input at fixed frame rates:
 - `tests/cameras_test.gd`: `cameras.md` §10 (chase geometry, heading follow, frame-rate independence, 10 minutes of
   water clearance in a 1.5 m sea, onboard side change, aerial up modes, presets, shake), the free camera, near
   and far planes, cycling and the smooth switch.
+- `tests/race_hud_test.gd`: the race HUD on scripted race states (`tests/race_stub_sim.gd`): countdown, flags,
+  banners, the time to burn test of `hud.md` §15, bias, OVER and OCS, next mark, VMG on a run and VMC away from
+  the mark, layline distance and overstanding, shift meter, sail hint, rank hysteresis, gaps and splits, every
+  rules awareness line, radar colours for the port-starboard, windward-leeward and mark-room pair records,
+  penalties, protest and hail prompts, feed, results and assists; the layline test of §15 on the core; a race on
+  the core (`example_bay/example_wl`, two boats steered by `tests/race_pilot.gd` from the spawn to the results)
+  with the HUD checked against the race and rules records every tick; the sail test scene in race mode. The
+  previews: `tests/race_hud_preview_dump.gd` lays the HUD out at 1280 x 720 at the start, on the beat, in a
+  scripted incident and at the results, `tests/race_hud_preview.py` draws it over course frames
+  (`generated/race_hud_preview/`, with `--publish` `tests/previews/race_hud_*.jpg`).
 - `tests/hud_test.gd`: `hud.md` formats, filters and time constants, trim gauge colours, tell-tales, tolerance and
   assist presets on a scripted boat state; then `scenes/sail_test.tscn` on FakeSim sails 20 s with scripted input
   on the example bay sea and the HUD text is checked against the sim's values, with the sea checks: Sea and
@@ -255,7 +304,7 @@ start point; race mode: restart the race), Esc pause, F10 hide HUD.
   gate line, the finish line on the last leg, the laylines (`hud.md` §6, from `CoreSim.polar_vmg` at the
   10 s smoothed clean wind, 2 Hz) and the zone circle within 6 L; in 3-D the rounding arrow on the next mark and
   a bouncing marker with its name and distance beyond 500 m. A line of race status text at the top (countdown,
-  flags, OCS, next mark, lap) stands in for the race HUD (WM-016.11).
+  flags, OCS, next mark, lap) stood in for the race HUD; the `Hud` now hides it while it shows a race.
 - **Tests**: `tests/run_course_land_test.sh` (headless, `tests/course_land_test.gd`): the core's shapes equal the
   venue file, ground above water only inside the polygons, quay and rock on their obstacles, the camera never
   inside land, the reset key in free sailing (core and FakeSim) and in race mode, marks at the core's positions

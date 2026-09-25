@@ -38,7 +38,8 @@ Tests (`ctest`):
   print their measurements. `ctest --test-dir core/build -LE ai_long` leaves them out, `-L ai_long` runs only them.
 - `core_no_fma`: disassembles `libwindmark_core.a` and fails on any fused multiply-add instruction.
 - `capi_race_example`: `examples/race_example.c` through the C API only: a race of four scripted boats on the
-  example course from the spawn to the results, run twice for the same checksum, then a free-sailing boat
+  example course from the spawn to the results (with the splits and start line status readers), run twice for
+  the same checksum, then a free-sailing boat
   (render pose, input frame encoding, sail requests, trim_speed lookup).
 
 ## Float rules

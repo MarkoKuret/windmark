@@ -1,9 +1,11 @@
 ---
 id: WM-007
 title: 'Core: wind, wind shadow and sea'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-09-25 13:31'
+updated_date: '2026-09-25 14:31'
 labels:
   - core
 dependencies: []
@@ -19,6 +21,6 @@ Wind per docs/specs/wind.md, shadow per wind_shadow.md, sea per sea.md, as pure 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Spec tests pass
-- [ ] #2 Deterministic across runs
+- [x] #1 Spec tests pass
+- [x] #2 Deterministic across runs
 <!-- AC:END -->

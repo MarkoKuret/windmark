@@ -393,6 +393,14 @@ static int free_sail(const char* data) {
              r1 == WM_REQUEST_ACCEPTED ? "accepted" : "rejected", sv.queue_len,
              tst == WM_OK ? "=" : "absent", (double)ts, (double)wst.base_speed, (double)wst.global_from);
       ok = ok && (tst == WM_OK || tst == WM_ERR_ABSENT);
+      /* The same table by name, and one that does not exist. */
+      float ts2 = 0.0f, x = 0.0f;
+      int32_t rank = 0;
+      wm_sails now;
+      wm_world_sails(w, b, &now);
+      const wm_status t2 = wm_perf_table(perf, now.front, "trim_speed", s1.tws, fabsf(s1.awa), 0.1f, &ts2, &rank);
+      ok = ok && t2 == tst && (tst != WM_OK || (ts2 == ts && rank == 3)) &&
+           wm_perf_table(perf, -1, "no_such_table", 0.0f, 0.0f, 0.0f, &x, NULL) == WM_ERR_ARG;
     }
   }
   wm_world_free(w);

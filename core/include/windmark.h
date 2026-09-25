@@ -112,6 +112,14 @@ WM_API wm_status wm_perf_polar_vmg(const wm_perf* p, float tws, float* up_speed,
 WM_API wm_status wm_perf_trim_speed(const wm_perf* p, int32_t front_sail, float tws, float awa_abs, float eps,
                                     float* out);
 
+/* Any table of the config flown with `front_sail` (-1 = main only), by its perf file name (data_format.md §4.3):
+ * "polar", "heel", "accel", "accel_rest", "trim_speed", "trim_heel", "weather_helm", "fall_off", "flog_drag",
+ * "optimal_main", "optimal_front". Arguments in the table's axis order (x, then y, then w; the unused ones are
+ * ignored), e.g. flog_drag(aws, awa_abs). *rank (may be null) receives the table's number of axes.
+ * WM_ERR_ABSENT and *out = NaN for an optional table the config does not have, WM_ERR_ARG for an unknown name. */
+WM_API wm_status wm_perf_table(const wm_perf* p, int32_t front_sail, const char* name, float x, float y, float w,
+                               float* out, int32_t* rank);
+
 /* ---- world set-up ------------------------------------------------------------------------------------------ */
 
 typedef struct wm_world wm_world;

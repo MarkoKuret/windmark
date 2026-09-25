@@ -283,6 +283,42 @@ wm_status wm_perf_trim_speed(const wm_perf* h, int32_t front_sail, float tws, fl
   return trim_speed(config(*h->p, front_sail), tws, awa_abs, eps, out);
 }
 
+wm_status wm_perf_table(const wm_perf* h, int32_t front_sail, const char* name, float x, float y, float w,
+                        float* out, int32_t* rank) {
+  if (h == nullptr || name == nullptr || out == nullptr) return fail(WM_ERR_ARG, "null argument");
+  *out = NAN;
+  if (rank != nullptr) *rank = 0;
+  const wm::ConfigPerf* c = config(*h->p, front_sail);
+  if (c == nullptr) return fail(WM_ERR_ARG, "no config for that front sail");
+  const std::string n(name);
+  const wm::Table* t = nullptr;
+  const wm::OptionalTable* o = nullptr;
+  if (n == "polar") t = &c->polar;
+  else if (n == "heel") t = &c->heel;
+  else if (n == "accel") t = &c->accel;
+  else if (n == "optimal_main") t = &c->optimal_main;
+  else if (n == "optimal_front") t = &c->optimal_front;
+  else if (n == "accel_rest") o = &c->accel_rest;
+  else if (n == "trim_speed") o = &c->trim_speed;
+  else if (n == "trim_heel") o = &c->trim_heel;
+  else if (n == "weather_helm") o = &c->weather_helm;
+  else if (n == "fall_off") o = &c->fall_off;
+  else if (n == "flog_drag") o = &c->flog_drag;
+  else return fail(WM_ERR_ARG, "unknown table " + n);
+  if (o != nullptr) {
+    if (!o->present) return fail(WM_ERR_ABSENT, "the config has no " + n + " table");
+    t = &o->table;
+  }
+  if (t->empty()) return fail(WM_ERR_ABSENT, "the config has no " + n + " table");
+  if (rank != nullptr) *rank = static_cast<int32_t>(t->rank());
+  switch (t->rank()) {
+    case 1: *out = t->at(x); break;
+    case 2: *out = t->at(x, y); break;
+    default: *out = t->at(x, y, w); break;
+  }
+  return WM_OK;
+}
+
 // ---- world set-up -------------------------------------------------------------------------------------------
 
 void wm_world_settings_init(wm_world_settings* s) {

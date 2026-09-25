@@ -120,7 +120,7 @@ hosts that link it in. Everything is built under the float rules; hosts must not
 
 | group | calls |
 | --- | --- |
-| data | `wm_perf_load/parse`, `wm_venue_load/parse`, `wm_course_load/parse`; `wm_perf_info`, `wm_perf_sail`, `wm_perf_polar`, `wm_perf_polar_vmg`, `wm_perf_trim_speed` |
+| data | `wm_perf_load/parse`, `wm_venue_load/parse`, `wm_course_load/parse`; `wm_perf_info`, `wm_perf_sail`, `wm_perf_polar`, `wm_perf_polar_vmg`, `wm_perf_trim_speed`, `wm_perf_table` (any config table by name, e.g. `weather_helm`, `flog_drag`) |
 | set-up | `wm_world_settings_init`, `wm_world_create(settings, venue or NULL)`, `wm_world_add_boat`, `wm_world_place_boat` (free sailing), `wm_world_create_race` |
 | controls | `wm_world_apply_input` (the input frame of networking.md §4.1; the sail request result is answered at once), `wm_input_encode/decode` (the 6-byte wire form), single controls, `wm_world_set_controller` (step-2 callback) |
 | step | `wm_world_step` (returns the tick checksum), `wm_world_checksum`, `wm_world_tick`, `wm_world_time_ms`, `wm_world_render_time_ms` |

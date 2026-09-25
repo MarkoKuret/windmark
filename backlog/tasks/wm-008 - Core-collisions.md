@@ -1,9 +1,11 @@
 ---
 id: WM-008
 title: 'Core: collisions'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-09-25 13:31'
+updated_date: '2026-09-25 16:13'
 labels:
   - core
 dependencies: []
@@ -19,5 +21,5 @@ ordinal: 8000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Spec tests pass
+- [x] #1 Spec tests pass
 <!-- AC:END -->

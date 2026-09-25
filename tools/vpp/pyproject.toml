@@ -1,0 +1,22 @@
+[project]
+name = "windmark-vpp"
+version = "0.1.0"
+description = "Windmark velocity prediction program: boat-class file to game speed, heel, trim and acceleration tables"
+requires-python = ">=3.9"
+dependencies = ["numpy>=1.24", "scipy>=1.10", "matplotlib>=3.7"]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.scripts]
+windmark-vpp = "windmark_vpp.cli:main"
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["windmark_vpp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

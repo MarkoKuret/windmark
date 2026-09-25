@@ -509,6 +509,22 @@ WM_API int32_t wm_world_race_order(const wm_world* w, int32_t* out, int32_t cap)
 WM_API int32_t wm_world_result_count(const wm_world* w);
 WM_API wm_status wm_world_result(const wm_world* w, int32_t i, wm_result* out);
 WM_API const char* wm_score_code_name(int32_t code);
+/* race.md §8.4 the race time (s after the gun) at which the boat completed step `step` (0: her start time):
+ * WM_ERR_ABSENT when she has not completed it. */
+WM_API wm_status wm_world_race_split(const wm_world* w, int32_t boat, int32_t step, float* t);
+
+/* race.md §3.3 the boat's rules hull against the start line at the current tick (hud.md §9.2), whatever the race
+ * state. The line ends A, B are oriented with the course side on the left of A -> B. */
+typedef struct wm_start_status {
+  float ax, ay, bx, by;          /* line ends A, B */
+  float s_bow, u_bow;            /* the bow: signed distance (m, > 0 on the course side), position along A -> B */
+  int32_t in_band;               /* some hull point has s > 0 and 0 <= u <= 1 */
+  int32_t course_side;           /* some hull point has s > 0 */
+  int32_t in_triangle;           /* some hull point is inside the start triangle */
+  int32_t pre_start;             /* every hull point has s <= 0 */
+  int32_t over;                  /* over under the race's prep flag: P in_band, I course_side, Z/U/black in_triangle */
+} wm_start_status;
+WM_API wm_status wm_world_race_start_status(const wm_world* w, int32_t boat, wm_start_status* out);
 
 /* ---- rules ------------------------------------------------------------------------------------------------- */
 

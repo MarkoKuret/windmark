@@ -327,6 +327,32 @@ static outcome run_race(const char* data, const char* courses, int verbose) {
     wm_world_result(w, r, &res);
     if (res.place <= 0 && res.code == WM_SCORE_NONE) o.ok = 0;
   }
+  /* Splits (race.md §8.4): a finisher has one per step, in order, the last at her finish time; the start
+   * status of the rules hull (race.md §3.3) is readable after the race. */
+  for (int i = 0; i < N_BOATS; ++i) {
+    wm_race_boat rb;
+    wm_course_info ci;
+    wm_start_status ss;
+    wm_world_race_boat(w, i, &rb);
+    wm_world_course(w, &ci);
+    if (wm_world_race_start_status(w, i, &ss) != WM_OK || (ss.pre_start && ss.course_side)) {
+      fprintf(stderr, "start status of boat %d\n", i);
+      o.ok = 0;
+    }
+    if (!rb.finished) continue;
+    float prev = -1.0f, t = 0.0f;
+    for (int k = 0; k < ci.step_count; ++k) {
+      if (wm_world_race_split(w, i, k, &t) != WM_OK || t < prev) {
+        fprintf(stderr, "split %d of boat %d\n", k, i);
+        o.ok = 0;
+      }
+      prev = t;
+    }
+    if (fabsf(t - (float)((double)rb.t_finish_us * 1e-6)) > 1e-3f) {
+      fprintf(stderr, "finish split of boat %d: %f vs %f\n", i, (double)t, (double)rb.t_finish_us * 1e-6);
+      o.ok = 0;
+    }
+  }
 done:
   wm_world_free(w);
   wm_course_free(course);

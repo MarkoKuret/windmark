@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "course/course.h"
+#include "course/geometry.h"
 #include "data/perf.h"
 #include "data/venue.h"
 #include "math/wm_math.h"
@@ -1039,6 +1040,57 @@ wm_status wm_world_result(const wm_world* w, int32_t i, wm_result* out) {
   out->points = r.points;
   out->t_finish_us = r.t_finish_us;
   out->projected = r.projected ? 1 : 0;
+  return WM_OK;
+}
+
+wm_status wm_world_race_split(const wm_world* w, int32_t boat, int32_t step, float* t) {
+  if (wm_status s = need_race(w, t)) return s;
+  const wm::Race& r = w->world->race();
+  if (boat < 0 || static_cast<std::size_t>(boat) >= r.boat_count()) return fail(WM_ERR_ARG, "bad boat index");
+  const wm::RaceBoat& b = r.boat(static_cast<std::size_t>(boat));
+  if (step < 0 || static_cast<std::size_t>(step) >= w->world->course().steps.size())
+    return fail(WM_ERR_ARG, "bad step index");
+  const std::size_t k = static_cast<std::size_t>(step);
+  // splits hold -1 until the step is completed (race times of completions are after the gun)
+  if (step == 0 ? !b.started : (k >= b.splits.size() || b.splits[k] < 0.0f))
+    return fail(WM_ERR_ABSENT, "step not completed");
+  *t = step == 0 ? b.t_start : b.splits[k];
+  return WM_OK;
+}
+
+wm_status wm_world_race_start_status(const wm_world* w, int32_t boat, wm_start_status* out) {
+  if (wm_status s = need_race(w, out)) return s;
+  const wm::Race& r = w->world->race();
+  if (boat < 0 || static_cast<std::size_t>(boat) >= r.boat_count()) return fail(WM_ERR_ARG, "bad boat index");
+  const std::size_t i = static_cast<std::size_t>(boat);
+  const wm::ResolvedCourse& c = w->world->course();
+  const wm::Vec2 A = c.end_a(c.start()), B = c.end_b(c.start()), C = c.steps[1].ref;
+  *out = wm_start_status{};
+  out->ax = A.x;
+  out->ay = A.y;
+  out->bx = B.x;
+  out->by = B.y;
+  const wm::Vec2 bw = r.bow(i);
+  out->s_bow = r.start_s(bw);
+  out->u_bow = r.start_u(bw);
+  out->pre_start = 1;
+  for (const wm::Vec2 p : r.boat(i).hull) {
+    const float s = r.start_s(p), u = r.start_u(p);
+    if (s > 0.0f) {
+      out->course_side = 1;
+      out->pre_start = 0;
+      if (u >= 0.0f && u <= 1.0f) out->in_band = 1;
+    }
+    const float d1 = wm::side_left(p, A, B), d2 = wm::side_left(p, B, C), d3 = wm::side_left(p, C, A);
+    const bool neg = d1 < 0.0f || d2 < 0.0f || d3 < 0.0f;
+    const bool pos = d1 > 0.0f || d2 > 0.0f || d3 > 0.0f;
+    if (!(neg && pos)) out->in_triangle = 1;
+  }
+  switch (r.prep_flag()) {
+    case wm::PrepFlag::P: out->over = out->in_band; break;
+    case wm::PrepFlag::I: out->over = out->course_side; break;
+    default: out->over = out->in_triangle; break;
+  }
   return WM_OK;
 }
 

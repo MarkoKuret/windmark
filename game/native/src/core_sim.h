@@ -93,6 +93,8 @@ class CoreSim : public godot::RefCounted {
   godot::Dictionary race_boat(int64_t boat) const;
   godot::PackedInt32Array race_order() const;
   godot::Array results() const;
+  double race_split(int64_t boat, int64_t step) const;
+  godot::Dictionary race_start_status(int64_t boat) const;
   godot::Dictionary boat_rules(int64_t boat) const;
   godot::Array pairs() const;
   godot::Array race_events() const;

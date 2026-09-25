@@ -1,0 +1,382 @@
+extends SceneTree
+## Headless import test for boatgen models.
+##
+## Loads every `<id>.glb` and `<id>_collision.glb` in res://generated/boats/ (staged there by
+## tests/run_boat_import_test.sh) and checks them against the class file (data/classes/<id>.boat.json) and the
+## physics sidecar (<id>.physics.json) that boatgen writes next to the GLB:
+##   - scale and axes: glTF +Y up, bow toward +Z, port toward +X, origin on the DWL at mid LWL
+##   - node set and triangle counts match the sidecar
+##   - material slots present, imported as StandardMaterial3D with the boatgen PBR factors
+##   - pivot nodes (rudder, boom, wheel) sit on the sidecar pivots, with geometry around them
+##   - sails keep the row-major two-layer grid that run-time deformation relies on
+##   - collision GLB imports as static bodies with convex shapes and no visible meshes
+##
+## Run: godot --headless --path game -s res://tests/boat_import_test.gd
+## Exit code 0 when every check passes, 1 otherwise.
+
+const BOAT_DIR := "res://generated/boats"
+const REQUIRED_MATERIALS := ["gelcoat", "nonslip", "antifouling", "boottop", "carbon", "metal", "sailcloth"]
+const KNOWN_MATERIALS := ["gelcoat", "nonslip", "antifouling", "boottop", "carbon", "metal", "sailcloth", "glass", "rope", "rubber"]
+## Positions come through the importer's 16-bit vertex compression; 5 mm is well above its error for a 20 m boat.
+const POS_TOL := 0.005
+## Hull extent against the class-file dimensions (stem rounding, toe rail and rub strake stand proud a little).
+const HULL_TOL := 0.06
+
+var failures := 0
+var checks := 0
+var warnings := 0
+
+
+func _initialize() -> void:
+	var ids := _class_ids()
+	if ids.is_empty():
+		_fail("no boat GLBs in %s (run tests/run_boat_import_test.sh)" % BOAT_DIR)
+	for id in ids:
+		print("== %s" % id)
+		_test_model(id)
+		_test_collision(id)
+	print("%d checks, %d failures, %d warnings (known boatgen issues)" % [checks, failures, warnings])
+	quit(1 if failures > 0 else 0)
+
+
+func _class_ids() -> PackedStringArray:
+	var out := PackedStringArray()
+	for f in DirAccess.get_files_at(BOAT_DIR):
+		if f.ends_with(".glb") and not f.ends_with("_collision.glb"):
+			out.append(f.get_basename())
+	out.sort()
+	return out
+
+
+# ---------------------------------------------------------------- helpers
+
+func _check(ok: bool, what: String) -> bool:
+	checks += 1
+	if not ok:
+		_fail(what)
+	return ok
+
+
+func _warn(what: String) -> void:
+	warnings += 1
+	print("WARN: " + what)
+
+
+func _fail(what: String) -> void:
+	failures += 1
+	printerr("FAIL: " + what)
+
+
+func _near(a: float, b: float, tol: float, what: String) -> bool:
+	return _check(absf(a - b) <= tol, "%s: %.4f, expected %.4f (tol %.3f)" % [what, a, b, tol])
+
+
+func _near_v(a: Vector3, b: Vector3, tol: float, what: String) -> bool:
+	return _check(a.distance_to(b) <= tol, "%s: %s, expected %s (tol %.3f)" % [what, a, b, tol])
+
+
+func _read_json(path: String) -> Dictionary:
+	var text := FileAccess.get_file_as_string(path)
+	var data: Variant = JSON.parse_string(text)
+	if typeof(data) != TYPE_DICTIONARY:
+		_fail("cannot read JSON " + path)
+		return {}
+	return data
+
+
+## Body frame (x forward, y port, z up) to the glTF/Godot model frame (+X port, +Y up, +Z forward).
+func _body_to_model(p: Array) -> Vector3:
+	return Vector3(float(p[1]), float(p[2]), float(p[0]))
+
+
+func _mesh_aabb(mi: MeshInstance3D) -> AABB:
+	return mi.transform * mi.mesh.get_aabb()
+
+
+func _triangles(mesh: Mesh) -> int:
+	var n := 0
+	for s in mesh.get_surface_count():
+		var arrays := mesh.surface_get_arrays(s)
+		var idx: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+		n += (idx.size() / 3) if idx.size() > 0 else (arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array).size() / 3
+	return n
+
+
+func _surface_material_name(mesh: Mesh, s: int) -> String:
+	var m := mesh.surface_get_material(s)
+	return m.resource_name if m else ""
+
+
+# ---------------------------------------------------------------- model
+
+func _test_model(id: String) -> void:
+	var path := "%s/%s.glb" % [BOAT_DIR, id]
+	var scene := load(path) as PackedScene
+	if not _check(scene != null, "%s loads as PackedScene" % path):
+		return
+	var scene_root := scene.instantiate()
+	var boat := _read_json(ProjectSettings.globalize_path("res://").path_join("../data/classes/%s.boat.json" % id))
+	var side := _read_json("%s/%s.physics.json" % [BOAT_DIR, id])
+	if boat.is_empty() or side.is_empty():
+		scene_root.free()
+		return
+
+	# Godot wraps the glTF scene in its own root (named after the file); the glTF root node, named after the
+	# class id, is its only child. Both sit at identity.
+	_check(scene_root.get_child_count() == 1 and scene_root.get_child(0).name == id,
+		"the glTF root node %s is the only child of the scene root" % id)
+	var root := scene_root.get_child(0) as Node3D
+	if not _check(root != null, "glTF root is a Node3D"):
+		scene_root.free()
+		return
+	_check((scene_root as Node3D).transform == Transform3D.IDENTITY and root.transform == Transform3D.IDENTITY,
+		"scene root and glTF root transforms are identity")
+	if root.has_meta("extras"):
+		print("  root extras: %s" % JSON.stringify(root.get_meta("extras")))
+
+	# Node set: one MeshInstance3D per sidecar node, directly under the root, with no rotation or scale.
+	var parts := {}
+	for c in root.get_children():
+		if _check(c is MeshInstance3D, "%s is a MeshInstance3D (%s)" % [c.name, c.get_class()]):
+			parts[String(c.name)] = c
+			_check((c as Node3D).basis == Basis.IDENTITY, "%s has no rotation or scale" % c.name)
+	var expected: Array = side["model"]["nodes"]
+	var names := parts.keys()
+	names.sort()
+	expected.sort()
+	_check(names == expected, "nodes %s match the sidecar %s" % [names, expected])
+
+	_test_axes(boat, parts)
+	_test_materials(id, parts)
+	_test_pivots(side, parts)
+	_test_sails(side, parts)
+
+	# Triangle counts.
+	var total := 0
+	var line := "  triangles:"
+	for n in names:
+		var t := _triangles((parts[n] as MeshInstance3D).mesh)
+		total += t
+		line += " %s %d," % [n, t]
+	print(line + " total %d" % total)
+	_check(total == int(side["model"]["triangles"]), "triangle total %d matches the sidecar %d" % [total, int(side["model"]["triangles"])])
+	scene_root.free()
+
+
+func _test_axes(boat: Dictionary, parts: Dictionary) -> void:
+	var hull: Dictionary = boat["hull"]
+	var h := _mesh_aabb(parts["hull"])
+	print("  hull aabb %s .. %s" % [h.position, h.end])
+	# Bow toward +Z, transom toward -Z, origin at mid LWL: the hull spans transom_x..stem_x along Z.
+	_near(h.end.z, float(hull["stem_x"]), HULL_TOL, "hull stem along +Z")
+	_near(h.position.z, float(hull["transom_x"]), HULL_TOL, "hull transom along -Z")
+	# Beam along X, symmetric about the centreline.
+	_near(h.size.x, float(hull["beam_max"]), HULL_TOL, "hull beam along X")
+	_near(h.get_center().x, 0.0, 0.01, "hull centred on X = 0")
+	# +Y up, origin on the DWL: canoe body below Y = 0 by draft_canoe, sheer above it.
+	_near(h.position.y, -float(hull["draft_canoe"]), 0.02, "canoe body bottom below the DWL")
+	_check(h.end.y > 0.3, "sheer above the DWL (%.3f)" % h.end.y)
+	# Appendages and rig: total draft and masthead height set the vertical scale.
+	_near(_mesh_aabb(parts["keel"]).position.y, -float(boat["keel"]["depth"]), 0.02, "keel bottom at -keel.depth")
+	_near(_mesh_aabb(parts["rudder"]).position.y, -float(boat["rudder"]["depth"]), 0.02, "rudder tip at -rudder.depth")
+	# The masthead carries a wind wand and an antenna up to about 1 m above mast_height.
+	var mast_top := _mesh_aabb(parts["mast"]).end.y
+	var mh := float(boat["rig"]["mast_height"])
+	_check(mast_top >= mh and mast_top <= mh + 1.2, "mast top %.3f just above mast_height %.3f" % [mast_top, mh])
+	# Handedness: uv1 of the hull puts the starboard side in v 0..0.5; starboard must be -X (port is +X), so a
+	# mirrored import would show up here.
+	var mesh: Mesh = (parts["hull"] as MeshInstance3D).mesh
+	var wrong := 0
+	var n := 0
+	for s in mesh.get_surface_count():
+		var a := mesh.surface_get_arrays(s)
+		var p: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+		var uv2: PackedVector2Array = a[Mesh.ARRAY_TEX_UV2]
+		for i in p.size():
+			# Skip the centreline and the band edges (sheer at v = 0 and 0.5, keel at 0.5 and 1), where the
+			# importer's 16-bit uv storage can land on either side of 0.5.
+			var v := fmod(uv2[i].y, 0.5)
+			if absf(p[i].x) < 0.02 or v < 0.005 or v > 0.495:
+				continue
+			n += 1
+			if (uv2[i].y < 0.5) != (p[i].x < 0.0):
+				wrong += 1
+	_check(n > 0 and wrong == 0, "hull uv1 starboard band is on -X (%d of %d vertices on the wrong side)" % [wrong, n])
+
+
+func _test_materials(id: String, parts: Dictionary) -> void:
+	var found := {}
+	var tiling := 0
+	for part in parts.values():
+		var mesh: Mesh = (part as MeshInstance3D).mesh
+		for s in mesh.get_surface_count():
+			var m := mesh.surface_get_material(s)
+			var nm := _surface_material_name(mesh, s)
+			if not _check(m is StandardMaterial3D, "%s surface %d material %s is StandardMaterial3D" % [part.name, s, nm]):
+				continue
+			_check(nm in KNOWN_MATERIALS, "%s surface %d material '%s' is a boatgen slot" % [part.name, s, nm])
+			if found.has(nm):
+				_check(found[nm] == m, "material %s is one shared resource" % nm)
+			found[nm] = m
+	for nm in REQUIRED_MATERIALS:
+		_check(found.has(nm), "%s has material slot %s" % [id, nm])
+	var line := "  materials:"
+	for nm in found:
+		var m: StandardMaterial3D = found[nm]
+		line += " %s(%s m%.2f r%.2f cull %d%s)" % [nm, m.albedo_color.to_html(false), m.metallic, m.roughness,
+			m.cull_mode, " tiling %s" % m.get_meta("extras")["tiling_m"] if m.has_meta("extras") else ""]
+		if m.has_meta("extras"):
+			tiling += 1
+		_check(m.cull_mode == BaseMaterial3D.CULL_BACK, "%s culls back faces" % nm)
+		_check(m.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED, "%s is opaque" % nm)
+	print(line)
+	_check(tiling == found.size(), "every material carries extras.tiling_m as metadata (%d of %d)" % [tiling, found.size()])
+
+
+func _test_pivots(side: Dictionary, parts: Dictionary) -> void:
+	var rig: Dictionary = side["rig"]
+	var pivots := {"rudder": "rudder_stock", "boom": "boom_pivot", "wheel": "wheel_hub"}
+	for node in side["model"]["pivots"]:
+		if not _check(pivots.has(node) and parts.has(node), "pivot node %s is known and present" % node):
+			continue
+		var mi: MeshInstance3D = parts[node]
+		_near_v(mi.position, _body_to_model(rig[pivots[node]]), POS_TOL, "%s pivot" % node)
+		var local := mi.mesh.get_aabb()
+		print("  %s pivot %s, local aabb %s .. %s" % [node, mi.position, local.position, local.end])
+		match node:
+			"rudder":
+				# The stock (turning axis, local Y) runs through the blade.
+				_check(local.position.x < 0.0 and local.end.x > 0.0 and local.position.z < 0.0 and local.end.z > 0.0,
+					"rudder stock axis passes through the rudder")
+				_check(local.position.y < -0.3, "rudder blade hangs below its pivot")
+			"boom":
+				# Boom runs aft from the gooseneck (local origin) along -Z.
+				_near(local.position.z, -float(rig["boom_length"]), 0.35, "boom runs aft from the gooseneck")
+				_check(local.end.z < 0.3 and absf(local.get_center().x) < 0.05, "boom starts at the gooseneck on the centreline")
+			"wheel":
+				# Wheel turns about fore and aft (local Z): round in X/Y about the hub, thin along Z.
+				_near(local.get_center().x, 0.0, 0.02, "wheel centred on the hub in X")
+				_near(local.get_center().y, 0.0, 0.05, "wheel centred on the hub in Y")
+				_check(local.size.z < 0.5 * local.size.y, "wheel is thin along its fore-and-aft axle")
+
+
+func _test_sails(side: Dictionary, parts: Dictionary) -> void:
+	for sid in side["sails"]:
+		var sail: Dictionary = side["sails"][sid]
+		var node := String(sail["node"])
+		if not _check(parts.has(node), "sail node %s present" % node):
+			continue
+		var mesh: Mesh = (parts[node] as MeshInstance3D).mesh
+		if not _check(mesh.get_surface_count() == 1 and _surface_material_name(mesh, 0) == "sailcloth",
+				"%s is one sailcloth surface" % node):
+			continue
+		var rows := int(sail["grid_rows"])
+		var cols := int(sail["grid_cols"])
+		var layer := rows * cols
+		var a := mesh.surface_get_arrays(0)
+		var p: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+		var nrm: PackedVector3Array = a[Mesh.ARRAY_NORMAL]
+		var idx: PackedInt32Array = a[Mesh.ARRAY_INDEX]
+		var full_tris := 4 * (rows - 1) * (cols - 1)
+		print("  %s: grid %d x %d, %d of %d vertices, %d of %d triangles" % [node, rows, cols, p.size(), 2 * layer,
+			idx.size() / 3, full_tris])
+		_check(p.size() <= 2 * layer and p.size() >= 2 * layer - 2 * cols, "%s vertex count %d close to 2 x %d x %d" % [node, p.size(), rows, cols])
+		if idx.size() / 3 != full_tris:
+			_warn("%s has %d triangles, not the full grid's %d (degenerate head triangles left out)" % [node, idx.size() / 3, full_tris])
+		# The importer reorders vertices; SailGrid recovers each one's grid node from uv1 and the layer side.
+		var g := SailGrid.grid_index(mesh, rows, cols)
+		var at := {}
+		var off_grid := 0
+		for i in g.size():
+			if g[i] < 0 or at.has(g[i]):
+				off_grid += 1
+			else:
+				at[g[i]] = i
+		_check(off_grid == 0, "%s: every vertex maps to its own grid node (%d do not)" % [node, off_grid])
+		if p.size() < 2 * layer:
+			var missing := []
+			for k in 2 * layer:
+				if not at.has(k):
+					missing.append("L%d r%d c%d" % [k / layer, (k % layer) / cols, k % cols])
+			_warn("%s: grid nodes missing after import (unreferenced in the GLB): %s" % [node, ", ".join(missing)])
+		# Corners from the sidecar.
+		for corner in sail["corners"]:
+			var c: Dictionary = sail["corners"][corner]
+			var k := int(c["row"]) * cols + int(c["col"])
+			var want := _body_to_model(c["position"])
+			for l in 2:
+				if not at.has(k + l * layer):
+					_warn("%s %s corner (grid node %d) is not in the imported mesh" % [node, corner, k + l * layer])
+					continue
+				_near_v(p[at[k + l * layer]], want, 0.01, "%s %s on the %s layer" % [node, corner, ["port", "starboard"][l]])
+		# Layers pair node by node, 2 mm apart, port on +X, normals outward.
+		var bad := 0
+		var pairs := 0
+		for k in layer:
+			if not (at.has(k) and at.has(k + layer)):
+				continue
+			pairs += 1
+			var ip: int = at[k]
+			var i_s: int = at[k + layer]
+			var d := p[ip] - p[i_s]
+			if absf(d.length() - 0.002) > 0.001 or d.x <= 0.0 or nrm[ip].x < 0.99 or nrm[i_s].x > -0.99:
+				bad += 1
+		_check(pairs > 0 and bad == 0, "%s: %d node pairs 2 mm apart, port layer on +X, normals outward (%d bad)" % [node, pairs, bad])
+
+
+# ---------------------------------------------------------------- collision
+
+func _test_collision(id: String) -> void:
+	var path := "%s/%s_collision.glb" % [BOAT_DIR, id]
+	var scene := load(path) as PackedScene
+	if not _check(scene != null, "%s loads as PackedScene" % path):
+		return
+	var root := scene.instantiate()
+	var side := _read_json("%s/%s.physics.json" % [BOAT_DIR, id])
+	var meshes := root.find_children("*", "MeshInstance3D", true, false)
+	_check(meshes.is_empty(), "collision GLB has no visible meshes (%d)" % meshes.size())
+	var bodies := {}
+	for b in root.find_children("*", "StaticBody3D", true, false):
+		bodies[String(b.name)] = b
+	var expected: Array = side["collision_meshes"].keys()
+	var names := bodies.keys()
+	names.sort()
+	expected.sort()
+	_check(names == expected, "collision bodies %s match the sidecar %s" % [names, expected])
+	var line := "  collision:"
+	for n in names:
+		var shapes := (bodies[n] as Node).find_children("*", "CollisionShape3D", false, false)
+		if not _check(shapes.size() == 1, "%s has one CollisionShape3D" % n):
+			continue
+		var shape := (shapes[0] as CollisionShape3D).shape
+		if not _check(shape is ConvexPolygonShape3D, "%s shape is ConvexPolygonShape3D (%s)" % [n, shape.get_class() if shape else "none"]):
+			continue
+		var pts := (shape as ConvexPolygonShape3D).points
+		line += " %s %d points," % [n, pts.size()]
+		# The shape stays in the model frame: its extent along Z matches the sidecar vertices.
+		var zmin := INF
+		var zmax := -INF
+		for v in side["collision_meshes"][n]["vertices"]:
+			zmin = minf(zmin, float(v[0]))
+			zmax = maxf(zmax, float(v[0]))
+		var t := _chain(shapes[0])
+		var pz_min := INF
+		var pz_max := -INF
+		for q in pts:
+			var w := t * q
+			pz_min = minf(pz_min, w.z)
+			pz_max = maxf(pz_max, w.z)
+		_near(pz_min, zmin, POS_TOL, "%s collision aft end" % n)
+		_near(pz_max, zmax, POS_TOL, "%s collision forward end" % n)
+	print(line)
+	root.free()
+
+
+## Transform of a node relative to the scene root (the instance is not in the tree).
+func _chain(n: Node) -> Transform3D:
+	var t := Transform3D.IDENTITY
+	while n != null:
+		if n is Node3D:
+			t = (n as Node3D).transform * t
+		n = n.get_parent()
+	return t

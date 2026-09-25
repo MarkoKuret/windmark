@@ -18,6 +18,8 @@ const SHOTS := [
 	["bay10_chase_M", SeaEnvSource.Mode.CORE_SAMPLES, "example_bay_10kn", 0, SeaQuality.Tier.M],
 	["calm_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 2.0, 0, SeaQuality.Tier.M],
 	["bay20_chase_L", SeaEnvSource.Mode.CORE_SAMPLES, "example_bay_20kn", 0, SeaQuality.Tier.L],
+	["bay20_bow_M", SeaEnvSource.Mode.CORE_SAMPLES, "example_bay_20kn", 4, SeaQuality.Tier.M],
+	["calm_bow_M", SeaEnvSource.Mode.PLACEHOLDER, 2.0, 4, SeaQuality.Tier.M],
 ]
 
 var _shot := -1
@@ -195,14 +197,30 @@ func _dump(name: String) -> void:
 	var wakes: SeaWakes = _scene.get_node("Wakes")
 	var ribbons := []
 	var wake_uniforms := {}
+	var waves := []
 	for mi in wakes.get_children():
-		if mi is MeshInstance3D and mi.mesh is ArrayMesh and mi.mesh.get_surface_count() > 0:
+		if not (mi is MeshInstance3D and mi.mesh is ArrayMesh and mi.mesh.get_surface_count() > 0 and mi.visible):
+			continue
+		var sh: Shader = (mi.material_override as ShaderMaterial).shader
+		if sh == SeaWakes.WAKE_SHADER:
 			var n := "wake%d" % ribbons.size()
 			ribbons.append(_write_arrays(dir, n, mi.mesh.surface_get_arrays(0)))
 			ribbons[-1]["name"] = n
 			wake_uniforms = _uniforms(mi.material_override)
+		elif sh == SeaWakes.BOW_SHADER:
+			var n := "wave%d" % waves.size()
+			waves.append(_write_arrays(dir, n, mi.mesh.surface_get_arrays(0)))
+			waves[-1]["name"] = n
+			waves[-1]["flow"] = mi.get_instance_shader_parameter("flow")
 	data["wakes"] = ribbons
 	data["wake_uniforms"] = wake_uniforms
+	data["bow_waves"] = waves
+	# mist sprites: world ENU centre, size, alpha, seed
+	var mist := []
+	for m in wakes.mist_sprites():
+		var look := BowWave.mist_look(m)
+		mist.append([m["pos"].x, m["pos"].y, m["pos"].z, look.x, look.y, m["seed"]])
+	data["mist"] = mist
 	# boat triangles (world), one entry per mesh surface with its material (boat shader or a BaseMaterial3D)
 	var boats := []
 	var tex_files := {}

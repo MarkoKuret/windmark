@@ -1,6 +1,11 @@
 // Godot stage functions of the sea shader (water_render.md §3, §4). Included by water_l/m/h.gdshader after they
 // set TIER and WM_DETAIL_LAYERS; the maths lives in sea_common.gdshaderinc, shared with the offline preview.
+// WM_NO_SHADOWS (tier L): the sea takes no shadows (water_render.md §4.6)
+#ifdef WM_NO_SHADOWS
+render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx, shadows_disabled;
+#else
 render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx;
+#endif
 
 uniform sampler2D expo_tex : filter_nearest, repeat_disable;
 uniform sampler2D land_tex : filter_nearest, repeat_disable;

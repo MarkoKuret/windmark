@@ -180,6 +180,82 @@ void main() {
 }
 """
 
+BOW_VS = """
+uniform mat4 u_vp;
+uniform vec3 u_cam;
+uniform float grid_q;
+uniform float grid_segments;
+uniform float u_flow;
+in vec3 in_pos;
+in vec2 in_uv;
+in vec2 in_uv2;
+in vec4 in_color;
+out vec2 v_uv;
+out vec2 v_flow;
+out float v_a;
+out vec3 v_wpos;
+void main() {
+    v_wpos = wm_drape(in_pos, in_uv2.x, u_cam, grid_q, grid_segments);
+    v_uv = in_uv;
+    v_flow = vec2(in_uv.x * 2.0, in_uv2.y - u_flow);
+    v_a = in_color.a;
+    gl_Position = u_vp * vec4(v_wpos, 1.0);
+}
+"""
+
+# bow_wave.gdshader's fragment()
+BOW_FS = """
+in vec2 v_uv;
+in vec2 v_flow;
+in float v_a;
+in vec3 v_wpos;
+out vec4 frag;
+const vec3 COL_SHEET = vec3(0.10, 0.22, 0.24);
+void main() {
+    vec2 f = wm_bow_alpha(v_uv, v_a, texture(foam_tex, v_flow * vec2(0.9, 0.35)).r,
+                          texture(foam_tex, v_flow * vec2(0.45, 0.2) + 0.61).g);
+    vec3 V = normalize(u_cam - v_wpos);
+    vec3 c = shade(mix(COL_SHEET, col_foam, f.x), mix(0.12, 0.6, f.x), 0.4, vec3(0.0, 1.0, 0.0), V);
+    frag = vec4(fogged(c, v_wpos), f.y);
+}
+"""
+
+MIST_VS = """
+uniform mat4 u_vp;
+in vec3 in_pos;
+in vec2 in_uv;
+in vec2 in_as;
+out vec2 v_uv;
+out vec2 v_as;
+out vec3 v_wpos;
+void main() {
+    v_wpos = in_pos;
+    v_uv = in_uv;
+    v_as = in_as;
+    gl_Position = u_vp * vec4(in_pos, 1.0);
+}
+"""
+
+# mist.gdshader's fragment() (the engine also fades the sprite against the scene depth)
+MIST_FS = """
+in vec2 v_uv;
+in vec2 v_as;
+in vec3 v_wpos;
+out vec4 frag;
+void main() {
+    float c = cos(v_as.y * 6.2831);
+    float sn = sin(v_as.y * 6.2831);
+    vec2 ruv = mat2(vec2(c, sn), vec2(-sn, c)) * (v_uv - 0.5);
+    float n = texture(foam_tex, ruv * 0.7 + v_as.y * 3.7).r;
+    float d = length(v_wpos - u_cam);
+    float a = wm_mist_alpha(v_uv, n) * v_as.x * smoothstep(1.0, 3.0, d);
+    vec3 view_dir = normalize(v_wpos - u_cam);
+    float fwd = pow(max(dot(view_dir, normalize(sun_dir)), 0.0), 3.0);
+    vec3 col = 0.35 * sky_horizon + 0.12 * sun_color * (1.0 + 2.0 * fwd);
+    frag = vec4(fogged(col, v_wpos), clamp(a, 0.0, 1.0));
+}
+"""
+
 BOAT_VS = """
 #version 410
 uniform mat4 u_vp;
@@ -402,6 +478,8 @@ def render(ctx, d, size, wakes=True):
 
     water = ctx.program(vertex_shader=hdr_inc + WATER_VS, fragment_shader=hdr_inc + sky_inc + LIGHTING + WATER_FS)
     wake = ctx.program(vertex_shader=hdr_inc + wake_inc + WAKE_VS, fragment_shader=hdr_inc + sky_inc + LIGHTING + wake_inc + WAKE_FS)
+    bow = ctx.program(vertex_shader=hdr_inc + wake_inc + BOW_VS, fragment_shader=hdr_inc + sky_inc + LIGHTING + wake_inc + BOW_FS)
+    mist = ctx.program(vertex_shader=hdr_inc + MIST_VS, fragment_shader=hdr_inc + sky_inc + LIGHTING + wake_inc + MIST_FS)
     boat = ctx.program(vertex_shader=BOAT_VS, fragment_shader=hdr_inc + sky_inc + LIGHTING + BOAT_FS)
     sky = ctx.program(vertex_shader=SKY_VS, fragment_shader=hdr_inc + sky_inc + LIGHTING + SKY_FS)
     tone = ctx.program(vertex_shader=SKY_VS, fragment_shader=TONEMAP_FS)
@@ -427,7 +505,7 @@ def render(ctx, d, size, wakes=True):
     for tex, unit in units.values():
         tex.use(unit)
 
-    for p in (water, wake, boat, sky):
+    for p in (water, wake, bow, mist, boat, sky):
         set_uniforms(p, sc["water"])
         for k, v in common.items():
             set_if(p, k, v)
@@ -436,6 +514,7 @@ def render(ctx, d, size, wakes=True):
         if "u_vp" in p:
             p["u_vp"].write(vp_bytes)
     set_uniforms(wake, sc["wake_uniforms"])
+    set_uniforms(bow, sc["wake_uniforms"])
     set_uniforms(sky, {k: v for k, v in sc["sky"].items() if k in ("sky_horizon", "sky_zenith", "sun_dir", "sun_color")})
     sky["u_inv_vp"].write(inv_vp)
     water["u_sea_pos"].value = tuple(sc["sea_position"])
@@ -513,6 +592,29 @@ def render(ctx, d, size, wakes=True):
         rv = ctx.buffer(np.hstack([rp, ru, rc]).astype("f4").tobytes())
         ctx.vertex_array(wake, [(rv, "3f 2f 4f", "in_pos", "in_uv", "in_color")],
                          ctx.buffer(ri.astype("i4").tobytes())).render(moderngl.TRIANGLES)
+    for r in sc.get("bow_waves", []) if wakes else []:
+        if "indices" not in r:
+            continue
+        rp = load_bin(d, r["name"] + "_pos.bin", "f4", 3)
+        ru = load_bin(d, r["name"] + "_uv.bin", "f4", 2)
+        ru2 = load_bin(d, r["name"] + "_uv2.bin", "f4", 2)
+        rc = load_bin(d, r["name"] + "_color.bin", "f4", 4)
+        ri = load_bin(d, r["name"] + "_idx.bin", "i4", 1)
+        bow["u_flow"].value = float(r.get("flow", 0.0))
+        rv = ctx.buffer(np.hstack([rp, ru, ru2, rc]).astype("f4").tobytes())
+        ctx.vertex_array(bow, [(rv, "3f 2f 2f 4f", "in_pos", "in_uv", "in_uv2", "in_color")],
+                         ctx.buffer(ri.astype("i4").tobytes())).render(moderngl.TRIANGLES)
+    if wakes and sc.get("mist"):
+        # camera-facing quads, as the mist shader's billboard
+        right, up = basis[:, 0], basis[:, 1]
+        verts = []
+        for x, y, z, size, alpha, seed in sc["mist"]:
+            ctr = np.array([x, z, -y])
+            for (cu, cv) in ((0, 0), (1, 0), (1, 1), (0, 0), (1, 1), (0, 1)):
+                p = ctr + right * (cu - 0.5) * size + up * (cv - 0.5) * size
+                verts.append([p[0], p[1], p[2], cu, 1 - cv, alpha, seed])
+        mv = ctx.buffer(np.array(verts, "f4").tobytes())
+        ctx.vertex_array(mist, [(mv, "3f 2f 2f", "in_pos", "in_uv", "in_as")]).render(moderngl.TRIANGLES)
     fbo.depth_mask = True
     ctx.disable(moderngl.BLEND)
 

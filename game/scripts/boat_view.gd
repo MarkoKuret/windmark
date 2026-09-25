@@ -310,7 +310,8 @@ func _setup_shape(sp: SailPart, side: Dictionary, furling: bool) -> void:
 	out[Mesh.ARRAY_INDEX] = idx
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, out)  # no compression flags: plain floats (§11)
-	mesh.surface_set_material(0, _sail_material(mi.get_active_material(0)))
+	mesh.surface_set_material(0, BoatMaterials.sail_cloth(_sail_material(mi.get_active_material(0)), sp.type, info,
+			String(sp.node.name), pos, uv, uv2, sp.rows, sp.cols))
 	# a sphere around the sail at any angle: the rest sail about its luff centre, plus the belly, the swing
 	# and the twist
 	var lo := Vector3(INF, INF, INF)

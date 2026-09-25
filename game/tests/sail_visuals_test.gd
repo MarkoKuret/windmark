@@ -516,6 +516,7 @@ func _boats() -> void:
 					var e := Vector2(float(j) / (sp.cols - 1), 1.0 - float(i) / (sp.rows - 1))
 					uv_ok = uv_ok and uv2[i * sp.cols + j].distance_to(e) < 2e-3
 			t.ok(uv_ok, "%s: uv1 in grid order" % sp.id)
+			_cloth(id, sp, sm, data.info.loa)
 			if sp.type == "spinnaker_asym":
 				_asym_leeward(sp)
 			if sp.type == "jib" or sp.type == "genoa" or sp.type == "code_zero":
@@ -532,7 +533,42 @@ func _boats() -> void:
 			names.append(u["name"])
 		t.ok(names.has("backlight") and names.has("albedo_tex") and BoatView.SAIL_SHADER.code.contains("void light()"),
 			"sail shader parses, with the back-light in its light function")
+		t.ok(names.has("cloth_chord") and names.has("cloth_style") and names.has("shadow_push")
+			and BoatView.SAIL_SHADER.code.contains("IN_SHADOW_PASS"),
+			"sail shader: cloth uniforms, and the shadow pass pushes the sail off itself (water_render.md §4.6)")
+		var mats := {}
+		for sp in bv.sail_parts:
+			if sp.mesh:
+				mats[sp.mesh.surface_get_material(0)] = true
+		t.ok(mats.size() == bv.sail_parts.size(), "%s: one cloth material per sail (%d)" % [id, mats.size()])
 		bv.free()
+
+
+## §11.1 the cloth of a generated sail: style and kind by sail type and boat size, the flat plan and its
+## corners, row chords, battens on the main, tell-tales on the jib, a material of its own.
+func _cloth(id: String, sp: BoatView.SailPart, sm: ShaderMaterial, loa: float) -> void:
+	if sm == null:
+		return
+	var kite := sp.type.begins_with("spinnaker")
+	var style_want := 2 if kite else (1 if sp.type == "code_zero" or loa >= 10.0 else 0)
+	var kind_want := 0 if sp.type == "main" else (2 if kite else 1)
+	t.ok(int(sm.get_shader_parameter("cloth_style")) == style_want and int(sm.get_shader_parameter("cloth_kind")) == kind_want,
+		"%s: cloth %s, kind %d" % [sp.id, ["woven, cross-cut", "laminate, tri-radial", "nylon, tri-radial"][style_want], kind_want])
+	var shear: Vector2 = sm.get_shader_parameter("cloth_shear")
+	var clew: Vector2 = sm.get_shader_parameter("cloth_clew")
+	var head: Vector2 = sm.get_shader_parameter("cloth_head")
+	var chord: PackedFloat32Array = sm.get_shader_parameter("cloth_chord")
+	t.ok(absf(shear.length() - 1.0) < 1e-4 and shear.y > 0.4 and clew.x > 1.0 and head.y > 3.0 and absf(head.x) < 1e-6,
+		"%s: flat plan (shear %.2f, clew %s, head %s)" % [sp.id, shear.x, clew, head])
+	# the plan's height is the generator's uv0 height (the mean row spacing summed): close to the tack-head line
+	var d_rest := sp.tack.distance_to(sp.head)
+	t.ok(head.y >= 0.85 * d_rest and head.y < 1.1 * d_rest, "%s: plan luff %.2f m, tack to head %.2f m" % [sp.id, head.y, d_rest])
+	t.ok(chord.size() == 48 and chord[0] > 1.0 and int(sm.get_shader_parameter("cloth_rows")) == mini(sp.rows, 48),
+		"%s: %d row chords, foot %.2f m" % [sp.id, sp.rows, chord[0]])
+	t.ok((int(sm.get_shader_parameter("cloth_battens")) > 0) == (sp.type == "main"), "%s: batten pockets on the main only" % sp.id)
+	t.ok((int(sm.get_shader_parameter("cloth_telltales")) > 0) == (sp.type == "jib" or sp.type == "genoa"),
+		"%s: tell-tales on the jib only" % sp.id)
+	t.ok(sm != BoatView._sail_mats.get(sm, null) and sm.shader == BoatView.SAIL_SHADER, "%s: a cloth material of its own" % sp.id)
 
 
 ## §12 test 8 on the generated kite: every inner vertex to leeward of the vertical plane through its luff.

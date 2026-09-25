@@ -1,14 +1,15 @@
 // Wake ribbon functions shared by wake.gdshader and the offline preview (tests/water_preview.py). Include after
 // sea_common.gdshaderinc.
 
-// Drapes a ribbon vertex (scene position, y ignored) on the drawn sea plus 0.1 m, with the grid fade of the sea's
-// tier at that distance from the camera origin, then pulls it toward the camera (cam, scene position) so the
+// Drapes a vertex (scene position, y ignored) on the drawn sea plus `lift` (the ribbon: 0.1 m), with the grid
+// fade of the sea's tier at that distance from the camera origin, then pulls it toward the camera (cam, scene position) so the
 // sea's facets never cover it. Between its vertices (at most about 0.8 m apart across) the ribbon is flat while
 // the sea keeps the short waves its own grid carries, so the ribbon must clear the sea by the height of those
 // waves: 0.15 m plus twice the amplitude of the components shorter than 2 to 4 m that the sea grid carries. The
 // pull is along the view ray, which leaves the vertex on its pixel (only the depth changes), and a grazing view
-// needs a longer pull for the same height; it is capped at 30 % of the distance.
-vec3 wm_wake_drape(vec3 v, vec3 cam, float grid_q, float grid_segments) {
+// needs a longer pull for the same height; it is capped at 30 % of the distance. A vertex lifted above 0.1 m
+// needs that much less.
+vec3 wm_drape(vec3 v, float lift, vec3 cam, float grid_q, float grid_segments) {
 	vec2 xl = vec2(v.x, -v.z) - sea_origin;
 	float r = length(xl);
 	float s = r < 0.6 ? 0.6 : max(r * (grid_q - 1.0), 6.28318530718 * r / grid_segments);
@@ -22,12 +23,41 @@ vec3 wm_wake_drape(vec3 v, vec3 cam, float grid_q, float grid_segments) {
 		short_a += w * c.x * (1.0 - wm_fade(c.y, c.z, 1.0));
 	}
 	float expo = wm_exposure(sea_origin + xl);
-	vec3 p = vec3(v.x, eta * expo + 0.1, v.z);
-	float clear_h = 0.15 + 2.0 * short_a * expo;
+	vec3 p = vec3(v.x, eta * expo + lift, v.z);
+	float clear_h = max(0.15 + 2.0 * short_a * expo - max(lift - 0.1, 0.0), 0.0);
 	vec3 to_cam = cam - p;
 	float d = max(length(to_cam), 1e-3);
 	float elev = max(to_cam.y / d, 0.02);
 	return p + to_cam * (min(clear_h / elev, 0.3 * d) / d);
+}
+
+vec3 wm_wake_drape(vec3 v, vec3 cam, float grid_q, float grid_segments) {
+	return wm_drape(v, 0.1, cam, grid_q, grid_segments);
+}
+
+// Bow wave sheet coverage (water_render.md §5). uv: (tau across, 0 at the hull .. 1 at the sea; sigma along, 0 at
+// the stem); a: the vertex alpha; n1, n2: foam noise samples flowing aft. Returns (foam, alpha): foam 0..1 is the
+// share of foam colour, alpha the coverage (a lighter water sheet between the hull and the crest, foam on it).
+vec2 wm_bow_alpha(vec2 uv, float a, float n1, float n2) {
+	float tau = uv.x;
+	float sigma = uv.y;
+	float crest = smoothstep(0.28, 0.42, tau) * (1.0 - smoothstep(0.58, 0.78, tau));
+	float spill = smoothstep(0.5, 0.62, tau) * (1.0 - smoothstep(0.8, 1.0, tau));
+	float br = smoothstep(0.35, 0.8, n1 * 0.75 + n2 * 0.45);
+	float foam = clamp(crest * (0.7 + 0.3 * br) + spill * (0.35 + 0.65 * br) * (1.0 - 0.5 * sigma), 0.0, 1.0);
+	// the stem throws white water right at the bow
+	foam = max(foam, (1.0 - smoothstep(0.0, 0.22, sigma)) * (1.0 - smoothstep(0.0, 0.5, tau)) * (0.6 + 0.4 * br));
+	float sheet = 0.18 * (1.0 - smoothstep(0.35, 0.5, tau));
+	return vec2(foam, clamp(a * max(foam, sheet), 0.0, 1.0));
+}
+
+// Mist sprite coverage (water_render.md §5): a soft round cloud broken up by the foam noise. uv: the quad's 0..1;
+// n: a foam noise sample for the sprite.
+float wm_mist_alpha(vec2 uv, float n) {
+	vec2 q = uv * 2.0 - 1.0;
+	float r2 = clamp(dot(q, q), 0.0, 1.0);
+	float soft = (1.0 - r2) * (1.0 - r2);
+	return soft * mix(0.35, 1.0, smoothstep(0.2, 0.8, n));
 }
 
 // Wake foam coverage (shared with the offline preview). uv: (across 0..1, distance sailed / 10 m); centre: the

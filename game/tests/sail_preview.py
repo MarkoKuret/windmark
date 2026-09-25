@@ -2,9 +2,11 @@
 """Offline preview of the sails, step 2 (no window): renders the shots dumped by tests/sail_preview_dump.gd.
 
 Each shot is the boat as BoatView drew it (the sails bent by SailShape), lit by a low sun with a sky ambient, on a
-flat sea under a sky gradient, rendered offscreen with OpenGL (moderngl) with 4x multisampling. The sails get the
-back-light term of sail_visuals.md §11 (a share of the albedo where the sun is behind the cloth), so a sail seen
-from its shaded side still reads. It is a stand-in for Godot's lighting, meant to judge shapes, not colours.
+flat sea under a sky gradient, rendered offscreen with OpenGL (moderngl) with 4x multisampling. The sails use the
+cloth of shaders/sail_cloth.gdshaderinc (the same file Godot compiles, sail_visuals.md §11.1) with a GLSL copy of
+the fragment and light functions of shaders/sail.gdshader, so panels, seams, patches, battens and the light
+through the cloth match the engine's; there are no shadows. It is a stand-in for Godot's lighting, meant to judge
+shapes and the cloth, not colours.
 
     python3 game/tests/sail_preview.py [--size 960x600] [--publish] [shot ...]
 
@@ -14,6 +16,7 @@ Needs numpy, Pillow and moderngl (docs/THIRD_PARTY.md).
 import argparse
 import json
 import math
+import os
 from pathlib import Path
 
 import moderngl
@@ -23,6 +26,74 @@ from PIL import Image, ImageDraw
 GAME = Path(__file__).resolve().parents[1]
 OUT = GAME / "generated" / "sail_preview"
 PUBLISHED = GAME / "tests" / "previews"
+
+SAIL_VS = """
+#version 410
+uniform mat4 u_vp;
+in vec3 in_pos;
+in vec3 in_normal;
+in vec4 in_uv;
+out vec3 v_n;
+out vec3 v_w;
+out vec4 v_uv;
+void main() {
+    v_n = in_normal;
+    v_w = in_pos;
+    v_uv = in_uv;
+    gl_Position = u_vp * vec4(in_pos, 1.0);
+}
+"""
+
+# sail.gdshader's fragment() and light() for one sun and a sky ambient (Godot adds the ambient itself)
+SAIL_FS = """
+in vec3 v_n;
+in vec3 v_w;
+in vec4 v_uv;
+uniform vec3 u_cam;
+uniform vec3 u_sun;
+uniform vec3 albedo_color;
+uniform sampler2D albedo_tex;
+uniform vec2 uv_scale;
+uniform float weave;
+uniform float roughness;
+uniform float backlight;
+uniform vec3 fibre_color;
+uniform float fibre_amount;
+uniform vec3 telltale_color;
+out vec4 frag;
+const vec3 SUN = vec3(1.0, 0.95, 0.85) * 3.0;
+const vec3 SKY_ZEN = vec3(0.25, 0.42, 0.75);
+const float PI = 3.14159265359;
+void main() {
+    vec2 UV = v_uv.xy;
+    float px = max(fwidth(UV.x), fwidth(UV.y));
+    float layers; float stitch; float panel; float fibre; float mark;
+    wm_cloth(UV, v_uv.w, px, layers, stitch, panel, fibre, mark);
+    vec3 tex = texture(albedo_tex, UV * uv_scale).rgb;
+    vec3 a = min(albedo_color * mix(vec3(1.0), tex, weave), vec3(0.8));
+    a *= (1.0 - 0.045 * min(layers, 4.0)) * (1.0 - 0.45 * stitch) * (1.0 + 0.06 * (panel - 0.5));
+    a = mix(a, fibre_color, fibre * fibre_amount);
+    a = mix(a, telltale_color, mark);
+    float rough = clamp(roughness + 0.1 * (panel - 0.5), 0.05, 1.0);
+    float trans = backlight * exp(-0.8 * layers) * (1.0 - 0.6 * fibre * fibre_amount) * (1.0 - 0.6 * mark);
+    vec3 V = normalize(u_cam - v_w);
+    vec3 L = normalize(u_sun);
+    vec3 N = normalize(v_n);
+    if (dot(N, V) < 0.0) N = -N;  // the layer that faces the camera
+    float ndl = dot(N, L);
+    float fwd = pow(max(dot(-V, L), 0.0), 4.0);
+    vec3 diff = SUN * (max(ndl, 0.0) + max(-ndl, 0.0) * trans * (0.75 + 0.75 * fwd)) / PI;
+    vec3 amb = mix(vec3(0.16, 0.17, 0.19), SKY_ZEN * 0.6, 0.5 + 0.5 * N.y) * 0.6;
+    vec3 H = normalize(V + L);
+    float shin = 2.0 / max(pow(rough, 4.0), 1e-3) - 2.0;
+    float spec = pow(max(dot(N, H), 0.0), shin) * (shin + 8.0) / (8.0 * PI);
+    vec3 c = a * (amb + diff) + 0.04 * spec * max(ndl, 0.0) * SUN;
+    frag = vec4(c, 1.0);
+#ifdef CLOTH_DEBUG
+    frag = vec4(layers / 4.0, stitch, panel, 1.0) * 3.0;
+#endif
+}
+"""
 
 VS = """
 #version 410
@@ -141,10 +212,48 @@ def perspective(fov_deg, aspect, near, far):
     return m
 
 
+CLOTH_INC = (GAME / "shaders" / "sail_cloth.gdshaderinc").read_text()
+_textures = {}
+
+
+def cloth_texture(ctx, path):
+    if not path or not Path(path).exists():
+        path = None
+    if path not in _textures:
+        if path:
+            img = Image.open(path).convert("RGB")
+            t = ctx.texture(img.size, 3, img.tobytes())
+            t.build_mipmaps()
+            t.filter = (moderngl.LINEAR_MIPMAP_LINEAR, moderngl.LINEAR)
+            t.anisotropy = 8.0
+        else:
+            t = ctx.texture((1, 1), 3, bytes([255, 255, 255]))
+        t.repeat_x = t.repeat_y = True
+        _textures[path] = t
+    return _textures[path]
+
+
+def set_cloth(prog, cloth):
+    for k, v in cloth.items():
+        if k not in prog or k == "albedo_tex":
+            continue
+        u = prog[k]
+        if k == "cloth_chord":
+            u.value = [float(x) for x in v][:48]
+        elif isinstance(v, list):
+            u.value = tuple(float(x) for x in v[: u.dimension])
+        elif isinstance(v, bool):
+            u.value = int(v)
+        else:
+            u.value = v
+
+
 def render(ctx, shot_dir, size):
     sc = json.loads((shot_dir / "scene.json").read_text())
     w, h = size
     prog = ctx.program(vertex_shader=VS, fragment_shader=FS)
+    sail = ctx.program(vertex_shader=SAIL_VS, fragment_shader="#version 410\n"
+                       + ("#define CLOTH_DEBUG\n" if os.environ.get("CLOTH_DEBUG") else "") + CLOTH_INC + SAIL_FS)
     sky = ctx.program(vertex_shader=SKY_VS, fragment_shader=SKY_FS)
     tone = ctx.program(vertex_shader=SKY_VS, fragment_shader=TONE_FS)
     eye = np.array(sc["eye"], "f8")
@@ -157,6 +266,8 @@ def render(ctx, shot_dir, size):
     view /= np.linalg.norm(view)
     side = np.cross(view, [0.0, 1.0, 0.0])
     sun = -view * 0.25 + side * 0.85 + np.array([0.0, 0.45, 0.0])
+    if sc.get("sun") == "back":
+        sun = view * 0.8 + side * 0.25 + np.array([0.0, 0.5, 0.0])  # behind the sails: the light through the cloth
 
     ms = ctx.framebuffer(color_attachments=[ctx.renderbuffer((w, h), 4, samples=4, dtype="f2")],
                          depth_attachment=ctx.depth_renderbuffer((w, h), samples=4))
@@ -186,6 +297,21 @@ def render(ctx, shot_dir, size):
         v = np.fromfile(shot_dir / (m["name"] + "_v.bin"), dtype="f4")
         i = np.fromfile(shot_dir / (m["name"] + "_i.bin"), dtype="i4")
         if v.size == 0 or i.size == 0:
+            continue
+        if m.get("cloth") and (shot_dir / (m["name"] + "_uv.bin")).exists():
+            uv = np.fromfile(shot_dir / (m["name"] + "_uv.bin"), dtype="f4")
+            sail["u_vp"].write(vp_b)
+            sail["u_cam"].value = tuple(eye)
+            sail["u_sun"].value = tuple(sun)
+            set_cloth(sail, m["cloth"])
+            sail["albedo_color"].value = tuple(m["albedo"][:3])
+            cloth_texture(ctx, m["cloth"].get("albedo_tex")).use(0)
+            sail["albedo_tex"].value = 0
+            ctx.enable(moderngl.CULL_FACE)  # as in Godot: each cloth layer faces its own side
+            ctx.vertex_array(sail, [(ctx.buffer(v.tobytes()), "3f 3f", "in_pos", "in_normal"),
+                                    (ctx.buffer(uv.tobytes()), "4f", "in_uv")],
+                             ctx.buffer(i.tobytes())).render(moderngl.TRIANGLES)
+            ctx.disable(moderngl.CULL_FACE)
             continue
         prog["u_albedo"].value = tuple(m["albedo"][:3])
         prog["u_sail"].value = 1.0 if m["sail"] else 0.0

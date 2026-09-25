@@ -4,9 +4,9 @@ extends Node3D
 ##
 ## Windowed capture (owner's OK needed, opens a window for a few seconds):
 ##   godot --path game res://scenes/water_test.tscn -- --capture=<dir> [--tier=L|M|H]
-## writes <dir>/water_<camera>_<tier>.png for the chase, aerial, overview and sun cameras and quits.
+## writes <dir>/water_<camera>_<tier>.png for the chase, aerial, overview, sun and bow cameras and quits.
 
-enum CameraMode { CHASE, AERIAL, OVERVIEW, SUN }
+enum CameraMode { CHASE, AERIAL, OVERVIEW, SUN, BOW }
 
 @export var camera_mode: CameraMode = CameraMode.CHASE:
 	set(v):
@@ -45,7 +45,8 @@ func _ready() -> void:
 	_build_boat()
 	_update_boat(0.0)
 	if not _capture_dir.is_empty():
-		_shots = [[CameraMode.CHASE, "chase"], [CameraMode.AERIAL, "aerial"], [CameraMode.OVERVIEW, "overview"], [CameraMode.SUN, "sun"]]
+		_shots = [[CameraMode.CHASE, "chase"], [CameraMode.AERIAL, "aerial"], [CameraMode.OVERVIEW, "overview"], [CameraMode.SUN, "sun"],
+				[CameraMode.BOW, "bow"]]
 		camera_mode = CameraMode.CHASE
 
 
@@ -107,6 +108,12 @@ func _place_camera() -> void:
 		eye = p - fwd * 70.0 + Vector3(0.0, 90.0, 0.0)
 	elif camera_mode == CameraMode.OVERVIEW:
 		eye = p - fwd * 450.0 + Vector3(0.0, 520.0, 0.0)
+	elif camera_mode == CameraMode.BOW:
+		# abeam of the bow, a little ahead: the bow wave and the mist on the near side
+		var side := fwd.cross(Vector3.UP)
+		eye = p + fwd * 7.0 - side * 9.0 + Vector3(0.0, 2.6, 0.0)
+		cam.look_at_from_position(eye, p + fwd * 2.2 + Vector3(0.0, 0.4, 0.0), Vector3.UP)
+		return
 	else:
 		# toward the sun: the boat against the glitter
 		var sun: Vector3 = $SkyDay.sun_direction()

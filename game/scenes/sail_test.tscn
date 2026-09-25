@@ -1,0 +1,31 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scenes/sail_test.gd" id="1_sail"]
+
+[sub_resource type="Environment" id="Environment_1"]
+background_mode = 1
+background_color = Color(0.62, 0.74, 0.86, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.75, 0.8, 0.88, 1)
+ambient_light_energy = 0.6
+
+[sub_resource type="StandardMaterial3D" id="Mat_sea"]
+albedo_color = Color(0.08, 0.24, 0.36, 1)
+roughness = 0.35
+
+[sub_resource type="PlaneMesh" id="Mesh_sea"]
+material = SubResource("Mat_sea")
+size = Vector2(6000, 6000)
+
+[node name="SailTest" type="Node3D"]
+script = ExtResource("1_sail")
+
+[node name="Environment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_1")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866025, -0.25, 0.433013, 0, 0.866025, 0.5, -0.5, -0.433013, 0.75, 0, 50, 0)
+shadow_enabled = true
+
+[node name="SeaPlaceholder" type="MeshInstance3D" parent="."]
+mesh = SubResource("Mesh_sea")

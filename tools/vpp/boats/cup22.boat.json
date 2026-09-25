@@ -5,7 +5,7 @@
     "loa": 24.0, "lwl": 19.5, "beam_max": 4.10, "bwl": 3.40, "draft_canoe": 0.95,
     "displacement": 24500, "prismatic": 0.55,
     "section_shape": { "type": "u", "midship_coefficient": 0.76 },
-    "rocker": { "fwd": 0.90, "aft": 0.65 },
+    "rocker": { "fwd": 0.90, "aft": 0.95 },
     "freeboard": { "bow": 1.45, "mid": 1.20, "stern": 1.05 },
     "transom_width": 2.20, "stem_x": 12.60, "transom_x": -11.40, "max_beam_station": 0.45
   },

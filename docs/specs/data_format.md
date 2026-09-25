@@ -404,8 +404,14 @@ Recommended axes for the VPP (fine where the tables bend):
 
 ## 6. Venue physics file (`windmark.venue/1`)
 
-The physical environment of a sailing area. Everything is optional except the header; an empty venue is open
-water with uniform wind.
+The physical environment of a sailing area, `data/venues/<venue>.venue.json`. Everything is optional except the
+header; an empty venue is open water with uniform wind. The core loads it once per race and points the wind,
+current and sea settings at it (`wind.md` §1, §7, §8; `sea.md` §2, §6).
+
+The **look** of a venue (terrain, scenery, sky, water colours, placed sound sources such as surf and harbour noise,
+`audio.md` §7) is not in this file: it lives in a front-end look file next to it, `<venue>.look.json`, whose format
+belongs to the front end (`water_render.md`, `audio.md`). The core never reads it; a look file never changes
+physics.
 
 ### 6.1 Header
 Schematic (likewise §6.2–§6.5):
@@ -418,6 +424,9 @@ Schematic (likewise §6.2–§6.5):
   "exposure_default": 1.0
 }
 ```
+Required: `schema`, `id`, `name`, `version` (integer ≥ 1, bumped on every change) and `bounds` (`xmin < xmax`,
+`ymin < ymax`, every value in [−8000, 8000]). Optional: `origin` (`lat` in [−90, 90], `lon` in [−180, 180]),
+`fetch` (> 0) [10000], `exposure_default` (in [0, 1]) [1].
 
 ### 6.2 `wind_field`
 ```json
@@ -426,8 +435,8 @@ Schematic (likewise §6.2–§6.5):
   "sectors": [ { "f": [ … nx*ny … ], "d": [ … nx*ny … ] }, … 8 entries: from N, NE, E, SE, S, SW, W, NW … ]
 }
 ```
-`f` speed factor ≥ 0, `d` direction offset (rad, + = veer), nodes row by row (`j` major). Border nodes must be
-`f = 1, d = 0` (validated). Sampling: `wind.md` §8.
+Exactly 8 sectors. `f` speed factor ≥ 0, `d` direction offset (rad, + = veer) in [−π, π]. Border nodes must be
+exactly `f = 1, d = 0` (validated). Grids: §6.6. Sampling: `wind.md` §8.
 
 ### 6.3 `current_field`
 ```json
@@ -447,8 +456,15 @@ Sea height factor (`sea.md` §6); `exposure_default` outside the grid.
 "obstacles": [ { "id": "pier", "polygon": [[x, y], …] },           // convex, counter-clockwise
                { "id": "rock", "circle": { "c": [x, y], "r": 4.0 } } ]
 ```
-Validated: polygons simple (no self-intersections), land counter-clockwise, obstacle polygons convex. Collision
-use: `collisions.md` §2.2.
+Validated: ids unique within their list; polygons have at least 3 points, no two consecutive points equal and no
+self-intersections (simple); land counter-clockwise (positive area); obstacle polygons strictly convex and
+counter-clockwise; an obstacle has exactly one of `polygon` and `circle`; circle `r > 0`. Collision use:
+`collisions.md` §2.2, in file order.
+
+### 6.6 Grids
+Every field of §6.2–§6.4 sits on a grid `{ "x0", "y0", "dx", "dy", "nx", "ny" }` (`wind.md` §8.1): origin finite,
+`dx, dy > 0`, `nx`, `ny` integers from 2 to 1024 (a grid is at least one cell). Each value array holds exactly
+`nx·ny` finite numbers, row by row (`j` major, `i` fastest).
 
 ## 7. Versioning and consistency
 

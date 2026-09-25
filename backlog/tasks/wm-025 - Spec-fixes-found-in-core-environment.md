@@ -1,9 +1,11 @@
 ---
 id: WM-025
 title: 'Spec: fixes found in core environment'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-09-25 14:32'
+updated_date: '2026-09-25 15:36'
 labels:
   - spec
 dependencies: []
@@ -19,5 +21,5 @@ From WM-007: wind.md 10.3 ramp tolerance C*(DT+0.5 ms); wind.md 10.1 vector file
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 wind.md, wind_shadow.md, sea.md, data_format.md updated
+- [x] #1 wind.md, wind_shadow.md, sea.md, data_format.md updated
 <!-- AC:END -->

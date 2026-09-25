@@ -38,6 +38,11 @@ target_sources(windmark_core PRIVATE
   src/shadow/shadow.cpp
 )
 
+# Venue physics file (data_format.md §6) into the environment structs.
+target_sources(windmark_core PRIVATE
+  src/data/venue.cpp
+)
+
 # boat and sails (WM-006): boat.md, sails.md
 target_sources(windmark_core PRIVATE
   src/boat/hull_sampling.cpp

@@ -212,6 +212,9 @@ func _dump(spec: Dictionary, bv: BoatView, st: SimSource.BoatState, note: String
 			var col := Color(0.8, 0.8, 0.8)
 			if mat is BaseMaterial3D:
 				col = (mat as BaseMaterial3D).albedo_color
+			elif mat is ShaderMaterial and (mat as ShaderMaterial).get_shader_parameter("albedo_color") is Color:
+				col = (mat as ShaderMaterial).get_shader_parameter("albedo_color")
+			col = Color(minf(col.r, 0.8), minf(col.g, 0.8), minf(col.b, 0.8))  # the shaders' albedo cap
 			var nm := "m%d" % meshes.size()
 			var fv := FileAccess.open(dir.path_join(nm + "_v.bin"), FileAccess.WRITE)
 			fv.store_buffer(wp.to_byte_array())

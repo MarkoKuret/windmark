@@ -10,6 +10,8 @@ extends Node3D
 
 enum Mode { BOOM, LUFF, SPRIT, POLE }
 
+const SAIL_SHADER := preload("res://shaders/sail.gdshader")
+
 ## sail_visuals.md §11 update intervals by distance to the camera, s
 const NEAR_M := 200.0
 const MID_M := 800.0
@@ -86,8 +88,8 @@ var _sheet_rest := PackedVector3Array()
 var _sheet_w := PackedFloat32Array()
 var _sheet_top := Vector3.ZERO
 var _sheet_angle := 0.0
-## the sail material (§11), shared by the sails of this boat
-var _sail_mats := {}
+## the sail materials (§11) by imported slot material, shared by the fleet
+static var _sail_mats := {}
 ## the GDScript reference shapes even when the native SailShape is loaded (set by create)
 var use_reference := false
 
@@ -388,20 +390,27 @@ func _shape_params(sp: SailPart, look: Dictionary, furling: bool) -> Dictionary:
 	return p
 
 
-## §11: the generator's sailcloth, opaque, back faces culled, roughness about 0.55 and a back-light of about
-## 0.3 of the albedo so the sun shows through the cloth.
+## §11: the generator's sailcloth on shaders/sail.gdshader: opaque, back faces culled, roughness about 0.55 and a
+## back-light of about 0.3 of the albedo so the sun shows through the cloth. Takes the colour, texture and tiling of
+## the imported slot (a StandardMaterial3D, or the boat ShaderMaterial BoatMaterials put in its place).
 func _sail_material(m: Material) -> Material:
-	if m == null or not (m is BaseMaterial3D):
+	if m == null:
 		return m
 	if _sail_mats.has(m):
 		return _sail_mats[m]
-	var s := (m as BaseMaterial3D).duplicate() as BaseMaterial3D
-	s.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
-	s.cull_mode = BaseMaterial3D.CULL_BACK
-	s.roughness = 0.55
-	s.backlight_enabled = true
-	var a := s.albedo_color
-	s.backlight = Color(a.r * 0.3, a.g * 0.3, a.b * 0.3)
+	var s := ShaderMaterial.new()
+	s.shader = SAIL_SHADER
+	s.resource_name = m.resource_name
+	if m is BaseMaterial3D:
+		var b := m as BaseMaterial3D
+		s.set_shader_parameter("albedo_color", b.albedo_color)
+		s.set_shader_parameter("albedo_tex", b.albedo_texture)
+		s.set_shader_parameter("uv_scale", Vector2(b.uv1_scale.x, b.uv1_scale.y))
+	elif m is ShaderMaterial:
+		for k in ["albedo_color", "albedo_tex", "uv_scale"]:
+			var v: Variant = (m as ShaderMaterial).get_shader_parameter(k)
+			if v != null:
+				s.set_shader_parameter(k, v)
 	_sail_mats[m] = s
 	return s
 

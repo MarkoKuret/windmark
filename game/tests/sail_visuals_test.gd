@@ -497,6 +497,9 @@ func _boats() -> void:
 			var n: int = sp.rows * sp.cols
 			t.ok(sp.mesh.surface_get_array_len(0) == 2 * n, "%s: 2 x %d x %d vertices" % [sp.id, sp.rows, sp.cols])
 			t.ok(sp.node.transform == Transform3D.IDENTITY, "%s: node transform is the identity" % sp.id)
+			var sm := sp.mesh.surface_get_material(0) as ShaderMaterial
+			t.ok(sm != null and sm.shader == BoatView.SAIL_SHADER and sm.get_shader_parameter("albedo_color") is Color,
+				"%s: on the sail shader with the slot's colour" % sp.id)
 			var port := Frames.body_to_model(Vector3(0, 1, 0))
 			if sp.type != "spinnaker_asym" and sp.type != "spinnaker_sym":
 				sp.shape.update(UP, 1.0, 0.0, 0.0, 0.0, 0.0, 5.0)
@@ -524,6 +527,11 @@ func _boats() -> void:
 					above = maxf(above, p.y)
 				t.ok(above <= 0.03 + sa * kap + 1e-4, "%s: flaked on deck at p = 0 (%.3f m)" % [sp.id, above])
 		t.ok(shaped == bv.sail_parts.size() and shaped >= 3, "%s: all %d sails shaped" % [id, shaped])
+		var names := []
+		for u in BoatView.SAIL_SHADER.get_shader_uniform_list():
+			names.append(u["name"])
+		t.ok(names.has("backlight") and names.has("albedo_tex") and BoatView.SAIL_SHADER.code.contains("void light()"),
+			"sail shader parses, with the back-light in its light function")
 		bv.free()
 
 

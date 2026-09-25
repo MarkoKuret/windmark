@@ -49,6 +49,11 @@ target_sources(windmark_core PRIVATE
   src/boat/boat.cpp
   src/sails/sails.cpp
 )
+
+# collisions (WM-008): collisions.md
+target_sources(windmark_core PRIVATE
+  src/collide/collide.cpp
+)
 target_include_directories(windmark_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 # PUBLIC: every target that links the core (tests, server, engine bindings) builds with the same float rules.
 target_link_libraries(windmark_core PUBLIC windmark_float_rules)

@@ -201,6 +201,9 @@ TEST_CASE("collide: T-bone pushes and spins the struck boat, both decay") {
   CHECK(std::fabs(s0.contact_vy) < 0.1f * cv0);
   CHECK(yaw0 > 0.0f);                         // bow turned toward the push (clockwise)
   CHECK(wd.b(1).state().v < 1.5f);            // the rammer lost most of its forward speed
+  // Head to wind the rammer coasts on (boat.md §5.8) and would push again as the struck boat's contact velocity
+  // decays; stop it so the decay itself is measured.
+  wd.s(1).v = 0.0f;
   // 1.1 s = 22 ticks
   float cv_peak = cv0, yaw_peak = yaw0;
   for (int k = 0; k < 22; ++k) {

@@ -102,7 +102,28 @@ SailRequest Sails::hoist(std::int32_t x) {
 }
 
 SailRequest Sails::drop_front() {
-  if (busy() || front_ < 0) return SailRequest::rejected;
+  if (busy()) {
+    // Cancel a first hoist: with no front sail up there is no hoist(F) to ask for, so drop_front() cancels a
+    // lone hoist the way hoist(F) cancels a peel (§4.2).
+    const SailStep run = queue_[queue_pos_];
+    const bool lone_hoist = front_ < 0 && queue_len_ == 3 && queue_[0].phase == SailPhase::prepare_hoist &&
+                            queue_[1].phase == SailPhase::hoisting && queue_[2].phase == SailPhase::up &&
+                            queue_[0].sail == run.sail && queue_[1].sail == run.sail && queue_[2].sail == run.sail;
+    if (lone_hoist && run.reversed == 0) {
+      if (run.phase == SailPhase::prepare_hoist) {
+        set_queue({{run.sail, SailPhase::down, 0}});
+        return SailRequest::accepted;
+      }
+      if (run.phase == SailPhase::hoisting) {
+        const float p = sails_[static_cast<std::size_t>(run.sail)].progress;
+        set_queue({{run.sail, SailPhase::hoisting, 1}, {run.sail, SailPhase::down, 0}});
+        queue_progress_ = 1.0f - p;
+        return SailRequest::accepted;
+      }
+    }
+    return SailRequest::rejected;
+  }
+  if (front_ < 0) return SailRequest::rejected;
   const std::int8_t f = front_;
   set_queue({{f, SailPhase::prepare_drop, 0}, {f, SailPhase::dropping, 0}, {f, SailPhase::down, 0}});
   return SailRequest::accepted;
@@ -252,6 +273,8 @@ void Sails::trim(const TrimInput& in, bool place) {
     } else if (aa < std::fabs(beta_t)) {
       beta_t = sgn(beta_t) * aa;
     }
+
+    o.beta_t = beta_t;
 
     // §5.5 sail motion
     o.motion = SailMotion::idle;

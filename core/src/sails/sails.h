@@ -39,6 +39,7 @@ struct SailOutput {
   float k_h = 0.0f;         // hoist factor (§5.4)
   float m_opt = 0.0f;       // optimal angle magnitude (§5.1)
   float beta_opt = 0.0f;    // signed optimal angle
+  float beta_t = 0.0f;      // target angle of the sail motion (§5.4), for winch and crew sounds (§7)
   float trim_error = 0.0f;  // eps (§5.6): + eased beyond the optimum, - sheeted in beyond it
   float luff_shiver = 0.0f; // 0..1
   SailMotion motion = SailMotion::idle;

@@ -283,6 +283,16 @@ TEST_CASE("validator refuses broken performance files with file, path and reason
     auto& m = key(key(v, "dynamics"), "wind_shadow").members;
     m.pop_back();
   });
+  add("turn radius law without a positive turn_c", "$.dynamics.turn_radius_offset", [](wm::json::Value& v) {
+    float r = 0;
+    REQUIRE(wm::json::to_float(key(key(v, "dynamics"), "turn_radius_full"), r));
+    key(key(v, "dynamics"), "turn_radius_offset") = num(std::to_string(-r));
+  });
+  add("more than 64 hull points", "$.dynamics.hull_points", [](wm::json::Value& v) {
+    auto& hp = key(key(v, "dynamics"), "hull_points").items;
+    const wm::json::Value first = hp[0];
+    while (hp.size() <= 64) hp.push_back(first);
+  });
   add("start sail unknown", "$.start.front_sail",
       [](wm::json::Value& v) { key(key(v, "start"), "front_sail") = str("genoa"); });
   cases.push_back({"not JSON", "{\"schema\":", ""});

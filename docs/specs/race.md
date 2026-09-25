@@ -161,7 +161,7 @@ that is on the right when looking from the pre-start side towards the course sid
 
 ### 3.5 Spawning
 
-At race creation every boat gets a spawn pose in the course's spawn area (`courses.md` §5.4) or, if the course has
+At race creation every boat gets a spawn pose in the course's spawn area (`courses.md` §5.1) or, if the course has
 none, on an automatic grid:
 
 - Grid rows parallel to the start line on the pre-start side at distances `d_k = (4 + 3k)·L_max` from the line

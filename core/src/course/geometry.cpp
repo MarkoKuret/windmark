@@ -109,6 +109,35 @@ float convex_gap(std::span<const Vec2> a, std::span<const Vec2> b) {
   return vertex_edge_min(a, b);
 }
 
+namespace {
+
+// Largest separation of b from a over the unit edge normals of a (either orientation): the gap between the
+// projection intervals, a lower bound of the distance between the polygons.
+float max_separation(std::span<const Vec2> a, std::span<const Vec2> b) {
+  float best = -INFINITY;
+  const std::size_t n = a.size();
+  for (std::size_t i = 0; i < n; ++i) {
+    const Vec2 e = v_sub(a[(i + 1) % n], a[i]);
+    const float l = v_len(e);
+    if (!(l > 0.0f)) continue;
+    const Vec2 axis{-e.y / l, e.x / l};
+    float alo, ahi, blo, bhi;
+    project(a, axis, alo, ahi);
+    project(b, axis, blo, bhi);
+    best = max(best, max(blo - ahi, alo - bhi));
+  }
+  return best;
+}
+
+}  // namespace
+
+float convex_gap_capped(std::span<const Vec2> a, std::span<const Vec2> b, float cap) {
+  const float s = max(max_separation(a, b), max_separation(b, a));
+  if (!(s >= 0.0f)) return 0.0f;  // no separating axis: they intersect
+  if (s >= cap) return s;
+  return vertex_edge_min(a, b);
+}
+
 float convex_circle_gap(std::span<const Vec2> a, Vec2 c, float r) {
   if (point_in_polygon(c, a)) return 0.0f;
   return max(0.0f, point_polygon_edge_dist(c, a) - r);

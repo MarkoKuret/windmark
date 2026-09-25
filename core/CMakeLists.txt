@@ -61,6 +61,8 @@ target_sources(windmark_core PRIVATE
   src/course/course.cpp
   src/course/course_resolve.cpp
   src/race/race.cpp
+  src/rules/rules.cpp
+  src/rules/rules_geom.cpp
 )
 target_include_directories(windmark_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 # PUBLIC: every target that links the core (tests, server, engine bindings) builds with the same float rules.

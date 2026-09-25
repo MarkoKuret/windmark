@@ -43,6 +43,9 @@ float point_polygon_edge_dist(Vec2 p, std::span<const Vec2> poly);
 bool convex_intersect(std::span<const Vec2> a, std::span<const Vec2> b);
 // rules.md §3.1: 0 when they intersect, else the minimum vertex-edge distance.
 float convex_gap(std::span<const Vec2> a, std::span<const Vec2> b);
+// The same gap where only values below `cap` must be exact: the largest separation along a unit edge normal
+// (a lower bound of the gap) is returned when it is at least `cap`.
+float convex_gap_capped(std::span<const Vec2> a, std::span<const Vec2> b, float cap);
 // Gap between a convex polygon and a circle (0 when they overlap).
 float convex_circle_gap(std::span<const Vec2> a, Vec2 c, float r);
 // Gap between a convex polygon and any polygon (0 when a vertex of either is inside the other or edges cross).

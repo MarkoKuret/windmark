@@ -1,0 +1,4 @@
+# Godot import cache and editor state
+.godot/
+# Build outputs staged for import (boatgen GLBs, sidecars and their .import files)
+generated/

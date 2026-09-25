@@ -13,6 +13,11 @@ Read `README.md` for the layout and `docs/ROADMAP.md` for what is being built an
 - Tags: `[feature]`, `[fix]`, `[docs]`, `[refactor]`, `[test]`, `[chore]`, `[perf]`, `[data]`.
 - No co-author lines, no author or tool mentions.
 
+## Tasks
+- Work is tracked with Backlog.md in `backlog/` (one Markdown file per task). Use the `backlog` CLI: `backlog task list
+  --plain`, `backlog task <id> --plain`, `backlog task edit <id> -s "In Progress" -a @<name>`, check acceptance criteria
+  with `--check-ac <n>`, and set `Done` when all criteria pass. Board: `backlog board` or `backlog browser`.
+
 ## Working
 - No em dashes (—) in anything players see (game text, UI, store page, trailers, press) or in README files. Use a
   colon, comma, parentheses or a new sentence instead.

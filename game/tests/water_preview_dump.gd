@@ -1,0 +1,194 @@
+extends SceneTree
+## Offline preview, step 1 (headless): runs scenes/water_test.tscn for a few seconds of render time per shot and
+## writes everything the water, wake and sky shaders receive (uniforms, grid and ribbon meshes, textures, camera,
+## sun, fog) plus the boat triangles to generated/water_preview/<shot>/. Step 2, tests/water_preview.py,
+## renders them with the same shader functions (sea_common, sky_common, wake_common) on an offscreen GL context.
+##   godot --headless --path game -s res://tests/water_preview_dump.gd
+
+const OUT := "res://generated/water_preview"
+const FRAMES := 260
+const DT_MS := 1000.0 / 60.0
+
+## name, env mode, scenario or wind (kn), camera mode, tier
+const SHOTS := [
+	["bay20_chase_M", SeaEnvSource.Mode.CORE_SAMPLES, "example_bay_20kn", 0, SeaQuality.Tier.M],
+	["bay20_aerial_M", SeaEnvSource.Mode.CORE_SAMPLES, "example_bay_20kn", 1, SeaQuality.Tier.M],
+	["bay20_overview_M", SeaEnvSource.Mode.CORE_SAMPLES, "example_bay_20kn", 2, SeaQuality.Tier.M],
+	["bay20_sun_M", SeaEnvSource.Mode.CORE_SAMPLES, "example_bay_20kn", 3, SeaQuality.Tier.M],
+	["bay10_chase_M", SeaEnvSource.Mode.CORE_SAMPLES, "example_bay_10kn", 0, SeaQuality.Tier.M],
+	["calm_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 2.0, 0, SeaQuality.Tier.M],
+	["bay20_chase_L", SeaEnvSource.Mode.CORE_SAMPLES, "example_bay_20kn", 0, SeaQuality.Tier.L],
+]
+
+var _shot := -1
+var _frames := 0
+var _scene: Node
+
+
+func _init() -> void:
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT))
+	_next()
+
+
+func _next() -> void:
+	_shot += 1
+	if _shot >= SHOTS.size():
+		print("water preview dump: %d shots in %s" % [SHOTS.size(), ProjectSettings.globalize_path(OUT)])
+		quit(0)
+		return
+	var s: Array = SHOTS[_shot]
+	_scene = (load("res://scenes/water_test.tscn") as PackedScene).instantiate()
+	var src: SeaEnvSource = _scene.get_node("EnvSource")
+	src.mode = s[1]
+	if s[1] == SeaEnvSource.Mode.CORE_SAMPLES:
+		src.scenario = s[2]
+	else:
+		src.wind_kn = s[2]
+		src.puffs_enabled = false
+	_scene.camera_mode = s[3]
+	var sea: Sea = _scene.get_node("Sea")
+	sea.quality = s[4]
+	sea.use_internal_clock = false
+	root.add_child(_scene)
+	_frames = 0
+
+
+func _process(_delta: float) -> bool:
+	if _scene == null:
+		return false
+	var sea: Sea = _scene.get_node("Sea")
+	sea.render_time_ms += DT_MS
+	_frames += 1
+	if _frames >= FRAMES:
+		_dump(SHOTS[_shot][0])
+		_scene.queue_free()
+		_scene = null
+		_next()
+	return false
+
+
+func _v(x) -> Variant:
+	match typeof(x):
+		TYPE_VECTOR2, TYPE_VECTOR2I:
+			return [x.x, x.y]
+		TYPE_VECTOR3:
+			return [x.x, x.y, x.z]
+		TYPE_VECTOR4:
+			return [x.x, x.y, x.z, x.w]
+		TYPE_COLOR:
+			return [x.r, x.g, x.b, x.a]
+		TYPE_PACKED_VECTOR4_ARRAY:
+			var out := []
+			for e in x:
+				out.append([e.x, e.y, e.z, e.w])
+			return out
+		TYPE_INT, TYPE_FLOAT, TYPE_BOOL:
+			return x
+	return null
+
+
+func _uniforms(mat: ShaderMaterial) -> Dictionary:
+	var out := {}
+	for u in mat.shader.get_shader_uniform_list():
+		var v = _v(mat.get_shader_parameter(u["name"]))
+		if v != null:
+			out[u["name"]] = v
+	return out
+
+
+func _write_arrays(dir: String, name: String, arrays: Array, xform: Transform3D = Transform3D.IDENTITY) -> Dictionary:
+	var info := {}
+	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var world := PackedVector3Array()
+	world.resize(verts.size())
+	for i in verts.size():
+		world[i] = xform * verts[i]
+	_save(dir, name + "_pos.bin", world.to_byte_array())
+	info["count"] = verts.size()
+	for k in [[Mesh.ARRAY_TEX_UV, "uv"], [Mesh.ARRAY_TEX_UV2, "uv2"], [Mesh.ARRAY_COLOR, "color"],
+			[Mesh.ARRAY_NORMAL, "normal"]]:
+		var a = arrays[k[0]]
+		if a == null or a.size() == 0:
+			continue
+		if k[1] == "normal":
+			var n := PackedVector3Array()
+			n.resize(a.size())
+			for i in a.size():
+				n[i] = (xform.basis * a[i]).normalized()
+			a = n
+		_save(dir, "%s_%s.bin" % [name, k[1]], a.to_byte_array())
+		info[k[1]] = true
+	var idx = arrays[Mesh.ARRAY_INDEX]
+	if idx != null and idx.size() > 0:
+		_save(dir, name + "_idx.bin", PackedInt32Array(idx).to_byte_array())
+		info["indices"] = idx.size()
+	return info
+
+
+func _save(dir: String, file: String, bytes: PackedByteArray) -> void:
+	var f := FileAccess.open(dir.path_join(file), FileAccess.WRITE)
+	f.store_buffer(bytes)
+
+
+func _dump(name: String) -> void:
+	var dir := ProjectSettings.globalize_path(OUT).path_join(name)
+	DirAccess.make_dir_recursive_absolute(dir)
+	var sea: Sea = _scene.get_node("Sea")
+	var cam: Camera3D = _scene.get_node("Camera")
+	var sky: SkyRig = _scene.get_node("SkyDay")
+	var env := sky.environment()
+	var data := {
+		"shot": name, "tier": sea.get_tier()["name"], "detail_layers": {"L": 2, "M": 3, "H": 4}[sea.get_tier()["name"]],
+		"render_time_ms": sea.render_time_ms,
+		"camera": {
+			"origin": _v(cam.global_position), "basis": [_v(cam.global_basis.x), _v(cam.global_basis.y), _v(cam.global_basis.z)],
+			"fov": cam.fov, "near": cam.near, "far": cam.far,
+		},
+		"sea_position": _v(sea.global_position),
+		"water": _uniforms(sea.material),
+		"sky": _uniforms(env.sky.sky_material),
+		"fog": {"density": env.fog_density, "color": _v(env.fog_light_color.srgb_to_linear())},
+		"tonemap": {"mode": env.tonemap_mode, "exposure": env.tonemap_exposure, "white": env.tonemap_white},
+		"ambient_energy": env.ambient_light_energy,
+	}
+	var surf: MeshInstance3D = sea.get_node("Surface")
+	data["grid"] = _write_arrays(dir, "grid", surf.mesh.surface_get_arrays(0))
+	var g := sea.model.exposure
+	data["exposure"] = {} if g.is_empty() else {"nx": g["nx"], "ny": g["ny"]}
+	if not g.is_empty():
+		_save(dir, "expo.bin", (g["e"] as PackedFloat32Array).to_byte_array())
+	SeaTextures.detail_image().save_png(dir.path_join("detail.png"))
+	SeaTextures.foam_image().save_png(dir.path_join("foam.png"))
+	# wakes
+	var wakes: SeaWakes = _scene.get_node("Wakes")
+	var ribbons := []
+	var wake_uniforms := {}
+	for mi in wakes.get_children():
+		if mi is MeshInstance3D and mi.mesh is ArrayMesh and mi.mesh.get_surface_count() > 0:
+			var n := "wake%d" % ribbons.size()
+			ribbons.append(_write_arrays(dir, n, mi.mesh.surface_get_arrays(0)))
+			ribbons[-1]["name"] = n
+			wake_uniforms = _uniforms(mi.material_override)
+	data["wakes"] = ribbons
+	data["wake_uniforms"] = wake_uniforms
+	# boat triangles (world), one entry per mesh surface with its albedo
+	var boats := []
+	var stack: Array = [_scene.get_node("Boat")]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		stack.append_array(n.get_children())
+		if n is MeshInstance3D and n.mesh:
+			for si in n.mesh.get_surface_count():
+				var mat: Material = n.get_active_material(si)
+				var col := Color(0.8, 0.8, 0.8)
+				if mat is BaseMaterial3D:
+					col = (mat as BaseMaterial3D).albedo_color
+				var bn := "boat%d" % boats.size()
+				var info := _write_arrays(dir, bn, n.mesh.surface_get_arrays(si), n.global_transform)
+				info["name"] = bn
+				info["albedo"] = _v(col.srgb_to_linear())
+				boats.append(info)
+	data["boat"] = boats
+	var f := FileAccess.open(dir.path_join("scene.json"), FileAccess.WRITE)
+	f.store_string(JSON.stringify(data, "  "))
+	print("  dumped ", name)

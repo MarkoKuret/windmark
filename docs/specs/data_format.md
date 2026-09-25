@@ -129,10 +129,30 @@ matching `type`.
 | block | owner | meaning |
 | --- | --- | --- |
 | `start` | designer | `{ "front_sail": id \| null }`: sail up at a race start unless the race says otherwise |
-| `handling` | designer | overrides of any `dynamics` value of the performance file (§4.2), copied by the VPP |
+| `handling` | designer | feel multipliers and `dynamics` overrides (§3.7.1) |
 | `visual` | boat generator | liveries, deck layout, hardware; opaque to the core and the VPP |
 
 Top level: `"schema": "windmark.boatclass/1"`, `"id"`, `"name"`, `"version"` (integer, bumped on every change).
+
+#### 3.7.1 `handling`
+
+Optional. Tunes how a class **feels** without touching how fast it is: the VPP computes the physical tables and
+then applies these multipliers when it writes the performance file. None of them changes a `polar`, `trim_speed`
+or any other speed target, so a class's speeds (and the AI's and HUD's view of them) stay physical.
+
+| field | | unit | default | range | scales in the performance file |
+| --- | --- | --- | --- | --- | --- |
+| `accel` | | – | 1.0 | 0.2 to 5 | every config's `accel` table (how fast the boat builds speed towards the polar) |
+| `decel` | | – | 1.0 | 0.2 to 5 | `dynamics.decel_linear` and `decel_const` (how fast it slows above its target, coasting, in irons) |
+| `turn_rate` | | – | 1.0 | 0.2 to 5 | yaw rate at every helm and speed: `dynamics.turn_radius_full` and `turn_radius_offset` are divided by it (`boat.md` §5.9); `rudder_drag_*` unchanged |
+| `heel` | | – | 1.0 | 0.2 to 5 | every config's `heel` table (clamped to π/2) and `dynamics.heel_max` (kept below `heel_limit`); `heel_speed_factor` and the main's `sheet_max_by_heel` are stretched along their heel axes by the same factor, so the speed at the scaled heel is what it was at the physical heel |
+| `tack_time` | | – | 1.0 | 0.2 to 5 | crew and helm speed in manoeuvres (> 1 is slower): `dynamics.helm_rate` and every sail's `rate_in`, `rate_out` and `pole_rate` are divided by it |
+
+The multipliers used are recorded in the performance file's `handling` block (§4.1), all five, defaults included;
+with every multiplier 1.0 the tables are exactly the physical ones.
+
+Any other key of `handling` names a `dynamics` value (§4.2) and overrides it absolutely: the VPP writes it as
+given, after the multipliers, unscaled. Unknown keys are reported and ignored.
 
 ### 3.8 Example (sportsboat)
 
@@ -177,12 +197,14 @@ Schematic:
   "class_id": "sb7", "class_version": 1,
   "class_sha256": "…",          // hash of the class file bytes it was generated from
   "generator": { "tool": "vpp", "version": "…" },
+  "handling": { "accel": 1.0, "decel": 1.0, "turn_rate": 1.0, "heel": 1.0, "tack_time": 1.0 },   // §3.7.1, record only
   "dynamics": { … },            // §4.2
   "sails":    { … },            // §4.4, keyed by sail id
   "configs":  [ … ],            // §4.3
   "start":    { "front_sail": "jib" }
 }
 ```
+`handling` records the feel multipliers the tables were written with (§3.7.1); the core does not apply them again.
 In online play the server announces `(class_id, class_version, sha256 of the perf file)` for every class in the
 race; a client with a different file does not join (`networking.md`).
 
@@ -208,7 +230,8 @@ reference values are in the owning spec.
 
 `collision.mass` = `displacement + crew.weight`. The VPP derives the dynamics values from the design where it can
 (turn radius from the rudder and hull length, heel spring from roll inertia and righting moment, shadow geometry
-from the rig) and uses the reference values of the owning spec otherwise; class-file `handling` overrides win.
+from the rig) and uses the reference values of the owning spec otherwise; then the class file's `handling`
+multipliers are applied and its `handling` overrides win (§3.7.1).
 
 ### 4.3 `configs`
 

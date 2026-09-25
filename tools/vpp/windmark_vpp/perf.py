@@ -14,8 +14,9 @@ Per config (main alone, main + each front sail), on the spec's axes:
 
 ``dynamics`` values are derived from the design where the VPP has the physics (turn radius, deceleration, heel
 and pitch springs, rudder drag, speed loss with heel, collision outline, wind-shadow geometry) and use the
-reference values of boat.md and wind_shadow.md scaled with the waterline length otherwise; class-file
-``handling`` overrides win. The ``vpp`` block (ignored by the core) records assumptions, VMG optima and
+reference values of boat.md and wind_shadow.md scaled with the waterline length otherwise. The class file's
+``handling`` multipliers scale the feel (``apply_handling``) and its other ``handling`` keys override dynamics
+values as given. The ``vpp`` block (ignored by the core) records assumptions, VMG optima and
 diagnostic tables.
 """
 
@@ -133,6 +134,7 @@ class Generator:
             "class_version": b.version,
             "class_sha256": b.sha256,
             "generator": {"tool": "vpp", "version": __version__},
+            "handling": dict(b.feel),
             "dynamics": dyn,
             "sails": sails,
             "configs": configs,
@@ -142,6 +144,14 @@ class Generator:
                                         "moment": list(self.hydro.righting_moment(
                                             np.radians([0, 5, 10, 15, 20, 25, 30, 40, 50, 60, 70, 80, 90])))}},
         }
+        apply_handling(out, b.feel)
+        if any(v != 1.0 for v in b.feel.values()):
+            self.notes.append("handling multipliers " + ", ".join(f"{k} {v:g}" for k, v in b.feel.items()))
+        for k, v in (b.handling or {}).items():
+            if k in dyn:
+                dyn[k] = v
+            else:
+                self.notes.append(f"handling.{k}: not a dynamics key, ignored")
         return sig9(out)
 
     def _solve(self, front, rig: Rig) -> ConfigResult:
@@ -437,11 +447,6 @@ class Generator:
                 if v is not None:
                     dyn["wind_shadow"][k] = v
             self.notes.append("collision outline, hull points and wind-shadow geometry from the boat generator")
-        for k, v in (b.handling or {}).items():
-            if k in dyn:
-                dyn[k] = v
-            else:
-                self.notes.append(f"handling.{k}: not a dynamics key, ignored")
         return dyn
 
     def _rudder_drag(self, turn_full, shift):
@@ -552,6 +557,53 @@ class Generator:
             h.update(s.handling or {})
             out["handling"] = h
         return out
+
+
+# -------------------------------------------------------------------------------------------------------------
+# handling multipliers (data_format.md 3.7.1): feel only, never the polar
+
+
+def _stretch_heel_axis(t: Dict, k: float) -> Dict:
+    """A Table1D over heel_abs resampled so the value at heel k*phi is the old value at phi."""
+    ph = np.array(t["axes"][0]["points"])
+    v = np.array(t["values"])
+    return table([("heel_abs", ph)], t["unit"], np.interp(ph / k, ph, v))
+
+
+def apply_handling(out: Dict, feel: Dict[str, float]):
+    """Scale the feel of a generated performance file in place; every multiplier 1 leaves it untouched.
+
+    accel: every config's ``accel`` table. decel: ``decel_linear`` and ``decel_const``. turn_rate: the yaw rate at
+    every helm and speed, by dividing ``turn_radius_full`` and ``turn_radius_offset``. heel: every config's
+    ``heel`` table and ``heel_max`` (below ``heel_limit``), with ``heel_speed_factor`` and the main's
+    ``sheet_max_by_heel`` stretched along their heel axes so the speed at the scaled heel is unchanged. tack_time:
+    ``helm_rate`` and every sail's ``rate_in``, ``rate_out`` and ``pole_rate`` divided by it.
+    """
+    ka, kd, kt, kh, kc = (float(feel.get(k, 1.0)) for k in ("accel", "decel", "turn_rate", "heel", "tack_time"))
+    dyn = out["dynamics"]
+    if ka != 1.0:
+        for c in out["configs"]:
+            c["accel"]["values"] = [x * ka for x in c["accel"]["values"]]
+    if kd != 1.0:
+        dyn["decel_linear"] *= kd
+        dyn["decel_const"] *= kd
+    if kt != 1.0:
+        dyn["turn_radius_full"] /= kt
+        dyn["turn_radius_offset"] /= kt
+    if kh != 1.0:
+        for c in out["configs"]:
+            c["heel"]["values"] = [min(x * kh, math.pi / 2) for x in c["heel"]["values"]]
+        dyn["heel_max"] = min(dyn["heel_max"] * kh, 0.98 * dyn["heel_limit"])
+        dyn["heel_speed_factor"] = _stretch_heel_axis(dyn["heel_speed_factor"], kh)
+        for s in out["sails"].values():
+            if "sheet_max_by_heel" in s:
+                s["sheet_max_by_heel"] = _stretch_heel_axis(s["sheet_max_by_heel"], kh)
+    if kc != 1.0:
+        dyn["helm_rate"] /= kc
+        for s in out["sails"].values():
+            for k in ("rate_in", "rate_out", "pole_rate"):
+                if k in s:
+                    s[k] /= kc
 
 
 def generate(boat: Boat, thin_ship: Optional[bool] = None, physics: Optional[Dict] = None) -> Dict:

@@ -56,7 +56,10 @@ All fields of `data_format.md` §3 are read as specified there. How the VPP uses
   of the mast height, the rest of the boat at a quarter of the freeboard.
 - `crew.hiking_arm` [0.45 `beam_max`]: the crew hikes as the heel asks, from a quarter of the arm upright to the
   full arm at 14° heel, so a light-air boat still heels a little.
-- `handling` overrides any `dynamics` value; `sails[].handling` overrides the sail's handling block.
+- `handling` (`data_format.md` §3.7.1): the five feel multipliers (`accel`, `decel`, `turn_rate`, `heel`,
+  `tack_time`, default 1.0) are applied to the physical tables as the file is written (`perf.apply_handling`) and
+  recorded in the performance file's `handling` block; they never change a speed table. Any other key overrides
+  that `dynamics` value as given. `sails[].handling` overrides the sail's handling block.
 
 **VPP additions not yet in the spec** (readers ignore unknown keys; proposed for the spec):
 
@@ -71,7 +74,8 @@ All fields of `data_format.md` §3 are read as specified there. How the VPP uses
 
 ## Output: performance file
 
-`windmark.perf/1` exactly as `data_format.md` §4 and §5 define it: header with the class hash, `dynamics`,
+`windmark.perf/1` exactly as `data_format.md` §4 and §5 define it: header with the class hash and the
+`handling` multipliers used, `dynamics`,
 `sails`, one entry per config (main alone, main + each front sail) with `polar`, `heel`, `accel`,
 `trim_speed`, `trim_heel`, `optimal_angle`, and `start`. Axes follow the spec's recommendation: TWS 0 to
 20.6 m/s (40 kn), TWA 0°, 7°, the no-go edge twice, then 2° steps to 60° and 5° steps to 180°; AWA every 5°;

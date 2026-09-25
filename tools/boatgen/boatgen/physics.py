@@ -207,6 +207,12 @@ def rig_data(boat):
         "mast_chord": _r(rig.chord, 3), "mast_width": _r(rig.width, 3),
         "spreaders": [g(t) for _, t in rig.spreaders],
     }
+    if rig.pole_flown:
+        # pivot on the mast axis at the heel height; at rest the pole points forward and its end is the tack
+        d["pole_pivot"] = g(rig.pole_pivot)
+        d["pole_axis"] = [0.0, 0.0, 1.0]
+        d["pole_length"] = _r(rig.pole_len, 3)
+        d["pole_end"] = g(rig.pole_end)
     if "wheel" in boat.pivots:
         d["wheel_hub"] = g(boat.pivots["wheel"])
         d["wheel_axis"] = [1.0, 0.0, 0.0]
@@ -225,7 +231,7 @@ def sail_data(boat):
                      "vertex_order": "row-major from the foot (row 0) to the head, luff (col 0) to leech; "
                                      "port layer first, then starboard layer",
                      "area_m2": _r(s.area, 3), "area_target_m2": target, "centroid": _r(to_body(s.centroid()[None], ox)[0], 4),
-                     "corners": corners}
+                     "corners": corners, "look": s.look(boat.hull.L)}
     return out
 
 

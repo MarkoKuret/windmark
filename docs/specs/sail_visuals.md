@@ -426,8 +426,8 @@ Flutter phase `φ = 0` unless stated.
 
 ## 13. Dependencies and open points
 
-- The generator must write the `look` block per sail (`tools/boatgen`), reference the collapsed head vertex (backlog
-  WM-017), and add a `pole` node (pivot at its heel on the mast, turning about the vertical) for classes with a
-  symmetric spinnaker.
+- The generator writes the `look` block per sail and a `pole` node (pivot at its heel on the mast, turning about the
+  vertical) for pole-flown spinnaker classes (`tools/boatgen`, WM-029). Still open: referencing the collapsed head
+  vertex (backlog WM-017).
 - Running rigging (sheets, halyards, guys) is not drawn yet; when it is, the sheets run from the placed clew.
 - Crew, winches and tell-tales follow the sail `motion` output (`sails.md` §7) and are specified with the crew.

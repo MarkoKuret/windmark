@@ -38,7 +38,7 @@ file (`data/classes/<id>.boat.json`) and the physics sidecar (`<id>.physics.json
 - the node set and total triangle count match the sidecar
 - every material slot is present as a shared `StandardMaterial3D`, opaque, back faces culled, with
   `extras.tiling_m` kept as metadata
-- `rudder`, `boom` and `wheel` sit on the sidecar pivots, with their geometry placed for turning about the
+- `rudder`, `boom`, `wheel` and `pole` sit on the sidecar pivots, with their geometry placed for turning about the
   right axis
 - sails: vertex and triangle counts, every vertex on its own grid node, corners where the sidecar puts them,
   and the two layers 2 mm apart with outward normals

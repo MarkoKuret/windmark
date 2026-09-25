@@ -38,11 +38,21 @@ target_sources(windmark_core PRIVATE
   src/shadow/shadow.cpp
 )
 
+# Venue physics file (data_format.md §6) into the environment structs.
+target_sources(windmark_core PRIVATE
+  src/data/venue.cpp
+)
+
 # boat and sails (WM-006): boat.md, sails.md
 target_sources(windmark_core PRIVATE
   src/boat/hull_sampling.cpp
   src/boat/boat.cpp
   src/sails/sails.cpp
+)
+
+# collisions (WM-008): collisions.md
+target_sources(windmark_core PRIVATE
+  src/collide/collide.cpp
 )
 target_include_directories(windmark_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 # PUBLIC: every target that links the core (tests, server, engine bindings) builds with the same float rules.

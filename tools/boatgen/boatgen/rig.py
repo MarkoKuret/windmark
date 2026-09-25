@@ -33,6 +33,16 @@ class Rig:
         self.masthead_rig = float(r["fractional"]) > 0.93
         self.sprit = float(r["bowsprit"])
         self.sprit_end = np.array([L + self.sprit, 0.0, float(hull.zs(np.array([L]))[0]) - 0.02 - 0.04 * self.sprit])
+        # spinnaker pole (docs/specs/sail_visuals.md 7.3): flown with a symmetric spinnaker, or with an asymmetric
+        # one on a class that has a pole and no bowsprit. At rest it points forward on the centreline at the tack
+        # height; its pivot is on the mast axis, so it turns with the sail about the mast.
+        types = {s["type"] for s in cls["sails"]}
+        self.pole_flown = "spinnaker_sym" in types or (
+            float(r["pole"]) > 0 and self.sprit <= 0 and "spinnaker_asym" in types)
+        self.pole_len = (float(r["pole"]) or 0.95 * float(r["J"])) if self.pole_flown else 0.0
+        z_pole = self.z_step + 1.0 * (L / 12) ** 0.5
+        self.pole_pivot = np.array([self.x_mast, 0.0, z_pole])
+        self.pole_end = np.array([self.x_mast + self.chord / 2 + self.pole_len, 0.0, z_pole])
         self.boom_len = self.E + 0.25 * self.scale
         self.gooseneck = np.array([self.x_mast_aft - 0.03, 0.0, self.z_boom])
         # spreaders
@@ -171,6 +181,25 @@ class Rig:
         p.add("carbon", tube(np.array([a, a + 0.62 * (b - a)]), 0.025 * s, 10))
         p.add("metal", tube(np.array([a + 0.55 * (b - a), b]), 0.016 * s, 10))
         self.boom_end = end
+        return p
+
+
+    def pole_part(self):
+        """Spinnaker pole in the boat frame, pointing forward from the mast front (the writer stores it relative
+        to its pivot on the mast axis)."""
+        p = Part()
+        s = self.scale
+        heel = np.array([self.x_mast + self.chord / 2, 0.0, self.pole_pivot[2]])
+        path = np.linspace(heel + [0.04 * s, 0, 0], self.pole_end - [0.05 * s, 0, 0], 10)
+        t = np.linspace(-1.0, 1.0, 10)
+        p.add("carbon", sweep(path, _circle(0.03 * s, 16), scale_along=1.0 - 0.3 * t ** 2))
+        # heel fitting on the mast ring and end fitting at the tack
+        p.add("metal", superellipsoid_box((0.08 * s, 0.05 * s, 0.05 * s), 0.5, 8, 5, center=heel + [0.03 * s, 0, 0]))
+        p.add("metal", superellipsoid_box((0.08 * s, 0.045 * s, 0.045 * s), 0.5, 8, 5,
+                                          center=self.pole_end - [0.03 * s, 0, 0]))
+        p.add("metal", revolve([(0.0, 0.0), (self.chord * 0.62, 0.0), (self.chord * 0.62, 0.05 * s), (0.0, 0.05 * s)],
+                               16).transformed(translate(self.pole_pivot - [0, 0, 0.025 * s])
+                                               @ np.diag([1, self.width / self.chord, 1, 1])))
         return p
 
 

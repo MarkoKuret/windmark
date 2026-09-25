@@ -14,4 +14,5 @@ Windmark is a working name.
 | `game/` | Front end (Godot) |
 | `tools/` | Boat generator, VPP, data tools |
 | `data/classes/`, `data/perf/` | Boat-class files and the performance tables generated from them |
+| `data/venues/` | Venue physics files (`windmark.venue/1`: wind field, current, sea exposure, land, obstacles); `example_bay` is a small hand-made example |
 | `docs/` | Design specs, plans, business and marketing |

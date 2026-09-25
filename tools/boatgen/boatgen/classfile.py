@@ -9,6 +9,7 @@ forward from the transom (x = 0) to the stem head (x = LOA); body x = internal x
 """
 import copy
 import json
+import math
 
 RHO_SEA = 1025.0     # kg/m^3, sea water
 RHO_LEAD = 11340.0   # kg/m^3
@@ -19,6 +20,10 @@ SCHEMA = "windmark.boatclass/1"
 SECTION_RATIO = {"v": 0.62, "round": 1.0, "u": 1.45, "flat": 2.0, "chined": 1.3}
 
 SAIL_TYPES = ("main", "jib", "genoa", "code_zero", "spinnaker_sym", "spinnaker_asym")
+
+# per-sail look parameters of docs/specs/sail_visuals.md section 4 (visual.sails.<id>.look)
+LOOK_KEYS = ("fill_gain", "fill_curve", "flutter_amp", "flutter_rate", "flutter_rate_max", "twist_top", "depth",
+             "tack_line_max", "furl_radius")
 
 
 class ClassFileError(ValueError):
@@ -194,6 +199,14 @@ def resolve(raw, path="<class>"):
             raise ClassFileError(f"$.sails[{i}].id {sid!r} is not unique")
         ids.add(sid)
         v = vs.get(sid, {}) or {}
+        look = v.get("look", {}) or {}
+        if not isinstance(look, dict):
+            raise ClassFileError(f"$.visual.sails.{sid}.look must be an object")
+        for k, x in look.items():
+            if k not in LOOK_KEYS:
+                raise ClassFileError(f"$.visual.sails.{sid}.look.{k} is not a look parameter ({', '.join(LOOK_KEYS)})")
+            if isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x) or x < 0:
+                raise ClassFileError(f"$.visual.sails.{sid}.look.{k} must be a finite number >= 0")
         sails.append({"id": sid, "type": st, "area": float(_req(s, "area", f"$.sails[{i}]")),
                       "luff": s.get("luff"), "leech": s.get("leech"), "foot": s.get("foot"),
                       "tack_x": None if s.get("tack_x") is None else to_int(s["tack_x"]),

@@ -37,6 +37,14 @@ target_sources(windmark_core_tests PRIVATE
 )
 target_compile_definitions(windmark_core_tests PRIVATE
   WINDMARK_ENV_VECTORS_FILE="${CMAKE_CURRENT_SOURCE_DIR}/vectors/env_vectors.txt")
+# Venue physics file loader (data_format.md §6).
+target_sources(windmark_core_tests PRIVATE
+  test_venue.cpp
+)
+# collisions (WM-008)
+target_sources(windmark_core_tests PRIVATE
+  test_collide.cpp
+)
 add_executable(windmark_gen_env_vectors ../tools/gen_env_vectors.cpp)
 target_link_libraries(windmark_gen_env_vectors PRIVATE windmark_core)
 target_include_directories(windmark_gen_env_vectors PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")

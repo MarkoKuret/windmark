@@ -10,8 +10,8 @@ not code. Launch timing also watches the market: avoid launching into a huge rel
 | --- | --- |
 | 1. Foundations | Repo, specs and tools in place |
 | 2. Clean core and boat data | One class sails from generated tables, headless tests pass |
-| 3. Online prototype | 8 boats race online with AI filling slots |
-| 4. Front end and boats | A race looks good enough to clip |
+| 3. Front end and boats | A race against AI looks good enough to clip |
+| 4. Online prototype | 8 boats race online with AI filling slots |
 | 5. First clips and Steam page | Clips posted, Discord open, Coming Soon page live |
 | 6. Closed online beta | Stable scheduled races with outside players |
 | 7. Public demo | Demo on Steam before the chosen Next Fest |
@@ -37,22 +37,23 @@ not code. Launch timing also watches the market: avoid launching into a huge rel
   (same seed and inputs → identical result).
 - First original class: a sportsboat or a GP monohull.
 
-## 3. Online prototype
+## 3. Front end and boats
+
+- Godot front end on a thin layer over the core: water, sky and sail shaders; generated boats with liveries.
+- HUD: speed, wind, laylines, rules hints, penalty display with the reason.
+- Controls for keyboard, gamepad and Steam Deck; camera modes.
+- Replay viewer with free camera and **clip export** (offline races record seed and inputs locally); scripted camera
+  paths for the trailer.
+- Minimal menus: quick race vs AI, settings (server browser and join come with phase 4).
+
+## 4. Online prototype
 
 - Headless authoritative server on the core; one room, up to 16 boats.
 - Client prediction with reconciliation for the own boat; 100–150 ms interpolation for others.
 - UDP with a reliability layer; delta snapshots with distance-banded update rates.
 - AI boats fill empty slots; players can join a race in progress at the next start.
-- Server replay recording (the basis for protests and clip export).
+- Server replay recording (the basis for protests and online clip export).
 - One cheap EU VPS; measured bandwidth and CPU per room.
-
-## 4. Front end and boats
-
-- Godot front end on a thin layer over the core: water, sky and sail shaders; generated boats with liveries.
-- HUD: speed, wind, laylines, rules hints, penalty display with the reason.
-- Controls for keyboard, gamepad and Steam Deck; camera modes.
-- Replay viewer with free camera and **clip export**; scripted camera paths for the trailer.
-- Minimal menus: quick race vs AI, server browser, join, settings.
 
 ## 5. First clips and Steam page
 
@@ -104,3 +105,4 @@ not code. Launch timing also watches the market: avoid launching into a huge rel
 | 13 | Community approach | Open: who contacts which club; Founders' Fleet gets badge, credits, free key |
 | 14 | Help | Open: a volunteer community manager from the beta, when? |
 | 15 | America's Cup push | Open: how much effort (generic foiling class, no event marks) |
+| 16 | Front end or online first | **Decided:** front end first (phase 3), a playable race against AI, then networking (phase 4) |

@@ -158,7 +158,6 @@ not the constraint.
 | Capsule and key art | ~$50 | Image model plus the owner's taste |
 | Trailer | €0 | In-house, scripted in-engine capture |
 | Audio | €0 | Own |
-| Localisation | €0 | Machine translation |
 | Servers | a few €/month | One cheap VPS until success |
 | Paid ads tests | €50–200 | Measured by cost per Discord join or signup (`MARKETING.md`) |
 | Events, merch | €0 | Only after revenue |

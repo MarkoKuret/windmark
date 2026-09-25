@@ -53,11 +53,11 @@ Every post links to one place: the Discord until the Steam page exists, then the
 | Week-1 sales / launch wishlists | Median 0.15× for games with >25k wishlists; 0.10× above $10 (Oct 2025) | [GameDiscoverCo](https://newsletter.gamediscover.co/p/the-state-of-steam-wishlist-conversions) |
 | "Popular Upcoming" | Driven by wishlist velocity; ~3–5k with steady daily adds (secondary estimate) | [Steam Page Analyzer](https://www.steampageanalyzer.com/blog/steam-popular-upcoming-list) |
 | Next Fest | One appearance per game; public Coming Soon page and demo before the fest; game unreleased until after | [Steamworks](https://partner.steamgames.com/doc/marketing/upcoming_events/nextfest) |
-| Next Fest dates | 19–26 Oct 2026; then usually Feb and June 2027 (confirm) | [Steam Page Analyzer](https://www.steampageanalyzer.com/blog/steam-next-fest-october-2026) |
+| Next Fest dates | Usually February, June and October | [Steam Page Analyzer](https://www.steampageanalyzer.com/blog/steam-next-fest-october-2026) |
 | Steam Playtest | Free, separate app, signup button on the main page, no effect on reviews | [Steamworks](https://partner.steamgames.com/doc/features/playtest) |
 
 **Targets:** 1k wishlists a month after the page opens, **5k+ by Next Fest**, 10k+ at Early Access. If the targets
-are far off by the planned fest, move to the next fest rather than burn the one appearance.
+are far off by a fest, take a later one rather than burn the one appearance.
 
 ## Assets
 
@@ -67,7 +67,6 @@ are far off by the planned fest, move to the next fest rather than burn the one 
 | Trailer | In-house, scripted in-engine capture (camera paths over replays). 60–90 s, first 5 s a close crossing, no logo intro | €0 |
 | Screenshots, GIFs | From replays: crossing, start, mark rounding, penalty replay; one at Steam Deck resolution | €0 |
 | Press kit | One-page fact sheet, trailer, screenshots, GIFs, logo, developer bio, "why rules matter" explainer; a club/coach one-pager later | €0 |
-| Localisation | Machine translation (EN, FR, DE, IT, ES, SL), community fixes | €0 |
 
 ## Community
 
@@ -79,10 +78,10 @@ are far off by the planned fest, move to the next fest rather than burn the one 
 
 ## Timeline (compressed, see `ROADMAP.md`)
 
-| When (from 2026-09-25) | Marketing |
+| Phase | Marketing |
 | --- | --- |
-| Weeks 1–3 | Handles and Discord reserved under the working name; clip capture tooling planned |
-| Weeks 3–5 | First clips posted; Discord opens; Steam page when clips look good |
-| Months 2–4 | Closed online beta (Founders' Fleet, pilot clubs); first paid tests (€50–200); public demo; sailing-media pitch |
-| Months 4–6 | Steam Next Fest with the demo (Feb 2027 if targets hold, else June 2027); Early Access launch after the fest |
-| After EA | America's Cup Naples (10–18 Jul 2027) clip push, "race the Cup course" community regatta (no event marks); streamer races; Club/Coach pilots; events and merch only after revenue |
+| Foundations | Handles and Discord reserved under the working name; clip capture tooling planned |
+| First clips | First clips posted; Discord opens; Steam page when clips look good |
+| Beta and demo | Closed online beta (Founders' Fleet, pilot clubs); first paid tests (€50–200); public demo; sailing-media pitch |
+| Launch | Steam Next Fest with the demo; Early Access launch after the fest, clear of huge release windows (e.g. GTA VI) |
+| After EA | Clip pushes around big sailing events (e.g. the America's Cup), "race the Cup course" community regatta (no event marks); streamer races; Club/Coach pilots; events and merch only after revenue |

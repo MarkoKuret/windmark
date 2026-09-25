@@ -7,7 +7,14 @@ extends Node3D
 ## The simulation (`sim_kind`): the Windmark core through CoreSimSource (the GDExtension, game/native/build.sh)
 ## on the venue `venue` without a race (free sailing, place_boat), or the FakeSim placeholder. AUTO takes the
 ## core when the extension is loaded and falls back to FakeSim otherwise. With `race_mode` (the core only) the
-## boat races alone on `course` from the core's spawn through the start sequence (CoreSimSource.create_race).
+## player races on `course` from the core's spawn through the start sequence (CoreSimSource.create_race) against
+## `fleet_size - 1` AI boats of `ai_level` (the core's AI skippers, ai.md), every boat drawn by its own BoatView
+## (hull, rig, sails at the distance update rates of sail_visuals.md §11, wakes). The player is boat 0.
+##
+## Set-up: the scene's exports, replaced by GameSetup.current() when the menus have written one (GameSetup.next
+## set) or `setup` is given, then by the command-line flags (see _user_args). Seed 0 picks one from the clock.
+## Spectating (spectate_next / prev / leader) steps through the boats when not racing (`racing` off, `watch`)
+## or once the player has finished, retired or left the race (cameras.md §1).
 ##
 ## The venue's land and obstacles are drawn by a VenueView from the core's shapes (the venue file on FakeSim),
 ## and the cameras keep out of them through CamTypes.Target.ground. In race mode a CourseView draws the marks,
@@ -42,9 +49,15 @@ enum SeaSource { AUTO, CORE_SAMPLES, PLACEHOLDER }
 ## start heading relative to the wind: + = starboard tack
 @export var start_twa_deg := 45.0
 @export var racing := true
-## core only: race alone on `course` (game/data/courses/<venue>/<id>) instead of free sailing
+## core only: race on `course` (game/data/courses/<venue>/<id>) instead of free sailing
 @export var race_mode := false
 @export var course := "example_bay/example_wl"
+## race mode: boats in the race including the player (the rest are AI), the AI level (CoreSimSource.AI_LEVELS),
+## "speed only" levels (ai.md §13), and `watch`: an AI sails the player's boat too and spectating is on
+@export_range(1, 40) var fleet_size := 1
+@export_enum("easy", "intermediate", "expert", "pro") var ai_level := "intermediate"
+@export var ai_speed_only := false
+@export var watch := false
 @export var auto_process := true
 ## FakeSim only. AUTO: the core's example bay samples when they exist, otherwise the placeholder sea
 @export var sea_source: SeaSource = SeaSource.AUTO
@@ -68,7 +81,12 @@ var runner: SimRunner
 var reader: InputReader
 var rig: CameraRig
 var hud: Hud
+## the player's boat node (boat_views[runner.boat])
 var boat_view: BoatView
+## one BoatView per boat, by boat index
+var boat_views: Array[BoatView] = []
+## the session set-up to apply instead of GameSetup.next (tests); null: GameSetup.next when the menus wrote one
+var setup: GameSetup = null
 var venue_view: VenueView
 ## race mode: the course drawn from the core
 var course_view: CourseView
@@ -85,10 +103,16 @@ var _banner_t := 0.0
 ## the own boat's sail states of the last two ticks (render interpolation)
 var _sails_prev: SimSource.SailsView
 var _sails_cur: SimSource.SailsView
+## every boat's sail states of the last two ticks, by boat index
+var _sails_prev_all: Array = []
+var _sails_cur_all: Array = []
 
 
 func _ready() -> void:
+	_apply_setup()
 	_user_args()
+	if world_seed == 0:
+		world_seed = 1 + (Time.get_ticks_usec() ^ int(Time.get_unix_time_from_system() * 1000.0)) % 2000000000
 	on_core = sim_kind == SimKind.CORE or (sim_kind == SimKind.AUTO and CoreSimSource.available())
 	var b := _setup_core() if on_core else _setup_fake()
 	assert(b >= 0, "class %s did not load" % class_id)
@@ -99,8 +123,7 @@ func _ready() -> void:
 	reader.name = "InputReader"
 	add_child(reader)
 	var info := sim.class_info(b)
-	boat_view = BoatView.create(info, info.rudder_max)
-	add_child(boat_view)
+	_build_views()
 	target.loa = info.loa
 	target.beam_max = info.beam_max
 	target.geometry = BoatGeometry.onboard(info, boat_view.model)
@@ -147,27 +170,113 @@ func _ready() -> void:
 	_build_course()
 	runner.ticked.connect(_on_tick)
 	hud.tick(sim, viewed)
-	_sails_cur = sim.sails(runner.boat)
+	_snapshot_sails(true)
 	_update_sea_time(0.0)
 	_update_target(0.0)
 	set_process(auto_process)
 
 
-## Command line after `--`: `--class=wm12`, `--fake` (FakeSim), `--core`, `--race` (race mode on `course`),
-## `--course=<venue>/<id>`.
+## GameSetup (the menus' session set-up) onto the scene's settings: `setup`, else GameSetup.current() when the
+## menus have written one. Without either the exports stand (free sailing, what GameSetup's defaults describe).
+func _apply_setup() -> void:
+	var gs := setup
+	if gs == null and GameSetup.next != null:
+		gs = GameSetup.current()
+	if gs == null:
+		return
+	race_mode = gs.mode == "race"
+	class_id = gs.class_id
+	venue = gs.venue
+	course = gs.course
+	fleet_size = clampi(gs.fleet_size, 1, 40) if race_mode else 1
+	ai_level = gs.ai_level
+	wind_speed_kn = gs.wind_kn
+	wind_from_deg = gs.wind_from_deg
+	world_seed = gs.seed
+
+
+## Command line after `--` (over GameSetup): `--race` (race mode on `course`; the fleet of GameSetup when no
+## `--fleet`), `--free`, `--fleet=10`, `--level=expert` (easy, intermediate, expert, pro), `--speed-only`,
+## `--watch` (an AI sails the player's boat too, spectating on), `--class=wm12`, `--venue=<id>`,
+## `--course=<venue>/<id>` (race mode), `--seed=<n>` (0: from the clock), `--wind=<kn>`, `--wind-from=<deg>`,
+## `--fake` (FakeSim), `--core`.
 func _user_args() -> void:
+	var fleet_given := false
+	var race_flag := false
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--class="):
 			class_id = a.trim_prefix("--class=")
 		elif a == "--race":
 			race_mode = true
+			race_flag = true
+		elif a == "--free":
+			race_mode = false
+			fleet_size = 1
 		elif a.begins_with("--course="):
 			course = a.trim_prefix("--course=")
 			race_mode = true
+			race_flag = true
+		elif a.begins_with("--fleet="):
+			fleet_size = clampi(a.trim_prefix("--fleet=").to_int(), 1, 40)
+			fleet_given = true
+		elif a.begins_with("--level="):
+			ai_level = a.trim_prefix("--level=").to_lower()
+		elif a == "--speed-only":
+			ai_speed_only = true
+		elif a == "--watch":
+			watch = true
+		elif a.begins_with("--venue="):
+			venue = a.trim_prefix("--venue=")
+		elif a.begins_with("--seed="):
+			world_seed = a.trim_prefix("--seed=").to_int()
+		elif a.begins_with("--wind="):
+			wind_speed_kn = a.trim_prefix("--wind=").to_float()
+		elif a.begins_with("--wind-from="):
+			wind_from_deg = a.trim_prefix("--wind-from=").to_float()
 		elif a == "--fake":
 			sim_kind = SimKind.FAKE
 		elif a == "--core":
 			sim_kind = SimKind.CORE
+	if race_flag and not fleet_given and fleet_size < 2:
+		fleet_size = GameSetup.new().fleet_size
+	if watch:
+		racing = false
+
+
+## One BoatView per boat (the player's is boat_view), reused when the fleet keeps its size and classes.
+func _build_views() -> void:
+	var n := sim.boat_count()
+	var same := boat_views.size() == n
+	for b in mini(n, boat_views.size()):
+		same = same and boat_views[b].info.id == sim.class_info(b).id
+	if not same:
+		for v in boat_views:
+			v.queue_free()
+		boat_views.clear()
+		for b in n:
+			var info := sim.class_info(b)
+			var v := BoatView.create(info, info.rudder_max)
+			v.name = "Boat%d_%s" % [b, info.id]
+			add_child(v)
+			boat_views.append(v)
+	boat_view = boat_views[runner.boat]
+
+
+## The sail states of every boat after a tick (`reset`: no previous ones).
+func _snapshot_sails(reset := false) -> void:
+	var n := sim.boat_count()
+	if reset or _sails_cur_all.size() != n:
+		_sails_prev_all.resize(n)
+		_sails_prev_all.fill(null)
+		_sails_cur_all.resize(n)
+		for b in n:
+			_sails_cur_all[b] = sim.sails(b)
+	else:
+		for b in n:
+			_sails_prev_all[b] = _sails_cur_all[b]
+			_sails_cur_all[b] = sim.sails(b)
+	_sails_prev = _sails_prev_all[runner.boat] if runner else null
+	_sails_cur = _sails_cur_all[runner.boat if runner else 0]
 
 
 ## extra world settings for the core (tests: a shorter free-sailing time before the warning signal)
@@ -206,7 +315,12 @@ func _make_core() -> CoreSimSource:
 	var b := cs.add_entry(class_id, {"human": true}) if ok else -1
 	if b >= 0:
 		if race_mode:
+			for i in fleet_size - 1:
+				if cs.add_ai(class_id, ai_level, ai_speed_only) < 0:
+					break
 			ok = cs.create_race(course)
+			if ok and watch:
+				cs.ai_take_over(b)
 		else:
 			ok = cs.place_boat(b, start_x, start_y, _start_psi())
 	if not ok or b != 0:
@@ -249,6 +363,11 @@ func reset_boat() -> void:
 		controls.bind(cs, b)
 		core_env.sim = cs
 		sea.set_sea(cs.sea_components(), cs.sea_exposure())
+		_build_views()
+		for i in boat_views.size():
+			wakes.remove_boat(i)
+		viewed = b
+		hud.local_commands = true
 		_build_course()
 	elif on_core:
 		(sim as CoreSimSource).place_boat(b, start_x, start_y, _start_psi())
@@ -257,8 +376,7 @@ func reset_boat() -> void:
 	controls.h_cmd = 0.0
 	controls.let_fly = false
 	wakes.remove_boat(b)
-	_sails_cur = sim.sails(b)
-	_sails_prev = null
+	_snapshot_sails(true)
 	hud.tick(sim, viewed)
 	_update_target(runner.alpha())
 	rig.retarget(target)
@@ -277,8 +395,7 @@ func _setup_fake() -> int:
 
 func _on_tick(_t: int) -> void:
 	hud.tick(sim, viewed)
-	_sails_prev = _sails_cur
-	_sails_cur = sim.sails(runner.boat)
+	_snapshot_sails()
 	if course_view:
 		course_view.tick()
 		_race_events()
@@ -349,13 +466,16 @@ func step_frame(dt: float) -> void:
 
 
 func _update_target(alpha: float) -> void:
-	var own := sim.render_pose(runner.boat, alpha)
-	boat_view.apply(own)
-	boat_view.apply_sails(_sails_prev, _sails_cur, alpha)
-	for b in sim.boat_count():
-		var p := own if b == runner.boat else sim.render_pose(b, alpha)
+	var n := mini(sim.boat_count(), boat_views.size())
+	for b in n:
+		var p := sim.render_pose(b, alpha)
+		var v := boat_views[b]
+		v.apply(p)
+		v.apply_sails(_sails_prev_all[b] if b < _sails_prev_all.size() else null,
+			_sails_cur_all[b] if b < _sails_cur_all.size() else null, alpha)
 		wakes.update_boat(b, _wake_state(b, p))
-	target.pose = own if viewed == runner.boat else sim.render_pose(viewed, alpha)
+		if b == viewed:
+			target.pose = p
 
 
 ## SeaWakes.update_boat state: the render pose and the class waterline (perf dynamics lwl, bwl).
@@ -392,7 +512,7 @@ func _ui_actions(r: RawInput) -> void:
 		_screenshot()
 	if r.was_pressed(&"reset_boat"):
 		reset_boat()
-	if not racing and sim.boat_count() > 1:
+	if can_spectate():
 		var n := sim.boat_count()
 		var before := viewed
 		if r.was_pressed(&"spectate_next"):
@@ -400,11 +520,41 @@ func _ui_actions(r: RawInput) -> void:
 		if r.was_pressed(&"spectate_prev"):
 			viewed = (viewed - 1 + n) % n
 		if r.was_pressed(&"spectate_leader"):
-			viewed = 0  # ranking comes with the race layer
+			viewed = leader()
 		if viewed != before:
 			hud.local_commands = viewed == runner.boat
 			_update_target(runner.alpha())
 			rig.retarget(target)
+
+
+## cameras.md §1: the player steps through the boats when not racing, or once their boat has finished, retired
+## or left the race.
+func can_spectate() -> bool:
+	if sim.boat_count() < 2:
+		return false
+	if not racing:
+		return true
+	if on_core and race_mode and (sim as CoreSimSource).core.has_race():
+		var rb: Dictionary = (sim as CoreSimSource).core.race_boat(runner.boat)
+		return bool(rb.get("finished", false)) or int(rb.get("ghost", 0)) != 0 or bool(rb.get("retired", false))
+	return false
+
+
+## The boat ranked first (race.md §8), or boat 0 without a race.
+func leader() -> int:
+	if on_core and race_mode and (sim as CoreSimSource).core.has_race():
+		var order: PackedInt32Array = (sim as CoreSimSource).core.race_order()
+		if order.size() > 0:
+			return order[0]
+	return 0
+
+
+## Views boat b (spectating) and cuts the cameras to it.
+func view_boat(b: int) -> void:
+	viewed = clampi(b, 0, sim.boat_count() - 1)
+	hud.local_commands = viewed == runner.boat
+	_update_target(runner.alpha())
+	rig.retarget(target)
 
 
 func _close_chat() -> void:

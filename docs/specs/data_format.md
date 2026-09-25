@@ -309,25 +309,29 @@ Schematic:
   "polar":        { table },       // Table2D(tws, twa_abs) -> m/s
   "heel":         { table },       // Table2D(tws, twa_abs) -> rad
   "accel":        { table },       // Table2D(tws, twa_abs) -> m/s²
+  "accel_rest":   { table },       // Table2D(tws, twa_abs) -> m/s², optional
   "trim_speed":   { table },       // Table3D(tws, awa_abs, trim_error) -> 1, optional
   "trim_heel":    { table },       // Table3D(tws, awa_abs, trim_error) -> 1, optional
   "weather_helm": { table },       // Table2D(tws, twa_abs) -> rad/s, optional
   "fall_off":     { table },       // Table2D(boat_speed, twa_abs) -> rad/s, optional
+  "flog_drag":    { table },       // Table2D(aws, awa_abs) -> m/s², optional
   "optimal_angle": { "main": { table }, "jib": { table } }   // Table2D(tws, awa_abs) -> rad
 }
 ```
 Semantics in `sails.md` §6. `front_sail` is `null` or the id of a front sail in `sails` (never the main); there
 is exactly one main-only config and exactly one config per front sail.
 
-**Coverage** (config tables only: `polar`, `heel`, `accel`, `trim_*`, `weather_helm`, `fall_off`,
-`optimal_angle`; the `dynamics` and `sails` tables are not checked): every `tws` axis has its first point exactly
-0 and its last point ≥ `20.6f` m/s (40 kn, rounded up); every `twa_abs` and `awa_abs` axis has its first point
-exactly 0 and its last point exactly the binary32 π (`PI`, `conventions.md` §6). Other axes are not constrained.
+**Coverage** (config tables only: `polar`, `heel`, `accel`, `accel_rest`, `trim_*`, `weather_helm`, `fall_off`,
+`flog_drag`, `optimal_angle`; the `dynamics` and `sails` tables are not checked): every `tws` axis has its first
+point exactly 0 and its last point ≥ `20.6f` m/s (40 kn, rounded up); every `twa_abs` and `awa_abs` axis has its
+first point exactly 0 and its last point exactly the binary32 π (`PI`, `conventions.md` §6); every `aws` axis has
+its first point exactly 0. Other axes are not constrained.
 
 `optimal_angle` is keyed by sail id and holds exactly the main and the config's front sail (only the main for
-main-only). `weather_helm` values may be any finite number (signed); `fall_off` ≥ 0 (§5). The VPP writes
-`fall_off` for every config (`sails.md` §6) and `trim_speed`, `trim_heel` that are 0 with the driving sail on the
-wind line; it does not write `weather_helm` yet (absent: 0).
+main-only). `weather_helm` values may be any finite number (signed); `accel_rest`, `fall_off` and `flog_drag`
+≥ 0 (§5). The VPP writes every table for every config (`sails.md` §6): `trim_heel` 0 with the driving sail on the
+wind line and `trim_speed` there 0 up to 90° AWA and the let-fly share beyond. Absent optional tables: `accel_rest`
+= `accel`, `weather_helm` and `flog_drag` 0.
 
 Above the no-go step the `polar` is never 0. Where no depowering holds a config (heel beyond the limit, or no way
 made at that angle) the VPP writes a low **broached speed**, with the `heel` at the limit and the `accel` of the
@@ -390,14 +394,15 @@ Schematic:
   | `boat_speed_abs` | m/s | ≥ 0 | absolute boat speed |
   | `helm_abs` | – | [0, 1] | absolute normalised helm |
   | `heel_abs` | rad | [0, π/2] | absolute heel |
+  | `aws` | m/s | ≥ 0 | apparent wind speed (over the moving boat, 10 m reference height) |
 
 - `unit` of the values: one of `m/s`, `rad`, `m/s2`, `rad/s`, `s`, `1`; it must be the unit this spec gives for
   that table.
 - Axes: 1 to 3, each with 1 to 256 points, non-decreasing, at most two equal points in a row (a step,
   `conventions.md` §8.1). The number of values is the product of the axis lengths.
-- Every value finite. Range checks per table: `polar` in [−5, 40], `heel` in [0, π/2], `accel` ≥ 0, `fall_off` ≥ 0,
-  durations ≥ 0, `trim_*` and `heel_speed_factor` in [0, 3], `optimal_angle`, `sheet_max_by_heel`, `pole_angle`,
-  `shiver_angle` in [0, π], `rudder_drag_*` and `weather_helm` any finite value.
+- Every value finite. Range checks per table: `polar` in [−5, 40], `heel` in [0, π/2], `accel`, `accel_rest`,
+  `fall_off`, `flog_drag` and durations ≥ 0, `trim_*` and `heel_speed_factor` in [0, 3], `optimal_angle`,
+  `sheet_max_by_heel`, `pole_angle`, `shiver_angle` in [0, π], `rudder_drag_*` and `weather_helm` any finite value.
 - Lookup and interpolation: `conventions.md` §8.
 
 Recommended axes for the VPP (fine where the tables bend):
@@ -407,7 +412,10 @@ Recommended axes for the VPP (fine where the tables bend):
 - `trim_error`: −60°, −20°, −10°, −5°, −2°, −0.5°, 0, 0.5°, 2°, then every 5° from 5° to 130°, 150°, 180° (fine
   enough that the trim tables can reach 0 on the wind line at each `awa_abs` without cutting the drive early,
   `sails.md` §6);
-- `fall_off`: `boat_speed` −6, 0, `v_f`/2, `v_f` m/s; `twa_abs` 0°, 10°, 20°, 60°, 90°, 180° (`sails.md` §6).
+- `fall_off`: `boat_speed` −6, 0, `v_f`/2, `v_f` m/s; `twa_abs` 0°, 10°, 20°, 60°, 90°, 180° (`sails.md` §6);
+- `flog_drag`: `aws` 0 to 10 m/s every 1 m/s, then 12, 14, 16, 18, 20, 23, 26, 30, 35, 40 m/s (the drag grows with
+  its square); `awa_abs` as the trim tables;
+- `rudder_drag_*`: `helm_abs` 0, 0.2, 0.3, then every 0.1 to 1 (the stall knee near 70 % helm).
 
 ## 6. Venue physics file (`windmark.venue/1`)
 

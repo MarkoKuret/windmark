@@ -30,6 +30,7 @@ const TableSpec kAccel{{Quantity::tws, Quantity::twa_abs}, Unit::m_s2, 0.0f, kIn
 const TableSpec kTrim{{Quantity::tws, Quantity::awa_abs, Quantity::trim_error}, Unit::one, 0.0f, 3.0f};
 const TableSpec kWeatherHelm{{Quantity::tws, Quantity::twa_abs}, Unit::rad_s, -kInf, kInf};
 const TableSpec kFallOff{{Quantity::boat_speed, Quantity::twa_abs}, Unit::rad_s, 0.0f, kInf};
+const TableSpec kFlogDrag{{Quantity::aws, Quantity::awa_abs}, Unit::m_s2, 0.0f, kInf};
 const TableSpec kOptimalAngle{{Quantity::tws, Quantity::awa_abs}, Unit::rad, 0.0f, PI};
 const TableSpec kHeelSpeedFactor{{Quantity::heel_abs}, Unit::one, 0.0f, 3.0f};
 const TableSpec kRudderDrag{{Quantity::boat_speed_abs, Quantity::helm_abs}, Unit::m_s2, -kInf, kInf};
@@ -316,7 +317,8 @@ class PerfReader {
     return true;
   }
 
-  // Coverage of the config tables (data_format.md §4.3): tws from 0 to >= 20.6 m/s, twa_abs/awa_abs 0 to pi.
+  // Coverage of the config tables (data_format.md §4.3): tws from 0 to >= 20.6 m/s, twa_abs/awa_abs 0 to pi, aws
+  // from 0.
   bool coverage(const Table& t, const std::string& p) {
     for (std::uint32_t a = 0; a < t.rank(); ++a) {
       const Axis& ax = t.axis(a);
@@ -325,6 +327,8 @@ class PerfReader {
         if (ax.points.front() != 0.0f || !(ax.points.back() >= kTwsCoverage)) {
           return fail(ap, "tws axis must run from 0 to at least 20.6 m/s");
         }
+      } else if (ax.q == Quantity::aws) {
+        if (ax.points.front() != 0.0f) return fail(ap, "aws axis must start at 0");
       } else if (ax.q == Quantity::twa_abs || ax.q == Quantity::awa_abs) {
         if (ax.points.front() != 0.0f || ax.points.back() != PI) {
           return fail(ap, std::string(quantity_name(ax.q)) + " axis must run from 0 to pi");
@@ -371,10 +375,12 @@ class PerfReader {
       }
       if (!config_table(c, p, "polar", kPolar, cfg.polar) || !config_table(c, p, "heel", kHeel, cfg.heel) ||
           !config_table(c, p, "accel", kAccel, cfg.accel) ||
+          !config_optional(c, p, "accel_rest", kAccel, cfg.accel_rest) ||
           !config_optional(c, p, "trim_speed", kTrim, cfg.trim_speed) ||
           !config_optional(c, p, "trim_heel", kTrim, cfg.trim_heel) ||
           !config_optional(c, p, "weather_helm", kWeatherHelm, cfg.weather_helm) ||
-          !config_optional(c, p, "fall_off", kFallOff, cfg.fall_off)) {
+          !config_optional(c, p, "fall_off", kFallOff, cfg.fall_off) ||
+          !config_optional(c, p, "flog_drag", kFlogDrag, cfg.flog_drag)) {
         return false;
       }
       // optimal_angle: exactly the main and the config's front sail, keyed by sail id.

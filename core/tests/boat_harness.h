@@ -28,6 +28,19 @@ inline const wm::PerfData& perf(const std::string& cls) {
   return *it->second;
 }
 
+// The class with its helm balance (weather_helm) switched off, for tests of other parts of the model that sail
+// with the helm centred and would otherwise have to steer against it (boat.md §10.1, §10.2; sails.md §8).
+inline const wm::PerfData& perf_no_helm_balance(const std::string& cls) {
+  static std::map<std::string, std::unique_ptr<wm::PerfData>> cache;
+  auto it = cache.find(cls);
+  if (it == cache.end()) {
+    auto p = std::make_unique<wm::PerfData>(perf(cls));
+    for (wm::ConfigPerf& c : p->configs) c.weather_helm.present = false;
+    it = cache.emplace(cls, std::move(p)).first;
+  }
+  return *it->second;
+}
+
 inline float kn(float knots) { return knots * wm::KNOT; }
 inline float deg(float d) { return d * wm::DEG; }
 inline float to_deg(float r) { return r / wm::DEG; }

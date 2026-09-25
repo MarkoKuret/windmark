@@ -10,6 +10,7 @@ namespace wm {
 namespace {
 
 constexpr float V_MAX = 40.0f;        // m/s, a data-error guard (boat.md §5.8)
+constexpr float ACCEL_BLEND = 0.5f;   // share of the target speed where accel_rest has blended into accel (§5.8)
 constexpr float CONTACT_KEEP = 0.9f;  // per tick (collisions.md §6)
 
 }  // namespace
@@ -116,11 +117,14 @@ void Boat::step(const BoatEnv& env) {
   const float polar_speed = c.polar.at(s_.tws, ta);
   const float heel_mag = c.heel.at(s_.tws, ta);
   const float accel = c.accel.at(s_.tws, ta);
+  const float accel_rest = c.accel_rest.present ? c.accel_rest.table.at(s_.tws, ta) : accel;
   const float trim_speed = c.trim_speed.present ? c.trim_speed.table.at(s_.tws, aa, eps) : 1.0f;
   const float trim_heel = c.trim_heel.present ? c.trim_heel.table.at(s_.tws, aa, eps) : 1.0f;
   // sails.md §6: the weather-helm rate is scaled by trim_heel.
   const float helm_luff = c.weather_helm.present ? c.weather_helm.table.at(s_.tws, ta) * trim_heel : 0.0f;
   const float helm_fall = c.fall_off.present ? c.fall_off.table.at(s_.v, ta) : 0.0f;
+  // §5.8: the sails eased toward the wind line flog on their free sheets and brake the boat.
+  const float flog = c.flog_drag.present ? c.flog_drag.table.at(s_.aws, aa) : 0.0f;
 
   // 5.6 waves: heave and pitch; wobble (§6.5)
   const HullSample hs = sample_hull(hull_, env.sea, s_.pos_x, s_.pos_y, s_.psi);
@@ -161,13 +165,24 @@ void Boat::step(const BoatEnv& env) {
       ((((polar_speed * trim_drive) * man_coef) * heel_coef) * surf_coef) * ctl_.performance_scale;
   const float err = target_speed - s_.v;
   float a = accel;
+  if (err > 0.0f && target_speed > 0.0f) {
+    // From rest the drive meets no hull resistance: the rate falls from accel_rest at rest (and in sternway) to
+    // accel at half the target speed (boat.md §5.8).
+    const float v_b = ACCEL_BLEND * target_speed;
+    if (s_.v < v_b) a = accel_rest + (accel - accel_rest) * (max(s_.v, 0.0f) / v_b);
+  }
   if (!(err > 0.0f)) {
     // Coast before drifting: a boat still making way loses it toward 0 first; only a stopped or backing boat is
     // pulled toward the negative drift of the no-go zone (boat.md §5.8, §7.4).
     const float err_d = (s_.v > 0.0f ? max(target_speed, 0.0f) : target_speed) - s_.v;
     a = d.decel_linear * err_d - d.decel_const;
+    // Flogging drag: with the sheets free (let fly, or the manual sheet eased) the share of the drive the sails
+    // have lost is sails flogging on the wind line (let fly: all of it); over-sheeted, stalled sails do not flog,
+    // and the auto-trim crew never lets them. Only while the boat makes way ahead.
+    const bool free_sheets = ctl_.let_fly || !ctl_.auto_trim;
+    if (free_sheets && s_.v > 0.0f && eps > 0.0f) a = a - (1.0f - trim_speed) * flog;
     if (std::fabs(err_d) < DT * std::fabs(a)) a = err_d / DT;
-  } else if (err < DT * accel) {
+  } else if (err < DT * a) {
     a = err / DT;
   }
   s_.v = s_.v + DT * a;

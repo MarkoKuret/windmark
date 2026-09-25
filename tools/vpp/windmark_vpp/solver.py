@@ -31,6 +31,11 @@ from .sails import COEFFS, Envelope, coefficients, envelope
 Z0_SEA = 2e-4            # m, sea surface roughness length of the wind profile
 REF_HEIGHT = 10.0        # m, height the true wind speed is quoted at
 WINDAGE_CD = 1.13        # Hazen/ORC windage coefficient on hull topsides and mast
+# Drag coefficients of a sail on the wind line, on its area: luffing with the sheet in (the sail lies in the wind
+# and shivers, as in a tack or in irons: the luffing drag of sails.COEFFS) and flogging on a free sheet (let fly:
+# the cloth, clew and sheets whip in the wind like a heavy flag; README "Luffing and let-fly").
+CD_LUFF = 0.06
+CD_FLOG = 0.30
 FLATS = np.linspace(0.1, 1.0, 16)
 REEFS = np.linspace(0.55, 1.0, 10)
 REEFABLE = ("main", "jib", "genoa")
@@ -110,11 +115,12 @@ class Rig:
         sb, cb = np.sin(beta_e), np.cos(beta_e)
         return q * (cl * sb - cdt * cb), q * (cl * cb + cdt * sb)
 
-    def windage_force(self, aws, awa):
-        """Drag (N) of hull, rig and flogging sails along the apparent wind, sails luffing."""
+    def windage_force(self, aws, awa, cd_sail=CD_LUFF):
+        """Drag (N) of hull, rig and the sails on the wind line along the apparent wind: luffing with the sheets in
+        (cd_sail = CD_LUFF) or flogging on free sheets (CD_FLOG)."""
         b = self.boat
         area = (WINDAGE_CD * (b.beam_max * b.freeboard + (b.mast_height - b.freeboard) * b.mast_chord)
-                + sum(0.06 * s.area for s in self.sails))
+                + sum(cd_sail * s.area for s in self.sails))
         area = area + WINDAGE_CD * b.loa * b.freeboard * 0.5 * np.abs(np.sin(awa))
         return 0.5 * RHO_AIR * aws * aws * area
 
@@ -258,6 +264,32 @@ class Solver:
             lo = np.where(back, mid, lo)
             hi = np.where(back, hi, mid)
         return 0.5 * (lo + hi)
+
+
+    def let_fly_speed(self, rig, tws, twa):
+        """Steady speed (m/s, >= 0) with every sail flogging on a free sheet (let fly): the windage and the flogging
+        sails push the boat along where the apparent wind is abaft the beam, against the upright hull; 0 where
+        they hold it back. Also the apparent wind angle at that speed."""
+        tw = wind_at(tws, rig.ce_height(1.0))
+        shape = np.broadcast(tws, twa).shape
+        tw = np.broadcast_to(tw, shape)
+        twa = np.broadcast_to(twa, shape)
+
+        def surplus(v):
+            aws, beta, _, _ = apparent(tw, twa, v, 0.0)
+            push = -rig.windage_force(aws, beta, CD_FLOG) * np.cos(beta)      # ahead component
+            return push - self.hull.resistance(v, 0.0 * v, 0.0 * v)
+
+        lo = np.zeros(shape)
+        hi = np.maximum(tw, 0.5)
+        for _ in range(40):
+            mid = 0.5 * (lo + hi)
+            up = surplus(mid) > 0
+            lo = np.where(up, mid, lo)
+            hi = np.where(up, hi, mid)
+        v = np.where(surplus(np.full(shape, 1e-3)) > 0, 0.5 * (lo + hi), 0.0)
+        _, beta, _, _ = apparent(tw, twa, v, 0.0)
+        return v, beta
 
 
 def added_mass_coefficient(lwl: float, amax: float) -> float:

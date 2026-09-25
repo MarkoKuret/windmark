@@ -20,12 +20,13 @@ std::string sail_name(const wm::PerfData& p, std::int32_t i) { return i < 0 ? "m
 
 
 // The class with the attitude wobble switched off, so the steady state is exactly the tables' (the wobble moves
-// heel and pitch by about 1 deg, and the heel changes the speed through heel_speed_factor).
+// heel and pitch by about 1 deg, and the heel changes the speed through heel_speed_factor), and without its helm
+// balance (the steady runs sail with the helm centred).
 const wm::PerfData& perf_no_wobble(const std::string& cls) {
   static std::map<std::string, wm::PerfData> cache;
   auto it = cache.find(cls);
   if (it == cache.end()) {
-    wm::PerfData p = perf(cls);
+    wm::PerfData p = perf_no_helm_balance(cls);
     p.dynamics.wobble_heel = 0.0f;
     p.dynamics.wobble_pitch = 0.0f;
     it = cache.emplace(cls, std::move(p)).first;
@@ -94,6 +95,7 @@ TEST_CASE("boat: steady polar and heel match the tables") {
       float worst_v = 0.0f, worst_h = 0.0f;
       for (float tws : kTwsSet) {
         for (int twa_d = 30; twa_d <= 180; twa_d += 10) {
+          if (!(c.polar.at(kn(tws), deg(static_cast<float>(twa_d))) > 0.0f)) continue;  // the config's no-go zone
           const Steady r = run_steady(p, c, tws, deg(static_cast<float>(twa_d)), 120.0f);
           if (r.boom_limited) {
             ++skipped;
@@ -123,11 +125,12 @@ TEST_CASE("boat: steady polar and heel match the tables") {
 // the boom-limited main); that offset is reported and bounded at 1.5 %.
 TEST_CASE("boat: steady state with the attitude wobble") {
   for (const std::string cls : kClasses) {
-    const wm::PerfData& p = perf(cls);
+    const wm::PerfData& p = perf_no_helm_balance(cls);
     for (const wm::ConfigPerf& c : p.configs) {
       float worst_v = 0.0f, worst_h = 0.0f;
       for (float tws : kTwsSet) {
         for (int twa_d = 30; twa_d <= 180; twa_d += 10) {
+          if (!(c.polar.at(kn(tws), deg(static_cast<float>(twa_d))) > 0.0f)) continue;
           const Steady r = run_steady(p, c, tws, deg(static_cast<float>(twa_d)), 120.0f);
           if (r.boom_limited) continue;
           const float dv = (r.v_mean - r.expect_v) / wm::max(std::fabs(r.expect_v), 0.05f);
@@ -173,11 +176,12 @@ float upwind_twa(const wm::ConfigPerf& c, float tws) {
 
 }  // namespace
 
-// §10.2: at 8 kn TWS on a beam reach with full helm the circle has radius turn_radius_full within 1 %.
+// §10.2: at 8 kn TWS on a beam reach with full helm the circle has radius turn_radius_full within 1 % (helm
+// balance off: it adds its own turn rate to the circle's).
 TEST_CASE("boat: turning circle at full helm") {
   for (const std::string cls : kClasses) {
-    Sim sim(cls, 8.0f, 0.0f);
-    const wm::PerfData& p = perf(cls);
+    const wm::PerfData& p = perf_no_helm_balance(cls);
+    Sim sim(p, 8.0f, 0.0f);
     sim.place(deg(90.0f), p.config_for(p.start_front_sail)->polar.at(kn(8.0f), deg(90.0f)), p.start_front_sail);
     sim.boat.set_helm(-1.0f);  // bear away from the beam reach: the boat keeps its way into the turn
     while (sim.s().h > -1.0f) sim.step();
@@ -209,7 +213,10 @@ TackResult tack(const wm::PerfData& p, float tws, float helm) {
   const float twa = upwind_twa(c, kn(tws));
   Sim sim(p, tws, 0.0f);  // wind from the north: upwind progress is +y
   sim.place(twa, c.polar.at(kn(tws), twa), p.start_front_sail);
-  sim.run(30.0f);
+  for (int i = 0; i < static_cast<int>(30.0f / DT); ++i) {
+    sim.steer_twa(twa);  // hold close-hauled against the helm balance
+    sim.step();
+  }
   const float v_steady = sim.s().v;
   const float y0 = sim.s().pos_y;
   const float vmg = v_steady * wm::wm_cos(twa);
@@ -291,8 +298,9 @@ IronsResult irons(const wm::PerfData& p) {
 }  // namespace
 
 // §10.4: head to wind at rest with the helm centred the boat gathers sternway and the bow stays within 15 deg of
-// the wind for 30 s; backing the bow off with reversed helm gets it sailing at half its polar speed within 20 s
-// (the fall_off table swings the bow away while the boat has no way on).
+// the wind for 30 s; backing the bow off with reversed helm gets it sailing at half its polar speed within 20 s, 17 s
+// on the shipped classes (the fall_off table swings the bow away while the boat has no way on, accel_rest gets it
+// moving out of the sternway).
 TEST_CASE("boat: in irons and recovery") {
   for (const std::string cls : kClasses) {
     const wm::ConfigPerf& c = *perf(cls).config_for(perf(cls).start_front_sail);
@@ -303,6 +311,153 @@ TEST_CASE("boat: in irons and recovery") {
     CHECK(r.v_after < -0.05f);
     CHECK(r.worst_twa < deg(15.0f));
     CHECK(r.t50 > 0.0f);
+    CHECK(r.t50 < 17.0f);  // the 20 s target with a 3 s margin
+  }
+}
+
+namespace {
+
+// Seconds from letting fly on steady close-hauled at `tws` kn until the speed is below `below` (m/s), -1 if not
+// within 60 s; helm 0.
+float let_fly_time(const wm::PerfData& p, float tws, float below) {
+  const wm::ConfigPerf& c = *p.config_for(p.start_front_sail);
+  const float twa = upwind_twa(c, kn(tws));
+  Sim sim(p, tws, 0.0f);
+  sim.place(twa, c.polar.at(kn(tws), twa), p.start_front_sail);
+  for (int i = 0; i < static_cast<int>(30.0f / DT); ++i) {
+    sim.steer_twa(twa);
+    sim.step();
+  }
+  sim.boat.set_let_fly(true);
+  sim.boat.set_helm(0.0f);
+  for (int i = 0; i < static_cast<int>(60.0f / DT); ++i) {
+    sim.step();
+    if (sim.s().v < below) return static_cast<float>(i + 1) * DT;
+  }
+  return -1.0f;
+}
+
+}  // namespace
+
+// §10.6: let fly on close-hauled at 10 kn, the flogging sails and the windage brake the boat: under 1 kn within
+// about 10 s.
+TEST_CASE("boat: let fly slows the boat") {
+  for (const std::string cls : kClasses) {
+    const wm::PerfData& p = perf(cls);
+    for (float tws : {6.0f, 10.0f, 16.0f, 22.0f}) {
+      const wm::ConfigPerf& c = *p.config_for(p.start_front_sail);
+      const float v0 = c.polar.at(kn(tws), upwind_twa(c, kn(tws)));
+      const float t1 = let_fly_time(p, tws, kn(1.0f));
+      const float t_half = let_fly_time(p, tws, 0.5f * v0);
+      MESSAGE(cls, " ", tws, " kn: let fly from ", to_kn(v0), " kn: half speed in ", t_half, " s, under 1 kn in ",
+              t1, " s");
+      CHECK(t1 > 0.0f);
+      CHECK(t_half < t1);
+      // S target at 10 kn; the heavier L boat carries its way longer (reported, see backlog WM-044).
+      if (tws == 10.0f && cls == "wm7") CHECK(t1 < 12.0f);
+      if (tws == 10.0f && cls == "wm12") CHECK(t1 < 20.0f);
+    }
+  }
+}
+
+namespace {
+
+// Seconds for a full-helm 360 (a penalty turn: a tack and a gybe) from steady sailing on starboard at `twa0` (0:
+// close-hauled) and `tws` kn, entered at `entry` times the steady speed (a boat slowed by the incident); upwind and
+// reaching the boat luffs first, running (from 100 deg) it bears away first, as a sailor does. -1 if the heading
+// has not turned through 360 deg within 90 s; `v_min` is the lowest speed on the way.
+float penalty_turn(const wm::PerfData& p, float tws, float twa0, float entry, float& v_min) {
+  const wm::ConfigPerf& c = *p.config_for(p.start_front_sail);
+  const float twa = twa0 > 0.0f ? twa0 : upwind_twa(c, kn(tws));
+  const float dir = twa < deg(100.0f) ? 1.0f : -1.0f;
+  Sim sim(p, tws, 0.0f);
+  sim.place(twa, c.polar.at(kn(tws), twa), p.start_front_sail);
+  for (int i = 0; i < static_cast<int>(30.0f / DT); ++i) {
+    sim.steer_twa(twa);
+    sim.step();
+  }
+  sim.boat.mutable_state().v = entry * sim.s().v;
+  float turned = 0.0f;
+  v_min = sim.s().v;
+  for (int i = 0; i < static_cast<int>(90.0f / DT); ++i) {
+    const float psi0 = sim.s().psi;
+    sim.boat.set_helm(dir);  // starboard tack: + = bow to starboard, up into the wind
+    sim.step();
+    turned += dir * wm::wrap_pi(sim.s().psi - psi0);
+    v_min = wm::min(v_min, sim.s().v);
+    if (turned >= wm::TWO_PI) return static_cast<float>(i + 1) * DT;
+  }
+  return -1.0f;
+}
+
+}  // namespace
+
+// §10.8, a penalty turn (rules.md) with the helm hard over: at full speed a full-helm 360 gets round on both classes from
+// close-hauled and from a reach at every wind, and from a run too at 10 kn; the other runs and the entries at half
+// speed are reported (a slow boat that slams the helm can stall head to wind, as a real one does).
+TEST_CASE("boat: full-helm 360") {
+  for (const std::string cls : kClasses) {
+    for (float tws : {6.0f, 10.0f, 16.0f, 22.0f}) {
+      for (float twa0 : {0.0f, deg(90.0f), deg(150.0f)}) {
+        for (float entry : {1.0f, 0.5f}) {
+          float v_min = 0.0f;
+          const float t = penalty_turn(perf(cls), tws, twa0, entry, v_min);
+          MESSAGE(cls, " ", tws, " kn, from ", (twa0 > 0.0f ? to_deg(twa0) : 0.0f), " deg (0: close-hauled) at ",
+                  entry * 100.0f, " % speed: full-helm 360 in ", t, " s, lowest speed ", to_kn(v_min), " kn");
+          if (entry == 1.0f && (twa0 < deg(100.0f) || tws == 10.0f)) CHECK(t > 0.0f);
+        }
+      }
+    }
+  }
+}
+
+// §10.7: the helm balance. Close-hauled in 12 kn with the start config (the balance point of the class) the boat
+// holds its course with the helm centred; on a spinnaker broad reach in a strong breeze it rounds up (a broach)
+// unless the helm holds it, and holding it costs speed through the rudder drag.
+TEST_CASE("boat: helm balance") {
+  for (const std::string cls : kClasses) {
+    const wm::PerfData& p = perf(cls);
+    const wm::ConfigPerf& up = *p.config_for(p.start_front_sail);
+    REQUIRE(up.weather_helm.present);
+    const float tws_b = 6.0f;  // m/s, the balance breeze of the VPP (about 12 kn)
+    const float twa_b = upwind_twa(up, tws_b);
+    const float wh_b = up.weather_helm.table.at(tws_b, twa_b);
+    MESSAGE(cls, ": helm balance close-hauled at ", to_kn(tws_b), " kn ", to_deg(wh_b), " deg/s");
+    CHECK(std::fabs(wh_b) < deg(1.0f));
+    Sim sim(p, to_kn(tws_b), 0.0f);
+    sim.place(twa_b, up.polar.at(tws_b, twa_b), p.start_front_sail);
+    sim.run(30.0f);
+    CHECK(std::fabs(sim.s().twa - twa_b) < deg(3.0f));
+
+    // the last front sail is the spinnaker
+    const std::int32_t kite = static_cast<std::int32_t>(p.sails.size()) - 1;
+    const wm::ConfigPerf& dn = *p.config_for(kite);
+    const float twa = deg(130.0f);
+    const float wh = dn.weather_helm.table.at(kn(22.0f), twa);
+    Sim free_run(p, 22.0f, 0.0f);
+    free_run.place(twa, dn.polar.at(kn(22.0f), twa), kite);
+    free_run.run(5.0f);
+    Sim held(p, 22.0f, 0.0f);
+    held.place(twa, dn.polar.at(kn(22.0f), twa), kite);
+    const int n = static_cast<int>(30.0f / DT), tail = static_cast<int>(10.0f / DT);
+    float twa_m = 0.0f, h_m = 0.0f, v_m = 0.0f;  // means over the last 10 s
+    for (int i = 0; i < n; ++i) {
+      held.steer_twa(twa, 1.0f, 6.0f);
+      held.step();
+      if (i >= n - tail) {
+        twa_m += held.s().twa / static_cast<float>(tail);
+        h_m += held.s().h / static_cast<float>(tail);
+        v_m += held.s().v / static_cast<float>(tail);
+      }
+    }
+    MESSAGE(cls, ": kite at 22 kn, 130 deg: helm balance ", to_deg(wh), " deg/s; helm 0 for 5 s: twa ",
+            to_deg(free_run.s().twa), " deg; held at ", to_deg(twa_m), " deg: helm ", h_m, ", v ", to_kn(v_m),
+            " kn of ", to_kn(dn.polar.at(kn(22.0f), twa)), " kn");
+    CHECK(wh > deg(5.0f));
+    CHECK(free_run.s().twa < twa - deg(20.0f));
+    CHECK(std::fabs(twa_m - twa) < deg(4.0f));
+    CHECK(h_m < 0.0f);  // helm to bear away (starboard tack: the bow to port)
+    CHECK(v_m < dn.polar.at(kn(22.0f), twa));
   }
 }
 

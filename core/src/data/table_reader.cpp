@@ -24,6 +24,7 @@ QuantityRange quantity_range(Quantity q) {
     case Quantity::boat_speed: return {-inf, inf};
     case Quantity::boat_speed_abs: return {0.0f, inf};
     case Quantity::helm_abs: return {0.0f, 1.0f};
+    case Quantity::aws: return {0.0f, inf};
     case Quantity::heel_abs: return {0.0f, HALF_PI};
   }
   return {-inf, inf};

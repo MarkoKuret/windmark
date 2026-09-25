@@ -168,10 +168,12 @@ With `c` the config's tables (`sails.md` §6), `ta = fabsf(twa)`, `aa = fabsf(aw
 polar_speed = c.polar(tws, ta)                 // m/s, negative inside the no-go zone (§7.4)
 heel_mag    = c.heel(tws, ta)                  // rad, >= 0
 accel       = c.accel(tws, ta)                 // m/s², >= 0
+accel_rest  = c.accel_rest ? c.accel_rest(tws, ta) : accel     // m/s², >= 0: from rest
 trim_speed  = c.trim_speed ? c.trim_speed(tws, aa, eps) : 1
 trim_heel   = c.trim_heel  ? c.trim_heel(tws, aa, eps)  : 1
 helm_luff   = c.weather_helm ? c.weather_helm(tws, ta) * trim_heel : 0   // rad/s, + = toward the wind
 helm_fall   = c.fall_off ? c.fall_off(v, ta) : 0                  // rad/s, >= 0, away from the wind
+flog        = c.flog_drag ? c.flog_drag(aws, aa) : 0              // m/s², >= 0, sails flogging (§5.8)
 ```
 `fall_off` is looked up with the speed **before** this tick's speed update. The weather helm is scaled by
 `trim_heel` (`sails.md` §6): an over-sheeted sail plan rounds up sooner, a flogging one not at all.
@@ -211,10 +213,15 @@ target_speed = ((((polar_speed * trim_drive) * man_coef) * heel_coef) * surf_coe
 err = target_speed - v
 if err > 0:
     a = accel
+    if target_speed > 0:                                         // from rest: accel_rest, blending into accel
+        v_b = ACCEL_BLEND*target_speed                           // ACCEL_BLEND = 0.5
+        if v < v_b: a = accel_rest + (accel - accel_rest)*(max(v, 0)/v_b)
     if err < DT*a: a = err / DT                                  // never overshoot the target
 else:
     err_d = (v > 0 ? max(target_speed, 0) : target_speed) - v    // coast before drifting
     a = decel_linear*err_d - decel_const
+    free = let_fly || !auto_trim                                 // the sheets are free
+    if free and v > 0 and eps > 0: a = a - (1 - trim_speed)*flog // flogging sails brake the boat
     if fabsf(err_d) < DT*fabsf(a): a = err_d / DT
 v = v + DT*a
 turning_up = (h * tack) > 0                                      // helm turns the bow toward the wind
@@ -235,6 +242,18 @@ drops.
   the no-go zone, let fly, in a calm) loses its way toward 0 along the deceleration law; only a stopped or backing
   boat is pulled toward the negative drift. The law lands exactly on 0 (the overshoot clamp), and the drift takes
   over from the next tick.
+- **Flogging sails**: `decel_linear` and `decel_const` are the hull coasting with the sails luffing on their
+  sheets (a tack, a luff head to wind). With the sheets free (let fly held, or the manual sheet eased past the
+  optimum) the sails flog on the wind line, and their drag (`flog_drag`, which grows with the square of the
+  apparent wind and is 0 with the apparent wind abaft the beam) brakes the boat in proportion to the drive the
+  trim has lost, `1 − trim_speed`: all of it with let-fly. Over-sheeted sails (`eps < 0`) stall, they do not
+  flog; the auto-trim crew never lets the sails flog (the headsail crossing in a tack is sheeted across at once).
+  Downwind the flogging sails push instead: `trim_speed` on the wind line holds the let-fly speed there
+  (`sails.md` §6), so a boat that lets fly on a run slows to the speed the windage drives, not to rest.
+- **From rest**: the acceleration table is fitted to the build-up from half the polar to 90 % of it (the speeds a
+  boat rebuilds through after a tack or a gybe). From rest the drive meets no hull resistance ahead, so the boat
+  starts faster: below half its target speed the rate blends linearly from `accel_rest` at rest (and in sternway
+  with the sails drawing) to `accel` at half the target.
 
 ### 5.9 Turning and translation
 ```
@@ -258,7 +277,10 @@ psi = wrap_2pi(psi + dpsi)
   the helm works backwards, as on a real boat.
 - `helm_luff` is the helm balance of the sail plan: positive = the boat wants to round up (weather helm), which
   makes an overpowered boat or a spinnaker reach at high wind broach unless the helm counters it; negative =
-  the sails push the bow away (a spinnaker flown too high).
+  the sails push the bow away (a spinnaker flown too high). The VPP derives it from the yaw moment of the sail
+  plan about the centre of lateral resistance, expressed as the turn rate of the helm that holds it (so holding
+  a course against it takes exactly that helm, and pays its rudder drag); the class balances with the helm
+  centred close-hauled in a moderate breeze (`sails.md` §6).
 - `helm_fall` turns a slow or backing boat away from the wind; it is what lets a boat stuck head to wind fall
   off onto a tack (§7.4).
 - Position uses the heading at the middle of the tick, which is second-order accurate for the arc.
@@ -340,7 +362,8 @@ Nothing special is coded; a tack emerges from the tables.
    rudder's stall (§5.9, about 70 % helm) the boat turns little faster while the drag keeps growing.
 2. Inside the no-go zone the polar target drops to about zero, then negative (§7.4): the boat coasts, `v` falling
    along `decel_linear·v + decel_const` (coast before drifting, §5.8), so it carries its way through the wind; a
-   light boat loses it faster (S: 0.045/s plus 0.08 m/s²) than a heavy one (L: 0.025/s plus 0.044 m/s²).
+   light boat loses it faster (S: 0.045/s plus 0.08 m/s²) than a heavy one (L: 0.025/s plus 0.044 m/s²). The
+   sails luff on their sheets, they do not flog (§5.8), unless the sheet was eased or let fly.
 3. The wind crosses the bow: `tack` flips, the sails' targets flip sides and the sails swing across at their
    sheet rates (`sails.md` §5.5); until they settle, their trim error keeps the drive down.
 4. On the new tack the boat accelerates along the acceleration table, which is small close to the wind: bearing
@@ -363,16 +386,21 @@ pushes the boat astern (reference: about −0.12·TWS right head to wind, −0.0
 sternway the helm steers backwards and the `fall_off` table swings the bow away (reference: S 8°/s, L 5°/s for
 `|TWA|` from 20° to 60° with no way on or in sternway, fading out by 90°, where a stopped boat lies beam on; none
 below 10°; fading to 0 at a crawl ahead, Froude number 0.05: about 0.4 m/s S, 0.7 m/s L, where the keel starts
-to hold the heading). Recovery is therefore: helm to back the bow off, then sail away as the sails fill. Right
-head to wind with no helm the boat stays in irons, drifting astern.
+to hold the heading). Recovery is therefore: helm to back the bow off, then sail away as the sails fill (from rest and out of sternway
+along `accel_rest`, §5.8). Right head to wind with no helm the boat stays in irons, drifting astern.
 
 ### 7.5 Luffing, stall, let-fly
 - **Luffing**: sails eased past their optimum (`eps > 0`) lose drive through `trim_speed` down to 0 when the sail
   is at the wind line, and heel through `trim_heel`.
 - **Stall**: sails sheeted past the optimum (`eps < 0`) lose some speed (reference: to 0.7–0.75 at 15–20° over)
   and heel more.
-- **Let-fly** (`sails.md` §5.3) puts every sail on the wind line: drive goes to zero (`trim_speed` is 0 there) and
-  the boat coasts down along the deceleration law. Used to kill speed before the start or to avoid a collision.
+- **Let-fly** (`sails.md` §5.3) puts every sail on the wind line: with the apparent wind forward of the beam the
+  drive goes to zero (`trim_speed` is 0 there) and the boat coasts down along the deceleration law, braked by its
+  flogging sails (§5.8): close-hauled at 10 kn an S boat is under 1 kn within about 8 s (half its speed in about
+  5 s); a heavy L boat carries its way about twice as long. Used to kill speed before the start or to avoid a
+  collision. Abaft the beam the windage and the flogging sails still push the boat along at the let-fly speed
+  (reference S running in 10 kn: about 0.7 of the polar with the jib), so letting fly on a run slows the boat
+  without stopping it.
 
 ### 7.6 Puffs, lulls and shifts
 A puff raises `tws` and so the target speed and heel; the boat accelerates along the acceleration table and heels
@@ -380,9 +408,10 @@ along its spring, so a puff is felt first as heel, then as speed. A header lower
 toward the no-go zone: the helmsman must bear away (or tack) to keep speed.
 
 ### 7.7 Start from standstill
-From `v = 0` with sails trimmed on a reach, the boat accelerates at the table rate (reference S at 10 kn TWS: about
-0.3 m/s² on a beam reach), reaching the polar in 10–20 s. Close-hauled from a standstill it is much slower, which
-is why a good start needs speed built before the gun.
+From `v = 0` with sails trimmed on a reach, the boat accelerates at `accel_rest` (the drive at rest over the mass;
+reference S at 10 kn TWS: about 0.5 m/s² on a beam reach), blending into the table rate (about 0.3 m/s²) by half
+its speed, and reaches the polar in 10–20 s. Close-hauled from a standstill it is much slower, which is why a good
+start needs speed built before the gun.
 
 ## 8. Edge cases
 
@@ -408,17 +437,25 @@ is why a good start needs speed built before the gun.
 
 ## 10. Headless tests
 
-1. **Polar**: for each config, TWS in {4, 6, 8, 10, 12, 16, 20, 25} kn and TWA in 30°–180°, placed at the table
-   speed, auto-trim, flat water, no shadows, helm 0: after 120 s the speed equals
+1. **Polar**: for each config, TWS in {4, 6, 8, 10, 12, 16, 20, 25} kn and TWA in 30°–180° where the config
+   sails (polar above 0), placed at the table speed, auto-trim, flat water, no shadows, helm 0, helm balance
+   (`weather_helm`) off: after 120 s the speed equals
    `polar_speed · heel_speed_factor(heel)` within 0.5 % and the heel equals the heel target within 0.2°. With the
    attitude wobble on, the mean heel stays within 0.2° and the mean speed within 1.5 % (the wobble reaches the
    speed only through the heel).
-2. **Turning circle**: at 8 kn TWS on a beam reach, full helm: the steady circle radius equals `turn_radius_full`
-   within 1 %.
+2. **Turning circle**: at 8 kn TWS on a beam reach, full helm, helm balance off: the steady circle radius equals
+   `turn_radius_full` within 1 %.
 3. **Tack**: from steady close-hauled at 10 kn, a tack with helm 0.5: time and distance lost against a reference
    run stay within the class targets (S: under 12 s back to 90 % speed); a full-helm tack gets round too and loses
    more distance than the helm-0.5 tack. Every class tacks at 6, 10, 16 and 22 kn with both helms.
 4. **In irons**: placed head to wind at 0 speed, helm 0: sternway develops and the bow stays within 15° of the wind
-   for 30 s; with helm reversed to back the bow, the boat reaches 50 % polar speed within 20 s.
+   for 30 s; with helm reversed to back the bow, the boat reaches 50 % polar speed within 20 s (with a margin: the
+   shipped classes within 17 s).
 5. **Determinism**: two runs with the same inputs give identical checksums every tick; a run split into two
    halves through a snapshot save/load gives the same checksum as an unbroken run.
+6. **Let-fly**: from steady close-hauled at 10 kn, let fly with helm 0: an S boat is under 1 kn within 12 s.
+7. **Helm balance**: close-hauled at 12 kn with the upwind config the helm balance is within 1°/s of 0 and the boat
+   holds its course with the helm centred; on a spinnaker at 130° in 22 kn it rounds up with the helm centred (a
+   broach) and holding the course takes helm to bear away and costs speed.
+8. **Penalty turn**: from full speed at 10 kn, close-hauled, on a reach or running, a full-helm 360 (a tack and a
+   gybe) gets round.

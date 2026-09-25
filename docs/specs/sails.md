@@ -232,10 +232,12 @@ Each config (main only, main + each front sail) has these tables in the performa
 | `polar` | `tws`, `twa_abs` | m/s | steady boat speed at optimal trim, flat water, heel as in `heel` and at `heel_speed_factor = 1`; negative inside the no-go zone (`boat.md` §7.4) |
 | `heel` | `tws`, `twa_abs` | rad | steady heel magnitude at optimal trim |
 | `accel` | `tws`, `twa_abs` | m/s² | acceleration toward the polar when below it |
+| `accel_rest` | `tws`, `twa_abs` | m/s² | acceleration from rest (optional, `accel`) |
 | `trim_speed` | `tws`, `awa_abs`, `trim_error` | – | speed factor for a trim error `eps` (optional, 1) |
 | `trim_heel` | `tws`, `awa_abs`, `trim_error` | – | heel and weather-helm factor for `eps` (optional, 1) |
 | `weather_helm` | `tws`, `twa_abs` | rad/s | helm balance: turning rate the sail plan imposes, + toward the wind (optional, 0) |
 | `fall_off` | `boat_speed`, `twa_abs` | rad/s | turning away from the wind at low speed and in sternway (optional, 0) |
+| `flog_drag` | `aws`, `awa_abs` | m/s² | deceleration from the sails flogging on free sheets (optional, 0) |
 | `optimal_angle.<sail>` | `tws`, `awa_abs` | rad | optimal sail angle magnitude of the main and of the config's front sail |
 
 Semantics and reference shapes:
@@ -250,25 +252,53 @@ Semantics and reference shapes:
   acceleration that takes the boat from half its polar speed to 90 % of it in the time the physics does (the speeds
   a boat rebuilds through after a tack or a gybe); the approach to the polar is still limited by `err/DT`
   (`boat.md` §5.8).
+- **accel_rest**: the drive of the trimmed sail plan in the true wind at rest over the mass with added mass (the
+  hull has no resistance ahead at rest), with the no-go and floor rules of `accel`. Reference S jib at 10 kn:
+  0.2 m/s² at 40°, 0.36 at 60°, 0.5 at 90°. The core blends from it to `accel` below half the target speed
+  (`boat.md` §5.8).
 - **trim_speed**: 1 on a plateau around `eps = 0` (width grows with `awa_abs`: ±0.5° at 45° AWA, about −3.8°/+1.2°
   at 180°), falling to 0 when eased to the wind line (reference +15° at 45° AWA, +120° at 180°) and to 0.6–0.75
   when over-sheeted (reference −13° at 45°, −41° at 180°). Spinnakers: 0.7–0.8 over-sheeted (a kite keeps some
   drive when mistrimmed). With the driving sail on the wind line (`eps = awa_abs − m_opt`, let fly or eased that
-  far) the value is **exactly 0** wherever the core looks it up: the flogging sails give no drive (the windage a
-  boat still feels downwind is left out, so a boat that lets fly coasts to rest). The VPP writes 0 from the
-  `trim_error` point at or below the smallest wind-line error of the neighbouring table points, so the
-  interpolation between them stays 0; the drive is cut at most one axis step (5°) before the line.
+  far) the flogging sails give no drive: with the apparent wind forward of the beam (`awa_abs` up to 90°) the
+  value is **exactly 0** wherever the core looks it up, so a boat that lets fly there coasts to rest. Abaft the
+  beam the windage of hull, rig and flogging sails still pushes the boat along, and the value is the **let-fly
+  share**: the steady speed that push drives against the upright hull, over the polar (reference S running in
+  10 kn: about 0.7), resampled per TWS row with the apparent wind angle at that speed as the abscissa, so the
+  core, which looks it up at the boat's own apparent wind, finds the let-fly speed when the boat sails at it. The
+  VPP writes the wind-line value from the `trim_error` point at or below the smallest wind-line error of the
+  neighbouring table points, so the interpolation between them holds it; the drive is cut at most one axis step
+  (5°) before the line.
 - **trim_heel**: 1 at `eps = 0`, 0 on the wind line (as `trim_speed`), 1.4–2.7 when strongly over-sheeted.
-- **weather_helm**: spinnakers: negative at low TWA (the kite pulls the bow off: −15 to −30°/s below 30° TWA),
-  zero across the normal range, positive at high TWS broad reaching (reference L asym at 40 kn: +20°/s at 90°,
-  +50°/s at 115°, back to 0 at 145°: the broach). Upwind sails: 0 or small. Scaled by `trim_heel` (`boat.md`
-  §5.5, §5.9), so an over-sheeted kite broaches sooner.
+- **weather_helm**: the yaw moment of the sail plan about the centre of lateral resistance, as the turn rate of
+  the helm that holds it at the polar speed. The moment: the drive acting at the centre of effort, which the sheet
+  angle (each sail's centre of effort swung about its luff) and the heel carry out to leeward (luffing), and the
+  side force acting at the centre of effort ahead of the centre of lateral resistance (bearing away). The centre
+  of lateral resistance is the class's balance point: where the upwind (start) config's moment vanishes
+  close-hauled at its VMG angle in 12 kn, as a racing boat is designed and its rig raked to sail straight to
+  windward with the helm centred; every config balances about the same point. The helm `h_e` that holds the moment
+  is its ratio to the rudder's yaw moment per unit helm (linear range, the blade incidence share of the radius
+  law); the rate is `v/R(h_e)` on the radius law (`boat.md` §5.9), growing as `v·h_e/R_full` beyond full helm
+  (a boat the rudder cannot hold broaches); `h_e` is held to ±3. Broached cells take the value of the last wind
+  the config holds at that angle; 0 in the no-go zone and in no wind. Resulting shapes: upwind config 0 at the
+  balance point, a little lee helm in light air and pinching, weather helm reaching and in a breeze (reference S
+  jib at 16 kn: +5°/s at 60°, +15°/s at 100°, a helm of about 0.1); main alone: weather helm (S at 10 kn about
+  +5°/s); spinnakers: negative close reaching (the kite, far forward, pulls the bow off: S at 10 kn −9 to −17°/s
+  from 50° to 80°), small across the normal range, positive broad reaching in a breeze (S at 22 kn about +15°/s
+  at 130°, L about +28°/s: the broach). Scaled by `trim_heel` (`boat.md` §5.5, §5.9), so an over-sheeted kite
+  broaches sooner and flogging sails have none.
 - **fall_off**: the same for every config (the sails are flogging). Speed axis from sternway to a crawl ahead
   (reference −6, 0, `v_f`/2, `v_f` m/s with `v_f` at Froude number 0.05, `0.05·sqrt(g·lwl)`: S 0.4 m/s, L 0.7 m/s),
   full from sternway to 0, 0.75 at `v_f`/2, zero from `v_f` (the keel holds the heading once the boat moves);
   reference S 8°/s, L 5°/s between 20° and 60° TWA, fading to 0 at 90° (a stopped boat lies beam on), zero below
   10° TWA (a boat right head to wind stays in irons, `boat.md` §7.4). Light-air sailing speeds stay above `v_f`, so the table never turns a
   sailing boat.
+- **flog_drag**: the extra drag of the config's sails flogging on free sheets over luffing on their sheets (which
+  `decel_const` holds), along the heading, per apparent wind speed and angle: `0.5 ρ_air aws² (CD_flog − CD_luff)
+  A_sails cos(awa) / (m + m_a)` with the wind profile factor at the centre of effort, 0 from 90° AWA (abaft the
+  beam the flogging sails push instead: the let-fly share of `trim_speed`). `CD_flog` 0.30 and `CD_luff` 0.06 on
+  the sail area (`tools/vpp/README.md`). Reference S jib config at 8 m/s apparent wind head to wind: about
+  0.24 m/s². Used only with free sheets (`boat.md` §5.8).
 - **optimal_angle**: main: 0 up to about 20–30° AWA, then rising to 35–60° at 120–170°; jib/genoa 14–25° close
   hauled rising to 55–70°; spinnakers 12–30° at their lowest AWA rising to 85–90° dead downwind.
 
@@ -309,6 +339,7 @@ it. Events: every phase change emits `sail_phase(boat, sail, phase)` for crew ac
    speed fall below the polar by the `trim_speed` factor.
 6. Cancel a first hoist: with no front sail up, `drop_front()` halfway through `hoisting` brings the sail down
    along its hoist; during `prepare_hoist` it is down in the next tick; `front` stays −1.
-7. Wind line: for every config, TWS 0.25–20 m/s and AWA 3°–180° on a fine grid, `trim_speed` and `trim_heel` are
-   0 at the driving sail's wind-line error (where that is at least 0.5° past the optimum); with let-fly held the
-   boat's `trim_speed` output is 0 and it coasts down.
+7. Wind line: for every config, TWS 0.25–20 m/s and AWA 3°–180° on a fine grid, `trim_heel` is 0 at the driving
+   sail's wind-line error (where that is at least 0.5° past the optimum), and `trim_speed` too up to 90° AWA (below
+   1 beyond: the let-fly share); with let-fly held on a reach the boat's `trim_speed` output is 0 and it slows
+   down.

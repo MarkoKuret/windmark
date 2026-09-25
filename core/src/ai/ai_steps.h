@@ -59,9 +59,10 @@ bool penalty_turns(AC& x, AB& a, const Me& m, Leg leg);
 void free_sailing(AC& x, AB& a, const Me& m);
 void prestart(AC& x, AB& a, const Me& m);
 void after_gun(AC& x, AB& a, const Me& m);
-void hover(AC& x, AB& a, const Me& m, Vec2 S);
+void hover(AC& x, AB& a, const Me& m, Vec2 S, bool may_loop);
 // Race time to reach `spot` from the present state along ψ_app (§5.5).
 float time_to_spot(const AB& a, const Me& m, Vec2 spot, float psi_app);
+float time_to_spot_go(const AB& a, const Me& m, Vec2 spot);
 
 // Rules (§7): ai_rules.cpp.
 // §7.3: false if the manoeuvre onto `psi_new` would leave a boat within 5 L without escape or tacks into the path
@@ -71,6 +72,9 @@ bool tack_safe(AC& x, AB& a, const Me& m, float psi_new, bool gybe);
 void rules_overlay(AC& x, AB& a, const Me& m, Vec2 aim);
 // True when a right-of-way constraint (§7.4 hold course) forbids starting a manoeuvre now.
 bool holding_course(AC& x, AB& a, const Me& m);
+// Course objects (marks, committee and mark boats) ahead on the planned heading: steer to pass them clear, on the
+// side they are on (`skip_mark`: the mark being rounded, which the rounding circle keeps clear).
+void avoid_objects(AC& x, AB& a, const Me& m, std::int32_t skip_mark);
 // §4.6 land, obstacles and the race area: true (and the escape set) when the boat must turn away.
 bool land_check(AC& x, AB& a, const Me& m);
 

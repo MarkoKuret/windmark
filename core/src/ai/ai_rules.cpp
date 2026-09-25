@@ -220,6 +220,44 @@ bool land_check(AC& x, AB& a, const Me& m) {
   return true;
 }
 
+void avoid_objects(AC& x, AB& a, const Me& m, std::int32_t skip_mark) {
+  if (a.man != Man::straight) return;
+  const float v = max(1.0f, m.s.v);
+  const float reach = max(3.0f * m.L, 6.0f * v);
+  const Vec2 f = dir(a.psi_target);
+  float best_t = 1e30f;
+  const CourseObject* hit = nullptr;
+  float need = 0.0f;
+  for (const CourseObject& o : x.course.objects) {
+    if (o.mark == skip_mark) continue;
+    const Vec2 d = v_sub(o.c, m.c);
+    const float along = v_dot(d, f);
+    if (along <= 0.0f || along > reach + o.r) continue;
+    const float clear = (o.r + 0.5f * m.B) + (1.0f + 0.15f * m.L);
+    if (std::fabs(v_cross(f, d)) >= clear) continue;
+    if (along < best_t) {
+      best_t = along;
+      hit = &o;
+      need = clear;
+    }
+  }
+  if (hit == nullptr) return;
+  // Pass it on the side it already is on, by the tangent to the clearance circle.
+  const float dist = v_dist(m.c, hit->c);
+  const float g = dist > need ? wm_asin(clamp(need / dist, 0.0f, 1.0f)) : HALF_PI;
+  const float brg = bearing(m.c, hit->c);
+  const float side = v_cross(f, v_sub(hit->c, m.c)) > 0.0f ? 1.0f : -1.0f;  // > 0: object to the left
+  float psi = wrap_2pi(brg + side * g);
+  float twa = wrap_pi(m.twd - psi);
+  if (std::fabs(twa) < m.theta_up - 2.0f * DEG) {
+    // Not sailable that way: the other side.
+    psi = wrap_2pi(brg - side * g);
+    twa = wrap_pi(m.twd - psi);
+    if (std::fabs(twa) < m.theta_up - 2.0f * DEG) psi = heading_for(m.twd, m.tack * m.theta_up);
+  }
+  a.psi_target = psi;
+}
+
 void rules_overlay(AC& x, AB& a, const Me& m, Vec2 aim) {
   if (!x.race.rules_live() || m.rb.ghost) return;
   const std::size_t i = static_cast<std::size_t>(a.i);

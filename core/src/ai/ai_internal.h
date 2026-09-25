@@ -77,6 +77,7 @@ struct AiSkippers::Boat {
   float headed_t = 0.0f, pressure_t = 0.0f;
   std::int32_t gate_step = -1, gate_buoy = 0;
   bool rounding = false;
+  std::int32_t round_mark = -1;  // the mark of the last rounding decision
 
   // Start (§5)
   ai_detail::StartPhase phase = ai_detail::StartPhase::free;

@@ -110,7 +110,7 @@ inline AiRaceOutcome run_ai_race(const AiRaceSpec& sp) {
   w->set_controller([aip](wm::World& world) { aip->step(world); });
   AiRaceOutcome o;
   std::FILE* tf = sp.trace != nullptr ? std::fopen(sp.trace, "w") : nullptr;
-  if (tf != nullptr) std::fprintf(tf, "t,i,x,y,psi,v,twa,tws,tact,man,psit,next,rank,pend,d,leg,helm,letfly,phi,phid,tr\n");
+  if (tf != nullptr) std::fprintf(tf, "t,i,x,y,psi,v,twa,tws,tact,man,psit,next,rank,pend,d,leg,helm,letfly,phi,phid,tr,sx,sy,ax,ay\n");
   for (std::uint32_t k = 0; k < sp.max_ticks && w->race().state() != wm::RaceState::closed; ++k) {
     if (sp.reload_at != 0 && w->tick() == sp.reload_at) {
       // The world snapshot and the skippers' own block (ai.md §16), each as its own bytes.
@@ -131,7 +131,7 @@ inline AiRaceOutcome run_ai_race(const AiRaceSpec& sp) {
       for (std::size_t i = 0; i < w->boat_count(); ++i) {
         const wm::BoatState& bs = w->boat(i).state();
         const wm::AiDebug& d = ai->debug(static_cast<std::int32_t>(i));
-        std::fprintf(tf, "%.1f,%zu,%.1f,%.1f,%.1f,%.2f,%.1f,%.2f,%d,%d,%.1f,%d,%d,%zu,%.3f,%d,%.2f,%d,%.0f,%.0f,%.1f\n",
+        std::fprintf(tf, "%.1f,%zu,%.1f,%.1f,%.1f,%.2f,%.1f,%.2f,%d,%d,%.1f,%d,%d,%zu,%.3f,%d,%.2f,%d,%.0f,%.0f,%.1f,%.1f,%.1f,%.1f,%.1f\n",
                      static_cast<double>(w->race().race_time(w->tick())), i, static_cast<double>(bs.pos_x),
                      static_cast<double>(bs.pos_y), static_cast<double>(bs.psi / wm::DEG), static_cast<double>(bs.v),
                      static_cast<double>(wm::wrap_pi(w->env(i).wind_from_clean - bs.psi) / wm::DEG),
@@ -141,7 +141,8 @@ inline AiRaceOutcome run_ai_race(const AiRaceSpec& sp) {
                      static_cast<double>(bs.h), w->boat(i).controls().let_fly ? 1 : 0,
                      static_cast<double>(w->race().boat(i).phi[0] / wm::DEG),
                      static_cast<double>(w->race().boat(i).phi_done[0] / wm::DEG),
-                     static_cast<double>(w->boat(i).outputs().turn_rate / wm::DEG));
+                     static_cast<double>(w->boat(i).outputs().turn_rate / wm::DEG), static_cast<double>(d.spot.x),
+                     static_cast<double>(d.spot.y), static_cast<double>(d.aim.x), static_cast<double>(d.aim.y));
       }
     }
     const std::uint64_t c = w->step();

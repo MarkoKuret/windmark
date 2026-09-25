@@ -156,9 +156,9 @@ float exit_heading(AC& x, const Me& m, const MarkTarget& t, float psi_tan) {
 }
 
 // The point to pass a mark at on a beat or a run (the circle's side of the approach).
-Vec2 pass_point(const MarkTarget& t, Vec2 d) {
+Vec2 pass_point(const MarkTarget& t, Vec2 d, float margin) {
   const Vec2 off = t.sigma > 0.0f ? right_of(d) : left_of(d);
-  return v_add(t.M, v_scale(off, t.rho));
+  return v_add(t.M, v_scale(off, t.rho + margin));
 }
 
 // §6.1 inside the rounding circle's reach: orbit the circle in the rounding direction, aiming a little ahead on it,
@@ -166,6 +166,13 @@ Vec2 pass_point(const MarkTarget& t, Vec2 d) {
 // the boat is: a boat that came in on the wrong side is behind (φ small or negative) and simply orbits on, which
 // takes her back the way she came and round, the way the winding test counts it.
 bool round_mark(AC& x, AB& a, const Me& m, const MarkTarget& t) {
+  a.round_mark = t.mark;
+  a.tactic = AiTactic::Rounding;
+  if (a.man == Man::tack) {
+    // A tack in progress keeps its target (the new tack's close-hauled heading).
+    a.psi_target = heading_for(m.twd, static_cast<float>(a.man_to) * m.theta_up);
+    return true;
+  }
   const float alpha = bearing(t.M, m.c);
   const float dist = v_dist(m.c, t.M);
   const float rem = t.phi_done - t.phi;  // winding still to go
@@ -863,8 +870,8 @@ void racing(AC& x, AB& a, const Me& m) {
   if (t.is_mark) {
     const Vec2 w = dir(a.twd_f);
     Vec2 aim = t.M;
-    if (leg == Leg::beat) aim = pass_point(t, w);
-    else if (leg == Leg::run) aim = pass_point(t, v_scale(w, -1.0f));
+    if (leg == Leg::beat) aim = pass_point(t, w, 0.5f * m.L);
+    else if (leg == Leg::run) aim = pass_point(t, v_scale(w, -1.0f), 0.5f * m.L);
     const float dist = v_dist(m.c, t.M);
     a.dbg.aim = aim;
     if (dist < t.rho + 4.0f * m.L && a.man != Man::gybe && round_mark(x, a, m, t)) {
@@ -952,6 +959,7 @@ void ai_decide(AC& x, AB& a) {
     racing(x, a, m);
     aim = a.dbg.aim;
   }
+  avoid_objects(x, a, m, a.tactic == AiTactic::Rounding ? a.round_mark : -1);
   if (!land_check(x, a, m)) rules_overlay(x, a, m, aim);
 }
 

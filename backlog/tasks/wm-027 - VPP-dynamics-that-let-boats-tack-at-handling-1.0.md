@@ -1,9 +1,11 @@
 ---
 id: WM-027
 title: 'VPP: dynamics that let boats tack at handling 1.0'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-09-25 14:34'
+updated_date: '2026-09-25 16:30'
 labels:
   - vpp
 dependencies: []
@@ -19,5 +21,11 @@ Found in WM-006. On the boat model of boat.md the shipped wm7 and wm12 cannot ta
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 wm7 and wm12 tack at 10 kn with helm 0.5 on handling 1.0 and wm7 is back to 90 % speed within 12 s,A slammed full-helm tack costs more than a helm-0.5 tack,wm12 recovers from irons to 50 % polar speed within 20 s
+- [x] #1 wm7 and wm12 tack at 10 kn with helm 0.5 on handling 1.0 and wm7 is back to 90 % speed within 12 s,A slammed full-helm tack costs more than a helm-0.5 tack,wm12 recovers from irons to 50 % polar speed within 20 s
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+VPP: decel_linear from the hull coasting with the drive gone (wm7 0.045, wm12 0.027), turn_radius_offset from the rudder's stall helm (-2(1-h_s) R_full: wm7 -2.40, wm12 -4.52), rudder drag on the new radius law, accel fitted 50 to 90 % of the polar. Core: coast before drifting (boat.md 5.8). At 10 kn, helm 0.5 / full helm: wm7 10.75 s, 0.45 L / 11.8 s, 0.70 L; wm12 12.75 s, 0.26 L / 15.0 s, 0.52 L. All classes tack at 6, 10, 16, 22 kn with both helms; full helm always loses more distance. Irons recovery to 50 %: wm7 10.95 s, wm12 18.35 s. Tests: core/tests/test_boat.cpp 'boat: tack on the shipped classes', 'boat: in irons and recovery' (no may_fail, no tuned hulls).
+<!-- SECTION:NOTES:END -->

@@ -13,4 +13,5 @@ Windmark is a working name.
 | `server/` | Authoritative race server on top of the core |
 | `game/` | Front end (Godot) |
 | `tools/` | Boat generator, VPP, data tools |
+| `data/classes/`, `data/perf/` | Boat-class files and the performance tables generated from them |
 | `docs/` | Design specs, plans, business and marketing |

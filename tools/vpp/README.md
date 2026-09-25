@@ -39,7 +39,7 @@ Dependencies: Python 3.9+, NumPy, SciPy, Matplotlib (plots), pytest (tests).
 | `windmark_vpp/perf.py` | performance-file generation, `dynamics` block, validation |
 | `windmark_vpp/plots.py` | polar, per-config, sail crossover, heel and trim plots |
 | `boats/*.boat.json` | example classes (original designs): `dart7` sportsboat, `coastal40` offshore racer, `cup22` grand-prix monohull, `tri18` ocean trimaran |
-| `examples/` | generated performance files and plots of the examples and of `data/classes/wm7`, `wm12` (these two with the boat generator's physics sidecar) |
+| `../../data/perf/` | generated performance files and plots of the game classes in `data/classes` (built with the boat generator's physics sidecar) |
 | `tests/` | unit and integration tests |
 
 ## Input: class file

@@ -1,0 +1,53 @@
+{
+  "id": "wm12",
+  "name": "Windmark 12 One-Design",
+  "type": "monohull",
+  "hull": {
+    "loa": 12.0,
+    "lwl": 10.9,
+    "beam_max": 3.75,
+    "bwl": 3.0,
+    "canoe_draft": 0.40,
+    "displacement": 5400,
+    "prismatic": 0.56,
+    "section_shape": "round",
+    "rocker": 0.45,
+    "freeboard": 1.05,
+    "freeboard_bow": 1.32,
+    "freeboard_stern": 0.90,
+    "transom_width": 3.05,
+    "max_beam_pos": 0.62
+  },
+  "deck": {
+    "cockpit": {"length": 3.9, "width": 0.66, "depth": 0.46, "open_transom": true},
+    "cabin": {"length": 3.3, "height": 0.30, "width": 0.56},
+    "lifelines": true,
+    "steering": "wheel"
+  },
+  "keel": {
+    "depth": 2.60,
+    "chord": 0.86,
+    "thickness": 0.105,
+    "sweep_deg": 5,
+    "bulb": {"mass": 2300, "length": 2.7}
+  },
+  "rudder": {"depth": 2.05, "chord": 0.40, "position": 1.05},
+  "rig": {
+    "I": 16.2,
+    "J": 4.45,
+    "P": 16.0,
+    "E": 5.65,
+    "mast_height": 17.7,
+    "spreaders": 2,
+    "spreader_sweep_deg": 18,
+    "backstay": true,
+    "bowsprit": 1.85
+  },
+  "sails": {
+    "main": {"area": 60.0, "head_width": 0.30},
+    "jib": {"area": 36.0},
+    "code0": {"area": 82.0},
+    "spinnaker": {"area": 150.0, "type": "asymmetric"}
+  },
+  "crew": {"count": 8, "weight": 680}
+}

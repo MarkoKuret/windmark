@@ -1,0 +1,55 @@
+{
+  "id": "wm7",
+  "name": "Windmark 7 Sportsboat",
+  "type": "monohull",
+  "hull": {
+    "loa": 7.2,
+    "lwl": 6.75,
+    "beam_max": 2.50,
+    "bwl": 1.86,
+    "canoe_draft": 0.22,
+    "displacement": 1150,
+    "prismatic": 0.55,
+    "section_shape": "u",
+    "rocker": 0.55,
+    "freeboard": 0.70,
+    "freeboard_bow": 0.86,
+    "freeboard_stern": 0.60,
+    "transom_width": 2.10,
+    "max_beam_pos": 0.64,
+    "bow_overhang": 0.08,
+    "chine": {"start": 0.42, "sharpness": 1.0}
+  },
+  "deck": {
+    "cockpit": {"length": 3.1, "width": 0.72, "depth": 0.30, "open_transom": true},
+    "cabin": {"length": 1.7, "height": 0.13, "width": 0.50},
+    "lifelines": false,
+    "steering": "tiller",
+    "hatches": 1
+  },
+  "keel": {
+    "depth": 1.65,
+    "chord": 0.52,
+    "thickness": 0.10,
+    "sweep_deg": 3,
+    "bulb": {"mass": 480, "length": 1.55}
+  },
+  "rudder": {"depth": 1.25, "chord": 0.30, "position": 0.0},
+  "rig": {
+    "I": 8.6,
+    "J": 2.55,
+    "P": 9.1,
+    "E": 3.25,
+    "mast_height": 10.1,
+    "spreaders": 1,
+    "spreader_sweep_deg": 24,
+    "backstay": false,
+    "bowsprit": 1.65
+  },
+  "sails": {
+    "main": {"area": 23.5, "head_width": 0.26},
+    "jib": {"area": 13.5},
+    "spinnaker": {"area": 60.0, "type": "asymmetric"}
+  },
+  "crew": {"count": 4, "weight": 340}
+}

@@ -60,24 +60,15 @@ All fields of `data_format.md` §3 are read as specified there. How the VPP uses
   `tack_time`, default 1.0) are applied to the physical tables as the file is written (`perf.apply_handling`) and
   recorded in the performance file's `handling` block; they never change a speed table. Any other key overrides
   that `dynamics` value as given. `sails[].handling` overrides the sail's handling block.
-
-**VPP additions not yet in the spec** (readers ignore unknown keys; proposed for the spec):
-
-| field | meaning |
-| --- | --- |
-| `hull.type` | `monohull` (default), `trimaran` or `catamaran` |
-| `hull.floats` | trimaran floats: `lwl`, `bwl`, `draft`, `prismatic`, `section_shape`, `freeboard`, `beam_max`, `transom_width`, `rocker`, `spacing` (float centreline off the boat centreline), `clearance` (float keel above the DWL at rest), `x` (body x of the float's mid waterline) |
-| `hull.hull_spacing` | catamaran hull centreline distance |
-| `boards` | multihull daggerboard in place of `keel`: `depth`, `chord_root`, `chord_tip`, `thickness`, `x`, `count` |
-| `rudder.count` | rudders in the water at once [1] |
-| `vpp.max_heel` | heel the equilibrium may not exceed, rad [0.56 monohull, 0.28 multihull] |
+- Multihulls (`hull.type`, `hull.floats`, `hull.hull_spacing`, `boards`, `rudder.count`) and the `vpp` block
+  (`max_heel`) are specified in `data_format.md` §3.9 and §3.10, with their units and defaults. The float
+  bodies are extra polygons of the same hydrostatics; the boards are read like a keel fin without a bulb.
 
 ## Output: performance file
 
 `windmark.perf/1` exactly as `data_format.md` §4 and §5 define it: header with the class hash and the
-`handling` multipliers used, `dynamics`,
-`sails`, one entry per config (main alone, main + each front sail) with `polar`, `heel`, `accel`,
-`trim_speed`, `trim_heel`, `optimal_angle`, and `start`. Axes follow the spec's recommendation: TWS 0 to
+`handling` multipliers used, `dynamics`, `sails`, one entry per config (main alone, main + each front sail) with
+`polar`, `heel`, `accel`, `trim_speed`, `trim_heel`, `optimal_angle`, and `start`. Axes follow the spec's recommendation: TWS 0 to
 20.6 m/s (40 kn), TWA 0°, 7°, the no-go edge twice, then 2° steps to 60° and 5° steps to 180°; AWA every 5°;
 trim error −60° to +120°. `weather_helm` and `fall_off` (optional) are not written yet.
 

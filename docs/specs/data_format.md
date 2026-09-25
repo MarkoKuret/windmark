@@ -57,6 +57,7 @@ compute its performance. Required fields are marked **R**; the rest have the sta
 | `lcb_x` | | m | body x of the centre of buoyancy [VPP estimate from Cp and rocker] |
 | `bow_fineness` | | – | exponent of the plan-view entry (`collisions.md` §2.1) [1.8] |
 | `hull_mass_z` | | m | vertical centre of gravity of the boat without crew above the DWL [VPP estimate] |
+| `type` | | – | `"monohull"` \| `"trimaran"` \| `"catamaran"` [`monohull`]; multihull fields in §3.9 |
 
 ### 3.2 `keel`
 
@@ -82,6 +83,7 @@ compute its performance. Required fields are marked **R**; the rest have the sta
 | `thickness` | | – | thickness/chord [0.11] |
 | `x` | R | m | body x of the stock |
 | `max_angle` | | rad | largest rudder angle [0.61] |
+| `count` | | – | rudders in the water at once (drag and lift counted per rudder, e.g. 2 on a catamaran or twin-rudder boat) [1] |
 
 ### 3.4 `rig`
 
@@ -130,6 +132,8 @@ matching `type`.
 | --- | --- | --- |
 | `start` | designer | `{ "front_sail": id \| null }`: sail up at a race start unless the race says otherwise |
 | `handling` | designer | feel multipliers and `dynamics` overrides (§3.7.1) |
+| `boards` | designer | daggerboards of a multihull, in place of `keel` (§3.9) |
+| `vpp` | designer | VPP settings (§3.10) |
 | `visual` | boat generator | liveries, deck layout, hardware; opaque to the core and the VPP |
 
 Top level: `"schema": "windmark.boatclass/1"`, `"id"`, `"name"`, `"version"` (integer, bumped on every change).
@@ -182,6 +186,55 @@ given, after the multipliers, unscaled. Unknown keys are reported and ignored.
   "start": { "front_sail": "jib" }
 }
 ```
+
+### 3.9 Multihulls
+
+`hull.type` selects the hull arrangement. The VPP reads all three; the boat generator builds monohulls only.
+
+- **Trimaran**: the `hull` fields describe the main (centre) hull, which displaces the whole sailing mass at rest;
+  `hull.floats` (required) describes one float, mirrored to both sides.
+- **Catamaran**: the `hull` fields describe one of the two identical hulls, each displacing half the sailing mass;
+  `hull.hull_spacing` (required) places them.
+- For both, `hull.beam_max` is the overall beam; it is taken as at least the span of the hulls.
+
+`hull.floats`:
+
+| field | | unit | meaning |
+| --- | --- | --- | --- |
+| `lwl`, `bwl` | R | m | float waterline length and beam at its own design waterline |
+| `draft` | R | m | float canoe-body depth below its design waterline (`draft_canoe` is accepted too) |
+| `prismatic` | R | – | float prismatic coefficient |
+| `section_shape` | | object | as `hull.section_shape`; its `midship_coefficient` is used as given [0.70] |
+| `freeboard` | | object or m | `{ "bow", "mid", "stern" }` or one height for all three [0.09 · float `lwl` at mid-length, 1.3× bow, 0.85× stern] |
+| `beam_max` | | m | float beam at the sheer [1.15 · float `bwl`] |
+| `transom_width` | | m | float transom width at the sheer [0.5 · float `beam_max`] |
+| `rocker` | | object | `{ "fwd", "aft" }` as `hull.rocker`, of the float [fwd = `draft`, aft = 0.6 · `draft`] |
+| `spacing` | R | m | distance of each float's centreline from the boat centreline |
+| `clearance` | | m | height of the float keel above the DWL with the boat upright at rest (0 = touching) [0] |
+| `x` | | m | body x of the float's mid-waterline [−0.05 · `hull.lwl`] |
+
+`hull.hull_spacing` (catamaran, R, m): distance between the two hull centrelines.
+
+`boards` (multihulls, instead of `keel`; if absent the VPP reads `keel` the same way): the lifting foils that
+carry the side force.
+
+| field | | unit | meaning |
+| --- | --- | --- | --- |
+| `depth` | R | m | DWL to the board tip, board down |
+| `chord_root`, `chord_tip` | R | m | chords at the hull and at the tip [`chord_tip` = `chord_root`] |
+| `thickness` | | – | thickness/chord [0.12] |
+| `x` | | m | body x of the quarter chord [0] |
+| `count` | | – | boards in the water at once [1] |
+
+Multihull defaults elsewhere: `crew.hiking_arm` [0.3 · `beam_max`], `vpp.max_heel` [0.28 rad].
+
+### 3.10 `vpp`
+
+Settings of the VPP's equilibrium; ignored by the boat generator and absent from the performance file.
+
+| field | | unit | meaning |
+| --- | --- | --- | --- |
+| `max_heel` | | rad | heel the VPP equilibrium may not exceed; where no depowering keeps a config below it the VPP writes a broached speed (§4.3). The limit used is the lower of this and the heel of the maximum righting moment. [0.56 monohull, 0.28 multihull] |
 
 ## 4. Performance file (`windmark.perf/1`)
 

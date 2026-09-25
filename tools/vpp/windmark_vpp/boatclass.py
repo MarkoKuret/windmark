@@ -4,16 +4,8 @@ SI units and radians throughout, body frame x forward / y port / z up with the o
 design waterline. Optional fields get the spec default or a documented VPP estimate; every estimate is reported
 in ``Boat.notes`` so a generated file always says what was assumed.
 
-VPP extensions (not yet in the spec; readers ignore unknown keys):
-
-* ``hull.type``: ``"monohull"`` (default) | ``"trimaran"`` | ``"catamaran"``;
-* ``hull.floats`` (trimaran): ``lwl``, ``bwl``, ``draft``, ``prismatic``, ``section_shape``, ``freeboard``,
-  ``beam_max``, ``transom_width``, ``rocker``, ``spacing`` (float centreline from the boat centreline),
-  ``clearance`` (float keel above the DWL at rest), ``x`` (body x of the float's mid-waterline);
-* ``hull.hull_spacing`` (catamaran): centreline distance of the two hulls;
-* ``boards``: daggerboard of a multihull, the ``keel`` fields without the bulb, plus ``count`` in the water;
-* ``rudder.count``: rudders in the water at once [1];
-* ``vpp.max_heel``: heel the equilibrium may not exceed [0.56 rad monohull, 0.28 multihull].
+Multihull fields (``hull.type``, ``hull.floats``, ``hull.hull_spacing``, ``boards``, ``rudder.count``) and the
+``vpp`` block (``max_heel``) are specified in data_format.md 3.9 and 3.10.
 """
 
 from __future__ import annotations

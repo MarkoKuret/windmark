@@ -36,6 +36,17 @@ Previews in `previews/`: `<id>_upwind.png` (heeled, trimmed, demo livery), `<id>
 hardware), `<id>_uv.png` (0.25 m checker on uv0 of every surface) and `<id>_lines.png` (lines plan: profile with
 buttocks, half-breadths with waterlines, body plan).
 
+## Tests
+
+```
+cd tools/boatgen
+python3 -m unittest discover -s tests
+```
+
+About 30 s. `tests/fixtures/` holds generator test classes for features no shipped class uses yet (a
+symmetric spinnaker on a pole); the headless Godot import test (`game/tests/run_boat_import_test.sh`) builds and
+checks them too.
+
 ## Frames and units
 
 SI units, angles in radians. The class file and the physics sidecar use the boat body frame of
@@ -106,6 +117,14 @@ Every key is optional; defaults scale with LOA.
 | `sails.<id>.head_width` | 0.28 | mainsail head width as a fraction of E |
 | `sails.<id>.clew_height` | 0.35 (LOA/12)^0.5 | headsail clew height above the deck (m) |
 | `sails.<id>.luff_frac` | 0.96 | headsail luff as a fraction of the forestay |
+| `sails.<id>.look` | per sail type, `docs/specs/sail_visuals.md` §4 | the run-time look of the sail (below) |
+
+`sails.<id>.look` holds any of the look parameters of `sail_visuals.md` §4: `fill_gain`, `fill_curve`,
+`flutter_amp`, `flutter_rate`, `flutter_rate_max`, `twist_top`, `depth`, `tack_line_max`, `furl_radius` (numbers
+>= 0; an unknown key is an error). The generator copies them into the sidecar's `sails.<id>.look` and fills
+every missing key from the defaults of the sail's type: the table of §4, `flutter_rate` and `flutter_rate_max`
+from the LOA size rules, and `furl_radius` (jib, genoa, code zero) from the flat sail's chord extent `Sa`. Keys
+that do not apply to a type (`depth` on a main) are written only when the class file gives them.
 
 ## How the geometry is made
 
@@ -146,9 +165,17 @@ Nodes under the root (named after the class id):
 | `wheel` | wheel hub, turns about fore and aft | only with `wheel` steering |
 | `boom` | gooseneck, turns about the vertical | carries the upper mainsheet block |
 | `mainsheet` | | tackle between boom and traveller; rebuild it as the boom moves |
+| `pole` | on the mast axis at the heel height, turns about the vertical | spinnaker pole, only for a class that flies a spinnaker on a pole (below) |
 | `sail_<id>` | | one per class sail, flat, two layers |
 
 Pivot nodes store their geometry relative to the pivot and carry the pivot as their translation.
+
+A class flies its spinnaker on a pole when it has a `spinnaker_sym`, or a `spinnaker_asym` with `rig.pole > 0`
+and no bowsprit. The pole (length `rig.pole`, default 0.95 J) points forward from the mast front on the
+centreline at rest, and its end is the spinnaker's tack. Its pivot is on the mast axis, the axis the spinnaker
+swings about (`sail_visuals.md` §7.3), so turning the pole node by the pole angle keeps its end on the swung
+tack. The front end shows it only while the spinnaker is not `down`; the preview poses without a spinnaker leave
+it out.
 
 ## Materials and UVs
 
@@ -178,8 +205,8 @@ Positions in the body frame.
 | `waterline` | the DWL contour, port and starboard |
 | `buoyancy_samples` | skin samples up to the sheer with outward normal and area, for pressure integration at any heel and trim (`canoe_volume_check_m3` is their immersed volume by the divergence theorem) |
 | `collision_meshes` | closed low-poly hull (canoe body to the deck crown), fin, bulb and rudder slabs |
-| `rig` | mast step, masthead, hounds, forestay tack, boom pivot and axis, sprit end, rudder stock and axis, wheel hub, spreader tips |
-| `sails` | per sail: node, type, grid size, vertex order, flat area and target, centroid, corner vertices (tack, clew, head) |
+| `rig` | mast step, masthead, hounds, forestay tack, boom pivot and axis, sprit end, rudder stock and axis, wheel hub, spreader tips; with a pole: `pole_pivot`, `pole_axis`, `pole_length` (from the mast front) and `pole_end` (rest position, the spinnaker tack) |
+| `sails` | per sail: node, type, grid size, vertex order, flat area and target, centroid, corner vertices (tack, clew, head), `look` (the look parameters above, every applicable key filled) |
 
 ## Limits and next steps
 

@@ -12,6 +12,7 @@ fraction) with the starboard layer mirrored in u, so decals read correctly from 
 """
 import numpy as np
 
+from .classfile import LOOK_KEYS
 from .mesh import Geom, Part, grid, normalize
 
 
@@ -56,9 +57,23 @@ def poly_area(P):
     return 0.5 * abs(np.sum(x * np.roll(z, -1) - np.roll(x, -1) * z))
 
 
+# look defaults per sail type (docs/specs/sail_visuals.md 4); flutter_rate, flutter_rate_max and furl_radius
+# follow the size rules in Sail.look()
+LOOK_DEFAULTS = {
+    "main": {"fill_gain": 0.6, "fill_curve": 4.0, "flutter_amp": 0.15, "twist_top": 0.070},
+    "jib": {"fill_gain": 0.75, "fill_curve": 1.2, "flutter_amp": 0.07, "twist_top": 0.105},
+    "genoa": {"fill_gain": 0.75, "fill_curve": 1.2, "flutter_amp": 0.07, "twist_top": 0.105},
+    "code_zero": {"fill_gain": 0.7, "fill_curve": 1.3, "flutter_amp": 0.08, "twist_top": 0.140},
+    "spinnaker_asym": {"fill_gain": 1.0, "fill_curve": 1.0, "flutter_amp": 1.0, "twist_top": 0.0, "depth": 0.30,
+                       "tack_line_max": 0.04},
+    "spinnaker_sym": {"fill_gain": 1.5, "fill_curve": 1.5, "flutter_amp": 1.0, "twist_top": 0.0, "depth": 0.35},
+}
+
+
 class Sail:
     def __init__(self, name, P, corners):
         self.name, self.P, self.corners = name, P, corners  # P: (nv, nu, 3) in the centreline plane
+        self.look_override = {}
 
     @property
     def area(self):
@@ -70,6 +85,28 @@ class Sail:
         c = 0.25 * (P[:-1, :-1] + P[1:, :-1] + P[:-1, 1:] + P[1:, 1:])
         a = np.linalg.norm(np.cross(P[1:, 1:] - P[:-1, :-1], P[:-1, 1:] - P[1:, :-1]), axis=-1) * 0.5
         return (c * a[..., None]).sum((0, 1)) / a.sum()
+
+    def chord_extent(self):
+        """Sa of docs/specs/sail_visuals.md 3.2: extent of the flat sail perpendicular to its luff line (tack to
+        head), in the sail plane."""
+        P = self.P
+        T = P[0, 0]
+        Lh = normalize(P[-1, 0] - T)
+        Ah = np.cross(Lh, np.array([0.0, 1.0, 0.0]))
+        a = (P - T) @ Ah
+        return float(a.max() - a.min())
+
+    def look(self, loa):
+        """The sidecar `look` block (sail_visuals.md 4): the class file's visual.sails.<id>.look, with every
+        missing key filled from the defaults of the sail's type and the size rules."""
+        d = dict(LOOK_DEFAULTS[self.type])
+        d["flutter_rate"] = 0.6 + 2.4 * min(max((12.0 - loa) / 5.0, 0.0), 1.0)
+        d["flutter_rate_max"] = 9.0 + min(max((loa - 7.0) / 5.0, 0.0), 1.0)
+        if self.type in ("jib", "genoa", "code_zero"):
+            d["furl_radius"] = 0.02 + 0.006 * self.chord_extent()
+        d = {k: round(float(v), 6) for k, v in d.items()}
+        d.update(self.look_override)
+        return {k: d[k] for k in LOOK_KEYS if k in d}
 
     def part(self, P=None, gap=0.001):
         P = self.P if P is None else P
@@ -152,6 +189,7 @@ def build_sails(cls, rig, deck):
         else:
             sail = _flying(spec, cls, rig, deck)
         sail.type = t
+        sail.look_override = dict(spec["visual"].get("look") or {})
         out[spec["id"]] = sail
     return out
 
@@ -205,12 +243,12 @@ def _headsail(spec, cls, rig, deck):
 
 def _flying(spec, cls, rig, deck):
     """Code zero and spinnakers, flat in the centreline plane: tacked at the sprit end (asymmetric, code zero) or
-    at the pole end (symmetric), hoisted to the masthead. Edge round is part of the flat outline area."""
+    at the pole end (symmetric, or asymmetric on a class with a pole and no sprit), hoisted to the masthead. Edge
+    round is part of the flat outline area."""
     L = cls["hull"]["loa"]
     t = spec["type"]
-    if t == "spinnaker_sym":
-        pole = cls["rig"]["pole"] or 0.95 * cls["rig"]["J"]
-        tk = np.array([rig.x_mast + rig.chord / 2 + pole, 0, rig.z_step + 1.0 * (L / 12) ** 0.5])
+    if t.startswith("spinnaker") and rig.pole_flown:
+        tk = rig.pole_end.copy()
     elif rig.sprit > 0:
         tk = rig.sprit_end + [0, 0, 0.12]
     else:

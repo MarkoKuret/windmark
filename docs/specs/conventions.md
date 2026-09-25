@@ -3,7 +3,8 @@
 Shared ground rules for every simulation spec in `docs/specs/` (`boat.md`, `sails.md`, `wind.md`,
 `wind_shadow.md`, `sea.md`, `collisions.md`, `data_format.md`, and the race, rules, AI and networking specs).
 Where a spec gives a formula, it is evaluated with the rules here: the frames and signs of §1–§3, the tick of §4,
-the arithmetic of §5, the math functions of §6, the random numbers of §7 and the table lookups of §8.
+the arithmetic of §5, the math functions of §6, the random numbers of §7 and the table lookups of §8. §11 maps the
+frames into the front end's Godot scene.
 
 The core is authoritative: the server and every client run the same core, so the same inputs must give the same
 bits on every platform. That requirement drives most of this document.
@@ -332,3 +333,21 @@ Identifiers in the specs are the names used in code (snake_case). Recurring ones
 | `tack` | `sgn(twa)` |
 | `front sail` | the one non-main sail flown at a time (jib, genoa, code zero or spinnaker) |
 | `config` | the sail combination whose tables drive the boat: main only, or main + one front sail |
+
+## 11. Front-end scene frame (Godot)
+
+Presentation only: the core never sees these axes. The front-end specs (`cameras.md`, `water_render.md`,
+`sail_visuals.md`) use them.
+
+- **Scene world**: Godot `X` = east, `Y` = up, `Z` = south. A world point `(x, y, z)` (ENU, §2) is drawn at
+  `(x, z, −y)`, so north is `−Z` (Godot's forward). As a matrix, `M = [[1, 0, 0], [0, 0, 1], [0, −1, 0]]`, a
+  rotation (no mirror). Compass angles stay clockwise from north: a heading `ψ` points along
+  `(sin ψ, 0, −cos ψ)`.
+- **Generated model axes** (`tools/boatgen/README.md`): glTF `(X, Y, Z) = (y, z, x)` of the body frame (§3), so
+  model `+X` is port, `+Y` up and `+Z` the bow; a body-frame point `p` of the class file or the physics sidecar is
+  `C·p = (p.y, p.z, p.x)` in the model (also a rotation).
+- **Boat node**: its local axes are the model axes, and the imported model sits under it with the identity
+  transform. Its origin is the hull reference point drawn at `M·(x, y, z)` (position and heave), and its basis is
+  `M · R · C⁻¹` with `R` the attitude matrix of §3: the basis columns are `M·R` applied to the body `y`, `z` and
+  `x` axes. Upright on `ψ = 0` the basis is a half turn about `Y`: the bow (local `+Z`) points north (`−Z`). Note
+  that the bow is the node's local `+Z`, not Godot's forward `−Z`.

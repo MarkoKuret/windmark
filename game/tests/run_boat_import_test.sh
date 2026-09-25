@@ -1,5 +1,5 @@
 #!/bin/sh
-# Generates the example boats with tools/boatgen into game/generated/boats (gitignored build output), imports
+# Generates the example boats (and the boatgen test fixtures) with tools/boatgen into game/generated/boats (gitignored build output), imports
 # them headless and runs tests/boat_import_test.gd. Fails on any import error or warning, script error or
 # failed check. Options: --no-gen reuses the GLBs already staged.
 set -eu
@@ -8,11 +8,14 @@ repo=$(cd "$here/.." && pwd)
 out="$here/generated/boats"
 godot=${GODOT:-godot}
 classes="wm12 wm7"
+# generator test classes (features no shipped class uses yet, such as a spinnaker pole)
+fixtures="$repo/tools/boatgen/tests/fixtures"
 
 if [ "${1:-}" != "--no-gen" ]; then
     mkdir -p "$out"
     args=""
     for c in $classes; do args="$args $repo/data/classes/$c.boat.json"; done
+    for f in "$fixtures"/*.boat.json; do args="$args $f"; done
     (cd "$repo/tools/boatgen" && python3 -m boatgen $args --out "$out" --no-previews --quiet)
 fi
 

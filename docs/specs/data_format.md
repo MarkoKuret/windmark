@@ -135,7 +135,7 @@ matching `type`.
 | `handling` | designer | feel multipliers and `dynamics` overrides (§3.7.1) |
 | `boards` | designer | daggerboards of a multihull, in place of `keel` (§3.9) |
 | `vpp` | designer | VPP settings (§3.10) |
-| `visual` | boat generator | liveries, deck layout, hardware; opaque to the core and the VPP |
+| `visual` | boat generator | liveries, deck layout, hardware, and per sail `sails.<id>.look` (the front-end sail look of `sail_visuals.md` §4, copied into the physics sidecar with the defaults filled in); keys in `tools/boatgen/README.md`; opaque to the core and the VPP |
 
 Top level: `"schema": "windmark.boatclass/1"`, `"id"`, `"name"`, `"version"` (integer, bumped on every change).
 

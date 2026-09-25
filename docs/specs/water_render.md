@@ -8,7 +8,7 @@ open-source Godot FFT oceans and a recommendation.
 The contract comes from `sea.md` §7: the drawn surface is `sea_height` itself (up to float rounding), visual-only
 layers may add normals, foam and small displacements but no more than `0.05·Hs` of height, and the sea components
 are never displaced horizontally. The wind on the water comes from `wind.md` §6 and §9. Scene axes are those of
-`cameras.md` §1: Godot `X` = east, `Y` = up, `Z` = south, so a world point `(x, y)` on the water is `(x, η, −y)`.
+`conventions.md` §11: Godot `X` = east, `Y` = up, `Z` = south, so a world point `(x, y)` on the water is `(x, η, −y)`.
 
 ## 1. What must match the simulation
 

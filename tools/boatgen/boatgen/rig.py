@@ -2,7 +2,7 @@
 
 Rig measurements follow the usual conventions: I is the foretriangle height from the sheer at the mast to the
 forestay hounds, J the foretriangle base from the forestay tack to the mast front, P the mainsail hoist above the
-boom, E the foot from the mast aft face along the boom. mast_height is the masthead above the deck at the mast.
+boom, E the foot from the mast aft face along the boom. mast_height is the masthead above the DWL.
 """
 import numpy as np
 

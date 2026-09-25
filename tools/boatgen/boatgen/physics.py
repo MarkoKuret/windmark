@@ -228,8 +228,10 @@ def sail_data(boat):
         corners = {k: {"row": int(i), "col": int(j), "position": _r(to_body(s.P[i, j][None], ox)[0], 4)}
                    for k, (i, j) in s.corners.items()}
         out[name] = {"node": "sail_" + name, "type": s.type, "grid_rows": nv, "grid_cols": nu,
-                     "vertex_order": "row-major from the foot (row 0) to the head, luff (col 0) to leech; "
-                                     "port layer first, then starboard layer",
+                     "vertex_order": "in the GLB file: row-major from the foot (row 0) to the head, luff (col 0) "
+                                     "to leech; port layer first, then starboard layer. Engines may re-index on "
+                                     "import: the stable key is uv1 = (col / (cols - 1), 1 - row / (rows - 1)), "
+                                     "u mirrored on the starboard layer, plus the layer side (port layer on +y)",
                      "area_m2": _r(s.area, 3), "area_target_m2": target, "centroid": _r(to_body(s.centroid()[None], ox)[0], 4),
                      "corners": corners, "look": s.look(boat.hull.L)}
     return out

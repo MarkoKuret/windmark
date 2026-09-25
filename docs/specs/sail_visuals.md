@@ -62,12 +62,15 @@ sidecar: `tack` (0, 0), `clew` (0, cols − 1), `head` (rows − 1, 0), and for 
 (rows − 1, cols − 1). On pointed-head sails (jib, genoa, code zero, spinnakers) the whole head row is one point.
 Two layers 2 mm apart, port layer first; uv0 is metric, uv1 is (chord fraction, 1 − height fraction).
 
-The imported engine mesh is re-indexed by the glTF importer. At load the renderer rebuilds **its own mesh in grid
+The generator writes the full topology: two triangles per cell per layer, zero-area cells at a collapsed head
+included, so every grid vertex is referenced and carries its layer normal. The row-major order holds in the GLB
+file only; the imported engine mesh is re-indexed by the glTF importer. The stable key of a vertex is its uv1
+(exactly `(j / (cols − 1), 1 − i / (rows − 1))`, `u` mirrored on the starboard layer) plus its layer side (port
+layer on `+y`), as in `tools/boatgen/README.md` "Sail grid". At load the renderer rebuilds **its own mesh in grid
 order** (`2 · rows · cols` vertices, layer-major, then row-major): `SailGrid.grid_index` (`game/scripts/sail_grid.gd`)
-maps each imported vertex to its grid index, which gives the uv0 and uv1 of every grid vertex. Grid vertices the
-importer dropped (the collapsed head vertex until the generator references it) take the sidecar corner position
-and the uv of their grid position. Triangles: two per cell per layer, wound so the port layer faces `+y` and the
-starboard layer `−y` in the rest pose. Zero-area cells at a collapsed head are kept; they draw nothing.
+maps each imported vertex to its grid index by that key, which gives the uv0 and uv1 of every grid vertex.
+Triangles: two per cell per layer, wound so the port layer faces `+y` and the starboard layer `−y` in the rest
+pose. Zero-area cells at a collapsed head are kept; they draw nothing.
 
 ### 3.2 Rest mid-surface and sail frame
 `Q0[i][j]` = the mean of the two layer vertices = the rest mid-surface (in `y = 0`). At load, per sail:
@@ -427,7 +430,7 @@ Flutter phase `φ = 0` unless stated.
 ## 13. Dependencies and open points
 
 - The generator writes the `look` block per sail and a `pole` node (pivot at its heel on the mast, turning about the
-  vertical) for pole-flown spinnaker classes (`tools/boatgen`, WM-029). Still open: referencing the collapsed head
-  vertex (backlog WM-017).
+  vertical) for pole-flown spinnaker classes (`tools/boatgen`, WM-029), and the full grid topology with the
+  collapsed head vertex referenced (WM-017).
 - Running rigging (sheets, halyards, guys) is not drawn yet; when it is, the sheets run from the placed clew.
 - Crew, winches and tell-tales follow the sail `motion` output (`sails.md` §7) and are specified with the crew.

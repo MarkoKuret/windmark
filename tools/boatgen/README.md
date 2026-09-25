@@ -191,8 +191,20 @@ suggests the size of one tile of its texture.
   (chord fraction, 1 - height fraction), with the starboard layer mirrored in `u` so a decal reads correctly from
   both sides.
 
-The sails are two layers 2 mm apart, each with its own outward normal. Vertex order in each layer is row-major:
-vertex (row i from the foot, column j from the luff) is index `i · cols + j`; the port layer comes first.
+### Sail grid
+
+The sails are two layers 2 mm apart, each with its own outward normal (port layer `+y`, starboard `-y` on the
+flat sail). Each layer is the full `rows × cols` grid with two triangles per cell, `4 (rows - 1)(cols - 1)`
+triangles in all: on a pointed head the whole head row is one point and its zero-area triangles are kept, so every
+vertex is referenced and carries the layer normal.
+
+- **In the GLB file** the vertex order is row-major: vertex (row i from the foot, column j from the luff) of layer
+  `k` (0 = port) is index `k · rows · cols + i · cols + j`.
+- **In an engine** that order is not guaranteed: Godot's glTF importer re-indexes every mesh (vertices in order of
+  first use by the triangles). The stable key of a vertex is its **uv1 plus its layer side**: uv1 is exactly
+  `(j / (cols - 1), 1 - i / (rows - 1))` (float32), with `u` mirrored (`1 - j / (cols - 1)`) on the starboard
+  layer, and the layer is the side of the flat sail's centreline plane the vertex lies on (port `+y`, glTF `+X`).
+  `game/scripts/sail_grid.gd` rebuilds the grid index from that key; `tests/test_sail_grid.py` holds it.
 
 ## Physics sidecar (`<id>.physics.json`)
 

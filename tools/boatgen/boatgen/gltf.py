@@ -11,8 +11,8 @@ import numpy as np
 
 # name -> (base colour RGBA linear, metallic, roughness, extras)
 MATERIALS = {
-    "gelcoat":     ((0.86, 0.87, 0.88, 1.0), 0.0, 0.18, {"tiling_m": 1.0}),
-    "nonslip":     ((0.62, 0.64, 0.65, 1.0), 0.0, 0.85, {"tiling_m": 0.25}),
+    "gelcoat":     ((0.90, 0.91, 0.92, 1.0), 0.0, 0.16, {"tiling_m": 1.0}),
+    "nonslip":     ((0.58, 0.59, 0.58, 1.0), 0.0, 0.85, {"tiling_m": 0.25}),
     "antifouling": ((0.035, 0.045, 0.07, 1.0), 0.0, 0.75, {"tiling_m": 1.0}),
     "boottop":     ((0.50, 0.03, 0.03, 1.0), 0.0, 0.25, {"tiling_m": 1.0}),
     "carbon":      ((0.035, 0.035, 0.038, 1.0), 0.1, 0.30, {"tiling_m": 0.05}),

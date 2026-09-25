@@ -9,7 +9,8 @@ def draw(hull, appendages, path, title="", px_per_m=110):
     zmin = -appendages.get("draft", hull.Tc) - 0.2
     zmax = float(hull.zs(np.array([L]))[0]) + 0.3
     m = 40
-    W = int(L * px_per_m + 2 * m + B * px_per_m * 1.3 + m)
+    x_min = min([0.0] + [p[0] for poly in appendages.get("profiles", []) for p in poly]) - 0.1
+    W = int((L - x_min) * px_per_m + 2 * m + B * px_per_m * 1.3 + m)
     prof_h = (zmax - zmin) * px_per_m
     H = int(prof_h + B / 2 * px_per_m + 3 * m + 30)
     img = Image.new("RGB", (W, H), (250, 250, 247))
@@ -20,7 +21,7 @@ def draw(hull, appendages, path, title="", px_per_m=110):
         font = ImageFont.load_default()
     ink, grey, blue, red = (30, 30, 40), (170, 170, 175), (40, 90, 170), (190, 60, 50)
     oy = m + 20 + zmax * px_per_m     # DWL row of the profile view
-    ox = m
+    ox = m - x_min * px_per_m
 
     def P(x, z):
         return (ox + x * px_per_m, oy - z * px_per_m)

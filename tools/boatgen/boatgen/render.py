@@ -30,12 +30,12 @@ FS = """
 in vec3 v_pos; in vec3 v_nrm; in vec2 v_uv0; in vec2 v_uv1; in vec4 v_lpos;
 uniform vec4 base_color; uniform float metallic; uniform float roughness; uniform int mat_id;
 uniform vec3 cam_pos; uniform vec3 sun_dir; uniform sampler2D shadow_map; uniform int uv_check;
-uniform int water_on; uniform int hull_livery;
+uniform int water_on; uniform int hull_livery; uniform int battens;
 layout(location = 0) out vec4 frag;
 
 vec3 sky(vec3 d) {
     float h = clamp(d.y, -1.0, 1.0);
-    vec3 zen = vec3(0.18, 0.36, 0.70), hor = vec3(0.78, 0.85, 0.92), gnd = vec3(0.10, 0.16, 0.20);
+    vec3 zen = vec3(0.10, 0.27, 0.62), hor = vec3(0.66, 0.77, 0.90), gnd = vec3(0.05, 0.12, 0.17);
     vec3 c = h > 0.0 ? mix(hor, zen, pow(h, 0.55)) : mix(hor * 0.6, gnd, pow(-h, 0.4));
     float s = max(dot(d, sun_dir), 0.0);
     return c + vec3(1.0, 0.92, 0.8) * (pow(s, 600.0) * 30.0 + pow(s, 12.0) * 0.25);
@@ -86,6 +86,15 @@ void main() {
         float w = fwidth(uv.y) * 1.5 + 0.008;
         albedo *= 1.0 - 0.18 * (1.0 - smoothstep(0.0, w, 0.45 - s));
         albedo *= 0.96 + 0.04 * sin(uv.x * 0.7);
+        // edge tapes and batten pockets from the normalised uv1 (u: luff 0 -> leech 1, v: head 0 -> foot 1)
+        vec2 s1 = v_uv1;
+        float eu = min(s1.x, 1.0 - s1.x), ev = 1.0 - s1.y;
+        float tape = 1.0 - smoothstep(0.012, 0.018, min(eu, ev));
+        float bv = fract(s1.y * 5.0);
+        // full-length battens (the two layers mirror uv1, so luff and leech are not told apart here)
+        float batten = (1.0 - smoothstep(0.004, 0.007, abs(bv - 0.5) * 0.2)) * step(0.04, eu)
+                       * step(0.08, s1.y) * step(s1.y, 0.92) * float(battens);
+        albedo = mix(albedo, vec3(0.12, 0.13, 0.15), max(tape, batten * 0.45));
     }
     if (hull_livery == 1 && mat_id == 0 && uv_check == 0) {
         // demonstration livery through uv1: a sheer stripe on both hull bands
@@ -105,9 +114,9 @@ void main() {
     vec3 F = F0 + (1.0 - F0) * pow(1.0 - max(dot(H, V), 0.0), 5.0);
     vec3 spec = D * G * F / max(4.0 * NL * NV, 1e-3);
     float sh = shadow();
-    vec3 sun = vec3(3.1, 2.95, 2.7);
+    vec3 sun = vec3(3.6, 3.4, 3.1);
     vec3 diff = albedo * (1.0 - metal) / 3.14159;
-    vec3 amb = albedo * (1.0 - metal) * mix(vec3(0.22, 0.20, 0.18), vec3(0.42, 0.50, 0.62), N.y * 0.5 + 0.5);
+    vec3 amb = albedo * (1.0 - metal) * mix(vec3(0.16, 0.15, 0.14), vec3(0.34, 0.42, 0.56), N.y * 0.5 + 0.5);
     vec3 R = reflect(-V, N);
     vec3 Fr = F0 + (1.0 - F0) * pow(1.0 - NV, 5.0);
     vec3 env = sky(R) * Fr * pow(1.0 - rough, 2.2) * (metal > 0.5 ? 1.0 : 0.6);
@@ -118,7 +127,7 @@ void main() {
     }
     if (water_on == 1 && v_pos.y < 0.0) { // under water: absorb toward the water colour with depth
         float d = -v_pos.y;
-        col = mix(col, vec3(0.02, 0.10, 0.12), 1.0 - exp(-d * 1.1));
+        col = mix(col, vec3(0.01, 0.07, 0.09), 1.0 - exp(-d * 0.9));
     }
     frag = vec4(col, 1.0);
 }
@@ -131,7 +140,7 @@ uniform vec3 cam_pos; uniform vec3 sun_dir; uniform sampler2D shadow_map;
 layout(location = 0) out vec4 frag;
 vec3 sky(vec3 d) {
     float h = clamp(d.y, -1.0, 1.0);
-    vec3 zen = vec3(0.18, 0.36, 0.70), hor = vec3(0.78, 0.85, 0.92);
+    vec3 zen = vec3(0.10, 0.27, 0.62), hor = vec3(0.66, 0.77, 0.90);
     vec3 c = mix(hor, zen, pow(max(h, 0.0), 0.55));
     float s = max(dot(d, sun_dir), 0.0);
     return c + vec3(1.0, 0.92, 0.8) * (pow(s, 900.0) * 40.0);
@@ -145,7 +154,7 @@ void main() {
     vec3 V = normalize(cam_pos - v_pos);
     float F = 0.02 + 0.98 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
     vec3 R = reflect(-V, N);
-    vec3 deep = vec3(0.012, 0.07, 0.10);
+    vec3 deep = vec3(0.006, 0.045, 0.075);
     vec3 s = v_lpos.xyz / v_lpos.w * 0.5 + 0.5;
     float sh = 1.0;
     if (s.x > 0.0 && s.x < 1.0 && s.y > 0.0 && s.y < 1.0) sh = (s.z - 0.001 > texture(shadow_map, s.xy).r) ? 0.55 : 1.0;
@@ -284,7 +293,8 @@ class Renderer:
         quad = np.array([-1, -1, 1, -1, -1, 1, 1, 1], dtype="f4")
         self.quad = ctx.vertex_array(self.post_prog, [(ctx.buffer(quad), "2f", "in_pos")])
 
-    def load(self, glb_path, extra=None, hide=(), transform=None):
+    def load(self, glb_path, extra=None, hide=(), transform=None, battened=()):
+        self.battened = tuple(battened)
         prims, doc = read_glb(glb_path)
         if transform is not None:
             R = np.asarray(transform, dtype=np.float64)
@@ -339,7 +349,7 @@ class Renderer:
         mvp = (Pm @ V).astype("f4")
         self.ms_fbo.use()
         ctx.viewport = (0, 0, self.W, self.H)
-        bg = (0.80, 0.85, 0.90) if background is None else background
+        bg = (0.66, 0.77, 0.90) if background is None else background
         self.ms_fbo.clear(*bg, 1.0, depth=1.0)
         self.shadow_tex.use(0)
         p = self.prog
@@ -356,6 +366,7 @@ class Renderer:
             _set(p, "metallic", pbr["metallicFactor"])
             _set(p, "roughness", pbr["roughnessFactor"])
             _set(p, "mat_id", MAT_IDS.get(mat, 0))
+            _set(p, "battens", int(name in self.battened))
             vao.render()
         if water or ground:
             S = 400.0
@@ -374,6 +385,7 @@ class Renderer:
                 ctx.blend_func = self.mgl.SRC_ALPHA, self.mgl.ONE_MINUS_SRC_ALPHA
             else:
                 prog = self.prog
+                _set(prog, "uv_check", 0)
                 _set(prog, "base_color", (0.55, 0.56, 0.57, 1.0))
                 _set(prog, "metallic", 0.0)
                 _set(prog, "roughness", 0.9)
@@ -397,8 +409,8 @@ class Renderer:
         _write(pp, "proj", Pm.astype("f4").T.tobytes())
         _set(pp, "texel", (1 / self.W, 1 / self.H))
         _set(pp, "ao_radius", float(np.linalg.norm(eye - target) * 0.012))
-        _set(pp, "bg_top", (0.55, 0.68, 0.86))
-        _set(pp, "bg_bot", (0.86, 0.89, 0.92))
+        _set(pp, "bg_top", (0.30, 0.50, 0.80))
+        _set(pp, "bg_bot", (0.78, 0.85, 0.93))
         _set(pp, "bg_on", 1)
         self.quad.render(self.mgl.TRIANGLE_STRIP)
         img = np.frombuffer(self.out_fbo.read(components=3), dtype=np.uint8).reshape(self.H, self.W, 3)

@@ -21,6 +21,7 @@ def render_all(boat, out_dir, preview_dir, size=(1600, 1000), log=print):
     glb = os.path.join(out_dir, f"{cid}.glb")
     files = []
     r = Renderer(*size)
+    bat = tuple("sail_" + sid for sid, s in boat.sails.items() if s.type == "main")
 
     def shot(name, **kw):
         path = os.path.join(preview_dir, f"{cid}_{name}.png")
@@ -30,15 +31,16 @@ def render_all(boat, out_dir, preview_dir, size=(1600, 1000), log=print):
     # 1. hero: upwind, heeled, from the windward bow quarter
     posed = os.path.join(out_dir, f"{cid}_upwind.glb")
     boat.write_posed_glb(posed, "upwind")
-    r.load(posed, transform=heel_matrix(14))
-    t = np.array([0.0, 0.36 * top, 0.05 * L])
-    shot("upwind", eye=orbit(t, 1.95 * top, 38, 9), target=t, fov=36)
+    r.load(posed, transform=heel_matrix(14), battened=bat)
+    t = np.array([-0.06 * top, 0.44 * top, 0.05 * L])
+    shot("upwind", eye=orbit(t, 1.95 * top, 38, 7), target=t, fov=36, livery=True)
     # 2. deck: flat standard model from the starboard quarter, sails hidden
     r.load(glb, hide=("sail_",))
     t = np.array([0.0, 0.55, -0.12 * L])
     shot("deck", eye=orbit(t, 0.62 * L, -145, 34), target=t, fov=42)
     # 3. profile: the model as exported (flat standard sails), dry, from starboard
-    r.load(glb, hide=tuple(f"sail_{sid}" for sid, s in boat.sails.items() if s.type not in ("main", "jib", "genoa")))
+    r.load(glb, hide=tuple(f"sail_{sid}" for sid, s in boat.sails.items() if s.type not in ("main", "jib", "genoa")),
+           battened=bat)
     t = np.array([0.0, 0.42 * top - 0.3 * boat.app.draft, 0.1 * L])
     shot("profile", eye=orbit(t, 2.2 * top, -90, 3), target=t, fov=33, water=False, ground=True)
     # 4. downwind with the spinnaker (or reaching with a code zero)
@@ -47,9 +49,9 @@ def render_all(boat, out_dir, preview_dir, size=(1600, 1000), log=print):
     if pose:
         posed = os.path.join(out_dir, f"{cid}_{pose}.glb")
         boat.write_posed_glb(posed, pose)
-        r.load(posed, transform=heel_matrix(7))
-        t = np.array([-0.1 * L, 0.38 * top, 0.1 * L])
-        shot(pose, eye=orbit(t, 2.0 * top, -128, 8), target=t, fov=38)
+        r.load(posed, transform=heel_matrix(7), battened=bat)
+        t = np.array([-0.12 * top, 0.44 * top, 0.1 * L])
+        shot(pose, eye=orbit(t, 1.95 * top, -128, 7), target=t, fov=38, livery=True)
     # 5. uv check on the flat model
     r.load(glb, hide=("sail_",))
     t = np.array([0.0, 0.2, 0.0])

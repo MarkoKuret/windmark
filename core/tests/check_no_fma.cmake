@@ -1,0 +1,17 @@
+# Fails when the disassembly of the core library contains a fused multiply-add (ARM64 fmadd/fmsub/fnmadd/fnmsub,
+# vector fmla/fmls; x86 vfmadd/vfmsub/vfnmadd/vfnmsub).
+execute_process(COMMAND "${OBJDUMP}" -d "${LIB}" OUTPUT_VARIABLE dis RESULT_VARIABLE rc ERROR_VARIABLE err)
+if(NOT rc EQUAL 0)
+  message(FATAL_ERROR "objdump failed: ${err}")
+endif()
+string(LENGTH "${dis}" len)
+if(len LESS 1000)
+  message(FATAL_ERROR "disassembly unexpectedly short; is ${LIB} the core library?")
+endif()
+string(REGEX MATCHALL "[ \t](fmadd|fmsub|fnmadd|fnmsub|fmla|fmls|vfn?m(add|sub)[0-9a-z]*)[ \t]" hits "${dis}")
+list(LENGTH hits n)
+if(n GREATER 0)
+  list(REMOVE_DUPLICATES hits)
+  message(FATAL_ERROR "fused multiply-add in the core library (${n} instructions): ${hits}")
+endif()
+message(STATUS "no fused multiply-add in ${LIB}")

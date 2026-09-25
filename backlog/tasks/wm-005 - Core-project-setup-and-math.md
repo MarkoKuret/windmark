@@ -1,9 +1,11 @@
 ---
 id: WM-005
 title: 'Core: project setup and math'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-09-25 13:31'
+updated_date: '2026-09-25 13:53'
 labels:
   - core
 dependencies: []
@@ -19,7 +21,7 @@ core/ CMake project: float rules, own math functions and counter-based RNG with 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Check values pass
-- [ ] #2 wm7 and wm12 perf files load and validate
-- [ ] #3 Builds with no FMA contraction
+- [x] #1 Check values pass
+- [x] #2 wm7 and wm12 perf files load and validate
+- [x] #3 Builds with no FMA contraction
 <!-- AC:END -->

@@ -71,6 +71,9 @@ RUDDER_STALL_RANGE = 5.0 * DEG     # incidence over which a blade's flow separat
 # the helm the sail plan asks for is held to +-WH_HELM_MAX (a boat beyond full helm broaches)
 WH_BALANCE_TWS = 6.17
 WH_HELM_MAX = 3.0
+# a config overpowered past its heel limit on a reach or a run (broached cells from this TWA where the heel is
+# what failed) broaches: it rounds up at the full-helm turn rate of its broached speed
+WH_BROACH_TWA = 45.0 * DEG
 # fall_off (README "Output"): turning away from the wind in sternway and at a crawl, reference rate of the S and L
 # archetypes, full from 20 to 60 deg TWA, none below 10 deg (a boat right head to wind stays in irons) and from
 # 90 deg (a stopped boat lies beam on); fading to 0 at a Froude number of FALL_OFF_FN ahead, where the keel starts
@@ -345,12 +348,18 @@ class Generator:
         """Helm balance (rad/s, + = toward the wind) on the polar's axes (boat.md 5.9, sails.md 6).
 
         The yaw moment of the sail plan (_yaw_moment) at the polar speed and heel is expressed as the helm h_e the
-        rudder needs to hold it at that speed (the rudder's yaw moment per unit helm about the centre of lateral
-        resistance in its linear range, with the share of the rudder angle that reaches the blade in a turn,
-        RUDDER_AOA_SHARE), and the table holds the turn rate that helm gives on the radius law, v / R(h_e); beyond
-        full helm it grows as v h_e / R_full, so a boat overpowered past what full helm holds broaches. Broached
-        cells take the value of the last wind the config holds at that angle (as the acceleration). 0 in the no-go
-        zone and in no wind."""
+        rudder needs to hold it at that speed on a straight course: the rudder's yaw moment per unit helm about the
+        centre of lateral resistance in its linear range, with the whole rudder angle reaching the blade (the
+        boat is not turning, so no flow curvature takes a share of it). The table holds the turn rate that helm
+        gives on the radius law, v / R(h_e): with the helm centred the same moment turns the boat at that rate,
+        because in a free turn the centred blade meets the turn's cross-flow and damps it by the share of the
+        rudder angle that a helm turn loses to it (RUDDER_AOA_SHARE), so the moment is balanced by the same yaw
+        damping as the helm turn of h_e. Beyond full helm the rate grows as v h_e / R_full, so a boat overpowered
+        past what full helm holds broaches. Broached cells from WH_BROACH_TWA where the heel is what failed are
+        overpowered: the boat lies over at its heel limit with the rudder near the surface and rounds up at the
+        full-helm turn rate of its broached speed, v_b / R_full (at speed a full helm can still catch it). The
+        other broached cells (pinching in a strong breeze) take the value of the last wind the config holds at
+        that angle (as the acceleration). 0 in the no-go zone and in no wind."""
         b = self.boat
         tws = self.tws[:, None]
         twa = self.twa[None, :]
@@ -359,7 +368,7 @@ class Generator:
         N = self._yaw_moment(r.rig, r.fi, r.reef, tws, twa, np.maximum(V, 0.05), r.heel, x_clr)
         a1, _, cla = self._rudder_lift_slope()
         arm = max(x_clr - b.rudder.x, 0.1 * b.lwl)
-        per_helm = 0.5 * RHO_WATER * V ** 2 * a1 * b.rudder.count * cla * RUDDER_AOA_SHARE * b.rudder_max * arm
+        per_helm = 0.5 * RHO_WATER * V ** 2 * a1 * b.rudder.count * cla * b.rudder_max * arm
         he = np.clip(np.where(V > 0.1, N / np.maximum(per_helm, 1e-9), 0.0), -WH_HELM_MAX, WH_HELM_MAX)
         n = np.abs(he)
         R = np.maximum((self.turn_full + self.turn_offset) / np.maximum(n, 1e-6) - self.turn_offset, 0.5)
@@ -367,6 +376,10 @@ class Generator:
         cols = np.arange(V.shape[1])[None, :]
         src = rate[np.maximum(r.src, 0), cols]
         rate = np.where(r.broached, np.where(r.src >= 0, src, 0.0), rate)
+        acc = np.zeros_like(r.V)                        # only the broached speed is used
+        v_b, _, _ = self._broached(r, acc)
+        over = r.broached & r.heel_limited & (twa >= WH_BROACH_TWA - 1e-9)
+        rate = np.where(over, v_b / self.turn_full, rate)
         out = np.zeros((len(TWS), len(twa_axis)))
         keep = np.searchsorted(self.twa, twa_axis[4:] - 1e-9)
         out[1:, 4:] = rate[:, keep]
@@ -526,6 +539,8 @@ class Generator:
         # turning (run): radius at full helm and the radius law's offset; helm speed scales with size
         turn_full, turn_offset = self.turn_full, self.turn_offset
         helm_rate = float(np.clip(_by_size(lwl, 1.65, 1.0), 0.6, 2.2))
+        # yaw inertia: time constant of the hull's yaw rate (boat.md 4 reference by size)
+        yaw_time = float(np.clip(_by_size(lwl, 0.35, 0.6), 0.2, 1.0))
 
         # deceleration: constant = the windage in irons plus the hull at a crawl; linear = the rate that
         # reproduces the time the hull coasts from its close-hauled speed to half of it with the drive gone
@@ -580,6 +595,7 @@ class Generator:
             "rudder_max": b.rudder_max,
             "turn_radius_full": turn_full,
             "turn_radius_offset": turn_offset,
+            "yaw_time": yaw_time,
             "decel_linear": decel_linear,
             "decel_const": decel_const,
             "heel_speed_factor": table([("heel_abs", hk)], "1", hsf),
@@ -640,13 +656,15 @@ class Generator:
 
         The turn rate grows in proportion to the helm until the rudder stalls, at the helm h_s where
         RUDDER_AOA_SHARE of the rudder angle reaches the stall of the blade's lift line, and little beyond it. The
-        offset makes the law's half-helm radius that of this linear-then-stalled rudder, R(0.5) = 2 h_s R_full,
-        so offset = -2 (1 - h_s) R_full: 0 for a rudder that never stalls (radius in proportion to 1/helm),
-        negative when it stalls short of full helm. h_s is held in [0.6, 1] (turn_c >= 0.2 R_full)."""
+        offset gives the law the slope of this linear-then-stalled rudder at small helm, where the boat is steered
+        and held against its helm balance: R(h) -> h_s R_full / h, so turn_c = h_s R_full and
+        offset = -(1 - h_s) R_full: 0 for a rudder that never stalls (radius in proportion to 1/helm), negative
+        when it stalls short of full helm (the law then reaches about 80 % of the full-helm rate at h_s). h_s is
+        held in [0.6, 1] (turn_c >= 0.6 R_full)."""
         _, _, cla = self._rudder_lift_slope()
         h_s = RUDDER_CL_MAX / (cla * RUDDER_AOA_SHARE * self.boat.rudder_max)
         h_s = float(np.clip(h_s, 0.6, 1.0))
-        return -2.0 * (1.0 - h_s) * turn_full
+        return -(1.0 - h_s) * turn_full
 
     def _coast_rate(self, decel_const):
         """decel_linear: the k for which dv/dt = -(k v + decel_const) coasts from the close-hauled VMG speed to half

@@ -78,6 +78,27 @@ class Deck:
         yr = max(float(self.yk(x)) - self.cab_h * self.cab_slope, 1e-3)
         return float(self.deck_z(x, 0)) + self.cab_h + 0.3 * self.camber(x) * (1 - min(abs(y) / yr, 1) ** 2)
 
+    def in_cabin_roof(self, x, y):
+        if not self.has_cabin:
+            return False
+        inset = self.cab_h * self.cab_slope
+        return self.xk0 <= x <= self.xk1 - inset and abs(y) < float(self.yk(x)) - inset - 0.03
+
+    def in_cockpit(self, x, y):
+        return self.xc0 <= x <= self.xc1 and abs(y) < float(self.yc(x))
+
+    def surface(self, x, y, h=2e-3):
+        """(z, normal, kind) of the walking surface at (x, y): cabin roof, cockpit floor or deck."""
+        if self.in_cabin_roof(x, y):
+            f, kind = (lambda a, b: self.roof_z(a, b)), "roof"
+        elif self.in_cockpit(x, y):
+            f, kind = (lambda a, b: float(self.floor_z(a))), "floor"
+        else:
+            f, kind = (lambda a, b: float(self.deck_z(a, b))), "deck"
+        z = f(x, y)
+        n = normalize(np.array([-(f(x + h, y) - f(x - h, y)) / (2 * h), -(f(x, y + h) - f(x, y - h)) / (2 * h), 1.0]))
+        return z, n, kind
+
     def y_inner(self, x):
         x = np.asarray(x, dtype=np.float64)
         return np.where(x <= self.xc1, self.yc(x), np.where(x <= self.xk1, self.yk(x), 0.0))

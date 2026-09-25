@@ -5,8 +5,11 @@ body of revolution with a flattened elliptical cross-section, sized so its lead 
 """
 import numpy as np
 
+_trapz = getattr(np, "trapezoid", None) or np.trapz
+
 from .classfile import RHO_LEAD
-from .mesh import Geom, Part, foil, grid, mesh_volume, normalize, arclen, box, superellipsoid_box, tube, merge
+from .mesh import (Geom, Part, foil, grid, mesh_volume, mesh_area, normalize, arclen, box, superellipsoid_box, tube,
+                   merge, split_by_plane_z)
 
 
 def _bulb_profile(s):
@@ -29,64 +32,59 @@ class Appendages:
         self.cls = cls
         self.hull = hull
         k = cls["keel"]
-        L = hull.L
-        # ---- bulb
-        b = k["bulb"]
-        self.bulb_mass = float(b["mass"])
-        Vb = self.bulb_mass / RHO_LEAD
-        Lb = float(b["length"])
-        flat = float(b.get("flat", 1.25))
-        s = np.linspace(0, 1, 400)
-        prof = np.maximum(_bulb_profile(s), 0)
-        # V = pi * a * b * integral r^2 ds * Lb with a = R sqrt(flat), b = R / sqrt(flat)
-        I2 = np.trapz(prof ** 2, s) * Lb
-        R = np.sqrt(Vb / (np.pi * I2))
-        if b.get("diameter"):
-            R = 0.5 * float(b["diameter"]) / prof.max()
-        self.bulb_R, self.bulb_len, self.bulb_flat = R, Lb, flat
-        half_h = R * prof.max() / np.sqrt(flat)
-        self.bulb_zc = -float(k["depth"]) + half_h
-        # ---- fin
-        lam = float(k["chord_tip_ratio"])
-        c_mean = float(k["chord"])
-        self.fin_cr = 2 * c_mean / (1 + lam)
-        self.fin_ct = lam * self.fin_cr
-        x_qc = hull.x_fwl - float(k["position"]) * hull.Lwl
-        xs_root = np.linspace(x_qc - 0.75 * self.fin_cr, x_qc + 0.25 * self.fin_cr, 9)
-        z_root = float(np.max(hull.zk(xs_root))) + 0.04      # root buried slightly in the canoe body
-        z_tip = self.bulb_zc + 0.35 * half_h                  # tip buried in the bulb
-        span = z_root - z_tip
-        sweep = np.radians(float(k["sweep_deg"]))
-        self.fin_le_root = np.array([x_qc + 0.25 * self.fin_cr, 0.0, z_root])
-        self.fin_le_tip = np.array([self.fin_le_root[0] - span * np.tan(sweep), 0.0, z_tip])
-        self.fin_tc = float(k["thickness"])
-        self.fin_span_wet = -z_tip  # below the DWL
-        # bulb placed so its 40 % length sits under the fin tip quarter chord
-        x_tip_qc = self.fin_le_tip[0] - 0.25 * self.fin_ct
-        self.bulb_nose_x = x_tip_qc + 0.40 * Lb
         self.draft = float(k["depth"])
+        # ---- bulb (sized from its lead mass unless a diameter is given)
+        b = k["bulb"]
+        self.has_bulb = b is not None
+        self.fin_cr, self.fin_ct = float(k["chord_root"]), float(k["chord_tip"])
+        self.fin_tc = float(k["thickness"])
+        if self.has_bulb:
+            self.bulb_mass = float(b["mass"])
+            Lb = float(b["length"])
+            flat = float(b["flat"])
+            s = np.linspace(0, 1, 400)
+            prof = np.maximum(_bulb_profile(s), 0)
+            # V = pi * a * b * Lb * integral(r^2 ds) with a = R sqrt(flat), b = R / sqrt(flat)
+            I2 = _trapz(prof ** 2, s) * Lb
+            R = np.sqrt(self.bulb_mass / RHO_LEAD / (np.pi * I2))
+            if b.get("diameter"):
+                R = 0.5 * float(b["diameter"]) / prof.max()
+            self.bulb_R, self.bulb_len, self.bulb_flat = R, Lb, flat
+            half_h = R * prof.max() / np.sqrt(flat)
+            self.bulb_zc = -self.draft + half_h
+            z_tip = self.bulb_zc + 0.35 * half_h                  # fin tip buried in the bulb
+        else:
+            self.bulb_mass = 0.0
+            z_tip = -self.draft
+        # ---- fin: root quarter chord at the class x, quarter-chord line swept by `sweep`
+        x_qc = float(k["x_qc"])
+        xs_root = np.linspace(x_qc - 0.75 * self.fin_cr, x_qc + 0.25 * self.fin_cr, 9)
+        z_root = float(np.max(hull.zk(xs_root))) + 0.04          # root buried slightly in the canoe body
+        span = z_root - z_tip
+        x_qc_tip = x_qc - span * np.tan(float(k["sweep"]))
+        self.fin_le_root = np.array([x_qc + 0.25 * self.fin_cr, 0.0, z_root])
+        self.fin_le_tip = np.array([x_qc_tip + 0.25 * self.fin_ct, 0.0, z_tip])
+        self.fin_span_wet = -z_tip
+        if self.has_bulb:
+            # bulb placed so its 40 % length sits under the fin tip quarter chord
+            self.bulb_nose_x = x_qc_tip + 0.40 * self.bulb_len
 
-        # ---- rudder
+        # ---- rudder: stock at the class x; a transom rudder hangs aft of the transom
         r = cls["rudder"]
-        lam_r = float(r["chord_tip_ratio"])
-        self.rud_cr = 2 * float(r["chord"]) / (1 + lam_r)
-        self.rud_ct = lam_r * self.rud_cr
+        self.rud_cr, self.rud_ct = float(r["chord_root"]), float(r["chord_tip"])
         self.rud_tc = float(r["thickness"])
-        pos = float(r["position"])
-        self.transom_hung = pos < 0.05
-        sw = np.radians(float(r["sweep_deg"]))
+        self.transom_hung = r["type"] == "transom"
         z_tip_r = -float(r["depth"])
+        x_stock = float(r["x_stock"])
         if self.transom_hung:
-            x_stock = -0.07 - 0.25 * self.rud_cr
+            x_stock = min(x_stock, -0.07 - 0.25 * self.rud_cr)
             z_top = float(hull.zs(np.array([0.0]))[0]) + 0.10
         else:
-            x_stock = pos
-            z_top = float(hull.zk(np.array([pos]))[0]) + 0.04
+            z_top = float(hull.zk(np.array([x_stock]))[0]) + 0.04
         self.rud_stock = np.array([x_stock, 0.0, z_top])
         self.rud_le_root = np.array([x_stock + 0.25 * self.rud_cr, 0, z_top])
         span_r = z_top - z_tip_r
-        self.rud_le_tip = np.array([self.rud_le_root[0] - span_r * np.tan(sw) + 0.25 * (self.rud_cr - self.rud_ct),
-                                    0, z_tip_r])
+        self.rud_le_tip = np.array([x_stock - span_r * np.tan(float(r["sweep"])) + 0.25 * self.rud_ct, 0, z_tip_r])
 
     # --------------------------------------------------------------------------------------------------------
     def keel_part(self, n_chord=22):
@@ -94,7 +92,8 @@ class Appendages:
         fin = foil(_foil_stations(self.fin_le_root, self.fin_le_tip, self.fin_cr, self.fin_ct, self.fin_tc),
                    n_chord=n_chord, tip_cap=False, root_cap=False)
         p.add("antifouling", fin)
-        p.add("antifouling", self.bulb_geom())
+        if self.has_bulb:
+            p.add("antifouling", self.bulb_geom())
         self.fin_geom = fin
         return p
 
@@ -140,12 +139,12 @@ class Appendages:
     # --------------------------------------------------------------------------------------------------------
     def volumes(self):
         V_fin, C_fin = mesh_volume(self.fin_geom)
-        V_bulb, C_bulb = mesh_volume(self.bulb)
+        V_bulb, C_bulb = mesh_volume(self.bulb) if self.has_bulb else (0.0, np.zeros(3))
         V_rud, C_rud = mesh_volume(self.rudder_geom)
-        # only the immersed part displaces: the rudder of a transom-hung boat pokes out of the water
-        if self.transom_hung:
-            frac = min(1.0, float(self.cls["rudder"]["depth"]) / (self.rud_stock[2] + float(self.cls["rudder"]["depth"])))
-            V_rud *= frac
+        # only the immersed part displaces (a transom rudder, or a spade root near the stern, is partly above the
+        # DWL); scaled by the immersed share of its surface
+        below, _ = split_by_plane_z(self.rudder_geom, 0.0)
+        V_rud *= mesh_area(below) / mesh_area(self.rudder_geom) if below is not None else 0.0
         return {"fin": (V_fin, C_fin), "bulb": (V_bulb, C_bulb), "rudder": (V_rud, C_rud)}
 
     def estimate_volume(self):
@@ -161,13 +160,16 @@ class Appendages:
         """Side-view outlines (x, z) for the lines plan."""
         fin = [self.fin_le_root[[0, 2]], self.fin_le_tip[[0, 2]],
                (self.fin_le_tip - [self.fin_ct, 0, 0])[[0, 2]], (self.fin_le_root - [self.fin_cr, 0, 0])[[0, 2]]]
-        s = np.linspace(0, 1, 40)
-        pr = np.maximum(_bulb_profile(s), 0) * self.bulb_R / np.sqrt(self.bulb_flat)
-        xb = self.bulb_nose_x - s * self.bulb_len
-        bulb = list(zip(xb, self.bulb_zc + pr)) + list(zip(xb[::-1], (self.bulb_zc - pr)[::-1]))
+        out = [[tuple(p) for p in fin]]
+        if self.has_bulb:
+            s = np.linspace(0, 1, 40)
+            pr = np.maximum(_bulb_profile(s), 0) * self.bulb_R / np.sqrt(self.bulb_flat)
+            xb = self.bulb_nose_x - s * self.bulb_len
+            out.append(list(zip(xb, self.bulb_zc + pr)) + list(zip(xb[::-1], (self.bulb_zc - pr)[::-1])))
         rud = [self.rud_le_root[[0, 2]], self.rud_le_tip[[0, 2]], (self.rud_le_tip - [self.rud_ct, 0, 0])[[0, 2]],
                (self.rud_le_root - [self.rud_cr, 0, 0])[[0, 2]]]
-        return [[tuple(p) for p in fin], bulb, [tuple(p) for p in rud]]
+        out.append([tuple(p) for p in rud])
+        return out
 
     def lateral_areas(self):
         span = self.fin_span_wet

@@ -77,6 +77,9 @@ class GLBWriter:
         prims = []
         piv = np.zeros(3) if pivot is None else to_gltf(np.asarray(pivot, dtype=np.float64)[None, :], self.ox)[0]
         for mat, g in sorted(part.merged().items()):
+            for arr, what in ((g.P, "positions"), (g.N, "normals"), (g.uv0, "uv0"), (g.uv1, "uv1")):
+                if not np.isfinite(arr).all():
+                    raise ValueError(f"{name}/{mat}: non-finite {what}")
             P = (to_gltf(g.P, self.ox) - piv).astype(np.float32)
             N = to_gltf_dir(g.N).astype(np.float32)
             n = np.linalg.norm(N, axis=1, keepdims=True)

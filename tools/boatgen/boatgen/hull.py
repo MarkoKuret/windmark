@@ -22,6 +22,8 @@ waterline curve (to hit the prismatic coefficient). LWL and canoe-body draft are
 """
 import numpy as np
 
+_trapz = getattr(np, "trapezoid", None) or np.trapz
+
 from .mesh import Geom, Part, grid, smax, smin, arclen, normalize
 
 
@@ -35,13 +37,16 @@ class HullShape:
         self.Tc = h["canoe_draft"]
         self.x_fwl = self.L - h["bow_overhang"]
         self.x_awl = self.x_fwl - self.Lwl
-        if self.x_awl < 0:
-            raise ValueError("LWL plus bow overhang exceeds LOA")
-        self.x_mb = self.L * (1 - h["max_beam_pos"])            # max sheer beam
-        self.x_mw = self.x_fwl - h["max_bwl_pos"] * self.Lwl    # max bilge breadth
         self.x_md = self.x_fwl - h["max_draft_pos"] * self.Lwl  # deepest canoe body
-        # rocker 0 = flat run (keel line exponent 4), 1 = strongly rockered (1.6)
-        self.k_prof = 4.0 - 2.4 * float(h["rocker"])
+        self.x_mw = self.x_fwl - h["max_bwl_pos"] * self.Lwl    # max bilge breadth
+        self.s_m = h["max_beam_station"]
+        self.x_mb = self.L * self.s_m                             # max sheer beam
+        self.k_prof = float(h["keel_line_exponent"])
+        # forefoot: where the keel line meets the stem, rocker.fwd above the lowest point
+        self.d_ff = self.Tc - h["rocker_fwd"]
+        self.stem_slope = h["freeboard_bow"] / max(self.L - self.x_fwl, 0.005)
+        self.x_ff = self.x_fwl - self.d_ff / self.stem_slope
+        self.transom_immersion = self.Tc - h["rocker_aft"]
         self.p_top = float(h["topside_flare"])
         self.ratio = float(h["section_ratio"])
         # solved knobs (initial guesses)
@@ -56,23 +61,23 @@ class HullShape:
     # longitudinal curves (all vectorised over x)
 
     def zs(self, x):
-        """Sheer height: parabola through stern, max-beam and bow freeboards, minus a sheer spring."""
+        """Sheer height: parabola through the transom, mid-LOA and stem freeboards, minus a sheer spring."""
         h = self.h
-        xs = np.array([0.0, self.x_mb, self.L])
+        xs = np.array([0.0, 0.5 * self.L, self.L])
         zz = np.array([h["freeboard_stern"], h["freeboard"], h["freeboard_bow"]])
         c = np.polyfit(xs, zz, 2)
         t = np.clip(x / self.L, 0, 1)
         return np.polyval(c, x) - h["sheer_spring"] * 4 * t * (1 - t)
 
     def bs(self, x):
-        """Sheer half-breadth: max at x_mb, zero at the stem head, half the transom width aft."""
+        """Sheer half-breadth, the class plan-view rule (docs/specs/collisions.md 2.1): with s = x / LOA,
+        s <= s_m: T/2 + (B/2 - T/2)(1 - (1 - s/s_m)^2);  s > s_m: B/2 (1 - u^f), u = (s - s_m)/(1 - s_m)."""
         B, Tw = self.h["beam_max"] / 2, self.h["transom_width"] / 2
-        x = np.asarray(x, dtype=np.float64)
-        u = np.clip((x - self.x_mb) / (self.L - self.x_mb), 0, 1)
-        v = np.clip((self.x_mb - x) / self.x_mb, 0, 1)
-        fwd = B * (1 - u ** 1.75) ** 0.85
-        aft = Tw + (B - Tw) * (1 - v ** 2.3)
-        return np.where(x >= self.x_mb, fwd, aft)
+        s = np.clip(np.asarray(x, dtype=np.float64) / self.L, 0, 1)
+        sm, f = self.s_m, self.h["bow_fineness"]
+        aft = Tw + (B - Tw) * (1 - (1 - s / sm) ** 2)
+        fwd = B * (1 - np.clip((s - sm) / (1 - sm), 0, 1) ** f)
+        return np.where(s <= sm, aft, fwd)
 
     def w(self, x):
         """Half-breadth at the bilge turn; its fore and aft exponents scale with the fullness knob phi."""
@@ -88,24 +93,26 @@ class HullShape:
         return np.minimum(res, self.bs(x) * 1.02 + 0.02)
 
     def zk(self, x):
-        """Profile line: canoe-body keel line (depth Tc at x_md, crossing the DWL exactly at both LWL ends),
-        a straight raked stem up to the stem head, and a rounded forefoot joining the two."""
+        """Profile line. The canoe-body keel line is deepest (Tc) at x_md and rises by rocker.fwd to the forefoot
+        and by rocker.aft to the aft end of the waterline; a straight stem runs from the forefoot through the
+        forward waterline end to the stem head, joined to the keel line by a rounded forefoot."""
         x = np.asarray(x, dtype=np.float64)
-        # the run fullness also shapes the aft keel line, so the rocker is a starting point, not exact
+        h = self.h
+        # the run fullness also shapes the aft keel line
         k_aft = self.k_prof * float(np.clip(self.phi_a, 0.5, 2.0)) ** 0.6
-        fwd_len, aft_len = self.x_fwl - self.x_md, self.x_md - self.x_awl
-        e = np.where(x >= self.x_md, (x - self.x_md) / fwd_len, (self.x_md - x) / aft_len)
-        k = np.where(x >= self.x_md, self.k_prof, k_aft)
-        keel = -self.Tc * (1 - np.abs(e) ** k)
-        stem = (x - self.x_fwl) * self.h["freeboard_bow"] / (self.L - self.x_fwl)
-        z = np.where(x > self.x_md, smax(keel, stem, self.h["stem_radius"]), keel)
-        # the smooth max lifts the forefoot slightly; shift so the DWL crossing stays at x_fwl
-        z = z - np.where(x > self.x_md, self._fwl_lift() * np.clip((x - self.x_md) / fwd_len, 0, 1), 0)
+        ef = (x - self.x_md) / max(self.x_ff - self.x_md, 1e-6)
+        ea = (self.x_md - x) / max(self.x_md - self.x_awl, 1e-6)
+        keel_f = -self.Tc + h["rocker_fwd"] * np.abs(ef) ** self.k_prof
+        keel_a = -self.Tc + h["rocker_aft"] * np.abs(ea) ** k_aft
+        stem = (x - self.x_fwl) * self.stem_slope
+        r = h["stem_radius"]
+        fwd = smax(keel_f, stem, r)
+        # the smooth max lifts the waterline crossing slightly: remove it with a ramp so it stays at x_fwl
+        lift = float(smax(-self.Tc + h["rocker_fwd"] * abs((self.x_fwl - self.x_md) / max(self.x_ff - self.x_md, 1e-6))
+                          ** self.k_prof, 0.0, r))
+        fwd = fwd - lift * np.clip((x - self.x_md) / (self.x_fwl - self.x_md), 0, 1)
+        z = np.where(x >= self.x_md, fwd, keel_a)
         return np.minimum(z, self.zs(x) - 1e-4)
-
-    def _fwl_lift(self):
-        r = self.h["stem_radius"]
-        return r * np.log(2.0) if r > 0 else 0.0
 
     def zm(self, x):
         x = np.asarray(x, dtype=np.float64)
@@ -179,24 +186,23 @@ class HullShape:
                 t = (z_wl - z[k - 1]) / (z[k] - z[k - 1])
                 y = np.concatenate([y[:k], [y[k - 1] + t * (y[k] - y[k - 1])]])
                 z = np.concatenate([z[:k], [z_wl]])
-            A[i] = 2 * np.trapz(y, z)
-            Mz[i] = 2 * np.trapz(y * z, z)
+            A[i] = 2 * _trapz(y, z)
+            Mz[i] = 2 * _trapz(y * z, z)
             yw[i] = y[-1] if z[-1] >= z_wl - 1e-9 else 0.0
-        V = np.trapz(A, xs)
-        lcb = np.trapz(A * xs, xs) / V if V > 0 else 0.0
-        vcb = np.trapz(Mz, xs) / V if V > 0 else 0.0
-        Aw = 2 * np.trapz(yw, xs)
-        lcf = 2 * np.trapz(yw * xs, xs) / Aw if Aw > 0 else 0.0
-        It = 2.0 / 3.0 * np.trapz(yw ** 3, xs)
-        Il = 2 * np.trapz(yw * (xs - lcf) ** 2, xs)
-        wet = np.nonzero(yw > 1e-6)[0]
-        lwl = xs[wet[-1]] - xs[wet[0]] if len(wet) else 0.0
+        V = _trapz(A, xs)
+        lcb = _trapz(A * xs, xs) / V if V > 0 else 0.0
+        vcb = _trapz(Mz, xs) / V if V > 0 else 0.0
+        Aw = 2 * _trapz(yw, xs)
+        lcf = 2 * _trapz(yw * xs, xs) / Aw if Aw > 0 else 0.0
+        It = 2.0 / 3.0 * _trapz(yw ** 3, xs)
+        Il = 2 * _trapz(yw * (xs - lcf) ** 2, xs)
+        lwl = self._dwl_crossing(+1) - self._dwl_crossing(-1)
         bwl = 2 * yw.max()
         Amax = A.max()
         return {
             "V": V, "lcb_x": lcb, "vcb_z": vcb, "Aw": Aw, "lcf_x": lcf, "It": It, "Il": Il,
             "Amax": Amax, "x_Amax": xs[np.argmax(A)], "lwl": lwl, "bwl": bwl,
-            "Tc": -min(float(self.zk(np.linspace(0, self.L, 400)).min()), 0.0),
+            "Tc": -min(float(self.zk(np.linspace(0, self.L, 800)).min()), 0.0),
             "xs": xs, "A": A, "yw": yw,
         }
 
@@ -213,10 +219,24 @@ class HullShape:
         r = self.hydro(nx)
         return np.array([r["V"] / (r["Amax"] * self.Lwl), (self.x_fwl - r["lcb_x"]) / self.Lwl]), r
 
+    def _dwl_crossing(self, sign):
+        """x where the profile line meets the DWL at the bow (+1) or stern (-1); the transom if it is immersed."""
+        if sign < 0 and float(self.zk(np.array([0.0]))[0]) < 0:
+            return 0.0
+        lo, hi = (self.x_md, self.L) if sign > 0 else (0.0, self.x_md)
+        for _ in range(50):
+            mid = 0.5 * (lo + hi)
+            below = float(self.zk(np.array([mid]))[0]) < 0
+            if (sign > 0) == below:
+                lo = mid
+            else:
+                hi = mid
+        return 0.5 * (lo + hi)
+
     def solve(self, V_target, iters=6, log=None):
         """Fit W (BWL), n (volume), and the entrance and run fullness (prismatic and LCB) to the class."""
         h = self.h
-        target = np.array([h["prismatic"], h.get("lcb", 0.535)])
+        target = np.array([h["prismatic"], h["lcb"]])
         for it in range(iters):
             for _ in range(2):
                 self.W *= h["bwl"] / max(self.hydro(81)["bwl"], 1e-6)

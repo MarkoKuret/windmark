@@ -138,8 +138,10 @@ vec3 sky(vec3 d) {
 }
 void main() {
     vec2 p = v_pos.xz;
-    vec3 N = normalize(vec3(0.03 * sin(p.x * 1.7 + p.y * 0.6) + 0.02 * sin(p.x * 4.1 - p.y * 3.3),
-                            1.0, 0.03 * sin(p.y * 1.3 - p.x * 0.4) + 0.02 * sin(p.y * 3.7 + p.x * 2.9)));
+    float dist = length(cam_pos - v_pos);
+    float amp = exp(-dist / 35.0);   // ripples fade out before they alias
+    vec3 N = normalize(vec3(amp * (0.035 * sin(p.x * 0.9 + p.y * 0.35) + 0.02 * sin(p.x * 2.3 - p.y * 1.7)),
+                            1.0, amp * (0.035 * sin(p.y * 0.7 - p.x * 0.25) + 0.02 * sin(p.y * 2.1 + p.x * 1.6))));
     vec3 V = normalize(cam_pos - v_pos);
     float F = 0.02 + 0.98 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
     vec3 R = reflect(-V, N);
@@ -187,20 +189,26 @@ void main() {
     if (d >= 1.0) {
         col = bg_on == 1 ? mix(bg_bot, bg_top, uv.y) : col;
     } else {
-        // screen-space ambient occlusion: hemisphere samples around the view-space position
+        // screen-space ambient occlusion: normal-oriented hemisphere around the view-space position
         vec3 P = view_pos(uv);
+        vec3 N = normalize(cross(view_pos(uv + vec2(texel.x, 0.0)) - P, view_pos(uv + vec2(0.0, texel.y)) - P));
+        if (dot(N, -P) < 0.0) N = -N;
         float occ = 0.0; int n = 0;
         for (int i = 0; i < 24; i++) {
             float a = float(i) * 2.39996;
-            float r = ao_radius * (0.2 + 0.8 * fract(float(i) * 0.618));
-            vec3 dir = vec3(cos(a), sin(a), 0.6 * fract(float(i) * 0.37) + 0.2) * r;
+            float z = fract(float(i) * 0.618034) * 0.9 + 0.1;
+            float rr = sqrt(1.0 - z * z);
+            vec3 d = vec3(cos(a) * rr, sin(a) * rr, z);
+            vec3 t = normalize(abs(N.z) < 0.9 ? cross(N, vec3(0, 0, 1)) : cross(N, vec3(1, 0, 0)));
+            vec3 bt = cross(N, t);
+            vec3 dir = (t * d.x + bt * d.y + N * d.z) * ao_radius * (0.25 + 0.75 * fract(float(i) * 0.3819));
             vec3 S = P + dir;
             vec4 q = proj * vec4(S, 1.0);
             vec2 st = q.xy / q.w * 0.5 + 0.5;
-            if (st.x < 0.0 || st.x > 1.0 || st.y < 0.0 || st.y > 1.0) continue;
+            if (st.x < 0.0 || st.x > 1.0 || st.y < 0.0 || st.y > 1.0) { n++; continue; }
             vec3 Q = view_pos(st);
             float range = smoothstep(0.0, 1.0, ao_radius / max(abs(P.z - Q.z), 1e-4));
-            occ += (Q.z >= S.z + 0.02 * ao_radius ? 1.0 : 0.0) * range;
+            occ += (Q.z >= S.z + 0.03 * ao_radius ? 1.0 : 0.0) * range;
             n++;
         }
         float ao = 1.0 - 0.75 * occ / max(float(n), 1.0);
@@ -276,8 +284,11 @@ class Renderer:
         quad = np.array([-1, -1, 1, -1, -1, 1, 1, 1], dtype="f4")
         self.quad = ctx.vertex_array(self.post_prog, [(ctx.buffer(quad), "2f", "in_pos")])
 
-    def load(self, glb_path, extra=None, hide=()):
+    def load(self, glb_path, extra=None, hide=(), transform=None):
         prims, doc = read_glb(glb_path)
+        if transform is not None:
+            R = np.asarray(transform, dtype=np.float64)
+            prims = [(n, m, P @ R.T, N @ R.T, u0, u1, I) for n, m, P, N, u0, u1, I in prims]
         if extra:
             prims = prims + extra
         mats = {m["name"]: m for m in doc["materials"]}

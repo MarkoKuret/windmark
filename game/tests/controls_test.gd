@@ -18,6 +18,7 @@ func _init() -> void:
 	test_last_moved()
 	test_set_and_hold()
 	test_auto_trim_off()
+	test_free_camera_keys()
 	test_input_map()
 	test_input_frame()
 	t.finish(self, "controls_test")
@@ -336,6 +337,37 @@ func test_auto_trim_off() -> void:
 	pc.update(RawInput.new().press(&"auto_trim"), 0.016)
 	t.ok(not pc.auto_trim and pc.messages.size() == 1, "refused with a message when the lobby forbids it")
 	t.ok(not pc.messages[0].contains("—"), "message has no em dash")
+
+
+func test_free_camera_keys() -> void:
+	t.begin("free camera takes the boat keys")
+	var dt := 1.0 / 60.0
+	var pc := PlayerControls.new()
+	run(pc, RawInput.new().press(&"helm_right"), 30, dt)
+	var h := pc.h_cmd
+	pc.free_camera = true
+	var r := RawInput.new().hold(&"helm_right").hold(&"sheet_in")
+	run(pc, r, 30, dt)
+	t.near(pc.h_cmd, h, 1e-9, "the boat keeps its last helm")
+	var c := CameraInput.from_raw(r, true)
+	t.ok(c.move.x == 1.0 and c.move.z == 1.0, "helm keys strafe, sheet_in flies forward")
+	pc = PlayerControls.new()
+	pc.helm_mode = PlayerControls.HelmMode.HOLD_TO_STEER
+	run(pc, RawInput.new().press(&"helm_right"), 10, dt)
+	pc.free_camera = true
+	pc.update(RawInput.new().hold(&"helm_right"), dt)
+	t.near(pc.h_cmd, 0.0, 1e-9, "a hold-to-steer key counts as released")
+	# presets: F1 recalls 1, Shift+F1 recalls 5, Ctrl+F1 stores 1
+	var k := RawInput.new().press(&"camera_preset_1")
+	t.ok(CameraInput.from_raw(k, false).preset_recall == 0, "F1 recalls slot 1")
+	k = RawInput.new().press(&"camera_preset_1").press(&"camera_preset_5").hold(&"helm_fine")
+	t.ok(CameraInput.from_raw(k, false).preset_recall == 4, "Shift+F1 recalls slot 5")
+	k = RawInput.new().press(&"camera_preset_1").hold(&"camera_preset_store")
+	var ck := CameraInput.from_raw(k, false)
+	t.ok(ck.preset_store == 0 and ck.preset_recall == -1, "Ctrl+F1 stores slot 1")
+	k = RawInput.new().hold(&"camera_zoom_in").hold(&"helm_fine")
+	k.gamepad = true
+	t.ok(CameraInput.from_raw(k, false).zoom_held == -1.0, "gamepad RB + LB zooms out")
 
 
 func test_input_map() -> void:

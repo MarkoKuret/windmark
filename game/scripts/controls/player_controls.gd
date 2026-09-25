@@ -133,6 +133,9 @@ func update(raw: RawInput, dt: float) -> void:
 	if not free_camera:
 		_helm(r, dt)
 		_sheet(r, dt)
+	elif helm_mode == HelmMode.HOLD_TO_STEER and helm_source == Source.KEYS:
+		h_cmd = 0.0  # a hold-to-steer key counts as released while it flies the camera
+		_hold_dir = 0
 	# sails
 	for i in 9:
 		if r.was_pressed(StringName("sail_%d" % (i + 1))):

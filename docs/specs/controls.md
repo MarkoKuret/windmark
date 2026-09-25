@@ -37,6 +37,7 @@ keys become the boat's commands, and the accessibility options. The boat command
 | `camera_next`, `camera_chase`, `camera_onboard`, `camera_aerial`, `camera_free` | button | `cameras.md` §6 |
 | `camera_orbit` | 2 axes / 4 buttons | orbit or look (`cameras.md` §2–§5) |
 | `camera_zoom_in`, `camera_zoom_out` | button / wheel | zoom |
+| `camera_fov` | modifier | with zoom: changes the chase camera's `fov` instead of its distance (`cameras.md` §2) |
 | `camera_recentre` | button | recentre the current camera |
 | `camera_preset_1` … `8` | button | recall; with the store modifier: store |
 | `camera_boost` | modifier | free camera ×4 |
@@ -78,6 +79,7 @@ up to two keyboard or mouse bindings and one gamepad binding; all are rebindable
 | `camera_zoom_in` / `out` | wheel; numpad 9 / 7; O / U | RB / RB + LB held | R1 / R1 + L1 held |
 | `camera_recentre` | numpad 5, R | R3 (click) | R3 |
 | `camera_preset_1` … `8` | F1 … F4, Shift+F1 … F4 recall; Ctrl + key stores | – | – |
+| `camera_fov` | Alt (hold) | – | – |
 | `camera_boost` | Shift (free camera) | LB (free camera) | L1 |
 | `rankings` | Tab (hold) | View (hold) | View (hold) |
 | `map` | M | – (in the pause menu) | – |
@@ -93,6 +95,12 @@ up to two keyboard or mouse bindings and one gamepad binding; all are rebindable
 
 Notes: `helm_fine` and `camera_boost` share Shift, which is fine because the free camera takes no helm input. The
 gamepad has no direct sail keys: D-pad left/right step a highlighted sail on the HUD sail strip, X sets it (§5.4).
+
+**Free camera flying.** While the free camera is selected the boat's helm and sheet inputs fly it and the boat
+keeps its last `h_cmd` and `sheet_cmd` (a hold-to-steer key counts as released): `sheet_in` / `sheet_out` (W / S)
+forward and back, `helm_left` / `helm_right` (← / →, A / D) strafe, the zoom keys (O / U, numpad 9 / 7) up and
+down; gamepad: left stick forward, back and strafe, RT / LT (or RB / RB + LB) up and down, right stick look, LB
+boost. Every other action (let fly, sails, auto-trim) keeps working.
 
 ## 4. Camera input rates
 
@@ -121,8 +129,10 @@ the stick out of its dead zone takes it back. The source that moved last wins.
 Two modes (option, per player):
 - **Set and hold** (default). A held key moves `h_cmd` at ±0.6 per second (±0.2 with `helm_fine`); on release the
   helm stays where it is; `helm_centre` (↓) sets 0. Suited to long reaches and to players who helm like a tiller.
+  With `helm_fine` a key moves the helm no further out than ±0.35 (a helm already beyond it only comes back).
+  Both keys held: they cancel.
 - **Hold to steer.** While a helm key is held, `h_cmd = ±k(t)` with the ramp
-  `k(t) = min(1, 0.25 + 0.75·t / 0.8 s)` (`t` = time held), limited to 0.35 with `helm_fine`. On release `h_cmd = 0`
+  `k(t) = min(1, 0.25 + 0.75·t / 0.8 s)` (`t` = time held, counting the frame the press is first read), limited to 0.35 with `helm_fine`. On release `h_cmd = 0`
   and the core brings the rudder back at `helm_rate`. Both keys held: the later one wins.
 
 ### 5.3 Sheet
@@ -156,7 +166,11 @@ shows each slot's name and key. With `F` the front sail that is up and the runni
 | slot `S` | `S` is going up, `F ≥ 0` | `hoist(F)`: the same cancel |
 | slot `S` | a lone drop of `S` is running | `hoist(S)`: cancels the drop |
 | `drop_front` | idle, `F ≥ 0` | `drop_front()` |
+| slot `S` or `drop_front` | a lone hoist of `S` is going up and no front sail is up (`F = −1`) | `drop_front()`: cancels the first hoist (`sails.md` §4.2) |
 | anything else | busy | nothing sent; the HUD flashes the running change |
+
+A latched press is mapped against the boat's sail state when its frame is stamped. A press that maps to nothing
+still uses its frame (a later press waits for the next one).
 
 Gamepad: `sail_prev`/`sail_next` move a highlight along the strip (wrapping), `sail_set` presses the highlighted
 slot with the rules above. The highlight starts on the sail the HUD suggests (`hud.md` §4 sail hint) or the next

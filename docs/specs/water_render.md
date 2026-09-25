@@ -173,13 +173,15 @@ row = { frozen boat frame (heading, heel), P, v, age 0, alpha 1,
         spray: two particles, port and starboard }
 push the row into a ring buffer of N = 80 rows (a 4 s ribbon)
 ```
-**Each frame**, for every row of age `t` (a row is drawn with 9 vertices across: a feathered, transparent outer
-vertex `0.3 + 0.25·w` outside each edge, and 7 from edge to edge, so it follows the waves between its edges):
+**Each frame**, for every row of age `t` (a row is drawn with 15 vertices across: a feathered, transparent outer
+vertex `0.3 + 0.25·w` outside each edge, and 13 from edge to edge, so it follows the waves between its edges):
 ```
 half width  w = w0 + 0.354 * v_row * t                       // edges open at the Kelvin angle, tan 19.47°
 edges       = row point ± w across the frozen heading, each draped on the drawn sea + 0.1 m (in the vertex shader,
-              with the sea's uniforms and grid fade) and pulled 0.3 m toward the camera so the sea's facets
-              never cover it
+              with the sea's uniforms and grid fade) and pulled toward the camera along the view ray (the pixel
+              stays, only the depth moves) far enough to clear the sea by h_c = 0.15 m + 2 Σ a_i·w_i·(1 − fade_i(1 m))
+              (the short waves the sea grid carries but the ribbon, flat between its vertices, does not):
+              pull = min(h_c / sin(elevation of the view), 0.3 · distance), so the sea's facets never cover it
 alpha       = (1 - t / 4 s) * min(1, ratio_row * 2)          // fades with age, faint at low speed
 texture v   = distance sailed at emission / 10 m              // foam texture along the ribbon
 the row drifts with the surface current at its point (wind.md §7)
@@ -188,9 +190,10 @@ the row drifts with the surface current at its point (wind.md §7)
 `k_s·ratio²·pulse` (`k_s = 2.5 m/s`), direction 0.6 outward and 0.8 up in the boat frame, kept within 10° of the
 vertical when heeled, `pulse = max(0.01, 1 − (0.3·sin(0.07a + 1) + 0.4·sin(0.5a) + 0.4·sin(0.3a)))` with `a` the
 distance sailed times 1 rad/m plus a random offset per boat, so the spray comes in bursts. They fly under gravity,
-stick where they reach the surface and become the ribbon's outer vertices (pushed out to the landing point, never
-inside the edge, so the strip does not fold): the sheet of spray thrown off the bow lands and spreads into the
-wake.
+stick where they reach the surface and become the ribbon's outer vertices (pushed out to the particle's distance
+from the row, flying or landed, never inside the edge, so the strip does not fold; that reach is smoothed over the
+four rows either side with triangular weights, so the outer edge has no steps from row to row): the sheet of spray
+thrown off the bow lands and spreads into the wake.
 
 A second, narrower ribbon from the **transom** (`w0 = 0.4·transom width`, no spray) gives the stern wake. On tiers
 M and H every ribbon is also drawn into a camera-centred **wake normal buffer** (RG8, 512 × 512 over 400 m, cleared

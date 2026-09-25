@@ -303,6 +303,48 @@ func check_wake_ribbon() -> void:
 			r.step(t + 0.05 * (i + 1), 0.05, flat)
 		check(row["p"] == p0 and absf(p0.y - v * 1.0) < 1e-6, "wake: rows stay where they were laid")
 	check(r.rows.size() <= WakeRibbon.N_ROWS, "wake: at most 80 rows")
+	check_wake_edges()
+
+
+## No hard lines in the wakes: with bursts of spray (the pulse of §5) the ribbon's outer edge moves at most 0.15 m
+## from row to row beyond the Kelvin opening (rows 0.15 m apart), and the ribbons never write depth, so they do
+## not cut each other.
+func check_wake_edges() -> void:
+	var r := WakeRibbon.new()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3
+	var v := 3.0
+	var t := 0.0
+	var h := func(_x, _y): return 0.0
+	while t <= 4.0001:
+		var row := r.emit(t, Vector2(0.0, v * t), 0.0, v, 0.7, 0.9, true, v * t)
+		# bursts: some rows throw hard, most barely
+		r.launch_spray(row, 4.0 if rng.randf() < 0.3 else 0.3, 0.2, [0.1, 0.1])
+		r.step(t, 0.05, h)
+		t += 0.05
+	t -= 0.05
+	var arrays := r.build_arrays(t)
+	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var n := verts.size() / WakeRibbon.ACROSS
+	var worst := 0.0
+	var worst_raw := 0.0
+	var visible_rows := []
+	for k in range(r.rows.size() - 1, -1, -1):
+		if WakeRibbon.alpha(r.rows[k], t) > 0.0:
+			visible_rows.append(r.rows[k])
+	for k in n - 1:
+		var a := verts[k * WakeRibbon.ACROSS]
+		var b := verts[(k + 1) * WakeRibbon.ACROSS]
+		var ra: Dictionary = visible_rows[k]
+		var rb: Dictionary = visible_rows[k + 1]
+		var oa := Vector2(a.x, -a.z).distance_to(ra["p"]) - 1.25 * WakeRibbon.half_width(ra, t)
+		var ob := Vector2(b.x, -b.z).distance_to(rb["p"]) - 1.25 * WakeRibbon.half_width(rb, t)
+		worst = maxf(worst, absf(oa - ob))
+		worst_raw = maxf(worst_raw, absf(WakeRibbon.spray_excess(ra, t).x - WakeRibbon.spray_excess(rb, t).x))
+	check(n > 20 and worst <= 0.15, "wake: outer edge steps at most 0.15 m row to row with bursts of spray (%.3f m; %.3f m unsmoothed)" % [
+			worst, worst_raw])
+	var code := (load("res://shaders/wake.gdshader") as Shader).code
+	check(code.contains("depth_draw_never"), "wake: ribbons do not write depth")
 
 
 func _start_scene() -> void:

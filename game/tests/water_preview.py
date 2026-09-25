@@ -157,15 +157,7 @@ out float v_a;
 out float v_c;
 out vec3 v_wpos;
 void main() {
-    vec2 xl = vec2(in_pos.x, -in_pos.z) - sea_origin;
-    float r = length(xl);
-    float s = r < 0.6 ? 0.6 : max(r * (grid_q - 1.0), 6.28318530718 * r / grid_segments);
-    float eta;
-    vec2 grad;
-    wm_sea_height(xl, s, eta, grad);
-    v_wpos = vec3(in_pos.x, eta * wm_exposure(sea_origin + xl) + 0.1, in_pos.z);
-    vec3 to_cam = u_cam - v_wpos;
-    v_wpos += to_cam * min(0.3 / max(length(to_cam), 1e-3), 0.05);
+    v_wpos = wm_wake_drape(in_pos, u_cam, grid_q, grid_segments);
     v_uv = in_uv;
     v_a = in_color.a;
     v_c = in_color.r;
@@ -363,7 +355,7 @@ def render(ctx, d, size, wakes=True):
     }
 
     water = ctx.program(vertex_shader=hdr_inc + WATER_VS, fragment_shader=hdr_inc + sky_inc + LIGHTING + WATER_FS)
-    wake = ctx.program(vertex_shader=hdr_inc + WAKE_VS, fragment_shader=hdr_inc + sky_inc + LIGHTING + wake_inc + WAKE_FS)
+    wake = ctx.program(vertex_shader=hdr_inc + wake_inc + WAKE_VS, fragment_shader=hdr_inc + sky_inc + LIGHTING + wake_inc + WAKE_FS)
     boat = ctx.program(vertex_shader=BOAT_VS, fragment_shader=hdr_inc + sky_inc + LIGHTING + BOAT_FS)
     sky = ctx.program(vertex_shader=SKY_VS, fragment_shader=hdr_inc + sky_inc + LIGHTING + SKY_FS)
     tone = ctx.program(vertex_shader=SKY_VS, fragment_shader=TONEMAP_FS)
@@ -441,7 +433,7 @@ def render(ctx, d, size, wakes=True):
 
     ctx.enable(moderngl.BLEND)
     ctx.blend_func = moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA
-    ctx.depth_mask = False
+    fbo.depth_mask = False  # the ribbons do not write depth (depth_draw_never)
     for r in sc["wakes"] if wakes else []:
         if "indices" not in r:
             continue
@@ -452,7 +444,7 @@ def render(ctx, d, size, wakes=True):
         rv = ctx.buffer(np.hstack([rp, ru, rc]).astype("f4").tobytes())
         ctx.vertex_array(wake, [(rv, "3f 2f 4f", "in_pos", "in_uv", "in_color")],
                          ctx.buffer(ri.astype("i4").tobytes())).render(moderngl.TRIANGLES)
-    ctx.depth_mask = True
+    fbo.depth_mask = True
     ctx.disable(moderngl.BLEND)
 
     ctx.copy_framebuffer(fbo_res, fbo)

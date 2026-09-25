@@ -30,6 +30,14 @@ add_library(windmark_core STATIC
   src/data/boat_class.cpp
 )
 
+# Environment: wind, current, sea, wind shadow (wind.md, sea.md, wind_shadow.md).
+target_sources(windmark_core PRIVATE
+  src/wind/grid.cpp
+  src/wind/wind.cpp
+  src/sea/sea.cpp
+  src/shadow/shadow.cpp
+)
+
 # boat and sails (WM-006): boat.md, sails.md
 target_sources(windmark_core PRIVATE
   src/boat/hull_sampling.cpp

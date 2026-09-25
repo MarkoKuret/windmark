@@ -1,9 +1,11 @@
 ---
 id: WM-019
 title: 'Spec: fixes found in core setup'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-09-25 13:55'
+updated_date: '2026-09-25 14:23'
 labels:
   - spec
 dependencies: []
@@ -19,7 +21,7 @@ From WM-005: stiffness bound on heel_k1*DT and pitch_k1*DT in (0,1]; sail order 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 boat.md stiffness rule fixed
-- [ ] #2 data_format.md covers order, keys and ranges
-- [ ] #3 conventions.md has the extra check values
+- [x] #1 boat.md stiffness rule fixed
+- [x] #2 data_format.md covers order, keys and ranges
+- [x] #3 conventions.md has the extra check values
 <!-- AC:END -->

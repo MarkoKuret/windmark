@@ -1,11 +1,11 @@
 ---
 id: WM-061
 title: 'Boatgen: hand-editable spinnaker shape and a quick kite preview'
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-09-25 21:35'
-updated_date: '2026-09-25 21:35'
+updated_date: '2026-09-25 21:51'
 labels:
   - boats
 dependencies: []
@@ -21,6 +21,6 @@ Owner (2026-09-25): the new kites are still too big at the foot and the curves a
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Class-file keys for mid girth and edge rounds, documented
-- [ ] #2 One command previews a kite edit in under 30 s
+- [x] #1 Class-file keys for mid girth and edge rounds, documented
+- [x] #2 One command previews a kite edit in under 30 s
 <!-- AC:END -->

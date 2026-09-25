@@ -38,7 +38,7 @@ function; race and rules states (rank, penalties, right-of-way colours) come fro
 | Course over ground (COG) | `compass(sog_filt_x, sog_filt_y)` (shown only when SOG > 0.3 kn) | (boat filter) |
 | Heel | `|φ|`, degrees, with the letter of the side that is down (φ > 0: starboard down, `conventions.md` §3) | 0.5 s |
 | Rudder | helm `h` as a bar, −1 … +1 (positive turns the bow to starboard), with a second mark at `h_cmd` | none |
-| Sail | current headsail / downwind sail name, and the one being hoisted during a change with its progress | none |
+| Sail | the front sail that is up (or "Main only"), and the one being hoisted during a change with its progress | none |
 
 ## 3. Wind
 

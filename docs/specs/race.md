@@ -176,7 +176,7 @@ none, on an automatic grid:
 - Placement is `boat.md` §6.6 `reset(pos_x, pos_y, psi, v, front_sail, auto_trim)`: `front_sail` from the class's
   `start.front_sail` (`data_format.md` §3.7) unless the race says otherwise; `auto_trim` from the player's assist
   setting (always on for AI boats). At the same time the race layer sets the boat's `performance_scale`: 1.0 for
-  human boats, the level's speed factor for AI boats (`ai.md` §13); it does not change during the race.
+  human boats, the level's value for AI boats (`ai.md` §13); it does not change during the race.
 - Match races: boat 0 spawns `6·L` beyond end B, boat 1 `6·L` beyond end A, both on the pre-start side, sailing
   away from the line on the tack that points them outwards.
 
@@ -269,14 +269,14 @@ previous reference `P = R_{k−1}` and next reference `N = R_{k+1}`:
 σ        = +1 for port, −1 for starboard            # port rounding = the boat goes anticlockwise around M
 α_in     = compass(P − M)                            # entry ray
 α_out    = compass(N − M)                            # exit ray
-sweep    = wrap_(0, 2π]( σ · (α_in − α_out) )        # compass bearings grow clockwise; a result of 0 means 2π
+sweep    = wrap_2pi( σ · (α_in − α_out) ), then 2π if it is 0   # compass bearings grow clockwise
 φ_done   = max(π/2, sweep − π/2)
 ```
 
 The per-boat **winding angle** φ around M in the rounding direction:
 
 - when M becomes the boat's next step (at her start, or when she completes step k−1):
-  `φ = σ · wrap_(−π, π](α_in − compass(c − M))` — the angle she has already swept from the entry ray;
+  `φ = σ · wrap_pi(α_in − compass(c − M))`, the angle she has already swept from the entry ray;
 - every tick after that: `φ += σ · ang(c_prev − M → c − M)` (the anticlockwise angle increment of the vector
   from the mark to the boat's reference point, with the sign that makes a port rounding positive).
 

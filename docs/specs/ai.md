@@ -70,7 +70,7 @@ OCS, penalties, deadline), rules records involving the boat.
 - Felt wind: the boat's `wind_speed`, `wind_from` (with other boats' shadow), smoothed 2 s: `TWS_felt`.
 - `TWD_ref`: the AI's idea of the mean direction: exponential average of `TWD_f` with a 90 s time constant (angles
   averaged as unit vectors).
-- Shift `Δ = wrap(TWD_f,5s − TWD_ref)`, with `TWD_f,5s` a 5 s average (positive = clockwise veer).
+- Shift `Δ = wrap_pi(TWD_f,5s − TWD_ref)`, with `TWD_f,5s` a 5 s average (positive = clockwise veer).
 - Deficit `d = 1 − wind_speed / wind_speed_clean` (unsmoothed values; 0 = clean air), then smoothed 2 s. This is
   the shadow loss `l` of `wind_shadow.md` §5.
 - Reading the water (Expert, Pro): `wind_clean(x, y, t_n)` at sample points on the two candidate tracks (current tack
@@ -91,7 +91,7 @@ sail change), mark zones.
 ### 4.1 Leg type
 
 With the target point `R` (buoy, gate buoy chosen in §6.3, or the nearest point of the finish line) and
-`θ_R = |wrap(compass(R − c) − TWD_f)|`:
+`θ_R = |wrap_pi(TWD_f − compass(R − c))|`:
 
 - **beat** if `θ_R < θ_up + 3°`,
 - **run** if `θ_R > θ_dn − 3°`,
@@ -133,7 +133,7 @@ or obstruction triggers), and the tack is legal and safe (§7.3).
    towards `TWD_ref`) with `|e| ≥ W_c = max(4·L, min(0.35·D_axis, 500 m))`, `D_axis = dot(R − c, w)` for a beat
    (the opposite sign for a run), and the boat sailing away from the axis.
 4. **Shift**: the current tack is **headed** when the shift rotates its optimal heading away from the mark:
-   `Δ · sign(wrap(ψ_t − compass(R − c))) > 0` with `|Δ| ≥ h_up` (beat) or `h_dn` (run, §13), and that has held for
+   `Δ · sgn(wrap_pi(ψ_t − compass(R − c))) > 0` with `|Δ| ≥ h_up` (beat) or `h_dn` (run, §13), and that has held for
    6 s; the other tack must not overstand (its COG ray must still intersect the current tack's layline, i.e. it is
    not already past it). Easy does not play shifts.
 5. **Pressure** (Expert, Pro): the mean free wind speed sampled on the other tack's track (§3.3) is ≥ 12 % higher
@@ -172,7 +172,7 @@ distance to sample the wind: it feeds `TWD_ref` so the start decision uses a mea
 
 With `n̂` the line normal towards the course side and `w` towards `TWD_ref`:
 
-- **bias** `β = wrap(compass(n̂) − TWD_ref)` (0 = square); the end that is farther upwind is **favoured**:
+- **bias** `β = wrap_pi(compass(n̂) − TWD_ref)` (0 = square); the end that is farther upwind is **favoured**:
   `Δu = dot(B − A, w)` (> 0: B end favoured). Significant if `|Δu| > max(1·L, 0.05·|B − A|)`.
 - **Target spot** `u* ∈ [0.05, 0.95]` along the line: with a significant bias, 0.15 from the favoured end, else 0.5;
   then each AI adds `spread·(rng() − 0.5)` (§13), clamped; if more than 3 other AIs already target a spot within
@@ -386,7 +386,7 @@ behaviour triggers whatever the shadow's calibration.
 - **Tack**: target heading = the new tack's VMG heading; the helm goes to `h = ±0.6` (a smooth tack: hard helm
   bleeds speed, `boat.md` §4 rudder drag) and holds it until `|twa|` passes 20° on the new tack, then settles on the new heading. Entry speed below 0.6 × target: the AI first
   sails 5° lower for up to 8 s (unless forced). If the boat stops head to wind (in irons: speed < 0.5 m/s and
-  `|twa| < 25°` for 3 s), it puts the tiller over to fall off on the new tack with the headsail let fly for 2 s.
+  `|twa| < 25°` for 3 s), it puts the tiller over to fall off on the new tack with sails let fly for 2 s.
 - **Gybe**: controlled rate: helm for a turn rate of 15°/s (radius law of `boat.md` §5.9); the sails follow on
   auto-trim (`sails.md` §5).
 - **Brake**: let fly and head up to `|twa| = 40°`.

@@ -159,7 +159,7 @@ could have given mark-room (rule 18) or room at an obstruction (rule 19).
 ### 3.7 Proper course estimate
 
 For a boat heading to her next step with reference point `R` (for a gate: the buoy she is nearer to; for a line:
-the nearest point of the line), with `β = bearing(R − c)` and `θ_R = |wrap(β − TWD)|` the true wind angle of the
+the nearest point of the line), with `β = compass(R − c)` and `θ_R = |wrap_pi(TWD − β)|` the true wind angle of the
 direct course:
 
 - `θ_R < θ_CH` (the mark is upwind of close-hauled): proper TWA = θ_CH (beat on the current tack);
@@ -238,7 +238,7 @@ passed. While it is false, B is in breach of rule 15 towards A, and A's keep-cle
 starboard-tack boat must not change course if that would make the port-tack boat immediately change course to go on
 keeping clear.
 
-A **course change** of boat B starts on the first tick her yaw rate has been above 3°/s in one direction for 0.3 s
+A **course change** of boat B starts on the first tick her `turn_rate` has been above 3°/s in one direction for 0.3 s
 (or her heading has changed by more than 5° in the last 1 s), and lasts until the rate has been below 1°/s for 1 s.
 
 - **16.1**: if B (right of way over A) starts a course change at `t_c`, A was `Clear` or `Warning` (not `Breach`) at
@@ -505,7 +505,7 @@ finishing line she must be completely on the course side before she finishes.
 
 Windmark turn tracker, per boat with a pending penalty:
 
-- **Turning**: the tracker integrates the heading change `Θ += wrap(ψ − ψ_prev)` while the boat keeps turning in one
+- **Turning**: the tracker integrates the heading change `Θ += wrap_pi(ψ − ψ_prev)` while the boat keeps turning in one
   direction: `|r| ≥ 2°/s` in that direction. A turn **starts** when that has held for 0.5 s; a pause (`|r| < 2°/s`) of
   more than 3 s, or a reversal of more than 20° from the extreme reached, **resets** the turn (Θ = 0).
 - It counts **tacks** (passing head to wind: `twa` changes sign with `|twa| < 90°`) and **gybes** (`twa` changes sign

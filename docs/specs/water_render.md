@@ -165,6 +165,36 @@ with exposure 0.62. The sky's glow around the sun is narrow (`0.03·mu^8` and `0
 so the sky stays blue a few tens of degrees from the sun. Boats cap their linear albedo at 0.8 and take their
 baked AO on the ambient and reflected light only.
 
+### 4.6 Shadows
+The sun casts one directional shadow map, sized for a boat seen from the chase camera (24.5 m) and on board, not for
+the whole race area: beyond the shadow distance the fleet is small on screen and its shadows would only add noise.
+
+| | L | M | H |
+| --- | --- | --- | --- |
+| cascades | 2 | 4 | 4 |
+| distance | 60 m | 100 m | 150 m |
+| cascade edges | 36 m | 8, 36, 65 m | 9, 39, 82 m |
+| blend between cascades | no | no | yes |
+| directional shadow atlas | 2048 | 4096 | 4096 |
+| soft shadow filter | very low | low | medium |
+| the sea takes shadows | no | yes | yes |
+
+- The chase camera's own boat (about 15 to 35 m from the camera) lies inside one cascade on every tier, so its
+  shadows never change resolution or cross a seam; on board the first cascade (8 to 9 m, about 5 mm per texel)
+  carries the deck, the boom and the sails. The shadows fade out over the last 20 % of the distance.
+- Bias 0.1, normal bias 2.0 (Godot's scaled units, the same on every tier), pancake 30 m (a mast of 20 m with the
+  sun at 38° stays inside the caster range), blur 1.
+- **Sails** (`sail_visuals.md` §11): their two cloth layers are 2 mm apart, closer than any bias can separate, so
+  the sail shader draws the sail 5 cm away from the light along its normal in the shadow pass (only the layer
+  facing the light is drawn there). Neither layer shadows itself or its twin, while the mast, the boom and the
+  other sails still shadow it; the light through the cloth takes that shadow too (80 %), so the rig shows through
+  a sail seen against the sun.
+- **Sea**: the water's shadow only removes the sun's glitter and its small diffuse share (the sky reflection is
+  not shadowed), which is what a shadow on water looks like. Tier L skips it. The sea, the wake ribbons and the
+  spray cast no shadows.
+- The atlas size and the soft filter are global rendering settings, applied with the tier (`SeaQuality.apply_shadows`
+  through `SkyRig.apply_quality`, called by the Sea when its tier is set).
+
 ## 5. Bow waves, wakes and spray
 
 Per boat, a **wake ribbon**: a strip of the water laid down behind the bow and left where it was laid, which opens
@@ -231,6 +261,7 @@ colour-blind palettes).
 | spray particles | no | own boat | yes |
 | wake normal buffer | no | yes | yes |
 | screen-space reflections | no | no | yes |
+| sun shadows (§4.6) | 2 cascades to 60 m, no shadows on the sea | 4 cascades to 100 m | 4 blended cascades to 150 m |
 
 Budget: the water within 2.5 ms of GPU time per frame on the Steam Deck at 1280 × 800 on tier M. The vertex work is
 small (22 cosines per vertex, 1 M per frame on tier M); the pixel work is dominated by the normal-map taps and the

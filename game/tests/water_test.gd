@@ -206,6 +206,45 @@ func check_land_scene(sea: Sea, tier: String) -> void:
 	check(sea.land_upload()[0] == k_next, "scene tier %s: land texture follows the wind into the next sector" % tier)
 
 
+## §4.6 the sun's shadows follow the tier: cascades, distance, blend, bias; the sea takes shadows on M and H only;
+## the sea, the wakes and the spray cast none.
+func check_shadows(sea: Sea, t: Dictionary) -> void:
+	var sun: DirectionalLight3D = (_scene.get_node("SkyDay") as SkyRig).sun()
+	var want_mode := DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS if t["shadow_splits"] == 4 \
+			else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	var sp: Array = t["shadow_split"]
+	var ok: bool = sun != null and sun.shadow_enabled and sun.directional_shadow_mode == want_mode \
+			and is_equal_approx(sun.directional_shadow_max_distance, t["shadow_distance"]) \
+			and is_equal_approx(sun.directional_shadow_split_1, sp[0]) \
+			and (t["shadow_splits"] == 2 or (is_equal_approx(sun.directional_shadow_split_2, sp[1])
+				and is_equal_approx(sun.directional_shadow_split_3, sp[2]))) \
+			and sun.directional_shadow_blend_splits == t["shadow_blend"]
+	check(ok, "scene tier %s: sun shadows %d cascades to %.0f m, splits %s" % [t["name"], t["shadow_splits"],
+			t["shadow_distance"], sp])
+	# the chase camera (24.5 m) sees its boat inside one cascade: the boat spans about 15 to 35 m
+	var edges := [0.0]
+	for k in t["shadow_splits"] - 1:
+		edges.append(float(sp[k]) * float(t["shadow_distance"]))
+	edges.append(float(t["shadow_distance"]))
+	var one := false
+	for k in edges.size() - 1:
+		one = one or (edges[k] <= 15.0 and edges[k + 1] >= 35.0)
+	check(one, "scene tier %s: the chase distance (15 to 35 m) lies in one cascade (edges %s m)" % [t["name"], edges])
+	check(is_equal_approx(sun.shadow_bias, SeaQuality.SHADOW_BIAS) and is_equal_approx(sun.shadow_normal_bias,
+			SeaQuality.SHADOW_NORMAL_BIAS) and sun.directional_shadow_pancake_size >= 30.0,
+			"scene tier %s: shadow bias %.2f, normal bias %.1f, pancake %.0f m" % [t["name"], sun.shadow_bias,
+			sun.shadow_normal_bias, sun.directional_shadow_pancake_size])
+	var code: String = (sea.material.shader as Shader).code
+	check(code.contains("WM_NO_SHADOWS") != bool(t["sea_shadows"]),
+			"scene tier %s: the sea %s shadows" % [t["name"], "takes" if t["sea_shadows"] else "takes no"])
+	var casts := 0
+	for n in _scene.find_children("*", "GeometryInstance3D", true, false):
+		var g := n as GeometryInstance3D
+		if g.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF and (g.get_parent() is Sea or g.get_parent() is SeaWakes):
+			casts += 1
+	check(casts == 0, "scene tier %s: sea, wakes and spray cast no shadows" % t["name"])
+
+
 ## A Sea with SeaWakes but no boat has no wake buffer; the first boat makes it, removing it drops it, and a tier
 ## change drops it until wakes are drawn again.
 func check_wake_buffer_lifecycle() -> void:
@@ -418,6 +457,7 @@ func _process(_delta: float) -> bool:
 	var wb: SubViewport = (_scene.get_node("Wakes") as SeaWakes).wake_buffer()
 	check((wb != null) == bool(t["wake_buffer"]), "scene tier %s: wake buffer %s" % [t["name"],
 			"made for the drawn wakes" if t["wake_buffer"] else "not made"])
+	check_shadows(sea, t)
 	if t["name"] == "M":
 		check_wake_buffer_lifecycle()
 	_scene.queue_free()

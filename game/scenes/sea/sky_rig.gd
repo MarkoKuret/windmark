@@ -78,6 +78,15 @@ func sun_radiance() -> Vector3:
 	return Vector3(sun_color.r, sun_color.g, sun_color.b) * sun_energy
 
 
+func sun() -> DirectionalLight3D:
+	return get_node_or_null("Sun") as DirectionalLight3D
+
+
+## The sun's shadows for a quality tier (water_render.md §4.6); the Sea calls it when its tier is set.
+func apply_quality(tier: int) -> void:
+	SeaQuality.apply_shadows(sun(), tier as SeaQuality.Tier)
+
+
 func environment() -> Environment:
 	var we := get_node_or_null("WorldEnvironment") as WorldEnvironment
 	return we.environment if we else null

@@ -151,6 +151,8 @@ func _build() -> void:
 	material.set_shader_parameter("foam_tex", SeaTextures.foam())
 	set_wake_buffer(_wake_texture, 400.0, _wake_strength)
 	_apply_static()
+	if sky and sky.has_method("apply_quality"):
+		sky.apply_quality(quality)
 
 
 func _apply_static() -> void:

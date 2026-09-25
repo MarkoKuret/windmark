@@ -86,7 +86,7 @@ up to two keyboard or mouse bindings and one gamepad binding; all are rebindable
 | `wind_shadow_view` | V | – | – |
 | `hud_hide` | F10 | – | – |
 | `boat_names` | N | – | – |
-| `spectate_next` / `prev` / `leader` | ] / [ / L | RB / LB / R3 (when not racing) | same |
+| `spectate_next` / `prev` / `leader` | ] / [ / Home | RB / LB / R3 (when not racing) | same |
 | `chat` | Enter | – | – |
 | `pause_menu` | Esc | Menu | Menu |
 | `screenshot` | F12 | – | Steam button + R1 |

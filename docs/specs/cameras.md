@@ -7,12 +7,9 @@ at is drawn per `water_render.md` and `sail_visuals.md`. Presentation only: noth
 
 ## 1. Frames and inputs
 
-**Front-end world frame.** The core's world is ENU (`conventions.md` §2). The Godot scene uses `X` = east, `Y` = up,
-`Z` = south, so a world point `(x, y, z)` is drawn at `(x, z, −y)` and north is `−Z` (Godot's forward). Compass
-angles stay clockwise from north: a heading `ψ` points along `(sin ψ, 0, −cos ψ)`. The boat node's basis is the
-attitude matrix of `conventions.md` §3 mapped the same way; the generated model's own axes (`tools/boatgen/README.md`)
-sit under it with bow toward the node's forward. Positions near the camera are made camera-relative for the sea
-(`water_render.md` §2); cameras work in plain scene coordinates.
+**Frames.** The Godot scene axes, the generated model's axes and the boat node's basis are those of
+`conventions.md` §11 (`X` = east, `Y` = up, `Z` = south; the bow is the boat node's local `+Z`). Positions near the
+camera are made camera-relative for the sea (`water_render.md` §2); cameras work in plain scene coordinates.
 
 **Inputs per frame**: the viewed boat's render pose (position, heave `z`, `ψ`, `θ`, `φ`, interpolated between ticks,
 `networking.md` §6), its `twa`, the class's `loa`, `beam_max`, and the sidecar rig points; the sea height function

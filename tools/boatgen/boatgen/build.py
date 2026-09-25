@@ -82,6 +82,9 @@ class Boat:
         self.parts["mainsheet"] = hw["mainsheet"]
         self.mainsheet_ends = hw["mainsheet_ends"]
         self.pivots = {"rudder": self.app.rud_stock, "boom": self.rig.gooseneck}
+        if self.rig.pole_flown:
+            self.parts["pole"] = self.rig.pole_part()
+            self.pivots["pole"] = self.rig.pole_pivot
         if hw["helm"].tri_count():
             self.parts["wheel"] = hw["helm"]
             self.pivots["wheel"] = hw["helm_pivot"]
@@ -104,6 +107,8 @@ class Boat:
         from .mesh import rot_axis, translate
         spec = self.POSES[pose]
         parts = dict(self.parts)
+        if not any(sl.type.startswith("spinnaker") for sl in self.sails.values() if sl.type in spec):
+            parts.pop("pole", None)     # the pole is shown only while a spinnaker is set
         main_angle = 0.0
         for sid, sail in self.sails.items():
             key = "sail_" + sid

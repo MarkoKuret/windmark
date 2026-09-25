@@ -2,12 +2,13 @@ extends SceneTree
 ## Headless import test for boatgen models.
 ##
 ## Loads every `<id>.glb` and `<id>_collision.glb` in res://generated/boats/ (staged there by
-## tests/run_boat_import_test.sh) and checks them against the class file (data/classes/<id>.boat.json) and the
+## tests/run_boat_import_test.sh) and checks them against the class file (data/classes/<id>.boat.json, or
+## tools/boatgen/tests/fixtures/<id>.boat.json for generator test classes) and the
 ## physics sidecar (<id>.physics.json) that boatgen writes next to the GLB:
 ##   - scale and axes: glTF +Y up, bow toward +Z, port toward +X, origin on the DWL at mid LWL
 ##   - node set and triangle counts match the sidecar
 ##   - material slots present, imported as StandardMaterial3D with the boatgen PBR factors
-##   - pivot nodes (rudder, boom, wheel) sit on the sidecar pivots, with geometry around them
+##   - pivot nodes (rudder, boom, wheel, pole) sit on the sidecar pivots, with geometry around them
 ##   - sails keep the row-major two-layer grid that run-time deformation relies on
 ##   - collision GLB imports as static bodies with convex shapes and no visible meshes
 ##
@@ -107,6 +108,15 @@ func _surface_material_name(mesh: Mesh, s: int) -> String:
 	return m.resource_name if m else ""
 
 
+## The class file: data/classes/<id>.boat.json, or a boatgen test fixture.
+func _class_file(id: String) -> String:
+	var repo := ProjectSettings.globalize_path("res://").path_join("..")
+	var path := repo.path_join("data/classes/%s.boat.json" % id)
+	if not FileAccess.file_exists(path):
+		path = repo.path_join("tools/boatgen/tests/fixtures/%s.boat.json" % id)
+	return path
+
+
 # ---------------------------------------------------------------- model
 
 func _test_model(id: String) -> void:
@@ -115,7 +125,7 @@ func _test_model(id: String) -> void:
 	if not _check(scene != null, "%s loads as PackedScene" % path):
 		return
 	var scene_root := scene.instantiate()
-	var boat := _read_json(ProjectSettings.globalize_path("res://").path_join("../data/classes/%s.boat.json" % id))
+	var boat := _read_json(_class_file(id))
 	var side := _read_json("%s/%s.physics.json" % [BOAT_DIR, id])
 	if boat.is_empty() or side.is_empty():
 		scene_root.free()
@@ -235,7 +245,7 @@ func _test_materials(id: String, parts: Dictionary) -> void:
 
 func _test_pivots(side: Dictionary, parts: Dictionary) -> void:
 	var rig: Dictionary = side["rig"]
-	var pivots := {"rudder": "rudder_stock", "boom": "boom_pivot", "wheel": "wheel_hub"}
+	var pivots := {"rudder": "rudder_stock", "boom": "boom_pivot", "wheel": "wheel_hub", "pole": "pole_pivot"}
 	for node in side["model"]["pivots"]:
 		if not _check(pivots.has(node) and parts.has(node), "pivot node %s is known and present" % node):
 			continue
@@ -253,6 +263,10 @@ func _test_pivots(side: Dictionary, parts: Dictionary) -> void:
 				# Boom runs aft from the gooseneck (local origin) along -Z.
 				_near(local.position.z, -float(rig["boom_length"]), 0.35, "boom runs aft from the gooseneck")
 				_check(local.end.z < 0.3 and absf(local.get_center().x) < 0.05, "boom starts at the gooseneck on the centreline")
+			"pole":
+				# Spinnaker pole runs forward from its pivot on the mast axis (local +Z) to the pole end.
+				_near(local.end.z, float(rig["pole_length"]) + float(rig["mast_chord"]) / 2.0, 0.1, "pole reaches its end")
+				_check(local.position.z > -0.2 and absf(local.get_center().x) < 0.05, "pole runs forward from the mast on the centreline")
 			"wheel":
 				# Wheel turns about fore and aft (local Z): round in X/Y about the hub, thin along Z.
 				_near(local.get_center().x, 0.0, 0.02, "wheel centred on the hub in X")

@@ -8,7 +8,7 @@ driven (`docs/specs/boat.md`, `sails.md`); this tool is where the physics lives.
 It is a classic, simple VPP: sail force coefficients against the apparent wind, a published hull resistance
 regression, induced drag from the keel and rudder, heel from the righting moment of the lofted hull, and a
 surge/roll force and moment equilibrium solved for speed and heel with the depowering optimised. It runs in
-30 to 55 s per class on a laptop, fully vectorised in NumPy.
+15 to 60 s per class on a laptop, fully vectorised in NumPy.
 
 ## Running
 
@@ -126,10 +126,22 @@ trimaran lifting its main hull. Appendage buoyancy sits at its centroid and roll
   (the convention of the Delft regression), on the heeled lofted wetted area. Fin, rudder: mean chord, Hoerner
   foil form factor `1 + 2t/c + 60(t/c)^4`; bulb: body-of-revolution form factor `1 + 1.5(d/l)^1.5 + 7(d/l)^3`.
 - Residuary, monohull: the Delft Systematic Yacht Hull Series bare-hull regression of Keuning and Katgert (2008),
-  Fn 0.15 to 0.75, made monotone, fading as Fn⁴ below the range and held above it. Planing: when the bottom's
-  dynamic lift `0.5 ρ V² 0.08 Aw` reaches 30 % of the weight the coefficient starts blending towards
-  `min(coefficient, 0.055)` (a planing hull's residuary drag/lift ratio), fully at 90 %. Light, wide boats get
-  there at moderate speed, heavy ones never do (calibrated, below).
+  Fn 0.15 to 0.75, made monotone and fading as Fn⁴ below the range.
+- Planing is gated on the hull's weight for its length, the displacement-length ratio
+  `DLR = (displacement / 1016 kg) / (LWL / 30.48 m)³` on `hull.displacement` (without crew, the usual
+  convention): planing ability 1 up to DLR 90, 0 from DLR 105, smooth in between (wm7: 82, wm12: 108).
+  - A hull that can plane holds the regression where it levels off; once the bottom's dynamic lift
+    `0.5 ρ V² 0.08 Aw` reaches 30 % of the weight its coefficient blends towards `min(coefficient, 0.055)` (a
+    planing hull's residuary drag/lift ratio), fully at 90 % (calibrated, below). The blend is scaled by the
+    ability.
+  - A hull that cannot plane keeps climbing its wave wall from the point where the monotone regression levels
+    off, with the regression's log slope just before it (bounded to 2 to 6), so it never gets over the hump
+    however hard it is driven.
+  - The total upright resistance (canoe body, appendages) is made to grow at least in proportion to the speed:
+    where the planing blend or a levelling regression would make it flatter, the residuary part is raised. The
+    drive of a reaching rig grows with the boat's speed, so a flatter resistance curve has two speed roots and the
+    polar would jump where the lower one disappears; with this rule a planing boat's speed climbs steeply but
+    continuously with the wind.
 - Keel residuary and its heel increment: Keuning and Sonnenberg (1998), on the fin volume (the Delft keel series
   were fins; a deep bulb is charged through its friction and form drag).
 - Induced resistance: `Fh² / (π Te² q)` with the effective draft `Te` of Keuning and Sonnenberg (1998) (heel and
@@ -165,10 +177,10 @@ main and jib or genoa). Every sail is trimmed to its best angle.
 
 ### Equilibrium and optimisation
 Two degrees of freedom: surge (drive = resistance) and roll (side force × (centre of effort + 0.45 draft) =
-righting moment). For each (TWS, TWA, flat, reef) speed and heel are solved by alternating root searches (5
-rounds), all combinations at once. The speed is the lowest stable root, scanning up from rest: a hull that cannot
-get over its wave hump stays below it, so a planing boat "takes off" at the wind strength where the hump
-disappears. The fastest valid combination (heel within `vpp.max_heel` and below the
+righting moment). For each (TWS, TWA, flat, reef) the roll equation is solved for the heel at every probe speed,
+so the surge balance is one equation in the speed, solved by a scan up from rest and a bisection, all
+combinations at once. The speed is the lowest stable root: a boat that cannot get over a resistance hump stays
+below it. The fastest valid combination (heel within `vpp.max_heel` and below the
 maximum righting moment) wins, ties going to more power. VMG optima are searched on a 0.5° grid around the table
 optimum with the neighbouring controls.
 
@@ -185,7 +197,10 @@ no table was copied. Changes it drove, all generic:
 - the keel regressions on the fin volume only;
 - the mainsail-alone slot loss (0.72);
 - the planing blend on the bottom's dynamic lift share (start 0.3, full 0.9, drag/lift 0.055), and the lowest
-  stable speed root.
+  stable speed root;
+- later, on owner decisions: planing gated on the displacement-length ratio, the upright resistance growing at
+  least with the speed, and speed and heel solved together (the alternating solution could settle on either of
+  two states near the heel limit). The comparison was rerun after these; see the calibration report.
 
 Resulting agreement: shape correlation of speed against TWA per TWS 0.71 to 0.97 per config, mean upwind VMG
 angle difference 3 to 8°, downwind 7 to 14°, sail crossovers 65 to 88 % in agreement. The remaining
@@ -227,5 +242,5 @@ code is included.
 - Sail handling times are reference values scaled by length, not a crew-work model.
 - Where no depowering keeps a config within the heel limit (a spinnaker close reaching in a gale) the polar holds
   0; the core then slows the boat along its deceleration law. A "broached" speed could be modelled instead.
-- Speed steps where a hull starts or stops planing are real behaviour of the model; they show in the polars of
-  the sportsboats at 20 kn and above.
+- Planing is a gate on the displacement-length ratio and a calibrated blend, not a planing-hull model (no
+  dynamic trim, no spray drag); a class near the gate (DLR 90 to 105) planes partly.

@@ -24,6 +24,7 @@ constexpr Name kQuantities[] = {
     {"boat_speed_abs", static_cast<std::uint8_t>(Quantity::boat_speed_abs)},
     {"helm_abs", static_cast<std::uint8_t>(Quantity::helm_abs)},
     {"heel_abs", static_cast<std::uint8_t>(Quantity::heel_abs)},
+    {"aws", static_cast<std::uint8_t>(Quantity::aws)},
 };
 
 constexpr Name kUnits[] = {

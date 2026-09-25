@@ -18,6 +18,7 @@ enum class Quantity : std::uint8_t {
   boat_speed_abs,  // m/s, >= 0
   helm_abs,        // -, [0, 1]
   heel_abs,        // rad, [0, pi/2]
+  aws,             // m/s, >= 0
 };
 
 // Units of table values.

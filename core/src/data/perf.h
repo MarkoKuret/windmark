@@ -94,10 +94,12 @@ struct ConfigPerf {
   Table polar;                   // (tws, twa_abs) -> m/s
   Table heel;                    // (tws, twa_abs) -> rad
   Table accel;                   // (tws, twa_abs) -> m/s2
+  OptionalTable accel_rest;      // (tws, twa_abs) -> m/s2, absent: accel
   OptionalTable trim_speed;      // (tws, awa_abs, trim_error) -> 1, absent: 1
   OptionalTable trim_heel;       // (tws, awa_abs, trim_error) -> 1, absent: 1
   OptionalTable weather_helm;    // (tws, twa_abs) -> rad/s, absent: 0
   OptionalTable fall_off;        // (boat_speed, twa_abs) -> rad/s, absent: 0
+  OptionalTable flog_drag;       // (aws, awa_abs) -> m/s2, absent: 0
   Table optimal_main;            // optimal_angle.<main id>: (tws, awa_abs) -> rad
   Table optimal_front;           // optimal_angle.<front id>; empty for main only
 };

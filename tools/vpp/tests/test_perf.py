@@ -98,8 +98,9 @@ def test_dynamics_ranges(generated):
 
 
 def test_trim_tables_zero_on_the_wind_line(generated):
-    """sails.md 6: with the driving sail on the wind line (eps = AWA - m_opt) trim_speed and trim_heel are 0, on the
-    grid and in between (both brackets of the lookup are 0)."""
+    """sails.md 6: with the driving sail on the wind line (eps = AWA - m_opt) trim_heel is 0, and trim_speed too
+    with the apparent wind forward of the beam, on the grid and in between (both brackets of the lookup are 0);
+    abaft the beam trim_speed holds the let-fly share of the polar there, the same for both brackets."""
     _, p = generated
     for c in p["configs"]:
         drive = c["front_sail"] or "main"
@@ -116,7 +117,64 @@ def test_trim_tables_zero_on_the_wind_line(generated):
                     if w < 0.5 * DEG:
                         continue
                     k = int(np.searchsorted(eps, w, side="right")) - 1
-                    assert np.all(t[i, j, k:] == 0.0), (c["front_sail"], name, i, j)
+                    if name == "trim_heel" or awa[j] <= 90 * DEG:
+                        assert np.all(t[i, j, k:] == 0.0), (c["front_sail"], name, i, j)
+                    else:
+                        assert np.all(t[i, j, k:] == t[i, j, -1]) and 0 <= t[i, j, -1] < 1, (c["front_sail"], i, j)
+    # running before 10 kn with the sails let fly the windage still drives the boat at a good share of its speed
+    c = p["configs"][1]
+    tws, awa, eps = (np.array(a["points"]) for a in c["trim_speed"]["axes"])
+    t = np.array(c["trim_speed"]["values"]).reshape(len(tws), len(awa), len(eps))
+    i = int(np.argmin(abs(tws - 10 * KNOT)))
+    assert 0.3 < t[i, -1, -1] < 1.0
+
+
+def test_flog_drag(generated):
+    """boat.md 5.8, sails.md 6: flogging sails brake the boat with the apparent wind forward of the beam, growing
+    with the square of the apparent wind; nothing abaft the beam."""
+    b, p = generated
+    for c in p["configs"]:
+        aws, awa, f = _t2(c["flog_drag"])
+        assert aws[0] == 0 and np.all(f[0] == 0) and np.all(f >= 0)
+        assert np.all(f[:, awa >= 90 * DEG] == 0)
+        i5, i10 = int(np.argmin(abs(aws - 5))), int(np.argmin(abs(aws - 10)))
+        assert f[i10, 0] == pytest.approx(4 * f[i5, 0], rel=1e-6)
+        assert f[i10, 0] > 0.02                                # a real brake head to wind in a breeze
+
+
+def test_accel_rest(generated):
+    """boat.md 5.8: from rest the drive meets no hull resistance, so the boat starts faster than it builds its last
+    speed; the same no-go and floor rules as accel."""
+    _, p = generated
+    for c in p["configs"]:
+        tws, twa, a = _t2(c["accel"])
+        _, _, a0 = _t2(c["accel_rest"])
+        assert a0.shape == a.shape and np.all(a0[0] == 0) and np.all(a0[1:] >= 0.005 - 1e-12)
+        i = int(np.argmin(abs(tws - 10 * KNOT)))
+        j = int(np.argmin(abs(twa - 90 * DEG)))
+        assert a0[i, j] > a[i, j]
+
+
+def test_weather_helm(generated):
+    """boat.md 5.9, sails.md 6: the helm balance is ~0 close-hauled at the balance breeze with the upwind config,
+    0 in the no-go zone and in no wind; a spinnaker broad reaching in a strong breeze has weather helm (broach), and
+    close reaching it pulls the bow off."""
+    b, p = generated
+    for c in p["configs"]:
+        tws, twa, w = _t2(c["weather_helm"])
+        assert np.all(w[0] == 0) and np.all(w[:, :4] == 0)
+    up = p["configs"][1]
+    tws, twa, w = _t2(up["weather_helm"])
+    _, _, V = _t2(up["polar"])
+    i = int(np.argmin(abs(tws - perf.WH_BALANCE_TWS)))
+    j = int(np.argmax(np.where(V[i] > 0, V[i] * np.cos(twa), -1)))
+    assert abs(w[i, j]) < 1.5 * DEG
+    kite = p["configs"][2]
+    tws, twa, w = _t2(kite["weather_helm"])
+    i = int(np.argmin(abs(tws - 22 * KNOT)))
+    assert np.interp(130 * DEG, twa, w[i]) > 3 * DEG
+    i = int(np.argmin(abs(tws - 10 * KNOT)))
+    assert np.interp(80 * DEG, twa, w[i]) < 0
 
 
 def test_tack_dynamics(generated):
@@ -129,10 +187,15 @@ def test_tack_dynamics(generated):
     assert 1.2 * r_full <= r_half <= 2.0 * r_full
     # coasting from the close-hauled speed: slower than the old tangent law, faster than no drag at all
     assert 0.01 < d["decel_linear"] < 0.1
-    # a slammed turn bleeds more speed per second than a half-helm one
+    # a slammed turn bleeds more speed per second than a half-helm one: past the stall helm the drag climbs
     v, hh, rd = _t2(d["rudder_drag_luff"])
     i3 = int(np.argmin(abs(v - 3.0)))
     assert np.interp(1.0, hh, rd[i3]) > 2.5 * np.interp(0.5, hh, rd[i3])
+    # one blade incidence for the radius law and the drag: the drag's stall knee sits at the radius law's stall helm
+    h_s = 1 + off / (2 * r_full)
+    slope = np.diff(rd[i3]) / np.diff(hh)
+    k = int(np.argmax(np.diff(slope))) + 1                     # the column where the slope jumps
+    assert abs(hh[k] - h_s) <= 0.1 + 1e-9
     for c in p["configs"]:
         sp, twa, f = _t2(c["fall_off"])
         assert np.all(f >= 0)

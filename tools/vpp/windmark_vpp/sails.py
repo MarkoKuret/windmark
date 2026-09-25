@@ -38,7 +38,7 @@ class SailCoeffs:
     cn_max: float       # stalled normal force coefficient
     blend: float        # rad, width of the attached-to-stalled blend
     kt: float = 0.0     # twist drag: eased sheets open the leech, parasitic drag grows as kt delta^2
-    cd_luff: float = 0.06   # flogging drag
+    cd_luff: float = 0.06   # luffing drag (sail on the wind line with its sheet in; solver.CD_LUFF)
     blanket: float = 0.0    # share of a front sail's force lost in the mainsail's lee dead downwind (110-180 deg)
 
 

@@ -1,8 +1,9 @@
 class_name FakeSim
 extends SimSource
 ## Placeholder simulation behind SimSource until the core binding exists: FakeBoats in a uniform wind with an
-## optional slow oscillation of its direction, on flat water or on a simple test swell (sum of three sines, for
-## the camera clearance test). Replace with the binding; nothing else changes.
+## optional slow oscillation of its direction, on flat water, on a simple test swell (sum of three sines, for
+## the camera clearance test) or on the drawn sea's own components (use_sea(): the SeaModel the Sea node draws,
+## so boat and water agree). Replace with the binding; nothing else changes.
 
 var boats: Array[FakeBoat] = []
 var _tick := 0
@@ -16,6 +17,10 @@ var wind_osc_period := 120.0
 ## significant wave height of the test swell (m); 0 = flat sea
 var swell_hs := 0.0
 var _swell: Array = []  # [amplitude, kx, ky, omega, phase]
+## the sea's wave components (sea.md §7.2), shared with the Sea node; null = the swell or flat water
+var sea_model: SeaModel = null
+## environment clock at tick 0 (ms): tick n is at sea_t0_ms + n * 50
+var sea_t0_ms := 0.0
 
 
 ## Adds a boat of class `id` (data/classes, data/perf). Returns its index, -1 when the class does not load.
@@ -29,7 +34,7 @@ func add_boat(id: String, pos_x := 0.0, pos_y := 0.0, psi := 0.0, v := 0.0, auto
 	return boats.size() - 1
 
 
-## Test swell of significant height hs: three trains from the wind direction side, amplitudes chosen so that
+## Test swell of significant height hs (the water only, the hulls stay level): three trains from the wind direction side, amplitudes chosen so that
 ## 4 * sqrt(sum a^2 / 2) = hs.
 func set_swell(hs: float) -> void:
 	swell_hs = hs
@@ -46,6 +51,19 @@ func set_swell(hs: float) -> void:
 		var k := omega * omega / 9.81
 		var dir: float = wind_from + p[2]
 		_swell.append([p[0] * scale, -k * sin(dir), -k * cos(dir), omega, p[2] * 3.0])
+
+
+## Sea of the race from the drawn sea's model: sea_height is then SeaModel.height at the tick's time, the
+## same function Sea.height_at evaluates. Replaces the test swell.
+func use_sea(model: SeaModel, t0_ms := 0.0) -> void:
+	sea_model = model
+	sea_t0_ms = t0_ms
+
+
+## Environment clock (ms) at a fractional tick count: the render time of a pose between ticks n - 1 and n is
+## sea_time_ms(n - 1 + alpha).
+func sea_time_ms(ticks: float) -> float:
+	return sea_t0_ms + ticks * DT * 1000.0
 
 
 func _wind_from_now() -> float:
@@ -103,7 +121,10 @@ func sea_height(x: float, y: float) -> float:
 	return sea_height_at(x, y, _tick * DT)
 
 
+## Sea height at time t (s since tick 0).
 func sea_height_at(x: float, y: float, t: float) -> float:
+	if sea_model != null:
+		return sea_model.height(x, y, sea_t0_ms + t * 1000.0)
 	var hgt := 0.0
 	for c in _swell:
 		hgt += c[0] * cos(c[1] * x + c[2] * y - c[3] * t + c[4])
@@ -132,6 +153,12 @@ func apply_input(boat: int, frame: InputFrame) -> int:
 
 func step() -> void:
 	var wf := _wind_from_now()
+	# the boats sample the sea at the time of the tick they step to; the test swell leaves the hull level (the
+	# camera clearance test wants the water to move under a steady boat)
+	var t_next := (_tick + 1) * DT
+	var sea := Callable()
+	if sea_model != null:
+		sea = func(x: float, y: float) -> float: return sea_height_at(x, y, t_next)
 	for b in boats:
-		b.step(wind_speed, wf)
+		b.step(wind_speed, wf, sea)
 	_tick += 1

@@ -1,6 +1,8 @@
 // AI fleet races (ai.md §15 headless acceptance tests). Long: run with `ctest --test-dir core/build -L ai_long`
 // or `core/build/tests/windmark_ai_race_tests`.
+#include <algorithm>
 #include <cstdio>
+#include <vector>
 #include <cstdlib>
 #include <string>
 
@@ -107,5 +109,175 @@ TEST_CASE("ai dev: fixed helm 360s" * doctest::skip(std::getenv("AI_DEV") == nul
         }
       }
     }
+  }
+}
+
+// ---- ai.md §15 acceptance runs --------------------------------------------------------------------------------------
+
+namespace {
+
+struct FleetStats {
+  int boats = 0, finished = 0, dsq = 0, races = 0;
+  int penalties = 0, contacts = 0, ocs = 0, started = 0;
+  double start_delay = 0.0, stuck = 0.0, stuck_max = 0.0;
+  int bad_air = 0, bad_air_known = 0, bad_air_better = 0;
+  double d_at = 0.0, d_after = 0.0;
+  int tacks = 0;
+  void add(const wm_test::AiRaceOutcome& o) {
+    ++races;
+    contacts += o.contacts;
+    for (const wm::ResultRow& r : o.results) {
+      ++boats;
+      if (r.place > 0) ++finished;
+      if (r.code == wm::ScoreCode::DSQ) ++dsq;
+    }
+    for (const wm::AiTelemetry& t : o.tel) {
+      penalties += t.penalties;
+      ocs += t.ocs;
+      tacks += t.tacks;
+      if (t.start_delay >= 0.0f) {
+        ++started;
+        start_delay += static_cast<double>(t.start_delay);
+      }
+      stuck += static_cast<double>(t.stuck_s);
+      stuck_max = std::max(stuck_max, static_cast<double>(t.stuck_s));
+      for (const wm::AiBadAirRecord& b : t.bad_air) {
+        ++bad_air;
+        if (b.d_after >= 0.0f) {
+          ++bad_air_known;
+          d_at += static_cast<double>(b.d_at);
+          d_after += static_cast<double>(b.d_after);
+          if (b.d_after < b.d_at) ++bad_air_better;
+        }
+      }
+    }
+  }
+  double per_boat(double v) const { return boats > 0 ? v / boats : 0.0; }
+  void print(const char* name) const {
+    std::printf("%s: %d races, finished %d/%d (DSQ %d), penalties/boat %.2f, contacts/race %.2f, OCS %d/%d, "
+                "start delay %.1f s, stuck/boat %.1f s (max %.1f), bad air/boat %.2f (deficit %.3f -> %.3f 20 s later, "
+                "%d/%d lower), tacks/boat %.1f\n",
+                name, races, finished, boats, dsq, per_boat(penalties), races > 0 ? double(contacts) / races : 0.0,
+                ocs, boats, started > 0 ? start_delay / started : 0.0, per_boat(stuck), stuck_max,
+                per_boat(bad_air), bad_air_known > 0 ? d_at / bad_air_known : 0.0,
+                bad_air_known > 0 ? d_after / bad_air_known : 0.0, bad_air_better, bad_air_known, per_boat(tacks));
+  }
+};
+
+FleetStats fleet(std::vector<wm::AiLevel> levels, std::initializer_list<std::uint64_t> seeds, const char* name,
+                 const wm::CourseData* course = nullptr, bool speed_only = false) {
+  FleetStats st;
+  for (const std::uint64_t seed : seeds) {
+    wm_test::AiRaceSpec sp;
+    sp.seed = seed;
+    sp.levels = levels;
+    sp.course = course;
+    sp.speed_only = speed_only;
+    st.add(wm_test::run_ai_race(sp));
+  }
+  st.print(name);
+  return st;
+}
+
+}  // namespace
+
+TEST_CASE("ai race: ten Intermediate boats on the default course, five seeds (ai.md §15)") {
+  const FleetStats s = fleet(std::vector<wm::AiLevel>(10, wm::AiLevel::intermediate), {1, 2, 3, 4, 5}, "intermediate");
+  // Measured targets of this implementation (ai.md §15 records the spec's targets and the gaps).
+  CHECK(s.finished >= s.boats * 8 / 10);
+  CHECK(s.per_boat(s.penalties) <= 1.3);
+  CHECK(double(s.contacts) / s.races <= 6.0);
+  CHECK(s.stuck_max <= 60.0);
+  // Bad air triggers, and the boats that trigger are in less of it 20 s later.
+  CHECK(s.per_boat(s.bad_air) >= 1.5);
+  CHECK(s.d_after < s.d_at);
+}
+
+TEST_CASE("ai race: a fleet completes races at every level (ai.md §13)") {
+  for (const wm::AiLevel l : {wm::AiLevel::easy, wm::AiLevel::intermediate, wm::AiLevel::expert, wm::AiLevel::pro}) {
+    const std::string name = std::string("level ") + std::to_string(static_cast<int>(l));
+    const FleetStats s = fleet(std::vector<wm::AiLevel>(10, l), {21, 22}, name.c_str());
+    CAPTURE(static_cast<int>(l));
+    CHECK(s.finished >= s.boats * 7 / 10);
+    CHECK(s.ocs <= s.boats / 5);
+  }
+}
+
+TEST_CASE("ai race: level separation in a mixed fleet and with speed-only levels (ai.md §13, §15)") {
+  // Mixed: 3 boats per level would need 12; 8 boats, 2 per level, 3 seeds.
+  std::vector<wm::AiLevel> mixed;
+  for (int k = 0; k < 8; ++k) mixed.push_back(static_cast<wm::AiLevel>(k % 4));
+  double place[4] = {0, 0, 0, 0}, time_sum[4] = {0, 0, 0, 0};
+  int n[4] = {0, 0, 0, 0}, nt[4] = {0, 0, 0, 0};
+  for (const bool speed_only : {false, true}) {
+    for (int k = 0; k < 4; ++k) place[k] = time_sum[k] = n[k] = nt[k] = 0;
+    for (const std::uint64_t seed : {31u, 32u, 33u}) {
+      wm_test::AiRaceSpec sp;
+      sp.seed = seed;
+      sp.levels = mixed;
+      sp.speed_only = speed_only;
+      const wm_test::AiRaceOutcome o = wm_test::run_ai_race(sp);
+      for (const wm::ResultRow& r : o.results) {
+        const int lv = r.boat % 4;
+        place[lv] += r.place > 0 ? r.place : 9;
+        ++n[lv];
+        if (r.place > 0) {
+          time_sum[lv] += static_cast<double>(r.t_finish_us) * 1e-6;
+          ++nt[lv];
+        }
+      }
+    }
+    std::printf("%s: mean place by level %.2f %.2f %.2f %.2f; mean finish time %.1f %.1f %.1f %.1f\n",
+                speed_only ? "speed only" : "mixed", place[0] / n[0], place[1] / n[1], place[2] / n[2], place[3] / n[3],
+                nt[0] ? time_sum[0] / nt[0] : 0.0, nt[1] ? time_sum[1] / nt[1] : 0.0, nt[2] ? time_sum[2] / nt[2] : 0.0,
+                nt[3] ? time_sum[3] / nt[3] : 0.0);
+    // Easy is behind Pro on average.
+    CHECK(place[0] / n[0] > place[3] / n[3]);
+  }
+}
+
+TEST_CASE("ai race: tacks on a 1 nm beat (ai.md §15)") {
+  const FleetStats s = fleet(std::vector<wm::AiLevel>(10, wm::AiLevel::intermediate), {41, 42}, "1 nm beat",
+                             &wm_test::ai_beat_course());
+  CHECK(s.per_boat(s.tacks) >= 3.0);
+  CHECK(s.per_boat(s.tacks) <= 14.0);
+}
+
+TEST_CASE("ai race: the match race leader covers (ai.md §9, §15)") {
+  int covered = 0;
+  for (const std::uint64_t seed : {1u, 2u, 3u, 4u, 5u}) {
+    wm_test::AiRaceSpec sp;
+    sp.seed = seed;
+    sp.levels = {wm::AiLevel::expert, wm::AiLevel::expert};
+    sp.course = &wm_test::ai_match_course();
+    sp.shifts = wm::ShiftPreset::oscillating;
+    const wm_test::AiRaceOutcome o = wm_test::run_ai_race(sp);
+    const int c = o.tel[0].activations[static_cast<std::size_t>(wm::AiTactic::Cover)] +
+                  o.tel[1].activations[static_cast<std::size_t>(wm::AiTactic::Cover)];
+    std::printf("match seed %llu: cover activations %d, penalties %d, contacts %d, finished %d %d\n",
+                static_cast<unsigned long long>(seed), c, o.penalties, o.contacts, o.results[0].place,
+                o.results[1].place);
+    if (c >= 1) ++covered;
+    CHECK(o.results[0].place + o.results[1].place == 3);
+  }
+  CHECK(covered == 5);
+}
+
+TEST_CASE("ai race: an AI race reproduces, and saved mid-race it continues identically (race.md §12)") {
+  wm_test::AiRaceSpec sp;
+  sp.seed = 9;
+  sp.levels = std::vector<wm::AiLevel>(10, wm::AiLevel::intermediate);
+  sp.keep_checksums = true;
+  const wm_test::AiRaceOutcome a = wm_test::run_ai_race(sp);
+  const wm_test::AiRaceOutcome b = wm_test::run_ai_race(sp);
+  sp.reload_at = 3800u + 5000u;  // on the first beat, 250 s after the gun
+  const wm_test::AiRaceOutcome c = wm_test::run_ai_race(sp);
+  REQUIRE(c.reloaded);
+  CHECK(a.checksums == b.checksums);
+  CHECK(a.checksums == c.checksums);
+  REQUIRE(a.results.size() == c.results.size());
+  for (std::size_t k = 0; k < a.results.size(); ++k) {
+    CHECK(a.results[k].boat == c.results[k].boat);
+    CHECK(a.results[k].t_finish_us == c.results[k].t_finish_us);
   }
 }

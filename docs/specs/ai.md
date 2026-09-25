@@ -174,22 +174,32 @@ With `n̂` the line normal towards the course side and `w` towards `TWD_ref`:
 
 - **bias** `β = wrap_pi(compass(n̂) − TWD_ref)` (0 = square); the end that is farther upwind is **favoured**:
   `Δu = dot(B − A, w)` (> 0: B end favoured). Significant if `|Δu| > max(1·L, 0.05·|B − A|)`.
-- **Target spot** `u* ∈ [0.05, 0.95]` along the line: with a significant bias, 0.15 from the favoured end, else 0.5;
-  then each AI adds `spread·(rng() − 0.5)` (§13), clamped; if more than 3 other AIs already target a spot within
-  `3·L`, the AI moves its spot `3·L` away from the favoured end, repeated until free. The spot is fixed at −75 s and
-  kept unless the bias changes by more than 5°.
+- **Target spot** `u* ∈ [0.05, 0.95]` along the line: each AI's wanted spot is, with a significant bias, 0.15 from
+  the favoured end, else 0.5, plus `spread·(rng() − 0.5)` (§13), clamped.
+- **Fleet assignment**: the spots of a fleet are given out together. The wanted spots of all AIs not yet started are
+  sorted and spread to at least `2·L` apart (`L` the largest hull; closer only when the line is too short for the
+  fleet, and kept inside `[0.05, 0.95]`), and handed to the boats in the order of their present positions along the
+  line (ties by boat index), so no two approaches to the spots cross. The draw of each AI still shapes where the
+  spots are; which boat takes which follows the positions. The assignment is made when the race is created, again
+  at −75 s (the mean wind is known better by then), and whenever an AI's bias estimate changes by more than 5°.
+  A match race boat takes her side's spot (§5.8).
 
 ### 5.3 Approach heading
 
-Starboard tack, `ψ_app = TWD_f − (θ_CH + 8°)` (a little cracked off close-hauled for speed on the run to the line).
+Starboard tack, towards the spot: the heading of the bearing to the spot corrected for the current (§4.2), its TWA
+kept between `θ_CH + 2°` and 115°. The **setup bearing** `ψ_app = TWD_f − (θ_CH + 25°)` is the middle of the sector
+from which the spot can be laid on starboard (between close-hauled and a beam reach): a setup point on it stays
+inside that sector when the boat drifts while parked, where a point on the close-hauled edge would not.
 
 ### 5.4 Setup point and hovering
 
-`S = spot − d_back·dir(ψ_app)` with `d_back = V_up·T_final`, `T_final` from §13. While hovering the AI keeps within
-`3·L` of S: it sails at `twa ≈ +60°` (starboard) with sails let fly to 25–40 % of target speed; if it drifts more than
-`3·L` from S it bears away, gybes round and comes back (a small loop, not a tack, so it never stalls head to wind).
-It respects the rules against boats around it (§7) — in particular it stays on starboard whenever a boat is within
-`5·L`.
+`S = spot − d_back·dir(ψ_app)` with `d_back = V_up·T_final`, `T_final` from §13; the setup points of neighbouring
+spots (odd places in the fleet assignment) lie `1.5·L` farther back, so a boat on her way to her point passes the
+parked ones instead of sailing into them. Before the warning signal the AI waits `1.2·d_back` back along the same
+bearing (§5.1). While hovering the AI **parks** near S: starboard, `twa ≈ 50°`, the sails in until the boat has
+turned onto that heading (a stopped boat does not steer) and let fly after that. More than `3·L` from S it sails
+back to S (turning through a gybe, never a tack, so it never stalls head to wind), easing the sheets within `5·L`
+so it arrives slowly, and parks again within `1·L`. It respects the rules against boats around it (§7).
 
 ### 5.5 Go decision (time to the line)
 
@@ -197,32 +207,48 @@ The time to reach the spot from the current state is simulated with the class's 
 of the current config at `TWS_f` and the approach angle `θ_a = θ_CH + 8°`), from the current speed `v0`:
 
 ```
-v = v0 ; x = 0 ; t = turn_time                    turn_time = |wrap_pi(ψ_app − ψ)| / (v0 / turn_radius_full), max 8 s
+v = v0 ; x = 0 ; t = turn_time (+ 2 s if the sails are let fly: they take that long to come in)
+                                                  turn_time = |wrap_pi(ψ_a − ψ)| / (max(v0, 0.5) / turn_radius_full), max 8 s
 while x < d_path:                                 steps of 0.1 s, at most 120 s
-    V = polar(TWS_f, θ_a) ; a = v < V ? accel(TWS_f, θ_a) : 0
+    V = polar(TWS_f, θ_a)·scale
+    a = v < V ? (v < V/2 ? accel_rest + (accel − accel_rest)·v/(V/2) : accel) : 0     boat.md §5.8, at θ_a
     v = min(v + a·0.1, V) ; x = x + v·0.1 ; t = t + 0.1
 t_run = t
-d_path = distance from the bow to the spot along the approach (straight line after the turn onto ψ_app)
-go when  (−t_race) ≤ t_run + 1.0 s + e_start      t_race = race time (negative), e_start = the level's start error
+θ_a, ψ_a = the approach TWA and heading of §5.3 from the present position
+d_path = distance from the bow to the spot (straight line)
+go when  (−t_race) ≤ 1.1·t_run + 2 s + 1.0 s + e_start      t_race = race time (negative), e_start = the level's start error
 ```
+
+The go decision uses `1.1·t_run + 2 s`: a boat reaches her table speed later than the tables alone say (the trim
+settles, the heading wanders), and an early boat can take the time off by letting fly while a late one cannot make
+it up. The final approach (§5.6) uses `t_run` itself. If at the go the spot is above close-hauled from where the
+boat is, she takes the spot where her close-hauled course (`θ_CH + 2°`) meets the line, when that is inside
+`[0.08, 0.92]`.
 
 `e_start` is drawn once per start from the level distribution (§13): positive = late. Pro starts are within half a
 second of the gun; Easy boats start seconds late.
 
 ### 5.6 Final approach
 
-Sail `ψ_app` towards the spot with sails trimmed. Every decision, re-solve `t_run`: if the boat would arrive more
-than 1.0 s early, luff to `|twa| = 45°` and let fly until back on time; if more than 1.0 s late, bear away 8° for
-speed. In the last 5 s: if the bow is within `0.3·L` of the line and `t < −0.5 s`, luff and let fly (brake) — never
-cross early on purpose.
+Sail the approach heading of §5.3 towards the spot with sails trimmed. Every decision, re-solve `t_run`: if the
+boat would arrive more than 1.0 s early (against `−t_race + e_start`), let fly until back on time. Late, she sails
+on at full speed on the course to the spot (bearing away from it only makes her miss it). **Brake**: while the bow
+would reach the line before the gun at the present speed and is within the let-fly stopping distance (about 5 s of
+the present speed towards the line: a let-fly boat loses speed slowly, `boat.md` §5.8), let fly; within `0.3·L` of
+the line before −0.3 s, also luff to `|twa| = 40°`. Never cross early on purpose.
 
 ### 5.7 Launch and OCS
 
 - At the gun: trim on, sail the first-leg heading (beat: close-hauled on starboard, then the strategy of §4).
-- **OCS (P flag)**: bear away and gybe back to the pre-start side by the shortest turn that does not cross a boat
+- **OCS (P flag)**, and a boat not yet seen completely on the pre-start side after the gun (`race.md` §4.2, her bow
+  over at the gun): bear away and gybe back to `2·L` behind the line by the shortest turn that does not cross a boat
   (§7 avoidance still applies; the boat now keeps clear of everyone under rule 22.1), then start again at full speed.
-- **OCS-I**: route around the nearer end: waypoints `end + 1.5·L` beyond the end on the extension, then `2·L` behind
-  the line on the pre-start side, then start.
+- **OCS-I**: route around the nearer end: a waypoint `1.5·L + B` beyond the end and `1·L` on the course side, then
+  one as far beyond the end and `2.5·L` behind the line, then start. The second waypoint is taken once the boat is on
+  the course side beyond the end, so the crossing back is around the end; a boat that dives back through the band
+  starts over.
+- **Outside the band** after the gun (not OCS): sail to a point `1.5·L` behind the line inside it (`u` clamped to
+  `[0.12, 0.88]`), then up through it.
 
 ### 5.8 Match race pre-start (v1, simple)
 
@@ -241,7 +267,23 @@ the line's middle and start as in fleet with `u* = 0.5`. Dial-ups and hooks are 
   boat. Within `4·L`: follow the circle; the turn starts when the distance to the tangent point is below the turning
   radius at the planned helm (`boat.md` §5.9 radius law), so the boat leaves the circle on the exit tangent towards the next leg's
   heading (the VMG heading of the next leg if it is a beat or run, the direct course if a reach).
-- Beats and runs to a mark use §4 until the layline; the rounding plan takes over inside `4·L` of the tangent point.
+- Beats and runs to a mark use §4 until the layline, aiming at the **pass point**: the circle's point on the required
+  side across the wind (upwind for a beat, downwind for a run), `0.5·L` farther out than `ρ` as a margin; the
+  rounding plan takes over within `ρ + 4·L` of the mark.
+- **Inside the rounding plan** the guide is the tangent point of the circle ahead in the rounding direction (outside
+  `1.15·ρ`), or the point `55°` ahead on the circle (inside it). The race's own winding angle φ and its target
+  `φ_done` (`race.md` §5.1) tell how far round the boat is: a boat that came in on the wrong side is behind (φ small
+  or negative) and simply goes on round the circle, which takes her back the way she came and round, the way the
+  winding test counts it. With less than `70°` of winding to go she leaves on the exit heading once the guide has
+  turned past it.
+  - Guide above close-hauled: the present tack if it moves round in the rounding direction and passes the mark on
+    the required side by at least `0.9·ρ` (or the mark is behind), else a beat to the pass point on its laylines, so
+    a boat that cannot lay the mark tacks away early and comes back on the layline, not at the mark.
+  - Guide on the other tack with the shorter turn through head to wind: a tack if the boat has way on (≥ 0.6 ×
+    target) and the tack is safe (§7.3); if not, as close to the guide as the present tack goes, and wait. A turn
+    the long way round (through a gybe) only when the boat is nearly stopped: a loop near a mark and other boats is
+    worse than a late tack.
+  - A tack in progress keeps its target; pending tacks of the strategy are dropped when the rounding plan starts.
 - If entitled to mark-room: keep `c_lvl` and ignore boats outside (the engine protects the corridor). If giving
   room: add the entitled boats' widths to ρ (above) and, if still overlapped outside when 1 L from the zone, slow
   (let fly partially) so they can go inside. If clear astern at the zone with no room: aim at the stern of the boat
@@ -262,6 +304,16 @@ from the next leg's TWA:
 - **Change** on a leg: when `best_sail` differs from the current sail and would be ≥ 3 % faster for 5 s, and the
   remaining leg time ≥ `t_change + 10 s`. Hysteresis 2° in TWA.
 - During a penalty turn with a downwind sail up in more than 10 kn true wind: drop first.
+
+### 6.4 Course objects
+
+Every decision, the planned heading is checked against every course object (marks, committee and mark boats,
+`courses.md` §2) ahead within `max(3·L, 6 s)` of travel: one whose centre is closer to the track than
+`r + 0.5·B + 1 m + 0.15·L` is passed by the tangent to that clearance circle on the side it is on (the other side
+when that side is above close-hauled). The mark being rounded is only checked for a collision course (clearance
+`r + 0.5·B + 0.5 m`, the rounding circle keeps the planned one), and it is never passed on the other side: if its
+side is above close-hauled the AI tacks away from it (if safe) or pinches and lets fly. Tacks, gybes (§7.3) and
+the avoidance candidates (§7.2) are rejected when the predicted hull would touch a course object.
 
 ### 6.3 Gate choice
 
@@ -294,7 +346,9 @@ candidates: headings ψ + k·5°, k = −8 … +8 (hold, bear away, luff),
             tack or gybe (if §4.4 manoeuvre checks allow),
             slow: hold heading, let fly (brake)
 for each: move own hull with CTRV at the candidate heading (turn at `|v| / turn_radius_full` to the candidate heading,
-          then straight) for 6 s; move B and every other boat within 5 L on their current motion
+          then straight; with the sails drawing the speed grows towards the polar speed at half the table
+          acceleration, so a stopped boat sees a way out) for 6 s; move B and every other boat within 5 L on their
+          current motion; a candidate whose hull touches a course object (§6.4) is dropped
 cost = ∞                                    if PredGap to B < m (rules.md §3.1) or to any other boat < 0
      + 20 / max(gap_min_m, 0.5)             proximity to B
      + 4 · (VMC_ref − VMC_candidate)/V_ref   loss of progress to the mark
@@ -330,13 +384,27 @@ A manoeuvre started by the avoidance layer is not cancelled by strategy for 1.5 
 
 ### 7.6 Penalty turns
 
-With a pending penalty the AI starts a turn when all of: no boat within `4·L` ahead or `2·L` in any direction, not in
-the zone of the previous or next mark, not within 30 s of its next planned rounding; or, regardless, when the
-deadline (`rules.md` §9.4) is less than 12 s away. Direction: on a beat start by luffing into a tack (turn towards
-the wind), on a run start by bearing away into a gybe, on a reach turn towards the wind. Helm 0.8 of full, sheets
-on auto-trim through the turn, downwind sail dropped first in more than 10 kn. The turn is kept up
-until the engine reports it served; if the tracker resets (`rules.md` §9.3), the AI restarts when the conditions hold
-again.
+With a pending penalty the AI starts a turn when all of:
+
+- the turn's circle keeps the hull out of the zones of the next mark and the last one rounded (the turn only counts
+  there, `rules.md` §9.3): the circle's centre, `1.3·R` to the side of the turn (`R` the radius at the turn's helm,
+  a margin for the speed the turn loses), is at least `Z + 1.3·R + 0.6·L` from those marks;
+- boat speed ≥ 0.75 × target, and not within 5 s after a failed turn;
+- the next zone is more than 20 s of sailing (plus the circle) away;
+- no boat within `1.5·L` plus the turn's reach, or `3·L` ahead.
+
+From 20 s before the deadline (`rules.md` §9.4; the turn must be in progress when it passes) it is **urgent**: only
+the zones, 0.4 × target speed and a boat within `0.5·L` plus the turn's reach hold it back. Direction: on a beat
+start by luffing into a tack (turn towards the wind), on a run start by bearing away into a gybe, on a reach turn
+towards the wind; the other way when only that keeps the circle out of the zones. Helm 0.8 of full (0.6 below 9 kn
+true wind, where a slammed turn stalls), sheets on auto-trim through the turn, downwind sail dropped first in more
+than 10 kn. The turn is kept up until the engine reports it served, through the tracker's resets; stopped for 4 s
+(in irons) it is given up and started again after 5 s of speed building, and so is a turn that enters a zone.
+
+While a penalty waits, the AI makes the conditions: before the start it leaves the parking and sails a broad reach
+on starboard (`twa 110°`) away from the line with the sails in until it can turn; racing, it steers up to 15° away
+from the boat in the way (not above close-hauled). A pre-start penalty is taken before the start (`rules.md` §9.3),
+except in the last 20 s.
 
 ## 8. Bad air
 
@@ -352,7 +420,9 @@ behaviour triggers whatever the shadow's calibration.
   the trigger keeps working if the shadow is recalibrated.
 - **Trigger**: `d ≥ d_bad` for 3 s continuously, the source boat (the boat `j` with the largest loss
   `shadow(j, x, y)` at the AI's position, `wind_shadow.md` §7) is within `8·L`, and the AI is not inside a mark zone or in the last 10 s before
-  the start.
+  the start. The source is the tick's (`EnvAtBoat::shadow_source`); where there is none for a moment (the smoothed
+  deficit outlasts the loss at a blanket's edges) the last one seen stands in. The check runs on every leg, beats,
+  runs and reaches, also close to the marks outside the zone.
 - **Escape**, by leg type:
   - beat: tack, if the §4.4 manoeuvre checks pass, the other tack does not overstand, and no boat within `5·L` on
     the other tack would have to be ducked (rules check §7.3); otherwise **foot**: bear away 5° for up to 20 s to
@@ -399,12 +469,25 @@ behaviour triggers whatever the shadow's calibration.
   `R* = |v| / |r*|`, `|h| = min(1, (turn_radius_full + turn_radius_offset) / (R* + turn_radius_offset))`,
   `h = sgn(r*)·|h|` (reversed in sternway), plus a damping term `−K_r·(turn_rate − r*)` with `K_r = 0.5 s/rad`,
   clamped to [−1, 1]. Unless forced, `|h|` is limited to the largest value whose rudder drag (`rudder_drag_luff` /
-  `rudder_drag_bear` at the present speed) is at most 0.1 m/s², so the AI steers as gently as a good helm. The actual
-  helm follows `h_cmd` at `helm_rate` in the physics.
+  `rudder_drag_bear` at the present speed) is at most 0.1 m/s² (never below 0.25, so the boat can always turn), so the
+  AI steers as gently as a good helm. The actual helm follows `h_cmd` at `helm_rate` in the physics.
+- **Heading hold**: the boat turns with the helm centred (weather helm and fall-off, `boat.md` §5.9: a wm7 under jib
+  in 16 kn at TWA 100° turns at about 15°/s; a spinnaker close reaching pulls the bow away), so the controller adds
+  an integral term: `I += tack·(r* − turn_rate)·DT` (per second of turn-rate error, only with `|v| > 0.3 m/s`),
+  clamped to ±0.6, and the helm gets `+ tack·I` (reversed in sternway). It is kept relative to the tack because the
+  balance of the sail plan flips with it.
 - **Trim**: `auto_trim` is always on for AI boats (`boat.md` §2): the sails sit at their optimum (`sails.md` §5.2).
   The level does not add trim errors (the `performance_scale` represents crew quality).
 - **Let fly**: used for braking (start, room at marks, avoidance "slow").
 - **Output**: the input frame for the next tick (`networking.md` §4.1 fields), identical in form to a human's.
+
+### 11.1 Finished boats
+
+After finishing, an AI boat is sailed by the finished-boat autopilot of `race.md` §6.2: to the point `5·L` beyond the
+finish line's middle and `2·(i + 1)·L` along it (`i` = her finishing place), where she stops (luffed to `twa 50°`,
+sails let fly). It keeps doing so after the race has closed. A ghost that did not finish (retired, disqualified)
+and any boat still sailing when the race closes stop where they are. `AiSkippers::add_autopilot` gives a human boat
+(offline) only this autopilot: it steers her from her finish on and never before.
 
 ## 12. Easy starts and mistakes
 

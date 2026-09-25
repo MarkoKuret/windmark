@@ -69,6 +69,34 @@ inline const wm::CourseData& ai_match_course() {
   return c;
 }
 
+// One beat of 1 nm to a windward mark, then a short run to a finish line below it (ai.md §15 tack count).
+inline const wm::CourseData& ai_beat_course() {
+  static wm::CourseData c;
+  static bool loaded = false;
+  if (!loaded) {
+    static const char* kText = R"({
+  "schema": "windmark.course/1", "id": "test_beat", "name": "Test 1 nm beat", "venue": "example_bay",
+  "frame": "wind", "reference": { "x": 0.0, "y": -900.0 },
+  "marks": [
+    { "id": "rc",  "type": "committee_boat", "at": { "bearing": 1.57079633, "dist": 125, "fixed": true }, "heading": null },
+    { "id": "pin", "type": "buoy", "style": "tetra", "at": { "bearing": 4.71238898, "dist": 125, "fixed": true } },
+    { "id": "w",   "type": "buoy", "style": "large", "at": { "bearing": 0, "dist": 1852, "from": "rc_pin_mid", "fixed": true } },
+    { "id": "fc",  "type": "virtual", "at": { "bearing": 3.14159265, "dist": 200, "from": "w", "fixed": true } },
+    { "id": "fa",  "type": "buoy", "at": { "bearing": 1.57079633, "dist": 50, "from": "fc", "fixed": true } },
+    { "id": "fb",  "type": "buoy", "at": { "bearing": 4.71238898, "dist": 50, "from": "fc", "fixed": true } }
+  ],
+  "start": { "ends": ["pin", "rc"] },
+  "finish": { "ends": ["fb", "fa"] },
+  "sequence": [ { "mark": "w", "round": "port" } ],
+  "race": { "type": "fleet", "sequence": "3-2-1-0", "prep_flag": "I", "time_limit": 2400 }
+})";
+    wm::LoadError err;
+    REQUIRE_MESSAGE(wm::parse_course(kText, "test_beat.course.json", c, err), err.message());
+    loaded = true;
+  }
+  return c;
+}
+
 struct AiRaceSpec {
   std::uint64_t seed = 1;
   float wind_kn = 11.0f;

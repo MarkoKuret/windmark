@@ -902,25 +902,39 @@ func test_core_race() -> void:
 # ---- the sail test scene in race mode ------------------------------------------------------------------------------
 
 func test_scene_race() -> void:
-	t.begin("sail test scene in race mode: the race HUD in place of the stand-in")
-	var packed: PackedScene = load("res://scenes/sail_test.tscn")
-	var sc: Node = packed.instantiate()
+	t.begin("sail test scene in race mode with AI boats: the race HUD, no stand-in")
+	var sc: Node = (load("res://scenes/sail_test.tscn") as PackedScene).instantiate()
 	sc.set("auto_process", false)
+	sc.set("sim_kind", 1)  # CORE
 	sc.set("race_mode", true)
+	sc.set("fleet_size", 4)
+	sc.set("ai_level", "expert")
+	sc.set("with_pause_menu", false)
+	sc.set("apply_settings", false)
+	sc.set("core_settings", {"free_sailing_s": 5.0})
 	get_root().add_child(sc)
+	sc.set("scripted_input", RawInput.new())
 	await process_frame
 	var hud: Hud = sc.get("hud")
 	for i in 400:
 		sc.call("step_frame", 1.0 / 30.0)
 	hud.refresh_text()
-	var stand_in: Node = hud.get_parent().get_node_or_null("RaceStatus")
+	var raw: RawInput = sc.get("scripted_input")
+	raw.held[&"rankings"] = true
+	sc.call("step_frame", 1.0 / 30.0)
+	var rows := hud.ranking_text()
+	print("  scene ranking: %s" % str(rows))
 	t.ok(hud.race.active and hud.race_panel.visible, "race HUD shown")
-	t.ok(stand_in == null or not (stand_in as CanvasItem).visible, "stand-in label hidden")
+	t.ok(hud.get_parent().get_node_or_null("RaceStatus") == null, "no stand-in label")
 	t.ok(hud.text_of("clock").begins_with("Warning in") or hud.text_of("clock").begins_with("Start in"),
 		"countdown: " + hud.text_of("clock"))
+	t.ok(hud.ranking_panel.visible and rows.size() == 4, "ranking list held open through ui_input")
+	var badges := rows.filter(func(r: String) -> bool: return r.contains("[Expert]"))
+	t.ok(badges.size() == 3, "AI badges from the sim (%d)" % badges.size())
+	t.ok(hud.race.contacts.size() == 3, "three boats on the radar")
+	raw.held.erase(&"rankings")
 	sc.queue_free()
 	await process_frame
-
 
 func _same(a: Variant, b: Array) -> bool:
 	var x := Array(a)

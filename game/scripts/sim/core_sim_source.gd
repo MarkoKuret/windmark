@@ -43,6 +43,7 @@ var sea_t0_ms := 0.0
 
 var _err := ""
 var _info := {}  # class id -> ClassInfo
+var _ai_level := {}  # boat -> AI level name of add_ai
 var _fixed := {}  # records fixed for the world's life: the course, its labels
 var _boat_class: Array[String] = []
 var _cache := {}  # records of the last tick, "kind:boat" -> record
@@ -130,6 +131,7 @@ func add_ai(id: String, level: Variant = "intermediate", speed_only := false) ->
 		_err = core.last_error()
 		push_error("CoreSimSource: add AI boat %s: %s" % [id, _err])
 		return -1
+	_ai_level[b] = AI_LEVELS[lv]
 	while _boat_class.size() <= b:
 		_boat_class.append("")
 	_boat_class[b] = id
@@ -157,6 +159,12 @@ func ai_release(b: int) -> bool:
 ## Whether an AI sails boat b now.
 func ai_has(b: int) -> bool:
 	return core != null and core.ai_has(b)
+
+
+func ai_level(b: int) -> String:
+	if not ai_has(b):
+		return ""
+	return String(_ai_level.get(b, "AI")).capitalize()
 
 
 ## ai.md §15 telemetry of an AI boat ({} for a boat no AI sailed): tacks, gybes, penalties, ocs, activations

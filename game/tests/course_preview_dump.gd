@@ -231,7 +231,7 @@ func _dump(name: String) -> void:
 		"fog": {"density": env.fog_density, "color": _v(env.fog_light_color.srgb_to_linear())},
 		"tonemap": {"mode": env.tonemap_mode, "exposure": env.tonemap_exposure, "white": env.tonemap_white},
 		"ambient_energy": env.ambient_light_energy,
-		"hud": _scene._race_label.text if _scene._race_label.visible else "",
+		"hud": "%s\n%s" % [_scene.hud.text_of("clock"), _scene.hud.text_of("next")] if _scene.hud.race.active else "",
 	}
 	var surf: MeshInstance3D = sea.get_node("Surface")
 	data["grid"] = _write_arrays(dir, "grid", surf.mesh.surface_get_arrays(0), Transform3D.IDENTITY)

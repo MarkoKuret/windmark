@@ -212,6 +212,13 @@ func _verb(b: int, third: String, second: String) -> String:
 	return second if b == own_boat and not names.has(b) else third
 
 
+## the AI badge of a boat: `ai_levels` when set, else the sim's AI level ("" for humans)
+func ai_badge(b: int) -> String:
+	if ai_levels.has(b):
+		return ai_levels[b]
+	return _sim.ai_level(b) if _sim != null else ""
+
+
 func mark_label(m: int) -> String:
 	var id: String = _course["marks"][m]["id"]
 	return _labels.get(id, id)
@@ -771,7 +778,7 @@ func ranking_rows() -> Array:
 				status = ("%s  " % status if status != "" else "") + ("%d pen" % np)
 			if i > 0 and bool(rb.get("started", false)):
 				gap_txt = HudFormat.signed_distance(float(rb.get("D", 0.0)) - d_lead)
-		rows.append({"rank": i + 1, "boat": bi, "name": name_of(bi), "ai": ai_levels.get(bi, ""),
+		rows.append({"rank": i + 1, "boat": bi, "name": name_of(bi), "ai": ai_badge(bi),
 			"gap": gap_txt, "status": status})
 	return rows
 
@@ -1110,7 +1117,7 @@ func _results(sim: SimSource, final: bool) -> void:
 			var bi := int(r["boat"])
 			var tf := float(r["t_finish_us"]) * 1e-6 if int(r["place"]) > 0 else NAN
 			result_rows.append({"place": int(r["place"]), "boat": bi, "name": name_of(bi),
-				"skipper": skippers.get(bi, ""), "ai": ai_levels.get(bi, ""), "time": tf,
+				"skipper": skippers.get(bi, ""), "ai": ai_badge(bi), "time": tf,
 				"gap": tf - t_win if not is_nan(tf) else NAN, "code": str(r.get("code_name", RaceText.score(int(r["code"])))),
 				"points": float(r["points"]), "projected": bool(r["projected"])})
 		return
@@ -1122,7 +1129,7 @@ func _results(sim: SimSource, final: bool) -> void:
 		if fin and (is_nan(t_win) or tf < t_win):
 			t_win = tf
 		result_rows.append({"place": int(rb.get("place", 0)) if fin else 0, "boat": bi, "name": name_of(bi),
-			"skipper": skippers.get(bi, ""), "ai": ai_levels.get(bi, ""), "time": tf, "gap": NAN,
+			"skipper": skippers.get(bi, ""), "ai": ai_badge(bi), "time": tf, "gap": NAN,
 			"code": RaceText.score(int(rb.get("code", 0))) if not fin else "", "points": NAN,
 			"projected": false})
 	for r in result_rows:

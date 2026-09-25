@@ -311,6 +311,11 @@ func hail_state(_boat: int) -> Dictionary:
 	return {}
 
 
+## the AI level sailing boat b ("Expert"; "AI" for a boat an AI took over), "" for a human
+func ai_level(_boat: int) -> String:
+	return ""
+
+
 ## ai.md §3.1 polar VMG optima at TWS: {up_twa, up_speed, down_twa, down_speed}, {} when unknown
 func polar_vmg(_boat: int, _tws: float) -> Dictionary:
 	return {}

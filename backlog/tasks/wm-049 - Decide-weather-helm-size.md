@@ -27,5 +27,5 @@ From WM-045: weather_helm is now generated from the sail plan's yaw moment (bala
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Owner after sailing on 2026-09-25: weather helm is too strong; centring the helm turns the boat, and the boat is twitchy downwind. Fix in WM-059.
+Owner after sailing on 2026-09-25: weather helm is too strong; centring the helm turns the boat, and the boat is twitchy downwind. Fix in WM-058.
 <!-- SECTION:NOTES:END -->

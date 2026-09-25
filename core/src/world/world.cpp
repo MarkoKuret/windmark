@@ -51,6 +51,17 @@ void World::spawn(std::size_t i, Vec2 p, float psi_hint, bool use_hint) {
   b.set_performance_scale(en.performance_scale);
 }
 
+void World::place_boat(std::int32_t boat, float x, float y, float psi, float v) {
+  if (boat < 0 || static_cast<std::size_t>(boat) >= boats_.size()) return;
+  (void)wind_->advance(t_ms());
+  if (sea_) sea_tick_ = sea_->at(t_ms());
+  const BoatEnv e = env_at({x, y});
+  Boat& b = boats_[static_cast<std::size_t>(boat)];
+  const Sails& sl = b.sails();
+  b.reset(x, y, wrap_2pi(psi), v, sl.front(), b.controls().auto_trim, e);
+  b.set_performance_scale(entries_[static_cast<std::size_t>(boat)].performance_scale);
+}
+
 std::int32_t World::add_boat(const BoatEntry& e) {
   if (e.perf == nullptr) return -1;
   if (created_) {

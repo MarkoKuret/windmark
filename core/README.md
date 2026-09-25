@@ -32,7 +32,10 @@ Tests (`ctest`):
   files, and loading `data/venues/example_bay.venue.json` into the environment; the course files, the race flow
   and the racing rules scenarios of `courses.md` §7, `race.md` §12 and `rules.md` §13; the world loop; and a full
   headless race of six scripted boats with penalties on `example_bay`, run twice for determinism, and saved at
-  nine ticks and loaded into a new world to continue bit for bit).
+  nine ticks and loaded into a new world to continue bit for bit); the AI skippers' fast checks and scenarios
+  (`test_ai.cpp`).
+- `ai_races` (label `ai_long`, about four minutes): the fleet runs of `ai.md` §15 (`test_ai_race.cpp`); they
+  print their measurements. `ctest --test-dir core/build -LE ai_long` leaves them out, `-L ai_long` runs only them.
 - `core_no_fma`: disassembles `libwindmark_core.a` and fails on any fused multiply-add instruction.
 - `capi_race_example`: `examples/race_example.c` through the C API only: a race of four scripted boats on the
   example course from the spawn to the results, run twice for the same checksum, then a free-sailing boat
@@ -79,18 +82,13 @@ Sources live in `src/<module>/`, included as `"module/header.h"`, all in namespa
 | `src/course/` | `geometry`: plane helpers of `race.md` §0, placed hull outlines, convex gaps; `course`: the `windmark.course/1` loader, sequence expansion with laps, laying a course to the wind, the scale factor, the resolved course and its hash, the geometry checks | courses.md |
 | `src/race/` | the race flow: states, signals, prep flags, OCS and recalls, starting, the winding test for marks and gates, finishing, closing, ranking, results; spawn grid and order; `race_state`: the race block of the snapshot | race.md |
 | `src/rules/` | the racing rules engine: tack and tacking, relations, right of way, the keep-clear, escape and mark-room tests, rules 14 to 19, 22, 31 and boundaries, incidents, penalties, penalty turns, deadlines and disqualification; `rules_state`: the rules block of the snapshot | rules.md |
+| `src/ai/` | the AI skippers: `AiSkippers` (install as the world's controller), polar tables, perception, the start, sailing the course, marks, sails, rules-aware sailing, bad air, cover, penalty turns, the heading controller, the finished-boat autopilot, the memory block | ai.md |
 | `src/world/` | `World`: one tick in the order of `conventions.md` §4.1 over the boats, wind, sea, shadows, collisions, race and rules; creating a race, controls, events, the tick checksum; `world_state`: the world snapshot, save and load | conventions.md §4.1, §9.1; race.md §1 |
 | `include/windmark.h`, `src/capi/` | the C API over the world (below) | networking.md §4 |
 | `examples/` | `race_example.c`: a headless race and a free-sailing boat through the C API only | |
 | `tests/` | doctest suite and the math vector file | |
 | `tools/` | `gen_math_vectors.cpp`, `gen_env_vectors.cpp`; `gen_sea_render_samples.cpp` (sea and puff samples for the front end's water checks, `game/tests/run_water_test.sh`) | |
 | `third_party/doctest/` | doctest 2.4.12 (MIT), test framework | |
-
-Planned modules, one directory each under `src/`, in the tick order of `conventions.md` §4.1:
-
-| path | role | spec |
-| --- | --- | --- |
-| `src/ai/` | AI helms | ai.md |
 
 ## World calls
 
@@ -105,6 +103,7 @@ is the environment clock's zero, `race.md` §0).
 | `create_race(CourseData, err)` | lays the course to the median wind at the gun and scales it, checks it on the venue, builds the collision scene, creates the race and the rules, spawns the boats | courses.md §6, §7; race.md §3.1 |
 | `set_helm`, `set_sheet`, `set_auto_trim`, `set_let_fly`, `hoist`, `drop_front`, `retire`, `protest` | controls queued for step 2 of the next tick | boat.md §2, race.md §6.4, rules.md §10 |
 | `set_controller(fn)` | called in step 2 before the queued controls: computer skippers and scripts decide there | ai.md |
+| `place_boat(i, x, y, psi, v)` | scenario set-up (tests, tools): puts a boat at a pose as a spawn does, between ticks | boat.md §6.6 |
 | `step()` | one tick: race and rules on `t_n` and the last contacts, controls, environment, shadow snapshot, boat steps, collisions, publish; returns the tick checksum | conventions.md §4.1 |
 | `boat(i)`, `env(i)`, `race()`, `rules()`, `course()`, `scene()`, `events()`, `checksum()` | state, the race and rules records, this tick's race, rules and contact events | race.md §11, rules.md §11 |
 | `save(SnapshotWriter&)`, `load(bytes, course, err)` | the world snapshot between ticks; `load` goes into a new world built with the same setup and entries (the race is recreated at its creation tick, joiners join again) and continues bit for bit; controllers are set again after it | conventions.md §9.1 |
@@ -133,6 +132,16 @@ hosts that link it in. Everything is built under the float rules; hosts must not
 A world holds references to the data it was given, so callers may free their handles after passing them. The
 world's tick 0 is the environment clock's zero. Point queries use a second wind field with the same seed and
 settings (identical bits) and cached sea ticks, so they never touch the world's own caches.
+
+## AI calls
+
+| call | does | spec |
+| --- | --- | --- |
+| `ai_entry(perf, level)` | a world entry for an AI boat of that level (not human, `performance_scale` of the level) | ai.md §13 |
+| `AiSkippers::add(i, level, speed_only)` | boat `i` is sailed by an AI; `take_over(i)` / `release(i)` for a disconnected human; `add_autopilot(i)` only the finished-boat autopilot | ai.md §13, §14, §11.1 |
+| `AiSkippers::step(world)` | tick step 2 for every AI boat: `world.set_controller([&](World& w) { ai.step(w); })` | ai.md §2 |
+| `telemetry(i)`, `debug(i)` | per race telemetry, the last decision | ai.md §15 |
+| `save(writer, world)`, `load(bytes, world, err)` | the skippers' memory block, next to the world snapshot | ai.md §16 |
 
 ## Boat calls
 

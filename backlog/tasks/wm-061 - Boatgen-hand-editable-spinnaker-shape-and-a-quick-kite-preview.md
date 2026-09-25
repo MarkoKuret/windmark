@@ -1,9 +1,11 @@
 ---
 id: WM-061
 title: 'Boatgen: hand-editable spinnaker shape and a quick kite preview'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-09-25 21:35'
+updated_date: '2026-09-25 21:35'
 labels:
   - boats
 dependencies: []

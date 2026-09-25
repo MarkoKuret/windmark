@@ -26,8 +26,42 @@ LOOK_KEYS = ("fill_gain", "fill_curve", "flutter_amp", "flutter_rate", "flutter_
              "tack_line_max", "furl_radius")
 
 
+# flying-sail shaping keys on sails[] (docs/specs/data_format.md 3.5): key -> allowed range (None: > 0 m)
+FLYING_TYPES = ("code_zero", "spinnaker_sym", "spinnaker_asym")
+ROUND_RANGE = (-0.1, 0.3)       # edge round depth, fraction of the straight edge
+ROUND_POS_RANGE = (0.1, 0.9)    # where the round is deepest, fraction along the edge
+SHAPE_KEYS = {"mid_girth": None, "mid_girth_frac": (0.3, 1.2)}
+for _e in ("luff", "leech", "foot"):
+    SHAPE_KEYS[_e + "_round"] = ROUND_RANGE
+    SHAPE_KEYS[_e + "_round_pos"] = ROUND_POS_RANGE
+
+
 class ClassFileError(ValueError):
     pass
+
+
+def _shape(s, st, where):
+    """The flying-sail shaping keys of one sails[] entry, validated; {key: float} of the keys given."""
+    out = {}
+    for k, rng in SHAPE_KEYS.items():
+        if s.get(k) is None:
+            continue
+        if st not in FLYING_TYPES:
+            raise ClassFileError(f"{where}.{k}: shaping keys are for code zeros and spinnakers only, not {st}")
+        x = s[k]
+        if isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x):
+            raise ClassFileError(f"{where}.{k} must be a number")
+        if rng is None and x <= 0:
+            raise ClassFileError(f"{where}.{k} must be > 0 m (got {x})")
+        if rng is not None and not rng[0] <= x <= rng[1]:
+            raise ClassFileError(f"{where}.{k} must be between {rng[0]} and {rng[1]} (got {x})")
+        out[k] = float(x)
+    if "mid_girth" in out and "mid_girth_frac" in out:
+        raise ClassFileError(f"{where}: give mid_girth (m) or mid_girth_frac (of the foot), not both")
+    if "luff_round" in out and "leech_round" in out and ("mid_girth" in out or "mid_girth_frac" in out):
+        raise ClassFileError(f"{where}: with both luff_round and leech_round fixed the mid girth is an outcome; "
+                             "drop mid_girth / mid_girth_frac or one of the two rounds")
+    return out
 
 
 def _deep_merge(base, over):
@@ -210,7 +244,8 @@ def resolve(raw, path="<class>"):
         sails.append({"id": sid, "type": st, "area": float(_req(s, "area", f"$.sails[{i}]")),
                       "luff": s.get("luff"), "leech": s.get("leech"), "foot": s.get("foot"),
                       "tack_x": None if s.get("tack_x") is None else to_int(s["tack_x"]),
-                      "furling": bool(s.get("furling", False)), "visual": v})
+                      "furling": bool(s.get("furling", False)), "shape": _shape(s, st, f"$.sails[{i}] ({sid})"),
+                      "visual": v})
     if sum(1 for s in sails if s["type"] == "main") != 1:
         raise ClassFileError("$.sails needs exactly one sail of type main")
     c["sails"] = sails

@@ -11,7 +11,7 @@ function; race and rules states (rank, penalties, right-of-way colours) come fro
 
 ## 1. Update, smoothing, formatting
 
-- **Filters**: "smoothed τ" means an exponential filter updated every tick, `y += (x − y)·(1 − e^(−Δt/τ))`; angles are
+- **Filters**: "smoothed τ" means an exponential filter updated every tick, `y += (x − y)·(1 − e^(−DT/τ))`; angles are
   filtered as unit vectors. Each value below states its τ.
 - **Refresh**: numeric text refreshes at 4 Hz from the filtered value (so digits do not flicker); needles, arrows and
   lines move every frame, interpolated between ticks.

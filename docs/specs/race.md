@@ -9,52 +9,52 @@ the text here explains them in our own words.
 Everything in this file runs in the core on the authoritative side (the server online, the local process offline)
 and is deterministic: the same course, settings, seed and inputs give the same race.
 
-## 0. Conventions this file relies on
+## 0. Conventions
 
-`conventions.md` is the reference for frames and units. Until it exists, this file assumes the following; anything
-that differs there wins, and the formulas below are written so that only the helpers in this section change.
+Frames, units, the tick, arithmetic, math functions and random numbers are those of `conventions.md`: ENU world
+frame (`x` east, `y` north), compass angles ψ (0 = north, clockwise), `dir(ψ) = (sin ψ, cos ψ)`,
+`compass(v) = wrap_2pi(wm_atan2(v.x, v.y))`, the 50 ms tick (`DT`), integer tick index `n` and `t_ms = 50·n`,
+binary32 arithmetic and the `wm_*` functions. The race-specific helpers:
 
-| Item | Assumption |
+| Item | Definition |
 | --- | --- |
-| Units | SI inside the core (m, s, m/s, rad). Knots, degrees and mm:ss only for display. |
-| Tick | Fixed simulation tick Δt. Numbers below assume **Δt = 50 ms (20 Hz)**. Every duration given in seconds is converted to whole ticks with `ceil(T / Δt)`. |
-| Time | `tick` is a 32-bit unsigned counter from race creation. Race time `t = (tick − tick_gun) · Δt`, negative before the start signal. Displayed times are derived from ticks, never from wall clocks. |
-| Plane | Rules and race logic work on the horizontal plane with 2-D points `p = (x, y)` in metres, `y` pointing north (true), `x` east. (If `conventions.md` picks another handedness, only `left()` and `bearing()` below change.) |
-| Heading | Compass heading ψ: 0 = north, increasing clockwise, in [0, 2π). `dir(ψ) = (sin ψ, cos ψ)`. `bearing(v) = atan2(v.x, v.y)` wrapped to [0, 2π). |
-| Wind | TWD = compass direction the true wind comes **from**. The wind used for race and rules logic is the **free-stream local wind** at the boat: the weather field at that point without other boats' shadow (`wind.md`, `wind_shadow.md`), so a passing shadow never flips a boat's tack. |
-| Angle to wind | `a = wrap(ψ − TWD)` in (−π, π]. `|a|` is the true wind angle (TWA). a > 0: wind over the port side. |
-| Side of a line | `left(p; a→b) = cross(b − a, p − a)`, with `cross(u, v) = u.x·v.y − u.y·v.x` in the (east, north) frame: > 0 when `p` is to the left (port side) of the directed line seen from above, looking from `a` towards `b`. |
-| Signed angle | `ang(u → v) = atan2(cross(u, v), dot(u, v))` in (−π, π]: > 0 when v is anticlockwise (to the left) of u. |
-| Hull footprint | Each boat has a **rules hull**: a convex polygon of 4–8 points in the horizontal plane, from the class geometry (`boat.md`). Default when the class gives none: a pentagon with the bow point, the two points of maximum beam at 0.45 L aft of the bow, and the two transom corners at 0.7 × beam. `L` = hull length, `B` = beam. The race uses the polygon of the current tick, heel ignored. |
-| Reference point | `c` = the centroid of the rules hull. |
-| Bow / stern | `bow` = the foremost hull point, `stern` = the midpoint of the aftermost edge. |
+| Race time | `t = (n − n_gun) · DT`, negative before the start signal. Durations in seconds are converted to whole ticks with `ceil(T / DT)`. Displayed times come from ticks, never from wall clocks. |
+| Environment clock | The race layer sets `t_env0_ms` (`conventions.md` §4) to the tick at which the race is created (the start of free sailing, §3.1), so wind and sea time starts when the boats appear. |
+| Wind for race and rules logic | The **clean wind** at the boat's hull reference point: `wind_clean` of `wind.md` §9 (the boat's `wind_speed_clean`, and its direction), without other boats' shadow, so a passing shadow never flips a boat's tack. `TWD` below means that direction (`twd_from`). The physics itself sails in the shadowed wind (`boat.md` §2). |
+| Wind angle | `twa = wrap_pi(TWD − ψ)` (`conventions.md` §3): **positive = wind from starboard**. `|twa|` is the true wind angle. |
+| Side of a line | `left(p; a→b) = cross(b − a, p − a)` with `cross(u, v) = u.x·v.y − u.y·v.x`: > 0 when `p` is to the left of the directed line seen from above, looking from `a` towards `b`. |
+| Signed angle | `ang(u → v) = wm_atan2(cross(u, v), dot(u, v))`: > 0 when v is anticlockwise (to the left) of u. |
+| Rules hull | The boat's collision outline (`dynamics.collision.outline`, `collisions.md` §2.1): a convex polygon in the body frame, placed in the world at the boat's current `pos` and `ψ`, heel ignored. The race and the rules use exactly the polygon the collisions use. `L` = hull length (`loa`), `B` = beam (`bwl` if no beam is given). |
+| Reference point | `c` = the boat's `pos` (the hull reference point, `data_format.md` §2). |
+| Bow / stern | `bow` = the outline vertex with the largest body `x` (the stem point); `stern` = the midpoint of the outline vertices with the smallest body `x` (the transom). |
 
-Tack of a boat (`port_tack`): starboard or port per the RRS definition (the tack is named after the windward side).
-Implementation: if `|a| < π/2`, port tack ⇔ a > 0, with a hysteresis of 1° around a = 0 (the label only changes when
-`|a| > 1°` on the other side). If `|a| ≥ π/2`, the tack follows the main boom: boom to starboard ⇒ port tack. This
-follows the RRS rule that when sailing by the lee or dead downwind the leeward side is the side the mainsail lies
-on. The boom side comes from the sail state (`sails.md`); if it is not available, use the angle rule with a 5°
-hysteresis around a = ±π.
+**Tack for the rules** (`rules_tack`, port or starboard, named after the windward side as in the RRS). The physics
+tack is `sgn(twa)` (`conventions.md` §3); the rules tack differs only where the RRS does:
 
-## 1. Tick order
+- `|twa| < π/2`: starboard ⇔ `twa > 0`, with a 1° hysteresis around `twa = 0` (the label only changes once
+  `|twa| > 1°` on the other side);
+- `|twa| ≥ π/2`: the tack follows the main boom (RRS: sailing by the lee or dead downwind, the leeward side is the
+  side the mainsail lies on): main sail angle `β > 0` (boom to starboard, `sails.md` §3) ⇒ **port** tack,
+  `β < 0` ⇒ starboard. While the boom is within 2° of the centreline the previous label is kept.
 
-One race tick, in this order (boats always in ascending boat index; no step reads a value another step of the same
-tick writes later):
+## 1. Where the race runs in the tick
 
-1. **Inputs** for this tick are applied to every boat (human inputs from the network or local controls, AI inputs
-   decided at the end of the previous tick, `ai.md`).
-2. **Weather** advances (`wind.md`); wind at each boat is sampled with the other boats' shadow (`wind_shadow.md`).
-3. **Boat physics** steps every boat by Δt (`boat.md`, `sails.md`, `sea.md`).
-4. **Collisions** between boats, boats and marks, boats and obstructions are detected and resolved (`collisions.md`).
-   The contact list of this tick is kept for step 6.
-5. **Race progress** (this file): signals, starts, OCS, rounding, gates, finishing, time limits.
-6. **Rules** (`rules.md`): right of way, room, penalties, penalty turns, exoneration, disqualification.
-7. **Ranking** and distances (§8).
-8. **AI decisions** for the next tick (`ai.md`), reading the state after steps 1–7.
-9. **Events and snapshot** of the tick are published (HUD, audio, network, replay).
+The order of a tick is fixed by `conventions.md` §4.1. The race layer and the rules engine run in **step 1**, on the
+state at `t_n` (the result of the previous tick's boat steps and collisions) and on the contact events of the
+previous tick's step 6. Within step 1:
 
-The race layer reads the boat state after the physics and collisions of the same tick, so a line crossing, a rounding
-and a contact are all judged on the same positions.
+1. **Race progress** (this file): signals, starts, OCS, rounding, gates, finishing, time limits, ghosting.
+2. **Rules** (`rules.md`): right of way, room, penalties, penalty turns, exoneration, disqualification.
+3. **Ranking** and distances (§8).
+4. The race layer writes the per-boat flags the physics reads this tick: `collides` (`collisions.md` §6), `casts`
+   (`wind_shadow.md` §3) and `performance_scale` (`boat.md` §2, set once at spawn).
+
+Then step 2 applies the controls: human commands stamped for tick `n` and the AI decisions, which the AI makes in
+step 2 from the state and race/rules results of step 1 (`ai.md`). Steps 3–6 are the environment, the shadow snapshot,
+the boat steps and the collisions; step 7 publishes the race and rules events of step 1 with the snapshot.
+
+A line crossing, a rounding and a contact are therefore all judged on the same positions: the motion from `t_{n−1}`
+to `t_n` and the contacts found at the end of that motion.
 
 ## 2. Race settings
 
@@ -90,7 +90,7 @@ Abandoned: from any state (server shutdown, all humans left in an online race, h
 ```
 
 - **Created**: course resolved (wind-relative courses laid to the wind, `courses.md` §6), boats spawned (§3.5),
-  `tick_gun` fixed.
+  `n_gun` fixed.
 - **FreeSailing**: boats sail; no signals, no rules except collisions. Lasts `free_sailing_s`.
 - **Sequence**: from the warning signal to the start signal. Rules are live from the **preparatory signal** (RRS:
   a boat is racing from her preparatory signal). Between the warning and the preparatory signal only collisions and
@@ -99,8 +99,8 @@ Abandoned: from any state (server shutdown, all humans left in an online race, h
 - **Closing**: the finishing window is running (§7.3).
 - **Closed**: results are final.
 
-`tick_gun` is fixed when the race is created: `tick_gun = tick_created + ceil((free_sailing_s + T_warning) / Δt)`,
-with `T_warning` the warning time of the sequence (5:00 or 3:00). Online, the server sends `tick_gun` to every client
+`n_gun` is fixed when the race is created: `n_gun = n_created + ceil((free_sailing_s + T_warning) / DT)`,
+with `T_warning` the warning time of the sequence (5:00 or 3:00). Online, the server sends `n_gun` to every client
 (`networking.md` §7) and every signal is derived from it; nothing about the start is sent as a timer.
 
 ### 3.2 Signals
@@ -169,10 +169,14 @@ none, on an automatic grid:
   centred on the line midpoint and extended beyond the ends by at most half the line length. Slots closer than
   `2·L_max` to a mark or obstruction are removed.
 - Slots are ordered by distance from the line, then by `u`. The boats are ordered by a Fisher–Yates shuffle of
-  the entry list driven by the race seed (`rng` of §10). Boat `k` of the shuffled order takes slot `k`; with more
+  the entry list driven by the race seed (§10). Boat `k` of the shuffled order takes slot `k`; with more
   boats than slots, rows are added.
-- Heading: starboard tack at `|a| = 100°` (a close reach), i.e. `ψ = TWD + 100°` on the free-stream wind at the
-  slot. Speed: 60 % of the polar speed at that angle, so boats are sailing when they appear.
+- Heading: starboard tack at `twa = +100°` (a close reach), i.e. `ψ = wrap_2pi(TWD − 100°)` with the clean wind at
+  the slot. Speed: 60 % of the polar speed at that angle, so boats are sailing when they appear.
+- Placement is `boat.md` §6.6 `reset(pos_x, pos_y, psi, v, front_sail, auto_trim)`: `front_sail` from the class's
+  `start.front_sail` (`data_format.md` §3.7) unless the race says otherwise; `auto_trim` from the player's assist
+  setting (always on for AI boats). At the same time the race layer sets the boat's `performance_scale`: 1.0 for
+  human boats, the level's speed factor for AI boats (`ai.md` §13); it does not change during the race.
 - Match races: boat 0 spawns `6·L` beyond end B, boat 1 `6·L` beyond end A, both on the pre-start side, sailing
   away from the line on the tack that points them outwards.
 
@@ -209,7 +213,7 @@ After the start signal a boat **starts** when:
 2. if she is OCS (P, §4.2) she has returned; if OCS-I (§4.3) she has returned around an end, and
 3. her hull crosses the starting line from the pre-start side through the line band (§4.1).
 
-The **start time** is `t_start = (tick − 1 − tick_gun)·Δt + f·Δt`, with `f` of the earliest hull point. Starting is
+The **start time** is `t_start = (n − 1 − n_gun)·DT + f·DT`, with `f` of the earliest hull point. Starting is
 the race event `Started(boat, t_start)`; the boat's next step becomes step 1 of the course (§5).
 
 A boat that crosses the line through the band while OCS is not starting: she is still OCS and must return.
@@ -219,7 +223,7 @@ A boat that crosses the line through the band while OCS is not starting: she is 
 - **P / rule 29.1**: a boat over at the start signal is **OCS**. She has returned when she is completely on the
   pre-start side at a tick after the gun. She may then start per §4.2.
 - **I / rule 30.1**: a boat on the course side of the line or its extensions during the last minute is **OCS-I**.
-  Track the boat's centroid `c`: each time `c` crosses the infinite line from the course side to the pre-start
+  Track the boat's reference point `c`: each time `c` crosses the infinite line from the course side to the pre-start
   side, record whether the crossing point is in the band (`0 ≤ u ≤ 1`: "through the line") or on an extension
   ("around an end"). She has returned when she is completely on the pre-start side and the last such crossing was
   around an end. Diving back through the band re-arms the requirement.
@@ -241,7 +245,7 @@ is a Windmark choice so that a boat cannot hide behind the line; it is a race se
 
 With `general_recall = on`: if at the start signal at least `max(3, 30 % of the boats racing)` boats are OCS (P) or
 OCS-I, the race committee (the server) signals a general recall (rule 29.2). All boats' start states reset; a new
-`tick_gun` is set so that the new warning signal is 1:00 after the recall; the prep flag escalates `P → I → U`
+`n_gun` is set so that the new warning signal is 1:00 after the recall; the prep flag escalates `P → I → U`
 (`Z` → `U`, `U` → `black`). A boat identified under `black` may not start the restart and scores `BFD`. At most two
 general recalls; the third start is sailed with `black`. Off by default because recalls cost online players
 minutes.
@@ -263,8 +267,8 @@ previous reference `P = R_{k−1}` and next reference `N = R_{k+1}`:
 
 ```
 σ        = +1 for port, −1 for starboard            # port rounding = the boat goes anticlockwise around M
-α_in     = bearing(P − M)                            # entry ray
-α_out    = bearing(N − M)                            # exit ray
+α_in     = compass(P − M)                            # entry ray
+α_out    = compass(N − M)                            # exit ray
 sweep    = wrap_(0, 2π]( σ · (α_in − α_out) )        # compass bearings grow clockwise; a result of 0 means 2π
 φ_done   = max(π/2, sweep − π/2)
 ```
@@ -272,9 +276,9 @@ sweep    = wrap_(0, 2π]( σ · (α_in − α_out) )        # compass bearings g
 The per-boat **winding angle** φ around M in the rounding direction:
 
 - when M becomes the boat's next step (at her start, or when she completes step k−1):
-  `φ = σ · wrap_(−π, π](α_in − bearing(c − M))` — the angle she has already swept from the entry ray;
+  `φ = σ · wrap_(−π, π](α_in − compass(c − M))` — the angle she has already swept from the entry ray;
 - every tick after that: `φ += σ · ang(c_prev − M → c − M)` (the anticlockwise angle increment of the vector
-  from the mark to the boat's centroid, with the sign that makes a port rounding positive).
+  from the mark to the boat's reference point, with the sign that makes a port rounding positive).
 
 In the (east, north) frame anticlockwise seen from above is the positive `ang`, and a port rounding goes
 anticlockwise (the compass bearing from the mark to the boat decreases), so a port mark adds `ang` and a
@@ -293,7 +297,7 @@ What this means:
   (φ = π/2, abeam of the incoming leg); when the course turns more (windward mark, leeward gate buoy, a hairpin),
   she must be abeam of the outgoing leg (`sweep − π/2`), i.e. actually around.
 - A boat that rounds wide still rounds; there is no distance limit.
-- The test uses the centroid; with the mark at least half a beam from the hull (else it is a collision) the
+- The test uses the reference point; with the mark at least half a beam from the hull (else it is a collision) the
   per-tick increment is far below π, so `ang` is never ambiguous.
 - Degenerate geometry: if `|P − M| < 1 m` use `α_in = α_out + σ·π` (a straight pass); if `|N − M| < 1 m` use the
   bearing of the step after N. The course validator rejects consecutive steps at the same point (`courses.md` §7).
@@ -306,7 +310,7 @@ inside of a U-turn, `courses.md` §4.3). The **gate line** is the segment `G0–
 
 Per boat, while the gate is her next step:
 
-1. **Crossings.** The centroid crossing the gate line through the band (§4.1 with the gate line) from the entry side
+1. **Crossings.** The reference point crossing the gate line through the band (§4.1 with the gate line) from the entry side
    to the exit side adds 1 to `n_cross`; crossing back through the band subtracts 1. Crossings outside the band do
    not count.
 2. **Winding** for each buoy separately, exactly as §5.1 with `M = G0` or `G1`, its own side, and the same `P`, `N`.
@@ -340,7 +344,7 @@ of the last mark's reference point) on the left of `F_A → F_B`. A boat **finis
    not OCS, and
 2. her hull crosses the finish line from the course side through the band (§4.1).
 
-`t_finish = (tick − 1 − tick_gun)·Δt + f·Δt` (the earliest hull point), stored as integer microseconds after the
+`t_finish = (n − 1 − n_gun)·DT + f·DT` (the earliest hull point), stored as integer microseconds after the
 gun. That fraction breaks most ties that a tick-resolution time would create; boats with equal `t_finish` share the
 place (RRS Appendix A ties, §9). The event is `Finished(boat, t_finish)`.
 
@@ -361,8 +365,9 @@ can sail freely; offline and for AI boats an autopilot sails her 5 L beyond the 
 
 ### 6.3 Ghosts
 
-A ghost boat is shown semi-transparent. It has no collisions with racing boats or marks, casts no wind shadow, is
-ignored by the rules and the AI, and cannot interfere with racing boats (rule 24). Boats become ghosts when they
+A ghost boat is shown semi-transparent. The race layer sets its `collides = false` (`collisions.md` §6: no contact
+with anything) and `casts = false` (`wind_shadow.md` §3: no shadow on others); it is ignored by the rules and the AI
+and cannot interfere with racing boats (rule 24). It still sails normally in the clean-plus-shadow wind. Boats become ghosts when they
 have cleared the finish, retired (`RET`), been disqualified (`DSQ`, `UFD`, `BFD`), timed out (`DNF` at the close),
 or lost their connection for more than the grace period (`networking.md` §9).
 
@@ -412,8 +417,9 @@ For each leg `j` (from step `j−1` to step `j`, reference points `R_{j−1}`, `
   at most 45°;
 - otherwise the **rhumb line**: `e_j = unit(R_j − R_{j−1})`.
 
-`TWD_mean` is the race's mean wind direction (`wind.md`: the base direction of the weather model including its
-slow shifts, without puffs or shadow), re-evaluated every 10 s. The axis length of leg j is
+`TWD_mean` is the race-wide wind direction `global_from(t)` of `wind.md` §2 (the median plus the present shift, no
+puffs, no venue offsets, no shadow), sampled every 10 s (on ticks with `n mod 200 = 0`) and held in between so the
+ranking does not jitter. The axis length of leg j is
 `ℓ_j = max(0, dot(R_j − R_{j−1}, e_j))`. Measuring beats and runs along the wind axis ("ladder rungs") is what makes a
 boat 200 m to the side but level with the wind counted as level, which matches how sailors read a beat.
 
@@ -475,11 +481,15 @@ so on, then by the last race (Appendix A8). Discards (`drop worst`) are a lobby 
 
 ## 10. Randomness
 
-All random choices of the race layer (spawn order, AI seeds, weather seed if the lobby does not fix it) come from one
-deterministic generator seeded with the race seed: **PCG32** (O'Neill, `pcg32_random_r`, 64-bit state, increment
-`(seed << 1) | 1`), with independent streams for the race layer (stream 1), the weather (stream 2, `wind.md` may
-define its own) and AI boat i (stream 16 + i). Uniform integers in [0, n) use Lemire's multiply-shift without
-modulo bias. No wall clock, address or thread order may enter any of these.
+The server draws one 64-bit `race_seed` per race and sends it to clients (`conventions.md` §7). Every random choice
+of the race layer uses the counter-based generator of `conventions.md` §7 with that seed:
+
+- **stream 7: race layer** (not yet in the `conventions.md` §7 table; to be added there). Spawn shuffle:
+  draw `j = min((uint32)(rng_unit(race_seed, 7, k) * (float)(k + 1)), k)` for `k = n−1 … 1` (Fisher–Yates from the
+  end), swapping entries `k` and `j`. General recall restarts use indices from 1000 upwards.
+- AI boats use streams 16–31 (`ai.md` §1).
+
+No wall clock, address or thread order may enter any of these.
 
 ## 11. Race events
 

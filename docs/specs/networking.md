@@ -8,7 +8,7 @@ leaving, anti-cheat, the transport and the lobby/matchmaking around it.
 Targets: up to 40 boats per race (any mix of humans and AI), playable at 150 ms round trip and tolerable at 300 ms,
 typical downstream under 10 kB/s per client, upstream under 2 kB/s, Steam Deck and low-end PCs as clients.
 
-Conventions: `race.md` §0 (ticks, Δt = 50 ms assumed, frames). All integers little-endian. Bit-packed fields are
+Conventions: `race.md` §0 (ticks, DT = 50 ms assumed, frames). All integers little-endian. Bit-packed fields are
 written LSB-first into a byte stream.
 
 ## 1. Architecture
@@ -51,10 +51,10 @@ the validity of replays do. Divergence is detected (§10.2) and corrected like a
 
 ### 3.1 Ticks
 
-- The server advances each race by one tick every Δt of its monotonic clock. Tick numbers are `u32` from race
+- The server advances each race by one tick every DT of its monotonic clock. Tick numbers are `u32` from race
   creation. If the server falls behind by more than 5 ticks it runs catch-up ticks without sending snapshots in
   between, and logs it.
-- Everything in the protocol is expressed in ticks: inputs, snapshots, events, the start signal (`tick_gun`),
+- Everything in the protocol is expressed in ticks: inputs, snapshots, events, the start signal (`n_gun`),
   penalties, results. Wall-clock time appears only in clock synchronisation.
 
 ### 3.2 Clock synchronisation
@@ -67,7 +67,7 @@ sending this snapshot) and the server tick `T` and phase `φ` (ms into tick T at
 RTT sample  = now_c − t_c_echo − h
 filter      = keep the last 16 samples (≤ 20 s old); RTT_est = min of them (latency floor);
               jitter_est = p90(samples) − RTT_est
-server_now  ≈ T + (φ + RTT_est/2 + (now_c − recv_c)) / Δt        (in ticks, fractional)
+server_now  ≈ T + (φ + RTT_est/2 + (now_c − recv_c)) / DT        (in ticks, fractional)
 ```
 
 The estimate of `server_now` is itself smoothed: the client keeps a local tick clock and slews it towards the
@@ -79,7 +79,7 @@ The client simulates its own boat **ahead** of the server so its input for tick 
 server simulates k:
 
 ```
-lead_ticks = ceil((RTT_est/2 + jitter_est + margin) / Δt),   margin = 1 tick
+lead_ticks = ceil((RTT_est/2 + jitter_est + margin) / DT),   margin = 1 tick
 client predicted tick  k_pred = floor(server_now) + lead_ticks
 ```
 
@@ -90,8 +90,8 @@ margin is above 2, faster when below 0.5. This absorbs clock drift and route cha
 
 ### 3.4 Start on the common clock
 
-The start signal is the tick `tick_gun` in the race parameters (§7). Every signal of the sequence (`race.md` §3.2) is
-derived from it by every client, and the countdown shown is `(tick_gun − server_now)·Δt` (interpolated view time for
+The start signal is the tick `n_gun` in the race parameters (§7). Every signal of the sequence (`race.md` §3.2) is
+derived from it by every client, and the countdown shown is `(n_gun − server_now)·DT` (interpolated view time for
 remote events, predicted time for the own boat's start panel). No timer is ever sent.
 
 ## 4. Inputs
@@ -155,7 +155,7 @@ measured from the client's own boat (spectators: from the camera focus they repo
 | E | beyond 1500 m | 2 Hz |
 
 The first three boats of the live ranking are at least band D. A **priority accumulator** turns bands into a packet:
-each entity's priority grows by `w_band · Δt` every tick (`w_A = w_B = 20`, `w_C = 10`, `w_D = 5`, `w_E = 2` per
+each entity's priority grows by `w_band · DT` every tick (`w_A = w_B = 20`, `w_C = 10`, `w_D = 5`, `w_E = 2` per
 second); each tick the entities are written in descending priority until the tick's byte budget (§5.6) is used;
 written entities reset to 0. With enough budget this gives exactly the target rates; with too little the rates of
 far boats fall first.
@@ -205,7 +205,7 @@ the client derives them from the sea, the wind and the sent state (`sea.md`, `sa
 - Per entity present in the baseline: a u16 field mask (which fields changed), then the changed fields. Positions are
   coded as the **residual** against the baseline position extrapolated with the baseline velocity over the tick
   difference, as zig-zag varints of the quantised units; for a boat sailing straight the residual is a few units,
-  1 byte each. Heading likewise against `heading + yaw_rate·Δt·ticks`.
+  1 byte each. Heading likewise against `heading + yaw_rate·DT·ticks`.
 - Entities not in the baseline, or whose last copy is older than 1 s, are sent in full.
 - Typical delta block for a sailing boat: 9–12 bytes.
 
@@ -282,7 +282,7 @@ boat is never corrected.
 ### 6.3 Remote boats: interpolation
 
 - **View time** for remote boats `t_view = server_now − D_interp`, with `D_interp` adaptive between **100 and
-  150 ms**: `clamp(2·Δt + jitter_est, 100 ms, 150 ms)`.
+  150 ms**: `clamp(2·DT + jitter_est, 100 ms, 150 ms)`.
 - Each remote boat keeps its received samples (tick, quantised state). The pose at `t_view` is interpolated between
   the two samples around it: position by cubic Hermite using the sampled velocities, heading by Hermite with the
   sampled yaw rates, heel/rudder/sheets linearly.
@@ -315,7 +315,7 @@ race_id (u64), protocol version, core hash (§2)
 course: the resolved course in canonical JSON (courses.md §9), deflate-compressed, and its SHA-256
 weather: model id, parameters and seed (wind.md), sea state parameters (sea.md)
 settings: race.md §2 record (sequence, flags, rules level, umpire mode, penalties, limits, assists allowed)
-tick_created, tick_gun, Δt
+n_created, n_gun, DT
 entries: per boat: id, class, name, colours, human/AI, AI level, team; spawn pose
 your_boat_id (or spectator)
 ```

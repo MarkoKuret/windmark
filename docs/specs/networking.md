@@ -8,7 +8,8 @@ leaving, anti-cheat, the transport and the lobby/matchmaking around it.
 Targets: up to 40 boats per race (any mix of humans and AI), playable at 150 ms round trip and tolerable at 300 ms,
 typical downstream under 10 kB/s per client, upstream under 2 kB/s, Steam Deck and low-end PCs as clients.
 
-Conventions: `race.md` §0 (ticks, DT = 50 ms assumed, frames). All integers little-endian. Bit-packed fields are
+Conventions: `conventions.md` (50 ms tick `DT`, ENU frame, compass angles, `twa` sign, binary32, checksums §9)
+and `race.md` §0. All integers little-endian. Bit-packed fields are
 written LSB-first into a byte stream.
 
 ## 1. Architecture
@@ -36,11 +37,12 @@ written LSB-first into a byte stream.
 
 Prediction is exact, and replays re-simulate, only if the core gives bit-identical results on every platform:
 
-- IEEE-754 binary32 arithmetic everywhere in the simulation; no x87; no fused multiply-add contraction
-  (`-ffp-contract=off`, `/fp:precise`); no fast-math; SSE2 on x86-64, NEON on ARM64 with the same flags.
-- The core uses its own implementations of `sin`, `cos`, `atan2`, `exp`, `log`, `pow` (fixed polynomial
-  approximations in `core/`) instead of the platform libm; `sqrt` is IEEE-exact and may be used.
+- The arithmetic rules of `conventions.md` §5 (binary32, no contraction, no x87, denormals kept, fixed order) and
+  the core's own math functions of §6 (`wm_sincos`, `wm_atan2`, `wm_exp`, …) instead of the platform libm, on the
+  server and on every client build (x86-64, ARM64, and WebAssembly if a browser client is built).
 - No iteration over unordered containers, no dependence on addresses, threads or wall time in the tick.
+- Boat classes and venues are identified by the hashes of their performance and venue files (`data_format.md`
+  §4.1, §7); a client with a different file does not join.
 - The core version is identified by a **core hash** (git tree hash of `core/` plus the boat and venue data used).
   Client and server must match it exactly (handshake, §12.3).
 
@@ -102,13 +104,12 @@ One per boat per tick, what a player (or the AI, `ai.md` §11) sets:
 
 | Field | Encoding | Meaning |
 | --- | --- | --- |
-| `tiller` | int16, −32767 … 32767 ↔ −1 … +1 of full travel | rudder/tiller target (`boat.md`) |
-| `sheet_main` | u16, 0 … 65535 ↔ fully in … fully eased; 65535 with flag `auto` = auto-trim | main sheet target (`sails.md`) |
-| `sheet_head` | u16, as above | headsail / downwind sail sheet target |
-| `sail_req` | u8: 0 = no request, 1 … 15 = index into the class sail list, 255 = drop the current headsail | sail change request (edge: repeated values are ignored) |
-| `flags` | u8 bits: 0 let-fly, 1 auto-trim main, 2 auto-trim head, 3 hail (rule 20), 4 hail reply, 5 protest, 6–7 reserved | |
+| `h_cmd` | int16, −32767 … 32767 ↔ −1 … +1 | commanded helm, + turns the bow to starboard (`boat.md` §2) |
+| `sheet_cmd` | u16, 0 … 65535 ↔ 0 (sheeted hard in) … 1 (fully eased) | the one manual sheet control (`sails.md` §5.2); ignored while `auto_trim` |
+| `sail_req` | u8: 0 = none, 1 … 15 = `hoist(front sail index + 1)`, 255 = `drop_front()` | sail request event (`sails.md` §4.2); applied once, on the tick it is stamped |
+| `flags` | u8 bits: 0 `let_fly`, 1 `auto_trim`, 2 hail (rule 20), 3 hail reply, 4 protest, 5–7 reserved | |
 
-Encoded frame: 8 bytes. Consecutive frames are delta-coded (below) because most ticks repeat the previous values.
+Encoded frame: 6 bytes. Consecutive frames are delta-coded (below) because most ticks repeat the previous values.
 
 ### 4.2 Input packet (client → server, every client tick)
 
@@ -185,17 +186,19 @@ Quantised fields of one boat, in the order written:
 | `x`, `y` | 24 + 24 | signed fixed point, 1/128 m (7.8 mm), relative to the course origin (±65 km) |
 | `heading` | 16 | ψ / 2π · 65536 |
 | `vx`, `vy` | 16 + 16 | velocity over ground, signed, 1/1000 m/s (±32.7 m/s) |
-| `yaw_rate` | 12 | signed, 0.05 °/s (±102 °/s) |
-| `heel` | 10 | signed, 0.2° (±102°) |
-| `rudder` | 8 | signed, 0.5° |
-| `sails` | 8 | 4 bits headsail/downwind sail index (15 = none), 2 bits hoist phase (down / hoisting / up / dropping), 2 bits reserved |
-| `hoist` | 6 | hoist or drop progress, 1/63 |
-| `sheet_main`, `sheet_head` | 8 + 8 | sail sheet angles for the visuals, 0.36° steps (0–91.8°) |
+| `turn_rate` | 12 | heading rate (`boat.md` §5.9), signed, 0.05 °/s (±102 °/s) |
+| `heel` | 10 | φ, signed (+ = starboard down), 0.2° (±102°) |
+| `helm` | 8 | `h`, signed, 1/127 |
+| `front` | 4 | front sail index (15 = none) |
+| `change` | 3 + 4 + 6 | the running sail-change step: sail index (7 = idle), phase (`sails.md` §3.1), progress 1/63 |
+| `beta_main`, `beta_front` | 10 + 10 | sail angles β, signed, 2π/1024 (0.35°) |
+| `pole` | 8 | spinnaker pole/tack angle, signed, 1.4° |
 | `flags` | 8 | ghost, penalty turn in progress, OCS/returning, finished, let-fly, in irons, reserved ×2 |
-| `input` | 64 | the boat's last applied input frame, band A/B only (for close-quarters extrapolation, §6.4) |
+| `input` | 48 | the boat's last applied input frame, band A/B only (for close-quarters extrapolation, §6.4) |
 
-Full block: 184 bits = 23 bytes (+8 bytes of input in band B). Pitch, heave, sail shape and the wake are not sent:
-the client derives them from the sea, the wind and the sent state (`sea.md`, `sails.md`).
+Full block: 205 bits = 26 bytes (+6 bytes of input in band B). Pitch, heave, sail shape and the wake are not sent:
+for remote boats the client runs the boat's heave and pitch springs (`boat.md` §6.1) on the interpolated pose and
+the local sea for the visuals only, and derives the sail shapes from the sent sail angles (`sails.md` §7).
 
 ### 5.4 Delta compression and baselines
 
@@ -205,7 +208,7 @@ the client derives them from the sea, the wind and the sent state (`sea.md`, `sa
 - Per entity present in the baseline: a u16 field mask (which fields changed), then the changed fields. Positions are
   coded as the **residual** against the baseline position extrapolated with the baseline velocity over the tick
   difference, as zig-zag varints of the quantised units; for a boat sailing straight the residual is a few units,
-  1 byte each. Heading likewise against `heading + yaw_rate·DT·ticks`.
+  1 byte each. Heading likewise against `heading + turn_rate·DT·ticks`.
 - Entities not in the baseline, or whose last copy is older than 1 s, are sent in full.
 - Typical delta block for a sailing boat: 9–12 bytes.
 
@@ -214,12 +217,12 @@ the client derives them from the sea, the wind and the sent state (`sea.md`, `sa
 Every snapshot carries for the client's own boat:
 
 - the same quantised state as §5.3 (for the HUD of spectators and the render fallback), always full or delta-coded;
-- a **64-bit state hash** of the complete own-boat simulation state at tick T (every variable of the boat step in
-  `boat.md`/`sails.md`, the race state of the boat and her rules turn tracker; FNV-1a 64 over the raw float bits in a
-  fixed order);
-- every second tick, and whenever the hash differs from the one of the previous tick's prediction the server can
-  infer (held input ticks), the **full own state**: all those variables as raw `f32`/integers (about 30–40 values,
-  ≤ 180 bytes). This is what the client reconciles to (§6.2).
+- a **64-bit state hash** of the own boat at tick T: FNV-1a 64 (`conventions.md` §9) over the tick index and the
+  boat's snapshot bytes (`boat.md` §3 then `sails.md` §3, in the specs' order), followed by the boat's race and rules
+  state that prediction touches (next step, winding angles, turn-tracker values);
+- every second tick, and on every tick with a held input for this client, the **full own state**: exactly those
+  snapshot bytes (about 60 bytes of boat state plus 10 bytes per sail and the sail queue, ≤ 200 bytes for the
+  largest inventories). This is what the client reconciles to (§6.2).
 
 ### 5.6 Byte budgets
 
@@ -234,14 +237,14 @@ Worked example, 40 boats, client in the middle of the fleet, 6 boats in band B, 
 | --- | --- |
 | headers + clock + acks (≈ 36 B × 20) | 720 |
 | own block (delta ≈ 12 B + hash 8 B) × 20, full state ≈ 150 B × 10 | 1 900 |
-| band B: 6 × 20 Hz × (11 B + 8 B input) | 2 280 |
+| band B: 6 × 20 Hz × (12 B + 6 B input) | 2 160 |
 | band C: 10 × 10 Hz × 11 B | 1 100 |
 | band D: 15 × 5 Hz × 12 B | 900 |
 | band E: 8 × 2 Hz × 14 B | 224 |
 | pair blocks: ≈ 4 pairs × 6 B × 10 Hz | 240 |
 | events, race state (§8) | ≈ 200 |
 | UDP/IP (28 B) + AEAD tag (16 B) × 20 | 880 |
-| **total** | **≈ 8.4 kB/s (67 kbit/s)** |
+| **total** | **≈ 8.3 kB/s (66 kbit/s)** |
 
 Upstream: 20 packets/s × (28 IP/UDP + 12 transport header + 16 tag + ≈ 34 payload) ≈ 1.8 kB/s.
 
@@ -285,9 +288,9 @@ boat is never corrected.
   150 ms**: `clamp(2·DT + jitter_est, 100 ms, 150 ms)`.
 - Each remote boat keeps its received samples (tick, quantised state). The pose at `t_view` is interpolated between
   the two samples around it: position by cubic Hermite using the sampled velocities, heading by Hermite with the
-  sampled yaw rates, heel/rudder/sheets linearly.
+  sampled turn rates, heel/helm/sail angles linearly (sail angles with `angle_lerp`).
 - Lower-rate bands (C–E) and lost packets: if `t_view` is later than the newest sample, the boat is **extrapolated**
-  with constant velocity and yaw rate for up to 500 ms, then held. When a new sample arrives, the extrapolated pose
+  with constant velocity and turn rate for up to 500 ms, then held. When a new sample arrives, the extrapolated pose
   blends to the interpolated one over 200 ms.
 - Pitch, heave, wake and sail shape are computed locally from the pose, the sea and the wind.
 
@@ -313,7 +316,10 @@ right-of-way verdicts, roundings, finishes, ranks and results are shown only as 
 ```
 race_id (u64), protocol version, core hash (§2)
 course: the resolved course in canonical JSON (courses.md §9), deflate-compressed, and its SHA-256
-weather: model id, parameters and seed (wind.md), sea state parameters (sea.md)
+race_seed (u64, conventions.md §7), t_env0_ms (race.md §0)
+weather: the wind settings of wind.md §1 (base, shifts, oscillation, puffs, current, venue field reference)
+sea: the settings of sea.md §2, including sea_hs and sea_tp as computed by the server (clients never derive them)
+classes: per class id, class_version and the SHA-256 of its performance file; venue id, version and file SHA-256
 settings: race.md §2 record (sequence, flags, rules level, umpire mode, penalties, limits, assists allowed)
 n_created, n_gun, DT
 entries: per boat: id, class, name, colours, human/AI, AI level, team; spawn pose
@@ -325,13 +331,12 @@ predicting at `k_pred` (§3.3).
 
 ### 7.2 Shared-seed weather
 
-The wind field and the sea are deterministic functions of their parameters, seed and tick (`wind.md`, `sea.md`), so
-no weather is streamed. Every client computes the wind at its own boat for prediction and the visuals of puffs and
-waves. Only the wind shadow depends on boat positions: the server's shadow uses true positions; the client's uses the
-remote boats as shown (§6.3, §6.4); the difference is a small misprediction corrected by reconciliation.
-
-If a weather model needs internal state that cannot be computed directly for an arbitrary tick, `wind.md` must
-define a compact serialisable state; the server sends it at join and whenever the weather hash check fails (§10.2).
+The wind is a pure function of `(race_seed, t_env_ms, position)` (`wind.md`) and the sea a pure function of its
+settings, the seed and time (`sea.md`), so neither is ever streamed: the race parameters carry the settings and the
+seed once, and every client computes the wind at its own boat for prediction and the puffs and waves for the
+visuals. A late joiner computes the present weather directly from the tick. Only the wind shadow depends on boat
+positions: the server's shadow uses the true positions; the client's uses the remote boats as shown (§6.3, §6.4);
+the difference is a small misprediction corrected by reconciliation.
 
 ## 8. Race and rules state
 
@@ -393,9 +398,10 @@ mode) are sent as a reliable message and judged by the server.
   `10·L` or in the shadow range) is a **divergence**. The client counts them; more than 5 in 30 s triggers a
   telemetry report with the two full states and the platform, and a message in the debug overlay. Gameplay continues
   (reconciliation fixes it).
-- **Weather hash** every 5 s: the server hashes the free-stream wind (direction and speed quantised to 0.01° and
-  1 mm/s) at 16 fixed probe points of the course at tick T; the client compares with its own. On mismatch it asks for
-  the weather state (§7.2) and reports.
+- **Weather hash** every 5 s: the server hashes the clean wind `wind_clean` (the raw binary32 bits of speed and
+  direction) and the sea height at 16 fixed probe points of the course at tick T; the client compares with its own. A
+  mismatch can only be a platform or build divergence (the weather is a pure function): the client reports it with
+  both values; play goes on, since the server's physics is authoritative and reconciliation corrects the own boat.
 - **World hash** every 5 s (all boats' quantised state, race and rules state): written to the server log and the
   replay file, used by replay verification and tests, not sent to clients.
 
@@ -411,7 +417,7 @@ UDP. Every packet: `u32 protocol_id`, `u64 connection_id` (from the connect toke
 | --- | --- | --- |
 | 0 | unreliable, sequenced (older than the newest received are dropped) | inputs, snapshots, pair blocks, pings |
 | 1 | reliable, ordered | race parameters, events, race state summaries, chat, lobby, protests |
-| 2 | reliable, unordered, fragmented | large blobs: course, weather state, full state at reconnect, replays |
+| 2 | reliable, unordered, fragmented | large blobs: course, full state at reconnect, replays |
 
 Reliability for channels 1 and 2: messages are resent in the next packet after `max(1.25·RTT_est, 50 ms)` without an
 ack; channel 2 blobs are cut into 1 kB fragments with a send window of 32. Packets never exceed 1200 bytes of UDP

@@ -1,4 +1,7 @@
 # Test suite: doctest (third_party/doctest, MIT).
+set(WINDMARK_DATA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../data" CACHE PATH
+    "Repository data directory (classes/, perf/) the tests load")
+
 add_executable(windmark_core_tests
   test_main.cpp
   test_float_rules.cpp
@@ -7,11 +10,13 @@ add_executable(windmark_core_tests
   test_table.cpp
   test_checksum.cpp
   test_json.cpp
+  test_perf.cpp
 )
 target_link_libraries(windmark_core_tests PRIVATE windmark_core)
 target_include_directories(windmark_core_tests SYSTEM PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/doctest")
 target_compile_options(windmark_core_tests PRIVATE ${WINDMARK_WARNINGS})
 target_compile_definitions(windmark_core_tests PRIVATE
+  WINDMARK_DATA_DIR="${WINDMARK_DATA_DIR}"
   WINDMARK_VECTORS_FILE="${CMAKE_CURRENT_SOURCE_DIR}/vectors/math_vectors.txt")
 
 add_test(NAME core_tests COMMAND windmark_core_tests)

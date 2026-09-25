@@ -1,4 +1,4 @@
-# Windmark — working rules
+# Windmark: working rules
 
 Read `README.md` for the layout and `docs/ROADMAP.md` for what is being built and why.
 
@@ -14,6 +14,8 @@ Read `README.md` for the layout and `docs/ROADMAP.md` for what is being built an
 - No co-author lines, no author or tool mentions.
 
 ## Working
+- No em dashes (—) in anything players see (game text, UI, store page, trailers, press) or in README files. Use a
+  colon, comma, parentheses or a new sentence instead.
 - Never launch a windowed game or GUI without asking the owner; headless runs are fine.
 - Design specs in `docs/specs/` are the source of truth for behaviour; code follows them, and a behaviour change
   updates the spec first.

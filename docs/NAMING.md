@@ -14,7 +14,7 @@
 - Distinctive, not descriptive: "sailing simulator"-style names cannot be protected (EUTMR Art. 7(1)(b)(c)).
 - Clear of event and class marks (America's Cup, SailGP, Vendée Globe, TP52, J/70, ILCA/Laser, Optimist, Nacra, 49er,
   Fastnet) and of existing sailing games and apps (Sailaway, Sailwind, eSail, AC Sailing, Virtual Regatta, Laylines).
-- Works on a capsule with a descriptor: "Windmark — Tactical Sailing Racing".
+- Works on a capsule with a descriptor: "Windmark: Tactical Sailing Racing".
 
 ## The two candidates
 

@@ -40,6 +40,7 @@ var sea_t0_ms := 0.0
 
 var _err := ""
 var _info := {}  # class id -> ClassInfo
+var _fixed := {}  # records fixed for the world's life: the course, its labels
 var _boat_class: Array[String] = []
 var _cache := {}  # records of the last tick, "kind:boat" -> record
 
@@ -56,6 +57,8 @@ static func default_settings() -> Dictionary:
 
 ## the venue file the world was created on ("" for open water)
 var venue_path := ""
+## the course file of the race ("" without one)
+var course_path := ""
 
 
 ## Creates the world from `settings` on the venue file (data/venues/<venue>.venue.json when a bare name, "" for
@@ -130,6 +133,7 @@ func create_race(course: String) -> bool:
 		path = BoatClassData.repo_path("game/data/courses/%s.course.json" % course)
 	_cache.clear()
 	if core.create_race(path):
+		course_path = path
 		return true
 	_err = core.last_error()
 	return false
@@ -232,6 +236,87 @@ func apply_input(boat: int, frame: InputFrame) -> int:
 func step() -> void:
 	core.step()
 	_cache.clear()
+
+
+# ---- race and rules (SimSource readers, cached until the next step) ------------------------------------------
+
+func _cached(k: String, f: Callable) -> Variant:
+	if not _cache.has(k):
+		_cache[k] = f.call()
+	return _cache[k]
+
+
+func has_race() -> bool:
+	return core != null and core.has_race()
+
+
+func race() -> Dictionary:
+	return _cached("race", func() -> Dictionary: return core.race()) if core else {}
+
+
+func race_boat(boat: int) -> Dictionary:
+	return _cached("race_boat:%d" % boat, func() -> Dictionary: return core.race_boat(boat)) if core else {}
+
+
+func race_order() -> PackedInt32Array:
+	return _cached("order", func() -> PackedInt32Array: return core.race_order()) if core else PackedInt32Array()
+
+
+## the resolved course does not change during the race: cached for the world's life
+func course() -> Dictionary:
+	if core == null:
+		return {}
+	if not _fixed.has("course"):
+		var c: Dictionary = core.course()
+		if c.is_empty():
+			return c
+		_fixed["course"] = c
+	return _fixed["course"]
+
+
+func course_labels() -> Dictionary:
+	if course_path == "":
+		return {}
+	if not _fixed.has("labels"):
+		var d: Variant = BoatClassData._read_json(course_path)
+		_fixed["labels"] = d.get("display", {}).get("labels", {}) if d is Dictionary else {}
+	return _fixed["labels"]
+
+
+func results() -> Array:
+	return _cached("results", func() -> Array: return core.results()) if core else []
+
+
+func race_split(boat: int, step_index: int) -> float:
+	return core.race_split(boat, step_index) if core else NAN
+
+
+func race_start_status(boat: int) -> Dictionary:
+	return _cached("start:%d" % boat, func() -> Dictionary: return core.race_start_status(boat)) if core else {}
+
+
+func boat_rules(boat: int) -> Dictionary:
+	return _cached("rules:%d" % boat, func() -> Dictionary: return core.boat_rules(boat)) if core else {}
+
+
+func pairs() -> Array:
+	return _cached("pairs", func() -> Array: return core.pairs()) if core else []
+
+
+func race_events() -> Array:
+	return _cached("race_events", func() -> Array: return core.race_events()) if core else []
+
+
+func rules_events() -> Array:
+	return _cached("rules_events", func() -> Array: return core.rules_events()) if core else []
+
+
+func polar_vmg(boat: int, tws: float) -> Dictionary:
+	return core.polar_vmg(boat, tws) if core else {}
+
+
+func polar(boat: int, tws: float, twa: float, front_sail: int) -> float:
+	return core.polar(boat, tws, twa, front_sail) if core else NAN
 
 
 # ---- environment for the sea renderer (the SeaEnvSource calls) ---------------------------------------------

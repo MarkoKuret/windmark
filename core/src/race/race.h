@@ -13,6 +13,7 @@
 #include "data/perf.h"
 #include "data/venue.h"
 #include "math/wm_math.h"
+#include "state/checksum.h"
 
 namespace wm {
 
@@ -240,6 +241,11 @@ class Race {
   float finish_s(Vec2 p) const;  // > 0 beyond the finish (away from the course side)
   float finish_u(Vec2 p) const;
   Vec2 bow(std::size_t i) const;
+
+  // race.md §13: the race block of the world snapshot. load() needs a race created from the same course with the
+  // same boats; it overwrites every state value and clears the events, or returns false and changes nothing.
+  void save(SnapshotWriter& w) const;
+  bool load(SnapshotReader& r);
 
  private:
   struct Line {

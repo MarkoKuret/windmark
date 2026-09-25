@@ -1,9 +1,11 @@
 ---
 id: WM-006
 title: 'Core: boat and sails'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-09-25 13:31'
+updated_date: '2026-09-25 14:15'
 labels:
   - core
 dependencies: []

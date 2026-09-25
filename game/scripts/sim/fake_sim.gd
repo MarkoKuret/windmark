@@ -111,8 +111,28 @@ func sails(boat: int) -> SailsView:
 	v.queue_len = b.queue.size()
 	v.queue_pos = b.queue_pos
 	v.queue_progress = b.queue_progress
-	v.sails = b.sail_st
-	v.out = b.sail_out
+	v.awa = b.s.awa
+	v.aws = b.s.aws
+	v.tws = b.s.tws
+	# copies: the boat updates its records in place, and the renderer interpolates between two ticks' views
+	for st in b.sail_st:
+		var c := SailState.new()
+		c.phase = st.phase
+		c.progress = st.progress
+		c.beta = st.beta
+		c.pole = st.pole
+		v.sails.append(c)
+	for o in b.sail_out:
+		var c := SailOutput.new()
+		c.k_h = o.k_h
+		c.m_opt = o.m_opt
+		c.beta_opt = o.beta_opt
+		c.beta_t = o.beta_t
+		c.trim_error = o.trim_error
+		c.luff_shiver = o.luff_shiver
+		c.motion = o.motion
+		c.backed = o.backed
+		v.out.append(c)
 	return v
 
 

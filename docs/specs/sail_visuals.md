@@ -232,7 +232,9 @@ and the boom turn together). Row `i` is rotated by
 ```
 theta_i = beta + tl * twist_top * pow(h_row_i, 1.5)        // tl = -sgn(awa): toward leeward
 ```
-with `h_row_i` = `h` of the row's luff vertex. The boom node turns about the same axis by `β`; the mainsheet is
+with `h_row_i` = `h` of the row's luff vertex. `tl` is eased per sail toward `−sgn(awa)` with the same
+`τ = 0.25 s` as `s_b` (§5.3; set to the target at spawn), so the twist crosses over in a tack or gybe instead of
+jumping by `2·twist_top` at the head. The boom node turns about the same axis by `β`; the mainsheet is
 rebuilt between the boom and the traveller (`tools/boatgen/README.md`).
 
 ### 7.2 Jib, genoa, code zero
@@ -378,8 +380,14 @@ sail material uses no normal map).
   and offsets (`mesh_surface_get_format_vertex_stride`, `mesh_surface_get_format_offset`); rebuilding the surface
   with `add_surface_from_arrays` is an acceptable fallback. Set a `custom_aabb` that covers the sail at any angle
   (a box around the luff with the sail's extents), so culling never needs the vertex data.
+  In Godot 4.6 the uncompressed vertex buffer is all positions (3 floats, stride 12) followed by the normal-tangent
+  stream at `mesh_surface_get_format_offset(ARRAY_NORMAL)` with `mesh_surface_get_format_normal_tangent_stride`
+  (8 bytes: the normal octahedral-encoded in two 16-bit units, then a tangent slot Godot adds even when none is
+  given). The writer keeps a copy of the buffer from `mesh_get_surface`, rewrites positions and normals in it
+  (tangent bytes untouched) and sends the whole buffer in one call per sail update.
 - **Update rate by distance** (the phase `φ` always advances): nearer than 200 m every frame; 200–800 m at 15 Hz;
-  beyond at 4 Hz; outside the view frustum not at all.
+  beyond at 4 Hz; outside the view frustum not at all (a sphere around the sail against the camera's frustum
+  planes), and at once on coming back into view. The drivers `φ`, `s_b` and `tl` advance every frame either way.
 - **Material**: the generator's `sailcloth` slot, opaque, back faces culled (each layer faces its own side),
   roughness about 0.55, a back-light term of about 0.3 of the albedo so the sun shows through the cloth; liveries and
   sail numbers through uv1 (Godot's `UV2`) in a sail shader. Opaque sails need no draw-order sorting.
@@ -410,7 +418,9 @@ Flutter phase `φ = 0` unless stated.
 7. **Asym inflation.** `aws ≤ 1.543 m/s` (3 kn): `F = 0.5`; `aws = 2 m/s` (3.9 kn): `F = 0.648`; `aws ≥ 3.087 m/s` (6 kn): `F = 1`; the displacement of a
    mid-chord vertex has length `k_d·C_i·F` (±1 %) with `I = 0`.
 8. **Asym leeward belly.** For `awa` = ±60°, ±120°, ±170° with `β` at the optimum on the leeward side, every inner
-   vertex of the placed kite lies on the leeward side of the vertical plane through its luff.
+   vertex of the placed kite lies on the leeward side of the vertical plane through its row's luff vertex, parallel
+   to the placed tack–head line (the generated luff is cut with a curve, so vertices just aft of it can sit to
+   windward of the straight tack–head plane).
 9. **Asym gybe.** Sweeping `β` from −170° through ±180° to +170° over 2 s moves no vertex more than `0.05·Sa` between
    frames at 60 fps.
 10. **Halyard hoist.** Jib at `p = 0.5`: the highest vertex has `l' = 0.5·Sl` (±1e-3); every flaked vertex lies
@@ -424,8 +434,9 @@ Flutter phase `φ = 0` unless stated.
     with `c`.
 14. **Normals and layers.** Rest pose: port normals `(0, 1, 0)` within 1e-6; after any shape the two layers are 2 mm
     apart along the normal; no NaN with a collapsed head, a gathered drop or a fully furled sail.
-15. **Continuity.** A scripted tack (awa from +30° to −30° over 4 s, `β` following at the core's rates, `backed` set
-    for 0.5 s) and a gybe move no vertex more than `0.05·Sa` between frames at 60 fps.
+15. **Continuity.** A scripted tack (awa from +30° to −30° over 4 s, `β` following the new side's target with the
+    motion of `sails.md` §5.5 at the class's `rate_in` / `rate_out`, `backed` from its `sails.md` §7 formula) and a
+    gybe (awa from 150° through 180° to −150° over 4 s) move no vertex more than `0.05·Sa` between frames at 60 fps.
 
 ## 13. Dependencies and open points
 

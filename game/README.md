@@ -9,9 +9,9 @@ controls, the cameras, the minimal HUD and a sail test scene that puts them toge
 | Path | Role |
 | --- | --- |
 | `project.godot` | Project settings |
-| `scripts/` | GDScript. `sail_grid.gd` (`SailGrid`) maps imported sail vertices back to the boatgen sail grid; `frames.gd` (`Frames`) holds the axes and angle helpers; `boat_view.gd` (`BoatView`) places the generated boat, its rudder, wheel, boom, mainsheet and sails; `boat_materials.gd` (`BoatMaterials`) puts the boat materials on the imported meshes |
+| `scripts/` | GDScript. `sail_grid.gd` (`SailGrid`) maps imported sail vertices back to the boatgen sail grid; `frames.gd` (`Frames`) holds the axes and angle helpers; `boat_view.gd` (`BoatView`) places the generated boat, its rudder, wheel, boom and mainsheet, and bends the sails; `sail_shape_ref.gd` (`SailShapeRef`) is the GDScript reference of the native sail shapes; `boat_materials.gd` (`BoatMaterials`) puts the boat materials on the imported meshes |
 | `scripts/sim/` | `SimSource` (the simulation interface), `CoreSimSource` (the core, through the GDExtension) and `CoreEnvSource` (its sea and wind for the Sea node), `FakeSim` and `FakeBoat` (placeholder), `SimRunner` (50 ms ticks), class loading |
-| `native/` | The GDExtension: `CoreSim` over `core/include/windmark.h` (`src/`), `build.sh`, `CMakeLists.txt`. Godot skips the folder (`.gdignore`) |
+| `native/` | The GDExtension: `CoreSim` over `core/include/windmark.h` and `SailShape` (the per-vertex sail shapes) in `src/`, `build.sh`, `CMakeLists.txt`. Godot skips the folder (`.gdignore`) |
 | `bin/` | The built extension library and `windmark.gdextension`. Not committed |
 | `scripts/controls/` | Input map defaults, device reader, `PlayerControls` (boat commands), sail key mapping, the input frame |
 | `scripts/cameras/` | `CameraRig` and the chase, onboard, aerial and free cameras, shake, onboard eye point |
@@ -149,11 +149,21 @@ others as Dictionaries with the C field names. `CoreSimSource` caches the per-bo
   `render_time_ms`, the wakes `CoreSimSource.wake_state`, so the puffs drawn are the ones the boat sails in.
 - **Boat** (`BoatView`): the node at the render pose (`conventions.md` §11), the rudder (with the tiller it
   carries) and the wheel from the helm `h`, the boom at the main's sail angle with the mainsheet sheared to follow
-  it, and every sail placed rigidly as `sail_visuals.md` §7 does (main about the boom axis, headsails about the
-  luff, spinnakers swung on the sprit tack line or the pole first), with the sail angles interpolated between the
-  last two ticks. The shape is the flat generated sail (the §6 shapes and flutter are WM-016.09); hoisting and
-  dropping (§8) scale it in its own frame: a headsail grows up its luff from the deck, a spinnaker climbs as a thin
-  bundle and widens over the last tenth, drops run back; a sail that is `down` is hidden.
+  it, and the sails bent per vertex every frame as `docs/specs/sail_visuals.md` says (below). The sail inputs are
+  interpolated between the last two ticks (`apply_sails(prev, cur, alpha, dt)`): sail angles, pole angle, progress,
+  luff shiver and the boat's apparent wind (`SailsView.awa`, `aws`, `tws`); a sail that is `down` is hidden.
+- **Sails** (`sail_visuals.md`): at load each sail becomes its own grid-order mesh (`2 · rows · cols` vertices, the
+  imported uv sets and triangles re-indexed by `SailGrid`, vertex compression off, a `custom_aabb` around the sail
+  at any angle) on `shaders/sail.gdshader` (roughness 0.55, the sun through the cloth as a back-light). Every frame
+  the native `SailShape` (one per sail) advances the flutter phase, the backed factor and the twist side, builds the
+  shape (fill and camber from the sail angle and the wind line, twist to leeward, flutter from the core's luff
+  shiver, the jib popping through when backed, halyard and furler hoists, the spinnaker bundle, fill and drop, the
+  flying kite extruded down the apparent wind), places it about the boom, the luff, the sprit or the pole, derives
+  both cloth layers and their normals, and rewrites the mesh's vertex buffer in one
+  `mesh_surface_update_vertex_region` call. Update rate by distance to the camera: every frame within 200 m, 15 Hz
+  to 800 m, 4 Hz beyond, none outside the view frustum. Cost on an M-series Mac: about 11 µs per sail update (wm7:
+  30 µs for main, jib and kite), so 40 boats near the camera take about 1.2 ms per frame. Without the GDExtension
+  the GDScript `SailShapeRef` does the same about 45 times slower (a test and fallback path, not for fleets).
 - **HUD commands**: the helm mark, the sheet bar and text, `AUTO` and `LET FLY` of the own boat come from the
   local `PlayerControls` every frame (`Hud.local_commands`), since the core applies a command at its next step.
 - **Input map**: `scripts/controls/default_bindings.gd` is the one source of the defaults of `controls.md` §3.
@@ -175,6 +185,22 @@ others as Dictionaries with the C field names. `CoreSimSource` caches the per-bo
   hold or toggle, sheet turns auto-trim off), `CameraRig.options` (speed, invert, reduced motion, smooth switch,
   auto-recentre), `Hud.assist` (Full, Standard, Minimal). Not implemented yet: mouse helm, one-hand layout,
   rebinding UI, vibration.
+
+## Sail visuals tests
+
+```
+game/tests/run_sail_visuals_test.sh             # the tests of sail_visuals.md §12 and the BoatView sails
+game/tests/run_sail_visuals_test.sh --preview   # also the offline previews (numpy, Pillow, moderngl)
+```
+
+Headless. `tests/sail_visuals_test.gd` runs every numbered test of `sail_visuals.md` §12 on the GDScript reference
+and on the native `SailShape`, compares the two on random drivers in every phase, checks the native vertex buffer
+against Godot's own encoding of the same arrays, sets up the wm7 and wm12 sails in `BoatView` (grid-order meshes,
+uv sets, sail shader, rest-pose normals, the kite's belly to leeward, flaked headsails), checks the update rate by
+distance and the frustum, and prints the cost per sail. The previews: `tests/sail_preview_dump.gd` sails a boat on
+the core into trimmed, eased, let-fly, tacking, hoisting, reaching, running and dropping situations and dumps the
+bent boat, `tests/sail_preview.py` renders them offscreen to `generated/sail_preview/` (with `--publish` the
+JPEGs in `tests/previews/sails_*.jpg`). Its lighting is a stand-in for Godot's: it is for judging shapes.
 
 ## UI tests
 
@@ -259,8 +285,8 @@ start point; race mode: restart the race), Esc pause, F10 hide HUD.
   `AO_LIGHT_AFFECT = 0`, so it darkens the ambient and reflected light only, never the sunlit albedo. The shader
   caps the linear albedo at 0.8 (bright paint and gelcoat), so a white hull in full sun keeps its shading.
   `tests/boat_materials_test.gd` (run by `run_boat_import_test.sh`) checks a fleet of both classes.
-- Default import settings generate LODs and shadow meshes and compress vertices. For sails deformed at run
-  time these should be turned off for the sail meshes (or the sails rebuilt as `ArrayMesh` at load).
+- Default import settings generate LODs and shadow meshes and compress vertices. `BoatView` rebuilds each sail as
+  its own uncompressed `ArrayMesh` at load, so the import settings of the sail meshes do not matter.
 
 ## Sea, sky and lighting
 

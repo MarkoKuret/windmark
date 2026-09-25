@@ -446,6 +446,7 @@ func test_core_scene() -> void:
 	var err_clock := 0.0
 	var err_boom := 0.0
 	var err_main := 0.0
+	var main_bent := 0
 	var err_rudder := 0.0
 	var rudder_side_bad := 0
 	var err_mark := 0.0
@@ -464,7 +465,13 @@ func test_core_scene() -> void:
 	var last_tick := sim.tick()
 	var boom: Node3D = bv.model.find_child("boom", true, false)
 	var rudder: Node3D = bv.model.find_child("rudder", true, false)
-	var main_node: Node3D = bv.model.find_child("sail_main", true, false)
+	var main_part: BoatView.SailPart = null
+	for sp in bv.sail_parts:
+		if sp.index == main_i:
+			main_part = sp
+	var pivot := Frames.body_to_model(BoatView._vec(info.physics["rig"]["boom_pivot"]))
+	var main_clew0 := Frames.body_to_model(BoatView._vec(
+		info.physics["sails"][main_part.id]["corners"]["clew"]["position"]))
 	var axis := Frames.body_to_model(Vector3(0, 0, 1))
 	for i in 2400:
 		r.pressed = []
@@ -512,8 +519,12 @@ func test_core_scene() -> void:
 		var beta := Frames.wrap_pi(beta_prev + Frames.angle_diff(beta_cur, beta_prev) * alpha)
 		err_boom = maxf(err_boom, absf(Frames.angle_diff(bv.boom_angle, beta)))
 		err_boom = maxf(err_boom, (boom.transform.basis * Vector3.BACK).distance_to(Basis(axis, beta) * Vector3.BACK))
-		err_main = maxf(err_main, (main_node.transform.basis * Vector3.BACK).distance_to(
-			boom.transform.basis * Vector3.BACK))
+		# the main's foot turns with the boom: its placed clew at the boom's angle about the boom axis
+		var mc: Vector3 = main_part.clew() - pivot
+		var mr: Vector3 = Basis(axis, beta) * (main_clew0 - pivot)
+		if main_part.since == 0.0:  # bent this frame (not skipped as out of view, sail_visuals.md §11)
+			err_main = maxf(err_main, absf(Frames.angle_diff(atan2(mc.x, mc.z), atan2(mr.x, mr.z))))
+			main_bent += 1
 		var sv := sim.sails(0)
 		for sp in bv.sail_parts:
 			var ph: int = sv.sails[sp.index].phase
@@ -524,8 +535,9 @@ func test_core_scene() -> void:
 					and (sp.luff_scale < 1.0 or sp.chord_scale < 1.0)
 			# sail angle sense (conventions.md §3): beta > 0 puts the clew on the starboard side (model -X)
 			var clew_c: Dictionary = info.physics["sails"][sp.id]["corners"]["clew"]
-			var clew := sp.node.transform * Frames.body_to_model(BoatView._vec(clew_c["position"]))
-			if sp.node.visible and absf(sp.beta) > 0.1 and ph == SimSource.Phase.UP:
+			var clew := sp.clew() if sp.shape != null else sp.node.transform * Frames.body_to_model(
+				BoatView._vec(clew_c["position"]))
+			if sp.node.visible and absf(sp.beta) > 0.1 and ph == SimSource.Phase.UP and sp.since == 0.0:
 				side_ok = side_ok and signf(clew.x) == -signf(sp.beta)
 				side_n += 1
 		# HUD: the helm mark and sheet are the local commands at once; the core's controls lag a step
@@ -550,7 +562,7 @@ func test_core_scene() -> void:
 	t.ok(rudder_side_bad == 0, "rudder trailing edge to starboard when the bow turns to starboard (%d bad frames)" % rudder_side_bad)
 	t.ok(err_clock < 1e-3, "Sea clock = core render_time_ms (%.7f ms)" % err_clock)
 	t.ok(err_boom < tol, "boom at the interpolated main beta (%.7f)" % err_boom)
-	t.ok(err_main < tol, "main turns with the boom (%.7f)" % err_main)
+	t.ok(err_main < 0.03 and main_bent > 1200, "main foot turns with the boom (%.4f rad, %d frames bent)" % [err_main, main_bent])
 	t.ok(vis_ok, "sails shown unless down")
 	t.ok(side_ok and side_n > 0, "placed clews on the side of the sail angle (%d samples)" % side_n)
 	t.ok(hoist_seen and hoist_scale_ok, "kite hoist drawn growing up its luff")

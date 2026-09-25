@@ -1,0 +1,248 @@
+extends SceneTree
+## Offline preview of the sails, step 1 (headless, no window): sails a boat on the core (the GDExtension) into a set
+## of situations (trimmed upwind, eased, let fly, mid-tack with the jib aback, kite hoist, reach, run, drop, jib
+## hoist, the wm12 code zero), bends the sails with BoatView exactly as the scene does, and dumps every mesh of the
+## boat (the sails from their SailShape) with a camera to generated/sail_preview/<shot>/. Step 2,
+## tests/sail_preview.py, renders them offscreen with OpenGL.
+##   godot --headless --path game -s res://tests/sail_preview_dump.gd [-- shot ...]
+
+const KNOT := 1852.0 / 3600.0
+const OUT := "res://generated/sail_preview"
+
+## shots: class, true wind (kn), the first leg's true wind angle, then legs of {t (s), twa (held by a helm
+## controller) or h (fixed helm), auto, sheet, let_fly, req (sail request at the start of the leg), until (stop
+## condition)}, and the camera: side (+1 leeward, -1 windward), fwd and up (fractions of the distance), dist (m)
+var SHOTS := [
+	{"name": "upwind_trimmed", "cls": "wm7", "tws": 12.0, "twa": 42.0, "legs": [{"t": 20.0, "twa": 42.0}],
+		"cam": {"side": 1, "fwd": -0.45, "up": 0.3, "dist": 21.0}},
+	{"name": "upwind_windward", "cls": "wm7", "tws": 12.0, "twa": 42.0, "legs": [{"t": 20.0, "twa": 42.0}],
+		"cam": {"side": -1, "fwd": 0.55, "up": 0.25, "dist": 21.0}},
+	{"name": "upwind_eased", "cls": "wm7", "tws": 12.0, "twa": 42.0,
+		"legs": [{"t": 15.0, "twa": 42.0}, {"t": 2.5, "twa": 42.0, "auto": false, "sheet": 0.75}],
+		"cam": {"side": 1, "fwd": -0.45, "up": 0.3, "dist": 21.0}},
+	{"name": "let_fly", "cls": "wm7", "tws": 12.0, "twa": 42.0,
+		"legs": [{"t": 15.0, "twa": 42.0}, {"t": 3.0, "h": 0.0, "let_fly": true}],
+		"cam": {"side": 1, "fwd": -0.45, "up": 0.3, "dist": 21.0}},
+	{"name": "tack_jib_aback", "cls": "wm7", "tws": 12.0, "twa": 42.0,
+		"legs": [{"t": 15.0, "twa": 42.0}, {"t": 8.0, "h": 1.0, "until": "backed"}, {"t": 0.3, "h": 1.0}],
+		"cam": {"side": -1, "fwd": 0.6, "up": 0.3, "dist": 21.0}},
+	{"name": "kite_hoist_50", "cls": "wm7", "tws": 12.0, "twa": 110.0,
+		"legs": [{"t": 10.0, "twa": 110.0}, {"t": 30.0, "twa": 110.0, "req": "kite", "until": "hoist:kite:0.5"}],
+		"cam": {"side": 1, "fwd": 0.2, "up": 0.3, "dist": 24.0}},
+	{"name": "kite_hoist_95", "cls": "wm7", "tws": 12.0, "twa": 110.0,
+		"legs": [{"t": 10.0, "twa": 110.0}, {"t": 30.0, "twa": 110.0, "req": "kite", "until": "hoist:kite:0.95"}],
+		"cam": {"side": 1, "fwd": 0.2, "up": 0.3, "dist": 24.0}},
+	{"name": "reach_kite", "cls": "wm7", "tws": 12.0, "twa": 110.0,
+		"legs": [{"t": 10.0, "twa": 110.0}, {"t": 40.0, "twa": 110.0, "req": "kite"}],
+		"cam": {"side": 1, "fwd": 0.2, "up": 0.3, "dist": 24.0}},
+	{"name": "run_kite", "cls": "wm7", "tws": 12.0, "twa": 150.0,
+		"legs": [{"t": 10.0, "twa": 150.0}, {"t": 40.0, "twa": 150.0, "req": "kite"}],
+		"cam": {"side": 1, "fwd": 0.55, "up": 0.3, "dist": 24.0}},
+	{"name": "kite_drop_40", "cls": "wm7", "tws": 12.0, "twa": 140.0,
+		"legs": [{"t": 10.0, "twa": 140.0}, {"t": 40.0, "twa": 140.0, "req": "kite"},
+			{"t": 30.0, "twa": 140.0, "req": "jib", "until": "drop:kite:0.4"}],
+		"cam": {"side": 1, "fwd": 0.3, "up": 0.3, "dist": 24.0}},
+	{"name": "jib_hoist_50", "cls": "wm7", "tws": 12.0, "twa": 140.0,
+		"legs": [{"t": 10.0, "twa": 140.0}, {"t": 40.0, "twa": 140.0, "req": "kite"},
+			{"t": 40.0, "twa": 140.0, "req": "jib", "until": "hoist:jib:0.5"}],
+		"cam": {"side": -1, "fwd": 0.5, "up": 0.3, "dist": 21.0}},
+	{"name": "wm12_upwind", "cls": "wm12", "tws": 12.0, "twa": 40.0, "legs": [{"t": 20.0, "twa": 40.0}],
+		"cam": {"side": 1, "fwd": -0.45, "up": 0.3, "dist": 32.0}},
+	{"name": "wm12_code0", "cls": "wm12", "tws": 10.0, "twa": 75.0,
+		"legs": [{"t": 10.0, "twa": 75.0}, {"t": 40.0, "twa": 75.0, "req": "code0"}],
+		"cam": {"side": 1, "fwd": 0.25, "up": 0.3, "dist": 32.0}},
+]
+
+
+var _twa := 0.0
+
+
+func _init() -> void:
+	_main()
+
+
+func _main() -> void:
+	await process_frame
+	if not CoreSimSource.available():
+		print("sail preview: the GDExtension is not built (game/native/build.sh)")
+		quit(1)
+		return
+	var want := OS.get_cmdline_user_args()
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT))
+	var names := []
+	for spec in SHOTS:
+		if want.is_empty() or want.has(spec["name"]):
+			_shot(spec)
+		if FileAccess.file_exists(OUT.path_join(spec["name"]).path_join("scene.json")):
+			names.append(spec["name"])
+	var f := FileAccess.open(OUT.path_join("index.json"), FileAccess.WRITE)
+	f.store_string(JSON.stringify(names))
+	quit(0)
+
+
+func _shot(spec: Dictionary) -> void:
+	var sim := CoreSimSource.new()
+	sim.settings = {"wind_speed": float(spec["tws"]) * KNOT, "wind_from": 0.0, "shift_preset": 0, "puffs": false,
+		"seed": 11}
+	if not sim.create():
+		print("create failed: ", sim.last_error())
+		return
+	var b := sim.add_boat(spec["cls"], 0.0, 0.0, Frames.wrap_2pi(-deg_to_rad(float(spec["twa"]))))
+	var info := sim.class_info(b)
+	var idx := {}
+	for i in info.sails.size():
+		idx[info.sails[i].name] = i
+	var bv := BoatView.create(info, info.rudder_max)
+	var prev := sim.sails(b)
+	var cur := prev
+	var note := ""
+	for leg in spec["legs"]:
+		var ticks := int(float(leg["t"]) / SimSource.DT)
+		var req := InputFrame.SAIL_NONE
+		if leg.has("req"):
+			req = InputFrame.hoist_req(idx[leg["req"]])
+		for k in ticks:
+			var s := sim.state(b)
+			var f := InputFrame.new()
+			f.tick = sim.tick()
+			if leg.has("h"):
+				f.h_cmd = float(leg["h"])
+			else:
+				f.h_cmd = clampf(1.5 * Frames.angle_diff(s.twa, deg_to_rad(float(leg["twa"]))), -1.0, 1.0)
+			var auto: bool = leg.get("auto", true)
+			f.flags = InputFrame.FLAG_AUTO_TRIM if auto else 0
+			if leg.get("let_fly", false):
+				f.flags |= InputFrame.FLAG_LET_FLY
+			f.sheet_cmd = float(leg.get("sheet", 0.5))
+			f.sail_req = req if k == 0 else InputFrame.SAIL_NONE
+			sim.apply_input(b, f)
+			sim.step()
+			prev = cur
+			cur = sim.sails(b)
+			_twa = sim.state(b).twa
+			# the shapes' drivers (flutter phase, backed factor) run every tick as in the scene
+			bv.apply_sails(prev, cur, 1.0, SimSource.DT)
+			if _until(String(leg.get("until", "")), cur, idx):
+				break
+	bv.apply(sim.render_pose(b, 1.0))
+	bv.apply_sails(prev, cur, 1.0, 1.0 / 60.0)
+	var st := sim.state(b)
+	var sails_note := []
+	for sp in bv.sail_parts:
+		var ss: SimSource.SailState = cur.sails[sp.index]
+		var so: SimSource.SailOutput = cur.out[sp.index]
+		sails_note.append("%s %s p%.2f beta %.0f I %.2f%s" % [sp.id, ["down", "prep", "hoist", "up", "prep_drop",
+			"drop"][ss.phase], ss.progress, rad_to_deg(ss.beta), so.luff_shiver, " backed" if so.backed else ""])
+	note = "%s: twa %.0f awa %.0f aws %.1f kn heel %.0f | %s" % [spec["name"], rad_to_deg(st.twa), rad_to_deg(st.awa),
+		st.aws / KNOT, rad_to_deg(st.phi), ", ".join(sails_note)]
+	print(note)
+	_dump(spec, bv, st, note)
+	bv.free()
+
+
+func _until(cond: String, cur: SimSource.SailsView, idx: Dictionary) -> bool:
+	if cond == "":
+		return false
+	var p := cond.split(":")
+	if p[0] == "twa_below":
+		return _twa < deg_to_rad(float(p[1]))
+	if p[0] == "backed":
+		for i in cur.out.size():
+			if cur.out[i].backed and cur.sails[i].phase == SimSource.Phase.UP and i != 0:
+				return true
+		return false
+	var s: SimSource.SailState = cur.sails[idx[p[1]]]
+	var ph := SimSource.Phase.HOISTING if p[0] == "hoist" else SimSource.Phase.DROPPING
+	return s.phase == ph and s.progress >= float(p[2])
+
+
+static func _chain(n: Node, top: Node) -> Transform3D:
+	var t := Transform3D.IDENTITY
+	var x := n
+	while x != null and x != top:
+		if x is Node3D:
+			t = (x as Node3D).transform * t
+		x = x.get_parent()
+	return t
+
+
+func _dump(spec: Dictionary, bv: BoatView, st: SimSource.BoatState, note: String) -> void:
+	var dir := OUT.path_join(spec["name"])
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir))
+	var sail_nodes := {}
+	for sp in bv.sail_parts:
+		sail_nodes[sp.node] = sp
+	var meshes := []
+	var stack: Array = [bv]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		stack.append_array(n.get_children())
+		if not (n is MeshInstance3D) or not (n as MeshInstance3D).visible or (n as MeshInstance3D).mesh == null:
+			continue
+		if not _visible_chain(n, bv):
+			continue
+		var mi := n as MeshInstance3D
+		var xf := bv.transform * _chain(mi, bv)
+		for si in mi.mesh.get_surface_count():
+			var arrays := mi.mesh.surface_get_arrays(si)
+			var pos: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+			var nrm: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+			var is_sail := sail_nodes.has(mi) and sail_nodes[mi].shape != null
+			if is_sail:
+				pos = sail_nodes[mi].shape.positions()
+				nrm = sail_nodes[mi].shape.normals()
+			var ind: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
+			if ind.is_empty():
+				ind.resize(pos.size())
+				for k in pos.size():
+					ind[k] = k
+			var wp := PackedFloat32Array()
+			wp.resize(pos.size() * 6)
+			var nb := xf.basis.inverse().transposed()
+			for k in pos.size():
+				var p := xf * pos[k]
+				var q := (nb * nrm[k]).normalized() if nrm.size() == pos.size() else Vector3.UP
+				wp[6 * k] = p.x
+				wp[6 * k + 1] = p.y
+				wp[6 * k + 2] = p.z
+				wp[6 * k + 3] = q.x
+				wp[6 * k + 4] = q.y
+				wp[6 * k + 5] = q.z
+			var mat := mi.get_active_material(si)
+			var col := Color(0.8, 0.8, 0.8)
+			if mat is BaseMaterial3D:
+				col = (mat as BaseMaterial3D).albedo_color
+			elif mat is ShaderMaterial and (mat as ShaderMaterial).get_shader_parameter("albedo_color") is Color:
+				col = (mat as ShaderMaterial).get_shader_parameter("albedo_color")
+			col = Color(minf(col.r, 0.8), minf(col.g, 0.8), minf(col.b, 0.8))  # the shaders' albedo cap
+			var nm := "m%d" % meshes.size()
+			var fv := FileAccess.open(dir.path_join(nm + "_v.bin"), FileAccess.WRITE)
+			fv.store_buffer(wp.to_byte_array())
+			var fi := FileAccess.open(dir.path_join(nm + "_i.bin"), FileAccess.WRITE)
+			fi.store_buffer(ind.to_byte_array())
+			meshes.append({"name": nm, "node": String(mi.name), "sail": is_sail,
+				"albedo": [col.r, col.g, col.b]})
+	# the camera in the boat's yaw frame: side +1 = leeward (port when the wind is from starboard)
+	var cam: Dictionary = spec["cam"]
+	var o := bv.transform.origin
+	var bow := Frames.compass_dir(st.psi)
+	var port := Vector3(bow.z, 0.0, -bow.x)  # bow turned a quarter anticlockwise seen from above (west of north)
+	var lee := port * (1.0 if st.awa >= 0.0 else -1.0)
+	var d := float(cam["dist"])
+	var eye := o + lee * float(cam["side"]) * d * sqrt(maxf(0.0, 1.0 - pow(float(cam["fwd"]), 2))) \
+		+ bow * float(cam["fwd"]) * d + Vector3.UP * float(cam["up"]) * d
+	var mast_h := 0.45 * float(bv.info.physics.get("rig", {}).get("masthead", [0, 0, 10])[2])
+	var target := o + Vector3.UP * mast_h
+	var scene := {"meshes": meshes, "eye": [eye.x, eye.y, eye.z], "target": [target.x, target.y, target.z],
+		"note": note}
+	var f := FileAccess.open(dir.path_join("scene.json"), FileAccess.WRITE)
+	f.store_string(JSON.stringify(scene, "  "))
+
+
+static func _visible_chain(n: Node, top: Node) -> bool:
+	var x := n
+	while x != null and x != top:
+		if x is Node3D and not (x as Node3D).visible:
+			return false
+		x = x.get_parent()
+	return true

@@ -2,11 +2,11 @@ class_name SailGrid
 ## Maps the vertices of an imported boatgen sail mesh back to the sail grid.
 ##
 ## boatgen writes each sail as a regular grid (rows from foot to head, columns from luff to leech) in two layers,
-## port layer first, and the physics sidecar describes deformation in that order. Godot's glTF importer does
-## not keep the vertex order: it re-indexes every surface, so vertices come out in order of first use by the
-## triangles and unreferenced ones are dropped. The grid position is still in the data: uv1 is
-## (chord fraction, 1 - height fraction), mirrored in u on the starboard layer, and the flat sail's port layer
-## lies on +X. This rebuilds the index from those.
+## port layer first, and the physics sidecar describes deformation in that order. That order holds in the GLB
+## file only: Godot's glTF importer re-indexes every surface (vertices in order of first use by the triangles).
+## The stable key is the boatgen contract (tools/boatgen/README.md "Sail grid"): uv1 is exactly
+## (col / (cols - 1), 1 - row / (rows - 1)), mirrored in u on the starboard layer, and the flat sail's port
+## layer lies on +X. Every grid vertex is referenced, so none is dropped. This rebuilds the index from the key.
 
 
 ## For each vertex of `mesh` surface `surface`, its grid index `layer * rows * cols + row * cols + col`

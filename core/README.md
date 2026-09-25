@@ -76,7 +76,7 @@ Sources live in `src/<module>/`, included as `"module/header.h"`, all in namespa
 | `src/rules/` | the racing rules engine: tack and tacking, relations, right of way, the keep-clear, escape and mark-room tests, rules 14 to 19, 22, 31 and boundaries, incidents, penalties, penalty turns, deadlines and disqualification | rules.md |
 | `src/world/` | `World`: one tick in the order of `conventions.md` §4.1 over the boats, wind, sea, shadows, collisions, race and rules; creating a race, controls, events, the tick checksum | conventions.md §4.1, race.md §1 |
 | `tests/` | doctest suite and the math vector file | |
-| `tools/` | `gen_math_vectors.cpp`, `gen_env_vectors.cpp` | |
+| `tools/` | `gen_math_vectors.cpp`, `gen_env_vectors.cpp`; `gen_sea_render_samples.cpp` (sea and puff samples for the front end's water checks, `game/tests/run_water_test.sh`) | |
 | `third_party/doctest/` | doctest 2.4.12 (MIT), test framework | |
 
 Planned modules, one directory each under `src/`, in the tick order of `conventions.md` §4.1:

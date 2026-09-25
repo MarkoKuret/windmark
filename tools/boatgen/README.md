@@ -16,11 +16,12 @@ python3 -m boatgen ../../data/classes/wm12.boat.json ../../data/classes/wm7.boat
 ```
 
 Options: `--out DIR` (default `tools/boatgen/out/`, not committed), `--previews DIR` (default
-`tools/boatgen/previews/`), `--no-previews`, `--size 1600x1000`, `--quiet`. About 8 s per boat on an M-series Mac.
+`tools/boatgen/previews/`), `--no-previews`, `--no-textures` (PBR factors only), `--no-bake` (no baked AO),
+`--size 1600x1000`, `--quiet`. About 15 s per boat on an M-series Mac.
 
-Dependencies: Python 3.9+, `numpy`, `Pillow`; previews also need `moderngl` (`pip3 install --user moderngl`),
-which opens a headless OpenGL 4.1 context (no window). Nothing else: the GLB writer, triangulation, lofting and
-hydrostatics are in this package.
+Dependencies: Python 3.9+, `numpy`, `Pillow`, `moderngl` (`pip3 install --user moderngl`) for the AO bake and the
+previews, which opens a headless OpenGL 4.1 context (no window); `--no-bake --no-previews` runs without it.
+Nothing else: the GLB writer, triangulation, lofting and hydrostatics are in this package.
 
 ## Outputs (per class, in `--out`)
 
@@ -33,7 +34,7 @@ hydrostatics are in this package.
 
 Previews in `previews/`: `<id>_upwind.png` (heeled, trimmed, demo livery), `<id>_downwind.png` (spinnaker set),
 `<id>_profile.png` (the exported model as is, dry, from starboard), `<id>_deck.png` (cockpit and deck
-hardware), `<id>_uv.png` (0.25 m checker on uv0 of every surface) and `<id>_lines.png` (lines plan: profile with
+hardware), `<id>_detail.png` (close on the cabin side and side deck: texture set and baked AO), `<id>_uv.png` (0.25 m checker on uv0 of every surface) and `<id>_lines.png` (lines plan: profile with
 buttocks, half-breadths with waterlines, body plan).
 
 ## Tests
@@ -179,9 +180,37 @@ it out.
 
 ## Materials and UVs
 
-Material slots (glTF material names, PBR factors only, no textures): `gelcoat`, `nonslip`, `antifouling`,
-`boottop`, `carbon`, `metal`, `sailcloth`, plus `glass`, `rope` and `rubber`. Each material's `extras.tiling_m`
-suggests the size of one tile of its texture.
+Material slots (glTF material names): `gelcoat`, `nonslip`, `antifouling`, `boottop`, `carbon`, `metal`,
+`sailcloth`, plus `glass`, `rope` and `rubber`. Each material's `extras.tiling_m` is the size of one tile of its
+texture in metres of uv0, and `extras.texture_set` names its set.
+
+**Texture set** (`boatgen/textures.py`, images in `textures/`). Every slot but `glass` has a tiling
+`baseColorTexture` (grey detail), `metallicRoughnessTexture` (roughness in G, metallic in B) and, except
+`sailcloth`, a `normalTexture` (OpenGL convention), all on uv0 with a `KHR_texture_transform` scale of
+`1 / tiling_m`. The textures vary around a fixed mean, and the factors are the slot's mean colour and roughness
+divided by that mean, so a slot looks the same on average with or without its textures. Sets are shared between
+slots and each image is embedded once per GLB (JPEG, 512 x 512, about 1.2 MB in all):
+
+| set | slots | tile (m) | source (CC0, docs/THIRD_PARTY.md) |
+| --- | --- | --- | --- |
+| `orange_peel` | gelcoat, boottop | 0.5 | ambientCG Plastic013A |
+| `pebble` | nonslip | 0.25 | ambientCG Leather026 |
+| `grain` | antifouling, rubber | 0.5, 0.1 | ambientCG Rubber004 |
+| `carbon_twill` | carbon | 0.05 | ambientCG Fabric004 |
+| `brushed` | metal | 0.2 | ambientCG Metal009 |
+| `weave` | sailcloth | 0.5 | ambientCG Fabric062 (no normal map: the run-time sail mesh has no tangents) |
+| `braid` | rope | 0.05 | ambientCG Rope002 |
+
+`python3 -m boatgen.textures [--cache DIR]` downloads the 1K sources again and rewrites `textures/`; the build
+only reads the processed files.
+
+**Baked ambient occlusion** (`boatgen/bake.py`). Every node except the sails and the mainsheet (deformed or
+rebuilt at run time) carries per-vertex AO as `COLOR_0` (unsigned byte, normalised, grey, alpha 1): the
+cosine-weighted share of 160 directions over the vertex's hemisphere in which the fixed model (sails excluded)
+does not hide it, from GPU depth maps. glTF multiplies the base colour by `COLOR_0`; Godot imports it with
+`vertex_color_use_as_albedo` on those slots. The pivoting nodes (rudder, boom, wheel, pole) are baked in their
+rest position. Straight swept parts (tubes, wires, tracks) are split into segments of at most 0.5 m so the AO
+has vertices to vary on.
 
 - **uv0** is metric everywhere, for tiling PBR textures: hull `u` = x along the length, `v` = girth from the keel
   (both in metres); deck, cabin top and cockpit floor planar (x, y); walls (along, height); sails (distance from
@@ -191,8 +220,20 @@ suggests the size of one tile of its texture.
   (chord fraction, 1 - height fraction), with the starboard layer mirrored in `u` so a decal reads correctly from
   both sides.
 
-The sails are two layers 2 mm apart, each with its own outward normal. Vertex order in each layer is row-major:
-vertex (row i from the foot, column j from the luff) is index `i · cols + j`; the port layer comes first.
+### Sail grid
+
+The sails are two layers 2 mm apart, each with its own outward normal (port layer `+y`, starboard `-y` on the
+flat sail). Each layer is the full `rows × cols` grid with two triangles per cell, `4 (rows - 1)(cols - 1)`
+triangles in all: on a pointed head the whole head row is one point and its zero-area triangles are kept, so every
+vertex is referenced and carries the layer normal.
+
+- **In the GLB file** the vertex order is row-major: vertex (row i from the foot, column j from the luff) of layer
+  `k` (0 = port) is index `k · rows · cols + i · cols + j`.
+- **In an engine** that order is not guaranteed: Godot's glTF importer re-indexes every mesh (vertices in order of
+  first use by the triangles). The stable key of a vertex is its **uv1 plus its layer side**: uv1 is exactly
+  `(j / (cols - 1), 1 - i / (rows - 1))` (float32), with `u` mirrored (`1 - j / (cols - 1)`) on the starboard
+  layer, and the layer is the side of the flat sail's centreline plane the vertex lies on (port `+y`, glTF `+X`).
+  `game/scripts/sail_grid.gd` rebuilds the grid index from that key; `tests/test_sail_grid.py` holds it.
 
 ## Physics sidecar (`<id>.physics.json`)
 
@@ -210,9 +251,9 @@ Positions in the body frame.
 
 ## Limits and next steps
 
-- The look relies on geometry and flat PBR factors. A shipped boat needs texture sets for each slot (gelcoat
-  with subtle orange peel, non-slip, carbon weave, sailcloth with panels and film), baked ambient occlusion for
-  the hull and deck, and livery decals through uv1.
+- Tiling detail textures and per-vertex AO only: no unique-UV (lightmap) set, so no AO or dirt texture maps;
+  sail panels, tapes and film are not in the sailcloth texture (the previews draw seams procedurally); livery
+  decals through uv1 still need a shader.
 - No crew, running rigging (halyards, sheets other than the mainsheet), instruments or sail numbers yet; the
   organisers at the mast foot are single blocks.
 - The flat spinnaker outline is a centreline projection; its flying shape comes from the simulation.

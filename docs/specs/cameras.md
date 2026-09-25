@@ -50,7 +50,8 @@ view    = look along (target - eye + (0, lift, 0)), up = +Y   // the lift moves 
 - Heel and pitch are not followed. The heave is followed only through `tau_heave`, so the camera does not bob with
   each wave; a "follow the waves" option sets `tau_heave = 0`.
 - Player input: orbit `az` at 120°/s and `el` at 60°/s at full deflection (keys, stick) or 0.3° per pixel of mouse
-  drag; zoom `R` by ×1.12 per wheel notch or ×2 per second held (keys, triggers); `fov` with modifier + zoom.
+  drag (drag right = `az` +, drag down = `el` +); zoom `R` by ×1.12 per wheel notch or ×2 per second held (keys,
+  triggers); `fov` with the `camera_fov` modifier (Alt, `controls.md` §3) + zoom, by the same factors.
 - **Recentre** (`controls.md`): `R = R0`, `el = 13.5°`, `az = 0`, `fov = 40°`. Optional auto-recentre of `az` after
   5 s without camera input (off by default), with `τ = 1 s`.
 
@@ -85,7 +86,9 @@ roll  = heel_follow * phi                                       // horizon: leve
 | `look_pitch` | 0 | −60° … +75° |
 
 - Looking around: mouse drag (0.15° per pixel) or right stick as an absolute look (stick direction = look direction
-  scaled to the limits); on release the look returns to centre with `τ = 0.6 s` (option: stay).
+  scaled to the limits), or the orbit keys as a rate (90°/s yaw, 60°/s pitch); on release the look returns to
+  centre with `τ = 0.6 s` (option: stay).
+- Zoom changes `fov` within its range (×1.12 per notch, ×2 per second held).
 - The near plane is 0.1 m (the boom, the backstay and the crew pass close to the eye).
 - The own boat is drawn; nothing of it is hidden.
 
@@ -106,13 +109,13 @@ upd    = compass of the chosen up direction (smoothed: boat heading τ = 0.5 s, 
 eye    = target + H * (sin(upd + PI)*cos(tilt), sin(tilt), -cos(upd + PI)*cos(tilt))   // tilt < 90: from astern of up
 view   = look at target; screen up = the horizontal direction upd (for tilt = 90)
 ```
-Zoom changes `H` (×1.12 per notch, ×2 per second held); the orbit keys turn `up` by hand (which sets `up` to a fixed
-compass angle until recentred). Recentre: `H = 250 m`, `tilt = 90°`, `up` = the player's chosen default.
+Zoom changes `H` (×1.12 per notch, ×2 per second held); the orbit keys turn `up` by hand at 120°/s (which sets `up`
+to a fixed compass angle until recentred) and change `tilt` at 60°/s within its range. Recentre: `H = 250 m`, `tilt = 90°`, `up` = the player's chosen default.
 
 ## 5. Free camera
 
 A fly camera for looking around the course, spectating and replays.
-- Translation along the view (forward/back, strafe, up/down) at `v = 10·(1 + h/20)` m/s at full input, `h` = height
+- Translation along the view (forward/back, strafe, up/down; keys in `controls.md` §3 "Free camera flying") at `v = 10·(1 + h/20)` m/s at full input, `h` = height
   above the sea; ×4 with the boost modifier. No inertia beyond a 0.15 s smoothing of the velocity.
 - Mouse look (0.15° per pixel) or right stick (90°/s yaw, 60°/s pitch); pitch limited to ±89°; roll 0.
 - Kept at least 1 m above the sea (§7) and within 10 km of the venue origin.

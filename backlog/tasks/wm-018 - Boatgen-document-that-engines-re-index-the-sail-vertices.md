@@ -1,9 +1,11 @@
 ---
 id: WM-018
 title: 'Boatgen: document that engines re-index the sail vertices'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-09-25 13:43'
+updated_date: '2026-09-25 16:42'
 labels:
   - boats
 dependencies: []
@@ -19,6 +21,6 @@ The sidecar promises row-major sail vertex order. That holds in the GLB file, bu
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 tools/boatgen/README.md and the sidecar vertex_order text say the order holds in the file only, and that uv1 plus the layer side is the stable key (or a TEXCOORD_2 grid attribute is added and documented)
-- [ ] #2 uv1 on sails stays exact grid fractions (tested)
+- [x] #1 tools/boatgen/README.md and the sidecar vertex_order text say the order holds in the file only, and that uv1 plus the layer side is the stable key (or a TEXCOORD_2 grid attribute is added and documented)
+- [x] #2 uv1 on sails stays exact grid fractions (tested)
 <!-- AC:END -->

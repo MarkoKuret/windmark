@@ -19,6 +19,8 @@ def main(argv=None):
     ap.add_argument("--previews", default=os.path.join(here, "previews"), help="preview image directory")
     ap.add_argument("--no-previews", action="store_true", help="skip rendering")
     ap.add_argument("--size", default="1600x1000", help="preview size WxH")
+    ap.add_argument("--no-textures", action="store_true", help="PBR factors only, no embedded texture set")
+    ap.add_argument("--no-bake", action="store_true", help="skip the baked ambient occlusion (COLOR_0)")
     ap.add_argument("--quiet", action="store_true")
     a = ap.parse_args(argv)
     # numpy's BLAS on some platforms raises spurious floating-point flags inside matmul; the GLB writer
@@ -34,6 +36,7 @@ def main(argv=None):
             print(f"{path}: {e}", file=sys.stderr)
             return 2
         boat = Boat(cls, log=log)
+        boat.textures, boat.bake = not a.no_textures, not a.no_bake
         cid = cls["id"]
         glb = os.path.join(a.out, f"{cid}.glb")
         boat.write_glb(glb)

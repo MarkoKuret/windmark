@@ -1,0 +1,17 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scenes/sea/sky_rig.gd" id="1_rig"]
+[ext_resource type="Environment" path="res://scenes/sea/env_day.tres" id="2_env"]
+
+[node name="SkyDay" type="Node3D"]
+script = ExtResource("1_rig")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = ExtResource("2_env")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+light_color = Color(1, 0.94, 0.86, 1)
+light_energy = 1.6
+shadow_enabled = true
+directional_shadow_mode = 1
+directional_shadow_max_distance = 200.0

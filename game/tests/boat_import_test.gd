@@ -9,7 +9,8 @@ extends SceneTree
 ##   - node set and triangle counts match the sidecar
 ##   - material slots present, imported as StandardMaterial3D with the boatgen PBR factors
 ##   - pivot nodes (rudder, boom, wheel, pole) sit on the sidecar pivots, with geometry around them
-##   - sails keep the row-major two-layer grid that run-time deformation relies on
+##   - sails: every node of the two-layer grid survives the import and maps back to its grid index by uv1 and
+##     the layer side (SailGrid), the contract that run-time deformation relies on
 ##   - collision GLB imports as static bodies with convex shapes and no visible meshes
 ##
 ## Run: godot --headless --path game -s res://tests/boat_import_test.gd
@@ -227,6 +228,10 @@ func _test_materials(id: String, parts: Dictionary) -> void:
 			_check(nm in KNOWN_MATERIALS, "%s surface %d material '%s' is a boatgen slot" % [part.name, s, nm])
 			if found.has(nm):
 				_check(found[nm] == m, "material %s is one shared resource" % nm)
+			# Baked AO as vertex colours on the fixed model (not on the sails or the rebuilt mainsheet).
+			if not (String(part.name).begins_with("sail_") or part.name == "mainsheet"):
+				var col = mesh.surface_get_arrays(s)[Mesh.ARRAY_COLOR]
+				_check(col != null and (col as PackedColorArray).size() > 0, "%s surface %d carries baked AO colours" % [part.name, s])
 			found[nm] = m
 	for nm in REQUIRED_MATERIALS:
 		_check(found.has(nm), "%s has material slot %s" % [id, nm])
@@ -237,6 +242,11 @@ func _test_materials(id: String, parts: Dictionary) -> void:
 			m.cull_mode, " tiling %s" % m.get_meta("extras")["tiling_m"] if m.has_meta("extras") else ""]
 		if m.has_meta("extras"):
 			tiling += 1
+		# Texture set (tools/boatgen/boatgen/textures.py): tiling on uv0, one image per tiling_m metres.
+		if m.has_meta("extras") and m.get_meta("extras").has("texture_set"):
+			var s := 1.0 / float(m.get_meta("extras")["tiling_m"])
+			_check(m.albedo_texture != null and m.roughness_texture != null, "%s has its albedo and roughness textures" % nm)
+			_check(absf(m.uv1_scale.x - s) < 1e-4 and absf(m.uv1_scale.y - s) < 1e-4, "%s uv scale %s is 1 / tiling_m" % [nm, m.uv1_scale])
 		_check(m.cull_mode == BaseMaterial3D.CULL_BACK, "%s culls back faces" % nm)
 		_check(m.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED, "%s is opaque" % nm)
 	print(line)
@@ -294,9 +304,9 @@ func _test_sails(side: Dictionary, parts: Dictionary) -> void:
 		var full_tris := 4 * (rows - 1) * (cols - 1)
 		print("  %s: grid %d x %d, %d of %d vertices, %d of %d triangles" % [node, rows, cols, p.size(), 2 * layer,
 			idx.size() / 3, full_tris])
-		_check(p.size() <= 2 * layer and p.size() >= 2 * layer - 2 * cols, "%s vertex count %d close to 2 x %d x %d" % [node, p.size(), rows, cols])
-		if idx.size() / 3 != full_tris:
-			_warn("%s has %d triangles, not the full grid's %d (degenerate head triangles left out)" % [node, idx.size() / 3, full_tris])
+		# Full grid topology: every node referenced (zero-area head cells kept), so the importer drops none.
+		_check(p.size() == 2 * layer, "%s vertex count %d is 2 x %d x %d" % [node, p.size(), rows, cols])
+		_check(idx.size() / 3 == full_tris, "%s has %d triangles, the full grid's %d" % [node, idx.size() / 3, full_tris])
 		# The importer reorders vertices; SailGrid recovers each one's grid node from uv1 and the layer side.
 		var g := SailGrid.grid_index(mesh, rows, cols)
 		var at := {}
@@ -312,7 +322,7 @@ func _test_sails(side: Dictionary, parts: Dictionary) -> void:
 			for k in 2 * layer:
 				if not at.has(k):
 					missing.append("L%d r%d c%d" % [k / layer, (k % layer) / cols, k % cols])
-			_warn("%s: grid nodes missing after import (unreferenced in the GLB): %s" % [node, ", ".join(missing)])
+			_check(false, "%s: grid nodes missing after import (unreferenced in the GLB): %s" % [node, ", ".join(missing)])
 		# Corners from the sidecar.
 		for corner in sail["corners"]:
 			var c: Dictionary = sail["corners"][corner]
@@ -320,7 +330,7 @@ func _test_sails(side: Dictionary, parts: Dictionary) -> void:
 			var want := _body_to_model(c["position"])
 			for l in 2:
 				if not at.has(k + l * layer):
-					_warn("%s %s corner (grid node %d) is not in the imported mesh" % [node, corner, k + l * layer])
+					_check(false, "%s %s corner (grid node %d) is in the imported mesh" % [node, corner, k + l * layer])
 					continue
 				_near_v(p[at[k + l * layer]], want, 0.01, "%s %s on the %s layer" % [node, corner, ["port", "starboard"][l]])
 		# Layers pair node by node, 2 mm apart, port on +X, normals outward.

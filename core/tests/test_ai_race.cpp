@@ -32,7 +32,16 @@ TEST_CASE("ai dev: one race of 10 Intermediate boats" * doctest::skip(std::geten
   wm_test::AiRaceSpec sp;
   sp.seed = std::getenv("AI_SEED") != nullptr ? std::strtoull(std::getenv("AI_SEED"), nullptr, 10) : 1;
   sp.levels.assign(std::getenv("AI_N") != nullptr ? std::strtoul(std::getenv("AI_N"), nullptr, 10) : 10,
-                   wm::AiLevel::intermediate);
+                   std::getenv("AI_LEVEL") != nullptr
+                       ? static_cast<wm::AiLevel>(std::strtoul(std::getenv("AI_LEVEL"), nullptr, 10))
+                       : wm::AiLevel::intermediate);
+  if (std::getenv("AI_MIXED") != nullptr) {
+    for (std::size_t k = 0; k < sp.levels.size(); ++k) sp.levels[k] = static_cast<wm::AiLevel>(k % 4);
+  }
+  if (std::getenv("AI_WM12") != nullptr) {
+    for (std::size_t k = 0; k < sp.levels.size(); ++k) sp.classes.push_back(k % 2 == 1 ? "wm12" : "wm7");
+  }
+  if (std::getenv("AI_WIND") != nullptr) sp.wind_kn = std::strtof(std::getenv("AI_WIND"), nullptr);
   sp.trace = std::getenv("AI_TRACE");
   {
     auto w = wm_test::ai_world(sp);

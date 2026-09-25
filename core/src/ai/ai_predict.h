@@ -30,6 +30,8 @@ struct OwnPlan {
   float twd = 0.0f;
   float decel_linear = 0.0f, decel_const = 0.0f;
   float delay = 0.0f;    // s before acting (reaction)
+  float v_target = 0.0f; // with sails drawing the speed grows towards this at `accel` (0: constant speed)
+  float accel = 0.0f;
 };
 void predict_plan(const Motion& m, const OwnPlan& p, std::int32_t samples, Track& out);
 

@@ -105,7 +105,13 @@ void own_track(const Me& m, float psi_to, std::int8_t turn, bool slow, bool mano
     const float R = radius_for_helm(m.b.perf().dynamics, 0.6f);
     rate = max(0.5f, mo.v) / R;
   }
-  predict_plan(mo, plan_to(m, psi_to, turn, slow, rate), kSamples, out);
+  OwnPlan p = plan_to(m, psi_to, turn, slow, rate);
+  // A slow boat with the sails drawing picks up speed (boat.md §5.8): without it a stopped boat sees no way out.
+  const float twa = std::fabs(wrap_pi(m.twd - psi_to));
+  const std::int32_t front = m.b.sails().front();
+  p.v_target = m.b.polar_at(max(0.5f, m.tws), twa, front) * m.scale;
+  p.accel = 0.5f * m.b.accel_at(max(0.5f, m.tws), twa, front);
+  predict_plan(mo, p, kSamples, out);
 }
 
 struct Candidate {
@@ -118,7 +124,27 @@ struct Candidate {
 
 }  // namespace
 
+// The hull along a predicted track stays clear of every course object (a tack or gybe does not sweep into a mark).
+bool track_clear_of_objects(AC& x, const AB& a, const Track& own) {
+  const std::vector<Vec2>& oh = hull(x, static_cast<std::size_t>(a.i));
+  const float ro = x.r_hull[static_cast<std::size_t>(a.i)];
+  std::vector<Vec2> placed;
+  for (const CourseObject& o : x.course.objects) {
+    for (std::size_t k = 0; k < own.c.size(); k = k + 2) {
+      if (v_dist(own.c[k], o.c) - ro - o.r > 1.0f) continue;
+      place_outline(oh, own.c[k], own.psi[k], placed);
+      if (point_in_polygon(o.c, placed) || point_polygon_edge_dist(o.c, placed) < o.r + 0.3f) return false;
+    }
+  }
+  return true;
+}
+
 bool tack_safe(AC& x, AB& a, const Me& m, float psi_new, bool gybe) {
+  {
+    Track own;
+    own_track(m, psi_new, static_cast<std::int8_t>(gybe ? -m.tack : m.tack), false, true, own);
+    if (!track_clear_of_objects(x, a, own)) return false;
+  }
   if (!x.race.rules_live()) return true;
   static thread_local std::vector<std::size_t> nb;
   neighbours(x, a, m, 5.0f * m.L + 2.0f * x.r_hull[static_cast<std::size_t>(a.i)], nb);
@@ -249,6 +275,13 @@ void avoid_objects(AC& x, AB& a, const Me& m, std::int32_t skip_mark) {
   const float side = v_cross(f, v_sub(hit->c, m.c)) > 0.0f ? 1.0f : -1.0f;  // > 0: object to the left
   float psi = wrap_2pi(brg + side * g);
   float twa = wrap_pi(m.twd - psi);
+  if (std::fabs(twa) < m.theta_up - 2.0f * DEG && hit->mark == skip_mark) {
+    // The mark being rounded is passed on its side only: tack away from it, or pinch and slow.
+    if (request_tack(x, a, m, AiTactic::Rounding, true)) return;
+    a.psi_target = heading_for(m.twd, m.tack * m.theta_up);
+    a.let_fly = true;
+    return;
+  }
   if (std::fabs(twa) < m.theta_up - 2.0f * DEG) {
     // Not sailable that way: the other side.
     psi = wrap_2pi(brg - side * g);
@@ -347,6 +380,7 @@ void rules_overlay(AC& x, AB& a, const Me& m, Vec2 aim) {
         }
         Track own;
         own_track(m, c.psi, c.turn, c.slow, c.manoeuvre, own);
+        if (!track_clear_of_objects(x, a, own)) continue;  // never into a mark or a committee boat
         const float gB = tracks_gap(hull(x, jB), x.r_hull[jB], tB, oh, x.r_hull[i], own, 0, kSamples, 4.0f * m.L);
         if (gB < mg) continue;
         bool contact = false;

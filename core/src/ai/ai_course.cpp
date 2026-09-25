@@ -168,6 +168,7 @@ Vec2 pass_point(const MarkTarget& t, Vec2 d, float margin) {
 bool round_mark(AC& x, AB& a, const Me& m, const MarkTarget& t) {
   a.round_mark = t.mark;
   a.tactic = AiTactic::Rounding;
+  a.pend_tack = 0;  // the rounding decides its own tacks
   if (a.man == Man::tack) {
     // A tack in progress keeps its target (the new tack's close-hauled heading).
     a.psi_target = heading_for(m.twd, static_cast<float>(a.man_to) * m.theta_up);

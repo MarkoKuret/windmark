@@ -194,6 +194,7 @@ var _turn_prev := 0.0
 var _reset_ticks := 0
 var _summary_done := false
 var _tick := 0
+var _events_tick := -1
 
 
 func _k(tau: float) -> float:
@@ -289,8 +290,11 @@ func tick(sim: SimSource, b: int) -> void:
 	_rules(sim, b)
 	_penalties(sim, b, rb, s)
 	_radar(sim, b)
-	_events(sim, b)
-	_timers()
+	# events and timers once per simulation tick (a scene may tick the HUD again without a step, e.g. on reset)
+	if sim.tick() != _events_tick:
+		_events_tick = sim.tick()
+		_events(sim, b)
+		_timers()
 
 
 # ---- wind filters (clean wind at the boat, hud.md §3.2, §6, ai.md §3.3) ----
@@ -411,7 +415,7 @@ func _next_mark(sim: SimSource, rb: Dictionary, s: SimSource.BoatState) -> void:
 	laps = int(_course.get("laps", 1))
 	legs = steps.size() - 1
 	var k := int(rb.get("next", 0))
-	next_step = k if k > 0 and k < steps.size() and not finished else -1
+	next_step = k if k > 0 and k < steps.size() and not finished and not bool(rb.get("ghost", false)) else -1
 	next_sides.clear()
 	leg_type = ""
 	eta = NAN
@@ -664,13 +668,21 @@ func _position(sim: SimSource, b: int) -> void:
 	ahead = shown_order[idx - 1] if idx > 0 else -1
 	behind = shown_order[idx + 1] if idx >= 0 and idx + 1 < shown_order.size() else -1
 	var d_me := float(sim.race_boat(b).get("D", 0.0))
+	# D is the course distance only for boats that have started (before, the distance to the start line)
+	if not _racing_on_course(sim, b) and not finished:
+		ahead = -1
+		behind = -1
+	if ahead >= 0 and not _racing_on_course(sim, ahead):
+		ahead = -1
+	if behind >= 0 and not _racing_on_course(sim, behind):
+		behind = -1
 	ahead_dist = d_me - float(sim.race_boat(ahead).get("D", 0.0)) if ahead >= 0 else 0.0
 	behind_dist = d_me - float(sim.race_boat(behind).get("D", 0.0)) if behind >= 0 else 0.0
 	gap_time = NAN
 	gap_estimate = false
 	gap_at = ""
 	gap_dist = 0.0
-	if leader < 0 or leader == b or not started:
+	if leader < 0 or leader == b or not started or (not finished and not _racing_on_course(sim, b)):
 		return
 	var rl := sim.race_boat(leader)
 	gap_dist = maxf(0.0, d_me - float(rl.get("D", 0.0)))
@@ -692,6 +704,11 @@ func _position(sim: SimSource, b: int) -> void:
 	if vref > 0.05:
 		gap_time = gap_dist / vref
 		gap_estimate = true
+
+
+func _racing_on_course(sim: SimSource, i: int) -> bool:
+	var r := sim.race_boat(i)
+	return bool(r.get("started", false)) and not bool(r.get("ghost", false))
 
 
 func _step_label(k: int) -> String:

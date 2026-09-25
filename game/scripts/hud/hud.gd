@@ -200,6 +200,9 @@ func _panel(n: String, parent: Control, preset := -1) -> PanelContainer:
 	var pc := PanelContainer.new()
 	pc.name = n
 	pc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# in a column each panel keeps its own width
+	pc.size_flags_horizontal = Control.SIZE_SHRINK_CENTER if parent.name == "Top" \
+		else Control.SIZE_SHRINK_END if parent.name == "Right" else Control.SIZE_SHRINK_BEGIN
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0, 0, 0, 0.45)
 	sb.set_corner_radius_all(6)

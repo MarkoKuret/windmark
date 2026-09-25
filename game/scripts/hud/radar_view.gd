@@ -1,7 +1,7 @@
 class_name RadarView
 extends Control
 ## hud.md §8 radar: centred on the viewed boat, heading-up (default) or north-up, range 100 m to 3 km in x1.5
-## steps (remembered in user://hud.cfg). Boats as oriented icons of at least 6 px coloured by the pair records
+## steps (remembered in user://hud.cfg). Boats as oriented icons of at least 8 px coloured by the pair records
 ## (RaceHudValues.contacts: red I keep clear, green she keeps clear, orange I owe room, cyan she owes me room,
 ## white none, grey translucent ghosts), pulsing at 2 Hz on Warning and 4 Hz with an outline on Breach. Marks:
 ## the next step in yellow with its rounding arrow and zone circle, the following step in white, the others as
@@ -98,23 +98,26 @@ func contact_colour(ct: RaceHudValues.Contact) -> Color:
 	return col
 
 
-func _draw() -> void:
+## The radar as drawing primitives in its own coordinates (what _draw renders; offline previews read it):
+## [{k: "circle"|"arc"|"line"|"poly"|"polyline"|"text", ...}]
+func primitives() -> Array:
+	var out := []
+	_prims = out
 	drawn.clear()
 	var r := minf(size.x, size.y) * 0.5
 	var c := size * 0.5
-	draw_circle(c, r, Color(0.02, 0.08, 0.14, 0.72))
-	draw_arc(c, r, 0.0, TAU, 64, Color(1, 1, 1, 0.35), 1.5)
-	draw_arc(c, r * 0.5, 0.0, TAU, 48, Color(1, 1, 1, 0.12), 1.0)
-	var font := get_theme_default_font()
-	draw_string(font, Vector2(4, size.y - 4), HudFormat.distance(range_m()), HORIZONTAL_ALIGNMENT_LEFT, -1, 12,
+	_c(c, r, Color(0.02, 0.08, 0.14, 0.72))
+	_a(c, r, 0.0, TAU, 64, Color(1, 1, 1, 0.35), 1.5)
+	_a(c, r * 0.5, 0.0, TAU, 48, Color(1, 1, 1, 0.12), 1.0)
+	_s(Vector2(4, size.y - 4), HudFormat.distance(range_m()), HORIZONTAL_ALIGNMENT_LEFT, -1, 12,
 		Color(1, 1, 1, 0.7))
-	draw_string(font, Vector2(size.x - 18, size.y - 4), "N" if north_up else "H", HORIZONTAL_ALIGNMENT_LEFT, -1, 12,
+	_s(Vector2(size.x - 18, size.y - 4), "N" if north_up else "H", HORIZONTAL_ALIGNMENT_LEFT, -1, 12,
 		Color(1, 1, 1, 0.7))
 	if sim == null or values == null or not values.active:
-		return
+		return out
 	var me := sim.render_pose(values.boat, alpha)
 	if me == null:
-		return
+		return out
 	var o := Vector2(me.pos_x, me.pos_y)
 	var rot := 0.0 if north_up else me.psi
 	var scale := r / range_m()
@@ -160,24 +163,24 @@ func _draw() -> void:
 			if not clip.call(q):
 				q = c + (q - c).normalized() * (r - 4.0)
 			var col := Color(0.95, 0.8, 0.2) if k == nk else Color(0.95, 0.95, 0.95)
-			draw_circle(q, 4.0, col)
+			_c(q, 4.0, col)
 			if k == nk:
 				var zr := 3.0 * values._loa * scale
 				if zr > 5.0:
-					draw_arc(q, zr, 0.0, TAU, 32, Color(0.95, 0.8, 0.2, 0.5), 1.0)
+					_a(q, zr, 0.0, TAU, 32, Color(0.95, 0.8, 0.2, 0.5), 1.0)
 				# rounding arrow: an arc on the side the boat passes, with its head in the rounding direction
 				var port := sides[i] == RaceText.Side.PORT
 				var a0 := -PI * 0.5
 				var sweep := -PI * 0.6 if port else PI * 0.6  # port: anticlockwise on screen
-				draw_arc(q, 9.0, a0, a0 + sweep, 10, col, 2.0)
+				_a(q, 9.0, a0, a0 + sweep, 10, col, 2.0)
 				var tip := q + 9.0 * Vector2(cos(a0 + sweep), sin(a0 + sweep))
-				draw_circle(tip, 2.5, col)
+				_c(tip, 2.5, col)
 	for i in marks.size():
 		if shown.has(i) or int(marks[i]["type"]) == 3:
 			continue
 		var q: Vector2 = to_px.call(Vector2(marks[i]["x"], marks[i]["y"]))
 		if clip.call(q):
-			draw_circle(q, 2.0, Color(0.7, 0.7, 0.7, 0.8))
+			_c(q, 2.0, Color(0.7, 0.7, 0.7, 0.8))
 	# boats
 	for ct in values.contacts:
 		var p := sim.render_pose(ct.boat, alpha)
@@ -197,28 +200,29 @@ func _draw() -> void:
 		if tp != null:
 			var q: Vector2 = to_px.call(Vector2(tp.pos_x, tp.pos_y))
 			if clip.call(q):
-				draw_arc(q, 9.0, 0.0, TAU, 20, Color(1, 1, 1, 0.8), 1.5)
+				_a(q, 9.0, 0.0, TAU, 20, Color(1, 1, 1, 0.8), 1.5)
 	# true wind arrow at the edge, pointing where it blows
 	var wa := twd - rot  # from
 	var edge := c + r * Vector2(sin(wa), -cos(wa))
 	var inward := (c - edge).normalized()
 	var ln := 22.0 * clampf(0.6 + 0.9 * tws / (30.0 * HudFormat.KNOT), 0.6, 1.5)
 	var head := edge + inward * ln
-	draw_line(edge, head, Color(0.6, 0.85, 1.0), 2.5)
+	_l(edge, head, Color(0.6, 0.85, 1.0), 2.5)
 	var side := Vector2(-inward.y, inward.x)
-	draw_colored_polygon(PackedVector2Array([head + inward * 6.0, head + side * 5.0, head - side * 5.0]),
+	_p(PackedVector2Array([head + inward * 6.0, head + side * 5.0, head - side * 5.0]),
 		Color(0.6, 0.85, 1.0))
+	return out
 
 
 func _boat(q: Vector2, psi_screen: float, len_px: float, col: Color, outline: bool) -> void:
-	var l := maxf(len_px, 6.0)
+	var l := maxf(len_px, 8.0)
 	var f := Vector2(sin(psi_screen), -cos(psi_screen))
 	var s := Vector2(-f.y, f.x)
 	var pts := PackedVector2Array([q + f * 0.5 * l, q - f * 0.5 * l + s * 0.22 * l, q - f * 0.5 * l - s * 0.22 * l])
-	draw_colored_polygon(pts, col)
+	_p(pts, col)
 	if outline:
 		pts.append(pts[0])
-		draw_polyline(pts, Color.WHITE, 1.5)
+		_pl(pts, Color.WHITE, 1.5)
 
 
 func _seg(a: Vector2, b: Vector2, c: Vector2, r: float, col: Color, w: float) -> void:
@@ -238,4 +242,51 @@ func _seg(a: Vector2, b: Vector2, c: Vector2, r: float, col: Color, w: float) ->
 	var t1 := clampf((-qb + sq) / (2.0 * qa), 0.0, 1.0)
 	if t1 <= t0:
 		return
-	draw_line(a + d * t0, a + d * t1, col, w)
+	_l(a + d * t0, a + d * t1, col, w)
+
+
+# ---- primitive recording and drawing ----
+
+var _prims: Array = []
+
+
+func _c(p: Vector2, r: float, col: Color) -> void:
+	_prims.append({"k": "circle", "p": p, "r": r, "col": col})
+
+
+func _a(p: Vector2, r: float, a0: float, a1: float, n: int, col: Color, w: float) -> void:
+	_prims.append({"k": "arc", "p": p, "r": r, "a0": a0, "a1": a1, "n": n, "col": col, "w": w})
+
+
+func _l(a: Vector2, b: Vector2, col: Color, w: float) -> void:
+	_prims.append({"k": "line", "a": a, "b": b, "col": col, "w": w})
+
+
+func _p(pts: PackedVector2Array, col: Color) -> void:
+	_prims.append({"k": "poly", "pts": pts, "col": col})
+
+
+func _pl(pts: PackedVector2Array, col: Color, w: float) -> void:
+	_prims.append({"k": "polyline", "pts": pts, "col": col, "w": w})
+
+
+func _s(p: Vector2, text: String, _align: int, _width: float, size_px: int, col: Color) -> void:
+	_prims.append({"k": "text", "p": p, "text": text, "size": size_px, "col": col})
+
+
+func _draw() -> void:
+	var font := get_theme_default_font()
+	for q in primitives():
+		match q["k"]:
+			"circle":
+				draw_circle(q["p"], q["r"], q["col"])
+			"arc":
+				draw_arc(q["p"], q["r"], q["a0"], q["a1"], q["n"], q["col"], q["w"])
+			"line":
+				draw_line(q["a"], q["b"], q["col"], q["w"])
+			"poly":
+				draw_colored_polygon(q["pts"], q["col"])
+			"polyline":
+				draw_polyline(q["pts"], q["col"], q["w"])
+			"text":
+				draw_string(font, q["p"], q["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, q["size"], q["col"])

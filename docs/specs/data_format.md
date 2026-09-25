@@ -93,7 +93,7 @@ compute its performance. Required fields are marked **R**; the rest have the sta
 | `E` | R | m | mainsail foot (boom length to the black band) |
 | `mast_height` | R | m | masthead above the DWL |
 | `mast_x` | R | m | body x of the mast front at the deck |
-| `boom_height` | | m | boom above the DWL [default: 0.07·P above the sheer at the mast, shared by the generator and the VPP] |
+| `boom_height` | | m | boom above the DWL [default: `mast_height - P - 0.25·s`, s = (L/12 m)^0.6 with L the generator's hull length; shared by the generator and the VPP] |
 | `fractional` | | – | forestay height / mast height above the sheer; 1 = masthead [0.8] |
 | `bowsprit` | | m | bowsprit (tack point) length forward of the stem, 0 = none [0] |
 | `pole` | | m | spinnaker pole length (symmetric spinnakers) [0] |

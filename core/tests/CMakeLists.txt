@@ -62,3 +62,10 @@ if(WINDMARK_OBJDUMP)
            COMMAND ${CMAKE_COMMAND} -DOBJDUMP=${WINDMARK_OBJDUMP} -DLIB=$<TARGET_FILE:windmark_core>
                    -P "${CMAKE_CURRENT_SOURCE_DIR}/check_no_fma.cmake")
 endif()
+
+# Front-end water renderer checks (water_render.md §9): writes the core's sea components, heights, exposure and
+# puff samples as JSON for game/tests/run_water_test.sh. Read-only use of the core.
+add_executable(windmark_gen_sea_render_samples ../tools/gen_sea_render_samples.cpp)
+target_link_libraries(windmark_gen_sea_render_samples PRIVATE windmark_core)
+target_include_directories(windmark_gen_sea_render_samples PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(windmark_gen_sea_render_samples PRIVATE ${WINDMARK_WARNINGS})

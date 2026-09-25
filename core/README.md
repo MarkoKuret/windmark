@@ -69,7 +69,7 @@ Sources live in `src/<module>/`, included as `"module/header.h"`, all in namespa
 | `src/data/` | strict JSON reader with correctly rounded binary32 numbers, load errors with JSON paths, the `windmark.perf/1` loader and validator, the `windmark.boatclass/1` header reader and the perf-to-class check; `venue`: the `windmark.venue/1` loader and validator | data_format.md |
 | `src/collide/` | `collide`: shape tests (separating axes, circle, land with its band index), the static `CollisionScene`, the tick-6 step `Collisions::step` (detection, response, contact events) and the contact pair set | collisions.md |
 | `tests/` | doctest suite and the math vector file | |
-| `tools/` | `gen_math_vectors.cpp`, `gen_env_vectors.cpp` | |
+| `tools/` | `gen_math_vectors.cpp`, `gen_env_vectors.cpp`; `gen_sea_render_samples.cpp` (sea and puff samples for the front end's water checks, `game/tests/run_water_test.sh`) | |
 | `third_party/doctest/` | doctest 2.4.12 (MIT), test framework | |
 
 Planned modules, one directory each under `src/`, in the tick order of `conventions.md` §4.1:

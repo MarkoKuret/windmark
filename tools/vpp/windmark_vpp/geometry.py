@@ -29,6 +29,7 @@ from .constants import G
 N_STATIONS = 41
 N_BOTTOM = 20        # superellipse points per side, keel to waterline
 N_TOP = 3            # topside points per side above the waterline
+CREW_FULL_HIKE = np.radians(14.0)   # heel at which the crew is fully hiked out
 
 
 def _superellipse_n(cm: float) -> float:
@@ -36,10 +37,10 @@ def _superellipse_n(cm: float) -> float:
     return brentq(lambda n: superellipse_cm(n) - cm, 0.55, 60.0)
 
 
-def _shape(xi, xm, p, end):
-    """1 at the maximum section, 0 at the bow (power p), `end` at the aft end (power 1.5 p)."""
+def _shape(xi, xm, p, end, start=0.0):
+    """1 at the maximum section, `start` at the forward end (power p), `end` at the aft end (power 1.5 p)."""
     xi = np.asarray(xi, float)
-    fwd = 1.0 - np.clip((xm - xi) / xm, 0, 1) ** p
+    fwd = 1.0 - (1.0 - start) * np.clip((xm - xi) / xm, 0, 1) ** p
     aft = 1.0 - (1.0 - end) * np.clip((xi - xm) / (1 - xm), 0, 1) ** (1.5 * p)
     return np.where(xi < xm, fwd, aft)
 
@@ -59,38 +60,54 @@ class Loft:
         from .boatclass import superellipse_cm
         if xi is None:
             return 2 * self.b * self.t * superellipse_cm(self.n)
-        bw = _shape(xi, self.body.max_section, self.p, self.body.transom_width / self.body.bwl) * self.body.bwl / 2
-        tt = _shape(xi, self.body.max_section, self.p, 1 - self.body.rocker / self.body.draft) * self.body.draft
+        bw, tt = _plan(self.body, xi, self.p)
         return 2 * bw * tt * superellipse_cm(self.n)
 
     def half_breadth(self, xi, z):
         """Half-breadth at xi (fraction of LWL) and depth z <= 0 below the body's design waterline."""
-        B = self.body
-        bw = _shape(xi, B.max_section, self.p, B.transom_width / B.bwl) * B.bwl / 2
-        tt = _shape(xi, B.max_section, self.p, 1 - B.rocker / B.draft) * B.draft
+        bw, tt = _plan(self.body, xi, self.p)
         with np.errstate(divide="ignore", invalid="ignore"):
             r = np.clip(-z / np.where(tt > 0, tt, 1), 0, 1)
             y = bw * np.clip(1 - r ** self.n, 0, 1) ** (1 / self.n)
         return np.where((tt > 0) & (-z <= tt), y, 0.0)
 
 
+def _plan(B: HullBody, xi, p):
+    """Waterline half-breadth and keel depth at xi for fullness exponent p."""
+    bw = _shape(xi, B.max_section, p, B.transom_wl / B.bwl) * B.bwl / 2
+    tt = _shape(xi, B.max_section, p, 1 - B.rocker_aft / B.draft, 1 - B.rocker_fwd / B.draft) * B.draft
+    return bw, tt
+
+
 def loft(body: HullBody) -> Loft:
+    if body.lcb is not None:
+        from dataclasses import replace
+
+        def lcb_err(xm):
+            lf = loft(replace(body, max_section=xm, lcb=None))
+            xs = np.linspace(0, 1, 401)
+            a = lf.area_curve(xs)
+            return np.trapezoid(a * xs, xs) / np.trapezoid(a, xs) - body.lcb
+
+        lo, hi = 0.30, 0.75
+        if lcb_err(lo) * lcb_err(hi) < 0:
+            body = replace(body, max_section=brentq(lcb_err, lo, hi, xtol=1e-4), lcb=None)
     n = _superellipse_n(body.cm)
-    wt = body.transom_width / body.bwl
-    te = 1.0 - body.rocker / body.draft
     xs = np.linspace(0, 1, 801)
 
     def cp_of(p):
-        return np.trapezoid(_shape(xs, body.max_section, p, wt) * _shape(xs, body.max_section, p, te), xs)
+        bw, tt = _plan(body, xs, p)
+        return np.trapezoid(bw * tt, xs) / (body.bwl / 2 * body.draft)
 
     lo, hi = cp_of(0.2), cp_of(12.0)
     cp = float(np.clip(body.cp, lo + 1e-4, hi - 1e-4))
     p = brentq(lambda q: cp_of(q) - cp, 0.2, 12.0)
     xi = np.linspace(0, 1, N_STATIONS)
-    b = _shape(xi, body.max_section, p, wt) * body.bwl / 2
-    t = _shape(xi, body.max_section, p, te) * body.draft
+    b, t = _plan(body, xi, p)
+    wt = body.transom_wl / body.bwl
     bd = np.maximum(b, _shape(xi, body.max_section, 0.7 * p, min(1.0, 1.25 * wt + 0.2)) * body.beam_deck / 2)
-    fb = body.freeboard * (1 + 0.35 * (1 - xi) ** 2)
+    f0, f1, f2 = body.freeboard          # bow, mid, stern: quadratic sheer through the three heights
+    fb = f0 * (1 - xi) * (1 - 2 * xi) + 4 * f1 * xi * (1 - xi) + f2 * xi * (2 * xi - 1)
     return Loft(body=body, n=n, p=p, xi=xi, b=b, t=t, bd=bd, fb=fb)
 
 
@@ -185,7 +202,7 @@ def hydrostatics(boat: Boat, heel_deg_max: float = 90.0, dheel_deg: float = 1.0)
     P = np.concatenate(polys)           # (S, M, 2)
     w = np.concatenate(weights)         # (S,)
     owner = np.concatenate(owner)
-    V = boat.volume
+    V = boat.volume - boat.app_volume      # the canoe bodies carry the weight less the appendages' buoyancy
     phis = np.radians(np.arange(0.0, heel_deg_max + 1e-9, dheel_deg))
     c, s = np.cos(phis), np.sin(phis)
     # heel lowers +y (leeward)
@@ -205,16 +222,24 @@ def hydrostatics(boat: Boat, heel_deg_max: float = 90.0, dheel_deg: float = 1.0)
     h = 0.5 * (lo + hi)
     A, My, Mz, girth = _clip_integrals(R, np.broadcast_to(h[:, None], (K, P.shape[0])))
     vol = A @ w
-    yb = (My @ w) / vol
-    zb = (Mz @ w) / vol + h
+    va, da = boat.app_volume, boat.app_depth
+    yb = ((My @ w) - va * da * s) / (vol + va)
+    zb = ((Mz @ w) + vol * h - va * da * c) / (vol + va)
     nb = len(boat.bodies)
     bvol = np.stack([(A * (owner == k)) @ w for k in range(nb)], axis=1)
     bwet = np.stack([(girth * (owner == k)) @ w for k in range(nb)], axis=1)
     m_b, m_c = boat.mass_boat, boat.mass_crew
     zc = boat.freeboard + 0.3
+    # the crew hikes only as hard as the heel asks: from a quarter of the hiking arm upright to the full arm by
+    # CREW_FULL_HIKE heel (monohulls; a multihull crew sits where it sits)
+    if boat.kind == "monohull":
+        u = np.clip(phis / CREW_FULL_HIKE, 0, 1)
+        arm = boat.crew_arm * (0.25 + 0.75 * u * u * (3 - 2 * u))
+    else:
+        arm = np.full_like(phis, boat.crew_arm)
     # the buoyancy couple is split by mass: each part's weight against its share of the buoyancy
     rm_boat = G * m_b * (yb - boat.vcg * s)
-    rm_crew = G * m_c * (yb + boat.crew_arm * c - zc * s)
+    rm_crew = G * m_c * (yb + arm * c - zc * s)
 
     main = lofts[boat.main_index if boat.main_index is not None else 0]
     upright = _upright(main)
@@ -229,7 +254,7 @@ def _upright(lf: Loft) -> Dict[str, float]:
     xs = np.linspace(0, 1, 801)
     area = lf.area_curve(xs)
     vol = np.trapezoid(area, xs) * B.lwl
-    bw = _shape(xs, B.max_section, lf.p, B.transom_width / B.bwl) * B.bwl
+    bw = _plan(B, xs, lf.p)[0] * 2
     aw = np.trapezoid(bw, xs) * B.lwl
     lcb = np.trapezoid(area * xs, xs) / np.trapezoid(area, xs)
     lcf = np.trapezoid(bw * xs, xs) / np.trapezoid(bw, xs)

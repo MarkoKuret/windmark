@@ -122,7 +122,7 @@ def michell_rw(lf: Loft, speeds, zw: float = 0.0, nz: int = 24) -> np.ndarray:
         lam_max = min(math.sqrt(400.0 / (k0 * depth * 0.02)) + 1.0, 80.0)
         nx = int(np.clip(k0 * lam_max * L / 0.35, 200, 2400))
         # a transom stern is closed by a virtual run behind it (the separated hollow of a dry transom)
-        ext = 3.0 * B.transom_width
+        ext = 3.0 * B.transom_wl
         x = np.linspace(0, L + ext, nx)
         zc = -(np.arange(nz) + 0.5) / nz * depth
         dzc = depth / nz
@@ -344,7 +344,7 @@ def build(boat: Boat, hydro: Hydro, thin_ship: Optional[bool] = None) -> HullMod
         cache = {}
         for k, lf in enumerate(lofts):
             B = lf.body
-            key = (B.lwl, B.bwl, B.draft, B.cp, B.cm, B.rocker, B.transom_width, B.max_section)
+            key = (B.lwl, B.bwl, B.draft, B.cp, B.cm, B.rocker_fwd, B.rocker_aft, B.transom_wl, B.max_section)
             if key not in cache:
                 zws = np.linspace(-0.85 * B.draft, 0.5 * B.draft, 10)
                 vols = np.array([_immersed_volume(lf, zw) for zw in zws])

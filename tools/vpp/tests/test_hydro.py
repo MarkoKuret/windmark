@@ -55,7 +55,7 @@ def test_heel_increases_resistance(raw):
 
 class _Wigley:
     class body:
-        lwl, bwl, draft, transom_width = 1.0, 0.1, 0.0625, 0.0
+        lwl, bwl, draft, transom_wl = 1.0, 0.1, 0.0625, 0.0
 
     def half_breadth(self, xi, z):
         y = 0.05 * (1 - (2 * np.asarray(xi) - 1) ** 2) * (1 - (np.minimum(z, 0) / 0.0625) ** 2)

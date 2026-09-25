@@ -2,15 +2,16 @@ import numpy as np
 import pytest
 
 from windmark_vpp import sails
-from windmark_vpp.boatclass import SHEET_LIMITS_DEG
+from windmark_vpp.boatclass import SHEET_LIMITS
 from windmark_vpp.constants import DEG
 
 
-@pytest.mark.parametrize("t", ["main", "jib", "spinnaker", "gennaker"])
-def test_envelope_follows_orc(t):
+@pytest.mark.parametrize("t,st", [("main", "main"), ("jib", "jib"), ("spinnaker", "spinnaker_sym"),
+                                  ("gennaker", "spinnaker_asym")])
+def test_envelope_follows_orc(t, st):
     """Best-trim drive and side coefficients stay close to the ORC per-sail envelopes over the sailing range."""
-    lo, hi = SHEET_LIMITS_DEG[t]
-    e = sails.envelope(t, lo * DEG, hi * DEG, [1.0])
+    lo, hi = SHEET_LIMITS[st]
+    e = sails.envelope(t, lo, hi, [1.0])
     b, cl, cd = (np.array(v, float) for v in sails.ORC_REFERENCE[t])
     m = b >= (20 if t in ("main", "jib") else 40)
     bb = b[m] * DEG

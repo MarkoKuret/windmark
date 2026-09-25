@@ -10,7 +10,7 @@ def test_loft_matches_cp_and_volume(raw):
     h = geometry.hydrostatics(b)
     up = h.upright
     assert up["cp"] == pytest.approx(0.55, abs=0.01)
-    assert up["volume"] == pytest.approx(b.volume, rel=0.01)
+    assert up["volume"] == pytest.approx(b.volume - b.app_volume, rel=0.01)
     # upright: floats at the static waterline, no heeling arm
     assert abs(h.sinkage[0]) < 0.01
     assert abs(h.yb[0]) < 1e-6
@@ -38,14 +38,15 @@ def test_righting_moment_shape(raw):
     assert h.rm_crew[0] > 0 and h.rm_crew[60] < h.rm_crew[0]
 
 
-def test_trimaran_float_lifts(raw):
-    raw["hull"].update({"type": "trimaran", "lwl": 16.0, "bwl": 1.6, "draft_canoe": 0.55, "displacement": 5500,
-                        "cp": 0.58, "beam_max": 2.2, "transom_width": 0.6,
-                        "floats": {"lwl": 15.0, "bwl": 1.0, "draft": 0.9, "cp": 0.6, "section_shape": 0.7,
-                                   "spacing": 6.5, "clearance": 0.25, "freeboard": 1.1}})
-    del raw["keel"]
-    raw["boards"] = {"depth": 3.0, "chord": 0.6}
+def test_lcb_target(raw):
+    raw["hull"]["lcb_x"] = -0.30
     b = boatclass.from_dict(raw)
+    h = geometry.hydrostatics(b)
+    assert h.upright["lcb"] == pytest.approx((5.25 + 0.30) / 10.5, abs=0.005)
+
+
+def test_trimaran_float_lifts(tri_raw):
+    b = boatclass.from_dict(tri_raw)
     h = geometry.hydrostatics(b)
     vol = h.body_volume
     assert vol[0, 1] == 0 and vol[0, 2] == 0            # floats clear of the water at rest

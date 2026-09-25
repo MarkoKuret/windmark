@@ -1,8 +1,15 @@
 extends Node3D
-## Sail test scene: one generated boat on the placeholder sim, with the cameras, the controls and the minimal
-## HUD. Frame order: read input, controls, ticks (stamp, step, HUD values), render pose, boat, cameras, HUD.
-## Headless tests drive it with `scripted_input` and step_frame(); the sea is a flat placeholder plane until
-## the Sea node (game/scenes/sea/) takes its place and its height function.
+## Sail test scene: one generated boat on the placeholder sim, with the cameras, the controls, the minimal
+## HUD, the sea, its wakes and the daytime sky. Frame order: read input, controls, ticks (stamp, step, HUD
+## values), sea render time, render pose, boat and wakes, cameras, HUD; the Sea and SeaWakes nodes draw after.
+## Headless tests drive it with `scripted_input` and step_frame().
+##
+## The sea: the example bay as the core writes it (SeaEnvSource CORE_SAMPLES, game/generated/sea, written by
+## tests/run_water_test.sh) or the placeholder sea built from wind_speed_kn and wind_from_deg. The fake sim runs
+## on the same SeaModel the Sea draws (FakeSim.use_sea) and the Sea's clock follows the sim ticks, so the hull,
+## the water and the cameras' clearance (Sea.height_at) see one surface.
+
+enum SeaSource { AUTO, CORE_SAMPLES, PLACEHOLDER }
 
 @export var class_id := "wm7"
 @export var wind_speed_kn := 12.0
@@ -11,6 +18,16 @@ extends Node3D
 @export var start_twa_deg := 45.0
 @export var racing := true
 @export var auto_process := true
+## AUTO: the core's example bay samples when they exist, otherwise the placeholder sea
+@export var sea_source: SeaSource = SeaSource.AUTO
+## core sample scenario (CORE_SAMPLES); its wind replaces wind_speed_kn and wind_from_deg
+@export var sea_scenario := "example_bay_10kn"
+@export var sea_quality: SeaQuality.Tier = SeaQuality.Tier.M
+
+@onready var sea: Sea = $Sea
+@onready var wakes: SeaWakes = $Wakes
+@onready var env_source: SeaEnvSource = $EnvSource
+@onready var sky: SkyRig = $SkyDay
 
 var sim: FakeSim
 var controls: PlayerControls
@@ -33,6 +50,7 @@ func _ready() -> void:
 	sim.wind_speed = wind_speed_kn * HudFormat.KNOT
 	sim.wind_from = deg_to_rad(wind_from_deg)
 	sim.wind_osc_amp = deg_to_rad(6.0)
+	_setup_sea()
 	var psi := Frames.wrap_2pi(sim.wind_from - deg_to_rad(start_twa_deg))
 	var b := sim.add_boat(class_id, 0.0, 0.0, psi, 2.5)
 	assert(b >= 0, "class %s did not load" % class_id)
@@ -48,11 +66,12 @@ func _ready() -> void:
 	target.loa = info.loa
 	target.beam_max = info.beam_max
 	target.geometry = BoatGeometry.onboard(info, boat_view.model)
-	target.sea_height = sim.sea_height
+	target.sea_height = sea.height_at
 	rig = CameraRig.new()
 	rig.name = "CameraRig"
 	add_child(rig)
 	rig.camera.current = true
+	sea.camera = rig.camera
 	var layer := CanvasLayer.new()
 	layer.name = "HudLayer"
 	add_child(layer)
@@ -75,8 +94,39 @@ func _ready() -> void:
 	layer.add_child(_paused_label)
 	runner.ticked.connect(func(_t: int) -> void: hud.tick(sim, viewed))
 	hud.tick(sim, viewed)
+	_update_sea_time(0.0)
 	_update_target(0.0)
 	set_process(auto_process)
+
+
+## The sea of the chosen source, shared with the sim; the sim's wind from the core scenario when there is one.
+func _setup_sea() -> void:
+	var core := sea_source != SeaSource.PLACEHOLDER
+	if sea_source == SeaSource.AUTO:
+		core = FileAccess.file_exists(env_source.samples_path)
+	env_source.mode = SeaEnvSource.Mode.CORE_SAMPLES if core else SeaEnvSource.Mode.PLACEHOLDER
+	env_source.scenario = sea_scenario
+	env_source.wind_kn = wind_speed_kn
+	env_source.wind_from_deg = wind_from_deg
+	env_source.rebuild()
+	var t0 := 600000.0
+	if env_source.mode == SeaEnvSource.Mode.CORE_SAMPLES:
+		var times := env_source.core_puff_times()
+		if not times.is_empty():
+			t0 = float(times[0])
+		var w := env_source.wind_state(t0)
+		sim.wind_speed = w["base_speed"]
+		sim.wind_from = w["base_from"]
+	sea.set_sea(env_source.sea_components(), env_source.sea_exposure())
+	sea.quality = sea_quality
+	sea.use_internal_clock = false
+	SeaQuality.apply_environment(sky.environment(), sea.quality)
+	sim.use_sea(sea.model, t0)
+
+
+## The Sea's clock at the rendered pose: between ticks n - 1 and n at alpha.
+func _update_sea_time(alpha: float) -> void:
+	sea.render_time_ms = sim.sea_time_ms(sim.tick() - 1 + alpha)
 
 
 func _process(delta: float) -> void:
@@ -98,6 +148,7 @@ func step_frame(dt: float) -> void:
 	controls.free_camera = rig.mode == CameraRig.Mode.FREE
 	controls.update(raw, dt)
 	runner.advance(dt)
+	_update_sea_time(runner.alpha())
 	_update_target(runner.alpha())
 	var cin := CameraInput.from_raw(raw if not controls.text_focus else raw.without_buttons(), controls.free_camera)
 	rig.frame(target, cin, dt)
@@ -107,7 +158,23 @@ func step_frame(dt: float) -> void:
 func _update_target(alpha: float) -> void:
 	var own := sim.render_pose(runner.boat, alpha)
 	boat_view.apply(own)
+	for b in sim.boat_count():
+		var p := own if b == runner.boat else sim.render_pose(b, alpha)
+		wakes.update_boat(b, _wake_state(b, p))
 	target.pose = own if viewed == runner.boat else sim.render_pose(viewed, alpha)
+
+
+## SeaWakes.update_boat state: the render pose and the class waterline (perf dynamics lwl, bwl).
+func _wake_state(b: int, p: SimSource.RenderPose) -> Dictionary:
+	var dyn: Dictionary = sim.boats[b].d.dyn
+	var info := sim.class_info(b)
+	var lwl := float(dyn.get("lwl", 0.9 * info.loa))
+	var bwl := float(dyn.get("bwl", 0.75 * info.beam_max))
+	return {
+		"x": p.pos_x, "y": p.pos_y, "z": p.z, "psi": p.psi, "heel": p.phi, "pitch": p.theta, "lwl": lwl,
+		"bwl": bwl, "transom_width": 0.6 * bwl, "bow_x": 0.5 * lwl, "stern_x": -0.5 * lwl,
+		"own": b == runner.boat,
+	}
 
 
 func _ui_actions(r: RawInput) -> void:

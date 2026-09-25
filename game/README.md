@@ -15,7 +15,7 @@ HUD and a sail test scene that puts them together.
 | `scripts/cameras/` | `CameraRig` and the chase, onboard, aerial and free cameras, shake, onboard eye point |
 | `scripts/hud/` | `Hud`, `HudValues`, formats, bars and trim gauges |
 | `shaders/` | Shaders. `sea_common`, `sky_common`, `wake_common` (`.gdshaderinc`) hold the water, sky and wake maths, written so the offline preview can compile them as GLSL too; `water_l/m/h` are the sea per quality tier, `sky`, `wake`, `wake_normal` |
-| `scenes/` | Scenes. `sea/` is the sea (`sea.tscn`, `Sea`), its data source and wakes, and the daytime sky (`sky_day.tscn`, `SkyRig`, `env_day.tres`); `water_test.tscn` shows them together; `sail_test.tscn` is one boat with the fake sim, cameras, controls and HUD |
+| `scenes/` | Scenes. `sea/` is the sea (`sea.tscn`, `Sea`), its data source and wakes, and the daytime sky (`sky_day.tscn`, `SkyRig`, `env_day.tres`); `water_test.tscn` shows them together; `sail_test.tscn` is one boat with the fake sim, cameras, controls and HUD on that sea and sky |
 | `tests/` | Headless tests |
 | `generated/` | Build outputs staged for import (boatgen GLBs and sidecars). Not committed |
 | `.godot/` | Godot's import cache. Not committed |
@@ -72,21 +72,24 @@ world ENU metres, radians, compass angles clockwise from north, one tick = `DT` 
 | `sails(b)` | `SailsView`: `front`, the change queue (`SailStep` sail, phase, reversed), `queue_len`, `queue_pos`, `queue_progress`, per sail `SailState` (phase, progress, beta, pole) and `SailOutput` (`k_h`, `m_opt`, `beta_opt`, `beta_t`, `trim_error`, `luff_shiver`, motion, backed) |
 | `render_pose(b, alpha)` | `RenderPose` between the last two ticks: position, `z`, `psi`, `theta`, `phi`, `h`, `twa`, `twd_from` |
 | `wind_clean(x, y)` | clean wind at a point: `Vector2(speed, from)` |
-| `sea_height(x, y)` | sea surface height at a point (the one sea hook; flat in `FakeSim`) |
+| `sea_height(x, y)` | sea surface height at a point (the one sea hook; in `FakeSim` flat, the test swell or the drawn sea's model) |
 | `trim_speed_at(b, tws, awa_abs, eps)` | the config's `trim_speed` table (HUD trim tolerance), `NAN` without one |
 | `apply_input(b, frame)` | applies an `InputFrame` (`networking.md` §4.1); returns the sail request result |
 | `step()` | one tick |
 
 `FakeSim` is a GDScript sketch of `boat.md` §5 and `sails.md` §4 to §5 on the class's generated tables (polar,
 heel, accel, trim and optimal-angle tables, sail change timing), with a uniform wind (optional slow direction
-oscillation), flat water or a test swell, and no waves on the hull, collisions or wind shadow. It is not the
-reference and not deterministic across platforms.
+oscillation), and flat water, a test swell (the water only, the hulls stay level) or the drawn sea
+(`use_sea(model, t0_ms)`: the `SeaModel` of the Sea node, with heave, pitch and wave roll of `boat.md` §5.6 on the
+hull points of `sea.md` §5, no wobble), and no collisions or wind shadow. Tick n is at environment time
+`sea_time_ms(n) = t0_ms + 50 n`. It is not the reference and not deterministic across platforms.
 
 ## Controls, cameras and HUD
 
 - **Frame order** (`scenes/sail_test.gd`): `InputReader.read()` (devices through the input map into a `RawInput`),
   `PlayerControls.update()`, `SimRunner.advance()` (at each 50 ms boundary: `PlayerControls.stamp()` the input
-  frame, `apply_input`, `step`, `Hud.tick`), `render_pose`, the boat node, `CameraRig.frame()`, `Hud.frame()`.
+  frame, `apply_input`, `step`, `Hud.tick`), the Sea's render time, `render_pose`, the boat node and `SeaWakes.update_boat`,
+  `CameraRig.frame()`, `Hud.frame()`; the Sea and SeaWakes nodes then draw the frame.
 - **Input map**: `scripts/controls/default_bindings.gd` is the one source of the defaults of `controls.md` §3.
   After changing it, rewrite the `[input]` section of `project.godot` (nothing else in the file is touched):
   `godot --headless --path game -s res://scripts/controls/write_input_map.gd`. Axis actions and device pairs carry
@@ -95,9 +98,13 @@ reference and not deterministic across platforms.
 - **Steam Deck**: the default Steam Input template presents the gamepad bindings; its Deck-only items (L4 for
   `helm_fine`, right trackpad as `camera_orbit`, Steam + R1 for `screenshot`) belong in that template, which is
   not in the repo yet.
-- **Sea**: the cameras keep clear of the water through `CamTypes.Target.sea_height`, a function
-  `(x east, y north) -> height`. The scene sets it to `sim.sea_height`; the Sea node (`scenes/sea/`) will provide
-  the same function evaluated as `sea.md` §7.2. The scene's `SeaPlaceholder` plane stands in for the Sea node.
+- **Sea**: the scene holds the Sea node, its `SeaWakes` and the `SkyRig` of `scenes/sea/`. `sea_source` picks the
+  example bay as the core writes it (`CORE_SAMPLES`, scenario `sea_scenario`, default `example_bay_10kn`; its wind
+  replaces the scene's) or the placeholder sea from the scene's wind; `AUTO` (the default) takes the core samples
+  when `generated/sea/sea_render_samples.json` exists (`tests/run_water_test.sh` writes it). The fake sim runs on
+  the same `SeaModel` (`FakeSim.use_sea`), and the Sea's clock follows the ticks (`sea_time_ms(tick - 1 + alpha)`),
+  so hull and water agree. The cameras keep clear of the water through `CamTypes.Target.sea_height`, a function
+  `(x east, y north) -> height`, set to `Sea.height_at` (`sea.md` §7.2 at the frame's render time).
 - **Options** not wired to a settings screen yet: `PlayerControls` (helm key mode, dead zone and curve, sheet rate,
   hold or toggle, sheet turns auto-trim off), `CameraRig.options` (speed, invert, reduced motion, smooth switch,
   auto-recentre), `Hud.assist` (Full, Standard, Minimal). Not implemented yet: mouse helm, one-hand layout,
@@ -119,8 +126,11 @@ Runs headless, with scripted input at fixed frame rates:
   water clearance in a 1.5 m sea, onboard side change, aerial up modes, presets, shake), the free camera, near
   and far planes, cycling and the smooth switch.
 - `tests/hud_test.gd`: `hud.md` formats, filters and time constants, trim gauge colours, tell-tales, tolerance and
-  assist presets on a scripted boat state; then `scenes/sail_test.tscn` sails 20 s with scripted input and the HUD
-  text is checked against the sim's values.
+  assist presets on a scripted boat state; then `scenes/sail_test.tscn` sails 20 s with scripted input on the
+  example bay sea and the HUD text is checked against the sim's values, with the sea checks: Sea and SkyRig in
+  place, the sim on the drawn sea's model, the camera never below `Sea.height_at + 0.99` and its clearance hook
+  being `Sea.height_at`, the hull heaving, both wakes of the boat laid; then a short run on the placeholder sea.
+  The script writes the core sea samples first when they are missing.
 
 To sail the test scene yourself (opens a window): `godot --path game res://scenes/sail_test.tscn`. Keys: ←/→ or
 A/D helm (set and hold, ↓ centres), T auto-trim, W/S sheet, Space let fly, 1/2 sails, C camera, F5 to F8 camera

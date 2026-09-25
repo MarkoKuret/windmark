@@ -154,10 +154,11 @@ trimaran lifting its main hull. Appendage buoyancy sits at its centroid and roll
     off, with the regression's log slope just before it (bounded to 2 to 6), so it never gets over the hump
     however hard it is driven.
   - The total upright resistance (canoe body, appendages) is made to grow at least in proportion to the speed:
-    where the planing blend or a levelling regression would make it flatter, the residuary part is raised. The
+    where the planing blend or a levelling regression would make it flatter, the residuary part ahead of the hump
+    is lowered to the largest curve that does (the hump is shaved; the planing branch beyond it is kept). The
     drive of a reaching rig grows with the boat's speed, so a flatter resistance curve has two speed roots and the
     polar would jump where the lower one disappears; with this rule a planing boat's speed climbs steeply but
-    continuously with the wind.
+    continuously with the wind, to the same high-wind speeds as before.
 - Keel residuary and its heel increment: Keuning and Sonnenberg (1998), on the fin volume (the Delft keel series
   were fins; a deep bulb is charged through its friction and form drag).
 - Induced resistance: `Fh² / (π Te² q)` with the effective draft `Te` of Keuning and Sonnenberg (1998) (heel and

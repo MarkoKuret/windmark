@@ -397,8 +397,9 @@ def _apply_planing(model: HullModel, ability: float):
     the resistance curve, and the Delft regression itself levels off over the hump of some hulls. The speed would
     then jump where the wind first drives the boat over it (the drive of a reaching rig grows with the boat's
     speed). Here the total upright resistance is made to grow at least in proportion to the speed
-    (MIN_RESISTANCE_SLOPE) by raising the residuary part where it would not, so a planing hull's speed climbs
-    steeply but continuously with the wind.
+    (MIN_RESISTANCE_SLOPE) by lowering the residuary part ahead of the hump to the largest such curve under it:
+    the hump is shaved, the planing branch beyond it is kept, and a planing hull's speed climbs steeply but
+    continuously with the wind to the same high-wind speeds.
     """
     b = model.boat
     up = model.hydro.upright
@@ -413,7 +414,7 @@ def _apply_planing(model: HullModel, ability: float):
     _, parts = model.resistance(V, np.zeros_like(V), np.zeros_like(V), parts=True)
     other = sum(v for k, v in parts.items() if k not in ("residuary", "deck_edge", "induced"))
     k = MIN_RESISTANCE_SLOPE
-    total = np.maximum.accumulate((c * wg + other) / V ** k) * V ** k
+    total = np.minimum.accumulate(((c * wg + other) / V ** k)[::-1])[::-1] * V ** k
     model.rr_coef = np.maximum((total - other) / wg, 0.0)
 
 

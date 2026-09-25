@@ -66,7 +66,9 @@ All base fields are those of `docs/specs/data_format.md` §3 and are used as spe
 transom_width, stem_x, transom_x, max_beam_station, lcb_x, bow_fineness}`, `keel.{type, depth, chord_root,
 chord_tip, thickness, sweep, x, fin_mass, bulb_mass, bulb_length, bulb_diameter}`, `rudder.{type, depth,
 chord_root, chord_tip, thickness, x}`, `rig.{I, J, P, E, mast_height, mast_x, boom_height, fractional,
-bowsprit, pole}`, `sails[].{id, type, area, luff, tack_x}`, `crew.{count, weight}`.
+bowsprit, pole}`, `sails[].{id, type, area, luff, tack_x}`, `crew.{count, weight}`; on code zeros and
+spinnakers also `sails[].{leech, foot, mid_girth, mid_girth_frac, luff_round, leech_round, foot_round,
+luff_round_pos, leech_round_pos, foot_round_pos}` (below).
 
 How the generator reads a few of them:
 
@@ -97,8 +99,57 @@ How the generator reads a few of them:
   outward (split by the luff share) until the mid girth, between the mid points of the luff and leech edges,
   reaches its value; the foot has a fixed round (asym 8 %, sym 10 %, code zero 2 % of the foot). Rule area
   `(SLU + SLE) / 2 · (SF + 4 · SHW) / 6` with the edges measured along the curves, as the sidecar's
-  `sails.<id>.rule` reports. `luff`, `leech` and `foot` in the class file override the proportions. The clew comes
-  out about a third of the hull length forward of the transom, so the set kite's clew flies abreast the cockpit.
+  `sails.<id>.rule` reports. `luff`, `leech` and `foot` in the class file override the proportions, and the
+  shaping keys below override the mid girth and the edge rounds. The clew comes out about a third of the hull
+  length forward of the transom, so the set kite's clew flies abreast the cockpit.
+
+### Shaping a kite by hand
+
+The class file stays the only source: set the keys on the sail's entry in `sails[]`, preview, then regenerate.
+All keys are optional; with none the sail keeps the standard proportions above (`data_format.md` §3.5).
+
+| key | unit | range | what it does |
+| --- | --- | --- | --- |
+| `luff`, `leech`, `foot` | m | | straight corner-to-corner lengths; the clew moves to meet `foot` from the tack and `leech` from the head. A shorter `foot` is the main lever for a smaller foot, and it moves the clew forward |
+| `mid_girth` | m | > 0 | mid girth target (between the mid points of luff and leech) |
+| `mid_girth_frac` | of the foot | 0.3 to 1.2 | the same as a fraction of the foot along its round (default asym 0.76, sym 0.95, code zero 0.56); use one of the two |
+| `luff_round`, `leech_round`, `foot_round` | of the edge | -0.1 to 0.3 | greatest depth of the edge's curve over its straight line: luff bows forward, leech aft, foot down; negative is a hollow |
+| `luff_round_pos`, `leech_round_pos`, `foot_round_pos` | along the edge | 0.1 to 0.9 | where that depth sits: luff and leech from the bottom corner (0.45 by default, so fullest just below half height), foot from the tack (0.5) |
+
+How the luff and leech rounds and the mid girth interact: with neither round given, both are solved together to
+reach the mid girth (the default); with one given, the other is solved; with both given, the mid girth is the
+outcome (then `mid_girth` and `mid_girth_frac` are not allowed). The foot round is 0.08 (asym), 0.10 (sym) or
+0.02 (code zero) unless set. Out-of-range values and a mid girth the solved edge cannot reach stop the build with
+a message that names the key.
+
+Example (smaller foot, slimmer shoulders, leech fullest higher up):
+
+```
+{"id": "kite", "type": "spinnaker_asym", "area": 43.0, "foot": 5.4, "mid_girth_frac": 0.72, "leech_round_pos": 0.6}
+```
+
+Preview after each edit:
+
+```
+cd tools/boatgen
+python3 -m boatgen.kite_preview ../../data/classes/wm7.boat.json [--sail kite] [--out DIR] [--no-render]
+```
+
+It prints each flying sail's luff, leech, foot, mid girth, edge rounds (depth, position, solved or set), rule
+area (and the class `area` it implies: the rule area rounded down to 0.5 m²) and the clew position forward of the
+transom and above the DWL, and writes `out/kite/<id>_<sail>.png`: the flat planform with its dimensions and the
+previous outline dashed, the sail set on a run (from the leeward quarter) and on a reach (abeam, from leeward),
+with the previous run's row underneath. The hull, deck and rig are built once and cached in `out/kite/.cache/`
+(about 15 s); after that, while only code zero and spinnaker entries change, a run takes about 1 s. Headless, no
+window.
+
+When the shape is right:
+
+1. set the sail's `area` to the rule area the preview reports, rounded down to 0.5 m²;
+2. regenerate the boat: `python3 -m boatgen ../../data/classes/<id>.boat.json` (GLB, sidecar, previews), and
+   run the tests (`python3 -m unittest discover -s tests`, `sh game/tests/run_boat_import_test.sh`);
+3. the performance tables in `data/perf` must then be regenerated with the VPP (`tools/vpp/README.md`) from the
+   new class file and sidecar, since the spinnaker area and shape feed them. The coordinator does this step.
 
 ### `visual` block (generator only, opaque to the core and the VPP)
 

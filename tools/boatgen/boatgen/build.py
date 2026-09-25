@@ -114,7 +114,7 @@ class Boat:
     def posed_parts(self, pose):
         """Parts with the sails set and trimmed for a point of sail (sails to starboard, port tack)."""
         from .mesh import rot_axis, translate
-        spec = self.POSES[pose]
+        spec = self.POSES[pose] if isinstance(pose, str) else pose
         parts = dict(self.parts)
         if not any(sl.type.startswith("spinnaker") for sl in self.sails.values() if sl.type in spec):
             parts.pop("pole", None)     # the pole is shown only while a spinnaker is set
@@ -139,8 +139,21 @@ class Boat:
         parts["mainsheet"] = hardware.mainsheet_tackle(low2, up2, s)
         return parts
 
-    def write_posed_glb(self, path, pose):
-        self._write(path, self.cls["id"] + "_" + pose, self.posed_parts(pose), {})
+    def write_posed_glb(self, path, pose, name=None, drop=()):
+        """Posed preview model; `pose` is a POSES name or a {sail type: (angle, camber, twist)} dict, `drop`
+        leaves nodes out."""
+        parts = {k: v for k, v in self.posed_parts(pose).items() if k not in drop}
+        self._write(path, self.cls["id"] + "_" + (name or pose), parts, {})
+
+    def rebuild_sails(self, cls):
+        """Redraw the sails from `cls`, a class that differs from the built one only in its code zeros and
+        spinnakers (shape keys, luff, leech, foot, tack_x, area): the hull, deck, rig and hardware are kept."""
+        self.cls = cls
+        self.sails = build_sails(cls, self.rig, self.deck)
+        for k in [k for k in self.parts if k.startswith("sail_")]:
+            del self.parts[k]
+        for name, sail in self.sails.items():
+            self.parts["sail_" + name] = sail.part()
 
     def origin_x(self):
         return 0.5 * (self.hull.x_awl + self.hull.x_fwl)

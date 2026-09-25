@@ -113,6 +113,10 @@ An array; exactly one entry of type `main`, any number of front sails. Its order
 | `area` | R | m² | sail area (spinnakers: the rule area) |
 | `luff`, `leech`, `foot` | | m | edge lengths [main and headsails: from the rig and the area; flying sails: from the rig, below] |
 | `tack_x` | | m | body x of the tack [from the rig: mast for the main, forestay for jibs, sprit or pole] |
+| `mid_girth` | | m | flying sails: mid girth `SHW` [from the table below]; exclusive with `mid_girth_frac` |
+| `mid_girth_frac` | | – | flying sails: mid girth as a fraction of `SF`, 0.3 to 1.2 [from the table below] |
+| `luff_round`, `leech_round`, `foot_round` | | – | flying sails: edge round depth as a fraction of the straight edge, -0.1 to 0.3 [below] |
+| `luff_round_pos`, `leech_round_pos`, `foot_round_pos` | | – | flying sails: where along the edge the round is deepest, 0.1 to 0.9 [below] |
 | `furling` | | bool | headsail on a furler (hoist animation, and faster handling) [false] |
 | `handling` | | object | overrides of the handling block the VPP writes (§4.4) |
 
@@ -137,7 +141,26 @@ the generator warns when they differ by more than 3 %). The corners, in the cent
 
 `leech` and `foot` in the class file override the table. The edges are rounded (luff and leech outward, foot
 downward) so the mid girth, measured between the mid points of the luff and leech edges, hits `SHW`. The rule area
-is `(SLU + SLE) / 2 · (SF + 4 · SHW) / 6` with `SLU`, `SLE`, `SF` measured along the rounded edges. With these
+is `(SLU + SLE) / 2 · (SF + 4 · SHW) / 6` with `SLU`, `SLE`, `SF` measured along the rounded edges.
+
+**Shaping keys** (code zeros and spinnakers only; an error on any other sail type). Each edge is a smooth bump over
+the straight line between its corners: `<edge>_round` is the bump's greatest depth as a fraction of that straight
+edge (positive outward: luff forward, leech aft, foot down; negative is a hollow), and `<edge>_round_pos` is where
+the greatest depth sits, as a fraction of the edge from its lower or forward corner (luff: tack 0, head 1; leech:
+clew 0, head 1; foot: tack 0, clew 1). The mid girth target is `mid_girth` (m) or `mid_girth_frac` (of `SF` along
+the rounded foot), else the table's value.
+
+| edge | round when absent | round position when absent |
+| --- | --- | --- |
+| foot | asym 0.08, sym 0.10, code zero 0.02 | 0.5 |
+| luff, leech | solved: the mid girth target is met by bowing luff and leech together, the luff taking a fixed share of the bow (asym 45 %, sym 50 %, code zero 20 %) | 0.45 |
+
+- neither `luff_round` nor `leech_round` given: both are solved together as in the table (the shape with no keys);
+- one of them given: it is fixed and the other one is solved to meet the mid girth target;
+- both given: the mid girth is an outcome, and giving `mid_girth` or `mid_girth_frac` as well is an error.
+
+A mid girth target the solved edge cannot reach (its round would leave -0.1 to 0.3) is an error. Any change to
+these keys changes the rule area: the class `area` and the performance tables are then regenerated (§4). With these
 proportions the clew sits about a third of the hull length forward of the transom on the flat sail, so set it flies
 abreast the cockpit and the sheet leads aft to the quarter.
 

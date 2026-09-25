@@ -35,7 +35,11 @@ def main(argv=None):
         except classfile.ClassFileError as e:
             print(f"{path}: {e}", file=sys.stderr)
             return 2
-        boat = Boat(cls, log=log)
+        try:
+            boat = Boat(cls, log=log)
+        except ValueError as e:         # a sail planform that cannot be drawn (sails.py)
+            print(f"{path}: {e}", file=sys.stderr)
+            return 2
         boat.textures, boat.bake = not a.no_textures, not a.no_bake
         cid = cls["id"]
         glb = os.path.join(a.out, f"{cid}.glb")

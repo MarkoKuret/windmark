@@ -14,7 +14,7 @@ fraction) with the starboard layer mirrored in u, so decals read correctly from 
 """
 import numpy as np
 
-from .classfile import LOOK_KEYS
+from .classfile import LOOK_KEYS, ROUND_RANGE
 from .mesh import Geom, Part, grid, normalize
 
 
@@ -77,6 +77,7 @@ class Sail:
         self.name, self.P, self.corners = name, P, corners  # P: (nv, nu, 3) in the centreline plane
         self.look_override = {}
         self.measure = None        # flying sails: rule measurements (flying_measure)
+        self.shape = None          # flying sails: edge rounds as drawn (_flying)
 
     @property
     def area(self):
@@ -268,6 +269,7 @@ FLYING = {
     "spinnaker_sym": {"leech": 1.00, "foot": None, "mid": 0.95, "foot_round": 0.10, "luff_share": 0.50, "grid": (16, 26)},
     "code_zero": {"leech": 0.90, "foot": 0.46, "mid": 0.56, "foot_round": 0.02, "luff_share": 0.20, "grid": (12, 24)},
 }
+ROUND_POS = {"luff": 0.45, "leech": 0.45, "foot": 0.5}    # where each edge round is deepest, from its lower corner
 SYM_FOOT_POLE = 1.75      # symmetric spinnaker foot / pole length
 SYM_FOOT_MAX = 0.60       # ... at most this share of the luff
 
@@ -327,20 +329,55 @@ def _flying(spec, cls, rig, deck):
     if foot * foot - a * a <= 0:
         raise ValueError(f"sail {spec['id']}: luff {luff:.2f}, leech {leech:.2f} and foot {foot:.2f} make no triangle")
     ck = tk + a * dd + np.sqrt(foot * foot - a * a) * n_aft
+    lengths = {"luff": luff, "leech": leech, "foot": foot}     # straight edges
+    sh = spec.get("shape") or {}
+    pos = {e: sh.get(e + "_round_pos", ROUND_POS[e]) for e in lengths}
+    foot_b = sh.get("foot_round", pf["foot_round"]) * foot
     share = pf["luff_share"]
 
-    def outline(r):
-        # r: extra mid girth over the straight triangle's foot / 2, split between luff and leech round
-        return coons(_curve(tk, ck, -pf["foot_round"] * foot), _curve(ck, hd, -(1 - share) * r, 1.0, 0.45),
-                     _line(hd, hd), _curve(tk, hd, share * r, 1.0, 0.45), nu, nv)
-    target = pf["mid"] * flying_measure(outline(0.0))["foot"]     # SF along the rounded foot
-    lo, hi = 0.0, 1.5 * foot
-    for _ in range(40):
-        r = 0.5 * (lo + hi)
-        if flying_measure(outline(r))["mid_girth"] < target:
-            lo = r
+    def outline(bl, be):
+        # bl, be: luff and leech round in metres (outward); the foot round is fixed
+        return coons(_curve(tk, ck, -foot_b, 1.0, pos["foot"]), _curve(ck, hd, -be, 1.0, pos["leech"]),
+                     _line(hd, hd), _curve(tk, hd, bl, 1.0, pos["luff"]), nu, nv)
+    fixed = {e: sh[e + "_round"] * lengths[e] for e in ("luff", "leech") if e + "_round" in sh}
+    if len(fixed) == 2:
+        bl, be = fixed["luff"], fixed["leech"]
+        solved = ()
+    else:
+        if "luff" in fixed:
+            split, solved = (lambda r: (fixed["luff"], r)), ("leech",)
+        elif "leech" in fixed:
+            split, solved = (lambda r: (r, fixed["leech"])), ("luff",)
         else:
-            hi = r
-    sail = Sail(spec["id"], outline(0.5 * (lo + hi)), {"tack": (0, 0), "clew": (0, nu - 1), "head": (nv - 1, 0)})
+            # r: extra mid girth over the straight triangle's foot / 2, split between luff and leech round
+            split, solved = (lambda r: (share * r, (1 - share) * r)), ("luff", "leech")
+        sf = flying_measure(outline(*split(0.0)))["foot"]      # SF along the rounded foot
+        if "mid_girth" in sh:
+            target = sh["mid_girth"]
+        else:
+            target = sh.get("mid_girth_frac", pf["mid"]) * sf
+        lo, hi = 0.0, 1.5 * foot
+        if flying_measure(outline(*split(0.0)))["mid_girth"] > target:
+            lo = -0.5 * foot        # narrower than the straight triangle: hollow edges
+        for _ in range(40):
+            r = 0.5 * (lo + hi)
+            if flying_measure(outline(*split(r)))["mid_girth"] < target:
+                lo = r
+            else:
+                hi = r
+        bl, be = split(0.5 * (lo + hi))
+    P = outline(bl, be)
+    rounds = {"luff": bl / luff, "leech": be / leech, "foot": foot_b / foot}
+    where = f"sail {spec['id']}"
+    if solved:
+        got = flying_measure(P)["mid_girth"]
+        bad = [e for e in solved if not ROUND_RANGE[0] <= rounds[e] <= ROUND_RANGE[1]]
+        if abs(got - target) > 0.005 or bad:
+            raise ValueError(f"{where}: mid girth {target:.2f} m is out of reach: it needs a "
+                             + ", ".join(f"{e} round of {rounds[e]:.3f}" for e in solved)
+                             + f" (allowed {ROUND_RANGE[0]} to {ROUND_RANGE[1]} of the edge)")
+    sail = Sail(spec["id"], P, {"tack": (0, 0), "clew": (0, nu - 1), "head": (nv - 1, 0)})
     sail.measure = flying_measure(sail.P)
+    # the shape as drawn: round depth (fraction of the straight edge), its position, and whether it was solved
+    sail.shape = {e: {"round": rounds[e], "pos": pos[e], "solved": e in solved} for e in ("luff", "leech", "foot")}
     return sail

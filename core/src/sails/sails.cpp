@@ -241,7 +241,9 @@ void Sails::trim(const TrimInput& in, bool place) {
     const float lim =
         sp.sheet_max_by_heel.present ? min(sp.sheet_max, sp.sheet_max_by_heel.table.at(std::fabs(in.phi)))
                                      : sp.sheet_max;
-    const float m = clamp(m_s_[i], sp.sheet_min, lim);
+    // Let-fly releases the sheet altogether: the sail blows out to the wind line even beyond sheet_max (§5.3); the
+    // wind-line clamp below then holds it there.
+    const float m = in.let_fly ? m_s_[i] : clamp(m_s_[i], sp.sheet_min, lim);
     const float k_h = hoist_factor(i);
     o.k_h = k_h;
     float beta_t = (side * m) * k_h;

@@ -16,6 +16,7 @@ add_executable(windmark_core_tests
 # boat and sails (WM-006)
 target_sources(windmark_core_tests PRIVATE
   test_boat.cpp
+  test_sails.cpp
 )
 target_link_libraries(windmark_core_tests PRIVATE windmark_core)
 target_include_directories(windmark_core_tests SYSTEM PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/doctest")

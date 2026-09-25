@@ -235,20 +235,10 @@ constexpr float kTunedAccel = 2.0f, kTunedDecel = 0.35f, kTunedTurn = 2.0f;
 
 }  // namespace
 
-// §10.3: a tack at 10 kn with helm 0.5 gets an S boat back to 90 % speed within 12 s.
-// With the shipped wm7/wm12 dynamics the boats lose their way inside the no-go zone before the bow is through
-// it (decel_linear about twice the S reference, half-helm radius 2 R_full + offset): reported as warnings. The
-// same hulls with feel multipliers applied (accel x2, decel x0.35, turn rate x2) meet the target, which checks
-// the core's side of the manoeuvre.
+// §10.3: a tack at 10 kn with helm 0.5 gets an S boat back to 90 % speed within 12 s. The boat code is checked on
+// test-local copies of the hulls with the dynamics that meet the target (accel x2, decel x0.35, turn rate x2,
+// applied as data_format.md §3.7.1 multipliers); the shipped files miss it (next test, WM-027).
 TEST_CASE("boat: tack at 10 kn") {
-  for (const std::string cls : kClasses) {
-    const TackResult r = tack(perf(cls), 10.0f, 0.5f);
-    const TackResult hard = tack(perf(cls), 10.0f, 1.0f);
-    MESSAGE(cls, " shipped: helm 0.5 ", std::string(r.completed ? "completes" : "does not complete"), ", back to 90 % in ",
-            r.time_to_90, " s; full helm ", std::string(hard.completed ? "completes" : "does not complete"), ", ",
-            hard.time_to_90, " s");
-    WARN_MESSAGE(r.completed, cls, ": shipped data cannot tack with helm 0.5 at 10 kn");
-  }
   for (const std::string cls : kClasses) {
     const wm::PerfData& p = tuned(cls, kTunedAccel, kTunedDecel, kTunedTurn);
     const TackResult r = tack(p, 10.0f, 0.5f);
@@ -257,12 +247,29 @@ TEST_CASE("boat: tack at 10 kn") {
             r.distance_lost / p.dynamics.loa, " lengths); full helm ", hard.time_to_90, " s, ", hard.distance_lost,
             " m");
     CHECK(r.completed);
+    CHECK(hard.completed);
     CHECK(r.time_to_90 > 0.0f);
     CHECK(r.distance_lost > 0.0f);
     if (cls == "wm7") CHECK(r.time_to_90 < 12.0f);
     // boat.md §7.2 expects a slammed full-helm tack to cost more than a smooth one; with these rudder-drag tables
-    // it costs less.
+    // it costs less (WM-027).
     WARN_MESSAGE(hard.distance_lost > r.distance_lost, cls, ": full-helm tack is not slower than helm 0.5");
+  }
+}
+
+// Documents WM-027: with the shipped wm7/wm12 dynamics (handling 1.0) the boats lose their way inside the no-go
+// zone before the bow is through it (decel_linear about twice the S reference, half-helm radius 2 R_full + offset,
+// upwind accel about half the reference). Expected to fail until the VPP derives dynamics that tack.
+TEST_CASE("boat: tack on the shipped classes (WM-027)" * doctest::may_fail()) {
+  for (const std::string cls : kClasses) {
+    const TackResult r = tack(perf(cls), 10.0f, 0.5f);
+    const TackResult hard = tack(perf(cls), 10.0f, 1.0f);
+    MESSAGE(cls, " shipped: helm 0.5 ", std::string(r.completed ? "completes" : "does not complete"),
+            ", back to 90 % in ", r.time_to_90, " s; full helm ",
+            std::string(hard.completed ? "completes" : "does not complete"), ", ", hard.time_to_90,
+            " s. Known failure, see backlog WM-027");
+    CHECK_MESSAGE(r.completed, cls, ": cannot tack with helm 0.5 at 10 kn (WM-027)");
+    if (cls == "wm7") CHECK_MESSAGE((r.time_to_90 > 0.0f && r.time_to_90 < 12.0f), cls, ": 12 s target (WM-027)");
   }
 }
 
@@ -316,7 +323,7 @@ TEST_CASE("boat: in irons and recovery") {
     if (cls == "wm7") {
       CHECK(r.t50 > 0.0f);
     } else {
-      WARN_MESSAGE(r.t50 > 0.0f, cls, ": shipped data does not recover within 20 s");
+      WARN_MESSAGE(r.t50 > 0.0f, cls, ": shipped data does not recover within 20 s (WM-027)");
       const IronsResult t = irons(tuned(cls, kTunedAccel, kTunedDecel, kTunedTurn));
       MESSAGE(cls, " tuned: 50 % of polar speed ", t.t50, " s after reversing the helm");
       CHECK(t.t50 > 0.0f);

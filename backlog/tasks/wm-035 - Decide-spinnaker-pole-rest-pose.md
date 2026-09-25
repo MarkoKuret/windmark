@@ -7,7 +7,7 @@ created_date: '2026-09-25 15:50'
 labels:
   - decide-later
 dependencies:
-  - WM-016
+  - WM-016.08
 priority: low
 ordinal: 31000
 ---
@@ -15,7 +15,7 @@ ordinal: 31000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-At rest the pole node points straight forward about 1 m above the deck and passes close to the forestay on a symmetric-spinnaker class; in play it always swings to windward. Keep this, or rest it along the deck? Owner question from WM-029, set aside on 2026-09-25: answer once the game runs (after WM-016).
+At rest the pole node points straight forward about 1 m above the deck and passes close to the forestay on a symmetric-spinnaker class; in play it always swings to windward. Keep this, or rest it along the deck? Owner question from WM-029, set aside on 2026-09-25: answer once the game runs (after WM-016.08, sail one boat).
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

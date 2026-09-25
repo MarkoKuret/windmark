@@ -145,11 +145,13 @@ void Boat::step(const BoatEnv& env) {
   // 5.8 speed
   const float man_coef = sails_.man_coef(s_.twa);
   const float heel_coef = d.heel_speed_factor.at(std::fabs(s_.phi));
+  // Surfing follows the wave part of the pitch target only; the wobble moves the hull but not the speed.
+  const float theta_w = d.wave_pitch_gain * hs.wave_pitch;
   float surf_coef = 1.0f;
   if (upwind) {
-    if (s_.theta > 0.0f) surf_coef = max(0.0f, 1.0f - d.surf_gain * s_.theta);
+    if (theta_w > 0.0f) surf_coef = max(0.0f, 1.0f - d.surf_gain * theta_w);
   } else {
-    if (s_.theta < 0.0f) surf_coef = 1.0f + (0.5f * d.surf_gain) * (-s_.theta);
+    if (theta_w < 0.0f) surf_coef = 1.0f + (0.5f * d.surf_gain) * (-theta_w);
   }
   // Trim scales the drive only. Inside the no-go zone the (negative) polar is the windage drift of the rig, which
   // flogging sails do not remove; scaling it by trim_speed (0 with the sails on the wind line) would stop the boat
@@ -158,8 +160,16 @@ void Boat::step(const BoatEnv& env) {
   const float target_speed =
       ((((polar_speed * trim_drive) * man_coef) * heel_coef) * surf_coef) * ctl_.performance_scale;
   const float err = target_speed - s_.v;
-  float a = err > 0.0f ? accel : d.decel_linear * err - d.decel_const;
-  if (std::fabs(err) < DT * std::fabs(a)) a = err / DT;
+  float a = accel;
+  if (!(err > 0.0f)) {
+    // Coast before drifting: a boat still making way loses it toward 0 first; only a stopped or backing boat is
+    // pulled toward the negative drift of the no-go zone (boat.md §5.8, §7.4).
+    const float err_d = (s_.v > 0.0f ? max(target_speed, 0.0f) : target_speed) - s_.v;
+    a = d.decel_linear * err_d - d.decel_const;
+    if (std::fabs(err_d) < DT * std::fabs(a)) a = err_d / DT;
+  } else if (err < DT * accel) {
+    a = err / DT;
+  }
   s_.v = s_.v + DT * a;
   const bool turning_up = (s_.h * tack) > 0.0f;
   const Table& drag_t = turning_up ? d.rudder_drag_luff : d.rudder_drag_bear;
@@ -190,11 +200,13 @@ void Boat::step(const BoatEnv& env) {
   const float gx = (s_.v * ps.s + env.current_x) + s_.contact_vx;
   const float gy = (s_.v * ps.c + env.current_y) + s_.contact_vy;
   out_.sog = std::sqrt(gx * gx + gy * gy);
-  if (out_.sog >= 1e-4f) out_.cog = compass({gx, gy});
   out_.vmg = s_.v * wm_cos(s_.twa);
   s_.v_filt = s_.v_filt + DerivedDynamics::FILT_A * (s_.v - s_.v_filt);
   s_.sog_filt_x = s_.sog_filt_x + DerivedDynamics::FILT_A * (gx - s_.sog_filt_x);
   s_.sog_filt_y = s_.sog_filt_y + DerivedDynamics::FILT_A * (gy - s_.sog_filt_y);
+  // cog from the filtered ground velocity, so a loaded snapshot rebuilds it from the state (boat.md §5.10).
+  const float sf = std::sqrt(s_.sog_filt_x * s_.sog_filt_x + s_.sog_filt_y * s_.sog_filt_y);
+  if (sf >= 1e-4f) out_.cog = compass({s_.sog_filt_x, s_.sog_filt_y});
 
   out_.target_speed = target_speed;
   out_.polar_speed = polar_speed;

@@ -144,7 +144,8 @@ class PerfReader {
     if (const Value* hp = d.find("hull_points")) {
       y.has_hull_points = true;
       if (!data::read_points(*hp, p + ".hull_points", y.hull_points, sink_)) return false;
-      if (y.hull_points.empty()) return fail(p + ".hull_points", "at least one point");
+      if (y.hull_points.empty() || y.hull_points.size() > 64)
+        return fail(p + ".hull_points", "1 to 64 points");
     }
     return collision(d, p + ".collision") && wind_shadow(d, p + ".wind_shadow") && derive(p);
   }
@@ -159,6 +160,8 @@ class PerfReader {
     k.pitch_k2 = 1.0f - ((2.0f * y.pitch_damping) * y.pitch_freq) * DT;
     k.heave_a = DT / (y.heave_time + DT);
     k.turn_c = y.turn_radius_full + y.turn_radius_offset;
+    // The offset may be negative (a rudder that stalls short of full helm), but the radius law needs turn_c > 0.
+    if (!(k.turn_c > 0.0f)) return fail(p + ".turn_radius_offset", "turn_radius_full + turn_radius_offset <= 0");
     if (!(k.heel_k2 >= 0.0f && k.heel_k2 < 1.0f)) return fail(p + ".heel_damping", "heel_k2 outside [0, 1)");
     if (!(k.pitch_k2 >= 0.0f && k.pitch_k2 < 1.0f)) return fail(p + ".pitch_damping", "pitch_k2 outside [0, 1)");
     // boat.md §4.1 asks for heel_k1, pitch_k1 in (0, 1], but k1 = w^2 DT carries 1/s: the bound only makes sense

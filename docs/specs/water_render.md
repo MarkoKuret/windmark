@@ -17,6 +17,7 @@ are never displaced horizontally. The wind on the water comes from `wind.md` §6
 | surface height | `sea_height(x, y)` at the render time (`sea.md` §4, §7.2) | 1 mm at the grid vertices for every component the grid carries; the waves the grid fades (§3.2) remove less than 3 px of height at the tier's reference screen wherever a boat is drawn |
 | dark and light wind patches | `puff_factor(x, y, t)` of `wind.md` §6.4 | 1e-3 of the factor |
 | sheltered calm | the exposure `E(x, y)` of `sea.md` §6 | 1e-3 |
+| wind slowed by land | the venue speed factor `f` of `wind.md` §8 | 1e-3 |
 | wakes and spray | anything (visual) | – |
 
 The boats are drawn at their interpolated physics pose (`boat.md` §9), whose heave follows the mean wave height, so a
@@ -36,6 +37,7 @@ for each live puff patch j (wind.md §9 puff_patches(t_r), at most 10):
 uniform puff_tile, puff_cap_lo = 1 - puff_cap_down, puff_cap_hi = 1 + puff_cap_up
 uniform wind_to = unit vector the wind blows toward (global_from(t_r) + π), base_speed
 uniform exposure texture (venue grid, R32F, texel (i, j) = node (i, j)) and its mapping, E default
+uniform land texture (venue wind field, RG32F: the two sectors around global_from(t_r)), its mapping, tw (§4.3)
 uniform detail and foam layer offsets: the camera-origin part of the §4.1 and §4.4 texture coordinates, in double, mod 1
 ```
 The exposure is sampled in the vertex shader with `texelFetch` and exact bilinear weights (the hardware filter's
@@ -133,8 +135,13 @@ The effect is also made explicit so it reads from the aerial camera and in flat 
 ```
 ALBEDO *= 1 - k_puff * clamp((m - 1) / 0.25, 0, 1) + k_lull * clamp((1 - m) / 0.4, 0, 1)    // k_puff 0.25, k_lull 0.15
 ```
-Optional (venues with a wind field, `wind.md` §8): the land-effect speed factor `f` for the current direction,
-uploaded as a texture when the direction moves by more than 2°, multiplies `m`.
+Venues with a wind field (`wind.md` §8): the land-effect speed factor `f` multiplies `m` after the
+puff clamp (the caps bound the puffs, not the venue). The CPU keeps the eight sector grids of the venue file
+and uploads the two around the current direction (`k0`, `k1` of `wind.md` §8, from `global_from`) as one RG32F
+texture (R = `k0`, G = `k1`, texel (i, j) = node (i, j)), again only when the pair changes; the blend weight `tw`
+is a uniform every frame. The vertex shader samples it with `texelFetch` and exact bilinear weights like the
+exposure, 1 outside the grid, and passes `f` to the fragment shader, so the drawn factor equals the core's to
+float rounding at the vertices. The direction offset `d` does not show on the water and is not drawn.
 
 ### 4.4 Whitecaps
 ```
@@ -252,11 +259,15 @@ stated clearly.
    at 100 random times, including points across the tile wrap.
 4. **Exposure parity**: the exposure texture sampled at 10 000 random points equals the grid sampler of `wind.md`
    §8.1 within 1e-3.
-5. **Wake geometry**: a boat at a steady 3 m/s: the ribbon's half width 2 s behind the bow is `w0 + 2.12 m` (±5 %),
+5. **Land factor parity**: the CPU mirror of `wind.md` §8 on the venue file equals the core's clean wind over its
+   base speed (puffs off) within 1e-3 at 2000 random points over eight directions, and the shader's texture path
+   (float32 emulation on the uploaded texture) equals the mirror within 1e-3; the texture follows the wind into the
+   next sector.
+6. **Wake geometry**: a boat at a steady 3 m/s: the ribbon's half width 2 s behind the bow is `w0 + 2.12 m` (±5 %),
    and its rows stay where they were laid (no drift without current).
-6. **Offline renders** (headless, to image files) of fixed seeds: flat calm, 10 kn, 20 kn with puffs, from the
+7. **Offline renders** (headless, to image files) of fixed seeds: flat calm, 10 kn, 20 kn with puffs, from the
    chase and aerial cameras, compared against stored images for visual regressions. Godot's headless mode has no
    renderer, so these run the shared shader functions (`sea_common`, `sky_common`, `wake_common`) with the
    uniforms and meshes the engine computed on an offscreen OpenGL context (`game/tests/water_preview.py`); the
    engine's own picture needs a short windowed capture.
-7. **Performance**: tier M water pass under 2.5 ms on the Steam Deck in the 20 kn scene with 12 boats.
+8. **Performance**: tier M water pass under 2.5 ms on the Steam Deck in the 20 kn scene with 12 boats.

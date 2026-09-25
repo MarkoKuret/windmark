@@ -4,8 +4,8 @@ extends Node3D
 ## sea_height from the wave components, shaded with detail normals, puffs and lulls, whitecaps and wakes.
 ##
 ## Inputs (all optional, set before or during play):
-##   source        a node with sea_components(), sea_exposure(), wind_state(t_ms) (see sea_env_source.gd;
-##                 the core binding will implement the same calls)
+##   source        a node with sea_components(), sea_exposure(), wind_state(t_ms) (see sea_env_source.gd and
+##                 CoreEnvSource), and optionally venue_wind_field() (the venue's land-effect field, wind.md §8)
 ##   sky           a SkyRig (colours of the sky ramp and the sun for the slope contrast and the crest light)
 ##   camera        the camera the grid follows (default: the viewport's current camera)
 ##   render_time_ms  the environment clock at this frame (fractional ms); advanced by delta when
@@ -43,6 +43,10 @@ var _overlay_circles: Array = []
 var _wake_texture: Texture2D
 var _wake_strength := 0.0
 var _land_factor := 1.0
+## the sector pair of the land texture uploaded last (wind.md §8), -1 = none
+var _land_k0 := -1
+var _land_image: Image
+var _land_texture: ImageTexture
 
 
 func _ready() -> void:
@@ -73,9 +77,22 @@ func get_tier() -> Dictionary:
 
 
 ## The sea of the race: the core's components and exposure grid (sea.md §7.1). Fixed for a race.
+## The venue wind field of the source is taken too when the source offers one (venue_wind_field()).
 func set_sea(components: Array, exposure: Dictionary) -> void:
 	model.set_components(components)
 	model.set_exposure(exposure)
+	if source and source.has_method("venue_wind_field"):
+		model.set_wind_field(source.venue_wind_field())
+	_land_k0 = -1
+	if material:
+		_apply_static()
+
+
+## The venue's land-effect wind field (data_format.md §6.2: {grid, sectors}), {} for none. Its speed factor for
+## the current wind direction multiplies the drawn wind (water_render.md §4.3). Fixed for a race.
+func set_wind_field(field: Dictionary) -> void:
+	model.set_wind_field(field)
+	_land_k0 = -1
 	if material:
 		_apply_static()
 
@@ -86,7 +103,7 @@ func set_wind(state: Dictionary) -> void:
 	wind = state
 
 
-## Venue land-effect speed factor at the camera (wind.md §8), a hook until the field texture exists.
+## An extra uniform speed factor on the drawn wind, on top of the venue field (set_wind_field); 1 by default.
 func set_land_factor(f: float) -> void:
 	_land_factor = f
 
@@ -147,6 +164,14 @@ func _apply_static() -> void:
 		material.set_shader_parameter("expo_grid", Vector4(g["x0"], g["y0"], g["dx"], g["dy"]))
 		material.set_shader_parameter("expo_size", Vector2i(g["nx"], g["ny"]))
 		material.set_shader_parameter("expo_default", g["default"])
+	var wf := model.wind_field
+	if wf.is_empty():
+		material.set_shader_parameter("land_size", Vector2i(0, 0))
+		material.set_shader_parameter("land_tex", SeaTextures.exposure_texture({}))
+	else:
+		material.set_shader_parameter("land_grid", Vector4(wf["x0"], wf["y0"], wf["dx"], wf["dy"]))
+		material.set_shader_parameter("land_size", Vector2i(wf["nx"], wf["ny"]))
+	_land_k0 = -1
 	var h := 2.0 * model.hs_eff + 1.0
 	var r := SeaRadialGrid.R_MAX
 	_mesh_instance.custom_aabb = AABB(Vector3(-r, -h, -r), Vector3(2.0 * r, 2.0 * h, 2.0 * r))
@@ -191,6 +216,7 @@ func update_frame(cam_pos: Vector3, cam: Camera3D = null) -> void:
 	material.set_shader_parameter("puff_cap_hi", 1.0 + wind.get("cap_up", 0.25))
 	material.set_shader_parameter("base_speed", wind.get("base_speed", 7.2))
 	material.set_shader_parameter("land_factor", _land_factor)
+	_update_land(wind.get("global_from", wind.get("base_from", 0.0)))
 
 	# Detail frame: the median wind (base_from), so the pattern does not swirl when the wind shifts.
 	var to: float = wind.get("base_from", 0.0) + PI
@@ -223,6 +249,42 @@ func update_frame(cam_pos: Vector3, cam: Camera3D = null) -> void:
 		material.set_shader_parameter("sun_color", sky.sun_radiance())
 
 	_update_overlays(ox, oy, cam)
+
+
+## wind.md §8 for the current direction: the two sector grids around it in one RG32F texture, uploaded again
+## only when the pair changes (a whole sector, 45 deg), and the blend weight every frame.
+func _update_land(global_from: float) -> void:
+	var wf := model.wind_field
+	if wf.is_empty():
+		return
+	var s := SeaModel.land_sectors(global_from)
+	material.set_shader_parameter("land_tw", s[2])
+	if s[0] == _land_k0:
+		return
+	_land_k0 = s[0]
+	var nx: int = wf["nx"]
+	var ny: int = wf["ny"]
+	var a: PackedFloat32Array = wf["f"][s[0]]
+	var b: PackedFloat32Array = wf["f"][s[1]]
+	var rg := PackedFloat32Array()
+	rg.resize(2 * nx * ny)
+	for n in nx * ny:
+		rg[2 * n] = a[n]
+		rg[2 * n + 1] = b[n]
+	var img := Image.create_from_data(nx, ny, false, Image.FORMAT_RGF, rg.to_byte_array())
+	if _land_texture and _land_image and _land_image.get_size() == img.get_size():
+		_land_texture.update(img)
+	else:
+		_land_texture = ImageTexture.create_from_image(img)
+	_land_image = img
+	material.set_shader_parameter("land_tex", _land_texture)
+
+
+## The land texture's sector pair [k0, k1] and its RG32F data (tests and the offline preview), [] without a field.
+func land_upload() -> Array:
+	if _land_image == null or model.wind_field.is_empty():
+		return []
+	return [_land_k0, (_land_k0 + 1) & 7, _land_image.get_data()]
 
 
 func _update_overlays(ox: float, oy: float, cam: Camera3D) -> void:

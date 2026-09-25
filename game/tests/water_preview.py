@@ -34,6 +34,7 @@ def inc(name):
 
 SAMPLERS = """
 uniform sampler2D expo_tex;
+uniform sampler2D land_tex;
 uniform sampler2D detail_tex;
 uniform sampler2D foam_tex;
 uniform sampler2D wake_tex;
@@ -97,6 +98,7 @@ out vec2 v_local;
 out float v_spacing;
 out float v_eta;
 out float v_expo;
+out float v_land;
 out vec3 v_normal;
 out vec3 v_wpos;
 void main() {
@@ -112,6 +114,7 @@ void main() {
     v_spacing = in_uv.x;
     v_eta = eta;
     v_expo = expo;
+    v_land = wm_land(sea_origin + xl);
     v_wpos = vec3(in_pos.x, eta, in_pos.z) + u_sea_pos;
     gl_Position = u_vp * vec4(v_wpos, 1.0);
 }
@@ -122,6 +125,7 @@ in vec2 v_local;
 in float v_spacing;
 in float v_eta;
 in float v_expo;
+in float v_land;
 in vec3 v_normal;
 in vec3 v_wpos;
 out vec4 frag;
@@ -134,7 +138,7 @@ void main() {
     vec2 g = wm_faded_slope(v_local, v_spacing, px) * v_expo;
     n_geo = normalize(n_geo + vec3(-g.x, 0.0, g.y));
 #endif
-    WmSurface S = wm_surface(v_local, v_eta, n_geo, view, dist, vec2(0.0));
+    WmSurface S = wm_surface(v_local, v_eta, n_geo, view, dist, vec2(0.0), v_land);
     vec3 c = shade(S.albedo, S.roughness, S.specular, S.normal, view) + S.emission;
     frag = vec4(fogged(c, v_wpos), 1.0);
 }
@@ -373,8 +377,15 @@ def render(ctx, d, size, wakes=True):
     else:
         expo = ctx.texture((2, 2), 1, np.ones(4, dtype="f4").tobytes(), dtype="f4")
     expo.filter = (moderngl.NEAREST, moderngl.NEAREST)
+    if sc.get("land"):
+        lf = np.fromfile(d / "land.bin", dtype="f4")
+        land = ctx.texture((sc["land"]["nx"], sc["land"]["ny"]), 2, lf.tobytes(), dtype="f4")
+    else:
+        land = ctx.texture((2, 2), 2, np.ones(8, dtype="f4").tobytes(), dtype="f4")
+    land.filter = (moderngl.NEAREST, moderngl.NEAREST)
     wake_tex = ctx.texture((1, 1), 4, bytes([128, 128, 128, 255]))
-    units = {"expo_tex": (expo, 0), "detail_tex": (detail, 1), "foam_tex": (foam, 2), "wake_tex": (wake_tex, 3)}
+    units = {"expo_tex": (expo, 0), "detail_tex": (detail, 1), "foam_tex": (foam, 2), "wake_tex": (wake_tex, 3),
+             "land_tex": (land, 4)}
     for tex, unit in units.values():
         tex.use(unit)
 

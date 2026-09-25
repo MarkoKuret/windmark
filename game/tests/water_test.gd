@@ -2,8 +2,9 @@ extends SceneTree
 ## Headless checks of the water renderer (water_render.md §9) against the core's samples written by
 ## core/tools/gen_sea_render_samples.cpp (run through tests/run_water_test.sh):
 ##   shaders parse; height parity (double mirror and a float32 emulation of the shader path) within 1 mm;
-##   slope parity; far-field fade; puff parity within 1e-3; exposure parity within 1e-3; wake geometry;
-##   the test scene runs on every tier.
+##   slope parity; far-field fade; puff parity within 1e-3; exposure parity within 1e-3; the venue land factor
+##   (wind.md §8) against the core's wind within 1e-3 (when the GDExtension is built) and the shader's texture path
+##   against the mirror; wake geometry; the test scene runs on every tier.
 ## Exit code 0 when every check passes.
 
 const SAMPLES := "res://generated/sea/sea_render_samples.json"
@@ -52,6 +53,7 @@ func _init() -> void:
 				check_puffs(sc)
 				check_exposure(sc)
 	check_fade()
+	check_land_core()
 	check_wake_ribbon()
 	_tiers_left = [SeaQuality.Tier.L, SeaQuality.Tier.M, SeaQuality.Tier.H]
 	_start_scene()
@@ -144,6 +146,87 @@ func check_exposure(sc: Dictionary) -> void:
 			sc["name"], sci(worst), sc["exposure_samples"].size()])
 
 
+## §4.3 venue land factor: SeaModel.land_factor_at (the mirror of wind.md §8 on the venue file) against the
+## core's clean wind over its base speed (puffs off) at random points and directions. Skipped without the core.
+func check_land_core() -> void:
+	if not CoreSimSource.available():
+		print("  --  land factor against the core: skipped (no GDExtension, game/native/build.sh)")
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var worst := 0.0
+	var n := 0
+	var lo := 1.0
+	for from_deg in [0.0, 10.0, 44.0, 100.0, 181.0, 225.0, 300.0, 359.0]:
+		var cs := CoreSimSource.new()
+		cs.settings = {"puffs": false, "wind_speed": 8.0, "wind_from": deg_to_rad(from_deg)}
+		if not cs.create("example_bay"):
+			check(false, "land factor: core world on example_bay (%s)" % cs.last_error())
+			return
+		var w := cs.wind_state(0)
+		var m := SeaModel.new()
+		m.set_wind_field(SeaEnvSource.read_wind_field(cs.venue_path))
+		for i in 250:
+			var x := rng.randf_range(-3200.0, 3200.0)
+			var y := rng.randf_range(-3200.0, 3200.0)
+			var f := m.land_factor_at(x, y, w["global_from"])
+			worst = maxf(worst, absf(cs.wind_clean(x, y).x / w["base_speed"] - f))
+			lo = minf(lo, f)
+			n += 1
+	check(lo < 0.9, "land factor: the example bay field slows the wind somewhere (lowest %.3f)" % lo)
+	check(worst <= 1e-3, "land factor within 1e-3 of the core's wind (worst %s, %d points)" % [sci(worst), n])
+
+
+## §4.3 the shader's land path on the uploaded texture (float32 emulation of wm_land) against the mirror, and
+## the texture following the wind direction.
+func check_land_scene(sea: Sea, tier: String) -> void:
+	if sea.model.wind_field.is_empty():
+		check(false, "scene tier %s: the venue wind field reached the Sea" % tier)
+		return
+	var from: float = sea.wind.get("global_from", 0.0)
+	var up := sea.land_upload()
+	var s := SeaModel.land_sectors(from)
+	check(up.size() == 3 and up[0] == s[0], "scene tier %s: land texture holds sectors %s for the wind from %.1f deg" % [
+			tier, str(s.slice(0, 2)), rad_to_deg(from)])
+	var rg: PackedFloat32Array = (up[2] as PackedByteArray).to_float32_array()
+	var g := sea.model.wind_field
+	var tw := f32(sea.material.get_shader_parameter("land_tw"))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	var worst := 0.0
+	for i in 2000:
+		var x := rng.randf_range(-3200.0, 3200.0)
+		var y := rng.randf_range(-3200.0, 3200.0)
+		worst = maxf(worst, absf(_land_emulated(x, y, g, rg, tw) - sea.model.land_factor_at(x, y, from)))
+	check(worst <= 1e-3, "scene tier %s: shader land factor within 1e-3 of the mirror (worst %s)" % [tier, sci(worst)])
+	# a direction a sector on uploads the next pair on the following frame
+	sea.use_internal_clock = false
+	var k_next: int = (int(s[0]) + 1) & 7
+	sea._update_land(float(k_next) * PI * 0.25 + 0.1)
+	check(sea.land_upload()[0] == k_next, "scene tier %s: land texture follows the wind into the next sector" % tier)
+
+
+func _land_emulated(x: float, y: float, g: Dictionary, rg: PackedFloat32Array, tw: float) -> float:
+	var nx: int = g["nx"]
+	var ny: int = g["ny"]
+	var px := f32(x)
+	var py := f32(y)
+	if px < g["x0"] or py < g["y0"] or px > g["x0"] + (nx - 1) * g["dx"] or py > g["y0"] + (ny - 1) * g["dy"]:
+		return 1.0
+	var u := f32((px - g["x0"]) / g["dx"])
+	var v := f32((py - g["y0"]) / g["dy"])
+	var i := mini(int(u), nx - 2)
+	var j := mini(int(v), ny - 2)
+	var tx := f32(u - i)
+	var ty := f32(v - j)
+	var out := [0.0, 0.0]
+	for c in 2:
+		var r0 := lerpf(rg[2 * (j * nx + i) + c], rg[2 * (j * nx + i + 1) + c], tx)
+		var r1 := lerpf(rg[2 * ((j + 1) * nx + i) + c], rg[2 * ((j + 1) * nx + i + 1) + c], tx)
+		out[c] = f32(lerpf(r0, r1, ty))
+	return f32(lerpf(out[0], out[1], tw))
+
+
 ## §9.2 far-field fade: the typical height the grid fade removes (2 sigma of the removed components) in pixels
 ## of the tier's reference screen (60 deg vertical field of view), by distance from the camera, for the reference
 ## sea states (fetch 10 km at 10 to 25 kn, and 20 kn with a 0.8 m swell). Must stay below 3 px up to 3 km.
@@ -193,7 +276,7 @@ func _swell(hs: float, tp: float, from: float) -> Array:
 	return out
 
 
-## §9.5 wake geometry: a boat at a steady 3 m/s; the half width 2 s behind the bow is w0 + 2.12 m (5 %), and rows
+## §9.6 wake geometry: a boat at a steady 3 m/s; the half width 2 s behind the bow is w0 + 2.12 m (5 %), and rows
 ## stay where they were laid without current.
 func check_wake_ribbon() -> void:
 	var r := WakeRibbon.new()
@@ -259,6 +342,7 @@ func _process(_delta: float) -> bool:
 	for i in n_comp:
 		worst = maxf(worst, absf(comp[i].w - ph[i]))
 	check(worst < 1e-6, "scene tier %s: uploaded phases match (worst %s cycles)" % [t["name"], sci(worst)])
+	check_land_scene(sea, t["name"])
 	_scene.queue_free()
 	_scene = null
 	_start_scene()

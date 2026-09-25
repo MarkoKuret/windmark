@@ -6,6 +6,7 @@ render_mode blend_mix, depth_draw_never, cull_disabled, diffuse_burley, specular
 #define TIER 1
 #define WM_DETAIL_LAYERS 1
 uniform sampler2D expo_tex : filter_nearest, repeat_disable;
+uniform sampler2D land_tex : filter_nearest, repeat_disable;
 uniform sampler2D detail_tex : filter_linear_mipmap, repeat_enable;
 uniform sampler2D foam_tex : filter_linear_mipmap, repeat_enable;
 uniform sampler2D wake_tex : filter_linear, repeat_disable;

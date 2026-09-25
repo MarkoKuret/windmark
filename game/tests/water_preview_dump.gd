@@ -157,6 +157,10 @@ func _dump(name: String) -> void:
 	data["exposure"] = {} if g.is_empty() else {"nx": g["nx"], "ny": g["ny"]}
 	if not g.is_empty():
 		_save(dir, "expo.bin", (g["e"] as PackedFloat32Array).to_byte_array())
+	var lu := sea.land_upload()
+	data["land"] = {} if lu.is_empty() else {"nx": sea.model.wind_field["nx"], "ny": sea.model.wind_field["ny"], "k0": lu[0]}
+	if not lu.is_empty():
+		_save(dir, "land.bin", lu[2])
 	SeaTextures.detail_image().save_png(dir.path_join("detail.png"))
 	SeaTextures.foam_image().save_png(dir.path_join("foam.png"))
 	# wakes

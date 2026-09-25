@@ -1,7 +1,7 @@
 class_name SimSource
 extends RefCounted
 ## What the front end reads from and sends to the simulation. Everything behind it (the placeholder FakeSim now,
-## the core binding of WM-016.01 later) keeps this interface, so cameras, controls and HUD do not change.
+## CoreSimSource over the core binding) keeps this interface, so cameras, controls and HUD do not change.
 ##
 ## Field names and units are the core's (boat.md §3, sails.md §3 and §7, wind.md): world ENU metres, radians,
 ## compass angles clockwise from north, m/s. One tick is DT = 50 ms. The records below are copies taken after
@@ -29,6 +29,13 @@ class ClassInfo:
 	var name := ""
 	var loa := 0.0
 	var beam_max := 0.0
+	## waterline length and beam of the perf file (the values the core's hull points use), m
+	var lwl := 0.0
+	var bwl := 0.0
+	## class file transom width, m (the stern wake)
+	var transom_width := 0.0
+	## perf dynamics rudder_max, rad
+	var rudder_max := 0.6
 	var steering := "tiller"  # tiller or wheel
 	var sails: Array[SailInfo] = []
 	var main_sail := 0

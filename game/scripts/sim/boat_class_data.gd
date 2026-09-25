@@ -50,6 +50,11 @@ func _build(cls: Dictionary, perf_d: Dictionary, side: Dictionary) -> void:
 	info.name = cls.get("name", info.id)
 	info.loa = float(cls["hull"]["loa"])
 	info.beam_max = float(cls["hull"]["beam_max"])
+	var dy: Dictionary = perf_d.get("dynamics", {})
+	info.lwl = float(dy.get("lwl", cls["hull"].get("lwl", 0.9 * info.loa)))
+	info.bwl = float(dy.get("bwl", cls["hull"].get("bwl", 0.75 * info.beam_max)))
+	info.transom_width = float(cls["hull"].get("transom_width", 0.6 * info.bwl))
+	info.rudder_max = float(dy.get("rudder_max", 0.6))
 	info.steering = cls.get("visual", {}).get("deck", {}).get("steering", "tiller")
 	info.physics = side
 	var i := 0

@@ -26,6 +26,7 @@ if [ ! -f "$here/generated/sea/sea_render_samples.json" ]; then
 fi
 
 # refresh the script class cache and the imports
+sh "$here/native/register.sh"  # a built GDExtension loads at start-up (native/build.sh)
 "$godot" --headless --path "$here" --import >"$here/generated/ui_import.log" 2>&1 || {
     cat "$here/generated/ui_import.log"; echo "import failed"; exit 1; }
 

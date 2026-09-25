@@ -29,6 +29,13 @@ add_library(windmark_core STATIC
   src/data/perf.cpp
   src/data/boat_class.cpp
 )
+
+# boat and sails (WM-006): boat.md, sails.md
+target_sources(windmark_core PRIVATE
+  src/boat/hull_sampling.cpp
+  src/boat/boat.cpp
+  src/sails/sails.cpp
+)
 target_include_directories(windmark_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 # PUBLIC: every target that links the core (tests, server, engine bindings) builds with the same float rules.
 target_link_libraries(windmark_core PUBLIC windmark_float_rules)

@@ -533,10 +533,14 @@ TEST_CASE("boat: helm balance") {
       g.env.wind_speed = kn(26.0f);
       g.env.wind_speed_clean = g.env.wind_speed;
       g.boat.set_helm(helm);
-      float lo = std::fabs(g.s().twa);  // the closest she comes to the wind (a full helm may gybe her)
+      // the closest she comes to the wind on her own (starboard) tack: a full helm held for 5 s carries a fast boat
+      // on round through a gybe, which is the helm turning her, not a broach
+      float lo = g.s().twa;
+      bool gybed = false;
       for (int i = 0; i < static_cast<int>(5.0f / DT); ++i) {
         g.step();
-        lo = wm::min(lo, std::fabs(g.s().twa));
+        gybed = gybed || g.s().twa < 0.0f || g.s().twa > deg(179.0f);
+        if (!gybed) lo = wm::min(lo, g.s().twa);
       }
       MESSAGE(cls, ": kite reaching at 100 deg, gust 20 to 26 kn, helm ", helm, ": lowest twa in 5 s ", to_deg(lo),
               " deg");

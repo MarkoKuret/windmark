@@ -477,7 +477,8 @@ start needs speed built before the gun.
    angle from 6 to 16 kn and at most 3°/s reaching (60° to 120°) at 10 kn; on a spinnaker at 130° in 22 kn it
    rounds up with the helm centred (more than 10° in 5 s) and holding the course takes helm to bear away and
    costs speed; reaching at 100° under the spinnaker in 20 kn, a gust to 26 kn overpowers it: with the helm
-   centred it broaches (closer than 75° to the wind within 5 s), with full helm to bear away it stays below 80°.
+   centred it broaches (closer than 75° to the wind within 5 s), with full helm to bear away it stays below 80° on
+   its own tack (held on, the full helm may carry it round through a gybe onto the other tack).
 8. **Penalty turn**: from full speed at 10 kn, close-hauled, on a reach or running, a full-helm 360 (a tack and a
    gybe) gets round.
 9. **Yaw inertia**: beam reach at 10 kn, helm balance off, helm to 0.3: the tick after the helm goes over the turn

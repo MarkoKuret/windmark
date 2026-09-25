@@ -416,8 +416,9 @@ void rules_overlay(AC& x, AB& a, const Me& m, Vec2 aim) {
       }
       if (keep != nullptr) pick = keep;
       if (pick == nullptr) {
-        // Nothing clears: brake and turn away from her.
-        a.let_fly = true;
+        // Nothing clears: brake and turn away from her. A started boat stopped for more than 5 s keeps her sails
+        // drawing instead, or she could never gather way to get clear (ai.md §7.2).
+        a.let_fly = !(m.rb.started && a.slow_t > 5.0f);
         const float eb = wrap_pi(brg_B - m.s.psi);
         a.psi_target = wrap_2pi(m.s.psi - sgn(eb) * 30.0f * DEG);
         a.forced = true;
@@ -437,7 +438,7 @@ void rules_overlay(AC& x, AB& a, const Me& m, Vec2 aim) {
         return;
       }
       a.psi_target = pick->psi;
-      a.let_fly = pick->slow;
+      a.let_fly = pick->slow && !(m.rb.started && a.slow_t > 5.0f);
       a.turn_dir = 0;
       return;
     }

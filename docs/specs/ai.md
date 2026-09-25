@@ -260,9 +260,10 @@ the line's middle and start as in fleet with `u* = 0.5`. Dial-ups and hooks are 
 
 ### 6.1 Approach and rounding
 
-- **Rounding circle**: centre M, radius `ρ = r_mark + 0.5·B + c_lvl + n_in·(B + 1 m)` where `c_lvl` is the
-  level's clearance (§13) and `n_in` the number of boats the rules engine says are entitled to mark-room from this
-  boat at this mark (they need space inside it).
+- **Rounding circle**: centre M, radius `ρ = r_mark + 0.5·B + c_lvl + n_in·(B + 1 m) + |v|·yaw_time` where `c_lvl`
+  is the level's clearance (§13), `n_in` the number of boats the rules engine says are entitled to mark-room from
+  this boat at this mark (they need space inside it), and the last term the way the boat runs on before a turn
+  takes hold (the hull's yaw lag, `boat.md` §5.9).
 - **Aim point** while more than `4·L` away: the tangent point of the circle on the required side as seen from the
   boat. Within `4·L`: follow the circle; the turn starts when the distance to the tangent point is below the turning
   radius at the planned helm (`boat.md` §5.9 radius law), so the boat leaves the circle on the exit tangent towards the next leg's
@@ -278,7 +279,9 @@ the line's middle and start as in fleet with `u* = 0.5`. Dial-ups and hooks are 
   turned past it.
   - Guide above close-hauled: the present tack if it moves round in the rounding direction and passes the mark on
     the required side by at least `0.9·ρ` (or the mark is behind), else a beat to the pass point on its laylines, so
-    a boat that cannot lay the mark tacks away early and comes back on the layline, not at the mark.
+    a boat that cannot lay the mark tacks away early and comes back on the layline, not at the mark. A present tack
+    that runs at the mark on the wrong side, passing it closer than `ρ + 0.5·L` within `ρ + 3·L`, tacks away at
+    once (if the tack is safe) instead of sailing on to the mark.
   - Guide on the other tack with the shorter turn through head to wind: a tack if the boat has way on (≥ 0.6 ×
     target) and the tack is safe (§7.3); if not, as close to the guide as the present tack goes, and wait. A turn
     the long way round (through a gybe) only when the boat is nearly stopped: a loop near a mark and other boats is
@@ -359,7 +362,9 @@ choose the minimum; keep it for at least 1.5 s unless a new ∞ appears
 ```
 
 The usual manoeuvres come out of this: ducking a starboard boat (bear away behind her stern), tacking to leeward
-and ahead ("lee-bow") when that clears, slowing when crossing is impossible.
+and ahead ("lee-bow") when that clears, slowing when crossing is impossible. The brake (the `slow` candidate, and
+letting fly when no candidate clears) is dropped for a boat that has started and has been nearly stopped (under
+0.3 m/s) for more than 5 s: she keeps her sails drawing so that she can gather way and steer clear.
 
 ### 7.3 Before gaining right of way (rules 13, 15, 16)
 

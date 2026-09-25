@@ -41,7 +41,9 @@ float rounding_radius(AC& x, AB& a, const Me& m, std::int32_t mark) {
   for (const PairRecord* p : x.pairs_of[static_cast<std::size_t>(a.i)]) {
     if (p->room_giver == a.i && p->room_mark == mark && p->room_entitled >= 0) ++n_in;
   }
-  return ((rm.radius + 0.5f * m.B) + a.P.c_lvl * m.B) + static_cast<float>(n_in) * (m.B + 1.0f);
+  // The hull's yaw lag (boat.md §5.9): the boat runs on about v * yaw_time before a turn takes hold.
+  const float lag = max(m.s.v, 0.0f) * m.b.perf().dynamics.yaw_time;
+  return (((rm.radius + 0.5f * m.B) + a.P.c_lvl * m.B) + static_cast<float>(n_in) * (m.B + 1.0f)) + lag;
 }
 
 // §6.3 gate choice.
@@ -200,6 +202,14 @@ bool round_mark(AC& x, AB& a, const Me& m, const MarkTarget& t) {
     const float pc = heading_for(m.twd, m.tack * m.theta_up);
     const Vec2 to_m = v_sub(t.M, m.c);
     const bool clears = t.sigma * v_cross(dir(pc), to_m) >= 0.9f * t.rho || v_dot(dir(pc), to_m) < 0.0f;
+    // This tack runs at the mark on the wrong side, close enough for the hull to touch it when she turns: tack
+    // away now (ai.md §6.1), not when she is on top of it.
+    const bool into = t.sigma * v_cross(dir(pc), to_m) < 0.0f && v_dot(dir(pc), to_m) > 0.0f &&
+                      std::fabs(v_cross(dir(pc), to_m)) < t.rho + 0.5f * m.L && dist < t.rho + 3.0f * m.L;
+    if (into && a.man == Man::straight && request_tack(x, a, m, AiTactic::Rounding, true)) {
+      a.tactic = AiTactic::Rounding;
+      return true;
+    }
     if ((v_dot(dir(pc), dir(psi_tan)) > 0.0f && clears) || a.man != Man::straight || dist <= 1.15f * t.rho) {
       a.psi_target = pc;
       return true;

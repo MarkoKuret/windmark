@@ -1,0 +1,215 @@
+# Controls
+
+The player's actions, their default keyboard, mouse, gamepad and Steam Deck bindings, how analog inputs and held
+keys become the boat's commands, and the accessibility options. The boat commands themselves are the core's
+(`boat.md` §2, `sails.md` §4.2) and travel in the input frame of `networking.md` §4.1; the cameras are
+`cameras.md`, the indicators `hud.md`.
+
+## 1. From input to the boat
+
+- Input devices are read **every rendered frame** into a controls state. At each tick boundary the controls module
+  stamps the input frame for that tick from the latest state (`networking.md` §4): `h_cmd`, `sheet_cmd`, the flags
+  `let_fly`, `auto_trim`, hail, hail reply, protest, and at most one sail request.
+- **Discrete actions** (sail requests, hail, hail reply, protest) are latched on the press and sent in the next
+  stamped frame; a second one before that frame waits for the one after. Retire, chat and menu actions go on the
+  reliable channel (`networking.md` §4.4).
+- The core rate-limits the rudder (`helm_rate`, `boat.md` §5.2) and moves the sails at their sheet rates
+  (`sails.md` §5.5): controls set targets, they never move the boat directly.
+- Commands are clamped to their ranges before they are stamped (`h_cmd` ∈ [−1, 1], `sheet_cmd` ∈ [0, 1]).
+
+## 2. Actions
+
+| action | kind | effect |
+| --- | --- | --- |
+| `helm` | axis −1…+1 | `h_cmd` from a stick (§5.1); + turns the bow to starboard |
+| `helm_left`, `helm_right` | button | keyboard helm (§5.2) |
+| `helm_centre` | button | `h_cmd = 0` |
+| `helm_fine` | modifier (hold or toggle) | keyboard and stick helm limited to 0.35 |
+| `sheet_in`, `sheet_out` | button or trigger | move `sheet_cmd` (§5.3); ignored while auto-trim is on |
+| `sheet` | absolute axis (optional) | `sheet_cmd = (axis + 1)/2` for a slider, throttle or trackpad |
+| `let_fly` | hold (option: toggle) | `let_fly` flag while held |
+| `auto_trim` | toggle | the auto-trim assist, when the lobby allows it (`hud.md` §14) |
+| `sail_1` … `sail_9` | button | front sail by slot (§5.4) |
+| `sail_prev`, `sail_next`, `sail_set` | button | gamepad sail selection (§5.4) |
+| `drop_front` | button | `drop_front()` |
+| `hail` | button | hail for room to tack, or answer "you tack" to a hail (`rules.md` §7.9, `hud.md` §11) |
+| `protest` | button | protest while the protest prompt shows (`rules.md` §10) |
+| `camera_next`, `camera_chase`, `camera_onboard`, `camera_aerial`, `camera_free` | button | `cameras.md` §6 |
+| `camera_orbit` | 2 axes / 4 buttons | orbit or look (`cameras.md` §2–§5) |
+| `camera_zoom_in`, `camera_zoom_out` | button / wheel | zoom |
+| `camera_recentre` | button | recentre the current camera |
+| `camera_preset_1` … `8` | button | recall; with the store modifier: store |
+| `camera_boost` | modifier | free camera ×4 |
+| `rankings` | hold (option: toggle) | ranking list (`hud.md` §10) |
+| `map` | toggle | full course map (`hud.md` §8) |
+| `radar_zoom_in`, `radar_zoom_out`, `radar_orientation` | button | radar range ×1.5 steps, heading-up / north-up |
+| `wind_shadow_view` | toggle | the wind shadow assist, when allowed (`hud.md` §3.3) |
+| `hud_hide` | toggle | hide every HUD element |
+| `boat_names` | toggle | name tags over boats |
+| `spectate_next`, `spectate_prev`, `spectate_leader` | button | viewed boat, when not racing (`cameras.md` §1) |
+| `chat` | button | open the chat line |
+| `pause_menu` | button | pause offline, menu online (§7) |
+| `screenshot` | button | save a screenshot |
+
+There is no action for penalty turns (they are sailed), tacking or gybing (steered), or the main (always up).
+
+## 3. Default bindings
+
+Keys are bound by **physical position** (layout independent) and shown with the local key label. Every action takes
+up to two keyboard or mouse bindings and one gamepad binding; all are rebindable.
+
+| action | keyboard, mouse | gamepad (Xbox names) | Steam Deck (default template) |
+| --- | --- | --- | --- |
+| `helm` | – | left stick X | left stick X |
+| `helm_left` / `helm_right` | ← / →, A / D | – | – |
+| `helm_centre` | ↓ | L3 (click) | L3 |
+| `helm_fine` | Shift (hold) | LB (hold) | L4 (hold) |
+| `sheet_in` / `sheet_out` | W / S | RT / LT | R2 / L2 |
+| `let_fly` | Space | A | A |
+| `auto_trim` | T | D-pad down | D-pad down |
+| `sail_1` … `sail_9` | 1 … 9 | – | – |
+| `sail_prev` / `sail_next` / `sail_set` | – | D-pad left / right, X | D-pad left / right, X |
+| `drop_front` | 0 | B | B |
+| `hail` | H | D-pad up | D-pad up |
+| `protest` | P | D-pad up while the protest prompt shows | same |
+| `camera_next` | C | Y | Y |
+| `camera_chase` … `camera_free` | F5, F6, F7, F8 | – | – |
+| `camera_orbit` | right mouse drag; numpad 4/6/8/2; I/J/K/L | right stick | right stick, right trackpad |
+| `camera_zoom_in` / `out` | wheel; numpad 9 / 7; O / U | RB / RB + LB held | R1 / R1 + L1 held |
+| `camera_recentre` | numpad 5, R | R3 (click) | R3 |
+| `camera_preset_1` … `8` | F1 … F4, Shift+F1 … F4 recall; Ctrl + key stores | – | – |
+| `camera_boost` | Shift (free camera) | LB (free camera) | L1 |
+| `rankings` | Tab (hold) | View (hold) | View (hold) |
+| `map` | M | – (in the pause menu) | – |
+| `radar_zoom_in` / `out` | = / − | – | – |
+| `radar_orientation` | Z | – | – |
+| `wind_shadow_view` | V | – | – |
+| `hud_hide` | F10 | – | – |
+| `boat_names` | N | – | – |
+| `spectate_next` / `prev` / `leader` | ] / [ / Home | RB / LB / R3 (when not racing) | same |
+| `chat` | Enter | – | – |
+| `pause_menu` | Esc | Menu | Menu |
+| `screenshot` | F12 | – | Steam button + R1 |
+
+Notes: `helm_fine` and `camera_boost` share Shift, which is fine because the free camera takes no helm input. The
+gamepad has no direct sail keys: D-pad left/right step a highlighted sail on the HUD sail strip, X sets it (§5.4).
+
+## 4. Camera input rates
+
+Stick and key rates are per second, mouse rates per pixel (`cameras.md`): chase orbit 120°/s azimuth and 60°/s
+elevation at full stick or held key, 0.3°/px mouse; onboard and free look 0.15°/px, sticks 90°/s yaw and 60°/s
+pitch (onboard stick look is absolute, `cameras.md` §3); zoom ×1.12 per wheel notch, ×2 per second held. Stick dead
+zone 0.12 radial, response `((|s| − 0.12)/(0.95 − 0.12))^1.5` along the stick direction. Invert X and Y options per
+camera kind (orbit, look).
+
+## 5. Boat input processing
+
+### 5.1 Helm stick
+```
+x    = helm axis value, [-1, 1]
+dz   = 0.10          (option 0 – 0.30)
+sat  = 0.95          (the stick counts as full from here)
+gam  = 1.6           (option 1.0 – 3.0: higher = finer near the centre)
+m    = clamp((fabs(x) - dz) / (sat - dz), 0, 1)
+h_cmd = sgn(x) * pow(m, gam) * (helm_fine ? 0.35 : 1)
+```
+The stick is absolute: centred stick = centred helm. Reference: at `x = 0.5`, `h_cmd = 0.30`; at `x = 0.3`, `0.10`.
+When the stick has been inside its dead zone for 0.5 s and a helm key is pressed, the keys take over (§5.2); moving
+the stick out of its dead zone takes it back. The source that moved last wins.
+
+### 5.2 Helm keys
+Two modes (option, per player):
+- **Hold to steer** (default). While a helm key is held, `h_cmd = ±k(t)` with the ramp
+  `k(t) = min(1, 0.25 + 0.75·t / 0.8 s)` (`t` = time held), limited to 0.35 with `helm_fine`. On release `h_cmd = 0`
+  and the core brings the rudder back at `helm_rate`. Both keys held: the later one wins.
+- **Set and hold.** A held key moves `h_cmd` at ±0.6 per second (±0.2 with `helm_fine`); on release the helm stays
+  where it is; `helm_centre` sets 0. Suited to long reaches and to players who helm like a tiller.
+
+### 5.3 Sheet
+`sheet_cmd = u` ∈ [0, 1], 0 = sheeted hard in, 1 = fully eased (`sails.md` §5.2). Only used with auto-trim off.
+- **Keys**, rate by hold time `e` (same for `sheet_in` with sign −1 and `sheet_out` with +1):
+  ```
+  r(e) = 0.06                            for e < 0.1 s
+       = 0.06 + 0.39 * (e - 0.1) / 0.9   for 0.1 s <= e <= 1 s
+       = 0.45                            for e > 1 s          // per second of u
+  u = clamp(u + sign * r(e) * dt, 0, 1) ;  both keys held: they cancel
+  ```
+  so a tap trims by a fraction of a percent and a long press sweeps the whole range in about 2.7 s; `helm_fine`
+  divides the rate by 3.
+- **Triggers**: `u += (t_out' − t_in') · 0.5 · dt` with `t' = pow(clamp((t − 0.05)/0.95, 0, 1), 1.5)` for each
+  trigger value `t`.
+- **Absolute axis** (`sheet`, optional): `u = (axis + 1)/2`, dead zone 0.02 at both ends.
+- Option "sheet turns auto-trim off": a sheet input while auto-trim is on switches it off (default off: the input is
+  ignored and the HUD shows `AUTO`).
+- When auto-trim is switched off, `u` starts from the value that matches the present trim (`sails.md` §5.2 inverted
+  for the front sail, or the main if no front sail is up), so nothing jumps.
+
+### 5.4 Sail requests
+Slots are the class's front sails in class-file order (`data_format.md` §3.5, the main excluded); the HUD sail strip
+shows each slot's name and key. With `F` the front sail that is up and the running change of `sails.md` §4.2:
+
+| press | situation | request |
+| --- | --- | --- |
+| slot `X` | idle, `X ≠ F` | `hoist(X)` |
+| slot `F` | idle | `drop_front()` |
+| slot `F` | the new sail `S` is going up (peel) | `hoist(F)`: cancels the hoist |
+| slot `S` | `S` is going up, `F ≥ 0` | `hoist(F)`: the same cancel |
+| slot `S` | a lone drop of `S` is running | `hoist(S)`: cancels the drop |
+| `drop_front` | idle, `F ≥ 0` | `drop_front()` |
+| anything else | busy | nothing sent; the HUD flashes the running change |
+
+Gamepad: `sail_prev`/`sail_next` move a highlight along the strip (wrapping), `sail_set` presses the highlighted
+slot with the rules above. The highlight starts on the sail the HUD suggests (`hud.md` §4 sail hint) or the next
+slot after `F`.
+
+### 5.5 Let-fly, auto-trim, hail, protest
+- `let_fly` sets the flag while held; with the toggle option one press sets it and the next clears it (the HUD then
+  shows `LET FLY` until cleared).
+- `auto_trim` toggles the assist; refused (with a HUD message) when the lobby's assist preset forbids it.
+- `hail`: when a valid hail for room to tack is available (`hud.md` §11 shows the button), sends the hail flag; when
+  this boat has been hailed, sends the reply "you tack" (tacking needs no key).
+- `protest`: sends the protest flag only while the protest prompt is shown.
+
+## 6. Accessibility and options
+
+| option | default | range / values |
+| --- | --- | --- |
+| rebinding | defaults of §3 | every action, two keyboard/mouse bindings and one gamepad binding; conflicts shown |
+| helm key mode | hold to steer | hold to steer, set and hold (§5.2) |
+| helm stick dead zone, curve | 0.10, 1.6 | 0–0.30, 1.0–3.0 |
+| sheet key rate scale | 1.0 | 0.5–2.0 |
+| hold or toggle | hold | per action: `let_fly`, `helm_fine`, `rankings`, `camera_boost` |
+| mouse helm | off | while the left button is held, horizontal mouse offset from the press point sets `h_cmd` (300 px = full) |
+| one-hand layout | off | left-hand keyboard set (A/D helm, W/S sheet, Q let fly, 1–5 sails, E camera) or mouse-only (mouse helm, wheel = sheet, buttons = let fly and camera) |
+| camera invert X / Y | off | per camera kind |
+| camera and look speed | 1.0 | 0.25–3.0 |
+| reduced motion | off | on: no camera shake, onboard horizon always level (`heel_follow = 0`), chase `tau_yaw ≥ 0.5 s`, no smooth-switch overshoot |
+| onboard heel follow | 0 | 0–1 (`cameras.md` §3) |
+| vibration | on, 1.0 | off, 0–1: contact rumble `min(1, closing_speed/2)` for 0.2 s; a light buzz (0.1) while let fly or `luff_shiver > 0.8` on the driving sail |
+| captions | off | on: every race sound that carries information (signals, hails, penalties, rule warnings) also shows a caption line (`audio.md` §8) |
+| UI scale, colour-blind palette | 100 %, standard | `hud.md` |
+| assists | from the lobby | auto-trim and the HUD presets of `hud.md` §14 |
+
+## 7. Pause, focus and menus
+
+- **Offline** (solo against AI): `pause_menu` pauses the simulation (no ticks), audio ducks to ambience, the cameras
+  can still orbit and zoom. Resuming continues from the same tick.
+- **Online**: `pause_menu` opens the menu over the running race (banner "Race continues"); the boat keeps its last
+  helm, sheet and let-fly while the menu is open, except that a held let-fly key or hold-to-steer key counts as
+  released. The menu holds retire (with a confirmation) and settings.
+- **Chat focus**: typing blocks the boat's buttons and keys (held keys count as released); sticks and triggers keep
+  working.
+- **Window focus lost**: as chat focus. Held states are cleared so nothing stays pressed.
+
+## 8. Tests (headless, scripted input)
+
+1. Stick curve: `x` = 0.05, 0.3, 0.5, 0.95 give `h_cmd` = 0, 0.099, 0.299, 1.000 (±0.001).
+2. Hold-to-steer ramp: after 0.4 s held, `h_cmd = 0.625`; after 0.8 s and later, 1.0; on release 0 in the next frame;
+   the same at 30, 60 and 144 fps within 0.5 %.
+3. Sheet keys: a 0.05 s tap moves `u` by 0.003; holding 3 s from `u = 0` reaches 1.0; the rate curve is continuous.
+4. Latching: two sail presses within one tick send one request in the next frame and one in the frame after.
+5. Sail mapping: each row of §5.4 produces its request against a scripted boat state; a press while busy that
+   matches no row sends nothing.
+6. Focus: with let-fly held, opening chat clears `let_fly` in the next stamped frame.
+7. Last-moved source: a stick outside its dead zone overrides held helm keys; releasing the stick into its dead zone
+   for 0.5 s gives the keys back.

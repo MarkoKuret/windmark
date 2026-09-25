@@ -1,9 +1,11 @@
 ---
 id: WM-005
 title: 'Core: project setup and math'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-09-25 13:31'
+updated_date: '2026-09-25 13:33'
 labels:
   - core
 dependencies: []

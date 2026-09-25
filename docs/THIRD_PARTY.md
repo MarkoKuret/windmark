@@ -8,3 +8,4 @@
 | SciPy | tools/vpp (build time only: root finding) | BSD-3-Clause | https://scipy.org |
 | Matplotlib | tools/vpp (build time only: polar plots) | Matplotlib licence (PSF-based, BSD-compatible) | https://matplotlib.org |
 | pytest | tools/vpp tests | MIT | https://pytest.org |
+| doctest 2.4.12 | core tests (`core/third_party/doctest`, test builds only) | MIT | https://github.com/doctest/doctest |

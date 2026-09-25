@@ -1,0 +1,30 @@
+cmake_minimum_required(VERSION 3.20)
+project(windmark_core LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
+
+option(WINDMARK_BUILD_TESTS "Build the core test suite" ON)
+option(WINDMARK_WERROR "Treat warnings as errors" OFF)
+
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+include(WindmarkFloatRules)   # target windmark_float_rules (conventions.md §5)
+
+add_library(windmark_core STATIC
+  src/base/fp_env.cpp
+)
+target_include_directories(windmark_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+# PUBLIC: every target that links the core (tests, server, engine bindings) builds with the same float rules.
+target_link_libraries(windmark_core PUBLIC windmark_float_rules)
+target_compile_options(windmark_core PRIVATE ${WINDMARK_WARNINGS})
+
+if(WINDMARK_BUILD_TESTS)
+  enable_testing()
+  add_subdirectory(tests)
+endif()

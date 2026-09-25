@@ -68,5 +68,6 @@ set(WINDMARK_COURSES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../game/data/courses" C
     "Course files directory (game/data/courses) the tests load")
 target_sources(windmark_core_tests PRIVATE
   test_course.cpp
+  test_race.cpp
 )
 target_compile_definitions(windmark_core_tests PRIVATE WINDMARK_COURSES_DIR="${WINDMARK_COURSES_DIR}")

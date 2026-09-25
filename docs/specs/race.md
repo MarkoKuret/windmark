@@ -182,7 +182,7 @@ none, on an automatic grid:
 
 A boat that joins after the race was created (online, `networking.md` §9) takes the first free slot whose disc of
 radius `3·L_max` contains no other boat, at the current spawn pose rule. Joining is allowed until the preparatory
-signal; later joiners spectate.
+signal; later joiners spectate. Match races take no joiners.
 
 ## 4. Starting
 
@@ -233,12 +233,16 @@ A boat that crosses the line through the band while OCS is not starting: she is 
   exactly who is over, so there is no hail-by-sail-number ambiguity.
 - An OCS boat that never returns has no start: at the close of the race she scores `OCS` (§9) whatever she did
   afterwards; she still sails on the course (and is a racing boat for the rules) until she finishes or the race
-  closes, so that a mistake does not end the player's race.
+  closes, so that a mistake does not end the player's race. Until the start limit (§4.4) she can still return and
+  start. At the start limit a boat still OCS or OCS-I is **released onto the course**: her next step becomes step 1
+  (as if she had started there, with the winding of §5.1 set from her position then), she rounds and finishes like
+  any boat and appears in the ranking, but her finish gets no place and she scores `OCS`.
 
 ### 4.4 Did not start
 
 A boat that has not started 4:00 after the start signal (or by the race close if earlier) scores `DNS`; if she
-never sailed within 10 hull lengths of the start line after the warning signal she scores `DNC`. The 4-minute limit
+never sailed within 10 hull lengths of the start line after the warning signal she scores `DNC`. At the start limit
+such a boat (not OCS, see §4.3) becomes a ghost (§6.3). The 4-minute limit
 is a Windmark choice so that a boat cannot hide behind the line; it is a race setting (`start_limit_s`, default 240).
 
 ### 4.5 General recall (optional)
@@ -248,7 +252,10 @@ OCS-I, the race committee (the server) signals a general recall (rule 29.2). All
 `n_gun` is set so that the new warning signal is 1:00 after the recall; the prep flag escalates `P → I → U`
 (`Z` → `U`, `U` → `black`). A boat identified under `black` may not start the restart and scores `BFD`. At most two
 general recalls; the third start is sailed with `black`. Off by default because recalls cost online players
-minutes.
+minutes. The recall is decided before the U and black disqualifications of §3.3: a recall cancels a U-flag
+identification (the race is restarted), a black-flag one stands. From the recall until the new preparatory signal
+the rules are not live (the boats are not racing, as between the warning and preparatory signals). The time limit
+keeps its length from the new gun.
 
 ## 5. Sailing the course
 
@@ -269,7 +276,7 @@ previous reference `P = R_{k−1}` and next reference `N = R_{k+1}`:
 σ        = +1 for port, −1 for starboard            # port rounding = the boat goes anticlockwise around M
 α_in     = compass(P − M)                            # entry ray
 α_out    = compass(N − M)                            # exit ray
-sweep    = wrap_2pi( σ · (α_in − α_out) ), then 2π if it is 0   # compass bearings grow clockwise
+sweep    = wrap_2pi( σ · (α_in − α_out) ), then + 2π if it is below π/6   # compass bearings grow clockwise
 φ_done   = max(π/2, sweep − π/2)
 ```
 
@@ -299,6 +306,11 @@ What this means:
 - A boat that rounds wide still rounds; there is no distance limit.
 - The test uses the reference point; with the mark at least half a beam from the hull (else it is a collision) the
   per-tick increment is far below π, so `ang` is never ambiguous.
+- `sweep` below π/6 (30°): P, M and N alone cannot tell a course that turns away from the mark by more than 150°
+  from one that turns around it by a little more than 180° (a leeward gate buoy whose exit leg leans slightly
+  across the entry leg gives a `sweep` of a few degrees). The sweep is then read as the turn around the mark
+  (`+ 2π`), so the boat must be abeam of the outgoing leg; a course that really wants a mark on the outside of a
+  turn sharper than 150° is not sailable anyway.
 - Degenerate geometry: if `|P − M| < 1 m` use `α_in = α_out + σ·π` (a straight pass); if `|N − M| < 1 m` use the
   bearing of the step after N. The course validator rejects consecutive steps at the same point (`courses.md` §7).
 
@@ -340,12 +352,12 @@ obstruction to her. The committee boat is both the start/finish mark and an obst
 When the next step is the finish line, the finish line segment `F_A–F_B` is oriented with the course side (the side
 of the last mark's reference point) on the left of `F_A → F_B`. A boat **finishes** when:
 
-1. she has no unserved turn penalty (`rules.md` §9: a penalty must be taken before finishing, RRS 44.2) and is
-   not OCS, and
+1. she has no unserved turn penalty (`rules.md` §9: a penalty must be taken before finishing, RRS 44.2) (a boat
+   released onto the course as OCS, §4.3, finishes but scores `OCS` and gets no place), and
 2. her hull crosses the finish line from the course side through the band (§4.1).
 
 `t_finish = (n − 1 − n_gun)·DT + f·DT` (the earliest hull point), stored as integer microseconds after the
-gun. That fraction breaks most ties that a tick-resolution time would create; boats with equal `t_finish` share the
+gun: `t_finish_us = (n − 1 − n_gun)·50000 + (int64)round_half_even(f · 50000)`, so the tick part is exact. That fraction breaks most ties that a tick-resolution time would create; boats with equal `t_finish` share the
 place (RRS Appendix A ties, §9). The event is `Finished(boat, t_finish)`.
 
 A boat with an unserved penalty that crosses the line has not finished; the HUD says why, and she may take the
@@ -373,7 +385,7 @@ or lost their connection for more than the grace period (`networking.md` §9).
 
 ### 6.4 Retiring
 
-A player may retire at any time (menu): the boat becomes a ghost and scores `RET` (after the start) or `DNS` (before
+A player may retire at any time (menu): the boat becomes a ghost and scores `RET` (after her start) or `DNS` (before
 it).
 
 ## 7. Closing the race
@@ -387,9 +399,13 @@ boat that has not finished scores `DNF` (rule 35).
 ### 7.2 Early close
 
 The race closes as soon as no human boat is still racing (every human boat has finished, retired, been disqualified
-or left). Offline and online the AI boats still racing are then given **projected finishes**:
+or left). This applies only to a race with at least one human entry; a race of computer boats only (tests, the
+`sim` harness, server soak runs) closes by the rules below. Every race also closes as soon as no boat at all is
+still racing (all finished or ghosts). Offline and online the AI boats still racing are then given **projected finishes**:
 `t_proj = t_now + D / V_ref`, with `D` the boat's remaining course distance (§8.2) and `V_ref` 0.9 × her polar VMG
-(upwind and downwind legs) or polar speed (reaching legs) averaged over the remaining legs at the current wind. They
+(upwind and downwind legs) or polar speed (reaching legs) averaged over the remaining legs at the current wind. The
+average is weighted by distance: `D / V_ref = Σ_j d_j / (0.9·V_j)` over the remaining part `d_j` of each remaining
+leg, with the leg types of §8.1, the class's best sail and the clean wind speed at the boat. They
 are ranked after every real finisher, in order of `t_proj`, and marked "projected" in the results. This keeps a
 human from waiting for computer boats to cross the line; projected times are never before `t_now`, so no projected
 AI boat is placed ahead of a human who finished.
@@ -484,7 +500,7 @@ so on, then by the last race (Appendix A8). Discards (`drop worst`) are a lobby 
 The server draws one 64-bit `race_seed` per race and sends it to clients (`conventions.md` §7). Every random choice
 of the race layer uses the counter-based generator of `conventions.md` §7 with that seed:
 
-- **stream 7: race layer** (not yet in the `conventions.md` §7 table; to be added there). Spawn shuffle:
+- **stream 7: race layer** (`conventions.md` §7, "spawn order shuffle"). Spawn shuffle:
   draw `j = min((uint32)(rng_unit(race_seed, 7, k) * (float)(k + 1)), k)` for `k = n−1 … 1` (Fisher–Yates from the
   end), swapping entries `k` and `j`. General recall restarts use indices from 1000 upwards.
 - AI boats use streams 16–31 (`ai.md` §1).

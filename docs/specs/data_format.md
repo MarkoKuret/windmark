@@ -48,7 +48,7 @@ compute its performance. Required fields are marked **R**; the rest have the sta
 | `draft_canoe` | R | m | depth of the canoe body below the DWL (Tc), excluding appendages |
 | `displacement` | R | kg | mass of the boat in sailing trim **without crew** (hull, appendages, rig, sails, gear) |
 | `prismatic` | R | – | prismatic coefficient Cp of the immersed canoe body |
-| `section_shape` | R | object | `{ "type": "round" \| "u" \| "v" \| "flat" \| "chined", "midship_coefficient": Cm, "deadrise": rad, "chine_height": m }`; `deadrise` default 0.2 rad, `chine_height` (above DWL, `chined` only) |
+| `section_shape` | R | object | `{ "type": "round" \| "u" \| "v" \| "flat" \| "chined", "midship_coefficient": Cm, "deadrise": rad, "chine_height": m }`; `deadrise` default 0.2 rad, `chine_height` (above DWL, `chined` only). `midship_coefficient` is optional and only a hint: displacement and Cp win, and the generator reports the resulting Cm |
 | `rocker` | R | object | `{ "fwd": m, "aft": m }`: height of the canoe-body keel line above its lowest point at the forward and aft ends of the waterline |
 | `freeboard` | R | object | `{ "bow": m, "mid": m, "stern": m }`: sheer height above the DWL at the stem, at mid-length and at the transom |
 | `transom_width` | R | m | width of the transom at the sheer |
@@ -93,7 +93,7 @@ compute its performance. Required fields are marked **R**; the rest have the sta
 | `E` | R | m | mainsail foot (boom length to the black band) |
 | `mast_height` | R | m | masthead above the DWL |
 | `mast_x` | R | m | body x of the mast front at the deck |
-| `boom_height` | | m | boom above the DWL [VPP estimate] |
+| `boom_height` | | m | boom above the DWL [default: 0.07·P above the sheer at the mast, shared by the generator and the VPP] |
 | `fractional` | | – | forestay height / mast height above the sheer; 1 = masthead [0.8] |
 | `bowsprit` | | m | bowsprit (tack point) length forward of the stem, 0 = none [0] |
 | `pole` | | m | spinnaker pole length (symmetric spinnakers) [0] |

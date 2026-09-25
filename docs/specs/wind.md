@@ -49,7 +49,7 @@ wind_from      = wrap_2pi(global_from(t) + d)
 ```
 The terms are summed in the order written. `wind_speed` is ≥ 0 by construction (`f ≥ 0`, `m > 0`). This is the
 **clean wind**; the wind a boat sails in is the clean wind at its hull reference point with the other boats'
-shadows applied (`wind_shadow.md` §4).
+shadows applied (`wind_shadow.md` §5).
 
 In tick step 3 (`conventions.md` §4.1) the core evaluates `global_from(t_n)` once and caches the per-tick parts
 (shift segment, puff slot positions); per-point queries then only do the venue lookup and the puff product.

@@ -53,7 +53,7 @@ Carried from tick to tick and serialised in this order (`conventions.md` §9). T
 | 6 | `phi`, `phi_rate` | rad, rad/s | 0, 0 | heel and its rate |
 | 7 | `theta`, `theta_rate` | rad, rad/s | 0, 0 | pitch and its rate |
 | 8 | `wobble_phase` | rad | from RNG | phase of the small wind-driven attitude motion (§6.5) |
-| 9 | `contact_vx`, `contact_vy` | m/s | 0 | contact velocity over the ground from collisions, decays (`collisions.md` §6) |
+| 9 | `contact_vx`, `contact_vy` | m/s | 0 | contact velocity over the ground from collisions, decays (`collisions.md` §4) |
 | 10 | `contact_yaw_rate` | rad/s | 0 | yaw rate from collisions, decays |
 | 11 | `twd_from`, `awd_from` | rad | computed | last true and apparent wind directions; kept when the wind vanishes (§5.1) |
 | 12 | `tws`, `twa`, `aws`, `awa` | m/s, rad | computed | last wind triangle; the wind shadow of the next tick is cast from these (`wind_shadow.md` §3) |
@@ -157,7 +157,7 @@ any.
 
 ### 5.4 Sail trim
 Update every sail's sheet target and sail angle (`sails.md` §5), then take the **driving sail**: the front
-sail if one is up, else the main. Its trim error `eps` (`sails.md` §5.5) scales speed, heel and helm balance.
+sail if one is up, else the main. Its trim error `eps` (`sails.md` §5.6) scales speed, heel and helm balance.
 
 ### 5.5 Performance lookups
 With `c` the config's tables (`sails.md` §6), `ta = fabsf(twa)`, `aa = fabsf(awa)`:
@@ -250,7 +250,7 @@ vmg = v * cos(twa)                                               // + toward the
 v_filt = v_filt + FILT_A*(v - v_filt)
 sog_filt_x = sog_filt_x + FILT_A*(gx - sog_filt_x) ; sog_filt_y likewise
 ```
-Collisions (tick step 6) then may change `pos`, `v`, `contact_*` (`collisions.md` §6); their effect on the
+Collisions (tick step 6) then may change `pos`, `v`, `contact_*` (`collisions.md` §4); their effect on the
 heading and position through `contact_*` starts in the next tick.
 
 ## 6. Details
@@ -311,7 +311,7 @@ Nothing special is coded; a tack emerges from the tables.
    `decel_linear·err − decel_const`, so a light boat (S: 0.15/s) loses way quickly and a heavy one (L: 0.025/s)
    carries its momentum through.
 3. The wind crosses the bow: `tack` flips, the sails' targets flip sides and the sails swing across at their
-   sheet rates (`sails.md` §5.4); until they settle, their trim error keeps the drive down.
+   sheet rates (`sails.md` §5.5); until they settle, their trim error keeps the drive down.
 4. On the new tack the boat accelerates along the acceleration table, which is small close to the wind: bearing
    away a little to build speed and then heading up is faster than turning straight to close-hauled.
 A good tack at 10 kn TWS costs an S boat about 1–2 boat lengths; a slammed full-helm tack costs noticeably more.

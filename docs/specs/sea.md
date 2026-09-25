@@ -102,7 +102,7 @@ Slope (renderers, AI): `∂η/∂x = −E·Σ a_i·2π·kx_i·sin(2π f_i)`, lik
 
 ### 5.1 Hull points
 The performance file may list the hull sample points (`dynamics.hull_points`, body frame, m). Otherwise the core
-derives 8 points from the class's `lwl` and `bwl` (`data_format.md` §3.1), in this order:
+derives 8 points from `dynamics.lwl` and `dynamics.bwl` (`data_format.md` §4.2), in this order:
 ```
 ( 0.45·lwl, 0), (−0.45·lwl, 0),
 ( 0.25·lwl,  0.35·bwl), ( 0.25·lwl, −0.35·bwl),

@@ -113,7 +113,7 @@ An array; exactly one entry of type `main`, any number of front sails.
 | `furling` | | bool | headsail on a furler (hoist animation, and faster handling) [false] |
 | `handling` | | object | overrides of the handling block the VPP writes (§4.4) |
 
-The owner's list maps as: main/jib/code zero/spinnaker (symmetric or asymmetric) areas → `sails[].area` with the
+Sail areas of the main, jib, genoa, code zero and spinnakers (symmetric or asymmetric) are `sails[].area` with the
 matching `type`.
 
 ### 3.6 `crew`

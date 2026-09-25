@@ -1,0 +1,7 @@
+build/
+.godot/
+*.o
+*.a
+*.dylib
+.DS_Store
+__pycache__/

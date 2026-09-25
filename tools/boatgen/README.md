@@ -80,8 +80,25 @@ How the generator reads a few of them:
 - `lcb_x` is the LCB target (default 53.5 % LWL aft of the forward end when absent).
 - `max_beam_station` and `bow_fineness` shape the sheer plan view with the rule of `collisions.md` §2.1, so the
   2-D collision outline and the 3-D deck edge agree.
-- `sails[].area` is matched exactly by the flat outline (mainsail roach, headsail clew position, spinnaker
-  width). `luff` and `tack_x` override the rig-derived values when given; `leech` and `foot` are not used yet.
+- `sails[].area` of the main and headsails is matched exactly by the flat outline (mainsail roach, headsail clew
+  position). `luff` and `tack_x` override the rig-derived values when given.
+- Code zeros and spinnakers are **not** stretched to the class area: they are drawn from the rig with the standard
+  proportions of `docs/specs/data_format.md` §3.5, and the class area should be the rule area that planform gives
+  (the build logs the measurements and warns when the class area is more than 3 % off). The rule:
+
+  | type | tack | leech | foot | mid girth | edge round (luff share) |
+  | --- | --- | --- | --- | --- | --- |
+  | `spinnaker_asym` | sprit end | 0.88 luff | 0.56 luff | 0.76 foot | 45 % |
+  | `spinnaker_sym` | pole end | = luff | 1.75 pole, at most 0.6 luff | 0.95 foot | 50 % |
+  | `code_zero` | sprit end | 0.90 luff | 0.46 luff | 0.56 foot | 20 % |
+
+  The luff is the straight line from the tack to the halyard point (0.12 m below the masthead at the mast front);
+  the clew is where the foot from the tack meets the leech from the head. The luff and leech are then bowed
+  outward (split by the luff share) until the mid girth, between the mid points of the luff and leech edges,
+  reaches its value; the foot has a fixed round (asym 8 %, sym 10 %, code zero 2 % of the foot). Rule area
+  `(SLU + SLE) / 2 · (SF + 4 · SHW) / 6` with the edges measured along the curves, as the sidecar's
+  `sails.<id>.rule` reports. `luff`, `leech` and `foot` in the class file override the proportions. The clew comes
+  out about a third of the hull length forward of the transom, so the set kite's clew flies abreast the cockpit.
 
 ### `visual` block (generator only, opaque to the core and the VPP)
 
@@ -247,7 +264,7 @@ Positions in the body frame.
 | `buoyancy_samples` | skin samples up to the sheer with outward normal and area, for pressure integration at any heel and trim (`canoe_volume_check_m3` is their immersed volume by the divergence theorem) |
 | `collision_meshes` | closed low-poly hull (canoe body to the deck crown), fin, bulb and rudder slabs |
 | `rig` | mast step, masthead, hounds, forestay tack, boom pivot and axis, sprit end, rudder stock and axis, wheel hub, spreader tips; with a pole: `pole_pivot`, `pole_axis`, `pole_length` (from the mast front) and `pole_end` (rest position, the spinnaker tack) |
-| `sails` | per sail: node, type, grid size, vertex order, flat area and target, centroid, corner vertices (tack, clew, head), `look` (the look parameters above, every applicable key filled) |
+| `sails` | per sail: node, type, grid size, vertex order, flat area and target, centroid, corner vertices (tack, clew, head), `look` (the look parameters above, every applicable key filled); code zeros and spinnakers also `rule` (luff, leech, foot, mid girth and rule area of the planform) |
 
 ## Limits and next steps
 
@@ -260,4 +277,5 @@ Positions in the body frame.
 - One LOD. The model is about 50 to 60 k triangles; a game needs two or three LODs (fewer stations, hardware
   dropped or merged) and a draw-call budget per boat.
 - Multihulls are not supported (one canoe body, one keel).
-- `sails[].leech` and `foot` are not used; the hull fit leaves Cm as an outcome (see above).
+- `sails[].leech` and `foot` are used for code zeros and spinnakers only; the hull fit leaves Cm as an outcome
+  (see above).

@@ -111,13 +111,35 @@ An array; exactly one entry of type `main`, any number of front sails. Its order
 | `id` | R | – | unique id (e.g. `main`, `jib`, `a2`) |
 | `type` | R | – | `main`, `jib`, `genoa`, `code_zero`, `spinnaker_sym`, `spinnaker_asym` (`sails.md` §1) |
 | `area` | R | m² | sail area (spinnakers: the rule area) |
-| `luff`, `leech`, `foot` | | m | edge lengths [from the rig and the area] |
+| `luff`, `leech`, `foot` | | m | edge lengths [main and headsails: from the rig and the area; flying sails: from the rig, below] |
 | `tack_x` | | m | body x of the tack [from the rig: mast for the main, forestay for jibs, sprit or pole] |
 | `furling` | | bool | headsail on a furler (hoist animation, and faster handling) [false] |
 | `handling` | | object | overrides of the handling block the VPP writes (§4.4) |
 
 Sail areas of the main, jib, genoa, code zero and spinnakers (symmetric or asymmetric) are `sails[].area` with the
 matching `type`.
+
+**Flying-sail planform.** A code zero or spinnaker is drawn from the rig with standard proportions, and its `area`
+is the rule area of that planform (the class file takes the value the generator reports, rounded down to 0.5 m²;
+the generator warns when they differ by more than 3 %). The corners, in the centreline plane:
+
+- **tack**: the sprit end (code zero, asymmetric spinnaker), or the pole end one pole length ahead of the mast front
+  (symmetric spinnaker, or an asymmetric one on a class with a pole and no sprit); `tack_x` moves it;
+- **head**: the halyard point, just below the masthead at the mast front;
+- **luff** `SLU` = the straight tack-to-head distance (`luff` shortens it along the same line);
+- **clew**: `foot` `SF` from the tack and `leech` `SLE` from the head, aft of the luff line.
+
+| type | `SLE` | `SF` | mid girth `SHW` |
+| --- | --- | --- | --- |
+| `spinnaker_asym` | 0.88 `SLU` | 0.56 `SLU` | 0.76 `SF` (just over the 0.75 `SF` spinnaker line) |
+| `spinnaker_sym` | `SLU` (equal luffs) | 1.75 × pole length, at most 0.6 `SLU` | 0.95 `SF` |
+| `code_zero` | 0.90 `SLU` | 0.46 `SLU` | 0.56 `SF` (below the 0.75 `SF` spinnaker line: flatter and narrower) |
+
+`leech` and `foot` in the class file override the table. The edges are rounded (luff and leech outward, foot
+downward) so the mid girth, measured between the mid points of the luff and leech edges, hits `SHW`. The rule area
+is `(SLU + SLE) / 2 · (SF + 4 · SHW) / 6` with `SLU`, `SLE`, `SF` measured along the rounded edges. With these
+proportions the clew sits about a third of the hull length forward of the transom on the flat sail, so set it flies
+abreast the cockpit and the sheet leads aft to the quarter.
 
 ### 3.6 `crew`
 

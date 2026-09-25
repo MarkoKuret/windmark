@@ -70,6 +70,15 @@ class Boat:
         self.parts["rudder"] = self.app.rudder_part()
         self.rig = Rig(cls, self.hull, self.deck)
         self.sails = build_sails(cls, self.rig, self.deck)
+        for spec in cls["sails"]:
+            m = self.sails[spec["id"]].measure
+            if m:
+                msg = (f"  sail {spec['id']}: luff {m['luff']:.2f}, leech {m['leech']:.2f}, foot {m['foot']:.2f}, "
+                       f"mid girth {m['mid_girth']:.2f} m, rule area {m['rule_area']:.1f} m2 (class {spec['area']:.1f})")
+                self.log(msg)
+                if abs(spec["area"] - m["rule_area"]) > 0.03 * m["rule_area"]:
+                    print(f"warning: {cls['id']} sail {spec['id']}: class area {spec['area']:.1f} m2 is not the "
+                          f"planform's rule area {m['rule_area']:.1f} m2 (data_format.md 3.5)")
         heads = [sl for sl in self.sails.values() if sl.type in ("jib", "genoa")]
         if heads:
             self.rig.jib_clew = heads[0].P[0, -1]

@@ -2,7 +2,9 @@
 
 Each sail is a Coons patch over its four edges (foot, leech, head, luff), sampled on a regular (chord x height)
 grid so the simulation can deform it at run time; corner indices and grid size go into the physics sidecar.
-Edge curvature (mainsail roach, spinnaker edge round) is sized so the flat outline area matches the class area.
+Mainsail roach and headsail leech round are sized so the flat outline area matches the class area; code zeros and
+spinnakers are drawn from the rig with standard proportions (docs/specs/data_format.md 3.5) and report their rule
+area instead.
 
 Two layers: the port-facing layer sits 1 mm to port, the starboard one 1 mm to starboard, each with its own
 outward normal. uv0 is metric (chord metres, height metres) for tiling cloth; uv1 is (chord fraction, 1 - height
@@ -74,6 +76,7 @@ class Sail:
     def __init__(self, name, P, corners):
         self.name, self.P, self.corners = name, P, corners  # P: (nv, nu, 3) in the centreline plane
         self.look_override = {}
+        self.measure = None        # flying sails: rule measurements (flying_measure)
 
     @property
     def area(self):
@@ -258,11 +261,41 @@ def _headsail(spec, cls, rig, deck):
     return Sail(spec["id"], make(b), {"tack": (0, 0), "clew": (0, nu - 1), "head": (nv - 1, 0)})
 
 
+# flying-sail planform (docs/specs/data_format.md 3.5): leech / luff, foot / luff, mid girth / foot, then the
+# drawing: foot round (fraction of the foot), the luff's share of the edge round, clew grid (cols, rows)
+FLYING = {
+    "spinnaker_asym": {"leech": 0.88, "foot": 0.56, "mid": 0.76, "foot_round": 0.08, "luff_share": 0.45, "grid": (16, 26)},
+    "spinnaker_sym": {"leech": 1.00, "foot": None, "mid": 0.95, "foot_round": 0.10, "luff_share": 0.50, "grid": (16, 26)},
+    "code_zero": {"leech": 0.90, "foot": 0.46, "mid": 0.56, "foot_round": 0.02, "luff_share": 0.20, "grid": (12, 24)},
+}
+SYM_FOOT_POLE = 1.75      # symmetric spinnaker foot / pole length
+SYM_FOOT_MAX = 0.60       # ... at most this share of the luff
+
+
+def _edge_len(C):
+    return float(np.sum(np.linalg.norm(np.diff(C, axis=0), axis=-1)))
+
+
+def _edge_mid(C):
+    """Point half way along a polyline edge."""
+    s = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(C, axis=0), axis=-1))]
+    return np.array([np.interp(0.5 * s[-1], s, C[:, k]) for k in range(3)])
+
+
+def flying_measure(P):
+    """Rule measurements of a flat code zero or spinnaker grid: luff, leech and foot along the edges, mid girth
+    between the mid points of the luff and leech edges, and the rule area (SLU + SLE) / 2 * (SF + 4 SHW) / 6."""
+    luff, leech, foot = _edge_len(P[:, 0]), _edge_len(P[:, -1]), _edge_len(P[0, :])
+    mid = float(np.linalg.norm(_edge_mid(P[:, 0]) - _edge_mid(P[:, -1])))
+    return {"luff": luff, "leech": leech, "foot": foot, "mid_girth": mid,
+            "rule_area": 0.5 * (luff + leech) * (foot + 4 * mid) / 6}
+
+
 def _flying(spec, cls, rig, deck):
     """Code zero and spinnakers, flat in the centreline plane: tacked at the sprit end (asymmetric, code zero) or
-    at the pole end (symmetric, or asymmetric on a class with a pole and no sprit), hoisted to the masthead. Edge
-    round is part of the flat outline area."""
-    L = cls["hull"]["loa"]
+    at the pole end (symmetric, or asymmetric on a class with a pole and no sprit), hoisted to the masthead. The
+    planform follows the standard proportions of docs/specs/data_format.md 3.5 from the rig; the class area is
+    not imposed (it should be the rule area this gives, which the sidecar reports)."""
     t = spec["type"]
     if t.startswith("spinnaker") and rig.pole_flown:
         tk = rig.pole_end.copy()
@@ -272,27 +305,42 @@ def _flying(spec, cls, rig, deck):
         tk = np.array([rig.x_tack, 0, rig.z_tack + 0.1])
     if spec.get("tack_x") is not None:
         tk[0] = spec["tack_x"]
-    shape = {"code_zero": (1.1, 0.012, 0.03, 0.02, 12, 24),
-             "spinnaker_asym": (1.3, 0.07, 0.10, 0.10, 16, 26),
-             "spinnaker_sym": (1.6, 0.10, 0.10, 0.12, 16, 26)}[t]
-    clew_h, luff_b, leech_b, foot_b, nu, nv = shape
+    pf = FLYING[t]
+    nu, nv = pf["grid"]
     hd = np.array([rig.x_mast + rig.chord / 2 + 0.02, 0, rig.z_top - 0.12])
     if spec.get("luff"):
         hd = tk + normalize(hd - tk) * float(spec["luff"])
     dl = hd - tk
-    luff = np.linalg.norm(dl)
-    dd = normalize(dl)
+    luff = float(np.linalg.norm(dl))
+    dd = dl / luff
     n_aft = np.array([dd[2], 0, -dd[0]])
     if n_aft[0] > 0:
         n_aft = -n_aft
-    z_c = float(deck.deck_z(rig.x_mast, 0)) + clew_h * (L / 12) ** 0.5
-    if t == "spinnaker_sym":
-        leech_b = luff_b
+    if pf["foot"] is None:
+        foot = min(SYM_FOOT_POLE * rig.pole_len, SYM_FOOT_MAX * luff) if rig.pole_len > 0 else SYM_FOOT_MAX * luff
+    else:
+        foot = pf["foot"] * luff
+    foot = float(spec.get("foot") or foot)
+    leech = float(spec.get("leech") or pf["leech"] * luff)
+    # clew: foot from the tack, leech from the head, aft of the luff line
+    a = (foot * foot - leech * leech + luff * luff) / (2 * luff)
+    if foot * foot - a * a <= 0:
+        raise ValueError(f"sail {spec['id']}: luff {luff:.2f}, leech {leech:.2f} and foot {foot:.2f} make no triangle")
+    ck = tk + a * dd + np.sqrt(foot * foot - a * a) * n_aft
+    share = pf["luff_share"]
 
-    def outline(lp):
-        sk = (z_c - tk[2] - lp * n_aft[2]) / dd[2]
-        ck = tk + sk * dd + lp * n_aft
-        return coons(_curve(tk, ck, -foot_b * lp, 1.0, 0.5), _curve(ck, hd, -leech_b * luff, 1.0, 0.45),
-                     _line(hd, hd), _curve(tk, hd, luff_b * luff, 1.0, 0.45), nu, nv)
-    lp = _solve_bulge(outline, spec["area"], 0.2 * luff, 2.0 * luff)
-    return Sail(spec["id"], outline(lp), {"tack": (0, 0), "clew": (0, nu - 1), "head": (nv - 1, 0)})
+    def outline(r):
+        # r: extra mid girth over the straight triangle's foot / 2, split between luff and leech round
+        return coons(_curve(tk, ck, -pf["foot_round"] * foot), _curve(ck, hd, -(1 - share) * r, 1.0, 0.45),
+                     _line(hd, hd), _curve(tk, hd, share * r, 1.0, 0.45), nu, nv)
+    target = pf["mid"] * flying_measure(outline(0.0))["foot"]     # SF along the rounded foot
+    lo, hi = 0.0, 1.5 * foot
+    for _ in range(40):
+        r = 0.5 * (lo + hi)
+        if flying_measure(outline(r))["mid_girth"] < target:
+            lo = r
+        else:
+            hi = r
+    sail = Sail(spec["id"], outline(0.5 * (lo + hi)), {"tack": (0, 0), "clew": (0, nu - 1), "head": (nv - 1, 0)})
+    sail.measure = flying_measure(sail.P)
+    return sail

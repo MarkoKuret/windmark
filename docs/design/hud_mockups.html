@@ -1,0 +1,1095 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Windmark HUD Mock-ups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#06121B;--paper:#F5F8FA;--mist:rgba(245,248,250,.66);--hair:rgba(245,248,250,.42);--mark:#FFD23F;--stbd:#27D17C;--port:#FF4438;--owe:#FF8A1F;--have:#2FD8EE;
+--bg:#0B1620;--fg:#E8EEF2;--sub:#9FB0BD;--line:#22313D;--card:#0F1D28}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--bg:#F2F4F6;--fg:#0B1620;--sub:#51606B;--line:#D5DCE2;--card:#FFFFFF}}
+:root[data-theme="light"]{--bg:#F2F4F6;--fg:#0B1620;--sub:#51606B;--line:#D5DCE2;--card:#FFFFFF}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 "Barlow Semi Condensed",system-ui,sans-serif}
+main{max-width:1560px;margin:0 auto;padding:40px 16px 80px}
+h1{font-weight:700;font-size:44px;line-height:1.05;margin:0 0 8px;letter-spacing:-.01em}
+h2{font-weight:700;font-size:28px;margin:56px 0 6px}
+h3{font-weight:600;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--sub);margin:24px 0 8px}
+p{max-width:78ch;margin:6px 0}
+.lede{font-size:20px;color:var(--sub);max-width:80ch}
+.stage{display:block;width:100%;height:auto;background:#000}
+.deckwrap{max-width:1024px}
+figure{margin:18px 0 0}
+figcaption{color:var(--sub);font-size:15px;margin-top:10px;max-width:110ch}
+ul.notes{margin:8px 0 0 18px;padding:0;max-width:110ch}
+ul.notes li{margin:2px 0}
+.tokens{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-top:10px}
+.tok{border:1px solid var(--line);background:var(--card);padding:10px;display:flex;gap:10px;align-items:center}
+.sw{width:40px;height:40px;flex:none;border:1px solid var(--line)}
+.tok b{display:block;font-weight:600}
+.tok span{color:var(--sub);font-size:14px}
+.spec{background:#0A1822;color:#F5F8FA;padding:28px 28px 22px;margin-top:10px;overflow-x:auto}
+.spec .big{font:600 112px/1 "Barlow Semi Condensed";font-variant-numeric:tabular-nums}
+.spec .u{font-size:28px;color:rgba(245,248,250,.66);margin-left:8px}
+.spec .lab{font:600 15px "Barlow Semi Condensed";letter-spacing:.14em;color:rgba(245,248,250,.66)}
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:760px){.cmp{grid-template-columns:1fr} h1{font-size:34px}}
+/* inside the frames */
+.stage text{font-family:"Barlow Semi Condensed",sans-serif;fill:var(--paper)}
+.stage .num{font-weight:600;font-variant-numeric:tabular-nums}
+.stage .lab{font-weight:600;font-size:15px;letter-spacing:.14em;fill:var(--mist)}
+.stage .lab.small{font-size:13px}
+.stage .lab.tiny{font-size:11px}
+.stage .lab.mark,.stage .mark{fill:var(--mark)}
+.stage .paper{fill:var(--paper)}
+.stage .mist{fill:var(--mist)}
+.stage .dark{fill:var(--ink)!important}
+.stage .chip{font-weight:700;font-size:15px;letter-spacing:.1em;fill:var(--paper)}
+.stage .chip.small{font-size:13px}
+.stage .tiny2{font-size:11px}
+.stage .msg{font-weight:700;font-size:25px;letter-spacing:.06em}
+.stage .row{font-weight:600;font-size:22px;letter-spacing:.08em}
+.stage .t18{font-size:18px;font-weight:500}
+.stage .t20{font-size:20px;font-weight:500}
+.stage .t26{font-size:26px;font-weight:600}
+.stage .t30{font-size:30px;font-weight:600}
+.stage .t56{font-size:56px;font-weight:700}
+.stage .t3{font-size:14px}
+.stage .t3 .num{font-size:22px;letter-spacing:0}
+.stage .n20{font-size:20px}.stage .n22{font-size:22px}.stage .n24{font-size:24px}.stage .n28{font-size:28px}.stage .n30{font-size:30px}.stage .n36{font-size:36px}
+.stage .n40{font-size:40px}.stage .n44{font-size:44px}.stage .n52{font-size:52px}.stage .n56{font-size:56px}.stage .n72{font-size:72px}.stage .n128{font-size:128px;letter-spacing:-.01em}
+.stage .hair{stroke:var(--hair);stroke-width:1.5}
+.stage .hair.faint{stroke-opacity:.45}
+.stage .inst,.stage .wind,.stage .start,.stage .world text,.stage .feed,.stage .helm,.stage .bug text{filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))}
+.stage .shadow{filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}
+</style></head><body><main>
+<h1>Race HUD: deck instruments, broadcast language</h1>
+<p class="lede">Mock-ups for WM-016.27, phase 1. Numbers as big and exact as a mast display; colour, hairlines and on-water graphics as bold as a race broadcast. No grey boxes: data sits on the scene over soft edge scrims. Direction and rules: <code>docs/design/hud_direction.md</code>. Frames are offline renders of the game's own scene (six-boat race, AI skippers); a few values were tidied for the story.</p>
+
+<h3>Colour tokens</h3><div class="tokens"><div class="tok"><div class="sw" style="background:#06121B"></div><div><b>ink</b><span>#06121B · Chips, scrims, the one solid colour</span></div></div>
+<div class="tok"><div class="sw" style="background:#F5F8FA"></div><div><b>paper</b><span>#F5F8FA · Every number, primary text</span></div></div>
+<div class="tok"><div class="sw" style="background:rgba(245,248,250,.66)"></div><div><b>mist</b><span>paper at 66 % · Labels, units, secondary text</span></div></div>
+<div class="tok"><div class="sw" style="background:rgba(245,248,250,.42)"></div><div><b>hair</b><span>paper at 42 % · Hairline rules, rings, ticks</span></div></div>
+<div class="tok"><div class="sw" style="background:#FFD23F"></div><div><b>mark</b><span>#FFD23F · Signature: the course and you (next mark, zone, your row, countdown focus)</span></div></div>
+<div class="tok"><div class="sw" style="background:#27D17C"></div><div><b>stbd</b><span>#27D17C · Starboard layline, lift, she keeps clear of you</span></div></div>
+<div class="tok"><div class="sw" style="background:#FF4438"></div><div><b>port</b><span>#FF4438 · Port layline, header, you keep clear, breach, OVER, penalty</span></div></div>
+<div class="tok"><div class="sw" style="background:#FF8A1F"></div><div><b>owe</b><span>#FF8A1F · You owe room; keep-clear warning</span></div></div>
+<div class="tok"><div class="sw" style="background:#2FD8EE"></div><div><b>have</b><span>#2FD8EE · She owes you room; you have mark-room</span></div></div>
+<div class="tok"><div class="sw" style="background:rgba(245,248,250,.35)"></div><div><b>ghost</b><span>paper at 35 % · Finished, retired, disconnected boats</span></div></div></div>
+<h3>Numerals: Barlow Semi Condensed 600, tabular figures, units small and dim</h3>
+<div class="spec"><div class="lab">BOAT SPEED</div><span class="big">5.3</span><span class="u">KN</span>
+<span class="big" style="margin-left:60px">44°</span><span class="u" style="color:#FF4438">P</span>
+<span class="big" style="margin-left:60px">0:07.4</span></div>
+
+<h2>1. Pre-start</h2>
+<figure><svg class="stage" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg"><defs>
+<linearGradient id="gTop" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#06121B" stop-opacity=".42"/><stop offset="1" stop-color="#06121B" stop-opacity="0"/></linearGradient>
+<radialGradient id="gBL" cx="0" cy="1" r="1" gradientTransform="scale(1 .9)" ><stop offset="0" stop-color="#06121B" stop-opacity=".62"/><stop offset=".7" stop-color="#06121B" stop-opacity=".18"/><stop offset="1" stop-color="#06121B" stop-opacity="0"/></radialGradient>
+<radialGradient id="gBR" cx="1" cy="1" r="1"><stop offset="0" stop-color="#06121B" stop-opacity=".5"/><stop offset="1" stop-color="#06121B" stop-opacity="0"/></radialGradient>
+</defs><image href="frames/hud_start.jpg" x="0" y="0" width="1920" height="1080"/>
+<g class="world">
+<polygon points="43.8,538.4 57.4,538.8 71.0,539.2 84.8,539.6 98.6,540.0 112.5,540.4 126.5,540.8 140.6,541.3 154.7,541.7 169.0,542.1 183.3,542.5 197.7,543.0 212.2,543.4 226.8,543.8 241.5,544.3 256.3,544.7 271.1,545.2 286.1,545.6 301.2,546.1 316.3,546.5 331.5,547.0 346.9,547.4 362.3,547.9 377.8,548.4 393.4,548.8 409.2,549.3 425.0,549.8 440.9,550.2 456.9,550.7 473.1,551.2 489.3,551.7 505.7,552.2 522.1,552.7 538.6,553.2 555.3,553.7 572.1,554.2 589.0,554.7 605.9,555.2 623.1,555.7 640.3,556.2 657.6,556.7 675.0,557.3 692.6,557.8 710.3,558.3 728.1,558.8 746.0,559.4 764.1,559.9 782.2,560.5 800.5,561.0 818.9,561.6 837.5,562.1 856.2,562.7 875.0,563.2 893.9,563.8 913.0,564.4 932.1,564.9 951.5,565.5 971.0,566.1 990.6,566.7 1010.3,567.3 1030.2,567.9 1050.2,568.5 1070.4,569.1 1090.7,569.7 1111.2,570.3 1131.8,570.9 1152.6,571.5 1173.5,572.2 1194.6,572.8 1215.8,573.4 1237.2,574.1 1258.7,574.7 1280.4,575.4 1302.3,576.0 1324.3,576.7 1346.5,577.3 1368.9,578.0 1391.4,578.7 1414.1,579.4 1437.0,580.0 1460.1,580.7 1483.3,581.4 1506.7,582.1 1530.3,582.8 1554.1,583.5 1578.0,584.3 1602.2,585.0 1626.5,585.7 1651.1,586.4 1675.8,587.2 1700.7,587.9 1725.9,588.7 1751.2,589.4 1776.7,590.2 1802.5,591.0 1828.4,591.8 1854.6,592.5 1881.0,593.3 1907.6,594.1 1934.4,594.9 1961.5,595.7 1988.7,596.5 2016.2,597.4 2044.0,598.2 2071.9,599.0 2100.1,599.9 2128.6,600.7 2157.3,601.6 2186.2,602.5 2215.4,603.3 2244.8,604.2 2274.5,605.1 2304.5,606.0 2334.7,606.9 2365.2,607.8 2396.0,608.7 2427.0,609.7 2458.3,610.6 2489.9,611.5 2521.8,612.5 2553.9,613.5 2586.4,614.4 2619.1,615.4 2652.2,616.4 2685.6,617.4 2719.2,618.4 2753.2,619.4 2787.5,620.4 2822.2,621.5 2857.1,622.5 2892.4,623.6 2928.1,624.6 2964.0,625.7 3000.3,626.8 3037.0,627.9 3074.0,629.0 3111.4,630.1 3149.2,631.3 3187.3,632.4 3225.8,633.6 3264.7,634.7 3304.0,635.9 3343.7,637.1 3383.8,638.3 3424.3,639.5 3465.2,640.7 3506.5,641.9 3548.2,643.2 3590.4,644.5 3633.1,645.7 3676.1,647.0 3719.7,648.3 3763.7,649.6 3808.1,651.0 3853.1,652.3 3898.5,653.7 3944.4,655.0 3990.9,656.4 4037.8,657.8 4085.2,659.3 4134.8,663.6 4086.3,662.2 4038.3,660.7 3990.9,659.3 3943.9,657.9 3897.5,656.5 3851.6,655.1 3806.2,653.7 3761.2,652.3 3716.8,651.0 3672.8,649.7 3629.3,648.4 3586.2,647.1 3543.6,645.8 3501.4,644.5 3459.7,643.2 3418.4,642.0 3377.5,640.7 3337.0,639.5 3297.0,638.3 3257.3,637.1 3218.1,635.9 3179.2,634.7 3140.7,633.6 3102.6,632.4 3064.9,631.3 3027.6,630.2 2990.6,629.0 2954.0,627.9 2917.7,626.8 2881.8,625.7 2846.2,624.7 2811.0,623.6 2776.0,622.5 2741.5,621.5 2707.2,620.5 2673.3,619.4 2639.6,618.4 2606.3,617.4 2573.3,616.4 2540.6,615.4 2508.2,614.4 2476.1,613.5 2444.3,612.5 2412.8,611.6 2381.5,610.6 2350.6,609.7 2319.9,608.7 2289.4,607.8 2259.3,606.9 2229.4,606.0 2199.8,605.1 2170.4,604.2 2141.3,603.3 2112.4,602.5 2083.8,601.6 2055.4,600.7 2027.3,599.9 1999.4,599.1 1971.7,598.2 1944.3,597.4 1917.1,596.6 1890.1,595.7 1863.3,594.9 1836.8,594.1 1810.5,593.3 1784.4,592.6 1758.5,591.8 1732.8,591.0 1707.4,590.2 1682.1,589.5 1657.1,588.7 1632.2,587.9 1607.5,587.2 1583.1,586.5 1558.8,585.7 1534.7,585.0 1510.8,584.3 1487.1,583.6 1463.6,582.8 1440.3,582.1 1417.1,581.4 1394.1,580.7 1371.3,580.1 1348.7,579.4 1326.2,578.7 1303.9,578.0 1281.8,577.4 1259.9,576.7 1238.1,576.0 1216.4,575.4 1195.0,574.7 1173.7,574.1 1152.5,573.4 1131.5,572.8 1110.7,572.2 1090.0,571.5 1069.4,570.9 1049.0,570.3 1028.8,569.7 1008.7,569.1 988.7,568.5 968.9,567.9 949.3,567.3 929.7,566.7 910.3,566.1 891.1,565.5 872.0,565.0 853.0,564.4 834.1,563.8 815.4,563.2 796.8,562.7 778.3,562.1 760.0,561.6 741.8,561.0 723.7,560.5 705.7,559.9 687.8,559.4 670.1,558.8 652.5,558.3 635.0,557.8 617.6,557.3 600.4,556.7 583.2,556.2 566.2,555.7 549.3,555.2 532.5,554.7 515.8,554.2 499.2,553.7 482.7,553.2 466.4,552.7 450.1,552.2 433.9,551.7 417.9,551.2 401.9,550.7 386.1,550.3 370.3,549.8 354.7,549.3 339.1,548.8 323.7,548.4 308.3,547.9 293.0,547.4 277.9,547.0 262.8,546.5 247.8,546.1 232.9,545.6 218.1,545.2 203.4,544.7 188.8,544.3 174.3,543.9 159.9,543.4 145.5,543.0 131.3,542.6 117.1,542.1 103.0,541.7 89.0,541.3 75.1,540.9 61.2,540.4 47.5,540.0 33.8,539.6" fill="#F5F8FA" opacity=".95"/>
+<polyline points="38.8,539.0 52.5,539.4 66.2,539.8 80.0,540.2 93.8,540.6 107.8,541.1 121.8,541.5 135.9,541.9 150.2,542.3 164.4,542.8 178.8,543.2 193.3,543.6 207.9,544.1 222.5,544.5 237.2,545.0 252.1,545.4 267.0,545.8 282.0,546.3 297.1,546.8 312.3,547.2 327.6,547.7 343.0,548.1 358.5,548.6 374.1,549.1 389.8,549.5 405.6,550.0 421.5,550.5 437.4,551.0 453.5,551.5 469.7,551.9 486.0,552.4 502.4,552.9 519.0,553.4 535.6,553.9 552.3,554.4 569.2,554.9 586.1,555.4 603.2,556.0 620.4,556.5 637.7,557.0 655.1,557.5 672.6,558.0 690.2,558.6 708.0,559.1 725.9,559.6 743.9,560.2 762.0,560.7 780.3,561.3 798.7,561.8 817.2,562.4 835.8,563.0 854.6,563.5 873.5,564.1 892.5,564.7 911.6,565.2 930.9,565.8 950.4,566.4 969.9,567.0 989.7,567.6 1009.5,568.2 1029.5,568.8 1049.6,569.4 1069.9,570.0 1090.4,570.6 1110.9,571.2 1131.7,571.9 1152.5,572.5 1173.6,573.1 1194.8,573.8 1216.1,574.4 1237.6,575.0 1259.3,575.7 1281.1,576.3 1303.1,577.0 1325.3,577.7 1347.6,578.3 1370.1,579.0 1392.8,579.7 1415.6,580.4 1438.6,581.1 1461.8,581.8 1485.2,582.5 1508.7,583.2 1532.5,583.9 1556.4,584.6 1580.5,585.4 1604.8,586.1 1629.3,586.8 1654.0,587.6 1678.9,588.3 1704.0,589.1 1729.3,589.8 1754.8,590.6 1780.5,591.4 1806.5,592.2 1832.6,592.9 1858.9,593.7 1885.5,594.5 1912.3,595.3 1939.3,596.1 1966.5,597.0 1994.0,597.8 2021.7,598.6 2049.6,599.5 2077.8,600.3 2106.2,601.2 2134.9,602.0 2163.8,602.9 2192.9,603.8 2222.3,604.7 2252.0,605.6 2281.9,606.5 2312.1,607.4 2342.6,608.3 2373.3,609.2 2404.3,610.1 2435.6,611.1 2467.1,612.0 2499.0,613.0 2531.1,613.9 2563.6,614.9 2596.3,615.9 2629.3,616.9 2662.7,617.9 2696.3,618.9 2730.3,619.9 2764.6,621.0 2799.2,622.0 2834.1,623.1 2869.4,624.1 2905.0,625.2 2940.9,626.3 2977.2,627.4 3013.9,628.5 3050.9,629.6 3088.2,630.7 3126.0,631.8 3164.1,633.0 3202.6,634.1 3241.5,635.3 3280.7,636.5 3320.4,637.7 3360.5,638.9 3400.9,640.1 3441.8,641.3 3483.1,642.6 3524.9,643.8 3567.1,645.1 3609.7,646.4 3652.8,647.7 3696.3,649.0 3740.3,650.3 3784.7,651.7 3829.7,653.0 3875.1,654.4 3921.0,655.8 3967.5,657.2 4014.4,658.6 4061.8,660.0 4109.8,661.4" fill="none" stroke="#F5F8FA" stroke-width="2.5"/>
+<polyline points="951.0,630.6 929.6,626.7 908.9,622.9 888.9,619.3 869.5,615.7 850.8,612.3 832.6,609.0 815.0,605.8 797.9,602.7 781.4,599.6 765.3,596.7 749.7,593.9 734.6,591.1 719.9,588.4 705.6,585.8 691.6,583.2 678.1,580.8 664.9,578.3 652.1,576.0 639.6,573.7 627.4,571.5 615.6,569.3 604.0,567.2 592.7,565.1 581.7,563.1 571.0,561.2 560.5,559.3 550.2,557.4 540.2,555.6 530.5,553.8" fill="none" stroke="#FFD23F" stroke-width="2.5" stroke-dasharray="3 7" stroke-linecap="round"/>
+<rect x="524.5" y="547.8" width="12" height="12" fill="#FFD23F" transform="rotate(45 530.5 553.8)"/>
+<rect x="444.5" y="536.8" width="66" height="34" fill="#06121B" opacity=".8"/>
+<text x="477.5" y="563.8" class="num n28 mark" text-anchor="middle" >0:17</text>
+<line x1="44.8" y1="531.0" x2="44.8" y2="447.0" stroke="#FFD23F" stroke-width="1.5"/>
+<text x="54.8" y="421.0" class="lab mark" text-anchor="start" >PIN FAVOURED</text>
+<text x="54.8" y="459.0" class="num n36">+6°<tspan class="n20 mist" dx="6">24 M</tspan></text>
+<g class="edge">
+<polygon points="1864,700 1852,691 1852,709" fill="#F5F8FA"/>
+<text x="1844.0" y="696.0" class="lab small paper" text-anchor="end" >COMMITTEE</text>
+<text x="1844.0" y="716.0" class="num t18" text-anchor="end" >150 m</text>
+</g>
+<g class="boattag">
+<line x1="492.3" y1="463.3" x2="492.3" y2="427.3" stroke="#F5F8FA" stroke-width="1.5"/>
+<rect x="492.3" y="401.3" width="60.0" height="26" fill="#06121B" opacity=".72"/>
+<text x="499.3" y="420.3" class="chip" text-anchor="start" >TINE</text>
+</g>
+<g class="boattag">
+<line x1="533.2" y1="448.7" x2="533.2" y2="382.7" stroke="#F5F8FA" stroke-width="1.5"/>
+<rect x="533.2" y="356.7" width="60.0" height="26" fill="#06121B" opacity=".72"/>
+<text x="540.2" y="375.7" class="chip" text-anchor="start" >MAJA</text>
+</g>
+<g class="boattag">
+<line x1="816.2" y1="458.6" x2="816.2" y2="422.6" stroke="#F5F8FA" stroke-width="1.5"/>
+<rect x="816.2" y="396.6" width="48.5" height="26" fill="#06121B" opacity=".72"/>
+<text x="823.2" y="415.6" class="chip" text-anchor="start" >ANA</text>
+</g>
+<g class="boattag">
+<line x1="1256.6" y1="464.7" x2="1256.6" y2="428.7" stroke="#F5F8FA" stroke-width="1.5"/>
+<rect x="1256.6" y="402.7" width="48.5" height="26" fill="#06121B" opacity=".72"/>
+<text x="1263.6" y="421.7" class="chip" text-anchor="start" >IVO</text>
+</g>
+<g class="boattag">
+<line x1="1560.3" y1="476.4" x2="1560.3" y2="440.4" stroke="#F5F8FA" stroke-width="1.5"/>
+<rect x="1560.3" y="414.4" width="60.0" height="26" fill="#06121B" opacity=".72"/>
+<text x="1567.3" y="433.4" class="chip" text-anchor="start" >NORA</text>
+</g>
+</g>
+
+<rect x="0" y="0" width="1920" height="230" fill="url(#gTop)"/>
+<rect x="0" y="640" width="1100" height="440" fill="url(#gBL)"/>
+<rect x="1320" y="600" width="600" height="480" fill="url(#gBR)"/>
+<g class="start">
+<text x="960.0" y="64.0" class="lab" text-anchor="middle" >START IN</text>
+<text x="960.0" y="176.0" class="num n128" text-anchor="middle" >0:12</text>
+<line x1="660" y1="214" x2="1260" y2="214" class="hair"/>
+<text x="700.0" y="244.0" class="lab" text-anchor="middle" >LINE</text>
+<text x="700" y="290" class="num n44 paper" text-anchor="middle">−23<tspan class="n20 mist" dx="3">M</tspan></text>
+<text x="860.0" y="244.0" class="lab" text-anchor="middle" >TO LINE</text>
+<text x="860" y="290" class="num n44 paper" text-anchor="middle">0:17<tspan class="n20 mist" dx="3"></tspan></text>
+<text x="1030.0" y="244.0" class="lab" text-anchor="middle" >BURN</text>
+<text x="1030" y="290" class="num n44 mark" text-anchor="middle">−5<tspan class="n20 mist" dx="3">S</tspan></text>
+<text x="1180.0" y="244.0" class="lab" text-anchor="middle" >BIAS</text>
+<text x="1180" y="290" class="num n44 paper" text-anchor="middle">PIN<tspan class="n20 mist" dx="3"></tspan></text>
+<line x1="960" y1="312" x2="1100" y2="312" class="hair"/>
+<line x1="1030" y1="305" x2="1030" y2="319" stroke="#F5F8FA" stroke-width="2"/>
+<rect x="1012" y="310" width="18" height="5" fill="#FFD23F"/>
+<text x="960.0" y="334.0" class="lab tiny" text-anchor="start" >LATE</text>
+<text x="1100.0" y="334.0" class="lab tiny" text-anchor="end" >EARLY</text>
+<text x="1320.0" y="82.0" class="lab" text-anchor="start" >FLAGS</text>
+<rect x="1320" y="100" width="54" height="36" fill="#FFFFFF"/><rect x="1320" y="124" width="54" height="12" fill="#1F4FD1"/><text x="1347" y="119" class="num n20" fill="#1F4FD1" text-anchor="middle" style="fill:#1F4FD1">W7</text>
+<text x="1347.0" y="158.0" class="lab tiny" text-anchor="middle" >CLASS</text>
+<rect x="1390" y="100" width="54" height="36" fill="none" stroke="#F5F8FA" stroke-opacity=".5" stroke-dasharray="3 3"/><rect x="1394" y="104" width="46" height="28" fill="#FFD23F" opacity=".45"/><circle cx="1417" cy="118" r="9" fill="#101010" opacity=".6"/>
+<text x="1417.0" y="158.0" class="lab tiny" text-anchor="middle" >I RULE</text>
+<text x="1320.0" y="190.0" class="lab small" text-anchor="start" >OVER IN THE LAST MINUTE:</text>
+<text x="1320.0" y="212.0" class="lab small paper" text-anchor="start" >ROUND AN END</text>
+</g>
+<g class="bug">
+<rect x="56" y="44" width="340" height="72" fill="#06121B" opacity=".86"/>
+<rect x="56" y="44" width="6" height="72" fill="#FFD23F"/>
+<text x="80.0" y="66.0" class="lab" text-anchor="start" >RACE 1 OF 3</text>
+<text x="80.0" y="106.0" class="num n40" text-anchor="start" >WM7</text>
+<line x1="246" y1="58" x2="246" y2="102" class="hair"/>
+<text x="266.0" y="66.0" class="lab" text-anchor="start" >FLEET</text>
+<text x="266" y="106" class="num n40">6<tspan class="n22 mist" dx="4">BOATS</tspan></text>
+<text x="56.0" y="146.0" class="lab paper" text-anchor="start" >2 LAPS · 6 LEGS</text>
+</g>
+<g class="wind">
+<circle cx="1828" cy="86" r="34" class="hair" fill="none"/>
+<line x1="1828.0" y1="58.0" x2="1828.0" y2="52.0" class="hair"/>
+<line x1="1843.5" y1="59.2" x2="1845.0" y2="56.6" class="hair"/>
+<line x1="1854.8" y1="70.5" x2="1857.4" y2="69.0" class="hair"/>
+<line x1="1856.0" y1="86.0" x2="1862.0" y2="86.0" class="hair"/>
+<line x1="1854.8" y1="101.5" x2="1857.4" y2="103.0" class="hair"/>
+<line x1="1843.5" y1="112.8" x2="1845.0" y2="115.4" class="hair"/>
+<line x1="1828.0" y1="114.0" x2="1828.0" y2="120.0" class="hair"/>
+<line x1="1812.5" y1="112.8" x2="1811.0" y2="115.4" class="hair"/>
+<line x1="1801.2" y1="101.5" x2="1798.6" y2="103.0" class="hair"/>
+<line x1="1800.0" y1="86.0" x2="1794.0" y2="86.0" class="hair"/>
+<line x1="1801.2" y1="70.5" x2="1798.6" y2="69.0" class="hair"/>
+<line x1="1812.5" y1="59.2" x2="1811.0" y2="56.6" class="hair"/>
+<text x="1828.0" y="46.0" class="lab small" text-anchor="middle" >N</text>
+<line x1="1824.7" y1="54.2" x2="1830.5" y2="109.9" stroke="#F5F8FA" stroke-width="3"/>
+<polygon points="1831.6,119.8 1823.5,110.6 1837.5,109.1" fill="#F5F8FA"/>
+<text x="1768.0" y="66.0" class="lab" text-anchor="end" >TRUE WIND</text>
+<text x="1768" y="118" class="num n56" text-anchor="end">11.3<tspan class="n22 mist" dx="6">KN</tspan></text>
+<text x="1768.0" y="148.0" class="lab" text-anchor="end" >TWD <tspan class="paper">354</tspan></text>
+</g>
+<g class="inst">
+<text x="56.0" y="1036.0" class="lab t3" text-anchor="start" >SOG <tspan class="paper num">5.3</tspan></text>
+<text x="161.2" y="1036.0" class="lab t3" text-anchor="start" >COG <tspan class="paper num">299</tspan></text>
+<text x="266.4" y="1036.0" class="lab t3" text-anchor="start" >AWS <tspan class="paper num">15.3</tspan></text>
+<text x="382.8" y="1036.0" class="lab t3" text-anchor="start" >AWA <tspan class="paper num">38°S</tspan></text>
+<text x="499.2" y="1036.0" class="lab t3" text-anchor="start" >HEEL <tspan class="paper num">19°P</tspan></text>
+<text x="626.8" y="1036.0" class="lab t3" text-anchor="start" >POLAR <tspan class="paper num">82%</tspan></text>
+<line x1="56" y1="1006" x2="756" y2="1006" class="hair"/>
+<text x="56.0" y="936.0" class="lab" text-anchor="start" >TWA</text>
+<text x="56" y="986" class="num n52">56°<tspan class="n22" fill="#27D17C" dx="4">S</tspan></text>
+<text x="232.0" y="936.0" class="lab" text-anchor="start" >HDG</text>
+<text x="232" y="986" class="num n52">299</text>
+<text x="408.0" y="936.0" class="lab" text-anchor="start" >VMG</text>
+<text x="408" y="986" class="num n52">--<tspan class="n22 mist" dx="4">KN</tspan></text>
+<line x1="56" y1="908" x2="756" y2="908" class="hair"/>
+<text x="56.0" y="786.0" class="lab" text-anchor="start" >BOAT SPEED</text>
+<text x="52" y="890" class="num n128">5.3<tspan class="n28 mist" dx="8">KN</tspan></text>
+<text x="386.0" y="786.0" class="lab" text-anchor="start" >POLAR</text>
+<text x="386" y="860" class="num n72">82<tspan class="n28 mist" dx="4">%</tspan></text>
+<line x1="386" y1="886" x2="686" y2="886" class="hair"/>
+<line x1="586.0" y1="874" x2="586.0" y2="892" stroke="#F5F8FA" stroke-width="2"/>
+<rect x="406.0" y="884" width="180.0" height="5" fill="#FFD23F"/>
+<polygon points="406.0,882 400.0,872 412.0,872" fill="#FFD23F"/>
+<text x="686.0" y="860.0" class="lab" text-anchor="end" >TARGET <tspan class="paper">6.1 kn</tspan></text>
+</g>
+<g class="helm">
+<line x1="880" y1="1036" x2="1240" y2="1036" class="hair"/>
+<line x1="880.0" y1="1031" x2="880.0" y2="1036" class="hair"/>
+<line x1="970.0" y1="1031" x2="970.0" y2="1036" class="hair"/>
+<line x1="1060.0" y1="1026" x2="1060.0" y2="1036" class="hair"/>
+<line x1="1150.0" y1="1031" x2="1150.0" y2="1036" class="hair"/>
+<line x1="1240.0" y1="1031" x2="1240.0" y2="1036" class="hair"/>
+<rect x="1060.0" y="1034" width="7.2" height="4" fill="#F5F8FA"/>
+<polygon points="1067.2,1032 1061.2,1022 1073.2,1022" fill="#FFD23F"/>
+<text x="880.0" y="1018.0" class="lab small" text-anchor="start" >HELM</text>
+<text x="1240.0" y="1018.0" class="lab small paper" text-anchor="end" >JIB</text>
+<text x="1060.0" y="1018.0" class="lab small" text-anchor="middle" >SHEETS AUTO</text>
+</g>
+<g class="radar">
+<clipPath id="rc1753"><circle cx="1714" cy="880" r="150"/></clipPath>
+<circle cx="1714" cy="880" r="150" fill="#06121B" opacity=".38"/>
+<circle cx="1714" cy="880" r="150" class="hair" fill="none"/>
+<circle cx="1714" cy="880" r="75" class="hair faint" fill="none"/>
+<line x1="1714" y1="730" x2="1714" y2="1030" class="hair faint"/>
+<g clip-path="url(#rc1753)">
+<line x1="1701.6" y1="832.2" x2="1761.9" y2="941.7" stroke="#F5F8FA" stroke-width="2"/>
+<rect x="1757.4" y="937.2" width="9" height="9" fill="#FFD23F" transform="rotate(45 1761.9 941.7)"/>
+<rect x="1697.1" y="827.7" width="9" height="9" fill="#FFD23F" transform="rotate(45 1701.6 832.2)"/>
+<circle cx="1912.6" cy="787.5" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<circle cx="1898.1" cy="761.2" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<circle cx="1807.1" cy="868.3" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<circle cx="1787.8" cy="833.3" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<circle cx="1828.8" cy="907.7" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#F5F8FA" opacity="1" transform="translate(1721.7 891.9) rotate(-1.8)"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#F5F8FA" opacity="1" transform="translate(1712.3 858.5) rotate(-22.9)"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#F5F8FA" opacity="1" transform="translate(1707.0 866.0) rotate(0.1)"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#F5F8FA" opacity="1" transform="translate(1721.1 884.1) rotate(-10.0)"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#F5F8FA" opacity="1" transform="translate(1714.9 871.7) rotate(-11.3)"/>
+</g>
+<polygon points="1714,870 1720,888 1708,888" fill="#FFD23F"/>
+<polygon points="0,10 -7,-6 7,-6" fill="#F5F8FA" transform="translate(1851.0 786.2) rotate(55.6)"/>
+<text x="1864.0" y="1052.0" class="lab small" text-anchor="end" >300 M</text>
+<text x="1564.0" y="1052.0" class="lab small" text-anchor="start" >HEAD UP</text>
+</g>
+<g class="feed">
+<text x="1864.0" y="252.0" class="t18 feedline" text-anchor="end" opacity="0.46">Warning signal: class flag up</text>
+<text x="1864.0" y="278.0" class="t18 feedline" text-anchor="end" opacity="0.64">Preparatory: I flag</text>
+<text x="1864.0" y="304.0" class="t18 feedline" text-anchor="end" opacity="0.82">One minute</text>
+</g>
+</svg><figcaption>The countdown owns the top centre, with the four start numbers under it: distance to line, time to line, burn (the yellow number: what you act on) and bias. The line is a white hairline on the water; your course to it is a dotted yellow line ending at the point and time you would hit it. The favoured end is written on the water at the pin. Class flag up; the I rule stays in force after its flag comes down, so it keeps a quiet reminder.</figcaption></figure>
+
+<h2>2. Upwind</h2>
+<figure><svg class="stage" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg"><defs>
+<linearGradient id="gTop" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#06121B" stop-opacity=".42"/><stop offset="1" stop-color="#06121B" stop-opacity="0"/></linearGradient>
+<radialGradient id="gBL" cx="0" cy="1" r="1" gradientTransform="scale(1 .9)" ><stop offset="0" stop-color="#06121B" stop-opacity=".62"/><stop offset=".7" stop-color="#06121B" stop-opacity=".18"/><stop offset="1" stop-color="#06121B" stop-opacity="0"/></radialGradient>
+<radialGradient id="gBR" cx="1" cy="1" r="1"><stop offset="0" stop-color="#06121B" stop-opacity=".5"/><stop offset="1" stop-color="#06121B" stop-opacity="0"/></radialGradient>
+</defs><image href="frames/hud_upwind.jpg" x="0" y="0" width="1920" height="1080"/>
+<g class="world">
+<linearGradient id="up_l0" gradientUnits="userSpaceOnUse" x1="961.0" y1="486.9" x2="5750.3" y2="586.8"><stop offset="0" stop-color="#27D17C" stop-opacity="1"/><stop offset="1" stop-color="#27D17C" stop-opacity=".25"/></linearGradient>
+<polygon points="961.0,486.9 981.2,487.3 1001.9,487.8 1023.0,488.2 1044.5,488.7 1066.6,489.1 1089.2,489.6 1112.3,490.1 1135.9,490.6 1160.2,491.1 1184.9,491.6 1210.3,492.1 1236.4,492.7 1263.0,493.2 1290.4,493.8 1318.5,494.4 1347.2,495.0 1376.8,495.6 1407.1,496.2 1438.2,496.9 1470.2,497.5 1503.1,498.2 1536.9,498.9 1571.7,499.6 1607.5,500.4 1644.4,501.2 1682.3,501.9 1721.4,502.8 1761.7,503.6 1803.2,504.5 1846.1,505.4 1890.4,506.3 1936.1,507.2 1983.3,508.2 2032.1,509.2 2082.6,510.3 2134.9,511.4 2189.1,512.5 2245.2,513.7 2303.4,514.9 2363.8,516.2 2426.5,517.5 2491.7,518.8 2559.5,520.2 2630.0,521.7 2703.5,523.2 2780.1,524.8 2860.1,526.5 2943.6,528.2 3030.9,530.1 3122.2,532.0 3217.9,534.0 3318.3,536.1 3423.7,538.3 3534.5,540.6 3651.1,543.0 3774.0,545.6 3903.8,548.3 4041.0,551.1 4186.2,554.2 4340.3,557.4 4503.9,560.8 4678.1,564.4 4864.0,568.3 5062.6,572.4 5275.5,576.9 5504.1,581.6 5750.3,586.8 5802.4,588.5 5551.3,583.2 5318.4,578.3 5101.7,573.8 4899.6,569.6 4710.7,565.6 4533.7,561.9 4367.5,558.4 4211.2,555.2 4063.9,552.1 3924.9,549.2 3793.4,546.4 3668.9,543.8 3550.9,541.3 3438.8,539.0 3332.2,536.7 3230.7,534.6 3134.0,532.6 3041.7,530.7 2953.5,528.8 2869.2,527.1 2788.6,525.4 2711.3,523.7 2637.1,522.2 2566.0,520.7 2497.6,519.3 2431.9,517.9 2368.7,516.6 2307.9,515.3 2249.3,514.1 2192.8,512.9 2138.2,511.7 2085.6,510.6 2034.8,509.6 1985.6,508.5 1938.1,507.5 1892.1,506.6 1847.6,505.7 1804.5,504.8 1762.8,503.9 1722.2,503.0 1683.0,502.2 1644.8,501.4 1607.8,500.6 1571.9,499.9 1536.9,499.1 1502.9,498.4 1469.9,497.7 1437.8,497.1 1406.5,496.4 1376.1,495.8 1346.4,495.2 1317.5,494.6 1289.4,494.0 1261.9,493.4 1235.2,492.8 1209.0,492.3 1183.6,491.7 1158.7,491.2 1134.4,490.7 1110.7,490.2 1087.5,489.7 1064.9,489.3 1042.7,488.8 1021.1,488.3 999.9,487.9 979.2,487.5 959.0,487.0" fill="url(#up_l0)"/>
+<polyline points="960.0,487.0 980.2,487.4 1000.9,487.8 1022.0,488.3 1043.6,488.7 1065.7,489.2 1088.4,489.7 1111.5,490.1 1135.2,490.6 1159.4,491.1 1184.3,491.7 1209.7,492.2 1235.8,492.7 1262.5,493.3 1289.9,493.9 1318.0,494.5 1346.8,495.1 1376.4,495.7 1406.8,496.3 1438.0,497.0 1470.1,497.6 1503.0,498.3 1536.9,499.0 1571.8,499.8 1607.7,500.5 1644.6,501.3 1682.6,502.1 1721.8,502.9 1762.2,503.7 1803.9,504.6 1846.9,505.5 1891.2,506.4 1937.1,507.4 1984.5,508.4 2033.4,509.4 2084.1,510.5 2136.6,511.6 2190.9,512.7 2247.2,513.9 2305.6,515.1 2366.3,516.4 2429.2,517.7 2494.6,519.0 2562.7,520.5 2633.6,521.9 2707.4,523.5 2784.3,525.1 2864.6,526.8 2948.5,528.5 3036.3,530.4 3128.1,532.3 3224.3,534.3 3325.2,536.4 3431.2,538.6 3542.6,540.9 3660.0,543.4 3783.7,546.0 3914.3,548.7 4052.4,551.6 4198.6,554.7 4353.8,557.9 4518.7,561.3 4694.3,565.0 4881.7,568.9 5082.1,573.1 5296.8,577.6 5527.6,582.4 5776.2,587.6" fill="none" stroke="url(#up_l0)" stroke-width="2.5"/>
+<linearGradient id="up_l1" gradientUnits="userSpaceOnUse" x1="961.9" y1="487.0" x2="-4761.5" y2="962.5"><stop offset="0" stop-color="#FF4438" stop-opacity="1"/><stop offset="1" stop-color="#FF4438" stop-opacity=".25"/></linearGradient>
+<polygon points="961.9,487.0 952.3,487.8 942.3,488.6 931.9,489.5 921.0,490.4 909.6,491.3 897.7,492.3 885.3,493.4 872.3,494.5 858.6,495.6 844.2,496.8 829.1,498.0 813.2,499.4 796.5,500.7 778.8,502.2 760.0,503.8 740.2,505.4 719.1,507.2 696.8,509.0 673.0,511.0 647.5,513.1 620.3,515.4 591.2,517.8 559.9,520.4 526.1,523.2 489.6,526.2 450.0,529.5 407.0,533.1 360.0,537.0 308.5,541.3 251.7,546.0 188.9,551.2 119.1,557.0 40.9,563.5 -47.2,570.8 -147.3,579.1 -261.9,588.7 -394.5,599.7 -549.6,612.6 -733.5,627.8 -955.2,646.3 -1227.4,668.9 -1569.9,697.3 -2013.6,734.2 -2611.5,783.9 -3460.6,854.4 -4761.5,962.5 -4689.9,951.7 -3425.5,847.6 -2594.1,779.2 -2005.8,730.8 -1567.6,694.8 -1228.6,666.9 -958.4,644.6 -738.1,626.5 -555.0,611.4 -400.5,598.7 -268.2,587.9 -153.8,578.4 -53.8,570.2 34.2,563.0 112.5,556.5 182.4,550.8 245.2,545.6 302.1,540.9 353.7,536.7 400.8,532.8 444.0,529.3 483.6,526.0 520.2,523.0 554.1,520.2 585.6,517.6 614.8,515.2 642.1,512.9 667.7,510.8 691.6,508.9 714.1,507.0 735.2,505.3 755.2,503.6 774.0,502.1 791.8,500.6 808.6,499.2 824.6,497.9 839.8,496.7 854.2,495.5 868.0,494.4 881.1,493.3 893.6,492.3 905.6,491.3 917.0,490.3 927.9,489.4 938.4,488.6 948.5,487.7 958.1,486.9" fill="url(#up_l1)"/>
+<polyline points="960.0,487.0 950.4,487.8 940.4,488.6 929.9,489.5 919.0,490.4 907.6,491.3 895.7,492.3 883.2,493.3 870.1,494.4 856.4,495.5 842.0,496.7 826.9,498.0 810.9,499.3 794.1,500.7 776.4,502.2 757.6,503.7 737.7,505.4 716.6,507.1 694.2,509.0 670.3,510.9 644.8,513.0 617.6,515.3 588.4,517.7 557.0,520.3 523.2,523.1 486.6,526.1 447.0,529.4 403.9,533.0 356.8,536.8 305.3,541.1 248.5,545.8 185.7,551.0 115.8,556.8 37.6,563.2 -50.5,570.5 -150.6,578.8 -265.1,588.3 -397.5,599.2 -552.3,612.0 -735.8,627.2 -956.8,645.4 -1228.0,667.9 -1568.7,696.0 -2009.7,732.5 -2602.7,781.5 -3442.9,851.0 -4725.3,957.0" fill="none" stroke="url(#up_l1)" stroke-width="2.5"/>
+<polyline points="1011.6,742.6 1059.5,707.6 1097.3,680.0 1127.8,657.7 1152.9,639.3 1174.0,623.9 1191.9,610.8 1207.4,599.5 1220.8,589.7 1232.6,581.0 1243.1,573.4 1252.4,566.6 1260.7,560.5 1268.2,555.0 1275.1,550.0 1281.3,545.5 1287.0,541.3 1292.2,537.5 1297.0,534.0 1301.5,530.7 1305.6,527.7 1309.4,524.9 1313.0,522.3 1316.3,519.9 1319.4,517.6 1322.4,515.4 1325.1,513.4 1327.7,511.5 1330.2,509.7 1332.5,508.0 1334.7,506.4 1336.7,504.9 1338.7,503.5 1340.6,502.1 1342.4,500.8 1344.1,499.6 1345.7,498.4 1347.2,497.2 1348.7,496.2 1350.1,495.1" fill="none" stroke="#F5F8FA" stroke-width="2.5" stroke-dasharray="3 8" stroke-linecap="round" opacity=".9"/>
+<circle cx="1350.1" cy="495.1" r="7" fill="none" stroke="#27D17C" stroke-width="2.5"/>
+<text x="1340.1" y="443.1" class="lab" text-anchor="end" >TACK IN</text>
+<text x="1340.1" y="479.1" class="num n40" text-anchor="end">177<tspan class="n20 mist" dx="3">M</tspan><tspan class="n28 paper" dx="10">1:05</tspan></text>
+<g class="marktag">
+<line x1="960.0" y1="473.0" x2="960.0" y2="387.0" stroke="#FFD23F" stroke-width="1.5"/>
+<rect x="954.5" y="465.0" width="11" height="11" fill="none" stroke="#FFD23F" stroke-width="2" transform="rotate(45 960.0 470.5)"/>
+<text x="972.0" y="333.0" class="lab mark" text-anchor="start" >WINDWARD</text>
+<text x="972.0" y="373.0" class="num n44">197<tspan class="n20 mist" dx="4">M</tspan></text>
+<text x="972.0" y="399.0" class="lab small paper" text-anchor="start" >ETA 1:33 · BRG 010 · 24° L</text>
+<path d="M 944.0 349.0 A 11 11 0 1 0 947.0 359.0" fill="none" stroke="#FFD23F" stroke-width="2.5"/>
+<polygon points="939.0,345.0 948.0,346.0 945.0,354.0" fill="#FFD23F"/>
+</g>
+<g class="edge">
+<polygon points="1864,540 1852,531 1852,549" fill="#F5F8FA"/>
+<text x="1844.0" y="536.0" class="lab small paper" text-anchor="end" >IVO</text>
+<text x="1844.0" y="556.0" class="num t18" text-anchor="end" >52 m</text>
+</g>
+<g class="edge">
+<polygon points="1864,470 1852,461 1852,479" fill="#F5F8FA"/>
+<text x="1844.0" y="466.0" class="lab small paper" text-anchor="end" >NORA</text>
+<text x="1844.0" y="486.0" class="num t18" text-anchor="end" >104 m</text>
+</g>
+<g class="edge">
+<polygon points="56,520 68,511 68,529" fill="#F5F8FA"/>
+<text x="76.0" y="516.0" class="lab small paper" text-anchor="start" >ANA</text>
+<text x="76.0" y="536.0" class="num t18" text-anchor="start" >53 m</text>
+</g>
+</g>
+
+<rect x="0" y="0" width="1920" height="230" fill="url(#gTop)"/>
+<rect x="0" y="640" width="1100" height="440" fill="url(#gBL)"/>
+<rect x="1320" y="600" width="600" height="480" fill="url(#gBR)"/>
+<g class="bug">
+<rect x="56" y="44" width="340" height="72" fill="#06121B" opacity=".86"/>
+<rect x="56" y="44" width="6" height="72" fill="#FFD23F"/>
+<text x="80.0" y="66.0" class="lab" text-anchor="start" >RACE</text>
+<text x="80.0" y="106.0" class="num n40" text-anchor="start" >1:50</text>
+<line x1="246" y1="58" x2="246" y2="102" class="hair"/>
+<text x="266.0" y="66.0" class="lab" text-anchor="start" >RANK</text>
+<text x="266" y="106" class="num n40">4<tspan class="n22 mist" dx="4">/ 6</tspan></text>
+<text x="56.0" y="146.0" class="lab paper" text-anchor="start" >LAP 1/2 · LEG 1/6 · BEAT</text>
+<text x="56" y="176" class="t20"><tspan class="mist lab">LEADER</tspan><tspan class="num" dx="10">~+0:16</tspan></text>
+<text x="56" y="204" class="t20"><tspan class="mist lab">AHEAD</tspan><tspan dx="10">ANA</tspan><tspan class="num" dx="8">+12 m</tspan></text>
+<text x="56" y="232" class="t20"><tspan class="mist lab">BEHIND</tspan><tspan dx="10">IVO</tspan><tspan class="num" dx="8">−8 m</tspan></text>
+</g>
+<g class="wind">
+<circle cx="1828" cy="86" r="34" class="hair" fill="none"/>
+<line x1="1828.0" y1="58.0" x2="1828.0" y2="52.0" class="hair"/>
+<line x1="1843.5" y1="59.2" x2="1845.0" y2="56.6" class="hair"/>
+<line x1="1854.8" y1="70.5" x2="1857.4" y2="69.0" class="hair"/>
+<line x1="1856.0" y1="86.0" x2="1862.0" y2="86.0" class="hair"/>
+<line x1="1854.8" y1="101.5" x2="1857.4" y2="103.0" class="hair"/>
+<line x1="1843.5" y1="112.8" x2="1845.0" y2="115.4" class="hair"/>
+<line x1="1828.0" y1="114.0" x2="1828.0" y2="120.0" class="hair"/>
+<line x1="1812.5" y1="112.8" x2="1811.0" y2="115.4" class="hair"/>
+<line x1="1801.2" y1="101.5" x2="1798.6" y2="103.0" class="hair"/>
+<line x1="1800.0" y1="86.0" x2="1794.0" y2="86.0" class="hair"/>
+<line x1="1801.2" y1="70.5" x2="1798.6" y2="69.0" class="hair"/>
+<line x1="1812.5" y1="59.2" x2="1811.0" y2="56.6" class="hair"/>
+<text x="1828.0" y="46.0" class="lab small" text-anchor="middle" >N</text>
+<line x1="1823.0" y1="54.4" x2="1831.8" y2="109.7" stroke="#F5F8FA" stroke-width="3"/>
+<polygon points="1833.3,119.6 1824.8,110.8 1838.7,108.6" fill="#F5F8FA"/>
+<text x="1768.0" y="66.0" class="lab" text-anchor="end" >TRUE WIND</text>
+<text x="1768" y="118" class="num n56" text-anchor="end">11.3<tspan class="n22 mist" dx="6">KN</tspan></text>
+<text x="1768.0" y="148.0" class="lab" text-anchor="end" >TWD <tspan class="paper">351</tspan></text>
+<rect x="1746" y="162" width="118" height="30" fill="#27D17C"/>
+<text x="1805.0" y="183.0" class="chip dark" text-anchor="middle" >LIFT 5°</text>
+</g>
+<g class="inst">
+<text x="56.0" y="1036.0" class="lab t3" text-anchor="start" >SOG <tspan class="paper num">5.3</tspan></text>
+<text x="161.2" y="1036.0" class="lab t3" text-anchor="start" >COG <tspan class="paper num">034</tspan></text>
+<text x="266.4" y="1036.0" class="lab t3" text-anchor="start" >AWS <tspan class="paper num">15.6</tspan></text>
+<text x="382.8" y="1036.0" class="lab t3" text-anchor="start" >AWA <tspan class="paper num">30°P</tspan></text>
+<text x="499.2" y="1036.0" class="lab t3" text-anchor="start" >HEEL <tspan class="paper num">15°S</tspan></text>
+<text x="626.8" y="1036.0" class="lab t3" text-anchor="start" >POLAR <tspan class="paper num">98%</tspan></text>
+<line x1="56" y1="1006" x2="756" y2="1006" class="hair"/>
+<text x="56.0" y="936.0" class="lab" text-anchor="start" >TWA</text>
+<text x="56" y="986" class="num n52">44°<tspan class="n22" fill="#FF4438" dx="4">P</tspan></text>
+<text x="232.0" y="936.0" class="lab" text-anchor="start" >HDG</text>
+<text x="232" y="986" class="num n52">034</text>
+<text x="408.0" y="936.0" class="lab" text-anchor="start" >VMG</text>
+<text x="408" y="986" class="num n52">3.9<tspan class="n22 mist" dx="4">KN</tspan></text>
+<line x1="56" y1="908" x2="756" y2="908" class="hair"/>
+<text x="56.0" y="786.0" class="lab" text-anchor="start" >BOAT SPEED</text>
+<text x="52" y="890" class="num n128">5.3<tspan class="n28 mist" dx="8">KN</tspan></text>
+<text x="386.0" y="786.0" class="lab" text-anchor="start" >VMG TO TARGET</text>
+<text x="386" y="860" class="num n72">97<tspan class="n28 mist" dx="4">%</tspan></text>
+<line x1="386" y1="886" x2="686" y2="886" class="hair"/>
+<line x1="586.0" y1="874" x2="586.0" y2="892" stroke="#F5F8FA" stroke-width="2"/>
+<rect x="556.0" y="884" width="30.0" height="5" fill="#FFD23F"/>
+<polygon points="556.0,882 550.0,872 562.0,872" fill="#FFD23F"/>
+<text x="686.0" y="860.0" class="lab" text-anchor="end" >TARGET <tspan class="paper">5.4 kn · 42°</tspan></text>
+</g>
+<g class="helm">
+<line x1="880" y1="1036" x2="1240" y2="1036" class="hair"/>
+<line x1="880.0" y1="1031" x2="880.0" y2="1036" class="hair"/>
+<line x1="970.0" y1="1031" x2="970.0" y2="1036" class="hair"/>
+<line x1="1060.0" y1="1026" x2="1060.0" y2="1036" class="hair"/>
+<line x1="1150.0" y1="1031" x2="1150.0" y2="1036" class="hair"/>
+<line x1="1240.0" y1="1031" x2="1240.0" y2="1036" class="hair"/>
+<rect x="1060.0" y="1034" width="1.5" height="4" fill="#F5F8FA"/>
+<polygon points="1060.0,1032 1054.0,1022 1066.0,1022" fill="#FFD23F"/>
+<text x="880.0" y="1018.0" class="lab small" text-anchor="start" >HELM</text>
+<text x="1240.0" y="1018.0" class="lab small paper" text-anchor="end" >JIB</text>
+<text x="880.0" y="958.0" class="lab small" text-anchor="start" >MAIN</text>
+<text x="1050.0" y="958.0" class="lab small paper" text-anchor="end" >FLOWING</text>
+<line x1="880.0" y1="972" x2="1050.0" y2="972" class="hair"/>
+<rect x="922.5" y="970" width="85.0" height="4" fill="#F5F8FA" opacity=".35"/>
+<rect x="975.8" y="964" width="4" height="16" fill="#27D17C"/>
+<text x="880.0" y="990.0" class="lab tiny" text-anchor="start" >IN</text>
+<text x="1050.0" y="990.0" class="lab tiny" text-anchor="end" >EASE</text>
+<text x="1070.0" y="958.0" class="lab small" text-anchor="start" >JIB</text>
+<text x="1240.0" y="958.0" class="lab small paper" text-anchor="end" >FLOWING</text>
+<line x1="1070.0" y1="972" x2="1240.0" y2="972" class="hair"/>
+<rect x="1112.5" y="970" width="85.0" height="4" fill="#F5F8FA" opacity=".35"/>
+<rect x="1187.0" y="964" width="4" height="16" fill="#FFD23F"/>
+<text x="1070.0" y="990.0" class="lab tiny" text-anchor="start" >IN</text>
+<text x="1240.0" y="990.0" class="lab tiny" text-anchor="end" >EASE</text>
+</g>
+<g class="radar">
+<clipPath id="rc5724"><circle cx="1714" cy="880" r="150"/></clipPath>
+<circle cx="1714" cy="880" r="150" fill="#06121B" opacity=".38"/>
+<circle cx="1714" cy="880" r="150" class="hair" fill="none"/>
+<circle cx="1714" cy="880" r="75" class="hair faint" fill="none"/>
+<line x1="1714" y1="730" x2="1714" y2="1030" class="hair faint"/>
+<g clip-path="url(#rc5724)">
+<line x1="1673.6" y1="787.4" x2="1972.1" y2="817.2" stroke="#27D17C" stroke-width="1.6"/>
+<line x1="1673.6" y1="787.4" x2="1669.9" y2="1087.4" stroke="#FF4438" stroke-width="1.6"/>
+<circle cx="1840.8" cy="923.6" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<circle cx="1737.1" cy="993.5" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<rect x="1669.1" y="782.9" width="9" height="9" fill="#FFD23F" transform="rotate(45 1673.6 787.4)"/>
+<circle cx="1648.7" cy="804.2" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<circle cx="1763.6" cy="885.2" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<circle cx="1730.4" cy="907.6" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<circle cx="1800.9" cy="860.0" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#F5F8FA" opacity="1" transform="translate(1757.0 851.0) rotate(-0.1)"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#F5F8FA" opacity="1" transform="translate(1658.6 921.6) rotate(7.2)"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#F5F8FA" opacity="1" transform="translate(1671.6 910.0) rotate(2.0)"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#F5F8FA" opacity="1" transform="translate(1734.6 864.2) rotate(-0.0)"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#F5F8FA" opacity="1" transform="translate(1691.5 894.4) rotate(0.0)"/>
+</g>
+<polygon points="1714,870 1720,888 1708,888" fill="#FFD23F"/>
+<polygon points="0,10 -7,-6 7,-6" fill="#F5F8FA" transform="translate(1603.3 756.3) rotate(318.2)"/>
+<text x="1864.0" y="1052.0" class="lab small" text-anchor="end" >300 M</text>
+<text x="1564.0" y="1052.0" class="lab small" text-anchor="start" >HEAD UP</text>
+</g>
+<g class="feed">
+<text x="1864.0" y="252.0" class="t18 feedline" text-anchor="end" opacity="0.82">Ana leads at the first cross</text>
+</g>
+</svg><figcaption>Hierarchy: boat speed (hero), VMG to target with a meter, then TWA with its tack letter in the tack colour, heading and VMG; the third row is small. Laylines are thin ribbons, full colour at the mark and fading away from it. Your course runs dotted to the tack point, and the distance and time to it are written there, not in a panel. The mark carries its own tag (name, distance, ETA, bearing, rounding side). Boats off screen show as edge pointers. Manual trim shows two short gauges; with auto trim they collapse to "SHEETS AUTO".</figcaption></figure>
+
+<h2>3. Mark rounding</h2>
+<figure><svg class="stage" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg"><defs>
+<linearGradient id="gTop" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#06121B" stop-opacity=".42"/><stop offset="1" stop-color="#06121B" stop-opacity="0"/></linearGradient>
+<radialGradient id="gBL" cx="0" cy="1" r="1" gradientTransform="scale(1 .9)" ><stop offset="0" stop-color="#06121B" stop-opacity=".62"/><stop offset=".7" stop-color="#06121B" stop-opacity=".18"/><stop offset="1" stop-color="#06121B" stop-opacity="0"/></radialGradient>
+<radialGradient id="gBR" cx="1" cy="1" r="1"><stop offset="0" stop-color="#06121B" stop-opacity=".5"/><stop offset="1" stop-color="#06121B" stop-opacity="0"/></radialGradient>
+</defs><image href="frames/hud_rounding.jpg" x="0" y="0" width="1920" height="1080"/>
+<g class="world">
+<linearGradient id="rd_l0" gradientUnits="userSpaceOnUse" x1="963.6" y1="560.4" x2="4934.4" y2="4062.3"><stop offset="0" stop-color="#27D17C" stop-opacity="1"/><stop offset="1" stop-color="#27D17C" stop-opacity=".25"/></linearGradient>
+<polygon points="963.6,560.4 982.2,576.8 1002.6,594.7 1025.1,614.6 1050.2,636.7 1078.2,661.5 1109.8,689.3 1145.5,720.8 1186.4,756.8 1233.6,798.5 1288.6,847.0 1353.8,904.5 1432.0,973.4 1527.6,1057.8 1647.4,1163.4 1801.5,1299.3 2007.4,1480.9 2296.3,1735.7 2731.2,2119.3 3460.3,2762.3 4934.4,4062.3 4947.0,4155.6 3445.1,2802.8 2711.3,2141.8 2276.3,1750.0 1988.5,1490.8 1784.0,1306.6 1631.2,1168.9 1512.6,1062.2 1418.0,977.0 1340.8,907.4 1276.5,849.5 1222.2,800.5 1175.6,758.6 1135.4,722.4 1100.1,690.6 1069.1,662.7 1041.5,637.8 1016.8,615.6 994.6,595.6 974.6,577.5 956.3,561.1" fill="url(#rd_l0)"/>
+<polyline points="960.0,560.8 978.4,577.1 998.6,595.2 1021.0,615.1 1045.9,637.3 1073.7,662.1 1105.0,690.0 1140.4,721.6 1181.0,757.7 1227.9,799.5 1282.6,848.2 1347.3,905.9 1425.0,975.2 1520.2,1060.0 1639.3,1166.1 1792.8,1302.9 1998.0,1485.8 2286.3,1742.8 2721.3,2130.5 3452.8,2782.4 4940.6,4108.4" fill="none" stroke="url(#rd_l0)" stroke-width="2.5"/>
+<linearGradient id="rd_l1" gradientUnits="userSpaceOnUse" x1="961.6" y1="561.8" x2="-5509.7" y2="1440.9"><stop offset="0" stop-color="#FF4438" stop-opacity="1"/><stop offset="1" stop-color="#FF4438" stop-opacity=".25"/></linearGradient>
+<polygon points="961.6,561.8 910.0,568.8 856.2,576.1 800.2,583.7 741.8,591.7 680.7,600.0 616.9,608.6 550.1,617.7 480.1,627.2 406.8,637.2 329.7,647.6 248.8,658.6 163.6,670.2 73.8,682.4 -21.0,695.3 -121.2,708.9 -227.3,723.3 -339.8,738.6 -459.2,754.8 -586.4,772.1 -722.0,790.5 -867.0,810.2 -1022.3,831.3 -1189.0,854.0 -1368.5,878.3 -1562.3,904.7 -1772.2,933.2 -2000.3,964.2 -2249.0,998.0 -2521.4,1035.0 -2820.8,1075.6 -3151.6,1120.6 -3518.9,1170.5 -3929.3,1226.2 -4390.6,1288.9 -4913.1,1359.9 -5509.7,1440.9 -5383.7,1415.0 -4807.1,1337.2 -4300.8,1269.0 -3852.7,1208.5 -3453.3,1154.7 -3095.1,1106.4 -2772.1,1062.8 -2479.2,1023.3 -2212.5,987.3 -1968.5,954.4 -1744.6,924.2 -1538.3,896.4 -1347.6,870.7 -1170.9,846.9 -1006.6,824.7 -853.5,804.1 -710.4,784.8 -576.5,766.7 -450.8,749.8 -332.7,733.8 -221.4,718.8 -116.4,704.7 -17.2,691.3 76.7,678.6 165.7,666.6 250.2,655.2 330.5,644.4 407.0,634.1 479.8,624.3 549.3,614.9 615.6,605.9 679.1,597.4 739.7,589.2 797.9,581.4 853.6,573.9 907.1,566.6 958.4,559.7" fill="url(#rd_l1)"/>
+<polyline points="960.0,560.8 908.5,567.7 854.9,575.0 799.0,582.5 740.7,590.4 679.9,598.7 616.3,607.3 549.7,616.3 480.0,625.7 406.9,635.6 330.1,646.0 249.5,656.9 164.7,668.4 75.2,680.5 -19.1,693.3 -118.8,706.8 -224.3,721.1 -336.2,736.2 -455.0,752.3 -581.4,769.4 -716.2,787.6 -860.2,807.1 -1014.4,828.0 -1179.9,850.4 -1358.0,874.5 -1550.2,900.5 -1758.3,928.7 -1984.3,959.3 -2230.6,992.6 -2500.1,1029.1 -2796.2,1069.2 -3123.1,1113.4 -3485.9,1162.5 -3890.7,1217.3 -4345.3,1278.8 -4859.6,1348.4 -5446.1,1427.8" fill="none" stroke="url(#rd_l1)" stroke-width="2.5"/>
+<polygon points="1054.0,507.9 1066.1,509.6 1078.0,511.5 1089.6,513.6 1100.9,515.9 1111.8,518.4 1122.4,521.1 1132.5,524.1 1142.1,527.2 1151.2,530.5 1159.7,534.0 1167.6,537.8 1174.8,541.7 1181.4,545.7 1187.1,550.0 1192.1,554.4 1196.1,559.0 1199.2,563.6 1201.4,568.4 1202.5,573.3 1202.5,578.3 1201.4,583.4 1199.1,588.5 1195.6,593.5 1190.9,598.6 1184.9,603.6 1177.7,608.5 1169.1,613.4 1159.3,618.0 1148.2,622.5 1135.9,626.8 1122.5,630.7 1107.9,634.4 1092.2,637.8 1075.6,640.8 1058.2,643.4 1040.0,645.6 1021.3,647.3 1002.0,648.6 982.5,649.4 962.7,649.7 943.0,649.5 923.3,648.9 904.0,647.7 885.1,646.1 866.7,644.1 849.1,641.6 832.3,638.7 816.4,635.4 801.5,631.8 787.7,627.9 775.1,623.7 763.6,619.3 753.5,614.7 744.6,609.9 736.9,605.0 730.6,600.0 725.5,594.9 721.7,589.9 719.1,584.8 717.7,579.7 717.4,574.7 718.2,569.8 720.1,565.0 722.9,560.2 726.7,555.6 731.4,551.2 737.0,546.9 743.3,542.8 750.3,538.8 758.1,535.1 766.4,531.5 775.4,528.1 784.8,524.9 794.8,521.9 805.2,519.1 816.0,516.6 827.2,514.2 838.8,512.0 850.6,510.1 862.6,508.4 874.9,506.9 887.4,505.6 900.1,504.5 912.8,503.6 925.7,502.9 938.7,502.5 951.7,502.2 964.7,502.2 977.7,502.4 990.7,502.8 1003.6,503.4 1016.4,504.2 1029.1,505.2 1041.6,506.5 1054.0,507.9" fill="#FFD23F" fill-opacity=".07" stroke="#FFD23F" stroke-width="2.5" stroke-dasharray="10 8"/>
+<polygon points="894.1,569.9 896.0,571.2 898.1,572.5 900.6,573.7 903.3,574.8 906.3,575.9 909.6,577.0 913.1,578.0 916.8,578.9 920.7,579.7 924.8,580.5 929.1,581.1 933.5,581.7 938.1,582.2 942.7,582.6 947.5,582.9 952.3,583.1 957.1,583.2 962.0,583.2 966.8,583.1 971.7,583.0 976.4,582.7 981.1,582.3 985.7,581.8 990.1,581.2 994.4,580.6 998.6,579.8 1002.5,579.0 1006.3,578.1 1009.8,577.2 1013.1,576.1 1016.1,575.0 1018.9,573.9 1021.4,572.7 1023.7,571.5 1025.6,570.2 1027.3,568.9 1028.6,567.5 1029.7,566.2 1030.4,564.8 1030.9,563.5 1031.0,562.1 1030.9,560.7 1030.5,559.4 1029.7,558.0 1028.7,556.7 1027.5,555.4 1025.9,554.2 1024.1,553.0 1022.1,551.8 1019.8,550.6 1017.3,549.6 1014.6,548.5 1011.7,547.5 1008.6,546.6 1005.3,545.8 1001.9,545.0 998.3,544.2 994.6,543.6 990.7,543.0 986.6,545.3 990.0,545.9 993.2,546.4 996.3,547.1 999.2,547.8 1002.1,548.5 1004.7,549.3 1007.2,550.2 1009.6,551.1 1011.7,552.0 1013.6,553.0 1015.4,554.0 1016.9,555.1 1018.2,556.2 1019.3,557.3 1020.1,558.4 1020.7,559.6 1021.0,560.7 1021.1,561.9 1020.9,563.1 1020.5,564.3 1019.8,565.4 1018.9,566.6 1017.7,567.7 1016.2,568.8 1014.5,569.9 1012.6,571.0 1010.4,572.0 1008.0,573.0 1005.4,573.9 1002.6,574.8 999.5,575.6 996.3,576.4 992.9,577.1 989.4,577.7 985.7,578.2 981.9,578.7 978.0,579.1 974.0,579.4 970.0,579.7 965.8,579.8 961.7,579.9 957.6,579.9 953.4,579.8 949.3,579.6 945.3,579.4 941.3,579.1 937.4,578.6 933.6,578.1 929.9,577.6 926.4,576.9 923.1,576.2 919.9,575.5 916.9,574.6 914.1,573.7 911.5,572.8 909.2,571.8 907.0,570.8 905.1,569.7 903.5,568.6" fill="#FFD23F"/>
+<polygon points="995.2,540.4 967.8,542.3 982.1,548.0" fill="#FFD23F"/>
+<g class="marktag">
+<line x1="960.0" y1="546.8" x2="960.0" y2="420.8" stroke="#FFD23F" stroke-width="1.5"/>
+<rect x="954.5" y="538.8" width="11" height="11" fill="none" stroke="#FFD23F" stroke-width="2" transform="rotate(45 960.0 544.3)"/>
+<text x="972.0" y="366.8" class="lab mark" text-anchor="start" >WINDWARD</text>
+<text x="972.0" y="406.8" class="num n44">13<tspan class="n20 mist" dx="4">M</tspan></text>
+<text x="972.0" y="432.8" class="lab small paper" text-anchor="start" >THEN SPREADER · 60 M</text>
+<path d="M 944.0 382.8 A 11 11 0 1 0 947.0 392.8" fill="none" stroke="#FFD23F" stroke-width="2.5"/>
+<polygon points="939.0,378.8 948.0,379.8 945.0,387.8" fill="#FFD23F"/>
+<rect x="972.0" y="442.8" width="70" height="22" fill="#FFD23F"/>
+<text x="1007.0" y="458.8" class="chip dark small" text-anchor="middle" >ZONE</text>
+</g>
+<g class="boattag pulse">
+<line x1="767.4" y1="467.5" x2="767.4" y2="407.5" stroke="#FF8A1F" stroke-width="1.5"/>
+<rect x="707.4" y="381.5" width="60.0" height="26" fill="#FF8A1F"/>
+<text x="714.4" y="400.5" class="chip dark" text-anchor="start" >TINE</text>
+<text x="707.4" y="373.5" class="lab small paper" text-anchor="start" >INSIDE, OVERLAPPED</text>
+<rect x="703.4" y="377.5" width="68.0" height="34" fill="none" stroke="#FF8A1F" stroke-width="2" opacity=".6"/>
+</g>
+<g class="boattag">
+<line x1="777.3" y1="507.7" x2="777.3" y2="481.7" stroke="#2FD8EE" stroke-width="1.5"/>
+<rect x="777.3" y="455.7" width="60.0" height="26" fill="#2FD8EE"/>
+<text x="784.3" y="474.7" class="chip dark" text-anchor="start" >MAJA</text>
+</g>
+<g class="boattag">
+<line x1="1116.0" y1="487.8" x2="1116.0" y2="391.8" stroke="#F5F8FA" stroke-width="1.5"/>
+<rect x="1116.0" y="365.8" width="48.5" height="26" fill="#06121B" opacity=".72"/>
+<text x="1123.0" y="384.8" class="chip" text-anchor="start" >ANA</text>
+<text x="1116.0" y="357.8" class="lab small paper" text-anchor="start" >1ST, ROUNDED</text>
+</g>
+<g class="boattag">
+<line x1="509.2" y1="494.7" x2="509.2" y2="458.7" stroke="#F5F8FA" stroke-width="1.5"/>
+<rect x="460.7" y="432.7" width="48.5" height="26" fill="#06121B" opacity=".72"/>
+<text x="467.7" y="451.7" class="chip" text-anchor="start" >IVO</text>
+</g>
+<polygon points="811.3,481.4 802.3,467.4 820.3,467.4" fill="#FFD23F"/>
+<text x="811.3" y="459.4" class="lab mark" text-anchor="middle" >YOU</text>
+</g>
+
+<rect x="0" y="0" width="1920" height="230" fill="url(#gTop)"/>
+<rect x="0" y="640" width="1100" height="440" fill="url(#gBL)"/>
+<rect x="1320" y="600" width="600" height="480" fill="url(#gBR)"/>
+<rect x="-60" y="190" width="520" height="370" fill="#06121B" opacity=".42" style="filter:blur(28px)"/>
+<g class="bug">
+<rect x="56" y="44" width="340" height="72" fill="#06121B" opacity=".86"/>
+<rect x="56" y="44" width="6" height="72" fill="#FFD23F"/>
+<text x="80.0" y="66.0" class="lab" text-anchor="start" >RACE</text>
+<text x="80.0" y="106.0" class="num n40" text-anchor="start" >3:18</text>
+<line x1="246" y1="58" x2="246" y2="102" class="hair"/>
+<text x="266.0" y="66.0" class="lab" text-anchor="start" >RANK</text>
+<text x="266" y="106" class="num n40">3<tspan class="n22 mist" dx="4">/ 6</tspan></text>
+<text x="56.0" y="146.0" class="lab paper" text-anchor="start" >LAP 1/2 · LEG 1/6 · BEAT</text>
+</g>
+<g class="rules">
+<rect x="776.5" y="150" width="367.0" height="46" fill="#06121B" opacity=".82"/>
+<rect x="776.5" y="150" width="8" height="46" fill="#FF8A1F"/>
+<text x="800.5" y="182.0" class="msg" text-anchor="start" fill="#FF8A1F">GIVE MARK-ROOM TO TINE</text>
+<text x="960.0" y="222.0" class="lab paper" text-anchor="middle" >RULE 18.2 · SHE IS INSIDE AND OVERLAPPED</text>
+</g>
+<text x="56.0" y="214.0" class="lab mark" text-anchor="start" >AT WINDWARD · LIVE ORDER</text>
+<line x1="56" y1="226" x2="416" y2="226" class="hair"/>
+<text x="66.0" y="262.0" class="num n28" text-anchor="start" >1</text>
+<text x="108.0" y="262.0" class="row" text-anchor="start" >ANA</text>
+<text x="256.0" y="262.0" class="lab tiny paper" text-anchor="start" >ROUNDED</text>
+<text x="406.0" y="262.0" class="num n24" text-anchor="end" >0:00</text>
+<text x="66.0" y="306.0" class="num n28" text-anchor="start" >2</text>
+<rect x="96" y="284" width="4" height="26" fill="#FF8A1F"/>
+<text x="108.0" y="306.0" class="row" text-anchor="start" >TINE</text>
+<text x="406.0" y="306.0" class="num n24" text-anchor="end" >+0:03</text>
+<rect x="56" y="322" width="360" height="38" fill="#FFD23F" opacity=".9"/>
+<text x="66.0" y="350.0" class="num n28 dark" text-anchor="start" >3</text>
+<text x="108.0" y="350.0" class="row dark" text-anchor="start" >YOU</text>
+<text x="406.0" y="350.0" class="num n24 dark" text-anchor="end" >+0:07</text>
+<text x="66.0" y="394.0" class="num n28" text-anchor="start" >4</text>
+<rect x="96" y="372" width="4" height="26" fill="#2FD8EE"/>
+<text x="108.0" y="394.0" class="row" text-anchor="start" >MAJA</text>
+<text x="406.0" y="394.0" class="num n24" text-anchor="end" >+0:09</text>
+<text x="66.0" y="438.0" class="num n28" text-anchor="start" >5</text>
+<text x="108.0" y="438.0" class="row" text-anchor="start" >IVO</text>
+<text x="406.0" y="438.0" class="num n24" text-anchor="end" >+0:14</text>
+<text x="66.0" y="482.0" class="num n28" text-anchor="start" >6</text>
+<text x="108.0" y="482.0" class="row" text-anchor="start" >NORA</text>
+<text x="406.0" y="482.0" class="num n24" text-anchor="end" >+0:21</text>
+<text x="56.0" y="530.0" class="lab tiny" text-anchor="start" >~ ESTIMATED UNTIL THE MARK IS ROUNDED</text>
+<g class="wind">
+<circle cx="1828" cy="86" r="34" class="hair" fill="none"/>
+<line x1="1828.0" y1="58.0" x2="1828.0" y2="52.0" class="hair"/>
+<line x1="1843.5" y1="59.2" x2="1845.0" y2="56.6" class="hair"/>
+<line x1="1854.8" y1="70.5" x2="1857.4" y2="69.0" class="hair"/>
+<line x1="1856.0" y1="86.0" x2="1862.0" y2="86.0" class="hair"/>
+<line x1="1854.8" y1="101.5" x2="1857.4" y2="103.0" class="hair"/>
+<line x1="1843.5" y1="112.8" x2="1845.0" y2="115.4" class="hair"/>
+<line x1="1828.0" y1="114.0" x2="1828.0" y2="120.0" class="hair"/>
+<line x1="1812.5" y1="112.8" x2="1811.0" y2="115.4" class="hair"/>
+<line x1="1801.2" y1="101.5" x2="1798.6" y2="103.0" class="hair"/>
+<line x1="1800.0" y1="86.0" x2="1794.0" y2="86.0" class="hair"/>
+<line x1="1801.2" y1="70.5" x2="1798.6" y2="69.0" class="hair"/>
+<line x1="1812.5" y1="59.2" x2="1811.0" y2="56.6" class="hair"/>
+<text x="1828.0" y="46.0" class="lab small" text-anchor="middle" >N</text>
+<line x1="1826.3" y1="54.0" x2="1829.3" y2="110.0" stroke="#F5F8FA" stroke-width="3"/>
+<polygon points="1829.8,120.0 1822.3,110.3 1836.2,109.6" fill="#F5F8FA"/>
+<text x="1768.0" y="66.0" class="lab" text-anchor="end" >TRUE WIND</text>
+<text x="1768" y="118" class="num n56" text-anchor="end">7.4<tspan class="n22 mist" dx="6">KN</tspan></text>
+<text x="1768.0" y="148.0" class="lab" text-anchor="end" >TWD <tspan class="paper">357</tspan></text>
+<rect x="1746" y="162" width="118" height="30" fill="#27D17C"/>
+<text x="1805.0" y="183.0" class="chip dark" text-anchor="middle" >LIFT 3°</text>
+</g>
+<g class="inst">
+<text x="56.0" y="1036.0" class="lab t3" text-anchor="start" >SOG <tspan class="paper num">4.5</tspan></text>
+<text x="161.2" y="1036.0" class="lab t3" text-anchor="start" >COG <tspan class="paper num">315</tspan></text>
+<text x="266.4" y="1036.0" class="lab t3" text-anchor="start" >AWS <tspan class="paper num">11.0</tspan></text>
+<text x="382.8" y="1036.0" class="lab t3" text-anchor="start" >AWA <tspan class="paper num">26°S</tspan></text>
+<text x="499.2" y="1036.0" class="lab t3" text-anchor="start" >HEEL <tspan class="paper num">9°P</tspan></text>
+<text x="615.6" y="1036.0" class="lab t3" text-anchor="start" >POLAR <tspan class="paper num">99%</tspan></text>
+<line x1="56" y1="1006" x2="756" y2="1006" class="hair"/>
+<text x="56.0" y="936.0" class="lab" text-anchor="start" >TWA</text>
+<text x="56" y="986" class="num n52">41°<tspan class="n22" fill="#27D17C" dx="4">S</tspan></text>
+<text x="232.0" y="936.0" class="lab" text-anchor="start" >HDG</text>
+<text x="232" y="986" class="num n52">315</text>
+<text x="408.0" y="936.0" class="lab" text-anchor="start" >VMG</text>
+<text x="408" y="986" class="num n52">3.4<tspan class="n22 mist" dx="4">KN</tspan></text>
+<line x1="56" y1="908" x2="756" y2="908" class="hair"/>
+<text x="56.0" y="786.0" class="lab" text-anchor="start" >BOAT SPEED</text>
+<text x="52" y="890" class="num n128">4.5<tspan class="n28 mist" dx="8">KN</tspan></text>
+<text x="386.0" y="786.0" class="lab" text-anchor="start" >VMG TO TARGET</text>
+<text x="386" y="860" class="num n72">99<tspan class="n28 mist" dx="4">%</tspan></text>
+<line x1="386" y1="886" x2="686" y2="886" class="hair"/>
+<line x1="586.0" y1="874" x2="586.0" y2="892" stroke="#F5F8FA" stroke-width="2"/>
+<rect x="576.0" y="884" width="10.0" height="5" fill="#FFD23F"/>
+<polygon points="576.0,882 570.0,872 582.0,872" fill="#FFD23F"/>
+<text x="686.0" y="860.0" class="lab" text-anchor="end" >TARGET <tspan class="paper">4.1 kn · 42°</tspan></text>
+</g>
+<g class="helm">
+<line x1="880" y1="1036" x2="1240" y2="1036" class="hair"/>
+<line x1="880.0" y1="1031" x2="880.0" y2="1036" class="hair"/>
+<line x1="970.0" y1="1031" x2="970.0" y2="1036" class="hair"/>
+<line x1="1060.0" y1="1026" x2="1060.0" y2="1036" class="hair"/>
+<line x1="1150.0" y1="1031" x2="1150.0" y2="1036" class="hair"/>
+<line x1="1240.0" y1="1031" x2="1240.0" y2="1036" class="hair"/>
+<rect x="1060.0" y="1034" width="14.4" height="4" fill="#F5F8FA"/>
+<polygon points="1114.0,1032 1108.0,1022 1120.0,1022" fill="#FFD23F"/>
+<text x="880.0" y="1018.0" class="lab small" text-anchor="start" >HELM</text>
+<text x="1240.0" y="1018.0" class="lab small paper" text-anchor="end" >JIB</text>
+<text x="1060.0" y="1018.0" class="lab small" text-anchor="middle" >SHEETS AUTO</text>
+</g>
+<g class="radar">
+<clipPath id="rc4138"><circle cx="1714" cy="880" r="150"/></clipPath>
+<circle cx="1714" cy="880" r="150" fill="#06121B" opacity=".38"/>
+<circle cx="1714" cy="880" r="150" class="hair" fill="none"/>
+<circle cx="1714" cy="880" r="75" class="hair faint" fill="none"/>
+<line x1="1714" y1="730" x2="1714" y2="1030" class="hair faint"/>
+<g clip-path="url(#rc4138)">
+<line x1="1735.2" y1="872.4" x2="1762.0" y2="1772.0" stroke="#27D17C" stroke-width="1.6"/>
+<line x1="1735.2" y1="872.4" x2="843.3" y2="993.1" stroke="#FF4438" stroke-width="1.6"/>
+<circle cx="1433.4" cy="1444.6" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<circle cx="1166.6" cy="1181.1" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<rect x="1730.7" y="867.9" width="9" height="9" fill="#FFD23F" transform="rotate(45 1735.2 872.4)"/>
+<circle cx="1671.1" cy="809.1" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<circle cx="1500.8" cy="1195.0" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<circle cx="1415.5" cy="1110.6" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<circle cx="1596.9" cy="1289.8" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#F5F8FA" opacity="1" transform="translate(1632.4 869.2) rotate(-267.7)"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#2FD8EE" opacity="1" transform="translate(1708.5 890.4) rotate(-266.9)"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#FF8A1F" opacity="1" transform="translate(1710.0 869.6) rotate(0.5)"/>
+<circle cx="1710.0" cy="869.6" r="11" fill="none" stroke="#FF8A1F" stroke-width="1.5"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#F5F8FA" opacity="1" transform="translate(1679.4 875.5) rotate(-269.8)"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#F5F8FA" opacity="1" transform="translate(1748.5 892.7) rotate(-15.5)"/>
+</g>
+<polygon points="1714,870 1720,888 1708,888" fill="#FFD23F"/>
+<polygon points="0,10 -7,-6 7,-6" fill="#F5F8FA" transform="translate(1821.3 753.4) rotate(40.3)"/>
+<text x="1864.0" y="1052.0" class="lab small" text-anchor="end" >100 M</text>
+<text x="1564.0" y="1052.0" class="lab small" text-anchor="start" >HEAD UP</text>
+</g>
+<g class="feed">
+<text x="1864.0" y="252.0" class="t18 feedline" text-anchor="end" opacity="1.00">Ana rounds Windward 1st</text>
+<text x="1864.0" y="278.0" class="t18 feedline" text-anchor="end" opacity="1.00">Tine rounds Windward 2nd</text>
+</g>
+</svg><figcaption>Inside the zone: dashed yellow zone circle, the rounding arrow on the water, and a ZONE chip on the mark tag. The rules line (top centre) says what to do, in plain words, with the rule under it. Boats carry rule colours only when a relation exists: Tine orange and pulsing (you owe her room), Maja cyan (she owes you room). The live order appears near a mark and for 6 s after each rounding, with your row in yellow.</figcaption></figure>
+
+<h2>4. Penalty</h2>
+<figure><svg class="stage" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg"><defs>
+<linearGradient id="gTop" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#06121B" stop-opacity=".42"/><stop offset="1" stop-color="#06121B" stop-opacity="0"/></linearGradient>
+<radialGradient id="gBL" cx="0" cy="1" r="1" gradientTransform="scale(1 .9)" ><stop offset="0" stop-color="#06121B" stop-opacity=".62"/><stop offset=".7" stop-color="#06121B" stop-opacity=".18"/><stop offset="1" stop-color="#06121B" stop-opacity="0"/></radialGradient>
+<radialGradient id="gBR" cx="1" cy="1" r="1"><stop offset="0" stop-color="#06121B" stop-opacity=".5"/><stop offset="1" stop-color="#06121B" stop-opacity="0"/></radialGradient>
+</defs><image href="frames/hud_penalty.jpg" x="0" y="0" width="1920" height="1080"/>
+<g class="world">
+<linearGradient id="pn_l0" gradientUnits="userSpaceOnUse" x1="-41.9" y1="497.3" x2="4306.5" y2="397.9"><stop offset="0" stop-color="#27D17C" stop-opacity="1"/><stop offset="1" stop-color="#27D17C" stop-opacity=".25"/></linearGradient>
+<polygon points="-41.9,497.3 30.4,495.6 101.6,494.0 171.6,492.4 240.4,490.8 308.2,489.3 374.9,487.8 440.5,486.3 505.1,484.8 568.6,483.3 631.2,481.9 692.9,480.5 753.6,479.1 813.4,477.8 872.3,476.4 930.3,475.1 987.4,473.8 1043.7,472.5 1099.2,471.2 1153.9,470.0 1207.8,468.7 1261.0,467.5 1313.4,466.3 1365.0,465.1 1416.0,464.0 1466.2,462.8 1515.7,461.7 1564.6,460.6 1612.8,459.5 1660.3,458.4 1707.3,457.3 1753.5,456.3 1799.2,455.2 1844.3,454.2 1888.8,453.2 1932.7,452.2 1976.1,451.2 2018.9,450.2 2061.1,449.2 2102.8,448.3 2144.0,447.3 2184.7,446.4 2224.9,445.5 2264.6,444.6 2303.8,443.7 2342.5,442.8 2380.7,441.9 2418.5,441.1 2455.9,440.2 2492.8,439.4 2529.2,438.5 2565.3,437.7 2600.9,436.9 2636.1,436.1 2670.9,435.3 2705.3,434.5 2739.3,433.7 2772.9,433.0 2806.1,432.2 2839.0,431.5 2871.5,430.7 2903.6,430.0 2935.4,429.3 2966.9,428.5 2998.0,427.8 3028.7,427.1 3059.1,426.4 3089.2,425.7 3119.0,425.1 3148.5,424.4 3177.6,423.7 3206.5,423.1 3235.0,422.4 3263.3,421.8 3291.2,421.1 3318.9,420.5 3346.3,419.9 3373.4,419.2 3400.2,418.6 3426.8,418.0 3453.1,417.4 3479.1,416.8 3504.9,416.2 3530.4,415.7 3555.6,415.1 3580.7,414.5 3605.4,413.9 3630.0,413.4 3654.3,412.8 3678.3,412.3 3702.2,411.7 3725.8,411.2 3749.2,410.7 3772.3,410.1 3795.3,409.6 3818.0,409.1 3840.5,408.6 3862.9,408.1 3885.0,407.6 3906.9,407.1 3928.6,406.6 3950.1,406.1 3971.4,405.6 3992.5,405.1 4013.5,404.6 4034.2,404.1 4054.8,403.7 4075.2,403.2 4095.4,402.7 4115.4,402.3 4135.3,401.8 4154.9,401.4 4174.5,400.9 4193.8,400.5 4213.0,400.1 4232.0,399.6 4250.8,399.2 4269.5,398.8 4288.1,398.3 4306.5,397.9 4323.4,398.4 4305.0,398.8 4286.4,399.3 4267.7,399.7 4248.8,400.1 4229.8,400.6 4210.6,401.0 4191.2,401.5 4171.7,401.9 4152.0,402.4 4132.1,402.8 4112.0,403.3 4091.8,403.7 4071.4,404.2 4050.8,404.7 4030.0,405.2 4009.0,405.7 3987.9,406.1 3966.5,406.6 3945.0,407.1 3923.2,407.6 3901.3,408.1 3879.1,408.6 3856.8,409.2 3834.2,409.7 3811.4,410.2 3788.4,410.7 3765.2,411.3 3741.8,411.8 3718.1,412.4 3694.2,412.9 3670.1,413.5 3645.7,414.0 3621.1,414.6 3596.3,415.2 3571.2,415.7 3545.9,416.3 3520.3,416.9 3494.4,417.5 3468.3,418.1 3442.0,418.7 3415.3,419.3 3388.4,420.0 3361.2,420.6 3333.8,421.2 3306.0,421.9 3278.0,422.5 3249.6,423.2 3221.0,423.8 3192.0,424.5 3162.8,425.2 3133.2,425.8 3103.3,426.5 3073.1,427.2 3042.6,427.9 3011.7,428.6 2980.5,429.4 2948.9,430.1 2917.0,430.8 2884.8,431.6 2852.1,432.3 2819.1,433.1 2785.7,433.9 2752.0,434.6 2717.8,435.4 2683.3,436.2 2648.3,437.0 2612.9,437.8 2577.2,438.7 2540.9,439.5 2504.3,440.3 2467.2,441.2 2429.7,442.1 2391.7,442.9 2353.2,443.8 2314.3,444.7 2274.9,445.6 2235.0,446.6 2194.6,447.5 2153.7,448.4 2112.2,449.4 2070.3,450.3 2027.8,451.3 1984.7,452.3 1941.1,453.3 1896.9,454.3 1852.1,455.4 1806.8,456.4 1760.8,457.5 1714.2,458.6 1667.0,459.6 1619.1,460.7 1570.5,461.9 1521.3,463.0 1471.4,464.2 1420.8,465.3 1369.5,466.5 1317.5,467.7 1264.7,468.9 1211.1,470.2 1156.8,471.4 1101.6,472.7 1045.7,474.0 988.9,475.3 931.3,476.6 872.8,478.0 813.4,479.3 753.1,480.7 691.8,482.1 629.6,483.6 566.4,485.0 502.3,486.5 437.1,488.0 370.8,489.5 303.5,491.1 235.1,492.7 165.5,494.3 94.8,495.9 22.9,497.5 -50.2,499.2" fill="url(#pn_l0)"/>
+<polyline points="-46.1,498.3 26.7,496.6 98.2,494.9 168.6,493.3 237.8,491.7 305.8,490.2 372.8,488.6 438.8,487.1 503.7,485.6 567.5,484.2 630.4,482.7 692.3,481.3 753.3,479.9 813.4,478.5 872.5,477.2 930.8,475.8 988.2,474.5 1044.7,473.2 1100.4,471.9 1155.3,470.7 1209.5,469.4 1262.8,468.2 1315.4,467.0 1367.3,465.8 1418.4,464.6 1468.8,463.5 1518.5,462.3 1567.6,461.2 1615.9,460.1 1663.6,459.0 1710.7,457.9 1757.2,456.9 1803.0,455.8 1848.2,454.8 1892.8,453.8 1936.9,452.7 1980.4,451.7 2023.3,450.8 2065.7,449.8 2107.5,448.8 2148.8,447.9 2189.6,446.9 2229.9,446.0 2269.7,445.1 2309.0,444.2 2347.8,443.3 2386.2,442.4 2424.1,441.6 2461.5,440.7 2498.5,439.9 2535.1,439.0 2571.2,438.2 2606.9,437.4 2642.2,436.6 2677.0,435.8 2711.5,435.0 2745.6,434.2 2779.3,433.4 2812.6,432.6 2845.5,431.9 2878.1,431.1 2910.3,430.4 2942.2,429.7 2973.7,429.0 3004.8,428.2 3035.6,427.5 3066.1,426.8 3096.3,426.1 3126.1,425.5 3155.6,424.8 3184.8,424.1 3213.7,423.4 3242.3,422.8 3270.6,422.1 3298.6,421.5 3326.3,420.9 3353.7,420.2 3380.9,419.6 3407.7,419.0 3434.3,418.4 3460.7,417.8 3486.7,417.2 3512.6,416.6 3538.1,416.0 3563.4,415.4 3588.5,414.8 3613.3,414.3 3637.8,413.7 3662.2,413.1 3686.3,412.6 3710.1,412.0 3733.8,411.5 3757.2,411.0 3780.4,410.4 3803.3,409.9 3826.1,409.4 3848.6,408.9 3871.0,408.4 3893.1,407.8 3915.0,407.3 3936.8,406.8 3958.3,406.4 3979.6,405.9 4000.8,405.4 4021.7,404.9 4042.5,404.4 4063.1,403.9 4083.5,403.5 4103.7,403.0 4123.7,402.6 4143.6,402.1 4163.3,401.6 4182.8,401.2 4202.2,400.8 4221.4,400.3 4240.4,399.9 4259.3,399.4 4278.0,399.0 4296.5,398.6 4314.9,398.2" fill="none" stroke="url(#pn_l0)" stroke-width="2.5"/>
+<linearGradient id="pn_l1" gradientUnits="userSpaceOnUse" x1="-39.8" y1="498.0" x2="-3762.4" y2="1507.4"><stop offset="0" stop-color="#FF4438" stop-opacity="1"/><stop offset="1" stop-color="#FF4438" stop-opacity=".25"/></linearGradient>
+<polygon points="-39.8,498.0 -86.6,510.7 -139.6,525.1 -200.4,541.6 -270.6,560.6 -352.9,582.9 -450.3,609.3 -567.7,641.2 -711.9,680.3 -893.3,729.4 -1128.1,793.1 -1444.4,878.9 -1893.2,1000.6 -2580.0,1186.8 -3762.4,1507.4 -3891.9,1524.8 -2662.4,1196.1 -1952.5,1006.4 -1490.3,882.8 -1165.4,796.0 -924.5,731.6 -738.8,682.0 -591.3,642.6 -471.2,610.5 -371.6,583.9 -287.7,561.4 -216.0,542.3 -154.0,525.7 -99.9,511.2 -52.3,498.5" fill="url(#pn_l1)"/>
+<polyline points="-46.1,498.3 -93.2,511.0 -146.8,525.4 -208.2,541.9 -279.2,561.0 -362.2,583.4 -460.8,609.9 -579.5,641.9 -725.3,681.1 -908.8,730.5 -1146.7,794.6 -1467.2,880.9 -1922.7,1003.5 -2621.0,1191.4 -3826.7,1516.0" fill="none" stroke="url(#pn_l1)" stroke-width="2.5"/>
+<g class="edge">
+<polygon points="56,470 68,461 68,479" fill="#FFD23F"/>
+<text x="76.0" y="466.0" class="lab small paper" text-anchor="start" >WINDWARD</text>
+<text x="76.0" y="486.0" class="num t18" text-anchor="start" >92 m · ETA 0:45</text>
+</g>
+<g class="boattag pulse">
+<line x1="1506.2" y1="430.2" x2="1506.2" y2="384.2" stroke="#FF4438" stroke-width="1.5"/>
+<rect x="1506.2" y="358.2" width="48.5" height="26" fill="#FF4438"/>
+<text x="1513.2" y="377.2" class="chip dark" text-anchor="start" >IVO</text>
+<text x="1506.2" y="350.2" class="lab small paper" text-anchor="start" >STARBOARD, CONVERGING</text>
+<rect x="1502.2" y="354.2" width="56.5" height="34" fill="none" stroke="#FF4438" stroke-width="2" opacity=".6"/>
+</g>
+<polygon points="1060.7,630.0 1046.4,631.3 1032.2,632.9 1018.3,634.7 1004.7,636.9 991.4,639.4 978.5,642.1 965.8,645.2 953.6,648.6 941.8,652.3 930.5,656.4 919.6,660.7 909.3,665.4 899.6,670.4 890.5,675.8 882.1,681.4 874.4,687.4 867.5,693.8 861.4,700.4 856.3,707.4 852.1,714.7 849.0,722.3 847.0,730.2 846.2,738.4 846.6,746.9 848.4,755.6 851.5,764.5 856.1,773.6 862.3,782.8 870.0,792.2 879.4,801.6 890.5,811.1 903.2,820.4 917.7,829.7 933.9,838.8 951.8,847.6 971.3,856.1 992.4,864.2 1015.0,871.8 1038.9,878.9 1064.1,885.3 1090.3,890.9 1117.4,895.8 1145.2,899.9 1173.4,903.0 1201.8,905.2 1230.2,906.4 1258.3,906.7 1285.8,905.9 1312.6,904.2 1338.3,901.5 1362.9,897.9 1386.0,893.4 1407.6,888.1 1427.5,882.0 1445.6,875.3 1461.9,867.9 1476.2,860.0 1488.5,851.7 1498.8,843.0 1469.5,832.8 1459.7,840.5 1448.0,847.9 1434.7,854.9 1419.7,861.5 1403.0,867.4 1384.7,872.8 1365.0,877.5 1343.9,881.4 1321.6,884.6 1298.3,887.0 1274.1,888.5 1249.2,889.1 1223.8,888.9 1198.2,887.9 1172.6,885.9 1147.1,883.2 1121.9,879.6 1097.3,875.3 1073.5,870.3 1050.6,864.7 1028.7,858.4 1008.0,851.7 988.6,844.5 970.6,836.9 954.0,829.0 938.9,820.8 925.3,812.5 913.2,804.0 902.7,795.4 893.6,786.9 886.1,778.4 880.0,769.9 875.3,761.6 872.0,753.4 869.9,745.3 869.1,737.5 869.5,729.9 871.0,722.6 873.5,715.5 877.1,708.7 881.5,702.1 886.9,695.9 893.0,689.9 900.0,684.2 907.6,678.9 915.9,673.8 924.9,669.1 934.4,664.6 944.4,660.5 954.9,656.7 965.9,653.1 977.3,649.9 989.1,646.9 1001.3,644.3 1013.7,641.9 1026.5,639.8 1039.6,638.1 1052.9,636.6 1066.5,635.3" fill="#FF4438" opacity=".9"/>
+<polygon points="1532.4,854.8 1507.9,788.1 1438.5,821.9" fill="#FF4438"/>
+<text x="828.0" y="843.1" class="lab paper" text-anchor="end" >TURN 210°</text>
+<polygon points="948.5,654.4 960.6,650.6 973.3,647.1 986.3,643.9 999.8,641.1 1013.6,638.6 1027.8,636.5 1042.3,634.7 1057.0,633.2 1072.0,632.1 1087.2,631.2 1102.7,630.7 1118.3,630.6 1134.0,630.7 1149.9,631.2 1166.0,632.0 1182.1,633.1 1198.2,634.6 1214.4,636.3 1230.6,638.5 1246.8,640.9 1263.0,643.7 1279.1,646.8 1295.1,650.3 1310.9,654.1 1326.6,658.3 1342.0,662.8 1357.2,667.7 1372.0,672.9 1386.5,678.5 1400.6,684.5 1414.1,690.8 1427.1,697.5 1439.5,704.5 1451.1,711.8 1462.0,719.5 1471.9,727.6 1480.9,735.9 1488.8,744.5 1495.4,753.4 1500.8,762.4 1504.7,771.7 1507.2,781.2 1508.0,790.7 1507.1,800.2 1504.3,809.8 1499.6,819.3 1493.0,828.6 1484.3,837.6 1473.5,846.4 1460.6,854.7 1445.6,862.6 1428.6,869.8 1409.6,876.4 1388.7,882.2 1366.1,887.2 1341.9,891.3 1316.3,894.4 1289.6,896.6 1262.0,897.7 1233.7,897.7 1205.0,896.7 1176.2,894.6 1147.6,891.6 1119.5,887.6 1092.0,882.7 1065.5,876.9 1040.1,870.4 1016.0,863.2 993.4,855.4 972.4,847.1 953.1,838.4 935.6,829.3 919.9,820.0 906.0,810.6 894.0,801.0 883.8,791.5 875.3,781.9 868.6,772.5 863.5,763.2 860.1,754.1 858.2,745.2 857.7,736.6 858.6,728.2 860.7,720.2 864.1,712.5 868.6,705.1 874.2,698.0 880.7,691.3 888.2,685.0 896.5,679.0 905.5,673.4 915.3,668.1 925.8,663.2 936.8,658.6 948.5,654.4" fill="none" stroke="#F5F8FA" stroke-width="1.5" stroke-dasharray="4 6" opacity=".7"/>
+</g>
+
+<rect x="0" y="0" width="1920" height="230" fill="url(#gTop)"/>
+<rect x="0" y="640" width="1100" height="440" fill="url(#gBL)"/>
+<rect x="1320" y="600" width="600" height="480" fill="url(#gBR)"/>
+<g class="bug">
+<rect x="56" y="44" width="340" height="72" fill="#06121B" opacity=".86"/>
+<rect x="56" y="44" width="6" height="72" fill="#FFD23F"/>
+<text x="80.0" y="66.0" class="lab" text-anchor="start" >RACE</text>
+<text x="80.0" y="106.0" class="num n40" text-anchor="start" >2:36</text>
+<line x1="246" y1="58" x2="246" y2="102" class="hair"/>
+<text x="266.0" y="66.0" class="lab" text-anchor="start" >RANK</text>
+<text x="266" y="106" class="num n40">4<tspan class="n22 mist" dx="4">/ 6</tspan></text>
+<text x="56.0" y="146.0" class="lab paper" text-anchor="start" >LAP 1/2 · LEG 1/6 · BEAT</text>
+</g>
+<g class="penalty">
+<rect x="580" y="40" width="760" height="124" fill="#06121B" opacity=".86"/>
+<rect x="580" y="40" width="760" height="6" fill="#FF4438"/>
+<circle cx="650" cy="106" r="40" fill="none" stroke="#F5F8FA" stroke-opacity=".25" stroke-width="7"/>
+<path d="M 650 66 A 40 40 0 1 1 630.0 140.6" fill="none" stroke="#FF4438" stroke-width="7"/>
+<text x="650.0" y="116.0" class="num n28" text-anchor="middle" >210°</text>
+<rect x="712" y="66" width="46" height="22" fill="#F5F8FA"/>
+<text x="735.0" y="82.0" class="chip dark tiny2" text-anchor="middle" >TACK</text>
+<rect x="712" y="96" width="46" height="22" fill="none" stroke="#F5F8FA" stroke-opacity=".6"/>
+<text x="735.0" y="112.0" class="chip tiny2" text-anchor="middle" >GYBE</text>
+<text x="780.0" y="82.0" class="lab" text-anchor="start" fill="#FF4438" style="fill:#FF4438">PENALTY · 1 PENDING · RULE 10</text>
+<text x="780.0" y="118.0" class="t26" text-anchor="start" >Port tack keeps clear of starboard</text>
+<text x="780.0" y="146.0" class="t18 mist" text-anchor="start" >with NORA · keep turning, the gybe completes it</text>
+<text x="1320.0" y="80.0" class="lab" text-anchor="end" >DEADLINE</text>
+<text x="1320.0" y="136.0" class="num n56" text-anchor="end" >0:32</text>
+<rect x="1200" y="148" width="120" height="4" fill="#F5F8FA" opacity=".25"/><rect x="1256" y="148" width="64" height="4" fill="#F5F8FA"/>
+</g>
+<g class="rules">
+<rect x="613.8" y="190" width="692.5" height="46" fill="#06121B" opacity=".82"/>
+<rect x="613.8" y="190" width="8" height="46" fill="#FF8A1F"/>
+<text x="637.8" y="222.0" class="msg" text-anchor="start" fill="#FF8A1F">KEEP CLEAR OF IVO: YOU ARE TAKING A PENALTY</text>
+<text x="960.0" y="262.0" class="lab paper" text-anchor="middle" >RULE 22.2 · SHE IS ON STARBOARD, 38 M</text>
+</g>
+<g class="wind">
+<circle cx="1828" cy="86" r="34" class="hair" fill="none"/>
+<line x1="1828.0" y1="58.0" x2="1828.0" y2="52.0" class="hair"/>
+<line x1="1843.5" y1="59.2" x2="1845.0" y2="56.6" class="hair"/>
+<line x1="1854.8" y1="70.5" x2="1857.4" y2="69.0" class="hair"/>
+<line x1="1856.0" y1="86.0" x2="1862.0" y2="86.0" class="hair"/>
+<line x1="1854.8" y1="101.5" x2="1857.4" y2="103.0" class="hair"/>
+<line x1="1843.5" y1="112.8" x2="1845.0" y2="115.4" class="hair"/>
+<line x1="1828.0" y1="114.0" x2="1828.0" y2="120.0" class="hair"/>
+<line x1="1812.5" y1="112.8" x2="1811.0" y2="115.4" class="hair"/>
+<line x1="1801.2" y1="101.5" x2="1798.6" y2="103.0" class="hair"/>
+<line x1="1800.0" y1="86.0" x2="1794.0" y2="86.0" class="hair"/>
+<line x1="1801.2" y1="70.5" x2="1798.6" y2="69.0" class="hair"/>
+<line x1="1812.5" y1="59.2" x2="1811.0" y2="56.6" class="hair"/>
+<text x="1828.0" y="46.0" class="lab small" text-anchor="middle" >N</text>
+<line x1="1822.4" y1="54.5" x2="1832.2" y2="109.6" stroke="#F5F8FA" stroke-width="3"/>
+<polygon points="1833.9,119.5 1825.3,110.9 1839.1,108.4" fill="#F5F8FA"/>
+<text x="1768.0" y="66.0" class="lab" text-anchor="end" >TRUE WIND</text>
+<text x="1768" y="118" class="num n56" text-anchor="end">14.0<tspan class="n22 mist" dx="6">KN</tspan></text>
+<text x="1768.0" y="148.0" class="lab" text-anchor="end" >TWD <tspan class="paper">350</tspan></text>
+<rect x="1746" y="162" width="118" height="30" fill="#27D17C"/>
+<text x="1805.0" y="183.0" class="chip dark" text-anchor="middle" >LIFT 5°</text>
+</g>
+<g class="inst">
+<text x="56.0" y="1036.0" class="lab t3" text-anchor="start" >SOG <tspan class="paper num">5.4</tspan></text>
+<text x="161.2" y="1036.0" class="lab t3" text-anchor="start" >COG <tspan class="paper num">032</tspan></text>
+<text x="266.4" y="1036.0" class="lab t3" text-anchor="start" >AWS <tspan class="paper num">18.4</tspan></text>
+<text x="382.8" y="1036.0" class="lab t3" text-anchor="start" >AWA <tspan class="paper num">31°P</tspan></text>
+<text x="499.2" y="1036.0" class="lab t3" text-anchor="start" >HEEL <tspan class="paper num">18°S</tspan></text>
+<text x="626.8" y="1036.0" class="lab t3" text-anchor="start" >POLAR <tspan class="paper num">98%</tspan></text>
+<line x1="56" y1="1006" x2="756" y2="1006" class="hair"/>
+<text x="56.0" y="936.0" class="lab" text-anchor="start" >TWA</text>
+<text x="56" y="986" class="num n52">42°<tspan class="n22" fill="#FF4438" dx="4">P</tspan></text>
+<text x="232.0" y="936.0" class="lab" text-anchor="start" >HDG</text>
+<text x="232" y="986" class="num n52">032</text>
+<text x="408.0" y="936.0" class="lab" text-anchor="start" >VMG</text>
+<text x="408" y="986" class="num n52">4.0<tspan class="n22 mist" dx="4">KN</tspan></text>
+<line x1="56" y1="908" x2="756" y2="908" class="hair"/>
+<text x="56.0" y="786.0" class="lab" text-anchor="start" >BOAT SPEED</text>
+<text x="52" y="890" class="num n128">5.4<tspan class="n28 mist" dx="8">KN</tspan></text>
+<text x="386.0" y="786.0" class="lab" text-anchor="start" >VMG TO TARGET</text>
+<text x="386" y="860" class="num n72">98<tspan class="n28 mist" dx="4">%</tspan></text>
+<line x1="386" y1="886" x2="686" y2="886" class="hair"/>
+<line x1="586.0" y1="874" x2="586.0" y2="892" stroke="#F5F8FA" stroke-width="2"/>
+<rect x="566.0" y="884" width="20.0" height="5" fill="#FFD23F"/>
+<polygon points="566.0,882 560.0,872 572.0,872" fill="#FFD23F"/>
+<text x="686.0" y="860.0" class="lab" text-anchor="end" >TARGET <tspan class="paper">5.5 kn · 42°</tspan></text>
+</g>
+<g class="helm">
+<line x1="880" y1="1036" x2="1240" y2="1036" class="hair"/>
+<line x1="880.0" y1="1031" x2="880.0" y2="1036" class="hair"/>
+<line x1="970.0" y1="1031" x2="970.0" y2="1036" class="hair"/>
+<line x1="1060.0" y1="1026" x2="1060.0" y2="1036" class="hair"/>
+<line x1="1150.0" y1="1031" x2="1150.0" y2="1036" class="hair"/>
+<line x1="1240.0" y1="1031" x2="1240.0" y2="1036" class="hair"/>
+<rect x="952.0" y="1034" width="108.0" height="4" fill="#F5F8FA"/>
+<polygon points="880.0,1032 874.0,1022 886.0,1022" fill="#FFD23F"/>
+<text x="880.0" y="1018.0" class="lab small" text-anchor="start" >HELM</text>
+<text x="1240.0" y="1018.0" class="lab small paper" text-anchor="end" >JIB</text>
+<text x="1060.0" y="1018.0" class="lab small" text-anchor="middle" >SHEETS AUTO</text>
+</g>
+<g class="radar">
+<clipPath id="rc5972"><circle cx="1714" cy="880" r="150"/></clipPath>
+<circle cx="1714" cy="880" r="150" fill="#06121B" opacity=".38"/>
+<circle cx="1714" cy="880" r="150" class="hair" fill="none"/>
+<circle cx="1714" cy="880" r="75" class="hair faint" fill="none"/>
+<line x1="1714" y1="730" x2="1714" y2="1030" class="hair faint"/>
+<g clip-path="url(#rc5972)">
+<line x1="1659.9" y1="833.2" x2="2107.6" y2="878.5" stroke="#27D17C" stroke-width="1.6"/>
+<line x1="1659.9" y1="833.2" x2="1661.7" y2="1283.2" stroke="#FF4438" stroke-width="1.6"/>
+<circle cx="1903.4" cy="1046.1" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<circle cx="1744.4" cy="1145.4" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<rect x="1655.4" y="828.7" width="9" height="9" fill="#FFD23F" transform="rotate(45 1659.9 833.2)"/>
+<circle cx="1621.7" cy="857.0" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<circle cx="1789.7" cy="984.5" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<circle cx="1738.9" cy="1016.2" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<circle cx="1847.0" cy="948.7" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#F5F8FA" opacity="1" transform="translate(1718.2 897.0) rotate(275.9)"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#F5F8FA" opacity="1" transform="translate(1647.3 930.0) rotate(9.3)"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#F5F8FA" opacity="1" transform="translate(1657.4 917.4) rotate(3.9)"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#FF4438" opacity="1" transform="translate(1728.8 874.3) rotate(275.4)"/>
+<circle cx="1728.8" cy="874.3" r="11" fill="none" stroke="#FF4438" stroke-width="1.5"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#F5F8FA" opacity="1" transform="translate(1679.7 900.8) rotate(0.4)"/>
+</g>
+<polygon points="1714,870 1720,888 1708,888" fill="#FFD23F"/>
+<polygon points="0,10 -7,-6 7,-6" fill="#F5F8FA" transform="translate(1602.4 757.1) rotate(317.8)"/>
+<text x="1864.0" y="1052.0" class="lab small" text-anchor="end" >200 M</text>
+<text x="1564.0" y="1052.0" class="lab small" text-anchor="start" >HEAD UP</text>
+</g>
+<g class="feed">
+<text x="1864.0" y="300.0" class="t18 feedline" text-anchor="end" opacity="0.82">PENALTY: You, rule 10 (Nora)</text>
+<text x="1864.0" y="326.0" class="t18 feedline" text-anchor="end" opacity="0.46">Ana penalised, rule 11 (Tine)</text>
+</g>
+</svg><figcaption>The penalty takes the alert lane: turn ring (210° of 360°), tack done, gybe to come, the rule in plain words, the other boat, and the deadline with its bar. The same turn is drawn around your boat on the water, so you can steer it without looking up. A second situation stacks under it: Ivo is on starboard and converging, so his tag is red and pulsing and the rules line says what to do.</figcaption></figure>
+
+<h2>5. Results</h2>
+<figure><svg class="stage" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg"><defs>
+<linearGradient id="gTop" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#06121B" stop-opacity=".42"/><stop offset="1" stop-color="#06121B" stop-opacity="0"/></linearGradient>
+<radialGradient id="gBL" cx="0" cy="1" r="1" gradientTransform="scale(1 .9)" ><stop offset="0" stop-color="#06121B" stop-opacity=".62"/><stop offset=".7" stop-color="#06121B" stop-opacity=".18"/><stop offset="1" stop-color="#06121B" stop-opacity="0"/></radialGradient>
+<radialGradient id="gBR" cx="1" cy="1" r="1"><stop offset="0" stop-color="#06121B" stop-opacity=".5"/><stop offset="1" stop-color="#06121B" stop-opacity="0"/></radialGradient>
+</defs><image href="frames/results_committee.jpg" x="0" y="0" width="1920" height="1080"/>
+<rect x="0" y="0" width="1920" height="1080" fill="#06121B" opacity=".78"/>
+<rect x="180" y="120" width="8" height="84" fill="#FFD23F"/>
+<text x="212.0" y="150.0" class="lab" text-anchor="start" >RESULTS · RACE 2 OF 3 · EXAMPLE BAY</text>
+<text x="212.0" y="202.0" class="t56" text-anchor="start" >You finish 3rd</text>
+<text x="1740.0" y="150.0" class="lab" text-anchor="end" >FINISH</text>
+<text x="1740.0" y="202.0" class="num n56" text-anchor="end" >0:12:09.62</text>
+<text x="180.0" y="300.0" class="lab" text-anchor="start" >POS</text>
+<text x="290.0" y="300.0" class="lab" text-anchor="start" >BOAT</text>
+<text x="540.0" y="300.0" class="lab" text-anchor="start" >SKIPPER</text>
+<text x="940.0" y="300.0" class="lab" text-anchor="end" >FINISH</text>
+<text x="1110.0" y="300.0" class="lab" text-anchor="end" >GAP</text>
+<text x="1220.0" y="300.0" class="lab" text-anchor="start" >CODE</text>
+<text x="1390.0" y="300.0" class="lab" text-anchor="end" >PTS</text>
+<text x="1580.0" y="300.0" class="lab" text-anchor="end" >SERIES</text>
+<text x="1740.0" y="300.0" class="lab" text-anchor="end" >SERIES POS</text>
+<line x1="180" y1="316" x2="1740" y2="316" class="hair"/>
+<text x="180.0" y="370.0" class="num n44" text-anchor="start" >1</text>
+<text x="290.0" y="370.0" class="t30" text-anchor="start" >Bura</text>
+<text x="540.0" y="370.0" class="t30" text-anchor="start" >Ana</text>
+<rect x="650" y="348" width="71.2" height="24" fill="none" stroke="#F5F8FA" stroke-opacity=".55"/>
+<text x="658.0" y="366.0" class="lab tiny paper" text-anchor="start" >EXPERT</text>
+<text x="940.0" y="370.0" class="num n30" text-anchor="end" >0:11:56.80</text>
+<text x="1110.0" y="370.0" class="num n30" text-anchor="end" ></text>
+<text x="1390.0" y="370.0" class="num n30" text-anchor="end" >1</text>
+<text x="1580.0" y="370.0" class="num n30" text-anchor="end" >3</text>
+<text x="1740.0" y="370.0" class="num n30" text-anchor="end" >1</text>
+<line x1="180" y1="402" x2="1740" y2="402" class="hair faint"/>
+<text x="180.0" y="448.0" class="num n44" text-anchor="start" >2</text>
+<text x="290.0" y="448.0" class="t30" text-anchor="start" >Jugo</text>
+<text x="540.0" y="448.0" class="t30" text-anchor="start" >Tine</text>
+<rect x="650" y="426" width="43.6" height="24" fill="none" stroke="#F5F8FA" stroke-opacity=".55"/>
+<text x="658.0" y="444.0" class="lab tiny paper" text-anchor="start" >PRO</text>
+<text x="940.0" y="448.0" class="num n30" text-anchor="end" >0:12:04.15</text>
+<text x="1110.0" y="448.0" class="num n30" text-anchor="end" >+0:07</text>
+<text x="1390.0" y="448.0" class="num n30" text-anchor="end" >2</text>
+<text x="1580.0" y="448.0" class="num n30" text-anchor="end" >3</text>
+<text x="1740.0" y="448.0" class="num n30" text-anchor="end" >2</text>
+<line x1="180" y1="480" x2="1740" y2="480" class="hair faint"/>
+<rect x="168" y="484" width="1580" height="62" fill="#FFD23F"/>
+<text x="180.0" y="526.0" class="num n44 dark" text-anchor="start" >3</text>
+<text x="290.0" y="526.0" class="t30 dark" text-anchor="start" >Maestral</text>
+<text x="540.0" y="526.0" class="t30 dark" text-anchor="start" >Marko</text>
+<text x="940.0" y="526.0" class="num n30 dark" text-anchor="end" >0:12:09.62</text>
+<text x="1110.0" y="526.0" class="num n30 dark" text-anchor="end" >+0:13</text>
+<text x="1390.0" y="526.0" class="num n30 dark" text-anchor="end" >3</text>
+<text x="1580.0" y="526.0" class="num n30 dark" text-anchor="end" >5</text>
+<text x="1740.0" y="526.0" class="num n30 dark" text-anchor="end" >3</text>
+<line x1="180" y1="558" x2="1740" y2="558" class="hair faint"/>
+<text x="180.0" y="604.0" class="num n44" text-anchor="start" >4</text>
+<text x="290.0" y="604.0" class="t30" text-anchor="start" >Levant</text>
+<text x="540.0" y="604.0" class="t30" text-anchor="start" >Maja</text>
+<rect x="650" y="582" width="126.4" height="24" fill="none" stroke="#F5F8FA" stroke-opacity=".55"/>
+<text x="658.0" y="600.0" class="lab tiny paper" text-anchor="start" >INTERMEDIATE</text>
+<text x="940.0" y="604.0" class="num n30" text-anchor="end" >0:12:18.07</text>
+<text x="1110.0" y="604.0" class="num n30" text-anchor="end" >+0:21</text>
+<text x="1390.0" y="604.0" class="num n30" text-anchor="end" >4</text>
+<text x="1580.0" y="604.0" class="num n30" text-anchor="end" >9</text>
+<text x="1740.0" y="604.0" class="num n30" text-anchor="end" >4</text>
+<line x1="180" y1="636" x2="1740" y2="636" class="hair faint"/>
+<text x="180.0" y="682.0" class="num n44" text-anchor="start" >5</text>
+<text x="290.0" y="682.0" class="t30" text-anchor="start" >Garbin</text>
+<text x="540.0" y="682.0" class="t30" text-anchor="start" >Ivo</text>
+<rect x="650" y="660" width="52.8" height="24" fill="none" stroke="#F5F8FA" stroke-opacity=".55"/>
+<text x="658.0" y="678.0" class="lab tiny paper" text-anchor="start" >EASY</text>
+<text x="940.0" y="682.0" class="num n30" text-anchor="end" >0:12:41.30</text>
+<text x="1110.0" y="682.0" class="num n30" text-anchor="end" >+0:44</text>
+<text x="1220.0" y="682.0" class="lab" text-anchor="start" style="fill:#F5F8FA">PROJ.</text>
+<text x="1390.0" y="682.0" class="num n30" text-anchor="end" >5</text>
+<text x="1580.0" y="682.0" class="num n30" text-anchor="end" >10</text>
+<text x="1740.0" y="682.0" class="num n30" text-anchor="end" >5</text>
+<line x1="180" y1="714" x2="1740" y2="714" class="hair faint"/>
+<text x="180.0" y="760.0" class="num n44" text-anchor="start" >6</text>
+<text x="290.0" y="760.0" class="t30" text-anchor="start" >Tramontana</text>
+<text x="540.0" y="760.0" class="t30" text-anchor="start" >Nora</text>
+<rect x="650" y="738" width="126.4" height="24" fill="none" stroke="#F5F8FA" stroke-opacity=".55"/>
+<text x="658.0" y="756.0" class="lab tiny paper" text-anchor="start" >INTERMEDIATE</text>
+<text x="940.0" y="760.0" class="num n30" text-anchor="end" >--</text>
+<text x="1110.0" y="760.0" class="num n30" text-anchor="end" ></text>
+<text x="1220.0" y="760.0" class="lab" text-anchor="start" style="fill:#FF4438">OCS</text>
+<text x="1390.0" y="760.0" class="num n30" text-anchor="end" >7</text>
+<text x="1580.0" y="760.0" class="num n30" text-anchor="end" >11</text>
+<text x="1740.0" y="760.0" class="num n30" text-anchor="end" >6</text>
+<line x1="180" y1="792" x2="1740" y2="792" class="hair faint"/>
+<text x="180.0" y="848.0" class="t18 mist" text-anchor="start" >PROJ. = projected finish of an AI boat when the race closed · OCS scores fleet size + 1 · low points</text>
+<text x="180.0" y="1000.0" class="lab mark" text-anchor="start" >NEXT RACE IN 1:30</text>
+<text x="1740.0" y="1000.0" class="lab paper" text-anchor="end" >REPLAY   ·   CONTINUE</text>
+</svg><figcaption>Full screen over the dimmed scene. Place numerals first, then boat, skipper, AI level as an outlined tag, finish time (h:mm:ss.ss), gap, code, points and series. Your row in yellow. Projected AI finishes and codes are explained in one line under the table.</figcaption></figure>
+
+<h2>6. Steam Deck, 1280 x 800</h2>
+<div class="deckwrap"><figure><svg class="stage deck" viewBox="0 0 1280 800" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<linearGradient id="gTop" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#06121B" stop-opacity=".42"/><stop offset="1" stop-color="#06121B" stop-opacity="0"/></linearGradient>
+<radialGradient id="gBL" cx="0" cy="1" r="1" gradientTransform="scale(1 .9)" ><stop offset="0" stop-color="#06121B" stop-opacity=".62"/><stop offset=".7" stop-color="#06121B" stop-opacity=".18"/><stop offset="1" stop-color="#06121B" stop-opacity="0"/></radialGradient>
+<radialGradient id="gBR" cx="1" cy="1" r="1"><stop offset="0" stop-color="#06121B" stop-opacity=".5"/><stop offset="1" stop-color="#06121B" stop-opacity="0"/></radialGradient>
+</defs>
+<image href="frames/hud_upwind_deck.jpg" x="0" y="0" width="1280" height="800"/>
+<g transform="scale(0.74074) translate(-96 0)">
+<linearGradient id="dk_l0" gradientUnits="userSpaceOnUse" x1="961.0" y1="486.9" x2="5750.3" y2="586.8"><stop offset="0" stop-color="#27D17C" stop-opacity="1"/><stop offset="1" stop-color="#27D17C" stop-opacity=".25"/></linearGradient>
+<polygon points="961.0,486.9 981.2,487.3 1001.9,487.8 1023.0,488.2 1044.5,488.7 1066.6,489.1 1089.2,489.6 1112.3,490.1 1135.9,490.6 1160.2,491.1 1184.9,491.6 1210.3,492.1 1236.4,492.7 1263.0,493.2 1290.4,493.8 1318.5,494.4 1347.2,495.0 1376.8,495.6 1407.1,496.2 1438.2,496.9 1470.2,497.5 1503.1,498.2 1536.9,498.9 1571.7,499.6 1607.5,500.4 1644.4,501.2 1682.3,501.9 1721.4,502.8 1761.7,503.6 1803.2,504.5 1846.1,505.4 1890.4,506.3 1936.1,507.2 1983.3,508.2 2032.1,509.2 2082.6,510.3 2134.9,511.4 2189.1,512.5 2245.2,513.7 2303.4,514.9 2363.8,516.2 2426.5,517.5 2491.7,518.8 2559.5,520.2 2630.0,521.7 2703.5,523.2 2780.1,524.8 2860.1,526.5 2943.6,528.2 3030.9,530.1 3122.2,532.0 3217.9,534.0 3318.3,536.1 3423.7,538.3 3534.5,540.6 3651.1,543.0 3774.0,545.6 3903.8,548.3 4041.0,551.1 4186.2,554.2 4340.3,557.4 4503.9,560.8 4678.1,564.4 4864.0,568.3 5062.6,572.4 5275.5,576.9 5504.1,581.6 5750.3,586.8 5802.4,588.5 5551.3,583.2 5318.4,578.3 5101.7,573.8 4899.6,569.6 4710.7,565.6 4533.7,561.9 4367.5,558.4 4211.2,555.2 4063.9,552.1 3924.9,549.2 3793.4,546.4 3668.9,543.8 3550.9,541.3 3438.8,539.0 3332.2,536.7 3230.7,534.6 3134.0,532.6 3041.7,530.7 2953.5,528.8 2869.2,527.1 2788.6,525.4 2711.3,523.7 2637.1,522.2 2566.0,520.7 2497.6,519.3 2431.9,517.9 2368.7,516.6 2307.9,515.3 2249.3,514.1 2192.8,512.9 2138.2,511.7 2085.6,510.6 2034.8,509.6 1985.6,508.5 1938.1,507.5 1892.1,506.6 1847.6,505.7 1804.5,504.8 1762.8,503.9 1722.2,503.0 1683.0,502.2 1644.8,501.4 1607.8,500.6 1571.9,499.9 1536.9,499.1 1502.9,498.4 1469.9,497.7 1437.8,497.1 1406.5,496.4 1376.1,495.8 1346.4,495.2 1317.5,494.6 1289.4,494.0 1261.9,493.4 1235.2,492.8 1209.0,492.3 1183.6,491.7 1158.7,491.2 1134.4,490.7 1110.7,490.2 1087.5,489.7 1064.9,489.3 1042.7,488.8 1021.1,488.3 999.9,487.9 979.2,487.5 959.0,487.0" fill="url(#dk_l0)"/>
+<polyline points="960.0,487.0 980.2,487.4 1000.9,487.8 1022.0,488.3 1043.6,488.7 1065.7,489.2 1088.4,489.7 1111.5,490.1 1135.2,490.6 1159.4,491.1 1184.3,491.7 1209.7,492.2 1235.8,492.7 1262.5,493.3 1289.9,493.9 1318.0,494.5 1346.8,495.1 1376.4,495.7 1406.8,496.3 1438.0,497.0 1470.1,497.6 1503.0,498.3 1536.9,499.0 1571.8,499.8 1607.7,500.5 1644.6,501.3 1682.6,502.1 1721.8,502.9 1762.2,503.7 1803.9,504.6 1846.9,505.5 1891.2,506.4 1937.1,507.4 1984.5,508.4 2033.4,509.4 2084.1,510.5 2136.6,511.6 2190.9,512.7 2247.2,513.9 2305.6,515.1 2366.3,516.4 2429.2,517.7 2494.6,519.0 2562.7,520.5 2633.6,521.9 2707.4,523.5 2784.3,525.1 2864.6,526.8 2948.5,528.5 3036.3,530.4 3128.1,532.3 3224.3,534.3 3325.2,536.4 3431.2,538.6 3542.6,540.9 3660.0,543.4 3783.7,546.0 3914.3,548.7 4052.4,551.6 4198.6,554.7 4353.8,557.9 4518.7,561.3 4694.3,565.0 4881.7,568.9 5082.1,573.1 5296.8,577.6 5527.6,582.4 5776.2,587.6" fill="none" stroke="url(#dk_l0)" stroke-width="2.5"/>
+<linearGradient id="dk_l1" gradientUnits="userSpaceOnUse" x1="961.9" y1="487.0" x2="-4761.5" y2="962.5"><stop offset="0" stop-color="#FF4438" stop-opacity="1"/><stop offset="1" stop-color="#FF4438" stop-opacity=".25"/></linearGradient>
+<polygon points="961.9,487.0 952.3,487.8 942.3,488.6 931.9,489.5 921.0,490.4 909.6,491.3 897.7,492.3 885.3,493.4 872.3,494.5 858.6,495.6 844.2,496.8 829.1,498.0 813.2,499.4 796.5,500.7 778.8,502.2 760.0,503.8 740.2,505.4 719.1,507.2 696.8,509.0 673.0,511.0 647.5,513.1 620.3,515.4 591.2,517.8 559.9,520.4 526.1,523.2 489.6,526.2 450.0,529.5 407.0,533.1 360.0,537.0 308.5,541.3 251.7,546.0 188.9,551.2 119.1,557.0 40.9,563.5 -47.2,570.8 -147.3,579.1 -261.9,588.7 -394.5,599.7 -549.6,612.6 -733.5,627.8 -955.2,646.3 -1227.4,668.9 -1569.9,697.3 -2013.6,734.2 -2611.5,783.9 -3460.6,854.4 -4761.5,962.5 -4689.9,951.7 -3425.5,847.6 -2594.1,779.2 -2005.8,730.8 -1567.6,694.8 -1228.6,666.9 -958.4,644.6 -738.1,626.5 -555.0,611.4 -400.5,598.7 -268.2,587.9 -153.8,578.4 -53.8,570.2 34.2,563.0 112.5,556.5 182.4,550.8 245.2,545.6 302.1,540.9 353.7,536.7 400.8,532.8 444.0,529.3 483.6,526.0 520.2,523.0 554.1,520.2 585.6,517.6 614.8,515.2 642.1,512.9 667.7,510.8 691.6,508.9 714.1,507.0 735.2,505.3 755.2,503.6 774.0,502.1 791.8,500.6 808.6,499.2 824.6,497.9 839.8,496.7 854.2,495.5 868.0,494.4 881.1,493.3 893.6,492.3 905.6,491.3 917.0,490.3 927.9,489.4 938.4,488.6 948.5,487.7 958.1,486.9" fill="url(#dk_l1)"/>
+<polyline points="960.0,487.0 950.4,487.8 940.4,488.6 929.9,489.5 919.0,490.4 907.6,491.3 895.7,492.3 883.2,493.3 870.1,494.4 856.4,495.5 842.0,496.7 826.9,498.0 810.9,499.3 794.1,500.7 776.4,502.2 757.6,503.7 737.7,505.4 716.6,507.1 694.2,509.0 670.3,510.9 644.8,513.0 617.6,515.3 588.4,517.7 557.0,520.3 523.2,523.1 486.6,526.1 447.0,529.4 403.9,533.0 356.8,536.8 305.3,541.1 248.5,545.8 185.7,551.0 115.8,556.8 37.6,563.2 -50.5,570.5 -150.6,578.8 -265.1,588.3 -397.5,599.2 -552.3,612.0 -735.8,627.2 -956.8,645.4 -1228.0,667.9 -1568.7,696.0 -2009.7,732.5 -2602.7,781.5 -3442.9,851.0 -4725.3,957.0" fill="none" stroke="url(#dk_l1)" stroke-width="2.5"/>
+<g class="marktag">
+<line x1="960.0" y1="473.0" x2="960.0" y2="387.0" stroke="#FFD23F" stroke-width="1.5"/>
+<rect x="954.5" y="465.0" width="11" height="11" fill="none" stroke="#FFD23F" stroke-width="2" transform="rotate(45 960.0 470.5)"/>
+<text x="972.0" y="333.0" class="lab mark" text-anchor="start" >WINDWARD</text>
+<text x="972.0" y="373.0" class="num n44">197<tspan class="n20 mist" dx="4">M</tspan></text>
+<text x="972.0" y="399.0" class="lab small paper" text-anchor="start" >ETA 1:33 · 24° L</text>
+<path d="M 944.0 349.0 A 11 11 0 1 0 947.0 359.0" fill="none" stroke="#FFD23F" stroke-width="2.5"/>
+<polygon points="939.0,345.0 948.0,346.0 945.0,354.0" fill="#FFD23F"/>
+</g>
+</g>
+<rect x="0" y="0" width="1280" height="160" fill="url(#gTop)"/><rect x="0" y="470" width="760" height="330" fill="url(#gBL)"/><rect x="880" y="470" width="400" height="330" fill="url(#gBR)"/>
+<g transform="translate(32 28) scale(0.82) translate(-56 -44)">
+<g class="bug">
+<rect x="56" y="44" width="340" height="72" fill="#06121B" opacity=".86"/>
+<rect x="56" y="44" width="6" height="72" fill="#FFD23F"/>
+<text x="80.0" y="66.0" class="lab" text-anchor="start" >RACE</text>
+<text x="80.0" y="106.0" class="num n40" text-anchor="start" >1:50</text>
+<line x1="246" y1="58" x2="246" y2="102" class="hair"/>
+<text x="266.0" y="66.0" class="lab" text-anchor="start" >RANK</text>
+<text x="266" y="106" class="num n40">4<tspan class="n22 mist" dx="4">/ 6</tspan></text>
+<text x="56.0" y="146.0" class="lab paper" text-anchor="start" >LAP 1/2 · LEG 1/6</text>
+</g>
+</g>
+<g transform="translate(1248 28) scale(0.82) translate(-1864 -44)">
+<g class="wind">
+<circle cx="1828" cy="86" r="34" class="hair" fill="none"/>
+<line x1="1828.0" y1="58.0" x2="1828.0" y2="52.0" class="hair"/>
+<line x1="1843.5" y1="59.2" x2="1845.0" y2="56.6" class="hair"/>
+<line x1="1854.8" y1="70.5" x2="1857.4" y2="69.0" class="hair"/>
+<line x1="1856.0" y1="86.0" x2="1862.0" y2="86.0" class="hair"/>
+<line x1="1854.8" y1="101.5" x2="1857.4" y2="103.0" class="hair"/>
+<line x1="1843.5" y1="112.8" x2="1845.0" y2="115.4" class="hair"/>
+<line x1="1828.0" y1="114.0" x2="1828.0" y2="120.0" class="hair"/>
+<line x1="1812.5" y1="112.8" x2="1811.0" y2="115.4" class="hair"/>
+<line x1="1801.2" y1="101.5" x2="1798.6" y2="103.0" class="hair"/>
+<line x1="1800.0" y1="86.0" x2="1794.0" y2="86.0" class="hair"/>
+<line x1="1801.2" y1="70.5" x2="1798.6" y2="69.0" class="hair"/>
+<line x1="1812.5" y1="59.2" x2="1811.0" y2="56.6" class="hair"/>
+<text x="1828.0" y="46.0" class="lab small" text-anchor="middle" >N</text>
+<line x1="1823.0" y1="54.4" x2="1831.8" y2="109.7" stroke="#F5F8FA" stroke-width="3"/>
+<polygon points="1833.3,119.6 1824.8,110.8 1838.7,108.6" fill="#F5F8FA"/>
+<text x="1768.0" y="66.0" class="lab" text-anchor="end" >TRUE WIND</text>
+<text x="1768" y="118" class="num n56" text-anchor="end">11.3<tspan class="n22 mist" dx="6">KN</tspan></text>
+<text x="1768.0" y="148.0" class="lab" text-anchor="end" >TWD <tspan class="paper">351</tspan></text>
+<rect x="1746" y="162" width="118" height="30" fill="#27D17C"/>
+<text x="1805.0" y="183.0" class="chip dark" text-anchor="middle" >LIFT 5°</text>
+</g>
+</g>
+<g transform="translate(32 772) scale(0.82) translate(-56 -1036)">
+<g class="inst">
+<text x="56.0" y="1036.0" class="lab t3" text-anchor="start" >SOG <tspan class="paper num">5.3</tspan></text>
+<text x="161.2" y="1036.0" class="lab t3" text-anchor="start" >COG <tspan class="paper num">034</tspan></text>
+<text x="266.4" y="1036.0" class="lab t3" text-anchor="start" >HEEL <tspan class="paper num">15°S</tspan></text>
+<text x="394.0" y="1036.0" class="lab t3" text-anchor="start" >POLAR <tspan class="paper num">98%</tspan></text>
+<line x1="56" y1="1006" x2="756" y2="1006" class="hair"/>
+<text x="56.0" y="936.0" class="lab" text-anchor="start" >TWA</text>
+<text x="56" y="986" class="num n52">44°<tspan class="n22" fill="#FF4438" dx="4">P</tspan></text>
+<text x="232.0" y="936.0" class="lab" text-anchor="start" >HDG</text>
+<text x="232" y="986" class="num n52">034</text>
+<text x="408.0" y="936.0" class="lab" text-anchor="start" >VMG</text>
+<text x="408" y="986" class="num n52">3.9<tspan class="n22 mist" dx="4">KN</tspan></text>
+<line x1="56" y1="908" x2="756" y2="908" class="hair"/>
+<text x="56.0" y="786.0" class="lab" text-anchor="start" >BOAT SPEED</text>
+<text x="52" y="890" class="num n128">5.3<tspan class="n28 mist" dx="8">KN</tspan></text>
+<text x="386.0" y="786.0" class="lab" text-anchor="start" >VMG TO TARGET</text>
+<text x="386" y="860" class="num n72">97<tspan class="n28 mist" dx="4">%</tspan></text>
+<line x1="386" y1="886" x2="686" y2="886" class="hair"/>
+<line x1="586.0" y1="874" x2="586.0" y2="892" stroke="#F5F8FA" stroke-width="2"/>
+<rect x="556.0" y="884" width="30.0" height="5" fill="#FFD23F"/>
+<polygon points="556.0,882 550.0,872 562.0,872" fill="#FFD23F"/>
+<text x="686.0" y="860.0" class="lab" text-anchor="end" >TARGET <tspan class="paper">5.4 kn · 42°</tspan></text>
+</g>
+</g>
+<g transform="translate(1248 772) scale(0.82) translate(-1864 -1066)">
+<g class="radar">
+<clipPath id="rc5724"><circle cx="1734" cy="936" r="130"/></clipPath>
+<circle cx="1734" cy="936" r="130" fill="#06121B" opacity=".38"/>
+<circle cx="1734" cy="936" r="130" class="hair" fill="none"/>
+<circle cx="1734" cy="936" r="65" class="hair faint" fill="none"/>
+<line x1="1734" y1="806" x2="1734" y2="1066" class="hair faint"/>
+<g clip-path="url(#rc5724)">
+<line x1="1699.0" y1="855.8" x2="1957.7" y2="881.6" stroke="#27D17C" stroke-width="1.6"/>
+<line x1="1699.0" y1="855.8" x2="1695.8" y2="1115.8" stroke="#FF4438" stroke-width="1.6"/>
+<circle cx="1843.9" cy="973.8" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<circle cx="1754.0" cy="1034.4" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<rect x="1694.5" y="851.3" width="9" height="9" fill="#FFD23F" transform="rotate(45 1699.0 855.8)"/>
+<circle cx="1677.4" cy="870.3" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<circle cx="1777.0" cy="940.5" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<circle cx="1748.3" cy="959.9" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<circle cx="1809.3" cy="918.7" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#F5F8FA" opacity="1" transform="translate(1771.3 910.9) rotate(-0.1)"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#F5F8FA" opacity="1" transform="translate(1686.0 972.0) rotate(7.2)"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#F5F8FA" opacity="1" transform="translate(1697.3 962.0) rotate(2.0)"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#F5F8FA" opacity="1" transform="translate(1751.8 922.3) rotate(-0.0)"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#F5F8FA" opacity="1" transform="translate(1714.5 948.5) rotate(0.0)"/>
+</g>
+<polygon points="1734,926 1740,944 1728,944" fill="#FFD23F"/>
+<polygon points="0,10 -7,-6 7,-6" fill="#F5F8FA" transform="translate(1636.6 827.2) rotate(318.2)"/>
+<text x="1864.0" y="1088.0" class="lab small" text-anchor="end" >300 M</text>
+<text x="1604.0" y="1088.0" class="lab small" text-anchor="start" >HEAD UP</text>
+</g>
+</g>
+<g transform="translate(640 772) scale(0.82) translate(-1060 -1036)">
+<g class="helm">
+<line x1="880" y1="1036" x2="1240" y2="1036" class="hair"/>
+<line x1="880.0" y1="1031" x2="880.0" y2="1036" class="hair"/>
+<line x1="970.0" y1="1031" x2="970.0" y2="1036" class="hair"/>
+<line x1="1060.0" y1="1026" x2="1060.0" y2="1036" class="hair"/>
+<line x1="1150.0" y1="1031" x2="1150.0" y2="1036" class="hair"/>
+<line x1="1240.0" y1="1031" x2="1240.0" y2="1036" class="hair"/>
+<rect x="1060.0" y="1034" width="1.5" height="4" fill="#F5F8FA"/>
+<polygon points="1060.0,1032 1054.0,1022 1066.0,1022" fill="#FFD23F"/>
+<text x="880.0" y="1018.0" class="lab small" text-anchor="start" >HELM</text>
+<text x="1240.0" y="1018.0" class="lab small paper" text-anchor="end" >JIB</text>
+<text x="1060.0" y="1018.0" class="lab small" text-anchor="middle" >SHEETS AUTO</text>
+</g>
+</g>
+<g transform="scale(0.74074) translate(-96 0)">
+</g>
+</svg><figcaption>Same system on 16:10. Margins 32 px, the layout scaled 0.82 (not 0.74) so labels stay at 11 px or more and numbers at 18 px or more; the third instrument row keeps four values (AWS and AWA move to the page toggle, see the open questions).</figcaption></figure></div>
+
+<h2>Alternative take: the broadcast strip</h2>
+<figure><svg class="stage" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg"><defs>
+<linearGradient id="gTop" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#06121B" stop-opacity=".42"/><stop offset="1" stop-color="#06121B" stop-opacity="0"/></linearGradient>
+<radialGradient id="gBL" cx="0" cy="1" r="1" gradientTransform="scale(1 .9)" ><stop offset="0" stop-color="#06121B" stop-opacity=".62"/><stop offset=".7" stop-color="#06121B" stop-opacity=".18"/><stop offset="1" stop-color="#06121B" stop-opacity="0"/></radialGradient>
+<radialGradient id="gBR" cx="1" cy="1" r="1"><stop offset="0" stop-color="#06121B" stop-opacity=".5"/><stop offset="1" stop-color="#06121B" stop-opacity="0"/></radialGradient>
+</defs><image href="frames/hud_upwind.jpg" x="0" y="0" width="1920" height="1080"/>
+<g class="world">
+<linearGradient id="alt_l0" gradientUnits="userSpaceOnUse" x1="961.0" y1="486.9" x2="5750.3" y2="586.8"><stop offset="0" stop-color="#27D17C" stop-opacity="1"/><stop offset="1" stop-color="#27D17C" stop-opacity=".25"/></linearGradient>
+<polygon points="961.0,486.9 981.2,487.3 1001.9,487.8 1023.0,488.2 1044.5,488.7 1066.6,489.1 1089.2,489.6 1112.3,490.1 1135.9,490.6 1160.2,491.1 1184.9,491.6 1210.3,492.1 1236.4,492.7 1263.0,493.2 1290.4,493.8 1318.5,494.4 1347.2,495.0 1376.8,495.6 1407.1,496.2 1438.2,496.9 1470.2,497.5 1503.1,498.2 1536.9,498.9 1571.7,499.6 1607.5,500.4 1644.4,501.2 1682.3,501.9 1721.4,502.8 1761.7,503.6 1803.2,504.5 1846.1,505.4 1890.4,506.3 1936.1,507.2 1983.3,508.2 2032.1,509.2 2082.6,510.3 2134.9,511.4 2189.1,512.5 2245.2,513.7 2303.4,514.9 2363.8,516.2 2426.5,517.5 2491.7,518.8 2559.5,520.2 2630.0,521.7 2703.5,523.2 2780.1,524.8 2860.1,526.5 2943.6,528.2 3030.9,530.1 3122.2,532.0 3217.9,534.0 3318.3,536.1 3423.7,538.3 3534.5,540.6 3651.1,543.0 3774.0,545.6 3903.8,548.3 4041.0,551.1 4186.2,554.2 4340.3,557.4 4503.9,560.8 4678.1,564.4 4864.0,568.3 5062.6,572.4 5275.5,576.9 5504.1,581.6 5750.3,586.8 5802.4,588.5 5551.3,583.2 5318.4,578.3 5101.7,573.8 4899.6,569.6 4710.7,565.6 4533.7,561.9 4367.5,558.4 4211.2,555.2 4063.9,552.1 3924.9,549.2 3793.4,546.4 3668.9,543.8 3550.9,541.3 3438.8,539.0 3332.2,536.7 3230.7,534.6 3134.0,532.6 3041.7,530.7 2953.5,528.8 2869.2,527.1 2788.6,525.4 2711.3,523.7 2637.1,522.2 2566.0,520.7 2497.6,519.3 2431.9,517.9 2368.7,516.6 2307.9,515.3 2249.3,514.1 2192.8,512.9 2138.2,511.7 2085.6,510.6 2034.8,509.6 1985.6,508.5 1938.1,507.5 1892.1,506.6 1847.6,505.7 1804.5,504.8 1762.8,503.9 1722.2,503.0 1683.0,502.2 1644.8,501.4 1607.8,500.6 1571.9,499.9 1536.9,499.1 1502.9,498.4 1469.9,497.7 1437.8,497.1 1406.5,496.4 1376.1,495.8 1346.4,495.2 1317.5,494.6 1289.4,494.0 1261.9,493.4 1235.2,492.8 1209.0,492.3 1183.6,491.7 1158.7,491.2 1134.4,490.7 1110.7,490.2 1087.5,489.7 1064.9,489.3 1042.7,488.8 1021.1,488.3 999.9,487.9 979.2,487.5 959.0,487.0" fill="url(#alt_l0)"/>
+<polyline points="960.0,487.0 980.2,487.4 1000.9,487.8 1022.0,488.3 1043.6,488.7 1065.7,489.2 1088.4,489.7 1111.5,490.1 1135.2,490.6 1159.4,491.1 1184.3,491.7 1209.7,492.2 1235.8,492.7 1262.5,493.3 1289.9,493.9 1318.0,494.5 1346.8,495.1 1376.4,495.7 1406.8,496.3 1438.0,497.0 1470.1,497.6 1503.0,498.3 1536.9,499.0 1571.8,499.8 1607.7,500.5 1644.6,501.3 1682.6,502.1 1721.8,502.9 1762.2,503.7 1803.9,504.6 1846.9,505.5 1891.2,506.4 1937.1,507.4 1984.5,508.4 2033.4,509.4 2084.1,510.5 2136.6,511.6 2190.9,512.7 2247.2,513.9 2305.6,515.1 2366.3,516.4 2429.2,517.7 2494.6,519.0 2562.7,520.5 2633.6,521.9 2707.4,523.5 2784.3,525.1 2864.6,526.8 2948.5,528.5 3036.3,530.4 3128.1,532.3 3224.3,534.3 3325.2,536.4 3431.2,538.6 3542.6,540.9 3660.0,543.4 3783.7,546.0 3914.3,548.7 4052.4,551.6 4198.6,554.7 4353.8,557.9 4518.7,561.3 4694.3,565.0 4881.7,568.9 5082.1,573.1 5296.8,577.6 5527.6,582.4 5776.2,587.6" fill="none" stroke="url(#alt_l0)" stroke-width="2.5"/>
+<linearGradient id="alt_l1" gradientUnits="userSpaceOnUse" x1="961.9" y1="487.0" x2="-4761.5" y2="962.5"><stop offset="0" stop-color="#FF4438" stop-opacity="1"/><stop offset="1" stop-color="#FF4438" stop-opacity=".25"/></linearGradient>
+<polygon points="961.9,487.0 952.3,487.8 942.3,488.6 931.9,489.5 921.0,490.4 909.6,491.3 897.7,492.3 885.3,493.4 872.3,494.5 858.6,495.6 844.2,496.8 829.1,498.0 813.2,499.4 796.5,500.7 778.8,502.2 760.0,503.8 740.2,505.4 719.1,507.2 696.8,509.0 673.0,511.0 647.5,513.1 620.3,515.4 591.2,517.8 559.9,520.4 526.1,523.2 489.6,526.2 450.0,529.5 407.0,533.1 360.0,537.0 308.5,541.3 251.7,546.0 188.9,551.2 119.1,557.0 40.9,563.5 -47.2,570.8 -147.3,579.1 -261.9,588.7 -394.5,599.7 -549.6,612.6 -733.5,627.8 -955.2,646.3 -1227.4,668.9 -1569.9,697.3 -2013.6,734.2 -2611.5,783.9 -3460.6,854.4 -4761.5,962.5 -4689.9,951.7 -3425.5,847.6 -2594.1,779.2 -2005.8,730.8 -1567.6,694.8 -1228.6,666.9 -958.4,644.6 -738.1,626.5 -555.0,611.4 -400.5,598.7 -268.2,587.9 -153.8,578.4 -53.8,570.2 34.2,563.0 112.5,556.5 182.4,550.8 245.2,545.6 302.1,540.9 353.7,536.7 400.8,532.8 444.0,529.3 483.6,526.0 520.2,523.0 554.1,520.2 585.6,517.6 614.8,515.2 642.1,512.9 667.7,510.8 691.6,508.9 714.1,507.0 735.2,505.3 755.2,503.6 774.0,502.1 791.8,500.6 808.6,499.2 824.6,497.9 839.8,496.7 854.2,495.5 868.0,494.4 881.1,493.3 893.6,492.3 905.6,491.3 917.0,490.3 927.9,489.4 938.4,488.6 948.5,487.7 958.1,486.9" fill="url(#alt_l1)"/>
+<polyline points="960.0,487.0 950.4,487.8 940.4,488.6 929.9,489.5 919.0,490.4 907.6,491.3 895.7,492.3 883.2,493.3 870.1,494.4 856.4,495.5 842.0,496.7 826.9,498.0 810.9,499.3 794.1,500.7 776.4,502.2 757.6,503.7 737.7,505.4 716.6,507.1 694.2,509.0 670.3,510.9 644.8,513.0 617.6,515.3 588.4,517.7 557.0,520.3 523.2,523.1 486.6,526.1 447.0,529.4 403.9,533.0 356.8,536.8 305.3,541.1 248.5,545.8 185.7,551.0 115.8,556.8 37.6,563.2 -50.5,570.5 -150.6,578.8 -265.1,588.3 -397.5,599.2 -552.3,612.0 -735.8,627.2 -956.8,645.4 -1228.0,667.9 -1568.7,696.0 -2009.7,732.5 -2602.7,781.5 -3442.9,851.0 -4725.3,957.0" fill="none" stroke="url(#alt_l1)" stroke-width="2.5"/>
+<g class="marktag">
+<line x1="960.0" y1="473.0" x2="960.0" y2="387.0" stroke="#FFD23F" stroke-width="1.5"/>
+<rect x="954.5" y="465.0" width="11" height="11" fill="none" stroke="#FFD23F" stroke-width="2" transform="rotate(45 960.0 470.5)"/>
+<text x="972.0" y="333.0" class="lab mark" text-anchor="start" >WINDWARD</text>
+<text x="972.0" y="373.0" class="num n44">197<tspan class="n20 mist" dx="4">M</tspan></text>
+<text x="972.0" y="399.0" class="lab small paper" text-anchor="start" >ETA 1:33 · BRG 010 · 24° L</text>
+<path d="M 944.0 349.0 A 11 11 0 1 0 947.0 359.0" fill="none" stroke="#FFD23F" stroke-width="2.5"/>
+<polygon points="939.0,345.0 948.0,346.0 945.0,354.0" fill="#FFD23F"/>
+</g>
+</g>
+<rect x="0" y="880" width="1920" height="200" fill="url(#gStrip)"/>
+<linearGradient id="gStrip" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#06121B" stop-opacity="0"/><stop offset="1" stop-color="#06121B" stop-opacity=".7"/></linearGradient>
+<line x1="56" y1="938" x2="1864" y2="938" class="hair"/>
+<text x="56.0" y="966.0" class="lab" text-anchor="start" >BSP</text>
+<text x="56" y="1030" class="num n72">5.3<tspan class="n22" dx="4" class="mist">KN</tspan></text>
+<text x="288.0" y="966.0" class="lab" text-anchor="start" >VMG</text>
+<text x="288" y="1030" class="num n56">97<tspan class="n22" dx="4" class="mist">%</tspan></text>
+<text x="506.0" y="966.0" class="lab" text-anchor="start" >TWA</text>
+<text x="506" y="1030" class="num n56">44°<tspan class="n22" dx="4" fill="#FF4438">P</tspan></text>
+<text x="724.0" y="966.0" class="lab" text-anchor="start" >HDG</text>
+<text x="724" y="1030" class="num n56">034</text>
+<text x="942.0" y="966.0" class="lab" text-anchor="start" >TWS</text>
+<text x="942" y="1030" class="num n56">11.3<tspan class="n22" dx="4" class="mist">KN</tspan></text>
+<text x="1160.0" y="966.0" class="lab" text-anchor="start" >TWD</text>
+<text x="1160" y="1030" class="num n56">351</text>
+<text x="1378.0" y="966.0" class="lab" text-anchor="start" >WINDWARD</text>
+<text x="1378" y="1030" class="num n56">197<tspan class="n22" dx="4" class="mist">M</tspan></text>
+<text x="1596.0" y="966.0" class="lab" text-anchor="start" >RANK</text>
+<text x="1596" y="1030" class="num n56">4<tspan class="n22" dx="4" class="mist">/6</tspan></text>
+<g class="bug">
+<rect x="56" y="44" width="340" height="72" fill="#06121B" opacity=".86"/>
+<rect x="56" y="44" width="6" height="72" fill="#FFD23F"/>
+<text x="80.0" y="66.0" class="lab" text-anchor="start" >RACE</text>
+<text x="80.0" y="106.0" class="num n40" text-anchor="start" >1:50</text>
+<line x1="246" y1="58" x2="246" y2="102" class="hair"/>
+<text x="266.0" y="66.0" class="lab" text-anchor="start" >RANK</text>
+<text x="266" y="106" class="num n40">4<tspan class="n22 mist" dx="4">/ 6</tspan></text>
+<text x="56.0" y="146.0" class="lab paper" text-anchor="start" >LAP 1/2 · LEG 1/6 · BEAT</text>
+</g>
+<g transform="translate(1714 660) scale(.62) translate(-1714 -880)"><g class="radar">
+<clipPath id="rc5972"><circle cx="1714" cy="880" r="150"/></clipPath>
+<circle cx="1714" cy="880" r="150" fill="#06121B" opacity=".38"/>
+<circle cx="1714" cy="880" r="150" class="hair" fill="none"/>
+<circle cx="1714" cy="880" r="75" class="hair faint" fill="none"/>
+<line x1="1714" y1="730" x2="1714" y2="1030" class="hair faint"/>
+<g clip-path="url(#rc5972)">
+<line x1="1673.6" y1="787.4" x2="1972.1" y2="817.2" stroke="#27D17C" stroke-width="1.6"/>
+<line x1="1673.6" y1="787.4" x2="1669.9" y2="1087.4" stroke="#FF4438" stroke-width="1.6"/>
+<circle cx="1840.8" cy="923.6" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<circle cx="1737.1" cy="993.5" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<rect x="1669.1" y="782.9" width="9" height="9" fill="#FFD23F" transform="rotate(45 1673.6 787.4)"/>
+<circle cx="1648.7" cy="804.2" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<circle cx="1763.6" cy="885.2" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<circle cx="1730.4" cy="907.6" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<circle cx="1800.9" cy="860.0" r="2.5" fill="#F5F8FA" opacity=".6"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#F5F8FA" opacity="1" transform="translate(1757.0 851.0) rotate(-0.1)"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#F5F8FA" opacity="1" transform="translate(1658.6 921.6) rotate(7.2)"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#F5F8FA" opacity="1" transform="translate(1671.6 910.0) rotate(2.0)"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#F5F8FA" opacity="1" transform="translate(1734.6 864.2) rotate(-0.0)"/>
+<polygon points="0,-7 4.5,6 -4.5,6" fill="#F5F8FA" opacity="1" transform="translate(1691.5 894.4) rotate(0.0)"/>
+</g>
+<polygon points="1714,870 1720,888 1708,888" fill="#FFD23F"/>
+<polygon points="0,10 -7,-6 7,-6" fill="#F5F8FA" transform="translate(1603.3 756.3) rotate(318.2)"/>
+<text x="1864.0" y="1052.0" class="lab small" text-anchor="end" >300 M</text>
+<text x="1564.0" y="1052.0" class="lab small" text-anchor="start" >HEAD UP</text>
+</g></g>
+</svg><figcaption>Every number in one lower third across the screen, as TV does it. Cleaner picture, but the eye travels further between speed and wind, and it hides the wake and the water just ahead of the bow, where boats cross. The recommendation is the corner stack (screens 1 to 5); this is here so the owner can choose.</figcaption></figure>
+
+<h2>For comparison: the current HUD</h2>
+<div class="cmp"><figure><img class="stage" src="frames/current_hud_beat.jpg" alt="Current HUD on a beat"><figcaption>Now: eight grey boxes, every value the same size, labels inline, laylines as thick pastel ribbons.</figcaption></figure></div>
+</main></body></html>

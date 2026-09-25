@@ -39,7 +39,8 @@ float wm_wake_alpha(vec2 uv, float centre, float a, float n1, float n2) {
 	float edge = smoothstep(0.38, 0.58, across) * (1.0 - smoothstep(0.62, 0.9, across));
 	// the turbulent centre wake, about the hull's width
 	float c = 0.6 * centre;
-	float mid = 0.8 * (1.0 - smoothstep(0.4 * c, c, across));
-	float breakup = smoothstep(0.3, 0.8, n1 * 0.7 + n2 * 0.5);
-	return clamp(a * a * (0.7 * edge + mid) * breakup, 0.0, 1.0);
+	float mid = 0.6 * (1.0 - smoothstep(0.4 * c, c, across));
+	// patchy foam, not a painted band: the bubbles break up into clumps and streaks
+	float breakup = smoothstep(0.4, 0.85, n1 * 0.7 + n2 * 0.5);
+	return clamp(a * a * (0.45 * edge + mid) * breakup, 0.0, 1.0);
 }

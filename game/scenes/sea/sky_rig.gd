@@ -19,7 +19,10 @@ extends Node3D
 	set(v):
 		sun_color = v
 		_apply()
-@export var sun_energy := 1.6:
+## Sun and sky in their real proportion on a clear day: the sun gives about four fifths of the light on a level
+## surface, the sky the rest (a white deck in sun about three times as bright as the horizon sky); the camera
+## exposure brings the whole back to screen range.
+@export var sun_energy := 3.0:
 	set(v):
 		sun_energy = v
 		_apply()
@@ -38,6 +41,11 @@ extends Node3D
 @export var cloud_offset := Vector2(3.7, 1.3):
 	set(v):
 		cloud_offset = v
+		_apply()
+## Camera exposure (the environment's tonemap exposure).
+@export var exposure := 0.62:
+	set(v):
+		exposure = v
 		_apply()
 ## Exponential fog density (1/m) toward the horizon colour.
 @export var fog_density := 0.00005:
@@ -99,3 +107,4 @@ func _apply() -> void:
 	# Environment colours are sRGB-encoded Color values; the fog goes to the horizon colour.
 	env.fog_light_color = horizon.linear_to_srgb()
 	env.fog_density = fog_density
+	env.tonemap_exposure = exposure

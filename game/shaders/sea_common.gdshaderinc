@@ -49,7 +49,7 @@ uniform vec3 sun_color = vec3(1.0, 0.95, 0.88);
 
 // §4.2 colours (linear)
 uniform vec3 col_deep = vec3(0.010, 0.048, 0.085);
-uniform vec3 col_shallow = vec3(0.025, 0.20, 0.24);
+uniform vec3 col_shallow = vec3(0.02, 0.11, 0.14);
 uniform vec3 col_sss = vec3(0.04, 0.40, 0.38);
 uniform vec3 col_foam = vec3(0.86, 0.90, 0.92);
 
@@ -218,7 +218,7 @@ WmSurface wm_surface(vec2 xl, float eta, vec3 n_geo, vec3 view, float dist, vec2
 	// §4.1 normal
 	float wind = m * base_speed;
 	float glassy = smoothstep(0.5, 1.5, wind);
-	float k_detail = 0.32 * clamp(wind / 7.2, 0.15, 1.6) * (1.0 - smoothstep(300.0, 3000.0, dist)) * glassy;
+	float k_detail = 0.25 * clamp(wind / 7.2, 0.15, 1.6) * (1.0 - smoothstep(300.0, 3000.0, dist)) * glassy;
 	vec2 dn = wm_detail(xl);
 	vec3 n = n_geo + k_detail * (dn.x * along + dn.y * across);
 	n += wake_strength * vec3(wake.x, 0.0, -wake.y);
@@ -250,7 +250,7 @@ WmSurface wm_surface(vec2 xl, float eta, vec3 n_geo, vec3 view, float dist, vec2
 	S.foam = foam;
 
 	// §4.2 light through the crests, and the zero-mean slope contrast
-	vec3 emission = col_sss * crest * pow(max(0.0, dot(-view, sun_dir)), 3.0) * 0.9 * sun_color + col_sss * crest * 0.12;
+	vec3 emission = col_sss * crest * pow(max(0.0, dot(-view, sun_dir)), 3.0) * 0.3 * sun_color + col_sss * crest * 0.05;
 	vec3 r_n = reflect(-view, n);
 	vec3 r_up = reflect(-view, vec3(0.0, 1.0, 0.0));
 	float F = wm_schlick(dot(view, n));

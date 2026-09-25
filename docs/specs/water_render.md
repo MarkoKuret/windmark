@@ -95,7 +95,7 @@ detail   = 2 to 4 layers of a tiling normal map, sampled in a wind-aligned frame
            scales 1/13 m, 1/22 m, 1/48 m, 1/70 m; drifts 1.4, 1.0, 0.9, 0.6 m/s; angles 0, 0.35, -0.6, 0.95 rad
            break the tiling
 m        = wind factor at the pixel (§4.3)
-k_detail = 0.32 * clamp(m * base_speed / 7.2, 0.15, 1.6) * fade(dist; 300 m -> 1, 3 km -> 0)
+k_detail = 0.25 * clamp(m * base_speed / 7.2, 0.15, 1.6) * fade(dist; 300 m -> 1, 3 km -> 0)
 n        = normalize(n_geo + k_detail * (detail.x * wind_to + detail.y * perp(wind_to)) in the water plane)
 ```
 The normal map (256², tiling) and the foam noise are generated at load from Godot's seamless noise
@@ -106,10 +106,10 @@ detail fades out (fully gone at 0.5 m/s): glassy water.
 Godot's PBR does the lighting; the shader sets:
 ```
 crest    = clamp(eta / max(sum_a, 1e-3), 0, 1)
-ALBEDO   = mix(deep, shallow, 0.55 * crest), then foam (§4.4)       // deep (0.010, 0.048, 0.085), shallow (0.025, 0.20, 0.24), linear
+ALBEDO   = mix(deep, shallow, 0.55 * crest), then foam (§4.4)       // deep (0.010, 0.048, 0.085), shallow (0.02, 0.11, 0.14), linear
 SPECULAR = 0.35                                                      // Godot's F0 = 0.16·SPECULAR² = 0.02, water at normal incidence
 ROUGHNESS = 0.06 + 0.05 * clamp(m - 1, -0.4, 0.25) / 0.25 + 0.18 * fade_far(dist)   // rougher in puffs and far away
-EMISSION = sss * crest * pow(max(0, dot(-view, sun)), 3) * 0.9 + sss * crest * 0.12  // light through the crests, sss (0.04, 0.40, 0.38)
+EMISSION = sss * crest * pow(max(0, dot(-view, sun)), 3) * 0.3 * sun_radiance + sss * crest * 0.05  // light through the crests, sss (0.04, 0.40, 0.38)
 ```
 - **Sky reflection** comes from the scene's sky radiance through PBR (Schlick Fresnel: 2 % looking straight down,
   most of the sky at grazing angles), so the water takes the sky's colour at every time of day and weather.
@@ -155,6 +155,15 @@ ALBEDO = mix(ALBEDO, (0.86, 0.90, 0.92), 0.8 * foam) ; ROUGHNESS = mix(ROUGHNESS
 So whitecaps come with the wind, more of them in the puffs. With the reference seas this covers about 0.2 % of
 the water at 15 kn, 1.4 % at 20 kn and 2.5 % at 25 kn, close to measured whitecap cover (it rises with about the
 3.4th power of the wind speed).
+
+### 4.5 Daylight
+The daytime preset (`SkyRig`) keeps sun and sky in their clear-day proportion: on a level surface the sun gives
+about four fifths of the light and the sky the rest, and a white deck in full sun is about three times as bright
+as the horizon sky. Values: sun energy 3.0 at 38° elevation, colour (1.0, 0.94, 0.86); sky ramp horizon (0.62,
+0.74, 0.86), zenith (0.10, 0.26, 0.58), linear; ambient and reflections from the sky; ACES tone mapping (white 6)
+with exposure 0.62. The sky's glow around the sun is narrow (`0.03·mu^8` and `0.15·mu^64` of the sun radiance),
+so the sky stays blue a few tens of degrees from the sun. Boats cap their linear albedo at 0.8 and take their
+baked AO on the ambient and reflected light only.
 
 ## 5. Bow waves, wakes and spray
 

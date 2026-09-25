@@ -5,7 +5,8 @@ The water, wake and sky colours come from the same shader functions Godot runs (
 sky_common.gdshaderinc, wake_common.gdshaderinc), compiled here as GLSL 4.1 on an offscreen OpenGL context, with
 the uniforms, meshes and textures Godot computed. Only the lighting model around them is a stand-in for Godot's
 Forward+ (GGX sun specular, Schlick sky reflection, Lambert, exponential fog, Godot's ACES curve), so colours are
-close to, not identical with, the engine's. Boats are drawn flat-lit from their imported meshes.
+close to, not identical with, the engine's. Boats are drawn with the boat shader's textures, factors and baked AO
+(on the ambient light only), without shadows.
 
     python3 game/tests/water_preview.py [--size 1280x720] [--no-wakes] [--publish] [shot ...]
 
@@ -182,27 +183,72 @@ void main() {
 BOAT_VS = """
 #version 410
 uniform mat4 u_vp;
+uniform vec2 u_uv_scale;
 in vec3 in_pos;
 in vec3 in_normal;
+in vec2 in_uv;
+in float in_ao;
 out vec3 v_n;
 out vec3 v_wpos;
+out vec2 v_uv;
+out float v_ao;
 void main() {
     v_n = in_normal;
     v_wpos = in_pos;
+    v_uv = in_uv * u_uv_scale;
+    v_ao = in_ao;
     gl_Position = u_vp * vec4(in_pos, 1.0);
 }
 """
 
+# The boat shader's inputs (shaders/boat.gdshader): tiling albedo (sRGB) and metallic-roughness textures times the
+# factors, albedo capped, baked AO on the ambient and reflected light only; metals reflect the sky in their
+# colour. Stand-in for Godot's PBR like the water's.
 BOAT_FS = """
 in vec3 v_n;
 in vec3 v_wpos;
+in vec2 v_uv;
+in float v_ao;
 uniform vec3 u_albedo;
+uniform float u_rough;
+uniform float u_metal;
+uniform float u_ao_strength;
+uniform float u_albedo_max;
+uniform sampler2D u_albedo_tex;
+uniform sampler2D u_mr_tex;
+uniform float u_shadow;
 out vec4 frag;
 void main() {
     vec3 N = normalize(v_n);
     vec3 V = normalize(u_cam - v_wpos);
     if (dot(N, V) < 0.0) N = -N;
-    vec3 c = shade(u_albedo, 0.5, 0.5, N, V);
+    vec3 tex = pow(texture(u_albedo_tex, v_uv).rgb, vec3(2.2));
+    vec3 albedo = min(tex * u_albedo, vec3(u_albedo_max));
+    vec4 mr = texture(u_mr_tex, v_uv);
+    float rough = clamp(mr.g * u_rough, 0.04, 1.0);
+    float metal = clamp(mr.b * u_metal, 0.0, 1.0);
+    float ao = mix(1.0, v_ao, u_ao_strength);
+    vec3 L = normalize(sun_dir);
+    float NdotL = max(dot(N, L), 0.0);
+    float NdotV = max(dot(N, V), 1e-4);
+    vec3 H = normalize(L + V);
+    float NdotH = max(dot(N, H), 0.0);
+    vec3 f0 = mix(vec3(0.04), albedo, metal);
+    float a = max(rough * rough, 2e-3);
+    float a2 = a * a;
+    float dd = NdotH * NdotH * (a2 - 1.0) + 1.0;
+    float D = a2 / (WM_PI * dd * dd);
+    float k = a * 0.5;
+    float vis = 0.25 / ((NdotL * (1.0 - k) + k) * (NdotV * (1.0 - k) + k));
+    vec3 F = f0 + (1.0 - f0) * pow(1.0 - max(dot(L, H), 0.0), 5.0);
+    vec3 diff = albedo * (1.0 - metal);
+    vec3 direct = u_shadow * sun_color * NdotL * (diff * (1.0 - F) + WM_PI * D * vis * F);
+    vec3 Fe = f0 + (max(vec3(1.0 - rough), f0) - f0) * pow(1.0 - NdotV, 5.0);
+    vec3 R = reflect(-V, N);
+    // rough surfaces see a blurred sky: toward the average sky colour
+    vec3 sky_r = mix(env_sky(R), mix(sky_horizon, sky_zenith, 0.5), clamp(rough * 1.3, 0.0, 1.0));
+    vec3 amb_sky = mix(mix(sky_horizon, sky_zenith, 0.5) * 0.8, sky_horizon * 0.45, clamp(-N.y, 0.0, 1.0));
+    vec3 c = direct + ao * (sky_r * Fe + diff * amb_sky * u_ambient * (1.0 - Fe));
     frag = vec4(fogged(c, v_wpos), 1.0);
 }
 """
@@ -420,16 +466,39 @@ def render(ctx, d, size, wakes=True):
     assert g["count"] == pos.shape[0]
 
     ctx.disable(moderngl.CULL_FACE)
+    white = ctx.texture((1, 1), 4, bytes([255, 255, 255, 255]))
+    tex_cache = {}
+
+    def boat_tex(name):
+        if not name:
+            return white
+        if name not in tex_cache:
+            tex_cache[name] = texture_from_png(ctx, d / name, 4)
+        return tex_cache[name]
+
     for b in sc["boat"]:
         if "normal" not in b or "indices" not in b:
             continue
         bp = load_bin(d, b["name"] + "_pos.bin", "f4", 3)
         bn = load_bin(d, b["name"] + "_normal.bin", "f4", 3)
         bi = load_bin(d, b["name"] + "_idx.bin", "i4", 1)
+        n = bp.shape[0]
+        buv = load_bin(d, b["name"] + "_uv.bin", "f4", 2) if b.get("uv") else np.zeros((n, 2), "f4")
+        bao = load_bin(d, b["name"] + "_color.bin", "f4", 4)[:, :1] if b.get("color") else np.ones((n, 1), "f4")
         boat["u_albedo"].value = tuple(b["albedo"][:3])
-        bv = ctx.buffer(np.hstack([bp, bn]).astype("f4").tobytes())
-        ctx.vertex_array(boat, [(bv, "3f 3f", "in_pos", "in_normal")], ctx.buffer(bi.astype("i4").tobytes())).render(
-            moderngl.TRIANGLES)
+        set_if(boat, "u_rough", float(b.get("roughness", 0.5)))
+        set_if(boat, "u_metal", float(b.get("metallic", 0.0)))
+        set_if(boat, "u_ao_strength", float(b.get("ao", 0.0)))
+        set_if(boat, "u_albedo_max", float(b.get("albedo_max", 1.0)))
+        set_if(boat, "u_uv_scale", tuple(b.get("uv_scale", [1.0, 1.0])))
+        set_if(boat, "u_shadow", 1.0)
+        boat_tex(b.get("albedo_tex")).use(5)
+        boat_tex(b.get("mr_tex")).use(6)
+        set_if(boat, "u_albedo_tex", 5)
+        set_if(boat, "u_mr_tex", 6)
+        bv = ctx.buffer(np.hstack([bp, bn, buv, bao]).astype("f4").tobytes())
+        ctx.vertex_array(boat, [(bv, "3f 3f 2f 1f", "in_pos", "in_normal", "in_uv", "in_ao")],
+                         ctx.buffer(bi.astype("i4").tobytes())).render(moderngl.TRIANGLES)
 
     ctx.enable(moderngl.BLEND)
     ctx.blend_func = moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA

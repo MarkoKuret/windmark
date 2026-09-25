@@ -125,6 +125,34 @@ func _write_arrays(dir: String, name: String, arrays: Array, xform: Transform3D 
 	return info
 
 
+## Material factors of a boat surface for the preview: linear albedo, roughness, metallic, uv scale, AO share,
+## albedo and metallic-roughness texture files (written once per texture).
+func _boat_material(mat: Material, dir: String, tex_files: Dictionary) -> Dictionary:
+	var out := {"albedo": [0.8, 0.8, 0.8, 1.0], "roughness": 0.5, "metallic": 0.0, "uv_scale": [1.0, 1.0], "ao": 0.0}
+	if mat is ShaderMaterial and (mat as ShaderMaterial).shader == BoatMaterials.SHADER:
+		var m := mat as ShaderMaterial
+		out["albedo"] = _v((m.get_shader_parameter("albedo_color") as Color).srgb_to_linear())
+		out["roughness"] = m.get_shader_parameter("roughness")
+		out["metallic"] = m.get_shader_parameter("metallic")
+		out["uv_scale"] = _v(m.get_shader_parameter("uv_scale"))
+		out["ao"] = m.get_shader_parameter("ao_strength")
+		out["albedo_max"] = m.get_shader_parameter("albedo_max") if m.get_shader_parameter("albedo_max") != null else 0.8
+		for k in [["albedo_tex", "albedo_tex"], ["mr_tex", "mr_tex"]]:
+			var t = m.get_shader_parameter(k[0])
+			if t is Texture2D:
+				var id: int = t.get_instance_id()
+				if not tex_files.has(id):
+					tex_files[id] = "tex%d.png" % tex_files.size()
+					(t as Texture2D).get_image().save_png(dir.path_join(tex_files[id]))
+				out[k[1]] = tex_files[id]
+	elif mat is BaseMaterial3D:
+		var b := mat as BaseMaterial3D
+		out["albedo"] = _v(b.albedo_color.srgb_to_linear())
+		out["roughness"] = b.roughness
+		out["metallic"] = b.metallic
+	return out
+
+
 func _save(dir: String, file: String, bytes: PackedByteArray) -> void:
 	var f := FileAccess.open(dir.path_join(file), FileAccess.WRITE)
 	f.store_buffer(bytes)
@@ -175,22 +203,19 @@ func _dump(name: String) -> void:
 			wake_uniforms = _uniforms(mi.material_override)
 	data["wakes"] = ribbons
 	data["wake_uniforms"] = wake_uniforms
-	# boat triangles (world), one entry per mesh surface with its albedo
+	# boat triangles (world), one entry per mesh surface with its material (boat shader or a BaseMaterial3D)
 	var boats := []
+	var tex_files := {}
 	var stack: Array = [_scene.get_node("Boat")]
 	while not stack.is_empty():
 		var n: Node = stack.pop_back()
 		stack.append_array(n.get_children())
-		if n is MeshInstance3D and n.mesh:
+		if n is MeshInstance3D and n.mesh and n.visible:
 			for si in n.mesh.get_surface_count():
 				var mat: Material = n.get_active_material(si)
-				var col := Color(0.8, 0.8, 0.8)
-				if mat is BaseMaterial3D:
-					col = (mat as BaseMaterial3D).albedo_color
-				var bn := "boat%d" % boats.size()
-				var info := _write_arrays(dir, bn, n.mesh.surface_get_arrays(si), n.global_transform)
-				info["name"] = bn
-				info["albedo"] = _v(col.srgb_to_linear())
+				var info := _write_arrays(dir, "boat%d" % boats.size(), n.mesh.surface_get_arrays(si), n.global_transform)
+				info["name"] = "boat%d" % boats.size()
+				info.merge(_boat_material(mat, dir, tex_files))
 				boats.append(info)
 	data["boat"] = boats
 	var f := FileAccess.open(dir.path_join("scene.json"), FileAccess.WRITE)

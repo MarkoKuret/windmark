@@ -289,11 +289,14 @@ reference values are in the owning spec.
 | `wind_shadow` | object with every key of `wind_shadow.md` §2 | wind_shadow.md §2 |
 
 Ranges checked at load (besides those of the owning specs): `decel_linear`, `decel_const` ≥ 0;
-`rudder_drag_luff`, `rudder_drag_bear` any finite value (§5); `hull_points`, if present, at least one point.
+`turn_radius_offset` any finite value (negative for a rudder that stalls short of full helm) with
+`turn_radius_full + turn_radius_offset > 0`; `rudder_drag_luff`, `rudder_drag_bear` any finite value (§5);
+`hull_points`, if present, 1 to 64 points.
 
 `collision.mass` = `displacement + crew.weight`. The VPP derives the dynamics values from the design where it can
-(turn radius from the rudder and hull length, heel spring from roll inertia and righting moment, shadow geometry
-from the rig) and uses the reference values of the owning spec otherwise; then the class file's `handling`
+(turn radius from the rudder and hull length and the radius law's offset from the rudder's stall, the
+deceleration from the hull coasting with the drive gone, heel spring from roll inertia and righting moment, shadow
+geometry from the rig) and uses the reference values of the owning spec otherwise; then the class file's `handling`
 multipliers are applied and its `handling` overrides win (§3.7.1).
 
 ### 4.3 `configs`
@@ -322,7 +325,9 @@ is exactly one main-only config and exactly one config per front sail.
 exactly 0 and its last point exactly the binary32 π (`PI`, `conventions.md` §6). Other axes are not constrained.
 
 `optimal_angle` is keyed by sail id and holds exactly the main and the config's front sail (only the main for
-main-only). `weather_helm` values may be any finite number (signed); `fall_off` ≥ 0 (§5).
+main-only). `weather_helm` values may be any finite number (signed); `fall_off` ≥ 0 (§5). The VPP writes
+`fall_off` for every config (`sails.md` §6) and `trim_speed`, `trim_heel` that are 0 with the driving sail on the
+wind line; it does not write `weather_helm` yet (absent: 0).
 
 Above the no-go step the `polar` is never 0. Where no depowering holds a config (heel beyond the limit, or no way
 made at that angle) the VPP writes a low **broached speed**, with the `heel` at the limit and the `accel` of the
@@ -399,8 +404,10 @@ Recommended axes for the VPP (fine where the tables bend):
 - `tws`: 0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 20.6 m/s;
 - `twa_abs`: 0°, 7°, the no-go edge twice (the step, reference 15°), then 20° to 60° every 2°, 60° to 180° every
   5°;
-- `trim_error`: −60°, −20°, −10°, −5°, −2°, −0.5°, 0, 0.5°, 2°, 5°, 10°, 20°, 60°, 120° (extended to the wind
-  line at each `awa_abs`).
+- `trim_error`: −60°, −20°, −10°, −5°, −2°, −0.5°, 0, 0.5°, 2°, then every 5° from 5° to 130°, 150°, 180° (fine
+  enough that the trim tables can reach 0 on the wind line at each `awa_abs` without cutting the drive early,
+  `sails.md` §6);
+- `fall_off`: `boat_speed` −6, 0, `v_f`/2, `v_f` m/s; `twa_abs` 0°, 10°, 20°, 90°, 120°, 180° (`sails.md` §6).
 
 ## 6. Venue physics file (`windmark.venue/1`)
 

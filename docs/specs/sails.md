@@ -85,32 +85,36 @@ With `F = front`:
 - **Cancel a drop**: `hoist(S)` while the queue is a lone drop of `S` (it was started by `drop_front()`):
   - `P = prepare_drop`: queue `[S up]`;
   - `P = dropping`: queue `[S dropping reversed, S up]`, `queue_progress = 1 − p`.
+- **Cancel a first hoist**: `drop_front()` while no front sail is up (`F = −1`) and the queue is a lone hoist of
+  `S` (there is no `hoist(F)` to ask for): the same as cancelling a hoist, `P = prepare_hoist`: queue `[S down]`;
+  `P = hoisting`: queue `[S hoisting reversed, S down]`, `queue_progress = 1 − p`.
 - Anything else is **rejected** while busy. A rejected request changes nothing and reports `rejected` to the
   caller (HUD feedback, AI retries later).
 Rebuilding the queue sets `queue_pos = 0`; `queue_progress = 0` unless stated.
 
 ### 4.3 Advance (boat step 5.3, once per tick)
 ```
+dt_left = DT                                                  // time of this tick not yet used, seconds
 while queue_pos < queue_len:
     {S, P, rev} = queue[queue_pos]
     sail[S].phase = P
-    carry = 0
     if P == up:     front = S ; sail[S].progress = 0
     elif P == down: if front == S: front = -1
                     sail[S].progress = 0
     else:
         d = duration(S, P, tws, fabsf(twa))                  // §4.4, seconds
-        queue_progress = d > 1e-5 ? queue_progress + DT/d : 1
+        queue_progress = d > 1e-5 ? queue_progress + dt_left/d : 1
         q = clamp(queue_progress, 0, 1)
         sail[S].progress = rev ? 1 - q : q
         if queue_progress < 1: break                          // step still running
-        carry = queue_progress - 1
+        if d > 1e-5: dt_left = (queue_progress - 1) * d       // leftover seconds, into the next step
     queue_pos = queue_pos + 1
-    queue_progress = carry
+    queue_progress = 0
 if queue_pos >= queue_len: queue_len = queue_pos = 0 ; queue_progress = 0
 ```
 Instant steps and finished steps fall through in the same tick, with the leftover time carried into the next
-step, so a change takes exactly the sum of its durations. `tws` and `twa` are this tick's values (`boat.md` §5.1).
+step **in seconds** (a step of another duration uses it at its own rate), so a change takes the sum of its
+durations, each step ending in the tick that reaches its end time. `tws` and `twa` are this tick's values (`boat.md` §5.1).
 A sail in `prepare_hoist` or `hoisting` is drawn on the way up but does not drive the boat until its `up` step;
 the old front sail drives until then.
 
@@ -162,12 +166,13 @@ the config tables.
     sheet control therefore trims both sails and the main keeps its trim relative to the headsail.
 
 ### 5.3 Let-fly
-While `let_fly` is held: `m_s = fabsf(awa)` for every sail (the sail goes to the wind line and flogs).
+While `let_fly` is held: `m_s = fabsf(awa)` for every sail (the sail goes to the wind line and flogs). The sheet
+is released altogether, so the sail blows out past `sheet_max` (and the heel limit) to the wind line (§5.4).
 
 ### 5.4 Target angle
 ```
 lim  = sheet_max_by_heel ? min(sheet_max, sheet_max_by_heel(fabsf(phi))) : sheet_max
-m    = clamp(m_s, sheet_min, lim)
+m    = let_fly ? m_s : clamp(m_s, sheet_min, lim)      // let fly: no sheet limit, the wind line holds it
 k_h  = hoist_factor(sail)              // down, prepare_hoist, dropping: 0.1
                                        // hoisting: clamp(2*progress*progress, 0.1, 1)
                                        // up, prepare_drop: 1 ; spinnaker_sym: always 1
@@ -240,20 +245,30 @@ Semantics and reference shapes:
   first sailing angle holds the sternway drift (`boat.md` §7.4), with a step (two equal breakpoints) at the edge.
 - **heel**: reference S main + genoa at 10 kn: 14° at 39°, peaking about 18° at 40°, 0 at 180°; spinnaker at
   10 kn: 13° at 80°, 5° at 136°.
-- **accel**: small close to the wind (0.005 m/s² from 15° to 25°), larger reaching (S genoa at 10 kn: 0.13 m/s² at
-  40°, 0.26 at 60°; spinnaker 0.5 m/s² at 90°), growing with TWS. It is the acceleration from low speed; the
-  approach to the polar is still limited by `err/DT` (`boat.md` §5.8).
+- **accel**: small close to the wind (0.005 m/s² from 15° to 30°), larger reaching (S jib at 10 kn: 0.09 m/s² at
+  40°, 0.23 at 60°, 0.34 at 90°; spinnaker 0.35 m/s² at 90°, 0.5 at 120°), growing with TWS. It is the constant
+  acceleration that takes the boat from half its polar speed to 90 % of it in the time the physics does (the speeds
+  a boat rebuilds through after a tack or a gybe); the approach to the polar is still limited by `err/DT`
+  (`boat.md` §5.8).
 - **trim_speed**: 1 on a plateau around `eps = 0` (width grows with `awa_abs`: ±0.5° at 45° AWA, about −3.8°/+1.2°
   at 180°), falling to 0 when eased to the wind line (reference +15° at 45° AWA, +120° at 180°) and to 0.6–0.75
-  when over-sheeted (reference −13° at 45°, −41° at 180°). Spinnakers: 0.7–0.8 at both extremes (a kite keeps some
-  drive when mistrimmed).
-- **trim_heel**: 1 at `eps = 0`, 0 when fully eased, 1.4–2.7 when strongly over-sheeted.
+  when over-sheeted (reference −13° at 45°, −41° at 180°). Spinnakers: 0.7–0.8 over-sheeted (a kite keeps some
+  drive when mistrimmed). With the driving sail on the wind line (`eps = awa_abs − m_opt`, let fly or eased that
+  far) the value is **exactly 0** wherever the core looks it up: the flogging sails give no drive (the windage a
+  boat still feels downwind is left out, so a boat that lets fly coasts to rest). The VPP writes 0 from the
+  `trim_error` point at or below the smallest wind-line error of the neighbouring table points, so the
+  interpolation between them stays 0; the drive is cut at most one axis step (5°) before the line.
+- **trim_heel**: 1 at `eps = 0`, 0 on the wind line (as `trim_speed`), 1.4–2.7 when strongly over-sheeted.
 - **weather_helm**: spinnakers: negative at low TWA (the kite pulls the bow off: −15 to −30°/s below 30° TWA),
   zero across the normal range, positive at high TWS broad reaching (reference L asym at 40 kn: +20°/s at 90°,
   +50°/s at 115°, back to 0 at 145°: the broach). Upwind sails: 0 or small. Scaled by `trim_heel` (`boat.md`
   §5.5, §5.9), so an over-sheeted kite broaches sooner.
-- **fall_off**: speed axis from sternway to slow ahead (reference −6, −1.5, −1, 1, 1.5, 2 m/s), zero at 2 m/s and
-  above; reference 3°/s between 20° and 35–80° TWA at −1.5..1 m/s, zero below 10° TWA.
+- **fall_off**: the same for every config (the sails are flogging). Speed axis from sternway to a crawl ahead
+  (reference −6, 0, `v_f`/2, `v_f` m/s with `v_f` at Froude number 0.05, `0.05·sqrt(g·lwl)`: S 0.4 m/s, L 0.7 m/s),
+  full from sternway to 0, 0.75 at `v_f`/2, zero from `v_f` (the keel holds the heading once the boat moves);
+  reference S 8°/s, L 5°/s between 20° and 90° TWA, fading to 0 at 120°, zero below 10° TWA (a boat right head to
+  wind stays in irons, `boat.md` §7.4). Light-air sailing speeds stay above `v_f`, so the table never turns a
+  sailing boat.
 - **optimal_angle**: main: 0 up to about 20–30° AWA, then rising to 35–60° at 120–170°; jib/genoa 14–25° close
   hauled rising to 55–70°; spinnakers 12–30° at their lowest AWA rising to 85–90° dead downwind.
 
@@ -265,6 +280,7 @@ Per sail, each tick:
 | --- | --- |
 | `phase`, `progress` | hoist/drop state for the hoisting animation (halyard or furler; see the renderer spec) |
 | `beta`, `pole` | sail and boom/pole angles (renderers interpolate them between ticks with `angle_lerp`) |
+| `beta_t` | optional: the target angle of the sail motion (§5.4); `fabsf(beta_t − beta)` tells winch and crew sounds how much trimming is still to come |
 | `k_h` | how filled a hoisting sail is (§5.4) |
 | `motion` | idle / sheeting / easing (winch and crew animation, sheet sounds) |
 | `trim_error` | `eps` (HUD trim indicator) |
@@ -283,10 +299,16 @@ it. Events: every phase change emits `sail_phase(boat, sail, phase)` for crew ac
 ## 8. Tests
 
 1. Peel timing: at 10 kn TWS, 90° TWA, hoist the spinnaker with a jib up: the spinnaker drives from exactly
-   `prepare_hoist_time + hoist_time` after the request, the jib reaches `down` after the sum of all six steps.
+   `prepare_hoist_time + hoist_time` after the request, the jib reaches `down` after the sum of all six steps
+   ("exactly" = in the tick that reaches that time: at or after it, less than one tick after).
 2. Cancel: cancel a hoist halfway through `hoisting`: the sail's `progress` falls from 0.5 to 0 over half the hoist
    time and ends `down`; `front` never changes.
 3. Tack: sails swing to the new side within 2 s at S reference rates; `eps` returns within ±1° of 0 with auto-trim.
 4. Asym gybe: the sail angle passes through ±π and settles on the new side, never through 0.
 5. Manual sheet: with `u` fixed, turning from 45° to 90° AWA makes `eps` grow negative (over-sheeted) and the
    speed fall below the polar by the `trim_speed` factor.
+6. Cancel a first hoist: with no front sail up, `drop_front()` halfway through `hoisting` brings the sail down
+   along its hoist; during `prepare_hoist` it is down in the next tick; `front` stays −1.
+7. Wind line: for every config, TWS 0.25–20 m/s and AWA 3°–180° on a fine grid, `trim_speed` and `trim_heel` are
+   0 at the driving sail's wind-line error (where that is at least 0.5° past the optimum); with let-fly held the
+   boat's `trim_speed` output is 0 and it coasts down.

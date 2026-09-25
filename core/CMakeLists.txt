@@ -68,6 +68,15 @@ target_sources(windmark_core PRIVATE
   src/world/world.cpp
   src/world/world_state.cpp
 )
+# AI skippers (WM-010): ai.md
+target_sources(windmark_core PRIVATE
+  src/ai/ai_polar.cpp
+  src/ai/ai_predict.cpp
+  src/ai/ai.cpp
+  src/ai/ai_start.cpp
+  src/ai/ai_course.cpp
+  src/ai/ai_rules.cpp
+)
 target_include_directories(windmark_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 # PUBLIC: every target that links the core (tests, server, engine bindings) builds with the same float rules.
 target_link_libraries(windmark_core PUBLIC windmark_float_rules)

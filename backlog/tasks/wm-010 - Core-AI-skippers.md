@@ -1,9 +1,11 @@
 ---
 id: WM-010
 title: 'Core: AI skippers'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-09-25 13:31'
+updated_date: '2026-09-25 17:18'
 labels:
   - core
 dependencies: []

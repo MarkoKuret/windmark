@@ -95,6 +95,7 @@ class World {
   const WorldEvents& events() const { return events_; }  // of the last step
   std::uint64_t checksum() const;  // conventions.md §9: tick index, then the snapshot body
   bool race_created() const { return created_; }
+  const WorldSetup& setup() const { return setup_; }  // as given (the venue's fields are applied inside)
 
   // conventions.md §9.1 world snapshot, taken between ticks: everything the world carries to the next tick.
   void save(SnapshotWriter& w) const;

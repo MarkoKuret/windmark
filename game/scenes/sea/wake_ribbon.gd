@@ -11,9 +11,9 @@ const KELVIN := 0.354      # tan 19.47 deg
 const GRAVITY := 9.81
 const U_OUTER := 0.0
 const U_EDGE := 0.2
-## Vertices across a row: the two outer (feathered) vertices and seven from edge to edge, so the ribbon follows
-## the waves between its edges.
-const ACROSS := 9
+## Vertices across a row: the two outer (feathered) vertices and thirteen from edge to edge (at most about
+## 0.8 m apart on a 4 s ribbon), so the ribbon follows the waves between its edges.
+const ACROSS := 15
 
 ## Rows, oldest first. Each: {t, p: Vector2, fwd: Vector2, v, w0, ratio, visible, dist, spray: Array}
 var rows: Array = []
@@ -105,18 +105,44 @@ func flying_spray() -> PackedVector3Array:
 	return out
 
 
+## Rows smoothed over for the spray reach (either side), so the ribbon's outer edge has no steps.
+const REACH_SMOOTH := 4
+
+
+## How far the spray of a row reaches beyond its feathered edge on each side (m, >= 0): the horizontal distance
+## of the row's particles from the row point, flying or landed, so the reach grows smoothly as the spray flies.
+static func spray_excess(row: Dictionary, t_s: float) -> Vector2:
+	var hw := half_width(row, t_s)
+	var base := hw + 0.3 + 0.25 * hw
+	var lp := port(row)
+	var out := Vector2.ZERO
+	var sp: Array = row["spray"]
+	for side in mini(sp.size(), 2):
+		var q := Vector2(sp[side]["pos"].x, sp[side]["pos"].y)
+		var d: float = (q - row["p"]).dot(lp if side == 0 else -lp)
+		out[side] = maxf(0.0, d - base)
+	return out
+
+
 ## Mesh arrays of the ribbon at t_s, newest row first, ACROSS vertices per row from the outer port vertex to the
 ## outer starboard one in scene axes with y = 0 (the wake shader drapes it on the sea). UV: (across,
 ## distance sailed / 10 m); UV2: the row's port direction (world x, y); COLOR.r: the bow half width as a
-## fraction of the ribbon's (the centre wake); COLOR.a: the row alpha.
+## fraction of the ribbon's (the centre wake); COLOR.a: the row alpha. The outer vertices sit a feathered margin
+## outside the edges, pushed out by the spray reach smoothed over neighbouring rows (never inside the edge, so
+## the strip does not fold, and without steps from row to row).
 func build_arrays(t_s: float) -> Array:
 	var verts := PackedVector3Array()
 	var uvs := PackedVector2Array()
 	var uv2s := PackedVector2Array()
 	var cols := PackedColorArray()
 	var idx := PackedInt32Array()
+	var n := rows.size()
+	var excess: Array[Vector2] = []
+	excess.resize(n)
+	for k in n:
+		excess[k] = spray_excess(rows[k], t_s)
 	var prev := -1
-	for k in range(rows.size() - 1, -1, -1):
+	for k in range(n - 1, -1, -1):
 		var row: Dictionary = rows[k]
 		var a := alpha(row, t_s)
 		if a <= 0.0:
@@ -124,16 +150,19 @@ func build_arrays(t_s: float) -> Array:
 			continue
 		var hw := half_width(row, t_s)
 		var lp := port(row)
-		# outer vertices: a feathered margin outside the edges, pushed out to where the row's spray landed
-		# when that is further (never inside the edge, so the strip does not fold)
 		var feather := 0.3 + 0.25 * hw
-		var reach := [hw + feather, hw + feather]
-		var sp: Array = row["spray"]
-		for side in sp.size():
-			if sp[side]["landed"]:
-				var q := Vector2(sp[side]["pos"].x, sp[side]["pos"].y)
-				var d: float = (q - row["p"]).dot(lp if side == 0 else -lp)
-				reach[side] = maxf(reach[side], d)
+		# triangular smoothing of the spray reach over the neighbouring rows
+		var ex := Vector2.ZERO
+		var wsum := 0.0
+		for o in range(-REACH_SMOOTH, REACH_SMOOTH + 1):
+			var kk := k + o
+			if kk < 0 or kk >= n:
+				continue
+			var w := float(REACH_SMOOTH + 1 - absi(o))
+			ex += excess[kk] * w
+			wsum += w
+		ex /= wsum
+		var reach := [hw + feather + ex.x, hw + feather + ex.y]
 		var base := verts.size()
 		var centre := clampf(float(row["w0"]) / maxf(hw + feather, 1e-3), 0.0, 1.0)
 		var p: Vector2 = row["p"]

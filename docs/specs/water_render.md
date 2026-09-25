@@ -17,6 +17,7 @@ are never displaced horizontally. The wind on the water comes from `wind.md` §6
 | surface height | `sea_height(x, y)` at the render time (`sea.md` §4, §7.2) | 1 mm at the grid vertices for every component the grid carries; the waves the grid fades (§3.2) remove less than 3 px of height at the tier's reference screen wherever a boat is drawn |
 | dark and light wind patches | `puff_factor(x, y, t)` of `wind.md` §6.4 | 1e-3 of the factor |
 | sheltered calm | the exposure `E(x, y)` of `sea.md` §6 | 1e-3 |
+| wind slowed by land | the venue speed factor `f` of `wind.md` §8 | 1e-3 |
 | wakes and spray | anything (visual) | – |
 
 The boats are drawn at their interpolated physics pose (`boat.md` §9), whose heave follows the mean wave height, so a
@@ -36,6 +37,7 @@ for each live puff patch j (wind.md §9 puff_patches(t_r), at most 10):
 uniform puff_tile, puff_cap_lo = 1 - puff_cap_down, puff_cap_hi = 1 + puff_cap_up
 uniform wind_to = unit vector the wind blows toward (global_from(t_r) + π), base_speed
 uniform exposure texture (venue grid, R32F, texel (i, j) = node (i, j)) and its mapping, E default
+uniform land texture (venue wind field, RG32F: the two sectors around global_from(t_r)), its mapping, tw (§4.3)
 uniform detail and foam layer offsets: the camera-origin part of the §4.1 and §4.4 texture coordinates, in double, mod 1
 ```
 The exposure is sampled in the vertex shader with `texelFetch` and exact bilinear weights (the hardware filter's
@@ -93,7 +95,7 @@ detail   = 2 to 4 layers of a tiling normal map, sampled in a wind-aligned frame
            scales 1/13 m, 1/22 m, 1/48 m, 1/70 m; drifts 1.4, 1.0, 0.9, 0.6 m/s; angles 0, 0.35, -0.6, 0.95 rad
            break the tiling
 m        = wind factor at the pixel (§4.3)
-k_detail = 0.32 * clamp(m * base_speed / 7.2, 0.15, 1.6) * fade(dist; 300 m -> 1, 3 km -> 0)
+k_detail = 0.25 * clamp(m * base_speed / 7.2, 0.15, 1.6) * fade(dist; 300 m -> 1, 3 km -> 0)
 n        = normalize(n_geo + k_detail * (detail.x * wind_to + detail.y * perp(wind_to)) in the water plane)
 ```
 The normal map (256², tiling) and the foam noise are generated at load from Godot's seamless noise
@@ -104,10 +106,10 @@ detail fades out (fully gone at 0.5 m/s): glassy water.
 Godot's PBR does the lighting; the shader sets:
 ```
 crest    = clamp(eta / max(sum_a, 1e-3), 0, 1)
-ALBEDO   = mix(deep, shallow, 0.55 * crest), then foam (§4.4)       // deep (0.010, 0.048, 0.085), shallow (0.025, 0.20, 0.24), linear
+ALBEDO   = mix(deep, shallow, 0.55 * crest), then foam (§4.4)       // deep (0.010, 0.048, 0.085), shallow (0.02, 0.11, 0.14), linear
 SPECULAR = 0.35                                                      // Godot's F0 = 0.16·SPECULAR² = 0.02, water at normal incidence
 ROUGHNESS = 0.06 + 0.05 * clamp(m - 1, -0.4, 0.25) / 0.25 + 0.18 * fade_far(dist)   // rougher in puffs and far away
-EMISSION = sss * crest * pow(max(0, dot(-view, sun)), 3) * 0.9 + sss * crest * 0.12  // light through the crests, sss (0.04, 0.40, 0.38)
+EMISSION = sss * crest * pow(max(0, dot(-view, sun)), 3) * 0.3 * sun_radiance + sss * crest * 0.05  // light through the crests, sss (0.04, 0.40, 0.38)
 ```
 - **Sky reflection** comes from the scene's sky radiance through PBR (Schlick Fresnel: 2 % looking straight down,
   most of the sky at grazing angles), so the water takes the sky's colour at every time of day and weather.
@@ -133,8 +135,13 @@ The effect is also made explicit so it reads from the aerial camera and in flat 
 ```
 ALBEDO *= 1 - k_puff * clamp((m - 1) / 0.25, 0, 1) + k_lull * clamp((1 - m) / 0.4, 0, 1)    // k_puff 0.25, k_lull 0.15
 ```
-Optional (venues with a wind field, `wind.md` §8): the land-effect speed factor `f` for the current direction,
-uploaded as a texture when the direction moves by more than 2°, multiplies `m`.
+Venues with a wind field (`wind.md` §8): the land-effect speed factor `f` multiplies `m` after the
+puff clamp (the caps bound the puffs, not the venue). The CPU keeps the eight sector grids of the venue file
+and uploads the two around the current direction (`k0`, `k1` of `wind.md` §8, from `global_from`) as one RG32F
+texture (R = `k0`, G = `k1`, texel (i, j) = node (i, j)), again only when the pair changes; the blend weight `tw`
+is a uniform every frame. The vertex shader samples it with `texelFetch` and exact bilinear weights like the
+exposure, 1 outside the grid, and passes `f` to the fragment shader, so the drawn factor equals the core's to
+float rounding at the vertices. The direction offset `d` does not show on the water and is not drawn.
 
 ### 4.4 Whitecaps
 ```
@@ -148,6 +155,15 @@ ALBEDO = mix(ALBEDO, (0.86, 0.90, 0.92), 0.8 * foam) ; ROUGHNESS = mix(ROUGHNESS
 So whitecaps come with the wind, more of them in the puffs. With the reference seas this covers about 0.2 % of
 the water at 15 kn, 1.4 % at 20 kn and 2.5 % at 25 kn, close to measured whitecap cover (it rises with about the
 3.4th power of the wind speed).
+
+### 4.5 Daylight
+The daytime preset (`SkyRig`) keeps sun and sky in their clear-day proportion: on a level surface the sun gives
+about four fifths of the light and the sky the rest, and a white deck in full sun is about three times as bright
+as the horizon sky. Values: sun energy 3.0 at 38° elevation, colour (1.0, 0.94, 0.86); sky ramp horizon (0.62,
+0.74, 0.86), zenith (0.10, 0.26, 0.58), linear; ambient and reflections from the sky; ACES tone mapping (white 6)
+with exposure 0.62. The sky's glow around the sun is narrow (`0.03·mu^8` and `0.15·mu^64` of the sun radiance),
+so the sky stays blue a few tens of degrees from the sun. Boats cap their linear albedo at 0.8 and take their
+baked AO on the ambient and reflected light only.
 
 ## 5. Bow waves, wakes and spray
 
@@ -166,13 +182,15 @@ row = { frozen boat frame (heading, heel), P, v, age 0, alpha 1,
         spray: two particles, port and starboard }
 push the row into a ring buffer of N = 80 rows (a 4 s ribbon)
 ```
-**Each frame**, for every row of age `t` (a row is drawn with 9 vertices across: a feathered, transparent outer
-vertex `0.3 + 0.25·w` outside each edge, and 7 from edge to edge, so it follows the waves between its edges):
+**Each frame**, for every row of age `t` (a row is drawn with 15 vertices across: a feathered, transparent outer
+vertex `0.3 + 0.25·w` outside each edge, and 13 from edge to edge, so it follows the waves between its edges):
 ```
 half width  w = w0 + 0.354 * v_row * t                       // edges open at the Kelvin angle, tan 19.47°
 edges       = row point ± w across the frozen heading, each draped on the drawn sea + 0.1 m (in the vertex shader,
-              with the sea's uniforms and grid fade) and pulled 0.3 m toward the camera so the sea's facets
-              never cover it
+              with the sea's uniforms and grid fade) and pulled toward the camera along the view ray (the pixel
+              stays, only the depth moves) far enough to clear the sea by h_c = 0.15 m + 2 Σ a_i·w_i·(1 − fade_i(1 m))
+              (the short waves the sea grid carries but the ribbon, flat between its vertices, does not):
+              pull = min(h_c / sin(elevation of the view), 0.3 · distance), so the sea's facets never cover it
 alpha       = (1 - t / 4 s) * min(1, ratio_row * 2)          // fades with age, faint at low speed
 texture v   = distance sailed at emission / 10 m              // foam texture along the ribbon
 the row drifts with the surface current at its point (wind.md §7)
@@ -181,9 +199,10 @@ the row drifts with the surface current at its point (wind.md §7)
 `k_s·ratio²·pulse` (`k_s = 2.5 m/s`), direction 0.6 outward and 0.8 up in the boat frame, kept within 10° of the
 vertical when heeled, `pulse = max(0.01, 1 − (0.3·sin(0.07a + 1) + 0.4·sin(0.5a) + 0.4·sin(0.3a)))` with `a` the
 distance sailed times 1 rad/m plus a random offset per boat, so the spray comes in bursts. They fly under gravity,
-stick where they reach the surface and become the ribbon's outer vertices (pushed out to the landing point, never
-inside the edge, so the strip does not fold): the sheet of spray thrown off the bow lands and spreads into the
-wake.
+stick where they reach the surface and become the ribbon's outer vertices (pushed out to the particle's distance
+from the row, flying or landed, never inside the edge, so the strip does not fold; that reach is smoothed over the
+four rows either side with triangular weights, so the outer edge has no steps from row to row): the sheet of spray
+thrown off the bow lands and spreads into the wake.
 
 A second, narrower ribbon from the **transom** (`w0 = 0.4·transom width`, no spray) gives the stern wake. On tiers
 M and H every ribbon is also drawn into a camera-centred **wake normal buffer** (RG8, 512 × 512 over 400 m, cleared
@@ -252,11 +271,15 @@ stated clearly.
    at 100 random times, including points across the tile wrap.
 4. **Exposure parity**: the exposure texture sampled at 10 000 random points equals the grid sampler of `wind.md`
    §8.1 within 1e-3.
-5. **Wake geometry**: a boat at a steady 3 m/s: the ribbon's half width 2 s behind the bow is `w0 + 2.12 m` (±5 %),
+5. **Land factor parity**: the CPU mirror of `wind.md` §8 on the venue file equals the core's clean wind over its
+   base speed (puffs off) within 1e-3 at 2000 random points over eight directions, and the shader's texture path
+   (float32 emulation on the uploaded texture) equals the mirror within 1e-3; the texture follows the wind into the
+   next sector.
+6. **Wake geometry**: a boat at a steady 3 m/s: the ribbon's half width 2 s behind the bow is `w0 + 2.12 m` (±5 %),
    and its rows stay where they were laid (no drift without current).
-6. **Offline renders** (headless, to image files) of fixed seeds: flat calm, 10 kn, 20 kn with puffs, from the
+7. **Offline renders** (headless, to image files) of fixed seeds: flat calm, 10 kn, 20 kn with puffs, from the
    chase and aerial cameras, compared against stored images for visual regressions. Godot's headless mode has no
    renderer, so these run the shared shader functions (`sea_common`, `sky_common`, `wake_common`) with the
    uniforms and meshes the engine computed on an offscreen OpenGL context (`game/tests/water_preview.py`); the
    engine's own picture needs a short windowed capture.
-7. **Performance**: tier M water pass under 2.5 ms on the Steam Deck in the 20 kn scene with 12 boats.
+8. **Performance**: tier M water pass under 2.5 ms on the Steam Deck in the 20 kn scene with 12 boats.

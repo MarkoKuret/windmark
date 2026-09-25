@@ -1,7 +1,7 @@
 // Water surface functions shared by the sea shaders (water_l/m/h.gdshader) and the offline preview renderer
 // (tests/water_preview.py): water_render.md §3 and §4. Written in the common subset of Godot's shading language
 // and GLSL 3.30: explicit float literals, no Godot built-ins, no uniform hints. The including file declares
-// `TIER` (1 = L, 2 = M, 3 = H) and the samplers `expo_tex`, `detail_tex`, `foam_tex`, `wake_tex` first.
+// `TIER` (1 = L, 2 = M, 3 = H) and the samplers `expo_tex`, `land_tex`, `detail_tex`, `foam_tex`, `wake_tex` first.
 //
 // Scene axes (conventions.md §11): X = east, Y = up, Z = south; a water point (x, y) is drawn at (x, eta, -y).
 // Positions `xl` are camera-relative world metres (x - ox, y - oy), as the mesh is centred on the camera.
@@ -27,7 +27,12 @@ uniform float puff_tile = 1000.0;
 uniform float puff_cap_lo = 0.6;
 uniform float puff_cap_hi = 1.25;
 uniform float base_speed = 7.2;        // m/s
-uniform float land_factor = 1.0;       // venue speed factor hook (wind.md §8); 1 without a field
+uniform float land_factor = 1.0;       // extra scalar speed factor (Sea.set_land_factor), 1 by default
+// §4.3 venue land-effect speed factor (wind.md §8): land_tex is nx x ny, RG32F, R = sector k0, G = sector k1
+// around the current wind direction, blended with land_tw
+uniform vec4 land_grid = vec4(0.0, 0.0, 1.0, 1.0);   // x0, y0, dx, dy
+uniform ivec2 land_size = ivec2(0, 0);               // nx, ny; below 2 = no field (f = 1)
+uniform float land_tw = 0.0;
 
 // §4.1 detail normals: per layer (scale*cos, scale*sin, offset u, offset v) in the detail frame (downwind, across)
 uniform vec2 detail_dir = vec2(0.0, 1.0);   // world (east, north) unit vector the median wind blows toward
@@ -44,7 +49,7 @@ uniform vec3 sun_color = vec3(1.0, 0.95, 0.88);
 
 // §4.2 colours (linear)
 uniform vec3 col_deep = vec3(0.010, 0.048, 0.085);
-uniform vec3 col_shallow = vec3(0.025, 0.20, 0.24);
+uniform vec3 col_shallow = vec3(0.02, 0.11, 0.14);
 uniform vec3 col_sss = vec3(0.04, 0.40, 0.38);
 uniform vec3 col_foam = vec3(0.86, 0.90, 0.92);
 
@@ -116,6 +121,31 @@ float wm_exposure(vec2 p) {
 	return mix(mix(e00, e10, tx), mix(e01, e11, tx), ty);
 }
 
+// §4.3 venue land-effect speed factor f (wind.md §8): the grid sampler of §8.1 on the two sectors around the
+// current direction, exact bilinear weights, 1 outside the grid; then lerp between the sectors.
+float wm_land(vec2 p) {
+	if (land_size.x < 2 || land_size.y < 2) {
+		return 1.0;
+	}
+	float x1 = land_grid.x + float(land_size.x - 1) * land_grid.z;
+	float y1 = land_grid.y + float(land_size.y - 1) * land_grid.w;
+	if (p.x < land_grid.x || p.y < land_grid.y || p.x > x1 || p.y > y1) {
+		return 1.0;
+	}
+	float u = (p.x - land_grid.x) / land_grid.z;
+	float v = (p.y - land_grid.y) / land_grid.w;
+	int i = min(int(u), land_size.x - 2);
+	int j = min(int(v), land_size.y - 2);
+	float tx = u - float(i);
+	float ty = v - float(j);
+	vec2 f00 = texelFetch(land_tex, ivec2(i, j), 0).rg;
+	vec2 f10 = texelFetch(land_tex, ivec2(i + 1, j), 0).rg;
+	vec2 f01 = texelFetch(land_tex, ivec2(i, j + 1), 0).rg;
+	vec2 f11 = texelFetch(land_tex, ivec2(i + 1, j + 1), 0).rg;
+	vec2 f = mix(mix(f00, f10, tx), mix(f01, f11, tx), ty);
+	return mix(f.x, f.y, land_tw);
+}
+
 float wm_wrap_tile(float d) {
 	return d - puff_tile * floor(d * (1.0 / puff_tile) + 0.5);
 }
@@ -176,10 +206,11 @@ struct WmSurface {
 
 // §4 shading inputs at a pixel. xl: camera-relative position; eta: height (after the exposure); n_geo: the
 // geometric normal (scene axes); view: unit vector from the surface to the camera (scene axes); dist: horizontal
-// distance to the camera, m; wake: wake normal disturbance (world east, north).
-WmSurface wm_surface(vec2 xl, float eta, vec3 n_geo, vec3 view, float dist, vec2 wake) {
+// distance to the camera, m; wake: wake normal disturbance (world east, north); land: the venue speed factor
+// (wm_land, sampled per vertex).
+WmSurface wm_surface(vec2 xl, float eta, vec3 n_geo, vec3 view, float dist, vec2 wake, float land) {
 	WmSurface S;
-	float m = wm_puff_factor(xl) * land_factor;
+	float m = wm_puff_factor(xl) * land * land_factor;
 	S.m = m;
 	vec3 along = wm_scene(detail_dir);
 	vec3 across = wm_scene(vec2(-detail_dir.y, detail_dir.x));
@@ -187,7 +218,7 @@ WmSurface wm_surface(vec2 xl, float eta, vec3 n_geo, vec3 view, float dist, vec2
 	// §4.1 normal
 	float wind = m * base_speed;
 	float glassy = smoothstep(0.5, 1.5, wind);
-	float k_detail = 0.32 * clamp(wind / 7.2, 0.15, 1.6) * (1.0 - smoothstep(300.0, 3000.0, dist)) * glassy;
+	float k_detail = 0.25 * clamp(wind / 7.2, 0.15, 1.6) * (1.0 - smoothstep(300.0, 3000.0, dist)) * glassy;
 	vec2 dn = wm_detail(xl);
 	vec3 n = n_geo + k_detail * (dn.x * along + dn.y * across);
 	n += wake_strength * vec3(wake.x, 0.0, -wake.y);
@@ -219,7 +250,7 @@ WmSurface wm_surface(vec2 xl, float eta, vec3 n_geo, vec3 view, float dist, vec2
 	S.foam = foam;
 
 	// §4.2 light through the crests, and the zero-mean slope contrast
-	vec3 emission = col_sss * crest * pow(max(0.0, dot(-view, sun_dir)), 3.0) * 0.9 * sun_color + col_sss * crest * 0.12;
+	vec3 emission = col_sss * crest * pow(max(0.0, dot(-view, sun_dir)), 3.0) * 0.3 * sun_color + col_sss * crest * 0.05;
 	vec3 r_n = reflect(-view, n);
 	vec3 r_up = reflect(-view, vec3(0.0, 1.0, 0.0));
 	float F = wm_schlick(dot(view, n));

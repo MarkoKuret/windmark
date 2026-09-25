@@ -9,14 +9,14 @@ controls, the cameras, the minimal HUD and a sail test scene that puts them toge
 | Path | Role |
 | --- | --- |
 | `project.godot` | Project settings |
-| `scripts/` | GDScript. `sail_grid.gd` (`SailGrid`) maps imported sail vertices back to the boatgen sail grid; `frames.gd` (`Frames`) holds the axes and angle helpers; `boat_view.gd` (`BoatView`) places the generated boat, its rudder, wheel, boom, mainsheet and sails |
+| `scripts/` | GDScript. `sail_grid.gd` (`SailGrid`) maps imported sail vertices back to the boatgen sail grid; `frames.gd` (`Frames`) holds the axes and angle helpers; `boat_view.gd` (`BoatView`) places the generated boat, its rudder, wheel, boom, mainsheet and sails; `boat_materials.gd` (`BoatMaterials`) puts the boat materials on the imported meshes |
 | `scripts/sim/` | `SimSource` (the simulation interface), `CoreSimSource` (the core, through the GDExtension) and `CoreEnvSource` (its sea and wind for the Sea node), `FakeSim` and `FakeBoat` (placeholder), `SimRunner` (50 ms ticks), class loading |
 | `native/` | The GDExtension: `CoreSim` over `core/include/windmark.h` (`src/`), `build.sh`, `CMakeLists.txt`. Godot skips the folder (`.gdignore`) |
 | `bin/` | The built extension library and `windmark.gdextension`. Not committed |
 | `scripts/controls/` | Input map defaults, device reader, `PlayerControls` (boat commands), sail key mapping, the input frame |
 | `scripts/cameras/` | `CameraRig` and the chase, onboard, aerial and free cameras, shake, onboard eye point |
 | `scripts/hud/` | `Hud`, `HudValues`, formats, bars and trim gauges |
-| `shaders/` | Shaders. `sea_common`, `sky_common`, `wake_common` (`.gdshaderinc`) hold the water, sky and wake maths, written so the offline preview can compile them as GLSL too; `water_l/m/h` are the sea per quality tier, `sky`, `wake`, `wake_normal` |
+| `shaders/` | Shaders. `sea_common`, `sky_common`, `wake_common` (`.gdshaderinc`) hold the water, sky and wake maths, written so the offline preview can compile them as GLSL too; `water_l/m/h` are the sea per quality tier, `sky`, `wake`, `wake_normal`; `boat` is the boat surface shader |
 | `scenes/` | Scenes. `sea/` is the sea (`sea.tscn`, `Sea`), its data source and wakes, and the daytime sky (`sky_day.tscn`, `SkyRig`, `env_day.tres`); `water_test.tscn` shows them together; `sail_test.tscn` is one boat sailing freely on the core (FakeSim as fallback), with cameras, controls and HUD on that sea and sky |
 | `tests/` | Headless tests |
 | `generated/` | Build outputs staged for import (boatgen GLBs and sidecars). Not committed |
@@ -219,9 +219,16 @@ modes, right mouse drag or IJKL orbit, wheel or O/U zoom, R recentre, Esc pause,
   imported.
 - Materials come in as `StandardMaterial3D` with boatgen's tiling texture sets (albedo, roughness and normal maps
   on uv0, scaled by `1 / tiling_m`) and its PBR factors (base colours converted from linear to sRGB). Every node
-  but the sails and the mainsheet carries baked ambient occlusion in `COLOR_0`, which Godot applies through
-  `vertex_color_use_as_albedo`. boatgen's uv1 (liveries) arrives as Godot's `UV2`, which `StandardMaterial3D`
-  does not use for albedo, so liveries will need a shader or material override.
+  but the sails and the mainsheet carries baked ambient occlusion in `COLOR_0`, which Godot's import multiplies
+  into the albedo (`vertex_color_use_as_albedo`). boatgen's uv1 (liveries) arrives as Godot's `UV2`.
+- **Boat materials** (`BoatMaterials.apply(root)`, called by `BoatView.create` and the water test scene): every
+  imported slot is replaced on the imported meshes by a `ShaderMaterial` on `shaders/boat.gdshader` with the
+  slot's factors and textures. One texture per texture set and map serves every boat of every class (the importer
+  extracts a copy of the set from each GLB; the first loaded is kept and the others are released with their
+  `StandardMaterial3D`), and slots with the same factors share one material. The baked AO goes to `AO` with
+  `AO_LIGHT_AFFECT = 0`, so it darkens the ambient and reflected light only, never the sunlit albedo. The shader
+  caps the linear albedo at 0.8 (bright paint and gelcoat), so a white hull in full sun keeps its shading.
+  `tests/boat_materials_test.gd` (run by `run_boat_import_test.sh`) checks a fleet of both classes.
 - Default import settings generate LODs and shadow meshes and compress vertices. For sails deformed at run
   time these should be turned off for the sail meshes (or the sails rebuilt as `ArrayMesh` at load).
 
@@ -231,7 +238,9 @@ modes, right mouse drag or IJKL orbit, wheel or O/U zoom, R recentre, Esc pause,
 vertex shader evaluates the core's `sea_height` from the wave components, with detail normals, puffs and lulls,
 whitecaps, wakes (`SeaWakes`) and water overlays, in three quality tiers (`SeaQuality`: L, M, H). It reads:
 
-- a source with `sea_components()`, `sea_exposure()` and `wind_state(t_ms)`. `SeaEnvSource` is the placeholder
+- a source with `sea_components()`, `sea_exposure()` and `wind_state(t_ms)`, and optionally
+  `venue_wind_field()` (the venue file's land-effect field, drawn as the wind slowed near land; `Sea.set_wind_field`
+  sets it directly). `SeaEnvSource` is the placeholder
   until the core binding exists: `PLACEHOLDER` builds a sea and puffs with the spec formulas and Godot's random
   numbers, `CORE_SAMPLES` reads the core's own components, exposure and puff patches from
   `generated/sea/sea_render_samples.json`;
@@ -240,11 +249,14 @@ whitecaps, wakes (`SeaWakes`) and water overlays, in three quality tiers (`SeaQu
 - a `SkyRig` for the sky colours and the sun, and the camera it follows.
 
 Boats get wakes through `SeaWakes.update_boat(id, state)` with the interpolated pose and the class dimensions.
+The wake normal buffer (tiers M and H) exists only while wakes are drawn.
 `Sea.height_at(x, y)` is a CPU mirror of the core's sea height (double precision) for anything that needs the
 surface before the binding exists.
 
 `scenes/sea/sky_day.tscn` (`SkyRig`) is the daytime preset: the sky shader, the sun light, fog toward the
-horizon colour and sky reflections, set from one group of parameters.
+horizon colour, sky reflections and the camera exposure, set from one group of parameters. Sun and sky keep their
+clear-day proportion (the sun about four fifths of the light on a level surface), and the exposure brings the
+scene back to screen range.
 
 ### Water tests
 
@@ -267,7 +279,8 @@ wake and sky shaders get, then `tests/water_preview.py` renders them on an offsc
 same shared shader functions (the lighting around them is a stand-in for Godot's). `--publish` also writes the
 JPEGs committed in `tests/previews/`.
 
-The engine's own picture needs a short windowed run (it opens a window for about 7 seconds):
+The previews draw the boats with the boat shader's textures, factors and baked AO, without shadows. The engine's
+own picture needs a short windowed run (it opens a window for about 7 seconds):
 
 ```
 godot --path game res://scenes/water_test.tscn -- --capture=/tmp/windmark_water --tier=M

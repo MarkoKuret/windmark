@@ -7,6 +7,7 @@ extends Node
 ##   wind_state(t_ms) -> Dictionary {base_speed, base_from, global_from, puff_tile, cap_up, cap_down,
 ##                                   patches: Array of [px, py, R, s, e]}   (wind.md §9 puff_patches)
 ##   current_at(x, y, t_ms) -> Vector2                    (wind.md §7)
+##   venue_wind_field() -> Dictionary {grid, sectors} or {}  (data_format.md §6.2, the venue's land effect)
 ## Two modes: PLACEHOLDER builds a sea with the formulas of sea.md §2 and §3 and puffs with the slot model of
 ## wind.md §6 but Godot's random numbers (so the look is right, the exact waves are not the core's);
 ## CORE_SAMPLES reads a scenario written by the core (core/tools/gen_sea_render_samples.cpp): the core's
@@ -29,6 +30,9 @@ const SEA_O := [0.0, -25.0, 20.0, -10.0, 35.0, -40.0, 12.0, 45.0, -30.0, 5.0]
 @export var puffs_enabled: bool = true
 @export var samples_path: String = "res://generated/sea/sea_render_samples.json"
 @export var scenario: String = "example_bay_20kn"
+## The venue of the core samples (CORE_SAMPLES), for its land-effect wind field: a name under data/venues or a
+## path; "" for none.
+@export var venue: String = "example_bay"
 
 var _components: Array = []
 var _exposure: Dictionary = {}
@@ -73,6 +77,26 @@ func sea_exposure() -> Dictionary:
 
 func current_at(_x: float, _y: float, _t_ms: float) -> Vector2:
 	return Vector2.ZERO
+
+
+func venue_wind_field() -> Dictionary:
+	_build()
+	if mode != Mode.CORE_SAMPLES or venue == "":
+		return {}
+	var path := venue
+	if not venue.contains("/"):
+		path = BoatClassData.repo_path("data/venues/%s.venue.json" % venue)
+	return read_wind_field(path)
+
+
+## The wind_field of a venue file (data_format.md §6.2), {} when the file or the field is missing.
+static func read_wind_field(path: String) -> Dictionary:
+	if path == "" or not FileAccess.file_exists(path):
+		return {}
+	var data = JSON.parse_string(FileAccess.get_file_as_string(path))
+	if data is Dictionary and data.get("wind_field") is Dictionary:
+		return data["wind_field"]
+	return {}
 
 
 func wind_state(t_ms: float) -> Dictionary:

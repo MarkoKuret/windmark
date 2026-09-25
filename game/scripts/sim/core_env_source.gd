@@ -21,3 +21,9 @@ func wind_state(t_ms: float) -> Dictionary:
 
 func current_at(x: float, y: float, t_ms: float) -> Vector2:
 	return sim.current_at(x, y, t_ms)
+
+
+## wind.md §8 the venue's land-effect wind field as the venue file holds it ({grid, sectors}, data_format.md
+## §6.2), {} without a venue or a field. The Sea draws its speed factor (water_render.md §4.3).
+func venue_wind_field() -> Dictionary:
+	return SeaEnvSource.read_wind_field(sim.venue_path)

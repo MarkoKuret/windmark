@@ -3,6 +3,7 @@
 render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx;
 
 uniform sampler2D expo_tex : filter_nearest, repeat_disable;
+uniform sampler2D land_tex : filter_nearest, repeat_disable;
 uniform sampler2D detail_tex : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D foam_tex : filter_linear_mipmap, repeat_enable;
 uniform sampler2D wake_tex : filter_linear, repeat_disable;
@@ -13,6 +14,7 @@ varying vec2 v_local;     // camera-relative world metres
 varying float v_spacing;  // grid spacing at the vertex, m
 varying float v_eta;
 varying float v_expo;
+varying float v_land;     // venue speed factor (wind.md §8)
 varying vec3 v_normal;    // geometric normal, scene axes
 
 void vertex() {
@@ -30,6 +32,7 @@ void vertex() {
 	v_spacing = s;
 	v_eta = eta;
 	v_expo = expo;
+	v_land = wm_land(sea_origin + xl);
 	v_normal = NORMAL;
 }
 
@@ -49,7 +52,7 @@ void fragment() {
 #else
 	vec2 wake = vec2(0.0);
 #endif
-	WmSurface S = wm_surface(v_local, v_eta, n_geo, view, dist, wake);
+	WmSurface S = wm_surface(v_local, v_eta, n_geo, view, dist, wake, v_land);
 	vec4 ov = wm_overlays(v_local, dist);
 	ALBEDO = mix(S.albedo, ov.rgb * 0.8, ov.a);
 	EMISSION = mix(S.emission, ov.rgb * 0.35, ov.a);

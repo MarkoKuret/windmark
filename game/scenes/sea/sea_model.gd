@@ -14,6 +14,9 @@ var components: Array = []
 var exposure: Dictionary = {}
 var sum_a := 0.0
 var hs_eff := 0.0
+## Venue wind field (data_format.md §6.2): {x0, y0, dx, dy, nx, ny, f: Array of 8 PackedFloat32Array (from N,
+## NE, ... NW)}; empty = none. Only the speed factor f is drawn (the direction offset d does not show on water).
+var wind_field: Dictionary = {}
 
 
 func set_components(list: Array) -> void:
@@ -61,6 +64,60 @@ func exposure_at(x: float, y: float) -> float:
 	var r0 := lerpf(e[j * nx + i], e[j * nx + i + 1], tx)
 	var r1 := lerpf(e[(j + 1) * nx + i], e[(j + 1) * nx + i + 1], tx)
 	return lerpf(r0, r1, ty)
+
+
+func set_wind_field(field) -> void:
+	wind_field = {}
+	if field == null or not (field is Dictionary) or field.is_empty() or not field.has("grid"):
+		return
+	var g: Dictionary = field["grid"]
+	var sectors: Array = field.get("sectors", [])
+	if sectors.size() != 8:
+		push_warning("SeaModel: a venue wind field needs 8 sectors, got %d" % sectors.size())
+		return
+	var f := []
+	for s in sectors:
+		f.append(PackedFloat32Array(s["f"]))
+	wind_field = {
+		"x0": float(g["x0"]), "y0": float(g["y0"]), "dx": float(g["dx"]), "dy": float(g["dy"]),
+		"nx": int(g["nx"]), "ny": int(g["ny"]), "f": f,
+	}
+
+
+## wind.md §8: the two sectors around the direction the wind blows from and the blend weight, [k0, k1, tw].
+static func land_sectors(global_from: float) -> Array:
+	var w := fposmod(global_from, TAU) / (PI * 0.25)
+	var k0 := int(floor(w)) & 7
+	return [k0, (k0 + 1) & 7, w - floor(w)]
+
+
+## wind.md §8.1 grid sampler on one sector's speed factor, 1 outside the grid.
+func land_sector_at(k: int, x: float, y: float) -> float:
+	var g := wind_field
+	if g.is_empty():
+		return 1.0
+	var nx: int = g["nx"]
+	var ny: int = g["ny"]
+	if x < g["x0"] or y < g["y0"] or x > g["x0"] + (nx - 1) * g["dx"] or y > g["y0"] + (ny - 1) * g["dy"]:
+		return 1.0
+	var u: float = (x - g["x0"]) / g["dx"]
+	var v: float = (y - g["y0"]) / g["dy"]
+	var i := mini(int(u), nx - 2)
+	var j := mini(int(v), ny - 2)
+	var tx := u - i
+	var ty := v - j
+	var f: PackedFloat32Array = g["f"][k]
+	var r0 := lerpf(f[j * nx + i], f[j * nx + i + 1], tx)
+	var r1 := lerpf(f[(j + 1) * nx + i], f[(j + 1) * nx + i + 1], tx)
+	return lerpf(r0, r1, ty)
+
+
+## wind.md §8: the venue's land-effect speed factor at a point for the wind from global_from (rad).
+func land_factor_at(x: float, y: float, global_from: float) -> float:
+	if wind_field.is_empty():
+		return 1.0
+	var s := land_sectors(global_from)
+	return lerpf(land_sector_at(s[0], x, y), land_sector_at(s[1], x, y), s[2])
 
 
 ## water_render.md §2: the per-frame phases d_i' = frac(c_i - fmod(t_r, T_i)/T_i + kx_i*ox + ky_i*oy), in double.

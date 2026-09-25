@@ -54,7 +54,9 @@ func _build_boat() -> void:
 	if ResourceLoader.exists(glb):
 		var scene := load(glb) as PackedScene
 		if scene:
-			boat.add_child(scene.instantiate())
+			var model := scene.instantiate()
+			BoatMaterials.apply(model)
+			boat.add_child(model)
 			return
 	var hull := MeshInstance3D.new()
 	var m := BoxMesh.new()

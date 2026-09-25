@@ -39,7 +39,7 @@ vec3 wm_sky_color(vec3 d, vec3 sun, vec3 horizon, vec3 zenith, vec3 sun_col, flo
 	float mu = max(dot(d, sun), 0.0);
 	// forward scattering around the sun, stronger near the horizon
 	float haze = 1.0 - clamp(abs(h) * 2.5, 0.0, 1.0);
-	col += sun_col * (0.10 * pow(mu, 6.0) * (0.5 + haze) + 0.35 * pow(mu, 48.0));
+	col += sun_col * (0.03 * pow(mu, 8.0) * (0.5 + haze) + 0.15 * pow(mu, 64.0));
 	// clouds: a thin layer projected on a plane above the camera
 	if (h > 0.0 && cover > 0.0) {
 		vec2 uv = d.xz / (h + 0.06) * 0.55 + cloud_off;
@@ -50,6 +50,6 @@ vec3 wm_sky_color(vec3 d, vec3 sun, vec3 horizon, vec3 zenith, vec3 sun_col, flo
 	}
 	// sun disc (0.53 deg across) with a soft rim
 	float disc_mu = smoothstep(0.999955, 0.999985, mu);
-	col += disc * disc_mu * sun_col * 40.0;
+	col += disc * disc_mu * sun_col * 20.0;
 	return col;
 }

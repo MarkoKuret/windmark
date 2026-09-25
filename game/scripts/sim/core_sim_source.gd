@@ -54,6 +54,10 @@ static func default_settings() -> Dictionary:
 	return ClassDB.instantiate(&"CoreSim").default_settings() if available() else {}
 
 
+## the venue file the world was created on ("" for open water)
+var venue_path := ""
+
+
 ## Creates the world from `settings` on the venue file (data/venues/<venue>.venue.json when a bare name, "" for
 ## open water). Returns false with last_error() on failure.
 func create(venue := "") -> bool:
@@ -71,6 +75,7 @@ func create(venue := "") -> bool:
 		_err = core.last_error()
 		core = null
 		return false
+	venue_path = path
 	return true
 
 

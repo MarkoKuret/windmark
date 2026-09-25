@@ -64,11 +64,12 @@ ACCEL_FROM, ACCEL_TO = 0.5, 0.9
 RUDDER_AOA_SHARE = 0.5
 RUDDER_CL_MAX = 1.1
 # fall_off (README "Output"): turning away from the wind in sternway and at a crawl, reference rate of the S and L
-# archetypes, full from 20 to 90 deg TWA, none below 10 deg (a boat right head to wind stays in irons) and from
-# 120 deg; fading to 0 at a Froude number of FALL_OFF_FN ahead, where the keel starts to hold the heading.
+# archetypes, full from 20 to 60 deg TWA, none below 10 deg (a boat right head to wind stays in irons) and from
+# 90 deg (a stopped boat lies beam on); fading to 0 at a Froude number of FALL_OFF_FN ahead, where the keel starts
+# to hold the heading.
 FALL_OFF_RATE = (8.0 * DEG, 5.0 * DEG)
 FALL_OFF_FN = 0.05
-FALL_OFF_TWA = np.array([0, 10, 20, 90, 120, 180]) * DEG
+FALL_OFF_TWA = np.array([0, 10, 20, 60, 90, 180]) * DEG
 FALL_OFF_SHAPE = np.array([0, 0, 1, 1, 0, 0.0])
 
 

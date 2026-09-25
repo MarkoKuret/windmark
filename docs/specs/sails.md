@@ -266,8 +266,8 @@ Semantics and reference shapes:
 - **fall_off**: the same for every config (the sails are flogging). Speed axis from sternway to a crawl ahead
   (reference −6, 0, `v_f`/2, `v_f` m/s with `v_f` at Froude number 0.05, `0.05·sqrt(g·lwl)`: S 0.4 m/s, L 0.7 m/s),
   full from sternway to 0, 0.75 at `v_f`/2, zero from `v_f` (the keel holds the heading once the boat moves);
-  reference S 8°/s, L 5°/s between 20° and 90° TWA, fading to 0 at 120°, zero below 10° TWA (a boat right head to
-  wind stays in irons, `boat.md` §7.4). Light-air sailing speeds stay above `v_f`, so the table never turns a
+  reference S 8°/s, L 5°/s between 20° and 60° TWA, fading to 0 at 90° (a stopped boat lies beam on), zero below
+  10° TWA (a boat right head to wind stays in irons, `boat.md` §7.4). Light-air sailing speeds stay above `v_f`, so the table never turns a
   sailing boat.
 - **optimal_angle**: main: 0 up to about 20–30° AWA, then rising to 35–60° at 120–170°; jib/genoa 14–25° close
   hauled rising to 55–70°; spinnakers 12–30° at their lowest AWA rising to 85–90° dead downwind.

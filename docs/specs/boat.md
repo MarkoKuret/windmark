@@ -361,10 +361,10 @@ Inside the no-go zone (reference: `|TWA|` below 15°) the polar holds **negative
 pushes the boat astern (reference: about −0.12·TWS right head to wind, −0.08·TWS at 15°, with a step up to
 +0.1 m/s just outside). A boat that stops head to wind first coasts to rest, then gathers sternway (§5.8). With
 sternway the helm steers backwards and the `fall_off` table swings the bow away (reference: S 8°/s, L 5°/s for
-`|TWA|` from 20° to 90° with no way on or in sternway, fading out by 120°; none below 10°; fading to 0 at a crawl
-ahead, Froude number 0.05: about 0.4 m/s S, 0.7 m/s L, where the keel starts to hold the heading). Recovery is
-therefore: helm to back the bow off, then sail away as the sails fill. Right head to wind with no helm the boat
-stays in irons, drifting astern.
+`|TWA|` from 20° to 60° with no way on or in sternway, fading out by 90°, where a stopped boat lies beam on; none
+below 10°; fading to 0 at a crawl ahead, Froude number 0.05: about 0.4 m/s S, 0.7 m/s L, where the keel starts
+to hold the heading). Recovery is therefore: helm to back the bow off, then sail away as the sails fill. Right
+head to wind with no helm the boat stays in irons, drifting astern.
 
 ### 7.5 Luffing, stall, let-fly
 - **Luffing**: sails eased past their optimum (`eps > 0`) lose drive through `trim_speed` down to 0 when the sail

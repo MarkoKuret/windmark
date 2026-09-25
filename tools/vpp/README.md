@@ -89,10 +89,10 @@ What each table holds:
   wind-line error `AWA − m_opt` of the neighbouring (TWS, AWA) points, so the core's interpolated lookup at the
   wind line is exactly 0 (let-fly kills the drive; the windage a boat still feels downwind is left out).
 - `fall_off`: turning away from the wind with no way on (`boat.md` §7.4), the same for every config: the
-  reference rate of the owning spec by waterline length (S 8°/s, L 5°/s) from 20° to 90° TWA, fading out by
-  120°, none below 10° (a boat right head to wind stays in irons); full in sternway and at rest, fading as
-  `1 − (v/v_f)²` to 0 at `v_f = 0.05 sqrt(g LWL)` ahead (Froude number 0.05: the keel holds the heading; light-air
-  sailing speeds are above it).
+  reference rate of the owning spec by waterline length (S 8°/s, L 5°/s) from 20° to 60° TWA, fading out by
+  90° (a stopped boat lies beam on), none below 10° (a boat right head to wind stays in irons); full in sternway
+  and at rest, fading as `1 − (v/v_f)²` to 0 at `v_f = 0.05 sqrt(g LWL)` ahead (Froude number 0.05: the keel
+  holds the heading; light-air sailing speeds are above it).
 - `optimal_angle`: best sheet angle of each sail against AWA (resampled the same way).
 
 ### Broached speed

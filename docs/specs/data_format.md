@@ -407,7 +407,7 @@ Recommended axes for the VPP (fine where the tables bend):
 - `trim_error`: −60°, −20°, −10°, −5°, −2°, −0.5°, 0, 0.5°, 2°, then every 5° from 5° to 130°, 150°, 180° (fine
   enough that the trim tables can reach 0 on the wind line at each `awa_abs` without cutting the drive early,
   `sails.md` §6);
-- `fall_off`: `boat_speed` −6, 0, `v_f`/2, `v_f` m/s; `twa_abs` 0°, 10°, 20°, 90°, 120°, 180° (`sails.md` §6).
+- `fall_off`: `boat_speed` −6, 0, `v_f`/2, `v_f` m/s; `twa_abs` 0°, 10°, 20°, 60°, 90°, 180° (`sails.md` §6).
 
 ## 6. Venue physics file (`windmark.venue/1`)
 

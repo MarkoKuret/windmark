@@ -53,6 +53,7 @@ class BoatState:
 	var psi := 0.0
 	var v := 0.0
 	var h := 0.0
+	var yaw_rate := 0.0
 	var phi := 0.0
 	var phi_rate := 0.0
 	var theta := 0.0

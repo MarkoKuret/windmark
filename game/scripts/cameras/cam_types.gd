@@ -104,6 +104,12 @@ class LandAvoid:
 		var full := target.distance_to(eye)
 		var hit := t.land_hit(target, eye)
 		var want := 0.0 if hit == INF else full - maxf(hit - SHORT, 0.0)
+		# a segment that grazes the ground can leave the point 2 m short of the crossing still in it: further in
+		while want > 0.0 and want < full:
+			var p := target + (eye - target) * ((full - want) / full)
+			if p.y >= t.ground_at(p):
+				break
+			want = minf(want + STEP, full)
 		pull = maxf(want, pull * exp(-dt / TAU)) if want < pull else want
 		pull = clampf(pull, 0.0, full)
 		if pull <= 1e-4:

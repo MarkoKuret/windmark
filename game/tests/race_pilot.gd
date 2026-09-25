@@ -96,7 +96,7 @@ func _steer(i: int, t: float) -> void:
 			k["turn_started"] = t
 			k["turn_dir"] = toward if absf(twa0) < 100.0 * DEG else -toward
 		if k["turning"] and t - float(k["turn_started"]) < 50.0:
-			sim.core.set_helm(i, 0.6 * float(k["turn_dir"]))
+			sim.core.set_helm(i, 0.8 * float(k["turn_dir"]))
 			return
 	k["turning"] = false
 	var slot := 18.0 * float(i % 5 - 2)

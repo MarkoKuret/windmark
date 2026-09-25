@@ -138,14 +138,25 @@ in 10 kn with the jib, let fly: about 0.7 of the polar.
   centred. One point for every config (the lateral plane does not change with the sails): the main alone has
   weather helm, a kite far forward on its sprit pulls the bow off close reaching, and heel and drive give weather
   helm broad reaching in a breeze (the broach).
-- the helm that holds it, `h_e = N / (0.5 ρ_w v² A_r n_r C_Lα s δ_max (x_clr − x_rudder))` (the rudder's yaw moment
-  per unit helm in its linear range, with the incidence share `s` of the radius law), held to ±3; the rate is the
-  turn rate that helm gives on the radius law, `v / R(h_e)`, and beyond full helm `v h_e / R_full`, so a boat the
-  rudder cannot hold broaches. Holding a course against it therefore takes `h_e` and pays that helm's rudder drag.
-- broached cells take the value of the last wind the config holds at that angle; no-go and no-wind cells are 0.
+- the helm that holds it on a straight course, `h_e = N / (0.5 ρ_w v² A_r n_r C_Lα δ_max (x_clr − x_rudder))` (the
+  rudder's yaw moment per unit helm in its linear range; the boat is not turning, so the whole rudder angle
+  reaches the blade), held to ±3; the rate is the turn rate that helm gives on the radius law, `v / R(h_e)`, and
+  beyond full helm `v h_e / R_full`, so a boat the rudder cannot hold broaches. It is also the rate at which the
+  boat turns with the helm centred: in a helm turn the blade loses the share `1 − s` of its angle to the turn's
+  cross-flow, and in a free turn at the same rate the centred blade meets that cross-flow and damps it, so the
+  moment `N` meets the same yaw damping as the helm turn of `h_e`. Holding a course against it therefore takes
+  `h_e` and pays that helm's rudder drag.
+- broached cells from 45° TWA where the heel is what failed (`heel_limited`) are overpowered: the boat lies over
+  at its heel limit and rounds up at the full-helm turn rate of its broached speed, `v_b / R_full` (a full helm at
+  speed can still catch it). The other broached cells (pinching in a strong breeze) take the value of the last
+  wind the config holds at that angle; no-go and no-wind cells are 0.
 
-wm7 jib: within ±0.2°/s at the balance point, −1°/s at 40° in 10 kn, +4°/s at 60 to 100° in 10 kn, +15°/s at 100°
-in 16 kn (a helm of about 0.1). Kite: −9 to −17°/s from 50 to 80° in 10 kn, +15°/s at 130° in 22 kn.
+wm7 jib: within ±0.1°/s at the balance point, −0.7°/s at the VMG angle in 6 kn, +1.2 to +1.3°/s from 60 to 110° in
+10 kn (a helm of about 0.02, under a degree of rudder), +4.4°/s at 90° in 14 kn and +4.6°/s at 110° in 17 kn
+(pressed near its heel limit, a helm of about 0.05). Kite: −5 to −6°/s from 50 to 80° in 10 kn (the wrong sail
+there), +3 to +4°/s broad reaching in 17 kn, +5°/s at 130° in 22 kn; overpowered (from 50° in 14 kn, reaching
+from about 20 kn) it broaches at +10 to +20°/s. Before the straight-course helm and the linear-range radius law
+(below) the same cells read +15°/s (jib, 100° in 16 kn) and −9 to −17°/s (kite close reaching).
 
 ### Broached speed
 
@@ -171,7 +182,7 @@ tables, the VMG optima and the `dynamics` fits.
 | key | how |
 | --- | --- |
 | `turn_radius_full` | `0.35 LWL sqrt((A_keel + A_rudder)/A_rudder)` (lateral-plane balance; matches the spec's references) |
-| `turn_radius_offset` | `−2 (1 − h_s) turn_radius_full`: the turn rate grows with the helm until the rudder stalls at `h_s`, where half the rudder angle (the rest is the flow curving round the stern and the drift the turn needs) reaches the stall of the blade's lift line, `h_s = 1.1 / (0.5 · 2π AR/(AR + 2) · rudder_max)`, held in [0.6, 1]; the law's half-helm radius is then that of the linear-then-stalled rudder, `2 h_s R_full` (wm7, wm12: `h_s` 0.72, 0.69) |
+| `turn_radius_offset` | `−(1 − h_s) turn_radius_full`: the turn rate grows with the helm until the rudder stalls at `h_s`, where half the rudder angle (the rest is the flow curving round the stern and the drift the turn needs) reaches the stall of the blade's lift line, `h_s = 1.1 / (0.5 · 2π AR/(AR + 2) · rudder_max)`, held in [0.6, 1]; the law then has the slope of the linear-then-stalled rudder at small helm, `R(h) → h_s R_full / h`, where the boat is steered and held against its helm balance (half helm gives 58 %, `h_s` about 80 % of the full-helm rate; wm7, wm12: `h_s` 0.72, 0.69) |
 | `decel_linear` | the rate for which `dv/dt = −(k v + decel_const)` coasts from the close-hauled VMG speed to half of it in the time the upright hull does with the drive gone, `dv/dt = −(R(v)/(m + m_a) + decel_const)`; median over 6 to 16 kn TWS (a tack, a luff, let-fly) |
 | `decel_const` | deceleration in irons: windage (hull, mast, sails luffing on their sheets) at 5 m/s apparent wind plus the hull at 1 m/s, over the mass |
 | `heel_speed_factor` | 1 up to `vpp.max_heel`; beyond, the surge equilibrium with the heel held there, relative to the limit |
@@ -181,7 +192,7 @@ tables, the VMG optima and the `dynamics` fits.
 | `pitch_freq` | waterplane pitch stiffness over pitch inertia (+80 % added) |
 | `collision`, `hull_points`, `wind_shadow` geometry | the generator's `perf_inputs` when given, else the reference constructions of `collisions.md` §2.1 and `wind_shadow.md` §2 |
 
-The rest (`helm_rate`, `pitch_damping`, `heave_time`, `surf_gain`, wobble, wave gains, sail rates, handling
+The rest (`helm_rate`, `yaw_time` (S 0.35 s, L 0.6 s), `pitch_damping`, `heave_time`, `surf_gain`, wobble, wave gains, sail rates, handling
 times, slowdowns) use the reference values of the owning specs, interpolated between the sportsboat and
 large-monohull archetypes by waterline length. The `vpp` block (ignored by the core) records the notes, VMG
 optima, the righting-moment curve, the added-mass coefficient and diagnostic tables (flat, reef, AWA, leeway,
@@ -315,7 +326,11 @@ code is included.
 
 - The helm balance has no hull terms (the heeled hull's asymmetry, the Munk moment of the canoe body): their
   value at the balance point is folded into `x_clr`, their change with speed and heel is left out. The balance
-  point is a design statement (12 kn, close-hauled), not derived from the lateral plane geometry.
+  point is a design statement (12 kn, close-hauled), not derived from the lateral plane geometry. The sail plan's
+  forces act at its area-weighted centre of effort (a kite far forward on its sprit gives lee helm close
+  reaching). The polar is the fastest trim, not a balanced one: a crew easing the main to keep the helm light on
+  a breezy reach is not modelled, so near its heel limit the boat carries 4 to 7°/s of weather helm.
+- `yaw_time` is a reference value by length, not derived from the yaw inertia and damping.
 - `fall_off` uses the spec's reference rate, not a yaw balance of the windage.
 - The radius law's offset and the rudder drag rest on an assumed share (0.5) of the rudder angle reaching the
   blade in a turn (the rest is the flow curving round the stern and the drift the turn needs), the same for

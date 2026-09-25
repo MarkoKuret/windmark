@@ -41,6 +41,20 @@ inline const wm::PerfData& perf_no_helm_balance(const std::string& cls) {
   return *it->second;
 }
 
+// The class without helm balance and without yaw inertia (yaw_time 0): the turn rate is the radius law's at once,
+// for the steady turning circle (boat.md §10.2).
+inline const wm::PerfData& perf_no_yaw_inertia(const std::string& cls) {
+  static std::map<std::string, std::unique_ptr<wm::PerfData>> cache;
+  auto it = cache.find(cls);
+  if (it == cache.end()) {
+    auto p = std::make_unique<wm::PerfData>(perf_no_helm_balance(cls));
+    p->dynamics.yaw_time = 0.0f;
+    p->dynamics.derived.yaw_a = wm::DT / (0.0f + wm::DT);
+    it = cache.emplace(cls, std::move(p)).first;
+  }
+  return *it->second;
+}
+
 inline float kn(float knots) { return knots * wm::KNOT; }
 inline float deg(float d) { return d * wm::DEG; }
 inline float to_deg(float r) { return r / wm::DEG; }

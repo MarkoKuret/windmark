@@ -169,6 +169,11 @@ def test_weather_helm(generated):
     i = int(np.argmin(abs(tws - perf.WH_BALANCE_TWS)))
     j = int(np.argmax(np.where(V[i] > 0, V[i] * np.cos(twa), -1)))
     assert abs(w[i, j]) < 1.5 * DEG
+    # a well-balanced boat: holding the course takes a few degrees of rudder, so with the helm centred the upwind
+    # config drifts slowly upwind and reaching in a moderate breeze
+    i = int(np.argmin(abs(tws - 10 * KNOT)))
+    sail = (twa >= 30 * DEG) & (twa <= 120 * DEG) & (V[i] > 0)
+    assert np.all(np.abs(w[i, sail]) < 3 * DEG)
     kite = p["configs"][2]
     tws, twa, w = _t2(kite["weather_helm"])
     i = int(np.argmin(abs(tws - 22 * KNOT)))
@@ -183,6 +188,7 @@ def test_tack_dynamics(generated):
     d = p["dynamics"]
     r_full, off = d["turn_radius_full"], d["turn_radius_offset"]
     assert -r_full < off <= 0.0                                # turn_c > 0; a rudder that stalls short of full helm
+    assert 0.2 <= d["yaw_time"] <= 1.0                         # yaw inertia, a fraction of a second
     r_half = (r_full + off) / 0.5 - off
     assert 1.2 * r_full <= r_half <= 2.0 * r_full
     # coasting from the close-hauled speed: slower than the old tangent law, faster than no drag at all
@@ -192,7 +198,7 @@ def test_tack_dynamics(generated):
     i3 = int(np.argmin(abs(v - 3.0)))
     assert np.interp(1.0, hh, rd[i3]) > 2.5 * np.interp(0.5, hh, rd[i3])
     # one blade incidence for the radius law and the drag: the drag's stall knee sits at the radius law's stall helm
-    h_s = 1 + off / (2 * r_full)
+    h_s = 1 + off / r_full
     slope = np.diff(rd[i3]) / np.diff(hh)
     k = int(np.argmax(np.diff(slope))) + 1                     # the column where the slope jumps
     assert abs(hh[k] - h_s) <= 0.1 + 1e-9

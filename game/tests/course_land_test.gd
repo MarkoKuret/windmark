@@ -418,17 +418,26 @@ func test_ai_race() -> void:
 	var t0 := Time.get_ticks_msec()
 	var k := sim.step_ticks(60000, true)
 	var ms := Time.get_ticks_msec() - t0
+	# every AI boat has a result: a finish, or the projected finish the race gives the AI boats still racing when
+	# the human entry has finished (race.md §7.2), or a disqualification for its penalties; none is left DNF
 	var finished := 0
-	for b in range(1, n):
-		if bool(sim.core.race_boat(b)["finished"]):
-			finished += 1
+	var scored := 0
+	for row in sim.core.results():
+		var b := int(row["boat"])
+		if b < 1:
+			continue
+		if int(row["code"]) == 0:
+			scored += 1
+			finished += 0 if bool(row["projected"]) else 1
+		elif str(row["code_name"]) == "DSQ" and int(sim.core.boat_rules(b)["received"]) >= 3:
+			scored += 1
 	var race: Dictionary = sim.core.race()
-	print("  fast-forward: %d ticks in %d ms (%.0f x real time), race state %d" % [k, ms,
-		k * 50.0 / maxf(1.0, ms), int(race["state"])])
-	if finished < 5:
+	print("  fast-forward: %d ticks in %d ms (%.0f x real time), race state %d, AI boats finished %d, scored %d" % [
+		k, ms, k * 50.0 / maxf(1.0, ms), int(race["state"]), finished, scored])
+	if scored < 5:
 		print("  results: %s" % str(sim.core.results()))
 		print("  race: %s" % str(race))
-	t.ok(finished == 5, "every AI boat finished (%d)" % finished)
+	t.ok(int(race["state"]) == RaceText.RaceState.CLOSED and scored == 5, "every AI boat finished or was scored (%d)" % scored)
 	t.ok(int(race["state"]) == CourseView.RACE_CLOSED, "the race closed")
 	sc.step_frame(0.05)
 	t.ok(_pose_err(sc) < 1e-3, "nodes follow the core after the fast-forward")

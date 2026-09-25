@@ -199,7 +199,11 @@ void Boat::step(const BoatEnv& env) {
     const float r = max(k.turn_c / n - d.turn_radius_offset, 0.5f);
     turn_arc = (s_.v / r) * sgn(s_.h);
   }
-  const float turn_rate = ((turn_arc + tack * helm_luff) - tack * helm_fall) + s_.contact_yaw_rate;
+  // Yaw inertia: the hull's yaw rate follows the steady rate of helm, helm balance and fall-off over yaw_time,
+  // building and dying away alike; collisions add theirs without the lag (boat.md §5.9).
+  const float turn_hull = (turn_arc + tack * helm_luff) - tack * helm_fall;
+  s_.yaw_rate = s_.yaw_rate + k.yaw_a * (turn_hull - s_.yaw_rate);
+  const float turn_rate = s_.yaw_rate + s_.contact_yaw_rate;
   const float dpsi = turn_rate * DT;
   const float mid = s_.psi + 0.5f * dpsi;
   const SinCos ms = wm_sincos(mid);
@@ -252,7 +256,7 @@ float Boat::turn_radius(float helm) const {
 
 void Boat::save(SnapshotWriter& w) const {
   const float f[] = {s_.pos_x,      s_.pos_y,      s_.z,          s_.psi,        s_.v,
-                     s_.h,          s_.phi,        s_.phi_rate,   s_.theta,      s_.theta_rate,
+                     s_.h,          s_.yaw_rate,   s_.phi,        s_.phi_rate,   s_.theta,      s_.theta_rate,
                      s_.wobble_phase, s_.contact_vx, s_.contact_vy, s_.contact_yaw_rate,
                      s_.twd_from,   s_.awd_from,   s_.tws,        s_.twa,        s_.aws,
                      s_.awa,        s_.v_filt,     s_.sog_filt_x, s_.sog_filt_y};
@@ -267,7 +271,7 @@ void Boat::save(SnapshotWriter& w) const {
 
 bool Boat::load(SnapshotReader& r) {
   float* f[] = {&s_.pos_x,      &s_.pos_y,      &s_.z,          &s_.psi,        &s_.v,
-                &s_.h,          &s_.phi,        &s_.phi_rate,   &s_.theta,      &s_.theta_rate,
+                &s_.h,          &s_.yaw_rate,   &s_.phi,        &s_.phi_rate,   &s_.theta,      &s_.theta_rate,
                 &s_.wobble_phase, &s_.contact_vx, &s_.contact_vy, &s_.contact_yaw_rate,
                 &s_.twd_from,   &s_.awd_from,   &s_.tws,        &s_.twa,        &s_.aws,
                 &s_.awa,        &s_.v_filt,     &s_.sog_filt_x, &s_.sog_filt_y};

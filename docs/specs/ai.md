@@ -312,7 +312,8 @@ Every decision, the planned heading is checked against every course object (mark
 `r + 0.5·B + 1 m + 0.15·L` is passed by the tangent to that clearance circle on the side it is on (the other side
 when that side is above close-hauled). The mark being rounded is only checked for a collision course (clearance
 `r + 0.5·B + 0.5 m`, the rounding circle keeps the planned one), and it is never passed on the other side: if its
-side is above close-hauled the AI tacks away from it (if safe) or pinches and lets fly. Tacks, gybes (§7.3) and
+side is above close-hauled the AI tacks away from it (if safe) or pinches and lets fly (only with way on, faster
+than 0.5 m/s: nearly stopped at the mark it keeps its sails drawing so that it can steer away). Tacks, gybes (§7.3) and
 the avoidance candidates (§7.2) are rejected when the predicted hull would touch a course object.
 
 ### 6.3 Gate choice
@@ -472,7 +473,8 @@ behaviour triggers whatever the shadow's calibration.
   `rudder_drag_bear` at the present speed) is at most 0.1 m/s² (never below 0.25, so the boat can always turn), so the
   AI steers as gently as a good helm. The actual helm follows `h_cmd` at `helm_rate` in the physics.
 - **Heading hold**: the boat turns with the helm centred (weather helm and fall-off, `boat.md` §5.9: a wm7 under jib
-  in 16 kn at TWA 100° turns at about 15°/s; a spinnaker close reaching pulls the bow away), so the controller adds
+  in 16 kn at TWA 100° turns at about 5°/s; a spinnaker close reaching pulls the bow away; an overpowered kite
+  broaches), and it answers the helm with its yaw inertia (`yaw_time`), so the controller adds
   an integral term: `I += tack·(r* − turn_rate)·DT` (per second of turn-rate error, only with `|v| > 0.3 m/s`),
   clamped to ±0.6, and the helm gets `+ tack·I` (reversed in sternway). It is kept relative to the tack because the
   balance of the sail plan flips with it.

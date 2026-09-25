@@ -276,6 +276,7 @@ reference values are in the owning spec.
 | key | type | spec |
 | --- | --- | --- |
 | `helm_rate`, `rudder_max`, `turn_radius_full`, `turn_radius_offset` | float | boat.md §4 |
+| `yaw_time` | float, s, 0 to 2 | boat.md §4, §5.9 |
 | `decel_linear`, `decel_const` | float | boat.md §4 |
 | `heel_speed_factor` | Table1D(`heel_abs`) | boat.md §4 |
 | `rudder_drag_luff`, `rudder_drag_bear` | Table2D(`boat_speed_abs`, `helm_abs`), m/s² | boat.md §4 |

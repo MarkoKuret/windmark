@@ -304,17 +304,41 @@ func test_set_and_hold() -> void:
 		var dt: float = 1.0 / fps
 		var pc := PlayerControls.new()
 		t.ok(pc.helm_mode == PlayerControls.HelmMode.SET_AND_HOLD, "default mode")
+		# a short press is a fine correction: 0.4 per second for the first 0.1 s, then rising
 		var r := RawInput.new().press(&"helm_right")
+		run(pc, r, frames_for(1.0 / 6.0, fps), dt)
+		t.ok(absf(pc.h_cmd - 0.072778) <= 0.072778 * 0.005, "%d fps: 1/6 s gives %.4f" % [fps, pc.h_cmd])
+		pc = PlayerControls.new()
+		r = RawInput.new().press(&"helm_right")
 		run(pc, r, frames_for(0.5, fps), dt)
-		t.ok(absf(pc.h_cmd - 0.30) <= 0.30 * 0.005, "%d fps: 0.5 s gives %.4f" % [fps, pc.h_cmd])
+		t.ok(absf(pc.h_cmd - 0.42) <= 0.42 * 0.005, "%d fps: 0.5 s gives %.4f" % [fps, pc.h_cmd])
 		r.held.erase(&"helm_right")
 		run(pc, r, int(fps), dt)
-		t.ok(absf(pc.h_cmd - 0.30) <= 0.30 * 0.005, "%d fps: stays after release" % fps)
+		t.ok(absf(pc.h_cmd - 0.42) <= 0.42 * 0.005, "%d fps: stays after release" % fps)
+		# centring eases back along the same ramp: 0.42 takes 0.5 s, and the helm is not snapped
 		pc.update(RawInput.new().press(&"helm_centre"), dt)
-		t.near(pc.h_cmd, 0.0, 1e-9, "%d fps: helm_centre gives 0 in the next frame" % fps)
+		t.ok(pc.h_cmd > 0.4, "%d fps: helm_centre does not snap the helm (%.4f)" % [fps, pc.h_cmd])
+		run(pc, RawInput.new(), frames_for(1.0 / 3.0, fps) - 1, dt)
+		t.ok(absf(pc.h_cmd - 0.211806) <= 0.002, "%d fps: 1/3 s after centring %.4f" % [fps, pc.h_cmd])
+		run(pc, RawInput.new(), frames_for(1.0 / 6.0, fps), dt)
+		t.near(pc.h_cmd, 0.0, 1e-9, "%d fps: centred 0.5 s after helm_centre" % fps)
+		# held long: full helm from the centre in about 0.89 s
+		run(pc, RawInput.new().press(&"helm_left"), frames_for(5.0 / 6.0, fps), dt)
+		t.ok(absf(pc.h_cmd + 0.92) <= 0.92 * 0.005, "%d fps: 5/6 s gives %.4f" % [fps, pc.h_cmd])
+		run(pc, RawInput.new().hold(&"helm_left"), frames_for(1.0 / 6.0, fps), dt)
+		t.near(pc.h_cmd, -1.0, 1e-9, "%d fps: full helm by 1 s" % fps)
+		# a helm key during the easing takes over at once
+		pc.update(RawInput.new().press(&"helm_centre"), dt)
+		run(pc, RawInput.new(), frames_for(0.2, fps), dt)
+		var mid := pc.h_cmd
+		pc.update(RawInput.new().press(&"helm_left"), dt)
+		t.ok(pc.h_cmd < mid, "%d fps: a key stops the centring" % fps)
+		run(pc, RawInput.new(), frames_for(0.5, fps), dt)
+		t.ok(pc.h_cmd < mid, "%d fps: and the helm stays where the key left it" % fps)
 		# helm_fine: a third of the rate
+		pc = PlayerControls.new()
 		run(pc, RawInput.new().press(&"helm_right").hold(&"helm_fine"), frames_for(0.5, fps), dt)
-		t.ok(absf(pc.h_cmd - 0.10) <= 0.10 * 0.005, "%d fps: fine 0.5 s gives %.4f" % [fps, pc.h_cmd])
+		t.ok(absf(pc.h_cmd - 0.14) <= 0.14 * 0.005, "%d fps: fine 0.5 s gives %.4f" % [fps, pc.h_cmd])
 
 
 func test_auto_trim_off() -> void:

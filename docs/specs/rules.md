@@ -2,8 +2,9 @@
 
 The automatic umpire: which boat must keep clear of which, who is entitled to room at marks and obstructions, when
 a boat has broken a rule, who is penalised, how penalties are taken, and when a boat is disqualified. It runs in the
-core on the authoritative side (server online, local process offline), once per tick at step 6 of the tick order
-(`race.md` §1), after the physics, collisions and race progress of the same tick.
+core on the authoritative side (server online, local process offline), once per tick in step 1 of the tick order
+(`conventions.md` §4.1, `race.md` §1), right after race progress, on the state at `t_n` and the contact events of
+the previous tick's collision step.
 
 The engine follows the Racing Rules of Sailing (RRS) of World Sailing, 2021–2024 edition, Part 2 (when boats meet),
 Part 3 rules 28–31 (with the starting parts in `race.md`) and Part 4 rule 44 (penalties), and Appendix C for match
@@ -11,14 +12,16 @@ races. This file explains each rule in our own words, cites its number, and then
 it from boat positions and motion. If a later RRS edition renumbers a rule, update the numbers here and in the event
 codes (§11).
 
-Conventions (frames, tack, sides, the rules hull, ticks) are those of `race.md` §0. `L` is a boat's hull length,
+Conventions: `conventions.md` (frames, `twa` positive = wind from starboard, the tick, binary32 and `wm_*`
+functions) and the race helpers of `race.md` §0 (`rules_tack`, sides, the rules hull = the collision outline,
+the reference point `c` = the boat's `pos`). `L` is a boat's hull length,
 `B` her beam; `L_max` the longest hull of the pair being judged.
 
 ## 1. What the rules talk about (definitions, in our words)
 
 | Term | Meaning (RRS Definitions) | How Windmark measures it |
 | --- | --- | --- |
-| Tack, port / starboard | A boat is on the tack of her windward side. | `race.md` §0 `port_tack`. |
+| Tack, port / starboard | A boat is on the tack of her windward side. | `race.md` §0 `rules_tack`. |
 | Tacking | From the moment a boat passes head to wind until she is on a close-hauled course. | §3.4. |
 | Windward / leeward | Of two boats on the same tack, the leeward one is on the side of the other that is away from the wind; the other is windward. | §3.3. |
 | Clear astern / clear ahead / overlap | A boat is clear astern when her hull is behind a line abeam from the aftermost point of the other's hull; the other is clear ahead. They are overlapped when neither is clear astern, or when a boat between them overlaps both. These terms apply between boats on the same tack, and on opposite tacks only when rule 18 applies between them or both are sailing more than 90° from the true wind. | §3.2. |
@@ -36,7 +39,8 @@ Conventions (frames, tack, sides, the rules hull, ticks) are those of `race.md` 
 ### 2.1 When rules apply
 
 - Rules are active for a boat while she is **racing**: from the preparatory signal (`race.md` §3.2) until she
-  becomes a ghost (`race.md` §6.3). Between the warning and preparatory signals only collisions exist.
+  becomes a ghost (`race.md` §6.3: `collides` and `casts` cleared). Between the warning and preparatory signals only
+  collisions exist.
 - `rules_level` (`race.md` §2): `none` = no rules, contacts only bounce; `basic` = rules 10–16, 22, 31 and
   penalties; `full` = everything in this file.
 - Pairs: every unordered pair of racing boats whose hull gap (§3.1) is below `R_pair = 10·L_max` is judged each tick.
@@ -45,14 +49,14 @@ Conventions (frames, tack, sides, the rules hull, ticks) are those of `race.md` 
 ### 2.2 Per tick pipeline
 
 ```
-1. per boat:   geometry (hull, bow, stern, centroid, velocity over ground, yaw rate), tack, tacking state (§3.4),
+1. per boat:   geometry (hull, bow, stern, reference point, velocity over ground, turn rate), tack, tacking (§3.4),
                zone membership per mark (§7.1), penalty-turn progress (§9.3), boundary (courses.md §5.1)
 2. per pair:   relation (clear astern / ahead / overlapped, §3.2), windward/leeward (§3.3), hull gap
 3. per pair:   right-of-way obligation (§4): who keeps clear, under which rule
 4. per pair:   rule 18 / 19 status and room entitlements (§7), rule 15 onset (§5.2), rule 17 status (§5.4)
 5. per pair:   tests: keep-clear state (§3.5), room state (§7.4), escape tests where needed (§3.6)
 6. per pair:   breaches this tick (§5, §7) and exoneration (§6.1) → incidents (§9.1)
-7. contacts:   the tick's contact list from collisions.md → incidents, mark touches (§8)
+7. contacts:   the previous tick's contact events (collisions.md §5) → incidents, mark touches (§8)
 8. per boat:   penalties issued (§9.2), penalty turns served (§9.3), deadlines (§9.4), disqualification (§9.5)
 9. publish:    per-boat and per-pair records (§11) for the AI, HUD and network
 ```
@@ -74,11 +78,12 @@ its onset tick and onset cause (§5.2); rule-18 status per mark (§7.3); rule-17
 
 - **Hull gap** `g(A, B)`: the minimum distance between the two rules hull polygons (0 when they intersect). Convex
   polygons: separating-axis test for intersection, else the minimum over vertex–edge distances.
-- **Motion model for prediction** (constant turn rate and velocity): each boat keeps her current speed over ground
-  `v` (m/s, along her velocity direction χ, which differs from the heading by leeway and current) and yaw rate `r`
-  (rad/s, from the last two ticks). Over a horizon the hull polygon is moved in sub-steps of 0.1 s:
-  `ψ += r·0.1`, `χ += r·0.1`, `c += v·dir(χ)·0.1`, the polygon rotated about the centroid with ψ. Pure kinematics;
-  the physics is not run for predictions.
+- **Motion model for prediction** (constant turn rate and velocity): each boat keeps her speed through the water
+  `v`, her turn rate `r` (the boat's `turn_rate` output, `boat.md` §5.9, heading rate positive clockwise) and the
+  current at her position; the boat model has no leeway (`boat.md` §6.4). Over a horizon the hull polygon is moved
+  in sub-steps of 0.1 s: `ψ += r·0.1`, `c += (v·dir(ψ) + current)·0.1`, the polygon placed at `c` with ψ (the boat
+  turns about its reference point, as in the boat step). The contact velocity is ignored. Pure kinematics; the
+  physics is not run for predictions.
 - `PredGap(A, B, H)`: the minimum hull gap over the samples 0, 0.1, …, H s.
 - **Clearance margin** `m(A, B) = max(0.3 m, 0.05·L_max)`.
 
@@ -90,7 +95,7 @@ With `f_B = dir(ψ_B)` and `aft_B` = B's hull point with the smallest `dot(p, f_
 - A is **clear ahead of B** ⇔ B is clear astern of A.
 - Otherwise they are **overlapped**. They are also overlapped (relation `overlapped_via`) when A is clear astern of B
   but some third racing boat C lies between them (`dot(c_C − c_A, c_C − c_B) < 0`) and overlaps both.
-- The relation is only used when the terms apply (§1): same tack, or both `|a| > 90°`, or rule 18 applies between
+- The relation is only used when the terms apply (§1): same tack, or both `|twa| > 90°`, or rule 18 applies between
   them. Otherwise it is `n/a`.
 
 ### 3.3 Windward and leeward (same tack)
@@ -107,8 +112,8 @@ directions.
 
 ### 3.4 Tacking (rule 13 state)
 
-- A boat **passes head to wind** on the tick her tack label flips (`race.md` §0) while `|a| < 90°`.
-- From that tick she is **tacking** until `|a| ≥ θ_CH − 5°` on the new tack, where θ_CH is her class's upwind VMG
+- A boat **passes head to wind** on the tick her tack label flips (`race.md` §0) while `|twa| < 90°`.
+- From that tick she is **tacking** until `|twa| ≥ θ_CH − 5°` on the new tack, where θ_CH is her class's upwind VMG
   angle at the current true wind speed (`boat.md` polar), or until she flips back to the old tack (then she is
   simply back on it). A boat stuck head to wind after passing it stays tacking.
 - Gybing is not a rule-13 state; a gybe only changes the tack label (via the boom, `race.md` §0).
@@ -120,10 +125,10 @@ For a pair where A must keep clear of B, each tick:
 ```
 H_warn   = 4.0 s     H_breach = 1.0 s     δ = 10°  (δ_warn = 20°)    T_react = 0.5 s
 course test:   PredGap(A, B, H) with both boats on their current motion
-turn test:     only when overlapped: B's hull rotated by +δ and by −δ about her pivot point (boat.md; default 0.4 L
-               aft of the bow) and then moved T_react on the rotated heading; A on her current motion for T_react
+turn test:     only when overlapped: B's hull rotated by +δ and by −δ about her reference point and then moved
+               T_react on the rotated heading; A on her current motion for T_react
 state:
-  contact this tick between A and B                                   → Breach (contact)
+  a contact event between A and B from the last collision step         → Breach (contact)
   course test PredGap(H_breach) < m, or turn test (δ) hits A          → Breach
   course test PredGap(H_warn)   < m, or turn test (δ_warn) hits A      → Warning
   else                                                                → Clear
@@ -139,11 +144,13 @@ state:
 `Escape(A, B, H = 3 s)`: can A keep clear of B if she acts now? A tries four manoeuvres; B keeps her current motion:
 
 1. hold course;
-2. full turn to port, after a reaction delay of 0.3 s: yaw rate `ω = v_A / R_min,A(v_A)`, the class's minimum
-   turning radius at that speed (`boat.md`; fallback `R_min = 2·L_A`), speed reduced linearly to 80 % over the turn;
-3. full turn to starboard, likewise;
-4. slow down: after 0.3 s, deceleration `a_stop` of the class with sails let fly (`boat.md`; fallback 0.6 m/s²),
-   heading held.
+2. full turn to port: after a reaction delay of 0.3 s the helm moves from its current value `h` towards −1 at the
+   class's `helm_rate`; the turn rate is `v / R(h)` with `R(h) = (turn_radius_full + turn_radius_offset)/|h| −
+   turn_radius_offset` (`boat.md` §5.9); speed falls by the class's `rudder_drag_luff` / `rudder_drag_bear` table
+   at that speed and helm (`boat.md` §4), whichever applies to the direction of the turn;
+3. full turn to starboard, likewise towards +1;
+4. slow down: after 0.3 s every sail is let fly, heading held, and the speed decays with the boat's deceleration law
+   towards zero: `dv/dt = −(decel_linear·v + decel_const)` (`boat.md` §4, §5.8).
 
 `Escape = true` if at least one manoeuvre keeps `PredGap > 0` (no contact) over H. The escape test is how the engine
 decides whether a right-of-way boat gave the other boat **room** to keep clear (rules 15, 16) and whether a boat
@@ -159,7 +166,7 @@ direct course:
 - `θ_R > θ_DN` (below the downwind VMG angle θ_DN of the polar): proper TWA = θ_DN (run on the current tack);
 - otherwise proper TWA = θ_R (sail straight at it).
 
-The boat is **above her proper course** when `|a| < proper TWA − 10°` for more than 2 s continuously (the 10°
+The boat is **above her proper course** when `|twa| < proper TWA − 10°` for more than 2 s continuously (the 10°
 covers wave and steering noise and the speed-building footing of real boats). This estimate is used by rule 17 and
 by rule 18.4.
 
@@ -174,12 +181,12 @@ code. The first matching line wins:
 | 2 | After the start signal, one boat is returning to start (OCS, OCS-I, or sailing towards the pre-start side to start) and the other is not | the returning boat, until she is completely on the pre-start side | 22.1 |
 | 3 | One boat is taking a penalty turn (§9.3) and the other is not | the boat taking the penalty | 22.2 |
 | 4 | One boat is tacking (§3.4) and the other is not | the tacking boat | 13 |
-| 5 | Both are tacking | the one on the other's port side; if neither is on the other's port side, the one astern (the one whose centroid is behind along the mean heading) | 13 |
+| 5 | Both are tacking | the one on the other's port side; if neither is on the other's port side, the one astern (the one whose reference point is behind along the mean heading) | 13 |
 | 6 | Opposite tacks | the port-tack boat | 10 |
 | 7 | Same tack, overlapped (§3.2) | the windward boat | 11 |
 | 8 | Same tack, not overlapped | the boat clear astern | 12 |
 
-"On the other's port side" for row 5: A's centroid is to the left of B's centreline (`left(c_A; stern_B → bow_B) > 0`)
+"On the other's port side" for row 5: A's reference point is to the left of B's centreline (`left(c_A; stern_B → bow_B) > 0`)
 while B's is not to the left of A's.
 
 Rows 2 and 3 are the rule 22 duties: a boat that is putting a starting error right, or that is doing penalty turns,
@@ -200,8 +207,8 @@ Every boat shall avoid contact if reasonably possible. A right-of-way or room-en
 clear that the other is not keeping clear or giving room, and is exonerated for a contact that causes no damage
 (rule 21(c)).
 
-Windmark: a contact is **damaging** when the relative normal speed at contact reported by `collisions.md` is at
-least `v_damage = 1.5 m/s`. For a damaging contact the right-of-way boat is also penalised under rule 14 if, during
+Windmark: a contact is **damaging** when the contact event's `closing_speed` (`collisions.md` §5) is at least
+`v_damage = 1.5 m/s`. For a damaging contact the right-of-way boat is also penalised under rule 14 if, during
 the 2 s before the contact, she was in a pair state where the other boat was in `Breach` (§3.5) and she neither
 changed heading by at least 10° nor reduced speed by at least 10 %. A non-damaging contact never penalises the
 right-of-way boat under rule 14. The give-way boat is always penalised for a contact under her own obligation (unless
@@ -237,8 +244,8 @@ A **course change** of boat B starts on the first tick her yaw rate has been abo
 - **16.1**: if B (right of way over A) starts a course change at `t_c`, A was `Clear` or `Warning` (not `Breach`) at
   `t_c`, and within 3 s after `t_c` A becomes `Breach` while `Escape(A, B)` is false, B breaks rule 16.1 towards A.
   A's breaches in that window are exonerated. If `Escape` was true and A did not take it, A is in breach as usual.
-- **16.2**: if A is on port and B on starboard, both upwind (`|a| < 90°`), A is passing astern of B (A's predicted
-  track over 5 s passes behind B's stern: at closest approach A's centroid is on the aft side of B's abeam line),
+- **16.2**: if A is on port and B on starboard, both upwind (`|twa| < 90°`), A is passing astern of B (A's predicted
+  track over 5 s passes behind B's stern: at closest approach A's reference point is on the aft side of B's abeam line),
   and B starts a course change turning away from the wind (bearing away) at `t_c`, and within 3 s A becomes
   `Warning` or `Breach` where she was `Clear` before `t_c`, B breaks rule 16.2.
 
@@ -311,13 +318,13 @@ Rule 18 applies between boats A and B at a mark M when:
 
 and does not apply when:
 
-- they are on opposite tacks and both on a beat to the mark (both `|a| < 90°` and the mark bearing from each is
+- they are on opposite tacks and both on a beat to the mark (both `|twa| < 90°` and the mark bearing from each is
   within `θ_CH + 10°` of the wind direction), or
 - one of them has already rounded M (her next step is past M) and the other has not (one approaching, one leaving),
 - M is a start line end (never a rule-18 mark in Windmark; §7.10).
 
-At a gate each boat is assigned the buoy she is heading for: the buoy whose bearing from her centroid is closer to her
-velocity direction, with a 10° hysteresis; rule 18 applies at a buoy between boats assigned to it.
+At a gate each boat is assigned the buoy she is heading for: the buoy whose bearing from her reference point is closer to her
+course over ground, with a 10° hysteresis; rule 18 applies at a buoy between boats assigned to it.
 
 When rule 18 applies between boats on opposite tacks, clear astern/ahead/overlap are used for them (§1).
 
@@ -361,7 +368,7 @@ For an entitled boat E, giver G and mark M with rounding side s:
 - G **breaks rule 18.2** when `Room(G, E)` is false and `Escape(G, E)` shows that G could have kept the path free
   (at least one of G's manoeuvres keeps `Room` true); if G could not (E came in too fast or too late), there is no
   breach and E is expected to take what room exists.
-- E is **within her mark-room** when her centroid is inside the corridor; her Section A, 15 and 16 breaches towards
+- E is **within her mark-room** when her reference point is inside the corridor; her Section A, 15 and 16 breaches towards
   G are then exonerated (21(a)). Outside the corridor (sailing wide to push G away), she has no exoneration.
 
 ### 7.5 Rule 18.3: passing head to wind in the zone
@@ -376,22 +383,22 @@ fetching M (§7.6), then for every boat S that has been on starboard continuousl
 
 - the frozen 18.2 status between T and S is deleted;
 - T **breaks rule 18.3** if `PredGap(T, S, 1.0 s) < m` with S holding her course while S is close-hauled
-  (`|a_S| ≤ θ_CH + 3°`), i.e. S would have to luff above close-hauled to avoid T;
+  (`|twa_S| ≤ θ_CH + 3°`), i.e. S would have to luff above close-hauled to avoid T;
 - if S becomes overlapped inside T, S is entitled to mark-room from T (§7.4).
 
 ### 7.6 Fetching
 
 A boat is **fetching** mark M (to be left to port or starboard) when, holding her current heading without tacking,
-her centroid's straight track passes M on the required side at a distance ≤ `2·L`: the signed offset of M from the
-track line `left(M; c → c + dir(χ))` has the required sign (mark to port ⇒ M to the left) and magnitude ≤ `2·L`,
-and M is ahead (`dot(M − c, dir(χ)) > 0`).
+her reference point's straight track passes M on the required side at a distance ≤ `2·L`: the signed offset of M from the
+track line `left(M; c → c + dir(cog))` has the required sign (mark to port ⇒ M to the left) and magnitude ≤ `2·L`,
+and M is ahead (`dot(M − c, dir(cog)) > 0`), with `cog` the boat's course over ground (`boat.md` §5.10).
 
 ### 7.7 Rule 18.4: gybing at a mark
 
 In our words: when an inside overlapped right-of-way boat must gybe at a mark to sail her proper course, until she
 gybes she must sail no farther from the mark than needed to sail that course.
 
-Windmark: when E is entitled under 18.2, has right of way over G (§4), is on a downwind leg (`|a| > 90°`), and the
+Windmark: when E is entitled under 18.2, has right of way over G (§4), is on a downwind leg (`|twa| > 90°`), and the
 next leg's proper course needs the other tack (the course turns through the wind at M), E **breaks rule 18.4**
 towards G if, while overlapped with G and before her tack label changes, her distance to M exceeds
 `d_min + 1.0·L_E`, where `d_min` is the smallest distance she has had to M since entering the zone.
@@ -425,7 +432,7 @@ hailing boat could avoid the obstruction by bearing away safely, or at a mark th
 When enabled (`rules_hail = on`), a player has a **Hail: room to tack** action (`hud.md` §11). The AI answers
 automatically. The server checks:
 
-- valid hail: the hailing boat H is close-hauled (`|a| ≤ θ_CH + 5°`), `PredGap(H, obstruction, 6 s) < 1.0·L_H`, a boat
+- valid hail: the hailing boat H is close-hauled (`|twa| ≤ θ_CH + 5°`), `PredGap(H, obstruction, 6 s) < 1.0·L_H`, a boat
   S on the same tack is to windward of H within `3·L` and would be hit if H tacked (H's tack path, simulated as a
   turn at her minimum radius, comes within `m` of S);
 - S must, within 3 s, either start tacking (`tacking` flag) or press **Reply: you tack**; after the reply S must give
@@ -447,8 +454,8 @@ simplification; list it in the in-game rules help.)
 In our words: while racing, a boat must not touch a starting mark before starting, a mark that begins, bounds or
 ends the leg she is sailing, or a finishing mark after finishing.
 
-Windmark: a contact between a boat and a mark object (`collisions.md` contact list) is a **mark touch** when the
-mark is:
+Windmark: a contact event (`collisions.md` §5) with `other_kind` = `mark` or `course_object` and **`begin` = true**
+is a **mark touch** when that course object (`other` = its index in the course's `marks`, `courses.md` §2) is:
 
 - a start line end, and the boat has not started;
 - a buoy of step k−1 or step k for her current next step k (the marks that begin and end her leg; both buoys of a
@@ -468,7 +475,8 @@ disqualification after 60 s. These are sailing-instruction penalties, not RRS ru
 
 An **incident** is the unit that gets at most one penalty per boat:
 
-- It opens on a pair when a counted breach occurs: a contact between them, or a non-contact breach that has
+- It opens on a pair when a counted breach occurs: a contact between them (a boat–boat contact event with
+  `begin` = true; a contact that continues over several ticks is one contact), or a non-contact breach that has
   persisted for `T_persist` (standard umpire: 0.5 s for rules 10, 13, 15, 16, 18.3, 22; 1.0 s for rules 11, 12, 17,
   18.2, 18.4, 19).
 - It records the culprit: the boat whose breach is decisive after exoneration and precedence (§5.5, §6.1).
@@ -500,7 +508,8 @@ Windmark turn tracker, per boat with a pending penalty:
 - **Turning**: the tracker integrates the heading change `Θ += wrap(ψ − ψ_prev)` while the boat keeps turning in one
   direction: `|r| ≥ 2°/s` in that direction. A turn **starts** when that has held for 0.5 s; a pause (`|r| < 2°/s`) of
   more than 3 s, or a reversal of more than 20° from the extreme reached, **resets** the turn (Θ = 0).
-- It counts **tacks** (passing head to wind, `a` crossing 0 with `|a| < 90°`) and **gybes** (`a` crossing ±π) that
+- It counts **tacks** (passing head to wind: `twa` changes sign with `|twa| < 90°`) and **gybes** (`twa` changes sign
+  with `|twa| > 90°`) that
   happen during the turn in the turn's direction.
 - **One turn done** when `|Θ| ≥ 350°` with at least one tack and one gybe (the 10° margin absorbs wind shifts during
   the turn). Two-turns penalty: `|Θ| ≥ 710°` with two tacks and two gybes, in one continuous turn.

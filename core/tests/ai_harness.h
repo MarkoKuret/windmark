@@ -43,6 +43,32 @@ inline const wm::CourseData& ai_default_course() {
   return c;
 }
 
+// A match race on the example venue: windward-leeward, two laps, a 150 m line, a 500 m beat, finish on the start line.
+inline const wm::CourseData& ai_match_course() {
+  static wm::CourseData c;
+  static bool loaded = false;
+  if (!loaded) {
+    static const char* kText = R"({
+  "schema": "windmark.course/1", "id": "test_match", "name": "Test match race", "venue": "example_bay",
+  "frame": "wind", "reference": { "x": 0.0, "y": -300.0 },
+  "marks": [
+    { "id": "rc",  "type": "committee_boat", "at": { "bearing": 1.57079633, "dist": 75, "fixed": true }, "heading": null },
+    { "id": "pin", "type": "buoy", "style": "tetra", "at": { "bearing": 4.71238898, "dist": 75, "fixed": true } },
+    { "id": "w",   "type": "buoy", "style": "large", "at": { "bearing": 0, "dist": 500, "from": "rc_pin_mid", "fixed": true } },
+    { "id": "l",   "type": "buoy", "style": "large", "at": { "bearing": 3.14159265, "dist": 60, "from": "rc_pin_mid", "fixed": true } }
+  ],
+  "start": { "ends": ["pin", "rc"] },
+  "finish": "start",
+  "sequence": [ { "mark": "w", "round": "port" }, { "mark": "l", "round": "port" }, { "mark": "w", "round": "port" }, { "mark": "l", "round": "port" } ],
+  "race": { "type": "match", "sequence": "match", "prep_flag": "P", "time_limit": 1500 }
+})";
+    wm::LoadError err;
+    REQUIRE_MESSAGE(wm::parse_course(kText, "test_match.course.json", c, err), err.message());
+    loaded = true;
+  }
+  return c;
+}
+
 struct AiRaceSpec {
   std::uint64_t seed = 1;
   float wind_kn = 11.0f;

@@ -42,11 +42,16 @@ TEST_CASE("ai dev: one race of 10 Intermediate boats" * doctest::skip(std::geten
     for (std::size_t k = 0; k < sp.levels.size(); ++k) sp.classes.push_back(k % 2 == 1 ? "wm12" : "wm7");
   }
   if (std::getenv("AI_WIND") != nullptr) sp.wind_kn = std::strtof(std::getenv("AI_WIND"), nullptr);
+  if (std::getenv("AI_MATCH") != nullptr) {
+    sp.course = &wm_test::ai_match_course();
+    sp.levels.assign(2, wm::AiLevel::expert);
+    sp.shifts = wm::ShiftPreset::oscillating;
+  }
   sp.trace = std::getenv("AI_TRACE");
   {
     auto w = wm_test::ai_world(sp);
     std::string why;
-    REQUIRE(w->create_race(wm_test::ai_default_course(), why));
+    REQUIRE_MESSAGE(w->create_race(sp.course != nullptr ? *sp.course : wm_test::ai_default_course(), why), why);
     for (const wm::ResolvedMark& m : w->course().marks)
       std::printf("mark %d (%.1f, %.1f) r %.1f\n", static_cast<int>(m.type), static_cast<double>(m.pos.x), static_cast<double>(m.pos.y), static_cast<double>(m.radius));
     std::printf("twd %.1f deg, L %.1f\n", static_cast<double>(w->course().twd_c / wm::DEG), static_cast<double>(w->race().boat(0).L));
@@ -77,7 +82,7 @@ TEST_CASE("ai dev: fixed helm 360s" * doctest::skip(std::getenv("AI_DEV") == nul
             sp.shifts = wm::ShiftPreset::steady;
             auto w = wm_test::ai_world(sp);
             std::string why;
-            REQUIRE(w->create_race(wm_test::ai_default_course(), why));
+            REQUIRE_MESSAGE(w->create_race(sp.course != nullptr ? *sp.course : wm_test::ai_default_course(), why), why);
             const float twd = w->env(0).wind_from_clean;
             const float V = w->boat(0).polar_at(wm_test::kn(kn), twa0 * wm::DEG, w->boat(0).sails().front());
             w->place_boat(0, 0.0f, -600.0f, wm::wrap_2pi(twd - twa0 * wm::DEG), V);

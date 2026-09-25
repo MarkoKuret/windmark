@@ -209,9 +209,10 @@ static func _about(p: Vector3, axis: Vector3, angle: float) -> Transform3D:
 
 func apply(p: SimSource.RenderPose) -> void:
 	transform = Frames.boat_transform(p.pos_x, p.pos_y, p.z, p.psi, p.theta, p.phi)
-	# helm h > 0 turns the bow to starboard: the blade swings to port, a turn of -h * rudder_max about the stock
+	# helm h > 0 turns the bow to starboard: the blade's trailing edge swings to starboard (model -X) and a tiller
+	# on the stock to port, a turn of +h * rudder_max about the upward stock axis
 	if _rudder:
-		_rudder.transform = _rudder_rest * Transform3D(Basis(_rudder_axis, -p.h * _rudder_max), Vector3.ZERO)
+		_rudder.transform = _rudder_rest * Transform3D(Basis(_rudder_axis, p.h * _rudder_max), Vector3.ZERO)
 	if _wheel:
 		_wheel.transform = _wheel_rest * Transform3D(Basis(_wheel_axis, p.h * PI), Vector3.ZERO)
 

@@ -447,6 +447,7 @@ func test_core_scene() -> void:
 	var err_boom := 0.0
 	var err_main := 0.0
 	var err_rudder := 0.0
+	var rudder_side_bad := 0
 	var err_mark := 0.0
 	var vis_ok := true
 	var side_ok := true
@@ -498,7 +499,12 @@ func test_core_scene() -> void:
 		err_ang = maxf(err_ang, absf(asin(clampf(bow.y, -1.0, 1.0)) - a[4]))
 		err_ang = maxf(err_ang, absf(port.y - cos(a[4]) * sin(a[5])))
 		err_rudder = maxf(err_rudder, (rudder.transform.basis * Vector3.BACK).distance_to(
-			Basis(axis, -a[6] * info.rudder_max) * Vector3.BACK))
+			Basis(axis, a[6] * info.rudder_max) * Vector3.BACK))
+		# bow to starboard (h > 0): the blade's trailing edge (model -Z, aft) points to starboard (model -X)
+		if absf(a[6]) > 0.05:
+			var trail: Vector3 = rudder.transform.basis * Vector3.FORWARD
+			if signf(-trail.x) != signf(a[6]):
+				rudder_side_bad += 1
 		if sim.tick() > 0:
 			err_clock = maxf(err_clock, absf(sea.render_time_ms - 50.0 * (sim.tick() - 1 + alpha)))
 			err_clock = maxf(err_clock, absf(sea.render_time_ms - sim.render_time_ms(alpha)))
@@ -540,7 +546,8 @@ func test_core_scene() -> void:
 	var tol := 1e-4
 	t.ok(err_pos < tol, "boat node origin = core render pose every frame (%.7f m)" % err_pos)
 	t.ok(err_ang < tol, "boat node heading, pitch and heel = core render pose (%.7f)" % err_ang)
-	t.ok(err_rudder < tol, "rudder at -h * rudder_max of the render pose (%.7f)" % err_rudder)
+	t.ok(err_rudder < tol, "rudder at +h * rudder_max of the render pose (%.7f)" % err_rudder)
+	t.ok(rudder_side_bad == 0, "rudder trailing edge to starboard when the bow turns to starboard (%d bad frames)" % rudder_side_bad)
 	t.ok(err_clock < 1e-3, "Sea clock = core render_time_ms (%.7f ms)" % err_clock)
 	t.ok(err_boom < tol, "boom at the interpolated main beta (%.7f)" % err_boom)
 	t.ok(err_main < tol, "main turns with the boom (%.7f)" % err_main)

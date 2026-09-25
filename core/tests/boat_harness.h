@@ -6,6 +6,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "boat/boat.h"
 #include "data/perf.h"
@@ -32,14 +33,43 @@ inline float deg(float d) { return d * wm::DEG; }
 inline float to_deg(float r) { return r / wm::DEG; }
 inline float to_kn(float v) { return v / wm::KNOT; }
 
+// The class with feel multipliers applied the way the VPP applies a class file's `handling` block
+// (data_format.md §3.7.1): accel tables times `accel`, decel_linear and decel_const times `decel`, both turn radii
+// divided by `turn_rate`. Used where the shipped tables miss a spec's handling target, to show the core meets it
+// once the data does.
+inline const wm::PerfData& tuned(const std::string& cls, float accel, float decel, float turn_rate) {
+  static std::map<std::string, std::unique_ptr<wm::PerfData>> cache;
+  const std::string key = cls + "/" + std::to_string(accel) + "/" + std::to_string(decel) + "/" +
+                          std::to_string(turn_rate);
+  auto it = cache.find(key);
+  if (it == cache.end()) {
+    auto p = std::make_unique<wm::PerfData>(perf(cls));
+    wm::Dynamics& d = p->dynamics;
+    d.decel_linear = d.decel_linear * decel;
+    d.decel_const = d.decel_const * decel;
+    d.turn_radius_full = d.turn_radius_full / turn_rate;
+    d.turn_radius_offset = d.turn_radius_offset / turn_rate;
+    d.derived.turn_c = d.turn_radius_full + d.turn_radius_offset;
+    for (wm::ConfigPerf& c : p->configs) {
+      std::vector<float> v = c.accel.values();
+      for (float& x : v) x = x * accel;
+      c.accel = wm::Table(c.accel.axes(), c.accel.unit(), std::move(v));
+    }
+    it = cache.emplace(key, std::move(p)).first;
+  }
+  return *it->second;
+}
+
 // A boat in a steady uniform wind from `wind_from` with no current and flat water unless `sea` is set.
 struct Sim {
   wm::Boat boat;
   wm::BoatEnv env;
   std::uint32_t tick = 0;
 
-  Sim(const std::string& cls, float tws_kn, float wind_from, std::uint64_t seed = 1, std::uint32_t index = 0) {
-    boat.init(&perf(cls), seed, index);
+  Sim(const std::string& cls, float tws_kn, float wind_from, std::uint64_t seed = 1, std::uint32_t index = 0)
+      : Sim(perf(cls), tws_kn, wind_from, seed, index) {}
+  Sim(const wm::PerfData& p, float tws_kn, float wind_from, std::uint64_t seed = 1, std::uint32_t index = 0) {
+    boat.init(&p, seed, index);
     env.wind_speed = kn(tws_kn);
     env.wind_speed_clean = env.wind_speed;
     env.wind_from = wind_from;

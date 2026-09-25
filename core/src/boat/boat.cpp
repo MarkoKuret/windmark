@@ -151,8 +151,12 @@ void Boat::step(const BoatEnv& env) {
   } else {
     if (s_.theta < 0.0f) surf_coef = 1.0f + (0.5f * d.surf_gain) * (-s_.theta);
   }
+  // Trim scales the drive only. Inside the no-go zone the (negative) polar is the windage drift of the rig, which
+  // flogging sails do not remove; scaling it by trim_speed (0 with the sails on the wind line) would stop the boat
+  // dead head to wind instead of letting it gather sternway (boat.md §7.4, §10.4).
+  const float trim_drive = polar_speed > 0.0f ? trim_speed : 1.0f;
   const float target_speed =
-      ((((polar_speed * trim_speed) * man_coef) * heel_coef) * surf_coef) * ctl_.performance_scale;
+      ((((polar_speed * trim_drive) * man_coef) * heel_coef) * surf_coef) * ctl_.performance_scale;
   const float err = target_speed - s_.v;
   float a = err > 0.0f ? accel : d.decel_linear * err - d.decel_const;
   if (std::fabs(err) < DT * std::fabs(a)) a = err / DT;

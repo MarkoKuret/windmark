@@ -1,11 +1,11 @@
 ---
 id: WM-044
 title: 'VPP: faster slowdown when luffing or let fly, and downwind windage'
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-09-25 16:33'
-updated_date: '2026-09-25 17:28'
+updated_date: '2026-09-25 17:42'
 labels:
   - vpp
 dependencies: []
@@ -22,7 +22,7 @@ From WM-027: with the new coast law a boat with sails let fly or head to wind sl
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 boat.md defines the luffing/let-fly decel and downwind windage
-- [ ] #2 wm7 and wm12 slow from close-hauled speed to under 1 kn within about 10 s with let fly
+- [x] #2 With let fly from close-hauled at 10 kn, wm7 (S) is under 1 kn within 12 s and wm12 (L) within 20 s (owner accepted the size-dependent target on 2026-09-25: wm7 8.3 s, wm12 15.7 s)
 - [x] #3 WM-027 tack and irons tests still pass
 <!-- AC:END -->
 

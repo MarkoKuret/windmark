@@ -453,7 +453,7 @@ func _update_overlays(pose: SimSource.RenderPose) -> void:
 		if show_laylines:
 			for l in laylines:
 				lines.append({"a": l["a"], "b": l["b"], "color": COL_GREEN if l["tack"] > 0 else COL_RED,
-					"width": 0.3, "kind": "layline"})
+					"width": 0.3, "kind": "layline", "tack": l["tack"]})
 		if show_zone and int(st["kind"]) != STEP_FINISH:
 			var c := Vector2(pose.pos_x, pose.pos_y)
 			for i in pts.size():

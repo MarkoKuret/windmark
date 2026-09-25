@@ -4,7 +4,7 @@ extends SceneTree
 ## wants it and writes what tests/course_preview.py needs to render it: the water, wake and sky uniforms (as
 ## tests/water_preview_dump.gd does), and the triangles of the land, trees, quay, rock, marks, committee and
 ## mark boats, flags, guides and the boat, with their vertex colours or albedo, to generated/course_preview/<shot>.
-##   godot --headless --path game -s res://tests/course_preview_dump.gd
+##   godot --headless --path game -s res://tests/course_preview_dump.gd [-- shot ...]
 
 const OUT := "res://generated/course_preview"
 const DT := 0.1
@@ -13,7 +13,7 @@ const DT := 0.1
 const SHOTS := [
 	["island_chase", false, [140.0, 1800.0, 50.0], 20.0, ["chase", 1.35, 0.14, 0.4]],
 	["island_wide", false, [600.0, 1300.0, 45.0], 4.0, ["look", Vector3(760, 1500, 38), Vector3(60, 2380, 20), 45.0]],
-	["pier_rock", false, [230.0, 1880.0, 45.0], 4.0, ["look", Vector3(250, 1860, 9), Vector3(160, 1990, 3), 55.0]],
+	["pier_rock", false, [-400.0, 1500.0, 45.0], 4.0, ["look", Vector3(210, 1600, 6), Vector3(210, 1970, 2), 45.0]],
 	["start_line", true, [], 185.0, ["look_boat", Vector3(-150, -330, 7), 0.0, 50.0]],
 	["committee", true, [], 150.0, ["look_mark", "rc", Vector3(-30, -24, 5), 50.0]],
 	["windward", true, [], 330.0, ["look_mark", "w", Vector3(-50, -170, 45), 50.0]],
@@ -21,6 +21,7 @@ const SHOTS := [
 ]
 
 var _shot := -1
+var _only: PackedStringArray = OS.get_cmdline_user_args()
 var _scene: Node
 var _t := 0.0
 
@@ -37,6 +38,9 @@ func _next() -> void:
 		quit(0)
 		return
 	var s: Array = SHOTS[_shot]
+	if not _only.is_empty() and not _only.has(s[0]):
+		_next()
+		return
 	_scene = (load("res://scenes/sail_test.tscn") as PackedScene).instantiate()
 	_scene.auto_process = false
 	_scene.sim_kind = _scene.SimKind.CORE

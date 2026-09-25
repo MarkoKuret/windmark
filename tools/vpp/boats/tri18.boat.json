@@ -1,0 +1,31 @@
+{
+  "schema": "windmark.boatclass/1",
+  "id": "tri18", "name": "Tri 18", "version": 1,
+  "hull": {
+    "type": "trimaran",
+    "loa": 18.3, "lwl": 17.5, "beam_max": 14.4, "bwl": 1.70, "draft_canoe": 0.60,
+    "displacement": 6600, "prismatic": 0.60,
+    "section_shape": { "type": "u", "midship_coefficient": 0.64 },
+    "rocker": { "fwd": 0.45, "aft": 0.35 },
+    "freeboard": { "bow": 1.60, "mid": 1.30, "stern": 1.10 },
+    "transom_width": 1.10, "stem_x": 9.00, "transom_x": -9.30, "max_beam_station": 0.45,
+    "floats": { "lwl": 16.5, "bwl": 1.05, "draft": 1.00, "prismatic": 0.60,
+                "section_shape": { "type": "v", "midship_coefficient": 0.70 },
+                "freeboard": { "bow": 1.40, "mid": 1.20, "stern": 1.00 }, "beam_max": 1.30,
+                "transom_width": 0.50, "rocker": { "fwd": 0.95, "aft": 0.50 },
+                "spacing": 6.60, "clearance": 0.30, "x": -0.60 }
+  },
+  "boards": { "depth": 3.40, "chord_root": 0.75, "chord_tip": 0.65, "thickness": 0.12, "x": 1.00 },
+  "rudder": { "depth": 2.40, "chord_root": 0.55, "chord_tip": 0.45, "x": -8.60, "count": 2 },
+  "rig": { "I": 24.0, "J": 7.50, "P": 25.0, "E": 8.50, "mast_height": 28.5, "mast_x": 1.50,
+           "fractional": 0.90, "bowsprit": 2.00, "rig_mass": 700 },
+  "sails": [
+    { "id": "main", "type": "main", "area": 190 },
+    { "id": "jib", "type": "jib", "area": 95, "furling": true },
+    { "id": "genoa", "type": "genoa", "area": 130, "furling": true },
+    { "id": "code_zero", "type": "code_zero", "area": 180, "furling": true }
+  ],
+  "crew": { "count": 6, "weight": 500, "hiking_arm": 3.50 },
+  "vpp": { "max_heel": 0.26 },
+  "start": { "front_sail": "jib" }
+}

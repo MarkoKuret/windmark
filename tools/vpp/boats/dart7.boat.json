@@ -1,0 +1,24 @@
+{
+  "schema": "windmark.boatclass/1",
+  "id": "dart7", "name": "Dart 7", "version": 1,
+  "hull": {
+    "loa": 7.40, "lwl": 6.70, "beam_max": 2.50, "bwl": 1.85, "draft_canoe": 0.20,
+    "displacement": 820, "prismatic": 0.56,
+    "section_shape": { "type": "round", "midship_coefficient": 0.82 },
+    "rocker": { "fwd": 0.19, "aft": 0.06 },
+    "freeboard": { "bow": 0.85, "mid": 0.72, "stern": 0.60 },
+    "transom_width": 1.95, "stem_x": 3.55, "transom_x": -3.85, "max_beam_station": 0.40
+  },
+  "keel": { "depth": 1.60, "chord_root": 0.48, "chord_tip": 0.36, "thickness": 0.11, "x": 0.20,
+            "fin_mass": 45, "bulb_mass": 360 },
+  "rudder": { "depth": 1.30, "chord_root": 0.32, "chord_tip": 0.24, "x": -3.40 },
+  "rig": { "I": 8.60, "J": 2.60, "P": 8.90, "E": 3.10, "mast_height": 10.90, "mast_x": 0.60,
+           "fractional": 0.82, "bowsprit": 1.60, "rig_mass": 55 },
+  "sails": [
+    { "id": "main", "type": "main", "area": 18.5 },
+    { "id": "jib", "type": "jib", "area": 11.5, "furling": true },
+    { "id": "kite", "type": "spinnaker_asym", "area": 56.0 }
+  ],
+  "crew": { "count": 4, "weight": 340, "hiking_arm": 1.20 },
+  "start": { "front_sail": "jib" }
+}

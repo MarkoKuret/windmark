@@ -1,0 +1,24 @@
+{
+  "schema": "windmark.boatclass/1",
+  "id": "coastal40", "name": "Coastal 40", "version": 1,
+  "hull": {
+    "loa": 12.20, "lwl": 11.00, "beam_max": 3.90, "bwl": 3.10, "draft_canoe": 0.52,
+    "displacement": 7200, "prismatic": 0.56,
+    "section_shape": { "type": "round", "midship_coefficient": 0.77 },
+    "rocker": { "fwd": 0.45, "aft": 0.22 },
+    "freeboard": { "bow": 1.30, "mid": 1.05, "stern": 0.90 },
+    "transom_width": 3.00, "stem_x": 5.90, "transom_x": -6.30, "max_beam_station": 0.42
+  },
+  "keel": { "depth": 2.60, "chord_root": 1.15, "chord_tip": 0.75, "thickness": 0.12, "x": 0.30,
+            "fin_mass": 450, "bulb_mass": 2700 },
+  "rudder": { "depth": 2.00, "chord_root": 0.55, "chord_tip": 0.35, "x": -5.30 },
+  "rig": { "I": 16.0, "J": 4.60, "P": 16.2, "E": 5.60, "mast_height": 19.6, "mast_x": 1.10,
+           "fractional": 0.88, "pole": 4.60, "rig_mass": 420 },
+  "sails": [
+    { "id": "main", "type": "main", "area": 56 },
+    { "id": "genoa", "type": "genoa", "area": 52 },
+    { "id": "spinnaker", "type": "spinnaker_sym", "area": 140 }
+  ],
+  "crew": { "count": 8, "weight": 680, "hiking_arm": 1.60 },
+  "start": { "front_sail": "genoa" }
+}

@@ -48,8 +48,8 @@
   "sails": [
     {"id": "main", "type": "main", "area": 60.0},
     {"id": "jib", "type": "jib", "area": 36.0},
-    {"id": "code0", "type": "code_zero", "area": 82.0},
-    {"id": "a2", "type": "spinnaker_asym", "area": 150.0}
+    {"id": "code0", "type": "code_zero", "area": 81.0},
+    {"id": "a2", "type": "spinnaker_asym", "area": 126.0}
   ],
   "crew": {"count": 8, "weight": 680},
   "start": {"front_sail": "jib"},

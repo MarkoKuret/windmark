@@ -1,5 +1,5 @@
 // State snapshots and the tick checksum (conventions.md §9): floats as their 32 raw bits, integers little
-// endian, booleans one byte; FNV-1a 64 over the tick index then every boat's snapshot bytes in index order.
+// endian, booleans one byte; FNV-1a 64 over the tick index then the world snapshot body.
 #pragma once
 
 #include <cstddef>
@@ -59,6 +59,8 @@ class SnapshotReader {
 
   bool failed() const { return failed_; }
   bool at_end() const { return pos_ == bytes_.size(); }
+  std::size_t remaining() const { return bytes_.size() - pos_; }
+  void fail() { failed_ = true; }  // a value read is out of range
 
  private:
   std::span<const std::uint8_t> bytes_;
@@ -66,7 +68,9 @@ class SnapshotReader {
   bool failed_ = false;
 };
 
-// Tick checksum: FNV-1a 64 over the tick index (uint32 LE) then each boat's snapshot bytes in index order.
+// Tick checksum: FNV-1a 64 over the tick index (uint32 LE) then each block's bytes in order (the world snapshot
+// body of conventions.md §9.1: the boats in index order, the collision pair set, the race, the rules, the carried
+// tick outputs).
 std::uint64_t tick_checksum(std::uint32_t tick, std::span<const std::vector<std::uint8_t>> boat_snapshots);
 
 }  // namespace wm

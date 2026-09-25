@@ -72,6 +72,7 @@ target_sources(windmark_core_tests PRIVATE
   test_rules.cpp
   test_world.cpp
   test_full_race.cpp
+  test_snapshot.cpp
 )
 target_compile_definitions(windmark_core_tests PRIVATE WINDMARK_COURSES_DIR="${WINDMARK_COURSES_DIR}")
 # Front-end water renderer checks (water_render.md §9): writes the core's sea components, heights, exposure and

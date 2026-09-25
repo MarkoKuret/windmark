@@ -15,6 +15,7 @@
 #include "data/venue.h"
 #include "math/wm_math.h"
 #include "race/race.h"
+#include "state/checksum.h"
 
 namespace wm {
 
@@ -169,6 +170,11 @@ class Rules {
 
   // Geometry exposed for tests and the HUD.
   float hull_gap(std::size_t i, std::size_t j) const;
+
+  // rules.md §14: the rules block of the world snapshot. load() needs rules set up for the same race (init and
+  // sync_boats); it overwrites every state value and clears the events, or returns false and changes nothing.
+  void save(SnapshotWriter& w) const;
+  bool load(SnapshotReader& r);
 
  private:
   struct Pose {

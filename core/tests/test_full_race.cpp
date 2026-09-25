@@ -6,34 +6,10 @@
 #include <string>
 #include <vector>
 
-#include "boat_harness.h"
 #include "doctest.h"
-#include "pilot.h"
-#include "world/world.h"
+#include "full_race.h"
 
 namespace {
-
-const std::string kData = WINDMARK_DATA_DIR;
-
-const char* kCourse = R"({
-  "schema": "windmark.course/1", "id": "test_wl_1", "name": "Test windward-leeward, 1 lap", "venue": "example_bay",
-  "frame": "wind", "reference": { "x": 0.0, "y": -300.0 },
-  "marks": [
-    { "id": "rc",  "type": "committee_boat", "at": { "bearing": 1.57079633, "dist": 90, "fixed": true } },
-    { "id": "pin", "type": "buoy", "style": "tetra", "at": { "bearing": 4.71238898, "dist": 90, "fixed": true } },
-    { "id": "w",   "type": "buoy", "style": "large", "at": { "bearing": 0, "dist": 320, "from": "rc_pin_mid", "fixed": true } },
-    { "id": "gc",  "type": "virtual", "at": { "bearing": 3.14159265, "dist": 90, "from": "rc_pin_mid", "fixed": true } },
-    { "id": "g1",  "type": "buoy", "at": { "bearing": 1.57079633, "dist": 30, "from": "gc", "fixed": true } },
-    { "id": "g2",  "type": "buoy", "at": { "bearing": 4.71238898, "dist": 30, "from": "gc", "fixed": true } }
-  ],
-  "start": { "ends": ["pin", "rc"] },
-  "finish": "start",
-  "sequence": [ { "mark": "w", "round": "port" }, { "gate": ["g1", "g2"] } ],
-  "area": { "boundary": [ { "x": -900, "y": -1100 }, { "x": 900, "y": -1100 }, { "x": 900, "y": 700 }, { "x": -900, "y": 700 } ],
-            "exclusions": [ { "id": "lane", "polygon": [ { "x": 220, "y": -420 }, { "x": 420, "y": -420 },
-                                                        { "x": 420, "y": -150 }, { "x": 220, "y": -150 } ] } ] },
-  "race": { "type": "fleet", "sequence": "3-2-1-0", "prep_flag": "I", "time_limit": 1500 }
-})";
 
 struct Outcome {
   std::vector<wm::ResultRow> results;
@@ -44,50 +20,21 @@ struct Outcome {
 };
 
 Outcome run_race(std::uint64_t seed) {
-  static wm::VenueData venue;
-  static bool loaded = false;
-  if (!loaded) {
-    wm::LoadError err;
-    REQUIRE_MESSAGE(wm::load_venue(kData + "/venues/example_bay.venue.json", venue, err), err.message());
-    loaded = true;
-  }
-  wm::CourseData course;
-  wm::LoadError err;
-  REQUIRE_MESSAGE(wm::parse_course(kCourse, "test_wl_1.course.json", course, err), err.message());
-
-  wm::WorldSetup s;
-  s.venue = &venue;
-  s.race_seed = seed;
-  s.wind.base_speed = wm_test::kn(11.0f);
-  s.wind.base_from = 0.2f;
-  wm::apply_shift_preset(s.wind, wm::ShiftPreset::stable);
-  s.race.free_sailing_s = 10.0f;
-  wm::World w(s);
-  const int n = 6;
-  for (int i = 0; i < n; ++i) {
-    wm::BoatEntry e;
-    e.perf = &wm_test::perf(i == 5 ? "wm12" : "wm7");
-    REQUIRE(w.add_boat(e) == i);
-  }
+  auto w = wm_test::full_race_world(seed);
   std::string why;
-  REQUIRE_MESSAGE(w.create_race(course, why), why);
-
-  wm_test::Pilot pilot(static_cast<std::size_t>(n));
-  pilot.boat(1).early = true;
-  pilot.boat(2).rogue_port = true;
-  pilot.boat(3).leave_bounds_at = 20.0f;
-  pilot.boat(3).exclusion = {245.0f, -250.0f};
-  w.set_controller([&pilot](wm::World& world) { pilot(world); });
+  REQUIRE_MESSAGE(w->create_race(wm_test::full_race_course(), why), why);
+  wm_test::Pilot pilot = wm_test::full_race_pilot();
+  w->set_controller([&pilot](wm::World& world) { pilot(world); });
 
   Outcome o;
-  for (int k = 0; k < 60000 && w.race().state() != wm::RaceState::closed; ++k) {
-    w.step();
-    for (const wm::RulesEvent& e : w.events().rules) o.rules_events.push_back(e);
-    for (const wm::RaceEvent& e : w.events().race) o.race_events.push_back(e);
+  for (int k = 0; k < 60000 && w->race().state() != wm::RaceState::closed; ++k) {
+    w->step();
+    for (const wm::RulesEvent& e : w->events().rules) o.rules_events.push_back(e);
+    for (const wm::RaceEvent& e : w->events().race) o.race_events.push_back(e);
   }
-  o.results = w.race().results();
-  o.checksum = w.checksum();
-  o.ticks = w.tick();
+  o.results = w->race().results();
+  o.checksum = w->checksum();
+  o.ticks = w->tick();
   return o;
 }
 

@@ -30,7 +30,8 @@ Tests (`ctest`):
   checksums, JSON, loading and validating `data/perf/wm7.perf.json` and `wm12.perf.json` against their class
   files, and loading `data/venues/example_bay.venue.json` into the environment; the course files, the race flow
   and the racing rules scenarios of `courses.md` §7, `race.md` §12 and `rules.md` §13; the world loop; and a full
-  headless race of six scripted boats with penalties on `example_bay`, run twice for determinism).
+  headless race of six scripted boats with penalties on `example_bay`, run twice for determinism, and saved at
+  nine ticks and loaded into a new world to continue bit for bit).
 - `core_no_fma`: disassembles `libwindmark_core.a` and fails on any fused multiply-add instruction.
 
 ## Float rules
@@ -63,7 +64,7 @@ Sources live in `src/<module>/`, included as `"module/header.h"`, all in namespa
 | `src/base/` | FP environment check, contraction probe | conventions.md §5 |
 | `src/math/` | `wm_math`: constants, clamp/lerp/sgn, `wm_sincos`, `wm_atan2`, `wm_asin`, `wm_exp`, angle helpers; `rng`: counter-based RNG and its stream numbers | conventions.md §5, §6, §7 |
 | `src/table/` | axis bracket, Table1D/2D/3D interpolation, axis quantities and units | conventions.md §8, data_format.md §5 |
-| `src/state/` | snapshot writer and reader, FNV-1a 64 tick checksum, SHA-256 for data identity | conventions.md §9, data_format.md §4.1 |
+| `src/state/` | snapshot writer and reader and the shared encodings (`snapshot_util.h`), FNV-1a 64 tick checksum, SHA-256 for data identity | conventions.md §9, data_format.md §4.1 |
 | `src/wind/` | `grid`: the venue grid sampler; `wind`: base wind, shift walk, trend, oscillation, puffs and lulls, venue wind field, current | wind.md |
 | `src/sea/` | wave components, per-tick phases, height, slope, exposure, the wind-sea growth law | sea.md |
 | `src/shadow/` | shadow snapshot sources, blanket and backwind losses, the strongest-source rule, zone outlines, the environment at a boat | wind_shadow.md |
@@ -72,9 +73,9 @@ Sources live in `src/<module>/`, included as `"module/header.h"`, all in namespa
 | `src/data/` | strict JSON reader with correctly rounded binary32 numbers, load errors with JSON paths, the `windmark.perf/1` loader and validator, the `windmark.boatclass/1` header reader and the perf-to-class check; `venue`: the `windmark.venue/1` loader and validator | data_format.md |
 | `src/collide/` | `collide`: shape tests (separating axes, circle, land with its band index), the static `CollisionScene`, the tick-6 step `Collisions::step` (detection, response, contact events) and the contact pair set | collisions.md |
 | `src/course/` | `geometry`: plane helpers of `race.md` §0, placed hull outlines, convex gaps; `course`: the `windmark.course/1` loader, sequence expansion with laps, laying a course to the wind, the scale factor, the resolved course and its hash, the geometry checks | courses.md |
-| `src/race/` | the race flow: states, signals, prep flags, OCS and recalls, starting, the winding test for marks and gates, finishing, closing, ranking, results; spawn grid and order | race.md |
-| `src/rules/` | the racing rules engine: tack and tacking, relations, right of way, the keep-clear, escape and mark-room tests, rules 14 to 19, 22, 31 and boundaries, incidents, penalties, penalty turns, deadlines and disqualification | rules.md |
-| `src/world/` | `World`: one tick in the order of `conventions.md` §4.1 over the boats, wind, sea, shadows, collisions, race and rules; creating a race, controls, events, the tick checksum | conventions.md §4.1, race.md §1 |
+| `src/race/` | the race flow: states, signals, prep flags, OCS and recalls, starting, the winding test for marks and gates, finishing, closing, ranking, results; spawn grid and order; `race_state`: the race block of the snapshot | race.md |
+| `src/rules/` | the racing rules engine: tack and tacking, relations, right of way, the keep-clear, escape and mark-room tests, rules 14 to 19, 22, 31 and boundaries, incidents, penalties, penalty turns, deadlines and disqualification; `rules_state`: the rules block of the snapshot | rules.md |
+| `src/world/` | `World`: one tick in the order of `conventions.md` §4.1 over the boats, wind, sea, shadows, collisions, race and rules; creating a race, controls, events, the tick checksum; `world_state`: the world snapshot, save and load | conventions.md §4.1, §9.1; race.md §1 |
 | `tests/` | doctest suite and the math vector file | |
 | `tools/` | `gen_math_vectors.cpp`, `gen_env_vectors.cpp`; `gen_sea_render_samples.cpp` (sea and puff samples for the front end's water checks, `game/tests/run_water_test.sh`) | |
 | `third_party/doctest/` | doctest 2.4.12 (MIT), test framework | |
@@ -100,6 +101,7 @@ is the environment clock's zero, `race.md` §0).
 | `set_controller(fn)` | called in step 2 before the queued controls: computer skippers and scripts decide there | ai.md |
 | `step()` | one tick: race and rules on `t_n` and the last contacts, controls, environment, shadow snapshot, boat steps, collisions, publish; returns the tick checksum | conventions.md §4.1 |
 | `boat(i)`, `env(i)`, `race()`, `rules()`, `course()`, `scene()`, `events()`, `checksum()` | state, the race and rules records, this tick's race, rules and contact events | race.md §11, rules.md §11 |
+| `save(SnapshotWriter&)`, `load(bytes, course, err)` | the world snapshot between ticks; `load` goes into a new world built with the same setup and entries (the race is recreated at its creation tick, joiners join again) and continues bit for bit; controllers are set again after it | conventions.md §9.1 |
 
 `Race` and `Rules` can also be driven directly with poses (`RaceBoatInput`, `RulesBoatInput`), which is how the
 scenario tests script tracks without physics.

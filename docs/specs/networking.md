@@ -378,9 +378,10 @@ Reliable ordered; chat limited to 200 characters and 1 message per 2 s per playe
   warning signal the boat becomes a ghost and scores DNS (before the start) or DNF (after, `race.md` §9).
 - **Connection lost**: no packet for 2 s → the server marks the player "connection lost"; its inputs are held.
   After 3 s an AI takes over the boat (`ai.md` §14). The player may **reconnect** with the session token within 60 s:
-  the server sends the race parameters and a full state (all boats, race and rules state), and the player takes
-  control again at a tick of the server's choice ≥ 3 ticks ahead, announced to the client. After 60 s the boat is
-  retired (ghost, scored DNF, or RET if the player had asked to retire).
+  the server sends the race parameters and a full state (the world snapshot of `conventions.md` §9.1: all boats,
+  collisions, race and rules state), and the player takes control again at a tick of the server's choice ≥ 3 ticks
+  ahead, announced to the client. After 60 s the boat is retired (ghost, scored DNF, or RET if the player had asked
+  to retire).
 - **Server-side boat removal** never renumbers entries: boat ids are stable for the race.
 
 ## 10. One verdict, and consistency checks
@@ -402,8 +403,9 @@ mode) are sent as a reliable message and judged by the server.
   direction) and the sea height at 16 fixed probe points of the course at tick T; the client compares with its own. A
   mismatch can only be a platform or build divergence (the weather is a pure function): the client reports it with
   both values; play goes on, since the server's physics is authoritative and reconciliation corrects the own boat.
-- **World hash** every 5 s (all boats' quantised state, race and rules state): written to the server log and the
-  replay file, used by replay verification and tests, not sent to clients.
+- **World hash** every 5 s (the tick checksum of `conventions.md` §9 over the world snapshot body: all boats,
+  collisions, race and rules state): written to the server log and the replay file, used by replay verification
+  and tests, not sent to clients.
 
 ## 11. Transport
 
@@ -526,9 +528,10 @@ is checked on the server:
 - **Spectators** connect like players without a boat; their bands are measured from the camera focus they report (a
   reliable message when it changes). Broadcast spectators (tournaments) may get a higher budget.
 - **Replays**: the server writes race parameters, every boat's applied input per tick (held ticks marked), all events,
-  and the world hash every 5 s. A replay is re-simulated by the core; its hashes must match. Files carry the core hash
-  and are only valid for that version. Typical size: ~2 bytes per boat per tick after delta coding and compression
-  (40 boats × 15 min ≈ 1.4 MB).
+  and the world hash every 5 s. A replay is re-simulated by the core; its hashes must match. A replay may also
+  carry world snapshots (`conventions.md` §9.1) as seek points: loading one and re-simulating from it reproduces
+  the same hashes as simulating from the start. Files carry the core hash and are only valid for that version.
+  Typical size: ~2 bytes per boat per tick after delta coding and compression (40 boats × 15 min ≈ 1.4 MB).
 
 ## 15. Tests
 

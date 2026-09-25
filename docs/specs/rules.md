@@ -72,6 +72,9 @@ Per pair: relation this tick and last tick, tick of the last relation change; ob
 its onset tick and onset cause (§5.2); rule-18 status per mark (§7.3); rule-17 flag (§5.4); keep-clear state machine
 (§3.5); open incident (§9.1).
 
+The implementation keeps more than this list (the working values of each test); all of it is serialised in the
+rules block of the world snapshot, §14.
+
 ## 3. Geometry and tests
 
 ### 3.1 Hull gap and prediction
@@ -687,3 +690,62 @@ Scenario tests (two or three scripted boats, headless) with the expected obligat
   the next mark does not; deadline passes → `44.1-late`; three pending → DSQ.
 - Mark touch of the next mark → one-turn penalty; touch of an unrelated mark → none.
 - Determinism: the same scenario gives the same records and events bit for bit on all supported platforms.
+- Snapshot: a race with incidents, penalties and penalty turns saved mid-race and loaded into a new world gives the
+  same records, events and checksums as the unbroken run.
+
+## 14. State and snapshot
+
+The rules block of the world snapshot (`conventions.md` §9.1), in this order. The class numbers of each boat
+(`L`, `B`, hull radius), the parameters, the course and the venue come from the race parameters and are not
+written. The predicted poses and hulls (§3.1), the escape manoeuvres (§3.6) and the inputs of the tick are
+rebuilt at the start of every tick before they are read, and the events are not state.
+
+```
+uint32 n (the last tick run); uint8 umpire, uint8 penalty kind
+list  boats, per boat, engine state:
+  bool racing; list<vec2> hull; vec2 c, bow, stern
+  float twa, theta_ch, theta_dn, vmg_tws
+  bool tack_init; int8 tack; bool flipped, head_to_wind, has_tack_change; uint32 tack_change_tick
+  bool tacking; int8 tacking_to; bool has_tacking_end; uint32 tacking_end_tick
+  float twa_prev, psi_prev; bool has_prev
+  int32 cc_run; int8 cc_run_dir; bool cc_active, cc_started_now; int8 cc_dir; uint32 cc_back; int32 cc_calm
+  list<float> psi_hist, v_hist
+  float above_time; bool above
+  int8 t_dir; int32 t_run, t_pause, t_tacks, t_gybes; bool t_started; float t_theta, t_extreme
+  bool has_last_penalty; uint32 last_penalty_tick; bool has_deadline_base; uint32 deadline_base
+  uint32 last_served_tick; bool has_served, dsq_done
+  per course mark: list<uint8> in_zone, list<uint8> stbd_since_zone, list<uint32> zone_enter, list<float> dmin
+  int32 r183_mark; list<uint32> touch_tick; list<uint8> touched; int32 out_ticks
+  bool returning_prev, pen_turn_prev, has_status_end; uint32 status_end_tick
+  int32 gate_step; int8 gate_buoy
+list  boats, per boat, the record of §11.2:
+  int8 tack; bool tacking, turning_for_penalty; float turn_progress; int32 turn_tacks, turn_gybes
+  list  pending: uint8 rule, int32 other, uint32 tick, int32 count
+  int32 served, received; float deadline_s; bool returning_to_start, dsq, out_of_bounds
+list  pair states in ascending (i, j), per pair:
+  int32 i, j; bool judged; uint32 first_tick
+  uint8 raw, raw_prev, raw_before; bool has_raw; uint32 raw_change_tick
+  uint8 rel; int32 giver; uint8 kc_rule; uint32 onset_tick
+  bool r15_pending, r15_breach; uint32 r15_start; uint8 kc, kc_prev; uint8 kc_hist[32]
+  bool has_breach_tick; uint32 last_breach_tick
+  bool w161, w162, r161, r162; uint32 w161_start, w162_start; int32 w16_holder, r17_holder; bool r17
+  list  rooms: int32 mark, entitled, giver; uint8 rule; bool frozen; list<vec2> corridor; bool could_act;
+        uint8 state; bool breach
+  list<int32> used_marks; bool r183, r184; int32 r183_holder, r184_holder
+  bool r19_on, r19_could_act, r19_breach; int32 r19_entitled, r19_giver, r19_obst; uint8 r19_state
+  list<vec2> r19_corridor
+  int32 br_culprit; uint8 br_rule; uint32 br_since
+  bool has_decisive; int32 dec_culprit; uint8 dec_rule; uint32 dec_tick
+  bool inc_open, inc_contact, inc_penalised_noncontact; int32 inc_culprit; uint8 inc_rule
+  uint32 inc_tick, clear_since
+  bool protest_open; uint32 protest_deadline; int32 protest_fouled; float protest_min_gap
+  bool contact_now, has_contact_pen; int32 contact_pen_boat; uint32 contact_pen_tick
+  float gap, ttc
+list  pair records of §11.1 published by the last tick, in order:
+  int32 i, j; uint8 relation; int32 kc_giver, kc_holder; uint8 kc_rule, kc_state
+  int32 room_entitled, room_giver; uint8 room_rule; int32 room_mark; uint8 room_state
+  list  limits: int32 holder, uint8 rule
+  int32 rule17_holder; bool incident; int32 incident_culprit; uint8 incident_rule; uint32 incident_tick
+  float gap, ttc
+list  disqualifications of the last tick: int32 boat, uint8 reason
+```

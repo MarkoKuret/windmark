@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -17,6 +18,7 @@
 #include "rules/rules.h"
 #include "sea/sea.h"
 #include "shadow/shadow.h"
+#include "state/checksum.h"
 #include "wind/wind.h"
 
 namespace wm {
@@ -91,8 +93,16 @@ class World {
   const SeaField* sea() const { return sea_.get(); }
   const CollisionScene& scene() const { return scene_; }
   const WorldEvents& events() const { return events_; }  // of the last step
-  std::uint64_t checksum() const;
+  std::uint64_t checksum() const;  // conventions.md §9: tick index, then the snapshot body
   bool race_created() const { return created_; }
+
+  // conventions.md §9.1 world snapshot, taken between ticks: everything the world carries to the next tick.
+  void save(SnapshotWriter& w) const;
+  // Resumes a saved world. This must be a new world (no race, no step) built with the same WorldSetup and the same
+  // boats added in the same order; `course` is the course the race was created with (unused when the snapshot has
+  // no race). Returns false with a reason if the snapshot does not match or is damaged; the world is then unusable.
+  // Controllers are not state: set them again after loading.
+  bool load(std::span<const std::uint8_t> bytes, const CourseData* course, std::string& error);
 
  private:
   struct Command {
@@ -104,6 +114,7 @@ class World {
   void spawn(std::size_t i, Vec2 p, float psi_hint, bool use_hint);
   BoatEnv env_at(Vec2 p) const;
   void queue(Command c) { commands_.push_back(c); }
+  void save_body(SnapshotWriter& w) const;
 
   WorldSetup setup_;
   WindSettings wind_settings_;
@@ -124,6 +135,7 @@ class World {
   Race race_;
   Rules rules_;
   bool created_ = false;
+  std::uint32_t entries_at_create_ = 0;
   std::vector<Vec2> slots_;
   std::vector<Command> commands_;
   Controller controller_;

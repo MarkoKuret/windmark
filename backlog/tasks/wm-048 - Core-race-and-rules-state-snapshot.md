@@ -1,9 +1,11 @@
 ---
 id: WM-048
 title: 'Core: race and rules state snapshot'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-09-25 17:17'
+updated_date: '2026-09-25 17:34'
 labels:
   - core
 dependencies: []
@@ -19,6 +21,6 @@ From WM-009: race and rules state is not serialised; the tick checksum covers bo
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 World save/load round-trips race and rules state bit for bit
-- [ ] #2 Tick checksum covers race and rules state
+- [x] #1 World save/load round-trips race and rules state bit for bit
+- [x] #2 Tick checksum covers race and rules state
 <!-- AC:END -->

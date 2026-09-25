@@ -172,6 +172,7 @@ bool World::create_race(const CourseData& course, std::string& error) {
     for (std::size_t k = 0; k < n; ++k) spawn(static_cast<std::size_t>(order[k]), slots_[k], 0.0f, false);
   }
   created_ = true;
+  entries_at_create_ = static_cast<std::uint32_t>(n);
   return true;
 }
 
@@ -185,17 +186,9 @@ void World::retire(std::int32_t b) { queue({Command::Kind::retire, b, 0.0f, 0});
 void World::protest(std::int32_t b) { queue({Command::Kind::protest, b, 0.0f, 0}); }
 
 std::uint64_t World::checksum() const {
-  std::vector<std::vector<std::uint8_t>> snaps;
-  snaps.reserve(boats_.size() + 1);
-  for (const Boat& b : boats_) {
-    SnapshotWriter w;
-    b.save(w);
-    snaps.push_back(w.bytes());
-  }
-  SnapshotWriter c;
-  collisions_.save(c);  // collisions.md §6: after the boats
-  snaps.push_back(c.bytes());
-  return tick_checksum(tick_, snaps);
+  SnapshotWriter w;
+  save_body(w);
+  return tick_checksum(tick_, std::span<const std::vector<std::uint8_t>>(&w.bytes(), 1));
 }
 
 std::uint64_t World::step() {

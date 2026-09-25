@@ -15,7 +15,7 @@ ordinal: 54000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-From WM-027: at handling 1.0 a tack at 10 kn costs wm7 0.45 boat lengths (10.8 s back to 90 %), wm12 0.26 L (12.8 s); boat.md was rewritten to about half a length for S instead of the old 1 to 2 lengths. Is that the feel you want? Owner question, set aside on 2026-09-25: answer once the game runs (after WM-016.08, sail one boat).
+From WM-027 and WM-044: at handling 1.0 a tack at 10 kn, helm 0.5, now costs wm7 0.29 boat lengths (9.25 s back to 90 %), wm12 0.16 L (11.1 s), wm12 at 16 kn only 0.02 L; boat.md 7.2 references say about 0.5 L for S and 0.25 L for L (old wording was 1 to 2 lengths). Is that the feel you want? Owner question, set aside on 2026-09-25: answer once the game runs (after WM-016.08, sail one boat).
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

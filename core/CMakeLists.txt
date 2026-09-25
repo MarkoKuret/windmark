@@ -21,6 +21,8 @@ add_library(windmark_core STATIC
   src/math/wm_math.cpp
   src/math/rng.cpp
   src/table/table.cpp
+  src/state/checksum.cpp
+  src/state/sha256.cpp
 )
 target_include_directories(windmark_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 # PUBLIC: every target that links the core (tests, server, engine bindings) builds with the same float rules.

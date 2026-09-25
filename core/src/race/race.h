@@ -178,6 +178,10 @@ class Race {
   // Entries are added before create(); later ones are joiners (race.md §3.5), allowed until the prep signal.
   std::int32_t add_boat(const PerfData* perf, bool human);
 
+  // race.md §3.1: ticks from creation to the gun for these settings and course defaults (the course axis is laid
+  // for the wind at the gun, courses.md §6.1).
+  static std::int64_t gun_after_creation(const RaceSettings& s, const CourseRaceDefaults& course);
+
   // race.md §3.1 Created: `n_created` is this tick; `twd_mean` the race-wide wind direction now (§8.1).
   bool create(const ResolvedCourse& course, const RaceSettings& s, std::uint32_t n_created, float twd_mean,
               std::string& error);

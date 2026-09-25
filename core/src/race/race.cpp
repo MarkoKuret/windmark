@@ -198,6 +198,17 @@ std::int32_t Race::add_boat(const PerfData* perf, bool human) {
   return i;
 }
 
+std::int64_t Race::gun_after_creation(const RaceSettings& s, const CourseRaceDefaults& course) {
+  const RaceType type = s.race_type ? *s.race_type : (course.has_type ? course.type : RaceType::fleet);
+  SequenceKind seq;
+  if (s.sequence) seq = *s.sequence;
+  else if (course.has_sequence) seq = course.sequence;
+  else seq = type == RaceType::match ? SequenceKind::match : SequenceKind::s5410;
+  std::int64_t off[4];
+  signal_offsets(seq, off);
+  return ticks_ceil(s.free_sailing_s + static_cast<float>(-off[0]));
+}
+
 bool Race::create(const ResolvedCourse& course, const RaceSettings& s, std::uint32_t n_created, float twd_mean,
                   std::string& error) {
   if (course.steps.size() < 3) {
@@ -227,7 +238,7 @@ bool Race::create(const ResolvedCourse& course, const RaceSettings& s, std::uint
   n_created_ = n_created;
   std::int64_t off[4];
   signal_offsets(sequence_, off);
-  n_gun_ = static_cast<std::int64_t>(n_created) + ticks_ceil(s.free_sailing_s + static_cast<float>(-off[0]));
+  n_gun_ = static_cast<std::int64_t>(n_created) + gun_after_creation(s, course.race);
   n_warning_ = n_gun_ + off[0] * kTicksPerSecond;
   float limit = s.time_limit_s;
   if (!(limit > 0.0f)) limit = course.race.time_limit;

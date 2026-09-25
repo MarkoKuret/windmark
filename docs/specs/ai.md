@@ -546,3 +546,61 @@ Headless acceptance tests (on the default course, 10 AI boats at Intermediate un
 - scenario tests: port boat ducks a starboard boat; AI does not tack into a starboard boat's path within 3 L; AI gives
   room to an inside boat at the windward mark; AI with right of way holds course while a give-way boat ducks; AI
   escapes a boat's shadow on a beat by tacking and, with a boat on its hip on the other tack, by footing.
+
+### 15.1 Where the tests are, and what they measure now
+
+The fast checks and the scenarios run in `core_tests` (`core/tests/test_ai.cpp`): the level table, the polar
+tables, a lone boat sailing the default course clean, the memory block (§16) saved and loaded mid-race and in the
+sequence continuing bit for bit and rejected when damaged or of another tick, projected finishes and the
+finished-boat autopilot, and the scenarios above (duck, hold course, no tack into a starboard boat's path, escape a
+shadow by tacking and by footing). The mark-room scenario is covered by the fleet runs only so far.
+
+The fleet runs are a separate test, `ai_races` (`core/tests/test_ai_race.cpp`, ctest label `ai_long`, about four
+minutes): `ctest --test-dir core/build -L ai_long` runs them, `-LE ai_long` leaves them out. They print their
+measurements. Measured on the default course (11 kn, stable shifts):
+
+| run | measured | spec target |
+| --- | --- | --- |
+| 10 Intermediate, 5 seeds | 86 % finish (the rest DSQ); 1.0 penalties/boat; 4.4 contacts/race; stuck ≤ 22 s | all finish; ≤ 0.4; ≤ 1; ≤ 20 s |
+| same | bad air 1.8 triggers/boat, deficit 0.14 → 0.04 twenty seconds later (90 % lower) | ≥ 2, lower |
+| every level, 10 boats, 2 seeds | 80–95 % finish; OCS 5–15 %; mean start delay 21–25 s | Pro OCS < 5 %, delay < 2 s; Easy < 15 %, 3–8 s |
+| 1 nm beat, 10 boats | 5.0 tacks/boat | 3–14 |
+| match race, 2 Expert, 5 seeds | the leader covers in every race (1–7 activations) | ≥ 1 |
+| mixed fleet (2 per level, 3 seeds) | mean place Easy 7.0, Intermediate 3.8, Expert 4.2, Pro 3.5 | monotonic |
+| speed only (same) | finish-time ratios to Pro within 2.5 % of the `performance_scale` ratios | within 3 % |
+
+The assertions of `ai_races` hold the measured level (finish ≥ 80 %, ≤ 1.3 penalties/boat, ≤ 6 contacts/race,
+bad air ≥ 1.5 and lower 20 s later, every level ≥ 70 % finish, tacks 3–14, cover in every match, Easy behind Pro).
+**Open**: the penalty and contact targets, the start delays (a lone boat starts within 1–9 s; in a fleet the
+crowd at the line and pre-start penalties make the mean 13–25 s) and strict level order in a mixed fleet are not
+met yet. Most remaining penalties come from the windward mark in a crowd (rule 31 and the `44.1-late` penalties
+that follow: on the default course the offset mark is 60 m from the windward mark, so a boat penalised at the
+windward mark is inside one zone or the other for most of the 45 s of `rules.md` §9.4).
+
+## 16. The skippers' memory in a snapshot
+
+`conventions.md` §9.1 leaves the memory of the step-2 controllers out of the world snapshot and out of the tick
+checksum: the AI runs only on the authoritative side, and clients never have its memory. The skippers keep it
+themselves and serialise it as a **block of their own**, taken at the same moment as the world snapshot (between
+ticks) and stored or sent next to it:
+
+```
+uint32 magic 0x49414D57 ("WMAI"), uint32 version = 1
+uint32 tick (the world's next tick), uint64 race_seed, uint32 boat count of the world
+list   AI boats, in the order they were added:
+  int32 boat index
+  every carried field of the per-boat state (ai_internal.h, AiSkippers::Boat) in declaration order: level,
+    speed_only, autopilot_only, active; the RNG draw counters of streams 16 and 17 (§1); the wind filters; the
+    manoeuvre, strategy, start, rules, bad air, cover, penalty and sail state; the outputs of the last decision
+    (target heading, let fly, fixed helm, helm integral, tactic); the telemetry (§15) and the debug record
+  list bad air records (§15): uint32 tick, float deficit at the trigger, float deficit 20 s later
+```
+
+Encodings as `conventions.md` §9. The level parameters (§13) are rebuilt from the level and `speed_only`; the polar
+tables and shadow classes are caches rebuilt from the world's performance data; the per-tick context is rebuilt
+every step. `AiSkippers::save(writer, world)` writes the block; `AiSkippers::load(bytes, world, error)` goes into a
+new `AiSkippers` after `World::load` of the same snapshot and before the next step, and rejects a block of another
+tick, race seed or fleet, one that is truncated, has bytes left over or holds a value out of range. With both loaded,
+the race continues with the same checksums, events and results as the run the snapshot was taken from (tested at
+several ticks, `test_ai.cpp`, `test_ai_race.cpp`). A reconnect or resync (`networking.md` §9) needs only the world
+snapshot; a server restart or a replay that continues AI boats needs both.

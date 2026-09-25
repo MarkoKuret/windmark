@@ -277,16 +277,23 @@ Semantics and reference shapes:
   of lateral resistance is the class's balance point: where the upwind (start) config's moment vanishes
   close-hauled at its VMG angle in 12 kn, as a racing boat is designed and its rig raked to sail straight to
   windward with the helm centred; every config balances about the same point. The helm `h_e` that holds the moment
-  is its ratio to the rudder's yaw moment per unit helm (linear range, the blade incidence share of the radius
-  law); the rate is `v/R(h_e)` on the radius law (`boat.md` §5.9), growing as `v·h_e/R_full` beyond full helm
-  (a boat the rudder cannot hold broaches); `h_e` is held to ±3. Broached cells take the value of the last wind
-  the config holds at that angle; 0 in the no-go zone and in no wind. Resulting shapes: upwind config 0 at the
-  balance point, a little lee helm in light air and pinching, weather helm reaching and in a breeze (reference S
-  jib at 16 kn: +5°/s at 60°, +15°/s at 100°, a helm of about 0.1); main alone: weather helm (S at 10 kn about
-  +5°/s); spinnakers: negative close reaching (the kite, far forward, pulls the bow off: S at 10 kn −9 to −17°/s
-  from 50° to 80°), small across the normal range, positive broad reaching in a breeze (S at 22 kn about +15°/s
-  at 130°, L about +28°/s: the broach). Scaled by `trim_heel` (`boat.md` §5.5, §5.9), so an over-sheeted kite
-  broaches sooner and flogging sails have none.
+  on a straight course is its ratio to the rudder's yaw moment per unit helm (linear range, the whole rudder angle
+  reaching the blade: a few degrees of rudder on a well-balanced boat); the rate is `v/R(h_e)` on the radius law
+  (`boat.md` §5.9), which is also the rate at which the boat turns with the helm centred (the centred blade damps
+  the free turn as much as a helm turn loses of its rudder angle to the turn's cross-flow), growing as
+  `v·h_e/R_full` beyond full helm (a boat the rudder cannot hold broaches); `h_e` is held to ±3. Broached cells
+  (`vpp.broached`) from 45° TWA where the heel is what failed are **overpowered**: the boat lies over at its heel
+  limit and rounds up at the full-helm turn rate of its broached speed, `v_b/R_full` (a full helm at speed can
+  still catch it); the other broached cells (pinching in a strong breeze) take the value of the last wind the
+  config holds at that angle; 0 in the no-go zone and in no wind. Resulting shapes: upwind config 0 at the
+  balance point, a little lee helm in light air and pinching, a slight weather helm reaching (reference S jib at
+  10 kn: +1°/s from 60° to 110°, a helm of about 0.02; at 16 kn +1.5°/s at 60°, +3 to +5°/s from 80° to 110°
+  heeled near its limit, a helm of about 0.05); main alone: weather helm (S at 10 kn about +1.5°/s); spinnakers:
+  negative close reaching in light air (the kite, far forward, pulls the bow off: S at 10 kn −3 to −6°/s from 50°
+  to 80°, where the kite is the wrong sail), small across the normal range, a moderate weather helm broad reaching
+  in a breeze (S at 22 kn about +5°/s at 130°, L about +11°/s), and a broach where the kite is overpowered (S
+  from 50° at 14 kn and on a reach from about 20 kn: +10 to +20°/s). Scaled by `trim_heel` (`boat.md` §5.5,
+  §5.9), so an over-sheeted sail plan rounds up sooner and flogging sails have none.
 - **fall_off**: the same for every config (the sails are flogging). Speed axis from sternway to a crawl ahead
   (reference −6, 0, `v_f`/2, `v_f` m/s with `v_f` at Froude number 0.05, `0.05·sqrt(g·lwl)`: S 0.4 m/s, L 0.7 m/s),
   full from sternway to 0, 0.75 at `v_f`/2, zero from `v_f` (the keel holds the heading once the boat moves);

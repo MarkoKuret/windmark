@@ -21,13 +21,13 @@ Options:
 | --- | --- | --- |
 | `WINDMARK_BUILD_TESTS` | `ON` | build the test suite |
 | `WINDMARK_WERROR` | `OFF` | warnings are errors |
-| `WINDMARK_DATA_DIR` | `<repo>/data` | where the tests find `classes/` and `perf/` |
+| `WINDMARK_DATA_DIR` | `<repo>/data` | where the tests find `classes/`, `perf/` and `venues/` |
 
 Tests (`ctest`):
 
 - `core_tests`: the doctest suite in `tests/` (check values of `conventions.md`, the math vector file, tables,
-  checksums, JSON, and loading and validating `data/perf/wm7.perf.json` and `wm12.perf.json` against their class
-  files).
+  checksums, JSON, loading and validating `data/perf/wm7.perf.json` and `wm12.perf.json` against their class
+  files, and loading `data/venues/example_bay.venue.json` into the environment).
 - `core_no_fma`: disassembles `libwindmark_core.a` and fails on any fused multiply-add instruction.
 
 ## Float rules
@@ -66,7 +66,7 @@ Sources live in `src/<module>/`, included as `"module/header.h"`, all in namespa
 | `src/shadow/` | shadow snapshot sources, blanket and backwind losses, the strongest-source rule, zone outlines, the environment at a boat | wind_shadow.md |
 | `src/boat/` | `boat_env`: the environment a boat step reads (`BoatEnv`, `SeaSurface`); `hull_sampling`: hull points, mean height and wave pitch and roll; `boat`: state, controls, the tick, snapshot save and load, AI lookups | boat.md, sea.md §5 |
 | `src/sails/` | inventory, the sail-change queue (peels, cancels, timing, slowdown), trim, sail motion, trim error and luff outputs | sails.md |
-| `src/data/` | strict JSON reader with correctly rounded binary32 numbers, load errors with JSON paths, the `windmark.perf/1` loader and validator, the `windmark.boatclass/1` header reader and the perf-to-class check | data_format.md |
+| `src/data/` | strict JSON reader with correctly rounded binary32 numbers, load errors with JSON paths, the `windmark.perf/1` loader and validator, the `windmark.boatclass/1` header reader and the perf-to-class check; `venue`: the `windmark.venue/1` loader and validator | data_format.md |
 | `tests/` | doctest suite and the math vector file | |
 | `tools/` | `gen_math_vectors.cpp`, `gen_env_vectors.cpp` | |
 | `third_party/doctest/` | doctest 2.4.12 (MIT), test framework | |
@@ -116,6 +116,8 @@ snapshot. Settings structs carry the spec defaults; `check_wind_settings` / `che
 | `shadowed_wind(snapshot, self, x, y, U, from)` | the wind at a point after the strongest other boat's shadow | wind_shadow.md §5 |
 | `env_at_boat(wind, tick, snapshot, self, x, y)` | tick step 5: shadowed and clean wind plus current at a boat | wind_shadow.md §5, wind.md §7 |
 | `shadow_zones(B)` | blanket and backwind outlines for drawing | wind_shadow.md §7 |
+| `load_venue(file, VenueData, err)` | the venue physics file: wind field, current, exposure, land, obstacles, file hash | data_format.md §6 |
+| `apply_venue(venue, WindSettings, SeaSettings)` | points the settings at the venue's grids (the venue must outlive the fields) | data_format.md §6 |
 
 The boat step reads the sea through `SeaTick::sea_height` (it samples the hull points itself, `sea.md` §5);
 `SeaTick` implements the boat's `SeaSurface` interface. The renderer takes `components()`

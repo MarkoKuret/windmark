@@ -46,11 +46,20 @@ var SHOTS := [
 		"legs": [{"t": 10.0, "twa": 140.0}, {"t": 40.0, "twa": 140.0, "req": "kite"},
 			{"t": 40.0, "twa": 140.0, "req": "jib", "until": "hoist:jib:0.5"}],
 		"cam": {"side": -1, "fwd": 0.5, "up": 0.3, "dist": 21.0}},
+	{"name": "cloth_main_close", "cls": "wm7", "tws": 12.0, "twa": 42.0, "legs": [{"t": 20.0, "twa": 42.0}],
+		"cam": {"side": 1, "fwd": -0.75, "up": 0.05, "dist": 7.5}},
+	{"name": "cloth_backlit", "cls": "wm7", "tws": 12.0, "twa": 42.0, "legs": [{"t": 20.0, "twa": 42.0}],
+		"cam": {"side": -1, "fwd": -0.3, "up": 0.15, "dist": 14.0, "sun": "back"}},
 	{"name": "wm12_upwind", "cls": "wm12", "tws": 12.0, "twa": 40.0, "legs": [{"t": 20.0, "twa": 40.0}],
 		"cam": {"side": 1, "fwd": -0.45, "up": 0.3, "dist": 32.0}},
 	{"name": "wm12_code0", "cls": "wm12", "tws": 10.0, "twa": 75.0,
 		"legs": [{"t": 10.0, "twa": 75.0}, {"t": 40.0, "twa": 75.0, "req": "code0"}],
 		"cam": {"side": 1, "fwd": 0.25, "up": 0.3, "dist": 32.0}},
+	{"name": "cloth_kite_close", "cls": "wm7", "tws": 12.0, "twa": 110.0,
+		"legs": [{"t": 10.0, "twa": 110.0}, {"t": 40.0, "twa": 110.0, "req": "kite"}],
+		"cam": {"side": 1, "fwd": 0.35, "up": 0.1, "dist": 11.0}},
+	{"name": "cloth_wm12_close", "cls": "wm12", "tws": 12.0, "twa": 40.0, "legs": [{"t": 20.0, "twa": 40.0}],
+		"cam": {"side": 1, "fwd": -0.7, "up": 0.1, "dist": 11.0}},
 ]
 
 
@@ -220,8 +229,20 @@ func _dump(spec: Dictionary, bv: BoatView, st: SimSource.BoatState, note: String
 			fv.store_buffer(wp.to_byte_array())
 			var fi := FileAccess.open(dir.path_join(nm + "_i.bin"), FileAccess.WRITE)
 			fi.store_buffer(ind.to_byte_array())
-			meshes.append({"name": nm, "node": String(mi.name), "sail": is_sail,
-				"albedo": [col.r, col.g, col.b]})
+			var entry := {"name": nm, "node": String(mi.name), "sail": is_sail, "albedo": [col.r, col.g, col.b]}
+			if is_sail and mat is ShaderMaterial:
+				entry["cloth"] = _cloth_uniforms(mat as ShaderMaterial)
+				var uvs := PackedFloat32Array()
+				var u0: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV]
+				var u1: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV2]
+				uvs.resize(pos.size() * 4)
+				for k in pos.size():
+					uvs[4 * k] = u0[k].x
+					uvs[4 * k + 1] = u0[k].y
+					uvs[4 * k + 2] = u1[k].x
+					uvs[4 * k + 3] = u1[k].y
+				FileAccess.open(dir.path_join(nm + "_uv.bin"), FileAccess.WRITE).store_buffer(uvs.to_byte_array())
+			meshes.append(entry)
 	# the camera in the boat's yaw frame: side +1 = leeward (port when the wind is from starboard)
 	var cam: Dictionary = spec["cam"]
 	var o := bv.transform.origin
@@ -234,9 +255,30 @@ func _dump(spec: Dictionary, bv: BoatView, st: SimSource.BoatState, note: String
 	var mast_h := 0.45 * float(bv.info.physics.get("rig", {}).get("masthead", [0, 0, 10])[2])
 	var target := o + Vector3.UP * mast_h
 	var scene := {"meshes": meshes, "eye": [eye.x, eye.y, eye.z], "target": [target.x, target.y, target.z],
-		"note": note}
+		"note": note, "sun": cam.get("sun", "side")}
 	var f := FileAccess.open(dir.path_join("scene.json"), FileAccess.WRITE)
 	f.store_string(JSON.stringify(scene, "  "))
+
+
+## The sail material's uniforms for the preview's copy of the sail shader (JSON: vectors as lists).
+static func _cloth_uniforms(m: ShaderMaterial) -> Dictionary:
+	var out := {}
+	for u in m.shader.get_shader_uniform_list():
+		var n: String = u["name"]
+		var v: Variant = m.get_shader_parameter(n)
+		if v is Vector2:
+			out[n] = [v.x, v.y]
+		elif v is Vector3:
+			out[n] = [v.x, v.y, v.z]
+		elif v is Color:
+			out[n] = [v.r, v.g, v.b, v.a]
+		elif v is PackedFloat32Array:
+			out[n] = Array(v)
+		elif v is Texture2D:
+			out[n] = ProjectSettings.globalize_path((v as Texture2D).resource_path.get_slice("::", 0))
+		elif v is float or v is int or v is bool:
+			out[n] = v
+	return out
 
 
 static func _visible_chain(n: Node, top: Node) -> bool:

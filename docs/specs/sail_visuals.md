@@ -388,11 +388,45 @@ sail material uses no normal map).
 - **Update rate by distance** (the phase `φ` always advances): nearer than 200 m every frame; 200–800 m at 15 Hz;
   beyond at 4 Hz; outside the view frustum not at all (a sphere around the sail against the camera's frustum
   planes), and at once on coming back into view. The drivers `φ`, `s_b` and `tl` advance every frame either way.
-- **Material**: the generator's `sailcloth` slot, opaque, back faces culled (each layer faces its own side),
-  roughness about 0.55, a back-light term of about 0.3 of the albedo so the sun shows through the cloth; liveries and
-  sail numbers through uv1 (Godot's `UV2`) in a sail shader. Opaque sails need no draw-order sorting.
+- **Material**: the generator's `sailcloth` slot (its colour and weave texture), opaque, back faces culled (each
+  layer faces its own side), with the cloth of §11.1 and a back-light term (the sun through the cloth); liveries and
+  sail numbers later through uv1 (Godot's `UV2`). Opaque sails need no draw-order sorting. Shadows: `water_render.md`
+  §4.6 (the shadow pass draws the sail 5 cm off the light along its normal, so the 2 mm layers never shadow each
+  other).
 - The sail node's transform stays the identity: the generator writes sails in the boat frame, and §7 places them in
   that frame.
+
+### 11.1 Cloth
+Procedural, in `shaders/sail_cloth.gdshaderinc` (no texture files), from the generator's uv sets without any change
+to them: uv0 is metric (along the row aft from the luff; up the sail as the summed mean row spacing) and the same on
+both layers, uv1.y is the row fraction. At load, per sail (`BoatMaterials.sail_cloth`, from the rest grid), a
+material of its own gets:
+- the **flat plan** `p = (a·sin θ, l + a·cos θ)` of uv0 `(a, l)`, with `θ` the mean angle between the luff and the
+  rows, and the corners in it: tack `(0, 0)`, clew, head, top of the leech (the head on a pointed head);
+- the row chords (distance to the leech `= (chord(row) − a)·sin θ`), the panel width and the corner patch radius.
+
+| | woven polyester (style 0) | laminate (style 1) | nylon (style 2) |
+| --- | --- | --- | --- |
+| used on | main and headsails under 10 m LOA | main and headsails from 10 m LOA, every code zero | spinnakers |
+| panels | cross-cut: seams square to the leech every 0.9 m | tri-radial: fans from head, tack and clew, cross-cut in the middle, 1.1 m at the fan's reach | tri-radial, 0.9 m plus 0.03 m per metre of LOA over 7 |
+| seam | 16 mm, two rows of stitching | 18 mm | 10 mm |
+| fine structure | the generator's weave texture (60 %) | scrim: load-path fibres every 22 mm along the panel, a diagonal grid every 45 mm | ripstop threads every 6 mm |
+| roughness, through one ply | 0.55, 0.30 | 0.38, 0.20 | 0.45, 0.50 |
+
+On every sail: edge tapes (luff 35 mm on the main, 45 mm on headsails, 20 mm on spinnakers; leech 25 mm; foot
+30 mm; the head of a square-top main), reinforcement patches at the tack (0.8 r), clew and head (r = 0.06 luff,
+0.045 on spinnakers) and the top of the leech of a square-top main (0.6 r): two full plies with radial fingers of
+staggered length. The main has four batten pockets square to the leech at 1/5 to 4/5 of its length, the top one
+full length, the others 22 to 30 % of the way to the luff. Jibs and genoas carry three tell-tales 0.27 to 0.44 m
+aft of the luff at 1/4, 1/2 and 3/4 of the height.
+
+Shading: seams, tapes, patches and pockets count as extra plies. In front light every ply makes the cloth 4.5 %
+greyer (up to four), stitching up to 45 % and each panel differs by ±3 % in albedo and ±0.05 in roughness (the
+weave direction changes from panel to panel), so the panels read from the chase camera; against the sun the light
+through the cloth falls by `exp(−0.8·plies)`, so seams, battens and patches show as darker shapes, and it grows
+toward the sun (`0.75 + 0.75·max(0, −V·L)^4`). Every line is box-filtered over the pixel footprint (`fwidth` of
+uv0), so detail finer than a pixel fades to its average instead of shimmering, and panel variation fades out when
+panels get smaller than a few pixels. The albedo cap of 0.8 applies to the plain cloth before this.
 
 ## 12. Tests
 
@@ -437,6 +471,12 @@ Flutter phase `φ = 0` unless stated.
 15. **Continuity.** A scripted tack (awa from +30° to −30° over 4 s, `β` following the new side's target with the
     motion of `sails.md` §5.5 at the class's `rate_in` / `rate_out`, `backed` from its `sails.md` §7 formula) and a
     gybe (awa from 150° through 180° to −150° over 4 s) move no vertex more than `0.05·Sa` between frames at 60 fps.
+16. **Cloth.** On the generated `wm7` and `wm12` sails: the cloth style and kind by sail type and LOA (§11.1),
+    the flat plan (a unit shear, the clew aft, the plan height within 15 % of the tack-head distance), the row chords,
+    battens on the main only, tell-tales on the jib only, one material per sail; the sail shader has the cloth
+    uniforms and the shadow-pass push. The offline preview (`tests/sail_preview.py`) renders the cloth with the same
+    include; its shots `cloth_main_close`, `cloth_backlit`, `cloth_kite_close` and `cloth_wm12_close` show it close
+    and against the sun.
 
 ## 13. Dependencies and open points
 
@@ -444,4 +484,6 @@ Flutter phase `φ = 0` unless stated.
   vertical) for pole-flown spinnaker classes (`tools/boatgen`, WM-029), and the full grid topology with the
   collapsed head vertex referenced (WM-017).
 - Running rigging (sheets, halyards, guys) is not drawn yet; when it is, the sheets run from the placed clew.
+- The cloth style comes from the sail type and the LOA (§11.1) until the class file can name it (a
+  `visual.sails.<id>.cloth` key in the generator's `look` block).
 - Crew, winches and tell-tales follow the sail `motion` output (`sails.md` §7) and are specified with the crew.

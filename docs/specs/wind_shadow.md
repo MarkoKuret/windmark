@@ -2,7 +2,7 @@
 
 Every boat disturbs the air downwind of its sails. A boat sailing in that disturbed air gets less wind and a
 header. This is the core of fleet tactics: covering, clearing your air, the safe leeward position, starting-line
-positioning. The model is geometric and cheap: two zones per boat, evaluated from a per-tick snapshot, the
+positioning. The model is geometric and cheap: two zones per boat (blanket and backwind), evaluated from a per-tick snapshot, the
 strongest one wins.
 
 ## 1. Zones
@@ -13,9 +13,10 @@ For a source boat `B`:
    Long (about 3 mast heights in a moderate breeze), widening downwind, strongest a short distance behind the
    sails. It exists on every point of sail: upwind it lies to leeward and behind, downwind it lies ahead of `B`
    (a boat running behind you steals your wind).
-2. **Wake turbulence**: upwind only, the stirred-up air in a band between `B`'s stern line and its blanket, shorter
-   and weaker. It is what makes sitting directly astern and slightly to windward of a boat slow even outside the
-   blanket.
+2. **Backwind**: upwind only, a band of disturbed air astern of `B`, angled a little to windward of its wake
+   line, shorter and weaker than the blanket. It is what makes sitting astern and to windward of a boat slow even
+   outside its blanket, and it is why the safe-leeward position works: the boat to leeward and ahead puts the
+   boat to windward and behind in its backwind.
 
 A receiving boat in either zone gets a **speed loss** `l` (fraction of the wind speed) and a **header** `δ` (the
 wind bent to follow `B`'s sails, heading boats on `B`'s tack).
@@ -41,11 +42,12 @@ geometric ones from the rig; the rest are model constants with the defaults show
 | `blanket_near` | – | 0.7 | 0.7 | relative loss right at the sails |
 | `blanket_reach_up` | – | 0.05 | 0.05 | how far upwind of the centre of effort the blanket fades in (fraction of length) |
 | `blanket_spread` | – | 0.10 | 0.10 | half-width growth per metre downwind |
-| `turb_length` | – | 0.4 | 0.4 | turbulence length as a fraction of the blanket length |
-| `turb_depth` | – | 0.15 | 0.15 | peak loss of the turbulence |
-| `turb_width` | m | 2.5 | 5 | turbulence half-width at the stern (≈ beam) |
-| `turb_spread` | – | 0.15 | 0.15 | its growth per metre |
-| `turb_awa_fade`, `turb_awa_max` | rad | 70°, 75° | 70°, 75° | turbulence fades out between these apparent wind angles |
+| `turb_length` | – | 0.4 | 0.4 | backwind length as a fraction of the blanket length |
+| `turb_depth` | – | 0.15 | 0.15 | peak loss of the backwind |
+| `turb_width` | m | 2.5 | 5 | backwind half-width at the stern (≈ beam) |
+| `turb_spread` | – | 0.3 | 0.3 | its growth per metre astern |
+| `turb_angle` | rad | 10° | 10° | angle of the backwind band to windward of the astern direction |
+| `turb_awa_fade`, `turb_awa_max` | rad | 70°, 75° | 70°, 75° | backwind fades out between these apparent wind angles |
 | `header_coef` | rad | 0.4 | 0.4 | header per unit of loss |
 | `header_max` | rad | 3° | 3° | largest header |
 
@@ -80,13 +82,14 @@ W   = 0.5f*wsrc + max(xi, 0) * blanket_spread
 s   = xi / Lb
 lb  = (B.spinnaker ? blanket_depth_spinnaker : blanket_depth) * p_long(s) * p_lat(fabsf(eta) / W)
 
-// wake turbulence
+// backwind
 lt = 0
 aa = fabsf(B.awa)
 if aa < turb_awa_max:
     fade = aa <= turb_awa_fade ? 1 : (turb_awa_max - aa) / (turb_awa_max - turb_awa_fade)
-    wx = ax - fx ; wy = ay - fy ; wl = sqrtf(wx*wx + wy*wy)
-    if wl < 1e-3: wx = ax ; wy = ay else: wx = wx / wl ; wy = wy / wl     // between downwind and astern
+    tk = sgn(B.twa)                                     // +1: windward side is starboard
+    ca = cos(turb_angle) ; sa = sin(turb_angle)         // constants per class
+    wx = (-ca*fx) + (tk*sa)*fy ; wy = (-ca*fy) - (tk*sa)*fx   // astern, turned toward windward
     tx = px - (B.pos_x + stern_x*fx) ; ty = py - (B.pos_y + stern_x*fy)
     xt = tx*wx + ty*wy ; et = tx*wy - ty*wx
     Lt = turb_length * Lb
@@ -136,8 +139,8 @@ wind_from  = wrap_2pi(from - best_tack * best_d)
 | position relative to `B` (upwind, same tack) | effect |
 | --- | --- |
 | directly downwind along `B`'s apparent wind, within 1–3 mast heights | blanket: up to 22 % less wind and a 3° header |
-| astern and slightly to windward (in `B`'s wake) | turbulence: up to 15 % less wind |
-| to leeward and ahead ("safe leeward") | clear air; `B` is the one sailing in this boat's blanket |
+| astern and to windward, within about 1.5 boat lengths | backwind: up to 15 % less wind and a smaller header |
+| to leeward and ahead ("safe leeward") | clear air; `B` sits in this boat's backwind |
 | to windward and abeam or ahead | clear air |
 Downwind, the blanket of a boat behind reaches ahead of it: the boat behind can blanket the boat in front.
 
@@ -147,10 +150,10 @@ Downwind, the blanket of a boat behind reaches ahead of it: the boat behind can 
 | --- | --- | --- |
 | `shadow(j, x, y)` | `(l, δ)` from boat `j` at a point | AI (bad-air detection, covering) |
 | `shadowed_wind(i, x, y)` | the wind boat `i` would get at a point from all other boats | AI look-ahead |
-| `shadow_zones(j)` | the blanket and turbulence outlines for drawing | HUD overlay, training mode |
+| `shadow_zones(j)` | the blanket and backwind outlines for drawing | HUD overlay, training mode |
 
-For drawing, the blanket outline is the curve `|η| = W(ξ)` for `ξ ∈ [−reach_up·Lb, Lb]` and the turbulence
-outline `|η_t| = turb_width + ξ_t·turb_spread` for `ξ_t ∈ [0, Lt]`, in the frames of §4.
+For drawing, the blanket outline is the curve `|η| = W(ξ)` for `ξ ∈ [−reach_up·Lb, Lb]` and the
+backwind outline `|η_t| = turb_width + ξ_t·turb_spread` for `ξ_t ∈ [0, Lt]`, in the frames of §4.
 
 ## 8. Tests
 

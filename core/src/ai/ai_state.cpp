@@ -92,7 +92,7 @@ void visit_boat(V& v, AiSkippers::Boat& a) {
   v(a.avoid_until); v(a.avoid_hold); v(a.avoid_psi); v(a.avoid_slow); v(a.avoid_other); v(a.avoid_kind);
   v(a.bad_t); v(a.foot_until); v(a.foot_delta); v(a.bad_src);
   v(a.opp_other_t); v(a.cover_opp); v(a.opp_tack_prev); v(a.opp_tacked_at);
-  v(a.pen_on); v(a.pen_t0); v(a.pen_dir); v(a.pen_seen_turning); v(a.pen_stall_t); v(a.pen_served0);
+  v(a.pen_on); v(a.pen_t0); v(a.pen_dir); v(a.pen_seen_turning); v(a.pen_stall_t); v(a.pen_prepare); v(a.pen_served0);
   v(a.change_t); v(a.change_want);
   v(a.psi_target); v(a.let_fly); v(a.helm_fixed); v(a.forced); v(a.r_limit); v(a.h_int); v(a.tactic);
   v(a.prev_tactic); v(a.decided);

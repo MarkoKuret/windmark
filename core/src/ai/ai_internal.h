@@ -112,6 +112,7 @@ struct AiSkippers::Boat {
   float pen_t0 = 0.0f, pen_dir = 1.0f;
   bool pen_seen_turning = false;
   float pen_stall_t = 0.0f;
+  bool pen_prepare = false;        // a penalty waits for speed or clear water
   std::int32_t pen_served0 = 0;
   // Sails (§6.2)
   float change_t = 0.0f;

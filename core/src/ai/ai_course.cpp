@@ -1,5 +1,6 @@
 // Sailing the course (ai.md §4, §6, §7.6, §8, §9, §10) and the decision dispatch.
 #include <cmath>
+#include <cstdio>
 
 #include "ai/ai_predict.h"
 #include "ai/ai_steps.h"
@@ -218,6 +219,12 @@ bool round_mark(AC& x, AB& a, const Me& m, const MarkTarget& t) {
         a.psi_target = heading_for(m.twd, -m.tack * max(m.theta_up, std::fabs(twa)));
         return true;
       }
+      if (m.s.v >= 0.3f) {
+        // The tack is not possible now: as close to the guide as this tack goes, and wait (a loop the long way
+        // round near a mark and other boats is worse than a late tack).
+        a.psi_target = heading_for(m.twd, m.tack * m.theta_up);
+        return true;
+      }
       a.turn_dir = static_cast<std::int8_t>(e > 0.0f ? -1 : 1);
     }
   }
@@ -264,7 +271,7 @@ bool near_zone(AC& x, const Me& m, std::int32_t step, float extra) {
   const CourseStep& st = co.steps[static_cast<std::size_t>(step)];
   const float Z = x.race.zone_lengths() * m.L;
   for (const std::int32_t k : {st.marks[0], st.marks[1]}) {
-    if (k >= 0 && v_dist(m.c, co.marks[static_cast<std::size_t>(k)].pos) < Z + m.L + extra) return true;
+    if (k >= 0 && v_dist(m.c, co.marks[static_cast<std::size_t>(k)].pos) < Z + 0.5f * m.L + extra) return true;
   }
   return false;
 }
@@ -273,6 +280,7 @@ bool near_zone(AC& x, const Me& m, std::int32_t step, float extra) {
 
 bool penalty_turns(AC& x, AB& a, const Me& m, Leg leg) {
   const BoatRules& br = m.br;
+  a.pen_prepare = false;
   auto stop = [&]() {
     a.pen_on = false;
     a.helm_fixed = NAN;
@@ -308,20 +316,32 @@ bool penalty_turns(AC& x, AB& a, const Me& m, Leg leg) {
     if (m.tws > 10.0f * KNOT && m.b.sails().spinnaker_flying() && !m.b.sails().busy()) x.w.drop_front(a.i);
     return true;
   }
-  if (a.man != Man::straight) return false;
+  auto why = [&](const char* r) {
+    if (x.n % 40u == 0u && x.t_race > 0.0f) std::fprintf(stderr, "PEN boat %d t %.1f dl %.1f blocked %s\n", a.i, (double)x.t_race, (double)br.deadline_s, r);
+    a.pen_prepare = true;
+    return false;
+  };
+  if (a.man != Man::straight) return why("man");
   // The turn only counts outside the zones of the next mark and the last one rounded: stay clear of them by the
   // turn's diameter.
-  if (near_zone(x, m, next, 2.0f * R) || near_zone(x, m, m.rb.last_rounded, 2.0f * R)) return false;
-  const bool urgent = br.deadline_s >= 0.0f && br.deadline_s < 12.0f;
+  if (near_zone(x, m, next, 2.0f * R) || near_zone(x, m, m.rb.last_rounded, 2.0f * R)) return why("zone");
+  // Urgent from 20 s before the deadline (the turn must be in progress when it passes, rules.md §9.4): then only
+  // the zones, a minimum of way and an immediate collision risk hold it back.
+  const bool urgent = br.deadline_s >= 0.0f && br.deadline_s < 20.0f;
   const float V = polar_speed(a, m, std::fabs(m.twa));
-  if (m.s.v < (urgent ? 0.5f : 0.75f) * V && x.now < a.low_until + 8.0f) return false;
-  if (!urgent) {
-    if (x.now < a.low_until) return false;
-    if (m.s.v < 0.75f * V) return false;
+  if (m.s.v < (urgent ? 0.4f : 0.75f) * V && x.now < a.low_until + 8.0f) return why("slow");
+  if (urgent) {
+    for (std::size_t j = 0; j < x.w.boat_count(); ++j) {
+      if (static_cast<std::int32_t>(j) == a.i || !x.race.racing(j)) continue;
+      if (v_dist(x.race.boat(j).c, m.c) < 1.0f * m.L + x.r_hull[j] + R) return why("urgent-boat");
+    }
+  } else {
+    if (x.now < a.low_until) return why("low");
+    if (m.s.v < 0.75f * V) return why("slow2");
     // Not so close to the next zone that the turn could not be completed before it (about 20 s of sailing).
     if (next > 0 && next < static_cast<std::int32_t>(x.course.steps.size()) - 1 &&
         near_zone(x, m, next, 2.0f * R + 20.0f * max(1.0f, m.s.v))) {
-      return false;
+      return why("nextzone");
     }
     // Clear of other boats: none within 4 L ahead or 2 L around.
     const Vec2 f = dir(m.s.psi);
@@ -329,8 +349,8 @@ bool penalty_turns(AC& x, AB& a, const Me& m, Leg leg) {
       if (static_cast<std::int32_t>(j) == a.i || !x.race.racing(j)) continue;
       const Vec2 cj = x.race.boat(j).c;
       const float d = v_dist(cj, m.c);
-      if (d < 2.0f * m.L + x.r_hull[j] + R) return false;
-      if (d < 4.0f * m.L + x.r_hull[j] && v_dot(v_sub(cj, m.c), f) > 0.0f) return false;
+      if (d < 2.0f * m.L + x.r_hull[j] + R) return why("boat");
+      if (d < 4.0f * m.L + x.r_hull[j] && v_dot(v_sub(cj, m.c), f) > 0.0f) return why("boat-ahead");
     }
   }
   // Start: on a beat or a reach luff into a tack, on a run bear away into a gybe.
@@ -947,10 +967,20 @@ void ai_decide(AC& x, AB& a) {
     free_sailing(x, a, m);
   } else if (!m.rb.started && !m.rb.ocs_scored) {
     // A pre-start penalty is taken before the start when clear (rules.md §9.3), not in the last 20 s.
-    if ((x.t_race < -20.0f || x.race.after_gun(x.n) || a.pen_on) &&
-        penalty_turns(x, a, m, std::fabs(m.twa) > HALF_PI ? Leg::run : Leg::beat)) {
-      rules_overlay(x, a, m, m.c);
-      return;
+    if ((x.t_race < -20.0f || x.race.after_gun(x.n) || a.pen_on)) {
+      if (penalty_turns(x, a, m, std::fabs(m.twa) > HALF_PI ? Leg::run : Leg::beat)) {
+        rules_overlay(x, a, m, m.c);
+        return;
+      }
+      if (a.pen_prepare && !x.race.after_gun(x.n)) {
+        // Speed and clear water for the turn: a broad reach on starboard away from the line, sails in.
+        a.tactic = AiTactic::PenaltyTurn;
+        a.psi_target = heading_for(m.twd, 110.0f * DEG);
+        if (m.tack < 0.0f && std::fabs(m.twa) < HALF_PI) a.turn_dir = 1;
+        avoid_objects(x, a, m, -1);
+        if (!land_check(x, a, m)) rules_overlay(x, a, m, m.c);
+        return;
+      }
     }
     if (!x.race.after_gun(x.n)) prestart(x, a, m);
     else after_gun(x, a, m);

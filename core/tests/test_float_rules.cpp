@@ -5,6 +5,7 @@
 
 #include "base/fp_env.h"
 #include "doctest.h"
+#include "math/wm_math.h"
 #include "test_util.h"
 
 using wm_test::bits;
@@ -37,4 +38,28 @@ TEST_CASE("no fused multiply-add: a*b + c rounds twice") {
 
   // For reference: the fused result is 2^-24.
   CHECK(std::fma(static_cast<float>(a), static_cast<float>(a), static_cast<float>(c)) == from_bits(0x33800000u));
+}
+
+TEST_CASE("constants have the spec's bits") {
+  CHECK(bits(wm::KNOT) == 0x3F03B2A2u);
+  CHECK(bits(wm::DEG) == 0x3C8EFA35u);
+  CHECK(bits(wm::DT) == 0x3D4CCCCDu);
+  CHECK(wm::PI == static_cast<float>(3.14159265358979323846));
+  CHECK(wm::TWO_PI == static_cast<float>(6.28318530717958647692));
+  CHECK(wm::HALF_PI == static_cast<float>(1.57079632679489661923));
+  CHECK(wm::QUARTER_PI == static_cast<float>(0.78539816339744830962));
+}
+
+TEST_CASE("scalar helpers follow rule 12 and sgn of §3") {
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  CHECK(wm::clamp(2.0f, 0.0f, 1.0f) == 1.0f);
+  CHECK(wm::clamp(-2.0f, 0.0f, 1.0f) == 0.0f);
+  CHECK(std::isnan(wm::clamp(nan, 0.0f, 1.0f)));
+  CHECK(wm::lerp(3.0f, 3.0f, 0.0f) == 3.0f);
+  CHECK(wm::lerp(1.0f, 3.0f, 0.5f) == 2.0f);
+  CHECK(wm::sgn(0.0f) == 1.0f);
+  CHECK(wm::sgn(-0.0f) == 1.0f);
+  CHECK(wm::sgn(-1e-30f) == -1.0f);
+  CHECK(wm::min(1.0f, 2.0f) == 1.0f);
+  CHECK(wm::max(1.0f, 2.0f) == 2.0f);
 }

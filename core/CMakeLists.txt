@@ -18,6 +18,8 @@ include(WindmarkFloatRules)   # target windmark_float_rules (conventions.md §5)
 
 add_library(windmark_core STATIC
   src/base/fp_env.cpp
+  src/math/wm_math.cpp
+  src/math/rng.cpp
 )
 target_include_directories(windmark_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 # PUBLIC: every target that links the core (tests, server, engine bindings) builds with the same float rules.

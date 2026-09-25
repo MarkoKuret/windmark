@@ -68,10 +68,10 @@ All fields of `data_format.md` §3 are read as specified there. How the VPP uses
 
 `windmark.perf/1` exactly as `data_format.md` §4 and §5 define it: header with the class hash and the
 `handling` multipliers used, `dynamics`, `sails`, one entry per config (main alone, main + each front sail) with
-`polar`, `heel`, `accel`, `trim_speed`, `trim_heel`, `fall_off`, `optimal_angle`, and `start`. Axes follow the
-spec's recommendation: TWS 0 to 20.6 m/s (40 kn), TWA 0°, 7°, the no-go edge twice, then 2° steps to 60° and 5°
-steps to 180°; AWA every 5°; trim error −60° to +2° fine, then every 5° to 130°, 150° and 180°. `weather_helm`
-(optional) is not written yet.
+`polar`, `heel`, `accel`, `accel_rest`, `trim_speed`, `trim_heel`, `weather_helm`, `fall_off`, `flog_drag`,
+`optimal_angle`, and `start`. Axes follow the spec's recommendation: TWS 0 to 20.6 m/s (40 kn), TWA 0°, 7°, the
+no-go edge twice, then 2° steps to 60° and 5° steps to 180°; AWA every 5°; trim error −60° to +2° fine, then
+every 5° to 130°, 150° and 180°; apparent wind speed 0 to 40 m/s (fine below 10 m/s).
 
 What each table holds:
 
@@ -82,18 +82,70 @@ What each table holds:
   to 90 % of the polar (the speeds a boat rebuilds through after a tack or a gybe; the tack test measures 90 %),
   integrating (drive − resistance)/(mass + added mass) with the heel in equilibrium at each speed (8-point
   Gauss-Legendre); floor 0.005 m/s².
+- `accel_rest`: the acceleration from rest: the drive of the trimmed sail plan in the true wind (with the heel it
+  raises) over mass plus added mass; the hull has no resistance ahead at rest (the keel's side force is taken by
+  the boat sliding to leeward until it has way on). The core blends from it to `accel` below half the target
+  speed. Same no-go, broached and floor rules as `accel`.
 - `trim_speed`, `trim_heel`: equilibrium speed and heel with every sail of the config sheeted `eps` away from
   its optimum (the single manual sheet of `sails.md` §5.2), clamped to the sheet limits and the wind line,
   relative to the trimmed values; resampled from TWA onto AWA per TWS row. With the driving sail (the front sail,
-  else the main) on the wind line both are 0: the tables are 0 from the `eps` point at or below the smallest
-  wind-line error `AWA − m_opt` of the neighbouring (TWS, AWA) points, so the core's interpolated lookup at the
-  wind line is exactly 0 (let-fly kills the drive; the windage a boat still feels downwind is left out).
+  else the main) on the wind line the flogging sails give no drive: from the `eps` point at or below the smallest
+  wind-line error `AWA − m_opt` of the neighbouring (TWS, AWA) points `trim_heel` is 0 and `trim_speed` holds the
+  let-fly share (see "Luffing and let-fly"), which is exactly 0 up to 90° AWA, so the core's interpolated lookup
+  at the wind line is 0 there.
+- `weather_helm`: the helm balance, from the yaw moment of the sail plan (see "Helm balance").
+- `flog_drag`: the brake of the sails flogging on free sheets (see "Luffing and let-fly").
 - `fall_off`: turning away from the wind with no way on (`boat.md` §7.4), the same for every config: the
   reference rate of the owning spec by waterline length (S 8°/s, L 5°/s) from 20° to 60° TWA, fading out by
   90° (a stopped boat lies beam on), none below 10° (a boat right head to wind stays in irons); full in sternway
   and at rest, fading as `1 − (v/v_f)²` to 0 at `v_f = 0.05 sqrt(g LWL)` ahead (Froude number 0.05: the keel
   holds the heading; light-air sailing speeds are above it).
 - `optimal_angle`: best sheet angle of each sail against AWA (resampled the same way).
+
+### Luffing and let-fly
+
+A sail on the wind line with its sheet in (a tack, a luff head to wind, in irons) lies in the wind and shivers:
+drag coefficient `CD_luff` 0.06 on its area, part of the windage `decel_const` and the sternway drift use. Let fly
+(or eased on a free sheet) it flogs: the cloth, the clew and the sheets whip in the wind like a heavy flag, with a
+drag an order of magnitude above a taut cloth's (flag drag grows with the cloth's weight and the flutter; Hoerner
+1965, flags). Windmark takes `CD_flog` 0.30 on the sail area, an estimate at the heavy end of flag drag, not a
+measurement. Two tables carry it:
+
+- `flog_drag` (per config): the extra drag of the config's sails flogging over luffing, along the heading, per
+  apparent wind speed and angle, `0.5 ρ aws² (CD_flog − CD_luff) A_sails cos(awa) / (m + m_a)`, 0 from 90° AWA.
+  The core's apparent wind is at the 10 m reference height, so the wind profile factor at the centre of effort is
+  applied. The core brakes with it in proportion to the drive the trim has lost, only with free sheets.
+- the let-fly share of `trim_speed`: abaft the beam the windage of hull and rig and the flogging sails push the
+  boat along. The steady let-fly speed is where that push equals the upright hull's resistance (a bisection,
+  `Solver.let_fly_speed`), 0 where the apparent wind is forward of the beam; the share is that speed over the
+  polar, resampled per TWS row with the apparent wind angle at the let-fly speed as the abscissa (so the core,
+  looking up at its own apparent wind, finds the let-fly speed when it sails at it).
+
+Results at 10 kn close-hauled, let fly: wm7 under 1 kn in 8.3 s (was 14.7 s with the hull alone), wm12 in 15.7 s
+(was 29.7 s): the heavier boat has about half the sail area per tonne and carries its way twice as long. Running
+in 10 kn with the jib, let fly: about 0.7 of the polar.
+
+### Helm balance
+
+`weather_helm` is the yaw moment of the sail plan about the centre of lateral resistance (CLR), as a turn rate:
+
+- moment `N = F_x (z_ce sin φ + y_ce) − F_h (x_ce − x_clr)`: the drive `F_x` at the centre of effort, carried out
+  to leeward by the heel (`z_ce sin φ`) and by the sheet angles (`y_ce`: each sail's centre of effort swung about
+  its luff, the mast, the forestay or the tack, by its optimal sheet angle), luffs the boat; the side force `F_h`
+  at a centre of effort ahead of the CLR bears it away. Forces, heel and sheet angles are those of the polar.
+- `x_clr`: the class's balance point, where the start config's moment vanishes close-hauled at its VMG angle in
+  12 kn (`WH_BALANCE_TWS`), as a racing boat is designed and its rig raked to sail straight upwind with the helm
+  centred. One point for every config (the lateral plane does not change with the sails): the main alone has
+  weather helm, a kite far forward on its sprit pulls the bow off close reaching, and heel and drive give weather
+  helm broad reaching in a breeze (the broach).
+- the helm that holds it, `h_e = N / (0.5 ρ_w v² A_r n_r C_Lα s δ_max (x_clr − x_rudder))` (the rudder's yaw moment
+  per unit helm in its linear range, with the incidence share `s` of the radius law), held to ±3; the rate is the
+  turn rate that helm gives on the radius law, `v / R(h_e)`, and beyond full helm `v h_e / R_full`, so a boat the
+  rudder cannot hold broaches. Holding a course against it therefore takes `h_e` and pays that helm's rudder drag.
+- broached cells take the value of the last wind the config holds at that angle; no-go and no-wind cells are 0.
+
+wm7 jib: within ±0.2°/s at the balance point, −1°/s at 40° in 10 kn, +4°/s at 60 to 100° in 10 kn, +15°/s at 100°
+in 16 kn (a helm of about 0.1). Kite: −9 to −17°/s from 50 to 80° in 10 kn, +15°/s at 130° in 22 kn.
 
 ### Broached speed
 
@@ -121,9 +173,9 @@ tables, the VMG optima and the `dynamics` fits.
 | `turn_radius_full` | `0.35 LWL sqrt((A_keel + A_rudder)/A_rudder)` (lateral-plane balance; matches the spec's references) |
 | `turn_radius_offset` | `−2 (1 − h_s) turn_radius_full`: the turn rate grows with the helm until the rudder stalls at `h_s`, where half the rudder angle (the rest is the flow curving round the stern and the drift the turn needs) reaches the stall of the blade's lift line, `h_s = 1.1 / (0.5 · 2π AR/(AR + 2) · rudder_max)`, held in [0.6, 1]; the law's half-helm radius is then that of the linear-then-stalled rudder, `2 h_s R_full` (wm7, wm12: `h_s` 0.72, 0.69) |
 | `decel_linear` | the rate for which `dv/dt = −(k v + decel_const)` coasts from the close-hauled VMG speed to half of it in the time the upright hull does with the drive gone, `dv/dt = −(R(v)/(m + m_a) + decel_const)`; median over 6 to 16 kn TWS (a tack, a luff, let-fly) |
-| `decel_const` | deceleration in irons: windage at 5 m/s apparent wind plus the hull at 1 m/s, over the mass |
+| `decel_const` | deceleration in irons: windage (hull, mast, sails luffing on their sheets) at 5 m/s apparent wind plus the hull at 1 m/s, over the mass |
 | `heel_speed_factor` | 1 up to `vpp.max_heel`; beyond, the surge equilibrium with the heel held there, relative to the limit |
-| `rudder_drag_luff`, `_bear` | rudder lift-line drag with stall, plus the keel's induced drag carrying the turn's centripetal force at the turn radius of that helm (the radius law with the offset above), over the mass; the bear-away table is the same evaluated 0.75 m/s slower |
+| `rudder_drag_luff`, `_bear` | rudder lift-line drag with stall, plus the keel's induced drag carrying the turn's centripetal force at the turn radius of that helm (the radius law with the offset above), over the mass. The blade's incidence is the same share (0.5) of the rudder angle the radius law's offset assumes, so the drag's stall knee is the radius law's stall helm `h_s`; past the stall incidence the flow separates over 5° and the blade's force becomes a normal force of about its maximum lift, whose drag is `cl_max sin α`. The bear-away table is the same evaluated 0.75 m/s slower |
 | `heel_max` | heel of the maximum righting moment, at most 65° |
 | `heel_freq`, `heel_damping` | roll stiffness (righting-moment slope) over roll inertia (hull, rig, bulb, crew, +20 % added); aerodynamic roll damping of the sail plan |
 | `pitch_freq` | waterplane pitch stiffness over pitch inertia (+80 % added) |
@@ -261,11 +313,18 @@ code is included.
 
 ## Limits and next steps
 
-- `weather_helm` is not generated (the core treats it as 0). It needs a yaw balance model (centre of effort
-  against centre of lateral resistance with heel) tuned for gameplay. `fall_off` uses the spec's reference rate,
-  not a yaw balance of the windage.
-- The radius law's offset rests on an assumed share (0.5) of the rudder angle reaching the blade in a turn, and
-  the rudder drag keeps its own stall on the full rudder angle.
+- The helm balance has no hull terms (the heeled hull's asymmetry, the Munk moment of the canoe body): their
+  value at the balance point is folded into `x_clr`, their change with speed and heel is left out. The balance
+  point is a design statement (12 kn, close-hauled), not derived from the lateral plane geometry.
+- `fall_off` uses the spec's reference rate, not a yaw balance of the windage.
+- The radius law's offset and the rudder drag rest on an assumed share (0.5) of the rudder angle reaching the
+  blade in a turn (the rest is the flow curving round the stern and the drift the turn needs), the same for
+  every helm; a manoeuvring model would give it per helm and speed.
+- `CD_flog` is an estimate. `decel_const` charges the windage at a fixed 5 m/s apparent wind, not at the
+  boat's apparent wind (a tack in a strong breeze loses a little less than it would).
+- The VPP cannot give the build-up from rest physically: its steady keel carries the whole side force, whose
+  induced drag grows without bound as the speed goes to 0. `accel_rest` is the drive at rest instead, and the
+  core blends it into `accel` below half the target speed.
 - Level trim only; no pitch trim with speed, no wave added resistance, no leeway in the apparent wind.
 - The planing blend and the mainsail-alone loss are calibrated, not derived; flat-bottomed sportsboats sit at the
   edge of the Delft series.

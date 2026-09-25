@@ -111,6 +111,7 @@ class Sail:
     foot: float               # m
     furling: bool = False
     handling: dict = field(default_factory=dict)
+    luff_x: Optional[float] = None   # body x of the luff the sail swings about (mast, forestay, tack), m; None: ce_x
 
     @property
     def coeff_type(self) -> str:
@@ -481,8 +482,11 @@ def from_dict(raw: dict) -> Boat:
             foot = _num(s, "foot", where, area / (0.9 * I))
             ce, cx = freeboard + 0.59 * I, forestay_x + bowsprit + pole * 0.3 - 0.3 * foot
         lo, hi = SHEET_LIMITS[t]
+        luff = {"main": mast_x, "jib": forestay_x, "genoa": forestay_x, "code_zero": forestay_x + bowsprit}.get(
+            t, forestay_x + bowsprit + pole * 0.3)
         sails.append(Sail(id=sid, type=t, area=area, ce_height=ce, ce_x=cx, sheet_min=lo, sheet_max=hi, foot=foot,
-                          furling=bool(s.get("furling", False)), handling=dict(s.get("handling") or {})))
+                          furling=bool(s.get("furling", False)), handling=dict(s.get("handling") or {}),
+                          luff_x=luff))
     if sum(1 for s in sails if s.type == "main") != 1:
         raise ClassFileError("sails: exactly one main is required")
 

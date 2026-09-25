@@ -50,6 +50,7 @@ struct CourseMark {
   bool head_to_wind = true;    // committee / mark boats with "heading": null (or absent)
   float heading = 0.0f;        // rad, compass, when !head_to_wind
   float length = 0.0f, beam = 0.0f;  // committee / mark boat footprint
+  std::vector<Vec2> outline;         // committee / mark boat: explicit body outline, empty = the default (§2)
 };
 
 // courses.md §4.4, as written in the file.
@@ -180,6 +181,9 @@ struct ResolvedCourse {
   std::string canonical_json() const;
   std::string hash() const;
 };
+
+// courses.md §2: the default committee / mark boat outline (body frame, counter-clockwise, 17 vertices).
+std::vector<Vec2> default_boat_outline(float L, float B);
 
 // courses.md §6.1: the course axis from the wind's median direction, rounded to 0.01 rad.
 float course_axis(float median_from);

@@ -79,6 +79,20 @@ Schematic:
 | `at` | Position (§3). |
 | `heading` | Committee and mark boats: bow heading (rad, compass). `null` = lie head to wind: the boat is placed with its bow to the course axis wind `TWD_c` (§6.1) at race creation and does not swing during the race. |
 | `length`, `beam` | Committee/mark boat footprint (m; defaults 14 × 4.5 and 7 × 2.5). |
+| `outline` | Committee/mark boats, optional: the body-frame outline as `[[x, y], …]` (m, x forward, y to port), 6–32 vertices, strictly convex, counter-clockwise, around the origin (the boat's position). Absent: the default outline. |
+
+**Default committee and mark boat outline.** The generator construction of `collisions.md` §2.1 with `L = length`,
+`B = beam`, transom width `0.8·B` and `s_m = 0.5`, tabulated once so that no power function runs in the core. With
+the station table (body `x / L`, half-breadth `/ B`)
+
+| i | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `X_i` | −0.5 | −0.35 | −0.2 | 0 | 0.1 | 0.25 | 0.37 | 0.45 |
+| `F_i` | 0.4 | 0.451 | 0.484 | 0.5 | 0.4724054 | 0.3564127 | 0.2092049 | 0.0863752 |
+
+the outline is `(X_i·L, −(F_i·B))` for i = 0…7 (starboard side, stern to bow), the stem `(0.5·L, 0)`, then
+`(X_i·L, F_i·B)` for i = 7…0 (port side, bow to stern): 17 vertices, counter-clockwise, binary32 products. The
+decimals above are the definition (they are the construction's values rounded to 7 digits).
 
 **Collision objects** (`collisions.md` §2.2). Every mark except `virtual` becomes one static collision object,
 numbered by its position in the `marks` array (the index is the `other` field of contact events):
@@ -86,7 +100,7 @@ numbered by its position in the `marks` array (the index is the `other` field of
 | Mark type | `other_kind` | Shape |
 | --- | --- | --- |
 | `buoy` | `mark` | circle, `radius` |
-| `committee_boat`, `mark_boat` | `course_object` | convex polygon with the heading: the generator outline of `collisions.md` §2.1 with `L = length`, `B = beam`, transom width `0.8·B`, `s_m = 0.5`, stem at body `x = L/2`, transom at `−L/2` (the half-breadths are evaluated in binary64 at race creation and rounded once, `conventions.md` §5 rule 6) |
+| `committee_boat`, `mark_boat` | `course_object` | convex polygon with the heading: `outline` if the mark gives one, else the default outline below |
 
 Whether an object is a mark for rule 31 (touching) depends on the boat's progress (`rules.md` §8), not on its
 kind.

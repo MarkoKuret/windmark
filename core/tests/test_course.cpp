@@ -394,3 +394,47 @@ TEST_CASE("course: geometry refusals") {
     CHECK(geometry_fails("some wind lays a mark on land", p.text(), "with the wind from"));
   }
 }
+
+TEST_CASE("course: default committee boat outline") {
+  // courses.md §2: the tabulated outline equals the collisions.md §2.1 construction to 7 digits.
+  const float L = 14.0f, B = 4.5f;
+  const std::vector<wm::Vec2> o = wm::default_boat_outline(L, B);
+  REQUIRE(o.size() == 17);
+  const double st[] = {0.0, 0.15, 0.3, 0.5, 0.6, 0.75, 0.87, 0.95};
+  for (std::size_t i = 0; i < 8; ++i) {
+    const double s = st[i];
+    const double b = static_cast<double>(B), l = static_cast<double>(L);
+    const double h = s <= 0.5 ? 0.4 * b + (0.5 * b - 0.4 * b) * (1.0 - (1.0 - s / 0.5) * (1.0 - s / 0.5))
+                              : 0.5 * b * (1.0 - std::pow((s - 0.5) / 0.5, 1.8));
+    CAPTURE(i);
+    CHECK(static_cast<double>(o[i].x) == doctest::Approx(-0.5 * l + s * l).epsilon(1e-6));
+    CHECK(static_cast<double>(-o[i].y) == doctest::Approx(h).epsilon(1e-6));
+    CHECK(o[16 - i].y == -o[i].y);
+  }
+  CHECK(o[8].x == 7.0f);
+  // Strictly convex and counter-clockwise.
+  for (std::size_t i = 0; i < o.size(); ++i) {
+    const wm::Vec2 a = o[i], b = o[(i + 1) % o.size()], c = o[(i + 2) % o.size()];
+    CHECK(wm::v_cross(wm::v_sub(b, a), wm::v_sub(c, b)) > 0.0f);
+  }
+  // An explicit outline is used as given; a bad one is refused.
+  Parts p;
+  p.marks = R"([
+    {"id": "rc", "type": "committee_boat", "at": {"x": 100, "y": 0}, "heading": 0,
+     "outline": [[-5, -2], [0, -2.5], [5, -1], [6, 0], [5, 1], [0, 2.5], [-5, 2]]},
+    {"id": "pin", "type": "buoy", "at": {"x": -100, "y": 0}},
+    {"id": "w", "type": "buoy", "style": "large", "at": {"x": 0, "y": 500}},
+    {"id": "g1", "type": "buoy", "at": {"x": 30, "y": -150}},
+    {"id": "g2", "type": "buoy", "at": {"x": -30, "y": -150}}])";
+  wm::CourseData c;
+  wm::LoadError err;
+  REQUIRE_MESSAGE(wm::parse_course(p.text(), "t.course.json", c, err), err.message());
+  wm::ResolvedCourse rc;
+  wm::resolve_course(c, 0.0f, 1.0f, rc);
+  REQUIRE(rc.objects[0].is_boat);
+  CHECK(rc.objects[0].outline.size() == 7);
+  Parts q = p;
+  q.marks = R"([{"id": "rc", "type": "committee_boat", "at": {"x": 100, "y": 0},
+                 "outline": [[-5, -2], [5, -1], [6, 0], [5, 1], [-5, 2], [0, 0.1]]}])";
+  refuse("concave outline", q.text(), "$.marks[0].outline");
+}

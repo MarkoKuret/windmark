@@ -52,6 +52,21 @@ bool ends_with(std::string_view s, std::string_view suffix) {
   return s.size() >= suffix.size() && s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
 
+bool convex_ccw_around_origin(const std::vector<Vec2>& p) {
+  const std::size_t n = p.size();
+  if (n < 6 || n > 32) return false;
+  for (std::size_t i = 0; i < n; ++i) {
+    const Vec2 a = p[i], b = p[(i + 1) % n], c = p[(i + 2) % n];
+    const double ax = static_cast<double>(a.x), ay = static_cast<double>(a.y);
+    const double bx = static_cast<double>(b.x), by = static_cast<double>(b.y);
+    const double e1x = bx - ax, e1y = by - ay;
+    const double e2x = static_cast<double>(c.x) - bx, e2y = static_cast<double>(c.y) - by;
+    if (!(e1x * e2y - e1y * e2x > 0.0)) return false;              // strictly convex, counter-clockwise
+    if (!(e1x * (0.0 - ay) - e1y * (0.0 - ax) > 0.0)) return false;  // origin inside
+  }
+  return true;
+}
+
 class CourseReader {
  public:
   CourseReader(ErrorSink& sink, CourseData& out) : sink_(sink), out_(out) {}
@@ -211,6 +226,13 @@ class CourseReader {
           if (!read_float(m, p, "beam", mk.beam, sink_)) return false;
           if (!(mk.beam >= 2.0f * kRadiusMin) || mk.beam > mk.length) {
             return fail(path_key(p, "beam"), "must be >= 1.6 m and not above the length");
+          }
+        }
+        if (const Value* ov = m.find("outline")) {
+          const std::string op = path_key(p, "outline");
+          if (!data::read_points(*ov, op, mk.outline, sink_)) return false;
+          if (!convex_ccw_around_origin(mk.outline)) {
+            return fail(op, "expected 6 to 32 vertices, strictly convex, counter-clockwise, around the origin");
           }
         }
         if (const Value* h = m.find("heading")) {

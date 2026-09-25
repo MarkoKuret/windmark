@@ -24,33 +24,24 @@ Vec2 resolve_pos(const CoursePos& p, const std::vector<Vec2>& known, Vec2 refere
   return {base.x + d * u.x, base.y + d * u.y};
 }
 
-// collisions.md §2.1 generator outline with transom 0.8·B and s_m = 0.5, body frame, counter-clockwise.
+// courses.md §2: the default committee / mark boat outline, the collisions.md §2.1 construction with transom 0.8·B
+// and s_m = 0.5 tabulated once as literal fractions (station x / L, half-breadth / B), so no power function runs.
+constexpr float kOutlineX[8] = {-0.5f, -0.35f, -0.2f, 0.0f, 0.1f, 0.25f, 0.37f, 0.45f};
+constexpr float kOutlineHalf[8] = {0.4f, 0.451f, 0.484f, 0.5f, 0.4724054f, 0.3564127f, 0.2092049f, 0.0863752f};
+
 std::vector<Vec2> boat_outline(float L, float B) {
-  const double l = static_cast<double>(L), b = static_cast<double>(B);
-  const double T = 0.8 * b, sm = 0.5, xs = -0.5 * l;
-  const double st[] = {0.0, 0.15, 0.3, sm, 0.6, 0.75, 0.87, 0.95};
-  std::vector<double> half;
-  for (double s : st) {
-    double h;
-    if (s <= sm) {
-      const double q = 1.0 - s / sm;
-      h = T / 2.0 + (b / 2.0 - T / 2.0) * (1.0 - q * q);
-    } else {
-      const double u = (s - sm) / (1.0 - sm);
-      h = (b / 2.0) * (1.0 - std::pow(u, 1.8));
-    }
-    half.push_back(h);
-  }
   std::vector<Vec2> out;
-  for (std::size_t i = 0; i < 8; ++i) {
-    out.push_back({static_cast<float>(xs + st[i] * l), static_cast<float>(-half[i])});
-  }
-  out.push_back({static_cast<float>(0.5 * l), 0.0f});
-  for (std::size_t i = 8; i-- > 0;) {
-    out.push_back({static_cast<float>(xs + st[i] * l), static_cast<float>(half[i])});
-  }
+  for (std::size_t i = 0; i < 8; ++i) out.push_back({kOutlineX[i] * L, -(kOutlineHalf[i] * B)});
+  out.push_back({0.5f * L, 0.0f});
+  for (std::size_t i = 8; i-- > 0;) out.push_back({kOutlineX[i] * L, kOutlineHalf[i] * B});
   return out;
 }
+
+}  // namespace
+
+std::vector<Vec2> default_boat_outline(float L, float B) { return boat_outline(L, B); }
+
+namespace {
 
 void fmt(std::string& s, float f) {
   char buf[40];
@@ -141,7 +132,7 @@ void resolve_course(const CourseData& c, float twd_c, float k, ResolvedCourse& o
     o.c = r.pos;
     o.heading = r.heading;
     if (boat) {
-      o.outline = boat_outline(m.length, m.beam);
+      o.outline = m.outline.empty() ? boat_outline(m.length, m.beam) : m.outline;
       place_outline(o.outline, r.pos, r.heading, o.polygon);
       float rr = 0.0f;
       for (const Vec2 v : o.outline) rr = max(rr, v_len(v));

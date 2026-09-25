@@ -17,3 +17,4 @@
 | ambientCG Metal009 | tools/boatgen/textures/brushed_* (processed: grey, 512 px), embedded in generated boat GLBs | CC0 1.0 | https://ambientcg.com/a/Metal009 |
 | ambientCG Fabric062 | tools/boatgen/textures/weave_* (processed: grey, 512 px), embedded in generated boat GLBs | CC0 1.0 | https://ambientcg.com/a/Fabric062 |
 | ambientCG Rope002 | tools/boatgen/textures/braid_* (processed: grey, 512 px), embedded in generated boat GLBs | CC0 1.0 | https://ambientcg.com/a/Rope002 |
+| Barlow Semi Condensed (Jeremy Tribby) | Race HUD type (direction in docs/design/hud_direction.md; the mock-ups load it from Google Fonts, not yet bundled in the game) | SIL Open Font License 1.1 | https://github.com/jpt/barlow |

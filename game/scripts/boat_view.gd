@@ -80,6 +80,7 @@ static func create(class_info: SimSource.ClassInfo, rudder_max: float) -> BoatVi
 		var wrapper := scene.instantiate() as Node3D
 		b.add_child(wrapper)
 		b.model = wrapper.get_child(0) as Node3D if wrapper.get_child_count() > 0 else wrapper
+		BoatMaterials.apply(wrapper)
 	else:
 		push_warning("%s not generated (run game/tests/run_boat_import_test.sh); drawing a box" % path)
 		var mi := MeshInstance3D.new()

@@ -15,7 +15,7 @@ ordinal: 30000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Phase 3 item (ROADMAP.md): the server records each race (seed, inputs per tick, events) so it replays bit for bit; the basis for protests and clip export.
+Phase 4 item (ROADMAP.md): the server records each race (seed, inputs per tick, events) so it replays bit for bit; the basis for protests and clip export.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

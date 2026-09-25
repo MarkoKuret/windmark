@@ -22,12 +22,15 @@ Options:
 | `WINDMARK_BUILD_TESTS` | `ON` | build the test suite |
 | `WINDMARK_WERROR` | `OFF` | warnings are errors |
 | `WINDMARK_DATA_DIR` | `<repo>/data` | where the tests find `classes/`, `perf/` and `venues/` |
+| `WINDMARK_COURSES_DIR` | `<repo>/game/data/courses` | where the tests find the course files |
 
 Tests (`ctest`):
 
 - `core_tests`: the doctest suite in `tests/` (check values of `conventions.md`, the math vector file, tables,
   checksums, JSON, loading and validating `data/perf/wm7.perf.json` and `wm12.perf.json` against their class
-  files, and loading `data/venues/example_bay.venue.json` into the environment).
+  files, and loading `data/venues/example_bay.venue.json` into the environment; the course files, the race flow
+  and the racing rules scenarios of `courses.md` §7, `race.md` §12 and `rules.md` §13; the world loop; and a full
+  headless race of six scripted boats with penalties on `example_bay`, run twice for determinism).
 - `core_no_fma`: disassembles `libwindmark_core.a` and fails on any fused multiply-add instruction.
 
 ## Float rules
@@ -68,6 +71,10 @@ Sources live in `src/<module>/`, included as `"module/header.h"`, all in namespa
 | `src/sails/` | inventory, the sail-change queue (peels, cancels, timing, slowdown), trim, sail motion, trim error and luff outputs | sails.md |
 | `src/data/` | strict JSON reader with correctly rounded binary32 numbers, load errors with JSON paths, the `windmark.perf/1` loader and validator, the `windmark.boatclass/1` header reader and the perf-to-class check; `venue`: the `windmark.venue/1` loader and validator | data_format.md |
 | `src/collide/` | `collide`: shape tests (separating axes, circle, land with its band index), the static `CollisionScene`, the tick-6 step `Collisions::step` (detection, response, contact events) and the contact pair set | collisions.md |
+| `src/course/` | `geometry`: plane helpers of `race.md` §0, placed hull outlines, convex gaps; `course`: the `windmark.course/1` loader, sequence expansion with laps, laying a course to the wind, the scale factor, the resolved course and its hash, the geometry checks | courses.md |
+| `src/race/` | the race flow: states, signals, prep flags, OCS and recalls, starting, the winding test for marks and gates, finishing, closing, ranking, results; spawn grid and order | race.md |
+| `src/rules/` | the racing rules engine: tack and tacking, relations, right of way, the keep-clear, escape and mark-room tests, rules 14 to 19, 22, 31 and boundaries, incidents, penalties, penalty turns, deadlines and disqualification | rules.md |
+| `src/world/` | `World`: one tick in the order of `conventions.md` §4.1 over the boats, wind, sea, shadows, collisions, race and rules; creating a race, controls, events, the tick checksum | conventions.md §4.1, race.md §1 |
 | `tests/` | doctest suite and the math vector file | |
 | `tools/` | `gen_math_vectors.cpp`, `gen_env_vectors.cpp` | |
 | `third_party/doctest/` | doctest 2.4.12 (MIT), test framework | |
@@ -76,10 +83,26 @@ Planned modules, one directory each under `src/`, in the tick order of `conventi
 
 | path | role | spec |
 | --- | --- | --- |
-| `src/race/` | race state machine, course and marks | race.md, courses.md |
-| `src/rules/` | racing rules and penalties | rules.md |
 | `src/ai/` | AI helms | ai.md |
 | `src/capi/`, `include/windmark.h` | the C API for the server and engine bindings | networking.md |
+
+## World calls
+
+The world is what the C API and the front end wrap. It is created when the race environment starts (its tick 0
+is the environment clock's zero, `race.md` §0).
+
+| call | does | spec |
+| --- | --- | --- |
+| `World(WorldSetup)` | venue, seed, wind and sea settings (the venue's fields applied, the wind sea grown from the venue fetch), race settings, rules parameters | race.md §2 |
+| `add_boat(BoatEntry)` | an entry (class, human or AI, performance scale, auto trim, start sail); after `create_race` a joiner placed in the first free slot, until the prep signal | race.md §3.5 |
+| `create_race(CourseData, err)` | lays the course to the median wind at the gun and scales it, checks it on the venue, builds the collision scene, creates the race and the rules, spawns the boats | courses.md §6, §7; race.md §3.1 |
+| `set_helm`, `set_sheet`, `set_auto_trim`, `set_let_fly`, `hoist`, `drop_front`, `retire`, `protest` | controls queued for step 2 of the next tick | boat.md §2, race.md §6.4, rules.md §10 |
+| `set_controller(fn)` | called in step 2 before the queued controls: computer skippers and scripts decide there | ai.md |
+| `step()` | one tick: race and rules on `t_n` and the last contacts, controls, environment, shadow snapshot, boat steps, collisions, publish; returns the tick checksum | conventions.md §4.1 |
+| `boat(i)`, `env(i)`, `race()`, `rules()`, `course()`, `scene()`, `events()`, `checksum()` | state, the race and rules records, this tick's race, rules and contact events | race.md §11, rules.md §11 |
+
+`Race` and `Rules` can also be driven directly with poses (`RaceBoatInput`, `RulesBoatInput`), which is how the
+scenario tests script tracks without physics.
 
 ## Boat calls
 

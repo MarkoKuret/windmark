@@ -489,7 +489,11 @@ bool cover(AC& x, AB& a, const Me& m, bool beat, Vec2 R) {
 
 // §8 bad air: true when an escape is running or started.
 bool bad_air(AC& x, AB& a, const Me& m, Leg leg) {
-  const std::int32_t src = m.env.shadow_source;
+  // The source of the tick's strongest shadow; the smoothed deficit outlasts it at the blanket's edges, so the last
+  // one seen stands in while there is none.
+  std::int32_t src = m.env.shadow_source;
+  if (src >= 0) a.bad_last = src;
+  else src = a.bad_last;
   if (x.now < a.foot_until) {
     if (a.d_f < 0.3f * (a.bad_src >= 0 ? bad_threshold(x, a.bad_src) : 0.08f)) a.foot_until = -1e9f;
   }
@@ -547,6 +551,16 @@ bool bad_air(AC& x, AB& a, const Me& m, Leg leg) {
   a.foot_until = x.now + 20.0f;
   a.foot_delta = src_leeward ? -10.0f * DEG : 10.0f * DEG;
   return true;
+}
+
+// §8 on a reach: head up or bear away 10° out of the shadow (the TWA change is kept within close-hauled).
+void reach_bad_air(AC& x, AB& a, const Me& m) {
+  if (a.man != Man::straight) return;
+  (void)bad_air(x, a, m, Leg::reach);
+  if (x.now >= a.foot_until) return;
+  const float twa = wrap_pi(m.twd - a.psi_target);
+  const float t2 = max(m.theta_up, std::fabs(twa) - a.foot_delta);
+  a.psi_target = heading_for(m.twd, sgn(twa) * min(t2, 175.0f * DEG));
 }
 
 // §6.2 sails: returns the planned sail requests to the world.
@@ -838,11 +852,10 @@ void beat_run(AC& x, AB& a, const Me& m, Vec2 R, bool beat, float mlay, bool tri
     if (std::fabs(e) >= Wc && away > 0.0f && man(AiTactic::Corridor)) return;
     if (a.headed_t >= 6.0f && not_overstand && man(AiTactic::Shift)) return;
     if (a.pressure_t >= 10.0f && not_overstand && man(AiTactic::Pressure)) return;
-    if (bad_air(x, a, m, beat ? Leg::beat : Leg::run)) {
-      if (a.man != Man::straight) return;
-    }
     if (cover(x, a, m, beat, R)) return;
   }
+  // §8 bad air on every beat and run (the zones excluded inside), also close to the mark.
+  if (bad_air(x, a, m, beat ? Leg::beat : Leg::run) && a.man != Man::straight) return;
   // Speed build (§4.3) and footing out of bad air (§8).
   const float Vt = polar_speed(a, m, th);
   if (m.s.v < 0.85f * Vt) a.speed_build = true;
@@ -933,14 +946,19 @@ void racing(AC& x, AB& a, const Me& m) {
       const float brg = bearing(m.c, t.M);
       const float g = dist > t.rho ? wm_asin(clamp(t.rho / dist, 0.0f, 1.0f)) : HALF_PI;
       sail_to_point(x, a, m, v_add(m.c, v_scale(dir(wrap_2pi(brg + t.sigma * g)), dist)));
+      reach_bad_air(x, a, m);
     } else {
       beat_run(x, a, m, aim, leg == Leg::beat, dist < 8.0f * m.L ? 0.0f : a.P.m_lay, dist > 6.0f * m.L);
     }
     sails(x, a, m, true, t, leg);
   } else {
     a.dbg.aim = R;
-    if (leg == Leg::reach) sail_to_point(x, a, m, R);
-    else beat_run(x, a, m, R, leg == Leg::beat, a.P.m_lay, true);
+    if (leg == Leg::reach) {
+      sail_to_point(x, a, m, R);
+      reach_bad_air(x, a, m);
+    } else {
+      beat_run(x, a, m, R, leg == Leg::beat, a.P.m_lay, true);
+    }
     sails(x, a, m, false, t, leg);
   }
   (void)finish_beat;

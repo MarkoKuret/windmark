@@ -103,6 +103,7 @@ struct AiSkippers::Boat {
   float bad_t = 0.0f;
   float foot_until = -1e9f, foot_delta = 0.0f;
   std::int32_t bad_src = -1;
+  std::int32_t bad_last = -1;      // the last shadow source seen
   // Cover (§9)
   float opp_other_t = 0.0f;
   std::int32_t cover_opp = -1;

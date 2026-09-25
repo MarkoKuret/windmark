@@ -312,7 +312,8 @@ Every decision, the planned heading is checked against every course object (mark
 `r + 0.5·B + 1 m + 0.15·L` is passed by the tangent to that clearance circle on the side it is on (the other side
 when that side is above close-hauled). The mark being rounded is only checked for a collision course (clearance
 `r + 0.5·B + 0.5 m`, the rounding circle keeps the planned one), and it is never passed on the other side: if its
-side is above close-hauled the AI tacks away from it (if safe) or pinches and lets fly. Tacks, gybes (§7.3) and
+side is above close-hauled the AI tacks away from it (if safe) or pinches and lets fly (only with way on, faster
+than 0.5 m/s: nearly stopped at the mark it keeps its sails drawing so that it can steer away). Tacks, gybes (§7.3) and
 the avoidance candidates (§7.2) are rejected when the predicted hull would touch a course object.
 
 ### 6.3 Gate choice

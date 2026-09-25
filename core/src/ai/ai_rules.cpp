@@ -276,10 +276,11 @@ void avoid_objects(AC& x, AB& a, const Me& m, std::int32_t skip_mark) {
   float psi = wrap_2pi(brg + side * g);
   float twa = wrap_pi(m.twd - psi);
   if (std::fabs(twa) < m.theta_up - 2.0f * DEG && hit->mark == skip_mark) {
-    // The mark being rounded is passed on its side only: tack away from it, or pinch and slow.
+    // The mark being rounded is passed on its side only: tack away from it, or pinch and slow. Slowing needs way on:
+    // a boat nearly stopped at the mark keeps her sails drawing, or she could never steer away (ai.md §6.4).
     if (request_tack(x, a, m, AiTactic::Rounding, true)) return;
     a.psi_target = heading_for(m.twd, m.tack * m.theta_up);
-    a.let_fly = true;
+    a.let_fly = m.s.v > 0.5f;
     return;
   }
   if (std::fabs(twa) < m.theta_up - 2.0f * DEG) {

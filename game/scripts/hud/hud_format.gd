@@ -58,3 +58,31 @@ static func countdown(s: float) -> String:
 		return "0:%02d.%d" % [floori(tenths / 10.0), tenths % 10]
 	var t := int(round_half_away(s))
 	return "%d:%02d" % [floori(t / 60.0), t % 60]
+
+
+## finish times h:mm:ss.ss ("0:42:17.35"), from seconds
+static func finish_time(s: float) -> String:
+	var cs := int(round_half_away(maxf(s, 0.0) * 100.0))
+	var h := floori(cs / 360000.0)
+	var m := floori((cs % 360000) / 6000.0)
+	var sec := (cs % 6000) / 100.0
+	return "%d:%02d:%05.2f" % [h, m, sec]
+
+
+## a gap m:ss with its sign ("+0:23", "-0:05"; "+0:00" for zero)
+static func gap(s: float) -> String:
+	var t := int(round_half_away(absf(s)))
+	return "%s%d:%02d" % ["-" if s < 0.0 and t > 0 else "+", floori(t / 60.0), t % 60]
+
+
+## a signed distance ("+45 m", "-30 m")
+static func signed_distance(m: float) -> String:
+	return ("-" if m < 0.0 and round_half_away(absf(m)) > 0.0 else "+") + distance(absf(m))
+
+
+## relative bearing to the bow, integer degrees with L or R ("35° L"); `rel` > 0 is to starboard
+static func relative_bearing(rel: float) -> String:
+	var d := int(round_half_away(rad_to_deg(absf(rel))))
+	if d == 0:
+		return "0°"
+	return "%d° %s" % [d, "R" if rel > 0.0 else "L"]

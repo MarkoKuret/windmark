@@ -379,11 +379,16 @@ void Rules::turn_tracker(std::uint32_t n, std::size_t i, const Race& race, const
     const float r = in.turn_rate;
     const float dpsi = wrap_pi(in.psi - s.psi_hist[s.psi_hist.size() >= 2 ? s.psi_hist.size() - 2 : 0]);
     const std::int8_t d = r >= p_.turn_rate_min ? 1 : (r <= -p_.turn_rate_min ? -1 : 0);
+    const bool flipped = s.has_prev && (s.twa >= 0.0f) != (s.twa_prev >= 0.0f);
     if (s.t_dir == 0) {
       if (d != 0) {
         s.t_dir = d;
         s.t_run = 1;
         s.t_theta = dpsi;
+        if (flipped && dpsi * static_cast<float>(d) > 0.0f) {
+          if (std::fabs(s.twa) < HALF_PI) ++s.t_tacks;
+          else ++s.t_gybes;
+        }
       }
     } else {
       s.t_theta = s.t_theta + dpsi;
@@ -396,8 +401,8 @@ void Rules::turn_tracker(std::uint32_t n, std::size_t i, const Race& race, const
         ++s.t_pause;
       }
       if (s.t_run >= static_cast<std::int32_t>(ticks(p_.turn_start))) s.t_started = true;
-      // Tacks and gybes during the turn.
-      if (s.has_prev && (s.twa >= 0.0f) != (s.twa_prev >= 0.0f)) {
+      // Tacks and gybes during the turn, in the turn's direction (a boat see-sawing in irons does not tack).
+      if (flipped && dpsi * static_cast<float>(s.t_dir) > 0.0f) {
         if (std::fabs(s.twa) < HALF_PI) ++s.t_tacks;
         else ++s.t_gybes;
       }

@@ -71,5 +71,6 @@ target_sources(windmark_core_tests PRIVATE
   test_race.cpp
   test_rules.cpp
   test_world.cpp
+  test_full_race.cpp
 )
 target_compile_definitions(windmark_core_tests PRIVATE WINDMARK_COURSES_DIR="${WINDMARK_COURSES_DIR}")

@@ -73,7 +73,7 @@ course also defines are overridden by the lobby.
 | `umpire` | `standard`, `contact_only`, `protest` (`rules.md` §10) | `standard` |
 | `time_limit_s` | race time limit after the start signal, 0 = from the course | 0 |
 | `finish_window` | first-finisher window rule (§7.3) | on |
-| `seed` | 32-bit race seed (spawn order, AI, weather via `wind.md`) | random at creation |
+| `race_seed` | 64-bit race seed (`conventions.md` §7): spawn order, AI, wind, sea | random at creation (server) |
 
 Game modes (for menus) are presets of these settings plus the HUD and assist options of `hud.md`. There is no mode
 that changes boat speed with the race position (no catch-up of any kind).
@@ -210,7 +210,7 @@ After the start signal a boat **starts** when:
 
 1. she has been completely on the pre-start side at some tick at or after the start signal (for a boat that was
    behind the line at the gun this is the gun tick itself), and
-2. if she is OCS (P, §4.2) she has returned; if OCS-I (§4.3) she has returned around an end, and
+2. if she is OCS (P, §4.3) she has returned; if OCS-I (§4.3) she has returned around an end, and
 3. her hull crosses the starting line from the pre-start side through the line band (§4.1).
 
 The **start time** is `t_start = (n − 1 − n_gun)·DT + f·DT`, with `f` of the earliest hull point. Starting is
@@ -367,8 +367,8 @@ can sail freely; offline and for AI boats an autopilot sails her 5 L beyond the 
 
 A ghost boat is shown semi-transparent. The race layer sets its `collides = false` (`collisions.md` §6: no contact
 with anything) and `casts = false` (`wind_shadow.md` §3: no shadow on others); it is ignored by the rules and the AI
-and cannot interfere with racing boats (rule 24). It still sails normally in the clean-plus-shadow wind. Boats become ghosts when they
-have cleared the finish, retired (`RET`), been disqualified (`DSQ`, `UFD`, `BFD`), timed out (`DNF` at the close),
+and cannot interfere with racing boats (rule 24). It still sails normally (it still feels the other boats'
+shadows). Boats become ghosts when they have cleared the finish, retired (`RET`), been disqualified (`DSQ`, `UFD`, `BFD`), timed out (`DNF` at the close),
 or lost their connection for more than the grace period (`networking.md` §9).
 
 ### 6.4 Retiring
@@ -461,7 +461,7 @@ Appendix A low-point system:
 
 | Code | Meaning | Points |
 | --- | --- | --- |
-| — | finished in place n | n (ties share the average of the places) |
+| (none) | finished in place n | n (ties share the average of the places) |
 | `ZFP` | finished, Z-flag penalty (§3.3) | place + 20 % of entries (rounded, min 1), not above `DNF` points |
 | `DNC` | did not come to the starting area (§4.4) | entries + 1 |
 | `DNS` | did not start | entries + 1 |

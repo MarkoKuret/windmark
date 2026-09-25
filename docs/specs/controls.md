@@ -51,6 +51,7 @@ keys become the boat's commands, and the accessibility options. The boat command
 | `chat` | button | open the chat line |
 | `pause_menu` | button | pause offline, menu online (§7) |
 | `screenshot` | button | save a screenshot |
+| `reset_boat` | button | offline practice only: free sailing re-places the boat at its start point, sailing with its start sail and the helm centred; an offline race restarts from the spawn. No effect online or in a ranked or timed session |
 
 There is no action for penalty turns (they are sailed), tacking or gybing (steered), or the main (always up).
 
@@ -92,6 +93,7 @@ up to two keyboard or mouse bindings and one gamepad binding; all are rebindable
 | `chat` | Enter | – | – |
 | `pause_menu` | Esc | Menu | Menu |
 | `screenshot` | F12 | – | Steam button + R1 |
+| `reset_boat` | Backspace | – (in the pause menu) | – (in the pause menu) |
 
 Notes: `helm_fine` and `camera_boost` share Shift, which is fine because the free camera takes no helm input. The
 gamepad has no direct sail keys: D-pad left/right step a highlighted sail on the HUD sail strip, X sets it (§5.4).

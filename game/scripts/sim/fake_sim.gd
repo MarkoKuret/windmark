@@ -34,6 +34,13 @@ func add_boat(id: String, pos_x := 0.0, pos_y := 0.0, psi := 0.0, v := 0.0, auto
 	return boats.size() - 1
 
 
+## Re-places boat b at (pos_x, pos_y) on heading psi at 2.5 m/s with its start sail, as add_boat does (the
+## sail test's reset key).
+func place_boat(b: int, pos_x: float, pos_y: float, psi: float) -> void:
+	var fb: FakeBoat = boats[b]
+	fb.reset(pos_x, pos_y, psi, 2.5, fb.d.start_front, fb.ctl.auto_trim, wind_speed, _wind_from_now())
+
+
 ## Test swell of significant height hs (the water only, the hulls stay level): three trains from the wind direction side, amplitudes chosen so that
 ## 4 * sqrt(sum a^2 / 2) = hs.
 func set_swell(hs: float) -> void:

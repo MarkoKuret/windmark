@@ -31,3 +31,30 @@ static func side_angle(rad: float, pos_letter: String, neg_letter: String) -> St
 
 static func percent(x: float) -> String:
 	return "%d" % int(round_half_away(x))
+
+
+const NM := 1852.0
+
+
+## distance: < 200 m integer metres ("85 m"), to 0.2 nm metres rounded to 5 m, beyond nautical miles ("0.43 nm")
+static func distance(m: float) -> String:
+	if m < 200.0:
+		return "%d m" % int(round_half_away(m))
+	if m < 0.2 * NM:
+		return "%d m" % int(round_half_away(m / 5.0) * 5.0)
+	return "%.2f nm" % (round_half_away(m / NM * 100.0) / 100.0)
+
+
+## race clock and gaps m:ss
+static func clock(s: float) -> String:
+	var t := int(round_half_away(absf(s)))
+	return "%s%d:%02d" % ["-" if s < 0.0 and t > 0 else "", floori(t / 60.0), t % 60]
+
+
+## countdown m:ss, with tenths in the last 10 s ("0:07.4"); `s` = seconds to go
+static func countdown(s: float) -> String:
+	if s < 10.0:
+		var tenths := int(round_half_away(maxf(s, 0.0) * 10.0))
+		return "0:%02d.%d" % [floori(tenths / 10.0), tenths % 10]
+	var t := int(round_half_away(s))
+	return "%d:%02d" % [floori(t / 60.0), t % 60]

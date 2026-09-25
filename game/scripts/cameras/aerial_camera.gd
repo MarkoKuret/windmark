@@ -26,6 +26,7 @@ var next_mark: Variant = null
 var _upd := 0.0
 var _started := false
 var clearance := CamTypes.Clearance.new()
+var land := CamTypes.LandAvoid.new()
 
 
 func params() -> Dictionary:
@@ -51,6 +52,7 @@ func recentre(_t: CamTypes.Target) -> void:
 func snap(t: CamTypes.Target) -> void:
 	_upd = _up_goal(t)
 	clearance.reset()
+	land.reset()
 	_started = true
 
 
@@ -101,6 +103,7 @@ func update(t: CamTypes.Target, _o: CamTypes.Options, dt: float) -> CamTypes.Vie
 		# both inside 80 % of the frame height: half-extent <= 0.8 * H * tan(fov / 2)
 		h = maxf(H, half.length() / (0.8 * tan(deg_to_rad(fov) * 0.5)))
 	var eye := target + h * Vector3(sin(_upd + PI) * cos(tilt), sin(tilt), -cos(_upd + PI) * cos(tilt))
+	eye = land.apply(eye, target, t, dt)
 	eye = clearance.apply(eye, t, dt)
 	var v := CamTypes.View.new()
 	v.xform = CamTypes.look(eye, target, Frames.compass_dir(_upd))

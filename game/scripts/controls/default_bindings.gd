@@ -88,6 +88,7 @@ static func table() -> Dictionary:
 	t["chat"] = {"keys": [_k(KEY_ENTER)]}
 	t["pause_menu"] = {"keys": [_k(KEY_ESCAPE)], "joy": JOY_BUTTON_START}
 	t["screenshot"] = {"keys": [_k(KEY_F12)]}
+	t["reset_boat"] = {"keys": [_k(KEY_BACKSPACE)]}
 	return t
 
 

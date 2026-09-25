@@ -6,7 +6,14 @@ extends Node3D
 ##
 ## The simulation (`sim_kind`): the Windmark core through CoreSimSource (the GDExtension, game/native/build.sh)
 ## on the venue `venue` without a race (free sailing, place_boat), or the FakeSim placeholder. AUTO takes the
-## core when the extension is loaded and falls back to FakeSim otherwise.
+## core when the extension is loaded and falls back to FakeSim otherwise. With `race_mode` (the core only) the
+## boat races alone on `course` from the core's spawn through the start sequence (CoreSimSource.create_race).
+##
+## The venue's land and obstacles are drawn by a VenueView from the core's shapes (the venue file on FakeSim),
+## and the cameras keep out of them through CamTypes.Target.ground. In race mode a CourseView draws the marks,
+## committee and mark boats, flags, lines and laylines from the core's course and race state, with a line of
+## race status text until the race HUD exists. The reset key (controls.md §2 `reset_boat`) re-places the boat
+## at its start point when free sailing, and restarts the race in race mode.
 ##
 ## On the core, everything drawn comes from the core world: the Sea's source is a CoreEnvSource (wave
 ## components, exposure, live puffs, current), the Sea's clock is the core's render_time_ms of the frame, the
@@ -35,6 +42,9 @@ enum SeaSource { AUTO, CORE_SAMPLES, PLACEHOLDER }
 ## start heading relative to the wind: + = starboard tack
 @export var start_twa_deg := 45.0
 @export var racing := true
+## core only: race alone on `course` (game/data/courses/<venue>/<id>) instead of free sailing
+@export var race_mode := false
+@export var course := "example_bay/example_wl"
 @export var auto_process := true
 ## FakeSim only. AUTO: the core's example bay samples when they exist, otherwise the placeholder sea
 @export var sea_source: SeaSource = SeaSource.AUTO
@@ -59,6 +69,9 @@ var reader: InputReader
 var rig: CameraRig
 var hud: Hud
 var boat_view: BoatView
+var venue_view: VenueView
+## race mode: the course drawn from the core
+var course_view: CourseView
 var target := CamTypes.Target.new()
 var viewed := 0
 ## tests: when set, used instead of the devices every frame
@@ -66,6 +79,9 @@ var scripted_input: RawInput = null
 
 var _chat: LineEdit
 var _paused_label: Label
+var _race_label: Label
+var _banner := ""
+var _banner_t := 0.0
 ## the own boat's sail states of the last two ticks (render interpolation)
 var _sails_prev: SimSource.SailsView
 var _sails_cur: SimSource.SailsView
@@ -89,6 +105,11 @@ func _ready() -> void:
 	target.beam_max = info.beam_max
 	target.geometry = BoatGeometry.onboard(info, boat_view.model)
 	target.sea_height = sea.height_at
+	venue_view = VenueView.new()
+	venue_view.name = "Venue"
+	add_child(venue_view)
+	venue_view.build(VenueShapes.from_core((sim as CoreSimSource).core) if on_core else VenueShapes.from_file(venue))
+	target.ground = venue_view.ground_height
 	rig = CameraRig.new()
 	rig.name = "CameraRig"
 	add_child(rig)
@@ -114,6 +135,16 @@ func _ready() -> void:
 	_paused_label.add_theme_font_size_override("font_size", 32)
 	_paused_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	layer.add_child(_paused_label)
+	_race_label = Label.new()
+	_race_label.name = "RaceStatus"
+	_race_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_race_label.add_theme_font_size_override("font_size", 22)
+	_race_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	_race_label.add_theme_constant_override("outline_size", 6)
+	_race_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, 12)
+	_race_label.visible = false
+	layer.add_child(_race_label)
+	_build_course()
 	runner.ticked.connect(_on_tick)
 	hud.tick(sim, viewed)
 	_sails_cur = sim.sails(runner.boat)
@@ -122,31 +153,35 @@ func _ready() -> void:
 	set_process(auto_process)
 
 
-## Command line after `--`: `--class=wm12`, `--fake` (FakeSim), `--core`.
+## Command line after `--`: `--class=wm12`, `--fake` (FakeSim), `--core`, `--race` (race mode on `course`),
+## `--course=<venue>/<id>`.
 func _user_args() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--class="):
 			class_id = a.trim_prefix("--class=")
+		elif a == "--race":
+			race_mode = true
+		elif a.begins_with("--course="):
+			course = a.trim_prefix("--course=")
+			race_mode = true
 		elif a == "--fake":
 			sim_kind = SimKind.FAKE
 		elif a == "--core":
 			sim_kind = SimKind.CORE
 
 
-## The core world on the venue, free sailing (no race): the boat placed at the start point, the Sea on the
-## core's environment. Returns the boat index, -1 on failure (FakeSim is then used instead).
+## extra world settings for the core (tests: a shorter free-sailing time before the warning signal)
+var core_settings := {}
+
+
+## The core world on the venue: free sailing (no race), the boat placed at the start point, or in race mode
+## the race on `course` with the boat at its spawn; the Sea on the core's environment. Returns the boat
+## index, -1 on failure (FakeSim is then used instead).
 func _setup_core() -> int:
-	var cs := CoreSimSource.new()
-	cs.settings = {"wind_speed": wind_speed_kn * HudFormat.KNOT, "wind_from": deg_to_rad(wind_from_deg),
-		"puffs": puffs, "shift_preset": shift_preset, "race_seed": world_seed}
-	var ok := cs.create(venue)
-	var b := cs.add_entry(class_id, {"human": true}) if ok else -1
-	if b >= 0:
-		var psi := Frames.wrap_2pi(deg_to_rad(wind_from_deg) - deg_to_rad(start_twa_deg))
-		ok = cs.place_boat(b, start_x, start_y, psi)
-	if not ok or b < 0:
-		push_warning("sail test: the core did not start (%s); using FakeSim" % cs.last_error())
+	var cs := _make_core()
+	if cs == null:
 		on_core = false
+		race_mode = false
 		return _setup_fake()
 	sim = cs
 	core_env = CoreEnvSource.new()
@@ -158,7 +193,75 @@ func _setup_core() -> int:
 	sea.quality = sea_quality
 	sea.use_internal_clock = false
 	SeaQuality.apply_environment(sky.environment(), sea.quality)
-	return b
+	return 0
+
+
+## A new core world with the player's boat (index 0), placed or racing. null on failure.
+func _make_core() -> CoreSimSource:
+	var cs := CoreSimSource.new()
+	cs.settings = {"wind_speed": wind_speed_kn * HudFormat.KNOT, "wind_from": deg_to_rad(wind_from_deg),
+		"puffs": puffs, "shift_preset": shift_preset, "race_seed": world_seed}
+	cs.settings.merge(core_settings, true)
+	var ok := cs.create(venue)
+	var b := cs.add_entry(class_id, {"human": true}) if ok else -1
+	if b >= 0:
+		if race_mode:
+			ok = cs.create_race(course)
+		else:
+			ok = cs.place_boat(b, start_x, start_y, _start_psi())
+	if not ok or b != 0:
+		push_warning("sail test: the core did not start (%s); using FakeSim" % cs.last_error())
+		return null
+	return cs
+
+
+func _start_psi() -> float:
+	return Frames.wrap_2pi(deg_to_rad(wind_from_deg) - deg_to_rad(start_twa_deg))
+
+
+func _build_course() -> void:
+	if course_view:
+		course_view.queue_free()
+		course_view = null
+	if not (on_core and race_mode and (sim as CoreSimSource).core.has_race()):
+		sea.set_overlay_lines([])
+		sea.set_overlay_circles([])
+		return
+	course_view = CourseView.new()
+	course_view.name = "Course"
+	add_child(course_view)
+	course_view.show_laylines = hud.assist != Hud.Assist.MINIMAL
+	course_view.show_zone = hud.assist != Hud.Assist.MINIMAL
+	course_view.bind(sim as CoreSimSource, runner.boat, sea, course)
+	_race_label.visible = true
+
+
+## controls.md §2 reset_boat: free sailing re-places the boat at its start point, sailing; race mode restarts
+## the race from the spawn. The cameras cut to the boat.
+func reset_boat() -> void:
+	var b := runner.boat
+	if on_core and race_mode:
+		var cs := _make_core()
+		if cs == null:
+			return
+		sim = cs
+		runner.sim = cs
+		controls.bind(cs, b)
+		core_env.sim = cs
+		sea.set_sea(cs.sea_components(), cs.sea_exposure())
+		_build_course()
+	elif on_core:
+		(sim as CoreSimSource).place_boat(b, start_x, start_y, _start_psi())
+	else:
+		(sim as FakeSim).place_boat(b, 0.0, 0.0, Frames.wrap_2pi((sim as FakeSim).wind_from - deg_to_rad(start_twa_deg)))
+	controls.h_cmd = 0.0
+	controls.let_fly = false
+	wakes.remove_boat(b)
+	_sails_cur = sim.sails(b)
+	_sails_prev = null
+	hud.tick(sim, viewed)
+	_update_target(runner.alpha())
+	rig.retarget(target)
 
 
 func _setup_fake() -> int:
@@ -176,6 +279,9 @@ func _on_tick(_t: int) -> void:
 	hud.tick(sim, viewed)
 	_sails_prev = _sails_cur
 	_sails_cur = sim.sails(runner.boat)
+	if course_view:
+		course_view.tick()
+		_race_events()
 
 
 ## FakeSim: the sea of the chosen source, shared with the sim; the sim's wind from the core scenario when there
@@ -233,6 +339,10 @@ func step_frame(dt: float) -> void:
 	runner.advance(dt)
 	_update_sea_time(runner.alpha())
 	_update_target(runner.alpha())
+	if course_view:
+		course_view.frame(dt, rig.camera.global_position, target.pose)
+		rig.aerial.next_mark = course_view.next_mark_scene()
+		_race_status(dt)
 	var cin := CameraInput.from_raw(raw if not controls.text_focus else raw.without_buttons(), controls.free_camera)
 	rig.frame(target, cin, dt)
 	hud.frame(dt, controls)
@@ -280,6 +390,8 @@ func _ui_actions(r: RawInput) -> void:
 		_paused_label.visible = runner.paused
 	if r.was_pressed(&"screenshot"):
 		_screenshot()
+	if r.was_pressed(&"reset_boat"):
+		reset_boat()
 	if not racing and sim.boat_count() > 1:
 		var n := sim.boat_count()
 		var before := viewed
@@ -311,3 +423,74 @@ func _screenshot() -> void:
 		return
 	DirAccess.make_dir_recursive_absolute("user://screenshots")
 	img.save_png("user://screenshots/windmark_%s.png" % Time.get_datetime_string_from_system().replace(":", "-"))
+
+
+# ---- race status (a stand-in until the race HUD, WM-016.11) ----------------------------------------------------
+
+const SIGNAL_TEXT := {
+	0: "Warning signal",
+	1: "Preparatory signal",
+	2: "One minute",
+	3: "Start",
+	4: "General recall",
+	5: "Individual recall: X flag",
+	6: "X flag down",
+}
+const PREP_TEXT := ["P flag: be behind the line at the start", "I flag: over in the last minute means round an end",
+	"Z flag: in the triangle in the last minute is a scoring penalty",
+	"U flag: in the triangle in the last minute is a disqualification", "Black flag: in the triangle in the last minute is a disqualification"]
+const PREP_NAME := ["P", "I", "Z", "U", "black"]
+
+
+func _race_events() -> void:
+	for e in (sim as CoreSimSource).core.race_events():
+		if int(e["kind"]) != 0:
+			continue
+		var k := int(e["signal"])
+		_banner = SIGNAL_TEXT.get(k, "")
+		if k == 1:
+			_banner += ", " + PREP_TEXT[clampi(int(e["flag"]), 0, 4)]
+		_banner_t = 3.0
+
+
+func _race_status(dt: float) -> void:
+	var cv := course_view
+	var race: Dictionary = (sim as CoreSimSource).core.race()
+	var rb: Dictionary = (sim as CoreSimSource).core.race_boat(runner.boat)
+	var t: float = race.get("race_time", 0.0)
+	var state: int = race.get("state", 0)
+	var tw := cv.warning_time()
+	var line := ""
+	if state <= CourseView.RACE_FREE:
+		line = "Warning in %s" % HudFormat.countdown(-t - tw)
+	elif state == CourseView.RACE_SEQUENCE:
+		line = "Start in %s" % HudFormat.countdown(-t)
+		if t >= -(tw - 60.0) and t < -60.0:
+			line += "  ·  %s flag" % PREP_NAME[clampi(int(race.get("prep_flag", 1)), 0, 4)]
+		if cv.start_line_state == "red":
+			line += "  ·  OVER"
+	elif bool(rb.get("finished", false)):
+		line = "Finished  ·  %s" % HudFormat.clock(float(rb.get("t_finish_us", 0)) * 1e-6)
+	else:
+		line = "Race %s" % HudFormat.clock(t)
+		if bool(rb.get("ocs", false)) or bool(rb.get("ocs_i", false)):
+			line += "  ·  OCS: return %s" % ("around an end" if bool(rb.get("ocs_i", false)) else "behind the line")
+		elif not bool(rb.get("started", false)):
+			line += "  ·  Cross the line to start"
+	var nk := cv.next_step()
+	if nk > 0 and nk < cv.course["steps"].size() and not bool(rb.get("finished", false)):
+		var st: Dictionary = cv.course["steps"][nk]
+		var kind := int(st["kind"])
+		var what := "Finish"
+		if kind == CourseView.STEP_MARK:
+			what = "%s, leave to %s" % [cv.label(int(st["marks"][0])), "port" if int(st["sides"][0]) == 0 else "starboard"]
+		elif kind == CourseView.STEP_GATE:
+			what = "Gate %s / %s" % [cv.label(int(st["marks"][0])), cv.label(int(st["marks"][1]))]
+		line += "\nNext: %s  ·  %s  ·  Lap %d/%d" % [what, HudFormat.distance(cv.distance_to_next(target.pose)),
+			int(st["lap"]), int(cv.course.get("laps", 1))]
+		if cv.leg != "":
+			line += "  ·  %s" % cv.leg.capitalize()
+	if _banner_t > 0.0:
+		_banner_t -= dt
+		line += "\n" + _banner
+	_race_label.text = line

@@ -24,6 +24,7 @@ var zt := 0.0
 var _started := false
 var _idle := 0.0
 var clearance := CamTypes.Clearance.new()
+var land := CamTypes.LandAvoid.new()
 
 
 func params() -> Dictionary:
@@ -52,6 +53,7 @@ func snap(t: CamTypes.Target) -> void:
 	psi_c = t.pose.psi
 	zt = t.pose.z
 	clearance.reset()
+	land.reset()
 	_started = true
 
 
@@ -96,6 +98,7 @@ func frame(target: Vector3, t: CamTypes.Target, dt: float) -> Transform3D:
 	var azw := psi_c + PI + az
 	var eye := target + R * Vector3(sin(azw) * cos(el), sin(el), -cos(azw) * cos(el)) + Vector3(0, lift, 0)
 	var aim := target + Vector3(0, lift, 0)
+	eye = land.apply(eye, aim, t, dt)
 	eye = clearance.apply(eye, t, dt)
 	return CamTypes.look(eye, aim)
 

@@ -313,6 +313,18 @@ double CoreSim::polar(int64_t boat, double tws, double twa, int64_t front_sail) 
   return wm_perf_polar(wm_world_boat_perf(world_, i32(boat)), f32(tws), f32(twa), i32(front_sail));
 }
 
+Dictionary CoreSim::polar_vmg(int64_t boat, double tws) const {
+  Dictionary d;
+  float us = NAN, ua = NAN, ds = NAN, da = NAN;
+  if (!boat_ok(boat) || wm_perf_polar_vmg(wm_world_boat_perf(world_, i32(boat)), f32(tws), &us, &ua, &ds, &da) != WM_OK)
+    return d;
+  d["up_speed"] = us;
+  d["up_twa"] = ua;
+  d["down_speed"] = ds;
+  d["down_twa"] = da;
+  return d;
+}
+
 Dictionary CoreSim::sails(int64_t boat) const {
   Dictionary d;
   wm_sails s{};
@@ -456,6 +468,47 @@ Dictionary CoreSim::sea_exposure() const {
 }
 
 // ---- course, race and rules -----------------------------------------------------------------------------------
+
+Array CoreSim::venue_land() const {
+  Array out;
+  for (int32_t i = 0; i < wm_world_land_count(world_); ++i) {
+    wm_land l{};
+    wm_world_land(world_, i, &l);
+    PackedVector2Array pts;
+    for (int32_t k = 0; k < l.point_count; ++k) {
+      float x = 0.0f, y = 0.0f;
+      wm_world_land_point(world_, i, k, &x, &y);
+      pts.append(Vector2(x, y));
+    }
+    Dictionary d;
+    d["id"] = String::utf8(l.id);
+    d["points"] = pts;
+    out.append(d);
+  }
+  return out;
+}
+
+Array CoreSim::venue_obstacles() const {
+  Array out;
+  for (int32_t i = 0; i < wm_world_obstacle_count(world_); ++i) {
+    wm_obstacle o{};
+    wm_world_obstacle(world_, i, &o);
+    PackedVector2Array pts;
+    for (int32_t k = 0; k < o.point_count; ++k) {
+      float x = 0.0f, y = 0.0f;
+      wm_world_obstacle_point(world_, i, k, &x, &y);
+      pts.append(Vector2(x, y));
+    }
+    Dictionary d;
+    d["id"] = String::utf8(o.id);
+    d["circle"] = o.kind == WM_OBSTACLE_CIRCLE;
+    d["points"] = pts;
+    d["c"] = Vector2(o.cx, o.cy);
+    d["r"] = o.r;
+    out.append(d);
+  }
+  return out;
+}
 
 Dictionary CoreSim::course() const {
   Dictionary d;
@@ -753,6 +806,7 @@ void CoreSim::_bind_methods() {
   ClassDB::bind_method(D_METHOD("trim_speed_at", "boat", "tws", "awa_abs", "eps"), &CoreSim::trim_speed_at);
   ClassDB::bind_method(D_METHOD("perf_table", "boat", "front_sail", "name", "x", "y", "w"), &CoreSim::perf_table);
   ClassDB::bind_method(D_METHOD("polar", "boat", "tws", "twa", "front_sail"), &CoreSim::polar);
+  ClassDB::bind_method(D_METHOD("polar_vmg", "boat", "tws"), &CoreSim::polar_vmg);
   ClassDB::bind_method(D_METHOD("sails", "boat"), &CoreSim::sails);
   ClassDB::bind_method(D_METHOD("sail", "boat", "sail"), &CoreSim::sail);
   ClassDB::bind_method(D_METHOD("sail_events", "boat"), &CoreSim::sail_events);
@@ -767,6 +821,8 @@ void CoreSim::_bind_methods() {
   ClassDB::bind_method(D_METHOD("sea_components"), &CoreSim::sea_components);
   ClassDB::bind_method(D_METHOD("sea_exposure"), &CoreSim::sea_exposure);
 
+  ClassDB::bind_method(D_METHOD("venue_land"), &CoreSim::venue_land);
+  ClassDB::bind_method(D_METHOD("venue_obstacles"), &CoreSim::venue_obstacles);
   ClassDB::bind_method(D_METHOD("course"), &CoreSim::course);
   ClassDB::bind_method(D_METHOD("race"), &CoreSim::race);
   ClassDB::bind_method(D_METHOD("race_boat", "boat"), &CoreSim::race_boat);

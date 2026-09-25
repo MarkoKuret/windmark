@@ -837,6 +837,70 @@ int32_t wm_world_sea_components(const wm_world* w, wm_sea_component* out, int32_
   return static_cast<int32_t>(c.size());
 }
 
+// ---- venue --------------------------------------------------------------------------------------------------
+
+namespace {
+const wm::VenueLand* venue_land(const wm_world* w, int32_t i) {
+  if (w == nullptr || w->venue == nullptr || i < 0 || static_cast<std::size_t>(i) >= w->venue->land.size())
+    return nullptr;
+  return &w->venue->land[static_cast<std::size_t>(i)];
+}
+const wm::VenueObstacle* venue_obstacle(const wm_world* w, int32_t i) {
+  if (w == nullptr || w->venue == nullptr || i < 0 || static_cast<std::size_t>(i) >= w->venue->obstacles.size())
+    return nullptr;
+  return &w->venue->obstacles[static_cast<std::size_t>(i)];
+}
+wm_status polygon_point(const std::vector<wm::Vec2>& p, int32_t k, float* x, float* y) {
+  if (x == nullptr) return fail(WM_ERR_ARG, "null argument");
+  if (k < 0 || static_cast<std::size_t>(k) >= p.size()) return fail(WM_ERR_ARG, "bad point index");
+  *x = p[static_cast<std::size_t>(k)].x;
+  if (y) *y = p[static_cast<std::size_t>(k)].y;
+  return WM_OK;
+}
+}  // namespace
+
+int32_t wm_world_land_count(const wm_world* w) {
+  return w == nullptr || w->venue == nullptr ? 0 : static_cast<int32_t>(w->venue->land.size());
+}
+
+wm_status wm_world_land(const wm_world* w, int32_t i, wm_land* out) {
+  if (out == nullptr) return fail(WM_ERR_ARG, "null argument");
+  const wm::VenueLand* l = venue_land(w, i);
+  if (l == nullptr) return fail(WM_ERR_ARG, "bad land index");
+  out->id = l->id.c_str();
+  out->point_count = static_cast<int32_t>(l->points.size());
+  return WM_OK;
+}
+
+wm_status wm_world_land_point(const wm_world* w, int32_t i, int32_t k, float* x, float* y) {
+  const wm::VenueLand* l = venue_land(w, i);
+  if (l == nullptr) return fail(WM_ERR_ARG, "bad land index");
+  return polygon_point(l->points, k, x, y);
+}
+
+int32_t wm_world_obstacle_count(const wm_world* w) {
+  return w == nullptr || w->venue == nullptr ? 0 : static_cast<int32_t>(w->venue->obstacles.size());
+}
+
+wm_status wm_world_obstacle(const wm_world* w, int32_t i, wm_obstacle* out) {
+  if (out == nullptr) return fail(WM_ERR_ARG, "null argument");
+  const wm::VenueObstacle* o = venue_obstacle(w, i);
+  if (o == nullptr) return fail(WM_ERR_ARG, "bad obstacle index");
+  out->id = o->id.c_str();
+  out->kind = o->is_circle ? WM_OBSTACLE_CIRCLE : WM_OBSTACLE_POLYGON;
+  out->point_count = o->is_circle ? 0 : static_cast<int32_t>(o->polygon.size());
+  out->cx = o->is_circle ? o->c.x : 0.0f;
+  out->cy = o->is_circle ? o->c.y : 0.0f;
+  out->r = o->is_circle ? o->r : 0.0f;
+  return WM_OK;
+}
+
+wm_status wm_world_obstacle_point(const wm_world* w, int32_t i, int32_t k, float* x, float* y) {
+  const wm::VenueObstacle* o = venue_obstacle(w, i);
+  if (o == nullptr) return fail(WM_ERR_ARG, "bad obstacle index");
+  return polygon_point(o->polygon, k, x, y);
+}
+
 // ---- course -------------------------------------------------------------------------------------------------
 
 namespace {

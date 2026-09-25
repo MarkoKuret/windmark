@@ -7,7 +7,7 @@ created_date: '2026-09-25 15:50'
 labels:
   - decide-later
 dependencies:
-  - WM-016
+  - WM-016.08
 priority: low
 ordinal: 32000
 ---
@@ -15,7 +15,7 @@ ordinal: 32000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-boatgen writes furl_radius in the look block of every jib, genoa and code zero (sail_visuals.md section 4 table). Write it only for sails with furling: true? Owner question from WM-029, set aside on 2026-09-25: answer once the game runs (after WM-016).
+boatgen writes furl_radius in the look block of every jib, genoa and code zero (sail_visuals.md section 4 table). Write it only for sails with furling: true? Owner question from WM-029, set aside on 2026-09-25: answer once the game runs (after WM-016.08, sail one boat).
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

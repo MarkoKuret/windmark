@@ -7,7 +7,7 @@ created_date: '2026-09-25 15:52'
 labels:
   - decide-later
 dependencies:
-  - WM-016
+  - WM-016.08
 priority: low
 ordinal: 34000
 ---
@@ -15,7 +15,7 @@ ordinal: 34000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-The front end's venue look file is <venue>.look.json next to the venue physics file (data_format.md section 6; audio.md only said a front-end file next to the physics file). Keep this name and place? Owner question from WM-026, set aside on 2026-09-25: answer once the game runs (after WM-016).
+The front end's venue look file is <venue>.look.json next to the venue physics file (data_format.md section 6; audio.md only said a front-end file next to the physics file). Keep this name and place? Owner question from WM-026, set aside on 2026-09-25: answer once the game runs (after WM-016.08, sail one boat).
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

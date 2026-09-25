@@ -1,9 +1,11 @@
 ---
 id: WM-026
 title: 'Core: venue file loader'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-09-25 14:32'
+updated_date: '2026-09-25 15:36'
 labels:
   - core
 dependencies: []
@@ -19,6 +21,6 @@ Load windmark.venue/1 files (wind field, current, exposure, land, obstacles) per
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Loader with tests
-- [ ] #2 An example venue file
+- [x] #1 Loader with tests
+- [x] #2 An example venue file
 <!-- AC:END -->

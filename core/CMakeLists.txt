@@ -29,6 +29,12 @@ add_library(windmark_core STATIC
   src/data/perf.cpp
   src/data/boat_class.cpp
 )
+
+# Environment: wind, current, sea, wind shadow (wind.md, sea.md, wind_shadow.md).
+target_sources(windmark_core PRIVATE
+  src/wind/grid.cpp
+  src/wind/wind.cpp
+)
 target_include_directories(windmark_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 # PUBLIC: every target that links the core (tests, server, engine bindings) builds with the same float rules.
 target_link_libraries(windmark_core PUBLIC windmark_float_rules)

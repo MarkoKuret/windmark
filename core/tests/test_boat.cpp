@@ -20,7 +20,7 @@ std::string sail_name(const wm::PerfData& p, std::int32_t i) { return i < 0 ? "m
 
 
 // The class with the attitude wobble switched off, so the steady state is exactly the tables' (the wobble moves
-// heel and pitch by about 1 deg, and pitch changes the speed through surf_coef, boat.md §5.8).
+// heel and pitch by about 1 deg, and the heel changes the speed through heel_speed_factor).
 const wm::PerfData& perf_no_wobble(const std::string& cls) {
   static std::map<std::string, wm::PerfData> cache;
   auto it = cache.find(cls);
@@ -118,9 +118,9 @@ TEST_CASE("boat: steady polar and heel match the tables") {
   }
 }
 
-// §10.1 with the class wobble: the mean heel stays on the table within 0.2 deg. The wobble's pitch also changes
-// the speed through surf_coef (boat.md §5.8), so the mean speed sits off the table (up to 6 % below it upwind in
-// a strong breeze, a little above it downwind); that offset is reported and bounded at 7 %.
+// §10.1 with the class wobble: the mean heel stays on the table within 0.2 deg. Surfing follows the wave pitch
+// only (boat.md §5.8), so the wobble reaches the speed only through the heel it adds (heel_speed_factor, trim of
+// the boom-limited main); that offset is reported and bounded at 1.5 %.
 TEST_CASE("boat: steady state with the attitude wobble") {
   for (const std::string cls : kClasses) {
     const wm::PerfData& p = perf(cls);
@@ -136,7 +136,7 @@ TEST_CASE("boat: steady state with the attitude wobble") {
           worst_h = wm::max(worst_h, dh);
           CHECK_MESSAGE(dh <= deg(0.2f), cls, " ", sail_name(p, c.front_sail), " tws ", tws, " twa ", twa_d,
                         ": mean heel ", to_deg(r.phi_mean), " deg, target ", to_deg(r.heel_target), " deg");
-          CHECK_MESSAGE(std::fabs(dv) <= 0.07f, cls, " ", sail_name(p, c.front_sail), " tws ", tws, " twa ", twa_d,
+          CHECK_MESSAGE(std::fabs(dv) <= 0.015f, cls, " ", sail_name(p, c.front_sail), " tws ", tws, " twa ", twa_d,
                         ": mean v ", to_kn(r.v_mean), " kn, table ", to_kn(r.expect_v), " kn");
         }
       }
@@ -230,46 +230,27 @@ TackResult tack(const wm::PerfData& p, float tws, float helm) {
   return {!turning, t90, vmg * 60.0f - (sim.s().pos_y - y0)};
 }
 
-// Feel multipliers with which the shipped hulls meet the tack target (found by a sweep; see the report of WM-006).
-constexpr float kTunedAccel = 2.0f, kTunedDecel = 0.35f, kTunedTurn = 2.0f;
-
 }  // namespace
 
-// §10.3: a tack at 10 kn with helm 0.5 gets an S boat back to 90 % speed within 12 s. The boat code is checked on
-// test-local copies of the hulls with the dynamics that meet the target (accel x2, decel x0.35, turn rate x2,
-// applied as data_format.md §3.7.1 multipliers); the shipped files miss it (next test, WM-027).
-TEST_CASE("boat: tack at 10 kn") {
+// §10.3: a tack at 10 kn with helm 0.5 gets an S boat back to 90 % speed within 12 s; boat.md §7.2: a slammed
+// full-helm tack costs more than a smooth one. On the shipped classes at handling 1.0; the other wind speeds are
+// reported (the class targets are for 10 kn).
+TEST_CASE("boat: tack on the shipped classes") {
   for (const std::string cls : kClasses) {
-    const wm::PerfData& p = tuned(cls, kTunedAccel, kTunedDecel, kTunedTurn);
-    const TackResult r = tack(p, 10.0f, 0.5f);
-    const TackResult hard = tack(p, 10.0f, 1.0f);
-    MESSAGE(cls, " tuned: helm 0.5 back to 90 % in ", r.time_to_90, " s, ", r.distance_lost, " m lost (",
-            r.distance_lost / p.dynamics.loa, " lengths); full helm ", hard.time_to_90, " s, ", hard.distance_lost,
-            " m");
-    CHECK(r.completed);
-    CHECK(hard.completed);
-    CHECK(r.time_to_90 > 0.0f);
-    CHECK(r.distance_lost > 0.0f);
-    if (cls == "wm7") CHECK(r.time_to_90 < 12.0f);
-    // boat.md §7.2 expects a slammed full-helm tack to cost more than a smooth one; with these rudder-drag tables
-    // it costs less (WM-027).
-    WARN_MESSAGE(hard.distance_lost > r.distance_lost, cls, ": full-helm tack is not slower than helm 0.5");
-  }
-}
-
-// Documents WM-027: with the shipped wm7/wm12 dynamics (handling 1.0) the boats lose their way inside the no-go
-// zone before the bow is through it (decel_linear about twice the S reference, half-helm radius 2 R_full + offset,
-// upwind accel about half the reference). Expected to fail until the VPP derives dynamics that tack.
-TEST_CASE("boat: tack on the shipped classes (WM-027)" * doctest::may_fail()) {
-  for (const std::string cls : kClasses) {
-    const TackResult r = tack(perf(cls), 10.0f, 0.5f);
-    const TackResult hard = tack(perf(cls), 10.0f, 1.0f);
-    MESSAGE(cls, " shipped: helm 0.5 ", std::string(r.completed ? "completes" : "does not complete"),
-            ", back to 90 % in ", r.time_to_90, " s; full helm ",
-            std::string(hard.completed ? "completes" : "does not complete"), ", ", hard.time_to_90,
-            " s. Known failure, see backlog WM-027");
-    CHECK_MESSAGE(r.completed, cls, ": cannot tack with helm 0.5 at 10 kn (WM-027)");
-    if (cls == "wm7") CHECK_MESSAGE((r.time_to_90 > 0.0f && r.time_to_90 < 12.0f), cls, ": 12 s target (WM-027)");
+    const wm::PerfData& p = perf(cls);
+    for (float tws : {6.0f, 10.0f, 16.0f, 22.0f}) {
+      const TackResult r = tack(p, tws, 0.5f);
+      const TackResult hard = tack(p, tws, 1.0f);
+      MESSAGE(cls, " ", tws, " kn: helm 0.5 back to 90 % in ", r.time_to_90, " s, ", r.distance_lost, " m lost (",
+              r.distance_lost / p.dynamics.loa, " lengths); full helm ", hard.time_to_90, " s, ", hard.distance_lost,
+              " m (", hard.distance_lost / p.dynamics.loa, " lengths)");
+      CHECK_MESSAGE(r.completed, cls, " ", tws, " kn: helm 0.5 does not get round");
+      CHECK_MESSAGE(hard.completed, cls, " ", tws, " kn: full helm does not get round");
+      CHECK(r.time_to_90 > 0.0f);
+      CHECK(r.distance_lost > 0.0f);
+      CHECK_MESSAGE(hard.distance_lost > r.distance_lost, cls, " ", tws, " kn: full-helm tack is not slower");
+      if (cls == "wm7" && tws == 10.0f) CHECK(r.time_to_90 < 12.0f);
+    }
   }
 }
 
@@ -310,24 +291,18 @@ IronsResult irons(const wm::PerfData& p) {
 }  // namespace
 
 // §10.4: head to wind at rest with the helm centred the boat gathers sternway and the bow stays within 15 deg of
-// the wind for 30 s; backing the bow off with reversed helm gets it sailing at half its polar speed within 20 s.
-// The shipped files have no fall_off table (optional), so a boat whose sternway dies as the sails fill stops
-// turning; wm12 then takes longer than 20 s (warning) and meets the target with the tuned accel.
+// the wind for 30 s; backing the bow off with reversed helm gets it sailing at half its polar speed within 20 s
+// (the fall_off table swings the bow away while the boat has no way on).
 TEST_CASE("boat: in irons and recovery") {
   for (const std::string cls : kClasses) {
+    const wm::ConfigPerf& c = *perf(cls).config_for(perf(cls).start_front_sail);
+    CHECK(c.fall_off.present);
     const IronsResult r = irons(perf(cls));
     MESSAGE(cls, ": after 30 s in irons v ", to_kn(r.v_after), " kn, largest |twa| ", to_deg(r.worst_twa),
             " deg; 50 % of polar speed ", r.t50, " s after reversing the helm");
     CHECK(r.v_after < -0.05f);
     CHECK(r.worst_twa < deg(15.0f));
-    if (cls == "wm7") {
-      CHECK(r.t50 > 0.0f);
-    } else {
-      WARN_MESSAGE(r.t50 > 0.0f, cls, ": shipped data does not recover within 20 s (WM-027)");
-      const IronsResult t = irons(tuned(cls, kTunedAccel, kTunedDecel, kTunedTurn));
-      MESSAGE(cls, " tuned: 50 % of polar speed ", t.t50, " s after reversing the helm");
-      CHECK(t.t50 > 0.0f);
-    }
+    CHECK(r.t50 > 0.0f);
   }
 }
 

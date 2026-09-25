@@ -160,11 +160,40 @@ TEST_CASE("sails: rejected requests") {
   CHECK(bare.boat.sails().front() == -1);
 }
 
+// sails.md §4.2: with no front sail up, drop_front() cancels a first hoist (there is no hoist(F) to ask for).
+TEST_CASE("sails: cancel a first hoist") {
+  const Wm7 c;
+  Sim sim("wm7", 10.0f, 0.0f);
+  sim.place(deg(90.0f), 2.0f, -1);
+  const auto& jib = [&]() -> const wm::SailState& { return sim.boat.sails().sail(static_cast<std::size_t>(c.jib)); };
+  REQUIRE(sim.boat.hoist(c.jib) == SailRequest::accepted);
+  REQUIRE(ticks_until(sim, 20.0f, [&] { return jib().phase == SailPhase::hoisting && jib().progress >= 0.5f; }) > 0);
+  const float p0 = jib().progress;
+  REQUIRE(sim.boat.drop_front() == SailRequest::accepted);
+  const float hoist = handling(c.p, c.jib).hoist_time.at(sim.s().tws, std::fabs(sim.s().twa));
+  const int ticks = ticks_until(sim, 20.0f, [&] { return jib().phase == SailPhase::down; });
+  MESSAGE("first hoist cancelled at ", p0, ", down after ", ticks * DT, " s (", p0 * hoist, " s expected)");
+  CHECK(ticks * DT >= p0 * hoist - 1e-3f);
+  CHECK(ticks * DT < p0 * hoist + DT + 1e-3f);
+  CHECK(sim.boat.sails().front() == -1);
+  CHECK_FALSE(sim.boat.sails().busy());
+
+  // Cancelled during prepare_hoist: down in the next tick, never driving.
+  REQUIRE(sim.boat.hoist(c.jib) == SailRequest::accepted);
+  sim.step();
+  REQUIRE(jib().phase == SailPhase::prepare_hoist);
+  REQUIRE(sim.boat.drop_front() == SailRequest::accepted);
+  sim.step();
+  CHECK(jib().phase == SailPhase::down);
+  CHECK(sim.boat.sails().front() == -1);
+  CHECK_FALSE(sim.boat.sails().busy());
+}
+
 // §8.3: in a tack the sails swing to the new side within 2 s and, with auto-trim, their trim error returns within
-// 1 deg of 0. Run on the tuned wm7 (see the tack test in test_boat.cpp), which gets through the tack.
+// 1 deg of 0.
 TEST_CASE("sails: tack swings the sails across") {
   const Wm7 c;
-  const wm::PerfData& p = tuned("wm7", 2.0f, 0.35f, 2.0f);
+  const wm::PerfData& p = c.p;
   Sim sim(p, 10.0f, 0.0f);
   const float twa = deg(42.0f);
   sim.place(twa, 2.5f, c.jib);
@@ -311,11 +340,11 @@ TEST_CASE("sails: luffing and let-fly") {
   CHECK(off_line < deg(1.0f));
   CHECK(jo.luff_shiver > 0.9f);
   CHECK(jo.trim_error > deg(5.0f));
-  CHECK(sim.s().v == doctest::Approx(o.polar_speed * o.trim_speed * o.heel_coef).epsilon(0.03));
+  // sails.md §6: no drive with the sail on the wind line; the boat coasts down along the deceleration law.
+  CHECK(o.trim_speed == 0.0f);
+  CHECK(o.target_speed == 0.0f);
   CHECK(sim.s().v < 0.6f * v_trim);
-  // sails.md §6: trim_speed falls to 0 with the sail on the wind line. The shipped tables level off at about 0.4
-  // there (their trim_error axis is not extended to the wind line), so the boat keeps some drive.
-  WARN_MESSAGE(o.trim_speed < 0.05f, "shipped trim_speed on the wind line is ", o.trim_speed, ", not 0");
+  CHECK(sim.s().v > 0.0f);
 
   sim.boat.set_let_fly(false);
   sim.run(40.0f);
@@ -338,4 +367,38 @@ TEST_CASE("sails: symmetric spinnaker swaps sides at once") {
   const float after = sim.boat.sails().sail(static_cast<std::size_t>(kite)).beta;
   CHECK(wm::sgn(before) == -wm::sgn(after));
   CHECK(std::fabs(sim.boat.sails().output(static_cast<std::size_t>(kite)).trim_error) < deg(0.01f));
+}
+
+// sails.md §6: every config's trim_speed and trim_heel are 0 where the driving sail lies on the wind line
+// (eps = |awa| - m_opt, at least 0.5 deg past the optimum), at any wind and angle the core can look them up at,
+// not only on the table's grid.
+TEST_CASE("sails: trim tables are 0 on the wind line") {
+  for (const std::string cls : {"wm7", "wm12"}) {
+    const wm::PerfData& p = perf(cls);
+    for (const wm::ConfigPerf& c : p.configs) {
+      const std::int32_t drive = c.front_sail >= 0 ? c.front_sail : p.main_sail;
+      const wm::SailPerf& sp = p.sails[static_cast<std::size_t>(drive)];
+      const wm::Table& opt = c.front_sail >= 0 ? c.optimal_front : c.optimal_main;
+      REQUIRE(c.trim_speed.present);
+      REQUIRE(c.trim_heel.present);
+      float worst_s = 0.0f, worst_h = 0.0f;
+      for (int it = 1; it <= 80; ++it) {
+        const float tws = 0.25f * static_cast<float>(it);
+        for (int ia = 30; ia <= 1800; ++ia) {
+          const float aa = deg(0.1f * static_cast<float>(ia));
+          const float m_opt = wm::clamp(opt.at(tws, aa), sp.sheet_min, sp.sheet_max);
+          // Within the first trim-error step (0.5 deg) of the optimum the sail is at its optimum, which there lies
+          // on the wind line (no-go and broached cells): the factor is 1 at eps = 0 by definition.
+          const float e = aa - m_opt;
+          if (e < deg(0.5f)) continue;
+          worst_s = wm::max(worst_s, c.trim_speed.table.at(tws, aa, e));
+          worst_h = wm::max(worst_h, c.trim_heel.table.at(tws, aa, e));
+        }
+      }
+      MESSAGE(cls, " ", (c.front_sail < 0 ? std::string("main only") : sp.id), ": largest trim_speed ", worst_s, ", trim_heel ", worst_h,
+              " on the wind line");
+      CHECK(worst_s == 0.0f);
+      CHECK(worst_h == 0.0f);
+    }
+  }
 }

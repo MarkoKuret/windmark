@@ -12,7 +12,7 @@ The project's main scene. Items, top to bottom: **Quick race**, **Free sail**, *
 - **Free sail**: class, venue, wind speed, wind direction, then **Start**.
 - Lists come from the data on disk: classes from `data/classes/*.boat.json` (name from the file), venues from
   `data/venues/*.venue.json`, courses from `game/data/courses/<venue>/*.course.json` that list the chosen class
-  in their `classes` (all of the venue's courses when none does). A venue without a course for the class cannot
+  in their `classes` (a course without `classes` suits every class). A venue without a course for the class cannot
   start a quick race.
 - Ranges: fleet size 2 to 40 boats including the player (default 10); AI level Easy, Intermediate (default),
   Expert, Pro (`ai.md` §13); wind 4 to 25 kn (default 12) in 1 kn steps, from 0° to 355° in 5° steps (default

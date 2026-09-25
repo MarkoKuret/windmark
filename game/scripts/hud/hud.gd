@@ -18,6 +18,12 @@ const COLOURS := {
 
 var assist := Assist.STANDARD
 var values := HudValues.new()
+## the viewed boat is the player's own: frame() shows its commands from the local controls
+var local_commands := true:
+	set(on):
+		local_commands = on
+		if not on:
+			values.commands_local = false
 ## label nodes by key: bsp, sog, hdg, cog, heel, polar, tws, twa, twd, aws, awa, sail, sheet, rudder, message
 var labels := {}
 var rudder_bar: HudBar
@@ -99,9 +105,14 @@ func tick(sim: SimSource, boat: int) -> void:
 	values.tick(sim, boat)
 
 
-## Once per rendered frame. `controls` (optional) supplies the HUD feedback of the controls.
+## Once per rendered frame. `controls` (optional) supplies the HUD feedback of the controls and, while
+## `local_commands` is on (the viewed boat is the player's own), the helm and sheet commands: the local command
+## of this frame, not the one the sim applied, so the helm mark, the sheet bar and the sheet text answer at once
+## (the core shows a queued command only after its next step).
 func frame(dt: float, controls: PlayerControls = null) -> void:
 	if controls != null:
+		if local_commands and values.set_commands(controls):
+			refresh_text()
 		if controls.busy_flash:
 			controls.busy_flash = false
 			_flash_t = FLASH_TIME

@@ -47,6 +47,9 @@ var sail_up := ""
 var sail_hoisting := ""
 var hoist_progress := 0.0
 var gauges: Array[Gauge] = []
+## h_cmd, sheet_cmd, auto_trim and let_fly come from the local controls (set_commands), not from the sim's
+## controls record
+var commands_local := false
 
 var _started := false
 var _tol_cache := {}
@@ -61,6 +64,20 @@ static func _angle(y: float, x: float, tau: float) -> float:
 	var b := Vector2(cos(x), sin(x))
 	var r := a + (b - a) * _k(tau)
 	return atan2(r.y, r.x)
+
+
+## The player's own commands of this frame (PlayerControls): helm command, sheet, auto-trim, let fly.
+## Returns true when one of them changed.
+func set_commands(c: PlayerControls) -> bool:
+	var h_new := clampf(c.h_cmd, -1.0, 1.0)
+	var sheet_new := clampf(c.sheet_cmd, 0.0, 1.0)
+	commands_local = true
+	var changed := h_new != h_cmd or sheet_new != sheet_cmd or c.auto_trim != auto_trim or c.let_fly != let_fly
+	h_cmd = h_new
+	sheet_cmd = sheet_new
+	auto_trim = c.auto_trim
+	let_fly = c.let_fly
+	return changed
 
 
 ## Once per tick, after the step.
@@ -86,7 +103,11 @@ func tick(sim: SimSource, boat: int) -> void:
 	hdg = Frames.wrap_2pi(_angle(hdg, s.psi, 0.3))
 	heel += (s.phi - heel) * _k(0.5)
 	h = s.h
-	h_cmd = c.h_cmd
+	if not commands_local:
+		h_cmd = c.h_cmd
+		sheet_cmd = c.sheet_cmd
+		auto_trim = c.auto_trim
+		let_fly = c.let_fly
 	tws += (s.tws - tws) * _k(2.0)
 	twa = _angle(twa, s.twa, 2.0)
 	twd = Frames.wrap_2pi(_angle(twd, s.twd_from, 2.0))
@@ -94,9 +115,6 @@ func tick(sim: SimSource, boat: int) -> void:
 	awa = _angle(awa, s.awa, 1.0)
 	if o.polar_speed > 0.05:
 		polar_pct += (100.0 * s.v / o.polar_speed - polar_pct) * _k(3.0)
-	sheet_cmd = c.sheet_cmd
-	auto_trim = c.auto_trim
-	let_fly = c.let_fly
 	sail_up = info.sails[sv.front].name if sv.front >= 0 else ""
 	sail_hoisting = ""
 	hoist_progress = 0.0
@@ -105,7 +123,7 @@ func tick(sim: SimSource, boat: int) -> void:
 			or run.phase == SimSource.Phase.HOISTING):
 		sail_hoisting = info.sails[run.sail].name
 		hoist_progress = sv.sails[run.sail].progress
-	_gauges(sim, boat, s, sv, info, c.auto_trim)
+	_gauges(sim, boat, s, sv, info, auto_trim)
 
 
 func _gauges(sim: SimSource, boat: int, s: SimSource.BoatState, sv: SimSource.SailsView,

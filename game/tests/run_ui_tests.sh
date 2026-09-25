@@ -1,6 +1,7 @@
 #!/bin/sh
 # Headless tests of the controls (controls.md §8), cameras (cameras.md §10) and minimal HUD (hud.md), including
-# a run of scenes/sail_test.tscn with scripted input on the example bay sea. Needs the generated boats: when
+# runs of scenes/sail_test.tscn with scripted input on the core (free sailing on example_bay; the GDExtension is
+# built when missing) and on FakeSim with the example bay sea. Needs the generated boats: when
 # game/generated/boats has no wm7.glb, runs run_boat_import_test.sh first; when game/generated/sea has no core
 # samples, writes them as run_water_test.sh does. Fails on any failed check, script error or engine error.
 # Nothing opens a window.
@@ -23,6 +24,11 @@ if [ ! -f "$here/generated/sea/sea_render_samples.json" ]; then
     mkdir -p "$here/generated/sea"
     "$build/tests/windmark_gen_sea_render_samples" "$repo/data/venues/example_bay.venue.json" \
         > "$here/generated/sea/sea_render_samples.json"
+fi
+
+# the sail test scene runs on the core: build the GDExtension when game/bin has no library
+if ! ls "$here"/bin/libwindmark_godot.* >/dev/null 2>&1; then
+    sh "$here/native/build.sh" >/dev/null
 fi
 
 # refresh the script class cache and the imports

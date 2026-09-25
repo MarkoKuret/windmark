@@ -54,6 +54,17 @@ target_sources(windmark_core PRIVATE
 target_sources(windmark_core PRIVATE
   src/collide/collide.cpp
 )
+
+# course files, race flow, racing rules and the world loop (WM-009): courses.md, race.md, rules.md
+target_sources(windmark_core PRIVATE
+  src/course/geometry.cpp
+  src/course/course.cpp
+  src/course/course_resolve.cpp
+  src/race/race.cpp
+  src/rules/rules.cpp
+  src/rules/rules_geom.cpp
+  src/world/world.cpp
+)
 target_include_directories(windmark_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 # PUBLIC: every target that links the core (tests, server, engine bindings) builds with the same float rules.
 target_link_libraries(windmark_core PUBLIC windmark_float_rules)

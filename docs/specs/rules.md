@@ -135,7 +135,11 @@ state:
 ```
 
 - The **course test** is the first half of the definition (B can sail her course without avoiding action); the
-  **turn test** is the second half (overlapped: B can change course either way without immediate contact).
+  **turn test** is the second half (overlapped: B can change course either way without immediate contact). "Hits"
+  means the hulls touch (gap 0) at any sample 0, 0.1, …, T_react s.
+- A `Warning` without a penalty is a give-way boat that acts on the warning: a predicted gap below the margin 1 to
+  4 s out that she opens again before it is 1 s out. A crossing whose actual closest gap stays below the margin is
+  in `Breach` for at least the last second before it, so it is penalised once it persists.
 - `Breach` must persist to count (§9.1), except a contact, which counts at once.
 - The warning is what the HUD shows as "keep clear" (`hud.md` §11); it never penalises.
 
@@ -144,7 +148,7 @@ state:
 `Escape(A, B, H = 3 s)`: can A keep clear of B if she acts now? A tries four manoeuvres; B keeps her current motion:
 
 1. hold course;
-2. full turn to port: after a reaction delay of 0.3 s the helm moves from its current value `h` towards −1 at the
+2. full turn to port: during the reaction delay of 0.3 s the boat keeps her current turn rate; then the helm moves from its current value `h` towards −1 at the
    class's `helm_rate`; the turn rate is `v / R(h)` with `R(h) = (turn_radius_full + turn_radius_offset)/|h| −
    turn_radius_offset` (`boat.md` §5.9); speed falls by the class's `rudder_drag_luff` / `rudder_drag_bear` table
    at that speed and helm (`boat.md` §4), whichever applies to the direction of the turn;
@@ -227,8 +231,8 @@ When an obligation "A keeps clear of B" begins (onset tick `t_on`, from no oblig
   to leeward of A (B established a leeward overlap), or B stopped taking a penalty or completed her return to start;
 - **A's action** otherwise (A tacked or gybed, A overtook, A's own course change).
 
-If the cause is B's action, the engine runs `Escape(A, B)` at `t_on` and every tick until it is true once or 4 s have
-passed. While it is false, B is in breach of rule 15 towards A, and A's keep-clear breaches towards B are exonerated
+An obligation that exists on the first tick a pair is judged also has an onset on that tick. If the cause is B's
+action, the engine runs `Escape(A, B)` at `t_on` and every tick until it is true once or 4 s have passed. While it is false, B is in breach of rule 15 towards A, and A's keep-clear breaches towards B are exonerated
 (rule 21(b), §6.1). As soon as it is true, B has given room and A's normal obligation applies.
 
 ### 5.3 Rule 16: changing course
@@ -238,14 +242,19 @@ passed. While it is false, B is in breach of rule 15 towards A, and A's keep-cle
 starboard-tack boat must not change course if that would make the port-tack boat immediately change course to go on
 keeping clear.
 
-A **course change** of boat B starts on the first tick her `turn_rate` has been above 3°/s in one direction for 0.3 s
-(or her heading has changed by more than 5° in the last 1 s), and lasts until the rate has been below 1°/s for 1 s.
+A **course change** of boat B is detected on the first tick her `turn_rate` has been above 3°/s in one direction for
+0.3 s (or her heading has changed by more than 5° in the last 1 s), and lasts until the rate has been below 1°/s for
+1 s. Its start `t_c` is backdated to the first tick of that 0.3 s run (or to the start of the 1 s window): a quick
+course change can put A in `Warning` before it is detected, so "A's state at `t_c`" is A's state on the tick before
+`t_c`, and the 3 s windows below count from `t_c`.
 
 - **16.1**: if B (right of way over A) starts a course change at `t_c`, A was `Clear` or `Warning` (not `Breach`) at
   `t_c`, and within 3 s after `t_c` A becomes `Breach` while `Escape(A, B)` is false, B breaks rule 16.1 towards A.
   A's breaches in that window are exonerated. If `Escape` was true and A did not take it, A is in breach as usual.
-- **16.2**: if A is on port and B on starboard, both upwind (`|twa| < 90°`), A is passing astern of B (A's predicted
-  track over 5 s passes behind B's stern: at closest approach A's reference point is on the aft side of B's abeam line),
+- **16.2**: if A is on port and B on starboard, both upwind (`|twa| < 90°`), A is passing astern of B (on straight
+  tracks at their speeds, A on her heading and B on her heading at `t_c`, at the closest approach within 5 s A's
+  reference point is on the aft side of B's abeam line through her reference point; the constant-turn prediction is
+  not used here because B's turn is what is being judged),
   and B starts a course change turning away from the wind (bearing away) at `t_c`, and within 3 s A becomes
   `Warning` or `Breach` where she was `Clear` before `t_c`, B breaks rule 16.2.
 
@@ -263,14 +272,18 @@ promptly sails astern of the other; this does not apply if the overlap began whi
 - The flag clears when they are no longer overlapped, no longer on the same tack, or the gap exceeds `2·L_A`
   (hysteresis: clears at `2.2·L_A`).
 - While flagged, A **breaks rule 17** when she is above her proper course (§3.7) and W is in `Warning` or `Breach`
-  towards A. W's rule-11 breaches in that situation are exonerated (§6.1), and the incident is A's.
+  towards A while W's obligation is rule 11 (a rule 22 or 13 obligation between them takes precedence; rule 17 only
+  limits a right-of-way boat under rule 11). W's rule-11 breaches in that situation are exonerated (§6.1), and the incident is A's.
 
 ### 5.5 Precedence of breaches
 
 On one tick a pair can show several breaches (for example W not keeping clear under rule 11 and A sailing above her
 proper course under rule 17). The engine then keeps the one that the RRS makes decisive, in this order:
-limitation breaches of the right-of-way boat (15, 16, 17, 18.3, 18.4, 14) first; they exonerate the give-way boat's
-breach they caused; otherwise the give-way boat's keep-clear breach (10, 11, 12, 13, 22) or room breach (18.2, 19).
+limitation breaches of the right-of-way boat first, as 18.3 (the specific rule for a boat tacking at the mark; a
+tack in the zone also starts a rule-15 onset between the same boats), 15, 16.2, 16.1, 17, 18.4; they exonerate the
+give-way boat's breach they caused; then room breaches (18.2, 19) of the boat that owes room; then the give-way
+boat's keep-clear breach (10, 11, 12, 13, 22) unless exonerated (§6.1). Rule 14 is judged separately on contacts
+(§5.1) and can penalise the right-of-way boat as well as the give-way boat.
 
 ## 6. Section D: exoneration, starting errors, interference
 
@@ -360,14 +373,21 @@ For an entitled boat E, giver G and mark M with rounding side s:
 - **Mark-room path** of E: from E's current pose, a path that goes straight to the entry tangent point of the
   **rounding circle** (centre M, radius `ρ = r_mark + 0.5·B_E + 0.25·L_E`), follows the circle in the rounding
   direction until the exit tangent towards the next step's reference point, then straight on. If E is closer to M
-  than ρ, the circle is enlarged to her current distance. This is E's proper course at the mark in the room she is
+  than ρ, the circle's radius is set to her current distance (she is on it). `r_mark` is the buoy radius, or the
+  bounding radius of a committee or mark boat's outline. This is E's proper course at the mark in the room she is
   owed; a boat is not entitled to sail wider than this.
-- **Mark-room corridor**: E's rules hull swept along the path, widened by `0.5·L_E` on each side.
+- **Mark-room corridor**: E's rules hull swept along the path, widened by `0.5·L_E` on each side, i.e. the points
+  within `0.5·B_E + 0.5·L_E` of the path. The corridor is the path computed on the tick the entitlement begins (the
+  status of §7.3.1, an 18.2(a) overlap, or 18.3) and is kept while it lasts; the path of the Room test below is
+  recomputed every tick from E's pose.
 - **Room(G, E)**: E moved along her mark-room path at her current speed for 4 s, G on her current motion:
   `Room = true` if the swept hulls stay at least `m(E, G)` apart.
 - G **breaks rule 18.2** when `Room(G, E)` is false and `Escape(G, E)` shows that G could have kept the path free
   (at least one of G's manoeuvres keeps `Room` true); if G could not (E came in too fast or too late), there is no
-  breach and E is expected to take what room exists.
+  breach and E is expected to take what room exists. Graded like the keep-clear test: `room_state` is `Warning`
+  while `Room` over 4 s is false; G "could have kept it free" when, on some tick since that warning began, one of
+  her manoeuvres kept the 4 s `Room` true; it is `Breach` when in addition `Room` over 1 s is false.
+- While E sails outside her corridor she is not using the mark-room she is owed, and G's 18.2 duty is not judged.
 - E is **within her mark-room** when her reference point is inside the corridor; her Section A, 15 and 16 breaches towards
   G are then exonerated (21(a)). Outside the corridor (sailing wide to push G away), she has no exoneration.
 
@@ -479,14 +499,16 @@ An **incident** is the unit that gets at most one penalty per boat:
   `begin` = true; a contact that continues over several ticks is one contact), or a non-contact breach that has
   persisted for `T_persist` (standard umpire: 0.5 s for rules 10, 13, 15, 16, 18.3, 22; 1.0 s for rules 11, 12, 17,
   18.2, 18.4, 19).
-- It records the culprit: the boat whose breach is decisive after exoneration and precedence (§5.5, §6.1).
+- It records the culprit: the boat whose breach is decisive after exoneration and precedence (§5.5, §6.1). A
+  persisted breach is the same decisive `(culprit, rule)` on consecutive ticks; a change of either restarts the
+  timer.
 - It closes after the pair has been in `Clear` (no warning, no breach, no contact) for 5 s continuously, or when the
   pair drops out of range (§2.1).
 - While it is open, further breaches between the pair give no new penalty, except a **contact** after a non-contact
   penalty: if the culprit of the open incident was penalised without contact and the boats then touch with the same
   culprit at fault, no second penalty; if the other boat is at fault for the contact, she gets her own penalty.
 - A boat gets at most one new penalty per 3 s from all incidents together (a chain reaction in a crowded start is
-  judged on its first decisive breach).
+  judged on its first decisive breach). The `44.1-late` and `SI-boundary` penalties are not limited by this.
 
 ### 9.2 Issuing a penalty
 
@@ -542,7 +564,8 @@ boats obey them like humans.
   (missing it adds a `44.1-late` penalty), and the fleet `dsq_pending = 3` applies.
 - **Offsetting**: when both boats hold a pending penalty, one of each is cancelled at once (event
   `PenaltyCancelled`).
-- The pre-start entry penalties (`C-prep`, `C-entry`, `race.md` §3.4) are turn penalties taken after the start signal.
+- The pre-start entry penalties (`C-prep`, `C-entry`, `race.md` §3.4) are turn penalties taken after the start signal
+  (the turn tracker does not run for them before the gun).
 - Rule 17 does not apply in match races (two boats alone; the proper-course limit is dropped), and 18.2 applies as
   in fleet racing.
 
@@ -595,7 +618,7 @@ BoatRules {
 
 | Event | Data |
 | --- | --- |
-| `RuleWarning` | holder, other, rule (rising edge of `Warning` for the give-way boat) |
+| `RuleWarning` | holder, other, rule (rising edge of `Warning` for the give-way boat: her state leaves `Clear`) |
 | `Incident` | culprit, other, rule, contact yes/no |
 | `Penalty` | boat, rule, other, count, tick |
 | `PenaltyServed` | boat, rule |
@@ -645,8 +668,9 @@ them changes the game's behaviour, so the spec is updated first.
 
 Scenario tests (two or three scripted boats, headless) with the expected obligation, states and penalties:
 
-- Port–starboard crossing on a beat: port boat ducks (Clear), port boat crosses 0.5 L ahead (Warning, no penalty),
-  port boat forces starboard to bear away (Breach persisted → penalty rule 10), collision → penalty rule 10.
+- Port–starboard crossing on a beat: port boat ducks (Clear), port boat on a collision course bears away when warned
+  (Warning, no penalty; §3.5), port boat forces starboard to bear away (Breach persisted → penalty rule 10),
+  collision → penalty rule 10 (and rule 14 for a starboard boat that did nothing before a damaging contact).
 - Starboard boat bears away onto a ducking port boat (16.2) and luffs into a port boat crossing ahead (16.1 when the
   port boat had no escape; rule 10 when she had one and did not take it).
 - Tack too close: a boat tacks onto starboard 1 L ahead of a port-tack boat so that the port boat cannot avoid her

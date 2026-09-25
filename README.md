@@ -12,6 +12,7 @@ Windmark is a working name.
 | `core/` | C++ simulation: boats, wind, rules, race, AI, collisions. Deterministic fixed tick, engine-agnostic |
 | `server/` | Authoritative race server on top of the core |
 | `game/` | Front end (Godot) |
+| `game/data/courses/` | Course files (`windmark.course/1`: marks, lines, sequence, area), one folder per venue; `example_bay/example_wl` is the example |
 | `tools/` | Boat generator, VPP, data tools |
 | `data/classes/`, `data/perf/` | Boat-class files and the performance tables generated from them |
 | `data/venues/` | Venue physics files (`windmark.venue/1`: wind field, current, sea exposure, land, obstacles); `example_bay` is a small hand-made example |

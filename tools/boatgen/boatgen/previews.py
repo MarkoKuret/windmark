@@ -38,6 +38,10 @@ def render_all(boat, out_dir, preview_dir, size=(1600, 1000), log=print):
     r.load(glb, hide=("sail_",))
     t = np.array([0.0, 0.55, -0.12 * L])
     shot("deck", eye=orbit(t, 0.62 * L, -145, 34), target=t, fov=42)
+    # 2b. detail: close on the cockpit side deck, to show the texture set and the baked AO
+    zd, yd = -0.1 * L, 0.3 * boat.cls["hull"]["beam_max"]
+    t = np.array([-yd, float(boat.deck.deck_z(boat.origin_x() + zd, yd)), zd])
+    shot("detail", eye=orbit(t, 0.2 * L, -125, 30), target=t, fov=40)
     # 3. profile: the model as exported (flat standard sails), dry, from starboard
     r.load(glb, hide=tuple(f"sail_{sid}" for sid, s in boat.sails.items() if s.type not in ("main", "jib", "genoa")),
            battened=bat)

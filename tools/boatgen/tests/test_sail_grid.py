@@ -31,7 +31,7 @@ def sail_prims(path):
             f = os.path.join(d, "b.glb")
             b.write_glb(f)
             prims, _ = gltf.read_glb(f)
-        _glbs[path] = (b, {n: (P, N, u0, u1, I) for n, m, P, N, u0, u1, I in prims if n.startswith("sail_")})
+        _glbs[path] = (b, {n: (P, N, u0, u1, I) for n, m, P, N, u0, u1, I, _ in prims if n.startswith("sail_")})
     return _glbs[path]
 
 

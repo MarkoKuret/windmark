@@ -185,7 +185,7 @@ def _slab(quad, t):
 
 def write_collision_glb(boat, parts, path):
     """Collision shapes as a separate GLB. Node names carry Godot's import suffix for convex collision shapes."""
-    w = GLBWriter(boat.origin_x())
+    w = GLBWriter(boat.origin_x(), textures=False)   # invisible shapes: no texture set
     kids = []
     for name, g in parts.items():
         p = Part()

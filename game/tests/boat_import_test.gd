@@ -228,6 +228,10 @@ func _test_materials(id: String, parts: Dictionary) -> void:
 			_check(nm in KNOWN_MATERIALS, "%s surface %d material '%s' is a boatgen slot" % [part.name, s, nm])
 			if found.has(nm):
 				_check(found[nm] == m, "material %s is one shared resource" % nm)
+			# Baked AO as vertex colours on the fixed model (not on the sails or the rebuilt mainsheet).
+			if not (String(part.name).begins_with("sail_") or part.name == "mainsheet"):
+				var col = mesh.surface_get_arrays(s)[Mesh.ARRAY_COLOR]
+				_check(col != null and (col as PackedColorArray).size() > 0, "%s surface %d carries baked AO colours" % [part.name, s])
 			found[nm] = m
 	for nm in REQUIRED_MATERIALS:
 		_check(found.has(nm), "%s has material slot %s" % [id, nm])
@@ -238,6 +242,11 @@ func _test_materials(id: String, parts: Dictionary) -> void:
 			m.cull_mode, " tiling %s" % m.get_meta("extras")["tiling_m"] if m.has_meta("extras") else ""]
 		if m.has_meta("extras"):
 			tiling += 1
+		# Texture set (tools/boatgen/boatgen/textures.py): tiling on uv0, one image per tiling_m metres.
+		if m.has_meta("extras") and m.get_meta("extras").has("texture_set"):
+			var s := 1.0 / float(m.get_meta("extras")["tiling_m"])
+			_check(m.albedo_texture != null and m.roughness_texture != null, "%s has its albedo and roughness textures" % nm)
+			_check(absf(m.uv1_scale.x - s) < 1e-4 and absf(m.uv1_scale.y - s) < 1e-4, "%s uv scale %s is 1 / tiling_m" % [nm, m.uv1_scale])
 		_check(m.cull_mode == BaseMaterial3D.CULL_BACK, "%s culls back faces" % nm)
 		_check(m.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED, "%s is opaque" % nm)
 	print(line)

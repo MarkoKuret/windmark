@@ -131,19 +131,36 @@ class Boat:
         return parts
 
     def write_posed_glb(self, path, pose):
-        w = GLBWriter(self.origin_x())
-        kids = [w.add_mesh(n, p) for n, p in self.posed_parts(pose).items()]
-        w.write(path, self.cls["id"] + "_" + pose, kids)
+        self._write(path, self.cls["id"] + "_" + pose, self.posed_parts(pose), {})
 
     def origin_x(self):
         return 0.5 * (self.hull.x_awl + self.hull.x_fwl)
 
+    # set by the command line: embed the texture set, bake per-vertex AO
+    textures = True
+    bake = True
+
     def write_glb(self, path):
-        w = GLBWriter(self.origin_x())
-        kids = []
-        for name, part in self.parts.items():
-            kids.append(w.add_mesh(name, part, pivot=self.pivots.get(name)))
-        w.write(path, self.cls["id"], kids, extras={"class": self.cls["id"], "name": self.cls.get("name", "")})
+        self._write(path, self.cls["id"], self.parts, self.pivots,
+                    extras={"class": self.cls["id"], "name": self.cls.get("name", "")})
+
+    def _write(self, path, root, parts, pivots, extras=None):
+        w = GLBWriter(self.origin_x(), textures=self.textures)
+        merged = {n: p.merged() for n, p in parts.items()}
+        ao = self.bake_ao(merged) if self.bake else {}
+        kids = [w.add_mesh(n, parts[n], pivot=pivots.get(n), ao=ao.get(n), merged=merged[n]) for n in parts]
+        w.write(path, root, kids, extras=extras)
+
+    def bake_ao(self, merged):
+        """{node: {slot: per-vertex AO}} for every node but the sails and the mainsheet (deformed or rebuilt at
+        run time; bake.py)."""
+        from .bake import bake_ao
+        keys = [(n, m) for n, ms in merged.items() if not (n.startswith("sail_") or n == "mainsheet") for m in ms]
+        vals = bake_ao([merged[n][m] for n, m in keys], [True] * len(keys))
+        out = {}
+        for (n, m), a in zip(keys, vals):
+            out.setdefault(n, {})[m] = a
+        return out
 
     def tri_count(self):
         return sum(p.tri_count() for p in self.parts.values())

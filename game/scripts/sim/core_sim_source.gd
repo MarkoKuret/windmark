@@ -16,7 +16,7 @@ const SAIL_TYPES := ["main", "jib", "genoa", "code_zero", "spinnaker_sym", "spin
 
 ## Field orders of the PackedFloat32Array records of CoreSim (the C structs' order).
 const STATE_FIELDS := [
-	"pos_x", "pos_y", "z", "psi", "v", "h", "phi", "phi_rate", "theta", "theta_rate", "wobble_phase",
+	"pos_x", "pos_y", "z", "psi", "v", "h", "yaw_rate", "phi", "phi_rate", "theta", "theta_rate", "wobble_phase",
 	"contact_vx", "contact_vy", "contact_yaw_rate", "twd_from", "awd_from", "tws", "twa", "aws", "awa",
 	"v_filt", "sog_filt_x", "sog_filt_y",
 ]

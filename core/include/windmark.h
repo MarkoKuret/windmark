@@ -46,7 +46,7 @@
 extern "C" {
 #endif
 
-#define WM_API_VERSION 1
+#define WM_API_VERSION 2
 
 /* ---- status ------------------------------------------------------------------------------------------------ */
 
@@ -337,7 +337,7 @@ WM_API int32_t wm_world_has_race(const wm_world* w);
 
 /* boat.md §3, in snapshot order. */
 typedef struct wm_boat_state {
-  float pos_x, pos_y, z, psi, v, h;
+  float pos_x, pos_y, z, psi, v, h, yaw_rate;
   float phi, phi_rate, theta, theta_rate, wobble_phase;
   float contact_vx, contact_vy, contact_yaw_rate;
   float twd_from, awd_from, tws, twa, aws, awa;

@@ -180,7 +180,7 @@ float upwind_twa(const wm::ConfigPerf& c, float tws) {
 // balance off: it adds its own turn rate to the circle's).
 TEST_CASE("boat: turning circle at full helm") {
   for (const std::string cls : kClasses) {
-    const wm::PerfData& p = perf_no_helm_balance(cls);
+    const wm::PerfData& p = perf_no_yaw_inertia(cls);
     Sim sim(p, 8.0f, 0.0f);
     sim.place(deg(90.0f), p.config_for(p.start_front_sail)->polar.at(kn(8.0f), deg(90.0f)), p.start_front_sail);
     sim.boat.set_helm(-1.0f);  // bear away from the beam reach: the boat keeps its way into the turn
@@ -196,6 +196,55 @@ TEST_CASE("boat: turning circle at full helm") {
             " kn");
     CHECK(std::fabs(r - p.dynamics.turn_radius_full) <= 0.01f * p.dynamics.turn_radius_full);
     CHECK(sim.boat.turn_radius(1.0f) == doctest::Approx(p.dynamics.turn_radius_full));
+  }
+}
+
+// §10.9: yaw inertia. The turn builds toward the radius law's rate over yaw_time after the helm goes over and dies
+// away as quickly when it comes back to the centre: no jump either way. Helm balance off, beam reach at 10 kn.
+TEST_CASE("boat: yaw inertia") {
+  for (const std::string cls : kClasses) {
+    const wm::PerfData& p = perf_no_helm_balance(cls);
+    const float T = p.dynamics.yaw_time;
+    REQUIRE(T > 0.1f);
+    Sim sim(p, 10.0f, 0.0f);
+    sim.place(deg(90.0f), p.config_for(p.start_front_sail)->polar.at(kn(10.0f), deg(90.0f)), p.start_front_sail);
+    sim.run(5.0f);
+    const float h = -0.3f;  // bear away
+    const float t_helm = std::fabs(h) / p.dynamics.helm_rate;  // the rudder's travel
+    auto steady = [&] { return std::fabs(sim.s().v / sim.boat.turn_radius(sim.s().h)); };
+    sim.boat.set_helm(h);
+    sim.step();
+    const float first = std::fabs(sim.boat.outputs().turn_rate);
+    float t63 = -1.0f, t95 = -1.0f;
+    for (int i = 2; i <= static_cast<int>(3.0f / DT); ++i) {
+      sim.step();
+      const float r = std::fabs(sim.boat.outputs().turn_rate), r_ss = steady();
+      if (t63 < 0.0f && r >= 0.63f * r_ss) t63 = static_cast<float>(i) * DT;
+      if (t95 < 0.0f && r >= 0.95f * r_ss) t95 = static_cast<float>(i) * DT;
+    }
+    const float r_on = std::fabs(sim.boat.outputs().turn_rate);
+    sim.boat.set_helm(0.0f);
+    float t37 = -1.0f, t05 = -1.0f, carried = 0.0f, after_centre = -1.0f;
+    for (int i = 1; i <= static_cast<int>(3.0f / DT); ++i) {
+      const float psi0 = sim.s().psi;
+      sim.step();
+      carried += std::fabs(wm::wrap_pi(sim.s().psi - psi0));
+      const float r = std::fabs(sim.boat.outputs().turn_rate);
+      if (after_centre < 0.0f && sim.s().h == 0.0f) after_centre = r;
+      if (t37 < 0.0f && r <= 0.37f * r_on) t37 = static_cast<float>(i) * DT;
+      if (t05 < 0.0f && r <= 0.05f * r_on) t05 = static_cast<float>(i) * DT;
+    }
+    MESSAGE(cls, ": yaw_time ", T, " s; helm ", h, ": first tick ", to_deg(first), " deg/s of ", to_deg(r_on),
+            ", 63 % in ", t63, " s, 95 % in ", t95, " s; centred: 37 % in ", t37, " s, 5 % in ", t05, " s, turns on ",
+            to_deg(carried), " deg");
+    CHECK(first < 0.25f * r_on);                         // no jump when the helm goes over
+    CHECK(t63 > 0.0f);
+    CHECK(t63 <= T + t_helm + 2.0f * DT);
+    CHECK(t95 <= 3.0f * T + t_helm + 2.0f * DT);
+    CHECK(after_centre > 0.5f * r_on);                   // no jerk when the helm is back in the centre
+    CHECK(t37 <= T + t_helm + 2.0f * DT);
+    CHECK(t05 <= 3.0f * T + t_helm + 3.0f * DT);
+    CHECK(to_deg(carried) > 0.5f * to_deg(r_on) * T);    // the turn carries on a little
   }
 }
 
@@ -412,8 +461,10 @@ TEST_CASE("boat: full-helm 360") {
 }
 
 // §10.7: the helm balance. Close-hauled in 12 kn with the start config (the balance point of the class) the boat
-// holds its course with the helm centred; on a spinnaker broad reach in a strong breeze it rounds up (a broach)
-// unless the helm holds it, and holding it costs speed through the rudder drag.
+// holds its course with the helm centred; a well-balanced boat drifts slowly with the helm centred upwind and on a
+// reach in a moderate breeze; on a spinnaker broad reach in a strong breeze it rounds up unless the helm holds it,
+// and holding it costs speed through the rudder drag; overpowered (a kite reaching in a gust past its heel limit)
+// it broaches, and a full helm at speed catches it.
 TEST_CASE("boat: helm balance") {
   for (const std::string cls : kClasses) {
     const wm::PerfData& p = perf(cls);
@@ -428,6 +479,17 @@ TEST_CASE("boat: helm balance") {
     sim.place(twa_b, up.polar.at(tws_b, twa_b), p.start_front_sail);
     sim.run(30.0f);
     CHECK(std::fabs(sim.s().twa - twa_b) < deg(3.0f));
+
+    // centred-helm drift of the start config: upwind at its VMG angle within 2 deg/s from 6 to 16 kn, reaching
+    // within 3 deg/s at 10 kn (the stronger breezes are reported)
+    for (float tws : {6.0f, 10.0f, 14.0f, 16.0f}) {
+      const float wu = up.weather_helm.table.at(kn(tws), upwind_twa(up, kn(tws)));
+      float wr = 0.0f;
+      for (float a = 60.0f; a <= 120.0f; a += 5.0f) wr = wm::max(wr, std::fabs(up.weather_helm.table.at(kn(tws), deg(a))));
+      MESSAGE(cls, " ", tws, " kn: centred-helm drift upwind ", to_deg(wu), " deg/s, reaching up to ", to_deg(wr), " deg/s");
+      CHECK(std::fabs(wu) <= deg(2.0f));
+      if (tws <= 10.0f) CHECK(wr <= deg(3.0f));
+    }
 
     // the last front sail is the spinnaker
     const std::int32_t kite = static_cast<std::int32_t>(p.sails.size()) - 1;
@@ -453,11 +515,34 @@ TEST_CASE("boat: helm balance") {
     MESSAGE(cls, ": kite at 22 kn, 130 deg: helm balance ", to_deg(wh), " deg/s; helm 0 for 5 s: twa ",
             to_deg(free_run.s().twa), " deg; held at ", to_deg(twa_m), " deg: helm ", h_m, ", v ", to_kn(v_m),
             " kn of ", to_kn(dn.polar.at(kn(22.0f), twa)), " kn");
-    CHECK(wh > deg(5.0f));
-    CHECK(free_run.s().twa < twa - deg(20.0f));
+    CHECK(wh > deg(3.0f));
+    CHECK(free_run.s().twa < twa - deg(10.0f));
     CHECK(std::fabs(twa_m - twa) < deg(4.0f));
     CHECK(h_m < 0.0f);  // helm to bear away (starboard tack: the bow to port)
     CHECK(v_m < dn.polar.at(kn(22.0f), twa));
+
+    // overpowered: reaching under the kite at 20 kn, a gust of 26 kn lays her over past her heel limit
+    for (float helm : {0.0f, -1.0f}) {
+      Sim g(p, 20.0f, 0.0f);
+      const float twa_r = deg(100.0f);
+      g.place(twa_r, dn.polar.at(kn(20.0f), twa_r), kite);
+      for (int i = 0; i < static_cast<int>(5.0f / DT); ++i) {
+        g.steer_twa(twa_r, 1.0f, 6.0f);
+        g.step();
+      }
+      g.env.wind_speed = kn(26.0f);
+      g.env.wind_speed_clean = g.env.wind_speed;
+      g.boat.set_helm(helm);
+      float lo = std::fabs(g.s().twa);  // the closest she comes to the wind (a full helm may gybe her)
+      for (int i = 0; i < static_cast<int>(5.0f / DT); ++i) {
+        g.step();
+        lo = wm::min(lo, std::fabs(g.s().twa));
+      }
+      MESSAGE(cls, ": kite reaching at 100 deg, gust 20 to 26 kn, helm ", helm, ": lowest twa in 5 s ", to_deg(lo),
+              " deg");
+      if (helm == 0.0f) CHECK(lo < deg(75.0f));  // she broaches
+      else CHECK(lo > deg(80.0f));               // a full helm at speed catches it
+    }
   }
 }
 

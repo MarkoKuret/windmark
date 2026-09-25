@@ -31,13 +31,14 @@ struct WindShadowParams {
 
 // boat.md §4.1, computed once at load in the spec's order.
 struct DerivedDynamics {
-  float heel_k1, heel_k2, pitch_k1, pitch_k2, heave_a, turn_c;
+  float heel_k1, heel_k2, pitch_k1, pitch_k2, heave_a, turn_c, yaw_a;
   static constexpr float FILT_A = 0.0243902430f;  // DT / (2 s + DT)
 };
 
 // data_format.md §4.2
 struct Dynamics {
   float helm_rate, rudder_max, turn_radius_full, turn_radius_offset;
+  float yaw_time;  // s, the hull's yaw-rate time constant (boat.md §4, §5.9)
   float decel_linear, decel_const;
   Table heel_speed_factor;  // (heel_abs) -> 1
   Table rudder_drag_luff;   // (boat_speed_abs, helm_abs) -> m/s2

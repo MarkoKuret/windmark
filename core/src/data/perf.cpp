@@ -123,6 +123,7 @@ class PerfReader {
         positive(d, p, "helm_rate", y.helm_rate) && ranged(d, p, "rudder_max", y.rudder_max, 0.0f, HALF_PI) &&
         positive(d, p, "turn_radius_full", y.turn_radius_full) &&
         read_float(d, p, "turn_radius_offset", y.turn_radius_offset, sink_) &&
+        ranged(d, p, "yaw_time", y.yaw_time, 0.0f, 2.0f) &&
         ranged(d, p, "decel_linear", y.decel_linear, 0.0f, kInf) &&
         ranged(d, p, "decel_const", y.decel_const, 0.0f, kInf) &&
         table(d, p, "heel_speed_factor", kHeelSpeedFactor, y.heel_speed_factor) &&
@@ -161,6 +162,7 @@ class PerfReader {
     k.pitch_k2 = 1.0f - ((2.0f * y.pitch_damping) * y.pitch_freq) * DT;
     k.heave_a = DT / (y.heave_time + DT);
     k.turn_c = y.turn_radius_full + y.turn_radius_offset;
+    k.yaw_a = DT / (y.yaw_time + DT);
     // The offset may be negative (a rudder that stalls short of full helm), but the radius law needs turn_c > 0.
     if (!(k.turn_c > 0.0f)) return fail(p + ".turn_radius_offset", "turn_radius_full + turn_radius_offset <= 0");
     if (!(k.heel_k2 >= 0.0f && k.heel_k2 < 1.0f)) return fail(p + ".heel_damping", "heel_k2 outside [0, 1)");

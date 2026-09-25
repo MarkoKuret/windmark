@@ -225,7 +225,10 @@ func step(wind_speed: float, wind_from: float, sea := Callable()) -> void:
 	var fall := 0.0
 	if cfg["fall_off"]:
 		fall = cfg["fall_off"].at(s.v, twa_abs)
-	out.turn_rate = turn_arc - tack * fall
+	# yaw inertia (boat.md §5.9): the hull's yaw rate follows its steady value over yaw_time
+	var yaw_a := DT / (float(dy.get("yaw_time", 0.0)) + DT)
+	s.yaw_rate += yaw_a * ((turn_arc - tack * fall) - s.yaw_rate)
+	out.turn_rate = s.yaw_rate
 	var dpsi := out.turn_rate * DT
 	var mid := s.psi + 0.5 * dpsi
 	s.pos_x += s.v * sin(mid) * DT

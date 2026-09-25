@@ -19,6 +19,7 @@ struct BoatState {
   float psi = 0.0f;
   float v = 0.0f;
   float h = 0.0f;
+  float yaw_rate = 0.0f;  // the hull's own yaw rate (boat.md §5.9)
   float phi = 0.0f, phi_rate = 0.0f;
   float theta = 0.0f, theta_rate = 0.0f;
   float wobble_phase = 0.0f;

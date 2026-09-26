@@ -4,6 +4,7 @@ title: 'Boats: more detail on the generated boats'
 status: To Do
 assignee: []
 created_date: '2026-09-25 20:42'
+updated_date: '2026-09-26 12:20'
 labels:
   - boats
 dependencies:
@@ -23,3 +24,9 @@ Owner (2026-09-25): the boats generally lack details. Add deck hardware and rigg
 - [ ] #1 Visibly richer boats in close-up previews
 - [ ] #2 Triangle budget and LODs documented; fleet cost measured
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Superseded by WM-064 (round hulls and the detail pass, 2026-09-26).
+<!-- SECTION:NOTES:END -->

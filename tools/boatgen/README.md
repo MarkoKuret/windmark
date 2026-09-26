@@ -27,14 +27,16 @@ Nothing else: the GLB writer, triangulation, lofting and hydrostatics are in thi
 
 | file | content |
 | --- | --- |
-| `<id>.glb` | the model, flat standard sails |
+| `<id>.glb` | the model (LOD0), flat standard sails |
+| `<id>_lod1.glb`, `<id>_lod2.glb` | lower levels of detail, same nodes, pivots and sails (below) |
 | `<id>_collision.glb` | low-poly collision meshes (node names carry Godot's `-convcolonly` import suffix) |
 | `<id>.physics.json` | physics sidecar (below) |
-| `<id>_upwind.glb`, `<id>_downwind.glb` | preview poses only: sails trimmed with camber and twist, boom swung |
+| `<id>_upwind.glb`, `<id>_downwind.glb` | preview poses only: sails trimmed with camber and twist, boom swung, sheets led (node `sheets`) |
 
 Previews in `previews/`: `<id>_upwind.png` (heeled, trimmed, demo livery), `<id>_downwind.png` (spinnaker set),
 `<id>_profile.png` (the exported model as is, dry, from starboard), `<id>_deck.png` (cockpit and deck
-hardware), `<id>_detail.png` (close on the cabin side and side deck: texture set and baked AO), `<id>_uv.png` (0.25 m checker on uv0 of every surface) and `<id>_lines.png` (lines plan: profile with
+hardware), close-ups `<id>_cockpit.png` (from aft, looking forward), `<id>_mastbase.png` (mast foot, halyard leads,
+chainplates) and `<id>_bow.png` (dry and low: stem, forefoot, bilge turn), `<id>_detail.png` (close on the cabin side and side deck: texture set and baked AO), `<id>_uv.png` (0.25 m checker on uv0 of every surface) and `<id>_lines.png` (lines plan: profile with
 buttocks, half-breadths with waterlines, body plan).
 
 ## Tests
@@ -166,7 +168,8 @@ Every key is optional; defaults scale with LOA.
 | `hull.deck_camber` | 0.022 | deck crown as a fraction of the local beam |
 | `hull.sheer_spring` | 0 | extra sag of the sheer at mid length (m) |
 | `hull.boot_top` | [0.04, 0.10] | antifouling up to [0], boot-top stripe up to [1] (m above the DWL) |
-| `hull.stem_radius` | 0.04 | forefoot rounding (m) |
+| `hull.stem_radius` | 0.10 (LOA/12)^0.5 | forefoot rounding (m, blend height between keel line and stem) |
+| `hull.bilge_fillet` | 0.12 | bilge-turn fairing radius as a fraction of the station depth (keel to sheer); 0 leaves the raw curves |
 | `hull.lcb_fraction` | 0.535 | LCB target when `hull.lcb_x` is absent |
 | `hull.chine_start` | 0.42 | where a hard chine begins, fraction of LOA aft of the stem |
 | `deck.cockpit` | length 0.30 LOA, width 0.62, depth 0.42 (LOA/12)^0.5, open_transom true, aft_deck 0 | cockpit well: width as a fraction of the local half-beam |
@@ -198,8 +201,10 @@ that do not apply to a type (`depth` on a main) are written only when the class 
 ## How the geometry is made
 
 **Hull** (`hull.py`). Each station is a superellipse bottom from the keel point to the bilge turn, then a topside
-curve up to the sheer, meeting with a vertical tangent so the skin is smooth (or creased, aft of the chine
-start, for `chined`). Five longitudinal curves drive the stations: the profile (keel line, forefoot and raked
+curve up to the sheer, meeting with a vertical tangent; both curves have an unbounded curvature at that
+point, so the turn is faired: the station is replaced there by its Gaussian average along the girth (radius
+`bilge_fillet`), blended back to the raw curve within four radii, and the mesh points are spread by arc length and
+turning angle so the turn keeps its shape (a `chined` hull keeps its crease aft of the chine start). Five longitudinal curves drive the stations: the profile (keel line, forefoot and raked
 stem), the bilge-turn height and half-breadth, the sheer height (through the three freeboards) and the sheer
 half-breadth (the class plan-view rule). A solver then fits the bilge breadth to BWL, the section fullness to the
 canoe-body volume (DWL mass over water density, minus the meshed appendages), and the entrance and run fullness
@@ -217,11 +222,48 @@ of revolution sized so its volume holds the bulb mass in lead.
 backstay, bobstay, sprit, boom with vang. Sails are Coons patches over their edges on a regular grid (rows from
 foot to head, columns from luff to leech), so the simulation can deform them.
 
-**Hardware** (`hardware.py`). A library of parametric parts (self-tailing winch, horn and cam cleats, clutch bank,
-block, track and car, stanchion, bent-tube frames, wheel, hatch) placed by rules that read the deck, cockpit and
-rig: primaries beside the cockpit, halyard winches and clutches on the cabin top, jib tracks under the clew,
-traveller under the boom end with a four-part mainsheet, cleats at bow and quarters, lifelines at about 2 m
-spacing.
+**Hardware** (`hardware.py`). A library of parametric parts placed by rules that read the deck, cockpit and rig:
+self-tailing winches (ribbed drum, tailer, stripper arm, a handle in the starboard primary), rope clutches on a
+base plate, deck organisers, turning blocks on padeyes, blocks with cheeks, sheave and swivel, T-tracks with end
+stops, cars with a lead block and plunger, cam cleats with fairleads, horn cleats, hatches with frame, lens,
+hinges and handles, stanchions, bent-tube pulpit and pushpit, the wheel with its grip and a pedestal guard with
+an instrument pod, gudgeons or the rudder bearing cap, rigging screws. Placement: primaries beside the cockpit,
+halyard winches (wm12), clutches and organisers on the cabin top, the halyards themselves from their exits low
+on the mast through the turning blocks at the mast foot, the organisers and the clutches to flaked tails, jib
+tracks under the clew, the traveller under the boom end with its control lines and a four-part mainsheet with its
+tail, cleats at bow and quarters, lifelines at about 2 m spacing.
+
+**Rig fittings** (`rig.py`). Mast step plate, gooseneck bracket and pin, vang tang and boom bail, halyard sheave
+boxes, masthead crane with sheaves, wind wand, instruments on the mast front, spreader root brackets and tip
+boots, chainplate cover plates, rigging screws at the foot of every shroud and stay, outhaul and cheek blocks on
+the boom.
+
+**Running rigging** (`running.py`). The posed previews lead the working sheet of each set headsail or flying sail
+from the clew through its lead (the jib car block, or a block on the quarter for a kite) to a winch, wrapped on
+the drum, with the tail flaked in the cockpit, plus a slack lazy sheet, and for a kite the tack line and the
+halyard. The exported model has no headsail or kite sheets (they follow the trimmed sail, so the engine draws them
+from `rig.sheet_leads` in the sidecar); the halyard tails and the mainsheet are in the model.
+
+**Livery panels.** A number panel forward and a name panel aft on each topside, given in the GLB root extras
+(`livery_panels`: body x range, depth below the sheer, uv1 rectangle on the hull atlas); the previews draw them
+in the demo livery. The livery system itself is WM-014.
+
+## Levels of detail
+
+`<id>.glb` is LOD0; `<id>_lod1.glb` and `<id>_lod2.glb` have the same node set, pivots and sails (the sail grids
+are the simulation's) with a coarser hull, deck and appendages, fewer segments on every round part, and the small
+pieces left out (bounding box under 35 mm at LOD1, 0.3 m at LOD2, plus the handles, coils, halyard tails and
+most fittings by rule). The sidecar's `model.lods` lists each file, its triangles and its switch distance.
+
+| level | from | wm7 | wm12 | what goes |
+| --- | --- | --- | --- | --- |
+| LOD0 | 0 m | ~72 k | ~92 k | full model |
+| LOD1 | 30 m | ~26 k | ~34 k | half the segments; handles, halyards, coils, small fittings, rub strake detail |
+| LOD2 | 100 m | ~9.5 k | ~11.6 k | quarter segments, 24 hull stations; only hull, deck, appendages, spars, wires, tracks, hatches, pulpit, helm and sails |
+
+Budgets: LOD0 at most 100 k triangles, LOD1 40 k, LOD2 12 k (sails included: about 3.7 k for the set sails of
+wm12). `game/tests/boat_import_test.gd` checks the levels and prints the fleet cost of 16 boats per class
+(2 at LOD0, 4 at LOD1, 10 at LOD2).
 
 ## Model structure
 
@@ -314,7 +356,8 @@ Positions in the body frame.
 | `waterline` | the DWL contour, port and starboard |
 | `buoyancy_samples` | skin samples up to the sheer with outward normal and area, for pressure integration at any heel and trim (`canoe_volume_check_m3` is their immersed volume by the divergence theorem) |
 | `collision_meshes` | closed low-poly hull (canoe body to the deck crown), fin, bulb and rudder slabs |
-| `rig` | mast step, masthead, hounds, forestay tack, boom pivot and axis, sprit end, rudder stock and axis, wheel hub, spreader tips; with a pole: `pole_pivot`, `pole_axis`, `pole_length` (from the mast front) and `pole_end` (rest position, the spinnaker tack) |
+| `rig` | mast step, masthead, hounds, forestay tack, boom pivot and axis, sprit end, rudder stock and axis, wheel hub, spreader tips, `sheet_leads` (headsail and flying-sail sheet lead block and winch, starboard side, with the drum diameter); with a pole: `pole_pivot`, `pole_axis`, `pole_length` (from the mast front) and `pole_end` (rest position, the spinnaker tack) |
+| `model` | file, triangles, nodes, pivots, `lods` (file, triangles and switch distance of each level of detail) |
 | `sails` | per sail: node, type, grid size, vertex order, flat area and target, centroid, corner vertices (tack, clew, head), `look` (the look parameters above, every applicable key filled); code zeros and spinnakers also `rule` (luff, leech, foot, mid girth and rule area of the planform) |
 
 ## Limits and next steps
@@ -322,11 +365,10 @@ Positions in the body frame.
 - Tiling detail textures and per-vertex AO only: no unique-UV (lightmap) set, so no AO or dirt texture maps;
   sail panels, tapes and film are not in the sailcloth texture (the previews draw seams procedurally); livery
   decals through uv1 still need a shader.
-- No crew, running rigging (halyards, sheets other than the mainsheet), instruments or sail numbers yet; the
-  organisers at the mast foot are single blocks.
+- No crew or sail numbers yet; headsail and kite sheets only on the posed previews (the engine draws them from
+  `rig.sheet_leads`).
 - The flat spinnaker outline is a centreline projection; its flying shape comes from the simulation.
-- One LOD. The model is about 50 to 60 k triangles; a game needs two or three LODs (fewer stations, hardware
-  dropped or merged) and a draw-call budget per boat.
+- Surfaces per boat: one per node and material (about 30 to 40); no merging across nodes yet.
 - Multihulls are not supported (one canoe body, one keel).
 - `sails[].leech` and `foot` are used for code zeros and spinnakers only; the hull fit leaves Cm as an outcome
   (see above).

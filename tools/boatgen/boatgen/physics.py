@@ -216,6 +216,11 @@ def rig_data(boat):
     if "wheel" in boat.pivots:
         d["wheel_hub"] = g(boat.pivots["wheel"])
         d["wheel_axis"] = [1.0, 0.0, 0.0]
+    # sheet leads for the engine to draw the sheets of the set sails (starboard side; mirror y for port):
+    # headsails clew -> car block -> primary winch, flying sails clew -> quarter block -> winch
+    from .running import sheet_leads
+    d["sheet_leads"] = {k: {"lead": g(v["lead"]), "winch": g(v["winch"]), "drum_diameter": _r(v["drum"], 3)}
+                        for k, v in sheet_leads(boat).items()}
     return d
 
 

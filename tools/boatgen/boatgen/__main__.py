@@ -44,6 +44,11 @@ def main(argv=None):
         cid = cls["id"]
         glb = os.path.join(a.out, f"{cid}.glb")
         boat.write_glb(glb)
+        lods = [{"lod": 0, "file": os.path.basename(glb), "triangles": boat.tri_count(), "from_m": 0.0}]
+        for lod in sorted(boat.LODS):
+            path_l = os.path.join(a.out, f"{cid}_lod{lod}.glb")
+            tris, _ = boat.write_lod_glb(path_l, lod)
+            lods.append({"lod": lod, "file": os.path.basename(path_l), "triangles": tris, "from_m": boat.LODS[lod][-1]})
         col = physics.collision(boat)
         physics.write_collision_glb(boat, col, os.path.join(a.out, f"{cid}_collision.glb"))
         side = {
@@ -60,11 +65,12 @@ def main(argv=None):
             "rig": physics.rig_data(boat),
             "sails": physics.sail_data(boat),
             "model": {"file": os.path.basename(glb), "triangles": boat.tri_count(),
-                      "nodes": sorted(boat.parts), "pivots": sorted(boat.pivots)},
+                      "nodes": sorted(boat.parts), "pivots": sorted(boat.pivots), "lods": lods},
         }
         with open(os.path.join(a.out, f"{cid}.physics.json"), "w") as f:
             json.dump(side, f, indent=1)
         h = side["hydrostatics"]
+        log("  levels of detail: " + ", ".join(f"LOD{l['lod']} {l['triangles']} from {l['from_m']:.0f} m" for l in lods))
         log(f"  {glb}: {boat.tri_count()} triangles; displaced {h['displaced_mass_generated_kg']} kg "
             f"({h['displacement_error_pct']:+.2f} %), LCB {h['lcb_pct_lwl_aft_of_fwd_end']} % LWL, "
             f"Cp {h['prismatic']}, Cm {h['midship']}")

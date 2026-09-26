@@ -21,6 +21,7 @@ def render_all(boat, out_dir, preview_dir, size=(1600, 1000), log=print):
     glb = os.path.join(out_dir, f"{cid}.glb")
     files = []
     r = Renderer(*size)
+    r.panels = [pn["uv1"] for pn in boat.livery_panels() if pn["id"] == "number"]
     bat = tuple("sail_" + sid for sid, s in boat.sails.items() if s.type == "main")
 
     def shot(name, **kw):
@@ -42,6 +43,17 @@ def render_all(boat, out_dir, preview_dir, size=(1600, 1000), log=print):
     zd, yd = -0.1 * L, 0.3 * boat.cls["hull"]["beam_max"]
     t = np.array([-yd, float(boat.deck.deck_z(boat.origin_x() + zd, yd)), zd])
     shot("detail", eye=orbit(t, 0.2 * L, -125, 30), target=t, fov=40)
+    # 2c. close-ups on the flat model, sails hidden: cockpit (from aft, looking forward), mast base, bow (dry, low,
+    # so the stem, forefoot and bilge turn show)
+    ox = boat.origin_x()
+    zc = 0.5 * (boat.deck.xc0 + boat.deck.xc1) - ox
+    t = np.array([0.0, float(boat.deck.floor_z(zc + ox)) + 0.35 * (L / 12) ** 0.5, zc + 0.1 * L])
+    shot("cockpit", eye=orbit(t, 0.36 * L, 180 - 22, 30), target=t, fov=48)
+    zm = boat.rig.x_mast - ox
+    t = np.array([0.0, boat.rig.z_step + 0.35 * (L / 12) ** 0.5, zm])
+    shot("mastbase", eye=orbit(t, 0.17 * L, -130, 20), target=t - [0, 0.2 * (L / 12) ** 0.5, 0], fov=44)
+    t = np.array([0.0, 0.55 * boat.cls["hull"]["freeboard"], L - ox - 0.12 * L])
+    shot("bow", eye=orbit(t, 0.38 * L, -35, 20), target=t, fov=44, water=False, ground=True)
     # 3. profile: the model as exported (flat standard sails), dry, from starboard
     r.load(glb, hide=tuple(f"sail_{sid}" for sid, s in boat.sails.items() if s.type not in ("main", "jib", "genoa")),
            battened=bat)

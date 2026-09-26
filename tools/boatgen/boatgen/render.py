@@ -34,6 +34,7 @@ uniform sampler2D tex_base; uniform sampler2D tex_mr; uniform sampler2D tex_nrm;
 uniform int has_tex; uniform int has_nrm; uniform float tex_scale; uniform int ao_on;
 uniform vec3 cam_pos; uniform vec3 sun_dir; uniform sampler2D shadow_map; uniform int uv_check;
 uniform int water_on; uniform int hull_livery; uniform int battens;
+uniform vec4 panels[4]; uniform int n_panels;
 layout(location = 0) out vec4 frag;
 
 vec3 sky(vec3 d) {
@@ -123,6 +124,16 @@ void main() {
         float u = v_uv1.x;
         float stripe = smoothstep(0.06, 0.065, vb) * (1.0 - smoothstep(0.10 + 0.05 * u, 0.105 + 0.05 * u, vb));
         albedo = mix(albedo, vec3(0.03, 0.10, 0.30), stripe);
+        // name and number panels (a light field with a dark keyline)
+        for (int i = 0; i < n_panels; i++) {
+            vec4 r = panels[i];
+            vec2 lo = min(r.xy, r.zw), hi = max(r.xy, r.zw);
+            vec2 d = min(v_uv1 - lo, hi - v_uv1);
+            if (d.x > 0.0 && d.y > 0.0) {
+                float k = 1.0 - smoothstep(0.003, 0.0045, min(d.x * 0.5, d.y));
+                albedo = mix(vec3(0.80, 0.84, 0.90), vec3(0.03, 0.10, 0.30), k);
+            }
+        }
     }
     vec3 L = normalize(sun_dir);
     vec3 H = normalize(L + V);
@@ -410,6 +421,11 @@ class Renderer:
         _set(p, "uv_check", int(uv_check))
         _set(p, "water_on", int(water))
         _set(p, "hull_livery", int(livery))
+        pan = list(getattr(self, "panels", []))[:4]
+        if "n_panels" in p:
+            p["n_panels"].value = len(pan)
+            if pan and "panels" in p:
+                p["panels"].write(np.array(pan + [[0, 0, 0, 0]] * (4 - len(pan)), dtype="f4").tobytes())
         _set(p, "ao_on", int(ao))
         _set(p, "tex_base", 3)
         _set(p, "tex_mr", 4)

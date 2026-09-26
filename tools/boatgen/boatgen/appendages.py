@@ -125,16 +125,30 @@ class Appendages:
         self.rudder_geom = blade
         if self.transom_hung:
             # rudder head cheeks and pintles on the transom
+            # rudder head: two carbon cheeks either side of the blade top with a through bolt; pintle straps
+            # round the leading edge at the transom gudgeons (hardware.rudder_fittings), pins on the stock axis
             top = self.rud_stock + [0, 0, 0.0]
-            p.add("carbon", superellipsoid_box((self.rud_cr * 0.55, 0.075, 0.22), 0.3,
-                                               center=top + [0.2 * self.rud_cr, 0, 0.05]))
-            for zz in (top[2] - 0.35, top[2] - 0.75):
-                p.add("metal", tube(np.array([[0.0, 0, zz], [top[0] + 0.06, 0, zz]]), 0.012, 8))
+            t = self.rud_tc * self.rud_cr
+            for sy in (-1, 1):
+                p.add("carbon", superellipsoid_box((self.rud_cr * 0.6, 0.018, 0.24), 0.25,
+                                                   center=top + [0.18 * self.rud_cr, sy * (0.5 * t + 0.01), 0.04]))
+            p.add("metal", tube(np.array([top + [0.05 * self.rud_cr, -0.5 * t - 0.03, 0.08],
+                                          top + [0.05 * self.rud_cr, 0.5 * t + 0.03, 0.08]]), 0.008, 8))
+            for zz in self.pintle_z():
+                p.add("metal", superellipsoid_box((0.3 * self.rud_cr, t + 0.012, 0.05), 0.3, 8, 4,
+                                                  center=[top[0] + 0.12 * self.rud_cr, 0, zz]))
+                p.add("metal", tube(np.array([[top[0], 0, zz - 0.07], [top[0], 0, zz + 0.03]]), 0.008, 8))
         else:
             # stock stub visible inside the gap to the hull
             p.add("metal", tube(np.array([self.rud_stock + [0, 0, -0.05], self.rud_stock + [0, 0, 0.2]]),
                                 0.035 * (self.cls["hull"]["loa"] / 12) ** 0.5, 12))
         return p
+
+    def pintle_z(self):
+        """Heights of the pintles of a transom-hung rudder (on the transom above the waterline)."""
+        top = self.rud_stock[2]
+        z_low = max(float(self.hull.zk(np.array([0.0]))[0]) + 0.08, 0.06)
+        return [top - 0.22, 0.5 * (top - 0.22 + z_low)]
 
     # --------------------------------------------------------------------------------------------------------
     def volumes(self):

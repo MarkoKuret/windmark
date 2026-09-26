@@ -26,6 +26,8 @@ const HULL_TOL := 0.06
 
 var failures := 0
 var checks := 0
+## {class id: {lod: {"triangles", "surfaces", "vertices"}}} for the fleet cost
+var lod_stats := {}
 var warnings := 0
 
 
@@ -36,7 +38,9 @@ func _initialize() -> void:
 	for id in ids:
 		print("== %s" % id)
 		_test_model(id)
+		_test_lods(id)
 		_test_collision(id)
+	_fleet_cost()
 	print("%d checks, %d failures, %d warnings (known boatgen issues)" % [checks, failures, warnings])
 	quit(1 if failures > 0 else 0)
 
@@ -44,10 +48,17 @@ func _initialize() -> void:
 func _class_ids() -> PackedStringArray:
 	var out := PackedStringArray()
 	for f in DirAccess.get_files_at(BOAT_DIR):
-		if f.ends_with(".glb") and not f.ends_with("_collision.glb"):
+		if f.ends_with(".glb") and not f.ends_with("_collision.glb") and not _is_lod_file(f):
 			out.append(f.get_basename())
 	out.sort()
 	return out
+
+
+## `<id>_lod<n>.glb`: a lower level of detail of <id> (checked with its class, not as a class of its own).
+func _is_lod_file(f: String) -> bool:
+	var b := f.get_basename()
+	var i := b.rfind("_lod")
+	return i > 0 and b.substr(i + 4).is_valid_int()
 
 
 # ---------------------------------------------------------------- helpers
@@ -116,6 +127,87 @@ func _class_file(id: String) -> String:
 	if not FileAccess.file_exists(path):
 		path = repo.path_join("tools/boatgen/tests/fixtures/%s.boat.json" % id)
 	return path
+
+
+# ---------------------------------------------------------------- levels of detail
+
+## Counts of one imported model: triangles, surfaces (one draw call each, before any batching) and vertices.
+func _model_stats(root: Node) -> Dictionary:
+	var st := {"triangles": 0, "surfaces": 0, "vertices": 0}
+	for c in root.get_children():
+		var mi := c as MeshInstance3D
+		if mi == null or mi.mesh == null:
+			continue
+		st["triangles"] += _triangles(mi.mesh)
+		st["surfaces"] += mi.mesh.get_surface_count()
+		for s in mi.mesh.get_surface_count():
+			st["vertices"] += (mi.mesh.surface_get_arrays(s)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+	return st
+
+
+## The lower levels of detail listed in the sidecar (model.lods): same nodes and pivots as the full model, the
+## sidecar's triangle count, and fewer triangles than the level before.
+func _test_lods(id: String) -> void:
+	var side := _read_json("%s/%s.physics.json" % [BOAT_DIR, id])
+	if side.is_empty() or not side["model"].has("lods"):
+		_warn("%s: no levels of detail in the sidecar" % id)
+		return
+	var stats := {}
+	var expected: Array = side["model"]["nodes"]
+	expected.sort()
+	var prev := -1
+	for entry in side["model"]["lods"]:
+		var lod := int(entry["lod"])
+		var scene := load("%s/%s" % [BOAT_DIR, entry["file"]]) as PackedScene
+		if not _check(scene != null, "%s LOD%d loads (%s)" % [id, lod, entry["file"]]):
+			continue
+		var inst := scene.instantiate()
+		var root := inst.get_child(0) as Node3D
+		var names := []
+		var parts := {}
+		for c in root.get_children():
+			names.append(String(c.name))
+			parts[String(c.name)] = c
+		names.sort()
+		_check(names == expected, "%s LOD%d has the full model's nodes" % [id, lod])
+		var st := _model_stats(root)
+		_check(st["triangles"] == int(entry["triangles"]), "%s LOD%d triangles %d match the sidecar %d" % [id, lod,
+			st["triangles"], int(entry["triangles"])])
+		if prev >= 0:
+			_check(st["triangles"] < prev, "%s LOD%d has fewer triangles than the level before" % [id, lod])
+		prev = st["triangles"]
+		if lod > 0:
+			var rig: Dictionary = side["rig"]
+			var pivots := {"rudder": "rudder_stock", "boom": "boom_pivot", "wheel": "wheel_hub", "pole": "pole_pivot"}
+			for node in side["model"]["pivots"]:
+				if parts.has(node):
+					_near_v((parts[node] as Node3D).position, _body_to_model(rig[pivots[node]]), POS_TOL, "%s LOD%d %s pivot" % [id, lod, node])
+		print("  LOD%d from %d m: %d triangles, %d surfaces, %d vertices" % [lod, int(entry["from_m"]), st["triangles"],
+			st["surfaces"], st["vertices"]])
+		stats[lod] = st
+		inst.free()
+	lod_stats[id] = stats
+
+
+## Fleet cost: a 16-boat fleet of each class as a race camera sees it (2 boats within 30 m, 4 from 30 to 100 m,
+## 10 beyond), counted from the imported levels of detail.
+func _fleet_cost() -> void:
+	var mix := {0: 2, 1: 4, 2: 10}
+	for id in lod_stats:
+		var st: Dictionary = lod_stats[id]
+		if not (st.has(0) and st.has(1) and st.has(2)):
+			continue
+		var tris := 0
+		var draws := 0
+		var verts := 0
+		for lod in mix:
+			tris += mix[lod] * int(st[lod]["triangles"])
+			draws += mix[lod] * int(st[lod]["surfaces"])
+			verts += mix[lod] * int(st[lod]["vertices"])
+		var full := 16 * int(st[0]["triangles"])
+		print("fleet %s x16 (2 LOD0, 4 LOD1, 10 LOD2): %d triangles (%.0f %% of 16 full models), %d surfaces, %d vertices" % [
+			id, tris, 100.0 * tris / max(full, 1), draws, verts])
+		_check(tris < full / 2, "%s fleet with levels of detail costs under half the full models" % id)
 
 
 # ---------------------------------------------------------------- model

@@ -48,6 +48,7 @@ class HullShape:
         self.x_ff = self.x_fwl - self.d_ff / self.stem_slope
         self.transom_immersion = self.Tc - h["rocker_aft"]
         self.p_top = float(h["topside_flare"])
+        self.fillet = float(h.get("bilge_fillet", 0.12))
         self.ratio = float(h["section_ratio"])
         # solved knobs (initial guesses)
         self.W = 0.5 * h["bwl"] * 1.04
@@ -87,7 +88,7 @@ class HullShape:
         v = np.clip((self.x_mw - x) / self.x_mw, 0, 1)
         # 1 - u^a: zero slope at the maximum for a > 1 and a finite entrance angle at the stem;
         # a small a fines the entrance, a large one fills it
-        fwd = W * (1 - u ** float(np.clip(1.8 * self.phi_f, 1.25, 5.0)))
+        fwd = W * (1 - u ** float(np.clip(1.8 * self.phi_f, 1.08, 5.0)))
         aft = Wt + (W - Wt) * (1 - v ** max(1.15, 2.1 * self.phi_a))
         res = np.where(x >= self.x_mw, fwd, aft)
         return np.minimum(res, self.bs(x) * 1.02 + 0.02)
@@ -110,7 +111,8 @@ class HullShape:
         # the smooth max lifts the waterline crossing slightly: remove it with a ramp so it stays at x_fwl
         lift = float(smax(-self.Tc + h["rocker_fwd"] * abs((self.x_fwl - self.x_md) / max(self.x_ff - self.x_md, 1e-6))
                           ** self.k_prof, 0.0, r))
-        fwd = fwd - lift * np.clip((x - self.x_md) / (self.x_fwl - self.x_md), 0, 1)
+        # (cubic ramp: flat at the deepest point, so the canoe-body draft stays exact)
+        fwd = fwd - lift * np.clip((x - self.x_md) / (self.x_fwl - self.x_md), 0, 1) ** 3
         z = np.where(x >= self.x_md, fwd, keel_a)
         return np.minimum(z, self.zs(x) - 1e-4)
 
@@ -129,23 +131,60 @@ class HullShape:
         nz = self.n / np.sqrt(self.ratio)
         return ny, nz
 
-    def station(self, x, nb, nt, dense=400):
-        """Station curve (y, z) from keel to sheer: nb points on the bottom (keel..turn) and nt on the topsides
-        (turn..sheer), each resampled uniformly by arc length. Returns (y, z, i_turn)."""
+    def _raw_curve(self, x, n_bot, n_top):
+        """Unfilleted station curve (y, z): superellipse bottom (n_bot points, keel..turn) then the topside
+        (n_top points, turn..sheer, the turn point shared)."""
         zk, zm, w, zs, bs = [float(f(np.array([x]))[0]) for f in (self.zk, self.zm, self.w, self.zs, self.bs)]
         ny, nz = self.exps()
         d = max(zm - zk, 1e-6)
-        ph = np.linspace(np.pi / 2, 0, dense)
+        ph = np.linspace(np.pi / 2, 0, n_bot)
         yb = w * np.cos(ph) ** (2 / ny)
         zb = zm - d * np.sin(ph) ** (2 / nz)
-        q = np.linspace(0, 1, dense)
+        q = np.linspace(0, 1, n_top)[1:]
         p = self.p_top
         if self.chine is not None:
             p = 1.0 + (p - 1.0) * (1 - self._chine_weight(x))
-        yt = w + (bs - w) * q ** p
-        zt = zm + (zs - zm) * q
-        bot = _resample(np.stack([yb, zb], -1), nb)
-        top = _resample(np.stack([yt, zt], -1), nt)
+        pts = np.concatenate([np.stack([yb, zb], -1), np.stack([w + (bs - w) * q ** p, zm + (zs - zm) * q], -1)])
+        return pts, n_bot - 1, zs - zk
+
+    def _curve(self, x, dense=400):
+        """Station curve with the bilge turn faired: (points (n, 2) keel..sheer, index of the turn point).
+
+        Both the superellipse end and the topside root have unbounded curvature where they meet (tangent
+        continuous, but a visible crease on the mesh). Around the turn the curve is replaced by its Gaussian
+        average over arc length (radius `bilge_fillet` of the station depth), blended back to the raw curve
+        within four radii, so the skin turns smoothly. A hard chine (`chined`) keeps its crease."""
+        pts, it, depth = self._raw_curve(x, dense, dense)
+        r = self.fillet * depth * (1 - self._chine_weight(x))
+        s = arclen(pts)
+        if r < 1e-4 or s[-1] < 1e-6:
+            return pts, it
+        m = max(int(s[-1] / (0.2 * r)), 64)
+        su = np.linspace(0, s[-1], m)
+        U = np.stack([np.interp(su, s, pts[:, 0]), np.interp(su, s, pts[:, 1])], -1)
+        ds = su[1] - su[0]
+        k = np.arange(-int(3 * r / ds) - 1, int(3 * r / ds) + 2) * ds
+        ker = np.exp(-0.5 * (k / r) ** 2)
+        ker /= ker.sum()
+        h = len(k) // 2
+        pad = np.vstack([np.repeat(U[:1], h, 0), U, np.repeat(U[-1:], h, 0)])
+        sm = np.stack([np.convolve(pad[:, j], ker, mode="valid") for j in range(2)], -1)
+        st = s[it]
+        u = np.clip(np.abs(su - st) / (4 * r), 0, 1)
+        b = (0.5 * (1 + np.cos(np.pi * u)))[:, None]
+        out = (1 - b) * U + b * sm
+        # split exactly at the raw turn's arc length (a grid index would jitter from station to station)
+        k = int(np.clip(np.searchsorted(su, st), 1, m - 1))
+        f = (st - su[k - 1]) / max(su[k] - su[k - 1], 1e-12)
+        pt = out[k - 1] + f * (out[k] - out[k - 1])
+        return np.vstack([out[:k], pt[None], out[k:]]), k
+
+    def station(self, x, nb, nt, dense=400):
+        """Station curve (y, z) from keel to sheer: nb points on the bottom (keel..turn) and nt on the topsides
+        (turn..sheer), each resampled uniformly by arc length. Returns (y, z, i_turn)."""
+        pts, it = self._curve(x, dense)
+        bot = _resample(pts[:it + 1], nb, bend=0.5)
+        top = _resample(pts[it:], nt, bend=0.5)
         pts = np.vstack([bot, top[1:]])
         return pts[:, 0], pts[:, 1], nb - 1
 
@@ -156,18 +195,10 @@ class HullShape:
         return float(np.clip((xs - x) / (0.12 * self.L), 0, 1)) * self.chine["sharpness"]
 
     def dense_section(self, x, n=160):
-        """Station curve sampled directly in its parameters (z increases monotonically keel to sheer)."""
-        zk, zm, w, zs, bs = [float(f(np.array([x]))[0]) for f in (self.zk, self.zm, self.w, self.zs, self.bs)]
-        ny, nz = self.exps()
-        d = max(zm - zk, 1e-6)
-        ph = np.linspace(np.pi / 2, 0, n)
-        yb = w * np.cos(ph) ** (2 / ny)
-        zb = zm - d * np.sin(ph) ** (2 / nz)
-        q = np.linspace(0, 1, n // 2)[1:]
-        p = self.p_top
-        if self.chine is not None:
-            p = 1.0 + (p - 1.0) * (1 - self._chine_weight(x))
-        return np.concatenate([yb, w + (bs - w) * q ** p]), np.concatenate([zb, zm + (zs - zm) * q])
+        """Station curve sampled densely (z increases monotonically keel to sheer)."""
+        pts, it = self._curve(x, max(n, 120))
+        pts = _resample(pts, n + n // 2 - 1)
+        return pts[:, 0], pts[:, 1]
 
     # ----------------------------------------------------------------------------------------------------
     # hydrostatics of the canoe body
@@ -261,7 +292,7 @@ class HullShape:
             except np.linalg.LinAlgError:
                 step = np.zeros(2)
             step = np.clip(step, -0.5, 0.5)
-            self.phi_f = float(np.clip(self.phi_f * np.exp(step[0]), 0.69, 2.8))
+            self.phi_f = float(np.clip(self.phi_f * np.exp(step[0]), 0.6, 2.8))
             self.phi_a = float(np.clip(self.phi_a * np.exp(step[1]), 0.25, 4.0))
         for _ in range(2):
             self.W *= h["bwl"] / max(self.hydro(121)["bwl"], 1e-6)
@@ -294,6 +325,8 @@ class HullShape:
         g[:, 1:] = np.cumsum(np.hypot(np.diff(Y, axis=1), np.diff(Z, axis=1)), axis=1)
         G = max(g.max(), 1e-6)
         self.girth_max = G
+        self.girth = g
+        self.skin_xs = xs
         uv0 = np.stack([X, g], -1)
         uv1_port = np.stack([1 - X / self.L, 0.5 + 0.5 * (1 - g / G)], -1)
         uv1_stbd = np.stack([X / self.L, 0.5 * (1 - g / G)], -1)
@@ -334,9 +367,20 @@ class HullShape:
         return float(np.interp(z, zz, y))
 
 
-def _resample(pts, n):
+def _resample(pts, n, bend=0.5):
+    """Resample a polyline to n points, uniformly by arc length, or with `bend` > 0 by a mix of arc length and
+    turning angle (that share of the points goes where the curve bends, so a tight turn keeps its shape)."""
     s = arclen(pts)
     if s[-1] < 1e-9:
         return np.repeat(pts[:1], n, axis=0)
+    if bend > 0:
+        d = np.diff(pts, axis=0)
+        th = np.unwrap(np.arctan2(d[:, 1], d[:, 0]))
+        dth = np.abs(np.diff(th, prepend=th[0]))
+        tot = dth.sum()
+        if tot > 1e-6:
+            m = np.concatenate([[0.0], np.cumsum((1 - bend) * np.diff(s) / s[-1] + bend * dth / tot)])
+            t = np.linspace(0, m[-1], n)
+            return np.stack([np.interp(t, m, pts[:, 0]), np.interp(t, m, pts[:, 1])], -1)
     t = np.linspace(0, s[-1], n)
     return np.stack([np.interp(t, s, pts[:, 0]), np.interp(t, s, pts[:, 1])], -1)

@@ -11,7 +11,7 @@
     "draft_canoe": 0.24,
     "displacement": 900,
     "prismatic": 0.55,
-    "section_shape": {"type": "chined", "midship_coefficient": 0.68, "deadrise": 0.22, "chine_height": 0.14},
+    "section_shape": {"type": "round", "midship_coefficient": 0.68},
     "rocker": {"fwd": 0.17, "aft": 0.24},
     "freeboard": {"bow": 0.86, "mid": 0.70, "stern": 0.60},
     "transom_width": 2.10,

@@ -166,7 +166,8 @@ Every key is optional; defaults scale with LOA.
 | `hull.deck_camber` | 0.022 | deck crown as a fraction of the local beam |
 | `hull.sheer_spring` | 0 | extra sag of the sheer at mid length (m) |
 | `hull.boot_top` | [0.04, 0.10] | antifouling up to [0], boot-top stripe up to [1] (m above the DWL) |
-| `hull.stem_radius` | 0.04 | forefoot rounding (m) |
+| `hull.stem_radius` | 0.10 (LOA/12)^0.5 | forefoot rounding (m, blend height between keel line and stem) |
+| `hull.bilge_fillet` | 0.12 | bilge-turn fairing radius as a fraction of the station depth (keel to sheer); 0 leaves the raw curves |
 | `hull.lcb_fraction` | 0.535 | LCB target when `hull.lcb_x` is absent |
 | `hull.chine_start` | 0.42 | where a hard chine begins, fraction of LOA aft of the stem |
 | `deck.cockpit` | length 0.30 LOA, width 0.62, depth 0.42 (LOA/12)^0.5, open_transom true, aft_deck 0 | cockpit well: width as a fraction of the local half-beam |
@@ -198,8 +199,10 @@ that do not apply to a type (`depth` on a main) are written only when the class 
 ## How the geometry is made
 
 **Hull** (`hull.py`). Each station is a superellipse bottom from the keel point to the bilge turn, then a topside
-curve up to the sheer, meeting with a vertical tangent so the skin is smooth (or creased, aft of the chine
-start, for `chined`). Five longitudinal curves drive the stations: the profile (keel line, forefoot and raked
+curve up to the sheer, meeting with a vertical tangent; both curves have an unbounded curvature at that
+point, so the turn is faired: the station is replaced there by its Gaussian average along the girth (radius
+`bilge_fillet`), blended back to the raw curve within four radii, and the mesh points are spread by arc length and
+turning angle so the turn keeps its shape (a `chined` hull keeps its crease aft of the chine start). Five longitudinal curves drive the stations: the profile (keel line, forefoot and raked
 stem), the bilge-turn height and half-breadth, the sheer height (through the three freeboards) and the sheer
 half-breadth (the class plan-view rule). A solver then fits the bilge breadth to BWL, the section fullness to the
 canoe-body volume (DWL mass over water density, minus the meshed appendages), and the entrance and run fullness

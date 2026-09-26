@@ -3,9 +3,11 @@ id: WM-064
 title: >-
   Boats: round hull sections (no chine) and a detail pass toward the owner's
   reference look
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-09-26 12:19'
+updated_date: '2026-09-26 12:20'
 labels:
   - boats
 dependencies: []

@@ -9,12 +9,9 @@ enum Source { KEYS, STICK }
 
 const STICK_SAT := 0.95
 const FINE_LIMIT := 0.35
-## set and hold (controls.md §5.2): the key rate by hold time, fine at first, near the rudder's own rate after
-## KEY_RAMP_END s; helm_fine divides it by KEY_FINE_DIV
-const KEY_RATE_START := 0.4
-const KEY_RATE_END := 1.5
-const KEY_RAMP_START := 0.1
-const KEY_RAMP_END := 0.5
+## set and hold (controls.md §5.2): a held key moves h_cmd linearly at KEY_RATE per second (full helm from the
+## centre in about 1.18 s), the centring key eases it back at the same rate; helm_fine divides it by KEY_FINE_DIV
+const KEY_RATE := 0.85
 const KEY_FINE_DIV := 3.0
 const STICK_HANDOVER := 0.5  # s inside the dead zone before the keys take over
 const RAMP_T := 0.8
@@ -63,11 +60,9 @@ var _stick_dz_time := INF
 var _prev_held := {}
 var _hold_dir := 0
 var _hold_t := 0.0
-## set and hold: the direction and hold time of the helm keys, and the easing back to the centre
+## set and hold: the direction of the helm keys, and the easing back to the centre
 var _key_dir := 0
-var _key_t := 0.0
 var _centring := false
-var _centre_t := 0.0
 var _sheet_dir := 0
 var _sheet_e := 0.0
 var _last_sheet_axis := NAN
@@ -102,19 +97,6 @@ static func sheet_key_integral(e: float) -> float:
 		var x := e - 0.1
 		return 0.006 + 0.06 * x + 0.39 * x * x / (2.0 * 0.9)
 	return 0.2355 + 0.45 * (e - 1.0)
-
-
-## Helm moved by a set-and-hold key held for `e` seconds (controls.md §5.2): the integral of the key rate, so the
-## steps of any frame rate add up to the same helm.
-static func key_travel(e: float) -> float:
-	var ramp := KEY_RAMP_END - KEY_RAMP_START
-	if e < KEY_RAMP_START:
-		return KEY_RATE_START * e
-	var head := KEY_RATE_START * KEY_RAMP_START
-	if e <= KEY_RAMP_END:
-		var u := e - KEY_RAMP_START
-		return head + KEY_RATE_START * u + 0.5 * (KEY_RATE_END - KEY_RATE_START) / ramp * u * u
-	return head + 0.5 * (KEY_RATE_START + KEY_RATE_END) * ramp + KEY_RATE_END * (e - KEY_RAMP_END)
 
 
 static func trigger_curve(t: float) -> float:
@@ -216,25 +198,19 @@ func _helm(r: RawInput, dt: float) -> void:
 		return
 	if helm_mode == HelmMode.SET_AND_HOLD:
 		var dir := (1 if right else 0) - (1 if left else 0)
-		if dir != _key_dir:
-			_key_dir = dir
-			_key_t = 0.0
+		_key_dir = dir
 		if dir != 0:
 			_centring = false
-			var step := key_travel(_key_t + dt) - key_travel(_key_t)
-			_key_t += dt
+			var step := KEY_RATE * dt
 			var nh := h_cmd + dir * (step / KEY_FINE_DIV if helm_fine else step)
 			if helm_fine:  # moves no further out than the fine limit
 				nh = minf(nh, maxf(h_cmd, FINE_LIMIT)) if dir > 0 else maxf(nh, minf(h_cmd, -FINE_LIMIT))
 			h_cmd = clampf(nh, -1.0, 1.0)
 		elif centre:
 			_centring = true
-			_centre_t = 0.0
 		if _centring and dir == 0:
-			# eased back to the centre along the key ramp, not snapped (the rudder follows smoothly)
-			var back := key_travel(_centre_t + dt) - key_travel(_centre_t)
-			_centre_t += dt
-			h_cmd = move_toward(h_cmd, 0.0, back)
+			# eased back to the centre at the key rate, not snapped (the rudder follows smoothly)
+			h_cmd = move_toward(h_cmd, 0.0, KEY_RATE * dt)
 			if h_cmd == 0.0:
 				_centring = false
 		return

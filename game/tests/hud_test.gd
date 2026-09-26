@@ -476,7 +476,7 @@ func test_core_scene() -> void:
 	for i in 2400:
 		r.pressed = []
 		if i == 180:
-			r.hold(&"helm_right")  # set and hold: the command ramps while held and stays
+			r.hold(&"helm_right")  # set and hold: the command moves while held and stays
 		if i == 200:
 			r.held.erase(&"helm_right")
 		if not centred and tacked_at >= 0 and sim.state(0).twa < deg_to_rad(-38.0):

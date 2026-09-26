@@ -310,6 +310,22 @@ bool turn_clear_of_zones(AC& x, const Me& m, std::int32_t next, float dir_, floa
   return true;
 }
 
+// §7.6 the turn's circle (centre 1.3·R to the side of the turn, radius 1.3·R) is clear of boat j over the next 6 s,
+// j moved on her present course and speed: no hull within `margin` of the circle.
+bool turn_clear_of_boat(AC& x, const Me& m, std::size_t j, float dir_, float R, float margin, float r_own) {
+  const Vec2 C = v_add(m.c, v_scale(right_of(dir(m.s.psi)), dir_ * 1.3f * R));
+  const BoatState& sj = x.w.boat(j).state();
+  const Vec2 vj = v_add(v_scale(dir(sj.psi), max(0.0f, sj.v)), Vec2{x.w.env(j).current_x, x.w.env(j).current_y});
+  const Vec2 cur = m.cur;
+  for (std::int32_t k = 0; k <= 6; ++k) {
+    const float tk = static_cast<float>(k);
+    // The circle drifts with the current, as the turning boat does.
+    const Vec2 pj = v_add(x.race.boat(j).c, v_scale(v_sub(vj, cur), tk));
+    if (v_dist(pj, C) < 1.3f * R + r_own + x.r_hull[j] + margin) return false;
+  }
+  return true;
+}
+
 }  // namespace
 
 bool into_rounding_mark(const AB& a, const Me& m, float psi) {
@@ -383,10 +399,11 @@ bool penalty_turns(AC& x, AB& a, const Me& m, Leg leg) {
   const bool urgent = br.deadline_s >= 0.0f && br.deadline_s < 20.0f;
   const float V = polar_speed(a, m, std::fabs(m.twa));
   if (m.s.v < (urgent ? 0.4f : 0.75f) * V && x.now < a.low_until + 8.0f) return why("slow");
+  const float r_own = x.r_hull[static_cast<std::size_t>(a.i)];
   if (urgent) {
     for (std::size_t j = 0; j < x.w.boat_count(); ++j) {
       if (static_cast<std::int32_t>(j) == a.i || !x.race.racing(j)) continue;
-      if (v_dist(x.race.boat(j).c, m.c) < 0.5f * m.L + x.r_hull[j] + R) {
+      if (!turn_clear_of_boat(x, m, j, dir_, R, 0.0f, r_own)) {
         a.pen_block = static_cast<std::int32_t>(j);
         return why("urgent-boat");
       }
@@ -405,7 +422,8 @@ bool penalty_turns(AC& x, AB& a, const Me& m, Leg leg) {
       if (static_cast<std::int32_t>(j) == a.i || !x.race.racing(j)) continue;
       const Vec2 cj = x.race.boat(j).c;
       const float d = v_dist(cj, m.c);
-      if (d < 1.5f * m.L + x.r_hull[j] + R || (d < 3.0f * m.L + x.r_hull[j] && v_dot(v_sub(cj, m.c), f) > 0.0f)) {
+      if (!turn_clear_of_boat(x, m, j, dir_, R, 0.5f * m.L, r_own) ||
+          (d < 3.0f * m.L + x.r_hull[j] && v_dot(v_sub(cj, m.c), f) > 0.0f)) {
         a.pen_block = static_cast<std::int32_t>(j);
         return why("boat");
       }

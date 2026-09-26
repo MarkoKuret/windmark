@@ -420,10 +420,12 @@ With a pending penalty the AI starts a turn when all of:
   a margin for the speed the turn loses), is at least `Z + 1.3·R + 0.6·L` from those marks;
 - boat speed ≥ 0.75 × target, and not within 5 s after a failed turn;
 - the next zone is more than 20 s of sailing (plus the circle) away;
-- no boat within `1.5·L` plus the turn's reach, or `3·L` ahead.
+- the turn's circle is clear of the other boats as they move: no hull within `0.5·L` of the circle over the next
+  6 s, each boat moved on her present course and speed (a boat coming up fast is in the way, one sailing away is
+  not; a boat taking a penalty must keep clear of all others, rule 22.2), and none within `3·L` ahead.
 
 From 20 s before the deadline (`rules.md` §9.4; the turn must be in progress when it passes) it is **urgent**: only
-the zones, 0.4 × target speed and a boat within `0.5·L` plus the turn's reach hold it back. Direction: on a beat
+the zones, 0.4 × target speed and a hull inside the circle within the next 6 s hold it back. Direction: on a beat
 start by luffing into a tack (turn towards the wind), on a run start by bearing away into a gybe, on a reach turn
 towards the wind; the other way when only that keeps the circle out of the zones. Helm 0.8 of full (0.6 below 9 kn
 true wind, where a slammed turn stalls), sheets on auto-trim through the turn, downwind sail dropped first in more

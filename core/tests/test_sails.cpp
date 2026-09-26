@@ -307,8 +307,9 @@ TEST_CASE("sails: manual sheet over-sheeted on a reach") {
   }
 }
 
-// boat.md §7.5: eased past the optimum the sails luff and lose drive; let-fly puts every sail on the wind line,
-// the drive goes to zero and the boat slows along the deceleration law; released, it sails again.
+// boat.md §7.5: eased past the optimum the sails luff and lose drive; let-fly runs every sheet out to fully eased,
+// on a reach that is the wind line: the drive goes to zero at once and the boat slows along the deceleration law;
+// released, it sails again.
 TEST_CASE("sails: luffing and let-fly") {
   const Wm7 c;
   Sim sim(perf_no_helm_balance("wm7"), 10.0f, 0.0f);
@@ -328,15 +329,19 @@ TEST_CASE("sails: luffing and let-fly") {
   const float v_trim = sim.s().v;
   CHECK(v_trim == doctest::Approx(v0).epsilon(0.03));
 
+  // sails.md §5.3: let fly runs the sheet out to fully eased; at speed the apparent wind lies inside the jib's
+  // fully eased angle (68 deg), so the wind line holds the sail there and it flogs. The drive goes at once.
   sim.boat.set_let_fly(true);
-  sim.run(20.0f);
+  sim.step();
+  CHECK(sim.boat.outputs().trim_speed == 0.0f);
+  sim.run(2.0f);
   const std::size_t j = static_cast<std::size_t>(c.jib);
   const wm::SailOutput& jo = sim.boat.sails().output(j);
   const float off_line = std::fabs(sim.boat.sails().sail(j).beta + sim.s().awa);
   const wm::BoatOutputs& o = sim.boat.outputs();
-  MESSAGE("let fly: jib ", to_deg(off_line), " deg off the wind line, eps ", to_deg(jo.trim_error),
-          " deg, shiver ", jo.luff_shiver, ", trim_speed ", o.trim_speed, ", v after 20 s ", to_kn(sim.s().v),
-          " kn of ", to_kn(v_trim));
+  MESSAGE("let fly 2 s: jib ", to_deg(off_line), " deg off the wind line, eps ", to_deg(jo.trim_error),
+          " deg, shiver ", jo.luff_shiver, ", trim_speed ", o.trim_speed, ", v ", to_kn(sim.s().v), " kn of ",
+          to_kn(v_trim));
   CHECK(off_line < deg(1.0f));
   CHECK(jo.luff_shiver > 0.9f);
   CHECK(jo.trim_error > deg(5.0f));
@@ -344,6 +349,15 @@ TEST_CASE("sails: luffing and let-fly") {
   // coasts down along the deceleration law and the flogging sails brake it (boat.md §5.8).
   CHECK(o.trim_speed == 0.0f);
   CHECK(o.target_speed == 0.0f);
+  // Slowed down the apparent wind swings aft of the fully eased angle: the sail stays there, never beyond it,
+  // and draws a little (the table's value for that trim).
+  sim.run(18.0f);
+  const float lim = c.p.sails[j].sheet_max;
+  MESSAGE("let fly 20 s: jib at ", to_deg(std::fabs(sim.boat.sails().sail(j).beta)), " deg (fully eased ",
+          to_deg(lim), "), awa ", to_deg(std::fabs(sim.s().awa)), ", trim_speed ", o.trim_speed, ", v ",
+          to_kn(sim.s().v), " kn");
+  CHECK(std::fabs(sim.boat.sails().sail(j).beta) <= lim + 1e-5f);
+  CHECK(o.trim_speed < 0.25f);
   CHECK(sim.s().v < 0.6f * v_trim);
   CHECK(sim.s().v >= 0.0f);
 

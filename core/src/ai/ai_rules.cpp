@@ -37,6 +37,7 @@ OwnPlan plan_to(const Me& m, float psi_to, std::int8_t dir_, bool slow, float ra
   p.twd = m.twd;
   p.decel_linear = m.b.perf().dynamics.decel_linear;
   p.decel_const = m.b.perf().dynamics.decel_const;
+  if (slow) p.slow_floor = m.b.let_fly_drive() * max(0.0f, m.s.v);
   return p;
 }
 
@@ -82,6 +83,7 @@ bool escape(AC& x, std::size_t j, const Track& tj, std::int32_t k0, const Track&
     } else {
       p.psi_to = mj.psi;
       p.slow = true;
+      p.slow_floor = b.let_fly_drive() * max(0.0f, mj.v);
     }
     Motion mm = mj;
     if (k == 0) mm.r = 0.0f;
@@ -259,7 +261,10 @@ void avoid_objects(AC& x, AB& a, const Me& m, std::int32_t skip_mark) {
     const float along = v_dot(d, f);
     if (along <= 0.0f || along > reach + o.r) continue;
     // The mark being rounded: only a collision course (the rounding circle keeps the planned clearance).
-    const float clear = o.mark == skip_mark ? (o.r + 0.5f * m.B) + 0.5f : (o.r + 0.5f * m.B) + (1.0f + 0.15f * m.L);
+    float clear = o.mark == skip_mark ? (o.r + 0.5f * m.B) + 0.5f : (o.r + 0.5f * m.B) + (1.0f + 0.15f * m.L);
+    // A committee or mark boat is long and flat-sided: the bow of a boat still turning onto the tangent reaches it
+    // first, so keep another half length off.
+    if (o.is_boat && o.mark != skip_mark) clear = clear + 0.5f * m.L;
     if (std::fabs(v_cross(f, d)) >= clear) continue;
     if (along < best_t) {
       best_t = along;
@@ -393,7 +398,7 @@ void rules_overlay(AC& x, AB& a, const Me& m, Vec2 aim) {
         }
         if (contact) continue;
         const float twa_c = wrap_pi(m.twd - c.psi);
-        const float V = c.slow ? 0.0f : polar_speed(a, m, std::fabs(twa_c));
+        const float V = (c.slow ? m.b.let_fly_drive() : 1.0f) * polar_speed(a, m, std::fabs(twa_c));
         const float vmc = V * wm_cos(wrap_pi(c.psi - brg_aim));
         float cost = 20.0f / max(gB, 0.5f) + 4.0f * (vmc_ref - vmc) / V_ref + (c.manoeuvre ? 3.0f : 0.0f);
         // A new obligation: ending on port near a starboard boat.

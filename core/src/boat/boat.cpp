@@ -248,6 +248,19 @@ float Boat::accel_at(float tws, float twa, std::int32_t front_sail) const {
   return c != nullptr ? c->accel.at(tws, std::fabs(twa)) : 0.0f;
 }
 
+float Boat::let_fly_drive() const {
+  const ConfigPerf& c = sails_.config();
+  if (!c.trim_speed.present) return 1.0f;
+  const std::size_t d = static_cast<std::size_t>(sails_.driving_sail());
+  const SailPerf& sp = perf_->sails[d];
+  const float lim = sp.sheet_max_by_heel.present
+                        ? min(sp.sheet_max, sp.sheet_max_by_heel.table.at(std::fabs(s_.phi)))
+                        : sp.sheet_max;
+  const float aa = std::fabs(s_.awa);
+  const float m = min(clamp(sp.sheet_max, sp.sheet_min, lim), aa);
+  return c.trim_speed.table.at(s_.tws, aa, m - sails_.output(d).m_opt);
+}
+
 float Boat::turn_radius(float helm) const {
   const float n = std::fabs(helm);
   if (!(n >= 1e-5f)) return 1e9f;

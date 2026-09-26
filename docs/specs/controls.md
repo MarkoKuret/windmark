@@ -129,22 +129,15 @@ the stick out of its dead zone takes it back. The source that moved last wins.
 
 ### 5.2 Helm keys
 Two modes (option, per player):
-- **Set and hold** (default). A held key moves `h_cmd` at a rate that grows with the time `e` it has been held
-  (counting the frame the press is first read), fine for a short press and close to the rudder's own speed
-  (`helm_rate`, `boat.md` §4) for a long one:
-  ```
-  k(e) = 0.4                              for e < 0.1 s
-       = 0.4 + 1.1 * (e - 0.1) / 0.4      for 0.1 s <= e <= 0.5 s
-       = 1.5                              for e > 0.5 s        // per second of h_cmd
-  ```
-  Each frame moves `h_cmd` by `K(e + dt) − K(e)`, `K` the integral of `k` (`K(0.1 s) = 0.04`, `K(0.5 s) = 0.42`,
-  then `+1.5` per second), so the result is the same at any frame rate: a short press of 0.1 s gives 0.04 (about
-  1.4° of rudder), 0.5 s gives 0.42 and full helm from the centre takes about 0.9 s. With `helm_fine` the rate is
-  divided by 3 and a key moves the helm no further out than ±0.35 (a helm already beyond it only comes back). On
-  release the helm stays where it is. `helm_centre` (↓) eases `h_cmd` back to 0 along the same ramp, `e` counted
-  from the press (0.42 is centred in 0.5 s, full helm in about 0.9 s), and stops there; a helm key pressed on the
-  way takes over from where the helm is. Both keys held: they cancel (and restart the ramp when one is released).
-  Suited to long reaches and to players who helm like a tiller.
+- **Set and hold** (default). A held key moves `h_cmd` linearly at `KEY_RATE = 0.85` per second (counting the
+  frame the press is first read), with no ramp: a short press of 0.1 s gives 0.085 (about 3° of rudder), 0.5 s
+  gives 0.425 and full helm from the centre takes about 1.18 s. The rudder follows at its own speed (`helm_rate`,
+  `boat.md` §4), which is faster. Each frame moves `h_cmd` by `KEY_RATE · dt`, so the result is the same at any
+  frame rate. With `helm_fine` the rate is divided by 3 and a key moves the helm no further out than ±0.35 (a helm
+  already beyond it only comes back). On release the helm stays where it is. `helm_centre` (↓) eases `h_cmd` back
+  to 0 at the same rate (0.425 is centred in 0.5 s, full helm in about 1.18 s), and stops there; a helm key
+  pressed on the way takes over from where the helm is. Both keys held: they cancel. Suited to long reaches and to
+  players who helm like a tiller.
 - **Hold to steer.** While a helm key is held, `h_cmd = ±k(t)` with the ramp
   `k(t) = min(1, 0.25 + 0.75·t / 0.8 s)` (`t` = time held, counting the frame the press is first read), limited to 0.35 with `helm_fine`. On release `h_cmd = 0`
   and the core brings the rudder back at `helm_rate`. Both keys held: the later one wins.
@@ -244,7 +237,7 @@ The options are saved per player in the settings file and set in the settings sc
 6. Focus: with let-fly held, opening chat clears `let_fly` in the next stamped frame.
 7. Last-moved source: a stick outside its dead zone overrides held helm keys; releasing the stick into its dead zone
    for 0.5 s gives the keys back.
-8. Set and hold: holding → for 1/6 s from centre gives `h_cmd = 0.0728`, for 0.5 s 0.42 and it stays 0.42 after
-   release; ↓ then moves it by no more than a frame's step at once, is at 0.212 after 1/3 s and at 0 after 0.5 s;
-   holding ← for 5/6 s gives −0.92 and full helm by 1 s; a key during the easing stops it; `helm_fine` for 0.5 s
-   gives 0.14; the same at 30, 60 and 144 fps within 0.5 %.
+8. Set and hold: holding → for 1/6 s from centre gives `h_cmd = 0.1417`, for 0.5 s 0.425 and it stays 0.425
+   after release; ↓ then moves it by no more than a frame's step at once, is at 0.142 after 1/3 s and at 0 after
+   0.5 s; holding ← from the centre for 1 s gives −0.85 and full helm by 1.2 s; a key during the easing stops it;
+   `helm_fine` for 0.5 s gives 0.1417; the same at 30, 60 and 144 fps within 0.5 %.

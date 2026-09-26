@@ -26,7 +26,7 @@ Controls (written in tick step 2, `conventions.md` §4.1; they persist until cha
 | `h_cmd` | float | [−1, 1] | commanded helm; +1 = full helm to turn the bow to starboard |
 | `sheet_cmd` | float | [0, 1] | manual sheet: 0 = sheeted hard in, 1 = fully eased (`sails.md` §5.2). Used when `auto_trim` is off |
 | `auto_trim` | bool | | sails trim themselves to the optimum (assist, and always on for AI boats) |
-| `let_fly` | bool | | held: every sail is let out to the wind line (`sails.md` §5.3) |
+| `let_fly` | bool | | held: every sheet is let run to fully eased at once, the wind line holding a sail short of it (`sails.md` §5.3) |
 | sail requests | event | | hoist a front sail, drop the front sail (`sails.md` §4.2) |
 | `performance_scale` | float | (0, 2] | gameplay speed multiplier, 1.0 for players; set by the race layer for AI skill levels (`ai.md`) |
 
@@ -248,12 +248,14 @@ drops.
   over from the next tick.
 - **Flogging sails**: `decel_linear` and `decel_const` are the hull coasting with the sails luffing on their
   sheets (a tack, a luff head to wind). With the sheets free (let fly held, or the manual sheet eased past the
-  optimum) the sails flog on the wind line, and their drag (`flog_drag`, which grows with the square of the
+  optimum) a sail eased toward the wind line flogs, and its drag (`flog_drag`, which grows with the square of the
   apparent wind and is 0 with the apparent wind abaft the beam) brakes the boat in proportion to the drive the
-  trim has lost, `1 − trim_speed`: all of it with let-fly. Over-sheeted sails (`eps < 0`) stall, they do not
+  trim has lost, `1 − trim_speed`: all of it with let-fly forward of the beam (the fully eased sails lie on the
+  wind line), none where the fully eased sails still draw fully. Over-sheeted sails (`eps < 0`) stall, they do not
   flog; the auto-trim crew never lets the sails flog (the headsail crossing in a tack is sheeted across at once).
-  Downwind the flogging sails push instead: `trim_speed` on the wind line holds the let-fly speed there
-  (`sails.md` §6), so a boat that lets fly on a run slows to the speed the windage drives, not to rest.
+  Downwind the fully eased sails still draw: let fly takes `trim_speed` at the fully eased trim (`sails.md` §5.3,
+  §6), so a boat that lets fly on a run slows to the speed the table gives there, not to rest (and where a sail's
+  fully eased angle reaches the wind line abaft the beam, the let-fly share of the windage push holds it).
 - **From rest**: the acceleration table is fitted to the build-up from half the polar to 90 % of it (the speeds a
   boat rebuilds through after a tack or a gybe). From rest the drive meets no hull resistance ahead, so the boat
   starts faster: below half its target speed the rate blends linearly from `accel_rest` at rest (and in sternway
@@ -411,13 +413,16 @@ along `accel_rest`, §5.8). Right head to wind with no helm the boat stays in ir
   is at the wind line, and heel through `trim_heel`.
 - **Stall**: sails sheeted past the optimum (`eps < 0`) lose some speed (reference: to 0.7–0.75 at 15–20° over)
   and heel more.
-- **Let-fly** (`sails.md` §5.3) puts every sail on the wind line: with the apparent wind forward of the beam the
-  drive goes to zero (`trim_speed` is 0 there) and the boat coasts down along the deceleration law, braked by its
-  flogging sails (§5.8): close-hauled at 10 kn an S boat is under 1 kn within about 8 s (half its speed in about
-  5 s); a heavy L boat carries its way about twice as long (under 1 kn within about 16 s). Used to kill speed before the start or to avoid a
-  collision. Abaft the beam the windage and the flogging sails still push the boat along at the let-fly speed
-  (reference S running in 10 kn: about 0.7 of the polar with the jib), so letting fly on a run slows the boat
-  without stopping it.
+- **Let-fly** (`sails.md` §5.3) runs every sheet out to fully eased at once, never beyond. Where the apparent
+  wind lies inside the fully eased angle (close-hauled, close reaching) that puts the sails on the wind line: the
+  drive goes to zero in the same tick (`trim_speed` is 0 there) and the boat coasts down along the deceleration
+  law, braked by its flogging sails (§5.8): close-hauled at 10 kn an S boat is under 1 kn within about 8 s (half
+  its speed in about 4 s); a heavy L boat carries its way about twice as long (under 1 kn within about 15 s).
+  Used to kill speed before the start or to avoid a collision. With the apparent wind abaft the fully eased angle
+  the eased sails still draw, by the trim table: on a beam reach part of the drive is left (reference S at 90°
+  TWA in 10 kn: from 6.7 kn to 3.0 kn in 10 s under the jib, 6.5 to 3.6 under the kite), broad reaching and
+  running letting fly hardly slows the boat (S at 120°: 6.3 kn stays 6.3 under the jib, 6.7 to 6.2 under the
+  kite; at 150° no loss: the fully eased sheet is the best trim there already).
 
 ### 7.6 Puffs, lulls and shifts
 A puff raises `tws` and so the target speed and heel; the boat accelerates along the acceleration table and heels
@@ -448,7 +453,8 @@ start needs speed built before the gun.
 | --- | --- |
 | renderer | `pos_x`, `pos_y`, `z`, `psi`, `phi`, `theta`, `h` (rudder), sail outputs (`sails.md` §7), interpolated between the snapshots of two ticks |
 | HUD | `v`, `v_filt`, `sog`, `cog`, `vmg`, `tws`, `twa`, `aws`, `awa`, `twd_from`, `wind_speed_clean`, `target_speed`, `polar_speed`, `trim_error` of each sail, `heel` |
-| AI | the same plus the table lookups for any hypothetical TWA (`polar`, `accel`) and the turn radius for a helm |
+| AI | the same plus the table lookups for any hypothetical TWA (`polar`, `accel`), the turn radius for a helm and `let_fly_drive`: the `trim_speed` the driving sail would give let fly at this tick's wind (`sails.md` §5.3: `eps = min(lim, awa_abs) − m_opt`), 0 where let fly stops the boat, near 1 running |
+| rules | `let_fly_drive` too, for the slow-down escape (`rules.md` §3.6) |
 | wind shadow | `pos`, `psi`, `aws`, `awd_from`, `twa`, sails up (`wind_shadow.md` §3) |
 | rules, collisions | `pos`, `psi`, `v`, hull outline (`collisions.md` §2) |
 
@@ -471,7 +477,9 @@ start needs speed built before the gun.
 5. **Determinism**: two runs with the same inputs give identical checksums every tick; a run split into two
    halves through a snapshot save/load gives the same checksum as an unbroken run.
 6. **Let-fly**: from steady close-hauled at 10 kn, let fly with helm 0: an S boat is under 1 kn within 12 s, an L
-   boat within 20 s.
+   boat within 20 s, and `trim_speed` is 0 from the first tick. From 90°, 120° and 150° TWA under the jib and the
+   kite no sail's angle is ever beyond its fully eased angle; running at 150° the speed after 10 s is above 80 %
+   of the speed before.
 7. **Helm balance**: close-hauled at 12 kn with the upwind config the helm balance is within 1°/s of 0 and the boat
    holds its course with the helm centred; with the helm centred the upwind config drifts at most 2°/s at its VMG
    angle from 6 to 16 kn and at most 3°/s reaching (60° to 120°) at 10 kn; on a spinnaker at 130° in 22 kn it

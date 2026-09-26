@@ -984,7 +984,8 @@ void racing(AC& x, AB& a, const Me& m) {
 }
 
 // race.md §6.2 the finished-boat autopilot: 5 L beyond the finish line and 2·(i + 1)·L along it (i = the finishing
-// place), so finished boats spread out and leave the line clear; there she stops (luffed, sails let fly). A ghost
+// place), so finished boats spread out and leave the line clear; there she stops (luffed, sails let fly, the
+// spinnaker dropped). A ghost
 // that did not finish (retired, disqualified) stops where she is.
 void finished_autopilot(AC& x, AB& a, const Me& m) {
   a.tactic = AiTactic::None;
@@ -1004,6 +1005,8 @@ void finished_autopilot(AC& x, AB& a, const Me& m) {
   if (v_dist(m.c, P) < 2.0f * m.L) {
     a.psi_target = heading_for(m.twd, (m.tack != 0.0f ? m.tack : 1.0f) * 50.0f * DEG);
     a.let_fly = true;
+    // A kite let fly is held at its fully eased angle and still draws on a reach (sails.md §5.3): down with it.
+    if (m.b.sails().spinnaker_flying() && !m.b.sails().busy()) x.w.drop_front(a.i);
   } else {
     sail_to_point(x, a, m, P);
   }

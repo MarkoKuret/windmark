@@ -166,13 +166,18 @@ the config tables.
     sheet control therefore trims both sails and the main keeps its trim relative to the headsail.
 
 ### 5.3 Let-fly
-While `let_fly` is held: `m_s = fabsf(awa)` for every sail (the sail goes to the wind line and flogs). The sheet
-is released altogether, so the sail blows out past `sheet_max` (and the heel limit) to the wind line (§5.4).
+While `let_fly` is held: `m_s = sheet_max` for every sail. The sheets are let run to their fully eased position at
+once: no sail ever goes beyond it (the heel limit of §5.4 still holds the boom off the water), and where the wind
+line lies inside it (apparent wind forward of about the beam) the wind-line clamp of §5.4 holds the sail on the wind
+line, where it flogs. The drive changes at once: while `let_fly` is held every sail's trim error is taken at its
+target, not at its drawn angle (§5.6), so the trim tables give the drive of the fully eased sail plan from the
+first tick, while the drawn sail swings out to it at its normal easing rate (§5.5). Downwind a fully eased sail
+still draws (the boat keeps sailing at the table's speed for that trim); upwind it luffs and the drive collapses.
 
 ### 5.4 Target angle
 ```
 lim  = sheet_max_by_heel ? min(sheet_max, sheet_max_by_heel(fabsf(phi))) : sheet_max
-m    = let_fly ? m_s : clamp(m_s, sheet_min, lim)      // let fly: no sheet limit, the wind line holds it
+m    = clamp(m_s, sheet_min, lim)                      // let fly too: never beyond the fully eased angle
 k_h  = hoist_factor(sail)              // down, prepare_hoist, dropping: 0.1
                                        // hoisting: clamp(2*progress*progress, 0.1, 1)
                                        // up, prepare_drop: 1 ; spinnaker_sym: always 1
@@ -215,8 +220,11 @@ The motion is fast for big corrections and slows as the sail nears its target (a
 
 ### 5.6 Trim error
 ```
-eps = -sgn(awa) * wrap_pi(beta - beta_opt)
+b   = (let_fly and beta_t is not the gybe target of §5.4) ? beta_t : beta
+eps = -sgn(awa) * wrap_pi(b - beta_opt)
 ```
+With let fly held the error is the target's, so the drive of the fully eased sails applies at once (§5.3); released,
+it is the drawn sail's again, and the drive comes back as the sail is sheeted in from fully eased.
 For a sail on the leeward side `eps = |β| − |β_opt|`: **positive = eased beyond the optimum** (toward luffing),
 **negative = sheeted in beyond it** (toward stall). The driving sail's `eps` (`boat.md` §5.4) enters the trim
 tables. A sail swinging across in a tack or gybe has a large error for a moment, which is the drive lost in the
@@ -259,13 +267,19 @@ Semantics and reference shapes:
 - **trim_speed**: 1 on a plateau around `eps = 0` (width grows with `awa_abs`: ±0.5° at 45° AWA, about −3.8°/+1.2°
   at 180°), falling to 0 when eased to the wind line (reference +15° at 45° AWA, +120° at 180°) and to 0.6–0.75
   when over-sheeted (reference −13° at 45°, −41° at 180°). Spinnakers: 0.7–0.8 over-sheeted (a kite keeps some
-  drive when mistrimmed). With the driving sail on the wind line (`eps = awa_abs − m_opt`, let fly or eased that
-  far) the flogging sails give no drive: with the apparent wind forward of the beam (`awa_abs` up to 90°) the
+  drive when mistrimmed). Let fly holds the driving sail at its fully eased angle (§5.3), so the core looks the
+  table up at `eps = min(lim, awa_abs) − m_opt`: where the fully eased angle lies beyond the wind line that is the
+  wind line, elsewhere it is the regular value of the fully eased sail, which downwind still draws (reference S
+  running in 10 kn: the optimum of the jib and the kite there is their fully eased angle, so letting fly costs
+  nothing). With the driving sail on the wind
+  line (`eps = awa_abs − m_opt`, let fly or eased that far) the flogging sails give no drive: with the apparent wind forward of the beam (`awa_abs` up to 90°) the
   value is **exactly 0** wherever the core looks it up, so a boat that lets fly there coasts to rest. Abaft the
   beam the windage of hull, rig and flogging sails still pushes the boat along, and the value is the **let-fly
   share**: the steady speed that push drives against the upright hull, over the polar (reference S running in
   10 kn: about 0.7), resampled per TWS row with the apparent wind angle at that speed as the abscissa, so the
-  core, which looks it up at the boat's own apparent wind, finds the let-fly speed when the boat sails at it. The
+  core, which looks it up at the boat's own apparent wind, finds the let-fly speed when the boat sails at it (only
+  a sail whose fully eased angle lies abaft the beam, a code zero or an asymmetric kite with a long sheet range,
+  can reach the wind line there). The
   VPP writes the wind-line value from the `trim_error` point at or below the smallest wind-line error of the
   neighbouring table points, so the interpolation between them holds it; the drive is cut at most one axis step
   (5°) before the line.
@@ -350,3 +364,6 @@ it. Events: every phase change emits `sail_phase(boat, sail, phase)` for crew ac
    sail's wind-line error (where that is at least 0.5° past the optimum), and `trim_speed` too up to 90° AWA (below
    1 beyond: the let-fly share); with let-fly held on a reach the boat's `trim_speed` output is 0 and it slows
    down.
+8. Let-fly limit: with let-fly held close-hauled, reaching and running, no sail's angle is ever beyond its fully
+   eased angle (`sheet_max`, the heel limit); the driving sail's `eps` is the target's from the first tick (the
+   boat's `trim_speed` drops in that tick, not as the sail swings out); running, the boat keeps sailing.

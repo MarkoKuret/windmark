@@ -119,11 +119,14 @@ measurement. Two tables carry it:
   boat along. The steady let-fly speed is where that push equals the upright hull's resistance (a bisection,
   `Solver.let_fly_speed`), 0 where the apparent wind is forward of the beam; the share is that speed over the
   polar, resampled per TWS row with the apparent wind angle at the let-fly speed as the abscissa (so the core,
-  looking up at its own apparent wind, finds the let-fly speed when it sails at it).
+  looking up at its own apparent wind, finds the let-fly speed when it sails at it). Let fly holds every sail at
+  its fully eased angle (`sails.md` §5.3), so only a sail whose `sheet_max` lies abaft the beam can reach the
+  wind line there; the shipped sails (at most 74°) never do, and running they take the regular trim value of the
+  fully eased sail instead.
 
-Results at 10 kn close-hauled, let fly: wm7 under 1 kn in 8.3 s (was 14.7 s with the hull alone), wm12 in 15.7 s
-(was 29.7 s): the heavier boat has about half the sail area per tonne and carries its way twice as long. Running
-in 10 kn with the jib, let fly: about 0.7 of the polar.
+Results at 10 kn close-hauled, let fly (the drive gone in the first tick): wm7 under 1 kn in 7.9 s (14.7 s with
+the hull alone), wm12 in 15.3 s (29.7 s): the heavier boat has about half the sail area per tonne and carries its
+way twice as long. Running in 10 kn (150° TWA), let fly costs nothing: the fully eased sheet is the optimum there.
 
 ### Helm balance
 

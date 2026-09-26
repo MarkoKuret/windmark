@@ -157,7 +157,9 @@ state:
    at that speed and helm (`boat.md` §4), whichever applies to the direction of the turn;
 3. full turn to starboard, likewise towards +1;
 4. slow down: after 0.3 s every sail is let fly, heading held, and the speed decays with the boat's deceleration law
-   towards zero: `dv/dt = −(decel_linear·v + decel_const)` (`boat.md` §4, §5.8).
+   `dv/dt = −(decel_linear·v + decel_const)` (`boat.md` §4, §5.8) towards the speed her let-fly sails still drive,
+   `let_fly_drive · v0` (`v0` her speed now, `let_fly_drive` of `boat.md` §9): towards zero where the fully eased
+   sails luff (upwind, reaching), hardly at all running, where the fully eased sails still draw.
 
 `Escape = true` if at least one manoeuvre keeps `PredGap > 0` (no contact) over H. The escape test is how the engine
 decides whether a right-of-way boat gave the other boat **room** to keep clear (rules 15, 16) and whether a boat

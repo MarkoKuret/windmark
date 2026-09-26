@@ -249,8 +249,10 @@ void Sails::trim(const TrimInput& in, bool place) {
       m_s_[main] = clamp((m_s_[f] - out_[f].m_opt) + out_[main].m_opt, 0.0f, sp.sheet_max);
     }
   }
+  // §5.3: let fly runs every sheet out to fully eased at once; §5.4 still holds the sail at the heel limit and on
+  // the wind line, never beyond.
   if (in.let_fly) {
-    for (std::size_t i = 0; i < n; ++i) m_s_[i] = aa;
+    for (std::size_t i = 0; i < n; ++i) m_s_[i] = perf_->sails[i].sheet_max;
   }
 
   for (std::size_t i = 0; i < n; ++i) {
@@ -262,14 +264,14 @@ void Sails::trim(const TrimInput& in, bool place) {
     const float lim =
         sp.sheet_max_by_heel.present ? min(sp.sheet_max, sp.sheet_max_by_heel.table.at(std::fabs(in.phi)))
                                      : sp.sheet_max;
-    // Let-fly releases the sheet altogether: the sail blows out to the wind line even beyond sheet_max (§5.3); the
-    // wind-line clamp below then holds it there.
-    const float m = in.let_fly ? m_s_[i] : clamp(m_s_[i], sp.sheet_min, lim);
+    const float m = clamp(m_s_[i], sp.sheet_min, lim);
     const float k_h = hoist_factor(i);
     o.k_h = k_h;
     float beta_t = (side * m) * k_h;
+    bool gybe_target = false;
     if (!place && sp.type == SailType::spinnaker_asym && s.beta * beta_t < -1e-5f) {
       beta_t = (s.beta >= 0.0f ? 1.0f : -1.0f) * kGybeTarget;
+      gybe_target = true;
     } else if (aa < std::fabs(beta_t)) {
       beta_t = sgn(beta_t) * aa;
     }
@@ -306,7 +308,10 @@ void Sails::trim(const TrimInput& in, bool place) {
     }
 
     // §5.6 trim error, §7 outputs
-    o.trim_error = side * wrap_pi(s.beta - o.beta_opt);
+    // With let fly held the error is the target's: the drive of the fully eased sails applies at once while the
+    // drawn sail swings out at its easing rate.
+    const float b = (in.let_fly && !gybe_target) ? beta_t : s.beta;
+    o.trim_error = side * wrap_pi(b - o.beta_opt);
     const float d = s.beta + in.awa;
     if (!sp.shiver_free && std::fabs(d) >= HALF_PI) {
       o.luff_shiver = 0.0f;

@@ -116,13 +116,14 @@ void Rules::manoeuvre(std::size_t a, int kind, float H, std::vector<Pose>& out) 
   Pose p{in.pos, in.psi};
   float v = in.v, h = in.helm;
   const float target = kind == 1 ? -1.0f : 1.0f;
+  const float v_floor = max(0.0f, in.let_fly_drive * in.v);  // what the let-fly sails still drive (§3.6)
   out[0] = p;
   for (std::size_t k = 1; k < K; ++k) {
     float rate = in.turn_rate;
     if (k > react) {
       if (kind == 3) {
         rate = 0.0f;
-        v = max(0.0f, v - (d.decel_linear * v + d.decel_const) * kSub);
+        if (v > v_floor) v = max(v_floor, v - (d.decel_linear * v + d.decel_const) * kSub);
       } else {
         const float step = d.helm_rate * kSub;
         h = h + clamp(target - h, -step, step);

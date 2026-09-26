@@ -599,3 +599,73 @@ TEST_CASE("boat: calm, current and invalid commands") {
   sim.boat.set_performance_scale(9.0f);
   CHECK(sim.boat.controls().performance_scale == 2.0f);
 }
+
+namespace {
+
+struct LetFlyRun {
+  float v0 = 0.0f, v5 = 0.0f, v10 = 0.0f;
+  float worst_over = -1.0f;  // largest |beta| beyond the sail's fully eased angle (sheet_max, heel limit)
+  float ts1 = 1.0f;          // trim_speed in the first tick of let fly
+};
+
+// Steady at `twa` in 10 kn under `front`, then let fly holding the heading: speed at 0, 5 and 10 s and how far any
+// sail went beyond its fully eased angle.
+LetFlyRun let_fly_run(const wm::PerfData& p, std::int32_t front, float twa) {
+  const wm::ConfigPerf& c = *p.config_for(front);
+  Sim sim(p, 10.0f, 0.0f);
+  sim.place(twa, c.polar.at(kn(10.0f), twa), front);
+  for (int i = 0; i < static_cast<int>(30.0f / DT); ++i) {
+    sim.steer_twa(twa);
+    sim.step();
+  }
+  LetFlyRun r;
+  r.v0 = sim.s().v;
+  sim.boat.set_let_fly(true);
+  for (int i = 1; i <= static_cast<int>(10.0f / DT); ++i) {
+    sim.steer_twa(twa);
+    sim.step();
+    for (std::size_t k = 0; k < p.sails.size(); ++k) {
+      const wm::SailPerf& sp = p.sails[k];
+      const float lim = sp.sheet_max_by_heel.present
+                            ? wm::min(sp.sheet_max, sp.sheet_max_by_heel.table.at(std::fabs(sim.s().phi)))
+                            : sp.sheet_max;
+      r.worst_over = wm::max(r.worst_over, std::fabs(sim.boat.sails().sail(k).beta) - lim);
+    }
+    if (i == 1) r.ts1 = sim.boat.outputs().trim_speed;
+    if (i == static_cast<int>(5.0f / DT)) r.v5 = sim.s().v;
+  }
+  r.v10 = sim.s().v;
+  return r;
+}
+
+}  // namespace
+
+// sails.md §5.3, §8.8: let fly holds every sail at its fully eased angle, never beyond it; the drive is the trim
+// table's there, at once. Upwind the sails luff and the boat coasts down; running, the eased sails still drive.
+TEST_CASE("boat: let fly upwind and downwind") {
+  for (const std::string cls : kClasses) {
+    const wm::PerfData& p = perf(cls);
+    const std::int32_t kite = p.find_sail(cls == "wm7" ? "kite" : "a2");
+    const float up = upwind_twa(*p.config_for(p.start_front_sail), kn(10.0f));
+    struct Case {
+      const char* name;
+      std::int32_t front;
+      float twa;
+    };
+    for (const Case& k : {Case{"upwind jib", p.start_front_sail, up}, Case{"jib 60", p.start_front_sail, deg(60.0f)},
+                          Case{"jib 90", p.start_front_sail, deg(90.0f)}, Case{"jib 120", p.start_front_sail, deg(120.0f)},
+                          Case{"jib 150", p.start_front_sail, deg(150.0f)}, Case{"kite 90", kite, deg(90.0f)},
+                          Case{"kite 120", kite, deg(120.0f)}, Case{"kite 150", kite, deg(150.0f)}}) {
+      const LetFlyRun r = let_fly_run(p, k.front, k.twa);
+      MESSAGE(cls, " ", std::string(k.name), ": let fly from ", to_kn(r.v0), " kn: ", to_kn(r.v5), " kn after 5 s, ",
+              to_kn(r.v10), " kn after 10 s; largest sail angle beyond fully eased ", to_deg(r.worst_over),
+              " deg; trim_speed in the first tick ", r.ts1);
+      CHECK(r.worst_over <= 1e-5f);
+      if (k.twa == up) {
+        CHECK(r.ts1 == 0.0f);  // the drive goes at once, not as the sail swings out
+        CHECK(r.v10 < 0.5f * r.v0);
+      }
+      if (k.twa >= deg(150.0f)) CHECK(r.v10 > 0.8f * r.v0);  // running, the fully eased sails still draw
+    }
+  }
+}

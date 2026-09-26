@@ -52,8 +52,10 @@ void predict_plan(const Motion& m, const OwnPlan& p, std::int32_t samples, Track
       psi = wrap_2pi(psi + m.r * kStep);
     }
     const float twa = wrap_pi(p.twd - psi);
-    const bool no_drive = (p.slow && t > p.delay) || (twa < 0.0f ? -twa : twa) < 30.0f * DEG;
-    if (no_drive && v > 0.0f) v = max(0.0f, v - (p.decel_linear * v + p.decel_const) * kStep);
+    const bool no_go = (twa < 0.0f ? -twa : twa) < 30.0f * DEG;
+    const bool no_drive = (p.slow && t > p.delay) || no_go;
+    const float v_floor = no_go ? 0.0f : p.slow_floor;
+    if (no_drive && v > v_floor) v = max(v_floor, v - (p.decel_linear * v + p.decel_const) * kStep);
     if (!no_drive && v < p.v_target) v = min(p.v_target, v + p.accel * kStep);
     const Vec2 d = dir(psi);
     c = v_add(c, v_scale(v_add(v_scale(d, v), m.cur), kStep));

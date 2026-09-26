@@ -7,7 +7,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-09-26 12:19'
-updated_date: '2026-09-26 12:20'
+updated_date: '2026-09-26 12:54'
 labels:
   - boats
 dependencies: []
@@ -23,7 +23,13 @@ Owner (2026-09-26): update the boats to a hull without the chine (wm7 is section
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 wm7 hull without chine; no visible hard knuckle on either boat
-- [ ] #2 Close-up previews visibly richer; triangle budget and LODs stated
+- [x] #1 wm7 hull without chine; no visible hard knuckle on either boat
+- [x] #2 Close-up previews visibly richer; triangle budget and LODs stated
 - [ ] #3 Owner approves the look
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Round wm7 sections, faired bilge turn and forefoot; detail pass in boatgen (hardware, rig fittings, halyards, posed sheets, livery panels); LOD0/1/2 at 0/30/100 m: wm7 72k/26k/9.5k, wm12 92k/34k/11.6k triangles. Previews in tools/boatgen/previews (new: *_cockpit, *_mastbase, *_bow). data/perf not regenerated (coordinator).
+<!-- SECTION:NOTES:END -->

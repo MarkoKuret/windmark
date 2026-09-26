@@ -26,7 +26,7 @@ Controls (written in tick step 2, `conventions.md` §4.1; they persist until cha
 | `h_cmd` | float | [−1, 1] | commanded helm; +1 = full helm to turn the bow to starboard |
 | `sheet_cmd` | float | [0, 1] | manual sheet: 0 = sheeted hard in, 1 = fully eased (`sails.md` §5.2). Used when `auto_trim` is off |
 | `auto_trim` | bool | | sails trim themselves to the optimum (assist, and always on for AI boats) |
-| `let_fly` | bool | | held: every sail is let out to the wind line (`sails.md` §5.3) |
+| `let_fly` | bool | | held: every sheet is let run to fully eased at once, the wind line holding a sail short of it (`sails.md` §5.3) |
 | sail requests | event | | hoist a front sail, drop the front sail (`sails.md` §4.2) |
 | `performance_scale` | float | (0, 2] | gameplay speed multiplier, 1.0 for players; set by the race layer for AI skill levels (`ai.md`) |
 
@@ -248,12 +248,14 @@ drops.
   over from the next tick.
 - **Flogging sails**: `decel_linear` and `decel_const` are the hull coasting with the sails luffing on their
   sheets (a tack, a luff head to wind). With the sheets free (let fly held, or the manual sheet eased past the
-  optimum) the sails flog on the wind line, and their drag (`flog_drag`, which grows with the square of the
+  optimum) a sail eased toward the wind line flogs, and its drag (`flog_drag`, which grows with the square of the
   apparent wind and is 0 with the apparent wind abaft the beam) brakes the boat in proportion to the drive the
-  trim has lost, `1 − trim_speed`: all of it with let-fly. Over-sheeted sails (`eps < 0`) stall, they do not
+  trim has lost, `1 − trim_speed`: all of it with let-fly forward of the beam (the fully eased sails lie on the
+  wind line), none where the fully eased sails still draw fully. Over-sheeted sails (`eps < 0`) stall, they do not
   flog; the auto-trim crew never lets the sails flog (the headsail crossing in a tack is sheeted across at once).
-  Downwind the flogging sails push instead: `trim_speed` on the wind line holds the let-fly speed there
-  (`sails.md` §6), so a boat that lets fly on a run slows to the speed the windage drives, not to rest.
+  Downwind the fully eased sails still draw: let fly takes `trim_speed` at the fully eased trim (`sails.md` §5.3,
+  §6), so a boat that lets fly on a run slows to the speed the table gives there, not to rest (and where a sail's
+  fully eased angle reaches the wind line abaft the beam, the let-fly share of the windage push holds it).
 - **From rest**: the acceleration table is fitted to the build-up from half the polar to 90 % of it (the speeds a
   boat rebuilds through after a tack or a gybe). From rest the drive meets no hull resistance ahead, so the boat
   starts faster: below half its target speed the rate blends linearly from `accel_rest` at rest (and in sternway

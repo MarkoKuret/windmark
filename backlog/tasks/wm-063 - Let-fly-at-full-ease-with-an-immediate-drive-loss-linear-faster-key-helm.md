@@ -1,9 +1,11 @@
 ---
 id: WM-063
 title: 'Let-fly at full ease with an immediate drive loss; linear, faster key helm'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-09-26 12:19'
+updated_date: '2026-09-26 12:20'
 labels:
   - vpp
 dependencies: []

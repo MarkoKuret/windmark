@@ -1,5 +1,6 @@
 // Sailing the course (ai.md §4, §6, §7.6, §8, §9, §10) and the decision dispatch.
 #include <cmath>
+#include <string_view>
 
 #include "ai/ai_predict.h"
 #include "ai/ai_steps.h"
@@ -41,8 +42,9 @@ float rounding_radius(AC& x, AB& a, const Me& m, std::int32_t mark) {
   for (const PairRecord* p : x.pairs_of[static_cast<std::size_t>(a.i)]) {
     if (p->room_giver == a.i && p->room_mark == mark && p->room_entitled >= 0) ++n_in;
   }
-  // The hull's yaw lag (boat.md §5.9): the boat runs on about v * yaw_time before a turn takes hold.
-  const float lag = max(m.s.v, 0.0f) * m.b.perf().dynamics.yaw_time;
+  // The helm's reaction (boat.md §5.9): the boat runs on about |v| times the rudder's travel and the yaw lag before a
+  // turn takes hold.
+  const float lag = max(m.s.v, 0.0f) * reaction_time(m.b.perf().dynamics);
   return (((rm.radius + 0.5f * m.B) + a.P.c_lvl * m.B) + static_cast<float>(n_in) * (m.B + 1.0f)) + lag;
 }
 
@@ -169,6 +171,9 @@ Vec2 pass_point(const MarkTarget& t, Vec2 d, float margin) {
 // takes her back the way she came and round, the way the winding test counts it.
 bool round_mark(AC& x, AB& a, const Me& m, const MarkTarget& t) {
   a.round_mark = t.mark;
+  a.round_M = t.M;
+  a.round_sigma = t.sigma;
+  a.round_rho = t.rho;
   a.tactic = AiTactic::Rounding;
   a.pend_tack = 0;  // the rounding decides its own tacks
   if (a.man == Man::tack) {
@@ -204,8 +209,7 @@ bool round_mark(AC& x, AB& a, const Me& m, const MarkTarget& t) {
     const bool clears = t.sigma * v_cross(dir(pc), to_m) >= 0.9f * t.rho || v_dot(dir(pc), to_m) < 0.0f;
     // This tack runs at the mark on the wrong side, close enough for the hull to touch it when she turns: tack
     // away now (ai.md §6.1), not when she is on top of it.
-    const bool into = t.sigma * v_cross(dir(pc), to_m) < 0.0f && v_dot(dir(pc), to_m) > 0.0f &&
-                      std::fabs(v_cross(dir(pc), to_m)) < t.rho + 0.5f * m.L && dist < t.rho + 3.0f * m.L;
+    const bool into = into_rounding_mark(a, m, pc);
     if (into && a.man == Man::straight && request_tack(x, a, m, AiTactic::Rounding, true)) {
       a.tactic = AiTactic::Rounding;
       return true;
@@ -308,8 +312,17 @@ bool turn_clear_of_zones(AC& x, const Me& m, std::int32_t next, float dir_, floa
 
 }  // namespace
 
+bool into_rounding_mark(const AB& a, const Me& m, float psi) {
+  const Vec2 to_m = v_sub(a.round_M, m.c);
+  const Vec2 f = dir(psi);
+  const float lat = v_cross(f, to_m);
+  return a.round_sigma * lat < 0.0f && v_dot(f, to_m) > 0.0f && std::fabs(lat) < a.round_rho + 0.5f * m.L &&
+         v_len(to_m) < a.round_rho + 3.0f * m.L;
+}
+
 bool penalty_turns(AC& x, AB& a, const Me& m, Leg leg) {
   const BoatRules& br = m.br;
+  a.dbg.pen_wait = 0;
   a.pen_prepare = false;
   a.pen_block = -1;
   auto stop = [&]() {
@@ -349,7 +362,11 @@ bool penalty_turns(AC& x, AB& a, const Me& m, Leg leg) {
     return true;
   }
   auto why = [&](const char* reason) {  // the turn waits (for speed or clear water); the reason is for debugging
-    (void)reason;
+    static constexpr const char* kWhy[] = {"man", "zone", "slow", "urgent-boat", "low", "slow2", "nextzone", "boat"};
+    a.dbg.pen_wait = 0;
+    for (std::int32_t k = 0; k < 8; ++k) {
+      if (std::string_view(kWhy[k]) == reason) a.dbg.pen_wait = k + 1;
+    }
     a.pen_prepare = true;
     return false;
   };

@@ -46,6 +46,10 @@ void start_gybe(AC& x, AB& a, const Me& m, AiTactic why);
 bool request_tack(AC& x, AB& a, const Me& m, AiTactic why, bool forced);
 bool request_gybe(AC& x, AB& a, const Me& m, AiTactic why, bool forced);
 
+// §6.1: a heading from here runs at the mark being rounded on the wrong side (the circle of the decision's rounding
+// plan): it passes the mark closer than ρ + 0.5·L on the wrong side, within ρ + 3·L.
+bool into_rounding_mark(const AB& a, const Me& m, float psi);
+
 // Beat or run towards R on the laylines (§4.3, §4.4). `mlay` in hull lengths; `triggers` enables the tactical
 // triggers (corridor, shift, pressure, bad air, cover).
 void beat_run(AC& x, AB& a, const Me& m, Vec2 R, bool beat, float mlay, bool triggers);

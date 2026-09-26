@@ -78,6 +78,10 @@ struct AiSkippers::Boat {
   std::int32_t gate_step = -1, gate_buoy = 0;
   bool rounding = false;
   std::int32_t round_mark = -1;  // the mark of the last rounding decision
+  // The rounding circle of this decision (set by the rounding plan before the rules overlay reads it; not memory,
+  // so not in the memory block).
+  Vec2 round_M{0.0f, 0.0f};
+  float round_sigma = 1.0f, round_rho = 0.0f;
 
   // Start (§5)
   ai_detail::StartPhase phase = ai_detail::StartPhase::free;

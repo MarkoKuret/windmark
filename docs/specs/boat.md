@@ -413,13 +413,16 @@ along `accel_rest`, §5.8). Right head to wind with no helm the boat stays in ir
   is at the wind line, and heel through `trim_heel`.
 - **Stall**: sails sheeted past the optimum (`eps < 0`) lose some speed (reference: to 0.7–0.75 at 15–20° over)
   and heel more.
-- **Let-fly** (`sails.md` §5.3) puts every sail on the wind line: with the apparent wind forward of the beam the
-  drive goes to zero (`trim_speed` is 0 there) and the boat coasts down along the deceleration law, braked by its
-  flogging sails (§5.8): close-hauled at 10 kn an S boat is under 1 kn within about 8 s (half its speed in about
-  5 s); a heavy L boat carries its way about twice as long (under 1 kn within about 16 s). Used to kill speed before the start or to avoid a
-  collision. Abaft the beam the windage and the flogging sails still push the boat along at the let-fly speed
-  (reference S running in 10 kn: about 0.7 of the polar with the jib), so letting fly on a run slows the boat
-  without stopping it.
+- **Let-fly** (`sails.md` §5.3) runs every sheet out to fully eased at once, never beyond. Where the apparent
+  wind lies inside the fully eased angle (close-hauled, close reaching) that puts the sails on the wind line: the
+  drive goes to zero in the same tick (`trim_speed` is 0 there) and the boat coasts down along the deceleration
+  law, braked by its flogging sails (§5.8): close-hauled at 10 kn an S boat is under 1 kn within about 8 s (half
+  its speed in about 4 s); a heavy L boat carries its way about twice as long (under 1 kn within about 15 s).
+  Used to kill speed before the start or to avoid a collision. With the apparent wind abaft the fully eased angle
+  the eased sails still draw, by the trim table: on a beam reach part of the drive is left (reference S at 90°
+  TWA in 10 kn: from 6.7 kn to 3.0 kn in 10 s under the jib, 6.5 to 3.6 under the kite), broad reaching and
+  running letting fly hardly slows the boat (S at 120°: 6.3 kn stays 6.3 under the jib, 6.7 to 6.2 under the
+  kite; at 150° no loss: the fully eased sheet is the best trim there already).
 
 ### 7.6 Puffs, lulls and shifts
 A puff raises `tws` and so the target speed and heel; the boat accelerates along the acceleration table and heels
@@ -450,7 +453,8 @@ start needs speed built before the gun.
 | --- | --- |
 | renderer | `pos_x`, `pos_y`, `z`, `psi`, `phi`, `theta`, `h` (rudder), sail outputs (`sails.md` §7), interpolated between the snapshots of two ticks |
 | HUD | `v`, `v_filt`, `sog`, `cog`, `vmg`, `tws`, `twa`, `aws`, `awa`, `twd_from`, `wind_speed_clean`, `target_speed`, `polar_speed`, `trim_error` of each sail, `heel` |
-| AI | the same plus the table lookups for any hypothetical TWA (`polar`, `accel`) and the turn radius for a helm |
+| AI | the same plus the table lookups for any hypothetical TWA (`polar`, `accel`), the turn radius for a helm and `let_fly_drive`: the `trim_speed` the driving sail would give let fly at this tick's wind (`sails.md` §5.3: `eps = min(lim, awa_abs) − m_opt`), 0 where let fly stops the boat, near 1 running |
+| rules | `let_fly_drive` too, for the slow-down escape (`rules.md` §3.6) |
 | wind shadow | `pos`, `psi`, `aws`, `awd_from`, `twa`, sails up (`wind_shadow.md` §3) |
 | rules, collisions | `pos`, `psi`, `v`, hull outline (`collisions.md` §2) |
 
@@ -473,7 +477,9 @@ start needs speed built before the gun.
 5. **Determinism**: two runs with the same inputs give identical checksums every tick; a run split into two
    halves through a snapshot save/load gives the same checksum as an unbroken run.
 6. **Let-fly**: from steady close-hauled at 10 kn, let fly with helm 0: an S boat is under 1 kn within 12 s, an L
-   boat within 20 s.
+   boat within 20 s, and `trim_speed` is 0 from the first tick. From 90°, 120° and 150° TWA under the jib and the
+   kite no sail's angle is ever beyond its fully eased angle; running at 150° the speed after 10 s is above 80 %
+   of the speed before.
 7. **Helm balance**: close-hauled at 12 kn with the upwind config the helm balance is within 1°/s of 0 and the boat
    holds its course with the helm centred; with the helm centred the upwind config drifts at most 2°/s at its VMG
    angle from 6 to 16 kn and at most 3°/s reaching (60° to 120°) at 10 kn; on a spinnaker at 130° in 22 kn it

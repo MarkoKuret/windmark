@@ -270,7 +270,8 @@ Semantics and reference shapes:
   drive when mistrimmed). Let fly holds the driving sail at its fully eased angle (§5.3), so the core looks the
   table up at `eps = min(lim, awa_abs) − m_opt`: where the fully eased angle lies beyond the wind line that is the
   wind line, elsewhere it is the regular value of the fully eased sail, which downwind still draws (reference S
-  running in 10 kn with the jib eased to its 68°: close to its trimmed speed). With the driving sail on the wind
+  running in 10 kn: the optimum of the jib and the kite there is their fully eased angle, so letting fly costs
+  nothing). With the driving sail on the wind
   line (`eps = awa_abs − m_opt`, let fly or eased that far) the flogging sails give no drive: with the apparent wind forward of the beam (`awa_abs` up to 90°) the
   value is **exactly 0** wherever the core looks it up, so a boat that lets fly there coasts to rest. Abaft the
   beam the windage of hull, rig and flogging sails still pushes the boat along, and the value is the **let-fly

@@ -312,8 +312,9 @@ from the next leg's TWA:
 
 Every decision, the planned heading is checked against every course object (marks, committee and mark boats,
 `courses.md` §2) ahead within `max(3·L, 6 s)` of travel: one whose centre is closer to the track than
-`r + 0.5·B + 1 m + 0.15·L` is passed by the tangent to that clearance circle on the side it is on (the other side
-when that side is above close-hauled). The mark being rounded is only checked for a collision course (clearance
+`r + 0.5·B + 1 m + 0.15·L` (a committee or mark boat another `0.5·L`: the bow of a boat still turning onto the
+tangent reaches its long flat side first) is passed by the tangent to that clearance circle on the side it is on
+(the other side when that side is above close-hauled). The mark being rounded is only checked for a collision course (clearance
 `r + 0.5·B + 0.5 m`, the rounding circle keeps the planned one), and it is never passed on the other side: if its
 side is above close-hauled the AI tacks away from it (if safe) or pinches and lets fly (only with way on, faster
 than 0.5 m/s: nearly stopped at the mark it keeps its sails drawing so that it can steer away). Tacks, gybes (§7.3) and
@@ -348,7 +349,8 @@ Candidate evaluation (runs at 10 Hz while triggered, and 1.5 s after the trigger
 ```
 candidates: headings ψ + k·5°, k = −8 … +8 (hold, bear away, luff),
             tack or gybe (if §4.4 manoeuvre checks allow),
-            slow: hold heading, let fly (brake)
+            slow: hold heading, let fly (brake; the speed decays towards let_fly_drive · v, boat.md §9, as in
+                  the rules' escape test, rules.md §3.6: running, letting fly hardly slows the boat)
 for each: move own hull with CTRV at the candidate heading (turn at `|v| / turn_radius_full` to the candidate heading,
           then straight; with the sails drawing the speed grows towards the polar speed at half the table
           acceleration, so a stopped boat sees a way out) for 6 s; move B and every other boat within 5 L on their

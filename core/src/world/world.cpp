@@ -240,6 +240,7 @@ std::uint64_t World::step() {
       r.twd = w.from;
       r.main_beta = beta;
       r.helm = s.h;
+      r.let_fly_drive = b.let_fly_drive();
       r.ai = entries_[i].ai;
     }
     rules_.pending_flags(pending_);

@@ -338,8 +338,9 @@ push: every vertex P = P + g * (c_P + smax(x - c_P) - x), per obstacle in turn, 
 - The ease is visual only (the core's `β` is not changed) and continuous in the trim: sheeting the kite in past
   the point where its leech meets the main leaves it at that point, as a real kite that is pressed against the
   main's lee side and stalls. The push then only has the belly and the head to deal with, a few centimetres.
-- Cost: one section per vertex and obstacle (a row search and one polyline), plus a few dozen for the ease, about
-  10 µs per flying sail on a 26 × 16 grid (native).
+- Cost: per vertex and obstacle a row search and a bounds test, and one polyline only near the obstacle, plus a
+  few dozen for the ease: at most about 20 µs per flying sail on a 26 × 16 grid (native), with the kite sheeted
+  at the main's angle so that most of it is near the main.
 
 ## 8. Hoisting and dropping
 

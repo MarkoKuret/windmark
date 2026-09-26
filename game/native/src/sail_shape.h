@@ -75,8 +75,10 @@ class SailShape : public godot::RefCounted {
     const SailShape* s = nullptr;
     std::vector<float> z;  // mean row heights
     godot::Vector3 f;      // foot normal on the bow-facing side
+    std::vector<float> box;  // per row pair: horizontal bounds (fwd min, max, port min, max)
   };
-  float clear_x(const Section& o, const godot::Vector3& p, godot::Vector3& g) const;
+  // INFINITY when p is more than `reach` from the section's bounds
+  float clear_x(const Section& o, const godot::Vector3& p, float reach, godot::Vector3& g) const;
   float mast_x(const godot::Vector3& p, const godot::Vector3& lee, godot::Vector3& g) const;
   float margin_at(const godot::Vector3& p, const godot::Vector3& hd) const;
   void sections(const godot::Transform3D& s_t, const godot::Vector3& piv, const godot::Vector3& ax, float base);

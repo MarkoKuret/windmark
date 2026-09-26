@@ -417,19 +417,34 @@ func _sections(s_t: Transform3D, piv: Vector3, ax: Vector3, base: float) -> void
 		var sh: SailShapeRef = o
 		var z := PackedFloat32Array()
 		z.resize(sh.rows)
+		var box := PackedFloat32Array()
+		box.resize(4 * sh.rows)
 		for i in sh.rows:
 			var zz := 0.0
+			var bx := [INF, -INF, INF, -INF]
 			for j in sh.cols:
-				zz += sh._mid[i * sh.cols + j].dot(up)
+				var m := sh._mid[i * sh.cols + j]
+				zz += m.dot(up)
+				var x := m.dot(fwd)
+				var y := m.dot(port)
+				bx = [minf(bx[0], x), maxf(bx[1], x), minf(bx[2], y), maxf(bx[3], y)]
 			z[i] = zz / sh.cols
+			for q in 4:
+				box[4 * i + q] = bx[q]
+		for i in sh.rows - 1:  # row i's box covers rows i and i + 1
+			box[4 * i] = minf(box[4 * i], box[4 * i + 4])
+			box[4 * i + 1] = maxf(box[4 * i + 1], box[4 * i + 5])
+			box[4 * i + 2] = minf(box[4 * i + 2], box[4 * i + 6])
+			box[4 * i + 3] = maxf(box[4 * i + 3], box[4 * i + 7])
 		var ch := sh._mid[sh.cols - 1] - sh._mid[0]
 		var f := up.cross(ch - up * ch.dot(up))
 		f = f.normalized() if f.length_squared() > 1e-12 else port
-		_secs.append({"s": sh, "z": z, "f": f if f.dot(bow) >= 0.0 else -f})
+		_secs.append({"s": sh, "z": z, "f": f if f.dot(bow) >= 0.0 else -f, "box": box})
 
 
-## §7.4: clearance of p from an obstacle's section at p's height (horizontal): [x, push direction].
-func _clear_x(o: Dictionary, p: Vector3) -> Array:
+## §7.4: clearance of p from an obstacle's section at p's height (horizontal): [x, push direction]; INF when p
+## is more than `reach` from the section's bounds.
+func _clear_x(o: Dictionary, p: Vector3, reach: float) -> Array:
 	var sh: SailShapeRef = o["s"]
 	var z: PackedFloat32Array = o["z"]
 	var rn := sh.rows
@@ -437,9 +452,13 @@ func _clear_x(o: Dictionary, p: Vector3) -> Array:
 	var pz := p.dot(up)
 	if pz < z[0] - clearance or pz > z[rn - 1]:
 		return [INF, Vector3.ZERO]
-	var r := 0
-	while r < rn - 2 and z[r + 1] <= pz:
-		r += 1
+	var r := clampi(z.bsearch(pz, false) - 1, 0, rn - 2)
+	var box: PackedFloat32Array = o["box"]
+	var px := p.dot(fwd)
+	var py := p.dot(port)
+	if px < box[4 * r] - reach or px > box[4 * r + 1] + reach or py < box[4 * r + 2] - reach \
+			or py > box[4 * r + 3] + reach:
+		return [INF, Vector3.ZERO]
 	var den := z[r + 1] - z[r]
 	var t := clampf((pz - z[r]) / den, 0.0, 1.0) if den > 1e-6 else 0.0
 	var ph := p - up * pz
@@ -513,7 +532,7 @@ func _ease_for(beta: float, s_t: Transform3D, piv: Vector3, ax: Vector3, base: f
 			var pt := (_about(piv, ax, th) * s_t) * (tack + ah * lc.x + lh * lc.y + nh * lc.z)
 			var cp := _margin_at(pt, hd)
 			for o in _secs:
-				var x: float = _clear_x(o, pt)[0] - cp
+				var x: float = _clear_x(o, pt, cp)[0] - cp
 				if x < worst:
 					worst = x
 					var d := pt - piv
@@ -535,7 +554,7 @@ func _push(awa: float, hd: Vector3) -> void:
 		var p := _mid[k]
 		var cp := _margin_at(p, hd)
 		for o in _secs:
-			var xg := _clear_x(o, p)
+			var xg := _clear_x(o, p, cp + b)
 			var x: float = xg[0]
 			if x < cp + b:
 				p += xg[1] * (cp + _smax(x - cp, b) - x)

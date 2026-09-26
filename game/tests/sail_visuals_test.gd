@@ -989,6 +989,8 @@ func _perf() -> void:
 		var total := 0.0
 		for sp in bv.sail_parts:
 			var reps := 2000 if not reference else 50
+			if BoatView.is_flying(sp.type):  # §7.4 with the main and the jib as obstacles
+				sp.shape.set_obstacles(bv._obstacles(sp))
 			var t0 := Time.get_ticks_usec()
 			for r in reps:
 				sp.shape.advance(1.0 / 60.0, 5.0, 0.6, false)
@@ -1001,4 +1003,6 @@ func _perf() -> void:
 			"reference (GDScript)" if reference else "native", line, total, total * 40.0 / 1000.0])
 		if not reference:
 			t.ok(total < 200.0, "native: the three sails of a wm7 cost %.1f us per frame (< 200)" % total)
+			var kp: BoatView.SailPart = bv.sail_parts[bv.sail_parts.size() - 1]
+			print("  native kite ease in the cost pose: %.1f deg" % rad_to_deg(kp.shape.get_ease()))
 		bv.free()

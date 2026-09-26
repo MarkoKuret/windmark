@@ -411,10 +411,32 @@ void SailShape::sections(const Transform3D& s_t, const Vector3& piv, const Vecto
     Section& sc = secs_[o];
     sc.s = s;
     sc.z.assign(s->rows_, 0.0f);
+    sc.box.assign(4 * s->rows_, 0.0f);
     for (int i = 0; i < s->rows_; ++i) {
-      float z = 0.0f;
-      for (int j = 0; j < s->cols_; ++j) z += s->mid_[i * s->cols_ + j].dot(up_);
+      float z = 0.0f, x0 = INFINITY, x1 = -INFINITY, y0 = INFINITY, y1 = -INFINITY;
+      for (int j = 0; j < s->cols_; ++j) {
+        const Vector3& m = s->mid_[i * s->cols_ + j];
+        z += m.dot(up_);
+        const float x = m.dot(fwd_), y = m.dot(port_);
+        x0 = std::min(x0, x);
+        x1 = std::max(x1, x);
+        y0 = std::min(y0, y);
+        y1 = std::max(y1, y);
+      }
       sc.z[i] = z / static_cast<float>(s->cols_);
+      float* bx = sc.box.data() + 4 * i;
+      bx[0] = x0;
+      bx[1] = x1;
+      bx[2] = y0;
+      bx[3] = y1;
+    }
+    for (int i = 0; i + 1 < s->rows_; ++i) {  // row i's box covers rows i and i + 1
+      float* bx = sc.box.data() + 4 * i;
+      const float* nx = bx + 4;
+      bx[0] = std::min(bx[0], nx[0]);
+      bx[1] = std::max(bx[1], nx[1]);
+      bx[2] = std::min(bx[2], nx[2]);
+      bx[3] = std::max(bx[3], nx[3]);
     }
     const Vector3 ch = s->mid_[s->cols_ - 1] - s->mid_[0];
     Vector3 f = up_.cross(ch - up_ * ch.dot(up_));
@@ -424,13 +446,16 @@ void SailShape::sections(const Transform3D& s_t, const Vector3& piv, const Vecto
 }
 
 // §7.4: clearance of p from an obstacle's section at p's height (horizontal), and the push direction g.
-float SailShape::clear_x(const Section& o, const Vector3& p, Vector3& g) const {
+float SailShape::clear_x(const Section& o, const Vector3& p, float reach, Vector3& g) const {
   const SailShape& s = *o.s;
   const int r_n = s.rows_, c_n = s.cols_;
   const float z = p.dot(up_);
   if (z < o.z[0] - clearance_ || z > o.z[r_n - 1]) return INFINITY;
-  int r = 0;
-  while (r < r_n - 2 && o.z[r + 1] <= z) ++r;
+  const int r = std::max(0, std::min(r_n - 2, static_cast<int>(std::upper_bound(o.z.begin(), o.z.end(), z) -
+                                                                 o.z.begin()) - 1));
+  const float* bx = o.box.data() + 4 * r;
+  const float px = p.dot(fwd_), py = p.dot(port_);
+  if (px < bx[0] - reach || px > bx[1] + reach || py < bx[2] - reach || py > bx[3] + reach) return INFINITY;
   const float den = o.z[r + 1] - o.z[r];
   const float t = den > 1e-6f ? clampf((z - o.z[r]) / den, 0.0f, 1.0f) : 0.0f;
   const Vector3 ph = p - up_ * z;
@@ -505,7 +530,7 @@ float SailShape::ease(float beta, const Transform3D& s_t, const Vector3& piv, co
       const float cp = margin_at(pt, hd);
       for (const Section& o : secs_) {
         Vector3 g;
-        const float x = clear_x(o, pt, g) - cp;
+        const float x = clear_x(o, pt, cp, g) - cp;
         if (x < worst) {
           worst = x;
           const Vector3 d = pt - piv;
@@ -530,7 +555,7 @@ void SailShape::push(float awa, const Vector3& hd) {
     const float cp = margin_at(p, hd);
     for (const Section& o : secs_) {
       Vector3 g;
-      const float x = clear_x(o, p, g);
+      const float x = clear_x(o, p, cp + b, g);
       if (x < cp + b) p += g * (cp + smax(x - cp) - x);
     }
     if (has_mast_head_) {

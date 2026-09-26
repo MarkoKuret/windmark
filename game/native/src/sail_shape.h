@@ -5,7 +5,9 @@
 // the same calls (tests compare the two); keep them in step.
 #pragma once
 
+#include <godot_cpp/classes/ref.hpp>
 #include <godot_cpp/classes/ref_counted.hpp>
+#include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/basis.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
@@ -28,6 +30,9 @@ class SailShape : public godot::RefCounted {
   bool configure(const godot::PackedVector3Array& rest_mid, int64_t rows, int64_t cols,
                  const godot::Dictionary& params);
   void advance(double dt, double aws, double awa, bool backed);
+  // §7.4: the other sails this (flying) sail keeps clear of, as last placed; set before each update
+  void set_obstacles(const godot::Array& obstacles);
+  double get_ease() const { return ease_; }
   void update(int64_t phase, double progress, double beta, double gamma, double luff_shiver, double awa,
               double aws);
 
@@ -65,14 +70,34 @@ class SailShape : public godot::RefCounted {
   godot::Vector3 hoist(int k, float c, const godot::Vector3& f) const;
   godot::Vector3 drop(int k, float c, const godot::Vector3& f) const;
   void layers(const godot::Vector3& np);
+  // §7.4 clearance
+  struct Section {
+    const SailShape* s = nullptr;
+    std::vector<float> z;  // mean row heights
+    godot::Vector3 f;      // foot normal on the bow-facing side
+    std::vector<float> box;  // per row pair: horizontal bounds (fwd min, max, port min, max)
+  };
+  // INFINITY when p is more than `reach` from the section's bounds
+  float clear_x(const Section& o, const godot::Vector3& p, float reach, godot::Vector3& g) const;
+  float mast_x(const godot::Vector3& p, const godot::Vector3& lee, godot::Vector3& g) const;
+  float margin_at(const godot::Vector3& p, const godot::Vector3& hd) const;
+  void sections(const godot::Transform3D& s_t, const godot::Vector3& piv, const godot::Vector3& ax, float base);
+  float ease(float beta, const godot::Transform3D& s_t, const godot::Vector3& piv, const godot::Vector3& ax,
+             float base, const godot::Vector3& hd) const;
+  void push(float awa, const godot::Vector3& hd);
   void encode();
 
   int rows_ = 0, cols_ = 0, n_ = 0;
   int kind_ = MAIN, mode_ = BOOM;
   bool furling_ = false;
   float fill_gain_ = 0.6f, fill_curve_ = 4.0f, flutter_amp_ = 0.15f, flutter_rate_ = 0.6f;
-  float flutter_rate_max_ = 10.0f, twist_top_ = 0.0f, depth_ = 0.3f, tack_line_max_ = 0.0f;
+  float flutter_rate_max_ = 10.0f, twist_top_ = 0.0f, camber_ = 0.26f, cam_cap_ = 0.0f, tack_line_max_ = 0.0f;
   float furl_radius_ = 0.05f;
+  float clearance_ = 0.0f, ease_ = 0.0f;
+  bool has_mast_head_ = false;
+  godot::Vector3 mast_head_;
+  std::vector<godot::Ref<SailShape>> obs_;
+  std::vector<Section> secs_;
   godot::Vector3 fwd_{0, 0, 1}, port_{1, 0, 0}, up_{0, 1, 0};
   godot::Vector3 boom_pivot_, boom_axis_{0, 1, 0}, mast_step_, mast_axis_{0, 1, 0};
 
@@ -81,6 +106,7 @@ class SailShape : public godot::RefCounted {
 
   std::vector<float> a_, l_, u_, h_, uc_;  // per vertex
   std::vector<float> c_, amid_, hrow_;     // per row
+  std::vector<float> drow_, srow_;         // per row, per update: camber over chord and chord shortening
 
   float phi_ = 0.0f, s_b_ = 1.0f, tl_ = 0.0f;
   bool tl_set_ = false;

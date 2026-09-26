@@ -14,7 +14,8 @@ extends RefCounted
 ##   attach_mesh(rid) / write_mesh()           the grid-order mesh (sail_visuals.md §3.1, §11) and its update
 ##
 ## params: kind (Kind), mode (Mode), furling, fill_gain, fill_curve, flutter_amp, flutter_rate, flutter_rate_max,
-## twist_top, depth, tack_line_max, furl_radius, boom_pivot, boom_axis, mast_step, mast_axis, fwd, port, up, phi.
+## twist_top, camber, tack_line_max, furl_radius, boom_pivot, boom_axis, mast_step, mast_axis, fwd, port, up, phi,
+## clearance, mast_head (§7.4; set_obstacles(sails) before each update of a flying sail).
 
 enum Kind { MAIN, HEADSAIL, ASYM, SYM }
 ## BOOM: the main about the boom axis; LUFF: jib, genoa, code zero about the luff; SPRIT: asymmetric on a fixed
@@ -38,9 +39,15 @@ var flutter_amp := 0.15
 var flutter_rate := 0.6
 var flutter_rate_max := 10.0
 var twist_top := 0.0
-var depth := 0.3
+var camber := 0.26
+## the code zero cap of §6.2 (a headsail with a `camber` key), 0 = none
+var cam_cap := 0.0
 var tack_line_max := 0.0
 var furl_radius := 0.05
+## §7.4 margin off the other sails and the mast, m (0: no clearance)
+var clearance := 0.0
+var has_mast_head := false
+var mast_head := Vector3.UP
 var fwd := Vector3(0, 0, 1)
 var port := Vector3(1, 0, 0)
 var up := Vector3(0, 1, 0)
@@ -71,12 +78,19 @@ var _uc := PackedFloat32Array()
 var _c := PackedFloat32Array()
 var _amid := PackedFloat32Array()
 var _hrow := PackedFloat32Array()
+## per row, per update: camber over chord and chord shortening (§6.3)
+var _drow := PackedFloat32Array()
+var _srow := PackedFloat32Array()
 
 ## drivers kept between frames
 var phi := 0.0
 var s_b := 1.0
 var tl := 0.0
 var _tl_set := false
+## §7.4: the obstacles (SailShapeRef), their sections this update, and the ease of the last update
+var _obs: Array = []
+var _secs: Array = []
+var _ease := 0.0
 
 ## results of the last update
 var _loc := PackedVector3Array()
@@ -106,7 +120,9 @@ func configure(rest_mid: PackedVector3Array, r: int, c: int, p: Dictionary) -> b
 	flutter_rate = float(p.get("flutter_rate", flutter_rate))
 	flutter_rate_max = float(p.get("flutter_rate_max", flutter_rate_max))
 	twist_top = float(p.get("twist_top", twist_top))
-	depth = float(p.get("depth", depth))
+	# §4 camber: flying sails always; a headsail only with the key. `depth` is ignored.
+	camber = float(p.get("camber", 0.26))
+	cam_cap = camber if kind == Kind.HEADSAIL and p.has("camber") else 0.0
 	tack_line_max = float(p.get("tack_line_max", tack_line_max))
 	fwd = p.get("fwd", fwd)
 	port = p.get("port", port)
@@ -116,6 +132,11 @@ func configure(rest_mid: PackedVector3Array, r: int, c: int, p: Dictionary) -> b
 	mast_step = p.get("mast_step", mast_step)
 	mast_axis = (p.get("mast_axis", up) as Vector3).normalized()
 	phi = float(p.get("phi", 0.0))
+	clearance = float(p.get("clearance", 0.0))
+	has_mast_head = p.has("mast_head")
+	mast_head = p.get("mast_head", mast_step + mast_axis)
+	_obs = []
+	_ease = 0.0
 	tack = rest_mid[0]
 	head = rest_mid[(rows - 1) * cols]
 	lh = (head - tack).normalized()
@@ -145,6 +166,10 @@ func configure(rest_mid: PackedVector3Array, r: int, c: int, p: Dictionary) -> b
 	_c.resize(rows)
 	_amid.resize(rows)
 	_hrow.resize(rows)
+	_drow.resize(rows)
+	_drow.fill(0.0)
+	_srow.resize(rows)
+	_srow.fill(1.0)
 	for i in rows:
 		for j in cols:
 			var k := i * cols + j
@@ -297,6 +322,9 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 	elif kind == Kind.HEADSAIL:
 		var b := fill(sin(beta), fill_gain, fill_curve) * s_b
 		d_cam = _sgn(b) * 4.0 * sa * b * b
+		if cam_cap > 0.0:
+			var dm := cam_cap * sa / 0.2362
+			d_cam = dm * tanh(d_cam / dm)
 	else:
 		if kind == Kind.SYM:
 			f_fly = absf(fill(sin(beta), fill_gain, fill_curve))
@@ -304,7 +332,12 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 			f_fly = fill_gain * clampf(aws / KNOT, 3.0, 6.0) / 6.0
 		var uw := fwd * cos(awa) - port * sin(awa)
 		wv = Vector3(uw.dot(ap) * 0.5 / fill_curve, uw.dot(lp) * 0.5, uw.dot(np))
-		wv = wv.normalized() * f_fly if wv.length_squared() > 1e-12 else Vector3(0, 0, f_fly)
+		wv = wv.normalized() if wv.length_squared() > 1e-12 else Vector3(0, 0, 1)
+		var fc := camber * minf(f_fly, 1.15)
+		for i in rows:
+			var hh := 2.0 * _hrow[i] - 1.0
+			_drow[i] = fc * (1.0 - 0.45 * hh * hh)
+			_srow[i] = 1.0 / (1.0 + 8.0 / 3.0 * _drow[i] * _drow[i])
 	# §8.1 which shape
 	var up_shape := phase == 3 or phase == 4 or kind == Kind.MAIN
 	var p := 1.0
@@ -338,15 +371,207 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 			else:
 				loc = _hoist(k, p, fly)
 		_loc[k] = loc
+	# §7.4 the ease of a flying sail off the other sails (the head lies on the luff axis)
+	var hd := s_t * head
+	var clearing := clearance > 0.0 and (not _obs.is_empty() or has_mast_head)
+	_ease = 0.0
+	if clearing and not _obs.is_empty():
+		_sections(s_t, piv, ax, base)
+		_ease = _ease_for(beta, s_t, piv, ax, base, hd)
+	var es := _sgn(beta) * _ease
 	# §7 placement, row by row with the twist toward leeward
 	for i in rows:
-		var th := base + tl * twist_top * pow(_hrow[i], 1.5)
+		var th := base + tl * twist_top * pow(_hrow[i], 1.5) + es
 		var xr := _about(piv, ax, th) * s_t
 		for j in cols:
 			var k := i * cols + j
 			var lc := _loc[k]
 			_mid[k] = xr * (tack + ah * lc.x + lh * lc.y + nh * lc.z)
+	if clearing:
+		_push(awa, hd)
 	_layers(np)
+
+
+## §7.4: the other sails this (flying) sail keeps clear of, as last placed; set before each update.
+func set_obstacles(obstacles: Array) -> void:
+	_obs = []
+	for o in obstacles:
+		if o is SailShapeRef and o != self and o.n > 0:
+			_obs.append(o)
+
+
+func get_ease() -> float:
+	return _ease
+
+
+## §7.4: mean row heights and the bow-facing foot normal of each obstacle, the side from this sail's clew before
+## the ease.
+func _sections(s_t: Transform3D, piv: Vector3, ax: Vector3, base: float) -> void:
+	var lc := _loc[cols - 1]
+	var xr := _about(piv, ax, base + tl * twist_top * pow(_hrow[0], 1.5)) * s_t
+	var cl := xr * (tack + ah * lc.x + lh * lc.y + nh * lc.z)
+	var sk := _sgn((cl - mast_step).dot(port))
+	var bow := fwd + port * (0.3 * sk)
+	_secs = []
+	for o in _obs:
+		var sh: SailShapeRef = o
+		var z := PackedFloat32Array()
+		z.resize(sh.rows)
+		var box := PackedFloat32Array()
+		box.resize(4 * sh.rows)
+		for i in sh.rows:
+			var zz := 0.0
+			var bx := [INF, -INF, INF, -INF]
+			for j in sh.cols:
+				var m := sh._mid[i * sh.cols + j]
+				zz += m.dot(up)
+				var x := m.dot(fwd)
+				var y := m.dot(port)
+				bx = [minf(bx[0], x), maxf(bx[1], x), minf(bx[2], y), maxf(bx[3], y)]
+			z[i] = zz / sh.cols
+			for q in 4:
+				box[4 * i + q] = bx[q]
+		for i in sh.rows - 1:  # row i's box covers rows i and i + 1
+			box[4 * i] = minf(box[4 * i], box[4 * i + 4])
+			box[4 * i + 1] = maxf(box[4 * i + 1], box[4 * i + 5])
+			box[4 * i + 2] = minf(box[4 * i + 2], box[4 * i + 6])
+			box[4 * i + 3] = maxf(box[4 * i + 3], box[4 * i + 7])
+		var ch := sh._mid[sh.cols - 1] - sh._mid[0]
+		var f := up.cross(ch - up * ch.dot(up))
+		f = f.normalized() if f.length_squared() > 1e-12 else port
+		_secs.append({"s": sh, "z": z, "f": f if f.dot(bow) >= 0.0 else -f, "box": box})
+
+
+## §7.4: clearance of p from an obstacle's section at p's height (horizontal): [x, push direction]; INF when p
+## is more than `reach` from the section's bounds.
+func _clear_x(o: Dictionary, p: Vector3, reach: float) -> Array:
+	var sh: SailShapeRef = o["s"]
+	var z: PackedFloat32Array = o["z"]
+	var rn := sh.rows
+	var cn := sh.cols
+	var pz := p.dot(up)
+	if pz < z[0] - clearance or pz > z[rn - 1]:
+		return [INF, Vector3.ZERO]
+	var r := clampi(z.bsearch(pz, false) - 1, 0, rn - 2)
+	var box: PackedFloat32Array = o["box"]
+	var px := p.dot(fwd)
+	var py := p.dot(port)
+	if px < box[4 * r] - reach or px > box[4 * r + 1] + reach or py < box[4 * r + 2] - reach \
+			or py > box[4 * r + 3] + reach:
+		return [INF, Vector3.ZERO]
+	var den := z[r + 1] - z[r]
+	var t := clampf((pz - z[r]) / den, 0.0, 1.0) if den > 1e-6 else 0.0
+	var ph := p - up * pz
+	var best := INF
+	var bs := 0.0
+	var bj := 0
+	var bq := Vector3.ZERO
+	var bd := Vector3.ZERO
+	var q0 := _sec_pt(sh, r, 0, t)
+	for j in cn - 1:
+		var q1 := _sec_pt(sh, r, j + 1, t)
+		var d := q1 - q0
+		var l2 := d.length_squared()
+		var sp := clampf((ph - q0).dot(d) / l2, 0.0, 1.0) if l2 > 1e-12 else 0.0
+		var q := q0 + d * sp
+		var d2 := (ph - q).length_squared()
+		if d2 < best:
+			best = d2
+			bj = j
+			bs = sp
+			bq = q
+			bd = d
+		q0 = q1
+	if (bj == 0 and bs <= 0.0) or (bj == cn - 2 and bs >= 1.0) or bd.length_squared() < 1e-12:
+		var v := ph - bq
+		var ln := v.length()
+		return [ln, v / ln if ln > 1e-6 else o["f"]]
+	var g := up.cross(bd).normalized()
+	if g.dot(o["f"]) < 0.0:
+		g = -g
+	return [(ph - bq).dot(g), g]
+
+
+func _sec_pt(sh: SailShapeRef, r: int, j: int, t: float) -> Vector3:
+	var a := sh._mid[r * sh.cols + j]
+	var q := a + (sh._mid[(r + 1) * sh.cols + j] - a) * t
+	return q - up * q.dot(up)
+
+
+func _mast_x(p: Vector3, lee: Vector3) -> Array:
+	var d := p - mast_step
+	var axv := mast_head - mast_step
+	var ln := axv.length()
+	if ln < 1e-6:
+		return [INF, Vector3.ZERO]
+	var au := axv / ln
+	var tz := d.dot(au)
+	if tz < 0.0 or tz > ln:
+		return [INF, Vector3.ZERO]
+	var rad := d - au * tz
+	var x := rad.length()
+	return [x, rad / x if x > 1e-6 else lee]
+
+
+func _margin_at(p: Vector3, hd: Vector3) -> float:
+	var x := clampf(p.distance_to(hd) / (5.0 * clearance), 0.0, 1.0)
+	return clearance * x * x * (3.0 - 2.0 * x)
+
+
+## §7.4 the ease: the extra turn about the luff that brings the leech samples clear of the obstacles.
+func _ease_for(beta: float, s_t: Transform3D, piv: Vector3, ax: Vector3, base: float, hd: Vector3) -> float:
+	var delta := 0.0
+	var es := _sgn(beta)
+	for it in 4:
+		var worst := INF
+		var rr := 1.0
+		var i := 0
+		while true:  # rows 0, 3, 6, ... and the one below the head
+			var lc := _loc[i * cols + cols - 1]
+			var th := base + tl * twist_top * pow(_hrow[i], 1.5) + es * delta
+			var pt := (_about(piv, ax, th) * s_t) * (tack + ah * lc.x + lh * lc.y + nh * lc.z)
+			var cp := _margin_at(pt, hd)
+			for o in _secs:
+				var x: float = _clear_x(o, pt, cp)[0] - cp
+				if x < worst:
+					worst = x
+					var d := pt - piv
+					rr = (d - ax * d.dot(ax)).length()
+			if i == rows - 2:
+				break
+			i = mini(i + 3, rows - 2)
+		if worst >= 0.0:
+			break
+		delta = minf(delta + (-worst) / maxf(rr, 0.5), 1.0)
+	return delta
+
+
+## §7.4 the push: every vertex off each obstacle in turn, then off the mast.
+func _push(awa: float, hd: Vector3) -> void:
+	var b := clearance
+	var lee := port * _sgn(awa)
+	for k in n:
+		var p := _mid[k]
+		var cp := _margin_at(p, hd)
+		for o in _secs:
+			var xg := _clear_x(o, p, cp + b)
+			var x: float = xg[0]
+			if x < cp + b:
+				p += xg[1] * (cp + _smax(x - cp, b) - x)
+		if has_mast_head:
+			var xg := _mast_x(p, lee)
+			var x: float = xg[0]
+			if x < cp + b:
+				p += xg[1] * (cp + _smax(x - cp, b) - x)
+		_mid[k] = p
+
+
+static func _smax(x: float, b: float) -> float:
+	if x >= b:
+		return x
+	if x <= -b:
+		return 0.0
+	return (x + b) * (x + b) / (4.0 * b)
 
 
 func _main(k: int, d_cam: float, amp: float, shiver: float) -> Vector3:
@@ -382,15 +607,17 @@ func _furl(k: int, p: float, d_cam: float, amp: float, shiver: float) -> Vector3
 ## §6.3, §6.4 the flying shape
 func _fly(k: int, i: int, wv: Vector3, shiver: float) -> Vector3:
 	var uc := _uc[k]
-	var e := depth * _c[i] * 4.0 * uc * (1.0 - uc)
+	var s := _srow[i]
+	var a0 := _a[i * cols]
+	var e := _drow[i] * s * _c[i] * 4.0 * uc * (1.0 - uc)
 	var i2 := 0.33 * flutter_amp * shiver
 	var q := phi - 7.0 * uc
 	var m := Vector3(wv.x + 0.1 * i2 * sin(q), wv.y, wv.z + i2 * cos(q))
-	var r := Vector3(_a[k], _l[k], 0.0) - m * e
+	var r := Vector3(a0 + (_a[k] - a0) * s, _l[k], 0.0) - m * e
 	if kind == Kind.SYM:
 		var h := _h[k]
 		var g := maxf(0.0, shiver - uc) * (1.0 - (2.0 * h - 1.0) * (2.0 * h - 1.0))
-		r.x += (_amid[i] - r.x) * 0.5 * g
+		r.x += (a0 + (_amid[i] - a0) * s - r.x) * 0.5 * g
 		r.z += g * flutter_amp * 0.1 * sa * sin(phi - _a[k])
 	return r
 

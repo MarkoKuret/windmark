@@ -109,7 +109,7 @@ every size of boat.
 | `flutter_rate` `r_f` | rad/s per m/s | size rule | size rule | size rule | size rule | size rule | flutter phase speed per m/s of `aws` |
 | `flutter_rate_max` `w_max` | rad/s | size rule | … | … | … | … | cap of the phase speed |
 | `twist_top` | rad | 0.070 (4°) | 0.105 (6°) | 0.140 (8°) | 0 | 0 | extra rotation of the head row to leeward (§7.1) |
-| `depth` `k_d` | – | – | – | – | 0.30 | 0.35 | belly depth as a fraction of the row chord (flying sails) |
+| `camber` `k_c` | – | – | – | 0.12 | 0.26 | 0.26 | largest camber over chord: flying sails at mid height when full (§6.3), the cap of the code zero (§6.2) |
 | `tack_line_max` | – | – | – | – | 0.04 | – | largest tack swing on a fixed sprit, fraction of `Sl` (§7.3) |
 | `furl_radius` | m | – | size rule | size rule | – | – | radius of a furled sail's roll (§8.3) |
 
@@ -118,7 +118,10 @@ Size rules (smaller sails flutter faster):
 r_f   = 0.6 + 2.4 * clamp((12 - loa) / 5, 0, 1)        // 3.0 at 7 m LOA and below, 0.6 at 12 m and above
 w_max = 9.0 + clamp((loa - 7) / 5, 0, 1)               // 9 rad/s small, 10 rad/s large
 furl_radius = 0.02 + 0.006 * Sa
+clearance   = 0.042 * loa                          // m, flying sails off the other sails and the mast (§7.4): 0.30 on wm7
 ```
+The `camber` key replaces an earlier `depth` (0.30, 0.35 of the flat row chord, applied without shortening the
+chord), which drew the kites about 40 % too deep and too wide; a `depth` key in a look block is ignored.
 Fixed constants of the shapes: `c_hook = 0.0369260386` (headsail leech hook), foot fade rate 8 (§6.1), flutter
 spatial frequency 1 rad/m (§6.1, §6.2), flake frequency 12 and flake amplitude 0.02 (§8.2).
 
@@ -190,21 +193,40 @@ a' = a ; l' = l
   so the leech hooks slightly toward the centreline as a sheeted headsail does.
 - The flutter grows from the luff aft (no height factor): a headsail luffs along its whole luff at once.
 - Backed (`s_b = −1`): `D` changes sign, the belly lies on the other side and the clew is pressed out.
+- **Code zero** (a headsail with a `camber` key): a flat reaching sail, so its camber scale saturates,
+  ```
+  D_max = k_c * Sa / 0.2362
+  D     = D_max * tanh(D / D_max)
+  ```
+  The belly against the luff–clew line of a row reaching `u = U` is at most `0.2362·|D|·U³/Sa` of its chord
+  (largest on the foot), so the code zero never passes `k_c` (12 %) and sits at 7.5 to 11 % across its normal trim
+  (`β` 25° to 60°; 10 % at 40°). Jibs and genoas have no `camber` key and no cap.
 
 ### 6.3 Asymmetric spinnaker
-The flat grid carries no depth, so the flying shape is built from a depth field extruded **down the apparent wind**,
-which keeps the belly to leeward on either gybe and during a gybe round the bow.
+The flat grid carries no depth, so the flying shape is built from a camber field extruded **down the apparent
+wind**, which keeps the belly to leeward on either gybe and during a gybe round the bow. The cloth does not
+stretch: as a row takes its camber its chord shortens so that the arc keeps the flat length.
 ```
-e[i][j] = k_d * C[i] * 4 * uc * (1 - uc)                  // m, zero at the luff and leech of each row
-U  = (cos(awa), -sin(awa), 0)                              // unit vector toward the wind, boat frame
+p_i = 1 - 0.45 * (2 * h_i - 1)^2                            // h_i: h of the row's luff vertex; 1 at mid height,
+                                                             // 0.55 at the foot and the head
+d_i = k_c * min(F, 1.15) * p_i                              // camber over chord of row i
+s_i = 1 / (1 + 8/3 * d_i^2)                                 // chord shortening of a parabolic arc of that camber
+a_s = a0_i + (a - a0_i) * s_i                               // a0_i: a of the row's luff vertex
+e   = d_i * s_i * C_i * 4 * uc * (1 - uc)                   // m, zero at the luff and leech of each row
+U   = (cos(awa), -sin(awa), 0)                              // unit vector toward the wind, boat frame
 (Ap, Lp, Np) = the sail axes after the placement of §7.3 (no twist)
-w  = (dot(U, Ap) * 0.5 / K,  dot(U, Lp) * 0.5,  dot(U, Np))          // (a, l, n) components
-w  = normalize(w) * F
-I2 = 0.33 * flutter_amp * I
-q  = phi - 7 * uc
-m  = (w.a + 0.1 * I2 * sin(q),  w.l,  w.n + I2 * cos(q))
-(a', l', n') = (a, l, 0) - e[i][j] * m
+w   = normalize(dot(U, Ap) * 0.5 / K,  dot(U, Lp) * 0.5,  dot(U, Np))     // (a, l, n) components, unit
+I2  = 0.33 * flutter_amp * I
+q   = phi - 7 * uc
+m   = (w.a + 0.1 * I2 * sin(q),  w.l,  w.n + I2 * cos(q))
+(a', l', n') = (a_s, l, 0) - e * m
 ```
+- Camber over chord: `d_i·sqrt(1 − w.a²)` (the part of `w` along the chord shifts the draft, it adds no depth).
+  With `k_c = 0.26` and the sail full (`F = 1`): 23 to 26 % at mid height, 12 to 14 % at the foot and the head,
+  the range of a real reaching and running asymmetric. In light air (`F = 0.5`) it sags to half.
+- The shortening makes a full row 13 % (mid height) to 5 % (foot) narrower than its flat chord; the clew comes
+  in toward the luff with it, so the set kite shows about the projected size of a real one instead of the flat
+  planform plus its depth.
 - `F` inflates the sail with the apparent wind; the `0.5` weights keep the belly mostly across the sail (`n`) and
   only a little up the luff and aft along the chord; `K` flattens it further fore and aft.
 - Luffing makes the belly breathe: the flutter modulates the extrusion, strongest where the depth is (mid chord),
@@ -212,11 +234,12 @@ m  = (w.a + 0.1 * I2 * sin(q),  w.l,  w.n + I2 * cos(q))
 
 ### 6.4 Symmetric spinnaker
 As §6.3 with `F` from the sheet angle (§5.1: strapped in it goes flat, eased it fills slightly beyond the nominal
-depth), plus a **luff collapse** along the windward edge (column 0, the pole side) while it luffs:
+camber, to 29 % at mid height with the defaults), plus a **luff collapse** along the windward edge (column 0, the
+pole side) while it luffs:
 ```
 (a', l', n') from §6.3 with F = fabs(fill(sin(beta), G, K))
 g  = max(0, I - uc) * (1 - (2*h - 1)^2)                    // band of width I from the luff, zero at head and foot
-a' = a' + (amid[i] - a') * 0.5 * g                          // the luff curls in toward the middle of the sail
+a' = a' + (amid_s[i] - a') * 0.5 * g                        // the luff curls in toward the (shortened) mid chord
 n' = n' + g * flutter_amp * 0.1 * Sa * sin(phi - a)
 ```
 
@@ -264,6 +287,60 @@ at `β`:
 Then each vertex `P` (from §3.2) is placed as `P'' = R(Lh', T', β − γ_e) · (S·P − T') + T'` with `T' = S·T`,
 `Lh' = S·Lh`. `wrap_pi` of `β` at ±π (an asymmetric spinnaker gybing round the bow) is the same rotation, so the
 sail moves continuously through the gybe.
+
+**Ease to leeward.** The drawing adds no rotation of its own: the chord of a flying sail lies at the core's sheet
+angle `β` (`sails.md` §5.1, optimum 12–30° at the lowest AWA rising to 85–90° dead downwind), so it sits
+`|awa| − |β|` off the apparent wind, about 30–45° reaching and 60–90° running, eased further when the sheet is
+eased. The belly of §6.3 then lies down the wind from that chord, to leeward of the main and outside the jib; §7.4
+keeps it clear where a trim or a gust would still bring it through them.
+
+### 7.4 Clearance of the flying sails
+A flying sail (spinnaker, code zero) never passes through the main, a headsail or the mast. The core often
+sheets the kite well inside the main (wm7 at 80° AWA: kite 18°, main 53°, so the aft fifth of the kite lies inside
+the main over its whole height). Two steps keep it out, and nothing is hidden or clipped: the sail is first
+**eased** as a whole just far enough for its leech to clear, then every vertex is **pushed** off what is still
+too close. The obstacles are the boat's other sails that are not `down` (as last placed) and the mast line
+`mast_step` → `masthead`.
+```
+c    = clearance (§4, 0.042 * loa)                        // margin, m; b = c is the width of the falloff
+smax(x) = x >= b ? x : (x <= -b ? 0 : (x + b)^2 / (4 * b))  // smooth max(x, 0), C1
+c_P  = c * smoothstep(0, 1, |P - H| / (5 * c))              // H: the placed head; the margin fades to 0 there,
+                                                             // since the head is hoisted at the mast
+sail obstacle, once per update:
+  z_r  = mean height (up) of row r of the obstacle as placed
+  f    = horizontal unit normal of the obstacle's foot chord (row 0, luff to leech), signed so that
+         dot(f, fwd + 0.3 * s_k * port) >= 0                // the side facing the bow; s_k = sgn(dot(Cl - mast_step,
+                                                             // port)), Cl: the flying sail's clew before the ease
+clearance x of a point P (with its push direction g):
+  z = dot(P, up); none (x = INF) outside [z_0 - c, z_last]
+  row pair r, r + 1 with z_r <= z < z_(r+1) (row 0 below z_0), t = (z - z_r) / (z_(r+1) - z_r) clamped to [0, 1]
+  Q_j  = lerp(M[r][j], M[r + 1][j], t)                      // the obstacle's section at that height
+  nearest point Q of the polyline Q_0 .. Q_last to P in the horizontal plane
+  on a segment:  g = its horizontal normal on f's side,   x = dot(P - Q, g)
+  at an end:     g = horizontal unit (P - Q),             x = |P - Q| horizontal
+mast: x = horizontal distance of P from the mast line, g radial (to leeward, sgn(awa)·port, when P is on it)
+
+ease: every row turns by a further e_s * delta about the luff (the §7.3 rotation), e_s = sgn(beta)
+  delta = 0; 4 times:
+    X = min over the leech vertices of rows 0, 3, 6, ... and the head row - 1, and the obstacles, of x - c_P
+    if X >= 0: stop
+    delta = min(delta + (-X) / max(r, 0.5), 1.0)            // r: that vertex's distance from the luff axis
+push: every vertex P = P + g * (c_P + smax(x - c_P) - x), per obstacle in turn, then the mast
+```
+- A vertex already `2c` or more clear is not moved; one inside the margin or through the obstacle lands at least
+  `c_P` clear, on the flying sail's side, and the push falls off smoothly over `b` so the cloth drapes over the
+  obstacle instead of folding. The obstacles are not moved.
+- The height slice makes it a horizontal distance: the sails stand close to vertical, so it is within a few per
+  cent of the true one.
+- The side is the one facing the bow (an obstacle eased out is passed on its forward, outboard face); only for an
+  obstacle near the centreline does the kite's own side decide. It does not come from the wind, so it does not
+  flip when the main luffs, is let fly or crosses the centreline in a gybe.
+- The ease is visual only (the core's `β` is not changed) and continuous in the trim: sheeting the kite in past
+  the point where its leech meets the main leaves it at that point, as a real kite that is pressed against the
+  main's lee side and stalls. The push then only has the belly and the head to deal with, a few centimetres.
+- Cost: per vertex and obstacle a row search and a bounds test, and one polyline only near the obstacle, plus a
+  few dozen for the ease: at most about 20 µs per flying sail on a 26 × 16 grid (native), with the kite sheeted
+  at the main's angle so that most of it is near the main.
 
 ## 8. Hoisting and dropping
 
@@ -449,8 +526,9 @@ Flutter phase `φ = 0` unless stated.
 6. **Flutter.** Main, `I = 1`: at the head–leech corner of the rectangle the flutter term swings `±0.15·Sa = ±0.45` m.
    Phase speed at `aws = 6 m/s`: `wm7` (LOA 7.2 m, `r_f = 2.90`, `w_max = 9.04`) `w = 9.04 rad/s`, period 0.70 s;
    a 12 m boat `w = 3.6 rad/s`, period 1.75 s. Crests move toward the leech.
-7. **Asym inflation.** `aws ≤ 1.543 m/s` (3 kn): `F = 0.5`; `aws = 2 m/s` (3.9 kn): `F = 0.648`; `aws ≥ 3.087 m/s` (6 kn): `F = 1`; the displacement of a
-   mid-chord vertex has length `k_d·C_i·F` (±1 %) with `I = 0`.
+7. **Asym inflation.** `aws ≤ 1.543 m/s` (3 kn): `F = 0.5`; `aws = 2 m/s` (3.9 kn): `F = 0.648`; `aws ≥ 3.087 m/s` (6 kn): `F = 1`; with `I = 0` a
+   mid-chord vertex moves by `d_i·s_i·C_i` off its shortened flat position (±1 %), `d_i = k_c·F·p_i` (§6.3), and
+   the leech of each row comes in to `s_i` of its flat chord.
 8. **Asym leeward belly.** For `awa` = ±60°, ±120°, ±170° with `β` at the optimum on the leeward side, every inner
    vertex of the placed kite lies on the leeward side of the vertical plane through its row's luff vertex, parallel
    to the placed tack–head line (the generated luff is cut with a curve, so vertices just aft of it can sit to
@@ -477,6 +555,18 @@ Flutter phase `φ = 0` unless stated.
     uniforms and the shadow-pass push. The offline preview (`tests/sail_preview.py`) renders the cloth with the same
     include; its shots `cloth_main_close`, `cloth_backlit`, `cloth_kite_close` and `cloth_wm12_close` show it close
     and against the sun.
+17. **Camber.** Rectangle, asym defaults, `aws` 6 kn, `awa` 90° and 150° (`β` at the leeward optimum): the largest
+    distance of a row from its luff–leech line over its chord is 0.20–0.30 at mid height and smaller at the foot
+    and the head; symmetric the same at full fill (at most 0.30); a code zero (`camber` 0.12) at `β` 25°, 40° and
+    60° 0.07–0.12, never above 0.12.
+18. **Clearance.** On the generated `wm7` and `wm12` (both kites and the code zero), over TWA 60–180° (20° steps),
+    TWS 6, 12, 22 kn, both tacks and the trims optimum, 15 % over-sheeted and 20 % eased (apparent wind from the
+    class polar; every `β` from the class's optimum tables; the jib up at its own optimum as well as down): no edge of
+    the flying sail crosses a triangle of the main or the jib or comes within the mast's radius of its line, no
+    edge of theirs crosses the flying sail, and the smallest distance of a flying-sail vertex from the main, the
+    jib and the mast, away from the head fade, is at least `0.9·c`; the test prints the smallest distance found.
+    Sheeting the flying sail from 60 % to 130 % of its optimum over 2 s (TWA 100°, 12 kn, main eased 20 %, jib up)
+    moves no vertex more than `0.05·Sa` between frames at 60 fps.
 
 ## 13. Dependencies and open points
 

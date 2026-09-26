@@ -234,8 +234,14 @@ Sail the approach heading of §5.3 towards the spot with sails trimmed. Every de
 boat would arrive more than 1.0 s early (against `−t_race + e_start`), let fly until back on time. Late, she sails
 on at full speed on the course to the spot (bearing away from it only makes her miss it). **Brake**: while the bow
 would reach the line before the gun at the present speed and is within the let-fly stopping distance (about 5 s of
-the present speed towards the line: a let-fly boat loses speed slowly, `boat.md` §5.8), let fly; within `0.3·L` of
-the line before −0.3 s, also luff to `|twa| = 40°`. Never cross early on purpose.
+the present speed towards the line: a let-fly boat loses speed slowly, `boat.md` §5.8), let fly. The speed towards
+the line is taken on the heading she is about to sail (near the spot the approach heads up to close-hauled, which
+points her more at the line), not the present one. **Hard brake**, within the same stopping distance: the distance she coasts until the gun with the
+sails let fly (the deceleration law of `boat.md` §5.8 from the present speed, down to `let_fly_drive · v`, the drive
+the let-fly sails keep), times the share of it towards the line, would bring the bow to within `0.3·L` of the line
+before −0.3 s, or she is within `0.3·L` already: let fly and luff to `|twa| = 40°`. The coast is read from the
+class's own deceleration and let-fly drive, so a class that coasts far starts braking earlier. Never cross early on
+purpose.
 
 ### 5.7 Launch and OCS
 

@@ -327,11 +327,28 @@ void prestart(AC& x, AB& a, const Me& m) {
   // Late: full speed on the course to the spot (bearing away from it only makes the boat miss it).
   // Brake: at the present speed the bow would reach the line before the gun and it is within the stopping distance
   // with the sails let fly (about 5 s of the present speed: a let-fly boat loses speed slowly).
-  const Vec2 vel = v_add(v_scale(dir(m.s.psi), max(0.0f, m.s.v)), m.cur);
+  // The speed towards the line on the heading she is about to sail (the approach heads up near the spot), not the
+  // present one.
+  const Vec2 vel = v_add(v_scale(dir(psi), max(0.0f, m.s.v)), m.cur);
   const float v_n = max(0.05f, v_dot(vel, l.n));
+  const float cos_n = v_n / max(0.05f, v_len(vel));
   const float D = max(0.0f, -s_bow);
   if (t < -0.3f && D < v_n * 5.0f + 0.3f * m.L && D / v_n < -t + max(0.0f, a.e_start) - 0.3f) a.let_fly = true;
-  if (t < -0.3f && D < 0.3f * m.L) {
+  // Within that distance: let fly, the boat coasts on (boat.md §5.8 deceleration law, down to the speed the let-fly
+  // sails still drive); if even so she would reach the line before the gun, head up to brake harder.
+  float coast = 0.0f;
+  {
+    const Dynamics& dy = m.b.perf().dynamics;
+    const float v_floor = m.b.let_fly_drive() * max(0.0f, m.s.v);
+    float vv = max(0.0f, m.s.v);
+    const std::int32_t steps = static_cast<std::int32_t>(min(-t, 30.0f) / 0.1f);
+    for (std::int32_t k = 0; k < steps; ++k) {
+      vv = max(v_floor, vv - (dy.decel_linear * vv + dy.decel_const) * 0.1f);
+      coast = coast + vv * 0.1f;
+    }
+  }
+  const bool near_line = D < v_n * 5.0f + 0.3f * m.L;
+  if (t < -0.3f && (D < 0.3f * m.L || (near_line && coast * cos_n > D - 0.3f * m.L))) {
     psi = heading_for(m.twd, 40.0f * DEG);
     a.let_fly = true;
   }

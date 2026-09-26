@@ -127,6 +127,10 @@ TEST_CASE("ai dev: the scene fleet over seeds" * doctest::skip(std::getenv("AI_S
         std::printf(" [t%.0f %s b%d %s]", t, e.kind == wm::RulesEventKind::penalty ? "pen" : "DSQ", e.boat,
                     std::string(wm::rule_code_str(e.rule)).c_str());
     }
+    std::printf("\n  OCS:");
+    for (std::size_t k = 0; k < o.tel.size(); ++k) {
+      if (o.tel[k].ocs > 0) std::printf(" b%zu", k);
+    }
     std::printf("\n  rounded mark 1 %d/%zu, touches %d, penalties %d, DSQ %d, finished %d\n", round1, o.boats.size(),
                 touch, o.penalties, dsq, fin);
     tot_round += round1;

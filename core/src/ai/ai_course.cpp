@@ -823,6 +823,13 @@ void beat_run(AC& x, AB& a, const Me& m, Vec2 R, bool beat, float mlay, bool tri
       if (beat && std::fabs(twa) < th) psi = psi_cur;
       if (!beat && std::fabs(twa) > th) psi = psi_cur;
       a.psi_target = psi;
+      // §8 bad air here too (a run laying the gate, a beat laying the mark): the check runs on every beat and run.
+      if (bad_air(x, a, m, beat ? Leg::beat : Leg::run) && a.man != Man::straight) return;
+      if (x.now < a.foot_until) {
+        const float tw = wrap_pi(m.twd - a.psi_target);
+        const float t2 = clamp(std::fabs(tw) - a.foot_delta, m.theta_up, 175.0f * DEG);
+        a.psi_target = heading_for(m.twd, sgn(tw) * t2);
+      }
       return;
     }
     const float trigger = 0.5f * Vp * t_manoeuvre(m, beat) - mlay * m.L;

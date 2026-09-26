@@ -312,6 +312,32 @@ bool turn_clear_of_zones(AC& x, const Me& m, std::int32_t next, float dir_, floa
   return true;
 }
 
+// §7.6 a penalty held back only by the zones, the boat outside the zone of the mark she is heading for: sail away
+// from the marks whose zones are in the way (next and last rounded), on the present tack and not above close-hauled,
+// until the turn's circle is clear of them. A few lengths away is quicker than rounding and going on.
+bool penalty_room(AC& x, AB& a, const Me& m, std::int32_t next) {
+  if (!a.pen_zone || a.man != Man::straight || near_zone(x, m, next, 0.0f)) return false;
+  const ResolvedCourse& co = x.course;
+  const float Z = x.race.zone_lengths() * m.L;
+  Vec2 away{0.0f, 0.0f};
+  for (const std::int32_t step : {next, m.rb.last_rounded}) {
+    if (step <= 0 || step >= static_cast<std::int32_t>(co.steps.size()) - 1) continue;
+    const CourseStep& st = co.steps[static_cast<std::size_t>(step)];
+    for (const std::int32_t k : {st.marks[0], st.marks[1]}) {
+      if (k < 0) continue;
+      const Vec2 d = v_sub(m.c, co.marks[static_cast<std::size_t>(k)].pos);
+      const float r = v_len(d);
+      if (r < 3.0f * Z) away = v_add(away, v_scale(d, 1.0f / max(r, 1.0f)));
+    }
+  }
+  if (v_len(away) < 1e-3f) return false;
+  const float twa = wrap_pi(m.twd - compass(away));
+  a.psi_target = heading_for(m.twd, m.tack * clamp(std::fabs(twa), m.theta_up, 170.0f * DEG));
+  a.tactic = AiTactic::PenaltyTurn;
+  a.dbg.aim = v_add(m.c, away);
+  return true;
+}
+
 // §7.6 the turn's circle (centre 1.3·R to the side of the turn, radius 1.3·R) is clear of boat j over the next 6 s,
 // j moved on her present course and speed: no hull within `margin` of the circle.
 bool turn_clear_of_boat(AC& x, const Me& m, std::size_t j, float dir_, float R, float margin, float r_own) {
@@ -343,6 +369,7 @@ bool penalty_turns(AC& x, AB& a, const Me& m, Leg leg) {
   a.dbg.pen_wait = 0;
   a.pen_prepare = false;
   a.pen_block = -1;
+  a.pen_zone = false;
   auto stop = [&]() {
     a.pen_on = false;
     a.helm_fixed = NAN;
@@ -395,7 +422,10 @@ bool penalty_turns(AC& x, AB& a, const Me& m, Leg leg) {
   // keeps the turn out of the zones.
   float dir_ = leg == Leg::run ? -m.tack : m.tack;
   if (!turn_clear_of_zones(x, m, next, dir_, R)) dir_ = -dir_;
-  if (!turn_clear_of_zones(x, m, next, dir_, R)) return why("zone");
+  if (!turn_clear_of_zones(x, m, next, dir_, R)) {
+    a.pen_zone = true;
+    return why("zone");
+  }
   // Urgent from 20 s before the deadline (the turn must be in progress when it passes, rules.md §9.4): then only
   // the zones, a minimum of way and an immediate collision risk hold it back.
   const bool urgent = br.deadline_s >= 0.0f && br.deadline_s < 20.0f;
@@ -986,6 +1016,7 @@ void racing(AC& x, AB& a, const Me& m) {
 
   if (penalty_turns(x, a, m, leg)) return;
   if (a.man == Man::penalty) a.man = Man::straight;
+  if (penalty_room(x, a, m, next)) return;
 
   if (t.is_mark) {
     const Vec2 w = dir(a.twd_f);

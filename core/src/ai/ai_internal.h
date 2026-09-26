@@ -120,6 +120,7 @@ struct AiSkippers::Boat {
   float pen_stall_t = 0.0f;
   bool pen_prepare = false;        // a penalty waits for speed or clear water
   std::int32_t pen_block = -1;     // the boat in the way of the turn
+  bool pen_zone = false;           // only the zones hold the turn back (this decision's, not in the memory block)
   std::int32_t pen_served0 = 0;
   // Sails (§6.2)
   float change_t = 0.0f;

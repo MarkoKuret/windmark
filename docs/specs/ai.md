@@ -436,7 +436,11 @@ than 10 kn. The turn is kept up until the engine reports it served, through the 
 
 While a penalty waits, the AI makes the conditions: before the start it leaves the parking and sails a broad reach
 on starboard (`twa 110°`) away from the line with the sails in until it can turn; racing, it steers up to 15° away
-from the boat in the way (not above close-hauled). A pre-start penalty is taken before the start (`rules.md` §9.3),
+from the boat in the way (not above close-hauled). When only the zones hold the turn back and the boat is outside
+the zone of the mark she is heading for, she sails away from the marks whose zones are in the way (the next and the
+last rounded, those within `3·Z`), on her present tack and not above close-hauled, until the turn's circle is clear
+of them: a few lengths away is quicker than rounding and going on to the next mark, which on a course with an offset
+mark close to the windward mark takes longer than the deadline. A pre-start penalty is taken before the start (`rules.md` §9.3),
 except in the last 20 s.
 
 ## 8. Bad air

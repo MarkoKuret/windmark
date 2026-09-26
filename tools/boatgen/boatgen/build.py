@@ -121,6 +121,7 @@ class Boat:
         if not any(sl.type.startswith("spinnaker") for sl in self.sails.values() if sl.type in spec):
             parts.pop("pole", None)     # the pole is shown only while a spinnaker is set
         main_angle = 0.0
+        corners, types = {}, {}
         for sid, sail in self.sails.items():
             key = "sail_" + sid
             if sail.type not in spec:
@@ -129,7 +130,12 @@ class Boat:
             ang, camber, twist = spec[sail.type]
             if sail.type == "main":
                 main_angle = ang
-            parts[key] = sail.part(sail.trim(ang, camber, twist, side=-1.0))
+            G = sail.trim(ang, camber, twist, side=-1.0)
+            parts[key] = sail.part(G)
+            corners[sid] = {k: G[i, j] for k, (i, j) in sail.corners.items()}
+            types[sid] = sail.type
+        from .running import sheets
+        parts["sheets"] = sheets(self, corners, types)
         # boom swung to starboard about the gooseneck, mainsheet re-led to the traveller car below it
         g = self.rig.gooseneck
         M = translate(g) @ rot_axis([0, 0, 1], np.radians(main_angle)) @ translate(-g)

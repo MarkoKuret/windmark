@@ -565,6 +565,8 @@ Flutter phase `φ = 0` unless stated.
     the flying sail crosses a triangle of the main or the jib or comes within the mast's radius of its line, no
     edge of theirs crosses the flying sail, and the smallest distance of a flying-sail vertex from the main, the
     jib and the mast, away from the head fade, is at least `0.9·c`; the test prints the smallest distance found.
+    Sheeting the flying sail from 60 % to 130 % of its optimum over 2 s (TWA 100°, 12 kn, main eased 20 %, jib up)
+    moves no vertex more than `0.05·Sa` between frames at 60 fps.
 
 ## 13. Dependencies and open points
 

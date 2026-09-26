@@ -855,6 +855,7 @@ func _clearance() -> void:
 								if jib_up:
 									obs.append(parts[jib_i])
 								_clear_check(fp, obs, ms, mh, c, r, what)
+			_clear_sweep(data, bv, fp, jib_i)
 			t.ok(r["cross"] == 0, "%s %s: %d configs, %d crossings with the main, jib or mast%s" % [id, fp.id, r["n"],
 				r["cross"], "" if r["first"] == "" else " (first: %s)" % r["first"]])
 			t.ok(r["bad"] == 0 and r["worst"] >= 0.9 * c, "%s %s: smallest clearance %.3f m (margin %.2f m) at %s; %d vertices inside 0.9 of the faded margin" % [
@@ -862,6 +863,28 @@ func _clearance() -> void:
 			print("  %s %s: %d configs, smallest clearance %.3f m (margin %.2f m) at %s; %d crossings, %d vertices inside 0.9 margin; largest ease %.1f deg; %d ms" % [
 				id, fp.id, r["n"], r["worst"], c, r["at"], r["cross"], r["bad"], rad_to_deg(r["ease"]), Time.get_ticks_msec() - t0])
 		bv.free()
+
+
+## §7.4 the ease and the push are continuous: at TWA 100 deg, 12 kn, the flying sail sheeted from 60 % to 130 % of
+## its optimum over 2 s with the main eased 20 % and the jib up moves no vertex more than 0.05 Sa between frames.
+func _clear_sweep(data: BoatClassData, bv: BoatView, fp: BoatView.SailPart, jib_i: int) -> void:
+	var tws := 12.0 * KNOT
+	var ap := _apparent(data, fp.index, tws, deg_to_rad(100.0), 1.0)
+	var prev := PackedVector3Array()
+	var worst := 0.0
+	for f in 121:
+		var k := 0.6 + 0.7 * f / 120.0
+		var sv := _sails_view(data, ap.x, ap.y, tws, fp.index, jib_i, [k, 1.2])
+		bv.apply_sails(sv, sv, 1.0, 1.0 / 60.0)
+		var m: PackedVector3Array = fp.shape.mid()
+		if not prev.is_empty():
+			worst = maxf(worst, max_move(prev, m))
+		prev = m.duplicate()
+	var sa: float = fp.shape.frame()["sa"]
+	var msg := "%s sheeted from 60 to 130 %% with the main eased: largest move per frame %.3f m (<= %.3f)" % [
+		fp.id, worst, 0.05 * sa]
+	t.ok(worst <= 0.05 * sa, msg)
+	print("  " + msg)
 
 
 ## The apparent wind (awa, aws) over a sail config's polar speed at the true wind (tws m/s, twa rad) on a tack

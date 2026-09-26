@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-09-26 12:19'
-updated_date: '2026-09-26 12:20'
+updated_date: '2026-09-26 12:46'
 labels:
   - vpp
 dependencies: []
@@ -21,8 +21,8 @@ Owner (2026-09-26): (1) letting the sails fly must never take a sail past its fu
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 No sail angle beyond sheet_max with let-fly, in the core and drawn
-- [ ] #2 Let-fly drive from the regular trim table at full ease, applied at once; flog drag only where the table says the sail luffs
-- [ ] #3 Key helm linear at a fixed rate, centring at the same rate
+- [x] #1 No sail angle beyond sheet_max with let-fly, in the core and drawn
+- [x] #2 Let-fly drive from the regular trim table at full ease, applied at once; flog drag only where the table says the sail luffs
+- [x] #3 Key helm linear at a fixed rate, centring at the same rate
 - [ ] #4 Owner sails it and approves
 <!-- AC:END -->

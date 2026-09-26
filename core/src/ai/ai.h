@@ -88,6 +88,7 @@ struct AiDebug {
   float twd_ref = 0.0f, twd_f = 0.0f, tws_f = 0.0f;
   std::int32_t leg = 0;     // 0 beat, 1 reach, 2 run
   std::int32_t manoeuvre = 0;
+  AiTactic man_why = AiTactic::None;  // the reason of the last tack or gybe started (not in the memory block)
   Vec2 aim{0.0f, 0.0f};
   Vec2 spot{0.0f, 0.0f};
 };

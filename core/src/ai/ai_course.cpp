@@ -731,6 +731,7 @@ void start_tack(AC& x, AB& a, const Me& m, AiTactic why) {
   a.pend_tack = 0;
   a.foot_until = -1e9f;
   a.tactic = why;
+  a.dbg.man_why = why;
   a.turn_dir = static_cast<std::int8_t>(m.tack);
   a.psi_target = heading_for(m.twd, -m.tack * m.theta_up);
 }
@@ -743,6 +744,7 @@ void start_gybe(AC& x, AB& a, const Me& m, AiTactic why) {
   a.last_man = x.now;
   a.foot_until = -1e9f;
   a.tactic = why;
+  a.dbg.man_why = why;
   a.turn_dir = static_cast<std::int8_t>(-m.tack);
   a.psi_target = heading_for(m.twd, -m.tack * m.theta_dn);
 }

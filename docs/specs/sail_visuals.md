@@ -295,9 +295,12 @@ eased. The belly of §6.3 then lies down the wind from that chord, to leeward of
 keeps it clear where a trim or a gust would still bring it through them.
 
 ### 7.4 Clearance of the flying sails
-A flying sail (spinnaker, code zero) never passes through the main, a headsail or the mast. After its placement,
-before the layers of §9, every vertex is pushed off each obstacle; nothing is hidden or clipped. The obstacles
-are the boat's other sails that are not `down` (as last placed) and the mast line `mast_step` → `masthead`.
+A flying sail (spinnaker, code zero) never passes through the main, a headsail or the mast. The core often
+sheets the kite well inside the main (wm7 at 80° AWA: kite 18°, main 53°, so the aft fifth of the kite lies inside
+the main over its whole height). Two steps keep it out, and nothing is hidden or clipped: the sail is first
+**eased** as a whole just far enough for its leech to clear, then every vertex is **pushed** off what is still
+too close. The obstacles are the boat's other sails that are not `down` (as last placed) and the mast line
+`mast_step` → `masthead`.
 ```
 c    = clearance (§4, 0.042 * loa)                        // margin, m; b = c is the width of the falloff
 smax(x) = x >= b ? x : (x <= -b ? 0 : (x + b)^2 / (4 * b))  // smooth max(x, 0), C1
@@ -306,26 +309,37 @@ c_P  = c * smoothstep(0, 1, |P - H| / (5 * c))              // H: the placed hea
 sail obstacle, once per update:
   z_r  = mean height (up) of row r of the obstacle as placed
   f    = horizontal unit normal of the obstacle's foot chord (row 0, luff to leech), signed so that
-         dot(f, (T + Cl) / 2 - Q0) >= 0                     // T, Cl: tack and clew of the flying sail, placed and
-                                                             // not yet pushed; Q0: the obstacle's tack
-per vertex P with z = dot(P, up) in [z_0 - c, z_last]:
+         dot(f, fwd + 0.3 * s_k * port) >= 0                // the side facing the bow; s_k = sgn(dot(Cl - mast_step,
+                                                             // port)), Cl: the flying sail's clew before the ease
+clearance x of a point P (with its push direction g):
+  z = dot(P, up); none (x = INF) outside [z_0 - c, z_last]
   row pair r, r + 1 with z_r <= z < z_(r+1) (row 0 below z_0), t = (z - z_r) / (z_(r+1) - z_r) clamped to [0, 1]
   Q_j  = lerp(M[r][j], M[r + 1][j], t)                      // the obstacle's section at that height
   nearest point Q of the polyline Q_0 .. Q_last to P in the horizontal plane
   on a segment:  g = its horizontal normal on f's side,   x = dot(P - Q, g)
   at an end:     g = horizontal unit (P - Q),             x = |P - Q| horizontal
-  P = P + g * (c_P + smax(x - c_P) - x)
 mast: x = horizontal distance of P from the mast line, g radial (to leeward, sgn(awa)·port, when P is on it)
+
+ease: every row turns by a further e_s * delta about the luff (the §7.3 rotation), e_s = sgn(beta)
+  delta = 0; 4 times:
+    X = min over the leech vertices of rows 0, 3, 6, ... and the head row - 1, and the obstacles, of x - c_P
+    if X >= 0: stop
+    delta = min(delta + (-X) / max(r, 0.5), 1.0)            // r: that vertex's distance from the luff axis
+push: every vertex P = P + g * (c_P + smax(x - c_P) - x), per obstacle in turn, then the mast
 ```
 - A vertex already `2c` or more clear is not moved; one inside the margin or through the obstacle lands at least
   `c_P` clear, on the flying sail's side, and the push falls off smoothly over `b` so the cloth drapes over the
   obstacle instead of folding. The obstacles are not moved.
 - The height slice makes it a horizontal distance: the sails stand close to vertical, so it is within a few per
   cent of the true one.
-- The side comes from the flying sail's foot, not from the wind, so it does not flip when the main luffs, is let
-  fly or crosses the centreline in a gybe; the tack is always forward of the mast and the jib's tack.
-- Cost: one section per vertex and obstacle (a row search and one polyline), about 10 µs per flying sail on a
-  26 × 16 grid (native).
+- The side is the one facing the bow (an obstacle eased out is passed on its forward, outboard face); only for an
+  obstacle near the centreline does the kite's own side decide. It does not come from the wind, so it does not
+  flip when the main luffs, is let fly or crosses the centreline in a gybe.
+- The ease is visual only (the core's `β` is not changed) and continuous in the trim: sheeting the kite in past
+  the point where its leech meets the main leaves it at that point, as a real kite that is pressed against the
+  main's lee side and stalls. The push then only has the belly and the head to deal with, a few centimetres.
+- Cost: one section per vertex and obstacle (a row search and one polyline), plus a few dozen for the ease, about
+  10 µs per flying sail on a 26 × 16 grid (native).
 
 ## 8. Hoisting and dropping
 

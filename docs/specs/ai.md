@@ -492,7 +492,8 @@ behaviour triggers whatever the shadow's calibration.
 
 After finishing, an AI boat is sailed by the finished-boat autopilot of `race.md` §6.2: to the point `5·L` beyond the
 finish line's middle and `2·(i + 1)·L` along it (`i` = her finishing place), where she stops (luffed to `twa 50°`,
-sails let fly). It keeps doing so after the race has closed. A ghost that did not finish (retired, disqualified)
+sails let fly, the spinnaker dropped: a kite let fly is held at its fully eased angle and still draws on a reach,
+`sails.md` §5.3). It keeps doing so after the race has closed. A ghost that did not finish (retired, disqualified)
 and any boat still sailing when the race closes stop where they are. `AiSkippers::add_autopilot` gives a human boat
 (offline) only this autopilot: it steers her from her finish on and never before.
 

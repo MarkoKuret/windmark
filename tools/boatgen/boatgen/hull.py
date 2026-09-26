@@ -325,6 +325,8 @@ class HullShape:
         g[:, 1:] = np.cumsum(np.hypot(np.diff(Y, axis=1), np.diff(Z, axis=1)), axis=1)
         G = max(g.max(), 1e-6)
         self.girth_max = G
+        self.girth = g
+        self.skin_xs = xs
         uv0 = np.stack([X, g], -1)
         uv1_port = np.stack([1 - X / self.L, 0.5 + 0.5 * (1 - g / G)], -1)
         uv1_stbd = np.stack([X / self.L, 0.5 * (1 - g / G)], -1)

@@ -166,6 +166,14 @@ class Deck:
                            zf[:, None] + (ztop - zf)[:, None] * h[None, :]], -1)
             g = grid(Pw, np.stack([Pw[..., 0], Pw[..., 2]], -1))
             part.add("gelcoat", _orient(g, np.array([0, -side, 0])))
+            # small bevels: a rounded lip on the coaming edge (half sunk into the corner) and a fillet where
+            # the wall meets the floor
+            rb = 0.012 * (self.hull.L / 12) ** 0.3
+            edge = np.stack([xs, ytop, ztop], -1)[::2]
+            prof = rounded_rect(2 * rb, 2 * rb, 0.95 * rb, 2)
+            part.add("gelcoat", sweep(edge + np.array([0, side * 0.35 * rb, -0.35 * rb]), prof, up=np.array([0, 0, 1.0])))
+            foot = np.stack([xs, ytop, zf], -1)[::2]
+            part.add("nonslip", sweep(foot + np.array([0, -side * 0.45 * rb, 0.45 * rb]), prof * 1.2, up=np.array([0, 0, 1.0])))
         # forward bulkhead (cabin aft face when there is a cabin: built with the cabin)
         if not self.has_cabin:
             x = self.xc1

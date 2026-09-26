@@ -6,7 +6,28 @@ waterline, metres) and converted to the glTF frame only when written.
 A `Part` maps material slot names to `Geom` pieces. Every helper returns a `Geom` with positions, normals,
 two UV sets (uv0 metric for tiling textures, uv1 normalised for decals) and triangle indices.
 """
+import contextlib
+
 import numpy as np
+
+# segment-count scale of the round helpers (revolve, tube, circle, ellipse, rounded_rect, superellipsoid_box):
+# 1 for the full model, lower for the lower levels of detail (build.py)
+_SEG = [1.0]
+
+
+def seg(n, lo=3):
+    """Segment count n scaled by the current level of detail, at least `lo`."""
+    return max(lo, int(round(n * _SEG[0])))
+
+
+@contextlib.contextmanager
+def segment_scale(f):
+    old = _SEG[0]
+    _SEG[0] = f
+    try:
+        yield
+    finally:
+        _SEG[0] = old
 
 
 class Geom:
@@ -216,6 +237,7 @@ def revolve(profile, segments=24, uv_scale=1.0, cap_ends=True, sharp=()):
     """Surface of revolution about +z from a (r, z) profile (bottom to top).
 
     Indices in `sharp` duplicate that profile point so the surface creases there."""
+    segments = seg(segments, 6)
     prof = []
     for i, p in enumerate(profile):
         prof.append(p)
@@ -331,11 +353,13 @@ def sweep(path, profile, closed_profile=True, scale_along=None, caps=True, up=No
 
 
 def circle(r, n):
+    n = seg(n, 4)
     th = np.linspace(0, 2 * np.pi, n + 1)[:-1]
     return np.stack([r * np.cos(th), r * np.sin(th)], -1)
 
 
 def ellipse(a, b, n):
+    n = seg(n, 4)
     th = np.linspace(0, 2 * np.pi, n + 1)[:-1]
     return np.stack([a * np.cos(th), b * np.sin(th)], -1)
 
@@ -343,6 +367,7 @@ def ellipse(a, b, n):
 def rounded_rect(w, h, r, n_corner=4):
     """Counter-clockwise rounded rectangle centred at the origin (w, h are full sizes)."""
     r = min(r, w / 2 * 0.999, h / 2 * 0.999)
+    n_corner = seg(n_corner, 1)
     pts = []
     for cx, cy, a0 in ((w / 2 - r, h / 2 - r, 0), (-w / 2 + r, h / 2 - r, 90), (-w / 2 + r, -h / 2 + r, 180),
                        (w / 2 - r, -h / 2 + r, 270)):
@@ -380,6 +405,7 @@ def box(size, center=(0, 0, 0)):
 def superellipsoid_box(size, e=0.25, nu=16, nv=10, center=(0, 0, 0)):
     """Smooth rounded box (superellipsoid); e -> 0 is a sharp box, 1 an ellipsoid."""
     a, b, c = np.asarray(size, dtype=np.float64) / 2
+    nu, nv = seg(nu, 4), seg(nv, 3)
     u = np.linspace(-np.pi, np.pi, nu + 1)[:-1]
     v = np.linspace(-np.pi / 2, np.pi / 2, nv)
     U, V = np.meshgrid(u, v, indexing='ij')

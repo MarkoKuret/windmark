@@ -87,6 +87,8 @@ class Boat:
         self.parts["boom"] = self.rig.boom_part()
         hw = hardware.place_all(cls, self.hull, self.deck, self.rig)
         self.parts["hardware"] = hw["hardware"]
+        self.parts["hardware"].extend(hardware.rudder_fittings(self.app, self.deck, self.hull, (self.hull.L / 12) ** 0.7))
+        self.leads = hw["leads"]
         self.parts["boom"].extend(hw["boom_hardware"])
         self.parts["mainsheet"] = hw["mainsheet"]
         self.mainsheet_ends = hw["mainsheet_ends"]
@@ -155,6 +157,31 @@ class Boat:
         for name, sail in self.sails.items():
             self.parts["sail_" + name] = sail.part()
 
+    def livery_panels(self):
+        """Name and number panels on both topsides for the liveries: [{id, side, x (body, aft..fwd), z below the
+        sheer (top, bottom, m), uv1 rect [u0, v0, u1, v1] on the hull atlas at the panel's middle station}]."""
+        h = self.hull
+        L, fb = h.L, self.cls["hull"]["freeboard"]
+        out = []
+        for pid, x0, x1, d0, d1 in (("number", 0.60, 0.80, 0.14, 0.66), ("name", 0.10, 0.34, 0.16, 0.46)):
+            xm = 0.5 * (x0 + x1) * L
+            i = int(np.argmin(np.abs(h.skin_xs - xm)))
+            z = h.skin_grid[i, :, 2]
+            g = h.girth[i]
+            zs = float(h.zs(np.array([xm]))[0])
+            ga, gb = (float(np.interp(zs - d * fb, z, g)) for d in (d0, d1))
+            G = h.girth_max
+            for side in ("port", "stbd"):
+                if side == "stbd":
+                    u0, u1, v0, v1 = x0, x1, 0.5 * (1 - ga / G), 0.5 * (1 - gb / G)
+                else:
+                    u0, u1, v0, v1 = 1 - x1, 1 - x0, 0.5 + 0.5 * (1 - ga / G), 0.5 + 0.5 * (1 - gb / G)
+                out.append({"id": pid, "side": side,
+                            "x": [round(x0 * L - self.origin_x(), 3), round(x1 * L - self.origin_x(), 3)],
+                            "below_sheer": [round(d0 * fb, 3), round(d1 * fb, 3)],
+                            "uv1": [round(u0, 4), round(v0, 4), round(u1, 4), round(v1, 4)]})
+        return out
+
     def origin_x(self):
         return 0.5 * (self.hull.x_awl + self.hull.x_fwl)
 
@@ -164,7 +191,8 @@ class Boat:
 
     def write_glb(self, path):
         self._write(path, self.cls["id"], self.parts, self.pivots,
-                    extras={"class": self.cls["id"], "name": self.cls.get("name", "")})
+                    extras={"class": self.cls["id"], "name": self.cls.get("name", ""),
+                            "livery_panels": self.livery_panels()})
 
     def _write(self, path, root, parts, pivots, extras=None):
         w = GLBWriter(self.origin_x(), textures=self.textures)

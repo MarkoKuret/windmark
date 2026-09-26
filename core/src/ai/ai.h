@@ -88,6 +88,9 @@ struct AiDebug {
   float twd_ref = 0.0f, twd_f = 0.0f, tws_f = 0.0f;
   std::int32_t leg = 0;     // 0 beat, 1 reach, 2 run
   std::int32_t manoeuvre = 0;
+  AiTactic man_why = AiTactic::None;  // the reason of the last tack or gybe started (not in the memory block)
+  std::int32_t pen_wait = 0;  // why a pending penalty turn waits: 0 not waiting, 1 manoeuvre, 2 zone, 3 slow, 4 boat
+                              // (urgent), 5 low, 6 slow, 7 next zone, 8 boat (not in the memory block)
   Vec2 aim{0.0f, 0.0f};
   Vec2 spot{0.0f, 0.0f};
 };

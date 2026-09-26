@@ -234,8 +234,14 @@ Sail the approach heading of §5.3 towards the spot with sails trimmed. Every de
 boat would arrive more than 1.0 s early (against `−t_race + e_start`), let fly until back on time. Late, she sails
 on at full speed on the course to the spot (bearing away from it only makes her miss it). **Brake**: while the bow
 would reach the line before the gun at the present speed and is within the let-fly stopping distance (about 5 s of
-the present speed towards the line: a let-fly boat loses speed slowly, `boat.md` §5.8), let fly; within `0.3·L` of
-the line before −0.3 s, also luff to `|twa| = 40°`. Never cross early on purpose.
+the present speed towards the line: a let-fly boat loses speed slowly, `boat.md` §5.8), let fly. The speed towards
+the line is taken on the heading she is about to sail (near the spot the approach heads up to close-hauled, which
+points her more at the line), not the present one. **Hard brake**, within the same stopping distance: the distance she coasts until the gun with the
+sails let fly (the deceleration law of `boat.md` §5.8 from the present speed, down to `let_fly_drive · v`, the drive
+the let-fly sails keep), times the share of it towards the line, would bring the bow to within `0.3·L` of the line
+before −0.3 s, or she is within `0.3·L` already: let fly and luff to `|twa| = 40°`. The coast is read from the
+class's own deceleration and let-fly drive, so a class that coasts far starts braking earlier. Never cross early on
+purpose.
 
 ### 5.7 Launch and OCS
 
@@ -260,10 +266,13 @@ the line's middle and start as in fleet with `u* = 0.5`. Dial-ups and hooks are 
 
 ### 6.1 Approach and rounding
 
-- **Rounding circle**: centre M, radius `ρ = r_mark + 0.5·B + c_lvl + n_in·(B + 1 m) + |v|·yaw_time` where `c_lvl`
+- **Rounding circle**: centre M, radius `ρ = r_mark + 0.5·B + c_lvl + n_in·(B + 1 m) + |v|·t_r` where `c_lvl`
   is the level's clearance (§13), `n_in` the number of boats the rules engine says are entitled to mark-room from
   this boat at this mark (they need space inside it), and the last term the way the boat runs on before a turn
-  takes hold (the hull's yaw lag, `boat.md` §5.9).
+  takes hold: the **reaction time** `t_r = yaw_time + 0.5 / helm_rate` (the hull's yaw lag and the rudder's travel
+  to half helm, `boat.md` §5.9), read from the class's data, so the margin follows the boat and its speed. `ρ` is at
+  least the turning radius at the helm of a smooth turn (0.6, §10): a tighter circle cannot be followed, and a boat
+  that cannot follow it swings out of it on the exit.
 - **Aim point** while more than `4·L` away: the tangent point of the circle on the required side as seen from the
   boat. Within `4·L`: follow the circle; the turn starts when the distance to the tangent point is below the turning
   radius at the planned helm (`boat.md` §5.9 radius law), so the boat leaves the circle on the exit tangent towards the next leg's
@@ -315,10 +324,19 @@ Every decision, the planned heading is checked against every course object (mark
 `r + 0.5·B + 1 m + 0.15·L` (a committee or mark boat another `0.5·L`: the bow of a boat still turning onto the
 tangent reaches its long flat side first) is passed by the tangent to that clearance circle on the side it is on
 (the other side when that side is above close-hauled). The mark being rounded is only checked for a collision course (clearance
-`r + 0.5·B + 0.5 m`, the rounding circle keeps the planned one), and it is never passed on the other side: if its
-side is above close-hauled the AI tacks away from it (if safe) or pinches and lets fly (only with way on, faster
-than 0.5 m/s: nearly stopped at the mark it keeps its sails drawing so that it can steer away). Tacks, gybes (§7.3) and
-the avoidance candidates (§7.2) are rejected when the predicted hull would touch a course object.
+`r + 0.5·B + 0.5 m`, the rounding circle keeps the planned one), and it is never passed on the other side (the side
+it is passed on is the rounding side, whichever side of the planned track it lies on at that moment): if its
+side is above close-hauled the AI tacks away from it (if safe); if it cannot tack, it bears away past the mark on
+the other side when that is sailable on the present tack (the rounding then goes on round, §6.1: going round again
+costs less than a touch and its turn), and only when neither is possible pinches and lets fly (only with way on, faster
+than 0.5 m/s: nearly stopped at the mark it keeps its sails drawing so that it can steer away). The mark being
+rounded is also checked along the predicted track, not only the straight line: the planned heading sailed from here
+(the reaction time `t_r` of §6.1, then the turn at the radius law's full rate) for 4 s must keep the hull 0.3 m off
+the mark, or the rounding is re-planned on the nearest heading that does, turning away from the mark (the rounding
+side) in 5° steps up to 45° and not above close-hauled; when none does, it is handled as the collision course above.
+So a rounding that would touch is dropped before the touch, whatever the class's turning circle and speed.
+Tacks, gybes (§7.3) and the avoidance candidates (§7.2) are rejected when the predicted hull would touch a course
+object.
 
 ### 6.3 Gate choice
 
@@ -360,9 +378,14 @@ cost = ∞                                    if PredGap to B < m (rules.md §3.
      + 4 · (VMC_ref − VMC_candidate)/V_ref   loss of progress to the mark
      + 3 · tack_or_gybe                      manoeuvre cost
      + 10 · creates_new_obligation           the candidate makes the AI a give-way boat to someone else (e.g. tacking to port)
+     + 30 · wrong_side                       rounding (§6.1): the candidate heading runs at the mark on the wrong side
+                                             (passing it closer than ρ + 0.5·L within ρ + 3·L, the test of §6.1)
 choose the minimum; keep it for at least 1.5 s unless a new ∞ appears
 ```
 
+The `wrong_side` term keeps the avoidance from trading a keep-clear penalty for a touch: a port boat luffing to let
+a starboard boat by at the windward mark must not luff onto the wrong side of the mark, from where the rounding can
+only turn her into it. It is a cost, not a ban, so a candidate that is the only way clear of a boat is still taken.
 The usual manoeuvres come out of this: ducking a starboard boat (bear away behind her stern), tacking to leeward
 and ahead ("lee-bow") when that clears, slowing when crossing is impossible. The brake (the `slow` candidate, and
 letting fly when no candidate clears) is dropped for a boat that has started and has been nearly stopped (under
@@ -380,7 +403,7 @@ or chooses another). It never tacks within `3·L` directly into the path of a bo
 - **Hold course**: while a give-way boat is within `5·L` and not in `Breach`, the AI makes no course change of more
   than 5° towards it (rule 16) unless rounding a mark within its mark-room.
 - **Rule 17**: when the pair has the rule-17 flag with the AI as holder, the AI's heading is limited to not above its
-  proper course (`rules.md` §3.7).
+  proper course (`rules.md` §3.7); not while rounding a mark (§6.1), where the rounding is her proper course.
 - **Emergency (rule 14)**: if the give-way boat is in `Breach` and `ttc < 1.5 s`, the AI evades with the candidate
   evaluation of §7.2 but only among candidates that do not turn towards the other boat; it prefers turning parallel
   to her. This avoids damaging contacts (`rules.md` §5.1).
@@ -399,10 +422,12 @@ With a pending penalty the AI starts a turn when all of:
   a margin for the speed the turn loses), is at least `Z + 1.3·R + 0.6·L` from those marks;
 - boat speed ≥ 0.75 × target, and not within 5 s after a failed turn;
 - the next zone is more than 20 s of sailing (plus the circle) away;
-- no boat within `1.5·L` plus the turn's reach, or `3·L` ahead.
+- the turn's circle is clear of the other boats as they move: no hull within `0.5·L` of the circle over the next
+  6 s, each boat moved on her present course and speed (a boat coming up fast is in the way, one sailing away is
+  not; a boat taking a penalty must keep clear of all others, rule 22.2), and none within `3·L` ahead.
 
 From 20 s before the deadline (`rules.md` §9.4; the turn must be in progress when it passes) it is **urgent**: only
-the zones, 0.4 × target speed and a boat within `0.5·L` plus the turn's reach hold it back. Direction: on a beat
+the zones, 0.4 × target speed and a hull inside the circle within the next 6 s hold it back. Direction: on a beat
 start by luffing into a tack (turn towards the wind), on a run start by bearing away into a gybe, on a reach turn
 towards the wind; the other way when only that keeps the circle out of the zones. Helm 0.8 of full (0.6 below 9 kn
 true wind, where a slammed turn stalls), sheets on auto-trim through the turn, downwind sail dropped first in more
@@ -411,7 +436,11 @@ than 10 kn. The turn is kept up until the engine reports it served, through the 
 
 While a penalty waits, the AI makes the conditions: before the start it leaves the parking and sails a broad reach
 on starboard (`twa 110°`) away from the line with the sails in until it can turn; racing, it steers up to 15° away
-from the boat in the way (not above close-hauled). A pre-start penalty is taken before the start (`rules.md` §9.3),
+from the boat in the way (not above close-hauled). When only the zones hold the turn back and the boat is outside
+the zone of the mark she is heading for, she sails away from the marks whose zones are in the way (the next and the
+last rounded, those within `3·Z`), on her present tack and not above close-hauled, until the turn's circle is clear
+of them: a few lengths away is quicker than rounding and going on to the next mark, which on a course with an offset
+mark close to the windward mark takes longer than the deadline. A pre-start penalty is taken before the start (`rules.md` §9.3),
 except in the last 20 s.
 
 ## 8. Bad air
@@ -571,12 +600,12 @@ measurements. Measured on the default course (11 kn, stable shifts):
 
 | run | measured | spec target |
 | --- | --- | --- |
-| 10 Intermediate, 5 seeds | 86 % finish (the rest DSQ); 1.0 penalties/boat; 4.4 contacts/race; stuck ≤ 22 s | all finish; ≤ 0.4; ≤ 1; ≤ 20 s |
-| same | bad air 1.8 triggers/boat, deficit 0.14 → 0.04 twenty seconds later (90 % lower) | ≥ 2, lower |
-| every level, 10 boats, 2 seeds | 80–95 % finish; OCS 5–15 %; mean start delay 21–25 s | Pro OCS < 5 %, delay < 2 s; Easy < 15 %, 3–8 s |
+| 10 Intermediate, 5 seeds | 86 % finish (the rest DSQ); 0.9 penalties/boat; 4.8 contacts/race; stuck ≤ 22 s | all finish; ≤ 0.4; ≤ 1; ≤ 20 s |
+| same | bad air 1.7 triggers/boat, deficit 0.13 → 0.03 twenty seconds later (93 % lower) | ≥ 2, lower |
+| every level, 10 boats, 2 seeds | 75–95 % finish; OCS 0–5 %; mean start delay 15–20 s | Pro OCS < 5 %, delay < 2 s; Easy < 15 %, 3–8 s |
 | 1 nm beat, 10 boats | 5.0 tacks/boat | 3–14 |
 | match race, 2 Expert, 5 seeds | the leader covers in every race (1–7 activations) | ≥ 1 |
-| mixed fleet (2 per level, 3 seeds) | mean place Easy 7.0, Intermediate 3.8, Expert 4.2, Pro 3.5 | monotonic |
+| mixed fleet (2 per level, 3 seeds) | mean place Easy 7.0, Intermediate 3.3, Expert 4.2, Pro 3.7 | monotonic |
 | speed only (same) | finish-time ratios to Pro within 2.5 % of the `performance_scale` ratios | within 3 % |
 
 The assertions of `ai_races` hold the measured level (finish ≥ 80 %, ≤ 1.3 penalties/boat, ≤ 6 contacts/race,
@@ -585,7 +614,16 @@ bad air ≥ 1.5 and lower 20 s later, every level ≥ 70 % finish, tacks 3–14,
 crowd at the line and pre-start penalties make the mean 13–25 s) and strict level order in a mixed fleet are not
 met yet. Most remaining penalties come from the windward mark in a crowd (rule 31 and the `44.1-late` penalties
 that follow: on the default course the offset mark is 60 m from the windward mark, so a boat penalised at the
-windward mark is inside one zone or the other for most of the 45 s of `rules.md` §9.4).
+windward mark is inside one zone or the other for most of the 45 s of `rules.md` §9.4; §7.6 now sails clear of the
+zones first).
+
+Development runs (skipped unless asked for, in `test_ai_race.cpp`): `AI_SCENE=1` races the game scene's fleet (6
+Expert wm7, 12 kn from 0°, the default shifts) over `AI_SEEDS=first,count` and prints per seed the first-mark
+roundings, mark touches, penalties, DSQs, finishes and OCS boats; `AI_FLEET=1` switches to the fleet of the runs
+above, `AI_WM12=1` to a mixed wm7 and wm12 fleet, `AI_TRACE` writes a CSV of every boat every 0.5 s (with the reason
+of the last manoeuvre and why a penalty turn waits), and `AI_SNAP=<dir>` resumes a race the game saved (the world
+snapshot and the skippers' block, `world.bin` and `ai.bin`, boat 0 the player) instead of creating one, so a
+failure seen in the game scene is replayed in the core.
 
 ## 16. The skippers' memory in a snapshot
 

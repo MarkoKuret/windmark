@@ -102,6 +102,7 @@ struct AiRaceSpec {
   float wind_kn = 11.0f;
   float wind_from = 0.3f;
   wm::ShiftPreset shifts = wm::ShiftPreset::stable;
+  bool wind_default = false;  // the wind.md default shifts (no preset), as the game's scene uses
   bool puffs = true;
   std::vector<wm::AiLevel> levels;  // one AI boat per entry
   std::vector<std::string> classes; // per boat ("wm7" if empty or short)
@@ -114,7 +115,21 @@ struct AiRaceSpec {
   std::uint32_t reload_at = 0;
   bool keep_checksums = false;
   const char* trace = nullptr;  // development: a CSV of every AI boat every 0.5 s
+  // Development: boat 0 a human entry (the game scene's player), and the race resumed from a world snapshot and the
+  // skippers' block saved by the game (`<snap_dir>/world.bin`, `<snap_dir>/ai.bin`) instead of created.
+  bool human0 = false;
+  const char* snap_dir = nullptr;
 };
+
+inline std::vector<std::uint8_t> read_bytes(const std::string& path) {
+  std::vector<std::uint8_t> b;
+  if (std::FILE* f = std::fopen(path.c_str(), "rb")) {
+    std::uint8_t buf[65536];
+    for (std::size_t n; (n = std::fread(buf, 1, sizeof buf, f)) > 0;) b.insert(b.end(), buf, buf + n);
+    std::fclose(f);
+  }
+  return b;
+}
 
 struct AiRaceOutcome {
   std::vector<wm::ResultRow> results;
@@ -136,13 +151,18 @@ inline std::unique_ptr<wm::World> ai_world(const AiRaceSpec& sp) {
   s.race_seed = sp.seed;
   s.wind.base_speed = kn(sp.wind_kn);
   s.wind.base_from = sp.wind_from;
-  wm::apply_shift_preset(s.wind, sp.shifts);
+  if (!sp.wind_default) wm::apply_shift_preset(s.wind, sp.shifts);
   s.wind.puffs_enabled = sp.puffs;
   s.race.free_sailing_s = sp.free_sailing_s;
   auto w = std::make_unique<wm::World>(s);
   for (std::size_t i = 0; i < sp.levels.size(); ++i) {
     const std::string cls = i < sp.classes.size() ? sp.classes[i] : std::string("wm7");
     wm::BoatEntry e = wm::ai_entry(&perf(cls), sp.levels[i]);
+    if (i == 0 && sp.human0) {
+      e = wm::BoatEntry{};
+      e.perf = &perf(cls);
+      e.human = true;
+    }
     if (sp.speed_only) e.performance_scale = wm::ai_level_params(sp.levels[i], true).performance_scale;
     REQUIRE(w->add_boat(e) == static_cast<std::int32_t>(i));
   }
@@ -157,14 +177,21 @@ inline AiRaceOutcome run_ai_race(const AiRaceSpec& sp) {
   const wm::CourseData& course = sp.course != nullptr ? *sp.course : ai_default_course();
   auto w = ai_world(sp);
   std::string why;
-  REQUIRE_MESSAGE(w->create_race(course, why), why);
   auto ai = std::make_unique<wm::AiSkippers>();
-  ai_add_all(*ai, sp);
+  if (sp.snap_dir != nullptr) {
+    const std::vector<std::uint8_t> wb = read_bytes(std::string(sp.snap_dir) + "/world.bin");
+    const std::vector<std::uint8_t> ab = read_bytes(std::string(sp.snap_dir) + "/ai.bin");
+    REQUIRE_MESSAGE(w->load(wb, &course, why), why);
+    REQUIRE_MESSAGE(ai->load(ab, *w, why), why);
+  } else {
+    REQUIRE_MESSAGE(w->create_race(course, why), why);
+    ai_add_all(*ai, sp);
+  }
   wm::AiSkippers* aip = ai.get();
   w->set_controller([aip](wm::World& world) { aip->step(world); });
   AiRaceOutcome o;
   std::FILE* tf = sp.trace != nullptr ? std::fopen(sp.trace, "w") : nullptr;
-  if (tf != nullptr) std::fprintf(tf, "t,i,x,y,psi,v,twa,tws,tact,man,psit,next,rank,pend,d,leg,helm,letfly,phi,phid,tr,sx,sy,ax,ay\n");
+  if (tf != nullptr) std::fprintf(tf, "t,i,x,y,psi,v,twa,tws,tact,man,psit,next,rank,pend,d,leg,helm,letfly,phi,phid,tr,sx,sy,ax,ay,why,pw,dl\n");
   for (std::uint32_t k = 0; k < sp.max_ticks && w->race().state() != wm::RaceState::closed; ++k) {
     if (sp.reload_at != 0 && w->tick() == sp.reload_at) {
       // The world snapshot and the skippers' own block (ai.md §16), each as its own bytes.
@@ -185,7 +212,7 @@ inline AiRaceOutcome run_ai_race(const AiRaceSpec& sp) {
       for (std::size_t i = 0; i < w->boat_count(); ++i) {
         const wm::BoatState& bs = w->boat(i).state();
         const wm::AiDebug& d = ai->debug(static_cast<std::int32_t>(i));
-        std::fprintf(tf, "%.1f,%zu,%.1f,%.1f,%.1f,%.2f,%.1f,%.2f,%d,%d,%.1f,%d,%d,%zu,%.3f,%d,%.2f,%d,%.0f,%.0f,%.1f,%.1f,%.1f,%.1f,%.1f\n",
+        std::fprintf(tf, "%.1f,%zu,%.1f,%.1f,%.1f,%.2f,%.1f,%.2f,%d,%d,%.1f,%d,%d,%zu,%.3f,%d,%.2f,%d,%.0f,%.0f,%.1f,%.1f,%.1f,%.1f,%.1f,%d,%d,%.0f\n",
                      static_cast<double>(w->race().race_time(w->tick())), i, static_cast<double>(bs.pos_x),
                      static_cast<double>(bs.pos_y), static_cast<double>(bs.psi / wm::DEG), static_cast<double>(bs.v),
                      static_cast<double>(wm::wrap_pi(w->env(i).wind_from_clean - bs.psi) / wm::DEG),
@@ -196,7 +223,8 @@ inline AiRaceOutcome run_ai_race(const AiRaceSpec& sp) {
                      static_cast<double>(w->race().boat(i).phi[0] / wm::DEG),
                      static_cast<double>(w->race().boat(i).phi_done[0] / wm::DEG),
                      static_cast<double>(w->boat(i).outputs().turn_rate / wm::DEG), static_cast<double>(d.spot.x),
-                     static_cast<double>(d.spot.y), static_cast<double>(d.aim.x), static_cast<double>(d.aim.y));
+                     static_cast<double>(d.spot.y), static_cast<double>(d.aim.x), static_cast<double>(d.aim.y), static_cast<int>(d.man_why), d.pen_wait,
+                     static_cast<double>(w->rules().boat(i).deadline_s));
       }
     }
     const std::uint64_t c = w->step();

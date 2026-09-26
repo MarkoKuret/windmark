@@ -70,7 +70,84 @@ TEST_CASE("ai dev: one race of 10 Intermediate boats" * doctest::skip(std::geten
   }
 }
 
-TEST_CASE("ai dev: fixed helm 360s" * doctest::skip(std::getenv("AI_DEV") == nullptr)) {
+// The game scene's AI race (game/tests/course_land_test.gd): 6 Expert wm7 boats on the example course in 12 kn from
+// 0°, the default shifts, 5 s of free sailing. AI_SEEDS=first,count (default 1,8); AI_N, AI_LEVEL, AI_WIND as above.
+// Prints per seed: first mark rounded, mark touches, penalties, DSQ, finished.
+TEST_CASE("ai dev: the scene fleet over seeds" * doctest::skip(std::getenv("AI_SCENE") == nullptr)) {
+  unsigned long long s0 = 1, ns = 8;
+  if (const char* e = std::getenv("AI_SEEDS")) std::sscanf(e, "%llu,%llu", &s0, &ns);
+  int tot_round = 0, tot_touch = 0, tot_pen = 0, tot_dsq = 0, tot_fin = 0, tot_boats = 0;
+  for (unsigned long long seed = s0; seed < s0 + ns; ++seed) {
+    wm_test::AiRaceSpec sp;
+    sp.seed = seed;
+    sp.wind_kn = std::getenv("AI_WIND") != nullptr ? std::strtof(std::getenv("AI_WIND"), nullptr) : 12.0f;
+    sp.wind_from = 0.0f;
+    sp.wind_default = true;
+    sp.free_sailing_s = 5.0f;
+    sp.levels.assign(std::getenv("AI_N") != nullptr ? std::strtoul(std::getenv("AI_N"), nullptr, 10) : 6,
+                     std::getenv("AI_LEVEL") != nullptr
+                         ? static_cast<wm::AiLevel>(std::strtoul(std::getenv("AI_LEVEL"), nullptr, 10))
+                         : wm::AiLevel::expert);
+    if (std::getenv("AI_FLEET") != nullptr) {
+      // AI_FLEET=1: the ai_races fleet instead (11 kn from 0.3 rad, stable shifts, 10 s free sailing)
+      sp.wind_kn = std::getenv("AI_WIND") != nullptr ? std::strtof(std::getenv("AI_WIND"), nullptr) : 11.0f;
+      sp.wind_from = 0.3f;
+      sp.wind_default = false;
+      sp.free_sailing_s = 10.0f;
+      const wm::AiLevel lv = sp.levels.front();
+      if (std::getenv("AI_N") == nullptr) sp.levels.assign(10, lv);
+    }
+    if (std::getenv("AI_WM12") != nullptr) {
+      for (std::size_t k = 0; k < sp.levels.size(); ++k) sp.classes.push_back(k % 2 == 1 ? "wm12" : "wm7");
+    }
+    sp.trace = std::getenv("AI_TRACE");
+    sp.snap_dir = std::getenv("AI_SNAP");  // a race saved by the game at the gun (boat 0 the player, taken over)
+    sp.human0 = sp.snap_dir != nullptr;
+    if (sp.snap_dir != nullptr) sp.wind_kn = 12.0f * 0.514444f / wm::KNOT;  // the game's knot
+    const wm_test::AiRaceOutcome o = wm_test::run_ai_race(sp);
+    int round1 = 0, touch = 0, dsq = 0, fin = 0;
+    for (const wm::RaceBoat& b : o.boats) round1 += b.last_rounded >= 1 || b.finished ? 1 : 0;
+    for (const wm::ResultRow& r : o.results) {
+      fin += r.place > 0 ? 1 : 0;
+      dsq += r.code == wm::ScoreCode::DSQ ? 1 : 0;
+    }
+    if (seed == s0) {
+      auto w = wm_test::ai_world(sp);
+      std::string why;
+      REQUIRE_MESSAGE(w->create_race(wm_test::ai_default_course(), why), why);
+      for (const wm::ResolvedMark& m : w->course().marks)
+        std::printf("mark type %d (%.1f, %.1f) r %.1f\n", static_cast<int>(m.type), static_cast<double>(m.pos.x),
+                    static_cast<double>(m.pos.y), static_cast<double>(m.radius));
+    }
+    std::printf("seed %2llu:", seed);
+    for (const wm::RulesEvent& e : o.rules_events) {
+      const double t = static_cast<double>(e.tick) * 0.05 - static_cast<double>(o.n_gun_s);
+      if (e.kind == wm::RulesEventKind::mark_touch) {
+        ++touch;
+        std::printf(" [t%.0f touch b%d m%d]", t, e.boat, e.mark);
+      }
+      if (e.kind == wm::RulesEventKind::penalty || e.kind == wm::RulesEventKind::disqualified)
+        std::printf(" [t%.0f %s b%d %s]", t, e.kind == wm::RulesEventKind::penalty ? "pen" : "DSQ", e.boat,
+                    std::string(wm::rule_code_str(e.rule)).c_str());
+    }
+    std::printf("\n  OCS:");
+    for (std::size_t k = 0; k < o.tel.size(); ++k) {
+      if (o.tel[k].ocs > 0) std::printf(" b%zu", k);
+    }
+    std::printf("\n  rounded mark 1 %d/%zu, touches %d, penalties %d, DSQ %d, finished %d\n", round1, o.boats.size(),
+                touch, o.penalties, dsq, fin);
+    tot_round += round1;
+    tot_touch += touch;
+    tot_pen += o.penalties;
+    tot_dsq += dsq;
+    tot_fin += fin;
+    tot_boats += static_cast<int>(o.boats.size());
+  }
+  std::printf("TOTAL %llu seeds, %d boats: rounded mark 1 %d, touches %d, penalties %d, DSQ %d, finished %d\n", ns,
+              tot_boats, tot_round, tot_touch, tot_pen, tot_dsq, tot_fin);
+}
+
+TEST_CASE("ai dev: fixed helm 360s"* doctest::skip(std::getenv("AI_DEV") == nullptr)) {
   for (const char* cls : {"wm7", "wm12"}) {
     for (const float kn : {6.0f, 11.0f, 16.0f, 22.0f}) {
       for (const float twa0 : {45.0f, 90.0f, 150.0f}) {

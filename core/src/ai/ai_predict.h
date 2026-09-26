@@ -48,4 +48,8 @@ inline float radius_for_helm(const Dynamics& d, float h) {
   return max((d.turn_radius_full + d.turn_radius_offset) / n - d.turn_radius_offset, 0.5f);
 }
 
+// The time a helm order takes to turn the boat (boat.md §5.9): the rudder's travel to half helm at `helm_rate` and
+// the hull's yaw lag `yaw_time`. The boat runs on about |v| times this before a turn takes hold.
+inline float reaction_time(const Dynamics& d) { return d.yaw_time + 0.5f / (d.helm_rate > 0.1f ? d.helm_rate : 0.1f); }
+
 }  // namespace wm::ai_detail

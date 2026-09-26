@@ -600,12 +600,12 @@ measurements. Measured on the default course (11 kn, stable shifts):
 
 | run | measured | spec target |
 | --- | --- | --- |
-| 10 Intermediate, 5 seeds | 86 % finish (the rest DSQ); 1.0 penalties/boat; 4.4 contacts/race; stuck ≤ 22 s | all finish; ≤ 0.4; ≤ 1; ≤ 20 s |
-| same | bad air 1.8 triggers/boat, deficit 0.14 → 0.04 twenty seconds later (90 % lower) | ≥ 2, lower |
-| every level, 10 boats, 2 seeds | 80–95 % finish; OCS 5–15 %; mean start delay 21–25 s | Pro OCS < 5 %, delay < 2 s; Easy < 15 %, 3–8 s |
+| 10 Intermediate, 5 seeds | 86 % finish (the rest DSQ); 0.9 penalties/boat; 4.8 contacts/race; stuck ≤ 22 s | all finish; ≤ 0.4; ≤ 1; ≤ 20 s |
+| same | bad air 1.7 triggers/boat, deficit 0.13 → 0.03 twenty seconds later (93 % lower) | ≥ 2, lower |
+| every level, 10 boats, 2 seeds | 75–95 % finish; OCS 0–5 %; mean start delay 15–20 s | Pro OCS < 5 %, delay < 2 s; Easy < 15 %, 3–8 s |
 | 1 nm beat, 10 boats | 5.0 tacks/boat | 3–14 |
 | match race, 2 Expert, 5 seeds | the leader covers in every race (1–7 activations) | ≥ 1 |
-| mixed fleet (2 per level, 3 seeds) | mean place Easy 7.0, Intermediate 3.8, Expert 4.2, Pro 3.5 | monotonic |
+| mixed fleet (2 per level, 3 seeds) | mean place Easy 7.0, Intermediate 3.3, Expert 4.2, Pro 3.7 | monotonic |
 | speed only (same) | finish-time ratios to Pro within 2.5 % of the `performance_scale` ratios | within 3 % |
 
 The assertions of `ai_races` hold the measured level (finish ≥ 80 %, ≤ 1.3 penalties/boat, ≤ 6 contacts/race,
@@ -614,7 +614,16 @@ bad air ≥ 1.5 and lower 20 s later, every level ≥ 70 % finish, tacks 3–14,
 crowd at the line and pre-start penalties make the mean 13–25 s) and strict level order in a mixed fleet are not
 met yet. Most remaining penalties come from the windward mark in a crowd (rule 31 and the `44.1-late` penalties
 that follow: on the default course the offset mark is 60 m from the windward mark, so a boat penalised at the
-windward mark is inside one zone or the other for most of the 45 s of `rules.md` §9.4).
+windward mark is inside one zone or the other for most of the 45 s of `rules.md` §9.4; §7.6 now sails clear of the
+zones first).
+
+Development runs (skipped unless asked for, in `test_ai_race.cpp`): `AI_SCENE=1` races the game scene's fleet (6
+Expert wm7, 12 kn from 0°, the default shifts) over `AI_SEEDS=first,count` and prints per seed the first-mark
+roundings, mark touches, penalties, DSQs, finishes and OCS boats; `AI_FLEET=1` switches to the fleet of the runs
+above, `AI_WM12=1` to a mixed wm7 and wm12 fleet, `AI_TRACE` writes a CSV of every boat every 0.5 s (with the reason
+of the last manoeuvre and why a penalty turn waits), and `AI_SNAP=<dir>` resumes a race the game saved (the world
+snapshot and the skippers' block, `world.bin` and `ai.bin`, boat 0 the player) instead of creating one, so a
+failure seen in the game scene is replayed in the core.
 
 ## 16. The skippers' memory in a snapshot
 

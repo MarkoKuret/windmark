@@ -29,6 +29,19 @@ def paint_zones(geoms, boot):
     return part
 
 
+def _drop_small(part, size):
+    out = Part()
+    for mat, gs in part.slots.items():
+        for g in gs:
+            if np.linalg.norm(g.P.max(0) - g.P.min(0)) >= size:
+                out.add(mat, g)
+    if not out.tri_count():         # keep the node: its largest piece
+        mat, g = max(((m, g) for m, gs in part.slots.items() for g in gs),
+                     key=lambda mg: np.linalg.norm(mg[1].P.max(0) - mg[1].P.min(0)))
+        out.add(mat, g)
+    return out
+
+
 class Boat:
     def __init__(self, cls, log=print):
         self.cls = cls
@@ -104,6 +117,69 @@ class Boat:
             self.parts["rudder"].extend(hardware.tiller(self.app, self.deck, self.hull, (self.hull.L / 12) ** 0.7))
         for name, sail in self.sails.items():
             self.parts["sail_" + name] = sail.part()
+
+    # levels of detail: (segment scale of the round parts, hull stations, bottom and topside girth points, deck
+    # stations, keel and rudder chord points, switch distance in m); LOD0 is the full model built above
+    LODS = {1: (0.5, 48, 10, 7, 45, 12, 10, 30.0), 2: (0.28, 24, 6, 4, 22, 8, 6, 100.0)}
+    # pieces with a smaller bounding-box diagonal are left out of that level (m)
+    LOD_MIN_SIZE = {1: 0.035, 2: 0.3}
+
+    def lod_parts(self, lod):
+        """Nodes of a lower level of detail: the same node set, pivots and sails as the full model (the sail grids
+        are the simulation's and stay as they are), with a coarser hull, deck and appendages, fewer segments on
+        every round part, and the small fittings dropped (hardware.place_all)."""
+        from .mesh import segment_scale
+        f, n_st, nb, nt, n_deck, n_keel, n_rud, _ = self.LODS[lod]
+        cls = self.cls
+        saved = {k: getattr(self.hull, k) for k in ("skin_grid", "girth", "girth_max", "skin_xs", "i_turn")}
+        parts = {}
+        with segment_scale(f):
+            port, stbd = self.hull.skin(n_st, nb, nt)
+            for k, v in saved.items():
+                setattr(self.hull, k, v)
+            parts["hull"] = paint_zones([port, stbd], cls["hull"]["boot_top"])
+            deck = Deck(cls, self.hull)
+            parts["deck"] = deck.build(n_out=max(3, round(9 * f)), n_st=n_deck, skin=(nb, nt))
+            app = Appendages(cls, self.hull)
+            parts["keel"] = app.keel_part(n_chord=n_keel)
+            if app.has_bulb:
+                parts["keel"] = Part().add("antifouling", app.fin_geom)
+                parts["keel"].add("antifouling", app.bulb_geom(nl=max(12, round(48 * f)), nr=max(8, round(28 * f))))
+            parts["rudder"] = app.rudder_part(n_chord=n_rud)
+            rig = Rig(cls, self.hull, deck)
+            rig.jib_clew = getattr(self.rig, "jib_clew", None)
+            if rig.jib_clew is None:
+                del rig.jib_clew
+            parts["mast"] = rig.mast_part()
+            parts["rigging"] = rig.rigging_part()
+            parts["boom"] = rig.boom_part()
+            hw = hardware.place_all(cls, self.hull, deck, rig, lod=lod)
+            parts["hardware"] = hw["hardware"]
+            parts["hardware"].extend(hardware.rudder_fittings(app, deck, self.hull, (self.hull.L / 12) ** 0.7))
+            parts["boom"].extend(hw["boom_hardware"])
+            parts["mainsheet"] = hw["mainsheet"]
+            if rig.pole_flown:
+                parts["pole"] = rig.pole_part()
+            if hw["helm"].tri_count():
+                parts["wheel"] = hw["helm"]
+            else:
+                parts["rudder"].extend(hardware.tiller(app, deck, self.hull, (self.hull.L / 12) ** 0.7))
+        # drop the pieces too small to read at the level's distance (fittings, terminals, screws, bolts)
+        min_size = self.LOD_MIN_SIZE[lod]
+        for name in ("mast", "rigging", "boom", "hardware", "rudder", "wheel", "pole"):
+            if name in parts:
+                parts[name] = _drop_small(parts[name], min_size)
+        for name in self.sails:
+            parts["sail_" + name] = self.parts["sail_" + name]
+        assert sorted(parts) == sorted(self.parts), (sorted(parts), sorted(self.parts))
+        return parts
+
+    def write_lod_glb(self, path, lod):
+        parts = self.lod_parts(lod)
+        self._write(path, self.cls["id"], parts, self.pivots,
+                    extras={"class": self.cls["id"], "name": self.cls.get("name", ""), "lod": lod,
+                            "livery_panels": self.livery_panels()})
+        return sum(p.tri_count() for p in parts.values()), parts
 
     # poses for previews: the exported model keeps the flat standard sail shapes
     POSES = {
@@ -197,7 +273,7 @@ class Boat:
 
     def write_glb(self, path):
         self._write(path, self.cls["id"], self.parts, self.pivots,
-                    extras={"class": self.cls["id"], "name": self.cls.get("name", ""),
+                    extras={"class": self.cls["id"], "name": self.cls.get("name", ""), "lod": 0,
                             "livery_panels": self.livery_panels()})
 
     def _write(self, path, root, parts, pivots, extras=None):

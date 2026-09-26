@@ -7,7 +7,7 @@ boom, E the foot from the mast aft face along the boom. mast_height is the masth
 import numpy as np
 
 from .mesh import (Part, sweep, ellipse, rounded_rect, tube, revolve, superellipsoid_box, box, normalize,
-                   translate, rot_axis, frame_z, merge)
+                   translate, rot_axis, frame_z, merge, seg)
 
 
 class Rig:
@@ -67,10 +67,10 @@ class Rig:
     def mast_part(self):
         p = Part()
         s = self.scale
-        zs = np.linspace(self.z_step - 0.1, self.z_top, 40)
+        zs = np.linspace(self.z_step - 0.1, self.z_top, seg(40, 8))
         taper = np.where(zs < self.z_hounds, 1.0, 1.0 - 0.42 * (zs - self.z_hounds) / max(self.z_top - self.z_hounds, 1e-3))
         path = np.stack([np.full_like(zs, self.x_mast), np.zeros_like(zs), zs], -1)
-        prof = _mast_section(self.chord, self.width, 24)
+        prof = _mast_section(self.chord, self.width, seg(24, 8))
         p.add("carbon", sweep(path, prof, scale_along=taper, up=np.array([1.0, 0, 0])))
         # mast collar / partner ring at the deck
         ring = revolve([(0.0, 0.0), (self.chord * 0.75, 0.0), (self.chord * 0.72, 0.035), (self.chord * 0.55, 0.06),

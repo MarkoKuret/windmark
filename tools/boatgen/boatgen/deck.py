@@ -104,15 +104,18 @@ class Deck:
         return np.where(x <= self.xc1, self.yc(x), np.where(x <= self.xk1, self.yk(x), 0.0))
 
     # ------------------------------------------------------------------------------------------------------
-    def build(self, n_out=9):
+    def build(self, n_out=9, n_st=90, skin=(18, 13)):
+        """Deck part; `n_st` deck stations (plus the feature breaks) and the hull skin's girth counts `skin`
+        (the transom face must meet the skin) set the level of detail."""
+        self._skin_n = skin
         part = Part()
         hull = self.hull
         L = hull.L
         # deck stations: hull stations plus the feature breaks, dense near the cabin front
-        xs = list(hull.stations_x(90))
+        xs = list(hull.stations_x(n_st))
         xs += [self.xc0, self.xc1, self.xk1]
         if self.has_cabin:
-            xs += list(self.xk0 + (self.xk1 - self.xk0) * (1 - (np.linspace(0, 1, 18)) ** 2) ** 0.5)
+            xs += list(self.xk0 + (self.xk1 - self.xk0) * (1 - (np.linspace(0, 1, max(6, n_st // 5))) ** 2) ** 0.5)
         xs = np.unique(np.clip(np.round(np.array(xs), 5), 0, L))
         bs = hull.bs(xs)
         yin = np.minimum(self.y_inner(xs), bs * 0.98)
@@ -139,9 +142,9 @@ class Deck:
         self._deck_P = P
         self._cockpit(part, xs)
         if self.has_cabin:
-            self._cabin(part)
+            self._cabin(part, n_half=max(12, round(40 * n_st / 90)), n_roof=max(5, round(11 * n_st / 90)))
         self._transom(part)
-        self._sheer_trim(part)
+        self._sheer_trim(part, n=max(16, round(120 * n_st / 90)))
         return part
 
     # ------------------------------------------------------------------------------------------------------
@@ -296,7 +299,7 @@ class Deck:
     # ------------------------------------------------------------------------------------------------------
     def _transom(self, part):
         hull = self.hull
-        y, z, _ = hull.station(0.0, 18, 13)
+        y, z, _ = hull.station(0.0, *getattr(self, "_skin_n", (18, 13)))
         stbd = np.stack([np.zeros_like(y), -y, z], -1)[::-1]    # sheer -> keel on starboard
         port = np.stack([np.zeros_like(y), y, z], -1)[1:]        # keel -> sheer on port
         bs0 = float(hull.bs(np.array([0.0]))[0])
@@ -314,10 +317,10 @@ class Deck:
         poly = np.vstack([stbd, port, np.array(top)])
         part.add("gelcoat", planar_polygon(poly, [-1, 0, 0]))
 
-    def _sheer_trim(self, part):
+    def _sheer_trim(self, part, n=120):
         """Toe rail on the deck edge and a rub strake just below the sheer on the hull."""
         hull = self.hull
-        xs = np.linspace(0.0, hull.L - 0.01, 120)
+        xs = np.linspace(0.0, hull.L - 0.01, n)
         tr = float(self.cls["deck"]["toe_rail"])
         for side in (1.0, -1.0):
             bs = hull.bs(xs)
@@ -329,7 +332,7 @@ class Deck:
             y2 = np.array([hull.half_breadth_at(x, float(hull.zs(np.array([x]))[0]) - 0.03) for x in xs])
             path2 = np.stack([xs, side * (y2 + 0.004), hull.zs(xs) - 0.03], -1)
             ok = y2 > 0.02
-            if ok.sum() > 4:
+            if ok.sum() > 4 and n >= 40:     # the rub strake is left out of the far level of detail
                 part.add("rubber", sweep(path2[ok], rounded_rect(0.022, 0.018, 0.008, 2), up=np.array([0, 0, 1.0])))
 
 

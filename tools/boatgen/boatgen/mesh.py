@@ -307,13 +307,15 @@ def parallel_frames(path):
     return T, Nn, B
 
 
-def sweep(path, profile, closed_profile=True, scale_along=None, caps=True, up=None, max_seg=SWEEP_MAX_SEG):
+def sweep(path, profile, closed_profile=True, scale_along=None, caps=True, up=None, max_seg=None):
     """Sweep a 2D profile (m, 2) along a 3D path (n, 3). Profile x maps to the frame normal, y to binormal.
 
     `up` (3,) pins the profile x axis to the direction closest to `up` (for non-circular sections). Path segments
     longer than `max_seg` are split evenly (so per-vertex data such as baked AO has rings to vary on)."""
     path = np.asarray(path, dtype=np.float64)
     prof = np.asarray(profile, dtype=np.float64)
+    if max_seg is None:
+        max_seg = SWEEP_MAX_SEG / _SEG[0]
     if max_seg and len(path) > 1:
         seg = np.linalg.norm(np.diff(path, axis=0), axis=-1)
         k = np.maximum(1, np.ceil(seg / max_seg).astype(int))

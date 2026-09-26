@@ -179,8 +179,20 @@ class Rig:
         if self.sprit > 0:
             # bobstay from the sprit end to the stem near the waterline
             L = self.hull.L
-            segs.append((self.sprit_end, np.array([L - 0.02, 0, 0.18 * s]), r_cap * 0.9))
+            segs.append((self.sprit_end, self.bobstay_foot(), r_cap * 0.9))
         return segs
+
+    def bobstay_foot(self):
+        """Point on the stem, a little above the waterline, where the bobstay lands."""
+        h, z = self.hull, 0.18 * self.scale
+        lo, hi = h.x_md, h.L
+        for _ in range(40):
+            mid = 0.5 * (lo + hi)
+            if float(h.zk(np.array([mid]))[0]) < z:
+                lo = mid
+            else:
+                hi = mid
+        return np.array([lo + 0.005, 0.0, z])
 
     def rigging_part(self):
         p = Part()

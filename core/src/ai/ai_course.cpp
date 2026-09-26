@@ -45,7 +45,9 @@ float rounding_radius(AC& x, AB& a, const Me& m, std::int32_t mark) {
   // The helm's reaction (boat.md §5.9): the boat runs on about |v| times the rudder's travel and the yaw lag before a
   // turn takes hold.
   const float lag = max(m.s.v, 0.0f) * reaction_time(m.b.perf().dynamics);
-  return (((rm.radius + 0.5f * m.B) + a.P.c_lvl * m.B) + static_cast<float>(n_in) * (m.B + 1.0f)) + lag;
+  const float rho = (((rm.radius + 0.5f * m.B) + a.P.c_lvl * m.B) + static_cast<float>(n_in) * (m.B + 1.0f)) + lag;
+  // Not tighter than the boat can follow at the rounding's helm (the tack helm, boat.md §5.9 radius law).
+  return max(rho, radius_for_helm(m.b.perf().dynamics, 0.6f));
 }
 
 // §6.3 gate choice.

@@ -270,7 +270,9 @@ the line's middle and start as in fleet with `u* = 0.5`. Dial-ups and hooks are 
   is the level's clearance (§13), `n_in` the number of boats the rules engine says are entitled to mark-room from
   this boat at this mark (they need space inside it), and the last term the way the boat runs on before a turn
   takes hold: the **reaction time** `t_r = yaw_time + 0.5 / helm_rate` (the hull's yaw lag and the rudder's travel
-  to half helm, `boat.md` §5.9), read from the class's data, so the margin follows the boat and its speed.
+  to half helm, `boat.md` §5.9), read from the class's data, so the margin follows the boat and its speed. `ρ` is at
+  least the turning radius at the helm of a smooth turn (0.6, §10): a tighter circle cannot be followed, and a boat
+  that cannot follow it swings out of it on the exit.
 - **Aim point** while more than `4·L` away: the tangent point of the circle on the required side as seen from the
   boat. Within `4·L`: follow the circle; the turn starts when the distance to the tangent point is below the turning
   radius at the planned helm (`boat.md` §5.9 radius law), so the boat leaves the circle on the exit tangent towards the next leg's

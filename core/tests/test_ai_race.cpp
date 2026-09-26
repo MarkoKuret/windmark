@@ -97,6 +97,9 @@ TEST_CASE("ai dev: the scene fleet over seeds" * doctest::skip(std::getenv("AI_S
       const wm::AiLevel lv = sp.levels.front();
       if (std::getenv("AI_N") == nullptr) sp.levels.assign(10, lv);
     }
+    if (std::getenv("AI_WM12") != nullptr) {
+      for (std::size_t k = 0; k < sp.levels.size(); ++k) sp.classes.push_back(k % 2 == 1 ? "wm12" : "wm7");
+    }
     sp.trace = std::getenv("AI_TRACE");
     sp.snap_dir = std::getenv("AI_SNAP");  // a race saved by the game at the gun (boat 0 the player, taken over)
     sp.human0 = sp.snap_dir != nullptr;

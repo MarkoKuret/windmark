@@ -102,6 +102,11 @@ bool SailShape::configure(const PackedVector3Array& rest, int64_t rows, int64_t 
   mast_step_ = getv(p, "mast_step", mast_step_);
   mast_axis_ = getv(p, "mast_axis", up_).normalized();
   phi_ = getf(p, "phi", 0.0f);
+  clearance_ = getf(p, "clearance", 0.0f);
+  has_mast_head_ = p.has("mast_head");
+  mast_head_ = getv(p, "mast_head", mast_step_ + mast_axis_);
+  obs_.clear();
+  ease_ = 0.0f;
 
   const Vector3* r = rest.ptr();
   tack_ = r[0];
@@ -361,9 +366,18 @@ void SailShape::update(int64_t phase, double progress, double beta_in, double ga
       loc_[k] = lc;
     }
   }
+  // §7.4 the ease of a flying sail off the other sails (the head lies on the luff axis)
+  const Vector3 hd = s_t.xform(head_);
+  const bool clearing = clearance_ > 0.0f && (!obs_.empty() || has_mast_head_);
+  ease_ = 0.0f;
+  if (clearing && !obs_.empty()) {
+    sections(s_t, piv, ax, base);
+    ease_ = ease(beta, s_t, piv, ax, base, hd);
+  }
+  const float es = sgn(beta) * ease_;
   // §7 placement, row by row with the twist toward leeward
   for (int i = 0; i < rows_; ++i) {
-    const float th = base + tl_ * twist_top_ * std::pow(hrow_[i], 1.5f);
+    const float th = base + tl_ * twist_top_ * std::pow(hrow_[i], 1.5f) + es;
     const Transform3D xr = about(piv, ax, th) * s_t;
     for (int j = 0; j < cols_; ++j) {
       const int k = i * cols_ + j;
@@ -371,7 +385,161 @@ void SailShape::update(int64_t phase, double progress, double beta_in, double ga
       mid_[k] = xr.xform(tack_ + ah_ * lc.x + lh_ * lc.y + nh_ * lc.z);
     }
   }
+  if (clearing) push(awa, hd);
   layers(np);
+}
+
+void SailShape::set_obstacles(const Array& obstacles) {
+  obs_.clear();
+  for (int64_t i = 0; i < obstacles.size(); ++i) {
+    SailShape* s = Object::cast_to<SailShape>(static_cast<Object*>(obstacles[i]));
+    if (s != nullptr && s != this && s->n_ > 0) obs_.push_back(Ref<SailShape>(s));
+  }
+}
+
+// §7.4: mean row heights and the bow-facing foot normal of each obstacle, the side from this sail's clew before
+// the ease.
+void SailShape::sections(const Transform3D& s_t, const Vector3& piv, const Vector3& ax, float base) {
+  const Vector3& lc = loc_[cols_ - 1];
+  const Transform3D xr = about(piv, ax, base + tl_ * twist_top_ * std::pow(hrow_[0], 1.5f)) * s_t;
+  const Vector3 cl = xr.xform(tack_ + ah_ * lc.x + lh_ * lc.y + nh_ * lc.z);
+  const float sk = sgn((cl - mast_step_).dot(port_));
+  const Vector3 bow = fwd_ + port_ * (0.3f * sk);
+  secs_.resize(obs_.size());
+  for (size_t o = 0; o < obs_.size(); ++o) {
+    const SailShape* s = obs_[o].ptr();
+    Section& sc = secs_[o];
+    sc.s = s;
+    sc.z.assign(s->rows_, 0.0f);
+    for (int i = 0; i < s->rows_; ++i) {
+      float z = 0.0f;
+      for (int j = 0; j < s->cols_; ++j) z += s->mid_[i * s->cols_ + j].dot(up_);
+      sc.z[i] = z / static_cast<float>(s->cols_);
+    }
+    const Vector3 ch = s->mid_[s->cols_ - 1] - s->mid_[0];
+    Vector3 f = up_.cross(ch - up_ * ch.dot(up_));
+    f = f.length_squared() > 1e-12f ? f.normalized() : port_;
+    sc.f = f.dot(bow) >= 0.0f ? f : -f;
+  }
+}
+
+// §7.4: clearance of p from an obstacle's section at p's height (horizontal), and the push direction g.
+float SailShape::clear_x(const Section& o, const Vector3& p, Vector3& g) const {
+  const SailShape& s = *o.s;
+  const int r_n = s.rows_, c_n = s.cols_;
+  const float z = p.dot(up_);
+  if (z < o.z[0] - clearance_ || z > o.z[r_n - 1]) return INFINITY;
+  int r = 0;
+  while (r < r_n - 2 && o.z[r + 1] <= z) ++r;
+  const float den = o.z[r + 1] - o.z[r];
+  const float t = den > 1e-6f ? clampf((z - o.z[r]) / den, 0.0f, 1.0f) : 0.0f;
+  const Vector3 ph = p - up_ * z;
+  const Vector3* m0 = s.mid_.data() + r * c_n;
+  const Vector3* m1 = m0 + c_n;
+  auto sec = [&](int j) {
+    const Vector3 q = m0[j] + (m1[j] - m0[j]) * t;
+    return q - up_ * q.dot(up_);
+  };
+  float best = INFINITY, bs = 0.0f;
+  int bj = 0;
+  Vector3 bq, bd;
+  Vector3 q0 = sec(0);
+  for (int j = 0; j + 1 < c_n; ++j) {
+    const Vector3 q1 = sec(j + 1);
+    const Vector3 d = q1 - q0;
+    const float l2 = d.length_squared();
+    const float sp = l2 > 1e-12f ? clampf((ph - q0).dot(d) / l2, 0.0f, 1.0f) : 0.0f;
+    const Vector3 q = q0 + d * sp;
+    const float d2 = (ph - q).length_squared();
+    if (d2 < best) {
+      best = d2;
+      bj = j;
+      bs = sp;
+      bq = q;
+      bd = d;
+    }
+    q0 = q1;
+  }
+  if ((bj == 0 && bs <= 0.0f) || (bj == c_n - 2 && bs >= 1.0f) || bd.length_squared() < 1e-12f) {
+    const Vector3 v = ph - bq;
+    const float len = v.length();
+    g = len > 1e-6f ? v / len : o.f;
+    return len;
+  }
+  g = up_.cross(bd).normalized();
+  if (g.dot(o.f) < 0.0f) g = -g;
+  return (ph - bq).dot(g);
+}
+
+float SailShape::mast_x(const Vector3& p, const Vector3& lee, Vector3& g) const {
+  const Vector3 d = p - mast_step_;
+  const Vector3 ax = mast_head_ - mast_step_;
+  const float len = ax.length();
+  if (len < 1e-6f) return INFINITY;
+  const Vector3 au = ax / len;
+  const float tz = d.dot(au);
+  if (tz < 0.0f || tz > len) return INFINITY;
+  const Vector3 rad = d - au * tz;
+  const float x = rad.length();
+  g = x > 1e-6f ? rad / x : lee;
+  return x;
+}
+
+float SailShape::margin_at(const Vector3& p, const Vector3& hd) const {
+  const float x = clampf(p.distance_to(hd) / (5.0f * clearance_), 0.0f, 1.0f);
+  return clearance_ * x * x * (3.0f - 2.0f * x);
+}
+
+// §7.4 the ease: the extra turn about the luff that brings the leech samples clear of the obstacles.
+float SailShape::ease(float beta, const Transform3D& s_t, const Vector3& piv, const Vector3& ax, float base,
+                      const Vector3& hd) const {
+  float delta = 0.0f;
+  const float es = sgn(beta);
+  for (int it = 0; it < 4; ++it) {
+    float worst = INFINITY, rr = 1.0f;
+    for (int i = 0;; i = std::min(i + 3, rows_ - 2)) {  // rows 0, 3, 6, ... and the one below the head
+      const int k = i * cols_ + cols_ - 1;
+      const Vector3& lc = loc_[k];
+      const float th = base + tl_ * twist_top_ * std::pow(hrow_[i], 1.5f) + es * delta;
+      const Vector3 pt = (about(piv, ax, th) * s_t).xform(tack_ + ah_ * lc.x + lh_ * lc.y + nh_ * lc.z);
+      const float cp = margin_at(pt, hd);
+      for (const Section& o : secs_) {
+        Vector3 g;
+        const float x = clear_x(o, pt, g) - cp;
+        if (x < worst) {
+          worst = x;
+          const Vector3 d = pt - piv;
+          rr = (d - ax * d.dot(ax)).length();
+        }
+      }
+      if (i == rows_ - 2) break;
+    }
+    if (worst >= 0.0f) break;
+    delta = std::min(delta + (-worst) / std::max(rr, 0.5f), 1.0f);
+  }
+  return delta;
+}
+
+// §7.4 the push: every vertex off each obstacle in turn, then off the mast.
+void SailShape::push(float awa, const Vector3& hd) {
+  const float b = clearance_;
+  auto smax = [b](float x) { return x >= b ? x : (x <= -b ? 0.0f : (x + b) * (x + b) / (4.0f * b)); };
+  const Vector3 lee = port_ * sgn(awa);
+  for (int k = 0; k < n_; ++k) {
+    Vector3 p = mid_[k];
+    const float cp = margin_at(p, hd);
+    for (const Section& o : secs_) {
+      Vector3 g;
+      const float x = clear_x(o, p, g);
+      if (x < cp + b) p += g * (cp + smax(x - cp) - x);
+    }
+    if (has_mast_head_) {
+      Vector3 g;
+      const float x = mast_x(p, lee, g);
+      if (x < cp + b) p += g * (cp + smax(x - cp) - x);
+    }
+    mid_[k] = p;
+  }
 }
 
 void SailShape::layers(const Vector3& np) {
@@ -457,6 +625,8 @@ void SailShape::write_mesh() {
 void SailShape::_bind_methods() {
   ClassDB::bind_method(D_METHOD("configure", "rest_mid", "rows", "cols", "params"), &SailShape::configure);
   ClassDB::bind_method(D_METHOD("advance", "dt", "aws", "awa", "backed"), &SailShape::advance);
+  ClassDB::bind_method(D_METHOD("set_obstacles", "obstacles"), &SailShape::set_obstacles);
+  ClassDB::bind_method(D_METHOD("get_ease"), &SailShape::get_ease);
   ClassDB::bind_method(D_METHOD("update", "phase", "progress", "beta", "gamma", "luff_shiver", "awa", "aws"),
                        &SailShape::update);
   ClassDB::bind_method(D_METHOD("get_phase"), &SailShape::get_phase);

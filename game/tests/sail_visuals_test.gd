@@ -35,6 +35,7 @@ func _main() -> void:
 		_native_vs_ref()
 		_vertex_bytes()
 	_boats()
+	_clearance()
 	await _rate_by_distance()
 	_perf()
 	t.finish(self, "sail visuals test")
@@ -457,10 +458,12 @@ func _native_vs_ref() -> void:
 	var worst := 0.0
 	var cases := 0
 	var kinds := [[K.MAIN, M.BOOM, false], [K.HEADSAIL, M.LUFF, false], [K.HEADSAIL, M.LUFF, true],
-		[K.ASYM, M.SPRIT, false], [K.SYM, M.POLE, false]]
+		[K.ASYM, M.SPRIT, false], [K.SYM, M.POLE, false], [K.HEADSAIL, M.SPRIT, false, {"camber": 0.12}]]
 	for g in [rect(), tri()]:
 		for c in kinds:
 			var ex := {"furling": c[2], "mast_step": Vector3(1.2, 0, 0.5), "boom_pivot": Vector3(0.2, 0, 1.0)}
+			if c.size() > 3:
+				ex.merge(c[3])
 			var a: Variant = mk("ref", c[0], c[1], ex, g)
 			var b: Variant = mk("native", c[0], c[1], ex, g)
 			for r in 40:
@@ -478,6 +481,35 @@ func _native_vs_ref() -> void:
 				worst = maxf(worst, max_move(a.normals(), b.normals()) * 0.01)
 				cases += 1
 	t.ok(worst < 1e-3, "%d random frames in every phase: native within %.7f m of the reference" % [cases, worst])
+	# §7.4 on the generated wm7: the kite eased and pushed off the main and the jib, native against reference
+	if not FileAccess.file_exists("res://generated/boats/wm7.glb"):
+		return
+	var data := BoatClassData.load_class("wm7")
+	var bvs := [BoatView.create(data.info, 0.5), BoatView.create(data.info, 0.5, true)]
+	var ki := int(data.sail_index["kite"])
+	var ji := int(data.sail_index["jib"])
+	var w2 := 0.0
+	var eased := 0
+	var n2 := 0
+	for twa_deg in [60, 100, 140, 180]:
+		for side in [1.0, -1.0]:
+			var tws := 12.0 * KNOT
+			var aw := _apparent(data, ki, tws, deg_to_rad(float(twa_deg)), side)
+			var sv := _sails_view(data, aw.x, aw.y, tws, ki, ji, [0.85, 1.2])
+			var kp := []
+			for bv in bvs:
+				bv.apply_sails(sv, sv, 1.0, 1.0 / 60.0)
+				for sp in bv.sail_parts:
+					if sp.index == ki:
+						kp.append(sp.shape)
+			w2 = maxf(w2, max_move(kp[0].positions(), kp[1].positions()))
+			w2 = maxf(w2, absf(kp[0].get_ease() - kp[1].get_ease()))
+			eased += 1 if kp[0].get_ease() > 0.01 else 0
+			n2 += 1
+	t.ok(w2 < 1e-3 and eased > 0, "wm7 kite off the main and jib, %d cases (%d eased): native within %.7f of the reference" % [
+		n2, eased, w2])
+	for bv in bvs:
+		bv.free()
 
 
 ## The native buffer against Godot's own encoding of the same positions and normals.
@@ -555,7 +587,8 @@ func _boats() -> void:
 			t.ok(sm != null and sm.shader == BoatView.SAIL_SHADER and sm.get_shader_parameter("albedo_color") is Color,
 				"%s: on the sail shader with the slot's colour" % sp.id)
 			var port := Frames.body_to_model(Vector3(0, 1, 0))
-			if sp.type != "spinnaker_asym" and sp.type != "spinnaker_sym":
+			# flying sails are left out: at beta = 0 they lie in the mast's plane and wrap round it (§7.4)
+			if not BoatView.is_flying(sp.type):
 				sp.shape.update(UP, 1.0, 0.0, 0.0, 0.0, 0.0, 5.0)
 				var worst := 1.0
 				var nr: PackedVector3Array = sp.shape.normals()
@@ -649,6 +682,263 @@ func _asym_leeward(sp: BoatView.SailPart) -> void:
 					bad += 1
 		t.ok(bad == 0, "%s awa %+.0f deg, beta %+.0f deg: belly to leeward of the luff (%d vertices not)" % [sp.id, deg,
 			rad_to_deg(beta), bad])
+
+
+# ---- §12 test 18: clearance of the flying sails -------------------------------------------------------------
+
+const CELL := 0.6
+
+
+static func _cell(p: Vector3) -> Vector3i:
+	return Vector3i(floori(p.x / CELL), floori(p.y / CELL), floori(p.z / CELL))
+
+
+## The triangles of a grid-order mid-surface, three points each (collapsed ones left out).
+static func grid_tris(m: PackedVector3Array, rows: int, cols: int) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	for i in rows - 1:
+		for j in cols - 1:
+			var a := m[i * cols + j]
+			var b := m[i * cols + j + 1]
+			var c := m[(i + 1) * cols + j]
+			var d := m[(i + 1) * cols + j + 1]
+			if (b - a).cross(c - a).length_squared() > 1e-10:
+				out.append_array([a, b, c])
+			if (b - c).cross(d - c).length_squared() > 1e-10:
+				out.append_array([c, b, d])
+	return out
+
+
+## The edges of the same triangulation, two points each.
+static func grid_edges(m: PackedVector3Array, rows: int, cols: int) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	for i in rows:
+		for j in cols:
+			var k := i * cols + j
+			if j + 1 < cols:
+				out.append_array([m[k], m[k + 1]])
+			if i + 1 < rows:
+				out.append_array([m[k], m[k + cols]])
+			if i + 1 < rows and j + 1 < cols:
+				out.append_array([m[k + 1], m[k + cols]])
+	return out
+
+
+## cell -> triangle indices, each triangle in every cell its box touches
+static func tri_hash(tris: PackedVector3Array) -> Dictionary:
+	var h := {}
+	for ti in tris.size() / 3:
+		var a := tris[3 * ti]
+		var b := tris[3 * ti + 1]
+		var c := tris[3 * ti + 2]
+		var c0 := _cell(a.min(b).min(c))
+		var c1 := _cell(a.max(b).max(c))
+		for x in range(c0.x, c1.x + 1):
+			for y in range(c0.y, c1.y + 1):
+				for z in range(c0.z, c1.z + 1):
+					var key := Vector3i(x, y, z)
+					if not h.has(key):
+						h[key] = []
+					h[key].append(ti)
+	return h
+
+
+## Closest point of triangle abc to p.
+static func closest_on_tri(p: Vector3, a: Vector3, b: Vector3, c: Vector3) -> Vector3:
+	var ab := b - a
+	var ac := c - a
+	var ap := p - a
+	var d1 := ab.dot(ap)
+	var d2 := ac.dot(ap)
+	if d1 <= 0.0 and d2 <= 0.0:
+		return a
+	var bp := p - b
+	var d3 := ab.dot(bp)
+	var d4 := ac.dot(bp)
+	if d3 >= 0.0 and d4 <= d3:
+		return b
+	var vc := d1 * d4 - d3 * d2
+	if vc <= 0.0 and d1 >= 0.0 and d3 <= 0.0:
+		return a + ab * (d1 / (d1 - d3))
+	var cp := p - c
+	var d5 := ab.dot(cp)
+	var d6 := ac.dot(cp)
+	if d6 >= 0.0 and d5 <= d6:
+		return c
+	var vb := d5 * d2 - d1 * d6
+	if vb <= 0.0 and d2 >= 0.0 and d6 <= 0.0:
+		return a + ac * (d2 / (d2 - d6))
+	var va := d3 * d6 - d5 * d4
+	if va <= 0.0 and d4 - d3 >= 0.0 and d5 - d6 >= 0.0:
+		return b + (c - b) * ((d4 - d3) / ((d4 - d3) + (d5 - d6)))
+	var den := 1.0 / (va + vb + vc)
+	return a + ab * (vb * den) + ac * (vc * den)
+
+
+## Distance of p from the hashed triangles, INF beyond one cell.
+static func dist_to(p: Vector3, tris: PackedVector3Array, h: Dictionary) -> float:
+	var best := INF
+	var c := _cell(p)
+	var seen := {}
+	for x in range(c.x - 1, c.x + 2):
+		for y in range(c.y - 1, c.y + 2):
+			for z in range(c.z - 1, c.z + 2):
+				for ti in h.get(Vector3i(x, y, z), []):
+					if seen.has(ti):
+						continue
+					seen[ti] = true
+					var q := closest_on_tri(p, tris[3 * ti], tris[3 * ti + 1], tris[3 * ti + 2])
+					best = minf(best, p.distance_to(q))
+	return best
+
+
+## Number of edges crossing the hashed triangles.
+static func crossings(edges: PackedVector3Array, tris: PackedVector3Array, h: Dictionary) -> int:
+	var n := 0
+	for e in edges.size() / 2:
+		var p := edges[2 * e]
+		var q := edges[2 * e + 1]
+		var c0 := _cell(p.min(q))
+		var c1 := _cell(p.max(q))
+		var hit := false
+		for x in range(c0.x, c1.x + 1):
+			for y in range(c0.y, c1.y + 1):
+				for z in range(c0.z, c1.z + 1):
+					for ti in h.get(Vector3i(x, y, z), []):
+						if not hit and Geometry3D.segment_intersects_triangle(p, q, tris[3 * ti], tris[3 * ti + 1],
+								tris[3 * ti + 2]) != null:
+							hit = true
+		if hit:
+			n += 1
+	return n
+
+
+## §12 test 18: every flying sail of wm7 and wm12 over TWA, TWS, both tacks, trims, the jib up and down, placed by
+## BoatView as in the game: no crossing with the main, the jib or the mast, and at least 0.9 of the margin clear.
+func _clearance() -> void:
+	for id in ["wm7", "wm12"]:
+		if not FileAccess.file_exists("res://generated/boats/%s.glb" % id):
+			continue
+		var data := BoatClassData.load_class(id)
+		var bv := BoatView.create(data.info, 0.5)
+		var c: float = 0.042 * data.info.loa
+		var main_i: int = data.info.main_sail
+		var jib_i := int(data.sail_index.get("jib", -1))
+		var parts := {}
+		for sp in bv.sail_parts:
+			parts[sp.index] = sp
+		var ms: Vector3 = bv._mast_step
+		var mh: Vector3 = bv._mast_head
+		for fi in data.info.front_sails:
+			var fp: BoatView.SailPart = parts[fi]
+			if not (fp.type.begins_with("spinnaker") or fp.type == "code_zero"):
+				continue
+			t.begin("18 clearance: %s %s" % [id, fp.id])
+			var t0 := Time.get_ticks_msec()
+			var cfg: Dictionary = data.configs[fi]
+			var r := {"worst": INF, "at": "", "bad": 0, "cross": 0, "n": 0, "first": "", "ease": 0.0}
+			for twa_deg in range(60, 181, 20):
+				for kn in [6.0, 12.0, 22.0]:
+					for side in [1.0, -1.0]:
+						var tws: float = kn * KNOT
+						var twa := deg_to_rad(float(twa_deg))
+						var ap := _apparent(data, fi, tws, twa, side)
+						var awa := ap.x
+						for tr in [[1.0, 1.0], [0.85, 1.0], [1.2, 1.0], [0.85, 1.2]]:
+							for jib_up in ([false, true] if jib_i >= 0 else [false]):
+								var sv := _sails_view(data, awa, ap.y, tws, fi, jib_i if jib_up else -1, tr)
+								bv.apply_sails(sv, sv, 1.0, 1.0 / 60.0)
+								r["ease"] = maxf(r["ease"], fp.shape.get_ease())
+								var what := "twa %d tws %.0f %s trim %.2f/%.2f jib %s" % [twa_deg, kn,
+									"stbd" if side > 0 else "port", tr[0], tr[1], "up" if jib_up else "down"]
+								var obs: Array = [parts[main_i]]
+								if jib_up:
+									obs.append(parts[jib_i])
+								_clear_check(fp, obs, ms, mh, c, r, what)
+			t.ok(r["cross"] == 0, "%s %s: %d configs, %d crossings with the main, jib or mast%s" % [id, fp.id, r["n"],
+				r["cross"], "" if r["first"] == "" else " (first: %s)" % r["first"]])
+			t.ok(r["bad"] == 0 and r["worst"] >= 0.9 * c, "%s %s: smallest clearance %.3f m (margin %.2f m) at %s; %d vertices inside 0.9 of the faded margin" % [
+				id, fp.id, r["worst"], c, r["at"], r["bad"]])
+			print("  %s %s: %d configs, smallest clearance %.3f m (margin %.2f m) at %s; %d crossings, %d vertices inside 0.9 margin; largest ease %.1f deg; %d ms" % [
+				id, fp.id, r["n"], r["worst"], c, r["at"], r["cross"], r["bad"], rad_to_deg(r["ease"]), Time.get_ticks_msec() - t0])
+		bv.free()
+
+
+## The apparent wind (awa, aws) over a sail config's polar speed at the true wind (tws m/s, twa rad) on a tack
+## (side +1: wind from starboard).
+static func _apparent(data: BoatClassData, fi: int, tws: float, twa: float, side: float) -> Vector2:
+	var v: float = data.configs[fi]["polar"].at(tws, twa)
+	var aw := Vector2(tws * cos(twa) + v, tws * sin(twa))
+	return Vector2(side * aw.angle(), aw.length())
+
+
+## The sail states of one clearance case: the main and the flying sail up at trim factors of their optimum (and
+## the jib at its own, when `jib_i` >= 0), the other sails down.
+func _sails_view(data: BoatClassData, awa: float, aws: float, tws: float, fi: int, jib_i: int, tr: Array) -> SimSource.SailsView:
+	var sv := SimSource.SailsView.new()
+	sv.awa = awa
+	sv.aws = aws
+	sv.tws = tws
+	var cfg: Dictionary = data.configs[fi]
+	for i in data.info.sails.size():
+		var st := SimSource.SailState.new()
+		var si: SimSource.SailInfo = data.info.sails[i]
+		var opt: PerfTable = null
+		var f := 1.0
+		if i == data.info.main_sail:
+			opt = cfg["optimal"].get(i)
+			f = tr[1]
+		elif i == fi:
+			opt = cfg["optimal"].get(i)
+			f = tr[0]
+			var pa: PerfTable = data.sail_data[i]["pole_angle"]
+			st.pole = -Frames.sgn(awa) * (pa.at(tws, absf(awa)) if pa != null else 0.0)
+		elif i == jib_i:
+			opt = data.configs[jib_i]["optimal"].get(i)
+		if i == data.info.main_sail or i == fi or i == jib_i:
+			st.phase = UP
+			var m: float = opt.at(tws, absf(awa)) if opt != null else si.sheet_min
+			st.beta = -Frames.sgn(awa) * clampf(m * f, si.sheet_min, si.sheet_max)
+		sv.sails.append(st)
+		sv.out.append(SimSource.SailOutput.new())
+	return sv
+
+
+## One case: distances of the flying sail's vertices from the obstacles and the mast, and edge crossings both ways.
+func _clear_check(fp: BoatView.SailPart, obs: Array, ms: Vector3, mh: Vector3, c: float, r: Dictionary, what: String) -> void:
+	r["n"] += 1
+	var km: PackedVector3Array = fp.shape.mid()
+	var hd := km[(fp.rows - 1) * fp.cols]
+	var ktris := grid_tris(km, fp.rows, fp.cols)
+	var kh := tri_hash(ktris)
+	var kedges := grid_edges(km, fp.rows, fp.cols)
+	var cross := 0
+	var od := []
+	for o in obs:
+		var sp: BoatView.SailPart = o
+		var om: PackedVector3Array = sp.shape.mid()
+		var otris := grid_tris(om, sp.rows, sp.cols)
+		var oh := tri_hash(otris)
+		od.append([otris, oh])
+		cross += crossings(kedges, otris, oh) + crossings(grid_edges(om, sp.rows, sp.cols), ktris, kh)
+	for e in kedges.size() / 2:
+		var pts := Geometry3D.get_closest_points_between_segments(kedges[2 * e], kedges[2 * e + 1], ms, mh)
+		if pts[0].distance_to(pts[1]) < 0.04:
+			cross += 1
+	if cross > 0:
+		r["cross"] += cross
+		if r["first"] == "":
+			r["first"] = what
+	for p in km:
+		var cp := c * smoothstep(0.0, 1.0, p.distance_to(hd) / (5.0 * c))
+		var d := p.distance_to(Geometry3D.get_closest_point_to_segment(p, ms, mh))
+		for o in od:
+			d = minf(d, dist_to(p, o[0], o[1]))
+		if d < 0.9 * cp - 1e-4:
+			r["bad"] += 1
+		if cp >= c - 1e-6 and d < r["worst"]:
+			r["worst"] = d
+			r["at"] = what
 
 
 ## §11 update rate by distance and the frustum.

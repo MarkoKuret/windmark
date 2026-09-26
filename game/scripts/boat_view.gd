@@ -80,6 +80,7 @@ var _pole: Node3D
 var _pole_rest := Transform3D.IDENTITY
 var _pole_axis := Vector3.UP
 var _mast_step := Vector3.ZERO
+var _mast_head := Vector3.ZERO
 var _mast_axis := Vector3.UP
 var _sheet: MeshInstance3D
 var _sheet_mesh: ArrayMesh
@@ -143,7 +144,8 @@ func _find_parts() -> void:
 		_boom_pivot = Frames.body_to_model(_vec(rig["boom_pivot"]))
 	if rig.has("mast_step") and rig.has("masthead"):
 		_mast_step = Frames.body_to_model(_vec(rig["mast_step"]))
-		_mast_axis = (Frames.body_to_model(_vec(rig["masthead"])) - _mast_step).normalized()
+		_mast_head = Frames.body_to_model(_vec(rig["masthead"]))
+		_mast_axis = (_mast_head - _mast_step).normalized()
 	_pole = model.find_child("pole", true, false) as Node3D
 	if _pole:
 		_pole_rest = _pole.transform
@@ -389,7 +391,24 @@ func _shape_params(sp: SailPart, look: Dictionary, furling: bool) -> Dictionary:
 	p["port"] = Frames.body_to_model(Vector3(0, 1, 0))
 	p["up"] = Frames.body_to_model(Vector3(0, 0, 1))
 	p["phi"] = randf() * TAU  # §5.2: boats and sails do not flutter in step
+	if is_flying(t):  # §7.4: kept clear of the other sails and the mast
+		p["clearance"] = 0.042 * loa
+		p["mast_head"] = _mast_head
 	return p
+
+
+## sail_visuals.md §7.4: the sails that keep clear of the others (spinnakers and the code zero).
+static func is_flying(type: String) -> bool:
+	return type.begins_with("spinnaker") or type == "code_zero"
+
+
+## §7.4: the obstacles of a flying sail, the other sails that are shown, as last placed.
+func _obstacles(sp: SailPart) -> Array:
+	var out := []
+	for o in sail_parts:
+		if o != sp and o.shape != null and o.node.visible and not is_flying(o.type):
+			out.append(o.shape)
+	return out
 
 
 ## §11: the generator's sailcloth on shaders/sail.gdshader: opaque, back faces culled, roughness about 0.55 and a
@@ -472,6 +491,8 @@ func _place(sp: SailPart, phase: int, prog: float, shiver: float, backed: bool, 
 		return
 	sp.since = 0.0
 	sp.updates += 1
+	if is_flying(sp.type):
+		sp.shape.set_obstacles(_obstacles(sp))
 	sp.shape.update(phase, prog, sp.beta, sp.gamma, shiver, awa, aws)
 	if sp.arrays.is_empty():
 		sp.shape.write_mesh()

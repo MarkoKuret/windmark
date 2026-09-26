@@ -71,7 +71,7 @@ class SailShape : public godot::RefCounted {
   int kind_ = MAIN, mode_ = BOOM;
   bool furling_ = false;
   float fill_gain_ = 0.6f, fill_curve_ = 4.0f, flutter_amp_ = 0.15f, flutter_rate_ = 0.6f;
-  float flutter_rate_max_ = 10.0f, twist_top_ = 0.0f, depth_ = 0.3f, tack_line_max_ = 0.0f;
+  float flutter_rate_max_ = 10.0f, twist_top_ = 0.0f, camber_ = 0.26f, cam_cap_ = 0.0f, tack_line_max_ = 0.0f;
   float furl_radius_ = 0.05f;
   godot::Vector3 fwd_{0, 0, 1}, port_{1, 0, 0}, up_{0, 1, 0};
   godot::Vector3 boom_pivot_, boom_axis_{0, 1, 0}, mast_step_, mast_axis_{0, 1, 0};
@@ -81,6 +81,7 @@ class SailShape : public godot::RefCounted {
 
   std::vector<float> a_, l_, u_, h_, uc_;  // per vertex
   std::vector<float> c_, amid_, hrow_;     // per row
+  std::vector<float> drow_, srow_;         // per row, per update: camber over chord and chord shortening
 
   float phi_ = 0.0f, s_b_ = 1.0f, tl_ = 0.0f;
   bool tl_set_ = false;

@@ -199,7 +199,7 @@ a' = a ; l' = l
   D     = D_max * tanh(D / D_max)
   ```
   The belly against the luff–clew line of a row reaching `u = U` is at most `0.2362·|D|·U³/Sa` of its chord
-  (largest on the foot), so the code zero never passes `k_c` (12 %) and sits at 8 to 11 % across its normal trim
+  (largest on the foot), so the code zero never passes `k_c` (12 %) and sits at 7.5 to 11 % across its normal trim
   (`β` 25° to 60°; 10 % at 40°). Jibs and genoas have no `camber` key and no cap.
 
 ### 6.3 Asymmetric spinnaker

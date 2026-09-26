@@ -14,7 +14,7 @@ extends RefCounted
 ##   attach_mesh(rid) / write_mesh()           the grid-order mesh (sail_visuals.md §3.1, §11) and its update
 ##
 ## params: kind (Kind), mode (Mode), furling, fill_gain, fill_curve, flutter_amp, flutter_rate, flutter_rate_max,
-## twist_top, depth, tack_line_max, furl_radius, boom_pivot, boom_axis, mast_step, mast_axis, fwd, port, up, phi.
+## twist_top, camber, tack_line_max, furl_radius, boom_pivot, boom_axis, mast_step, mast_axis, fwd, port, up, phi.
 
 enum Kind { MAIN, HEADSAIL, ASYM, SYM }
 ## BOOM: the main about the boom axis; LUFF: jib, genoa, code zero about the luff; SPRIT: asymmetric on a fixed
@@ -38,7 +38,9 @@ var flutter_amp := 0.15
 var flutter_rate := 0.6
 var flutter_rate_max := 10.0
 var twist_top := 0.0
-var depth := 0.3
+var camber := 0.26
+## the code zero cap of §6.2 (a headsail with a `camber` key), 0 = none
+var cam_cap := 0.0
 var tack_line_max := 0.0
 var furl_radius := 0.05
 var fwd := Vector3(0, 0, 1)
@@ -71,6 +73,9 @@ var _uc := PackedFloat32Array()
 var _c := PackedFloat32Array()
 var _amid := PackedFloat32Array()
 var _hrow := PackedFloat32Array()
+## per row, per update: camber over chord and chord shortening (§6.3)
+var _drow := PackedFloat32Array()
+var _srow := PackedFloat32Array()
 
 ## drivers kept between frames
 var phi := 0.0
@@ -106,7 +111,9 @@ func configure(rest_mid: PackedVector3Array, r: int, c: int, p: Dictionary) -> b
 	flutter_rate = float(p.get("flutter_rate", flutter_rate))
 	flutter_rate_max = float(p.get("flutter_rate_max", flutter_rate_max))
 	twist_top = float(p.get("twist_top", twist_top))
-	depth = float(p.get("depth", depth))
+	# §4 camber: flying sails always; a headsail only with the key. `depth` is ignored.
+	camber = float(p.get("camber", 0.26))
+	cam_cap = camber if kind == Kind.HEADSAIL and p.has("camber") else 0.0
 	tack_line_max = float(p.get("tack_line_max", tack_line_max))
 	fwd = p.get("fwd", fwd)
 	port = p.get("port", port)
@@ -145,6 +152,10 @@ func configure(rest_mid: PackedVector3Array, r: int, c: int, p: Dictionary) -> b
 	_c.resize(rows)
 	_amid.resize(rows)
 	_hrow.resize(rows)
+	_drow.resize(rows)
+	_drow.fill(0.0)
+	_srow.resize(rows)
+	_srow.fill(1.0)
 	for i in rows:
 		for j in cols:
 			var k := i * cols + j
@@ -297,6 +308,9 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 	elif kind == Kind.HEADSAIL:
 		var b := fill(sin(beta), fill_gain, fill_curve) * s_b
 		d_cam = _sgn(b) * 4.0 * sa * b * b
+		if cam_cap > 0.0:
+			var dm := cam_cap * sa / 0.2362
+			d_cam = dm * tanh(d_cam / dm)
 	else:
 		if kind == Kind.SYM:
 			f_fly = absf(fill(sin(beta), fill_gain, fill_curve))
@@ -304,7 +318,12 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 			f_fly = fill_gain * clampf(aws / KNOT, 3.0, 6.0) / 6.0
 		var uw := fwd * cos(awa) - port * sin(awa)
 		wv = Vector3(uw.dot(ap) * 0.5 / fill_curve, uw.dot(lp) * 0.5, uw.dot(np))
-		wv = wv.normalized() * f_fly if wv.length_squared() > 1e-12 else Vector3(0, 0, f_fly)
+		wv = wv.normalized() if wv.length_squared() > 1e-12 else Vector3(0, 0, 1)
+		var fc := camber * minf(f_fly, 1.15)
+		for i in rows:
+			var hh := 2.0 * _hrow[i] - 1.0
+			_drow[i] = fc * (1.0 - 0.45 * hh * hh)
+			_srow[i] = 1.0 / (1.0 + 8.0 / 3.0 * _drow[i] * _drow[i])
 	# §8.1 which shape
 	var up_shape := phase == 3 or phase == 4 or kind == Kind.MAIN
 	var p := 1.0
@@ -382,15 +401,17 @@ func _furl(k: int, p: float, d_cam: float, amp: float, shiver: float) -> Vector3
 ## §6.3, §6.4 the flying shape
 func _fly(k: int, i: int, wv: Vector3, shiver: float) -> Vector3:
 	var uc := _uc[k]
-	var e := depth * _c[i] * 4.0 * uc * (1.0 - uc)
+	var s := _srow[i]
+	var a0 := _a[i * cols]
+	var e := _drow[i] * s * _c[i] * 4.0 * uc * (1.0 - uc)
 	var i2 := 0.33 * flutter_amp * shiver
 	var q := phi - 7.0 * uc
 	var m := Vector3(wv.x + 0.1 * i2 * sin(q), wv.y, wv.z + i2 * cos(q))
-	var r := Vector3(_a[k], _l[k], 0.0) - m * e
+	var r := Vector3(a0 + (_a[k] - a0) * s, _l[k], 0.0) - m * e
 	if kind == Kind.SYM:
 		var h := _h[k]
 		var g := maxf(0.0, shiver - uc) * (1.0 - (2.0 * h - 1.0) * (2.0 * h - 1.0))
-		r.x += (_amid[i] - r.x) * 0.5 * g
+		r.x += (a0 + (_amid[i] - a0) * s - r.x) * 0.5 * g
 		r.z += g * flutter_amp * 0.1 * sa * sin(phi - _a[k])
 	return r
 

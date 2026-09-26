@@ -90,7 +90,9 @@ bool SailShape::configure(const PackedVector3Array& rest, int64_t rows, int64_t 
   flutter_rate_ = getf(p, "flutter_rate", flutter_rate_);
   flutter_rate_max_ = getf(p, "flutter_rate_max", flutter_rate_max_);
   twist_top_ = getf(p, "twist_top", twist_top_);
-  depth_ = getf(p, "depth", depth_);
+  // §4 camber: flying sails always; a headsail only with the key (the code zero cap of §6.2). `depth` is ignored.
+  camber_ = getf(p, "camber", 0.26f);
+  cam_cap_ = (kind_ == HEADSAIL && p.has("camber")) ? camber_ : 0.0f;
   tack_line_max_ = getf(p, "tack_line_max", tack_line_max_);
   fwd_ = getv(p, "fwd", fwd_);
   port_ = getv(p, "port", port_);
@@ -129,6 +131,8 @@ bool SailShape::configure(const PackedVector3Array& rest, int64_t rows, int64_t 
   c_.assign(rows_, 0.0f);
   amid_.assign(rows_, 0.0f);
   hrow_.assign(rows_, 0.0f);
+  drow_.assign(rows_, 0.0f);
+  srow_.assign(rows_, 1.0f);
   for (int i = 0; i < rows_; ++i) {
     for (int j = 0; j < cols_; ++j) {
       const int k = i * cols_ + j;
@@ -210,15 +214,16 @@ Vector3 SailShape::furl(int k, float p, float d_cam, float amp, float shiver) co
 
 Vector3 SailShape::fly(int k, int i, const Vector3& w, float shiver) const {
   const float uc = uc_[k];
-  const float e = depth_ * c_[i] * 4.0f * uc * (1.0f - uc);
+  const float s = srow_[i], a0 = a_[i * cols_];
+  const float e = drow_[i] * s * c_[i] * 4.0f * uc * (1.0f - uc);
   const float i2 = 0.33f * flutter_amp_ * shiver;
   const float q = phi_ - 7.0f * uc;
   const Vector3 m(w.x + 0.1f * i2 * std::sin(q), w.y, w.z + i2 * std::cos(q));
-  Vector3 r = Vector3(a_[k], l_[k], 0.0f) - m * e;
+  Vector3 r = Vector3(a0 + (a_[k] - a0) * s, l_[k], 0.0f) - m * e;
   if (kind_ == SYM) {
     const float hh = 2.0f * h_[k] - 1.0f;
     const float g = std::max(0.0f, shiver - uc) * (1.0f - hh * hh);
-    r.x += (amid_[i] - r.x) * 0.5f * g;
+    r.x += (a0 + (amid_[i] - a0) * s - r.x) * 0.5f * g;
     r.z += g * flutter_amp_ * 0.1f * sa_ * std::sin(phi_ - a_[k]);
   }
   return r;
@@ -298,6 +303,10 @@ void SailShape::update(int64_t phase, double progress, double beta_in, double ga
   } else if (kind_ == HEADSAIL) {
     const float b = static_cast<float>(fill(std::sin(beta), fill_gain_, fill_curve_)) * s_b_;
     d_cam = sgn(b) * 4.0f * sa_ * b * b;
+    if (cam_cap_ > 0.0f) {
+      const float dm = cam_cap_ * sa_ / 0.2362f;
+      d_cam = dm * std::tanh(d_cam / dm);
+    }
   } else {
     float f_fly;
     if (kind_ == SYM)
@@ -306,7 +315,13 @@ void SailShape::update(int64_t phase, double progress, double beta_in, double ga
       f_fly = fill_gain_ * clampf(aws / KNOT, 3.0f, 6.0f) / 6.0f;
     const Vector3 uw = fwd_ * std::cos(awa) - port_ * std::sin(awa);
     w = Vector3(uw.dot(ap) * 0.5f / fill_curve_, uw.dot(lp) * 0.5f, uw.dot(np));
-    w = w.length_squared() > 1e-12f ? w.normalized() * f_fly : Vector3(0, 0, f_fly);
+    w = w.length_squared() > 1e-12f ? w.normalized() : Vector3(0, 0, 1);
+    const float fc = camber_ * std::min(f_fly, 1.15f);
+    for (int i = 0; i < rows_; ++i) {
+      const float hh = 2.0f * hrow_[i] - 1.0f;
+      drow_[i] = fc * (1.0f - 0.45f * hh * hh);
+      srow_[i] = 1.0f / (1.0f + 8.0f / 3.0f * drow_[i] * drow_[i]);
+    }
   }
 
   // §8.1 which shape in which phase

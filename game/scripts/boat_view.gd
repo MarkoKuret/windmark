@@ -360,21 +360,22 @@ func _shape_params(sp: SailPart, look: Dictionary, furling: bool) -> Dictionary:
 		kind = SailShapeRef.Kind.MAIN
 		d = {"fill_gain": 0.6, "fill_curve": 4.0, "flutter_amp": 0.15, "twist_top": 0.070}
 	elif t == "code_zero":
-		d = {"fill_gain": 0.7, "fill_curve": 1.3, "flutter_amp": 0.08, "twist_top": 0.140}
+		d = {"fill_gain": 0.7, "fill_curve": 1.3, "flutter_amp": 0.08, "twist_top": 0.140, "camber": 0.12}
 	elif t == "spinnaker_asym":
 		kind = SailShapeRef.Kind.ASYM
-		d = {"fill_gain": 1.0, "fill_curve": 1.0, "flutter_amp": 1.0, "twist_top": 0.0, "depth": 0.30,
+		d = {"fill_gain": 1.0, "fill_curve": 1.0, "flutter_amp": 1.0, "twist_top": 0.0, "camber": 0.26,
 			"tack_line_max": 0.04}
 	elif t == "spinnaker_sym":
 		kind = SailShapeRef.Kind.SYM
-		d = {"fill_gain": 1.5, "fill_curve": 1.5, "flutter_amp": 1.0, "twist_top": 0.0, "depth": 0.35}
+		d = {"fill_gain": 1.5, "fill_curve": 1.5, "flutter_amp": 1.0, "twist_top": 0.0, "camber": 0.26}
 	var loa := info.loa
 	d["flutter_rate"] = 0.6 + 2.4 * clampf((12.0 - loa) / 5.0, 0.0, 1.0)
 	d["flutter_rate_max"] = 9.0 + clampf((loa - 7.0) / 5.0, 0.0, 1.0)
 	var p := {}
 	for k in d:
 		p[k] = float(look.get(k, d[k]))
-	for k in ["depth", "tack_line_max", "furl_radius"]:
+	# sail_visuals.md §4: a look block's old `depth` key is ignored
+	for k in ["camber", "tack_line_max", "furl_radius"]:
 		if look.has(k):
 			p[k] = float(look[k])
 	p["kind"] = kind

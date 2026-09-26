@@ -69,9 +69,9 @@ func mk(impl: String, kind: int, mode: int, extra: Dictionary = {}, grid: Packed
 	var defaults := {
 		K.MAIN: {"fill_gain": 0.6, "fill_curve": 4.0, "flutter_amp": 0.15, "twist_top": 0.07},
 		K.HEADSAIL: {"fill_gain": 0.75, "fill_curve": 1.2, "flutter_amp": 0.07, "twist_top": 0.105},
-		K.ASYM: {"fill_gain": 1.0, "fill_curve": 1.0, "flutter_amp": 1.0, "twist_top": 0.0, "depth": 0.30,
+		K.ASYM: {"fill_gain": 1.0, "fill_curve": 1.0, "flutter_amp": 1.0, "twist_top": 0.0, "camber": 0.26,
 			"tack_line_max": 0.04},
-		K.SYM: {"fill_gain": 1.5, "fill_curve": 1.5, "flutter_amp": 1.0, "twist_top": 0.0, "depth": 0.35},
+		K.SYM: {"fill_gain": 1.5, "fill_curve": 1.5, "flutter_amp": 1.0, "twist_top": 0.0, "camber": 0.26},
 	}
 	p.merge(defaults[kind])
 	p["flutter_rate"] = 2.904
@@ -212,8 +212,14 @@ func _spec_tests(impl: String) -> void:
 	for c in [[1.0, 0.5], [1.543, 0.5], [2.0, 0.648], [3.087, 1.0], [8.0, 1.0]]:
 		ak.update(UP, 1.0, -60.0 * d2r, 0.0, 0.0, 100.0 * d2r, c[0])
 		var la: PackedVector3Array = ak.local_shape()
-		var disp := la[5 * 11 + 5].distance_to(Vector3(-1.5 * -1.0, 4.5, 0.0))
-		t.near(disp / (0.30 * 3.0), c[1], 0.01 * c[1], "aws %.3f m/s: F" % c[0])
+		# §6.3 at mid height (p_i = 1): camber d = k_c F, the chord shortened to s = 1 / (1 + 8/3 d^2)
+		var dd: float = 0.26 * c[1]
+		var sr := 1.0 / (1.0 + 8.0 / 3.0 * dd * dd)
+		var disp := la[5 * 11 + 5].distance_to(Vector3(1.5 * sr, 4.5, 0.0))
+		t.near(disp / (sr * 3.0) / 0.26, c[1], 0.01 * c[1], "aws %.3f m/s: F" % c[0])
+		t.near(la[5 * 11 + 10].x, 3.0 * sr, 1e-4, "aws %.3f m/s: mid-height leech at %.3f of the flat chord" % [c[0], sr])
+
+	_camber_tests(impl)
 
 	t.begin("%s: 9 asym gybe continuity" % impl)
 	var ag: Variant = mk(impl, K.ASYM, M.SPRIT)
@@ -395,6 +401,54 @@ static func _sheet_step(beta: float, target: float, awa: float, rate_in: float, 
 
 
 # ---- native against the reference ------------------------------------------------------------------------
+
+## Largest distance of row i from its luff-leech line over the chord (camber over chord) of a local shape.
+static func row_camber(la: PackedVector3Array, i: int, cols: int) -> float:
+	var p0 := la[i * cols]
+	var p1 := la[i * cols + cols - 1]
+	var ch := p1 - p0
+	var c := ch.length()
+	var worst := 0.0
+	for j in cols:
+		var v := la[i * cols + j] - p0
+		worst = maxf(worst, (v - ch * (v.dot(ch) / (c * c))).length())
+	return worst / c
+
+
+## §12 test 17: camber over chord of the flying sails and the code zero.
+func _camber_tests(impl: String) -> void:
+	t.begin("%s: 17 camber" % impl)
+	var d2r := PI / 180.0
+	for kind in [K.ASYM, K.SYM]:
+		var sh: Variant = mk(impl, kind, M.SPRIT if kind == K.ASYM else M.POLE)
+		for c in [[90.0, 45.0], [150.0, 85.0]]:
+			sh.update(UP, 1.0, -c[1] * d2r, 0.0, 0.0, c[0] * d2r, 6.0 * KNOT)
+			var la: PackedVector3Array = sh.local_shape()
+			var mid := row_camber(la, 5, 11)
+			var foot := row_camber(la, 0, 11)
+			var head := row_camber(la, 10, 11)
+			var msg := "%s awa %.0f deg: camber %.3f at mid height, %.3f foot, %.3f head" % [
+				"asym" if kind == K.ASYM else "sym", c[0], mid, foot, head]
+			t.ok(mid >= 0.20 and mid <= 0.30 and foot < mid and head < mid, msg)
+			if impl == "ref":
+				print("  " + msg)
+	var cz: Variant = mk(impl, K.HEADSAIL, M.LUFF, {"fill_gain": 0.7, "fill_curve": 1.3, "flutter_amp": 0.08,
+		"twist_top": 0.14, "camber": 0.12})
+	var line := ""
+	var ok := true
+	for b in [25.0, 40.0, 60.0, 90.0]:
+		cz.update(UP, 1.0, -b * d2r, 0.0, 0.0, 100.0 * d2r, 5.0)
+		var foot := row_camber(cz.local_shape(), 0, 11)
+		ok = ok and foot <= 0.12 and (b > 60.0 or foot >= 0.07)
+		line += "%.0f deg %.3f; " % [b, foot]
+	t.ok(ok, "code zero camber at beta %s(0.07 to 0.12, never above)" % line)
+	if impl == "ref":
+		print("  code zero camber at beta " + line)
+	var jb: Variant = mk(impl, K.HEADSAIL, M.LUFF)
+	jb.update(UP, 1.0, -60.0 * d2r, 0.0, 0.0, 100.0 * d2r, 5.0)
+	t.ok(row_camber(jb.local_shape(), 0, 11) > 0.15, "a jib has no camber cap (%.3f at 60 deg)" %
+		row_camber(jb.local_shape(), 0, 11))
+
 
 func _native_vs_ref() -> void:
 	t.begin("native = reference")

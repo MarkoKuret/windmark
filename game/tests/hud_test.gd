@@ -230,6 +230,15 @@ func test_trim_gauge() -> void:
 		% [rad_to_deg(tl.x), rad_to_deg(tl.y)])
 
 
+## the texts a block paints now
+static func _texts(b: HudCanvas) -> Array[String]:
+	var out: Array[String] = []
+	for q in b.primitives():
+		if q["k"] == "text":
+			out.append(q["text"])
+	return out
+
+
 func _hud() -> Hud:
 	var h := Hud.new()
 	root.add_child(h)
@@ -308,9 +317,21 @@ func test_hud_text() -> void:
 	t.ok(h.text_of("message") == PlayerControls.MSG_AUTO_TRIM_REFUSED and not pc.busy_flash, "controls feedback shown")
 	# no em dash anywhere in the player text
 	var dash := false
-	for k in h.labels:
-		dash = dash or h.text_of(k).contains("—")
+	for k in h.texts:
+		dash = dash or h.text_of(k).contains("—") or h.value_of(k).contains("—")
+	for b in h.blocks():
+		for q in b.primitives():
+			if q["k"] == "text":
+				dash = dash or (q["text"] as String).contains("—")
 	t.ok(not dash, "no em dash in HUD text")
+	# the instrument page shows the values (painted in the HUD font, tabular figures)
+	var page := _texts(h.inst_page)
+	t.ok(page.has("BOAT SPEED") and page.has("TWA"), "instrument page captions: %s" % str(page))
+	var f := HudStyle.font(600, 0.0, 40)
+	t.ok(f is FontVariation and (f as FontVariation).base_font.get_font_name().begins_with("Barlow Semi Condensed")
+		and (f as FontVariation).opentype_features.size() == 1, "Barlow Semi Condensed with tabular figures")
+	t.ok(absf(f.get_string_size("1111", HORIZONTAL_ALIGNMENT_LEFT, -1, 40).x
+		- f.get_string_size("8888", HORIZONTAL_ALIGNMENT_LEFT, -1, 40).x) < 0.5, "tabular: 1111 as wide as 8888")
 	h.toggle_hidden()
 	t.ok(not h.visible, "hud_hide")
 	h.queue_free()

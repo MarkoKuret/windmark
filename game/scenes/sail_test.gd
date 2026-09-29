@@ -146,6 +146,7 @@ func _ready() -> void:
 	layer.name = "HudLayer"
 	add_child(layer)
 	hud = Hud.new()
+	hud.camera_rig = rig  # world tags and the penalty turn (hud.md §16.4)
 	layer.add_child(hud)
 	_chat = LineEdit.new()
 	_chat.name = "Chat"
@@ -457,7 +458,7 @@ func _notification(what: int) -> void:
 func step_frame(dt: float) -> void:
 	var raw := scripted_input if scripted_input != null else reader.read()
 	_ui_actions(raw)
-	hud.ui_input(raw)
+	hud.ui_input(raw, dt)
 	controls.free_camera = rig.mode == CameraRig.Mode.FREE
 	controls.update(raw, dt)
 	runner.advance(dt)

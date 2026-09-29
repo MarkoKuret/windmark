@@ -11,7 +11,7 @@ extends RefCounted
 ## `camera_orbit` is camera_orbit_left/right/up/down (keys), camera_look_left/right/up/down (right stick) and
 ## camera_orbit_drag (right mouse button). Gamepad combos and context rules (RB + LB zoom out, LB boost in the
 ## free camera, RB/LB/R3 spectating when not racing, D-pad up protest while the prompt shows) are resolved in
-## InputReader and PlayerControls, not in the map. Steam Deck: the default Steam Input template presents the
+## InputReader, PlayerControls and the Hud (View tap or hold), not in the map. Steam Deck: the default Steam Input template presents the
 ## gamepad bindings below; its Deck-only items (L4 helm_fine, right trackpad orbit, Steam + R1 screenshot) are
 ## template entries (game/README.md).
 
@@ -74,7 +74,10 @@ static func table() -> Dictionary:
 	t["camera_preset_store"] = {"keys": [_k(KEY_CTRL)]}
 	t["camera_boost"] = {"keys": [_k(KEY_SHIFT)], "joy": JOY_BUTTON_LEFT_SHOULDER}
 	# HUD and race
-	t["rankings"] = {"keys": [_k(KEY_TAB)], "joy": JOY_BUTTON_BACK}
+	t["rankings"] = {"keys": [_k(KEY_TAB)]}
+	# gamepad View: a tap is hud_density, a hold the ranking list (resolved in the Hud, controls.md §3)
+	t["rankings_pad"] = {"joy": JOY_BUTTON_BACK}
+	t["hud_density"] = {"keys": [_k(KEY_G)]}
 	t["map"] = {"keys": [_k(KEY_M)]}
 	t["radar_zoom_in"] = {"keys": [_k(KEY_EQUAL)]}
 	t["radar_zoom_out"] = {"keys": [_k(KEY_MINUS)]}
@@ -82,6 +85,8 @@ static func table() -> Dictionary:
 	t["wind_shadow_view"] = {"keys": [_k(KEY_V)]}
 	t["hud_hide"] = {"keys": [_k(KEY_F10)]}
 	t["boat_names"] = {"keys": [_k(KEY_N)]}
+	t["boat_select"] = {"keys": [_k(KEY_B)]}
+	t["boat_pick"] = {"mouse": [MOUSE_BUTTON_LEFT]}
 	t["spectate_next"] = {"keys": [_k(KEY_BRACKETRIGHT)], "joy": JOY_BUTTON_RIGHT_SHOULDER}
 	t["spectate_prev"] = {"keys": [_k(KEY_BRACKETLEFT)], "joy": JOY_BUTTON_LEFT_SHOULDER}
 	t["spectate_leader"] = {"keys": [_k(KEY_HOME)], "joy": JOY_BUTTON_RIGHT_STICK}

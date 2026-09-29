@@ -81,11 +81,60 @@ def test_trim_tables(generated):
     assert np.all(np.diff(opt[i]) >= -1e-6)                    # eased progressively as the wind goes aft
 
 
+def test_trim_plateau(generated):
+    """sails.md 6: full drive and the trimmed heel within +-TRIM_PLATEAU of the optimum wherever the wind line is
+    at least twice the plateau away; over-sheeting still costs drive (no floor) and eased to the wind line none."""
+    _, p = generated
+    for c in p["configs"]:
+        tws, awa, eps = (np.array(a["points"]) for a in c["trim_speed"]["axes"])
+        ts = np.array(c["trim_speed"]["values"]).reshape(len(tws), len(awa), len(eps))
+        th = np.array(c["trim_heel"]["values"]).reshape(ts.shape)
+        drive = c["front_sail"] or "main"
+        _, _, opt = _t2(c["optimal_angle"][drive])
+        band = np.abs(eps) <= perf.TRIM_PLATEAU + 1e-9
+        assert band.sum() == 4                                 # -3, 0, 0.5, +3 deg on the axis
+        w = np.pad(awa[None, :] - opt, 1, mode="edge")
+        wmin = np.min([w[1 + a:w.shape[0] - 1 + a, 1 + b:w.shape[1] - 1 + b]
+                       for a in (-1, 0, 1) for b in (-1, 0, 1)], axis=0)
+        ok = wmin[1:] >= 2 * perf.TRIM_PLATEAU + 5 * DEG       # clear of the wind-line cut (its neighbours too)
+        assert ok.mean() > 0.6
+        assert np.allclose(ts[1:][ok][:, band], 1.0, atol=2e-3)
+        assert np.allclose(th[1:][ok][:, band], 1.0, atol=2e-3)
+        i = int(np.argmin(abs(tws - 10 * KNOT)))
+        j = int(np.argmin(abs(awa - 60 * DEG)))
+        assert ts[i, j, 0] < 0.9                               # hard over-sheeted: stalled, no floor at 1
+
+
+def test_main_sheeted_in_with_the_kite(generated, raw):
+    """sails.md 5.1: with a spinnaker set the main's optimum is kite_sheet_in inside its own best angle, never below
+    sheet_min; the polar does not change."""
+    _, p0 = generated
+    k = 0.26
+    for s in raw["sails"]:
+        if s["type"] == "main":
+            s["kite_sheet_in"] = k
+    p1 = perf.generate(boatclass.from_dict(raw))
+    for c0, c1 in zip(p0["configs"], p1["configs"]):
+        assert c1["polar"] == c0["polar"]
+        _, _, m0 = _t2(c0["optimal_angle"]["main"])
+        _, _, m1 = _t2(c1["optimal_angle"]["main"])
+        if c1["front_sail"] == "a2":
+            assert np.allclose(m1, np.maximum(m0 - k, 0.0), atol=1e-6)
+            assert m1.max() < m0.max() - 0.2                   # off the shrouds running
+        else:
+            assert np.allclose(m1, m0)
+    raw["sails"][1]["kite_sheet_in"] = 0.1
+    with pytest.raises(boatclass.ClassFileError):
+        boatclass.from_dict(raw)
+
+
 def test_dynamics_ranges(generated):
     _, p = generated
     d = p["dynamics"]
     assert 2.0 < d["turn_radius_full"] < 20.0
-    assert 0 < d["decel_linear"] < 1.0 and 0 < d["decel_const"] < 0.3
+    assert 0 < d["decel_linear"] < 1.0 and 0 < d["decel_const"] < 0.1
+    # windage per m/s of apparent wind (boat.md 5.8): a few hundredths of a m/s^2 at 5 m/s head to wind
+    assert 0.01 < 5.0 * d["decel_windage"] < 0.2
     assert 0.5 < d["heel_freq"] < 4.0
     hsf = np.array(d["heel_speed_factor"]["values"])
     assert hsf[0] == 1.0 and np.all(np.diff(hsf) <= 0) and hsf[-1] < 0.9
@@ -286,6 +335,7 @@ def test_handling_multipliers_scale_feel_only(generated):
         assert np.allclose(c1["heel"]["values"], np.minimum(1.2 * np.array(c0["heel"]["values"]), math.pi / 2))
     assert d1["decel_linear"] == pytest.approx(0.5 * d0["decel_linear"])
     assert d1["decel_const"] == pytest.approx(0.5 * d0["decel_const"])
+    assert d1["decel_windage"] == pytest.approx(0.5 * d0["decel_windage"])
     radius = lambda d, h: (d["turn_radius_full"] + d["turn_radius_offset"]) / h - d["turn_radius_offset"]
     for h in (0.2, 0.5, 1.0):                                  # boat.md 5.9: yaw rate v / R at every helm
         assert radius(d0, h) / radius(d1, h) == pytest.approx(1.25)

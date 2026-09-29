@@ -89,8 +89,9 @@ class Rig:
         for s, e, a in zip(self.sails, self.env, areas):
             c_l, c_d, de = e.at(fi, beta_e)
             if eps is not None:
+                de0 = de
                 de = np.minimum(np.clip(de + eps, s.sheet_min, s.sheet_max), np.maximum(beta_e, s.sheet_min))
-                c_l, c_d = coefficients(COEFFS[s.coeff_type], beta_e - de, e.flat[fi], de)
+                c_l, c_d = over_sheeted(COEFFS[s.coeff_type], beta_e, de, de0, e.flat[fi])
             if alone and s.type == "main":
                 u = np.clip((beta_e - np.radians(60)) / np.radians(50), 0, 1)
                 c_l = c_l * (MAIN_ALONE_CL + (1 - MAIN_ALONE_CL) * u * u * (3 - 2 * u))
@@ -123,6 +124,28 @@ class Rig:
                 + sum(cd_sail * s.area for s in self.sails))
         area = area + WINDAGE_CD * b.loa * b.freeboard * 0.5 * np.abs(np.sin(awa))
         return 0.5 * RHO_AIR * aws * aws * area
+
+
+def over_sheeted(c, beta_e, de, de0, flat):
+    """(Cl, Cd) of a sail at sheet angle de when its best angle is de0 (the mistrimmed sails of the trim tables).
+
+    Sheeted in past the stall (angle of attack beyond both the optimum's and alpha_stall) the sail keeps at least
+    the normal force it had there: a separated plate's normal force stays near its stall value up to broadside
+    (Hoerner 1965), which the coefficient model's plate law, rising from zero incidence, underestimates just past
+    the stall. Used only off the optimum, so the envelopes (and the polars) stay as fitted; at de = de0 it is the
+    plain coefficient."""
+    alpha = beta_e - de
+    cl, cd = coefficients(c, alpha, flat, de)
+    sg, a = np.sign(alpha), np.abs(alpha)
+    a_ref = np.maximum(beta_e - de0, c.alpha_stall)
+    past = a > a_ref
+    cl_r, cd_r = coefficients(c, sg * a_ref, flat, de)
+    twist = c.kt * np.asarray(de) ** 2
+    # normal force coefficient (lift signed with the incidence: negative past broadside)
+    cn_r = sg * cl_r * np.cos(a_ref) + (cd_r - twist - c.cd0) * np.sin(a_ref)
+    cn = sg * cl * np.cos(a) + (cd - twist - c.cd0) * np.sin(a)
+    add = np.where(past, np.maximum(cn_r - cn, 0.0), 0.0)
+    return cl + sg * add * np.cos(a), cd + add * np.sin(a)
 
 
 def make_rig(boat: Boat, name: str, sails: List[Sail]) -> Rig:

@@ -1,8 +1,10 @@
 # HUD semantics
 
 What every in-race indicator means, how its value is computed, how it is rounded, and when it is shown.
-Layout, art and fonts belong to the front end (`game/`); this file is the contract for the numbers and states behind
-them, so every front end (desktop, Steam Deck, a future browser client) shows the same values.
+This file is the contract for the numbers and states behind them, so every front end (desktop, Steam Deck, a future
+browser client) shows the same values, and (§16) for what the player chooses to see: the instrument density levels,
+the colour meanings, the world tags and the cameras that draw the penalty turn. The exact layout and art are the
+front end's (`game/`, after `docs/design/hud_direction.md`).
 
 Conventions: `conventions.md` and `race.md` §0 (`twa` positive = wind from starboard). Knots: `m/s / KNOT`.
 Player-facing strings below contain no em dashes (project rule). Values come from the core: a `HudValues` record computed per
@@ -152,6 +154,8 @@ For the next step (`race.md` §5):
 
 In the 3-D view: an arrow on the mark on the rounding side, the zone circle (the viewed boat's `3·L`, `rules.md` §7.1)
 drawn on the water when she is within `6·L`, and a bouncing marker over the next mark when it is more than 500 m away.
+The mark tag (§16.4) carries the name, distance, ETA and bearing on the mark itself; the distance to the layline is
+shown at the tack point on the water (the point along the current COG where she meets the other tack's layline).
 
 ## 8. Radar / minimap
 
@@ -254,6 +258,9 @@ Visible while the boat has pending penalties, is taking one, or was penalised in
 - **Disqualification warning**: `One more penalty = disqualification` when pending = `dsq_pending − 1` or
   received = `dsq_total − 1`.
 - **Finish blocked**: `Take your penalty before finishing` on a `FinishBlocked` event.
+- **Turn on the water**: while the panel shows a pending or running turn, a ring around the viewed boat (radius
+  `1.5·L`) fills with the same `|Θ|`, with a head at the filled end. Drawn in the chase and aerial cameras only, never
+  onboard (the boat is underneath the camera there) nor in the free camera; the panel carries it in every camera.
 
 ### 12.2 Messages
 
@@ -316,7 +323,8 @@ Assists change what is shown, never the physics or the rules.
 | Sail hint | yes | no | no |
 | Shift meter | yes | yes | no |
 
-Online lobbies may force a maximum preset (e.g. ranked "Minimal").
+Online lobbies may force a maximum preset (e.g. ranked "Minimal"). The assist preset is independent of the instrument
+density of §16.1: an item shows only when both allow it.
 
 ## 15. Tests
 
@@ -331,3 +339,78 @@ Online lobbies may force a maximum preset (e.g. ranked "Minimal").
   `rules.md` §13.
 - Time to burn: a boat 100 m behind the line at 5 m/s heading straight at it, 30 s before the gun, shows `t_line` 20 s
   and `+10 s` to burn.
+- Density (§16.1): for each level and phase the table's items are shown and no others; the density key cycles
+  Glance, Race, Data, Glance and the choice survives a restart; the defaults are Race at 1920 x 1080 and Glance at
+  1280 x 800.
+- Name tags (§16.4): a boat at 45 m has a tag, one at 55 m has none until it is selected; the penalty ring is drawn in
+  the chase and aerial cameras and not onboard.
+- Every text of the HUD fits its block at 1280 x 800 for UI scales 80 % to 130 %.
+
+## 16. Presentation
+
+What the player can choose to see and what the colours mean; the layout, sizes and motion follow
+`docs/design/hud_direction.md`. Player-facing strings contain no em dashes.
+
+### 16.1 Instrument density
+
+Three levels, **Glance**, **Race** and **Data**, cycled in that order by the `hud_density` action (`controls.md`
+§2). Density decides how many instrument values show. It never hides a contextual item (countdown, OVER and OCS,
+the rules line, the penalty panel, banners, protest and hail prompts) or anything in the world (start line, mark
+tag, laylines, tack point, zone circle, rounding arrow, name tags, edge pointers, penalty turn). The radar, the helm
+strip and, under manual trim, the trim gauges show at every level.
+
+| Phase | Glance | Race | Data |
+| --- | --- | --- | --- |
+| Pre-start (race sequence, not started) | boat speed, TWA dial; start block: countdown, time to burn with its late/early bar, the flag rule in one line; no race bug, no wind page | + polar % with its meter, heading, target speed; full start block (distance and time to line, burn, bias, flags); wind page; race bug (fleet); feed 3 lines | + VMG, AWA, SOG, COG, AWS, heel bar; race bug adds laps and legs; feed 6 lines |
+| Beat or run | boat speed, TWA dial with the target ticks, VMG % with its meter; race bug: clock and rank | + heading, target angle and speed; wind page and shift meter; lap, leg and leg type; feed 3 lines | + VMG, AWA, SOG, COG, AWS, polar %, heel bar; leader gap, ahead and behind; feed 6 lines; sail hint |
+| Reach | as a beat, with polar % as the cue and no target ticks; target is the target speed | as a beat | as a beat, with VMC in place of VMG |
+| Rounding (within `6·L` of the next mark, and 6 s after a rounding) | boat speed, TWA dial | as the leg | as the leg |
+| Penalty (panel shown) | boat speed, TWA dial | as the leg | as the leg |
+
+- At Glance the radar is drawn at 72 % of its size without the range and orientation labels, the helm strip has no
+  labels, and the feed shows only the viewed boat's own events.
+- Free sailing (no race): the instrument page and the helm strip as in the table's beat row without the race items.
+- **Defaults**: Race; Glance on the Steam Deck and on any screen under 900 px tall (after the UI scale). The player's
+  last choice is kept in the settings file (per device, `menus.md` §3) and wins over the default.
+- A change shows an `INSTRUMENTS · <LEVEL>` chip above the instrument page for 1.5 s; three small squares on the page
+  show the level at all times.
+
+### 16.2 Colour tokens
+
+| Token | Value | Meaning |
+| --- | --- | --- |
+| `ink` | `#06121B` | scrims, glass pages (14 % to 44 %), chips (80 % to 90 %) |
+| `paper` | `#F5F8FA` | every number, primary text; boats with no relation |
+| `mist` | paper at 66 % | labels, units, secondary text |
+| `hair` | paper at 42 % | hairlines, rings, ticks, dividers (at 45 % of `hair`) |
+| `mark` | `#FFD23F` | the course and the viewed boat: next mark, zone circle, rounding arrow, own boat on the radar, the number to act on; the rule-17 line |
+| `stbd` | `#27D17C` | starboard layline, tack letter S, lift, she keeps clear of me, right of way |
+| `port` | `#FF4438` | port layline, tack letter P, header, I keep clear of her, OVER, OCS, breach, penalty |
+| `owe` | `#FF8A1F` | I owe room; keep-clear warning |
+| `have` | `#2FD8EE` | she owes me room; "You have mark-room" |
+| `ghost` | paper at 35 % | finished and cleared, retired, disqualified, disconnected |
+
+These are the colours of §6, §8 and §11 (red = `port`, green = `stbd`, orange = `owe`, cyan = `have`, white =
+`paper`, yellow = `mark`). Colour is never the only signal: each coloured state also has a word or a letter.
+
+### 16.3 Instrument pages
+
+The instrument values of a corner sit on one page: ink glass from 14 % at the top to 44 % at the bottom, a hairline
+along the top edge and hairline dividers between the cells; no blur, no corner ticks, no rounded corners. Each cell
+has its label top left, the unit top right and the value right-aligned at the bottom. Numbers use tabular figures.
+The two analogue parts are the TWA dial (bow up, the close-hauled sectors in `port` and `stbd`, the target angle
+ticks in `mark` on a beat or run, the true wind pointer; Data adds the apparent wind pointer) and, at Data, the heel
+bar (centre zero, ±30°). Numbers keep the 4 Hz refresh of §1; dial, bars and meters move every frame.
+
+### 16.4 World tags
+
+- **Mark tag**: on the next mark (§7): name, distance, ETA, bearing and relative bearing. Off screen it becomes an
+  edge pointer at the screen edge towards the mark.
+- **Tack point**: on a beat or run with the layline distance of §6 shown, a point on the water where the current COG
+  meets the other tack's layline, with `TACK IN <distance> <time>`, or `OVERSTOOD <distance>` at the boat.
+- **Name tags**: another boat's name over her mast when she is within 50 m of the viewed boat, or when the player
+  has selected her (the `boat_select` action, or a click or tap on her; again to clear). The tag takes the radar
+  colour of §8 (solid chip when there is a relation, paper on ink otherwise) and pulses as the radar icon does.
+  A selected boat off screen gets an edge pointer with her name and distance. `boat_names` turns all name tags off
+  and on.
+- **Penalty turn**: §12.1, chase and aerial cameras only.

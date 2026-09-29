@@ -46,7 +46,10 @@ keys become the boat's commands, and the accessibility options. The boat command
 | `radar_zoom_in`, `radar_zoom_out`, `radar_orientation` | button | radar range ×1.5 steps, heading-up / north-up |
 | `wind_shadow_view` | toggle | the wind shadow assist, when allowed (`hud.md` §3.3) |
 | `hud_hide` | toggle | hide every HUD element |
+| `hud_density` | button | cycle the instrument density Glance, Race, Data (`hud.md` §16.1) |
 | `boat_names` | toggle | name tags over boats |
+| `boat_select` | button | select the next boat for a name tag, nearest first, then none (`hud.md` §16.4) |
+| `boat_pick` | pointer | select or clear the boat under the pointer (click or tap) |
 | `spectate_next`, `spectate_prev`, `spectate_leader` | button | viewed boat, when not racing (`cameras.md` §1) |
 | `chat` | button | open the chat line |
 | `pause_menu` | button | pause offline, menu online (§7) |
@@ -83,19 +86,25 @@ up to two keyboard or mouse bindings and one gamepad binding; all are rebindable
 | `camera_fov` | Alt (hold) | – | – |
 | `camera_boost` | Shift (free camera) | LB (free camera) | L1 |
 | `rankings` | Tab (hold) | View (hold) | View (hold) |
+| `hud_density` | G | View (tap) | View (tap), R4 |
 | `map` | M | – (in the pause menu) | – |
 | `radar_zoom_in` / `out` | = / − | – | – |
 | `radar_orientation` | Z | – | – |
 | `wind_shadow_view` | V | – | – |
 | `hud_hide` | F10 | – | – |
 | `boat_names` | N | – | – |
+| `boat_select` | B | – | R5 |
+| `boat_pick` | left mouse button | – | touch screen tap |
 | `spectate_next` / `prev` / `leader` | ] / [ / Home | RB / LB / R3 (when not racing) | same |
 | `chat` | Enter | – | – |
 | `pause_menu` | Esc | Menu | Menu |
 | `screenshot` | F12 | – | Steam button + R1 |
 | `reset_boat` | Backspace | – (in the pause menu) | – (in the pause menu) |
 
-Notes: `helm_fine` and `camera_boost` share Shift, which is fine because the free camera takes no helm input. The
+Notes: `helm_fine` and `camera_boost` share Shift, which is fine because the free camera takes no helm input.
+On the gamepad `View` is both `rankings` and `hud_density`: a press released within 0.3 s is a tap (density), a
+longer one shows the ranking list while held; with the rankings toggle option the density keeps only the keyboard key
+and R4. The
 gamepad has no direct sail keys: D-pad left/right step a highlighted sail on the HUD sail strip, X sets it (§5.4).
 
 **Free camera flying.** While the free camera is selected the boat's helm and sheet inputs fly it and the boat

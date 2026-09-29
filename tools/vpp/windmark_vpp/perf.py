@@ -44,10 +44,7 @@ TWA_SAIL = np.concatenate([np.arange(20, 60, 2), np.arange(60, 180.01, 5)]) * DE
 AWA = np.concatenate([[0, 5], np.arange(10, 180.01, 5)]) * DEG
 # trim error: fine round the optimum, then every 5 deg out to where the eased sail reaches the wind line (the
 # trim tables are 0 there, and the step before it must be close to the line), then 150 and 180 deg
-EPS = np.concatenate([[-60, -20, -10, -6, -3, 0, 0.5, 3], np.arange(5, 131, 5), [150, 180]]) * DEG
-# full-drive plateau of the trim tables (sails.md 6): a real sail's drive is flat near its best trim, so the trim
-# errors within +-TRIM_PLATEAU are solved at the optimum and the rest of each side is stretched to keep its ends
-TRIM_PLATEAU = 3.0 * DEG
+EPS = np.concatenate([[-60, -20, -10, -5, -2, -0.5, 0, 0.5, 2], np.arange(5, 131, 5), [150, 180]]) * DEG
 NF, NR = len(FLATS), len(REEFS)
 # apparent wind speed axis of flog_drag (m/s): the drag grows with its square, so the steps are fine enough that
 # the linear interpolation stays within a few per cent of it
@@ -462,17 +459,6 @@ class Generator:
             o = o - s.kite_sheet_in
         return np.clip(o, s.sheet_min, s.sheet_max)
 
-    @staticmethod
-    def _plateau(eps, w):
-        """Effective trim error g(eps) of the trim tables (sails.md 6): 0 within +-TRIM_PLATEAU (at most half the
-        driving sail's wind-line error w), then linear so that w (eased) and EPS[0] (over-sheeted) map to
-        themselves; unchanged beyond the wind line."""
-        p = np.minimum(TRIM_PLATEAU, 0.5 * np.maximum(w, 0.0))
-        lo = EPS[0]
-        over = np.where(eps < -p, (eps + p) * lo / (lo + p), 0.0)
-        eased = np.where(eps >= w, eps, np.where(eps > p, (eps - p) * w / np.maximum(w - p, 1e-9), 0.0))
-        return np.where(eps < 0, over, eased)
-
     def _trim_tables(self, r: ConfigResult):
         S = self.solver
         T, A = r.V.shape
@@ -482,7 +468,7 @@ class Generator:
         rf = np.broadcast_to(r.reef[..., None], shp)
         tws, twa = self.tws[:, None, None], self.twa[None, :, None]
         drive = len(r.rig.sails) - 1                    # the front sail if the config has one, else the main
-        eps = self._plateau(EPS[None, None, :], (r.awa - r.deltas[drive])[..., None])
+        eps = EPS[None, None, :]
         # speed: the equilibrium of the mistrimmed boat over the trimmed one
         st = S.solve(r.rig, fi, rf, tws, twa, eps=eps)
         i0 = int(np.argmin(np.abs(EPS)))
@@ -490,9 +476,8 @@ class Generator:
         v0 = V[..., i0:i0 + 1]
         sf = np.where(v0 > 0.05, np.clip(V / np.maximum(v0, 1e-6), 0, 1.0), 1.0)
         # heel: the roll equilibrium of the mistrimmed sails at the trimmed boat's speed and apparent wind over the
-        # trimmed heel there, so the core, which looks it up at the boat's own apparent wind, heels an over-sheeted
-        # boat by what its stalled sails push at the speed it is making (sails.md 6)
-        H, _ = S.solve_heel(r.rig, fi, rf, tws, twa, np.broadcast_to(r.V[..., None], shp), eps=eps)
+        # trimmed heel there, the sails sheeted in past the stall keeping their stall normal force (sails.md 6)
+        H, _ = S.solve_heel(r.rig, fi, rf, tws, twa, np.broadcast_to(r.V[..., None], shp), eps=eps, hold_stall=True)
         h0 = H[..., i0:i0 + 1]
         hf = np.where(h0 > 0.2 * DEG, np.clip(H / np.maximum(h0, 1e-6), 0, 3.0), 1.0)
         ts, th = self._to_awa(r, sf, 1.0), self._to_awa(r, hf, 1.0)

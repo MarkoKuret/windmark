@@ -81,30 +81,6 @@ def test_trim_tables(generated):
     assert np.all(np.diff(opt[i]) >= -1e-6)                    # eased progressively as the wind goes aft
 
 
-def test_trim_plateau(generated):
-    """sails.md 6: full drive and the trimmed heel within +-TRIM_PLATEAU of the optimum wherever the wind line is
-    at least twice the plateau away; over-sheeting still costs drive (no floor) and eased to the wind line none."""
-    _, p = generated
-    for c in p["configs"]:
-        tws, awa, eps = (np.array(a["points"]) for a in c["trim_speed"]["axes"])
-        ts = np.array(c["trim_speed"]["values"]).reshape(len(tws), len(awa), len(eps))
-        th = np.array(c["trim_heel"]["values"]).reshape(ts.shape)
-        drive = c["front_sail"] or "main"
-        _, _, opt = _t2(c["optimal_angle"][drive])
-        band = np.abs(eps) <= perf.TRIM_PLATEAU + 1e-9
-        assert band.sum() == 4                                 # -3, 0, 0.5, +3 deg on the axis
-        w = np.pad(awa[None, :] - opt, 1, mode="edge")
-        wmin = np.min([w[1 + a:w.shape[0] - 1 + a, 1 + b:w.shape[1] - 1 + b]
-                       for a in (-1, 0, 1) for b in (-1, 0, 1)], axis=0)
-        ok = wmin[1:] >= 2 * perf.TRIM_PLATEAU + 5 * DEG       # clear of the wind-line cut (its neighbours too)
-        assert ok.mean() > 0.6
-        assert np.allclose(ts[1:][ok][:, band], 1.0, atol=2e-3)
-        assert np.allclose(th[1:][ok][:, band], 1.0, atol=2e-3)
-        i = int(np.argmin(abs(tws - 10 * KNOT)))
-        j = int(np.argmin(abs(awa - 60 * DEG)))
-        assert ts[i, j, 0] < 0.9                               # hard over-sheeted: stalled, no floor at 1
-
-
 def test_main_sheeted_in_with_the_kite(generated, raw):
     """sails.md 5.1: with a spinnaker set the main's optimum is kite_sheet_in inside its own best angle, never below
     sheet_min; the polar does not change."""

@@ -357,8 +357,8 @@ the sails flog. The factor is the heel of the mistrimmed sails over the trimmed 
 wind (`sails.md` §6), and the heel then follows the boat's own apparent wind speed (`heel_wind`, §5.5): on a reach
 sheeting hard in lays the boat over at once (the stalled sails push sideways harder than drawing ones), and as the
 stalled boat slows and its apparent wind falls the heel comes back down toward the trimmed heel (reference S jib
-config at 90° TWA: in 10 kn from 8.7° to 13.4° within a few seconds, about 10.5° once slowed from 6.7 to 4.2 kn;
-in 16 kn from 23° to 28°, back to about 22° at 4.5 kn). A boat that is overpowered and over-sheeted therefore both heels past its design heel (losing
+config at 90° TWA: in 10 kn from 8.7° to 13.8° within a few seconds, about 10.5° once slowed from 6.7 to 4.1 kn;
+in 16 kn from 23° to 27.5°, back to about 22° at 4.2 kn). A boat that is overpowered and over-sheeted therefore both heels past its design heel (losing
 speed through `heel_speed_factor`) and gains weather helm (`sails.md` §6: the weather-helm rate is scaled by
 `trim_heel` too).
 
@@ -438,8 +438,6 @@ along `accel_rest`, §5.8). Right head to wind with no helm the boat stays in ir
 ### 7.5 Luffing, stall, let-fly
 - **Luffing**: sails eased past their optimum (`eps > 0`) lose drive through `trim_speed` down to 0 when the sail
   is at the wind line, and heel through `trim_heel`.
-- **Trimmed**: within about ±3° of the optimum the sails give their full drive (`sails.md` §6): a real sail is
-  not sensitive to a small sheet movement.
 - **Stall**: sails sheeted past the optimum (`eps < 0`) lose some speed (reference: to 0.7–0.75 at 15–20° over)
   and heel more, also on a reach, where the boat slows (§10.10).
 - **Let-fly** (`sails.md` §5.3) runs every sheet out to fully eased at once, never beyond. Where the apparent

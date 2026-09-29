@@ -269,8 +269,8 @@ Semantics and reference shapes:
   hull has no resistance ahead at rest), with the no-go and floor rules of `accel`. Reference S jib at 10 kn:
   0.2 m/s² at 40°, 0.36 at 60°, 0.5 at 90°. The core blends from it to `accel` below half the target speed
   (`boat.md` §5.8).
-- **trim_speed**: 1 on a plateau around `eps = 0`: exactly 1 within ±3° (`TRIM_PLATEAU`) and above 0.99 to about
-  ±4° to 5° (wider downwind), falling to 0 when eased to the wind line (reference +15° at 45° AWA, +120° at 180°) and to 0.6–0.75
+- **trim_speed**: 1 on a plateau around `eps = 0` (width grows with `awa_abs`: ±0.5° at 45° AWA, about −3.8°/+1.2°
+  at 180°), falling to 0 when eased to the wind line (reference +15° at 45° AWA, +120° at 180°) and to 0.6–0.75
   when over-sheeted (reference −13° at 45°, −41° at 180°). Spinnakers: 0.7–0.8 over-sheeted (a kite keeps some
   drive when mistrimmed). Let fly holds the driving sail at its fully eased angle (§5.3), so the core looks the
   table up at `eps = min(lim, awa_abs) − m_opt`: where the fully eased angle lies beyond the wind line that is the
@@ -288,22 +288,17 @@ Semantics and reference shapes:
   VPP writes the wind-line value from the `trim_error` point at or below the smallest wind-line error of the
   neighbouring table points, so the interpolation between them holds it; the drive is cut at most one axis step
   (5°) before the line.
-  A real sail's drive is flat near its best trim (the cloth and the twist take up a small sheet movement), so the
-  VPP solves each trim error `e` of the axis at an effective error `g(e)`: 0 within ±`TRIM_PLATEAU`, then
-  stretched linearly so the driving sail's wind-line error and −60° map to themselves (on a cell whose wind-line
-  error is under twice the plateau, the plateau shrinks to half of it). The drop to 0 on the wind line and the
-  over-sheeted end are the physics' own; only the band round the optimum is flattened.
 - **trim_heel**: the heel of the sail plan sheeted `eps` away from its optimum over the trimmed heel, **both at the
-  same boat speed and apparent wind** (the trimmed boat's at that `tws` and `awa_abs`), with the same effective
-  error `g(e)` as `trim_speed`: 1 across the plateau, 0 on the wind line (as `trim_speed`), rising when
-  over-sheeted as the stalled sails push sideways harder than drawing ones (a sail sheeted in past its stall keeps
-  at least the normal force it had at the stall, or at its optimum where that is itself stalled, as a separated
-  plate does; the mistrimmed sails of both trim tables use this, the trimmed envelopes are unchanged) (reference S jib config at 10 kn on a
-  beam reach: about 1.4 fully sheeted in in 10 kn; less where the trimmed boat already heels near the heel of its
-  greatest righting moment, which caps it). Over-sheeted the core reads it at the trimmed boat's apparent wind
-  angle and scales the heel with the boat's own apparent wind speed (`boat.md` §5.5), so the heel is what the
-  stalled sails push at the speed the boat is making, not at a settled speed: on a reach sheeting hard in lays the
-  boat over at once, and as it slows the heel follows its lighter apparent wind back down (`boat.md` §6.2, §10.10).
+  same boat speed and apparent wind** (the trimmed boat's at that `tws` and `awa_abs`): 1 at `eps = 0`, 0 on the
+  wind line (as `trim_speed`), rising when over-sheeted as the stalled sails push sideways harder than drawing
+  ones. A sail sheeted in past its stall keeps at least the normal force it had at the stall (or at its optimum,
+  where that is itself stalled), as a separated plate does; only this table uses that, `trim_speed` and the
+  trimmed envelopes are unchanged. Reference S jib config on a beam reach: about 1.4 fully sheeted in at 10 kn;
+  less where the trimmed boat already heels near the heel of its greatest righting moment, which caps it.
+  Over-sheeted the core reads it at the trimmed boat's apparent wind angle and scales the heel with the boat's own
+  apparent wind speed (`boat.md` §5.5), so the heel is what the stalled sails push at the speed the boat is
+  making, not at a settled speed: on a reach sheeting hard in lays the boat over at once, and as it slows the heel
+  follows its lighter apparent wind back down (`boat.md` §6.2, §10.10).
 - **weather_helm**: the yaw moment of the sail plan about the centre of lateral resistance, as the turn rate of
   the helm that holds it at the polar speed. The moment: the drive acting at the centre of effort, which the sheet
   angle (each sail's centre of effort swung about its luff) and the heel carry out to leeward (luffing), and the

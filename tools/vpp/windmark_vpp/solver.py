@@ -73,12 +73,13 @@ class Rig:
             den = den + a
         return num / den
 
-    def forces(self, fi, reef, beta_e, aws_e, eps=None):
+    def forces(self, fi, reef, beta_e, aws_e, eps=None, hold_stall=False):
         """Drive and heeled-plane side force (N) and per-sail sheet angles.
 
         fi: flat index, reef factor, effective AWA and AWS. With eps (rad, + = eased beyond the optimum, the trim
         error of the specs) every sail is sheeted eps away from its optimum, as the single manual sheet does,
-        clamped to the sheet limits and the wind line.
+        clamped to the sheet limits and the wind line; with hold_stall the sails sheeted in past the stall keep
+        their stall normal force (over_sheeted, the heel of the trim tables).
         """
         areas = self.areas(reef)
         aref = sum(areas)
@@ -91,7 +92,10 @@ class Rig:
             if eps is not None:
                 de0 = de
                 de = np.minimum(np.clip(de + eps, s.sheet_min, s.sheet_max), np.maximum(beta_e, s.sheet_min))
-                c_l, c_d = over_sheeted(COEFFS[s.coeff_type], beta_e, de, de0, e.flat[fi])
+                if hold_stall:
+                    c_l, c_d = over_sheeted(COEFFS[s.coeff_type], beta_e, de, de0, e.flat[fi])
+                else:
+                    c_l, c_d = coefficients(COEFFS[s.coeff_type], beta_e - de, e.flat[fi], de)
             if alone and s.type == "main":
                 u = np.clip((beta_e - np.radians(60)) / np.radians(50), 0, 1)
                 c_l = c_l * (MAIN_ALONE_CL + (1 - MAIN_ALONE_CL) * u * u * (3 - 2 * u))
@@ -187,22 +191,22 @@ class Solver:
         self.heel_top = float(min(boat.heel_max, H.heel[i]))
         self.zclr = 0.45 * boat.draft_total
 
-    def moment(self, rig, fi, reef, tws, twa, V, heel, eps=None):
+    def moment(self, rig, fi, reef, tws, twa, V, heel, eps=None, hold_stall=False):
         z = rig.ce_height(reef)
         tw = wind_at(tws, z)
         aws, beta, aws_e, beta_e = apparent(tw, twa, V, heel)
-        fx, fh, deltas = rig.forces(fi, reef, beta_e, aws_e, eps)
+        fx, fh, deltas = rig.forces(fi, reef, beta_e, aws_e, eps, hold_stall)
         return fx, fh, fh * (z + self.zclr), aws, beta, deltas
 
-    def solve_heel(self, rig, fi, reef, tws, twa, V, iters=20, eps=None):
+    def solve_heel(self, rig, fi, reef, tws, twa, V, iters=20, eps=None, hold_stall=False):
         rm = self.hull.hydro.righting_moment
         lo = np.zeros_like(V)
         hi = np.full_like(V, self.heel_top)
-        _, _, m_hi, _, _, _ = self.moment(rig, fi, reef, tws, twa, V, hi, eps)
+        _, _, m_hi, _, _, _ = self.moment(rig, fi, reef, tws, twa, V, hi, eps, hold_stall)
         over = rm(hi) < m_hi
         for _ in range(iters):
             mid = 0.5 * (lo + hi)
-            _, _, m, _, _, _ = self.moment(rig, fi, reef, tws, twa, V, mid, eps)
+            _, _, m, _, _, _ = self.moment(rig, fi, reef, tws, twa, V, mid, eps, hold_stall)
             up = rm(mid) < m
             lo = np.where(up, mid, lo)
             hi = np.where(up, hi, mid)

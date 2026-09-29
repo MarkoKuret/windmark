@@ -94,10 +94,8 @@ What each table holds:
   manual sheet of `sails.md` §5.2), clamped to the sheet limits and the wind line, relative to the trimmed speed;
   `trim_heel`: the roll equilibrium of the same mistrimmed sails at the trimmed boat's speed and apparent wind,
   relative to the trimmed heel there (the core looks it up at the boat's own apparent wind, so an over-sheeted
-  boat heels by what its stalled sails push at the speed it makes); both resampled from TWA onto AWA per TWS row.
-  Each axis error `e` is solved at the effective error `g(e)` of the full-drive plateau (`TRIM_PLATEAU` 3°,
-  `sails.md` §6): 0 within ±3°, stretched linearly beyond so the driving sail's wind-line error and −60° keep
-  their values. With the driving sail (the front sail,
+  boat heels by what its stalled sails push at the speed it makes; sails sheeted in past the stall keep their stall
+  normal force, `solver.over_sheeted`); both resampled from TWA onto AWA per TWS row. With the driving sail (the front sail,
   else the main) on the wind line the flogging sails give no drive: from the `eps` point at or below the smallest
   wind-line error `AWA − m_opt` of the neighbouring (TWS, AWA) points `trim_heel` is 0 and `trim_speed` holds the
   let-fly share (see "Luffing and let-fly"), which is exactly 0 up to 90° AWA, so the core's interpolated lookup
@@ -351,8 +349,6 @@ code is included.
 - `CD_flog` is an estimate. `decel_windage` is one coefficient for every config (the start config's sails), linear
   in the apparent wind (a calibrated secant of the square law, above), and takes the windage along the heading as
   `cos(awa)` of its head-to-wind value (the topsides' side area is left out).
-- The full-drive plateau of the trim tables (±3°) is a design choice standing in for the sail's shape adapting
-  to a small sheet movement; the coefficient model alone gives a narrower peak.
 - The VPP cannot give the build-up from rest physically: its steady keel carries the whole side force, whose
   induced drag grows without bound as the speed goes to 0. `accel_rest` is the drive at rest instead, and the
   core blends it into `accel` below half the target speed.

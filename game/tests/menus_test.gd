@@ -69,6 +69,7 @@ func _odd_settings() -> Settings:
 	s.smooth_switch = true
 	s.reduced_motion = true
 	s.assist = Hud.Assist.MINIMAL
+	s.hud_density = Hud.Density.DATA
 	s.ui_scale = 1.15
 	s.palette = "tritanopia"
 	s.captions = true

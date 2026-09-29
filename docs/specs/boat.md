@@ -480,8 +480,8 @@ start needs speed built before the gun.
 | --- | --- |
 | renderer | `pos_x`, `pos_y`, `z`, `psi`, `phi`, `theta`, `h` (rudder), sail outputs (`sails.md` §7), interpolated between the snapshots of two ticks |
 | HUD | `v`, `v_filt`, `sog`, `cog`, `vmg`, `tws`, `twa`, `aws`, `awa`, `twd_from`, `wind_speed_clean`, `target_speed`, `polar_speed`, `trim_error` of each sail, `heel` |
-| AI | the same plus the table lookups for any hypothetical TWA (`polar`, `accel`), the turn radius for a helm and `let_fly_drive`: the `trim_speed` the driving sail would give let fly at this tick's wind (`sails.md` §5.3: `eps = min(lim, awa_abs) − m_opt`), 0 where let fly stops the boat, near 1 running; and `decel_wind`, this tick's windage deceleration (the `wind` term of §5.8), which predictions of a coasting boat add to `decel_const` |
-| rules | `let_fly_drive` and `decel_wind` too, for the slow-down escape (`rules.md` §3.6) |
+| AI | the same plus the table lookups for any hypothetical TWA (`polar`, `accel`), the turn radius for a helm and `let_fly_drive`: the `trim_speed` the driving sail would give let fly at this tick's wind (`sails.md` §5.3: `eps = min(lim, awa_abs) − m_opt`), 0 where let fly stops the boat, near 1 running |
+| rules | `let_fly_drive` too, for the slow-down escape (`rules.md` §3.6) |
 | wind shadow | `pos`, `psi`, `aws`, `awd_from`, `twa`, sails up (`wind_shadow.md` §3) |
 | rules, collisions | `pos`, `psi`, `v`, hull outline (`collisions.md` §2) |
 

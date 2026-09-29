@@ -340,11 +340,10 @@ void prestart(AC& x, AB& a, const Me& m) {
   {
     const Dynamics& dy = m.b.perf().dynamics;
     const float v_floor = m.b.let_fly_drive() * max(0.0f, m.s.v);
-    const float dc = dy.decel_const + m.b.decel_wind();  // windage held at this tick's wind
     float vv = max(0.0f, m.s.v);
     const std::int32_t steps = static_cast<std::int32_t>(min(-t, 30.0f) / 0.1f);
     for (std::int32_t k = 0; k < steps; ++k) {
-      vv = max(v_floor, vv - (dy.decel_linear * vv + dc) * 0.1f);
+      vv = max(v_floor, vv - (dy.decel_linear * vv + dy.decel_const) * 0.1f);
       coast = coast + vv * 0.1f;
     }
   }

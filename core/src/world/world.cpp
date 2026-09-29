@@ -241,7 +241,6 @@ std::uint64_t World::step() {
       r.main_beta = beta;
       r.helm = s.h;
       r.let_fly_drive = b.let_fly_drive();
-      r.decel_wind = b.decel_wind();
       r.ai = entries_[i].ai;
     }
     rules_.pending_flags(pending_);

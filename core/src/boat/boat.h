@@ -93,8 +93,7 @@ class Boat {
   // trim_speed the driving sail would give let fly at this tick's wind (sails.md §5.3): 0 where let fly stops the
   // boat (fully eased sail on the wind line), near 1 running (the fully eased sails still draw).
   float let_fly_drive() const;
-  // Windage deceleration at this tick's apparent wind (boat.md §5.8 `wind`, §9 `decel_wind`), m/s^2 >= 0: what
-  // predictions of a coasting boat add to decel_const.
+  // Windage deceleration at this tick's apparent wind (boat.md §5.8 `wind`), m/s^2 >= 0.
   float decel_wind() const;
 
   // conventions.md §9: boat.md §3 then sails.md §3.

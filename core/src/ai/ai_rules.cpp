@@ -36,7 +36,7 @@ OwnPlan plan_to(const Me& m, float psi_to, std::int8_t dir_, bool slow, float ra
   p.rate = rate > 0.0f ? rate : v / m.b.perf().dynamics.turn_radius_full;
   p.twd = m.twd;
   p.decel_linear = m.b.perf().dynamics.decel_linear;
-  p.decel_const = m.b.perf().dynamics.decel_const + m.b.decel_wind();  // windage held at this tick's wind
+  p.decel_const = m.b.perf().dynamics.decel_const;
   if (slow) p.slow_floor = m.b.let_fly_drive() * max(0.0f, m.s.v);
   return p;
 }
@@ -72,7 +72,7 @@ bool escape(AC& x, std::size_t j, const Track& tj, std::int32_t k0, const Track&
     p.delay = 0.3f;
     p.twd = mj.psi;  // no no-go slowdown for the escape turns
     p.decel_linear = d.decel_linear;
-    p.decel_const = d.decel_const + b.decel_wind();
+    p.decel_const = d.decel_const;
     if (k == 0) {
       p.psi_to = mj.psi;
       p.rate = 0.0f;

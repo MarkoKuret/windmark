@@ -123,7 +123,7 @@ void Rules::manoeuvre(std::size_t a, int kind, float H, std::vector<Pose>& out) 
     if (k > react) {
       if (kind == 3) {
         rate = 0.0f;
-        if (v > v_floor) v = max(v_floor, v - ((d.decel_linear * v + d.decel_const) + in.decel_wind) * kSub);
+        if (v > v_floor) v = max(v_floor, v - (d.decel_linear * v + d.decel_const) * kSub);
       } else {
         const float step = d.helm_rate * kSub;
         h = h + clamp(target - h, -step, step);

@@ -16,6 +16,8 @@ ordinal: 71000
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
 From WM-010: measured on the default course, 11 kn, 10 boats: penalties 0.5 to 1.0 per boat (target 0.4 or less), contacts 0.5 to 4.5 per race (target 1 or less), mean start delay 13 to 25 s (Pro target under 2 s), mixed-fleet order not strict (Intermediate beats Expert: 3.8 vs 4.2 mean place). Most penalties come from the windward mark in a crowd. Also add the ai.md mark-room scenario as its own test. ai.md 15.1 records the measured values; ai_races assertions are set to them.
+
+From WM-068 (2026-09-29): the AI races are chaotic under small physics changes (a windage calibration of 3.5 vs 3.4 m/s moved a match race between pass and deadlock). The deadlock is a real weakness: a boat bore away for pressure into the committee boat and stayed pinned beam-on at 0 speed with no recovery. Add a stuck-against-an-object recovery.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

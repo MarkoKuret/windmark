@@ -84,6 +84,7 @@ class SailShape : public godot::RefCounted {
   void sections(const godot::Transform3D& s_t, const godot::Vector3& piv, const godot::Vector3& ax, float base);
   float ease(float beta, const godot::Transform3D& s_t, const godot::Vector3& piv, const godot::Vector3& ax,
              float base, const godot::Vector3& hd) const;
+  void spread(std::vector<float>& d) const;
   void push(float awa, const godot::Vector3& hd);
   void encode();
 
@@ -107,6 +108,11 @@ class SailShape : public godot::RefCounted {
   std::vector<float> a_, l_, u_, h_, uc_;  // per vertex
   std::vector<float> c_, amid_, hrow_;     // per row
   std::vector<float> drow_, srow_;         // per row, per update: camber over chord and chord shortening
+  // §7.4 rest distances from vertex k to its neighbour along the row (k + 1), up the column (k + cols), and the
+  // two diagonals up (k + cols + 1, k + cols - 1); scratch per vertex for the push
+  std::vector<float> ec_, er_, e1_, e2_;
+  std::vector<float> cp_, px_, pd_;
+  std::vector<godot::Vector3> pg_;
 
   float phi_ = 0.0f, s_b_ = 1.0f, tl_ = 0.0f;
   bool tl_set_ = false;

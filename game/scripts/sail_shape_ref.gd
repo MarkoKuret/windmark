@@ -26,6 +26,10 @@ const KNOT := 1852.0 / 3600.0
 const C_HOOK := 0.0369260386
 const TAU_SMOOTH := 0.25
 const DT_MAX := 0.1
+## §4, §7.4 clearance constants: push slope, ease threshold (in clearances), ease cap (rad)
+const PUSH_SLOPE := 0.3
+const PUSH_EASE := 3.0
+const EASE_MAX := 0.35
 
 var rows := 0
 var cols := 0
@@ -91,6 +95,11 @@ var _tl_set := false
 var _obs: Array = []
 var _secs: Array = []
 var _ease := 0.0
+## §7.4 rest distances from vertex k to its neighbour along the row, up the column and the two diagonals up
+var _ec := PackedFloat32Array()
+var _er := PackedFloat32Array()
+var _e1 := PackedFloat32Array()
+var _e2 := PackedFloat32Array()
 
 ## results of the last update
 var _loc := PackedVector3Array()
@@ -180,6 +189,25 @@ func configure(rest_mid: PackedVector3Array, r: int, c: int, p: Dictionary) -> b
 		_amid[i] = 0.5 * (_a[i * cols] + _a[i * cols + cols - 1])
 		_hrow[i] = _h[i * cols]
 	furl_radius = float(p.get("furl_radius", 0.02 + 0.006 * sa))
+	_ec.resize(n)
+	_ec.fill(0.0)
+	_er.resize(n)
+	_er.fill(0.0)
+	_e1.resize(n)
+	_e1.fill(0.0)
+	_e2.resize(n)
+	_e2.fill(0.0)
+	for i in rows:
+		for j in cols:
+			var k := i * cols + j
+			if j + 1 < cols:
+				_ec[k] = rest_mid[k].distance_to(rest_mid[k + 1])
+			if i + 1 < rows:
+				_er[k] = rest_mid[k].distance_to(rest_mid[k + cols])
+				if j + 1 < cols:
+					_e1[k] = rest_mid[k].distance_to(rest_mid[k + cols + 1])
+				if j > 0:
+					_e2[k] = rest_mid[k].distance_to(rest_mid[k + cols - 1])
 	var dh := tack - head
 	r_h = maxf((dh - up * dh.dot(up)).length(), 1e-3)
 	var hz := -fwd
@@ -540,30 +568,92 @@ func _ease_for(beta: float, s_t: Transform3D, piv: Vector3, ax: Vector3, base: f
 			if i == rows - 2:
 				break
 			i = mini(i + 3, rows - 2)
+		worst += PUSH_EASE * clearance  # the push takes up to P_e; the ease only the rest
 		if worst >= 0.0:
 			break
-		delta = minf(delta + (-worst) / maxf(rr, 0.5), 1.0)
+		delta = minf(delta + (-worst) / maxf(rr, 0.5), EASE_MAX)
 	return delta
 
 
-## §7.4 the push: every vertex off each obstacle in turn, then off the mast.
+## §7.4 the spread of the push depths: d_k = max over k' of d_k' - k_p * (rest distance over the cloth), by two
+## chamfer passes over the grid (row, column and diagonal neighbours).
+func _spread(d: PackedFloat32Array) -> PackedFloat32Array:
+	var s := PUSH_SLOPE
+	for i in rows:
+		for j in cols:
+			var k := i * cols + j
+			var v := d[k]
+			if j > 0:
+				v = maxf(v, d[k - 1] - s * _ec[k - 1])
+			if i > 0:
+				v = maxf(v, d[k - cols] - s * _er[k - cols])
+				if j > 0:
+					v = maxf(v, d[k - cols - 1] - s * _e1[k - cols - 1])
+				if j + 1 < cols:
+					v = maxf(v, d[k - cols + 1] - s * _e2[k - cols + 1])
+			d[k] = v
+	for i in range(rows - 1, -1, -1):
+		for j in range(cols - 1, -1, -1):
+			var k := i * cols + j
+			var v := d[k]
+			if j + 1 < cols:
+				v = maxf(v, d[k + 1] - s * _ec[k])
+			if i + 1 < rows:
+				v = maxf(v, d[k + cols] - s * _er[k])
+				if j + 1 < cols:
+					v = maxf(v, d[k + cols + 1] - s * _e1[k])
+				if j > 0:
+					v = maxf(v, d[k + cols - 1] - s * _e2[k])
+			d[k] = v
+	return d
+
+
+## §7.4 the push: per obstacle the local push (a smooth bump along the obstacle's bow-facing normal) and the
+## margin push, then every vertex off the mast.
 func _push(awa: float, hd: Vector3) -> void:
 	var b := clearance
 	var lee := port * _sgn(awa)
+	var cp := PackedFloat32Array()
+	cp.resize(n)
 	for k in n:
-		var p := _mid[k]
-		var cp := _margin_at(p, hd)
-		for o in _secs:
-			var xg := _clear_x(o, p, cp + b)
+		cp[k] = _margin_at(_mid[k], hd)
+	var px := PackedFloat32Array()
+	px.resize(n)
+	var pg := PackedVector3Array()
+	pg.resize(n)
+	var pd := PackedFloat32Array()
+	pd.resize(n)
+	for o in _secs:
+		var f: Vector3 = o["f"]
+		var any := false
+		for k in n:
+			var xg := _clear_x(o, _mid[k], cp[k] + b)
+			px[k] = xg[0]
+			pg[k] = xg[1]
+			if px[k] < cp[k] + b:
+				pd[k] = cp[k] - px[k]
+				any = true
+			else:
+				pd[k] = -INF
+		if any:
+			pd = _spread(pd)
+			for k in n:
+				var v := _smax(pd[k], b) * cp[k] / b
+				if v > 0.0:
+					_mid[k] += f * v
+					var xg := _clear_x(o, _mid[k], cp[k] + b)
+					px[k] = xg[0]
+					pg[k] = xg[1]
+		for k in n:
+			var x := px[k]
+			if x < cp[k] + b:
+				_mid[k] += pg[k] * (cp[k] + _smax(x - cp[k], b) - x)
+	if has_mast_head:
+		for k in n:
+			var xg := _mast_x(_mid[k], lee)
 			var x: float = xg[0]
-			if x < cp + b:
-				p += xg[1] * (cp + _smax(x - cp, b) - x)
-		if has_mast_head:
-			var xg := _mast_x(p, lee)
-			var x: float = xg[0]
-			if x < cp + b:
-				p += xg[1] * (cp + _smax(x - cp, b) - x)
-		_mid[k] = p
+			if x < cp[k] + b:
+				_mid[k] += xg[1] * (cp[k] + _smax(x - cp[k], b) - x)
 
 
 static func _smax(x: float, b: float) -> float:

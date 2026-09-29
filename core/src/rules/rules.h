@@ -75,6 +75,7 @@ struct RulesBoatInput {
   float main_beta = 0.0f;
   float helm = 0.0f;            // actual helm h
   float let_fly_drive = 0.0f;   // trim_speed with the sails let fly (boat.md §9), for the slow-down escape (§3.6)
+  float decel_wind = 0.0f;      // windage deceleration now (boat.md §9), m/s^2, for the slow-down escape (§3.6)
   bool ai = false;              // protest mode: the AI protests on its own (rules.md §10)
 };
 

@@ -669,3 +669,41 @@ TEST_CASE("boat: let fly upwind and downwind") {
     }
   }
 }
+
+// boat.md §6.2, §7.5: on a reach, sheeting the sails hard in stalls them and heels the boat more than trimmed.
+TEST_CASE("boat: over-sheeting on a reach heels the boat more") {
+  for (const std::string cls : kClasses) {
+    const wm::PerfData& p = perf_no_helm_balance(cls);
+    const std::int32_t front = p.start_front_sail;
+    for (float tws : {10.0f, 16.0f}) {
+      const float twa = deg(90.0f);
+      Sim sim(p, tws, 0.0f);
+      sim.place(twa, p.config_for(front)->polar.at(kn(tws), twa), front);
+      for (int i = 0; i < static_cast<int>(40.0f / DT); ++i) {
+        sim.steer_twa(twa);
+        sim.step();
+      }
+      const float v0 = sim.s().v, h0 = std::fabs(sim.s().phi);
+      sim.boat.set_auto_trim(false);
+      sim.boat.set_sheet(0.0f);  // fully sheeted in
+      float h_max = 0.0f, h10 = 0.0f;
+      std::string trace;
+      for (int i = 1; i <= static_cast<int>(40.0f / DT); ++i) {
+        sim.steer_twa(twa);
+        sim.step();
+        h_max = wm::max(h_max, std::fabs(sim.s().phi));
+        if (i == static_cast<int>(10.0f / DT)) h10 = h_max;
+        if (i % static_cast<int>(5.0f / DT) == 0)
+          trace += " " + std::to_string(static_cast<int>(std::lround(to_deg(std::fabs(sim.s().phi))))) + "/" +
+                   std::to_string(to_kn(sim.s().v)).substr(0, 3);
+      }
+      const float v1 = sim.s().v, h1 = std::fabs(sim.s().phi);
+      MESSAGE(cls, " ", tws, " kn, 90 deg: trimmed ", to_kn(v0), " kn heel ", to_deg(h0), " deg; sheeted in ",
+              to_kn(v1), " kn heel ", to_deg(h1), " deg (largest ", to_deg(h_max), "), trim_heel ",
+              sim.boat.outputs().trim_heel, ", trim_speed ", sim.boat.outputs().trim_speed, "; every 5 s deg/kn",
+              trace);
+      CHECK(h10 > h0 + deg(2.0f));  // the stalled sails lay her over while she still carries her speed
+      CHECK(h1 > h0 - deg(1.5f));   // slowed, the heel follows her apparent wind down, not far below trimmed
+    }
+  }
+}

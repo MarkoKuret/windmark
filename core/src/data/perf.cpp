@@ -126,6 +126,7 @@ class PerfReader {
         ranged(d, p, "yaw_time", y.yaw_time, 0.0f, 2.0f) &&
         ranged(d, p, "decel_linear", y.decel_linear, 0.0f, kInf) &&
         ranged(d, p, "decel_const", y.decel_const, 0.0f, kInf) &&
+        ranged(d, p, "decel_windage", y.decel_windage, 0.0f, kInf) &&
         table(d, p, "heel_speed_factor", kHeelSpeedFactor, y.heel_speed_factor) &&
         table(d, p, "rudder_drag_luff", kRudderDrag, y.rudder_drag_luff) &&
         table(d, p, "rudder_drag_bear", kRudderDrag, y.rudder_drag_bear) &&

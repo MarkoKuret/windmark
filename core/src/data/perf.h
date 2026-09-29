@@ -40,6 +40,7 @@ struct Dynamics {
   float helm_rate, rudder_max, turn_radius_full, turn_radius_offset;
   float yaw_time;  // s, the hull's yaw-rate time constant (boat.md §4, §5.9)
   float decel_linear, decel_const;
+  float decel_windage;  // 1/m, windage deceleration per aws^2 head to wind (boat.md §4, §5.8)
   Table heel_speed_factor;  // (heel_abs) -> 1
   Table rudder_drag_luff;   // (boat_speed_abs, helm_abs) -> m/s2
   Table rudder_drag_bear;

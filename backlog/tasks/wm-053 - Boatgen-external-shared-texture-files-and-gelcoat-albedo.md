@@ -4,6 +4,7 @@ title: 'Boatgen: external shared texture files and gelcoat albedo'
 status: To Do
 assignee: []
 created_date: '2026-09-25 19:08'
+updated_date: '2026-09-29 22:02'
 labels:
   - boats
 dependencies: []
@@ -20,5 +21,11 @@ From WM-016.16: the texture set is embedded in every GLB, so each GLB carries it
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 GLBs reference one shared texture set on disk
-- [ ] #2 Gelcoat albedo at most 0.8 linear in the data
+- [x] #2 Gelcoat albedo at most 0.8 linear in the data
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Gelcoat mean 0.72 linear, factor 0.78 with the texture set (WM-064); test in tests/test_textures_ao.py.
+<!-- SECTION:NOTES:END -->

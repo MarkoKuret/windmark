@@ -118,6 +118,7 @@ An array; exactly one entry of type `main`, any number of front sails. Its order
 | `luff_round`, `leech_round`, `foot_round` | | – | flying sails: edge round depth as a fraction of the straight edge, -0.1 to 0.3 [below] |
 | `luff_round_pos`, `leech_round_pos`, `foot_round_pos` | | – | flying sails: where along the edge the round is deepest, 0.1 to 0.9 [below] |
 | `furling` | | bool | headsail on a furler (hoist animation, and faster handling) [false] |
+| `kite_sheet_in` | | rad | main only: how far the main is sheeted in from its own optimum while a spinnaker or code zero is set, 0 to 0.7 (`sails.md` §5.1) [0] |
 | `handling` | | object | overrides of the handling block the VPP writes (§4.4) |
 
 Sail areas of the main, jib, genoa, code zero and spinnakers (symmetric or asymmetric) are `sails[].area` with the
@@ -193,7 +194,7 @@ or any other speed target, so a class's speeds (and the AI's and HUD's view of t
 | field | | unit | default | range | scales in the performance file |
 | --- | --- | --- | --- | --- | --- |
 | `accel` | | – | 1.0 | 0.2 to 5 | every config's `accel` table (how fast the boat builds speed towards the polar) |
-| `decel` | | – | 1.0 | 0.2 to 5 | `dynamics.decel_linear` and `decel_const` (how fast it slows above its target, coasting, in irons) |
+| `decel` | | – | 1.0 | 0.2 to 5 | `dynamics.decel_linear`, `decel_const` and `decel_windage` (how fast it slows above its target, coasting, in irons) |
 | `turn_rate` | | – | 1.0 | 0.2 to 5 | yaw rate at every helm and speed: `dynamics.turn_radius_full` and `turn_radius_offset` are divided by it (`boat.md` §5.9); `rudder_drag_*` unchanged |
 | `heel` | | – | 1.0 | 0.2 to 5 | every config's `heel` table (clamped to π/2) and `dynamics.heel_max` (kept below `heel_limit`); `heel_speed_factor` and the main's `sheet_max_by_heel` are stretched along their heel axes by the same factor, so the speed at the scaled heel is what it was at the physical heel |
 | `tack_time` | | – | 1.0 | 0.2 to 5 | crew and helm speed in manoeuvres (> 1 is slower): `dynamics.helm_rate` and every sail's `rate_in`, `rate_out` and `pole_rate` are divided by it |
@@ -322,7 +323,7 @@ reference values are in the owning spec.
 | --- | --- | --- |
 | `helm_rate`, `rudder_max`, `turn_radius_full`, `turn_radius_offset` | float | boat.md §4 |
 | `yaw_time` | float, s, 0 to 2 | boat.md §4, §5.9 |
-| `decel_linear`, `decel_const` | float | boat.md §4 |
+| `decel_linear`, `decel_const`, `decel_windage` | float | boat.md §4 |
 | `heel_speed_factor` | Table1D(`heel_abs`) | boat.md §4 |
 | `rudder_drag_luff`, `rudder_drag_bear` | Table2D(`boat_speed_abs`, `helm_abs`), m/s² | boat.md §4 |
 | `heel_max`, `heel_limit`, `heel_freq`, `heel_damping` | float | boat.md §4 |
@@ -334,7 +335,7 @@ reference values are in the owning spec.
 | `collision` | `{ "outline": [[x, y], …], "mass": kg, "yaw_gyration": m }` | collisions.md §2.1 |
 | `wind_shadow` | object with every key of `wind_shadow.md` §2 | wind_shadow.md §2 |
 
-Ranges checked at load (besides those of the owning specs): `decel_linear`, `decel_const` ≥ 0;
+Ranges checked at load (besides those of the owning specs): `decel_linear`, `decel_const`, `decel_windage` ≥ 0;
 `turn_radius_offset` any finite value (negative for a rudder that stalls short of full helm) with
 `turn_radius_full + turn_radius_offset > 0`; `rudder_drag_luff`, `rudder_drag_bear` any finite value (§5);
 `hull_points`, if present, 1 to 64 points.
@@ -455,7 +456,8 @@ Recommended axes for the VPP (fine where the tables bend):
 - `tws`: 0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 20.6 m/s;
 - `twa_abs`: 0°, 7°, the no-go edge twice (the step, reference 15°), then 20° to 60° every 2°, 60° to 180° every
   5°;
-- `trim_error`: −60°, −20°, −10°, −5°, −2°, −0.5°, 0, 0.5°, 2°, then every 5° from 5° to 130°, 150°, 180° (fine
+- `trim_error`: −60°, −20°, −10°, −6°, −3°, 0, 3°, then every 5° from 5° to 130°, 150°, 180° (±3° the edges of the
+  full-drive plateau, `sails.md` §6; fine
   enough that the trim tables can reach 0 on the wind line at each `awa_abs` without cutting the drive early,
   `sails.md` §6);
 - `fall_off`: `boat_speed` −6, 0, `v_f`/2, `v_f` m/s; `twa_abs` 0°, 10°, 20°, 60°, 90°, 180° (`sails.md` §6);

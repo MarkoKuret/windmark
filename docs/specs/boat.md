@@ -79,7 +79,8 @@ monohull. They are targets for the VPP/boat generator, not constants.
 | `turn_radius_offset` | m | −1.2 | −2.5 | shape of radius against helm (§5.9); about −0.3·`turn_radius_full` for a rudder that stalls at about 70 % helm, 0 for one that never stalls |
 | `yaw_time` | s | 0.35 | 0.6 | time constant of the hull's yaw rate: yaw inertia against the hull's yaw damping (§5.9) |
 | `decel_linear` | 1/s | 0.045 | 0.025 | deceleration per m/s of excess speed (the hull coasting with the drive gone) |
-| `decel_const` | m/s² | 0.08 | 0.044 | constant part of the deceleration (windage in irons, hull at a crawl) |
+| `decel_const` | m/s² | 0.023 | 0.012 | constant part of the deceleration (the hull at a crawl) |
+| `decel_windage` | 1/m | 0.0023 | 0.0013 | windage deceleration per square of the apparent wind speed, head to wind: hull, rig and the sails luffing on their sheets (§5.8) |
 | `heel_speed_factor` | Table1D(`heel_abs`) | see below | | speed multiplier from heel |
 | `rudder_drag_luff`, `rudder_drag_bear` | Table2D(`boat_speed_abs`, `helm_abs`) → m/s² | see below | | speed loss from the rudder when turning toward / away from the wind |
 | `heel_max` | rad | 0.87 | 1.13 | clamp of the heel target |
@@ -223,7 +224,8 @@ if err > 0:
     if err < DT*a: a = err / DT                                  // never overshoot the target
 else:
     err_d = (v > 0 ? max(target_speed, 0) : target_speed) - v    // coast before drifting
-    a = decel_linear*err_d - decel_const
+    wind = decel_windage*(aws*aws)*max(cos(awa), 0)              // windage, 0 with the apparent wind abaft the beam
+    a = (decel_linear*err_d - decel_const) - wind
     free = let_fly || !auto_trim                                 // the sheets are free
     if free and v > 0 and eps > 0: a = a - (1 - trim_speed)*flog // flogging sails brake the boat
     if fabsf(err_d) < DT*fabsf(a): a = err_d / DT
@@ -246,8 +248,14 @@ drops.
   the no-go zone, let fly, in a calm) loses its way toward 0 along the deceleration law; only a stopped or backing
   boat is pulled toward the negative drift. The law lands exactly on 0 (the overshoot clamp), and the drift takes
   over from the next tick.
-- **Flogging sails**: `decel_linear` and `decel_const` are the hull coasting with the sails luffing on their
-  sheets (a tack, a luff head to wind). With the sheets free (let fly held, or the manual sheet eased past the
+- **Windage**: `decel_linear` and `decel_const` are the hull coasting; the `wind` term is the drag of hull, rig
+  and the sails luffing on their sheets (a tack, a luff head to wind) along the heading, which grows with the
+  square of this tick's apparent wind (§5.1) and is 0 with the apparent wind abaft the beam (there it pushes the
+  boat along, which the polar and the let-fly share of `trim_speed` hold). A boat head to wind therefore stops
+  faster in more wind: an S boat luffing head to wind at 5 m/s apparent is braked by about 0.08 m/s² at a crawl,
+  at 10 m/s by about 0.23 m/s². The table's apparent wind is taken at the 10 m reference height; `decel_windage`
+  carries the wind profile factor at the rig's centre of effort.
+- **Flogging sails**: with the sheets free (let fly held, or the manual sheet eased past the
   optimum) a sail eased toward the wind line flogs, and its drag (`flog_drag`, which grows with the square of the
   apparent wind and is 0 with the apparent wind abaft the beam) brakes the boat in proportion to the drive the
   trim has lost, `1 − trim_speed`: all of it with let-fly forward of the beam (the fully eased sails lie on the
@@ -331,7 +339,9 @@ settles in about 1.5 s with a small overshoot; L-class heel (ω 1.41, ζ 1.41) i
 ### 6.2 Heel from the sails
 `heel_mag` is the steady heel the VPP computed for optimal trim. `trim_heel` bends it with the sheet: over-trimmed
 sails (negative `eps`, stalled) heel the boat more, eased sails (positive `eps`, luffing) less, down to zero when
-the sails flog. A boat that is overpowered and over-sheeted therefore both heels past its design heel (losing
+the sails flog. The factor is the heel of the mistrimmed sails over the trimmed heel at the same speed and apparent
+wind (`sails.md` §6), looked up at the boat's own apparent wind, so on a reach sheeting hard in lays the boat over
+further even as it slows: the stalled sails push sideways harder than drawing ones. A boat that is overpowered and over-sheeted therefore both heels past its design heel (losing
 speed through `heel_speed_factor`) and gains weather helm (`sails.md` §6: the weather-helm rate is scaled by
 `trim_heel` too).
 
@@ -380,8 +390,8 @@ Nothing special is coded; a tack emerges from the tables.
 1. Helm over: the boat turns on its arc, the rudder drag table takes speed, harder helm takes more. Past the
    rudder's stall (§5.9, about 70 % helm) the boat turns little faster while the drag keeps growing.
 2. Inside the no-go zone the polar target drops to about zero, then negative (§7.4): the boat coasts, `v` falling
-   along `decel_linear·v + decel_const` (coast before drifting, §5.8), so it carries its way through the wind; a
-   light boat loses it faster (S: 0.045/s plus 0.08 m/s²) than a heavy one (L: 0.025/s plus 0.044 m/s²). The
+   along `decel_linear·v + decel_const` plus the windage (coast before drifting, §5.8), so it carries its way
+   through the wind; a light boat loses it faster than a heavy one, and every boat faster in a stronger wind. The
    sails luff on their sheets, they do not flog (§5.8), unless the sheet was eased or let fly.
 3. The wind crosses the bow: `tack` flips, the sails' targets flip sides and the sails swing across at their
    sheet rates (`sails.md` §5.5); until they settle, their trim error keeps the drive down.
@@ -411,8 +421,10 @@ along `accel_rest`, §5.8). Right head to wind with no helm the boat stays in ir
 ### 7.5 Luffing, stall, let-fly
 - **Luffing**: sails eased past their optimum (`eps > 0`) lose drive through `trim_speed` down to 0 when the sail
   is at the wind line, and heel through `trim_heel`.
+- **Trimmed**: within about ±3° of the optimum the sails give their full drive (`sails.md` §6): a real sail is
+  not sensitive to a small sheet movement.
 - **Stall**: sails sheeted past the optimum (`eps < 0`) lose some speed (reference: to 0.7–0.75 at 15–20° over)
-  and heel more.
+  and heel more, also on a reach, where the boat slows (§10.10).
 - **Let-fly** (`sails.md` §5.3) runs every sheet out to fully eased at once, never beyond. Where the apparent
   wind lies inside the fully eased angle (close-hauled, close reaching) that puts the sails on the wind line: the
   drive goes to zero in the same tick (`trim_speed` is 0 there) and the boat coasts down along the deceleration
@@ -453,8 +465,8 @@ start needs speed built before the gun.
 | --- | --- |
 | renderer | `pos_x`, `pos_y`, `z`, `psi`, `phi`, `theta`, `h` (rudder), sail outputs (`sails.md` §7), interpolated between the snapshots of two ticks |
 | HUD | `v`, `v_filt`, `sog`, `cog`, `vmg`, `tws`, `twa`, `aws`, `awa`, `twd_from`, `wind_speed_clean`, `target_speed`, `polar_speed`, `trim_error` of each sail, `heel` |
-| AI | the same plus the table lookups for any hypothetical TWA (`polar`, `accel`), the turn radius for a helm and `let_fly_drive`: the `trim_speed` the driving sail would give let fly at this tick's wind (`sails.md` §5.3: `eps = min(lim, awa_abs) − m_opt`), 0 where let fly stops the boat, near 1 running |
-| rules | `let_fly_drive` too, for the slow-down escape (`rules.md` §3.6) |
+| AI | the same plus the table lookups for any hypothetical TWA (`polar`, `accel`), the turn radius for a helm and `let_fly_drive`: the `trim_speed` the driving sail would give let fly at this tick's wind (`sails.md` §5.3: `eps = min(lim, awa_abs) − m_opt`), 0 where let fly stops the boat, near 1 running; and `decel_wind`, this tick's windage deceleration (the `wind` term of §5.8), which predictions of a coasting boat add to `decel_const` |
+| rules | `let_fly_drive` and `decel_wind` too, for the slow-down escape (`rules.md` §3.6) |
 | wind shadow | `pos`, `psi`, `aws`, `awd_from`, `twa`, sails up (`wind_shadow.md` §3) |
 | rules, collisions | `pos`, `psi`, `v`, hull outline (`collisions.md` §2) |
 
@@ -494,3 +506,6 @@ start needs speed built before the gun.
    rudder's travel (and a tick), 95 % within three times that; back to the centre, it is above half its rate
    when the rudder reaches 0, falls to 37 % within `yaw_time` plus the travel and to 5 % within three times that,
    and the heading carries on turning by at least half the rate times `yaw_time`.
+10. **Over-sheeting on a reach**: steady at 90° TWA under the start front sail, helm balance off, at 10 and 16 kn:
+   with the sheet then held fully in (manual, `sheet_cmd = 0`) the boat slows and after 40 s its heel is more than
+   1° above the trimmed heel.

@@ -237,7 +237,7 @@ would reach the line before the gun at the present speed and is within the let-f
 the present speed towards the line: a let-fly boat loses speed slowly, `boat.md` §5.8), let fly. The speed towards
 the line is taken on the heading she is about to sail (near the spot the approach heads up to close-hauled, which
 points her more at the line), not the present one. **Hard brake**, within the same stopping distance: the distance she coasts until the gun with the
-sails let fly (the deceleration law of `boat.md` §5.8 from the present speed, down to `let_fly_drive · v`, the drive
+sails let fly (the deceleration law of `boat.md` §5.8, its windage `decel_wind` held at this tick's value, from the present speed, down to `let_fly_drive · v`, the drive
 the let-fly sails keep), times the share of it towards the line, would bring the bow to within `0.3·L` of the line
 before −0.3 s, or she is within `0.3·L` already: let fly and luff to `|twa| = 40°`. The coast is read from the
 class's own deceleration and let-fly drive, so a class that coasts far starts braking earlier. Never cross early on

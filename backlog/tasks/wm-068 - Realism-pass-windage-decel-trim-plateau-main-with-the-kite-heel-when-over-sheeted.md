@@ -3,9 +3,11 @@ id: WM-068
 title: >-
   Realism pass: windage decel, trim plateau, main with the kite, heel when
   over-sheeted
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-09-29 11:55'
+updated_date: '2026-09-29 11:55'
 labels:
   - vpp
 dependencies: []

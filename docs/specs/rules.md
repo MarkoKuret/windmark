@@ -157,7 +157,7 @@ state:
    at that speed and helm (`boat.md` §4), whichever applies to the direction of the turn;
 3. full turn to starboard, likewise towards +1;
 4. slow down: after 0.3 s every sail is let fly, heading held, and the speed decays with the boat's deceleration law
-   `dv/dt = −(decel_linear·v + decel_const)` (`boat.md` §4, §5.8) towards the speed her let-fly sails still drive,
+   `dv/dt = −(decel_linear·v + decel_const + decel_wind)` (`boat.md` §4, §5.8; `decel_wind` her windage deceleration now, `boat.md` §9) towards the speed her let-fly sails still drive,
    `let_fly_drive · v0` (`v0` her speed now, `let_fly_drive` of `boat.md` §9): towards zero where the fully eased
    sails luff (upwind, reaching), hardly at all running, where the fully eased sails still draw.
 

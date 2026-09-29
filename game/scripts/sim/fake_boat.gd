@@ -206,7 +206,8 @@ func step(wind_speed: float, wind_from: float, sea := Callable()) -> void:
 			a = err / DT
 	else:
 		var err_d := (maxf(out.target_speed, 0.0) if s.v > 0.0 else out.target_speed) - s.v
-		a = float(dy["decel_linear"]) * err_d - float(dy["decel_const"])
+		var wind := float(dy.get("decel_windage", 0.0)) * s.aws * s.aws * maxf(cos(s.awa), 0.0)
+		a = float(dy["decel_linear"]) * err_d - float(dy["decel_const"]) - wind
 		if absf(err_d) < DT * absf(a):
 			a = err_d / DT
 	s.v += DT * a

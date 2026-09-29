@@ -155,7 +155,12 @@ m_opt = clamp(cfg_for(S).optimal_angle[S](tws, fabsf(awa)), sheet_min, sheet_max
 beta_opt = -sgn(awa) * m_opt
 ```
 The main's optimum depends on which front sail is up (it trims to the headsail's slot), which is why it lives in
-the config tables.
+the config tables. With a spinnaker or a code zero set the main is sailed well inside its own best angle (the
+kite's flow backwinds a main eased to the shrouds, and the crew keeps it clear of them): the VPP writes the kite
+configs' main optimum sheeted in by the class's `kite_sheet_in` (`data_format.md` §3.5) from the main's own best
+angle for that apparent wind, never below `sheet_min`, so the main still follows the apparent wind. With a front
+sail up only the front sail's trim drives the boat (`boat.md` §5.4): the offset moves the drawn main (and the
+main's place on the single manual sheet, §5.2), not the speed.
 
 ### 5.2 Sheet target magnitude `m_s`
 - `auto_trim` on: `m_s = m_opt`.
@@ -283,7 +288,17 @@ Semantics and reference shapes:
   VPP writes the wind-line value from the `trim_error` point at or below the smallest wind-line error of the
   neighbouring table points, so the interpolation between them holds it; the drive is cut at most one axis step
   (5°) before the line.
-- **trim_heel**: 1 at `eps = 0`, 0 on the wind line (as `trim_speed`), 1.4–2.7 when strongly over-sheeted.
+- **trim_heel**: the heel of the sail plan sheeted `eps` away from its optimum over the trimmed heel, **both at the
+  same boat speed and apparent wind** (the trimmed boat's at that `tws` and `awa_abs`): 1 at `eps = 0`, 0 on the
+  wind line (as `trim_speed`), rising when over-sheeted as the stalled sails push sideways harder than drawing
+  ones. A sail sheeted in past its stall keeps at least the normal force it had at the stall (or at its optimum,
+  where that is itself stalled), as a separated plate does; only this table uses that, `trim_speed` and the
+  trimmed envelopes are unchanged. Reference S jib config on a beam reach: about 1.4 fully sheeted in at 10 kn;
+  less where the trimmed boat already heels near the heel of its greatest righting moment, which caps it.
+  Over-sheeted the core reads it at the trimmed boat's apparent wind angle and scales the heel with the boat's own
+  apparent wind speed (`boat.md` §5.5), so the heel is what the stalled sails push at the speed the boat is
+  making, not at a settled speed: on a reach sheeting hard in lays the boat over at once, and as it slows the heel
+  follows its lighter apparent wind back down (`boat.md` §6.2, §10.10).
 - **weather_helm**: the yaw moment of the sail plan about the centre of lateral resistance, as the turn rate of
   the helm that holds it at the polar speed. The moment: the drive acting at the centre of effort, which the sheet
   angle (each sail's centre of effort swung about its luff) and the heel carry out to leeward (luffing), and the
@@ -315,13 +330,13 @@ Semantics and reference shapes:
   10° TWA (a boat right head to wind stays in irons, `boat.md` §7.4). Light-air sailing speeds stay above `v_f`, so the table never turns a
   sailing boat.
 - **flog_drag**: the extra drag of the config's sails flogging on free sheets over luffing on their sheets (which
-  `decel_const` holds), along the heading, per apparent wind speed and angle: `0.5 ρ_air aws² (CD_flog − CD_luff)
+  the windage term of `boat.md` §5.8 holds), along the heading, per apparent wind speed and angle: `0.5 ρ_air aws² (CD_flog − CD_luff)
   A_sails cos(awa) / (m + m_a)` with the wind profile factor at the centre of effort, 0 from 90° AWA (abaft the
   beam the flogging sails push instead: the let-fly share of `trim_speed`). `CD_flog` 0.30 and `CD_luff` 0.06 on
   the sail area (`tools/vpp/README.md`). Reference S jib config at 8 m/s apparent wind head to wind: about
   0.24 m/s². Used only with free sheets (`boat.md` §5.8).
-- **optimal_angle**: main: 0 up to about 20–30° AWA, then rising to 35–60° at 120–170°; jib/genoa 14–25° close
-  hauled rising to 55–70°; spinnakers 12–30° at their lowest AWA rising to 85–90° dead downwind.
+- **optimal_angle**: main: 0 up to about 20–30° AWA, then rising to 35–60° at 120–170° (with a spinnaker or code
+  zero set: `kite_sheet_in` less, §5.1); jib/genoa 14–25° close hauled rising to 55–70°; spinnakers 12–30° at their lowest AWA rising to 85–90° dead downwind.
 
 ## 7. Outputs for drawing, crew and sound
 

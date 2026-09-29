@@ -38,6 +38,7 @@ from .hydro import build as build_hull
 from .solver import CD_FLOG, CD_LUFF, FLATS, REEFS, Rig, Solver, added_mass_coefficient, apparent, make_rig, wind_at
 
 SCHEMA = "windmark.perf/1"
+KITE_TYPES = SPINNAKER_TYPES + ("code_zero",)
 TWS = np.array([0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 20.6])
 TWA_SAIL = np.concatenate([np.arange(20, 60, 2), np.arange(60, 180.01, 5)]) * DEG
 AWA = np.concatenate([[0, 5], np.arange(10, 180.01, 5)]) * DEG
@@ -58,6 +59,11 @@ L_S, L_L = 6.4, 19.5
 BROACH_SHARE = 0.4
 BROACH_MIN = 0.1            # m/s, the polar's value at the no-go edge
 
+# decel_windage (README "dynamics"): the core charges the windage linearly in its apparent wind, the square law's
+# secant through this apparent wind (m/s). The whole square law made a tack in a breeze lose most of its way (the
+# coast law has the sails give no drive anywhere in the no-go zone, where real sails still draw until close to head
+# to wind); the secant keeps the tack of boat.md 7.2 while a boat head to wind still stops faster in more wind.
+WINDAGE_AWS_REF = 3.4
 # accel (README "Output"): the constant acceleration that reproduces the time to build speed between these shares
 # of the polar (a boat comes out of a tack or a gybe at about half its speed; the tack test measures 90 %)
 ACCEL_FROM, ACCEL_TO = 0.5, 0.9
@@ -291,7 +297,7 @@ class Generator:
 
     def _flog_drag(self, r: ConfigResult):
         """Deceleration (m/s^2, >= 0) from the config's sails flogging on free sheets beyond the drag they have
-        luffing with the sheets in (which decel_const holds), along the heading, against the apparent wind speed
+        luffing with the sheets in (which decel_windage holds), along the heading, against the apparent wind speed
         and angle (boat.md 5.8, sails.md 6). 0 with the apparent wind abaft the beam, where the flogging sails push
         instead (the let-fly share of trim_speed). The core's apparent wind is taken at the tables' 10 m reference
         height; the wind profile factor at the centre of effort is applied to it."""
@@ -448,6 +454,9 @@ class Generator:
         s = r.rig.sails[k]
         o = self._to_awa(r, r.deltas[k], s.sheet_min)
         o[0] = o[1]
+        if s.type == "main" and any(f.type in KITE_TYPES for f in r.rig.sails):
+            # with a spinnaker or code zero set the main is sailed inside its own best angle (sails.md 5.1)
+            o = o - s.kite_sheet_in
         return np.clip(o, s.sheet_min, s.sheet_max)
 
     def _trim_tables(self, r: ConfigResult):
@@ -457,20 +466,25 @@ class Generator:
         shp = (T, A, E)
         fi = np.broadcast_to(r.fi[..., None], shp)
         rf = np.broadcast_to(r.reef[..., None], shp)
-        st = S.solve(r.rig, fi, rf, self.tws[:, None, None], self.twa[None, :, None],
-                     eps=EPS[None, None, :])
+        tws, twa = self.tws[:, None, None], self.twa[None, :, None]
+        drive = len(r.rig.sails) - 1                    # the front sail if the config has one, else the main
+        eps = EPS[None, None, :]
+        # speed: the equilibrium of the mistrimmed boat over the trimmed one
+        st = S.solve(r.rig, fi, rf, tws, twa, eps=eps)
         i0 = int(np.argmin(np.abs(EPS)))
-        V, H = st.V, st.heel
+        V = st.V
         v0 = V[..., i0:i0 + 1]
-        h0 = H[..., i0:i0 + 1]
         sf = np.where(v0 > 0.05, np.clip(V / np.maximum(v0, 1e-6), 0, 1.0), 1.0)
+        # heel: the roll equilibrium of the mistrimmed sails at the trimmed boat's speed and apparent wind over the
+        # trimmed heel there, the sails sheeted in past the stall keeping their stall normal force (sails.md 6)
+        H, _ = S.solve_heel(r.rig, fi, rf, tws, twa, np.broadcast_to(r.V[..., None], shp), eps=eps, hold_stall=True)
+        h0 = H[..., i0:i0 + 1]
         hf = np.where(h0 > 0.2 * DEG, np.clip(H / np.maximum(h0, 1e-6), 0, 3.0), 1.0)
         ts, th = self._to_awa(r, sf, 1.0), self._to_awa(r, hf, 1.0)
         # On the wind line the driving sail flogs: no drive, no heel from the sails (sails.md 6). The core looks the
         # tables up at the driving sail's error eps = |awa| - m_opt, which on the wind line is w = AWA - m_opt; the
         # tables are 0 from the eps point at or below the smallest w of the neighbouring (tws, AWA) points, so the
         # interpolated value at the wind line is exactly 0 wherever the core looks it up.
-        drive = len(r.rig.sails) - 1                    # the front sail if the config has one, else the main
         w = AWA[None, :] - self._opt_angle(r, drive)
         wp = np.pad(w, 1, mode="edge")
         wmin = np.min([wp[1 + a:wp.shape[0] - 1 + a, 1 + b:wp.shape[1] - 1 + b]
@@ -497,6 +511,14 @@ class Generator:
             a = np.maximum.accumulate(beta[i][ok])
             out[i + 1] = np.interp(AWA, a, share[i][ok], left=0.0)
         return out
+
+    def _start_result(self) -> ConfigResult:
+        """The config a race starts with (the class's start front sail), else main + the first front sail."""
+        front = self.boat.start.get("front_sail") if self.boat.start else None
+        for r in self.results:
+            if front is not None and r.front == front:
+                return r
+        return self.results[min(1, len(self.results) - 1)]
 
     # ---------------------------------------------------------------------------------------------------------
     def _vmg(self):
@@ -542,13 +564,19 @@ class Generator:
         # yaw inertia: time constant of the hull's yaw rate (boat.md 4 reference by size)
         yaw_time = float(np.clip(_by_size(lwl, 0.35, 0.6), 0.2, 1.0))
 
-        # deceleration: constant = the windage in irons plus the hull at a crawl; linear = the rate that
-        # reproduces the time the hull coasts from its close-hauled speed to half of it with the drive gone
-        # (a tack, a luff, let-fly), median over 6 to 16 kn TWS
+        # deceleration: constant = the hull at a crawl; windage = the drag of hull, rig and the start config's
+        # sails luffing on their sheets head to wind per m/s of apparent wind, the square law's secant at
+        # WINDAGE_AWS_REF (the core's apparent wind is at the 10 m reference height: the profile factor at the
+        # centre of effort is applied), charged by the core at its own apparent wind (boat.md 5.8); linear = the
+        # rate that reproduces the time the hull coasts from its close-hauled speed to half of it with the drive
+        # gone (a tack, a luff, let-fly), median over 6 to 16 kn TWS
         rig0 = self.results[0].rig
-        aws = np.array([5.0])
-        drag = rig0.windage_force(aws, np.zeros(1)) + self.hull.resistance(np.array([1.0]), np.zeros(1), np.zeros(1))
+        rig_s = self._start_result().rig
+        drag = self.hull.resistance(np.array([1.0]), np.zeros(1), np.zeros(1))
         decel_const = float(drag[0] / me)
+        k_ce = float(wind_at(1.0, rig_s.ce_height(1.0))) ** 2
+        w_ref = np.array([WINDAGE_AWS_REF])
+        decel_windage = float(k_ce * rig_s.windage_force(w_ref, np.zeros(1))[0] / (WINDAGE_AWS_REF * me))
         decel_linear = self._coast_rate(decel_const)
 
         # heel speed factor: 1 up to the VPP heel limit, beyond it the surge equilibrium with the heel held there
@@ -598,6 +626,7 @@ class Generator:
             "yaw_time": yaw_time,
             "decel_linear": decel_linear,
             "decel_const": decel_const,
+            "decel_windage": decel_windage,
             "heel_speed_factor": table([("heel_abs", hk)], "1", hsf),
             "rudder_drag_luff": self._rudder_drag(turn_full, turn_offset, 0.0),
             "rudder_drag_bear": self._rudder_drag(turn_full, turn_offset, 0.75),
@@ -818,8 +847,8 @@ def _stretch_heel_axis(t: Dict, k: float) -> Dict:
 def apply_handling(out: Dict, feel: Dict[str, float]):
     """Scale the feel of a generated performance file in place; every multiplier 1 leaves it untouched.
 
-    accel: every config's ``accel`` and ``accel_rest`` tables. decel: ``decel_linear``, ``decel_const`` and every
-    config's ``flog_drag``. turn_rate: the yaw rate at
+    accel: every config's ``accel`` and ``accel_rest`` tables. decel: ``decel_linear``, ``decel_const``,
+    ``decel_windage`` and every config's ``flog_drag``. turn_rate: the yaw rate at
     every helm and speed, by dividing ``turn_radius_full`` and ``turn_radius_offset``. heel: every config's
     ``heel`` table and ``heel_max`` (below ``heel_limit``), with ``heel_speed_factor`` and the main's
     ``sheet_max_by_heel`` stretched along their heel axes so the speed at the scaled heel is unchanged. tack_time:
@@ -834,6 +863,7 @@ def apply_handling(out: Dict, feel: Dict[str, float]):
     if kd != 1.0:
         dyn["decel_linear"] *= kd
         dyn["decel_const"] *= kd
+        dyn["decel_windage"] *= kd
         for c in out["configs"]:
             c["flog_drag"]["values"] = [x * kd for x in c["flog_drag"]["values"]]
     if kt != 1.0:

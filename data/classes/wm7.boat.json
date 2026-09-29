@@ -45,7 +45,7 @@
     "bowsprit": 1.65
   },
   "sails": [
-    {"id": "main", "type": "main", "area": 23.5},
+    {"id": "main", "type": "main", "area": 23.5, "kite_sheet_in": 0.26},
     {"id": "jib", "type": "jib", "area": 13.5},
     {"id": "kite", "type": "spinnaker_asym", "area": 43.0}
   ],

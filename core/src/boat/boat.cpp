@@ -119,7 +119,17 @@ void Boat::step(const BoatEnv& env) {
   const float accel = c.accel.at(s_.tws, ta);
   const float accel_rest = c.accel_rest.present ? c.accel_rest.table.at(s_.tws, ta) : accel;
   const float trim_speed = c.trim_speed.present ? c.trim_speed.table.at(s_.tws, aa, eps) : 1.0f;
-  const float trim_heel = c.trim_heel.present ? c.trim_heel.table.at(s_.tws, aa, eps) : 1.0f;
+  // The trimmed boat's apparent wind (at the polar speed): the heel table's state. Over-sheeted, trim_heel is
+  // looked up there (the stall's heel over the trimmed heel at that state); the sail heel then follows the
+  // boat's own apparent wind speed (boat.md §5.5, §5.7).
+  float aws_p = s_.aws, aa_p = aa;
+  if (polar_speed > 0.0f) {
+    const float wx = s_.tws * wm_cos(ta) + polar_speed, wy = s_.tws * wm_sin(ta);
+    aws_p = std::sqrt(wx * wx + wy * wy);
+    aa_p = wm_atan2(wy, wx);
+  }
+  const float heel_wind = aws_p > 0.01f ? (s_.aws * s_.aws) / (aws_p * aws_p) : 1.0f;
+  const float trim_heel = c.trim_heel.present ? c.trim_heel.table.at(s_.tws, eps < 0.0f ? aa_p : aa, eps) : 1.0f;
   // sails.md §6: the weather-helm rate is scaled by trim_heel.
   const float helm_luff = c.weather_helm.present ? c.weather_helm.table.at(s_.tws, ta) * trim_heel : 0.0f;
   const float helm_fall = c.fall_off.present ? c.fall_off.table.at(s_.v, ta) : 0.0f;
@@ -136,7 +146,7 @@ void Boat::step(const BoatEnv& env) {
   s_.theta = s_.theta + s_.theta_rate * DT;
 
   // 5.7 heel
-  const float heel_sail = clamp((-tack * heel_mag) * trim_heel, -d.heel_max, d.heel_max);
+  const float heel_sail = clamp(((-tack * heel_mag) * trim_heel) * heel_wind, -d.heel_max, d.heel_max);
   const float heel_target = clamp(heel_sail + d.wave_roll_gain * hs.wave_roll, -d.heel_max, d.heel_max) +
                             (d.wobble_heel * wk) * wm_sin(s_.wobble_phase + 1.7f);
   s_.phi_rate = k.heel_k2 * s_.phi_rate + k.heel_k1 * (heel_target - s_.phi);
@@ -175,7 +185,8 @@ void Boat::step(const BoatEnv& env) {
     // Coast before drifting: a boat still making way loses it toward 0 first; only a stopped or backing boat is
     // pulled toward the negative drift of the no-go zone (boat.md §5.8, §7.4).
     const float err_d = (s_.v > 0.0f ? max(target_speed, 0.0f) : target_speed) - s_.v;
-    a = d.decel_linear * err_d - d.decel_const;
+    // Windage of hull, rig and luffing sails at this tick's apparent wind, 0 abaft the beam (boat.md §5.8).
+    a = (d.decel_linear * err_d - d.decel_const) - decel_wind();
     // Flogging drag: with the sheets free (let fly, or the manual sheet eased) the share of the drive the sails
     // have lost is sails flogging on the wind line (let fly: all of it); over-sheeted, stalled sails do not flog,
     // and the auto-trim crew never lets them. Only while the boat makes way ahead.
@@ -246,6 +257,11 @@ float Boat::polar_at(float tws, float twa, std::int32_t front_sail) const {
 float Boat::accel_at(float tws, float twa, std::int32_t front_sail) const {
   const ConfigPerf* c = perf_->config_for(front_sail);
   return c != nullptr ? c->accel.at(tws, std::fabs(twa)) : 0.0f;
+}
+
+float Boat::decel_wind() const {
+  const Dynamics& d = perf_->dynamics;
+  return (d.decel_windage * s_.aws) * max(wm_cos(s_.awa), 0.0f);
 }
 
 float Boat::let_fly_drive() const {

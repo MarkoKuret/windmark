@@ -79,7 +79,8 @@ monohull. They are targets for the VPP/boat generator, not constants.
 | `turn_radius_offset` | m | −1.2 | −2.5 | shape of radius against helm (§5.9); about −0.3·`turn_radius_full` for a rudder that stalls at about 70 % helm, 0 for one that never stalls |
 | `yaw_time` | s | 0.35 | 0.6 | time constant of the hull's yaw rate: yaw inertia against the hull's yaw damping (§5.9) |
 | `decel_linear` | 1/s | 0.045 | 0.025 | deceleration per m/s of excess speed (the hull coasting with the drive gone) |
-| `decel_const` | m/s² | 0.08 | 0.044 | constant part of the deceleration (windage in irons, hull at a crawl) |
+| `decel_const` | m/s² | 0.023 | 0.012 | constant part of the deceleration (the hull at a crawl) |
+| `decel_windage` | 1/s | 0.0082 | 0.0051 | windage deceleration per m/s of apparent wind, head to wind: hull, rig and the sails luffing on their sheets (§5.8) |
 | `heel_speed_factor` | Table1D(`heel_abs`) | see below | | speed multiplier from heel |
 | `rudder_drag_luff`, `rudder_drag_bear` | Table2D(`boat_speed_abs`, `helm_abs`) → m/s² | see below | | speed loss from the rudder when turning toward / away from the wind |
 | `heel_max` | rad | 0.87 | 1.13 | clamp of the heel target |
@@ -174,13 +175,24 @@ heel_mag    = c.heel(tws, ta)                  // rad, >= 0
 accel       = c.accel(tws, ta)                 // m/s², >= 0
 accel_rest  = c.accel_rest ? c.accel_rest(tws, ta) : accel     // m/s², >= 0: from rest
 trim_speed  = c.trim_speed ? c.trim_speed(tws, aa, eps) : 1
-trim_heel   = c.trim_heel  ? c.trim_heel(tws, aa, eps)  : 1
+aws_p = aws ; aa_p = aa                        // the trimmed boat's apparent wind, at the polar speed
+if polar_speed > 0:
+    wx = tws*cos(ta) + polar_speed ; wy = tws*sin(ta)
+    aws_p = sqrtf(wx*wx + wy*wy) ; aa_p = atan2(wy, wx)
+heel_wind   = aws_p > 0.01f ? (aws*aws) / (aws_p*aws_p) : 1                  // the sail heel follows the boat's own wind
+trim_heel   = c.trim_heel  ? c.trim_heel(tws, eps < 0 ? aa_p : aa, eps) : 1
 helm_luff   = c.weather_helm ? c.weather_helm(tws, ta) * trim_heel : 0   // rad/s, + = toward the wind
 helm_fall   = c.fall_off ? c.fall_off(v, ta) : 0                  // rad/s, >= 0, away from the wind
 flog        = c.flog_drag ? c.flog_drag(aws, aa) : 0              // m/s², >= 0, sails flogging (§5.8)
 ```
 `fall_off` is looked up with the speed **before** this tick's speed update. The weather helm is scaled by
-`trim_heel` (`sails.md` §6): an over-sheeted sail plan rounds up sooner, a flogging one not at all.
+`trim_heel` (`sails.md` §6): an over-sheeted sail plan rounds up sooner, a flogging one not at all. The heel
+table holds the trimmed boat's heel at its polar speed; `heel_wind` carries it to the boat's own apparent wind
+(the heeling force grows with its square), so a boat slower than its polar on a reach, whose apparent wind is
+lighter, heels less, and upwind a boat coming out of a tack heels less until it has its speed back. Over-sheeted
+(`eps < 0`) `trim_heel` is read at the trimmed boat's apparent wind angle `aa_p`, the state its stall ratio was
+computed for (`sails.md` §6); eased and on the wind line at the boat's own, like `trim_speed`. At the polar speed
+`heel_wind = 1` and `aa_p = aa`.
 
 ### 5.6 Waves: heave and pitch
 If the race has a sea (`sea.md`), sample it at the hull points placed by the current `pos` and `psi`
@@ -196,7 +208,7 @@ theta = theta + theta_rate*DT
 
 ### 5.7 Heel
 ```
-heel_sail   = clamp(-tack * heel_mag * trim_heel, -heel_max, heel_max)
+heel_sail   = clamp(((-tack * heel_mag) * trim_heel) * heel_wind, -heel_max, heel_max)
 heel_target = clamp(heel_sail + wave_roll_gain*wave_roll, -heel_max, heel_max)
               + wobble_heel*wk*sin(wobble_phase + 1.7f)
 phi_rate = heel_k2*phi_rate + heel_k1*(heel_target - phi)
@@ -223,7 +235,8 @@ if err > 0:
     if err < DT*a: a = err / DT                                  // never overshoot the target
 else:
     err_d = (v > 0 ? max(target_speed, 0) : target_speed) - v    // coast before drifting
-    a = decel_linear*err_d - decel_const
+    wind = (decel_windage*aws)*max(cos(awa), 0)                  // windage, 0 with the apparent wind abaft the beam
+    a = (decel_linear*err_d - decel_const) - wind
     free = let_fly || !auto_trim                                 // the sheets are free
     if free and v > 0 and eps > 0: a = a - (1 - trim_speed)*flog // flogging sails brake the boat
     if fabsf(err_d) < DT*fabsf(a): a = err_d / DT
@@ -246,8 +259,17 @@ drops.
   the no-go zone, let fly, in a calm) loses its way toward 0 along the deceleration law; only a stopped or backing
   boat is pulled toward the negative drift. The law lands exactly on 0 (the overshoot clamp), and the drift takes
   over from the next tick.
-- **Flogging sails**: `decel_linear` and `decel_const` are the hull coasting with the sails luffing on their
-  sheets (a tack, a luff head to wind). With the sheets free (let fly held, or the manual sheet eased past the
+- **Windage**: `decel_linear` and `decel_const` are the hull coasting; the `wind` term is the drag of hull, rig
+  and the sails luffing on their sheets (a tack, a luff head to wind) along the heading, which grows with this
+  tick's apparent wind (§5.1) and is 0 with the apparent wind abaft the beam (there it pushes the boat along,
+  which the polar and the let-fly share of `trim_speed` hold). A boat head to wind therefore stops faster in more
+  wind: an S boat luffing head to wind at 5 m/s apparent is braked by about 0.065 m/s² at a crawl, at 10 m/s by
+  about 0.11 m/s², at 14 m/s (a tack in 22 kn) by about 0.14 m/s². The law is linear in the apparent wind, the
+  secant of the square drag law through a light-air reference (`tools/vpp/README.md`): the coast law gives the
+  sails no drive anywhere in the no-go zone, where real sails still draw until close to head to wind, and the
+  whole square law there made a tack in a breeze lose most of its way. The apparent wind is taken at the 10 m
+  reference height; `decel_windage` carries the wind profile factor at the rig's centre of effort.
+- **Flogging sails**: with the sheets free (let fly held, or the manual sheet eased past the
   optimum) a sail eased toward the wind line flogs, and its drag (`flog_drag`, which grows with the square of the
   apparent wind and is 0 with the apparent wind abaft the beam) brakes the boat in proportion to the drive the
   trim has lost, `1 − trim_speed`: all of it with let-fly forward of the beam (the fully eased sails lie on the
@@ -331,7 +353,12 @@ settles in about 1.5 s with a small overshoot; L-class heel (ω 1.41, ζ 1.41) i
 ### 6.2 Heel from the sails
 `heel_mag` is the steady heel the VPP computed for optimal trim. `trim_heel` bends it with the sheet: over-trimmed
 sails (negative `eps`, stalled) heel the boat more, eased sails (positive `eps`, luffing) less, down to zero when
-the sails flog. A boat that is overpowered and over-sheeted therefore both heels past its design heel (losing
+the sails flog. The factor is the heel of the mistrimmed sails over the trimmed heel at the same speed and apparent
+wind (`sails.md` §6), and the heel then follows the boat's own apparent wind speed (`heel_wind`, §5.5): on a reach
+sheeting hard in lays the boat over at once (the stalled sails push sideways harder than drawing ones), and as the
+stalled boat slows and its apparent wind falls the heel comes back down toward the trimmed heel (reference S jib
+config at 90° TWA: in 10 kn from 8.7° to 13.8° within a few seconds, about 10.5° once slowed from 6.7 to 4.1 kn;
+in 16 kn from 23° to 27.5°, back to about 22° at 4.2 kn). A boat that is overpowered and over-sheeted therefore both heels past its design heel (losing
 speed through `heel_speed_factor`) and gains weather helm (`sails.md` §6: the weather-helm rate is scaled by
 `trim_heel` too).
 
@@ -380,17 +407,17 @@ Nothing special is coded; a tack emerges from the tables.
 1. Helm over: the boat turns on its arc, the rudder drag table takes speed, harder helm takes more. Past the
    rudder's stall (§5.9, about 70 % helm) the boat turns little faster while the drag keeps growing.
 2. Inside the no-go zone the polar target drops to about zero, then negative (§7.4): the boat coasts, `v` falling
-   along `decel_linear·v + decel_const` (coast before drifting, §5.8), so it carries its way through the wind; a
-   light boat loses it faster (S: 0.045/s plus 0.08 m/s²) than a heavy one (L: 0.025/s plus 0.044 m/s²). The
+   along `decel_linear·v + decel_const` plus the windage (coast before drifting, §5.8), so it carries its way
+   through the wind; a light boat loses it faster than a heavy one, and every boat faster in a stronger wind. The
    sails luff on their sheets, they do not flog (§5.8), unless the sheet was eased or let fly.
 3. The wind crosses the bow: `tack` flips, the sails' targets flip sides and the sails swing across at their
    sheet rates (`sails.md` §5.5); until they settle, their trim error keeps the drive down.
 4. On the new tack the boat accelerates along the acceleration table, which is small close to the wind: bearing
    away a little to build speed and then heading up is faster than turning straight to close-hauled.
-A good tack at 10 kn TWS (helm about 0.5) gets an S boat back to 90 % speed in about 11.5 s and costs it about half
-a boat length of upwind progress (about 1.2 lengths in 6 kn); an L boat carries its way better and loses about a
-quarter of a length. A slammed full-helm tack costs noticeably more: about 1.5 times the distance for S, twice for
-L.
+A good tack at 10 kn TWS (helm about 0.5) gets an S boat back to 90 % speed in about 11.5 s and costs it about 0.4
+of a boat length of upwind progress (about 0.9 lengths in 6 kn, where the boat is slow, and in 22 kn, where the
+windage stops it faster); an L boat carries its way better and loses about a quarter of a length. A slammed
+full-helm tack costs noticeably more: about 1.7 times the distance for S, twice for L.
 
 ### 7.3 Gybing
 At the stern crossing the main's target flips and the boom swings across at the easing/sheeting rate (roughly a
@@ -412,12 +439,12 @@ along `accel_rest`, §5.8). Right head to wind with no helm the boat stays in ir
 - **Luffing**: sails eased past their optimum (`eps > 0`) lose drive through `trim_speed` down to 0 when the sail
   is at the wind line, and heel through `trim_heel`.
 - **Stall**: sails sheeted past the optimum (`eps < 0`) lose some speed (reference: to 0.7–0.75 at 15–20° over)
-  and heel more.
+  and heel more, also on a reach, where the boat slows (§10.10).
 - **Let-fly** (`sails.md` §5.3) runs every sheet out to fully eased at once, never beyond. Where the apparent
   wind lies inside the fully eased angle (close-hauled, close reaching) that puts the sails on the wind line: the
   drive goes to zero in the same tick (`trim_speed` is 0 there) and the boat coasts down along the deceleration
-  law, braked by its flogging sails (§5.8): close-hauled at 10 kn an S boat is under 1 kn within about 8 s (half
-  its speed in about 4 s); a heavy L boat carries its way about twice as long (under 1 kn within about 15 s).
+  law, braked by its flogging sails (§5.8): close-hauled at 10 kn an S boat is under 1 kn within about 8.5 s (half
+  its speed in about 4.5 s); a heavy L boat carries its way about twice as long (under 1 kn within about 16 s).
   Used to kill speed before the start or to avoid a collision. With the apparent wind abaft the fully eased angle
   the eased sails still draw, by the trim table: on a beam reach part of the drive is left (reference S at 90°
   TWA in 10 kn: from 6.7 kn to 3.0 kn in 10 s under the jib, 6.5 to 3.6 under the kite), broad reaching and
@@ -494,3 +521,6 @@ start needs speed built before the gun.
    rudder's travel (and a tick), 95 % within three times that; back to the centre, it is above half its rate
    when the rudder reaches 0, falls to 37 % within `yaw_time` plus the travel and to 5 % within three times that,
    and the heading carries on turning by at least half the rate times `yaw_time`.
+10. **Over-sheeting on a reach**: steady at 90° TWA under the start front sail, helm balance off, at 10 and 16 kn:
+   with the sheet then held fully in (manual, `sheet_cmd = 0`) the boat slows; within 10 s its heel rises more than
+   2° above the trimmed heel, and after 40 s it is no more than 1.5° below it.

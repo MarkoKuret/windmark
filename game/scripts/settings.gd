@@ -96,6 +96,9 @@ const AUTO_LARGE_HIDPI := Vector2i(1280, 800)
 ## a scale > 0 replaces the setting; "fsr", "bilinear" or "metalfx" replaces the upscaler's choice.
 static var render_scale_override := 0.0
 static var upscaler_override := ""
+## this run only, not saved (sail test `--quality=L|M|H`, `--no-vsync`): -1 keeps the setting
+static var quality_override := -1
+static var vsync_override := -1
 static var _resize_hooked: Window = null
 
 ## audio setting -> the buses it drives (audio.md §1.1)
@@ -255,9 +258,10 @@ func _density_chosen(level: int) -> void:
 
 ## The sea's tier, and the environment's part of it (screen-space reflections) when a sky is given.
 func apply_sea(sea: Sea, sky: SkyRig = null) -> void:
-	sea.quality = quality
+	var q: SeaQuality.Tier = quality if quality_override < 0 else quality_override as SeaQuality.Tier
+	sea.quality = q
 	if sky != null and sky.environment() != null:
-		SeaQuality.apply_environment(sky.environment(), quality)
+		SeaQuality.apply_environment(sky.environment(), q)
 
 
 ## Display mode, vsync, frame rate limit, UI scale (the root window's content scale) and render scale.
@@ -272,7 +276,8 @@ func apply_display(win: Window) -> void:
 	var want := Window.MODE_FULLSCREEN if fullscreen else Window.MODE_WINDOWED
 	if win.mode != want:
 		win.mode = want
-	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if vsync else DisplayServer.VSYNC_DISABLED)
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if (vsync if vsync_override < 0 else vsync_override == 1)
+		else DisplayServer.VSYNC_DISABLED)
 
 
 ## Auto's render scale for a window of `px` pixels on a screen the system scales by `screen_scale` (menus.md §3):

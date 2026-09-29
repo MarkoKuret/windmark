@@ -234,7 +234,8 @@ func _apply_setup() -> void:
 ## `--watch` (an AI sails the player's boat too, spectating on), `--class=wm12`, `--venue=<id>`,
 ## `--course=<venue>/<id>` (race mode), `--seed=<n>` (0: from the clock), `--wind=<kn>`, `--wind-from=<deg>`,
 ## `--fake` (FakeSim), `--core`; measuring (hud.md §17): `--perf` (the frame-time overlay), `--perf-log=PATH`,
-## `--perf-seconds=N`, `--render-scale=0.67` and `--upscaler=fsr|bilinear|metalfx` (this run only, not saved).
+## `--perf-seconds=N`, `--render-scale=0.67`, `--upscaler=fsr|bilinear|metalfx`, `--quality=L|M|H` and `--no-vsync`
+## (this run only, not saved).
 func _user_args() -> void:
 	var fleet_given := false
 	var race_flag := false
@@ -283,6 +284,10 @@ func _user_args() -> void:
 			Settings.render_scale_override = v / 100.0 if v > 1.0 else v
 		elif a.begins_with("--upscaler="):
 			Settings.upscaler_override = a.trim_prefix("--upscaler=").to_lower()
+		elif a.begins_with("--quality="):
+			Settings.quality_override = "LMH".find(a.trim_prefix("--quality=").to_upper())
+		elif a == "--no-vsync":
+			Settings.vsync_override = 0
 	if race_flag and not fleet_given and fleet_size < 2:
 		fleet_size = GameSetup.new().fleet_size
 	if watch:

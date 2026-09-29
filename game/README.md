@@ -230,6 +230,8 @@ Flags after `--`:
 | `--perf-seconds=N` | quit after N seconds (from the scene's start, after loading) |
 | `--render-scale=0.67` | this run's render scale (0.5 to 1, or 50 to 100), over the setting; not saved |
 | `--upscaler=fsr` | this run's upscaler: `fsr`, `bilinear` or `metalfx` (MetalFX spatial, Metal only) |
+| `--quality=M` | this run's quality tier: `L`, `M` or `H`, over the setting; not saved |
+| `--no-vsync` | this run without vsync, to see the headroom; not saved |
 
 A measured race in a window (asks the owner first: it opens one), 10 boats for 60 s:
 

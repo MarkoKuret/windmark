@@ -2,7 +2,7 @@
 
 Godot 4.6, Forward+ renderer. So far: the boat import test, the sea, sky and lighting (`docs/specs/water_render.md`),
 the core binding (a GDExtension over the core's C API) and a placeholder simulation behind the same interface, the
-controls, the cameras, the minimal HUD and a sail test scene that puts them together on the core.
+controls, the cameras, the minimal HUD, the audio and a sail test scene that puts them together on the core.
 
 ## Layout
 
@@ -17,6 +17,9 @@ controls, the cameras, the minimal HUD and a sail test scene that puts them toge
 | `scripts/controls/` | Input map defaults, device reader, `PlayerControls` (boat commands), sail key mapping, the input frame |
 | `scripts/cameras/` | `CameraRig` and the chase, onboard, aerial and free cameras, shake, onboard eye point |
 | `scripts/hud/` | `Hud`, `HudValues`, formats, bars and trim gauges; the race HUD: `RaceHudValues`, `RaceText` (rule texts, flags, signals), `RadarView`, `FlagsView`, `RoundingArrowView`, `PenaltyRingView` |
+| `scripts/audio/` | The audio (`docs/specs/audio.md`): `GameAudio` (the node that plays the race), `SoundMap` (the sound map and its files), `SoundFormula` (terms, gates, triggers), `BoatSoundInputs` (the formula inputs of a boat), `AudioBuses` (the buses, ducking and wind pan), `SoundSynth` (the synthesised fallback) |
+| `audio/default/` | The default sound set: Ogg Vorbis files written by `tools/soundgen` (our own synthesis), with their `.import` files |
+| `data/sound_map.json` | The sound map (`audio.md` §9): the only place that names sound files |
 | `scripts/venue/` | `VenueShapes` (the venue's land polygons and obstacles, from the core or the venue file), `LandTerrain` (the drawn ground height and colours), `ColorMesh` (vertex-coloured mesh builder) |
 | `shaders/` | Shaders. `sea_common`, `sky_common`, `wake_common` (`.gdshaderinc`) hold the water, sky and wake maths, written so the offline preview can compile them as GLSL too; `water_l/m/h` are the sea per quality tier, `sky`, `wake`, `wake_normal`; `boat` is the boat surface shader; `sail` the sails, with the procedural cloth of `sail_cloth.gdshaderinc` (also compiled by the sail preview) |
 | `scenes/` | Scenes. `sea/` is the sea (`sea.tscn`, `Sea`), its data source and wakes, and the daytime sky (`sky_day.tscn`, `SkyRig`, `env_day.tres`); `water_test.tscn` shows them together; `sail_test.tscn` is one boat sailing freely on the core (FakeSim as fallback), or racing alone on the example course, with cameras, controls and HUD on that sea and sky; `venue/` draws the venue land and obstacles (`VenueView`, `land.gdshader`); `course/` the course (`CourseView`, `CourseProps`); `menu/` the menus (`main_menu.tscn`, the main scene; `pause_menu.tscn`; the setup and settings panels, rows, theme and backdrop) |
@@ -85,7 +88,7 @@ field names: `has_race()`, `race()`, `race_boat(b)`, `race_order()`, `course()`,
 file's display labels), `results()`, `race_split(b, step)` (race time at a completed step, `NAN` before),
 `race_start_status(b)` (the rules hull against the start line: oriented ends, `s_bow`, `u_bow`, `in_band`,
 `course_side`, `in_triangle`, `pre_start`, `over` under the prep flag), `boat_rules(b)`, `pairs()`, `race_events()`,
-`rules_events()`, `hail_state(b)` (`{}` until the core has rule 20 hails), `polar_vmg(b, tws)`,
+`rules_events()`, `contact_events()` (collisions.md §5, for the audio), `hail_state(b)` (`{}` until the core has rule 20 hails), `polar_vmg(b, tws)`,
 `polar(b, tws, twa, front)`, `current_at(x, y, t_ms)`. `CoreSimSource` caches them until the next step.
 
 `FakeSim` is a GDScript sketch of `boat.md` §5 and `sails.md` §4 to §5 on the class's generated tables (polar,
@@ -322,6 +325,46 @@ checks that the lists match the files on disk, that a quick race and a free sail
 the sail scene, keyboard navigation, the settings file round trip, the apply calls, the layout at 1280 × 800 at
 every UI scale, and the pause menu over the sail scene on FakeSim. To look at the menus (opens a window):
 `godot --path game`.
+
+## Audio
+
+`scripts/audio/game_audio.gd` (`GameAudio`) plays the race as `docs/specs/audio.md` says, from the sound map
+`data/sound_map.json` (`SoundMap`): the boat sounds of §3 on every boat (hull, wake, bow wave, slaps, rig, luffing
+and flogging sails, winches and sheets, the gybe, halyards, furlers, drops, collisions and rubbing), the wind at
+the listener (§4, panned toward the apparent wind onboard), the race signals and events (§5), the ambience beds and
+one-shots (§6) and the course objects (§7: a buoy on each mark, the committee boat's engine). The sail test scene
+makes one `Audio` node: `setup(sim, boat_views, viewed)` once, `tick()` after each step, `frame(dt, camera,
+onboard)` every frame, `restart()` when the race restarts, and `Hud.hud_event` into `on_hud_event`. Boat sounds hang
+under each `BoatView` at their anchors from the physics sidecar, so the camera (the listener) hears them from where
+they are on deck. Voices: at most 48, the viewed boat first, then the race, then the other boats by distance (the
+six nearest; beyond 150 m only the wake and collisions). Cost: about 0.5 ms per frame on an M-series Mac with 20
+boats around the listener and all 48 voices taken (`audio_test` prints it).
+
+- **Buses** (`AudioBuses`): `own_boat`, `fleet`, `wind`, `race`, `voice`, `ambience`, `venue`, `ui`, made at run time
+  (`Settings.apply_audio` makes them and sets the player's volumes on them). Each has an Amplify effect for the
+  ducking (a signal ducks the ambience 6 dB for 1.5 s, the pause menu everything but ambience and UI by 12 dB), the
+  wind bus a Panner.
+- **Sounds**: `audio/default` is synthesised by `tools/soundgen` (filtered noise, tones and impulses; our own, so
+  no licence to record; about 770 kB for 42 files). A recording replaces a file by its name, or a map entry points
+  at other files; a second map (another folder, even outside `res://`) swaps the set with no code change
+  (`GameAudio.setup(sim, nodes, viewed, SoundMap.load_file(path))`). A missing file warns once and drops out; the
+  wind, water and horn fall back to sounds made at load (`SoundSynth`).
+- **Not there yet**: the voice hails (no recordings; the map's `hails` table is ready), captions (`audio.md` §8),
+  the venue placed sources (no venue look files), the Doppler option, the rounding tick, the `sound_set` setting
+  and interface sounds.
+- **Headless**, `GameAudio.audible` is off: the players are set up and tracked but not started, so test runs never
+  leave playbacks in the audio server at exit.
+
+```
+game/tests/run_ui_tests.sh    # includes tests/audio_test.gd
+godot --headless --path game -s res://tests/audio_test.gd
+python3 tools/soundgen/soundgen.py   # rewrites audio/default (NumPy, ffmpeg)
+```
+
+`tests/audio_test.gd` runs the tests of `audio.md` §11 (formulas, gates, triggers, signals through `hud_event`, the
+swap and the missing file, the voice limit with 20 boats), the buses and the settings' volumes, the pause ducking,
+the wind pan and beds, the synthesised fallback, a short run with real players, and the sail test scene with its
+sound on FakeSim and in a race on the core (the warning signal's horns, the fleet bus, the restart).
 
 ## Venue land and the course
 

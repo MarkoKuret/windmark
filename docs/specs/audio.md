@@ -50,7 +50,18 @@ value    = product of the terms (1 when there are none)
 ```
 A **gate** switches a looping sound on while its condition holds (`above`, `below`, `equals`, with a hold time
 `hold_s` so it does not chatter), and a **trigger** plays a one-shot on an event or on a crossing of a value
-(`rises_above`, `falls_below`, with a `cooldown_s`). Inputs:
+(`rises_above`, `falls_below`, with a `cooldown_s`). In the map:
+
+- a gate is one condition `{"in", "above" | "below" | "equals", "hold_s"}` or `{"all": [conditions], "hold_s"}`
+  (every condition holds); `equals` takes a number or a list of numbers (any of them). The gate opens once its
+  condition has held for `hold_s` and closes once it has failed for `hold_s` (default 0). A loop without a gate
+  plays while its gain is above 0.01.
+- a trigger is `{"in", "rises_above" | "falls_below": x}` (the value crosses x between two updates),
+  `{"in", "changes_sign": true}`, `{"in", "from": a, "to": b}` (the value was a and is now b) or
+  `{"event": name}`, each with an optional `when` (conditions that must hold at that moment) and `cooldown_s`
+  (default 0): a trigger inside the cooldown of the last play is dropped.
+
+Inputs:
 
 | input | meaning | unit |
 | --- | --- | --- |
@@ -66,12 +77,23 @@ A **gate** switches a looping sound on while its condition holds (`above`, `belo
 | `sail.<k>.motion` | 0 idle, 1 sheeting, 2 easing | – |
 | `sail.<k>.beta_rate` | `fabs(dβ/dt)` | rad/s |
 | `sail.<k>.phase`, `sail.<k>.progress` | hoist phase and progress | – |
+| `sail.<k>.beta` | the sail angle β (signed) | rad |
+| `sail.<k>.kite`, `sail.<k>.furling` | 1 for a spinnaker, 1 for a sail on a furler (class file) | – |
 | `cam_height` | listener height above the sea | m |
 | `cam_onboard` | 1 when the onboard camera is active | – |
+| `cam_wind` | the camera factor `cam` of §4 | – |
+| `closing_speed` | of the contact that fired an event trigger | m/s |
+| `rub_v` | sliding speed of a contact still in contact (§3 `boat.rub`), 0 without one | m/s |
 | `one` | 1 | – |
 
+Sail slots `k`: `main`, `front` (the front sail that is up, sails.md §3.2), `change` (the front sail of the
+running change step: the one being hoisted or dropped), or a sail id. A slot with no sail reads 0 everywhere.
+The boat inputs are read once per tick from the tick's records (rates are the change over the tick), the camera
+inputs every frame.
+
 Events: `sail_phase(boat, sail, phase)` (`sails.md` §7), contact `begin` with `closing_speed` and `other_kind`
-(`collisions.md` §5), race events (`race.md` §11), rules events (`rules.md` §11).
+(`collisions.md` §5), race events (`race.md` §11), rules events (`rules.md` §11). Event triggers in the map:
+`contact_boat`, `contact_mark` (a mark or course object), `contact_hard` (an obstacle or land).
 
 ## 3. Boat sounds
 
@@ -87,7 +109,7 @@ Positions are in the boat frame from the physics sidecar (`tools/boatgen/README.
 | `boat.slap` | one-shot, 4 variants | bow | 20 | trigger `bow_dz` falls below −0.4 m/s, cooldown 0.35 s; volume `clamp(fabs(bow_dz)/1.5, 0.2, 1)` |
 | `boat.rig` | loop | masthead | 10 | volume `0.25·clamp(0.4 + aws/15, 0.4, 1)`: rig creak and humming stays |
 | `boat.luff_main` | loop | main centroid | 15 | gate `sail.main.luff > 0.1`; volume `sail.main.luff`, pitch `tws_kn/30 + 0.7` |
-| `boat.luff_front` | loop | front sail centroid | 15 | gate `sail.front.luff > 0.1`; volume `sail.front.luff`, pitch `tws_kn/30 + 0.7` (spinnakers: `+ 0.53`, a deeper flog) |
+| `boat.luff_front` | loop | front sail centroid | 15 | gate `sail.front.luff > 0.1`; volume `sail.front.luff`, pitch `tws_kn/30 + 0.7` (spinnakers: `+ 0.53`, a deeper flog, as the map entry `boat.luff_kite` gated on `sail.front.kite`) |
 | `boat.winch` | loop | the sail's trimming winch (leeward primary for a front sail, the mainsheet block for the main) | 10 | gate `sail.<k>.motion == 1`; volume 0.6, pitch `0.95 + 0.1·clamp(sail.<k>.beta_rate/0.5, 0, 1)`: the ratchet |
 | `boat.sheet_run` | loop | same | 10 | gate `sail.<k>.motion == 2`; volume `0.3 + 0.5·clamp(sail.<k>.beta_rate/0.8, 0, 1)`: rope running out |
 | `boat.sheet_load` | one-shot | same | 10 | trigger when `motion` goes from 1 to 0: the sheet takes the load |
@@ -102,7 +124,9 @@ Positions are in the boat frame from the physics sidecar (`tools/boatgen/README.
 | `boat.rub` | loop | contact point | 10 | gate: a contact pair still in contact (no `begin`) while the boats slide; volume `clamp(v_rel/2, 0.2, 0.8)` |
 
 Only the viewed boat's sounds are on `own_boat`; the same map drives other boats on `fleet` with the voice rules of
-§1. The **wind** is a listener sound, not a boat sound (§4).
+§1. The **wind** is a listener sound, not a boat sound (§4). The sheet sounds (`boat.winch`, `boat.sheet_run`,
+`boat.sheet_load`) are one map entry each with `"slots": ["main", "front"]` (§9). A contact sound plays at the
+contact point on the bus of the boat it involves (`own_boat` when either boat is the viewed one).
 
 ## 4. Wind at the listener
 
@@ -139,6 +163,11 @@ late joiner does not hear past signals (`race.md` §3.2).
 | hail for room to tack (`Hail`) | `voice.hail_room_to_tack` at the hailing boat | 1 | "Room to tack!" |
 | optional countdown assist (`hud.md` §14 Full) | `race.beep` at 30, 20, 10, 5, 4, 3, 2, 1 s before the start | 1 each | – |
 
+The race sounds follow the HUD's `hud_event` (`game/README.md`, Race HUD): `signal`, `penalty` (only when its boat
+is the viewed one), `penalty_served`, `rule_warning` (only when the viewed boat is the holder), `finished` (the own
+finish). Other boats' finishes come from the race events. The hails are picked by the rule's code name through the
+map's `hails` table (§9); a rule or sound the map does not name stays silent without a warning.
+
 Mark roundings are silent by default (option: a soft tick on the own boat's `Rounded`).
 
 ## 6. Ambience
@@ -147,7 +176,9 @@ Mark roundings are silent by default (option: a soft tick on the own boat's `Rou
   `τ = 10 s`: calm below 6 kn, moderate 6–14 kn, fresh 14–22 kn, strong above 22 kn; neighbouring beds crossfade over
   the 2 kn around each boundary. Volume 0.4.
 - **One-shots**: gulls, distant engines, a halyard slapping on a moored boat: each venue lists its own, played
-  every 20–60 s (uniform) at a random pan and 0.3–0.6 volume.
+  every 20–60 s (uniform) at a random pan and 0.3–0.6 volume. Until venues have look files (§7) the map's
+  `ambience.one_shots` list serves every venue; the random pan is a 3-D source 30 m from the listener at a
+  random bearing, `d_min` 30 m.
 
 ## 7. Venue and course objects
 
@@ -156,7 +187,10 @@ Mark roundings are silent by default (option: a soft tick on the own boat's `Rou
   a town, a road bridge, cicadas. All loop from load.
 - **Course objects**: every mark carries `venue.buoy` (a bell or the water lapping on it, `d_min` 5 m); the
   committee boat `venue.committee` (idling engine, `d_min` 20 m); spectator and traffic boats `venue.motorboat`
-  (`d_min` 25 m) with their own wake loop.
+  (`d_min` 25 m) with their own wake loop. The map names the course sounds in `course`:
+  `{"buoy": id, "committee": id}`.
+
+Venue look files do not exist yet, so the placed sources wait for them; the course objects play in race mode.
 
 ## 8. Captions
 
@@ -204,15 +238,30 @@ else keeps working, headless runs included.
 - `files` with more than one entry pick a random variant per play (never the same twice in a row).
 - `anchor`: `bow`, `stern`, `mid`, `masthead`, `mast_foot`, `boom_pivot`, `forestay_tack`, `sail:<slot or id>`,
   `winch:<slot>`, `contact`, `listener`, or an explicit `[x, y, z]` in the boat frame.
+- `slots` (a list of sail slots) makes one sound per slot from the entry: `<k>` in its inputs and anchor is
+  replaced by the slot, and the sound is named `<id>:<slot>`.
+- `synth` (`wind`, `water`, `horn`, or `horn_long` for the 2.5 s horn): the synthesised fallback of §10 when none
+  of the entry's files exists.
+- `hails`: rule code name (`hud.md` §12.3, e.g. `"10"`) to a `voice.*` sound; `course` (§7); `ambience.one_shots`
+  (§6).
+- A path that is not under `res://` (a sound set in `user://` or on disk) loads `.ogg` and `.wav` at run time.
 - Unknown keys are ignored, so a newer map loads in an older build.
 
 ## 10. Assets
 
-There are no sound files yet. The default set must be our own recordings or permissively licensed (CC0 or CC-BY,
-`docs/THIRD_PARTY.md` gets a row per file or pack; packs under custom "royalty-free" licences are not used). A
-**synthesised fallback** keeps the game audible without files: wind as pink noise through a band-pass at
-`300 + 25·aws` Hz, water as brown noise through a low-pass at `600 + 60·v_kn` Hz, the horn as a 440 Hz and 554 Hz
-pair with a slow attack; each fallback uses the same map entry and formulas.
+The default set must be our own recordings or permissively licensed (CC0 or CC-BY, `docs/THIRD_PARTY.md` gets a
+row per file or pack; packs under custom "royalty-free" licences are not used). Until recordings exist, the default
+set (`game/audio/default`) is **synthesised by our own tool** (`tools/soundgen`: filtered noise, tones and
+impulses written as Ogg Vorbis, 22.05 kHz), so it is ours; a recording replaces a file by name or through the map.
+
+A **synthesised fallback** keeps a sound audible when its files are missing (the map entry's `synth`): wind as
+pink noise through a band-pass at `300 + 25·aws` Hz, water as brown noise through a low-pass at `600 + 60·v_kn` Hz,
+the horn as a 440 Hz and 554 Hz pair with a slow attack; each fallback uses the same map entry and formulas. The
+noise is made once at load with the filter at a reference frequency (wind 800 Hz, water 1200 Hz) and played with
+its pitch multiplied by `f / f_ref` (moving the filter with it), within the pitch clamp of §1. A missing file still
+warns once.
+
+Not in the default set yet: the voice hails (`voice.*`) and the venue placed sources, which need recordings.
 
 ## 11. Tests (headless)
 

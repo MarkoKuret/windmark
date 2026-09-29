@@ -306,6 +306,12 @@ func rules_events() -> Array:
 	return []
 
 
+## collisions.md §5 contact events of the last tick: {tick, boat, other_kind, other, point (Vector2), normal, depth,
+## closing_speed, impulse, begin}; [] for a sim without collisions (the audio's contact sounds)
+func contact_events() -> Array:
+	return []
+
+
 ## rules.md §7.9 hail for room to tack: {available (a valid hail can be made now), hailed_by (boat index or -1)};
 ## {} while the core has no hail state
 func hail_state(_boat: int) -> Dictionary:

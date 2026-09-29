@@ -13,8 +13,7 @@ const NOT_APPLIED := [
 	"controls.camera_boost_toggle",  # the free camera boost is hold only
 	"controls.vibration",  # no rumble yet
 	"hud.palette",  # the HUD has one palette
-	"hud.captions",  # no audio yet
-	"audio.*",  # applied to a bus only when the bus exists (audio.md §1.1); today only master
+	"hud.captions",  # the audio has no caption lines yet (audio.md §8)
 ]
 
 ## where current() loads from and save() writes to (tests point it elsewhere)
@@ -259,8 +258,9 @@ func apply_display(win: Window) -> void:
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if vsync else DisplayServer.VSYNC_DISABLED)
 
 
-## Volumes on the buses that exist (audio.md §1.1).
+## Volumes on the buses of audio.md §1.1 (made here when missing, AudioBuses).
 func apply_audio() -> void:
+	AudioBuses.ensure()
 	for f in BUSES:
 		for bus in BUSES[f]:
 			var i := AudioServer.get_bus_index(bus)

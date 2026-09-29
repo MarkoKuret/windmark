@@ -28,7 +28,7 @@ var laylines := true
 var values: RaceHudValues
 var sim: SimSource
 var alpha := 1.0
-var twd := 0.0  # felt TWD, tau 2 s (HudValues)
+var twd := 0.0  # felt TWD (HudValues)
 var tws := 0.0
 ## what was drawn last (tests): boat -> Color
 var drawn := {}

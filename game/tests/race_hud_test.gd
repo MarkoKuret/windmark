@@ -229,6 +229,12 @@ func test_next_mark() -> void:
 	t.ok(h.text_of("vmg").begins_with("VMG  %s kn" % HudFormat.speed_kn(r.vmg)), h.text_of("vmg"))
 	t.near(r.target_speed, 3.0, 1e-3, "target speed on a beat: V_up")
 	t.near(r.vmg_pct, 100.0, 0.5, "VMG %% at the optimum")
+	# no display smoothing (hud.md §1): a speed change shows in VMG, VMG % and VMC on the next tick
+	sim.put(0, 200.0, 400.0, psi, 2.0)
+	_refresh(h, sim, 0, 1)
+	t.near(r.vmg, 2.0 * cos(deg_to_rad(42.0)), 1e-3, "VMG unsmoothed")
+	t.near(r.vmg_pct, 100.0 * 2.0 / 3.0, 0.5, "VMG %% unsmoothed")
+	t.near(r.vmc, 2.0 * Vector2(sin(psi), cos(psi)).dot((w - Vector2(200, 400)).normalized()), 1e-3, "VMC unsmoothed")
 	# a run to the gate: VMG positive when sailing towards it
 	for b in 2:
 		sim.boats_d[b]["next"] = 2

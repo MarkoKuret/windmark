@@ -1,6 +1,6 @@
 # HUD semantics
 
-What every in-race indicator means, how its value is computed, how it is smoothed and rounded, and when it is shown.
+What every in-race indicator means, how its value is computed, how it is rounded, and when it is shown.
 Layout, art and fonts belong to the front end (`game/`); this file is the contract for the numbers and states behind
 them, so every front end (desktop, Steam Deck, a future browser client) shows the same values.
 
@@ -12,10 +12,15 @@ function; race and rules states (rank, penalties, right-of-way colours) come fro
 
 ## 1. Update, smoothing, formatting
 
-- **Filters**: "smoothed τ" means an exponential filter updated every tick, `y += (x − y)·k` with the constant
-  `k = 1 − wm_exp(−DT/τ)`; angles are filtered as unit vectors. Each value below states its τ.
-- **Refresh**: numeric text refreshes at 4 Hz from the filtered value (so digits do not flicker); needles, arrows and
-  lines move every frame, interpolated between ticks.
+- **No display smoothing**: the instruments show the core's values of the tick as they are (the boat's own filtered
+  outputs `v_filt`, `sog_filt_x`, `sog_filt_y` are the core's, `boat.md` §5.10). A HUD filter would only add lag: a
+  2 s filter on TWA, for example, showed the old tack for about 2 s after a tack and then crept to the new angle over
+  another 6 s. The only HUD filters are the wind references that are averages by definition: the clean-wind direction
+  for the leg type (2 s, `ai.md` §4.1), the laylines and the start-line bias (10 s), and the shift meter (5 s against
+  180 s). "Smoothed τ" there means an exponential filter updated every tick, `y += (x − y)·k` with
+  `k = 1 − wm_exp(−DT/τ)`; directions are filtered as unit vectors.
+- **Refresh**: numeric text refreshes at 4 Hz (so digits do not flicker at the tick rate); needles, arrows and lines
+  follow the latest tick every frame.
 - **Formats**:
 
 | Quantity | Format |
@@ -26,19 +31,19 @@ function; race and rules states (rank, penalties, right-of-way colours) come fro
 | time | race clock and gaps `m:ss`; countdown `m:ss`, with tenths in the last 10 s (`0:07.4`); finish times `h:mm:ss.ss` |
 | percent | integer |
 
-- Rounding is to nearest (half away from zero) after smoothing. Truncation is never used for display.
+- Rounding is to nearest (half away from zero). Truncation is never used for display.
 
 ## 2. Boat instruments
 
-| Indicator | Definition | τ |
-| --- | --- | --- |
-| Boat speed (BSP) | the boat's `v_filt` (`boat.md` §5.10: speed through the water along the heading, filtered) | (boat filter) |
-| Speed over ground (SOG) | length of the boat's filtered ground velocity (`sog_filt_x`, `sog_filt_y`) | (boat filter) |
-| Heading (HDG) | ψ, compass | 0.3 s |
-| Course over ground (COG) | `compass(sog_filt_x, sog_filt_y)` (shown only when SOG > 0.3 kn) | (boat filter) |
-| Heel | `|φ|`, degrees, with the letter of the side that is down (φ > 0: starboard down, `conventions.md` §3) | 0.5 s |
-| Rudder | helm `h` as a bar, −1 … +1 (positive turns the bow to starboard), with a second mark at `h_cmd` | none |
-| Sail | the front sail that is up (or "Main only"), and the one being hoisted during a change with its progress | none |
+| Indicator | Definition |
+| --- | --- |
+| Boat speed (BSP) | the boat's `v_filt` (`boat.md` §5.10: speed through the water along the heading, filtered by the core) |
+| Speed over ground (SOG) | length of the boat's filtered ground velocity (`sog_filt_x`, `sog_filt_y`) |
+| Heading (HDG) | ψ, compass |
+| Course over ground (COG) | `compass(sog_filt_x, sog_filt_y)` (shown only when SOG > 0.3 kn) |
+| Heel | `|φ|`, degrees, with the letter of the side that is down (φ > 0: starboard down, `conventions.md` §3) |
+| Rudder | helm `h` as a bar, −1 … +1 (positive turns the bow to starboard), with a second mark at `h_cmd` |
+| Sail | the front sail that is up (or "Main only"), and the one being hoisted during a change with its progress |
 
 The player's own commands (the `h_cmd` mark, the sheet setting and its bar, `AUTO`, `LET FLY`) show the local
 command of the rendered frame, not the value the simulation last applied, so they answer the key at once; the
@@ -49,18 +54,18 @@ controls record.
 
 ### 3.1 Numbers
 
-| Indicator | Definition | τ |
-| --- | --- | --- |
-| TWS | the boat's `tws`: true wind the boat feels, relative to the water, with puffs and other boats' shadow (`boat.md` §5.1) | 2.0 s |
-| TWA | `|twa|` with the tack letter (`S` for `twa > 0`, `P` otherwise) | 2.0 s |
-| TWD | the boat's `twd_from`, compass | 2.0 s |
-| AWS, AWA | apparent wind at the masthead (`sails.md`), AWA with side letter | 1.0 s |
-| Shadow | `d = 1 − wind_speed / wind_speed_clean` (`boat.md` §2) as a percentage, shown only when ≥ 3 % ("Bad air −8 %") | 2.0 s |
+| Indicator | Definition |
+| --- | --- |
+| TWS | the boat's `tws`: true wind the boat feels, relative to the water, with puffs and other boats' shadow (`boat.md` §5.1) |
+| TWA | the boat's `twa = wrap_pi(twd_from − ψ)` (`boat.md` §5.1: the heading against the true wind direction, not the course over ground), shown as `|twa|` with the tack letter (`S` for `twa > 0`, `P` otherwise) |
+| TWD | the boat's `twd_from`, compass |
+| AWS, AWA | apparent wind at the masthead (`sails.md`), AWA with side letter |
+| Shadow | `d = 1 − wind_speed / wind_speed_clean` (`boat.md` §2) as a percentage, shown only when ≥ 3 % ("Bad air −8 %") |
 
 ### 3.2 Wind indicators
 
 - **Masthead vane** (on the boat model): points into the apparent wind, unsmoothed apart from the physics.
-- **True wind arrow** (on the water around the boat, or at the radar edge): felt TWD, τ = 2 s. Its length scales
+- **True wind arrow** (on the water around the boat, or at the radar edge): felt TWD. Its length scales
   with TWS (clamped between 0.6× and 1.5× of its base length over 0–30 kn).
 - **Shift meter**: how the wind has shifted for the current tack, from the boat's own history (what a sailor knows
   from the compass):
@@ -83,18 +88,19 @@ With `θ_up`, `V_up`, `θ_dn`, `V_dn` the polar VMG optima of the boat's class a
 `V_pol` the boat's `polar_speed` output (`boat.md` §5.4: the polar of the active config at the present `tws`, `twa`).
 A human boat's `performance_scale` is 1.
 
-| Indicator | Definition | τ |
-| --- | --- | --- |
-| VMG | on a beat: the boat's `vmg` (`v·cos(twa)`, `boat.md` §5.10); on a run: `−vmg`; so the display is positive for progress along the wind towards the mark. On a reach VMG is replaced by VMC. | 2.0 s |
-| VMC | velocity made good on course: `dot((sog_filt_x, sog_filt_y), unit(R − c))`, R = the next step's target point (`race.md` §5; gate: the chosen buoy, see §7) | 2.0 s |
-| Target speed | beat: `V_up`; run: `V_dn`; reach: `V_pol` at the current TWA with the best sail | 2.0 s |
-| Target TWA | beat: `θ_up`; run: `θ_dn`; reach: none | 2.0 s |
-| VMG % | `100 · VMG / (V_up·cos θ_up)` on a beat, `100 · VMG / (−V_dn·cos θ_dn)` on a run | 3.0 s |
-| Polar % | `100 · v / polar_speed`: how well the boat is sailed at the angle she is on, whatever the angle | 3.0 s |
-| Sail hint | when the best config for the present TWA and TWS (`ai.md` §3.1) is ≥ 3 % faster than the current one for 5 s: "Code zero +6 %" (the gain in polar speed) | none |
+| Indicator | Definition |
+| --- | --- |
+| VMG | on a beat: the boat's `vmg` (`v·cos(twa)`, `boat.md` §5.10); on a run: `−vmg`; so the display is positive for progress along the wind towards the mark. On a reach VMG is replaced by VMC. |
+| VMC | velocity made good on course: `dot((sog_filt_x, sog_filt_y), unit(R − c))`, R = the next step's target point (`race.md` §5; gate: the chosen buoy, see §7) |
+| Target speed | beat: `V_up`; run: `V_dn`; reach: `V_pol` at the current TWA with the best sail |
+| Target TWA | beat: `θ_up`; run: `θ_dn`; reach: none |
+| VMG % | `100 · VMG / (V_up·cos θ_up)` on a beat, `100 · VMG / (−V_dn·cos θ_dn)` on a run |
+| Polar % | `100 · v / polar_speed`: how well the boat is sailed at the angle she is on, whatever the angle; `--` while `polar_speed` is below 0.3 kn (head to wind) |
+| Sail hint | when the best config for the present TWA and TWS (`ai.md` §3.1) is ≥ 3 % faster than the current one for 5 s: "Code zero +6 %" (the gain in polar speed) |
 
-The leg type is `ai.md` §4.1 (beat / run / reach). Polar % above 100 is possible (surfing, puffs in the smoothing
-window); it is not clipped. VMG % measures the angle choice as well as the speed; polar % the speed only.
+The leg type is `ai.md` §4.1 (beat / run / reach). Polar % above 100 is possible (surfing, a puff before the boat has
+picked up speed, the carried speed of a tack); it is not clipped. VMG % measures the angle choice as well as the speed;
+polar % the speed only.
 
 ## 5. Trim gauge
 
@@ -106,7 +112,7 @@ One gauge per trimmable sail (the main and the front sail that is up), fed by th
   table (`sails.md` §6) falls to 0.98 at the present `tws` and `|awa|`, found by stepping `eps` in 0.1° steps out to
   ±30° (cached per 0.5 m/s of TWS and 1° of AWA). Without a `trim_speed` table: ±2°.
 - Normalised error `e = eps / eps_tol+` if `eps ≥ 0`, else `eps / |eps_tol−|`, clamped to [−2, +2].
-- **Needle** at `e`, τ = 0.3 s. **Colour** from `|e|`: ≤ 0.5 green, ≤ 1.0 yellow, > 1.0 red.
+- **Needle** at `e`. **Colour** from `|e|`: ≤ 0.5 green, ≤ 1.0 yellow, > 1.0 red.
 - **Tell-tales** (text or icons): `e > 1.0` or `luff_shiver > 0.5` → "Luffing: sheet in"; `e < −1.0` →
   "Stalled: ease"; `backed` → "Aback"; else "Flowing".
 - With `auto_trim` on (assist, and always for AI), the gauge shows a neutral needle at 0 labelled `AUTO` and no
@@ -316,6 +322,8 @@ Online lobbies may force a maximum preset (e.g. ranked "Minimal").
 
 - For a scripted boat state, `HudValues` matches hand-computed values for every field of §2–§7 and §9.2 (within
   the display rounding).
+- Through a scripted tack the shown TWA equals the core's `twa` every tick (no lag, no overshoot) and its tack letter
+  changes on the tick the sign of `twa` does.
 - VMG on a run is positive when sailing towards the leeward mark; VMC is negative when sailing away from the mark.
 - Layline test: a boat placed on the computed starboard layline, sailing at `θ_up` with no current, reaches the mark
   within 0.5 L in a steady wind (headless sim).

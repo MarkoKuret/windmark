@@ -1,13 +1,14 @@
 class_name HudValues
 extends RefCounted
-## The values behind the minimal HUD (hud.md §2, §3.1, §4 polar %, §5), filtered every tick with
-## k = 1 - exp(-DT / tau), angles as unit vectors. A placeholder for the core's HudValues record: same
-## definitions, computed here from SimSource until the binding provides it.
+## The values behind the minimal HUD (hud.md §2, §3.1, §4 polar %, §5): the core's values of the tick, shown
+## without display smoothing (hud.md §1). A placeholder for the core's HudValues record: same definitions, computed
+## here from SimSource until the binding provides it.
 
 const DT := SimSource.DT
 const TOL_DEFAULT := deg_to_rad(2.0)
 const TOL_STEP := deg_to_rad(0.1)
 const TOL_MAX := deg_to_rad(30.0)
+const POLAR_MIN := 0.3 * HudFormat.KNOT  # m/s: polar % shows -- below this polar speed
 
 enum Colour { NONE, GREEN, YELLOW, RED }
 
@@ -18,27 +19,26 @@ class Gauge:
 	var name := ""
 	var eps := 0.0
 	var e := 0.0  # normalised error, [-2, 2]
-	var needle := 0.0  # e smoothed (tau 0.3 s)
+	var needle := 0.0  # e, 0 with auto trim
 	var colour := Colour.NONE
 	var telltale := ""
 	var auto := false
 	var greyed := false
-	var _started := false
 
 
 var bsp := 0.0  # m/s (v_filt)
 var sog := 0.0  # m/s
 var cog := 0.0
-var hdg := 0.0  # tau 0.3 s
-var heel := 0.0  # signed phi, tau 0.5 s
+var hdg := 0.0
+var heel := 0.0  # signed phi
 var h := 0.0
 var h_cmd := 0.0
-var tws := 0.0  # tau 2 s
-var twa := 0.0  # signed, tau 2 s
-var twd := 0.0  # tau 2 s
-var aws := 0.0  # tau 1 s
-var awa := 0.0  # signed, tau 1 s
-var polar_pct := 0.0  # tau 3 s
+var tws := 0.0
+var twa := 0.0  # signed: the core's twa, heading against the true wind direction
+var twd := 0.0
+var aws := 0.0
+var awa := 0.0  # signed
+var polar_pct := NAN  # NAN while polar_speed < 0.3 kn (head to wind)
 var sheet_cmd := 0.0
 var auto_trim := true
 var let_fly := false
@@ -51,19 +51,7 @@ var gauges: Array[Gauge] = []
 ## controls record
 var commands_local := false
 
-var _started := false
 var _tol_cache := {}
-
-
-static func _k(tau: float) -> float:
-	return 1.0 - exp(-DT / tau)
-
-
-static func _angle(y: float, x: float, tau: float) -> float:
-	var a := Vector2(cos(y), sin(y))
-	var b := Vector2(cos(x), sin(x))
-	var r := a + (b - a) * _k(tau)
-	return atan2(r.y, r.x)
 
 
 ## The player's own commands of this frame (PlayerControls): helm command, sheet, auto-trim, let fly.
@@ -87,34 +75,23 @@ func tick(sim: SimSource, boat: int) -> void:
 	var c := sim.controls(boat)
 	var sv := sim.sails(boat)
 	var info := sim.class_info(boat)
-	if not _started:
-		hdg = s.psi
-		heel = s.phi
-		tws = s.tws
-		twa = s.twa
-		twd = s.twd_from
-		aws = s.aws
-		awa = s.awa
-		polar_pct = 100.0 * s.v / o.polar_speed if o.polar_speed > 0.05 else 0.0
-		_started = true
 	bsp = s.v_filt
 	sog = Vector2(s.sog_filt_x, s.sog_filt_y).length()
 	cog = o.cog
-	hdg = Frames.wrap_2pi(_angle(hdg, s.psi, 0.3))
-	heel += (s.phi - heel) * _k(0.5)
+	hdg = s.psi
+	heel = s.phi
 	h = s.h
 	if not commands_local:
 		h_cmd = c.h_cmd
 		sheet_cmd = c.sheet_cmd
 		auto_trim = c.auto_trim
 		let_fly = c.let_fly
-	tws += (s.tws - tws) * _k(2.0)
-	twa = _angle(twa, s.twa, 2.0)
-	twd = Frames.wrap_2pi(_angle(twd, s.twd_from, 2.0))
-	aws += (s.aws - aws) * _k(1.0)
-	awa = _angle(awa, s.awa, 1.0)
-	if o.polar_speed > 0.05:
-		polar_pct += (100.0 * s.v / o.polar_speed - polar_pct) * _k(3.0)
+	tws = s.tws
+	twa = s.twa
+	twd = s.twd_from
+	aws = s.aws
+	awa = s.awa
+	polar_pct = 100.0 * s.v / o.polar_speed if o.polar_speed >= POLAR_MIN else NAN
 	sail_up = info.sails[sv.front].name if sv.front >= 0 else ""
 	sail_hoisting = ""
 	hoist_progress = 0.0
@@ -155,10 +132,9 @@ func _gauges(sim: SimSource, boat: int, s: SimSource.BoatState, sv: SimSource.Sa
 			g.needle = 0.0
 			g.colour = Colour.NONE
 		else:
-			g.needle = g.e if not g._started else g.needle + (g.e - g.needle) * _k(0.3)
+			g.needle = g.e
 			var ae := absf(g.e)
 			g.colour = Colour.GREEN if ae <= 0.5 else (Colour.YELLOW if ae <= 1.0 else Colour.RED)
-		g._started = true
 		if g.e > 1.0 or so.luff_shiver > 0.5:
 			g.telltale = "Luffing: sheet in"
 		elif g.e < -1.0:

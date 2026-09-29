@@ -103,6 +103,7 @@ struct RaceBoat {
   // entry
   const PerfData* perf = nullptr;
   bool human = true;
+  float performance_scale = 1.0f;  // boat.md §2, fixed at spawn (§3.5); scales the projected speed (§7.2)
   float L = 0.0f, B = 0.0f;
   std::uint32_t joined_tick = 0;
 
@@ -177,7 +178,8 @@ std::vector<std::int32_t> spawn_order(std::uint64_t race_seed, std::int32_t n);
 class Race {
  public:
   // Entries are added before create(); later ones are joiners (race.md §3.5), allowed until the prep signal.
-  std::int32_t add_boat(const PerfData* perf, bool human);
+  // `performance_scale` is the boat's (boat.md §2, clamped as there); the race uses it for projected finishes.
+  std::int32_t add_boat(const PerfData* perf, bool human, float performance_scale = 1.0f);
 
   // race.md §3.1: ticks from creation to the gun for these settings and course defaults (the course axis is laid
   // for the wind at the gun, courses.md §6.1).

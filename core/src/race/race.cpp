@@ -174,7 +174,7 @@ std::vector<std::int32_t> spawn_order(std::uint64_t race_seed, std::int32_t n) {
 
 // ---- Set-up ----
 
-std::int32_t Race::add_boat(const PerfData* perf, bool human) {
+std::int32_t Race::add_boat(const PerfData* perf, bool human, float performance_scale) {
   // race.md §3.5: joining is allowed until the preparatory signal.
   if (state_ != RaceState::created && (signals_done_ >= 2 || state_ == RaceState::closed ||
                                        state_ == RaceState::abandoned || race_type_ == RaceType::match)) {
@@ -183,6 +183,7 @@ std::int32_t Race::add_boat(const PerfData* perf, bool human) {
   RaceBoat b;
   b.perf = perf;
   b.human = human;
+  b.performance_scale = std::isnan(performance_scale) ? 1.0f : clamp(performance_scale, 0.01f, 2.0f);
   b.L = perf->dynamics.loa;
   b.B = perf->dynamics.bwl;
   boats_.push_back(std::move(b));
@@ -822,7 +823,7 @@ float Race::remaining(std::size_t i) const {
   return D;
 }
 
-// Seconds to sail the remaining course at 0.9 of the polar (race.md §7.2).
+// Seconds to sail the remaining course at 0.9 × performance_scale of the polar (race.md §7.2).
 float Race::v_ref_time(std::size_t i, float tws) const {
   const RaceBoat& b = boats_[i];
   const PolarVmg vmg = polar_vmg(*b.perf, tws);
@@ -840,7 +841,7 @@ float Race::v_ref_time(std::size_t i, float tws) const {
     } else {
       V = polar_best(*b.perf, tws, std::fabs(wrap_pi(twd_mean_ - compass(a.e))));
     }
-    V = 0.9f * V;
+    V = (0.9f * b.performance_scale) * V;
     if (V > 0.01f) t = t + d / V;
   }
   return t;

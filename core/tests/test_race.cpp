@@ -557,6 +557,55 @@ TEST_CASE("race: closing and results") {
   CHECK(rig.race.boat(0).ghost_reason == wm::GhostReason::finished);
 }
 
+TEST_CASE("race: projected finishes are scaled by performance_scale (race.md §7.2)") {
+  // Boat 0 is human; 1 and 2 are AI boats at the same distance to go, 2 with an Easy performance_scale of 0.9.
+  // When the human retires the race closes and both AI boats are projected; 2 sails the rest 1/0.9 as long.
+  const wm::ResolvedCourse course = course_from(rounding_course({0.0f, 600.0f}, "port"));
+  wm::Race race;
+  race.add_boat(&perf("wm7"), true);
+  race.add_boat(&perf("wm7"), false, 1.0f);
+  race.add_boat(&perf("wm7"), false, 0.9f);
+  CHECK(race.boat(2).performance_scale == 0.9f);
+  std::string err;
+  REQUIRE_MESSAGE(race.create(course, quick_settings(), 0, 0.0f, err), err);
+  std::vector<wm::RaceBoatInput> in(3);
+  const std::vector<std::uint8_t> pending(3, 0);
+  for (std::size_t i = 0; i < 3; ++i) {
+    in[i].pos = {-20.0f + 20.0f * static_cast<float>(i), -5.0f};
+    in[i].tws = 6.0f;
+  }
+  std::uint32_t n = 0;
+  auto step = [&] {
+    race.progress(n, in, pending, 0.0f);
+    race.rank(n, in);
+    race.clear_events();
+    ++n;
+  };
+  while (n <= static_cast<std::uint32_t>(race.n_gun())) step();
+  in[1].pos = {0.0f, 50.0f};
+  in[2].pos = {20.0f, 50.0f};
+  step();
+  REQUIRE(race.boat(1).started);
+  REQUIRE(race.boat(2).started);
+  race.retire(0, n);
+  const std::uint32_t n_close = n;
+  step();
+  REQUIRE(race.state() == wm::RaceState::closed);
+  const float t_now = race.race_time(n_close);
+  REQUIRE(race.boat(1).projected);
+  REQUIRE(race.boat(2).projected);
+  const float d1 = race.boat(1).t_proj - t_now, d2 = race.boat(2).t_proj - t_now;
+  REQUIRE(d1 > 10.0f);
+  CHECK(d2 == doctest::Approx(d1 / 0.9f).epsilon(1e-4));
+  const std::vector<wm::ResultRow>& res = race.results();
+  REQUIRE(res.size() == 3);
+  CHECK(res[0].boat == 1);
+  CHECK(res[0].projected);
+  CHECK(res[1].boat == 2);
+  CHECK(res[1].projected);
+  CHECK(res[1].t_finish_us > res[0].t_finish_us);
+}
+
 TEST_CASE("race: general recall escalates the flag and moves the gun") {
   const std::string json = gate_course();
   wm::RaceSettings s = quick_settings(wm::PrepFlag::P);

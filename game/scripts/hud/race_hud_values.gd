@@ -725,18 +725,20 @@ func _step_label(k: int) -> String:
 	return "finish"
 
 
-## race.md §7.2 V_ref of the boat's present leg: 0.9 x polar VMG (beat, run) or polar speed (reach)
+## race.md §7.2 V_ref of the boat's present leg: 0.9 x performance_scale x polar VMG (beat, run) or polar speed
+## (reach)
 func _v_ref(sim: SimSource, b: int) -> float:
 	var s := sim.state(b)
 	var vm := sim.polar_vmg(b, s.tws)
 	if vm.is_empty():
 		return 0.9 * maxf(s.v, 0.0)
+	var k := 0.9 * sim.controls(b).performance_scale
 	match leg_type:
 		"beat":
-			return 0.9 * float(vm["up_speed"]) * cos(float(vm["up_twa"]))
+			return k * float(vm["up_speed"]) * cos(float(vm["up_twa"]))
 		"run":
-			return -0.9 * float(vm["down_speed"]) * cos(float(vm["down_twa"]))
-	return 0.9 * sim.outputs(b).polar_speed
+			return -k * float(vm["down_speed"]) * cos(float(vm["down_twa"]))
+	return k * sim.outputs(b).polar_speed
 
 
 ## the ranking list rows (hud.md §10): [{rank, boat, name, ai, gap, status}]

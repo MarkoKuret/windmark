@@ -65,7 +65,7 @@ void World::place_boat(std::int32_t boat, float x, float y, float psi, float v) 
 std::int32_t World::add_boat(const BoatEntry& e) {
   if (e.perf == nullptr) return -1;
   if (created_) {
-    const std::int32_t r = race_.add_boat(e.perf, e.human);
+    const std::int32_t r = race_.add_boat(e.perf, e.human, e.performance_scale);
     if (r < 0) return -1;
   }
   const std::uint32_t index = static_cast<std::uint32_t>(boats_.size());
@@ -150,7 +150,7 @@ bool World::create_race(const CourseData& course, std::string& error) {
   }
   scene_.set_venue(venue);
 
-  for (const BoatEntry& e : entries_) race_.add_boat(e.perf, e.human);
+  for (const BoatEntry& e : entries_) race_.add_boat(e.perf, e.human, e.performance_scale);
   const WindTick& wt = wind_->advance(t_ms());
   if (!race_.create(course_, setup_.race, tick_, wt.global_from, error)) return false;
   rules_.init(race_, &venue, setup_.rules);

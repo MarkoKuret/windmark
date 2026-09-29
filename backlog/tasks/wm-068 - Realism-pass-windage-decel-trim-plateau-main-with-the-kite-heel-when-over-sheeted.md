@@ -7,7 +7,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-09-29 11:55'
-updated_date: '2026-09-29 11:55'
+updated_date: '2026-09-29 13:48'
 labels:
   - vpp
 dependencies: []
@@ -23,9 +23,14 @@ Owner (2026-09-29), keeping the realistic feel: (1) windage deceleration uses th
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Windage decel scales with apparent wind
-- [ ] #2 Trim plateau +-3 to 4 deg, no floor
-- [ ] #3 Main sheeted in with the kite up, per-class offset in the class file
-- [ ] #4 Heel rises when over-sheeting at 90 deg TWA
-- [ ] #5 Owner sails it
+- [x] #1 Windage decel scales with apparent wind
+- [x] #2 Main sheeted in with the kite up, per-class offset in the class file
+- [x] #3 Heel rises when over-sheeting at 90 deg TWA
+- [ ] #4 Owner sails it
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Item 2 (trim plateau) dropped by the owner 2026-09-29: trim_speed stays the physical table, identical to main. Done on branch realism: windage decel linear in the apparent wind (decel_windage, secant at 3.4 m/s; AI and rules predictions keep decel_const); main kite_sheet_in 0.26 rad on wm7 and wm12; trim_heel at the trimmed state with the stall normal force held, core heel follows the boat's own apparent wind (boat.md 10.10).
+<!-- SECTION:NOTES:END -->

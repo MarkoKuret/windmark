@@ -4,11 +4,11 @@ title: 'AI: tune to the ai.md fleet targets'
 status: To Do
 assignee: []
 created_date: '2026-09-25 19:18'
-updated_date: '2026-09-26 14:10'
+updated_date: '2026-09-29 17:27'
 labels:
   - core
 dependencies: []
-priority: high
+priority: low
 ordinal: 71000
 ---
 
@@ -35,4 +35,6 @@ Rounding robustness pass (branch ai-round), ai.md 6.1, 6.4, 5.6, 7.2, 7.4, 7.6 a
 - Measured (dev runs AI_SCENE: 24 scene seeds, 16 Intermediate, 8 Pro, 8 mixed wm7/wm12 seeds), before -> after: touches 59 -> 24, penalties 370 -> 339, DSQ 47 -> 35, finished 417 -> 428 of 464, first mark rounded 443 -> 450. ai_long: bad air 1.44 -> 1.66, Expert OCS 5 -> 1 of 20.
 - Tried and dropped (measured worse): irons recovery outside tacks, a reaction delay in all own-track predictions.
 - Open: 44.1-late is still the largest penalty code; penalty and contact targets of 15 not met.
+
+Owner (2026-09-29): AI boats are OK for now; postponed. Keep this task as the list of what to improve: penalties and contacts above target, late starts, level order (Intermediate beats Expert), no recovery when pinned against an object, windward mark crowding, chaotic results under small physics changes.
 <!-- SECTION:NOTES:END -->

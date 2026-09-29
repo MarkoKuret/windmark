@@ -181,38 +181,45 @@ class Boat:
                             "livery_panels": self.livery_panels()})
         return sum(p.tri_count() for p in parts.values()), parts
 
-    # poses for previews: the exported model keeps the flat standard sail shapes
+    # poses for previews (the exported model keeps the flat standard sail shapes); the sails are drawn with the
+    # game's shape and placement (sail_set.py, sail_visuals.md 6 and 7). awa: apparent wind angle, deg (negative:
+    # wind from port, so the sails are to starboard); aws: m/s; gamma: pole or tack line to windward, deg; sails:
+    # sheet angle per sail type, deg, the core's optimum from the wm7 and wm12 performance tables at 10 kn TWS
     POSES = {
-        # sail type -> (angle off the centreline deg, camber, twist deg)
-        "upwind": {"main": (4, 0.09, 7), "jib": (11, 0.11, 9), "genoa": (10, 0.11, 9)},
-        "reaching": {"main": (28, 0.12, 12), "code_zero": (22, 0.10, 12)},
-        "downwind": {"main": (55, 0.14, 16), "spinnaker_asym": (58, 0.24, 14), "spinnaker_sym": (70, 0.26, 10)},
+        "upwind": {"awa": -27, "aws": 7.0, "sails": {"main": 13, "jib": 12, "genoa": 12}},
+        "reaching": {"awa": -70, "aws": 6.0, "sails": {"main": 43, "code_zero": 50}},
+        "downwind": {"awa": -140, "aws": 4.0, "gamma": 20,
+                     "sails": {"main": 59, "spinnaker_asym": 64, "spinnaker_sym": 75}},
     }
 
     def posed_parts(self, pose):
-        """Parts with the sails set and trimmed for a point of sail (sails to starboard, port tack)."""
+        """Parts with the sails set as the game draws them for a point of sail (sails to starboard, port tack)."""
         from .mesh import rot_axis, translate
+        from .sail_set import set_sails
         spec = self.POSES[pose] if isinstance(pose, str) else pose
         parts = dict(self.parts)
-        if not any(sl.type.startswith("spinnaker") for sl in self.sails.values() if sl.type in spec):
+        if not any(sl.type.startswith("spinnaker") for sl in self.sails.values() if sl.type in spec["sails"]):
             parts.pop("pole", None)     # the pole is shown only while a spinnaker is set
-        main_angle = 0.0
+        grids, shapes = set_sails(self, spec)
         corners, types = {}, {}
         for sid, sail in self.sails.items():
             key = "sail_" + sid
-            if sail.type not in spec:
+            if sid not in grids:
                 parts.pop(key, None)
                 continue
-            ang, camber, twist = spec[sail.type]
-            if sail.type == "main":
-                main_angle = ang
-            G = sail.trim(ang, camber, twist, side=-1.0)
+            G = grids[sid]
             parts[key] = sail.part(G)
             corners[sid] = {k: G[i, j] for k, (i, j) in sail.corners.items()}
             types[sid] = sail.type
+        main_angle =float(spec["sails"].get("main", 0.0)) * (1.0 if spec["awa"] <= 0 else -1.0)
+        if "pole" in parts and self.rig.pole_flown:
+            gam = float(spec.get("gamma", 0.0)) * (1.0 if spec["awa"] <= 0 else -1.0)
+            pv = self.rig.pole_pivot
+            parts["pole"] = Part().extend(self.parts["pole"], translate(pv) @ rot_axis([0, 0, 1], np.radians(gam))
+                                          @ translate(-pv))
         from .running import sheets
         parts["sheets"] = sheets(self, corners, types)
-        # boom swung to starboard about the gooseneck, mainsheet re-led to the traveller car below it
+        # boom swung about the gooseneck with the main, mainsheet re-led to the traveller car below it
         g = self.rig.gooseneck
         M = translate(g) @ rot_axis([0, 0, 1], np.radians(main_angle)) @ translate(-g)
         parts["boom"] = Part().extend(self.parts["boom"], M)

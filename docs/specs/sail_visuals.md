@@ -288,6 +288,18 @@ Then each vertex `P` (from §3.2) is placed as `P'' = R(Lh', T', β − γ_e) ·
 `Lh' = S·Lh`. `wrap_pi` of `β` at ±π (an asymmetric spinnaker gybing round the bow) is the same rotation, so the
 sail moves continuously through the gybe.
 
+**Pivot.** A flying sail turns about its own luff through its tack: the sprit end (asymmetric spinnaker, code
+zero), or the pole end after the swing (symmetric spinnaker). That is where the core measures the flying sail's
+`β` from (the VPP's kite optimum is the chord angle at the sprit-end tack, `tools/vpp`), not the gooseneck the
+main turns about. The tack stays at the sprit end within the tack line. The luff leans aft from the tack (23° from
+the vertical on wm7, 20° on wm12), so the foot's plan-view angle from the tack is about an eighth less than
+`β` (28° at `β` 32°, 56° at 64°) and the clew lifts as the sail is eased (0.3 m at 32°, 1.2 m at 64° on wm7).
+The ease of §7.4 is on top of this, and on a reach it comes from the main's angle, not from the pivot: wm7 at
+80° AWA, 10 kn, the core sheets the kite at 32° and the main at 53°; without the ease the kite's clew would lie
+0.52 LOA forward of the transom and 1.4 m outboard of the rail, but its upper leech (rows 14 to 19 of 26) would
+pass up to 0.27 m through the main. The upper leech is close to the luff axis, so the ease that clears it is
+large (31°) and takes the clew to 1 m forward of the mast and 4.4 m outboard.
+
 **Ease to leeward.** The drawing adds no rotation of its own: the chord of a flying sail lies at the core's sheet
 angle `β` (`sails.md` §5.1, optimum 12–30° at the lowest AWA rising to 85–90° dead downwind), so it sits
 `|awa| − |β|` off the apparent wind, about 30–45° reaching and 60–90° running, eased further when the sheet is
@@ -567,12 +579,18 @@ Flutter phase `φ = 0` unless stated.
     jib and the mast, away from the head fade, is at least `0.9·c`; the test prints the smallest distance found.
     Sheeting the flying sail from 60 % to 130 % of its optimum over 2 s (TWA 100°, 12 kn, main eased 20 %, jib up)
     moves no vertex more than `0.05·Sa` between frames at 60 fps.
+19. **Generator parity.** The generator's preview poses and `kite_preview` set the sails with a port of §5.1,
+    §6.1 to §6.4 and §7 (`tools/boatgen/boatgen/sail_set.py`: `up` phase, no luff shiver, headsails drawing) and
+    write each pose's wind, angles and placed mid-surfaces to `<id>.sets.json`. BoatView, native and reference,
+    given the same wind and angles on the generated `wm7`, `wm12` and the generator's symmetric-spinnaker test
+    class, places every vertex within 0.01 m of the generator's.
 
 ## 13. Dependencies and open points
 
 - The generator writes the `look` block per sail and a `pole` node (pivot at its heel on the mast, turning about the
   vertical) for pole-flown spinnaker classes (`tools/boatgen`, WM-029), and the full grid topology with the
-  collapsed head vertex referenced (WM-017).
+  collapsed head vertex referenced (WM-017). Its previews draw the set sails with the shapes of this spec (§12,
+  test 19), so a preview shows what a race shows.
 - Running rigging (sheets, halyards, guys) is not drawn yet; when it is, the sheets run from the placed clew.
 - The cloth style comes from the sail type and the LOA (§11.1) until the class file can name it (a
   `visual.sails.<id>.cloth` key in the generator's `look` block).

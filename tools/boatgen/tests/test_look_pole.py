@@ -36,14 +36,16 @@ class LookTest(unittest.TestCase):
                          (0.6, 4.0, 0.15, 0.070))
         self.assertEqual((jib["fill_gain"], jib["fill_curve"], jib["flutter_amp"], jib["twist_top"]),
                          (0.75, 1.2, 0.07, 0.105))
-        self.assertEqual((kite["fill_gain"], kite["depth"], kite["tack_line_max"], kite["twist_top"]),
-                         (1.0, 0.30, 0.04, 0.0))
+        self.assertEqual((kite["fill_gain"], kite["camber"], kite["tack_line_max"], kite["twist_top"]),
+                         (1.0, 0.26, 0.04, 0.0))
+        self.assertNotIn("depth", kite)
         # wm7: LOA 7.2 m -> r_f = 2.904, w_max = 9.04 (sail_visuals.md 12, test 6)
         for look in (main, jib, kite):
             self.assertAlmostEqual(look["flutter_rate"], 2.904, places=6)
             self.assertAlmostEqual(look["flutter_rate_max"], 9.04, places=6)
         # keys that do not apply to a type are left out
-        self.assertNotIn("depth", main)
+        self.assertNotIn("camber", main)
+        self.assertNotIn("camber", jib)
         self.assertNotIn("furl_radius", main)
         self.assertNotIn("furl_radius", kite)
         # furl radius from the chord extent Sa of the flat sail
@@ -53,15 +55,26 @@ class LookTest(unittest.TestCase):
 
     def test_class_overrides(self):
         sails = physics.sail_data(boat(SYM))
-        self.assertEqual(sails["s1"]["look"]["depth"], 0.4)
+        self.assertEqual(sails["s1"]["look"]["camber"], 0.24)
         self.assertEqual(sails["s1"]["look"]["fill_gain"], 1.5)
         self.assertEqual(sails["main"]["look"]["twist_top"], 0.09)
         self.assertEqual(sails["main"]["look"]["fill_curve"], 4.0)
 
+    def test_old_depth_key_dropped(self):
+        # sail_visuals.md 4: `camber` replaced `depth`; an old class file still loads, the sidecar has no depth
+        with open(WM7) as f:
+            raw = json.load(f)
+        raw["visual"].setdefault("sails", {})["kite"] = {"look": {"depth": 0.3}}
+        b = Boat(classfile.resolve(raw), log=lambda *a: None)
+        look = physics.sail_data(b)["kite"]["look"]
+        self.assertNotIn("depth", look)
+        self.assertEqual(look["camber"], 0.26)
+
     def test_bad_look_keys(self):
         with open(WM7) as f:
             raw = json.load(f)
-        for look in ({"fill_gian": 1.0}, {"depth": "deep"}, {"depth": -1}, {"depth": float("nan")}):
+        for look in ({"fill_gian": 1.0}, {"camber": "deep"}, {"camber": -1}, {"camber": float("nan")},
+                     {"depth": -1}):
             r = copy.deepcopy(raw)
             r["visual"]["sails"]["kite"] = {"look": look}
             with self.assertRaises(classfile.ClassFileError):

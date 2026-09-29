@@ -7,7 +7,7 @@ import time
 
 import numpy as np
 
-from . import classfile, physics
+from . import classfile, physics, sail_set
 from .build import Boat
 
 
@@ -69,6 +69,8 @@ def main(argv=None):
         }
         with open(os.path.join(a.out, f"{cid}.physics.json"), "w") as f:
             json.dump(side, f, indent=1)
+        # the preview poses as drawn, for the game's sail shape parity test (sail_set.py)
+        sail_set.write_sets(boat, os.path.join(a.out, f"{cid}.sets.json"))
         h = side["hydrostatics"]
         log("  levels of detail: " + ", ".join(f"LOD{l['lod']} {l['triangles']} from {l['from_m']:.0f} m" for l in lods))
         log(f"  {glb}: {boat.tri_count()} triangles; displaced {h['displaced_mass_generated_kg']} kg "

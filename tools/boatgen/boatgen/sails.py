@@ -10,7 +10,7 @@ Two layers: the port-facing layer sits 1 mm to port, the starboard one 1 mm to s
 outward normal. uv0 is metric (chord metres, height metres) for tiling cloth; uv1 is (chord fraction, 1 - height
 fraction) with the starboard layer mirrored in u, so decals read correctly from both sides.
 
-`trim()` bends a copy of a sail into a sailing shape (camber and twist) for previews only.
+The preview poses set the sails with the game's shape and placement (sail_set.py).
 """
 import numpy as np
 
@@ -65,10 +65,10 @@ LOOK_DEFAULTS = {
     "main": {"fill_gain": 0.6, "fill_curve": 4.0, "flutter_amp": 0.15, "twist_top": 0.070},
     "jib": {"fill_gain": 0.75, "fill_curve": 1.2, "flutter_amp": 0.07, "twist_top": 0.105},
     "genoa": {"fill_gain": 0.75, "fill_curve": 1.2, "flutter_amp": 0.07, "twist_top": 0.105},
-    "code_zero": {"fill_gain": 0.7, "fill_curve": 1.3, "flutter_amp": 0.08, "twist_top": 0.140},
-    "spinnaker_asym": {"fill_gain": 1.0, "fill_curve": 1.0, "flutter_amp": 1.0, "twist_top": 0.0, "depth": 0.30,
+    "code_zero": {"fill_gain": 0.7, "fill_curve": 1.3, "flutter_amp": 0.08, "twist_top": 0.140, "camber": 0.12},
+    "spinnaker_asym": {"fill_gain": 1.0, "fill_curve": 1.0, "flutter_amp": 1.0, "twist_top": 0.0, "camber": 0.26,
                        "tack_line_max": 0.04},
-    "spinnaker_sym": {"fill_gain": 1.5, "fill_curve": 1.5, "flutter_amp": 1.0, "twist_top": 0.0, "depth": 0.35},
+    "spinnaker_sym": {"fill_gain": 1.5, "fill_curve": 1.5, "flutter_amp": 1.0, "twist_top": 0.0, "camber": 0.26},
 }
 
 
@@ -102,14 +102,15 @@ class Sail:
 
     def look(self, loa):
         """The sidecar `look` block (sail_visuals.md 4): the class file's visual.sails.<id>.look, with every
-        missing key filled from the defaults of the sail's type and the size rules."""
+        missing key filled from the defaults of the sail's type and the size rules. An old `depth` key is dropped
+        (sail_visuals.md 4: `camber` replaced it)."""
         d = dict(LOOK_DEFAULTS[self.type])
         d["flutter_rate"] = 0.6 + 2.4 * min(max((12.0 - loa) / 5.0, 0.0), 1.0)
         d["flutter_rate_max"] = 9.0 + min(max((loa - 7.0) / 5.0, 0.0), 1.0)
         if self.type in ("jib", "genoa", "code_zero"):
             d["furl_radius"] = 0.02 + 0.006 * self.chord_extent()
         d = {k: round(float(v), 6) for k, v in d.items()}
-        d.update(self.look_override)
+        d.update({k: v for k, v in self.look_override.items() if k != "depth"})
         return {k: d[k] for k in LOOK_KEYS if k in d}
 
     def part(self, P=None, gap=0.001):
@@ -140,29 +141,6 @@ class Sail:
         part.add("sailcloth", sb)
         return part
 
-    def trim(self, angle_deg, camber, twist_deg=8.0, draft_pos=0.42, side=-1.0):
-        """Sailing shape for previews: rotate about the luff by angle (to `side`: -1 starboard), add camber
-        (depth/chord) and twist that grows with height."""
-        P = self.P.copy()
-        nv, nu = P.shape[:2]
-        luff0, luff1 = P[0, 0], P[-1, 0]
-        axis = normalize(luff1 - luff0)
-        out = np.empty_like(P)
-        for i in range(nv):
-            f = i / max(nv - 1, 1)
-            row = P[i]
-            chord = row[-1] - row[0]
-            c = np.linalg.norm(chord)
-            u = np.linspace(0, 1, nu)
-            # camber line: max depth at draft_pos
-            prof = np.where(u < draft_pos, 1 - (1 - u / draft_pos) ** 2, 1 - ((u - draft_pos) / (1 - draft_pos)) ** 2)
-            depth = camber * c * (0.85 + 0.3 * f) * prof
-            row2 = row + side * np.array([0.0, 1.0, 0.0]) * depth[:, None]
-            ang = np.radians(angle_deg + twist_deg * f) * side
-            R = _rot(axis, -ang)
-            out[i] = (row2 - luff0) @ R.T + luff0
-        return out
-
 
 def _fill_normals(N):
     """Grid normals (rows, cols, 3) with every zero normal (a collapsed head vertex that no triangle with area
@@ -177,15 +155,6 @@ def _fill_normals(N):
                 good = N[ok]
                 N[i, j] = normalize(good.mean(0)) if len(good) else (0.0, 1.0, 0.0)
     return N
-
-
-def _rot(axis, a):
-    x, y, z = axis
-    c, s = np.cos(a), np.sin(a)
-    C = 1 - c
-    return np.array([[c + x * x * C, x * y * C - z * s, x * z * C + y * s],
-                     [y * x * C + z * s, c + y * y * C, y * z * C - x * s],
-                     [z * x * C - y * s, z * y * C + x * s, c + z * z * C]])
 
 
 def _solve_bulge(make, target, lo, hi, iters=30):

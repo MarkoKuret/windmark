@@ -1,7 +1,8 @@
 #!/bin/sh
 # Headless tests of the sail visuals (docs/specs/sail_visuals.md §12, WM-016.09): the numbered tests on the
 # GDScript reference and the native SailShape, native against reference, the vertex buffer against Godot's own
-# encoding, the generated wm7 and wm12 sails in BoatView, the update rate by distance and the cost per sail.
+# encoding, the generated wm7 and wm12 sails in BoatView, the generator's preview poses against BoatView (parity),
+# the update rate by distance and the cost per sail.
 # Builds the GDExtension when game/bin has no library and generates the boats when they are missing. Fails on any
 # failed check, script error or engine error. Nothing opens a window.
 #   game/tests/run_sail_visuals_test.sh [--rebuild] [--preview]
@@ -21,7 +22,8 @@ for a in "$@"; do
     esac
 done
 
-if [ ! -f "$here/generated/boats/wm7.glb" ] || [ ! -f "$here/generated/boats/wm12.glb" ]; then
+if [ ! -f "$here/generated/boats/wm7.glb" ] || [ ! -f "$here/generated/boats/wm12.glb" ] \
+        || [ ! -f "$here/generated/boats/wm7.sets.json" ]; then
     "$here/tests/run_boat_import_test.sh"
 fi
 if [ $rebuild -eq 1 ] || ! ls "$here"/bin/libwindmark_godot.* >/dev/null 2>&1; then

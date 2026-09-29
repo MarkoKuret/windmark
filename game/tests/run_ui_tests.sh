@@ -1,7 +1,8 @@
 #!/bin/sh
 # Headless tests of the controls (controls.md §8), cameras (cameras.md §10), the minimal HUD and the race HUD
 # (hud.md, tests/race_hud_test.gd: scripted race states and a race on the core), the audio (audio.md §11,
-# tests/audio_test.gd), including
+# tests/audio_test.gd), the frame-time overlay and its log (hud.md §17, tests/perf_test.gd, and the sail scene run
+# with --perf-log and --perf-seconds from the command line), including
 # runs of scenes/sail_test.tscn with scripted input on the core (free sailing on example_bay; the GDExtension is
 # built when missing) and on FakeSim with the example bay sea. Needs the generated boats: when
 # game/generated/boats has no wm7.glb, runs run_boat_import_test.sh first; when game/generated/sea has no core
@@ -39,19 +40,36 @@ sh "$here/native/register.sh"  # a built GDExtension loads at start-up (native/b
     cat "$here/generated/ui_import.log"; echo "import failed"; exit 1; }
 
 failed=0
-for t in controls_test cameras_test hud_test race_hud_test audio_test; do
+for t in controls_test cameras_test hud_test race_hud_test audio_test perf_test; do
     log="$here/generated/$t.log"
     set +e
     "$godot" --headless --path "$here" -s "res://tests/$t.gd" >"$log" 2>&1
     rc=$?
     set -e
-    grep -E "^- |FAIL|checks|HUD:|core race:|layline:|voices:|cost:" "$log" || true
+    grep -E "^- |FAIL|checks|HUD:|core race:|layline:|voices:|cost:|time_s|^  [0-9]" "$log" || true
     if [ $rc -ne 0 ] || grep -qE "SCRIPT ERROR|^ERROR|^WARNING" "$log"; then
         grep -E "SCRIPT ERROR|^ERROR|^WARNING" -A2 "$log" | head -20 || true
         echo "$t failed (full log: $log)"
         failed=1
     fi
 done
+# the measuring flags end to end: the sail scene as the game starts it, a log, and the quit after 3 s
+csv="$here/generated/perf_smoke.csv"
+rm -f "$csv"
+log="$here/generated/perf_smoke.log"
+set +e
+"$godot" --headless --path "$here" res://scenes/sail_test.tscn -- --fake --perf --perf-log="$csv" --perf-seconds=3 \
+    >"$log" 2>&1
+rc=$?
+set -e
+rows=$( [ -f "$csv" ] && wc -l <"$csv" | tr -d ' ' || echo 0)
+echo "- perf flags: exit $rc, $rows lines in $csv"
+if [ $rc -ne 0 ] || [ "$rows" -lt 3 ] || grep -qE "SCRIPT ERROR|^ERROR" "$log"; then
+    grep -E "SCRIPT ERROR|^ERROR|^WARNING" -A2 "$log" | head -20 || true
+    echo "perf flags failed (full log: $log)"
+    failed=1
+fi
+
 if [ $failed -ne 0 ]; then
     echo "ui tests failed"
     exit 1

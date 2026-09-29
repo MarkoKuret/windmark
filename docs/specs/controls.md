@@ -106,6 +106,8 @@ On the gamepad `View` is both `rankings` and `hud_density`: a press released wit
 longer one shows the ranking list while held; with the rankings toggle option the density keeps only the keyboard key
 and R4. The
 gamepad has no direct sail keys: D-pad left/right step a highlighted sail on the HUD sail strip, X sets it (§5.4).
+F9 toggles the frame-time overlay (`hud.md` §17), a development key outside the action table: it is not
+rebindable and not listed in the settings.
 
 **Free camera flying.** While the free camera is selected the boat's helm and sheet inputs fly it and the boat
 keeps its last `h_cmd` and `sheet_cmd` (a hold-to-steer key counts as released): `sheet_in` / `sheet_out` (W / S)

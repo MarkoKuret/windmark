@@ -301,6 +301,10 @@ colour-blind palettes).
 | screen-space reflections | no | no | yes |
 | sun shadows (§4.6) | 2 cascades to 60 m, no shadows on the sea | 4 cascades to 100 m | 4 blended cascades to 150 m |
 
+The tiers do not set the render scale (`menus.md` §3): it is its own setting, Auto by default (67 % above
+1920 × 1200 or on a HiDPI screen, else 100 %), and it scales every per-pixel cost here (the normal-map taps, the
+puff loop, the sail cloth) by its square.
+
 Budget: the water within 2.5 ms of GPU time per frame on the Steam Deck at 1280 × 800 on tier M. The vertex work is
 small (22 cosines per vertex, 1 M per frame on tier M); the pixel work is dominated by the normal-map taps and the
 puff loop (at most 10 patches). Every tier renders with Godot's Forward+; tier L also works on the Mobile renderer,

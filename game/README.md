@@ -14,6 +14,7 @@ controls, the cameras, the minimal HUD, the audio and a sail test scene that put
 | `native/` | The GDExtension: `CoreSim` over `core/include/windmark.h` and `SailShape` (the per-vertex sail shapes) in `src/`, `build.sh`, `CMakeLists.txt`. Godot skips the folder (`.gdignore`) |
 | `bin/` | The built extension library and `windmark.gdextension`. Not committed |
 | `scripts/settings.gd` | `Settings`: the player's settings (`docs/specs/menus.md` §3), saved in `user://settings.cfg`, read through `Settings.current()` and applied with `apply_*` |
+| `scripts/perf/` | `PerfMonitor` (the frame-time overlay and its CSV log, `docs/specs/hud.md` §17) and `PerfStats` (the per-frame section timings) |
 | `scripts/controls/` | Input map defaults, device reader, `PlayerControls` (boat commands), sail key mapping, the input frame |
 | `scripts/cameras/` | `CameraRig` and the chase, onboard, aerial and free cameras, shake, onboard eye point |
 | `scripts/hud/` | `Hud`, `HudValues`, formats, bars and trim gauges; the race HUD: `RaceHudValues`, `RaceText` (rule texts, flags, signals), `RadarView`, `FlagsView`, `RoundingArrowView`, `PenaltyRingView` |
@@ -213,6 +214,50 @@ others as Dictionaries with the C field names. `CoreSimSource` caches the per-bo
   auto-recentre), `Hud.assist` (Full, Standard, Minimal). Not implemented yet: mouse helm, one-hand layout,
   rebinding UI, vibration.
 
+## Measuring performance
+
+The sail scene carries a frame-time overlay (`docs/specs/hud.md` §17): F9 shows and hides it. It shows FPS, the
+frame time (mean and the 1 % worst over the last 5 s), the CPU time of the process step, the render thread's CPU
+time, the GPU time of the main view and of the other views (Godot's viewport render time measurement), draw calls,
+primitives and objects, the render scale, sizes, tier, boats and renderer, and the game's own sections in
+milliseconds per frame (`input`, `sim`, `hud`, `audio`, `sails`, `boats`, `wakes`, `sea`, `course`, `camera`).
+Flags after `--`:
+
+| flag | effect |
+| --- | --- |
+| `--perf` | the overlay shown from the start |
+| `--perf-log=PATH` | one CSV line per second to PATH (absolute, `user://`, or relative to the shell's folder) |
+| `--perf-seconds=N` | quit after N seconds (from the scene's start, after loading) |
+| `--render-scale=0.67` | this run's render scale (0.5 to 1, or 50 to 100), over the setting; not saved |
+| `--upscaler=fsr` | this run's upscaler: `fsr`, `bilinear` or `metalfx` (MetalFX spatial, Metal only) |
+
+A measured race in a window (asks the owner first: it opens one), 10 boats for 60 s:
+
+```
+godot --path game res://scenes/sail_test.tscn -- --race --fleet=10 --perf --perf-log=perf/race_m1.csv --perf-seconds=60
+```
+
+The CSV starts with a header line; each line is the means over one second: `time_s`, `frames`, `fps`,
+`frame_ms`, `frame_max_ms`, `frame_p99_ms` (1 % worst over the last 5 s), `process_ms`, `physics_ms`,
+`render_cpu_ms`, `setup_cpu_ms`, `gpu_ms` (main view), `gpu_other_ms` (other views: the wake normal buffer),
+`draw_calls`, `primitives`, `objects`, the sections `input_ms` … `camera_ms` with `sim_max_ms` (the slowest frame's
+simulation, the tick frames), then the set-up: `render_scale`, `render_w`, `render_h`, `window_w`, `window_h`,
+`upscaler`, `quality`, `boats`, `camera`, `renderer`, `driver`, `vsync`, `max_fps`. The GPU columns are 0 where
+the driver does not measure (headless). With vsync on the frame rate stops at the display's; turn it off in the
+settings (or compare `gpu_ms` with the frame time) to see the headroom. The first seconds include shader
+compilation.
+
+**Renderer comparison.** The project renders with Forward+. To try the Mobile renderer (built for tile-based GPUs
+such as Apple's M1) without changing the project, pass Godot's own flag before `--`:
+
+```
+godot --path game --rendering-method mobile res://scenes/sail_test.tscn -- --race --fleet=10 --perf-log=perf/race_mobile.csv --perf-seconds=60
+```
+
+The `renderer` column records which one ran. On Mobile, screen-space reflections (tier H) are not drawn and
+`water_render.md` §7 only promises tier L; the others may miss effects. Godot's `--rendering-driver` (`metal`,
+`vulkan`) picks the graphics API the same way.
+
 ## Sail visuals tests
 
 ```
@@ -300,6 +345,11 @@ Runs headless, with scripted input at fixed frame rates:
   wind state the core's, the HUD commands the local ones (while the core's lag a step); at the end the HUD
   numbers against the core's state; and a short wm12 run. The script writes the core sea samples first when they
   are missing, and builds the GDExtension when `game/bin` has none.
+- `tests/perf_test.gd`: the frame-time overlay (`hud.md` §17): the 1 % worst statistic, the sections, and the
+  sail scene (a three-boat race on the core, FakeSim without it) with the overlay shown and a log for 2.6 s of
+  real frames: every column, one line per second, the sections timed, F9 hiding it. The runner then starts the
+  sail scene as the game does with `--fake --perf --perf-log=generated/perf_smoke.csv --perf-seconds=3` and checks
+  that it quits with a log.
 
 To sail the test scene yourself (opens a window): `game/native/build.sh` once (the core; without it the scene
 runs on FakeSim), then `godot --path game res://scenes/sail_test.tscn` (after `--`: `--class=wm12` for the
@@ -308,7 +358,7 @@ runs on FakeSim), then `godot --path game res://scenes/sail_test.tscn` (after `-
 A/D helm (set and hold, ↓ centres), T auto-trim, W/S sheet, Space let fly, 1/2 sails, C camera, F5 to F8 camera
 modes, right mouse drag or IJKL orbit, wheel or O/U zoom, R recentre, Backspace reset (free sailing: back to the
 start point; race mode: restart the race), Esc pause, F10 hide HUD, G instrument density (Glance, Race, Data),
-B select the next boat for a name tag (or click a boat), N name tags on and off.
+B select the next boat for a name tag (or click a boat), N name tags on and off, F9 the frame-time overlay.
 
 ## Menus
 
@@ -322,7 +372,8 @@ game/tests/run_menus_test.sh
 ```
 
 checks that the lists match the files on disk, that a quick race and a free sail write `GameSetup` and ask for
-the sail scene, keyboard navigation, the settings file round trip, the apply calls, the layout at 1280 × 800 at
+the sail scene, keyboard navigation, the settings file round trip, the apply calls (the render scale on the
+root viewport's 3D scale and upscaler, Auto's rule), the layout at 1280 × 800 at
 every UI scale, and the pause menu over the sail scene on FakeSim. To look at the menus (opens a window):
 `godot --path game`.
 

@@ -54,6 +54,8 @@ var captions := false
 
 # ---- graphics (water_render.md §7) ----
 var quality := SeaQuality.Tier.M
+## the 3D view's share of the window's pixels in each direction (menus.md §3): 0 = Auto, else one of RENDER_SCALES
+var render_scale := 0.0
 var fullscreen := false
 var vsync := true
 ## frames per second, 0 = no limit
@@ -77,11 +79,24 @@ const FIELDS := {
 	"cameras": ["camera_speed", "invert_orbit_x", "invert_orbit_y", "invert_look_x", "invert_look_y", "heel_follow",
 		"smooth_switch", "reduced_motion"],
 	"hud": ["assist", "hud_density", "ui_scale", "palette", "captions"],
-	"graphics": ["quality", "fullscreen", "vsync", "fps_limit"],
+	"graphics": ["quality", "render_scale", "fullscreen", "vsync", "fps_limit"],
 	"audio": ["master_volume", "effects_volume", "signals_volume", "voice_volume", "ambience_volume",
 		"interface_volume"],
 	"menu": ["last_setup"],
 }
+
+## the render scale choices (menus.md §3); 0 is Auto
+const RENDER_SCALES := [0.0, 0.5, 0.67, 0.75, 0.85, 1.0]
+## what Auto picks on a large or HiDPI window, and the window sizes that count as large
+const AUTO_RENDER_SCALE := 0.67
+const AUTO_LARGE := Vector2i(1920, 1200)
+const AUTO_LARGE_HIDPI := Vector2i(1280, 800)
+
+## Session overrides from the command line (the sail scene's --render-scale and --upscaler), not saved:
+## a scale > 0 replaces the setting; "fsr", "bilinear" or "metalfx" replaces the upscaler's choice.
+static var render_scale_override := 0.0
+static var upscaler_override := ""
+static var _resize_hooked: Window = null
 
 ## audio setting -> the buses it drives (audio.md §1.1)
 const BUSES := {
@@ -153,6 +168,7 @@ func _clamp() -> void:
 	assist = clampi(assist, 0, 2) as Hud.Assist
 	hud_density = clampi(hud_density, -1, 2)
 	quality = clampi(quality, 0, 2) as SeaQuality.Tier
+	render_scale = 0.0 if render_scale < 0.25 else clampf(render_scale, 0.5, 1.0)
 	fps_limit = maxi(fps_limit, 0)
 	for f in BUSES:
 		set(f, clampf(get(f), 0.0, 1.0))
@@ -244,18 +260,86 @@ func apply_sea(sea: Sea, sky: SkyRig = null) -> void:
 		SeaQuality.apply_environment(sky.environment(), quality)
 
 
-## Display mode, vsync, frame rate limit and UI scale (the root window's content scale).
+## Display mode, vsync, frame rate limit, UI scale (the root window's content scale) and render scale.
 func apply_display(win: Window) -> void:
 	Engine.max_fps = fps_limit
 	if win == null:
 		return
 	win.content_scale_factor = ui_scale
+	apply_render_scale(win)
 	if DisplayServer.get_name() == "headless":
 		return
 	var want := Window.MODE_FULLSCREEN if fullscreen else Window.MODE_WINDOWED
 	if win.mode != want:
 		win.mode = want
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if vsync else DisplayServer.VSYNC_DISABLED)
+
+
+## Auto's render scale for a window of `px` pixels on a screen the system scales by `screen_scale` (menus.md §3):
+## 67 % above 1920 x 1200, or above 1280 x 800 on a HiDPI screen; else 100 %.
+static func auto_render_scale(px: Vector2i, screen_scale: float) -> float:
+	var big := px.x > AUTO_LARGE.x or px.y > AUTO_LARGE.y
+	var hidpi := screen_scale > 1.0 and (px.x > AUTO_LARGE_HIDPI.x or px.y > AUTO_LARGE_HIDPI.y)
+	return AUTO_RENDER_SCALE if big or hidpi else 1.0
+
+
+## The render scale in effect for a window: the command-line override, the setting, or Auto resolved.
+func effective_render_scale(win: Window) -> float:
+	if render_scale_override > 0.0:
+		return clampf(render_scale_override, 0.25, 1.0)
+	if render_scale > 0.0:
+		return render_scale
+	var px := win.size if win != null else Vector2i(1280, 800)
+	var screen := DisplayServer.window_get_current_screen() if DisplayServer.get_name() != "headless" else 0
+	return auto_render_scale(px, DisplayServer.screen_get_scale(screen))
+
+
+## The upscaler for a scale below 1 (menus.md §3): FSR 1.0 on the Forward+ and Mobile renderers, bilinear on
+## Compatibility; MetalFX spatial only when asked for on the command line (and on Metal).
+static func upscaler(scale: float) -> Viewport.Scaling3DMode:
+	if scale >= 1.0:
+		return Viewport.SCALING_3D_MODE_BILINEAR
+	var rd := RenderingServer.get_current_rendering_method() in ["forward_plus", "mobile"]
+	match upscaler_override:
+		"bilinear":
+			return Viewport.SCALING_3D_MODE_BILINEAR
+		"metalfx":
+			if rd and RenderingServer.get_current_rendering_driver_name() == "metal":
+				return Viewport.SCALING_3D_MODE_METALFX_SPATIAL
+	return Viewport.SCALING_3D_MODE_FSR if rd else Viewport.SCALING_3D_MODE_BILINEAR
+
+
+static func upscaler_name(mode: Viewport.Scaling3DMode) -> String:
+	match mode:
+		Viewport.SCALING_3D_MODE_FSR:
+			return "FSR"
+		Viewport.SCALING_3D_MODE_FSR2:
+			return "FSR2"
+		Viewport.SCALING_3D_MODE_METALFX_SPATIAL:
+			return "MetalFX"
+		Viewport.SCALING_3D_MODE_METALFX_TEMPORAL:
+			return "MetalFX temporal"
+	return "bilinear"
+
+
+## The 3D view's resolution (the root viewport's scaling_3d_scale and upscaler); the 2D stays native. Auto is
+## resolved again when the window changes size.
+func apply_render_scale(win: Window) -> void:
+	if win == null:
+		return
+	var sc := effective_render_scale(win)
+	win.scaling_3d_scale = sc
+	win.scaling_3d_mode = upscaler(sc)
+	if _resize_hooked != win:
+		if is_instance_valid(_resize_hooked) and _resize_hooked.size_changed.is_connected(_window_resized):
+			_resize_hooked.size_changed.disconnect(_window_resized)
+		win.size_changed.connect(_window_resized)
+		_resize_hooked = win
+
+
+static func _window_resized() -> void:
+	if is_instance_valid(_resize_hooked):
+		Settings.current().apply_render_scale(_resize_hooked)
 
 
 ## Volumes on the buses of audio.md §1.1 (made here when missing, AudioBuses).

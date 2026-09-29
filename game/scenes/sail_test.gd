@@ -2,7 +2,8 @@ extends Node3D
 ## Sail test scene: one generated boat sailing freely on the example bay, with the cameras, the controls, the
 ## minimal HUD, the sea, its wakes, the daytime sky and the sound (GameAudio). Frame order: read input, controls,
 ## ticks (stamp, step, HUD values, audio inputs, sail snapshots), sea render time, render pose, boat, sails and
-## wakes, cameras, HUD, audio; the Sea and SeaWakes nodes draw after. Headless tests drive it with `scripted_input` and step_frame().
+## wakes, cameras, HUD, audio; the Sea and SeaWakes nodes draw after. A PerfMonitor (hud.md §17) times each
+## part. Headless tests drive it with `scripted_input` and step_frame().
 ##
 ## The simulation (`sim_kind`): the Windmark core through CoreSimSource (the GDExtension, game/native/build.sh)
 ## on the venue `venue` without a race (free sailing, place_boat), or the FakeSim placeholder. AUTO takes the
@@ -103,6 +104,14 @@ var target := CamTypes.Target.new()
 var viewed := 0
 ## tests: when set, used instead of the devices every frame
 var scripted_input: RawInput = null
+## the frame-time overlay and log (hud.md §17, PerfMonitor): F9 shows it; --perf shows it from the start,
+## --perf-log=PATH writes the per-second CSV, --perf-seconds=N quits after N seconds
+var perf: PerfMonitor
+var perf_overlay := false
+var perf_log := ""
+var perf_seconds := 0.0
+## µs spent in the tick callbacks' HUD, audio and course parts this frame (taken out of `sim`)
+var _tick_usec := 0
 
 var _chat: LineEdit
 var _paused_label: Label
@@ -178,6 +187,15 @@ func _ready() -> void:
 	_update_target(0.0)
 	set_process(auto_process)
 	_add_pause_menu()
+	if Settings.render_scale_override > 0.0 or Settings.upscaler_override != "":
+		Settings.current().apply_render_scale(get_tree().root)
+	perf = PerfMonitor.new()
+	perf.name = "Perf"
+	perf.scene = self
+	perf.overlay = perf_overlay
+	perf.log_path = perf_log
+	perf.seconds = perf_seconds
+	add_child(perf)
 
 
 ## The pause menu (scenes/menu, menus.md §2): it follows the scene's pause key, holds the controls while open and
@@ -215,7 +233,8 @@ func _apply_setup() -> void:
 ## `--fleet`), `--free`, `--fleet=10`, `--level=expert` (easy, intermediate, expert, pro), `--speed-only`,
 ## `--watch` (an AI sails the player's boat too, spectating on), `--class=wm12`, `--venue=<id>`,
 ## `--course=<venue>/<id>` (race mode), `--seed=<n>` (0: from the clock), `--wind=<kn>`, `--wind-from=<deg>`,
-## `--fake` (FakeSim), `--core`.
+## `--fake` (FakeSim), `--core`; measuring (hud.md §17): `--perf` (the frame-time overlay), `--perf-log=PATH`,
+## `--perf-seconds=N`, `--render-scale=0.67` and `--upscaler=fsr|bilinear|metalfx` (this run only, not saved).
 func _user_args() -> void:
 	var fleet_given := false
 	var race_flag := false
@@ -253,6 +272,17 @@ func _user_args() -> void:
 			sim_kind = SimKind.FAKE
 		elif a == "--core":
 			sim_kind = SimKind.CORE
+		elif a == "--perf":
+			perf_overlay = true
+		elif a.begins_with("--perf-log="):
+			perf_log = a.trim_prefix("--perf-log=")
+		elif a.begins_with("--perf-seconds="):
+			perf_seconds = a.trim_prefix("--perf-seconds=").to_float()
+		elif a.begins_with("--render-scale="):
+			var v := a.trim_prefix("--render-scale=").to_float()
+			Settings.render_scale_override = v / 100.0 if v > 1.0 else v
+		elif a.begins_with("--upscaler="):
+			Settings.upscaler_override = a.trim_prefix("--upscaler=").to_lower()
 	if race_flag and not fleet_given and fleet_size < 2:
 		fleet_size = GameSetup.new().fleet_size
 	if watch:
@@ -410,11 +440,20 @@ func _setup_fake() -> int:
 
 
 func _on_tick(_t: int) -> void:
+	var t0 := Time.get_ticks_usec()
 	hud.tick(sim, viewed)
+	var t1 := Time.get_ticks_usec()
 	audio.tick()
+	var t2 := Time.get_ticks_usec()
 	_snapshot_sails()
+	var t3 := Time.get_ticks_usec()
 	if course_view:
 		course_view.tick()
+	var t4 := Time.get_ticks_usec()
+	PerfStats.add(&"hud", t1 - t0)
+	PerfStats.add(&"audio", t2 - t1)
+	PerfStats.add(&"course", t4 - t3)
+	_tick_usec += (t2 - t0) + (t4 - t3)
 
 
 ## FakeSim: the sea of the chosen source, shared with the sim; the sim's wind from the core scenario when there
@@ -464,38 +503,69 @@ func _notification(what: int) -> void:
 		controls.set_window_focus(true)
 
 
+## One frame; each part is timed into its PerfStats section (hud.md §17).
 func step_frame(dt: float) -> void:
+	var t0 := Time.get_ticks_usec()
 	var raw := scripted_input if scripted_input != null else reader.read()
 	_ui_actions(raw)
 	hud.ui_input(raw, dt)
 	controls.free_camera = rig.mode == CameraRig.Mode.FREE
 	controls.update(raw, dt)
+	var t1 := Time.get_ticks_usec()
+	PerfStats.add(&"input", t1 - t0)
+	_tick_usec = 0
 	runner.advance(dt)
+	var t2 := Time.get_ticks_usec()
+	PerfStats.add(&"sim", t2 - t1 - _tick_usec)
 	_update_sea_time(runner.alpha())
+	PerfStats.add(&"sea", Time.get_ticks_usec() - t2)
 	_update_target(runner.alpha())
+	var t3 := Time.get_ticks_usec()
 	if course_view:
 		course_view.frame(dt, rig.camera.global_position, target.pose)
 		rig.aerial.next_mark = course_view.next_mark_scene()
+	var t4 := Time.get_ticks_usec()
+	PerfStats.add(&"course", t4 - t3)
 	var cin := CameraInput.from_raw(raw if not controls.text_focus else raw.without_buttons(), controls.free_camera)
 	rig.frame(target, cin, dt)
+	var t5 := Time.get_ticks_usec()
+	PerfStats.add(&"camera", t5 - t4)
 	hud.frame(dt, controls)
+	var t6 := Time.get_ticks_usec()
+	PerfStats.add(&"hud", t6 - t5)
 	audio.viewed = viewed
 	audio.paused = runner.paused
 	audio.countdown_beeps = hud.assist == Hud.Assist.FULL
 	audio.frame(dt, rig.camera, rig.mode == CameraRig.Mode.ONBOARD)
+	PerfStats.add(&"audio", Time.get_ticks_usec() - t6)
 
 
+## Every boat node at its render pose: the boat (`boats`), its sails (`sails`) and its wake (`wakes`), timed into
+## those PerfStats sections.
 func _update_target(alpha: float) -> void:
 	var n := mini(sim.boat_count(), boat_views.size())
+	var us_boats := 0
+	var us_sails := 0
+	var us_wakes := 0
 	for b in n:
+		var ta := Time.get_ticks_usec()
 		var p := sim.render_pose(b, alpha)
 		var v := boat_views[b]
 		v.apply(p)
+		var tb := Time.get_ticks_usec()
 		v.apply_sails(_sails_prev_all[b] if b < _sails_prev_all.size() else null,
 			_sails_cur_all[b] if b < _sails_cur_all.size() else null, alpha)
+		var tc := Time.get_ticks_usec()
 		wakes.update_boat(b, _wake_state(b, p))
+		var td := Time.get_ticks_usec()
+		us_boats += tb - ta
+		us_sails += tc - tb
+		us_wakes += td - tc
 		if b == viewed:
 			target.pose = p
+	PerfStats.add(&"boats", us_boats)
+	PerfStats.add(&"sails", us_sails)
+	PerfStats.add(&"wakes", us_wakes)
 
 
 ## SeaWakes.update_boat state: the render pose and the class waterline (perf dynamics lwl, bwl).

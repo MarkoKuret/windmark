@@ -39,10 +39,19 @@ game has the setting and is saved when the settings screen closes, to one file p
 | Controls | helm key mode, stick dead zone, stick curve, sheet key rate, hold or toggle for let fly, fine helm, rankings and camera boost, sheet turns auto trim off, vibration (off, 10 % to 100 %), the bindings (shown; rebinding comes later) |
 | Cameras | camera and look speed, invert orbit X and Y, invert look X and Y, onboard heel follow, smooth switch, reduced motion |
 | HUD | assist preset (Full, Standard, Minimal; online lobbies may force a lower one), instruments (Auto, Glance, Race, Data: the density of `hud.md` §16.1; Auto picks the device default, the `hud_density` key stores its choice here), UI scale (80 % to 130 %), colour-blind palette (standard, deuteranopia, protanopia, tritanopia), captions |
-| Graphics | quality (Low, Medium, High: the tiers of `water_render.md` §7, default Medium), display (windowed, fullscreen), vsync, frame rate limit (off, 30, 60, 90, 120, 144) |
+| Graphics | quality (Low, Medium, High: the tiers of `water_render.md` §7, default Medium), render scale (Auto, 50 %, 67 %, 75 %, 85 %, 100 %; default Auto; below), display (windowed, fullscreen), vsync, frame rate limit (off, 30, 60, 90, 120, 144) |
 | Audio | master, effects, signals, voice, ambience, interface volumes, 0 to 100 % (default 100 %, master 80 %) |
 
 **Reset section** restores the section's defaults.
+
+**Render scale.** The 3D view is drawn at that fraction of the window's pixels in each direction and upscaled to
+the window; the HUD, the menus and everything 2D stay at the window's native resolution. The upscaler is AMD FSR
+1.0 (edge-adaptive upscale and sharpening) on the Forward+ and Mobile renderers, bilinear where FSR is not there
+(Compatibility); at 100 % nothing is upscaled. **Auto** picks 67 % when the window is larger than 1920 × 1200
+pixels (wider than 1920 or taller than 1200), or larger than 1280 × 800 on a HiDPI screen (the system scales the
+screen, as on Retina Macs); otherwise 100 %. So a MacBook's 2560 × 1600 Retina screen renders the 3D at
+1715 × 1072 and the Steam Deck's 1280 × 800 at full size. Auto is resolved again whenever the display settings
+apply and when the window changes size. The setting is independent of the quality tier.
 
 ## 4. Look and input
 

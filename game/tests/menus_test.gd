@@ -74,6 +74,7 @@ func _odd_settings() -> Settings:
 	s.palette = "tritanopia"
 	s.captions = true
 	s.quality = SeaQuality.Tier.H
+	s.render_scale = 0.75
 	s.fullscreen = true
 	s.vsync = false
 	s.fps_limit = 90
@@ -110,6 +111,7 @@ func test_settings_round_trip() -> void:
 	cf.set_value("controls", "stick_curve", 9.0)
 	cf.set_value("hud", "assist", 7)
 	cf.set_value("graphics", "vsync", 3)
+	cf.set_value("graphics", "render_scale", 7)
 	cf.save(TEST_PATH)
 	var d := Settings.new()
 	d.load_file(TEST_PATH)
@@ -117,6 +119,8 @@ func test_settings_round_trip() -> void:
 	t.near(d.stick_curve, 3.0, 1e-9, "curve clamped to 3.0")
 	t.ok(d.assist == Hud.Assist.MINIMAL, "assist clamped to Minimal")
 	t.ok(d.vsync == true, "vsync of the wrong type keeps the default")
+	t.near(d.render_scale, 1.0, 1e-9, "render scale clamped to 100 %")
+	t.near(Settings.new().render_scale, 0.0, 0.0, "render scale defaults to Auto")
 	t.ok(Settings.new().load_file("user://no_such_settings.cfg") != OK, "missing file: defaults")
 	s.reset("audio")
 	t.near(s.master_volume, fresh.master_volume, 1e-9, "reset a section: audio back to defaults")
@@ -157,10 +161,50 @@ func test_apply() -> void:
 	t.near(root.content_scale_factor, 1.15, 1e-6, "display: UI scale")
 	Engine.max_fps = fps
 	root.content_scale_factor = scale
+	test_render_scale(s)
 	s.apply_audio()
 	var m := AudioServer.get_bus_index("Master")
 	t.near(AudioServer.get_bus_volume_db(m), linear_to_db(0.5), 1e-3, "audio: master volume")
 	Settings.new().apply_audio()
+
+
+## menus.md §3 render scale: the setting on the root viewport's 3D scale and upscaler, the 2D untouched, Auto's
+## rule, the command-line override.
+func test_render_scale(s: Settings) -> void:
+	var sc0 := root.scaling_3d_scale
+	var mode0 := root.scaling_3d_mode
+	var cs0 := root.content_scale_factor
+	s.apply_display(root)
+	t.near(root.scaling_3d_scale, 0.75, 1e-6, "render scale: 75 % on the viewport's 3D scale")
+	var rd := RenderingServer.get_current_rendering_method() in ["forward_plus", "mobile"]
+	t.ok(root.scaling_3d_mode == (Viewport.SCALING_3D_MODE_FSR if rd else Viewport.SCALING_3D_MODE_BILINEAR),
+		"render scale: FSR 1.0 upscales on %s (mode %d)" % [RenderingServer.get_current_rendering_method(),
+		root.scaling_3d_mode])
+	t.near(root.content_scale_factor, 1.15, 1e-6, "render scale leaves the 2D (UI scale) alone")
+	var a := Settings.new()
+	a.render_scale = 0.0
+	a.apply_render_scale(root)
+	var want := Settings.auto_render_scale(root.size, DisplayServer.screen_get_scale())
+	t.near(root.scaling_3d_scale, want, 1e-6, "Auto on a %s window: %.2f" % [root.size, want])
+	a.render_scale = 1.0
+	a.apply_render_scale(root)
+	t.ok(root.scaling_3d_mode == Viewport.SCALING_3D_MODE_BILINEAR and absf(root.scaling_3d_scale - 1.0) < 1e-6,
+		"100 %: no upscaler")
+	for c in [[Vector2i(2560, 1600), 2.0, 0.67], [Vector2i(2560, 1600), 1.0, 0.67], [Vector2i(3840, 2160), 1.0, 0.67],
+			[Vector2i(1920, 1200), 1.0, 1.0], [Vector2i(1920, 1080), 1.0, 1.0], [Vector2i(1280, 800), 1.0, 1.0],
+			[Vector2i(1280, 800), 2.0, 1.0], [Vector2i(1440, 900), 2.0, 0.67], [Vector2i(2560, 1080), 1.0, 0.67]]:
+		t.near(Settings.auto_render_scale(c[0], c[1]), c[2], 1e-9, "Auto at %s, screen scale %.1f" % [c[0], c[1]])
+	Settings.render_scale_override = 0.5
+	a.apply_render_scale(root)
+	t.near(root.scaling_3d_scale, 0.5, 1e-6, "command-line override replaces the setting")
+	Settings.upscaler_override = "bilinear"
+	a.apply_render_scale(root)
+	t.ok(root.scaling_3d_mode == Viewport.SCALING_3D_MODE_BILINEAR, "command-line upscaler override")
+	Settings.render_scale_override = 0.0
+	Settings.upscaler_override = ""
+	root.scaling_3d_scale = sc0
+	root.scaling_3d_mode = mode0
+	root.content_scale_factor = cs0
 
 
 func _key(action: String) -> void:
@@ -241,6 +285,21 @@ func test_main_menu() -> void:
 	saved.load_file(TEST_PATH)
 	t.ok(saved.fps_limit == 60 and m.page == "", "settings saved on close")
 	Engine.max_fps = 0
+	# render scale from the settings screen: applied to the viewport at once, saved on close
+	m.open_page("settings")
+	await process_frame
+	m.settings_panel.show_section("graphics")
+	var rs_row: MenuRow = m.settings_panel.rows.get("render_scale")
+	t.ok(rs_row != null and rs_row.choices == Settings.RENDER_SCALES, "graphics: render scale row with its choices")
+	if rs_row != null:
+		t.ok(String(rs_row.names[0]).begins_with("Auto ("), "the Auto choice shows its pick: %s" % rs_row.names[0])
+		rs_row.set_value(0.67, true)
+		t.near(root.scaling_3d_scale, 0.67, 1e-6, "render scale 67 % applied to the viewport at once")
+		m.settings_panel.close()
+		saved.load_file(TEST_PATH)
+		t.near(saved.render_scale, 0.67, 1e-9, "render scale saved on close")
+		m.settings.render_scale = 0.0
+		m.settings.apply_display(root)
 	# every section builds its rows, the bindings are shown
 	for sec in SettingsPanel.SECTIONS:
 		m.settings_panel.show_section(sec)

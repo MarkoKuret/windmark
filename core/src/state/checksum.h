@@ -15,6 +15,10 @@ class Fnv1a64 {
   static constexpr std::uint64_t kPrime = 0x00000100000001B3ull;
 
   void update(std::span<const std::uint8_t> bytes);
+  void update_u8(std::uint8_t b) {
+    h_ ^= b;
+    h_ *= kPrime;
+  }
   void update_u32(std::uint32_t v);  // little endian
   std::uint64_t value() const { return h_; }
 
@@ -24,23 +28,38 @@ class Fnv1a64 {
 
 std::uint64_t fnv1a64(std::span<const std::uint8_t> bytes);
 
-// Serialises state in the order a spec lists it.
+// Serialises state in the order a spec lists it. A writer made with a hash (the tick checksum) keeps no bytes: each
+// byte goes into the hash as it is written, so the checksum is the FNV-1a 64 of exactly the bytes a plain writer
+// would hold, without building them.
 class SnapshotWriter {
  public:
-  void put_u8(std::uint8_t v) { bytes_.push_back(v); }
-  void put_i8(std::int8_t v) { bytes_.push_back(static_cast<std::uint8_t>(v)); }
-  void put_bool(bool v) { bytes_.push_back(v ? 1 : 0); }
+  SnapshotWriter() = default;
+  explicit SnapshotWriter(Fnv1a64& hash) : hash_(&hash) {}
+
+  void put_u8(std::uint8_t v) {
+    if (hash_ != nullptr) {
+      hash_->update_u8(v);
+    } else {
+      bytes_.push_back(v);
+    }
+  }
+  void put_i8(std::int8_t v) { put_u8(static_cast<std::uint8_t>(v)); }
+  void put_bool(bool v) { put_u8(v ? 1 : 0); }
   void put_u16(std::uint16_t v);
   void put_u32(std::uint32_t v);
   void put_i32(std::int32_t v) { put_u32(static_cast<std::uint32_t>(v)); }
   void put_u64(std::uint64_t v);
   void put_f32(float v);  // raw bits, so -0 and NaN payloads are kept
 
+  // The bytes written; always empty for a hashing writer.
   const std::vector<std::uint8_t>& bytes() const { return bytes_; }
   void clear() { bytes_.clear(); }
 
  private:
+  void put_bytes(const std::uint8_t* b, std::size_t n);
+
   std::vector<std::uint8_t> bytes_;
+  Fnv1a64* hash_ = nullptr;
 };
 
 // Reads what SnapshotWriter wrote. Reading past the end sets failed() and returns zeros.
@@ -70,7 +89,7 @@ class SnapshotReader {
 
 // Tick checksum: FNV-1a 64 over the tick index (uint32 LE) then each block's bytes in order (the world snapshot
 // body of conventions.md §9.1: the boats in index order, the collision pair set, the race, the rules, the carried
-// tick outputs).
+// tick outputs). The world hashes its body through a hashing SnapshotWriter instead; this form is the reference.
 std::uint64_t tick_checksum(std::uint32_t tick, std::span<const std::vector<std::uint8_t>> boat_snapshots);
 
 }  // namespace wm

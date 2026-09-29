@@ -46,7 +46,7 @@ int count(const Outcome& o, wm::RulesEventKind k) {
 
 }  // namespace
 
-TEST_CASE("full race: a headless race with penalties, and determinism") {
+TEST_CASE("full race: a headless race with penalties, and determinism" * doctest::test_suite("long")) {
   const Outcome a = run_race(20260925);
   REQUIRE(!a.results.empty());
   MESSAGE("race closed after ", a.ticks, " ticks (", static_cast<float>(a.ticks) * wm::DT, " s)");

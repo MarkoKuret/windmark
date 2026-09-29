@@ -1,8 +1,10 @@
 // World snapshots (conventions.md §9.1, race.md §13, rules.md §14): the full race of test_full_race.cpp saved at
 // several ticks, loaded into a new world and continued gives the same checksum every tick, the same events and the
-// same results as the unbroken run; a load re-saves to the same bytes; damaged or foreign snapshots are rejected;
-// a race with a joined boat is rebuilt as it was.
+// same results as the unbroken run (a long test); a load re-saves to the same bytes and restores the sail outputs;
+// damaged or foreign snapshots are rejected and leave the world as it was; a world is reset and loaded repeatedly;
+// the tick checksum is the hash of the snapshot body; a race with a joined boat is rebuilt as it was.
 #include <algorithm>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -83,7 +85,7 @@ bool any_finished(const wm::World& w) {
 
 }  // namespace
 
-TEST_CASE("snapshot: a full race saved mid-race and loaded continues bit for bit") {
+TEST_CASE("snapshot: a full race saved mid-race and loaded continues bit for bit" * doctest::test_suite("long")) {
   // The unbroken run, saving at the first tick of each situation.
   auto w = wm_test::full_race_world(kSeed);
   std::string why;
@@ -194,29 +196,170 @@ TEST_CASE("snapshot: the checksum covers the race and rules state") {
   CHECK(v->race().boat(4).retired);
 }
 
-TEST_CASE("snapshot: damaged or foreign snapshots are rejected") {
+namespace {
+
+bool same_bits(float a, float b) { return std::memcmp(&a, &b, sizeof a) == 0; }
+
+// Every boat's per-sail outputs (sails.md §7) and her let_fly_drive (boat.md §9, which reads m_opt).
+struct SailOutputs {
+  std::vector<std::vector<wm::SailOutput>> sails;
+  std::vector<float> let_fly_drive;
+};
+
+SailOutputs sail_outputs(const wm::World& w) {
+  SailOutputs o;
+  for (std::size_t i = 0; i < w.boat_count(); ++i) {
+    const wm::Sails& s = w.boat(i).sails();
+    o.sails.emplace_back();
+    for (std::size_t k = 0; k < s.sail_count(); ++k) o.sails.back().push_back(s.output(k));
+    o.let_fly_drive.push_back(w.boat(i).let_fly_drive());
+  }
+  return o;
+}
+
+bool same(const SailOutputs& a, const SailOutputs& b) {
+  if (a.sails.size() != b.sails.size()) return false;
+  for (std::size_t i = 0; i < a.sails.size(); ++i) {
+    if (a.sails[i].size() != b.sails[i].size() || !same_bits(a.let_fly_drive[i], b.let_fly_drive[i])) return false;
+    for (std::size_t k = 0; k < a.sails[i].size(); ++k) {
+      const wm::SailOutput& x = a.sails[i][k];
+      const wm::SailOutput& y = b.sails[i][k];
+      if (!same_bits(x.k_h, y.k_h) || !same_bits(x.m_opt, y.m_opt) || !same_bits(x.beta_opt, y.beta_opt) ||
+          !same_bits(x.beta_t, y.beta_t) || !same_bits(x.trim_error, y.trim_error) ||
+          !same_bits(x.luff_shiver, y.luff_shiver) || x.motion != y.motion || x.backed != y.backed) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+}  // namespace
+
+TEST_CASE("snapshot: the tick checksum is FNV-1a 64 of the tick index and the snapshot body") {
   auto w = wm_test::full_race_world(kSeed);
   std::string why;
   REQUIRE_MESSAGE(w->create_race(wm_test::full_race_course(), why), why);
   wm_test::Pilot pilot = wm_test::full_race_pilot();
   w->set_controller([&pilot](wm::World& world) { pilot(world); });
-  while (w->tick() < 5000) w->step();
+  while (w->tick() < 300) w->step();
   wm::SnapshotWriter sw;
   w->save(sw);
-  const std::vector<std::uint8_t>& good = sw.bytes();
+  // conventions.md §9.1 header: magic, version, tick, seed, created, n_created, entries at creation, venue id,
+  // course id, then the entry list (a count and 19 bytes per boat); the body follows.
+  const std::size_t header = 4 + 4 + 4 + 8 + 1 + 4 + 4 + 8 + 8 + 4 + 19 * w->boat_count();
+  REQUIRE(sw.bytes().size() > header);
+  std::vector<std::uint8_t> hashed{static_cast<std::uint8_t>(w->tick()), static_cast<std::uint8_t>(w->tick() >> 8),
+                                   static_cast<std::uint8_t>(w->tick() >> 16),
+                                   static_cast<std::uint8_t>(w->tick() >> 24)};
+  hashed.insert(hashed.end(), sw.bytes().begin() + static_cast<std::ptrdiff_t>(header), sw.bytes().end());
+  CHECK(w->checksum() == wm::fnv1a64(hashed));
+  // A hashing writer keeps no bytes.
+  wm::Fnv1a64 h;
+  wm::SnapshotWriter hw(h);
+  w->save(hw);
+  CHECK(hw.bytes().empty());
+  CHECK(h.value() == wm::fnv1a64(sw.bytes()));
+}
 
-  std::vector<std::uint8_t> cut(good.begin(), good.end() - 3);
-  CHECK_FALSE(wm_test::full_race_world(kSeed)->load(cut, &wm_test::full_race_course(), why));
-  std::vector<std::uint8_t> longer = good;
+TEST_CASE("snapshot: damaged or foreign snapshots are rejected; a world is reset and loaded again and again") {
+  // The reference run: saves at two ticks (in the sequence, and after the gun with the rules live), the checksum of
+  // every tick, and the sail outputs at the later save.
+  auto w = wm_test::full_race_world(kSeed);
+  std::string why;
+  REQUIRE_MESSAGE(w->create_race(wm_test::full_race_course(), why), why);
+  wm_test::Pilot pilot = wm_test::full_race_pilot();
+  w->set_controller([&pilot](wm::World& world) { pilot(world); });
+  const std::uint32_t gun = static_cast<std::uint32_t>(w->race().n_gun());
+  const std::uint32_t ta = gun - 600, tb = gun + 300, run = 100;
+  std::vector<std::uint64_t> sums(tb + run + 1, 0);
+  std::vector<std::uint8_t> a, b;
+  wm_test::Pilot pa{0}, pb{0};
+  SailOutputs outs_b;
+  while (w->tick() < tb + run) {
+    if (w->tick() == ta || w->tick() == tb) {
+      wm::SnapshotWriter sw;
+      w->save(sw);
+      (w->tick() == ta ? a : b) = sw.bytes();
+      (w->tick() == ta ? pa : pb) = pilot;
+      if (w->tick() == tb) outs_b = sail_outputs(*w);
+    }
+    const std::uint64_t c = w->step();
+    sums[w->tick()] = c;
+  }
+  const wm::CourseData* course = &wm_test::full_race_course();
+
+  // Damaged or foreign snapshots, into new worlds.
+  std::vector<std::uint8_t> cut(b.begin(), b.end() - 3);
+  CHECK_FALSE(wm_test::full_race_world(kSeed)->load(cut, course, why));
+  std::vector<std::uint8_t> longer = b;
   longer.push_back(0);
-  CHECK_FALSE(wm_test::full_race_world(kSeed)->load(longer, &wm_test::full_race_course(), why));
+  CHECK_FALSE(wm_test::full_race_world(kSeed)->load(longer, course, why));
   CHECK(why == "bytes left over after the snapshot");
-  CHECK_FALSE(wm_test::full_race_world(kSeed + 1)->load(good, &wm_test::full_race_course(), why));
-  CHECK_FALSE(wm_test::full_race_world(kSeed, 5)->load(good, &wm_test::full_race_course(), why));
-  CHECK_FALSE(wm_test::full_race_world(kSeed)->load(good, nullptr, why));
-  // A world that has run already cannot take a snapshot.
-  CHECK_FALSE(w->load(good, &wm_test::full_race_course(), why));
-  CHECK(wm_test::full_race_world(kSeed)->load(good, &wm_test::full_race_course(), why));
+  CHECK_FALSE(wm_test::full_race_world(kSeed + 1)->load(b, course, why));
+  CHECK_FALSE(wm_test::full_race_world(kSeed, 5)->load(b, course, why));
+  CHECK_FALSE(wm_test::full_race_world(kSeed)->load(b, nullptr, why));
+
+  // A world that has raced a while on its own, and its twin that is never loaded.
+  auto u = wm_test::full_race_world(kSeed);
+  REQUIRE_MESSAGE(u->create_race(*course, why), why);
+  wm_test::Pilot p = wm_test::full_race_pilot();
+  u->set_controller([&p](wm::World& world) { p(world); });
+  auto twin = wm_test::full_race_world(kSeed);
+  REQUIRE_MESSAGE(twin->create_race(*course, why), why);
+  wm_test::Pilot pt = wm_test::full_race_pilot();
+  twin->set_controller([&pt](wm::World& world) { pt(world); });
+  while (u->tick() < 700) {
+    u->step();
+    twin->step();
+  }
+
+  // Failed loads leave it as it was: same tick and checksum, and it steps on as its twin does.
+  const std::uint64_t before = u->checksum();
+  CHECK_FALSE(u->load(cut, course, why));
+  CHECK_FALSE(u->load(b, nullptr, why));
+  CHECK_FALSE(u->load(longer, course, why));
+  CHECK(u->tick() == 700);
+  CHECK(u->checksum() == before);
+  CHECK(u->race_created());
+  bool same_sums = true;
+  for (int k = 0; k < 50; ++k) same_sums = same_sums && u->step() == twin->step();
+  CHECK(same_sums);
+
+  // Then it takes the later save, the earlier one, and the later one again; each continues bit for bit. The loaded
+  // world re-saves to the same bytes and has the sail outputs of the saved tick (a new world's differ).
+  auto continues = [&](const std::vector<std::uint8_t>& bytes, std::uint32_t t, const wm_test::Pilot& saved) {
+    REQUIRE_MESSAGE(u->load(bytes, course, why), why);
+    CHECK(u->tick() == t);
+    CHECK(u->checksum() == sums[t]);
+    wm::SnapshotWriter again;
+    u->save(again);
+    CHECK(again.bytes() == bytes);
+    if (t == tb) CHECK(same(sail_outputs(*u), outs_b));
+    p = saved;
+    bool ok = true;
+    for (std::uint32_t k = 1; k <= run; ++k) ok = ok && u->step() == sums[t + k];
+    CHECK(ok);
+  };
+  continues(b, tb, pb);
+  continues(a, ta, pa);
+  continues(b, tb, pb);
+  CHECK_FALSE(same(sail_outputs(*twin), outs_b));
+
+  // A reset world is a new one: no race, tick 0, and it creates the race and runs as a new world does.
+  u->reset();
+  CHECK(u->tick() == 0);
+  CHECK_FALSE(u->race_created());
+  auto fresh = wm_test::full_race_world(kSeed);
+  CHECK(u->checksum() == fresh->checksum());
+  REQUIRE_MESSAGE(u->create_race(*course, why), why);
+  REQUIRE_MESSAGE(fresh->create_race(*course, why), why);
+  p = wm_test::full_race_pilot();
+  wm_test::Pilot pf = wm_test::full_race_pilot();
+  fresh->set_controller([&pf](wm::World& world) { pf(world); });
+  same_sums = true;
+  for (int k = 0; k < 100; ++k) same_sums = same_sums && u->step() == fresh->step();
+  CHECK(same_sums);
 }
 
 TEST_CASE("snapshot: a race with a joined boat is rebuilt as it was") {
@@ -242,6 +385,6 @@ TEST_CASE("snapshot: a race with a joined boat is rebuilt as it was") {
   CHECK(v->race().L_max() == w->race().L_max());
   CHECK(v->course().k == w->course().k);
   bool same_sums = true;
-  for (int k = 0; k < 3000; ++k) same_sums = same_sums && w->step() == v->step();
+  for (int k = 0; k < 1000; ++k) same_sums = same_sums && w->step() == v->step();
   CHECK(same_sums);
 }

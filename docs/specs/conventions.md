@@ -341,7 +341,7 @@ Layout, in this order:
 
 ```
 header (identity, not covered by the checksum)
-  uint32  magic 0x57574D57, uint32 version = 1
+  uint32  magic 0x57574D57, uint32 version = 3
   uint32  tick                     the next tick to run
   uint64  race_seed (§7)
   bool    race created; uint32 n_created (tick of creation, 0 without a race); uint32 entries at creation
@@ -359,6 +359,9 @@ body (covered by the checksum, after the tick index)
       race and rules step reads turn_rate, cog and sog, and controllers read them in step 2
     the environment at the boat of the last step 5, wind_shadow.md §5 (wind_speed, wind_from, wind_speed_clean,
       wind_from_clean, current_x, current_y, shadow_loss, shadow_header, int32 shadow_source)
+    the per-sail outputs of the last step, sails.md §7, per sail in sail order (k_h, m_opt, beta_opt, beta_t,
+      trim_error, luff_shiver, uint8 motion, bool backed): the next tick's race and rules step reads m_opt through
+      let_fly_drive (boat.md §9), controllers read it in step 2, and the HUD reads trim_error and luff_shiver
   list    contact events of the last collision step (collisions.md §5), read by the next tick's rules:
           uint64 tick, int32 boat, uint8 other_kind, int32 other, vec2 point, vec2 normal, float depth,
           float closing_speed, float impulse, bool begin
@@ -371,6 +374,11 @@ entries) and rejects a snapshot that does not match, is truncated, has bytes lef
 range. A world whose race took joiners (`race.md` §3.5) is rebuilt as it was built: the race is created at
 `n_created` with the entries at creation, the later entries join after it, and the snapshot then overwrites every
 state value.
+
+A world takes any number of loads, whatever it has run before (a resync, `networking.md` §9, or a replay scrubbed
+back and forth, `networking.md` §14): a load first resets the world to its state when it was built with its entries (tick 0, no
+race), then rebuilds and overwrites it as above. A load that fails changes nothing: the world keeps the state it
+had and can go on stepping or take another load.
 
 ## 10. Naming
 

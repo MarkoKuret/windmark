@@ -12,8 +12,11 @@ Requirements: CMake 3.20 or newer, Ninja, Clang or GCC with C++20 (MSVC 2022 fla
 ```sh
 cmake -S core -B core/build -G Ninja          # Release by default; -DCMAKE_BUILD_TYPE=Debug for asserts
 cmake --build core/build
-ctest --test-dir core/build --output-on-failure
+ctest --test-dir core/build -LE long --output-on-failure   # the quick run, about 12 s
 ```
+
+`-LE long` leaves out every test with a label matching `long` (`long` and `ai_long`); `ctest -L '^long$'` runs the
+long core tests (about half a minute), `-L ai_long` the AI fleet races (about four minutes), plain `ctest` all.
 
 Options:
 
@@ -30,18 +33,24 @@ Tests (`ctest`):
 - `core_tests`: the doctest suite in `tests/` (check values of `conventions.md`, the math vector file, tables,
   checksums, JSON, loading and validating `data/perf/wm7.perf.json` and `wm12.perf.json` against their class
   files, and loading `data/venues/example_bay.venue.json` into the environment; the course files, the race flow
-  and the racing rules scenarios of `courses.md` §7, `race.md` §12 and `rules.md` §13; the world loop; and a full
-  headless race of six scripted boats with penalties on `example_bay`, run twice for determinism, and saved at
-  nine ticks and loaded into a new world to continue bit for bit); the AI skippers' fast checks and scenarios
-  (`test_ai.cpp`).
+  and the racing rules scenarios of `courses.md` §7, `race.md` §12 and `rules.md` §13; the world loop; world
+  snapshots: the checksum as the hash of the snapshot body, damaged and foreign snapshots, a world reset and loaded
+  again and again, sail outputs restored, a race with a joined boat); the AI skippers' fast checks and scenarios
+  (`test_ai.cpp`). It runs every doctest case outside the test suite `long`.
+- `core_long` (label `long`): the doctest suite `long`, the full races run to the close: a full headless race of
+  six scripted boats with penalties on `example_bay`, run twice for determinism, and saved at nine ticks and
+  loaded into a new world to continue bit for bit.
 - `ai_races` (label `ai_long`, about four minutes): the fleet runs of `ai.md` §15 (`test_ai_race.cpp`); they
   print their measurements. `ctest --test-dir core/build -LE ai_long` leaves them out, `-L ai_long` runs only them.
 - `core_no_fma`: disassembles `libwindmark_core.a` and fails on any fused multiply-add instruction.
-- `capi_race_example`: `examples/race_example.c` through the C API only: a race of four scripted boats on the
-  example course from the spawn to the results (with the splits and start line status readers), run twice for
-  the same checksum, then a free-sailing boat (render pose, input frame encoding, sail requests, trim_speed
-  lookup), then a race of six AI skippers (one a human entry taken over) that is saved a minute after the gun,
-  world and AI memory, and continued in a new world to the same final tick and checksum (about 15 s in all).
+- `capi_race_example_full` (label `long`): `examples/race_example.c` through the C API only: a race of four
+  scripted boats on the example course from the spawn to the results (with the splits and start line status
+  readers), run twice for the same checksum, then a free-sailing boat (render pose, input frame encoding, sail
+  requests, trim_speed lookup), then a race of six AI skippers (one a human entry taken over) that is saved a
+  minute after the gun, world and AI memory, and continued in a new world and again in the world that ran on
+  (after a damaged snapshot it rejected) to the same final tick and checksum (about 12 s in all).
+- `capi_race_example`: the same with `quick`: the scripted race once, and the AI race to 20 s after the snapshot
+  (about 3 s).
 
 ## Float rules
 
@@ -73,7 +82,7 @@ Sources live in `src/<module>/`, included as `"module/header.h"`, all in namespa
 | `src/base/` | FP environment check, contraction probe | conventions.md §5 |
 | `src/math/` | `wm_math`: constants, clamp/lerp/sgn, `wm_sincos`, `wm_atan2`, `wm_asin`, `wm_exp`, angle helpers; `rng`: counter-based RNG and its stream numbers | conventions.md §5, §6, §7 |
 | `src/table/` | axis bracket, Table1D/2D/3D interpolation, axis quantities and units | conventions.md §8, data_format.md §5 |
-| `src/state/` | snapshot writer and reader and the shared encodings (`snapshot_util.h`), FNV-1a 64 tick checksum, SHA-256 for data identity | conventions.md §9, data_format.md §4.1 |
+| `src/state/` | snapshot writer and reader and the shared encodings (`snapshot_util.h`), FNV-1a 64 tick checksum (a writer made with a hash hashes the bytes as they are written instead of keeping them), SHA-256 for data identity | conventions.md §9, data_format.md §4.1 |
 | `src/wind/` | `grid`: the venue grid sampler; `wind`: base wind, shift walk, trend, oscillation, puffs and lulls, venue wind field, current | wind.md |
 | `src/sea/` | wave components, per-tick phases, height, slope, exposure, the wind-sea growth law | sea.md |
 | `src/shadow/` | shadow snapshot sources, blanket and backwind losses, the strongest-source rule, zone outlines, the environment at a boat | wind_shadow.md |
@@ -108,7 +117,8 @@ is the environment clock's zero, `race.md` §0).
 | `place_boat(i, x, y, psi, v)` | scenario set-up (tests, tools): puts a boat at a pose as a spawn does, between ticks | boat.md §6.6 |
 | `step()` | one tick: race and rules on `t_n` and the last contacts, controls, environment, shadow snapshot, boat steps, collisions, publish; returns the tick checksum | conventions.md §4.1 |
 | `boat(i)`, `env(i)`, `race()`, `rules()`, `course()`, `scene()`, `events()`, `checksum()` | state, the race and rules records, this tick's race, rules and contact events | race.md §11, rules.md §11 |
-| `save(SnapshotWriter&)`, `load(bytes, course, err)` | the world snapshot between ticks; `load` goes into a new world built with the same setup and entries (the race is recreated at its creation tick, joiners join again) and continues bit for bit; controllers are set again after it | conventions.md §9.1 |
+| `save(SnapshotWriter&)`, `load(bytes, course, err)` | the world snapshot between ticks; `load` goes into a world built with the same setup and entries, whatever it has run (it is reset first; any number of loads), rebuilds it (the race is recreated at its creation tick, joiners join again) and continues bit for bit; a failed load leaves the world as it was; the controller stays installed, the AI memory is loaded on its own | conventions.md §9.1 |
+| `reset()` | back to the world as built with its entries: tick 0, no race | conventions.md §9.1 |
 
 `Race` and `Rules` can also be driven directly with poses (`RaceBoatInput`, `RulesBoatInput`), which is how the
 scenario tests script tracks without physics.
@@ -131,7 +141,7 @@ hosts that link it in. Everything is built under the float rules; hosts must not
 | environment | clean wind, global direction, current, puff patches (now or at any `t_ms`), `wm_world_wind_state`, sea height (now or at any `t_ms`), slope, exposure and its grid, wave components |
 | race and rules | course marks, steps and boundary; race state, per-boat race state, order, results; per-boat rules state, pending penalties, pair records; race, rules and contact events of the last tick |
 | AI skippers | `wm_ai_entry_init`, `wm_world_add_ai_boat(perf, level, speed_only)`, `wm_world_ai_add` (any boat), `wm_world_ai_take_over` / `wm_world_ai_release` (ai.md §14), `wm_world_ai_add_autopilot`, `wm_world_ai_has`, `wm_world_ai_count`; telemetry (`wm_world_ai_telemetry`, `wm_world_ai_bad_air`) and the last decision (`wm_world_ai_debug`, `wm_ai_tactic_name`); `wm_ai_performance_scale(level)` |
-| snapshots | `wm_world_save` / `wm_world_load(course)` (the world snapshot, conventions.md §9.1, into a new world with the same settings and boats) and `wm_world_ai_save` / `wm_world_ai_load` (the skippers' memory, ai.md §16, taken at the same moment) |
+| snapshots | `wm_world_save` / `wm_world_load(course)` (the world snapshot, conventions.md §9.1, into a world with the same settings and boats, reset first, so any number of loads; a failed load leaves it as it was) and `wm_world_ai_save` / `wm_world_ai_load` (the skippers' memory, ai.md §16, taken at the same moment) |
 
 Every world holds one set of AI skippers (`AiSkippers`). Once a boat is given to them they run in step 2 of every
 tick, before the `wm_world_set_controller` callback and after the controls the host queued between ticks, so an

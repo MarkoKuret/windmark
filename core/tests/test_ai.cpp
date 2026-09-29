@@ -217,51 +217,49 @@ TEST_CASE("ai: the skippers' memory saved mid-race and reloaded continues identi
   sp.seed = 11;
   sp.levels = {wm::AiLevel::easy, wm::AiLevel::intermediate, wm::AiLevel::expert, wm::AiLevel::pro};
   const wm::CourseData& course = wm_test::ai_default_course();
-  auto run = [&](std::uint32_t reload_at, std::uint32_t until, std::vector<std::uint64_t>& sums) {
-    auto w = wm_test::ai_world(sp);
-    std::string why;
-    REQUIRE(w->create_race(course, why));
-    auto ai = std::make_unique<wm::AiSkippers>();
-    wm_test::ai_add_all(*ai, sp);
-    wm::AiSkippers* aip = ai.get();
-    w->set_controller([&aip](wm::World& world) { aip->step(world); });
-    while (w->tick() < until && w->race().state() != wm::RaceState::closed) {
-      if (w->tick() == reload_at) {
-        wm::SnapshotWriter sw, sa;
-        w->save(sw);
-        ai->save(sa, *w);
-        auto w2 = wm_test::ai_world(sp);
-        auto ai2 = std::make_unique<wm::AiSkippers>();
-        REQUIRE_MESSAGE(w2->load(sw.bytes(), &course, why), why);
-        REQUIRE_MESSAGE(ai2->load(sa.bytes(), *w2, why), why);
-        // Saving the loaded skippers gives the same bytes.
-        wm::SnapshotWriter sa2;
-        ai2->save(sa2, *w2);
-        CHECK(sa2.bytes() == sa.bytes());
-        w = std::move(w2);
-        ai = std::move(ai2);
-        aip = ai.get();
-        w->set_controller([&aip](wm::World& world) { aip->step(world); });
-      }
-      sums.push_back(w->step());
-    }
-  };
-  // Saved in the start sequence (-100 s) and on the first beat (+90 s); compared for 1500 ticks after each.
+  // Saved in the start sequence (-100 s) and on the first beat (+90 s) of one unbroken run; each save is loaded into
+  // a new world with new skippers and compared with the unbroken run for 1500 ticks.
   const std::uint32_t n_gun = static_cast<std::uint32_t>(10.0f / wm::DT) + 3600u;
-  for (const std::uint32_t at : {n_gun - 2000u, n_gun + 1800u}) {
-    CAPTURE(at);
-    std::vector<std::uint64_t> a, b;
-    run(0xFFFFFFFFu, at + 1500u, a);
-    run(at, at + 1500u, b);
-    REQUIRE(a.size() == b.size());
-    std::size_t first_diff = a.size();
-    for (std::size_t k = 0; k < a.size(); ++k) {
-      if (a[k] != b[k]) {
-        first_diff = k;
-        break;
-      }
+  const std::uint32_t at[2] = {n_gun - 2000u, n_gun + 1800u};
+  const std::uint32_t len = 1500u;
+  auto w = wm_test::ai_world(sp);
+  std::string why;
+  REQUIRE(w->create_race(course, why));
+  wm::AiSkippers ai;
+  wm_test::ai_add_all(ai, sp);
+  w->set_controller([&ai](wm::World& world) { ai.step(world); });
+  std::vector<std::uint64_t> sums(at[1] + len + 1, 0);
+  std::vector<std::uint8_t> world_bytes[2], ai_bytes[2];
+  while (w->tick() < at[1] + len && w->race().state() != wm::RaceState::closed) {
+    for (int k = 0; k < 2; ++k) {
+      if (w->tick() != at[k]) continue;
+      wm::SnapshotWriter sw, sa;
+      w->save(sw);
+      ai.save(sa, *w);
+      world_bytes[k] = sw.bytes();
+      ai_bytes[k] = sa.bytes();
     }
-    CHECK(first_diff == a.size());
+    const std::uint64_t c = w->step();
+    sums[w->tick()] = c;
+  }
+  REQUIRE(w->tick() == at[1] + len);
+  for (int k = 0; k < 2; ++k) {
+    CAPTURE(at[k]);
+    auto w2 = wm_test::ai_world(sp);
+    wm::AiSkippers ai2;
+    REQUIRE_MESSAGE(w2->load(world_bytes[k], &course, why), why);
+    REQUIRE_MESSAGE(ai2.load(ai_bytes[k], *w2, why), why);
+    // Saving the loaded skippers gives the same bytes.
+    wm::SnapshotWriter sa2;
+    ai2.save(sa2, *w2);
+    CHECK(sa2.bytes() == ai_bytes[k]);
+    w2->set_controller([&ai2](wm::World& world) { ai2.step(world); });
+    std::uint32_t first_diff = 0;
+    while (w2->tick() < at[k] + len) {
+      const std::uint64_t c = w2->step();
+      if (c != sums[w2->tick()] && first_diff == 0) first_diff = w2->tick();
+    }
+    CHECK(first_diff == 0);
   }
 }
 

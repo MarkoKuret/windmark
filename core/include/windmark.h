@@ -309,10 +309,11 @@ WM_API wm_status wm_world_ai_bad_air(const wm_world* w, int32_t boat, int32_t i,
 /* The world snapshot between ticks: *data points at the bytes (valid until the next save or step of this world)
  * and *size receives their count. */
 WM_API wm_status wm_world_save(wm_world* w, const uint8_t** data, size_t* size);
-/* Resumes a saved world in a new one: created with the same settings and venue, the same boats added in the same
- * order (wm_world_add_boat or wm_world_add_ai_boat), no race, no step. `course` is the course the race was
+/* Resumes a saved world in a world created with the same settings and venue and the same boats added in the same
+ * order (wm_world_add_boat or wm_world_add_ai_boat, joiners included), whatever it has run before: the world is
+ * reset first, so it can take any number of loads (resync, replay scrubbing). `course` is the course the race was
  * created with (null when the snapshot has no race). It then continues bit for bit. WM_ERR_LOAD with the reason
- * when the snapshot does not match or is damaged; the world is then unusable. The controller callback and the AI
+ * when the snapshot does not match or is damaged; the world is then unchanged. The controller callback and the AI
  * skippers stay installed; load the skippers' memory with wm_world_ai_load before the next step. */
 WM_API wm_status wm_world_load(wm_world* w, const wm_course* course, const uint8_t* data, size_t size);
 /* ai.md §16 the AI skippers' memory, a block of its own taken with the world snapshot (same moment, between

@@ -26,7 +26,11 @@ target_compile_definitions(windmark_core_tests PRIVATE
   WINDMARK_DATA_DIR="${WINDMARK_DATA_DIR}"
   WINDMARK_VECTORS_FILE="${CMAKE_CURRENT_SOURCE_DIR}/vectors/math_vectors.txt")
 
-add_test(NAME core_tests COMMAND windmark_core_tests)
+# The test cases of the doctest suite "long" (full races run to the close) are a ctest entry of their own with the
+# label `long`: `ctest -LE long` is the quick run (it also leaves out `ai_long`), `ctest -L '^long$'` runs only them.
+add_test(NAME core_tests COMMAND windmark_core_tests --test-suite-exclude=long)
+add_test(NAME core_long COMMAND windmark_core_tests --test-suite=long)
+set_tests_properties(core_long PROPERTIES LABELS long)
 
 # Environment tests (wind.md, sea.md, wind_shadow.md) and their vector file writer.
 target_sources(windmark_core_tests PRIVATE

@@ -345,13 +345,16 @@ def place_all(cls, hull, deck, rig, lod=0):
     d_prim = 0.14 * s if not small else 0.10 * s
     y_prim = float(deck.yc(x_prim)) + 0.11 * s + d_prim * 0.55
     for side in (1, -1):
-        hw.extend(on_surface(deck, winch(d_prim, handle=fine and side < 0), x_prim, side * y_prim, yaw=np.pi / 2 * side))
+        hw.extend(on_surface(deck, winch(d_prim, handle=fine and side < 0), x_prim, side * y_prim, yaw=np.pi / 2 * side),
+                  tag=f"winch_primary_{side}")
+        hw.attach(f"winch_primary_{side}", "deck")
     leads["primary"] = (x_prim, y_prim, float(deck.surface(x_prim, y_prim)[0]), d_prim)
     if not small:
         x_sec = deck.xc1 - 0.8 * s
         y_sec = float(deck.yc(x_sec)) + 0.12 * s + 0.4 * d_prim
         for side in (1, -1):
-            hw.extend(on_surface(deck, winch(d_prim * 0.8), x_sec, side * y_sec))
+            hw.extend(on_surface(deck, winch(d_prim * 0.8), x_sec, side * y_sec), tag=f"winch_secondary_{side}")
+            hw.attach(f"winch_secondary_{side}", "deck")
         leads["secondary"] = (x_sec, y_sec, float(deck.surface(x_sec, y_sec)[0]), d_prim * 0.8)
     # halyard leads: exits low on the mast sides, turning blocks at the mast foot, organisers, clutches aft
     n_hal = 4 if not small else 3
@@ -362,15 +365,18 @@ def place_all(cls, hull, deck, rig, lod=0):
         x_h = deck.xk0 + 0.35 * s
         y_h = float(deck.yk(x_h)) - deck.cab_h * deck.cab_slope - 0.2 * s
         for side in (1, -1):
-            hw.extend(on_surface(deck, winch(d_prim * 0.72), x_h, side * y_h))
+            hw.extend(on_surface(deck, winch(d_prim * 0.72), x_h, side * y_h), tag=f"winch_halyard_{side}")
+            hw.attach(f"winch_halyard_{side}", "deck")
     else:
         x_cl = deck.xk0 + 0.25 * s if deck.has_cabin else deck.xc1 + 0.25 * s
         y_cl = (float(deck.yk(x_cl)) * 0.45) if deck.has_cabin else 0.25 * s
     x_org = min(x_cl + 0.55 * s, rig.x_mast - 0.45 * s)
     for side in (1, -1):
-        hw.extend(on_surface(deck, clutch_bank(n_hal, hal_pitch), x_cl, side * y_cl))
+        hw.extend(on_surface(deck, clutch_bank(n_hal, hal_pitch), x_cl, side * y_cl), tag=f"clutches_{side}")
+        hw.attach(f"clutches_{side}", "deck")
         if mid:
-            hw.extend(on_surface(deck, organiser(n_hal, hal_pitch), x_org, side * y_cl))
+            hw.extend(on_surface(deck, organiser(n_hal, hal_pitch), x_org, side * y_cl), tag=f"organiser_{side}")
+            hw.attach(f"organiser_{side}", "deck")
     # turning blocks round the mast foot and the halyards themselves
     z_exit = rig.z_step + 0.42 * s
     for side in (1, -1):
@@ -379,7 +385,8 @@ def place_all(cls, hull, deck, rig, lod=0):
             fy = side * (0.5 * rig.width + 0.06 * s + 0.05 * s * k)
             xb = rig.x_mast + 0.02 * s - 0.035 * s * k
             if mid:
-                hw.extend(on_surface(deck, padeye_block(0.045 * s), xb, fy, yaw=np.pi))
+                hw.extend(on_surface(deck, padeye_block(0.045 * s), xb, fy, yaw=np.pi), tag=f"mast_block_{side}_{k}")
+                hw.attach(f"mast_block_{side}_{k}", "deck")
             if fine:
                 y_c = side * y_cl + (k - (n_hal - 1) / 2) * hal_pitch
                 zc = float(deck.surface(x_cl, y_c)[0]) + 0.36 * hal_pitch
@@ -388,19 +395,26 @@ def place_all(cls, hull, deck, rig, lod=0):
                 hw.add("rope", lead(deck, [top, np.array([xb + 0.03 * s, fy, z_b]),
                                            (x_org, y_c), np.array([x_cl + 1.2 * hal_pitch, y_c, zc]),
                                            np.array([x_cl - 1.2 * hal_pitch, y_c, zc]),
-                                           (x_cl - 0.3 * s, y_c + side * 0.02 * s)], r_line * 0.9))
+                                           (x_cl - 0.3 * s, y_c + side * 0.02 * s)], r_line * 0.9), tag=f"halyard_{side}_{k}")
+                hw.attach(f"halyard_{side}_{k}", f"halyard_exit_{side}_{k}")
+                hw.attach(f"halyard_{side}_{k}", f"clutches_{side}")
         if fine:
-            hw.extend(on_surface(deck, rope_coil(0.13 * s, 3, r_line), x_cl - 0.42 * s, side * y_cl * 0.9, yaw=0.4 * side))
+            hw.extend(on_surface(deck, rope_coil(0.13 * s, 3, r_line), x_cl - 0.42 * s, side * y_cl * 0.9, yaw=0.4 * side),
+                      tag=f"halyard_coil_{side}")
+            hw.attach(f"halyard_coil_{side}", "deck")
             # halyard exit plates on the mast
             for k in range(n_hal):
                 hw.add("metal", superellipsoid_box((0.05 * s, 0.012, 0.09 * s), 0.3, 8, 4,
-                                                   center=[rig.x_mast, side * 0.5 * rig.width, z_exit + 0.05 * s * k]))
+                                                   center=[rig.x_mast, side * 0.5 * rig.width, z_exit + 0.05 * s * k]),
+                       tag=f"halyard_exit_{side}_{k}")
+                hw.attach(f"halyard_exit_{side}_{k}", "mast")
     # cam cleats for the sportsboat's sheets on the cockpit coaming
     if small and mid:
         for side in (1, -1):
             for dx in (-0.35, 0.35):
                 hw.extend(on_surface(deck, cam_cleat(0.10 * s), x_prim + dx * s,
-                                     side * (float(deck.yc(x_prim)) + 0.06 * s), yaw=np.pi))
+                                     side * (float(deck.yc(x_prim)) + 0.06 * s), yaw=np.pi), tag=f"cam_cleat_{side}_{dx}")
+                hw.attach(f"cam_cleat_{side}_{dx}", "deck")
 
     # --- jib sheet tracks and cars, at the jib clew's fore-and-aft position, inboard of the sheer
     jib_clew_x = rig.jib_clew[0] if hasattr(rig, "jib_clew") else rig.x_mast - 1.0
@@ -410,8 +424,11 @@ def place_all(cls, hull, deck, rig, lod=0):
         if deck.in_cabin_roof(x_t, y_t):
             y_t = float(deck.yk(x_t)) + 0.08 * s
         tl = 0.9 * s
-        hw.extend(on_surface(deck, track(tl, 0.032 * s), x_t, side * y_t))
-        hw.extend(on_surface(deck, track_car(0.14 * s, 0.032 * s, sheave=True), x_t + 0.12 * s, side * y_t))
+        hw.extend(on_surface(deck, track(tl, 0.032 * s), x_t, side * y_t), tag=f"jib_track_{side}")
+        hw.attach(f"jib_track_{side}", "deck")
+        hw.extend(on_surface(deck, track_car(0.14 * s, 0.032 * s, sheave=True), x_t + 0.12 * s, side * y_t),
+                  tag=f"jib_car_{side}")
+        hw.attach(f"jib_car_{side}", f"jib_track_{side}")
         z_car = float(deck.surface(x_t + 0.12 * s, y_t)[0])
         leads["jib_car"] = np.array([x_t + 0.1 * s, y_t, z_car + 0.032 * s * 1.25 + 0.62 * 0.077 * s])
 
@@ -420,31 +437,62 @@ def place_all(cls, hull, deck, rig, lod=0):
     x_tr = float(np.clip(x_tr, deck.xc0 + 0.25, deck.xc1 - 0.2))
     zf = float(deck.floor_z(x_tr))
     w_tr = 2 * float(deck.yc(x_tr)) * 0.96
+    floor = lambda x, y: float(deck.surface(x, y)[0])
     trav = Part().extend(track(w_tr - 0.12 * s, 0.04 * s), rot_axis([0, 0, 1], np.pi / 2))
-    hw.extend(trav, translate([x_tr, 0, zf + 0.004]))
-    hw.extend(track_car(0.12 * s, 0.045 * s), translate([x_tr, 0.1 * s, zf]))
+    hw.extend(trav, translate([x_tr, 0, zf]), tag="traveller")
+    hw.attach("traveller", "deck")
+    # the car runs along the track (its length across the boat)
+    w_car, l_car, y_car = 0.045 * s, 0.12 * s, 0.1 * s
+    hw.extend(track_car(l_car, w_car), translate([x_tr, y_car, zf]) @ rot_axis([0, 0, 1], np.pi / 2), tag="traveller_car")
+    hw.attach("traveller_car", "traveller")
     if mid:
         for side in (1, -1):
             ye = side * (w_tr / 2 - 0.03 * s)
-            hw.extend(block(0.05 * s), translate([x_tr, ye, zf]) @ rot_axis([0, 0, 1], np.pi / 2))
-            hw.extend(cam_cleat(0.08 * s), translate([x_tr - 0.12 * s, ye - side * 0.06 * s, zf]))
+            hw.extend(block(0.05 * s), translate([x_tr, ye, zf]) @ rot_axis([0, 0, 1], np.pi / 2),
+                      tag=f"traveller_block_{side}")
+            hw.attach(f"traveller_block_{side}", "deck", "traveller")
+            xc, yc_ = x_tr - 0.12 * s, ye - side * 0.06 * s
+            hw.extend(cam_cleat(0.08 * s), translate([xc, yc_, floor(xc, yc_)]), tag=f"traveller_cleat_{side}")
+            hw.attach(f"traveller_cleat_{side}", "deck")
             if fine:
-                hw.add("rope", tube(np.array([[x_tr, 0.1 * s + side * 0.07 * s, zf + 0.05 * s],
-                                              [x_tr, ye - side * 0.02 * s, zf + 0.035 * s],
-                                              [x_tr - 0.12 * s, ye - side * 0.06 * s, zf + 0.02 * s],
-                                              [x_tr - 0.3 * s, ye - side * 0.08 * s, zf + r_line]]), r_line * 0.8, 6))
-    boom_z = rig.gooseneck[2] - 0.1 * s
-    lower = np.array([x_tr, 0.1 * s, zf + 0.1 * s])
-    upper = np.array([x_tr, 0.0, boom_z - 0.08 * s])
-    hw.extend(block(0.09 * s), translate(lower - [0, 0, 0.06 * s]))
-    # upper block hangs under the boom (goes with the boom); the tackle is a separate dynamic node
-    boom_hw = Part().extend(block(0.09 * s), translate(upper + [0, 0, 0.07 * s]) @ rot_axis([1, 0, 0], np.pi))
+                # control line: from the car's end, round the end block's sheave, through the cleat, tail on the floor
+                xt, yt = xc - 0.2 * s, yc_ - side * 0.03 * s
+                hw.add("rope", tube(np.array([[x_tr, y_car + side * 0.45 * l_car, zf + 0.85 * w_car],
+                                              [x_tr, ye, zf + 0.62 * 0.05 * s],
+                                              [xc, yc_, floor(xc, yc_) + 0.02 * s],
+                                              [xt, yt, floor(xt, yt) + 0.8 * r_line]]), r_line * 0.8, 6),
+                       tag=f"traveller_line_{side}")
+                hw.attach(f"traveller_line_{side}", "traveller_car")
+                hw.attach(f"traveller_line_{side}", f"traveller_block_{side}")
+                hw.attach(f"traveller_line_{side}", f"traveller_cleat_{side}")
+                hw.attach(f"traveller_line_{side}", "deck")
+    # mainsheet: a block standing on the car and one hanging from a bail under the boom (goes with the boom); the
+    # tackle between their sheaves is a separate dynamic node. `lower` and `upper` are the sheave centres.
+    d_blk = 0.09 * s
+    z_lb = zf + 1.3 * w_car - 0.004
+    lower = np.array([x_tr, y_car, z_lb + 0.62 * d_blk])
+    hw.extend(block(d_blk), translate([x_tr, y_car, z_lb]), tag="mainsheet_lower")
+    hw.attach("mainsheet_lower", "traveller_car")
+    zb = float(rig.boom_bottom(x_tr))
+    boom_hw = Part().add("metal", superellipsoid_box((0.1 * s, 0.05 * s, 0.03 * s), 0.35, 8, 5, center=[x_tr, 0, zb]),
+                         tag="mainsheet_bail")
+    boom_hw.attach("mainsheet_bail", "boom")
+    z_ub = zb - 0.012 * s
+    upper = np.array([x_tr, 0.0, z_ub - 0.62 * d_blk])
+    boom_hw.extend(block(d_blk), translate([x_tr, 0, z_ub]) @ rot_axis([1, 0, 0], np.pi), tag="mainsheet_upper")
+    boom_hw.attach("mainsheet_upper", "mainsheet_bail")
     sheet = mainsheet_tackle(lower, upper, s)
     if fine:
-        # mainsheet tail from the lower block to a cam cleat on the car and flaked on the floor
-        hw.add("rope", tube(np.array([lower + [0, 0.03 * s, -0.02 * s], lower + [-0.15 * s, 0.1 * s, -0.08 * s],
-                                      [x_tr - 0.35 * s, 0.25 * s, zf + r_line]]), r_line, 6))
-        hw.extend(rope_coil(0.12 * s, 3, r_line), translate([x_tr - 0.5 * s, 0.25 * s, zf]))
+        # mainsheet tail out of the lower block, down to the floor and flaked there
+        x1, y1 = x_tr - 0.35 * s, y_car + 0.15 * s
+        x2, y2 = x_tr - 0.5 * s, y_car + 0.15 * s
+        hw.add("rope", tube(np.array([lower + [-0.2 * d_blk, 0.04 * d_blk, 0], lower + [-0.15 * s, 0.1 * s, -0.04 * s],
+                                      [x1, y1, floor(x1, y1) + r_line], [x2 + 0.1 * s, y2, floor(x2, y2) + r_line]]),
+                            r_line, 6), tag="mainsheet_tail")
+        hw.attach("mainsheet_tail", "mainsheet_lower")
+        hw.attach("mainsheet_tail", "deck")
+        hw.extend(on_surface(deck, rope_coil(0.12 * s, 3, r_line), x2, y2), tag="mainsheet_coil")
+        hw.attach("mainsheet_coil", "deck")
 
     # --- mooring cleats and chocks at the bow and quarters
     if mid:
@@ -453,17 +501,20 @@ def place_all(cls, hull, deck, rig, lod=0):
                 y = 0.62 * float(hull.bs(np.array([x]))[0])
                 if deck.in_cockpit(x, y):
                     y = float(deck.yc(x)) + 0.5 * (float(hull.bs(np.array([x]))[0]) - float(deck.yc(x)))
-                hw.extend(on_surface(deck, horn_cleat(0.2 * s), x, side * y))
+                hw.extend(on_surface(deck, horn_cleat(0.2 * s), x, side * y), tag=f"horn_cleat_{side}_{x:.2f}")
+                hw.attach(f"horn_cleat_{side}_{x:.2f}", "deck")
 
     # --- hatches
     if deck.has_cabin:
         x_fh = max(deck.xk1 + 0.55 * s, rig.x_mast + 0.55 * s)
         if x_fh < L - 1.2 * s:
-            hw.extend(on_surface(deck, hatch(0.6 * s, 0.6 * s), x_fh, 0.0))
+            hw.extend(on_surface(deck, hatch(0.6 * s, 0.6 * s), x_fh, 0.0), tag="hatch_fore")
+            hw.attach("hatch_fore", "deck")
         if d.get("hatches", 1) > 1:
             x_rh = deck.xk0 + 0.6 * (deck.xk1 - deck.xk0)
             if deck.in_cabin_roof(x_rh, 0.0):
-                hw.extend(on_surface(deck, hatch(0.5 * s, 0.5 * s), x_rh, 0.0))
+                hw.extend(on_surface(deck, hatch(0.5 * s, 0.5 * s), x_rh, 0.0), tag="hatch_cabin")
+                hw.attach("hatch_cabin", "deck")
 
     # --- lifelines, pulpit and pushpit
     if d.get("lifelines"):
@@ -478,20 +529,33 @@ def place_all(cls, hull, deck, rig, lod=0):
         hub = np.array([x_w, 0.0, zf + dw / 2 + 0.12])
         xp = x_w + 0.12
         hw.add("carbon", revolve([(0, 0), (0.13 * s, 0), (0.12 * s, 0.03 * s), (0.065 * s, 0.1 * s), (0.06 * s, hub[2] - zf - 0.05),
-                                  (0, hub[2] - zf - 0.05)], 16, sharp=(1,)).transformed(translate([xp, 0, zf])))
-        hw.add("carbon", superellipsoid_box((0.22 * s, 0.26 * s, 0.2 * s), 0.35, 12, 6, center=[x_w + 0.14, 0, hub[2]]))
-        hw.add("metal", tube(np.array([[x_w + 0.02, 0, hub[2]], [x_w + 0.14, 0, hub[2]]]), 0.02, 10))
+                                  (0, hub[2] - zf - 0.05)], 16, sharp=(1,)).transformed(translate([xp, 0, zf])), tag="pedestal")
+        hw.attach("pedestal", "deck")
+        hw.add("carbon", superellipsoid_box((0.22 * s, 0.26 * s, 0.2 * s), 0.35, 12, 6, center=[x_w + 0.14, 0, hub[2]]),
+               tag="binnacle")
+        hw.attach("binnacle", "pedestal")
+        hw.add("metal", tube(np.array([[x_w + 0.02, 0, hub[2]], [x_w + 0.14, 0, hub[2]]]), 0.02, 10), tag="wheel_shaft")
+        hw.attach("wheel_shaft", "binnacle")
         if mid:
             # pedestal guard: a bent tube hoop over the binnacle, and a compass / display pod on top
             gz = hub[2] + 0.16 * s
             guard = rounded_path([[xp + 0.22 * s, 0.2 * s, zf], [xp + 0.22 * s, 0.2 * s, gz], [xp + 0.22 * s, -0.2 * s, gz],
                                   [xp + 0.22 * s, -0.2 * s, zf]], 0.1 * s, 4)
-            hw.add("metal", tube(guard, 0.014 * s, 8))
-            hw.add("metal", tube(np.array([[xp + 0.22 * s, 0.2 * s, gz - 0.02], [xp + 0.05 * s, 0.13 * s, hub[2] + 0.1 * s]]), 0.01 * s, 6))
-            hw.add("metal", tube(np.array([[xp + 0.22 * s, -0.2 * s, gz - 0.02], [xp + 0.05 * s, -0.13 * s, hub[2] + 0.1 * s]]), 0.01 * s, 6))
-            pod = instrument(0.26 * s, 0.14 * s, 0.05 * s)
-            hw.extend(pod, translate([xp + 0.08 * s, 0, hub[2] + 0.17 * s]) @ rot_axis([0, 1, 0], -1.25) @ rot_axis([0, 0, 1], np.pi))
-        helm.extend(wheel(dw, grip=mid), translate(hub))
+            hw.add("metal", tube(guard, 0.014 * s, 8), tag="pedestal_guard")
+            hw.attach("pedestal_guard", "deck")
+            # the pod on two arms from the guard, the arms ending in the pod's side faces
+            w_pod, t_pod = 0.26 * s, 0.05 * s
+            M_pod = translate([xp + 0.08 * s, 0, hub[2] + 0.17 * s]) @ rot_axis([0, 1, 0], -1.25) @ rot_axis([0, 0, 1], np.pi)
+            hw.extend(instrument(w_pod, 0.14 * s, t_pod), M_pod, tag="pod")
+            hw.attach("pod", "pod_arm_1")
+            for sy in (1, -1):
+                tip = (M_pod @ np.array([0.5 * t_pod, sy * (0.5 * w_pod - 0.01 * s), 0.0, 1.0]))[:3]
+                hw.add("metal", tube(np.array([[xp + 0.22 * s, sy * 0.2 * s, gz - 0.02], tip]), 0.01 * s, 6),
+                       tag=f"pod_arm_{sy}")
+                hw.attach(f"pod_arm_{sy}", "pedestal_guard")
+                hw.attach(f"pod_arm_{sy}", "pod")
+        helm.extend(wheel(dw, grip=mid), translate(hub), tag="wheel")
+        helm.attach("wheel", "wheel_shaft")
         helm_pivot = hub
     else:
         helm_pivot = None
@@ -502,34 +566,60 @@ def place_all(cls, hull, deck, rig, lod=0):
 def mainsheet_tackle(lower, upper, s):
     sheet = Part()
     for k in range(4):
-        off = np.array([0, (k - 1.5) * 0.012 * s, 0])
-        sheet.add("rope", tube(np.array([lower + off + [0, 0, 0.08 * s], upper + off - [0, 0, 0.08 * s]]), 0.005 * s, 5))
+        off = np.array([0, (k - 1.5) * 0.0065 * s, 0])        # within the sheaves (block(0.09 s))
+        sheet.add("rope", tube(np.array([lower + off, upper + off]), 0.0045 * s, 5),
+                  tag=f"mainsheet_part_{k}")
+        sheet.attach(f"mainsheet_part_{k}", "mainsheet_lower")
+        sheet.attach(f"mainsheet_part_{k}", "mainsheet_upper")
     return sheet
 
 
 def tiller(app, deck, hull, s):
-    """Tiller and extension in the boat frame, attached to the rudder head (moves with the rudder)."""
+    """Tiller and extension in the boat frame (moves with the rudder). On a transom rudder the tiller butt sits
+    between the rudder-head cheeks on the head's horizontal bolt (`app.tiller_pivot`), sized to the cheek gap; on a
+    spade rudder it is clamped on top of the stock where it comes through the deck."""
     p = Part()
     st = app.rud_stock
+    wt, ht = app.tiller_size
     if app.transom_hung:
-        head = st + [0.0, 0, 0.12]
+        pv = np.asarray(app.tiller_pivot, dtype=np.float64)
+        gap, th = app.head_gap, app.head_cheek
+        x0, x1 = pv[0] - 0.05, app.head_front + 0.04 * s
+        p.add("metal", superellipsoid_box((x1 - x0, gap + 0.002, 1.15 * ht), 0.3, 10, 5,
+                                          center=[0.5 * (x0 + x1), 0, pv[2]]), tag="tiller_socket")
+        p.attach("tiller_socket", "rudder_head")
+        w = 0.5 * gap + th + 0.008
+        p.add("metal", tube(np.array([pv - [0, w, 0], pv + [0, w, 0]]), 0.009 * s ** 0.5, 10), tag="tiller_bolt")
+        for sy in (-1, 1):                                      # bolt head and nut on the cheek faces
+            p.add("metal", revolve([(0, 0), (0.016 * s ** 0.5, 0), (0.016 * s ** 0.5, 0.006), (0, 0.008)], 6, sharp=(1, 2))
+                  .transformed(translate(pv + [0, sy * (w - 0.009), 0]) @ rot_axis([1, 0, 0], -sy * np.pi / 2)),
+                  tag="tiller_bolt")
+        p.attach("tiller_bolt", "rudder_head")
+        head = pv + [0.02, 0, 0]
     else:
         head = np.array([st[0], 0, float(deck.surface(st[0], 0.0)[0]) + 0.06])
-        p.add("metal", tube(np.array([head - [0, 0, 0.1], head + [0, 0, 0.05]]), 0.045 * s, 12))
-    # tiller head: a metal socket fitting clamped in the rudder head
-    p.add("metal", superellipsoid_box((0.16 * s, 0.07 * s, 0.07 * s), 0.35, 10, 5, center=head + [0.06 * s, 0, 0.0]))
-    p.add("metal", tube(np.array([head + [0.02 * s, -0.045 * s, 0], head + [0.02 * s, 0.045 * s, 0]]), 0.012 * s, 8))
+        p.add("metal", tube(np.array([head - [0, 0, 0.1], head + [0, 0, 0.05]]), 0.045 * s, 12), tag="tiller_stock")
+        p.attach("tiller_stock", "rudder_bearing", "deck")
+        p.add("metal", superellipsoid_box((0.16 * s, 0.07 * s, 0.07 * s), 0.35, 10, 5, center=head + [0.06 * s, 0, 0.0]),
+              tag="tiller_socket")
+        p.attach("tiller_socket", "tiller_stock")
     length = 1.25 * s * (1.0 if app.transom_hung else 1.1)
     end = head + np.array([length, 0, 0.18 * s])
-    t = np.linspace(0, 1, 10)
-    path = head[None] + t[:, None] * (end - head)[None] + np.array([0, 0, 1.0])[None] * (0.08 * s * np.sin(np.pi * t))[:, None]
-    p.add("carbon", sweep(path, rounded_rect(0.06 * s, 0.045 * s, 0.015 * s, 3), scale_along=1.0 - 0.35 * t,
-                          up=np.array([0, 0, 1.0])))
+    t = np.linspace(0, 1, 12)
+    # straight out of the head, then a gentle rise to the hand
+    path = head[None] + t[:, None] * (end - head)[None]
+    path[:, 2] = head[2] + (end[2] - head[2]) * t ** 1.6 + 0.06 * s * np.sin(np.pi * t)
+    p.add("carbon", sweep(path, rounded_rect(ht, wt, 0.3 * wt, 3), scale_along=1.0 - 0.35 * t,
+                          up=np.array([0, 0, 1.0])), tag="tiller")
+    p.attach("tiller", "tiller_socket")
     # extension lying along the tiller, universal joint at the end
-    p.add("rubber", superellipsoid_box((0.05, 0.04, 0.04), 0.6, 8, 5, center=end))
+    p.add("rubber", superellipsoid_box((0.05, 0.04, 0.04), 0.6, 8, 5, center=end), tag="tiller_joint")
+    p.attach("tiller_joint", "tiller")
     ext_end = end + np.array([-0.95 * s, 0.05, 0.06])
-    p.add("carbon", tube(np.array([end, ext_end]), 0.013 * s, 8))
-    p.add("rubber", tube(np.array([ext_end + [0.12, 0, 0], ext_end]), 0.018 * s, 8))
+    p.add("carbon", tube(np.array([end, ext_end]), 0.013 * s, 8), tag="tiller_extension")
+    p.attach("tiller_extension", "tiller_joint")
+    p.add("rubber", tube(np.array([ext_end + [0.12, 0, 0], ext_end]), 0.018 * s, 8), tag="tiller_grip")
+    p.attach("tiller_grip", "tiller_extension")
     return p
 
 
@@ -539,16 +629,23 @@ def rudder_fittings(app, deck, hull, s):
     p = Part()
     st = app.rud_stock
     if app.transom_hung:
-        for zz in app.pintle_z():
-            p.add("metal", superellipsoid_box((0.012, 0.10 * s, 0.07 * s), 0.25, 8, 4, center=[-0.004, 0, zz]))
+        # each gudgeon: a plate bolted flat on the transom face and two arms reaching aft either side of the blade
+        # to the stock axis, clasping the rudder's pintle strap between them (same height; the pin is inside the blade)
+        t = app.head_gap
+        for i, zz in enumerate(app.pintle_z()):
+            p.add("metal", superellipsoid_box((0.012, t + 0.07 * s, 0.075 * s), 0.25, 8, 4, center=[-0.005, 0, zz]),
+                  tag=f"gudgeon_plate_{i}")
+            p.attach(f"gudgeon_plate_{i}", "deck", "hull")
             for sy in (-1, 1):
-                p.add("metal", superellipsoid_box((abs(st[0]) + 0.02, 0.012, 0.045 * s), 0.3, 8, 4,
-                                                  center=[st[0] / 2, sy * 0.028 * s, zz - 0.045]))
-            p.add("metal", tube(np.array([[st[0], 0, zz - 0.07], [st[0], 0, zz - 0.02]]), 0.02 * s, 10))
+                p.add("metal", superellipsoid_box((abs(st[0]) + 0.03, 0.01, 0.045 * s), 0.3, 8, 4,
+                                                  center=[st[0] / 2 - 0.005, sy * (0.5 * t + 0.0105), zz]),
+                      tag=f"gudgeon_{i}")
+            p.attach(f"gudgeon_{i}", f"gudgeon_plate_{i}")
     else:
         z, n, _ = deck.surface(st[0], 0.0)
         ring = revolve([(0.0, 0.0), (0.11 * s, 0.0), (0.105 * s, 0.015), (0.07 * s, 0.03), (0.0, 0.03)], 20, sharp=(1,))
-        p.extend(_one("metal", ring), frame_z(np.array([st[0], 0, z]), n, np.array([1.0, 0, 0])))
+        p.extend(_one("metal", ring), frame_z(np.array([st[0], 0, z]), n, np.array([1.0, 0, 0])), tag="rudder_bearing")
+        p.attach("rudder_bearing", "deck")
     return p
 
 
@@ -559,56 +656,76 @@ def _one(mat, g):
 
 
 def _lifelines(hw, hull, deck, s, lod=0):
+    """Stanchions, pulpit, pushpit and two tiers of lifelines. Every leg stands on the deck (outboard of the cockpit,
+    inside the sheer) and meets its rail; the lifelines run from the pushpit's forward leg through the stanchions
+    (the lower tier at the height along each raked stanchion) to the pulpit's aft legs."""
     L = hull.L
     h = 0.62 * s ** 0.5
+    r_rail, r_leg = 0.013, 0.012
     x_aft, x_fwd = 0.9 * s, L - 1.35 * s
     n = int(np.ceil((x_fwd - x_aft) / 2.1))
     xs = np.linspace(x_aft, x_fwd, n + 1)
-    tops = {1: [], -1: []}
+    bs = lambda x: float(hull.bs(np.array([x]))[0])
+    rake = {side: normalize(np.array([0, side * 0.08, 1.0])) for side in (1, -1)}
+    bases = {1: [], -1: []}
     for side in (1, -1):
-        for x in xs:
-            y = float(hull.bs(np.array([x]))[0]) - 0.07 * s
+        for i, x in enumerate(xs):
+            y = bs(x) - 0.07 * s
             z, nrm, _ = deck.surface(x, y)
             base = np.array([x, side * y, z])
             # stanchions stand vertical (slightly raked outboard) regardless of the deck crown
-            hw.extend(stanchion(h), frame_z(base, np.array([0, side * 0.08, 1.0]), np.array([1.0, 0, 0])))
-            tops[side].append(base + normalize(np.array([0, side * 0.08, 1.0])) * h)
-    # pulpit: bent tube around the bow, legs to the deck
+            hw.extend(stanchion(h), frame_z(base, rake[side], np.array([1.0, 0, 0])), tag=f"stanchion_{side}_{i}")
+            hw.attach(f"stanchion_{side}_{i}", "deck")
+            bases[side].append(base)
+
+    def leg(name, top, rail):
+        """A vertical leg from the deck under `top` up into the rail."""
+        zz = float(deck.surface(top[0], top[1])[0])
+        hw.add("metal", tube(np.array([[top[0], top[1], zz - 0.004], top + [0, 0, 0.3 * r_rail]]), r_leg, 8), tag=name)
+        hw.add("metal", superellipsoid_box((0.07, 0.07, 0.012), 0.3, 8, 4, center=[top[0], top[1], zz + 0.002]), tag=name)
+        hw.attach(name, "deck")
+        hw.attach(name, rail)
+
+    def on_path(path, q):
+        """The point of a rail's centre line nearest to q (so a leg meets the bent tube where it really is)."""
+        return path[int(np.argmin(np.linalg.norm(path[:, :2] - np.asarray(q)[:2], axis=1)))].copy()
+
+    # pulpit: bent tube round the bow, its forward corners inside the narrowing deck
     xb = L - 0.25 * s
-    pts = []
-    for side in (1, -1):
-        y0 = float(hull.bs(np.array([x_fwd - 0.1]))[0]) - 0.07 * s
-        pts.append((side, y0))
+    y_aft = 0.9 * (bs(x_fwd - 0.1) - 0.07 * s)
+    y_fr = min(0.35 * y_aft / 0.9, 0.6 * bs(xb - 0.05))
     zb = float(deck.deck_z(xb, 0.0))
-    top_p = rounded_path([[x_fwd + 0.05, 0.9 * pts[0][1], zb + h * 0.95], [xb, 0.35 * pts[0][1], zb + h],
-                          [xb, -0.35 * pts[0][1], zb + h], [x_fwd + 0.05, -0.9 * pts[0][1], zb + h * 0.95]], 0.18 * s)
-    hw.add("metal", tube(top_p, 0.013, 10))
+    top_p = rounded_path([[x_fwd + 0.05, y_aft, zb + h * 0.95], [xb, y_fr, zb + h],
+                          [xb, -y_fr, zb + h], [x_fwd + 0.05, -y_aft, zb + h * 0.95]], 0.18 * s)
+    hw.add("metal", tube(top_p, r_rail, 10), tag="pulpit")
     for side in (1, -1):
-        for xl, fr in ((x_fwd + 0.05, 0.9), (xb - 0.05, 0.35)):
-            yl = side * fr * pts[0][1]
-            zt = float(deck.deck_z(xl, yl))
-            hw.add("metal", tube(np.array([[xl, yl, zt], [xl, yl, zb + h * (0.95 if fr > 0.5 else 1.0)]]), 0.012, 8))
-    # pushpit: two quarter frames (open transom between them)
+        leg(f"pulpit_leg_{side}_aft", on_path(top_p, [x_fwd + 0.05, side * y_aft]), "pulpit")
+        leg(f"pulpit_leg_{side}_fwd", on_path(top_p, [xb - 0.05, side * y_fr]), "pulpit")
+    # pushpit: a quarter frame each side, from beside the open cockpit out to the sheer and forward
+    x_p = 0.1
     for side in (1, -1):
-        y0 = float(hull.bs(np.array([0.1]))[0]) - 0.08 * s
-        yi = y0 * 0.55
-        zt = float(deck.deck_z(0.1, y0))
-        frame = rounded_path([[0.1, side * yi, zt + h], [0.1, side * y0, zt + h], [x_aft - 0.05, side * y0, zt + h]], 0.12)
-        hw.add("metal", tube(frame, 0.013, 10))
-        for p0 in ([0.1, side * yi], [0.1, side * y0], [x_aft - 0.3, side * y0]):
-            zz = float(deck.deck_z(p0[0], p0[1]))
-            hw.add("metal", tube(np.array([[p0[0], p0[1], zz], [p0[0], p0[1], zz + h]]), 0.012, 8))
-    # lifelines: two tiers from the pushpit through the stanchions to the pulpit
+        y0 = bs(x_p) - 0.08 * s
+        yi = min(max(0.55 * y0, float(deck.yc(x_p)) + 0.1 * s), y0 - 0.15) if deck.open_transom else 0.55 * y0
+        zt = float(deck.deck_z(x_p, y0))
+        frame = rounded_path([[x_p, side * yi, zt + h], [x_p, side * y0, zt + h], [x_aft - 0.05, side * y0, zt + h]], 0.12)
+        hw.add("metal", tube(frame, r_rail, 10), tag=f"pushpit_{side}")
+        for k, q in enumerate(([x_p, side * yi], [x_p + 0.12, side * y0], [x_aft - 0.05, side * y0])):
+            leg(f"pushpit_leg_{side}_{k}", on_path(frame, q), f"pushpit_{side}")
+    # lifelines: two tiers from the pushpit's forward leg through the stanchions to the pulpit's aft leg
     for side in (1, -1):
-        y0 = float(hull.bs(np.array([0.1]))[0]) - 0.08 * s
-        zt = float(deck.deck_z(0.1, y0))
+        y0 = bs(x_p) - 0.08 * s
+        zt = float(deck.deck_z(x_p, y0))
         start = np.array([x_aft - 0.05, side * y0, zt + h])
-        chain = [start] + tops[side][1:] + [np.array([x_fwd + 0.05, side * 0.9 * pts[0][1], zb + h * 0.95])]
+        end = on_path(top_p, [x_fwd + 0.05, side * y_aft])
         for tier in ((1.0, 0.55) if lod < 2 else ()):
-            for a, b in zip(chain[:-1], chain[1:]):
-                za = a.copy()
-                zb2 = b.copy()
-                if tier < 1:
-                    za[2] = a[2] - h * (1 - tier)
-                    zb2[2] = b[2] - h * (1 - tier)
-                hw.add("rope", tube(np.array([za, zb2]), 0.0035, 5, caps=False))
+            a0 = start - [0, 0, h * (1 - tier)]
+            b0 = end - [0, 0, (end[2] - float(deck.surface(end[0], end[1])[0])) * (1 - tier)]
+            chain = [a0] + [base + rake[side] * h * tier for base in bases[side][1:]] + [b0]
+            ends = [f"pushpit_leg_{side}_2" if tier < 1 else f"pushpit_{side}"]
+            ends += [f"stanchion_{side}_{i}" for i in range(1, len(bases[side]))]
+            ends += [f"pulpit_leg_{side}_aft" if tier < 1 else "pulpit"]
+            for k, (a, b) in enumerate(zip(chain[:-1], chain[1:])):
+                name = f"lifeline_{side}_{tier}_{k}"
+                hw.add("rope", tube(np.array([a, b]), 0.0035, 5, caps=False), tag=name)
+                hw.attach(name, ends[k])
+                hw.attach(name, ends[k + 1])

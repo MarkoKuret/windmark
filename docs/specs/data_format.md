@@ -185,6 +185,12 @@ abreast the cockpit and the sheet leads aft to the quarter.
 
 Top level: `"schema": "windmark.boatclass/1"`, `"id"`, `"name"`, `"version"` (integer, bumped on every change).
 
+The generated model follows two look rules whatever the `visual` block says: every fitting touches what it is
+fitted to (no gap over 5 mm between a part and its host on the meshes as built: the tiller in the rudder head, the
+mainsheet blocks on the boom and the traveller car, each shroud and stay on a rigging screw standing on its
+chainplate or stemhead, all deck hardware on the deck), and each material slot reads as its real material with a
+mean linear albedo of at most 0.8 (gelcoat, non-slip, metal, rope; `tools/boatgen/README.md` "Materials and UVs").
+
 #### 3.7.1 `handling`
 
 Optional. Tunes how a class **feels** without touching how fast it is: the VPP computes the physical tables and

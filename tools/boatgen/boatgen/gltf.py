@@ -13,17 +13,20 @@ from . import textures as tex
 
 # name -> (mean base colour RGBA linear, metallic, mean roughness); the tile size and texture set are in
 # textures.SLOTS. With textures the factors are divided by the texture means, so the mean look stays the same.
+# Real-material values (docs/specs/data_format.md 3.7): a white gelcoat reflects about 70 % and keeps a soft sheen,
+# not a mirror; the moulded non-slip is a shade greyer and matt; deck metal is polished stainless (about 60 %,
+# slightly blurred); rope is a flecked braid. No mean colour is above the boat shader's 0.8 albedo cap.
 MATERIALS = {
-    "gelcoat":     ((0.90, 0.91, 0.92, 1.0), 0.0, 0.16),
-    "nonslip":     ((0.58, 0.59, 0.58, 1.0), 0.0, 0.80),
+    "gelcoat":     ((0.72, 0.72, 0.70, 1.0), 0.0, 0.22),
+    "nonslip":     ((0.47, 0.47, 0.45, 1.0), 0.0, 0.85),
     "antifouling": ((0.035, 0.045, 0.07, 1.0), 0.0, 0.75),
     "boottop":     ((0.50, 0.03, 0.03, 1.0), 0.0, 0.25),
     "carbon":      ((0.035, 0.035, 0.038, 1.0), 0.1, 0.30),
-    "metal":       ((0.80, 0.80, 0.82, 1.0), 1.0, 0.28),
+    "metal":       ((0.62, 0.62, 0.64, 1.0), 1.0, 0.22),
     "sailcloth":   ((0.80, 0.80, 0.78, 1.0), 0.0, 0.55),
     "glass":       ((0.02, 0.025, 0.03, 1.0), 0.0, 0.05),
-    "rope":        ((0.30, 0.30, 0.30, 1.0), 0.0, 0.80),
-    "rubber":      ((0.04, 0.04, 0.04, 1.0), 0.0, 0.70),
+    "rope":        ((0.34, 0.33, 0.31, 1.0), 0.0, 0.85),
+    "rubber":      ((0.05, 0.05, 0.05, 1.0), 0.0, 0.80),
 }
 
 

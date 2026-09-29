@@ -250,6 +250,19 @@ boxes, masthead crane with sheaves, wind wand, instruments on the mast front, sp
 boots, chainplate cover plates, rigging screws at the foot of every shroud and stay, outhaul and cheek blocks on
 the boom.
 
+**Attachments** (`attach.py`). Every fitting is built from the surface or part it is fitted to, never from a
+nominal height: deck hardware stands on `Deck.surface` (deck, cabin roof or cockpit floor), each shroud and stay
+starts on top of its own rigging screw, in line with the wire, on a chainplate strap through a cover plate (the
+forestay on the stemhead fitting; on an open transom the backstay splits into two legs to plates on the quarters),
+the cap shrouds end in the mast wall at its tapered width, the backstay at the crane end, the bobstay on an eye on the
+stem as meshed. The mainsheet's upper block hangs from a bail on the boom's real underside (`Rig.boom_bottom`), the
+lower block stands on the traveller car, and the tackle runs between the two sheaves. On a transom rudder the tiller
+butt sits between the rudder-head cheeks on the head's bolt (`Appendages.tiller_pivot`, cheek gap = blade
+thickness), and the pintle straps sit between the gudgeon arms below the transom's top. The builders tag each
+piece (`Part.add(..., tag=)`) and record what it is fitted to (`Part.attach(piece, *hosts)`); `Boat.attachment_gaps()`
+measures the gap of every attachment on the meshes as built, and `tests/test_attachments.py` holds it at 5 mm or
+less for wm7 and wm12.
+
 **Running rigging** (`running.py`). The posed previews lead the working sheet of each set headsail or flying sail
 from the clew through its lead (the jib car block, or a block on the quarter for a kite) to a winch, wrapped on
 the drum, with the tail flaked in the cockpit, plus a slack lazy sheet, and for a kite the tack line and the
@@ -316,7 +329,7 @@ slots and each image is embedded once per GLB (JPEG, 512 x 512, about 1.2 MB in 
 | set | slots | tile (m) | source (CC0, docs/THIRD_PARTY.md) |
 | --- | --- | --- | --- |
 | `orange_peel` | gelcoat, boottop | 0.5 | ambientCG Plastic013A |
-| `pebble` | nonslip | 0.25 | ambientCG Leather026 |
+| `diamond` | nonslip | 0.1 | procedural (textures.py): moulded raised-diamond non-slip, about 6 mm pitch |
 | `grain` | antifouling, rubber | 0.5, 0.1 | ambientCG Rubber004 |
 | `carbon_twill` | carbon | 0.05 | ambientCG Fabric004 |
 | `brushed` | metal | 0.2 | ambientCG Metal009 |

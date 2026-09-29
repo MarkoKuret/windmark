@@ -48,6 +48,13 @@ class TexturesAOTest(unittest.TestCase):
                 self.assertEqual(info["texCoord"], 0)
                 np.testing.assert_allclose(info["extensions"]["KHR_texture_transform"]["scale"], [1 / tiling] * 2)
             self.assertEqual("normalTexture" in m, textures.has_normal(tset))
+        # real-material albedo (data_format.md 3.7): every slot's mean at most 0.8 linear, and the gelcoat's factor
+        # too, so the boat shader's cap never flattens a white hull
+        for name, (col, met, rough) in gltf.MATERIALS.items():
+            self.assertLessEqual(max(col[:3]), 0.8, name)
+        gel = next(m for m in doc["materials"] if m["name"] == "gelcoat")
+        self.assertLessEqual(max(gel["pbrMetallicRoughness"]["baseColorFactor"][:3]), 0.8)
+        self.assertEqual(textures.SLOTS["nonslip"][0], "diamond", "non-slip has its moulded pattern")
         sail = next(m for m in doc["materials"] if m["name"] == "sailcloth")
         self.assertNotIn("normalTexture", sail, "sails carry no normal map (sail_visuals.md 9)")
 

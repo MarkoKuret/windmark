@@ -1,8 +1,8 @@
 extends Node3D
 ## Sail test scene: one generated boat sailing freely on the example bay, with the cameras, the controls, the
-## minimal HUD, the sea, its wakes and the daytime sky. Frame order: read input, controls, ticks (stamp, step,
-## HUD values, sail snapshots), sea render time, render pose, boat, sails and wakes, cameras, HUD; the Sea and
-## SeaWakes nodes draw after. Headless tests drive it with `scripted_input` and step_frame().
+## minimal HUD, the sea, its wakes, the daytime sky and the sound (GameAudio). Frame order: read input, controls,
+## ticks (stamp, step, HUD values, audio inputs, sail snapshots), sea render time, render pose, boat, sails and
+## wakes, cameras, HUD, audio; the Sea and SeaWakes nodes draw after. Headless tests drive it with `scripted_input` and step_frame().
 ##
 ## The simulation (`sim_kind`): the Windmark core through CoreSimSource (the GDExtension, game/native/build.sh)
 ## on the venue `venue` without a race (free sailing, place_boat), or the FakeSim placeholder. AUTO takes the
@@ -97,6 +97,8 @@ var setup: GameSetup = null
 var venue_view: VenueView
 ## race mode: the course drawn from the core
 var course_view: CourseView
+## the race's sound (audio.md): boat, wind, signals, ambience, course objects
+var audio: GameAudio
 var target := CamTypes.Target.new()
 var viewed := 0
 ## tests: when set, used instead of the devices every frame
@@ -164,6 +166,11 @@ func _ready() -> void:
 	_paused_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	layer.add_child(_paused_label)
 	_build_course()
+	audio = GameAudio.new()
+	audio.name = "Audio"
+	add_child(audio)
+	audio.setup(sim, boat_views, viewed)
+	hud.hud_event.connect(audio.on_hud_event)
 	runner.ticked.connect(_on_tick)
 	hud.tick(sim, viewed)
 	_snapshot_sails(true)
@@ -377,6 +384,7 @@ func reset_boat() -> void:
 		viewed = b
 		hud.local_commands = true
 		_build_course()
+		audio.restart(sim, boat_views)
 	elif on_core:
 		(sim as CoreSimSource).place_boat(b, start_x, start_y, _start_psi())
 	else:
@@ -403,6 +411,7 @@ func _setup_fake() -> int:
 
 func _on_tick(_t: int) -> void:
 	hud.tick(sim, viewed)
+	audio.tick()
 	_snapshot_sails()
 	if course_view:
 		course_view.tick()
@@ -470,6 +479,10 @@ func step_frame(dt: float) -> void:
 	var cin := CameraInput.from_raw(raw if not controls.text_focus else raw.without_buttons(), controls.free_camera)
 	rig.frame(target, cin, dt)
 	hud.frame(dt, controls)
+	audio.viewed = viewed
+	audio.paused = runner.paused
+	audio.countdown_beeps = hud.assist == Hud.Assist.FULL
+	audio.frame(dt, rig.camera, rig.mode == CameraRig.Mode.ONBOARD)
 
 
 func _update_target(alpha: float) -> void:

@@ -13,7 +13,7 @@ Windmark is a working name.
 | `server/` | Authoritative race server on top of the core |
 | `game/` | Front end (Godot) |
 | `game/data/courses/` | Course files (`windmark.course/1`: marks, lines, sequence, area), one folder per venue; `example_bay/example_wl` is the example |
-| `tools/` | Boat generator, VPP, data tools |
+| `tools/` | Boat generator, VPP, sound generator (`tools/soundgen`), data tools |
 | `data/classes/`, `data/perf/` | Boat-class files and the performance tables generated from them |
 | `data/venues/` | Venue physics files (`windmark.venue/1`: wind field, current, sea exposure, land, obstacles); `example_bay` is a small hand-made example |
 | `docs/` | Design specs, plans, business and marketing |

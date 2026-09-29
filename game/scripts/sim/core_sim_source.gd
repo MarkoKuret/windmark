@@ -400,6 +400,10 @@ func rules_events() -> Array:
 	return _cached("rules_events", func() -> Array: return core.rules_events()) if core else []
 
 
+func contact_events() -> Array:
+	return _cached("contact_events", func() -> Array: return core.contact_events()) if core else []
+
+
 func polar_vmg(boat: int, tws: float) -> Dictionary:
 	return core.polar_vmg(boat, tws) if core else {}
 

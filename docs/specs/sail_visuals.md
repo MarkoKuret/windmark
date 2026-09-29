@@ -120,6 +120,8 @@ w_max = 9.0 + clamp((loa - 7) / 5, 0, 1)               // 9 rad/s small, 10 rad/
 furl_radius = 0.02 + 0.006 * Sa
 clearance   = 0.042 * loa                          // m, flying sails off the other sails and the mast (§7.4): 0.30 on wm7
 ```
+Fixed constants of the clearance (§7.4): push slope `k_p = 0.3` (m of push lost per m of cloth), ease threshold
+`P_e = 3·c` (the leech depth the push takes on before the sail is eased), ease cap `e_max = 0.35` rad (20°).
 The `camber` key replaces an earlier `depth` (0.30, 0.35 of the flat row chord, applied without shortening the
 chord), which drew the kites about 40 % too deep and too wide; a `depth` key in a look block is ignored.
 Fixed constants of the shapes: `c_hook = 0.0369260386` (headsail leech hook), foot fade rate 8 (§6.1), flutter
@@ -294,11 +296,12 @@ zero), or the pole end after the swing (symmetric spinnaker). That is where the 
 main turns about. The tack stays at the sprit end within the tack line. The luff leans aft from the tack (23° from
 the vertical on wm7, 20° on wm12), so the foot's plan-view angle from the tack is about an eighth less than
 `β` (28° at `β` 32°, 56° at 64°) and the clew lifts as the sail is eased (0.3 m at 32°, 1.2 m at 64° on wm7).
-The ease of §7.4 is on top of this, and on a reach it comes from the main's angle, not from the pivot: wm7 at
-80° AWA, 10 kn, the core sheets the kite at 32° and the main at 53°; without the ease the kite's clew would lie
-0.52 LOA forward of the transom and 1.4 m outboard of the rail, but its upper leech (rows 14 to 19 of 26) would
-pass up to 0.27 m through the main. The upper leech is close to the luff axis, so the ease that clears it is
-large (31°) and takes the clew to 1 m forward of the mast and 4.4 m outboard.
+On a reach the main's angle, not the pivot, brings the two sails together: wm7 at 80° AWA, 10 kn, the core sheets
+the kite at 32° and the main at 53°; the kite's clew lies 0.52 LOA forward of the transom (0.8 m aft of the mast)
+and 1.3 m outboard of the widest beam, as a real reaching asymmetric sheeted to the quarter, but its upper leech
+(rows 14 to 19 of 26) passes up to 0.27 m through the main near the luff. The upper leech is close to the luff
+axis, so turning the whole sail to clear it would take 31° (35° on wm12) and swing the clew 1 m forward of the mast
+and 4.4 m outboard; §7.4 clears it locally instead (owner decision 2026-09-30).
 
 **Ease to leeward.** The drawing adds no rotation of its own: the chord of a flying sail lies at the core's sheet
 angle `β` (`sails.md` §5.1, optimum 12–30° at the lowest AWA rising to 85–90° dead downwind), so it sits
@@ -308,10 +311,12 @@ keeps it clear where a trim or a gust would still bring it through them.
 
 ### 7.4 Clearance of the flying sails
 A flying sail (spinnaker, code zero) never passes through the main, a headsail or the mast. The core often
-sheets the kite well inside the main (wm7 at 80° AWA: kite 18°, main 53°, so the aft fifth of the kite lies inside
-the main over its whole height). Two steps keep it out, and nothing is hidden or clipped: the sail is first
-**eased** as a whole just far enough for its leech to clear, then every vertex is **pushed** off what is still
-too close. The obstacles are the boat's other sails that are not `down` (as last placed) and the mast line
+sheets the kite inside the main (wm7 at 80° AWA: kite 32°, main 53°, so the upper leech lies up to 0.27 m through
+the main near its luff). Nothing is hidden or clipped, and the sail keeps the core's angle wherever it can: the
+cloth that meets an obstacle is **pushed** off it locally, in a smooth bump that is largest where it meets the
+obstacle and fades over the cloth around it, and a last per-vertex push keeps the margin. Only when the leech would
+have to be pushed more than `P_e` does the whole sail **ease** about its luff, and never by more than `e_max`. The
+obstacles are the boat's other sails that are not `down` (as last placed) and the mast line
 `mast_step` → `masthead`.
 ```
 c    = clearance (§4, 0.042 * loa)                        // margin, m; b = c is the width of the falloff
@@ -332,27 +337,47 @@ clearance x of a point P (with its push direction g):
   at an end:     g = horizontal unit (P - Q),             x = |P - Q| horizontal
 mast: x = horizontal distance of P from the mast line, g radial (to leeward, sgn(awa)·port, when P is on it)
 
-ease: every row turns by a further e_s * delta about the luff (the §7.3 rotation), e_s = sgn(beta)
+ease (last resort): every row turns by a further e_s * delta about the luff (the §7.3 rotation), e_s = sgn(beta)
   delta = 0; 4 times:
     X = min over the leech vertices of rows 0, 3, 6, ... and the head row - 1, and the obstacles, of x - c_P
-    if X >= 0: stop
-    delta = min(delta + (-X) / max(r, 0.5), 1.0)            // r: that vertex's distance from the luff axis
-push: every vertex P = P + g * (c_P + smax(x - c_P) - x), per obstacle in turn, then the mast
+    if X >= -P_e: stop
+    delta = min(delta + (-P_e - X) / max(r, 0.5), e_max)    // r: that vertex's distance from the luff axis
+push, per sail obstacle in turn (c_P of each vertex from its position before the push):
+  local:  d_k = c_P - x for every vertex k with x < c_P + b, else -INF      // depth into the margin
+          D_k = max over k' of d_k' - k_p * s(k, k')        // s: distance over the rest cloth, by two chamfer
+                                                             // passes over the grid (row, column and diagonal
+                                                             // neighbours, their rest distances)
+          P_k = P_k + f * smax(D_k) * c_P / c                // the head fade pins the head
+  margin: every vertex P = P + g * (c_P + smax(x - c_P) - x), x and g of P after the local push
+then the mast: P = P + g * (c_P + smax(x - c_P) - x)
 ```
-- A vertex already `2c` or more clear is not moved; one inside the margin or through the obstacle lands at least
-  `c_P` clear, on the flying sail's side, and the push falls off smoothly over `b` so the cloth drapes over the
-  obstacle instead of folding. The obstacles are not moved.
+- The local push moves the whole region that meets the obstacle as one smooth bump along the obstacle's bow-facing
+  normal `f`: full depth where the cloth is deepest in the margin, falling off by `k_p` per metre of cloth around
+  it (a 0.6 m push on the wm7 reach fades over 2 m of cloth), with a smooth base (`smax`) where it ends. The cloth
+  bends instead of turning about the luff, so the clew stays where the core's angle puts it.
+- The margin push then takes what is left (the obstacle's twist and camber make its normal differ a little from
+  `f`): a vertex already `2c` or more clear is not moved; one inside the margin or through the obstacle lands at
+  least `c_P` clear, on the flying sail's side, and the push falls off smoothly over `b`. The obstacles are not
+  moved.
+- The ease starts only when the leech is more than `P_e` inside the margin (a kite sheeted well inside the main, or
+  the main eased onto it), and turns the sail just far enough to bring that depth back to `P_e`, at most `e_max`.
+  At the core's optimum both boats need little or no ease (under 1° on the reaches of test 20; the reach of the
+  example above takes a local push of 0.59 m on wm7, 1.25 m on wm12, and no ease).
 - The height slice makes it a horizontal distance: the sails stand close to vertical, so it is within a few per
   cent of the true one.
 - The side is the one facing the bow (an obstacle eased out is passed on its forward, outboard face); only for an
   obstacle near the centreline does the kite's own side decide. It does not come from the wind, so it does not
   flip when the main luffs, is let fly or crosses the centreline in a gybe.
-- The ease is visual only (the core's `β` is not changed) and continuous in the trim: sheeting the kite in past
-  the point where its leech meets the main leaves it at that point, as a real kite that is pressed against the
-  main's lee side and stalls. The push then only has the belly and the head to deal with, a few centimetres.
-- Cost: per vertex and obstacle a row search and a bounds test, and one polyline only near the obstacle, plus a
-  few dozen for the ease: at most about 20 µs per flying sail on a 26 × 16 grid (native), with the kite sheeted
-  at the main's angle so that most of it is near the main.
+- **Continuity.** Every step is a continuous function of the placed sails: the depths, their spread (a maximum of
+  continuous terms), the smooth max and the ease (zero until the leech passes `P_e`, then growing with it), so a
+  change of trim or wind moves the cloth smoothly from frame to frame and a bump grows from nothing where the kite
+  first touches the margin. Sheeting the kite in past the point where its leech meets the main presses it harder
+  against the main's lee side, as a real kite that stalls there. The ease and the push are visual only (the core's
+  `β` is not changed).
+- Cost: per vertex and obstacle a row search and a bounds test, one polyline only near the obstacle, and a second
+  one for the vertices the local push moved; two passes over the grid for the spread; plus a few dozen for the
+  ease: about 60 µs per flying sail on a 26 × 16 grid (native), with the kite sheeted at the main's angle so that
+  most of it is near the main (the whole kite update 83 µs, a wm7 with three sails 100 µs per frame).
 
 ## 8. Hoisting and dropping
 
@@ -578,12 +603,19 @@ Flutter phase `φ = 0` unless stated.
     edge of theirs crosses the flying sail, and the smallest distance of a flying-sail vertex from the main, the
     jib and the mast, away from the head fade, is at least `0.9·c`; the test prints the smallest distance found.
     Sheeting the flying sail from 60 % to 130 % of its optimum over 2 s (TWA 100°, 12 kn, main eased 20 %, jib up)
-    moves no vertex more than `0.05·Sa` between frames at 60 fps.
+    moves no vertex more than `0.05·Sa` between frames at 60 fps (no pop as the local push starts, grows or hands
+    over to the ease). The test also prints the largest ease found (a few degrees at most: the push does the work).
 19. **Generator parity.** The generator's preview poses and `kite_preview` set the sails with a port of §5.1,
     §6.1 to §6.4 and §7 (`tools/boatgen/boatgen/sail_set.py`: `up` phase, no luff shiver, headsails drawing) and
     write each pose's wind, angles and placed mid-surfaces to `<id>.sets.json`. BoatView, native and reference,
     given the same wind and angles on the generated `wm7`, `wm12` and the generator's symmetric-spinnaker test
     class, places every vertex within 0.01 m of the generator's.
+
+20. **Reaching kite.** On the generated `wm7` and `wm12`, the asymmetric spinnaker at the core's optimum (main and
+    kite at their optimum angles, jib down and up) on every reach with AWA 70° to 90° (TWS 6, 12, 22 kn, TWA in 2°
+    steps, both tacks): the clew (row 0, last column) stays aft of the mast and at most `0.3·LOA` outboard of the
+    widest beam (2.2 m on wm7, 3.6 m on wm12), where a real reaching asymmetric sheeted to the quarter flies, while
+    test 18 holds in every config and trim. The test prints the clew's worst position and the largest ease.
 
 ## 13. Dependencies and open points
 

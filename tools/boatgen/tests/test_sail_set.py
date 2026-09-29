@@ -102,8 +102,9 @@ class PoseTest(unittest.TestCase):
                         self.assertGreaterEqual(x, 0.9 * cp - 1e-3, (cid, name, sid, "mast"))
 
     def test_kite_set_depth_and_tack(self):
-        # the set kite: 0.20 to 0.30 camber at mid height on a run with 6 kn apparent or more, tack at the sprit
-        # end (the swing of 7.3 is at most tack_line_max of the luff), on the leeward side of the boat
+        # the set kite: 0.18 to 0.30 camber at mid height (0.15 on the reach, where the local push of 7.4 bends
+        # the leech off the main and flattens the row a little), tack at the sprit end (the swing of 7.3 is at
+        # most tack_line_max of the luff), on the leeward side of the boat
         for cid, sid in (("wm7", "kite"), ("wm12", "a2")):
             b = boat(cid)
             for pt in ("run", "reach"):
@@ -112,10 +113,22 @@ class PoseTest(unittest.TestCase):
                 grids, shapes = sail_set.set_sails(b, pose)
                 G = grids[sid]
                 c = row_camber(G, G.shape[0] // 2)
-                self.assertTrue(0.18 <= c <= 0.30, (cid, pt, c))
+                self.assertTrue((0.18 if pt == "run" else 0.15) <= c <= 0.30, (cid, pt, c))
                 rest_tack = b.sails[sid].P[0, 0]
                 self.assertLess(np.linalg.norm(G[0, 0] - rest_tack), 0.05 * shapes[sid].sl + 1e-6)
                 self.assertLess(G[0, -1][1], 0.0)          # clew to starboard, the lee side
+
+    def test_reach_clew(self):
+        # 7.4, 12 test 20: on the reach the upper leech is pushed off the main locally, not the whole kite turned:
+        # the clew stays aft of the mast and at most 0.3 LOA outboard of the widest beam, with no ease
+        for cid, sid in (("wm7", "kite"), ("wm12", "a2")):
+            b = boat(cid)
+            grids, shapes = sail_set.set_sails(b, set_pose("spinnaker_asym", "reach"))
+            clew = grids[sid][0, -1]
+            self.assertLess(clew[0], b.rig.x_mast, cid)
+            self.assertLessEqual(abs(clew[1]) - 0.5 * b.cls["hull"]["beam_max"], 0.3 * b.hull.L, cid)
+            self.assertLess(shapes[sid].ease, np.radians(1.0), cid)
+            self.assertGreater(shapes[sid].push_max, 0.0, cid)
 
     def test_sets_file(self):
         b = boat("wm7")

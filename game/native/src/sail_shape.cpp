@@ -21,6 +21,10 @@ constexpr float KNOT = 1852.0f / 3600.0f;
 constexpr float C_HOOK = 0.0369260386f;
 constexpr float TAU_SMOOTH = 0.25f;
 constexpr float DT_MAX = 0.1f;
+// §4, §7.4 clearance constants: push slope, ease threshold (in clearances), ease cap (rad)
+constexpr float PUSH_SLOPE = 0.3f;
+constexpr float PUSH_EASE = 3.0f;
+constexpr float EASE_MAX = 0.35f;
 
 inline float sgn(float x) { return x >= 0.0f ? 1.0f : -1.0f; }
 inline float wrap_pi(float x) {
@@ -150,6 +154,26 @@ bool SailShape::configure(const PackedVector3Array& rest, int64_t rows, int64_t 
     hrow_[i] = h_[i * cols_];
   }
   furl_radius_ = getf(p, "furl_radius", 0.02f + 0.006f * sa_);
+  // §7.4 rest distances between grid neighbours, for the spread of the push
+  ec_.assign(n_, 0.0f);
+  er_.assign(n_, 0.0f);
+  e1_.assign(n_, 0.0f);
+  e2_.assign(n_, 0.0f);
+  for (int i = 0; i < rows_; ++i) {
+    for (int j = 0; j < cols_; ++j) {
+      const int k = i * cols_ + j;
+      if (j + 1 < cols_) ec_[k] = r[k].distance_to(r[k + 1]);
+      if (i + 1 < rows_) {
+        er_[k] = r[k].distance_to(r[k + cols_]);
+        if (j + 1 < cols_) e1_[k] = r[k].distance_to(r[k + cols_ + 1]);
+        if (j > 0) e2_[k] = r[k].distance_to(r[k + cols_ - 1]);
+      }
+    }
+  }
+  cp_.assign(n_, 0.0f);
+  px_.assign(n_, 0.0f);
+  pd_.assign(n_, 0.0f);
+  pg_.assign(n_, Vector3());
   const Vector3 dh = tack_ - head_;
   r_h_ = std::max((dh - up_ * dh.dot(up_)).length(), 1e-3f);
   const Vector3 hz = -fwd_;
@@ -539,31 +563,82 @@ float SailShape::ease(float beta, const Transform3D& s_t, const Vector3& piv, co
       }
       if (i == rows_ - 2) break;
     }
+    worst += PUSH_EASE * clearance_;  // the push takes up to P_e; the ease only the rest
     if (worst >= 0.0f) break;
-    delta = std::min(delta + (-worst) / std::max(rr, 0.5f), 1.0f);
+    delta = std::min(delta + (-worst) / std::max(rr, 0.5f), EASE_MAX);
   }
   return delta;
 }
 
-// §7.4 the push: every vertex off each obstacle in turn, then off the mast.
+// §7.4 the spread of the push depths: d_k = max over k' of d_k' - k_p * (rest distance over the cloth), by two
+// chamfer passes over the grid (row, column and diagonal neighbours).
+void SailShape::spread(std::vector<float>& d) const {
+  const int rn = rows_, cn = cols_;
+  const float s = PUSH_SLOPE;
+  for (int i = 0; i < rn; ++i) {
+    for (int j = 0; j < cn; ++j) {
+      const int k = i * cn + j;
+      float v = d[k];
+      if (j > 0) v = std::max(v, d[k - 1] - s * ec_[k - 1]);
+      if (i > 0) {
+        v = std::max(v, d[k - cn] - s * er_[k - cn]);
+        if (j > 0) v = std::max(v, d[k - cn - 1] - s * e1_[k - cn - 1]);
+        if (j + 1 < cn) v = std::max(v, d[k - cn + 1] - s * e2_[k - cn + 1]);
+      }
+      d[k] = v;
+    }
+  }
+  for (int i = rn - 1; i >= 0; --i) {
+    for (int j = cn - 1; j >= 0; --j) {
+      const int k = i * cn + j;
+      float v = d[k];
+      if (j + 1 < cn) v = std::max(v, d[k + 1] - s * ec_[k]);
+      if (i + 1 < rn) {
+        v = std::max(v, d[k + cn] - s * er_[k]);
+        if (j + 1 < cn) v = std::max(v, d[k + cn + 1] - s * e1_[k]);
+        if (j > 0) v = std::max(v, d[k + cn - 1] - s * e2_[k]);
+      }
+      d[k] = v;
+    }
+  }
+}
+
+// §7.4 the push: per obstacle the local push (a smooth bump along the obstacle's bow-facing normal) and the margin
+// push, then every vertex off the mast.
 void SailShape::push(float awa, const Vector3& hd) {
   const float b = clearance_;
   auto smax = [b](float x) { return x >= b ? x : (x <= -b ? 0.0f : (x + b) * (x + b) / (4.0f * b)); };
   const Vector3 lee = port_ * sgn(awa);
-  for (int k = 0; k < n_; ++k) {
-    Vector3 p = mid_[k];
-    const float cp = margin_at(p, hd);
-    for (const Section& o : secs_) {
-      Vector3 g;
-      const float x = clear_x(o, p, cp + b, g);
-      if (x < cp + b) p += g * (cp + smax(x - cp) - x);
+  for (int k = 0; k < n_; ++k) cp_[k] = margin_at(mid_[k], hd);
+  for (const Section& o : secs_) {
+    bool any = false;
+    for (int k = 0; k < n_; ++k) {
+      const float x = clear_x(o, mid_[k], cp_[k] + b, pg_[k]);
+      px_[k] = x;
+      pd_[k] = x < cp_[k] + b ? cp_[k] - x : -INFINITY;
+      any = any || x < cp_[k] + b;
     }
-    if (has_mast_head_) {
-      Vector3 g;
-      const float x = mast_x(p, lee, g);
-      if (x < cp + b) p += g * (cp + smax(x - cp) - x);
+    if (any) {
+      spread(pd_);
+      for (int k = 0; k < n_; ++k) {
+        const float v = smax(pd_[k]) * cp_[k] / b;
+        if (v > 0.0f) {
+          mid_[k] += o.f * v;
+          px_[k] = clear_x(o, mid_[k], cp_[k] + b, pg_[k]);
+        }
+      }
     }
-    mid_[k] = p;
+    for (int k = 0; k < n_; ++k) {
+      const float x = px_[k];
+      if (x < cp_[k] + b) mid_[k] += pg_[k] * (cp_[k] + smax(x - cp_[k]) - x);
+    }
+  }
+  if (has_mast_head_) {
+    for (int k = 0; k < n_; ++k) {
+      Vector3 g;
+      const float x = mast_x(mid_[k], lee, g);
+      if (x < cp_[k] + b) mid_[k] += g * (cp_[k] + smax(x - cp_[k]) - x);
+    }
   }
 }
 

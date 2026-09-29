@@ -69,6 +69,11 @@ class Xf:
         return p @ self.R.T + self.t
 
 
+PUSH_SLOPE = 0.3        # 7.4 k_p: the local push falls off by this much per metre of cloth
+PUSH_EASE = 3.0         # 7.4 P_e: the ease starts where the leech is deeper than this many clearances
+EASE_MAX = 0.35         # 7.4 e_max: the largest ease, rad
+
+
 def smoothstep01(x):
     x = min(max(x, 0.0), 1.0)
     return x * x * (3 - 2 * x)
@@ -128,7 +133,15 @@ class SailSet:
         self.mid = Q.copy()
         self.loc = np.stack([self.a, self.l, np.zeros_like(self.a)], -1)
         self.ease = 0.0
+        self.push_max = 0.0     # the largest local push of the last update (7.4), m
         self._secs = []
+        # 7.4: distances between grid neighbours on the rest cloth (along a row, up a column, the two diagonals)
+        E = Q.reshape(rows, cols, 3)
+        self._ec = np.linalg.norm(E[:, 1:] - E[:, :-1], axis=-1)
+        self._er = np.linalg.norm(E[1:] - E[:-1], axis=-1)
+        self._e1 = np.linalg.norm(E[1:, 1:] - E[:-1, :-1], axis=-1)
+        self._e2 = np.zeros((rows - 1, cols))
+        self._e2[:, 1:] = np.linalg.norm(E[1:, :-1] - E[:-1, 1:], axis=-1)
 
     # ------------------------------------------------------------------ shape and placement (7, 6.1 to 6.4)
 
@@ -300,25 +313,76 @@ class SailSet:
                 if i == rows - 2:
                     break
                 i = min(i + 3, rows - 2)
+            worst += PUSH_EASE * self.clearance
             if worst >= 0:
                 break
-            delta = min(delta + (-worst) / max(rr, 0.5), 1.0)
+            delta = min(delta + (-worst) / max(rr, 0.5), EASE_MAX)
         return delta
+
+    def _spread(self, d):
+        """7.4: the push depth field: the largest of d_s - PUSH_SLOPE * (distance over the cloth from s), by
+        two chamfer passes over the rest grid; it may go down to -clearance so the smooth max has a base."""
+        rows, cols = self.rows, self.cols
+        s = PUSH_SLOPE
+        D = d.reshape(rows, cols).copy()
+        ec, er, e1, e2 = self._ec, self._er, self._e1, self._e2
+        for i in range(rows):
+            for j in range(cols):
+                v = D[i, j]
+                if j > 0:
+                    v = max(v, D[i, j - 1] - s * ec[i, j - 1])
+                if i > 0:
+                    v = max(v, D[i - 1, j] - s * er[i - 1, j])
+                    if j > 0:
+                        v = max(v, D[i - 1, j - 1] - s * e1[i - 1, j - 1])
+                    if j < cols - 1:
+                        v = max(v, D[i - 1, j + 1] - s * e2[i - 1, j + 1])
+                D[i, j] = v
+        for i in range(rows - 1, -1, -1):
+            for j in range(cols - 1, -1, -1):
+                v = D[i, j]
+                if j < cols - 1:
+                    v = max(v, D[i, j + 1] - s * ec[i, j])
+                if i < rows - 1:
+                    v = max(v, D[i + 1, j] - s * er[i, j])
+                    if j < cols - 1:
+                        v = max(v, D[i + 1, j + 1] - s * e1[i, j])
+                    if j > 0:
+                        v = max(v, D[i + 1, j - 1] - s * e2[i, j])
+                D[i, j] = v
+        return D.reshape(-1)
 
     def _push(self, awa, hd):
         b = self.clearance
         lee = PORT * sgn(awa)
-        for k in range(len(self.mid)):
-            p = self.mid[k].copy()
-            cp = self._margin(p, hd)
-            for o in self._secs:
-                x, g = self._clear_x(o, p, cp + b)
-                if x < cp + b:
-                    p = p + g * (cp + smax(x - cp, b) - x)
-            x, g = self._mast_x(p, lee)
-            if x < cp + b:
-                p = p + g * (cp + smax(x - cp, b) - x)
-            self.mid[k] = p
+        n = len(self.mid)
+        cp = np.array([self._margin(p, hd) for p in self.mid])
+        self.push_max = 0.0
+        for o in self._secs:
+            X = np.full(n, np.inf)
+            G = np.zeros((n, 3))
+            d = np.full(n, -np.inf)
+            for k in range(n):
+                x, g = self._clear_x(o, self.mid[k], cp[k] + b)
+                X[k], G[k] = x, g
+                if x < cp[k] + b:
+                    d[k] = cp[k] - x
+            if np.isfinite(d).any():
+                D = self._spread(d)
+                w = cp / b                                      # the head fade
+                push = np.array([smax(v, b) for v in D]) * w
+                self.push_max = max(self.push_max, float(push.max()))
+                for k in range(n):
+                    if push[k] > 0:
+                        self.mid[k] = self.mid[k] + o["f"] * push[k]
+                        X[k], G[k] = self._clear_x(o, self.mid[k], cp[k] + b)
+            for k in range(n):
+                if X[k] < cp[k] + b:
+                    self.mid[k] = self.mid[k] + G[k] * (cp[k] + smax(X[k] - cp[k], b) - X[k])
+        for k in range(n):
+            x, g = self._mast_x(self.mid[k], lee)
+            if x < cp[k] + b:
+                self.mid[k] = self.mid[k] + g * (cp[k] + smax(x - cp[k], b) - x)
 
 
 # ---------------------------------------------------------------------------- whole boat

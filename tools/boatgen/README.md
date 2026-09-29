@@ -317,7 +317,7 @@ slots and each image is embedded once per GLB (JPEG, 512 x 512, about 1.2 MB in 
 | set | slots | tile (m) | source (CC0, docs/THIRD_PARTY.md) |
 | --- | --- | --- | --- |
 | `orange_peel` | gelcoat, boottop | 0.5 | ambientCG Plastic013A |
-| `pebble` | nonslip | 0.25 | ambientCG Leather026 |
+| `diamond` | nonslip | 0.1 | procedural (textures.py): moulded raised-diamond non-slip, about 6 mm pitch |
 | `grain` | antifouling, rubber | 0.5, 0.1 | ambientCG Rubber004 |
 | `carbon_twill` | carbon | 0.05 | ambientCG Fabric004 |
 | `brushed` | metal | 0.2 | ambientCG Metal009 |

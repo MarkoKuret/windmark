@@ -9,7 +9,8 @@ detail around a mean of one, so a slot's average look does not depend on the tex
 - `<set>_normal.jpg`: tangent-space normal map, OpenGL convention (+Y up), as glTF expects
 
 The images are made from CC0 materials of ambientCG (docs/THIRD_PARTY.md) by `python3 -m boatgen.textures`, which
-downloads the 1K sources and writes the processed files. The build only reads the processed files.
+downloads the 1K sources and writes the processed files; sets without a source asset (the moulded non-slip) are
+drawn here (`--procedural` rewrites only those). The build only reads the processed files.
 """
 import io
 import os
@@ -29,19 +30,19 @@ ROUGH_MEAN = 0.80
 # set -> (ambientCG asset, colour detail contrast, roughness contrast, normal strength)
 SETS = {
     "orange_peel": ("Plastic013A", 0.15, 0.4, 1.0),   # gelcoat and paint: slight orange peel
-    "pebble": ("Leather026", 0.35, 0.6, 1.4),         # moulded non-slip grain
     "grain": ("Rubber004", 0.35, 0.5, 0.8),           # rolled antifouling, rubber
     "carbon_twill": ("Fabric004", 1.0, 0.6, 1.0),     # carbon twill weave
     "brushed": ("Metal009", 0.4, 0.6, 0.6),           # brushed stainless and aluminium
     "weave": ("Fabric062", 0.35, 0.3, 0.0),           # sailcloth (no normal map, sail_visuals.md 9)
     "braid": ("Rope002", 0.8, 0.4, 1.0),              # braided rope
+    "diamond": (None, 0.25, 0.35, 1.0),               # moulded non-slip: raised diamond pattern (procedural)
 }
 
 # slot -> (set or None, tile size in metres: one image covers tiling_m x tiling_m of uv0)
 SLOTS = {
     "gelcoat": ("orange_peel", 0.5),
     "boottop": ("orange_peel", 0.5),
-    "nonslip": ("pebble", 0.25),
+    "nonslip": ("diamond", 0.1),
     "antifouling": ("grain", 0.5),
     "rubber": ("grain", 0.1),
     "carbon": ("carbon_twill", 0.05),
@@ -104,9 +105,51 @@ def process(set_name, zip_bytes):
         os.remove(p["normal"])
 
 
+def diamond(period_px=32, seed=7):
+    """Moulded non-slip, made here (no source asset): a grid of raised, flat-topped pyramids turned 45 degrees,
+    repeating every `period_px` along each image axis (16 across the tile, about 6 mm at the 0.1 m tile), with a
+    little moulding noise. The grooves are darker (dirt, occlusion) and rougher than the worn tops. Seamless."""
+    rng = np.random.default_rng(seed)
+    v, u = np.mgrid[0:SIZE, 0:SIZE].astype(np.float64)
+    a, b = (u + v) / period_px, (u - v) / period_px
+    # distance to the nearest groove line in each direction, 0 at a groove, 0.5 at a pyramid centre
+    da, db = np.abs(a - np.round(a)), np.abs(b - np.round(b))
+    h = np.clip(np.minimum(da, db) / 0.32, 0, 1)            # pyramid flanks, flat top above 0.32
+    # periodic low-frequency noise: a few waves with whole numbers of cycles across the tile
+    noise = np.zeros_like(h)
+    for _ in range(12):
+        fu, fv = rng.integers(1, 9, 2)
+        noise += np.cos(2 * np.pi * (fu * u + fv * v) / SIZE + rng.uniform(0, 2 * np.pi))
+    noise /= 12 ** 0.5 * 2
+    h = h + 0.06 * noise
+    # normal from the height gradient (wrapping, so the tile repeats), OpenGL convention
+    gx = (np.roll(h, -1, 1) - np.roll(h, 1, 1)) * 0.5
+    gy = (np.roll(h, -1, 0) - np.roll(h, 1, 0)) * 0.5
+    k = 2.2
+    n = np.stack([-k * gx, k * gy, np.ones_like(h)], -1)
+    n /= np.linalg.norm(n, axis=-1, keepdims=True)
+    col = _detail(0.75 + 0.25 * h, DETAIL_MEAN, 1.0)
+    rough = _detail(1.15 - 0.3 * h, ROUGH_MEAN, 1.0)
+    return col, rough, n
+
+
+def process_procedural(set_name):
+    col, rough, n = {"diamond": diamond}[set_name]()
+    p = paths(set_name)
+    grey = _lin_to_srgb(col)
+    mr = np.stack([np.ones_like(rough), rough, np.ones_like(rough)], -1)
+    Image.fromarray((np.repeat(grey[..., None], 3, -1) * 255 + 0.5).astype(np.uint8)).save(p["color"], quality=92)
+    Image.fromarray((mr * 255 + 0.5).astype(np.uint8)).save(p["mr"], quality=92)
+    Image.fromarray(((n * 0.5 + 0.5) * 255 + 0.5).astype(np.uint8)).save(p["normal"], quality=95)
+
+
 def fetch(set_names=None, cache=None):
     for s in set_names or SETS:
         asset = SETS[s][0]
+        if asset is None:
+            process_procedural(s)
+            print(f"{s}: procedural -> {', '.join(os.path.basename(v) for v in paths(s).values())}")
+            continue
         url = f"https://ambientcg.com/get?file={asset}_1K-JPG.zip"
         local = os.path.join(cache, f"{asset}.zip") if cache else None
         if local and os.path.exists(local):
@@ -126,4 +169,4 @@ if __name__ == "__main__":
     np.seterr(all="ignore")   # spurious BLAS flags in matmul on some platforms
     args = sys.argv[1:]
     cache = args[args.index("--cache") + 1] if "--cache" in args else None
-    fetch(cache=cache)
+    fetch([s for s in SETS if SETS[s][0] is None] if "--procedural" in args else None, cache=cache)

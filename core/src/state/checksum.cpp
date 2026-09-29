@@ -5,10 +5,7 @@
 namespace wm {
 
 void Fnv1a64::update(std::span<const std::uint8_t> bytes) {
-  for (std::uint8_t b : bytes) {
-    h_ ^= b;
-    h_ *= kPrime;
-  }
+  for (std::uint8_t b : bytes) update_u8(b);
 }
 
 void Fnv1a64::update_u32(std::uint32_t v) {
@@ -23,17 +20,29 @@ std::uint64_t fnv1a64(std::span<const std::uint8_t> bytes) {
   return h.value();
 }
 
+void SnapshotWriter::put_bytes(const std::uint8_t* b, std::size_t n) {
+  if (hash_ != nullptr) {
+    for (std::size_t i = 0; i < n; ++i) hash_->update_u8(b[i]);
+  } else {
+    bytes_.insert(bytes_.end(), b, b + n);
+  }
+}
+
 void SnapshotWriter::put_u16(std::uint16_t v) {
-  bytes_.push_back(static_cast<std::uint8_t>(v));
-  bytes_.push_back(static_cast<std::uint8_t>(v >> 8));
+  const std::uint8_t b[2] = {static_cast<std::uint8_t>(v), static_cast<std::uint8_t>(v >> 8)};
+  put_bytes(b, 2);
 }
 
 void SnapshotWriter::put_u32(std::uint32_t v) {
-  for (int i = 0; i < 4; ++i) bytes_.push_back(static_cast<std::uint8_t>(v >> (8 * i)));
+  std::uint8_t b[4];
+  for (int i = 0; i < 4; ++i) b[i] = static_cast<std::uint8_t>(v >> (8 * i));
+  put_bytes(b, 4);
 }
 
 void SnapshotWriter::put_u64(std::uint64_t v) {
-  for (int i = 0; i < 8; ++i) bytes_.push_back(static_cast<std::uint8_t>(v >> (8 * i)));
+  std::uint8_t b[8];
+  for (int i = 0; i < 8; ++i) b[i] = static_cast<std::uint8_t>(v >> (8 * i));
+  put_bytes(b, 8);
 }
 
 void SnapshotWriter::put_f32(float v) {

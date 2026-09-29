@@ -1,5 +1,7 @@
 // conventions.md §8: bracket, steps, clamping, interpolation order.
+#include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <vector>
 
@@ -11,6 +13,12 @@ namespace {
 
 wm::Bracket br(const std::vector<float>& a, float x) {
   return wm::bracket(a.data(), static_cast<std::uint32_t>(a.size()), x);
+}
+
+std::uint32_t bits(float f) {
+  std::uint32_t u;
+  std::memcpy(&u, &f, sizeof u);
+  return u;
 }
 
 }  // namespace
@@ -94,6 +102,33 @@ TEST_CASE("axis validation") {
   CHECK(wm::check_axis_points({0.0f, 2.0f, 1.0f}) != nullptr);
   CHECK(wm::check_axis_points({0.0f, std::numeric_limits<float>::infinity()}) != nullptr);
   CHECK(wm::check_axis_points(std::vector<float>(257, 0.0f)) != nullptr);
+}
+
+TEST_CASE("at_each gives at(x, y) bit for bit along a rising sweep of y") {
+  // An axis with a step, a y sweep that starts below it, crosses every point and the step, and ends above it.
+  const std::vector<float> ya{0.0f, 0.3f, 0.3f, 1.1f, 2.0f, 3.1f};
+  std::vector<float> v;
+  for (int i = 0; i < 3; ++i)
+    for (std::size_t j = 0; j < ya.size(); ++j) v.push_back(std::sin(1.3f * static_cast<float>(i) + static_cast<float>(j)));
+  const wm::Table t({{wm::Quantity::tws, {1.0f, 2.5f, 4.0f}}, {wm::Quantity::twa_abs, ya}}, wm::Unit::m_s, v);
+  std::vector<float> ys;
+  for (int k = -20; k <= 400; ++k) ys.push_back(static_cast<float>(k) * 0.0083f);
+  for (const float y : ya) ys.push_back(y);
+  std::sort(ys.begin(), ys.end());
+  // The one-point axis too.
+  const wm::Table t1({{wm::Quantity::tws, {1.0f, 2.0f}}, {wm::Quantity::twa_abs, {0.5f}}}, wm::Unit::m_s, {3.0f, 7.0f});
+  std::vector<float> out(ys.size());
+  for (const float x : {0.0f, 1.0f, 1.7f, 2.5f, 3.99f, 9.0f}) {
+    CAPTURE(x);
+    t.at_each(x, ys, out);
+    bool same = true;
+    for (std::size_t k = 0; k < ys.size(); ++k) same = same && bits(out[k]) == bits(t.at(x, ys[k]));
+    CHECK(same);
+    t1.at_each(x, ys, out);
+    same = true;
+    for (std::size_t k = 0; k < ys.size(); ++k) same = same && bits(out[k]) == bits(t1.at(x, ys[k]));
+    CHECK(same);
+  }
 }
 
 TEST_CASE("2-D and 3-D interpolation: row-major, lerp order of §8.2") {

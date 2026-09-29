@@ -190,7 +190,7 @@ bool round_mark(AC& x, AB& a, const Me& m, const MarkTarget& t) {
   // Guide: outside the circle the tangent point ahead in the rounding direction, inside it a point 55° ahead.
   Vec2 guide;
   if (dist > 1.15f * t.rho) {
-    const float g = std::acos(clamp(t.rho / dist, -1.0f, 1.0f));
+    const float g = wm_acos(clamp(t.rho / dist, -1.0f, 1.0f));
     guide = v_add(t.M, v_scale(dir(wrap_2pi(alpha - t.sigma * g)), t.rho));
   } else {
     guide = v_add(t.M, v_scale(dir(wrap_2pi(alpha - t.sigma * 55.0f * DEG)), t.rho));

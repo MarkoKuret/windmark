@@ -107,11 +107,15 @@ class World {
 
   // conventions.md §9.1 world snapshot, taken between ticks: everything the world carries to the next tick.
   void save(SnapshotWriter& w) const;
-  // Resumes a saved world. This must be a new world (no race, no step) built with the same WorldSetup and the same
-  // boats added in the same order; `course` is the course the race was created with (unused when the snapshot has
-  // no race). Returns false with a reason if the snapshot does not match or is damaged; the world is then unusable.
-  // Controllers are not state: set them again after loading.
+  // Resumes a saved world, in a world built with the same WorldSetup and the same boats added in the same order
+  // (joiners included), whatever it has run before: it is reset first, and any number of loads may follow. `course`
+  // is the course the race was created with (unused when the snapshot has no race). Returns false with a reason if
+  // the snapshot does not match or is damaged, and the world is then unchanged. The controller stays installed; a
+  // controller's own memory (the AI skippers, ai.md §16) is loaded by the controller.
   bool load(std::span<const std::uint8_t> bytes, const CourseData* course, std::string& error);
+  // Back to the state right after construction with the same entries added (tick 0, no race, boats not placed).
+  // The controller stays installed.
+  void reset();
 
  private:
   struct Command {
@@ -124,6 +128,7 @@ class World {
   BoatEnv env_at(Vec2 p) const;
   void queue(Command c) { commands_.push_back(c); }
   void save_body(SnapshotWriter& w) const;
+  bool load_new(std::span<const std::uint8_t> bytes, const CourseData* course, std::string& error);  // a new world
 
   WorldSetup setup_;
   WindSettings wind_settings_;

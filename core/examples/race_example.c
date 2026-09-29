@@ -3,12 +3,14 @@
  * the spawn to the results. The race runs twice with the same seed and must give the same checksum; then one
  * boat sails freely in a world without a race. Then a fleet of AI skippers (ai.md) races the same course, one of
  * them a human entry taken over by an AI (ai.md §14); the world and the skippers' memory are saved a minute after
- * the gun and loaded into a new world, which must finish the race with the same ticks and checksum.
+ * the gun and loaded into a new world, which must finish the race with the same ticks and checksum, and loaded
+ * again into the world that ran on, which must do the same.
  *
- *   windmark_race_example [data_dir] [courses_dir]
+ *   windmark_race_example [data_dir] [courses_dir] [quick]
  *
  * Exit code 0 when the races closed with every boat scored, both runs agree, the free-sailing boat moved, and the
- * AI race continued from its snapshot exactly.
+ * AI race continued from its snapshot exactly. `quick` (the default test run) runs the scripted race once and the
+ * AI race only to 20 s after the snapshot, and compares the continued runs there.
  * The skipper is example code, not the computer skipper of ai.md; its own arithmetic is plain C floats. */
 #include <math.h>
 #include <stdio.h>
@@ -499,7 +501,8 @@ static int race_closed(wm_world* w) {
   return wm_world_race(w, &ri) == WM_OK && ri.state == WM_RACE_CLOSED;
 }
 
-static ai_outcome run_ai_race(const char* data, const char* courses) {
+/* To the close, or with `quick` to 20 s after the snapshot. */
+static ai_outcome run_ai_race(const char* data, const char* courses, int quick) {
   ai_outcome o = {0, 0, 0};
   char path[1024];
   ai_files f = {NULL, NULL, NULL};
@@ -522,7 +525,8 @@ static ai_outcome run_ai_race(const char* data, const char* courses) {
   wm_race_info ri;
   wm_world_race(w, &ri);
   const int64_t save_at = ri.n_gun + 1200; /* a minute after the gun */
-  for (int k = 0; k < 80000 && !race_closed(w); ++k) {
+  const uint32_t stop = quick ? (uint32_t)(save_at + 400) : 0xFFFFFFFFu;
+  for (int k = 0; k < 80000 && !race_closed(w) && wm_world_tick(w) < stop; ++k) {
     if ((int64_t)wm_world_tick(w) == save_at) {
       const uint8_t *a = NULL, *b = NULL;
       if (!check(wm_world_save(w, &a, &snap_n), "save") || !check(wm_world_ai_save(w, &b, &mem_n), "AI save")) goto done;
@@ -572,8 +576,19 @@ static ai_outcome run_ai_race(const char* data, const char* courses) {
   while (!race_closed(w2) && wm_world_tick(w2) < o.ticks) c2 = wm_world_step(w2);
   printf("AI race from the snapshot at tick %u: %u ticks, checksum %016llx (%s)\n", snap_tick, wm_world_tick(w2),
          (unsigned long long)c2, c2 == o.checksum && wm_world_tick(w2) == o.ticks ? "same" : "DIFFERENT");
-  o.ok = race_closed(w) && results == N_AI && finished >= N_AI / 2 && c2 == o.checksum &&
-         wm_world_tick(w2) == o.ticks && bad_mem && tacks > 0;
+  /* The world that ran on takes the snapshot too (it is reset first); a damaged one leaves it as it was. */
+  const uint64_t before = wm_world_checksum(w);
+  const int bad_snap = wm_world_load(w, f.course, snap, snap_n - 1) == WM_ERR_LOAD && wm_world_checksum(w) == before &&
+                       wm_world_tick(w) == o.ticks;
+  if (!check(wm_world_load(w, f.course, snap, snap_n), "reload") || !check(wm_world_ai_load(w, mem, mem_n), "AI reload"))
+    goto done;
+  uint64_t c3 = 0;
+  while (!race_closed(w) && wm_world_tick(w) < o.ticks) c3 = wm_world_step(w);
+  printf("AI race reloaded into the first world: %u ticks, checksum %016llx (%s)\n", wm_world_tick(w),
+         (unsigned long long)c3, c3 == o.checksum && wm_world_tick(w) == o.ticks ? "same" : "DIFFERENT");
+  o.ok = (quick || (race_closed(w) && results == N_AI && finished >= N_AI / 2)) && c2 == o.checksum &&
+         wm_world_tick(w2) == o.ticks && c3 == o.checksum && wm_world_tick(w) == o.ticks && bad_mem && bad_snap &&
+         tacks > 0;
 done:
   free(snap);
   free(mem);
@@ -592,12 +607,13 @@ int main(int argc, char** argv) {
     fprintf(stderr, "library API version %d, header %d\n", wm_api_version(), WM_API_VERSION);
     return 1;
   }
+  const int quick = argc > 3 && strcmp(argv[3], "quick") == 0;
   const outcome a = run_race(data, courses, 1);
-  const outcome b = run_race(data, courses, 0);
+  const outcome b = quick ? a : run_race(data, courses, 0);
   const int same = a.checksum == b.checksum && a.ticks == b.ticks;
-  printf("second run: %s\n", same ? "same ticks and checksum" : "DIFFERENT");
+  if (!quick) printf("second run: %s\n", same ? "same ticks and checksum" : "DIFFERENT");
   const int fs = free_sail(data);
-  const ai_outcome ai = run_ai_race(data, courses);
+  const ai_outcome ai = run_ai_race(data, courses, quick);
   const int ok = a.ok && b.ok && same && fs && ai.ok;
   printf("%s\n", ok ? "OK" : "FAILED");
   return ok ? 0 : 1;

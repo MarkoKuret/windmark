@@ -98,6 +98,8 @@ class Sails {
   std::size_t sail_count() const { return sails_.size(); }
   const SailState& sail(std::size_t i) const { return sails_[i]; }
   const SailOutput& output(std::size_t i) const { return out_[i]; }
+  // World snapshot load (conventions.md §9.1): the outputs of the last step, one per sail in sail order.
+  void restore_outputs(const std::vector<SailOutput>& o) { out_ = o; }
   const std::vector<SailPhaseEvent>& events() const { return events_; }
   void clear_events() { events_.clear(); }
   std::uint8_t queue_len() const { return queue_len_; }

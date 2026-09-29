@@ -202,10 +202,13 @@ void World::drop_front(std::int32_t b) { queue({Command::Kind::drop, b, 0.0f, 0}
 void World::retire(std::int32_t b) { queue({Command::Kind::retire, b, 0.0f, 0}); }
 void World::protest(std::int32_t b) { queue({Command::Kind::protest, b, 0.0f, 0}); }
 
+// conventions.md §9: FNV-1a 64 over the tick index, then the snapshot body hashed as it is written.
 std::uint64_t World::checksum() const {
-  SnapshotWriter w;
+  Fnv1a64 h;
+  h.update_u32(tick_);
+  SnapshotWriter w(h);
   save_body(w);
-  return tick_checksum(tick_, std::span<const std::vector<std::uint8_t>>(&w.bytes(), 1));
+  return h.value();
 }
 
 std::uint64_t World::step() {

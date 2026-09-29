@@ -11,7 +11,7 @@ using namespace snap;
 namespace {
 
 constexpr std::uint32_t kMagic = 0x57574D57u;
-constexpr std::uint32_t kVersion = 2;
+constexpr std::uint32_t kVersion = 3;
 
 std::uint64_t text_id(std::string_view s) {
   return fnv1a64({reinterpret_cast<const std::uint8_t*>(s.data()), s.size()});
@@ -51,6 +51,25 @@ EnvAtBoat get_env(SnapshotReader& r) {
   return e;
 }
 
+void put_sail_outputs(SnapshotWriter& w, const Sails& sails) {
+  for (std::size_t k = 0; k < sails.sail_count(); ++k) {
+    const SailOutput& o = sails.output(k);
+    for (const float x : {o.k_h, o.m_opt, o.beta_opt, o.beta_t, o.trim_error, o.luff_shiver}) w.put_f32(x);
+    put_enum(w, o.motion);
+    w.put_bool(o.backed);
+  }
+}
+
+std::vector<SailOutput> get_sail_outputs(SnapshotReader& r, std::size_t n) {
+  std::vector<SailOutput> v(n);
+  for (SailOutput& o : v) {
+    for (float* x : {&o.k_h, &o.m_opt, &o.beta_opt, &o.beta_t, &o.trim_error, &o.luff_shiver}) *x = r.get_f32();
+    o.motion = get_enum(r, SailMotion::easing);
+    o.backed = r.get_bool();
+  }
+  return v;
+}
+
 }  // namespace
 
 void World::save_body(SnapshotWriter& w) const {
@@ -63,6 +82,7 @@ void World::save_body(SnapshotWriter& w) const {
   for (std::size_t i = 0; i < boats_.size(); ++i) {
     put_outputs(w, boats_[i].outputs());
     put_env(w, env_[i]);
+    put_sail_outputs(w, boats_[i].sails());
   }
   put_count(w, contacts_.size());
   for (const ContactEvent& c : contacts_) {
@@ -109,10 +129,26 @@ void World::save(SnapshotWriter& w) const {
 }
 
 bool World::load(std::span<const std::uint8_t> bytes, const CourseData* course, std::string& error) {
-  if (created_ || tick_ != 0) {
-    error = "load needs a new world";
-    return false;
+  // A scratch world built as this one was takes the snapshot first, so one that fails leaves this world as it was;
+  // then this world is reset and takes it the same way, which cannot fail.
+  {
+    World probe(setup_);
+    for (const BoatEntry& e : entries_) (void)probe.add_boat(e);
+    if (!probe.load_new(bytes, course, error)) return false;
   }
+  reset();
+  return load_new(bytes, course, error);
+}
+
+void World::reset() {
+  std::vector<BoatEntry> entries = std::move(entries_);
+  Controller controller = std::move(controller_);
+  *this = World(setup_);
+  controller_ = std::move(controller);
+  for (const BoatEntry& e : entries) (void)add_boat(e);
+}
+
+bool World::load_new(std::span<const std::uint8_t> bytes, const CourseData* course, std::string& error) {
   SnapshotReader r(bytes);
   if (r.get_u32() != kMagic || r.get_u32() != kVersion) {
     error = "not a world snapshot of this version";
@@ -207,9 +243,11 @@ bool World::load(std::span<const std::uint8_t> bytes, const CourseData* course, 
     return false;
   }
   std::vector<BoatOutputs> outs(nb);
+  std::vector<std::vector<SailOutput>> sail_outs(nb);
   for (std::uint32_t i = 0; i < nb; ++i) {
     outs[i] = get_outputs(r);
     env_[i] = get_env(r);
+    sail_outs[i] = get_sail_outputs(r, boats_[i].sails().sail_count());
   }
   const std::uint32_t nc = get_count(r, 46);
   std::vector<ContactEvent> contacts(nc);
@@ -238,7 +276,7 @@ bool World::load(std::span<const std::uint8_t> bytes, const CourseData* course, 
     error = r.failed() ? "snapshot truncated or damaged" : "bytes left over after the snapshot";
     return false;
   }
-  for (std::uint32_t i = 0; i < nb; ++i) boats_[i].restore_outputs(outs[i]);
+  for (std::uint32_t i = 0; i < nb; ++i) boats_[i].restore_outputs(outs[i], sail_outs[i]);
   contacts_ = std::move(contacts);
   commands_ = std::move(commands);
   if (created) {

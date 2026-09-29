@@ -125,6 +125,34 @@ float Table::at(float x, float y) const {
   return lerp(r0, r1, bx.t);
 }
 
+void Table::at_each(float x, std::span<const float> ys, std::span<float> out) const {
+  assert(rank() == 2 && out.size() == ys.size());
+  const Axis& ax = axes_[0];
+  const float* a = axes_[1].points.data();
+  const std::uint32_t n1 = static_cast<std::uint32_t>(axes_[1].points.size());
+  const Bracket bx = bracket(ax.points.data(), static_cast<std::uint32_t>(ax.points.size()), x);
+  const float* v = values_.data();
+  std::uint32_t lo = 0;  // a[lo] <= y for the current and every later y
+  for (std::size_t k = 0; k < ys.size(); ++k) {
+    const float y = ys[k];
+    assert(k == 0 || !(y < ys[k - 1]));
+    // bracket(a, n1, y) of §8.1, the same three cases.
+    Bracket by;
+    if (n1 == 1 || !(y >= a[0])) {
+      by = {0, 0, 0.0f};
+    } else if (y >= a[n1 - 1]) {
+      by = {n1 - 1, n1 - 1, 0.0f};
+    } else {
+      // The unique lo with a[lo] <= y < a[lo + 1] (lo <= n1 - 2 since y < a[n1 - 1]).
+      while (a[lo + 1] <= y) ++lo;
+      by = {lo, lo + 1, (y - a[lo]) / (a[lo + 1] - a[lo])};
+    }
+    const float r0 = lerp(v[bx.i0 * n1 + by.i0], v[bx.i0 * n1 + by.i1], by.t);
+    const float r1 = lerp(v[bx.i1 * n1 + by.i0], v[bx.i1 * n1 + by.i1], by.t);
+    out[k] = lerp(r0, r1, bx.t);
+  }
+}
+
 float Table::at(float x, float y, float w) const {
   assert(rank() == 3);
   const Axis& ax = axes_[0];

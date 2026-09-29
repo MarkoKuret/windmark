@@ -762,7 +762,6 @@ wm_status wm_world_save(wm_world* w, const uint8_t** data, size_t* size) {
 
 wm_status wm_world_load(wm_world* w, const wm_course* course, const uint8_t* data, size_t size) {
   if (w == nullptr || (data == nullptr && size > 0)) return fail(WM_ERR_ARG, "null argument");
-  if (w->world->race_created() || w->world->tick() != 0) return fail(WM_ERR_STATE, "load needs a new world");
   std::string err;
   if (!w->world->load(std::span<const std::uint8_t>(data, size), course != nullptr ? course->c.get() : nullptr, err))
     return fail(WM_ERR_LOAD, "world snapshot: " + err);

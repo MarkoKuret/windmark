@@ -3,6 +3,7 @@
 #pragma once
 
 #include <cstdint>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -66,6 +67,9 @@ class Table {
   float at(float x) const;
   float at(float x, float y) const;
   float at(float x, float y, float w) const;
+  // at(x, y) for every y of `ys` into `out` (same size), bit for bit the same as one at(x, y) per value: the x bracket
+  // is found once and, `ys` being non-decreasing, the y bracket moves forward along the axis instead of searching.
+  void at_each(float x, std::span<const float> ys, std::span<float> out) const;
 
  private:
   std::vector<Axis> axes_;

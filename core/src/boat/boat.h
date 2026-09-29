@@ -81,8 +81,12 @@ class Boat {
   BoatState& mutable_state() { return s_; }  // collisions write pos, v and contact_* (collisions.md §4)
   const BoatControls& controls() const { return ctl_; }
   const BoatOutputs& outputs() const { return out_; }
-  // World snapshot load (conventions.md §9.1): the outputs of the last step, which the next tick reads first.
-  void restore_outputs(const BoatOutputs& o) { out_ = o; }
+  // World snapshot load (conventions.md §9.1): the boat's and the sails' outputs of the last step, which the next
+  // tick reads first (turn_rate, cog, sog; m_opt through let_fly_drive) and the HUD shows.
+  void restore_outputs(const BoatOutputs& o, const std::vector<SailOutput>& sails) {
+    out_ = o;
+    sails_.restore_outputs(sails);
+  }
   const Sails& sails() const { return sails_; }
   const PerfData& perf() const { return *perf_; }
 

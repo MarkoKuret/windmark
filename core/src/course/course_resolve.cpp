@@ -1,4 +1,5 @@
 // Laying a course for one race (courses.md §3, §4, §6), its geometry checks (§7) and the canonical form (§9).
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <span>
@@ -194,13 +195,32 @@ void resolve_course(const CourseData& c, float twd_c, float k, ResolvedCourse& o
 
 // ---- Polar helpers ----
 
+namespace {
+
+// The 361 true wind angles of the polar VMG search, 0 to pi in half degrees, and their cosines.
+struct VmgGrid {
+  std::array<float, 361> twa;
+  std::array<float, 361> cos;
+  VmgGrid() {
+    for (std::int32_t i = 0; i <= 360; ++i) {
+      twa[static_cast<std::size_t>(i)] = static_cast<float>(i) * (PI / 360.0f);
+      cos[static_cast<std::size_t>(i)] = wm_cos(twa[static_cast<std::size_t>(i)]);
+    }
+  }
+};
+
+}  // namespace
+
 PolarVmg polar_vmg(const PerfData& perf, float tws) {
+  static const VmgGrid g;
+  std::array<float, 361> speed;
   PolarVmg r;
   for (const ConfigPerf& cfg : perf.configs) {
-    for (std::int32_t i = 0; i <= 360; ++i) {
-      const float twa = static_cast<float>(i) * (PI / 360.0f);
-      const float v = cfg.polar.at(tws, twa);
-      const float c = wm_cos(twa);
+    cfg.polar.at_each(tws, g.twa, speed);
+    for (std::size_t i = 0; i <= 360; ++i) {
+      const float twa = g.twa[i];
+      const float v = speed[i];
+      const float c = g.cos[i];
       const float up = v * c, down = -(v * c);
       if (up > r.up_speed) {
         r.up_speed = up;

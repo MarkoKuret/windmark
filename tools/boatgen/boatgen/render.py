@@ -308,6 +308,7 @@ class Renderer:
         self.ctx = gl_context()
         self.W, self.H = width, height
         ctx = self.ctx
+        samples = max(0, min(samples, ctx.max_samples))     # some GL drivers offer fewer than 8
         self.prog = ctx.program(vertex_shader=VS, fragment_shader=FS)
         self.water_prog = ctx.program(vertex_shader=VS, fragment_shader=WATER_FS)
         self.shadow_prog = ctx.program(vertex_shader=SHADOW_VS, fragment_shader=SHADOW_FS)

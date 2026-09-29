@@ -77,8 +77,8 @@ class Boat:
         cls = self.cls
         port, stbd = self.hull.skin()
         self.skin = (port, stbd)
-        self.parts["hull"] = paint_zones([port, stbd], cls["hull"]["boot_top"])
-        self.parts["deck"] = self.deck.build()
+        self.parts["hull"] = paint_zones([port, stbd], cls["hull"]["boot_top"]).tag_all("hull")
+        self.parts["deck"] = self.deck.build().tag_all("deck")
         self.parts["keel"] = self.app.keel_part()
         self.parts["rudder"] = self.app.rudder_part()
         self.rig = Rig(cls, self.hull, self.deck)
@@ -212,15 +212,14 @@ class Boat:
             types[sid] = sail.type
         from .running import sheets
         parts["sheets"] = sheets(self, corners, types)
-        # boom swung to starboard about the gooseneck, mainsheet re-led to the traveller car below it
+        # boom swung to starboard about the gooseneck, mainsheet re-led from the block on the traveller car to the
+        # swung boom block (the car stays where the exported model has it)
         g = self.rig.gooseneck
         M = translate(g) @ rot_axis([0, 0, 1], np.radians(main_angle)) @ translate(-g)
         parts["boom"] = Part().extend(self.parts["boom"], M)
         lower, upper, w_tr, s = self.mainsheet_ends
         up2 = (M @ np.r_[upper, 1.0])[:3]
-        low2 = lower.copy()
-        low2[1] = float(np.clip(up2[1], -0.45 * w_tr, 0.45 * w_tr))
-        parts["mainsheet"] = hardware.mainsheet_tackle(low2, up2, s)
+        parts["mainsheet"] = hardware.mainsheet_tackle(lower, up2, s)
         return parts
 
     def write_posed_glb(self, path, pose, name=None, drop=()):
@@ -296,3 +295,8 @@ class Boat:
 
     def tri_count(self):
         return sum(p.tri_count() for p in self.parts.values())
+
+    def attachment_gaps(self):
+        """[(piece, hosts, gap in m)] for every fitting of the full model (attach.py)."""
+        from .attach import gaps
+        return gaps(self.parts)

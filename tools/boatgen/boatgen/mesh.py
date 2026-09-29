@@ -38,9 +38,16 @@ class Geom:
         self.N = vertex_normals(self.P, self.I) if N is None else np.asarray(N, dtype=np.float64).reshape(-1, 3)
         self.uv0 = np.zeros((n, 2)) if uv0 is None else np.asarray(uv0, dtype=np.float64).reshape(-1, 2)
         self.uv1 = self.uv0.copy() if uv1 is None else np.asarray(uv1, dtype=np.float64).reshape(-1, 2)
+        # name of the piece this geometry belongs to, for the attachment checks (attach.py); kept by copies and
+        # transforms, dropped by merge()
+        self.tag = None
+
+    def _tagged(self, g):
+        g.tag = self.tag
+        return g
 
     def copy(self):
-        return Geom(self.P.copy(), self.I.copy(), self.N.copy(), self.uv0.copy(), self.uv1.copy())
+        return self._tagged(Geom(self.P.copy(), self.I.copy(), self.N.copy(), self.uv0.copy(), self.uv1.copy()))
 
     def transformed(self, M):
         """Apply a 4x4 affine matrix (normals by the inverse transpose)."""
@@ -49,13 +56,13 @@ class Geom:
         Ni = np.linalg.inv(M[:3, :3]).T
         N = normalize(self.N @ Ni.T)
         I = self.I if np.linalg.det(M[:3, :3]) > 0 else self.I[:, ::-1]
-        return Geom(P, I.copy(), N, self.uv0.copy(), self.uv1.copy())
+        return self._tagged(Geom(P, I.copy(), N, self.uv0.copy(), self.uv1.copy()))
 
     def mirrored_y(self):
         return self.transformed(np.diag([1.0, -1.0, 1.0, 1.0]))
 
     def flipped(self):
-        return Geom(self.P.copy(), self.I[:, ::-1].copy(), -self.N, self.uv0.copy(), self.uv1.copy())
+        return self._tagged(Geom(self.P.copy(), self.I[:, ::-1].copy(), -self.N, self.uv0.copy(), self.uv1.copy()))
 
     @property
     def tri_count(self):
@@ -75,20 +82,40 @@ def merge(geoms):
 
 
 class Part:
-    """Material slot -> list of Geom."""
+    """Material slot -> list of Geom, plus the attachments of its tagged pieces (`links`, attach.py)."""
 
     def __init__(self):
         self.slots = {}
+        self.links = []
 
-    def add(self, material, geom):
+    def add(self, material, geom, tag=None):
+        """Add a piece; `tag` names it for the attachment checks."""
         if geom is not None and len(geom.I):
+            if tag is not None:
+                geom = geom.copy()
+                geom.tag = tag
             self.slots.setdefault(material, []).append(geom)
         return self
 
-    def extend(self, other, M=None):
+    def extend(self, other, M=None, tag=None):
+        """Add another part's pieces (transformed by M), tagging every piece `tag` when given; its links come too."""
         for mat, gs in other.slots.items():
             for g in gs:
-                self.add(mat, g if M is None else g.transformed(M))
+                self.add(mat, g if M is None else g.transformed(M), tag=tag)
+        self.links += other.links
+        return self
+
+    def attach(self, piece, *hosts):
+        """Record that the piece tagged `piece` is fitted to (touches) one of the pieces tagged `hosts`."""
+        self.links.append((piece, tuple(hosts)))
+        return self
+
+    def tag_all(self, tag):
+        """Tag every untagged piece (a host surface such as the deck or the hull)."""
+        for gs in self.slots.values():
+            for g in gs:
+                if g.tag is None:
+                    g.tag = tag
         return self
 
     def merged(self):

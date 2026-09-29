@@ -52,7 +52,7 @@ class Rig:
         self.chainplate_x = self.x_mast - 0.05 - 0.35 * np.tan(self.sweep) * self.scale
         bs_cp = float(hull.bs(np.array([self.chainplate_x]))[0])
         self.chainplate_y = bs_cp - 0.10 * self.scale
-        self.chainplate_z = float(deck.deck_z(self.chainplate_x, self.chainplate_y)) + 0.02
+        self.chainplate_z = float(deck.surface(self.chainplate_x, self.chainplate_y)[0])     # the deck there
         self.spreaders = []
         for i in range(n):
             f = (i + 1) / (n + 1) * (0.96 if n > 1 else 1.05)
@@ -62,33 +62,55 @@ class Rig:
             tip = np.array([self.x_mast - reach * np.tan(self.sweep), reach, z + 0.04 * self.scale])
             self.spreaders.append((z, tip))
         self.cap_top = np.array([self.x_mast, 0.0, top_ref])
+        # masthead crane arm (root over the mast axis, end aft over the main halyard sheave; the backstay's head)
+        top = np.array([self.x_mast, 0, self.z_top])
+        self.crane = np.array([top + [0.0, 0, 0.04 * self.scale], top + [-self.chord - 0.18 * self.scale, 0, 0.05 * self.scale]])
+
+    def taper(self, z):
+        """Mast section scale at height z (1 up to the hounds, 0.58 at the masthead)."""
+        z = np.asarray(z, dtype=np.float64)
+        return np.where(z < self.z_hounds, 1.0,
+                        1.0 - 0.42 * (z - self.z_hounds) / max(self.z_top - self.z_hounds, 1e-3))
+
+    def boom_bottom(self, x):
+        """Height of the boom's underside at x (rest position, boat frame)."""
+        t = np.clip((self.gooseneck[0] - x) / self.boom_len, 0, 1)
+        return self.gooseneck[2] - 0.5 * 0.17 * self.scale * (1.0 - 0.25 * t ** 2)
 
     # ------------------------------------------------------------------------------------------------------
     def mast_part(self):
         p = Part()
         s = self.scale
         zs = np.linspace(self.z_step - 0.1, self.z_top, seg(40, 8))
-        taper = np.where(zs < self.z_hounds, 1.0, 1.0 - 0.42 * (zs - self.z_hounds) / max(self.z_top - self.z_hounds, 1e-3))
+        taper = self.taper(zs)
         path = np.stack([np.full_like(zs, self.x_mast), np.zeros_like(zs), zs], -1)
         prof = _mast_section(self.chord, self.width, seg(24, 8))
-        p.add("carbon", sweep(path, prof, scale_along=taper, up=np.array([1.0, 0, 0])))
+        p.add("carbon", sweep(path, prof, scale_along=taper, up=np.array([1.0, 0, 0])), tag="mast")
+        p.attach("mast", "deck")
         # mast collar / partner ring at the deck
         ring = revolve([(0.0, 0.0), (self.chord * 0.75, 0.0), (self.chord * 0.72, 0.035), (self.chord * 0.55, 0.06),
                         (0.0, 0.06)], 24)
-        p.add("rubber", ring.transformed(translate([self.x_mast, 0, self.z_step - 0.005]) @ np.diag([1, self.width / self.chord, 1, 1])))
+        p.add("rubber", ring.transformed(translate([self.x_mast, 0, self.z_step - 0.005]) @ np.diag([1, self.width / self.chord, 1, 1])),
+              tag="mast_collar")
+        p.attach("mast_collar", "deck")
         # mast step plate on the deck
         p.add("metal", superellipsoid_box((self.chord * 1.9, self.width * 2.2, 0.012), 0.2, 12, 4,
-                                          center=[self.x_mast, 0, self.z_step + 0.004]))
+                                          center=[self.x_mast, 0, self.z_step + 0.004]), tag="mast_step")
+        p.attach("mast_step", "deck")
         # masthead crane: a cap with an arm reaching aft over the main halyard sheave, wind wand and antenna
         top = np.array([self.x_mast, 0, self.z_top])
         p.add("carbon", superellipsoid_box((self.chord * 1.3, self.width * 0.8, 0.07 * s), 0.3, 12, 6,
-                                           center=top + [-0.1 * self.chord, 0, 0.02]))
-        crane = np.array([top + [0.0, 0, 0.04 * s], top + [-self.chord - 0.18 * s, 0, 0.05 * s]])
+                                           center=top + [-0.1 * self.chord, 0, 0.02]), tag="masthead")
+        p.attach("masthead", "mast")
+        crane = self.crane
         p.add("carbon", sweep(crane, rounded_rect(0.05 * s, 0.045 * s, 0.012 * s, 2), up=np.array([0, 0, 1.0]),
-                              scale_along=np.array([1.0, 0.7])))
+                              scale_along=np.array([1.0, 0.7])), tag="crane")
+        p.attach("crane", "masthead")
         for sy in (-1, 1):
             p.add("metal", revolve([(0, -0.006), (0.035 * s, -0.006), (0.035 * s, 0.006), (0, 0.006)], 12, sharp=(1, 2))
-                  .transformed(translate(crane[1] + [0.03 * s, sy * 0.012, -0.03 * s]) @ rot_axis([1, 0, 0], np.pi / 2)))
+                  .transformed(translate(crane[1] + [0.03 * s, sy * 0.012, -0.03 * s]) @ rot_axis([1, 0, 0], np.pi / 2)),
+                  tag=f"crane_sheave_{sy}")
+            p.attach(f"crane_sheave_{sy}", "crane")
         # instruments on the mast front just above the gooseneck (a bank of three on the bigger boats)
         n_ins = 3 if self.hull.L >= 9.0 else 1
         for k in range(n_ins):
@@ -96,95 +118,201 @@ class Rig:
             ins = Part()
             ins.add("carbon", superellipsoid_box((0.04 * s, 0.2 * s, 0.16 * s), 0.2, 10, 5, center=(0.02 * s, 0, 0)))
             ins.add("glass", superellipsoid_box((0.01 * s, 0.17 * s, 0.13 * s), 0.12, 10, 4, center=(0.042 * s, 0, 0)))
-            p.extend(ins, translate([self.x_mast + self.chord / 2, 0, z]))
+            p.extend(ins, translate([self.x_mast + self.chord / 2, 0, z]), tag=f"mast_instrument_{k}")
+            p.attach(f"mast_instrument_{k}", "mast")
         # halyard sheave boxes at the hounds and below the masthead
-        for z in (self.z_hounds + 0.08 * s, self.z_top - 0.12):
-            p.add("metal", superellipsoid_box((0.02, self.width * 0.5, 0.14 * s), 0.3, 8, 4,
-                                              center=[self.x_mast + self.chord * 0.49, 0, z]))
-        wand0 = top + [0.1, 0, 0.05]
+        # (on the mast's front face, which narrows above the hounds)
+        for k, z in enumerate((self.z_hounds + 0.08 * s, self.z_top - 0.12)):
+            p.add("metal", superellipsoid_box((0.02, self.width * 0.5 * float(self.taper(z)), 0.14 * s), 0.3, 8, 4,
+                                              center=[self.x_mast + 0.5 * self.chord * float(self.taper(z)) - 0.004, 0, z]),
+                  tag=f"sheave_box_{k}")
+            p.attach(f"sheave_box_{k}", "mast")
+        # wind wand from the masthead cap's front face, anemometer cups on spokes round its post
+        cap_front = top + [0.55 * self.chord - 0.01, 0, 0.02]
         wand1 = top + [0.9 * s, 0, 0.35 * s]
-        p.add("carbon", tube(np.array([wand0, wand1]), 0.008, 6))
-        p.add("metal", tube(np.array([wand1, wand1 + [0, 0, 0.12 * s]]), 0.004, 6))
+        p.add("carbon", tube(np.array([cap_front, wand1]), 0.008, 6), tag="wind_wand")
+        p.attach("wind_wand", "masthead")
+        hub = wand1 + [0, 0, 0.12 * s]
+        p.add("metal", tube(np.array([wand1 - [0, 0, 0.01], hub]), 0.004, 6), tag="anemometer")
+        p.attach("anemometer", "wind_wand")
         for k in range(3):
             a = 2 * np.pi * k / 3
             arm = np.array([np.cos(a), np.sin(a), 0]) * 0.06 * s
-            p.add("rubber", superellipsoid_box((0.025, 0.025, 0.025), 1.0, 8, 5, center=wand1 + [0, 0, 0.12 * s] + arm))
-        p.add("metal", tube(np.array([top + [-0.1, 0.03, 0.05], top + [-0.1, 0.03, 0.95 * s]]), 0.005, 6))
+            p.add("metal", tube(np.array([hub, hub + arm]), 0.0015, 4), tag="anemometer")
+            p.add("rubber", superellipsoid_box((0.025, 0.025, 0.025), 1.0, 8, 5, center=hub + arm), tag="anemometer")
+        # VHF antenna standing on the crane arm
+        c = crane[0] + 0.45 * (crane[1] - crane[0])
+        base = c + [0, 0.012 * s, 0.5 * 0.05 * s * 0.86 - 0.004]
+        p.add("metal", tube(np.array([base, base + [0, 0, 0.9 * s]]), 0.005, 6), tag="antenna")
+        p.attach("antenna", "crane")
         # spreaders: tapered aerofoil bars
-        for z, tip in self.spreaders:
+        for i, (z, tip) in enumerate(self.spreaders):
             for side in (1.0, -1.0):
+                sp_tag = f"spreader_{i}_{'port' if side > 0 else 'stbd'}"
                 root = np.array([self.x_mast, side * self.width * 0.45, z])
                 t = tip * [1, side, 1]
                 path = np.linspace(root, t, 8)
                 sc = np.linspace(1.0, 0.55, 8)
                 sp = sweep(path, ellipse(0.045 * s, 0.014 * s, 12), scale_along=sc, up=np.array([1.0, 0, 0]))
-                p.add("carbon", sp)
+                p.add("carbon", sp, tag=sp_tag)
+                p.attach(sp_tag, "mast")
                 # tip: end fitting clamping the cap shroud, in a rubber boot; root bracket on the mast wall
-                p.add("metal", superellipsoid_box((0.05 * s, 0.03 * s, 0.03 * s), 0.4, 8, 5, center=t))
+                p.add("metal", superellipsoid_box((0.05 * s, 0.03 * s, 0.03 * s), 0.4, 8, 5, center=t), tag=sp_tag + "_tip")
+                p.attach(sp_tag + "_tip", sp_tag)
                 boot = revolve([(0, -0.07 * s), (0.012 * s, -0.07 * s), (0.028 * s, -0.02 * s), (0.03 * s, 0.03 * s),
                                 (0.012 * s, 0.07 * s), (0, 0.07 * s)], 10)
-                p.add("rubber", boot.transformed(translate(t)))
+                p.add("rubber", boot.transformed(translate(t)), tag=sp_tag + "_boot")
+                p.attach(sp_tag + "_boot", sp_tag)
                 p.add("metal", superellipsoid_box((0.1 * s, 0.035 * s, 0.07 * s), 0.3, 8, 5,
-                                                  center=root + [0, side * 0.01 * s, 0]))
+                                                  center=root + [0, side * 0.01 * s, 0]), tag=sp_tag + "_root")
+                p.attach(sp_tag + "_root", "mast")
         # gooseneck: a bracket on the mast's aft face with a vertical pin; vang tang at the mast foot
         g = self.gooseneck
         p.add("metal", superellipsoid_box((0.05 * s, self.width * 0.9, 0.26 * s), 0.3, 10, 6,
-                                          center=[self.x_mast_aft + 0.012, 0, g[2]]))
+                                          center=[self.x_mast_aft + 0.012, 0, g[2]]), tag="gooseneck")
+        p.attach("gooseneck", "mast")
         for dz in (-0.07 * s, 0.07 * s):
             p.add("metal", superellipsoid_box((0.1 * s, self.width * 0.55, 0.025 * s), 0.35, 8, 4,
-                                              center=[g[0] + 0.015, 0, g[2] + dz]))
-        p.add("metal", tube(np.array([g + [0, 0, -0.1 * s], g + [0, 0, 0.1 * s]]), 0.012 * s, 8))
+                                              center=[g[0] + 0.015, 0, g[2] + dz]), tag="gooseneck_jaws")
+        p.attach("gooseneck_jaws", "gooseneck")
+        p.add("metal", tube(np.array([g + [0, 0, -0.1 * s], g + [0, 0, 0.1 * s]]), 0.012 * s, 8), tag="gooseneck_pin")
+        p.attach("gooseneck_pin", "gooseneck_jaws")
         p.add("metal", superellipsoid_box((0.06 * s, 0.06 * s, 0.08 * s), 0.3, 8, 4,
-                                          center=[self.x_mast_aft - 0.01, 0, self.z_step + 0.25 * s]))
+                                          center=[self.x_mast_aft - 0.01, 0, self.z_step + 0.25 * s]), tag="vang_tang")
+        p.attach("vang_tang", "mast")
         # hounds tang
         p.add("metal", superellipsoid_box((0.08 * s, self.width * 0.9, 0.12 * s), 0.3, 8, 5,
-                                          center=[self.x_mast + self.chord * 0.5, 0, self.z_hounds]))
+                                          center=[self.x_mast + self.chord * 0.5, 0, self.z_hounds]), tag="hounds")
+        p.attach("hounds", "mast")
         if self.sprit > 0:
             L = self.hull.L
             a = np.array([L - 0.9 * s, 0, float(self.deck.deck_z(L - 0.9 * s, 0)) + 0.06 * s])
             path = np.linspace(a, self.sprit_end, 10)
             r0 = 0.04 * s
-            p.add("carbon", sweep(path, _circle(r0, 16), scale_along=np.linspace(1, 0.75, 10)))
-            p.add("metal", superellipsoid_box((0.06 * s, 0.06 * s, 0.06 * s), 0.5, 8, 5, center=self.sprit_end))
+            p.add("carbon", sweep(path, _circle(r0, 16), scale_along=np.linspace(1, 0.75, 10)), tag="sprit")
+            p.attach("sprit", "deck", "hull")
+            p.add("metal", superellipsoid_box((0.06 * s, 0.06 * s, 0.06 * s), 0.5, 8, 5, center=self.sprit_end),
+                  tag="sprit_end")
+            p.attach("sprit_end", "sprit")
         return p
 
     def turnbuckle_len(self):
         return 0.16 * self.scale
 
-    def wires(self):
-        """Standing rigging as (start, end, radius) segments; shrouds start on top of their rigging screws."""
+    def wire_radius(self):
+        return max(0.0045 * self.scale, 0.003)
+
+    def strap_height(self):
+        return 0.07 * self.scale
+
+    def split_backstay(self):
+        """True when the backstay cannot land on the centreline aft (an open transom: the cockpit runs out there)
+        and splits into two legs to the quarters."""
+        return bool(self.cls["rig"]["backstay"]) and self.deck.in_cockpit(0.15, 0.0)
+
+    def feet(self):
+        """Wire feet on deck: {name: (pin point, direction up the wire, host tag)}. Each foot is the pin of a
+        rigging screw standing on a chainplate strap (the stemhead fitting for the forestay); the wire's own
+        direction sets the screw's, so screw and wire stay in line."""
         s = self.scale
-        r_cap = max(0.0045 * s, 0.003)
-        segs = []
-        tb = self.turnbuckle_len()
+        hs = self.strap_height()
+        out = {}
         for side in (1.0, -1.0):
-            cp = np.array([self.chainplate_x, side * self.chainplate_y, self.chainplate_z + tb])
+            sd = "port" if side > 0 else "stbd"
+            for kind, dx, top in (("cap", 0.0, self.spreaders[0][1] * [1, side, 1]),
+                                  ("lower", 0.07 * s, self.lower_top(side))):
+                x, y = self.chainplate_x + dx, side * self.chainplate_y
+                F = np.array([x, y, float(self.deck.surface(x, y)[0]) + hs - 0.015 * s])
+                out[f"{kind}_{sd}"] = (F, normalize(top - F), f"chainplate_{sd}_{kind}")
+        F = np.array([self.x_tack, 0.0, self.z_tack])
+        out["forestay"] = (F, normalize(np.array([self.x_mast + self.chord / 2, 0, self.z_hounds]) - F), "stemhead")
+        if self.cls["rig"]["backstay"]:
+            if self.split_backstay():
+                sp = self.backstay_split()
+                for side in (1.0, -1.0):
+                    sd = "port" if side > 0 else "stbd"
+                    x, y = self.backstay_leg_xy(side)
+                    F = np.array([x, y, float(self.deck.surface(x, y)[0]) + hs - 0.015 * s])
+                    out[f"backstay_{sd}"] = (F, normalize(sp - F), f"backstay_plate_{sd}")
+            else:
+                F = np.array([0.15, 0.0, float(self.deck.surface(0.15, 0.0)[0]) + hs - 0.015 * s])
+                out["backstay"] = (F, normalize(self.crane[1] - F), "backstay_plate")
+        return out
+
+    def lower_top(self, side):
+        return np.array([self.x_mast, side * self.width * 0.4, self.spreaders[0][0] - 0.02])
+
+    def backstay_leg_xy(self, side):
+        x = 0.15
+        yc, bs = float(self.deck.yc(x)), float(self.hull.bs(np.array([x]))[0])
+        return x, side * (0.5 * (yc + bs) - 0.02 * self.scale)
+
+    def backstay_split(self):
+        """Where a split backstay divides: on the line from the crane down to the transom, a sixth of the way up."""
+        z0 = float(self.deck.deck_z(0.15, 0.0))
+        a, b = self.crane[1], np.array([0.15, 0.0, z0])
+        return b + (a - b) * (1.4 * self.scale / max(np.linalg.norm(a - b), 1e-6))
+
+    def wires(self):
+        """Standing rigging as (start, end, radius, name, host at the start, host at the end) segments. A wire
+        with a deck end starts on top of its rigging screw, in line with it; the top ends run into the mast wall,
+        the spreader tip fittings, the hounds or the crane."""
+        s = self.scale
+        r_cap = self.wire_radius()
+        segs = []
+        tb = self.turnbuckle_len() - 0.012
+        feet = self.feet()
+        for side in (1.0, -1.0):
+            sd = "port" if side > 0 else "stbd"
+            F, d, _ = feet[f"cap_{sd}"]
             tips = [t * [1, side, 1] for _, t in self.spreaders]
-            pts = [cp] + tips + [self.cap_top + [0, side * self.width * 0.4, 0]]
-            for a, b in zip(pts[:-1], pts[1:]):
-                segs.append((a, b, r_cap))
+            zc = self.cap_top[2]
+            cap_head = np.array([self.x_mast, side * min(0.4, 0.45 * float(self.taper(zc))) * self.width, zc])
+            pts = [F + d * tb] + tips + [cap_head]
+            hosts = [f"screw_cap_{sd}"] + [f"spreader_{i}_{sd}_tip" for i in range(len(tips))] + ["mast"]
+            for k, (a, b) in enumerate(zip(pts[:-1], pts[1:])):
+                segs.append((a, b, r_cap, f"cap_{sd}_{k}", hosts[k], hosts[k + 1]))
             # lowers: chainplate to the mast under the first spreader
-            z1 = self.spreaders[0][0]
-            segs.append((cp + [0.06 * s, 0, 0], np.array([self.x_mast, side * self.width * 0.4, z1 - 0.02]), r_cap * 0.9))
+            F, d, _ = feet[f"lower_{sd}"]
+            segs.append((F + d * tb, self.lower_top(side), r_cap * 0.9, f"lower_{sd}", f"screw_lower_{sd}", "mast"))
             # intermediates: each spreader tip to the mast under the next spreader
             for i in range(1, len(self.spreaders)):
                 zi = self.spreaders[i][0]
-                segs.append((tips[i - 1], np.array([self.x_mast, side * self.width * 0.4, zi - 0.02]), r_cap * 0.85))
-        segs.append((np.array([self.x_tack, 0, self.z_tack + tb]),
-                     np.array([self.x_mast + self.chord / 2, 0, self.z_hounds]), r_cap * 1.1))
+                segs.append((tips[i - 1], np.array([self.x_mast, side * self.width * 0.4, zi - 0.02]), r_cap * 0.85,
+                             f"inter_{sd}_{i}", f"spreader_{i - 1}_{sd}_tip", "mast"))
+        F, d, _ = feet["forestay"]
+        segs.append((F + d * tb, np.array([self.x_mast + self.chord / 2, 0, self.z_hounds]), r_cap * 1.1,
+                     "forestay", "screw_forestay", "hounds"))
         if self.cls["rig"]["backstay"]:
-            z_bs = float(self.deck.deck_z(0.15, 0.0)) + 0.05 + tb
-            segs.append((np.array([self.x_mast - self.chord * 0.6, 0, self.z_top - 0.05]), np.array([0.15, 0, z_bs]),
-                         r_cap * 0.9))
+            head = self.crane[1] + [0.02 * s, 0, -0.005 * s]
+            if self.split_backstay():
+                sp = self.backstay_split()
+                segs.append((head, sp, r_cap * 0.9, "backstay", "crane", "backstay_split"))
+                for side in (1.0, -1.0):
+                    sd = "port" if side > 0 else "stbd"
+                    F, d, _ = feet[f"backstay_{sd}"]
+                    segs.append((sp, F + d * tb, r_cap * 0.8, f"backstay_leg_{sd}", "backstay_split",
+                                 f"screw_backstay_{sd}"))
+            else:
+                F, d, _ = feet["backstay"]
+                segs.append((head, F + d * tb, r_cap * 0.9, "backstay", "crane", "screw_backstay"))
         if self.sprit > 0:
-            # bobstay from the sprit end to the stem near the waterline
-            L = self.hull.L
-            segs.append((self.sprit_end, self.bobstay_foot(), r_cap * 0.9))
+            # bobstay from the sprit end to an eye on the stem near the waterline
+            segs.append((self.sprit_end, self.bobstay_foot(), r_cap * 0.9, "bobstay", "sprit_end", "bobstay_eye"))
         return segs
 
     def bobstay_foot(self):
-        """Point on the stem, a little above the waterline, where the bobstay lands."""
+        """Point on the stem, a little above the waterline, where the bobstay lands: on the hull mesh's centreline
+        profile (its keel-line vertices) when the skin is built, so the eye sits on the stem as meshed."""
         h, z = self.hull, 0.18 * self.scale
+        grid = getattr(h, "skin_grid", None)
+        if grid is not None:
+            k = grid[:, 0]                                  # keel-line vertices, aft to forward
+            for i in range(len(k) - 1, 0, -1):
+                a, b = k[i - 1], k[i]
+                if (a[2] - z) * (b[2] - z) <= 0 and a[2] != b[2]:
+                    t = (z - a[2]) / (b[2] - a[2])
+                    return np.array([a[0] + t * (b[0] - a[0]), 0.0, z])
         lo, hi = h.x_md, h.L
         for _ in range(40):
             mid = 0.5 * (lo + hi)
@@ -192,37 +320,71 @@ class Rig:
                 lo = mid
             else:
                 hi = mid
-        return np.array([lo + 0.005, 0.0, z])
+        return np.array([lo, 0.0, z])
 
     def rigging_part(self):
         p = Part()
-        for a, b, r in self.wires():
-            p.add("metal", tube(np.array([a, b]), r, 6, caps=False))
+        for a, b, r, name, ha, hb in self.wires():
+            p.add("metal", tube(np.array([a, b]), r, 6, caps=False), tag=name)
             # swaged terminals at both ends
             d = normalize(b - a)
-            for e, sgn in ((a, 1.0), (b, -1.0)):
-                p.add("metal", tube(np.array([e, e + sgn * d * 0.09]), r * 2.0, 8))
-        # chainplates (a deck cover plate and the strap), rigging screws on the shrouds, forestay and backstay
+            for e, sgn, h, end in ((a, 1.0, ha, "a"), (b, -1.0, hb, "b")):
+                p.add("metal", tube(np.array([e, e + sgn * d * 0.09]), r * 2.0, 8), tag=f"{name}_{end}")
+                p.attach(f"{name}_{end}", h)
+                p.attach(name, f"{name}_{end}")
+        # chainplates: a cover plate on the deck with a strap standing through it for each wire, a rigging screw
+        # on each strap's pin; the stemhead fitting for the forestay, plates at the transom or quarters for the
+        # backstay, an eye on the stem for the bobstay
         s = self.scale
         tb = self.turnbuckle_len()
-        r_cap = max(0.0045 * s, 0.003)
+        hs = self.strap_height()
+        r_cap = self.wire_radius()
         from .hardware import turnbuckle
-        feet = []
+        feet = self.feet()
+        for key, (F, d, host) in feet.items():
+            if key == "forestay":
+                continue
+            x, y = F[0], F[1]
+            z, n, _ = self.deck.surface(x, y)
+            M = frame_z(np.array([x, y, z]), n, np.array([1.0, 0, 0]))
+            strap = Part().add("metal", superellipsoid_box((0.075 * s, 0.014, hs + 0.006), 0.3, 8, 5,
+                                                           center=(0, 0, 0.5 * hs - 0.006)))
+            p.extend(strap, M, tag=host)
+            p.attach(host, "deck")
         for side in (1.0, -1.0):
-            cp = np.array([self.chainplate_x, side * self.chainplate_y, self.chainplate_z])
-            p.add("metal", superellipsoid_box((0.16 * s, 0.07 * s, 0.012), 0.25, 10, 4, center=cp - [0, 0, 0.012]))
-            p.add("metal", superellipsoid_box((0.10 * s, 0.012, 0.06 * s), 0.3, 8, 5, center=cp + [0, 0, 0.01]))
-            feet.append((cp, np.array([self.chainplate_x, side * self.width * 0.4, self.spreaders[0][0] - 0.02])))
-        feet.append((np.array([self.x_tack, 0, self.z_tack]), np.array([self.x_mast + self.chord / 2, 0, self.z_hounds])))
-        p.add("metal", superellipsoid_box((0.14 * s, 0.06 * s, 0.05 * s), 0.3, 8, 5,
-                                          center=[self.x_tack, 0, self.z_tack - 0.01]))
-        if self.cls["rig"]["backstay"]:
-            z_bs = float(self.deck.deck_z(0.15, 0.0)) + 0.05
-            feet.append((np.array([0.15, 0, z_bs]), np.array([self.x_mast - self.chord * 0.6, 0, self.z_top - 0.05])))
-        for foot, top in feet:
-            d = normalize(top - foot)
-            M = frame_z(foot, d, np.array([1.0, 0, 0]) if abs(d[0]) < 0.9 else np.array([0, 1.0, 0]))
-            p.extend(turnbuckle(tb, r_cap * 1.4), M)
+            sd = "port" if side > 0 else "stbd"
+            x = self.chainplate_x + 0.035 * s
+            y = side * self.chainplate_y
+            z, n, _ = self.deck.surface(x, y)
+            plate = Part().add("metal", superellipsoid_box((0.22 * s, 0.06 * s, 0.01), 0.25, 10, 4, center=(0, 0, 0.002)))
+            p.extend(plate, frame_z(np.array([x, y, z]), n, np.array([1.0, 0, 0])), tag=f"chainplate_{sd}")
+            p.attach(f"chainplate_{sd}", "deck")
+        # stemhead: two cheek plates from the deck up past the forestay pin
+        F = feet["forestay"][0]
+        zd = float(self.deck.surface(min(F[0], self.hull.L - 0.02), 0.0)[0])
+        for sy in (-1, 1):
+            h = F[2] + 0.03 * s - (zd - 0.006)
+            p.add("metal", superellipsoid_box((0.12 * s, 0.008, h), 0.25, 8, 5,
+                                              center=[F[0], sy * 0.018 * s, zd - 0.006 + 0.5 * h]), tag="stemhead")
+        p.add("metal", superellipsoid_box((0.16 * s, 0.05 * s, 0.01), 0.25, 8, 4, center=[F[0], 0, zd + 0.002]),
+              tag="stemhead")
+        p.add("metal", tube(np.array([F - [0, 0.024 * s, 0], F + [0, 0.024 * s, 0]]), 0.006 * s, 8), tag="stemhead")
+        p.attach("stemhead", "deck")
+        if self.split_backstay():
+            sp = self.backstay_split()
+            p.add("metal", superellipsoid_box((0.05 * s, 0.1 * s, 0.07 * s), 0.3, 8, 5, center=sp), tag="backstay_split")
+            p.attach("backstay_split", "backstay")
+        if self.sprit > 0:
+            foot = self.bobstay_foot()
+            p.add("metal", superellipsoid_box((0.03 * s, 0.05 * s, 0.07 * s), 0.35, 8, 5, center=foot - [0.004, 0, 0]),
+                  tag="bobstay_eye")
+            p.attach("bobstay_eye", "hull")
+        # rigging screws: along the wire from the pin
+        for key, (F, d, host) in feet.items():
+            name = "screw_" + key
+            M = frame_z(F, d, np.array([1.0, 0, 0]) if abs(d[0]) < 0.9 else np.array([0, 1.0, 0]))
+            p.extend(turnbuckle(tb, r_cap * 1.4), M, tag=name)
+            p.attach(name, host)
         return p
 
     def boom_part(self):
@@ -235,23 +397,35 @@ class Rig:
         depth = 0.17 * s
         prof = rounded_rect(depth, 0.085 * s, 0.03 * s, 3)
         sc = 1.0 - 0.25 * t ** 2
-        p.add("carbon", sweep(path, prof, scale_along=sc, up=np.array([0, 0, 1.0])))
+        p.add("carbon", sweep(path, prof, scale_along=sc, up=np.array([0, 0, 1.0])), tag="boom")
+        p.attach("boom", "gooseneck_pin")
         # end fitting and outhaul
         end = path[-1]
-        p.add("metal", superellipsoid_box((0.10 * s, 0.07 * s, depth * 0.8), 0.3, 8, 5, center=end))
+        p.add("metal", superellipsoid_box((0.10 * s, 0.07 * s, depth * 0.8), 0.3, 8, 5, center=end), tag="boom_end")
+        p.attach("boom_end", "boom")
         # vang: from the mast foot to the boom
         a = np.array([self.x_mast_aft - 0.02, 0, self.z_step + 0.25 * s])
         b = self.gooseneck + [-0.2 * self.E, 0, -depth * 0.4]
-        p.add("carbon", tube(np.array([a, a + 0.62 * (b - a)]), 0.025 * s, 10))
-        p.add("metal", tube(np.array([a + 0.55 * (b - a), b]), 0.016 * s, 10))
-        p.add("metal", superellipsoid_box((0.08 * s, 0.05 * s, 0.05 * s), 0.4, 8, 4, center=a))
-        p.add("metal", superellipsoid_box((0.1 * s, 0.07 * s, 0.05 * s), 0.3, 8, 4, center=b + [0, 0, 0.01 * s]))
+        p.add("carbon", tube(np.array([a, a + 0.62 * (b - a)]), 0.025 * s, 10), tag="vang")
+        p.add("metal", tube(np.array([a + 0.55 * (b - a), b]), 0.016 * s, 10), tag="vang_rod")
+        p.attach("vang_rod", "vang")
+        p.add("metal", superellipsoid_box((0.08 * s, 0.05 * s, 0.05 * s), 0.4, 8, 4, center=a), tag="vang_foot")
+        p.attach("vang_foot", "vang_tang")
+        p.attach("vang", "vang_foot")
+        p.add("metal", superellipsoid_box((0.1 * s, 0.07 * s, 0.05 * s), 0.3, 8, 4, center=b + [0, 0, 0.01 * s]),
+              tag="boom_bail")
+        p.attach("boom_bail", "boom")
+        p.attach("vang_rod", "boom_bail")
         # outhaul line along the boom side, cheek blocks near the gooseneck
         for sy in (-1, 1):
             p.add("metal", superellipsoid_box((0.09 * s, 0.02 * s, 0.05 * s), 0.35, 8, 4,
-                                              center=self.gooseneck + [-0.35 * s, sy * 0.045 * s, 0.0]))
-        p.add("rope", tube(np.array([end + [0.05 * s, 0.047 * s, 0.02 * s], self.gooseneck + [-0.35 * s, 0.047 * s, 0.02 * s]]),
-                           max(0.0035, 0.004 * s), 6))
+                                              center=self.gooseneck + [-0.35 * s, sy * 0.045 * s, 0.0]),
+                  tag=f"boom_cheek_{sy}")
+            p.attach(f"boom_cheek_{sy}", "boom")
+        p.add("rope", tube(np.array([end + [0.03 * s, 0.03 * s, 0.02 * s], self.gooseneck + [-0.35 * s, 0.047 * s, 0.02 * s]]),
+                           max(0.0035, 0.004 * s), 6), tag="outhaul")
+        p.attach("outhaul", "boom_end")
+        p.attach("outhaul", "boom_cheek_1")
         self.boom_end = end
         return p
 

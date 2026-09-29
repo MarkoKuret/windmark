@@ -85,15 +85,25 @@ class Appendages:
         self.rud_le_root = np.array([x_stock + 0.25 * self.rud_cr, 0, z_top])
         span_r = z_top - z_tip_r
         self.rud_le_tip = np.array([x_stock - span_r * np.tan(float(r["sweep"])) + 0.25 * self.rud_ct, 0, z_tip_r])
+        # tiller section (width, depth) and, on a transom rudder, the rudder head it is bolted into: two cheeks
+        # clamping the blade top, the tiller butt between them on a horizontal bolt (`tiller_pivot`)
+        sh = (hull.L / 12.0) ** 0.7
+        self.tiller_size = (0.045 * sh, 0.06 * sh)
+        self.head_gap = self.rud_tc * self.rud_cr             # between the cheeks: the blade's root thickness
+        self.tiller_pivot = self.rud_stock + [0.12 * self.rud_cr, 0, 0.5 * self.tiller_size[1] + 0.03]
+        self.head_cheek = 0.012 + 0.004 * (hull.L / 12.0)       # cheek thickness
+        self.head_front = min(self.tiller_pivot[0] + 0.2 * self.rud_cr, -0.02)
 
     # --------------------------------------------------------------------------------------------------------
     def keel_part(self, n_chord=22):
         p = Part()
         fin = foil(_foil_stations(self.fin_le_root, self.fin_le_tip, self.fin_cr, self.fin_ct, self.fin_tc),
                    n_chord=n_chord, tip_cap=False, root_cap=False)
-        p.add("antifouling", fin)
+        p.add("antifouling", fin, tag="keel_fin")
+        p.attach("keel_fin", "hull")
         if self.has_bulb:
-            p.add("antifouling", self.bulb_geom())
+            p.add("antifouling", self.bulb_geom(), tag="keel_bulb")
+            p.attach("keel_bulb", "keel_fin")
         self.fin_geom = fin
         return p
 
@@ -121,7 +131,7 @@ class Appendages:
         p = Part()
         blade = foil(_foil_stations(self.rud_le_root, self.rud_le_tip, self.rud_cr, self.rud_ct, self.rud_tc),
                      n_chord=n_chord, tip_cap=True, root_cap=self.transom_hung)
-        p.add("antifouling" if not self.transom_hung else "gelcoat", blade)
+        p.add("antifouling" if not self.transom_hung else "gelcoat", blade, tag="rudder")
         self.rudder_geom = blade
         if self.transom_hung:
             # rudder head cheeks and pintles on the transom
@@ -129,26 +139,44 @@ class Appendages:
             # round the leading edge at the transom gudgeons (hardware.rudder_fittings), pins on the stock axis
             top = self.rud_stock + [0, 0, 0.0]
             t = self.rud_tc * self.rud_cr
+            # cheeks: from 0.12 m down the blade sides to just over the tiller butt, fore and aft round the bolt
+            pv, th = self.tiller_pivot, self.head_cheek
+            z0, z1 = top[2] - 0.12, pv[2] + 0.5 * self.tiller_size[1] + 0.025
+            x0, x1 = top[0] - 0.08 * self.rud_cr, self.head_front
             for sy in (-1, 1):
-                p.add("carbon", superellipsoid_box((self.rud_cr * 0.6, 0.018, 0.24), 0.25,
-                                                   center=top + [0.18 * self.rud_cr, sy * (0.5 * t + 0.01), 0.04]))
-            p.add("metal", tube(np.array([top + [0.05 * self.rud_cr, -0.5 * t - 0.03, 0.08],
-                                          top + [0.05 * self.rud_cr, 0.5 * t + 0.03, 0.08]]), 0.008, 8))
-            for zz in self.pintle_z():
-                p.add("metal", superellipsoid_box((0.3 * self.rud_cr, t + 0.012, 0.05), 0.3, 8, 4,
-                                                  center=[top[0] + 0.12 * self.rud_cr, 0, zz]))
-                p.add("metal", tube(np.array([[top[0], 0, zz - 0.07], [top[0], 0, zz + 0.03]]), 0.008, 8))
+                p.add("carbon", superellipsoid_box((x1 - x0, th, z1 - z0), 0.18,
+                                                   center=[0.5 * (x0 + x1), sy * (0.5 * self.head_gap + 0.5 * th - 0.001),
+                                                           0.5 * (z0 + z1)]), tag="rudder_head")
+            p.attach("rudder_head", "rudder")
+            # bolt through the lower cheeks and the blade top
+            p.add("metal", tube(np.array([[top[0] + 0.1 * self.rud_cr, -0.5 * t - th - 0.006, top[2] - 0.06],
+                                          [top[0] + 0.1 * self.rud_cr, 0.5 * t + th + 0.006, top[2] - 0.06]]), 0.007, 8),
+                  tag="rudder_head_bolt")
+            p.attach("rudder_head_bolt", "rudder_head")
+            # pintle straps round the leading edge, between the gudgeon arms (hardware.rudder_fittings)
+            for i, zz in enumerate(self.pintle_z()):
+                p.add("metal", superellipsoid_box((0.3 * self.rud_cr, t + 0.012, 0.04), 0.3, 8, 4,
+                                                  center=[top[0] + 0.12 * self.rud_cr, 0, zz]), tag=f"pintle_strap_{i}")
+                p.attach(f"pintle_strap_{i}", "rudder")
+                p.attach(f"pintle_strap_{i}", f"gudgeon_{i}")
         else:
             # stock stub visible inside the gap to the hull
             p.add("metal", tube(np.array([self.rud_stock + [0, 0, -0.05], self.rud_stock + [0, 0, 0.2]]),
-                                0.035 * (self.cls["hull"]["loa"] / 12) ** 0.5, 12))
+                                0.035 * (self.cls["hull"]["loa"] / 12) ** 0.5, 12), tag="rudder_stock")
+            p.attach("rudder_stock", "rudder")
+            p.attach("rudder_stock", "hull")
         return p
 
     def pintle_z(self):
-        """Heights of the pintles of a transom-hung rudder (on the transom above the waterline)."""
+        """Heights of the pintles of a transom-hung rudder: on the transom face, the upper one below its top (the
+        cockpit floor on an open transom), the lower one near the waterline."""
+        from .deck import Deck
         top = self.rud_stock[2]
         z_low = max(float(self.hull.zk(np.array([0.0]))[0]) + 0.08, 0.06)
-        return [top - 0.22, 0.5 * (top - 0.22 + z_low)]
+        d = Deck(self.cls, self.hull)
+        z_face = float(d.floor_z(0.0)) if d.open_transom else float(d.deck_z(0.0, 0.0))
+        z_up = min(top - 0.22, z_face - 0.06)
+        return [z_up, 0.5 * (z_up + z_low)]
 
     # --------------------------------------------------------------------------------------------------------
     def volumes(self):

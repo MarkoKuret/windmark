@@ -180,10 +180,12 @@ func _apply_static() -> void:
 
 
 func _process(delta: float) -> void:
+	var t0 := Time.get_ticks_usec()
 	if use_internal_clock:
 		render_time_ms += delta * 1000.0
 	var cam := camera if camera else get_viewport().get_camera_3d()
 	update_frame(cam.global_position if cam else Vector3.ZERO, cam)
+	PerfStats.add(&"sea", Time.get_ticks_usec() - t0)
 
 
 ## Per-frame uniforms (water_render.md §2) for a camera at scene position `cam_pos`.

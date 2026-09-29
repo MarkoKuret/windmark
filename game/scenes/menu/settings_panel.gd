@@ -198,11 +198,21 @@ func _hud() -> void:
 func _graphics() -> void:
 	var s := settings
 	_row(MenuRow.choice("Quality", "quality", [0, 1, 2], ["Low", "Medium", "High"], s.quality))
+	var names := ["Auto"]
+	var tree := get_tree() if is_inside_tree() else Engine.get_main_loop() as SceneTree
+	if tree != null:
+		var auto := s.render_scale
+		s.render_scale = 0.0
+		names[0] = "Auto (%s)" % pct(s.effective_render_scale(tree.root))
+		s.render_scale = auto
+	for v in Settings.RENDER_SCALES.slice(1):
+		names.append(pct(v))
+	_row(MenuRow.choice("Render scale", "render_scale", Settings.RENDER_SCALES, names, s.render_scale))
 	_row(MenuRow.choice("Display", "fullscreen", [false, true], ["Windowed", "Fullscreen"], s.fullscreen))
 	_row(MenuRow.toggle("Vertical sync", "vsync", s.vsync))
 	_row(MenuRow.choice("Frame rate limit", "fps_limit", [0, 30, 60, 90, 120, 144],
 		["Off", "30", "60", "90", "120", "144"], s.fps_limit))
-	_sub("Medium suits the Steam Deck; Low suits integrated graphics.")
+	_sub("Medium suits the Steam Deck; Low suits integrated graphics. Render scale draws the 3D view at fewer pixels and sharpens it up to the screen (FSR); the HUD stays sharp.")
 
 
 func _audio() -> void:

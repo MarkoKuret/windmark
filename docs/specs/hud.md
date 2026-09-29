@@ -414,3 +414,25 @@ bar (centre zero, ±30°). Numbers keep the 4 Hz refresh of §1; dial, bars and 
   A selected boat off screen gets an edge pointer with her name and distance. `boat_names` turns all name tags off
   and on.
 - **Penalty turn**: §12.1, chase and aerial cameras only.
+
+## 17. Frame-time overlay (development)
+
+A measuring tool, not part of the race HUD: a small panel top left over everything, toggled with F9
+(`controls.md` §3 notes) or shown from the start with `--perf`, and a per-second CSV log (`--perf-log=PATH`) so a
+windowed run can be measured without reading the screen. It measures only while shown or logging. Off by default,
+and not saved.
+
+- **Frame**: frames per second, the frame time (mean, and the 1 % worst: the 99th percentile over the last 5 s),
+  the CPU time of the frame's process step, the render thread's CPU time, the GPU time of the main view (Godot's
+  viewport render time measurement, `RenderingServer.viewport_get_measured_render_time_gpu`) and of the other
+  viewports (the wake normal buffer), draw calls, primitives and objects drawn.
+- **Set-up**: the render scale (`menus.md` §3) with the 3D and window sizes and the upscaler, the quality tier,
+  the boat count, the renderer and driver, vsync and the frame rate limit, the camera mode.
+- **Sections**: the game's own per-frame work in milliseconds per frame, timed around the calls: `input` (devices
+  and controls), `sim` (the 50 ms ticks: the simulation step and the sail snapshots), `hud` (`Hud.tick` and
+  `Hud.frame`), `audio`, `sails` (the per-vertex sail shapes of every boat), `boats` (the boat nodes' poses, rudder,
+  boom), `wakes` (the wake ribbons, bow waves and spray), `sea` (the Sea's per-frame uniforms), `course` (the course
+  view), `camera`.
+- **Log**: a header line, then one line per second of the means over that second (the frame time's maximum
+  too, and the 1 % worst over the last 5 s); `--perf-seconds=N` quits after N seconds. The GPU times are 0 where the
+  driver does not measure (headless).

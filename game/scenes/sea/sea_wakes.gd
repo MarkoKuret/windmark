@@ -203,6 +203,13 @@ func _height(x: float, y: float) -> float:
 
 
 func _process(_delta: float) -> void:
+	var t0 := Time.get_ticks_usec()
+	_frame()
+	PerfStats.add(&"wakes", Time.get_ticks_usec() - t0)
+
+
+## The frame's wake ribbons, bow waves, mist and wake normal buffer.
+func _frame() -> void:
 	if sea == null or sea.material == null:
 		return
 	var t_s := sea.render_time_ms * 0.001

@@ -610,6 +610,13 @@ func test_penalties_prompts() -> void:
 	_refresh(h, sim)
 	sim.rules_ev = []
 	t.ok(h.feed_text().has("Nora penalised, rule 11 (You)"), "fleet feed: %s" % str(h.feed_text()))
+	_refresh(h, sim)  # the panel follows the events one tick later
+	t.ok(not h.penalty_panel.visible and not h.text_of("banner").begins_with("PENALTY"),
+		"another boat's penalty shows no panel or banner")
+	sim.rules_ev = [_uev(RaceText.Rev.PENALTY_LATE, {"boat": 1})]
+	_refresh(h, sim)
+	sim.rules_ev = []
+	t.ok(not h.penalty_panel.visible, "another boat's late penalty shows no panel")
 	# disqualified: a full-width banner
 	sim.rules_ev = [_uev(RaceText.Rev.DISQUALIFIED, {"boat": 0})]
 	_refresh(h, sim)

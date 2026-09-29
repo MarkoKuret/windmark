@@ -1011,7 +1011,8 @@ func _events(sim: SimSource, b: int) -> void:
 				if eb == b or eo == b:
 					hud_event.emit("rule_warning", {"giver": eb, "holder": eo, "rule": rule})
 			RaceText.Rev.PENALTY:
-				_last_penalty_tick = _tick
+				if eb == b:
+					_last_penalty_tick = _tick
 				var other_txt := " (%s)" % name_of(eo) if eo >= 0 else ""
 				if eb == b:
 					_banner("PENALTY: %s%s" % [RaceText.rule_text(rule), other_txt], Tint.RED, BANNER_PENALTY)
@@ -1026,8 +1027,8 @@ func _events(sim: SimSource, b: int) -> void:
 				if eb == b:
 					_banner("Penalties offset: one each cancelled", Tint.GREEN, BANNER_SERVED)
 			RaceText.Rev.PENALTY_LATE:
-				_last_penalty_tick = _tick
 				if eb == b:
+					_last_penalty_tick = _tick
 					_banner("Penalty not taken in time: +1 turn", Tint.RED, BANNER_PENALTY)
 			RaceText.Rev.PROTESTABLE:
 				if eo == b:

@@ -1101,7 +1101,11 @@ func _layout() -> void:
 	start_block.visible = sh > 0.0
 	start_block.position = Vector2.ZERO
 	start_block.size = Vector2(HudPaint.LANE_W, maxf(sh, 1.0)) * k
-	flags_view.position = Vector2(HudPaint.LANE_W * 0.5 + 170.0, 36.0) * k
+	var cw := 240.0
+	if countdown_shown():
+		var ct := text_of("clock")
+		cw = HudCanvas.text_width(ct.substr(ct.rfind(" ") + 1), int(roundf(128.0 * k))) / k
+	flags_view.position = Vector2(HudPaint.LANE_W * 0.5 + cw * 0.5 + 28.0, 44.0) * k
 	flags_view.size = Vector2(flags_view.width() + 2.0, 50.0 * k)
 	y += sh + (8.0 if sh > 0.0 else 0.0)
 	if penalty_panel.visible:

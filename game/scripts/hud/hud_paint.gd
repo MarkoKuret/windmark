@@ -730,8 +730,10 @@ static func edge_pointer(b: HudCanvas, h: Hud, w: Vector3, name: String, sub: St
 		dir = -dir
 	if dir.length() < 1.0:
 		dir = Vector2(0, -1)
-	var mg := Vector2(70.0, 90.0) * k
-	var half := c - mg
+	# keep clear of the corners' blocks: the top lane and bug, the instrument page and radar at the bottom
+	var box := Rect2(Vector2(70.0, 250.0) * k, sz - Vector2(140.0, 250.0 + 330.0) * k)
+	c = box.get_center()
+	var half := box.size * 0.5
 	var t := minf(absf(half.x / dir.x) if absf(dir.x) > 1e-6 else INF, absf(half.y / dir.y) if absf(dir.y) > 1e-6 else INF)
 	var q := c + dir * t
 	var u := dir.normalized()

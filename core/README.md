@@ -39,10 +39,14 @@ Tests (`ctest`):
   (`test_ai.cpp`). It runs every doctest case outside the test suite `long`.
 - `core_long` (label `long`): the doctest suite `long`, the full races run to the close: a full headless race of
   six scripted boats with penalties on `example_bay`, run twice for determinism, and saved at nine ticks and
-  loaded into a new world to continue bit for bit.
+  loaded into a new world to continue bit for bit; and the full AI race (`test_ai_full_race.cpp`): the fleet of
+  `tests/ai_fleet_race.h` (ten AI skippers of every level, wm7 and wm12) with collisions and rules, to the close,
+  twice with the same checksum every tick.
 - `ai_races` (label `ai_long`, about four minutes): the fleet runs of `ai.md` §15 (`test_ai_race.cpp`); they
   print their measurements. `ctest --test-dir core/build -LE ai_long` leaves them out, `-L ai_long` runs only them.
 - `core_no_fma`: disassembles `libwindmark_core.a` and fails on any fused multiply-add instruction.
+- `core_no_libm`: lists the library's undefined symbols and fails on any platform libm transcendental (`acosf`,
+  `sin`, `pow` and the like; `conventions.md` §5 rule 7).
 - `capi_race_example_full` (label `long`): `examples/race_example.c` through the C API only: a race of four
   scripted boats on the example course from the spawn to the results (with the splits and start line status
   readers), run twice for the same checksum, then a free-sailing boat (render pose, input frame encoding, sail
@@ -51,6 +55,12 @@ Tests (`ctest`):
   (after a damaged snapshot it rejected) to the same final tick and checksum (about 12 s in all).
 - `capi_race_example`: the same with `quick`: the scripted race once, and the AI race to 20 s after the snapshot
   (about 3 s).
+
+Second architecture: `core/tools/cross_arch_check.sh [seed ...]` (Apple Silicon Mac with Rosetta) builds
+`core/build-x86_64` with `-DCMAKE_OSX_ARCHITECTURES=x86_64`, runs its quick tests under Rosetta, then runs the
+scripted full race and the AI fleet race (default seed 33) through `windmark_race_trace` in both builds and
+compares the checksum of every tick. `windmark_race_trace ai --profile [--boats N]` prints the per-tick cost of a
+fleet race by how many boats are near a mark.
 
 ## Float rules
 
@@ -98,7 +108,7 @@ Sources live in `src/<module>/`, included as `"module/header.h"`, all in namespa
 | `include/windmark.h`, `src/capi/` | the C API over the world (below) | networking.md §4 |
 | `examples/` | `race_example.c`: a headless race, a free-sailing boat and an AI fleet race through the C API only | |
 | `tests/` | doctest suite and the math vector file | |
-| `tools/` | `gen_math_vectors.cpp`, `gen_env_vectors.cpp`; `gen_sea_render_samples.cpp` (sea and puff samples for the front end's water checks, `game/tests/run_water_test.sh`) | |
+| `tools/` | `gen_math_vectors.cpp`, `gen_env_vectors.cpp`; `race_trace.cpp` (per-tick checksums of a race, a fleet profile) and `cross_arch_check.sh`; `gen_sea_render_samples.cpp` (sea and puff samples for the front end's water checks, `game/tests/run_water_test.sh`) | |
 | `third_party/doctest/` | doctest 2.4.12 (MIT), test framework | |
 
 ## World calls

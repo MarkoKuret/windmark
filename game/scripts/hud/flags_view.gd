@@ -1,30 +1,35 @@
 class_name FlagsView
-extends Control
+extends HudCanvas
 ## hud.md §9.1 flags row: the flags shown now as small drawn flags (class, P, I, Z, U, black, X, first
-## substitute), each with its name under it.
+## substitute), each with its name under it in caps.
 
 var flags: Array[String] = []
 
-const W := 34.0
-const H := 22.0
-const GAP := 10.0
+const W := 44.0
+const H := 28.0
+const GAP := 16.0
 
 
 func _init() -> void:
-	custom_minimum_size = Vector2(4 * (W + GAP), H + 18)
-	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	super()
 
 
-func _draw() -> void:
-	var font := get_theme_default_font()
+func width() -> float:
+	return maxf(flags.size() * (W + GAP) - GAP, 0.0) * k
+
+
+func _build() -> void:
 	var x := 0.0
 	for f in flags:
-		var r := Rect2(x, 0, W, H)
+		var r := Rect2(x, 0, W * k, H * k)
 		_flag(f, r)
-		draw_rect(r, Color(0, 0, 0, 0.6), false, 1.0)
-		var label: String = {"class": "Class", "1st substitute": "1st sub", "black": "Black"}.get(f, f)
-		draw_string(font, Vector2(x, H + 14), label, HORIZONTAL_ALIGNMENT_CENTER, W, 12, Color(1, 1, 1, 0.9))
-		x += W + GAP
+		var o := r.grow(0.5)
+		_pl(PackedVector2Array([o.position, Vector2(o.end.x, o.position.y), o.end, Vector2(o.position.x, o.end.y),
+			o.position]), Color(0, 0, 0, 0.5), 1.0)
+		var label: String = {"class": "CLASS", "1st substitute": "1ST SUB", "black": "BLACK"}.get(f, f + " FLAG")
+		_s(Vector2(x + W * k * 0.5, (H + 18.0) * k), label, int(roundf(11.0 * k)), HudStyle.MIST, 600, 0.14,
+			HORIZONTAL_ALIGNMENT_CENTER)
+		x += (W + GAP) * k
 
 
 func _flag(f: String, r: Rect2) -> void:
@@ -34,40 +39,38 @@ func _flag(f: String, r: Rect2) -> void:
 	var white := Color(0.97, 0.97, 0.97)
 	var black := Color(0.05, 0.05, 0.05)
 	var c := r.get_center()
+	var p := r.position
+	var s := r.size
 	match f:
-		"class":  # the class flag: a plain pennant-style mark on white
-			draw_rect(r, white)
-			draw_rect(Rect2(r.position + Vector2(0, r.size.y * 0.35), Vector2(r.size.x, r.size.y * 0.3)), blue)
+		"class":  # the class flag: a plain band on white
+			_rect(r, white)
+			_rect(Rect2(p + Vector2(0, s.y * 0.35), Vector2(s.x, s.y * 0.3)), blue)
 		"P":
-			draw_rect(r, blue)
-			draw_rect(Rect2(c - r.size * 0.2, r.size * 0.4), white)
+			_rect(r, blue)
+			_rect(Rect2(c - s * 0.2, s * 0.4), white)
 		"I":
-			draw_rect(r, yellow)
-			draw_circle(c, r.size.y * 0.3, black)
+			_rect(r, yellow)
+			_c(c, s.y * 0.3, black)
 		"Z":
-			var p := r.position
-			var s := r.size
-			draw_colored_polygon(PackedVector2Array([p, p + Vector2(s.x, 0), c]), yellow)
-			draw_colored_polygon(PackedVector2Array([p + Vector2(s.x, 0), p + s, c]), black)
-			draw_colored_polygon(PackedVector2Array([p + s, p + Vector2(0, s.y), c]), red)
-			draw_colored_polygon(PackedVector2Array([p + Vector2(0, s.y), p, c]), blue)
+			_p(PackedVector2Array([p, p + Vector2(s.x, 0), c]), yellow)
+			_p(PackedVector2Array([p + Vector2(s.x, 0), p + s, c]), black)
+			_p(PackedVector2Array([p + s, p + Vector2(0, s.y), c]), red)
+			_p(PackedVector2Array([p + Vector2(0, s.y), p, c]), blue)
 		"U":
-			var h := r.size * 0.5
-			draw_rect(Rect2(r.position, h), red)
-			draw_rect(Rect2(r.position + Vector2(h.x, 0), h), white)
-			draw_rect(Rect2(r.position + Vector2(0, h.y), h), white)
-			draw_rect(Rect2(r.position + h, h), red)
+			var h := s * 0.5
+			_rect(Rect2(p, h), red)
+			_rect(Rect2(p + Vector2(h.x, 0), h), white)
+			_rect(Rect2(p + Vector2(0, h.y), h), white)
+			_rect(Rect2(p + h, h), red)
 		"black":
-			draw_rect(r, black)
+			_rect(r, black)
 		"X":
-			draw_rect(r, white)
-			draw_rect(Rect2(Vector2(c.x - 3, r.position.y), Vector2(6, r.size.y)), blue)
-			draw_rect(Rect2(Vector2(r.position.x, c.y - 3), Vector2(r.size.x, 6)), blue)
+			_rect(r, white)
+			_rect(Rect2(Vector2(c.x - s.x * 0.09, p.y), Vector2(s.x * 0.18, s.y)), blue)
+			_rect(Rect2(Vector2(p.x, c.y - s.y * 0.14), Vector2(s.x, s.y * 0.28)), blue)
 		"1st substitute":
-			var p := r.position
-			var s := r.size
-			draw_colored_polygon(PackedVector2Array([p, p + Vector2(s.x, s.y * 0.5), p + Vector2(0, s.y)]), blue)
-			draw_colored_polygon(PackedVector2Array([p + Vector2(s.x * 0.2, s.y * 0.25),
-				p + Vector2(s.x * 0.6, s.y * 0.5), p + Vector2(s.x * 0.2, s.y * 0.75)]), yellow)
+			_p(PackedVector2Array([p, p + Vector2(s.x, s.y * 0.5), p + Vector2(0, s.y)]), blue)
+			_p(PackedVector2Array([p + Vector2(s.x * 0.2, s.y * 0.25), p + Vector2(s.x * 0.6, s.y * 0.5),
+				p + Vector2(s.x * 0.2, s.y * 0.75)]), yellow)
 		_:
-			draw_rect(r, Color(0.5, 0.5, 0.5))
+			_rect(r, Color(0.5, 0.5, 0.5))

@@ -22,10 +22,11 @@ const HOIST_TIME := 1.5
 const LAYLINE_REFRESH_TICKS := 10  # 2 Hz
 const WIND_TAU := 10.0
 const MARKER_DIST := 500.0
-const COL_WHITE := Color(0.92, 0.92, 0.9)
-const COL_RED := Color(0.95, 0.3, 0.25)
-const COL_GREEN := Color(0.3, 0.85, 0.35)
-const COL_YELLOW := Color(0.95, 0.8, 0.2)
+# the HUD's colour tokens (hud.md §16.2): paper, port, stbd, mark; the finish line stays blue (its flag)
+const COL_WHITE := HudStyle.PAPER
+const COL_RED := HudStyle.PORT
+const COL_GREEN := HudStyle.STBD
+const COL_YELLOW := HudStyle.MARK
 const COL_BLUE := Color(0.35, 0.6, 1.0)
 
 enum { MARK_BUOY, MARK_COMMITTEE, MARK_BOAT, MARK_VIRTUAL }
@@ -453,7 +454,7 @@ func _update_overlays(pose: SimSource.RenderPose) -> void:
 		if show_laylines:
 			for l in laylines:
 				lines.append({"a": l["a"], "b": l["b"], "color": COL_GREEN if l["tack"] > 0 else COL_RED,
-					"width": 0.3, "kind": "layline", "tack": l["tack"]})
+					"width": 0.22, "kind": "layline", "tack": l["tack"]})
 		if show_zone and int(st["kind"]) != STEP_FINISH:
 			var c := Vector2(pose.pos_x, pose.pos_y)
 			for i in pts.size():

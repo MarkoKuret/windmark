@@ -1,19 +1,18 @@
 class_name HudBar
-extends Control
-## A horizontal bar: the rudder (centred, -1..1, hud.md §2: the helm h with a second mark at h_cmd) or the
-## sheet (0..1, 0 = sheeted hard in).
+extends HudCanvas
+## A hairline bar of the helm strip: the rudder (centred, -1..1, hud.md §2: the helm h as a short bar from the
+## centre with the command h_cmd as a yellow pointer) or the sheet (0..1, 0 = sheeted hard in).
 
 var centred := false
 var value := 0.0
 ## second mark (h_cmd), NAN for none
 var mark := NAN
-var fill := Color(0.9, 0.9, 0.9)
-var mark_colour := Color(1.0, 0.75, 0.2)
+var fill := HudStyle.PAPER
+var mark_colour := HudStyle.MARK
 
 
 func _init() -> void:
-	custom_minimum_size = Vector2(190, 10)
-	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	super()
 
 
 func _x(v: float) -> float:
@@ -21,13 +20,17 @@ func _x(v: float) -> float:
 	return clampf(t, 0.0, 1.0) * size.x
 
 
-func _draw() -> void:
-	draw_rect(Rect2(Vector2.ZERO, size), Color(1, 1, 1, 0.15))
+func _build() -> void:
+	var y := size.y - 1.0
+	var w := maxf(1.0, 1.5 * k)
+	_l(Vector2(0, y), Vector2(size.x, y), HudStyle.HAIR, w)
+	for i in 5:
+		var tx := size.x * i / 4.0
+		_l(Vector2(tx, y - (8.0 if i == 2 and centred else 5.0) * k), Vector2(tx, y), HudStyle.HAIR, w)
 	var x0 := _x(0.0)
 	var x1 := _x(value)
-	draw_rect(Rect2(Vector2(minf(x0, x1), 1), Vector2(absf(x1 - x0), size.y - 2)), fill)
-	if centred:
-		draw_line(Vector2(x0, 0), Vector2(x0, size.y), Color(1, 1, 1, 0.6), 1.0)
+	_rect(Rect2(Vector2(minf(x0, x1), y - 3.0 * k), Vector2(maxf(absf(x1 - x0), w), 4.0 * k)), fill)
 	if not is_nan(mark):
 		var xm := _x(mark)
-		draw_line(Vector2(xm, -2), Vector2(xm, size.y + 2), mark_colour, 2.0)
+		_p(PackedVector2Array([Vector2(xm, y - 4.0 * k), Vector2(xm - 6.0 * k, y - 14.0 * k),
+			Vector2(xm + 6.0 * k, y - 14.0 * k)]), mark_colour)

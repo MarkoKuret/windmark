@@ -8,7 +8,10 @@ extends SceneTree
 ##   - the layline test of §15 on the core (a boat on the computed starboard layline fetches the mark);
 ##   - a real race on the core, example_bay/example_wl, two boats steered by RacePilot from the spawn to the
 ##     results, the HUD checked against the core's race and rules records every tick;
-##   - the sail test scene in race mode: the HUD shows the race and hides the stand-in label.
+##   - the sail test scene in race mode: the HUD shows the race and hides the stand-in label;
+##   - the presentation of hud.md §16: what each instrument density shows in each phase, the density key and its
+##     setting, name tags within 50 m and on selected boats, the penalty turn only in the chase and aerial cameras,
+##     and every text fitting at 1280 x 800 for UI scales 80 % to 130 %.
 ##   godot --headless --path game -s res://tests/race_hud_test.gd
 
 const KNOT := HudFormat.KNOT
@@ -27,6 +30,10 @@ func _init() -> void:
 	test_penalties_prompts()
 	test_results_feed()
 	test_assists_text()
+	test_density()
+	test_density_key_and_settings()
+	await test_name_tags_and_penalty_turn()
+	test_text_fits()
 	test_fake_sim()
 	if CoreSimSource.available():
 		test_layline_core()
@@ -97,7 +104,7 @@ func test_countdown_flags() -> void:
 	_refresh(h, sim, 0, 58)
 	t.ok(h.text_of("banner") != "", "banner still up in its 60th tick")
 	_refresh(h, sim, 0, 1)
-	t.ok(h.text_of("banner") == "" and not h.labels["banner"].visible, "banner gone after 3 s")
+	t.ok(h.text_of("banner") == "" and not h.shown("banner"), "banner gone after 3 s")
 	sim.race_d["race_time"] = -59.0
 	_refresh(h, sim)
 	t.ok(_same(h.race.flags, ["class"]), "prep flag down at one minute")
@@ -177,7 +184,7 @@ func test_start_panel() -> void:
 	t.ok(h.race.over and h.text_of("over") == "OVER  I flag: round an end", "over in the last minute: " + h.text_of("over"))
 	sim.race_d["race_time"] = -70.0
 	_refresh(h, sim)
-	t.ok(not h.race.over and not h.labels["over"].visible, "no OVER before the last minute")
+	t.ok(not h.race.over and not h.shown("over"), "no OVER before the last minute")
 	# OCS after the gun, until returned; the panel stays until started
 	sim.race_d["state"] = RaceText.RaceState.RACING
 	sim.race_d["race_time"] = 5.0
@@ -191,7 +198,7 @@ func test_start_panel() -> void:
 	sim.boats_d[0]["started"] = true
 	sim.boats_d[0]["next"] = 1
 	_refresh(h, sim)
-	t.ok(not h.race.start_panel and not h.labels["line"].visible and not h.race.over, "panel gone once started")
+	t.ok(not h.race.start_panel and not h.shown("line") and not h.race.over, "panel gone once started")
 	h.free()
 
 
@@ -425,7 +432,7 @@ func test_rules_messages() -> void:
 	for cs in cases:
 		sim.pairs_a = [sim.pair(0, 1, cs[0])]
 		_refresh(h, sim)
-		t.ok(h.text_of("rules") == cs[1] and h.labels["rules"].get_theme_color("font_color") == Hud.TINT_COLOURS[cs[2]],
+		t.ok(h.text_of("rules") == cs[1] and h.colour_of("rules") == Hud.TINT_COLOURS[cs[2]],
 			"%s (got %s)" % [cs[1], h.text_of("rules")])
 	sim.pairs_a = [sim.pair(0, 1, {"kc_giver": 1, "kc_holder": 0, "kc_rule": R.R10, "kc_state": 0})]
 	_refresh(h, sim)
@@ -578,7 +585,7 @@ func test_penalties_prompts() -> void:
 	sim.rules_d[0]["deadline_s"] = 8.0
 	sim.rules_d[0]["pending"] = [{"rule": R.R10, "other": 1, "count": 1}, {"rule": R.R31, "other": -1, "count": 1}]
 	_refresh(h, sim)
-	t.ok(h.labels["pen_deadline"].get_theme_color("font_color") == Hud.TINT_COLOURS[RaceHudValues.Tint.RED],
+	t.ok(h.colour_of("pen_deadline") == Hud.TINT_COLOURS[RaceHudValues.Tint.RED],
 		"deadline red below 10 s")
 	t.ok(h.text_of("pen_head") == "Penalty 1 of 2: Port tack keeps clear of starboard (Nora)", h.text_of("pen_head"))
 	t.ok(h.text_of("pen_dsq") == "One more penalty = disqualification", "disqualification warning")
@@ -673,7 +680,7 @@ func test_results_feed() -> void:
 	_refresh(h, sim)
 	sim.race_ev = []
 	var rows := h.results_text_rows()
-	t.ok(h.race.results_final and h.results_panel.visible and h.results_title.text == "Results", "final results shown")
+	t.ok(h.race.results_final and h.results_panel.visible and h.results_title == "Results", "final results shown")
 	t.ok(rows.size() == 3 and rows[0] == ["1", "Nora", "", "Expert", "0:23:20.00", "", "", "1"], "row 1: %s" % str(rows[0]))
 	t.ok(rows[1][4] == "0:23:32.35" and rows[1][5] == "+0:12" and rows[1][1] == "You", "row 2: %s" % str(rows[1]))
 	t.ok(rows[2][4] == "0:25:00.00 proj." and rows[2][3] == "Pro", "projected AI finish marked: %s" % str(rows[2]))
@@ -710,7 +717,7 @@ func test_assists_text() -> void:
 		"Minimal start: distance to line only")
 	# no em dash in any text the race HUD wrote, nor in the tables behind it
 	var dash := false
-	for k in h2.labels:
+	for k in h2.texts:
 		dash = dash or h2.text_of(k).contains("—")
 	for v in RaceText.RULE_TEXT.values() + RaceText.PREP_MEANING + RaceText.OVER_CONSEQUENCE:
 		dash = dash or str(v).contains("—")
@@ -720,6 +727,356 @@ func test_assists_text() -> void:
 	t.ok(RaceText.rule_text(RaceText.Rule.R16_2) == "Don't bear away onto a ducking port boat"
 		and RaceText.rule_text("30.1") == "Over early (I flag)" and RaceText.RULE_CODES.size() == 22, "rule texts of §12.3")
 	h2.free()
+
+
+# ---- §16 presentation -----------------------------------------------------------------------------------------
+
+## a racing stub: boat 0 beating on starboard at (200, 400), boat 1 at (0, 0); `near_mark` puts boat 0 inside 6 L
+func _beat_sim(near_mark := false) -> RaceStubSim:
+	var sim := RaceStubSim.new(3)
+	sim.race_d["state"] = RaceText.RaceState.RACING
+	sim.race_d["race_time"] = 100.0
+	for b in 3:
+		sim.boats_d[b]["started"] = true
+		sim.boats_d[b]["next"] = 1
+	var psi := Frames.wrap_2pi(-deg_to_rad(42.0))
+	sim.put(0, 10.0 if near_mark else 200.0, 975.0 if near_mark else 400.0, psi, 3.0)
+	sim.put(1, 0, 0, 0.0, 3.0)
+	sim.put(2, 60, 60, 0.0, 3.0)
+	return sim
+
+
+func _pre_sim() -> RaceStubSim:
+	var sim := RaceStubSim.new(3)
+	sim.race_d["state"] = RaceText.RaceState.SEQUENCE
+	sim.race_d["race_time"] = -150.0
+	for b in 3:
+		sim.put(b, -40.0 + 40.0 * b, -100.0, 0.0, 3.0)
+		sim.line_status(b)
+	return sim
+
+
+func _items_at(h: Hud, d: int) -> Array[String]:
+	h.density_auto = false
+	h.density = d as Hud.Density
+	return h.items()
+
+
+static func _has_all(a: Array[String], want: Array) -> bool:
+	for w in want:
+		if not a.has(w):
+			return false
+	return true
+
+
+static func _has_none(a: Array[String], want: Array) -> bool:
+	for w in want:
+		if a.has(w):
+			return false
+	return true
+
+
+static func _page_texts(b: HudCanvas) -> Array[String]:
+	var out: Array[String] = []
+	for q in b.primitives():
+		if q["k"] == "text":
+			out.append(q["text"])
+	return out
+
+
+func test_density() -> void:
+	t.begin("instrument density per phase (hud.md §16.1)")
+	var G := Hud.Density.GLANCE
+	var RC := Hud.Density.RACE
+	var D := Hud.Density.DATA
+	var data_only := ["vmg_kn", "awa", "sog", "cog", "aws", "heel_bar"]
+	# pre-start
+	var sim := _pre_sim()
+	var h := _hud(sim)
+	_refresh(h, sim, 0, 5)
+	t.ok(h.phase() == "pre", "phase pre: " + h.phase())
+	var g := _items_at(h, G)
+	t.ok(_has_all(g, ["bsp", "twa_dial", "start_min", "radar", "helm"]) and _has_none(g, ["cue", "hdg", "bug",
+		"wind_page", "start_full", "feed"]), "pre-start Glance: %s" % str(g))
+	var rc := _items_at(h, RC)
+	t.ok(_has_all(rc, ["cue", "hdg", "target", "start_full", "wind_page", "bug", "feed"]) and _has_none(rc, data_only),
+		"pre-start Race: %s" % str(rc))
+	var d := _items_at(h, D)
+	t.ok(_has_all(d, data_only + ["bug_lap"]), "pre-start Data: %s" % str(d))
+	h.frame(0.3)
+	t.ok(not h.cue_is_vmg(), "pre-start cue is polar %")
+	h.free()
+	# beat
+	sim = _beat_sim()
+	h = _hud(sim)
+	h.assist = Hud.Assist.FULL
+	_refresh(h, sim, 0, 200)
+	t.ok(h.phase() == "beat", "phase beat: " + h.phase())
+	g = _items_at(h, G)
+	t.ok(_has_all(g, ["bsp", "twa_dial", "cue", "bug", "feed_own"]) and _has_none(g, ["hdg", "target", "wind_page",
+		"shift", "bug_lap", "feed"] + data_only), "beat Glance: %s" % str(g))
+	h.frame(0.3)
+	var page := _page_texts(h.inst_page)
+	t.ok(page.has("BOAT SPEED") and page.has("VMG TARGET") and not page.has("HEADING") and h.cue_is_vmg(),
+		"Glance page: speed, TWA dial, VMG %%: %s" % str(page))
+	t.ok(h.radar.compact and not h.wind_page.visible and h.bug_block.visible, "Glance: small radar, no wind page")
+	rc = _items_at(h, RC)
+	t.ok(_has_all(rc, ["cue", "hdg", "target", "wind_page", "shift", "bug_lap", "feed"]) and _has_none(rc,
+		data_only + ["bug_gaps", "hint", "polar"]), "beat Race: %s" % str(rc))
+	h.frame(0.3)
+	page = _page_texts(h.inst_page)
+	t.ok(page.has("HEADING") and page.has("TARGET") and not page.has("SOG") and h.wind_page.visible,
+		"Race page: heading and target, wind page: %s" % str(page))
+	d = _items_at(h, D)
+	t.ok(_has_all(d, data_only + ["bug_gaps", "hint", "polar"]), "beat Data: %s" % str(d))
+	h.frame(0.3)
+	page = _page_texts(h.inst_page)
+	t.ok(page.has("SOG") and page.has("COG") and page.has("AWS") and page.has("POLAR %") and page.has("HEEL")
+		and page.has("VMG") and page.has("AWA"), "Data page: %s" % str(page))
+	# the assist still decides: no sail hint below Full, no shift on Minimal
+	h.assist = Hud.Assist.STANDARD
+	t.ok(not _items_at(h, D).has("hint"), "sail hint needs the Full assist")
+	h.assist = Hud.Assist.MINIMAL
+	t.ok(not _items_at(h, D).has("shift"), "Minimal: no shift meter at any density")
+	h.assist = Hud.Assist.STANDARD
+	# contextual items are never hidden by the density
+	var R := RaceText.Rule
+	sim.pairs_a = [sim.pair(0, 1, {"kc_giver": 0, "kc_holder": 1, "kc_rule": R.R10, "kc_state": 2})]
+	sim.rules_d[0] = {"pending": [{"rule": R.R10, "other": 1, "count": 1}], "turn_progress": 0.0, "turn_tacks": 0,
+		"turn_gybes": 0, "deadline_s": 30.0, "received": 1, "turning_for_penalty": false}
+	_refresh(h, sim)
+	_items_at(h, G)
+	h.frame(0.3)
+	t.ok(h.phase() == "penalty" and h.penalty_panel.visible and h.shown("rules") and h.alerts_block.visible,
+		"Glance keeps the penalty panel and the rules line")
+	t.ok(not h.has_item("cue") and h.has_item("bsp"), "penalty at Glance: speed and TWA dial only")
+	t.ok(_items_at(h, RC).has("cue"), "penalty at Race: as the leg")
+	h.free()
+	# rounding
+	sim = _beat_sim(true)
+	h = _hud(sim)
+	_refresh(h, sim, 0, 20)
+	t.ok(h.phase() == "rounding", "within 6 L of the mark: rounding (%s, %.0f m)" % [h.phase(), h.race.next_dist])
+	t.ok(not _items_at(h, G).has("cue") and _items_at(h, RC).has("cue"), "rounding: Glance drops the cue")
+	h.free()
+	# reach: polar % is the cue, VMC in Data
+	sim = _beat_sim()
+	sim.put(0, 200.0, 400.0, Frames.wrap_2pi(-deg_to_rad(90.0)), 3.0)
+	sim.put(0, -300.0, 900.0, deg_to_rad(90.0), 3.0)
+	h = _hud(sim)
+	_refresh(h, sim, 0, 200)
+	if h.race.leg_type == "reach":
+		d = _items_at(h, D)
+		t.ok(not h.cue_is_vmg() and not d.has("polar") and d.has("vmg_kn"), "reach: polar %% is the cue: %s" % str(d))
+		h.frame(0.3)
+		t.ok(_page_texts(h.inst_page).has("VMC"), "reach Data: VMC")
+	else:
+		t.ok(false, "reach set-up: leg %s" % h.race.leg_type)
+	h.free()
+
+
+func test_density_key_and_settings() -> void:
+	t.begin("density key, View tap and hold, defaults and the setting (hud.md §16.1, controls.md §3)")
+	t.ok(Hud.default_density(Vector2(1920, 1080)) == Hud.Density.RACE, "default Race at 1920 x 1080")
+	t.ok(Hud.default_density(Vector2(1280, 800)) == Hud.Density.GLANCE, "default Glance at 1280 x 800")
+	t.ok(Hud.default_density(Vector2(2560, 1440)) == Hud.Density.RACE, "default Race at 2560 x 1440")
+	var sim := _beat_sim()
+	var h := Hud.new()
+	h.screen_size = Vector2(1920, 1080)
+	h.tick(sim, 0)
+	h.frame(0.3)
+	t.ok(h.density_auto and h.density == Hud.Density.RACE, "auto: Race on 16:9")
+	h.screen_size = Vector2(1280, 800)
+	h.frame(0.016)
+	t.ok(h.density == Hud.Density.GLANCE, "auto: Glance on the Deck screen")
+	var seen := []
+	for i in 4:
+		h.ui_input(RawInput.new().press(&"hud_density"), 0.016)
+		h.frame(0.016)
+		seen.append(h.density)
+	t.ok(seen == [Hud.Density.RACE, Hud.Density.DATA, Hud.Density.GLANCE, Hud.Density.RACE] and not h.density_auto,
+		"G cycles Glance, Race, Data, Glance: %s" % str(seen))
+	t.ok(h.toast_block.visible and "RACE" in _page_texts(h.toast_block), "the INSTRUMENTS chip names the level")
+	for i in 100:
+		h.frame(0.016)
+	t.ok(not h.toast_block.visible, "the chip goes after 1.5 s")
+	# gamepad View: a tap cycles, a hold is the ranking list
+	var before := h.density
+	for i in 5:
+		h.ui_input(RawInput.new().hold(&"rankings_pad"), 1.0 / 60.0)
+	h.ui_input(RawInput.new(), 1.0 / 60.0)
+	t.ok(h.density == (int(before) + 1) % 3 and not h.show_ranking, "View tap cycles the density")
+	before = h.density
+	var ranking := false
+	for i in 40:
+		h.ui_input(RawInput.new().hold(&"rankings_pad"), 1.0 / 60.0)
+		ranking = ranking or h.show_ranking
+	h.ui_input(RawInput.new(), 1.0 / 60.0)
+	t.ok(h.density == before and ranking and not h.show_ranking, "View hold shows the ranking, no density change")
+	# the choice is stored per device in the settings file
+	var path := "user://hud_density_test.cfg"
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	var st := Settings.new()
+	st.hud_density = -1
+	st.save_file(path)
+	var saved_path := Settings.path
+	Settings.path = path
+	st.apply_hud(h)
+	t.ok(h.density_auto, "setting Auto: the device default")
+	h.set_density(Hud.Density.DATA)
+	var back := Settings.new()
+	back.load_file(path)
+	t.ok(back.hud_density == Hud.Density.DATA, "the density key saved Data: %d" % back.hud_density)
+	var h2 := Hud.new()
+	h2.screen_size = Vector2(1280, 800)
+	back.apply_hud(h2)
+	h2.tick(sim, 0)
+	h2.frame(0.3)
+	t.ok(not h2.density_auto and h2.density == Hud.Density.DATA, "a new HUD starts at the stored level")
+	Settings.path = saved_path
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	h.free()
+	h2.free()
+
+
+func test_name_tags_and_penalty_turn() -> void:
+	t.begin("name tags within 50 m or selected, the penalty turn by camera (hud.md §16.4, §12.1)")
+	var sim := RaceStubSim.new(3)
+	sim.race_d["state"] = RaceText.RaceState.RACING
+	sim.race_d["race_time"] = 100.0
+	for b in 3:
+		sim.boats_d[b]["started"] = true
+		sim.boats_d[b]["next"] = 1
+	sim.put(0, 0.0, 400.0, 0.0, 3.0)
+	sim.put(1, 0.0, 445.0, 0.0, 3.0)  # 45 m ahead
+	sim.put(2, 20.0, 455.0 - 0.0, 0.0, 3.0)
+	sim.put(2, 0.0, 400.0 + sqrt(55.0 * 55.0 - 20.0 * 20.0), 0.0, 3.0)
+	sim.states[2].pos_x = 20.0  # 55 m away, ahead
+	await process_frame
+	var vp := SubViewport.new()
+	vp.size = Vector2i(1280, 720)
+	vp.disable_3d = false
+	get_root().add_child(vp)
+	var cam := Camera3D.new()
+	vp.add_child(cam)
+	cam.fov = 60.0
+	var eye := Frames.enu_to_scene(0.0, 370.0, 12.0)
+	cam.global_transform = Transform3D(Basis.IDENTITY, eye).looking_at(Frames.enu_to_scene(0.0, 440.0, 2.0), Vector3.UP)
+	var h := Hud.new()
+	h.screen_size = Vector2(1280, 720)
+	h.camera = cam
+	h.camera_kind = "chase"
+	h.race.names = {1: "Nora", 2: "Ivo"}
+	h.tick(sim, 0)
+	h.frame(0.3)
+	var d2 := Vector2(sim.states[2].pos_x, sim.states[2].pos_y - 400.0).length()
+	t.near(d2, 55.0, 0.01, "boat 2 at 55 m")
+	var names := h.name_tags().map(func(g: Dictionary) -> String: return g["name"])
+	t.ok(names == ["NORA"], "tag on the boat at 45 m only: %s" % str(names))
+	h.select_next()
+	t.ok(h.selected.keys() == [1], "select key: nearest first")
+	h.select_next()
+	names = h.name_tags().map(func(g: Dictionary) -> String: return g["name"])
+	t.ok(h.selected.keys() == [2] and names.has("IVO"), "select key: the next one gets a tag at 55 m: %s" % str(names))
+	h.select_next()
+	t.ok(h.selected.is_empty(), "select key: then none")
+	var mast: Variant = h.project(Vector3(20.0, sim.states[2].pos_y, 0.6 * h.mast_height(2)))
+	t.ok(mast != null and h.pick_at(mast) == 2 and h.selected.has(2), "click on a boat selects it")
+	t.ok(h.pick_at(mast) == 2 and not h.selected.has(2), "a second click clears it")
+	t.ok(h.pick_at(Vector2(2.0, 2.0)) == -1, "a click on empty water picks nothing")
+	h.show_names = false
+	t.ok(h.name_tags().is_empty(), "boat_names off: no tags")
+	h.show_names = true
+	# penalty turn: chase and aerial only
+	var R := RaceText.Rule
+	sim.rules_d[0] = {"pending": [{"rule": R.R10, "other": 1, "count": 1}], "turn_progress": deg_to_rad(120.0),
+		"turn_tacks": 1, "turn_gybes": 0, "deadline_s": 30.0, "received": 1, "turning_for_penalty": true}
+	_refresh(h, sim)
+	var ring := func() -> bool:
+		for q in h.world.primitives():
+			if q["k"] == "polyline" and (q["col"] as Color).is_equal_approx(HudStyle.PORT):
+				return true
+		return false
+	for kind in ["chase", "aerial", "onboard", "free"]:
+		h.camera_kind = kind
+		var want: bool = kind in ["chase", "aerial"]
+		t.ok(h.penalty_turn_shown() == want and ring.call() == want, "penalty turn in the %s camera: %s" % [kind,
+			"drawn" if want else "not drawn"])
+	h.free()
+	vp.free()
+
+
+## screen rects of every text the HUD paints now (blocks laid out inside the Hud, which is not in the tree)
+static func _text_rects(h: Hud) -> Array:
+	var out := []
+	for b in h.blocks():
+		if b == h.world:
+			continue
+		var o := b.position
+		var n: Node = b.get_parent()
+		while n != null and n != h:
+			if n is Control:
+				o += (n as Control).position
+			n = n.get_parent()
+		for q in b.primitives():
+			if q["k"] != "text" or q["text"] == "":
+				continue
+			var sz: int = q["size"]
+			var f := HudStyle.font(q["weight"], q["tracking"], sz)
+			var w := f.get_string_size(q["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, sz).x
+			var p: Vector2 = q["p"]
+			var x := p.x - (w if q["align"] == HORIZONTAL_ALIGNMENT_RIGHT else (w * 0.5 if q["align"] == 1 else 0.0))
+			# the digits and caps: cap height above the baseline, a little below it
+			out.append({"r": Rect2(o + Vector2(x, p.y - f.get_ascent(sz) * 0.72), Vector2(w, f.get_ascent(sz) * 0.8)),
+				"b": b.name, "t": q["text"]})
+	return out
+
+
+func test_text_fits() -> void:
+	t.begin("every text fits at 1280 x 800, UI scale 80 % to 130 %")
+	var R := RaceText.Rule
+	var scenarios := {}
+	var pre := _pre_sim()
+	pre.race_d["race_time"] = -150.0
+	pre.race_d["prep_flag"] = 1
+	scenarios["pre-start"] = pre
+	var inc := _beat_sim()
+	inc.pairs_a = [inc.pair(0, 1, {"kc_giver": 0, "kc_holder": 1, "kc_rule": R.R10, "kc_state": 2})]
+	inc.rules_d[0] = {"pending": [{"rule": R.R10, "other": 1, "count": 2}], "turn_progress": deg_to_rad(200.0),
+		"turn_tacks": 1, "turn_gybes": 0, "deadline_s": 8.0, "received": 5, "turning_for_penalty": true}
+	scenarios["penalty"] = inc
+	scenarios["beat"] = _beat_sim()
+	var bad := []
+	var checked := 0
+	for sname in scenarios:
+		for scale in [0.8, 1.0, 1.3]:
+			for lvl in 3:
+				var sim: RaceStubSim = scenarios[sname]
+				var h := Hud.new()
+				h.screen_size = Vector2(1280, 800) / scale
+				h.assist = Hud.Assist.FULL
+				h.race.names = {1: "Nora", 2: "Ivo"}
+				h.set_density(lvl)
+				for i in 30:
+					sim.step()
+					h.tick(sim, 0)
+				h.frame(0.3)
+				h.refresh_text()
+				h.frame(2.0)
+				var rects := _text_rects(h)
+				var screen := Rect2(Vector2.ZERO, h.screen_size)
+				for i in rects.size():
+					var a: Dictionary = rects[i]
+					checked += 1
+					if not screen.encloses(a["r"]):
+						bad.append("%s %.0f%% %s: '%s' off screen" % [sname, scale * 100, Hud.DENSITY_NAMES[lvl], a["t"]])
+					for j in range(i + 1, rects.size()):
+						var c: Dictionary = rects[j]
+						if (a["r"] as Rect2).grow(-1.0).intersects((c["r"] as Rect2).grow(-1.0)):
+							bad.append("%s %.0f%% %s: '%s' (%s) overlaps '%s' (%s)" % [sname, scale * 100,
+								Hud.DENSITY_NAMES[lvl], a["t"], a["b"], c["t"], c["b"]])
+				h.free()
+	t.ok(bad.is_empty(), "%d texts checked, %d problems: %s" % [checked, bad.size(), str(bad.slice(0, 8))])
 
 
 func test_fake_sim() -> void:

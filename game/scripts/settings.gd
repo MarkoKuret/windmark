@@ -46,6 +46,8 @@ var reduced_motion := false
 
 # ---- HUD (hud.md §14) ----
 var assist := Hud.Assist.STANDARD
+## instrument density (hud.md §16.1): -1 = the device default, else Hud.Density; the density key stores it
+var hud_density := -1
 var ui_scale := 1.0
 ## standard, deuteranopia, protanopia, tritanopia
 var palette := "standard"
@@ -75,7 +77,7 @@ const FIELDS := {
 		"rankings_toggle", "camera_boost_toggle", "sheet_turns_auto_trim_off", "vibration"],
 	"cameras": ["camera_speed", "invert_orbit_x", "invert_orbit_y", "invert_look_x", "invert_look_y", "heel_follow",
 		"smooth_switch", "reduced_motion"],
-	"hud": ["assist", "ui_scale", "palette", "captions"],
+	"hud": ["assist", "hud_density", "ui_scale", "palette", "captions"],
 	"graphics": ["quality", "fullscreen", "vsync", "fps_limit"],
 	"audio": ["master_volume", "effects_volume", "signals_volume", "voice_volume", "ambience_volume",
 		"interface_volume"],
@@ -150,6 +152,7 @@ func _clamp() -> void:
 	ui_scale = clampf(ui_scale, 0.8, 1.3)
 	helm_mode = clampi(helm_mode, 0, 1) as PlayerControls.HelmMode
 	assist = clampi(assist, 0, 2) as Hud.Assist
+	hud_density = clampi(hud_density, -1, 2)
 	quality = clampi(quality, 0, 2) as SeaQuality.Tier
 	fps_limit = maxi(fps_limit, 0)
 	for f in BUSES:
@@ -219,8 +222,20 @@ func apply_cameras(rig: CameraRig) -> void:
 	rig.onboard.heel_follow = heel_follow
 
 
+## The assist preset and the instrument density; the density key's choice is stored here and saved at once
+## (kept per device: the settings file is the device's).
 func apply_hud(hud: Hud) -> void:
 	hud.assist = assist
+	hud.density_auto = hud_density < 0
+	if hud_density >= 0:
+		hud.density = hud_density as Hud.Density
+	if not hud.density_changed.is_connected(_density_chosen):
+		hud.density_changed.connect(_density_chosen)
+
+
+func _density_chosen(level: int) -> void:
+	hud_density = level
+	save_file()
 
 
 ## The sea's tier, and the environment's part of it (screen-space reflections) when a sky is given.

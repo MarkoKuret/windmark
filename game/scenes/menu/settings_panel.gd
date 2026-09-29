@@ -186,6 +186,8 @@ func _cameras() -> void:
 func _hud() -> void:
 	var s := settings
 	_row(MenuRow.choice("Assists", "assist", [0, 1, 2], ["Full", "Standard", "Minimal"], s.assist))
+	_row(MenuRow.choice("Instruments", "hud_density", [-1, 0, 1, 2], ["Auto", "Glance", "Race", "Data"],
+		s.hud_density))
 	_row(MenuRow.range_row("Interface scale", "ui_scale", 0.8, 1.3, 0.05, s.ui_scale, pct))
 	_row(MenuRow.choice("Colour palette", "palette", ["standard", "deuteranopia", "protanopia", "tritanopia"],
 		["Standard", "Deuteranopia", "Protanopia", "Tritanopia"], s.palette))

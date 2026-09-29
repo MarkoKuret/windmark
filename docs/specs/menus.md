@@ -38,7 +38,7 @@ game has the setting and is saved when the settings screen closes, to one file p
 | --- | --- |
 | Controls | helm key mode, stick dead zone, stick curve, sheet key rate, hold or toggle for let fly, fine helm, rankings and camera boost, sheet turns auto trim off, vibration (off, 10 % to 100 %), the bindings (shown; rebinding comes later) |
 | Cameras | camera and look speed, invert orbit X and Y, invert look X and Y, onboard heel follow, smooth switch, reduced motion |
-| HUD | assist preset (Full, Standard, Minimal; online lobbies may force a lower one), UI scale (80 % to 130 %), colour-blind palette (standard, deuteranopia, protanopia, tritanopia), captions |
+| HUD | assist preset (Full, Standard, Minimal; online lobbies may force a lower one), instruments (Auto, Glance, Race, Data: the density of `hud.md` §16.1; Auto picks the device default, the `hud_density` key stores its choice here), UI scale (80 % to 130 %), colour-blind palette (standard, deuteranopia, protanopia, tritanopia), captions |
 | Graphics | quality (Low, Medium, High: the tiers of `water_render.md` §7, default Medium), display (windowed, fullscreen), vsync, frame rate limit (off, 30, 60, 90, 120, 144) |
 | Audio | master, effects, signals, voice, ambience, interface volumes, 0 to 100 % (default 100 %, master 80 %) |
 

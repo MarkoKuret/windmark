@@ -414,7 +414,7 @@ func test_input_map() -> void:
 		"camera_next", "camera_chase", "camera_onboard", "camera_aerial", "camera_free", "camera_zoom_in",
 		"camera_zoom_out", "camera_recentre", "camera_preset_1", "camera_preset_8", "camera_boost", "rankings",
 		"map", "radar_zoom_in", "radar_zoom_out", "radar_orientation", "wind_shadow_view", "hud_hide",
-		"boat_names", "spectate_next", "spectate_prev", "spectate_leader", "chat", "pause_menu", "screenshot",
+		"boat_names", "hud_density", "boat_select", "boat_pick", "rankings_pad", "spectate_next", "spectate_prev", "spectate_leader", "chat", "pause_menu", "screenshot",
 		"helm_stick_left", "helm_stick_right", "sheet_in_trigger", "sheet_out_trigger", "camera_orbit_left",
 		"camera_orbit_drag", "camera_look_up"]
 	for a in spec:

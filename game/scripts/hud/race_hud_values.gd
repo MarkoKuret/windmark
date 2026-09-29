@@ -57,6 +57,8 @@ class Line:
 	var tint := Tint.WHITE
 	var ticks := 0
 	var full := false
+	## a feed line about the viewed boat or the whole race (signals, starts): the Glance feed shows only these
+	var own := true
 
 	func _init(t := "", c := Tint.WHITE, n := 0, f := false) -> void:
 		text = t
@@ -155,6 +157,8 @@ var pending := 0
 var penalty_rule := 0
 var penalty_other := -1
 var turn_deg := 0.0
+## the direction of the turn being sailed: +1 clockwise seen from above (to starboard), -1 anticlockwise, 0 none
+var turn_sign := 0
 var turn_target := 360.0
 var turn_tack := false
 var turn_gybe := false
@@ -851,6 +855,7 @@ func _penalties(sim: SimSource, b: int, rb: Dictionary, s: SimSource.BoatState) 
 		turn_target = 360.0 * maxi(int(pend[0].get("count", 1)), 1)
 	var cnt := int(turn_target / 360.0)
 	turn_deg = absf(rad_to_deg(float(br.get("turn_progress", 0.0))))
+	turn_sign = int(signf(float(br.get("turn_progress", 0.0))))
 	turn_tack = int(br.get("turn_tacks", 0)) >= cnt
 	turn_gybe = int(br.get("turn_gybes", 0)) >= cnt
 	deadline = float(br.get("deadline_s", -1.0))
@@ -938,8 +943,11 @@ func _banner(text: String, tint: int, ticks: int, full := false) -> void:
 	banner = Line.new(text, tint, ticks, full)
 
 
-func _feed(text: String) -> void:
-	feed.append(Line.new(text, Tint.WHITE, FEED_TICKS))
+## `about`: the boats the line is about (none: the whole race)
+func _feed(text: String, about: Array = []) -> void:
+	var l := Line.new(text, Tint.WHITE, FEED_TICKS)
+	l.own = about.is_empty() or about.has(boat)
+	feed.append(l)
 	while feed.size() > FEED_LINES:
 		feed.remove_at(0)
 
@@ -978,11 +986,11 @@ func _events(sim: SimSource, b: int) -> void:
 			RaceText.Ev.FINISHED:
 				_finished(sim, b, eb, e)
 			RaceText.Ev.RETIRED:
-				_feed("%s retired" % name_of(eb))
+				_feed("%s retired" % name_of(eb), [eb])
 			RaceText.Ev.JOINED:
-				_feed("%s joined" % name_of(eb))
+				_feed("%s joined" % name_of(eb), [eb])
 			RaceText.Ev.LEFT:
-				_feed("%s left" % name_of(eb))
+				_feed("%s left" % name_of(eb), [eb])
 			RaceText.Ev.WINDOW_WARNING:
 				if not finished:
 					_banner("Finishing window closes in %d s" % int(e["value"]), Tint.YELLOW, BANNER_SPLIT)
@@ -1008,7 +1016,7 @@ func _events(sim: SimSource, b: int) -> void:
 				if eb == b:
 					_banner("PENALTY: %s%s" % [RaceText.rule_text(rule), other_txt], Tint.RED, BANNER_PENALTY)
 				else:
-					_feed("%s penalised, rule %s%s" % [name_of(eb), RaceText.code(rule), other_txt])
+					_feed("%s penalised, rule %s%s" % [name_of(eb), RaceText.code(rule), other_txt], [eb, eo])
 				hud_event.emit("penalty", {"boat": eb, "rule": rule, "other": eo})
 			RaceText.Rev.PENALTY_SERVED:
 				if eb == b:
@@ -1035,7 +1043,7 @@ func _events(sim: SimSource, b: int) -> void:
 				if eb == b:
 					_banner("DISQUALIFIED: %s" % why, Tint.RED, BANNER_DSQ, true)
 				else:
-					_feed("%s disqualified, %s" % [name_of(eb), why])
+					_feed("%s disqualified, %s" % [name_of(eb), why], [eb])
 	if not _summary_done and state >= RaceText.RaceState.RACING and race_time >= START_SUMMARY_S:
 		_summary_done = true
 		var n_started := 0
@@ -1070,7 +1078,7 @@ func _rounded(sim: SimSource, b: int, eb: int, k: int) -> void:
 			txt += " · %s" % HudFormat.gap(mine - first)
 		_banner(txt, Tint.WHITE, BANNER_SPLIT)
 	if place <= 3:
-		_feed("%s %s %s %s" % [name_of(eb), _verb(eb, "rounds", "round"), what, RaceText.ordinal(place)])
+		_feed("%s %s %s %s" % [name_of(eb), _verb(eb, "rounds", "round"), what, RaceText.ordinal(place)], [eb])
 
 
 func _finished(sim: SimSource, b: int, eb: int, e: Dictionary) -> void:
@@ -1082,7 +1090,7 @@ func _finished(sim: SimSource, b: int, eb: int, e: Dictionary) -> void:
 		if bool(r.get("finished", false)):
 			t_win = minf(t_win, float(r.get("t_finish_us", 0)) * 1e-6)
 	var place_txt := RaceText.ordinal(place) if place > 0 else "No place"
-	_feed("%s %s %s" % [name_of(eb), _verb(eb, "finishes", "finish"), place_txt])
+	_feed("%s %s %s" % [name_of(eb), _verb(eb, "finishes", "finish"), place_txt], [eb])
 	if eb == b:
 		var txt := "Finished %s · %s" % [place_txt, HudFormat.finish_time(t)]
 		if t > t_win:

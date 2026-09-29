@@ -195,8 +195,9 @@ others as Dictionaries with the C field names. `CoreSimSource` caches the per-bo
   suffixes (`helm_stick_left/right`, `sheet_in_trigger`, `camera_orbit_*`, `camera_look_*`,
   `camera_orbit_drag`); combos and context rules are resolved in code (see the file's header).
 - **Steam Deck**: the default Steam Input template presents the gamepad bindings; its Deck-only items (L4 for
-  `helm_fine`, right trackpad as `camera_orbit`, Steam + R1 for `screenshot`) belong in that template, which is
-  not in the repo yet.
+  `helm_fine`, right trackpad as `camera_orbit`, Steam + R1 for `screenshot`, R4 for `hud_density`, R5 for
+  `boat_select`) belong in that template, which is not in the repo yet. The gamepad's View is `rankings_pad`: a tap
+  cycles the instrument density, a hold shows the ranking (resolved in the Hud).
 - **Sea on FakeSim**: the scene holds the Sea node, its `SeaWakes` and the `SkyRig` of `scenes/sea/`. `sea_source` picks the
   example bay as the core writes it (`CORE_SAMPLES`, scenario `sea_scenario`, default `example_bay_10kn`; its wind
   replaces the scene's) or the placeholder sea from the scene's wind; `AUTO` (the default) takes the core samples
@@ -276,10 +277,15 @@ Runs headless, with scripted input at fixed frame rates:
   rules awareness line, radar colours for the port-starboard, windward-leeward and mark-room pair records,
   penalties, protest and hail prompts, feed, results and assists; the layline test of §15 on the core; a race on
   the core (`example_bay/example_wl`, two boats steered by `tests/race_pilot.gd` from the spawn to the results)
-  with the HUD checked against the race and rules records every tick; the sail test scene in race mode. The
-  previews: `tests/race_hud_preview_dump.gd` lays the HUD out at 1280 x 720 at the start, on the beat, in a
-  scripted incident and at the results, `tests/race_hud_preview.py` draws it over course frames
-  (`generated/race_hud_preview/`, with `--publish` `tests/previews/race_hud_*.jpg`).
+  with the HUD checked against the race and rules records every tick; the sail test scene in race mode; the
+  presentation of `hud.md` §16 (what each instrument density shows per phase, the density key, the View tap and
+  hold, the stored setting, name tags within 50 m or selected, the penalty turn only in the chase and aerial
+  cameras, every text fitting at 1280 x 800 for UI scales 80 % to 130 %). The previews:
+  `tests/race_hud_preview_dump.gd` runs the course preview shots of `tests/course_preview_dump.gd` (start, upwind,
+  aerial) with their cameras so the world tags land on the frame, at the Glance, Race and Data densities and on
+  the Deck's 1280 x 800, plus a scripted incident and the results; `tests/race_hud_preview.py` draws every
+  block's primitives in Barlow over the course frames (`generated/race_hud_preview/`, with `--publish`
+  `tests/previews/race_hud_*.jpg`).
 - `tests/hud_test.gd`: `hud.md` formats, filters and time constants, trim gauge colours, tell-tales, tolerance and
   assist presets on a scripted boat state; then `scenes/sail_test.tscn` on FakeSim sails 20 s with scripted input
   on the example bay sea and the HUD text is checked against the sim's values, with the sea checks: Sea and
@@ -298,7 +304,8 @@ runs on FakeSim), then `godot --path game res://scenes/sail_test.tscn` (after `-
 `--course=<venue>/<id>` for another course). Keys: ←/→ or
 A/D helm (set and hold, ↓ centres), T auto-trim, W/S sheet, Space let fly, 1/2 sails, C camera, F5 to F8 camera
 modes, right mouse drag or IJKL orbit, wheel or O/U zoom, R recentre, Backspace reset (free sailing: back to the
-start point; race mode: restart the race), Esc pause, F10 hide HUD.
+start point; race mode: restart the race), Esc pause, F10 hide HUD, G instrument density (Glance, Race, Data),
+B select the next boat for a name tag (or click a boat), N name tags on and off.
 
 ## Menus
 

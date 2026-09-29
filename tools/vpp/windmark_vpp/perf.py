@@ -63,7 +63,7 @@ BROACH_MIN = 0.1            # m/s, the polar's value at the no-go edge
 # secant through this apparent wind (m/s). The whole square law made a tack in a breeze lose most of its way (the
 # coast law has the sails give no drive anywhere in the no-go zone, where real sails still draw until close to head
 # to wind); the secant keeps the tack of boat.md 7.2 while a boat head to wind still stops faster in more wind.
-WINDAGE_AWS_REF = 3.5
+WINDAGE_AWS_REF = 3.4
 # accel (README "Output"): the constant acceleration that reproduces the time to build speed between these shares
 # of the polar (a boat comes out of a tack or a gybe at about half its speed; the tack test measures 90 %)
 ACCEL_FROM, ACCEL_TO = 0.5, 0.9

@@ -80,7 +80,7 @@ monohull. They are targets for the VPP/boat generator, not constants.
 | `yaw_time` | s | 0.35 | 0.6 | time constant of the hull's yaw rate: yaw inertia against the hull's yaw damping (§5.9) |
 | `decel_linear` | 1/s | 0.045 | 0.025 | deceleration per m/s of excess speed (the hull coasting with the drive gone) |
 | `decel_const` | m/s² | 0.023 | 0.012 | constant part of the deceleration (the hull at a crawl) |
-| `decel_windage` | 1/s | 0.0084 | 0.0052 | windage deceleration per m/s of apparent wind, head to wind: hull, rig and the sails luffing on their sheets (§5.8) |
+| `decel_windage` | 1/s | 0.0082 | 0.0051 | windage deceleration per m/s of apparent wind, head to wind: hull, rig and the sails luffing on their sheets (§5.8) |
 | `heel_speed_factor` | Table1D(`heel_abs`) | see below | | speed multiplier from heel |
 | `rudder_drag_luff`, `rudder_drag_bear` | Table2D(`boat_speed_abs`, `helm_abs`) → m/s² | see below | | speed loss from the rudder when turning toward / away from the wind |
 | `heel_max` | rad | 0.87 | 1.13 | clamp of the heel target |

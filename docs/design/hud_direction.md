@@ -85,8 +85,8 @@ Colour is never the only signal: every coloured state also has a word (the rules
 A bit more instrument, no dashboard:
 
 - **Pages.** The instrument values of each corner are grouped on one page: ink glass from 14 % at the top to 44 % at the
-  bottom (no blur, cheap to draw), a 1.5 px hairline along the top edge, 9 px corner ticks, hairline dividers between
-  cells at 45 % of `hair`. No rounded corners, no bevels, no reflections.
+  bottom (no blur, cheap to draw), a 1.5 px hairline along the top edge, 9 px corner ticks (dropped in the build,
+  owner 2026-09-29), hairline dividers between cells at 45 % of `hair`. No rounded corners, no bevels, no reflections.
 - **Cells.** Label top left, unit top right, value right-aligned at the bottom; the same grid on every page and level.
 - **Analogue parts, two only.** The **TWA dial** (bow up; red and green sectors for close-hauled on port and on
   starboard, 20° to 60°; yellow ticks at the target angle of the leg; the true wind as a solid pointer coming in from

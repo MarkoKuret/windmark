@@ -195,8 +195,9 @@ others as Dictionaries with the C field names. `CoreSimSource` caches the per-bo
   suffixes (`helm_stick_left/right`, `sheet_in_trigger`, `camera_orbit_*`, `camera_look_*`,
   `camera_orbit_drag`); combos and context rules are resolved in code (see the file's header).
 - **Steam Deck**: the default Steam Input template presents the gamepad bindings; its Deck-only items (L4 for
-  `helm_fine`, right trackpad as `camera_orbit`, Steam + R1 for `screenshot`) belong in that template, which is
-  not in the repo yet.
+  `helm_fine`, right trackpad as `camera_orbit`, Steam + R1 for `screenshot`, R4 for `hud_density`, R5 for
+  `boat_select`) belong in that template, which is not in the repo yet. The gamepad's View is `rankings_pad`: a tap
+  cycles the instrument density, a hold shows the ranking (resolved in the Hud).
 - **Sea on FakeSim**: the scene holds the Sea node, its `SeaWakes` and the `SkyRig` of `scenes/sea/`. `sea_source` picks the
   example bay as the core writes it (`CORE_SAMPLES`, scenario `sea_scenario`, default `example_bay_10kn`; its wind
   replaces the scene's) or the placeholder sea from the scene's wind; `AUTO` (the default) takes the core samples

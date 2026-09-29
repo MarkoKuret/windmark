@@ -154,8 +154,8 @@ not the constraint.
 | --- | --- | --- |
 | Legal | ~€0 | Lawyer friend, generic ToS/privacy |
 | Trademark, company | €0 (deferred) | After traction |
-| Store fees | €0 now | Steam $100 app fee only after online traction |
-| Capsule and key art | ~$50 | Image model plus the owner's taste |
+| Store fees | €0 now | Steam $100 app fee only when the social traction gate holds (`marketing/social_plan.md` §8) |
+| Capsule and key art | €0–50 | In-engine render composed by the owner; no image-model art (Steam AI disclosure, reputation) |
 | Trailer | €0 | In-house, scripted in-engine capture |
 | Audio | €0 | Own |
 | Servers | a few €/month | One cheap VPS until success |

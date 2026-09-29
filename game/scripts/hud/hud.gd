@@ -329,7 +329,7 @@ func _wire(c: PlayerControls) -> void:
 	c.hailed = func() -> bool: return race.active and race.hailed_by >= 0
 
 
-## Rewrites every number from the filtered values (hud.md §1 formats).
+## Rewrites every number from the values of the last tick (hud.md §1 formats).
 func refresh_text() -> void:
 	var v := values
 	labels["bsp"].text = "BSP  %s kn" % HudFormat.speed_kn(v.bsp)
@@ -337,7 +337,7 @@ func refresh_text() -> void:
 	labels["hdg"].text = "HDG  %s" % HudFormat.compass_deg(v.hdg)
 	labels["cog"].text = "COG  %s" % HudFormat.compass_deg(v.cog) if v.sog / HudFormat.KNOT > 0.3 else "COG  ---"
 	labels["heel"].text = "Heel  %s" % HudFormat.side_angle(v.heel, "S", "P")
-	labels["polar"].text = "Polar  %s %%" % HudFormat.percent(v.polar_pct)
+	labels["polar"].text = "Polar  --" if is_nan(v.polar_pct) else "Polar  %s %%" % HudFormat.percent(v.polar_pct)
 	labels["tws"].text = "TWS  %s kn" % HudFormat.speed_kn(v.tws)
 	labels["twa"].text = "TWA  %s" % HudFormat.side_angle(v.twa, "S", "P")
 	labels["twd"].text = "TWD  %s" % HudFormat.compass_deg(v.twd)

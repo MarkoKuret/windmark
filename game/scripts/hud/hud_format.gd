@@ -1,6 +1,6 @@
 class_name HudFormat
 extends RefCounted
-## hud.md §1 formats. Rounding is to nearest, half away from zero, after smoothing.
+## hud.md §1 formats. Rounding is to nearest, half away from zero.
 
 const KNOT := 0.514444  # m/s per knot
 

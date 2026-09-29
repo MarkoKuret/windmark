@@ -59,6 +59,7 @@ class StubSim:
 func _init() -> void:
 	test_formats()
 	test_values()
+	test_twa_tack()
 	test_trim_gauge()
 	test_hud_text()
 	await test_scene()
@@ -113,25 +114,63 @@ func test_values() -> void:
 	t.near(rad_to_deg(v.hdg), 45.0, 1e-4, "HDG")
 	t.near(v.h, 0.2, 1e-9, "rudder h")
 	t.near(v.h_cmd, 0.5, 1e-9, "rudder mark h_cmd")
-	# time constants: a TWS step reaches 1 - 1/e after tau = 2 s (40 ticks)
-	s.tws = 10.0
-	_ticks(v, sim, 40)
-	t.near(v.tws, 6.0 + 4.0 * (1.0 - exp(-1.0)), 0.01, "TWS tau 2 s")
-	s.aws = 12.5
-	var a0 := v.aws
-	_ticks(v, sim, 20)
-	t.near(v.aws, a0 + (12.5 - a0) * (1.0 - exp(-1.0)), 0.01, "AWS tau 1 s")
-	# angles through unit vectors: a heading step across north does not swing the long way
-	s.psi = deg_to_rad(355.0)
-	v = HudValues.new()
-	_ticks(v, sim, 1)
-	s.psi = deg_to_rad(5.0)
-	_ticks(v, sim, 1)
-	var d := rad_to_deg(Frames.angle_diff(v.hdg, deg_to_rad(355.0)))
-	t.ok(d > 0.0 and d < 10.0, "HDG filtered across north (%.2f)" % d)
-	_ticks(v, sim, 200)
-	t.near(rad_to_deg(Frames.angle_diff(v.hdg, deg_to_rad(5.0))), 0.0, 0.01, "HDG settles")
+	t.near(rad_to_deg(v.heel), -11.0, 1e-4, "heel is phi")
+	t.near(v.tws, 6.0, 1e-9, "TWS")
+	t.near(rad_to_deg(v.twa), -42.0, 1e-4, "TWA")
+	t.near(rad_to_deg(v.twd), 3.0, 1e-4, "TWD")
+	t.near(v.aws, 8.5, 1e-9, "AWS")
+	t.near(rad_to_deg(v.awa), -28.0, 1e-4, "AWA")
 	t.near(v.polar_pct, 100.0 * 3.0 / 3.2, 0.01, "polar %")
+	# no display smoothing (hud.md §1): a step shows on the next tick
+	s.tws = 10.0
+	s.aws = 12.5
+	s.phi = deg_to_rad(8.0)
+	s.psi = deg_to_rad(355.0)
+	_ticks(v, sim, 1)
+	t.ok(v.tws == 10.0 and v.aws == 12.5 and v.heel == s.phi and v.hdg == s.psi, "steps show at once")
+	sim.o.polar_speed = 0.1
+	_ticks(v, sim, 1)
+	t.ok(is_nan(v.polar_pct), "polar %% is -- head to wind")
+
+
+## hud.md §15: through a scripted tack the shown TWA is the core's twa every tick, with the tack letter from its sign
+func test_twa_tack() -> void:
+	t.begin("TWA through a tack")
+	var sim := StubSim.new()
+	var s := sim.s
+	s.v = 3.0
+	s.v_filt = 3.0
+	s.twd_from = deg_to_rad(10.0)
+	sim.o.polar_speed = 3.2
+	var h := _hud()
+	var v := h.values
+	# starboard 42 deg, a 4 s turn through the wind to port, overshooting to 48 deg, back up to 42
+	var worst := 0.0
+	var letters_ok := true
+	var peak := 0.0
+	for i in 200:
+		var tt := i * SimSource.DT
+		var twa_deg := 42.0
+		if tt >= 1.0 and tt < 5.0:
+			twa_deg = 42.0 - 90.0 * (tt - 1.0) / 4.0
+		elif tt >= 5.0 and tt < 6.0:
+			twa_deg = -48.0 + 6.0 * (tt - 5.0)
+		elif tt >= 6.0:
+			twa_deg = -42.0
+		s.twa = deg_to_rad(twa_deg)
+		s.psi = Frames.wrap_2pi(s.twd_from - s.twa)
+		h.tick(sim, 0)
+		h.refresh_text()
+		worst = maxf(worst, absf(Frames.angle_diff(v.twa, s.twa)))
+		peak = maxf(peak, absf(rad_to_deg(v.twa)))
+		var want := "TWA  %s" % HudFormat.side_angle(s.twa, "S", "P")
+		if h.text_of("twa") != want:
+			letters_ok = false
+	t.ok(worst < 1e-6, "shown TWA = core twa every tick (worst %s rad)" % str(worst))
+	t.ok(peak <= 48.0 + 1e-3, "no overshoot beyond the core's (peak %.1f deg)" % peak)
+	t.ok(letters_ok, "text and tack letter follow the core's twa on the same tick")
+	t.ok(h.text_of("twa") == "TWA  42° P", h.text_of("twa"))
+	h.queue_free()
 
 
 func test_trim_gauge() -> void:
@@ -166,13 +205,13 @@ func test_trim_gauge() -> void:
 	_ticks(v, sim, 1)
 	t.ok(v.gauges[1].telltale == "Aback", "backed: aback")
 	sim.sv.out[1].backed = false
-	# needle smoothing tau 0.3 s
+	# the needle is e, unsmoothed
 	v = HudValues.new()
 	sim.sv.out[1].trim_error = 0.0
 	_ticks(v, sim, 1)
 	sim.sv.out[1].trim_error = deg_to_rad(4.0)
-	_ticks(v, sim, 6)
-	t.near(v.gauges[1].needle, 1.0 - exp(-1.0), 0.02, "needle tau 0.3 s")
+	_ticks(v, sim, 1)
+	t.near(v.gauges[1].needle, 1.0, 0.03, "needle at e on the next tick")
 	# without a table: +-2 deg
 	sim.trim_table = false
 	var v2 := HudValues.new()
@@ -375,9 +414,9 @@ func test_scene() -> void:
 	hud.refresh_text()
 	var hv := hud.values
 	t.ok(hud.text_of("bsp") == "BSP  %s kn" % HudFormat.speed_kn(s.v_filt), "BSP shows v_filt: " + hud.text_of("bsp"))
-	t.ok(absf(Frames.angle_diff(hv.hdg, s.psi)) < deg_to_rad(3.0), "HDG tracks psi")
+	t.ok(absf(Frames.angle_diff(hv.hdg, s.psi)) < 1e-6, "HDG is psi")
 	t.ok(hud.text_of("hdg") == "HDG  %s" % HudFormat.compass_deg(hv.hdg), hud.text_of("hdg"))
-	t.ok(absf(hv.tws - s.tws) < 0.2, "TWS tracks tws")
+	t.ok(absf(hv.tws - s.tws) < 1e-6, "TWS is tws")
 	t.ok(hud.text_of("twa") == "TWA  %s" % HudFormat.side_angle(hv.twa, "S", "P"), hud.text_of("twa"))
 	t.ok(hud.text_of("sheet") == "Sheet  %s %%" % HudFormat.percent(100.0 * sc.controls.sheet_cmd),
 		hud.text_of("sheet"))
@@ -583,9 +622,10 @@ func test_core_scene() -> void:
 	var hv := hud.values
 	t.ok(hud.text_of("bsp") == "BSP  %s kn" % HudFormat.speed_kn(s.v_filt), "BSP shows the core's v_filt: "
 		+ hud.text_of("bsp"))
-	t.ok(absf(Frames.angle_diff(hv.hdg, s.psi)) < deg_to_rad(3.0), "HDG tracks the core's psi")
-	t.ok(absf(hv.tws - s.tws) < 0.3, "TWS tracks the core's tws (%.2f vs %.2f)" % [hv.tws, s.tws])
-	t.ok(absf(Frames.angle_diff(hv.twd, s.twd_from)) < deg_to_rad(5.0), "TWD tracks the core's twd_from")
+	t.ok(absf(Frames.angle_diff(hv.hdg, s.psi)) < 1e-6, "HDG is the core's psi")
+	t.ok(absf(hv.tws - s.tws) < 1e-6, "TWS is the core's tws (%.2f vs %.2f)" % [hv.tws, s.tws])
+	t.ok(absf(Frames.angle_diff(hv.twd, s.twd_from)) < 1e-6, "TWD is the core's twd_from")
+	t.ok(absf(Frames.angle_diff(hv.twa, s.twa)) < 1e-6, "TWA is the core's twa")
 	t.ok(hv.h == s.h and hud.rudder_bar.value == s.h, "rudder bar is the core's h")
 	t.ok(hud.text_of("sheet") == "Sheet  %s %%" % HudFormat.percent(100.0 * sc.controls.sheet_cmd),
 		hud.text_of("sheet"))

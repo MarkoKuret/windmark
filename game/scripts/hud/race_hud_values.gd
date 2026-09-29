@@ -177,7 +177,6 @@ var _course := {}
 var _labels := {}
 var _loa := 7.0
 var _started_filters := false
-var _perf_started := false
 var _twd2 := Vector2.ZERO  # clean wind dir (from) as a unit vector, tau 2 s
 var _twd5 := Vector2.ZERO
 var _twd10 := Vector2.ZERO
@@ -317,7 +316,6 @@ func _wind(sim: SimSource, s: SimSource.BoatState) -> void:
 		_twd10 = u
 		_twd180 = u
 		_tws10 = s.tws
-		_perf_started = false
 		_started_filters = true
 	_twd2 += (u - _twd2) * _k(2.0)
 	_twd5 += (u - _twd5) * _k(5.0)
@@ -492,13 +490,8 @@ func _next_mark(sim: SimSource, rb: Dictionary, s: SimSource.BoatState) -> void:
 	var o := sim.outputs(boat)
 	var g := Vector2(s.sog_filt_x, s.sog_filt_y)
 	var to_r := (r - c).normalized() if c.distance_to(r) > 0.01 else fwd
-	var vmg_now := o.vmg if leg_type != "run" else -o.vmg
-	var vmc_now := g.dot(to_r)
-	if not _perf_started:
-		vmg = vmg_now
-		vmc = vmc_now
-	vmg += (vmg_now - vmg) * _k(2.0)
-	vmc += (vmc_now - vmc) * _k(2.0)
+	vmg = o.vmg if leg_type != "run" else -o.vmg
+	vmc = g.dot(to_r)
 	var v_up := float(vm.get("up_speed", NAN))
 	var v_dn := float(vm.get("down_speed", NAN))
 	var tgt := o.polar_speed
@@ -512,16 +505,14 @@ func _next_mark(sim: SimSource, rb: Dictionary, s: SimSource.BoatState) -> void:
 		var best := _best_polar(sim, s)
 		if not is_nan(best.y):
 			tgt = best.y
-	target_speed = tgt if not _perf_started else target_speed + (tgt - target_speed) * _k(2.0)
+	target_speed = tgt
 	var vmg_opt := NAN
 	if leg_type == "beat" and not is_nan(v_up):
 		vmg_opt = v_up * cos(th_up)
 	elif leg_type == "run" and not is_nan(v_dn):
 		vmg_opt = -v_dn * cos(th_dn)
 	if not is_nan(vmg_opt) and vmg_opt > 0.05:
-		var pct := 100.0 * vmg_now / vmg_opt
-		vmg_pct = pct if not _perf_started else vmg_pct + (pct - vmg_pct) * _k(3.0)
-	_perf_started = true
+		vmg_pct = 100.0 * vmg / vmg_opt
 	# ETA: axis distance of the leg / VMG (beat, run), distance / VMC (reach)
 	if leg_type == "reach":
 		eta = next_dist / vmc if vmc >= MIN_KN else NAN

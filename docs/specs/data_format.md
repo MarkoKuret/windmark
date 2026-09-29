@@ -456,8 +456,8 @@ Recommended axes for the VPP (fine where the tables bend):
 - `tws`: 0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 20.6 m/s;
 - `twa_abs`: 0°, 7°, the no-go edge twice (the step, reference 15°), then 20° to 60° every 2°, 60° to 180° every
   5°;
-- `trim_error`: −60°, −20°, −10°, −6°, −3°, 0, 3°, then every 5° from 5° to 130°, 150°, 180° (±3° the edges of the
-  full-drive plateau, `sails.md` §6; fine
+- `trim_error`: −60°, −20°, −10°, −6°, −3°, 0, 0.5°, 3°, then every 5° from 5° to 130°, 150°, 180° (±3° the edges
+  of the full-drive plateau, `sails.md` §6, 0.5° for a sail whose optimum lies on the wind line; fine
   enough that the trim tables can reach 0 on the wind line at each `awa_abs` without cutting the drive early,
   `sails.md` §6);
 - `fall_off`: `boat_speed` −6, 0, `v_f`/2, `v_f` m/s; `twa_abs` 0°, 10°, 20°, 60°, 90°, 180° (`sails.md` §6);

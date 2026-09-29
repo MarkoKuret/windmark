@@ -296,11 +296,14 @@ Semantics and reference shapes:
 - **trim_heel**: the heel of the sail plan sheeted `eps` away from its optimum over the trimmed heel, **both at the
   same boat speed and apparent wind** (the trimmed boat's at that `tws` and `awa_abs`), with the same effective
   error `g(e)` as `trim_speed`: 1 across the plateau, 0 on the wind line (as `trim_speed`), rising when
-  over-sheeted as the stalled sails push sideways harder than drawing ones (reference S jib config at 10 kn on a
-  beam reach: about 1.5 fully sheeted in; up to 3 close reaching). Since the core looks it up at the boat's own
-  apparent wind, an over-sheeted boat heels by what its stalled sails push at the speed it is making, not at the
-  settled speed of the over-sheeted boat: on a reach, sheeting hard in lays the boat over more (`boat.md` §6.2,
-  §10.10).
+  over-sheeted as the stalled sails push sideways harder than drawing ones (a sail sheeted in past its stall keeps
+  at least the normal force it had at the stall, or at its optimum where that is itself stalled, as a separated
+  plate does; the mistrimmed sails of both trim tables use this, the trimmed envelopes are unchanged) (reference S jib config at 10 kn on a
+  beam reach: about 1.4 fully sheeted in in 10 kn; less where the trimmed boat already heels near the heel of its
+  greatest righting moment, which caps it). Over-sheeted the core reads it at the trimmed boat's apparent wind
+  angle and scales the heel with the boat's own apparent wind speed (`boat.md` §5.5), so the heel is what the
+  stalled sails push at the speed the boat is making, not at a settled speed: on a reach sheeting hard in lays the
+  boat over at once, and as it slows the heel follows its lighter apparent wind back down (`boat.md` §6.2, §10.10).
 - **weather_helm**: the yaw moment of the sail plan about the centre of lateral resistance, as the turn rate of
   the helm that holds it at the polar speed. The moment: the drive acting at the centre of effort, which the sheet
   angle (each sail's centre of effort swung about its luff) and the heel carry out to leeward (luffing), and the
@@ -332,7 +335,7 @@ Semantics and reference shapes:
   10° TWA (a boat right head to wind stays in irons, `boat.md` §7.4). Light-air sailing speeds stay above `v_f`, so the table never turns a
   sailing boat.
 - **flog_drag**: the extra drag of the config's sails flogging on free sheets over luffing on their sheets (which
-  `decel_const` holds), along the heading, per apparent wind speed and angle: `0.5 ρ_air aws² (CD_flog − CD_luff)
+  the windage term of `boat.md` §5.8 holds), along the heading, per apparent wind speed and angle: `0.5 ρ_air aws² (CD_flog − CD_luff)
   A_sails cos(awa) / (m + m_a)` with the wind profile factor at the centre of effort, 0 from 90° AWA (abaft the
   beam the flogging sails push instead: the let-fly share of `trim_speed`). `CD_flog` 0.30 and `CD_luff` 0.06 on
   the sail area (`tools/vpp/README.md`). Reference S jib config at 8 m/s apparent wind head to wind: about

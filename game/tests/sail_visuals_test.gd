@@ -36,6 +36,7 @@ func _main() -> void:
 		_vertex_bytes()
 	_boats()
 	_clearance()
+	_parity()
 	await _rate_by_distance()
 	_perf()
 	t.finish(self, "sail visuals test")
@@ -962,6 +963,93 @@ func _clear_check(fp: BoatView.SailPart, obs: Array, ms: Vector3, mh: Vector3, c
 		if cp >= c - 1e-6 and d < r["worst"]:
 			r["worst"] = d
 			r["at"] = what
+
+
+## §12 test 19: the generator's preview poses (tools/boatgen/boatgen/sail_set.py, written to
+## generated/boats/<id>.sets.json) draw the sails as BoatView does, native and reference, within PARITY_TOL.
+const PARITY_TOL := 0.01
+const PARITY_CLASSES := ["wm7", "wm12", "test_sym"]
+
+
+func _parity() -> void:
+	for id in PARITY_CLASSES:
+		var sets_path := ProjectSettings.globalize_path("res://generated/boats/%s.sets.json" % id)
+		if not FileAccess.file_exists("res://generated/boats/%s.glb" % id):
+			continue
+		t.begin("19 generator parity: %s" % id)
+		var sets: Variant = BoatClassData._read_json(sets_path)
+		t.ok(sets is Dictionary and sets.get("sets") is Array,
+			"%s: %s.sets.json written by the generator (run_boat_import_test.sh)" % [id, id])
+		if not sets is Dictionary:
+			continue
+		var info := _parity_info(id)
+		for reference in ([false, true] if native else [true]):
+			var bv := BoatView.create(info, 0.5, reference)
+			var parts := {}
+			for sp in bv.sail_parts:
+				parts[sp.id] = sp
+			var worst := 0.0
+			var at := ""
+			var n := 0
+			for st in sets["sets"]:
+				var sv := SimSource.SailsView.new()
+				sv.awa = float(st["awa"])
+				sv.aws = float(st["aws"])
+				var want := {}
+				for s in st["sails"]:
+					want[String(s["id"])] = s
+				for i in info.sails.size():
+					var ss := SimSource.SailState.new()
+					var w: Variant = want.get(info.sails[i].name)
+					if w != null:
+						ss.phase = UP
+						ss.beta = float(w["beta"])
+						ss.pole = float(w["gamma"])
+					sv.sails.append(ss)
+					sv.out.append(SimSource.SailOutput.new())
+				for k in 2:
+					bv.apply_sails(sv, sv, 1.0, 0.1)
+				for sid in want:
+					var sp: BoatView.SailPart = parts.get(sid)
+					t.ok(sp != null and sp.shape != null, "%s %s: sail %s drawn" % [id, st["name"], sid])
+					if sp == null or sp.shape == null:
+						continue
+					var m: PackedVector3Array = sp.shape.mid()
+					var e: Array = want[sid]["mid"]
+					t.ok(m.size() == e.size(), "%s %s %s: grid sizes %d and %d" % [id, st["name"], sid, m.size(), e.size()])
+					for k in mini(m.size(), e.size()):
+						var q := m[k]
+						var d := Vector3(q.z, q.x, q.y).distance_to(Vector3(e[k][0], e[k][1], e[k][2]))
+						if d > worst:
+							worst = d
+							at = "%s %s vertex %d" % [st["name"], sid, k]
+					n += 1
+			var impl := "reference" if reference else "native"
+			var msg := "%s (%s): %d sails in %d poses, largest distance from the generator's %.4f m at %s (<= %.3f)" % [
+				id, impl, n, sets["sets"].size(), worst, at, PARITY_TOL]
+			t.ok(n > 0 and worst <= PARITY_TOL, msg)
+			print("  " + msg)
+			bv.free()
+
+
+## The class numbers BoatView needs, from the class and performance files, or for a generator test class from its
+## sidecar (sails in class order).
+func _parity_info(id: String) -> SimSource.ClassInfo:
+	if FileAccess.file_exists(BoatClassData.repo_path("data/perf/%s.perf.json" % id)):
+		return BoatClassData.load_class(id).info
+	var side: Dictionary = BoatClassData._read_json(ProjectSettings.globalize_path("res://generated/boats/%s.physics.json" % id))
+	var cls: Dictionary = BoatClassData._read_json(BoatClassData.repo_path("tools/boatgen/tests/fixtures/%s.boat.json" % id))
+	var info := SimSource.ClassInfo.new()
+	info.id = id
+	info.loa = float(cls["hull"]["loa"])
+	info.beam_max = float(cls["hull"]["beam_max"])
+	info.physics = side
+	for s in cls["sails"]:
+		var si := SimSource.SailInfo.new()
+		si.name = s["id"]
+		si.type = s["type"]
+		info.sails.append(si)
+	return info
 
 
 ## §11 update rate by distance and the frustum.

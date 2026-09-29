@@ -31,7 +31,8 @@ Nothing else: the GLB writer, triangulation, lofting and hydrostatics are in thi
 | `<id>_lod1.glb`, `<id>_lod2.glb` | lower levels of detail, same nodes, pivots and sails (below) |
 | `<id>_collision.glb` | low-poly collision meshes (node names carry Godot's `-convcolonly` import suffix) |
 | `<id>.physics.json` | physics sidecar (below) |
-| `<id>_upwind.glb`, `<id>_downwind.glb` | preview poses only: sails trimmed with camber and twist, boom swung, sheets led (node `sheets`) |
+| `<id>_upwind.glb`, `<id>_downwind.glb` | preview poses only: sails set as the game draws them (below), boom and pole swung, sheets led (node `sheets`) |
+| `<id>.sets.json` | the preview poses as drawn (wind, sheet and pole angles, placed sail grids, body frame), for the game's parity test |
 
 Previews in `previews/`: `<id>_upwind.png` (heeled, trimmed, demo livery), `<id>_downwind.png` (spinnaker set),
 `<id>_profile.png` (the exported model as is, dry, from starboard), `<id>_deck.png` (cockpit and deck
@@ -141,7 +142,8 @@ It prints each flying sail's luff, leech, foot, mid girth, edge rounds (depth, p
 area (and the class `area` it implies: the rule area rounded down to 0.5 m²) and the clew position forward of the
 transom and above the DWL, and writes `out/kite/<id>_<sail>.png`: the flat planform with its dimensions and the
 previous outline dashed, the sail set on a run (from the leeward quarter) and on a reach (abeam, from leeward),
-with the previous run's row underneath. The hull, deck and rig are built once and cached in `out/kite/.cache/`
+with the previous run's row underneath. The sets are the game's set shape (below, "Set sails in the previews"),
+with the main and the flying sail at the core's optimum sheet angles. The hull, deck and rig are built once and cached in `out/kite/.cache/`
 (about 15 s); after that, while only code zero and spinnaker entries change, a run takes about 1 s. Headless, no
 window.
 
@@ -192,11 +194,13 @@ Every key is optional; defaults scale with LOA.
 | `sails.<id>.look` | per sail type, `docs/specs/sail_visuals.md` §4 | the run-time look of the sail (below) |
 
 `sails.<id>.look` holds any of the look parameters of `sail_visuals.md` §4: `fill_gain`, `fill_curve`,
-`flutter_amp`, `flutter_rate`, `flutter_rate_max`, `twist_top`, `depth`, `tack_line_max`, `furl_radius` (numbers
+`flutter_amp`, `flutter_rate`, `flutter_rate_max`, `twist_top`, `camber`, `tack_line_max`, `furl_radius` (numbers
 >= 0; an unknown key is an error). The generator copies them into the sidecar's `sails.<id>.look` and fills
-every missing key from the defaults of the sail's type: the table of §4, `flutter_rate` and `flutter_rate_max`
-from the LOA size rules, and `furl_radius` (jib, genoa, code zero) from the flat sail's chord extent `Sa`. Keys
-that do not apply to a type (`depth` on a main) are written only when the class file gives them.
+every missing key from the defaults of the sail's type: the table of §4 (`camber` 0.12 on a code zero, 0.26 on
+both spinnakers), `flutter_rate` and `flutter_rate_max` from the LOA size rules, and `furl_radius` (jib, genoa,
+code zero) from the flat sail's chord extent `Sa`. Keys that do not apply to a type (`camber` on a main) are
+written only when the class file gives them. The old `depth` key (replaced by `camber`) is still accepted and
+not written.
 
 ## How the geometry is made
 
@@ -221,6 +225,14 @@ of revolution sized so its volume holds the bulb mass in lead.
 **Rig and sails** (`rig.py`, `sails.py`). Tapered mast section, swept spreaders, shrouds with terminals, forestay,
 backstay, bobstay, sprit, boom with vang. Sails are Coons patches over their edges on a regular grid (rows from
 foot to head, columns from luff to leech), so the simulation can deform them.
+
+**Set sails in the previews** (`sail_set.py`). The preview poses (`Boat.POSES`: upwind, reaching with a code
+zero, downwind with a spinnaker) and `kite_preview`'s run and reach bend and place the flat sails exactly as the
+game does (`docs/specs/sail_visuals.md` §5.1, §6.1 to §6.4 and §7, including the flying sails' clearance off the
+main and the mast): a port of the game's `SailShapeRef`, for the `up` phase with no luff shiver. Each pose names
+the apparent wind and the sheet angles (the core's optimum from the wm7 and wm12 tables at 10 kn TWS). The build
+writes the poses as drawn to `<id>.sets.json`, and `game/tests/run_sail_visuals_test.sh` (§12, test 19) checks
+that BoatView, native and reference, places every vertex within 0.01 m of them.
 
 **Hardware** (`hardware.py`). A library of parametric parts placed by rules that read the deck, cockpit and rig:
 self-tailing winches (ribbed drum, tailer, stripper arm, a handle in the starboard primary), rope clutches on a

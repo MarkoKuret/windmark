@@ -27,13 +27,24 @@ from .classfile import FLYING_TYPES, SHAPE_KEYS
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-# preview trims per flying-sail type: {point of sail: {sail type: (angle off the centreline deg, camber, twist deg)}}
+# the sets per flying-sail type and point of sail, drawn with the game's shape (sail_set.py, sail_visuals.md 6, 7):
+# apparent wind angle (deg, wind from port), apparent wind (m/s), pole or tack line to windward (deg), and the sheet
+# angles (deg) of the main and the flying sail: the core's optimum from the wm7 and wm12 tables at 10 kn TWS
 SETS = {
-    "spinnaker_asym": {"run": (58, 0.24, 14), "reach": (32, 0.20, 12)},
-    "spinnaker_sym": {"run": (70, 0.26, 10), "reach": (42, 0.22, 10)},
-    "code_zero": {"run": (34, 0.12, 12), "reach": (22, 0.10, 12)},
+    "spinnaker_asym": {"run": {"awa": -140, "aws": 4.0, "gamma": 20, "main": 59, "fly": 64},
+                       "reach": {"awa": -80, "aws": 6.0, "gamma": 2, "main": 53, "fly": 32}},
+    "spinnaker_sym": {"run": {"awa": -150, "aws": 4.0, "gamma": 30, "main": 59, "fly": 75},
+                      "reach": {"awa": -100, "aws": 5.0, "gamma": 5, "main": 59, "fly": 50}},
+    "code_zero": {"run": {"awa": -100, "aws": 5.0, "main": 59, "fly": 55},
+                  "reach": {"awa": -70, "aws": 6.0, "main": 43, "fly": 50}},
 }
-MAIN = {"run": (55, 0.14, 16), "reach": (30, 0.12, 12)}
+
+
+def set_pose(sail_type, pt):
+    """The pose of sail_set.set_sails for a flying sail of `sail_type` set on `pt` (run, reach)."""
+    s = SETS[sail_type][pt]
+    return {"awa": s["awa"], "aws": s["aws"], "gamma": s.get("gamma", 0.0),
+            "sails": {"main": s["main"], sail_type: s["fly"]}}
 HEEL = {"run": 5, "reach": 10}
 VIEW = {"run": ("run, from the leeward quarter", -160, 10), "reach": ("reach, abeam from leeward", -90, 5)}
 
@@ -245,7 +256,7 @@ def render_sets(boat, sid, out_dir, size, renderer):
     bat = tuple("sail_" + k for k, o in boat.sails.items() if o.type == "main")
     imgs = {}
     for pt in ("run", "reach"):
-        pose = {"main": MAIN[pt], s.type: SETS[s.type][pt]}
+        pose = set_pose(s.type, pt)
         glb = os.path.join(out_dir, f"{boat.cls['id']}_{sid}_{pt}.glb")
         boat.write_posed_glb(glb, pose, name=f"{sid}_{pt}", drop=drop)
         renderer.load(glb, transform=heel_matrix(HEEL[pt]), battened=bat)

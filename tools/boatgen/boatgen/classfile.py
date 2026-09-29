@@ -21,9 +21,10 @@ SECTION_RATIO = {"v": 0.62, "round": 1.0, "u": 1.45, "flat": 2.0, "chined": 1.3}
 
 SAIL_TYPES = ("main", "jib", "genoa", "code_zero", "spinnaker_sym", "spinnaker_asym")
 
-# per-sail look parameters of docs/specs/sail_visuals.md section 4 (visual.sails.<id>.look)
-LOOK_KEYS = ("fill_gain", "fill_curve", "flutter_amp", "flutter_rate", "flutter_rate_max", "twist_top", "depth",
-             "tack_line_max", "furl_radius")
+# per-sail look parameters of docs/specs/sail_visuals.md section 4 (visual.sails.<id>.look); `depth` is the old
+# name of the flying-sail depth, still read (a number >= 0) but not written to the sidecar: `camber` replaced it
+LOOK_KEYS = ("fill_gain", "fill_curve", "flutter_amp", "flutter_rate", "flutter_rate_max", "twist_top", "camber",
+             "depth", "tack_line_max", "furl_radius")
 
 
 # flying-sail shaping keys on sails[] (docs/specs/data_format.md 3.5): key -> allowed range (None: > 0 m)

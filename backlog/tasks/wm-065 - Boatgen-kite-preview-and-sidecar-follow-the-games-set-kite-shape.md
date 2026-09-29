@@ -1,9 +1,11 @@
 ---
 id: WM-065
 title: 'Boatgen: kite preview and sidecar follow the game''s set kite shape'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-09-26 12:30'
+updated_date: '2026-09-29 21:40'
 labels:
   - boats
 dependencies:
@@ -22,6 +24,12 @@ Note from WM-063 (2026-09-26): the VPP's kite optimum (wm7, 10 kn: 15 deg to AWA
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Sidecar look blocks write camber per sail_visuals.md 4
-- [ ] #2 kite_preview and boatgen previews match the game's set kite within a small tolerance
+- [x] #1 Sidecar look blocks write camber per sail_visuals.md 4
+- [x] #2 kite_preview and boatgen previews match the game's set kite within a small tolerance
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-09-29: sidecar look blocks write camber (0.12 code zero, 0.26 spinnakers; an old depth key is read and dropped). New tools/boatgen/boatgen/sail_set.py ports the game's up shapes, placement and 7.4 clearance; the build's preview poses and kite_preview use it at the core's optimum angles, and the build writes <id>.sets.json. sail_visuals.md 12 test 19 (game/tests/sail_visuals_test.gd): BoatView native and reference within 0.4 mm of the generator on wm7, wm12 and test_sym (tolerance 10 mm). Pivot checked: the kite already turns about its luff through the sprit-end tack (documented in 7.3). The large reach ease (31 deg wm7, 35 deg wm12 at AWA 80) comes from the main at 53 deg pushing the kite's upper leech (0.27 m through the main); it swings the clew 1 m forward of the mast and 4.4 m outboard, a likely next fix for the owner's 'can be better'. Previews rendered at 4x MSAA (this GL context allows 4, the renderer asks for 8).
+<!-- SECTION:NOTES:END -->

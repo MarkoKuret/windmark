@@ -1,9 +1,12 @@
-class_name WakeRibbon
+class_name WakeRibbonRef
 extends RefCounted
 ## One wake ribbon (water_render.md §5): rows laid down behind the bow (or the transom) every 50 ms of render
 ## time, left where they were laid, opening at the Kelvin angle and fading over 4 s. Rows optionally launch two
 ## spray particles that fly under gravity, stick where they reach the surface and become the ribbon's outer
 ## vertices. World coordinates are ENU metres (x east, y north, z up); heights come from a callable.
+##
+## The GDScript reference of the native WakeRibbon (game/native/src/sea_wakes.h): SeaWakes uses it when the
+## extension is missing, and tests/wakes_native_test.gd compares the two. Keep them in step.
 
 const N_ROWS := 80
 const LIFE_S := 4.0
@@ -70,6 +73,22 @@ func launch_spray(row: Dictionary, speed: float, heel: float, base_z: Array) -> 
 		var d := Vector3(out.x, out.y, 0.0) * 0.6 + up * 0.8
 		var p0: Vector2 = e[side]
 		row["spray"].append({"pos": Vector3(p0.x, p0.y, base_z[side]), "vel": d.normalized() * speed, "landed": false})
+
+
+## Number of rows (the native WakeRibbon's call).
+func row_count() -> int:
+	return rows.size()
+
+
+## Edges of the newest row at t_s (the native WakeRibbon's call).
+func last_edges(t_s: float) -> Array:
+	return edges(rows[-1], t_s) if not rows.is_empty() else []
+
+
+## launch_spray on the newest row (the native WakeRibbon's call).
+func launch_last_spray(speed: float, heel: float, z_port: float, z_stbd: float) -> void:
+	if not rows.is_empty():
+		launch_spray(rows[-1], speed, heel, [z_port, z_stbd])
 
 
 ## Advances the ribbon to render time t_s: drops rows older than 4 s, drifts rows with the current and moves

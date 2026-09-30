@@ -51,6 +51,9 @@ func _next() -> void:
 		_scene.start_x = s[2][0]
 		_scene.start_y = s[2][1]
 		_scene.start_twa_deg = s[2][2]
+	# headless meshes do not keep the native wakes' in-place updates: dump the references' meshes (the same
+	# geometry, tests/wakes_native_test.gd)
+	(_scene.get_node("Wakes") as SeaWakes).use_reference = true
 	root.add_child(_scene)
 	_scene.scripted_input = RawInput.new()
 	_t = 0.0

@@ -11,7 +11,7 @@ controls, the cameras, the minimal HUD, the audio and a sail test scene that put
 | `project.godot` | Project settings |
 | `scripts/` | GDScript. `sail_grid.gd` (`SailGrid`) maps imported sail vertices back to the boatgen sail grid; `frames.gd` (`Frames`) holds the axes and angle helpers; `boat_view.gd` (`BoatView`) places the generated boat, its rudder, wheel, boom and mainsheet, and bends the sails; `sail_shape_ref.gd` (`SailShapeRef`) is the GDScript reference of the native sail shapes; `boat_materials.gd` (`BoatMaterials`) puts the boat materials on the imported meshes |
 | `scripts/sim/` | `SimSource` (the simulation interface), `CoreSimSource` (the core, through the GDExtension) and `CoreEnvSource` (its sea and wind for the Sea node), `FakeSim` and `FakeBoat` (placeholder), `SimRunner` (50 ms ticks), class loading |
-| `native/` | The GDExtension: `CoreSim` over `core/include/windmark.h` and `SailShape` (the per-vertex sail shapes) in `src/`, `build.sh`, `CMakeLists.txt`. Godot skips the folder (`.gdignore`) |
+| `native/` | The GDExtension: `CoreSim` over `core/include/windmark.h` `SailShape` (the per-vertex sail shapes) and the wakes (`sea_wakes.h`: `SeaSampler`, `WakeRibbon`, `BowWaveSheets`, `MistCloud`) in `src/`, `build.sh`, `CMakeLists.txt`. Godot skips the folder (`.gdignore`) |
 | `bin/` | The built extension library and `windmark.gdextension`. Not committed |
 | `scripts/settings.gd` | `Settings`: the player's settings (`docs/specs/menus.md` §3), saved in `user://settings.cfg`, read through `Settings.current()` and applied with `apply_*` |
 | `scripts/perf/` | `PerfMonitor` (the frame-time overlay and its CSV log, `docs/specs/hud.md` §17) and `PerfStats` (the per-frame section timings) |
@@ -487,6 +487,11 @@ whitecaps, wakes (`SeaWakes`) and water overlays, in three quality tiers (`SeaQu
 - a `SkyRig` for the sky colours and the sun, and the camera it follows.
 
 Boats get wakes through `SeaWakes.update_boat(id, state)` with the interpolated pose and the class dimensions.
+With the GDExtension built, the wakes' per-frame work is native (`native/src/sea_wakes.h`): the sea height for the
+spray from the wave components (handed over when they change), each ribbon and bow wave written in place into a
+fixed-size mesh, and the mist written into its MultiMesh with one buffer call. Without it (or with
+`SeaWakes.use_reference`) the GDScript references draw the same: `WakeRibbonRef`, `BowWave`, `SeaModel.height`.
+Headless Godot does not keep in-place mesh updates, so the preview dumps draw with the references.
 The wake normal buffer (tiers M and H) exists only while wakes are drawn.
 `Sea.height_at(x, y)` is a CPU mirror of the core's sea height (double precision) for anything that needs the
 surface before the binding exists.
@@ -507,7 +512,10 @@ The script builds `core/tools/gen_sea_render_samples.cpp`, writes the core's sam
 on any error or warning) and runs `tests/water_test.gd`: every shader parses; the drawn height matches the core's
 `sea_height` within 1 mm (a double-precision mirror and a float32 emulation of the shader path, points up to
 8 km, times up to 4 h); slope, puff factor and exposure match; the far-field fade table; the wake geometry; and
-the test scene on every tier.
+the test scene on every tier. With the GDExtension built it then runs `tests/wakes_native_test.gd`: the native
+wakes against their GDScript references (sea height, ribbons with spray, current and hidden rows, bow waves, mist,
+and a `SeaWakes` drawing each way), the in-place buffers byte for byte against Godot's own encoding, and the cost
+per boat of both paths.
 
 ### Offline previews
 

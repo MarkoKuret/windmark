@@ -4,7 +4,10 @@
 #      components, heights, exposure and puff samples to game/generated/sea/sea_render_samples.json;
 #   2. imports the project and fails on any error or warning;
 #   3. runs tests/water_test.gd: shaders parse, height, slope, puff and exposure parity with the core,
-#      far-field fade, wake geometry, and the test scene on every quality tier.
+#      far-field fade, wake geometry, and the test scene on every quality tier;
+#   4. runs tests/wakes_native_test.gd: the native wakes (SeaSampler, WakeRibbon, BowWaveSheets, MistCloud) against
+#      their GDScript references and Godot's buffer encoding, and the cost per boat of both (passes with a note
+#      when the GDExtension is not built).
 # Options: --preview also renders the offline previews (tests/water_preview_dump.gd, then
 # tests/water_preview.py; needs numpy, Pillow, moderngl) into game/generated/water_preview.
 set -eu
@@ -42,6 +45,19 @@ if [ $rc -ne 0 ] || grep -qE "SCRIPT ERROR|SHADER ERROR|^ERROR" "$log"; then
     exit 1
 fi
 echo "water test passed"
+
+# the native wakes against their GDScript references (only when the GDExtension is built: native/build.sh)
+log="$here/generated/wakes_native_test.log"
+set +e
+"$godot" --headless --path "$here" -s res://tests/wakes_native_test.gd >"$log" 2>&1
+rc=$?
+set -e
+grep -E "^- |^  |FAIL|checks|native wakes" "$log" || true
+if [ $rc -ne 0 ] || grep -qE "SCRIPT ERROR|SHADER ERROR|^ERROR|^WARNING" "$log"; then
+    echo "native wakes test failed (full log: $log)"
+    exit 1
+fi
+echo "native wakes test passed"
 
 if [ "${1:-}" = "--preview" ]; then
     "$godot" --headless --path "$here" -s res://tests/water_preview_dump.gd

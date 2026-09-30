@@ -266,9 +266,8 @@ func _sail_bow(tier: SeaQuality.Tier, ratio: float, heel := 0.0) -> Dictionary:
 		wakes.update_boat(1, {"x": 0.0, "y": v * t, "z": 0.0, "psi": 0.0, "heel": heel, "pitch": 0.0, "lwl": lwl,
 			"bwl": 2.0, "transom_width": 1.6, "bow_x": 0.5 * lwl, "stern_x": -0.5 * lwl, "own": true})
 		wakes._process(1.0 / 60.0)
-	var wave: MeshInstance3D = wakes.get_node("BowWave1")
-	if wave.mesh.get_surface_count() > 0:
-		var arrays := wave.mesh.surface_get_arrays(0)
+	var arrays := wakes.bow_wave_arrays(1)
+	if not arrays.is_empty():
 		var pos: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 		var uv2: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV2]
 		out["wave"] = pos.size()
@@ -412,7 +411,7 @@ func _swell(hs: float, tp: float, from: float) -> Array:
 ## §9.6 wake geometry: a boat at a steady 3 m/s; the half width 2 s behind the bow is w0 + 2.12 m (5 %), and rows
 ## stay where they were laid without current.
 func check_wake_ribbon() -> void:
-	var r := WakeRibbon.new()
+	var r := WakeRibbonRef.new()
 	var flat := func(_x, _y): return 0.0
 	var v := 3.0
 	var w0 := 0.7
@@ -424,18 +423,18 @@ func check_wake_ribbon() -> void:
 	t -= 0.05
 	var row = null
 	for k in r.rows:
-		if absf(WakeRibbon.age(k, t) - 2.0) < 1e-6:
+		if absf(WakeRibbonRef.age(k, t) - 2.0) < 1e-6:
 			row = k
 	check(row != null, "wake: a row 2 s old exists")
 	if row:
-		var hw := WakeRibbon.half_width(row, t)
+		var hw := WakeRibbonRef.half_width(row, t)
 		check(absf(hw - (w0 + 2.12)) <= 0.05 * (w0 + 2.12), "wake: half width 2 s behind the bow %.3f m (expected %.3f)" % [
 				hw, w0 + 2.12])
 		var p0: Vector2 = row["p"]
 		for i in 10:
 			r.step(t + 0.05 * (i + 1), 0.05, flat)
 		check(row["p"] == p0 and absf(p0.y - v * 1.0) < 1e-6, "wake: rows stay where they were laid")
-	check(r.rows.size() <= WakeRibbon.N_ROWS, "wake: at most 80 rows")
+	check(r.rows.size() <= WakeRibbonRef.N_ROWS, "wake: at most 80 rows")
 	check_wake_edges()
 
 
@@ -443,7 +442,7 @@ func check_wake_ribbon() -> void:
 ## from row to row beyond the Kelvin opening (rows 0.15 m apart), and the ribbons never write depth, so they do
 ## not cut each other.
 func check_wake_edges() -> void:
-	var r := WakeRibbon.new()
+	var r := WakeRibbonRef.new()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 3
 	var v := 3.0
@@ -458,22 +457,22 @@ func check_wake_edges() -> void:
 	t -= 0.05
 	var arrays := r.build_arrays(t)
 	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-	var n := verts.size() / WakeRibbon.ACROSS
+	var n := verts.size() / WakeRibbonRef.ACROSS
 	var worst := 0.0
 	var worst_raw := 0.0
 	var visible_rows := []
 	for k in range(r.rows.size() - 1, -1, -1):
-		if WakeRibbon.alpha(r.rows[k], t) > 0.0:
+		if WakeRibbonRef.alpha(r.rows[k], t) > 0.0:
 			visible_rows.append(r.rows[k])
 	for k in n - 1:
-		var a := verts[k * WakeRibbon.ACROSS]
-		var b := verts[(k + 1) * WakeRibbon.ACROSS]
+		var a := verts[k * WakeRibbonRef.ACROSS]
+		var b := verts[(k + 1) * WakeRibbonRef.ACROSS]
 		var ra: Dictionary = visible_rows[k]
 		var rb: Dictionary = visible_rows[k + 1]
-		var oa := Vector2(a.x, -a.z).distance_to(ra["p"]) - 1.25 * WakeRibbon.half_width(ra, t)
-		var ob := Vector2(b.x, -b.z).distance_to(rb["p"]) - 1.25 * WakeRibbon.half_width(rb, t)
+		var oa := Vector2(a.x, -a.z).distance_to(ra["p"]) - 1.25 * WakeRibbonRef.half_width(ra, t)
+		var ob := Vector2(b.x, -b.z).distance_to(rb["p"]) - 1.25 * WakeRibbonRef.half_width(rb, t)
 		worst = maxf(worst, absf(oa - ob))
-		worst_raw = maxf(worst_raw, absf(WakeRibbon.spray_excess(ra, t).x - WakeRibbon.spray_excess(rb, t).x))
+		worst_raw = maxf(worst_raw, absf(WakeRibbonRef.spray_excess(ra, t).x - WakeRibbonRef.spray_excess(rb, t).x))
 	check(n > 20 and worst <= 0.15, "wake: outer edge steps at most 0.15 m row to row with bursts of spray (%.3f m; %.3f m unsmoothed)" % [
 			worst, worst_raw])
 	var code := (load("res://shaders/wake.gdshader") as Shader).code
@@ -508,8 +507,8 @@ func _process(_delta: float) -> bool:
 	var n_puff: int = sea.material.get_shader_parameter("n_puff")
 	check(n_puff > 0, "scene tier %s: %d puff patches uploaded" % [t["name"], n_puff])
 	var rib: Array = (_scene.get_node("Wakes") as SeaWakes).boat_ribbons(0)
-	check(rib.size() == 2 and rib[0].rows.size() >= 5, "scene tier %s: wake ribbon laid (%d rows)" % [
-			t["name"], rib[0].rows.size() if rib.size() else 0])
+	check(rib.size() == 2 and rib[0].row_count() >= 5, "scene tier %s: wake ribbon laid (%d rows)" % [
+			t["name"], rib[0].row_count() if rib.size() else 0])
 	# the uploaded phases equal the model's for the camera origin
 	var comp: PackedVector4Array = sea.material.get_shader_parameter("comp")
 	var ph := sea.model.phases(sea.render_time_ms, sea.origin.x, sea.origin.y)

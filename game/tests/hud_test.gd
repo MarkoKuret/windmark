@@ -421,10 +421,10 @@ func test_scene() -> void:
 	var lifted := CamTypes.Clearance.new().apply(low, sc.target, dt)
 	t.near(lifted.y, sea.height_at(low.x, -low.z) + 1.0, 1e-5, "a low eye is lifted to Sea.height_at + 1 m")
 	var ribs: Array = sc.wakes.boat_ribbons(0)
-	t.ok(ribs.size() == 2 and (ribs[0] as WakeRibbon).rows.size() > 10 and (ribs[1] as WakeRibbon).rows.size() > 10,
-		"SeaWakes has the boat's bow and stern wakes (%s rows)" % [ribs.map(func(w): return w.rows.size())])
+	t.ok(ribs.size() == 2 and ribs[0].row_count() > 10 and ribs[1].row_count() > 10,
+		"SeaWakes has the boat's bow and stern wakes (%s rows)" % [ribs.map(func(w): return w.row_count())])
 	print("  sea checks: camera margin %.2f m, hull z %.3f to %.3f m, heave lag %.3f m, wake rows %s" % [clear_min,
-		z_min, z_max, heave_err, ribs.map(func(w): return w.rows.size())])
+		z_min, z_max, heave_err, ribs.map(func(w): return w.row_count())])
 	var s := sim.state(0)
 	t.ok(sim.tick() >= 399 and sim.tick() <= 401, "20 s at 60 fps is 400 ticks (%d)" % sim.tick())
 	t.ok(s.v > 1.0 and s.v != v0, "the boat sails (%.2f m/s)" % s.v)
@@ -463,7 +463,7 @@ func test_scene() -> void:
 		ph.step_frame(dt)
 		await process_frame
 	t.ok(absf(ph.sim.state(0).z) > 1e-4, "the hull rides the placeholder sea")
-	t.ok((ph.wakes.boat_ribbons(0)[0] as WakeRibbon).rows.size() > 0, "wakes on the placeholder sea")
+	t.ok(ph.wakes.boat_ribbons(0)[0].row_count() > 0, "wakes on the placeholder sea")
 	ph.queue_free()
 
 
@@ -637,7 +637,7 @@ func test_core_scene() -> void:
 	t.ok(sim.tick() >= 799 and sim.tick() <= 801, "40 s at 60 fps is 800 ticks (%d)" % sim.tick())
 	t.ok(s.v > 1.0, "the boat sails (%.2f m/s)" % s.v)
 	var ribs: Array = sc.wakes.boat_ribbons(0)
-	t.ok(ribs.size() == 2 and (ribs[0] as WakeRibbon).rows.size() > 10, "wakes from CoreSimSource.wake_state")
+	t.ok(ribs.size() == 2 and ribs[0].row_count() > 10, "wakes from CoreSimSource.wake_state")
 	var hud: Hud = sc.hud
 	hud.refresh_text()
 	var hv := hud.values

@@ -51,6 +51,9 @@ func _next() -> void:
 	var sea: Sea = _scene.get_node("Sea")
 	sea.quality = s[4]
 	sea.use_internal_clock = false
+	# headless meshes do not keep the native wakes' in-place updates: dump the references' meshes (the same
+	# geometry, tests/wakes_native_test.gd)
+	(_scene.get_node("Wakes") as SeaWakes).use_reference = true
 	root.add_child(_scene)
 	_frames = 0
 

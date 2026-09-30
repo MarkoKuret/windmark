@@ -256,6 +256,9 @@ func _sail_bow(tier: SeaQuality.Tier, ratio: float, heel := 0.0) -> Dictionary:
 	holder.add_child(wakes)
 	wakes.sea = sea
 	root.add_child(holder)
+	# the mist pulse phase (global randf) and the sprites (the node's RNG) are random: fixed for a repeatable test
+	seed(7)
+	wakes._rng.seed = 7
 	var lwl := 6.8
 	var v := ratio * 1.34 * sqrt(lwl / 0.3048) * 0.51444447
 	var out := {"wave": 0, "mist": 0, "min_size": INF, "max_alpha": 0.0, "lift": 0.0, "lee_lift": 0.0, "wind_lift": 0.0}

@@ -33,23 +33,27 @@ const SHADOW_PANCAKE := 30.0
 const SHADOW_BLUR := 1.0
 
 
+## Development runs only (sail test flags, game/README.md "Measuring performance"): entries merged over every tier.
+static var overrides := {}
+
+
 static func get_tier(tier: Tier) -> Dictionary:
-	return TIERS[tier]
+	return TIERS[tier] if overrides.is_empty() else TIERS[tier].merged(overrides, true)
 
 
 ## Screen-space reflections are the environment's (tier H only).
 static func apply_environment(env: Environment, tier: Tier) -> void:
 	if env:
-		env.ssr_enabled = TIERS[tier]["ssr"]
+		env.ssr_enabled = get_tier(tier)["ssr"]
 
 
 ## The sun's shadows for a tier (water_render.md §4.6): cascades sized for a boat seen from the chase and onboard
 ## cameras, the directional shadow atlas and the soft filter. The atlas and the filter are global rendering
 ## settings.
 static func apply_shadows(sun: DirectionalLight3D, tier: Tier) -> void:
-	var t: Dictionary = TIERS[tier]
+	var t: Dictionary = get_tier(tier)
 	if sun:
-		sun.shadow_enabled = true
+		sun.shadow_enabled = t["shadow_splits"] > 0
 		sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS if t["shadow_splits"] == 4 \
 				else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 		sun.directional_shadow_max_distance = t["shadow_distance"]

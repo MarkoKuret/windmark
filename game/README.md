@@ -232,6 +232,12 @@ Flags after `--`:
 | `--upscaler=fsr` | this run's upscaler: `fsr`, `bilinear` or `metalfx` (MetalFX spatial, Metal only) |
 | `--quality=M` | this run's quality tier: `L`, `M` or `H`, over the setting; not saved |
 | `--no-vsync` | this run without vsync, to see the headroom; not saved |
+| `--shadow-splits=0` | this run's sun shadow cascades: `0` (off), `2` or `4`, over the tier; not saved |
+| `--shadow-atlas=2048` | this run's directional shadow atlas size, over the tier; not saved |
+| `--no-wake-buffer` | this run without the wake normal buffer (tiers M and H); not saved |
+| `--no-boat-shadows` | the boats cast no sun shadows in this run |
+| `--sea-grid=120x160` | this run's sea radial grid (rings x segments), over the tier; not saved |
+| `--water-shader=l` | this run's water shader (`water_l`, `_m` or `_h`), over the tier; not saved |
 
 A measured race in a window (asks the owner first: it opens one), 10 boats for 60 s:
 

@@ -75,6 +75,8 @@ enum SeaSource { AUTO, CORE_SAMPLES, PLACEHOLDER }
 
 @onready var sea: Sea = $Sea
 @onready var wakes: SeaWakes = $Wakes
+## `--no-boat-shadows` (measuring): the boats cast no sun shadows
+var no_boat_shadows := false
 @onready var env_source: SeaEnvSource = $EnvSource
 @onready var sky: SkyRig = $SkyDay
 
@@ -189,6 +191,10 @@ func _ready() -> void:
 	_add_pause_menu()
 	if Settings.render_scale_override > 0.0 or Settings.upscaler_override != "":
 		Settings.current().apply_render_scale(get_tree().root)
+	if no_boat_shadows:
+		for v in boat_views:
+			for g in v.find_children("*", "GeometryInstance3D", true, false):
+				(g as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	perf = PerfMonitor.new()
 	perf.name = "Perf"
 	perf.scene = self
@@ -234,8 +240,9 @@ func _apply_setup() -> void:
 ## `--watch` (an AI sails the player's boat too, spectating on), `--class=wm12`, `--venue=<id>`,
 ## `--course=<venue>/<id>` (race mode), `--seed=<n>` (0: from the clock), `--wind=<kn>`, `--wind-from=<deg>`,
 ## `--fake` (FakeSim), `--core`; measuring (hud.md §17): `--perf` (the frame-time overlay), `--perf-log=PATH`,
-## `--perf-seconds=N`, `--render-scale=0.67`, `--upscaler=fsr|bilinear|metalfx`, `--quality=L|M|H` and `--no-vsync`
-## (this run only, not saved).
+## `--perf-seconds=N`, `--render-scale=0.67`, `--upscaler=fsr|bilinear|metalfx`, `--quality=L|M|H`, `--no-vsync`,
+## `--shadow-splits=0|2|4`, `--shadow-atlas=N`, `--no-wake-buffer`, `--no-boat-shadows`,
+## `--sea-grid=RINGSxSEGMENTS` and `--water-shader=l|m|h` (this run only, not saved).
 func _user_args() -> void:
 	var fleet_given := false
 	var race_flag := false
@@ -288,6 +295,20 @@ func _user_args() -> void:
 			Settings.quality_override = "LMH".find(a.trim_prefix("--quality=").to_upper())
 		elif a == "--no-vsync":
 			Settings.vsync_override = 0
+		elif a.begins_with("--shadow-splits="):
+			SeaQuality.overrides["shadow_splits"] = a.trim_prefix("--shadow-splits=").to_int()
+		elif a.begins_with("--shadow-atlas="):
+			SeaQuality.overrides["shadow_atlas"] = a.trim_prefix("--shadow-atlas=").to_int()
+		elif a.begins_with("--sea-grid="):
+			var g := a.trim_prefix("--sea-grid=").split("x")
+			SeaQuality.overrides["rings"] = g[0].to_int()
+			SeaQuality.overrides["segments"] = g[1].to_int()
+		elif a.begins_with("--water-shader="):
+			SeaQuality.overrides["shader"] = "res://shaders/water_%s.gdshader" % a.trim_prefix("--water-shader=").to_lower()
+		elif a == "--no-wake-buffer":
+			SeaQuality.overrides["wake_buffer"] = false
+		elif a == "--no-boat-shadows":
+			no_boat_shadows = true
 	if race_flag and not fleet_given and fleet_size < 2:
 		fleet_size = GameSetup.new().fleet_size
 	if watch:

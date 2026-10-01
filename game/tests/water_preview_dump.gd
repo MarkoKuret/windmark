@@ -87,6 +87,8 @@ func _v(x) -> Variant:
 			for e in x:
 				out.append([e.x, e.y, e.z, e.w])
 			return out
+		TYPE_PACKED_FLOAT32_ARRAY:
+			return Array(x)
 		TYPE_INT, TYPE_FLOAT, TYPE_BOOL:
 			return x
 	return null

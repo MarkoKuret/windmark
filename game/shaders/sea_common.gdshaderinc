@@ -12,6 +12,7 @@ const float WM_KNOT = 0.514444470;
 // §2 per-frame sea data
 uniform int n_comp = 0;
 uniform vec4 comp[22];                 // (a, kx, ky, d') per component, kx, ky in cycles per metre
+uniform float comp_lam[22];            // wavelength 1/|k| (m) per component; comp is sorted by it, longest first
 uniform float sum_a = 0.0;
 uniform vec2 sea_origin = vec2(0.0);   // (ox, oy): the camera on the water plane (world, for the exposure grid)
 
@@ -84,16 +85,30 @@ void wm_sea_height(vec2 xl, float s, out float eta, out vec2 grad) {
 }
 
 // Per-pixel slope of the components the vertex grid faded (tiers M, H), themselves faded by the pixel footprint
-// px (m) so they never alias.
+// px (m) so they never alias: w = (1 - smoothstep(2, 4, lam/s)) * smoothstep(2, 4, lam/px), zero unless
+// 2 px < lam < 4 s. The components are sorted by wavelength, longest first (water_render.md §3.2), so the loop
+// skips those the grid carries (lam >= 4 s) and stops at the first the pixel cannot show (lam <= 2 px).
 vec2 wm_faded_slope(vec2 xl, float s, float px) {
 	vec2 grad = vec2(0.0);
+	float hi = 4.0 * s;
+	float lo = 2.0 * px;
+	if (s <= 0.0 || n_comp < 1 || lo >= hi || comp_lam[n_comp - 1] >= hi) {
+		return grad;
+	}
+	float inv_s = 1.0 / s;
+	float inv_px = px > 0.0 ? 1.0 / px : 0.0;
 	for (int i = 0; i < n_comp; i++) {
-		vec4 c = comp[i];
-		float w = (1.0 - wm_fade(c.y, c.z, s)) * wm_fade(c.y, c.z, px);
-		if (w > 0.0) {
-			float f = fract(c.y * xl.x + c.z * xl.y + c.w);
-			grad += (w * c.x * WM_TWO_PI * -sin(WM_TWO_PI * f)) * c.yz;
+		float lam = comp_lam[i];
+		if (lam >= hi) {
+			continue;
 		}
+		if (lam <= lo) {
+			break;
+		}
+		vec4 c = comp[i];
+		float w = (1.0 - smoothstep(2.0, 4.0, lam * inv_s)) * (px > 0.0 ? smoothstep(2.0, 4.0, lam * inv_px) : 1.0);
+		float f = fract(c.y * xl.x + c.z * xl.y + c.w);
+		grad += (w * c.x * WM_TWO_PI * -sin(WM_TWO_PI * f)) * c.yz;
 	}
 	return grad;
 }

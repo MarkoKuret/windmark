@@ -157,6 +157,10 @@ func _build() -> void:
 
 func _apply_static() -> void:
 	material.set_shader_parameter("n_comp", model.components.size())
+	# water_render.md §2, §3.2: the wavelengths of the (sorted) components, for the pixel shader's band loop
+	var lam := model.wavelengths.duplicate()
+	lam.resize(SeaModel.MAX_COMPONENTS)
+	material.set_shader_parameter("comp_lam", lam)
 	material.set_shader_parameter("sum_a", model.sum_a)
 	var g := model.exposure
 	material.set_shader_parameter("expo_tex", SeaTextures.exposure_texture(g))

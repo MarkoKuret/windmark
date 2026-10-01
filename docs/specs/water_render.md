@@ -28,6 +28,8 @@ hull sits on the surface players see.
 Every frame, at the render time `t_r` (ms, fractional, the environment clock):
 ```
 origin (ox, oy) = the camera's world position on the water plane (double)
+components sorted by wavelength lam_i = 1/|(kx_i, ky_i)|, longest first (once per sea; §3.2)
+uniform comp_lam[i] = lam_i                                              // float array, once per sea
 for each sea component i (sea.md §3; at most 10 + 4·3 = 22):
     d_i' = frac(c_i - fmod(t_r, T_i) / T_i + kx_i*ox + ky_i*oy)          // double, then to float
     uniform comp[i] = (a_i, kx_i, ky_i, d_i')                            // vec4 array
@@ -79,7 +81,18 @@ VERTEX.y = eta ; normal = normalize(-grad.x, 1, grad.y)   // scene axes: Z = -y
   `0.05·Hs` limit of `sea.md` §7.3 applies to added visual layers, not to this fade.
 - The fragment shader re-evaluates the slope of the components the vertex grid faded (`w_i < 1`) per pixel on the
   higher tiers, themselves faded by the pixel footprint (`fwidth` of the position) so they never alias, so
-  distant water keeps its wave texture in the lighting.
+  distant water keeps its wave texture in the lighting:
+  ```
+  px  = pixel footprint, m (length of fwidth of the position)
+  w_i = (1 - smoothstep(2, 4, lam_i / s)) * smoothstep(2, 4, lam_i / px)
+  grad += w_i * a_i * TWO_PI * (kx_i, ky_i) * (-sin(TWO_PI * f))
+  ```
+  `w_i` is zero unless `2·px < lam_i < 4·s` (the first factor is 0 from `lam_i ≥ 4·s`, the second from
+  `lam_i ≤ 2·px`), so only the components in that band are evaluated. The CPU uploads the components **sorted by
+  wavelength, longest first** (every sum over them is order-independent), with each one's wavelength
+  `comp_lam[i] = lam_i` (§2); the pixel loop skips the components with `lam_i ≥ 4·s`, stops at the first with
+  `lam_i ≤ 2·px`, and returns at once when the band is empty (`2·px ≥ 4·s`, or every component at least `4·s`
+  long). The result equals the sum over every component up to float rounding.
 - A later option for tier H, if the near field needs it: a small fine patch (say 64 m at 0.25 m) under the
   camera, blended into the radial grid.
 - No horizontal displacement of any component (`sea.md` §7.3).
@@ -88,7 +101,8 @@ VERTEX.y = eta ; normal = normalize(-grad.x, 1, grad.y)   // scene axes: Z = -y
 
 ### 4.1 Normal
 ```
-n_geo    = vertex normal, plus the per-pixel slope of faded components (tiers M and H)
+n_geo    = vertex normal, plus the per-pixel slope of faded components (tiers M and H; §3.2: only the
+           components in the band 2·px < lam < 4·s, from the wavelength-sorted comp and comp_lam)
 detail   = 2 to 4 layers of a tiling normal map, sampled in a wind-aligned frame (downwind, across):
            uv_k = rot(angle_k) * scale_k * (dot(p, dir) - drift_k * t, dot(p, perp(dir)))
            dir = the median wind's downwind direction (base_from + π), so the pattern does not swirl in shifts
@@ -307,7 +321,9 @@ puff loop, the sail cloth) by its square.
 
 Budget: the water within 2.5 ms of GPU time per frame on the Steam Deck at 1280 × 800 on tier M. The vertex work is
 small (22 cosines per vertex, 1 M per frame on tier M); the pixel work is dominated by the normal-map taps and the
-puff loop (at most 10 patches). Every tier renders with Godot's Forward+; tier L also works on the Mobile renderer,
+puff loop (at most 10 patches). The per-pixel slope of the faded components (tiers M and H) evaluates only the
+components in the band `2·px < lam < 4·s` (§3.2), each with one sine and two smoothsteps from the uploaded
+wavelength; the others cost a compare (the carried ones) or end the loop (the ones too short for the pixel). Every tier renders with Godot's Forward+; tier L also works on the Mobile renderer,
 and nothing in §3–§6 needs compute shaders, so a Compatibility (web) port stays possible.
 
 ## 8. Options compared
@@ -350,9 +366,12 @@ stated clearly.
    next sector.
 6. **Wake geometry**: a boat at a steady 3 m/s: the ribbon's half width 2 s behind the bow is `w0 + 2.12 m` (±5 %),
    and its rows stay where they were laid (no drift without current).
-7. **Offline renders** (headless, to image files) of fixed seeds: flat calm, 10 kn, 20 kn with puffs, from the
+7. **Band loop**: the components the sea uploads are sorted by wavelength, longest first, `comp_lam` equals
+   `1/|(kx, ky)|` of each, and the band loop of §3.2 equals the per-pixel slope summed over every component with the
+   full weights (CPU mirror, random points, spacings and footprints).
+8. **Offline renders** (headless, to image files) of fixed seeds: flat calm, 10 kn, 20 kn with puffs, from the
    chase and aerial cameras, compared against stored images for visual regressions. Godot's headless mode has no
    renderer, so these run the shared shader functions (`sea_common`, `sky_common`, `wake_common`) with the
    uniforms and meshes the engine computed on an offscreen OpenGL context (`game/tests/water_preview.py`); the
    engine's own picture needs a short windowed capture.
-8. **Performance**: tier M water pass under 2.5 ms on the Steam Deck in the 20 kn scene with 12 boats.
+9. **Performance**: tier M water pass under 2.5 ms on the Steam Deck in the 20 kn scene with 12 boats.

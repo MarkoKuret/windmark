@@ -520,7 +520,8 @@ game/tests/run_water_test.sh --preview  # also the offline previews
 The script builds `core/tools/gen_sea_render_samples.cpp`, writes the core's samples, imports the project (fails
 on any error or warning) and runs `tests/water_test.gd`: every shader parses; the drawn height matches the core's
 `sea_height` within 1 mm (a double-precision mirror and a float32 emulation of the shader path, points up to
-8 km, times up to 4 h); slope, puff factor and exposure match; the far-field fade table; the wake geometry; and
+8 km, times up to 4 h); slope, puff factor and exposure match; the far-field fade table; the components sorted by
+wavelength with their `comp_lam` and the per-pixel band loop against the full sum; the wake geometry; and
 the test scene on every tier. With the GDExtension built it then runs `tests/wakes_native_test.gd`: the native
 wakes against their GDScript references (sea height, ribbons with spray, current and hidden rows, bow waves, mist,
 and a `SeaWakes` drawing each way), the in-place buffers byte for byte against Godot's own encoding, and the cost

@@ -37,7 +37,7 @@ uniform float land_tw = 0.0;
 
 // §4.1 detail normals: per layer (scale*cos, scale*sin, offset u, offset v) in the detail frame (downwind, across)
 uniform vec2 detail_dir = vec2(0.0, 1.0);   // world (east, north) unit vector the median wind blows toward
-uniform vec4 detail_layer[4];
+uniform vec4 detail_layer[5];               // [0..3] detail layers, [4] the fine glint layer (§4.1)
 uniform vec4 foam_layer = vec4(0.0);        // streaks: offset (u, v); breakup: offset (u, v)
 uniform float wake_extent = 400.0;          // m, side of the camera-centred wake normal buffer
 uniform float wake_strength = 0.0;          // 0 when the buffer is off (tier L)
@@ -49,9 +49,9 @@ uniform vec3 sun_dir = vec3(0.0, 0.5, -0.866);      // scene axes, toward the su
 uniform vec3 sun_color = vec3(1.0, 0.95, 0.88);
 
 // §4.2 colours (linear)
-uniform vec3 col_deep = vec3(0.010, 0.048, 0.085);
-uniform vec3 col_shallow = vec3(0.02, 0.11, 0.14);
-uniform vec3 col_sss = vec3(0.04, 0.40, 0.38);
+uniform vec3 col_deep = vec3(0.006, 0.042, 0.115);
+uniform vec3 col_shallow = vec3(0.012, 0.100, 0.155);
+uniform vec3 col_sss = vec3(0.03, 0.33, 0.40);
 uniform vec3 col_foam = vec3(0.86, 0.90, 0.92);
 
 // §6 overlays: line segments (ax, ay, bx, by camera-relative) and circles (cx, cy, r, 0), colour (rgb, width m)
@@ -181,17 +181,6 @@ float wm_puff_factor(vec2 xl) {
 	return clamp(m, puff_cap_lo, puff_cap_hi);
 }
 
-// Two-colour horizon-to-zenith ramp of the sky (scene axes, y up); matches sky_common's base gradient.
-vec3 wm_sky_ramp(vec3 d) {
-	float h = clamp(d.y, 0.0, 1.0);
-	return mix(sky_horizon, sky_zenith, pow(h, 0.45));
-}
-
-float wm_schlick(float cos_t) {
-	float k = 1.0 - clamp(cos_t, 0.0, 1.0);
-	return 0.02 + 0.98 * k * k * k * k * k;
-}
-
 // Scene-space vectors of the detail frame: downwind and across (to the left of downwind).
 vec3 wm_scene(vec2 world_dir) {
 	return vec3(world_dir.x, 0.0, -world_dir.y);
@@ -229,52 +218,54 @@ WmSurface wm_surface(vec2 xl, float eta, vec3 n_geo, vec3 view, float dist, vec2
 	S.m = m;
 	vec3 along = wm_scene(detail_dir);
 	vec3 across = wm_scene(vec2(-detail_dir.y, detail_dir.x));
+	vec2 q = vec2(dot(xl, detail_dir), dot(xl, vec2(-detail_dir.y, detail_dir.x)));
 
-	// §4.1 normal
+	// §4.1 normal: the detail layers, and the fine glint layer near the camera (the sun's glitter)
 	float wind = m * base_speed;
 	float glassy = smoothstep(0.5, 1.5, wind);
-	float k_detail = 0.25 * clamp(wind / 7.2, 0.15, 1.6) * (1.0 - smoothstep(300.0, 3000.0, dist)) * glassy;
+	float k_detail = 0.22 * clamp(wind / 7.2, 0.15, 1.6) * (1.0 - smoothstep(300.0, 3000.0, dist)) * glassy;
 	vec2 dn = wm_detail(xl);
-	vec3 n = n_geo + k_detail * (dn.x * along + dn.y * across);
+	vec4 G = detail_layer[4];
+	vec2 gn = texture(detail_tex, vec2(G.x * q.x - G.y * q.y, G.y * q.x + G.x * q.y) + G.zw).rg * 2.0 - 1.0;
+	float near = 1.0 - smoothstep(30.0, 200.0, dist);
+	float k_glint = 0.12 * clamp(wind / 7.2, 0.2, 1.4) * near * glassy;
+	vec3 n = n_geo + k_detail * (dn.x * along + dn.y * across) + k_glint * (gn.x * along + gn.y * across);
 	n += wake_strength * vec3(wake.x, 0.0, -wake.y);
 	n = normalize(n);
 	S.normal = n;
 
-	// §4.2 colour, roughness
+	// §4.2 colour, roughness (smoother near the camera, where the glint layer carries the ripples)
 	float crest = clamp(eta / max(sum_a, 1e-3), 0.0, 1.0);
 	vec3 albedo = mix(col_deep, col_shallow, 0.55 * crest);
 	float fade_far = smoothstep(500.0, 4000.0, dist);
-	float rough = 0.06 + 0.05 * clamp(m - 1.0, -0.4, 0.25) / 0.25 + 0.18 * fade_far;
+	float rough = 0.035 + 0.025 * (1.0 - near) + 0.05 * clamp(m - 1.0, -0.4, 0.25) / 0.25 + 0.18 * fade_far;
 
 	// §4.3 puffs darker, lulls brighter
 	albedo *= 1.0 - 0.25 * clamp((m - 1.0) / 0.25, 0.0, 1.0) + 0.15 * clamp((1.0 - m) / 0.4, 0.0, 1.0);
 
-	// §4.4 whitecaps
+	// §4.4 whitecaps on the steep crests, with the wind; foam streaks down the wind in strong winds
 	float tws_kn = wind / WM_KNOT;
 	float caps = smoothstep(8.0, 24.0, tws_kn);
-	vec2 qs = vec2(dot(xl, detail_dir), dot(xl, vec2(-detail_dir.y, detail_dir.x)));
-	float n1 = texture(foam_tex, qs * vec2(1.0 / 23.0, 1.0 / 5.0) + foam_layer.xy).r;
-	float n2 = texture(foam_tex, qs * (1.0 / 61.0) + foam_layer.zw).g;
-	// covers about 0.2 % of the sea at 15 kn, 1.4 % at 20 kn, 2.5 % at 25 kn (near the measured whitecap cover)
+	float n1 = texture(foam_tex, q * vec2(1.0 / 23.0, 1.0 / 5.0) + foam_layer.xy).r;
+	float n2 = texture(foam_tex, q * (1.0 / 61.0) + foam_layer.zw).g;
+	float slope = length(n_geo.xz) / max(n_geo.y, 0.2);
+	float steep = smoothstep(0.04, 0.16, slope);
 	float th = 0.62 - 0.30 * caps;
-	float foam = smoothstep(th, th + 0.1, crest * (0.45 + 0.75 * n1)) * smoothstep(0.25, 0.65, n2) * (0.2 + 0.8 * caps);
+	float foam = smoothstep(th, th + 0.06, crest * (0.45 + 0.75 * n1) * mix(0.75, 1.2, steep))
+			* smoothstep(0.3, 0.6, n2) * (0.2 + 0.8 * caps);
 	foam *= 1.0 - smoothstep(900.0, 1300.0, dist);
 	foam = clamp(foam, 0.0, 1.0);
-	albedo = mix(albedo, col_foam, 0.8 * foam);
+	albedo = mix(albedo, col_foam, 0.85 * foam);
 	rough = mix(rough, 0.65, foam);
 	S.foam = foam;
 
-	// §4.2 light through the crests, and the zero-mean slope contrast
-	vec3 emission = col_sss * crest * pow(max(0.0, dot(-view, sun_dir)), 3.0) * 0.3 * sun_color + col_sss * crest * 0.05;
-	vec3 r_n = reflect(-view, n);
-	vec3 r_up = reflect(-view, vec3(0.0, 1.0, 0.0));
-	float F = wm_schlick(dot(view, n));
-	emission += (wm_sky_ramp(r_n) - wm_sky_ramp(r_up)) * F * (1.0 - foam);
+	// §4.2 light through the crests
+	vec3 emission = col_sss * crest * (pow(max(0.0, dot(-view, sun_dir)), 3.0) * 0.3 * sun_color + 0.05);
 
 	S.albedo = albedo;
 	S.roughness = rough;
-	S.specular = 0.35;   // Godot F0 = 0.16 * specular^2 = 0.02, water at normal incidence
-	S.emission = max(emission, vec3(0.0));
+	S.specular = 0.40;   // Godot F0 = 0.16 * specular^2 = 0.026: water's 0.02 a little lifted
+	S.emission = emission * (1.0 - foam);
 	return S;
 }
 

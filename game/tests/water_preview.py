@@ -384,8 +384,10 @@ vec3 tonemap_aces(vec3 color, float white) {
 vec3 to_srgb(vec3 c) {
     return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
 }
+uniform sampler2D u_glow;
 void main() {
-    vec3 c = texture(u_hdr, v_ndc * 0.5 + 0.5).rgb * u_exposure;
+    vec2 uv = v_ndc * 0.5 + 0.5;
+    vec3 c = (texture(u_hdr, uv).rgb + texture(u_glow, uv).rgb) * u_exposure;
     frag = vec4(to_srgb(clamp(tonemap_aces(max(c, vec3(0.0)), u_white), 0.0, 1.0)), 1.0);
 }
 """
@@ -623,12 +625,52 @@ def render(ctx, d, size, wakes=True):
     ctx.disable(moderngl.BLEND)
 
     ctx.copy_framebuffer(fbo_res, fbo)
+    return tonemapped(ctx, tone, resolved, quad, sc, w, h)
+
+
+def _box_blur(a, r, axis):
+    c = np.cumsum(np.pad(a, [(r + 1, r) if k == axis else (0, 0) for k in range(a.ndim)], mode="edge"), axis=axis)
+    n = a.shape[axis]
+    return (np.take(c, np.arange(2 * r + 1, 2 * r + 1 + n), axis=axis) - np.take(c, np.arange(0, n), axis=axis)) / (2 * r + 1)
+
+
+def _blur(a, sigma):
+    r = max(1, int(round(sigma * 0.9)))
+    for _ in range(3):
+        a = _box_blur(_box_blur(a, r, 0), r, 1)
+    return a
+
+
+def glow_texture(ctx, resolved, sc, w, h):
+    """Stand-in for Godot's glow (additive, normalized levels): what is brighter than the threshold (linear, before
+    the exposure) bleeds out over a few coarse levels."""
+    g = sc.get("glow", {})
+    if not g.get("enabled"):
+        return None
+    hdr = np.frombuffer(resolved.read(), dtype="f2").astype("f4").reshape(h, w, 4)[:, :, :3]
+    lum = hdr.max(axis=2, keepdims=True)
+    bright = hdr * (np.clip(lum - float(g["threshold"]), 0.0, None) * float(g.get("scale", 2.0)) / np.maximum(lum, 1e-4))
+    bright = np.minimum(bright, 12.0)
+    s = w / 1280.0
+    glow = (_blur(bright, 6 * s) + _blur(bright, 14 * s) + _blur(bright, 30 * s)) * (float(g["intensity"]) / 3.0)
+    t = ctx.texture((w, h), 4, np.dstack([glow, np.ones((h, w, 1))]).astype("f2").tobytes(), dtype="f2")
+    return t
+
+
+def tonemapped(ctx, tone, resolved, quad, sc, w, h):
+    """The resolved HDR frame with the glow added, exposed and tone mapped (Godot's ACES), as an RGB image."""
+    glow = glow_texture(ctx, resolved, sc, w, h)
+    if glow is None:
+        glow = ctx.texture((1, 1), 4, np.zeros(4, "f2").tobytes(), dtype="f2")
     out_tex = ctx.texture((w, h), 4)
     out_fbo = ctx.framebuffer(color_attachments=[out_tex])
     out_fbo.use()
     ctx.disable(moderngl.DEPTH_TEST)
     resolved.use(0)
+    glow.use(1)
     tone["u_hdr"].value = 0
+    if "u_glow" in tone:
+        tone["u_glow"].value = 1
     tone["u_exposure"].value = float(sc["tonemap"]["exposure"])
     tone["u_white"].value = float(sc["tonemap"]["white"])
     ctx.vertex_array(tone, [(quad, "2f", "in_pos")]).render(moderngl.TRIANGLES)

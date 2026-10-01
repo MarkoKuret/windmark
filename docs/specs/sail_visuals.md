@@ -502,9 +502,11 @@ sail material uses no normal map).
 - **Update rate by distance** (the phase `φ` always advances): nearer than 200 m every frame; 200–800 m at 15 Hz;
   beyond at 4 Hz; outside the view frustum not at all (a sphere around the sail against the camera's frustum
   planes), and at once on coming back into view. The drivers `φ`, `s_b` and `tl` advance every frame either way.
-- **Material**: the generator's `sailcloth` slot (its colour and weave texture), opaque, back faces culled (each
-  layer faces its own side), with the cloth of §11.1 and a back-light term (the sun through the cloth); the boat's
-  livery (cloth, colours, panel design, sail numbers and insignia) on a copy per boat (§11.2). Opaque sails need no draw-order sorting. Shadows: `water_render.md`
+- **Material**: opaque, back faces culled (each layer faces its own side), with a back-light term (the sun through
+  the cloth). With the class's baked sail textures (§11.2) the sail is drawn from them on the simple path of
+  `shaders/sail_baked.gdshader`; without them, the generator's `sailcloth` slot (its colour and weave texture) with
+  the procedural cloth of §11.1 and the procedural livery. Either way a copy per boat carries the boat's sail number
+  and nation letters (§11.2). Opaque sails need no draw-order sorting. Shadows: `water_render.md`
   §4.6 (the shadow pass draws the sail 5 cm off the light along its normal, so the 2 mm layers never shadow each
   other).
 - The sail node's transform stays the identity: the generator writes sails in the boat frame, and §7 places them in
@@ -515,7 +517,9 @@ sail material uses no normal map).
   so a sail outside the view frustum casts the shadow of its last placed shape until it comes back into view.
 
 ### 11.1 Cloth
-Procedural, in `shaders/sail_cloth.gdshaderinc` (no texture files), from the generator's uv sets without any change
+The cloth a sailmaker builds. The baked sail textures (§11.2) are drawn from this description by `tools/liverybake`
+(at texture resolution, with more detail); without them it is drawn per pixel as the fallback and the GPU-cost
+reference: procedural, in `shaders/sail_cloth.gdshaderinc` (no texture files), from the generator's uv sets without any change
 to them: uv0 is metric (along the row aft from the luff; up the sail as the summed mean row spacing) and the same on
 both layers, uv1.y is the row fraction. At load, per sail (`BoatMaterials.sail_cloth`, from the rest grid), a
 material of its own gets:
@@ -546,15 +550,42 @@ toward the sun (`0.75 + 0.75·max(0, −V·L)^4`). Every line is box-filtered ov
 uv0), so detail finer than a pixel fades to its average instead of shimmering, and panel variation fades out when
 panels get smaller than a few pixels. The albedo cap of 0.8 applies to the plain cloth before this.
 
-### 11.2 Livery: cloth, colours and sail numbers
-Each boat's sails take the `sails.<role>` entry of its livery (`data_format.md` §8) on a copy of the sail's cloth
-material per boat (the shape and mesh are unchanged; one material and one draw per sail as before):
+### 11.2 Livery: the class sail set and the sail numbers
+Every boat of a class carries the same sails: the class sail set of the livery file (`data_format.md` §8.3), baked
+once into the class's sail textures (`data_format.md` §8.5). Only the nation letters and the sail number differ per
+boat. Each boat has a copy of each sail's material (the shape and mesh are unchanged; one material and one draw per
+sail as before).
+
+**Baked sails** (the normal case): the material is `shaders/sail_baked.gdshader`, a simple path with no procedural
+cloth or livery. Per pixel: the flat plan point from uv0 (computed per vertex, affine in uv0), one sample of the
+layer's albedo (port image, or the starboard image mirrored), one of the ORM map and one of the normal map; one
+sample of the cloth's tiling detail (weave, film or ripstop, 0.25 m tiles in the plan, albedo and relief at the
+millimetre scale the sail images cannot hold), blended with the normal map; the tangent frame from the
+screen-space derivatives of the plan point. The light is that of §11 (front light, the back light through the
+cloth, the sheen), with the ORM blue channel as the light through the cloth in place of `backlight · exp(−0.8 ·
+plies)`. The images hold what §11.1 lists and what a sailmaker adds: two-ply seams with two rows of stitching, edge
+tapes, layered corner patches with radial fingers, webbing straps and stainless rings at the corners, a headboard
+and the batten pockets with their battens on the main, draft stripes on the main and headsails, tell-tales on
+headsails (red on port, green on starboard), the class insignia as stuck-on cloth on both sides of the main, fold
+creases from flaking (crumpled creases on a spinnaker), stress wrinkles at the clew, head and tack, and a little
+grime along the foot.
+
+**Numbers per boat**: the nation letters and the sail number go in the row slots of the sails' `layout.json` (the
+baker places them by the rules below, with room for the class's widest nation and number): each row of the boat's
+text at the slot's height, centred in it, shrunk to the slot's width when wider. The shader picks the row by
+height and samples the boat's text texture once for each side (this layer's stack, and the other side's stack for
+the light through the cloth).
+
+**Procedural fallback** (a class without baked sail textures): the cloth of §11.1 on `shaders/sail.gdshader`, with
+the class sail set's entry by role:
 - **Cloth**: `dacron`, `laminate`, `nylon` set the style of §11.1 (panels, seam, fine structure, roughness, the light
   through one ply, and the share of the weave texture), `color` the albedo (capped as in §11.1), `fibre` the scrim
-  or ripstop colour. Without a livery entry the style follows the §11.1 table.
-- **Design**: the panel colours of `data_format.md` §8 in the flat plan: height fractions are measured along the
+  or ripstop colour. Without a sail set entry the style follows the §11.1 table.
+- **Design**: the panel colours of `data_format.md` §8.3 in the flat plan: height fractions are measured along the
   up axis below from the foot (0) to the head (1); `panels` alternates by the panel index of the cloth (the same
   panels as the seams); `gores` by the angle about the head.
+
+Both paths:
 - **Layer**: the grid-order mesh holds the port layer first, so a vertex index below `rows · cols` is the port
   layer, the rest the starboard layer.
 - **Text frame**: in the flat plan, the reading axis `f = unit(clew - tack)` along the foot and the up axis `u`
@@ -562,7 +593,7 @@ material per boat (the shape and mesh are unchanged; one material and one draw p
   right from its own side); up is `u` on both.
 - **Character height** `h` by LOA (Appendix G1.2): under 3.5 m 0.23 m, to 8.5 m 0.30 m, to 11 m 0.375 m, over
   11 m 0.45 m; 0.2 `h` between rows and between the two sides' stacks. The insignia is drawn 1.2 `h` high.
-- **Which sails** (Appendix G1.1, G1.3): the main carries the insignia, the nation letters (when the livery has
+- **Which sails** (Appendix G1.1, G1.3): the main carries the insignia, the nation letters (when the boat has
   them) and the sail number; genoas, code zeros and spinnakers the nation letters and the number; a jib none.
 - **Where**: each side has a stack, top to bottom insignia, nation, number; the starboard stack is uppermost and
   the port stack below it, so the two never sit back to back. The stacks start, measured from the head point, at
@@ -575,7 +606,8 @@ material per boat (the shape and mesh are unchanged; one material and one draw p
   albedo; against the sun the light through the cloth falls by `(1 - 0.85 c_near)(1 - 0.85 c_far)`, `c` the text
   coverage of this side and of the other side's stack, so the numbers of both sides show as shadows (the far side's
   mirrored, as on a real sail). Coverage edges are sharpened over the pixel footprint (`fwidth`) so the numbers stay
-  crisp close up and fade to their average far away.
+  crisp close up and fade to their average far away. On the baked path a faint darker hairline follows the edge of
+  the stuck-on sheet.
 
 ## 12. Tests
 

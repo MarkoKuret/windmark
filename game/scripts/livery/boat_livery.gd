@@ -1,13 +1,26 @@
 class_name BoatLivery
 extends RefCounted
 ## Paints a BoatView in a livery at load (data_format.md §8, sail_visuals.md §11.2) without touching the
-## generated meshes: per boat, a copy of the shared boat material for each painted slot (topsides with the
-## livery shader path of hull_livery.gdshaderinc, boot stripe, antifouling, keel, deck gelcoat and non-slip) set as
-## surface override materials on the boat's own MeshInstance3Ds, a copy of each sail's cloth material with the
-## livery uniforms of sail_livery.gdshaderinc, and one text texture (LiveryText). Draw calls are unchanged: every
-## surface of every boat is its own draw anyway, and all copies share the boat and sail shaders.
+## generated meshes. With the class's baked textures (BakedLivery, data_format.md §8.5), the normal case: per boat,
+## materials on shaders/boat_baked.gdshader for the hull (topsides, boot stripe and antifouling on the uv1 atlas),
+## the keel and an optional deck override, and on shaders/sail_baked.gdshader for each baked sail, all reading the
+## shared images; per boat only the uniforms of its name and sail number over them. Without baked textures, the
+## procedural fallback: a copy of the shared boat material for each painted slot (topsides with the livery path of
+## hull_livery.gdshaderinc, boot stripe, antifouling, keel, deck gelcoat and non-slip) and a copy of each sail's
+## cloth material with the livery uniforms of sail_livery.gdshaderinc. Either way one text texture per boat
+## (LiveryText) and surface override materials on the boat's own MeshInstance3Ds; draw calls are unchanged (every
+## surface of every boat is its own draw anyway).
 ##
 ##   BoatLivery.apply(boat_view, livery)
+
+const BAKED_BOAT := preload("res://shaders/boat_baked.gdshader")
+const BAKED_SAIL := preload("res://shaders/sail_baked.gdshader")
+## the baked sails' tiling cloth detail (sail_visuals.md §11.2): tile size (m) and strength per cloth
+const DETAIL_TILE := 0.125
+const DETAIL_AMOUNT := {"dacron": 1.0, "laminate": 0.8, "nylon": 1.0}
+## boat.gdshader slot uniforms carried over to the baked materials
+const SLOT_KEYS := ["albedo_tex", "mr_tex", "normal_tex", "use_normal_tex", "normal_scale", "roughness", "metallic",
+	"specular", "uv_scale", "ao_strength", "albedo_max"]
 
 ## sail_visuals.md §11.1 per cloth style: roughness, weave share, fibre amount, back-light
 const STYLE_ROUGH := [0.55, 0.38, 0.45]
@@ -30,6 +43,9 @@ static func apply(bv: BoatView, lv: Livery) -> int:
 	bv.livery_text = text
 	bv.livery_materials.clear()
 	var geo := hull_geometry(bv)
+	var cid := bv.info.id if bv.info else ""
+	var hs := BakedLivery.hull_set(cid, lv.look_id)
+	var ss: Dictionary = BakedLivery.sail_set(cid).get("sails", {})
 	var n := 0
 	var stack: Array[Node] = [bv.model]
 	var sail_nodes := {}
@@ -47,6 +63,19 @@ static func apply(bv: BoatView, lv: Livery) -> int:
 			if m == null:
 				continue
 			var slot := m.resource_name
+			var bm: ShaderMaterial = null
+			if not hs.is_empty():
+				if part == "hull" and slot in ["gelcoat", "boottop", "antifouling"]:
+					bm = baked_hull_material(m, hs, lv, text, geo)
+				elif part == "keel" and slot == "antifouling" and hs.has("keel"):
+					bm = baked_view_material(m, hs["keel"], hs["keel_rect"], 1)
+				elif part == "deck" and slot in ["gelcoat", "nonslip"] and hs.has("deck"):
+					bm = baked_view_material(m, hs["deck"], hs["deck_rect"], 2)
+			if bm != null:
+				bv.livery_materials.append(bm)
+				mi.set_surface_override_material(s, bm)
+				n += 1
+				continue
 			var c: Variant = null
 			if part == "hull" and slot == "gelcoat":
 				var tm := topsides_material(m, lv, text, geo)
@@ -75,11 +104,137 @@ static func apply(bv: BoatView, lv: Livery) -> int:
 		var base := sp.mesh.surface_get_material(0) as ShaderMaterial
 		if base == null:
 			continue
-		var m := sail_material(base, sp, lv, text, bv.info.loa if bv.info else 8.0)
+		var bs: Dictionary = ss.get(sp.id, {})
+		var m := baked_sail_material(sp, bs, lv, text) if not bs.is_empty() \
+				else sail_material(base, sp, lv, text, bv.info.loa if bv.info else 8.0)
 		bv.livery_materials.append(m)
 		(sp.node as MeshInstance3D).set_surface_override_material(0, m)
 		n += 1
 	return n
+
+
+## A baked-livery material for a boat slot: the slot's tiling detail and factors on shaders/boat_baked.gdshader.
+static func _baked_slot(src: ShaderMaterial) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = BAKED_BOAT
+	m.resource_name = src.resource_name
+	for k in SLOT_KEYS:
+		var v: Variant = src.get_shader_parameter(k)
+		if v != null:
+			m.set_shader_parameter(k, v)
+	m.set_shader_parameter("bk_detail_mean", texture_mean(src.get_shader_parameter("albedo_tex")))
+	m.set_shader_parameter("bk_rough_mean", channel_mean(src.get_shader_parameter("mr_tex"), 1))
+	return m
+
+
+## The hull's topsides, boot stripe or antifouling from the baked hull set, with the boat's name and number.
+static func baked_hull_material(src: ShaderMaterial, hs: Dictionary, lv: Livery, text: LiveryText,
+		geo: Dictionary) -> ShaderMaterial:
+	var m := _baked_slot(src)
+	m.set_shader_parameter("bk_albedo", hs["albedo"])
+	m.set_shader_parameter("bk_normal", hs["normal"])
+	m.set_shader_parameter("bk_orm", hs["orm"])
+	m.set_shader_parameter("bk_proj", 0)
+	m.set_shader_parameter("bk_maps", true)
+	var boxes := PackedVector4Array()
+	var rects := PackedVector4Array()
+	var length: float = geo["len"]
+	var pd: Dictionary = geo["panels_d"]
+	for side in ["stbd", "port"]:
+		for k in [["name", LiveryText.Row.NAME, false], ["number", LiveryText.Row.NUMBER, true]]:
+			var pan: Vector4 = geo["panels_uv"].get(side, {}).get(k[0], Vector4.ZERO)
+			var d: Vector2 = pd.get(k[0], Vector2(0.1, 0.4))
+			var pw := (pan.z - pan.x) * length
+			var ph := d.y - d.x
+			var asp := text.aspect(k[1], k[2])
+			# the panel is laid out at its middle station: keep a margin below the sheer's graphics at its ends
+			var bh := minf(ph * (0.84 if k[2] else 0.92), 0.9 * pw / asp)
+			var du := 0.5 * bh * asp / maxf(length, 1e-3)
+			var dv := 0.5 * bh / maxf(ph, 1e-3) * (pan.w - pan.y)
+			var cu := 0.5 * (pan.x + pan.z)
+			var cv := pan.y + 0.55 * (pan.w - pan.y)
+			boxes.append(Vector4(cu - du, cv - dv, cu + du, cv + dv))
+			rects.append(text.rect(k[1], k[2]) if not text.rows[k[1]]["empty"] else Vector4.ZERO)
+	m.set_shader_parameter("ov_on", 1)
+	m.set_shader_parameter("ov_color", _lin(lv.hull["text"]))
+	m.set_shader_parameter("ov_box", boxes)
+	m.set_shader_parameter("ov_tex", rects)
+	m.set_shader_parameter("livery_text", text.texture)
+	return m
+
+
+## The keel (side view, proj 1) or the deck (top view, proj 2) from a baked albedo.
+static func baked_view_material(src: ShaderMaterial, tex: Texture2D, rect: Vector4, proj: int) -> ShaderMaterial:
+	var m := _baked_slot(src)
+	m.set_shader_parameter("bk_albedo", tex)
+	m.set_shader_parameter("bk_proj", proj)
+	m.set_shader_parameter("bk_rect", rect)
+	m.set_shader_parameter("bk_maps", false)
+	return m
+
+
+## A sail from the class's baked sail set, with the boat's nation letters and sail number in the layout's slots.
+static func baked_sail_material(sp: BoatView.SailPart, bs: Dictionary, lv: Livery, text: LiveryText) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = BAKED_SAIL
+	var info: Dictionary = bs["info"]
+	m.set_shader_parameter("sk_albedo_port", bs["port"])
+	m.set_shader_parameter("sk_albedo_stbd", bs["stbd"])
+	m.set_shader_parameter("sk_normal", bs["normal"])
+	m.set_shader_parameter("sk_orm", bs["orm"])
+	var sh: Array = info.get("shear", [0.0, 1.0])
+	var r: Array = info.get("rect", [0.0, 10.0, 4.0, 10.0])
+	m.set_shader_parameter("sk_shear", Vector2(sh[0], sh[1]))
+	m.set_shader_parameter("sk_rect", Vector4(r[0], r[1], r[2], r[3]))
+	var cloth: String = info.get("cloth", "dacron")
+	m.set_shader_parameter("sk_detail", BakedLivery.detail(cloth))
+	m.set_shader_parameter("sk_detail_tile", DETAIL_TILE)
+	m.set_shader_parameter("sk_detail_amount", DETAIL_AMOUNT.get(cloth, 1.0) if BakedLivery.detail(cloth) else 0.0)
+	m.set_shader_parameter("sl_layer_n", sp.rows * sp.cols)
+	m.set_shader_parameter("livery_text", text.texture)
+	m.set_shader_parameter("sn_color", _lin(lv.sail_for(sp.type)["number"]))
+	var lay := baked_sail_rows(info, lv, text)
+	m.set_shader_parameter("sn_rows", lay["rows"])
+	m.set_shader_parameter("sn_axis", lay["axis"])
+	m.set_shader_parameter("sn_up", lay["up"])
+	m.set_shader_parameter("sn_tack", lay["tack"])
+	m.set_shader_parameter("sn_box", lay["box"])
+	m.set_shader_parameter("sn_tex", lay["tex"])
+	m.set_meta("livery_layout", lay)
+	return m
+
+
+## The boat's nation and number rows in the slots of a baked sail's layout (sail_visuals.md §11.2): per side the
+## present rows top down, each centred in its slot at the slot's height, shrunk to the slot's width when wider.
+## Boxes 0, 1 port, 2, 3 starboard. Also "h", "slots" (the layout's rows) and "baked".
+static func baked_sail_rows(info: Dictionary, lv: Livery, text: LiveryText) -> Dictionary:
+	var tx: Dictionary = info.get("text", {})
+	var ax: Array = tx.get("axis", [1.0, 0.0])
+	var up: Array = tx.get("up", [0.0, 1.0])
+	var tk: Array = tx.get("tack", [0.0, 0.0])
+	var box := PackedVector4Array()
+	var tex := PackedVector4Array()
+	box.resize(4)
+	tex.resize(4)
+	var n := 0
+	for row in tx.get("rows", []):
+		var kind: String = row.get("kind", "")
+		var tr := LiveryText.Row.NUMBER if kind == "number" else LiveryText.Row.NATION
+		if kind == "insignia" or (kind == "nation" and lv.nation == "") or n >= 2:
+			continue
+		var asp := text.aspect(tr, true)
+		for side in 2:
+			var b: Array = row["port" if side == 0 else "stbd"]
+			var hh: float = b[3]
+			var hw := hh * asp
+			if hw > float(b[2]):
+				hh *= float(b[2]) / hw
+				hw = b[2]
+			box[n + 2 * side] = Vector4(b[0], b[1], hw, hh)
+			tex[n + 2 * side] = text.rect(tr, true)
+		n += 1
+	return {"rows": n, "axis": Vector2(ax[0], ax[1]), "up": Vector2(up[0], up[1]), "tack": Vector2(tk[0], tk[1]),
+		"box": box, "tex": tex, "h": tx.get("h", 0.0), "slots": tx.get("rows", []), "baked": true}
 
 
 ## A copy of a boat slot material in another colour (sRGB), keeping its texture's detail.
@@ -418,19 +573,24 @@ static func hull_geometry(bv: BoatView) -> Dictionary:
 		c[16] = clampf(2.0 * c[15] - c[14], 0.0, 0.5)
 	var extras: Dictionary = bv.model.get_meta("extras", {}) if bv.model.has_meta("extras") else {}
 	var panels := {}
+	var panels_uv := {"stbd": {}, "port": {}}
+	var panels_d := {}
 	var vm := 3.0
 	var length := bv.info.loa if bv.info else 7.0
 	for pn in extras.get("livery_panels", []):
-		if pn.get("side", "") != "stbd":
-			continue
 		var u: Array = pn["uv1"]
 		var x: Array = pn["x"]
 		var d: Array = pn["below_sheer"]
+		panels_uv[pn.get("side", "stbd")][pn["id"]] = Vector4(u[0], u[1], u[2], u[3])
+		panels_d[pn["id"]] = Vector2(d[0], d[1])
+		if pn.get("side", "") != "stbd":
+			continue
 		panels[pn["id"]] = Vector4(u[0], d[0], u[2], d[1])
 		if pn["id"] == "number":
 			vm = (float(d[1]) - float(d[0])) / maxf(float(u[3]) - float(u[1]), 1e-4)
 			length = (float(x[1]) - float(x[0])) / maxf(float(u[2]) - float(u[0]), 1e-4)
-	var g := {"sheer": sheer, "boot": boot, "vm": vm, "len": length, "panels": panels}
+	var g := {"sheer": sheer, "boot": boot, "vm": vm, "len": length, "panels": panels, "panels_uv": panels_uv,
+		"panels_d": panels_d}
 	_geometry[key] = g
 	return g
 
@@ -483,6 +643,30 @@ static func texture_mean(t: Variant) -> float:
 				s += (c.r + c.g + c.b) / 3.0
 		mean = clampf(s / 256.0, 0.2, 1.0)
 	_tex_mean[rid] = mean
+	return mean
+
+
+## The mean of one channel (0 R, 1 G, 2 B) of a data texture, as stored (no colour conversion); 1 without one.
+static func channel_mean(t: Variant, ch: int) -> float:
+	if not (t is Texture2D):
+		return 1.0
+	var key := "%s/%d" % [(t as Texture2D).get_rid(), ch]
+	if _tex_mean.has(key):
+		return _tex_mean[key]
+	var img := (t as Texture2D).get_image()
+	var mean := 1.0
+	if img != null and not img.is_empty():
+		img = img.duplicate()
+		if img.is_compressed():
+			img.decompress()
+		img.convert(Image.FORMAT_RGBA8)
+		img.resize(16, 16, Image.INTERPOLATE_TRILINEAR)
+		var s := 0.0
+		for y in 16:
+			for x in 16:
+				s += img.get_pixel(x, y)[ch]
+		mean = clampf(s / 256.0, 0.05, 1.0)
+	_tex_mean[key] = mean
 	return mean
 
 

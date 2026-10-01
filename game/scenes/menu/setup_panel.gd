@@ -30,7 +30,8 @@ func build(race: bool, last: Dictionary) -> void:
 	_add(MenuRow.choice("Boat", "class_id", MenuData.ids(_classes), MenuData.names(_classes),
 		_pick(MenuData.ids(_classes), cls)))
 	var lv := MenuData.liveries(str(rows["class_id"].value))
-	_add(MenuRow.choice("Livery", "livery", MenuData.ids(lv), MenuData.names(lv),
+	# the player's boat: sail number and name (menus.md §1; every boat wears the class livery)
+	_add(MenuRow.choice("Sail number", "livery", MenuData.ids(lv), MenuData.names(lv),
 		_pick(MenuData.ids(lv), str(last.get("livery", g.livery)))))
 	_add(MenuRow.choice("Venue", "venue", MenuData.ids(_venues), MenuData.names(_venues),
 		_pick(MenuData.ids(_venues), ven)))
@@ -81,7 +82,7 @@ func _add(r: MenuRow) -> void:
 	add_child(r)
 
 
-## The livery list follows the class (menus.md §1).
+## The sail number list (the class's boats) follows the class (menus.md §1).
 func _refresh_liveries() -> void:
 	var lv := MenuData.liveries(str(rows["class_id"].value))
 	rows["livery"].set_choices(MenuData.ids(lv), MenuData.names(lv))

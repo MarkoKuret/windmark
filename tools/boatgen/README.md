@@ -389,7 +389,7 @@ Positions in the body frame.
 
 - Tiling detail textures and per-vertex AO only: no unique-UV (lightmap) set, so no AO or dirt texture maps;
   sail panels, tapes and film are not in the sailcloth texture (the previews draw seams procedurally); the
-  liveries are painted through uv1 by the game's shaders.
+  liveries are hand-owned textures on uv1 and the sails' flat plan (`tools/liverybake`, `data_format.md` §8.5).
 - No crew or sail numbers yet; headsail and kite sheets only on the posed previews (the engine draws them from
   `rig.sheet_leads`).
 - The flat spinnaker outline is a centreline projection; its flying shape comes from the simulation.

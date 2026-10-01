@@ -1,10 +1,11 @@
 class_name Livery
 extends RefCounted
-## One boat's livery (docs/specs/data_format.md §8): hull and deck colours, the hull graphic, the boat name and
-## sail number, and the sails by role. Loaded from data/liveries/<class>.liveries.json with `load_class`; a fleet
-## gets its liveries with `assign` (the §8 fleet rule, deterministic from the race seed).
+## One boat's look and identity (docs/specs/data_format.md §8): the class livery (hull and deck colours, the hull
+## graphic) and the class sail set, which every boat of the class shares, and the boat's own name, sail number and
+## nation. Loaded from data/liveries/<class>.liveries.json with `load_class` (one entry per boat of the file's
+## `boats`); a fleet gets its boats with `assign` (the §8.4 fleet rule, deterministic from the race seed).
 
-const SCHEMA := "windmark.liveries/1"
+const SCHEMA := "windmark.liveries/2"
 ## data_format.md §3.7 and §8: no channel above 231 (a linear albedo of 0.8)
 const MAX_CHANNEL := 231
 const GRAPHICS := ["none", "stripes", "two_tone", "swoosh", "gradient", "bow"]
@@ -12,6 +13,7 @@ const DESIGNS := ["plain", "bands", "head", "panels", "diagonal", "gores"]
 const CLOTHS := ["dacron", "laminate", "nylon"]
 const ROLES := ["main", "headsail", "code_zero", "spinnaker"]
 
+## the boat's id in the file's `boats`, and what the menus show ("7  Kestrel")
 var id := ""
 var name := ""
 var boat_name := ""
@@ -20,6 +22,8 @@ var nation := ""
 ## the class insignia text (from the file's top level)
 var insignia := ""
 var class_id := ""
+## the livery worn (its id names the texture folder, data_format.md §8.5)
+var look_id := ""
 ## hull: topsides, boot_stripe, antifouling, keel, text (Color, sRGB)
 var hull := {}
 ## hull graphic: {"type": String, "colors": Array[Color], other keys as given}
@@ -46,7 +50,7 @@ func sail_for(sail_type: String) -> Dictionary:
 ## A copy with another boat name and sail number (a repeat in a large fleet, §8).
 func repeat(n: int) -> Livery:
 	var l := Livery.new()
-	for k in ["id", "name", "nation", "insignia", "class_id"]:
+	for k in ["id", "name", "nation", "insignia", "class_id", "look_id"]:
 		l.set(k, get(k))
 	l.hull = hull
 	l.graphic = graphic
@@ -71,8 +75,8 @@ static func roman(n: int) -> String:
 static var _cache := {}
 
 
-## The liveries of a class in file order (the first is the class default); empty with an error pushed when the file
-## is missing or invalid.
+## The boats of a class in file order (the first is the class default), each in the class livery and sail set;
+## empty with an error pushed when the file is missing or invalid.
 static func load_class(class_id: String) -> Array[Livery]:
 	if _cache.has(class_id):
 		return _cache[class_id]
@@ -92,7 +96,8 @@ static func load_class(class_id: String) -> Array[Livery]:
 	return out
 
 
-## Validates and parses a livery file (data_format.md §8); problems go to `errors` as "<json path>: <reason>".
+## Validates and parses a livery file (data_format.md §8): one Livery per entry of `boats`, each in the class
+## livery (`liveries[0]`) and the class sail set. Problems go to `errors` as "<json path>: <reason>".
 static func parse(d: Dictionary, class_id: String, errors: Array) -> Array[Livery]:
 	var out: Array[Livery] = []
 	if d.get("schema", "") != SCHEMA:
@@ -103,15 +108,16 @@ static func parse(d: Dictionary, class_id: String, errors: Array) -> Array[Liver
 	var ins: String = str(d.get("insignia", {}).get("text", "")) if d.get("insignia") is Dictionary else ""
 	if not RegEx.create_from_string("^[A-Z0-9]{1,4}$").search(ins):
 		errors.append("insignia.text: 1 to 4 capital letters and digits")
-	var list: Variant = d.get("liveries")
-	if not (list is Array) or (list as Array).size() < 12:
-		errors.append("liveries: at least 12")
-		return out
-	var ids := {}
-	var numbers := {}
 	var re_id := RegEx.create_from_string("^[a-z0-9_]+$")
 	var re_name := RegEx.create_from_string("^[A-Za-z0-9 '\\-.]{1,20}$")
 	var re_nat := RegEx.create_from_string("^[A-Z]{3}$")
+	# the class livery (data_format.md §8.1): every boat wears the first; the others are checked and kept for later
+	var list: Variant = d.get("liveries")
+	if not (list is Array) or (list as Array).is_empty():
+		errors.append("liveries: at least 1")
+		return out
+	var looks := []
+	var look_ids := {}
 	for i in (list as Array).size():
 		var e: Variant = list[i]
 		var at := "liveries[%d]" % i
@@ -119,26 +125,12 @@ static func parse(d: Dictionary, class_id: String, errors: Array) -> Array[Liver
 			errors.append(at + ": not an object")
 			continue
 		var l := Livery.new()
-		l.class_id = str(d.get("class", class_id))
-		l.insignia = ins
-		l.id = str(e.get("id", ""))
-		if not re_id.search(l.id) or ids.has(l.id):
+		l.look_id = str(e.get("id", ""))
+		if not re_id.search(l.look_id) or look_ids.has(l.look_id):
 			errors.append(at + ".id: missing, not [a-z0-9_] or not unique")
-		ids[l.id] = true
-		l.name = str(e.get("name", ""))
-		if l.name == "":
+		look_ids[l.look_id] = true
+		if str(e.get("name", "")) == "":
 			errors.append(at + ".name: missing")
-		l.boat_name = str(e.get("boat_name", ""))
-		if not re_name.search(l.boat_name):
-			errors.append(at + ".boat_name: 1 to 20 of A-Z a-z 0-9 space ' - .")
-		l.sail_number = str(e.get("sail_number", ""))
-		var n := l.sail_number.to_int()
-		if not l.sail_number.is_valid_int() or n < 1 or n > 999 or str(n) != l.sail_number or numbers.has(n):
-			errors.append(at + ".sail_number: \"1\" to \"999\", unique")
-		numbers[n] = true
-		l.nation = str(e.get("nation", ""))
-		if l.nation != "" and not re_nat.search(l.nation):
-			errors.append(at + ".nation: 3 capital letters")
 		var h: Dictionary = e.get("hull", {}) if e.get("hull") is Dictionary else {}
 		l.hull["topsides"] = _color(h, "topsides", "", at + ".hull", errors)
 		l.hull["boot_stripe"] = _color(h, "boot_stripe", "#e0e0dc", at + ".hull", errors)
@@ -154,10 +146,53 @@ static func parse(d: Dictionary, class_id: String, errors: Array) -> Array[Liver
 		var dk: Dictionary = e.get("deck", {}) if e.get("deck") is Dictionary else {}
 		l.deck["gelcoat"] = _color(dk, "gelcoat", "#e2e2dc", at + ".deck", errors)
 		l.deck["nonslip"] = _color(dk, "nonslip", "#a8a8a0", at + ".deck", errors)
-		var ss: Dictionary = e.get("sails", {}) if e.get("sails") is Dictionary else {}
-		for role in ROLES:
-			var s: Dictionary = ss.get(role, {}) if ss.get(role) is Dictionary else {}
-			l.sails[role] = _sail(s, at + ".sails." + role, errors)
+		looks.append(l)
+	# the class sail set (§8.3)
+	var sail_set := {}
+	var ss: Dictionary = d.get("sails", {}) if d.get("sails") is Dictionary else {}
+	for role in ROLES:
+		var s: Dictionary = ss.get(role, {}) if ss.get(role) is Dictionary else {}
+		sail_set[role] = _sail(s, "sails." + role, errors)
+	# the boats (§8.4)
+	var boats: Variant = d.get("boats")
+	if not (boats is Array) or (boats as Array).size() < 12:
+		errors.append("boats: at least 12")
+		return out
+	if looks.is_empty():
+		return out
+	var look: Livery = looks[0]
+	var ids := {}
+	var numbers := {}
+	for i in (boats as Array).size():
+		var e: Variant = boats[i]
+		var at := "boats[%d]" % i
+		if not (e is Dictionary):
+			errors.append(at + ": not an object")
+			continue
+		var l := Livery.new()
+		l.class_id = str(d.get("class", class_id))
+		l.insignia = ins
+		l.look_id = look.look_id
+		l.hull = look.hull
+		l.graphic = look.graphic
+		l.deck = look.deck
+		l.sails = sail_set
+		l.id = str(e.get("id", ""))
+		if not re_id.search(l.id) or ids.has(l.id):
+			errors.append(at + ".id: missing, not [a-z0-9_] or not unique")
+		ids[l.id] = true
+		l.boat_name = str(e.get("boat_name", ""))
+		if not re_name.search(l.boat_name):
+			errors.append(at + ".boat_name: 1 to 20 of A-Z a-z 0-9 space ' - .")
+		l.sail_number = str(e.get("sail_number", ""))
+		var n := l.sail_number.to_int()
+		if not l.sail_number.is_valid_int() or n < 1 or n > 999 or str(n) != l.sail_number or numbers.has(n):
+			errors.append(at + ".sail_number: \"1\" to \"999\", unique")
+		numbers[n] = true
+		l.nation = str(e.get("nation", ""))
+		if l.nation != "" and not re_nat.search(l.nation):
+			errors.append(at + ".nation: 3 capital letters")
+		l.name = "%s  %s" % [l.sail_number, l.boat_name]
 		out.append(l)
 	return out
 
@@ -217,9 +252,9 @@ static func seeded_order(list: Array, seed_value: int) -> Array:
 	return keys.map(func(k: Array) -> int: return k[1])
 
 
-## The fleet rule (data_format.md §8): one livery per entry. `entries`: per boat {"human": bool, "choice": id or
-## ""}; `list`: the class's liveries. Repeats in fleets larger than the list carry a numbered name and a sail
-## number of 1000 * repeat + number.
+## The fleet rule (data_format.md §8.4): one boat identity per entry, all in the class livery. `entries`: per boat
+## {"human": bool, "choice": boat id or ""}; `list`: the class's boats (load_class). Repeats in fleets larger than
+## the list carry a numbered name and a sail number of 1000 * repeat + number.
 static func assign(list: Array, entries: Array, seed_value: int) -> Array[Livery]:
 	var out: Array[Livery] = []
 	out.resize(entries.size())

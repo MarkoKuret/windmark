@@ -7,7 +7,8 @@ extends RefCounted
 var mode := "free"
 ## class id of the player's boat and of the AI boats (data/classes/<id>.boat.json)
 var class_id := "wm7"
-## the player's livery (data/liveries/<class>.liveries.json id); "": the class default
+## the player's boat (a `boats` id of data/liveries/<class>.liveries.json: sail number and name, the menus' Sail
+## number row); "": the first boat of the file
 var livery := ""
 ## venue id (data/venues/<id>.venue.json)
 var venue := "example_bay"

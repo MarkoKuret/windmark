@@ -1,5 +1,5 @@
 #!/bin/sh
-# Generates the example boats (and the boatgen test fixtures) with tools/boatgen into game/generated/boats (gitignored build output), imports
+# Generates the example boats (and the boatgen test fixtures) with tools/boatgen into game/generated/boats (gitignored build output), stages the baked livery textures, imports
 # them headless and runs tests/boat_import_test.gd, tests/boat_materials_test.gd and tests/livery_test.gd. Fails on any import error or warning, script error or
 # failed check. Options: --no-gen reuses the GLBs already staged.
 set -eu
@@ -18,6 +18,9 @@ if [ "${1:-}" != "--no-gen" ]; then
     for f in "$fixtures"/*.boat.json; do args="$args $f"; done
     (cd "$repo/tools/boatgen" && python3 -m boatgen $args --out "$out" --no-previews --quiet)
 fi
+
+# the baked livery textures (data/liveries/<class>/), staged for import (tools/liverybake, game/README.md "Liveries")
+(cd "$repo/tools/liverybake" && python3 -m liverybake --stage-only --quiet)
 
 log="$here/generated/import.log"
 sh "$here/native/register.sh"  # a built GDExtension loads at start-up (native/build.sh)

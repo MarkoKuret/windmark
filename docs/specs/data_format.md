@@ -546,31 +546,44 @@ Every field of §6.2–§6.4 sits on a grid `{ "x0", "y0", "dx", "dy", "nx", "ny
 - Minor schema additions (new optional keys) keep the major version; anything that changes the meaning of an
   existing key bumps it.
 
-## 8. Livery file (`windmark.liveries/1`)
+## 8. Liveries (`windmark.liveries/2`) and livery textures
 
-How the boats of a class look on the water: hull and deck colours, a hull graphic, the boat's name and sail number
-on the topsides, sail cloth and colours, and the sail numbers and class insignia on the sails. One file per class,
-`data/liveries/<class>.liveries.json`, written by hand (designers). **Presentation only**: the core, the VPP and the
-boat generator never read it, and it changes no model (the front end paints the generated boat at load,
-`game/README.md` "Liveries"). The general rules of §1 hold; colours are `"#rrggbb"` sRGB strings.
+How the boats of a class look on the water. **Presentation only**: the core, the VPP and the boat generator never
+read any of it, and it changes no model (the front end paints the generated boat at load, `game/README.md`
+"Liveries"). Two parts:
 
-Top level: `"schema": "windmark.liveries/1"`, `"class"` (the class id), `"insignia"` and `"liveries"` (at least 12;
-the first is the class default).
+- the **livery file** `data/liveries/<class>.liveries.json`, written by hand: the class livery (hull and deck
+  colours, a hull graphic), the class sail set (cloth, colours, panel design, number colour), the class insignia and
+  the boat identities (name, sail number, nation) the fleet draws from. It is the source data of the textures and
+  of the procedural fallback;
+- the **livery textures** in `data/liveries/<class>/`: PNG images baked once from the file by `tools/liverybake`
+  and owned by hand from then on (§8.6), so they can be painted in any paint program.
+
+What is shared and what differs per boat:
+
+| what | where | shared by |
+| --- | --- | --- |
+| hull albedo, normal and ORM maps (topsides, graphic, boot stripe, antifouling, waterline, wear), keel albedo, optional deck colour | `<class>/<livery id>/` (§8.5) | every boat wearing the livery: today the whole fleet |
+| per sail: port and starboard albedo, normal and ORM maps (cloth, panels, seams, tapes, patches, battens, tell-tales, the class insignia) | `<class>/sails/` (§8.5) | every boat of the class |
+| the boat name and sail number on the topsides; the nation letters and sail number on the sails | drawn by the front end over the shared textures from the boat's identity (§8.4), one small text texture per boat | one boat |
+
+The general rules of §1 hold; colours are `"#rrggbb"` sRGB strings. Top level:
 
 | key | | meaning |
 | --- | --- | --- |
+| `schema` | **R** | `"windmark.liveries/2"` |
+| `class` | **R** | the class id |
 | `insignia` | **R** | the class insignia on the main: `{ "text": "W7" }` (1 to 4 capital letters and digits, drawn bold italic over a wave mark) |
-| `liveries[]` | **R** | the liveries below |
+| `sails` | | the class sail set by role (§8.3): every boat of the class carries the same sails |
+| `liveries[]` | **R** | at least one livery (§8.1). Every boat wears the first, the class livery; further entries are kept for later (team liveries) and are not assigned yet |
+| `boats[]` | **R** | at least 12 boat identities (§8.4) |
 
-A livery:
+### 8.1 Livery
 
 | key | | default | meaning |
 | --- | --- | --- | --- |
-| `id` | **R** | | `[a-z0-9_]`, unique in the file |
-| `name` | **R** | | shown in the menus |
-| `boat_name` | **R** | | the boat's name on the topsides aft: 1 to 20 characters of `A-Z a-z 0-9`, space, `'`, `-`, `.` |
-| `sail_number` | **R** | | `"1"` to `"999"`, unique in the file; on the topsides forward and on the sails |
-| `nation` | | none | 3 capital letters above the sail number on the sails |
+| `id` | **R** | | `[a-z0-9_]`, unique in the file; names the texture folder |
+| `name` | **R** | | the livery's name |
 | `hull.topsides` | **R** | | topsides colour |
 | `hull.boot_stripe` | | `#e0e0dc` | boot stripe |
 | `hull.antifouling` | | `#1a1d24` | the bottom below the boot stripe |
@@ -579,12 +592,14 @@ A livery:
 | `hull.graphic` | | none | one hull graphic (below) |
 | `deck.gelcoat` | | `#e2e2dc` | cabin, coamings, cockpit sides |
 | `deck.nonslip` | | `#a8a8a0` | the non-slip areas |
-| `sails.main`, `sails.headsail`, `sails.code_zero`, `sails.spinnaker` | | below | sail by role: `headsail` is every jib and genoa, `spinnaker` both spinnaker types |
 
 **Colours.** Every hull, deck and sail colour has each channel at most `#e7` (231, a linear albedo of 0.8), the
-look rule of §3.7: a file with a brighter colour is a load error. White is `#e7e7e3` or below.
+look rule of §3.7: a file with a brighter colour is a load error. White is `#e7e7e3` or below. The same cap holds
+for the albedo textures (the game clamps them to it).
 
-**Hull graphic** `{ "type", "colors": [...], ... }` (where it crosses the name or number panels, its colours
+### 8.2 Hull graphic
+
+`{ "type", "colors": [...], ... }` (where it crosses the name or number panels, its colours
 should differ from `hull.text`), in topsides coordinates: `x` the fraction of the hull length
 from the stern (0) to the bow (1), and the depth below the sheer either in metres or as the fraction `t` of the
 topsides height at that `x` (0 at the sheer, 1 at the top of the boot stripe). The same graphic shows on both sides.
@@ -598,7 +613,10 @@ topsides height at that `x` (0 at the sheer, 1 at the top of the boot stripe). T
 | `gradient` | `from` (0.25), `to` (0.85), `slant` (0.12) | the topsides blend from their colour aft to `colors[0]` forward between `x = from` and `to`, the blend line leaning aft by `slant` (of the hull length) from the boot stripe up to the sheer |
 | `bow` | `at` (0.78), `slant` (0.10), `line` (0.03 m) | the bow forward of a line from `x = at` at the sheer to `at - slant` at the boot stripe in `colors[0]`, with a line in `colors[1]` along its edge |
 
-**Sails** by role: `{ "cloth", "color", "fibre", "number", "design", "colors": [...], ... }`, all optional:
+### 8.3 Sails
+
+The class sail set, `sails.main`, `sails.headsail` (every jib and genoa), `sails.code_zero`, `sails.spinnaker` (both
+spinnaker types), each `{ "cloth", "color", "fibre", "number", "design", "colors": [...], ... }`, all optional:
 
 | key | default | meaning |
 | --- | --- | --- |
@@ -617,19 +635,76 @@ topsides height at that `x` (0 at the sheer, 1 at the top of the boot stripe). T
 | `diagonal` | `luff` (0.25), `leech` (0.75), `band` (0.25 m) | `colors[0]` above the line from the luff at height `luff` to the leech at height `leech`, a band of `colors[1]` along the line |
 | `gores` | `count` (9) | gores radiating from the head, alternating `color`, `colors[0]`, `colors[1]` |
 
-**Numbers and insignia** (racing rules Appendix G): see `sail_visuals.md` §11.2 for where they go. The topsides
-show the boat name aft and the sail number forward (the livery panels of the generated hull).
+**Numbers and insignia** (racing rules Appendix G): see `sail_visuals.md` §11.2 for where they go. The insignia
+is part of the baked main; the nation letters and the sail number are per boat. The topsides show the boat name aft
+and the sail number forward (the livery panels of the generated hull).
 
-**Fleet assignment.** A race gives each boat a livery of its class, the same on every machine from the race seed:
+### 8.4 Boats and the fleet rule
 
-1. Order the class's liveries by `fnv1a32("<seed>:<id>")` (32-bit FNV-1a of the UTF-8 text, the seed in decimal),
+The boat identities, the only thing that differs from boat to boat:
+
+| key | | default | meaning |
+| --- | --- | --- | --- |
+| `id` | **R** | | `[a-z0-9_]`, unique in the file |
+| `boat_name` | **R** | | the boat's name on the topsides aft: 1 to 20 characters of `A-Z a-z 0-9`, space, `'`, `-`, `.` |
+| `sail_number` | **R** | | `"1"` to `"999"`, unique in the file; on the topsides forward and on the sails |
+| `nation` | | none | 3 capital letters above the sail number on the sails |
+
+**Fleet assignment.** Every boat of a race wears the class livery (`liveries[0]`) and the class sail set, and gets
+one identity of its class, the same on every machine from the race seed:
+
+1. Order the class's boats by `fnv1a32("<seed>:<id>")` (32-bit FNV-1a of the UTF-8 text, the seed in decimal),
    ascending, ties in file order. This is the seeded order.
-2. Human entries in entry order take their chosen livery (the menu's choice, else the class default); one already
-   taken by an earlier entry gives the first free livery of the seeded order instead.
-3. AI entries in entry order take the free liveries in the seeded order. When none is left, the order starts again
-   from its beginning as repeat 1, then 2, and so on: a repeat keeps the livery's look, its boat name gets
-   `" II"`, `" III"`, ... (repeat + 1 in Roman numerals) and its sail number becomes `1000 · repeat + number`, so
-   sail numbers stay unique in the fleet.
+2. Human entries in entry order take their chosen boat (the menu's Sail number row, else the first boat of the
+   file); one already taken by an earlier entry gives the first free boat of the seeded order instead.
+3. AI entries in entry order take the free boats in the seeded order. When none is left, the order starts again
+   from its beginning as repeat 1, then 2, and so on: a repeat's boat name gets `" II"`, `" III"`, ... (repeat + 1
+   in Roman numerals) and its sail number becomes `1000 · repeat + number`, so sail numbers stay unique in the fleet.
 
 Offline the seed is the world seed (`GameSetup.seed`, `--seed`). Online the server sends the seed and each
 player's choice, and every client runs the same rule.
+
+### 8.5 Livery textures
+
+8-bit RGB PNG images without alpha, in two folders per class. Albedo maps are sRGB; normal and ORM maps are linear
+data. Normal maps are tangent-space in the image's own axes, OpenGL convention (red toward the image's right, green
+toward its top); the game builds the tangent frame per pixel from the screen-space derivatives of the texture
+coordinates, so no mesh needs tangents for them. ORM maps hold occlusion in red (1: none) and roughness in green;
+blue is metallic on the hull and the share of sunlight let through the cloth on a sail (0: opaque). Each folder has
+a `layout.json` with the mappings the game needs, written with the images.
+
+**Hull folder** `data/liveries/<class>/<livery id>/`:
+
+| file | size | content |
+| --- | --- | --- |
+| `hull_albedo.png` | 4096 × 2048 | the hull on the generator's uv1 atlas (`tools/boatgen/README.md` "Materials and UVs"): starboard band on top, port band below, the sheer at the top of each band, each side as seen from outside (bow to the right on starboard, to the left on port): topsides colour and graphic, boot stripe, antifouling, waterline and wear. The generator's name and number panels (`livery_panels`) stay clear: the game sets each boat's name and number there |
+| `hull_normal.png` | 4096 × 2048 | relief on the same atlas: vinyl edges, tape edges, fairing waviness, roller texture, scratches |
+| `hull_orm.png` | 4096 × 2048 | occlusion, roughness (polished gelcoat about 0.15, vinyl 0.25, antifouling 0.8), metallic 0 |
+| `keel_albedo.png` | 1024 on the longer side | the keel fin and bulb seen from starboard, bow to the right (from port the same image shows mirrored) |
+| `deck_albedo.png` | 2048 wide, optional | a deck colour override seen from above, bow to the right and port at the top; where present it replaces the gelcoat and non-slip colours of the deck (vertical faces take the colour of their footprint). Written only on request (`--deck`) |
+| `layout.json` | | `keel` and `deck` (when present): `rect` = `[forward_min, top, length, height]` of the image in the model frame of the GLB (forward = +Z, up = +Y and port = +X of `tools/boatgen/README.md` "Frames and units"; `top` is the up or port coordinate of the image's top edge) |
+
+**Sails folder** `data/liveries/<class>/sails/`, per class sail `<id>` (`sails[].id` of the class file):
+
+| file | size | content |
+| --- | --- | --- |
+| `<id>_port_albedo.png` | 2048 on the longer side, square texels | the sail seen from port in its flat cloth plan: luff up the left edge, head at the top, as `sail_visuals.md` §11.2 lists |
+| `<id>_stbd_albedo.png` | the same | seen from starboard (luff on the right): the same cloth, the starboard insignia and tell-tales |
+| `<id>_normal.png` | the same | relief in the port view (seams, tapes, patches, battens, creases, wrinkles), for both sides |
+| `<id>_orm.png` | the same | occlusion, roughness, light through the cloth, in the port view, for both sides |
+| `layout.json` | | per sail: `cloth`, `shear` (`[cos θ, sin θ]` of `sail_visuals.md` §11.1), `rect` = `[x_min, y_max, width, height]` of the images in the flat plan (m), `size`, and `text`: the text frame (`axis`, `up`, `tack` in the plan) and per row (`insignia`, `nation`, `number`) the box of each side, `[centre along, centre up, half width, half height]` in metres from the tack, with the character height `h` |
+
+The flat plan point of uv0 `(a, l)` is `p = (a·sin θ, l + a·cos θ)`; it maps to the port image at
+`((p.x − x_min) / width, (y_max − p.y) / height)` and to the starboard image with the first coordinate mirrored.
+
+The game imports the images compressed with mipmaps (albedo in the high-quality format, BPTC or ASTC; ORM in
+S3TC or ETC2; normal maps as two-channel RGTC or the equivalent).
+
+### 8.6 Who owns the textures
+
+The livery textures and their `layout.json` are **hand-owned assets, not generated tables**: the generator only
+makes the starting images, and the files are then edited by hand and committed. `tools/liverybake` writes a folder
+only when it does not exist (or is empty); `--force` rewrites every folder it is asked to bake and `--only <part>`
+(`hull`, `keel`, `deck`, `sails` or a sail id) rewrites just those files. No other tool writes there. A changed
+class file does not rebake them: the hull follows uv1 and the sails keep their `rect` in metres, so after a hull or
+sail plan change the owner decides whether to repaint or rebake (`--only`).

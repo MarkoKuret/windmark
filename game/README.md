@@ -18,7 +18,7 @@ controls, the cameras, the minimal HUD, the audio and a sail test scene that put
 | `scripts/controls/` | Input map defaults, device reader, `PlayerControls` (boat commands), sail key mapping, the input frame |
 | `scripts/cameras/` | `CameraRig` and the chase, onboard, aerial and free cameras, shake, onboard eye point |
 | `scripts/hud/` | `Hud`, `HudValues`, formats, bars and trim gauges; the race HUD: `RaceHudValues`, `RaceText` (rule texts, flags, signals), `RadarView`, `FlagsView`, `RoundingArrowView`, `PenaltyRingView` |
-| `scripts/livery/` | The liveries (`docs/specs/data_format.md` §8): `Livery` (the class livery files and the fleet rule), `LiveryText` (the per-boat text texture), `BoatLivery` (paints a `BoatView`) |
+| `scripts/livery/` | The liveries (`docs/specs/data_format.md` §8): `Livery` (the class livery files and the fleet rule), `LiveryText` (the per-boat text texture), `BakedLivery` (the staged livery textures of a class), `BoatLivery` (paints a `BoatView`) |
 | `scripts/audio/` | The audio (`docs/specs/audio.md`): `GameAudio` (the node that plays the race), `SoundMap` (the sound map and its files), `SoundFormula` (terms, gates, triggers), `BoatSoundInputs` (the formula inputs of a boat), `AudioBuses` (the buses, ducking and wind pan), `SoundSynth` (the synthesised fallback) |
 | `audio/default/` | The default sound set: Ogg Vorbis files written by `tools/soundgen` (our own synthesis), with their `.import` files |
 | `data/sound_map.json` | The sound map (`audio.md` §9): the only place that names sound files |
@@ -460,48 +460,79 @@ sound on FakeSim and in a race on the core (the warning signal's horns, the flee
 
 ## Liveries
 
-Every boat on the water wears a livery of its class (`data/liveries/<class>.liveries.json`,
-`docs/specs/data_format.md` §8): hull colours, a hull graphic, the boat name and sail number on the topsides, the
-deck colours, the sail cloth and colours, and the sail numbers and class insignia (`docs/specs/sail_visuals.md`
-§11.2). The sail scene gives the player's boat the chosen livery (`GameSetup.livery`, the Livery row of the Quick
-race and Free sail menus, or `--livery=<id>`) and the AI boats theirs by the fleet rule from the world seed
-(`Livery.assign`).
+Every boat of a class wears the class livery and carries the class sail set; only its name, sail number and nation
+letters differ (`data/liveries/<class>.liveries.json`, `docs/specs/data_format.md` §8). The look comes from baked,
+hand-owned textures in `data/liveries/<class>/` (§8.5): the hull, keel and optional deck of the livery, and one sail
+set per class with the insignia. The sail scene gives the player's boat the chosen sail number (`GameSetup.livery`,
+a boat id: the Sail number row of the Quick race and Free sail menus, or `--livery=<id>`) and the AI boats theirs by
+the fleet rule from the world seed (`Livery.assign`).
+
+**Textures in the game.** The game loads imported copies: `tools/liverybake` stages `data/liveries/<class>/` into
+`generated/liveries/<class>/` (git-ignored) with import settings (albedo BPTC/ASTC, normal maps RGTC, ORM S3TC/ETC2,
+mipmaps) and writes the shared cloth detail tiles (`generated/liveries/_cloth/`). After editing a PNG:
+
+```
+cd tools/liverybake && python3 -m liverybake --stage-only   # copies the changed files
+godot --headless --path game --import                       # or let the editor reimport on focus
+```
+
+Godot reimports only the files whose content changed (it compares their hashes). `run_boat_import_test.sh` and
+`run_livery_test.sh` stage and import before testing. How to paint the images, their layout and colour spaces:
+`tools/liverybake/README.md`.
 
 `BoatView.set_livery(livery)` (`BoatLivery.apply`) paints the boat at load without touching the generated meshes:
 
-- **Per boat**: a copy of the shared boat material for each painted slot, set as a surface override on the boat's
-  own MeshInstance3Ds: the topsides (the gelcoat slot of `hull`, with the livery path of
-  `shaders/hull_livery.gdshaderinc` on), boot stripe, antifouling, keel (and an antifouling rudder), deck gelcoat
-  and non-slip; and a copy of each sail's cloth material with the uniforms of `shaders/sail_livery.gdshaderinc`.
-  All copies stay on `boat.gdshader` and `sail.gdshader`, so no shader variant is added, and draw calls are
-  unchanged (every surface of every boat is its own draw anyway).
-- **One texture per boat**: `LiveryText` sets the boat name, sail number, nation letters and insignia in Barlow
-  Semi Condensed Bold on the CPU from the font's glyph cache (works headless) into a 1024 x 512 single-channel
-  coverage image (about 0.7 MB with mipmaps); the shaders place it in the generator's livery panels on the hull
-  (uv1) and in the sail's flat plan, and sharpen the glyph edges over the pixel footprint.
-- **Per class, once**: the sheer and boot stripe curves of the topsides from the imported hull's uv1, and the
-  livery panels from the GLB root extras.
-- Cost: about 3 to 4 ms per boat at load (headless M-series Mac); per frame, a few uniform branches and at most
-  eight text samples on topsides and sail pixels.
+- **Baked path** (the class's textures staged, `BakedLivery`): per boat, materials on `shaders/boat_baked.gdshader`
+  for the hull's topsides, boot stripe and antifouling (the uv1 atlas: albedo, normal and ORM, the slot's tiling
+  detail on top), the keel (side view) and the deck (top view, only with a `deck_albedo.png`), and on
+  `shaders/sail_baked.gdshader` for each baked sail (the layer's albedo, ORM, normal map with the cloth detail, the
+  tangent frame from screen-space derivatives). No procedural livery or cloth runs. The images are loaded once per
+  class and shared by every boat; per boat only uniforms: the name and number boxes in the hull's livery panels and
+  the nation and number in the sails' layout slots, read from the boat's text texture (one sample on the hull, one
+  per side on a sail). A faint dirt line follows the edge of the per-boat vinyl and stuck-on numbers.
+- **Procedural fallback** (no baked textures, or `BakedLivery.enabled = false`): a copy of the shared boat material
+  for each painted slot on `boat.gdshader` with the livery path of `shaders/hull_livery.gdshaderinc` on the
+  topsides, and a copy of each sail's material on `sail.gdshader` with the cloth of `sail_cloth.gdshaderinc` and
+  `sail_livery.gdshaderinc`, as before the baked liveries. Kept for a class without textures and as the GPU-cost
+  reference.
+- **One text texture per boat** either way: `LiveryText` sets the boat name, sail number, nation letters (and the
+  insignia, used by the fallback) in Barlow Semi Condensed Bold on the CPU into a 1024 x 512 single-channel image
+  (about 0.7 MB with mipmaps).
+- Draw calls are unchanged (every surface of every boat is its own draw anyway); the baked path adds two shaders.
+
+**Cost** (WM-081). Load, headless M1: the first boat of a class loads the class's images (about 20 to 30 ms), every
+further boat 1.4 to 1.8 ms (procedural: 2.0 to 2.5 ms per boat; the text texture is most of either). On a GPU the
+first boat also uploads the images. Video memory, shared by the fleet: wm7 about 55 MB, wm12 about 63 MB (hull set
+28 MB, keel 1.2 MB, sails 25 to 33 MB), plus 0.7 MB per boat. Per pixel (`tests/livery_cost.py`, the offline
+programs on the M1's GPU, visible pixels shaded once): baked sails cost 0.42 to 0.71 of the procedural cloth, the
+baked topsides 1.05 to 1.13 of the procedural livery (three more texture reads for the relief and gloss).
 
 ```
 game/tests/run_livery_test.sh   # also run by run_boat_import_test.sh
 ```
 
-`tests/livery_test.gd` checks the livery files (at least 12 per class, distinct looks, the 0.8 linear albedo
-rule, bad files refused), the fleet rule (distinct, deterministic from the seed, the player's choice kept, repeats
-with unique names and sail numbers in a 40-boat fleet), the shaders, and a painted fleet of both classes (the
-overrides, the text texture, the sheer curves, the shared meshes untouched, the sail number stacks placed with the
-starboard stack uppermost and within the rules' arc on the main) with the cost per boat.
+`tests/livery_test.gd` checks the livery files (the class livery, at least 12 boats, unique ids and sail numbers,
+the 0.8 linear albedo rule, bad files refused), the fleet rule (distinct, deterministic from the seed, the player's
+choice kept, repeats with unique names and sail numbers in a 40-boat fleet), the shaders (the baked ones free of
+the procedural includes), the baked files (in `data/liveries`, the sizes, every class sail, staged and imported),
+and a painted fleet of both classes on each path: baked (the hull images shared and the name and number per boat,
+the panels on both sides, the keel's side view holding the keel, every sail baked with its layer split, the boat's
+rows in the layout's slots with the starboard stack uppermost, the insignia baked on the main) and procedural (the
+livery path, the sheer curves, the number stacks), with the load cost per boat. `run_livery_test.sh` also checks the
+ownership rule: a plain bake leaves the committed textures byte for byte.
 
 The previews (no window): `tests/livery_preview_dump.gd` sails fleets and single boats on the core, paints them
-and dumps them to `generated/livery_preview/`, and `tests/livery_preview.py` renders them with the same shader
-includes (`--publish` writes `tests/previews/livery_*.jpg`): start lines of both classes, fleets under spinnaker,
-hull sides with name and number, mains from each side and against the sun.
+and dumps them to `generated/livery_preview/` (`-- procedural`: the fallback, to `generated/livery_preview_procedural/`),
+and `tests/livery_preview.py` renders them with the same shader includes and images (`--publish` writes
+`tests/previews/livery_*.jpg` and `livery_contact.png`): start lines of both classes, fleets under spinnaker, hull
+sides with name and number, the bow at the waterline, stern quarters, the keel out of the water, mains from each
+side, close and against the sun, a laminate jib and a kite. `tests/livery_cost.py` times both paths.
 
 ```
 godot --headless --path game -s res://tests/livery_preview_dump.gd
 python3 game/tests/livery_preview.py --publish
+godot --headless --path game -s res://tests/livery_preview_dump.gd -- procedural main_wm7_close jib_wm12_laminate hull_wm7_stbd
+python3 game/tests/livery_cost.py
 ```
 
 ## Notes on the imported boats

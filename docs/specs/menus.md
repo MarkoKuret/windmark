@@ -8,15 +8,17 @@ of `controls.md` §6, `cameras.md` §3 and §6, `hud.md` §14, `water_render.md`
 
 The project's main scene. Items, top to bottom: **Quick race**, **Free sail**, **Settings**, **Quit**.
 
-- **Quick race**: class, livery, venue, course, fleet size, AI level, wind speed, wind direction, then **Start**.
-- **Free sail**: class, livery, venue, wind speed, wind direction, then **Start**.
+- **Quick race**: class, sail number, venue, course, fleet size, AI level, wind speed, wind direction, then
+  **Start**.
+- **Free sail**: class, sail number, venue, wind speed, wind direction, then **Start**.
 - Lists come from the data on disk: classes from `data/classes/*.boat.json` (name from the file), venues from
   `data/venues/*.venue.json`, courses from `game/data/courses/<venue>/*.course.json` that list the chosen class
   in their `classes` (a course without `classes` suits every class). A venue without a course for the class cannot
   start a quick race.
-- **Livery**: the player's boat's livery, from the class's livery file (`data_format.md` §8, names in file order,
-  the class default first); the list follows the class. The AI boats get the other liveries by the fleet rule of
-  `data_format.md` §8.
+- **Sail number**: the player's boat, from the boats of the class's livery file (`data_format.md` §8.4, in file
+  order, shown as sail number and name, for example `7  Kestrel`); the list follows the class. Every boat wears the
+  class livery and sails; the AI boats get the other sail numbers and names by the fleet rule of
+  `data_format.md` §8.4.
 - Ranges: fleet size 2 to 40 boats including the player (default 10); AI level Easy, Intermediate (default),
   Expert, Pro (`ai.md` §13); wind 4 to 25 kn (default 12) in 1 kn steps, from 0° to 355° in 5° steps (default
   0°, north).

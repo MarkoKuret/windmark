@@ -77,14 +77,29 @@ float wm_boat_shadow(vec3 P, float px, int row) {
 }
 
 
+// Sky colour seen in direction d (scene, unit), the horizon-to-zenith ramp of the sky uniforms: the reflected light a
+// shadow leaves on the water (the sea itself reflects Godot's sky, which this approximates)
+vec3 wm_shadow_sky(vec3 d) {
+	float h = clamp(d.y, 0.0, 1.0);
+	return mix(sky_horizon, sky_zenith, pow(h, 0.45));
+}
+
+
+// Schlick Fresnel of the water surface: F0 0.026 as the sea shader's specular 0.40 (water_render.md §4.2)
+float wm_shadow_schlick(float cos_t) {
+	float k = 1.0 - clamp(cos_t, 0.0, 1.0);
+	return 0.026 + 0.974 * k * k * k * k * k;
+}
+
+
 // The share of the water's light a real shadow keeps (§4.7): the sky reflection, the sky's diffuse light and the
 // light through the crests stay, the sun's diffuse share and its glitter (GGX on a level surface with a lobe as
 // wide as the wave and detail slopes) go. V: toward the camera, L: toward the sun (scene, unit).
 vec3 wm_shadow_keep(vec3 V, vec3 L) {
 	float nv = max(V.y, 0.02);
 	float nl = max(L.y, 0.0);
-	float fe = wm_schlick(nv);
-	vec3 refl = wm_sky_ramp(vec3(-V.x, V.y, -V.z)) * fe;
+	float fe = wm_shadow_schlick(nv);
+	vec3 refl = wm_shadow_sky(vec3(-V.x, V.y, -V.z)) * fe;
 	vec3 a_w = mix(col_deep, col_shallow, 0.2) * WM_SHADOW_ALBEDO_K;
 	vec3 amb = a_w * mix(sky_horizon, sky_zenith, 0.5) * (1.0 - fe);
 	vec3 e = 0.02 * col_sss;
@@ -96,7 +111,7 @@ vec3 wm_shadow_keep(vec3 V, vec3 L) {
 	float D = a2 / (WM_SHADOW_PI * dd * dd);
 	float kv = a * 0.5;
 	float vis = 0.25 / ((nl * (1.0 - kv) + kv) * (nv * (1.0 - kv) + kv));
-	float F = wm_schlick(max(dot(L, H), 0.0));
+	float F = wm_shadow_schlick(max(dot(L, H), 0.0));
 	vec3 sun = sun_color * nl * (a_w * (1.0 - F) + WM_SHADOW_GLINT_K * WM_SHADOW_PI * D * vis * F);
 	vec3 stay = refl + amb + e;
 	return stay / max(stay + sun, vec3(1.0e-4));

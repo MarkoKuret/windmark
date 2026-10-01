@@ -77,6 +77,8 @@ enum SeaSource { AUTO, CORE_SAMPLES, PLACEHOLDER }
 @onready var wakes: SeaWakes = $Wakes
 ## `--no-boat-shadows` (measuring): the boats cast no sun shadows
 var no_boat_shadows := false
+## `--no-hud` (measuring): the HUD hidden from the start, as the hud_hide key does
+var no_hud := false
 @onready var env_source: SeaEnvSource = $EnvSource
 @onready var sky: SkyRig = $SkyDay
 
@@ -191,6 +193,8 @@ func _ready() -> void:
 	_add_pause_menu()
 	if Settings.render_scale_override > 0.0 or Settings.upscaler_override != "":
 		Settings.current().apply_render_scale(get_tree().root)
+	if no_hud:
+		hud.toggle_hidden()
 	if no_boat_shadows:
 		for v in boat_views:
 			for g in v.find_children("*", "GeometryInstance3D", true, false):
@@ -242,7 +246,7 @@ func _apply_setup() -> void:
 ## `--fake` (FakeSim), `--core`; measuring (hud.md §17): `--perf` (the frame-time overlay), `--perf-log=PATH`,
 ## `--perf-seconds=N`, `--render-scale=0.67`, `--upscaler=fsr|bilinear|metalfx`, `--quality=L|M|H`, `--no-vsync`,
 ## `--shadow-splits=0|2|4`, `--shadow-atlas=N`, `--no-wake-buffer`, `--no-boat-shadows`,
-## `--sea-grid=RINGSxSEGMENTS` and `--water-shader=l|m|h` (this run only, not saved).
+## `--sea-grid=RINGSxSEGMENTS`, `--water-shader=l|m|h` and `--no-hud` (this run only, not saved).
 func _user_args() -> void:
 	var fleet_given := false
 	var race_flag := false
@@ -309,6 +313,8 @@ func _user_args() -> void:
 			SeaQuality.overrides["wake_buffer"] = false
 		elif a == "--no-boat-shadows":
 			no_boat_shadows = true
+		elif a == "--no-hud":
+			no_hud = true
 	if race_flag and not fleet_given and fleet_size < 2:
 		fleet_size = GameSetup.new().fleet_size
 	if watch:

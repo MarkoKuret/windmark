@@ -238,6 +238,7 @@ Flags after `--`:
 | `--no-boat-shadows` | the boats cast no sun shadows in this run |
 | `--sea-grid=120x160` | this run's sea radial grid (rings x segments), over the tier; not saved |
 | `--water-shader=l` | this run's water shader (`water_l`, `_m` or `_h`), over the tier; not saved |
+| `--no-hud` | the HUD hidden from the start (as F10) |
 
 A measured race in a window (asks the owner first: it opens one), 10 boats for 60 s:
 

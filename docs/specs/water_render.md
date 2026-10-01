@@ -109,9 +109,16 @@ detail   = 2 to 4 layers of a tiling normal map, sampled in a wind-aligned frame
            scales 1/13 m, 1/22 m, 1/48 m, 1/70 m; drifts 1.4, 1.0, 0.9, 0.6 m/s; angles 0, 0.35, -0.6, 0.95 rad
            break the tiling
 m        = wind factor at the pixel (§4.3)
-k_detail = 0.25 * clamp(m * base_speed / 7.2, 0.15, 1.6) * fade(dist; 300 m -> 1, 3 km -> 0)
-n        = normalize(n_geo + k_detail * (detail.x * wind_to + detail.y * perp(wind_to)) in the water plane)
+k_detail = 0.22 * clamp(m * base_speed / 7.2, 0.15, 1.6) * fade(dist; 300 m -> 1, 3 km -> 0)
+glint    = one more tap of the same normal map in the same frame: scale 1/3.2 m, drift 1.6 m/s, angle 1.25 rad
+near     = 1 - smoothstep(30 m, 200 m, dist)
+k_glint  = 0.12 * clamp(m * base_speed / 7.2, 0.2, 1.4) * near
+n        = normalize(n_geo + k_detail * detail + k_glint * glint, each as (x * wind_to + y * perp(wind_to)) in the
+           water plane)
 ```
+The glint layer is the ripples a few metres long that break the sun's reflection into glitter near the boats;
+beyond 200 m the mip-mapped detail layers and a rougher surface (§4.2) carry it. It is the only texture tap the
+daylight pass (WM-080) added, on every tier.
 The normal map (256², tiling) and the foam noise are generated at load from Godot's seamless noise
 (`FastNoiseLite`, bump to normal map), so no texture files ship. Under 1.5 m/s of wind (`m·base_speed`) the
 detail fades out (fully gone at 0.5 m/s): glassy water.
@@ -120,18 +127,23 @@ detail fades out (fully gone at 0.5 m/s): glassy water.
 Godot's PBR does the lighting; the shader sets:
 ```
 crest    = clamp(eta / max(sum_a, 1e-3), 0, 1)
-ALBEDO   = mix(deep, shallow, 0.55 * crest), then foam (§4.4)       // deep (0.010, 0.048, 0.085), shallow (0.02, 0.11, 0.14), linear
-SPECULAR = 0.35                                                      // Godot's F0 = 0.16·SPECULAR² = 0.02, water at normal incidence
-ROUGHNESS = 0.06 + 0.05 * clamp(m - 1, -0.4, 0.25) / 0.25 + 0.18 * fade_far(dist)   // rougher in puffs and far away
-EMISSION = sss * crest * pow(max(0, dot(-view, sun)), 3) * 0.3 * sun_radiance + sss * crest * 0.05  // light through the crests, sss (0.04, 0.40, 0.38)
+ALBEDO   = mix(deep, shallow, 0.55 * crest), then foam (§4.4)       // deep (0.006, 0.042, 0.115), shallow (0.012, 0.100, 0.155), linear
+SPECULAR = 0.40                                                      // Godot's F0 = 0.16·SPECULAR² = 0.026 (water 0.02, a little lifted)
+ROUGHNESS = 0.035 + 0.025 * (1 - near) + 0.05 * clamp(m - 1, -0.4, 0.25) / 0.25 + 0.18 * fade_far(dist)   // rougher in puffs and far away
+EMISSION = sss * crest * (pow(max(0, dot(-view, sun)), 3) * 0.3 * sun_radiance + 0.05) * (1 - foam)  // light through the crests, sss (0.03, 0.33, 0.40)
 ```
-- **Sky reflection** comes from the scene's sky radiance through PBR (Schlick Fresnel: 2 % looking straight down,
-  most of the sky at grazing angles), so the water takes the sky's colour at every time of day and weather.
-- **Slope contrast**: a zero-mean correction `(sky(reflect(n)) − sky(reflect(up)))·F·(1 − foam)` added to `EMISSION`,
-  with `sky(d)` a two-colour horizon-to-zenith ramp matching the sky, makes wave shapes readable without brightening
-  the sea overall.
+- **Body colour**: a deep, saturated blue (about sRGB `#004684` from the aerial camera in the default light), a
+  little greener on the crests; it is what the sea shows looking down, so it carries the race-day look.
+- **Sky reflection** comes from the scene's sky radiance through PBR (Schlick Fresnel: under 3 % looking straight
+  down, most of the sky at grazing angles), so the water takes the sky's colour at every time of day and weather:
+  with the saturated sky of §4.5 this is a gradient from the deep blue below the camera to a light blue band at the
+  horizon. Clouds reflect too.
+- **No slope contrast term** (removed in WM-080): its Fresnel taken from the full detail normal turned every steep
+  detail facet into a white blotch at grazing angles; the PBR reflection of the stronger sky gradient shows the
+  wave shapes by itself.
 - **Boats and marks in the reflection**: screen-space reflections on tier H only; elsewhere the sky alone.
-- **Sun glitter** is the PBR specular on the detail normals.
+- **Sun glitter** is the PBR specular on the detail and glint normals, sharp near the camera (roughness 0.035) and
+  a broad glitter path far away; the glow of §4.5 blooms the brightest glints.
 - **Fog** blends to the sky's horizon colour with distance; the detail normals flatten between 2 and 4 km.
 
 ### 4.3 Wind on the water
@@ -162,22 +174,60 @@ float rounding at the vertices. The direction offset `d` does not show on the wa
 tws_local = m * base_speed / KNOT                              // kn
 caps  = smoothstep(8, 24, tws_local)
 n1    = foam texture streaks along the wind (23 m along, 5 m across), n2 = coarse breakup noise (61 m)
+slope = |n_geo.xz| / max(n_geo.y, 0.2)                         // the wave slope the grid (and on M, H the pixel) carries
+steep = smoothstep(0.04, 0.16, slope)
 th    = 0.62 - 0.30*caps
-foam  = smoothstep(th, th + 0.1, crest * (0.45 + 0.75*n1)) * smoothstep(0.25, 0.65, n2) * (0.2 + 0.8*caps) * fade(dist; 1.3 km)
-ALBEDO = mix(ALBEDO, (0.86, 0.90, 0.92), 0.8 * foam) ; ROUGHNESS = mix(ROUGHNESS, 0.65, foam)
+foam  = smoothstep(th, th + 0.06, crest * (0.45 + 0.75*n1) * mix(0.75, 1.2, steep))
+        * smoothstep(0.3, 0.6, n2) * (0.2 + 0.8*caps) * fade(dist; 1.3 km)
+ALBEDO = mix(ALBEDO, (0.86, 0.90, 0.92), 0.85 * foam) ; ROUGHNESS = mix(ROUGHNESS, 0.65, foam)
 ```
-So whitecaps come with the wind, more of them in the puffs. With the reference seas this covers about 0.2 % of
-the water at 15 kn, 1.4 % at 20 kn and 2.5 % at 25 kn, close to measured whitecap cover (it rises with about the
-3.4th power of the wind speed).
+So whitecaps come with the wind, more of them in the puffs, and only on the high, steep crests: a crest that is
+high but gently sloped (a swell) stays blue. The edge is sharp (0.06), so a cap is a crisp white patch drawn out
+along the wind by `n1`, not a soft blotch. With the reference seas the cover stays close to measured whitecap
+cover (about 0.2 % of the water at 15 kn, 1.4 % at 20 kn, 2.5 % at 25 kn; it rises with about the 3.4th power of
+the wind speed). The white blotches seen before WM-080 at 15 to 20 kn were sky reflection, not foam (§4.2).
 
 ### 4.5 Daylight
-The daytime preset (`SkyRig`) keeps sun and sky in their clear-day proportion: on a level surface the sun gives
+Target look (WM-080): a bright, sunny, high-contrast racing day. A hard sun, a clear saturated blue sky (deep at
+the zenith, light at the horizon) with a sun disc, a halo and a few fair-weather cumulus, deep blue water with a
+strong sky-reflection gradient to the horizon and sun glitter, crisp light and shade on hulls and sails, and
+shadows that are blue (lit by the sky), never black.
+
+The daytime light (`SkyRig`) keeps sun and sky in their clear-day proportion: on a level surface the sun gives
 about four fifths of the light and the sky the rest, and a white deck in full sun is about three times as bright
-as the horizon sky. Values: sun energy 3.0 at 38° elevation, colour (1.0, 0.94, 0.86); sky ramp horizon (0.62,
-0.74, 0.86), zenith (0.10, 0.26, 0.58), linear; ambient and reflections from the sky; ACES tone mapping (white 6)
-with exposure 0.62. The sky's glow around the sun is narrow (`0.03·mu^8` and `0.15·mu^64` of the sun radiance),
-so the sky stays blue a few tens of degrees from the sun. Boats cap their linear albedo at 0.8 and take their
-baked AO on the ambient and reflected light only.
+as the horizon sky. Sun at 38° elevation; ambient and reflections from the sky; the fog goes to the horizon
+colour. Three weather presets, chosen by the venue's look file (or the race, which may override it); **fair** is
+the default:
+
+| preset | sun energy, colour | sky horizon | sky zenith | clouds | exposure | fog density |
+| --- | --- | --- | --- | --- | --- | --- |
+| clear | 3.6, (1.0, 0.92, 0.80) | (0.50, 0.74, 1.10) | (0.05, 0.18, 0.62) | 0 | 0.50 | 3e-5 /m |
+| fair (default) | 3.6, (1.0, 0.92, 0.80) | (0.50, 0.74, 1.10) | (0.05, 0.18, 0.62) | 0.40 | 0.50 | 4e-5 /m |
+| hazy | 2.8, (1.0, 0.95, 0.88) | (0.80, 0.88, 1.00) | (0.24, 0.40, 0.74) | 0.25 | 0.55 | 1e-4 /m |
+
+Colours are linear. With these the sunlit white of a hull or sail (albedo 0.8) lands just under display white
+with its shading still visible, the sky between the zenith and 20° up is a saturated mid blue, and the horizon a
+light blue, not grey.
+
+- **Tone mapping**: Godot's ACES (white 6), not AgX: ACES keeps the saturation of the sky and the sea and gives the
+  stronger contrast this look wants; AgX's desaturated highlights read as the washed-out haze we are leaving.
+- **Sky** (`sky_common.gdshaderinc`): the two-colour ramp `mix(horizon, zenith, h^0.45)`, a darker sea haze below
+  the horizon, forward scattering around the sun (`0.03·mu^8·(0.5 + haze) + 0.12·mu^64` of the sun radiance, so
+  the sky stays blue a few tens of degrees from the sun), the sun disc (0.53°, 20 × the sun radiance) and a tight
+  halo (`0.35·mu^2048 + 0.06·mu^256`, the disc and halo only in the background, not in the radiance map, where the
+  light's own specular gives the glint).
+- **Cumulus**: a layer projected on a plane above the camera (`uv = d.xz / (h + 0.06) · 0.55 + offset`), value
+  noise: the two coarse octaves give the cloud masses, three fine ones their billowed edges; cover `c` sets the
+  threshold (`smoothstep(1 − c, 1 − c + 0.16, n)`). One more look-up of the coarse octaves a little toward the sun
+  lights the side of the cloud facing the sun (`sun · 0.40 + horizon · 0.25`) and leaves the far side and the base
+  grey-blue (`mix(horizon, zenith, 0.35) · 0.85 + sun · 0.07`); thin edges toward the sun glow (silver lining);
+  clouds fade into the horizon haze below 17°. The sky has no `TIME`, so Godot only redraws its radiance map
+  when a preset value changes.
+- **Glow** on the brightest highlights only: additive, threshold 4.0 (linear radiance before the exposure: above
+  the sunlit hulls, sails and clouds, below the sun disc and the glints on the water), HDR scale 2, intensity 0.5,
+  normalized levels. Off on tier L, levels 3 to 5 on M, 2 to 5 on H (`SkyRig.apply_quality`).
+- Boats cap their linear albedo at 0.8 and take their baked AO on the ambient and reflected light only; the sails
+  keep their cloth (`sail_visuals.md` §11.1), which reads in this light without change.
 
 ### 4.6 Shadows
 The sun casts one directional shadow map, sized for a boat seen from the chase camera (24.5 m) and on board, not for

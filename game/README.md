@@ -11,7 +11,7 @@ controls, the cameras, the minimal HUD, the audio and a sail test scene that put
 | `project.godot` | Project settings |
 | `scripts/` | GDScript. `sail_grid.gd` (`SailGrid`) maps imported sail vertices back to the boatgen sail grid; `frames.gd` (`Frames`) holds the axes and angle helpers; `boat_view.gd` (`BoatView`) places the generated boat, its rudder, wheel, boom and mainsheet, and bends the sails; `sail_shape_ref.gd` (`SailShapeRef`) is the GDScript reference of the native sail shapes; `boat_materials.gd` (`BoatMaterials`) puts the boat materials on the imported meshes |
 | `scripts/sim/` | `SimSource` (the simulation interface), `CoreSimSource` (the core, through the GDExtension) and `CoreEnvSource` (its sea and wind for the Sea node), `FakeSim` and `FakeBoat` (placeholder), `SimRunner` (50 ms ticks), class loading |
-| `native/` | The GDExtension: `CoreSim` over `core/include/windmark.h` `SailShape` (the per-vertex sail shapes) and the wakes (`sea_wakes.h`: `SeaSampler`, `WakeRibbon`, `BowWaveSheets`, `MistCloud`) in `src/`, `build.sh`, `CMakeLists.txt`. Godot skips the folder (`.gdignore`) |
+| `native/` | The GDExtension: `CoreSim` over `core/include/windmark.h` `SailShape` (the per-vertex sail shapes) the wakes (`sea_wakes.h`: `SeaSampler`, `WakeRibbon`, `BowWaveSheets`, `MistCloud`) and the drawn boat shadows (`boat_shadow.h`: `BoatShadowShape`) in `src/`, `build.sh`, `CMakeLists.txt`. Godot skips the folder (`.gdignore`) |
 | `bin/` | The built extension library and `windmark.gdextension`. Not committed |
 | `scripts/settings.gd` | `Settings`: the player's settings (`docs/specs/menus.md` §3), saved in `user://settings.cfg`, read through `Settings.current()` and applied with `apply_*` |
 | `scripts/perf/` | `PerfMonitor` (the frame-time overlay and its CSV log, `docs/specs/hud.md` §17) and `PerfStats` (the per-frame section timings) |
@@ -22,8 +22,8 @@ controls, the cameras, the minimal HUD, the audio and a sail test scene that put
 | `audio/default/` | The default sound set: Ogg Vorbis files written by `tools/soundgen` (our own synthesis), with their `.import` files |
 | `data/sound_map.json` | The sound map (`audio.md` §9): the only place that names sound files |
 | `scripts/venue/` | `VenueShapes` (the venue's land polygons and obstacles, from the core or the venue file), `LandTerrain` (the drawn ground height and colours), `ColorMesh` (vertex-coloured mesh builder) |
-| `shaders/` | Shaders. `sea_common`, `sky_common`, `wake_common` (`.gdshaderinc`) hold the water, sky and wake maths, written so the offline preview can compile them as GLSL too; `water_l/m/h` are the sea per quality tier, `sky`, `wake`, `wake_normal`; `boat` is the boat surface shader; `sail` the sails, with the procedural cloth of `sail_cloth.gdshaderinc` (also compiled by the sail preview) |
-| `scenes/` | Scenes. `sea/` is the sea (`sea.tscn`, `Sea`), its data source and wakes, and the daytime sky (`sky_day.tscn`, `SkyRig`, `env_day.tres`); `water_test.tscn` shows them together; `sail_test.tscn` is one boat sailing freely on the core (FakeSim as fallback), or racing alone on the example course, with cameras, controls and HUD on that sea and sky; `venue/` draws the venue land and obstacles (`VenueView`, `land.gdshader`); `course/` the course (`CourseView`, `CourseProps`); `menu/` the menus (`main_menu.tscn`, the main scene; `pause_menu.tscn`; the setup and settings panels, rows, theme and backdrop) |
+| `shaders/` | Shaders. `sea_common`, `sky_common`, `wake_common`, `boat_shadow_common` (`.gdshaderinc`) hold the water, sky, wake and drawn shadow maths, written so the offline preview can compile them as GLSL too; `water_l/m/h` are the sea per quality tier, `sky`, `wake`, `wake_normal`, `boat_shadow` (the boats' shadows drawn on the water); `boat` is the boat surface shader; `sail` the sails, with the procedural cloth of `sail_cloth.gdshaderinc` (also compiled by the sail preview) |
+| `scenes/` | Scenes. `sea/` is the sea (`sea.tscn`, `Sea`), its data source, wakes and drawn boat shadows (`BoatShadows`), and the daytime sky (`sky_day.tscn`, `SkyRig`, `env_day.tres`); `water_test.tscn` shows them together; `sail_test.tscn` is one boat sailing freely on the core (FakeSim as fallback), or racing alone on the example course, with cameras, controls and HUD on that sea and sky; `venue/` draws the venue land and obstacles (`VenueView`, `land.gdshader`); `course/` the course (`CourseView`, `CourseProps`); `menu/` the menus (`main_menu.tscn`, the main scene; `pause_menu.tscn`; the setup and settings panels, rows, theme and backdrop) |
 | `tests/` | Headless tests |
 | `generated/` | Build outputs staged for import (boatgen GLBs and sidecars). Not committed |
 | `.godot/` | Godot's import cache. Not committed |
@@ -238,6 +238,7 @@ Flags after `--`:
 | `--shadow-soft=0` | this run's soft shadow filter (RenderingServer shadow quality 0 hard to 5 ultra), over the tier; not saved |
 | `--no-wake-buffer` | this run without the wake normal buffer (tiers M and H); not saved |
 | `--no-boat-shadows` | the boats cast no sun shadows in this run |
+| `--no-drawn-shadows` | no boat shadows drawn on the water (tiers L and M, `water_render.md` §4.7) in this run |
 | `--sea-grid=120x160` | this run's sea radial grid (rings x segments), over the tier; not saved |
 | `--water-shader=l` | this run's water shader (`water_l`, `_m` or `_h`), over the tier; not saved |
 | `--no-hud` | the HUD hidden from the start (as F10) |
@@ -502,6 +503,13 @@ fixed-size mesh, and the mist written into its MultiMesh with one buffer call. W
 `SeaWakes.use_reference`) the GDScript references draw the same: `WakeRibbonRef`, `BowWave`, `SeaModel.height`.
 Headless Godot does not keep in-place mesh updates, so the preview dumps draw with the references.
 The wake normal buffer (tiers M and H) exists only while wakes are drawn.
+
+On tiers L and M the sea takes no sun shadows; `BoatShadows` (`scenes/sea/boat_shadows.gd`) draws the boats' shadows on the water
+instead (`water_render.md` §4.7): fed every frame with `update_boat(id, state)` (`BoatView.shadow_state`: the body frame,
+the hull and mast from the physics sidecar, the outline of each sail shown), it projects them along the sun into convex
+polygons (natively in `BoatShadowShape`, or `BoatShadows.build` without the GDExtension), packs every boat's polygons into a
+row of a small float texture, and draws one grid per boat draped on the sea that darkens the water as a real shadow does.
+The own boat always, on tier M also the 6 nearest within the shadow distance; the sail scene adds its time to `wakes`.
 `Sea.height_at(x, y)` is a CPU mirror of the core's sea height (double precision) for anything that needs the
 surface before the binding exists.
 
@@ -522,7 +530,7 @@ on any error or warning) and runs `tests/water_test.gd`: every shader parses; th
 `sea_height` within 1 mm (a double-precision mirror and a float32 emulation of the shader path, points up to
 8 km, times up to 4 h); slope, puff factor and exposure match; the far-field fade table; the components sorted by
 wavelength with their `comp_lam` and the per-pixel band loop against the full sum; the wake geometry; and
-the test scene on every tier. With the GDExtension built it then runs `tests/wakes_native_test.gd`: the native
+the test scene on every tier. With the GDExtension built it then runs `tests/boat_shadow_test.gd` (the drawn boat shadows on a race in the sail scene: on the water, away from the sun, covering the projected hull, rig and sails, the tiers, native against reference, cost per boat) and `tests/wakes_native_test.gd`: the native
 wakes against their GDScript references (sea height, ribbons with spray, current and hidden rows, bow waves, mist,
 and a `SeaWakes` drawing each way), the in-place buffers byte for byte against Godot's own encoding, and the cost
 per boat of both paths.
@@ -533,7 +541,10 @@ Godot's headless mode has no renderer, so the previews run in two steps without 
 `tests/water_preview_dump.gd` runs the test scene headless and writes every uniform, mesh and texture the water,
 wake and sky shaders get, then `tests/water_preview.py` renders them on an offscreen OpenGL context with the
 same shared shader functions (the lighting around them is a stand-in for Godot's). `--publish` also writes the
-JPEGs committed in `tests/previews/`.
+JPEGs committed in `tests/previews/`. The previews stand in a shadow map from the boats for the sun's shadows: the sea
+takes it on tier H, the drawn boat shadows are used on L and M (`--shadows real|drawn|none` picks one), and `--compare`
+writes `<shot>.real.png`, `<shot>.drawn.png` and a side-by-side `<shot>.compare.png`. `--faded-slope` draws the per-pixel
+slope of faded waves on every tier (the shaders draw it on tier H only) and `--suffix=.x` names the outputs apart.
 
 The previews draw the boats with the boat shader's textures, factors and baked AO, without shadows. The engine's
 own picture needs a short windowed run (it opens a window for about 7 seconds):

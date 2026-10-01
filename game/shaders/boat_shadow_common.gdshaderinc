@@ -1,12 +1,24 @@
 // Drawn boat shadows on the water (water_render.md §4.7), shared by boat_shadow.gdshader and the offline preview
 // (tests/water_preview.py). Include after sea_common.gdshaderinc. Same subset of the shading language as
-// sea_common: explicit float literals, no Godot built-ins, no uniform hints.
+// sea_common: explicit float literals, no Godot built-ins, no uniform hints. The including file declares the
+// sampler `shadow_tex` first.
 //
-// One boat per material: its casters' shadows as convex polygons on the horizontal plane at the boat's heave,
-// each kept as edge lines (n, c) in the scene's (x, z) relative to `shadow_origin`, inside where n . r - c <= 0
-// for every edge.
+// Every boat's shadow is one row of `shadow_tex` (RGBA32F, BoatShadows.ROW_WIDTH texels, read with texelFetch):
+//   0                 (origin x, y0, origin z, strength): the boat's (x, z) and its heave (the plane), the fade
+//   1                 (sun x, y, z, polygons): toward the sun (scene, unit), the polygon count
+//   2                 (footprint edges, 0, 0, 0)
+//   WM_SH_POLY + i    (end edge index, half penumbra m, 0, 0) of polygon i (at most 8)
+//   WM_SH_BOUND + i   (cx, cz, radius, 0): a circle around polygon i, relative to the origin
+//   WM_SH_PLANE + j   (nx, nz, c, 0): edge line j, inside where n . r - c <= 0 (at most 96)
+//   WM_SH_EXCL + j    the hull footprint's edge lines (at most 40): water under the hull is never darkened
+// The casters' shadows are convex polygons on the horizontal plane at the boat's heave, in the scene's (x, z)
+// relative to the origin.
 
 const float WM_SHADOW_PI = 3.14159265;
+const int WM_SH_POLY = 3;
+const int WM_SH_BOUND = 11;
+const int WM_SH_PLANE = 19;
+const int WM_SH_EXCL = 115;
 // fitted against the real shadow of the offline preview (water_render.md §4.7): the water albedo scale (it stands
 // for crests and foam), the glitter lobe width (GGX alpha) and its weight
 #ifndef WM_SHADOW_ALBEDO_K
@@ -19,46 +31,51 @@ const float WM_SHADOW_PI = 3.14159265;
 #define WM_SHADOW_GLINT 0.3
 #endif
 
-uniform vec3 shadow_origin = vec3(0.0);        // scene: the boat's (x, z) and its heave y0 (the plane)
-uniform vec3 shadow_sun = vec3(0.0, 1.0, 0.0);  // scene, unit, toward the sun
-uniform int shadow_n_poly = 0;
-uniform vec4 shadow_poly[8];      // (end edge index, half penumbra m, 0, 0)
-uniform vec4 shadow_bound[8];     // (cx, cz, radius, 0): a circle around the polygon, relative to the origin
-uniform vec4 shadow_plane[96];    // (nx, nz, c, 0)
-uniform int shadow_n_excl = 0;    // edges of the hull footprint (water under the hull is never darkened)
-uniform vec4 shadow_excl[40];
-uniform float shadow_strength = 1.0;   // the distance fade
+vec4 wm_shadow_texel(int row, int i) {
+	return texelFetch(shadow_tex, ivec2(i, row), 0);
+}
 
-// Shadow coverage 0..1 at the water point P (scene), px: the pixel footprint on the water, m.
-float wm_boat_shadow(vec3 P, float px) {
-	vec2 q = P.xz - shadow_origin.xz;
-	vec2 r = q + shadow_sun.xz * ((shadow_origin.y - P.y) / max(shadow_sun.y, 0.05));
+// The sun direction of a boat's row (scene, unit, toward the sun).
+vec3 wm_shadow_sun(int row) {
+	return wm_shadow_texel(row, 1).xyz;
+}
+
+// Shadow coverage 0..1 at the water point P (scene) for the boat of `row`; px: the pixel footprint on the water, m.
+float wm_boat_shadow(vec3 P, float px, int row) {
+	vec4 o = wm_shadow_texel(row, 0);
+	vec4 sun = wm_shadow_texel(row, 1);
+	vec2 q = P.xz - o.xz;
+	vec2 r = q + sun.xz * ((o.y - P.y) / max(sun.y, 0.05));
 	float s = 0.0;
-	int k = 0;
-	for (int i = 0; i < shadow_n_poly; i++) {
-		int j_end = int(shadow_poly[i].x + 0.5);
-		float f = shadow_poly[i].y + px;
-		vec4 b = shadow_bound[i];
+	int k = WM_SH_PLANE;
+	int n_poly = int(sun.w + 0.5);
+	for (int i = 0; i < n_poly; i++) {
+		vec4 pl = wm_shadow_texel(row, WM_SH_POLY + i);
+		int j_end = WM_SH_PLANE + int(pl.x + 0.5);
+		float f = pl.y + px;
+		vec4 b = wm_shadow_texel(row, WM_SH_BOUND + i);
 		if (length(r - b.xy) - b.z < f) {
 			float d = -1.0e6;
 			for (int j = k; j < j_end; j++) {
-				vec4 e = shadow_plane[j];
+				vec4 e = wm_shadow_texel(row, j);
 				d = max(d, dot(e.xy, r) - e.z);
 			}
 			s = max(s, 1.0 - smoothstep(-f, f, d));
 		}
 		k = j_end;
 	}
-	if (s > 0.0 && shadow_n_excl > 0) {
+	int n_excl = int(wm_shadow_texel(row, 2).x + 0.5);
+	if (s > 0.0 && n_excl > 0) {
 		float d = -1.0e6;
-		for (int j = 0; j < shadow_n_excl; j++) {
-			vec4 e = shadow_excl[j];
+		for (int j = 0; j < n_excl; j++) {
+			vec4 e = wm_shadow_texel(row, WM_SH_EXCL + j);
 			d = max(d, dot(e.xy, q) - e.z);
 		}
 		s *= smoothstep(-0.04, 0.0, d);
 	}
-	return s * shadow_strength;
+	return s * o.w;
 }
+
 
 // The share of the water's light a real shadow keeps (§4.7): the sky reflection, the sky's diffuse light and the
 // light through the crests stay, the sun's diffuse share and its glitter (GGX on a level surface with a lobe as

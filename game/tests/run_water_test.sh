@@ -7,7 +7,9 @@
 #      far-field fade, wake geometry, and the test scene on every quality tier;
 #   4. runs tests/wakes_native_test.gd: the native wakes (SeaSampler, WakeRibbon, BowWaveSheets, MistCloud) against
 #      their GDScript references and Godot's buffer encoding, and the cost per boat of both (passes with a note
-#      when the GDExtension is not built).
+#      when the GDExtension is not built);
+#   5. runs tests/boat_shadow_test.gd: the drawn boat shadows of tiers L and M on the sail scene (§9.10), the native
+#      geometry against the GDScript reference and the cost per boat.
 # Options: --preview also renders the offline previews (tests/water_preview_dump.gd, then
 # tests/water_preview.py; needs numpy, Pillow, moderngl) into game/generated/water_preview.
 set -eu
@@ -58,6 +60,20 @@ if [ $rc -ne 0 ] || grep -qE "SCRIPT ERROR|SHADER ERROR|^ERROR|^WARNING" "$log";
     exit 1
 fi
 echo "native wakes test passed"
+
+# the drawn boat shadows (water_render.md §4.7, test §9.10) on the sail scene with the core (needs the generated
+# boats and the GDExtension; passes with a note without the extension)
+log="$here/generated/boat_shadow_test.log"
+set +e
+"$godot" --headless --path "$here" -s res://tests/boat_shadow_test.gd >"$log" 2>&1
+rc=$?
+set -e
+grep -E "^- |^  |FAIL|checks|skipped" "$log" || true
+if [ $rc -ne 0 ] || grep -qE "SCRIPT ERROR|SHADER ERROR|^ERROR|^WARNING" "$log"; then
+    echo "boat shadow test failed (full log: $log)"
+    exit 1
+fi
+echo "boat shadow test passed"
 
 if [ "${1:-}" = "--preview" ]; then
     "$godot" --headless --path "$here" -s res://tests/water_preview_dump.gd

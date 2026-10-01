@@ -112,8 +112,14 @@ vec3 fogged(vec3 c, vec3 wpos) {
 """
 
 
+# --faded-slope: the per-pixel slope of faded waves on every tier (water_render.md §3.2; the shaders draw it on tier
+# H only), to compare a tier's look with and without it
+FADED_SLOPE_ALWAYS = False
+
+
 def header(tier, layers):
-    return f"#version 410\n#define TIER {tier}\n#define WM_DETAIL_LAYERS {layers}\n" + SAMPLERS + inc("sea_common.gdshaderinc")
+    slope = "#define WM_FADED_SLOPE\n" if tier >= 3 or FADED_SLOPE_ALWAYS else ""
+    return f"#version 410\n#define TIER {tier}\n#define WM_DETAIL_LAYERS {layers}\n" + slope + SAMPLERS + inc("sea_common.gdshaderinc")
 
 
 WATER_VS = """
@@ -160,7 +166,7 @@ void main() {
     vec3 view = normalize(u_cam - v_wpos);
     float dist = length(u_cam.xz - v_wpos.xz);
     vec3 n_geo = normalize(v_normal);
-#if TIER >= 2
+#ifdef WM_FADED_SLOPE
     float px = max(length(fwidth(v_local)), 1e-3);
     vec2 g = wm_faded_slope(v_local, v_spacing, px) * v_expo;
     n_geo = normalize(n_geo + vec3(-g.x, 0.0, g.y));
@@ -304,9 +310,9 @@ in vec3 v_water;
 out vec4 frag;
 void main() {
     float px = length(fwidth(v_water.xz));
-    float s = wm_boat_shadow(v_water, px);
+    float s = wm_boat_shadow(v_water, px, u_row);
     vec3 V = normalize(u_cam - v_water);
-    frag = vec4(mix(vec3(1.0), wm_shadow_keep(V, normalize(shadow_sun)), s), 1.0);
+    frag = vec4(mix(vec3(1.0), wm_shadow_keep(V, wm_shadow_sun(u_row)), s), 1.0);
 }
 """
 
@@ -616,7 +622,7 @@ def render(ctx, d, size, wakes=True, shadows="auto"):
     mist = ctx.program(vertex_shader=hdr_inc + MIST_VS, fragment_shader=hdr_inc + sky_inc + LIGHTING + wake_inc + MIST_FS)
     boat = ctx.program(vertex_shader=BOAT_VS, fragment_shader=hdr_inc + sky_inc + LIGHTING + BOAT_FS)
     drawn = ctx.program(vertex_shader=hdr_inc + wake_inc + DRAWN_VS,
-                        fragment_shader=hdr_inc + sky_inc + LIGHTING + inc("boat_shadow_common.gdshaderinc") + DRAWN_FS)
+                        fragment_shader=hdr_inc + sky_inc + LIGHTING + "uniform sampler2D shadow_tex;\nuniform int u_row;\n" + inc("boat_shadow_common.gdshaderinc") + DRAWN_FS)
     sky = ctx.program(vertex_shader=SKY_VS, fragment_shader=hdr_inc + sky_inc + LIGHTING + SKY_FS)
     tone = ctx.program(vertex_shader=SKY_VS, fragment_shader=TONEMAP_FS)
 
@@ -728,8 +734,16 @@ def render(ctx, d, size, wakes=True, shadows="auto"):
     if shadows == "drawn":
         # the drawn boat shadows multiply the colour behind them, before the wakes (render priority -1)
         ctx.blend_func = moderngl.DST_COLOR, moderngl.ZERO
+        if sc.get("drawn_shadows"):
+            tw, th = sc["drawn_tex"]
+            data = np.fromfile(d / "drawn_tex.bin", dtype="f4")
+            dtex = ctx.texture((tw, th), 4, data.tobytes(), dtype="f4")
+            dtex.filter = (moderngl.NEAREST, moderngl.NEAREST)
+            dtex.use(8)
+            drawn["shadow_tex"].value = 8
+            set_uniforms(drawn, {k: v for k, v in sc["drawn_uniforms"].items() if k != "shadow_tex"})
         for r in sc.get("drawn_shadows", []):
-            set_uniforms(drawn, r["uniforms"])
+            drawn["u_row"].value = int(r["row"])
             rp = load_bin(d, r["name"] + "_pos.bin", "f4", 3)
             ri = load_bin(d, r["name"] + "_idx.bin", "i4", 1)
             ctx.vertex_array(drawn, [(ctx.buffer(rp.astype("f4").tobytes()), "3f", "in_pos")],
@@ -809,10 +823,15 @@ def main():
     ap.add_argument("--compare", action="store_true",
                     help="render each shot with the real and the drawn shadow: <shot>.real.png, <shot>.drawn.png "
                          "and <shot>.compare.png side by side")
+    ap.add_argument("--faded-slope", action="store_true",
+                    help="draw the per-pixel slope of faded waves on every tier (the shaders: tier H only)")
+    ap.add_argument("--suffix", default="", help="added to the output names (e.g. .slope)")
     ap.add_argument("--publish", action="store_true",
                     help="also write JPEG copies to game/tests/previews (the committed previews)")
     ap.add_argument("shots", nargs="*")
     a = ap.parse_args()
+    global FADED_SLOPE_ALWAYS
+    FADED_SLOPE_ALWAYS = a.faded_slope
     size = tuple(int(x) for x in a.size.split("x"))
     shots = a.shots or sorted(p.name for p in OUT.iterdir() if (p / "scene.json").exists())
     if not shots:
@@ -824,15 +843,15 @@ def main():
             imgs = {}
             for mode in ("real", "drawn"):
                 imgs[mode] = render(ctx, OUT / s, size, not a.no_wakes, mode)
-                path = OUT / ("%s.%s.png" % (s, mode))
+                path = OUT / ("%s%s.%s.png" % (s, a.suffix, mode))
                 imgs[mode].save(path)
                 print("wrote", path)
-            path = OUT / (s + ".compare.png")
+            path = OUT / (s + a.suffix + ".compare.png")
             compare_image(imgs["real"], imgs["drawn"]).save(path)
             print("wrote", path)
             continue
         img = render(ctx, OUT / s, size, not a.no_wakes, a.shadows)
-        path = OUT / (s + (".nowake" if a.no_wakes else "") + ".png")
+        path = OUT / (s + a.suffix + (".nowake" if a.no_wakes else "") + ".png")
         img.save(path)
         print("wrote", path)
         if a.publish:

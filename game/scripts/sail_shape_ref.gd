@@ -298,6 +298,15 @@ func mid() -> PackedVector3Array:
 	return _mid.duplicate()
 
 
+## the placed mid-surface at the given grid indices (the drawn shadow's outline, BoatShadows.sail_indices)
+func mid_points(idx: PackedInt32Array) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	out.resize(idx.size())
+	for k in idx.size():
+		out[k] = _mid[idx[k]] if idx[k] >= 0 and idx[k] < _mid.size() else Vector3.ZERO
+	return out
+
+
 ## both layers, port layer first (grid order, 2 * rows * cols)
 func positions() -> PackedVector3Array:
 	return _pos.duplicate()

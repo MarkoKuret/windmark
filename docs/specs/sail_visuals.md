@@ -509,6 +509,10 @@ sail material uses no normal map).
   other).
 - The sail node's transform stays the identity: the generator writes sails in the boat frame, and §7 places them in
   that frame.
+- **Drawn shadow** (`water_render.md` §4.7, tiers L and M): 11 points of the placed mid-surface (luff and leech at
+  the foot, a third, two thirds and the head row, mid-chord at three rows) are read each frame
+  (`SailShape.mid_points`) and projected along the sun with the hull and mast. They are the sail as last updated,
+  so a sail outside the view frustum casts the shadow of its last placed shape until it comes back into view.
 
 ### 11.1 Cloth
 Procedural, in `shaders/sail_cloth.gdshaderinc` (no texture files), from the generator's uv sets without any change

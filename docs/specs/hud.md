@@ -431,7 +431,7 @@ and not saved.
 - **Sections**: the game's own per-frame work in milliseconds per frame, timed around the calls: `input` (devices
   and controls), `sim` (the 50 ms ticks: the simulation step and the sail snapshots), `hud` (`Hud.tick` and
   `Hud.frame`), `audio`, `sails` (the per-vertex sail shapes of every boat), `boats` (the boat nodes' poses, rudder,
-  boom), `wakes` (the wake ribbons, bow waves and spray), `sea` (the Sea's per-frame uniforms), `course` (the course
+  boom), `wakes` (the wake ribbons, bow waves and spray, and the boat shadows drawn on the water), `sea` (the Sea's per-frame uniforms), `course` (the course
   view), `camera`.
 - **Log**: a header line, then one line per second of the means over that second (the frame time's maximum
   too, and the 1 % worst over the last 5 s); `--perf-seconds=N` quits after N seconds. The GPU times are 0 where the

@@ -11,6 +11,7 @@
 #include <godot_cpp/variant/basis.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
+#include <godot_cpp/variant/packed_int32_array.hpp>
 #include <godot_cpp/variant/packed_vector3_array.hpp>
 #include <godot_cpp/variant/rid.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
@@ -49,6 +50,8 @@ class SailShape : public godot::RefCounted {
   godot::Dictionary frame() const;
   godot::PackedVector3Array local_shape() const;
   godot::PackedVector3Array mid() const;
+  // the placed mid-surface at the given grid indices (the drawn shadow's outline, BoatShadows.sail_indices)
+  godot::PackedVector3Array mid_points(const godot::PackedInt32Array& idx) const;
   godot::PackedVector3Array positions() const;
   godot::PackedVector3Array normals() const;
 

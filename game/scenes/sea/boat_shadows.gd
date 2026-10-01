@@ -13,12 +13,20 @@ extends Node3D
 ##   own          bool, the player's boat
 ## and remove_boat(id) when a boat leaves. The geometry runs in the GDExtension (BoatShadowShape, native/src/
 ## boat_shadow.h) when it is loaded, else (or with use_reference) in build() here; both give the same polygons
-## (tests/boat_shadow_test.gd).
+## (tests/boat_shadow_test.gd). Every boat's polygons are one row of a small RGBA32F texture (pack_row, read by
+## boat_shadow_common.gdshaderinc), uploaded once per frame; all boats share one material and the grid mesh, each
+## instance names its row.
 
 const SHADER := preload("res://shaders/boat_shadow.gdshader")
 const MAX_POLYS := 8
 const MAX_PLANES := 96
 const MAX_EXCL := 40
+## a boat's row of the data texture (boat_shadow_common.gdshaderinc), texels
+const ROW_POLY := 3
+const ROW_BOUND := 11
+const ROW_PLANE := 19
+const ROW_EXCL := 115
+const ROW_WIDTH := 160
 const GRID_U := 32
 const GRID_V := 16
 ## m around the polygons
@@ -44,10 +52,17 @@ var use_reference := false
 ## off: nothing is drawn (the sail scene's --no-drawn-shadows)
 var enabled := true
 
-## id -> {mi: MeshInstance3D, mat: ShaderMaterial, state: Dictionary, shape: BoatShadowShape or null,
-## caster: the caster the shape was configured with, data: the last build() result, strength: float}
+## id -> {mi: MeshInstance3D, slot: its row, state: Dictionary, shape: BoatShadowShape or null, caster: the caster
+## the shape was configured with, sun: the sun of the last build, strength: float}
 var _boats := {}
 static var _grid: ArrayMesh
+var _material: ShaderMaterial
+var _rows := 0
+var _slots: Array[bool] = []
+var _row_data: Array[PackedFloat32Array] = []
+var _image: Image
+var _texture: ImageTexture
+var _zero_row := PackedFloat32Array()
 var _shader_checked: Shader
 var _sea_unshadowed := false
 
@@ -57,6 +72,11 @@ func _ready() -> void:
 		sea = get_node_or_null(sea_path) as Sea
 	if sky == null and not sky_path.is_empty():
 		sky = get_node_or_null(sky_path)
+	_material = ShaderMaterial.new()
+	_material.shader = SHADER
+	_material.render_priority = -1  # before the wakes, mist and bow waves, which take no shadows on tier H either
+	_zero_row.resize(ROW_WIDTH * 4)
+	_grow(8)
 
 
 ## Whether this node builds the polygons natively.
@@ -66,38 +86,100 @@ func is_native() -> bool:
 
 func update_boat(id: int, state: Dictionary) -> void:
 	if not _boats.has(id):
+		var slot := _slots.find(false)
+		if slot < 0:
+			slot = _rows
+			_grow(_rows * 2)
+		_slots[slot] = true
 		var mi := MeshInstance3D.new()
 		mi.name = "Shadow%d" % id
 		mi.mesh = grid_mesh()
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		var mat := ShaderMaterial.new()
-		mat.shader = SHADER
-		mat.render_priority = -1  # before the wakes, mist and bow waves, which take no shadows on tier H either
-		mi.material_override = mat
+		mi.material_override = _material
+		mi.set_instance_shader_parameter("shadow_row", float(slot))
 		mi.visible = false
 		add_child(mi)
-		_boats[id] = {"mi": mi, "mat": mat, "shape": null, "caster": null, "data": {}, "strength": 0.0}
+		_boats[id] = {"mi": mi, "slot": slot, "shape": null, "caster": null, "sun": Vector3.UP, "strength": 0.0}
 	_boats[id]["state"] = state
 
 
 func remove_boat(id: int) -> void:
 	if _boats.has(id):
 		_boats[id]["mi"].queue_free()
+		_slots[_boats[id]["slot"]] = false
+		_row_data[_boats[id]["slot"]] = PackedFloat32Array()
 		_boats.erase(id)
 
 
-## The boat's last shadow (tests): build()'s Dictionary plus strength, {} when none is drawn.
+## The boat's shadow as last drawn (tests): build()'s Dictionary plus strength, {} when none is drawn.
 func shadow_of(id: int) -> Dictionary:
 	if not _boats.has(id) or not _boats[id]["mi"].visible:
 		return {}
-	var d: Dictionary = _boats[id]["data"].duplicate()
-	d["strength"] = _boats[id]["strength"]
+	var b: Dictionary = _boats[id]
+	var st: Dictionary = b["state"]
+	var d: Dictionary
+	if b["shape"] != null:
+		d = b["shape"].build(st["xform"], b["sun"], st.get("sails", PackedVector3Array()),
+				st.get("sail_counts", PackedInt32Array()))
+	else:
+		d = build(st["caster"], st["xform"], b["sun"], st.get("sails", PackedVector3Array()),
+				st.get("sail_counts", PackedInt32Array()))
+	d["strength"] = b["strength"]
 	return d
 
 
 ## The boat's shadow mesh instance (tests), null when there is none.
 func shadow_node(id: int) -> MeshInstance3D:
 	return _boats[id]["mi"] if _boats.has(id) else null
+
+
+## The shared material and data texture (tests, the offline preview); a boat's row is shadow_slot(id).
+func material() -> ShaderMaterial:
+	return _material
+
+
+func shadow_slot(id: int) -> int:
+	return _boats[id]["slot"] if _boats.has(id) else -1
+
+
+## The data texture's rows as last uploaded (RGBA32F, ROW_WIDTH x rows).
+func data_image() -> Image:
+	return _image
+
+
+func _grow(rows: int) -> void:
+	_rows = rows
+	_slots.resize(rows)
+	_row_data.resize(rows)
+	_image = Image.create_empty(ROW_WIDTH, rows, false, Image.FORMAT_RGBAF)
+	_texture = ImageTexture.create_from_image(_image)
+	_material.set_shader_parameter("shadow_tex", _texture)
+
+
+## A build() result as the boat's row of the data texture (the shader's layout, boat_shadow_common), the fade
+## strength in texel 0.
+static func pack_row(d: Dictionary, strength: float) -> PackedFloat32Array:
+	var r := PackedFloat32Array()
+	r.resize(ROW_WIDTH * 4)
+	var o: Vector3 = d["origin"]
+	var sun: Vector3 = d["sun"]
+	var put := func(texel: int, v: Vector4) -> void:
+		r[4 * texel] = v.x
+		r[4 * texel + 1] = v.y
+		r[4 * texel + 2] = v.z
+		r[4 * texel + 3] = v.w
+	put.call(0, Vector4(o.x, o.y, o.z, strength))
+	put.call(1, Vector4(sun.x, sun.y, sun.z, d["n_poly"]))
+	put.call(2, Vector4(d["n_excl"], 0.0, 0.0, 0.0))
+	for i in int(d["n_poly"]):
+		put.call(ROW_POLY + i, d["poly"][i])
+		put.call(ROW_BOUND + i, d["bound"][i])
+	var n_planes := int((d["poly"][int(d["n_poly"]) - 1] as Vector4).x + 0.5) if int(d["n_poly"]) > 0 else 0
+	for j in n_planes:
+		put.call(ROW_PLANE + j, d["planes"][j])
+	for j in int(d["n_excl"]):
+		put.call(ROW_EXCL + j, d["excl"][j])
+	return r
 
 
 ## The shared grid: GRID_U x GRID_V cells over the unit square of the local (x, z) plane; each boat's transform
@@ -177,8 +259,8 @@ static func sail_indices(rows: int, cols: int) -> PackedInt32Array:
 ## caster: caster_from_physics(); xform: body frame to scene; sun: toward the sun (scene, unit); sails: the outline
 ## points of the sails shown (scene), sail_counts: points per sail. {} when the sun is too low, else
 ##   origin       Vector3, the boat's (x, z) and the plane height y0; sun: the sun direction used
-##   planes, poly, bound, excl: PackedVector4Array of MAX_PLANES, MAX_POLYS, MAX_POLYS, MAX_EXCL (the shader's
-##                uniforms), n_poly, n_excl: int
+##   planes, poly, bound, excl: PackedVector4Array of MAX_PLANES, MAX_POLYS, MAX_POLYS, MAX_EXCL (pack_row puts
+##                them in the data texture), n_poly, n_excl: int
 ##   rect         Transform3D of the grid (unit square to the shadow rectangle, on the plane)
 ##   corners      PackedVector2Array, every polygon's corners relative to the origin (scene x, z), and
 ##   corner_end   PackedInt32Array, the end of each polygon's corners
@@ -343,6 +425,8 @@ static func coverage(d: Dictionary, P: Vector3, px := 0.0, strength := 1.0) -> f
 	return s * strength
 
 
+
+
 func _process(_delta: float) -> void:
 	var t0 := Time.get_ticks_usec()
 	_frame()
@@ -394,48 +478,57 @@ func _frame() -> void:
 	var cam_node: Camera3D = sea.camera if sea.camera else get_viewport().get_camera_3d()
 	var cam := cam_node.global_position if cam_node else Vector3(sea.origin.x, 0.0, -sea.origin.y)
 	var active := select(tier, cam)
-	var sun: Vector3 = sky.sun_direction() if sky and sky.has_method("sun_direction") \
-			else sea.material.get_shader_parameter("sun_dir")
+	# the Sea hands its sky's sun to the water every frame (the cheaper read)
+	var sun_v: Variant = sea.material.get_shader_parameter("sun_dir") if sea.sky or sky == null \
+			else sky.sun_direction()
+	var sun: Vector3 = sun_v if sun_v is Vector3 else Vector3(0.0, 0.5, -0.866)
 	sun = sun.normalized()
 	var nat := is_native()
+	var drawn := 0
 	for id in _boats:
 		var b: Dictionary = _boats[id]
 		var mi: MeshInstance3D = b["mi"]
+		var slot: int = b["slot"]
 		if not active.has(id):
 			mi.visible = false
+			_row_data[slot] = PackedFloat32Array()
 			continue
 		var st: Dictionary = b["state"]
-		var d: Dictionary
+		var sails: PackedVector3Array = st.get("sails", PackedVector3Array())
+		var counts: PackedInt32Array = st.get("sail_counts", PackedInt32Array())
+		var row := PackedFloat32Array()
+		var rect := Transform3D.IDENTITY
 		if nat:
 			if b["shape"] == null or not is_same(b["caster"], st["caster"]):
 				b["shape"] = ClassDB.instantiate("BoatShadowShape")
 				b["shape"].configure(st["caster"])
 				b["caster"] = st["caster"]
-			d = b["shape"].build(st["xform"], sun, st.get("sails", PackedVector3Array()),
-					st.get("sail_counts", PackedInt32Array()))
+			row = b["shape"].build_row(st["xform"], sun, sails, counts, active[id])
+			rect = b["shape"].last_rect()
 		else:
-			d = build(st["caster"], st["xform"], sun, st.get("sails", PackedVector3Array()),
-					st.get("sail_counts", PackedInt32Array()))
-		b["data"] = d
+			b["shape"] = null
+			var d := build(st["caster"], st["xform"], sun, sails, counts)
+			if not d.is_empty():
+				row = pack_row(d, active[id])
+				rect = d["rect"]
+		b["sun"] = sun
 		b["strength"] = active[id]
-		if d.is_empty():
-			mi.visible = false
-			continue
-		mi.visible = true
-		mi.transform = d["rect"]
-		var mat: ShaderMaterial = b["mat"]
-		for n in SeaWakes.SHARED_UNIFORMS:
-			mat.set_shader_parameter(n, sea.material.get_shader_parameter(n))
-		for n in ["sky_horizon", "sky_zenith", "sun_color"]:
-			mat.set_shader_parameter(n, sea.material.get_shader_parameter(n))
-		mat.set_shader_parameter("grid_q", sea.grid_ratio())
-		mat.set_shader_parameter("grid_segments", float(tier["segments"]))
-		mat.set_shader_parameter("shadow_origin", d["origin"])
-		mat.set_shader_parameter("shadow_sun", sun)
-		mat.set_shader_parameter("shadow_n_poly", d["n_poly"])
-		mat.set_shader_parameter("shadow_poly", d["poly"])
-		mat.set_shader_parameter("shadow_bound", d["bound"])
-		mat.set_shader_parameter("shadow_plane", d["planes"])
-		mat.set_shader_parameter("shadow_n_excl", d["n_excl"])
-		mat.set_shader_parameter("shadow_excl", d["excl"])
-		mat.set_shader_parameter("shadow_strength", active[id])
+		_row_data[slot] = row
+		mi.visible = not row.is_empty()
+		if mi.visible:
+			mi.transform = rect
+			drawn += 1
+	if drawn == 0:
+		return
+	# one upload of every row, and the sea's uniforms the drape needs, once for all boats
+	var buf := PackedFloat32Array()
+	for r in _row_data:
+		buf.append_array(r if not r.is_empty() else _zero_row)
+	_image.set_data(ROW_WIDTH, _rows, false, Image.FORMAT_RGBAF, buf.to_byte_array())
+	_texture.update(_image)
+	for n in SeaWakes.SHARED_UNIFORMS:
+		_material.set_shader_parameter(n, sea.material.get_shader_parameter(n))
+	for n in ["sky_horizon", "sky_zenith", "sun_color"]:
+		_material.set_shader_parameter(n, sea.material.get_shader_parameter(n))
+	_material.set_shader_parameter("grid_q", sea.grid_ratio())
+	_material.set_shader_parameter("grid_segments", float(tier["segments"]))

@@ -2,7 +2,7 @@ class_name SeaQuality
 extends RefCounted
 ## Water quality tiers (water_render.md §7). `sea_shadows`: the sea takes the sun's shadows (its shader defines
 ## WM_NO_SHADOWS otherwise); `drawn_shadow_boats`: boats whose shadow BoatShadows draws on the water (§4.7: the own
-## boat and the nearest others within the shadow distance), 0 where the sea takes real shadows.
+## boat and the nearest others within the shadow distance), 0 where the sea takes real shadows; `faded_slope`: the per-pixel slope of faded waves (WM_FADED_SLOPE).
 
 enum Tier { L, M, H }
 
@@ -12,21 +12,21 @@ const TIERS := {
 		"wake_boats": 1, "wake_radius": 0.0, "spray": "none", "wake_buffer": false, "ssr": false,
 		"shadow_splits": 2, "shadow_distance": 60.0, "shadow_split": [0.6, 0.0, 0.0], "shadow_atlas": 2048,
 		"shadow_soft": RenderingServer.SHADOW_QUALITY_SOFT_VERY_LOW, "shadow_blend": false, "sea_shadows": false,
-		"drawn_shadow_boats": 1,
+		"drawn_shadow_boats": 1, "faded_slope": false,
 	},
 	Tier.M: {
 		"name": "M", "rings": 180, "segments": 256, "shader": "res://shaders/water_m.gdshader",
 		"wake_boats": 7, "wake_radius": 0.0, "spray": "own", "wake_buffer": true, "ssr": false,
 		"shadow_splits": 4, "shadow_distance": 100.0, "shadow_split": [0.08, 0.36, 0.65], "shadow_atlas": 4096,
 		"shadow_soft": RenderingServer.SHADOW_QUALITY_SOFT_LOW, "shadow_blend": false, "sea_shadows": false,
-		"drawn_shadow_boats": 7,
+		"drawn_shadow_boats": 7, "faded_slope": false,
 	},
 	Tier.H: {
 		"name": "H", "rings": 260, "segments": 384, "shader": "res://shaders/water_h.gdshader",
 		"wake_boats": 1000, "wake_radius": 400.0, "spray": "all", "wake_buffer": true, "ssr": true,
 		"shadow_splits": 4, "shadow_distance": 150.0, "shadow_split": [0.06, 0.26, 0.55], "shadow_atlas": 4096,
 		"shadow_soft": RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM, "shadow_blend": true, "sea_shadows": true,
-		"drawn_shadow_boats": 0,
+		"drawn_shadow_boats": 0, "faded_slope": true,
 	},
 }
 

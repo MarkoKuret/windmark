@@ -588,8 +588,5 @@ func shadow_sails(points: PackedVector3Array, counts: PackedInt32Array) -> void:
 			continue
 		if sp.shadow_idx.is_empty():
 			sp.shadow_idx = BoatShadows.sail_indices(sp.rows, sp.cols)
-		var m: PackedVector3Array = sp.shape.mid()
-		var xf := sp.node.global_transform
-		for k in sp.shadow_idx:
-			points.append(xf * m[k])
+		points.append_array(sp.node.global_transform * (sp.shape.mid_points(sp.shadow_idx) as PackedVector3Array))
 		counts.append(sp.shadow_idx.size())

@@ -79,8 +79,8 @@ VERTEX.y = eta ; normal = normalize(-grad.x, 1, grad.y)   // scene axes: Z = -y
   100 m from the camera and under 1 px beyond 200 m (test §9.2 prints the table). These short waves are also the
   ones a hull averages out (`sea.md` §5), so the drawn hull sits on the surface the grid carries. The
   `0.05·Hs` limit of `sea.md` §7.3 applies to added visual layers, not to this fade.
-- The fragment shader re-evaluates the slope of the components the vertex grid faded (`w_i < 1`) per pixel on the
-  higher tiers, themselves faded by the pixel footprint (`fwidth` of the position) so they never alias, so
+- The fragment shader re-evaluates the slope of the components the vertex grid faded (`w_i < 1`) per pixel on
+  tier H, themselves faded by the pixel footprint (`fwidth` of the position) so they never alias, so
   distant water keeps its wave texture in the lighting:
   ```
   px  = pixel footprint, m (length of fwidth of the position)
@@ -101,7 +101,7 @@ VERTEX.y = eta ; normal = normalize(-grad.x, 1, grad.y)   // scene axes: Z = -y
 
 ### 4.1 Normal
 ```
-n_geo    = vertex normal, plus the per-pixel slope of faded components (tiers M and H; §3.2: only the
+n_geo    = vertex normal, plus the per-pixel slope of faded components (tier H; §3.2: only the
            components in the band 2·px < lam < 4·s, from the wavelength-sorted comp and comp_lam)
 detail   = 2 to 4 layers of a tiling normal map, sampled in a wind-aligned frame (downwind, across):
            uv_k = rot(angle_k) * scale_k * (dot(p, dir) - drift_k * t, dot(p, perp(dir)))
@@ -243,8 +243,10 @@ less than 3° high.
 plus 0.5 m all round), draped on the drawn sea like the wake ribbons (`wm_drape`, lift 0.03 m, the same pull toward
 the camera so the sea's facets never cover it), unshaded, multiplying the colour behind it, no depth write, depth
 test on (the hull, deck and sails in front hide it), no shadows, no fog, drawn before the wakes, bow waves and mist
-(render priority −1), which take no shadows on tier H either. The grid moves by its transform only; the polygons
-are uniforms of the boat's material.
+(render priority −1), which take no shadows on tier H either. The grid moves by its transform only. All boats share
+one material: each boat's polygons are one row of a small RGBA32F texture (160 texels: origin and fade, sun and
+polygon count, footprint count, then the polygons, their bounding circles, the edge lines and the footprint's),
+uploaded once per frame, and each grid instance names its row.
 
 **Per pixel** (`boat_shadow_common.gdshaderinc`, also compiled by the offline preview):
 ```
@@ -276,9 +278,11 @@ is 0.72 real against 0.72 drawn from the chase camera at 20 kn, 0.74 against 0.7
 against 0.79 from low abeam, 0.77 against 0.65 looking toward the sun and 0.46 against 0.56 from 90 m above
 (displayed values after tone mapping).
 
-**Cost**: the per-boat geometry (about 60 points projected, five convex hulls) runs in the GDExtension
-(`BoatShadowShape`, with the GDScript reference `BoatShadows.build`), well under 0.03 ms of CPU per boat; the GPU
-draws one 32 × 16 grid per boat with a loop over at most 96 edges on the pixels of its rectangle.
+**Cost**: the per-boat geometry (about 70 points projected, five convex hulls) runs in the GDExtension
+(`BoatShadowShape`, with the GDScript reference `BoatShadows.build`); with the sails' outline read natively
+(`SailShape.mid_points`) a boat costs about 0.01 ms of CPU (0.1 ms for 10 boats, measured headless by test §9.10);
+the GPU draws one 32 × 16 grid per boat with a loop over at most 96 edges, skipping polygons by their bounding
+circle, on the pixels of its rectangle.
 
 ## 5. Bow waves, wakes and spray
 
@@ -375,7 +379,7 @@ colour-blind palettes).
 | --- | --- | --- | --- |
 | radial grid `N_r × N_s` | 120 × 160 (19 k vertices) | 180 × 256 (46 k) | 260 × 384 (100 k) |
 | components in the vertex shader | all | all | all |
-| per-pixel slope of faded components | no | yes | yes |
+| per-pixel slope of faded components | no | no (owner decision 2026-10-01: about 3.5 ms on an M1 at 2880 × 1800) | yes |
 | detail normal layers | 2 | 3 | 4 |
 | puffs and lulls (§4.3) | yes (gameplay information) | yes | yes |
 | whitecaps | yes, one texture | yes | yes |
@@ -393,7 +397,7 @@ puff loop, the sail cloth) by its square.
 
 Budget: the water within 2.5 ms of GPU time per frame on the Steam Deck at 1280 × 800 on tier M. The vertex work is
 small (22 cosines per vertex, 1 M per frame on tier M); the pixel work is dominated by the normal-map taps and the
-puff loop (at most 10 patches). The per-pixel slope of the faded components (tiers M and H) evaluates only the
+puff loop (at most 10 patches). The per-pixel slope of the faded components (tier H) evaluates only the
 components in the band `2·px < lam < 4·s` (§3.2), each with one sine and two smoothsteps from the uploaded
 wavelength; the others cost a compare (the carried ones) or end the loop (the ones too short for the pixel). Every tier renders with Godot's Forward+; tier L also works on the Mobile renderer,
 and nothing in §3–§6 needs compute shaders, so a Compatibility (web) port stays possible.

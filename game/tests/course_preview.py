@@ -34,6 +34,7 @@ in vec2 v_local;
 in float v_spacing;
 in float v_eta;
 in float v_expo;
+in float v_land;
 in vec3 v_normal;
 in vec3 v_wpos;
 out vec4 frag;
@@ -46,7 +47,7 @@ void main() {
     vec2 g = wm_faded_slope(v_local, v_spacing, px) * v_expo;
     n_geo = normalize(n_geo + vec3(-g.x, 0.0, g.y));
 #endif
-    WmSurface S = wm_surface(v_local, v_eta, n_geo, view, dist, vec2(0.0));
+    WmSurface S = wm_surface(v_local, v_eta, n_geo, view, dist, vec2(0.0), v_land);
     vec4 ov = wm_overlays(v_local, dist);
     vec3 albedo = mix(S.albedo, ov.rgb * 0.8, ov.a);
     vec3 emission = mix(S.emission, ov.rgb * 0.35, ov.a);
@@ -127,7 +128,7 @@ def render(ctx, d, size):
         "u_ambient": float(sc["ambient_energy"]),
     }
     water = ctx.program(vertex_shader=hdr + wp.WATER_VS, fragment_shader=hdr + sky_inc + wp.LIGHTING + WATER_FS)
-    wake = ctx.program(vertex_shader=hdr + wp.WAKE_VS,
+    wake = ctx.program(vertex_shader=hdr + wake_inc + wp.WAKE_VS,
                        fragment_shader=hdr + sky_inc + wp.LIGHTING + wake_inc + wp.WAKE_FS)
     mesh = ctx.program(vertex_shader=MESH_VS, fragment_shader=hdr + sky_inc + wp.LIGHTING + LAND_INC + MESH_FS)
     sky = ctx.program(vertex_shader=wp.SKY_VS, fragment_shader=hdr + sky_inc + wp.LIGHTING + wp.SKY_FS)

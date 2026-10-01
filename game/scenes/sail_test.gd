@@ -50,6 +50,8 @@ enum SeaSource { AUTO, CORE_SAMPLES, PLACEHOLDER }
 @export var puffs := true
 @export var shift_preset := -1
 @export var world_seed := 1
+## the player's livery id (data_format.md §8); "": the class default. The AI boats get theirs by the fleet rule
+@export var livery := ""
 ## start heading relative to the wind: + = starboard tack
 @export var start_twa_deg := 45.0
 @export var racing := true
@@ -237,12 +239,13 @@ func _apply_setup() -> void:
 	wind_speed_kn = gs.wind_kn
 	wind_from_deg = gs.wind_from_deg
 	world_seed = gs.seed
+	livery = gs.livery
 
 
 ## Command line after `--` (over GameSetup): `--race` (race mode on `course`; the fleet of GameSetup when no
 ## `--fleet`), `--free`, `--fleet=10`, `--level=expert` (easy, intermediate, expert, pro), `--speed-only`,
 ## `--watch` (an AI sails the player's boat too, spectating on), `--class=wm12`, `--venue=<id>`,
-## `--course=<venue>/<id>` (race mode), `--seed=<n>` (0: from the clock), `--wind=<kn>`, `--wind-from=<deg>`,
+## `--course=<venue>/<id>` (race mode), `--seed=<n>` (0: from the clock), `--livery=<id>` (the player's livery), `--wind=<kn>`, `--wind-from=<deg>`,
 ## `--fake` (FakeSim), `--core`; measuring (hud.md §17): `--perf` (the frame-time overlay), `--perf-log=PATH`,
 ## `--perf-seconds=N`, `--render-scale=0.67`, `--upscaler=fsr|bilinear|metalfx`, `--quality=L|M|H`, `--no-vsync`,
 ## `--shadow-splits=0|2|4`, `--shadow-atlas=N`, `--shadow-distance=M`, `--shadow-soft=0..5`, `--no-wake-buffer`, `--no-boat-shadows`,
@@ -274,6 +277,8 @@ func _user_args() -> void:
 			watch = true
 		elif a.begins_with("--venue="):
 			venue = a.trim_prefix("--venue=")
+		elif a.begins_with("--livery="):
+			livery = a.trim_prefix("--livery=")
 		elif a.begins_with("--seed="):
 			world_seed = a.trim_prefix("--seed=").to_int()
 		elif a.begins_with("--wind="):
@@ -341,7 +346,28 @@ func _build_views() -> void:
 			v.name = "Boat%d_%s" % [b, info.id]
 			add_child(v)
 			boat_views.append(v)
+		_paint_fleet()
 	boat_view = boat_views[runner.boat]
+
+
+## Every boat in a livery of its class (data_format.md §8): the player's choice for the own boat, the others by
+## the fleet rule from the world seed.
+func _paint_fleet() -> void:
+	var by_class := {}
+	for b in boat_views.size():
+		var id := boat_views[b].info.id
+		if not by_class.has(id):
+			by_class[id] = []
+		by_class[id].append(b)
+	for id in by_class:
+		var list := Livery.load_class(id)
+		var entries := []
+		for b in by_class[id]:
+			entries.append({"human": runner != null and b == runner.boat, "choice": livery})
+		var got := Livery.assign(list, entries, world_seed)
+		for k in got.size():
+			if got[k] != null:
+				boat_views[by_class[id][k]].set_livery(got[k])
 
 
 ## The sail states of every boat after a tick (`reset`: no previous ones).

@@ -1,7 +1,8 @@
 class_name MenuData
 extends RefCounted
 ## What the menus offer, read from the data on disk (menus.md §1): boat classes (data/classes), venues
-## (data/venues) and courses (game/data/courses/<venue>). Each entry is {"id", "name"}, sorted by name.
+## (data/venues), courses (game/data/courses/<venue>) and liveries (data/liveries). Each entry is {"id", "name"},
+## sorted by name (liveries in file order).
 
 const AI_LEVELS := ["easy", "intermediate", "expert", "pro"]
 const AI_NAMES := ["Easy", "Intermediate", "Expert", "Pro"]
@@ -38,6 +39,11 @@ static func classes() -> Array:
 		var id := f.trim_suffix(".boat.json")
 		out.append({"id": id, "name": str(d.get("name", id))})
 	return _sorted(out)
+
+
+## Liveries of a class in file order (the class default first): data/liveries/<class>.liveries.json.
+static func liveries(class_id: String) -> Array:
+	return Livery.load_class(class_id).map(func(l: Livery) -> Dictionary: return {"id": l.id, "name": l.name})
 
 
 ## Venues: data/venues/<id>.venue.json.

@@ -271,7 +271,7 @@ from `rig.sheet_leads` in the sidecar); the halyard tails and the mainsheet are 
 
 **Livery panels.** A number panel forward and a name panel aft on each topside, given in the GLB root extras
 (`livery_panels`: body x range, depth below the sheer, uv1 rectangle on the hull atlas); the previews draw them
-in the demo livery. The livery system itself is WM-014.
+in the demo livery. The game paints the liveries into them at load (`game/README.md` "Liveries").
 
 ## Levels of detail
 
@@ -388,8 +388,8 @@ Positions in the body frame.
 ## Limits and next steps
 
 - Tiling detail textures and per-vertex AO only: no unique-UV (lightmap) set, so no AO or dirt texture maps;
-  sail panels, tapes and film are not in the sailcloth texture (the previews draw seams procedurally); livery
-  decals through uv1 still need a shader.
+  sail panels, tapes and film are not in the sailcloth texture (the previews draw seams procedurally); the
+  liveries are painted through uv1 by the game's shaders.
 - No crew or sail numbers yet; headsail and kite sheets only on the posed previews (the engine draws them from
   `rig.sheet_leads`).
 - The flat spinnaker outline is a centreline projection; its flying shape comes from the simulation.

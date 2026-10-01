@@ -1,7 +1,8 @@
 // Sails (docs/specs/sail_visuals.md §11; game/scripts/boat_view.gd, BoatMaterials.sail_cloth): the boatgen
 // sailcloth slot, opaque, back faces culled (each of the two cloth layers faces its own side), with the cloth of
 // sail_cloth.gdshaderinc: panels, seams, tapes, corner patches, batten pockets and tell-tales, which show as
-// denser cloth in front light and as darker shapes against the sun.
+// denser cloth in front light and as darker shapes against the sun; and the boat's livery: panel colours, sail
+// numbers and insignia (§11.2, sail_livery.gdshaderinc).
 //
 // Shadows (water_render.md §4.6): the two layers lie 2 mm apart, closer than any shadow bias, so in the shadow
 // pass the sail is drawn pushed 5 cm away from the light along its normal (only the layer facing the light is
@@ -28,10 +29,14 @@ uniform float albedo_max = 0.8;
 uniform float shadow_push = 0.05;
 
 #include "res://shaders/sail_cloth.gdshaderinc"
+#include "res://shaders/sail_livery.gdshaderinc"
 
 varying float v_trans;
+// 0 on the port cloth layer, 1 on the starboard layer (the grid-order mesh holds the port layer first, §11.2)
+varying flat float v_side;
 
 void vertex() {
+	v_side = VERTEX_ID >= sl_layer_n ? 1.0 : 0.0;
 	if (IN_SHADOW_PASS) {
 		VERTEX -= NORMAL * shadow_push;
 	}
@@ -44,17 +49,30 @@ void fragment() {
 	float panel;
 	float fibre;
 	float mark;
-	wm_cloth(UV, UV2.y, px, layers, stitch, panel, fibre, mark);
+	float pid;
+	wm_cloth(UV, UV2.y, px, layers, stitch, panel, fibre, mark, pid);
+	vec3 base = albedo_color.rgb;
+	float t_near = 0.0;
+	float t_far = 0.0;
+	if (sl_on != 0) {
+		// the livery (§11.2): panel colours, and the numbers of this side and, through the cloth, the other
+		vec2 pl = wm_cloth_plan(UV);
+		base = wm_sail_design(base, pl, pid, px);
+		t_near = wm_sail_text(pl, v_side);
+		t_far = wm_sail_text(pl, 1.0 - v_side);
+	}
 	vec3 tex = texture(albedo_tex, UV * uv_scale).rgb;
-	vec3 a = min(albedo_color.rgb * mix(vec3(1.0), tex, weave), vec3(albedo_max));
+	vec3 a = min(base * mix(vec3(1.0), tex, weave), vec3(albedo_max));
 	// seams, tapes and patches read as slightly greyer cloth, the stitching as thread lines
 	a *= (1.0 - 0.045 * min(layers, 4.0)) * (1.0 - 0.45 * stitch) * (1.0 + 0.06 * (panel - 0.5));
 	a = mix(a, fibre_color, fibre * fibre_amount);
+	a = mix(a, sl_text_color, t_near);
 	a = mix(a, telltale_color, mark);
 	ALBEDO = a;
 	ROUGHNESS = clamp(roughness + 0.1 * (panel - 0.5), 0.05, 1.0);
 	SPECULAR = 0.5;
-	v_trans = backlight * exp(-0.8 * layers) * (1.0 - 0.6 * fibre * fibre_amount) * (1.0 - 0.6 * mark);
+	v_trans = backlight * exp(-0.8 * layers) * (1.0 - 0.6 * fibre * fibre_amount) * (1.0 - 0.6 * mark)
+			* (1.0 - 0.85 * t_near) * (1.0 - 0.85 * t_far);
 }
 
 void light() {

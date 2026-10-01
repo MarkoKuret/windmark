@@ -11,6 +11,9 @@ Three kinds of files feed the simulation core:
 Courses and marks are defined in `courses.md` (`windmark.course/1`). The core never reads the class file directly: everything it needs is
 in the performance file, which carries the hash of the class file it was made from.
 
+The front end also reads the livery files of §8 (`<class>.liveries.json`: colours, names and sail numbers);
+the core never does.
+
 ## 1. General rules
 
 - **JSON**, UTF-8, no comments. Top-level `"schema"` names the format and major version; a reader refuses a
@@ -181,7 +184,7 @@ abreast the cockpit and the sheet leads aft to the quarter.
 | `handling` | designer | feel multipliers and `dynamics` overrides (§3.7.1) |
 | `boards` | designer | daggerboards of a multihull, in place of `keel` (§3.9) |
 | `vpp` | designer | VPP settings (§3.10) |
-| `visual` | boat generator | liveries, deck layout, hardware, and per sail `sails.<id>.look` (the front-end sail look of `sail_visuals.md` §4, copied into the physics sidecar with the defaults filled in); keys in `tools/boatgen/README.md`; opaque to the core and the VPP |
+| `visual` | boat generator | deck layout, hardware, and per sail `sails.<id>.look` (the front-end sail look of `sail_visuals.md` §4, copied into the physics sidecar with the defaults filled in); keys in `tools/boatgen/README.md`; opaque to the core and the VPP |
 
 Top level: `"schema": "windmark.boatclass/1"`, `"id"`, `"name"`, `"version"` (integer, bumped on every change).
 
@@ -542,3 +545,91 @@ Every field of §6.2–§6.4 sits on a grid `{ "x0", "y0", "dx", "dy", "nx", "ny
   checks schema, validation rules and, online, the hashes announced by the server.
 - Minor schema additions (new optional keys) keep the major version; anything that changes the meaning of an
   existing key bumps it.
+
+## 8. Livery file (`windmark.liveries/1`)
+
+How the boats of a class look on the water: hull and deck colours, a hull graphic, the boat's name and sail number
+on the topsides, sail cloth and colours, and the sail numbers and class insignia on the sails. One file per class,
+`data/liveries/<class>.liveries.json`, written by hand (designers). **Presentation only**: the core, the VPP and the
+boat generator never read it, and it changes no model (the front end paints the generated boat at load,
+`game/README.md` "Liveries"). The general rules of §1 hold; colours are `"#rrggbb"` sRGB strings.
+
+Top level: `"schema": "windmark.liveries/1"`, `"class"` (the class id), `"insignia"` and `"liveries"` (at least 12;
+the first is the class default).
+
+| key | | meaning |
+| --- | --- | --- |
+| `insignia` | **R** | the class insignia on the main: `{ "text": "W7" }` (1 to 4 capital letters and digits, drawn bold italic over a wave mark) |
+| `liveries[]` | **R** | the liveries below |
+
+A livery:
+
+| key | | default | meaning |
+| --- | --- | --- | --- |
+| `id` | **R** | | `[a-z0-9_]`, unique in the file |
+| `name` | **R** | | shown in the menus |
+| `boat_name` | **R** | | the boat's name on the topsides aft: 1 to 20 characters of `A-Z a-z 0-9`, space, `'`, `-`, `.` |
+| `sail_number` | **R** | | `"1"` to `"999"`, unique in the file; on the topsides forward and on the sails |
+| `nation` | | none | 3 capital letters above the sail number on the sails |
+| `hull.topsides` | **R** | | topsides colour |
+| `hull.boot_stripe` | | `#e0e0dc` | boot stripe |
+| `hull.antifouling` | | `#1a1d24` | the bottom below the boot stripe |
+| `hull.keel` | | `hull.antifouling` | keel fin and bulb, and a rudder painted in antifouling |
+| `hull.text` | **R** | | name and number on the topsides |
+| `hull.graphic` | | none | one hull graphic (below) |
+| `deck.gelcoat` | | `#e2e2dc` | cabin, coamings, cockpit sides |
+| `deck.nonslip` | | `#a8a8a0` | the non-slip areas |
+| `sails.main`, `sails.headsail`, `sails.code_zero`, `sails.spinnaker` | | below | sail by role: `headsail` is every jib and genoa, `spinnaker` both spinnaker types |
+
+**Colours.** Every hull, deck and sail colour has each channel at most `#e7` (231, a linear albedo of 0.8), the
+look rule of §3.7: a file with a brighter colour is a load error. White is `#e7e7e3` or below.
+
+**Hull graphic** `{ "type", "colors": [...], ... }` (where it crosses the name or number panels, its colours
+should differ from `hull.text`), in topsides coordinates: `x` the fraction of the hull length
+from the stern (0) to the bow (1), and the depth below the sheer either in metres or as the fraction `t` of the
+topsides height at that `x` (0 at the sheer, 1 at the top of the boot stripe). The same graphic shows on both sides.
+
+| type | keys (default) | picture |
+| --- | --- | --- |
+| `none` | | plain topsides |
+| `stripes` | `depth` (`[0.08, 0.17]` m), `width` (`[0.05, 0.02]` m), `from` (0.04), `to` (0.96) | one or two stripes along the sheer at those depths below it, in `colors[0]`, `colors[1]`, ending at `from` and `to` with a cut that leans aft |
+| `two_tone` | `split` (0.45), `rise` (-0.15), `pinstripe` (0.025 m) | `colors[0]` below the line `t = split + rise · (x - 0.5)`, a pinstripe in `colors[1]` on it |
+| `swoosh` | `aft` (`[0.04, 0.8]`), `fwd` (`[0.96, 0.1]`) as `[x, t]`, `width` (`[0.24, 0.03]` m at the aft and forward ends) | a band in `colors[0]` from `aft` to `fwd` at the height `t = t_aft + (t_fwd - t_aft) s^2.2` (`s` from 0 aft to 1 forward: low aft, rising ever steeper toward the bow), tapering, edged on its upper side by a line in `colors[1]` |
+| `gradient` | `from` (0.25), `to` (0.85), `slant` (0.12) | the topsides blend from their colour aft to `colors[0]` forward between `x = from` and `to`, the blend line leaning aft by `slant` (of the hull length) from the boot stripe up to the sheer |
+| `bow` | `at` (0.78), `slant` (0.10), `line` (0.03 m) | the bow forward of a line from `x = at` at the sheer to `at - slant` at the boot stripe in `colors[0]`, with a line in `colors[1]` along its edge |
+
+**Sails** by role: `{ "cloth", "color", "fibre", "number", "design", "colors": [...], ... }`, all optional:
+
+| key | default | meaning |
+| --- | --- | --- |
+| `cloth` | the style of `sail_visuals.md` §11.1 for the sail type and LOA | `dacron` (woven polyester, cross-cut), `laminate` (tri-radial, with a scrim of load-path fibres), `nylon` (spinnaker cloth, ripstop) |
+| `color` | `#e4e4de` | the cloth (the film of a laminate) |
+| `fibre` | `#1e1f21` | the laminate's fibres or the nylon's ripstop threads |
+| `number` | `#14213d` | sail number, nation letters and insignia |
+| `design` | `plain` | panel colours, below, with `colors` |
+
+| design | keys (default) | picture |
+| --- | --- | --- |
+| `plain` | | the cloth colour |
+| `bands` | `stops` (`[0.35, 0.7]`) | horizontal bands by height above the foot (fraction of the sail height): `color` below `stops[0]`, `colors[0]` up to `stops[1]`, `colors[1]` above |
+| `head` | `radius` (0.3), `corner` (0) | `colors[0]` within `radius` (fraction of the luff) of the head; `colors[1]` within `corner` of the tack and clew |
+| `panels` | | the cloth panels alternate `color`, `colors[0]`, `colors[1]` (as many as given) |
+| `diagonal` | `luff` (0.25), `leech` (0.75), `band` (0.25 m) | `colors[0]` above the line from the luff at height `luff` to the leech at height `leech`, a band of `colors[1]` along the line |
+| `gores` | `count` (9) | gores radiating from the head, alternating `color`, `colors[0]`, `colors[1]` |
+
+**Numbers and insignia** (racing rules Appendix G): see `sail_visuals.md` §11.2 for where they go. The topsides
+show the boat name aft and the sail number forward (the livery panels of the generated hull).
+
+**Fleet assignment.** A race gives each boat a livery of its class, the same on every machine from the race seed:
+
+1. Order the class's liveries by `fnv1a32("<seed>:<id>")` (32-bit FNV-1a of the UTF-8 text, the seed in decimal),
+   ascending, ties in file order. This is the seeded order.
+2. Human entries in entry order take their chosen livery (the menu's choice, else the class default); one already
+   taken by an earlier entry gives the first free livery of the seeded order instead.
+3. AI entries in entry order take the free liveries in the seeded order. When none is left, the order starts again
+   from its beginning as repeat 1, then 2, and so on: a repeat keeps the livery's look, its boat name gets
+   `" II"`, `" III"`, ... (repeat + 1 in Roman numerals) and its sail number becomes `1000 · repeat + number`, so
+   sail numbers stay unique in the fleet.
+
+Offline the seed is the world seed (`GameSetup.seed`, `--seed`). Online the server sends the seed and each
+player's choice, and every client runs the same rule.

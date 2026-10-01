@@ -29,6 +29,9 @@ func build(race: bool, last: Dictionary) -> void:
 	var ven: String = last.get("venue", g.venue)
 	_add(MenuRow.choice("Boat", "class_id", MenuData.ids(_classes), MenuData.names(_classes),
 		_pick(MenuData.ids(_classes), cls)))
+	var lv := MenuData.liveries(str(rows["class_id"].value))
+	_add(MenuRow.choice("Livery", "livery", MenuData.ids(lv), MenuData.names(lv),
+		_pick(MenuData.ids(lv), str(last.get("livery", g.livery)))))
 	_add(MenuRow.choice("Venue", "venue", MenuData.ids(_venues), MenuData.names(_venues),
 		_pick(MenuData.ids(_venues), ven)))
 	if race:
@@ -42,6 +45,7 @@ func build(race: bool, last: Dictionary) -> void:
 	_add(MenuRow.range_row("Wind from", "wind_from_deg", 0, 355, 5, float(last.get("wind_from_deg", g.wind_from_deg)),
 		func(v: float) -> String: return "%03d°  %s" % [int(v), _compass(v)]))
 	rows["class_id"].changed.connect(func(_v: Variant) -> void: _refresh_courses())
+	rows["class_id"].changed.connect(func(_v: Variant) -> void: _refresh_liveries())
 	rows["venue"].changed.connect(func(_v: Variant) -> void: _refresh_courses())
 	_refresh_courses()
 	add_child(_gap(14))
@@ -75,6 +79,12 @@ static func _compass(deg: float) -> String:
 func _add(r: MenuRow) -> void:
 	rows[r.key] = r
 	add_child(r)
+
+
+## The livery list follows the class (menus.md §1).
+func _refresh_liveries() -> void:
+	var lv := MenuData.liveries(str(rows["class_id"].value))
+	rows["livery"].set_choices(MenuData.ids(lv), MenuData.names(lv))
 
 
 func _refresh_courses() -> void:
@@ -115,6 +125,7 @@ func first_row() -> Control:
 func write(g: GameSetup) -> void:
 	g.mode = mode
 	g.class_id = str(rows["class_id"].value)
+	g.livery = str(rows["livery"].value) if rows["livery"].value != null else ""
 	g.venue = str(rows["venue"].value)
 	if mode == "race":
 		g.course = str(rows["course"].value)

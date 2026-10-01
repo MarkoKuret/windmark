@@ -43,6 +43,8 @@ class SailPart:
 	var arrays: Array = []
 	var rows := 0
 	var cols := 0
+	## the rest grid's uv0 in grid order (port layer first): the cloth plan of the livery (sail_visuals.md §11.2)
+	var uv0 := PackedVector2Array()
 	## a sphere around the sail at any angle (model axes), for the custom AABB, the distance and the frustum
 	var centre := Vector3.ZERO
 	var radius := 1.0
@@ -97,6 +99,11 @@ static var _sail_mats := {}
 var use_reference := false
 ## the hull and mast of the drawn shadow on the water (BoatShadows.caster_from_physics), built on first use
 var _shadow_caster: Variant = null
+## the boat's livery (data_format.md §8) and its text texture, set by set_livery; null: the class's plain look
+var livery: Livery
+var livery_text: LiveryText
+## the per-boat livery materials, held here so they outlive the mesh instances that use them when the boat is freed
+var livery_materials: Array[Material] = []
 
 ## the body frame (x forward, y port, z up) in model axes (Frames.body_to_model)
 const BODY_TO_MODEL := Transform3D(Basis(Vector3(0, 0, 1), Vector3(1, 0, 0), Vector3(0, 1, 0)), Vector3.ZERO)
@@ -125,6 +132,11 @@ static func create(class_info: SimSource.ClassInfo, rudder_max: float, reference
 		b.add_child(mi)
 	b._find_parts()
 	return b
+
+
+## Paints the boat in `lv` (BoatLivery: per-boat materials over the shared meshes; no mesh is rebuilt).
+func set_livery(lv: Livery) -> void:
+	BoatLivery.apply(self, lv)
 
 
 func _find_parts() -> void:
@@ -357,6 +369,7 @@ func _setup_shape(sp: SailPart, side: Dictionary, furling: bool) -> void:
 		sp.arrays = out
 	sp.mesh = mesh
 	sp.shape = shape
+	sp.uv0 = uv
 
 
 ## sail_visuals.md §4: the look block of the sidecar (the generator fills the defaults), with the table's

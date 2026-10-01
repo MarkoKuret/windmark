@@ -233,22 +233,26 @@ func test_main_menu() -> void:
 	t.ok(q.rows["class_id"].choices == MenuData.ids(MenuData.classes()), "quick race: classes from disk")
 	t.ok(q.rows["venue"].choices == MenuData.ids(MenuData.venues()), "quick race: venues from disk")
 	t.ok(q.rows["course"].choices.has("example_bay/example_wl"), "quick race: the venue's courses")
+	t.ok(q.rows["livery"].choices == MenuData.ids(MenuData.liveries(str(q.rows["class_id"].value)))
+		and q.rows["livery"].choices.size() >= 12, "quick race: the class's liveries from disk")
 	# keyboard: Enter opens the page, the focus lands on the first row, down and right change the fleet size
 	_key("ui_accept")
 	await process_frame
 	await process_frame
 	t.ok(m.page == "quick" and m.quick.is_visible_in_tree(), "Enter opens Quick race")
 	t.ok(root.gui_get_focus_owner() == q.rows["class_id"], "focus on the first row")
-	for i in 3:
+	for i in 4:
 		_key("ui_down")
 		await process_frame
-	t.ok(root.gui_get_focus_owner() == q.rows["fleet_size"], "down x3 reaches the fleet row")
+	t.ok(root.gui_get_focus_owner() == q.rows["fleet_size"], "down x4 reaches the fleet row")
 	var fleet := int(q.rows["fleet_size"].value)
 	_key("ui_right")
 	_key("ui_right")
 	await process_frame
 	t.ok(int(q.rows["fleet_size"].value) == fleet + 2, "right x2: fleet %d -> %d" % [fleet, q.rows["fleet_size"].value])
 	q.rows["class_id"].set_value("wm12", true)
+	t.ok(q.rows["livery"].choices == MenuData.ids(MenuData.liveries("wm12")), "the livery list follows the class")
+	q.rows["livery"].set_value("black_carbon", true)
 	q.rows["ai_level"].set_value("pro", true)
 	q.rows["wind_kn"].set_value(15.0, true)
 	q.rows["wind_from_deg"].set_value(90.0, true)
@@ -257,6 +261,7 @@ func test_main_menu() -> void:
 	t.ok(g.mode == "race" and g.class_id == "wm12" and g.venue == "example_bay", "GameSetup: race, wm12, venue")
 	t.ok(g.course == "example_bay/example_wl" and g.fleet_size == fleet + 2 and g.ai_level == "pro",
 		"GameSetup: course, fleet, AI level")
+	t.ok(g.livery == "black_carbon", "GameSetup: livery")
 	t.near(g.wind_kn, 15.0, 1e-9, "GameSetup: wind speed")
 	t.near(g.wind_from_deg, 90.0, 1e-9, "GameSetup: wind direction")
 	t.ok(asked == [MainMenu.SAIL_SCENE], "sail scene requested: %s" % [asked])

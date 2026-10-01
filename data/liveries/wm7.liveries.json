@@ -1,0 +1,666 @@
+{
+  "schema": "windmark.liveries/1",
+  "class": "wm7",
+  "insignia": {
+    "text": "W7"
+  },
+  "liveries": [
+    {
+      "id": "classic",
+      "name": "Classic white",
+      "boat_name": "Kestrel",
+      "sail_number": "7",
+      "nation": "SLO",
+      "hull": {
+        "topsides": "#e4e4e0",
+        "text": "#14213d",
+        "boot_stripe": "#14213d",
+        "graphic": {
+          "type": "stripes",
+          "colors": [
+            "#14213d",
+            "#b3141c"
+          ]
+        }
+      },
+      "sails": {
+        "main": {
+          "cloth": "dacron",
+          "color": "#e2e2dc",
+          "number": "#14213d"
+        },
+        "headsail": {
+          "cloth": "dacron",
+          "color": "#e2e2dc",
+          "number": "#14213d"
+        },
+        "spinnaker": {
+          "cloth": "nylon",
+          "color": "#e4e4e0",
+          "design": "bands",
+          "number": "#14213d",
+          "colors": [
+            "#14213d",
+            "#b3141c"
+          ]
+        }
+      }
+    },
+    {
+      "id": "navy_gold",
+      "name": "Navy and gold",
+      "boat_name": "Northern Star",
+      "sail_number": "112",
+      "nation": "GBR",
+      "hull": {
+        "topsides": "#1b2f5c",
+        "text": "#e4e4e0",
+        "boot_stripe": "#c9a227",
+        "graphic": {
+          "type": "stripes",
+          "colors": [
+            "#c9a227",
+            "#e4e4e0"
+          ],
+          "depth": [
+            0.07,
+            0.13
+          ],
+          "width": [
+            0.04,
+            0.015
+          ]
+        }
+      },
+      "deck": {
+        "nonslip": "#9c9a90"
+      },
+      "sails": {
+        "main": {
+          "cloth": "dacron",
+          "color": "#e2e2dc",
+          "number": "#14213d"
+        },
+        "headsail": {
+          "cloth": "dacron",
+          "color": "#e2e2dc",
+          "number": "#14213d"
+        },
+        "spinnaker": {
+          "cloth": "nylon",
+          "color": "#1b2f5c",
+          "design": "head",
+          "number": "#e4e4e0",
+          "colors": [
+            "#c9a227"
+          ],
+          "radius": 0.32
+        }
+      }
+    },
+    {
+      "id": "red_swoosh",
+      "name": "Red swoosh",
+      "boat_name": "Sirocco",
+      "sail_number": "23",
+      "nation": "ITA",
+      "hull": {
+        "topsides": "#a8161b",
+        "text": "#e4e4e0",
+        "boot_stripe": "#e4e4e0",
+        "antifouling": "#16171a",
+        "graphic": {
+          "type": "swoosh",
+          "colors": [
+            "#16171a",
+            "#e4e4e0"
+          ]
+        }
+      },
+      "sails": {
+        "main": {
+          "cloth": "dacron",
+          "color": "#e2e2dc",
+          "number": "#b3141c"
+        },
+        "headsail": {
+          "cloth": "dacron",
+          "color": "#e2e2dc",
+          "number": "#14213d"
+        },
+        "spinnaker": {
+          "cloth": "nylon",
+          "color": "#b3141c",
+          "design": "panels",
+          "number": "#14213d",
+          "colors": [
+            "#e4e4e0"
+          ]
+        }
+      }
+    },
+    {
+      "id": "yellow_bow",
+      "name": "Yellow, black bow",
+      "boat_name": "Firecrest",
+      "sail_number": "345",
+      "nation": "GER",
+      "hull": {
+        "topsides": "#d9a90f",
+        "text": "#16171a",
+        "boot_stripe": "#16171a",
+        "antifouling": "#22252b",
+        "graphic": {
+          "type": "bow",
+          "colors": [
+            "#16171a",
+            "#e4e4e0"
+          ]
+        }
+      },
+      "sails": {
+        "main": {
+          "cloth": "dacron",
+          "color": "#e2e2dc",
+          "number": "#16171a"
+        },
+        "headsail": {
+          "cloth": "dacron",
+          "color": "#e2e2dc",
+          "number": "#16171a"
+        },
+        "spinnaker": {
+          "cloth": "nylon",
+          "color": "#d9a90f",
+          "design": "head",
+          "number": "#16171a",
+          "colors": [
+            "#16171a"
+          ],
+          "radius": 0.28
+        }
+      }
+    },
+    {
+      "id": "black_lime",
+      "name": "Black and lime",
+      "boat_name": "Petrel",
+      "sail_number": "88",
+      "nation": "NED",
+      "hull": {
+        "topsides": "#16171a",
+        "text": "#e4e4e0",
+        "boot_stripe": "#8cc63f",
+        "graphic": {
+          "type": "swoosh",
+          "colors": [
+            "#8cc63f",
+            "#e4e4e0"
+          ],
+          "width": [
+            0.34,
+            0.05
+          ]
+        }
+      },
+      "deck": {
+        "gelcoat": "#c8c9c6",
+        "nonslip": "#5d5f62"
+      },
+      "sails": {
+        "main": {
+          "cloth": "laminate",
+          "color": "#8b8f94",
+          "fibre": "#1a1b1d",
+          "number": "#16171a"
+        },
+        "headsail": {
+          "cloth": "laminate",
+          "color": "#8b8f94",
+          "fibre": "#1a1b1d",
+          "number": "#16171a"
+        },
+        "spinnaker": {
+          "cloth": "nylon",
+          "color": "#16171a",
+          "design": "diagonal",
+          "number": "#e4e4e0",
+          "colors": [
+            "#8cc63f",
+            "#e4e4e0"
+          ]
+        }
+      }
+    },
+    {
+      "id": "teal_two_tone",
+      "name": "Teal two-tone",
+      "boat_name": "Halcyon",
+      "sail_number": "51",
+      "nation": "CRO",
+      "hull": {
+        "topsides": "#0f6f75",
+        "text": "#e4e4e0",
+        "boot_stripe": "#0b3d40",
+        "graphic": {
+          "type": "two_tone",
+          "colors": [
+            "#e4e4e0",
+            "#0b3d40"
+          ],
+          "split": 0.5
+        }
+      },
+      "sails": {
+        "main": {
+          "cloth": "dacron",
+          "color": "#e2e2dc",
+          "number": "#0f6f75"
+        },
+        "headsail": {
+          "cloth": "dacron",
+          "color": "#e2e2dc",
+          "number": "#14213d"
+        },
+        "spinnaker": {
+          "cloth": "nylon",
+          "color": "#e4e4e0",
+          "design": "gores",
+          "number": "#14213d",
+          "colors": [
+            "#0f8f95"
+          ],
+          "count": 10
+        }
+      }
+    },
+    {
+      "id": "orange",
+      "name": "Orange stripes",
+      "boat_name": "Bora",
+      "sail_number": "610",
+      "nation": "FRA",
+      "hull": {
+        "topsides": "#d4520f",
+        "text": "#e4e4e0",
+        "boot_stripe": "#e4e4e0",
+        "graphic": {
+          "type": "stripes",
+          "colors": [
+            "#e4e4e0",
+            "#e4e4e0"
+          ],
+          "depth": [
+            0.09,
+            0.15
+          ],
+          "width": [
+            0.035,
+            0.015
+          ]
+        }
+      },
+      "sails": {
+        "main": {
+          "cloth": "dacron",
+          "color": "#e2e2dc",
+          "number": "#14213d"
+        },
+        "headsail": {
+          "cloth": "dacron",
+          "color": "#e2e2dc",
+          "number": "#14213d"
+        },
+        "spinnaker": {
+          "cloth": "nylon",
+          "color": "#d4520f",
+          "design": "bands",
+          "number": "#14213d",
+          "colors": [
+            "#e4e4e0",
+            "#7d8288"
+          ],
+          "stops": [
+            0.4,
+            0.62
+          ]
+        }
+      }
+    },
+    {
+      "id": "silver_red",
+      "name": "Silver and red",
+      "boat_name": "Mistral",
+      "sail_number": "404",
+      "nation": "ESP",
+      "hull": {
+        "topsides": "#8e9399",
+        "text": "#e4e4e0",
+        "boot_stripe": "#b3141c",
+        "antifouling": "#16171a",
+        "graphic": {
+          "type": "gradient",
+          "colors": [
+            "#b3141c"
+          ]
+        }
+      },
+      "deck": {
+        "nonslip": "#6e7074"
+      },
+      "sails": {
+        "main": {
+          "cloth": "laminate",
+          "color": "#303236",
+          "fibre": "#0c0c0e",
+          "number": "#e4e4e0"
+        },
+        "headsail": {
+          "cloth": "laminate",
+          "color": "#303236",
+          "fibre": "#0c0c0e",
+          "number": "#e4e4e0"
+        },
+        "spinnaker": {
+          "cloth": "nylon",
+          "color": "#b3141c",
+          "design": "head",
+          "number": "#e4e4e0",
+          "colors": [
+            "#8e9399"
+          ],
+          "radius": 0.34
+        }
+      }
+    },
+    {
+      "id": "royal_blue",
+      "name": "Royal blue",
+      "boat_name": "Swift",
+      "sail_number": "219",
+      "nation": "SWE",
+      "hull": {
+        "topsides": "#1d55b0",
+        "text": "#e4e4e0",
+        "boot_stripe": "#e3c21f",
+        "graphic": {
+          "type": "swoosh",
+          "colors": [
+            "#e3c21f",
+            "#e4e4e0"
+          ],
+          "aft": [
+            0.05,
+            0.8
+          ],
+          "fwd": [
+            0.9,
+            0.2
+          ]
+        }
+      },
+      "sails": {
+        "main": {
+          "cloth": "dacron",
+          "color": "#e2e2dc",
+          "number": "#1d55b0"
+        },
+        "headsail": {
+          "cloth": "dacron",
+          "color": "#e2e2dc",
+          "number": "#14213d"
+        },
+        "spinnaker": {
+          "cloth": "nylon",
+          "color": "#1d55b0",
+          "design": "panels",
+          "number": "#e4e4e0",
+          "colors": [
+            "#e3c21f"
+          ]
+        }
+      }
+    },
+    {
+      "id": "racing_green",
+      "name": "Racing green",
+      "boat_name": "Galeb",
+      "sail_number": "77",
+      "nation": "SLO",
+      "hull": {
+        "topsides": "#1d4f36",
+        "text": "#d4b54a",
+        "boot_stripe": "#d4b54a",
+        "graphic": {
+          "type": "stripes",
+          "colors": [
+            "#c9a227"
+          ],
+          "depth": [
+            0.08
+          ],
+          "width": [
+            0.03
+          ]
+        }
+      },
+      "deck": {
+        "nonslip": "#a59f88"
+      },
+      "sails": {
+        "main": {
+          "cloth": "dacron",
+          "color": "#ddd6c4",
+          "number": "#1d4f36"
+        },
+        "headsail": {
+          "cloth": "dacron",
+          "color": "#ddd6c4",
+          "number": "#14213d"
+        },
+        "spinnaker": {
+          "cloth": "nylon",
+          "color": "#e4e4e0",
+          "design": "head",
+          "number": "#14213d",
+          "colors": [
+            "#1d4f36"
+          ],
+          "radius": 0.3,
+          "corner": 0.12
+        }
+      }
+    },
+    {
+      "id": "white_red_bow",
+      "name": "White, red bow",
+      "boat_name": "Albatross",
+      "sail_number": "501",
+      "nation": "DEN",
+      "hull": {
+        "topsides": "#e4e4e0",
+        "text": "#b3141c",
+        "boot_stripe": "#b3141c",
+        "graphic": {
+          "type": "bow",
+          "colors": [
+            "#b3141c",
+            "#14213d"
+          ],
+          "at": 0.74
+        }
+      },
+      "sails": {
+        "main": {
+          "cloth": "dacron",
+          "color": "#e2e2dc",
+          "number": "#b3141c"
+        },
+        "headsail": {
+          "cloth": "dacron",
+          "color": "#e2e2dc",
+          "number": "#14213d"
+        },
+        "spinnaker": {
+          "cloth": "nylon",
+          "color": "#e4e4e0",
+          "design": "diagonal",
+          "number": "#14213d",
+          "colors": [
+            "#b3141c",
+            "#14213d"
+          ],
+          "luff": 0.3,
+          "leech": 0.65
+        }
+      }
+    },
+    {
+      "id": "purple",
+      "name": "Purple and silver",
+      "boat_name": "Aurora",
+      "sail_number": "666",
+      "nation": "AUS",
+      "hull": {
+        "topsides": "#55286f",
+        "text": "#e4e4e0",
+        "boot_stripe": "#a3a8ae",
+        "graphic": {
+          "type": "two_tone",
+          "colors": [
+            "#a3a8ae",
+            "#e4e4e0"
+          ],
+          "split": 0.55,
+          "rise": -0.3
+        }
+      },
+      "sails": {
+        "main": {
+          "cloth": "laminate",
+          "color": "#8b8f94",
+          "fibre": "#1a1b1d",
+          "number": "#55286f"
+        },
+        "headsail": {
+          "cloth": "laminate",
+          "color": "#8b8f94",
+          "fibre": "#1a1b1d",
+          "number": "#55286f"
+        },
+        "spinnaker": {
+          "cloth": "nylon",
+          "color": "#55286f",
+          "design": "gores",
+          "number": "#e4e4e0",
+          "colors": [
+            "#e4e4e0",
+            "#a3a8ae"
+          ],
+          "count": 9
+        }
+      }
+    },
+    {
+      "id": "sky",
+      "name": "Sky blue",
+      "boat_name": "Tern",
+      "sail_number": "30",
+      "nation": "NZL",
+      "hull": {
+        "topsides": "#5a9fcb",
+        "text": "#14213d",
+        "boot_stripe": "#14213d",
+        "graphic": {
+          "type": "stripes",
+          "colors": [
+            "#14213d",
+            "#e4e4e0"
+          ],
+          "depth": [
+            0.1,
+            0.16
+          ],
+          "width": [
+            0.05,
+            0.02
+          ]
+        }
+      },
+      "sails": {
+        "main": {
+          "cloth": "dacron",
+          "color": "#e2e2dc",
+          "number": "#14213d"
+        },
+        "headsail": {
+          "cloth": "dacron",
+          "color": "#e2e2dc",
+          "number": "#14213d"
+        },
+        "spinnaker": {
+          "cloth": "nylon",
+          "color": "#5a9fcb",
+          "design": "bands",
+          "number": "#14213d",
+          "colors": [
+            "#e4e4e0",
+            "#14213d"
+          ],
+          "stops": [
+            0.3,
+            0.75
+          ]
+        }
+      }
+    },
+    {
+      "id": "magenta",
+      "name": "Magenta fade",
+      "boat_name": "Larus",
+      "sail_number": "190",
+      "nation": "POR",
+      "hull": {
+        "topsides": "#b5174f",
+        "text": "#e4e4e0",
+        "boot_stripe": "#e4e4e0",
+        "antifouling": "#202024",
+        "graphic": {
+          "type": "gradient",
+          "colors": [
+            "#3b1f63"
+          ],
+          "from": 0.2,
+          "to": 0.9,
+          "slant": 0.18
+        }
+      },
+      "sails": {
+        "main": {
+          "cloth": "laminate",
+          "color": "#303236",
+          "fibre": "#0c0c0e",
+          "number": "#e4e4e0"
+        },
+        "headsail": {
+          "cloth": "laminate",
+          "color": "#303236",
+          "fibre": "#0c0c0e",
+          "number": "#e4e4e0"
+        },
+        "spinnaker": {
+          "cloth": "nylon",
+          "color": "#b5174f",
+          "design": "diagonal",
+          "number": "#e4e4e0",
+          "colors": [
+            "#3b1f63",
+            "#e4e4e0"
+          ],
+          "luff": 0.35,
+          "leech": 0.8
+        }
+      }
+    }
+  ]
+}

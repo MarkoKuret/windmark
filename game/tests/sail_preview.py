@@ -84,8 +84,8 @@ out vec4 frag;
 void main() {
     vec2 UV = v_uv.xy;
     float px = max(fwidth(UV.x), fwidth(UV.y));
-    float layers; float stitch; float panel; float fibre; float mark;
-    wm_cloth(UV, v_uv.w, px, layers, stitch, panel, fibre, mark);
+    float layers; float stitch; float panel; float fibre; float mark; float pid;
+    wm_cloth(UV, v_uv.w, px, layers, stitch, panel, fibre, mark, pid);
     vec3 tex = texture(albedo_tex, UV * uv_scale).rgb;
     vec3 a = min(albedo_color * mix(vec3(1.0), tex, weave), vec3(0.8));
     a *= (1.0 - 0.045 * min(layers, 4.0)) * (1.0 - 0.45 * stitch) * (1.0 + 0.06 * (panel - 0.5));

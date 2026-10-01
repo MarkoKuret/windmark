@@ -7,6 +7,8 @@ extends RefCounted
 var mode := "free"
 ## class id of the player's boat and of the AI boats (data/classes/<id>.boat.json)
 var class_id := "wm7"
+## the player's livery (data/liveries/<class>.liveries.json id); "": the class default
+var livery := ""
 ## venue id (data/venues/<id>.venue.json)
 var venue := "example_bay"
 ## course as "<venue>/<course id>" (game/data/courses/<venue>/<id>.course.json), used in race mode

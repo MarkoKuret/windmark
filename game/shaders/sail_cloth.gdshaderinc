@@ -100,9 +100,10 @@ void wm_patch(vec2 p, vec2 a, vec2 into, float r0, float seed, float px, inout f
 // The cloth at a point. uv0: cloth coordinates (m); v1: uv1.y; px: pixel footprint (m).
 // layers: plies over the single cloth (seams, tapes, patches, batten pockets, battens);
 // stitch: thread lines 0..1; panel: 0..1 per panel (0.5 where panels are too small to tell apart);
-// fibre: scrim fibres (laminate) or ripstop threads (nylon) 0..1; mark: tell-tale coverage 0..1.
+// fibre: scrim fibres (laminate) or ripstop threads (nylon) 0..1; mark: tell-tale coverage 0..1; panel_id: the
+// panel's index (livery panel colours).
 void wm_cloth(vec2 uv0, float v1, float px, out float layers, out float stitch, out float panel, out float fibre,
-		out float mark) {
+		out float mark, out float panel_id) {
 	layers = 0.0;
 	stitch = 0.0;
 	panel = 0.5;
@@ -179,6 +180,7 @@ void wm_cloth(vec2 uv0, float v1, float px, out float layers, out float stitch, 
 			radial = dot(p, dl);
 		}
 	}
+	panel_id = pid;
 	panel = mix(wm_hash(pid + 7.0 * float(cloth_kind)), 0.5, clamp((px - 0.05 * w) / (0.2 * w), 0.0, 1.0));
 
 	// edge tapes

@@ -503,8 +503,8 @@ sail material uses no normal map).
   beyond at 4 Hz; outside the view frustum not at all (a sphere around the sail against the camera's frustum
   planes), and at once on coming back into view. The drivers `φ`, `s_b` and `tl` advance every frame either way.
 - **Material**: the generator's `sailcloth` slot (its colour and weave texture), opaque, back faces culled (each
-  layer faces its own side), with the cloth of §11.1 and a back-light term (the sun through the cloth); liveries and
-  sail numbers later through uv1 (Godot's `UV2`). Opaque sails need no draw-order sorting. Shadows: `water_render.md`
+  layer faces its own side), with the cloth of §11.1 and a back-light term (the sun through the cloth); the boat's
+  livery (cloth, colours, panel design, sail numbers and insignia) on a copy per boat (§11.2). Opaque sails need no draw-order sorting. Shadows: `water_render.md`
   §4.6 (the shadow pass draws the sail 5 cm off the light along its normal, so the 2 mm layers never shadow each
   other).
 - The sail node's transform stays the identity: the generator writes sails in the boat frame, and §7 places them in
@@ -545,6 +545,37 @@ through the cloth falls by `exp(−0.8·plies)`, so seams, battens and patches s
 toward the sun (`0.75 + 0.75·max(0, −V·L)^4`). Every line is box-filtered over the pixel footprint (`fwidth` of
 uv0), so detail finer than a pixel fades to its average instead of shimmering, and panel variation fades out when
 panels get smaller than a few pixels. The albedo cap of 0.8 applies to the plain cloth before this.
+
+### 11.2 Livery: cloth, colours and sail numbers
+Each boat's sails take the `sails.<role>` entry of its livery (`data_format.md` §8) on a copy of the sail's cloth
+material per boat (the shape and mesh are unchanged; one material and one draw per sail as before):
+- **Cloth**: `dacron`, `laminate`, `nylon` set the style of §11.1 (panels, seam, fine structure, roughness, the light
+  through one ply, and the share of the weave texture), `color` the albedo (capped as in §11.1), `fibre` the scrim
+  or ripstop colour. Without a livery entry the style follows the §11.1 table.
+- **Design**: the panel colours of `data_format.md` §8 in the flat plan: height fractions are measured along the
+  up axis below from the foot (0) to the head (1); `panels` alternates by the panel index of the cloth (the same
+  panels as the seams); `gores` by the angle about the head.
+- **Layer**: the grid-order mesh holds the port layer first, so a vertex index below `rows · cols` is the port
+  layer, the rest the starboard layer.
+- **Text frame**: in the flat plan, the reading axis `f = unit(clew - tack)` along the foot and the up axis `u`
+  square to it toward the head. The port layer reads along `+f`, the starboard layer along `-f` (each reads left to
+  right from its own side); up is `u` on both.
+- **Character height** `h` by LOA (Appendix G1.2): under 3.5 m 0.23 m, to 8.5 m 0.30 m, to 11 m 0.375 m, over
+  11 m 0.45 m; 0.2 `h` between rows and between the two sides' stacks. The insignia is drawn 1.2 `h` high.
+- **Which sails** (Appendix G1.1, G1.3): the main carries the insignia, the nation letters (when the livery has
+  them) and the sail number; genoas, code zeros and spinnakers the nation letters and the number; a jib none.
+- **Where**: each side has a stack, top to bottom insignia, nation, number; the starboard stack is uppermost and
+  the port stack below it, so the two never sit back to back. The stacks start, measured from the head point, at
+  0 on the main (wholly above the arc of radius 0.6 leech when it fits), at 0.5 luff on a headsail (below the arc
+  of half the luff) and at 0.4 of the foot median on a spinnaker. Each row goes at the first height, scanning down
+  from there in 0.02 m steps, where its box (the text width at height `h` by `h`) lies inside the flat outline at
+  least 0.6 `h` from the luff and 0.4 `h` from the leech and foot, centred on the outline's width at that height.
+  When a stack does not fit above the foot, `h` shrinks in 10 % steps (down to 0.5 `h`).
+- **Look**: the number colour covers the cloth like a printed or stuck-on sheet: in front light it replaces the
+  albedo; against the sun the light through the cloth falls by `(1 - 0.85 c_near)(1 - 0.85 c_far)`, `c` the text
+  coverage of this side and of the other side's stack, so the numbers of both sides show as shadows (the far side's
+  mirrored, as on a real sail). Coverage edges are sharpened over the pixel footprint (`fwidth`) so the numbers stay
+  crisp close up and fade to their average far away.
 
 ## 12. Tests
 

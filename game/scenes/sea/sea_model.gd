@@ -8,8 +8,11 @@ extends RefCounted
 const MAX_COMPONENTS := 22
 const MAX_PUFFS := 10
 
-## Each component: [a (m), kx, ky (cycles per metre), c (cycles), T (ms)].
+## Each component: [a (m), kx, ky (cycles per metre), c (cycles), T (ms)], sorted by wavelength, longest first
+## (water_render.md §3.2).
 var components: Array = []
+## The wavelength of each component (m, same order), the shader's comp_lam.
+var wavelengths := PackedFloat32Array()
 ## Exposure grid (data_format.md §6.4): {x0, y0, dx, dy, nx, ny, default, e: PackedFloat32Array}; empty = none.
 var exposure: Dictionary = {}
 var sum_a := 0.0
@@ -26,6 +29,19 @@ func set_components(list: Array) -> void:
 			push_warning("SeaModel: more than %d sea components, the rest are not drawn" % MAX_COMPONENTS)
 			break
 		components.append([float(c[0]), float(c[1]), float(c[2]), float(c[3]), int(c[4])])
+	# water_render.md §3.2: longest wavelength first, so the pixel shader's band loop can skip and stop early.
+	# Every sum over the components is order-independent. Ties keep their input order.
+	var order := range(components.size())
+	order.sort_custom(func(i: int, j: int) -> bool:
+		var li := wavelength(components[i][1], components[i][2])
+		var lj := wavelength(components[j][1], components[j][2])
+		return li > lj or (li == lj and i < j))
+	var sorted := []
+	wavelengths = PackedFloat32Array()
+	for i in order:
+		sorted.append(components[i])
+		wavelengths.append(wavelength(components[i][1], components[i][2]))
+	components = sorted
 	sum_a = 0.0
 	var var_sum := 0.0
 	for c in components:
@@ -180,8 +196,12 @@ func faded_sigma(s: float) -> float:
 static func fade(kx: float, ky: float, s: float) -> float:
 	if s <= 0.0:
 		return 1.0
-	var lam := 1.0 / maxf(Vector2(kx, ky).length(), 1e-6)
-	return smoothstep(2.0, 4.0, lam / s)
+	return smoothstep(2.0, 4.0, wavelength(kx, ky) / s)
+
+
+## Wavelength (m) of a component with wave numbers kx, ky (cycles per metre), as the shader's wm_fade.
+static func wavelength(kx: float, ky: float) -> float:
+	return 1.0 / maxf(Vector2(kx, ky).length(), 1e-6)
 
 
 static func wrap_tile(d: float, tile: float) -> float:

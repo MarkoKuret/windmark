@@ -4,7 +4,8 @@ extends SceneTree
 ##   shaders parse; height parity (double mirror and a float32 emulation of the shader path) within 1 mm;
 ##   slope parity; far-field fade; puff parity within 1e-3; exposure parity within 1e-3; the venue land factor
 ##   (wind.md §8) against the core's wind within 1e-3 (when the GDExtension is built) and the shader's texture path
-##   against the mirror; wake geometry; the test scene runs on every tier.
+##   against the mirror; the wavelength-sorted components and the per-pixel band loop (§3.2); wake geometry; the
+##   test scene runs on every tier.
 ## Exit code 0 when every check passes.
 
 const SAMPLES := "res://generated/sea/sea_render_samples.json"
@@ -53,6 +54,7 @@ func _init() -> void:
 				check_puffs(sc)
 				check_exposure(sc)
 	check_fade()
+	check_band_slope(data["scenarios"] if data is Dictionary else [])
 	check_land_core()
 	check_wake_ribbon()
 	_tiers_left = [SeaQuality.Tier.L, SeaQuality.Tier.M, SeaQuality.Tier.H]
@@ -396,6 +398,78 @@ func check_fade() -> void:
 	check(worst < 3.0, "far-field fade: removed height below 3 px up to 3 km on every tier (worst %.2f px)" % worst)
 
 
+## water_render.md §3.2: SeaModel sorts the components by wavelength, longest first, with `wavelengths` matching
+## them; the shader's band loop (wm_faded_slope: skip lam >= 4 s, stop at lam <= 2 px) equals the sum over every
+## component with the full weights (1 - fade(s)) * fade(px).
+func check_band_slope(scenarios: Array) -> void:
+	var seas := []
+	for sc in scenarios:
+		seas.append(sc["components"])
+	var src := SeaEnvSource.new()
+	src.fetch_m = 10000.0
+	src.wind_kn = 20.0
+	var c20 := src._placeholder_components()
+	c20.append_array(_swell(0.8, 8.0, 1.0))
+	c20.reverse()  # unsorted input
+	seas.append(c20)
+	src.free()
+	var sorted_ok := true
+	var lam_ok := true
+	var same_set := true
+	var worst := 0.0
+	var max_band := 0
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	for comps in seas:
+		var m := SeaModel.new()
+		m.set_components(comps)
+		var n := m.components.size()
+		lam_ok = lam_ok and m.wavelengths.size() == n
+		for i in n:
+			var c: Array = m.components[i]
+			lam_ok = lam_ok and absf(m.wavelengths[i] - SeaModel.wavelength(c[1], c[2])) <= 1e-6 * m.wavelengths[i]
+			if i > 0:
+				sorted_ok = sorted_ok and m.wavelengths[i] <= m.wavelengths[i - 1]
+		# the same components as the input (a permutation)
+		var keys := {}
+		for c in m.components:
+			keys[str(c)] = true
+		for i in mini(comps.size(), SeaModel.MAX_COMPONENTS):
+			var c: Array = comps[i]
+			same_set = same_set and keys.has(str([float(c[0]), float(c[1]), float(c[2]), float(c[3]), int(c[4])]))
+		for k in 400:
+			var s := exp(rng.randf_range(log(0.2), log(500.0)))
+			var px := exp(rng.randf_range(log(0.002), log(20.0)))
+			var x := rng.randf_range(-3000.0, 3000.0)
+			var y := rng.randf_range(-3000.0, 3000.0)
+			var full := Vector2.ZERO
+			var band := Vector2.ZERO
+			var mag := 0.0
+			var n_band := 0
+			for i in n:
+				var c: Array = m.components[i]
+				var g: Vector2 = Vector2(c[1], c[2]) * (c[0] * TAU * -sin(TAU * fposmod(c[1] * x + c[2] * y + c[3], 1.0)))
+				full += (1.0 - SeaModel.fade(c[1], c[2], s)) * SeaModel.fade(c[1], c[2], px) * g
+				mag += absf(c[0]) * TAU * Vector2(c[1], c[2]).length()
+			for i in n:
+				var lam: float = m.wavelengths[i]
+				if lam >= 4.0 * s:
+					continue
+				if lam <= 2.0 * px:
+					break
+				var c: Array = m.components[i]
+				var g: Vector2 = Vector2(c[1], c[2]) * (c[0] * TAU * -sin(TAU * fposmod(c[1] * x + c[2] * y + c[3], 1.0)))
+				band += (1.0 - smoothstep(2.0, 4.0, lam / s)) * smoothstep(2.0, 4.0, lam / px) * g
+				n_band += 1
+			worst = maxf(worst, (full - band).length() / maxf(mag, 1e-9))
+			max_band = maxi(max_band, n_band)
+	check(sorted_ok, "band slope: components sorted by wavelength, longest first")
+	check(lam_ok, "band slope: wavelengths match the components")
+	check(same_set, "band slope: the sorted components are the input's")
+	check(worst < 1e-6, "band slope: band loop equals the full sum (worst %s of the slope scale, at most %d in the band)" % [
+			sci(worst), max_band])
+
+
 ## sea.md §3.2 swell components (random phases): r (0.92, 1, 1.08), w (0.5, 0.707, 0.5), +-8 deg.
 func _swell(hs: float, tp: float, from: float) -> Array:
 	var out := []
@@ -519,6 +593,14 @@ func _process(_delta: float) -> bool:
 	for i in n_comp:
 		worst = maxf(worst, absf(comp[i].w - ph[i]))
 	check(worst < 1e-6, "scene tier %s: uploaded phases match (worst %s cycles)" % [t["name"], sci(worst)])
+	# the uploaded wavelengths: one per component, sorted, from (kx, ky), zero padding
+	var lam: PackedFloat32Array = sea.material.get_shader_parameter("comp_lam")
+	var lam_ok := lam.size() == SeaModel.MAX_COMPONENTS
+	for i in n_comp if lam_ok else 0:
+		var c: Array = sea.model.components[i]
+		lam_ok = lam_ok and absf(lam[i] - SeaModel.wavelength(c[1], c[2])) <= 1e-6 * lam[i]
+		lam_ok = lam_ok and (i == 0 or lam[i] <= lam[i - 1])
+	check(lam_ok, "scene tier %s: uploaded wavelengths match the components, longest first" % t["name"])
 	check_land_scene(sea, t["name"])
 	var wb: SubViewport = (_scene.get_node("Wakes") as SeaWakes).wake_buffer()
 	check((wb != null) == bool(t["wake_buffer"]), "scene tier %s: wake buffer %s" % [t["name"],

@@ -417,6 +417,10 @@ def set_uniforms(prog, values):
             if arr.shape[0] < n:
                 arr = np.vstack([arr, np.zeros((n - arr.shape[0], arr.shape[1]), dtype="f4")])
             u.write(arr[:n].tobytes())
+        elif isinstance(v, list) and u.array_length > 1 and u.dimension == 1:
+            arr = np.zeros(u.array_length, dtype="f4")
+            arr[:min(len(v), u.array_length)] = v[:u.array_length]
+            u.write(arr.tobytes())
         elif isinstance(v, list):
             if u.fmt and "i" in u.fmt:
                 u.value = tuple(int(x) for x in v)

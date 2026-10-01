@@ -220,6 +220,22 @@ func _dump(name: String) -> void:
 	data["wakes"] = ribbons
 	data["wake_uniforms"] = wake_uniforms
 	data["bow_waves"] = waves
+	# drawn boat shadows (§4.7, tiers L and M): the grid in the scene and the material's uniforms
+	# and their data texture (RGBA32F rows, one per boat)
+	var drawn := []
+	var bs: BoatShadows = _scene.get_node("BoatShadows")
+	for mi in bs.get_children():
+		if not (mi is MeshInstance3D and mi.visible):
+			continue
+		var n := "shadow%d" % drawn.size()
+		drawn.append(_write_arrays(dir, n, mi.mesh.surface_get_arrays(0), mi.global_transform))
+		drawn[-1]["name"] = n
+		drawn[-1]["row"] = int(mi.get_instance_shader_parameter("shadow_row"))
+	data["drawn_shadows"] = drawn
+	data["drawn_uniforms"] = _uniforms(bs.material())
+	var img := bs.data_image()
+	data["drawn_tex"] = [img.get_width(), img.get_height()]
+	_save(dir, "drawn_tex.bin", img.get_data())
 	# mist sprites: world ENU centre, size, alpha, seed
 	var mist := []
 	for m in wakes.mist_sprites():

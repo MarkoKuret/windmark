@@ -55,8 +55,34 @@ vec3 env_sky(vec3 d) {
     return wm_sky_color(d, normalize(sun_dir), sky_horizon, sky_zenith, sun_color, u_cloud_cover, u_cloud_offset, 0.0);
 }
 
-// Stand-in for Godot's PBR: F0 = 0.16 specular^2, GGX with alpha = roughness^2, Schlick sky reflection.
+// The sun's shadow map (water_render.md §4.6, stand-in): the boats' depth seen from the sun, filtered over about
+// 5 cm like Godot's soft filter. 1 = lit.
+uniform sampler2D u_shadow_map;
+uniform mat4 u_light_vp;
+uniform float u_use_shadow_map;
+float sun_vis(vec3 wpos, vec3 N) {
+    if (u_use_shadow_map < 0.5) return 1.0;
+    vec4 l = u_light_vp * vec4(wpos + N * 0.02, 1.0);
+    vec3 c = l.xyz / l.w * 0.5 + 0.5;
+    if (c.x < 0.0 || c.y < 0.0 || c.x > 1.0 || c.y > 1.0 || c.z > 1.0) return 1.0;
+    float texel = 1.0 / float(textureSize(u_shadow_map, 0).x);
+    float vis = 0.0;
+    for (int i = -2; i <= 2; i++) {
+        for (int j = -2; j <= 2; j++) {
+            float d = texture(u_shadow_map, c.xy + vec2(float(i), float(j)) * texel * 2.0).r;
+            vis += c.z - 0.0004 > d ? 0.0 : 1.0;
+        }
+    }
+    return vis / 25.0;
+}
+
+// Stand-in for Godot's PBR: F0 = 0.16 specular^2, GGX with alpha = roughness^2, Schlick sky reflection. vis: the
+// sun's share that reaches the surface (its shadow).
+vec3 shade_vis(vec3 albedo, float rough, float spec, vec3 N, vec3 V, float vis_sun);
 vec3 shade(vec3 albedo, float rough, float spec, vec3 N, vec3 V) {
+    return shade_vis(albedo, rough, spec, N, V, 1.0);
+}
+vec3 shade_vis(vec3 albedo, float rough, float spec, vec3 N, vec3 V, float vis_sun) {
     vec3 L = normalize(sun_dir);
     float NdotL = max(dot(N, L), 0.0);
     float NdotV = max(dot(N, V), 1e-4);
@@ -71,7 +97,7 @@ vec3 shade(vec3 albedo, float rough, float spec, vec3 N, vec3 V) {
     float k = a * 0.5;
     float vis = 0.25 / ((NdotL * (1.0 - k) + k) * (NdotV * (1.0 - k) + k));
     float F = f0 + (1.0 - f0) * pow(1.0 - LdotH, 5.0);
-    vec3 direct = sun_color * NdotL * (albedo * (1.0 - F) + WM_PI * D * vis * F);
+    vec3 direct = vis_sun * sun_color * NdotL * (albedo * (1.0 - F) + WM_PI * D * vis * F);
     float Fe = f0 + (max(1.0 - rough, f0) - f0) * pow(1.0 - NdotV, 5.0);
     vec3 R = reflect(-V, N);
     vec3 refl = env_sky(R) * Fe;
@@ -86,8 +112,14 @@ vec3 fogged(vec3 c, vec3 wpos) {
 """
 
 
+# --faded-slope: the per-pixel slope of faded waves on every tier (water_render.md §3.2; the shaders draw it on tier
+# H only), to compare a tier's look with and without it
+FADED_SLOPE_ALWAYS = False
+
+
 def header(tier, layers):
-    return f"#version 410\n#define TIER {tier}\n#define WM_DETAIL_LAYERS {layers}\n" + SAMPLERS + inc("sea_common.gdshaderinc")
+    slope = "#define WM_FADED_SLOPE\n" if tier >= 3 or FADED_SLOPE_ALWAYS else ""
+    return f"#version 410\n#define TIER {tier}\n#define WM_DETAIL_LAYERS {layers}\n" + slope + SAMPLERS + inc("sea_common.gdshaderinc")
 
 
 WATER_VS = """
@@ -134,13 +166,13 @@ void main() {
     vec3 view = normalize(u_cam - v_wpos);
     float dist = length(u_cam.xz - v_wpos.xz);
     vec3 n_geo = normalize(v_normal);
-#if TIER >= 2
+#ifdef WM_FADED_SLOPE
     float px = max(length(fwidth(v_local)), 1e-3);
     vec2 g = wm_faded_slope(v_local, v_spacing, px) * v_expo;
     n_geo = normalize(n_geo + vec3(-g.x, 0.0, g.y));
 #endif
     WmSurface S = wm_surface(v_local, v_eta, n_geo, view, dist, vec2(0.0), v_land);
-    vec3 c = shade(S.albedo, S.roughness, S.specular, S.normal, view) + S.emission;
+    vec3 c = shade_vis(S.albedo, S.roughness, S.specular, S.normal, view, sun_vis(v_wpos, vec3(0.0, 1.0, 0.0))) + S.emission;
     frag = vec4(fogged(c, v_wpos), 1.0);
 }
 """
@@ -256,6 +288,49 @@ void main() {
 }
 """
 
+# boat_shadow.gdshader: the drawn boat shadow (water_render.md §4.7), multiplying the colour behind it
+DRAWN_VS = """
+uniform mat4 u_vp;
+uniform vec3 u_cam;
+uniform float grid_q;
+uniform float grid_segments;
+in vec3 in_pos;
+out vec3 v_water;
+void main() {
+    vec3 p = wm_drape(in_pos, 0.03, u_cam, grid_q, grid_segments);
+    vec2 dc = p.xz - u_cam.xz;
+    float s = length(dc) > 1e-4 ? length(in_pos.xz - u_cam.xz) / length(dc) : 1.0;
+    v_water = u_cam + (p - u_cam) * s;
+    gl_Position = u_vp * vec4(p, 1.0);
+}
+"""
+
+DRAWN_FS = """
+in vec3 v_water;
+out vec4 frag;
+void main() {
+    float px = length(fwidth(v_water.xz));
+    float s = wm_boat_shadow(v_water, px, u_row);
+    vec3 V = normalize(u_cam - v_water);
+    frag = vec4(mix(vec3(1.0), wm_shadow_keep(V, wm_shadow_sun(u_row)), s), 1.0);
+}
+"""
+
+DEPTH_VS = """
+#version 410
+uniform mat4 u_vp;
+in vec3 in_pos;
+void main() {
+    gl_Position = u_vp * vec4(in_pos, 1.0);
+}
+"""
+
+DEPTH_FS = """
+#version 410
+void main() {
+}
+"""
+
 BOAT_VS = """
 #version 410
 uniform mat4 u_vp;
@@ -292,7 +367,7 @@ uniform float u_ao_strength;
 uniform float u_albedo_max;
 uniform sampler2D u_albedo_tex;
 uniform sampler2D u_mr_tex;
-uniform float u_shadow;
+uniform float u_shadow;  // 1: the boat takes the shadow map (sun_vis), 0: lit
 out vec4 frag;
 void main() {
     vec3 N = normalize(v_n);
@@ -318,7 +393,7 @@ void main() {
     float vis = 0.25 / ((NdotL * (1.0 - k) + k) * (NdotV * (1.0 - k) + k));
     vec3 F = f0 + (1.0 - f0) * pow(1.0 - max(dot(L, H), 0.0), 5.0);
     vec3 diff = albedo * (1.0 - metal);
-    vec3 direct = u_shadow * sun_color * NdotL * (diff * (1.0 - F) + WM_PI * D * vis * F);
+    vec3 direct = mix(1.0, sun_vis(v_wpos, N), u_shadow) * sun_color * NdotL * (diff * (1.0 - F) + WM_PI * D * vis * F);
     vec3 Fe = f0 + (max(vec3(1.0 - rough), f0) - f0) * pow(1.0 - NdotV, 5.0);
     vec3 R = reflect(-V, N);
     // rough surfaces see a blurred sky: toward the average sky colour
@@ -451,10 +526,71 @@ def texture_from_png(ctx, path, components):
     return t
 
 
-def render(ctx, d, size, wakes=True):
+def look_at(eye, target, up):
+    f = target - eye
+    f = f / np.linalg.norm(f)
+    s = np.cross(f, up)
+    s = s / np.linalg.norm(s)
+    u = np.cross(s, f)
+    m = np.eye(4)
+    m[0, :3], m[1, :3], m[2, :3] = s, u, -f
+    m[:3, 3] = -m[:3, :3] @ eye
+    return m
+
+
+def ortho(half, near, far):
+    m = np.eye(4)
+    m[0, 0] = m[1, 1] = 1.0 / half
+    m[2, 2] = -2.0 / (far - near)
+    m[2, 3] = -(far + near) / (far - near)
+    return m
+
+
+SHADOW_MAP = 4096
+SHADOW_HALF = 25.0
+
+
+def shadow_pass(ctx, d, sc):
+    """The boats' depth seen from the sun around the boat: (depth texture, light view-projection)."""
+    tris = []
+    for b in sc["boat"]:
+        if "indices" not in b:
+            continue
+        bp = load_bin(d, b["name"] + "_pos.bin", "f4", 3)
+        bi = load_bin(d, b["name"] + "_idx.bin", "i4", 1)
+        tris.append(bp[bi])
+    if not tris:
+        return None, None
+    pts = np.vstack(tris)
+    centre = 0.5 * (pts.min(0) + pts.max(0))
+    L = np.array(sc["water"]["sun_dir"], dtype=float)
+    L /= np.linalg.norm(L)
+    up = np.array([0.0, 1.0, 0.0]) if abs(L[1]) < 0.99 else np.array([0.0, 0.0, -1.0])
+    light_vp = ortho(SHADOW_HALF, 1.0, 160.0) @ look_at(centre + L * 80.0, centre, up)
+    tex = ctx.depth_texture((SHADOW_MAP, SHADOW_MAP))
+    tex.compare_func = ""
+    tex.filter = (moderngl.NEAREST, moderngl.NEAREST)
+    fbo = ctx.framebuffer(depth_attachment=tex)
+    fbo.use()
+    ctx.clear(depth=1.0)
+    ctx.enable(moderngl.DEPTH_TEST)
+    ctx.disable(moderngl.CULL_FACE)
+    prog = ctx.program(vertex_shader=DEPTH_VS, fragment_shader=DEPTH_FS)
+    prog["u_vp"].write(light_vp.T.astype("f4").tobytes())
+    vbo = ctx.buffer(pts.astype("f4").tobytes())
+    ctx.vertex_array(prog, [(vbo, "3f", "in_pos")]).render(moderngl.TRIANGLES)
+    return tex, light_vp
+
+
+def render(ctx, d, size, wakes=True, shadows="auto"):
+    """shadows: `real` (the sun's shadow map on the water, tier H), `drawn` (the drawn boat shadows, tiers L and
+    M), `none`, or `auto` (the tier's). The boats take the shadow map unless `none`."""
     sc = json.loads((d / "scene.json").read_text())
     w, h = size
     tier = {"L": 1, "M": 2, "H": 3}[sc["tier"]]
+    if shadows == "auto":
+        shadows = "real" if sc["tier"] == "H" else "drawn"
+    shadow_tex, light_vp = shadow_pass(ctx, d, sc) if shadows != "none" else (None, None)
     hdr_inc = header(tier, sc["detail_layers"])
     sky_inc = inc("sky_common.gdshaderinc")
     wake_inc = inc("wake_common.gdshaderinc")
@@ -485,6 +621,8 @@ def render(ctx, d, size, wakes=True):
     bow = ctx.program(vertex_shader=hdr_inc + wake_inc + BOW_VS, fragment_shader=hdr_inc + sky_inc + LIGHTING + wake_inc + BOW_FS)
     mist = ctx.program(vertex_shader=hdr_inc + MIST_VS, fragment_shader=hdr_inc + sky_inc + LIGHTING + wake_inc + MIST_FS)
     boat = ctx.program(vertex_shader=BOAT_VS, fragment_shader=hdr_inc + sky_inc + LIGHTING + BOAT_FS)
+    drawn = ctx.program(vertex_shader=hdr_inc + wake_inc + DRAWN_VS,
+                        fragment_shader=hdr_inc + sky_inc + LIGHTING + "uniform sampler2D shadow_tex;\nuniform int u_row;\n" + inc("boat_shadow_common.gdshaderinc") + DRAWN_FS)
     sky = ctx.program(vertex_shader=SKY_VS, fragment_shader=hdr_inc + sky_inc + LIGHTING + SKY_FS)
     tone = ctx.program(vertex_shader=SKY_VS, fragment_shader=TONEMAP_FS)
 
@@ -509,8 +647,14 @@ def render(ctx, d, size, wakes=True):
     for tex, unit in units.values():
         tex.use(unit)
 
-    for p in (water, wake, bow, mist, boat, sky):
+    if shadow_tex is not None:
+        shadow_tex.use(7)
+    for p in (water, wake, bow, mist, boat, sky, drawn):
         set_uniforms(p, sc["water"])
+        set_if(p, "u_shadow_map", 7)
+        set_if(p, "u_use_shadow_map", 1.0 if shadow_tex is not None else 0.0)
+        if light_vp is not None and "u_light_vp" in p:
+            p["u_light_vp"].write(light_vp.T.astype("f4").tobytes())
         for k, v in common.items():
             set_if(p, k, v)
         for name, (_, unit) in units.items():
@@ -519,6 +663,8 @@ def render(ctx, d, size, wakes=True):
             p["u_vp"].write(vp_bytes)
     set_uniforms(wake, sc["wake_uniforms"])
     set_uniforms(bow, sc["wake_uniforms"])
+    # the sea takes the shadow map only for real shadows (tier H); the wakes, bow waves and mist take none
+    set_if(water, "u_use_shadow_map", 1.0 if shadows == "real" else 0.0)
     set_uniforms(sky, {k: v for k, v in sc["sky"].items() if k in ("sky_horizon", "sky_zenith", "sun_dir", "sun_color")})
     sky["u_inv_vp"].write(inv_vp)
     water["u_sea_pos"].value = tuple(sc["sea_position"])
@@ -574,7 +720,7 @@ def render(ctx, d, size, wakes=True):
         set_if(boat, "u_ao_strength", float(b.get("ao", 0.0)))
         set_if(boat, "u_albedo_max", float(b.get("albedo_max", 1.0)))
         set_if(boat, "u_uv_scale", tuple(b.get("uv_scale", [1.0, 1.0])))
-        set_if(boat, "u_shadow", 1.0)
+        set_if(boat, "u_shadow", 1.0 if shadow_tex is not None else 0.0)
         boat_tex(b.get("albedo_tex")).use(5)
         boat_tex(b.get("mr_tex")).use(6)
         set_if(boat, "u_albedo_tex", 5)
@@ -584,8 +730,25 @@ def render(ctx, d, size, wakes=True):
                          ctx.buffer(bi.astype("i4").tobytes())).render(moderngl.TRIANGLES)
 
     ctx.enable(moderngl.BLEND)
+    fbo.depth_mask = False  # the ribbons and the drawn shadows do not write depth (depth_draw_never)
+    if shadows == "drawn":
+        # the drawn boat shadows multiply the colour behind them, before the wakes (render priority -1)
+        ctx.blend_func = moderngl.DST_COLOR, moderngl.ZERO
+        if sc.get("drawn_shadows"):
+            tw, th = sc["drawn_tex"]
+            data = np.fromfile(d / "drawn_tex.bin", dtype="f4")
+            dtex = ctx.texture((tw, th), 4, data.tobytes(), dtype="f4")
+            dtex.filter = (moderngl.NEAREST, moderngl.NEAREST)
+            dtex.use(8)
+            drawn["shadow_tex"].value = 8
+            set_uniforms(drawn, {k: v for k, v in sc["drawn_uniforms"].items() if k != "shadow_tex"})
+        for r in sc.get("drawn_shadows", []):
+            drawn["u_row"].value = int(r["row"])
+            rp = load_bin(d, r["name"] + "_pos.bin", "f4", 3)
+            ri = load_bin(d, r["name"] + "_idx.bin", "i4", 1)
+            ctx.vertex_array(drawn, [(ctx.buffer(rp.astype("f4").tobytes()), "3f", "in_pos")],
+                             ctx.buffer(ri.astype("i4").tobytes())).render(moderngl.TRIANGLES)
     ctx.blend_func = moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA
-    fbo.depth_mask = False  # the ribbons do not write depth (depth_draw_never)
     for r in sc["wakes"] if wakes else []:
         if "indices" not in r:
             continue
@@ -636,14 +799,39 @@ def render(ctx, d, size, wakes=True):
     return img.convert("RGB")
 
 
+def compare_image(real, drawn):
+    """Side by side: the real shadow (tier H) left, the drawn one (tiers L and M) right, labelled."""
+    from PIL import ImageDraw
+    w, h = real.size
+    out = Image.new("RGB", (2 * w + 8, h), (255, 255, 255))
+    out.paste(real, (0, 0))
+    out.paste(drawn, (w + 8, 0))
+    dr = ImageDraw.Draw(out)
+    for x, label in ((10, "real sun shadow on the sea (tier H)"), (w + 18, "drawn boat shadow (tiers L and M)")):
+        dr.rectangle([x - 4, 8, x + 7 * len(label), 28], fill=(0, 0, 0))
+        dr.text((x, 12), label, fill=(255, 255, 255))
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--size", default="1280x720")
     ap.add_argument("--no-wakes", action="store_true", help="leave the wake ribbons out")
+    ap.add_argument("--shadows", default="auto", choices=["auto", "real", "drawn", "none"],
+                    help="the boats' shadow on the water: the tier's (auto), the sun's shadow map (real, tier H), "
+                         "the drawn shadow (drawn, tiers L and M) or none")
+    ap.add_argument("--compare", action="store_true",
+                    help="render each shot with the real and the drawn shadow: <shot>.real.png, <shot>.drawn.png "
+                         "and <shot>.compare.png side by side")
+    ap.add_argument("--faded-slope", action="store_true",
+                    help="draw the per-pixel slope of faded waves on every tier (the shaders: tier H only)")
+    ap.add_argument("--suffix", default="", help="added to the output names (e.g. .slope)")
     ap.add_argument("--publish", action="store_true",
                     help="also write JPEG copies to game/tests/previews (the committed previews)")
     ap.add_argument("shots", nargs="*")
     a = ap.parse_args()
+    global FADED_SLOPE_ALWAYS
+    FADED_SLOPE_ALWAYS = a.faded_slope
     size = tuple(int(x) for x in a.size.split("x"))
     shots = a.shots or sorted(p.name for p in OUT.iterdir() if (p / "scene.json").exists())
     if not shots:
@@ -651,8 +839,19 @@ def main():
         return 1
     ctx = moderngl.create_standalone_context(require=410)
     for s in shots:
-        img = render(ctx, OUT / s, size, not a.no_wakes)
-        path = OUT / (s + (".nowake" if a.no_wakes else "") + ".png")
+        if a.compare:
+            imgs = {}
+            for mode in ("real", "drawn"):
+                imgs[mode] = render(ctx, OUT / s, size, not a.no_wakes, mode)
+                path = OUT / ("%s%s.%s.png" % (s, a.suffix, mode))
+                imgs[mode].save(path)
+                print("wrote", path)
+            path = OUT / (s + a.suffix + ".compare.png")
+            compare_image(imgs["real"], imgs["drawn"]).save(path)
+            print("wrote", path)
+            continue
+        img = render(ctx, OUT / s, size, not a.no_wakes, a.shadows)
+        path = OUT / (s + a.suffix + (".nowake" if a.no_wakes else "") + ".png")
         img.save(path)
         print("wrote", path)
         if a.publish:

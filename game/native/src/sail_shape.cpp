@@ -679,6 +679,16 @@ Dictionary SailShape::frame() const {
 
 PackedVector3Array SailShape::local_shape() const { return to_packed(loc_); }
 PackedVector3Array SailShape::mid() const { return to_packed(mid_); }
+
+PackedVector3Array SailShape::mid_points(const PackedInt32Array& idx) const {
+  PackedVector3Array out;
+  out.resize(idx.size());
+  for (int64_t k = 0; k < idx.size(); ++k) {
+    int32_t i = idx[k];
+    out.set(k, i >= 0 && static_cast<size_t>(i) < mid_.size() ? mid_[i] : Vector3());
+  }
+  return out;
+}
 PackedVector3Array SailShape::positions() const { return to_packed(pos_); }
 PackedVector3Array SailShape::normals() const { return to_packed(nrm_); }
 
@@ -738,6 +748,7 @@ void SailShape::_bind_methods() {
   ClassDB::bind_method(D_METHOD("frame"), &SailShape::frame);
   ClassDB::bind_method(D_METHOD("local_shape"), &SailShape::local_shape);
   ClassDB::bind_method(D_METHOD("mid"), &SailShape::mid);
+  ClassDB::bind_method(D_METHOD("mid_points", "indices"), &SailShape::mid_points);
   ClassDB::bind_method(D_METHOD("positions"), &SailShape::positions);
   ClassDB::bind_method(D_METHOD("normals"), &SailShape::normals);
   ClassDB::bind_method(D_METHOD("attach_mesh", "mesh"), &SailShape::attach_mesh);

@@ -1,10 +1,11 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scenes/sea/water_test.gd" id="1_test"]
 [ext_resource type="PackedScene" path="res://scenes/sea/sky_day.tscn" id="2_sky"]
 [ext_resource type="PackedScene" path="res://scenes/sea/sea.tscn" id="3_sea"]
 [ext_resource type="Script" path="res://scenes/sea/sea_env_source.gd" id="4_src"]
 [ext_resource type="Script" path="res://scenes/sea/sea_wakes.gd" id="5_wakes"]
+[ext_resource type="Script" path="res://scenes/sea/boat_shadows.gd" id="6_shadows"]
 
 [node name="WaterTest" type="Node3D"]
 script = ExtResource("1_test")
@@ -24,6 +25,11 @@ camera_path = NodePath("../Camera")
 [node name="Wakes" type="Node3D" parent="."]
 script = ExtResource("5_wakes")
 sea_path = NodePath("../Sea")
+
+[node name="BoatShadows" type="Node3D" parent="."]
+script = ExtResource("6_shadows")
+sea_path = NodePath("../Sea")
+sky_path = NodePath("../SkyDay")
 
 [node name="Boat" type="Node3D" parent="."]
 

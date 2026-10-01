@@ -23,11 +23,16 @@ enum CameraMode { CHASE, AERIAL, OVERVIEW, SUN, BOW }
 @onready var env_source: SeaEnvSource = $EnvSource
 @onready var cam: Camera3D = $Camera
 @onready var boat: Node3D = $Boat
+@onready var shadows: BoatShadows = $BoatShadows
 
 var _capture_dir := ""
 var _frames := 0
 var _shots: Array = []
 var _boat_state := {}
+## the drawn shadow (water_render.md §4.7): the class's hull and mast, and the outline of each flat sail of the
+## generated model in the Boat node's space (they do not move here)
+var _shadow_caster := {}
+var _sail_outlines: Array[PackedVector3Array] = []
 
 
 func _ready() -> void:
@@ -58,6 +63,7 @@ func _build_boat() -> void:
 			var model := scene.instantiate()
 			BoatMaterials.apply(model)
 			boat.add_child(model)
+			_build_shadow_caster(model)
 			return
 	var hull := MeshInstance3D.new()
 	var m := BoxMesh.new()
@@ -68,6 +74,43 @@ func _build_boat() -> void:
 	mat.albedo_color = Color(0.92, 0.92, 0.9)
 	hull.material_override = mat
 	boat.add_child(hull)
+
+
+## The drawn shadow's casters of the generated model: hull and mast from the physics sidecar, and each sail shown
+## as the corners of its flat outline (the convex hull in the centreline plane, in the Boat node's space).
+func _build_shadow_caster(model: Node) -> void:
+	var path := "res://generated/boats/wm7.physics.json"
+	if not FileAccess.file_exists(path):
+		return
+	var physics: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+	if not physics is Dictionary:
+		return
+	_shadow_caster = BoatShadows.caster_from_physics(physics)
+	for side: Dictionary in (physics.get("sails", {}) as Dictionary).values():
+		var mi := model.find_child(String(side.get("node", "")), true, false) as MeshInstance3D
+		if mi == null or mi.mesh == null or not mi.is_visible_in_tree():
+			continue
+		var xf := _relative(mi, model)
+		var plan := PackedVector2Array()
+		for s in mi.mesh.get_surface_count():
+			for p: Vector3 in mi.mesh.surface_get_arrays(s)[Mesh.ARRAY_VERTEX]:
+				var q := xf * p
+				plan.append(Vector2(q.z, q.y))  # model axes: Z forward, Y up, the sail in X = 0
+		var out := PackedVector3Array()
+		for q in BoatShadows.convex_ring(plan):
+			out.append(Vector3(0.0, q.y, q.x))
+		_sail_outlines.append(out)
+
+
+## The transform of `n` relative to its ancestor `top`.
+static func _relative(n: Node3D, top: Node) -> Transform3D:
+	var xf := Transform3D.IDENTITY
+	var c: Node = n
+	while c != null and c != top:
+		if c is Node3D:
+			xf = (c as Node3D).transform * xf
+		c = c.get_parent()
+	return xf
 
 
 ## Placeholder boat on a circle (counter-clockwise seen from above), heave and pitch from the sea at the
@@ -92,6 +135,14 @@ func _update_boat(t_s: float) -> void:
 	var basis := Basis(Vector3.UP, PI - psi) * Basis(Vector3.RIGHT, -pitch) * Basis(Vector3.BACK, deg_to_rad(12.0))
 	boat.global_transform = Transform3D(basis, Vector3(x, z, -y))
 	wakes.update_boat(0, _boat_state)
+	if not _shadow_caster.is_empty():
+		var sails := PackedVector3Array()
+		var counts := PackedInt32Array()
+		for o in _sail_outlines:
+			sails.append_array(boat.global_transform * o)
+			counts.append(o.size())
+		shadows.update_boat(0, {"xform": boat.global_transform * BoatView.BODY_TO_MODEL, "caster": _shadow_caster,
+				"sails": sails, "sail_counts": counts, "own": true})
 	_place_camera()
 
 

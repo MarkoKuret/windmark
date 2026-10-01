@@ -53,6 +53,8 @@ class SailPart:
 	var gamma := 0.0
 	var luff_scale := 1.0
 	var chord_scale := 1.0
+	## the grid indices of the outline its drawn shadow uses (BoatShadows.sail_indices)
+	var shadow_idx := PackedInt32Array()
 
 	## the placed clew (mid-surface, model axes)
 	func clew() -> Vector3:
@@ -93,6 +95,11 @@ var _sheet_angle := 0.0
 static var _sail_mats := {}
 ## the GDScript reference shapes even when the native SailShape is loaded (set by create)
 var use_reference := false
+## the hull and mast of the drawn shadow on the water (BoatShadows.caster_from_physics), built on first use
+var _shadow_caster: Variant = null
+
+## the body frame (x forward, y port, z up) in model axes (Frames.body_to_model)
+const BODY_TO_MODEL := Transform3D(Basis(Vector3(0, 0, 1), Vector3(1, 0, 0), Vector3(0, 1, 0)), Vector3.ZERO)
 
 
 ## `reference`: bend the sails with the GDScript SailShapeRef even when the native SailShape is loaded (tests).
@@ -558,3 +565,28 @@ func _update_sheet(beta: float) -> void:
 	_sheet_mesh.clear_surfaces()
 	_sheet_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _sheet_arrays)
 	_sheet_mesh.surface_set_material(0, mat)
+
+
+## The state of this boat's drawn shadow on the water (BoatShadows.update_boat, water_render.md §4.7): the body
+## frame at the render pose, the hull and mast from the physics sidecar, and the outline of every sail shown.
+func shadow_state(own: bool) -> Dictionary:
+	if _shadow_caster == null:
+		_shadow_caster = BoatShadows.caster_from_physics(info.physics)
+	var pts := PackedVector3Array()
+	var counts := PackedInt32Array()
+	shadow_sails(pts, counts)
+	return {
+		"xform": (model.global_transform if model else global_transform) * BODY_TO_MODEL,
+		"caster": _shadow_caster, "sails": pts, "sail_counts": counts, "own": own,
+	}
+
+
+## The outline points of every sail shown, in the scene (BoatShadows.sail_indices of its placed mid-surface).
+func shadow_sails(points: PackedVector3Array, counts: PackedInt32Array) -> void:
+	for sp in sail_parts:
+		if sp.shape == null or not sp.node.visible:
+			continue
+		if sp.shadow_idx.is_empty():
+			sp.shadow_idx = BoatShadows.sail_indices(sp.rows, sp.cols)
+		points.append_array(sp.node.global_transform * (sp.shape.mid_points(sp.shadow_idx) as PackedVector3Array))
+		counts.append(sp.shadow_idx.size())

@@ -79,8 +79,8 @@ VERTEX.y = eta ; normal = normalize(-grad.x, 1, grad.y)   // scene axes: Z = -y
   100 m from the camera and under 1 px beyond 200 m (test §9.2 prints the table). These short waves are also the
   ones a hull averages out (`sea.md` §5), so the drawn hull sits on the surface the grid carries. The
   `0.05·Hs` limit of `sea.md` §7.3 applies to added visual layers, not to this fade.
-- The fragment shader re-evaluates the slope of the components the vertex grid faded (`w_i < 1`) per pixel on the
-  higher tiers, themselves faded by the pixel footprint (`fwidth` of the position) so they never alias, so
+- The fragment shader re-evaluates the slope of the components the vertex grid faded (`w_i < 1`) per pixel on
+  tier H, themselves faded by the pixel footprint (`fwidth` of the position) so they never alias, so
   distant water keeps its wave texture in the lighting:
   ```
   px  = pixel footprint, m (length of fwidth of the position)
@@ -101,7 +101,7 @@ VERTEX.y = eta ; normal = normalize(-grad.x, 1, grad.y)   // scene axes: Z = -y
 
 ### 4.1 Normal
 ```
-n_geo    = vertex normal, plus the per-pixel slope of faded components (tiers M and H; §3.2: only the
+n_geo    = vertex normal, plus the per-pixel slope of faded components (tier H; §3.2: only the
            components in the band 2·px < lam < 4·s, from the wavelength-sorted comp and comp_lam)
 detail   = 2 to 4 layers of a tiling normal map, sampled in a wind-aligned frame (downwind, across):
            uv_k = rot(angle_k) * scale_k * (dot(p, dir) - drift_k * t, dot(p, perp(dir)))
@@ -191,7 +191,8 @@ the whole race area: beyond the shadow distance the fleet is small on screen and
 | blend between cascades | no | no | yes |
 | directional shadow atlas | 2048 | 4096 | 4096 |
 | soft shadow filter | very low | low | medium |
-| the sea takes shadows | no | yes | yes |
+| the sea takes shadows | no | no | yes |
+| boat shadows drawn on the sea (§4.7) | own boat | own boat and the 6 nearest within 100 m | no |
 
 - The chase camera's own boat (about 15 to 35 m from the camera) lies inside one cascade on every tier, so its
   shadows never change resolution or cross a seam; on board the first cascade (8 to 9 m, about 5 mm per texel)
@@ -204,10 +205,84 @@ the whole race area: beyond the shadow distance the fleet is small on screen and
   other sails still shadow it; the light through the cloth takes that shadow too (80 %), so the rig shows through
   a sail seen against the sun.
 - **Sea**: the water's shadow only removes the sun's glitter and its small diffuse share (the sky reflection is
-  not shadowed), which is what a shadow on water looks like. Tier L skips it. The sea, the wake ribbons and the
-  spray cast no shadows.
+  not shadowed), which is what a shadow on water looks like. Only tier H draws it: a sea that receives shadows
+  takes Godot's heavier light path on every water pixel, about 4 ms per frame on an M1 at 2880 × 1800 whatever the
+  shadow distance and filter (owner decision 2026-10-01), so tiers L and M draw the boats' shadows on the water
+  instead (§4.7). The sea, the wake ribbons, the spray and the drawn shadows cast no shadows.
 - The atlas size and the soft filter are global rendering settings, applied with the tier (`SeaQuality.apply_shadows`
   through `SkyRig.apply_quality`, called by the Sea when its tier is set).
+
+### 4.7 Drawn boat shadows (tiers L and M)
+Where the sea takes no shadows, each nearby boat's shadow on the water is drawn instead: one small transparent mesh
+per boat lying on the sea that darkens the water as a real shadow would. The boats still cast and receive the real
+shadows of §4.6 on each other and on themselves; only the water's share is drawn.
+
+**Which boats**: the own boat always; on tier M also the 6 nearest others within the tier's shadow distance (100 m)
+of the camera, faded out over the last 20 % of it like the real shadows; on tier L the own boat only (its cost is
+one draw call of a few hundred vertices and a short per-pixel loop, small next to the sea itself); tier H none (it
+draws the real ones).
+
+**Casters** (per frame, at the render pose, in scene space):
+
+| caster | points |
+| --- | --- |
+| hull | the sheer outline of the physics sidecar (`perf_inputs.collision.outline`, 17 points, each at the height of the nearest vertex of the collision hull), and every 8th point of the DWL waterline (`waterline`) |
+| mast | mast step and masthead (`rig`), as a strip of the mast width |
+| each sail that is shown | its placed mid-surface (`sail_visuals.md` §9): luff and leech at the foot, a third, two thirds and the head row, and mid-chord at the foot, a third and two thirds (11 points) |
+
+Each caster's points are projected along the sun direction `L` (toward the sun, unit) onto the horizontal plane
+at the boat's heave `y0` (the render pose `z`): `p' = p − L·(p.y − y0)/L.y`, and the caster's shadow is the convex hull of
+its projected points (a sail's twist and camber make it slightly larger than the true outline; the test below
+bounds it). A polygon is kept as its edge lines `(n, c)` (outward unit normal and offset in the scene's `(x, z)`,
+relative to the boat), at most 8 polygons and 96 edges. The **hull footprint**, the convex hull of the hull points
+dropped vertically onto the plane, is kept the same way (at most 40 edges): water inside it is under the hull and is
+never darkened, so the shadow never shows on the hull's sides at the waterline. Nothing is drawn while the sun is
+less than 3° high.
+
+**Mesh**: a 32 × 16 grid over the rectangle that holds the polygons and the footprint (one side along the shadow,
+plus 0.5 m all round), draped on the drawn sea like the wake ribbons (`wm_drape`, lift 0.03 m, the same pull toward
+the camera so the sea's facets never cover it), unshaded, multiplying the colour behind it, no depth write, depth
+test on (the hull, deck and sails in front hide it), no shadows, no fog, drawn before the wakes, bow waves and mist
+(render priority −1), which take no shadows on tier H either. The grid moves by its transform only. All boats share
+one material: each boat's polygons are one row of a small RGBA32F texture (160 texels: origin and fade, sun and
+polygon count, footprint count, then the polygons, their bounding circles, the edge lines and the footprint's),
+uploaded once per frame, and each grid instance names its row.
+
+**Per pixel** (`boat_shadow_common.gdshaderinc`, also compiled by the offline preview):
+```
+P      = the water point (the draped vertex before the pull, interpolated)
+r      = (P.x, P.z) − origin + (L.x, L.z) · (y0 − P.y) / L.y         // along the sun ray to the plane
+d_k    = max over the edges of polygon k of (n · r − c)               // signed distance, exact inside
+f_k    = 0.03 m + 0.0047 · h_k / L.y + pixel footprint                // half penumbra: the sun's 0.53° disc over
+                                                                     // the mean height h_k of the caster's points
+s      = max over k of (1 − smoothstep(−f_k, f_k, d_k)) · strength    // union; strength = the distance fade
+s     *= smoothstep(−0.04, 0, d_footprint(P))                        // not under the hull
+colour = colour behind × mix(1, keep, s)
+```
+`keep` is the share of the water's light that a real shadow on it keeps (the sky reflection, the sky's diffuse
+light and the light through the crests stay; the sun's diffuse share and its glitter go), from the same terms as
+§4.2 on a level surface:
+```
+N = up ; V = toward the camera ; Fe = schlick(V.y)
+refl = wm_sky_ramp(reflect(−V, N)) · Fe
+amb  = a_w · mix(horizon, zenith, 0.5) · (1 − Fe)                     // a_w = 1.3 · mix(deep, shallow, 0.2)
+e    = 0.02 · sss
+sun  = sun_radiance · L.y · (a_w · (1 − F) + 0.1 · π · D · Vis · F)    // GGX, alpha 0.3: the glitter averaged
+                                                                     // over the wave and detail slopes
+keep = (refl + amb + e) / (refl + amb + e + sun)
+```
+The factors 1.3 (crests and foam make the water lighter than its mean colour) and 0.1 (the glitter's weight) are
+fitted to the real shadow on the same frames in the offline preview (`tests/water_preview.py --compare`, its
+shadow map stands in for Godot's): the mean brightness inside the shadow, relative to the same frame without it,
+is 0.72 real against 0.72 drawn from the chase camera at 20 kn, 0.74 against 0.73 at 10 kn and in a calm, 0.77
+against 0.79 from low abeam, 0.77 against 0.65 looking toward the sun and 0.46 against 0.56 from 90 m above
+(displayed values after tone mapping).
+
+**Cost**: the per-boat geometry (about 70 points projected, five convex hulls) runs in the GDExtension
+(`BoatShadowShape`, with the GDScript reference `BoatShadows.build`); with the sails' outline read natively
+(`SailShape.mid_points`) a boat costs about 0.01 ms of CPU (0.1 ms for 10 boats, measured headless by test §9.10);
+the GPU draws one 32 × 16 grid per boat with a loop over at most 96 edges, skipping polygons by their bounding
+circle, on the pixels of its rectangle.
 
 ## 5. Bow waves, wakes and spray
 
@@ -304,7 +379,7 @@ colour-blind palettes).
 | --- | --- | --- | --- |
 | radial grid `N_r × N_s` | 120 × 160 (19 k vertices) | 180 × 256 (46 k) | 260 × 384 (100 k) |
 | components in the vertex shader | all | all | all |
-| per-pixel slope of faded components | no | yes | yes |
+| per-pixel slope of faded components | no | no (owner decision 2026-10-01: about 3.5 ms on an M1 at 2880 × 1800) | yes |
 | detail normal layers | 2 | 3 | 4 |
 | puffs and lulls (§4.3) | yes (gameplay information) | yes | yes |
 | whitecaps | yes, one texture | yes | yes |
@@ -313,7 +388,8 @@ colour-blind palettes).
 | mist (and spray reach) | no | own boat | yes |
 | wake normal buffer | no | yes | yes |
 | screen-space reflections | no | no | yes |
-| sun shadows (§4.6) | 2 cascades to 60 m, no shadows on the sea | 4 cascades to 100 m | 4 blended cascades to 150 m |
+| sun shadows (§4.6) | 2 cascades to 60 m, no shadows on the sea | 4 cascades to 100 m, no shadows on the sea | 4 blended cascades to 150 m |
+| boat shadows drawn on the sea (§4.7) | own boat | own boat and the 6 nearest within 100 m | no (real shadows) |
 
 The tiers do not set the render scale (`menus.md` §3): it is its own setting, Auto by default (67 % above
 1920 × 1200 or on a HiDPI screen, else 100 %), and it scales every per-pixel cost here (the normal-map taps, the
@@ -321,7 +397,7 @@ puff loop, the sail cloth) by its square.
 
 Budget: the water within 2.5 ms of GPU time per frame on the Steam Deck at 1280 × 800 on tier M. The vertex work is
 small (22 cosines per vertex, 1 M per frame on tier M); the pixel work is dominated by the normal-map taps and the
-puff loop (at most 10 patches). The per-pixel slope of the faded components (tiers M and H) evaluates only the
+puff loop (at most 10 patches). The per-pixel slope of the faded components (tier H) evaluates only the
 components in the band `2·px < lam < 4·s` (§3.2), each with one sine and two smoothsteps from the uploaded
 wavelength; the others cost a compare (the carried ones) or end the loop (the ones too short for the pixel). Every tier renders with Godot's Forward+; tier L also works on the Mobile renderer,
 and nothing in §3–§6 needs compute shaders, so a Compatibility (web) port stays possible.
@@ -375,3 +451,10 @@ stated clearly.
    uniforms and meshes the engine computed on an offscreen OpenGL context (`game/tests/water_preview.py`); the
    engine's own picture needs a short windowed capture.
 9. **Performance**: tier M water pass under 2.5 ms on the Steam Deck in the 20 kn scene with 12 boats.
+10. **Drawn boat shadows** (§4.7, headless, the sail scene on the core): on tier M the own boat has a drawn shadow
+    whose mesh lies on the water (its plane at the boat's heave, within 0.3 m of the sea height there), whose area
+    lies away from the sun (the centroid more than 1 m from the boat against the sun's bearing), and whose coverage
+    (the CPU mirror of the shader, s > 0.5) matches the projected silhouette of the drawn hull, rig and sails
+    (every triangle above the water, rasterised on a 10 cm grid, outside the hull's plan) within an
+    intersection-over-union of 0.75; on tier H there is none and on tier L only the own boat's. The native
+    geometry equals the GDScript reference within 1e-4 m, and its cost per boat is printed.

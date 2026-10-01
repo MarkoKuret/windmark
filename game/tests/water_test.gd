@@ -239,12 +239,14 @@ func check_shadows(sea: Sea, t: Dictionary) -> void:
 	var code: String = (sea.material.shader as Shader).code
 	check(code.contains("WM_NO_SHADOWS") != bool(t["sea_shadows"]),
 			"scene tier %s: the sea %s shadows" % [t["name"], "takes" if t["sea_shadows"] else "takes no"])
+	check(code.contains("WM_FADED_SLOPE") == bool(t["faded_slope"]),
+			"scene tier %s: %s per-pixel slope of faded waves" % [t["name"], "the" if t["faded_slope"] else "no"])
 	var casts := 0
 	for n in _scene.find_children("*", "GeometryInstance3D", true, false):
 		var g := n as GeometryInstance3D
-		if g.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF and (g.get_parent() is Sea or g.get_parent() is SeaWakes):
+		if g.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF and (g.get_parent() is Sea or g.get_parent() is SeaWakes or g.get_parent() is BoatShadows):
 			casts += 1
-	check(casts == 0, "scene tier %s: sea, wakes and spray cast no shadows" % t["name"])
+	check(casts == 0, "scene tier %s: sea, wakes, spray and drawn shadows cast no shadows" % t["name"])
 
 
 ## §5 bow wave and mist: a boat sails straight on flat water at a set speed ratio for 3 s of render time on a

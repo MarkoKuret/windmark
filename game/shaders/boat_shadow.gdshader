@@ -39,6 +39,5 @@ void fragment() {
 	vec3 P = v_water;
 	float px = length(fwidth(P.xz));
 	float s = wm_boat_shadow(P, px, row);
-	vec3 V = normalize(CAMERA_POSITION_WORLD - P);
-	ALBEDO = mix(vec3(1.0), wm_shadow_keep(V, wm_shadow_sun(row)), s);
+	ALBEDO = mix(vec3(1.0), shadow_keep, s);
 }

@@ -309,24 +309,14 @@ s      = max over k of (1 − smoothstep(−f_k, f_k, d_k)) · strength    // un
 s     *= smoothstep(−0.04, 0, d_footprint(P))                        // not under the hull
 colour = colour behind × mix(1, keep, s)
 ```
-`keep` is the share of the water's light that a real shadow on it keeps (the sky reflection, the sky's diffuse
-light and the light through the crests stay; the sun's diffuse share and its glitter go), from the same terms as
-§4.2 on a level surface:
-```
-N = up ; V = toward the camera ; Fe = schlick(V.y)
-refl = wm_sky_ramp(reflect(−V, N)) · Fe
-amb  = a_w · mix(horizon, zenith, 0.5) · (1 − Fe)                     // a_w = 1.3 · mix(deep, shallow, 0.2)
-e    = 0.02 · sss
-sun  = sun_radiance · L.y · (a_w · (1 − F) + 0.1 · π · D · Vis · F)    // GGX, alpha 0.3: the glitter averaged
-                                                                     // over the wave and detail slopes
-keep = (refl + amb + e) / (refl + amb + e + sun)
-```
-The factors 1.3 (crests and foam make the water lighter than its mean colour) and 0.1 (the glitter's weight) are
-fitted to the real shadow on the same frames in the offline preview (`tests/water_preview.py --compare`, its
-shadow map stands in for Godot's): the mean brightness inside the shadow, relative to the same frame without it,
-is 0.72 real against 0.72 drawn from the chase camera at 20 kn, 0.74 against 0.73 at 10 kn and in a calm, 0.77
-against 0.79 from low abeam, 0.77 against 0.65 looking toward the sun and 0.46 against 0.56 from 90 m above
-(displayed values after tone mapping).
+`keep` is a fixed factor, the uniform `shadow_keep = (0.76, 0.66, 0.70)` (linear), matched in the engine to the
+real shadow of tier H: the same race frame (seed 7, chase camera, 10 boats, 2026-10-01) rendered with and without
+shadows, the per-pixel ratio inside the shadow (linear, median): real (0.72, 0.59, 0.68), luminance 0.61; drawn
+(0.63, 0.58, 0.68), luminance 0.60. On this water a shadow removes the sun's diffuse light through the green-blue
+water body, so it reads darker and slightly violet-navy rather than grey. A view-dependent `keep` built from the
+§4.2 lighting terms was tried first and dropped: under the bright day of §4.5 it came out far too dark in the
+engine (luminance 0.26 to 0.42) because Godot's light on the sea is not that model. Recheck the factor when the
+sky presets or the water colours of §4.2 change.
 
 **Cost**: the per-boat geometry (about 70 points projected, five convex hulls) runs in the GDExtension
 (`BoatShadowShape`, with the GDScript reference `BoatShadows.build`); with the sails' outline read natively

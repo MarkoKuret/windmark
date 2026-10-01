@@ -312,7 +312,7 @@ void main() {
     float px = length(fwidth(v_water.xz));
     float s = wm_boat_shadow(v_water, px, u_row);
     vec3 V = normalize(u_cam - v_water);
-    frag = vec4(mix(vec3(1.0), wm_shadow_keep(V, wm_shadow_sun(u_row)), s), 1.0);
+    frag = vec4(mix(vec3(1.0), shadow_keep, s), 1.0);
 }
 """
 

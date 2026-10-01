@@ -261,9 +261,25 @@ func _dump(spec: Dictionary, bv: BoatView, st: SimSource.BoatState, note: String
 	var mast_h := 0.45 * float(bv.info.physics.get("rig", {}).get("masthead", [0, 0, 10])[2])
 	var target := o + Vector3.UP * mast_h
 	var scene := {"meshes": meshes, "eye": [eye.x, eye.y, eye.z], "target": [target.x, target.y, target.z],
-		"note": note, "sun": cam.get("sun", "side")}
+		"note": note, "sun": cam.get("sun", "side"), "light": _daylight()}
 	var f := FileAccess.open(dir.path_join("scene.json"), FileAccess.WRITE)
 	f.store_string(JSON.stringify(scene, "  "))
+
+
+## The default daytime preset (SkyRig, water_render.md §4.5): the preview lights the boat as the game does, with
+## the sun's direction its own (from the side or behind the sails).
+static func _daylight() -> Dictionary:
+	var rig: SkyRig = load("res://scenes/sea/sky_day.tscn").instantiate()
+	var env := rig.environment()
+	var s := rig.sun_radiance()
+	var h := rig.horizon_linear()
+	var z := rig.zenith_linear()
+	var out := {"sun_color": [s.x, s.y, s.z], "horizon": [h.x, h.y, h.z], "zenith": [z.x, z.y, z.z],
+		"cloud_cover": rig.cloud_cover, "cloud_offset": [rig.cloud_offset.x, rig.cloud_offset.y],
+		"exposure": rig.exposure, "white": env.tonemap_white if env else 6.0,
+		"ambient": env.ambient_light_energy if env else 1.0}
+	rig.free()
+	return out
 
 
 ## The sail material's uniforms for the preview's copy of the sail shader (JSON: vectors as lists).

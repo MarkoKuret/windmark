@@ -142,8 +142,16 @@ def render(ctx, d, size):
     else:
         expo = ctx.texture((2, 2), 1, np.ones(4, dtype="f4").tobytes(), dtype="f4")
     expo.filter = (moderngl.NEAREST, moderngl.NEAREST)
+    # the venue's land-effect speed factor (water_render.md §4.3); without it the sampler would read another unit
+    if sc.get("land"):
+        lf = np.fromfile(d / "land.bin", dtype="f4")
+        land = ctx.texture((sc["land"]["nx"], sc["land"]["ny"]), 2, lf.tobytes(), dtype="f4")
+    else:
+        land = ctx.texture((2, 2), 2, np.ones(8, dtype="f4").tobytes(), dtype="f4")
+    land.filter = (moderngl.NEAREST, moderngl.NEAREST)
     wake_tex = ctx.texture((1, 1), 4, bytes([128, 128, 128, 255]))
-    units = {"expo_tex": (expo, 0), "detail_tex": (detail, 1), "foam_tex": (foam, 2), "wake_tex": (wake_tex, 3)}
+    units = {"expo_tex": (expo, 0), "detail_tex": (detail, 1), "foam_tex": (foam, 2), "wake_tex": (wake_tex, 3),
+             "land_tex": (land, 4)}
     for tex, unit in units.values():
         tex.use(unit)
     for p in (water, wake, mesh, sky):
@@ -218,17 +226,7 @@ def render(ctx, d, size):
     ctx.disable(moderngl.BLEND)
 
     ctx.copy_framebuffer(fbo_res, fbo)
-    out_tex = ctx.texture((w, h), 4)
-    out_fbo = ctx.framebuffer(color_attachments=[out_tex])
-    out_fbo.use()
-    ctx.disable(moderngl.DEPTH_TEST)
-    resolved.use(0)
-    tone["u_hdr"].value = 0
-    tone["u_exposure"].value = float(sc["tonemap"]["exposure"])
-    tone["u_white"].value = float(sc["tonemap"]["white"])
-    ctx.vertex_array(tone, [(quad, "2f", "in_pos")]).render(moderngl.TRIANGLES)
-    img = Image.frombytes("RGBA", (w, h), out_fbo.read(components=4)).transpose(Image.FLIP_TOP_BOTTOM)
-    return img.convert("RGB")
+    return wp.tonemapped(ctx, tone, resolved, quad, sc, w, h)
 
 
 def main():

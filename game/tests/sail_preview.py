@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Offline preview of the sails, step 2 (no window): renders the shots dumped by tests/sail_preview_dump.gd.
 
-Each shot is the boat as BoatView drew it (the sails bent by SailShape), lit by a low sun with a sky ambient, on a
-flat sea under a sky gradient, rendered offscreen with OpenGL (moderngl) with 4x multisampling. The sails use the
-cloth of shaders/sail_cloth.gdshaderinc (the same file Godot compiles, sail_visuals.md §11.1) with a GLSL copy of
-the fragment and light functions of shaders/sail.gdshader, so panels, seams, patches, battens and the light
-through the cloth match the engine's; there are no shadows. It is a stand-in for Godot's lighting, meant to judge
-shapes and the cloth, not colours.
+Each shot is the boat as BoatView drew it (the sails bent by SailShape), on a flat sea under the game's sky
+(shaders/sky_common.gdshaderinc), lit by the default daytime preset (SkyRig: sun colour and energy, sky ambient,
+exposure, Godot's ACES), with the sun low from the side of the view or behind the sails; rendered offscreen with
+OpenGL (moderngl) with 4x multisampling. The sails use the cloth of shaders/sail_cloth.gdshaderinc (the same file
+Godot compiles, sail_visuals.md §11.1) with a GLSL copy of the fragment and light functions of
+shaders/sail.gdshader, so panels, seams, patches, battens and the light through the cloth match the engine's;
+there are no shadows. The lighting around them is a stand-in for Godot's.
 
     python3 game/tests/sail_preview.py [--size 960x600] [--publish] [shot ...]
 
@@ -17,11 +18,15 @@ import argparse
 import json
 import math
 import os
+import sys
 from pathlib import Path
 
 import moderngl
 import numpy as np
 from PIL import Image, ImageDraw
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import water_preview as wp  # noqa: E402
 
 GAME = Path(__file__).resolve().parents[1]
 OUT = GAME / "generated" / "sail_preview"
@@ -44,6 +49,21 @@ void main() {
 }
 """
 
+# The daytime preset's light (SkyRig, from the dump's "light"): the sun, the sky ramp for the ambient, Godot's
+# LIGHT_COLOR convention (colour times energy times PI).
+LIGHT = """
+uniform vec3 u_sun_col;
+uniform vec3 u_hor;
+uniform vec3 u_zen;
+uniform float u_ambient;
+const float PI = 3.14159265359;
+#define SUN (u_sun_col * PI)
+// sky light on a surface facing N (as water_preview's boats): the average sky above, the darker sea haze below
+vec3 sky_ambient(vec3 N) {
+    return mix(mix(u_hor, u_zen, 0.5) * 0.8, u_hor * 0.45, clamp(-N.y, 0.0, 1.0)) * u_ambient;
+}
+"""
+
 # sail.gdshader's fragment() and light() for one sun and a sky ambient (Godot adds the ambient itself)
 SAIL_FS = """
 in vec3 v_n;
@@ -61,9 +81,6 @@ uniform vec3 fibre_color;
 uniform float fibre_amount;
 uniform vec3 telltale_color;
 out vec4 frag;
-const vec3 SUN = vec3(1.0, 0.95, 0.85) * 3.0;
-const vec3 SKY_ZEN = vec3(0.25, 0.42, 0.75);
-const float PI = 3.14159265359;
 void main() {
     vec2 UV = v_uv.xy;
     float px = max(fwidth(UV.x), fwidth(UV.y));
@@ -83,7 +100,7 @@ void main() {
     float ndl = dot(N, L);
     float fwd = pow(max(dot(-V, L), 0.0), 4.0);
     vec3 diff = SUN * (max(ndl, 0.0) + max(-ndl, 0.0) * trans * (0.75 + 0.75 * fwd)) / PI;
-    vec3 amb = mix(vec3(0.16, 0.17, 0.19), SKY_ZEN * 0.6, 0.5 + 0.5 * N.y) * 0.6;
+    vec3 amb = sky_ambient(N);
     vec3 H = normalize(V + L);
     float shin = 2.0 / max(pow(rough, 4.0), 1e-3) - 2.0;
     float spec = pow(max(dot(N, H), 0.0), shin) * (shin + 8.0) / (8.0 * PI);
@@ -110,7 +127,6 @@ void main() {
 """
 
 FS = """
-#version 410
 in vec3 v_n;
 in vec3 v_w;
 uniform vec3 u_albedo;
@@ -119,21 +135,18 @@ uniform vec3 u_sun;
 uniform float u_sail;
 uniform float u_sea;
 out vec4 frag;
-const vec3 SUN = vec3(1.0, 0.95, 0.85) * 3.0;
-const vec3 SKY_ZEN = vec3(0.25, 0.42, 0.75);
-const vec3 SKY_HOR = vec3(0.72, 0.80, 0.90);
 void main() {
     vec3 V = normalize(u_cam - v_w);
     vec3 L = normalize(u_sun);
     if (u_sea > 0.5) {
+        // flat sea: the body colour of sea_common, the sky by Fresnel, the sun's glint, fog to the horizon
         vec3 N = vec3(0.0, 1.0, 0.0);
-        float f = 0.02 + 0.98 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
-        vec3 sky = mix(SKY_HOR, SKY_ZEN, 0.3);
-        vec3 c = mix(vec3(0.02, 0.07, 0.11), sky, f);
+        float f = 0.026 + 0.974 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
+        vec3 c = mix(vec3(0.005, 0.036, 0.100) * (u_sun_col * 0.3 + sky_ambient(N)), mix(u_hor, u_zen, 0.3), f);
         vec3 H = normalize(L + V);
-        c += SUN * pow(max(dot(N, H), 0.0), 400.0) * 0.5;
+        c += SUN * pow(max(dot(N, H), 0.0), 400.0) * 0.05;
         float d = length(u_cam - v_w);
-        c = mix(c, SKY_HOR, 1.0 - exp(-d * 0.002));
+        c = mix(c, u_hor, 1.0 - exp(-d * 0.002));
         frag = vec4(c, 1.0);
         return;
     }
@@ -141,15 +154,13 @@ void main() {
     // one-sided cloth layers and back-face culled hull: shade the side that faces the camera
     if (dot(N, V) < 0.0) N = -N;
     float ndl = dot(N, L);
-    vec3 amb = mix(vec3(0.16, 0.17, 0.19), SKY_ZEN * 0.6, 0.5 + 0.5 * N.y) * 0.6;
-    vec3 c = u_albedo * (amb + SUN * max(ndl, 0.0) * 0.32);
+    vec3 H = normalize(L + V);
+    vec3 c = u_albedo * (sky_ambient(N) + u_sun_col * max(ndl, 0.0));
     if (u_sail > 0.5) {
-        c += u_albedo * SUN * max(-ndl, 0.0) * 0.3 * 0.32;   // back-light: the sun through the cloth
-        vec3 H = normalize(L + V);
-        c += SUN * 0.04 * pow(max(dot(N, H), 0.0), 24.0);
+        c += u_albedo * u_sun_col * max(-ndl, 0.0) * 0.3;   // back-light: the sun through the cloth
+        c += u_sun_col * 0.04 * pow(max(dot(N, H), 0.0), 24.0) * max(ndl, 0.0);
     } else {
-        vec3 H = normalize(L + V);
-        c += SUN * 0.08 * pow(max(dot(N, H), 0.0), 60.0);
+        c += u_sun_col * 0.25 * pow(max(dot(N, H), 0.0), 60.0) * max(ndl, 0.0);
     }
     frag = vec4(c, 1.0);
 }
@@ -162,33 +173,24 @@ out vec2 v_p;
 void main() { v_p = in_pos; gl_Position = vec4(in_pos, 0.9999, 1.0); }
 """
 
+# the game's sky (shaders/sky_common.gdshaderinc) with the sun in the shot's direction
 SKY_FS = """
-#version 410
 in vec2 v_p;
 uniform mat4 u_inv_vp;
+uniform vec3 u_sun;
+uniform float u_cloud_cover;
+uniform vec2 u_cloud_offset;
 out vec4 frag;
 void main() {
     vec4 a = u_inv_vp * vec4(v_p, -1.0, 1.0);
     vec4 b = u_inv_vp * vec4(v_p, 1.0, 1.0);
     vec3 d = normalize(b.xyz / b.w - a.xyz / a.w);
-    float t = clamp(d.y, 0.0, 1.0);
-    vec3 c = mix(vec3(0.72, 0.80, 0.90), vec3(0.25, 0.42, 0.75), pow(t, 0.6));
-    frag = vec4(c, 1.0);
+    frag = vec4(wm_sky_color(d, normalize(u_sun), u_hor, u_zen, u_sun_col, u_cloud_cover, u_cloud_offset, 1.0), 1.0);
 }
 """
 
-TONE_FS = """
-#version 410
-in vec2 v_p;
-uniform sampler2D u_hdr;
-out vec4 frag;
-vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
-void main() {
-    vec3 c = texture(u_hdr, v_p * 0.5 + 0.5).rgb;
-    c = aces(c * 0.9);
-    frag = vec4(pow(c, vec3(1.0 / 2.2)), 1.0);
-}
-"""
+# Godot's ACES with the preset's exposure and white (water_preview.py)
+TONE_FS = wp.TONEMAP_FS.replace("in vec2 v_ndc;", "in vec2 v_p;").replace("v_ndc", "v_p")
 
 
 def look_at(eye, target, up=(0.0, 1.0, 0.0)):
@@ -213,6 +215,10 @@ def perspective(fov_deg, aspect, near, far):
 
 
 CLOTH_INC = (GAME / "shaders" / "sail_cloth.gdshaderinc").read_text()
+SKY_INC = (GAME / "shaders" / "sky_common.gdshaderinc").read_text()
+# the default daytime preset (scenes/sea/sky_rig.gd) for shots dumped before the dump wrote it
+DEFAULT_LIGHT = {"sun_color": [3.6, 3.312, 2.88], "horizon": [0.50, 0.74, 1.10], "zenith": [0.05, 0.18, 0.62],
+                 "cloud_cover": 0.4, "cloud_offset": [3.7, 1.3], "exposure": 0.5, "white": 6.0, "ambient": 1.0}
 _textures = {}
 
 
@@ -251,11 +257,21 @@ def set_cloth(prog, cloth):
 def render(ctx, shot_dir, size):
     sc = json.loads((shot_dir / "scene.json").read_text())
     w, h = size
-    prog = ctx.program(vertex_shader=VS, fragment_shader=FS)
+    prog = ctx.program(vertex_shader=VS, fragment_shader="#version 410\n" + LIGHT + FS)
     sail = ctx.program(vertex_shader=SAIL_VS, fragment_shader="#version 410\n"
-                       + ("#define CLOTH_DEBUG\n" if os.environ.get("CLOTH_DEBUG") else "") + CLOTH_INC + SAIL_FS)
-    sky = ctx.program(vertex_shader=SKY_VS, fragment_shader=SKY_FS)
+                       + ("#define CLOTH_DEBUG\n" if os.environ.get("CLOTH_DEBUG") else "") + CLOTH_INC + LIGHT
+                       + SAIL_FS)
+    sky = ctx.program(vertex_shader=SKY_VS, fragment_shader="#version 410\n" + LIGHT + SKY_INC + SKY_FS)
     tone = ctx.program(vertex_shader=SKY_VS, fragment_shader=TONE_FS)
+    light = sc.get("light", DEFAULT_LIGHT)
+    for pr in (prog, sail, sky):
+        pr["u_sun_col"].value = tuple(light["sun_color"])
+        pr["u_hor"].value = tuple(light["horizon"])
+        pr["u_zen"].value = tuple(light["zenith"])
+        if "u_ambient" in pr:
+            pr["u_ambient"].value = float(light["ambient"])
+    sky["u_cloud_cover"].value = float(light["cloud_cover"])
+    sky["u_cloud_offset"].value = tuple(light["cloud_offset"])
     eye = np.array(sc["eye"], "f8")
     target = np.array(sc["target"], "f8")
     vp = perspective(50.0, w / h, 0.3, 3000.0) @ look_at(eye, target)
@@ -278,6 +294,7 @@ def render(ctx, shot_dir, size):
     quad = ctx.buffer(np.array([-1, -1, 1, -1, -1, 1, 1, 1], "f4").tobytes())
     ctx.disable(moderngl.DEPTH_TEST)
     sky["u_inv_vp"].write(np.linalg.inv(vp).T.astype("f4").tobytes())
+    sky["u_sun"].value = tuple(sun)
     ctx.vertex_array(sky, [(quad, "2f", "in_pos")]).render(moderngl.TRIANGLE_STRIP)
     ctx.enable(moderngl.DEPTH_TEST)
     prog["u_vp"].write(vp_b)
@@ -322,7 +339,11 @@ def render(ctx, shot_dir, size):
     out.use()
     ctx.disable(moderngl.DEPTH_TEST)
     hdr.use(0)
+    ctx.texture((1, 1), 4, np.zeros(4, "f2").tobytes(), dtype="f2").use(1)
     tone["u_hdr"].value = 0
+    tone["u_glow"].value = 1
+    tone["u_exposure"].value = float(light["exposure"])
+    tone["u_white"].value = float(light["white"])
     ctx.vertex_array(tone, [(quad, "2f", "in_pos")]).render(moderngl.TRIANGLE_STRIP)
     img = Image.frombytes("RGBA", (w, h), out.read(components=4)).transpose(Image.FLIP_TOP_BOTTOM).convert("RGB")
     return img, sc.get("note", "")

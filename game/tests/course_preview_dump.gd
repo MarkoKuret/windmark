@@ -235,6 +235,8 @@ func _dump(name: String) -> void:
 		"sky": _uniforms(env.sky.sky_material),
 		"fog": {"density": env.fog_density, "color": _v(env.fog_light_color.srgb_to_linear())},
 		"tonemap": {"mode": env.tonemap_mode, "exposure": env.tonemap_exposure, "white": env.tonemap_white},
+		"glow": {"enabled": env.glow_enabled, "threshold": env.glow_hdr_threshold, "scale": env.glow_hdr_scale,
+			"intensity": env.glow_intensity},
 		"ambient_energy": env.ambient_light_energy,
 		"hud": "%s\n%s" % [_scene.hud.text_of("clock"), _scene.hud.text_of("next")] if _scene.hud.race.active else "",
 	}
@@ -244,6 +246,10 @@ func _dump(name: String) -> void:
 	data["exposure"] = {} if g.is_empty() else {"nx": g["nx"], "ny": g["ny"]}
 	if not g.is_empty():
 		_save(dir, "expo.bin", (g["e"] as PackedFloat32Array).to_byte_array())
+	var lu := sea.land_upload()
+	data["land"] = {} if lu.is_empty() else {"nx": sea.model.wind_field["nx"], "ny": sea.model.wind_field["ny"], "k0": lu[0]}
+	if not lu.is_empty():
+		_save(dir, "land.bin", lu[2])
 	SeaTextures.detail_image().save_png(dir.path_join("detail.png"))
 	SeaTextures.foam_image().save_png(dir.path_join("foam.png"))
 	var wakes: SeaWakes = _scene.wakes

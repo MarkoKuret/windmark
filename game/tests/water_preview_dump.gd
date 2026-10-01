@@ -184,6 +184,8 @@ func _dump(name: String) -> void:
 		"sky": _uniforms(env.sky.sky_material),
 		"fog": {"density": env.fog_density, "color": _v(env.fog_light_color.srgb_to_linear())},
 		"tonemap": {"mode": env.tonemap_mode, "exposure": env.tonemap_exposure, "white": env.tonemap_white},
+		"glow": {"enabled": env.glow_enabled, "threshold": env.glow_hdr_threshold, "scale": env.glow_hdr_scale,
+			"intensity": env.glow_intensity},
 		"ambient_energy": env.ambient_light_energy,
 	}
 	var surf: MeshInstance3D = sea.get_node("Surface")

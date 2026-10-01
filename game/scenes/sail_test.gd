@@ -247,6 +247,7 @@ func _apply_setup() -> void:
 ## Command line after `--` (over GameSetup): `--race` (race mode on `course`; the fleet of GameSetup when no
 ## `--fleet`), `--free`, `--fleet=10`, `--level=expert` (easy, intermediate, expert, pro), `--speed-only`,
 ## `--watch` (an AI sails the player's boat too, spectating on), `--class=wm12`, `--venue=<id>`,
+## `--sky=clear|fair|hazy` (the weather preset, SkyRig; fair by default),
 ## `--course=<venue>/<id>` (race mode), `--seed=<n>` (0: from the clock), `--wind=<kn>`, `--wind-from=<deg>`,
 ## `--fake` (FakeSim), `--core`; measuring (hud.md §17): `--perf` (the frame-time overlay), `--perf-log=PATH`,
 ## `--perf-seconds=N`, `--render-scale=0.67`, `--upscaler=fsr|bilinear|metalfx`, `--quality=L|M|H`, `--no-vsync`,
@@ -279,6 +280,9 @@ func _user_args() -> void:
 			watch = true
 		elif a.begins_with("--venue="):
 			venue = a.trim_prefix("--venue=")
+		elif a.begins_with("--sky="):
+			if not sky.set_preset_name(a.trim_prefix("--sky=").to_lower()):
+				push_warning("--sky: clear, fair or hazy")
 		elif a.begins_with("--seed="):
 			world_seed = a.trim_prefix("--seed=").to_int()
 		elif a.begins_with("--wind="):

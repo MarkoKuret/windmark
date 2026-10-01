@@ -6,7 +6,7 @@ extends Node3D
 ## Inputs (all optional, set before or during play):
 ##   source        a node with sea_components(), sea_exposure(), wind_state(t_ms) (see sea_env_source.gd and
 ##                 CoreEnvSource), and optionally venue_wind_field() (the venue's land-effect field, wind.md §8)
-##   sky           a SkyRig (colours of the sky ramp and the sun for the slope contrast and the crest light)
+##   sky           a SkyRig (the sky ramp colours and the sun, for the crest light and the offline preview)
 ##   camera        the camera the grid follows (default: the viewport's current camera)
 ##   render_time_ms  the environment clock at this frame (fractional ms); advanced by delta when
 ##                 use_internal_clock is on, otherwise set by the owner every frame before _process
@@ -14,9 +14,10 @@ extends Node3D
 
 signal quality_changed(tier: int)
 
-const DETAIL_SCALE := [1.0 / 13.0, 1.0 / 22.0, 1.0 / 48.0, 1.0 / 70.0]
-const DETAIL_DRIFT := [1.4, 1.0, 0.9, 0.6]
-const DETAIL_ANGLE := [0.0, 0.35, -0.6, 0.95]
+## water_render.md §4.1: the detail layers (the tier uses the first 2 to 4), then the fine glint layer (index 4)
+const DETAIL_SCALE := [1.0 / 13.0, 1.0 / 22.0, 1.0 / 48.0, 1.0 / 70.0, 1.0 / 3.2]
+const DETAIL_DRIFT := [1.4, 1.0, 0.9, 0.6, 1.6]
+const DETAIL_ANGLE := [0.0, 0.35, -0.6, 0.95, 1.25]
 const FOAM_STREAK_SCALE := Vector2(1.0 / 23.0, 1.0 / 5.0)
 const FOAM_BREAKUP_SCALE := 1.0 / 61.0
 
@@ -235,7 +236,7 @@ func update_frame(cam_pos: Vector3, cam: Camera3D = null) -> void:
 	var qa := ox * dir.x + oy * dir.y
 	var qc := ox * perp.x + oy * perp.y
 	var layers := PackedVector4Array()
-	for k in 4:
+	for k in DETAIL_SCALE.size():
 		var sc: float = DETAIL_SCALE[k]
 		var c: float = cos(DETAIL_ANGLE[k]) * sc
 		var s: float = sin(DETAIL_ANGLE[k]) * sc

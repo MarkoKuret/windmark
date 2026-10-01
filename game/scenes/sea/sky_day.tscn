@@ -10,8 +10,8 @@ script = ExtResource("1_rig")
 environment = ExtResource("2_env")
 
 [node name="Sun" type="DirectionalLight3D" parent="."]
-light_color = Color(1, 0.94, 0.86, 1)
-light_energy = 3.0
+light_color = Color(1, 0.92, 0.8, 1)
+light_energy = 3.6
 shadow_enabled = true
 directional_shadow_split_1 = 0.08
 directional_shadow_split_2 = 0.36

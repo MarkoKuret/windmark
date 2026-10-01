@@ -284,7 +284,8 @@ uv sets, sail shader, rest-pose normals, the kite's belly to leeward, flaked hea
 distance and the frustum, and prints the cost per sail. The previews: `tests/sail_preview_dump.gd` sails a boat on
 the core into trimmed, eased, let-fly, tacking, hoisting, reaching, running and dropping situations and dumps the
 bent boat, `tests/sail_preview.py` renders them offscreen to `generated/sail_preview/` (with `--publish` the
-JPEGs in `tests/previews/sails_*.jpg`). Its lighting is a stand-in for Godot's: it is for judging shapes.
+JPEGs in `tests/previews/sails_*.jpg`). It lights the boat with the default daytime preset (`SkyRig`) under the
+game's sky; the lighting model is a stand-in for Godot's.
 
 ## Race HUD
 
@@ -513,10 +514,12 @@ The own boat always, on tier M also the 6 nearest within the shadow distance; th
 `Sea.height_at(x, y)` is a CPU mirror of the core's sea height (double precision) for anything that needs the
 surface before the binding exists.
 
-`scenes/sea/sky_day.tscn` (`SkyRig`) is the daytime preset: the sky shader, the sun light, fog toward the
-horizon colour, sky reflections and the camera exposure, set from one group of parameters. Sun and sky keep their
-clear-day proportion (the sun about four fifths of the light on a level surface), and the exposure brings the
-scene back to screen range.
+`scenes/sea/sky_day.tscn` (`SkyRig`) is the daytime light: the sky shader (saturated blue ramp, sun disc and halo,
+cumulus), the sun light, fog toward the horizon colour, sky reflections, the camera exposure and the glow on the
+sun's glints, set from one group of parameters. Sun and sky keep their clear-day proportion (the sun about four
+fifths of the light on a level surface), and the exposure brings the scene back to screen range. Three weather
+presets (`water_render.md` §4.5): clear, fair (the default) and hazy, set with `SkyRig.preset` or, in the sail
+test, `--sky=clear|fair|hazy`.
 
 ### Water tests
 

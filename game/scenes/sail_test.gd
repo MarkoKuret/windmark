@@ -245,7 +245,7 @@ func _apply_setup() -> void:
 ## `--course=<venue>/<id>` (race mode), `--seed=<n>` (0: from the clock), `--wind=<kn>`, `--wind-from=<deg>`,
 ## `--fake` (FakeSim), `--core`; measuring (hud.md §17): `--perf` (the frame-time overlay), `--perf-log=PATH`,
 ## `--perf-seconds=N`, `--render-scale=0.67`, `--upscaler=fsr|bilinear|metalfx`, `--quality=L|M|H`, `--no-vsync`,
-## `--shadow-splits=0|2|4`, `--shadow-atlas=N`, `--no-wake-buffer`, `--no-boat-shadows`,
+## `--shadow-splits=0|2|4`, `--shadow-atlas=N`, `--shadow-distance=M`, `--shadow-soft=0..5`, `--no-wake-buffer`, `--no-boat-shadows`,
 ## `--sea-grid=RINGSxSEGMENTS`, `--water-shader=l|m|h` and `--no-hud` (this run only, not saved).
 func _user_args() -> void:
 	var fleet_given := false
@@ -309,6 +309,10 @@ func _user_args() -> void:
 			SeaQuality.overrides["segments"] = g[1].to_int()
 		elif a.begins_with("--water-shader="):
 			SeaQuality.overrides["shader"] = "res://shaders/water_%s.gdshader" % a.trim_prefix("--water-shader=").to_lower()
+		elif a.begins_with("--shadow-distance="):
+			SeaQuality.overrides["shadow_distance"] = a.trim_prefix("--shadow-distance=").to_float()
+		elif a.begins_with("--shadow-soft="):
+			SeaQuality.overrides["shadow_soft"] = a.trim_prefix("--shadow-soft=").to_int()
 		elif a == "--no-wake-buffer":
 			SeaQuality.overrides["wake_buffer"] = false
 		elif a == "--no-boat-shadows":

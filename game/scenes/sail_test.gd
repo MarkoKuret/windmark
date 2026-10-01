@@ -2,8 +2,8 @@ extends Node3D
 ## Sail test scene: one generated boat sailing freely on the example bay, with the cameras, the controls, the
 ## minimal HUD, the sea, its wakes, the daytime sky and the sound (GameAudio). Frame order: read input, controls,
 ## ticks (stamp, step, HUD values, audio inputs, sail snapshots), sea render time, render pose, boat, sails and
-## wakes, cameras, HUD, audio; the Sea and SeaWakes nodes draw after. A PerfMonitor (hud.md §17) times each
-## part. Headless tests drive it with `scripted_input` and step_frame().
+## wakes (and the drawn boat shadows), cameras, HUD, audio; the Sea, SeaWakes and BoatShadows nodes draw after.
+## A PerfMonitor (hud.md §17) times each part. Headless tests drive it with `scripted_input` and step_frame().
 ##
 ## The simulation (`sim_kind`): the Windmark core through CoreSimSource (the GDExtension, game/native/build.sh)
 ## on the venue `venue` without a race (free sailing, place_boat), or the FakeSim placeholder. AUTO takes the
@@ -75,8 +75,12 @@ enum SeaSource { AUTO, CORE_SAMPLES, PLACEHOLDER }
 
 @onready var sea: Sea = $Sea
 @onready var wakes: SeaWakes = $Wakes
+## the boats' shadows drawn on the water where the sea takes none (water_render.md §4.7)
+@onready var shadows: BoatShadows = $BoatShadows
 ## `--no-boat-shadows` (measuring): the boats cast no sun shadows
 var no_boat_shadows := false
+## `--no-drawn-shadows` (measuring): no boat shadows drawn on the water (tiers L and M)
+var no_drawn_shadows := false
 ## `--no-hud` (measuring): the HUD hidden from the start, as the hud_hide key does
 var no_hud := false
 @onready var env_source: SeaEnvSource = $EnvSource
@@ -195,6 +199,7 @@ func _ready() -> void:
 		Settings.current().apply_render_scale(get_tree().root)
 	if no_hud:
 		hud.toggle_hidden()
+	shadows.enabled = not no_drawn_shadows
 	if no_boat_shadows:
 		for v in boat_views:
 			for g in v.find_children("*", "GeometryInstance3D", true, false):
@@ -246,7 +251,7 @@ func _apply_setup() -> void:
 ## `--fake` (FakeSim), `--core`; measuring (hud.md §17): `--perf` (the frame-time overlay), `--perf-log=PATH`,
 ## `--perf-seconds=N`, `--render-scale=0.67`, `--upscaler=fsr|bilinear|metalfx`, `--quality=L|M|H`, `--no-vsync`,
 ## `--shadow-splits=0|2|4`, `--shadow-atlas=N`, `--shadow-distance=M`, `--shadow-soft=0..5`, `--no-wake-buffer`, `--no-boat-shadows`,
-## `--sea-grid=RINGSxSEGMENTS`, `--water-shader=l|m|h` and `--no-hud` (this run only, not saved).
+## `--no-drawn-shadows`, `--sea-grid=RINGSxSEGMENTS`, `--water-shader=l|m|h` and `--no-hud` (this run only, not saved).
 func _user_args() -> void:
 	var fleet_given := false
 	var race_flag := false
@@ -317,6 +322,8 @@ func _user_args() -> void:
 			SeaQuality.overrides["wake_buffer"] = false
 		elif a == "--no-boat-shadows":
 			no_boat_shadows = true
+		elif a == "--no-drawn-shadows":
+			no_drawn_shadows = true
 		elif a == "--no-hud":
 			no_hud = true
 	if race_flag and not fleet_given and fleet_size < 2:
@@ -447,6 +454,7 @@ func reset_boat() -> void:
 		_build_views()
 		for i in boat_views.size():
 			wakes.remove_boat(i)
+			shadows.remove_boat(i)
 		viewed = b
 		hud.local_commands = true
 		_build_course()
@@ -593,6 +601,8 @@ func _update_target(alpha: float) -> void:
 			_sails_cur_all[b] if b < _sails_cur_all.size() else null, alpha)
 		var tc := Time.get_ticks_usec()
 		wakes.update_boat(b, _wake_state(b, p))
+		if shadows.enabled:
+			shadows.update_boat(b, v.shadow_state(b == runner.boat))
 		var td := Time.get_ticks_usec()
 		us_boats += tb - ta
 		us_sails += tc - tb

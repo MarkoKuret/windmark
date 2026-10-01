@@ -1,11 +1,12 @@
-// Entry point of the Windmark GDExtension (game/bin/windmark.gdextension): registers CoreSim, SailShape and the wake classes
-// (SeaSampler, WakeRibbon, BowWaveSheets, MistCloud).
+// Entry point of the Windmark GDExtension (game/bin/windmark.gdextension): registers CoreSim, SailShape, the wake classes
+// (SeaSampler, WakeRibbon, BowWaveSheets, MistCloud) and BoatShadowShape.
 #include <gdextension_interface.h>
 
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/defs.hpp>
 #include <godot_cpp/godot.hpp>
 
+#include "boat_shadow.h"
 #include "core_sim.h"
 #include "sail_shape.h"
 #include "sea_wakes.h"
@@ -22,6 +23,7 @@ void initialize(ModuleInitializationLevel level) {
   GDREGISTER_CLASS(windmark_godot::WakeRibbon);
   GDREGISTER_CLASS(windmark_godot::BowWaveSheets);
   GDREGISTER_CLASS(windmark_godot::MistCloud);
+  GDREGISTER_CLASS(windmark_godot::BoatShadowShape);
 }
 
 void uninitialize(ModuleInitializationLevel level) { (void)level; }

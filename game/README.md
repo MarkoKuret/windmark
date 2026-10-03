@@ -462,7 +462,7 @@ sound on FakeSim and in a race on the core (the warning signal's horns, the flee
 
 Every boat of a class wears the class livery and carries the class sail set; only its name, sail number and nation
 letters differ (`data/liveries/<class>.liveries.json`, `docs/specs/data_format.md` §8). The look comes from baked,
-hand-owned textures in `data/liveries/<class>/` (§8.5): the hull, keel and optional deck of the livery, and one sail
+hand-owned textures in `data/liveries/<class>/` (§8.5): the hull, transom, deck and keel of the livery, and one sail
 set per class with the insignia. The sail scene gives the player's boat the chosen sail number (`GameSetup.livery`,
 a boat id: the Sail number row of the Quick race and Free sail menus, or `--livery=<id>`) and the AI boats theirs by
 the fleet rule from the world seed (`Livery.assign`).
@@ -484,15 +484,17 @@ Godot reimports only the files whose content changed (it compares their hashes).
 
 - **Baked path** (the class's textures staged, `BakedLivery`): per boat, materials on `shaders/boat_baked.gdshader`
   for the hull's topsides, boot stripe and antifouling (the uv1 atlas: albedo, normal and ORM, the slot's tiling
-  detail on top), the keel (side view) and the deck (top view, only with a `deck_albedo.png`), and on
-  `shaders/sail_baked.gdshader` for each baked sail (the layer's albedo, ORM, normal map with the cloth detail, the
+  detail on top), the transom (its own slot `transom` and uv1: albedo, normal and ORM, the boat's name in its name
+  panel), the deck (plan uv1: albedo, normal and ORM, one material for the `gelcoat` and `nonslip` slots, the ORM's
+  non-slip mask picking the non-slip or the gelcoat tiling detail per pixel, steep faces kept plain), the keel (side
+  view), and on `shaders/sail_baked.gdshader` for each baked sail (the layer's albedo, ORM, normal map with the cloth detail, the
   tangent frame from screen-space derivatives). No procedural livery or cloth runs. The images are loaded once per
-  class and shared by every boat; per boat only uniforms: the name and number boxes in the hull's livery panels and
-  the nation and number in the sails' layout slots, read from the boat's text texture (one sample on the hull, one
+  class and shared by every boat (the deck material too); per boat only uniforms: the name and number boxes in the
+  hull's livery panels, the name box on the transom, and the nation and number in the sails' layout slots, read from the boat's text texture (one sample on the hull, one
   per side on a sail). A faint dirt line follows the edge of the per-boat vinyl and stuck-on numbers.
 - **Procedural fallback** (no baked textures, or `BakedLivery.enabled = false`): a copy of the shared boat material
   for each painted slot on `boat.gdshader` with the livery path of `shaders/hull_livery.gdshaderinc` on the
-  topsides, and a copy of each sail's material on `sail.gdshader` with the cloth of `sail_cloth.gdshaderinc` and
+  topsides (the transom in the topsides colour), and a copy of each sail's material on `sail.gdshader` with the cloth of `sail_cloth.gdshaderinc` and
   `sail_livery.gdshaderinc`, as before the baked liveries. Kept for a class without textures and as the GPU-cost
   reference.
 - **One text texture per boat** either way: `LiveryText` sets the boat name, sail number, nation letters (and the
@@ -502,8 +504,10 @@ Godot reimports only the files whose content changed (it compares their hashes).
 
 **Cost** (WM-081). Load, headless M1: the first boat of a class loads the class's images (about 20 to 30 ms), every
 further boat 1.4 to 1.8 ms (procedural: 2.0 to 2.5 ms per boat; the text texture is most of either). On a GPU the
-first boat also uploads the images. Video memory, shared by the fleet: wm7 about 55 MB, wm12 about 63 MB (hull set
-28 MB, keel 1.2 MB, sails 25 to 33 MB), plus 0.7 MB per boat. Per pixel (`tests/livery_cost.py`, the offline
+first boat also uploads the images. Video memory, shared by the fleet: wm7 about 79 MB, wm12 about 85 MB (hull set
+28 MB, deck set 18 to 20 MB, transom set 3.8 MB, keel 1.2 MB, sails 25 to 33 MB), plus 0.7 MB per boat. The transom's
+own slot (WM-082) adds one surface, so one draw, per boat; the deck adds three texture reads per pixel (the non-slip
+detail). Per pixel (`tests/livery_cost.py`, the offline
 programs on the M1's GPU, visible pixels shaded once): baked sails cost 0.42 to 0.71 of the procedural cloth, the
 baked topsides 1.05 to 1.13 of the procedural livery (three more texture reads for the relief and gloss).
 

@@ -178,7 +178,7 @@ class Boat:
         parts = self.lod_parts(lod)
         self._write(path, self.cls["id"], parts, self.pivots,
                     extras={"class": self.cls["id"], "name": self.cls.get("name", ""), "lod": lod,
-                            "livery_panels": self.livery_panels()})
+                            **self.livery_extras()})
         return sum(p.tri_count() for p in parts.values()), parts
 
     # poses for previews (the exported model keeps the flat standard sail shapes); the sails are drawn with the
@@ -270,6 +270,31 @@ class Boat:
                             "uv1": [round(u0, 4), round(v0, 4), round(u1, 4), round(v1, 4)]})
         return out
 
+    def livery_transom(self):
+        """The transom's uv1 frame and name panel for the liveries (data_format.md §8.5), GLB frame: {"rect": [h,
+        top, bottom] (half width, heights of the top and bottom), "panel": {"uv1": [u0, v0, u1, v1], "size": [w, h]
+        m}}. With a transom-hung rudder the panel lies to starboard of the gudgeons."""
+        d = self.deck
+        h, top, bot = d.transom_rect()
+        r_half = 0.0
+        if self.app.transom_hung:
+            for gs in self.parts["hardware"].slots.values():
+                for g in gs:
+                    if g.tag and g.tag.startswith("gudgeon"):
+                        r_half = max(r_half, float(np.abs(g.P[:, 1]).max()))
+        yp, ys, zt, zb = d.transom_name_panel(r_half)
+        uv = d.transom_uv1(np.array([[0.0, yp, zt], [0.0, ys, zb]]))
+        return {"rect": [round(h, 4), round(top, 4), round(bot, 4)],
+                "panel": {"uv1": [round(float(v), 4) for v in (uv[0, 0], uv[0, 1], uv[1, 0], uv[1, 1])],
+                          "size": [round(yp - ys, 3), round(zt - zb, 3)]}}
+
+    def livery_extras(self):
+        """GLB root extras for the liveries: the topsides' name and number panels, the transom's frame and name
+        panel, and the deck's plan rectangle (its uv1 frame) as [forward_min, port_top, length, height]."""
+        x0, yt, w, h = self.deck.plan_rect()
+        return {"livery_panels": self.livery_panels(), "livery_transom": self.livery_transom(),
+                "deck_plan": [round(x0 - self.origin_x(), 4), round(yt, 4), round(w, 4), round(h, 4)]}
+
     def origin_x(self):
         return 0.5 * (self.hull.x_awl + self.hull.x_fwl)
 
@@ -280,7 +305,7 @@ class Boat:
     def write_glb(self, path):
         self._write(path, self.cls["id"], self.parts, self.pivots,
                     extras={"class": self.cls["id"], "name": self.cls.get("name", ""), "lod": 0,
-                            "livery_panels": self.livery_panels()})
+                            **self.livery_extras()})
 
     def _write(self, path, root, parts, pivots, extras=None):
         w = GLBWriter(self.origin_x(), textures=self.textures)

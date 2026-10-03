@@ -195,6 +195,12 @@ uniform float bk_detail_mean;
 uniform float bk_rough_mean;
 uniform int bk_proj;
 uniform int bk_maps;
+uniform int bk_mask;
+uniform sampler2D ns_albedo_tex;
+uniform sampler2D ns_mr_tex;
+uniform vec2 ns_uv_scale;
+uniform float ns_detail_mean;
+uniform float ns_rough_mean;
 out vec4 frag;
 void main() {
     vec3 N = normalize(v_n);
@@ -203,15 +209,26 @@ void main() {
     vec2 UV = v_uv.xy * uv_scale;
     vec2 t = v_uv.zw;
     vec3 det = srgb(texture(albedo_tex, UV).rgb) / bk_detail_mean;
-    vec3 a = srgb(texture(bk_albedo, t).rgb) * det;
     vec4 mr = texture(mr_tex, UV);
     float rough = clamp(mr.g * roughness, 0.0, 1.0);
+    float rdet = mr.g / bk_rough_mean;
     float occ = 1.0;
+    float flat_k = 1.0;
+    vec3 orm = vec3(1.0);
+    if (bk_maps != 0) orm = texture(bk_orm, t).rgb;
+    if (bk_mask != 0) {
+        flat_k = smoothstep(0.35, 0.7, abs(normalize(v_n).y));
+        float ns = orm.b * flat_k;
+        vec2 uvn = v_uv.xy * ns_uv_scale;
+        det = mix(det, srgb(texture(ns_albedo_tex, uvn).rgb) / ns_detail_mean, ns);
+        rdet = mix(rdet, texture(ns_mr_tex, uvn).g / ns_rough_mean, ns);
+    }
+    vec3 a = srgb(texture(bk_albedo, t).rgb) * det;
     if (bk_maps != 0) {
-        vec3 orm = texture(bk_orm, t).rgb;
-        rough = orm.g * mr.g / bk_rough_mean;
+        rough = orm.g * rdet;
         occ = orm.r;
         vec3 nb = texture(bk_normal, t).rgb * 2.0 - 1.0;
+        nb = mix(vec3(0.0, 0.0, 1.0), nb, flat_k);
         N = wm_perturb(N, v_w, t, nb, -1.0);
     }
     if (ov_on != 0) {
@@ -428,6 +445,12 @@ def render(ctx, d, size):
             for unit, k in enumerate(["bk_albedo", "bk_normal", "bk_orm"], start=2):
                 image_texture(ctx, u.get(k), False, (128, 128, 255) if k == "bk_normal" else (255, 255, 255)).use(unit)
                 boat_b[k].value = unit
+            if u.get("bk_mask"):
+                np_, nm_ = detail_path({}, "nonslip")
+                image_texture(ctx, np_, True).use(6)
+                image_texture(ctx, nm_, True).use(7)
+                boat_b["ns_albedo_tex"].value = 6
+                boat_b["ns_mr_tex"].value = 7
             boat_b["albedo_tex"].value = 0
             boat_b["mr_tex"].value = 1
             text_texture(ctx, d / m["text"]).use(5)

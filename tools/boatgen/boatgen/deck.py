@@ -8,6 +8,10 @@ forward of it with a plan outline that rounds in to the centreline at its front,
 The deck is meshed as an outer strip on each side from the sheer to the cockpit / cabin outline, which is
 continued by the centreline forward of the cabin. The cabin is a separate closed-looking shell whose base sits
 slightly below the deck, so the two never show a crack.
+
+uv1 (data_format.md §8.5): every deck surface has the plan view (`plan_rect`, the deck's extent with a 1 % margin,
+bow to the right and port at the top), except the transom face, its own slot `transom` with uv1 over the transom as
+seen from astern (`transom_rect`: port on the left, its top at the top). The baked livery textures lie on them.
 """
 import numpy as np
 
@@ -104,6 +108,82 @@ class Deck:
         return np.where(x <= self.xc1, self.yc(x), np.where(x <= self.xk1, self.yk(x), 0.0))
 
     # ------------------------------------------------------------------------------------------------------
+    # uv1 frames of the livery textures
+
+    def plan_rect(self):
+        """(x0, y_top, length, height): the plan view the deck's uv1 covers, boat frame (x from the transom, y to
+        port): the hull's length and beam with a margin of 1 % of the length all round."""
+        L = self.hull.L
+        m = 0.01 * L
+        hb = 0.5 * float(self.hull.h["beam_max"]) + m
+        return (-m, hb, L + 2 * m, 2 * hb)
+
+    def plan_uv1(self, P):
+        x0, yt, w, h = self.plan_rect()
+        P = np.asarray(P, dtype=np.float64)
+        return np.stack([(P[:, 0] - x0) / w, (yt - P[:, 1]) / h], -1)
+
+    def transom_outline(self, skin=None):
+        """The transom face as a closed polygon in the plane x = 0 (boat frame), the skin's station at the
+        transom from the starboard sheer down to the keel and up to the port sheer, closed along the deck edge
+        (and round the cockpit opening of an open transom)."""
+        hull = self.hull
+        y, z, _ = hull.station(0.0, *(skin or getattr(self, "_skin_n", (18, 13))))
+        stbd = np.stack([np.zeros_like(y), -y, z], -1)[::-1]    # sheer -> keel on starboard
+        port = np.stack([np.zeros_like(y), y, z], -1)[1:]        # keel -> sheer on port
+        bs0 = float(hull.bs(np.array([0.0]))[0])
+        top = []
+        if self.open_transom:
+            yc = float(self.yc(0.0))
+            zf = float(self.floor_z(0.0))
+            ys = np.linspace(bs0, yc, 6)
+            top += [[0, yy, float(self.deck_z(0.0, yy))] for yy in ys[1:]]
+            top += [[0, yc, zf], [0, -yc, zf]]
+            top += [[0, -yy, float(self.deck_z(0.0, yy))] for yy in ys[::-1][:-1]]
+        else:
+            ys = np.linspace(bs0, -bs0, 13)
+            top += [[0, yy, float(self.deck_z(0.0, yy))] for yy in ys[1:-1]]
+        return np.vstack([stbd, port, np.array(top)])
+
+    def transom_rect(self):
+        """(h, top, bottom): the transom's half width and the heights of its top and bottom (boat frame), the
+        frame of its uv1: u = (h - y) / 2h from port to starboard, v = (top - z) / (top - bottom)."""
+        if not hasattr(self, "_transom_rect"):
+            P = self.transom_outline(skin=(18, 13))       # the same on every level of detail
+            self._transom_rect = (float(np.abs(P[:, 1]).max()), float(P[:, 2].max()), float(P[:, 2].min()))
+        return self._transom_rect
+
+    def transom_uv1(self, P):
+        h, top, bot = self.transom_rect()
+        P = np.asarray(P, dtype=np.float64)
+        return np.stack([(h - P[:, 1]) / (2 * h), (top - P[:, 2]) / (top - bot)], -1)
+
+    def transom_name_panel(self, rudder_half=0.0):
+        """The transom's name panel: (y_port, y_stbd, z_top, z_bottom), boat frame. The band below the cockpit
+        opening (open transom) or the middle of the transom (closed), above the boot stripe and inside the
+        transom's bottom edge; with `rudder_half` > 0 (a transom-hung rudder's fittings, half width) the part of
+        the band to starboard of them."""
+        hull = self.hull
+        y, z, _ = hull.station(0.0, 60, 40)
+        bs0 = float(hull.bs(np.array([0.0]))[0])
+        z_bt = float(self.cls["hull"]["boot_top"][1])
+        if self.open_transom:
+            half = 0.9 * float(self.yc(0.0))
+            z_hi = float(self.floor_z(0.0))
+        else:
+            half = 0.6 * bs0
+            z_hi = float(self.hull.zs(np.array([0.0]))[0]) - 0.12 * (float(hull.zs(np.array([0.0]))[0]) - float(z.min()))
+        ya, yb = -half, half
+        if rudder_half > 0:
+            ya, yb = -half, -(rudder_half + 0.04)
+        # the bottom edge under the panel: the section's highest point within its width (bottom part only)
+        it = int(np.argmax(y >= max(abs(ya), abs(yb)))) if np.any(y >= max(abs(ya), abs(yb))) else len(y) - 1
+        z_edge = float(np.max(z[: it + 1]))
+        z_lo = max(z_edge, z_bt) + 0.02
+        band = max(z_hi - z_lo, 0.02)
+        return (yb, ya, z_hi - 0.12 * band, z_lo + 0.08 * band)
+
+    # ------------------------------------------------------------------------------------------------------
     def build(self, n_out=9, n_st=90, skin=(18, 13)):
         """Deck part; `n_st` deck stations (plus the feature breaks) and the hull skin's girth counts `skin`
         (the transom face must meet the skin) set the level of detail."""
@@ -143,8 +223,11 @@ class Deck:
         self._cockpit(part, xs)
         if self.has_cabin:
             self._cabin(part, n_half=max(12, round(40 * n_st / 90)), n_roof=max(5, round(11 * n_st / 90)))
-        self._transom(part)
         self._sheer_trim(part, n=max(16, round(120 * n_st / 90)))
+        for gs in part.slots.values():          # every deck surface: the plan view (the transom has its own)
+            for g in gs:
+                g.uv1 = self.plan_uv1(g.P)
+        self._transom(part)
         return part
 
     # ------------------------------------------------------------------------------------------------------
@@ -272,6 +355,8 @@ class Deck:
         L = min(0.9, 0.35 * (self.xk1 - self.xk0))
         hx = x + 0.5 * L + 0.02
         hz = self.roof_z(hx, 0)
+        self.companion = {"x": float(x), "half_width": float(w), "hatch_x": float(hx), "hatch_len": float(L),
+                          "hatch_width": float(2 * w + 0.1)}
         part.add("gelcoat", superellipsoid_box((L, 2 * w + 0.1, 0.07), 0.18, 16, 8, center=(hx, 0, hz + 0.02)))
         part.add("glass", superellipsoid_box((L * 0.8, 2 * w - 0.02, 0.02), 0.1, 12, 6, center=(hx, 0, hz + 0.055)))
 
@@ -298,24 +383,10 @@ class Deck:
 
     # ------------------------------------------------------------------------------------------------------
     def _transom(self, part):
-        hull = self.hull
-        y, z, _ = hull.station(0.0, *getattr(self, "_skin_n", (18, 13)))
-        stbd = np.stack([np.zeros_like(y), -y, z], -1)[::-1]    # sheer -> keel on starboard
-        port = np.stack([np.zeros_like(y), y, z], -1)[1:]        # keel -> sheer on port
-        bs0 = float(hull.bs(np.array([0.0]))[0])
-        top = []
-        if self.open_transom:
-            yc = float(self.yc(0.0))
-            zf = float(self.floor_z(0.0))
-            ys = np.linspace(bs0, yc, 6)
-            top += [[0, yy, float(self.deck_z(0.0, yy))] for yy in ys[1:]]
-            top += [[0, yc, zf], [0, -yc, zf]]
-            top += [[0, -yy, float(self.deck_z(0.0, yy))] for yy in ys[::-1][:-1]]
-        else:
-            ys = np.linspace(bs0, -bs0, 13)
-            top += [[0, yy, float(self.deck_z(0.0, yy))] for yy in ys[1:-1]]
-        poly = np.vstack([stbd, port, np.array(top)])
-        part.add("gelcoat", planar_polygon(poly, [-1, 0, 0]))
+        """The transom face: its own slot (the livery paints it in the hull's colours) and uv1."""
+        g = planar_polygon(self.transom_outline(), [-1, 0, 0])
+        g.uv1 = self.transom_uv1(g.P)
+        part.add("transom", g)
 
     def _sheer_trim(self, part, n=120):
         """Toe rail on the deck edge and a rub strake just below the sheer on the hull."""

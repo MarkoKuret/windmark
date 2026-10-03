@@ -19,7 +19,7 @@
         "antifouling": "#17181b",
         "keel": "#1c1e21",
         "graphic": {"type": "stripes", "colors": ["#b7babd", "#a3161c"], "depth": [0.045, 0.083],
-          "width": [0.035, 0.01], "from": 0.03, "to": 0.965}
+          "width": [0.035, 0.01], "from": 0.0, "to": 0.965}
       },
       "deck": {"gelcoat": "#dad8d0", "nonslip": "#a3a196"}
     }

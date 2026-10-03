@@ -9,19 +9,21 @@ import hashlib
 import json
 import pickle
 import sys
+from pathlib import Path
 
 import numpy as np
 
 from .common import BOATGEN, CLASSES, HERE
 
 CACHE = HERE / ".cache"
-VERSION = 3
+VERSION = 4
 
 
 def _key(class_id):
     h = hashlib.sha256()
     h.update(str(VERSION).encode())
     h.update((CLASSES / f"{class_id}.boat.json").read_bytes())
+    h.update(Path(__file__).read_bytes())
     for p in sorted((BOATGEN / "boatgen").glob("*.py")):
         h.update(p.read_bytes())
     return h.hexdigest()[:16]
@@ -84,12 +86,26 @@ def build(path):
     for g in kp.values():
         keel_tris.append(np.stack([g.P[:, 0], g.P[:, 2]], -1)[g.I])
     geo["keel_tris"] = np.vstack(keel_tris)
-    # the deck seen from above: triangles (x, y) by slot
+    # the deck seen from above: triangles (x, y) by slot, its uv1 frame and what the deck bake lays out on it
     dk = boat.parts["deck"].merged()
     geo["deck_tris"] = {m: np.stack([g.P[:, 0], g.P[:, 1]], -1)[g.I] for m, g in dk.items()
-                        if m in ("gelcoat", "nonslip")}
+                        if m in ("gelcoat", "nonslip", "glass")}
     geo["deck_min"] = np.vstack([g.P for g in dk.values()]).min(0).tolist()
     geo["deck_max"] = np.vstack([g.P for g in dk.values()]).max(0).tolist()
+    geo["deck"] = deck_info(boat)
+    geo["footprints"] = footprints(boat)
+    # the transom seen from astern: its uv1 frame, outline (y, z), top edge, name panel and the fittings on it
+    d = boat.deck
+    tr = boat.livery_transom()
+    P = d.transom_outline(skin=(60, 40))
+    geo["transom"] = {
+        "rect": tr["rect"], "panel": tr["panel"], "outline": np.stack([P[:, 1], P[:, 2]], -1),
+        "open": bool(d.open_transom), "yc": float(d.yc(0.0)) if d.open_transom else 0.0,
+        "floor_z": float(d.floor_z(0.0)), "bs": float(h.bs(np.array([0.0]))[0]),
+        "top_y": np.linspace(0.0, float(h.bs(np.array([0.0]))[0]), 64),
+    }
+    geo["transom"]["top_z"] = np.array([float(d.deck_z(0.0, y)) for y in geo["transom"]["top_y"]])
+    geo["transom_fittings"] = transom_fittings(boat)
     # flat sails (x, z in the centreline plane): grid, type and corners
     geo["sails"] = []
     for spec in cls["sails"]:
@@ -97,6 +113,104 @@ def build(path):
         geo["sails"].append({"id": spec["id"], "type": s.type, "P": np.asarray(s.P, dtype=np.float64),
                              "corners": {k: list(v) for k, v in s.corners.items()}})
     return geo
+
+
+# ----------------------------------------------------------------------------------------------------------------
+# deck layout for the deck bake (boat frame: x from the transom, y to port)
+
+def deck_info(boat):
+    """The deck's plan rectangle (its uv1 frame) and, per 1 cm along the hull, the sheer half-breadth, the cockpit
+    and cabin outlines; the cockpit, cabin, companionway, mast and toe rail."""
+    d, h = boat.deck, boat.hull
+    L = float(h.L)
+    xs = np.linspace(0.0, L, int(round(L / 0.01)) + 1)
+    inset = d.cab_h * d.cab_slope if d.has_cabin else 0.0
+    yk = np.asarray(d.yk(xs), dtype=np.float64) if d.has_cabin else np.zeros_like(xs)
+    in_ck = (xs >= d.xc0) & (xs <= d.xc1)
+    out = {
+        "plan": list(d.plan_rect()), "xs": xs, "bs": np.asarray(h.bs(xs), dtype=np.float64),
+        "yc": np.where(in_ck, np.asarray(d.yc(xs), dtype=np.float64), 0.0),
+        "yk": np.where((xs >= d.xk0) & (xs <= d.xk1), yk, 0.0),
+        "xc0": float(d.xc0), "xc1": float(d.xc1), "xk0": float(d.xk0), "xk1": float(d.xk1),
+        "has_cabin": bool(d.has_cabin), "cab_inset": float(inset), "open_transom": bool(d.open_transom),
+        "margin": float(d.margin), "toe_rail": float(d.cls["deck"]["toe_rail"]),
+        "companion": getattr(d, "companion", None),
+        "mast": {"x": float(boat.rig.x_mast), "chord": float(getattr(boat.rig, "chord", 0.12)),
+                 "width": float(getattr(boat.rig, "width", 0.08))},
+    }
+    return out
+
+
+# hardware tags that are not fastened to the deck (lines, coils, rails, cars) and kinds by tag prefix
+_SKIP = ("halyard_", "mainsheet_tail", "mainsheet_coil", "mainsheet_lower", "traveller_line", "traveller_car",
+         "lifeline", "jib_car", "halyard_coil", "pod", "wheel", "binnacle", "pedestal_guard", "tiller")
+_KINDS = (("winch", "winch"), ("clutch", "clutch"), ("organiser", "organiser"), ("mast_block", "block"),
+          ("traveller_block", "block"), ("cam_cleat", "cleat"), ("traveller_cleat", "cleat"), ("horn_cleat", "cleat"),
+          ("jib_track", "track"), ("traveller", "track"), ("hatch", "hatch"), ("stanchion", "stanchion"),
+          ("pulpit_leg", "stanchion"), ("pushpit_leg", "stanchion"), ("chainplate", "chainplate"),
+          ("mast", "mast"), ("pedestal", "pedestal"), ("rudder_bearing", "pedestal"), ("stemhead", "stemhead"),
+          ("backstay", "chainplate"))
+
+
+def _groups(boat, names=("hardware", "rigging", "mast")):
+    by = {}
+    for n in names:
+        if n not in boat.parts:
+            continue
+        for gs in boat.parts[n].slots.values():
+            for g in gs:
+                if g.tag:
+                    by.setdefault(g.tag, []).append(g.P)
+    return {t: np.vstack(ps) for t, ps in by.items()}
+
+
+def footprints(boat):
+    """[{tag, kind, poly (n, 2) plan outline of the base, surface}] of every fitting fastened to the deck, cabin
+    roof or cockpit sole: the convex hull of its points within 12 mm of its lowest point, when that point lies on
+    the surface there (within 25 mm)."""
+    from scipy.spatial import ConvexHull
+    d = boat.deck
+    out = []
+    for tag, P in sorted(_groups(boat).items()):
+        if tag.startswith(_SKIP) or (tag.startswith(("pulpit", "pushpit")) and "leg" not in tag):
+            continue
+        if P[:, 0].min() < 0.02:          # on the transom (transom_fittings)
+            continue
+        # the points within 12 mm of the surface under them (a long track on a sloping deck touches all along)
+        low = P[P[:, 2] < P[:, 2].min() + 0.25]
+        low = np.unique(np.round(low, 4), axis=0)
+        if len(low) > 4000:
+            low = low[np.random.default_rng(0).choice(len(low), 4000, replace=False)]
+        gap = np.array([p[2] - d.surface(float(p[0]), float(p[1]))[0] for p in low])
+        base = low[(gap < 0.012) & (gap > -0.03)]
+        if len(base) < 3:
+            continue
+        c = base.mean(0)
+        kind_s = d.surface(float(c[0]), float(c[1]))[2]
+        q = np.unique(np.round(base[:, :2], 4), axis=0)
+        if len(q) < 3:
+            continue
+        try:
+            poly = q[ConvexHull(q).vertices]
+        except Exception:  # noqa: BLE001 - collinear points
+            continue
+        kind = next((k for p, k in _KINDS if tag.startswith(p)), "fitting")
+        out.append({"tag": tag, "kind": kind, "poly": poly, "surface": kind_s})
+    return out
+
+
+def transom_fittings(boat):
+    """[{tag, poly (n, 2) outline (y, z)}] of the fittings bolted to the transom face (gudgeon plates)."""
+    from scipy.spatial import ConvexHull
+    out = []
+    for tag, P in sorted(_groups(boat, ("hardware",)).items()):
+        if not tag.startswith("gudgeon_plate"):
+            continue
+        base = P[P[:, 0] > -0.006][:, 1:3] if (P[:, 0] > -0.006).sum() >= 3 else P[:, 1:3]
+        q = np.unique(np.round(base, 4), axis=0)
+        if len(q) >= 3:
+            out.append({"tag": tag, "poly": q[ConvexHull(q).vertices]})
+    return out
 
 
 # ----------------------------------------------------------------------------------------------------------------

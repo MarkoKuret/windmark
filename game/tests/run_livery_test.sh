@@ -22,6 +22,29 @@ if [ "$sums_before" != "$sums_after" ]; then
 fi
 echo "hand-owned textures kept by a plain bake"
 
+# the transom and deck sets: a hand edit survives a plain bake, --only deck rewrites the deck only, --force all
+tmp=$(mktemp -d)
+small="--no-stage --quiet --out $tmp --hull-size 256 --sail-size 128 --keel-size 64 --transom-size 128 --deck-size 256"
+(cd "$repo/tools/liverybake" && python3 -m liverybake wm7 $small)
+nav="$tmp/wm7/navy"
+python3 -c "from PIL import Image; [Image.new('RGB', (8, 8), (200, 0, 0)).save('$nav/' + f) for f in ('transom_albedo.png', 'deck_albedo.png', 'deck_orm.png')]"
+edited=$(shasum "$nav"/transom_*.png "$nav"/deck_*.png)
+(cd "$repo/tools/liverybake" && python3 -m liverybake wm7 $small)
+if [ "$(shasum "$nav"/transom_*.png "$nav"/deck_*.png)" != "$edited" ]; then
+    echo "a plain bake rewrote hand-edited transom or deck textures"; rm -rf "$tmp"; exit 1
+fi
+t_before=$(shasum "$nav"/transom_albedo.png)
+(cd "$repo/tools/liverybake" && python3 -m liverybake wm7 $small --only deck)
+if [ "$(shasum "$nav"/transom_albedo.png)" != "$t_before" ] || [ "$(shasum "$nav"/deck_albedo.png)" = "$(echo "$edited" | grep deck_albedo)" ]; then
+    echo "--only deck did not rewrite exactly the deck"; rm -rf "$tmp"; exit 1
+fi
+(cd "$repo/tools/liverybake" && python3 -m liverybake wm7 $small --force)
+if [ "$(shasum "$nav"/transom_albedo.png)" = "$t_before" ]; then
+    echo "--force did not rewrite the transom"; rm -rf "$tmp"; exit 1
+fi
+rm -rf "$tmp"
+echo "transom and deck textures kept without --force or --only, rewritten with them"
+
 (cd "$repo/tools/liverybake" && python3 -m liverybake --stage-only --quiet)
 log="$here/generated/livery_import.log"
 "$godot" --headless --path "$here" --import >"$log" 2>&1 || { cat "$log"; echo "import failed"; exit 1; }

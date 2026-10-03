@@ -2,7 +2,7 @@ class_name BakedLivery
 extends RefCounted
 ## The baked livery textures of a class (data_format.md §8.5), as staged for import by tools/liverybake into
 ## res://generated/liveries/<class>/ (game/README.md "Liveries"): the hull set of a livery (hull albedo, normal and
-## ORM maps, keel albedo, optional deck albedo, layout.json) and the class sail set (per sail: port and starboard
+## ORM maps, keel albedo, the transom's and the deck's albedo, normal and ORM maps, layout.json) and the class sail set (per sail: port and starboard
 ## albedo, normal and ORM maps; layout.json). Loaded once per class and shared by every boat; a missing set gives
 ## an empty Dictionary and the procedural fallback.
 
@@ -14,8 +14,9 @@ static var _sails := {}
 static var _detail := {}
 
 
-## {"albedo", "normal", "orm": Texture2D, "keel": Texture2D or null, "keel_rect": Vector4, "deck", "deck_rect"} of
-## the livery `look_id` of the class, or {} when it is not baked.
+## {"albedo", "normal", "orm": Texture2D, "keel": Texture2D, "keel_rect": Vector4, "transom", "deck": {"albedo",
+## "normal", "orm"}} of the livery `look_id` of the class (keel, transom and deck when baked), or {} when the hull
+## is not baked.
 static func hull_set(class_id: String, look_id: String) -> Dictionary:
 	if not enabled:
 		return {}
@@ -34,12 +35,19 @@ static func hull_set(class_id: String, look_id: String) -> Dictionary:
 			out = {}
 	if not out.is_empty():
 		var lay := _json(dir + "layout.json")
-		for part in ["keel", "deck"]:
-			var t := _tex(dir + part + "_albedo.png")
-			var r: Array = lay.get(part, {}).get("rect", [])
-			if t != null and r.size() == 4:
-				out[part] = t
-				out[part + "_rect"] = Vector4(r[0], r[1], r[2], r[3])
+		var t := _tex(dir + "keel_albedo.png")
+		var r: Array = lay.get("keel", {}).get("rect", [])
+		if t != null and r.size() == 4:
+			out["keel"] = t
+			out["keel_rect"] = Vector4(r[0], r[1], r[2], r[3])
+		# the transom and the deck on their own uv1: {"albedo", "normal", "orm"} each
+		for part in ["transom", "deck"]:
+			var s := {"albedo": _tex(dir + part + "_albedo.png"), "normal": _tex(dir + part + "_normal.png"),
+				"orm": _tex(dir + part + "_orm.png")}
+			if s["albedo"] != null and s["normal"] != null and s["orm"] != null:
+				out[part] = s
+			elif s["albedo"] != null or s["normal"] != null or s["orm"] != null:
+				push_error("%s: the %s images are incomplete" % [dir, part])
 	_hulls[key] = out
 	return out
 

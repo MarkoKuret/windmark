@@ -3,10 +3,12 @@ extends RefCounted
 ## Paints a BoatView in a livery at load (data_format.md §8, sail_visuals.md §11.2) without touching the
 ## generated meshes. With the class's baked textures (BakedLivery, data_format.md §8.5), the normal case: per boat,
 ## materials on shaders/boat_baked.gdshader for the hull (topsides, boot stripe and antifouling on the uv1 atlas),
-## the keel and an optional deck override, and on shaders/sail_baked.gdshader for each baked sail, all reading the
-## shared images; per boat only the uniforms of its name and sail number over them. Without baked textures, the
+## the transom (its own slot and uv1, the boat's name), the deck (plan uv1, one material for its gelcoat and
+## non-slip slots) and the keel, and on shaders/sail_baked.gdshader for each baked sail, all reading the shared
+## images; per boat only the uniforms of its name and sail number over them. Without baked textures, the
 ## procedural fallback: a copy of the shared boat material for each painted slot (topsides with the livery path of
-## hull_livery.gdshaderinc, boot stripe, antifouling, keel, deck gelcoat and non-slip) and a copy of each sail's
+## hull_livery.gdshaderinc, boot stripe, antifouling, keel, the transom in the topsides colour, deck gelcoat and
+## non-slip) and a copy of each sail's
 ## cloth material with the livery uniforms of sail_livery.gdshaderinc. Either way one text texture per boat
 ## (LiveryText) and surface override materials on the boat's own MeshInstance3Ds; draw calls are unchanged (every
 ## surface of every boat is its own draw anyway).
@@ -58,6 +60,10 @@ static func apply(bv: BoatView, lv: Livery) -> int:
 		if mi == null or mi.mesh == null or sail_nodes.has(mi):
 			continue
 		var part := String(mi.name)
+		# the deck's two walking slots share one material: the non-slip mask of the baked deck picks the detail
+		var deck_m: ShaderMaterial = null
+		if part == "deck" and hs.has("deck"):
+			deck_m = baked_deck_material(mi, hs["deck"])
 		for s in mi.mesh.get_surface_count():
 			var m := mi.mesh.surface_get_material(s) as ShaderMaterial
 			if m == null:
@@ -69,10 +75,13 @@ static func apply(bv: BoatView, lv: Livery) -> int:
 					bm = baked_hull_material(m, hs, lv, text, geo)
 				elif part == "keel" and slot == "antifouling" and hs.has("keel"):
 					bm = baked_view_material(m, hs["keel"], hs["keel_rect"], 1)
-				elif part == "deck" and slot in ["gelcoat", "nonslip"] and hs.has("deck"):
-					bm = baked_view_material(m, hs["deck"], hs["deck_rect"], 2)
+				elif part == "deck" and slot in ["gelcoat", "nonslip"] and deck_m != null:
+					bm = deck_m
+				elif part == "deck" and slot == "transom" and hs.has("transom"):
+					bm = baked_transom_material(m, hs["transom"], lv, text, geo)
 			if bm != null:
-				bv.livery_materials.append(bm)
+				if not bv.livery_materials.has(bm):
+					bv.livery_materials.append(bm)
 				mi.set_surface_override_material(s, bm)
 				n += 1
 				continue
@@ -89,6 +98,8 @@ static func apply(bv: BoatView, lv: Livery) -> int:
 				c = lv.hull["antifouling"]
 			elif (part == "keel" or part == "rudder") and slot == "antifouling":
 				c = lv.hull["keel"]
+			elif part == "deck" and slot == "transom":
+				c = lv.hull["topsides"]
 			elif part == "deck" and slot == "gelcoat":
 				c = lv.deck["gelcoat"]
 			elif part == "deck" and slot == "nonslip":
@@ -163,7 +174,86 @@ static func baked_hull_material(src: ShaderMaterial, hs: Dictionary, lv: Livery,
 	return m
 
 
-## The keel (side view, proj 1) or the deck (top view, proj 2) from a baked albedo.
+## The deck from the livery's baked deck set on its plan uv1: one material for the deck's gelcoat and non-slip
+## surfaces, the gelcoat slot's detail and the non-slip slot's picked per pixel by the non-slip mask (ORM blue).
+static func baked_deck_material(mi: MeshInstance3D, ds: Dictionary) -> ShaderMaterial:
+	var gel: ShaderMaterial = null
+	var nsm: ShaderMaterial = null
+	for s in mi.mesh.get_surface_count():
+		var m := mi.mesh.surface_get_material(s) as ShaderMaterial
+		if m == null:
+			continue
+		if m.resource_name == "gelcoat":
+			gel = m
+		elif m.resource_name == "nonslip":
+			nsm = m
+	if gel == null:
+		gel = nsm
+	if gel == null:
+		return null
+	var m := _baked_slot(gel)
+	m.resource_name = "deck"
+	m.set_shader_parameter("bk_albedo", ds["albedo"])
+	m.set_shader_parameter("bk_normal", ds["normal"])
+	m.set_shader_parameter("bk_orm", ds["orm"])
+	m.set_shader_parameter("bk_proj", 0)
+	m.set_shader_parameter("bk_maps", true)
+	m.set_shader_parameter("bk_mask", nsm != null)
+	if nsm != null:
+		m.set_shader_parameter("ns_albedo_tex", nsm.get_shader_parameter("albedo_tex"))
+		m.set_shader_parameter("ns_mr_tex", nsm.get_shader_parameter("mr_tex"))
+		m.set_shader_parameter("ns_normal_tex", nsm.get_shader_parameter("normal_tex"))
+		m.set_shader_parameter("ns_use_normal", nsm.get_shader_parameter("use_normal_tex") == true)
+		var nsc: Variant = nsm.get_shader_parameter("normal_scale")
+		m.set_shader_parameter("ns_normal_scale", nsc if nsc != null else 1.0)
+		var uvs: Variant = nsm.get_shader_parameter("uv_scale")
+		m.set_shader_parameter("ns_uv_scale", uvs if uvs != null else Vector2.ONE)
+		m.set_shader_parameter("ns_detail_mean", texture_mean(nsm.get_shader_parameter("albedo_tex")))
+		m.set_shader_parameter("ns_rough_mean", channel_mean(nsm.get_shader_parameter("mr_tex"), 1))
+	return m
+
+
+## The transom from the livery's baked transom set on its uv1, with the boat's name in the transom's name panel
+## (the generator's `livery_transom`): one box, set in all four overlay slots so the hull's lookup finds it.
+static func baked_transom_material(src: ShaderMaterial, ts: Dictionary, lv: Livery, text: LiveryText,
+		geo: Dictionary) -> ShaderMaterial:
+	var m := _baked_slot(src)
+	m.set_shader_parameter("bk_albedo", ts["albedo"])
+	m.set_shader_parameter("bk_normal", ts["normal"])
+	m.set_shader_parameter("bk_orm", ts["orm"])
+	m.set_shader_parameter("bk_proj", 0)
+	m.set_shader_parameter("bk_maps", true)
+	var box := transom_name_box(geo, text)
+	var boxes := PackedVector4Array([box, box, box, box])
+	var r := text.rect(LiveryText.Row.NAME, false) if not text.rows[LiveryText.Row.NAME]["empty"] else Vector4.ZERO
+	m.set_shader_parameter("ov_on", 1 if box != Vector4.ZERO else 0)
+	m.set_shader_parameter("ov_color", _lin(lv.hull["text"]))
+	m.set_shader_parameter("ov_box", boxes)
+	m.set_shader_parameter("ov_tex", PackedVector4Array([r, r, r, r]))
+	m.set_shader_parameter("livery_text", text.texture)
+	return m
+
+
+## The boat name's box on the transom's uv1 (u0, v0, u1, v1): centred in the name panel, 0.7 of its height, shrunk
+## to 0.9 of its width when wider. Zero without a panel.
+static func transom_name_box(geo: Dictionary, text: LiveryText) -> Vector4:
+	var pan: Dictionary = geo.get("transom", {})
+	var uv: Array = pan.get("uv1", [])
+	var size: Array = pan.get("size", [])
+	if uv.size() != 4 or size.size() != 2 or float(size[0]) <= 0.0 or float(size[1]) <= 0.0:
+		return Vector4.ZERO
+	var w := float(size[0])
+	var h := float(size[1])
+	var asp := text.aspect(LiveryText.Row.NAME, false)
+	var bh := minf(0.7 * h, 0.9 * w / maxf(asp, 1e-3))
+	var du := 0.5 * bh * asp / w * (float(uv[2]) - float(uv[0]))
+	var dv := 0.5 * bh / h * (float(uv[3]) - float(uv[1]))
+	var cu := 0.5 * (float(uv[0]) + float(uv[2]))
+	var cv := 0.5 * (float(uv[1]) + float(uv[3]))
+	return Vector4(cu - du, cv - dv, cu + du, cv + dv)
+
+
+## The keel from its baked albedo in side view (proj 1).
 static func baked_view_material(src: ShaderMaterial, tex: Texture2D, rect: Vector4, proj: int) -> ShaderMaterial:
 	var m := _baked_slot(src)
 	m.set_shader_parameter("bk_albedo", tex)
@@ -590,7 +680,7 @@ static func hull_geometry(bv: BoatView) -> Dictionary:
 			vm = (float(d[1]) - float(d[0])) / maxf(float(u[3]) - float(u[1]), 1e-4)
 			length = (float(x[1]) - float(x[0])) / maxf(float(u[2]) - float(u[0]), 1e-4)
 	var g := {"sheer": sheer, "boot": boot, "vm": vm, "len": length, "panels": panels, "panels_uv": panels_uv,
-		"panels_d": panels_d}
+		"panels_d": panels_d, "transom": extras.get("livery_transom", {}).get("panel", {})}
 	_geometry[key] = g
 	return g
 

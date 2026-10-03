@@ -563,9 +563,9 @@ What is shared and what differs per boat:
 
 | what | where | shared by |
 | --- | --- | --- |
-| hull albedo, normal and ORM maps (topsides, graphic, boot stripe, antifouling, waterline, wear), keel albedo, optional deck colour | `<class>/<livery id>/` (§8.5) | every boat wearing the livery: today the whole fleet |
+| hull albedo, normal and ORM maps (topsides, graphic, boot stripe, antifouling, waterline, wear), the same three for the transom and for the deck (non-slip, margins, wear, sealant), keel albedo | `<class>/<livery id>/` (§8.5) | every boat wearing the livery: today the whole fleet |
 | per sail: port and starboard albedo, normal and ORM maps (cloth, panels, seams, tapes, patches, battens, tell-tales, the class insignia) | `<class>/sails/` (§8.5) | every boat of the class |
-| the boat name and sail number on the topsides; the nation letters and sail number on the sails | drawn by the front end over the shared textures from the boat's identity (§8.4), one small text texture per boat | one boat |
+| the boat name and sail number on the topsides, the boat name on the transom; the nation letters and sail number on the sails | drawn by the front end over the shared textures from the boat's identity (§8.4), one small text texture per boat | one boat |
 
 The general rules of §1 hold; colours are `"#rrggbb"` sRGB strings. Top level:
 
@@ -590,8 +590,11 @@ The general rules of §1 hold; colours are `"#rrggbb"` sRGB strings. Top level:
 | `hull.keel` | | `hull.antifouling` | keel fin and bulb, and a rudder painted in antifouling |
 | `hull.text` | **R** | | name and number on the topsides |
 | `hull.graphic` | | none | one hull graphic (below) |
-| `deck.gelcoat` | | `#e2e2dc` | cabin, coamings, cockpit sides |
-| `deck.nonslip` | | `#a8a8a0` | the non-slip areas |
+| `deck.gelcoat` | | `#e2e2dc` | the smooth gelcoat: cabin, coamings, cockpit sides, margins and pads round the hardware |
+| `deck.nonslip` | | `#a8a8a0` | the moulded non-slip areas |
+
+The transom wears the hull's colours (`hull.topsides`, the graphic's return, `hull.boot_stripe` where the stripe's
+height reaches it).
 
 **Colours.** Every hull, deck and sail colour has each channel at most `#e7` (231, a linear albedo of 0.8), the
 look rule of §3.7: a file with a brighter colour is a load error. White is `#e7e7e3` or below. The same cap holds
@@ -607,7 +610,7 @@ topsides height at that `x` (0 at the sheer, 1 at the top of the boot stripe). T
 | type | keys (default) | picture |
 | --- | --- | --- |
 | `none` | | plain topsides |
-| `stripes` | `depth` (`[0.08, 0.17]` m), `width` (`[0.05, 0.02]` m), `from` (0.04), `to` (0.96) | one or two stripes along the sheer at those depths below it, in `colors[0]`, `colors[1]`, ending at `from` and `to` with a cut that leans aft |
+| `stripes` | `depth` (`[0.08, 0.17]` m), `width` (`[0.05, 0.02]` m), `from` (0.04), `to` (0.96) | one or two stripes along the sheer at those depths below it, in `colors[0]`, `colors[1]`, ending at `from` and `to` with a cut that leans aft. With `from` 0 they run round the quarters onto the transom at the same depth below its top edge and end there with the same cut, half way from the corner to the cockpit opening (a third of the way to the centreline on a closed transom) |
 | `two_tone` | `split` (0.45), `rise` (-0.15), `pinstripe` (0.025 m) | `colors[0]` below the line `t = split + rise · (x - 0.5)`, a pinstripe in `colors[1]` on it |
 | `swoosh` | `aft` (`[0.04, 0.8]`), `fwd` (`[0.96, 0.1]`) as `[x, t]`, `width` (`[0.24, 0.03]` m at the aft and forward ends) | a band in `colors[0]` from `aft` to `fwd` at the height `t = t_aft + (t_fwd - t_aft) s^2.2` (`s` from 0 aft to 1 forward: low aft, rising ever steeper toward the bow), tapering, edged on its upper side by a line in `colors[1]` |
 | `gradient` | `from` (0.25), `to` (0.85), `slant` (0.12) | the topsides blend from their colour aft to `colors[0]` forward between `x = from` and `to`, the blend line leaning aft by `slant` (of the hull length) from the boot stripe up to the sheer |
@@ -637,7 +640,8 @@ spinnaker types), each `{ "cloth", "color", "fibre", "number", "design", "colors
 
 **Numbers and insignia** (racing rules Appendix G): see `sail_visuals.md` §11.2 for where they go. The insignia
 is part of the baked main; the nation letters and the sail number are per boat. The topsides show the boat name aft
-and the sail number forward (the livery panels of the generated hull).
+and the sail number forward (the livery panels of the generated hull), and the transom the boat name in its name
+panel (`livery_transom` of the generated model, §8.5).
 
 ### 8.4 Boats and the fleet rule
 
@@ -681,8 +685,23 @@ a `layout.json` with the mappings the game needs, written with the images.
 | `hull_normal.png` | 4096 × 2048 | relief on the same atlas: vinyl edges, tape edges, fairing waviness, roller texture, scratches |
 | `hull_orm.png` | 4096 × 2048 | occlusion, roughness (polished gelcoat about 0.15, vinyl 0.25, antifouling 0.8), metallic 0 |
 | `keel_albedo.png` | 1024 on the longer side | the keel fin and bulb seen from starboard, bow to the right (from port the same image shows mirrored) |
-| `deck_albedo.png` | 2048 wide, optional | a deck colour override seen from above, bow to the right and port at the top; where present it replaces the gelcoat and non-slip colours of the deck (vertical faces take the colour of their footprint). Written only on request (`--deck`) |
-| `layout.json` | | `keel` and `deck` (when present): `rect` = `[forward_min, top, length, height]` of the image in the model frame of the GLB (forward = +Z, up = +Y and port = +X of `tools/boatgen/README.md` "Frames and units"; `top` is the up or port coordinate of the image's top edge) |
+| `transom_albedo.png` | 2048 wide, square texels | the transom seen from astern on the generator's transom uv1 (port on the left, the transom's top at the top): topsides colour, the graphic's return, the boot stripe where it reaches, light wear (boarding scuffs at the cockpit opening and the quarters, fine scratches, a faint grime streak below the cockpit floor's edge where the cockpit drains, sealant round the rudder fittings). The name panel (`livery_transom.panel`) stays clear: the game sets each boat's name there |
+| `transom_normal.png` | the same | relief: vinyl edges, fairing waviness, scratches |
+| `transom_orm.png` | the same | occlusion, roughness (as the topsides), metallic 0 |
+| `deck_albedo.png` | 4096 wide, square texels | the deck seen from above on the generator's deck uv1 (the plan view: bow to the right, port at the top): smooth gelcoat (`deck.gelcoat`) and moulded non-slip (`deck.nonslip`) areas with gelcoat margins along the sheer, the coamings, the cabin and the cockpit sole, smooth pads under the hardware; foot-traffic wear and dirt on the cockpit sole and toward the companionway, scuffs round the winches and clutches and along the line tails, sun-faded patches, sealant beads round every hardware base. Vertical faces (coaming and cabin sides) take the texels of their footprint, so the margins under them stay plain gelcoat |
+| `deck_normal.png` | the same | relief: the moulded non-slip panels' raised edge, sealant beads, scuffs |
+| `deck_orm.png` | the same | occlusion, roughness (gelcoat about 0.25, non-slip 0.8, worn sole smoother), and in blue the **non-slip mask** (255 moulded non-slip pattern, 0 smooth gelcoat; in between a worn pattern): the game lays the non-slip's tiling relief where it is set and the gelcoat's elsewhere, whatever the mesh's slots |
+| `layout.json` | | `keel`: `rect` = `[forward_min, top, length, height]` of the image in the model frame of the GLB (forward = +Z, up = +Y and port = +X of `tools/boatgen/README.md` "Frames and units"; `top` is the up coordinate of the image's top edge); `deck` and `transom`: the same rectangle of their uv1 frame (for reference: the game reads uv1) and `size` |
+
+**Transom and deck uv1** (written by the generator on every level of detail, `tools/boatgen/README.md` "Materials
+and UVs"). The transom is its own material slot `transom` on the `deck` node; its uv1 is `u = (h − X) / 2h`, `v =
+(top − Y) / (top − bottom)` over the transom's half width `h` and height (GLB root extras `livery_transom.rect` =
+`[h, top, bottom]`). The other deck surfaces (slots `gelcoat`, `nonslip`, `glass`, `rubber` of the `deck` node) have
+the plan view as uv1, `u = (Z − forward_min) / length`, `v = (port_top − X) / height` (extras `deck_plan` =
+`[forward_min, port_top, length, height]`: the deck's extent with a 1 % margin). The transom's name panel
+(`livery_transom.panel`: `uv1` rectangle and `size` in metres) is the band below the cockpit opening (an open
+transom) or the middle of the transom (a closed one), clear of a transom-hung rudder's fittings: then the part of
+the band to starboard of them (seen from astern, on the right).
 
 **Sails folder** `data/liveries/<class>/sails/`, per class sail `<id>` (`sails[].id` of the class file):
 
@@ -703,8 +722,10 @@ S3TC or ETC2; normal maps as two-channel RGTC or the equivalent).
 ### 8.6 Who owns the textures
 
 The livery textures and their `layout.json` are **hand-owned assets, not generated tables**: the generator only
-makes the starting images, and the files are then edited by hand and committed. `tools/liverybake` writes a folder
-only when it does not exist (or is empty); `--force` rewrites every folder it is asked to bake and `--only <part>`
-(`hull`, `keel`, `deck`, `sails` or a sail id) rewrites just those files. No other tool writes there. A changed
+makes the starting images, and the files are then edited by hand and committed. `tools/liverybake` writes a part (the
+hull's three images, the keel, the transom's three, the deck's three, a sail's four) only when none of its files
+exists, so a new folder is baked whole and a part added later is baked once into an existing folder; `--force`
+rewrites every part it is asked to bake and `--only <part>` (`hull`, `keel`, `transom`, `deck`, `sails` or a sail
+id) rewrites just those files. No other tool writes there. A changed
 class file does not rebake them: the hull follows uv1 and the sails keep their `rect` in metres, so after a hull or
 sail plan change the owner decides whether to repaint or rebake (`--only`).

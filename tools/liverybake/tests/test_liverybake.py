@@ -14,7 +14,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from liverybake import __main__ as cli  # noqa: E402
 from liverybake import common, geometry, sails, text  # noqa: E402
 
-SMALL = ["--hull-size", "256", "--sail-size", "128", "--keel-size", "64", "--no-stage", "--quiet"]
+SMALL = ["--hull-size", "256", "--sail-size", "128", "--keel-size", "64", "--transom-size", "256", "--deck-size", "512",
+         "--no-stage", "--quiet"]
 
 
 def bake(out, *extra):
@@ -40,7 +41,31 @@ def test_writes_the_folders(baked):
     for sid in ("main", "jib", "kite"):
         for suf in ("_port_albedo.png", "_stbd_albedo.png", "_normal.png", "_orm.png"):
             assert (baked / "wm7" / "sails" / (sid + suf)).exists(), sid + suf
-    assert not (hull / "deck_albedo.png").exists()          # only on request
+    for part in ("transom", "deck"):
+        for m in ("albedo", "normal", "orm"):
+            assert (hull / f"{part}_{m}.png").exists(), (part, m)
+    lay = json.loads((hull / "layout.json").read_text())
+    assert Image.open(hull / "transom_albedo.png").size == tuple(lay["transom"]["size"]) and lay["transom"]["size"][0] == 256
+    assert Image.open(hull / "deck_albedo.png").size == tuple(lay["deck"]["size"]) and lay["deck"]["size"][0] == 512
+
+
+def test_a_part_added_later_is_baked_once(tmp_path):
+    """A folder from before the transom and deck sets gets them on a plain bake; the existing files stay."""
+    bake(tmp_path)
+    nav = tmp_path / "wm7" / "navy"
+    for f in list(nav.glob("transom_*")) + list(nav.glob("deck_*")):
+        f.unlink()
+    Image.new("RGB", (8, 8), (255, 0, 0)).save(nav / "hull_albedo.png")
+    before = files(tmp_path)
+    bake(tmp_path)
+    after = files(tmp_path)
+    assert (nav / "deck_orm.png").exists() and (nav / "transom_albedo.png").exists()
+    assert after["wm7/navy/hull_albedo.png"] == before["wm7/navy/hull_albedo.png"]
+    # one file of a part present: the part is the owner's, not rebaked
+    (nav / "deck_normal.png").unlink()
+    keep = (nav / "deck_albedo.png").read_bytes()
+    bake(tmp_path)
+    assert not (nav / "deck_normal.png").exists() and (nav / "deck_albedo.png").read_bytes() == keep
 
 
 def test_hand_edits_are_never_overwritten(tmp_path):
@@ -98,6 +123,40 @@ def test_hull_zones(baked):
     want_top = np.array([int(liv["topsides"][i:i + 2], 16) for i in (1, 3, 5)])
     assert np.abs(img[boot[len(boot) // 2], mid] - want_boot).max() < 30
     assert np.abs(np.median(img[tops, mid], axis=0) - want_top).max() < 20
+
+
+def test_transom(baked):
+    """The transom in the topsides colour, the stripe's return near the quarters' top, the name panel clear."""
+    geo = geometry.load("wm7")
+    img = np.asarray(Image.open(Path(baked) / "wm7" / "navy" / "transom_albedo.png"), dtype=float)
+    H, W = img.shape[:2]
+    liv = json.loads((common.DATA / "wm7.liveries.json").read_text())["liveries"][0]["hull"]
+    hexc = lambda c: np.array([int(c[i:i + 2], 16) for i in (1, 3, 5)])
+    u0, v0, u1, v1 = geo["transom"]["panel"]["uv1"]
+    panel = img[int(v0 * H) + 1:int(v1 * H) - 1, int(u0 * W) + 1:int(u1 * W) - 1].reshape(-1, 3)
+    assert np.abs(np.median(panel, axis=0) - hexc(liv["topsides"])).max() < 20
+    # the silver stripe's return on the starboard quarter (right in the image), its depth below the top edge
+    h, top, bot = geo["transom"]["rect"]
+    dep = liv["graphic"]["depth"][0]
+    y = -(geo["transom"]["bs"] - 0.08)
+    z = float(np.interp(abs(y), geo["transom"]["top_y"], geo["transom"]["top_z"])) - dep
+    c, r = int((h - y) / (2 * h) * W), int((top - z) / (top - bot) * H)
+    assert np.abs(img[r, c] - hexc(liv["graphic"]["colors"][0])).max() < 40
+
+
+def test_deck(baked):
+    """Non-slip panels inside gelcoat margins (ORM blue the mask), in the livery's deck colours."""
+    nav = Path(baked) / "wm7" / "navy"
+    orm = np.asarray(Image.open(nav / "deck_orm.png"), dtype=float)
+    alb = np.asarray(Image.open(nav / "deck_albedo.png"), dtype=float)
+    mask = orm[..., 2] / 255.0
+    assert 0.25 < (mask > 0.5).mean() < 0.75
+    dk = json.loads((common.DATA / "wm7.liveries.json").read_text())["liveries"][0]["deck"]
+    hexc = lambda c: np.array([int(c[i:i + 2], 16) for i in (1, 3, 5)])
+    assert np.abs(np.median(alb[mask > 0.9], axis=0) - hexc(dk["nonslip"])).max() < 25
+    assert np.abs(np.median(alb[mask < 0.02], axis=0) - hexc(dk["gelcoat"])).max() < 25
+    # the non-slip is rougher than the gelcoat
+    assert np.median(orm[..., 1][mask > 0.9]) > np.median(orm[..., 1][mask < 0.02]) + 60
 
 
 def test_sail_layout(baked):

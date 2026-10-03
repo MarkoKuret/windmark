@@ -271,7 +271,9 @@ from `rig.sheet_leads` in the sidecar); the halyard tails and the mainsheet are 
 
 **Livery panels.** A number panel forward and a name panel aft on each topside, given in the GLB root extras
 (`livery_panels`: body x range, depth below the sheer, uv1 rectangle on the hull atlas); the previews draw them
-in the demo livery. The game paints the liveries into them at load (`game/README.md` "Liveries").
+in the demo livery. The transom has a name panel (`livery_transom.panel`: uv1 rectangle on the transom and size in
+metres): the band below the cockpit opening, above the boot stripe, or, with a transom-hung rudder, the part of it
+to starboard of the gudgeons. The game paints the liveries into them at load (`game/README.md` "Liveries").
 
 ## Levels of detail
 
@@ -316,7 +318,8 @@ it out.
 ## Materials and UVs
 
 Material slots (glTF material names): `gelcoat`, `nonslip`, `antifouling`, `boottop`, `carbon`, `metal`,
-`sailcloth`, plus `glass`, `rope` and `rubber`. Each material's `extras.tiling_m` is the size of one tile of its
+`sailcloth`, plus `glass`, `rope`, `rubber` and `transom` (the transom face on the `deck` node, gelcoat with its own
+uv1 so the livery paints it in the hull's colours; on every level of detail). Each material's `extras.tiling_m` is the size of one tile of its
 texture in metres of uv0, and `extras.texture_set` names its set.
 
 **Texture set** (`boatgen/textures.py`, images in `textures/`). Every slot but `glass` has a tiling
@@ -328,7 +331,7 @@ slots and each image is embedded once per GLB (JPEG, 512 x 512, about 1.2 MB in 
 
 | set | slots | tile (m) | source (CC0, docs/THIRD_PARTY.md) |
 | --- | --- | --- | --- |
-| `orange_peel` | gelcoat, boottop | 0.5 | ambientCG Plastic013A |
+| `orange_peel` | gelcoat, boottop, transom | 0.5 | ambientCG Plastic013A |
 | `diamond` | nonslip | 0.1 | procedural (textures.py): moulded raised-diamond non-slip, about 6 mm pitch |
 | `grain` | antifouling, rubber | 0.5, 0.1 | ambientCG Rubber004 |
 | `carbon_twill` | carbon | 0.05 | ambientCG Fabric004 |
@@ -351,7 +354,12 @@ has vertices to vary on.
   (both in metres); deck, cabin top and cockpit floor planar (x, y); walls (along, height); sails (distance from
   the luff, height above the foot); swept parts (along the path, around the section).
 - **uv1** is normalised, for liveries and decals. Hull: one atlas with the starboard side in `v` 0..0.5 and the
-  port side in 0.5..1, sheer at the top of each band, `u` running so text reads bow-first on both sides. Sails:
+  port side in 0.5..1, sheer at the top of each band, `u` running so text reads bow-first on both sides. Deck (every
+  slot of the `deck` node but `transom`): the plan view, `u = (x - x0) / length` bow to the right, `v = (y_top - y) /
+  height` port at the top, over the hull's length and beam with a 1 % margin (`Deck.plan_rect`; GLB root extras
+  `deck_plan` = `[forward_min, port_top, length, height]` in the model frame). Transom: seen from astern, `u = (h -
+  y) / 2h` port on the left, `v = (top - z) / (top - bottom)` (`Deck.transom_rect`; extras `livery_transom.rect` =
+  `[h, top, bottom]`). Both are the same on every level of detail (`data_format.md` §8.5). Sails:
   (chord fraction, 1 - height fraction), with the starboard layer mirrored in `u` so a decal reads correctly from
   both sides.
 

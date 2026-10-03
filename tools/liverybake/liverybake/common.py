@@ -229,8 +229,8 @@ def sample_bilinear(img, x, y):
 
 
 # ----------------------------------------------------------------------------------------------------------------
-# the ownership rule (data_format.md §8.6): hand-owned files are written only when their folder is new, or with
-# --force (everything selected) or --only (the named parts)
+# the ownership rule (data_format.md §8.6): hand-owned files are written only when none of a part's files exists
+# (a new folder, a part added later), or with --force (everything selected) or --only (the named parts)
 
 class Writer:
     def __init__(self, force=False, only=()):
@@ -239,13 +239,14 @@ class Writer:
         self.written = []
         self.kept = []
 
-    def may_write(self, folder, part):
-        """Whether the part's files in `folder` may be (re)written."""
-        if self.force or part in self.only:
+    def may_write(self, folder, part, files, also=()):
+        """Whether the part's `files` (names in `folder`) may be (re)written: --force, --only naming the part (or
+        one of `also`, such as `sails` for a sail), or, without --only, none of them exists yet."""
+        if self.force or part in self.only or any(a in self.only for a in also):
             return True
         if self.only:
             return False
-        return not Path(folder).exists() or not any(Path(folder).iterdir())
+        return not any((Path(folder) / f).exists() for f in files)
 
     def note(self, paths, wrote):
         (self.written if wrote else self.kept).extend(str(p) for p in paths)

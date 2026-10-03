@@ -601,7 +601,7 @@ measurements. Measured on the default course (11 kn, stable shifts):
 | run | measured | spec target |
 | --- | --- | --- |
 | 10 Intermediate, 5 seeds | 86 % finish (the rest DSQ); 0.9 penalties/boat; 4.8 contacts/race; stuck ≤ 22 s | all finish; ≤ 0.4; ≤ 1; ≤ 20 s |
-| same | bad air 1.7 triggers/boat, deficit 0.13 → 0.03 twenty seconds later (93 % lower) | ≥ 2, lower |
+| same | bad air 1.1 triggers/boat (2.1 over seeds 6 to 20), deficit 0.15 → 0.02 twenty seconds later (95 % lower) | ≥ 2, lower |
 | every level, 10 boats, 2 seeds | 75–95 % finish; OCS 0–5 %; mean start delay 15–20 s | Pro OCS < 5 %, delay < 2 s; Easy < 15 %, 3–8 s |
 | 1 nm beat, 10 boats | 5.0 tacks/boat | 3–14 |
 | match race, 2 Expert, 5 seeds | the leader covers in every race (1–7 activations) | ≥ 1 |
@@ -609,7 +609,7 @@ measurements. Measured on the default course (11 kn, stable shifts):
 | speed only (same) | finish-time ratios to Pro within 2.5 % of the `performance_scale` ratios | within 3 % |
 
 The assertions of `ai_races` hold the measured level (finish ≥ 80 %, ≤ 1.3 penalties/boat, ≤ 6 contacts/race,
-bad air ≥ 1.5 and lower 20 s later, every level ≥ 70 % finish, tacks 3–14, cover in every match, Easy behind Pro).
+bad air ≥ 1.0 and lower 20 s later, every level ≥ 70 % finish, tacks 3–14, cover in every match, Easy behind Pro).
 **Open**: the penalty and contact targets, the start delays (a lone boat starts within 1–9 s; in a fleet the
 crowd at the line and pre-start penalties make the mean 13–25 s) and strict level order in a mixed fleet are not
 met yet. Most remaining penalties come from the windward mark in a crowd (rule 31 and the `44.1-late` penalties

@@ -23,6 +23,8 @@ var move := Vector3.ZERO
 var boost := false
 var recentre := false
 var next := false
+## camera_clip: the next clip camera (cameras.md §9)
+var clip := false
 ## CameraRig.Mode to select, -1 none
 var select := -1
 var preset_recall := -1  # 0..7
@@ -70,6 +72,7 @@ static func from_raw(r: RawInput, free_camera: bool) -> CameraInput:
 		c.zoom_held = 0.0
 	c.recentre = r.was_pressed(&"camera_recentre")
 	c.next = r.was_pressed(&"camera_next")
+	c.clip = r.was_pressed(&"camera_clip")
 	var modes := [&"camera_chase", &"camera_onboard", &"camera_aerial", &"camera_free"]
 	for i in 4:
 		if r.was_pressed(modes[i]):

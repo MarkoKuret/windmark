@@ -21,6 +21,12 @@ func _init() -> void:
 	test_free_camera_keys()
 	test_input_map()
 	test_input_frame()
+	test_capture_state()
+	await test_capture_scene_fake()
+	if CoreSimSource.available():
+		await test_capture_scene_race()
+	else:
+		t.ok(false, "the GDExtension is not loaded: the race capture test skipped")
 	t.finish(self, "controls_test")
 
 
@@ -414,7 +420,7 @@ func test_input_map() -> void:
 		"camera_next", "camera_chase", "camera_onboard", "camera_aerial", "camera_free", "camera_zoom_in",
 		"camera_zoom_out", "camera_recentre", "camera_preset_1", "camera_preset_8", "camera_boost", "rankings",
 		"map", "radar_zoom_in", "radar_zoom_out", "radar_orientation", "wind_shadow_view", "hud_hide",
-		"boat_names", "hud_density", "boat_select", "boat_pick", "rankings_pad", "spectate_next", "spectate_prev", "spectate_leader", "chat", "pause_menu", "screenshot",
+		"boat_names", "world_tags", "capture_pause", "capture_slow", "camera_clip", "hud_density", "boat_select", "boat_pick", "rankings_pad", "spectate_next", "spectate_prev", "spectate_leader", "chat", "pause_menu", "screenshot",
 		"helm_stick_left", "helm_stick_right", "sheet_in_trigger", "sheet_out_trigger", "camera_orbit_left",
 		"camera_orbit_drag", "camera_look_up"]
 	for a in spec:
@@ -457,3 +463,166 @@ func test_input_frame() -> void:
 			pcs.update(RawInput.new(), 1.0 / fps)
 			runner.advance(1.0 / fps)
 		t.ok(absi(sim.tick() - 40) <= 1, "%d fps: 2 s gives 40 ticks (%d)" % [fps, sim.tick()])
+
+
+func test_capture_state() -> void:
+	t.begin("9 capture state")
+	var cm := CaptureMode.new()
+	t.ok(not cm.frozen and cm.rate() == 1.0 and cm.world_tags, "starts running at x1 with the world tags shown")
+	cm.handle(RawInput.new().press(&"capture_pause"))
+	t.ok(cm.frozen and cm.sim_dt(0.1) == 0.0, "clean pause: no simulation time")
+	cm.handle(RawInput.new().press(&"capture_pause"))
+	t.ok(not cm.frozen and cm.sim_dt(0.1) == 0.1, "again: running")
+	var rates := []
+	for i in 3:
+		cm.handle(RawInput.new().press(&"capture_slow"))
+		rates.append(cm.rate())
+	t.ok(rates == [0.5, 0.25, 1.0], "slow motion cycles 0.5, 0.25, 1: %s" % [rates])
+	cm.handle(RawInput.new().press(&"capture_slow"))
+	t.near(cm.sim_dt(0.1), 0.05, 1e-9, "x0.5 halves the simulation time")
+	t.ok(cm.handle(RawInput.new().press(&"world_tags")) and not cm.world_tags, "world_tags toggles off")
+	cm.handle(RawInput.new().press(&"capture_pause"))
+	cm.reset()
+	t.ok(not cm.frozen and cm.rate() == 1.0 and not cm.world_tags, "reset: running at x1, world tags choice kept")
+	var on := CaptureMode.new()
+	on.allowed = false
+	on.handle(RawInput.new().press(&"capture_pause").press(&"capture_slow"))
+	t.ok(not on.frozen and on.rate() == 1.0 and on.sim_dt(0.1) == 0.1, "online: the capture actions change nothing")
+	t.ok(on.handle(RawInput.new().press(&"world_tags")) and not on.world_tags, "online: world_tags still toggles")
+
+
+## one frame of the scene with `actions` pressed (and `held` held)
+func _frame_with(sc: Node, actions: Array = [], held: Array = [], dt := 1.0 / 60.0) -> void:
+	var r := RawInput.new()
+	for a in held:
+		r.hold(a)
+	for a in actions:
+		r.press(a)
+	sc.scripted_input = r
+	sc.step_frame(dt)
+	sc.scripted_input = RawInput.new()
+
+
+## ticks stepped over `seconds` of frames at 60 fps
+func _ticks_over(sc: Node, seconds: float) -> int:
+	var t0: int = sc.sim.tick()
+	for i in int(round(seconds * 60.0)):
+		_frame_with(sc)
+	return sc.sim.tick() - t0
+
+
+func test_capture_scene_fake() -> void:
+	t.begin("9 capture in the sail scene (FakeSim): clean pause, slow motion, online")
+	var sc: Node = (load("res://scenes/sail_test.tscn") as PackedScene).instantiate()
+	sc.auto_process = false
+	sc.sim_kind = sc.SimKind.FAKE
+	sc.with_pause_menu = false
+	sc.apply_settings = false
+	root.add_child(sc)
+	await process_frame
+	sc.add_child(preload("res://scenes/menu/pause_menu.tscn").instantiate())
+	var pm := sc.get_node("PauseMenu") as PauseMenu
+	pm.act = false
+	await process_frame
+	t.ok(_ticks_over(sc, 1.0) >= 19, "running")
+	_frame_with(sc, [&"capture_pause"])
+	await process_frame
+	var tick0: int = sc.sim.tick()
+	var az0: float = sc.rig.chase.az
+	for i in 60:
+		_frame_with(sc, [], [&"camera_orbit_right"])
+	await process_frame
+	var label := sc.get_node("HudLayer/Paused") as CanvasItem
+	t.ok(sc.sim.tick() == tick0, "clean pause: no ticks")
+	t.ok(not pm.is_open and not label.visible and not sc.runner.paused, "no menu, no Paused label")
+	t.ok(absf(Frames.wrap_pi(sc.rig.chase.az - az0)) > deg_to_rad(100.0), "the camera still orbits")
+	t.ok(sc.audio.paused, "the audio ducks")
+	_frame_with(sc, [&"capture_pause"])
+	t.ok(sc.sim.tick() == tick0 + 1 or sc.sim.tick() == tick0, "continues from the same tick")
+	t.ok(_ticks_over(sc, 1.0) >= 19, "running again")
+	_frame_with(sc, [&"capture_slow"])
+	var n05 := _ticks_over(sc, 2.0)
+	t.ok(absi(n05 - 20) <= 1, "x0.5: 2 s of frames step %d ticks (20)" % n05)
+	_frame_with(sc, [&"capture_slow"])
+	var n025 := _ticks_over(sc, 2.0)
+	t.ok(absi(n025 - 10) <= 1, "x0.25: 2 s of frames step %d ticks (10)" % n025)
+	_frame_with(sc, [&"capture_slow"])
+	var n1 := _ticks_over(sc, 2.0)
+	t.ok(absi(n1 - 40) <= 1, "x1 again: %d ticks (40)" % n1)
+	_frame_with(sc, [&"capture_slow"])
+	sc.reset_boat()
+	t.ok(sc.capture.rate() == 1.0, "a restart sets the rate back to x1")
+	# the pause menu over a clean pause, then back to the clean pause
+	_frame_with(sc, [&"capture_pause"])
+	_frame_with(sc, [&"pause_menu"])
+	await process_frame
+	t.ok(pm.is_open, "pause_menu opens the menu over a clean pause")
+	_frame_with(sc, [&"pause_menu"])
+	await process_frame
+	tick0 = sc.sim.tick()
+	_ticks_over(sc, 0.5)
+	t.ok(not pm.is_open and sc.sim.tick() == tick0, "closing the menu returns to the clean pause")
+	sc.queue_free()
+	await process_frame
+	# online: the capture actions and the clip cameras do nothing
+	var on: Node = (load("res://scenes/sail_test.tscn") as PackedScene).instantiate()
+	on.auto_process = false
+	on.sim_kind = on.SimKind.FAKE
+	on.with_pause_menu = false
+	on.apply_settings = false
+	on.online = true
+	root.add_child(on)
+	await process_frame
+	_frame_with(on, [&"capture_pause", &"capture_slow"])
+	t.ok(_ticks_over(on, 1.0) >= 19, "online: capture_pause and capture_slow change nothing")
+	_frame_with(on, [&"camera_clip"])
+	t.ok(on.rig.mode == CameraRig.Mode.CHASE, "online: camera_clip changes nothing")
+	_frame_with(on, [&"world_tags"])
+	t.ok(not on.hud.world.visible, "online: world_tags hides the world tags")
+	on.queue_free()
+	await process_frame
+
+
+func test_capture_scene_race() -> void:
+	t.begin("9 capture in a race on the core: world tags, on-water guides, clip cameras")
+	var sc: Node = (load("res://scenes/sail_test.tscn") as PackedScene).instantiate()
+	sc.set("auto_process", false)
+	sc.set("sim_kind", 1)  # CORE
+	sc.set("race_mode", true)
+	sc.set("fleet_size", 3)
+	sc.set("with_pause_menu", false)
+	sc.set("apply_settings", false)
+	sc.set("core_settings", {"free_sailing_s": 5.0})
+	root.add_child(sc)
+	sc.set("scripted_input", RawInput.new())
+	await process_frame
+	for i in 300:
+		_frame_with(sc, [], [], 1.0 / 30.0)
+	var cv: CourseView = sc.course_view
+	var hud: Hud = sc.hud
+	var n_lines := cv.lines.size()
+	t.ok(n_lines > 0 and hud.world.visible, "guides on the water (%d lines) and world tags shown" % n_lines)
+	_frame_with(sc, [&"world_tags"])
+	t.ok(not hud.world.visible and not cv.show_guides and cv.lines.is_empty() and cv.circles.is_empty(),
+		"world_tags: world tags and the water overlays hidden")
+	t.ok(hud.visible, "the rest of the HUD stays")
+	_frame_with(sc, [&"world_tags"])
+	t.ok(hud.world.visible and cv.lines.size() == n_lines, "world_tags again: shown")
+	_frame_with(sc, [&"camera_clip"])
+	var rig: CameraRig = sc.rig
+	t.ok(rig.mode == CameraRig.Mode.START_LINE and rig.course != null and rig.course.has_line,
+		"camera_clip: the start line shot from the race")
+	var want := StartLineCamera.place(rig.course.committee, rig.course.pin)[0]
+	t.ok(Vector2(rig.view.xform.origin.x - want.x, rig.view.xform.origin.z - want.z).length() < 0.01
+		and rig.view.xform.origin.y >= 6.0 - 1e-6, "start line eye 20 m outside the committee end, 6 m up or more")
+	_frame_with(sc, [&"camera_clip"])
+	t.ok(rig.mode == CameraRig.Mode.MARK and rig.course.has_mark, "camera_clip: the mark shot")
+	var me := MarkCamera.eye_for(rig.course.mark, rig.course.approach, rig.course.side)
+	t.ok(Vector2(rig.view.xform.origin.x - me.x, rig.view.xform.origin.z - me.z).length() < 0.01,
+		"mark eye 40 m from the first mark")
+	t.near(Vector2(me.x - rig.course.mark.x, me.z - rig.course.mark.z).length(), 40.0, 1e-3, "40 m from the mark")
+	_frame_with(sc, [&"camera_clip"])
+	_frame_with(sc, [&"camera_clip"])
+	t.ok(rig.mode == CameraRig.Mode.HELICOPTER, "then long lens and helicopter")
+	sc.queue_free()
+	await process_frame

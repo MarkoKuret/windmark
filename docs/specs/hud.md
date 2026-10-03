@@ -414,6 +414,8 @@ bar (centre zero, ±30°). Numbers keep the 4 Hz refresh of §1; dial, bars and 
   A selected boat off screen gets an edge pointer with her name and distance. `boat_names` turns all name tags off
   and on.
 - **Penalty turn**: §12.1, chase and aerial cameras only.
+- `world_tags` (`controls.md` §7) hides and shows all of the above at once, with the course's on-water guides;
+  it is independent of `hud_hide`.
 
 ## 17. Frame-time overlay (development)
 

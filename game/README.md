@@ -329,10 +329,13 @@ Runs headless, with scripted input at fixed frame rates:
 
 - `tests/controls_test.gd`: `controls.md` §8 (stick curve, hold-to-steer ramp, sheet keys, latching, sail
   mapping, focus, last-moved source, set and hold at 30, 60 and 144 fps), auto-trim hand-over, the input map
-  against the defaults, the input frame encoding and one frame per tick.
+  against the defaults, the input frame encoding and one frame per tick; the capture mode (§8 test 9: clean
+  pause, slow-motion rates, world tags, online) on its own and in the sail scene on FakeSim and in a race on the
+  core.
 - `tests/cameras_test.gd`: `cameras.md` §10 (chase geometry, heading follow, frame-rate independence, 10 minutes of
   water clearance in a 1.5 m sea, onboard side change, aerial up modes, presets, shake), the free camera, near
-  and far planes, cycling and the smooth switch.
+  and far planes, cycling and the smooth switch, and the clip cameras (tests 9 to 12: start line, mark, long lens,
+  helicopter, choosing them).
 - `tests/race_hud_test.gd`: the race HUD on scripted race states (`tests/race_stub_sim.gd`): countdown, flags,
   banners, the time to burn test of `hud.md` §15, bias, OVER and OCS, next mark, VMG on a run and VMC away from
   the mark, layline distance and overstanding, shift meter, sail hint, rank hysteresis, gaps and splits, every
@@ -373,6 +376,8 @@ A/D helm (set and hold, ↓ centres), T auto-trim, W/S sheet, Space let fly, 1/2
 modes, right mouse drag or IJKL orbit, wheel or O/U zoom, R recentre, Backspace reset (free sailing: back to the
 start point; race mode: restart the race), Esc pause, F10 hide HUD, G instrument density (Glance, Race, Data),
 B select the next boat for a name tag (or click a boat), N name tags on and off, F9 the frame-time overlay.
+Capture (offline): X the clip cameras (start line, mark, long lens, helicopter), `.` clean pause (no menu, no
+label), `,` slow motion (x0.5, x0.25, x1), `/` world tags and on-water guides on and off.
 
 ## Menus
 

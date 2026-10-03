@@ -1,7 +1,7 @@
 /* A headless race through the C API only (include/windmark.h): the example venue and its windward-leeward
  * course, four boats of the shipped classes steered by a small scripted skipper in the step-2 controller, from
  * the spawn to the results. The race runs twice with the same seed and must give the same checksum; then one
- * boat sails freely in a world without a race. Then a fleet of AI skippers (ai.md) races the same course, one of
+ * boat sails freely in a world without a race, and two boats placed after the gun meet port and starboard. Then a fleet of AI skippers (ai.md) races the same course, one of
  * them a human entry taken over by an AI (ai.md §14); the world and the skippers' memory are saved a minute after
  * the gun and loaded into a new world, which must finish the race with the same ticks and checksum, and loaded
  * again into the world that ran on, which must do the same.
@@ -453,6 +453,134 @@ static int free_sail(const char* data) {
   return ok;
 }
 
+/* ---- a rules scenario (wm_world_scenario_place) ------------------------------------------------------------ */
+
+typedef struct hold_pilot {
+  float psi[2];
+} hold_pilot;
+
+/* Both boats hold their set-up heading. */
+static void hold_controller(wm_world* w, void* user) {
+  const hold_pilot* p = (const hold_pilot*)user;
+  for (int i = 0; i < 2; ++i) {
+    wm_boat_state s;
+    wm_world_boat_state(w, i, &s);
+    wm_world_set_helm(w, i, clampf(2.5f * wrap_pi(p->psi[i] - s.psi), -0.6f, 0.6f));
+    wm_world_set_let_fly(w, i, 0);
+  }
+}
+
+/* Two boats started at the gun by placing them across the line, then put on a port/starboard collision course on
+ * the first beat: the port-tack boat must be the one to keep clear (rule 10) and take the penalty. */
+static int scenario(const char* data, const char* courses) {
+  char path[1024];
+  wm_perf* perf = NULL;
+  wm_venue* venue = NULL;
+  wm_course* course = NULL;
+  wm_world* w = NULL;
+  int ok = 0;
+  snprintf(path, sizeof path, "%s/perf/wm7.perf.json", data);
+  if (!check(wm_perf_load(path, &perf), "wm7")) return 0;
+  snprintf(path, sizeof path, "%s/venues/example_bay.venue.json", data);
+  if (!check(wm_venue_load(path, &venue), "venue")) return 0;
+  snprintf(path, sizeof path, "%s/example_bay/example_wl.course.json", courses);
+  if (!check(wm_course_load(path, &course), "course")) return 0;
+  wm_world_settings ws;
+  wm_world_settings_init(&ws);
+  ws.wind_speed = 12.0f * 0.514444470f;
+  ws.shift_preset = WM_SHIFT_STEADY;
+  ws.puffs = 0;
+  ws.oscillation = 0;
+  ws.free_sailing_s = 0.0f;
+  ws.sequence = WM_SEQUENCE_3210;
+  ws.prep_flag = WM_FLAG_P;
+  if (check(wm_world_create(&ws, venue, &w), "scenario world")) {
+    wm_boat_entry e;
+    wm_boat_entry_init(&e, perf);
+    int32_t b0 = -1, b1 = -1;
+    hold_pilot hp;
+    if (check(wm_world_add_boat(w, &e, &b0), "boat 0") && check(wm_world_add_boat(w, &e, &b1), "boat 1") &&
+        check(wm_world_create_race(w, course), "race")) {
+      wm_start_status st;
+      wm_course_info ci;
+      wm_world_race_start_status(w, 0, &st);
+      wm_world_course(w, &ci);
+      const float twd = ci.twd_c;
+      const float ux = st.bx - st.ax, uy = st.by - st.ay, len = hypotf(ux, uy);
+      const float nx = -uy / len, ny = ux / len; /* towards the course side */
+      hp.psi[0] = wrap_2pi(twd - 45.0f * DEG_F);  /* starboard tack */
+      hp.psi[1] = wrap_2pi(twd + 45.0f * DEG_F);  /* port tack */
+      /* Held behind the line on their set-up headings until a race tick at or after the gun has seen them. */
+      int seen = 0;
+      while (!seen) {
+        wm_race_info ri;
+        wm_world_race(w, &ri);
+        seen = ri.race_time >= 0.0f;
+        for (int i = 0; i < 2; ++i) {
+          const float u = 0.3f + 0.4f * (float)i;
+          wm_world_scenario_place(w, i, st.ax + u * ux - 25.0f * nx, st.ay + u * uy - 25.0f * ny, hp.psi[i], 0.0f, -2);
+        }
+        wm_world_step(w);
+      }
+      for (int i = 0; i < 2; ++i) {
+        const float u = 0.3f + 0.4f * (float)i;
+        wm_world_scenario_place(w, i, st.ax + u * ux + 5.0f * nx, st.ay + u * uy + 5.0f * ny, hp.psi[i], 1.0f, -2);
+      }
+      wm_world_step(w);
+      wm_race_boat rb0, rb1;
+      wm_world_race_boat(w, 0, &rb0);
+      wm_world_race_boat(w, 1, &rb1);
+      ok = rb0.started && rb1.started;
+      /* Bad placements are refused. */
+      ok = ok && wm_world_scenario_place(w, 0, 0.0f, 0.0f, 0.0f, -1.0f, -2) == WM_ERR_ARG;
+      wm_class_info cls;
+      wm_perf_info(perf, &cls);
+      ok = ok && wm_world_scenario_place(w, 0, 0.0f, 0.0f, 0.0f, 1.0f, cls.main_sail) == WM_ERR_ARG;
+      ok = ok && wm_world_scenario_place(w, 9, 0.0f, 0.0f, 0.0f, 1.0f, -2) == WM_ERR_ARG;
+      /* Set-up: each boat 20 s of polar speed back from a meeting point 300 m up the beat. */
+      const float mx = 0.5f * (st.ax + st.bx) + 300.0f * sinf(twd), my = 0.5f * (st.ay + st.by) + 300.0f * cosf(twd);
+      for (int i = 0; i < 2; ++i) {
+        const float v = wm_perf_polar(perf, ws.wind_speed, wrap_pi(twd - hp.psi[i]), i == 1 ? -1 : cls.start_front_sail);
+        const float vv = v > 0.5f ? v : 3.0f;
+        ok = ok && check(wm_world_scenario_place(w, i, mx - 20.0f * vv * sinf(hp.psi[i]), my - 20.0f * vv * cosf(hp.psi[i]),
+                                                 hp.psi[i], vv, i == 1 ? -1 : -2), "scenario place");
+      }
+      wm_sails sl;
+      wm_world_sails(w, 1, &sl);
+      ok = ok && sl.front == -1;
+      wm_boat_state s1;
+      wm_world_boat_state(w, 1, &s1);
+      ok = ok && fabsf(wrap_pi(s1.psi - hp.psi[1])) < 1e-4f;
+      wm_world_set_controller(w, hold_controller, &hp);
+      int rule10_holder_ok = 0, penalty_port = 0, penalty_stbd = 0;
+      for (int k = 0; k < 40 * 20; ++k) {
+        wm_world_step(w);
+        for (int32_t i = 0; i < wm_world_pair_count(w); ++i) {
+          wm_pair pr;
+          wm_world_pair(w, i, &pr);
+          if (pr.kc_rule == WM_RULE_10 && pr.kc_giver == 1 && pr.kc_holder == 0) rule10_holder_ok = 1;
+        }
+        for (int32_t i = 0; i < wm_world_rules_event_count(w); ++i) {
+          wm_rules_event re;
+          wm_world_rules_event(w, i, &re);
+          if (re.kind == WM_REV_PENALTY && re.rule == WM_RULE_10) {
+            if (re.boat == 1) ++penalty_port;
+            else ++penalty_stbd;
+          }
+        }
+      }
+      printf("scenario: both started %d, rule 10 port keeps clear %d, rule 10 penalties port %d starboard %d\n",
+             rb0.started && rb1.started, rule10_holder_ok, penalty_port, penalty_stbd);
+      ok = ok && rule10_holder_ok && penalty_port == 1 && penalty_stbd == 0;
+    }
+    wm_world_free(w);
+  }
+  wm_course_free(course);
+  wm_venue_free(venue);
+  wm_perf_free(perf);
+  return ok;
+}
+
 /* ---- the AI fleet ---------------------------------------------------------------------------------------- */
 
 #define N_AI 6
@@ -613,8 +741,9 @@ int main(int argc, char** argv) {
   const int same = a.checksum == b.checksum && a.ticks == b.ticks;
   if (!quick) printf("second run: %s\n", same ? "same ticks and checksum" : "DIFFERENT");
   const int fs = free_sail(data);
+  const int sc = scenario(data, courses);
   const ai_outcome ai = run_ai_race(data, courses, quick);
-  const int ok = a.ok && b.ok && same && fs && ai.ok;
+  const int ok = a.ok && b.ok && same && fs && sc && ai.ok;
   printf("%s\n", ok ? "OK" : "FAILED");
   return ok ? 0 : 1;
 }

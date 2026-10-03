@@ -124,7 +124,7 @@ is the environment clock's zero, `race.md` §0).
 | `create_race(CourseData, err)` | lays the course to the median wind at the gun and scales it, checks it on the venue, builds the collision scene, creates the race and the rules, spawns the boats | courses.md §6, §7; race.md §3.1 |
 | `set_helm`, `set_sheet`, `set_auto_trim`, `set_let_fly`, `hoist`, `drop_front`, `retire`, `protest` | controls queued for step 2 of the next tick | boat.md §2, race.md §6.4, rules.md §10 |
 | `set_controller(fn)` | called in step 2 before the queued controls: computer skippers and scripts decide there | ai.md |
-| `place_boat(i, x, y, psi, v)` | scenario set-up (tests, tools): puts a boat at a pose as a spawn does, between ticks | boat.md §6.6 |
+| `place_boat(i, x, y, psi, v, front_sail)` | scenario set-up (tests, tools, rules scenarios): puts a boat at a pose as a spawn does, between ticks, before or after `create_race`; `front_sail` -2 keeps the one up | boat.md §6.6 |
 | `step()` | one tick: race and rules on `t_n` and the last contacts, controls, environment, shadow snapshot, boat steps, collisions, publish; returns the tick checksum | conventions.md §4.1 |
 | `boat(i)`, `env(i)`, `race()`, `rules()`, `course()`, `scene()`, `events()`, `checksum()` | state, the race and rules records, this tick's race, rules and contact events | race.md §11, rules.md §11 |
 | `save(SnapshotWriter&)`, `load(bytes, course, err)` | the world snapshot between ticks; `load` goes into a world built with the same setup and entries, whatever it has run (it is reset first; any number of loads), rebuilds it (the race is recreated at its creation tick, joiners join again) and continues bit for bit; a failed load leaves the world as it was; the controller stays installed, the AI memory is loaded on its own | conventions.md §9.1 |
@@ -144,7 +144,7 @@ hosts that link it in. Everything is built under the float rules; hosts must not
 | group | calls |
 | --- | --- |
 | data | `wm_perf_load/parse`, `wm_venue_load/parse`, `wm_course_load/parse`; `wm_perf_info`, `wm_perf_sail`, `wm_perf_polar`, `wm_perf_polar_vmg`, `wm_perf_trim_speed`, `wm_perf_table` (any config table by name, e.g. `weather_helm`, `flog_drag`) |
-| set-up | `wm_world_settings_init`, `wm_world_create(settings, venue or NULL)`, `wm_world_add_boat`, `wm_world_place_boat` (free sailing), `wm_world_create_race` |
+| set-up | `wm_world_settings_init`, `wm_world_create(settings, venue or NULL)`, `wm_world_add_boat`, `wm_world_place_boat` (free sailing), `wm_world_create_race`, `wm_world_scenario_place` (a pose and speed at any time: rules scenarios, tests) |
 | controls | `wm_world_apply_input` (the input frame of networking.md §4.1; the sail request result is answered at once), `wm_input_encode/decode` (the 6-byte wire form), single controls, `wm_world_set_controller` (step-2 callback) |
 | step | `wm_world_step` (returns the tick checksum), `wm_world_checksum`, `wm_world_tick`, `wm_world_time_ms`, `wm_world_render_time_ms` |
 | boats | state, controls, outputs, the environment at the boat, `wm_world_render_pose(alpha)` (interpolated between the last two ticks), `wm_world_trim_speed_at` (HUD trim tolerance), sails, per-sail state and outputs, sail phase events |

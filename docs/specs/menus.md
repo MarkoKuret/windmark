@@ -39,7 +39,7 @@ screen closes.
 
 Five sections: **Controls**, **Cameras**, **HUD**, **Graphics**, **Audio**. A change applies at once where the
 game has the setting and is saved when the settings screen closes, to one file per player
-(`user://settings.cfg`, a Godot ConfigFile with a `version`).
+(`user://settings.cfg`, a Godot ConfigFile with a `version`); the capture preset alone is for the session only (below).
 
 | section | settings |
 | --- | --- |
@@ -65,8 +65,12 @@ centred on its screen; on a screen too small for that, the largest 9:16 window t
 takes its portrait layout (`hud.md` §16.5); the display row has no effect while it is on and render scale Auto picks
 100 % (clips want the full detail). On a HiDPI screen the pixels are the screen's, so a Retina MacBook shows it at
 540 × 960 points. **Off** (default) puts the window back to the size it had before and the display setting applies
-again. Saved like the other settings; Reset section turns it off. The menus work in the portrait window too (they fit
-its width at every UI scale; the main menu puts the page under the menu).
+again. Session only: it is not saved, so the game always starts with it Off in the player's normal window (a
+settings file from an older build that has it is ignored); turning it on and off within a session still restores the
+window size it had before. Reset section turns it off. The menus work in the portrait window too (they fit its width
+at every UI scale; the main menu puts the page under the menu). On a 1080p monitor the window is 590 × 1050 (the
+largest 9:16 that fits the usable area); a full 1080 × 1920 capture wants a taller screen, a HiDPI one, or the
+command line (`--resolution 1080x1920`).
 
 ## 4. Look and input
 

@@ -113,7 +113,9 @@ func test_settings_round_trip() -> void:
 	cf.set_value("hud", "assist", 7)
 	cf.set_value("graphics", "vsync", 3)
 	cf.set_value("graphics", "render_scale", 7)
-	cf.set_value("graphics", "capture_preset", "square")
+	t.ok(not cf.has_section_key("graphics", "capture_preset") and back.capture_preset == "off",
+		"the capture preset is session only: not saved, Off after a load (menus.md §3)")
+	cf.set_value("graphics", "capture_preset", "portrait")
 	cf.save(TEST_PATH)
 	var d := Settings.new()
 	d.load_file(TEST_PATH)
@@ -122,7 +124,7 @@ func test_settings_round_trip() -> void:
 	t.ok(d.assist == Hud.Assist.MINIMAL, "assist clamped to Minimal")
 	t.ok(d.vsync == true, "vsync of the wrong type keeps the default")
 	t.near(d.render_scale, 1.0, 1e-9, "render scale clamped to 100 %")
-	t.ok(d.capture_preset == "off", "unknown capture preset: Off")
+	t.ok(d.capture_preset == "off", "a capture preset in an older file is ignored: the game starts with it Off")
 	t.ok(Settings.new().capture_preset == "off", "capture preset defaults to Off")
 	t.near(Settings.new().render_scale, 0.0, 0.0, "render scale defaults to Auto")
 	t.ok(Settings.new().load_file("user://no_such_settings.cfg") != OK, "missing file: defaults")
@@ -131,6 +133,9 @@ func test_settings_round_trip() -> void:
 	t.ok(s.fps_limit == 90, "reset a section keeps the others")
 	s.reset("graphics")
 	t.ok(s.capture_preset == "off", "reset graphics turns the capture preset off")
+	var u := _odd_settings()
+	u.reset("audio")
+	t.ok(u.capture_preset == "portrait", "reset of another section keeps the capture preset")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
 
 
@@ -213,6 +218,18 @@ func test_render_scale(s: Settings) -> void:
 			[Vector2i(500, 1920), Vector2i(500, 888)]]:
 		t.ok(Settings.capture_window_size(c[0]) == c[1], "portrait window on a %s usable area: %s (%s)" % [c[0],
 			c[1], Settings.capture_window_size(c[0])])
+	# on, off: the window gets its previous size back, centred in the usable area
+	var usable := Rect2i(Vector2i(0, 25), Vector2i(2560, 1950))
+	var w := Settings.new()
+	t.ok(w.capture_window_rect(Vector2i(1600, 900), usable) == Rect2i(), "Off: no change")
+	w.capture_preset = "portrait"
+	t.ok(w.capture_window_rect(Vector2i(1600, 900), usable) == Rect2i(Vector2i(740, 40), Vector2i(1080, 1920)),
+		"Portrait: 1080 x 1920 centred")
+	t.ok(w.capture_window_rect(Vector2i(1080, 1920), usable) == Rect2i(), "Portrait again: no change")
+	w.capture_preset = "off"
+	t.ok(w.capture_window_rect(Vector2i(1080, 1920), usable) == Rect2i(Vector2i(480, 550), Vector2i(1600, 900)),
+		"Off: the previous 1600 x 900 back, centred")
+	t.ok(w.capture_window_rect(Vector2i(1600, 900), usable) == Rect2i(), "Off again: nothing remembered")
 	Settings.render_scale_override = 0.5
 	a.apply_render_scale(root)
 	t.near(root.scaling_3d_scale, 0.5, 1e-6, "command-line override replaces the setting")

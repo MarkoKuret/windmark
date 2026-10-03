@@ -345,8 +345,8 @@ viewed boat. What it shows (`docs/specs/hud.md`):
 - **Portrait** (§16.5): on any screen taller than wide the HUD lays out for 9:16 clips: race bug and wind page on
   top, the alert lane (countdown, penalty panel, rule text) large under them, the instruments compact at the
   bottom, Glance by default. Turn it on with Settings, Graphics, Capture preset: Portrait 9:16 (a 1080 x 1920
-  window), or open the game at that size: `godot --path game --resolution 1080x1920` (add `--write-movie out.avi
-  --fixed-fps 60` for Movie Maker).
+  window, for the session only: the game always starts with it off), or open the game at that size:
+  `godot --path game --resolution 1080x1920` (add `--write-movie out.avi --fixed-fps 60` for Movie Maker).
 
 Names, skippers and AI levels come from `Hud.race.names`, `skippers`, `ai_levels` (boat index to text; defaults
 "You" and "Boat n"). `Hud.hud_event(kind, data)` reports signals, OCS, penalties, served penalties, rule warnings,

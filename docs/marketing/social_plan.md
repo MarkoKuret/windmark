@@ -164,7 +164,8 @@ The game has no replay or clip export yet (WM-016.15, postponed). What works now
    mode** (`godot --path game --write-movie out.avi --fixed-fps 60`), which writes every frame at a fixed rate
    however slow the machine is, so a Mac capture is smooth. Still a window: the owner runs it.
 3. **Vertical:** capture 16:9 at 1440p or higher and crop to 9:16 in the editor, framing the incident; or turn on
-   Settings, Graphics, Capture preset, Portrait 9:16 (a 1080×1920 window with the HUD laid out for portrait).
+   Settings, Graphics, Capture preset, Portrait 9:16 (a 1080×1920 window with the HUD laid out for portrait;
+   session only, the next start is back in the normal window).
 4. **Quiz set-ups:** `godot --path game res://scenes/sail_test.tscn -- --scenario=port_starboard` runs a scenario
    file from `game/data/scenarios/` (`race.md` §14), the same 20 s clip every run; reset replays it.
 5. **Headless stills now:** the offline previews (`game/tests/previews/race_hud_*.jpg`, `course_*.jpg`,

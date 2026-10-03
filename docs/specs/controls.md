@@ -41,11 +41,13 @@ keys become the boat's commands, and the accessibility options. The boat command
 | `camera_recentre` | button | recentre the current camera |
 | `camera_preset_1` … `8` | button | recall; with the store modifier: store |
 | `camera_boost` | modifier | free camera ×4 |
+| `camera_clip` | button | offline: the next clip camera (start line, mark, long lens, helicopter, `cameras.md` §9) |
 | `rankings` | hold (option: toggle) | ranking list (`hud.md` §10) |
 | `map` | toggle | full course map (`hud.md` §8) |
 | `radar_zoom_in`, `radar_zoom_out`, `radar_orientation` | button | radar range ×1.5 steps, heading-up / north-up |
 | `wind_shadow_view` | toggle | the wind shadow assist, when allowed (`hud.md` §3.3) |
 | `hud_hide` | toggle | hide every HUD element |
+| `world_tags` | toggle | hide or show the world tags and the on-water guides (§7, `hud.md` §16.4) |
 | `hud_density` | button | cycle the instrument density Glance, Race, Data (`hud.md` §16.1) |
 | `boat_names` | toggle | name tags over boats |
 | `boat_select` | button | select the next boat for a name tag, nearest first, then none (`hud.md` §16.4) |
@@ -53,6 +55,8 @@ keys become the boat's commands, and the accessibility options. The boat command
 | `spectate_next`, `spectate_prev`, `spectate_leader` | button | viewed boat, when not racing (`cameras.md` §1) |
 | `chat` | button | open the chat line |
 | `pause_menu` | button | pause offline, menu online (§7) |
+| `capture_pause` | toggle | offline: clean pause, no menu and no label (§7) |
+| `capture_slow` | button | offline: slow motion, cycling ×1, ×0.5, ×0.25 (§7) |
 | `screenshot` | button | save a screenshot |
 | `reset_boat` | button | offline practice only: free sailing re-places the boat at its start point, sailing with its start sail and the helm centred; an offline race restarts from the spawn. No effect online or in a ranked or timed session |
 
@@ -85,6 +89,7 @@ up to two keyboard or mouse bindings and one gamepad binding; all are rebindable
 | `camera_preset_1` … `8` | F1 … F4, Shift+F1 … F4 recall; Ctrl + key stores | – | – |
 | `camera_fov` | Alt (hold) | – | – |
 | `camera_boost` | Shift (free camera) | LB (free camera) | L1 |
+| `camera_clip` | X | – | – |
 | `rankings` | Tab (hold) | View (hold) | View (hold) |
 | `hud_density` | G | View (tap) | View (tap), R4 |
 | `map` | M | – (in the pause menu) | – |
@@ -92,12 +97,14 @@ up to two keyboard or mouse bindings and one gamepad binding; all are rebindable
 | `radar_orientation` | Z | – | – |
 | `wind_shadow_view` | V | – | – |
 | `hud_hide` | F10 | – | – |
+| `world_tags` | / | – | – |
 | `boat_names` | N | – | – |
 | `boat_select` | B | – | R5 |
 | `boat_pick` | left mouse button | – | touch screen tap |
 | `spectate_next` / `prev` / `leader` | ] / [ / Home | RB / LB / R3 (when not racing) | same |
 | `chat` | Enter | – | – |
 | `pause_menu` | Esc | Menu | Menu |
+| `capture_pause` / `capture_slow` | . / , | – | – |
 | `screenshot` | F12 | – | Steam button + R1 |
 | `reset_boat` | Backspace | – (in the pause menu) | – (in the pause menu) |
 
@@ -108,6 +115,8 @@ and R4. The
 gamepad has no direct sail keys: D-pad left/right step a highlighted sail on the HUD sail strip, X sets it (§5.4).
 F9 toggles the frame-time overlay (`hud.md` §17), a development key outside the action table: it is not
 rebindable and not listed in the settings.
+The capture keys sit together on the bottom row (`,` slow motion, `.` clean pause, `/` world tags), next to `X`
+for the clip cameras; they have no gamepad binding (a capture is made at the keyboard).
 
 **Free camera flying.** While the free camera is selected the boat's helm and sheet inputs fly it and the boat
 keeps its last `h_cmd` and `sheet_cmd` (a hold-to-steer key counts as released): `sheet_in` / `sheet_out` (W / S)
@@ -232,6 +241,24 @@ The options are saved per player in the settings file and set in the settings sc
 - **Online**: `pause_menu` opens the menu over the running race (banner "Race continues"); the boat keeps its last
   helm, sheet and let-fly while the menu is open, except that a held let-fly key or hold-to-steer key counts as
   released. The menu holds retire (with a confirmation) and settings.
+- **Capture** (offline), for freeze frames and slow crossings in clips:
+  - `capture_pause` stops the simulation as the pause does (no ticks; resuming continues from the same tick), but
+    opens no menu and shows no `Paused` label. The cameras keep moving on the frame time: they orbit, zoom, fly
+    and switch, and the helicopter keeps turning (`cameras.md` §9). The audio ducks as in the pause. The boat's
+    controls stay live and are applied when the simulation continues. `pause_menu` still opens the menu over a
+    clean pause; closing the menu returns to the clean pause.
+  - `capture_slow` cycles the simulation rate ×1 → ×0.5 → ×0.25 → ×1. The simulation still steps at its 50 ms
+    tick, fed with the frame time times the rate, and the render pose is interpolated between ticks, so boats,
+    sails, sea and wakes move smoothly at the slower pace (everything drawn from the simulation's clock slows
+    with it). The cameras, the HUD's own smoothing and the sound run on the real frame time. Nothing is shown on
+    screen for the rate (a clean frame); a restart (`reset_boat`, the pause menu) sets it back to ×1.
+  - Online both actions do nothing: the race runs on the server's clock.
+- **World tags** (`world_tags`, offline and online): hides or shows the world tags of `hud.md` §16.4 (mark tag,
+  tack point, name tags, edge pointers, penalty turn) and the on-water guides of the course (the start, gate and
+  finish lines drawn on the water, the laylines, the zone circle, the rounding arrows and the far next-mark
+  marker). Marks, committee and mark boats and their flags stay. It is separate from `hud_hide`, which hides the
+  HUD panels: with both off only the boats, the course objects, the water and the land are drawn. Not saved: a
+  session starts with the world tags shown.
 - **Chat focus**: typing blocks the boat's buttons and keys (held keys count as released); sticks and triggers keep
   working.
 - **Window focus lost**: as chat focus. Held states are cleared so nothing stays pressed.
@@ -252,3 +279,7 @@ The options are saved per player in the settings file and set in the settings sc
    after release; ↓ then moves it by no more than a frame's step at once, is at 0.142 after 1/3 s and at 0 after
    0.5 s; holding ← from the centre for 1 s gives −0.85 and full helm by 1.2 s; a key during the easing stops it;
    `helm_fine` for 0.5 s gives 0.1417; the same at 30, 60 and 144 fps within 0.5 %.
+9. Capture: offline, `capture_pause` stops the ticks with no menu and no `Paused` label while the camera still
+   orbits, and a second press continues from the same tick; `capture_slow` gives rates 0.5, 0.25 and 1 in turn,
+   and 2 s of frames at ×0.5 step 20 ticks (±1), at ×0.25 10 ticks (±1); `world_tags` hides the HUD's world
+   tags and the course's water overlays and shows them again; online the two capture actions change nothing.

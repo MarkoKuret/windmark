@@ -1,7 +1,7 @@
 # Cameras
 
-The in-race cameras: chase (the default), onboard, aerial and free, with the TV director and the replay cameras to
-come later. How each is computed from the boat's render pose, how it is smoothed, how it stays above the water, how
+The in-race cameras: chase (the default), onboard, aerial and free, the clip cameras of offline sessions (start
+line, mark, long lens, helicopter), with the TV director and the replay cameras to come later. How each is computed from the boat's render pose, how it is smoothed, how it stays above the water, how
 players move, zoom, recentre, store presets and switch. Keys and sticks are in `controls.md`; what the cameras look
 at is drawn per `water_render.md` and `sail_visuals.md`. Presentation only: nothing here feeds the simulation.
 
@@ -124,12 +124,13 @@ A fly camera for looking around the course, spectating and replays.
 
 ## 6. Switching and presets
 
-- **Cycle**: chase → onboard → aerial → free → chase. Direct keys select a mode (`controls.md` §3).
+- **Cycle**: chase → onboard → aerial → free → chase. Direct keys select a mode (`controls.md` §3). The clip
+  cameras (§9) have their own key and are outside this cycle: `camera_next` from a clip camera selects chase.
 - **Cuts** by default. Option "smooth switch": chase ↔ aerial blend over 0.4 s (position `lerp`, orientation
   `slerp`, `fov` `lerp`, smoothstep weight); other pairs always cut.
 - Each mode keeps its parameters across switches and across races (saved in the player profile); **recentre** resets
-  only the current mode.
-- **Presets**: 8 slots. Recall = select the stored mode with its stored parameters; store = the current mode and
+  only the current mode. A session always starts in a regular camera: a clip camera is never saved as the mode.
+- **Presets**: 8 slots, for the four regular cameras (store does nothing while a clip camera is shown). Recall = select the stored mode with its stored parameters; store = the current mode and
   parameters (`controls.md`). Factory presets, all chase at `R = 1.6·R0`, `el = 13.5°`: `az` = 0° (astern), 45°, 90°
   (abeam to port), 135°, 180° (ahead, looking back), 225°, 270° (abeam to starboard), 315°.
 
@@ -160,18 +161,44 @@ of amplitude `min(0.25, 0.04·closing_speed)` m and an angular one of `min(1.5°
 12 Hz, decaying with `τ = 0.3 s`; overlapping events take the larger amplitude. Chase and onboard only. Off with the
 reduced-motion option (`controls.md` §6).
 
-## 9. Later: TV director and replay
+## 9. Clip cameras (offline)
 
-- **Replay** (`networking.md` §14): the same four cameras on the re-simulated race, plus a timeline (pause, ×0.25 to
-  ×8, scrub, jump to events), the viewed boat free to choose, and scripted camera paths for clips (keyframes of eye,
-  aim and `fov`, Catmull-Rom through them, constant speed along the path).
-- **TV director** for spectators and replays. Shots: *start line* (fixed, 20 m outside the committee boat end at 6 m,
-  looking down the line), *mark cam* (fixed 40 m outside the next mark on the approach side at 6 m, tracking the
-  leading boat in the zone), *long lens* (chase at `R` = 150 m, `fov` 12°), *helicopter* (orbit at 60 m height and
-  120 m radius at 5°/s), *onboard* of the boat in the action. The action is scored per second: boats within their
-  zone at a mark, pairs with a keep-clear relation in `Warning` or `Breach` (`rules.md` §11), lead changes, starts
-  and finishes. A shot lasts 6–12 s, never less than 3 s; a new shot keeps the camera on the same side of the
-  boats' line of travel as the last one.
+Four broadcast shots for clips, chosen by hand in offline sessions (`camera_clip`, `controls.md` §3) before the
+replay exists; online the key does nothing (the TV director of §11 will use the same shots for spectators and
+replays). They show the viewed boat (§1) and the course around her. Their motion runs on the rendered frame time,
+so in a clean pause or in slow motion (`controls.md` §7) they keep moving at their normal rate.
+
+**Choosing.** `camera_clip` steps start line → mark → long lens → helicopter → start line, skipping a shot that
+cannot be placed (no start line or no next mark: free sailing offers the long lens and the helicopter only). From
+a regular camera it selects the clip camera used last, or the first one that can be placed. Selecting a clip
+camera, and stepping between them, always cuts. Recentre puts the long lens and the helicopter back to their
+defaults.
+
+**The course inputs**, read every frame from the race (scene coordinates from the world positions):
+- the start line ends: `C` the committee boat end and `P` the other one (when neither end is a committee boat, the
+  starboard end, the right one seen from the pre-start side, counts as `C`);
+- the viewed boat's next mark `M` (for a gate the buoy nearer to her, for a finish line the nearer end; before she
+  has started, the first mark), the point `Q` she comes from (the previous mark, the nearer buoy of a previous
+  gate, the start line's midpoint on the first leg), and the side `s` the mark is left to (+1 port, −1
+  starboard; at a finish line end +1 when the other end is on the right of `Q → M`, else −1, so the camera stands
+  outside the line);
+- the zone radius `3·loa` (`rules.md` §1) and the boats' positions in race order (race.md §8).
+
+| shot | eye | aim | fov |
+| --- | --- | --- | --- |
+| **start line** | `C + 20·û` at 6 m above the still water, `û` the horizontal unit vector from `P` to `C` (20 m outside the committee boat end, on the line's extension) | `P` on the still water: looking down the line | 30° |
+| **mark** | `M + 40·(sin β, cos β)` (east, north) at 6 m, `β = bearing(M → Q) + 45°·s`: on the approach side, 45° off the approach line, away from the side the boats pass | the leading boat (race order) inside the zone (within `3·loa` of `M`), else the viewed boat: her reference point 2 m up, smoothed with `τ = 0.5 s` (cut to it when the shot is selected) | 35° |
+| **long lens** | a chase camera (§2) with its own parameters: `R = 150` m, `el = 5°`, `az = 0`, `tau_yaw = 1.5 s`, `tau_heave = 0.3 s`, `lift = 1` m | as §2 | 12° |
+| **helicopter** | an orbit about the viewed boat at radius `r = 120` m and height `h = 60` m: `eye = target + (r·sin α, h, −r·cos α)`, `α` (compass, from the boat to the eye) starts astern (`ψ + 180°`) when the shot is selected and turns at 5°/s clockwise seen from above | the boat's reference point on the still water | 35° |
+
+- **Fixed shots** (start line, mark) do not move with the boat. When the next mark changes (she has rounded), the
+  mark camera cuts to the new one. When there is no next mark any more (finished, retired), it keeps its last eye
+  and aims at the viewed boat.
+- **Input**: the long lens orbits and zooms as the chase camera (§2), its zoom changing `fov` within 6° – 25°;
+  the helicopter's orbit keys add to `α` at 120°/s and its zoom scales `r` and `h` together (×1.12 per notch, ×2
+  per second held, 0.25× to 4×); the fixed shots take no input.
+- **Clearance**: §7 applies to every clip camera (water for all four; the land pull-in from the target for the
+  long lens and the helicopter). Near and far planes as §7.
 
 ## 10. Tests (headless)
 
@@ -188,3 +215,25 @@ reduced-motion option (`controls.md` §6).
 7. Presets: store in slot 3, change every parameter, recall slot 3: all parameters and the mode restored exactly;
    factory reset restores the eight chase presets.
 8. Shake: a contact at 2 m/s gives a peak offset of 0.08 m and less than 5 % of it after 0.9 s.
+9. Start line shot: with `P` at (0, 0) and the committee boat end `C` at (100, 0) (east, north), the eye is at
+   east 120 m, north 0, 6 m up, and looks at `P` within 0.1°.
+10. Mark shot: `M` at (0, 500) approached from `Q` = (0, 0): left to port the eye is at bearing 225° from `M`
+   (east −28.28, north 471.72, 6 m up), left to starboard at 135°; with two boats in the zone it aims at the one
+   ahead in race order, with the zone empty at the viewed boat.
+11. Long lens and helicopter: boat at the origin, `ψ = 0`: the long lens eye at `(0, 150·sin 5° + 1,
+   150·cos 5°)` with `fov` 12°; the helicopter eye 120 m astern and 60 m up when selected, and after 18 s at
+   60 fps 120 m to the west (90° clockwise), within 1 cm.
+12. Choosing: without a course `camera_clip` gives long lens, helicopter, long lens; with one start line, mark,
+   long lens, helicopter, start line; `camera_next` from a clip camera gives chase; with clip cameras not allowed
+   (online) the key changes nothing; store while a clip camera is shown leaves the presets as they were.
+
+## 11. Later: TV director and replay
+
+- **Replay** (`networking.md` §14): the four regular cameras and the clip cameras on the re-simulated race, plus a timeline (pause, ×0.25 to
+  ×8, scrub, jump to events), the viewed boat free to choose, and scripted camera paths for clips (keyframes of eye,
+  aim and `fov`, Catmull-Rom through them, constant speed along the path).
+- **TV director** for spectators and replays. Shots: the four clip cameras of §9 (start line, mark,
+  long lens, helicopter) and the *onboard* of the boat in the action. The action is scored per second: boats within their
+  zone at a mark, pairs with a keep-clear relation in `Warning` or `Breach` (`rules.md` §11), lead changes, starts
+  and finishes. A shot lasts 6–12 s, never less than 3 s; a new shot keeps the camera on the same side of the
+  boats' line of travel as the last one.

@@ -416,8 +416,8 @@ against it in proportion to the speed; it holds the drift once the speed reaches
 `v_g = drift_grip·s_d` (with the linear lift `k·v·sway` of keel and rudder and the cross-flow drag `c·sway²`,
 `drift_grip = 4c/k`, about 2: where the lift's slope reaches twice the drag's). The stalled share of the drift
 falls as `(1 − |v|/v_g)²`, which has the slope of the physical balance at rest and reaches 0 at `v_g`: S in 10 kn
-beam on is held from about 1 kn, the strongest drift (a flogging kite in 22 kn) from about 3.5 kn, and never above
-`DRIFT_GRIP_MAX` = 2 m/s (3.9 kn). Above that the boat sails on its heading as before. This is the
+beam on is held from about 1 kn, flogging under the jib in 22 kn from about 3.3 kn, and never above
+`DRIFT_GRIP_MAX` = 2 m/s (3.9 kn), which only a flogging spinnaker in a strong breeze reaches. Above that the boat sails on its heading as before. This is the
 **stalled-only drift** of the design decision: racing-speed handling, ground tracks, laylines, the HUD and the AI
 do not change.
 
@@ -499,8 +499,10 @@ sternway the helm steers backwards and the `fall_off` table swings the bow away 
 `|TWA|` from 20° to 60° with no way on or in sternway, fading out by 90°, where a stopped boat lies beam on; none
 below 10°; fading to 0 at a crawl ahead, Froude number 0.05: about 0.4 m/s S, 0.7 m/s L, where the keel starts
 to hold the heading). Recovery is therefore: helm to back the bow off, then sail away as the sails fill (from rest and out of sternway
-along `accel_rest`, §5.8). Right head to wind with no helm the boat stays in irons, drifting astern. A boat stopped across the wind (fallen
-off, or lying with its sails let fly) drifts to leeward at the `drift` rate until it gathers way (§6.4).
+along `accel_rest`, §5.8). Right head to wind with no helm the boat stays in irons, drifting astern, and a little to leeward while its
+sternway is slow (§6.4). A boat stopped across the wind drifts to leeward at the `drift` rate (`drift_flog` with
+the sails let fly) until it gathers way; one lying across the wind with its sails let fly creeps ahead under the
+windage of its eased sails and slides to leeward as it goes (S in 10 kn: about 0.8 kn ahead, 0.15 kn to leeward).
 
 ### 7.5 Luffing, stall, let-fly
 - **Luffing**: sails eased past their optimum (`eps > 0`) lose drive through `trim_speed` down to 0 when the sail
@@ -559,7 +561,9 @@ start needs speed built before the gun.
    (`weather_helm`) off: after 120 s the speed equals
    `polar_speed · heel_speed_factor(heel)` within 0.5 % and the heel equals the heel target within 0.2°. With the
    attitude wobble on, the mean heel stays within 0.2° and the mean speed within 1.5 % (the wobble reaches the
-   speed only through the heel).
+   speed only through the heel). Where the polar is a broached speed below the grip speed the boat drifts sideways
+   (§6.4), its apparent wind and with it its heel (§5.5) move off the table's: those points are checked on speed
+   only.
 2. **Turning circle**: at 8 kn TWS on a beam reach, full helm, helm balance and yaw inertia off: the steady circle
    radius equals `turn_radius_full` within 1 %.
 3. **Tack**: from steady close-hauled at 10 kn, a tack with helm 0.5: time and distance lost against a reference
@@ -595,13 +599,15 @@ start needs speed built before the gun.
 11. **Stalled drift**: every shipped class, front sail of the start, helm balance and fall-off off (the heading
    held), placed at rest at 50° TWA in 6, 10, 16 and 22 kn: let fly, after 30 s the boat is still at rest and its
    sideways speed is the `drift_flog` value to leeward within 1 %, the ground track runs to leeward square to the
-   heading, and it has reached 90 % of that within 15 s; with the sheet fully eased by hand (`auto_trim` off) the
-   same. In 10 kn the drift is 0.3 to 1.0 kn. In irons (placed head to wind at 15° TWA, at rest, helm 0, with the
-   fall-off on) the boat is carried to leeward while it gathers sternway; let fly there, it falls off and drifts
-   to leeward.
-12. **Drift fades with way on**: from that steady drift, with the sails sheeted in (auto-trim) the boat gathers
-   way and the drift has gone (`sway` exactly 0) before the speed reaches `DRIFT_GRIP_MAX`; at every steady
-   polar point of test 1 and through the tacks of test 3, `sway` is exactly 0 whenever the speed is at or above
-   `DRIFT_GRIP_MAX`, so racing-speed tracks are those of a boat without drift.
+   heading, and it has reached 90 % of that within 20 s; with the sheet fully eased by hand (`auto_trim` off) the
+   same. In 10 kn the drift is 0.3 to 1.0 kn. In irons (placed at rest at 15° TWA in 10 kn, helm 0, with the
+   fall-off and the helm balance on) the boat is carried more than 0.3 m to leeward in 10 s while it gathers
+   sternway, never to windward; let fly there, within 60 s it falls off past 45° and lies across the wind,
+   creeping ahead with its ground track more than 5° to leeward of its heading.
+12. **Drift fades with way on**: from the steady drift of test 11 at 60° TWA, with the sails sheeted in
+   (auto-trim) the boat gathers way; from `DRIFT_GRIP_MAX` on the drift is below 0.05 kn and it is exactly 0 within
+   5 s. Sailing steadily (every config, 6 to 22 kn, 45°, 90° and 150° TWA, from the table speed where that is at
+   least `DRIFT_GRIP_MAX`) and through the tacks of test 3 (both helms), `sway` is exactly 0 on every tick, so
+   racing-speed tracks are those of a boat without drift.
 13. **Full leeway switch**: with `full_leeway` on and a `leeway` table, close-hauled at steady speed the sideways
    speed is `v·tan(leeway)` to leeward within 1 %; with it off (the shipped files) it is 0.

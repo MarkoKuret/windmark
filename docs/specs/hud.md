@@ -442,7 +442,8 @@ these clips, so the alert lane is at the top and large; the instruments are comp
 - **Density**: the default is Glance (the player's stored choice still wins, §16.1); the density key works as in
   landscape.
 - **Tables** (ranking, results): centred and scaled down to fit between the margins.
-- **World tags**: as in landscape, kept inside the margins; the mark tag without a camera docks under the alert
+- **World tags**: as in landscape, kept inside the margins; the mark tag also stays under the alert lane (its
+  leader still points at the mark), so it never covers the rule text; without a camera it docks under the alert
   lane, left.
 - Nothing else changes: the same blocks, texts, colours and rules for what shows.
 

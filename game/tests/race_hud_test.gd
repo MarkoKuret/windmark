@@ -11,7 +11,8 @@ extends SceneTree
 ##   - the sail test scene in race mode: the HUD shows the race and hides the stand-in label;
 ##   - the presentation of hud.md §16: what each instrument density shows in each phase, the density key and its
 ##     setting, name tags within 50 m and on selected boats, the penalty turn only in the chase and aerial cameras,
-##     and every text fitting at 1280 x 800 for UI scales 80 % to 130 %.
+##     and every text fitting at 1280 x 800 for UI scales 80 % to 130 %; the portrait layout of §16.5 at
+##     1080 x 1920 (texts on screen and apart, no block over another, Glance by default, the compact radar).
 ##   godot --headless --path game -s res://tests/race_hud_test.gd
 
 const KNOT := HudFormat.KNOT
@@ -1040,7 +1041,7 @@ static func _text_rects(h: Hud) -> Array:
 
 
 func test_text_fits() -> void:
-	t.begin("every text fits at 1280 x 800, UI scale 80 % to 130 %")
+	t.begin("every text fits at 1280 x 800 and in portrait at 1080 x 1920, UI scale 80 % to 130 %")
 	var R := RaceText.Rule
 	var scenarios := {}
 	var pre := _pre_sim()
@@ -1054,36 +1055,70 @@ func test_text_fits() -> void:
 	scenarios["penalty"] = inc
 	scenarios["beat"] = _beat_sim()
 	var bad := []
+	var blocks_bad := []
 	var checked := 0
-	for sname in scenarios:
-		for scale in [0.8, 1.0, 1.3]:
-			for lvl in 3:
-				var sim: RaceStubSim = scenarios[sname]
-				var h := Hud.new()
-				h.screen_size = Vector2(1280, 800) / scale
-				h.assist = Hud.Assist.FULL
-				h.race.names = {1: "Nora", 2: "Ivo"}
-				h.set_density(lvl)
-				for i in 30:
-					sim.step()
-					h.tick(sim, 0)
-				h.frame(0.3)
-				h.refresh_text()
-				h.frame(2.0)
-				var rects := _text_rects(h)
-				var screen := Rect2(Vector2.ZERO, h.screen_size)
-				for i in rects.size():
-					var a: Dictionary = rects[i]
-					checked += 1
-					if not screen.encloses(a["r"]):
-						bad.append("%s %.0f%% %s: '%s' off screen" % [sname, scale * 100, Hud.DENSITY_NAMES[lvl], a["t"]])
-					for j in range(i + 1, rects.size()):
-						var c: Dictionary = rects[j]
-						if (a["r"] as Rect2).grow(-1.0).intersects((c["r"] as Rect2).grow(-1.0)):
-							bad.append("%s %.0f%% %s: '%s' (%s) overlaps '%s' (%s)" % [sname, scale * 100,
-								Hud.DENSITY_NAMES[lvl], a["t"], a["b"], c["t"], c["b"]])
-				h.free()
+	for scr in [Vector2(1280, 800), Vector2(1080, 1920)]:
+		var tag := "" if scr.x > scr.y else "portrait "
+		for sname in scenarios:
+			for scale in [0.8, 1.0, 1.3]:
+				for lvl in 3:
+					var sim: RaceStubSim = scenarios[sname]
+					var h := Hud.new()
+					h.screen_size = scr / scale
+					h.assist = Hud.Assist.FULL
+					h.race.names = {1: "Nora", 2: "Ivo"}
+					h.set_density(lvl)
+					for i in 30:
+						sim.step()
+						h.tick(sim, 0)
+					h.frame(0.3)
+					h.refresh_text()
+					h.frame(2.0)
+					var rects := _text_rects(h)
+					var screen := Rect2(Vector2.ZERO, h.screen_size)
+					var what := "%s%s %.0f%% %s" % [tag, sname, scale * 100, Hud.DENSITY_NAMES[lvl]]
+					for i in rects.size():
+						var a: Dictionary = rects[i]
+						checked += 1
+						if not screen.encloses(a["r"]):
+							bad.append("%s: '%s' off screen" % [what, a["t"]])
+						for j in range(i + 1, rects.size()):
+							var c: Dictionary = rects[j]
+							if (a["r"] as Rect2).grow(-1.0).intersects((c["r"] as Rect2).grow(-1.0)):
+								bad.append("%s: '%s' (%s) overlaps '%s' (%s)" % [what, a["t"], a["b"], c["t"], c["b"]])
+					if tag != "":
+						for p in HudLayoutCheck.problems(h, h.screen_size):
+							blocks_bad.append("%s: %s" % [what, p])
+						if not h.radar.compact:
+							blocks_bad.append("%s: radar not compact" % what)
+					h.free()
 	t.ok(bad.is_empty(), "%d texts checked, %d problems: %s" % [checked, bad.size(), str(bad.slice(0, 8))])
+	t.ok(blocks_bad.is_empty(), "portrait: no block over another, all on screen, compact radar (%d problems: %s)" % [
+		blocks_bad.size(), str(blocks_bad.slice(0, 6))])
+	# portrait defaults and scale (hud.md §16.5)
+	t.ok(Hud.default_density(Vector2(1080, 1920)) == Hud.Density.GLANCE, "portrait: default Glance at 1080 x 1920")
+	t.near(HudStyle.ui_k(Vector2(1080, 1920)), 1.0, 1e-9, "portrait: k = 1 at 1080 x 1920")
+	t.near(HudStyle.ui_k(Vector2(720, 1280)), 720.0 / 1080.0, 1e-9, "portrait: k = width / 1080")
+	t.ok(not HudStyle.portrait(Vector2(1920, 1080)) and HudStyle.portrait(Vector2(1080, 1920)), "portrait test")
+	var ph := Hud.new()
+	ph.screen_size = Vector2(1080, 1920)
+	var pen := _beat_sim()
+	pen.rules_d[0] = inc.rules_d[0]
+	pen.pairs_a = inc.pairs_a
+	for i in 30:
+		pen.step()
+		ph.tick(pen, 0)
+	ph.frame(0.3)
+	ph.refresh_text()
+	ph.frame(0.0)
+	var lane_y := ph.race_panel.position.y
+	t.ok(ph.density == Hud.Density.GLANCE and ph.penalty_panel.visible and ph.alerts_block.visible
+		and lane_y < 1920.0 * 0.25 and ph.inst_page.position.y > 1920.0 * 0.75,
+		"portrait: penalty panel and rule text at the top (lane at y %.0f), instruments at the bottom (y %.0f)" % [
+		lane_y, ph.inst_page.position.y])
+	t.ok(ph.penalty_panel.k > 1.0 and ph.alerts_block.k > 1.0 and ph.inst_page.k == 1.0,
+		"portrait: the alert lane drawn larger (%.2f) than the rest (%.2f)" % [ph.alerts_block.k, ph.inst_page.k])
+	ph.free()
 
 
 func test_fake_sim() -> void:

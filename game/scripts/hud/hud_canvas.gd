@@ -68,6 +68,52 @@ func _s(p: Vector2, text: String, size_px: int, col: Color, weight := 600, track
 		"weight": weight, "tracking": tracking, "align": align, "shadow": text_shadow})
 
 
+## The area this block draws now, in its own coordinates (the union of its primitives' bounds; texts from the
+## baseline up the font's ascent and down its descent). Rect2() when it draws nothing. The layout and the tests.
+func extent() -> Rect2:
+	var out := Rect2()
+	var any := false
+	for q in primitives():
+		var r := prim_rect(q)
+		if r.size == Vector2.ZERO and r.position == Vector2.ZERO:
+			continue
+		out = r if not any else out.merge(r)
+		any = true
+	return out
+
+
+## The bounds of one primitive (see the list at the top).
+static func prim_rect(q: Dictionary) -> Rect2:
+	match q["k"]:
+		"rect", "grad":
+			return q["r"]
+		"line":
+			var w: float = q["w"] * 0.5
+			return Rect2(q["a"], Vector2.ZERO).expand(q["b"]).grow(w)
+		"polyline", "poly":
+			var pts: PackedVector2Array = q["pts"]
+			if pts.is_empty():
+				return Rect2()
+			var r := Rect2(pts[0], Vector2.ZERO)
+			for p in pts:
+				r = r.expand(p)
+			return r.grow(q.get("w", 0.0) * 0.5)
+		"circle", "arc":
+			var rr: float = q["r"] + q.get("w", 0.0) * 0.5
+			return Rect2(q["p"] - Vector2(rr, rr), Vector2(rr, rr) * 2.0)
+		"text":
+			if q["text"] == "":
+				return Rect2()
+			var sz: int = q["size"]
+			var f := HudStyle.font(q["weight"], q["tracking"], sz)
+			var w := f.get_string_size(q["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, sz).x
+			var p: Vector2 = q["p"]
+			var al: int = q["align"]
+			var x := p.x - (w if al == HORIZONTAL_ALIGNMENT_RIGHT else (w * 0.5 if al == HORIZONTAL_ALIGNMENT_CENTER else 0.0))
+			return Rect2(x, p.y - f.get_ascent(sz), w, f.get_ascent(sz) + f.get_descent(sz))
+	return Rect2()
+
+
 ## The width of a text as _s draws it.
 static func text_width(text: String, size_px: int, weight := 600, tracking := 0.0) -> float:
 	var sz := maxi(size_px, HudStyle.MIN_TEXT)

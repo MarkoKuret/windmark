@@ -1,7 +1,7 @@
 class_name Sea
 extends Node3D
 ## The drawn sea (water_render.md): a camera-centred radial grid whose vertex shader evaluates the core's
-## sea_height from the wave components, shaded with detail normals, puffs and lulls, whitecaps and wakes.
+## sea_height from the wave components, shaded with detail normals, puffs and lulls and wakes.
 ##
 ## Inputs (all optional, set before or during play):
 ##   source        a node with sea_components(), sea_exposure(), wind_state(t_ms) (see sea_env_source.gd and
@@ -18,8 +18,6 @@ signal quality_changed(tier: int)
 const DETAIL_SCALE := [1.0 / 13.0, 1.0 / 22.0, 1.0 / 48.0, 1.0 / 70.0, 1.0 / 3.2]
 const DETAIL_DRIFT := [1.4, 1.0, 0.9, 0.6, 1.6]
 const DETAIL_ANGLE := [0.0, 0.35, -0.6, 0.95, 1.25]
-const FOAM_STREAK_SCALE := Vector2(1.0 / 23.0, 1.0 / 5.0)
-const FOAM_BREAKUP_SCALE := 1.0 / 61.0
 
 @export var quality: SeaQuality.Tier = SeaQuality.Tier.M:
 	set = set_quality
@@ -245,11 +243,6 @@ func update_frame(cam_pos: Vector3, cam: Camera3D = null) -> void:
 		var v: float = s * a + c * qc
 		layers.append(Vector4(c, s, u - floor(u), v - floor(v)))
 	material.set_shader_parameter("detail_layer", layers)
-	var fu := (qa - 0.8 * t_s) * FOAM_STREAK_SCALE.x
-	var fv := qc * FOAM_STREAK_SCALE.y
-	var bu := (qa - 0.5 * t_s) * FOAM_BREAKUP_SCALE
-	var bv := qc * FOAM_BREAKUP_SCALE
-	material.set_shader_parameter("foam_layer", Vector4(fu - floor(fu), fv - floor(fv), bu - floor(bu), bv - floor(bv)))
 
 	if sky:
 		material.set_shader_parameter("sky_horizon", sky.horizon_linear())

@@ -563,7 +563,7 @@ python3 game/tests/livery_cost.py
 
 `scenes/sea/sea.tscn` (`Sea`) draws the water of `docs/specs/water_render.md`: a camera-centred radial grid whose
 vertex shader evaluates the core's `sea_height` from the wave components, with detail normals, puffs and lulls,
-whitecaps, wakes (`SeaWakes`) and water overlays, in three quality tiers (`SeaQuality`: L, M, H). It reads:
+wakes (`SeaWakes`) and water overlays, in three quality tiers (`SeaQuality`: L, M, H). It reads:
 
 - a source with `sea_components()`, `sea_exposure()` and `wind_state(t_ms)`, and optionally
   `venue_wind_field()` (the venue file's land-effect field, drawn as the wind slowed near land; `Sea.set_wind_field`

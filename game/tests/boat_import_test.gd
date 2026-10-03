@@ -18,7 +18,7 @@ extends SceneTree
 
 const BOAT_DIR := "res://generated/boats"
 const REQUIRED_MATERIALS := ["gelcoat", "nonslip", "antifouling", "boottop", "carbon", "metal", "sailcloth"]
-const KNOWN_MATERIALS := ["gelcoat", "nonslip", "antifouling", "boottop", "carbon", "metal", "sailcloth", "glass", "rope", "rubber"]
+const KNOWN_MATERIALS := ["gelcoat", "nonslip", "antifouling", "boottop", "carbon", "metal", "sailcloth", "glass", "rope", "rubber", "transom"]
 ## Positions come through the importer's 16-bit vertex compression; 5 mm is well above its error for a 20 m boat.
 const POS_TOL := 0.005
 ## Hull extent against the class-file dimensions (stem rounding, toe rail and rub strake stand proud a little).
@@ -176,6 +176,14 @@ func _test_lods(id: String) -> void:
 		if prev >= 0:
 			_check(st["triangles"] < prev, "%s LOD%d has fewer triangles than the level before" % [id, lod])
 		prev = st["triangles"]
+		# the livery slots on every level (data_format.md §8.5): the transom on its own slot, the deck's walking slots
+		if parts.has("deck"):
+			var dm: Mesh = (parts["deck"] as MeshInstance3D).mesh
+			var slots := []
+			for s in dm.get_surface_count():
+				slots.append(_surface_material_name(dm, s))
+			_check("transom" in slots and "gelcoat" in slots and "nonslip" in slots,
+				"%s LOD%d deck has the transom, gelcoat and nonslip slots" % [id, lod])
 		if lod > 0:
 			var rig: Dictionary = side["rig"]
 			var pivots := {"rudder": "rudder_stock", "boom": "boom_pivot", "wheel": "wheel_hub", "pole": "pole_pivot"}

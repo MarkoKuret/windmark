@@ -1,11 +1,11 @@
 """Command line (tools/liverybake/README.md):
 
-    python3 -m liverybake [CLASS ...] [--livery ID] [--force] [--only PART ...] [--deck] [--no-stage]
-                          [--stage-only] [--out DIR] [--hull-size N] [--sail-size N] [--quiet]
+    python3 -m liverybake [CLASS ...] [--livery ID] [--force] [--only PART ...] [--no-stage] [--stage-only]
+                          [--out DIR] [--hull-size N] [--transom-size N] [--deck-size N] [--sail-size N] [--quiet]
 
 Bakes the starting livery textures of each class (default: every data/liveries/*.liveries.json) into
-data/liveries/<class>/ where they are missing, never over hand-edited files unless asked (--force, --only), then
-stages them for the game (game/generated/liveries, with Godot import settings).
+data/liveries/<class>/ where a part's files are all missing, never over hand-edited files unless asked (--force,
+--only), then stages them for the game (game/generated/liveries, with Godot import settings).
 """
 import argparse
 import json
@@ -16,10 +16,10 @@ from pathlib import Path
 
 import numpy as np
 
-from . import cloth, geometry, hull, sails, text
+from . import cloth, deck, geometry, hull, sails, text
 from .common import DATA, STAGE, Writer, save_normal, save_orm, save_png
 
-PARTS = ("hull", "keel", "deck", "sails")
+PARTS = ("hull", "keel", "transom", "deck", "sails")
 
 
 def livery_file(class_id, data=DATA):
@@ -35,6 +35,20 @@ def _r(v, n=6):
     return [round(float(x), n) for x in v]
 
 
+HULL_FILES = ("hull_albedo.png", "hull_normal.png", "hull_orm.png")
+TRANSOM_FILES = ("transom_albedo.png", "transom_normal.png", "transom_orm.png")
+DECK_FILES = ("deck_albedo.png", "deck_normal.png", "deck_orm.png")
+SAIL_SUFFIXES = ("_port_albedo.png", "_stbd_albedo.png", "_normal.png", "_orm.png")
+
+
+def _save_set(folder, names, r):
+    """Writes an albedo (sRGB), normal and ORM map (linear) of a bake result."""
+    save_png(folder / names[0], r["albedo"], srgb=True)
+    save_normal(folder / names[1], r["normal"])
+    save_png(folder / names[2], r["orm"], srgb=False)
+    return [folder / n for n in names]
+
+
 def bake_class(class_id, a, writer, log):
     liv = livery_file(class_id, a.data)
     geo = geometry.load(class_id)
@@ -45,42 +59,50 @@ def bake_class(class_id, a, writer, log):
             continue
         folder = out / lv["id"]
         key = f"{class_id}:{lv['id']}"
-        new_folder = writer.may_write(folder, "*")
         lay_path = folder / "layout.json"
         lay = json.loads(lay_path.read_text()) if lay_path.exists() else {}
         lay.update({"schema": "windmark.liverylayout/1", "class": class_id, "livery": lv["id"]})
         changed = False
-        if new_folder or writer.may_write(folder, "hull"):
+        if writer.may_write(folder, "hull", HULL_FILES):
             t = time.time()
             r = hull.bake_hull(geo, lv, a.hull_size, a.hull_size // 2, key=key)
-            paths = [folder / "hull_albedo.png", folder / "hull_normal.png", folder / "hull_orm.png"]
-            save_png(paths[0], r["albedo"], srgb=True)
-            save_normal(paths[1], r["normal"])
-            save_png(paths[2], r["orm"], srgb=False)
-            writer.note(paths, True)
+            writer.note(_save_set(folder, HULL_FILES, r), True)
             log(f"{class_id}/{lv['id']}: hull {a.hull_size}x{a.hull_size // 2} in {time.time() - t:.1f} s")
             changed = True
         else:
-            writer.note([folder / "hull_*.png"], False)
-        if new_folder or writer.may_write(folder, "keel"):
+            writer.note([folder / f for f in HULL_FILES], False)
+        if writer.may_write(folder, "keel", ("keel_albedo.png",)):
             r = hull.bake_keel(geo, lv, a.keel_size, key=key)
             save_png(folder / "keel_albedo.png", r["albedo"], srgb=True)
             x0, z0, x1, z1 = r["rect"]
             lay["keel"] = {"rect": _r([x0 - origin, z1, x1 - x0, z1 - z0]), "size": list(r["size"])}
             writer.note([folder / "keel_albedo.png"], True)
             changed = True
-        if a.deck and (new_folder or writer.may_write(folder, "deck") or not (folder / "deck_albedo.png").exists()):
-            r = hull.bake_deck(geo, lv)
-            save_png(folder / "deck_albedo.png", r["albedo"], srgb=True)
-            x0, y0, x1, y1 = r["rect"]
-            lay["deck"] = {"rect": _r([x0 - origin, y1, x1 - x0, y1 - y0]), "size": list(r["size"])}
-            writer.note([folder / "deck_albedo.png"], True)
+        if writer.may_write(folder, "transom", TRANSOM_FILES):
+            t = time.time()
+            r = hull.bake_transom(geo, lv, a.transom_size, key=key)
+            writer.note(_save_set(folder, TRANSOM_FILES, r), True)
+            lay["transom"] = {"rect": _r(r["rect"]), "size": list(r["size"])}
+            log(f"{class_id}/{lv['id']}: transom {r['size'][0]}x{r['size'][1]} in {time.time() - t:.1f} s")
             changed = True
+        else:
+            writer.note([folder / f for f in TRANSOM_FILES], False)
+        if writer.may_write(folder, "deck", DECK_FILES):
+            t = time.time()
+            r = deck.bake_deck(geo, lv, a.deck_size, key=key)
+            writer.note(_save_set(folder, DECK_FILES, r), True)
+            x0, yt, w, h = r["rect"]
+            lay["deck"] = {"rect": _r([x0 - origin, yt, w, h]), "size": list(r["size"])}
+            log(f"{class_id}/{lv['id']}: deck {r['size'][0]}x{r['size'][1]} in {time.time() - t:.1f} s")
+            changed = True
+        else:
+            writer.note([folder / f for f in DECK_FILES], False)
         if changed:
             _write_json(lay_path, lay)
     # the class sail set, shared by every boat
     folder = out / "sails"
-    want = [s for s in geo["sails"] if writer.may_write(folder, "sails") or writer.may_write(folder, s["id"])]
+    want = [s for s in geo["sails"]
+            if writer.may_write(folder, s["id"], [s["id"] + x for x in SAIL_SUFFIXES], also=("sails",))]
     if not want:
         writer.note([folder / "*"], False)
         return
@@ -97,8 +119,7 @@ def bake_class(class_id, a, writer, log):
         r = sails.bake_sail(s, liv, geo["loa"], liv["insignia"]["text"], nation_asp, number_asp, a.sail_size,
                             key=class_id)
         sid = s["id"]
-        paths = [folder / f"{sid}_port_albedo.png", folder / f"{sid}_stbd_albedo.png", folder / f"{sid}_normal.png",
-                 folder / f"{sid}_orm.png"]
+        paths = [folder / (sid + x) for x in SAIL_SUFFIXES]
         save_png(paths[0], r["albedo_port"], srgb=True)
         save_png(paths[1], r["albedo_stbd"], srgb=True)
         save_normal(paths[2], r["normal"])
@@ -206,9 +227,8 @@ def main(argv=None):
     ap.add_argument("classes", nargs="*", help="class ids (default: every data/liveries/*.liveries.json)")
     ap.add_argument("--livery", action="append", default=[], help="only this livery id (repeatable)")
     ap.add_argument("--force", action="store_true", help="rewrite the selected folders, hand edits included")
-    ap.add_argument("--only", action="append", default=[], help="rewrite only these parts: hull, keel, deck, sails "
-                                                                  "or a sail id (repeatable)")
-    ap.add_argument("--deck", action="store_true", help="also write the optional deck colour template")
+    ap.add_argument("--only", action="append", default=[], help="rewrite only these parts: hull, keel, transom, "
+                                                                  "deck, sails or a sail id (repeatable)")
     ap.add_argument("--no-stage", action="store_true", help="do not stage the textures for the game")
     ap.add_argument("--stage-only", action="store_true", help="only stage (no bake)")
     ap.add_argument("--data", default=str(DATA), help="livery files folder (default data/liveries)")
@@ -217,6 +237,8 @@ def main(argv=None):
     ap.add_argument("--hull-size", type=int, default=4096)
     ap.add_argument("--sail-size", type=int, default=2048)
     ap.add_argument("--keel-size", type=int, default=1024)
+    ap.add_argument("--transom-size", type=int, default=2048)
+    ap.add_argument("--deck-size", type=int, default=4096)
     ap.add_argument("--quiet", action="store_true")
     a = ap.parse_args(argv)
     np.seterr(all="ignore")

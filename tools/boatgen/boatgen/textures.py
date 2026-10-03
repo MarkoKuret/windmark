@@ -41,6 +41,7 @@ SETS = {
 # slot -> (set or None, tile size in metres: one image covers tiling_m x tiling_m of uv0)
 SLOTS = {
     "gelcoat": ("orange_peel", 0.5),
+    "transom": ("orange_peel", 0.5),
     "boottop": ("orange_peel", 0.5),
     "nonslip": ("diamond", 0.1),
     "antifouling": ("grain", 0.5),

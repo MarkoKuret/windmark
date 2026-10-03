@@ -162,9 +162,19 @@ func check_baked_files() -> void:
 		var hdir := BoatClassData.repo_path("data/liveries/%s/%s" % [id, look]) + "/"
 		var sdir := BoatClassData.repo_path("data/liveries/%s/sails" % id) + "/"
 		var ok := true
-		for f in ["hull_albedo.png", "hull_normal.png", "hull_orm.png", "keel_albedo.png", "layout.json"]:
+		for f in ["hull_albedo.png", "hull_normal.png", "hull_orm.png", "keel_albedo.png", "layout.json",
+				"transom_albedo.png", "transom_normal.png", "transom_orm.png", "deck_albedo.png", "deck_normal.png",
+				"deck_orm.png"]:
 			ok = ok and FileAccess.file_exists(hdir + f)
-		check(ok, "%s: hull set in data/liveries/%s/%s" % [id, id, look])
+		check(ok, "%s: hull, keel, transom and deck sets in data/liveries/%s/%s" % [id, id, look])
+		var hlay: Dictionary = BoatClassData._read_json(hdir + "layout.json") if ok else {}
+		var tim := Image.load_from_file(hdir + "transom_albedo.png") if ok else null
+		var dim := Image.load_from_file(hdir + "deck_albedo.png") if ok else null
+		var tsz: Array = hlay.get("transom", {}).get("size", [])
+		var dsz: Array = hlay.get("deck", {}).get("size", [])
+		check(tim != null and tim.get_width() == 2048 and tsz.size() == 2 and tim.get_height() == int(tsz[1])
+			and dim != null and dim.get_width() == 4096 and dsz.size() == 2 and dim.get_height() == int(dsz[1]),
+			"%s: transom 2048 and deck 4096 wide, as in the layout" % id)
 		var img := Image.load_from_file(hdir + "hull_albedo.png") if ok else null
 		check(img != null and img.get_width() == 4096 and img.get_height() == 2048, "%s: hull atlas 4096 x 2048" % id)
 		var lay: Dictionary = BoatClassData._read_json(sdir + "layout.json") if FileAccess.file_exists(sdir + "layout.json") else {}
@@ -184,10 +194,46 @@ func check_baked_files() -> void:
 		check(all, "%s: every class sail baked with its four images" % id)
 		var hs := BakedLivery.hull_set(id, look)
 		var ss := BakedLivery.sail_set(id)
-		check(hs.has("albedo") and hs.has("keel") and ss.get("sails", {}).size() == data.info.sails.size(),
-			"%s: staged and imported (hull, keel, %d sails)" % [id, ss.get("sails", {}).size()])
+		check(hs.has("albedo") and hs.has("keel") and hs.has("transom") and hs.has("deck")
+			and ss.get("sails", {}).size() == data.info.sails.size(),
+			"%s: staged and imported (hull, keel, transom, deck, %d sails)" % [id, ss.get("sails", {}).size()])
 		for d in ["dacron", "laminate", "nylon"]:
 			check(BakedLivery.detail(d) != null, "cloth detail %s staged" % d)
+
+
+## The transom (its own slot: the baked transom set, the boat's name in the name panel) and the deck (one baked
+## material with the non-slip mask on the gelcoat and non-slip slots), data_format.md §8.5.
+func _check_baked_transom_deck(id: String, bv: BoatView, other: BoatView) -> void:
+	var deck := bv.model.find_child("deck", true, false) as MeshInstance3D
+	var deck2 := other.model.find_child("deck", true, false) as MeshInstance3D
+	var tm: ShaderMaterial = null
+	var tm2: ShaderMaterial = null
+	var dms := {}
+	for s in deck.mesh.get_surface_count():
+		var slot := deck.mesh.surface_get_material(s).resource_name
+		var o := deck.get_surface_override_material(s) as ShaderMaterial
+		if slot == "transom":
+			tm = o
+			tm2 = deck2.get_surface_override_material(s) as ShaderMaterial
+		elif slot in ["gelcoat", "nonslip"]:
+			dms[slot] = o
+	var hs := BakedLivery.hull_set(id, bv.livery.look_id)
+	var box: Vector4 = (tm.get_shader_parameter("ov_box") as PackedVector4Array)[0] if tm else Vector4.ZERO
+	var pan: Dictionary = BoatLivery.hull_geometry(bv)["transom"]
+	var uv: Array = pan.get("uv1", [0, 0, 0, 0])
+	var inside := box.z > box.x and box.w > box.y and box.x >= float(uv[0]) - 1e-4 and box.z <= float(uv[2]) + 1e-4 \
+		and box.y >= float(uv[1]) - 1e-4 and box.w <= float(uv[3]) + 1e-4
+	check(tm != null and tm.shader == BoatLivery.BAKED_BOAT and tm.get_shader_parameter("bk_albedo") == hs["transom"]["albedo"]
+		and tm.get_shader_parameter("bk_proj") == 0 and tm.get_shader_parameter("ov_on") == 1,
+		"%s baked: the transom on its own slot with the baked transom set" % id)
+	check(inside and tm2 != null and tm2 != tm and tm2.get_shader_parameter("livery_text") == other.livery_text.texture
+		and tm2.get_shader_parameter("bk_albedo") == tm.get_shader_parameter("bk_albedo"),
+		"%s baked: the boat's name in the transom's name panel (%.2f..%.2f of u), per boat over the shared images" % [id, box.x, box.z])
+	var dm: ShaderMaterial = dms.get("gelcoat")
+	check(dm != null and dms.get("nonslip") == dm and dm.shader == BoatLivery.BAKED_BOAT
+		and dm.get_shader_parameter("bk_albedo") == hs["deck"]["albedo"] and dm.get_shader_parameter("bk_orm") == hs["deck"]["orm"]
+		and dm.get_shader_parameter("bk_mask") == true and dm.get_shader_parameter("ns_albedo_tex") != null,
+		"%s baked: the deck's gelcoat and non-slip on the baked deck set, the non-slip detail by the mask" % id)
 
 
 func check_paint(baked: bool) -> void:
@@ -276,6 +322,7 @@ func _check_baked_boat(id: String, views: Array, lv: Livery) -> void:
 		and aabb.end.y <= kr.y + 1e-3 and aabb.position.y >= kr.y - kr.w - 1e-3
 	check(km != null and km.get_shader_parameter("bk_proj") == 1 and holds,
 		"%s baked: keel in side view, its rectangle holds the keel (%.2f..%.2f m fwd)" % [id, aabb.position.z, aabb.end.z])
+	_check_baked_transom_deck(id, bv, other)
 	for sp in bv.sail_parts:
 		var m := (sp.node as MeshInstance3D).get_surface_override_material(0) as ShaderMaterial
 		var m2 := (other.sail_parts[sp.index].node as MeshInstance3D).get_surface_override_material(0) as ShaderMaterial
@@ -339,6 +386,18 @@ func _check_procedural_boat(id: String, bv: BoatView, lv: Livery, data: BoatClas
 			ok = ok and bt[i] > sh[i] + 0.02 and sh[i] >= -0.001 and bt[i] <= 0.5
 		check(ok, "%s procedural: sheer and boot stripe curves (v %.3f..%.3f amidships)" % [id, sh[8], bt[8]])
 		check(top.shader == BoatMaterials.SHADER, "%s procedural: topsides on the shared boat shader" % id)
+	var deck := bv.model.find_child("deck", true, false) as MeshInstance3D
+	var tr_ok := false
+	for s in deck.mesh.get_surface_count():
+		if deck.mesh.surface_get_material(s).resource_name == "transom":
+			var o := deck.get_surface_override_material(s) as ShaderMaterial
+			var c: Variant = o.get_shader_parameter("albedo_color") if o else null
+			var mean := BoatLivery.texture_mean(o.get_shader_parameter("albedo_tex")) if o else 1.0
+			if c is Color:
+				var lin := (c as Color).srgb_to_linear()
+				var want: Color = (lv.hull["topsides"] as Color).srgb_to_linear()
+				tr_ok = absf(lin.b * mean - want.b) < 0.01 and absf(lin.r * mean - want.r) < 0.01
+	check(tr_ok, "%s procedural: the transom in the topsides colour" % id)
 	for sp in bv.sail_parts:
 		var m := (sp.node as MeshInstance3D).get_surface_override_material(0) as ShaderMaterial
 		if m == null:

@@ -12,7 +12,7 @@ from PIL import Image
 from .gltf import read_glb
 
 MAT_IDS = {"gelcoat": 0, "nonslip": 1, "antifouling": 2, "boottop": 3, "carbon": 4, "metal": 5, "sailcloth": 6,
-           "glass": 7, "rope": 8, "rubber": 9}
+           "glass": 7, "rope": 8, "rubber": 9, "transom": 10}
 
 VS = """
 #version 410
@@ -445,6 +445,7 @@ class Renderer:
             _set(p, "metallic", pbr["metallicFactor"])
             _set(p, "roughness", pbr["roughnessFactor"])
             _set(p, "mat_id", MAT_IDS.get(mat, 0))
+            _set(p, "hull_livery", int(livery and name.split("/")[-1].startswith("hull")))
             _set(p, "battens", int(name in self.battened))
             vao.render()
         if water or ground:

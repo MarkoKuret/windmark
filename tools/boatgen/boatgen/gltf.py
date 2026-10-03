@@ -18,6 +18,7 @@ from . import textures as tex
 # slightly blurred); rope is a flecked braid. No mean colour is above the boat shader's 0.8 albedo cap.
 MATERIALS = {
     "gelcoat":     ((0.72, 0.72, 0.70, 1.0), 0.0, 0.22),
+    "transom":     ((0.72, 0.72, 0.70, 1.0), 0.0, 0.22),     # the transom face: gelcoat, its own slot and uv1 for the livery
     "nonslip":     ((0.47, 0.47, 0.45, 1.0), 0.0, 0.85),
     "antifouling": ((0.035, 0.045, 0.07, 1.0), 0.0, 0.75),
     "boottop":     ((0.50, 0.03, 0.03, 1.0), 0.0, 0.25),

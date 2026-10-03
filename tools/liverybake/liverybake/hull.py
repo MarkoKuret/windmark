@@ -1,4 +1,4 @@
-"""Hull, keel and deck textures of a livery (data_format.md §8.5).
+"""Hull, transom and keel textures of a livery (data_format.md §8.5); the deck is in deck.py.
 
 Hull: one atlas on the generator's uv1 (starboard band on top, port band below, sheer at the top of each band, bow
 to the right on starboard and to the left on port: each band as seen from its own side). Per texel the bake knows
@@ -425,29 +425,173 @@ def bake_keel(geo, lv, size=1024, key=""):
 
 
 # ----------------------------------------------------------------------------------------------------------------
-# deck: optional colour override, seen from above (bow to the right, port up)
+# transom: seen from astern on the generator's transom uv1 (port on the left, its top at the top)
 
-def deck_rect(geo, margin=0.01):
-    a, b = geo["deck_min"], geo["deck_max"]
-    m = margin * (b[0] - a[0])
-    return a[0] - m, a[1] - m, b[0] + m, b[1] + m
+def transom_size(geo, W):
+    h, top, bot = geo["transom"]["rect"]
+    return W, int(np.ceil(W * (top - bot) / (2 * h) / 4) * 4)
 
 
-def bake_deck(geo, lv, width=2048):
-    """A flat colour template of the deck from above: gelcoat and non-slip in the livery's deck colours."""
-    x0, y0, x1, y1 = deck_rect(geo)
-    W = width
-    H = int(np.ceil(W * (y1 - y0) / (x1 - x0) / 4) * 4)
-    ss = 2
-    out = np.zeros((H, W, 3), F32)
-    valid = np.zeros((H, W), bool)
-    deck = lv.get("deck", {})
-    for slot, key, default in (("gelcoat", "gelcoat", "#e2e2dc"), ("nonslip", "nonslip", "#a8a8a0")):
-        img = Image.new("L", (W * ss, H * ss), 0)
-        dr = ImageDraw.Draw(img)
-        for tri in geo["deck_tris"].get(slot, []):
-            dr.polygon([((p[0] - x0) / (x1 - x0) * W * ss, (y1 - p[1]) / (y1 - y0) * H * ss) for p in tri], fill=255)
-        m = np.asarray(img.resize((W, H), Image.BOX), dtype=F32) / 255.0
-        out = mix(out, hex_lin(deck.get(key, default)), m)
-        valid |= m > 0.02
-    return {"albedo": push_pull(np.minimum(out, ALBEDO_MAX), valid), "rect": (x0, y0, x1, y1), "size": (W, H)}
+def bake_transom(geo, lv, width=2048, key=""):
+    """Albedo (linear RGB), normal and ORM of the transom: the topsides' paint, the graphic's return round the
+    quarters, the boot stripe where its height reaches, and light wear (boarding scuffs at the cockpit opening and
+    the quarters, fine scratches, faint drain streaks below the cockpit floor's edge, sealant round the rudder
+    fittings). The name panel is left clear."""
+    from scipy import ndimage
+    T = geo["transom"]
+    h, top, bot = T["rect"]
+    W, H = transom_size(geo, width)
+    px_y, px_z = 2 * h / W, (top - bot) / H
+    px = 0.5 * (px_y + px_z)
+    y1 = h - (np.arange(W) + 0.5) * px_y
+    z1 = top - (np.arange(H) + 0.5) * px_z
+    Yv = np.broadcast_to(y1[None, :], (H, W)).astype(F32)
+    Z = np.broadcast_to(z1[:, None], (H, W)).astype(F32)
+    ay = np.abs(Yv)
+
+    def to_px(y, z):
+        return (h - y) / px_y, (top - z) / px_z
+
+    def poly_cov(pts):
+        im = Image.new("L", (W * 4, H * 4), 0)
+        ImageDraw.Draw(im).polygon([(to_px(q[0], q[1])[0] * 4, to_px(q[0], q[1])[1] * 4) for q in pts], fill=255)
+        return np.asarray(im.resize((W, H), Image.BOX), dtype=F32) / 255.0
+
+    valid = poly_cov(T["outline"]) > 0.02
+    hull = lv["hull"]
+    topc = hex_lin(hull["topsides"])
+    boot = hex_lin(hull.get("boot_stripe", "#e0e0dc"))
+    afc = hex_lin(hull.get("antifouling", "#1a1d24"))
+    dark = float(np.clip(1.0 - luminance(topc) / 0.45, 0.0, 1.0))
+    z_af, z_bt = geo["boot_top"]
+    rng = Rng(key, "transom")
+    S = seed_of(key, "transom")
+    yc, bs, zf = T["yc"], T["bs"], T["floor_z"]
+    is_open = T["open"]
+    # depth below the top edge: the deck edge on the quarters, the cockpit floor's edge in the opening
+    quarter = (ay >= yc) if is_open else np.ones_like(ay, bool)
+    top_e = np.where(quarter, np.interp(ay, T["top_y"], T["top_z"]), zf).astype(F32)
+    d = top_e - Z
+    yn, zn = Yv + 31.7, Z + 5.3                 # noise coordinates
+
+    # ---- paint: as the topsides (batch variation, sun fade toward the top on a dark hull)
+    var = fbm(yn / 2.2, zn / 2.2, S + 1, 3)
+    alb = topc[None, None, :] * (1.0 + 0.018 * var)[..., None]
+    fade = (0.05 * dark) * smoothstep(0.3, 0.0, d) * (0.6 + 0.4 * fbm(yn / 1.5, zn / 0.4, S + 2, 2))
+    alb = mix(alb, np.full(3, luminance(topc) * 1.35 + 0.004, F32), fade)
+    rough = 0.14 + 0.035 * fbm(yn / 0.9, zn / 0.9, S + 3, 3) + 0.02 * fbm(yn / 0.15, zn / 0.15, S + 4, 2)
+    hgt = 0.0007 * fbm(yn / 0.9, zn / 0.6, S + 5, 3) + 0.00012 * fbm(yn / 0.12, zn / 0.12, S + 6, 2)
+
+    # ---- the graphic's return (data_format.md §8.2): stripes round the quarters ending with a slanted cut half
+    # way to the cockpit opening (a third of the way in on a closed transom); a two-tone split continues across
+    gr = hull.get("graphic") or {"type": "none"}
+    cols = [hex_lin(c) for c in gr.get("colors", [])]
+    vinyl = np.zeros((H, W), F32)
+    if gr.get("type") == "stripes" and gr.get("from", 0.04) <= 1e-3:
+        dep, wid = gr.get("depth", [0.08, 0.17]), gr.get("width", [0.05, 0.02])
+        y_end = (yc + 0.5 * (bs - yc)) if is_open else (2.0 / 3.0) * bs
+        for k in range(min(len(cols), len(dep), len(wid))):
+            span = inside(y_end + 0.6 * (d - dep[k]) - ay, px)
+            c = band(d - dep[k], 0.5 * wid[k], px) * span * quarter
+            alb = mix(alb, cols[k][None, None, :] * (1.0 + 0.01 * var)[..., None], c)
+            vinyl = np.maximum(vinyl, c)
+    elif gr.get("type") == "two_tone" and cols:
+        split, rise, pin = gr.get("split", 0.45), gr.get("rise", -0.15), gr.get("pinstripe", 0.025)
+        zs0 = float(np.interp(bs, T["top_y"], T["top_z"]))
+        ds = (split - 0.5 * rise) * max(zs0 - z_bt, 0.05)
+        dd = zs0 - Z
+        c = inside(ds - dd, px)
+        alb = mix(alb, cols[0][None, None, :], c)
+        vinyl = np.maximum(vinyl, c)
+        if len(cols) > 1 and pin > 0:
+            c = band(dd - ds, 0.5 * pin, px)
+            alb = mix(alb, cols[1][None, None, :], c)
+            vinyl = np.maximum(vinyl, c)
+    vb = blur(vinyl, 0.8)
+    alb = alb * (1.0 - 0.10 * np.clip(4.0 * vb * (1.0 - vb), 0, 1))[..., None]
+    rough = rough * (1 - vinyl) + 0.24 * vinyl
+    hgt = hgt + 0.00012 * vb
+
+    # ---- boot stripe and antifouling where their heights reach the transom's foot
+    m_af = inside(Z - z_af, px)
+    m_bt = np.clip(inside(Z - z_bt, px) - m_af, 0, 1)
+    alb = mix(alb, boot[None, None, :] * (1.0 + 0.012 * var)[..., None], m_bt)
+    alb = mix(alb, afc[None, None, :], m_af)
+    rough = rough * (1 - m_bt - m_af) + 0.22 * m_bt + 0.8 * m_af
+    bb = blur(m_bt, 0.8)
+    alb = alb * (1.0 - 0.08 * np.clip(4.0 * bb * (1.0 - bb), 0, 1))[..., None]
+    hgt = hgt + 0.00012 * bb
+    # the stern wave's stain on the boot stripe's lower edge
+    stain = m_bt * np.exp(-np.maximum(Z - z_af, 0) / 0.03) * (0.5 + 0.5 * fbm(yn / 0.2, zn / 0.02, S + 7, 2))
+    alb = mix(alb, np.array([0.42, 0.33, 0.17], F32) * np.maximum(alb.mean(-1, keepdims=True), 0.05) * 1.5, 0.3 * stain)
+
+    # ---- wear: boarding scuffs at the cockpit opening and on the quarters, fine scratches all over
+    pan = T["panel"]["uv1"]
+    p_top = top - pan[1] * (top - bot)
+    segs = []
+    for k in range(int(rng.integers(35, 55))):
+        if is_open and rng.uniform() < 0.6:
+            yy = rng.normal(0, 0.35) * yc
+            zz = max(zf - abs(rng.normal(0, 0.03)), p_top + 0.005)
+            ang = rng.uniform(0, np.pi)
+        else:
+            yy = rng.choice([-1, 1]) * rng.uniform(yc if is_open else 0.2 * bs, bs)
+            zz = float(np.interp(abs(yy), T["top_y"], T["top_z"])) - abs(rng.normal(0, 0.05))
+            ang = rng.normal(0, 0.5)
+        ln = rng.uniform(0.01, 0.045)
+        c0, r0 = to_px(yy, zz)
+        dc, dr = ln / px_y * np.cos(ang), ln / px_z * np.sin(ang)
+        segs.append((c0 - 0.5 * dc, r0 - 0.5 * dr, c0 + 0.5 * dc, r0 + 0.5 * dr, rng.uniform(0.0005, 0.0018) / px,
+                     rng.uniform(0.3, 1.0)))
+    for k in range(int(rng.integers(40, 70))):
+        yy, zz = rng.uniform(-bs, bs), rng.uniform(bot + 0.05, top)
+        ln, ang = rng.uniform(0.02, 0.15), rng.normal(0, 0.4)
+        c0, r0 = to_px(yy, zz)
+        dc, dr = ln / px_y * np.cos(ang), ln / px_z * np.sin(ang)
+        segs.append((c0 - 0.5 * dc, r0 - 0.5 * dr, c0 + 0.5 * dc, r0 + 0.5 * dr, rng.uniform(0.0005, 0.0012) / px,
+                     rng.uniform(0.2, 0.7)))
+    scr = _segments(H, W, px_y, px_z, segs) * valid
+    alb = mix(alb, alb * (0.92 - 0.1 * dark) + (0.02 + 0.10 * dark), 0.6 * scr)
+    rough += 0.3 * scr
+    hgt -= 0.00004 * scr
+    if is_open:
+        # shoe-rubber smudges on the lip of the opening
+        sm = np.exp(-((Z - (zf - 0.02)) / 0.03) ** 2) * np.exp(-(ay / (0.6 * yc)) ** 2)
+        sm *= np.clip(fbm(yn / 0.06, zn / 0.03, S + 8, 3) * 1.8, 0, 1)
+        alb = mix(alb, np.full(3, 0.025, F32), 0.35 * sm)
+        rough += 0.2 * sm
+        # the cockpit drains over the lip: faint dried streaks running down below the floor's edge
+        streak = np.clip(fbm(yn / 0.006, zn / 0.25, S + 9, 2) * 2.2 - 0.2, 0, 1)
+        streak *= np.exp(-np.maximum(zf - Z, 0) / 0.12) * (ay < yc) * (Z < zf)
+        streak *= 0.5 + 0.5 * fbm(yn / 0.2, zn * 0.0, S + 10, 2)
+        alb = mix(alb, alb + 0.02 + 0.015 * dark, 0.5 * streak)
+        rough += 0.08 * streak
+
+    # ---- the rudder fittings: sealant round each plate, a faint streak below it
+    for f in geo.get("transom_fittings", []):
+        q = f["poly"]
+        fm = poly_cov(q)
+        dist = ndimage.distance_transform_edt(fm < 0.5).astype(F32) * px
+        bead = band(dist - 0.0025, 0.0015, px) * (fm < 0.5)
+        alb = mix(alb, np.full(3, 0.03, F32), 0.7 * bead)
+        hgt = hgt + 0.0006 * bead
+        rough = mix(rough, 0.45, bead)
+        below = ((Yv > q[:, 0].min()) & (Yv < q[:, 0].max()) & (Z < q[:, 1].min())).astype(F32)
+        below *= np.exp(-np.maximum(q[:, 1].min() - Z, 0) / 0.08)
+        below *= np.clip(fbm(yn / 0.008, zn / 0.3, S + 11, 2) + 0.4, 0, 1)
+        alb = mix(alb, alb + 0.015 * dark, 0.4 * below)
+
+    # ---- polish swirls in the gloss
+    for k in range(10):
+        yy, zz, r = rng.uniform(-bs, bs), rng.uniform(bot + 0.1, top), rng.uniform(0.07, 0.15)
+        rough = rough + 0.014 * band(np.hypot(Yv - yy, Z - zz) - r, 0.006, px)
+
+    alb = np.minimum(alb, ALBEDO_MAX)
+    nrm = normal_from_height(hgt, px_y, px_z)
+    alb = push_pull(alb, valid)
+    nrm = push_pull(nrm, valid)
+    nrm /= np.linalg.norm(nrm, axis=-1, keepdims=True)
+    orm = push_pull(np.stack([np.ones((H, W), F32), np.clip(rough, 0.04, 1.0), np.zeros((H, W), F32)], -1), valid)
+    return {"albedo": alb, "normal": nrm, "orm": orm, "valid": valid, "size": (W, H), "rect": T["rect"]}
+
+

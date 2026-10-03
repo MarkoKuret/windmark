@@ -59,11 +59,12 @@ screen, as on Retina Macs); otherwise 100 %. So a MacBook's 2560 × 1600 Retina 
 apply and when the window changes size. The setting is independent of the quality tier.
 
 **Capture preset.** For recording vertical clips. **Portrait 9:16** makes the window 1080 × 1920 pixels (windowed,
-centred on its screen; on a screen too small for that, the largest 9:16 window that fits its usable area) and the
-HUD takes its portrait layout (`hud.md` §16.5); the display row has no effect while it is on. On a HiDPI screen the
-pixels are the screen's, so a Retina MacBook shows it at 540 × 960 points. **Off** (default) puts the window back to
-the size it had before and the display setting applies again. Saved like the other settings; Reset section turns it
-off. The menus work in the portrait window too (they fit its width at every UI scale).
+centred on its screen; on a screen too small for that, the largest 9:16 window that fits its usable area) and the HUD
+takes its portrait layout (`hud.md` §16.5); the display row has no effect while it is on and render scale Auto picks
+100 % (clips want the full detail). On a HiDPI screen the pixels are the screen's, so a Retina MacBook shows it at
+540 × 960 points. **Off** (default) puts the window back to the size it had before and the display setting applies
+again. Saved like the other settings; Reset section turns it off. The menus work in the portrait window too (they fit
+its width at every UI scale).
 
 ## 4. Look and input
 

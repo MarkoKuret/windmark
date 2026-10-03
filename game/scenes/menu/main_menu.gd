@@ -153,7 +153,7 @@ func _unhandled_input(e: InputEvent) -> void:
 
 
 func _setting_changed(key: String) -> void:
-	if key in ["fullscreen", "vsync", "fps_limit", "ui_scale", "render_scale"]:
+	if key in ["fullscreen", "vsync", "fps_limit", "ui_scale", "render_scale", "capture_preset"]:
 		settings.apply_display(get_tree().root)
 	elif key.ends_with("_volume"):
 		settings.apply_audio()

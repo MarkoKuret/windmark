@@ -313,6 +313,11 @@ viewed boat. What it shows (`docs/specs/hud.md`):
 - **Feed and results** (§13): six lines of 8 s; provisional results at the own finish, the core's results at the
   close (AI badges, projected finishes marked `proj.`).
 - **Assists** (§14): `Hud.assist` and `Hud.shows(element)`; the wind shadow view is not drawn yet.
+- **Portrait** (§16.5): on any screen taller than wide the HUD lays out for 9:16 clips: race bug and wind page on
+  top, the alert lane (countdown, penalty panel, rule text) large under them, the instruments compact at the
+  bottom, Glance by default. Turn it on with Settings, Graphics, Capture preset: Portrait 9:16 (a 1080 x 1920
+  window), or open the game at that size: `godot --path game --resolution 1080x1920` (add `--write-movie out.avi
+  --fixed-fps 60` for Movie Maker).
 
 Names, skippers and AI levels come from `Hud.race.names`, `skippers`, `ai_levels` (boat index to text; defaults
 "You" and "Boat n"). `Hud.hud_event(kind, data)` reports signals, OCS, penalties, served penalties, rule warnings,
@@ -344,8 +349,9 @@ Runs headless, with scripted input at fixed frame rates:
   hold, the stored setting, name tags within 50 m or selected, the penalty turn only in the chase and aerial
   cameras, every text fitting at 1280 x 800 for UI scales 80 % to 130 %). The previews:
   `tests/race_hud_preview_dump.gd` runs the course preview shots of `tests/course_preview_dump.gd` (start, upwind,
-  aerial) with their cameras so the world tags land on the frame, at the Glance, Race and Data densities and on
-  the Deck's 1280 x 800, plus a scripted incident and the results; `tests/race_hud_preview.py` draws every
+  aerial) with their cameras so the world tags land on the frame, at the Glance, Race and Data densities, on
+  the Deck's 1280 x 800 and in portrait at 1080 x 1920 (`*_portrait`), plus a scripted incident and the results,
+  and prints any block overlaps (`tests/hud_layout_check.gd`); `tests/race_hud_preview.py` draws every
   block's primitives in Barlow over the course frames (`generated/race_hud_preview/`, with `--publish`
   `tests/previews/race_hud_*.jpg`).
 - `tests/hud_test.gd`: `hud.md` formats, filters and time constants, trim gauge colours, tell-tales, tolerance and

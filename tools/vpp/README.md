@@ -73,7 +73,7 @@ All fields of `data_format.md` §3 are read as specified there. How the VPP uses
 `windmark.perf/1` exactly as `data_format.md` §4 and §5 define it: header with the class hash and the
 `handling` multipliers used, `dynamics`, `sails`, one entry per config (main alone, main + each front sail) with
 `polar`, `heel`, `accel`, `accel_rest`, `trim_speed`, `trim_heel`, `weather_helm`, `fall_off`, `flog_drag`,
-`optimal_angle`, and `start`. Axes follow the spec's recommendation: TWS 0 to 20.6 m/s (40 kn), TWA 0°, 7°, the
+`drift`, `drift_flog` (and `leeway` with `full_leeway` on), `optimal_angle`, and `start`. Axes follow the spec's recommendation: TWS 0 to 20.6 m/s (40 kn), TWA 0°, 7°, the
 no-go edge twice, then 2° steps to 60° and 5° steps to 180°; AWA every 5°; trim error −60° to +2° fine, then
 every 5° to 130°, 150° and 180°; apparent wind speed 0 to 40 m/s (fine below 10 m/s).
 
@@ -107,6 +107,7 @@ What each table holds:
   90° (a stopped boat lies beam on), none below 10° (a boat right head to wind stays in irons); full in sternway
   and at rest, fading as `1 − (v/v_f)²` to 0 at `v_f = 0.05 sqrt(g LWL)` ahead (Froude number 0.05: the keel
   holds the heading; light-air sailing speeds are above it).
+- `drift`, `drift_flog`: the sideways drift of the boat at rest (see "Sideways drift").
 - `optimal_angle`: best sheet angle of each sail against AWA (resampled the same way).
 
 ### Luffing and let-fly
@@ -134,6 +135,33 @@ measurement. Two tables carry it:
 Results at 10 kn close-hauled, let fly (the drive gone in the first tick): wm7 under 1 kn in 7.9 s (14.7 s with
 the hull alone), wm12 in 15.3 s (29.7 s): the heavier boat has about half the sail area per tonne and carries its
 way twice as long. Running in 10 kn (150° TWA), let fly costs nothing: the fully eased sheet is the optimum there.
+
+### Sideways drift
+
+A boat with no way on is pushed sideways by its windage until the cross-flow drag of its underwater body balances
+the push (`boat.md` §6.4). The VPP writes that steady drift per config on (TWS, TWA every 5°), for the boat at rest:
+
+- the push: the cross-wind component of `Rig.windage_force` (hull topsides, mast, and the config's sails on the
+  wind line: `CD_luff` for `drift`, `CD_flog` for `drift_flog`) at the apparent wind the drifting boat feels (the
+  true wind at the rig's centre of effort less the drift), so it is 0 head to wind and dead downwind;
+- the drag: `c·drift²` with `c = ½ ρ (1.2 (A_keel + A_rudder) + 0.7 (0.7 LWL Tc + A_bulb))`: the fins as plates
+  normal to the flow, the canoe body (its lateral profile taken as 0.7 LWL × Tc) and the bulb as blunt bodies
+  (Hoerner 1965, cross-flow drag); a catamaran counts two canoe bodies;
+- the balance by bisection.
+
+Two `dynamics` values go with it: `drift_grip = 4c/k`, with `k = ½ ρ (A_keel + A_rudder) · 2π AR/(AR + 2)` the lift
+slope of keel and rudder against leeway (the same lift line as the leeway diagnostic, upright), so the grip speed
+`drift_grip · drift` is where the keel's lift slope `k·v` reaches twice the cross-flow drag's `2c·drift`; and
+`drift_length = m_sway / c`, the sway mass (boat plus the added mass of the fins, `ρ π c²/4` per metre of span,
+and of the canoe body, `ρ π Tc²/2` per metre over 0.7 LWL) over `c`, which sets how fast the drift builds.
+`full_leeway` is written false; a class file can set it in `handling` (`data_format.md` §3.7.1), and then every
+config also gets a `leeway` table (the leeway diagnostic on the polar's axes, 0 in the no-go zone). No `handling`
+multiplier touches the drift.
+
+| class | `drift_grip` | `drift_length` | drift beam on, jib config, luffing (flogging), kn, at 6 / 10 / 16 / 22 kn TWS |
+| --- | --- | --- | --- |
+| wm7 | 1.87 | 1.74 m | 0.35 / 0.58 / 0.93 / 1.28 (0.48 / 0.81 / 1.29 / 1.78) |
+| wm12 | 1.95 | 2.98 m | 0.37 / 0.61 / 0.98 / 1.34 (0.51 / 0.85 / 1.36 / 1.87) |
 
 ### Helm balance
 
@@ -343,6 +371,9 @@ code is included.
   a breezy reach is not modelled, so near its heel limit the boat carries 4 to 7°/s of weather helm.
 - `yaw_time` is a reference value by length, not derived from the yaw inertia and damping.
 - `fall_off` uses the spec's reference rate, not a yaw balance of the windage.
+- The drift tables take the cross-flow drag coefficients from Hoerner's plates and blunt bodies, not a measurement
+  of a hull drifting; the drift is the windage alone (sails on the wind line), so the side force of stalled,
+  over-sheeted sails at a crawl is not in it.
 - The radius law's offset and the rudder drag rest on an assumed share (0.5) of the rudder angle reaching the
   blade in a turn (the rest is the flow curving round the stern and the drift the turn needs), the same for
   every helm; a manoeuvring model would give it per helm and speed.

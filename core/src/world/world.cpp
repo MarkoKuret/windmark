@@ -236,7 +236,7 @@ std::uint64_t World::step() {
       r.psi = s.psi;
       r.v = s.v;
       r.turn_rate = b.outputs().turn_rate;
-      r.current = cur;
+      r.current = v_add(cur, b.drift_velocity());  // the drift: current plus sideways drift (rules.md §3.1)
       r.cog = b.outputs().cog;
       r.sog = b.outputs().sog;
       r.tws = w.speed;

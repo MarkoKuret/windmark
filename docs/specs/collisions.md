@@ -154,8 +154,9 @@ fixed:     A.pos += normal * corr
 ```
 
 ### 4.2 Impulse
-Ground velocity of a boat: `V = (v·f + current) + contact_v` (`boat.md` §5.10), with `current` the current at the
-boat that its step read this tick (step 5); fixed objects have `V = 0`. `vr` is taken before the separation of the
+Ground velocity of a boat: `V = ((v·f + sway·s) + current) + contact_v` (`boat.md` §5.10), with `s` the unit
+vector to starboard, `sway` the sideways drift of a boat with next to no way on (`boat.md` §6.4) and `current` the
+current at the boat that its step read this tick (step 5); fixed objects have `V = 0`. `vr` is taken before the separation of the
 same contact (the separation moves positions only).
 ```
 vr = V_A - V_B ; vn = dot(vr, normal)

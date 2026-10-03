@@ -339,6 +339,8 @@ reference values are in the owning spec.
 | `pitch_freq`, `pitch_damping`, `wave_roll_gain`, `wave_pitch_gain` | float | boat.md §4 |
 | `wobble_heel`, `wobble_pitch`, `wobble_freq` | float | boat.md §6.5 |
 | `heave_time`, `waterline_offset`, `surf_gain` | float | boat.md §4 |
+| `drift_grip`, `drift_length` | optional float, ≥ 0 and > 0 | boat.md §4, §6.4; absent: no sideways drift (both or neither) |
+| `full_leeway` | optional bool [false] | boat.md §6.4; true needs `drift_grip` and a `leeway` table in every config |
 | `hull_points` | optional `[[x, y], …]` | sea.md §5.1 (default from `lwl`, `bwl`) |
 | `lwl`, `bwl`, `loa` | float | copied from the class (hull points, AI, HUD) |
 | `collision` | `{ "outline": [[x, y], …], "mass": kg, "yaw_gyration": m }` | collisions.md §2.1 |
@@ -347,7 +349,7 @@ reference values are in the owning spec.
 Ranges checked at load (besides those of the owning specs): `decel_linear`, `decel_const`, `decel_windage` ≥ 0;
 `turn_radius_offset` any finite value (negative for a rudder that stalls short of full helm) with
 `turn_radius_full + turn_radius_offset > 0`; `rudder_drag_luff`, `rudder_drag_bear` any finite value (§5);
-`hull_points`, if present, 1 to 64 points.
+`hull_points`, if present, 1 to 64 points; `drift_grip` and `drift_length` both present or both absent.
 
 `collision.mass` = `displacement + crew.weight`. The VPP derives the dynamics values from the design where it can
 (turn radius from the rudder and hull length and the radius law's offset from the rudder's stall, the
@@ -371,6 +373,9 @@ Schematic:
   "weather_helm": { table },       // Table2D(tws, twa_abs) -> rad/s, optional
   "fall_off":     { table },       // Table2D(boat_speed, twa_abs) -> rad/s, optional
   "flog_drag":    { table },       // Table2D(aws, awa_abs) -> m/s², optional
+  "drift":        { table },       // Table2D(tws, twa_abs) -> m/s, optional
+  "drift_flog":   { table },       // Table2D(tws, twa_abs) -> m/s, optional
+  "leeway":       { table },       // Table2D(tws, twa_abs) -> rad, only with dynamics.full_leeway
   "optimal_angle": { "main": { table }, "jib": { table } }   // Table2D(tws, awa_abs) -> rad
 }
 ```
@@ -378,16 +383,18 @@ Semantics in `sails.md` §6. `front_sail` is `null` or the id of a front sail in
 is exactly one main-only config and exactly one config per front sail.
 
 **Coverage** (config tables only: `polar`, `heel`, `accel`, `accel_rest`, `trim_*`, `weather_helm`, `fall_off`,
-`flog_drag`, `optimal_angle`; the `dynamics` and `sails` tables are not checked): every `tws` axis has its first
+`flog_drag`, `drift`, `drift_flog`, `leeway`, `optimal_angle`; the `dynamics` and `sails` tables are not checked): every `tws` axis has its first
 point exactly 0 and its last point ≥ `20.6f` m/s (40 kn, rounded up); every `twa_abs` and `awa_abs` axis has its
 first point exactly 0 and its last point exactly the binary32 π (`PI`, `conventions.md` §6); every `aws` axis has
 its first point exactly 0. Other axes are not constrained.
 
 `optimal_angle` is keyed by sail id and holds exactly the main and the config's front sail (only the main for
-main-only). `weather_helm` values may be any finite number (signed); `accel_rest`, `fall_off` and `flog_drag`
-≥ 0 (§5). The VPP writes every table for every config (`sails.md` §6): `trim_heel` 0 with the driving sail on the
+main-only). `weather_helm` values may be any finite number (signed); `accel_rest`, `fall_off`, `flog_drag`,
+`drift` and `drift_flog` ≥ 0, `leeway` in [0, 0.5] rad (§5). `leeway` is required in every config when
+`dynamics.full_leeway` is true and ignored otherwise; the VPP writes it only then. The VPP writes every table for every config (`sails.md` §6): `trim_heel` 0 with the driving sail on the
 wind line and `trim_speed` there 0 up to 90° AWA and the let-fly share beyond. Absent optional tables: `accel_rest`
-= `accel`, `weather_helm` and `flog_drag` 0.
+= `accel`, `weather_helm`, `flog_drag`, `drift` and `drift_flog` 0 (`drift_flog` absent: the flogging boat drifts
+at the `drift` rate).
 
 Above the no-go step the `polar` is never 0. Where no depowering holds a config (heel beyond the limit, or no way
 made at that angle) the VPP writes a low **broached speed**, with the `heel` at the limit and the `accel` of the

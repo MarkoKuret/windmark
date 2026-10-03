@@ -32,6 +32,7 @@ struct WindShadowParams {
 // boat.md §4.1, computed once at load in the spec's order.
 struct DerivedDynamics {
   float heel_k1, heel_k2, pitch_k1, pitch_k2, heave_a, turn_c, yaw_a;
+  float drift_lift;  // 4 / drift_grip: keel lift slope over cross-flow drag coefficient (boat.md §6.4), 0 without
   static constexpr float FILT_A = 0.0243902430f;  // DT / (2 s + DT)
 };
 
@@ -48,6 +49,11 @@ struct Dynamics {
   float pitch_freq, pitch_damping, wave_roll_gain, wave_pitch_gain;
   float wobble_heel, wobble_pitch, wobble_freq;
   float heave_time, waterline_offset, surf_gain;
+  // Sideways drift (boat.md §4, §6.4): optional, both or neither; absent, the boat never drifts sideways.
+  bool has_drift = false;
+  float drift_grip = 0.0f;    // keel grip: grip speed over the drift speed
+  float drift_length = 0.0f;  // m, sway mass over the cross-flow drag coefficient
+  bool full_leeway = false;   // leeway at every speed from each config's `leeway` table; off in the shipped classes
   bool has_hull_points = false;  // absent: sea.md §5.1 derives 8 points from lwl, bwl
   std::vector<Vec2> hull_points;
   float lwl, bwl, loa;
@@ -102,6 +108,9 @@ struct ConfigPerf {
   OptionalTable weather_helm;    // (tws, twa_abs) -> rad/s, absent: 0
   OptionalTable fall_off;        // (boat_speed, twa_abs) -> rad/s, absent: 0
   OptionalTable flog_drag;       // (aws, awa_abs) -> m/s2, absent: 0
+  OptionalTable drift;           // (tws, twa_abs) -> m/s, sideways drift at rest, sails luffing; absent: 0
+  OptionalTable drift_flog;      // (tws, twa_abs) -> m/s, the same with the sails flogging; absent: drift
+  OptionalTable leeway;          // (tws, twa_abs) -> rad, required with dynamics.full_leeway, else ignored
   Table optimal_main;            // optimal_angle.<main id>: (tws, awa_abs) -> rad
   Table optimal_front;           // optimal_angle.<front id>; empty for main only
 };

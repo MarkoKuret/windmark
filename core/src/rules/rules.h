@@ -69,7 +69,7 @@ struct RulesBoatInput {
   float psi = 0.0f;
   float v = 0.0f;               // speed through the water
   float turn_rate = 0.0f;       // heading rate, rad/s, + clockwise (boat.md §5.9)
-  Vec2 current{0.0f, 0.0f};     // at the boat
+  Vec2 current{0.0f, 0.0f};     // the drift: current at the boat plus her sideways drift (§3.1, boat.md §6.4)
   float cog = 0.0f, sog = 0.0f;
   float tws = 0.0f, twd = 0.0f; // clean wind at the boat (race.md §0)
   float main_beta = 0.0f;

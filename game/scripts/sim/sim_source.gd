@@ -52,6 +52,7 @@ class BoatState:
 	var z := 0.0
 	var psi := 0.0
 	var v := 0.0
+	var sway := 0.0
 	var h := 0.0
 	var yaw_rate := 0.0
 	var phi := 0.0

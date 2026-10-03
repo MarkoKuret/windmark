@@ -137,6 +137,8 @@ var online := false
 
 var _chat: LineEdit
 var _paused_label: Label
+## the capture rate note (hud.md §16.6): on the overlay layer, so it shows with the HUD hidden too
+var _rate_note: Label
 ## the own boat's sail states of the last two ticks (render interpolation)
 var _sails_prev: SimSource.SailsView
 var _sails_cur: SimSource.SailsView
@@ -199,6 +201,8 @@ func _ready() -> void:
 	_paused_label.add_theme_font_size_override("font_size", 32)
 	_paused_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	layer.add_child(_paused_label)
+	_rate_note = _make_rate_note()
+	layer.add_child(_rate_note)
 	_build_course()
 	audio = GameAudio.new()
 	audio.name = "Audio"
@@ -680,9 +684,44 @@ func step_frame(dt: float) -> void:
 	PerfStats.add(&"hud", t6 - t5)
 	audio.viewed = viewed
 	audio.paused = runner.paused or (capture.allowed and capture.frozen)
+	capture.frame(dt)
+	_place_rate_note()
 	audio.countdown_beeps = hud.assist == Hud.Assist.FULL
 	audio.frame(dt, rig.camera, rig.mode == CameraRig.Mode.ONBOARD)
 	PerfStats.add(&"audio", Time.get_ticks_usec() - t6)
+
+
+func _make_rate_note() -> Label:
+	var l := Label.new()
+	l.name = "RateNote"
+	l.visible = false
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(HudStyle.INK, 0.86)
+	l.add_theme_stylebox_override("normal", sb)
+	l.add_theme_color_override("font_color", HudStyle.PAPER)
+	l.add_theme_font_override("font", HudStyle.font(600))
+	return l
+
+
+## The rate note (hud.md §16.6): its text, size and opacity this frame, top centre under the top margin.
+func _place_rate_note() -> void:
+	_rate_note.visible = capture.note != ""
+	if not _rate_note.visible:
+		return
+	var sc := get_viewport().get_visible_rect().size
+	var k := HudStyle.ui_k(sc)
+	var sb := _rate_note.get_theme_stylebox("normal") as StyleBoxFlat
+	sb.content_margin_left = 14.0 * k
+	sb.content_margin_right = 14.0 * k
+	sb.content_margin_top = 5.0 * k
+	sb.content_margin_bottom = 5.0 * k
+	_rate_note.add_theme_font_size_override("font_size", maxi(HudStyle.MIN_TEXT, int(roundf(16.0 * k))))
+	_rate_note.text = capture.note
+	_rate_note.size = Vector2.ZERO  # shrink to the text
+	_rate_note.position = Vector2((sc.x - _rate_note.size.x) * 0.5, HudStyle.margins(sc).y + 24.0 * k)
+	_rate_note.modulate.a = capture.note_alpha()
 
 
 ## Every boat node at its render pose: the boat (`boats`), its sails (`sails`) and its wake (`wakes`), timed into

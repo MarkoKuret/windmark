@@ -348,6 +348,8 @@ density of §16.1: an item shows only when both allow it.
 - Portrait (§16.5): at 1080 x 1920 for UI scales 80 % to 130 %, in the pre-start, beat and penalty states at every
   density, every text is on screen and no two texts overlap, and no two blocks' drawn areas overlap (world tags
   aside); the default density is Glance; the radar is compact.
+- Capture rate note (§16.6): each `capture_slow` press shows the note for the new rate, also with the HUD hidden;
+  it is gone 1.5 s of frames later and fades over the last 0.4 s; `capture_pause` shows nothing.
 
 ## 16. Presentation
 
@@ -449,6 +451,21 @@ these clips, so the alert lane is at the top and large; the instruments are comp
   under the alert lane to over the feed and helm notes; without a camera the mark tag docks under the alert lane,
   left.
 - Nothing else changes: the same blocks, texts, colours and rules for what shows.
+- Left as is until it is checked on a real clip: the radar bottom right (it may sit under an app's buttons).
+
+### 16.6 Capture rate note
+
+When `capture_slow` changes the simulation rate (`controls.md` §7), a small note says the new rate: `Slow motion
+x0.5`, `Slow motion x0.25` or `Normal speed`. It is the only capture feedback; the clean pause shows nothing.
+
+- **Look**: one line, 16 px semibold paper text on an ink chip (86 %), centred horizontally, 24 px under the top
+  margin (`k` and margins of §16.5 in portrait). Small enough to leave the frame usable if it is caught.
+- **Time**: shown for 1.5 s of real frame time (it does not slow down with the rate and runs in a clean pause), fully
+  opaque until its last 0.4 s, then fading linearly to nothing. A new press restarts it with the new text. After
+  it nothing stays on screen.
+- **Hidden HUD**: it shows also with `hud_hide` and `world_tags` off, since that is how clips are captured; it
+  belongs to the scene's overlay layer, not to the HUD blocks.
+- A restart (`reset_boat`, the pause menu) clears it.
 
 ## 17. Frame-time overlay (development)
 

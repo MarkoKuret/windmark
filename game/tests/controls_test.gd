@@ -489,6 +489,37 @@ func test_capture_state() -> void:
 	on.handle(RawInput.new().press(&"capture_pause").press(&"capture_slow"))
 	t.ok(not on.frozen and on.rate() == 1.0 and on.sim_dt(0.1) == 0.1, "online: the capture actions change nothing")
 	t.ok(on.handle(RawInput.new().press(&"world_tags")) and not on.world_tags, "online: world_tags still toggles")
+	t.ok(on.note == "", "online: no rate note")
+	test_capture_note()
+
+
+## hud.md §16.6: the rate note says the new rate, lasts 1.5 s of frame time, fades over its last 0.4 s, and the
+## clean pause and a restart show none.
+func test_capture_note() -> void:
+	t.begin("9 capture rate note")
+	var cm := CaptureMode.new()
+	cm.handle(RawInput.new().press(&"capture_pause"))
+	t.ok(cm.note == "" and cm.note_alpha() == 0.0, "the clean pause shows no note")
+	var notes := []
+	for i in 3:
+		cm.handle(RawInput.new().press(&"capture_slow"))
+		notes.append(cm.note)
+		cm.frame(0.1)
+	t.ok(notes == ["Slow motion x0.5", "Slow motion x0.25", "Normal speed"], "a note per rate: %s" % [notes])
+	cm.handle(RawInput.new().press(&"capture_slow"))
+	t.ok(cm.note == "Slow motion x0.5" and cm.note_alpha() == 1.0, "a new press restarts the note, opaque")
+	for i in 66:  # 1.1 s at 60 fps
+		cm.frame(1.0 / 60.0)
+	t.near(cm.note_alpha(), 1.0, 1e-6, "still opaque at 1.1 s")
+	for i in 12:  # 1.3 s
+		cm.frame(1.0 / 60.0)
+	t.near(cm.note_alpha(), 0.5, 1e-3, "fading: half at 1.3 s")
+	for i in 13:  # 1.517 s
+		cm.frame(1.0 / 60.0)
+	t.ok(cm.note == "" and cm.note_alpha() == 0.0, "gone after 1.5 s (in a clean pause too)")
+	cm.handle(RawInput.new().press(&"capture_slow"))
+	cm.reset()
+	t.ok(cm.note == "" and cm.note_alpha() == 0.0, "a restart clears the note")
 
 
 ## one frame of the scene with `actions` pressed (and `held` held)
@@ -540,8 +571,13 @@ func test_capture_scene_fake() -> void:
 	_frame_with(sc, [&"capture_pause"])
 	t.ok(sc.sim.tick() == tick0 + 1 or sc.sim.tick() == tick0, "continues from the same tick")
 	t.ok(_ticks_over(sc, 1.0) >= 19, "running again")
+	var note := sc.get_node("HudLayer/RateNote") as Label
+	t.ok(not note.visible, "no rate note in the clean pause or running")
 	_frame_with(sc, [&"capture_slow"])
+	t.ok(note.visible and note.text == "Slow motion x0.5" and note.size.x > 0.0 and note.modulate.a == 1.0,
+		"capture_slow shows the rate note: %s" % note.text)
 	var n05 := _ticks_over(sc, 2.0)
+	t.ok(not note.visible, "the rate note is gone after the 2 s of frames")
 	t.ok(absi(n05 - 20) <= 1, "x0.5: 2 s of frames step %d ticks (20)" % n05)
 	_frame_with(sc, [&"capture_slow"])
 	var n025 := _ticks_over(sc, 2.0)
@@ -549,9 +585,23 @@ func test_capture_scene_fake() -> void:
 	_frame_with(sc, [&"capture_slow"])
 	var n1 := _ticks_over(sc, 2.0)
 	t.ok(absi(n1 - 40) <= 1, "x1 again: %d ticks (40)" % n1)
+	t.ok(not note.visible, "the rate note expired")
+	# with the HUD hidden the note still shows, then goes away
+	_frame_with(sc, [&"hud_hide"])
+	_frame_with(sc, [&"capture_slow"])
+	t.ok(not sc.hud.visible and note.visible and note.text == "Slow motion x0.5", "the rate note shows with the HUD hidden")
+	var gone_at := -1
+	for i in 120:
+		_frame_with(sc)
+		if not note.visible and gone_at < 0:
+			gone_at = i + 1
+	t.ok(gone_at >= 88 and gone_at <= 92, "gone after 1.5 s of frames (%d frames at 60 fps)" % gone_at)
+	_frame_with(sc, [&"hud_hide"])
 	_frame_with(sc, [&"capture_slow"])
 	sc.reset_boat()
 	t.ok(sc.capture.rate() == 1.0, "a restart sets the rate back to x1")
+	_frame_with(sc)
+	t.ok(not note.visible, "a restart clears the rate note")
 	# the pause menu over a clean pause, then back to the clean pause
 	_frame_with(sc, [&"capture_pause"])
 	_frame_with(sc, [&"pause_menu"])

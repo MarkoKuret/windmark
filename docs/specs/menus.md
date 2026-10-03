@@ -64,7 +64,7 @@ takes its portrait layout (`hud.md` §16.5); the display row has no effect while
 100 % (clips want the full detail). On a HiDPI screen the pixels are the screen's, so a Retina MacBook shows it at
 540 × 960 points. **Off** (default) puts the window back to the size it had before and the display setting applies
 again. Saved like the other settings; Reset section turns it off. The menus work in the portrait window too (they fit
-its width at every UI scale).
+its width at every UI scale; the main menu puts the page under the menu).
 
 ## 4. Look and input
 

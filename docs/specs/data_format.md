@@ -19,7 +19,8 @@ the rules scenario files of §9 (`<id>.scenario.json`); the core never does.
 - **JSON**, UTF-8, no comments. Top-level `"schema"` names the format and major version; a reader refuses a
   different major version. Unknown keys are ignored (forward compatibility) except inside tables.
 - **SI units** everywhere: m, m², kg, s, rad, m/s, m/s², rad/s. No knots or degrees in files; tools display
-  them. Field names carry no unit suffix; the unit is fixed by this spec.
+  them. Field names carry no unit suffix; the unit is fixed by this spec. The one exception is the rules scenario
+  file (§9), written by hand: it also takes degrees and knots under keys that name the unit.
 - **Numbers**: decimal JSON numbers, parsed to binary32 with correct rounding (`conventions.md` §5 rule 13).
   Writers emit 9 significant digits. `NaN`, `Infinity` are not JSON and never appear.
 - **Positions** are in the boat body frame (`conventions.md` §3): `x` forward, `y` to port, `z` up, origin at the
@@ -713,8 +714,24 @@ sail plan change the owner decides whether to repaint or rebake (`--only`).
 
 A short set-up for a rules question: a few boats placed on the first beat of an offline race, sailing into an
 incident. The front end starts it as `race.md` §14 says. Files live in `game/data/scenarios/<id>.scenario.json`,
-written by hand. The general rules of §1 hold (SI units, radians, ids); a file that fails validation is refused
-with the file, the JSON path and the reason, and nothing starts.
+written by hand. The general rules of §1 hold (ids, validation); a file that fails validation is refused with the
+file, the JSON path and the reason, and nothing starts.
+
+**Units.** Because the files are written by hand, this format is the one exception to the SI rule of §1: each angle
+and speed below may be given either under its SI key or under a key that names a hand-friendly unit, and the reader
+converts on load (`*_deg` degrees, `* π/180`; `*_kn` knots, `* 1852/3600` m/s). Giving both keys of one field is a
+validation error (the JSON path of the unit key, "give one of ..."). Ranges are checked after conversion and quoted
+in the unit of the key used. Only these keys have the alternative:
+
+| SI key | hand key |
+| --- | --- |
+| `wind.speed` (m/s) | `wind.speed_kn` |
+| `wind.from` (rad) | `wind.from_deg` |
+| `boats[].at.bearing` (rad) | `boats[].at.bearing_deg` |
+| `boats[].twa` (rad) | `boats[].twa_deg` |
+| `boats[].speed` (m/s) | `boats[].speed_kn` |
+
+Distances stay in metres (`at.dist`) and times in seconds. Every other data format keeps SI only.
 
 ### 9.1 Header
 
@@ -727,7 +744,7 @@ with the file, the JSON path and the reason, and nothing starts.
 | `class` | **R** | | the class id of every boat (`data/classes/<id>.boat.json`) |
 | `course` | **R** | | `"<venue>/<course id>"` (`game/data/courses/<venue>/<id>.course.json`); the world is on that venue |
 | `seed` | | 1 | the world seed (`conventions.md` §7): AI skippers, sea, liveries by the fleet rule |
-| `wind` | **R** | | `speed` **R** (m/s, base speed at 10 m), `from` **R** (rad compass), `shifts` (a `wind.md` §1 preset: `steady`, `stable`, `oscillating`, `shifty`, `unstable`; default `steady`), `puffs` (default `false`) |
+| `wind` | **R** | | `speed` or `speed_kn` **R** (m/s or knots, base speed at 10 m), `from` or `from_deg` **R** (rad or degrees compass, [0, 2π) or [0, 360)), `shifts` (a `wind.md` §1 preset: `steady`, `stable`, `oscillating`, `shifty`, `unstable`; default `steady`), `puffs` (default `false`) |
 | `lead` | | 20 | s from clip time 0 (the set-up) to the incident: how far back each boat starts (§9.2) |
 | `after` | | 5 | s the clip runs past the incident before the scene pauses |
 | `view` | | 0 | the boat the cameras start on |
@@ -737,10 +754,10 @@ with the file, the JSON path and the reason, and nothing starts.
 
 | key | | default | meaning |
 | --- | --- | --- | --- |
-| `at` | **R** | | where the boat would be at the incident: a wind-frame offset `{"bearing", "dist", "from"}` as in `courses.md` §3.2, resolved on the race's course axis `TWD_c`; `from` is a mark id of the course, a derived `"<a>_<b>_mid"`, or omitted for the middle of the start line |
+| `at` | **R** | | where the boat would be at the incident: a wind-frame offset `{"bearing", "dist", "from"}` as in `courses.md` §3.2 (`bearing_deg` in degrees in place of `bearing`), resolved on the race's course axis `TWD_c`; `from` is a mark id of the course, a derived `"<a>_<b>_mid"`, or omitted for the middle of the start line |
 | `tack` | **R** | | `"starboard"` or `"port"` |
-| `twa` | **R** | | true wind angle on that tack, rad, 0 to π |
-| `speed` | | polar | m/s, ≥ 0; default the polar speed at `twa` in the base wind with her front sail |
+| `twa` or `twa_deg` | **R** | | true wind angle on that tack, rad 0 to π, or degrees 0 to 180 |
+| `speed` or `speed_kn` | | polar | m/s or knots, ≥ 0; default the polar speed at `twa` in the base wind with her front sail |
 | `front_sail` | | class start sail | a sail id of the class's front sails, or `"none"` |
 | `auto_trim` | | `true` | the boat's auto trim |
 | `helm` | | `"hold"` | `hold` (keeps her set-up heading, `race.md` §14), `ai` (the core's AI skipper), `player` (boat 0 only: the player's controls) |
@@ -754,7 +771,7 @@ speed. Set-up positions must lie on the first beat, on the course side of the st
 mark, so that the race sees the jump of `race.md` §14 step 4 as plain track.
 
 Example (`game/data/scenarios/port_starboard.scenario.json`): the starboard boat and the port boat close-hauled,
-meeting 300 m up the first beat 20 s after the set-up.
+meeting 300 m up the first beat 20 s after the set-up, written in degrees and knots.
 
 ```json
 {
@@ -763,11 +780,11 @@ meeting 300 m up the first beat 20 s after the set-up.
   "name": "Port meets starboard",
   "class": "wm7",
   "course": "example_bay/example_wl",
-  "wind": { "speed": 6.17, "from": 0 },
+  "wind": { "speed_kn": 12, "from_deg": 0 },
   "lead": 20,
   "boats": [
-    { "at": { "bearing": 0, "dist": 300 }, "tack": "starboard", "twa": 0.7854 },
-    { "at": { "bearing": 0, "dist": 300 }, "tack": "port", "twa": 0.7854 }
+    { "at": { "bearing_deg": 0, "dist": 300 }, "tack": "starboard", "twa_deg": 45 },
+    { "at": { "bearing_deg": 0, "dist": 300 }, "tack": "port", "twa_deg": 45 }
   ]
 }
 ```

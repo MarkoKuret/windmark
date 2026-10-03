@@ -234,9 +234,12 @@ the class, course, wind, seed and boats from it; the other flags (`--sky`, `--qu
 apply. The player watches (spectate keys step through the boats) unless boat 0 has `"helm": "player"`. New
 scenarios: copy an example, give each boat where she should be at the incident (`at`, wind-relative from the middle
 of the start line or from a mark), her tack, TWA and optionally speed and front sail; boats with the same `at`
-meet there. Angles are radians and speeds m/s (0.7854 rad = 45°, 6.17 m/s = 12 kn).
+meet there. Write angles in degrees and speeds in knots with the unit keys (`twa_deg`, `bearing_deg`, `from_deg`,
+`speed_kn`), as the examples do; the SI keys (`twa` in radians, `speed` in m/s, ...) still work, but not both for
+one field (`data_format.md` §9).
 
-Test: `game/tests/run_scenario_test.sh` (headless): the files load and bad ones are refused, the port/starboard
+Test: `game/tests/run_scenario_test.sh` (headless): the files load and bad ones are refused, degrees and knots
+read as the SI keys do and both keys of one field are refused, the port/starboard
 scenario has the port boat keep clear under rule 10 and take the rule 10 penalty in every run with the same
 checksum every tick, the windward/leeward one calls rule 11, and the sail scene runs a scenario to its pause and
 restarts it.

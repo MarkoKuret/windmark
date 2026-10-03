@@ -9,6 +9,9 @@ const SHIFTS := ["steady", "stable", "oscillating", "shifty", "unstable"]  # WM_
 const HELMS := ["hold", "ai", "player"]
 const MIN_BOATS := 2
 const MAX_BOATS := 8
+## the hand-friendly units of §9 (the one exception to the SI rule): `*_deg` and `*_kn` keys
+const DEG := PI / 180.0
+const KN := 1852.0 / 3600.0
 
 
 ## One boat of the file (§9.2).
@@ -118,12 +121,18 @@ static func parse(d: Variant, why: Array) -> Scenario:
 	var w: Variant = d.get("wind")
 	if not w is Dictionary:
 		return _bad(why, "$.wind", "an object required")
-	if not _is_num(w.get("speed")) or float(w["speed"]) <= 0.0 or float(w["speed"]) > 30.0:
-		return _bad(why, "$.wind.speed", "m/s above 0 and up to 30 required")
-	s.wind_speed = float(w["speed"])
-	if not _is_num(w.get("from")) or float(w["from"]) < 0.0 or float(w["from"]) >= TAU:
-		return _bad(why, "$.wind.from", "rad in [0, 2π) required")
-	s.wind_from = float(w["from"])
+	var ws := _unit(w, "speed", "_kn", KN, "$.wind", why)
+	if ws.is_empty():
+		return null
+	if not ws["num"] or ws["v"] <= 0.0 or ws["v"] > 30.0:
+		return _bad(why, ws["at"], "knots above 0 and up to 58 required" if ws["hand"] else "m/s above 0 and up to 30 required")
+	s.wind_speed = ws["v"]
+	var wf := _unit(w, "from", "_deg", DEG, "$.wind", why)
+	if wf.is_empty():
+		return null
+	if not wf["num"] or wf["raw"] < 0.0 or wf["raw"] >= (360.0 if wf["hand"] else TAU):
+		return _bad(why, wf["at"], "degrees in [0, 360) required" if wf["hand"] else "rad in [0, 2π) required")
+	s.wind_from = wf["v"]
 	var sh: Variant = w.get("shifts", "steady")
 	if not sh is String or not SHIFTS.has(sh):
 		return _bad(why, "$.wind.shifts", "one of %s" % ", ".join(SHIFTS))
@@ -158,9 +167,15 @@ static func _parse_boat(d: Variant, i: int, why: Array) -> Boat:
 		return _bad(why, at, "not an object")
 	var b := Boat.new()
 	var a: Variant = d.get("at")
-	if not a is Dictionary or not _is_num(a.get("bearing")) or not _is_num(a.get("dist")) or float(a["dist"]) < 0.0:
-		return _bad(why, at + ".at", "{\"bearing\": rad, \"dist\": m >= 0, \"from\": optional} required")
-	b.bearing = float(a["bearing"])
+	var need := "{\"bearing\": rad or \"bearing_deg\": degrees, \"dist\": m >= 0, \"from\": optional} required"
+	if not a is Dictionary:
+		return _bad(why, at + ".at", need)
+	var br := _unit(a, "bearing", "_deg", DEG, at + ".at", why)
+	if br.is_empty():
+		return null
+	if not br["num"] or not _is_num(a.get("dist")) or float(a["dist"]) < 0.0:
+		return _bad(why, at + ".at", need)
+	b.bearing = br["v"]
 	b.dist = float(a["dist"])
 	if a.has("from"):
 		if not a["from"] is String or (a["from"] as String).is_empty():
@@ -170,13 +185,19 @@ static func _parse_boat(d: Variant, i: int, why: Array) -> Boat:
 	if tk != "starboard" and tk != "port":
 		return _bad(why, at + ".tack", "\"starboard\" or \"port\" required")
 	b.tack = 1 if tk == "starboard" else -1
-	if not _is_num(d.get("twa")) or float(d["twa"]) < 0.0 or float(d["twa"]) > PI + 1e-6:
-		return _bad(why, at + ".twa", "rad in [0, π] required")
-	b.twa = float(d["twa"])
-	if d.has("speed"):
-		if not _is_num(d["speed"]) or float(d["speed"]) < 0.0 or float(d["speed"]) > 30.0:
-			return _bad(why, at + ".speed", "m/s in [0, 30]")
-		b.speed = float(d["speed"])
+	var tw := _unit(d, "twa", "_deg", DEG, at, why)
+	if tw.is_empty():
+		return null
+	if not tw["num"] or tw["v"] < 0.0 or tw["v"] > PI + 1e-6:
+		return _bad(why, tw["at"], "degrees in [0, 180] required" if tw["hand"] else "rad in [0, π] required")
+	b.twa = minf(tw["v"], PI)
+	var sp := _unit(d, "speed", "_kn", KN, at, why)
+	if sp.is_empty():
+		return null
+	if sp["given"]:
+		if not sp["num"] or sp["v"] < 0.0 or sp["v"] > 30.0:
+			return _bad(why, sp["at"], "knots in [0, 58]" if sp["hand"] else "m/s in [0, 30]")
+		b.speed = sp["v"]
 	if d.has("front_sail"):
 		if not d["front_sail"] is String or (d["front_sail"] != "none" and not _is_id(d["front_sail"])):
 			return _bad(why, at + ".front_sail", "a sail id or \"none\"")
@@ -205,6 +226,25 @@ static func _parse_boat(d: Variant, i: int, why: Array) -> Boat:
 ## The player sails boat 0 (helm player); otherwise the player watches.
 func player_sails() -> bool:
 	return boats[0].helm == "player"
+
+
+## Reads one field of §9 that takes either its SI key or the hand key `<key><suffix>` (degrees, knots), scaled to
+## SI by `scale`. Returns {given, num, v (SI), raw (as written), hand, at (the JSON path of the key used)}: `given`
+## when either key is there, `num` when it also holds a finite number. Both keys present: {} with the reason in
+## `why[0]`.
+static func _unit(d: Dictionary, key: String, suffix: String, scale: float, at: String, why: Array) -> Dictionary:
+	var hk := key + suffix
+	if d.has(key) and d.has(hk):
+		_bad(why, "%s.%s" % [at, hk], "give one of \"%s\" and \"%s\", not both" % [key, hk])
+		return {}
+	var hand := d.has(hk)
+	var k := hk if hand else key
+	var out := {"given": d.has(k), "num": false, "v": NAN, "raw": NAN, "hand": hand, "at": "%s.%s" % [at, k]}
+	if d.has(k) and _is_num(d[k]):
+		out["num"] = true
+		out["raw"] = float(d[k])
+		out["v"] = float(d[k]) * (scale if hand else 1.0)
+	return out
 
 
 static func _is_id(v: Variant) -> bool:

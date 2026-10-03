@@ -17,6 +17,10 @@ var fov := FOV_DEFAULT
 var tau_yaw := 0.35
 var tau_heave := 0.3
 var lift := 1.0
+## the fov range of the zoom, and whether the zoom always changes fov (the long lens, cameras.md §9)
+var fov_min := 25.0
+var fov_max := 75.0
+var zoom_is_fov := false
 
 ## smoothed heading and heave (state, not parameters)
 var psi_c := 0.0
@@ -66,8 +70,8 @@ func handle_input(c: CameraInput, o: CamTypes.Options, dt: float) -> void:
 		az += c.mouse.x * MOUSE_RATE * o.speed * sx
 		el += c.mouse.y * MOUSE_RATE * o.speed * sy
 	var zoom := pow(NOTCH, c.zoom_notches) * pow(2.0, c.zoom_held * dt)
-	if c.fov_modifier:
-		fov = clampf(fov / zoom, 25.0, 75.0)
+	if c.fov_modifier or zoom_is_fov:
+		fov = clampf(fov / zoom, fov_min, fov_max)
 	else:
 		R = clampf(R / zoom, 8.0, 1000.0)
 	el = clampf(el, deg_to_rad(2.0), deg_to_rad(85.0))

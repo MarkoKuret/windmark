@@ -16,6 +16,10 @@ func _init() -> void:
 	test_shake()
 	test_free()
 	test_switching()
+	test_clip_start_line()
+	test_clip_mark()
+	test_clip_long_lens_helicopter()
+	test_clip_choosing()
 	t.finish(self, "cameras_test")
 
 
@@ -391,3 +395,161 @@ func test_switching() -> void:
 	rig.frame(tg, c, 0.016)
 	t.ok(rig.chase.R == tg.r0() and rig.chase.az == 0.0, "recentre resets the current mode")
 	rig.queue_free()
+
+
+## a course for the clip cameras: start line P (0, 0) - C (100, 0), next mark (0, 500) from (0, 0) (east, north)
+func _course(side := 1) -> ClipCourse:
+	var c := ClipCourse.new()
+	c.has_line = true
+	c.pin = Frames.enu_to_scene(0.0, 0.0, 0.0)
+	c.committee = Frames.enu_to_scene(100.0, 0.0, 0.0)
+	c.has_mark = true
+	c.mark = Frames.enu_to_scene(0.0, 500.0, 0.0)
+	c.approach = Frames.enu_to_scene(0.0, 0.0, 0.0)
+	c.side = side
+	c.zone_r = 21.6
+	return c
+
+
+func _select_clip(rig: CameraRig, tg: CamTypes.Target, m: int) -> CamTypes.View:
+	var v: CamTypes.View = null
+	for i in 5:
+		if rig.mode == m:
+			break
+		var c := CameraInput.new()
+		c.clip = true
+		v = rig.frame(tg, c, 1.0 / 60.0)
+	return v
+
+
+func test_clip_start_line() -> void:
+	t.begin("9 start line shot")
+	var rig := _rig()
+	rig.course = _course()
+	var tg := _target()
+	var v := _select_clip(rig, tg, CameraRig.Mode.START_LINE)
+	t.ok(rig.mode == CameraRig.Mode.START_LINE, "camera_clip selects the start line first")
+	t.near_v(v.xform.origin, Frames.enu_to_scene(120.0, 0.0, 6.0), 0.001, "eye 20 m outside the committee end, 6 m up")
+	var want := (rig.course.pin - v.xform.origin).normalized()
+	var ang := rad_to_deg((-v.xform.basis.z).angle_to(want))
+	t.ok(ang < 0.1, "looks at the pin end (%.4f deg off)" % ang)
+	t.near(v.fov, 30.0, 1e-6, "fov 30")
+	rig.queue_free()
+
+
+func test_clip_mark() -> void:
+	t.begin("10 mark shot")
+	for side in [1, -1]:
+		var rig := _rig()
+		rig.course = _course(side)
+		var tg := _target()
+		tg.pose.pos_x = 0.0
+		tg.pose.pos_y = 300.0
+		var v := _select_clip(rig, tg, CameraRig.Mode.MARK)
+		t.ok(rig.mode == CameraRig.Mode.MARK, "side %+d: mark shot selected" % side)
+		var b := deg_to_rad(225.0 if side > 0 else 135.0)
+		var want := Frames.enu_to_scene(40.0 * sin(b), 500.0 + 40.0 * cos(b), 6.0)
+		t.near_v(v.xform.origin, want, 0.001, "side %+d: eye at bearing %d from the mark" % [side, 225 if side > 0 else 135])
+		if side > 0:
+			t.near_v(v.xform.origin, Frames.enu_to_scene(-28.28, 471.72, 6.0), 0.01, "left to port: (-28.28, 471.72, 6)")
+		# zone empty: the viewed boat, 2 m up
+		t.near_v(rig.mark.aim, tg.point(0.0) + Vector3(0, 2, 0), 1e-4, "side %+d: zone empty, aims at the viewed boat" % side)
+		# two boats in the zone: the one ahead in race order
+		rig.course.boats = [Frames.enu_to_scene(30.0, 300.0, 0.0), Frames.enu_to_scene(5.0, 490.0, 0.0),
+			Frames.enu_to_scene(-5.0, 485.0, 0.0)]
+		for i in 300:
+			v = rig.frame(tg, CameraInput.new(), 1.0 / 60.0)
+		var lead := Frames.enu_to_scene(5.0, 490.0, 0.0) + Vector3(0, 2, 0)
+		t.near_v(rig.mark.aim, lead, 0.05, "side %+d: aims at the zone leader after 5 s (tau 0.5 s)" % side)
+		t.near_v(v.xform.origin, want, 0.001, "side %+d: the eye stays fixed" % side)
+		rig.queue_free()
+
+
+func test_clip_long_lens_helicopter() -> void:
+	t.begin("11 long lens and helicopter")
+	var rig := _rig()
+	rig.course = null
+	var tg := _target()
+	var v := _select_clip(rig, tg, CameraRig.Mode.LONG_LENS)
+	t.ok(rig.mode == CameraRig.Mode.LONG_LENS, "without a course camera_clip starts at the long lens")
+	var el := deg_to_rad(5.0)
+	t.near_v(v.xform.origin, Vector3(0, 150.0 * sin(el) + 1.0, 150.0 * cos(el)), 0.001, "long lens eye")
+	t.near(v.fov, 12.0, 1e-6, "long lens fov 12")
+	var c := CameraInput.new()
+	c.zoom_notches = 3
+	v = rig.frame(tg, c, 1.0 / 60.0)
+	t.ok(v.fov < 12.0 and rig.long_lens.R == 150.0, "long lens zoom changes fov (%.2f), not the distance" % v.fov)
+	c = CameraInput.new()
+	c.zoom_notches = 50
+	v = rig.frame(tg, c, 1.0 / 60.0)
+	t.near(v.fov, 6.0, 1e-6, "long lens fov floor 6")
+	c = CameraInput.new()
+	c.recentre = true
+	v = rig.frame(tg, c, 1.0 / 60.0)
+	t.near(v.fov, 12.0, 1e-6, "recentre restores the long lens")
+	v = _select_clip(rig, tg, CameraRig.Mode.HELICOPTER)
+	t.near_v(v.xform.origin, Vector3(0, 60, 120), 0.01, "helicopter starts 120 m astern, 60 m up")
+	for i in 1080:
+		v = rig.frame(tg, CameraInput.new(), 1.0 / 60.0)
+	t.near_v(v.xform.origin, Vector3(-120, 60, 0), 0.01, "after 18 s 90 deg clockwise: 120 m west")
+	var fwd := -v.xform.basis.z
+	t.near_v(fwd, (Vector3.ZERO - v.xform.origin).normalized(), 1e-4, "looks at the boat")
+	t.near(v.fov, 35.0, 1e-6, "helicopter fov 35")
+	# frame-rate independent turn
+	for fps in [30.0, 144.0]:
+		var r2 := _rig()
+		_select_clip(r2, tg, CameraRig.Mode.HELICOPTER)
+		for i in int(18.0 * fps):
+			r2.frame(tg, CameraInput.new(), 1.0 / fps)
+		t.near_v(r2.view.xform.origin, Vector3(-120, 60, 0), 0.01, "%d fps: 120 m west after 18 s" % fps)
+		r2.queue_free()
+	rig.queue_free()
+
+
+func test_clip_choosing() -> void:
+	t.begin("12 choosing the clip cameras")
+	var tg := _target()
+	var rig := _rig()
+	rig.frame(tg, CameraInput.new(), 0.016)
+	var order := []
+	for i in 3:
+		var c := CameraInput.new()
+		c.clip = true
+		rig.frame(tg, c, 0.016)
+		order.append(rig.mode)
+	t.ok(order == [CameraRig.Mode.LONG_LENS, CameraRig.Mode.HELICOPTER, CameraRig.Mode.LONG_LENS],
+		"no course: long lens, helicopter, long lens: %s" % [order])
+	rig.course = _course()
+	order = []
+	for i in 5:
+		var c := CameraInput.new()
+		c.clip = true
+		rig.frame(tg, c, 0.016)
+		order.append(rig.mode)
+	t.ok(order == [CameraRig.Mode.HELICOPTER, CameraRig.Mode.START_LINE, CameraRig.Mode.MARK,
+		CameraRig.Mode.LONG_LENS, CameraRig.Mode.HELICOPTER], "with a course all four in turn: %s" % [order])
+	var before := rig.presets.duplicate(true)
+	var c := CameraInput.new()
+	c.preset_store = 2
+	rig.frame(tg, c, 0.016)
+	t.ok(rig.presets == before, "store does nothing while a clip camera is shown")
+	t.ok(rig.to_dict()["mode"] == CameraRig.Mode.CHASE, "a clip camera is not saved as the mode")
+	c = CameraInput.new()
+	c.next = true
+	rig.frame(tg, c, 0.016)
+	t.ok(rig.mode == CameraRig.Mode.CHASE, "camera_next from a clip camera selects chase")
+	c = CameraInput.new()
+	c.clip = true
+	rig.frame(tg, c, 0.016)
+	t.ok(rig.mode == CameraRig.Mode.HELICOPTER, "from a regular camera camera_clip returns to the last clip camera")
+	rig.from_dict({"mode": CameraRig.Mode.MARK})
+	t.ok(rig.mode == CameraRig.Mode.CHASE, "a saved clip mode loads as chase")
+	rig.queue_free()
+	var off := _rig()
+	off.clip_allowed = false
+	off.frame(tg, CameraInput.new(), 0.016)
+	c = CameraInput.new()
+	c.clip = true
+	off.frame(tg, c, 0.016)
+	t.ok(off.mode == CameraRig.Mode.CHASE, "online (clip cameras not allowed) the key changes nothing")
+	off.queue_free()

@@ -16,8 +16,8 @@ const SAIL_TYPES := ["main", "jib", "genoa", "code_zero", "spinnaker_sym", "spin
 
 ## Field orders of the PackedFloat32Array records of CoreSim (the C structs' order).
 const STATE_FIELDS := [
-	"pos_x", "pos_y", "z", "psi", "v", "h", "yaw_rate", "phi", "phi_rate", "theta", "theta_rate", "wobble_phase",
-	"contact_vx", "contact_vy", "contact_yaw_rate", "twd_from", "awd_from", "tws", "twa", "aws", "awa",
+	"pos_x", "pos_y", "z", "psi", "v", "sway", "h", "yaw_rate", "phi", "phi_rate", "theta", "theta_rate",
+	"wobble_phase", "contact_vx", "contact_vy", "contact_yaw_rate", "twd_from", "awd_from", "tws", "twa", "aws", "awa",
 	"v_filt", "sog_filt_x", "sog_filt_y",
 ]
 const OUTPUT_FIELDS := [
@@ -40,6 +40,9 @@ var core: Object = null
 var settings := {}
 ## the drawn sea's clock offset is always 0 here; kept for FakeSim callers
 var sea_t0_ms := 0.0
+
+## called before every step() (rules scenarios: ScenarioRun.pilot steers its hold boats here); empty: none
+var before_step := Callable()
 
 var _err := ""
 var _info := {}  # class id -> ClassInfo
@@ -215,6 +218,26 @@ func place_boat(b: int, x: float, y: float, psi: float) -> bool:
 	return false
 
 
+## Rules scenarios (race.md §14): puts boat b at a pose with speed v (m/s) and front sail (index, -1 none, -2 the one
+## up now) at any time, before or after the race is created (wm_world_scenario_place).
+func scenario_place(b: int, x: float, y: float, psi: float, v: float, front_sail := -2) -> bool:
+	_cache.clear()
+	if core.scenario_place(b, x, y, psi, v, front_sail):
+		return true
+	_err = core.last_error()
+	return false
+
+
+## An AI skipper of `level` sails boat b from the next step on (wm_world_ai_add).
+func ai_add(b: int, level: Variant = "intermediate", speed_only := false) -> bool:
+	var lv := ai_level_index(level)
+	if not core.ai_add(b, lv, speed_only):
+		_err = core.last_error()
+		return false
+	_ai_level[b] = AI_LEVELS[lv]
+	return true
+
+
 ## Creates the race on a course file (game/data/courses/<venue>/<course>.course.json when "venue/course").
 func create_race(course: String) -> bool:
 	var path := course
@@ -323,6 +346,8 @@ func apply_input(boat: int, frame: InputFrame) -> int:
 
 
 func step() -> void:
+	if before_step.is_valid():
+		before_step.call()
 	core.step()
 	_cache.clear()
 

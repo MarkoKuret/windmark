@@ -265,8 +265,10 @@ TEST_CASE("ai race: ten Intermediate boats on the default course, five seeds (ai
   CHECK(s.per_boat(s.penalties) <= 1.3);
   CHECK(double(s.contacts) / s.races <= 6.0);
   CHECK(s.stuck_max <= 60.0);
-  // Bad air triggers, and the boats that trigger are in less of it 20 s later.
-  CHECK(s.per_boat(s.bad_air) >= 1.5);
+  // Bad air triggers, and the boats that trigger are in less of it 20 s later. The count follows how bunched the
+  // fleet leaves the line: since boats parked before the start drift to leeward (boat.md §6.4) these five seeds
+  // give 1.1 triggers/boat (2.5 before); seeds 6 to 20 give 2.1 (2.5 before).
+  CHECK(s.per_boat(s.bad_air) >= 1.0);
   CHECK(s.d_after < s.d_at);
 }
 

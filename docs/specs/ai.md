@@ -102,8 +102,8 @@ with a 3° hysteresis on each boundary so the type does not flicker.
 ### 4.2 Reaching
 
 Steer the direct course to the aim point of the mark approach (§6.1), adjusted for the current so the course over
-ground points at it: `ψ = compass(R − c) − wrap_pi(cog − ψ)` with the present drift angle (the boat model has no
-leeway, `boat.md` §6.4, so the drift is the current alone). Sail: `best_sail` for the
+ground points at it: `ψ = compass(R − c) − wrap_pi(cog − ψ)` with the present drift angle (the boat model folds
+the leeway of a sailing boat into the polar, `boat.md` §6.4, so with way on the drift is the current alone). Sail: `best_sail` for the
 present TWA.
 
 ### 4.3 Beating and running: headings, laylines, tack points
@@ -423,7 +423,7 @@ With a pending penalty the AI starts a turn when all of:
 - boat speed ≥ 0.75 × target, and not within 5 s after a failed turn;
 - the next zone is more than 20 s of sailing (plus the circle) away;
 - the turn's circle is clear of the other boats as they move: no hull within `0.5·L` of the circle over the next
-  6 s, each boat moved on her present course and speed (a boat coming up fast is in the way, one sailing away is
+  6 s, each boat moved on her present course and speed with her drift (`rules.md` §3.1) (a boat coming up fast is in the way, one sailing away is
   not; a boat taking a penalty must keep clear of all others, rule 22.2), and none within `3·L` ahead.
 
 From 20 s before the deadline (`rules.md` §9.4; the turn must be in progress when it passes) it is **urgent**: only
@@ -601,7 +601,7 @@ measurements. Measured on the default course (11 kn, stable shifts):
 | run | measured | spec target |
 | --- | --- | --- |
 | 10 Intermediate, 5 seeds | 86 % finish (the rest DSQ); 0.9 penalties/boat; 4.8 contacts/race; stuck ≤ 22 s | all finish; ≤ 0.4; ≤ 1; ≤ 20 s |
-| same | bad air 1.7 triggers/boat, deficit 0.13 → 0.03 twenty seconds later (93 % lower) | ≥ 2, lower |
+| same | bad air 1.1 triggers/boat (2.1 over seeds 6 to 20), deficit 0.15 → 0.02 twenty seconds later (95 % lower) | ≥ 2, lower |
 | every level, 10 boats, 2 seeds | 75–95 % finish; OCS 0–5 %; mean start delay 15–20 s | Pro OCS < 5 %, delay < 2 s; Easy < 15 %, 3–8 s |
 | 1 nm beat, 10 boats | 5.0 tacks/boat | 3–14 |
 | match race, 2 Expert, 5 seeds | the leader covers in every race (1–7 activations) | ≥ 1 |
@@ -609,7 +609,7 @@ measurements. Measured on the default course (11 kn, stable shifts):
 | speed only (same) | finish-time ratios to Pro within 2.5 % of the `performance_scale` ratios | within 3 % |
 
 The assertions of `ai_races` hold the measured level (finish ≥ 80 %, ≤ 1.3 penalties/boat, ≤ 6 contacts/race,
-bad air ≥ 1.5 and lower 20 s later, every level ≥ 70 % finish, tacks 3–14, cover in every match, Easy behind Pro).
+bad air ≥ 1.0 and lower 20 s later, every level ≥ 70 % finish, tacks 3–14, cover in every match, Easy behind Pro).
 **Open**: the penalty and contact targets, the start delays (a lone boat starts within 1–9 s; in a fleet the
 crowd at the line and pre-start penalties make the mean 13–25 s) and strict level order in a mixed fleet are not
 met yet. Most remaining penalties come from the windward mark in a crowd (rule 31 and the `44.1-late` penalties

@@ -19,7 +19,8 @@ Motion motion_of(AC& x, std::size_t j) {
   m.psi = s.psi;
   m.v = s.v;
   m.r = b.outputs().turn_rate;
-  m.cur = {x.w.env(j).current_x, x.w.env(j).current_y};
+  // The drift over the ground: current plus the sideways drift of a stalled boat (rules.md §3.1).
+  m.cur = v_add(Vec2{x.w.env(j).current_x, x.w.env(j).current_y}, b.drift_velocity());
   return m;
 }
 
@@ -60,7 +61,7 @@ bool escape(AC& x, std::size_t j, const Track& tj, std::int32_t k0, const Track&
   mj.psi = tj.psi[static_cast<std::size_t>(k0)];
   mj.v = b.state().v;
   mj.r = b.outputs().turn_rate;
-  mj.cur = {x.w.env(j).current_x, x.w.env(j).current_y};
+  mj.cur = v_add(Vec2{x.w.env(j).current_x, x.w.env(j).current_y}, b.drift_velocity());
   const float rate = max(0.3f, std::fabs(mj.v)) / d.turn_radius_full;
   // Own track from k0 on.
   Track o;

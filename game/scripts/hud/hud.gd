@@ -72,6 +72,8 @@ var camera: Camera3D = null
 var camera_kind := "chase"
 ## name tags on (the `boat_names` action) and the boats the player selected for a tag
 var show_names := true
+## controls.md §7 world_tags: the world tags (mark tag, tack point, name tags, edge pointers, penalty turn) shown
+var world_tags := true
 var selected := {}
 var sim: SimSource
 ## the screen the HUD lays out for, when set (tests, previews); zero: its viewport's
@@ -119,6 +121,8 @@ var _ui_fed := false
 var _view_held := 0.0
 var _wired: PlayerControls = null
 var _k := 1.0
+## where edge pointers run in portrait (hud.md §16.5), screen px; empty in landscape (HudPaint.edge_pointer's own box)
+var edge_box := Rect2()
 
 
 func _init() -> void:
@@ -217,9 +221,9 @@ func shown(key: String) -> bool:
 
 # ---- density (hud.md §16.1) ----
 
-## Race, or Glance on the Steam Deck and on screens under 900 px tall.
+## Race, or Glance on the Steam Deck, on screens under 900 px tall and in portrait (hud.md §16.5).
 static func default_density(screen: Vector2) -> Density:
-	if OS.has_environment("SteamDeck") or HudStyle.small_screen(screen):
+	if OS.has_environment("SteamDeck") or HudStyle.small_screen(screen) or HudStyle.portrait(screen):
 		return Density.GLANCE
 	return Density.RACE
 
@@ -1052,6 +1056,10 @@ func _layout() -> void:
 	var its := items()
 	world.position = Vector2.ZERO
 	world.size = sc
+	edge_box = Rect2()
+	if HudStyle.portrait(sc):
+		_layout_portrait(sc, k, m, its)
+		return
 	# instrument page, bottom left
 	var ps := HudPaint.page_size(self) * k
 	inst_page.position = Vector2(m.x, sc.y - m.y - ps.y)
@@ -1081,8 +1089,41 @@ func _layout() -> void:
 	var left := inst_page.position.x + ps.x + 24.0 * k
 	var right := (radar.position.x if radar.visible else sc.x - m.x) - 24.0 * k
 	var hw := minf(HudPaint.HELM.x * k, maxf(right - left, 160.0 * k))
+	_place_helm(Vector2((left + right) * 0.5 - hw * 0.5, sc.y - m.y - HudPaint.HELM.y * k), hw, k)
+	# top centre lane: start block, penalty panel, alerts
+	race_panel.position = Vector2(sc.x * 0.5 - HudPaint.LANE_W * k * 0.5, m.y)
+	_place_lane(k)
+	# the next mark tag: on the mark, or docked under the race bug without a camera
+	next_panel.size = Vector2(330, 120) * k
+	next_panel.visible = race.active and race.next_step > 0 and not race.finished and text_of("next") != ""
+	world.visible = world_tags
+	if not world_tags and world_camera() != null:
+		next_panel.visible = false
+	if next_panel.visible and world_camera() != null:
+		var mp: Variant = mark_screen()
+		if mp == null:
+			next_panel.visible = false
+		else:
+			var p: Vector2 = mp
+			next_panel.position = Vector2(clampf(p.x - 30.0 * k, m.x, sc.x - m.x - next_panel.size.x),
+				clampf(p.y - 150.0 * k, m.y, sc.y - m.y - next_panel.size.y))
+	else:
+		next_panel.position = Vector2(m.x, m.y + 230.0 * k)
+	arrow_view.position = Vector2.ZERO
+	arrow_view.size = Vector2(26, 22) * k
+	# tables, centred
+	var rs := HudPaint.table_size(RANK_W, race.ranking_rows().size() if ranking_panel.visible else 0) * k
+	ranking_panel.size = rs
+	ranking_panel.position = (sc - rs) * 0.5
+	var qs := HudPaint.table_size(RESULT_W, race.result_rows.size()) * k
+	results_panel.size = qs
+	results_panel.position = (sc - qs) * 0.5
+
+
+## The helm strip at `pos`, `hw` wide: its bars and trim gauges inside it, the notes over it.
+func _place_helm(pos: Vector2, hw: float, k: float) -> void:
 	helm_block.size = Vector2(hw, HudPaint.HELM.y * k)
-	helm_block.position = Vector2((left + right) * 0.5 - hw * 0.5, sc.y - m.y - helm_block.size.y)
+	helm_block.position = pos
 	rudder_bar.position = Vector2(0, 116.0 * k)
 	rudder_bar.size = Vector2(hw, 12.0 * k)
 	sheet_bar.position = Vector2(hw * 0.3, 72.0 * k)
@@ -1093,9 +1134,14 @@ func _layout() -> void:
 		gauge_views[i].size = Vector2(gw, 56.0 * k)
 	helm_notes.size = Vector2(hw + 240.0 * k, 56.0 * k)
 	helm_notes.position = helm_block.position + Vector2(-120.0 * k, -60.0 * k)
-	# top centre lane: start block, penalty panel, alerts
+
+
+## The alert lane's blocks inside `race_panel` (placed by the caller) at the lane's scale `k`: the start block with
+## its flags, the penalty panel with its ring, the alert lines; returns the lane's height (px).
+func _place_lane(k: float) -> float:
 	race_panel.size = Vector2(HudPaint.LANE_W, 600) * k
-	race_panel.position = Vector2(sc.x * 0.5 - race_panel.size.x * 0.5, m.y)
+	for b in [start_block, flags_view, penalty_panel, ring_view, alerts_block]:
+		(b as HudCanvas).k = k
 	var y := 0.0
 	var sh := HudPaint.start_height(self)
 	start_block.visible = sh > 0.0
@@ -1118,7 +1164,59 @@ func _layout() -> void:
 	alerts_block.visible = ah > 0.0
 	alerts_block.position = Vector2(0, y) * k
 	alerts_block.size = Vector2(HudPaint.LANE_W, maxf(ah, 1.0)) * k
-	# the next mark tag: on the mark, or docked under the race bug without a camera
+	return (y + ah) * k
+
+
+# ---- portrait layout (hud.md §16.5) ----
+
+## the alert lane's scale over the rest in portrait, at most (hud.md §16.5)
+const PORTRAIT_LANE_MAX := 1.15
+
+
+## Portrait: the race bug and wind page on top, the alert lane large under them, the instruments compact at the
+## bottom (page left, compact radar right, helm strip, notes, chip and feed over them), tables fitted to the width.
+func _layout_portrait(sc: Vector2, k: float, m: Vector2, its: Array[String]) -> void:
+	var mb := HudStyle.bottom_margin(sc)
+	var inner := sc.x - 2.0 * m.x
+	# top row: race bug left, wind page right
+	bug_block.visible = race.active and its.has("bug")
+	bug_block.position = m
+	bug_block.size = Vector2(520, 200) * k
+	wind_page.visible = its.has("wind_page")
+	wind_page.size = Vector2(HudPaint.WIND.x, 160) * k
+	wind_page.position = Vector2(sc.x - m.x - HudPaint.WIND.x * k, m.y)
+	var top := 0.0
+	if bug_block.visible:
+		top = maxf(top, bug_block.extent().end.y)
+	if wind_page.visible:
+		top = maxf(top, wind_page.extent().end.y)
+	# the alert lane under them, as large as fits
+	var kl := minf(k * PORTRAIT_LANE_MAX, inner / HudPaint.LANE_W)
+	race_panel.position = Vector2(sc.x * 0.5 - HudPaint.LANE_W * kl * 0.5, m.y + top + (16.0 * k if top > 0.0 else 0.0))
+	var lane_h := _place_lane(kl)
+	# bottom row: instrument page left, compact radar right
+	var ps := HudPaint.page_size(self) * k
+	radar.visible = race.active
+	radar.compact = true
+	var d := 300.0 * k * 0.72
+	radar.size = Vector2(d, d)
+	radar.position = Vector2(sc.x - m.x - d, sc.y - mb - d)
+	inst_page.position = Vector2(m.x, sc.y - mb - ps.y)
+	inst_page.size = ps
+	var row_top := minf(inst_page.position.y, radar.position.y if radar.visible else INF)
+	# helm strip centred over the row, notes over it, the density chip over the page
+	var hw := minf(HudPaint.HELM.x * k, inner)
+	_place_helm(Vector2(sc.x * 0.5 - hw * 0.5, row_top - 12.0 * k - HudPaint.HELM.y * k), hw, k)
+	toast_block.visible = _toast_t > 0.0
+	toast_block.position = inst_page.position - Vector2(0, 40.0 * k)
+	toast_block.size = Vector2(300, 32) * k
+	toast_block.modulate.a = clampf(_toast_t / 0.24, 0.0, 1.0)
+	# the feed right-aligned over the helm notes, its last line nearest them
+	feed_block.visible = race.active and (its.has("feed") or its.has("feed_own"))
+	var lines := feed_lines().size() if feed_block.visible else 0
+	feed_block.size = Vector2(minf(620.0 * k, inner), (lines * 26.0 + 2.0) * k)
+	feed_block.position = Vector2(sc.x - m.x - feed_block.size.x, helm_notes.position.y - 8.0 * k - feed_block.size.y)
+	# the next mark tag: on the mark, or docked under the alert lane without a camera
 	next_panel.size = Vector2(330, 120) * k
 	next_panel.visible = race.active and race.next_step > 0 and not race.finished and text_of("next") != ""
 	if next_panel.visible and world_camera() != null:
@@ -1127,19 +1225,28 @@ func _layout() -> void:
 			next_panel.visible = false
 		else:
 			var p: Vector2 = mp
+			# kept under the alert lane, so it never covers the rule text
+			var y_min := race_panel.position.y + lane_h + 12.0 * k if lane_h > 0.0 else m.y + top
 			next_panel.position = Vector2(clampf(p.x - 30.0 * k, m.x, sc.x - m.x - next_panel.size.x),
-				clampf(p.y - 150.0 * k, m.y, sc.y - m.y - next_panel.size.y))
+				clampf(p.y - 150.0 * k, y_min, maxf(y_min, sc.y - mb - next_panel.size.y)))
 	else:
-		next_panel.position = Vector2(m.x, m.y + 230.0 * k)
+		next_panel.position = Vector2(m.x, race_panel.position.y + lane_h + 12.0 * k)
 	arrow_view.position = Vector2.ZERO
 	arrow_view.size = Vector2(26, 22) * k
-	# tables, centred
-	var rs := HudPaint.table_size(RANK_W, race.ranking_rows().size() if ranking_panel.visible else 0) * k
-	ranking_panel.size = rs
-	ranking_panel.position = (sc - rs) * 0.5
-	var qs := HudPaint.table_size(RESULT_W, race.result_rows.size()) * k
-	results_panel.size = qs
-	results_panel.position = (sc - qs) * 0.5
+	# edge pointers between the alert lane and the feed and helm notes
+	var e_top := race_panel.position.y + lane_h + 24.0 * k
+	var e_bottom := minf(helm_notes.position.y, feed_block.position.y if lines > 0 else INF) - 56.0 * k
+	edge_box = Rect2(70.0 * k, e_top, sc.x - 140.0 * k, maxf(e_bottom - e_top, 1.0))
+	# tables centred, scaled down to the width
+	_place_table(ranking_panel, RANK_W, race.ranking_rows().size() if ranking_panel.visible else 0, k, inner, sc)
+	_place_table(results_panel, RESULT_W, race.result_rows.size(), k, inner, sc)
+
+
+func _place_table(b: HudCanvas, widths: Array, rows: int, k: float, inner: float, sc: Vector2) -> void:
+	var ds := HudPaint.table_size(widths, rows)
+	b.k = minf(k, inner / ds.x)
+	b.size = ds * b.k
+	b.position = (sc - b.size) * 0.5
 
 
 func _all_canvases() -> Array[HudCanvas]:

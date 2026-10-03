@@ -22,6 +22,8 @@ controls, the cameras, the minimal HUD, the audio and a sail test scene that put
 | `scripts/audio/` | The audio (`docs/specs/audio.md`): `GameAudio` (the node that plays the race), `SoundMap` (the sound map and its files), `SoundFormula` (terms, gates, triggers), `BoatSoundInputs` (the formula inputs of a boat), `AudioBuses` (the buses, ducking and wind pan), `SoundSynth` (the synthesised fallback) |
 | `audio/default/` | The default sound set: Ogg Vorbis files written by `tools/soundgen` (our own synthesis), with their `.import` files |
 | `data/sound_map.json` | The sound map (`audio.md` §9): the only place that names sound files |
+| `data/scenarios/` | Rules scenario files (`windmark.scenario/1`, `data_format.md` §9): `port_starboard`, `windward_leeward` |
+| `scripts/scenario/` | The rules scenarios (`race.md` §14): `Scenario` (the file, loaded and validated), `ScenarioRun` (starts it on the core and steers its hold boats) |
 | `scripts/venue/` | `VenueShapes` (the venue's land polygons and obstacles, from the core or the venue file), `LandTerrain` (the drawn ground height and colours), `ColorMesh` (vertex-coloured mesh builder) |
 | `shaders/` | Shaders. `sea_common`, `sky_common`, `wake_common`, `boat_shadow_common` (`.gdshaderinc`) hold the water, sky, wake and drawn shadow maths, written so the offline preview can compile them as GLSL too; `water_l/m/h` are the sea per quality tier, `sky`, `wake`, `wake_normal`, `boat_shadow` (the boats' shadows drawn on the water); `boat` is the boat surface shader; `sail` the sails, with the procedural cloth of `sail_cloth.gdshaderinc` (also compiled by the sail preview) |
 | `scenes/` | Scenes. `sea/` is the sea (`sea.tscn`, `Sea`), its data source, wakes and drawn boat shadows (`BoatShadows`), and the daytime sky (`sky_day.tscn`, `SkyRig`, `env_day.tres`); `water_test.tscn` shows them together; `sail_test.tscn` is one boat sailing freely on the core (FakeSim as fallback), or racing alone on the example course, with cameras, controls and HUD on that sea and sky; `venue/` draws the venue land and obstacles (`VenueView`, `land.gdshader`); `course/` the course (`CourseView`, `CourseProps`); `menu/` the menus (`main_menu.tscn`, the main scene; `pause_menu.tscn`; the setup and settings panels, rows, theme and backdrop) |
@@ -166,7 +168,7 @@ others as Dictionaries with the C field names. `CoreSimSource` caches the per-bo
   written one (`GameSetup.next`) or a test sets `setup`, else the scene's exports (free sailing); command-line
   flags after `--` override both: `--race`, `--free`, `--fleet=10`, `--level=expert`, `--speed-only`, `--watch`
   (an AI sails the player's boat too), `--class=wm12`, `--venue=`, `--course=<venue>/<id>`, `--seed=` (0: from
-  the clock), `--wind=<kn>`, `--wind-from=<deg>`, `--fake`, `--core`. Spectating (`spectate_next`, `prev`,
+  the clock), `--wind=<kn>`, `--wind-from=<deg>`, `--fake`, `--core`, `--scenario=<id>` (a rules scenario, below). Spectating (`spectate_next`, `prev`,
   `leader` by race rank) works when not racing (`--watch`) or once the player has finished, retired or left.
   To race in a window: `godot --path game res://scenes/sail_test.tscn -- --race --fleet=10 --level=intermediate`.
 - **Simulation** (`sim_kind`): `AUTO` (the default) runs the core through `CoreSimSource` when the GDExtension is
@@ -214,6 +216,33 @@ others as Dictionaries with the C field names. `CoreSimSource` caches the per-bo
   hold or toggle, sheet turns auto-trim off), `CameraRig.options` (speed, invert, reduced motion, smooth switch,
   auto-recentre), `Hud.assist` (Full, Standard, Minimal). Not implemented yet: mouse helm, one-hand layout,
   rebinding UI, vibration.
+
+## Rules scenarios
+
+A rules scenario (`race.md` §14, file format `data_format.md` §9) is a repeatable set-up for a rules question (the
+"Who's wrong?" clips): two to eight boats put on the first beat of an offline race on chosen courses, sailing
+into an incident `lead` seconds later (20 s by default). The scene pauses `after` seconds past it (5 s by default);
+the reset key runs the same clip again, identical every time while no boat is the player's.
+
+```
+godot --path game res://scenes/sail_test.tscn -- --scenario=port_starboard     # in a window, by the owner
+godot --path game res://scenes/sail_test.tscn -- --scenario=/path/to/my.scenario.json
+```
+
+`--scenario=<id>` reads `game/data/scenarios/<id>.scenario.json` (or a path to a `.scenario.json` file) and sets
+the class, course, wind, seed and boats from it; the other flags (`--sky`, `--quality`, `--no-hud`, ...) still
+apply. The player watches (spectate keys step through the boats) unless boat 0 has `"helm": "player"`. New
+scenarios: copy an example, give each boat where she should be at the incident (`at`, wind-relative from the middle
+of the start line or from a mark), her tack, TWA and optionally speed and front sail; boats with the same `at`
+meet there. Write angles in degrees and speeds in knots with the unit keys (`twa_deg`, `bearing_deg`, `from_deg`,
+`speed_kn`), as the examples do; the SI keys (`twa` in radians, `speed` in m/s, ...) still work, but not both for
+one field (`data_format.md` §9).
+
+Test: `game/tests/run_scenario_test.sh` (headless): the files load and bad ones are refused, degrees and knots
+read as the SI keys do and both keys of one field are refused, the port/starboard
+scenario has the port boat keep clear under rule 10 and take the rule 10 penalty in every run with the same
+checksum every tick, the windward/leeward one calls rule 11, and the sail scene runs a scenario to its pause and
+restarts it.
 
 ## Measuring performance
 
@@ -313,6 +342,11 @@ viewed boat. What it shows (`docs/specs/hud.md`):
 - **Feed and results** (§13): six lines of 8 s; provisional results at the own finish, the core's results at the
   close (AI badges, projected finishes marked `proj.`).
 - **Assists** (§14): `Hud.assist` and `Hud.shows(element)`; the wind shadow view is not drawn yet.
+- **Portrait** (§16.5): on any screen taller than wide the HUD lays out for 9:16 clips: race bug and wind page on
+  top, the alert lane (countdown, penalty panel, rule text) large under them, the instruments compact at the
+  bottom, Glance by default. Turn it on with Settings, Graphics, Capture preset: Portrait 9:16 (a 1080 x 1920
+  window, for the session only: the game always starts with it off), or open the game at that size:
+  `godot --path game --resolution 1080x1920` (add `--write-movie out.avi --fixed-fps 60` for Movie Maker).
 
 Names, skippers and AI levels come from `Hud.race.names`, `skippers`, `ai_levels` (boat index to text; defaults
 "You" and "Boat n"). `Hud.hud_event(kind, data)` reports signals, OCS, penalties, served penalties, rule warnings,
@@ -329,10 +363,13 @@ Runs headless, with scripted input at fixed frame rates:
 
 - `tests/controls_test.gd`: `controls.md` §8 (stick curve, hold-to-steer ramp, sheet keys, latching, sail
   mapping, focus, last-moved source, set and hold at 30, 60 and 144 fps), auto-trim hand-over, the input map
-  against the defaults, the input frame encoding and one frame per tick.
+  against the defaults, the input frame encoding and one frame per tick; the capture mode (§8 test 9: clean
+  pause, slow-motion rates and the rate note, world tags, online) on its own and in the sail scene on FakeSim and in a race on the
+  core.
 - `tests/cameras_test.gd`: `cameras.md` §10 (chase geometry, heading follow, frame-rate independence, 10 minutes of
   water clearance in a 1.5 m sea, onboard side change, aerial up modes, presets, shake), the free camera, near
-  and far planes, cycling and the smooth switch.
+  and far planes, cycling and the smooth switch, and the clip cameras (tests 9 to 12: start line, mark, long lens,
+  helicopter, choosing them).
 - `tests/race_hud_test.gd`: the race HUD on scripted race states (`tests/race_stub_sim.gd`): countdown, flags,
   banners, the time to burn test of `hud.md` §15, bias, OVER and OCS, next mark, VMG on a run and VMC away from
   the mark, layline distance and overstanding, shift meter, sail hint, rank hysteresis, gaps and splits, every
@@ -344,8 +381,9 @@ Runs headless, with scripted input at fixed frame rates:
   hold, the stored setting, name tags within 50 m or selected, the penalty turn only in the chase and aerial
   cameras, every text fitting at 1280 x 800 for UI scales 80 % to 130 %). The previews:
   `tests/race_hud_preview_dump.gd` runs the course preview shots of `tests/course_preview_dump.gd` (start, upwind,
-  aerial) with their cameras so the world tags land on the frame, at the Glance, Race and Data densities and on
-  the Deck's 1280 x 800, plus a scripted incident and the results; `tests/race_hud_preview.py` draws every
+  aerial) with their cameras so the world tags land on the frame, at the Glance, Race and Data densities, on
+  the Deck's 1280 x 800 and in portrait at 1080 x 1920 (`*_portrait`), plus a scripted incident and the results,
+  and prints any block overlaps (`tests/hud_layout_check.gd`); `tests/race_hud_preview.py` draws every
   block's primitives in Barlow over the course frames (`generated/race_hud_preview/`, with `--publish`
   `tests/previews/race_hud_*.jpg`).
 - `tests/hud_test.gd`: `hud.md` formats, filters and time constants, trim gauge colours, tell-tales, tolerance and
@@ -373,6 +411,9 @@ A/D helm (set and hold, ↓ centres), T auto-trim, W/S sheet, Space let fly, 1/2
 modes, right mouse drag or IJKL orbit, wheel or O/U zoom, R recentre, Backspace reset (free sailing: back to the
 start point; race mode: restart the race), Esc pause, F10 hide HUD, G instrument density (Glance, Race, Data),
 B select the next boat for a name tag (or click a boat), N name tags on and off, F9 the frame-time overlay.
+Capture (offline): X the clip cameras (start line, mark, long lens, helicopter), `.` clean pause (no menu, no
+label), `,` slow motion (x0.5, x0.25, x1; a small note shows the new rate for 1.5 s), `/` world tags and
+on-water guides on and off.
 
 ## Menus
 
@@ -567,7 +608,7 @@ python3 game/tests/livery_cost.py
 
 `scenes/sea/sea.tscn` (`Sea`) draws the water of `docs/specs/water_render.md`: a camera-centred radial grid whose
 vertex shader evaluates the core's `sea_height` from the wave components, with detail normals, puffs and lulls,
-whitecaps, wakes (`SeaWakes`) and water overlays, in three quality tiers (`SeaQuality`: L, M, H). It reads:
+wakes (`SeaWakes`) and water overlays, in three quality tiers (`SeaQuality`: L, M, H). It reads:
 
 - a source with `sea_components()`, `sea_exposure()` and `wind_state(t_ms)`, and optionally
   `venue_wind_field()` (the venue file's land-effect field, drawn as the wind slowed near land; `Sea.set_wind_field`

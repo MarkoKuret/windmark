@@ -341,7 +341,7 @@ Layout, in this order:
 
 ```
 header (identity, not covered by the checksum)
-  uint32  magic 0x57574D57, uint32 version = 3
+  uint32  magic 0x57574D57, uint32 version = 4
   uint32  tick                     the next tick to run
   uint64  race_seed (§7)
   bool    race created; uint32 n_created (tick of creation, 0 without a race); uint32 entries at creation

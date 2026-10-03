@@ -24,6 +24,8 @@ The project's main scene. Items, top to bottom: **Quick race**, **Free sail**, *
   0°, north).
 - **Start** fills `GameSetup.current()` (mode `race` or `free`, seed 0: from the clock) and changes to the sail
   scene, which reads it. The last choices are remembered in the settings file (§3) for the next visit.
+- Rules scenarios (`race.md` §14) have no menu item: they start from the command line of the sail scene,
+  `--scenario=<id>`, which sets `GameSetup` mode `scenario` with the scenario id.
 
 ## 2. Pause menu
 
@@ -37,14 +39,14 @@ screen closes.
 
 Five sections: **Controls**, **Cameras**, **HUD**, **Graphics**, **Audio**. A change applies at once where the
 game has the setting and is saved when the settings screen closes, to one file per player
-(`user://settings.cfg`, a Godot ConfigFile with a `version`).
+(`user://settings.cfg`, a Godot ConfigFile with a `version`); the capture preset alone is for the session only (below).
 
 | section | settings |
 | --- | --- |
 | Controls | helm key mode, stick dead zone, stick curve, sheet key rate, hold or toggle for let fly, fine helm, rankings and camera boost, sheet turns auto trim off, vibration (off, 10 % to 100 %), the bindings (shown; rebinding comes later) |
 | Cameras | camera and look speed, invert orbit X and Y, invert look X and Y, onboard heel follow, smooth switch, reduced motion |
 | HUD | assist preset (Full, Standard, Minimal; online lobbies may force a lower one), instruments (Auto, Glance, Race, Data: the density of `hud.md` §16.1; Auto picks the device default, the `hud_density` key stores its choice here), UI scale (80 % to 130 %), colour-blind palette (standard, deuteranopia, protanopia, tritanopia), captions |
-| Graphics | quality (Low, Medium, High: the tiers of `water_render.md` §7, default Medium), render scale (Auto, 50 %, 67 %, 75 %, 85 %, 100 %; default Auto; below), display (windowed, fullscreen), vsync, frame rate limit (off, 30, 60, 90, 120, 144) |
+| Graphics | quality (Low, Medium, High: the tiers of `water_render.md` §7, default Medium), render scale (Auto, 50 %, 67 %, 75 %, 85 %, 100 %; default Auto; below), display (windowed, fullscreen), vsync, frame rate limit (off, 30, 60, 90, 120, 144), capture preset (Off, Portrait 9:16; below) |
 | Audio | master, effects, signals, voice, ambience, interface volumes, 0 to 100 % (default 100 %, master 80 %) |
 
 **Reset section** restores the section's defaults.
@@ -57,6 +59,18 @@ pixels (wider than 1920 or taller than 1200), or larger than 1280 × 800 on a Hi
 screen, as on Retina Macs); otherwise 100 %. So a MacBook's 2560 × 1600 Retina screen renders the 3D at
 1715 × 1072 and the Steam Deck's 1280 × 800 at full size. Auto is resolved again whenever the display settings
 apply and when the window changes size. The setting is independent of the quality tier.
+
+**Capture preset.** For recording vertical clips. **Portrait 9:16** makes the window 1080 × 1920 pixels (windowed,
+centred on its screen; on a screen too small for that, the largest 9:16 window that fits its usable area) and the HUD
+takes its portrait layout (`hud.md` §16.5); the display row has no effect while it is on and render scale Auto picks
+100 % (clips want the full detail). On a HiDPI screen the pixels are the screen's, so a Retina MacBook shows it at
+540 × 960 points. **Off** (default) puts the window back to the size it had before and the display setting applies
+again. Session only: it is not saved, so the game always starts with it Off in the player's normal window (a
+settings file from an older build that has it is ignored); turning it on and off within a session still restores the
+window size it had before. Reset section turns it off. The menus work in the portrait window too (they fit its width
+at every UI scale; the main menu puts the page under the menu). On a 1080p monitor the window is 590 × 1050 (the
+largest 9:16 that fits the usable area); a full 1080 × 1920 capture wants a taller screen, a HiDPI one, or the
+command line (`--resolution 1080x1920`).
 
 ## 4. Look and input
 

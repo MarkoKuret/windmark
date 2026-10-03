@@ -11,15 +11,16 @@ Three kinds of files feed the simulation core:
 Courses and marks are defined in `courses.md` (`windmark.course/1`). The core never reads the class file directly: everything it needs is
 in the performance file, which carries the hash of the class file it was made from.
 
-The front end also reads the livery files of §8 (`<class>.liveries.json`: colours, names and sail numbers);
-the core never does.
+The front end also reads the livery files of §8 (`<class>.liveries.json`: colours, names and sail numbers) and
+the rules scenario files of §9 (`<id>.scenario.json`); the core never does.
 
 ## 1. General rules
 
 - **JSON**, UTF-8, no comments. Top-level `"schema"` names the format and major version; a reader refuses a
   different major version. Unknown keys are ignored (forward compatibility) except inside tables.
 - **SI units** everywhere: m, m², kg, s, rad, m/s, m/s², rad/s. No knots or degrees in files; tools display
-  them. Field names carry no unit suffix; the unit is fixed by this spec.
+  them. Field names carry no unit suffix; the unit is fixed by this spec. The one exception is the rules scenario
+  file (§9), written by hand: it also takes degrees and knots under keys that name the unit.
 - **Numbers**: decimal JSON numbers, parsed to binary32 with correct rounding (`conventions.md` §5 rule 13).
   Writers emit 9 significant digits. `NaN`, `Infinity` are not JSON and never appear.
 - **Positions** are in the boat body frame (`conventions.md` §3): `x` forward, `y` to port, `z` up, origin at the
@@ -339,6 +340,8 @@ reference values are in the owning spec.
 | `pitch_freq`, `pitch_damping`, `wave_roll_gain`, `wave_pitch_gain` | float | boat.md §4 |
 | `wobble_heel`, `wobble_pitch`, `wobble_freq` | float | boat.md §6.5 |
 | `heave_time`, `waterline_offset`, `surf_gain` | float | boat.md §4 |
+| `drift_grip`, `drift_length` | optional float, ≥ 0 and > 0 | boat.md §4, §6.4; absent: no sideways drift (both or neither) |
+| `full_leeway` | optional bool [false] | boat.md §6.4; true needs `drift_grip` and a `leeway` table in every config |
 | `hull_points` | optional `[[x, y], …]` | sea.md §5.1 (default from `lwl`, `bwl`) |
 | `lwl`, `bwl`, `loa` | float | copied from the class (hull points, AI, HUD) |
 | `collision` | `{ "outline": [[x, y], …], "mass": kg, "yaw_gyration": m }` | collisions.md §2.1 |
@@ -347,7 +350,7 @@ reference values are in the owning spec.
 Ranges checked at load (besides those of the owning specs): `decel_linear`, `decel_const`, `decel_windage` ≥ 0;
 `turn_radius_offset` any finite value (negative for a rudder that stalls short of full helm) with
 `turn_radius_full + turn_radius_offset > 0`; `rudder_drag_luff`, `rudder_drag_bear` any finite value (§5);
-`hull_points`, if present, 1 to 64 points.
+`hull_points`, if present, 1 to 64 points; `drift_grip` and `drift_length` both present or both absent.
 
 `collision.mass` = `displacement + crew.weight`. The VPP derives the dynamics values from the design where it can
 (turn radius from the rudder and hull length and the radius law's offset from the rudder's stall, the
@@ -371,6 +374,9 @@ Schematic:
   "weather_helm": { table },       // Table2D(tws, twa_abs) -> rad/s, optional
   "fall_off":     { table },       // Table2D(boat_speed, twa_abs) -> rad/s, optional
   "flog_drag":    { table },       // Table2D(aws, awa_abs) -> m/s², optional
+  "drift":        { table },       // Table2D(tws, twa_abs) -> m/s, optional
+  "drift_flog":   { table },       // Table2D(tws, twa_abs) -> m/s, optional
+  "leeway":       { table },       // Table2D(tws, twa_abs) -> rad, only with dynamics.full_leeway
   "optimal_angle": { "main": { table }, "jib": { table } }   // Table2D(tws, awa_abs) -> rad
 }
 ```
@@ -378,16 +384,18 @@ Semantics in `sails.md` §6. `front_sail` is `null` or the id of a front sail in
 is exactly one main-only config and exactly one config per front sail.
 
 **Coverage** (config tables only: `polar`, `heel`, `accel`, `accel_rest`, `trim_*`, `weather_helm`, `fall_off`,
-`flog_drag`, `optimal_angle`; the `dynamics` and `sails` tables are not checked): every `tws` axis has its first
+`flog_drag`, `drift`, `drift_flog`, `leeway`, `optimal_angle`; the `dynamics` and `sails` tables are not checked): every `tws` axis has its first
 point exactly 0 and its last point ≥ `20.6f` m/s (40 kn, rounded up); every `twa_abs` and `awa_abs` axis has its
 first point exactly 0 and its last point exactly the binary32 π (`PI`, `conventions.md` §6); every `aws` axis has
 its first point exactly 0. Other axes are not constrained.
 
 `optimal_angle` is keyed by sail id and holds exactly the main and the config's front sail (only the main for
-main-only). `weather_helm` values may be any finite number (signed); `accel_rest`, `fall_off` and `flog_drag`
-≥ 0 (§5). The VPP writes every table for every config (`sails.md` §6): `trim_heel` 0 with the driving sail on the
+main-only). `weather_helm` values may be any finite number (signed); `accel_rest`, `fall_off`, `flog_drag`,
+`drift` and `drift_flog` ≥ 0, `leeway` in [0, 0.5] rad (§5). `leeway` is required in every config when
+`dynamics.full_leeway` is true and ignored otherwise; the VPP writes it only then. The VPP writes every table for every config (`sails.md` §6): `trim_heel` 0 with the driving sail on the
 wind line and `trim_speed` there 0 up to 90° AWA and the let-fly share beyond. Absent optional tables: `accel_rest`
-= `accel`, `weather_helm` and `flog_drag` 0.
+= `accel`, `weather_helm`, `flog_drag`, `drift` and `drift_flog` 0 (`drift_flog` absent: the flogging boat drifts
+at the `drift` rate).
 
 Above the no-go step the `polar` is never 0. Where no depowering holds a config (heel beyond the limit, or no way
 made at that angle) the VPP writes a low **broached speed**, with the `heel` at the limit and the `accel` of the
@@ -729,3 +737,83 @@ rewrites every part it is asked to bake and `--only <part>` (`hull`, `keel`, `tr
 id) rewrites just those files. No other tool writes there. A changed
 class file does not rebake them: the hull follows uv1 and the sails keep their `rect` in metres, so after a hull or
 sail plan change the owner decides whether to repaint or rebake (`--only`).
+
+## 9. Rules scenarios (`windmark.scenario/1`)
+
+A short set-up for a rules question: a few boats placed on the first beat of an offline race, sailing into an
+incident. The front end starts it as `race.md` §14 says. Files live in `game/data/scenarios/<id>.scenario.json`,
+written by hand. The general rules of §1 hold (ids, validation); a file that fails validation is refused with the
+file, the JSON path and the reason, and nothing starts.
+
+**Units.** Because the files are written by hand, this format is the one exception to the SI rule of §1: each angle
+and speed below may be given either under its SI key or under a key that names a hand-friendly unit, and the reader
+converts on load (`*_deg` degrees, `* π/180`; `*_kn` knots, `* 1852/3600` m/s). Giving both keys of one field is a
+validation error (the JSON path of the unit key, "give one of ..."). Ranges are checked after conversion and quoted
+in the unit of the key used. Only these keys have the alternative:
+
+| SI key | hand key |
+| --- | --- |
+| `wind.speed` (m/s) | `wind.speed_kn` |
+| `wind.from` (rad) | `wind.from_deg` |
+| `boats[].at.bearing` (rad) | `boats[].at.bearing_deg` |
+| `boats[].twa` (rad) | `boats[].twa_deg` |
+| `boats[].speed` (m/s) | `boats[].speed_kn` |
+
+Distances stay in metres (`at.dist`) and times in seconds. Every other data format keeps SI only.
+
+### 9.1 Header
+
+| key | | default | meaning |
+| --- | --- | --- | --- |
+| `schema` | **R** | | `"windmark.scenario/1"` |
+| `id` | **R** | | the file name without `.scenario.json` |
+| `name` | **R** | | the title, 1 to 60 characters |
+| `note` | | `""` | free text for the author (the question and its answer); never shown in the race |
+| `class` | **R** | | the class id of every boat (`data/classes/<id>.boat.json`) |
+| `course` | **R** | | `"<venue>/<course id>"` (`game/data/courses/<venue>/<id>.course.json`); the world is on that venue |
+| `seed` | | 1 | the world seed (`conventions.md` §7): AI skippers, sea, liveries by the fleet rule |
+| `wind` | **R** | | `speed` or `speed_kn` **R** (m/s or knots, base speed at 10 m), `from` or `from_deg` **R** (rad or degrees compass, [0, 2π) or [0, 360)), `shifts` (a `wind.md` §1 preset: `steady`, `stable`, `oscillating`, `shifty`, `unstable`; default `steady`), `puffs` (default `false`) |
+| `lead` | | 20 | s from clip time 0 (the set-up) to the incident: how far back each boat starts (§9.2) |
+| `after` | | 5 | s the clip runs past the incident before the scene pauses |
+| `view` | | 0 | the boat the cameras start on |
+| `boats` | **R** | | 2 to 8 boats (§9.2); the first is boat 0, the player's boat |
+
+### 9.2 Boats
+
+| key | | default | meaning |
+| --- | --- | --- | --- |
+| `at` | **R** | | where the boat would be at the incident: a wind-frame offset `{"bearing", "dist", "from"}` as in `courses.md` §3.2 (`bearing_deg` in degrees in place of `bearing`), resolved on the race's course axis `TWD_c`; `from` is a mark id of the course, a derived `"<a>_<b>_mid"`, or omitted for the middle of the start line |
+| `tack` | **R** | | `"starboard"` or `"port"` |
+| `twa` or `twa_deg` | **R** | | true wind angle on that tack, rad 0 to π, or degrees 0 to 180 |
+| `speed` or `speed_kn` | | polar | m/s or knots, ≥ 0; default the polar speed at `twa` in the base wind with her front sail |
+| `front_sail` | | class start sail | a sail id of the class's front sails, or `"none"` |
+| `auto_trim` | | `true` | the boat's auto trim |
+| `helm` | | `"hold"` | `hold` (keeps her set-up heading, `race.md` §14), `ai` (the core's AI skipper), `player` (boat 0 only: the player's controls) |
+| `ai_level` | | `intermediate` | `easy`, `intermediate`, `expert`, `pro` (`ai.md` §13), for `helm: ai` |
+| `livery` | | fleet rule | a boat id of the class's livery file (§8.4); boats with one take it as human entries do, the rest by the fleet rule |
+
+The set-up pose: heading `ψ = wrap_2pi(TWD_c − s · twa)` with `s = +1` on starboard and `−1` on port (the wind on
+the starboard side is a positive TWA, `conventions.md`), and position `p = p_at − speed · lead · dir(ψ)`: the boat
+starts `lead` seconds back along her heading, so boats given the same `at` meet there if they hold their course and
+speed. Set-up positions must lie on the first beat, on the course side of the start line and short of the first
+mark, so that the race sees the jump of `race.md` §14 step 4 as plain track.
+
+Example (`game/data/scenarios/port_starboard.scenario.json`): the starboard boat and the port boat close-hauled,
+meeting 300 m up the first beat 20 s after the set-up, written in degrees and knots.
+
+```json
+{
+  "schema": "windmark.scenario/1",
+  "id": "port_starboard",
+  "name": "Port meets starboard",
+  "class": "wm7",
+  "course": "example_bay/example_wl",
+  "wind": { "speed_kn": 12, "from_deg": 0 },
+  "lead": 20,
+  "boats": [
+    { "at": { "bearing_deg": 0, "dist": 300 }, "tack": "starboard", "twa_deg": 45 },
+    { "at": { "bearing_deg": 0, "dist": 300 }, "tack": "port", "twa_deg": 45 }
+  ]
+}
+```
+

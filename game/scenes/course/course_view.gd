@@ -43,6 +43,8 @@ var labels := {}
 ## assist: laylines and the zone circle (hud.md §14); arrows are always shown
 var show_laylines := true
 var show_zone := true
+## controls.md §7 world_tags: off hides the on-water guides (lines, laylines, zone circle, arrows, far marker)
+var show_guides := true
 ## per mark index: {node, type, pos: Vector2, radius, heading, length, beam, heave, pitch, roll}
 var marks: Array = []
 ## overlays of the last frame (tests): the Sea's lines and circles
@@ -306,6 +308,20 @@ func frame(dt: float, cam_pos: Vector3, pose: SimSource.RenderPose) -> void:
 	_update_flags(dt)
 	_update_overlays(pose)
 	_update_guides(pose, cam_pos)
+	if not show_guides:
+		_hide_guides()
+
+
+func _hide_guides() -> void:
+	for a in _arrows:
+		a.visible = false
+	_marker.visible = false
+	_marker_label.visible = false
+	lines = []
+	circles = []
+	if sea:
+		sea.set_overlay_lines([])
+		sea.set_overlay_circles([])
 
 
 func _sea_h(x: float, y: float) -> float:

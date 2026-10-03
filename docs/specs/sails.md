@@ -251,6 +251,8 @@ Each config (main only, main + each front sail) has these tables in the performa
 | `weather_helm` | `tws`, `twa_abs` | rad/s | helm balance: turning rate the sail plan imposes, + toward the wind (optional, 0) |
 | `fall_off` | `boat_speed`, `twa_abs` | rad/s | turning away from the wind at low speed and in sternway (optional, 0) |
 | `flog_drag` | `aws`, `awa_abs` | m/s² | deceleration from the sails flogging on free sheets (optional, 0) |
+| `drift`, `drift_flog` | `tws`, `twa_abs` | m/s | sideways drift at rest, sails luffing / flogging (optional, 0; `boat.md` §6.4) |
+| `leeway` | `tws`, `twa_abs` | rad | leeway of the sailing boat, only with `full_leeway` (`boat.md` §6.4) |
 | `optimal_angle.<sail>` | `tws`, `awa_abs` | rad | optimal sail angle magnitude of the main and of the config's front sail |
 
 Semantics and reference shapes:
@@ -335,6 +337,14 @@ Semantics and reference shapes:
   beam the flogging sails push instead: the let-fly share of `trim_speed`). `CD_flog` 0.30 and `CD_luff` 0.06 on
   the sail area (`tools/vpp/README.md`). Reference S jib config at 8 m/s apparent wind head to wind: about
   0.24 m/s². Used only with free sheets (`boat.md` §5.8).
+- **drift**, **drift_flog**: the steady sideways drift to leeward of the boat at rest with the config's sails on
+  the wind line, luffing on their sheets (`CD_luff`) or flogging on free sheets (`CD_flog`): the cross-wind part of
+  the windage of hull, rig and sails at the apparent wind the drifting boat feels, against the cross-flow drag of
+  hull, keel and rudder (`tools/vpp/README.md`, "Sideways drift"). Rows TWS 0–40 kn (0 row 0), columns TWA 0–180°
+  every 5°, 0 at both ends. Reference S jib config in 10 kn: 0.4 kn at 30°, 0.6 kn at 90° luffing, 0.8 kn at 90°
+  flogging; it grows in proportion to the TWS. Used by the core only at a crawl (`boat.md` §6.4).
+- **leeway**: the VPP's leeway angle at the polar's equilibrium (keel and rudder lift against the side force), 0
+  in the no-go zone; written only for a class with `full_leeway` on (`boat.md` §6.4).
 - **optimal_angle**: main: 0 up to about 20–30° AWA, then rising to 35–60° at 120–170° (with a spinnaker or code
   zero set: `kite_sheet_in` less, §5.1); jib/genoa 14–25° close hauled rising to 55–70°; spinnakers 12–30° at their lowest AWA rising to 85–90° dead downwind.
 

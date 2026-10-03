@@ -11,7 +11,7 @@ using namespace snap;
 namespace {
 
 constexpr std::uint32_t kMagic = 0x57574D57u;
-constexpr std::uint32_t kVersion = 3;
+constexpr std::uint32_t kVersion = 4;
 
 std::uint64_t text_id(std::string_view s) {
   return fnv1a64({reinterpret_cast<const std::uint8_t*>(s.data()), s.size()});

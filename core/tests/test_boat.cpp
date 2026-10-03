@@ -38,6 +38,7 @@ const wm::PerfData& perf_no_wobble(const std::string& cls) {
 struct Steady {
   float v, v_mean, phi, phi_mean, expect_v, heel_target, surf_mean;
   bool boom_limited;  // the main cannot reach its optimum at the table heel (sheet_max_by_heel)
+  float sway;         // sideways drift at the end (boat.md §6.4): only below the grip speed (a broached polar)
 };
 
 Steady run_steady(const wm::PerfData& p, const wm::ConfigPerf& c, float tws_kn, float twa, float seconds) {
@@ -63,6 +64,7 @@ Steady run_steady(const wm::PerfData& p, const wm::ConfigPerf& c, float tws_kn, 
   const wm::BoatState& s = boat.state();
   Steady r{};
   r.v = s.v;
+  r.sway = s.sway;
   r.phi = s.phi;
   r.phi_mean = static_cast<float>(phi_sum / tail);
   r.surf_mean = static_cast<float>(surf_sum / tail);
@@ -105,7 +107,14 @@ TEST_CASE("boat: steady polar and heel match the tables") {
           }
           ++points;
           const float dv = std::fabs(r.v - r.expect_v) / wm::max(std::fabs(r.expect_v), 0.05f);
-          const float dh = std::fabs(r.phi - r.heel_target);
+          // A boat drifting sideways (a broached speed below the grip speed, boat.md §6.4) feels its drift in the
+          // apparent wind, and its heel follows that wind (§5.5): compared on speed only.
+          const float dh = r.sway != 0.0f ? 0.0f : std::fabs(r.phi - r.heel_target);
+          if (r.sway != 0.0f) {
+            MESSAGE(cls, " ", sail_name(p, c.front_sail), " tws ", tws, " twa ", twa_d, ": drifting ", to_kn(-r.sway),
+                    " kn at ", to_kn(r.v), " kn, heel ", to_deg(-r.phi), " deg (table ", to_deg(-r.heel_target),
+                    "), speed only");
+          }
           worst_v = wm::max(worst_v, dv);
           worst_h = wm::max(worst_h, dh);
           CHECK_MESSAGE(dv <= 0.005f, cls, " ", sail_name(p, c.front_sail), " tws ", tws, " twa ", twa_d, ": v ",
@@ -134,7 +143,7 @@ TEST_CASE("boat: steady state with the attitude wobble") {
           const Steady r = run_steady(p, c, tws, deg(static_cast<float>(twa_d)), 120.0f);
           if (r.boom_limited) continue;
           const float dv = (r.v_mean - r.expect_v) / wm::max(std::fabs(r.expect_v), 0.05f);
-          const float dh = std::fabs(r.phi_mean - r.heel_target);
+          const float dh = r.sway != 0.0f ? 0.0f : std::fabs(r.phi_mean - r.heel_target);  // as above
           if (std::fabs(dv) > std::fabs(worst_v)) worst_v = dv;
           worst_h = wm::max(worst_h, dh);
           CHECK_MESSAGE(dh <= deg(0.2f), cls, " ", sail_name(p, c.front_sail), " tws ", tws, " twa ", twa_d,

@@ -465,6 +465,20 @@ wm_status wm_world_place_boat(wm_world* w, int32_t boat, float x, float y, float
   return WM_OK;
 }
 
+wm_status wm_world_scenario_place(wm_world* w, int32_t boat, float x, float y, float psi, float v,
+                                  int32_t front_sail) {
+  if (bad_boat(w, boat)) return fail(WM_ERR_ARG, "bad boat index");
+  if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(psi) || !std::isfinite(v) || v < 0.0f)
+    return fail(WM_ERR_ARG, "bad placement");
+  const wm::PerfData& p = *w->perfs[static_cast<std::size_t>(boat)];
+  if (front_sail < -2 || front_sail >= static_cast<int32_t>(p.sails.size()) || front_sail == p.main_sail)
+    return fail(WM_ERR_ARG, "bad front sail");
+  w->world->place_boat(boat, x, y, psi, v, front_sail);
+  w->prev[static_cast<std::size_t>(boat)] = w->world->boat(static_cast<std::size_t>(boat)).state();
+  w->req_valid[static_cast<std::size_t>(boat)] = 0;
+  return WM_OK;
+}
+
 wm_status wm_world_create_race(wm_world* w, const wm_course* course) {
   if (w == nullptr || course == nullptr) return fail(WM_ERR_ARG, "null argument");
   if (w->world->race_created()) return fail(WM_ERR_STATE, "the race exists already");
@@ -803,7 +817,7 @@ const wm_perf* wm_world_boat_perf(const wm_world* w, int32_t boat) {
 
 static void copy_state(const wm::BoatState& s, wm_boat_state* o) {
   static_assert(sizeof(wm_boat_state) == sizeof(wm::BoatState));
-  o->pos_x = s.pos_x; o->pos_y = s.pos_y; o->z = s.z; o->psi = s.psi; o->v = s.v; o->h = s.h; o->yaw_rate = s.yaw_rate;
+  o->pos_x = s.pos_x; o->pos_y = s.pos_y; o->z = s.z; o->psi = s.psi; o->v = s.v; o->sway = s.sway; o->h = s.h; o->yaw_rate = s.yaw_rate;
   o->phi = s.phi; o->phi_rate = s.phi_rate; o->theta = s.theta; o->theta_rate = s.theta_rate;
   o->wobble_phase = s.wobble_phase;
   o->contact_vx = s.contact_vx; o->contact_vy = s.contact_vy; o->contact_yaw_rate = s.contact_yaw_rate;

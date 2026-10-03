@@ -191,6 +191,13 @@ WM_API wm_status wm_world_add_boat(wm_world* w, const wm_boat_entry* e, int32_t*
 /* Free sailing: places a boat at (x, y) on heading psi at 60 % of its polar speed, sails up and trimmed. Only
  * before wm_world_create_race (WM_ERR_STATE after). */
 WM_API wm_status wm_world_place_boat(wm_world* w, int32_t boat, float x, float y, float psi);
+/* Scenario set-up (rules scenarios, tests, tools; not a control, never sent online): puts a boat at (x, y) on
+ * heading psi at speed v (m/s, >= 0) between ticks, before or after wm_world_create_race, as a spawn does (boat.md
+ * §6.6: sails up and trimmed, the wind triangle evaluated at once). `front_sail`: the sail index to have up, -1 none,
+ * -2 the front sail she has up now. Auto trim and performance_scale stay as they are. The race sees the move as the
+ * boat's track in the next step (a move across the start line after the gun starts her, race.md §4.2). */
+WM_API wm_status wm_world_scenario_place(wm_world* w, int32_t boat, float x, float y, float psi, float v,
+                                         int32_t front_sail);
 /* race.md §3.1: lays the course, checks it on the venue, creates the race and the rules, spawns every boat. */
 WM_API wm_status wm_world_create_race(wm_world* w, const wm_course* course);
 
@@ -338,7 +345,7 @@ WM_API int32_t wm_world_has_race(const wm_world* w);
 
 /* boat.md §3, in snapshot order. */
 typedef struct wm_boat_state {
-  float pos_x, pos_y, z, psi, v, h, yaw_rate;
+  float pos_x, pos_y, z, psi, v, sway, h, yaw_rate;
   float phi, phi_rate, theta, theta_rate, wobble_phase;
   float contact_vx, contact_vy, contact_yaw_rate;
   float twd_from, awd_from, tws, twa, aws, awa;

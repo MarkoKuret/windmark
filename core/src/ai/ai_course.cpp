@@ -343,7 +343,8 @@ bool penalty_room(AC& x, AB& a, const Me& m, std::int32_t next) {
 bool turn_clear_of_boat(AC& x, const Me& m, std::size_t j, float dir_, float R, float margin, float r_own) {
   const Vec2 C = v_add(m.c, v_scale(right_of(dir(m.s.psi)), dir_ * 1.3f * R));
   const BoatState& sj = x.w.boat(j).state();
-  const Vec2 vj = v_add(v_scale(dir(sj.psi), max(0.0f, sj.v)), Vec2{x.w.env(j).current_x, x.w.env(j).current_y});
+  const Vec2 vj = v_add(v_scale(dir(sj.psi), max(0.0f, sj.v)),
+                        v_add(Vec2{x.w.env(j).current_x, x.w.env(j).current_y}, x.w.boat(j).drift_velocity()));
   const Vec2 cur = m.cur;
   for (std::int32_t k = 0; k <= 6; ++k) {
     const float tk = static_cast<float>(k);

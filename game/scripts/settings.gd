@@ -60,6 +60,9 @@ var fullscreen := false
 var vsync := true
 ## frames per second, 0 = no limit
 var fps_limit := 0
+## the capture preset (menus.md §3): "off", or "portrait" (a 1080 x 1920 window, the HUD's portrait layout).
+## Session only: not in FIELDS, so never saved or loaded; every run starts with it off.
+var capture_preset := "off"
 
 # ---- audio (audio.md §1.1), linear 0..1 ----
 var master_volume := 0.8
@@ -91,6 +94,9 @@ const RENDER_SCALES := [0.0, 0.5, 0.67, 0.75, 0.85, 1.0]
 const AUTO_RENDER_SCALE := 0.67
 const AUTO_LARGE := Vector2i(1920, 1200)
 const AUTO_LARGE_HIDPI := Vector2i(1280, 800)
+## the capture presets (menus.md §3) and the portrait window, px
+const CAPTURE_PRESETS := ["off", "portrait"]
+const PORTRAIT_SIZE := Vector2i(1080, 1920)
 
 ## Session overrides from the command line (the sail scene's --render-scale and --upscaler), not saved:
 ## a scale > 0 replaces the setting; "fsr", "bilinear" or "metalfx" replaces the upscaler's choice.
@@ -100,6 +106,8 @@ static var upscaler_override := ""
 static var quality_override := -1
 static var vsync_override := -1
 static var _resize_hooked: Window = null
+## the window's size before the capture preset resized it (put back when it is turned off); zero when not resized
+static var _size_before := Vector2i.ZERO
 
 ## audio setting -> the buses it drives (audio.md §1.1)
 const BUSES := {
@@ -173,6 +181,8 @@ func _clamp() -> void:
 	quality = clampi(quality, 0, 2) as SeaQuality.Tier
 	render_scale = 0.0 if render_scale < 0.25 else clampf(render_scale, 0.5, 1.0)
 	fps_limit = maxi(fps_limit, 0)
+	if not capture_preset in CAPTURE_PRESETS:
+		capture_preset = "off"
 	for f in BUSES:
 		set(f, clampf(get(f), 0.0, 1.0))
 
@@ -214,6 +224,8 @@ func reset(section := "") -> void:
 		if section == "" or s == section:
 			for f in FIELDS[s]:
 				set(f, fresh.get(f))
+	if section == "" or section == "graphics":
+		capture_preset = fresh.capture_preset  # session only, but Reset section turns it off too
 
 
 # ---- apply ----
@@ -273,11 +285,56 @@ func apply_display(win: Window) -> void:
 	apply_render_scale(win)
 	if DisplayServer.get_name() == "headless":
 		return
-	var want := Window.MODE_FULLSCREEN if fullscreen else Window.MODE_WINDOWED
+	var want := Window.MODE_FULLSCREEN if fullscreen and capture_preset == "off" else Window.MODE_WINDOWED
 	if win.mode != want:
 		win.mode = want
+	apply_capture(win)
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if (vsync if vsync_override < 0 else vsync_override == 1)
 		else DisplayServer.VSYNC_DISABLED)
+
+
+## The capture preset on the window (menus.md §3): Portrait sizes it to 1080 x 1920 (or the largest 9:16 that
+## fits the screen's usable area), centred, and remembers the size it had; Off puts that size back. The window must
+## be windowed (apply_display sees to it). Not in headless runs.
+func apply_capture(win: Window) -> void:
+	if win == null or DisplayServer.get_name() == "headless":
+		return
+	var scr := DisplayServer.window_get_current_screen()
+	var r := capture_window_rect(win.size, DisplayServer.screen_get_usable_rect(scr))
+	if r.size != Vector2i.ZERO:
+		win.size = r.size
+		win.position = r.position
+
+
+## The window rect the capture preset wants for a window of `size` on a screen whose usable area is `usable`, or a
+## zero rect for no change. Turning Portrait on remembers `size` (once, until it is off again); Off gives the
+## remembered size back (within the usable area), centred, and forgets it.
+func capture_window_rect(size: Vector2i, usable: Rect2i) -> Rect2i:
+	if capture_preset == "portrait":
+		if _size_before == Vector2i.ZERO:
+			_size_before = size
+		var sz := capture_window_size(usable.size)
+		if size == sz:
+			return Rect2i()
+		return Rect2i(usable.position + (usable.size - sz) / 2, sz)
+	if _size_before == Vector2i.ZERO:
+		return Rect2i()
+	var back := Vector2i(mini(_size_before.x, usable.size.x), mini(_size_before.y, usable.size.y))
+	_size_before = Vector2i.ZERO
+	return Rect2i(usable.position + (usable.size - back) / 2, back)
+
+
+## The portrait capture window for a screen whose usable area is `usable` px: 1080 x 1920, else the largest 9:16
+## that fits.
+static func capture_window_size(usable: Vector2i) -> Vector2i:
+	if usable.x >= PORTRAIT_SIZE.x and usable.y >= PORTRAIT_SIZE.y:
+		return PORTRAIT_SIZE
+	var h := mini(usable.y, PORTRAIT_SIZE.y)
+	var w := int(floorf(h * 9.0 / 16.0))
+	if w > usable.x:
+		w = usable.x
+		h = int(floorf(w * 16.0 / 9.0))
+	return Vector2i(maxi(w, 1), maxi(h, 1))
 
 
 ## Auto's render scale for a window of `px` pixels on a screen the system scales by `screen_scale` (menus.md §3):
@@ -294,6 +351,8 @@ func effective_render_scale(win: Window) -> float:
 		return clampf(render_scale_override, 0.25, 1.0)
 	if render_scale > 0.0:
 		return render_scale
+	if capture_preset != "off":
+		return 1.0
 	var px := win.size if win != null else Vector2i(1280, 800)
 	var screen := DisplayServer.window_get_current_screen() if DisplayServer.get_name() != "headless" else 0
 	return auto_render_scale(px, DisplayServer.screen_get_scale(screen))

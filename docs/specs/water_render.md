@@ -1,7 +1,7 @@
 # Water rendering
 
 How the front end draws the sea: the surface from the same height function the boats sample, its normals, colour,
-Fresnel and sky reflection, the wind on the water (puffs and lulls that players read tactically), whitecaps, bow
+Fresnel and sky reflection, the wind on the water (puffs and lulls that players read tactically), bow
 waves, wakes and spray, and the quality tiers for low-end GPUs. It ends with a comparison of our approach with the
 open-source Godot FFT oceans and a recommendation.
 
@@ -40,7 +40,7 @@ uniform puff_tile, puff_cap_lo = 1 - puff_cap_down, puff_cap_hi = 1 + puff_cap_u
 uniform wind_to = unit vector the wind blows toward (global_from(t_r) + π), base_speed
 uniform exposure texture (venue grid, R32F, texel (i, j) = node (i, j)) and its mapping, E default
 uniform land texture (venue wind field, RG32F: the two sectors around global_from(t_r)), its mapping, tw (§4.3)
-uniform detail and foam layer offsets: the camera-origin part of the §4.1 and §4.4 texture coordinates, in double, mod 1
+uniform detail layer offsets: the camera-origin part of the §4.1 texture coordinates, in double, mod 1
 ```
 The exposure is sampled in the vertex shader with `texelFetch` and exact bilinear weights (the hardware filter's
 8-bit weights would miss the 1e-3 tolerance); R32F keeps the grid values exact.
@@ -127,10 +127,10 @@ detail fades out (fully gone at 0.5 m/s): glassy water.
 Godot's PBR does the lighting; the shader sets:
 ```
 crest    = clamp(eta / max(sum_a, 1e-3), 0, 1)
-ALBEDO   = mix(deep, shallow, 0.55 * crest), then foam (§4.4)       // deep (0.006, 0.042, 0.115), shallow (0.012, 0.100, 0.155), linear
+ALBEDO   = mix(deep, shallow, 0.55 * crest)                         // deep (0.006, 0.042, 0.115), shallow (0.012, 0.100, 0.155), linear
 SPECULAR = 0.40                                                      // Godot's F0 = 0.16·SPECULAR² = 0.026 (water 0.02, a little lifted)
 ROUGHNESS = 0.035 + 0.025 * (1 - near) + 0.05 * clamp(m - 1, -0.4, 0.25) / 0.25 + 0.18 * fade_far(dist)   // rougher in puffs and far away
-EMISSION = sss * crest * (pow(max(0, dot(-view, sun)), 3) * 0.3 * sun_radiance + 0.05) * (1 - foam)  // light through the crests, sss (0.03, 0.33, 0.40)
+EMISSION = sss * crest * (pow(max(0, dot(-view, sun)), 3) * 0.3 * sun_radiance + 0.05)  // light through the crests, sss (0.03, 0.33, 0.40)
 ```
 - **Body colour**: a deep, saturated blue (about sRGB `#004684` from the aerial camera in the default light), a
   little greener on the crests; it is what the sea shows looking down, so it carries the race-day look.
@@ -170,22 +170,10 @@ exposure, 1 outside the grid, and passes `f` to the fragment shader, so the draw
 float rounding at the vertices. The direction offset `d` does not show on the water and is not drawn.
 
 ### 4.4 Whitecaps
-```
-tws_local = m * base_speed / KNOT                              // kn
-caps  = smoothstep(8, 24, tws_local)
-n1    = foam texture streaks along the wind (23 m along, 5 m across), n2 = coarse breakup noise (61 m)
-slope = |n_geo.xz| / max(n_geo.y, 0.2)                         // the wave slope the grid (and on M, H the pixel) carries
-steep = smoothstep(0.04, 0.16, slope)
-th    = 0.62 - 0.30*caps
-foam  = smoothstep(th, th + 0.06, crest * (0.45 + 0.75*n1) * mix(0.75, 1.2, steep))
-        * smoothstep(0.3, 0.6, n2) * (0.2 + 0.8*caps) * fade(dist; 1.3 km)
-ALBEDO = mix(ALBEDO, (0.86, 0.90, 0.92), 0.85 * foam) ; ROUGHNESS = mix(ROUGHNESS, 0.65, foam)
-```
-So whitecaps come with the wind, more of them in the puffs, and only on the high, steep crests: a crest that is
-high but gently sloped (a swell) stays blue. The edge is sharp (0.06), so a cap is a crisp white patch drawn out
-along the wind by `n1`, not a soft blotch. With the reference seas the cover stays close to measured whitecap
-cover (about 0.2 % of the water at 15 kn, 1.4 % at 20 kn, 2.5 % at 25 kn; it rises with about the 3.4th power of
-the wind speed). The white blotches seen before WM-080 at 15 to 20 kn were sky reflection, not foam (§4.2).
+None for now. The first version (a scrolling noise texture thresholded on crest height) drew hard white blotches
+that popped on and off and slid over the waves, and was removed on 2026-10-03. Whitecaps come back when the foam
+belongs to the wave components and moves with their crests (WM-083). The white blotches seen before WM-080 at 15 to
+20 kn were sky reflection, not foam (§4.2).
 
 ### 4.5 Daylight
 Target look (WM-080): a bright, sunny, high-contrast racing day. A hard sun, a clear saturated blue sky (deep at
@@ -422,7 +410,7 @@ colour-blind palettes).
 | per-pixel slope of faded components | no | no (owner decision 2026-10-01: about 3.5 ms on an M1 at 2880 × 1800) | yes |
 | detail normal layers | 2 | 3 | 4 |
 | puffs and lulls (§4.3) | yes (gameplay information) | yes | yes |
-| whitecaps | yes, one texture | yes | yes |
+| whitecaps | none for now (§4.4) | none | none |
 | wake ribbons | own boat | own + 6 nearest | all within 400 m |
 | bow wave | all boats with a wake | all boats with a wake | all boats with a wake |
 | mist (and spray reach) | no | own boat | yes |

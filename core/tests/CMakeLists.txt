@@ -18,6 +18,7 @@ target_sources(windmark_core_tests PRIVATE
   test_boat.cpp
   test_sails.cpp
   test_boat_env.cpp
+  test_drift.cpp
 )
 target_link_libraries(windmark_core_tests PRIVATE windmark_core)
 target_include_directories(windmark_core_tests SYSTEM PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/doctest")

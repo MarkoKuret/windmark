@@ -12,6 +12,7 @@ namespace {
 constexpr float V_MAX = 40.0f;        // m/s, a data-error guard (boat.md §5.8)
 constexpr float ACCEL_BLEND = 0.5f;   // share of the target speed where accel_rest has blended into accel (§5.8)
 constexpr float CONTACT_KEEP = 0.9f;  // per tick (collisions.md §6)
+constexpr float DRIFT_GRIP_MAX = 2.0f;  // m/s, the grip speed never exceeds it (boat.md §5.9, §6.4)
 
 }  // namespace
 
@@ -47,8 +48,8 @@ void Boat::wind_triangle(const BoatEnv& env) {
   s_.tws = std::sqrt(tx * tx + ty * ty);
   if (s_.tws >= 1e-4f) s_.twd_from = compass({-tx, -ty});
   const SinCos hs = wm_sincos(s_.psi);
-  const float bx = s_.v * hs.s;
-  const float by = s_.v * hs.c;
+  const float bx = s_.v * hs.s + s_.sway * hs.c;
+  const float by = s_.v * hs.c - s_.sway * hs.s;
   const float ax = tx - bx;
   const float ay = ty - by;
   s_.aws = std::sqrt(ax * ax + ay * ay);
@@ -203,6 +204,31 @@ void Boat::step(const BoatEnv& env) {
   s_.v = s_.v - sgn(s_.v) * min(DT * drag, std::fabs(s_.v));
   s_.v = clamp(s_.v, -V_MAX, V_MAX);
 
+  // 5.9 sideways drift (boat.md §6.4): a boat with next to no way on is pushed to leeward by its windage until the
+  // keel grips; the target follows from the drift tables, the speed and the sheets, the sway from its inertia.
+  if (d.has_drift) {
+    const bool free_sheets = ctl_.let_fly || !ctl_.auto_trim;
+    const float s_l = c.drift.present ? c.drift.table.at(s_.tws, ta) : 0.0f;
+    float s_d = s_l;
+    if (free_sheets && eps > 0.0f && c.drift_flog.present) {
+      // The push goes with the square of the drift: the flogging share of it is the drive the trim has lost.
+      const float s_f = c.drift_flog.table.at(s_.tws, ta);
+      s_d = std::sqrt(s_l * s_l + (1.0f - trim_speed) * (s_f * s_f - s_l * s_l));
+    }
+    const float v_g = min(d.drift_grip * s_d, DRIFT_GRIP_MAX);
+    const float u = v_g > 0.0f ? max(1.0f - std::fabs(s_.v) / v_g, 0.0f) : 0.0f;
+    const float g = u * u;
+    float sway_t = -tack * (g * s_d);
+    if (d.full_leeway && c.leeway.present) {
+      const float lw = c.leeway.table.at(s_.tws, ta) * trim_heel;
+      sway_t = sway_t + (1.0f - g) * (-tack * (max(s_.v, 0.0f) * (wm_sin(lw) / wm_cos(lw))));
+    }
+    const float lam = ((2.0f * max(std::fabs(sway_t), std::fabs(s_.sway)) + k.drift_lift * std::fabs(s_.v)) /
+                       d.drift_length) * DT;
+    s_.sway = s_.sway + min(lam, 1.0f) * (sway_t - s_.sway);
+    if (sway_t == 0.0f && std::fabs(s_.sway) < 1e-4f) s_.sway = 0.0f;
+  }
+
   // 5.9 turning and translation
   const float n = std::fabs(s_.h);
   float turn_arc = 0.0f;
@@ -218,8 +244,8 @@ void Boat::step(const BoatEnv& env) {
   const float dpsi = turn_rate * DT;
   const float mid = s_.psi + 0.5f * dpsi;
   const SinCos ms = wm_sincos(mid);
-  s_.pos_x = s_.pos_x + ((s_.v * ms.s + env.current_x) + s_.contact_vx) * DT;
-  s_.pos_y = s_.pos_y + ((s_.v * ms.c + env.current_y) + s_.contact_vy) * DT;
+  s_.pos_x = s_.pos_x + (((s_.v * ms.s + s_.sway * ms.c) + env.current_x) + s_.contact_vx) * DT;
+  s_.pos_y = s_.pos_y + (((s_.v * ms.c - s_.sway * ms.s) + env.current_y) + s_.contact_vy) * DT;
   s_.psi = wrap_2pi(s_.psi + dpsi);
 
   // 5.10 contacts and outputs
@@ -227,8 +253,8 @@ void Boat::step(const BoatEnv& env) {
   s_.contact_vy = s_.contact_vy * CONTACT_KEEP;
   s_.contact_yaw_rate = s_.contact_yaw_rate * CONTACT_KEEP;
   const SinCos ps = wm_sincos(s_.psi);
-  const float gx = (s_.v * ps.s + env.current_x) + s_.contact_vx;
-  const float gy = (s_.v * ps.c + env.current_y) + s_.contact_vy;
+  const float gx = ((s_.v * ps.s + s_.sway * ps.c) + env.current_x) + s_.contact_vx;
+  const float gy = ((s_.v * ps.c - s_.sway * ps.s) + env.current_y) + s_.contact_vy;
   out_.sog = std::sqrt(gx * gx + gy * gy);
   out_.vmg = s_.v * wm_cos(s_.twa);
   s_.v_filt = s_.v_filt + DerivedDynamics::FILT_A * (s_.v - s_.v_filt);
@@ -264,6 +290,11 @@ float Boat::decel_wind() const {
   return (d.decel_windage * s_.aws) * max(wm_cos(s_.awa), 0.0f);
 }
 
+Vec2 Boat::drift_velocity() const {
+  const SinCos hs = wm_sincos(s_.psi);
+  return {s_.sway * hs.c, -(s_.sway * hs.s)};
+}
+
 float Boat::let_fly_drive() const {
   const ConfigPerf& c = sails_.config();
   if (!c.trim_speed.present) return 1.0f;
@@ -284,7 +315,7 @@ float Boat::turn_radius(float helm) const {
 }
 
 void Boat::save(SnapshotWriter& w) const {
-  const float f[] = {s_.pos_x,      s_.pos_y,      s_.z,          s_.psi,        s_.v,
+  const float f[] = {s_.pos_x,      s_.pos_y,      s_.z,          s_.psi,        s_.v,         s_.sway,
                      s_.h,          s_.yaw_rate,   s_.phi,        s_.phi_rate,   s_.theta,      s_.theta_rate,
                      s_.wobble_phase, s_.contact_vx, s_.contact_vy, s_.contact_yaw_rate,
                      s_.twd_from,   s_.awd_from,   s_.tws,        s_.twa,        s_.aws,
@@ -299,7 +330,7 @@ void Boat::save(SnapshotWriter& w) const {
 }
 
 bool Boat::load(SnapshotReader& r) {
-  float* f[] = {&s_.pos_x,      &s_.pos_y,      &s_.z,          &s_.psi,        &s_.v,
+  float* f[] = {&s_.pos_x,      &s_.pos_y,      &s_.z,          &s_.psi,        &s_.v,         &s_.sway,
                 &s_.h,          &s_.yaw_rate,   &s_.phi,        &s_.phi_rate,   &s_.theta,      &s_.theta_rate,
                 &s_.wobble_phase, &s_.contact_vx, &s_.contact_vy, &s_.contact_yaw_rate,
                 &s_.twd_from,   &s_.awd_from,   &s_.tws,        &s_.twa,        &s_.aws,

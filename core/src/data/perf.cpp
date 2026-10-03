@@ -31,6 +31,8 @@ const TableSpec kTrim{{Quantity::tws, Quantity::awa_abs, Quantity::trim_error}, 
 const TableSpec kWeatherHelm{{Quantity::tws, Quantity::twa_abs}, Unit::rad_s, -kInf, kInf};
 const TableSpec kFallOff{{Quantity::boat_speed, Quantity::twa_abs}, Unit::rad_s, 0.0f, kInf};
 const TableSpec kFlogDrag{{Quantity::aws, Quantity::awa_abs}, Unit::m_s2, 0.0f, kInf};
+const TableSpec kDrift{{Quantity::tws, Quantity::twa_abs}, Unit::m_s, 0.0f, kInf};
+const TableSpec kLeeway{{Quantity::tws, Quantity::twa_abs}, Unit::rad, 0.0f, 0.5f};
 const TableSpec kOptimalAngle{{Quantity::tws, Quantity::awa_abs}, Unit::rad, 0.0f, PI};
 const TableSpec kHeelSpeedFactor{{Quantity::heel_abs}, Unit::one, 0.0f, 3.0f};
 const TableSpec kRudderDrag{{Quantity::boat_speed_abs, Quantity::helm_abs}, Unit::m_s2, -kInf, kInf};
@@ -144,6 +146,21 @@ class PerfReader {
         positive(d, p, "bwl", y.bwl) && positive(d, p, "loa", y.loa);
     if (!scalars) return false;
 
+    // boat.md §6.4: the sideways drift, optional (both keys or neither); full_leeway optional, false.
+    const bool has_grip = d.find("drift_grip") != nullptr;
+    const bool has_length = d.find("drift_length") != nullptr;
+    if (has_grip != has_length) {
+      return fail(path_key(p, has_grip ? "drift_length" : "drift_grip"), "drift_grip and drift_length go together");
+    }
+    y.has_drift = has_grip;
+    if (y.has_drift &&
+        (!ranged(d, p, "drift_grip", y.drift_grip, 0.0f, kInf) || !positive(d, p, "drift_length", y.drift_length))) {
+      return false;
+    }
+    y.full_leeway = false;
+    if (d.find("full_leeway") != nullptr && !data::read_bool(d, p, "full_leeway", y.full_leeway, sink_)) return false;
+    if (y.full_leeway && !y.has_drift) return fail(p + ".full_leeway", "needs drift_grip and drift_length");
+
     if (const Value* hp = d.find("hull_points")) {
       y.has_hull_points = true;
       if (!data::read_points(*hp, p + ".hull_points", y.hull_points, sink_)) return false;
@@ -164,6 +181,7 @@ class PerfReader {
     k.heave_a = DT / (y.heave_time + DT);
     k.turn_c = y.turn_radius_full + y.turn_radius_offset;
     k.yaw_a = DT / (y.yaw_time + DT);
+    k.drift_lift = y.drift_grip > 0.0f ? 4.0f / y.drift_grip : 0.0f;
     // The offset may be negative (a rudder that stalls short of full helm), but the radius law needs turn_c > 0.
     if (!(k.turn_c > 0.0f)) return fail(p + ".turn_radius_offset", "turn_radius_full + turn_radius_offset <= 0");
     if (!(k.heel_k2 >= 0.0f && k.heel_k2 < 1.0f)) return fail(p + ".heel_damping", "heel_k2 outside [0, 1)");
@@ -383,8 +401,15 @@ class PerfReader {
           !config_optional(c, p, "trim_heel", kTrim, cfg.trim_heel) ||
           !config_optional(c, p, "weather_helm", kWeatherHelm, cfg.weather_helm) ||
           !config_optional(c, p, "fall_off", kFallOff, cfg.fall_off) ||
-          !config_optional(c, p, "flog_drag", kFlogDrag, cfg.flog_drag)) {
+          !config_optional(c, p, "flog_drag", kFlogDrag, cfg.flog_drag) ||
+          !config_optional(c, p, "drift", kDrift, cfg.drift) ||
+          !config_optional(c, p, "drift_flog", kDrift, cfg.drift_flog)) {
         return false;
+      }
+      // boat.md §6.4: the leeway table is read only with full leeway on, and then required.
+      if (out_.dynamics.full_leeway) {
+        if (!config_table(c, p, "leeway", kLeeway, cfg.leeway.table)) return false;
+        cfg.leeway.present = true;
       }
       // optimal_angle: exactly the main and the config's front sail, keyed by sail id.
       const std::string op = p + ".optimal_angle";

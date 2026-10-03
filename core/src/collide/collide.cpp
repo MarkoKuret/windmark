@@ -551,7 +551,10 @@ void Collisions::step(std::uint64_t tick, std::span<Boat> boats, std::span<const
 
     // 4.2 inputs (ground velocities before this contact's impulse).
     const CollideBoatInput& in_a = input[static_cast<std::size_t>(c.a)];
-    Vec2 vr{(A.v * ia.f.x + in_a.current.x) + A.contact_vx, (A.v * ia.f.y + in_a.current.y) + A.contact_vy};
+    // Ground velocity: along the heading, the sideways drift (`sway` to starboard, f = (fx, fy) -> (fy, -fx)),
+    // the current, the contact velocity (§4.2, boat.md §5.10).
+    Vec2 vr{((A.v * ia.f.x + A.sway * ia.f.y) + in_a.current.x) + A.contact_vx,
+            ((A.v * ia.f.y - A.sway * ia.f.x) + in_a.current.y) + A.contact_vy};
     float inv = 1.0f / ia.mass;
     BoatState* B = nullptr;
     const BoatInfo* ib = nullptr;
@@ -559,8 +562,8 @@ void Collisions::step(std::uint64_t tick, std::span<Boat> boats, std::span<const
       B = &boats[static_cast<std::size_t>(c.other)].mutable_state();
       ib = &info[static_cast<std::size_t>(c.other)];
       const CollideBoatInput& in_b = input[static_cast<std::size_t>(c.other)];
-      const Vec2 vb{(B->v * ib->f.x + in_b.current.x) + B->contact_vx,
-                    (B->v * ib->f.y + in_b.current.y) + B->contact_vy};
+      const Vec2 vb{((B->v * ib->f.x + B->sway * ib->f.y) + in_b.current.x) + B->contact_vx,
+                    ((B->v * ib->f.y - B->sway * ib->f.x) + in_b.current.y) + B->contact_vy};
       vr = {vr.x - vb.x, vr.y - vb.y};
       inv = inv + 1.0f / ib->mass;
     }

@@ -176,6 +176,42 @@ TEST_CASE("wm7 values read as binary32 of the file's decimals") {
   CHECK(step);
 }
 
+// boat.md §6.4, data_format.md §4.2, §4.3: the shipped classes drift when stalled, full leeway off, and a file
+// without the drift keys and tables (an older one) still loads, with no drift.
+TEST_CASE("sideways drift data in the shipped files") {
+  for (const std::string cls : {"wm7", "wm12"}) {
+    const std::string file = kData + "/perf/" + cls + ".perf.json";
+    wm::PerfData perf;
+    wm::LoadError err;
+    REQUIRE_MESSAGE(wm::load_perf(file, perf, err), err.message());
+    const wm::Dynamics& d = perf.dynamics;
+    CHECK(d.has_drift);
+    CHECK(d.drift_grip > 1.0f);
+    CHECK(d.drift_grip < 4.0f);
+    CHECK(d.drift_length > 1.0f);
+    CHECK(!d.full_leeway);
+    CHECK(d.derived.drift_lift == 4.0f / d.drift_grip);
+    for (const wm::ConfigPerf& c : perf.configs) {
+      CHECK(c.drift.present);
+      CHECK(c.drift_flog.present);
+      CHECK(!c.leeway.present);
+    }
+
+    wm::json::Value v = parse_ok(read(file));
+    auto& dm = key(v, "dynamics").members;
+    std::erase_if(dm, [](const auto& m) { return m.first == "drift_grip" || m.first == "drift_length" ||
+                                                 m.first == "full_leeway"; });
+    for (auto& c : key(v, "configs").items) {
+      std::erase_if(c.members, [](const auto& m) { return m.first == "drift" || m.first == "drift_flog"; });
+    }
+    wm::PerfData old;
+    REQUIRE_MESSAGE(wm::parse_perf(dump(v), file, old, err), err.message());
+    CHECK(!old.dynamics.has_drift);
+    CHECK(old.dynamics.derived.drift_lift == 0.0f);
+    CHECK(!old.configs[0].drift.present);
+  }
+}
+
 TEST_CASE("the test JSON writer round-trips the shipped file") {
   const std::string file = kData + "/perf/wm7.perf.json";
   wm::PerfData perf;
@@ -203,6 +239,39 @@ TEST_CASE("validator refuses broken performance files with file, path and reason
       }
     }
   });
+  auto erase = [](wm::json::Value& obj, const std::string& k) {
+    auto& m = obj.members;
+    for (auto it = m.begin(); it != m.end(); ++it) {
+      if (it->first == k) {
+        m.erase(it);
+        return;
+      }
+    }
+  };
+  add("drift_grip without drift_length", "$.dynamics.drift_length",
+      [&](wm::json::Value& v) { erase(key(v, "dynamics"), "drift_length"); });
+  add("negative drift_grip", "$.dynamics.drift_grip",
+      [](wm::json::Value& v) { key(key(v, "dynamics"), "drift_grip") = num("-1"); });
+  add("drift_length 0", "$.dynamics.drift_length",
+      [](wm::json::Value& v) { key(key(v, "dynamics"), "drift_length") = num("0"); });
+  add("full_leeway not a bool", "$.dynamics.full_leeway",
+      [](wm::json::Value& v) { key(key(v, "dynamics"), "full_leeway") = num("1"); });
+  add("full_leeway without leeway tables", "$.configs[0].leeway", [](wm::json::Value& v) {
+    wm::json::Value t;
+    t.kind = wm::json::Kind::boolean;
+    t.boolean = true;
+    key(key(v, "dynamics"), "full_leeway") = t;
+  });
+  add("full_leeway without drift", "$.dynamics.full_leeway", [&](wm::json::Value& v) {
+    wm::json::Value t;
+    t.kind = wm::json::Kind::boolean;
+    t.boolean = true;
+    key(key(v, "dynamics"), "full_leeway") = t;
+    erase(key(v, "dynamics"), "drift_grip");
+    erase(key(v, "dynamics"), "drift_length");
+  });
+  add("negative drift", "$.configs[0].drift.values",
+      [](wm::json::Value& v) { key(key(key(v, "configs").items[0], "drift"), "values").items[1] = num("-0.1"); });
   add("number as string", "$.dynamics.rudder_max",
       [](wm::json::Value& v) { key(key(v, "dynamics"), "rudder_max") = str("0.61"); });
   add("overflowing number", "$.dynamics.heel_limit",

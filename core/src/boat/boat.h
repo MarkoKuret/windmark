@@ -18,6 +18,7 @@ struct BoatState {
   float z = 0.0f;
   float psi = 0.0f;
   float v = 0.0f;
+  float sway = 0.0f;      // sideways speed through the water, + = to starboard (boat.md §6.4)
   float h = 0.0f;
   float yaw_rate = 0.0f;  // the hull's own yaw rate (boat.md §5.9)
   float phi = 0.0f, phi_rate = 0.0f;
@@ -99,6 +100,8 @@ class Boat {
   float let_fly_drive() const;
   // Windage deceleration at this tick's apparent wind (boat.md §5.8 `wind`), m/s^2 >= 0.
   float decel_wind() const;
+  // The sideways drift over the ground (boat.md §6.4): `sway` to starboard of the present heading, m/s east/north.
+  Vec2 drift_velocity() const;
 
   // conventions.md §9: boat.md §3 then sails.md §3.
   void save(SnapshotWriter& w) const;

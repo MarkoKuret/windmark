@@ -412,7 +412,8 @@ modes, right mouse drag or IJKL orbit, wheel or O/U zoom, R recentre, Backspace 
 start point; race mode: restart the race), Esc pause, F10 hide HUD, G instrument density (Glance, Race, Data),
 B select the next boat for a name tag (or click a boat), N name tags on and off, F9 the frame-time overlay.
 Capture (offline): X the clip cameras (start line, mark, long lens, helicopter), `.` clean pause (no menu, no
-label), `,` slow motion (x0.5, x0.25, x1; a small note shows the new rate for 1.5 s), `/` world tags and on-water guides on and off.
+label), `,` slow motion (x0.5, x0.25, x1; a small note shows the new rate for 1.5 s), `/` world tags and
+on-water guides on and off.
 
 ## Menus
 

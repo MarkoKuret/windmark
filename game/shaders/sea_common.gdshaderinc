@@ -38,7 +38,6 @@ uniform float land_tw = 0.0;
 // §4.1 detail normals: per layer (scale*cos, scale*sin, offset u, offset v) in the detail frame (downwind, across)
 uniform vec2 detail_dir = vec2(0.0, 1.0);   // world (east, north) unit vector the median wind blows toward
 uniform vec4 detail_layer[5];               // [0..3] detail layers, [4] the fine glint layer (§4.1)
-uniform vec4 foam_layer = vec4(0.0);        // streaks: offset (u, v); breakup: offset (u, v)
 uniform float wake_extent = 400.0;          // m, side of the camera-centred wake normal buffer
 uniform float wake_strength = 0.0;          // 0 when the buffer is off (tier L)
 
@@ -204,7 +203,6 @@ struct WmSurface {
 	float specular;
 	vec3 emission;
 	vec3 normal;       // scene axes, unit
-	float foam;
 	float m;           // puff factor
 };
 
@@ -243,21 +241,7 @@ WmSurface wm_surface(vec2 xl, float eta, vec3 n_geo, vec3 view, float dist, vec2
 	// §4.3 puffs darker, lulls brighter
 	albedo *= 1.0 - 0.25 * clamp((m - 1.0) / 0.25, 0.0, 1.0) + 0.15 * clamp((1.0 - m) / 0.4, 0.0, 1.0);
 
-	// §4.4 whitecaps on the steep crests, with the wind; foam streaks down the wind in strong winds
-	float tws_kn = wind / WM_KNOT;
-	float caps = smoothstep(8.0, 24.0, tws_kn);
-	float n1 = texture(foam_tex, q * vec2(1.0 / 23.0, 1.0 / 5.0) + foam_layer.xy).r;
-	float n2 = texture(foam_tex, q * (1.0 / 61.0) + foam_layer.zw).g;
-	float slope = length(n_geo.xz) / max(n_geo.y, 0.2);
-	float steep = smoothstep(0.04, 0.16, slope);
-	float th = 0.62 - 0.30 * caps;
-	float foam = smoothstep(th, th + 0.06, crest * (0.45 + 0.75 * n1) * mix(0.75, 1.2, steep))
-			* smoothstep(0.3, 0.6, n2) * (0.2 + 0.8 * caps);
-	foam *= 1.0 - smoothstep(900.0, 1300.0, dist);
-	foam = clamp(foam, 0.0, 1.0);
-	albedo = mix(albedo, col_foam, 0.85 * foam);
-	rough = mix(rough, 0.65, foam);
-	S.foam = foam;
+	// §4.4 no whitecaps for now
 
 	// §4.2 light through the crests
 	vec3 emission = col_sss * crest * (pow(max(0.0, dot(-view, sun_dir)), 3.0) * 0.3 * sun_color + 0.05);
@@ -265,7 +249,7 @@ WmSurface wm_surface(vec2 xl, float eta, vec3 n_geo, vec3 view, float dist, vec2
 	S.albedo = albedo;
 	S.roughness = rough;
 	S.specular = 0.40;   // Godot F0 = 0.16 * specular^2 = 0.026: water's 0.02 a little lifted
-	S.emission = emission * (1.0 - foam);
+	S.emission = emission;
 	return S;
 }
 

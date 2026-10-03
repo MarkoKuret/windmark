@@ -163,16 +163,17 @@ The game has no replay or clip export yet (WM-016.15, postponed). What works now
 2. **Record** with OBS Studio (free) or macOS Screenshot (Cmd+Shift+5). Better: Godot's built-in **Movie Maker
    mode** (`godot --path game --write-movie out.avi --fixed-fps 60`), which writes every frame at a fixed rate
    however slow the machine is, so a Mac capture is smooth. Still a window: the owner runs it.
-3. **Vertical:** capture 16:9 at 1440p or higher and crop to 9:16 in the editor, framing the incident; or run a
-   1080×1920 window with the HUD hidden. The HUD is laid out for 16:9, so a portrait layout is a backlog item.
-4. **Scripted shots:** the preview dump scripts already place boats and cameras from a shot list
-   (`game/tests/course_preview_dump.gd`); the same idea, run windowed, gives repeatable quiz set-ups.
+3. **Vertical:** capture 16:9 at 1440p or higher and crop to 9:16 in the editor, framing the incident; or turn on
+   Settings, Graphics, Capture preset, Portrait 9:16 (a 1080×1920 window with the HUD laid out for portrait).
+4. **Quiz set-ups:** `godot --path game res://scenes/sail_test.tscn -- --scenario=port_starboard` runs a scenario
+   file from `game/data/scenarios/` (`race.md` §14), the same 20 s clip every run; reset replays it.
 5. **Headless stills now:** the offline previews (`game/tests/previews/race_hud_*.jpg`, `course_*.jpg`,
    `sails_*.jpg`, `tools/boatgen/previews/*.png`) are fine for carousels and Reddit stills today, with no window.
    They are stand-in renders (no shadows, near-engine colours): label them "offline render" or use them only for the
    build-by-a-sailor pillar.
 
-**Small in-game tools that pay off most** (backlog candidates, not built; each updates its spec first):
+**Small in-game tools** (built 2026-10-03; keys in `controls.md` §7: X clip camera, `.` clean pause, `,` slow
+motion, `/` world tags):
 
 | Tool | Why | Cost |
 | --- | --- | --- |

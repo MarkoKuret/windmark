@@ -60,7 +60,8 @@ var fullscreen := false
 var vsync := true
 ## frames per second, 0 = no limit
 var fps_limit := 0
-## the capture preset (menus.md §3): "off", or "portrait" (a 1080 x 1920 window, the HUD's portrait layout)
+## the capture preset (menus.md §3): "off", or "portrait" (a 1080 x 1920 window, the HUD's portrait layout).
+## Session only: not in FIELDS, so never saved or loaded; every run starts with it off.
 var capture_preset := "off"
 
 # ---- audio (audio.md §1.1), linear 0..1 ----
@@ -81,7 +82,7 @@ const FIELDS := {
 	"cameras": ["camera_speed", "invert_orbit_x", "invert_orbit_y", "invert_look_x", "invert_look_y", "heel_follow",
 		"smooth_switch", "reduced_motion"],
 	"hud": ["assist", "hud_density", "ui_scale", "palette", "captions"],
-	"graphics": ["quality", "render_scale", "fullscreen", "vsync", "fps_limit", "capture_preset"],
+	"graphics": ["quality", "render_scale", "fullscreen", "vsync", "fps_limit"],
 	"audio": ["master_volume", "effects_volume", "signals_volume", "voice_volume", "ambience_volume",
 		"interface_volume"],
 	"menu": ["last_setup"],
@@ -223,6 +224,8 @@ func reset(section := "") -> void:
 		if section == "" or s == section:
 			for f in FIELDS[s]:
 				set(f, fresh.get(f))
+	if section == "" or section == "graphics":
+		capture_preset = fresh.capture_preset  # session only, but Reset section turns it off too
 
 
 # ---- apply ----
@@ -297,19 +300,28 @@ func apply_capture(win: Window) -> void:
 	if win == null or DisplayServer.get_name() == "headless":
 		return
 	var scr := DisplayServer.window_get_current_screen()
-	var usable := DisplayServer.screen_get_usable_rect(scr)
+	var r := capture_window_rect(win.size, DisplayServer.screen_get_usable_rect(scr))
+	if r.size != Vector2i.ZERO:
+		win.size = r.size
+		win.position = r.position
+
+
+## The window rect the capture preset wants for a window of `size` on a screen whose usable area is `usable`, or a
+## zero rect for no change. Turning Portrait on remembers `size` (once, until it is off again); Off gives the
+## remembered size back (within the usable area), centred, and forgets it.
+func capture_window_rect(size: Vector2i, usable: Rect2i) -> Rect2i:
 	if capture_preset == "portrait":
 		if _size_before == Vector2i.ZERO:
-			_size_before = win.size
+			_size_before = size
 		var sz := capture_window_size(usable.size)
-		if win.size != sz:
-			win.size = sz
-			win.position = usable.position + (usable.size - sz) / 2
-	elif _size_before != Vector2i.ZERO:
-		var sz := Vector2i(mini(_size_before.x, usable.size.x), mini(_size_before.y, usable.size.y))
-		_size_before = Vector2i.ZERO
-		win.size = sz
-		win.position = usable.position + (usable.size - sz) / 2
+		if size == sz:
+			return Rect2i()
+		return Rect2i(usable.position + (usable.size - sz) / 2, sz)
+	if _size_before == Vector2i.ZERO:
+		return Rect2i()
+	var back := Vector2i(mini(_size_before.x, usable.size.x), mini(_size_before.y, usable.size.y))
+	_size_before = Vector2i.ZERO
+	return Rect2i(usable.position + (usable.size - back) / 2, back)
 
 
 ## The portrait capture window for a screen whose usable area is `usable` px: 1080 x 1920, else the largest 9:16

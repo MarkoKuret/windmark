@@ -250,8 +250,11 @@ The options are saved per player in the settings file and set in the settings sc
   - `capture_slow` cycles the simulation rate ×1 → ×0.5 → ×0.25 → ×1. The simulation still steps at its 50 ms
     tick, fed with the frame time times the rate, and the render pose is interpolated between ticks, so boats,
     sails, sea and wakes move smoothly at the slower pace (everything drawn from the simulation's clock slows
-    with it). The cameras, the HUD's own smoothing and the sound run on the real frame time. Nothing is shown on
-    screen for the rate (a clean frame); a restart (`reset_boat`, the pause menu) sets it back to ×1 and ends a clean pause.
+    with it). The cameras, the HUD's own smoothing and the sound run on the real frame time. Each press shows a
+    brief rate note (`hud.md` §16.6: `Slow motion x0.5`, `Slow motion x0.25`, `Normal speed`) for 1.5 s of real
+    time, fading out over its last 0.4 s, also with the HUD hidden and in a clean pause; after that nothing is on
+    screen for the rate, so the frames stay clean. The clean pause itself shows nothing. A restart (`reset_boat`,
+    the pause menu) sets the rate back to ×1, ends a clean pause and clears the note without showing one.
   - Online both actions do nothing: the race runs on the server's clock.
 - **World tags** (`world_tags`, offline and online): hides or shows the world tags of `hud.md` §16.4 (mark tag,
   tack point, name tags, edge pointers, penalty turn) and the on-water guides of the course (the start, gate and
@@ -281,5 +284,6 @@ The options are saved per player in the settings file and set in the settings sc
    `helm_fine` for 0.5 s gives 0.1417; the same at 30, 60 and 144 fps within 0.5 %.
 9. Capture: offline, `capture_pause` stops the ticks with no menu and no `Paused` label while the camera still
    orbits, and a second press continues from the same tick; `capture_slow` gives rates 0.5, 0.25 and 1 in turn,
-   and 2 s of frames at ×0.5 step 20 ticks (±1), at ×0.25 10 ticks (±1); `world_tags` hides the HUD's world
+   and 2 s of frames at ×0.5 step 20 ticks (±1), at ×0.25 10 ticks (±1); each `capture_slow` press shows its rate
+   note, gone after 1.5 s of frames (also in a clean pause), and `capture_pause` shows none; `world_tags` hides the HUD's world
    tags and the course's water overlays and shows them again; online the two capture actions change nothing.

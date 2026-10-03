@@ -214,7 +214,7 @@ func _graphics() -> void:
 		["Off", "30", "60", "90", "120", "144"], s.fps_limit))
 	_row(MenuRow.choice("Capture preset", "capture_preset", Settings.CAPTURE_PRESETS, ["Off", "Portrait 9:16"],
 		s.capture_preset))
-	_sub("Medium suits the Steam Deck; Low suits integrated graphics. Render scale draws the 3D view at fewer pixels and sharpens it up to the screen (FSR); the HUD stays sharp. Portrait 9:16 makes a 1080 x 1920 window for vertical clips, with the HUD laid out for it.")
+	_sub("Medium suits the Steam Deck; Low suits integrated graphics. Render scale draws the 3D view at fewer pixels and sharpens it up to the screen (FSR); the HUD stays sharp. Portrait 9:16 makes a 1080 x 1920 window for vertical clips, with the HUD laid out for it; it is not kept for the next start.")
 
 
 func _audio() -> void:

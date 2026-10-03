@@ -234,9 +234,12 @@ the class, course, wind, seed and boats from it; the other flags (`--sky`, `--qu
 apply. The player watches (spectate keys step through the boats) unless boat 0 has `"helm": "player"`. New
 scenarios: copy an example, give each boat where she should be at the incident (`at`, wind-relative from the middle
 of the start line or from a mark), her tack, TWA and optionally speed and front sail; boats with the same `at`
-meet there. Angles are radians and speeds m/s (0.7854 rad = 45°, 6.17 m/s = 12 kn).
+meet there. Write angles in degrees and speeds in knots with the unit keys (`twa_deg`, `bearing_deg`, `from_deg`,
+`speed_kn`), as the examples do; the SI keys (`twa` in radians, `speed` in m/s, ...) still work, but not both for
+one field (`data_format.md` §9).
 
-Test: `game/tests/run_scenario_test.sh` (headless): the files load and bad ones are refused, the port/starboard
+Test: `game/tests/run_scenario_test.sh` (headless): the files load and bad ones are refused, degrees and knots
+read as the SI keys do and both keys of one field are refused, the port/starboard
 scenario has the port boat keep clear under rule 10 and take the rule 10 penalty in every run with the same
 checksum every tick, the windward/leeward one calls rule 11, and the sail scene runs a scenario to its pause and
 restarts it.
@@ -342,8 +345,8 @@ viewed boat. What it shows (`docs/specs/hud.md`):
 - **Portrait** (§16.5): on any screen taller than wide the HUD lays out for 9:16 clips: race bug and wind page on
   top, the alert lane (countdown, penalty panel, rule text) large under them, the instruments compact at the
   bottom, Glance by default. Turn it on with Settings, Graphics, Capture preset: Portrait 9:16 (a 1080 x 1920
-  window), or open the game at that size: `godot --path game --resolution 1080x1920` (add `--write-movie out.avi
-  --fixed-fps 60` for Movie Maker).
+  window, for the session only: the game always starts with it off), or open the game at that size:
+  `godot --path game --resolution 1080x1920` (add `--write-movie out.avi --fixed-fps 60` for Movie Maker).
 
 Names, skippers and AI levels come from `Hud.race.names`, `skippers`, `ai_levels` (boat index to text; defaults
 "You" and "Boat n"). `Hud.hud_event(kind, data)` reports signals, OCS, penalties, served penalties, rule warnings,
@@ -361,7 +364,7 @@ Runs headless, with scripted input at fixed frame rates:
 - `tests/controls_test.gd`: `controls.md` §8 (stick curve, hold-to-steer ramp, sheet keys, latching, sail
   mapping, focus, last-moved source, set and hold at 30, 60 and 144 fps), auto-trim hand-over, the input map
   against the defaults, the input frame encoding and one frame per tick; the capture mode (§8 test 9: clean
-  pause, slow-motion rates, world tags, online) on its own and in the sail scene on FakeSim and in a race on the
+  pause, slow-motion rates and the rate note, world tags, online) on its own and in the sail scene on FakeSim and in a race on the
   core.
 - `tests/cameras_test.gd`: `cameras.md` §10 (chase geometry, heading follow, frame-rate independence, 10 minutes of
   water clearance in a 1.5 m sea, onboard side change, aerial up modes, presets, shake), the free camera, near
@@ -409,7 +412,8 @@ modes, right mouse drag or IJKL orbit, wheel or O/U zoom, R recentre, Backspace 
 start point; race mode: restart the race), Esc pause, F10 hide HUD, G instrument density (Glance, Race, Data),
 B select the next boat for a name tag (or click a boat), N name tags on and off, F9 the frame-time overlay.
 Capture (offline): X the clip cameras (start line, mark, long lens, helicopter), `.` clean pause (no menu, no
-label), `,` slow motion (x0.5, x0.25, x1), `/` world tags and on-water guides on and off.
+label), `,` slow motion (x0.5, x0.25, x1; a small note shows the new rate for 1.5 s), `/` world tags and
+on-water guides on and off.
 
 ## Menus
 

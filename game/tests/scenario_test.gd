@@ -1,6 +1,7 @@
 extends SceneTree
 ## Headless test of the rules scenarios (WM-016.33, race.md §14, data_format.md §9):
 ##   - the scenario files of game/data/scenarios load; bad files are refused with the JSON path
+##   - degrees and knots (`*_deg`, `*_kn`, data_format.md §9) load as the SI keys do; both keys of one field are refused
 ##   - port/starboard: every boat started, set up at clip time 0 on her heading, speed and front sail, then the
 ##     port-tack boat is the one to keep clear under rule 10 and receives the rule 10 penalty, in every run (two
 ##     worlds), with the same checksum every tick
@@ -60,6 +61,71 @@ func test_files() -> void:
 	d3["boats"][0]["tack"] = "upwind"
 	var why3 := []
 	t.ok(Scenario.parse(d3, why3) == null and str(why3[0]).begins_with("$.boats[0].tack"), "bad tack refused")
+	test_units(good)
+
+
+## The hand units of §9: the example (degrees, knots) and the same file in SI give the same scenario; both keys of
+## one field, or an out-of-range hand value, are refused at the hand key.
+func test_units(hand: Dictionary) -> void:
+	t.begin("scenario units: degrees and knots")
+	var s := Scenario.load_file("port_starboard")
+	t.near(s.wind_speed, 12.0 * 1852.0 / 3600.0, 1e-6, "wind speed_kn 12 is 6.173 m/s")
+	t.near(s.boats[0].twa, PI / 4.0, 1e-6, "twa_deg 45 is π/4")
+	var si := hand.duplicate(true)
+	si["wind"] = {"speed": 12.0 * 1852.0 / 3600.0, "from": PI / 2.0}
+	for b in si["boats"]:
+		b["at"] = {"bearing": PI / 6.0, "dist": 300}
+		b.erase("twa_deg")
+		b["twa"] = PI / 4.0
+		b["speed"] = 3.0
+	var dg := hand.duplicate(true)
+	dg["wind"] = {"speed_kn": 12, "from_deg": 90}
+	for b in dg["boats"]:
+		b["at"] = {"bearing_deg": 30, "dist": 300}
+		b["speed_kn"] = 3.0 * 3600.0 / 1852.0
+	var w1 := []
+	var w2 := []
+	var sa := Scenario.parse(si, w1)
+	var sb := Scenario.parse(dg, w2)
+	if t.ok(sa != null and sb != null, "SI and hand keys both load: %s %s" % [w1, w2]):
+		t.near(sb.wind_speed, sa.wind_speed, 1e-6, "wind speed")
+		t.near(sb.wind_from, sa.wind_from, 1e-6, "wind from_deg 90")
+		t.near(sb.boats[1].bearing, sa.boats[1].bearing, 1e-6, "at.bearing_deg 30")
+		t.near(sb.boats[1].twa, sa.boats[1].twa, 1e-6, "twa_deg")
+		t.near(sb.boats[1].speed, sa.boats[1].speed, 1e-6, "speed_kn")
+	var both := [
+		[func(d: Dictionary) -> void: d["wind"]["speed"] = 6.0, "$.wind.speed_kn"],
+		[func(d: Dictionary) -> void: d["wind"]["from"] = 0.0, "$.wind.from_deg"],
+		[func(d: Dictionary) -> void: d["boats"][1]["at"]["bearing"] = 0.0, "$.boats[1].at.bearing_deg"],
+		[func(d: Dictionary) -> void: d["boats"][0]["twa"] = 0.7854, "$.boats[0].twa_deg"],
+		[_both_speeds, "$.boats[1].speed_kn"],
+	]
+	for c in both:
+		var d := hand.duplicate(true)
+		(c[0] as Callable).call(d)
+		var why := []
+		t.ok(Scenario.parse(d, why) == null and str(why[0]).begins_with(c[1]) and str(why[0]).contains("not both"),
+			"both keys refused at %s: %s" % [c[1], why])
+	var bad := [
+		["twa_deg", 181, "$.boats[0].twa_deg", "degrees"],
+		["speed_kn", -1, "$.boats[0].speed_kn", "knots"],
+		["twa_deg", "45", "$.boats[0].twa_deg", "degrees"],
+	]
+	for c in bad:
+		var d := hand.duplicate(true)
+		d["boats"][0][c[0]] = c[1]
+		var why := []
+		t.ok(Scenario.parse(d, why) == null and str(why[0]).begins_with(c[2]) and str(why[0]).contains(c[3]),
+			"out of range refused at %s in %s: %s" % [c[2], c[3], why])
+	var d4 := hand.duplicate(true)
+	d4["wind"]["from_deg"] = 360
+	var why4 := []
+	t.ok(Scenario.parse(d4, why4) == null and str(why4[0]).begins_with("$.wind.from_deg"), "from_deg 360 refused")
+
+
+func _both_speeds(d: Dictionary) -> void:
+	d["boats"][1]["speed"] = 3.0
+	d["boats"][1]["speed_kn"] = 6.0
 
 
 ## Runs a scenario to the end of its clip: per tick checksums, the pairs' keep-clear rules seen and the penalties.

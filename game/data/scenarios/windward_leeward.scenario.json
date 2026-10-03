@@ -6,12 +6,12 @@
   "class": "wm7",
   "course": "example_bay/example_wl",
   "seed": 1,
-  "wind": { "speed": 6.17, "from": 0, "shifts": "steady", "puffs": false },
+  "wind": { "speed_kn": 12, "from_deg": 0, "shifts": "steady", "puffs": false },
   "lead": 20,
   "after": 5,
   "view": 0,
   "boats": [
-    { "at": { "bearing": 0, "dist": 300 }, "tack": "starboard", "twa": 1.0, "livery": "kestrel" },
-    { "at": { "bearing": 0, "dist": 300 }, "tack": "starboard", "twa": 0.7854, "livery": "sirocco" }
+    { "at": { "bearing_deg": 0, "dist": 300 }, "tack": "starboard", "twa_deg": 57, "livery": "kestrel" },
+    { "at": { "bearing_deg": 0, "dist": 300 }, "tack": "starboard", "twa_deg": 45, "livery": "sirocco" }
   ]
 }

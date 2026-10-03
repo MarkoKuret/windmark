@@ -43,10 +43,24 @@ static func areas(h: Hud) -> Dictionary:
 	return out
 
 
-## Every problem: two blocks whose drawn areas overlap (by more than `tolerance` px), or a block off the screen.
+## Every problem: two blocks whose drawn areas overlap (by more than `tolerance` px), or a block off the screen;
+## in portrait (hud.md §16.5) also a world tag's text (mark tag, edge pointers, name tags) over the alert lane.
 static func problems(h: Hud, screen: Vector2, tolerance := 1.0) -> Array[String]:
 	var out: Array[String] = []
 	var a := areas(h)
+	if HudStyle.portrait(screen):
+		for b in [h.world, h.next_panel]:
+			if not (b as HudCanvas).visible:
+				continue
+			var o := offset(h, b)
+			for q in (b as HudCanvas).primitives():
+				if q["k"] != "text" or q["text"] == "":
+					continue
+				var r := HudCanvas.prim_rect(q)
+				r.position += o
+				for lane in ["Start", "Penalty", "Alerts"]:
+					if a.has(lane) and r.grow(-tolerance).intersects((a[lane] as Rect2).grow(-tolerance)):
+						out.append("world text '%s' over the alert lane (%s)" % [q["text"], lane])
 	var names := a.keys()
 	var scr := Rect2(Vector2.ZERO, screen).grow(tolerance)
 	for i in names.size():

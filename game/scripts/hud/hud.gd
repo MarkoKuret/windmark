@@ -119,6 +119,8 @@ var _ui_fed := false
 var _view_held := 0.0
 var _wired: PlayerControls = null
 var _k := 1.0
+## where edge pointers run in portrait (hud.md §16.5), screen px; empty in landscape (HudPaint.edge_pointer's own box)
+var edge_box := Rect2()
 
 
 func _init() -> void:
@@ -1052,6 +1054,7 @@ func _layout() -> void:
 	var its := items()
 	world.position = Vector2.ZERO
 	world.size = sc
+	edge_box = Rect2()
 	if HudStyle.portrait(sc):
 		_layout_portrait(sc, k, m, its)
 		return
@@ -1225,6 +1228,10 @@ func _layout_portrait(sc: Vector2, k: float, m: Vector2, its: Array[String]) -> 
 		next_panel.position = Vector2(m.x, race_panel.position.y + lane_h + 12.0 * k)
 	arrow_view.position = Vector2.ZERO
 	arrow_view.size = Vector2(26, 22) * k
+	# edge pointers between the alert lane and the feed and helm notes
+	var e_top := race_panel.position.y + lane_h + 24.0 * k
+	var e_bottom := minf(helm_notes.position.y, feed_block.position.y if lines > 0 else INF) - 56.0 * k
+	edge_box = Rect2(70.0 * k, e_top, sc.x - 140.0 * k, maxf(e_bottom - e_top, 1.0))
 	# tables centred, scaled down to the width
 	_place_table(ranking_panel, RANK_W, race.ranking_rows().size() if ranking_panel.visible else 0, k, inner, sc)
 	_place_table(results_panel, RESULT_W, race.result_rows.size(), k, inner, sc)

@@ -2,7 +2,7 @@
 id: decision-001
 title: Leeway and sideways drift
 date: '2026-09-29 10:56'
-status: proposed
+status: accepted
 ---
 ## Context
 
@@ -21,12 +21,13 @@ Proposed model:
 
 ## Decision
 
-Postponed (owner, 2026-09-29). Options when it is taken up:
+Option (a), owner 2026-10-03: drift when stalled only. Leeway fades to 0 above a few knots, so racing-speed
+handling, laylines and AI do not change. Built so that (b) full leeway can later be switched on by data.
+Options were:
 - (a) drift when stalled only: leeway fades to 0 above a few knots, so racing-speed handling, laylines and AI do
   not change;
 - (b) full leeway: more realistic, upwind ground track about 4 to 7° lower, needs HUD layline and AI pointing
   updates.
-Suggested: (a) first, built so that (b) is a data switch.
 
 ## Consequences
 

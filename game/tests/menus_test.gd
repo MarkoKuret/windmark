@@ -234,7 +234,7 @@ func test_main_menu() -> void:
 	t.ok(q.rows["venue"].choices == MenuData.ids(MenuData.venues()), "quick race: venues from disk")
 	t.ok(q.rows["course"].choices.has("example_bay/example_wl"), "quick race: the venue's courses")
 	t.ok(q.rows["livery"].choices == MenuData.ids(MenuData.liveries(str(q.rows["class_id"].value)))
-		and q.rows["livery"].choices.size() >= 12, "quick race: the class's liveries from disk")
+		and q.rows["livery"].choices.size() >= 12, "quick race: the class's boats (sail numbers) from disk")
 	# keyboard: Enter opens the page, the focus lands on the first row, down and right change the fleet size
 	_key("ui_accept")
 	await process_frame
@@ -251,8 +251,8 @@ func test_main_menu() -> void:
 	await process_frame
 	t.ok(int(q.rows["fleet_size"].value) == fleet + 2, "right x2: fleet %d -> %d" % [fleet, q.rows["fleet_size"].value])
 	q.rows["class_id"].set_value("wm12", true)
-	t.ok(q.rows["livery"].choices == MenuData.ids(MenuData.liveries("wm12")), "the livery list follows the class")
-	q.rows["livery"].set_value("black_carbon", true)
+	t.ok(q.rows["livery"].choices == MenuData.ids(MenuData.liveries("wm12")), "the sail number list follows the class")
+	q.rows["livery"].set_value("nightjar", true)
 	q.rows["ai_level"].set_value("pro", true)
 	q.rows["wind_kn"].set_value(15.0, true)
 	q.rows["wind_from_deg"].set_value(90.0, true)
@@ -261,7 +261,7 @@ func test_main_menu() -> void:
 	t.ok(g.mode == "race" and g.class_id == "wm12" and g.venue == "example_bay", "GameSetup: race, wm12, venue")
 	t.ok(g.course == "example_bay/example_wl" and g.fleet_size == fleet + 2 and g.ai_level == "pro",
 		"GameSetup: course, fleet, AI level")
-	t.ok(g.livery == "black_carbon", "GameSetup: livery")
+	t.ok(g.livery == "nightjar", "GameSetup: the chosen boat")
 	t.near(g.wind_kn, 15.0, 1e-9, "GameSetup: wind speed")
 	t.near(g.wind_from_deg, 90.0, 1e-9, "GameSetup: wind direction")
 	t.ok(asked == [MainMenu.SAIL_SCENE], "sail scene requested: %s" % [asked])

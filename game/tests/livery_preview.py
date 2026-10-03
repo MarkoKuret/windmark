@@ -9,7 +9,7 @@ sail numbers on both sides and through the cloth), each boat's text texture, and
 
     python3 game/tests/livery_preview.py [--size 1600x900] [--publish] [shot ...]
 
-Writes game/generated/livery_preview/<shot>.png and contact.png (with --publish also
+Writes game/generated/livery_preview/<shot>.png and contact.png (with --publish also game/tests/previews/livery_contact.png and
 game/tests/previews/livery_*.jpg). Needs numpy, Pillow and moderngl (docs/THIRD_PARTY.md).
 """
 import argparse
@@ -57,16 +57,14 @@ void main() {
 }
 """
 
-LIGHT = """
+# the sail preview's daytime light (sun, sky ramp, ambient; sail_preview.LIGHT) and the camera
+LIGHT = spv.LIGHT + """
 uniform vec3 u_cam;
 uniform vec3 u_sun;
-const vec3 SUN = vec3(1.0, 0.95, 0.85) * 3.0;
-const vec3 SKY_ZEN = vec3(0.25, 0.42, 0.75);
-const float PI = 3.14159265359;
 vec3 lit(vec3 albedo, vec3 N, vec3 V, float rough, float metal) {
     vec3 L = normalize(u_sun);
     float ndl = max(dot(N, L), 0.0);
-    vec3 amb = mix(vec3(0.16, 0.17, 0.19), SKY_ZEN * 0.6, 0.5 + 0.5 * N.y) * 0.6;
+    vec3 amb = sky_ambient(N);
     vec3 H = normalize(L + V);
     float shin = 2.0 / max(pow(rough, 4.0), 1e-3) - 2.0;
     float spec = pow(max(dot(N, H), 0.0), shin) * (shin + 8.0) / (8.0 * PI);
@@ -140,13 +138,167 @@ void main() {
     float ndl = dot(N, L);
     float fwd = pow(max(dot(-V, L), 0.0), 4.0);
     vec3 diff = SUN * (max(ndl, 0.0) + max(-ndl, 0.0) * trans * (0.75 + 0.75 * fwd)) / PI;
-    vec3 amb = mix(vec3(0.16, 0.17, 0.19), SKY_ZEN * 0.6, 0.5 + 0.5 * N.y) * 0.6;
+    vec3 amb = sky_ambient(N);
     vec3 H = normalize(V + L);
     float shin = 2.0 / max(pow(rough, 4.0), 1e-3) - 2.0;
     float spec = pow(max(dot(N, H), 0.0), shin) * (shin + 8.0) / (8.0 * PI);
     frag = vec4(a * (amb + diff) + 0.04 * spec * max(ndl, 0.0) * SUN, 1.0);
 }
 """
+
+
+# The baked path (shaders/boat_baked.gdshader, sail_baked.gdshader): the same samples and includes, with a GGX
+# stand-in for Godot's PBR and a sky gradient for the reflections, so gloss, scuffs and vinyl edges show.
+PBR = """
+vec3 srgb(vec3 c) { return pow(max(c, vec3(0.0)), vec3(2.2)); }
+vec3 sky_dir(vec3 d) {
+    float t = clamp(d.y, 0.0, 1.0);
+    vec3 c = mix(u_hor, u_zen, pow(t, 0.5));
+    return d.y < 0.0 ? u_hor * 0.3 : c;
+}
+vec3 lit_pbr(vec3 albedo, vec3 N, vec3 V, float rough, float ao) {
+    vec3 L = normalize(u_sun);
+    float NdotL = max(dot(N, L), 0.0);
+    float NdotV = max(dot(N, V), 1e-4);
+    vec3 H = normalize(L + V);
+    float NdotH = max(dot(N, H), 0.0);
+    float a = max(rough * rough, 2e-3);
+    float a2 = a * a;
+    float dd = NdotH * NdotH * (a2 - 1.0) + 1.0;
+    float D = a2 / (PI * dd * dd);
+    float k = a * 0.5;
+    float vis = 0.25 / ((NdotL * (1.0 - k) + k) * (NdotV * (1.0 - k) + k));
+    float F = 0.04 + 0.96 * pow(1.0 - max(dot(L, H), 0.0), 5.0);
+    vec3 direct = SUN * NdotL * (albedo / PI * (1.0 - F) + D * vis * F);
+    float Fe = 0.04 + (max(1.0 - rough, 0.04) - 0.04) * pow(1.0 - NdotV, 5.0);
+    vec3 R = reflect(-V, N);
+    vec3 sky_r = mix(sky_dir(R), mix(u_hor, u_zen, 0.5), clamp(rough * 1.3, 0.0, 1.0));
+    vec3 amb = sky_ambient(N);
+    return direct + ao * (sky_r * Fe * 0.9 + albedo * amb * (1.0 - Fe));
+}
+"""
+
+BOAT_BAKED_FS = """
+in vec3 v_n;
+in vec3 v_w;
+in vec4 v_uv;
+in float v_port;
+flat in float v_side;
+uniform sampler2D albedo_tex;
+uniform sampler2D mr_tex;
+uniform sampler2D bk_albedo;
+uniform sampler2D bk_normal;
+uniform sampler2D bk_orm;
+uniform vec2 uv_scale;
+uniform float roughness;
+uniform float bk_detail_mean;
+uniform float bk_rough_mean;
+uniform int bk_proj;
+uniform int bk_maps;
+out vec4 frag;
+void main() {
+    vec3 N = normalize(v_n);
+    vec3 V = normalize(u_cam - v_w);
+    if (dot(N, V) < 0.0) N = -N;
+    vec2 UV = v_uv.xy * uv_scale;
+    vec2 t = v_uv.zw;
+    vec3 det = srgb(texture(albedo_tex, UV).rgb) / bk_detail_mean;
+    vec3 a = srgb(texture(bk_albedo, t).rgb) * det;
+    vec4 mr = texture(mr_tex, UV);
+    float rough = clamp(mr.g * roughness, 0.0, 1.0);
+    float occ = 1.0;
+    if (bk_maps != 0) {
+        vec3 orm = texture(bk_orm, t).rgb;
+        rough = orm.g * mr.g / bk_rough_mean;
+        occ = orm.r;
+        vec3 nb = texture(bk_normal, t).rgb * 2.0 - 1.0;
+        N = wm_perturb(N, v_w, t, nb, -1.0);
+    }
+    if (ov_on != 0) {
+        vec2 c = wm_ov_hull(v_uv.zw);
+        a = mix(a, ov_color * det, c.x);
+        a *= 1.0 - 0.12 * c.y;
+        rough = mix(rough, 0.24, c.x);
+    }
+    frag = vec4(lit_pbr(min(a, vec3(0.8)), N, V, clamp(rough, 0.03, 1.0), occ), 1.0);
+}
+"""
+
+SAIL_BAKED_FS = """
+in vec3 v_n;
+in vec3 v_w;
+in vec4 v_uv;
+in float v_port;
+flat in float v_side;
+uniform sampler2D sk_albedo_port;
+uniform sampler2D sk_albedo_stbd;
+uniform sampler2D sk_normal;
+uniform sampler2D sk_orm;
+uniform sampler2D sk_detail;
+uniform float sk_detail_tile;
+uniform float sk_detail_amount;
+uniform vec2 sk_shear;
+uniform vec4 sk_rect;
+out vec4 frag;
+void main() {
+    vec2 UV = v_uv.xy;
+    vec2 p = vec2(UV.x * sk_shear.y, UV.y + UV.x * sk_shear.x);
+    vec2 t = vec2((p.x - sk_rect.x) / sk_rect.z, (sk_rect.y - p.y) / sk_rect.w);
+    vec3 a = srgb(v_side > 0.5 ? texture(sk_albedo_stbd, vec2(1.0 - t.x, t.y)).rgb : texture(sk_albedo_port, t).rgb);
+    vec3 orm = texture(sk_orm, t).rgb;
+    vec3 nm = texture(sk_normal, t).rgb * 2.0 - 1.0;
+    vec3 dt = texture(sk_detail, vec2(p.x, -p.y) / sk_detail_tile).rgb;
+    nm = normalize(vec3(nm.xy + (dt.xy * 2.0 - 1.0) * sk_detail_amount, nm.z));
+    a *= mix(1.0, dt.b * 2.0, sk_detail_amount);
+    vec2 nr = wm_sn_cov(p, v_side);
+    vec2 fr = wm_sn_cov(p, 1.0 - v_side);
+    a = mix(a, sn_color, nr.x) * (1.0 - 0.12 * nr.y);
+    a = min(a, vec3(0.8));
+    float rough = clamp(mix(orm.g, 0.4, nr.x), 0.05, 1.0);
+    float trans = orm.b * (1.0 - 0.85 * nr.x) * (1.0 - 0.85 * fr.x);
+    vec3 V = normalize(u_cam - v_w);
+    vec3 L = normalize(u_sun);
+    vec3 N = wm_perturb(normalize(v_n), v_w, p, nm, 1.0);
+    float ndl = dot(N, L);
+    float fwd = pow(max(dot(-V, L), 0.0), 4.0);
+    vec3 diff = SUN * (max(ndl, 0.0) + max(-ndl, 0.0) * trans * (0.75 + 0.75 * fwd)) / PI;
+    vec3 amb = sky_ambient(N);
+    vec3 H = normalize(V + L);
+    float shin = 2.0 / max(pow(rough, 4.0), 1e-3) - 2.0;
+    float spec = pow(max(dot(N, H), 0.0), shin) * (shin + 8.0) / (8.0 * PI);
+    frag = vec4(a * (amb * orm.r + diff) + 0.04 * spec * max(ndl, 0.0) * SUN, 1.0);
+}
+"""
+
+_images = {}
+
+
+def image_texture(ctx, path, repeat=False, fallback=(255, 255, 255)):
+    """An RGB image file as a mipmapped texture (data as stored; the shaders decode sRGB), cached."""
+    key = (path, repeat)
+    if key not in _images:
+        if path and Path(path).exists():
+            img = Image.open(path).convert("RGB")
+            t = ctx.texture(img.size, 3, img.tobytes())
+        else:
+            t = ctx.texture((1, 1), 3, bytes(fallback))
+        t.build_mipmaps()
+        t.filter = (moderngl.LINEAR_MIPMAP_LINEAR, moderngl.LINEAR)
+        t.anisotropy = 16.0
+        t.repeat_x = t.repeat_y = repeat
+        _images[key] = t
+    return _images[key]
+
+
+def detail_path(u, slot):
+    """The slot's tiling detail image: the dumped path, else boatgen's texture set by slot."""
+    p = u.get("albedo_tex")
+    if isinstance(p, str) and Path(p).exists() and p.endswith((".jpg", ".png")):
+        return p, u.get("mr_tex")
+    sets = {"gelcoat": "orange_peel", "boottop": "orange_peel", "antifouling": "grain", "nonslip": "diamond"}
+    s = sets.get(slot, "orange_peel")
+    root = GAME.parent / "tools" / "boatgen" / "textures"
+    return str(root / f"{s}_color.jpg"), str(root / f"{s}_mr.jpg")
 
 
 def set_uniforms(prog, values):
@@ -191,9 +343,21 @@ def render(ctx, d, size):
     boat = ctx.program(vertex_shader=VS, fragment_shader="#version 410\n" + LIGHT + hull_inc + BOAT_FS)
     sail = ctx.program(vertex_shader=VS, fragment_shader="#version 410\n" + LIGHT + inc("sail_cloth.gdshaderinc")
                        + inc("sail_livery.gdshaderinc") + SAIL_FS)
-    sky = ctx.program(vertex_shader=spv.SKY_VS, fragment_shader=spv.SKY_FS)
+    baked_inc = inc("livery_text.gdshaderinc") + inc("livery_baked.gdshaderinc")
+    boat_b = ctx.program(vertex_shader=VS, fragment_shader="#version 410\n" + LIGHT + PBR + baked_inc + BOAT_BAKED_FS)
+    sail_b = ctx.program(vertex_shader=VS, fragment_shader="#version 410\n" + LIGHT + PBR + baked_inc + SAIL_BAKED_FS)
+    sky = ctx.program(vertex_shader=spv.SKY_VS, fragment_shader="#version 410\n" + spv.LIGHT + spv.SKY_INC + spv.SKY_FS)
     tone = ctx.program(vertex_shader=spv.SKY_VS, fragment_shader=spv.TONE_FS)
-    sea_p = ctx.program(vertex_shader=spv.VS, fragment_shader=spv.FS)
+    sea_p = ctx.program(vertex_shader=spv.VS, fragment_shader="#version 410\n" + spv.LIGHT + spv.FS)
+    light = sc.get("light", spv.DEFAULT_LIGHT)
+    for pr in (boat, sail, boat_b, sail_b, sky, sea_p):
+        for k, v in (("u_sun_col", light["sun_color"]), ("u_hor", light["horizon"]), ("u_zen", light["zenith"])):
+            if k in pr:
+                pr[k].value = tuple(v)
+        if "u_ambient" in pr:
+            pr["u_ambient"].value = float(light["ambient"])
+    sky["u_cloud_cover"].value = float(light["cloud_cover"])
+    sky["u_cloud_offset"].value = tuple(light["cloud_offset"])
     eye = np.array(sc["eye"], "f8")
     target = np.array(sc["target"], "f8")
     vp = spv.perspective(sc.get("fov", 50.0), w / h, 0.3, 3000.0) @ spv.look_at(eye, target)
@@ -215,6 +379,7 @@ def render(ctx, d, size):
     quad = ctx.buffer(np.array([-1, -1, 1, -1, -1, 1, 1, 1], "f4").tobytes())
     ctx.disable(moderngl.DEPTH_TEST)
     sky["u_inv_vp"].write(np.linalg.inv(vp).T.astype("f4").tobytes())
+    sky["u_sun"].value = tuple(sun)
     ctx.vertex_array(sky, [(quad, "2f", "in_pos")]).render(moderngl.TRIANGLE_STRIP)
     ctx.enable(moderngl.DEPTH_TEST)
     sea_p["u_vp"].write(vp_b)
@@ -226,9 +391,10 @@ def render(ctx, d, size):
     r = 2500.0
     sea = np.array([[eye[0] - r, 0.0, eye[2] - r, 0, 1, 0], [eye[0] + r, 0.0, eye[2] - r, 0, 1, 0],
                     [eye[0] - r, 0.0, eye[2] + r, 0, 1, 0], [eye[0] + r, 0.0, eye[2] + r, 0, 1, 0]], "f4")
-    ctx.vertex_array(sea_p, [(ctx.buffer(sea.tobytes()), "3f 3f", "in_pos", "in_normal")]).render(
-        moderngl.TRIANGLE_STRIP)
-    for prog in (boat, sail):
+    if sc.get("sea", True):
+        ctx.vertex_array(sea_p, [(ctx.buffer(sea.tobytes()), "3f 3f", "in_pos", "in_normal")]).render(
+            moderngl.TRIANGLE_STRIP)
+    for prog in (boat, sail, boat_b, sail_b):
         prog["u_vp"].write(vp_b)
         prog["u_cam"].value = tuple(eye)
         prog["u_sun"].value = tuple(sun)
@@ -239,6 +405,35 @@ def render(ctx, d, size):
             continue
         vb = ctx.buffer(v.tobytes())
         fmt = [(vb, "3f 3f 4f 1f", "in_pos", "in_normal", "in_uv", "in_port")]
+        if m["kind"] == "sail_baked":
+            u = m["uniforms"]
+            set_uniforms(sail_b, u)
+            for unit, (k, rep) in enumerate([("sk_albedo_port", False), ("sk_albedo_stbd", False), ("sk_normal", False),
+                                             ("sk_orm", False), ("sk_detail", True)]):
+                image_texture(ctx, u.get(k), rep, (128, 128, 255) if k in ("sk_normal", "sk_detail") else (255, 255, 255)).use(unit)
+                sail_b[k].value = unit
+            text_texture(ctx, d / m["text"]).use(5)
+            sail_b["livery_text"].value = 5
+            ctx.enable(moderngl.CULL_FACE)
+            ctx.front_face = "cw"
+            ctx.vertex_array(sail_b, fmt, ctx.buffer(i.tobytes())).render(moderngl.TRIANGLES)
+            ctx.disable(moderngl.CULL_FACE)
+            continue
+        if m["kind"] == "boat_baked":
+            u = m["uniforms"]
+            set_uniforms(boat_b, u)
+            dp, mp = detail_path(u, m.get("slot", ""))
+            image_texture(ctx, dp, True).use(0)
+            image_texture(ctx, mp if mp and Path(str(mp)).exists() else None, True, (255, 204, 255)).use(1)
+            for unit, k in enumerate(["bk_albedo", "bk_normal", "bk_orm"], start=2):
+                image_texture(ctx, u.get(k), False, (128, 128, 255) if k == "bk_normal" else (255, 255, 255)).use(unit)
+                boat_b[k].value = unit
+            boat_b["albedo_tex"].value = 0
+            boat_b["mr_tex"].value = 1
+            text_texture(ctx, d / m["text"]).use(5)
+            boat_b["livery_text"].value = 5
+            ctx.vertex_array(boat_b, fmt, ctx.buffer(i.tobytes())).render(moderngl.TRIANGLES)
+            continue
         if m["kind"] == "sail":
             u = m["uniforms"]
             set_uniforms(sail, u)
@@ -267,7 +462,12 @@ def render(ctx, d, size):
     out.use()
     ctx.disable(moderngl.DEPTH_TEST)
     hdr.use(0)
+    ctx.texture((1, 1), 4, np.zeros(4, "f2").tobytes(), dtype="f2").use(1)
     tone["u_hdr"].value = 0
+    if "u_glow" in tone:
+        tone["u_glow"].value = 1
+    tone["u_exposure"].value = float(light["exposure"])
+    tone["u_white"].value = float(light["white"])
     ctx.vertex_array(tone, [(quad, "2f", "in_pos")]).render(moderngl.TRIANGLE_STRIP)
     img = Image.frombytes("RGBA", (w, h), out.read(components=4)).transpose(Image.FLIP_TOP_BOTTOM).convert("RGB")
     return img, sc.get("note", "")
@@ -302,7 +502,12 @@ def main():
         dr.text((x + 6, y + 3), n, fill=(230, 230, 230))
     sheet.save(OUT / "contact.png")
     if a.publish:
-        sheet.save(PUBLISHED / "livery_contact.jpg", quality=88)
+        # the published sheet: a PNG at a third of the shot size per tile
+        small = sheet.resize((sheet.width * 2 // 3, sheet.height * 2 // 3), Image.LANCZOS)
+        small.save(PUBLISHED / "livery_contact.png", optimize=True)
+        old = PUBLISHED / "livery_contact.jpg"
+        if old.exists():
+            old.unlink()
     print(f"wrote {len(tiles)} shots and contact.png to {OUT}")
 
 

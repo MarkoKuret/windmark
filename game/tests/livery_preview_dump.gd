@@ -6,7 +6,8 @@ extends SceneTree
 ## hull_livery, sail_livery, livery_text and sail_cloth shader files.
 ##   godot --headless --path game -s res://tests/livery_preview_dump.gd [-- shot ...]
 
-const OUT := "res://generated/livery_preview"
+## `-- procedural`: the procedural fallback (no baked textures), dumped to generated/livery_preview_procedural
+var OUT := "res://generated/livery_preview"
 const KNOT := 1852.0 / 3600.0
 const SEED := 2026
 
@@ -25,19 +26,33 @@ var SHOTS := [
 		"cam": {"mode": "mid", "eye": [10.0, -62.0, 4.0], "at": [-4.0, 0.0, 4.5], "fov": 44.0}},
 	{"name": "kites_wm12", "cls": "wm12", "n": 8, "twa": 120.0, "gap": 2.2, "t": 40.0, "kite": true,
 		"cam": {"mode": "mid", "eye": [14.0, -95.0, 6.0], "at": [-6.0, 0.0, 7.0], "fov": 44.0}},
-	{"name": "hull_wm7_stbd", "cls": "wm7", "n": 1, "twa": 42.0, "t": 20.0, "liveries": ["navy_gold"],
-		"cam": {"mode": "boat", "eye": [-7.0, 1.3, 1.0], "at": [0.0, 0.4, 0.0], "fov": 50.0}},
-	{"name": "hull_wm7_port", "cls": "wm7", "n": 1, "twa": -42.0, "t": 20.0, "liveries": ["red_swoosh"],
-		"cam": {"mode": "boat", "eye": [7.0, 1.6, -0.5], "at": [0.0, 0.5, 0.0], "fov": 50.0}},
-	{"name": "hull_wm12_stbd", "cls": "wm12", "n": 1, "twa": 40.0, "t": 20.0, "liveries": ["navy_gold"],
-		"cam": {"mode": "boat", "eye": [-11.0, 1.8, 1.0], "at": [0.0, 0.6, 0.0], "fov": 50.0}},
-	{"name": "main_wm7_stbd", "cls": "wm7", "n": 1, "twa": 42.0, "t": 20.0, "liveries": ["classic"],
+	{"name": "hull_wm7_stbd", "cls": "wm7", "n": 1, "twa": 42.0, "t": 20.0, "liveries": ["northern_star"],
+		"cam": {"mode": "boat", "eye": [-6.0, 1.1, 0.8], "at": [0.0, 0.35, 0.3], "fov": 50.0}},
+	{"name": "hull_wm7_port", "cls": "wm7", "n": 1, "twa": -42.0, "t": 20.0, "liveries": ["sirocco"],
+		"cam": {"mode": "boat", "eye": [6.5, 1.4, -0.5], "at": [0.0, 0.5, 0.0], "fov": 50.0}},
+	{"name": "hull_wm12_stbd", "cls": "wm12", "n": 1, "twa": 40.0, "t": 20.0, "liveries": ["nightjar"],
+		"cam": {"mode": "boat", "eye": [-10.0, 1.6, 1.0], "at": [0.0, 0.6, 0.0], "fov": 50.0}},
+	{"name": "bow_wm12_waterline", "cls": "wm12", "n": 1, "twa": 40.0, "t": 20.0, "liveries": ["nightjar"],
+		"cam": {"mode": "boat", "eye": [-3.2, 0.7, 4.6], "at": [0.0, 0.25, 3.6], "fov": 45.0}},
+	{"name": "stern_wm7", "cls": "wm7", "n": 1, "twa": 42.0, "t": 20.0, "liveries": ["kestrel"],
+		"cam": {"mode": "boat", "eye": [-4.2, 1.6, -6.0], "at": [0.0, 0.4, -2.2], "fov": 50.0}},
+	{"name": "stern_wm12", "cls": "wm12", "n": 1, "twa": 40.0, "t": 20.0, "liveries": ["seraphine"],
+		"cam": {"mode": "boat", "eye": [-6.5, 2.2, -9.5], "at": [0.0, 0.8, -3.5], "fov": 50.0}},
+	{"name": "keel_wm12_dry", "cls": "wm12", "n": 1, "twa": 40.0, "t": 20.0, "liveries": ["seraphine"], "sea": false,
+		"cam": {"mode": "boat", "eye": [-5.5, -1.4, 3.2], "at": [0.0, -1.4, 0.4], "fov": 50.0}},
+	{"name": "main_wm7_stbd", "cls": "wm7", "n": 1, "twa": 42.0, "t": 20.0, "liveries": ["kestrel"],
 		"cam": {"mode": "boat", "eye": [-13.0, 6.0, -3.0], "at": [0.0, 6.0, -0.5], "fov": 50.0}},
-	{"name": "main_wm7_port", "cls": "wm7", "n": 1, "twa": -42.0, "t": 20.0, "liveries": ["classic"],
+	{"name": "main_wm7_port", "cls": "wm7", "n": 1, "twa": -42.0, "t": 20.0, "liveries": ["kestrel"],
 		"cam": {"mode": "boat", "eye": [14.0, 6.0, -3.0], "at": [0.0, 6.0, -0.5], "fov": 50.0}},
-	{"name": "main_wm12_stbd", "cls": "wm12", "n": 1, "twa": 40.0, "t": 20.0, "liveries": ["black_carbon"],
+	{"name": "main_wm12_stbd", "cls": "wm12", "n": 1, "twa": 40.0, "t": 20.0, "liveries": ["nightjar"],
 		"cam": {"mode": "boat", "eye": [-20.0, 9.0, -4.0], "at": [0.0, 9.0, -1.0], "fov": 50.0}},
-	{"name": "main_wm7_backlit", "cls": "wm7", "n": 1, "twa": 42.0, "t": 20.0, "liveries": ["royal_blue"],
+	{"name": "main_wm7_close", "cls": "wm7", "n": 1, "twa": 42.0, "t": 20.0, "liveries": ["bora"],
+		"cam": {"mode": "boat", "eye": [-4.5, 3.4, -2.6], "at": [-0.6, 3.2, -1.2], "fov": 50.0}},
+	{"name": "jib_wm12_laminate", "cls": "wm12", "n": 1, "twa": 40.0, "t": 20.0, "liveries": ["nightjar"],
+		"cam": {"mode": "boat", "eye": [-9.0, 4.0, 7.5], "at": [0.0, 4.5, 2.5], "fov": 50.0}},
+	{"name": "kite_wm7", "cls": "wm7", "n": 1, "twa": 135.0, "t": 40.0, "kite": true, "liveries": ["kestrel"],
+		"cam": {"mode": "boat", "eye": [-6.0, 4.0, 13.0], "at": [-1.5, 4.5, 3.5], "fov": 55.0}},
+	{"name": "main_wm7_backlit", "cls": "wm7", "n": 1, "twa": 42.0, "t": 20.0, "liveries": ["swift"],
 		"cam": {"mode": "boat", "eye": [13.0, 5.0, -3.0], "at": [0.0, 6.0, -0.5], "fov": 50.0, "sun": "back"}},
 ]
 
@@ -53,6 +68,10 @@ func _main() -> void:
 		quit(1)
 		return
 	var want := OS.get_cmdline_user_args()
+	if want.has("procedural"):
+		want.erase("procedural")
+		BakedLivery.enabled = false
+		OUT = "res://generated/livery_preview_procedural"
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT))
 	var names := []
 	for spec in SHOTS:
@@ -194,6 +213,14 @@ func _dump(spec: Dictionary, views: Array) -> void:
 						ind[k] = k
 				var u0: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV] if arrays[Mesh.ARRAY_TEX_UV] != null else PackedVector2Array()
 				var u1: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV2] if arrays[Mesh.ARRAY_TEX_UV2] != null else PackedVector2Array()
+				var mat := mi.get_active_material(si)
+				# baked side or top views (keel, deck): their image coordinates in place of uv1, as the shader's vertex()
+				var proj := 0
+				var rect := Vector4.ZERO
+				if mat is ShaderMaterial and (mat as ShaderMaterial).shader == BoatLivery.BAKED_BOAT:
+					proj = int((mat as ShaderMaterial).get_shader_parameter("bk_proj"))
+					var r_: Variant = (mat as ShaderMaterial).get_shader_parameter("bk_rect")
+					rect = r_ if r_ is Vector4 else Vector4.ZERO
 				# position, normal (world), uv0, uv1, port side (model x > 0)
 				var w := PackedFloat32Array()
 				w.resize(pos.size() * 11)
@@ -203,6 +230,10 @@ func _dump(spec: Dictionary, views: Array) -> void:
 					var q := (nb * nrm[k]).normalized() if nrm.size() == pos.size() else Vector3.UP
 					var a := u0[k] if u0.size() == pos.size() else Vector2.ZERO
 					var c := u1[k] if u1.size() == pos.size() else Vector2.ZERO
+					if proj == 1:
+						c = Vector2((pos[k].z - rect.x) / rect.z, (rect.y - pos[k].y) / rect.w)
+					elif proj == 2:
+						c = Vector2((pos[k].z - rect.x) / rect.z, (rect.y - pos[k].x) / rect.w)
 					var o := 11 * k
 					w[o] = p.x; w[o + 1] = p.y; w[o + 2] = p.z
 					w[o + 3] = q.x; w[o + 4] = q.y; w[o + 5] = q.z
@@ -211,12 +242,20 @@ func _dump(spec: Dictionary, views: Array) -> void:
 				var nm := "m%d" % meshes.size()
 				FileAccess.open(dir.path_join(nm + "_v.bin"), FileAccess.WRITE).store_buffer(w.to_byte_array())
 				FileAccess.open(dir.path_join(nm + "_i.bin"), FileAccess.WRITE).store_buffer(ind.to_byte_array())
-				var mat := mi.get_active_material(si)
 				var entry := {"name": nm, "node": String(mi.name), "kind": "flat", "albedo": [0.6, 0.6, 0.6], "rough": 0.5}
 				if mat is ShaderMaterial:
 					var sm := mat as ShaderMaterial
 					var u := _uniforms(sm)
-					if is_sail:
+					if sm.shader == BoatLivery.BAKED_SAIL:
+						entry["kind"] = "sail_baked"
+						entry["uniforms"] = u
+						entry["text"] = text_png
+					elif sm.shader == BoatLivery.BAKED_BOAT:
+						entry["kind"] = "boat_baked"
+						entry["uniforms"] = u
+						entry["text"] = text_png
+						entry["slot"] = sm.resource_name
+					elif is_sail:
 						entry["kind"] = "sail"
 						entry["uniforms"] = u
 						entry["text"] = text_png
@@ -262,7 +301,7 @@ func _dump(spec: Dictionary, views: Array) -> void:
 		eye = Vector3(base.x, 0.0, base.z) + Frames.enu_to_scene(e[0], e[1], e[2])
 		target = Vector3(mid.x, 0.0, mid.z) + Frames.enu_to_scene(at[0], at[1], at[2])
 	var scene := {"meshes": meshes, "eye": [eye.x, eye.y, eye.z], "target": [target.x, target.y, target.z],
-		"fov": cam["fov"], "sun": cam.get("sun", "side"),
+		"fov": cam["fov"], "sun": cam.get("sun", "side"), "sea": spec.get("sea", true),
 		"note": "%s: %s" % [spec["name"], ", ".join(views.map(func(v: BoatView) -> String: return "%s %s" % [v.livery.boat_name, v.livery.sail_number]))]}
 	FileAccess.open(dir.path_join("scene.json"), FileAccess.WRITE).store_string(JSON.stringify(scene, "  "))
 	print("  dumped ", spec["name"], " (", meshes.size(), " meshes)")

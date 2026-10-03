@@ -41,7 +41,8 @@ static func classes() -> Array:
 	return _sorted(out)
 
 
-## Liveries of a class in file order (the class default first): data/liveries/<class>.liveries.json.
+## The boats of a class in file order (the default first), named "<sail number>  <boat name>":
+## data/liveries/<class>.liveries.json `boats` (every boat wears the class livery).
 static func liveries(class_id: String) -> Array:
 	return Livery.load_class(class_id).map(func(l: Livery) -> Dictionary: return {"id": l.id, "name": l.name})
 

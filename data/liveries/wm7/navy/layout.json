@@ -1,0 +1,17 @@
+{
+ "schema": "windmark.liverylayout/1",
+ "class": "wm7",
+ "livery": "navy",
+ "keel": {
+  "rect": [
+   -0.75693,
+   -0.166486,
+   1.612,
+   1.514474
+  ],
+  "size": [
+   1024,
+   964
+  ]
+ }
+}

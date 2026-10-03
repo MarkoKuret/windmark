@@ -82,9 +82,11 @@ rules block of the world snapshot, §14.
 - **Hull gap** `g(A, B)`: the minimum distance between the two rules hull polygons (0 when they intersect). Convex
   polygons: separating-axis test for intersection, else the minimum over vertex–edge distances.
 - **Motion model for prediction** (constant turn rate and velocity): each boat keeps her speed through the water
-  `v`, her turn rate `r` (the boat's `turn_rate` output, `boat.md` §5.9, heading rate positive clockwise) and the
-  current at her position; the boat model has no leeway (`boat.md` §6.4). Over a horizon the hull polygon is moved
-  in sub-steps of 0.1 s: `ψ += r·0.1`, `c += (v·dir(ψ) + current)·0.1`, the polygon placed at `c` with ψ (the boat
+  `v`, her turn rate `r` (the boat's `turn_rate` output, `boat.md` §5.9, heading rate positive clockwise) and her
+  **drift**: the current at her position plus her present sideways drift over the ground (`sway` to starboard of
+  her present heading, `boat.md` §6.4: 0 with way on, the boat model folds the leeway of a sailing boat into the
+  polar), held as it is. Over a horizon the hull polygon is moved
+  in sub-steps of 0.1 s: `ψ += r·0.1`, `c += (v·dir(ψ) + drift)·0.1`, the polygon placed at `c` with ψ (the boat
   turns about its reference point, as in the boat step). The contact velocity is ignored. Pure kinematics; the
   physics is not run for predictions.
 - `PredGap(A, B, H)`: the minimum hull gap over the samples 0, 0.1, …, H s.

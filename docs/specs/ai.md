@@ -102,8 +102,8 @@ with a 3° hysteresis on each boundary so the type does not flicker.
 ### 4.2 Reaching
 
 Steer the direct course to the aim point of the mark approach (§6.1), adjusted for the current so the course over
-ground points at it: `ψ = compass(R − c) − wrap_pi(cog − ψ)` with the present drift angle (the boat model has no
-leeway, `boat.md` §6.4, so the drift is the current alone). Sail: `best_sail` for the
+ground points at it: `ψ = compass(R − c) − wrap_pi(cog − ψ)` with the present drift angle (the boat model folds
+the leeway of a sailing boat into the polar, `boat.md` §6.4, so with way on the drift is the current alone). Sail: `best_sail` for the
 present TWA.
 
 ### 4.3 Beating and running: headings, laylines, tack points
@@ -423,7 +423,7 @@ With a pending penalty the AI starts a turn when all of:
 - boat speed ≥ 0.75 × target, and not within 5 s after a failed turn;
 - the next zone is more than 20 s of sailing (plus the circle) away;
 - the turn's circle is clear of the other boats as they move: no hull within `0.5·L` of the circle over the next
-  6 s, each boat moved on her present course and speed (a boat coming up fast is in the way, one sailing away is
+  6 s, each boat moved on her present course and speed with her drift (`rules.md` §3.1) (a boat coming up fast is in the way, one sailing away is
   not; a boat taking a penalty must keep clear of all others, rule 22.2), and none within `3·L` ahead.
 
 From 20 s before the deadline (`rules.md` §9.4; the turn must be in progress when it passes) it is **urgent**: only

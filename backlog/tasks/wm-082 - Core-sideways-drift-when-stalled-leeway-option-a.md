@@ -1,9 +1,11 @@
 ---
 id: WM-082
 title: 'Core: sideways drift when stalled (leeway option a)'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-10-03 17:02'
+updated_date: '2026-10-03 17:03'
 labels:
   - physics
 dependencies: []

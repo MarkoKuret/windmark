@@ -167,6 +167,49 @@ def test_flog_drag(generated):
         assert f[i10, 0] > 0.02                                # a real brake head to wind in a breeze
 
 
+def test_drift_tables(generated):
+    """boat.md 6.4, sails.md 6: the sideways drift at rest, to leeward, from the windage against the cross-flow drag;
+    0 head to wind and dead downwind, growing with the TWS, more with the sails flogging; full leeway off."""
+    b, p = generated
+    d = p["dynamics"]
+    assert 1.0 < d["drift_grip"] < 4.0 and 1.0 < d["drift_length"] < 8.0
+    assert d["full_leeway"] is False
+    beam = {}
+    for c in p["configs"]:
+        assert "leeway" not in c
+        tws, twa, s = _t2(c["drift"])
+        _, twa_f, f = _t2(c["drift_flog"])
+        assert tws[0] == 0 and tws[-1] >= 20.6 and twa[0] == 0 and twa[-1] == pytest.approx(math.pi)
+        assert np.all(s[0] == 0) and np.all(s[:, 0] == 0) and np.all(s[:, -1] < 1e-6)
+        assert np.all(s >= 0) and np.all(f >= s - 1e-9)
+        j90 = int(np.argmin(abs(twa - 90 * DEG)))
+        i10, i20 = int(np.argmin(abs(tws - 10 * KNOT))), int(np.argmin(abs(tws - 20 * KNOT)))
+        assert s[1:, j90].max() == pytest.approx(s[-1].max())   # strongest beam on
+        assert 0.3 * KNOT < np.interp(10 * KNOT, tws, s[:, j90]) < 1.0 * KNOT
+        assert s[i20, j90] / s[i10, j90] == pytest.approx(tws[i20] / tws[i10], rel=0.05)   # push ~ tws^2
+        assert np.all(f[1:, j90] > 1.1 * s[1:, j90])
+        beam[c["front_sail"]] = s[i10, j90]
+    assert beam["a2"] > beam["jib"] > beam[None]        # more cloth, more windage
+
+
+def test_full_leeway_switch(raw):
+    """boat.md 6.4: a class file can switch full leeway on through handling; every config then carries the leeway
+    table on the polar's axes, 0 in the no-go zone."""
+    raw["handling"] = {"full_leeway": True}
+    p = perf.generate(boatclass.from_dict(raw))
+    perf.validate(p)
+    assert p["dynamics"]["full_leeway"] is True
+    for c in p["configs"]:
+        tws, twa, lw = _t2(c["leeway"])
+        assert c["leeway"]["axes"] == c["polar"]["axes"]
+        _, _, pol = _t2(c["polar"])
+        assert np.all(lw[pol <= 0.1] == 0) and np.all(lw >= 0) and np.all(lw <= 0.35)
+        if c["front_sail"] == "jib":
+            i10 = int(np.argmin(abs(tws - 10 * KNOT)))
+            j40 = int(np.argmin(abs(twa - 40 * DEG)))
+            assert 2 * DEG < lw[i10, j40] < 12 * DEG
+
+
 def test_accel_rest(generated):
     """boat.md 5.8: from rest the drive meets no hull resistance, so the boat starts faster than it builds its last
     speed; the same no-go and floor rules as accel."""

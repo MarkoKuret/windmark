@@ -12,6 +12,9 @@ Per config (main alone, main + each front sail), on the spec's axes:
   (the single manual sheet of sails.md 5.2), relative to the trimmed values, 0 with the driving sail on the wind
   line;
 * ``fall_off``: turning away from the wind with no way on (boat.md 7.4);
+* ``drift``, ``drift_flog``: the steady sideways drift to leeward of the boat with no way on, its windage (hull,
+  rig and the sails on the wind line, luffing on their sheets or flogging on free sheets) against the cross-flow
+  drag of hull, keel and rudder (boat.md 6.4);
 * ``optimal_angle``: best sheet angle of the main and the front sail against the apparent wind.
 
 ``dynamics`` values are derived from the design where the VPP has the physics (turn radius and its law's offset,
@@ -88,6 +91,13 @@ FALL_OFF_RATE = (8.0 * DEG, 5.0 * DEG)
 FALL_OFF_FN = 0.05
 FALL_OFF_TWA = np.array([0, 10, 20, 60, 90, 180]) * DEG
 FALL_OFF_SHAPE = np.array([0, 0, 1, 1, 0, 0.0])
+# Sideways drift (README "Sideways drift", boat.md 6.4): cross-flow drag coefficients of the underwater body moving
+# sideways (Hoerner): the fins (keel, rudder, boards) as plates normal to the flow, the canoe body and the bulb as
+# blunt bodies; the canoe body's lateral profile is this share of LWL x Tc. TWA axis of the drift tables.
+CD_CROSS_FOIL = 1.2
+CD_CROSS_BODY = 0.7
+BODY_PROFILE = 0.7
+DRIFT_TWA = np.arange(0, 180.01, 5) * DEG
 
 
 def _by_size(lwl, s, l):
@@ -190,6 +200,9 @@ class Generator:
                 dyn[k] = v
             else:
                 self.notes.append(f"handling.{k}: not a dynamics key, ignored")
+        if dyn["full_leeway"] is not True:
+            for c in configs:
+                del c["leeway"]
         return sig9(out)
 
     def _solve(self, front, rig: Rig) -> ConfigResult:
@@ -272,6 +285,9 @@ class Generator:
             "weather_helm": table([("tws", TWS), ("twa_abs", twa_axis)], "rad/s", self._weather_helm(r, twa_axis)),
             "fall_off": self._fall_off(),
             "flog_drag": self._flog_drag(r),
+            "drift": table([("tws", TWS), ("twa_abs", DRIFT_TWA)], "m/s", self._drift(rig, CD_LUFF)),
+            "drift_flog": table([("tws", TWS), ("twa_abs", DRIFT_TWA)], "m/s", self._drift(rig, CD_FLOG)),
+            "leeway": table([("tws", TWS), ("twa_abs", twa_axis)], "rad", self._leeway_table(r, keep)),
             "optimal_angle": opt,
             "vpp": {
                 "flat": table([("tws", TWS[1:]), ("twa_abs", self.twa)], "1", FLATS[r.fi]),
@@ -294,6 +310,54 @@ class Generator:
         fade = np.array([1.0, 1.0, 0.75, 0.0])          # 1 - (v / vf)^2 ahead
         return table([("boat_speed", speed), ("twa_abs", FALL_OFF_TWA)], "rad/s",
                      rate * fade[:, None] * FALL_OFF_SHAPE[None, :])
+
+    # ---------------------------------------------------------------------------------------------------------
+    # sideways drift (boat.md 6.4)
+
+    def _cross_flow(self):
+        """(c, k, m_sway): the cross-flow drag of the underwater body moving sideways, N per (m/s)^2; the lift slope
+        of keel and rudder against leeway, lift = k * v * sway in N with v and sway in m/s; and the sway mass, kg:
+        the boat's mass plus the added mass of fins (plates normal to the flow) and canoe body (its section and
+        mirror image as a plate of twice its draft)."""
+        b = self.boat
+        up = self.hydro.upright
+        alat = b.keel.area + b.rudder.area
+        bodies = 2 if b.kind == "catamaran" else 1
+        body = BODY_PROFILE * up["lwl"] * up["tc"] * bodies
+        bulb = b.bulb.length * b.bulb.diameter if b.bulb else 0.0
+        c = 0.5 * RHO_WATER * (CD_CROSS_FOIL * alat + CD_CROSS_BODY * (body + bulb))
+        te = float(self.hull.effective_draft(np.array([1.0]), np.zeros(1))[0])
+        ar = 2 * te ** 2 / alat
+        k = 0.5 * RHO_WATER * alat * (2 * math.pi * ar / (ar + 2))
+        fins = b.keel.chord ** 2 * b.keel.span * b.keel.count + b.rudder.chord ** 2 * b.rudder.span * b.rudder.count
+        m_add = RHO_WATER * (0.25 * math.pi * fins + 0.5 * math.pi * up["tc"] ** 2 * BODY_PROFILE * up["lwl"] * bodies)
+        return c, k, b.mass + m_add
+
+    def _drift(self, rig: Rig, cd_sail):
+        """Steady sideways drift (m/s, >= 0) of the boat with no way on, on (TWS, DRIFT_TWA): the cross-wind
+        component of the windage of hull, rig and the sails on the wind line (luffing: CD_LUFF, flogging:
+        CD_FLOG) at the apparent wind the drifting boat feels, against the cross-flow drag c * drift^2."""
+        c, _, _ = self._cross_flow()
+        tw = wind_at(TWS[:, None], rig.ce_height(1.0)) + 0.0 * DRIFT_TWA[None, :]
+        t = np.broadcast_to(DRIFT_TWA[None, :], tw.shape)
+        lo = np.zeros(tw.shape)
+        hi = tw * np.sin(t)
+        for _ in range(40):
+            mid = 0.5 * (lo + hi)
+            ax, ay = tw * np.cos(t), tw * np.sin(t) - mid
+            aws, beta = np.hypot(ax, ay), np.arctan2(ay, ax)
+            push = rig.windage_force(aws, beta, cd_sail) * np.sin(beta)
+            more = push > c * mid * mid
+            lo = np.where(more, mid, lo)
+            hi = np.where(more, hi, mid)
+        return np.maximum(0.5 * (lo + hi), 0.0)
+
+    def _leeway_table(self, r: ConfigResult, keep):
+        """Leeway (rad) on the polar's axes: the VPP's leeway where the config sails, 0 in the no-go zone. Written
+        only with dynamics.full_leeway on (boat.md 6.4)."""
+        out = np.zeros((len(TWS), 4 + int(np.sum(keep))))
+        out[1:, 4:] = self._leeway(r)[:, keep]
+        return out
 
     def _flog_drag(self, r: ConfigResult):
         """Deceleration (m/s^2, >= 0) from the config's sails flogging on free sheets beyond the drag they have
@@ -617,6 +681,10 @@ class Generator:
                    + (b.bulb.mass * b.bulb.depth ** 2 if b.bulb else 0.0)) * 1.8
         pitch_freq = float(np.clip(math.sqrt(RHO_WATER * G * i_wp / i_pitch), 1.0, 6.0))
         heel_rm_max, _ = H.rm_max()
+        # sideways drift (boat.md 6.4): keel grip = 4 c / k, the grip speed over the drift; sway mass over c
+        c_x, k_x, m_sway = self._cross_flow()
+        drift_grip = float(4 * c_x / k_x)
+        drift_length = float(m_sway / c_x)
 
         dyn = {
             "helm_rate": helm_rate,
@@ -644,6 +712,9 @@ class Generator:
             "heave_time": float(np.clip(0.25 * math.sqrt(lwl / L_S), 0.2, 0.6)),
             "waterline_offset": 0.0,
             "surf_gain": float(np.clip(4.0 * (lwl / L_S) ** -0.5, 1.5, 5.0)),
+            "drift_grip": drift_grip,
+            "drift_length": drift_length,
+            "full_leeway": False,
             "lwl": b.lwl,
             "bwl": b.bwl,
             "loa": b.loa,
@@ -893,7 +964,7 @@ def generate(boat: Boat, thin_ship: Optional[bool] = None, physics: Optional[Dic
 # validation of the written file (data_format.md 5)
 
 RANGES = {"polar": (-5, 40), "heel": (0, math.pi / 2), "accel": (0, None), "accel_rest": (0, None),
-          "fall_off": (0, None), "flog_drag": (0, None), "trim_speed": (0, 3), "trim_heel": (0, 3),
+          "fall_off": (0, None), "flog_drag": (0, None), "drift": (0, None), "drift_flog": (0, None), "trim_speed": (0, 3), "trim_heel": (0, 3),
           "heel_speed_factor": (0, 3), "optimal_angle": (0, math.pi)}
 QUANTITIES = ("tws", "twa_abs", "awa_abs", "trim_error", "boat_speed", "boat_speed_abs", "helm_abs", "heel_abs", "aws")
 

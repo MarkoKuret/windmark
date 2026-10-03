@@ -162,6 +162,11 @@ bool CoreSim::place_boat(int64_t boat, double x, double y, double psi) {
   return boat_ok(boat) && ok(wm_world_place_boat(world_, i32(boat), f32(x), f32(y), f32(psi)));
 }
 
+bool CoreSim::scenario_place(int64_t boat, double x, double y, double psi, double v, int64_t front_sail) {
+  return boat_ok(boat) &&
+         ok(wm_world_scenario_place(world_, i32(boat), f32(x), f32(y), f32(psi), f32(v), i32(front_sail)));
+}
+
 bool CoreSim::create_race(const String& course_path) {
   if (world_ == nullptr) {
     error_ = "no world";
@@ -929,6 +934,8 @@ void CoreSim::_bind_methods() {
   ClassDB::bind_method(D_METHOD("is_created"), &CoreSim::is_created);
   ClassDB::bind_method(D_METHOD("add_boat", "perf_path", "entry"), &CoreSim::add_boat);
   ClassDB::bind_method(D_METHOD("place_boat", "boat", "x", "y", "psi"), &CoreSim::place_boat);
+  ClassDB::bind_method(D_METHOD("scenario_place", "boat", "x", "y", "psi", "v", "front_sail"),
+                       &CoreSim::scenario_place);
   ClassDB::bind_method(D_METHOD("create_race", "course_path"), &CoreSim::create_race);
   ClassDB::bind_method(D_METHOD("last_error"), &CoreSim::last_error);
   ClassDB::bind_method(D_METHOD("api_version"), &CoreSim::api_version);

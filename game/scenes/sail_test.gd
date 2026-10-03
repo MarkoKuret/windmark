@@ -14,6 +14,9 @@ extends Node3D
 ##
 ## Set-up: the scene's exports, replaced by GameSetup.current() when the menus have written one (GameSetup.next
 ## set) or `setup` is given, then by the command-line flags (see _user_args). Seed 0 picks one from the clock.
+## With `scenario` (`--scenario=<id>`, GameSetup mode scenario) the race is a rules scenario (race.md §14,
+## ScenarioRun): the file sets class, course, wind, seed and boats; the player watches unless boat 0 has helm
+## player, the cameras start on its `view` boat, the simulation pauses at the clip's end and reset restarts it.
 ## Spectating (spectate_next / prev / leader) steps through the boats when not racing (`racing` off, `watch`)
 ## or once the player has finished, retired or left the race (cameras.md §1).
 ##
@@ -105,6 +108,10 @@ var boat_view: BoatView
 var boat_views: Array[BoatView] = []
 ## the session set-up to apply instead of GameSetup.next (tests); null: GameSetup.next when the menus wrote one
 var setup: GameSetup = null
+## a rules scenario id or .scenario.json path (race.md §14); "": none
+var scenario := ""
+## the running scenario (core only), null without one
+var scenario_run: ScenarioRun
 var venue_view: VenueView
 ## race mode: the course drawn from the core
 var course_view: CourseView
@@ -136,6 +143,7 @@ var _sails_cur_all: Array = []
 func _ready() -> void:
 	_apply_setup()
 	_user_args()
+	_load_scenario()
 	if world_seed == 0:
 		world_seed = 1 + (Time.get_ticks_usec() ^ int(Time.get_unix_time_from_system() * 1000.0)) % 2000000000
 	on_core = sim_kind == SimKind.CORE or (sim_kind == SimKind.AUTO and CoreSimSource.available())
@@ -206,6 +214,8 @@ func _ready() -> void:
 		for v in boat_views:
 			for g in v.find_children("*", "GeometryInstance3D", true, false):
 				(g as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	if scenario_run != null:
+		view_boat(scenario_run.scenario.view)
 	perf = PerfMonitor.new()
 	perf.name = "Perf"
 	perf.scene = self
@@ -245,6 +255,8 @@ func _apply_setup() -> void:
 	wind_from_deg = gs.wind_from_deg
 	world_seed = gs.seed
 	livery = gs.livery
+	if gs.mode == "scenario":
+		scenario = gs.scenario
 
 
 ## Command line after `--` (over GameSetup): `--race` (race mode on `course`; the fleet of GameSetup when no
@@ -256,7 +268,8 @@ func _apply_setup() -> void:
 ## `--fake` (FakeSim), `--core`; measuring (hud.md §17): `--perf` (the frame-time overlay), `--perf-log=PATH`,
 ## `--perf-seconds=N`, `--render-scale=0.67`, `--upscaler=fsr|bilinear|metalfx`, `--quality=L|M|H`, `--no-vsync`,
 ## `--shadow-splits=0|2|4`, `--shadow-atlas=N`, `--shadow-distance=M`, `--shadow-soft=0..5`, `--no-wake-buffer`, `--no-boat-shadows`,
-## `--no-drawn-shadows`, `--sea-grid=RINGSxSEGMENTS`, `--water-shader=l|m|h` and `--no-hud` (this run only, not saved).
+## `--no-drawn-shadows`, `--sea-grid=RINGSxSEGMENTS`, `--water-shader=l|m|h` and `--no-hud` (this run only, not saved);
+## `--scenario=<id>` (a rules scenario of game/data/scenarios, or a .scenario.json path; race.md §14).
 func _user_args() -> void:
 	var fleet_given := false
 	var race_flag := false
@@ -336,9 +349,38 @@ func _user_args() -> void:
 			no_drawn_shadows = true
 		elif a == "--no-hud":
 			no_hud = true
+		elif a.begins_with("--scenario="):
+			scenario = a.trim_prefix("--scenario=")
 	if race_flag and not fleet_given and fleet_size < 2:
 		fleet_size = GameSetup.new().fleet_size
 	if watch:
+		racing = false
+
+
+## A rules scenario (race.md §14) onto the scene's settings: class, venue, course, fleet, wind and seed from the
+## file, the core, race mode; the player watches unless boat 0 is the player's. A file that does not load leaves the
+## scene as it was set up.
+func _load_scenario() -> void:
+	if scenario == "":
+		return
+	var why := []
+	var s := Scenario.load_file(scenario, why)
+	if s == null:
+		push_error("scenario: %s" % (why[0] if not why.is_empty() else scenario))
+		return
+	scenario_run = ScenarioRun.new(s)
+	sim_kind = SimKind.CORE
+	race_mode = true
+	class_id = s.class_id
+	venue = s.venue
+	course = s.course
+	fleet_size = s.boats.size()
+	world_seed = s.seed
+	wind_speed_kn = s.wind_speed / HudFormat.KNOT
+	wind_from_deg = rad_to_deg(s.wind_from)
+	puffs = s.puffs
+	shift_preset = s.shift_preset
+	if not s.player_sails():
 		racing = false
 
 
@@ -376,6 +418,8 @@ func _paint_fleet() -> void:
 		var entries := []
 		for b in by_class[id]:
 			entries.append({"human": runner != null and b == runner.boat, "choice": livery})
+			if scenario_run != null and scenario_run.scenario.boats[b].livery != "":
+				entries[-1] = {"human": true, "choice": scenario_run.scenario.boats[b].livery}
 		var got := Livery.assign(list, entries, world_seed)
 		for k in got.size():
 			if got[k] != null:
@@ -425,8 +469,15 @@ func _setup_core() -> int:
 	return 0
 
 
-## A new core world with the player's boat (index 0), placed or racing. null on failure.
+## A new core world with the player's boat (index 0), placed or racing (or the rules scenario at clip time 0).
+## null on failure.
 func _make_core() -> CoreSimSource:
+	if scenario_run != null:
+		scenario_run.core_settings = core_settings
+		var run_cs := scenario_run.make_core()
+		if run_cs == null:
+			push_warning("sail test: the scenario did not start (%s); using FakeSim" % scenario_run.error)
+		return run_cs
 	var cs := CoreSimSource.new()
 	cs.settings = {"wind_speed": wind_speed_kn * HudFormat.KNOT, "wind_from": deg_to_rad(wind_from_deg),
 		"puffs": puffs, "shift_preset": shift_preset, "race_seed": world_seed}
@@ -490,6 +541,10 @@ func reset_boat() -> void:
 		hud.local_commands = true
 		_build_course()
 		audio.restart(sim, boat_views)
+		if scenario_run != null:
+			runner.paused = false
+			viewed = clampi(scenario_run.scenario.view, 0, sim.boat_count() - 1)
+			hud.local_commands = viewed == b
 	elif on_core:
 		(sim as CoreSimSource).place_boat(b, start_x, start_y, _start_psi())
 	else:
@@ -515,6 +570,8 @@ func _setup_fake() -> int:
 
 
 func _on_tick(_t: int) -> void:
+	if scenario_run != null and scenario_run.finished(sim):
+		runner.paused = true  # race.md §14: the clip ends paused; reset_boat runs it again
 	var t0 := Time.get_ticks_usec()
 	hud.tick(sim, viewed)
 	var t1 := Time.get_ticks_usec()

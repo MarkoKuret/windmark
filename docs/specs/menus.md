@@ -24,6 +24,8 @@ The project's main scene. Items, top to bottom: **Quick race**, **Free sail**, *
   0°, north).
 - **Start** fills `GameSetup.current()` (mode `race` or `free`, seed 0: from the clock) and changes to the sail
   scene, which reads it. The last choices are remembered in the settings file (§3) for the next visit.
+- Rules scenarios (`race.md` §14) have no menu item: they start from the command line of the sail scene,
+  `--scenario=<id>`, which sets `GameSetup` mode `scenario` with the scenario id.
 
 ## 2. Pause menu
 

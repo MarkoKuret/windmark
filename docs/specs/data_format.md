@@ -11,8 +11,8 @@ Three kinds of files feed the simulation core:
 Courses and marks are defined in `courses.md` (`windmark.course/1`). The core never reads the class file directly: everything it needs is
 in the performance file, which carries the hash of the class file it was made from.
 
-The front end also reads the livery files of §8 (`<class>.liveries.json`: colours, names and sail numbers);
-the core never does.
+The front end also reads the livery files of §8 (`<class>.liveries.json`: colours, names and sail numbers) and
+the rules scenario files of §9 (`<id>.scenario.json`); the core never does.
 
 ## 1. General rules
 
@@ -708,3 +708,67 @@ only when it does not exist (or is empty); `--force` rewrites every folder it is
 (`hull`, `keel`, `deck`, `sails` or a sail id) rewrites just those files. No other tool writes there. A changed
 class file does not rebake them: the hull follows uv1 and the sails keep their `rect` in metres, so after a hull or
 sail plan change the owner decides whether to repaint or rebake (`--only`).
+
+## 9. Rules scenarios (`windmark.scenario/1`)
+
+A short set-up for a rules question: a few boats placed on the first beat of an offline race, sailing into an
+incident. The front end starts it as `race.md` §14 says. Files live in `game/data/scenarios/<id>.scenario.json`,
+written by hand. The general rules of §1 hold (SI units, radians, ids); a file that fails validation is refused
+with the file, the JSON path and the reason, and nothing starts.
+
+### 9.1 Header
+
+| key | | default | meaning |
+| --- | --- | --- | --- |
+| `schema` | **R** | | `"windmark.scenario/1"` |
+| `id` | **R** | | the file name without `.scenario.json` |
+| `name` | **R** | | the title, 1 to 60 characters |
+| `note` | | `""` | free text for the author (the question and its answer); never shown in the race |
+| `class` | **R** | | the class id of every boat (`data/classes/<id>.boat.json`) |
+| `course` | **R** | | `"<venue>/<course id>"` (`game/data/courses/<venue>/<id>.course.json`); the world is on that venue |
+| `seed` | | 1 | the world seed (`conventions.md` §7): AI skippers, sea, liveries by the fleet rule |
+| `wind` | **R** | | `speed` **R** (m/s, base speed at 10 m), `from` **R** (rad compass), `shifts` (a `wind.md` §1 preset: `steady`, `stable`, `oscillating`, `shifty`, `unstable`; default `steady`), `puffs` (default `false`) |
+| `lead` | | 20 | s from clip time 0 (the set-up) to the incident: how far back each boat starts (§9.2) |
+| `after` | | 5 | s the clip runs past the incident before the scene pauses |
+| `view` | | 0 | the boat the cameras start on |
+| `boats` | **R** | | 2 to 8 boats (§9.2); the first is boat 0, the player's boat |
+
+### 9.2 Boats
+
+| key | | default | meaning |
+| --- | --- | --- | --- |
+| `at` | **R** | | where the boat would be at the incident: a wind-frame offset `{"bearing", "dist", "from"}` as in `courses.md` §3.2, resolved on the race's course axis `TWD_c`; `from` is a mark id of the course, a derived `"<a>_<b>_mid"`, or omitted for the middle of the start line |
+| `tack` | **R** | | `"starboard"` or `"port"` |
+| `twa` | **R** | | true wind angle on that tack, rad, 0 to π |
+| `speed` | | polar | m/s, ≥ 0; default the polar speed at `twa` in the base wind with her front sail |
+| `front_sail` | | class start sail | a sail id of the class's front sails, or `"none"` |
+| `auto_trim` | | `true` | the boat's auto trim |
+| `helm` | | `"hold"` | `hold` (keeps her set-up heading, `race.md` §14), `ai` (the core's AI skipper), `player` (boat 0 only: the player's controls) |
+| `ai_level` | | `intermediate` | `easy`, `intermediate`, `expert`, `pro` (`ai.md` §13), for `helm: ai` |
+| `livery` | | fleet rule | a boat id of the class's livery file (§8.4); boats with one take it as human entries do, the rest by the fleet rule |
+
+The set-up pose: heading `ψ = wrap_2pi(TWD_c − s · twa)` with `s = +1` on starboard and `−1` on port (the wind on
+the starboard side is a positive TWA, `conventions.md`), and position `p = p_at − speed · lead · dir(ψ)`: the boat
+starts `lead` seconds back along her heading, so boats given the same `at` meet there if they hold their course and
+speed. Set-up positions must lie on the first beat, on the course side of the start line and short of the first
+mark, so that the race sees the jump of `race.md` §14 step 4 as plain track.
+
+Example (`game/data/scenarios/port_starboard.scenario.json`): the starboard boat and the port boat close-hauled,
+meeting 300 m up the first beat 20 s after the set-up.
+
+```json
+{
+  "schema": "windmark.scenario/1",
+  "id": "port_starboard",
+  "name": "Port meets starboard",
+  "class": "wm7",
+  "course": "example_bay/example_wl",
+  "wind": { "speed": 6.17, "from": 0 },
+  "lead": 20,
+  "boats": [
+    { "at": { "bearing": 0, "dist": 300 }, "tack": "starboard", "twa": 0.7854 },
+    { "at": { "bearing": 0, "dist": 300 }, "tack": "port", "twa": 0.7854 }
+  ]
+}
+```
+

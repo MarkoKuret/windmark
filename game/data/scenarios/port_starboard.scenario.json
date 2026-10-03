@@ -1,0 +1,17 @@
+{
+  "schema": "windmark.scenario/1",
+  "id": "port_starboard",
+  "name": "Port meets starboard",
+  "note": "Both boats close-hauled on the first beat, on a collision course. The port-tack boat (boat 1) must keep clear (rule 10) and takes the penalty.",
+  "class": "wm7",
+  "course": "example_bay/example_wl",
+  "seed": 1,
+  "wind": { "speed": 6.17, "from": 0, "shifts": "steady", "puffs": false },
+  "lead": 20,
+  "after": 5,
+  "view": 0,
+  "boats": [
+    { "at": { "bearing": 0, "dist": 300 }, "tack": "starboard", "twa": 0.7854, "livery": "kestrel" },
+    { "at": { "bearing": 0, "dist": 300 }, "tack": "port", "twa": 0.7854, "livery": "sirocco" }
+  ]
+}

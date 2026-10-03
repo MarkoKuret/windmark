@@ -31,7 +31,7 @@ func advance(dt: float) -> int:
 		return 0
 	_acc += dt
 	var n := 0
-	while _acc >= SimSource.DT - 1e-9 and n < MAX_TICKS_PER_FRAME:
+	while not paused and _acc >= SimSource.DT - 1e-9 and n < MAX_TICKS_PER_FRAME:  # a tick may pause it
 		step_tick()
 		_acc -= SimSource.DT
 		n += 1

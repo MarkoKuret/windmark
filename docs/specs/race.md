@@ -544,6 +544,9 @@ The rules layer adds its own events (`rules.md` §11).
   and the same seed reproduces the identical results table and final state hash.
 - Snapshot: the same race saved at several ticks (before the warning, in the sequence, mid-race, after the first
   finish) and loaded into a new world continues with the same checksum every tick and the same results.
+- Scenario (§14): the port/starboard example scenario starts with every boat started, the port-tack boat is the
+  one to keep clear under rule 10 and receives the rule 10 penalty, and a second run gives the same checksum every
+  tick.
 
 ## 13. State and snapshot
 
@@ -571,3 +574,34 @@ list  order (int32 boat indices by rank, §8.3)
 list  results (§9): int32 boat, int32 place, uint8 code, float points, int64 t_finish_us, bool projected
 list  penalty requests of the tick to the rules (§3.4): int32 boat, uint8 rule
 ```
+
+## 14. Rules scenarios
+
+A rules scenario is a short, repeatable set-up for a rules question (the "Who's wrong?" clips): two to eight boats
+put on chosen courses on the first beat of an offline race, sailing into an incident about `lead` seconds later.
+The file is `data_format.md` §9; the front end starts it (offline only, never online) from the core's calls alone:
+
+1. **World.** The scenario's wind (`base_speed`, `base_from`, the shift preset, puffs, oscillation off) and seed,
+   `free_sailing_s = 0`, `sequence = 3-2-1-0`, `prep_flag = P`; the other settings of §2 keep their defaults (rules
+   `full`, umpire `standard`, one-turn penalties). The boats are added in file order on the scenario's class: boat 0
+   is the human entry (the player's boat), the others are not human. The race is created on the scenario's course
+   (§3.1).
+2. **To the gun.** Before every tick each boat is placed (`wm_world_scenario_place`) on the pre-start side,
+   25 m behind the start line at `u = (k + 0.5) / n` (boat `k` of `n`, §3.3), on her set-up heading, at speed 0,
+   until a race tick at or after the start signal has seen them there.
+3. **Start.** Each boat is placed 5 m over the line at the same `u`, at 1 m/s, and the world steps once: every boat
+   has started (§4.2). A boat that has not is a start failure, and the scenario does not run.
+4. **Set-up.** Each boat is placed at her set-up pose, speed and front sail (`data_format.md` §9.2); boats with
+   `helm: ai` get their AI skipper now (`wm_world_ai_add`). The race sees the jump as one tick of track up the first
+   beat, before any mark. This tick is clip time 0.
+5. **Running.** A `hold` boat is steered by the front end before every tick: `h_cmd = clamp(2.5 · wrap_pi(ψ_set −
+   ψ), −0.6, 0.6)`, let fly off, auto trim as the file says. AI boats sail as in any race; a `player` boat (boat 0
+   only) follows the player's controls. The race and the rules run as in any race: the race clock shows the time
+   since the gun, a few ticks at clip time 0.
+6. **End.** At clip time `lead + after` the scene pauses the simulation (the offline pause, `controls.md` §7); the
+   reset key (`reset_boat`) starts the scenario again from step 1.
+
+The same scenario file gives the same run every time (the same checksum every tick) as long as no boat is sailed
+by the player: hold boats read only the core state, and the AI skippers draw from the race seed. The positions of
+step 2 and 3 never show: the scene draws nothing before clip time 0.
+

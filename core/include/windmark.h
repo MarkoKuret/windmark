@@ -191,6 +191,13 @@ WM_API wm_status wm_world_add_boat(wm_world* w, const wm_boat_entry* e, int32_t*
 /* Free sailing: places a boat at (x, y) on heading psi at 60 % of its polar speed, sails up and trimmed. Only
  * before wm_world_create_race (WM_ERR_STATE after). */
 WM_API wm_status wm_world_place_boat(wm_world* w, int32_t boat, float x, float y, float psi);
+/* Scenario set-up (rules scenarios, tests, tools; not a control, never sent online): puts a boat at (x, y) on
+ * heading psi at speed v (m/s, >= 0) between ticks, before or after wm_world_create_race, as a spawn does (boat.md
+ * §6.6: sails up and trimmed, the wind triangle evaluated at once). `front_sail`: the sail index to have up, -1 none,
+ * -2 the front sail she has up now. Auto trim and performance_scale stay as they are. The race sees the move as the
+ * boat's track in the next step (a move across the start line after the gun starts her, race.md §4.2). */
+WM_API wm_status wm_world_scenario_place(wm_world* w, int32_t boat, float x, float y, float psi, float v,
+                                         int32_t front_sail);
 /* race.md §3.1: lays the course, checks it on the venue, creates the race and the rules, spawns every boat. */
 WM_API wm_status wm_world_create_race(wm_world* w, const wm_course* course);
 

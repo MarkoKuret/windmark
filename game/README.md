@@ -22,6 +22,8 @@ controls, the cameras, the minimal HUD, the audio and a sail test scene that put
 | `scripts/audio/` | The audio (`docs/specs/audio.md`): `GameAudio` (the node that plays the race), `SoundMap` (the sound map and its files), `SoundFormula` (terms, gates, triggers), `BoatSoundInputs` (the formula inputs of a boat), `AudioBuses` (the buses, ducking and wind pan), `SoundSynth` (the synthesised fallback) |
 | `audio/default/` | The default sound set: Ogg Vorbis files written by `tools/soundgen` (our own synthesis), with their `.import` files |
 | `data/sound_map.json` | The sound map (`audio.md` §9): the only place that names sound files |
+| `data/scenarios/` | Rules scenario files (`windmark.scenario/1`, `data_format.md` §9): `port_starboard`, `windward_leeward` |
+| `scripts/scenario/` | The rules scenarios (`race.md` §14): `Scenario` (the file, loaded and validated), `ScenarioRun` (starts it on the core and steers its hold boats) |
 | `scripts/venue/` | `VenueShapes` (the venue's land polygons and obstacles, from the core or the venue file), `LandTerrain` (the drawn ground height and colours), `ColorMesh` (vertex-coloured mesh builder) |
 | `shaders/` | Shaders. `sea_common`, `sky_common`, `wake_common`, `boat_shadow_common` (`.gdshaderinc`) hold the water, sky, wake and drawn shadow maths, written so the offline preview can compile them as GLSL too; `water_l/m/h` are the sea per quality tier, `sky`, `wake`, `wake_normal`, `boat_shadow` (the boats' shadows drawn on the water); `boat` is the boat surface shader; `sail` the sails, with the procedural cloth of `sail_cloth.gdshaderinc` (also compiled by the sail preview) |
 | `scenes/` | Scenes. `sea/` is the sea (`sea.tscn`, `Sea`), its data source, wakes and drawn boat shadows (`BoatShadows`), and the daytime sky (`sky_day.tscn`, `SkyRig`, `env_day.tres`); `water_test.tscn` shows them together; `sail_test.tscn` is one boat sailing freely on the core (FakeSim as fallback), or racing alone on the example course, with cameras, controls and HUD on that sea and sky; `venue/` draws the venue land and obstacles (`VenueView`, `land.gdshader`); `course/` the course (`CourseView`, `CourseProps`); `menu/` the menus (`main_menu.tscn`, the main scene; `pause_menu.tscn`; the setup and settings panels, rows, theme and backdrop) |
@@ -166,7 +168,7 @@ others as Dictionaries with the C field names. `CoreSimSource` caches the per-bo
   written one (`GameSetup.next`) or a test sets `setup`, else the scene's exports (free sailing); command-line
   flags after `--` override both: `--race`, `--free`, `--fleet=10`, `--level=expert`, `--speed-only`, `--watch`
   (an AI sails the player's boat too), `--class=wm12`, `--venue=`, `--course=<venue>/<id>`, `--seed=` (0: from
-  the clock), `--wind=<kn>`, `--wind-from=<deg>`, `--fake`, `--core`. Spectating (`spectate_next`, `prev`,
+  the clock), `--wind=<kn>`, `--wind-from=<deg>`, `--fake`, `--core`, `--scenario=<id>` (a rules scenario, below). Spectating (`spectate_next`, `prev`,
   `leader` by race rank) works when not racing (`--watch`) or once the player has finished, retired or left.
   To race in a window: `godot --path game res://scenes/sail_test.tscn -- --race --fleet=10 --level=intermediate`.
 - **Simulation** (`sim_kind`): `AUTO` (the default) runs the core through `CoreSimSource` when the GDExtension is
@@ -214,6 +216,30 @@ others as Dictionaries with the C field names. `CoreSimSource` caches the per-bo
   hold or toggle, sheet turns auto-trim off), `CameraRig.options` (speed, invert, reduced motion, smooth switch,
   auto-recentre), `Hud.assist` (Full, Standard, Minimal). Not implemented yet: mouse helm, one-hand layout,
   rebinding UI, vibration.
+
+## Rules scenarios
+
+A rules scenario (`race.md` §14, file format `data_format.md` §9) is a repeatable set-up for a rules question (the
+"Who's wrong?" clips): two to eight boats put on the first beat of an offline race on chosen courses, sailing
+into an incident `lead` seconds later (20 s by default). The scene pauses `after` seconds past it (5 s by default);
+the reset key runs the same clip again, identical every time while no boat is the player's.
+
+```
+godot --path game res://scenes/sail_test.tscn -- --scenario=port_starboard     # in a window, by the owner
+godot --path game res://scenes/sail_test.tscn -- --scenario=/path/to/my.scenario.json
+```
+
+`--scenario=<id>` reads `game/data/scenarios/<id>.scenario.json` (or a path to a `.scenario.json` file) and sets
+the class, course, wind, seed and boats from it; the other flags (`--sky`, `--quality`, `--no-hud`, ...) still
+apply. The player watches (spectate keys step through the boats) unless boat 0 has `"helm": "player"`. New
+scenarios: copy an example, give each boat where she should be at the incident (`at`, wind-relative from the middle
+of the start line or from a mark), her tack, TWA and optionally speed and front sail; boats with the same `at`
+meet there. Angles are radians and speeds m/s (0.7854 rad = 45°, 6.17 m/s = 12 kn).
+
+Test: `game/tests/run_scenario_test.sh` (headless): the files load and bad ones are refused, the port/starboard
+scenario has the port boat keep clear under rule 10 and take the rule 10 penalty in every run with the same
+checksum every tick, the windward/leeward one calls rule 11, and the sail scene runs a scenario to its pause and
+restarts it.
 
 ## Measuring performance
 

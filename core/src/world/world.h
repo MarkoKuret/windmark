@@ -75,9 +75,10 @@ class World {
   void hoist(std::int32_t boat, std::int32_t sail);
   void drop_front(std::int32_t boat);
   void retire(std::int32_t boat);   // race.md §6.4
-  // Scenario set-up (tests, tools; not a control): puts a boat at a pose with speed `v` as a spawn does (boat.md
-  // §6.6, sails up and trimmed), between ticks. The race sees the move as the boat's track in the next step.
-  void place_boat(std::int32_t boat, float x, float y, float psi, float v);
+  // Scenario set-up (tests, tools, rules scenarios; not a control): puts a boat at a pose with speed `v` as a spawn
+  // does (boat.md §6.6, sails up and trimmed), between ticks, with front sail `front_sail` (a sail index, -1 none,
+  // -2 the one she has up now). The race sees the move as the boat's track in the next step.
+  void place_boat(std::int32_t boat, float x, float y, float psi, float v, std::int32_t front_sail = -2);
   void protest(std::int32_t boat);  // rules.md §10
 
   // Called in step 2 before the queued controls are applied: computer skippers and scripts decide here from the

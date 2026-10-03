@@ -3,7 +3,8 @@ extends RefCounted
 ## What the next session on the water should be: written by the menus (quick race, free sail), read by the sail
 ## scene when it starts. Command-line flags of the scene override these fields; the defaults are free sailing.
 
-## free: one boat sailing freely on the venue; race: a race on `course` with `fleet_size` boats (the player and AI)
+## free: one boat sailing freely on the venue; race: a race on `course` with `fleet_size` boats (the player and AI);
+## scenario: the rules scenario `scenario` (race.md §14), whose file gives the class, course, wind, seed and boats
 var mode := "free"
 ## class id of the player's boat and of the AI boats (data/classes/<id>.boat.json)
 var class_id := "wm7"
@@ -23,6 +24,8 @@ var wind_kn := 12.0
 var wind_from_deg := 0.0
 ## seed of the world (wind shifts, puffs, AI randomness); 0 picks one from the clock
 var seed := 0
+## scenario mode: the scenario id (game/data/scenarios/<id>.scenario.json) or a path to a .scenario.json file
+var scenario := ""
 
 ## the setup the next scene reads; set by the menus, cleared by nobody (a new session overwrites it)
 static var next: GameSetup = null

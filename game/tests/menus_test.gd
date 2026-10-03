@@ -78,6 +78,7 @@ func _odd_settings() -> Settings:
 	s.fullscreen = true
 	s.vsync = false
 	s.fps_limit = 90
+	s.capture_preset = "portrait"
 	s.master_volume = 0.5
 	s.effects_volume = 0.25
 	s.signals_volume = 0.75
@@ -112,6 +113,7 @@ func test_settings_round_trip() -> void:
 	cf.set_value("hud", "assist", 7)
 	cf.set_value("graphics", "vsync", 3)
 	cf.set_value("graphics", "render_scale", 7)
+	cf.set_value("graphics", "capture_preset", "square")
 	cf.save(TEST_PATH)
 	var d := Settings.new()
 	d.load_file(TEST_PATH)
@@ -120,11 +122,15 @@ func test_settings_round_trip() -> void:
 	t.ok(d.assist == Hud.Assist.MINIMAL, "assist clamped to Minimal")
 	t.ok(d.vsync == true, "vsync of the wrong type keeps the default")
 	t.near(d.render_scale, 1.0, 1e-9, "render scale clamped to 100 %")
+	t.ok(d.capture_preset == "off", "unknown capture preset: Off")
+	t.ok(Settings.new().capture_preset == "off", "capture preset defaults to Off")
 	t.near(Settings.new().render_scale, 0.0, 0.0, "render scale defaults to Auto")
 	t.ok(Settings.new().load_file("user://no_such_settings.cfg") != OK, "missing file: defaults")
 	s.reset("audio")
 	t.near(s.master_volume, fresh.master_volume, 1e-9, "reset a section: audio back to defaults")
 	t.ok(s.fps_limit == 90, "reset a section keeps the others")
+	s.reset("graphics")
+	t.ok(s.capture_preset == "off", "reset graphics turns the capture preset off")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
 
 
@@ -194,6 +200,19 @@ func test_render_scale(s: Settings) -> void:
 			[Vector2i(1920, 1200), 1.0, 1.0], [Vector2i(1920, 1080), 1.0, 1.0], [Vector2i(1280, 800), 1.0, 1.0],
 			[Vector2i(1280, 800), 2.0, 1.0], [Vector2i(1440, 900), 2.0, 0.67], [Vector2i(2560, 1080), 1.0, 0.67]]:
 		t.near(Settings.auto_render_scale(c[0], c[1]), c[2], 1e-9, "Auto at %s, screen scale %.1f" % [c[0], c[1]])
+	# the portrait capture preset (menus.md §3): Auto picks 100 %, the window is 1080 x 1920 or the largest 9:16
+	a.render_scale = 0.0
+	a.capture_preset = "portrait"
+	t.near(a.effective_render_scale(root), 1.0, 1e-9, "capture preset: Auto picks 100 %")
+	a.render_scale = 0.75
+	t.near(a.effective_render_scale(root), 0.75, 1e-9, "capture preset: a chosen render scale stays")
+	a.capture_preset = "off"
+	a.render_scale = 1.0
+	for c in [[Vector2i(2560, 1950), Vector2i(1080, 1920)], [Vector2i(3840, 2100), Vector2i(1080, 1920)],
+			[Vector2i(1920, 1050), Vector2i(590, 1050)], [Vector2i(1440, 875), Vector2i(492, 875)],
+			[Vector2i(500, 1920), Vector2i(500, 888)]]:
+		t.ok(Settings.capture_window_size(c[0]) == c[1], "portrait window on a %s usable area: %s (%s)" % [c[0],
+			c[1], Settings.capture_window_size(c[0])])
 	Settings.render_scale_override = 0.5
 	a.apply_render_scale(root)
 	t.near(root.scaling_3d_scale, 0.5, 1e-6, "command-line override replaces the setting")
@@ -312,26 +331,28 @@ func test_main_menu() -> void:
 	m.settings_panel.show_section("controls")
 	t.ok(SettingsPanel.binding_text("let_fly").contains("Space") and SettingsPanel.binding_text("let_fly").contains("A"),
 		"bindings shown: let fly = %s" % SettingsPanel.binding_text("let_fly"))
-	# Steam Deck: every page inside 1280 x 800 at 80 %, 100 % and 130 %
-	root.size = Vector2i(1280, 800)
-	for sc in [0.8, 1.0, 1.3]:
-		m.settings.ui_scale = sc
-		m.settings.apply_display(root)
-		for p in ["quick", "free", "settings"]:
-			m.open_page(p)
-			await process_frame
-			await process_frame
-			var vis := root.get_visible_rect().grow(1)
-			var need: Array = [m.buttons["quit"], m._panel]
-			need.append(m.settings_panel.get_child(-1) if p == "settings"
-				else (m.quick if p == "quick" else m.free_sail).start_button)
-			var inside := true
-			for c in need:
-				inside = inside and vis.encloses((c as Control).get_global_rect())
-			if not inside:
-				print("  vis %s: %s" % [vis, need.map(func(c: Control) -> Rect2: return c.get_global_rect())])
-			t.ok(inside, "%s page within the screen at %d %%" % [p, roundi(sc * 100)])
-			m.close_page()
+	# Steam Deck and the portrait capture window: every page inside 1280 x 800 and 1080 x 1920 at 80 %, 100 %
+	# and 130 %
+	for scr in [Vector2i(1280, 800), Vector2i(1080, 1920)]:
+		root.size = scr
+		for sc in [0.8, 1.0, 1.3]:
+			m.settings.ui_scale = sc
+			m.settings.apply_display(root)
+			for p in ["quick", "free", "settings"]:
+				m.open_page(p)
+				await process_frame
+				await process_frame
+				var vis := root.get_visible_rect().grow(1)
+				var need: Array = [m.buttons["quit"], m._panel]
+				need.append(m.settings_panel.get_child(-1) if p == "settings"
+					else (m.quick if p == "quick" else m.free_sail).start_button)
+				var inside := true
+				for c in need:
+					inside = inside and vis.encloses((c as Control).get_global_rect())
+				if not inside:
+					print("  vis %s: %s" % [vis, need.map(func(c: Control) -> Rect2: return c.get_global_rect())])
+				t.ok(inside, "%s page within %s at %d %%" % [p, scr, roundi(sc * 100)])
+				m.close_page()
 	m.settings.ui_scale = 1.0
 	root.content_scale_factor = 1.0
 	m.queue_free()

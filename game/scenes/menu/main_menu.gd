@@ -1,7 +1,8 @@
 class_name MainMenu
 extends Control
 ## The main menu (menus.md §1): Quick race, Free sail, Settings, Quit on the left, the chosen page on a cloth
-## panel on the right. Start writes GameSetup.current() and changes to the sail scene.
+## panel on the right (under them in a portrait window, the capture preset of menus.md §3). Start writes
+## GameSetup.current() and changes to the sail scene.
 
 signal scene_requested(path: String)
 
@@ -19,6 +20,7 @@ var settings_panel: SettingsPanel
 
 var _panel: PanelContainer
 var _opener: Control
+var _row: BoxContainer
 
 
 func _ready() -> void:
@@ -38,9 +40,10 @@ func _ready() -> void:
 	for side in ["top", "bottom"]:
 		margin.add_theme_constant_override("margin_" + side, 40)
 	add_child(margin)
-	var row := HBoxContainer.new()
+	var row := BoxContainer.new()
 	row.add_theme_constant_override("separation", 28)
 	margin.add_child(row)
+	_row = row
 
 	# left: the name and the menu
 	var left := VBoxContainer.new()
@@ -82,8 +85,11 @@ func _ready() -> void:
 	_panel = PanelContainer.new()
 	_panel.name = "Page"
 	_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_panel.visible = false
 	row.add_child(_panel)
+	_fit()
+	get_viewport().size_changed.connect(_fit)
 	quick = _setup_page(true)
 	free_sail = _setup_page(false)
 	settings_panel = SettingsPanel.new()
@@ -92,6 +98,12 @@ func _ready() -> void:
 	settings_panel.closed.connect(close_page)
 	_add_page("settings", settings_panel)
 	buttons["quick"].grab_focus.call_deferred()
+
+
+## Menu beside the page, or above it in a portrait window (too narrow for both side by side).
+func _fit() -> void:
+	var s := get_viewport_rect().size
+	_row.vertical = s.y > s.x
 
 
 func _setup_page(race: bool) -> SetupPanel:
@@ -153,7 +165,7 @@ func _unhandled_input(e: InputEvent) -> void:
 
 
 func _setting_changed(key: String) -> void:
-	if key in ["fullscreen", "vsync", "fps_limit", "ui_scale", "render_scale"]:
+	if key in ["fullscreen", "vsync", "fps_limit", "ui_scale", "render_scale", "capture_preset"]:
 		settings.apply_display(get_tree().root)
 	elif key.ends_with("_volume"):
 		settings.apply_audio()

@@ -732,6 +732,8 @@ static func edge_pointer(b: HudCanvas, h: Hud, w: Vector3, name: String, sub: St
 		dir = Vector2(0, -1)
 	# keep clear of the corners' blocks: the top lane and bug, the instrument page and radar at the bottom
 	var box := Rect2(Vector2(70.0, 250.0) * k, sz - Vector2(140.0, 250.0 + 330.0) * k)
+	if h.edge_box.has_area():
+		box = h.edge_box  # portrait (hud.md §16.5): under the alert lane, over the bottom stack
 	c = box.get_center()
 	var half := box.size * 0.5
 	var t := minf(absf(half.x / dir.x) if absf(dir.x) > 1e-6 else INF, absf(half.y / dir.y) if absf(dir.y) > 1e-6 else INF)

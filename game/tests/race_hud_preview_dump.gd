@@ -2,10 +2,12 @@ extends SceneTree
 ## Dumps the race HUD for the offline previews (tests/race_hud_preview.py draws it over a frame). No window opens.
 ##   - scene shots: scenes/sail_test.tscn in race mode on the core, run and framed as tests/course_preview_dump.gd
 ##     frames its shots (the same seconds and cameras), so the world tags sit where the course preview frame has
-##     the marks and boats; each at the instrument densities listed, at 1280 x 720 and, for the Deck, 1280 x 800;
+##     the marks and boats; each at the instrument densities listed, at 1280 x 720, for the Deck 1280 x 800 and,
+##     for the portrait capture preset (hud.md §16.5), 1080 x 1920;
 ##   - a scripted incident on RaceStubSim (rules line, penalty panel and the turn on the water, radar colours, a
 ##     selected boat's tag, protest prompt) seen from a camera above (the backdrop is not the same scene);
 ##   - the results of a short race on the core.
+## Portrait shots end in _portrait. Every shot prints the block overlaps HudLayoutCheck finds ("no overlaps").
 ##   godot --headless --path game -s res://tests/race_hud_preview_dump.gd [-- shot ...]
 ## Writes generated/race_hud_preview/<name>.json: the size, the backdrop and every HudCanvas's primitives.
 
@@ -13,16 +15,18 @@ const OUT := "res://generated/race_hud_preview"
 const DT := 0.1
 const WIDE := Vector2(1280, 720)
 const DECK := Vector2(1280, 800)
+const PORTRAIT := Vector2(1080, 1920)
 const G := Hud.Density.GLANCE
 const R := Hud.Density.RACE
 const D := Hud.Density.DATA
 
 ## name, course preview shot (the backdrop), seconds, camera (as course_preview_dump.gd), [[density, screen], ...]
 const SHOTS := [
-	["start", "start_line", 185.0, ["look_boat", Vector3(-150, -330, 7), 0.0, 50.0], [[R, WIDE]]],
+	["start", "start_line", 185.0, ["look_boat", Vector3(-150, -330, 7), 0.0, 50.0],
+		[[R, WIDE], [G, PORTRAIT], [D, PORTRAIT]]],
 	["upwind", "windward", 330.0, ["look_mark", "w", Vector3(-50, -170, 45), 50.0],
-		[[G, WIDE], [R, WIDE], [D, WIDE], [G, DECK]]],
-	["aerial", "race_aerial", 262.0, ["aerial", 700.0], [[R, WIDE]]],
+		[[G, WIDE], [R, WIDE], [D, WIDE], [G, DECK], [G, PORTRAIT], [R, PORTRAIT]]],
+	["aerial", "race_aerial", 262.0, ["aerial", 700.0], [[R, WIDE], [G, PORTRAIT]]],
 ]
 
 var _only: PackedStringArray = OS.get_cmdline_user_args()
@@ -43,6 +47,12 @@ func _init() -> void:
 
 func _level(d: int) -> String:
 	return ["glance", "race", "data"][d]
+
+
+func _suffix(screen: Vector2) -> String:
+	if screen == DECK:
+		return "_deck"
+	return "_portrait" if screen == PORTRAIT else ""
 
 
 # ---- scene shots -------------------------------------------------------------------------------------------------
@@ -72,7 +82,7 @@ func _scene_shot(s: Array) -> void:
 		hud.screen_size = screen
 		hud.density_auto = false
 		hud.density = combo[0]
-		var name: String = "%s_%s" % [s[0], _level(combo[0])] + ("_deck" if screen == DECK else "")
+		var name: String = "%s_%s" % [s[0], _level(combo[0])] + _suffix(screen)
 		await _shot(hud, name, s[1], screen)
 		cam.get_parent().queue_free()
 	scene.queue_free()
@@ -176,6 +186,12 @@ func _incident() -> void:
 	hud.density_auto = false
 	hud.density = R
 	await _shot(hud, "incident_race", "race_aerial", WIDE)
+	# the same incident in the portrait capture preset: the penalty panel and the rule text on top
+	vp.size = Vector2i(PORTRAIT)
+	hud.screen_size = PORTRAIT
+	for lvl in [G, R]:
+		hud.density = lvl
+		await _shot(hud, "incident_%s_portrait" % _level(lvl), "race_aerial", PORTRAIT)
 	hud.queue_free()
 	vp.queue_free()
 
@@ -208,6 +224,8 @@ func _results() -> void:
 			hud.density_auto = false
 			hud.density = R
 			await _shot(hud, "results_race", "committee", WIDE)
+			hud.screen_size = PORTRAIT
+			await _shot(hud, "results_race_portrait", "committee", PORTRAIT)
 			break
 	hud.queue_free()
 
@@ -233,7 +251,9 @@ func _shot(hud: Hud, name: String, backdrop: String, screen: Vector2) -> void:
 	var f := FileAccess.open("%s/%s.json" % [OUT, name], FileAccess.WRITE)
 	f.store_string(JSON.stringify({"size": [screen.x, screen.y], "backdrop": backdrop, "items": items}))
 	f.close()
-	print("race hud preview: %s (%d blocks)" % [name, items.size()])
+	var bad := HudLayoutCheck.problems(hud, screen)
+	print("race hud preview: %s (%d blocks): %s" % [name, items.size(),
+		"no overlaps" if bad.is_empty() else "OVERLAPS " + str(bad)])
 	await process_frame
 
 

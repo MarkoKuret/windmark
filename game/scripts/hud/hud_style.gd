@@ -32,6 +32,12 @@ const FONT_FILES := {
 }
 ## the smallest text on any screen, px (hud_direction.md §4)
 const MIN_TEXT := 11
+## hud.md §16.5, portrait design px: the reference width, the side, top and bottom margins (clear of the short-video
+## apps' title bar above and their caption and button strip below)
+const PORTRAIT_W := 1080.0
+const PORTRAIT_SIDE := 48.0
+const PORTRAIT_TOP := 140.0
+const PORTRAIT_BOTTOM := 200.0
 
 static var _fonts := {}
 
@@ -51,23 +57,40 @@ static func font(weight := 600, tracking := 0.0, size_px := 16) -> Font:
 	return fv
 
 
+## A screen taller than wide: the portrait layout of hud.md §16.5 (the 9:16 capture preset).
+static func portrait(size: Vector2) -> bool:
+	return size.y > size.x and size.x > 0.0
+
+
 ## The scale of the 1920 x 1080 design to a screen of `size` (logical px, after the UI scale): the height on 16:9
 ## and wider; on narrower screens under 900 px tall (the Steam Deck's 16:10) 0.82 at 1280 x 800, so the Deck is
-## not scaled by its height alone (hud_direction.md §5).
+## not scaled by its height alone (hud_direction.md §5). Portrait: the width over 1080 (hud.md §16.5).
 static func ui_k(size: Vector2) -> float:
 	if size.y <= 0.0:
 		return 1.0
+	if portrait(size):
+		return size.x / PORTRAIT_W
 	if size.x / size.y >= 1.7 or size.y >= 900.0:
 		return size.y / 1080.0
 	return minf(size.x / 1561.0, size.y / 976.0)
 
 
-## The margins at `size` (logical px): 56 x 44 of the design on 16:9, 32 x 28 px at 1280 x 800.
+## The margins at `size` (logical px): 56 x 44 of the design on 16:9, 32 x 28 px at 1280 x 800. Portrait has its
+## own top and bottom (portrait_margins); this is its left and top.
 static func margins(size: Vector2) -> Vector2:
 	var k := ui_k(size)
+	if portrait(size):
+		return Vector2(PORTRAIT_SIDE, PORTRAIT_TOP) * k
 	if size.y > 0.0 and size.x / size.y < 1.7:
 		return Vector2(39.0, 34.0) * k
 	return Vector2(56.0, 44.0) * k
+
+
+## The bottom margin at `size` (logical px): the portrait one, else the same as the top.
+static func bottom_margin(size: Vector2) -> float:
+	if portrait(size):
+		return PORTRAIT_BOTTOM * ui_k(size)
+	return margins(size).y
 
 
 ## Whether the screen gets the small-screen defaults (Glance, hud.md §16.1).

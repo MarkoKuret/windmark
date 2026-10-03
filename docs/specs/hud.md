@@ -345,6 +345,9 @@ density of §16.1: an item shows only when both allow it.
 - Name tags (§16.4): a boat at 45 m has a tag, one at 55 m has none until it is selected; the penalty ring is drawn in
   the chase and aerial cameras and not onboard.
 - Every text of the HUD fits its block at 1280 x 800 for UI scales 80 % to 130 %.
+- Portrait (§16.5): at 1080 x 1920 for UI scales 80 % to 130 %, in the pre-start, beat and penalty states at every
+  density, every text is on screen and no two texts overlap, and no two blocks' drawn areas overlap (world tags
+  aside); the default density is Glance; the radar is compact.
 
 ## 16. Presentation
 
@@ -416,6 +419,36 @@ bar (centre zero, ±30°). Numbers keep the 4 Hz refresh of §1; dial, bars and 
 - **Penalty turn**: §12.1, chase and aerial cameras only.
 - `world_tags` (`controls.md` §7) hides and shows all of the above at once, with the course's on-water guides;
   it is independent of `hud_hide`.
+
+### 16.5 Portrait layout (capture)
+
+For native 9:16 clips (Reels, Shorts): the HUD takes this layout on any screen taller than it is wide, so the
+portrait capture preset of `menus.md` §3 (a 1080 x 1920 window) and a window opened at that shape from the command
+line (`--resolution 1080x1920`, also with Movie Maker's `--write-movie`) both get it. The rule text is the point of
+these clips, so the alert lane is at the top and large; the instruments are compact at the bottom.
+
+- **Scale and margins**: the design's px at 1080 x 1920, `k = width / 1080` (logical px, after the UI scale).
+  Margins 48 px left and right, 140 px top, 200 px bottom: the top margin keeps the alert lane under the apps' title
+  bar, the bottom margin keeps the instruments above most of their caption and button strip.
+- **Top row**: the race bug top left (with its lap and gap lines), the wind page top right with the shift chip under
+  it.
+- **Alert lane**, centred under the taller of the two (bug with its lines, wind page with its chip), 16 px below:
+  before the start the countdown, flags and start numbers; in the race the penalty panel, then the rules line, the
+  banners and the prompts (stacked as in landscape). The lane is drawn up to 1.15 times larger than the rest, as
+  large as its 900 px fits between the margins (1.09 at 1080 wide), so the rule text reads on a phone.
+- **Bottom row**: the instrument page bottom left, the radar bottom right, always compact (72 %, no range and
+  orientation labels) so the Data page fits beside it.
+- **Above the bottom row**: the helm strip centred 12 px above the taller of page and radar, the sail hint and the
+  controls' messages over it, the `INSTRUMENTS · <LEVEL>` chip over the page (left of the helm strip); the event
+  feed right-aligned over the helm notes.
+- **Density**: the default is Glance (the player's stored choice still wins, §16.1); the density key works as in
+  landscape.
+- **Tables** (ranking, results): centred and scaled down to fit between the margins.
+- **World tags**: as in landscape, kept inside the margins; the mark tag also stays under the alert lane (its
+  leader still points at the mark), so it never covers the rule text, and the edge pointers run along a box from
+  under the alert lane to over the feed and helm notes; without a camera the mark tag docks under the alert lane,
+  left.
+- Nothing else changes: the same blocks, texts, colours and rules for what shows.
 
 ## 17. Frame-time overlay (development)
 

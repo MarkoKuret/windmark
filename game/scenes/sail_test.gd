@@ -123,6 +123,11 @@ var perf_seconds := 0.0
 ## µs spent in the tick callbacks' HUD, audio and course parts this frame (taken out of `sim`)
 var _tick_usec := 0
 
+## controls.md §7 capture: clean pause, slow motion, world tags (CaptureMode)
+var capture := CaptureMode.new()
+## an online session (not built yet): the capture actions and the clip cameras are offline only
+var online := false
+
 var _chat: LineEdit
 var _paused_label: Label
 ## the own boat's sail states of the last two ticks (render interpolation)
@@ -162,6 +167,8 @@ func _ready() -> void:
 	rig.name = "CameraRig"
 	add_child(rig)
 	rig.camera.current = true
+	rig.clip_allowed = not online
+	capture.allowed = not online
 	sea.camera = rig.camera
 	var layer := CanvasLayer.new()
 	layer.name = "HudLayer"
@@ -467,12 +474,14 @@ func _build_course() -> void:
 	course_view.show_laylines = hud.assist != Hud.Assist.MINIMAL
 	course_view.show_zone = hud.assist != Hud.Assist.MINIMAL
 	course_view.bind(sim as CoreSimSource, runner.boat, sea, course)
+	course_view.show_guides = capture.world_tags
 
 
 ## controls.md §2 reset_boat: free sailing re-places the boat at its start point, sailing; race mode restarts
 ## the race from the spawn. The cameras cut to the boat.
 func reset_boat() -> void:
 	var b := runner.boat
+	capture.reset()
 	if on_core and race_mode:
 		var cs := _make_core()
 		if cs == null:
@@ -589,7 +598,7 @@ func step_frame(dt: float) -> void:
 	var t1 := Time.get_ticks_usec()
 	PerfStats.add(&"input", t1 - t0)
 	_tick_usec = 0
-	runner.advance(dt)
+	runner.advance(capture.sim_dt(dt))  # slow motion and the clean pause (controls.md §7)
 	var t2 := Time.get_ticks_usec()
 	PerfStats.add(&"sim", t2 - t1 - _tick_usec)
 	_update_sea_time(runner.alpha())
@@ -602,6 +611,10 @@ func step_frame(dt: float) -> void:
 	var t4 := Time.get_ticks_usec()
 	PerfStats.add(&"course", t4 - t3)
 	var cin := CameraInput.from_raw(raw if not controls.text_focus else raw.without_buttons(), controls.free_camera)
+	if course_view == null:
+		rig.course = null
+	elif CameraRig.is_clip(rig.mode) or cin.clip:
+		rig.course = ClipCourse.from_race(course_view, viewed, target.loa)  # cameras.md §9
 	rig.frame(target, cin, dt)
 	var t5 := Time.get_ticks_usec()
 	PerfStats.add(&"camera", t5 - t4)
@@ -609,7 +622,7 @@ func step_frame(dt: float) -> void:
 	var t6 := Time.get_ticks_usec()
 	PerfStats.add(&"hud", t6 - t5)
 	audio.viewed = viewed
-	audio.paused = runner.paused
+	audio.paused = runner.paused or (capture.allowed and capture.frozen)
 	audio.countdown_beeps = hud.assist == Hud.Assist.FULL
 	audio.frame(dt, rig.camera, rig.mode == CameraRig.Mode.ONBOARD)
 	PerfStats.add(&"audio", Time.get_ticks_usec() - t6)
@@ -672,6 +685,10 @@ func _ui_actions(r: RawInput) -> void:
 		return
 	if r.was_pressed(&"hud_hide"):
 		hud.toggle_hidden()
+	if capture.handle(r):
+		hud.world_tags = capture.world_tags
+		if course_view:
+			course_view.show_guides = capture.world_tags
 	if r.was_pressed(&"pause_menu"):
 		runner.paused = not runner.paused  # offline: pause the simulation, the cameras still move
 		_paused_label.visible = runner.paused

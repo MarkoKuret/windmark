@@ -73,6 +73,7 @@ static func table() -> Dictionary:
 		t["camera_preset_%d" % (i + 5)] = {"keys": [_k(fkeys[i], "shift")]}
 	t["camera_preset_store"] = {"keys": [_k(KEY_CTRL)]}
 	t["camera_boost"] = {"keys": [_k(KEY_SHIFT)], "joy": JOY_BUTTON_LEFT_SHOULDER}
+	t["camera_clip"] = {"keys": [_k(KEY_X)]}
 	# HUD and race
 	t["rankings"] = {"keys": [_k(KEY_TAB)]}
 	# gamepad View: a tap is hud_density, a hold the ranking list (resolved in the Hud, controls.md §3)
@@ -84,6 +85,7 @@ static func table() -> Dictionary:
 	t["radar_orientation"] = {"keys": [_k(KEY_Z)]}
 	t["wind_shadow_view"] = {"keys": [_k(KEY_V)]}
 	t["hud_hide"] = {"keys": [_k(KEY_F10)]}
+	t["world_tags"] = {"keys": [_k(KEY_SLASH)]}
 	t["boat_names"] = {"keys": [_k(KEY_N)]}
 	t["boat_select"] = {"keys": [_k(KEY_B)]}
 	t["boat_pick"] = {"mouse": [MOUSE_BUTTON_LEFT]}
@@ -92,6 +94,9 @@ static func table() -> Dictionary:
 	t["spectate_leader"] = {"keys": [_k(KEY_HOME)], "joy": JOY_BUTTON_RIGHT_STICK}
 	t["chat"] = {"keys": [_k(KEY_ENTER)]}
 	t["pause_menu"] = {"keys": [_k(KEY_ESCAPE)], "joy": JOY_BUTTON_START}
+	# capture (controls.md §7): clean pause and slow motion, offline only
+	t["capture_pause"] = {"keys": [_k(KEY_PERIOD)]}
+	t["capture_slow"] = {"keys": [_k(KEY_COMMA)]}
 	t["screenshot"] = {"keys": [_k(KEY_F12)]}
 	t["reset_boat"] = {"keys": [_k(KEY_BACKSPACE)]}
 	return t

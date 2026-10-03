@@ -251,7 +251,7 @@ The options are saved per player in the settings file and set in the settings sc
     tick, fed with the frame time times the rate, and the render pose is interpolated between ticks, so boats,
     sails, sea and wakes move smoothly at the slower pace (everything drawn from the simulation's clock slows
     with it). The cameras, the HUD's own smoothing and the sound run on the real frame time. Nothing is shown on
-    screen for the rate (a clean frame); a restart (`reset_boat`, the pause menu) sets it back to ×1.
+    screen for the rate (a clean frame); a restart (`reset_boat`, the pause menu) sets it back to ×1 and ends a clean pause.
   - Online both actions do nothing: the race runs on the server's clock.
 - **World tags** (`world_tags`, offline and online): hides or shows the world tags of `hud.md` §16.4 (mark tag,
   tack point, name tags, edge pointers, penalty turn) and the on-water guides of the course (the start, gate and

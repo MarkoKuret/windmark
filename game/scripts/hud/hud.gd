@@ -72,6 +72,8 @@ var camera: Camera3D = null
 var camera_kind := "chase"
 ## name tags on (the `boat_names` action) and the boats the player selected for a tag
 var show_names := true
+## controls.md §7 world_tags: the world tags (mark tag, tack point, name tags, edge pointers, penalty turn) shown
+var world_tags := true
 var selected := {}
 var sim: SimSource
 ## the screen the HUD lays out for, when set (tests, previews); zero: its viewport's
@@ -1121,6 +1123,9 @@ func _layout() -> void:
 	# the next mark tag: on the mark, or docked under the race bug without a camera
 	next_panel.size = Vector2(330, 120) * k
 	next_panel.visible = race.active and race.next_step > 0 and not race.finished and text_of("next") != ""
+	world.visible = world_tags
+	if not world_tags and world_camera() != null:
+		next_panel.visible = false
 	if next_panel.visible and world_camera() != null:
 		var mp: Variant = mark_screen()
 		if mp == null:

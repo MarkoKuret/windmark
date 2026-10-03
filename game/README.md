@@ -547,7 +547,7 @@ Godot reimports only the files whose content changed (it compares their hashes).
 further boat 1.4 to 1.8 ms (procedural: 2.0 to 2.5 ms per boat; the text texture is most of either). On a GPU the
 first boat also uploads the images. Video memory, shared by the fleet: wm7 about 79 MB, wm12 about 85 MB (hull set
 28 MB, deck set 18 to 20 MB, transom set 3.8 MB, keel 1.2 MB, sails 25 to 33 MB), plus 0.7 MB per boat. The transom's
-own slot (WM-082) adds one surface, so one draw, per boat; the deck adds three texture reads per pixel (the non-slip
+own slot (WM-085) adds one surface, so one draw, per boat; the deck adds three texture reads per pixel (the non-slip
 detail). Per pixel (`tests/livery_cost.py`, the offline
 programs on the M1's GPU, visible pixels shaded once): baked sails cost 0.42 to 0.71 of the procedural cloth, the
 baked topsides 1.05 to 1.13 of the procedural livery (three more texture reads for the relief and gloss).

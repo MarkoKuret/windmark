@@ -60,7 +60,11 @@ Second architecture: `core/tools/cross_arch_check.sh [seed ...]` (Apple Silicon 
 `core/build-x86_64` with `-DCMAKE_OSX_ARCHITECTURES=x86_64`, runs its quick tests under Rosetta, then runs the
 scripted full race and the AI fleet race (default seed 33) through `windmark_race_trace` in both builds and
 compares the checksum of every tick. `windmark_race_trace ai --profile [--boats N]` prints the per-tick cost of a
-fleet race by how many boats are near a mark.
+fleet race by how many boats are near a mark. `windmark_race_trace ai --seed S --telemetry FILE` writes a CSV of
+every boat of the AI fleet race every 0.5 s (leg, position, speed and target, wind, heel, front sail and sail
+changes, the AI's tactic, leg type, target heading and last manoeuvre reason, penalties and penalty turns, race
+status), the rules events and each boat's splits with the distance still to sail at the close: the tool for finding
+where a boat loses time.
 
 ## Float rules
 
@@ -108,7 +112,7 @@ Sources live in `src/<module>/`, included as `"module/header.h"`, all in namespa
 | `include/windmark.h`, `src/capi/` | the C API over the world (below) | networking.md §4 |
 | `examples/` | `race_example.c`: a headless race, a free-sailing boat and an AI fleet race through the C API only | |
 | `tests/` | doctest suite and the math vector file | |
-| `tools/` | `gen_math_vectors.cpp`, `gen_env_vectors.cpp`; `race_trace.cpp` (per-tick checksums of a race, a fleet profile) and `cross_arch_check.sh`; `gen_sea_render_samples.cpp` (sea and puff samples for the front end's water checks, `game/tests/run_water_test.sh`) | |
+| `tools/` | `gen_math_vectors.cpp`, `gen_env_vectors.cpp`; `race_trace.cpp` (per-tick checksums of a race, a fleet profile, a per-boat telemetry CSV) and `cross_arch_check.sh`; `gen_sea_render_samples.cpp` (sea and puff samples for the front end's water checks, `game/tests/run_water_test.sh`) | |
 | `third_party/doctest/` | doctest 2.4.12 (MIT), test framework | |
 
 ## World calls

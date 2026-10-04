@@ -55,6 +55,23 @@ view    = look along (target - eye + (0, lift, 0)), up = +Y   // the lift moves 
 - **Recentre** (`controls.md`): `R = R0`, `el = 13.5°`, `az = 0`, `fov = 40°`. Optional auto-recentre of `az` after
   5 s without camera input (off by default), with `τ = 1 s`.
 
+### 2.1 Breathing
+
+The chase camera is not locked rigidly to the boat: it eases into a tack, banks a trace into turns, trails a speed
+change for a moment and leans with the heel, so it moves like a camera boat or a helicopter following her. Every
+effect is small and settles back to the §2 geometry when the boat sails steadily; the long lens (§9) has them too.
+
+| effect | rule | constants |
+| --- | --- | --- |
+| eased heading | `psi_c` follows `ψ` as a critically damped spring of natural frequency `w = (5/3)/tau_yaw` (exact step per frame), not the first-order filter of §1: the swing starts gently and stops without overshoot | 4 % of a heading step left after `3·tau_yaw`; lag in a steady turn `2/w` (0.42 s at `tau_yaw = 0.35`, was 0.35 s) |
+| bank | the view rolls into the turn by `0.06 s · ω_c`, `ω_c` the camera's own yaw rate (right side down in a turn to starboard) | at most 1.5° |
+| trail | the target point is offset by `0.8 s · (v_s − v)`, `v` the boat's horizontal velocity (from the render pose, per frame), `v_s` it smoothed with `τ = 0.6 s`; the offset itself smoothed with `τ = 0.15 s`. Speeding up in a gust she pulls ahead in the frame, slowing she drops back; nothing at a steady speed | at most 0.8 m; a pose jump faster than 40 m/s (reset, retarget) snaps |
+| lean | the target point moves toward the masthead side by `0.2·loa·sin(φ_s)`, `φ_s` the heel smoothed with `τ = 0.6 s`, so the heeled rig stays nearer the centre of the frame | wm7 at 25° heel: 0.61 m |
+
+The target of §2 becomes `boat reference point at height zt + trail + lean`, and the view is rolled by the bank after
+the look-at. Reduced motion (`controls.md` §6) turns the bank, the trail and the lean off (and keeps `tau_yaw` at
+0.5 s or more, as before).
+
 ## 3. Onboard camera
 
 The helmsman's eye, fixed in the heeled, pitching boat, looking forward past the sails.
@@ -199,6 +216,20 @@ defaults.
   per second held, 0.25× to 4×); the fixed shots take no input.
 - **Clearance**: §7 applies to every clip camera (water for all four; the land pull-in from the target for the
   long lens and the helicopter). Near and far planes as §7.
+- **Depth of field** (long lens and mark shot only, like a broadcast telephoto): the subject boat sharp, the water
+  and boats before and behind her softly blurred. Godot's practical camera attributes on the clip camera, focused
+  on the subject: the distance from the eye to the long lens's aim (the target point plus `lift`, §2) or to
+  the mark shot's aim, pulled with `τ = 0.25 s` (a cut takes it at once). Sharp zone `z = 0.6·loa + 2 m` either
+  side of the focus distance `d`:
+
+  | shot | near blur ends at | near ramp | far blur starts at | far ramp | amount |
+  | --- | --- | --- | --- | --- | --- |
+  | long lens | `d − z` | `0.25·d` | `d + z` | `0.5·d` | 0.08 |
+  | mark | `d − z` | `0.3·d` | `d + z` | `0.6·d` | 0.06 |
+
+  Bokeh circle, quality low on tier M and medium on H, off on tier L (`LookFx.dof_allowed`). The start line and
+  helicopter shots and the regular cameras (chase, onboard, aerial, free) never have depth of field: the camera's
+  attributes are cleared. The clip cameras also take the stronger vignette of `water_render.md` §4.5.
 
 ## 10. Tests (headless)
 
@@ -226,6 +257,15 @@ defaults.
 12. Choosing: without a course `camera_clip` gives long lens, helicopter, long lens; with one start line, mark,
    long lens, helicopter, start line; `camera_next` from a clip camera gives chase; with clip cameras not allowed
    (online) the key changes nothing; store while a clip camera is shown leaves the presets as they were.
+13. Breathing (§2.1): a 90° heading step is followed without overshoot and more gently than the first-order
+   filter at 0.1 s; a turn to starboard at 25°/s banks right, never past 1.5°; speeding up at 1 m/s² for 2 s trails
+   the target astern by more than 0.1 m and at most 0.8 m, back under 2 cm after 5 s at a steady speed; a 500 m
+   pose jump does not trail; at 25° heel the lean is `0.2·loa·sin 25°` toward the masthead side; with reduced motion
+   none of it.
+14. Lens: chase, onboard, aerial, free, start line and helicopter have no depth of field; the long lens focuses
+   at about 150 m with the whole boat inside the sharp zone and follows the boat as she moves away; the mark shot
+   has depth of field; none on tier L. The vignette lies under the HUD, takes no mouse input, is the regular
+   strength on the regular cameras and the clip strength on the clip cameras.
 
 ## 11. Later: TV director and replay
 

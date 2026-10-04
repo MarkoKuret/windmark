@@ -83,8 +83,9 @@ How the images lie:
   each boat's name there. Paint the stripes' ends, scuffs and streaks where you like.
 - **Deck**: the deck in plan, bow to the right, port at the top (the same frame as `deck.rect` in `layout.json`:
   the hull's length and beam with a 1 % margin). Every deck surface takes its colour from the texel straight below
-  it, so the cabin top, cockpit sole and side decks are drawn where they lie in plan; the near-vertical coaming and
-  cabin sides take the texels of their footprint (keep a few pixels of plain gelcoat along those edges). **The ORM
+  it, so the cabin top, cockpit sole and side decks are drawn where they lie in plan; the upright coamings and the
+  coachroof's raked sides take the texels of their narrow footprint, so keep a few pixels of plain gelcoat along
+  those edges (the coachroof's nose fairs into the deck and is laid out as deck). **The ORM
   blue channel is the non-slip mask**: 255 where the moulded non-slip pattern is, 0 on smooth gelcoat, in between a
   worn pattern; paint it together with the albedo (non-slip grey `deck.nonslip`, gelcoat `deck.gelcoat`) so the
   game's tiling relief matches. Hardware is not in the image, only its traces: pads, sealant beads, scuffs.

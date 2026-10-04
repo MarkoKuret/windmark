@@ -123,8 +123,7 @@ def render(ctx, d, size):
         "u_cam": tuple(origin),
         "u_cloud_cover": float(sc["sky"].get("cloud_cover", 0.3)),
         "u_cloud_offset": tuple(sc["sky"].get("cloud_offset", [0.0, 0.0])),
-        "u_fog_density": float(sc["fog"]["density"]),
-        "u_fog_color": tuple(sc["fog"]["color"][:3]),
+        **wp.fog_uniforms(sc["fog"]),
         "u_ambient": float(sc["ambient_energy"]),
     }
     water = ctx.program(vertex_shader=hdr + wp.WATER_VS, fragment_shader=hdr + sky_inc + wp.LIGHTING + WATER_FS)

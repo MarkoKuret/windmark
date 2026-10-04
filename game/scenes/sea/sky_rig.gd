@@ -9,19 +9,22 @@ extends Node3D
 
 enum Preset { CLEAR, FAIR, HAZY }
 
-## water_render.md §4.5: sun energy and colour, sky ramp, cloud cover, camera exposure, fog density.
+## water_render.md §4.5: sun energy and colour, sky ramp, cloud cover, camera exposure, distance haze.
 const PRESETS := {
 	Preset.CLEAR: {
 		"sun_energy": 3.6, "sun_color": Color(1.0, 0.92, 0.80), "horizon": Color(0.50, 0.74, 1.10),
-		"zenith": Color(0.05, 0.18, 0.62), "cloud_cover": 0.0, "exposure": 0.50, "fog_density": 0.00003,
+		"zenith": Color(0.05, 0.18, 0.62), "cloud_cover": 0.0, "exposure": 0.50,
+		"haze_begin": 300.0, "haze_end": 16000.0, "haze_max": 0.45, "haze_curve": 0.42,
 	},
 	Preset.FAIR: {
 		"sun_energy": 3.6, "sun_color": Color(1.0, 0.92, 0.80), "horizon": Color(0.50, 0.74, 1.10),
-		"zenith": Color(0.05, 0.18, 0.62), "cloud_cover": 0.40, "exposure": 0.50, "fog_density": 0.00004,
+		"zenith": Color(0.05, 0.18, 0.62), "cloud_cover": 0.40, "exposure": 0.50,
+		"haze_begin": 200.0, "haze_end": 14000.0, "haze_max": 0.60, "haze_curve": 0.40,
 	},
 	Preset.HAZY: {
 		"sun_energy": 2.8, "sun_color": Color(1.0, 0.95, 0.88), "horizon": Color(0.80, 0.88, 1.00),
-		"zenith": Color(0.24, 0.40, 0.74), "cloud_cover": 0.25, "exposure": 0.55, "fog_density": 0.00010,
+		"zenith": Color(0.24, 0.40, 0.74), "cloud_cover": 0.25, "exposure": 0.55,
+		"haze_begin": 150.0, "haze_end": 10000.0, "haze_max": 0.80, "haze_curve": 0.40,
 	},
 }
 const PRESET_NAMES := {"clear": Preset.CLEAR, "fair": Preset.FAIR, "hazy": Preset.HAZY}
@@ -83,10 +86,25 @@ const GLOW_INTENSITY := 0.5
 	set(v):
 		exposure = v
 		_apply()
-## Exponential fog density (1/m) toward the horizon colour.
-@export var fog_density := 0.00004:
+## Distance haze (water_render.md §4.5): Godot's depth fog toward the horizon colour, the share of it at a distance d
+## haze_max * smoothstep(haze_begin, haze_end, d)^haze_curve: none on the near water, rising from a few hundred
+## metres, haze_max at the horizon. The sky is not fogged (it has its own horizon haze).
+@export var haze_begin := 200.0:
 	set(v):
-		fog_density = v
+		haze_begin = v
+		_apply()
+@export var haze_end := 14000.0:
+	set(v):
+		haze_end = v
+		_apply()
+@export_range(0.0, 1.0) var haze_max := 0.60:
+	set(v):
+		haze_max = v
+		_apply()
+## Below 1 the haze rises early and flattens toward the horizon.
+@export var haze_curve := 0.40:
+	set(v):
+		haze_curve = v
 		_apply()
 
 
@@ -179,5 +197,10 @@ func _apply() -> void:
 		m.set_shader_parameter("cloud_offset", cloud_offset)
 	# Environment colours are sRGB-encoded Color values; the fog goes to the horizon colour.
 	env.fog_light_color = horizon.linear_to_srgb()
-	env.fog_density = fog_density
+	env.fog_mode = Environment.FOG_MODE_DEPTH
+	env.fog_density = haze_max
+	env.fog_depth_begin = haze_begin
+	env.fog_depth_end = haze_end
+	env.fog_depth_curve = haze_curve
+	env.fog_sky_affect = 0.0
 	env.tonemap_exposure = exposure

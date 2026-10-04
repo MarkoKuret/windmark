@@ -216,7 +216,7 @@ func _ready() -> void:
 	_update_target(0.0)
 	set_process(auto_process)
 	_add_pause_menu()
-	if Settings.render_scale_override > 0.0 or Settings.upscaler_override != "":
+	if Settings.render_scale_override > 0.0 or Settings.upscaler_override != "" or Settings.aa_override != "":
 		Settings.current().apply_render_scale(get_tree().root)
 	if no_hud:
 		hud.toggle_hidden()
@@ -273,11 +273,12 @@ func _apply_setup() -> void:
 ## Command line after `--` (over GameSetup): `--race` (race mode on `course`; the fleet of GameSetup when no
 ## `--fleet`), `--free`, `--fleet=10`, `--level=expert` (easy, intermediate, expert, pro), `--speed-only`,
 ## `--watch` (an AI sails the player's boat too, spectating on), `--class=wm12`, `--venue=<id>`,
-## `--sky=clear|fair|hazy` (the weather preset, SkyRig; fair by default),
+## `--sky=clear|fair|hazy|late` (the light preset, SkyRig; fair by default), `--look=off` (no colour grade,
+## vignette, contact shading or depth of field, to compare), `--ssao=on|off` (contact shading over the tier),
 ## `--course=<venue>/<id>` (race mode), `--seed=<n>` (0: from the clock), `--livery=<id>` (the player's livery),
 ## `--wind=<kn>`, `--wind-from=<deg>`,
 ## `--fake` (FakeSim), `--core`; measuring (hud.md §17): `--perf` (the frame-time overlay), `--perf-log=PATH`,
-## `--perf-seconds=N`, `--render-scale=0.67`, `--upscaler=fsr|bilinear|metalfx`, `--quality=L|M|H`, `--no-vsync`,
+## `--perf-seconds=N`, `--render-scale=0.67`, `--upscaler=fsr|bilinear|metalfx`, `--aa=off|fxaa|smaa`, `--quality=L|M|H`, `--no-vsync`,
 ## `--shadow-splits=0|2|4`, `--shadow-atlas=N`, `--shadow-distance=M`, `--shadow-soft=0..5`, `--no-wake-buffer`, `--no-boat-shadows`,
 ## `--no-drawn-shadows`, `--sea-grid=RINGSxSEGMENTS`, `--water-shader=l|m|h` and `--no-hud` (this run only, not saved);
 ## `--scenario=<id>` (a rules scenario of game/data/scenarios, or a .scenario.json path; race.md §14).
@@ -310,7 +311,12 @@ func _user_args() -> void:
 			venue = a.trim_prefix("--venue=")
 		elif a.begins_with("--sky="):
 			if not sky.set_preset_name(a.trim_prefix("--sky=").to_lower()):
-				push_warning("--sky: clear, fair or hazy")
+				push_warning("--sky: clear, fair, hazy or late")
+		elif a.begins_with("--look="):
+			LookFx.enabled = a.trim_prefix("--look=").to_lower() != "off"
+			LookFx.apply_grade(sky.environment(), sky.preset)
+		elif a.begins_with("--ssao="):
+			LookFx.ssao_override = 1 if a.trim_prefix("--ssao=").to_lower() == "on" else 0
 		elif a.begins_with("--livery="):
 			livery = a.trim_prefix("--livery=")
 		elif a.begins_with("--seed="):
@@ -334,6 +340,8 @@ func _user_args() -> void:
 			Settings.render_scale_override = v / 100.0 if v > 1.0 else v
 		elif a.begins_with("--upscaler="):
 			Settings.upscaler_override = a.trim_prefix("--upscaler=").to_lower()
+		elif a.begins_with("--aa="):
+			Settings.aa_override = a.trim_prefix("--aa=").to_lower()
 		elif a.begins_with("--quality="):
 			Settings.quality_override = "LMH".find(a.trim_prefix("--quality=").to_upper())
 		elif a == "--no-vsync":

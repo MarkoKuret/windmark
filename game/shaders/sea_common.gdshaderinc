@@ -1,7 +1,8 @@
 // Water surface functions shared by the sea shaders (water_l/m/h.gdshader) and the offline preview renderer
 // (tests/water_preview.py): water_render.md §3 and §4. Written in the common subset of Godot's shading language
 // and GLSL 3.30: explicit float literals, no Godot built-ins, no uniform hints. The including file declares
-// `TIER` (1 = L, 2 = M, 3 = H) and the samplers `expo_tex`, `land_tex`, `detail_tex`, `foam_tex`, `wake_tex` first.
+// `TIER` (1 = L, 2 = M, 3 = H) and the samplers `expo_tex`, `land_tex`, `detail_tex`, `foam_tex`, `wake_tex` first,
+// and with `WM_WHITECAPS` defined (the sea surface only) also `caps_tex`.
 //
 // Scene axes (conventions.md §11): X = east, Y = up, Z = south; a water point (x, y) is drawn at (x, eta, -y).
 // Positions `xl` are camera-relative world metres (x - ox, y - oy), as the mesh is centred on the camera.
@@ -204,6 +205,7 @@ struct WmSurface {
 	vec3 emission;
 	vec3 normal;       // scene axes, unit
 	float m;           // puff factor
+	float foam;        // whitecap foam opacity (§4.4), 0 without
 };
 
 // §4 shading inputs at a pixel. xl: camera-relative position; eta: height (after the exposure); n_geo: the
@@ -241,7 +243,7 @@ WmSurface wm_surface(vec2 xl, float eta, vec3 n_geo, vec3 view, float dist, vec2
 	// §4.3 puffs darker, lulls brighter
 	albedo *= 1.0 - 0.25 * clamp((m - 1.0) / 0.25, 0.0, 1.0) + 0.15 * clamp((1.0 - m) / 0.4, 0.0, 1.0);
 
-	// §4.4 no whitecaps for now
+	// §4.4 whitecaps: wm_apply_caps, after this function (the sea surface only)
 
 	// §4.2 light through the crests
 	vec3 emission = col_sss * crest * (pow(max(0.0, dot(-view, sun_dir)), 3.0) * 0.3 * sun_color + 0.05);
@@ -250,8 +252,85 @@ WmSurface wm_surface(vec2 xl, float eta, vec3 n_geo, vec3 view, float dist, vec2
 	S.roughness = rough;
 	S.specular = 0.40;   // Godot F0 = 0.16 * specular^2 = 0.026: water's 0.02 a little lifted
 	S.emission = emission;
+	S.foam = 0.0;
 	return S;
 }
+
+#ifdef WM_WHITECAPS
+// §4.4 whitecaps that ride the waves. The CPU picks the WM_CAPS_N components with the largest foam weight b (the
+// tier's count; at most 6, heaviest first) and uploads per component the wave (kx, ky, d', b), every frame with the
+// phase d' of comp, and the crest window (1/sigma_front, 1/sigma_back, window mean, wavelength), once per sea; b = 0
+// for unused entries. The components left out count with their window mean (caps_rest, and the uploaded ones
+// beyond the tier's count), so a tier with fewer loses some variation but not the mean. And the foam texture frame (e.x, e.y, u0, v0): the dominant wave's travel direction and the
+// camera-origin part of the texture coordinates, drifting at its phase speed.
+#ifndef WM_CAPS_N
+#define WM_CAPS_N 6
+#endif
+uniform vec4 caps_k[6];
+uniform vec4 caps_w[6];
+uniform float caps_rest = 0.0;   // the components not uploaded, each at its window mean: sum of b * mean
+uniform vec4 caps_uv = vec4(0.0, 1.0, 0.0, 0.0);
+
+const vec2 WM_CAPS_TILE = vec2(4.5, 3.0);     // m along e, across
+
+// Foam intensity F in [0, 1]: the steepness-weighted crest windows of the components that pass a crest here,
+// summed (crests meeting in a wave group make a cap), against a breaking threshold that falls with the local wind
+// (m/s). Components the pixel footprint px cannot show count with their window mean, so far caps never alias.
+float wm_caps_intensity(vec2 xl, float px, float expo, float wind) {
+	float kn = wind / WM_KNOT;
+	float gate = smoothstep(8.0, 10.0, kn);
+	if (gate <= 0.0 || expo <= 0.0) {
+		return 0.0;
+	}
+	float S = caps_rest;
+	float inv_px = 1.0 / max(px, 1e-4);
+	for (int i = WM_CAPS_N; i < 6; i++) {
+		S += caps_k[i].w * caps_w[i].z;               // beyond the tier's count: the window mean
+	}
+	for (int i = 0; i < WM_CAPS_N; i++) {
+		vec4 k = caps_k[i];
+		vec4 w = caps_w[i];
+		float f = fract(k.x * xl.x + k.y * xl.y + k.z);
+		float d = f - step(0.5, f);                        // cycles from the crest, ahead positive
+		float q = d * (d >= 0.0 ? w.x : w.y);
+		S += k.w * mix(w.z, exp(-q * q), smoothstep(2.0, 4.0, w.w * inv_px));
+	}
+	S *= expo;
+	float u = 15.0 / max(kn, 1.0);
+	float Sb = 0.0677 + 0.0208 * u * u * u;
+	return clamp((S - Sb) / 0.06, 0.0, 1.0) * gate;
+}
+
+// Coverage of intensity F on the four nested density levels of the foam texture (lace .. near-solid).
+float wm_caps_cover(float F, vec4 L) {
+	float x = 4.0 * F;
+	return L.r * clamp(x, 0.0, 1.0) + (L.g - L.r) * clamp(x - 1.0, 0.0, 1.0)
+			+ (L.b - L.g) * clamp(x - 2.0, 0.0, 1.0) + (L.a - L.b) * clamp(x - 3.0, 0.0, 1.0);
+}
+
+// The whitecaps on a shaded surface (after wm_surface): xl camera-relative position, px pixel footprint (m), expo
+// the exposure, dist the horizontal distance to the camera, n_geo the geometric normal.
+void wm_apply_caps(inout WmSurface S, vec2 xl, float px, float expo, float dist, vec3 n_geo) {
+	float fade = 1.0 - smoothstep(1200.0, 2500.0, dist);
+	if (fade <= 0.0) {
+		return;
+	}
+	float F = wm_caps_intensity(xl, px, expo, S.m * base_speed) * fade;
+	if (F <= 0.0) {
+		return;
+	}
+	// the bubbles under a breaking crest turn the water a lighter turquoise around the foam
+	S.albedo = mix(S.albedo, vec3(0.05, 0.20, 0.23), 0.3 * smoothstep(0.2, 0.8, F));
+	vec2 q = vec2(dot(xl, caps_uv.xy), dot(xl, vec2(-caps_uv.y, caps_uv.x)));
+	vec4 L = texture(caps_tex, q / WM_CAPS_TILE + caps_uv.zw);
+	float a = 0.92 * wm_caps_cover(F, L) * (0.3 + 0.7 * smoothstep(0.0, 0.6, F));   // thin foam is translucent
+	S.albedo = mix(S.albedo, col_foam, a);
+	S.roughness = mix(S.roughness, 0.55, a);
+	S.emission *= 1.0 - a;
+	S.normal = normalize(mix(S.normal, n_geo, 0.6 * a));
+	S.foam = a;
+}
+#endif
 
 // §6 overlays: colour and coverage at a pixel; width grows with distance so lines stay visible.
 vec4 wm_overlays(vec2 xl, float dist) {

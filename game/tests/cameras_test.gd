@@ -20,6 +20,8 @@ func _init() -> void:
 	test_clip_mark()
 	test_clip_long_lens_helicopter()
 	test_clip_choosing()
+	test_breathing()
+	test_lens()
 	t.finish(self, "cameras_test")
 
 
@@ -553,3 +555,142 @@ func test_clip_choosing() -> void:
 	off.frame(tg, c, 0.016)
 	t.ok(off.mode == CameraRig.Mode.CHASE, "online (clip cameras not allowed) the key changes nothing")
 	off.queue_free()
+
+
+func test_breathing() -> void:
+	t.begin("13 chase breathing")
+	var dt := 1.0 / 60.0
+	var o := CamTypes.Options.new()
+	t.near(ChaseCamera.BANK_MAX, deg_to_rad(1.5), 1e-9, "bank at most 1.5 deg")
+	t.near(ChaseCamera.SURGE_MAX, 0.8, 1e-9, "surge trail at most 0.8 m")
+	t.near(ChaseCamera.LEAN_K, 0.2, 1e-9, "lean 0.2 loa sin(heel)")
+	# eased heading: no overshoot, a gentler start than a first-order follow, settled by 3 tau_yaw
+	var cam := ChaseCamera.new()
+	var tg := _target(0.0)
+	cam.update(tg, o, dt)
+	tg.pose.psi = PI * 0.5
+	var prev := 0.0
+	var mono := true
+	var at_01 := 0.0
+	for i in 63:
+		cam.update(tg, o, dt)
+		var a := Frames.angle_diff(cam.psi_c, 0.0)
+		mono = mono and a >= prev - 1e-9 and a <= PI * 0.5 + 1e-6
+		prev = a
+		if i == 5:
+			at_01 = a
+	t.ok(mono, "the swing never overshoots")
+	t.ok(at_01 < PI * 0.5 * (1.0 - exp(-0.1 / 0.35)), "eases in: %.1f deg after 0.1 s" % rad_to_deg(at_01))
+	# bank into a right turn (heading increasing): the right side of the frame goes down
+	cam = ChaseCamera.new()
+	tg = _target(0.0)
+	var v := cam.update(tg, o, dt)
+	var max_bank := 0.0
+	var right_down := false
+	for i in 120:
+		tg.pose.psi = deg_to_rad(25.0) * (i + 1) * dt
+		v = cam.update(tg, o, dt)
+		max_bank = maxf(max_bank, absf(cam.bank))
+		right_down = right_down or v.xform.basis.x.y < -1e-4
+	t.ok(right_down and cam.bank > 0.0, "banks into a turn to starboard (%.2f deg)" % rad_to_deg(cam.bank))
+	t.ok(max_bank <= deg_to_rad(1.5) + 1e-6, "bank within 1.5 deg (%.2f)" % rad_to_deg(max_bank))
+	# surge: speeding up north the target trails (south, +Z), then settles back at a steady speed
+	cam = ChaseCamera.new()
+	tg = _target(0.0)
+	cam.update(tg, o, dt)
+	var speed := 0.0
+	var max_trail := 0.0
+	for i in 120:  # 2 s at 1 m/s²
+		speed += 1.0 * dt
+		tg.pose.pos_y += speed * dt
+		cam.update(tg, o, dt)
+		max_trail = maxf(max_trail, cam.surge.z)
+	t.ok(max_trail > 0.1 and max_trail <= 0.8 + 1e-6, "trails a speed-up by %.2f m (at most 0.8)" % max_trail)
+	for i in 300:  # 5 s steady
+		tg.pose.pos_y += speed * dt
+		cam.update(tg, o, dt)
+	t.ok(cam.surge.length() < 0.02, "settles at a steady speed (%.3f m)" % cam.surge.length())
+	# a jump (reset) does not trail
+	tg.pose.pos_y += 500.0
+	cam.update(tg, o, dt)
+	t.ok(cam.surge.length() < 0.02, "a pose jump does not trail")
+	# lean: heeled 25 deg the target moves toward the masthead side by 0.2 loa sin(phi)
+	cam = ChaseCamera.new()
+	tg = _target(0.0)
+	tg.pose.phi = deg_to_rad(25.0)
+	cam.update(tg, o, dt)
+	var mast := Frames.boat_basis(0.0, 0.0, tg.pose.phi).y
+	t.near(cam.lean.length(), 0.2 * 7.2 * sin(deg_to_rad(25.0)), 1e-3, "lean length")
+	t.ok(cam.lean.dot(Vector3(mast.x, 0, mast.z)) > 0.0, "lean toward the masthead side")
+	# reduced motion: none of it
+	o.reduced_motion = true
+	cam = ChaseCamera.new()
+	tg = _target(0.0)
+	tg.pose.phi = deg_to_rad(25.0)
+	cam.update(tg, o, dt)
+	for i in 60:
+		tg.pose.psi += deg_to_rad(25.0) * dt
+		tg.pose.pos_y += 3.0 * dt
+		cam.update(tg, o, dt)
+	t.ok(cam.bank == 0.0 and cam.surge == Vector3.ZERO and cam.lean == Vector3.ZERO, "reduced motion: no bank, trail or lean")
+
+
+func test_lens() -> void:
+	t.begin("14 lens: vignette and depth of field")
+	var keep_tier := LookFx.tier
+	LookFx.tier = SeaQuality.Tier.M
+	var tg := _target()
+	tg.loa = 7.2
+	var rig := _rig()
+	rig.course = _course()
+	t.ok(rig.look != null and rig.look.layer < 1, "the vignette layer (%d) is under the HUD (1)" % rig.look.layer)
+	t.ok((rig.look.get_child(0) as Control).mouse_filter == Control.MOUSE_FILTER_IGNORE, "the vignette takes no mouse input")
+	rig.frame(tg, CameraInput.new(), 0.016)
+	for m in [CameraRig.Mode.CHASE, CameraRig.Mode.ONBOARD, CameraRig.Mode.AERIAL, CameraRig.Mode.FREE]:
+		var c := CameraInput.new()
+		c.select = m
+		rig.frame(tg, c, 0.016)
+		rig.frame(tg, CameraInput.new(), 0.016)
+		t.ok(rig.camera.attributes == null, "no depth of field on %s" % CameraRig.Mode.keys()[m])
+		t.near(rig.look.strength, LookFx.VIGNETTE_REGULAR, 1e-9, "regular vignette on %s" % CameraRig.Mode.keys()[m])
+	for m in [CameraRig.Mode.START_LINE, CameraRig.Mode.HELICOPTER]:
+		_select_clip(rig, tg, m)
+		rig.frame(tg, CameraInput.new(), 0.016)
+		t.ok(rig.camera.attributes == null, "no depth of field on %s" % CameraRig.Mode.keys()[m])
+		t.near(rig.look.strength, LookFx.VIGNETTE_CLIP, 1e-9, "clip vignette on %s" % CameraRig.Mode.keys()[m])
+	t.ok(LookFx.VIGNETTE_REGULAR <= 0.1 and LookFx.VIGNETTE_CLIP > LookFx.VIGNETTE_REGULAR, "clip vignette stronger, regular light")
+	var size := Vector2(1280, 720)
+	t.near(LookFx.vignette_at(Vector2(0.5, 0.5), size, 0.22), 1.0, 1e-9, "centre untouched")
+	t.near(LookFx.vignette_at(Vector2(0.5, 0.0), size, 0.08), 1.0, 1e-3, "top edge centre untouched (regular)")
+	t.near(LookFx.vignette_at(Vector2(0.0, 0.0), size, 0.22), 0.78, 1e-6, "corner darkened by the strength")
+	# long lens: sharp around the boat at 150 m
+	var v := _select_clip(rig, tg, CameraRig.Mode.LONG_LENS)
+	v = rig.frame(tg, CameraInput.new(), 0.016)
+	var a := rig.camera.attributes as CameraAttributesPractical
+	t.ok(a != null and a.dof_blur_far_enabled and a.dof_blur_near_enabled, "long lens has depth of field")
+	if a:
+		var zone := CameraRig.DOF_ZONE_LOA * 7.2 + CameraRig.DOF_ZONE_M
+		t.near(rig.focus, v.focus, 0.01, "focus on the subject")
+		t.near(rig.focus, 150.0, 1.0, "long lens focus about 150 m")
+		t.near(a.dof_blur_near_distance, rig.focus - zone, 1e-3, "near blur ends a zone short of the boat")
+		t.near(a.dof_blur_far_distance, rig.focus + zone, 1e-3, "far blur starts a zone beyond the boat")
+		t.ok(a.dof_blur_near_distance < 150.0 - 3.6 and a.dof_blur_far_distance > 150.0 + 3.6, "the whole boat is sharp")
+	# the focus follows the boat as it moves away
+	for i in 120:
+		tg.pose.pos_y += 0.5
+		rig.frame(tg, CameraInput.new(), 1.0 / 60.0)
+	t.near(rig.focus, rig.view.focus, 0.5, "focus follows the distance (%.1f m)" % rig.focus)
+	# mark shot
+	tg = _target()
+	_select_clip(rig, tg, CameraRig.Mode.MARK)
+	v = rig.frame(tg, CameraInput.new(), 0.016)
+	t.ok(rig.camera.attributes != null and v.focus > 0.0, "mark shot has depth of field, focus %.1f m" % v.focus)
+	# tier L: none
+	LookFx.tier = SeaQuality.Tier.L
+	rig.frame(tg, CameraInput.new(), 0.016)
+	t.ok(rig.camera.attributes == null, "no depth of field on tier L")
+	LookFx.tier = SeaQuality.Tier.H
+	rig.frame(tg, CameraInput.new(), 0.016)
+	t.ok(rig.camera.attributes != null, "depth of field on tier H")
+	LookFx.tier = keep_tier
+	rig.queue_free()

@@ -124,15 +124,19 @@ def deck_info(boat):
     d, h = boat.deck, boat.hull
     L = float(h.L)
     xs = np.linspace(0.0, L, int(round(L / 0.01)) + 1)
-    inset = d.cab_h * d.cab_slope if d.has_cabin else 0.0
     yk = np.asarray(d.yk(xs), dtype=np.float64) if d.has_cabin else np.zeros_like(xs)
+    # the coachroof's top: inside the edge radius, where it stands at least 2 cm proud (forward of that it fairs
+    # into the deck and is laid out as deck)
+    top = (np.asarray(d.cab_height(xs)) > 0.02) if d.has_cabin else np.zeros_like(xs, bool)
+    yk_roof = np.where(top, np.asarray(d.yk_roof(xs), dtype=np.float64), 0.0) if d.has_cabin else np.zeros_like(xs)
     in_ck = (xs >= d.xc0) & (xs <= d.xc1)
     out = {
         "plan": list(d.plan_rect()), "xs": xs, "bs": np.asarray(h.bs(xs), dtype=np.float64),
         "yc": np.where(in_ck, np.asarray(d.yc(xs), dtype=np.float64), 0.0),
         "yk": np.where((xs >= d.xk0) & (xs <= d.xk1), yk, 0.0),
         "xc0": float(d.xc0), "xc1": float(d.xc1), "xk0": float(d.xk0), "xk1": float(d.xk1),
-        "has_cabin": bool(d.has_cabin), "cab_inset": float(inset), "open_transom": bool(d.open_transom),
+        "yk_roof": np.where((xs >= d.xk0) & (xs <= d.xk1), yk_roof, 0.0),
+        "has_cabin": bool(d.has_cabin), "open_transom": bool(d.open_transom),
         "margin": float(d.margin), "toe_rail": float(d.cls["deck"]["toe_rail"]),
         "companion": getattr(d, "companion", None),
         "mast": {"x": float(boat.rig.x_mast), "chord": float(getattr(boat.rig, "chord", 0.12)),

@@ -209,6 +209,9 @@ func test_render_scale(s: Settings) -> void:
 		t.ok(Settings.screen_space_aa(m) == Viewport.SCREEN_SPACE_AA_SMAA, "SMAA with %s" % Settings.upscaler_name(m))
 	for m in [Viewport.SCALING_3D_MODE_FSR2, Viewport.SCALING_3D_MODE_METALFX_TEMPORAL]:
 		t.ok(Settings.screen_space_aa(m) == Viewport.SCREEN_SPACE_AA_DISABLED, "no SMAA under %s" % Settings.upscaler_name(m))
+	Settings.aa_override = "fxaa"
+	t.ok(Settings.screen_space_aa(Viewport.SCALING_3D_MODE_FSR) == Viewport.SCREEN_SPACE_AA_FXAA, "--aa=fxaa for this run")
+	Settings.aa_override = ""
 	for c in [[Vector2i(2560, 1600), 2.0, 0.67], [Vector2i(2560, 1600), 1.0, 0.67], [Vector2i(2880, 1800), 2.0, 0.67],
 			[Vector2i(3840, 2160), 1.0, 0.5301], [Vector2i(6880, 2880), 1.0, 0.3430],
 			[Vector2i(1920, 1200), 1.0, 1.0], [Vector2i(1920, 1080), 1.0, 1.0], [Vector2i(1280, 800), 1.0, 1.0],

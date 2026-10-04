@@ -274,6 +274,7 @@ Flags after `--`:
 | `--perf-seconds=N` | quit after N seconds (from the scene's start, after loading) |
 | `--render-scale=0.67` | this run's render scale (0.5 to 1, or 50 to 100), over the setting; not saved |
 | `--upscaler=fsr` | this run's upscaler: `fsr`, `bilinear` or `metalfx` (MetalFX spatial, Metal only) |
+| `--aa=off` | this run's anti-aliasing: `off`, `fxaa` or `smaa` (the default, `water_render.md` §7); not saved |
 | `--quality=M` | this run's quality tier: `L`, `M` or `H`, over the setting; not saved |
 | `--no-vsync` | this run without vsync, to see the headroom; not saved |
 | `--shadow-splits=0` | this run's sun shadow cascades: `0` (off), `2` or `4`, over the tier; not saved |

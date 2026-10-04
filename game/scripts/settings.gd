@@ -104,6 +104,8 @@ const PORTRAIT_SIZE := Vector2i(1080, 1920)
 ## a scale > 0 replaces the setting; "fsr", "bilinear" or "metalfx" replaces the upscaler's choice.
 static var render_scale_override := 0.0
 static var upscaler_override := ""
+## sail test `--aa=off|fxaa|smaa`, this run only (to compare the anti-aliasing and measure its cost): "" keeps SMAA
+static var aa_override := ""
 ## this run only, not saved (sail test `--quality=L|M|H`, `--no-vsync`): -1 keeps the setting
 static var quality_override := -1
 static var vsync_override := -1
@@ -382,6 +384,11 @@ static func upscaler(scale: float) -> Viewport.Scaling3DMode:
 ## before a spatial upscaler (FSR 1.0, MetalFX spatial), which wants an antialiased input. A temporal upscaler
 ## (FSR 2, MetalFX temporal) antialiases by itself, so SMAA is off with it.
 static func screen_space_aa(mode: Viewport.Scaling3DMode) -> Viewport.ScreenSpaceAA:
+	match aa_override:
+		"off":
+			return Viewport.SCREEN_SPACE_AA_DISABLED
+		"fxaa":
+			return Viewport.SCREEN_SPACE_AA_FXAA
 	if mode in [Viewport.SCALING_3D_MODE_FSR2, Viewport.SCALING_3D_MODE_METALFX_TEMPORAL]:
 		return Viewport.SCREEN_SPACE_AA_DISABLED
 	return Viewport.SCREEN_SPACE_AA_SMAA

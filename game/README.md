@@ -652,7 +652,8 @@ python3 game/tests/livery_cost.py
 
 `scenes/sea/sea.tscn` (`Sea`) draws the water of `docs/specs/water_render.md`: a camera-centred radial grid whose
 vertex shader evaluates the core's `sea_height` from the wave components, with detail normals, puffs and lulls,
-wakes (`SeaWakes`) and water overlays, in three quality tiers (`SeaQuality`: L, M, H). It reads:
+whitecaps (`SeaWhitecaps`: foam carried by the wave components, riding their crests), wakes (`SeaWakes`) and water
+overlays, in three quality tiers (`SeaQuality`: L, M, H). It reads:
 
 - a source with `sea_components()`, `sea_exposure()` and `wind_state(t_ms)`, and optionally
   `venue_wind_field()` (the venue file's land-effect field, drawn as the wind slowed near land; `Sea.set_wind_field`
@@ -707,8 +708,9 @@ The script builds `core/tools/gen_sea_render_samples.cpp`, writes the core's sam
 on any error or warning) and runs `tests/water_test.gd`: every shader parses; the drawn height matches the core's
 `sea_height` within 1 mm (a double-precision mirror and a float32 emulation of the shader path, points up to
 8 km, times up to 4 h); slope, puff factor and exposure match; the far-field fade table; the components sorted by
-wavelength with their `comp_lam` and the per-pixel band loop against the full sum; the wake geometry; and
-the test scene on every tier. With the GDExtension built it then runs `tests/boat_shadow_test.gd` (the drawn boat shadows on a race in the sail scene: on the water, away from the sun, covering the projected hull, rig and sails, the tiers, native against reference, cost per boat) and `tests/wakes_native_test.gd`: the native
+wavelength with their `comp_lam` and the per-pixel band loop against the full sum; the wake geometry; the
+whitecaps on their CPU mirror (none under 8 kn, cover rising with the wind and the puffs near measured whitecap
+cover, caps riding their crests, no popping over 60 s at 60 frames per second); and the test scene on every tier. With the GDExtension built it then runs `tests/boat_shadow_test.gd` (the drawn boat shadows on a race in the sail scene: on the water, away from the sun, covering the projected hull, rig and sails, the tiers, native against reference, cost per boat) and `tests/wakes_native_test.gd`: the native
 wakes against their GDScript references (sea height, ribbons with spray, current and hidden rows, bow waves, mist,
 and a `SeaWakes` drawing each way), the in-place buffers byte for byte against Godot's own encoding, and the cost
 per boat of both paths.
@@ -723,6 +725,10 @@ JPEGs committed in `tests/previews/`. The previews stand in a shadow map from th
 takes it on tier H, the drawn boat shadows are used on L and M (`--shadows real|drawn|none` picks one), and `--compare`
 writes `<shot>.real.png`, `<shot>.drawn.png` and a side-by-side `<shot>.compare.png`. `--faded-slope` draws the per-pixel
 slope of faded waves on every tier (the shaders draw it on tier H only) and `--suffix=.x` names the outputs apart.
+`--no-caps` leaves the whitecaps out. The whitecap shots (`water_preview_dump.gd -- whitecaps`: 12, 18 and 24 kn from
+the chase camera, a sequence of 6 frames 0.5 s apart and one of 120 frames over 60 s from a still camera) publish as
+`whitecaps_*.jpg`; `--strip NAME` puts a sequence side by side with its times. `tests/water_cost.py` times the sea
+with and without the whitecaps on those dumps (per tier with `--tier`, an OpenGL proxy for the GPU cost).
 
 The previews draw the boats with the boat shader's textures, factors and baked AO, without shadows. The engine's
 own picture needs a short windowed run (it opens a window for about 7 seconds):

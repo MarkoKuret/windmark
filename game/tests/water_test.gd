@@ -5,7 +5,8 @@ extends SceneTree
 ##   slope parity; far-field fade; puff parity within 1e-3; exposure parity within 1e-3; the venue land factor
 ##   (wind.md §8) against the core's wind within 1e-3 (when the GDExtension is built) and the shader's texture path
 ##   against the mirror; the wavelength-sorted components and the per-pixel band loop (§3.2); wake geometry; the
-##   test scene runs on every tier.
+##   whitecaps (§4.4: none under 8 kn, cover rising with the wind and the puffs, caps riding their crests without
+##   popping over 60 s); the test scene runs on every tier.
 ## Exit code 0 when every check passes.
 
 const SAMPLES := "res://generated/sea/sea_render_samples.json"
@@ -57,6 +58,7 @@ func _init() -> void:
 	check_band_slope(data["scenarios"] if data is Dictionary else [])
 	check_land_core()
 	check_wake_ribbon()
+	check_whitecaps()
 	_tiers_left = [SeaQuality.Tier.L, SeaQuality.Tier.M, SeaQuality.Tier.H]
 	_start_scene()
 
@@ -558,6 +560,196 @@ func check_wake_edges() -> void:
 	check(code.contains("depth_draw_never"), "wake: ribbons do not write depth")
 
 
+## §4.4 whitecaps, on the CPU mirror of the shader (SeaWhitecaps) and the reference wind seas of sea.md §2 (fetch
+## 10 km): the measured cover of the drawn foam (opacity on the texture's mean density levels) at each wind, none
+## under 8 kn, more in puffs; caps riding their crests (each component's window, the foam texture and the whole
+## field move with the waves); over 60 s at 60 frames per second the foam a point riding the dominant wave sees
+## builds and fades without jumps.
+func check_whitecaps() -> void:
+	print("- whitecaps (water_render.md §4.4)")
+	var lm := SeaWhitecaps.level_means()
+	print("  foam texture level means %.3f %.3f %.3f %.3f" % [lm.r, lm.g, lm.b, lm.a])
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 83
+	var pts := PackedVector2Array()
+	for k in 25000:
+		pts.append(Vector2(rng.randf_range(-200.0, 200.0), rng.randf_range(-200.0, 200.0)))
+	var covers := {}
+	var line := "  cover:"
+	for kn in [6.0, 7.9, 10.0, 12.0, 15.0, 18.0, 20.0, 24.0, 25.0]:
+		var sea := _caps_sea(kn, 100000.0)
+		covers[kn] = _caps_cover(sea, pts, kn * SeaWhitecaps.KNOT, lm)
+		line += "  %.1f kn %.3f %%" % [kn, 100.0 * covers[kn]]
+	print(line)
+	check(covers[6.0] == 0.0 and covers[7.9] == 0.0, "no caps under 8 kn (6 and 7.9 kn: none)")
+	var rising := true
+	for pair in [[10.0, 12.0], [12.0, 15.0], [15.0, 18.0], [18.0, 20.0], [20.0, 24.0], [24.0, 25.0]]:
+		rising = rising and covers[pair[1]] > covers[pair[0]]
+	check(rising, "cover rises with the wind from 10 to 25 kn")
+	var near := true
+	for ref in [[15.0, 0.002], [20.0, 0.014], [25.0, 0.025]]:
+		near = near and covers[ref[0]] > ref[1] / 1.6 and covers[ref[0]] < ref[1] * 1.6
+	check(near, "cover near measured whitecap cover (0.2 %% at 15 kn, 1.4 %% at 20, 2.5 %% at 25, within x1.6): %.2f, %.2f, %.2f %%" % [
+			100.0 * covers[15.0], 100.0 * covers[20.0], 100.0 * covers[25.0]])
+	# the puffs: the same 20 kn sea under local winds of m times the base
+	var sea20 := _caps_sea(20.0, 100000.0)
+	var pc := []
+	line = "  20 kn sea in puffs and lulls:"
+	for m in [0.6, 0.8, 1.0, 1.1, 1.25]:
+		pc.append(_caps_cover(sea20, pts, m * 20.0 * SeaWhitecaps.KNOT, lm))
+		line += "  m %.2f %.3f %%" % [m, 100.0 * pc[-1]]
+	print(line)
+	check(pc[0] < pc[1] and pc[1] < pc[2] and pc[2] < pc[3] and pc[3] < pc[4], "more caps in the puffs, fewer in the lulls")
+	var lc := [_caps_cover(_caps_sea(15.0, 0.0), pts, 15.0 * SeaWhitecaps.KNOT, lm, 4), pc[2],
+			_caps_cover(_caps_sea(25.0, 0.0), pts, 25.0 * SeaWhitecaps.KNOT, lm, 4)]
+	lc[1] = _caps_cover(sea20, pts, 20.0 * SeaWhitecaps.KNOT, lm, 4)
+	print("  tier L (the 4 heaviest components): 15 kn %.3f %%, 20 kn %.3f %%, 25 kn %.3f %%" % [100.0 * lc[0], 100.0 * lc[1], 100.0 * lc[2]])
+	check(lc[0] < lc[1] and lc[1] < lc[2] and lc[1] > 0.014 / 2.0, "tier L: cover rises with the wind, at least half the measured cover at 20 kn")
+	var sea7 := _caps_sea(7.0, 100000.0)
+	check(_caps_cover(sea7, pts, 1.1 * 7.0 * SeaWhitecaps.KNOT, lm) == 0.0, "a puff on a 7 kn breeze (7.7 kn) makes no caps")
+
+	# each component's crest window rides its crest: its value at t moved on by the phase velocity over dt is the same
+	var comps: Array = sea20["model"].components
+	var sel: PackedInt32Array = sea20["sel"]
+	var cw: PackedVector4Array = sea20["cw"]
+	var p := SeaWhitecaps.dominant_index(comps)
+	var dt := 0.5
+	var t0 := 100000.0
+	var ck0 := _caps_comp(sea20, t0)
+	var ck1 := _caps_comp(sea20, t0 + dt * 1000.0)
+	var worst := 0.0
+	for j in sel.size():
+		var c: Array = comps[sel[j]]
+		var kap := Vector2(c[1], c[2]).length()
+		var v := Vector2(c[1], c[2]) / kap * ((1.0 / kap) / (float(c[4]) * 0.001))
+		for k in 200:
+			var x := pts[k]
+			var x1 := x + v * dt
+			var w0 := SeaWhitecaps.window(ck0[j].x * x.x + ck0[j].y * x.y + ck0[j].z, cw[j])
+			var w1 := SeaWhitecaps.window(ck1[j].x * x1.x + ck1[j].y * x1.y + ck1[j].z, cw[j])
+			worst = maxf(worst, absf(w1 - w0))
+	check(sel.size() >= 4,
+			"%d components carry foam, heaviest first (weights %s)" % [sel.size(), str(Array(ck0.slice(0, sel.size())).map(func(e): return snappedf(e.w, 0.0001)))])
+	check(worst < 2e-3, "each component's foam window rides its crest at its phase speed (worst %s)" % sci(worst))
+	# the foam texture rides the dominant wave: a point moving with it keeps its texture coordinates
+	var c0: Array = comps[p]
+	var kp := Vector2(c0[1], c0[2]).length()
+	var vp := Vector2(c0[1], c0[2]) / kp * ((1.0 / kp) / (float(c0[4]) * 0.001))
+	var ox := 1234.5
+	var oy := -876.25
+	var uv0 := SeaWhitecaps.uv_frame(comps, ox, oy, t0)
+	var uv1 := SeaWhitecaps.uv_frame(comps, ox, oy, t0 + dt * 1000.0)
+	var xr := Vector2(37.0, -12.0)
+	var xr1 := xr + vp * dt
+	var e := Vector2(uv0.x, uv0.y)
+	var du := (xr1.dot(e) / SeaWhitecaps.TILE.x + uv1.z) - (xr.dot(e) / SeaWhitecaps.TILE.x + uv0.z)
+	var dv := (xr1.dot(Vector2(-e.y, e.x)) / SeaWhitecaps.TILE.y + uv1.w) - (xr.dot(Vector2(-e.y, e.x)) / SeaWhitecaps.TILE.y + uv0.w)
+	du -= roundf(du)
+	dv -= roundf(dv)
+	check(absf(du) < 1e-5 and absf(dv) < 1e-5, "the foam texture drifts with the dominant wave (%.2f m/s; texture slip %s, %s)" % [
+			vp.length(), sci(du), sci(dv)])
+	# the whole field: foam half a second later matches the foam moved on with the dominant wave, not the foam in place
+	var f0 := PackedFloat32Array()
+	var f_moved := PackedFloat32Array()
+	var f_still := PackedFloat32Array()
+	var wind := 20.0 * SeaWhitecaps.KNOT
+	var n6 := SeaWhitecaps.MAX_CAPS
+	for k in 20000:
+		f0.append(SeaWhitecaps.intensity(ck0, cw, sea20["rest"], n6, pts[k], 0.0, 1.0, wind))
+		f_moved.append(SeaWhitecaps.intensity(ck1, cw, sea20["rest"], n6, pts[k] + vp * dt, 0.0, 1.0, wind))
+		f_still.append(SeaWhitecaps.intensity(ck1, cw, sea20["rest"], n6, pts[k], 0.0, 1.0, wind))
+	var r_moved := _corr(f0, f_moved)
+	var r_still := _corr(f0, f_still)
+	check(r_moved > 0.6 and r_moved > r_still + 0.3, "the caps move with the crests: foam 0.5 s later correlates %.2f with the foam moved on with the waves, %.2f in place" % [
+			r_moved, r_still])
+
+	# 60 s at 60 frames per second, points riding the dominant wave: no jumps, caps build and fade over seconds
+	var img := SeaTextures.caps_image()
+	var n_img := img.get_width()
+	var n_pts := 150
+	var prev := PackedFloat32Array()
+	prev.resize(n_pts)
+	var run := PackedInt32Array()
+	run.resize(n_pts)
+	var lives := []
+	var max_jump := 0.0
+	var frames := 3600
+	for fr in frames:
+		var t := t0 + fr * 1000.0 / 60.0
+		var comp := _caps_comp(sea20, t)
+		for k in n_pts:
+			var x := pts[k] * 0.5 + vp * (fr / 60.0)
+			# the texture coordinate stays fixed for a point riding the dominant wave
+			var L := img.get_pixel(int(absf(pts[k].x) * 37.0) % n_img, int(absf(pts[k].y) * 53.0) % n_img)
+			var a := SeaWhitecaps.opacity(SeaWhitecaps.intensity(comp, cw, sea20["rest"], n6, x, 0.0, 1.0, wind), L)
+			if fr > 0:
+				max_jump = maxf(max_jump, absf(a - prev[k]))
+			prev[k] = a
+			if a > 0.02:
+				run[k] += 1
+			elif run[k] > 0:
+				lives.append(run[k] / 60.0)
+				run[k] = 0
+	lives.sort()
+	var med: float = lives[lives.size() / 2] if lives.size() > 0 else 0.0
+	print("  60 s riding the dominant wave: %d caps seen, lifetime median %.2f s (10 %%: %.2f s, 90 %%: %.2f s), largest change in one frame %.3f" % [
+			lives.size(), med, lives[lives.size() / 10] if lives.size() > 0 else 0.0,
+			lives[lives.size() * 9 / 10] if lives.size() > 0 else 0.0, max_jump])
+	check(lives.size() >= 20 and max_jump < 0.15, "no popping: the foam opacity changes by at most %.3f in a frame (limit 0.15)" % max_jump)
+	check(med >= 0.8, "caps build and fade over seconds (median lifetime %.2f s, at least 0.8 s)" % med)
+
+
+## The reference wind sea of sea.md §2 at kn knots (fetch 10 km) through the Sea's model, with the whitecap uniforms.
+func _caps_sea(kn: float, _t_ms: float) -> Dictionary:
+	var src := SeaEnvSource.new()
+	src.wind_kn = kn
+	src.fetch_m = 10000.0
+	src.puffs_enabled = false
+	var m := SeaModel.new()
+	m.set_components(src.sea_components())
+	src.free()
+	var sel := SeaWhitecaps.select(m.components)
+	return {"model": m, "sel": sel, "cw": SeaWhitecaps.window_uniforms(m.components, sel),
+			"rest": SeaWhitecaps.rest_mean(m.components, sel)}
+
+
+## The shader's per-frame caps_k (kx, ky, d', b) at t_ms for a camera at the origin.
+func _caps_comp(sea: Dictionary, t_ms: float) -> PackedVector4Array:
+	var m: SeaModel = sea["model"]
+	return SeaWhitecaps.wave_uniforms(m.components, sea["sel"], m.phases(t_ms, 0.0, 0.0))
+
+
+## Drawn foam cover: the mean opacity over the points at two times, on the texture's mean density levels.
+func _caps_cover(sea: Dictionary, pts: PackedVector2Array, wind: float, lm: Color, n_caps := SeaWhitecaps.MAX_CAPS) -> float:
+	var s := 0.0
+	var n := 0
+	for t in [100000.0, 157300.0]:
+		var ck := _caps_comp(sea, t)
+		for x in pts:
+			s += SeaWhitecaps.opacity(SeaWhitecaps.intensity(ck, sea["cw"], sea["rest"], n_caps, x, 0.0, 1.0, wind), lm)
+			n += 1
+	return s / n
+
+
+func _corr(a: PackedFloat32Array, b: PackedFloat32Array) -> float:
+	var n := a.size()
+	var ma := 0.0
+	var mb := 0.0
+	for i in n:
+		ma += a[i]
+		mb += b[i]
+	ma /= n
+	mb /= n
+	var sab := 0.0
+	var saa := 0.0
+	var sbb := 0.0
+	for i in n:
+		sab += (a[i] - ma) * (b[i] - mb)
+		saa += (a[i] - ma) * (a[i] - ma)
+		sbb += (b[i] - mb) * (b[i] - mb)
+	return sab / sqrt(maxf(saa * sbb, 1e-30))
+
+
 func _start_scene() -> void:
 	if _tiers_left.is_empty():
 		_finish()
@@ -608,6 +800,13 @@ func _process(_delta: float) -> bool:
 	check((wb != null) == bool(t["wake_buffer"]), "scene tier %s: wake buffer %s" % [t["name"],
 			"made for the drawn wakes" if t["wake_buffer"] else "not made"])
 	check_shadows(sea, t)
+	var cw: PackedVector4Array = sea.material.get_shader_parameter("caps_w")
+	var ck: PackedVector4Array = sea.material.get_shader_parameter("caps_k")
+	var sel := SeaWhitecaps.select(sea.model.components)
+	check(sel.size() >= 4 and cw == SeaWhitecaps.window_uniforms(sea.model.components, sel) and ck[0].w > 0.0
+			and absf(ck[0].z - sea.model.phases(sea.render_time_ms, sea.origin.x, sea.origin.y)[sel[0]]) < 1e-6
+			and sea.material.get_shader_parameter("caps_tex") != null,
+			"scene tier %s: whitecap weights and foam texture uploaded" % t["name"])
 	if t["name"] == "M":
 		check_wake_buffer_lifecycle()
 		check_bow_spray()

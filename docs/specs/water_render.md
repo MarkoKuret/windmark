@@ -1,7 +1,7 @@
 # Water rendering
 
 How the front end draws the sea: the surface from the same height function the boats sample, its normals, colour,
-Fresnel and sky reflection, the wind on the water (puffs and lulls that players read tactically), bow
+Fresnel and sky reflection, the wind on the water (puffs and lulls that players read tactically), whitecaps, bow
 waves, wakes and spray, and the quality tiers for low-end GPUs. It ends with a comparison of our approach with the
 open-source Godot FFT oceans and a recommendation.
 
@@ -170,10 +170,85 @@ exposure, 1 outside the grid, and passes `f` to the fragment shader, so the draw
 float rounding at the vertices. The direction offset `d` does not show on the water and is not drawn.
 
 ### 4.4 Whitecaps
-None for now. The first version (a scrolling noise texture thresholded on crest height) drew hard white blotches
-that popped on and off and slid over the waves, and was removed on 2026-10-03. Whitecaps come back when the foam
-belongs to the wave components and moves with their crests (WM-083). The white blotches seen before WM-080 at 15 to
-20 kn were sky reflection, not foam (§4.2).
+Foam belongs to the wave components: each component carries a foam value from its own travelling phase, so a cap
+rides its crest, builds on its front and leaves a fading trail behind it. Caps appear where the crests of several
+steep components meet (a wave group), so they come and go as the components run in and out of step, and their
+number follows the local wind. (A first version thresholded a scrolling noise texture on crest height: hard white
+blotches that popped on and off and slid over the waves; it was removed on 2026-10-03.)
+
+**Per component** (CPU, once per sea, `SeaWhitecaps`), with `lam_i` the wavelength, `k_i = 2π/lam_i` and `lam_p` the
+wavelength of the largest-amplitude component:
+```
+b_i       = a_i·k_i · min(1, lam_i/lam_p)²              // foam weight: steepness, waves shorter than the peak weighed down
+sf_i      = max(0.08, 0.6 m / lam_i)                    // crest window half widths, cycles: ahead of the crest
+sb_i      = max(0.20, 1.2 m / lam_i)                    //   and behind it (the trail)
+mean_i    = mean over a cycle of W_i (below)
+selected  = the 6 components with the largest b_i ≥ 0.004, heaviest first (tier L evaluates the first 4)
+caps_w[j] = (1/sf, 1/sb, mean, lam) of selected j ; caps_rest = Σ b_i·mean_i of the components not selected
+```
+Every frame: `caps_k[j] = (kx, ky, d', b)` of selected `j`, with the phase `d'` of `comp` (§2), and the foam texture
+frame `caps_uv = (e, u0, v0)`: `e` the travel direction of the largest-amplitude component, `(u0, v0)` the camera-origin
+part of the texture coordinates below, drifting along `e` at that component's phase speed `c_p = lam_p/T_p` (in double,
+mod 1).
+
+**Per pixel** (`wm_caps_intensity`, `wm_apply_caps`; `m` the drawn wind factor of §4.3, `E` the exposure, `px` the pixel
+footprint):
+```
+U     = m·base_speed / KNOT                                      // local wind, kn
+gate  = smoothstep(8, 10, U)                                     // no caps under 8 kn
+fade  = 1 - smoothstep(1200 m, 2500 m, dist)                     // both 0: no further work
+for each selected j:  d = signed cycles from the crest (fract of the phase, ahead > 0)
+                      W = exp(-(d/sf)²) ahead, exp(-(d/sb)²) behind
+                      S += b · mix(mean, W, smoothstep(2, 4, lam/px))   // too short for the pixel: its mean
+S     = E · (S + caps_rest + Σ b·mean of the selected beyond the tier's count)
+S_b   = 0.0677 + 0.0208·(15/U)³                                  // breaking threshold, falls with the wind
+F     = clamp((S - S_b)/0.06, 0, 1) · gate · fade                // foam intensity
+```
+The crest windows travel with their components, so a cap moves with its crests; the sum only passes the threshold
+where crests coincide, and a cap builds and fades as they drift in and out of step (median life about 1.5 s for a point
+riding the waves at 20 kn, at most about 0.05 opacity change between frames). The components the pixel cannot
+resolve count with their mean, so far away the caps thin out instead of aliasing.
+
+**Look**: the foam texture (`SeaTextures.caps`, 256², RGBA8, tiling, generated at load) holds four nested density
+levels as coverage: R sparse fizz (broken fine lace and a few longer filaments), G the lace net, B dense foam (thick
+lace and a milky film), A near-solid white with a few holes; built from periodic cellular noise (exact tiling) with a
+smooth warp that curves its borders, and seamless value noise for the breakup. It is mapped `4.5 m` along `e` by
+`3 m` across, moving with the dominant wave. Mip-mapped, anisotropic: the mips average coverage, so a distant cap
+fades to its true mean whiteness.
+```
+q        = (dot(xl, e), dot(xl, perp(e))) / (4.5, 3) + (u0, v0)
+L        = texture(caps_tex, q)
+cover    = L.r·min(4F, 1) + (L.g - L.r)·clamp(4F - 1, 0, 1) + (L.b - L.g)·clamp(4F - 2, 0, 1) + (L.a - L.b)·clamp(4F - 3, 0, 1)
+a        = 0.92 · cover · (0.3 + 0.7·smoothstep(0, 0.6, F))      // thin foam is translucent
+ALBEDO   = mix(mix(ALBEDO, (0.05, 0.20, 0.23), 0.3·smoothstep(0.2, 0.8, F)), col_foam, a)   // aerated water, then foam
+ROUGHNESS = mix(ROUGHNESS, 0.55, a) ; EMISSION *= 1 - a ; normal = normalize(mix(normal, n_geo, 0.6·a))   // no glints in foam
+```
+**Cover** (drawn foam, the mean of `a` over the water, on the reference wind seas of `sea.md` §2, fetch 10 km), against
+measured whitecap cover (about 0.2 % at 15 kn, 1.4 % at 20 kn, 2.5 % at 25 kn):
+
+| wind | 8 kn | 12 kn | 15 kn | 18 kn | 20 kn | 24 kn | 25 kn |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| cover (tiers M, H) | 0 | 0.004 % | 0.18 % | 0.75 % | 1.2 % | 2.4 % | 2.5 % |
+| cover (tier L) | 0 | | 0.14 % | | 1.1 % | | 2.3 % |
+
+On a 20 kn sea the puffs and lulls change it (local wind `m` times the base): m 0.6: 0.06 %, 0.8: 0.6 %, 1.1: 1.4 %,
+1.25: 1.7 %; caps show the puffs, and a lull is almost free of them.
+
+**Cost**: one loop of 6 (tier L 4) components with a fract, an exp and a smoothstep each, from 12 vec4 uniforms with
+a constant bound, and one texture tap where `F > 0`; nothing below 8 kn or beyond 2.5 km. The per-component windows are
+a few metres wide, narrower than the vertex spacing at the chase camera's distance (1.5 m at 25 m, 6 m at 100 m on
+tier M), so they are evaluated per pixel; what the vertex stage already has (exposure, venue factor) comes as varyings.
+Measured on the development M1 (OpenGL proxy, `tests/water_cost.py`, the 1280 × 800 chase view): about +0.15 ms on
+tier L and +0.2 ms on tiers M and H, 10 to 15 % of the water pass; on the Steam Deck (about 0.6 of the M1's GPU)
+about +0.3 ms, inside the 2.5 ms of §7.
+
+**Checks** (`tests/water_test.gd`, on the CPU mirror `SeaWhitecaps.intensity`): no caps under 8 kn (6 and 7.9 kn, and
+a puff on a 7 kn breeze); cover rising with the wind from 10 to 25 kn and within ×1.6 of the measured cover at 15,
+20 and 25 kn (tier L at least half at 20 kn); more caps in puffs, fewer in lulls; each component's window equal after
+moving with its phase velocity; the foam texture drifting with the dominant wave; the foam field 0.5 s later
+correlating with itself moved with the waves (0.9), not in place (0); over 60 s at 60 frames per second, points riding
+the dominant wave see the opacity change by at most 0.15 per frame and caps living a median 0.8 s or more.
+Previews: `tests/previews/whitecaps_{12,18,24}kn_chase.jpg` and `whitecaps_20kn_sequence.jpg` (6 frames 0.5 s apart).
 
 ### 4.5 Daylight
 Target look (WM-080): a bright, sunny, high-contrast racing day. A hard sun, a clear saturated blue sky (deep at
@@ -482,7 +557,7 @@ colour-blind palettes).
 | per-pixel slope of faded components | no | no (owner decision 2026-10-01: about 3.5 ms on an M1 at 2880 × 1800) | yes |
 | detail normal layers | 2 | 3 | 4 |
 | puffs and lulls (§4.3) | yes (gameplay information) | yes | yes |
-| whitecaps | none for now (§4.4) | none | none |
+| whitecaps (§4.4) | the 4 heaviest foam components | the 6 heaviest | the 6 heaviest |
 | wake ribbons | own boat | own + 6 nearest | all within 400 m |
 | bow wave | all boats with a wake | all boats with a wake | all boats with a wake |
 | mist (and spray reach) | no | own boat | yes |

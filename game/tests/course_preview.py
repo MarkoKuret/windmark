@@ -42,12 +42,15 @@ void main() {
     vec3 view = normalize(u_cam - v_wpos);
     float dist = length(u_cam.xz - v_wpos.xz);
     vec3 n_geo = normalize(v_normal);
-#if TIER >= 2
     float px = max(length(fwidth(v_local)), 1e-3);
+#if TIER >= 2
     vec2 g = wm_faded_slope(v_local, v_spacing, px) * v_expo;
     n_geo = normalize(n_geo + vec3(-g.x, 0.0, g.y));
 #endif
     WmSurface S = wm_surface(v_local, v_eta, n_geo, view, dist, vec2(0.0), v_land);
+#ifdef WM_WHITECAPS
+    wm_apply_caps(S, v_local, px, v_expo, dist, n_geo);
+#endif
     vec4 ov = wm_overlays(v_local, dist);
     vec3 albedo = mix(S.albedo, ov.rgb * 0.8, ov.a);
     vec3 emission = mix(S.emission, ov.rgb * 0.35, ov.a);
@@ -135,6 +138,7 @@ def render(ctx, d, size):
 
     detail = wp.texture_from_png(ctx, d / "detail.png", 4)
     foam = wp.texture_from_png(ctx, d / "foam.png", 3)
+    caps = wp.texture_from_png(ctx, d / "caps.png", 4)
     if sc["exposure"]:
         e = np.fromfile(d / "expo.bin", dtype="f4")
         expo = ctx.texture((sc["exposure"]["nx"], sc["exposure"]["ny"]), 1, e.tobytes(), dtype="f4")
@@ -150,7 +154,7 @@ def render(ctx, d, size):
     land.filter = (moderngl.NEAREST, moderngl.NEAREST)
     wake_tex = ctx.texture((1, 1), 4, bytes([128, 128, 128, 255]))
     units = {"expo_tex": (expo, 0), "detail_tex": (detail, 1), "foam_tex": (foam, 2), "wake_tex": (wake_tex, 3),
-             "land_tex": (land, 4)}
+             "land_tex": (land, 4), "caps_tex": (caps, 9)}
     for tex, unit in units.values():
         tex.use(unit)
     for p in (water, wake, mesh, sky):

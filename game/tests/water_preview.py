@@ -8,9 +8,12 @@ Forward+ (GGX sun specular, Schlick sky reflection, Lambert, Godot's fog, Godot'
 close to, not identical with, the engine's. Boats are drawn with the boat shader's textures, factors and baked AO
 (on the ambient light only), without shadows.
 
-    python3 game/tests/water_preview.py [--size 1280x720] [--no-wakes] [--publish] [shot ...]
+    python3 game/tests/water_preview.py [--size 1280x720] [--no-wakes] [--publish] [--strip NAME] [shot ...]
 
-Writes game/generated/water_preview/<shot>.png (with --publish also game/tests/previews/water_<shot>.jpg). Needs numpy, Pillow and moderngl (docs/THIRD_PARTY.md).
+Writes game/generated/water_preview/<shot>.png (with --publish also game/tests/previews/water_<shot>.jpg, or
+<shot>.jpg for the whitecap shots, whitecaps_*). --strip NAME also puts the shots side by side, two per row, each
+labelled with its time from the first (a time sequence), in generated/water_preview/NAME.png (with --publish also
+in game/tests/previews/NAME.jpg). Needs numpy, Pillow and moderngl (docs/THIRD_PARTY.md).
 """
 import argparse
 import json
@@ -50,6 +53,7 @@ uniform sampler2D land_tex;
 uniform sampler2D detail_tex;
 uniform sampler2D foam_tex;
 uniform sampler2D wake_tex;
+uniform sampler2D caps_tex;
 """
 
 LIGHTING = """
@@ -131,6 +135,9 @@ vec3 fogged(vec3 c, vec3 wpos) {
 """
 
 
+# --no-caps: leave the whitecaps (water_render.md §4.4) out, for a before/after comparison
+NO_CAPS = False
+
 # --faded-slope: the per-pixel slope of faded waves on every tier (water_render.md §3.2; the shaders draw it on tier
 # H only), to compare a tier's look with and without it
 FADED_SLOPE_ALWAYS = False
@@ -138,7 +145,9 @@ FADED_SLOPE_ALWAYS = False
 
 def header(tier, layers):
     slope = "#define WM_FADED_SLOPE\n" if tier >= 3 or FADED_SLOPE_ALWAYS else ""
-    return f"#version 410\n#define TIER {tier}\n#define WM_DETAIL_LAYERS {layers}\n" + slope + SAMPLERS + inc("sea_common.gdshaderinc")
+    caps = "" if NO_CAPS else "#define WM_WHITECAPS\n#define WM_CAPS_N %d\n" % (4 if tier == 1 else 6)
+    return (f"#version 410\n#define TIER {tier}\n#define WM_DETAIL_LAYERS {layers}\n" + slope + caps + SAMPLERS
+            + inc("sea_common.gdshaderinc"))
 
 
 WATER_VS = """
@@ -185,12 +194,15 @@ void main() {
     vec3 view = normalize(u_cam - v_wpos);
     float dist = length(u_cam.xz - v_wpos.xz);
     vec3 n_geo = normalize(v_normal);
-#ifdef WM_FADED_SLOPE
     float px = max(length(fwidth(v_local)), 1e-3);
+#ifdef WM_FADED_SLOPE
     vec2 g = wm_faded_slope(v_local, v_spacing, px) * v_expo;
     n_geo = normalize(n_geo + vec3(-g.x, 0.0, g.y));
 #endif
     WmSurface S = wm_surface(v_local, v_eta, n_geo, view, dist, vec2(0.0), v_land);
+#ifdef WM_WHITECAPS
+    wm_apply_caps(S, v_local, px, v_expo, dist, n_geo);
+#endif
     vec3 c = shade_vis(S.albedo, S.roughness, S.specular, S.normal, view, sun_vis(v_wpos, vec3(0.0, 1.0, 0.0))) + S.emission;
     frag = vec4(fogged(c, v_wpos), 1.0);
 }
@@ -607,6 +619,12 @@ def render(ctx, d, size, wakes=True, shadows="auto"):
     """shadows: `real` (the sun's shadow map on the water, tier H), `drawn` (the drawn boat shadows, tiers L and
     M), `none`, or `auto` (the tier's). The boats take the shadow map unless `none`."""
     sc = json.loads((d / "scene.json").read_text())
+    if sc.get("meshes_from"):
+        # a light sequence frame: its own sea uniforms, everything else the first frame's
+        d = d.parent / sc["meshes_from"]
+        water = sc["water"]
+        sc = json.loads((d / "scene.json").read_text())
+        sc["water"] = water
     w, h = size
     tier = {"L": 1, "M": 2, "H": 3}[sc["tier"]]
     if shadows == "auto":
@@ -649,6 +667,7 @@ def render(ctx, d, size, wakes=True, shadows="auto"):
     # textures shared by the water and the wakes
     detail = texture_from_png(ctx, d / "detail.png", 4)
     foam = texture_from_png(ctx, d / "foam.png", 3)
+    caps = texture_from_png(ctx, d / "caps.png", 4)
     if sc["exposure"]:
         e = np.fromfile(d / "expo.bin", dtype="f4")
         expo = ctx.texture((sc["exposure"]["nx"], sc["exposure"]["ny"]), 1, e.tobytes(), dtype="f4")
@@ -663,7 +682,7 @@ def render(ctx, d, size, wakes=True, shadows="auto"):
     land.filter = (moderngl.NEAREST, moderngl.NEAREST)
     wake_tex = ctx.texture((1, 1), 4, bytes([128, 128, 128, 255]))
     units = {"expo_tex": (expo, 0), "detail_tex": (detail, 1), "foam_tex": (foam, 2), "wake_tex": (wake_tex, 3),
-             "land_tex": (land, 4)}
+             "land_tex": (land, 4), "caps_tex": (caps, 9)}
     for tex, unit in units.values():
         tex.use(unit)
 
@@ -885,19 +904,23 @@ def main():
                          "and <shot>.compare.png side by side")
     ap.add_argument("--faded-slope", action="store_true",
                     help="draw the per-pixel slope of faded waves on every tier (the shaders: tier H only)")
+    ap.add_argument("--no-caps", action="store_true", help="leave the whitecaps out")
     ap.add_argument("--suffix", default="", help="added to the output names (e.g. .slope)")
     ap.add_argument("--publish", action="store_true",
                     help="also write JPEG copies to game/tests/previews (the committed previews)")
+    ap.add_argument("--strip", help="also compose the shots into one labelled time sequence image NAME")
     ap.add_argument("shots", nargs="*")
     a = ap.parse_args()
-    global FADED_SLOPE_ALWAYS
+    global FADED_SLOPE_ALWAYS, NO_CAPS
     FADED_SLOPE_ALWAYS = a.faded_slope
+    NO_CAPS = a.no_caps
     size = tuple(int(x) for x in a.size.split("x"))
     shots = a.shots or sorted(p.name for p in OUT.iterdir() if (p / "scene.json").exists())
     if not shots:
         print("no dumped shots in %s: run tests/water_preview_dump.gd first" % OUT)
         return 1
     ctx = moderngl.create_standalone_context(require=410)
+    strip = []
     for s in shots:
         if a.compare:
             imgs = {}
@@ -914,12 +937,41 @@ def main():
         path = OUT / (s + a.suffix + (".nowake" if a.no_wakes else "") + ".png")
         img.save(path)
         print("wrote", path)
-        if a.publish:
+        if a.strip:
+            strip.append((s, img))
+        if a.publish and not a.strip:
             PUBLISHED.mkdir(exist_ok=True)
-            jpg = PUBLISHED / ("water_" + s + ".jpg")
+            jpg = PUBLISHED / (("" if s.startswith("whitecaps_") else "water_") + s + ".jpg")
             img.save(jpg, quality=88)
             print("wrote", jpg)
+    if a.strip and strip:
+        out = strip_image(strip)
+        path = OUT / (a.strip + ".png")
+        out.save(path)
+        print("wrote", path)
+        if a.publish:
+            PUBLISHED.mkdir(exist_ok=True)
+            out.save(PUBLISHED / (a.strip + ".jpg"), quality=88)
+            print("wrote", PUBLISHED / (a.strip + ".jpg"))
     return 0
+
+
+def strip_image(frames):
+    """Frames two per row, each labelled with its render time from the first (a time sequence)."""
+    from PIL import ImageDraw
+    w, h = frames[0][1].size
+    t0 = json.loads((OUT / frames[0][0] / "scene.json").read_text())["render_time_ms"]
+    rows = (len(frames) + 1) // 2
+    out = Image.new("RGB", (2 * w + 8, rows * (h + 8) - 8), (255, 255, 255))
+    dr = ImageDraw.Draw(out)
+    for k, (s, img) in enumerate(frames):
+        x, y = (k % 2) * (w + 8), (k // 2) * (h + 8)
+        out.paste(img, (x, y))
+        t = json.loads((OUT / s / "scene.json").read_text())["render_time_ms"]
+        label = "t = %.1f s" % ((t - t0) / 1000.0)
+        dr.rectangle([x + 6, y + 6, x + 14 + 7 * len(label), y + 26], fill=(0, 0, 0))
+        dr.text((x + 10, y + 10), label, fill=(255, 255, 255))
+    return out
 
 
 if __name__ == "__main__":

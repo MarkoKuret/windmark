@@ -278,6 +278,7 @@ func _dump(name: String) -> void:
 		_save(dir, "land.bin", lu[2])
 	SeaTextures.detail_image().save_png(dir.path_join("detail.png"))
 	SeaTextures.foam_image().save_png(dir.path_join("foam.png"))
+	SeaTextures.caps_image().save_png(dir.path_join("caps.png"))
 	var wakes: SeaWakes = _scene.wakes
 	var ribbons := []
 	var wake_uniforms := {}

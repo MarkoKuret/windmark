@@ -4,14 +4,16 @@ extends SceneTree
 ## sun, fog) plus the boat triangles to generated/water_preview/<shot>/. Step 2, tests/water_preview.py,
 ## renders them with the same shader functions (sea_common, sky_common, wake_common) on an offscreen GL context.
 ##   godot --headless --path game -s res://tests/water_preview_dump.gd [-- --sky=late] [shot ...]
-## `--sky=<preset>` lights the shots with another SkyRig preset and names them `<preset>_<shot>`; shot names limit
-## the run to those shots.
+## `--sky=<preset>` lights the shots with another SkyRig preset and names them `<preset>_<shot>`; with shot names
+## after `--`, only those (or the shots starting with them) are dumped.
 
 const OUT := "res://generated/water_preview"
 const FRAMES := 260
 const DT_MS := 1000.0 / 60.0
 
-## name, env mode, scenario or wind (kn), camera mode, tier
+## name, env mode, scenario or wind (kn), camera mode, tier, and optionally {puffs: placeholder puffs on,
+## seq: dump that many frames step_ms apart (<name>_00, _01, ...), light: after the first frame only the uniforms
+## (scene.json, the meshes are the first frame's), speed: the test boat's speed (0: it and the camera stay put)}
 const SHOTS := [
 	["bay20_chase_M", SeaEnvSource.Mode.CORE_SAMPLES, "example_bay_20kn", 0, SeaQuality.Tier.M],
 	["bay20_aerial_M", SeaEnvSource.Mode.CORE_SAMPLES, "example_bay_20kn", 1, SeaQuality.Tier.M],
@@ -22,6 +24,14 @@ const SHOTS := [
 	["bay20_chase_L", SeaEnvSource.Mode.CORE_SAMPLES, "example_bay_20kn", 0, SeaQuality.Tier.L],
 	["bay20_bow_M", SeaEnvSource.Mode.CORE_SAMPLES, "example_bay_20kn", 4, SeaQuality.Tier.M],
 	["calm_bow_M", SeaEnvSource.Mode.PLACEHOLDER, 2.0, 4, SeaQuality.Tier.M],
+	# whitecaps (water_render.md §4.4) at 12, 18 and 24 kn, and a time sequence at 20 kn from a still camera
+	["whitecaps_12kn_chase", SeaEnvSource.Mode.PLACEHOLDER, 12.0, 0, SeaQuality.Tier.M, {"puffs": true}],
+	["whitecaps_18kn_chase", SeaEnvSource.Mode.PLACEHOLDER, 18.0, 0, SeaQuality.Tier.M, {"puffs": true}],
+	["whitecaps_24kn_chase", SeaEnvSource.Mode.PLACEHOLDER, 24.0, 0, SeaQuality.Tier.M, {"puffs": true}],
+	["whitecaps_20kn_seq", SeaEnvSource.Mode.PLACEHOLDER, 20.0, 0, SeaQuality.Tier.M,
+			{"puffs": true, "seq": 6, "step_ms": 500.0, "speed": 0.0}],
+	["whitecaps_20kn_60s", SeaEnvSource.Mode.PLACEHOLDER, 20.0, 0, SeaQuality.Tier.M,
+			{"puffs": true, "seq": 120, "step_ms": 500.0, "speed": 0.0, "light": true}],
 ]
 
 var _shot := -1
@@ -29,6 +39,8 @@ var _frames := 0
 var _scene: Node
 var _sky := ""
 var _only: PackedStringArray = []
+var _seq := 0
+var _dumped := 0
 
 
 func _init() -> void:
@@ -45,16 +57,30 @@ func _name(s: Array) -> String:
 	return s[0] if _sky == "" else "%s_%s" % [_sky, s[0]]
 
 
+func _wanted(name: String) -> bool:
+	if _only.is_empty():
+		return true
+	for o in _only:
+		if name.begins_with(o):
+			return true
+	return false
+
+
+func _opt(key: String, default: Variant) -> Variant:
+	var s: Array = SHOTS[_shot]
+	return s[5].get(key, default) if s.size() > 5 else default
+
+
 func _next() -> void:
 	_shot += 1
+	while _shot < SHOTS.size() and not _wanted(SHOTS[_shot][0]):
+		_shot += 1
 	if _shot >= SHOTS.size():
-		print("water preview dump: %d shots in %s" % [SHOTS.size(), ProjectSettings.globalize_path(OUT)])
+		print("water preview dump: %d shots in %s" % [_dumped, ProjectSettings.globalize_path(OUT)])
 		quit(0)
 		return
+	_seq = 0
 	var s: Array = SHOTS[_shot]
-	if not _only.is_empty() and not _only.has(s[0]):
-		_next()
-		return
 	_scene = (load("res://scenes/water_test.tscn") as PackedScene).instantiate()
 	if _sky != "":
 		(_scene.get_node("SkyDay") as SkyRig).set_preset_name(_sky)
@@ -64,8 +90,9 @@ func _next() -> void:
 		src.scenario = s[2]
 	else:
 		src.wind_kn = s[2]
-		src.puffs_enabled = false
+		src.puffs_enabled = _opt("puffs", false)
 	_scene.camera_mode = s[3]
+	_scene.boat_speed = _opt("speed", _scene.boat_speed)
 	var sea: Sea = _scene.get_node("Sea")
 	sea.quality = s[4]
 	sea.use_internal_clock = false
@@ -82,11 +109,21 @@ func _process(_delta: float) -> bool:
 	var sea: Sea = _scene.get_node("Sea")
 	sea.render_time_ms += DT_MS
 	_frames += 1
-	if _frames >= FRAMES:
+	var n_seq: int = _opt("seq", 0)
+	var step := int(round(float(_opt("step_ms", 500.0)) / DT_MS))
+	if _frames < FRAMES or (n_seq > 0 and (_frames - FRAMES) % step != 0):
+		return false
+	if n_seq > 0:
+		_dump("%s_%03d" % [_name(SHOTS[_shot]), _seq] if n_seq > 100 else "%s_%02d" % [_name(SHOTS[_shot]), _seq],
+				_seq > 0 and _opt("light", false))
+		_seq += 1
+		if _seq < n_seq:
+			return false
+	else:
 		_dump(_name(SHOTS[_shot]))
-		_scene.queue_free()
-		_scene = null
-		_next()
+	_scene.queue_free()
+	_scene = null
+	_next()
 	return false
 
 
@@ -183,10 +220,17 @@ func _save(dir: String, file: String, bytes: PackedByteArray) -> void:
 	f.store_buffer(bytes)
 
 
-func _dump(name: String) -> void:
+func _dump(name: String, light := false) -> void:
 	var dir := ProjectSettings.globalize_path(OUT).path_join(name)
 	DirAccess.make_dir_recursive_absolute(dir)
 	var sea: Sea = _scene.get_node("Sea")
+	if light:
+		var first := name.substr(0, name.rfind("_")) + "_000"
+		var fl := FileAccess.open(dir.path_join("scene.json"), FileAccess.WRITE)
+		fl.store_string(JSON.stringify({"shot": name, "meshes_from": first, "render_time_ms": sea.render_time_ms,
+				"water": _uniforms(sea.material)}, "  "))
+		_dumped += 1
+		return
 	var cam: Camera3D = _scene.get_node("Camera")
 	var sky: SkyRig = _scene.get_node("SkyDay")
 	var env := sky.environment()
@@ -220,6 +264,7 @@ func _dump(name: String) -> void:
 		_save(dir, "land.bin", lu[2])
 	SeaTextures.detail_image().save_png(dir.path_join("detail.png"))
 	SeaTextures.foam_image().save_png(dir.path_join("foam.png"))
+	SeaTextures.caps_image().save_png(dir.path_join("caps.png"))
 	# wakes
 	var wakes: SeaWakes = _scene.get_node("Wakes")
 	var ribbons := []
@@ -281,4 +326,5 @@ func _dump(name: String) -> void:
 	data["boat"] = boats
 	var f := FileAccess.open(dir.path_join("scene.json"), FileAccess.WRITE)
 	f.store_string(JSON.stringify(data, "  "))
+	_dumped += 1
 	print("  dumped ", name)

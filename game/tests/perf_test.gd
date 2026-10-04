@@ -104,13 +104,14 @@ func test_scene() -> void:
 		t.ok(ok_cols, "every line has %d fields" % PerfMonitor.COLUMNS.size())
 		print("  %s\n  %s" % [rows[0], rows[-1]])
 	t.ok(perf.lines >= 2, "lines counted: %d" % perf.lines)
-	# F9 hides the panel and stops measuring (no log open any more)
+	# Shift+F9 hides the panel and stops measuring (no log open any more); F9 alone is the look panel's
 	var k := InputEventKey.new()
 	k.keycode = KEY_F9
+	k.shift_pressed = true
 	k.pressed = true
 	root.push_input(k)
 	await process_frame
-	t.ok(not perf.get_node("PerfPanel").visible and not PerfStats.enabled, "F9 hides it, nothing measured")
+	t.ok(not perf.get_node("PerfPanel").visible and not PerfStats.enabled, "Shift+F9 hides it, nothing measured")
 	sc.queue_free()
 	await process_frame
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(LOG))

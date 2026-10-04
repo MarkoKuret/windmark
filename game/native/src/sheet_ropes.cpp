@@ -18,6 +18,11 @@ namespace {
 constexpr float TAU_F = 6.28318530717959f;
 constexpr float NO_DECK = -1.0e9f;
 constexpr float WHIP_WAVE = 1.5f;  // m, wavelength of the whip along a flogging sheet
+constexpr float DRAPE_STEP = 0.025f;  // m, the drape's sample step along a tube (under the field's widening)
+constexpr double PI_D = 3.14159265358979;
+constexpr double ROUTE_FADE = 0.1;  // rad, the angle over which an obstacle point fades in at an end of a route
+constexpr double ROUTE_UNDER = 0.1;  // m above the straight line from which an obstacle point lets the line under
+constexpr double ROUTE_UNDER_FADE = 0.2;  // m over which it fades out
 
 // Godot's octahedral normal encoding (Vector3::octahedron_encode) as the mesh stores it: two 16-bit units.
 inline void oct16(const Vector3& v, uint16_t out[2]) {
@@ -151,6 +156,8 @@ bool SheetRopes::configure(const Dictionary& params) {
     if (h.size() == static_cast<int64_t>(dnx_) * dnz_ && dnx_ > 1 && dnz_ > 1) {
       deck_.resize(h.size());
       std::memcpy(deck_.data(), h.ptr(), sizeof(float) * h.size());
+      dmax_ = NO_DECK;
+      for (float v : deck_) dmax_ = std::max(dmax_, v);
     } else {
       dnx_ = dnz_ = 0;
     }
@@ -180,6 +187,8 @@ void SheetRopes::update(const PackedVector3Array& starts, const PackedVector3Arr
                         const PackedFloat32Array& drive, const Vector3& gravity) {
   const Vector3 g = gravity.length_squared() > 1e-12f ? gravity.normalized() : Vector3(0, -1, 0);
   const int per = sides_ + 1;
+  const int64_t nlines = static_cast<int64_t>(lines_.size());
+  const int64_t slots = nlines > 0 ? std::min<int64_t>(ways.size() / nlines, MAX_WAYS) : 0;
   for (size_t i = 0; i < lines_.size(); ++i) {
     const Line& l = lines_[i];
     const int64_t ii = static_cast<int64_t>(i);
@@ -191,17 +200,18 @@ void SheetRopes::update(const PackedVector3Array& starts, const PackedVector3Arr
       for (int k = 0; k < l.rings; ++k) r[k] = s0;
     } else {
       const float sag_f = dv[1], sag_l = dv[2], psi = dv[3], whip = dv[4], phi = dv[5];
-      // the free run: start, waypoint (when given), anchor
-      Vector3 p[3];
-      float c[3];
-      int n = 0;
-      p[n++] = s0;
-      if (ii < ways.size()) {
-        const Vector3 w = ways[ii];
-        if (!std::isnan(w.x)) p[n++] = w;
+      // the free run: start, its waypoints (the unused slots NaN), anchor
+      pts_.clear();
+      pts_.push_back(s0);
+      for (int64_t j = 0; j < slots; ++j) {
+        const Vector3 w = ways[ii * slots + j];
+        if (!std::isnan(w.x)) pts_.push_back(w);
       }
-      p[n++] = l.anchor;
-      c[0] = 0.0f;
+      pts_.push_back(l.anchor);
+      const int n = static_cast<int>(pts_.size());
+      const Vector3* p = pts_.data();
+      cum_.assign(n, 0.0f);
+      float* c = cum_.data();
       for (int k = 1; k < n; ++k) c[k] = c[k - 1] + (p[k] - p[k - 1]).length();
       const float len = c[n - 1];
       const Vector3 side = side_of(l.anchor - s0, g);
@@ -215,6 +225,7 @@ void SheetRopes::update(const PackedVector3Array& starts, const PackedVector3Arr
         if (k > 0 && k < nf - 1) q.y = std::max(q.y, deck_at(q.x, q.z) + l.radius);
         r[k] = q;
       }
+      drape(r, nf, l.radius);
       if (l.lead_rings > 0) {
         const Vector3 a = l.anchor, e = l.fixed[0];
         const float len2 = (e - a).length();
@@ -225,6 +236,7 @@ void SheetRopes::update(const PackedVector3Array& starts, const PackedVector3Arr
           if (k < l.lead_rings) q.y = std::max(q.y, deck_at(q.x, q.z) + l.radius);
           r[nf - 1 + k] = q;
         }
+        drape(r + nf - 1, l.lead_rings + 1, l.radius);
         for (size_t k = 1; k < l.fixed.size(); ++k) r[nf - 1 + l.lead_rings + static_cast<int>(k)] = l.fixed[k];
       }
     }
@@ -264,6 +276,335 @@ void SheetRopes::update(const PackedVector3Array& starts, const PackedVector3Arr
       }
     }
   }
+}
+
+// §11.3 "Deck": lifts the rings of a run (its ends fixed) so the straight tube between each pair clears the field at
+// every DRAPE_STEP, by the least lift of the pair. One pass: a lift only raises the tubes either side of a ring, so a
+// point already clear stays clear.
+void SheetRopes::drape(Vector3* r, int n, float radius) const {
+  if (deck_.empty() || n < 3) return;
+  {
+    for (int k = 0; k + 1 < n; ++k) {
+      Vector3& p0 = r[k];
+      Vector3& p1 = r[k + 1];
+      if (std::min(p0.y, p1.y) > dmax_ + radius) continue;
+      const float dx = p1.x - p0.x, dz = p1.z - p0.z;
+      const int m = std::min(std::max(static_cast<int>(std::ceil(std::sqrt(dx * dx + dz * dz) / DRAPE_STEP)), 1), 64);
+      const float w0f = k == 0 ? 0.0f : 1.0f, w1f = k + 1 == n - 1 ? 0.0f : 1.0f;
+      // a fixed end inside the field (a block on the deck) lets its tube in by its own depth, fading along it
+      const float e0 = k == 0 ? std::max(deck_at(p0.x, p0.z) + radius - p0.y, 0.0f) : 0.0f;
+      const float e1 = k + 1 == n - 1 ? std::max(deck_at(p1.x, p1.z) + radius - p1.y, 0.0f) : 0.0f;
+      for (int j = 1; j < m; ++j) {
+        const float f = static_cast<float>(j) / static_cast<float>(m);
+        const float h = deck_at(p0.x + dx * f, p0.z + dz * f);
+        if (h <= NO_DECK) continue;
+        const float d = h + radius - (p0.y + (p1.y - p0.y) * f) - e0 * (1.0f - f) - e1 * f;
+        if (d <= 0.0f) continue;
+        const float w0 = w0f * (1.0f - f), w1 = w1f * f;
+        const float den = w0 * w0 + w1 * w1;
+        if (den < 1e-9f) continue;
+        p0.y += d * w0 / den;
+        p1.y += d * w1 / den;
+      }
+    }
+  }
+}
+
+namespace {
+
+struct Cand {
+  double th;
+  double x, z;
+  double m;
+};
+
+inline double cross2(double ax, double az, double bx, double bz) { return ax * bz - az * bx; }
+
+}  // namespace
+
+PackedVector3Array SheetRopes::route(const Vector3& a, const Vector3& b, const Vector3& pivot, double side,
+                                     const Array& obstacles, double spacing, int64_t max_ways) const {
+  PackedVector3Array out;
+  const double sg = side >= 0.0 ? 1.0 : -1.0;
+  const double ox = pivot.x, oz = pivot.z;
+  auto theta = [&](double x, double z) { return std::atan2(sg * (x - ox), z - oz); };
+  const double ta = theta(a.x, a.z), tb = theta(b.x, b.z);
+  if (std::fabs(tb - ta) >= PI_D - 0.05 || std::fabs(tb - ta) < 1e-9) return out;
+  const double tlo = std::min(ta, tb), thi = std::max(ta, tb);
+  const double cx = double(b.x) - a.x, cz = double(b.z) - a.z;
+  const double so = cross2(cx, cz, ox - a.x, oz - a.z) >= 0.0 ? 1.0 : -1.0;  // the pivot's side of the chord
+  std::vector<Cand> k;
+  for (int64_t gi = 0; gi + 1 < obstacles.size(); gi += 2) {
+    const PackedVector3Array pts = obstacles[gi];
+    const double m = static_cast<double>(obstacles[gi + 1]);
+    const Vector3* pp = pts.ptr();
+    const int64_t np = pts.size();
+    for (int64_t j = 0; j < np; ++j) {
+      const double px = pp[j].x, pz = pp[j].z;
+      if (cross2(cx, cz, px - a.x, pz - a.z) * so >= 0.0) continue;  // on the pivot's side of the chord
+      const double th = theta(px, pz);
+      if (th <= tlo || th >= thi) continue;
+      // a point well above the straight line there (the boom over the cockpit, the main above it) lets the line
+      // pass under: it moves onto the chord as it rises from ROUTE_UNDER to ROUTE_UNDER + ROUTE_UNDER_FADE above
+      const double f = std::min(std::max(((px - a.x) * cx + (pz - a.z) * cz) / std::max(cx * cx + cz * cz, 1e-12), 0.0),
+                                1.0);
+      const double gap = pp[j].y - (a.y + (double(b.y) - a.y) * f);
+      const double v = std::min(std::max((gap - ROUTE_UNDER) / ROUTE_UNDER_FADE, 0.0), 1.0);
+      const double hv = 1.0 - v * v * (3.0 - 2.0 * v);
+      if (hv <= 0.0) continue;
+      const double fx = a.x + cx * f, fz = a.z + cz * f;
+      double qx = fx + (px - fx) * hv, qz = fz + (pz - fz) * hv;
+      // a point coming into the wedge past an end starts at that end and moves out to its place over ROUTE_FADE
+      // of angle, so the line bends away from it smoothly instead of jumping round it
+      const bool near_a = std::fabs(th - ta) <= std::fabs(th - tb);
+      const double u = std::min(std::fabs(th - (near_a ? ta : tb)) / ROUTE_FADE, 1.0);
+      const double sf = u * u * (3.0 - 2.0 * u);
+      const double ex = near_a ? a.x : b.x, ez = near_a ? a.z : b.z;
+      qx = ex + (qx - ex) * sf;
+      qz = ez + (qz - ez) * sf;
+      if (sf * hv >= 1.0) {
+        k.push_back({th, px, pz, m});
+      } else {
+        k.push_back({theta(qx, qz), qx, qz, m * sf * hv});
+      }
+    }
+  }
+  if (k.empty()) return out;
+  const bool up = tb > ta;
+  std::sort(k.begin(), k.end(), [up](const Cand& p, const Cand& q) { return up ? p.th < q.th : p.th > q.th; });
+  // the convex chain from a to b round k (a Graham scan about the pivot)
+  std::vector<Cand> ch;
+  ch.push_back({ta, a.x, a.z, 0.0});
+  k.push_back({tb, b.x, b.z, 0.0});
+  for (const Cand& p : k) {
+    while (ch.size() >= 2) {
+      const Cand& c0 = ch[ch.size() - 2];
+      const Cand& c1 = ch[ch.size() - 1];
+      if (cross2(c1.x - c0.x, c1.z - c0.z, p.x - c1.x, p.z - c1.z) * so > 0.0) break;
+      ch.pop_back();
+    }
+    ch.push_back(p);
+  }
+  auto turn = [&](size_t i) {
+    const double ax = ch[i].x - ch[i - 1].x, az = ch[i].z - ch[i - 1].z;
+    const double bx = ch[i + 1].x - ch[i].x, bz = ch[i + 1].z - ch[i].z;
+    const double la = std::sqrt(ax * ax + az * az), lb = std::sqrt(bx * bx + bz * bz);
+    if (la < 1e-9 || lb < 1e-9) return 0.0;
+    return std::acos(std::min(std::max((ax * bx + az * bz) / (la * lb), -1.0), 1.0));
+  };
+  while (static_cast<int64_t>(ch.size()) - 2 > std::max<int64_t>(max_ways, 0)) {
+    size_t best = 1;
+    double bt = 1e9;
+    for (size_t i = 1; i + 1 < ch.size(); ++i) {
+      const double t = turn(i);
+      if (t < bt) {
+        bt = t;
+        best = i;
+      }
+    }
+    // its depth outside the new edge goes to the margins of its neighbours, so the edge still clears it
+    {
+      const Cand& p = ch[best - 1];
+      const Cand& v = ch[best];
+      const Cand& q = ch[best + 1];
+      const double ex = q.x - p.x, ez = q.z - p.z, el = std::max(std::hypot(ex, ez), 1e-9);
+      const double extra = v.m + std::max(-so * cross2(ex, ez, v.x - p.x, v.z - p.z) / el, 0.0);
+      if (best - 1 > 0) ch[best - 1].m = std::max(ch[best - 1].m, extra);
+      if (best + 2 < ch.size()) ch[best + 1].m = std::max(ch[best + 1].m, extra);
+    }
+    ch.erase(ch.begin() + static_cast<std::ptrdiff_t>(best));
+  }
+  if (ch.size() < 3) return out;
+  // out along the outward bisector by the margin and the corner allowance of the ring spacing
+  std::vector<double> wx(ch.size()), wz(ch.size());
+  for (size_t i = 0; i < ch.size(); ++i) {
+    wx[i] = ch[i].x;
+    wz[i] = ch[i].z;
+  }
+  // the turns and their plan positions along the chain: a chord between two rings cuts every corner within a ring
+  // spacing of it, so each corner's allowance takes the turns near it, weighted down linearly over the spacing
+  std::vector<double> tn(ch.size(), 0.0), c0(ch.size(), 0.0);
+  for (size_t i = 1; i < ch.size(); ++i) c0[i] = c0[i - 1] + std::hypot(ch[i].x - ch[i - 1].x, ch[i].z - ch[i - 1].z);
+  for (size_t i = 1; i + 1 < ch.size(); ++i) tn[i] = turn(i);
+  const double hs = std::max(spacing, 1e-6);
+  for (size_t i = 1; i + 1 < ch.size(); ++i) {
+    double ae = 0.0;
+    for (size_t j = 1; j + 1 < ch.size(); ++j) ae += tn[j] * std::max(0.0, 1.0 - std::fabs(c0[j] - c0[i]) / hs);
+    ae = std::min(ae, 2.5);
+    double ax = ch[i].x - ch[i - 1].x, az = ch[i].z - ch[i - 1].z;
+    double bx = ch[i + 1].x - ch[i].x, bz = ch[i + 1].z - ch[i].z;
+    const double la = std::max(std::sqrt(ax * ax + az * az), 1e-9), lb = std::max(std::sqrt(bx * bx + bz * bz), 1e-9);
+    ax /= la;
+    az /= la;
+    bx /= lb;
+    bz /= lb;
+    // outward: away from the pivot's side of the travel (so > 0: the pivot on the left, out to the right)
+    double nx = so * (az + bz), nz = -so * (ax + bx);
+    double nl = std::sqrt(nx * nx + nz * nz);
+    if (nl < 1e-9) {
+      nx = so * az;
+      nz = -so * ax;
+      nl = 1.0;
+    }
+    nx /= nl;
+    nz /= nl;
+    const double al = std::acos(std::min(std::max(ax * bx + az * bz, -1.0), 1.0));
+    // a chord cuts a corner by at most half a ring spacing times sin(turn / 2), and no chord starts before the
+    // route's first ring or ends after its last (the ends are rings)
+    const double reach = std::min(0.5 * spacing, std::min(c0[i], c0.back() - c0[i]));
+    const double push = (ch[i].m + reach * std::sin(0.5 * ae)) / std::max(std::cos(0.5 * al), 0.3);
+    wx[i] += nx * push;
+    wz[i] += nz * push;
+  }
+  std::vector<double> cl(ch.size(), 0.0);
+  for (size_t i = 1; i < ch.size(); ++i) cl[i] = cl[i - 1] + std::hypot(wx[i] - wx[i - 1], wz[i] - wz[i - 1]);
+  const double tot = std::max(cl.back(), 1e-9);
+  out.resize(static_cast<int64_t>(ch.size()) - 2);
+  for (size_t i = 1; i + 1 < ch.size(); ++i) {
+    const double f = cl[i] / tot;
+    out.set(static_cast<int64_t>(i) - 1, Vector3(static_cast<float>(wx[i]), static_cast<float>(a.y + (b.y - a.y) * f),
+                                                 static_cast<float>(wz[i])));
+  }
+  return out;
+}
+
+namespace {
+
+// Rasterises the top of a triangle mesh (model axes) at the grid nodes: `put(index, y)` per covered node.
+template <typename F>
+void raster(const PackedVector3Array& pos, const PackedInt32Array& idx, double x0, double z0, double cell, int nx,
+            int nz, F put) {
+  const Vector3* p = pos.ptr();
+  const int32_t* ix = idx.ptr();
+  const int64_t ni = idx.size(), np = pos.size();
+  for (int64_t t = 0; t + 2 < ni; t += 3) {
+    if (ix[t] < 0 || ix[t + 1] < 0 || ix[t + 2] < 0 || ix[t] >= np || ix[t + 1] >= np || ix[t + 2] >= np) continue;
+    const Vector3 a = p[ix[t]], b = p[ix[t + 1]], c = p[ix[t + 2]];
+    const double den = (double(b.z) - c.z) * (double(a.x) - c.x) + (double(c.x) - b.x) * (double(a.z) - c.z);
+    if (std::fabs(den) < 1e-9) continue;
+    const int i0 = std::max(0, static_cast<int>(std::ceil((std::min({a.x, b.x, c.x}) - x0) / cell)));
+    const int i1 = std::min(nx - 1, static_cast<int>(std::floor((std::max({a.x, b.x, c.x}) - x0) / cell)));
+    const int k0 = std::max(0, static_cast<int>(std::ceil((std::min({a.z, b.z, c.z}) - z0) / cell)));
+    const int k1 = std::min(nz - 1, static_cast<int>(std::floor((std::max({a.z, b.z, c.z}) - z0) / cell)));
+    for (int k = k0; k <= k1; ++k) {
+      const double pz = z0 + k * cell;
+      for (int i = i0; i <= i1; ++i) {
+        const double px = x0 + i * cell;
+        const double w0 = ((double(b.z) - c.z) * (px - c.x) + (double(c.x) - b.x) * (pz - c.z)) / den;
+        const double w1 = ((double(c.z) - a.z) * (px - c.x) + (double(a.x) - c.x) * (pz - c.z)) / den;
+        const double w2 = 1.0 - w0 - w1;
+        if (w0 < -1e-4 || w1 < -1e-4 || w2 < -1e-4) continue;
+        put(k * nx + i, w0 * a.y + w1 * b.y + w2 * c.y);
+      }
+    }
+  }
+}
+
+}  // namespace
+
+Dictionary SheetRopes::build_deck(const Array& surfaces, double cell, int64_t skirt, int64_t dilate) const {
+  Dictionary out;
+  cell = std::max(cell, 1e-3);
+  double xmin = 1e30, xmax = -1e30, zmin = 1e30, zmax = -1e30;
+  for (int64_t s = 0; s < surfaces.size(); ++s) {
+    const Dictionary d = surfaces[s];
+    if (getf(d, "cap", -1.0f) >= 0.0f) continue;
+    const PackedVector3Array p = d.get("positions", PackedVector3Array());
+    for (int64_t v = 0; v < p.size(); ++v) {
+      xmin = std::min(xmin, double(p[v].x));
+      xmax = std::max(xmax, double(p[v].x));
+      zmin = std::min(zmin, double(p[v].z));
+      zmax = std::max(zmax, double(p[v].z));
+    }
+  }
+  if (xmax < xmin) return out;
+  const int pad = static_cast<int>(std::max<int64_t>(skirt, 0) + std::max<int64_t>(dilate, 0)) + 2;
+  const double x0 = xmin - pad * cell, z0 = zmin - pad * cell;
+  const int nx = static_cast<int>(std::ceil((xmax - xmin) / cell)) + 2 * pad + 1;
+  const int nz = static_cast<int>(std::ceil((zmax - zmin) / cell)) + 2 * pad + 1;
+  std::vector<double> h(static_cast<size_t>(nx) * nz, NO_DECK);
+  for (int64_t s = 0; s < surfaces.size(); ++s) {
+    const Dictionary d = surfaces[s];
+    if (getf(d, "cap", -1.0f) >= 0.0f) continue;
+    raster(d.get("positions", PackedVector3Array()), d.get("indices", PackedInt32Array()), x0, z0, cell, nx, nz,
+           [&](int i, double y) { h[i] = std::max(h[i], y); });
+  }
+  // the deck's outer edge per station (the rail of the outside route), before the fittings, skirt and widening
+  PackedFloat32Array lo, hi;
+  lo.resize(nz);
+  hi.resize(nz);
+  for (int k = 0; k < nz; ++k) {
+    float l = NAN, r = NAN;
+    for (int i = 0; i < nx; ++i) {
+      if (h[k * nx + i] <= NO_DECK) continue;
+      const float x = static_cast<float>(x0 + i * cell);
+      if (std::isnan(l)) l = x;
+      r = x;
+    }
+    lo.set(k, l);
+    hi.set(k, r);
+  }
+  const std::vector<double> deck = h;
+  for (int64_t s = 0; s < surfaces.size(); ++s) {
+    const Dictionary d = surfaces[s];
+    const double cap = getf(d, "cap", -1.0f);
+    if (cap < 0.0) continue;
+    raster(d.get("positions", PackedVector3Array()), d.get("indices", PackedInt32Array()), x0, z0, cell, nx, nz,
+           [&](int i, double y) {
+             if (deck[i] > NO_DECK && y > h[i] && y <= deck[i] + cap) h[i] = y;
+           });
+  }
+  for (int64_t step = 0; step < skirt; ++step) {
+    const std::vector<double> src = h;
+    for (int k = 0; k < nz; ++k) {
+      for (int i = 0; i < nx; ++i) {
+        if (src[k * nx + i] > NO_DECK) continue;
+        double best = NO_DECK;
+        for (int dk = -1; dk <= 1; ++dk) {
+          for (int di = -1; di <= 1; ++di) {
+            const int kk = k + dk, ii = i + di;
+            if (kk >= 0 && kk < nz && ii >= 0 && ii < nx) best = std::max(best, src[kk * nx + ii]);
+          }
+        }
+        h[k * nx + i] = best;
+      }
+    }
+  }
+  const int rd = static_cast<int>(std::max<int64_t>(dilate, 0));
+  if (rd > 0) {
+    std::vector<double> tmp = h;
+    for (int k = 0; k < nz; ++k) {
+      for (int i = 0; i < nx; ++i) {
+        double best = NO_DECK;
+        for (int di = std::max(0, i - rd); di <= std::min(nx - 1, i + rd); ++di) best = std::max(best, h[k * nx + di]);
+        tmp[k * nx + i] = best;
+      }
+    }
+    for (int k = 0; k < nz; ++k) {
+      for (int i = 0; i < nx; ++i) {
+        double best = NO_DECK;
+        for (int dk = std::max(0, k - rd); dk <= std::min(nz - 1, k + rd); ++dk) best = std::max(best, tmp[dk * nx + i]);
+        h[k * nx + i] = best;
+      }
+    }
+  }
+  PackedFloat32Array hf;
+  hf.resize(static_cast<int64_t>(h.size()));
+  float mx = NO_DECK;
+  float* hw = hf.ptrw();
+  for (size_t i = 0; i < h.size(); ++i) {
+    hw[i] = static_cast<float>(h[i]);
+    mx = std::max(mx, hw[i]);
+  }
+  out["heights"] = hf;
+  out["origin"] = Vector2(static_cast<float>(x0), static_cast<float>(z0));
+  out["cell"] = cell;
+  out["nx"] = nx;
+  out["nz"] = nz;
+  out["max"] = mx;
+  out["edge_lo"] = lo;
+  out["edge_hi"] = hi;
+  return out;
 }
 
 PackedInt32Array SheetRopes::indices() const {
@@ -390,6 +731,9 @@ void SheetRopes::_bind_methods() {
   ClassDB::bind_method(D_METHOD("uvs"), &SheetRopes::uvs);
   ClassDB::bind_method(D_METHOD("centre", "line"), &SheetRopes::centre);
   ClassDB::bind_method(D_METHOD("deck_height", "x", "z"), &SheetRopes::deck_height);
+  ClassDB::bind_method(D_METHOD("route", "a", "b", "pivot", "side", "obstacles", "spacing", "max_ways"),
+                       &SheetRopes::route);
+  ClassDB::bind_method(D_METHOD("build_deck", "surfaces", "cell", "skirt", "dilate"), &SheetRopes::build_deck);
   ClassDB::bind_method(D_METHOD("attach_mesh", "mesh", "surface"), &SheetRopes::attach_mesh);
   ClassDB::bind_method(D_METHOD("vertex_bytes"), &SheetRopes::vertex_bytes);
   ClassDB::bind_method(D_METHOD("attribute_bytes"), &SheetRopes::attribute_bytes);

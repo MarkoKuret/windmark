@@ -93,14 +93,15 @@ How the generator reads a few of them:
 
   | type | tack | leech | foot | mid girth | edge round (luff share) |
   | --- | --- | --- | --- | --- | --- |
-  | `spinnaker_asym` | sprit end | 0.88 luff | 0.56 luff | 0.76 foot | 45 % |
+  | `spinnaker_asym` | sprit end | 0.82 luff | 0.57 luff | 0.88 foot | 45 % |
   | `spinnaker_sym` | pole end | = luff | 1.75 pole, at most 0.6 luff | 0.95 foot | 50 % |
   | `code_zero` | sprit end | 0.90 luff | 0.46 luff | 0.56 foot | 20 % |
 
   The luff is the straight line from the tack to the halyard point (0.12 m below the masthead at the mast front);
   the clew is where the foot from the tack meets the leech from the head. The luff and leech are then bowed
   outward (split by the luff share) until the mid girth, between the mid points of the luff and leech edges,
-  reaches its value; the foot has a fixed round (asym 8 %, sym 10 %, code zero 2 % of the foot). Rule area
+  reaches its value (deepest at 0.55 of the edge on an asymmetric spinnaker, for its broad shoulders, at 0.45
+  on the others; real asymmetrics measured in `docs/specs/sail_visuals.md` §14.1); the foot has a fixed round (asym 8 %, sym 10 %, code zero 2 % of the foot). Rule area
   `(SLU + SLE) / 2 · (SF + 4 · SHW) / 6` with the edges measured along the curves, as the sidecar's
   `sails.<id>.rule` reports. `luff`, `leech` and `foot` in the class file override the proportions, and the
   shaping keys below override the mid girth and the edge rounds. The clew comes out about a third of the hull
@@ -196,8 +197,8 @@ Every key is optional; defaults scale with LOA.
 `sails.<id>.look` holds any of the look parameters of `sail_visuals.md` §4: `fill_gain`, `fill_curve`,
 `flutter_amp`, `flutter_rate`, `flutter_rate_max`, `twist_top`, `camber`, `tack_line_max`, `furl_radius` (numbers
 >= 0; an unknown key is an error). The generator copies them into the sidecar's `sails.<id>.look` and fills
-every missing key from the defaults of the sail's type: the table of §4 (`camber` 0.12 on a code zero, 0.26 on
-both spinnakers), `flutter_rate` and `flutter_rate_max` from the LOA size rules, and `furl_radius` (jib, genoa,
+every missing key from the defaults of the sail's type: the table of §4 (`camber` 0.12 on a code zero, 0.27 on
+an asymmetric and 0.26 on a symmetric spinnaker; `twist_top` 0.45 on an asymmetric spinnaker), `flutter_rate` and `flutter_rate_max` from the LOA size rules, and `furl_radius` (jib, genoa,
 code zero) from the flat sail's chord extent `Sa`. Keys that do not apply to a type (`camber` on a main) are
 written only when the class file gives them. The old `depth` key (replaced by `camber`) is still accepted and
 not written.

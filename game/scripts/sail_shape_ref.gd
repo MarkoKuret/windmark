@@ -85,6 +85,9 @@ var _hrow := PackedFloat32Array()
 ## per row, per update: camber over chord and chord shortening (§6.3)
 var _drow := PackedFloat32Array()
 var _srow := PackedFloat32Array()
+var _prow := PackedFloat32Array()   # §6.3, §6.4 the camber's height profile p_i
+var _prof := PackedFloat32Array()   # §6.3, §6.4 the chordwise camber profile per vertex
+var _trow := PackedFloat32Array()   # §7 the twist of each row toward leeward, rad
 
 ## drivers kept between frames
 var phi := 0.0
@@ -179,6 +182,10 @@ func configure(rest_mid: PackedVector3Array, r: int, c: int, p: Dictionary) -> b
 	_drow.fill(0.0)
 	_srow.resize(rows)
 	_srow.fill(1.0)
+	_prow.resize(rows)
+	_trow.resize(rows)
+	_trow.fill(0.0)
+	_prof.resize(n)
 	for i in rows:
 		for j in cols:
 			var k := i * cols + j
@@ -188,6 +195,22 @@ func configure(rest_mid: PackedVector3Array, r: int, c: int, p: Dictionary) -> b
 		_c[i] = rest_mid[i * cols + cols - 1].distance_to(rest_mid[i * cols])
 		_amid[i] = 0.5 * (_a[i * cols] + _a[i * cols + cols - 1])
 		_hrow[i] = _h[i * cols]
+		# §6.3 (asymmetric: deepest at 0.3 of the height, the draft forward) and §6.4 (symmetric)
+		var hr := _hrow[i]
+		if kind == Kind.ASYM:
+			var lo := (0.3 - hr) / 0.3
+			var hi := (hr - 0.3) / 0.7
+			_prow[i] = 1.0 - 0.2 * lo * lo if hr < 0.3 else 1.0 - 0.55 * hi * hi
+			var t := clampf((hr - 0.55) / 0.45, 0.0, 1.0)
+			var q := 0.8 + 0.6 * t * t * (3.0 - 2.0 * t)
+			for j in cols:
+				_prof[i * cols + j] = sin(PI * pow(_uc[i * cols + j], q))
+		else:
+			var hh := 2.0 * hr - 1.0
+			_prow[i] = 1.0 - 0.45 * hh * hh
+			for j in cols:
+				var uc := _uc[i * cols + j]
+				_prof[i * cols + j] = 4.0 * uc * (1.0 - uc)
 	furl_radius = float(p.get("furl_radius", 0.02 + 0.006 * sa))
 	_ec.resize(n)
 	_ec.fill(0.0)
@@ -372,9 +395,17 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 		wv = wv.normalized() if wv.length_squared() > 1e-12 else Vector3(0, 0, 1)
 		var fc := camber * minf(f_fly, 1.15)
 		for i in rows:
-			var hh := 2.0 * _hrow[i] - 1.0
-			_drow[i] = fc * (1.0 - 0.45 * hh * hh)
+			_drow[i] = fc * _prow[i]
 			_srow[i] = 1.0 / (1.0 + 8.0 / 3.0 * _drow[i] * _drow[i])
+	# §7.1 to §7.3 the row twist (an asymmetric spinnaker's opens with the AWA)
+	var tw := twist_top
+	if kind == Kind.ASYM:
+		var ta := clampf((absf(awa) - deg_to_rad(60.0)) / deg_to_rad(70.0), 0.0, 1.0)
+		var tr := clampf((PI - absf(awa)) / deg_to_rad(25.0), 0.0, 1.0)
+		tw *= ta * ta * (3.0 - 2.0 * ta) * tr * tr * (3.0 - 2.0 * tr)
+	# (signed; the asymmetric spinnaker's on the side away from the wind at once: it is zero where awa changes sign)
+	for i in rows:
+		_trow[i] = -_sgn(awa) * tw * sqrt(_hrow[i]) if kind == Kind.ASYM else tl * tw * pow(_hrow[i], 1.5)
 	# §8.1 which shape
 	var up_shape := phase == 3 or phase == 4 or kind == Kind.MAIN
 	var p := 1.0
@@ -418,7 +449,7 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 	var es := _sgn(beta) * _ease
 	# §7 placement, row by row with the twist toward leeward
 	for i in rows:
-		var th := base + tl * twist_top * pow(_hrow[i], 1.5) + es
+		var th := base + _trow[i] + es
 		var xr := _about(piv, ax, th) * s_t
 		for j in cols:
 			var k := i * cols + j
@@ -445,7 +476,7 @@ func get_ease() -> float:
 ## the ease.
 func _sections(s_t: Transform3D, piv: Vector3, ax: Vector3, base: float) -> void:
 	var lc := _loc[cols - 1]
-	var xr := _about(piv, ax, base + tl * twist_top * pow(_hrow[0], 1.5)) * s_t
+	var xr := _about(piv, ax, base + _trow[0]) * s_t
 	var cl := xr * (tack + ah * lc.x + lh * lc.y + nh * lc.z)
 	var sk := _sgn((cl - mast_step).dot(port))
 	var bow := fwd + port * (0.3 * sk)
@@ -504,12 +535,15 @@ func _clear_x(o: Dictionary, p: Vector3, reach: float) -> Array:
 	var bj := 0
 	var bq := Vector3.ZERO
 	var bd := Vector3.ZERO
+	var bh := 1.0
 	var q0 := _sec_pt(sh, r, 0, t)
 	for j in cn - 1:
 		var q1 := _sec_pt(sh, r, j + 1, t)
 		var d := q1 - q0
 		var l2 := d.length_squared()
-		var sp := clampf((ph - q0).dot(d) / l2, 0.0, 1.0) if l2 > 1e-12 else 0.0
+		# the last segment runs on past the leech by 2 clearances (§7.4)
+		var hi := 1.0 + 2.0 * clearance / sqrt(l2) if j == cn - 2 and l2 > 1e-12 else 1.0
+		var sp := clampf((ph - q0).dot(d) / l2, 0.0, hi) if l2 > 1e-12 else 0.0
 		var q := q0 + d * sp
 		var d2 := (ph - q).length_squared()
 		if d2 < best:
@@ -518,8 +552,9 @@ func _clear_x(o: Dictionary, p: Vector3, reach: float) -> Array:
 			bs = sp
 			bq = q
 			bd = d
+			bh = hi
 		q0 = q1
-	if (bj == 0 and bs <= 0.0) or (bj == cn - 2 and bs >= 1.0) or bd.length_squared() < 1e-12:
+	if (bj == 0 and bs <= 0.0) or (bj == cn - 2 and bs >= bh) or bd.length_squared() < 1e-12:
 		var v := ph - bq
 		var ln := v.length()
 		return [ln, v / ln if ln > 1e-6 else o["f"]]
@@ -565,7 +600,7 @@ func _ease_for(beta: float, s_t: Transform3D, piv: Vector3, ax: Vector3, base: f
 		var i := 0
 		while true:  # rows 0, 3, 6, ... and the one below the head
 			var lc := _loc[i * cols + cols - 1]
-			var th := base + tl * twist_top * pow(_hrow[i], 1.5) + es * delta
+			var th := base + _trow[i] + es * delta
 			var pt := (_about(piv, ax, th) * s_t) * (tack + ah * lc.x + lh * lc.y + nh * lc.z)
 			var cp := _margin_at(pt, hd)
 			for o in _secs:
@@ -708,7 +743,7 @@ func _fly(k: int, i: int, wv: Vector3, shiver: float) -> Vector3:
 	var uc := _uc[k]
 	var s := _srow[i]
 	var a0 := _a[i * cols]
-	var e := _drow[i] * s * _c[i] * 4.0 * uc * (1.0 - uc)
+	var e := _drow[i] * s * _c[i] * _prof[k]
 	var i2 := 0.33 * flutter_amp * shiver
 	var q := phi - 7.0 * uc
 	var m := Vector3(wv.x + 0.1 * i2 * sin(q), wv.y, wv.z + i2 * cos(q))

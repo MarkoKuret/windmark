@@ -142,6 +142,9 @@ bool SailShape::configure(const PackedVector3Array& rest, int64_t rows, int64_t 
   hrow_.assign(rows_, 0.0f);
   drow_.assign(rows_, 0.0f);
   srow_.assign(rows_, 1.0f);
+  prow_.assign(rows_, 0.0f);
+  trow_.assign(rows_, 0.0f);
+  prof_.assign(n_, 0.0f);
   for (int i = 0; i < rows_; ++i) {
     for (int j = 0; j < cols_; ++j) {
       const int k = i * cols_ + j;
@@ -152,6 +155,22 @@ bool SailShape::configure(const PackedVector3Array& rest, int64_t rows, int64_t 
     c_[i] = r[i * cols_ + cols_ - 1].distance_to(r[i * cols_]);
     amid_[i] = 0.5f * (a_[i * cols_] + a_[i * cols_ + cols_ - 1]);
     hrow_[i] = h_[i * cols_];
+    // §6.3 (asymmetric: deepest at 0.3 of the height, the draft forward) and §6.4 (symmetric)
+    const float hr = hrow_[i];
+    if (kind_ == ASYM) {
+      const float lo = (0.3f - hr) / 0.3f, hi = (hr - 0.3f) / 0.7f;
+      prow_[i] = hr < 0.3f ? 1.0f - 0.2f * lo * lo : 1.0f - 0.55f * hi * hi;
+      const float t = clampf((hr - 0.55f) / 0.45f, 0.0f, 1.0f);
+      const float q = 0.8f + 0.6f * t * t * (3.0f - 2.0f * t);
+      for (int j = 0; j < cols_; ++j) prof_[i * cols_ + j] = std::sin(PI_F * std::pow(uc_[i * cols_ + j], q));
+    } else {
+      const float hh = 2.0f * hr - 1.0f;
+      prow_[i] = 1.0f - 0.45f * hh * hh;
+      for (int j = 0; j < cols_; ++j) {
+        const float uc = uc_[i * cols_ + j];
+        prof_[i * cols_ + j] = 4.0f * uc * (1.0f - uc);
+      }
+    }
   }
   furl_radius_ = getf(p, "furl_radius", 0.02f + 0.006f * sa_);
   // §7.4 rest distances between grid neighbours, for the spread of the push
@@ -244,7 +263,7 @@ Vector3 SailShape::furl(int k, float p, float d_cam, float amp, float shiver) co
 Vector3 SailShape::fly(int k, int i, const Vector3& w, float shiver) const {
   const float uc = uc_[k];
   const float s = srow_[i], a0 = a_[i * cols_];
-  const float e = drow_[i] * s * c_[i] * 4.0f * uc * (1.0f - uc);
+  const float e = drow_[i] * s * c_[i] * prof_[k];
   const float i2 = 0.33f * flutter_amp_ * shiver;
   const float q = phi_ - 7.0f * uc;
   const Vector3 m(w.x + 0.1f * i2 * std::sin(q), w.y, w.z + i2 * std::cos(q));
@@ -347,10 +366,21 @@ void SailShape::update(int64_t phase, double progress, double beta_in, double ga
     w = w.length_squared() > 1e-12f ? w.normalized() : Vector3(0, 0, 1);
     const float fc = camber_ * std::min(f_fly, 1.15f);
     for (int i = 0; i < rows_; ++i) {
-      const float hh = 2.0f * hrow_[i] - 1.0f;
-      drow_[i] = fc * (1.0f - 0.45f * hh * hh);
+      drow_[i] = fc * prow_[i];
       srow_[i] = 1.0f / (1.0f + 8.0f / 3.0f * drow_[i] * drow_[i]);
     }
+  }
+  // §7.1 to §7.3 the row twist (an asymmetric spinnaker's opens with the AWA)
+  {
+    float tw = twist_top_;
+    if (kind_ == ASYM) {
+      const float ta = clampf((std::fabs(awa) - 60.0f * PI_F / 180.0f) / (70.0f * PI_F / 180.0f), 0.0f, 1.0f);
+      const float tr = clampf((PI_F - std::fabs(awa)) / (25.0f * PI_F / 180.0f), 0.0f, 1.0f);
+      tw *= ta * ta * (3.0f - 2.0f * ta) * tr * tr * (3.0f - 2.0f * tr);
+    }
+    // (signed; the asymmetric spinnaker's on the side away from the wind at once: zero where awa changes sign)
+    for (int i = 0; i < rows_; ++i)
+      trow_[i] = kind_ == ASYM ? -sgn(awa) * tw * std::sqrt(hrow_[i]) : tl_ * tw * std::pow(hrow_[i], 1.5f);
   }
 
   // §8.1 which shape in which phase
@@ -401,7 +431,7 @@ void SailShape::update(int64_t phase, double progress, double beta_in, double ga
   const float es = sgn(beta) * ease_;
   // §7 placement, row by row with the twist toward leeward
   for (int i = 0; i < rows_; ++i) {
-    const float th = base + tl_ * twist_top_ * std::pow(hrow_[i], 1.5f) + es;
+    const float th = base + trow_[i] + es;
     const Transform3D xr = about(piv, ax, th) * s_t;
     for (int j = 0; j < cols_; ++j) {
       const int k = i * cols_ + j;
@@ -425,7 +455,7 @@ void SailShape::set_obstacles(const Array& obstacles) {
 // the ease.
 void SailShape::sections(const Transform3D& s_t, const Vector3& piv, const Vector3& ax, float base) {
   const Vector3& lc = loc_[cols_ - 1];
-  const Transform3D xr = about(piv, ax, base + tl_ * twist_top_ * std::pow(hrow_[0], 1.5f)) * s_t;
+  const Transform3D xr = about(piv, ax, base + trow_[0]) * s_t;
   const Vector3 cl = xr.xform(tack_ + ah_ * lc.x + lh_ * lc.y + nh_ * lc.z);
   const float sk = sgn((cl - mast_step_).dot(port_));
   const Vector3 bow = fwd_ + port_ * (0.3f * sk);
@@ -489,7 +519,7 @@ float SailShape::clear_x(const Section& o, const Vector3& p, float reach, Vector
     const Vector3 q = m0[j] + (m1[j] - m0[j]) * t;
     return q - up_ * q.dot(up_);
   };
-  float best = INFINITY, bs = 0.0f;
+  float best = INFINITY, bs = 0.0f, bh = 1.0f;
   int bj = 0;
   Vector3 bq, bd;
   Vector3 q0 = sec(0);
@@ -497,7 +527,9 @@ float SailShape::clear_x(const Section& o, const Vector3& p, float reach, Vector
     const Vector3 q1 = sec(j + 1);
     const Vector3 d = q1 - q0;
     const float l2 = d.length_squared();
-    const float sp = l2 > 1e-12f ? clampf((ph - q0).dot(d) / l2, 0.0f, 1.0f) : 0.0f;
+    // the last segment runs on past the leech by 2 clearances (§7.4)
+    const float hi = (j == c_n - 2 && l2 > 1e-12f) ? 1.0f + 2.0f * clearance_ / std::sqrt(l2) : 1.0f;
+    const float sp = l2 > 1e-12f ? clampf((ph - q0).dot(d) / l2, 0.0f, hi) : 0.0f;
     const Vector3 q = q0 + d * sp;
     const float d2 = (ph - q).length_squared();
     if (d2 < best) {
@@ -506,10 +538,11 @@ float SailShape::clear_x(const Section& o, const Vector3& p, float reach, Vector
       bs = sp;
       bq = q;
       bd = d;
+      bh = hi;
     }
     q0 = q1;
   }
-  if ((bj == 0 && bs <= 0.0f) || (bj == c_n - 2 && bs >= 1.0f) || bd.length_squared() < 1e-12f) {
+  if ((bj == 0 && bs <= 0.0f) || (bj == c_n - 2 && bs >= bh) || bd.length_squared() < 1e-12f) {
     const Vector3 v = ph - bq;
     const float len = v.length();
     g = len > 1e-6f ? v / len : o.f;
@@ -549,7 +582,7 @@ float SailShape::ease(float beta, const Transform3D& s_t, const Vector3& piv, co
     for (int i = 0;; i = std::min(i + 3, rows_ - 2)) {  // rows 0, 3, 6, ... and the one below the head
       const int k = i * cols_ + cols_ - 1;
       const Vector3& lc = loc_[k];
-      const float th = base + tl_ * twist_top_ * std::pow(hrow_[i], 1.5f) + es * delta;
+      const float th = base + trow_[i] + es * delta;
       const Vector3 pt = (about(piv, ax, th) * s_t).xform(tack_ + ah_ * lc.x + lh_ * lc.y + nh_ * lc.z);
       const float cp = margin_at(pt, hd);
       for (const Section& o : secs_) {

@@ -15,6 +15,7 @@ controls, the cameras, the minimal HUD, the audio and a sail test scene that put
 | `bin/` | The built extension library and `windmark.gdextension`. Not committed |
 | `scripts/settings.gd` | `Settings`: the player's settings (`docs/specs/menus.md` §3), saved in `user://settings.cfg`, read through `Settings.current()` and applied with `apply_*` |
 | `scripts/perf/` | `PerfMonitor` (the frame-time overlay and its CSV log, `docs/specs/hud.md` §17) and `PerfStats` (the per-frame section timings) |
+| `scripts/dev/` | Developer tools: `DevLook` (one function per look setting, for the flags and the panel) and `LookPanel` (the F9 look panel, `docs/specs/hud.md` §18) |
 | `scripts/controls/` | Input map defaults, device reader, `PlayerControls` (boat commands), sail key mapping, the input frame |
 | `scripts/cameras/` | `CameraRig` and the chase, onboard, aerial and free cameras, shake, onboard eye point |
 | `scripts/hud/` | `Hud`, `HudValues`, formats, bars and trim gauges; the race HUD: `RaceHudValues`, `RaceText` (rule texts, flags, signals), `RadarView`, `FlagsView`, `RoundingArrowView`, `PenaltyRingView` |
@@ -260,7 +261,8 @@ restarts it.
 
 ## Measuring performance
 
-The sail scene carries a frame-time overlay (`docs/specs/hud.md` §17): F9 shows and hides it. It shows FPS, the
+The sail scene carries a frame-time overlay (`docs/specs/hud.md` §17): Shift+F9 shows and hides it (or the look
+panel's row, below). It shows FPS, the
 frame time (mean and the 1 % worst over the last 5 s), the CPU time of the process step, the render thread's CPU
 time, the GPU time of the main view and of the other views (Godot's viewport render time measurement), draw calls,
 primitives and objects, the render scale, sizes, tier, boats and renderer, and the game's own sections in
@@ -288,7 +290,36 @@ Flags after `--`:
 | `--water-shader=l` | this run's water shader (`water_l`, `_m` or `_h`), over the tier; not saved |
 | `--no-hud` | the HUD hidden from the start (as F10) |
 | `--look=off` | no colour grade, vignette, contact shading or depth of field (`water_render.md` §4.5), to compare |
-| `--ssao=on` | contact shading (SSAO) on any tier (`on`) or off on H (`off`); not saved |
+| `--ssao=on` | contact shading (SSAO) on any tier (`on`), off on H (`off`), or the tier's (`tier`); not saved |
+| `--dof=off` | no depth of field on the clip cameras |
+| `--haze=0.5` | the distance haze as a factor of the light preset's (0 to 1.5) |
+| `--caps=off` | no whitecaps |
+| `--drawn-wind=18` | the wind the water draws (whitecaps, puffs) in knots, over the simulation's; the waves stay |
+| `--breathing=off` | the chase camera's plain follow instead of its breathing (`cameras.md` §2.1) |
+
+### Look panel (F9)
+
+A developer tool (`docs/specs/hud.md` §18, `scripts/dev/`): F9 in the sail scene opens a side column on the right
+that changes the look live, so a new look can be judged in one session. `DevLook` holds one function per setting,
+and the flags above call the same functions, so the panel and the flags stay in sync. Rows (live unless noted):
+anti-aliasing (Off, FXAA, SMAA), grade and vignette, SSAO (Tier, Off, On), clip camera depth of field, light
+preset, quality tier (sea grid and water shader, wakes, shadows, glow, SSAO, reflections; a short hitch while the
+shaders compile), haze strength (x0 to x1.5) and its reset, whitecaps, drawn wind for the sea (8 to 25 kn), the wind
+for a restart and "Restart with wind" (restart only: the core takes its wind when the world is made; a rules
+scenario keeps its own), chase camera breathing, drawn boat shadows, boat sun shadows, render scale and the
+frame-time overlay, with an fps and frame time readout. Up and Down pick a row, Left and Right change it, Enter or
+Space toggles or runs it, Esc gives the keys back to the boat (the panel stays up), F9 closes it; the mouse clicks,
+right clicks or scrolls a row. While it has the focus the boat takes no keys and the simulation keeps running.
+Nothing is saved and nothing of it is in the player's settings. In a window (asks the owner first):
+
+```
+godot --path game res://scenes/sail_test.tscn -- --race --fleet=6
+```
+
+`tests/look_panel_test.gd` (in `run_ui_tests.sh`) checks that every row reaches its object (environment, root
+viewport, camera rig, sky rig, sea, shadows, overlay), that stepping a row and back restores it, that the flags set
+what the rows set, the restart with a wind on the core, and that the boat's keys are blocked only while the panel
+has the focus.
 
 A measured race in a window (asks the owner first: it opens one), 10 boats for 60 s:
 
@@ -439,7 +470,7 @@ Runs headless, with scripted input at fixed frame rates:
   are missing, and builds the GDExtension when `game/bin` has none.
 - `tests/perf_test.gd`: the frame-time overlay (`hud.md` §17): the 1 % worst statistic, the sections, and the
   sail scene (a three-boat race on the core, FakeSim without it) with the overlay shown and a log for 2.6 s of
-  real frames: every column, one line per second, the sections timed, F9 hiding it. The runner then starts the
+  real frames: every column, one line per second, the sections timed, Shift+F9 hiding it. The runner then starts the
   sail scene as the game does with `--fake --perf --perf-log=generated/perf_smoke.csv --perf-seconds=3` and checks
   that it quits with a log.
 
@@ -450,7 +481,8 @@ runs on FakeSim), then `godot --path game res://scenes/sail_test.tscn` (after `-
 A/D helm (set and hold, ↓ centres), T auto-trim, W/S sheet, Space let fly, 1/2 sails, C camera, F5 to F8 camera
 modes, right mouse drag or IJKL orbit, wheel or O/U zoom, R recentre, Backspace reset (free sailing: back to the
 start point; race mode: restart the race), Esc pause, F10 hide HUD, G instrument density (Glance, Race, Data),
-B select the next boat for a name tag (or click a boat), N name tags on and off, F9 the frame-time overlay.
+B select the next boat for a name tag (or click a boat), N name tags on and off, F9 the look panel, Shift+F9 the
+frame-time overlay.
 Capture (offline): X the clip cameras (start line, mark, long lens, helicopter), `.` clean pause (no menu, no
 label), `,` slow motion (x0.5, x0.25, x1; a small note shows the new rate for 1.5 s), `/` world tags and
 on-water guides on and off.

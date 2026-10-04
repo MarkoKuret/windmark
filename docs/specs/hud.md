@@ -469,8 +469,8 @@ x0.5`, `Slow motion x0.25` or `Normal speed`. It is the only capture feedback; t
 
 ## 17. Frame-time overlay (development)
 
-A measuring tool, not part of the race HUD: a small panel top left over everything, toggled with F9
-(`controls.md` §3 notes) or shown from the start with `--perf`, and a per-second CSV log (`--perf-log=PATH`) so a
+A measuring tool, not part of the race HUD: a small panel top left over everything, toggled with Shift+F9
+(`controls.md` §3 notes) or the look panel's row (§18), or shown from the start with `--perf`, and a per-second CSV log (`--perf-log=PATH`) so a
 windowed run can be measured without reading the screen. It measures only while shown or logging. Off by default,
 and not saved.
 
@@ -488,3 +488,44 @@ and not saved.
 - **Log**: a header line, then one line per second of the means over that second (the frame time's maximum
   too, and the 1 % worst over the last 5 s); `--perf-seconds=N` quits after N seconds. The GPU times are 0 where the
   driver does not measure (headless).
+
+## 18. Look panel (development)
+
+A developer tool for judging the picture in one session instead of restarting with flags: F9 in the race and free
+sail scene opens a side column on the right, under the top margin, over the HUD and under the pause menu (and the
+frame-time overlay). Not part of the player's settings, nothing saved; available in every build for now. Every row
+changes the look live through the same function as its startup flag (`DevLook`), so the flags and the panel stay
+the same:
+
+| Row | Values | Flag | Applies |
+| --- | --- | --- | --- |
+| Anti-aliasing | Off, FXAA, SMAA | `--aa=` | live (root viewport) |
+| Grade and vignette | On, Off | `--look=` | live; off also drops SSAO and depth of field |
+| SSAO | Tier, Off, On | `--ssao=on\|off\|tier` | live (environment) |
+| Clip camera DOF | On, Off | `--dof=` | live (long lens and mark shots, tiers M and H) |
+| Light | Clear, Fair, Hazy, Late | `--sky=` | live (sky rig and its grade) |
+| Quality tier | L, M, H | `--quality=` | live: sea grid and water shader, wakes, drawn shadows, sun shadows, glow, SSAO, reflections; a short hitch while the shaders compile |
+| Haze | x0.0 to x1.5 of the preset's haze, step 0.1 | `--haze=` | live; kept when the preset changes |
+| Reset haze | action | | back to x1.0 |
+| Whitecaps | On, Off | `--caps=` | live |
+| Drawn wind (sea) | Sim, 8 to 25 kn | `--drawn-wind=` | live: the wind the water draws (whitecaps, puffs); waves and boats keep the world's |
+| Wind for restart | 4 to 30 kn | `--wind=` | the value for the next row |
+| Restart with wind | action | | restart only: the core takes its wind when the world is made, so the race or free sail starts again with that wind, every other setting kept (a rules scenario keeps its file's wind) |
+| Chase breathing | On, Off | `--breathing=` | live: off is the plain follow (one heading lag, no bank, trail or lean) |
+| Drawn boat shadows | On, Off | `--no-drawn-shadows` | live (tiers L and M) |
+| Boat sun shadows | On, Off | `--no-boat-shadows` | live |
+| Render scale | Setting, 50, 67, 75, 85, 100 % | `--render-scale=` | live (root viewport) |
+| Frame-time overlay | On, Off | `--perf` | live (§17) |
+
+A readout line under the title shows the frame rate, the mean frame time over the last 0.25 s, the tier and the
+3D scale. The selected row's line at the bottom says how it applies.
+
+- **Keys** while the panel has the focus: Up and Down pick a row, Left and Right change it, Enter or Space toggles a
+  row or runs an action, Esc gives the keys back to the boat (the panel stays up), F9 closes it. F9 on an open
+  panel without the focus takes the focus again. **Mouse**: a click on a row steps it forward (or runs it), a right
+  click steps back, the wheel either way; a click on the panel takes the focus, a click outside gives it back.
+- **Input**: while the panel has the focus (and in the frame that gave it back, so that Esc does not also open the
+  pause menu) the scene hands the boat, the cameras and the scene keys no buttons, as the chat line does
+  (`controls.md` §7); the simulation keeps running. With the pause menu or the chat open the panel takes no input.
+- **Look**: HUD fonts and colours (`HudStyle`), an ink panel at 86 %, names in mist, values in paper, the selected
+  row in the mark colour; scaled like the HUD.

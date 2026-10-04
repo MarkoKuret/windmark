@@ -795,7 +795,8 @@ Flutter phase `φ = 0` unless stated.
   test 19), so a preview shows what a race shows.
 - Running rigging: the headsail and flying-sail sheets, guys and the tack line are drawn at run time (§11.3); the
   halyards, mainsheet and control lines are in the generated model. Not drawn yet: the spinnaker halyard from the
-  head to the mast, the lazy guy and lazy sheet on a pole-flown spinnaker, barber haulers and twings.
+  head to the mast, the lazy sheet on a pole-flown spinnaker, barber haulers and twings. The lazy guy is not drawn
+  by owner decision (2026-10-04).
 - The cloth style comes from the sail type and the LOA (§11.1) until the class file can name it (a
   `visual.sails.<id>.cloth` key in the generator's `look` block).
 - Crew, winches and tell-tales follow the sail `motion` output (`sails.md` §7) and are specified with the crew.

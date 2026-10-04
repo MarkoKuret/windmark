@@ -273,7 +273,8 @@ func _apply_setup() -> void:
 ## Command line after `--` (over GameSetup): `--race` (race mode on `course`; the fleet of GameSetup when no
 ## `--fleet`), `--free`, `--fleet=10`, `--level=expert` (easy, intermediate, expert, pro), `--speed-only`,
 ## `--watch` (an AI sails the player's boat too, spectating on), `--class=wm12`, `--venue=<id>`,
-## `--sky=clear|fair|hazy` (the weather preset, SkyRig; fair by default),
+## `--sky=clear|fair|hazy|late` (the light preset, SkyRig; fair by default), `--look=off` (no colour grade,
+## vignette, contact shading or depth of field, to compare), `--ssao=on|off` (contact shading over the tier),
 ## `--course=<venue>/<id>` (race mode), `--seed=<n>` (0: from the clock), `--livery=<id>` (the player's livery),
 ## `--wind=<kn>`, `--wind-from=<deg>`,
 ## `--fake` (FakeSim), `--core`; measuring (hud.md §17): `--perf` (the frame-time overlay), `--perf-log=PATH`,
@@ -310,7 +311,12 @@ func _user_args() -> void:
 			venue = a.trim_prefix("--venue=")
 		elif a.begins_with("--sky="):
 			if not sky.set_preset_name(a.trim_prefix("--sky=").to_lower()):
-				push_warning("--sky: clear, fair or hazy")
+				push_warning("--sky: clear, fair, hazy or late")
+		elif a.begins_with("--look="):
+			LookFx.enabled = a.trim_prefix("--look=").to_lower() != "off"
+			LookFx.apply_grade(sky.environment(), sky.preset)
+		elif a.begins_with("--ssao="):
+			LookFx.ssao_override = 1 if a.trim_prefix("--ssao=").to_lower() == "on" else 0
 		elif a.begins_with("--livery="):
 			livery = a.trim_prefix("--livery=")
 		elif a.begins_with("--seed="):

@@ -378,6 +378,15 @@ static func upscaler(scale: float) -> Viewport.Scaling3DMode:
 	return Viewport.SCALING_3D_MODE_FSR if rd else Viewport.SCALING_3D_MODE_BILINEAR
 
 
+## Anti-aliasing (water_render.md §7): SMAA 1x on every tier, at the 3D render resolution after tone mapping and
+## before a spatial upscaler (FSR 1.0, MetalFX spatial), which wants an antialiased input. A temporal upscaler
+## (FSR 2, MetalFX temporal) antialiases by itself, so SMAA is off with it.
+static func screen_space_aa(mode: Viewport.Scaling3DMode) -> Viewport.ScreenSpaceAA:
+	if mode in [Viewport.SCALING_3D_MODE_FSR2, Viewport.SCALING_3D_MODE_METALFX_TEMPORAL]:
+		return Viewport.SCREEN_SPACE_AA_DISABLED
+	return Viewport.SCREEN_SPACE_AA_SMAA
+
+
 static func upscaler_name(mode: Viewport.Scaling3DMode) -> String:
 	match mode:
 		Viewport.SCALING_3D_MODE_FSR:
@@ -399,6 +408,7 @@ func apply_render_scale(win: Window) -> void:
 	var sc := effective_render_scale(win)
 	win.scaling_3d_scale = sc
 	win.scaling_3d_mode = upscaler(sc)
+	win.screen_space_aa = screen_space_aa(win.scaling_3d_mode)
 	if _resize_hooked != win:
 		if is_instance_valid(_resize_hooked) and _resize_hooked.size_changed.is_connected(_window_resized):
 			_resize_hooked.size_changed.disconnect(_window_resized)

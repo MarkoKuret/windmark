@@ -140,7 +140,7 @@ the generator warns when they differ by more than 3 %). The corners, in the cent
 
 | type | `SLE` | `SF` | mid girth `SHW` |
 | --- | --- | --- | --- |
-| `spinnaker_asym` | 0.88 `SLU` | 0.56 `SLU` | 0.76 `SF` (just over the 0.75 `SF` spinnaker line) |
+| `spinnaker_asym` | 0.82 `SLU` (0.85 along the rounded edges) | 0.57 `SLU` | 0.88 `SF` (real asymmetrics: 0.93 to 1.0, ORC's usual case above 0.85, `sail_visuals.md` §14.1; a little under them so the reaching clew stays aft of the mast) |
 | `spinnaker_sym` | `SLU` (equal luffs) | 1.75 × pole length, at most 0.6 `SLU` | 0.95 `SF` |
 | `code_zero` | 0.90 `SLU` | 0.46 `SLU` | 0.56 `SF` (below the 0.75 `SF` spinnaker line: flatter and narrower) |
 
@@ -158,7 +158,7 @@ the rounded foot), else the table's value.
 | edge | round when absent | round position when absent |
 | --- | --- | --- |
 | foot | asym 0.08, sym 0.10, code zero 0.02 | 0.5 |
-| luff, leech | solved: the mid girth target is met by bowing luff and leech together, the luff taking a fixed share of the bow (asym 45 %, sym 50 %, code zero 20 %) | 0.45 |
+| luff, leech | solved: the mid girth target is met by bowing luff and leech together, the luff taking a fixed share of the bow (asym 45 %, sym 50 %, code zero 20 %) | asym 0.55 (broad shoulders: 0.53 `SF` wide at three quarters of the height, real 0.59 to 0.62), others 0.45 |
 
 - neither `luff_round` nor `leech_round` given: both are solved together as in the table (the shape with no keys);
 - one of them given: it is fixed and the other one is solved to meet the mid girth target;
@@ -720,7 +720,8 @@ the band to starboard of them (seen from astern, on the right).
 | `<id>_stbd_albedo.png` | the same | seen from starboard (luff on the right): the same cloth, the starboard insignia and tell-tales |
 | `<id>_normal.png` | the same | relief in the port view (seams, tapes, patches, battens, creases, wrinkles), for both sides |
 | `<id>_orm.png` | the same | occlusion, roughness, light through the cloth, in the port view, for both sides |
-| `layout.json` | | per sail: `cloth`, `shear` (`[cos θ, sin θ]` of `sail_visuals.md` §11.1), `rect` = `[x_min, y_max, width, height]` of the images in the flat plan (m), `size`, and `text`: the text frame (`axis`, `up`, `tack` in the plan) and per row (`insignia`, `nation`, `number`) the box of each side, `[centre along, centre up, half width, half height]` in metres from the tack, with the character height `h` |
+| `<id>_relief.png` | the same, 8-bit greyscale | the height of the cloth in the port view, the source of `<id>_normal.png`: 128 flat, white raised, black sunk, ±4 mm over the range (`layout.json` `relief_m`); `tools/liverybake` makes the normal map from it whenever it exists (`sail_visuals.md` §11.2) |
+| `layout.json` | | per sail: `cloth`, `relief_m` (the relief image's height at white, m), `shear` (`[cos θ, sin θ]` of `sail_visuals.md` §11.1), `rect` = `[x_min, y_max, width, height]` of the images in the flat plan (m), `size`, and `text`: the text frame (`axis`, `up`, `tack` in the plan) and per row (`insignia`, `nation`, `number`) the box of each side, `[centre along, centre up, half width, half height]` in metres from the tack, with the character height `h` |
 
 The flat plan point of uv0 `(a, l)` is `p = (a·sin θ, l + a·cos θ)`; it maps to the port image at
 `((p.x − x_min) / width, (y_max − p.y) / height)` and to the starboard image with the first coordinate mirrored.
@@ -732,10 +733,11 @@ S3TC or ETC2; normal maps as two-channel RGTC or the equivalent).
 
 The livery textures and their `layout.json` are **hand-owned assets, not generated tables**: the generator only
 makes the starting images, and the files are then edited by hand and committed. `tools/liverybake` writes a part (the
-hull's three images, the keel, the transom's three, the deck's three, a sail's four) only when none of its files
+hull's three images, the keel, the transom's three, the deck's three, a sail's five) only when none of its files
 exists, so a new folder is baked whole and a part added later is baked once into an existing folder; `--force`
 rewrites every part it is asked to bake and `--only <part>` (`hull`, `keel`, `transom`, `deck`, `sails` or a sail
-id) rewrites just those files. No other tool writes there. A changed
+id) rewrites just those files. A sail's normal map is made from its relief image when one exists (§8.5), so the
+relief is the hand-owned file and the normal map follows it. No other tool writes there. A changed
 class file does not rebake them: the hull follows uv1 and the sails keep their `rect` in metres, so after a hull or
 sail plan change the owner decides whether to repaint or rebake (`--only`).
 

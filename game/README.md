@@ -679,11 +679,12 @@ The own boat always, on tier M also the 6 nearest within the shadow distance; th
 surface before the binding exists.
 
 `scenes/sea/sky_day.tscn` (`SkyRig`) is the daytime light: the sky shader (saturated blue ramp, sun disc and halo,
-cumulus), the sun light, fog toward the horizon colour, sky reflections, the camera exposure and the glow on the
+cumulus), the sun light, a distance haze toward the horizon colour, sky reflections, the camera exposure and the glow on the
 sun's glints, set from one group of parameters. Sun and sky keep their clear-day proportion (the sun about four
 fifths of the light on a level surface), and the exposure brings the scene back to screen range. Three weather
 presets (`water_render.md` §4.5): clear, fair (the default) and hazy, set with `SkyRig.preset` or, in the sail
-test, `--sky=clear|fair|hazy`.
+test, `--sky=clear|fair|hazy`. The anti-aliasing is SMAA 1x on every tier (`water_render.md` §7): the project
+default, kept with the upscaler by `Settings.apply_render_scale` (off only under a temporal upscaler).
 
 ### Water tests
 

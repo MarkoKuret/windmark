@@ -88,14 +88,16 @@ def bake_deck(geo, lv, width=4096, key=""):
     ay = np.abs(Y)
     col = lambda a: np.interp(xs1, dk["xs"], a)[None, :].astype(F32)
     bs, yc, yk = col(dk["bs"]), col(dk["yc"]), col(dk["yk"])
-    inset = dk["cab_inset"]
+    yr = col(dk["yk_roof"])
     m = dk["margin"]
 
     # ---- the surfaces in plan
     on = (X >= 0) & (X <= L) & (ay <= bs)
     floor = on & (ay < yc)
-    cab = on & (ay < yk)
-    roof = cab & (ay < yk - inset)
+    # the coachroof where it stands proud (its nose, faired into the deck, is laid out as deck): the top inside the
+    # edge radius, and the raked sides between that and the base
+    cab = on & (ay < yk) & (yr > 0)
+    roof = cab & (ay < yr)
     wall = cab & ~roof
     deck = on & ~floor & ~cab
     edt = lambda a: ndimage.distance_transform_edt(a).astype(F32) * px

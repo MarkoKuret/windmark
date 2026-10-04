@@ -282,14 +282,14 @@ def wheel(d, grip=True):
 
 
 def hatch(lx, ly):
-    """Deck hatch: low aluminium frame, tinted lens, two handles and two hinges (aft edge)."""
+    """Flush deck hatch: low aluminium frame, tinted lens, two handles and two hinges (aft edge); about 3 cm proud."""
     p = Part()
-    p.add("metal", superellipsoid_box((lx, ly, 0.04), 0.12, 16, 6, center=(0, 0, 0.018)))
-    p.add("rubber", superellipsoid_box((lx * 0.95, ly * 0.95, 0.03), 0.12, 16, 5, center=(0, 0, 0.035)))
-    p.add("glass", superellipsoid_box((lx * 0.9, ly * 0.9, 0.02), 0.1, 16, 5, center=(0, 0, 0.048)))
+    p.add("metal", superellipsoid_box((lx, ly, 0.03), 0.12, 16, 6, center=(0, 0, 0.011)))
+    p.add("rubber", superellipsoid_box((lx * 0.95, ly * 0.95, 0.02), 0.12, 16, 5, center=(0, 0, 0.022)))
+    p.add("glass", superellipsoid_box((lx * 0.9, ly * 0.9, 0.012), 0.1, 16, 5, center=(0, 0, 0.029)))
     for sy in (-0.3, 0.3):
-        p.add("metal", superellipsoid_box((0.05, 0.07, 0.03), 0.4, 8, 4, center=(-lx / 2 + 0.01, sy * ly, 0.045)))
-        p.add("rubber", superellipsoid_box((0.035, 0.09, 0.018), 0.4, 8, 4, center=(lx * 0.38, sy * ly, 0.062)))
+        p.add("metal", superellipsoid_box((0.05, 0.07, 0.02), 0.4, 8, 4, center=(-lx / 2 + 0.01, sy * ly, 0.03)))
+        p.add("rubber", superellipsoid_box((0.035, 0.09, 0.012), 0.4, 8, 4, center=(lx * 0.38, sy * ly, 0.039)))
     return p
 
 
@@ -302,7 +302,10 @@ def mooring_chock(length):
 # ---------------------------------------------------------------------------------------------------------
 # placement
 
-def on_surface(deck, part, x, y, yaw=0.0, surface=None, lift=0.0):
+def on_surface(deck, part, x, y, yaw=0.0, surface=None, lift=0.0, conform=False):
+    """Place a part built in its local frame on the surface at (x, y), z along the surface normal. `conform` bends
+    it to the surface's curvature (a flush hatch on the sloping, cambered coachroof): every vertex moves up by the
+    surface's height above the tangent plane below it."""
     if surface is None:
         z, n, _ = deck.surface(x, y)
     else:
@@ -310,26 +313,78 @@ def on_surface(deck, part, x, y, yaw=0.0, surface=None, lift=0.0):
     M = frame_z(np.array([x, y, z + lift]), n, np.array([np.cos(yaw), np.sin(yaw), 0.0]))
     out = Part()
     out.extend(part, M)
+    if conform:
+        for gs in out.slots.values():
+            for g in gs:
+                dz = deck.surface_z(g.P[:, 0], g.P[:, 1])
+                dz -= z - (n[0] * (g.P[:, 0] - x) + n[1] * (g.P[:, 1] - y)) / n[2]
+                g.P[:, 2] += dz
     return out
 
 
-def lead(deck, pts, r, lift=None, step=0.12):
-    """A line led over the deck through plan points (x, y[, z]): points without z lie `lift` above the surface,
-    and every span is re-sampled so it never dips into the deck, cabin roof or cockpit floor between them."""
-    lift = 1.2 * r if lift is None else lift
-    P = []
-    for q in pts:
-        q = np.asarray(q, dtype=np.float64)
-        P.append(q if len(q) == 3 else np.array([q[0], q[1], deck.surface(q[0], q[1])[0] + lift]))
-    out = [P[0]]
-    for a, b in zip(P[:-1], P[1:]):
-        n = max(1, int(np.linalg.norm(b[:2] - a[:2]) / step))
+def _simplify(P, tol):
+    """Douglas-Peucker: drop the points of a polyline that lie within `tol` of the chord between those kept."""
+    keep = np.zeros(len(P), bool)
+    keep[[0, -1]] = True
+    stack = [(0, len(P) - 1)]
+    while stack:
+        i, j = stack.pop()
+        if j <= i + 1:
+            continue
+        a, b = P[i], P[j]
+        ab = b - a
+        t = np.clip((P[i + 1:j] - a) @ ab / max(ab @ ab, 1e-18), 0, 1)
+        d = np.linalg.norm(P[i + 1:j] - (a + t[:, None] * ab), axis=1)
+        k = int(np.argmax(d))
+        if d[k] > tol:
+            keep[i + 1 + k] = True
+            stack += [(i, i + 1 + k), (i + 1 + k, j)]
+    return P[keep]
+
+
+def lead_path(deck, pts, r, lift=None, step=0.025):
+    """The centre line of a line led over the deck through points (x, y[, z]). A point without z lies on the
+    surface (deck, coachroof or cockpit floor): its centre `lift` above it (the rope's radius plus 2 mm). A span
+    between two such points lies on the surface all the way, following its curvature (a line along the deck and
+    up the sloping coachroof); a span from or to a point with z (a sheave, a clutch jaw, a mast exit) runs straight
+    but never dips below the surface plus `lift`. Returns the points and, per point, whether it lies on a span
+    that follows the surface (both ends of such a span are flagged)."""
+    lift = r + 0.002 if lift is None else lift
+    on = [len(q) == 2 for q in pts]
+    P = [np.array([q[0], q[1], deck.surface(q[0], q[1])[0] + lift]) if o else np.asarray(q, dtype=np.float64)
+         for q, o in zip(pts, on)]
+    out, flags = [P[0]], [on[0]]
+    for k, (a, b) in enumerate(zip(P[:-1], P[1:])):
+        n = max(1, int(np.ceil(np.linalg.norm(b[:2] - a[:2]) / step)))
+        follow = on[k] and on[k + 1]
+        span = [a]
         for t in np.linspace(0, 1, n + 1)[1:]:
             q = a + (b - a) * t
             if 0 < t < 1:
-                q[2] = max(q[2], deck.surface(q[0], q[1])[0] + lift)
-            out.append(q)
-    return rope_tube(np.array(out), r, 6)
+                zs = deck.surface(q[0], q[1])[0] + lift
+                q[2] = zs if follow else max(q[2], zs)
+            span.append(q)
+        span = _simplify(np.array(span), 0.0008)[1:]
+        out += list(span)
+        flags += [follow] * (len(span) - 1) + [on[k + 1]]
+    return np.array(out), np.array(flags)
+
+
+def lead(deck, pts, r, lift=None, paths=None, tag=None):
+    """A line led over the deck (lead_path) as a rope; `paths[tag]` keeps its centre line, radius and flags for the
+    lead checks (tests/test_attachments.py)."""
+    P, flags = lead_path(deck, pts, r, lift)
+    if paths is not None:
+        paths[tag] = (P, r, flags)
+    return rope_tube(P, r, 6)
+
+
+def to_world(deck, x, y, yaw, pts):
+    """Points of a part's local frame as on_surface() places it at (x, y)."""
+    z, n, _ = deck.surface(x, y)
+    M = frame_z(np.array([x, y, z]), n, np.array([np.cos(yaw), np.sin(yaw), 0.0]))
+    pts = np.atleast_2d(np.asarray(pts, dtype=np.float64))
+    return pts @ M[:3, :3].T + M[:3, 3]
 
 
 def place_all(cls, hull, deck, rig, lod=0):
@@ -344,7 +399,7 @@ def place_all(cls, hull, deck, rig, lod=0):
     hw = Part()
     d = cls["deck"]
     small = L < 9.0
-    leads = {}
+    leads, rope_paths, lifelines = {}, {}, None
     fine, mid = lod == 0, lod <= 1
     r_line = max(0.004, 0.0048 * s)
 
@@ -365,50 +420,91 @@ def place_all(cls, hull, deck, rig, lod=0):
             hw.extend(on_surface(deck, winch(d_prim * 0.8), x_sec, side * y_sec), tag=f"winch_secondary_{side}")
             hw.attach(f"winch_secondary_{side}", "deck")
         leads["secondary"] = (x_sec, y_sec, float(deck.surface(x_sec, y_sec)[0]), d_prim * 0.8)
-    # halyard leads: exits low on the mast sides, turning blocks at the mast foot, organisers, clutches aft
+    # halyard leads (data_format.md 3.7 look rules): exits low on the mast sides, a turning block each at the mast
+    # foot, then along the deck and up the coachroof lying on it to a deck organiser that turns them straight aft,
+    # through the clutches (and on a big boat past the halyard winches), tails flaked on the top or, where the
+    # clutches stand at the coachroof's aft edge, dropped down its aft face into the cockpit
     n_hal = 4 if not small else 3
     hal_pitch = (0.045 if not small else 0.05) * s
-    if deck.has_cabin and deck.cab_h > 0.15:
-        x_cl = deck.xk0 + 0.35 * s + 0.38 * s
-        y_cl = float(deck.yk(deck.xk0 + 0.35 * s)) - deck.cab_h * deck.cab_slope - 0.28 * s
+    bank_half = 0.5 * (n_hal + 0.3) * hal_pitch
+    cp = getattr(deck, "companion", None)
+    y_clear = (0.5 * cp["hatch_width"] + 0.03 + bank_half) if cp else 0.0      # clear of the sliding hatch
+    winches_on_top = deck.has_cabin and deck.cab_h > 0.15
+    if winches_on_top:
         x_h = deck.xk0 + 0.35 * s
-        y_h = float(deck.yk(x_h)) - deck.cab_h * deck.cab_slope - 0.2 * s
+        y_h = float(deck.yk_roof(x_h)) - 0.2 * s
+        x_cl = x_h + 0.38 * s
+        y_cl = max(float(deck.yk_roof(x_h)) - 0.28 * s, y_clear)
         for side in (1, -1):
             hw.extend(on_surface(deck, winch(d_prim * 0.72), x_h, side * y_h), tag=f"winch_halyard_{side}")
             hw.attach(f"winch_halyard_{side}", "deck")
+    elif deck.has_cabin:
+        x_cl = deck.xk0 + 0.25 * s
+        y_cl = max(float(deck.yk_roof(x_cl)) * 0.45, y_clear)
     else:
-        x_cl = deck.xk0 + 0.25 * s if deck.has_cabin else deck.xc1 + 0.25 * s
-        y_cl = (float(deck.yk(x_cl)) * 0.45) if deck.has_cabin else 0.25 * s
+        x_cl, y_cl = deck.xc1 + 0.25 * s, 0.25 * s
     x_org = min(x_cl + 0.55 * s, rig.x_mast - 0.45 * s)
+    o_in = 0.36 * hal_pitch             # the organiser's sheaves stand inboard of their lines by the groove radius
     for side in (1, -1):
         hw.extend(on_surface(deck, clutch_bank(n_hal, hal_pitch), x_cl, side * y_cl), tag=f"clutches_{side}")
         hw.attach(f"clutches_{side}", "deck")
         if mid:
-            hw.extend(on_surface(deck, organiser(n_hal, hal_pitch), x_org, side * y_cl), tag=f"organiser_{side}")
+            hw.extend(on_surface(deck, organiser(n_hal, hal_pitch), x_org, side * (y_cl - o_in)), tag=f"organiser_{side}")
             hw.attach(f"organiser_{side}", "deck")
     # turning blocks round the mast foot and the halyards themselves
     z_exit = rig.z_step + 0.42 * s
+    d_mb = 0.045 * s
+    x_top = deck.xk0 + 0.04          # wm7: the tails go over the coachroof's aft edge here
     for side in (1, -1):
         for k in range(n_hal):
-            # beside the mast foot, in a fan, so they sit on the deck even where the cabin starts at the mast
+            # beside the mast foot, in a fan, so they sit on the deck forward of where the coachroof meets it
             fy = side * (0.5 * rig.width + 0.06 * s + 0.05 * s * k)
             xb = rig.x_mast + 0.02 * s - 0.035 * s * k
             if mid:
-                hw.extend(on_surface(deck, padeye_block(0.045 * s), xb, fy, yaw=np.pi), tag=f"mast_block_{side}_{k}")
+                hw.extend(on_surface(deck, padeye_block(d_mb), xb, fy, yaw=np.pi), tag=f"mast_block_{side}_{k}")
                 hw.attach(f"mast_block_{side}_{k}", "deck")
             if fine:
-                y_c = side * y_cl + (k - (n_hal - 1) / 2) * hal_pitch
-                zc = float(deck.surface(x_cl, y_c)[0]) + 0.36 * hal_pitch
-                z_b = float(deck.surface(xb, fy)[0]) + 0.02 * s
+                yl = side * (y_cl + (k - (n_hal - 1) / 2) * hal_pitch)      # the line's slot, inboard first
+                # round the block's sheave (axis vertical, groove radius 0.4 d): in from the mast, out aft
+                c = to_world(deck, xb, fy, np.pi, [0.62 * d_mb, 0, 0.22 * d_mb])[0]
+                rg = 0.4 * d_mb + 0.9 * r_line
+                sheave = [c + [rg, 0, 0], c + [0.7 * rg, side * 0.7 * rg, 0], c + [0, side * rg, 0],
+                          c + [-0.6 * rg, side * rg, 0]]
+                # through the organiser (at its sheave height) and the clutch's jaws
+                org = to_world(deck, x_org, side * (y_cl - o_in), 0.0,
+                               [[0.1 * hal_pitch + 0.45 * hal_pitch, yl - side * (y_cl - o_in), 0.3 * hal_pitch],
+                                [0.1 * hal_pitch - 0.45 * hal_pitch, yl - side * (y_cl - o_in), 0.3 * hal_pitch]])
+                clu = to_world(deck, x_cl, side * y_cl, 0.0,
+                               [[1.2 * hal_pitch, yl - side * y_cl, 0.36 * hal_pitch],
+                                [-1.2 * hal_pitch, yl - side * y_cl, 0.36 * hal_pitch]])
                 top = np.array([rig.x_mast, side * 0.5 * rig.width, z_exit + 0.05 * s * k])
-                hw.add("rope_halyard", lead(deck, [top, np.array([xb + 0.03 * s, fy, z_b]),
-                                           (x_org, y_c), np.array([x_cl + 1.2 * hal_pitch, y_c, zc]),
-                                           np.array([x_cl - 1.2 * hal_pitch, y_c, zc]),
-                                           (x_cl - 0.3 * s, y_c + side * 0.02 * s)], r_line * 0.9), tag=f"halyard_{side}_{k}")
+                pts = [top] + sheave + [(c[0] - 0.08 * s, c[1] + side * rg),
+                                        (org[0][0] + 0.1 * s, yl), org[0], org[1], clu[0], clu[1]]
+                if winches_on_top:
+                    pts += [(x_cl - 0.3 * s, yl + side * 0.02 * s)]
+                else:
+                    # over the aft edge and down the aft face into the cockpit, flaked on the floor
+                    re = min(deck.cab_r, 0.8 * deck.cab_h)
+                    lift = 0.9 * r_line + 0.002
+                    zc = float(deck.cabin_z(deck.xk0 + re, yl)) - re      # the aft edge's radius centre
+                    zf = float(deck.floor_z(deck.xk0))
+                    pts += [(x_top, yl)]
+                    pts += [np.array([deck.xk0 + re - (re + lift) * np.sin(a), yl, zc + (re + lift) * np.cos(a)])
+                            for a in np.radians([0, 25, 50, 70, 90])]
+                    pts += [np.array([deck.xk0 - lift - 0.002, yl, zf + 0.09]),
+                            (deck.xk0 - 0.1 * s, yl + side * 0.03 * s)]
+                hw.add("rope_halyard", lead(deck, pts, r_line * 0.9, paths=rope_paths, tag=f"halyard_{side}_{k}"),
+                       tag=f"halyard_{side}_{k}")
                 hw.attach(f"halyard_{side}_{k}", f"halyard_exit_{side}_{k}")
+                hw.attach(f"halyard_{side}_{k}", f"mast_block_{side}_{k}")
+                hw.attach(f"halyard_{side}_{k}", f"organiser_{side}")
                 hw.attach(f"halyard_{side}_{k}", f"clutches_{side}")
         if fine:
-            hw.extend(on_surface(deck, rope_coil(0.13 * s, 3, r_line, "rope_halyard"), x_cl - 0.42 * s, side * y_cl * 0.9, yaw=0.4 * side),
+            if winches_on_top:
+                xc_, yc_ = x_cl - 0.3 * s, side * (y_cl - 0.1 * s)
+            else:
+                xc_, yc_ = deck.xk0 - 0.2 * s, side * y_cl
+            hw.extend(on_surface(deck, rope_coil(0.11 * s, 3, r_line, "rope_halyard"), xc_, yc_, yaw=0.4 * side),
                       tag=f"halyard_coil_{side}")
             hw.attach(f"halyard_coil_{side}", "deck")
             # halyard exit plates on the mast
@@ -430,7 +526,7 @@ def place_all(cls, hull, deck, rig, lod=0):
     x_t = jib_clew_x - 0.45 * s
     for side in (1, -1):
         y_t = 0.62 * float(hull.bs(np.array([x_t]))[0])
-        if deck.in_cabin_roof(x_t, y_t):
+        if deck.has_cabin and y_t < float(deck.yk(x_t)) + 0.06 * s:      # clear of the coachroof's foot
             y_t = float(deck.yk(x_t)) + 0.08 * s
         tl = 0.9 * s
         hw.extend(on_surface(deck, track(tl, 0.032 * s), x_t, side * y_t), tag=f"jib_track_{side}")
@@ -519,17 +615,17 @@ def place_all(cls, hull, deck, rig, lod=0):
     if deck.has_cabin:
         x_fh = max(deck.xk1 + 0.55 * s, rig.x_mast + 0.55 * s)
         if x_fh < L - 1.2 * s:
-            hw.extend(on_surface(deck, hatch(0.6 * s, 0.6 * s), x_fh, 0.0), tag="hatch_fore")
+            hw.extend(on_surface(deck, hatch(0.6 * s, 0.6 * s), x_fh, 0.0, conform=True), tag="hatch_fore")
             hw.attach("hatch_fore", "deck")
         if d.get("hatches", 1) > 1:
             x_rh = deck.xk0 + 0.6 * (deck.xk1 - deck.xk0)
             if deck.in_cabin_roof(x_rh, 0.0):
-                hw.extend(on_surface(deck, hatch(0.5 * s, 0.5 * s), x_rh, 0.0), tag="hatch_cabin")
+                hw.extend(on_surface(deck, hatch(0.5 * s, 0.5 * s), x_rh, 0.0, conform=True), tag="hatch_cabin")
                 hw.attach("hatch_cabin", "deck")
 
     # --- lifelines, pulpit and pushpit
     if d.get("lifelines"):
-        _lifelines(hw, hull, deck, s, lod)
+        lifelines = _lifelines(hw, hull, deck, s, lod)
 
     # --- helm: wheel on a pedestal with a guard and an instrument pod, or a tiller on the rudder head
     helm = Part()
@@ -571,7 +667,8 @@ def place_all(cls, hull, deck, rig, lod=0):
     else:
         helm_pivot = None
     return {"hardware": hw, "helm": helm, "helm_pivot": helm_pivot, "boom_hardware": boom_hw, "mainsheet": sheet,
-            "mainsheet_ends": (lower, upper, w_tr, s), "leads": leads}
+            "mainsheet_ends": (lower, upper, w_tr, s), "leads": leads, "rope_paths": rope_paths,
+            "lifelines": lifelines}
 
 
 def mainsheet_tackle(lower, upper, s):
@@ -667,33 +764,53 @@ def _one(mat, g):
 
 
 def _lifelines(hw, hull, deck, s, lod=0):
-    """Stanchions, pulpit, pushpit and two tiers of lifelines. Every leg stands on the deck (outboard of the cockpit,
-    inside the sheer) and meets its rail; the lifelines run from the pushpit's forward leg through the stanchions
-    (the lower tier at the height along each raked stanchion) to the pulpit's aft legs."""
+    """Pulpit, pushpit, stanchions and two tiers of lifelines (data_format.md 3.7 look rules), laid out as on a real
+    boat of the size: the pushpit wraps the stern quarters and reaches 0.9 s forward of the transom, the pulpit's
+    aft legs stand 1.3 s aft of the stem, and the stanchions stand only between those ends, evenly at most 2.1 m
+    apart (World Sailing OSR 3.14: at most 2.2 m), so none doubles a pushpit or pulpit leg. Every stanchion, and the
+    end legs of the pushpit and pulpit, stands on the deck inside the sheer, raked slightly outboard; the upper tier
+    runs from the pushpit's forward end through each stanchion's top to the pulpit's aft end, the lower tier through
+    the eyes at 0.55 of the height on the end legs and the stanchions, every segment ending on its fitting.
+
+    Returns the record the lifeline checks read (tests/test_attachments.py): each stanchion's top and eye, and per
+    segment its tier, ends and the pieces those ends are fastened to."""
     L = hull.L
     h = 0.62 * s ** 0.5
     r_rail, r_leg = 0.013, 0.012
-    x_aft, x_fwd = 0.9 * s, L - 1.35 * s
-    n = int(np.ceil((x_fwd - x_aft) / 2.1))
-    xs = np.linspace(x_aft, x_fwd, n + 1)
+    x_pf, x_pa = 0.9 * s, L - 1.3 * s                  # the pushpit's forward end, the pulpit's aft legs
+    n = int(np.ceil((x_pa - x_pf) / 2.1))
+    xs = np.linspace(x_pf, x_pa, n + 1)[1:-1]           # the stanchions, between the two
     bs = lambda x: float(hull.bs(np.array([x]))[0])
-    rake = {side: normalize(np.array([0, side * 0.08, 1.0])) for side in (1, -1)}
+    y_st = lambda x: bs(x) - 0.07 * s                   # the stanchions' line, inside the toe rail
+    rake = {side: normalize(np.array([0, side * 0.06, 1.0])) for side in (1, -1)}
+    rec = {"stanchions": {}, "segments": []}
+
+    def base_at(x, side):
+        y = y_st(x)
+        return np.array([x, side * y, float(deck.surface(x, side * y)[0])])
+
+    def foot_plate(name, p):
+        hw.add("metal", superellipsoid_box((0.07, 0.07, 0.012), 0.3, 8, 4, center=[p[0], p[1], p[2] + 0.002]), tag=name)
+
     bases = {1: [], -1: []}
     for side in (1, -1):
         for i, x in enumerate(xs):
-            y = bs(x) - 0.07 * s
-            z, nrm, _ = deck.surface(x, y)
-            base = np.array([x, side * y, z])
-            # stanchions stand vertical (slightly raked outboard) regardless of the deck crown
-            hw.extend(stanchion(h), frame_z(base, rake[side], np.array([1.0, 0, 0])), tag=f"stanchion_{side}_{i}")
-            hw.attach(f"stanchion_{side}_{i}", "deck")
+            base = base_at(x, side)
+            name = f"stanchion_{side}_{i}"
+            hw.extend(stanchion(h), frame_z(base, rake[side], np.array([1.0, 0, 0])), tag=name)
+            hw.attach(name, "deck")
             bases[side].append(base)
+            rec["stanchions"][name] = (base + rake[side] * h, base + rake[side] * h * 0.55)
 
-    def leg(name, top, rail):
-        """A vertical leg from the deck under `top` up into the rail."""
-        zz = float(deck.surface(top[0], top[1])[0])
-        hw.add("metal", tube(np.array([[top[0], top[1], zz - 0.004], top + [0, 0, 0.3 * r_rail]]), r_leg, 8), tag=name)
-        hw.add("metal", superellipsoid_box((0.07, 0.07, 0.012), 0.3, 8, 4, center=[top[0], top[1], zz + 0.002]), tag=name)
+    def leg(name, top, rail, base=None):
+        """A leg from the deck up into the rail: vertical under `top`, or raked from `base` (an end leg in the
+        stanchions' line)."""
+        if base is None:
+            zz = float(deck.surface(top[0], top[1])[0])
+            base = np.array([top[0], top[1], zz])
+        d = normalize(top - base)
+        hw.add("metal", tube(np.array([base - d * 0.004, top + d * 0.3 * r_rail]), r_leg, 8), tag=name)
+        foot_plate(name, base)
         hw.attach(name, "deck")
         hw.attach(name, rail)
 
@@ -701,42 +818,45 @@ def _lifelines(hw, hull, deck, s, lod=0):
         """The point of a rail's centre line nearest to q (so a leg meets the bent tube where it really is)."""
         return path[int(np.argmin(np.linalg.norm(path[:, :2] - np.asarray(q)[:2], axis=1)))].copy()
 
-    # pulpit: bent tube round the bow, its forward corners inside the narrowing deck
+    ends = {}
+    # pulpit: bent tube round the bow, its aft ends on raked legs in the stanchions' line, its forward corners inside
+    # the narrowing deck on vertical legs
     xb = L - 0.25 * s
-    y_aft = 0.9 * (bs(x_fwd - 0.1) - 0.07 * s)
-    y_fr = min(0.35 * y_aft / 0.9, 0.6 * bs(xb - 0.05))
+    y_fr = min(0.35 * y_st(x_pa), 0.6 * bs(xb - 0.05))
     zb = float(deck.deck_z(xb, 0.0))
-    top_p = rounded_path([[x_fwd + 0.05, y_aft, zb + h * 0.95], [xb, y_fr, zb + h],
-                          [xb, -y_fr, zb + h], [x_fwd + 0.05, -y_aft, zb + h * 0.95]], 0.18 * s)
+    A = {side: base_at(x_pa, side) + rake[side] * h for side in (1, -1)}
+    top_p = rounded_path([A[1], [xb, y_fr, zb + h], [xb, -y_fr, zb + h], A[-1]], 0.18 * s)
     hw.add("metal", tube(top_p, r_rail, 10), tag="pulpit")
     for side in (1, -1):
-        leg(f"pulpit_leg_{side}_aft", on_path(top_p, [x_fwd + 0.05, side * y_aft]), "pulpit")
+        leg(f"pulpit_leg_{side}_aft", A[side], "pulpit", base=base_at(x_pa, side))
         leg(f"pulpit_leg_{side}_fwd", on_path(top_p, [xb - 0.05, side * y_fr]), "pulpit")
-    # pushpit: a quarter frame each side, from beside the open cockpit out to the sheer and forward
+        ends[("pulpit", side)] = (A[side], base_at(x_pa, side) + rake[side] * h * 0.55)
+    # pushpit: a quarter frame each side, from beside the open cockpit out to the quarter and forward to its end leg
+    # in the stanchions' line
     x_p = 0.1
     for side in (1, -1):
         y0 = bs(x_p) - 0.08 * s
         yi = min(max(0.55 * y0, float(deck.yc(x_p)) + 0.1 * s), y0 - 0.15) if deck.open_transom else 0.55 * y0
         zt = float(deck.deck_z(x_p, y0))
-        frame = rounded_path([[x_p, side * yi, zt + h], [x_p, side * y0, zt + h], [x_aft - 0.05, side * y0, zt + h]], 0.12)
+        F = base_at(x_pf, side) + rake[side] * h
+        frame = rounded_path([[x_p, side * yi, zt + h], [x_p, side * y0, zt + h], F], 0.12)
         hw.add("metal", tube(frame, r_rail, 10), tag=f"pushpit_{side}")
-        for k, q in enumerate(([x_p, side * yi], [x_p + 0.12, side * y0], [x_aft - 0.05, side * y0])):
+        for k, q in enumerate(([x_p, side * yi], [x_p + 0.12, side * y0])):
             leg(f"pushpit_leg_{side}_{k}", on_path(frame, q), f"pushpit_{side}")
-    # lifelines: two tiers from the pushpit's forward leg through the stanchions to the pulpit's aft leg
+        leg(f"pushpit_leg_{side}_2", F, f"pushpit_{side}", base=base_at(x_pf, side))
+        ends[("pushpit", side)] = (F, base_at(x_pf, side) + rake[side] * h * 0.55)
+    # lifelines: each tier a chain of straight segments from fitting to fitting
     for side in (1, -1):
-        y0 = bs(x_p) - 0.08 * s
-        zt = float(deck.deck_z(x_p, y0))
-        start = np.array([x_aft - 0.05, side * y0, zt + h])
-        end = on_path(top_p, [x_fwd + 0.05, side * y_aft])
-        for tier in ((1.0, 0.55) if lod < 2 else ()):
-            a0 = start - [0, 0, h * (1 - tier)]
-            b0 = end - [0, 0, (end[2] - float(deck.surface(end[0], end[1])[0])) * (1 - tier)]
-            chain = [a0] + [base + rake[side] * h * tier for base in bases[side][1:]] + [b0]
-            ends = [f"pushpit_leg_{side}_2" if tier < 1 else f"pushpit_{side}"]
-            ends += [f"stanchion_{side}_{i}" for i in range(1, len(bases[side]))]
-            ends += [f"pulpit_leg_{side}_aft" if tier < 1 else "pulpit"]
+        for ti, tier in enumerate((1.0, 0.55) if lod < 2 else ()):
+            chain = [ends[("pushpit", side)][ti]] + [b + rake[side] * h * tier for b in bases[side]]
+            chain += [ends[("pulpit", side)][ti]]
+            hosts = [f"pushpit_{side}" if ti == 0 else f"pushpit_leg_{side}_2"]
+            hosts += [f"stanchion_{side}_{i}" for i in range(len(bases[side]))]
+            hosts += ["pulpit" if ti == 0 else f"pulpit_leg_{side}_aft"]
             for k, (a, b) in enumerate(zip(chain[:-1], chain[1:])):
                 name = f"lifeline_{side}_{tier}_{k}"
                 hw.add("rope", rope_tube(np.array([a, b]), 0.0035, 5, caps=False), tag=name)
-                hw.attach(name, ends[k])
-                hw.attach(name, ends[k + 1])
+                hw.attach(name, hosts[k])
+                hw.attach(name, hosts[k + 1])
+                rec["segments"].append((name, tier, a, b, hosts[k], hosts[k + 1]))
+    return rec

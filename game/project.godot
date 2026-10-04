@@ -435,4 +435,5 @@ capture_slow={
 
 [rendering]
 
+anti_aliasing/quality/screen_space_aa=2
 renderer/rendering_method="forward_plus"

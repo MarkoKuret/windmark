@@ -1,7 +1,7 @@
 # Water rendering
 
 How the front end draws the sea: the surface from the same height function the boats sample, its normals, colour,
-Fresnel and sky reflection, the wind on the water (puffs and lulls that players read tactically), bow
+Fresnel and sky reflection, the wind on the water (puffs and lulls that players read tactically), whitecaps, bow
 waves, wakes and spray, and the quality tiers for low-end GPUs. It ends with a comparison of our approach with the
 open-source Godot FFT oceans and a recommendation.
 
@@ -170,10 +170,85 @@ exposure, 1 outside the grid, and passes `f` to the fragment shader, so the draw
 float rounding at the vertices. The direction offset `d` does not show on the water and is not drawn.
 
 ### 4.4 Whitecaps
-None for now. The first version (a scrolling noise texture thresholded on crest height) drew hard white blotches
-that popped on and off and slid over the waves, and was removed on 2026-10-03. Whitecaps come back when the foam
-belongs to the wave components and moves with their crests (WM-083). The white blotches seen before WM-080 at 15 to
-20 kn were sky reflection, not foam (§4.2).
+Foam belongs to the wave components: each component carries a foam value from its own travelling phase, so a cap
+rides its crest, builds on its front and leaves a fading trail behind it. Caps appear where the crests of several
+steep components meet (a wave group), so they come and go as the components run in and out of step, and their
+number follows the local wind. (A first version thresholded a scrolling noise texture on crest height: hard white
+blotches that popped on and off and slid over the waves; it was removed on 2026-10-03.)
+
+**Per component** (CPU, once per sea, `SeaWhitecaps`), with `lam_i` the wavelength, `k_i = 2π/lam_i` and `lam_p` the
+wavelength of the largest-amplitude component:
+```
+b_i       = a_i·k_i · min(1, lam_i/lam_p)²              // foam weight: steepness, waves shorter than the peak weighed down
+sf_i      = max(0.08, 0.6 m / lam_i)                    // crest window half widths, cycles: ahead of the crest
+sb_i      = max(0.20, 1.2 m / lam_i)                    //   and behind it (the trail)
+mean_i    = mean over a cycle of W_i (below)
+selected  = the 6 components with the largest b_i ≥ 0.004, heaviest first (tier L evaluates the first 4)
+caps_w[j] = (1/sf, 1/sb, mean, lam) of selected j ; caps_rest = Σ b_i·mean_i of the components not selected
+```
+Every frame: `caps_k[j] = (kx, ky, d', b)` of selected `j`, with the phase `d'` of `comp` (§2), and the foam texture
+frame `caps_uv = (e, u0, v0)`: `e` the travel direction of the largest-amplitude component, `(u0, v0)` the camera-origin
+part of the texture coordinates below, drifting along `e` at that component's phase speed `c_p = lam_p/T_p` (in double,
+mod 1).
+
+**Per pixel** (`wm_caps_intensity`, `wm_apply_caps`; `m` the drawn wind factor of §4.3, `E` the exposure, `px` the pixel
+footprint):
+```
+U     = m·base_speed / KNOT                                      // local wind, kn
+gate  = smoothstep(8, 10, U)                                     // no caps under 8 kn
+fade  = 1 - smoothstep(1200 m, 2500 m, dist)                     // both 0: no further work
+for each selected j:  d = signed cycles from the crest (fract of the phase, ahead > 0)
+                      W = exp(-(d/sf)²) ahead, exp(-(d/sb)²) behind
+                      S += b · mix(mean, W, smoothstep(2, 4, lam/px))   // too short for the pixel: its mean
+S     = E · (S + caps_rest + Σ b·mean of the selected beyond the tier's count)
+S_b   = 0.0677 + 0.0208·(15/U)³                                  // breaking threshold, falls with the wind
+F     = clamp((S - S_b)/0.06, 0, 1) · gate · fade                // foam intensity
+```
+The crest windows travel with their components, so a cap moves with its crests; the sum only passes the threshold
+where crests coincide, and a cap builds and fades as they drift in and out of step (median life about 1.5 s for a point
+riding the waves at 20 kn, at most about 0.05 opacity change between frames). The components the pixel cannot
+resolve count with their mean, so far away the caps thin out instead of aliasing.
+
+**Look**: the foam texture (`SeaTextures.caps`, 256², RGBA8, tiling, generated at load) holds four nested density
+levels as coverage: R sparse fizz (broken fine lace and a few longer filaments), G the lace net, B dense foam (thick
+lace and a milky film), A near-solid white with a few holes; built from periodic cellular noise (exact tiling) with a
+smooth warp that curves its borders, and seamless value noise for the breakup. It is mapped `4.5 m` along `e` by
+`3 m` across, moving with the dominant wave. Mip-mapped, anisotropic: the mips average coverage, so a distant cap
+fades to its true mean whiteness.
+```
+q        = (dot(xl, e), dot(xl, perp(e))) / (4.5, 3) + (u0, v0)
+L        = texture(caps_tex, q)
+cover    = L.r·min(4F, 1) + (L.g - L.r)·clamp(4F - 1, 0, 1) + (L.b - L.g)·clamp(4F - 2, 0, 1) + (L.a - L.b)·clamp(4F - 3, 0, 1)
+a        = 0.92 · cover · (0.3 + 0.7·smoothstep(0, 0.6, F))      // thin foam is translucent
+ALBEDO   = mix(mix(ALBEDO, (0.05, 0.20, 0.23), 0.3·smoothstep(0.2, 0.8, F)), col_foam, a)   // aerated water, then foam
+ROUGHNESS = mix(ROUGHNESS, 0.55, a) ; EMISSION *= 1 - a ; normal = normalize(mix(normal, n_geo, 0.6·a))   // no glints in foam
+```
+**Cover** (drawn foam, the mean of `a` over the water, on the reference wind seas of `sea.md` §2, fetch 10 km), against
+measured whitecap cover (about 0.2 % at 15 kn, 1.4 % at 20 kn, 2.5 % at 25 kn):
+
+| wind | 8 kn | 12 kn | 15 kn | 18 kn | 20 kn | 24 kn | 25 kn |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| cover (tiers M, H) | 0 | 0.004 % | 0.18 % | 0.75 % | 1.2 % | 2.4 % | 2.5 % |
+| cover (tier L) | 0 | | 0.14 % | | 1.1 % | | 2.3 % |
+
+On a 20 kn sea the puffs and lulls change it (local wind `m` times the base): m 0.6: 0.06 %, 0.8: 0.6 %, 1.1: 1.4 %,
+1.25: 1.7 %; caps show the puffs, and a lull is almost free of them.
+
+**Cost**: one loop of 6 (tier L 4) components with a fract, an exp and a smoothstep each, from 12 vec4 uniforms with
+a constant bound, and one texture tap where `F > 0`; nothing below 8 kn or beyond 2.5 km. The per-component windows are
+a few metres wide, narrower than the vertex spacing at the chase camera's distance (1.5 m at 25 m, 6 m at 100 m on
+tier M), so they are evaluated per pixel; what the vertex stage already has (exposure, venue factor) comes as varyings.
+Measured on the development M1 (OpenGL proxy, `tests/water_cost.py`, the 1280 × 800 chase view): about +0.15 ms on
+tier L and +0.2 ms on tiers M and H, 10 to 15 % of the water pass; on the Steam Deck (about 0.6 of the M1's GPU)
+about +0.3 ms, inside the 2.5 ms of §7.
+
+**Checks** (`tests/water_test.gd`, on the CPU mirror `SeaWhitecaps.intensity`): no caps under 8 kn (6 and 7.9 kn, and
+a puff on a 7 kn breeze); cover rising with the wind from 10 to 25 kn and within ×1.6 of the measured cover at 15,
+20 and 25 kn (tier L at least half at 20 kn); more caps in puffs, fewer in lulls; each component's window equal after
+moving with its phase velocity; the foam texture drifting with the dominant wave; the foam field 0.5 s later
+correlating with itself moved with the waves (0.9), not in place (0); over 60 s at 60 frames per second, points riding
+the dominant wave see the opacity change by at most 0.15 per frame and caps living a median 0.8 s or more.
+Previews: `tests/previews/whitecaps_{12,18,24}kn_chase.jpg` and `whitecaps_20kn_sequence.jpg` (6 frames 0.5 s apart).
 
 ### 4.5 Daylight
 Target look (WM-080): a bright, sunny, high-contrast racing day. A hard sun, a clear saturated blue sky (deep at
@@ -183,15 +258,23 @@ shadows that are blue (lit by the sky), never black.
 
 The daytime light (`SkyRig`) keeps sun and sky in their clear-day proportion: on a level surface the sun gives
 about four fifths of the light and the sky the rest, and a white deck in full sun is about three times as bright
-as the horizon sky. Sun at 38° elevation; ambient and reflections from the sky; the fog goes to the horizon
-colour. Three weather presets, chosen by the venue's look file (or the race, which may override it); **fair** is
-the default:
+as the horizon sky. Sun at 38° elevation, bearing 200° (late afternoon: its own); ambient and reflections from
+the sky; a distance haze toward the horizon colour (below). Four light presets, chosen by the venue's look file (or
+the race, which may override it; `--sky=` in the sail test); **fair** is the default:
 
-| preset | sun energy, colour | sky horizon | sky zenith | clouds | exposure | fog density |
+| preset | sun energy, colour | sky horizon | sky zenith | clouds | exposure | haze begin, end, max, curve |
 | --- | --- | --- | --- | --- | --- | --- |
-| clear | 3.6, (1.0, 0.92, 0.80) | (0.50, 0.74, 1.10) | (0.05, 0.18, 0.62) | 0 | 0.50 | 3e-5 /m |
-| fair (default) | 3.6, (1.0, 0.92, 0.80) | (0.50, 0.74, 1.10) | (0.05, 0.18, 0.62) | 0.40 | 0.50 | 4e-5 /m |
-| hazy | 2.8, (1.0, 0.95, 0.88) | (0.80, 0.88, 1.00) | (0.24, 0.40, 0.74) | 0.25 | 0.55 | 1e-4 /m |
+| clear | 3.6, (1.0, 0.92, 0.80) | (0.50, 0.74, 1.10) | (0.05, 0.18, 0.62) | 0 | 0.50 | 300 m, 16 km, 0.45, 0.42 |
+| fair (default) | 3.6, (1.0, 0.92, 0.80) | (0.50, 0.74, 1.10) | (0.05, 0.18, 0.62) | 0.40 | 0.50 | 200 m, 14 km, 0.60, 0.40 |
+| hazy | 2.8, (1.0, 0.95, 0.88) | (0.80, 0.88, 1.00) | (0.24, 0.40, 0.74) | 0.25 | 0.55 | 150 m, 10 km, 0.80, 0.40 |
+| late afternoon | 3.8, (1.0, 0.72, 0.44); sun 17° high, bearing 250° | (0.60, 0.70, 0.94) | (0.05, 0.17, 0.58) | 0.30 | 0.60 | 200 m, 14 km, 0.65, 0.40 |
+
+**Late afternoon** (`late`): the same racing day two hours before sunset. A low, warm sun (17° up, so a 20 m mast
+throws a 65 m shadow and the sails take the light across their faces), a paler, slightly warm horizon under a deeper
+zenith, fewer clouds, and the sun's glitter as a path on the water toward a camera that faces it (the water's own
+sun specular and the glow of §4.5 at this elevation; nothing added). The exposure rises a little (0.60) because a
+level surface gets half the sun it gets at 38°; the scene stays a little darker and warmer than fair, never dim.
+Its haze follows fair's (begin 200 m, end 14 km, curve 0.40) with a little more of it (max 0.65) for the low warm sun.
 
 Colours are linear. With these the sunlit white of a hull or sail (albedo 0.8) lands just under display white
 with its shading still visible, the sky between the zenith and 20° up is a saturated mid blue, and the horizon a
@@ -211,11 +294,71 @@ light blue, not grey.
   grey-blue (`mix(horizon, zenith, 0.35) · 0.85 + sun · 0.07`); thin edges toward the sun glow (silver lining);
   clouds fade into the horizon haze below 17°. The sky has no `TIME`, so Godot only redraws its radiance map
   when a preset value changes.
+- **Distance haze** (WM-084): aerial perspective, so far boats, marks and land fade softly toward the horizon and
+  the race area reads with depth and scale. Godot's depth fog (`FOG_MODE_DEPTH`) toward the horizon colour: at a
+  distance `d` from the camera the share of haze is `max · smoothstep(begin, end, d)^curve`. None on the near water
+  (the own boat and its neighbours stay crisp), rising from a few hundred metres, flattening toward `max` at the
+  horizon (the sea grid ends at 24 km). A curve below 1 makes it rise early. The share at a distance:
+
+  | preset | 500 m | 1 km | 3 km | 5 km | 10 km | horizon |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | clear | 2 % | 5 % | 15 % | 24 % | 38 % | 45 % |
+  | fair | 4 % | 9 % | 25 % | 36 % | 55 % | 60 % |
+  | hazy | 9 % | 17 % | 42 % | 60 % | 80 % | 80 % |
+
+  (The exponential fog it replaces gave fair 4 % at 1 km and 33 % at 10 km: the race area had almost no aerial
+  perspective.) The fog's sun scatter stays 0.1 (the haze a little brighter looking toward the sun). The sky is not
+  fogged (`fog_sky_affect` 0): Godot's fog on the sky is one colour over the whole dome and would wash out the
+  zenith, and the sky already reaches the horizon colour at the horizon and has its own sea haze below it, so the
+  hazed far sea meets the sky without a seam. No height fog, no aerial perspective from the radiance map. The
+  offline previews (`tests/water_preview.py`, `course_preview.py`) draw the same curve.
 - **Glow** on the brightest highlights only: additive, threshold 4.0 (linear radiance before the exposure: above
   the sunlit hulls, sails and clouds, below the sun disc and the glints on the water), HDR scale 2, intensity 0.5,
   normalized levels. Off on tier L, levels 3 to 5 on M, 2 to 5 on H (`SkyRig.apply_quality`).
 - Boats cap their linear albedo at 0.8 and take their baked AO on the ambient and reflected light only; the sails
   keep their cloth (`sail_visuals.md` §11.1), which reads in this light without change.
+
+**Colour grade** (WM-016.38, `LookFx`): a gentle film look over the final image, on top of the ACES tone mapping,
+never instead of it: slightly richer contrast, a touch of warmth in the light and cooler shadows. Godot applies it
+after the tone mapping on the display (sRGB) values through the environment's colour correction, a 3-D LUT of
+33³ texels (RGBA8, 144 kB per preset) built at load from the formula below, one texture read per pixel in the tone
+mapping pass that already runs (cost: nil to measure). Brightness, contrast and saturation stay at 1. On a display
+colour `c` (0..1), with `L = c · (0.2126, 0.7152, 0.0722)`:
+```
+y   = mix(c, smoothstep S-curve of c, contrast)                           // per channel, pivot mid grey
+y  += cool · (1 − smoothstep(0.05, 0.5, L)) · smoothstep(0, 0.08, L)       // shadows, nothing at black
+y  += warm · smoothstep(0.35, 0.85, L) · (1 − smoothstep(0.9, 1, L))       // light, back to neutral at white
+y   = mix(luma(y), y, saturation), clamped to 0..1
+```
+| preset | contrast | warm (r, g, b) | cool (r, g, b) | saturation |
+| --- | --- | --- | --- | --- |
+| clear, fair | 0.14 | (+0.018, +0.006, −0.018) | (−0.010, +0.002, +0.020) | 1 |
+| hazy | 0.18 | (+0.016, +0.006, −0.014) | (−0.008, +0.002, +0.016) | 1.03 |
+| late afternoon | 0.12 | (+0.026, +0.010, −0.022) | (−0.012, 0, +0.022) | 1 |
+
+Godot samples the LUT with the colour itself as the texture coordinate, so texel `i` holds the grade of
+`(i + 0.5)/33`, and the end texels the grade of 0 and 1: black stays black and white stays white (a white sail in
+sun is not tinted). Every display value moves by at most 0.06. `--look=off` in the sail test turns the grade, the
+vignette, the contact shading and the depth of field off, to compare.
+
+**Vignette** (`LookFx`, a `CanvasLayer` on layer −1 owned by `CameraRig`): a slight darkening toward the corners
+that pulls the eye to the boat. One full-screen rectangle multiplying the 3-D image (display values) by
+`1 − s · smoothstep(0.5, 1, r)`, `r` the distance from the centre over the half diagonal: no screen read, one
+multiply per pixel. Under the HUD (layer 1), the pause menu and the frame-time overlay, which never darken; it takes
+no mouse input. `s` = 0.08 on the regular cameras (chase, onboard, aerial, free: a trace in the corners; on a 16:9 screen the top
+and bottom edge centres untouched) and 0.22 on the clip cameras of `cameras.md` §9 (the broadcast frame).
+
+**Contact shading** (SSAO, tier H only): Godot's screen-space ambient occlusion, soft darkening where the deck meets
+the rig, in the cockpit and under the boom: radius 0.8 m, intensity 1.6, power 1.5, detail 0.5, horizon 0.06,
+sharpness 0.98, medium quality at half resolution, two blur passes, faded out from 40 to 150 m. It darkens the
+ambient light only (light affect 0, AO channel affect 0), so the sunlit side stays as it is; Godot takes the minimum
+of it and the material's AO, so the boats' baked AO (`WM-016.16`) and the SSAO never darken the same place twice. On
+the water it touches only the small ambient share of the sea's light: the sky reflection, which carries the sea's
+look, keeps its specular occlusion at 1 under a bright sky (Godot occludes reflections only where the occluded
+ambient is dark), so the sea does not darken around the hulls or in the wave troughs. Expected cost on tier H: about
+0.5 to 1 ms per frame on a desktop GPU at 1080p, 1 to 1.5 ms on an M1 at 2880 × 1800 at the default render scale
+(to be measured with `--perf`, `--ssao=on|off`). Off on tiers L and M (the Steam Deck's water budget of §7 has no
+room for it); `--ssao=on` tries it on any tier.
 
 ### 4.6 Shadows
 The sun casts one directional shadow map, sized for a boat seen from the chase camera (24.5 m) and on board, not for
@@ -236,7 +379,11 @@ the whole race area: beyond the shadow distance the fleet is small on screen and
   shadows never change resolution or cross a seam; on board the first cascade (8 to 9 m, about 5 mm per texel)
   carries the deck, the boom and the sails. The shadows fade out over the last 20 % of the distance.
 - Bias 0.1, normal bias 2.0 (Godot's scaled units, the same on every tier), pancake 30 m (a mast of 20 m with the
-  sun at 38° stays inside the caster range), blur 1.
+  sun at 38° stays inside the caster range), blur 1. With the late-afternoon sun (17°) the masthead lies 68 m up
+  the light ray from its shadow, beyond the pancake: Godot then clamps that caster onto the cascade's near plane
+  (its depth only; an orthographic light keeps its outline), which still shadows every receiver in the cascade, so
+  no setting changes. The own boat's long shadows on the water are the drawn ones of §4.7 on tiers L and M (any sun
+  above 3°); on tier H a 65 m mast shadow seen from the chase camera lies inside the 150 m shadow distance.
 - **Sails** (`sail_visuals.md` §11): their two cloth layers are 2 mm apart, closer than any bias can separate, so
   the sail shader draws the sail 5 cm away from the light along its normal in the shadow pass (only the layer
   facing the light is drawn there). Neither layer shadows itself or its twin, while the mast, the boom and the
@@ -410,7 +557,7 @@ colour-blind palettes).
 | per-pixel slope of faded components | no | no (owner decision 2026-10-01: about 3.5 ms on an M1 at 2880 × 1800) | yes |
 | detail normal layers | 2 | 3 | 4 |
 | puffs and lulls (§4.3) | yes (gameplay information) | yes | yes |
-| whitecaps | none for now (§4.4) | none | none |
+| whitecaps (§4.4) | the 4 heaviest foam components | the 6 heaviest | the 6 heaviest |
 | wake ribbons | own boat | own + 6 nearest | all within 400 m |
 | bow wave | all boats with a wake | all boats with a wake | all boats with a wake |
 | mist (and spray reach) | no | own boat | yes |
@@ -418,6 +565,20 @@ colour-blind palettes).
 | screen-space reflections | no | no | yes |
 | sun shadows (§4.6) | 2 cascades to 60 m, no shadows on the sea | 4 cascades to 100 m, no shadows on the sea | 4 blended cascades to 150 m |
 | boat shadows drawn on the sea (§4.7) | own boat | own boat and the 6 nearest within 100 m | no (real shadows) |
+| anti-aliasing | SMAA 1x | SMAA 1x | SMAA 1x |
+
+Anti-aliasing (WM-084, owner decision 2026-10-03: keep it simple): SMAA 1x on every tier, no per-tier choice
+(FXAA only if SMAA turned out too costly for tier L; it did not need to). It is the project default
+(`rendering/anti_aliasing/quality/screen_space_aa` = SMAA, so every scene starts with it) and `Settings.apply_render_scale`
+keeps it on the root viewport with the upscaler (`Settings.screen_space_aa`). Godot runs it after tone mapping at
+the 3D render resolution and before a spatial upscaler (FSR 1.0, MetalFX spatial), which wants an antialiased input,
+so the render scale and SMAA go together. A temporal upscaler (FSR 2, MetalFX temporal, not used now) antialiases
+by itself: with one SMAA is off, not stacked. No MSAA or TAA. SMAA smooths the edges of masts, stays, sheets,
+sail edges and the horizon; like any post-process AA it does not stop sub-pixel crawl of lines thinner than a pixel
+(far rigging), which the boat LODs and rope widths handle. Cost: the SMAA paper gives 1.02 ms for SMAA 1x at
+1920 × 1080 on a GeForce GTX 470 (1.1 TFLOPS, 134 GB/s); scaled to the Steam Deck's 1280 × 800 (half the pixels)
+and its GPU (1.6 TFLOPS, 88 GB/s) that is about 0.35 ms if arithmetic bound and 0.8 ms if bandwidth bound per
+frame, on every tier (it does not depend on the scene); to be measured on the Deck.
 
 The tiers do not set the render scale (`menus.md` §3): it is its own setting, Auto by default (67 % above
 1920 × 1200 or on a HiDPI screen, else 100 %), and it scales every per-pixel cost here (the normal-map taps, the

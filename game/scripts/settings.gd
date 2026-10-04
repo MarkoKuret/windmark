@@ -104,6 +104,8 @@ const PORTRAIT_SIZE := Vector2i(1080, 1920)
 ## a scale > 0 replaces the setting; "fsr", "bilinear" or "metalfx" replaces the upscaler's choice.
 static var render_scale_override := 0.0
 static var upscaler_override := ""
+## sail test `--aa=off|fxaa|smaa`, this run only (to compare the anti-aliasing and measure its cost): "" keeps SMAA
+static var aa_override := ""
 ## this run only, not saved (sail test `--quality=L|M|H`, `--no-vsync`): -1 keeps the setting
 static var quality_override := -1
 static var vsync_override := -1
@@ -378,6 +380,20 @@ static func upscaler(scale: float) -> Viewport.Scaling3DMode:
 	return Viewport.SCALING_3D_MODE_FSR if rd else Viewport.SCALING_3D_MODE_BILINEAR
 
 
+## Anti-aliasing (water_render.md §7): SMAA 1x on every tier, at the 3D render resolution after tone mapping and
+## before a spatial upscaler (FSR 1.0, MetalFX spatial), which wants an antialiased input. A temporal upscaler
+## (FSR 2, MetalFX temporal) antialiases by itself, so SMAA is off with it.
+static func screen_space_aa(mode: Viewport.Scaling3DMode) -> Viewport.ScreenSpaceAA:
+	match aa_override:
+		"off":
+			return Viewport.SCREEN_SPACE_AA_DISABLED
+		"fxaa":
+			return Viewport.SCREEN_SPACE_AA_FXAA
+	if mode in [Viewport.SCALING_3D_MODE_FSR2, Viewport.SCALING_3D_MODE_METALFX_TEMPORAL]:
+		return Viewport.SCREEN_SPACE_AA_DISABLED
+	return Viewport.SCREEN_SPACE_AA_SMAA
+
+
 static func upscaler_name(mode: Viewport.Scaling3DMode) -> String:
 	match mode:
 		Viewport.SCALING_3D_MODE_FSR:
@@ -399,6 +415,7 @@ func apply_render_scale(win: Window) -> void:
 	var sc := effective_render_scale(win)
 	win.scaling_3d_scale = sc
 	win.scaling_3d_mode = upscaler(sc)
+	win.screen_space_aa = screen_space_aa(win.scaling_3d_mode)
 	if _resize_hooked != win:
 		if is_instance_valid(_resize_hooked) and _resize_hooked.size_changed.is_connected(_window_resized):
 			_resize_hooked.size_changed.disconnect(_window_resized)

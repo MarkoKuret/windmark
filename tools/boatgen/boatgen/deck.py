@@ -2,12 +2,14 @@
 
 Deck plan: the deck is a cambered surface between the two sheer lines,
     z = zs(x) + camber(x) * (1 - (y / bs(x))^2),   camber = deck_camber * 2 bs(x).
-The cockpit is a rectangular well in (x, y / bs) running aft to an open transom; the cabin top sits directly
-forward of it with a plan outline that rounds in to the centreline at its front, sides leaning inward.
+The cockpit is a rectangular well in (x, y / bs) running aft to an open transom; the coachroof sits directly
+forward of it (data_format.md 3.7.2): a height field over the deck, low and sloping down forward until it fairs into
+the deck at (or just aft of) the mast, its sides raked inward with a fillet at the foot and a radius at the top, its
+plan following the sheer and rounding in to the centreline over the last fifth. Only its aft face is upright.
 
-The deck is meshed as an outer strip on each side from the sheer to the cockpit / cabin outline, which is
-continued by the centreline forward of the cabin. The cabin is a separate closed-looking shell whose base sits
-slightly below the deck, so the two never show a crack.
+The deck is meshed as an outer strip on each side from the sheer to the cockpit / coachroof base, continued by the
+centreline forward of the coachroof. The coachroof is meshed on the same stations from base to base, so the two share
+their edge (the coachroof's height is zero there).
 
 uv1 (data_format.md §8.5): every deck surface has the plan view (`plan_rect`, the deck's extent with a 1 % margin,
 bow to the right and port at the top), except the transom face, its own slot `transom` with uv1 over the transom as
@@ -15,7 +17,7 @@ seen from astern (`transom_rect`: port on the left, its top at the top). The bak
 """
 import numpy as np
 
-from .mesh import (Geom, Part, grid, planar_polygon, normalize, arclen, sweep, rounded_rect, box,
+from .mesh import (Geom, Part, grid, grid_normals, planar_polygon, normalize, arclen, sweep, rounded_rect, box,
                    superellipsoid_box, merge, resample_polyline)
 
 
@@ -35,10 +37,19 @@ class Deck:
         self.has_cabin = cb is not None
         if self.has_cabin:
             self.xk0 = self.xc1
-            self.xk1 = self.xk0 + float(cb["length"])
+            if cb.get("length") is not None:
+                self.xk1 = self.xk0 + float(cb["length"])
+            else:
+                r = cls["rig"]          # mast_x is the mast's front at the deck: its aft face is a chord aft of it
+                self.xk1 = float(r["mast_x"]) - float(r["mast_chord"]) - float(cb["meet_aft_of_mast"])
+            if self.xk1 - self.xk0 < 0.5:
+                raise ValueError(f"coachroof from {self.xk0:.2f} to {self.xk1:.2f} m is shorter than 0.5 m: the cockpit "
+                                 "reaches the mast (visual.deck.cabin, data_format.md 3.7.2)")
             self.cab_frac = float(cb["width"])
             self.cab_h = float(cb["height"])
-            self.cab_slope = float(cb.get("side_slope", 0.22))
+            self.cab_slope_from = float(cb.get("slope_from", 0.3))
+            self.cab_rake = float(cb.get("side_rake", 0.35))
+            self.cab_r = float(cb.get("edge_radius", 0.05 * (L / 12) ** 0.5))
         else:
             self.xk0 = self.xk1 = self.xc1
         self.margin = float(d["nonslip_margin"])
@@ -67,33 +78,114 @@ class Deck:
         return self.deck_z(x, 0.0) - self.ck_depth
 
     def yk(self, x):
-        """Cabin plan half-width: matches the cockpit at its aft end, rounds in to zero at the front."""
+        """Coachroof base half-width: `width` of the local half-beam, so its sides follow the sheer (never wider
+        than the cockpit), rounding in to the centreline over the last fifth (a quarter ellipse)."""
         if not self.has_cabin:
             return np.zeros_like(np.asarray(x, dtype=np.float64))
         x = np.asarray(x, dtype=np.float64)
         u = np.clip((x - self.xk0) / (self.xk1 - self.xk0), 0, 1)
-        w_aft = float(self.yc(self.xk0))
-        w_fwd = self.cab_frac * self.hull.bs(x)
-        base = w_aft + (w_fwd - w_aft) * np.clip(u / 0.5, 0, 1)
-        return base * np.sqrt(np.clip(1 - u ** 5, 0, 1))
+        base = np.minimum(self.cab_frac * self.hull.bs(x), float(self.yc(self.xk0)))
+        e = np.clip((u - 0.8) / 0.2, 0, 1)
+        return np.where((x >= self.xk0) & (x <= self.xk1), base * np.sqrt(np.clip(1 - e * e, 0, 1)), 0.0)
+
+    def cab_height(self, x):
+        """Height of the coachroof's top above the deck at the centreline (crown excluded): `height` aft of
+        `slope_from`, then a half cosine down to zero where it meets the deck; the aft edge rounded by the edge
+        radius."""
+        x = np.asarray(x, dtype=np.float64)
+        if not self.has_cabin:
+            return np.zeros_like(x)
+        u = (x - self.xk0) / (self.xk1 - self.xk0)
+        sf = self.cab_slope_from
+        v = np.clip((u - sf) / max(1 - sf, 1e-6), 0, 1)
+        h = self.cab_h * 0.5 * (1 + np.cos(np.pi * v))
+        r = min(self.cab_r, 0.8 * self.cab_h)
+        dx = np.clip(self.xk0 + r - x, 0, r)
+        h = np.minimum(h, self.cab_h - r + np.sqrt(np.maximum(r * r - dx * dx, 0)))
+        return np.where((x >= self.xk0) & (x <= self.xk1), np.maximum(h, 0.0), 0.0)
+
+    def cab_slope_max(self):
+        """The top's steepest slope (rad), for the build log."""
+        xs = np.linspace(self.xk0 + self.cab_r, self.xk1, 400)
+        return float(np.arctan(np.max(-np.gradient(self.cab_height(xs), xs))))
+
+    def _cab_prof(self, h, yb):
+        """Section profile at heights h over base half-widths yb (arrays): base fillet radius rb, edge radius re,
+        the breaks d1 (fillet end), d2 (raked side end) and d3 (edge radius end) measured inward from the base, and
+        the squeeze q >= 1 that keeps the sides within 0.8 of the half-width. The radii shrink with a low top."""
+        h, yb = np.broadcast_arrays(np.asarray(h, dtype=np.float64), np.asarray(yb, dtype=np.float64))
+        beta = np.pi / 2 - min(self.cab_rake, np.pi / 2 - 1e-3)        # the side's angle from the horizontal
+        sb, cb, tb = np.sin(beta), np.cos(beta), np.tan(beta)
+        re0, rb0 = self.cab_r, 0.4 * self.cab_r
+        k = np.clip(h / ((re0 + rb0) * (1 - cb)), 0, 1)
+        re, rb = re0 * k, rb0 * k
+        hv = np.maximum(h - (re + rb) * (1 - cb), 0)
+        d1 = rb * sb
+        d2 = d1 + hv / tb
+        d3 = d2 + re * sb
+        q = np.maximum(d3 / np.maximum(0.8 * yb, 1e-9), 1.0)
+        return {"h": h, "re": re, "rb": rb, "d1": d1, "d2": d2, "d3": d3, "q": q, "cb": cb, "tb": tb}
+
+    @staticmethod
+    def _cab_zrel(pr, d):
+        """Height of the section above the deck at distance d inward from its base."""
+        dd = np.asarray(d, dtype=np.float64) * pr["q"]
+        rb, re, d1, d2, d3, h = pr["rb"], pr["re"], pr["d1"], pr["d2"], pr["d3"], pr["h"]
+        z_f = rb - np.sqrt(np.maximum(rb * rb - dd * dd, 0))
+        z_s = rb * (1 - pr["cb"]) + (dd - d1) * pr["tb"]
+        z_e = h - re + np.sqrt(np.maximum(re * re - (d3 - dd) ** 2, 0))
+        z = np.where(dd <= d1, z_f, np.where(dd <= d2, z_s, np.where(dd <= d3, z_e, h)))
+        return np.where(dd <= 0, 0.0, z)
+
+    def yk_roof(self, x):
+        """Half-width of the coachroof's top: where the edge radius ends."""
+        x = np.asarray(x, dtype=np.float64)
+        yb = self.yk(x)
+        pr = self._cab_prof(self.cab_height(x), yb)
+        return np.maximum(yb - pr["d3"] / pr["q"], 0.0)
+
+    def cabin_z(self, x, y):
+        """The coachroof's surface (the deck outside its base): deck + section profile + a crown of 0.3 of the deck
+        camber scaled with the height."""
+        x, y = np.broadcast_arrays(np.asarray(x, dtype=np.float64), np.asarray(y, dtype=np.float64))
+        z = self.deck_z(x, y)
+        if not self.has_cabin:
+            return z
+        h, yb = self.cab_height(x), self.yk(x)
+        ay = np.abs(y)
+        inside = (x >= self.xk0) & (x <= self.xk1) & (ay < yb)
+        pr = self._cab_prof(h, yb)
+        zr = self._cab_zrel(pr, yb - ay)
+        crown = 0.3 * self.camber(x) * (h / self.cab_h) * (1 - np.clip(ay / np.maximum(yb, 1e-9), 0, 1) ** 2)
+        return z + np.where(inside, zr + crown, 0.0)
 
     def roof_z(self, x, y):
-        """Cabin roof height (crown follows the deck centreline, lifted by the cabin height, with camber)."""
-        yr = max(float(self.yk(x)) - self.cab_h * self.cab_slope, 1e-3)
-        return float(self.deck_z(x, 0)) + self.cab_h + 0.3 * self.camber(x) * (1 - min(abs(y) / yr, 1) ** 2)
+        """Coachroof surface height at a point (scalar)."""
+        return float(self.cabin_z(x, y))
 
-    def in_cabin_roof(self, x, y):
-        if not self.has_cabin:
-            return False
-        inset = self.cab_h * self.cab_slope
-        return self.xk0 <= x <= self.xk1 - inset and abs(y) < float(self.yk(x)) - inset - 0.03
+    def in_cabin(self, x, y):
+        """Inside the coachroof's base outline."""
+        return self.has_cabin and self.xk0 <= x <= self.xk1 and abs(y) < float(self.yk(x))
+
+    def in_cabin_roof(self, x, y, margin=0.03):
+        """On the coachroof's top (inside its edge radius by `margin`), where it stands at least 2 cm proud."""
+        return (self.in_cabin(x, y) and abs(y) < float(self.yk_roof(x)) - margin
+                and float(self.cab_height(x)) > 0.02)
 
     def in_cockpit(self, x, y):
         return self.xc0 <= x <= self.xc1 and abs(y) < float(self.yc(x))
 
+    def surface_z(self, x, y):
+        """Height of the walking surface (coachroof, cockpit floor or deck) at arrays of points."""
+        x, y = np.broadcast_arrays(np.asarray(x, dtype=np.float64), np.asarray(y, dtype=np.float64))
+        ck = (x >= self.xc0) & (x <= self.xc1) & (np.abs(y) < self.yc(x))
+        cab = self.has_cabin & (x >= self.xk0) & (x <= self.xk1) & (np.abs(y) < self.yk(x))
+        return np.where(ck & ~cab, self.floor_z(x), self.cabin_z(x, y))
+
     def surface(self, x, y, h=2e-3):
-        """(z, normal, kind) of the walking surface at (x, y): cabin roof, cockpit floor or deck."""
-        if self.in_cabin_roof(x, y):
+        """(z, normal, kind) of the walking surface at (x, y): coachroof ("roof", its sides included), cockpit floor
+        or deck."""
+        if self.in_cabin(x, y):
             f, kind = (lambda a, b: self.roof_z(a, b)), "roof"
         elif self.in_cockpit(x, y):
             f, kind = (lambda a, b: float(self.floor_z(a))), "floor"
@@ -195,7 +287,13 @@ class Deck:
         xs = list(hull.stations_x(n_st))
         xs += [self.xc0, self.xc1, self.xk1]
         if self.has_cabin:
-            xs += list(self.xk0 + (self.xk1 - self.xk0) * (1 - (np.linspace(0, 1, max(6, n_st // 5))) ** 2) ** 0.5)
+            xs += [self.xc1 + 1e-4]     # the deck steps in from the cockpit's edge to the coachroof's base here
+        if self.has_cabin:
+            # the coachroof: even stations, denser over the rounded aft edge and the nose
+            lk = self.xk1 - self.xk0
+            xs += list(np.linspace(self.xk0, self.xk1, max(6, round(n_st * lk / L * 1.6))))
+            xs += list(self.xk0 + self.cab_r * (1 - np.cos(np.linspace(0, np.pi / 2, max(3, n_st // 18)))))
+            xs += list(self.xk1 - 0.2 * lk * (1 - np.sin(np.linspace(0, np.pi / 2, max(4, n_st // 9)))))
         xs = np.unique(np.clip(np.round(np.array(xs), 5), 0, L))
         bs = hull.bs(xs)
         yin = np.minimum(self.y_inner(xs), bs * 0.98)
@@ -222,7 +320,7 @@ class Deck:
         self._deck_P = P
         self._cockpit(part, xs)
         if self.has_cabin:
-            self._cabin(part, n_half=max(12, round(40 * n_st / 90)), n_roof=max(5, round(11 * n_st / 90)))
+            self._cabin(part, xs, n_roof=max(3, round(7 * n_st / 90)), fine=n_st >= 60)
         self._sheer_trim(part, n=max(16, round(120 * n_st / 90)))
         for gs in part.slots.values():          # every deck surface: the plan view (the transom has its own)
             for g in gs:
@@ -275,108 +373,120 @@ class Deck:
             part.add("gelcoat", planar_polygon(np.vstack([top, bot]), [1, 0, 0]))
 
     # ------------------------------------------------------------------------------------------------------
-    def _cabin(self, part, n_half=40, n_roof=11):
-        # footprint half-curve (starboard side: y > 0 is port, mirrored later), aft end to the front apex
-        xd = self.xk0 + (self.xk1 - self.xk0) * np.linspace(0, 1, 600)
-        yd = self.yk(xd)
-        curve = resample_polyline(np.stack([xd, yd], -1), n_half)
-        curve[-1] = [self.xk1, 0.0]
-        tang = np.gradient(curve, axis=0)
-        nrm = normalize(np.stack([-tang[:, 1], tang[:, 0]], -1))
-        nrm[0] = [0.0, 1.0]
-        nrm[-1] = [1.0, 0.0]
-        nrm = normalize(np.where((nrm[:, 1:2] < 0) | ((nrm[:, 1:2] == 0) & (nrm[:, 0:1] < 0)), -nrm, nrm))
-        inset = self.cab_h * self.cab_slope
-        top2 = curve - nrm * inset
-        top2[-1, 1] = 0.0
-        # roof edge with a small rounded fillet: three rows between the wall top and the roof
-        base_z = self.deck_z(curve[:, 0], curve[:, 1]) - 0.02
-        roof_edge_z = np.array([self.roof_z(x, y) for x, y in top2]) - 0.3 * self.camber(top2[:, 0]) * 0.0
-        r = min(0.035, 0.25 * self.cab_h)
-        rows = []
-        for h in (0.0, 0.5, 0.85):
-            p = curve + (top2 - curve) * h
-            rows.append(np.c_[p, base_z + (roof_edge_z - base_z) * h])
-        # fillet: from wall top (slightly below the edge) curving over onto the roof
-        edge = np.c_[top2, roof_edge_z]
-        wall_dir = normalize(np.c_[top2 - curve, (roof_edge_z - base_z)[:, None]])
-        for a in np.linspace(0.25, 1.0, 4):
-            ang = a * np.pi / 2
-            inward = np.c_[-nrm, np.zeros(len(nrm))]
-            p = edge - wall_dir * r * (1 - np.sin(ang)) + inward * r * (1 - np.cos(ang))
-            rows.append(p)
-        W = np.stack(rows, 1)  # (n_half, rows, 3)
-        self._cab_wall = (curve, top2, base_z, roof_edge_z)
-        for side in (1.0, -1.0):
-            m = np.array([1.0, side, 1.0])
-            Pw = W * m
-            s = arclen(curve)
-            uv = np.stack([np.broadcast_to(s[:, None], W.shape[:2]), W[..., 2]], -1)
-            g = grid(Pw, uv)
-            part.add("gelcoat", _orient(g, np.array([0.0, side, 0.3])))
-        # roof: rows across from the starboard fillet end to the port one
-        inner = W[:, -1, :]
-        t = np.linspace(-1, 1, n_roof)
-        Pr = np.zeros((n_half, n_roof, 3))
-        for j in range(n_half):
-            yj = inner[j, 1]
-            Pr[j, :, 0] = inner[j, 0]
-            Pr[j, :, 1] = yj * t
-            Pr[j, :, 2] = [self.roof_z(inner[j, 0], yy) for yy in yj * t]
-            Pr[j, :, 2] += inner[j, 2] - Pr[j, 0, 2]
-        # non-slip roof panel inside gelcoat borders
-        part.add("gelcoat", _orient_up(grid(Pr[:, :2], np.stack([Pr[:, :2, 0], Pr[:, :2, 1]], -1))))
-        part.add("gelcoat", _orient_up(grid(Pr[:, -2:], np.stack([Pr[:, -2:, 0], Pr[:, -2:, 1]], -1))))
-        part.add("nonslip", _orient_up(grid(Pr[:-2, 1:-1], np.stack([Pr[:-2, 1:-1, 0], Pr[:-2, 1:-1, 1]], -1))))
-        part.add("gelcoat", _orient_up(grid(Pr[-3:, 1:-1], np.stack([Pr[-3:, 1:-1, 0], Pr[-3:, 1:-1, 1]], -1))))
-        self._roof_rows = Pr
-        # aft face: cockpit floor up to the roof, in the plane x = xk0
+    def _cabin(self, part, xs, n_roof=7, fine=True):
+        """The coachroof on the deck stations from its aft face to where it meets the deck: per station a section
+        from the starboard base over the fillet, the raked side, the edge radius and the cambered top to the port
+        base (y increasing, so the grid faces up). Gelcoat sides and borders round a non-slip top."""
+        xs = xs[(xs >= self.xk0 - 1e-9) & (xs <= self.xk1 + 1e-9)]
+        h, yb = self.cab_height(xs), self.yk(xs)
+        pr = self._cab_prof(h, yb)
+        q = pr["q"]
+        nf, ns, na = (2, 2, 4) if fine else ((1, 1, 3) if n_roof >= 4 else (1, 1, 2))
+        # columns of the starboard half as distances inward from the base: fillet, raked side, edge radius
+        dcols = [np.zeros_like(xs)]
+        dcols += [pr["d1"] * (k / nf) for k in range(1, nf + 1)]
+        dcols += [pr["d1"] + (pr["d2"] - pr["d1"]) * (k / ns) for k in range(1, ns + 1)]
+        dcols += [pr["d2"] + (pr["d3"] - pr["d2"]) * (k / na) for k in range(1, na + 1)]
+        D = np.stack(dcols, 1) / q[:, None]
+        n_side = D.shape[1]
+        y_e = yb - D[:, -1]
+        y_m = np.maximum(y_e - 0.05, 0.5 * y_e)          # the top's gelcoat border, 5 cm
+        Y_side = yb[:, None] - D                         # base -> roof edge, decreasing
+        Y_top = y_m[:, None] * np.linspace(1, 0, n_roof)[None, :]
+        half = np.concatenate([Y_side, Y_top], 1)        # from the base to the centreline
+        Yrow = np.concatenate([-half, half[:, ::-1][:, 1:]], 1)     # starboard base -> port base
+        X = np.broadcast_to(xs[:, None], Yrow.shape)
+        Z = self.cabin_z(X, Yrow)
+        P = np.stack([X, Yrow, Z], -1)
+        # uv0: metres along and girth from the centreline
+        seg_len = np.linalg.norm(np.diff(P, axis=1), axis=-1)
+        g = np.concatenate([np.zeros((len(xs), 1)), np.cumsum(seg_len, 1)], 1)
+        nc = Yrow.shape[1]
+        g = g - g[:, nc // 2][:, None]
+        uv = np.stack([X, g], -1)
+        N = grid_normals(P)
+        c0, c1 = n_side, nc - 1 - n_side                  # the top's border columns (y = -y_m and y_m)
+        # rows of the non-slip top: from the aft edge's radius plus the border to where the top is 15 % high
+        r0 = int(np.searchsorted(xs, self.xk0 + self.cab_r + 0.05))
+        hi = np.nonzero(h >= 0.15 * self.cab_h)[0]
+        r1 = int(hi.max()) if len(hi) else r0
+        sub = lambda a, b, c, d: grid(P[a:b, c:d], uv[a:b, c:d], N=N[a:b, c:d])
+        part.add("gelcoat", sub(0, len(xs), 0, c0 + 1))
+        part.add("gelcoat", sub(0, len(xs), c1, nc))
+        if r1 > r0 + 1:
+            part.add("gelcoat", sub(0, r0 + 1, c0, c1 + 1))
+            part.add("nonslip", sub(r0, r1 + 1, c0, c1 + 1))
+            part.add("gelcoat", sub(r1, len(xs), c0, c1 + 1))
+        else:
+            part.add("gelcoat", sub(0, len(xs), c0, c1 + 1))
+        self._roof_rows = P
+        # aft face: from the cockpit floor up to the deck at the cockpit's edges, along the deck in to the coachroof's
+        # base and up over its section at x = xk0
         x = self.xk0
-        wall = W[0]                                     # starboard wall profile at the aft end (y > 0 here)
-        roof_row = Pr[0]
         yck = float(self.yc(x))
         zf = float(self.floor_z(x))
-        poly = [[x, -yck, zf], [x, yck, zf]]
-        poly += [[x, p[1], p[2]] for p in wall]
-        poly += [[x, p[1], p[2]] for p in roof_row[::-1][1:-1]]
-        poly += [[x, -p[1], p[2]] for p in wall[::-1]]
+        row = P[0]
+        lip = np.linspace(yck, float(yb[0]), 5)[:-1] if yck > yb[0] + 1e-4 else np.zeros(0)
+        poly = [[x, -yck, zf], [x, yck, zf]] + [[x, y, float(self.deck_z(x, y))] for y in lip]
+        poly += [[x, p[1], p[2]] for p in row[::-1]]
+        poly += [[x, -y, float(self.deck_z(x, y))] for y in lip[::-1]]
         part.add("gelcoat", planar_polygon(np.array(poly), [-1, 0, 0]))
-        self._companionway(part, x, yck, zf, roof_row)
-        self._windows(part, W)
+        self._companionway(part, x, yck, zf, row)
+        self._windows(part, xs, pr, yb, fine)
+
+    def _drape(self, g, lift):
+        """A shape built round z = 0 laid on the coachroof: every vertex lifted by the surface below it, so a
+        hatch follows the top's slope and crown (flush, no gap and no corner sunk)."""
+        P = g.P.copy()
+        P[:, 2] += self.cabin_z(P[:, 0], P[:, 1]) + lift
+        out = Geom(P, g.I, None, g.uv0, g.uv1)
+        out.tag = g.tag
+        return out
 
     def _companionway(self, part, x, yck, zf, roof_row):
-        """Washboard opening in the aft face and a sliding hatch on the roof."""
-        top = roof_row[len(roof_row) // 2, 2]
-        w = min(0.34 * 2 * yck, 0.75) / 2
-        z0, z1 = zf + 0.12 * self.ck_depth + 0.05, top - 0.03
+        """Washboard opening in the aft face and a low sliding hatch lying on the top."""
+        top = float(np.min(roof_row[len(roof_row) // 2 - 1: len(roof_row) // 2 + 2, 2]))
+        w = min(0.42 * float(self.yk(x)), 0.375)          # the opening, about 0.5 m on a sportsboat
+        z0, z1 = zf + 0.12 * self.ck_depth + 0.05, top - 0.035
         P = np.array([[x - 0.004, w, z0], [x - 0.004, -w, z0], [x - 0.004, -w * 0.88, z1], [x - 0.004, w * 0.88, z1]])
         part.add("glass", planar_polygon(P, [-1, 0, 0]))
-        # sliding hatch
-        L = min(0.9, 0.35 * (self.xk1 - self.xk0))
+        # sliding hatch: a low moulded lid following the top, with a tinted panel
+        L = min(0.9, 0.3 * (self.xk1 - self.xk0))
         hx = x + 0.5 * L + 0.02
-        hz = self.roof_z(hx, 0)
         self.companion = {"x": float(x), "half_width": float(w), "hatch_x": float(hx), "hatch_len": float(L),
-                          "hatch_width": float(2 * w + 0.1)}
-        part.add("gelcoat", superellipsoid_box((L, 2 * w + 0.1, 0.07), 0.18, 16, 8, center=(hx, 0, hz + 0.02)))
-        part.add("glass", superellipsoid_box((L * 0.8, 2 * w - 0.02, 0.02), 0.1, 12, 6, center=(hx, 0, hz + 0.055)))
+                          "hatch_width": float(2 * w + 0.06)}
+        lid = superellipsoid_box((L, 2 * w + 0.06, 0.045), 0.18, 16, 8, center=(hx, 0, 0.008))
+        part.add("gelcoat", self._drape(lid, 0.0))
+        pane = superellipsoid_box((L * 0.8, 2 * w - 0.05, 0.012), 0.1, 12, 6, center=(hx, 0, 0.027))
+        part.add("glass", self._drape(pane, 0.0))
 
-    def _windows(self, part, W):
-        """Dark glazing panels along the cabin sides, standing just proud of the wall."""
-        if not self.cls["deck"]["cabin"].get("windows", True) or self.cab_h < 0.18:
+    def _windows(self, part, xs, pr, yb, fine):
+        """Dark glazing along the raked sides where the top is at least 0.15 m high, just proud of the side."""
+        if not self.cls["deck"]["cabin"].get("windows", True) or self.cab_h < 0.15:
             return
-        n = W.shape[0]
-        j0, j1 = int(0.14 * n), int(0.68 * n)
+        h = self.cab_height(xs)
+        ok = np.nonzero(h >= 0.15)[0]
+        if len(ok) < 2:
+            return
+        xa = self.xk0 + 0.15 * (self.xk1 - self.xk0)
+        xb = float(xs[ok.max()]) - 0.2
+        if xb - xa < 0.3:
+            return
+        xw = np.linspace(xa, xb, 24 if fine else 10)
+        hw, ybw = self.cab_height(xw), self.yk(xw)
+        p = self._cab_prof(hw, ybw)
+        t = np.linspace(0, 1, xw.size)
+        env = np.sqrt(np.clip(np.sin(np.pi * t) * 1.8, 0, 1))
         rows = []
-        for h in np.linspace(0.3, 0.72, 5):
-            rows.append(W[j0:j1, 0] + (W[j0:j1, 2] - W[j0:j1, 0]) * h / 0.85)
+        for f in np.linspace(-1, 1, 5):
+            fm = 0.58 + 0.17 * f * env                 # along the raked side, from its foot (0) to its top (1)
+            d = (p["d1"] + (p["d2"] - p["d1"]) * fm) / p["q"]
+            y = ybw - d
+            rows.append(np.stack([xw, y, self.cabin_z(xw, y)], -1))
         G = np.stack(rows, 1)
-        # taper the ends into a teardrop-ish shape
-        t = np.linspace(0, 1, G.shape[0])
-        env = np.sqrt(np.clip(np.sin(np.pi * t) * 1.6, 0, 1))
-        mid = G[:, 2:3]
-        G = mid + (G - mid) * env[:, None, None]
         nrm = normalize(np.cross(np.gradient(G, axis=0), np.gradient(G, axis=1)))
-        G = G + nrm * 0.004 * np.sign(np.mean(nrm[..., 1]))
+        nrm = nrm * np.sign(np.mean(nrm[..., 1]))      # outward: +y on this side
+        G = G + nrm * 0.004
         for side in (1.0, -1.0):
             g = grid(G * [1, side, 1], np.stack([G[..., 0], G[..., 2]], -1))
             part.add("glass", _orient(g, np.array([0.0, side, 0.0])))

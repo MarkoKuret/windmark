@@ -4,27 +4,39 @@ extends Node3D
 ## Sky and lighting preset (WM-016.03, WM-080): the sky shader, the sun light, exposure, tone mapping, glow, fog and
 ## reflections, from one set of parameters, so the water's crest light (water_render.md §4.2) and the reflections
 ## use the same sky and sun. Colours are linear. Children: WorldEnvironment (environment with the sky material) and Sun
-## (DirectionalLight3D). Three weather presets (water_render.md §4.5): clear, fair-weather cumulus (the default) and
-## hazy. The venue's look file or the race picks one with `preset`; single values can still be set after it.
+## (DirectionalLight3D). Four light presets (water_render.md §4.5): clear, fair-weather cumulus (the default), hazy
+## and late afternoon. The venue's look file or the race picks one with `preset`; single values can still be set
+## after it. Each preset also sets its colour grade (LookFx).
 
-enum Preset { CLEAR, FAIR, HAZY }
+enum Preset { CLEAR, FAIR, HAZY, LATE }
 
-## water_render.md §4.5: sun energy and colour, sky ramp, cloud cover, camera exposure, fog density.
+## water_render.md §4.5: sun energy and colour, sky ramp, cloud cover, camera exposure, distance haze.
 const PRESETS := {
 	Preset.CLEAR: {
 		"sun_energy": 3.6, "sun_color": Color(1.0, 0.92, 0.80), "horizon": Color(0.50, 0.74, 1.10),
-		"zenith": Color(0.05, 0.18, 0.62), "cloud_cover": 0.0, "exposure": 0.50, "fog_density": 0.00003,
+		"zenith": Color(0.05, 0.18, 0.62), "cloud_cover": 0.0, "exposure": 0.50,
+		"haze_begin": 300.0, "haze_end": 16000.0, "haze_max": 0.45, "haze_curve": 0.42,
 	},
 	Preset.FAIR: {
 		"sun_energy": 3.6, "sun_color": Color(1.0, 0.92, 0.80), "horizon": Color(0.50, 0.74, 1.10),
-		"zenith": Color(0.05, 0.18, 0.62), "cloud_cover": 0.40, "exposure": 0.50, "fog_density": 0.00004,
+		"zenith": Color(0.05, 0.18, 0.62), "cloud_cover": 0.40, "exposure": 0.50,
+		"haze_begin": 200.0, "haze_end": 14000.0, "haze_max": 0.60, "haze_curve": 0.40,
 	},
 	Preset.HAZY: {
 		"sun_energy": 2.8, "sun_color": Color(1.0, 0.95, 0.88), "horizon": Color(0.80, 0.88, 1.00),
-		"zenith": Color(0.24, 0.40, 0.74), "cloud_cover": 0.25, "exposure": 0.55, "fog_density": 0.00010,
+		"zenith": Color(0.24, 0.40, 0.74), "cloud_cover": 0.25, "exposure": 0.55,
+		"haze_begin": 150.0, "haze_end": 10000.0, "haze_max": 0.80, "haze_curve": 0.40,
+	},
+	Preset.LATE: {
+		"sun_energy": 3.8, "sun_color": Color(1.0, 0.72, 0.44), "horizon": Color(0.60, 0.70, 0.94),
+		"zenith": Color(0.05, 0.17, 0.58), "cloud_cover": 0.30, "exposure": 0.60,
+		"haze_begin": 200.0, "haze_end": 14000.0, "haze_max": 0.65, "haze_curve": 0.40,
+		"sun_elevation_deg": 17.0, "sun_azimuth_deg": 250.0,
 	},
 }
-const PRESET_NAMES := {"clear": Preset.CLEAR, "fair": Preset.FAIR, "hazy": Preset.HAZY}
+## The sun's place for a preset that does not set its own.
+const PRESET_SUN := {"sun_elevation_deg": 38.0, "sun_azimuth_deg": 200.0}
+const PRESET_NAMES := {"clear": Preset.CLEAR, "fair": Preset.FAIR, "hazy": Preset.HAZY, "late": Preset.LATE}
 
 ## Glow on the brightest highlights only (the sun disc and its glints on the water), per quality tier
 ## (water_render.md §4.5): off on L, the coarse levels on M, one finer level more on H. Godot's levels 1 to 7.
@@ -38,10 +50,11 @@ const GLOW_INTENSITY := 0.5
 @export var preset := Preset.FAIR:
 	set(v):
 		preset = v
-		var p: Dictionary = PRESETS[v]
+		var p: Dictionary = PRESET_SUN.merged(PRESETS[v], true)
 		for k in p:
 			set(k, p[k])
 		_apply()
+		LookFx.apply_grade(environment(), v)
 @export_range(0.0, 90.0) var sun_elevation_deg := 38.0:
 	set(v):
 		sun_elevation_deg = v
@@ -83,18 +96,34 @@ const GLOW_INTENSITY := 0.5
 	set(v):
 		exposure = v
 		_apply()
-## Exponential fog density (1/m) toward the horizon colour.
-@export var fog_density := 0.00004:
+## Distance haze (water_render.md §4.5): Godot's depth fog toward the horizon colour, the share of it at a distance d
+## haze_max * smoothstep(haze_begin, haze_end, d)^haze_curve: none on the near water, rising from a few hundred
+## metres, haze_max at the horizon. The sky is not fogged (it has its own horizon haze).
+@export var haze_begin := 200.0:
 	set(v):
-		fog_density = v
+		haze_begin = v
+		_apply()
+@export var haze_end := 14000.0:
+	set(v):
+		haze_end = v
+		_apply()
+@export_range(0.0, 1.0) var haze_max := 0.60:
+	set(v):
+		haze_max = v
+		_apply()
+## Below 1 the haze rises early and flattens toward the horizon.
+@export var haze_curve := 0.40:
+	set(v):
+		haze_curve = v
 		_apply()
 
 
 func _ready() -> void:
 	_apply()
+	LookFx.apply_grade(environment(), preset)
 
 
-## The preset for a name ("clear", "fair", "hazy"); unknown names keep the current one. Returns whether it was known.
+## The preset for a name ("clear", "fair", "hazy", "late"); unknown names keep the current one. Returns whether it was known.
 func set_preset_name(name: String) -> bool:
 	if not PRESET_NAMES.has(name):
 		return false
@@ -126,11 +155,12 @@ func sun() -> DirectionalLight3D:
 	return get_node_or_null("Sun") as DirectionalLight3D
 
 
-## The sun's shadows (water_render.md §4.6) and the glow (§4.5) for a quality tier; the Sea calls it when its tier
-## is set.
+## The sun's shadows (water_render.md §4.6), the glow and the contact shading (§4.5) for a quality tier; the Sea
+## calls it when its tier is set.
 func apply_quality(tier: int) -> void:
 	SeaQuality.apply_shadows(sun(), tier as SeaQuality.Tier)
 	apply_glow(environment(), tier)
+	LookFx.apply_quality(environment(), tier)
 
 
 ## Glow for a tier: only what is brighter than GLOW_THRESHOLD blooms (the sun and its glints).
@@ -179,5 +209,10 @@ func _apply() -> void:
 		m.set_shader_parameter("cloud_offset", cloud_offset)
 	# Environment colours are sRGB-encoded Color values; the fog goes to the horizon colour.
 	env.fog_light_color = horizon.linear_to_srgb()
-	env.fog_density = fog_density
+	env.fog_mode = Environment.FOG_MODE_DEPTH
+	env.fog_density = haze_max
+	env.fog_depth_begin = haze_begin
+	env.fog_depth_end = haze_end
+	env.fog_depth_curve = haze_curve
+	env.fog_sky_affect = 0.0
 	env.tonemap_exposure = exposure

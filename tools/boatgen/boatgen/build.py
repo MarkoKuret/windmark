@@ -29,6 +29,11 @@ def paint_zones(geoms, boot):
     return part
 
 
+def rig_aft(cls):
+    """The mast's aft face at the deck (x from the transom)."""
+    return float(cls["rig"]["mast_x"]) - float(cls["rig"]["mast_chord"])
+
+
 def _drop_small(part, size):
     out = Part()
     for mat, gs in part.slots.items():
@@ -69,6 +74,11 @@ class Boat:
             self.hydro = self.hull.hydro(241)
             self.app = Appendages(cls, self.hull)
         self.deck = Deck(cls, self.hull)
+        if self.deck.has_cabin:
+            d = self.deck
+            log(f"  coachroof: {d.xk1 - d.xk0:.2f} m from the cockpit to where it meets the deck "
+                f"({rig_aft(cls) - d.xk1:.2f} m aft of the mast), {d.cab_h:.2f} m high aft, steepest slope "
+                f"{np.degrees(d.cab_slope_max()):.1f} deg")
         self.parts = {}
         self._build()
         log(f"  built in {time.time() - t0:.1f} s")
@@ -102,6 +112,8 @@ class Boat:
         self.parts["hardware"] = hw["hardware"]
         self.parts["hardware"].extend(hardware.rudder_fittings(self.app, self.deck, self.hull, (self.hull.L / 12) ** 0.7))
         self.leads = hw["leads"]
+        self.rope_paths = hw["rope_paths"]
+        self.lifelines = hw["lifelines"]
         self.parts["boom"].extend(hw["boom_hardware"])
         self.parts["mainsheet"] = hw["mainsheet"]
         self.mainsheet_ends = hw["mainsheet_ends"]

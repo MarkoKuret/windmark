@@ -5,7 +5,7 @@
   "sails": {
     "main": {"cloth": "dacron", "color": "#e2e2dc", "number": "#14284f"},
     "headsail": {"cloth": "dacron", "color": "#e2e2dc", "number": "#14284f"},
-    "spinnaker": {"cloth": "nylon", "color": "#14284f", "design": "head", "radius": 0.24, "number": "#e2e2dc",
+    "spinnaker": {"cloth": "nylon", "color": "#2a62ad", "design": "head", "radius": 0.24, "number": "#e2e2dc",
       "colors": ["#c3c5c7"]}
   },
   "ropes": {

@@ -56,8 +56,11 @@ the window; the HUD, the menus and everything 2D stay at the window's native res
 1.0 (edge-adaptive upscale and sharpening) on the Forward+ and Mobile renderers, bilinear where FSR is not there
 (Compatibility); at 100 % nothing is upscaled. **Auto** picks 67 % when the window is larger than 1920 × 1200
 pixels (wider than 1920 or taller than 1200), or larger than 1280 × 800 on a HiDPI screen (the system scales the
-screen, as on Retina Macs); otherwise 100 %. So a MacBook's 2560 × 1600 Retina screen renders the 3D at
-1715 × 1072 and the Steam Deck's 1280 × 800 at full size. Auto is resolved again whenever the display settings
+screen, as on Retina Macs); otherwise 100 %. Auto then caps the 3D view at **2.33 million pixels** (the
+1930 × 1206 measured at 60 fps on tier M on a MacBook Air M1, 2026-10-01): if the chosen scale would draw more, it
+drops to `sqrt(2 330 000 / window pixels)`. So a MacBook's 2560 × 1600 Retina screen renders the 3D at 1715 × 1072,
+a 3840 × 2160 window at 53 % (2035 × 1145), a 6880 × 2880 window (a 3440 × 1440 monitor that macOS runs at 2×) at
+34 % (2359 × 987), and the Steam Deck's 1280 × 800 at full size. Auto is resolved again whenever the display settings
 apply and when the window changes size. The setting is independent of the quality tier.
 
 **Capture preset.** For recording vertical clips. **Portrait 9:16** makes the window 1080 × 1920 pixels (windowed,

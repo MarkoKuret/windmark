@@ -94,6 +94,8 @@ const RENDER_SCALES := [0.0, 0.5, 0.67, 0.75, 0.85, 1.0]
 const AUTO_RENDER_SCALE := 0.67
 const AUTO_LARGE := Vector2i(1920, 1200)
 const AUTO_LARGE_HIDPI := Vector2i(1280, 800)
+## Auto's cap on the 3D view's pixels (menus.md §3): 1930 x 1206, measured at 60 fps on tier M on a MacBook Air M1
+const AUTO_PIXEL_BUDGET := 2330000.0
 ## the capture presets (menus.md §3) and the portrait window, px
 const CAPTURE_PRESETS := ["off", "portrait"]
 const PORTRAIT_SIZE := Vector2i(1080, 1920)
@@ -338,11 +340,14 @@ static func capture_window_size(usable: Vector2i) -> Vector2i:
 
 
 ## Auto's render scale for a window of `px` pixels on a screen the system scales by `screen_scale` (menus.md §3):
-## 67 % above 1920 x 1200, or above 1280 x 800 on a HiDPI screen; else 100 %.
+## 67 % above 1920 x 1200, or above 1280 x 800 on a HiDPI screen; else 100 %; then capped so the 3D view draws at
+## most AUTO_PIXEL_BUDGET pixels.
 static func auto_render_scale(px: Vector2i, screen_scale: float) -> float:
 	var big := px.x > AUTO_LARGE.x or px.y > AUTO_LARGE.y
 	var hidpi := screen_scale > 1.0 and (px.x > AUTO_LARGE_HIDPI.x or px.y > AUTO_LARGE_HIDPI.y)
-	return AUTO_RENDER_SCALE if big or hidpi else 1.0
+	var s := AUTO_RENDER_SCALE if big or hidpi else 1.0
+	var n := float(maxi(px.x, 1)) * float(maxi(px.y, 1))
+	return minf(s, sqrt(AUTO_PIXEL_BUDGET / n))
 
 
 ## The render scale in effect for a window: the command-line override, the setting, or Auto resolved.

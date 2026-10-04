@@ -201,10 +201,11 @@ func test_render_scale(s: Settings) -> void:
 	a.apply_render_scale(root)
 	t.ok(root.scaling_3d_mode == Viewport.SCALING_3D_MODE_BILINEAR and absf(root.scaling_3d_scale - 1.0) < 1e-6,
 		"100 %: no upscaler")
-	for c in [[Vector2i(2560, 1600), 2.0, 0.67], [Vector2i(2560, 1600), 1.0, 0.67], [Vector2i(3840, 2160), 1.0, 0.67],
+	for c in [[Vector2i(2560, 1600), 2.0, 0.67], [Vector2i(2560, 1600), 1.0, 0.67], [Vector2i(2880, 1800), 2.0, 0.67],
+			[Vector2i(3840, 2160), 1.0, 0.5301], [Vector2i(6880, 2880), 1.0, 0.3430],
 			[Vector2i(1920, 1200), 1.0, 1.0], [Vector2i(1920, 1080), 1.0, 1.0], [Vector2i(1280, 800), 1.0, 1.0],
 			[Vector2i(1280, 800), 2.0, 1.0], [Vector2i(1440, 900), 2.0, 0.67], [Vector2i(2560, 1080), 1.0, 0.67]]:
-		t.near(Settings.auto_render_scale(c[0], c[1]), c[2], 1e-9, "Auto at %s, screen scale %.1f" % [c[0], c[1]])
+		t.near(Settings.auto_render_scale(c[0], c[1]), c[2], 1e-3, "Auto at %s, screen scale %.1f" % [c[0], c[1]])
 	# the portrait capture preset (menus.md §3): Auto picks 100 %, the window is 1080 x 1920 or the largest 9:16
 	a.render_scale = 0.0
 	a.capture_preset = "portrait"

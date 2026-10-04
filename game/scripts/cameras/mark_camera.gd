@@ -70,4 +70,5 @@ func update(t: CamTypes.Target, _o: CamTypes.Options, dt: float) -> CamTypes.Vie
 	v.xform = CamTypes.look(eye, aim)
 	v.fov = FOV
 	v.near = CamTypes.near_for(eye.y)
+	v.focus = eye.distance_to(aim)
 	return v

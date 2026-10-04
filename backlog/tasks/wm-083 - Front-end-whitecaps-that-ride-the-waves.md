@@ -1,9 +1,11 @@
 ---
 id: WM-083
 title: 'Front end: whitecaps that ride the waves'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-10-03 17:10'
+updated_date: '2026-10-04 11:41'
 labels:
   - front-end
   - look
@@ -20,8 +22,8 @@ Whitecaps were removed on 2026-10-03: a scrolling noise texture thresholded on c
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 water_render.md §4.4 specifies the per-component foam, its combination and the density levels, with constants
-- [ ] #2 Caps move with their crests and fade in and out, no popping or sliding in a 60 s headless preview sequence
-- [ ] #3 Cover rises with the wind and with the puffs; no caps under 8 kn
-- [ ] #4 Cost on tier M stays within the GPU budget (tests/livery_cost.py style proxy or measured)
+- [x] #1 water_render.md §4.4 specifies the per-component foam, its combination and the density levels, with constants
+- [x] #2 Caps move with their crests and fade in and out, no popping or sliding in a 60 s headless preview sequence
+- [x] #3 Cover rises with the wind and with the puffs; no caps under 8 kn
+- [x] #4 Cost on tier M stays within the GPU budget (tests/livery_cost.py style proxy or measured)
 <!-- AC:END -->

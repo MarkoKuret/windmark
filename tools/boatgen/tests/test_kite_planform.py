@@ -62,7 +62,8 @@ class KitePlanformTest(unittest.TestCase):
 
 
     def test_defaults_unchanged(self):
-        """With no shaping keys the planform is the one the proportions gave before the keys existed."""
+        """With no shaping keys the planform is the standard proportions' (fixtures/kite_planform_ref.json; the
+        asymmetric entries rewritten with the proportions of 2026-10-04, docs/specs/sail_visuals.md 14)."""
         with open(os.path.join(HERE, "fixtures", "kite_planform_ref.json")) as f:
             ref = json.load(f)
         n = 0
@@ -117,14 +118,16 @@ class ShapingKeysTest(unittest.TestCase):
             with self.subTest(edge=edge):
                 depth, at = self.round_of(self.base, edge)
                 self.assertAlmostEqual(depth, self.base.shape[edge]["round"], 2)
-                self.assertAlmostEqual(at, ROUND_POS[edge], delta=0.05)
+                pos = FLYING["spinnaker_asym"].get("round_pos", ROUND_POS[edge]) if edge != "foot" else ROUND_POS[edge]
+                self.assertAlmostEqual(at, pos, delta=0.05)
 
     def test_mid_girth(self):
         s = self.fly(mid_girth_frac=0.70)
         self.assertAlmostEqual(s.measure["mid_girth"] / s.measure["foot"], 0.70, 3)
         self.assertLess(s.measure["rule_area"], self.base.measure["rule_area"])
-        s = self.fly(mid_girth=5.0)
-        self.assertAlmostEqual(s.measure["mid_girth"], 5.0, 3)
+        mg = self.base.measure["mid_girth"] + 0.5
+        s = self.fly(mid_girth=mg)
+        self.assertAlmostEqual(s.measure["mid_girth"], mg, 3)
         self.assertGreater(s.measure["rule_area"], self.base.measure["rule_area"])
         # below half the foot: the solver hollows the edges
         s = self.fly(mid_girth_frac=0.45)

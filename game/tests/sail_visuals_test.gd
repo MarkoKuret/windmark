@@ -72,7 +72,7 @@ func mk(impl: String, kind: int, mode: int, extra: Dictionary = {}, grid: Packed
 	var defaults := {
 		K.MAIN: {"fill_gain": 0.6, "fill_curve": 4.0, "flutter_amp": 0.15, "twist_top": 0.07},
 		K.HEADSAIL: {"fill_gain": 0.75, "fill_curve": 1.2, "flutter_amp": 0.07, "twist_top": 0.105},
-		K.ASYM: {"fill_gain": 1.0, "fill_curve": 1.0, "flutter_amp": 1.0, "twist_top": 0.0, "camber": 0.26,
+		K.ASYM: {"fill_gain": 1.0, "fill_curve": 1.0, "flutter_amp": 1.0, "twist_top": 0.45, "camber": 0.27,
 			"tack_line_max": 0.04},
 		K.SYM: {"fill_gain": 1.5, "fill_curve": 1.5, "flutter_amp": 1.0, "twist_top": 0.0, "camber": 0.26},
 	}
@@ -215,11 +215,13 @@ func _spec_tests(impl: String) -> void:
 	for c in [[1.0, 0.5], [1.543, 0.5], [2.0, 0.648], [3.087, 1.0], [8.0, 1.0]]:
 		ak.update(UP, 1.0, -60.0 * d2r, 0.0, 0.0, 100.0 * d2r, c[0])
 		var la: PackedVector3Array = ak.local_shape()
-		# §6.3 at mid height (p_i = 1): camber d = k_c F, the chord shortened to s = 1 / (1 + 8/3 d^2)
-		var dd: float = 0.26 * c[1]
+		# §6.3 at mid height (p_i = 1 - 0.55 (0.2 / 0.7)^2, q_i = 0.8): camber d = k_c F p_i, the chord shortened
+		# to s = 1 / (1 + 8/3 d^2), the mid-chord vertex at sin(PI 0.5^q_i) of the camber
+		var pm := 1.0 - 0.55 * pow(0.2 / 0.7, 2.0)
+		var dd: float = 0.27 * c[1] * pm
 		var sr := 1.0 / (1.0 + 8.0 / 3.0 * dd * dd)
 		var disp := la[5 * 11 + 5].distance_to(Vector3(1.5 * sr, 4.5, 0.0))
-		t.near(disp / (sr * 3.0) / 0.26, c[1], 0.01 * c[1], "aws %.3f m/s: F" % c[0])
+		t.near(disp / (sr * 3.0 * sin(PI * pow(0.5, 0.8))) / (0.27 * pm), c[1], 0.01 * c[1], "aws %.3f m/s: F" % c[0])
 		t.near(la[5 * 11 + 10].x, 3.0 * sr, 1e-4, "aws %.3f m/s: mid-height leech at %.3f of the flat chord" % [c[0], sr])
 
 	_camber_tests(impl)
@@ -852,7 +854,9 @@ func _clearance() -> void:
 						for tr in [[1.0, 1.0], [0.85, 1.0], [1.2, 1.0], [0.85, 1.2]]:
 							for jib_up in ([false, true] if jib_i >= 0 else [false]):
 								var sv := _sails_view(data, awa, ap.y, tws, fi, jib_i if jib_up else -1, tr)
-								bv.apply_sails(sv, sv, 1.0, 1.0 / 60.0)
+								# a steady state: the eased twist side (§7.1) settled on this tack
+								for k in (20 if tr == [1.0, 1.0] and not jib_up else 1):
+									bv.apply_sails(sv, sv, 1.0, 0.1 if k < 19 else 1.0 / 60.0)
 								r["ease"] = maxf(r["ease"], fp.shape.get_ease())
 								var what := "twa %d tws %.0f %s trim %.2f/%.2f jib %s" % [twa_deg, kn,
 									"stbd" if side > 0 else "port", tr[0], tr[1], "up" if jib_up else "down"]

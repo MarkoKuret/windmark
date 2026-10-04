@@ -21,7 +21,9 @@ from .common import (ALBEDO_MAX, F32, Rng, band, blur, fbm, hash01, hex_lin, ins
 from .geometry import sail_plan
 
 CLOTHS = ["dacron", "laminate", "nylon"]
-STYLE_ROUGH = [0.55, 0.38, 0.45]
+STYLE_ROUGH = [0.82, 0.55, 0.68]
+# the relief image (data_format.md §8.5): height at white (255) over flat (128), m
+RELIEF_M = 0.004
 STYLE_BACKLIGHT = [0.30, 0.20, 0.50]
 
 
@@ -341,11 +343,11 @@ def bake_sail(sail, liv, loa, insignia, nation_asp, number_asp, long_side=2048, 
         f = np.floor(ang / 0.26)
         hh_ = np.sin((f + seed) * 12.9898) * 43758.5453
         rf = r0 * (0.75 + 0.25 * (hh_ - np.floor(hh_)))
-        k1 = inside(r - 0.42 * r0, px)
-        k2 = inside(r - 0.68 * r0, px)
+        k1 = inside(r - 0.5 * r0, px)
+        k2 = inside(r - 0.72 * r0, px)
         k3 = inside(r - rf, px)
         layers += 0.9 * (k1 + k2) + 0.7 * k3
-        stitch += 0.7 * (band(r - 0.42 * r0, 0.0006, px) + band(r - 0.68 * r0, 0.0006, px) + band(r - rf, 0.0006, px) * 0.6)
+        stitch += 0.7 * (band(r - 0.5 * r0, 0.0006, px) + band(r - 0.72 * r0, 0.0006, px) + band(r - rf, 0.0006, px) * 0.6)
         side = _period(ang, 0.26) * r
         stitch += 0.5 * band(side, 0.0006, px) * k3 * (1 - k2)
 
@@ -398,11 +400,13 @@ def bake_sail(sail, liv, loa, insignia, nation_asp, number_asp, long_side=2048, 
         if nf[0] > 0:
             nf = -nf
         nb = pl["battens"]
+        nfull = pl["battens_full"]
+        short = 0.45 * float(np.linalg.norm(clew - tack))
         for k in range(1, nb + 1):
             f = k / (nb + 1)
             b = clew + dl * ll * f
             full = b[0] / max(-nf[0], 0.2)
-            lb = full - 0.06 if k == nb else (0.22 + 0.10 * f) * full
+            lb = full - 0.06 if k > nb - nfull else min(short, full - 0.06)
             # t: metres forward of the leech's chord line (the roach reaches up to about 0.8 m aft of it)
             t = (PX - b[0]) * nf[0] + (PY - b[1]) * nf[1]
             across = (PX - b[0]) * dl[0] + (PY - b[1]) * dl[1]
@@ -511,15 +515,15 @@ def bake_sail(sail, liv, loa, insignia, nation_asp, number_asp, long_side=2048, 
     # panel to panel: each panel's cloth differs a little (weave direction, batch)
     hp = np.sin((pid + 7.0 * kind) * 12.9898 + 78.233) * 43758.5453
     pv = (hp - np.floor(hp)).astype(F32)
-    alb = col * (1.0 + 0.07 * (pv - 0.5))[..., None]
-    rough = STYLE_ROUGH[style] + 0.1 * (pv - 0.5)
+    alb = col * (1.0 + 0.03 * (pv - 0.5))[..., None]
+    rough = STYLE_ROUGH[style] + 0.08 * (pv - 0.5)
     # a slow drift across each panel (cloth off a roll is never perfectly even)
     alb *= (1.0 + 0.012 * fbm(PX / 1.5, PY / 1.5, S + 1, 2))[..., None]
     fibre_cov = np.zeros((H, W), F32)
     fib = hex_lin(e["fibre"])
     if style == 0:
         # woven polyester: a faint warm cast and the odd thicker thread (the weave itself is the game's tiling detail)
-        alb = mix(alb, alb * np.array([1.0, 0.985, 0.95], F32), 0.6)
+        alb = alb * np.array([1.0, 0.992, 0.975], F32)
         across_grain = PX * gy_ - PY * gx_
         along_grain = PX * gx_ + PY * gy_
         slub = np.clip(fbm(across_grain / 0.012, along_grain / 0.8, S + 2, 2) * 3.0 - 1.6, 0, 1)
@@ -537,8 +541,8 @@ def bake_sail(sail, liv, loa, insignia, nation_asp, number_asp, long_side=2048, 
         # where the load is highest the yarns lie densest: darker bands fanning from the corners
         dens = smoothstep(0.1, 0.8, fbm(radial / 0.35, (PX * gx_ + PY * gy_) / 3.0, S + 12, 2) + 0.3)
         fibre_cov = np.clip(np.maximum(yarn * (0.6 + 0.6 * dens), xply), 0, 1)
-        alb = mix(alb, fib, 0.9 * fibre_cov)
-        alb = mix(alb, fib, 0.12 * dens)
+        alb = mix(alb, fib, 0.45 * fibre_cov)
+        alb = mix(alb, fib, 0.06 * dens)
         # the film's sheen differs where the yarns run
         rough += 0.08 * fibre_cov
     else:
@@ -546,7 +550,9 @@ def bake_sail(sail, liv, loa, insignia, nation_asp, number_asp, long_side=2048, 
         alb *= (1.0 + 0.02 * fbm(PX / 0.3, PY / 0.3, S + 4, 2))[..., None]
 
     # seams, tapes and patches read greyer per ply; stitching as thread lines
-    alb *= (1.0 - 0.045 * np.minimum(layers, 4.0))[..., None] * (1.0 - 0.42 * np.clip(stitch, 0, 1))[..., None]
+    # (white thread on white cloth hardly shows; dark thread on a laminate does)
+    thread = 0.30 if style == 1 else 0.12
+    alb *= (1.0 - 0.015 * np.minimum(layers, 4.0))[..., None] * (1.0 - thread * np.clip(stitch, 0, 1))[..., None]
     rough += 0.04 * np.minimum(layers, 3.0)
     # webbing: woven polyester tape, a little darker and matt
     web_col = alb * 0.82 if luminance(base_col) > 0.3 else np.maximum(alb * 1.15, 0.05)
@@ -584,13 +590,13 @@ def bake_sail(sail, liv, loa, insignia, nation_asp, number_asp, long_side=2048, 
             ca_, sa_ = np.cos(ang), np.sin(ang)
             dist = (fy - y) * ca_ - (fx - rng.uniform(0, 3)) * sa_ + 0.02 * fbm(fx / 0.7, fy * 0 + y, S + 5 + int(y * 10), 2)
             strength = 0.55 + 0.45 * fbm(fx / 1.2, np.full_like(fx, y), S + 6 + int(y * 10), 2)
-            sharp = 0.004 if style == 1 else 0.012
-            crease_h += (0.0012 if style == 1 else 0.0013) * np.exp(-np.abs(dist) / sharp) * strength
+            sharp = 0.006 if style == 1 else 0.012
+            crease_h += (0.0004 if style == 1 else 0.0006) * np.exp(-np.abs(dist) / sharp) * strength
             crease_w = np.maximum(crease_w, band(dist, 0.0012, px) * np.clip(strength, 0, 1))
             y += rng.uniform(0.40, 0.70)
     else:
         # a kite is stuffed into its bag: short random creases in every direction
-        for k in range(int(30 + 2.5 * height)):
+        for k in range(int(15 + 1.25 * height)):
             cx, cy = rng.uniform(PX.min(), PX.max()), rng.uniform(PY.min(), PY.max())
             ang = rng.uniform(0, np.pi)
             ln = rng.uniform(0.3, 1.2)
@@ -598,7 +604,7 @@ def bake_sail(sail, liv, loa, insignia, nation_asp, number_asp, long_side=2048, 
             along = (PX - cx) * ca_ + (PY - cy) * sa_
             across = -(PX - cx) * sa_ + (PY - cy) * ca_
             env = np.clip(1 - np.abs(along) / ln, 0, 1)
-            crease_h += 0.0007 * np.exp(-np.abs(across) / 0.01) * env * rng.uniform(0.4, 1.0)
+            crease_h += 0.0004 * np.exp(-np.abs(across) / 0.012) * env * rng.uniform(0.4, 1.0)
     # stress wrinkles radiating from the clew and the head
     wr = np.zeros((H, W), F32)
     for a, reach, amp in ((clew, 0.9 if kind == 1 else 0.6, 0.0016), (head, 0.5, 0.0010), (tack, 0.35, 0.0008)):
@@ -613,7 +619,8 @@ def bake_sail(sail, liv, loa, insignia, nation_asp, number_asp, long_side=2048, 
     hgt += 0.00028 * blur(np.minimum(layers, 6.0), 0.7) - 0.00012 * np.clip(stitch, 0, 1)
 
     # creases show in the albedo as faint lines (stress-whitened film on a laminate, a soft fold on woven cloth)
-    alb = mix(alb, np.minimum(alb * 1.25 + 0.03, ALBEDO_MAX), (0.35 if style == 1 else 0.12) * crease_w)
+    if style == 1:
+        alb = mix(alb, np.minimum(alb * 1.15 + 0.02, ALBEDO_MAX), 0.15 * crease_w)
 
     # ---- dirt: a little grime along the foot and at the tack, handled and dragged across the deck
     foot_d = smoothstep(0.55, 0.0, d_foot) * (0.6 + 0.4 * fbm(PX / 0.4, PY / 0.25, S + 9, 3))
@@ -626,7 +633,7 @@ def bake_sail(sail, liv, loa, insignia, nation_asp, number_asp, long_side=2048, 
                              * rng.uniform(0.3, 0.8))
     dirt = np.clip(0.55 * foot_d + smudges * np.clip(0.5 + fbm(PX / 0.06, PY / 0.06, S + 10, 2), 0, 1), 0, 1)
     grime = np.array([0.20, 0.18, 0.14], F32) * max(luminance(base_col) * 1.2, 0.05)
-    alb = mix(alb, grime, 0.16 * dirt)
+    alb = mix(alb, grime, 0.10 * dirt)
 
     # ---- the light through the cloth (ORM blue): fewer plies, fibres, marks and stuck-on cloth let less through
     trans = STYLE_BACKLIGHT[style] * np.exp(-0.8 * layers) * (1 - 0.6 * fibre_cov * (0.35 if style == 1 else 0.0))
@@ -671,13 +678,28 @@ def bake_sail(sail, liv, loa, insignia, nation_asp, number_asp, long_side=2048, 
         a = push_pull(a, valid)
         out[sd] = a if sd == "port" else a[:, ::-1].copy()
     trans *= (1 - 0.5 * tt) * (1 - 0.3 * sticker)
-    nrm = normal_from_height(hgt, px, px)
-    nrm = push_pull(nrm, valid)
-    nrm /= np.linalg.norm(nrm, axis=-1, keepdims=True)
-    rough = np.where(ins_both > 0.5, 0.40, rough)
+    relief = relief_from_height(push_pull(hgt[..., None], valid)[..., 0])
+    nrm = normal_from_relief(relief, round(px, 6))     # the texel size as layout.json holds it
+    rough = np.where(ins_both > 0.5, 0.60, rough)
     orm = push_pull(np.stack([occ, rough, np.clip(trans, 0, 1)], -1), valid)
-    info = {"id": sail["id"], "type": pl["type"], "cloth": CLOTHS[style], "shear": [cs, sn], "rect": list(rect),
+    info = {"id": sail["id"], "type": pl["type"], "cloth": CLOTHS[style], "relief_m": RELIEF_M, "shear": [cs, sn],
+            "rect": list(rect),
             "size": [W, H], "texel_m": px, "text": {k: v for k, v in lay.items() if k != "arc_ok"},
             "arc_ok": lay["arc_ok"]}
-    return {"albedo_port": out["port"], "albedo_stbd": out["stbd"], "normal": nrm, "orm": orm, "info": info,
-            "valid": valid}
+    return {"albedo_port": out["port"], "albedo_stbd": out["stbd"], "normal": nrm, "orm": orm, "relief": relief,
+            "info": info, "valid": valid}
+
+
+# ----------------------------------------------------------------------------------------------------------------
+# the relief image (data_format.md §8.5): the hand-editable source of the normal map
+
+def relief_from_height(h, relief_m=RELIEF_M):
+    """The 8-bit relief image (H, W) of a height field in metres: 128 flat, 255 at +relief_m, 1 at -relief_m."""
+    return np.clip(np.round(128.0 + 127.0 * np.asarray(h, dtype=np.float64) / relief_m), 1, 255).astype(np.uint8)
+
+
+def normal_from_relief(relief, px, relief_m=RELIEF_M):
+    """The tangent-space normal map (H, W, 3) of a relief image (8-bit greyscale, white raised) with square texels of
+    px metres. The decoded height is smoothed over about a texel, so the 8-bit steps leave no terraces."""
+    h = (np.asarray(relief, dtype=F32) - 128.0) / 127.0 * relief_m
+    return normal_from_height(blur(h, 1.0), px, px)

@@ -111,6 +111,8 @@ class SailShape : public godot::RefCounted {
   std::vector<float> a_, l_, u_, h_, uc_;  // per vertex
   std::vector<float> c_, amid_, hrow_;     // per row
   std::vector<float> drow_, srow_;         // per row, per update: camber over chord and chord shortening
+  std::vector<float> prow_, trow_;         // per row: the camber's height profile (§6.3, §6.4), the twist (§7, per update)
+  std::vector<float> prof_;                // per vertex: the chordwise camber profile (§6.3, §6.4)
   // §7.4 rest distances from vertex k to its neighbour along the row (k + 1), up the column (k + cols), and the
   // two diagonals up (k + cols + 1, k + cols - 1); scratch per vertex for the push
   std::vector<float> ec_, er_, e1_, e2_;

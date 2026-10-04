@@ -102,9 +102,13 @@ void main() {
     vec3 diff = SUN * (max(ndl, 0.0) + max(-ndl, 0.0) * trans * (0.75 + 0.75 * fwd)) / PI;
     vec3 amb = sky_ambient(N);
     vec3 H = normalize(V + L);
-    float shin = 2.0 / max(pow(rough, 4.0), 1e-3) - 2.0;
-    float spec = pow(max(dot(N, H), 0.0), shin) * (shin + 8.0) / (8.0 * PI);
-    vec3 c = a * (amb + diff) + 0.04 * spec * max(ndl, 0.0) * SUN;
+    float nh = dot(N, H);
+    float nl = max(ndl, 0.0);
+    float nv = max(dot(N, V), 1e-4);
+    float ia = 1.0 / max(rough, 0.05);
+    float shd = (2.0 + ia) * pow(max(1.0 - nh * nh, 0.0), 0.5 * ia) / (2.0 * PI);
+    vec3 spec = (0.03 + 0.35 * a) * shd / (4.0 * max(nl + nv - nl * nv, 1e-3)) * nl * SUN;
+    vec3 c = a * (amb + diff) + spec;
     frag = vec4(c, 1.0);
 #ifdef CLOTH_DEBUG
     frag = vec4(layers / 4.0, stitch, panel, 1.0) * 3.0;

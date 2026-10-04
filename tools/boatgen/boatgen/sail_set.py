@@ -87,6 +87,36 @@ def smax(x, b):
     return (x + b) * (x + b) / (4 * b)
 
 
+def asym_height(h):
+    """6.3: the asymmetric spinnaker's camber over its largest by row height h: deepest at 0.3 of the height,
+    0.8 on the foot, 0.45 at the head."""
+    h = np.asarray(h, dtype=np.float64)
+    lo = (0.3 - h) / 0.3
+    hi = (h - 0.3) / 0.7
+    return np.where(h < 0.3, 1 - 0.2 * lo * lo, 1 - 0.55 * hi * hi)
+
+
+def asym_draft(h):
+    """6.3: the exponent of the chordwise profile by row height: 0.8 (draft 0.42 of the chord) up to 0.55 of the
+    height, 1.4 (draft 0.61) at the head."""
+    h = np.asarray(h, dtype=np.float64)
+    t = np.clip((h - 0.55) / 0.45, 0.0, 1.0)
+    return 0.8 + 0.6 * t * t * (3 - 2 * t)
+
+
+def asym_profile(uc, q):
+    """6.3: the chordwise camber profile sin(pi uc^q), 0 at the luff and the leech, 1 at the draft."""
+    return np.sin(np.pi * np.power(np.clip(uc, 0.0, 1.0), q))
+
+
+def asym_twist(awa):
+    """7.3: the share of twist_top an asymmetric spinnaker carries at the apparent wind angle awa: none to 60
+    deg, all from 130 to 155 deg, none again dead downwind (180 deg), so a gybe round the bow passes untwisted."""
+    t = min(max((abs(awa) - np.radians(60.0)) / np.radians(70.0), 0.0), 1.0)
+    r = min(max((np.pi - abs(awa)) / np.radians(25.0), 0.0), 1.0)
+    return t * t * (3 - 2 * t) * r * r * (3 - 2 * r)
+
+
 class SailSet:
     """One sail: configure from the flat grid and the look, then `update` places it (mid-surface in `self.mid`)."""
 
@@ -133,6 +163,7 @@ class SailSet:
         self.mid = Q.copy()
         self.loc = np.stack([self.a, self.l, np.zeros_like(self.a)], -1)
         self.ease = 0.0
+        self.trow = np.zeros(rows)
         self.push_max = 0.0     # the largest local push of the last update (7.4), m
         self._secs = []
         # 7.4: distances between grid neighbours on the rest cloth (along a row, up a column, the two diagonals)
@@ -189,15 +220,27 @@ class SailSet:
             w = np.array([uw @ ap * 0.5 / self.fill_curve, uw @ lp * 0.5, uw @ np_])
             w = w / np.linalg.norm(w) if w @ w > 1e-12 else np.array([0, 0, 1.0])
             fc = self.camber * min(F, 1.15)
-            hh = 2 * self.hrow - 1
-            drow = fc * (1 - 0.45 * hh * hh)
-            srow = 1 / (1 + 8 / 3 * drow * drow)
             i = np.repeat(np.arange(rows), cols)
+            if self.kind == ASYM:
+                drow = fc * asym_height(self.hrow)
+                prof = asym_profile(self.uc, asym_draft(self.hrow)[i])
+            else:
+                hh = 2 * self.hrow - 1
+                drow = fc * (1 - 0.45 * hh * hh)
+                prof = 4 * self.uc * (1 - self.uc)
+            srow = 1 / (1 + 8 / 3 * drow * drow)
             a0 = a.reshape(rows, cols)[:, 0][i]
             s = srow[i]
-            e = drow[i] * s * self.C[i] * 4 * self.uc * (1 - self.uc)
+            e = drow[i] * s * self.C[i] * prof
             loc = np.stack([a0 + (a - a0) * s, l, np.zeros_like(a)], -1) - e[:, None] * w[None]
         self.loc = loc
+        # 7.1 to 7.3: the twist of each row toward leeward (an asymmetric spinnaker: opening with the AWA)
+        # (signed, rad; the asymmetric spinnaker's on the side away from the wind at once: it is zero where awa
+        # changes sign)
+        if self.kind == ASYM:
+            self.trow = -sgn(awa) * self.twist_top * asym_twist(awa) * np.sqrt(self.hrow)
+        else:
+            self.trow = tl * self.twist_top * self.hrow ** 1.5
         hd = s_t(self.head)
         clearing = self.clearance > 0
         self.ease = 0.0
@@ -210,7 +253,7 @@ class SailSet:
         mid = np.empty_like(self.mid)
         rest = self.tack + loc[:, :1] * self.ah + loc[:, 1:2] * self.lh + loc[:, 2:] * self.nh
         for r in range(rows):
-            th = base + tl * self.twist_top * self.hrow[r] ** 1.5 + es
+            th = base + self.trow[r] + es
             xr = Xf.about(piv, ax, th) * s_t
             mid[r * cols:(r + 1) * cols] = xr(rest[r * cols:(r + 1) * cols])
         self.mid = mid
@@ -225,7 +268,7 @@ class SailSet:
 
     def _sections(self, obstacles, s_t, piv, ax, base, tl):
         lc = self.loc[self.cols - 1]
-        xr = Xf.about(piv, ax, base + tl * self.twist_top * self.hrow[0] ** 1.5) * s_t
+        xr = Xf.about(piv, ax, base + self.trow[0]) * s_t
         cl = xr(self.tack + self.ah * lc[0] + self.lh * lc[1] + self.nh * lc[2])
         sk = sgn((cl - self.mast_step) @ PORT)
         bow = FWD + PORT * (0.3 * sk)
@@ -259,16 +302,18 @@ class SailSet:
         Qs = M[r] + (M[r + 1] - M[r]) * t
         Qs = Qs - UP[None] * Qs[:, 2:3]
         ph = p - UP * pz
-        best, bj, bs, bq, bd = np.inf, 0, 0.0, None, None
+        best, bj, bs, bq, bd, bh = np.inf, 0, 0.0, None, None, 1.0
         for j in range(cn - 1):
             q0, d = Qs[j], Qs[j + 1] - Qs[j]
             l2 = d @ d
-            sp = min(max((ph - q0) @ d / l2, 0.0), 1.0) if l2 > 1e-12 else 0.0
+            # the last segment runs on past the leech by 2 clearances (7.4)
+            hi = 1.0 + 2 * self.clearance / np.sqrt(l2) if j == cn - 2 and l2 > 1e-12 else 1.0
+            sp = min(max((ph - q0) @ d / l2, 0.0), hi) if l2 > 1e-12 else 0.0
             q = q0 + d * sp
             d2 = (ph - q) @ (ph - q)
             if d2 < best:
-                best, bj, bs, bq, bd = d2, j, sp, q, d
-        if (bj == 0 and bs <= 0) or (bj == cn - 2 and bs >= 1) or bd @ bd < 1e-12:
+                best, bj, bs, bq, bd, bh = d2, j, sp, q, d, hi
+        if (bj == 0 and bs <= 0) or (bj == cn - 2 and bs >= bh) or bd @ bd < 1e-12:
             v = ph - bq
             ln = np.linalg.norm(v)
             return ln, (v / ln if ln > 1e-6 else o["f"])
@@ -301,7 +346,7 @@ class SailSet:
             i = 0
             while True:
                 lc = self.loc[i * cols + cols - 1]
-                th = base + tl * self.twist_top * self.hrow[i] ** 1.5 + es * delta
+                th = base + self.trow[i] + es * delta
                 pt = (Xf.about(piv, ax, th) * s_t)(self.tack + self.ah * lc[0] + self.lh * lc[1] + self.nh * lc[2])
                 cp = self._margin(pt, hd)
                 for o in self._secs:

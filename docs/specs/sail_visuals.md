@@ -108,8 +108,8 @@ every size of boat.
 | `flutter_amp` | – | 0.15 | 0.07 | 0.08 | 1.0 | 1.0 | flutter amplitude: main and headsails as a fraction of `Sa` (metres = `flutter_amp·Sa`); spinnakers a multiplier of §6.3, §6.4 |
 | `flutter_rate` `r_f` | rad/s per m/s | size rule | size rule | size rule | size rule | size rule | flutter phase speed per m/s of `aws` |
 | `flutter_rate_max` `w_max` | rad/s | size rule | … | … | … | … | cap of the phase speed |
-| `twist_top` | rad | 0.070 (4°) | 0.105 (6°) | 0.140 (8°) | 0 | 0 | extra rotation of the head row to leeward (§7.1) |
-| `camber` `k_c` | – | – | – | 0.12 | 0.26 | 0.26 | largest camber over chord: flying sails at mid height when full (§6.3), the cap of the code zero (§6.2) |
+| `twist_top` | rad | 0.070 (4°) | 0.105 (6°) | 0.140 (8°) | 0.45 (26°) | 0 | extra rotation of the head row to leeward (§7.1; the asymmetric spinnaker's grows with the AWA, §7.3) |
+| `camber` `k_c` | – | – | – | 0.12 | 0.27 | 0.26 | largest camber over chord: flying sails when full, at a third of the height (asymmetric) or mid height (symmetric) (§6.3), the cap of the code zero (§6.2) |
 | `tack_line_max` | – | – | – | – | 0.04 | – | largest tack swing on a fixed sprit, fraction of `Sl` (§7.3) |
 | `furl_radius` | m | – | size rule | size rule | – | – | radius of a furled sail's roll (§8.3) |
 
@@ -123,7 +123,9 @@ clearance   = 0.042 * loa                          // m, flying sails off the ot
 Fixed constants of the clearance (§7.4): push slope `k_p = 0.3` (m of push lost per m of cloth), ease threshold
 `P_e = 3·c` (the leech depth the push takes on before the sail is eased), ease cap `e_max = 0.35` rad (20°).
 The `camber` key replaces an earlier `depth` (0.30, 0.35 of the flat row chord, applied without shortening the
-chord), which drew the kites about 40 % too deep and too wide; a `depth` key in a look block is ignored.
+chord), which drew the kites about 40 % too deep and too wide; a `depth` key in a look block is ignored. The
+asymmetric spinnaker's `camber` 0.27 and `twist_top` 0.45 (2026-10-04, were 0.26 and 0) follow the measured J/80
+flying shapes of §14.2.
 Fixed constants of the shapes: `c_hook = 0.0369260386` (headsail leech hook), foot fade rate 8 (§6.1), flutter
 spatial frequency 1 rad/m (§6.1, §6.2), flake frequency 12 and flake amplitude 0.02 (§8.2).
 
@@ -207,14 +209,19 @@ a' = a ; l' = l
 ### 6.3 Asymmetric spinnaker
 The flat grid carries no depth, so the flying shape is built from a camber field extruded **down the apparent
 wind**, which keeps the belly to leeward on either gybe and during a gybe round the bow. The cloth does not
-stretch: as a row takes its camber its chord shortens so that the arc keeps the flat length.
+stretch: as a row takes its camber its chord shortens so that the arc keeps the flat length. The camber's height
+profile, its chordwise profile (draft forward, a curled luff) and the twist (§7.3) follow the full-scale
+measurements of §14.2.
 ```
-p_i = 1 - 0.45 * (2 * h_i - 1)^2                            // h_i: h of the row's luff vertex; 1 at mid height,
-                                                             // 0.55 at the foot and the head
+h_i = h of the row's luff vertex
+p_i = h_i < 0.3 ? 1 - 0.2 * ((0.3 - h_i) / 0.3)^2            // deepest at 0.3 of the height,
+                : 1 - 0.55 * ((h_i - 0.3) / 0.7)^2           // 0.8 on the foot, 0.45 at the head
 d_i = k_c * min(F, 1.15) * p_i                              // camber over chord of row i
-s_i = 1 / (1 + 8/3 * d_i^2)                                 // chord shortening of a parabolic arc of that camber
+s_i = 1 / (1 + 8/3 * d_i^2)                                 // chord shortening of an arc of that camber
+t   = clamp((h_i - 0.55) / 0.45, 0, 1)
+q_i = 0.8 + 0.6 * t * t * (3 - 2 * t)                       // draft exponent: 0.8 to 0.55 of the height, 1.4 at the head
 a_s = a0_i + (a - a0_i) * s_i                               // a0_i: a of the row's luff vertex
-e   = d_i * s_i * C_i * 4 * uc * (1 - uc)                   // m, zero at the luff and leech of each row
+e   = d_i * s_i * C_i * sin(PI * uc^q_i)                    // m, zero at the luff and leech of each row
 U   = (cos(awa), -sin(awa), 0)                              // unit vector toward the wind, boat frame
 (Ap, Lp, Np) = the sail axes after the placement of §7.3 (no twist)
 w   = normalize(dot(U, Ap) * 0.5 / K,  dot(U, Lp) * 0.5,  dot(U, Np))     // (a, l, n) components, unit
@@ -224,20 +231,26 @@ m   = (w.a + 0.1 * I2 * sin(q),  w.l,  w.n + I2 * cos(q))
 (a', l', n') = (a_s, l, 0) - e * m
 ```
 - Camber over chord: `d_i·sqrt(1 − w.a²)` (the part of `w` along the chord shifts the draft, it adds no depth).
-  With `k_c = 0.26` and the sail full (`F = 1`): 23 to 26 % at mid height, 12 to 14 % at the foot and the head,
-  the range of a real reaching and running asymmetric. In light air (`F = 0.5`) it sags to half.
-- The shortening makes a full row 13 % (mid height) to 5 % (foot) narrower than its flat chord; the clew comes
-  in toward the luff with it, so the set kite shows about the projected size of a real one instead of the flat
-  planform plus its depth.
+  With `k_c = 0.27` and the sail full (`F = 1`): 27 % at a third of the height, 22 % on the foot, 26 % at mid
+  height, 18 % at five sixths and 12 % at the head, the J/80's 20 to 31 % low down and 15 to 18 % at the top
+  (§14.2). In light air (`F = 0.5`) it sags to half.
+- The profile `sin(π·uc^q)` puts the deepest point at `uc = 0.5^(1/q)`: 0.42 of the chord over the lower half of
+  the sail (measured 0.39 to 0.49) and 0.61 at the head (measured 0.61 to 0.67). Its slope at the luff is steep,
+  so the luff curls round into the belly (entry angle about 50° on the grid; measured 50 to 130°).
+- The shortening makes a full row 16 % (a third of the height) to 4 % (the head) narrower than its flat chord; the
+  clew comes in toward the luff with it, so the set kite shows about the projected size of a real one instead of
+  the flat planform plus its depth.
 - `F` inflates the sail with the apparent wind; the `0.5` weights keep the belly mostly across the sail (`n`) and
   only a little up the luff and aft along the chord; `K` flattens it further fore and aft.
-- Luffing makes the belly breathe: the flutter modulates the extrusion, strongest where the depth is (mid chord),
-  travelling aft.
+- Luffing makes the belly breathe: the flutter modulates the extrusion, strongest where the depth is, travelling
+  aft.
 
 ### 6.4 Symmetric spinnaker
 As §6.3 with `F` from the sheet angle (§5.1: strapped in it goes flat, eased it fills slightly beyond the nominal
-camber, to 29 % at mid height with the defaults), plus a **luff collapse** along the windward edge (column 0, the
-pole side) while it luffs:
+camber, to 29 % at mid height with the defaults), but symmetric fore and aft: the height profile
+`p_i = 1 − 0.45·(2·h_i − 1)²` (deepest at mid height, 0.55 at the foot and the head) and the chordwise profile
+`4·uc·(1 − uc)` in place of `sin(π·uc^q_i)`; plus a **luff collapse** along the windward edge (column 0, the pole
+side) while it luffs:
 ```
 (a', l', n') from §6.3 with F = fabs(fill(sin(beta), G, K))
 g  = max(0, I - uc) * (1 - (2*h - 1)^2)                    // band of width I from the luff, zero at head and foot
@@ -286,8 +299,15 @@ at `β`:
   the sidecar `bowsprit_end` to the swung tack.
 - **Code zero**: `γ_e = 0` (tacked hard to the sprit end).
 
-Then each vertex `P` (from §3.2) is placed as `P'' = R(Lh', T', β − γ_e) · (S·P − T') + T'` with `T' = S·T`,
-`Lh' = S·Lh`. `wrap_pi` of `β` at ±π (an asymmetric spinnaker gybing round the bow) is the same rotation, so the
+Then each vertex `P` (from §3.2) of row `i` is placed as `P'' = R(Lh', T', β − γ_e + tl·τ_i) · (S·P − T') + T'`
+with `T' = S·T`, `Lh' = S·Lh`, `tl` the eased side toward leeward of §7.1 and the row twist
+```
+tau_i = twist_top * pow(h_row_i, 1.5)                                   // code zero, symmetric spinnaker (0)
+tau_i = twist_top * smoothstep(0, 1, (|awa| - 60°) / 70°) * sqrt(h_row_i)  // asymmetric spinnaker
+```
+The asymmetric spinnaker does not twist on a close reach and opens with the apparent wind angle: from 130° AWA its
+upper rows turn up to `twist_top` (26°) further to leeward, most of it low down (`sqrt`), as the J/80's sections do
+running (10° at a sixth of the height, 26° at the top, §14.2) while the head stays on the luff. `wrap_pi` of `β` at ±π (an asymmetric spinnaker gybing round the bow) is the same rotation, so the
 sail moves continuously through the gybe.
 
 **Pivot.** A flying sail turns about its own luff through its tack: the sprit end (asymmetric spinnaker, code
@@ -332,7 +352,9 @@ clearance x of a point P (with its push direction g):
   z = dot(P, up); none (x = INF) outside [z_0 - c, z_last]
   row pair r, r + 1 with z_r <= z < z_(r+1) (row 0 below z_0), t = (z - z_r) / (z_(r+1) - z_r) clamped to [0, 1]
   Q_j  = lerp(M[r][j], M[r + 1][j], t)                      // the obstacle's section at that height
-  nearest point Q of the polyline Q_0 .. Q_last to P in the horizontal plane
+  nearest point Q of the polyline Q_0 .. Q_last to P in the horizontal plane, its last segment run on past the
+  leech by 2c (so a flying sail's leech meeting the obstacle's leech end is kept on the bow-facing side
+  instead of wrapping round behind it)
   on a segment:  g = its horizontal normal on f's side,   x = dot(P - Q, g)
   at an end:     g = horizontal unit (P - Q),             x = |P - Q| horizontal
 mast: x = horizontal distance of P from the mast line, g radial (to leeward, sgn(awa)·port, when P is on it)
@@ -361,7 +383,7 @@ then the mast: P = P + g * (c_P + smax(x - c_P) - x)
   moved.
 - The ease starts only when the leech is more than `P_e` inside the margin (a kite sheeted well inside the main, or
   the main eased onto it), and turns the sail just far enough to bring that depth back to `P_e`, at most `e_max`.
-  At the core's optimum both boats need little or no ease (under 1° on the reaches of test 20; the reach of the
+  At the core's optimum both boats need little or no ease (under 3° on the reaches of test 20; the reach of the
   example above takes a local push of 0.59 m on wm7, 1.25 m on wm12, and no ease).
 - The height slice makes it a horizontal distance: the sails stand close to vertical, so it is within a few per
   cent of the true one.
@@ -503,7 +525,7 @@ sail material uses no normal map).
   beyond at 4 Hz; outside the view frustum not at all (a sphere around the sail against the camera's frustum
   planes), and at once on coming back into view. The drivers `φ`, `s_b` and `tl` advance every frame either way.
 - **Material**: opaque, back faces culled (each layer faces its own side), with a back-light term (the sun through
-  the cloth). With the class's baked sail textures (§11.2) the sail is drawn from them on the simple path of
+  the cloth) and a cloth sheen instead of a plastic highlight (§11.5). With the class's baked sail textures (§11.2) the sail is drawn from them on the simple path of
   `shaders/sail_baked.gdshader`; without them, the generator's `sailcloth` slot (its colour and weave texture) with
   the procedural cloth of §11.1 and the procedural livery. Either way a copy per boat carries the boat's sail number
   and nation letters (§11.2). Opaque sails need no draw-order sorting. Shadows: `water_render.md`
@@ -533,13 +555,14 @@ material of its own gets:
 | panels | cross-cut: seams square to the leech every 0.9 m | tri-radial: fans from head, tack and clew, cross-cut in the middle, 1.1 m at the fan's reach | tri-radial, 0.9 m plus 0.03 m per metre of LOA over 7 |
 | seam | 16 mm, two rows of stitching | 18 mm | 10 mm |
 | fine structure | the generator's weave texture (60 %) | scrim: load-path fibres every 22 mm along the panel, a diagonal grid every 45 mm | ripstop threads every 6 mm |
-| roughness, through one ply | 0.55, 0.30 | 0.38, 0.20 | 0.45, 0.50 |
+| roughness, through one ply | 0.82, 0.30 | 0.55, 0.20 | 0.68, 0.50 |
 
 On every sail: edge tapes (luff 35 mm on the main, 45 mm on headsails, 20 mm on spinnakers; leech 25 mm; foot
 30 mm; the head of a square-top main), reinforcement patches at the tack (0.8 r), clew and head (r = 0.06 luff,
-0.045 on spinnakers) and the top of the leech of a square-top main (0.6 r): two full plies with radial fingers of
-staggered length. The main has four batten pockets square to the leech at 1/5 to 4/5 of its length, the top one
-full length, the others 22 to 30 % of the way to the luff. Jibs and genoas carry three tell-tales 0.27 to 0.44 m
+0.045 on spinnakers; the baked sails use the sizes of §11.2) and the top of the leech of a square-top main (0.6 r):
+two full plies with radial fingers of staggered length. The main has four batten pockets square to the leech at
+1/5 to 4/5 of its length, the top one full length, the others 22 to 30 % of the way to the luff (the baked sails:
+§11.2). Jibs and genoas carry three tell-tales 0.27 to 0.44 m
 aft of the luff at 1/4, 1/2 and 3/4 of the height.
 
 Shading: seams, tapes, patches and pockets count as extra plies. In front light every ply makes the cloth 4.5 %
@@ -569,6 +592,36 @@ and the batten pockets with their battens on the main, draft stripes on the main
 headsails (red on port, green on starboard), the class insignia as stuck-on cloth on both sides of the main, fold
 creases from flaking (crumpled creases on a spinnaker), stress wrinkles at the clew, head and tack, and a little
 grime along the foot.
+
+**The baked cloth** (2026-10-04, after the owner's "too plastic, over-exaggerated, too dark"; references §14.4).
+What the images hold and how strongly, so the cloth reads as fabric from the chase camera and stays quiet at race
+distance:
+- **Colour**: the class sail set's colours as given (white dacron `#e4e4de`, a linear albedo of 0.77; a laminate's
+  film mid grey with its load yarns darker; spinnakers in clear dyed nylon colours): nothing near black unless it is
+  bare carbon. Plies show only faintly in front light (1.5 % greyer per ply, up to four; white thread on white
+  cloth 12 % at most, dark thread on a laminate 30 %), panels differ by ±1.5 % in albedo, and the warm cast of
+  woven polyester is 2.5 % in blue. The laminate's yarns cover at most 45 % of a texel's colour and its load bands
+  darken it by 6 %. Against the sun every ply still cuts the light through the cloth by `exp(−0.8·plies)`: seams,
+  patches and battens show as darker shapes in backlight, as on a real sail.
+- **Roughness** (ORM green): dacron 0.82, laminate film 0.55 (a slight sheen), nylon 0.68, ±0.04 from panel to
+  panel; plies a little rougher, the insignia's stuck-on cloth 0.6.
+- **Panels** as §11.1 at real scale: 0.9 m cross-cut dacron panels square to the leech, 1.1 m laminate gores,
+  spinnakers with radial head, tack and clew gores and horizontal panels between; 16, 18 and 10 mm seams.
+- **Corners**: primary patch 0.025 luff (two plies), outer layer with fingers 0.05 luff (0.03 on spinnakers, primary
+  0.015), the tack at 0.8 of that; webbing and rings as before.
+- **Battens** on the main: four pockets under 10 m LOA with the top two full length, five from 10 m with the top
+  three full length (J/70: five, top three; Melges 24: four, top two), evenly spaced up the leech; the short ones
+  run 0.45 of the foot in from the leech; pockets 56 mm wide.
+- **Creases**: in the relief only where real sails crease: flaking folds on woven polyester (soft, 0.6 mm, every
+  0.4 to 0.7 m roughly parallel to the foot), a fainter set on laminates (rolled, not flaked), short soft creases on
+  spinnakers (half as many as before, 0.4 mm), stress wrinkles fanning from the clew, head and tack, and a ridge
+  along each batten. No crease lines in the albedo except a faint whitening on laminate folds.
+- **Relief image** `<sail>_relief.png` (greyscale, the port view, data_format.md §8.5): the height of the cloth,
+  white raised, black sunk, 128 flat, ±4 mm over the 8-bit range. The normal map is made from it (`tools/liverybake`
+  `--normals-from-relief`, and on every run of the tool when the relief exists), so the owner paints creases, seams
+  and wrinkles in grey instead of editing the normal map.
+- **Fine structure**: the tiling detail (weave, film with scrim, ripstop) at millimetre scale; mipmapped, so it
+  fades to its mean colour with distance and never shimmers.
 
 **Numbers per boat**: the nation letters and the sail number go in the row slots of the sails' `layout.json` (the
 baker places them by the rules below, with room for the class's widest nation and number): each row of the boat's
@@ -770,6 +823,24 @@ pivots, material slots, uv1 and sail grids. Each boat loads every level that exi
   surfaces by part and slot (the same uv1 atlas), shared between the levels, so a switch changes the triangles, never
   the paint. The rope materials (§11.3, `data_format.md` §8.7) likewise.
 
+### 11.5 Light on the cloth
+Both sail shaders (`sail.gdshader`, `sail_baked.gdshader`) light the cloth the same way: Lambert diffuse from the
+front, the light through the cloth from behind (§11.1, `0.75 + 0.75·max(0, −V·L)^4`, shadowed), the sky's
+ambient and reflections from the engine with `SPECULAR` 0.5 (F0 0.04, a polymer) and the cloth's roughness, and
+**no Blinn-Phong highlight**: cloth has no mirror-like lobe. In its place a fabric sheen (the "Charlie" sheen of
+Estevez and Kulla, 2017, with the visibility term of Neubelt and Pettineo), which is zero looking straight at
+the cloth and rises at grazing angles, as the fibres scatter light forward:
+```
+a  = ROUGHNESS                                  // 0.82 dacron, 0.55 laminate, 0.68 nylon
+s2 = max(1 - dot(N, H)^2, 0)
+D  = (2 + 1 / a) * pow(s2, 0.5 / a) / (2 * PI)
+Vs = 1 / (4 * (NdotL + NdotV - NdotL * NdotV))
+SPECULAR_LIGHT += (0.03 + 0.35 * ALBEDO) * D * Vs * NdotL * ATTENUATION * LIGHT_COLOR
+```
+One `pow` per light, as the highlight it replaces, so the cost is unchanged. The plastic look came from the
+highlight and the low roughness (0.38 to 0.55 before): a smooth, tight lobe and sky reflections at grazing angles on
+the coloured kites.
+
 ## 12. Tests
 
 Synthetic grids for exact numbers: a rectangle in `y = 0` with the luff on `x = 0` from `z = 0` to `z = 9` m, the
@@ -792,7 +863,8 @@ Flutter phase `φ = 0` unless stated.
    Phase speed at `aws = 6 m/s`: `wm7` (LOA 7.2 m, `r_f = 2.90`, `w_max = 9.04`) `w = 9.04 rad/s`, period 0.70 s;
    a 12 m boat `w = 3.6 rad/s`, period 1.75 s. Crests move toward the leech.
 7. **Asym inflation.** `aws ≤ 1.543 m/s` (3 kn): `F = 0.5`; `aws = 2 m/s` (3.9 kn): `F = 0.648`; `aws ≥ 3.087 m/s` (6 kn): `F = 1`; with `I = 0` a
-   mid-chord vertex moves by `d_i·s_i·C_i` off its shortened flat position (±1 %), `d_i = k_c·F·p_i` (§6.3), and
+   mid-chord vertex moves by `d_i·s_i·C_i·sin(π·0.5^q_i)` off its shortened flat position (±1 %),
+   `d_i = k_c·F·p_i` (§6.3; at mid height `p_i = 0.955`, `q_i = 0.8`), and
    the leech of each row comes in to `s_i` of its flat chord.
 8. **Asym leeward belly.** For `awa` = ±60°, ±120°, ±170° with `β` at the optimum on the leeward side, every inner
    vertex of the placed kite lies on the leeward side of the vertical plane through its row's luff vertex, parallel
@@ -822,7 +894,8 @@ Flutter phase `φ = 0` unless stated.
     and against the sun.
 17. **Camber.** Rectangle, asym defaults, `aws` 6 kn, `awa` 90° and 150° (`β` at the leeward optimum): the largest
     distance of a row from its luff–leech line over its chord is 0.20–0.30 at mid height and smaller at the foot
-    and the head; symmetric the same at full fill (at most 0.30); a code zero (`camber` 0.12) at `β` 25°, 40° and
+    and the head (asymmetric 0.23 and 0.25 at mid height, 0.19 and 0.21 on the foot); symmetric the same at full
+    fill (at most 0.30); a code zero (`camber` 0.12) at `β` 25°, 40° and
     60° 0.07–0.12, never above 0.12.
 18. **Clearance.** On the generated `wm7` and `wm12` (both kites and the code zero), over TWA 60–180° (20° steps),
     TWS 6, 12, 22 kn, both tacks and the trims optimum, 15 % over-sheeted and 20 % eased (apparent wind from the
@@ -830,9 +903,11 @@ Flutter phase `φ = 0` unless stated.
     the flying sail crosses a triangle of the main or the jib or comes within the mast's radius of its line, no
     edge of theirs crosses the flying sail, and the smallest distance of a flying-sail vertex from the main, the
     jib and the mast, away from the head fade, is at least `0.9·c`; the test prints the smallest distance found.
+    Each config is a steady state: the eased twist side of §7.1 is settled on its tack before the check.
     Sheeting the flying sail from 60 % to 130 % of its optimum over 2 s (TWA 100°, 12 kn, main eased 20 %, jib up)
     moves no vertex more than `0.05·Sa` between frames at 60 fps (no pop as the local push starts, grows or hands
-    over to the ease). The test also prints the largest ease found (a few degrees at most: the push does the work).
+    over to the ease). The test also prints the largest ease found (9 to 10° on the over-sheeted kite with the main
+    eased since the broader kite of §14.3, well under `e_max`; at the optimum trims none: the push does the work).
 19. **Generator parity.** The generator's preview poses and `kite_preview` set the sails with a port of §5.1,
     §6.1 to §6.4 and §7 (`tools/boatgen/boatgen/sail_set.py`: `up` phase, no luff shiver, headsails drawing) and
     write each pose's wind, angles and placed mid-surfaces to `<id>.sets.json`. BoatView, native and reference,
@@ -876,3 +951,106 @@ Flutter phase `φ = 0` unless stated.
 - The cloth style comes from the sail type and the LOA (§11.1) until the class file can name it (a
   `visual.sails.<id>.cloth` key in the generator's `look` block).
 - Crew, winches and tell-tales follow the sail `motion` output (`sails.md` §7) and are specified with the crew.
+
+## 14. References
+
+Real sails the look is checked against (collected 2026-10-04 for the sail look pass, owner: "too plastic, panels not
+accurate, details over-exaggerated, colours too dark; the kite's shape is off"). Our classes: `wm7` is J/70 to
+Melges 24 size (LOA 7.2 m), `wm12` ClubSwan 50 to TP52 size scaled down (LOA 12 m).
+
+### 14.1 Asymmetric spinnaker planform
+
+Rule measurements (World Sailing ERS: `SLU`, `SLE`, `SF` along the edges, `SHW` between the mid points of luff and
+leech, three-quarter width between the 3/4 points, widths as straight lines on the flat sail):
+
+| boat | source | SLU | SLE | SF | SHW | 3/4 width | SLE/SLU | SF/SLU | SHW/SF | 3/4 / SF |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| J/70 | International J/70 class rules 2019, G.5.3 (max) | 10.80 | 8.80 | 5.70 | 5.56 | | 0.81 | 0.53 | 0.98 | |
+| Melges 24 | International Melges 24 class rules 2020, spinnaker table | 11.29 to 11.59 | 10.00 to 11.08 | 6.00 to 6.30 | 5.86 max | 3.70 max | 0.86 to 0.96 | 0.53 to 0.55 | 0.93 to 0.98 | 0.59 to 0.62 |
+| J/80 | Deparday et al., Ocean Engineering 127 (2016), table 2 (design) | 12.18 | 9.65 | 7.30 | 6.85 (stripe at 1/2) | 5.05 (stripe at 2/3) | 0.79 | 0.60 | 0.94 | 0.69 at 2/3 |
+| ClubSwan 50 | ORC one-design certificate CLUBSWAN50 (2021) | 24.96 | 19.91 | 12.67 | 12.62 | | 0.80 | 0.51 | 1.00 | |
+| J/80 | J/80 class rules 2024, G.5 | ≤ 12.20 | | | ≥ 0.65 SF | | | | | |
+| TP52 | TP52 rule 2025 | luff at least 5 % longer than the leech | | | | | | | | |
+
+The J/80 sail's stripe lengths (Deparday table 2, flat, at 1/6 to 5/6 of the luff and leech): 7.45, 7.60, 6.85,
+5.05, 2.50 m, that is 1.02, 1.04, 0.94, 0.69, 0.34 of the foot: a real asymmetric is as wide as its foot up to a
+third of its height and still 0.6 of it at three quarters (Melges 24), with broad shoulders and a blunt head. ORC
+counts an asymmetric with `SHW/SFL` above 0.85 as the normal case (certificate note). Rule area over `SLU²`: J/70
+0.39, Melges 24 0.42, J/80 0.46, ClubSwan 50 0.38.
+
+### 14.2 Asymmetric spinnaker flying shape
+
+Measured on a J/80 at full scale by photogrammetry (Deparday et al. 2016, table 3; camber and draft over the
+section's chord, twist the horizontal angle of the section's chord from the foot's, entry the angle between the luff
+tangent and the chord):
+
+| section | AWA 64°: camber | draft | twist | entry | AWA 124°: camber | draft | twist | entry |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| foot | 20 % | 0.49 | | 50° | 31 % | 0.41 | | 61° |
+| 1/6 | 25 % | 0.44 | 3° | 118° | 31 % | 0.46 | 10° | 84° |
+| 2/6 | 27 % | 0.39 | 6° | 129° | 28 % | 0.46 | 18° | 90° |
+| 3/6 | 26 % | 0.44 | 6° | 97° | 24 % | 0.48 | 23° | 59° |
+| 4/6 | 18 % | 0.45 | 3° | 44° | 20 % | 0.49 | 25° | 38° |
+| 5/6 | 15 % | 0.61 | 4° | 49° | 18 % | 0.67 | 26° | 51° |
+
+- Deepest at a third of the height reaching, near the foot running; the top sixth still 15 to 18 %.
+- The draft lies forward of mid chord (0.39 to 0.49) and moves aft only at the head (0.61 to 0.67).
+- Reaching the sail barely twists (3 to 6°); running it twists steadily with height to 26° at the top: the clew
+  comes 2.3 m forward and 1.4 m higher from AWA 64° to 141°, the luff rotates to windward and the leech opens at
+  three quarters height.
+- The luff curls: the entry angle is 50 to 130°, the luff "slightly folded" at tight angles. Trim guides (North
+  Sails, "Trim an asymmetric spinnaker on a sport boat"; Quantum, asymmetrical trim guide) sail it with a curl
+  "flicking into the luff every few seconds", a bigger curl on a broader reach, the tack line eased "a couple of
+  feet" to let the sail rotate out from behind the main.
+- The projected area, square to the wind, is about 0.75 of the sail area at AWA 64° and less at deeper angles.
+
+### 14.3 Our kite against the references
+
+wm7 kite (wm12 a2 within 0.01 of the same ratios; flying shape from `tools/boatgen` `sail_set.py`, the game's shape,
+at kite_preview's reach, AWA 80°, sheet 32°, 6 m/s, and run, AWA 140°, sheet 64°, 4 m/s; camber over chord, draft
+and twist of the rows at 0, 1/6 .. 5/6 of the luff):
+
+| | before (2026-09-30) | after (this pass) | references |
+| --- | --- | --- | --- |
+| SLE / SLU, SF / SLU | 0.89, 0.56 | 0.85, 0.56 | 0.79 to 0.96, 0.51 to 0.60 |
+| widths at 1/6, 1/3, 1/2, 2/3, 3/4, 5/6 of SF | 0.97, 0.91, 0.76, 0.55, 0.42, 0.29 | 1.00, 0.98, 0.88, 0.68, 0.53, 0.37 | 1.02, 1.04, 0.94, 0.69, 0.59, 0.34 |
+| rule area wm7, wm12 (m²); over SLU² | 43.1, 126.2; 0.36 | 48.7, 142.7; 0.39 | 0.38 to 0.46 |
+| reach camber foot to 5/6 | 17, 21, 21, 18, 16, 13 % | 23, 25, 24, 18, 13, 11 % | 20, 25, 27, 26, 18, 15 % |
+| run camber foot to 5/6 | 18, 23, 26, 27, 24, 16 % | 24, 27, 27, 26, 23, 17 % | 31, 31, 28, 24, 20, 18 % |
+| draft (run) | 0.47 to 0.54 everywhere | 0.40 to 0.48, 0.55 at 5/6 | 0.41 to 0.49, 0.67 at 5/6 |
+| twist at 1/6 .. 5/6 (run) | 0, 0, 0, 2, 12° | 9, 14, 18, 21, 26° | 10, 18, 23, 25, 26° |
+| entry angle (run) | 32 to 43° | 50 to 54° (17° at 5/6) | 59 to 90° |
+| clew above the tack, reach / run (wm7) | 1.0 / 1.7 m | 1.7 / 2.3 m | the J/80's rises 1.4 m from AWA 64° to 141° |
+
+The reach's upper rows are flatter and more twisted than the J/80's because the clearance push of §7.4 bends the
+upper leech off the main there (that reach sheets the kite 21° inside the main). The mid girth stays a little under
+the class rules' (0.88 against 0.93 to 1.0 of the foot) and the foot a little long (0.56 of the luff) so the
+reaching clew stays aft of the mast (test 20). The kite areas grow by 13 % (wm7 43.0 to 48.5 m², wm12 126.0 to
+142.5 m²), still at the small end of the references over `SLU²`; `data/perf` was regenerated with the VPP.
+
+### 14.4 Sailcloth, panels and fittings
+
+| item | reference | used here |
+| --- | --- | --- |
+| cross-cut panels (woven polyester) | horizontal panels stacked foot to head, square to the leech (UK Sailmakers glossary "cross cut"); cloth comes in 36" and 54" rolls (Cruising World "Sailcloth 101") | 0.9 m panels square to the leech under 10 m LOA |
+| seams | 16 to 20 mm overlap with two rows of zigzag (sailmaker practice; broadseam about 1/2" per 30" in the shaping zone, 36" cloth) | 16 mm dacron, 18 mm laminate, 10 mm nylon |
+| tri-radial | radial gores from head, tack and clew meeting cross-cut centre panels (North Sails A1 asymmetric and S3 symmetric, tri-radial cut) | laminates from 10 m LOA and code zeros; spinnakers: radial head, tack and clew, horizontal panels between |
+| cloth weight and type | J/70 main and jib PET woven 235 g/m², spinnaker nylon 40 g/m²; Melges 24 spinnaker 40 g/m²; J/80 gennaker at least 32 g/m² | dacron, nylon |
+| laminate colour | racing sails are black where carbon is bare (North Sails "Why are racing sails black?", 3Di RAW black); taffeta-covered and Endurance laminates grey, white or gold | wm12 mid grey film over darker load yarns |
+| battens | J/70: 5 pockets, top 3 full length, lower 1.28 m inside; Melges 24: 4, top 2 full length; J/80: 4 | 4 pockets, top 2 full length (under 10 m LOA); 5, top 3 full length (from 10 m) |
+| corner reinforcement | J/70 headsail: primary clew reinforcement at most 210 mm; small-boat rule of thumb about 1" of patch per foot of edge (8 %), layers each a little smaller | primary 0.025 luff, outer layer with fingers 0.05 luff (spinnakers 0.03) |
+| class insignia | J/70: 610 × 320 mm on both sides of the main | 1.2 `h` high (§11.2) |
+| reflectance | fabrics reflect close to diffusely (Sadeghi et al., "A practical microcylinder appearance model for cloth rendering", ACM TOG 2013); a thin white ripstop nylon reflects only 0.25 of sunlight, the rest goes through (radiative cooling patent US 11,306,949, measured fabrics) | white dacron albedo 0.77 (the cap 0.8), nylon light through one ply 0.5 |
+
+Sources: [J/70 class rules](https://www.sailing.org/tools/documents/J70CR20181129-[24552].pdf),
+[Melges 24 class rules](https://www.sailing.org/tools/documents/M242020CR0806-%5B26384%5D.pdf),
+[J/80 class rules 2024](https://www.j80na.com/wp-content/uploads/2025/02/j80_class_rules_2024.pdf),
+[ClubSwan 50 ORC certificate](https://data.orc.org/public/od/2021/CLUBSWAN50.od.html?nav=1),
+[TP52 rule 2025](https://www.transpac52.org/wp-content/uploads/2024/11/2025-TP52-Rule.pdf),
+[Deparday et al. 2016](https://www.juliendeparday.com/wp-content/uploads/2023/03/Deparday2016_OE_FlyingShapePhotogrammetry.pdf),
+[North Sails sport boat asymmetric trim](https://www.northsails.com/en-us/blogs/north-sails-blog/trim-an-asymmetric-spinnaker-on-a-sport-boat),
+[Quantum asymmetrical trim guide](https://www.quantumsails.com/en/resources-and-expertise/articles/asymmetrical-trim-guide),
+[North Sails, why racing sails are black](https://www.northsails.com/en-us/blogs/north-sails-blog/why-are-racing-sails-black),
+[UK Sailmakers, cross cut](https://www.uksailmakers.com/encyclopedia/glossary/cross-cut/),
+[Cruising World, Sailcloth 101](https://www.cruisingworld.com/story/how-to/sail-materials-101/),
+[Sadeghi et al. 2013](http://graphics.ucsd.edu/~henrik/papers/practical_microcylinder_appearance_model_for_cloth_rendering.pdf).

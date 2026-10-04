@@ -140,9 +140,13 @@ void main() {
     vec3 diff = SUN * (max(ndl, 0.0) + max(-ndl, 0.0) * trans * (0.75 + 0.75 * fwd)) / PI;
     vec3 amb = sky_ambient(N);
     vec3 H = normalize(V + L);
-    float shin = 2.0 / max(pow(rough, 4.0), 1e-3) - 2.0;
-    float spec = pow(max(dot(N, H), 0.0), shin) * (shin + 8.0) / (8.0 * PI);
-    frag = vec4(a * (amb + diff) + 0.04 * spec * max(ndl, 0.0) * SUN, 1.0);
+    float nh = dot(N, H);
+    float nl = max(ndl, 0.0);
+    float nv = max(dot(N, V), 1e-4);
+    float ia = 1.0 / max(rough, 0.05);
+    float shd = (2.0 + ia) * pow(max(1.0 - nh * nh, 0.0), 0.5 * ia) / (2.0 * PI);
+    vec3 spec = (0.03 + 0.35 * a) * shd / (4.0 * max(nl + nv - nl * nv, 1e-3)) * nl * SUN;
+    frag = vec4(a * (amb + diff) + spec, 1.0);
 }
 """
 
@@ -281,9 +285,15 @@ void main() {
     vec3 diff = SUN * (max(ndl, 0.0) + max(-ndl, 0.0) * trans * (0.75 + 0.75 * fwd)) / PI;
     vec3 amb = sky_ambient(N);
     vec3 H = normalize(V + L);
-    float shin = 2.0 / max(pow(rough, 4.0), 1e-3) - 2.0;
-    float spec = pow(max(dot(N, H), 0.0), shin) * (shin + 8.0) / (8.0 * PI);
-    frag = vec4(a * (amb * orm.r + diff) + 0.04 * spec * max(ndl, 0.0) * SUN, 1.0);
+    float nh = dot(N, H);
+    float nl = max(ndl, 0.0);
+    float nv = max(dot(N, V), 1e-4);
+    float ia = 1.0 / max(rough, 0.05);
+    float shd = (2.0 + ia) * pow(max(1.0 - nh * nh, 0.0), 0.5 * ia) / (2.0 * PI);
+    vec3 spec = (0.03 + 0.35 * a) * shd / (4.0 * max(nl + nv - nl * nv, 1e-3)) * nl * SUN;
+    float Fe = 0.04 + (max(1.0 - rough, 0.04) - 0.04) * pow(1.0 - nv, 5.0);
+    vec3 sky_r = mix(sky_dir(reflect(-V, N)), mix(u_hor, u_zen, 0.5), clamp(rough * 1.3, 0.0, 1.0));
+    frag = vec4(a * (amb * orm.r * (1.0 - Fe) + diff) + spec + orm.r * sky_r * Fe * 0.9, 1.0);
 }
 """
 

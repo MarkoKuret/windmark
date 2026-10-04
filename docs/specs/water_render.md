@@ -183,15 +183,15 @@ shadows that are blue (lit by the sky), never black.
 
 The daytime light (`SkyRig`) keeps sun and sky in their clear-day proportion: on a level surface the sun gives
 about four fifths of the light and the sky the rest, and a white deck in full sun is about three times as bright
-as the horizon sky. Sun at 38° elevation; ambient and reflections from the sky; the fog goes to the horizon
-colour. Three weather presets, chosen by the venue's look file (or the race, which may override it); **fair** is
+as the horizon sky. Sun at 38° elevation; ambient and reflections from the sky; a distance haze toward the
+horizon colour (below). Three weather presets, chosen by the venue's look file (or the race, which may override it); **fair** is
 the default:
 
-| preset | sun energy, colour | sky horizon | sky zenith | clouds | exposure | fog density |
+| preset | sun energy, colour | sky horizon | sky zenith | clouds | exposure | haze begin, end, max, curve |
 | --- | --- | --- | --- | --- | --- | --- |
-| clear | 3.6, (1.0, 0.92, 0.80) | (0.50, 0.74, 1.10) | (0.05, 0.18, 0.62) | 0 | 0.50 | 3e-5 /m |
-| fair (default) | 3.6, (1.0, 0.92, 0.80) | (0.50, 0.74, 1.10) | (0.05, 0.18, 0.62) | 0.40 | 0.50 | 4e-5 /m |
-| hazy | 2.8, (1.0, 0.95, 0.88) | (0.80, 0.88, 1.00) | (0.24, 0.40, 0.74) | 0.25 | 0.55 | 1e-4 /m |
+| clear | 3.6, (1.0, 0.92, 0.80) | (0.50, 0.74, 1.10) | (0.05, 0.18, 0.62) | 0 | 0.50 | 300 m, 16 km, 0.45, 0.42 |
+| fair (default) | 3.6, (1.0, 0.92, 0.80) | (0.50, 0.74, 1.10) | (0.05, 0.18, 0.62) | 0.40 | 0.50 | 200 m, 14 km, 0.60, 0.40 |
+| hazy | 2.8, (1.0, 0.95, 0.88) | (0.80, 0.88, 1.00) | (0.24, 0.40, 0.74) | 0.25 | 0.55 | 150 m, 10 km, 0.80, 0.40 |
 
 Colours are linear. With these the sunlit white of a hull or sail (albedo 0.8) lands just under display white
 with its shading still visible, the sky between the zenith and 20° up is a saturated mid blue, and the horizon a
@@ -211,6 +211,24 @@ light blue, not grey.
   grey-blue (`mix(horizon, zenith, 0.35) · 0.85 + sun · 0.07`); thin edges toward the sun glow (silver lining);
   clouds fade into the horizon haze below 17°. The sky has no `TIME`, so Godot only redraws its radiance map
   when a preset value changes.
+- **Distance haze** (WM-084): aerial perspective, so far boats, marks and land fade softly toward the horizon and
+  the race area reads with depth and scale. Godot's depth fog (`FOG_MODE_DEPTH`) toward the horizon colour: at a
+  distance `d` from the camera the share of haze is `max · smoothstep(begin, end, d)^curve`. None on the near water
+  (the own boat and its neighbours stay crisp), rising from a few hundred metres, flattening toward `max` at the
+  horizon (the sea grid ends at 24 km). A curve below 1 makes it rise early. The share at a distance:
+
+  | preset | 500 m | 1 km | 3 km | 5 km | 10 km | horizon |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | clear | 2 % | 5 % | 15 % | 24 % | 38 % | 45 % |
+  | fair | 4 % | 9 % | 25 % | 36 % | 55 % | 60 % |
+  | hazy | 9 % | 17 % | 42 % | 60 % | 80 % | 80 % |
+
+  (The exponential fog it replaces gave fair 4 % at 1 km and 33 % at 10 km: the race area had almost no aerial
+  perspective.) The fog's sun scatter stays 0.1 (the haze a little brighter looking toward the sun). The sky is not
+  fogged (`fog_sky_affect` 0): Godot's fog on the sky is one colour over the whole dome and would wash out the
+  zenith, and the sky already reaches the horizon colour at the horizon and has its own sea haze below it, so the
+  hazed far sea meets the sky without a seam. No height fog, no aerial perspective from the radiance map. The
+  offline previews (`tests/water_preview.py`, `course_preview.py`) draw the same curve.
 - **Glow** on the brightest highlights only: additive, threshold 4.0 (linear radiance before the exposure: above
   the sunlit hulls, sails and clouds, below the sun disc and the glints on the water), HDR scale 2, intensity 0.5,
   normalized levels. Off on tier L, levels 3 to 5 on M, 2 to 5 on H (`SkyRig.apply_quality`).
@@ -418,6 +436,20 @@ colour-blind palettes).
 | screen-space reflections | no | no | yes |
 | sun shadows (§4.6) | 2 cascades to 60 m, no shadows on the sea | 4 cascades to 100 m, no shadows on the sea | 4 blended cascades to 150 m |
 | boat shadows drawn on the sea (§4.7) | own boat | own boat and the 6 nearest within 100 m | no (real shadows) |
+| anti-aliasing | SMAA 1x | SMAA 1x | SMAA 1x |
+
+Anti-aliasing (WM-084, owner decision 2026-10-03: keep it simple): SMAA 1x on every tier, no per-tier choice
+(FXAA only if SMAA turned out too costly for tier L; it did not need to). It is the project default
+(`rendering/anti_aliasing/quality/screen_space_aa` = SMAA, so every scene starts with it) and `Settings.apply_render_scale`
+keeps it on the root viewport with the upscaler (`Settings.screen_space_aa`). Godot runs it after tone mapping at
+the 3D render resolution and before a spatial upscaler (FSR 1.0, MetalFX spatial), which wants an antialiased input,
+so the render scale and SMAA go together. A temporal upscaler (FSR 2, MetalFX temporal, not used now) antialiases
+by itself: with one SMAA is off, not stacked. No MSAA or TAA. SMAA smooths the edges of masts, stays, sheets,
+sail edges and the horizon; like any post-process AA it does not stop sub-pixel crawl of lines thinner than a pixel
+(far rigging), which the boat LODs and rope widths handle. Cost: the SMAA paper gives 1.02 ms for SMAA 1x at
+1920 × 1080 on a GeForce GTX 470 (1.1 TFLOPS, 134 GB/s); scaled to the Steam Deck's 1280 × 800 (half the pixels)
+and its GPU (1.6 TFLOPS, 88 GB/s) that is about 0.35 ms if arithmetic bound and 0.8 ms if bandwidth bound per
+frame, on every tier (it does not depend on the scene); to be measured on the Deck.
 
 The tiers do not set the render scale (`menus.md` §3): it is its own setting, Auto by default (67 % above
 1920 × 1200 or on a HiDPI screen, else 100 %), and it scales every per-pixel cost here (the normal-map taps, the

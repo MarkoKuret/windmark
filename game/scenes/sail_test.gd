@@ -216,7 +216,7 @@ func _ready() -> void:
 	_update_target(0.0)
 	set_process(auto_process)
 	_add_pause_menu()
-	if Settings.render_scale_override > 0.0 or Settings.upscaler_override != "":
+	if Settings.render_scale_override > 0.0 or Settings.upscaler_override != "" or Settings.aa_override != "":
 		Settings.current().apply_render_scale(get_tree().root)
 	if no_hud:
 		hud.toggle_hidden()
@@ -277,7 +277,7 @@ func _apply_setup() -> void:
 ## `--course=<venue>/<id>` (race mode), `--seed=<n>` (0: from the clock), `--livery=<id>` (the player's livery),
 ## `--wind=<kn>`, `--wind-from=<deg>`,
 ## `--fake` (FakeSim), `--core`; measuring (hud.md §17): `--perf` (the frame-time overlay), `--perf-log=PATH`,
-## `--perf-seconds=N`, `--render-scale=0.67`, `--upscaler=fsr|bilinear|metalfx`, `--quality=L|M|H`, `--no-vsync`,
+## `--perf-seconds=N`, `--render-scale=0.67`, `--upscaler=fsr|bilinear|metalfx`, `--aa=off|fxaa|smaa`, `--quality=L|M|H`, `--no-vsync`,
 ## `--shadow-splits=0|2|4`, `--shadow-atlas=N`, `--shadow-distance=M`, `--shadow-soft=0..5`, `--no-wake-buffer`, `--no-boat-shadows`,
 ## `--no-drawn-shadows`, `--sea-grid=RINGSxSEGMENTS`, `--water-shader=l|m|h` and `--no-hud` (this run only, not saved);
 ## `--scenario=<id>` (a rules scenario of game/data/scenarios, or a .scenario.json path; race.md §14).
@@ -334,6 +334,8 @@ func _user_args() -> void:
 			Settings.render_scale_override = v / 100.0 if v > 1.0 else v
 		elif a.begins_with("--upscaler="):
 			Settings.upscaler_override = a.trim_prefix("--upscaler=").to_lower()
+		elif a.begins_with("--aa="):
+			Settings.aa_override = a.trim_prefix("--aa=").to_lower()
 		elif a.begins_with("--quality="):
 			Settings.quality_override = "LMH".find(a.trim_prefix("--quality=").to_upper())
 		elif a == "--no-vsync":

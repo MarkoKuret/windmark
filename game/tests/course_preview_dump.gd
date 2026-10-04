@@ -9,7 +9,10 @@ extends SceneTree
 const OUT := "res://generated/course_preview"
 const DT := 0.1
 
-## name, race mode, start (x, y, twa deg), seconds to run, camera: ["chase"] or ["look", eye ENU, at ENU, fov]
+## name, race mode, start (x, y, twa deg), seconds to run, camera: ["chase"] or ["look", eye ENU, at ENU, fov],
+## optional: {"fleet": boats, "seed": world seed, "sky": weather preset}. The haze shots (water_render.md §4.5) see
+## the same fleet from 1, 3 and 10 km downwind at one image scale (["from_boat", distance, eye height, fov]).
+const HAZE := {"fleet": 8, "seed": 84}
 const SHOTS := [
 	["island_chase", false, [140.0, 1800.0, 50.0], 20.0, ["chase", 1.35, 0.14, 0.4]],
 	["island_wide", false, [600.0, 1300.0, 45.0], 4.0, ["look", Vector3(760, 1500, 38), Vector3(60, 2380, 20), 45.0]],
@@ -18,6 +21,12 @@ const SHOTS := [
 	["committee", true, [], 150.0, ["look_mark", "rc", Vector3(-30, -24, 5), 50.0]],
 	["windward", true, [], 330.0, ["look_mark", "w", Vector3(-50, -170, 45), 50.0]],
 	["race_aerial", true, [], 262.0, ["aerial", 700.0]],
+	["haze_chase", true, [], 262.0, ["chase", 1.35, 0.14, 0.4], HAZE],
+	["haze_1km", true, [], 262.0, ["from_boat", 1000.0, 8.0, 20.0], HAZE],
+	["haze_3km", true, [], 262.0, ["from_boat", 3000.0, 15.0, 6.7], HAZE],
+	["haze_10km", true, [], 262.0, ["from_boat", 10000.0, 30.0, 2.0], HAZE],
+	["haze_3km_clear", true, [], 262.0, ["from_boat", 3000.0, 15.0, 6.7], {"fleet": 8, "seed": 84, "sky": "clear"}],
+	["haze_3km_hazy", true, [], 262.0, ["from_boat", 3000.0, 15.0, 6.7], {"fleet": 8, "seed": 84, "sky": "hazy"}],
 ]
 
 var _shot := -1
@@ -47,6 +56,9 @@ func _next() -> void:
 	_scene.race_mode = s[1]
 	_scene.core_settings = {"free_sailing_s": 10.0}
 	_scene.puffs = true
+	var opts: Dictionary = s[5] if s.size() > 5 else {}
+	_scene.fleet_size = opts.get("fleet", _scene.fleet_size)
+	_scene.world_seed = opts.get("seed", _scene.world_seed)
 	if not s[2].is_empty():
 		_scene.start_x = s[2][0]
 		_scene.start_y = s[2][1]
@@ -55,6 +67,8 @@ func _next() -> void:
 	# geometry, tests/wakes_native_test.gd)
 	(_scene.get_node("Wakes") as SeaWakes).use_reference = true
 	root.add_child(_scene)
+	if opts.has("sky"):
+		_scene.sky.set_preset_name(opts["sky"])
 	_scene.scripted_input = RawInput.new()
 	_t = 0.0
 
@@ -105,6 +119,16 @@ func _place_camera(c: Array) -> void:
 			var n: Node3D = _scene.course_view.mark_node(c[1])
 			var at := Frames.scene_to_enu(n.global_position)
 			_look(cam, at + c[2], at + Vector3(0, 0, 2.0), c[3])
+		"from_boat":
+			# downwind of the own boat (from the windward mark toward the start line), looking back at it
+			var cv: CourseView = _scene.course_view
+			var w := Frames.scene_to_enu(cv.mark_node("w").global_position)
+			var mid := (Frames.scene_to_enu(cv.mark_node("rc").global_position)
+					+ Frames.scene_to_enu(cv.mark_node("pin").global_position)) * 0.5
+			var down := Vector3(mid.x - w.x, mid.y - w.y, 0.0).normalized()
+			var p: SimSource.RenderPose = _scene.target.pose
+			var boat := Vector3(p.pos_x, p.pos_y, 4.0)
+			_look(cam, boat + down * c[1] + Vector3(0, 0, c[2]), boat, c[3])
 	sea.update_frame(cam.global_position, cam)
 	if _scene.course_view:
 		_scene.course_view.frame(0.0, cam.global_position, _scene.target.pose)
@@ -233,7 +257,9 @@ func _dump(name: String) -> void:
 		"sea_position": _v(sea.global_position),
 		"water": _uniforms(sea.material),
 		"sky": _uniforms(env.sky.sky_material),
-		"fog": {"density": env.fog_density, "color": _v(env.fog_light_color.srgb_to_linear())},
+		"fog": {"density": env.fog_density, "color": _v(env.fog_light_color.srgb_to_linear()), "mode": env.fog_mode,
+			"begin": env.fog_depth_begin, "end": env.fog_depth_end, "curve": env.fog_depth_curve,
+			"sun_scatter": env.fog_sun_scatter},
 		"tonemap": {"mode": env.tonemap_mode, "exposure": env.tonemap_exposure, "white": env.tonemap_white},
 		"glow": {"enabled": env.glow_enabled, "threshold": env.glow_hdr_threshold, "scale": env.glow_hdr_scale,
 			"intensity": env.glow_intensity},
@@ -270,7 +296,8 @@ func _dump(name: String) -> void:
 	_meshes(dir, _scene.venue_view, meshes)
 	if _scene.course_view:
 		_meshes(dir, _scene.course_view, meshes)
-	_meshes(dir, _scene.boat_view, meshes)
+	for v in _scene.boat_views:
+		_meshes(dir, v, meshes)
 	data["meshes"] = meshes
 	var f := FileAccess.open(dir.path_join("scene.json"), FileAccess.WRITE)
 	f.store_string(JSON.stringify(data, "  "))

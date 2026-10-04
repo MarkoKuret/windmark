@@ -274,6 +274,7 @@ Flags after `--`:
 | `--perf-seconds=N` | quit after N seconds (from the scene's start, after loading) |
 | `--render-scale=0.67` | this run's render scale (0.5 to 1, or 50 to 100), over the setting; not saved |
 | `--upscaler=fsr` | this run's upscaler: `fsr`, `bilinear` or `metalfx` (MetalFX spatial, Metal only) |
+| `--aa=off` | this run's anti-aliasing: `off`, `fxaa` or `smaa` (the default, `water_render.md` §7); not saved |
 | `--quality=M` | this run's quality tier: `L`, `M` or `H`, over the setting; not saved |
 | `--no-vsync` | this run without vsync, to see the headroom; not saved |
 | `--shadow-splits=0` | this run's sun shadow cascades: `0` (off), `2` or `4`, over the tier; not saved |
@@ -679,11 +680,12 @@ The own boat always, on tier M also the 6 nearest within the shadow distance; th
 surface before the binding exists.
 
 `scenes/sea/sky_day.tscn` (`SkyRig`) is the daytime light: the sky shader (saturated blue ramp, sun disc and halo,
-cumulus), the sun light, fog toward the horizon colour, sky reflections, the camera exposure and the glow on the
+cumulus), the sun light, a distance haze toward the horizon colour, sky reflections, the camera exposure and the glow on the
 sun's glints, set from one group of parameters. Sun and sky keep their clear-day proportion (the sun about four
 fifths of the light on a level surface), and the exposure brings the scene back to screen range. Three weather
 presets (`water_render.md` §4.5): clear, fair (the default) and hazy, set with `SkyRig.preset` or, in the sail
-test, `--sky=clear|fair|hazy`.
+test, `--sky=clear|fair|hazy`. The anti-aliasing is SMAA 1x on every tier (`water_render.md` §7): the project
+default, kept with the upscaler by `Settings.apply_render_scale` (off only under a temporal upscaler).
 
 ### Water tests
 

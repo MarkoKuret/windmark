@@ -4,7 +4,7 @@
 The water, wake and sky colours come from the same shader functions Godot runs (shaders/sea_common.gdshaderinc,
 sky_common.gdshaderinc, wake_common.gdshaderinc), compiled here as GLSL 4.1 on an offscreen OpenGL context, with
 the uniforms, meshes and textures Godot computed. Only the lighting model around them is a stand-in for Godot's
-Forward+ (GGX sun specular, Schlick sky reflection, Lambert, exponential fog, Godot's ACES curve), so colours are
+Forward+ (GGX sun specular, Schlick sky reflection, Lambert, Godot's fog, Godot's ACES curve), so colours are
 close to, not identical with, the engine's. Boats are drawn with the boat shader's textures, factors and baked AO
 (on the ambient light only), without shadows.
 
@@ -29,6 +29,17 @@ OUT = GAME / "generated" / "water_preview"
 PUBLISHED = GAME / "tests" / "previews"
 
 
+def fog_uniforms(fog):
+    """The fog of a dumped scene (Godot's Environment fog) as the LIGHTING uniforms."""
+    return {
+        "u_fog_density": float(fog["density"]),
+        "u_fog_color": tuple(fog["color"][:3]),
+        "u_fog_mode": int(fog.get("mode", 0)),
+        "u_fog_depth": (float(fog.get("begin", 0.0)), float(fog.get("end", 1.0)), float(fog.get("curve", 1.0))),
+        "u_fog_sun_scatter": float(fog.get("sun_scatter", 0.0)),
+    }
+
+
 def inc(name):
     return (SHADERS / name).read_text()
 
@@ -47,6 +58,9 @@ uniform float u_cloud_cover;
 uniform vec2 u_cloud_offset;
 uniform float u_fog_density;
 uniform vec3 u_fog_color;
+uniform int u_fog_mode;        // Godot's Environment.fog_mode: 0 exponential, 1 depth (the haze, water_render.md §4.5)
+uniform vec3 u_fog_depth;      // depth fog begin (m), end (m), curve
+uniform float u_fog_sun_scatter;
 uniform float u_ambient;
 
 const float WM_PI = 3.14159265;
@@ -105,9 +119,14 @@ vec3 shade_vis(vec3 albedo, float rough, float spec, vec3 N, vec3 V, float vis_s
     return direct + refl + amb;
 }
 
+// Godot's fixed fog (Forward+ fog_process): exponential, or depth fog density * smoothstep(begin, end, d)^curve;
+// the fog colour gains the sun's light toward the sun (sun scatter).
 vec3 fogged(vec3 c, vec3 wpos) {
-    float f = 1.0 - exp(-u_fog_density * length(u_cam - wpos));
-    return mix(c, u_fog_color, f);
+    float d = length(u_cam - wpos);
+    float f = u_fog_mode == 1 ? pow(smoothstep(u_fog_depth.x, u_fog_depth.y, d), u_fog_depth.z) * u_fog_density
+                              : 1.0 - exp(-u_fog_density * d);
+    vec3 fc = u_fog_color + sun_color * pow(max(dot(normalize(wpos - u_cam), normalize(sun_dir)), 0.0), 8.0) * u_fog_sun_scatter;
+    return mix(c, fc, f);
 }
 """
 
@@ -613,8 +632,7 @@ def render(ctx, d, size, wakes=True, shadows="auto"):
         "u_cam": tuple(origin),
         "u_cloud_cover": float(sc["sky"].get("cloud_cover", 0.3)),
         "u_cloud_offset": tuple(sc["sky"].get("cloud_offset", [0.0, 0.0])),
-        "u_fog_density": float(sc["fog"]["density"]),
-        "u_fog_color": tuple(sc["fog"]["color"][:3]),
+        **fog_uniforms(sc["fog"]),
         "u_ambient": float(sc["ambient_energy"]),
     }
 

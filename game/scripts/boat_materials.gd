@@ -145,7 +145,7 @@ static func cloth_params(sail_type: String, loa: float, pos: PackedVector3Array,
 		"cloth_battens": 4 if kind == 0 else 0,
 		"cloth_telltales": 1 if sail_type == "jib" or sail_type == "genoa" else 0,
 		"backlight": [0.3, 0.2, 0.5][style],
-		"roughness": [0.55, 0.38, 0.45][style],
+		"roughness": [0.82, 0.55, 0.68][style],
 		"weave": [0.6, 0.15, 0.2][style],
 		"fibre_amount": [0.0, 0.35, 0.06][style],
 	}

@@ -15,10 +15,12 @@ python3 -m liverybake wm7 --only hull --only keel
 python3 -m liverybake wm7 --only deck      # rebake the deck set (overwrites its hand edits)
 python3 -m liverybake wm7 --force          # rebake everything of wm7 (overwrites hand edits)
 python3 -m liverybake --stage-only         # only copy the current files to the game (after a hand edit)
+python3 -m liverybake --normals-from-relief   # only make the sails' normal maps from their relief images
 ```
 
 Options: `--livery ID` (one livery of the file), `--only PART` (repeatable: `hull`, `keel`, `transom`, `deck`,
 `sails`, `ropes` or a sail id such as `main`, `jib`, `kite`, `code0`, `a2`), `--force`, `--no-stage`, `--stage-only`,
+`--normals-from-relief`,
 `--out DIR` (bake somewhere else, for trying things), `--hull-size` (4096), `--transom-size` (2048), `--deck-size`
 (4096), `--sail-size` (2048), `--keel-size` (1024), `--rope-size` (512), `--quiet`. A full bake takes about 4 minutes per class on an
 M-series Mac (the deck about 30 s, the transom 4 s); the first run per class also builds
@@ -55,6 +57,7 @@ data/liveries/<class>/sails/            the class sail set, shared by the fleet
     <sail>_stbd_albedo.png  2048 longest  the sail seen from starboard, sRGB
     <sail>_normal.png       2048 longest  relief (both sides), linear
     <sail>_orm.png          2048 longest  R occlusion, G roughness, B light through the cloth; linear
+    <sail>_relief.png       2048 longest  the cloth's height, 8-bit greyscale: the source of <sail>_normal.png
     layout.json                         the sails' plan rectangles, cloth, and the number slots
 data/liveries/<class>/rig/              the class rope set (data_format.md §8.7), shared by the fleet
     rope_<function>_albedo.png  512 x 512  one braid tile in the function's colours, sRGB: mainsheet, sheet,
@@ -92,7 +95,7 @@ How the images lie:
   The starboard image is the same sail seen from the other side (luff on the right). Cloth, seams and patches must
   match between the two; the insignia and tell-tales are each side's own. Leave the **number slots** clear (below
   the insignia on the main, near the head on genoas, code zeros and spinnakers: `text.rows` in `layout.json`): the
-  game sets each boat's nation letters and sail number there. The normal and ORM maps are in the port view.
+  game sets each boat's nation letters and sail number there. The normal, ORM and relief maps are in the port view.
 
 ## Editing by hand (Krita, GIMP, Photoshop)
 
@@ -108,16 +111,24 @@ How the images lie:
    green channel only (0 mirror, 255 matt: gelcoat about 40, vinyl 64, antifouling 205, deck gelcoat 75, non-slip
    205) and, on a sail, the light through the cloth in blue (dacron about 77, laminate 51, nylon 128; 0 for opaque
    patches); on the deck the blue channel is the non-slip mask (above).
-4. Keep layers in your own working file (`.kra`, `.xcf`, `.psd`) outside `data/liveries`, or next to it with a name
+4. **Sail relief** (`<sail>_relief.png`): to change a sail's creases, seams, wrinkles or batten ridges, paint the
+   relief image, not the normal map. It is plain greyscale (8-bit, no colour management needed): mid grey 128 is
+   the flat cloth, lighter is raised, darker is sunk, 255 is 4 mm up and 1 is 4 mm down (`relief_m` in
+   `layout.json`). Soft brushes read as soft folds; a crease is a thin darker line with a slightly lighter edge;
+   a seam a lighter band about 16 mm wide (3 to 4 texels on wm7). Then run `python3 -m liverybake --stage-only`
+   (or `--normals-from-relief`): every run of the tool makes each sail's normal map from its relief when the two
+   differ, smoothed over about a texel so the 8-bit steps do not show. A sail without a relief image keeps its
+   normal map as it is.
+5. Keep layers in your own working file (`.kra`, `.xcf`, `.psd`) outside `data/liveries`, or next to it with a name
    the game ignores, and export the flattened PNG over the file.
-5. Commit the PNG. Nothing regenerates it.
+6. Commit the PNG. Nothing regenerates it (except a sail's normal map, from its relief).
 
 To change the colour scheme from scratch instead (new hull colours or graphic, new sail cloth), edit the livery
 file and rebake that part with `--only` (this replaces the part's hand edits) or `--force`.
 
 ## Ownership
 
-A part (the hull's three images, the keel, the transom's three, the deck's three, one sail's four) is written only
+A part (the hull's three images, the keel, the transom's three, the deck's three, one sail's five) is written only
 when none of its files exists: a new folder is baked whole, a part added later (as the transom and deck were) is
 baked once into the existing folder, and a part with any of its files present is the owner's (delete all of its
 files to have it baked again). `--only PART` rewrites just those files, `--force` every file of the selected classes
@@ -169,17 +180,24 @@ Everything is seeded from the class and livery ids, so a bake is repeatable.
   sun-faded patches; tea-stain specks at the stainless bases.
 - **Keel**: antifouling with roller laps and sanded-through fairing patches, chips on the fin's leading edge and the
   bulb's nose down to the grey primer, grounding scratches under the bulb.
-- **Sails** (`liverybake/sails.py`, sail_visuals.md §11.1 and §11.2): cross-cut woven polyester, or tri-radial
+- **Sails** (`liverybake/sails.py`, sail_visuals.md §11.1, §11.2 and the references of §14): light, true cloth
+  colours (white dacron, a mid-grey laminate film with darker load yarns, clear dyed nylon), mostly matte
+  (roughness 0.82 dacron, 0.55 laminate, 0.68 nylon), plies, seams and stitching faint in front light and clear
+  against the sun; cross-cut woven polyester, or tri-radial
   laminate with load-path yarns (heavier bundles every fourth), an X-ply scrim and denser load bands from the corners,
   or tri-radial nylon; two-ply seams with two rows of zigzag stitching and the overlap's edge; edge tapes; layered
   corner patches with radial fingers, webbing straps and stainless rings; the main's headboard with rivets and
-  four batten pockets with battens and end patches; draft stripes; tell-tales on headsails (red to port, green to
-  starboard); the class insignia as stuck-on cloth; panel-to-panel shade and sheen; flaking creases (crumpled on
-  spinnakers), stress wrinkles at the clew, head and tack; grime along the foot. The light through the cloth (ORM
+  batten pockets (four with the top two full length under 10 m LOA, five with the top three from 10 m) with battens
+  and end patches; draft stripes; tell-tales on headsails (red to port, green to starboard); the class insignia as
+  stuck-on cloth; panel-to-panel shade and sheen; soft flaking creases (fewer, softer ones on laminates and
+  spinnakers), stress wrinkles at the clew, head and tack; grime along the foot. The relief goes into
+  `<sail>_relief.png` and the normal map is made from it. The light through the cloth (ORM
   blue) falls with every ply, yarn, ring, webbing and the insignia. The fine weave, film and ripstop are the
   game's tiling detail (`liverybake/cloth.py`).
 
 References used for proportions: racing rules of sailing Appendix G (number height by length, 0.2 h spacing,
 starboard numbers uppermost), typical sailmaker layouts (cross-cut panels about 0.9 m, tri-radial fans, 16 to 20 mm
-seams, 25 to 45 mm tapes, corner patches about 6 % of the luff, batten pockets 50 to 60 mm). No third-party images
+seams, 25 to 45 mm tapes, corner patches about 5 % of the luff, 3 % on spinnakers, batten pockets 50 to 60 mm), the
+J/70, Melges 24 and J/80 class rules (battens, cloth weights, reinforcement sizes); the full list with numbers is in
+`docs/specs/sail_visuals.md` §14. No third-party images
 are used; the font is Barlow Semi Condensed Bold (OFL, `docs/THIRD_PARTY.md`).

@@ -14,6 +14,8 @@ uniform sampler2D land_tex : filter_nearest, repeat_disable;
 uniform sampler2D detail_tex : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D foam_tex : filter_linear_mipmap, repeat_enable;
 uniform sampler2D wake_tex : filter_linear, repeat_disable;
+uniform sampler2D caps_tex : filter_linear_mipmap_anisotropic, repeat_enable;
+#define WM_WHITECAPS
 
 #include "res://shaders/sea_common.gdshaderinc"
 
@@ -49,8 +51,8 @@ void fragment() {
 	vec3 view = normalize(cam - wpos);
 	float dist = length(cam.xz - wpos.xz);
 	vec3 n_geo = normalize(v_normal);
-#ifdef WM_FADED_SLOPE
 	float px = max(length(fwidth(v_local)), 1e-3);
+#ifdef WM_FADED_SLOPE
 	vec2 g = wm_faded_slope(v_local, v_spacing, px) * v_expo;
 	n_geo = normalize(n_geo + vec3(-g.x, 0.0, g.y));
 #endif
@@ -62,6 +64,7 @@ void fragment() {
 	vec2 wake = vec2(0.0);
 #endif
 	WmSurface S = wm_surface(v_local, v_eta, n_geo, view, dist, wake, v_land);
+	wm_apply_caps(S, v_local, px, v_expo, dist, n_geo);
 	vec4 ov = wm_overlays(v_local, dist);
 	ALBEDO = mix(S.albedo, ov.rgb * 0.8, ov.a);
 	EMISSION = mix(S.emission, ov.rgb * 0.35, ov.a);

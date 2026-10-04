@@ -286,6 +286,8 @@ Flags after `--`:
 | `--sea-grid=120x160` | this run's sea radial grid (rings x segments), over the tier; not saved |
 | `--water-shader=l` | this run's water shader (`water_l`, `_m` or `_h`), over the tier; not saved |
 | `--no-hud` | the HUD hidden from the start (as F10) |
+| `--look=off` | no colour grade, vignette, contact shading or depth of field (`water_render.md` §4.5), to compare |
+| `--ssao=on` | contact shading (SSAO) on any tier (`on`) or off on H (`off`); not saved |
 
 A measured race in a window (asks the owner first: it opens one), 10 boats for 60 s:
 
@@ -681,9 +683,16 @@ surface before the binding exists.
 `scenes/sea/sky_day.tscn` (`SkyRig`) is the daytime light: the sky shader (saturated blue ramp, sun disc and halo,
 cumulus), the sun light, fog toward the horizon colour, sky reflections, the camera exposure and the glow on the
 sun's glints, set from one group of parameters. Sun and sky keep their clear-day proportion (the sun about four
-fifths of the light on a level surface), and the exposure brings the scene back to screen range. Three weather
-presets (`water_render.md` §4.5): clear, fair (the default) and hazy, set with `SkyRig.preset` or, in the sail
-test, `--sky=clear|fair|hazy`.
+fifths of the light on a level surface), and the exposure brings the scene back to screen range. Four light
+presets (`water_render.md` §4.5): clear, fair (the default), hazy and late afternoon (a low warm sun), set with
+`SkyRig.preset` or, in the sail test, `--sky=clear|fair|hazy|late`. Each preset carries its colour grade, and
+`LookFx` (`scenes/sea/look_fx.gd`) adds the finishing look: the grade (a 3-D LUT built at load, applied by the
+environment after the tone mapping), the vignette under the HUD (owned by `CameraRig`, stronger on the clip
+cameras), the contact shading (SSAO, tier H) and the depth of field of the long lens and mark clip cameras.
+Previews of the grade, vignette and late light: `tests/look_lut_dump.gd`, `tests/water_preview_dump.gd` (with
+`-- --sky=late` for the late light) and `tests/cine_preview.py --publish` (`tests/previews/cine_*.jpg`; the
+commands are in its header). `tests/look_test.gd` (in `run_ui_tests.sh`) checks the presets, the grade and the SSAO
+per tier.
 
 ### Water tests
 

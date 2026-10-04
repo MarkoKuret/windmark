@@ -113,8 +113,10 @@ On the gamepad `View` is both `rankings` and `hud_density`: a press released wit
 longer one shows the ranking list while held; with the rankings toggle option the density keeps only the keyboard key
 and R4. The
 gamepad has no direct sail keys: D-pad left/right step a highlighted sail on the HUD sail strip, X sets it (§5.4).
-F9 toggles the frame-time overlay (`hud.md` §17), a development key outside the action table: it is not
-rebindable and not listed in the settings.
+F9 opens and closes the look panel (`hud.md` §18) and Shift+F9 toggles the frame-time overlay (`hud.md` §17):
+development keys outside the action table, not rebindable and not listed in the settings. While the look panel has
+the focus, Up, Down, Left, Right, Enter, Space and Esc are its own and the boat takes no keys (Esc gives them back,
+F9 closes it).
 The capture keys sit together on the bottom row (`,` slow motion, `.` clean pause, `/` world tags), next to `X`
 for the clip cameras; they have no gamepad binding (a capture is made at the keyboard).
 

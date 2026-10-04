@@ -116,6 +116,11 @@ const GLOW_INTENSITY := 0.5
 	set(v):
 		haze_curve = v
 		_apply()
+## Development (`--haze=`, the look panel): a factor on the preset's haze_max, kept when the preset changes.
+var haze_scale := 1.0:
+	set(v):
+		haze_scale = maxf(v, 0.0)
+		_apply()
 
 
 func _ready() -> void:
@@ -210,7 +215,7 @@ func _apply() -> void:
 	# Environment colours are sRGB-encoded Color values; the fog goes to the horizon colour.
 	env.fog_light_color = horizon.linear_to_srgb()
 	env.fog_mode = Environment.FOG_MODE_DEPTH
-	env.fog_density = haze_max
+	env.fog_density = haze_max * haze_scale
 	env.fog_depth_begin = haze_begin
 	env.fog_depth_end = haze_end
 	env.fog_depth_curve = haze_curve

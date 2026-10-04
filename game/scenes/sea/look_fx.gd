@@ -73,6 +73,8 @@ static var tier := SeaQuality.Tier.M
 static var enabled := true
 ## Development runs (`--ssao=on|off`): over the tier's SSAO (-1: the tier's).
 static var ssao_override := -1
+## Development runs (`--dof=off`, the look panel): no depth of field on the clip cameras.
+static var dof_enabled := true
 static var _luts := {}
 
 var strength := VIGNETTE_REGULAR:
@@ -214,4 +216,4 @@ static func ssao_settings(t: int) -> Dictionary:
 
 
 static func dof_allowed() -> bool:
-	return enabled and DOF_QUALITY.get(tier, -1) >= 0
+	return enabled and dof_enabled and DOF_QUALITY.get(tier, -1) >= 0

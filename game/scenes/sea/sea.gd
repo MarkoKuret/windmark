@@ -37,6 +37,12 @@ var origin := Vector2.ZERO
 var material: ShaderMaterial
 ## §4.4 the components that carry whitecap foam (indices into model.components, heaviest first)
 var caps_select := PackedInt32Array()
+## Development (`--caps=off`, the look panel): false draws no whitecaps (no foam weights uploaded).
+var whitecaps := true:
+	set = set_whitecaps
+## Development (`--drawn-wind=<kn>`, the look panel): the wind speed the water draws (whitecaps, puff texture) in
+## place of the source's base speed, to judge the caps at another wind; 0 draws the source's. The waves stay.
+var drawn_wind_kn := 0.0
 
 var _mesh_instance: MeshInstance3D
 var _overlay_lines: Array = []
@@ -75,6 +81,12 @@ func set_quality(tier: SeaQuality.Tier) -> void:
 
 func get_tier() -> Dictionary:
 	return SeaQuality.get_tier(quality)
+
+
+func set_whitecaps(on: bool) -> void:
+	whitecaps = on
+	if material:
+		_apply_static()
 
 
 ## The sea of the race: the core's components and exposure grid (sea.md §7.1). Fixed for a race.
@@ -167,7 +179,7 @@ func _apply_static() -> void:
 	# §4.4 whitecaps: the components that carry foam and their crest windows
 	caps_select = SeaWhitecaps.select(model.components)
 	material.set_shader_parameter("caps_w", SeaWhitecaps.window_uniforms(model.components, caps_select))
-	material.set_shader_parameter("caps_rest", SeaWhitecaps.rest_mean(model.components, caps_select))
+	material.set_shader_parameter("caps_rest", SeaWhitecaps.rest_mean(model.components, caps_select) if whitecaps else 0.0)
 	var g := model.exposure
 	material.set_shader_parameter("expo_tex", SeaTextures.exposure_texture(g))
 	if g.is_empty():
@@ -217,7 +229,11 @@ func update_frame(cam_pos: Vector3, cam: Camera3D = null) -> void:
 		var c: Array = model.components[i]
 		comp[i] = Vector4(c[0], c[1], c[2], ph[i])
 	material.set_shader_parameter("comp", comp)
-	material.set_shader_parameter("caps_k", SeaWhitecaps.wave_uniforms(model.components, caps_select, ph))
+	var ck := SeaWhitecaps.wave_uniforms(model.components, caps_select, ph)
+	if not whitecaps:
+		ck = PackedVector4Array()
+		ck.resize(6)  # no foam weight on any component: nothing passes the breaking threshold
+	material.set_shader_parameter("caps_k", ck)
 	material.set_shader_parameter("sea_origin", origin)
 
 	var tile: float = wind.get("puff_tile", 1000.0)
@@ -229,7 +245,8 @@ func update_frame(cam_pos: Vector3, cam: Camera3D = null) -> void:
 	material.set_shader_parameter("puff_tile", tile)
 	material.set_shader_parameter("puff_cap_lo", 1.0 - wind.get("cap_down", 0.4))
 	material.set_shader_parameter("puff_cap_hi", 1.0 + wind.get("cap_up", 0.25))
-	material.set_shader_parameter("base_speed", wind.get("base_speed", 7.2))
+	material.set_shader_parameter("base_speed", drawn_wind_kn * HudFormat.KNOT if drawn_wind_kn > 0.0
+			else wind.get("base_speed", 7.2))
 	material.set_shader_parameter("land_factor", _land_factor)
 	_update_land(wind.get("global_from", wind.get("base_from", 0.0)))
 

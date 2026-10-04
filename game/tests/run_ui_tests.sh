@@ -40,7 +40,7 @@ sh "$here/native/register.sh"  # a built GDExtension loads at start-up (native/b
     cat "$here/generated/ui_import.log"; echo "import failed"; exit 1; }
 
 failed=0
-for t in controls_test cameras_test hud_test race_hud_test audio_test perf_test; do
+for t in controls_test cameras_test look_test hud_test race_hud_test audio_test perf_test; do
     log="$here/generated/$t.log"
     set +e
     "$godot" --headless --path "$here" -s "res://tests/$t.gd" >"$log" 2>&1

@@ -4,13 +4,25 @@ extends Node3D
 ## clearance through the sea height hook of the target. Free and aerial are available in every mode, ranked
 ## included (cameras.md §5, networking.md §12). The clip cameras (cameras.md §9: start line, mark, long lens,
 ## helicopter) are offline only (`clip_allowed`), chosen with camera_clip, outside the camera_next cycle; the
-## start line and mark shots need `course` (ClipCourse, set by the scene). Presentation only.
+## start line and mark shots need `course` (ClipCourse, set by the scene). The lens finish of the camera: the
+## vignette (LookFx, under the HUD; stronger on the clip cameras) and the depth of field of the long lens and the
+## mark shot (cameras.md §9). Presentation only.
 
 enum Mode { CHASE, ONBOARD, AERIAL, FREE, START_LINE, MARK, LONG_LENS, HELICOPTER }
 
 const CLIP_MODES: Array[int] = [Mode.START_LINE, Mode.MARK, Mode.LONG_LENS, Mode.HELICOPTER]
 
 const BLEND_TIME := 0.4
+## cameras.md §9 depth of field per clip camera: the blur amount (Godot's practical units), the sharp zone either
+## side of the subject (DOF_ZONE_LOA · loa + DOF_ZONE_M), the near and far blur ramps as shares of the focus
+## distance, and the focus pull's smoothing. No other camera has depth of field.
+const DOF := {
+	Mode.LONG_LENS: {"amount": 0.08, "near_ramp": 0.25, "far_ramp": 0.5},
+	Mode.MARK: {"amount": 0.06, "near_ramp": 0.3, "far_ramp": 0.6},
+}
+const DOF_ZONE_LOA := 0.6
+const DOF_ZONE_M := 2.0
+const DOF_TAU := 0.25
 const PRESET_COUNT := 8
 const MAX_DT := 0.1
 
@@ -34,6 +46,12 @@ var shake := CameraShake.new()
 var camera: Camera3D
 ## the last view applied (for tests)
 var view := CamTypes.View.new()
+## the vignette over the 3-D image (water_render.md §4.5)
+var look: LookFx
+## the depth of field of the clip cameras: the camera's attributes while one is shown, else none
+var dof := CameraAttributesPractical.new()
+## the focus distance followed by the depth of field (m), 0 before the first clip frame
+var focus := 0.0
 
 var _free_used := false
 var _blend_from := -1
@@ -44,6 +62,7 @@ var _first := true
 var _clip_last := Mode.START_LINE
 ## the last regular camera (saved as the profile's mode)
 var _regular := Mode.CHASE
+var _dof_mode := -1
 
 
 func _init() -> void:
@@ -51,6 +70,8 @@ func _init() -> void:
 	camera.name = "Camera"
 	camera.keep_aspect = Camera3D.KEEP_HEIGHT
 	add_child(camera)
+	look = LookFx.new()
+	add_child(look)
 	factory_presets(24.5)
 
 
@@ -208,7 +229,30 @@ func frame(t: CamTypes.Target, c: CameraInput, dt_in: float) -> CamTypes.View:
 	camera.fov = v.fov
 	camera.near = v.near
 	camera.far = v.far
+	_lens(v, t, dt)
 	return v
+
+
+## The vignette for the camera kind and the depth of field of the long lens and the mark shot, focused on the
+## subject (cameras.md §9); cuts take the new focus at once.
+func _lens(v: CamTypes.View, t: CamTypes.Target, dt: float) -> void:
+	look.strength = LookFx.vignette_for(is_clip(mode))
+	var p: Dictionary = DOF.get(mode, {})
+	if p.is_empty() or v.focus <= 0.0 or not LookFx.dof_allowed():
+		camera.attributes = null
+		focus = 0.0
+		return
+	focus = v.focus if focus <= 0.0 or mode != _dof_mode else focus + (v.focus - focus) * Frames.smooth_k(dt, DOF_TAU)
+	_dof_mode = mode
+	var zone := DOF_ZONE_LOA * t.loa + DOF_ZONE_M
+	dof.dof_blur_near_enabled = true
+	dof.dof_blur_near_distance = maxf(focus - zone, 0.5)
+	dof.dof_blur_near_transition = p["near_ramp"] * focus
+	dof.dof_blur_far_enabled = true
+	dof.dof_blur_far_distance = focus + zone
+	dof.dof_blur_far_transition = p["far_ramp"] * focus
+	dof.dof_blur_amount = p["amount"]
+	camera.attributes = dof
 
 
 ## Every mode's parameters and the presets (saved in the player profile).

@@ -3,7 +3,9 @@ extends SceneTree
 ## writes everything the water, wake and sky shaders receive (uniforms, grid and ribbon meshes, textures, camera,
 ## sun, fog) plus the boat triangles to generated/water_preview/<shot>/. Step 2, tests/water_preview.py,
 ## renders them with the same shader functions (sea_common, sky_common, wake_common) on an offscreen GL context.
-##   godot --headless --path game -s res://tests/water_preview_dump.gd
+##   godot --headless --path game -s res://tests/water_preview_dump.gd [-- --sky=late] [shot ...]
+## `--sky=<preset>` lights the shots with another SkyRig preset and names them `<preset>_<shot>`; shot names limit
+## the run to those shots.
 
 const OUT := "res://generated/water_preview"
 const FRAMES := 260
@@ -25,11 +27,22 @@ const SHOTS := [
 var _shot := -1
 var _frames := 0
 var _scene: Node
+var _sky := ""
+var _only: PackedStringArray = []
 
 
 func _init() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT))
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--sky="):
+			_sky = a.trim_prefix("--sky=")
+		else:
+			_only.append(a)
 	_next()
+
+
+func _name(s: Array) -> String:
+	return s[0] if _sky == "" else "%s_%s" % [_sky, s[0]]
 
 
 func _next() -> void:
@@ -39,7 +52,12 @@ func _next() -> void:
 		quit(0)
 		return
 	var s: Array = SHOTS[_shot]
+	if not _only.is_empty() and not _only.has(s[0]):
+		_next()
+		return
 	_scene = (load("res://scenes/water_test.tscn") as PackedScene).instantiate()
+	if _sky != "":
+		(_scene.get_node("SkyDay") as SkyRig).set_preset_name(_sky)
 	var src: SeaEnvSource = _scene.get_node("EnvSource")
 	src.mode = s[1]
 	if s[1] == SeaEnvSource.Mode.CORE_SAMPLES:
@@ -65,7 +83,7 @@ func _process(_delta: float) -> bool:
 	sea.render_time_ms += DT_MS
 	_frames += 1
 	if _frames >= FRAMES:
-		_dump(SHOTS[_shot][0])
+		_dump(_name(SHOTS[_shot]))
 		_scene.queue_free()
 		_scene = null
 		_next()

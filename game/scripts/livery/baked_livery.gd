@@ -2,9 +2,10 @@ class_name BakedLivery
 extends RefCounted
 ## The baked livery textures of a class (data_format.md §8.5), as staged for import by tools/liverybake into
 ## res://generated/liveries/<class>/ (game/README.md "Liveries"): the hull set of a livery (hull albedo, normal and
-## ORM maps, keel albedo, the transom's and the deck's albedo, normal and ORM maps, layout.json) and the class sail set (per sail: port and starboard
-## albedo, normal and ORM maps; layout.json). Loaded once per class and shared by every boat; a missing set gives
-## an empty Dictionary and the procedural fallback.
+## ORM maps, keel albedo, the transom's and the deck's albedo, normal and ORM maps, layout.json), the class sail set
+## (per sail: port and starboard albedo, normal and ORM maps; layout.json) and the class rope set (rig/: a braid tile
+## per rope function, §8.7). Loaded once per class and shared by every boat; a missing set gives an empty Dictionary
+## and the procedural fallback.
 
 const ROOT := "res://generated/liveries"
 ## tests: false makes every set look missing (the procedural path)
@@ -12,6 +13,7 @@ static var enabled := true
 static var _hulls := {}
 static var _sails := {}
 static var _detail := {}
+static var _ropes := {}
 
 
 ## {"albedo", "normal", "orm": Texture2D, "keel": Texture2D, "keel_rect": Vector4, "transom", "deck": {"albedo",
@@ -77,6 +79,26 @@ static func sail_set(class_id: String) -> Dictionary:
 	return out
 
 
+## The class rope set (data_format.md §8.7): {"albedo": {function: Texture2D}, "normal", "orm": Texture2D}, or {}
+## when the class has no baked ropes. A function without its albedo is left out (it keeps the generator's look).
+static func rope_set(class_id: String) -> Dictionary:
+	if not enabled:
+		return {}
+	if _ropes.has(class_id):
+		return _ropes[class_id]
+	var dir := "%s/%s/rig/" % [ROOT, class_id]
+	var out := {}
+	var alb := {}
+	for fn in Livery.ROPES:
+		var t := _tex(dir + "rope_%s_albedo.png" % fn)
+		if t != null:
+			alb[fn] = t
+	if not alb.is_empty():
+		out = {"albedo": alb, "normal": _tex(dir + "rope_normal.png"), "orm": _tex(dir + "rope_orm.png")}
+	_ropes[class_id] = out
+	return out
+
+
 ## The tiling detail of a cloth (dacron, laminate, nylon), or null.
 static func detail(cloth: String) -> Texture2D:
 	if not _detail.has(cloth):
@@ -89,6 +111,7 @@ static func clear() -> void:
 	_hulls.clear()
 	_sails.clear()
 	_detail.clear()
+	_ropes.clear()
 
 
 static func _tex(path: String) -> Texture2D:

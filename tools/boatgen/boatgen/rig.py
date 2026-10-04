@@ -422,8 +422,8 @@ class Rig:
                                               center=self.gooseneck + [-0.35 * s, sy * 0.045 * s, 0.0]),
                   tag=f"boom_cheek_{sy}")
             p.attach(f"boom_cheek_{sy}", "boom")
-        p.add("rope", tube(np.array([end + [0.03 * s, 0.03 * s, 0.02 * s], self.gooseneck + [-0.35 * s, 0.047 * s, 0.02 * s]]),
-                           max(0.0035, 0.004 * s), 6), tag="outhaul")
+        p.add("rope_control", tube(np.array([end + [0.03 * s, 0.03 * s, 0.02 * s], self.gooseneck + [-0.35 * s, 0.047 * s, 0.02 * s]]),
+                                   max(0.0035, 0.004 * s), 6, turn_uv=0.05), tag="outhaul")
         p.attach("outhaul", "boom_end")
         p.attach("outhaul", "boom_cheek_1")
         self.boom_end = end

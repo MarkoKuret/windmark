@@ -287,6 +287,33 @@ void main() {
 }
 """
 
+# the class rope set (data_format.md §8.7): the baked braid tile on the rope's uv0 (metres along, the turn round)
+ROPE_FS = """
+in vec3 v_n;
+in vec3 v_w;
+in vec4 v_uv;
+in float v_port;
+flat in float v_side;
+uniform sampler2D albedo_tex;
+uniform sampler2D mr_tex;
+uniform sampler2D normal_tex;
+uniform vec2 uv_scale;
+uniform vec4 albedo_color;
+uniform float roughness;
+out vec4 frag;
+void main() {
+    vec3 N = normalize(v_n);
+    vec3 V = normalize(u_cam - v_w);
+    if (dot(N, V) < 0.0) N = -N;
+    vec2 t = v_uv.xy * uv_scale;
+    vec3 a = min(srgb(texture(albedo_tex, t).rgb) * albedo_color.rgb, vec3(0.8));
+    vec3 nb = texture(normal_tex, t).rgb * 2.0 - 1.0;
+    N = wm_perturb(N, v_w, t, nb, 1.0);
+    float rough = clamp(texture(mr_tex, t).g * roughness, 0.05, 1.0);
+    frag = vec4(lit(a, N, V, rough, 0.0), 1.0);
+}
+"""
+
 _images = {}
 
 
@@ -363,11 +390,12 @@ def render(ctx, d, size):
     baked_inc = inc("livery_text.gdshaderinc") + inc("livery_baked.gdshaderinc")
     boat_b = ctx.program(vertex_shader=VS, fragment_shader="#version 410\n" + LIGHT + PBR + baked_inc + BOAT_BAKED_FS)
     sail_b = ctx.program(vertex_shader=VS, fragment_shader="#version 410\n" + LIGHT + PBR + baked_inc + SAIL_BAKED_FS)
+    rope = ctx.program(vertex_shader=VS, fragment_shader="#version 410\n" + LIGHT + PBR + baked_inc + ROPE_FS)
     sky = ctx.program(vertex_shader=spv.SKY_VS, fragment_shader="#version 410\n" + spv.LIGHT + spv.SKY_INC + spv.SKY_FS)
     tone = ctx.program(vertex_shader=spv.SKY_VS, fragment_shader=spv.TONE_FS)
     sea_p = ctx.program(vertex_shader=spv.VS, fragment_shader="#version 410\n" + spv.LIGHT + spv.FS)
     light = sc.get("light", spv.DEFAULT_LIGHT)
-    for pr in (boat, sail, boat_b, sail_b, sky, sea_p):
+    for pr in (boat, sail, boat_b, sail_b, rope, sky, sea_p):
         for k, v in (("u_sun_col", light["sun_color"]), ("u_hor", light["horizon"]), ("u_zen", light["zenith"])):
             if k in pr:
                 pr[k].value = tuple(v)
@@ -411,7 +439,7 @@ def render(ctx, d, size):
     if sc.get("sea", True):
         ctx.vertex_array(sea_p, [(ctx.buffer(sea.tobytes()), "3f 3f", "in_pos", "in_normal")]).render(
             moderngl.TRIANGLE_STRIP)
-    for prog in (boat, sail, boat_b, sail_b):
+    for prog in (boat, sail, boat_b, sail_b, rope):
         prog["u_vp"].write(vp_b)
         prog["u_cam"].value = tuple(eye)
         prog["u_sun"].value = tuple(sun)
@@ -435,6 +463,15 @@ def render(ctx, d, size):
             ctx.front_face = "cw"
             ctx.vertex_array(sail_b, fmt, ctx.buffer(i.tobytes())).render(moderngl.TRIANGLES)
             ctx.disable(moderngl.CULL_FACE)
+            continue
+        if m["kind"] == "rope":
+            u = m["uniforms"]
+            set_uniforms(rope, u)
+            for unit, (k, fb) in enumerate([("albedo_tex", (255, 255, 255)), ("mr_tex", (255, 220, 0)),
+                                            ("normal_tex", (128, 128, 255))]):
+                image_texture(ctx, u.get(k), True, fb).use(unit)
+                rope[k].value = unit
+            ctx.vertex_array(rope, fmt, ctx.buffer(i.tobytes())).render(moderngl.TRIANGLES)
             continue
         if m["kind"] == "boat_baked":
             u = m["uniforms"]

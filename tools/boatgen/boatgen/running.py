@@ -8,8 +8,8 @@ node (hardware.py).
 """
 import numpy as np
 
-from .hardware import rope, rope_coil
-from .mesh import Part, tube, translate
+from .hardware import rope, rope_coil, rope_tube
+from .mesh import Part, translate
 
 
 def sheet_leads(boat):
@@ -52,6 +52,7 @@ def sheets(boat, corners, types):
         if t == "main":
             continue
         fly = t in ("code_zero", "spinnaker_asym", "spinnaker_sym")
+        slot = "rope_kite_sheet" if fly else "rope_sheet"
         k = ld["flying" if fly else "headsail"]
         clew = c["clew"]
         lead, winch, drum = k["lead"], k["winch"], k["drum"]
@@ -59,32 +60,32 @@ def sheets(boat, corners, types):
         start = wrap[0]
         pts = [clew, lead, start]
         # working sheet: a nearly straight run under load, then the turns on the drum and the tail into the cockpit
-        part.add("rope", rope(pts, r, sag=0.004))
-        part.add("rope", tube(wrap, r, 6, caps=False))
+        part.add(slot, rope(pts, r, sag=0.004))
+        part.add(slot, rope_tube(wrap, r, 6, caps=False))
         top = wrap[-1]
         x_tail = winch[0] - 0.35 * s
         y_tail = -0.5 * float(deck.yc(x_tail))
         zf = float(deck.floor_z(x_tail))
-        part.add("rope", rope([top, top + [0.02 * s, 0.05 * s, 0.03 * s], [x_tail, y_tail, zf + r]], r, sag=0.02))
-        part.extend(rope_coil(0.13 * s, 3, r), translate([x_tail - 0.1 * s, y_tail, zf]))
+        part.add(slot, rope([top, top + [0.02 * s, 0.05 * s, 0.03 * s], [x_tail, y_tail, zf + r]], r, sag=0.02))
+        part.extend(rope_coil(0.13 * s, 3, r, slot), translate([x_tail - 0.1 * s, y_tail, zf]))
         # lazy sheet: slack from the clew round the front of the sail to the other side's lead
         lazy_lead = lead * [1, -1, 1]
         mid = 0.5 * (clew + lazy_lead)
         if fly:
             # a kite's lazy sheet runs round the forestay
             fwd = np.array([boat.rig.x_tack + 0.3 * s, 0.0, boat.rig.z_tack + 1.2 * s])
-            part.add("rope", rope([clew, fwd, lazy_lead], r * 0.9, sag=0.06))
+            part.add(slot, rope([clew, fwd, lazy_lead], r * 0.9, sag=0.06))
         else:
             mid[2] = float(deck.surface(mid[0], mid[1])[0]) + 0.04 * s
-            part.add("rope", rope([clew, mid, lazy_lead], r * 0.9, sag=0.01))
-        part.add("rope", rope([lazy_lead, lazy_lead + [-0.6 * s, 0, -0.04 * s]], r * 0.9))
+            part.add(slot, rope([clew, mid, lazy_lead], r * 0.9, sag=0.01))
+        part.add(slot, rope([lazy_lead, lazy_lead + [-0.6 * s, 0, -0.04 * s]], r * 0.9))
         if fly:
             # tack line down to the sprit end or the pole end, halyard from the head into the mast
             tack = c["tack"]
             end = boat.rig.sprit_end if boat.rig.sprit > 0 else boat.rig.pole_end
             if np.linalg.norm(tack - end) > 0.02:
-                part.add("rope", rope([tack, end], r))
+                part.add(slot, rope([tack, end], r))
             head = c["head"]
             mast = np.array([boat.rig.x_mast + 0.5 * boat.rig.chord, 0.0, min(head[2] + 0.05, boat.rig.z_top - 0.1)])
-            part.add("rope", rope([head, mast], r))
+            part.add("rope_halyard", rope([head, mast], r))
     return part

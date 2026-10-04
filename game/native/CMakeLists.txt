@@ -1,4 +1,4 @@
-# The Windmark GDExtension: SailShape (sail deformation, sail_visuals.md), the wakes (sea_wakes.h, water_render.md §5) and CoreSim over the core's C API (core/include/windmark.h), for Godot 4.6.
+# The Windmark GDExtension: SailShape (sail deformation, sail_visuals.md), SheetRopes (the running sheets, §11.3), the wakes (sea_wakes.h, water_render.md §5) and CoreSim over the core's C API (core/include/windmark.h), for Godot 4.6.
 # Build with build.sh (it fetches the pinned godot-cpp); the library and windmark.gdextension go to game/bin/.
 cmake_minimum_required(VERSION 3.22)
 project(windmark_godot LANGUAGES C CXX)
@@ -17,7 +17,7 @@ set(WINDMARK_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(WINDMARK_BUILD_CAPI ON CACHE BOOL "" FORCE)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../core" core)
 
-add_library(windmark_godot SHARED src/register_types.cpp src/core_sim.cpp src/sail_shape.cpp src/sea_wakes.cpp src/boat_shadow.cpp)
+add_library(windmark_godot SHARED src/register_types.cpp src/core_sim.cpp src/sail_shape.cpp src/sea_wakes.cpp src/boat_shadow.cpp src/sheet_ropes.cpp)
 target_link_libraries(windmark_godot PRIVATE godot-cpp windmark_static)
 get_target_property(GODOTCPP_SUFFIX godot-cpp GODOTCPP_SUFFIX)
 set(WINDMARK_GODOT_BIN "${CMAKE_CURRENT_SOURCE_DIR}/../bin")

@@ -30,6 +30,27 @@ MATERIALS = {
     "rubber":      ((0.05, 0.05, 0.05, 1.0), 0.0, 0.80),
 }
 
+# The running rigging by function (docs/specs/data_format.md 8.7): braid colour and fleck colour (sRGB), the
+# generator's look of the class rope set's defaults. A slot's mean colour is the braid's: 14 of 16 carriers in the
+# main colour and 2 in the fleck. `rope` stays the grey of the lifelines and anything else.
+ROPES = {
+    "mainsheet": ("#1f2b45", "#d8d8d2"),
+    "sheet": ("#d2d2cb", "#b3242a"),
+    "kite_sheet": ("#2b62a6", "#dadad4"),
+    "halyard": ("#d4d4cd", "#2d7a40"),
+    "control": ("#1d1e21", "#c9a227"),
+}
+
+
+def _srgb_lin(h):
+    c = np.array([int(h[i:i + 2], 16) for i in (1, 3, 5)]) / 255.0
+    return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+
+
+for _fn, (_main, _fleck) in ROPES.items():
+    _m = (14 * _srgb_lin(_main) + 2 * _srgb_lin(_fleck)) / 16
+    MATERIALS["rope_" + _fn] = ((round(float(_m[0]), 4), round(float(_m[1]), 4), round(float(_m[2]), 4), 1.0), 0.0, 0.85)
+
 
 def to_gltf(P, origin_x):
     P = np.asarray(P, dtype=np.float64)

@@ -12,6 +12,15 @@ const GRAPHICS := ["none", "stripes", "two_tone", "swoosh", "gradient", "bow"]
 const DESIGNS := ["plain", "bands", "head", "panels", "diagonal", "gores"]
 const CLOTHS := ["dacron", "laminate", "nylon"]
 const ROLES := ["main", "headsail", "code_zero", "spinnaker"]
+## data_format.md §8.7: the class rope set by function, with each function's default braid and fleck colours
+const ROPES := {
+	"mainsheet": ["#1f2b45", "#d8d8d2"],
+	"sheet": ["#d2d2cb", "#b3242a"],
+	"kite_sheet": ["#2b62a6", "#dadad4"],
+	"halyard": ["#d4d4cd", "#2d7a40"],
+	"control": ["#1d1e21", "#c9a227"],
+}
+const ROPE_PATTERNS := ["fleck", "tracer", "twill", "solid"]
 
 ## the boat's id in the file's `boats`, and what the menus show ("7  Kestrel")
 var id := ""
@@ -33,6 +42,8 @@ var deck := {}
 ## sails by role: {"cloth": String ("" = the sail type's default), "color", "fibre", "number": Color,
 ## "design": String, "colors": Array[Color], other keys as given}
 var sails := {}
+## ropes by function (ROPES): {"color", "fleck": Color, "pattern": String}
+var ropes := {}
 
 
 ## The sail entry for a sail type (main, jib, genoa, code_zero, spinnaker_asym, spinnaker_sym).
@@ -56,6 +67,7 @@ func repeat(n: int) -> Livery:
 	l.graphic = graphic
 	l.deck = deck
 	l.sails = sails
+	l.ropes = ropes
 	l.boat_name = boat_name + " " + roman(n + 1)
 	l.sail_number = str(1000 * n + sail_number.to_int())
 	return l
@@ -153,6 +165,8 @@ static func parse(d: Dictionary, class_id: String, errors: Array) -> Array[Liver
 	for role in ROLES:
 		var s: Dictionary = ss.get(role, {}) if ss.get(role) is Dictionary else {}
 		sail_set[role] = _sail(s, "sails." + role, errors)
+	# the class rope set (§8.7)
+	var rope_set := rope_set_of(d.get("ropes", {}) if d.get("ropes") is Dictionary else {}, errors)
 	# the boats (§8.4)
 	var boats: Variant = d.get("boats")
 	if not (boats is Array) or (boats as Array).size() < 12:
@@ -177,6 +191,7 @@ static func parse(d: Dictionary, class_id: String, errors: Array) -> Array[Liver
 		l.graphic = look.graphic
 		l.deck = look.deck
 		l.sails = sail_set
+		l.ropes = rope_set
 		l.id = str(e.get("id", ""))
 		if not re_id.search(l.id) or ids.has(l.id):
 			errors.append(at + ".id: missing, not [a-z0-9_] or not unique")
@@ -195,6 +210,33 @@ static func parse(d: Dictionary, class_id: String, errors: Array) -> Array[Liver
 		l.name = "%s  %s" % [l.sail_number, l.boat_name]
 		out.append(l)
 	return out
+
+
+## The rope set of a livery file's `ropes` block (§8.7): every function, with its defaults filled in.
+static func rope_set_of(rs: Dictionary, errors: Array) -> Dictionary:
+	var out := {}
+	for k in rs:
+		if not ROPES.has(k):
+			errors.append("ropes.%s: one of %s" % [k, ", ".join(ROPES.keys())])
+	for fn in ROPES:
+		var e: Dictionary = rs.get(fn, {}) if rs.get(fn) is Dictionary else {}
+		var at: String = "ropes." + fn
+		var o := {"color": _color(e, "color", ROPES[fn][0], at, errors),
+			"fleck": _color(e, "fleck", ROPES[fn][1], at, errors), "pattern": str(e.get("pattern", "fleck"))}
+		if not ROPE_PATTERNS.has(o["pattern"]):
+			errors.append(at + ".pattern: one of " + ", ".join(ROPE_PATTERNS))
+		out[fn] = o
+	return out
+
+
+## The mean colour of a rope function's braid (sRGB): 14 of 16 carriers in the main colour and 2 in the fleck
+## (one with `tracer`, half with `twill`, none with `solid`).
+static func rope_mean(r: Dictionary) -> Color:
+	var shares := {"fleck": 2.0 / 16.0, "tracer": 1.0 / 16.0, "twill": 0.5, "solid": 0.0}
+	var share: float = shares.get(r.get("pattern", "fleck"), 0.125)
+	var a := (r["color"] as Color).srgb_to_linear()
+	var b := (r["fleck"] as Color).srgb_to_linear()
+	return a.lerp(b, share).linear_to_srgb()
 
 
 static func _sail(s: Dictionary, at: String, errors: Variant) -> Dictionary:

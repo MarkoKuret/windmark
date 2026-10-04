@@ -70,6 +70,32 @@ var SHOTS := [
 		"cam": {"mode": "boat", "eye": [-6.0, 4.0, 13.0], "at": [-1.5, 4.5, 3.5], "fov": 55.0}},
 	{"name": "main_wm7_backlit", "cls": "wm7", "n": 1, "twa": 42.0, "t": 20.0, "liveries": ["swift"],
 		"cam": {"mode": "boat", "eye": [13.0, 5.0, -3.0], "at": [0.0, 6.0, -0.5], "fov": 50.0, "sun": "back"}},
+	# the running sheets (sail_visuals.md §11.3), the rope colours (data_format.md §8.7) and the levels of detail
+	# (§11.4); "ease": the last seconds with auto-trim off and the sheet fully eased
+	{"name": "sheets_wm7_reach", "cls": "wm7", "n": 1, "twa": 75.0, "t": 20.0, "liveries": ["kestrel"],
+		"cam": {"mode": "boat", "eye": [2.9, 1.25, -1.9], "at": [0.6, 0.95, -0.2], "fov": 50.0}},
+	{"name": "sheets_wm7_eased", "cls": "wm7", "n": 1, "twa": 75.0, "t": 20.0, "ease": 4.0, "liveries": ["kestrel"],
+		"cam": {"mode": "boat", "eye": [2.9, 1.25, -1.9], "at": [0.6, 0.95, -0.2], "fov": 50.0}},
+	{"name": "sheets_wm7_lazy", "cls": "wm7", "n": 1, "twa": 75.0, "t": 20.0, "liveries": ["kestrel"],
+		"cam": {"mode": "boat", "eye": [-2.4, 3.2, -1.8], "at": [0.2, 0.8, 0.0], "fov": 55.0}},
+	{"name": "sheets_wm7_kite", "cls": "wm7", "n": 1, "twa": 120.0, "t": 40.0, "kite": true, "liveries": ["kestrel"],
+		"cam": {"mode": "boat", "eye": [6.5, 2.0, 1.5], "at": [0.8, 1.2, -1.0], "fov": 55.0}},
+	{"name": "sheets_wm7_kite_bow", "cls": "wm7", "n": 1, "twa": 120.0, "t": 40.0, "kite": true,
+		"liveries": ["kestrel"], "cam": {"mode": "boat", "eye": [-3.0, 2.2, 9.5], "at": [0.4, 1.2, 3.0], "fov": 52.0}},
+	{"name": "sheets_wm12_kite", "cls": "wm12", "n": 1, "twa": 120.0, "t": 40.0, "kite": true,
+		"liveries": ["nightjar"], "cam": {"mode": "boat", "eye": [9.5, 3.4, -9.0], "at": [1.2, 2.0, 0.0], "fov": 55.0}},
+	{"name": "ropes_wm7_cockpit", "cls": "wm7", "n": 1, "twa": 42.0, "t": 20.0, "liveries": ["kestrel"],
+		"cam": {"mode": "boat", "eye": [0.3, 1.9, -4.9], "at": [0.0, 0.6, -1.0], "fov": 55.0}},
+	{"name": "ropes_wm12_cockpit", "cls": "wm12", "n": 1, "twa": 40.0, "t": 20.0, "liveries": ["nightjar"],
+		"cam": {"mode": "boat", "eye": [0.4, 2.7, -7.6], "at": [0.0, 0.9, -1.8], "fov": 55.0}},
+	{"name": "lod_wm7_25", "cls": "wm7", "n": 1, "twa": 42.0, "t": 20.0, "liveries": ["kestrel"],
+		"cam": {"mode": "boat", "eye": [-22.50, 7.25, 10.12], "at": [0.00, 3.20, 0.00], "fov": 29.15}},
+	{"name": "lod_wm7_35", "cls": "wm7", "n": 1, "twa": 42.0, "t": 20.0, "liveries": ["kestrel"],
+		"cam": {"mode": "boat", "eye": [-31.50, 8.87, 14.17], "at": [0.00, 3.20, 0.00], "fov": 21.04}},
+	{"name": "lod_wm7_90", "cls": "wm7", "n": 1, "twa": 42.0, "t": 20.0, "liveries": ["kestrel"],
+		"cam": {"mode": "boat", "eye": [-80.99, 17.78, 36.45], "at": [0.00, 3.20, 0.00], "fov": 8.26}},
+	{"name": "lod_wm7_110", "cls": "wm7", "n": 1, "twa": 42.0, "t": 20.0, "liveries": ["kestrel"],
+		"cam": {"mode": "boat", "eye": [-98.99, 21.02, 44.54], "at": [0.00, 3.20, 0.00], "fov": 6.76}},
 ]
 
 
@@ -154,8 +180,9 @@ func _shot(spec: Dictionary) -> void:
 			var f := InputFrame.new()
 			f.tick = sim.tick()
 			f.h_cmd = clampf(1.5 * Frames.angle_diff(s.twa, twa), -1.0, 1.0)
-			f.flags = InputFrame.FLAG_AUTO_TRIM
-			f.sheet_cmd = 0.5
+			var easing := t * SimSource.DT > float(spec["t"]) - float(spec.get("ease", 0.0))
+			f.flags = 0 if easing else InputFrame.FLAG_AUTO_TRIM
+			f.sheet_cmd = 1.0 if easing else 0.5
 			f.sail_req = InputFrame.hoist_req(kite) if spec.get("kite", false) and kite >= 0 and t == 0 else InputFrame.SAIL_NONE
 			sim.apply_input(b, f)
 		sim.step()
@@ -192,6 +219,35 @@ static func _visible_chain(n: Node, top: Node) -> bool:
 
 func _dump(spec: Dictionary, views: Array) -> void:
 	var dir := OUT.path_join(spec["name"])
+	var cam: Dictionary = spec["cam"]
+	var frame: Transform3D = (views[0] as BoatView).transform
+	if cam["mode"] == "fleet" or cam["mode"] == "line":
+		var c := Vector3.ZERO
+		for v in views:
+			c += (v as BoatView).transform.origin
+		frame.origin = c / views.size()
+	# the boat's heading only (no heel or pitch), level with the sea
+	var fwd := frame.basis.z
+	frame.basis = Basis.looking_at(-Vector3(fwd.x, 0.0, fwd.z).normalized(), Vector3.UP)
+	frame.origin.y = 0.0
+	var e: Array = cam["eye"]
+	var at: Array = cam["at"]
+	var eye := frame * Vector3(e[0], e[1], e[2])
+	var target := frame * Vector3(at[0], at[1], at[2])
+	if cam["mode"] == "line" or cam["mode"] == "mid":
+		var east_end: Vector3 = (views[0] as BoatView).transform.origin
+		var mid := Vector3.ZERO
+		for v in views:
+			var o: Vector3 = (v as BoatView).transform.origin
+			mid += o / views.size()
+			if o.x > east_end.x:
+				east_end = o
+		var base := east_end if cam["mode"] == "line" else mid
+		eye = Vector3(base.x, 0.0, base.z) + Frames.enu_to_scene(e[0], e[1], e[2])
+		target = Vector3(mid.x, 0.0, mid.z) + Frames.enu_to_scene(at[0], at[1], at[2])
+	# the level of detail each boat shows from this eye (sail_visuals.md §11.4)
+	for v: BoatView in views:
+		v.update_lod(eye.distance_to(v.global_position))
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir))
 	var meshes := []
 	for bi in views.size():
@@ -215,6 +271,7 @@ func _dump(spec: Dictionary, views: Array) -> void:
 			var xf := bv.transform * _chain(mi, bv)
 			var local := _chain(mi, bv)
 			var is_sail := sail_nodes.has(mi) and sail_nodes[mi].shape != null
+			var is_sheets := bv.sheets != null and mi == bv.sheets.node
 			for si in mi.mesh.get_surface_count():
 				var arrays := mi.mesh.surface_get_arrays(si)
 				var pos: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
@@ -222,6 +279,11 @@ func _dump(spec: Dictionary, views: Array) -> void:
 				if is_sail:
 					pos = sail_nodes[mi].shape.positions()
 					nrm = sail_nodes[mi].shape.normals()
+				if is_sheets:  # headless keeps no in-place writes: the sheets as last drawn, from their shapes
+					var shp: Variant = bv.sheets.surface_shape(si)
+					pos = shp.positions()
+					nrm = shp.normals()
+					arrays[Mesh.ARRAY_TEX_UV] = shp.uvs()
 				var ind: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
 				if ind.is_empty():
 					ind.resize(pos.size())
@@ -262,7 +324,11 @@ func _dump(spec: Dictionary, views: Array) -> void:
 				if mat is ShaderMaterial:
 					var sm := mat as ShaderMaterial
 					var u := _uniforms(sm)
-					if sm.shader == BoatLivery.BAKED_SAIL:
+					var tex_path: Variant = u.get("albedo_tex", "")
+					if sm.resource_name.begins_with("rope") and tex_path is String and (tex_path as String).ends_with(".png"):
+						entry["kind"] = "rope"
+						entry["uniforms"] = u
+					elif sm.shader == BoatLivery.BAKED_SAIL:
 						entry["kind"] = "sail_baked"
 						entry["uniforms"] = u
 						entry["text"] = text_png
@@ -290,37 +356,11 @@ func _dump(spec: Dictionary, views: Array) -> void:
 					if me is float:
 						entry["metal"] = me
 				meshes.append(entry)
-	var cam: Dictionary = spec["cam"]
-	var frame: Transform3D = (views[0] as BoatView).transform
-	if cam["mode"] == "fleet" or cam["mode"] == "line":
-		var c := Vector3.ZERO
-		for v in views:
-			c += (v as BoatView).transform.origin
-		frame.origin = c / views.size()
-	# the boat's heading only (no heel or pitch), level with the sea
-	var fwd := frame.basis.z
-	frame.basis = Basis.looking_at(-Vector3(fwd.x, 0.0, fwd.z).normalized(), Vector3.UP)
-	frame.origin.y = 0.0
-	var e: Array = cam["eye"]
-	var at: Array = cam["at"]
-	var eye := frame * Vector3(e[0], e[1], e[2])
-	var target := frame * Vector3(at[0], at[1], at[2])
-	if cam["mode"] == "line" or cam["mode"] == "mid":
-		var east_end: Vector3 = (views[0] as BoatView).transform.origin
-		var mid := Vector3.ZERO
-		for v in views:
-			var o: Vector3 = (v as BoatView).transform.origin
-			mid += o / views.size()
-			if o.x > east_end.x:
-				east_end = o
-		var base := east_end if cam["mode"] == "line" else mid
-		eye = Vector3(base.x, 0.0, base.z) + Frames.enu_to_scene(e[0], e[1], e[2])
-		target = Vector3(mid.x, 0.0, mid.z) + Frames.enu_to_scene(at[0], at[1], at[2])
 	var scene := {"meshes": meshes, "eye": [eye.x, eye.y, eye.z], "target": [target.x, target.y, target.z],
 		"fov": cam["fov"], "sun": cam.get("sun", "side"), "sea": spec.get("sea", true),
 		"note": "%s: %s" % [spec["name"], ", ".join(views.map(func(v: BoatView) -> String: return "%s %s" % [v.livery.boat_name, v.livery.sail_number]))]}
 	FileAccess.open(dir.path_join("scene.json"), FileAccess.WRITE).store_string(JSON.stringify(scene, "  "))
-	print("  dumped ", spec["name"], " (", meshes.size(), " meshes)")
+	print("  dumped ", spec["name"], " (", meshes.size(), " meshes, LOD ", (views[0] as BoatView).lod, ")")
 
 
 ## A material's uniforms as JSON (vectors and arrays as lists, textures as file paths).

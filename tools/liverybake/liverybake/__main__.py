@@ -1,7 +1,8 @@
 """Command line (tools/liverybake/README.md):
 
     python3 -m liverybake [CLASS ...] [--livery ID] [--force] [--only PART ...] [--no-stage] [--stage-only]
-                          [--out DIR] [--hull-size N] [--transom-size N] [--deck-size N] [--sail-size N] [--quiet]
+                          [--out DIR] [--hull-size N] [--transom-size N] [--deck-size N] [--sail-size N]
+                          [--rope-size N] [--quiet]
 
 Bakes the starting livery textures of each class (default: every data/liveries/*.liveries.json) into
 data/liveries/<class>/ where a part's files are all missing, never over hand-edited files unless asked (--force,
@@ -16,10 +17,10 @@ from pathlib import Path
 
 import numpy as np
 
-from . import cloth, deck, geometry, hull, sails, text
+from . import cloth, deck, geometry, hull, ropes, sails, text
 from .common import DATA, STAGE, Writer, save_normal, save_orm, save_png
 
-PARTS = ("hull", "keel", "transom", "deck", "sails")
+PARTS = ("hull", "keel", "transom", "deck", "sails", "ropes")
 
 
 def livery_file(class_id, data=DATA):
@@ -99,6 +100,21 @@ def bake_class(class_id, a, writer, log):
             writer.note([folder / f for f in DECK_FILES], False)
         if changed:
             _write_json(lay_path, lay)
+    # the class rope set (data_format.md §8.7), shared by every boat
+    folder = out / "rig"
+    if writer.may_write(folder, "ropes", ropes.FILES):
+        t = time.time()
+        r = ropes.bake_ropes(liv, a.rope_size, key=class_id)
+        paths = []
+        for fn, img in r["albedo"].items():
+            paths.append(folder / f"rope_{fn}_albedo.png")
+            save_png(paths[-1], img, srgb=True)
+        save_normal(folder / "rope_normal.png", r["normal"])
+        save_png(folder / "rope_orm.png", r["orm"], srgb=False)
+        writer.note(paths + [folder / "rope_normal.png", folder / "rope_orm.png"], True)
+        log(f"{class_id}/rig: {len(r['albedo'])} ropes {a.rope_size}x{a.rope_size} in {time.time() - t:.1f} s")
+    else:
+        writer.note([folder / "*"], False)
     # the class sail set, shared by every boat
     folder = out / "sails"
     want = [s for s in geo["sails"]
@@ -228,7 +244,7 @@ def main(argv=None):
     ap.add_argument("--livery", action="append", default=[], help="only this livery id (repeatable)")
     ap.add_argument("--force", action="store_true", help="rewrite the selected folders, hand edits included")
     ap.add_argument("--only", action="append", default=[], help="rewrite only these parts: hull, keel, transom, "
-                                                                  "deck, sails or a sail id (repeatable)")
+                                                                  "deck, sails, ropes or a sail id (repeatable)")
     ap.add_argument("--no-stage", action="store_true", help="do not stage the textures for the game")
     ap.add_argument("--stage-only", action="store_true", help="only stage (no bake)")
     ap.add_argument("--data", default=str(DATA), help="livery files folder (default data/liveries)")
@@ -239,6 +255,7 @@ def main(argv=None):
     ap.add_argument("--keel-size", type=int, default=1024)
     ap.add_argument("--transom-size", type=int, default=2048)
     ap.add_argument("--deck-size", type=int, default=4096)
+    ap.add_argument("--rope-size", type=int, default=ropes.SIZE)
     ap.add_argument("--quiet", action="store_true")
     a = ap.parse_args(argv)
     np.seterr(all="ignore")

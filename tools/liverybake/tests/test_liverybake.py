@@ -15,7 +15,7 @@ from liverybake import __main__ as cli  # noqa: E402
 from liverybake import common, geometry, sails, text  # noqa: E402
 
 SMALL = ["--hull-size", "256", "--sail-size", "128", "--keel-size", "64", "--transom-size", "256", "--deck-size", "512",
-         "--no-stage", "--quiet"]
+         "--rope-size", "64", "--no-stage", "--quiet"]
 
 
 def bake(out, *extra):
@@ -47,6 +47,11 @@ def test_writes_the_folders(baked):
     lay = json.loads((hull / "layout.json").read_text())
     assert Image.open(hull / "transom_albedo.png").size == tuple(lay["transom"]["size"]) and lay["transom"]["size"][0] == 256
     assert Image.open(hull / "deck_albedo.png").size == tuple(lay["deck"]["size"]) and lay["deck"]["size"][0] == 512
+    rig = baked / "wm7" / "rig"
+    for fn in ("mainsheet", "sheet", "kite_sheet", "halyard", "control"):
+        assert Image.open(rig / f"rope_{fn}_albedo.png").size == (64, 64), fn
+    for f in ("rope_normal.png", "rope_orm.png"):
+        assert (rig / f).exists(), f
 
 
 def test_a_part_added_later_is_baked_once(tmp_path):
@@ -89,6 +94,16 @@ def test_hand_edits_are_never_overwritten(tmp_path):
     changed = {k for k in after2 if after2[k] != after.get(k)}
     assert "wm7/sails/main_port_albedo.png" in changed
     assert all(k.startswith("wm7/sails/main_") or k == "wm7/sails/layout.json" for k in changed), changed
+    # --only ropes rewrites the rope set only, and a plain bake keeps a hand-edited rope
+    r = tmp_path / "wm7" / "rig" / "rope_sheet_albedo.png"
+    Image.new("RGB", (8, 8), (0, 0, 255)).save(r)
+    keep = files(tmp_path)
+    bake(tmp_path)
+    assert files(tmp_path) == keep, "a plain bake changed a hand-edited rope"
+    bake(tmp_path, "--only", "ropes")
+    after3 = files(tmp_path)
+    changed = {k for k in after3 if after3[k] != keep.get(k)}
+    assert "wm7/rig/rope_sheet_albedo.png" in changed and all(k.startswith("wm7/rig/") for k in changed), changed
     # --force rewrites everything selected
     bake(tmp_path, "--force")
     assert Image.open(p).size == (256, 128)
@@ -211,3 +226,37 @@ def test_stage_import_settings(baked, tmp_path):
     assert "compress/high_quality=true" in (tmp_path / "wm7" / "navy" / "hull_albedo.png.import").read_text()
     assert (tmp_path / "_cloth" / "nylon_detail.png").exists()
     assert cli.stage(["wm7"], baked, tmp_path, log=lambda *a: None) == 0     # nothing changed, nothing copied
+
+
+def test_ropes_by_function(baked):
+    """data_format.md §8.7: each function's braid in its colours (the main colour on most carriers, the fleck on
+    two of sixteen), seamless round and along the rope, one shared relief."""
+    from liverybake import ropes
+    liv = json.loads((common.DATA / "wm7.liveries.json").read_text())
+    rs = ropes.rope_set(liv)
+    rig = Path(baked) / "wm7" / "rig"
+    means = {}
+    for fn, (c, f, pat) in rs.items():
+        img = np.asarray(Image.open(rig / f"rope_{fn}_albedo.png"), dtype=float)
+        main = np.array([int(c[i:i + 2], 16) for i in (1, 3, 5)], float)
+        fleck = np.array([int(f[i:i + 2], 16) for i in (1, 3, 5)], float)
+        px = img.reshape(-1, 3)
+        near_main = (np.abs(px - main * 0.92).max(1) < 45).mean()
+        near_fleck = (np.abs(px - fleck * 0.92).max(1) < 45).mean()
+        assert near_main > 0.5, (fn, near_main)
+        if pat != "solid":
+            assert 0.03 < near_fleck < 0.3, (fn, near_fleck)
+        # seamless: the first and last columns and rows continue each other like neighbours inside the tile
+        inner = np.abs(np.diff(img, axis=1)).mean()
+        assert np.abs(img[:, 0] - img[:, -1]).mean() < 2.5 * inner + 4, fn
+        assert np.abs(img[0] - img[-1]).mean() < 2.5 * inner + 4, fn
+        means[fn] = img
+    # the functions are told apart by colour: by the braid or by its fleck
+    keys = list(means)
+    for i in range(len(keys)):
+        for j in range(i + 1, len(keys)):
+            assert np.abs(means[keys[i]] - means[keys[j]]).mean() > 5, (keys[i], keys[j])
+    nrm = np.asarray(Image.open(rig / "rope_normal.png"), dtype=float) / 255.0
+    assert nrm[..., 2].mean() > 0.8 and nrm[..., :2].std() > 0.02, "a relief, mostly facing out"
+    with pytest.raises(ValueError):
+        ropes.rope_set({"ropes": {"jib_sheet": {}}})

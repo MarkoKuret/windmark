@@ -9,9 +9,9 @@ controls, the cameras, the minimal HUD, the audio and a sail test scene that put
 | Path | Role |
 | --- | --- |
 | `project.godot` | Project settings |
-| `scripts/` | GDScript. `sail_grid.gd` (`SailGrid`) maps imported sail vertices back to the boatgen sail grid; `frames.gd` (`Frames`) holds the axes and angle helpers; `boat_view.gd` (`BoatView`) places the generated boat, its rudder, wheel, boom and mainsheet, and bends the sails; `sail_shape_ref.gd` (`SailShapeRef`) is the GDScript reference of the native sail shapes; `boat_materials.gd` (`BoatMaterials`) puts the boat materials on the imported meshes |
+| `scripts/` | GDScript. `sail_grid.gd` (`SailGrid`) maps imported sail vertices back to the boatgen sail grid; `frames.gd` (`Frames`) holds the axes and angle helpers; `boat_view.gd` (`BoatView`) places the generated boat, its rudder, wheel, boom and mainsheet, bends the sails and switches the levels of detail; `boat_sheets.gd` (`BoatSheets`) draws the running sheets, `sheet_ropes_ref.gd` (`SheetRopesRef`) is the GDScript reference of the native sheet ropes; `sail_shape_ref.gd` (`SailShapeRef`) is the GDScript reference of the native sail shapes; `boat_materials.gd` (`BoatMaterials`) puts the boat materials on the imported meshes |
 | `scripts/sim/` | `SimSource` (the simulation interface), `CoreSimSource` (the core, through the GDExtension) and `CoreEnvSource` (its sea and wind for the Sea node), `FakeSim` and `FakeBoat` (placeholder), `SimRunner` (50 ms ticks), class loading |
-| `native/` | The GDExtension: `CoreSim` over `core/include/windmark.h` `SailShape` (the per-vertex sail shapes) the wakes (`sea_wakes.h`: `SeaSampler`, `WakeRibbon`, `BowWaveSheets`, `MistCloud`) and the drawn boat shadows (`boat_shadow.h`: `BoatShadowShape`) in `src/`, `build.sh`, `CMakeLists.txt`. Godot skips the folder (`.gdignore`) |
+| `native/` | The GDExtension: `CoreSim` over `core/include/windmark.h` `SailShape` (the per-vertex sail shapes), `SheetRopes` (the running sheets) the wakes (`sea_wakes.h`: `SeaSampler`, `WakeRibbon`, `BowWaveSheets`, `MistCloud`) and the drawn boat shadows (`boat_shadow.h`: `BoatShadowShape`) in `src/`, `build.sh`, `CMakeLists.txt`. Godot skips the folder (`.gdignore`) |
 | `bin/` | The built extension library and `windmark.gdextension`. Not committed |
 | `scripts/settings.gd` | `Settings`: the player's settings (`docs/specs/menus.md` §3), saved in `user://settings.cfg`, read through `Settings.current()` and applied with `apply_*` |
 | `scripts/perf/` | `PerfMonitor` (the frame-time overlay and its CSV log, `docs/specs/hud.md` §17) and `PerfStats` (the per-frame section timings) |
@@ -194,6 +194,20 @@ others as Dictionaries with the C field names. `CoreSimSource` caches the per-bo
   to 800 m, 4 Hz beyond, none outside the view frustum. Cost on an M-series Mac: about 11 µs per sail update (wm7:
   30 µs for main, jib and kite), so 40 boats near the camera take about 1.2 ms per frame. Without the GDExtension
   the GDScript `SailShapeRef` does the same about 45 times slower (a test and fallback path, not for fleets).
+- **Sheets** (`sail_visuals.md` §11.3, `BoatSheets`): the jib or genoa sheets, the flying sail's sheets (or sheet and
+  guy) and the asymmetric's tack line, from the placed clew through the sidecar's `rig.sheet_leads` (car block or
+  quarter block) to the winch, three turns on the drum and the tail coiled on the cockpit floor. The working line
+  sags by its tension (the sail's area, the apparent wind, the luff shiver: a trimmed sheet is straight, a flogging
+  one droops and swings with the sail's flutter phase); the lazy line hangs slack and lies on the deck (a 5 cm height
+  field of the class's deck), round the mast front or the forestay. One mesh per boat with two surfaces (headsail and
+  flying-sail lines), rewritten in place by the native `SheetRopes` in the frames a sail is redrawn (at LOD1 at most
+  15 Hz). Cost on an M-series Mac: about 50 µs per redraw for a wm7 with jib and kite (1 870 vertices), 1 µs per frame
+  between redraws; the GDScript `SheetRopesRef` about 15 times slower.
+- **Levels of detail** (`sail_visuals.md` §11.4): every boat loads `<id>.glb`, `<id>_lod1.glb` and `<id>_lod2.glb`
+  (the sidecar's `model.lods`), shows one by the camera distance to the boat (LOD1 past 31.5 m, back below 28.5 m;
+  LOD2 past 105 m, back below 95 m), with the moving parts of the level shown following the helm and the sails. The
+  sails are LOD0's at every level; the sheets are full at LOD0, coarse at LOD1 and hidden at LOD2. `BoatLivery` puts
+  the same livery materials on every level.
 - **HUD commands**: the helm mark, the sheet bar and text, `AUTO` and `LET FLY` of the own boat come from the
   local `PlayerControls` every frame (`Hud.local_commands`), since the core applies a command at its next step.
 - **Input map**: `scripts/controls/default_bindings.gd` is the one source of the defaults of `controls.md` §3.
@@ -300,6 +314,25 @@ The `renderer` column records which one ran. On Mobile, screen-space reflections
 `water_render.md` §7 only promises tier L; the others may miss effects. Godot's `--rendering-driver` (`metal`,
 `vulkan`) picks the graphics API the same way.
 
+**Headless fleet cost.** The renderer's draw-call and primitive counters read 0 without a GPU, so
+`tests/fleet_cost.gd` counts what the main pass would draw: it runs the sail scene as a race on the core (all boats
+sailed by the AI) and every frame counts, from the scene's camera, the visible boat surfaces inside the view frustum
+(draw calls) and their triangles, the boats at each level of detail, and the `boats` and `sails` sections per boat.
+`--no-lods` and `--no-sheets` give the boats as before those features, to compare:
+
+```
+godot --headless --path game -s res://tests/fleet_cost.gd -- --fleet=10 --seconds=15 [--no-lods] [--no-sheets]
+```
+
+Measured on an M-series Mac (WM-016.31, race start on `example_bay`, chase camera, shadow passes not counted):
+
+| fleet | draw calls | primitives | CPU per boat (boats + sails) | boats at LOD0 / 1 / 2 |
+| --- | --- | --- | --- | --- |
+| 10, before | 138 | 319 k | 49 µs | 10 / 0 / 0 |
+| 10, with LODs and sheets | 133 | 162 k | 61 µs | 2.7 / 6.3 / 1 |
+| 20, before | 366 | 843 k | 41 µs | 20 / 0 / 0 |
+| 20, with LODs and sheets | 294 | 220 k | 49 µs | 2.7 / 6.3 / 11 |
+
 ## Sail visuals tests
 
 ```
@@ -311,7 +344,11 @@ Headless. `tests/sail_visuals_test.gd` runs every numbered test of `sail_visuals
 and on the native `SailShape`, compares the two on random drivers in every phase, checks the native vertex buffer
 against Godot's own encoding of the same arrays, sets up the wm7 and wm12 sails in `BoatView` (grid-order meshes,
 uv sets, sail shader, rest-pose normals, the kite's belly to leeward, flaked headsails), checks the update rate by
-distance and the frustum, and prints the cost per sail. The previews: `tests/sail_preview_dump.gd` sails a boat on
+distance and the frustum, and prints the cost per sail. `tests/sheets_lod_test.gd` (run by the same script) runs
+tests 21 and 22: the native `SheetRopes` against `SheetRopesRef` and against Godot's own vertex encoding, the wm7 and
+wm12 sheets from the clew to the lead and the drum, sag by load, the lazy sheet on the deck, a tack, a sail down,
+the kite's sheet, lazy sheet and tack line; the level switch with its hysteresis, the livery on every level and the
+moving parts; the rope materials by function, baked and procedural; and the cost per boat. The previews: `tests/sail_preview_dump.gd` sails a boat on
 the core into trimmed, eased, let-fly, tacking, hoisting, reaching, running and dropping situations and dumps the
 bent boat, `tests/sail_preview.py` renders them offscreen to `generated/sail_preview/` (with `--publish` the
 JPEGs in `tests/previews/sails_*.jpg`). It lights the boat with the default daytime preset (`SkyRig`) under the
@@ -541,6 +578,10 @@ Godot reimports only the files whose content changed (it compares their hashes).
 - **One text texture per boat** either way: `LiveryText` sets the boat name, sail number, nation letters (and the
   insignia, used by the fallback) in Barlow Semi Condensed Bold on the CPU into a 1024 x 512 single-channel image
   (about 0.7 MB with mipmaps).
+- **Ropes** (`data_format.md` §8.7): the class rope set (`data/liveries/<class>/rig/`, a braid tile per function)
+  goes on the model's `rope_mainsheet`, `rope_halyard` and `rope_control` slots of every level and on the sheets
+  (`sheet`, `kite_sheet`), one material per class and function (`BoatLivery.rope_material`); without the baked set
+  the slot is tinted to the function's braid colour.
 - Draw calls are unchanged (every surface of every boat is its own draw anyway); the baked path adds two shaders.
 
 **Cost** (WM-081). Load, headless M1: the first boat of a class loads the class's images (about 20 to 30 ms), every

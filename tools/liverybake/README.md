@@ -18,9 +18,9 @@ python3 -m liverybake --stage-only         # only copy the current files to the 
 ```
 
 Options: `--livery ID` (one livery of the file), `--only PART` (repeatable: `hull`, `keel`, `transom`, `deck`,
-`sails` or a sail id such as `main`, `jib`, `kite`, `code0`, `a2`), `--force`, `--no-stage`, `--stage-only`,
+`sails`, `ropes` or a sail id such as `main`, `jib`, `kite`, `code0`, `a2`), `--force`, `--no-stage`, `--stage-only`,
 `--out DIR` (bake somewhere else, for trying things), `--hull-size` (4096), `--transom-size` (2048), `--deck-size`
-(4096), `--sail-size` (2048), `--keel-size` (1024), `--quiet`. A full bake takes about 4 minutes per class on an
+(4096), `--sail-size` (2048), `--keel-size` (1024), `--rope-size` (512), `--quiet`. A full bake takes about 4 minutes per class on an
 M-series Mac (the deck about 30 s, the transom 4 s); the first run per class also builds
 the boat with `tools/boatgen` (about 15 s, cached in `.cache/`).
 
@@ -56,7 +56,16 @@ data/liveries/<class>/sails/            the class sail set, shared by the fleet
     <sail>_normal.png       2048 longest  relief (both sides), linear
     <sail>_orm.png          2048 longest  R occlusion, G roughness, B light through the cloth; linear
     layout.json                         the sails' plan rectangles, cloth, and the number slots
+data/liveries/<class>/rig/              the class rope set (data_format.md §8.7), shared by the fleet
+    rope_<function>_albedo.png  512 x 512  one braid tile in the function's colours, sRGB: mainsheet, sheet,
+                                           kite_sheet, halyard, control
+    rope_normal.png             512 x 512  the braid's relief, linear, shared by every function
+    rope_orm.png                512 x 512  R occlusion, G roughness, B metallic (0); linear
 ```
+
+A rope tile runs along the rope left to right (0.05 m, one lay length) and once round it top to bottom; it must
+tile seamlessly both ways. Each carrier of the 16-carrier braid is a diagonal ribbon of three yarns; recolouring a
+carrier (a fleck, a tracer) is a matter of painting along its diagonal.
 
 How the images lie:
 
@@ -129,6 +138,12 @@ hand-owned). Godot imports them compressed with mipmaps the next time it imports
 ## What the bake draws
 
 Everything is seeded from the class and livery ids, so a bake is repeatable.
+
+- **Ropes** (`liverybake/ropes.py`): per rope function of the file's `ropes` block (defaults in `data_format.md`
+  §8.7) a 16-carrier braid, 8 carriers each way, 2 over 2 under, each a flat ribbon of three yarns with fibre streaks;
+  `fleck` puts one carrier of each direction in the fleck colour, `tracer` one, `twill` alternate pairs, `solid`
+  none. The shared normal and ORM maps carry the carriers' crowns, the dips where they pass under and the grooves
+  between yarns.
 
 - **Hull** (`liverybake/hull.py`): the hull point of every texel from the generator's skin (station
   interpolation), so features sit at real heights and lengths. Polished gelcoat or paint with slight batch and sun

@@ -202,13 +202,22 @@ def instrument(w, h, t):
     return p
 
 
-def rope_coil(r, turns=3, rr=0.006):
+# one rope texture tile: 0.05 m along the rope (one lay length of the braid) and one turn round it
+ROPE_TILE = 0.05
+
+
+def rope_tube(path, r, sides=6, caps=True):
+    """A rope: uv0 = (metres along, fraction of the turn x ROPE_TILE), a seamless texture turn round it."""
+    return tube(path, r, sides, caps=caps, turn_uv=ROPE_TILE)
+
+
+def rope_coil(r, turns=3, rr=0.006, slot="rope"):
     """Flaked line lying on a surface: a few loose flattened turns."""
     p = Part()
     th = np.linspace(0, 2 * np.pi * turns, 24 * turns)
     rad = r * (1 - 0.08 * th / (2 * np.pi)) * (1 + 0.08 * np.sin(3.1 * th))
     path = np.stack([rad * np.cos(th) * 1.25, rad * np.sin(th), rr + rr * 1.6 * th / th[-1]], -1)
-    p.add("rope", tube(path, rr, 6))
+    p.add(slot, rope_tube(path, rr, 6))
     return p
 
 
@@ -223,7 +232,7 @@ def rope(points, r, sag=0.0, n=12):
             q = a + (b - a) * t
             q[2] -= sag * L * 4 * t * (1 - t)
             pts.append(q)
-    return tube(np.array(pts), r, 6)
+    return rope_tube(np.array(pts), r, 6)
 
 
 def stanchion(h, r=0.0125):
@@ -320,7 +329,7 @@ def lead(deck, pts, r, lift=None, step=0.12):
             if 0 < t < 1:
                 q[2] = max(q[2], deck.surface(q[0], q[1])[0] + lift)
             out.append(q)
-    return tube(np.array(out), r, 6)
+    return rope_tube(np.array(out), r, 6)
 
 
 def place_all(cls, hull, deck, rig, lod=0):
@@ -392,14 +401,14 @@ def place_all(cls, hull, deck, rig, lod=0):
                 zc = float(deck.surface(x_cl, y_c)[0]) + 0.36 * hal_pitch
                 z_b = float(deck.surface(xb, fy)[0]) + 0.02 * s
                 top = np.array([rig.x_mast, side * 0.5 * rig.width, z_exit + 0.05 * s * k])
-                hw.add("rope", lead(deck, [top, np.array([xb + 0.03 * s, fy, z_b]),
+                hw.add("rope_halyard", lead(deck, [top, np.array([xb + 0.03 * s, fy, z_b]),
                                            (x_org, y_c), np.array([x_cl + 1.2 * hal_pitch, y_c, zc]),
                                            np.array([x_cl - 1.2 * hal_pitch, y_c, zc]),
                                            (x_cl - 0.3 * s, y_c + side * 0.02 * s)], r_line * 0.9), tag=f"halyard_{side}_{k}")
                 hw.attach(f"halyard_{side}_{k}", f"halyard_exit_{side}_{k}")
                 hw.attach(f"halyard_{side}_{k}", f"clutches_{side}")
         if fine:
-            hw.extend(on_surface(deck, rope_coil(0.13 * s, 3, r_line), x_cl - 0.42 * s, side * y_cl * 0.9, yaw=0.4 * side),
+            hw.extend(on_surface(deck, rope_coil(0.13 * s, 3, r_line, "rope_halyard"), x_cl - 0.42 * s, side * y_cl * 0.9, yaw=0.4 * side),
                       tag=f"halyard_coil_{side}")
             hw.attach(f"halyard_coil_{side}", "deck")
             # halyard exit plates on the mast
@@ -457,7 +466,7 @@ def place_all(cls, hull, deck, rig, lod=0):
             if fine:
                 # control line: from the car's end, round the end block's sheave, through the cleat, tail on the floor
                 xt, yt = xc - 0.2 * s, yc_ - side * 0.03 * s
-                hw.add("rope", tube(np.array([[x_tr, y_car + side * 0.45 * l_car, zf + 0.85 * w_car],
+                hw.add("rope_control", rope_tube(np.array([[x_tr, y_car + side * 0.45 * l_car, zf + 0.85 * w_car],
                                               [x_tr, ye, zf + 0.62 * 0.05 * s],
                                               [xc, yc_, floor(xc, yc_) + 0.02 * s],
                                               [xt, yt, floor(xt, yt) + 0.8 * r_line]]), r_line * 0.8, 6),
@@ -486,12 +495,14 @@ def place_all(cls, hull, deck, rig, lod=0):
         # mainsheet tail out of the lower block, down to the floor and flaked there
         x1, y1 = x_tr - 0.35 * s, y_car + 0.15 * s
         x2, y2 = x_tr - 0.5 * s, y_car + 0.15 * s
-        hw.add("rope", tube(np.array([lower + [-0.2 * d_blk, 0.04 * d_blk, 0], lower + [-0.15 * s, 0.1 * s, -0.04 * s],
-                                      [x1, y1, floor(x1, y1) + r_line], [x2 + 0.1 * s, y2, floor(x2, y2) + r_line]]),
-                            r_line, 6), tag="mainsheet_tail")
+        hw.add("rope_mainsheet", rope_tube(np.array([lower + [-0.2 * d_blk, 0.04 * d_blk, 0],
+                                                     lower + [-0.15 * s, 0.1 * s, -0.04 * s],
+                                                     [x1, y1, floor(x1, y1) + r_line],
+                                                     [x2 + 0.1 * s, y2, floor(x2, y2) + r_line]]), r_line, 6),
+               tag="mainsheet_tail")
         hw.attach("mainsheet_tail", "mainsheet_lower")
         hw.attach("mainsheet_tail", "deck")
-        hw.extend(on_surface(deck, rope_coil(0.12 * s, 3, r_line), x2, y2), tag="mainsheet_coil")
+        hw.extend(on_surface(deck, rope_coil(0.12 * s, 3, r_line, "rope_mainsheet"), x2, y2), tag="mainsheet_coil")
         hw.attach("mainsheet_coil", "deck")
 
     # --- mooring cleats and chocks at the bow and quarters
@@ -567,7 +578,7 @@ def mainsheet_tackle(lower, upper, s):
     sheet = Part()
     for k in range(4):
         off = np.array([0, (k - 1.5) * 0.0065 * s, 0])        # within the sheaves (block(0.09 s))
-        sheet.add("rope", tube(np.array([lower + off, upper + off]), 0.0045 * s, 5),
+        sheet.add("rope_mainsheet", rope_tube(np.array([lower + off, upper + off]), 0.0045 * s, 5),
                   tag=f"mainsheet_part_{k}")
         sheet.attach(f"mainsheet_part_{k}", "mainsheet_lower")
         sheet.attach(f"mainsheet_part_{k}", "mainsheet_upper")
@@ -726,6 +737,6 @@ def _lifelines(hw, hull, deck, s, lod=0):
             ends += [f"pulpit_leg_{side}_aft" if tier < 1 else "pulpit"]
             for k, (a, b) in enumerate(zip(chain[:-1], chain[1:])):
                 name = f"lifeline_{side}_{tier}_{k}"
-                hw.add("rope", tube(np.array([a, b]), 0.0035, 5, caps=False), tag=name)
+                hw.add("rope", rope_tube(np.array([a, b]), 0.0035, 5, caps=False), tag=name)
                 hw.attach(name, ends[k])
                 hw.attach(name, ends[k + 1])

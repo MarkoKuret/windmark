@@ -12,7 +12,8 @@ from PIL import Image
 from .gltf import read_glb
 
 MAT_IDS = {"gelcoat": 0, "nonslip": 1, "antifouling": 2, "boottop": 3, "carbon": 4, "metal": 5, "sailcloth": 6,
-           "glass": 7, "rope": 8, "rubber": 9, "transom": 10}
+           "glass": 7, "rope": 8, "rubber": 9, "transom": 10, "rope_mainsheet": 8, "rope_sheet": 8,
+           "rope_kite_sheet": 8, "rope_halyard": 8, "rope_control": 8}
 
 VS = """
 #version 410

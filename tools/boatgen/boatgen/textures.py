@@ -50,6 +50,11 @@ SLOTS = {
     "metal": ("brushed", 0.2),
     "sailcloth": ("weave", 0.5),
     "rope": ("braid", 0.05),
+    "rope_mainsheet": ("braid", 0.05),
+    "rope_sheet": ("braid", 0.05),
+    "rope_kite_sheet": ("braid", 0.05),
+    "rope_halyard": ("braid", 0.05),
+    "rope_control": ("braid", 0.05),
     "glass": (None, 1.0),
 }
 

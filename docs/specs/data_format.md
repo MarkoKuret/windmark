@@ -583,6 +583,7 @@ The general rules of §1 hold; colours are `"#rrggbb"` sRGB strings. Top level:
 | `class` | **R** | the class id |
 | `insignia` | **R** | the class insignia on the main: `{ "text": "W7" }` (1 to 4 capital letters and digits, drawn bold italic over a wave mark) |
 | `sails` | | the class sail set by role (§8.3): every boat of the class carries the same sails |
+| `ropes` | | the class rope set by function (§8.7): every boat of the class carries the same ropes |
 | `liveries[]` | **R** | at least one livery (§8.1). Every boat wears the first, the class livery; further entries are kept for later (team liveries) and are not assigned yet |
 | `boats[]` | **R** | at least 12 boat identities (§8.4) |
 
@@ -737,6 +738,42 @@ rewrites every part it is asked to bake and `--only <part>` (`hull`, `keel`, `tr
 id) rewrites just those files. No other tool writes there. A changed
 class file does not rebake them: the hull follows uv1 and the sails keep their `rect` in metres, so after a hull or
 sail plan change the owner decides whether to repaint or rebake (`--only`).
+
+### 8.7 Ropes
+
+The running rigging in braid colours by function, as on real boats: every boat of the class carries the same rope
+set. `ropes.<function>`, each `{ "color", "fleck", "pattern" }`, all optional:
+
+| function | lines | default `color`, `fleck` |
+| --- | --- | --- |
+| `mainsheet` | the mainsheet tackle, its tail and coil | `#1f2b45` navy, `#d8d8d2` white fleck |
+| `sheet` | jib and genoa sheets (drawn by the front end, `sail_visuals.md` §11.3) | `#d2d2cb` white, `#b3242a` red fleck |
+| `kite_sheet` | spinnaker and code zero sheets, guys and the tack line (front end) | `#2b62a6` blue, `#dadad4` white fleck |
+| `halyard` | the halyards from the mast to the clutches and their coils | `#d4d4cd` white, `#2d7a40` green fleck |
+| `control` | traveller lines, the outhaul and the other control lines | `#1d1e21` black, `#c9a227` gold fleck |
+
+Lifelines and anything else stay the generator's grey `rope` slot.
+
+| key | default | meaning |
+| --- | --- | --- |
+| `color` | per function, above | the braid's main colour (each channel at most `#e7`, as §8.1) |
+| `fleck` | per function, above | the colour of the fleck carriers |
+| `pattern` | `fleck` | `fleck`: two carriers of the sixteen in the fleck colour, one per direction, so the fleck runs as a crossed spiral; `tracer`: one carrier, a single spiral; `twill`: alternate pairs of carriers in the two colours (a chevron braid); `solid`: the main colour only |
+
+**Textures** in `data/liveries/<class>/rig/`, hand-owned like the others (§8.6; `tools/liverybake --only ropes`
+rewrites them): one tile of a 16-carrier braid (8 carriers each way, 2 over 2 under, three yarns per carrier), 512 ×
+512, covering 0.05 m along the rope (one lay length) and one turn around it. On the ropes uv0 is metres along and
+the fraction around times 0.05 m (one tile per turn, seamless round the rope; `tools/boatgen/README.md` "Materials
+and UVs").
+
+| file | content |
+| --- | --- |
+| `rope_<function>_albedo.png` | the braid in the function's colours, sRGB, 8-bit RGB |
+| `rope_normal.png` | the braid's relief (carriers, yarns, crossings), linear, OpenGL convention, shared by every function |
+| `rope_orm.png` | occlusion (between carriers), roughness (about 0.8, polyester braid), metallic 0; linear, shared |
+
+The game draws a rope slot with these when the class has them (the slot's own tiling texture otherwise, tinted to
+`color`); a function without its albedo keeps the generator's look.
 
 ## 9. Rules scenarios (`windmark.scenario/1`)
 

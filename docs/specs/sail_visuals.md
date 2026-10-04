@@ -609,6 +609,98 @@ Both paths:
   crisp close up and fade to their average far away. On the baked path a faint darker hairline follows the edge of
   the stuck-on sheet.
 
+### 11.3 Sheets
+The working sheets of the headsails and flying sails follow the trimmed sail, so they are not in the generated model
+(`tools/boatgen/README.md` "Running rigging"): the front end draws them every update from the placed clew to the
+sidecar's `rig.sheet_leads` (lead block and winch, given on starboard; port is the mirror in `y`). Presentation only.
+
+**Lines.** Per sail shown (not `down`), the front headsail (jib or genoa) and the flying sail (spinnaker or code
+zero) each get one line per side; when two headsails or two flying sails are shown at once (a peel), the lines follow
+the one further hoisted. The side of the sail angle (`sgn β`, starboard for `β > 0`) is the **working** side, the
+other the **lazy** side.
+
+| sail | working line | lazy line |
+| --- | --- | --- |
+| jib, genoa | clew → `headsail.lead` (the car block) → `headsail.winch` | clew → round the mast front (below) → the other `headsail.lead` → its winch |
+| code zero, asymmetric spinnaker on a sprit | clew → `flying.lead` (the quarter block) → `flying.winch` | clew → round the forestay (below) → the other `flying.lead` → its winch |
+| spinnaker on a pole | sheet: clew → `flying.lead` → `flying.winch` | guy: the tack (the pole end) → the other `flying.lead` → its winch |
+
+An asymmetric spinnaker on a sprit also gets its **tack line**, from the sidecar `bowsprit_end` to the placed tack
+(§7.3), as part of the flying sail's lines. The clew and tack are the placed mid-surface's corners (row 0, last and
+first column), so a line moves with the sail as last updated.
+
+**Lazy route.** A lazy line whose clew lies on the other side of the centreline from its lead runs round the front of
+an obstacle: a jib or genoa sheet round the mast front (`0.6 · mast_chord` ahead of the mast axis), a flying sail's
+sheet round the forestay (`0.15 · loa^0.5` m ahead of the `forestay_tack`). The waypoint `W` is where the straight
+line from the clew to the lead crosses the centreline, moved forward to the obstacle's fore-and-aft position when it
+lies aft of it (keeping the crossing's height; the sag and the deck then bring it down); a line whose clew is on its
+lead's side has no waypoint. `W` is continuous as the clew moves, so a tack or gybe moves the line smoothly.
+
+**Shape.** A line is a polyline of runs: the **free run** from the clew (or tack) through `W` to the lead, the
+**lead run** from the lead block to the winch drum, then the turns on the drum and the tail (fixed in the boat).
+Each run hangs as a parabola in the boat frame with its sag along gravity (the world down in the heeled boat's
+frame), its depth from the line's tension:
+```
+q    = 0.5 * 1.225 * aws^2                          // dynamic pressure of the apparent wind, Pa
+f_s  = phase in (up, prepare_drop) ? 1 : 0.1          // a hoisting, dropping or bagged sail pulls little
+T    = 5 + 0.35 * q * A * f_s * (1 - I)^2             // N, working sheet or guy; A: the sail's flat area (sidecar
+                                                     // area_m2), I: luff_shiver
+w    = 700 * d^2                                      // kg/m, rope of diameter d (m): 0.057 kg/m at 9 mm
+sag  = clamp(w * 9.81 * L / (8 * T) + 0.12 * I^2, 0.0005, 0.25)     // working: depth over span length L
+sag  = 0.22                                          // lazy line (free run); its lead run with T = 5
+sag  = clamp(w * 9.81 * L / (8 * T), 0.0005, 0.25)   // tack line and the lead run, with the working line's T
+```
+The first term is the catenary of a loaded rope (a trimmed sheet is within millimetres of straight); the second is
+the slack the crew lets out as the sail luffs, up to 12 % of the span when it flogs. Per line the drawn `sag` eases
+toward its target with `τ = 0.3 s` (the crew grinds in or casts off; a tack hands the load from one sheet to the
+other without a jump). The lead run uses the same tension over its own length.
+
+A point at the run fraction `t` (by length along the run's polyline, through `W`) is
+```
+P(t) = R(t) + 4 t (1 - t) * L * sag * (g * cos(psi) + s * sin(psi))
+                + 4 t (1 - t) * 0.15 * L * I * sin(phi - 2 * PI * l / 1.5) * s       // whip of a flogging sheet
+psi  = 0.6 * I * sin(phi)                            // the sag swings sideways as the clew flogs
+```
+with `R(t)` the straight polyline, `g` the unit gravity in the boat frame, `s` the unit side vector square to the run
+and to `g`, `phi` the sail's flutter phase (§5.2), `l` the length from the clew (m). A lazy line swings with
+`0.3 · I` of its sail and does not whip; the tack line neither swings nor whips. The lead run has no swing or whip. No point lies below the deck: the class's deck height field (the top of the generated
+`deck` mesh, on a 5 cm grid) lifts a point to the deck plus the rope radius, so a lazy sheet lies along the side deck,
+the cabin top and the foredeck. Outside the deck there is no limit (a kite's lazy sheet hangs ahead of the bow).
+
+**Winch and tail.** The lead run meets the drum on its tangent (winches turn clockwise from above), the line takes
+three turns up the drum (`0.34` to `0.59` of the drum diameter above its base, at the drum radius plus the rope
+radius) and its tail leaves the self-tailer at the top, drops into the cockpit `0.35 · s` aft of the winch and half
+way to the centreline, and lies on the floor in two short bights (`s = (loa / 12)^0.7`). These parts are fixed in the
+boat and built once.
+
+**Rope.** Diameter `2 · max(0.0045, 0.0055 · s)` m (the generator's sheets), the tack line `0.8` of it. A tube of 6 sides with a seam vertex (one texture turn around, `data_format.md` §8.5), uv0 = (metres along, the
+fraction around times the rope texture tile). Materials by function (`data_format.md` §8.7): jib and genoa lines
+`sheet`, flying-sail lines and the tack line `kite_sheet`.
+
+**Mesh and cost.** One mesh per boat for all its sheets, with two surfaces (headsail lines, flying-sail lines), fixed
+vertex and index counts (a hidden line collapses to a point), rewritten in place like a sail
+(`mesh_surface_update_vertex_region` for positions and normals, `mesh_surface_update_attribute_region` for uv0), in
+the native `SheetRopes` (one per surface; `SheetRopesRef` is the GDScript reference). The mesh is redrawn in the frames
+in which any of the boat's sails is updated (§11 rates: every frame within 200 m, and not outside the view frustum),
+at LOD1 (§11.4, where a rope is under a pixel wide) at most at 15 Hz; the eased sag runs every frame. Per line at LOD0 (§11.4) 16 rings on the free run, 4 on the lead run, 24 on the drum
+and 6 on the tail; at LOD1 8 and 2 rings, 4 sides, no drum turns or tail; at LOD2 no sheets.
+
+### 11.4 Levels of detail
+The generator writes three levels per class (`<id>.glb`, `<id>_lod1.glb`, `<id>_lod2.glb`, listed with their switch
+distance `from_m` in the sidecar's `model.lods`; `tools/boatgen/README.md` "Levels of detail"), with the same nodes,
+pivots, material slots, uv1 and sail grids. Each boat loads every level that exists and shows one:
+- **Distance** `d` from the camera to the boat's origin, every frame. The boat goes to a coarser level when `d` passes
+  that level's `from_m` by `m = 0.05 · from_m` (1.5 m at 30 m, 5 m at 100 m) and back to a finer one when `d` falls
+  below its `from_m` by `m`, so a boat near a switch distance does not flicker. Without a camera (headless), LOD0.
+- **What switches**: every non-sail part of the model (hull, deck, keel, mast, rigging, hardware, rudder, wheel, boom,
+  mainsheet, pole). The sails are the LOD0 sail meshes at every level (the grids are the same), updated at the
+  rates of §11; the sheets per §11.3. Hidden parts cast no shadow.
+- **Moving parts**: the rudder, wheel, boom, mainsheet and pole of the level shown follow the helm and the sail
+  angles every frame; a level that comes in is set at once.
+- **Livery**: the boat's livery materials (`data_format.md` §8, `game/README.md` "Liveries") go on every level's
+  surfaces by part and slot (the same uv1 atlas), shared between the levels, so a switch changes the triangles, never
+  the paint. The rope materials (§11.3, `data_format.md` §8.7) likewise.
+
 ## 12. Tests
 
 Synthetic grids for exact numbers: a rectangle in `y = 0` with the luff on `x = 0` from `z = 0` to `z = 9` m, the
@@ -683,6 +775,17 @@ Flutter phase `φ = 0` unless stated.
     steps, both tacks): the clew (row 0, last column) stays aft of the mast and at most `0.3·LOA` outboard of the
     widest beam (2.2 m on wm7, 3.6 m on wm12), where a real reaching asymmetric sheeted to the quarter flies, while
     test 18 holds in every config and trim. The test prints the clew's worst position and the largest ease.
+21. **Sheets.** On the generated `wm7` (jib and kite) and `wm12` (jib, code zero and kite), native and reference:
+    every working and lazy line starts at its sail's placed clew (the guy and the tack line at the tack) within 1 mm,
+    passes its lead block within 1 mm and meets the drum at the winch's radius; it follows the clew through a
+    scripted tack and gybe (no vertex of a line moves more than `0.05·Sa` of its sail between frames at 60 fps, away
+    from the sag easing); a trimmed sheet (`I = 0`, 10 kn) sags under 1 % of its span and a flogging one (`I = 1`)
+    over 8 %; a lazy line never lies below the deck height field; a sail `down` hides its lines; native and
+    reference agree within 1e-4 m. The test prints the cost per boat.
+22. **Levels of detail.** A boat with the camera at 25, 35, 90, 110 m shows LOD0, LOD1, LOD1, LOD2; at 29 m coming
+    from 35 m it stays at LOD1 (hysteresis) and at 28 m returns to LOD0; every level's hull, keel and sails carry the
+    boat's livery materials (the same material objects on each level), the moving parts of the level shown follow the
+    boom and the helm, and the sheets are full at LOD0, coarse at LOD1 and hidden at LOD2.
 
 ## 13. Dependencies and open points
 
@@ -690,7 +793,9 @@ Flutter phase `φ = 0` unless stated.
   vertical) for pole-flown spinnaker classes (`tools/boatgen`, WM-029), and the full grid topology with the
   collapsed head vertex referenced (WM-017). Its previews draw the set sails with the shapes of this spec (§12,
   test 19), so a preview shows what a race shows.
-- Running rigging (sheets, halyards, guys) is not drawn yet; when it is, the sheets run from the placed clew.
+- Running rigging: the headsail and flying-sail sheets, guys and the tack line are drawn at run time (§11.3); the
+  halyards, mainsheet and control lines are in the generated model. Not drawn yet: the spinnaker halyard from the
+  head to the mast, the lazy guy and lazy sheet on a pole-flown spinnaker, barber haulers and twings.
 - The cloth style comes from the sail type and the LOA (§11.1) until the class file can name it (a
   `visual.sails.<id>.cloth` key in the generator's `look` block).
 - Crew, winches and tell-tales follow the sail `motion` output (`sails.md` §7) and are specified with the crew.

@@ -565,6 +565,9 @@ func test_core_scene() -> void:
 		err_ang = maxf(err_ang, absf(Frames.angle_diff(atan2(bow.x, -bow.z), a[3])))
 		err_ang = maxf(err_ang, absf(asin(clampf(bow.y, -1.0, 1.0)) - a[4]))
 		err_ang = maxf(err_ang, absf(port.y - cos(a[4]) * sin(a[5])))
+		# the moving parts of the level of detail shown (sail_visuals.md §11.4)
+		boom = bv.levels[bv.lod]["boom"]
+		rudder = bv.levels[bv.lod]["rudder"]
 		err_rudder = maxf(err_rudder, (rudder.transform.basis * Vector3.BACK).distance_to(
 			Basis(axis, a[6] * info.rudder_max) * Vector3.BACK))
 		# bow to starboard (h > 0): the blade's trailing edge (model -Z, aft) points to starboard (model -X)

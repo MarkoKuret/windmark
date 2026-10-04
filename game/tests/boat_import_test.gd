@@ -18,7 +18,10 @@ extends SceneTree
 
 const BOAT_DIR := "res://generated/boats"
 const REQUIRED_MATERIALS := ["gelcoat", "nonslip", "antifouling", "boottop", "carbon", "metal", "sailcloth"]
-const KNOWN_MATERIALS := ["gelcoat", "nonslip", "antifouling", "boottop", "carbon", "metal", "sailcloth", "glass", "rope", "rubber", "transom"]
+const KNOWN_MATERIALS := ["gelcoat", "nonslip", "antifouling", "boottop", "carbon", "metal", "sailcloth", "glass", "rope", "rubber",
+	"transom", "rope_mainsheet", "rope_halyard", "rope_control"]
+## the running rigging by function in the model (data_format.md §8.7); the sheets are drawn by the front end
+const ROPE_MATERIALS := ["rope_mainsheet", "rope_halyard", "rope_control"]
 ## Positions come through the importer's 16-bit vertex compression; 5 mm is well above its error for a 20 m boat.
 const POS_TOL := 0.005
 ## Hull extent against the class-file dimensions (stem rounding, toe rail and rub strake stand proud a little).
@@ -335,6 +338,9 @@ func _test_materials(id: String, parts: Dictionary) -> void:
 			found[nm] = m
 	for nm in REQUIRED_MATERIALS:
 		_check(found.has(nm), "%s has material slot %s" % [id, nm])
+	if not id.ends_with("_lod1") and not id.ends_with("_lod2"):
+		for nm in ROPE_MATERIALS:
+			_check(found.has(nm), "%s has rope slot %s" % [id, nm])
 	var line := "  materials:"
 	for nm in found:
 		var m: StandardMaterial3D = found[nm]

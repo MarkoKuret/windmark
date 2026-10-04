@@ -334,11 +334,13 @@ def parallel_frames(path):
     return T, Nn, B
 
 
-def sweep(path, profile, closed_profile=True, scale_along=None, caps=True, up=None, max_seg=None):
+def sweep(path, profile, closed_profile=True, scale_along=None, caps=True, up=None, max_seg=None, turn_uv=None):
     """Sweep a 2D profile (m, 2) along a 3D path (n, 3). Profile x maps to the frame normal, y to binormal.
 
     `up` (3,) pins the profile x axis to the direction closest to `up` (for non-circular sections). Path segments
-    longer than `max_seg` are split evenly (so per-vertex data such as baked AO has rings to vary on)."""
+    longer than `max_seg` are split evenly (so per-vertex data such as baked AO has rings to vary on). With
+    `turn_uv` (a closed profile) uv0 around is the fraction of the turn times `turn_uv` and the seam is a duplicated
+    vertex column (no weld), so a texture tile wraps exactly once round the section (ropes)."""
     path = np.asarray(path, dtype=np.float64)
     prof = np.asarray(profile, dtype=np.float64)
     if max_seg is None:
@@ -363,7 +365,15 @@ def sweep(path, profile, closed_profile=True, scale_along=None, caps=True, up=No
     ps = arclen(np.vstack([prof, prof[:1]]) if closed_profile else prof)[:len(prof)]
     uv = np.stack([np.broadcast_to(s[:, None], P.shape[:2]), np.broadcast_to(ps[None, :], P.shape[:2])], -1)
     # orientation: du along path, dv around profile; profile counter-clockwise gives inward, so swap
-    g = grid(P[:, ::-1], uv[:, ::-1], close_v=closed_profile)
+    if turn_uv is not None and closed_profile:
+        Pr = P[:, ::-1]
+        Nr = grid_normals(Pr, close_v=True)
+        m = Pr.shape[1]
+        frac = np.arange(m + 1) / m * float(turn_uv)
+        uv2 = np.stack([np.broadcast_to(s[:, None], (len(s), m + 1)), np.broadcast_to(frac[None, :], (len(s), m + 1))], -1)
+        g = grid(np.concatenate([Pr, Pr[:, :1]], 1), uv2, close_v=False, N=np.concatenate([Nr, Nr[:, :1]], 1))
+    else:
+        g = grid(P[:, ::-1], uv[:, ::-1], close_v=closed_profile)
     parts = [g]
     if caps and closed_profile:
         for end, sgn in ((0, -1.0), (-1, 1.0)):
@@ -406,8 +416,8 @@ def rounded_rect(w, h, r, n_corner=4):
     return np.array(pts)
 
 
-def tube(path, r, sides=10, caps=True):
-    return sweep(path, circle(r, sides), caps=caps)
+def tube(path, r, sides=10, caps=True, turn_uv=None):
+    return sweep(path, circle(r, sides), caps=caps, turn_uv=turn_uv)
 
 
 def box(size, center=(0, 0, 0)):

@@ -6,7 +6,8 @@ extends Node3D
 ## camber, twist, flutter, backing, hoist and drop and the flying spinnaker shapes, from the sail state and the
 ## apparent wind. The per-vertex work runs in the native `SailShape` (game/native) when the GDExtension is loaded,
 ## else in its GDScript reference `SailShapeRef`; each sail is its own grid-order mesh (§3.1) whose vertex buffer
-## is rewritten in one call per update, at a rate set by the distance to the camera (§11).
+## is rewritten in one call per update, at a rate set by the distance to the camera (§11). The running sheets follow
+## the sails (BoatSheets, §11.3), and the generated levels of detail switch by distance (§11.4).
 
 enum Mode { BOOM, LUFF, SPRIT, POLE }
 
@@ -57,6 +58,9 @@ class SailPart:
 	var chord_scale := 1.0
 	## the grid indices of the outline its drawn shadow uses (BoatShadows.sail_indices)
 	var shadow_idx := PackedInt32Array()
+	## the newer snapshot's phase and the interpolated luff shiver drawn this frame (the sheets, §11.3)
+	var phase := 0
+	var shiver := 0.0
 
 	## the placed clew (mid-surface, model axes)
 	func clew() -> Vector3:
@@ -95,10 +99,28 @@ var _sheet_top := Vector3.ZERO
 var _sheet_angle := 0.0
 ## the sail materials (§11) by imported slot material, shared by the fleet
 static var _sail_mats := {}
+## the levels of detail and the running sheets (off: the boat as before them, for cost comparisons)
+static var use_lods := true
+static var draw_sheets := true
 ## the GDScript reference shapes even when the native SailShape is loaded (set by create)
 var use_reference := false
 ## the hull and mast of the drawn shadow on the water (BoatShadows.caster_from_physics), built on first use
 var _shadow_caster: Variant = null
+## the levels of detail (sail_visuals.md §11.4), finest first: {"lod", "from", "root" (the GLB wrapper), "model",
+## "parts" (the non-sail part nodes), "rudder", "rudder_rest", "wheel", "wheel_rest", "boom", "boom_rest", "pole",
+## "pole_rest", "sheet" (the mainsheet's rebuild data)}; the sails are LOD0's at every level
+var levels: Array[Dictionary] = []
+## the level shown
+var lod := 0
+## a class whose flying sail is on a pole (sail_visuals.md §7.3)
+var pole_class := false
+## the running sheets (BoatSheets), null for a class without headsail or flying sail
+var sheets: BoatSheets
+## the helm and pole drawn last (a level that comes in is set at once)
+var _helm := 0.0
+var _pole_gamma := 0.0
+var _pole_shown := false
+var _sheets_since := 0.0
 ## the boat's livery (data_format.md §8) and its text texture, set by set_livery; null: the class's plain look
 var livery: Livery
 var livery_text: LiveryText
@@ -123,6 +145,9 @@ static func create(class_info: SimSource.ClassInfo, rudder_max: float, reference
 		b.add_child(wrapper)
 		b.model = wrapper.get_child(0) as Node3D if wrapper.get_child_count() > 0 else wrapper
 		BoatMaterials.apply(wrapper)
+		b.levels.append({"lod": 0, "from": 0.0, "root": wrapper, "model": b.model})
+		if use_lods:
+			b._load_lods()
 	else:
 		push_warning("%s not generated (run game/tests/run_boat_import_test.sh); drawing a box" % path)
 		var mi := MeshInstance3D.new()
@@ -131,7 +156,35 @@ static func create(class_info: SimSource.ClassInfo, rudder_max: float, reference
 		mi.mesh = bm
 		b.add_child(mi)
 	b._find_parts()
+	if b.model != null and draw_sheets:
+		b.sheets = BoatSheets.create(b, reference)
 	return b
+
+
+## The coarser levels of the sidecar's model.lods that are generated (sail_visuals.md §11.4), hidden until shown;
+## their sail nodes go (the sails are LOD0's at every level).
+func _load_lods() -> void:
+	var lods: Array = info.physics.get("model", {}).get("lods", [])
+	var sail_nodes := {}
+	for s in info.physics.get("sails", {}).values():
+		sail_nodes[String(s.get("node", ""))] = true
+	for e in lods:
+		var k := int(e.get("lod", 0))
+		if k <= 0:
+			continue
+		var path := "res://generated/boats/%s" % String(e.get("file", ""))
+		if not ResourceLoader.exists(path):
+			continue
+		var wrapper := (load(path) as PackedScene).instantiate() as Node3D
+		var m := wrapper.get_child(0) as Node3D if wrapper.get_child_count() > 0 else wrapper
+		for c in m.get_children():
+			if sail_nodes.has(String(c.name)):
+				m.remove_child(c)
+				c.free()
+		add_child(wrapper)
+		BoatMaterials.apply(wrapper)
+		levels.append({"lod": k, "from": float(e.get("from_m", 0.0)), "root": wrapper, "model": m})
+	levels.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["lod"] < b["lod"])
 
 
 ## Paints the boat in `lv` (BoatLivery: per-boat materials over the shared meshes; no mesh is rebuilt).
@@ -143,17 +196,20 @@ func _find_parts() -> void:
 	if model == null:
 		return
 	var rig: Dictionary = info.physics.get("rig", {})
-	_rudder = model.find_child("rudder", true, false) as Node3D
-	if _rudder:
-		_rudder_rest = _rudder.transform
-		if rig.has("rudder_axis"):
-			_rudder_axis = Frames.body_to_model(_vec(rig["rudder_axis"])).normalized()
-	_wheel = model.find_child("wheel", true, false) as Node3D
-	if _wheel:
-		_wheel_rest = _wheel.transform
-		if rig.has("wheel_axis"):
-			_wheel_axis = Frames.body_to_model(_vec(rig["wheel_axis"])).normalized()
-	_boom = model.find_child("boom", true, false) as Node3D
+	var sail_names := {}
+	for s in info.physics.get("sails", {}).values():
+		sail_names[String(s.get("node", ""))] = true
+	for lv in levels:
+		_level_parts(lv, sail_names)
+	_rudder = levels[0]["rudder"]
+	_rudder_rest = levels[0]["rudder_rest"]
+	if rig.has("rudder_axis"):
+		_rudder_axis = Frames.body_to_model(_vec(rig["rudder_axis"])).normalized()
+	_wheel = levels[0]["wheel"]
+	_wheel_rest = levels[0]["wheel_rest"]
+	if rig.has("wheel_axis"):
+		_wheel_axis = Frames.body_to_model(_vec(rig["wheel_axis"])).normalized()
+	_boom = levels[0]["boom"]
 	if _boom:
 		_boom_rest = _boom.transform
 		_boom_pivot = _boom_rest.origin
@@ -165,14 +221,17 @@ func _find_parts() -> void:
 		_mast_step = Frames.body_to_model(_vec(rig["mast_step"]))
 		_mast_head = Frames.body_to_model(_vec(rig["masthead"]))
 		_mast_axis = (_mast_head - _mast_step).normalized()
-	_pole = model.find_child("pole", true, false) as Node3D
+	_pole = levels[0]["pole"]
 	if _pole:
 		_pole_rest = _pole.transform
 		if rig.has("pole_axis"):
 			_pole_axis = Frames.body_to_model(_vec(rig["pole_axis"])).normalized()
-	_find_sheet()
+	_use_sheet(levels[0]["sheet"])
+	for k in range(1, levels.size()):
+		for n: Node3D in levels[k]["parts"]:
+			n.visible = false
 	var side_sails: Dictionary = info.physics.get("sails", {})
-	var pole_class := _pole != null or float(rig.get("pole_length", 0.0)) > 0.0
+	pole_class = _pole != null or float(rig.get("pole_length", 0.0)) > 0.0
 	var furling := {}
 	var cls: Variant = BoatClassData._read_json(BoatClassData.repo_path("data/classes/%s.boat.json" % info.id))
 	if cls is Dictionary:
@@ -219,37 +278,113 @@ func _find_parts() -> void:
 		sail_parts.append(sp)
 
 
-## The mainsheet tackle, rebuilt as the boom moves: its vertices shear toward the boom end in proportion to
-## their height, so the lower block stays on the traveller and the upper one follows the boom.
-func _find_sheet() -> void:
-	_sheet = model.find_child("mainsheet", true, false) as MeshInstance3D
-	if _sheet == null or _sheet.mesh == null or _sheet.mesh.get_surface_count() != 1:
-		_sheet = null
-		return
-	_sheet_arrays = _sheet.mesh.surface_get_arrays(0)
-	_sheet_rest = _sheet_arrays[Mesh.ARRAY_VERTEX]
-	if _sheet_rest.is_empty():
-		_sheet = null
-		return
+## The moving parts and the non-sail part nodes of one level (sail_visuals.md §11.4).
+func _level_parts(lv: Dictionary, sail_names: Dictionary) -> void:
+	var m: Node3D = lv["model"]
+	var parts: Array[Node3D] = []
+	for c in m.get_children():
+		if c is Node3D and not sail_names.has(String(c.name)):
+			parts.append(c)
+	lv["parts"] = parts
+	for k in ["rudder", "wheel", "boom", "pole"]:
+		var n := m.find_child(k, true, false) as Node3D
+		lv[k] = n
+		lv[k + "_rest"] = n.transform if n else Transform3D.IDENTITY
+	lv["sheet"] = _find_sheet(m)
+
+
+## The mainsheet tackle of a level, rebuilt as the boom moves: its vertices shear toward the boom end in proportion
+## to their height, so the lower block stays on the traveller and the upper one follows the boom. Returns its
+## rebuild data ({} without one).
+static func _find_sheet(m: Node3D) -> Dictionary:
+	var sh := m.find_child("mainsheet", true, false) as MeshInstance3D
+	if sh == null or sh.mesh == null or sh.mesh.get_surface_count() != 1:
+		return {}
+	var arrays := sh.mesh.surface_get_arrays(0)
+	var rest: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	if rest.is_empty():
+		return {}
 	var y0 := INF
 	var y1 := -INF
-	for p in _sheet_rest:
+	for p in rest:
 		y0 = minf(y0, p.y)
 		y1 = maxf(y1, p.y)
 	var n := 0
-	_sheet_w.resize(_sheet_rest.size())
-	for k in _sheet_rest.size():
-		var w := (_sheet_rest[k].y - y0) / maxf(y1 - y0, 1e-3)
-		_sheet_w[k] = w
-		if w > 0.9:
-			_sheet_top += _sheet_rest[k]
+	var w := PackedFloat32Array()
+	var top := Vector3.ZERO
+	w.resize(rest.size())
+	for k in rest.size():
+		w[k] = (rest[k].y - y0) / maxf(y1 - y0, 1e-3)
+		if w[k] > 0.9:
+			top += rest[k]
 			n += 1
-	_sheet_top /= maxf(n, 1)
-	var mat := _sheet.get_active_material(0)
-	_sheet_mesh = ArrayMesh.new()
-	_sheet_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _sheet_arrays)
-	_sheet_mesh.surface_set_material(0, mat)
-	_sheet.mesh = _sheet_mesh
+	top /= maxf(n, 1)
+	var mat := sh.get_active_material(0)
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	mesh.surface_set_material(0, mat)
+	sh.mesh = mesh
+	return {"node": sh, "mesh": mesh, "arrays": arrays, "rest": rest, "w": w, "top": top}
+
+
+func _use_sheet(d: Dictionary) -> void:
+	_sheet = d.get("node", null)
+	_sheet_mesh = d.get("mesh", null)
+	_sheet_arrays = d.get("arrays", [])
+	_sheet_rest = d.get("rest", PackedVector3Array())
+	_sheet_w = d.get("w", PackedFloat32Array())
+	_sheet_top = d.get("top", Vector3.ZERO)
+	_sheet_angle = INF
+
+
+## The level of detail for a camera at `dist` m (sail_visuals.md §11.4): coarser past a level's distance plus 5 %,
+## finer below it minus 5 %, from the level shown now.
+func lod_for(dist: float) -> int:
+	var k := lod
+	while k + 1 < levels.size() and dist > float(levels[k + 1]["from"]) * 1.05:
+		k += 1
+	while k > 0 and dist < float(levels[k]["from"]) * 0.95:
+		k -= 1
+	return k
+
+
+## Shows the level of detail for a camera at `dist` m (every frame; tests call it directly).
+func update_lod(dist: float) -> void:
+	if levels.size() > 1:
+		_show_level(lod_for(dist))
+
+
+func _show_level(k: int) -> void:
+	if k == lod or k < 0 or k >= levels.size():
+		return
+	for n: Node3D in levels[lod]["parts"]:
+		n.visible = false
+	lod = k
+	var lv := levels[k]
+	for n: Node3D in lv["parts"]:
+		n.visible = true
+	_rudder = lv["rudder"]
+	_rudder_rest = lv["rudder_rest"]
+	_wheel = lv["wheel"]
+	_wheel_rest = lv["wheel_rest"]
+	_boom = lv["boom"]
+	_boom_rest = lv["boom_rest"]
+	_pole = lv["pole"]
+	_pole_rest = lv["pole_rest"]
+	_use_sheet(lv["sheet"])
+	# the moving parts of the level coming in, at once
+	if _rudder:
+		_rudder.transform = _rudder_rest * Transform3D(Basis(_rudder_axis, _helm * _rudder_max), Vector3.ZERO)
+	if _wheel:
+		_wheel.transform = _wheel_rest * Transform3D(Basis(_wheel_axis, _helm * PI), Vector3.ZERO)
+	if _boom:
+		_boom.transform = _boom_rest * Transform3D(Basis(_boom_axis, boom_angle), Vector3.ZERO)
+	_update_sheet(boom_angle)
+	if _pole:
+		_pole.visible = _pole_shown
+		_pole.transform = _pole_rest * Transform3D(Basis(_pole_axis, _pole_gamma), Vector3.ZERO)
+	if sheets:
+		sheets.set_detail(k)
 
 
 static func _vec(a: Array) -> Vector3:
@@ -264,6 +399,7 @@ static func _about(p: Vector3, axis: Vector3, angle: float) -> Transform3D:
 
 func apply(p: SimSource.RenderPose) -> void:
 	transform = Frames.boat_transform(p.pos_x, p.pos_y, p.z, p.psi, p.theta, p.phi)
+	_helm = p.h
 	# helm h > 0 turns the bow to starboard: the blade's trailing edge swings to starboard (model -X) and a tiller
 	# on the stock to port, a turn of +h * rudder_max about the upward stock axis
 	if _rudder:
@@ -470,6 +606,9 @@ func apply_sails(prev: SimSource.SailsView, cur: SimSource.SailsView, alpha: flo
 	var awa := Frames.wrap_pi(p0.awa + Frames.angle_diff(cur.awa, p0.awa) * alpha)
 	var aws := lerpf(p0.aws, cur.aws, alpha)
 	var cam: Camera3D = get_viewport().get_camera_3d() if is_inside_tree() else null
+	if cam != null:
+		update_lod(cam.global_position.distance_to(global_position))
+	var drawn := false
 	for sp in sail_parts:
 		if sp.index >= cur.sails.size():
 			continue
@@ -487,28 +626,42 @@ func apply_sails(prev: SimSource.SailsView, cur: SimSource.SailsView, alpha: flo
 			var o0: SimSource.SailOutput = p0.out[sp.index] if sp.index < p0.out.size() else o1
 			shiver = lerpf(o0.luff_shiver, o1.luff_shiver, alpha)
 			backed = o1.backed
-		_place(sp, s1.phase, prog, shiver, backed, awa, aws, dt, cam)
+		sp.phase = s1.phase
+		sp.shiver = shiver
+		drawn = _place(sp, s1.phase, prog, shiver, backed, awa, aws, dt, cam) or drawn
 		if sp.mode == Mode.BOOM:
 			boom_angle = sp.beta
 			if _boom:
 				_boom.transform = _boom_rest * Transform3D(Basis(_boom_axis, sp.beta), Vector3.ZERO)
 			_update_sheet(sp.beta)
-		elif sp.mode == Mode.POLE and _pole:
-			_pole.visible = s1.phase != SimSource.Phase.DOWN
-			if _pole.visible:
-				_pole.transform = _pole_rest * Transform3D(Basis(_pole_axis, sp.gamma), Vector3.ZERO)
+		elif sp.mode == Mode.POLE:
+			_pole_shown = s1.phase != SimSource.Phase.DOWN
+			_pole_gamma = sp.gamma
+			if _pole:
+				_pole.visible = _pole_shown
+				if _pole.visible:
+					_pole.transform = _pole_rest * Transform3D(Basis(_pole_axis, sp.gamma), Vector3.ZERO)
+	if sheets:
+		# §11.3: with the sails; at LOD1 (sub-pixel ropes) at most at the 15 Hz of §11
+		_sheets_since += dt
+		var due := drawn and (lod == 0 or _sheets_since + 1e-6 >= MID_INTERVAL)
+		if due:
+			_sheets_since = 0.0
+		sheets.step(aws, dt, due)
 
 
+## Bends and places one sail; true when its mesh was redrawn (or it was shown or hidden) this frame.
 func _place(sp: SailPart, phase: int, prog: float, shiver: float, backed: bool, awa: float, aws: float,
-		dt: float, cam: Camera3D) -> void:
+		dt: float, cam: Camera3D) -> bool:
+	var was := sp.node.visible
 	sp.node.visible = phase != SimSource.Phase.DOWN or sp.mode == Mode.BOOM
 	_hoist_fractions(sp, phase, prog)
 	if sp.shape == null:
-		return
+		return was != sp.node.visible
 	sp.shape.advance(dt, aws, awa, backed)  # the flutter phase and the backed factor run on, drawn or not
 	sp.since += dt
 	if not sp.node.visible or not _due(sp, cam):
-		return
+		return was != sp.node.visible
 	sp.since = 0.0
 	sp.updates += 1
 	if is_flying(sp.type):
@@ -523,6 +676,7 @@ func _place(sp: SailPart, phase: int, prog: float, shiver: float, backed: bool, 
 		sp.mesh.clear_surfaces()
 		sp.mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, sp.arrays)
 		sp.mesh.surface_set_material(0, mat)
+	return true
 
 
 ## §11 update rate by distance: every frame nearer than 200 m, 15 Hz to 800 m, 4 Hz beyond, not at all outside

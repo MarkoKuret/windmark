@@ -267,7 +267,8 @@ less for wm7 and wm12.
 from the clew through its lead (the jib car block, or a block on the quarter for a kite) to a winch, wrapped on
 the drum, with the tail flaked in the cockpit, plus a slack lazy sheet, and for a kite the tack line and the
 halyard. The exported model has no headsail or kite sheets (they follow the trimmed sail, so the engine draws them
-from `rig.sheet_leads` in the sidecar); the halyard tails and the mainsheet are in the model.
+from `rig.sheet_leads` in the sidecar, `docs/specs/sail_visuals.md` §11.3); the halyard tails and the mainsheet are in
+the model. Every rope is in the material slot of its function (below, "Materials and UVs").
 
 **Livery panels.** A number panel forward and a name panel aft on each topside, given in the GLB root extras
 (`livery_panels`: body x range, depth below the sheer, uv1 rectangle on the hull atlas); the previews draw them
@@ -319,7 +320,11 @@ it out.
 
 Material slots (glTF material names): `gelcoat`, `nonslip`, `antifouling`, `boottop`, `carbon`, `metal`,
 `sailcloth`, plus `glass`, `rope`, `rubber` and `transom` (the transom face on the `deck` node, gelcoat with its own
-uv1 so the livery paints it in the hull's colours; on every level of detail). Each material's `extras.tiling_m` is the size of one tile of its
+uv1 so the livery paints it in the hull's colours; on every level of detail), and the running rigging by function
+(`docs/specs/data_format.md` §8.7): `rope_mainsheet` (the tackle, its tail and coil), `rope_halyard` (the halyards and
+their coils), `rope_control` (traveller lines, outhaul); the posed previews' sheets are `rope_sheet` and
+`rope_kite_sheet`; `rope` stays for the lifelines. Each rope slot's mean colour is the braid of the function's
+default rope set (`gltf.ROPES`), so the model reads right before any livery. Each material's `extras.tiling_m` is the size of one tile of its
 texture in metres of uv0, and `extras.texture_set` names its set.
 
 **Texture set** (`boatgen/textures.py`, images in `textures/`). Every slot but `glass` has a tiling
@@ -337,7 +342,7 @@ slots and each image is embedded once per GLB (JPEG, 512 x 512, about 1.2 MB in 
 | `carbon_twill` | carbon | 0.05 | ambientCG Fabric004 |
 | `brushed` | metal | 0.2 | ambientCG Metal009 |
 | `weave` | sailcloth | 0.5 | ambientCG Fabric062 (no normal map: the run-time sail mesh has no tangents) |
-| `braid` | rope | 0.05 | ambientCG Rope002 |
+| `braid` | rope and every `rope_*` slot | 0.05 | ambientCG Rope002 |
 
 `python3 -m boatgen.textures [--cache DIR]` downloads the 1K sources again and rewrites `textures/`; the build
 only reads the processed files.
@@ -352,7 +357,9 @@ has vertices to vary on.
 
 - **uv0** is metric everywhere, for tiling PBR textures: hull `u` = x along the length, `v` = girth from the keel
   (both in metres); deck, cabin top and cockpit floor planar (x, y); walls (along, height); sails (distance from
-  the luff, height above the foot); swept parts (along the path, around the section).
+  the luff, height above the foot); swept parts (along the path, around the section). Ropes (`hardware.rope_tube`):
+  metres along and the fraction of the turn times 0.05 m round, with a duplicated seam column, so one texture tile
+  wraps exactly once round the rope (the rope textures of `data_format.md` §8.7).
 - **uv1** is normalised, for liveries and decals. Hull: one atlas with the starboard side in `v` 0..0.5 and the
   port side in 0.5..1, sheer at the top of each band, `u` running so text reads bow-first on both sides. Deck (every
   slot of the `deck` node but `transom`): the plan view, `u = (x - x0) / length` bow to the right, `v = (y_top - y) /
@@ -398,7 +405,7 @@ Positions in the body frame.
 - Tiling detail textures and per-vertex AO only: no unique-UV (lightmap) set, so no AO or dirt texture maps;
   sail panels, tapes and film are not in the sailcloth texture (the previews draw seams procedurally); the
   liveries are hand-owned textures on uv1 and the sails' flat plan (`tools/liverybake`, `data_format.md` §8.5).
-- No crew or sail numbers yet; headsail and kite sheets only on the posed previews (the engine draws them from
+- No crew yet; headsail and kite sheets only on the posed previews (the engine draws them from
   `rig.sheet_leads`).
 - The flat spinnaker outline is a centreline projection; its flying shape comes from the simulation.
 - Surfaces per boat: one per node and material (about 30 to 40); no merging across nodes yet.

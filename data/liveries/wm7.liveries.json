@@ -8,6 +8,13 @@
     "spinnaker": {"cloth": "nylon", "color": "#14284f", "design": "head", "radius": 0.24, "number": "#e2e2dc",
       "colors": ["#c3c5c7"]}
   },
+  "ropes": {
+    "mainsheet": {"color": "#1f2b45", "fleck": "#d8d8d2"},
+    "sheet": {"color": "#d2d2cb", "fleck": "#b3242a"},
+    "kite_sheet": {"color": "#2b62a6", "fleck": "#dadad4"},
+    "halyard": {"color": "#d4d4cd", "fleck": "#2d7a40"},
+    "control": {"color": "#1d1e21", "fleck": "#c9a227"}
+  },
   "liveries": [
     {
       "id": "navy",

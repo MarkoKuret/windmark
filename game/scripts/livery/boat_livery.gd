@@ -49,10 +49,19 @@ static func apply(bv: BoatView, lv: Livery) -> int:
 	var hs := BakedLivery.hull_set(cid, lv.look_id)
 	var ss: Dictionary = BakedLivery.sail_set(cid).get("sails", {})
 	var n := 0
-	var stack: Array[Node] = [bv.model]
+	# every level of detail (sail_visuals.md §11.4): the same part and slot get the same material on each level
+	var stack: Array[Node] = []
+	for lvl in bv.levels:
+		stack.append(lvl["model"])
+	if stack.is_empty():
+		stack.append(bv.model)
 	var sail_nodes := {}
 	for sp in bv.sail_parts:
 		sail_nodes[sp.node] = sp
+	if bv.sheets:
+		sail_nodes[bv.sheets.node] = true
+	var made := {}
+	var deck_m: ShaderMaterial = null
 	while not stack.is_empty():
 		var node: Node = stack.pop_back()
 		stack.append_array(node.get_children())
@@ -61,14 +70,28 @@ static func apply(bv: BoatView, lv: Livery) -> int:
 			continue
 		var part := String(mi.name)
 		# the deck's two walking slots share one material: the non-slip mask of the baked deck picks the detail
-		var deck_m: ShaderMaterial = null
-		if part == "deck" and hs.has("deck"):
+		# (one for every level of detail: the levels share the deck's slot materials)
+		if part == "deck" and hs.has("deck") and deck_m == null:
 			deck_m = baked_deck_material(mi, hs["deck"])
 		for s in mi.mesh.get_surface_count():
 			var m := mi.mesh.surface_get_material(s) as ShaderMaterial
 			if m == null:
 				continue
 			var slot := m.resource_name
+			var key := "%s/%s/%d" % [part, slot, m.get_instance_id()]
+			if made.has(key):
+				if made[key] != null:
+					mi.set_surface_override_material(s, made[key])
+					n += 1
+				continue
+			made[key] = null
+			if slot.begins_with("rope_") and Livery.ROPES.has(slot.trim_prefix("rope_")):
+				# the class rope set (data_format.md §8.7): shared by the class, not per boat
+				var rm := rope_material(cid, m, slot.trim_prefix("rope_"), lv.ropes)
+				made[key] = rm
+				mi.set_surface_override_material(s, rm)
+				n += 1
+				continue
 			var bm: ShaderMaterial = null
 			if not hs.is_empty():
 				if part == "hull" and slot in ["gelcoat", "boottop", "antifouling"]:
@@ -82,6 +105,7 @@ static func apply(bv: BoatView, lv: Livery) -> int:
 			if bm != null:
 				if not bv.livery_materials.has(bm):
 					bv.livery_materials.append(bm)
+				made[key] = bm
 				mi.set_surface_override_material(s, bm)
 				n += 1
 				continue
@@ -89,6 +113,7 @@ static func apply(bv: BoatView, lv: Livery) -> int:
 			if part == "hull" and slot == "gelcoat":
 				var tm := topsides_material(m, lv, text, geo)
 				bv.livery_materials.append(tm)
+				made[key] = tm
 				mi.set_surface_override_material(s, tm)
 				n += 1
 				continue
@@ -107,8 +132,14 @@ static func apply(bv: BoatView, lv: Livery) -> int:
 			if c != null:
 				var cm := colour_material(m, c)
 				bv.livery_materials.append(cm)
+				made[key] = cm
 				mi.set_surface_override_material(s, cm)
 				n += 1
+	if bv.sheets:
+		var base := bv.sheets.base_material
+		if base != null:
+			bv.sheets.set_material(BoatSheets.Surface.HEADSAIL, rope_material(cid, base, "sheet", lv.ropes))
+			bv.sheets.set_material(BoatSheets.Surface.FLYING, rope_material(cid, base, "kite_sheet", lv.ropes))
 	for sp in bv.sail_parts:
 		if sp.mesh == null or sp.mesh.get_surface_count() < 1:
 			continue
@@ -325,6 +356,41 @@ static func baked_sail_rows(info: Dictionary, lv: Livery, text: LiveryText) -> D
 		n += 1
 	return {"rows": n, "axis": Vector2(ax[0], ax[1]), "up": Vector2(up[0], up[1]), "tack": Vector2(tk[0], tk[1]),
 		"box": box, "tex": tex, "h": tx.get("h", 0.0), "slots": tx.get("rows", []), "baked": true}
+
+
+## class/function/colours -> the class's rope material (data_format.md §8.7), shared by its boats
+static var _rope_mats := {}
+
+
+## The rope material of a function for a class: the class's baked braid (BakedLivery.rope_set: albedo, normal and
+## ORM on the slot's tile) on the boat shader, or without it the slot material `base` tinted to the function's mean
+## braid colour (`ropes`: Livery.ropes, empty for the defaults).
+static func rope_material(class_id: String, base: ShaderMaterial, fn: String, ropes: Dictionary) -> ShaderMaterial:
+	var rs := BakedLivery.rope_set(class_id)
+	var r: Dictionary = ropes.get(fn, {}) if ropes.has(fn) else Livery.rope_set_of({}, [])[fn]
+	var baked: bool = rs.get("albedo", {}).has(fn)
+	var key := "%s/%s/%s/%s/%d" % [class_id, fn, "baked" if baked else Livery.rope_mean(r).to_html(false),
+		base.shader.resource_path, base.get_instance_id()]
+	if _rope_mats.has(key):
+		return _rope_mats[key]
+	var m: ShaderMaterial
+	if baked:
+		m = base.duplicate() as ShaderMaterial
+		m.set_shader_parameter("albedo_tex", rs["albedo"][fn])
+		m.set_shader_parameter("albedo_color", Color.WHITE)
+		if rs.get("orm") != null:
+			m.set_shader_parameter("mr_tex", rs["orm"])
+			m.set_shader_parameter("roughness", 1.0)
+			m.set_shader_parameter("metallic", 0.0)
+		if rs.get("normal") != null:
+			m.set_shader_parameter("normal_tex", rs["normal"])
+			m.set_shader_parameter("use_normal_tex", true)
+			m.set_shader_parameter("normal_scale", 1.0)
+	else:
+		m = colour_material(base, Livery.rope_mean(r))
+	m.resource_name = "rope_" + fn
+	_rope_mats[key] = m
+	return m
 
 
 ## A copy of a boat slot material in another colour (sRGB), keeping its texture's detail.

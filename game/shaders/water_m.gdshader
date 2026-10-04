@@ -4,4 +4,5 @@ shader_type spatial;
 #define TIER 2
 #define WM_DETAIL_LAYERS 3
 #define WM_NO_SHADOWS
+#define WM_CAPS_N 6
 #include "res://shaders/water_body.gdshaderinc"

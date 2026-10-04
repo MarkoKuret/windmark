@@ -58,7 +58,7 @@ class AttachmentTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         np.seterr(all="ignore")
-        cls.boats = {cid: Boat(classfile.load(os.path.join(CLASSES, f"{cid}.boat.json")), log=lambda *a: None)
+        cls.boats = {cid: _boat(cid)
                      for cid in ("wm7", "wm12")}
         cls.gaps = {cid: b.attachment_gaps() for cid, b in cls.boats.items()}
 
@@ -88,3 +88,137 @@ class AttachmentTest(unittest.TestCase):
                 self.assertFalse(missing, f"{cid}: attachments not recorded: {missing}")
             with self.subTest(boat=cid, what="count"):
                 self.assertGreater(len(gs), 100)
+
+
+class LifelineTest(unittest.TestCase):
+    """Every lifeline segment ends on its fitting (a stanchion's top or eye, the pushpit or the pulpit) with no gap,
+    every stanchion between the pushpit and the pulpit carries both tiers, and the layout is a real boat's: the
+    stanchions stand between the pushpit's and the pulpit's ends, none doubling one of their legs, at most 2.2 m
+    apart (data_format.md 3.7 look rules)."""
+
+    @classmethod
+    def setUpClass(cls):
+        np.seterr(all="ignore")
+        cls.boats = {cid: _boat(cid) for cid in ("wm7", "wm12")}
+
+    def _recs(self):
+        for cid, boat in self.boats.items():
+            if boat.cls["deck"]["lifelines"]:
+                self.assertIsNotNone(boat.lifelines)
+                yield cid, boat, boat.lifelines
+
+    def test_segment_ends_on_their_fittings(self):
+        n = 0
+        for cid, boat, rec in self._recs():
+            geo = pieces(boat.parts)
+            bad = []
+            for name, tier, a, b, ha, hb in rec["segments"]:
+                pts = geo[name][0]
+                for end, host in ((a, ha), (b, hb)):
+                    near = pts[np.linalg.norm(pts - end, axis=1) < 0.02]       # the segment's last 2 cm
+                    g = gap(near, geo[host][1]) if len(near) else np.inf
+                    n += 1
+                    if g > 0.001:
+                        bad.append(f"{name} end on {host}: {1000 * g:.1f} mm")
+            with self.subTest(boat=cid):
+                self.assertFalse(bad, f"{cid}: lifeline ends off their fittings:\n  " + "\n  ".join(bad))
+        self.assertGreater(n, 20)
+
+    def test_every_stanchion_carries_both_tiers(self):
+        for cid, boat, rec in self._recs():
+            segs = {}
+            for name, tier, a, b, ha, hb in rec["segments"]:
+                segs.setdefault((name.split("_")[1], tier), []).append((a, b))
+
+            def dist(p, side, tier):
+                d = np.inf
+                for a, b in segs[(side, tier)]:
+                    t = np.clip((p - a) @ (b - a) / max((b - a) @ (b - a), 1e-12), 0, 1)
+                    d = min(d, float(np.linalg.norm(a + t * (b - a) - p)))
+                return d
+            bad = []
+            for st, (top, eye) in rec["stanchions"].items():
+                side = st.split("_")[1]
+                for tier, p in ((1.0, top), (0.55, eye)):
+                    if dist(p, side, tier) > 0.001:
+                        bad.append(f"{st} tier {tier}: {1000 * dist(p, side, tier):.1f} mm off the line")
+                    hosts = [h for _, t, _a, _b, ha, hb in rec["segments"] if t == tier for h in (ha, hb)]
+                    if hosts.count(st) != 2:
+                        bad.append(f"{st} tier {tier}: {hosts.count(st)} segment ends on it, not 2")
+            with self.subTest(boat=cid):
+                self.assertFalse(bad, f"{cid}: stanchions the lifelines miss:\n  " + "\n  ".join(bad))
+
+    def test_layout(self):
+        for cid, boat, rec in self._recs():
+            for side in ("1", "-1"):
+                xs = sorted(float(t[0]) for nm, (t, e) in rec["stanchions"].items() if nm.split("_")[1] == side)
+                up = [s for s in rec["segments"] if s[0].split("_")[1] == side and s[1] == 1.0]
+                aft = [float(s[2][0]) for s in up if s[4].startswith("pushpit")]
+                fwd = [float(s[3][0]) for s in up if s[5] == "pulpit"]
+                with self.subTest(boat=cid, side=side):
+                    self.assertEqual((len(aft), len(fwd)), (1, 1), "each tier runs from the pushpit to the pulpit")
+                    spacing = np.diff([aft[0]] + xs + [fwd[0]])
+                    self.assertTrue(np.all(spacing > 1.0), f"a stanchion doubles a fitting: spacing {spacing}")
+                    self.assertTrue(np.all(spacing <= 2.2), f"stanchions over 2.2 m apart: {spacing}")
+
+
+class RopeLeadTest(unittest.TestCase):
+    """The halyards led from the mast foot lie on the deck and the coachroof where they run along them (the rope's
+    underside 0 to 5 mm off the deck mesh), are never inside the deck or the coachroof anywhere, and pass through
+    their exit plate, turning block, organiser and clutch (data_format.md 3.7 look rules)."""
+
+    @classmethod
+    def setUpClass(cls):
+        np.seterr(all="ignore")
+        cls.boats = {cid: _boat(cid) for cid in ("wm7", "wm12")}
+
+    def test_leads_lie_on_the_deck(self):
+        from boatgen.attach import _point_tri_dist
+        for cid, boat in self.boats.items():
+            deck = boat.deck
+            T = pieces([boat.parts["deck"]])["deck"][1]
+            self.assertTrue(boat.rope_paths, f"{cid}: no halyard leads recorded")
+            bad = []
+            for tag, (P, r, flags) in boat.rope_paths.items():
+                lying = 0.0
+                for a, b, fa, fb in zip(P[:-1], P[1:], flags[:-1], flags[1:]):
+                    n = max(1, int(np.ceil(np.linalg.norm(b - a) / 0.01)))
+                    q = a + (b - a) * np.linspace(0, 1, n + 1)[:, None]
+                    under = q[:, 2] - r - deck.surface_z(q[:, 0], q[:, 1])      # the rope's underside
+                    ondeck = np.abs(q[:, 1]) < deck.hull.bs(q[:, 0]) - 0.03
+                    if np.any(ondeck & (under < -0.0005)):
+                        i = int(np.argmin(np.where(ondeck, under, np.inf)))
+                        bad.append(f"{tag}: {-1000 * under[i]:.1f} mm into the surface at x {q[i, 0]:.2f}")
+                        break
+                    if fa and fb:                       # a span along the surface: lying on the deck mesh
+                        d = _point_tri_dist(q, T) - r
+                        lying += float(np.linalg.norm(b - a))
+                        if d.max() > 0.005:
+                            i = int(np.argmax(d))
+                            bad.append(f"{tag}: {1000 * d[i]:.1f} mm above the deck mesh at x {q[i, 0]:.2f}")
+                            break
+                if lying < 0.5:
+                    bad.append(f"{tag}: only {lying:.2f} m lying on the deck")
+            with self.subTest(boat=cid):
+                self.assertFalse(bad, f"{cid}: leads off the surface:\n  " + "\n  ".join(bad))
+
+    def test_leads_pass_their_fittings(self):
+        for cid, boat in self.boats.items():
+            gs = {(p, h): g for p, hs, g in boat.attachment_gaps() for h in hs}
+            for tag in boat.rope_paths:
+                side, k = tag.split("_")[1:3]
+                for host in (f"halyard_exit_{side}_{k}", f"mast_block_{side}_{k}", f"organiser_{side}",
+                             f"clutches_{side}"):
+                    with self.subTest(boat=cid, lead=tag, host=host):
+                        self.assertIn((tag, host), gs)
+                        self.assertLessEqual(gs[(tag, host)], MAX_GAP)
+
+
+_BOATS = {}
+
+
+def _boat(cid):
+    """The class built once for every test class here."""
+    if cid not in _BOATS:
+        _BOATS[cid] = Boat(classfile.load(os.path.join(CLASSES, f"{cid}.boat.json")), log=lambda *a: None)
+    return _BOATS[cid]

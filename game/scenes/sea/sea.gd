@@ -1,7 +1,7 @@
 class_name Sea
 extends Node3D
 ## The drawn sea (water_render.md): a camera-centred radial grid whose vertex shader evaluates the core's
-## sea_height from the wave components, shaded with detail normals, puffs and lulls and wakes.
+## sea_height from the wave components, shaded with detail normals, puffs and lulls, whitecaps and wakes.
 ##
 ## Inputs (all optional, set before or during play):
 ##   source        a node with sea_components(), sea_exposure(), wind_state(t_ms) (see sea_env_source.gd and
@@ -35,6 +35,8 @@ var camera: Camera3D
 ## Camera-relative origin of the last frame (world ENU metres).
 var origin := Vector2.ZERO
 var material: ShaderMaterial
+## §4.4 the components that carry whitecap foam (indices into model.components, heaviest first)
+var caps_select := PackedInt32Array()
 
 var _mesh_instance: MeshInstance3D
 var _overlay_lines: Array = []
@@ -148,6 +150,7 @@ func _build() -> void:
 	_mesh_instance.material_override = material
 	material.set_shader_parameter("detail_tex", SeaTextures.detail())
 	material.set_shader_parameter("foam_tex", SeaTextures.foam())
+	material.set_shader_parameter("caps_tex", SeaTextures.caps())
 	set_wake_buffer(_wake_texture, 400.0, _wake_strength)
 	_apply_static()
 	if sky and sky.has_method("apply_quality"):
@@ -161,6 +164,10 @@ func _apply_static() -> void:
 	lam.resize(SeaModel.MAX_COMPONENTS)
 	material.set_shader_parameter("comp_lam", lam)
 	material.set_shader_parameter("sum_a", model.sum_a)
+	# §4.4 whitecaps: the components that carry foam and their crest windows
+	caps_select = SeaWhitecaps.select(model.components)
+	material.set_shader_parameter("caps_w", SeaWhitecaps.window_uniforms(model.components, caps_select))
+	material.set_shader_parameter("caps_rest", SeaWhitecaps.rest_mean(model.components, caps_select))
 	var g := model.exposure
 	material.set_shader_parameter("expo_tex", SeaTextures.exposure_texture(g))
 	if g.is_empty():
@@ -210,6 +217,7 @@ func update_frame(cam_pos: Vector3, cam: Camera3D = null) -> void:
 		var c: Array = model.components[i]
 		comp[i] = Vector4(c[0], c[1], c[2], ph[i])
 	material.set_shader_parameter("comp", comp)
+	material.set_shader_parameter("caps_k", SeaWhitecaps.wave_uniforms(model.components, caps_select, ph))
 	material.set_shader_parameter("sea_origin", origin)
 
 	var tile: float = wind.get("puff_tile", 1000.0)
@@ -243,6 +251,8 @@ func update_frame(cam_pos: Vector3, cam: Camera3D = null) -> void:
 		var v: float = s * a + c * qc
 		layers.append(Vector4(c, s, u - floor(u), v - floor(v)))
 	material.set_shader_parameter("detail_layer", layers)
+	# §4.4 the whitecap foam texture rides the dominant wave
+	material.set_shader_parameter("caps_uv", SeaWhitecaps.uv_frame(model.components, ox, oy, t))
 
 	if sky:
 		material.set_shader_parameter("sky_horizon", sky.horizon_linear())

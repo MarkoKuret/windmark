@@ -176,7 +176,7 @@ Every key is optional; defaults scale with LOA.
 | `hull.lcb_fraction` | 0.535 | LCB target when `hull.lcb_x` is absent |
 | `hull.chine_start` | 0.42 | where a hard chine begins, fraction of LOA aft of the stem |
 | `deck.cockpit` | length 0.30 LOA, width 0.62, depth 0.42 (LOA/12)^0.5, open_transom true, aft_deck 0 | cockpit well: width as a fraction of the local half-beam |
-| `deck.cabin` | length 0.28 LOA, height 0.26 (LOA/12)^0.6, width 0.58, side_slope 0.22, windows true | coachroof; `null` for a flush deck |
+| `deck.cabin` | height 0.26 (LOA/12)^0.6, meet_aft_of_mast 0.05 (LOA/12)^0.5, slope_from 0.3, width 0.58, side_rake 0.35, edge_radius 0.05 (LOA/12)^0.5, windows true | the coachroof (`docs/specs/data_format.md` §3.7.2: height aft, where the top meets the deck, where it starts to slope, base width, side rake, edge radius; `length` instead of `meet_aft_of_mast`); `null` for a flush deck |
 | `deck.nonslip_margin` | 0.05 | smooth gelcoat border around non-slip panels (m) |
 | `deck.toe_rail` | 0.035 (LOA/12)^0.4 | toe-rail size (m) |
 | `deck.lifelines` | LOA >= 9 m | stanchions, lifelines, pulpit and pushpit |
@@ -216,9 +216,16 @@ canoe-body volume (DWL mass over water density, minus the meshed appendages), an
 to Cp and LCB with a 2 x 2 Newton step. LWL and Tc are exact by construction.
 
 **Deck** (`deck.py`). A cambered surface between the sheer lines, meshed as two strips from the sheer in to the
-cockpit and cabin outline, with gelcoat margins around non-slip panels. The cockpit is a well running aft to an
-open transom; the cabin top rounds in to the centreline at its front, with leaning sides, a filleted roof edge,
-side windows, companionway and sliding hatch. The transom face, toe rail and rub strake close it off.
+cockpit and coachroof base, with gelcoat margins around non-slip panels. The cockpit is a well running aft to an
+open transom. The coachroof (`data_format.md` §3.7.2) is a height field over the deck in the style of a modern
+cruiser-racer: low, level over the companionway, then sloping down forward along a half cosine until it meets the
+deck tangentially just aft of the mast; per station a section of a fillet at the foot, a side raked inward, an edge
+radius and the cambered top, all shrinking with the height, so there is no front face; in plan its sides follow the
+sheer and round in to the centreline over the last fifth. It is meshed on the deck's stations from base to base, so
+the deck strips and it share their edge. Only the aft face is upright, with the companionway; the sliding hatch is a
+low lid draped on the top, and slim side windows run where the top is at least 0.15 m high. The transom face, toe
+rail and rub strake close it off. `Deck.surface` and `Deck.surface_z` give the walking surface (the coachroof with
+its sides, the cockpit floor, the deck) that the hardware and the rope leads sit on.
 
 **Appendages** (`appendages.py`). NACA 00xx fin and rudder lofted from root to tip; the bulb is a flattened body
 of revolution sized so its volume holds the bulb mass in lead.
@@ -241,10 +248,18 @@ base plate, deck organisers, turning blocks on padeyes, blocks with cheeks, shea
 stops, cars with a lead block and plunger, cam cleats with fairleads, horn cleats, hatches with frame, lens,
 hinges and handles, stanchions, bent-tube pulpit and pushpit, the wheel with its grip and a pedestal guard with
 an instrument pod, gudgeons or the rudder bearing cap, rigging screws. Placement: primaries beside the cockpit,
-halyard winches (wm12), clutches and organisers on the cabin top, the halyards themselves from their exits low
-on the mast through the turning blocks at the mast foot, the organisers and the clutches to flaked tails, jib
-tracks under the clew, the traveller under the boom end with its control lines and a four-part mainsheet with its
-tail, cleats at bow and quarters, lifelines at about 2 m spacing.
+halyard winches (wm12), clutches and organisers on the coachroof clear of the sliding hatch, flush hatches bent
+to the top's slope and crown (`on_surface(..., conform=True)`), the halyards themselves from their exits low on the
+mast round the sheave of their turning block at the mast foot, then along the deck and up the sloping top lying on
+it (`hardware.lead_path`: a span between two surface points follows the surface 2 mm above it, a span to a fitting
+runs straight and never dips into it), through the organiser at its sheave height and the clutch's jaws, to tails
+flaked on the top (wm12) or over the top's aft edge and down its aft face into the cockpit (wm7); jib tracks under
+the clew, outboard of the coachroof's foot, the traveller under the boom end with its control lines and a
+four-part mainsheet with its tail, cleats at bow and quarters. Lifelines as on a real boat of the size: the
+pushpit wraps the quarters to 0.9 s forward of the transom, the pulpit's aft legs stand 1.3 s aft of the stem, the
+stanchions only between them, evenly at most 2.1 m apart (OSR 3.14: 2.2 m), raked slightly outboard; the end legs
+of the pushpit and pulpit stand in the stanchions' line, and both tiers run fitting to fitting (upper through the
+tops, lower through the eyes at 0.55 of the height).
 
 **Rig fittings** (`rig.py`). Mast step plate, gooseneck bracket and pin, vang tang and boom bail, halyard sheave
 boxes, masthead crane with sheaves, wind wand, instruments on the mast front, spreader root brackets and tip
@@ -262,7 +277,11 @@ butt sits between the rudder-head cheeks on the head's bolt (`Appendages.tiller_
 thickness), and the pintle straps sit between the gudgeon arms below the transom's top. The builders tag each
 piece (`Part.add(..., tag=)`) and record what it is fitted to (`Part.attach(piece, *hosts)`); `Boat.attachment_gaps()`
 measures the gap of every attachment on the meshes as built, and `tests/test_attachments.py` holds it at 5 mm or
-less for wm7 and wm12.
+less for wm7 and wm12. The same test checks the lifelines end by end (`Boat.lifelines`: the last 2 cm of every
+segment within 1 mm of its stanchion, pushpit or pulpit; every stanchion's top and eye on its tier, with a segment
+ending on it from each side; the spacing between the pushpit, the stanchions and the pulpit 1 to 2.2 m) and the
+halyard leads (`Boat.rope_paths`: never inside the deck or coachroof, the spans along the surface within 5 mm of the
+deck mesh, through their exit plate, turning block, organiser and clutch).
 
 **Running rigging** (`running.py`). The posed previews lead the working sheet of each set headsail or flying sail
 from the clew through its lead (the jib car block, or a block on the quarter for a kite) to a winch, wrapped on
@@ -286,9 +305,9 @@ most fittings by rule). The sidecar's `model.lods` lists each file, its triangle
 
 | level | from | wm7 | wm12 | what goes |
 | --- | --- | --- | --- | --- |
-| LOD0 | 0 m | ~72 k | ~92 k | full model |
-| LOD1 | 30 m | ~26 k | ~34 k | half the segments; handles, halyards, coils, small fittings, rub strake detail |
-| LOD2 | 100 m | ~9.5 k | ~11.6 k | quarter segments, 24 hull stations; only hull, deck, appendages, spars, wires, tracks, hatches, pulpit, helm and sails |
+| LOD0 | 0 m | ~76 k | ~96 k | full model |
+| LOD1 | 30 m | ~27 k | ~36 k | half the segments; handles, halyards, coils, small fittings, rub strake detail |
+| LOD2 | 100 m | ~9.6 k | ~11.9 k | quarter segments, 24 hull stations; only hull, deck, appendages, spars, wires, tracks, hatches, pulpit, helm and sails |
 
 Budgets: LOD0 at most 100 k triangles, LOD1 40 k, LOD2 12 k (sails included: about 3.7 k for the set sails of
 wm12). `game/tests/boat_import_test.gd` checks the levels and prints the fleet cost of 16 boats per class

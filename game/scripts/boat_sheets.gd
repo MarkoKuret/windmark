@@ -2,8 +2,9 @@ class_name BoatSheets
 extends RefCounted
 ## The running sheets of one boat (docs/specs/sail_visuals.md §11.3): the jib or genoa sheets, the flying sail's
 ## sheets (or sheet and guy) and the tack line, from the placed clew through the lead blocks of the sidecar's
-## `rig.sheet_leads` to the winches, with the sag of their tension, the swing and whip of a flogging sail, the lazy
-## sheet lying on the deck, and the fixed turns on the drums and the tails. One mesh per boat with two surfaces
+## `rig.sheet_leads` to the winches, with the sag of their tension, the swing and whip of a flogging sail, the flying
+## sail's lines routed outside the main, the boom, the headsail and the rail, the lazy sheets draped on the deck, and
+## the fixed turns on the drums and the tails. One mesh per boat with two surfaces
 ## (headsail lines, flying-sail lines), written in place by the native SheetRopes (SheetRopesRef without the
 ## GDExtension, rebuilding the mesh). BoatView owns it: `setup` at load, `advance` every frame, `update` when a sail
 ## was redrawn, `set_detail` with the boat's level of detail.
@@ -14,8 +15,22 @@ const LAZY_SAG := 0.22
 const LAZY_DEPTH := 0.5
 ## how far across the centreline (m) the clew is when a lazy line runs fully round its obstacle
 const WAY_REACH := 0.4
-## cells round the deck the height field reaches out over the hull side (a line drapes over the rail)
-const DECK_SKIRT := 4
+## the deck height field (§11.3 "Deck"): grid (m), the cells it reaches out over the hull side (a line drapes over the
+## rail), the cells it is widened by (more than the drape's step), the tallest fitting it counts (m above the deck)
+const DECK_CELL := 0.025
+const DECK_SKIRT := 8
+const DECK_DILATE := 1
+const FIT_MAX := 0.07
+## §11.3 "Outside route": the rail's station step (m), the margin of the sails and the boom (m, plus the rope
+## diameter), the rail's margin (m, plus the rope radius) and its fade forward of the lead (m), the pivot's offset to
+## the other side (of the beam), the waypoints of a working line and of each leg of a lazy one
+const RAIL_STEP := 0.1
+const SAIL_MARGIN := 0.05
+const RAIL_MARGIN := 0.01
+const RAIL_FADE := 0.6
+const PIVOT_SIDE := 0.15
+const WAYS_WORK := 12
+const WAYS_LEG := 7
 const LAZY_SHIVER := 0.3
 const T_MIN := 5.0
 const RHO := 1.225
@@ -64,6 +79,15 @@ var _has_sprit := false
 var _pole := false
 var _areas := {}
 var _deck := {}
+## the rail of the outside route per side (0 starboard, 1 port), the boom's box corners in the boom node and the
+## boom node's parent transform in the model (LOD0), the mast step (model axes)
+var _rail: Array = [PackedVector3Array(), PackedVector3Array()]
+var _boom_box := PackedVector3Array()
+var _boom_parent := Transform3D.IDENTITY
+var _boom_rest := Transform3D.IDENTITY
+var _mast_step := Vector3.ZERO
+## the native SheetRopes (or the reference) that routes and builds the deck field
+var _router: Variant = null
 var _materials: Array[Material] = [null, null]
 ## the model's rope slot material the sheets' materials are made from (BoatLivery.rope_material)
 var base_material: ShaderMaterial
@@ -101,8 +125,12 @@ func _setup(rig: Dictionary) -> void:
 		# model +X is port: the sidecar gives the starboard side (x < 0); index 0 starboard, 1 port
 		_leads[k] = {"lead": [lead, lead * mirror], "winch": [winch, winch * mirror],
 			"drum": float(e.get("drum_diameter", 0.06))}
+	native = not use_reference and ClassDB.class_exists("SheetRopes")
+	_router = ClassDB.instantiate("SheetRopes") if native else SheetRopesRef.new()
 	_deck = deck_field(bv)
 	var step := Frames.body_to_model(BoatView._vec(rig.get("mast_step", [0, 0, 0])))
+	_mast_step = step
+	_setup_route(sl)
 	var chord := float(rig.get("mast_chord", 0.12))
 	var zf := step.z + 0.6 * chord
 	_mast_front = Vector3(0.0, _deck_h(0.0, zf, step.y) + _r, zf)
@@ -118,7 +146,6 @@ func _setup(rig: Dictionary) -> void:
 	var h := float(rig.get("masthead", [0, 0, 12.0])[2])
 	var bw := bv.info.beam_max
 	_aabb = AABB(Vector3(-bw - 4.0, -2.0, -loa), Vector3(2.0 * bw + 8.0, h + 4.0, 2.0 * loa + 4.0))
-	native = not use_reference and ClassDB.class_exists("SheetRopes")
 	base_material = _rope_slot(bv.model)
 	if base_material != null:
 		_materials[Surface.HEADSAIL] = BoatLivery.rope_material(bv.info.id, base_material, "sheet", {})
@@ -151,85 +178,106 @@ static func _rope_slot(m: Node) -> ShaderMaterial:
 	return found
 
 
-## The class's deck height field (sail_visuals.md §11.3): the top of the generated deck on a 5 cm grid in model axes
-## (x port, z forward), from the coarsest level's deck mesh; built once per class.
+## The class's deck height field (sail_visuals.md §11.3 "Deck"): the top of the deck meshes of every level and the low
+## fittings of the hardware meshes, read at load in model axes (x port, z forward), with a skirt over the hull side and
+## widened; built once per class, natively when the GDExtension is there.
 static func deck_field(view: BoatView) -> Dictionary:
 	var key := view.info.id
 	if _decks.has(key):
 		return _decks[key]
-	var out := {}
-	var deck: MeshInstance3D = null
-	for lv in range(view.levels.size() - 1, -1, -1):
-		var m: Node3D = view.levels[lv]["model"]
-		deck = m.find_child("deck", true, false) as MeshInstance3D if m else null
-		if deck != null and deck.mesh != null:
-			break
-	if deck == null or deck.mesh == null:
-		_decks[key] = out
-		return out
-	var xf := Transform3D.IDENTITY
-	var x: Node = deck
-	while x != null and x != view.model:
-		if x is Node3D:
-			xf = (x as Node3D).transform * xf
-		x = x.get_parent()
-	var cell := 0.05
-	var box := xf * deck.mesh.get_aabb()
-	var x0 := box.position.x - cell
-	var z0 := box.position.z - cell
-	var nx := int(ceil(box.size.x / cell)) + 3
-	var nz := int(ceil(box.size.z / cell)) + 3
-	var h := PackedFloat32Array()
-	h.resize(nx * nz)
-	h.fill(SheetRopesRef.NO_DECK)
-	for s in deck.mesh.get_surface_count():
-		var arr := deck.mesh.surface_get_arrays(s)
-		var p: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
-		var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX] if arr[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
-		for v in p.size():
-			p[v] = xf * p[v]
-		for t in range(0, idx.size(), 3):
-			var a := p[idx[t]]
-			var b := p[idx[t + 1]]
-			var c := p[idx[t + 2]]
-			var den := (b.z - c.z) * (a.x - c.x) + (c.x - b.x) * (a.z - c.z)
-			if absf(den) < 1e-9:
+	var surfaces := []
+	for lv in view.levels:
+		var m: Node3D = lv["model"]
+		if m == null:
+			continue
+		for part in ["deck", "hardware"]:
+			var mi := m.find_child(part, true, false) as MeshInstance3D
+			if mi == null or mi.mesh == null:
 				continue
-			var i0 := maxi(0, int(ceil((minf(a.x, minf(b.x, c.x)) - x0) / cell)))
-			var i1 := mini(nx - 1, int(floor((maxf(a.x, maxf(b.x, c.x)) - x0) / cell)))
-			var k0 := maxi(0, int(ceil((minf(a.z, minf(b.z, c.z)) - z0) / cell)))
-			var k1 := mini(nz - 1, int(floor((maxf(a.z, maxf(b.z, c.z)) - z0) / cell)))
-			for k in range(k0, k1 + 1):
-				var pz := z0 + k * cell
-				for i in range(i0, i1 + 1):
-					var px := x0 + i * cell
-					var w0 := ((b.z - c.z) * (px - c.x) + (c.x - b.x) * (pz - c.z)) / den
-					var w1 := ((c.z - a.z) * (px - c.x) + (a.x - c.x) * (pz - c.z)) / den
-					var w2 := 1.0 - w0 - w1
-					if w0 < -1e-4 or w1 < -1e-4 or w2 < -1e-4:
-						continue
-					var y := w0 * a.y + w1 * b.y + w2 * c.y
-					if y > h[k * nx + i]:
-						h[k * nx + i] = y
-	# a skirt over the hull side: off the deck within DECK_SKIRT cells the height of the nearest deck edge, so a
-	# slack line drapes over the toe rail instead of hanging through the topsides
-	for _step in DECK_SKIRT:
-		var src := h.duplicate()
-		for k in nz:
-			for i in nx:
-				if src[k * nx + i] > SheetRopesRef.NO_DECK:
+			var xf := Transform3D.IDENTITY
+			var x: Node = mi
+			while x != null and x != m:
+				if x is Node3D:
+					xf = (x as Node3D).transform * xf
+				x = x.get_parent()
+			for s in mi.mesh.get_surface_count():
+				var arr := mi.mesh.surface_get_arrays(s)
+				var idx: Variant = arr[Mesh.ARRAY_INDEX]
+				if idx == null:
 					continue
-				var best := SheetRopesRef.NO_DECK
-				for dk in [-1, 0, 1]:
-					for di in [-1, 0, 1]:
-						var kk: int = k + dk
-						var ii: int = i + di
-						if kk >= 0 and kk < nz and ii >= 0 and ii < nx:
-							best = maxf(best, src[kk * nx + ii])
-				h[k * nx + i] = best
-	out = {"heights": h, "origin": Vector2(x0, z0), "cell": cell, "nx": nx, "nz": nz}
+				surfaces.append({"positions": xf * (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array), "indices": idx,
+					"cap": -1.0 if part == "deck" else FIT_MAX})
+	var builder: Variant = ClassDB.instantiate("SheetRopes") if ClassDB.class_exists("SheetRopes") else SheetRopesRef.new()
+	var out: Dictionary = builder.build_deck(surfaces, DECK_CELL, DECK_SKIRT, DECK_DILATE) if not surfaces.is_empty() else {}
 	_decks[key] = out
 	return out
+
+
+## The rail of the outside route (§11.3) per side, from the deck field's outer edge every RAIL_STEP, out by its margin
+## (fading in forward of the lead), and the boom's box for the route.
+func _setup_route(sl: Dictionary) -> void:
+	if not _deck.is_empty():
+		var lead_z: float = (_leads["flying"]["lead"][0] as Vector3).z
+		var m0 := RAIL_MARGIN + _r
+		var nz: int = _deck["nz"]
+		var o: Vector2 = _deck["origin"]
+		var c: float = _deck["cell"]
+		var every := maxi(1, roundi(RAIL_STEP / c))
+		for side in 2:
+			var edge: PackedFloat32Array = _deck["edge_hi" if side == 1 else "edge_lo"]
+			var pts := PackedVector3Array()
+			for k in range(0, nz, every):
+				if is_nan(edge[k]):
+					continue
+				var z := o.y + k * c
+				var m := m0 * smoothstep(lead_z, lead_z + RAIL_FADE, z)
+				pts.append(Vector3(edge[k] + (m if side == 1 else -m), 0.0, z))
+			_rail[side] = pts
+	var boom: Node3D = bv.levels[0]["boom"] if not bv.levels.is_empty() else null
+	var bm := boom as MeshInstance3D
+	if bm == null and boom != null:
+		bm = boom.find_child("*", true, false) as MeshInstance3D
+	if bm != null and bm.mesh != null:
+		var box := bm.mesh.get_aabb()
+		var to_boom := Transform3D.IDENTITY
+		var x: Node = bm
+		while x != null and x != boom:
+			to_boom = (x as Node3D).transform * to_boom
+			x = x.get_parent()
+		for k in 8:
+			_boom_box.append(to_boom * box.get_endpoint(k))
+		var pc := Transform3D.IDENTITY
+		x = boom.get_parent()
+		while x != null and x != bv.levels[0]["model"]:
+			if x is Node3D:
+				pc = (x as Node3D).transform * pc
+			x = x.get_parent()
+		_boom_parent = pc
+		_boom_rest = bv.levels[0]["boom_rest"]
+
+
+## The obstacles of the outside route on `side` (0 starboard, 1 port), as last placed: the main, the boom, the shown
+## headsail (SheetRopes.route's [points, margin, ...]).
+func _route_obstacles(side: int, jib: BoatView.SailPart) -> Array:
+	return _route_sides(jib)[side]
+
+
+## Both sides' obstacles at once (the sails and the boom read once).
+func _route_sides(jib: BoatView.SailPart) -> Array:
+	var ms := SAIL_MARGIN + 2.0 * _r
+	var out := []
+	for sp in bv.sail_parts:
+		if sp.type == "main" and sp.shape != null and sp.node.visible:
+			out.append_array([sp.shape.mid(), ms])
+	if not _boom_box.is_empty():
+		var xf := _boom_parent * _boom_rest * Transform3D(Basis(bv._boom_axis, bv.boom_angle), Vector3.ZERO)
+		out.append_array([xf * _boom_box, ms])
+	if jib != null and jib.shape != null and jib.node.visible:
+		out.append_array([jib.shape.mid(), ms])
+	var port := out.duplicate()
+	out.append_array([_rail[0], 0.0])
+	port.append_array([_rail[1], 0.0])
+	return [out, port]
 
 
 func _deck_h(x: float, z: float, def: float) -> float:
@@ -483,6 +531,10 @@ func step(aws: float, dt: float, draw: bool) -> void:
 		starts.resize(n)
 		ways.resize(n)
 		drive.resize(n * SheetRopesRef.DRIVE)
+		var slots := SheetRopesRef.MAX_WAYS if fly else 1
+		var none := Vector3(NAN, NAN, NAN)
+		ways.resize(n * slots)
+		ways.fill(none)
 		var s: PackedFloat32Array = sag[surf]
 		var tg := PackedFloat32Array()
 		tg.resize(s.size())
@@ -490,7 +542,6 @@ func step(aws: float, dt: float, draw: bool) -> void:
 		if sp == null:
 			for i in n:
 				starts[i] = lines[i]["anchor"]
-				ways[i] = Vector3(NAN, NAN, NAN)
 				s[2 * i] = LAZY_SAG
 				s[2 * i + 1] = LAZY_SAG
 		else:
@@ -500,6 +551,10 @@ func step(aws: float, dt: float, draw: bool) -> void:
 			var work := 0 if sp.beta > 0.0 else 1  # beta > 0: the sail to starboard, the starboard line works
 			var t := tension(sp, aws)
 			var phi: float = sp.shape.get_phase()
+			var obs := [[], []]
+			if fly:
+				var jib := _pick(false)
+				obs = _route_sides(jib)
 			for i in n:
 				var anchor: Vector3 = lines[i]["anchor"]
 				var o := i * SheetRopesRef.DRIVE
@@ -514,8 +569,19 @@ func step(aws: float, dt: float, draw: bool) -> void:
 				elif not working:
 					way = _waypoint(clew, anchor, _stay_front if fly else _mast_front)
 				starts[i] = start
-				ways[i] = way
-				var l_free := start.distance_to(anchor) if is_nan(way.x) else start.distance_to(way) + way.distance_to(anchor)
+				var route := PackedVector3Array()
+				if fly and i < 2:
+					route = _route(start, anchor, way, obs)
+				elif not is_nan(way.x):
+					route.append(way)
+				for j in mini(route.size(), slots):
+					ways[i * slots + j] = route[j]
+				var l_free := 0.0
+				var prev_pt := start
+				for w in route:
+					l_free += prev_pt.distance_to(w)
+					prev_pt = w
+				l_free += prev_pt.distance_to(anchor)
 				var l_lead := 0.0
 				if (lines[i] as Dictionary).has("fixed") and not (lines[i]["fixed"] as PackedVector3Array).is_empty():
 					l_lead = anchor.distance_to((lines[i]["fixed"] as PackedVector3Array)[0])
@@ -555,6 +621,35 @@ func step(aws: float, dt: float, draw: bool) -> void:
 					shapes[surf].write_mesh()
 		else:
 			_rebuild_mesh()
+
+
+## §11.3 "Outside route": the waypoints of a flying sail's line from `start` to its lead `anchor` (through the lazy
+## line's forestay waypoint `way` when it has one), outside the obstacles `obs` per side.
+func _route(start: Vector3, anchor: Vector3, way: Vector3, obs: Array) -> PackedVector3Array:
+	var side := 1 if anchor.x > 0.0 else 0
+	var sg := 1.0 if side == 1 else -1.0
+	var span := start.distance_to(anchor) if is_nan(way.x) else start.distance_to(way) + way.distance_to(anchor)
+	var h := span / float(FREE_RINGS[detail] - 1)
+	if is_nan(way.x):
+		return _router.route(start, anchor, _pivot(sg), sg, obs[side], h, WAYS_WORK)
+	# the forestay waypoint out along its bisector by the corner allowance (and the margin, as it turns), so the
+	# straight tube between the rings either side of it stays ahead of the stay and the headsail's tack
+	var d1 := Vector2(way.x - start.x, way.z - start.z).normalized()
+	var d2 := Vector2(anchor.x - way.x, anchor.z - way.z).normalized()
+	var al := acos(clampf(d1.dot(d2), -1.0, 1.0))
+	var bis := d1 - d2
+	if bis.length_squared() > 1e-12:
+		bis = bis.normalized()
+		var push := (0.5 * h * sin(0.5 * al) + (SAIL_MARGIN + 2.0 * _r) * sin(0.5 * al)) / maxf(cos(0.5 * al), 0.3)
+		way += Vector3(bis.x, 0.0, bis.y) * push
+	var out: PackedVector3Array = _router.route(start, way, _pivot(-sg), -sg, obs[1 - side], h, WAYS_LEG)
+	out.append(way)
+	out.append_array(_router.route(way, anchor, _pivot(sg), sg, obs[side], h, WAYS_LEG))
+	return out
+
+
+func _pivot(sg: float) -> Vector3:
+	return Vector3(-sg * PIVOT_SIDE * bv.info.beam_max, 0.0, _mast_step.z)
 
 
 ## The lazy line's waypoint round the front of `obstacle` (§11.3): where the straight line from the clew to the lead

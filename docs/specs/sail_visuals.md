@@ -689,7 +689,52 @@ line from the clew to the lead crosses the centreline, moved forward to the obst
 lies aft of it (keeping the crossing's height; the sag and the deck then bring it down); a line whose clew is on its
 lead's side has no waypoint. `W` is continuous as the clew moves, so a tack or gybe moves the line smoothly.
 
-**Shape.** A line is a polyline of runs: the **free run** from the clew (or tack) through `W` to the lead, the
+**Outside route.** A flying sail's sheets and the guy run outside everything, as a real kite sheet does: from the clew
+round the leech side of the main and the end of the boom (or, with the clew forward, outside the shrouds and the
+lifelines) to the quarter block, never through the main, the boom, the shown headsail, the shrouds or the
+lifelines. In plan (model `x`, `z`; the sails stand close to vertical and the shrouds and the lifelines rise from
+inside the rail, so a line clear of them in plan is clear at every height below them) the free run is the **taut
+string** from its start `A` to its end `B` round the obstacles on the side of `B` (`σ = sgn(B.x)`): the shortest
+path that keeps every obstacle point on the boat's side. Per update:
+```
+obstacles (each point with its margin m, model axes as last placed):
+  the main's placed mid-surface (every grid vertex), the shown headsail's (jib, genoa; not down), and the boom
+    (the corners of its mesh's box, turned with the boom): m = c_s = 0.05 + 2 * r      // r: the rope radius
+  the rail on side σ: the outer edge of the deck height field (below) every 0.1 m, out by
+    m = (0.01 + r) * smoothstep(B.z, B.z + 0.6, z), so the line comes in over the toe rail to the block
+pivot O = (−σ · 0.15 · beam_max, 0, mast_step.z)     // a point inside the boat, a little to the other side
+plan angle about O: theta(p) = atan2(σ · (p.x − O.x), p.z − O.z)   (0 ahead, π/2 abeam on side σ, π astern)
+route(A, B, σ):
+  if |theta(B) − theta(A)| >= π − 0.05: straight                    // never with a lead aft of the mast
+  K = the obstacle points with theta strictly between theta(A) and theta(B) that lie outside the chord A–B (on
+      the side away from O), each first eased in:
+    under: with y_c the chord's height over the point (lerp(A.y, B.y) at its projection on the chord), the point
+      moves onto the chord by smoothstep(0.1, 0.3, p.y − y_c) (its margin by the same factor): the line passes
+      under a boom or a sail foot well above it (the boom over the cockpit in a gybe)
+    ends: within 0.1 rad of theta(A) (or theta(B)) the point moves toward A (B) by 1 − smoothstep(0, 0.1, the
+      angle): an obstacle coming into the wedge past an end starts at the end and moves out to its place
+  none: straight (no waypoints)
+  else: the convex chain from A to B round K (a Graham scan of K sorted by theta about O, keeping the turns
+        that bend away from O), its inner vertices W_1 .. W_n; while n is over the cap (12 for a working line, 7
+        for each leg of a lazy one), the vertex with the smallest turn goes and its depth outside the new edge is
+        added to its neighbours' margins
+  each W_i moves out along its outward bisector by (m_i + reach_i * sin(a_i / 2)) / max(cos(alpha_i / 2), 0.3):
+        alpha_i its turn, a_i = sum over the vertices j of alpha_j * max(0, 1 − |l_j − l_i| / h) (the turns within
+        a ring spacing, at most 2.5), reach_i = min(h / 2, l_i, l − l_i), h = the run's length / (free rings − 1):
+        the straight tube between the rings either side of a corner (or of a cluster of corners) still keeps m_i
+  height of W_i: the straight line's, lerp(A.y, B.y, l_i / l) by plan length along the chain
+```
+The working sheet (and the guy) is `route(clew, lead, σ)`; a lazy sheet with a forestay waypoint `W` is
+`route(clew, W', −σ)`, `W'`, `route(W', lead, σ)`, so it passes outside the kite's own side, round the forestay and
+back outside the other side; `W'` is `W` moved out along its plan bisector by `(h / 2 + c_s) · sin(α / 2) /
+max(cos(α / 2), 0.3)` (`α` its turn between the clew and the lead), so the tube between the rings either side of it
+stays ahead of the stay and the headsail's tack. Every term is a continuous function of the placed sails: a point
+enters `K` where the chord or the wedge passes it, adding a corner of zero turn, or at an end where it starts on the
+end, so the line bends smoothly away as a trim brings the leech or the boom end across it and straightens as it
+clears (no pop through a trim change, a tack or a gybe). The jib and genoa lines keep their straight runs (they lead
+inside the shrouds).
+
+**Shape.** A line is a polyline of runs: the **free run** from the clew (or tack) through its waypoints to the lead, the
 **lead run** from the lead block to the winch drum, then the turns on the drum and the tail (fixed in the boat).
 Each run hangs as a parabola in the boat frame with its sag along gravity (the world down in the heeled boat's
 frame), its depth from the line's tension:
@@ -708,7 +753,7 @@ the slack the crew lets out as the sail luffs, up to 12 % of the span when it fl
 toward its target with `τ = 0.3 s` (the crew grinds in or casts off; a tack hands the load from one sheet to the
 other without a jump). The lead run uses the same tension over its own length.
 
-A point at the run fraction `t` (by length along the run's polyline, through `W`) is
+A point at the run fraction `t` (by length along the run's polyline, through its waypoints) is
 ```
 P(t) = R(t) + 4 t (1 - t) * L * sag * (g * cos(psi) + s * sin(psi))
                 + 4 t (1 - t) * 0.15 * L * I * sin(phi - 2 * PI * l / 1.5) * s       // whip of a flogging sheet
@@ -716,9 +761,30 @@ psi  = 0.6 * I * sin(phi)                            // the sag swings sideways 
 ```
 with `R(t)` the straight polyline, `g` the unit gravity in the boat frame, `s` the unit side vector square to the run
 and to `g`, `phi` the sail's flutter phase (§5.2), `l` the length from the clew (m). A lazy line swings with
-`0.3 · I` of its sail and does not whip; the tack line neither swings nor whips. The lead run has no swing or whip. No point lies below the deck: the class's deck height field (the top of the generated
-`deck` mesh, on a 5 cm grid) lifts a point to the deck plus the rope radius, so a lazy sheet lies along the side deck,
-the cabin top and the foredeck. Outside the deck there is no limit (a kite's lazy sheet hangs ahead of the bow).
+`0.3 · I` of its sail and does not whip; the tack line neither swings nor whips. The lead run has no swing or whip. A lazy line's free run is at most `0.5` m deep
+(`sag <= 0.5 / L`): a long kite sheet loops, it does not trail in the sea.
+
+**Deck.** No part of a line lies below the deck: not a ring, and not the straight tube between two rings. The class's
+**deck height field** is read from the boat's own meshes at load (so any deck or coachroof shape the generator
+writes is followed): the highest surface over a 2.5 cm grid in model axes of the `deck` mesh of every level, raised
+by the low fittings of the `hardware` meshes (hatches, tracks, cleats, padeyes: a fitting counts where it stands at
+most `0.07` m above the deck there; winches, stanchions and blocks stand taller and do not), extended `0.2` m out
+over the hull side at the height of the nearest deck edge (a line drapes over the toe rail instead of hanging through
+the topsides), and then widened by a max filter of one cell (`ρ = 0.025` m). A line is then laid on it in two
+steps:
+```
+every ring of a free or lead run except its ends: y = max(y, H(x, z) + r)             // H: the field, bilinear
+drape, once over each run (its end rings fixed; a lift only raises the tubes either side, so a point once clear stays
+  clear): for each pair of rings k, k + 1, at n = ceil(plan length / 0.025)
+  points f = j / n along the straight tube (j = 1 .. n − 1):
+    d = H(p) + r − p.y; when d > 0 lift ring k by d (1 − f) / D and ring k + 1 by d f / D, D = (1 − f)^2 + f^2
+    (a fixed ring takes no lift, the other then takes all of it: the least lift that puts that point on the deck)
+```
+Since the field is widened by the drape's step, a straight tube clear of the field at its sample points is clear of
+the true surface between them (within a few mm at a vertical edge): the line lies along the side deck and the foredeck, over the
+cabin top, and bridges from a cabin edge, the toe rail or a hatch down to the deck as a rope does, never cutting a
+corner. Outside the deck there is no limit (a kite's lazy sheet hangs ahead of the bow). The field is built natively
+once per class (a few ms); its outer edge per 2.5 cm station is the rail of the outside route.
 
 **Winch and tail.** The lead run meets the drum on its tangent (winches turn clockwise from above), the line takes
 three turns up the drum (`0.34` to `0.59` of the drum diameter above its base, at the drum radius plus the rope
@@ -736,7 +802,10 @@ vertex and index counts (a hidden line collapses to a point), rewritten in place
 the native `SheetRopes` (one per surface; `SheetRopesRef` is the GDScript reference). The mesh is redrawn in the frames
 in which any of the boat's sails is updated (§11 rates: every frame within 200 m, and not outside the view frustum),
 at LOD1 (§11.4, where a rope is under a pixel wide) at most at 15 Hz; the eased sag runs every frame. Per line at LOD0 (§11.4) 16 rings on the free run, 4 on the lead run, 24 on the drum
-and 6 on the tail; at LOD1 8 and 2 rings, 4 sides, no drum turns or tail; at LOD2 no sheets.
+and 6 on the tail; at LOD1 8 and 2 rings, 4 sides, no drum turns or tail; at LOD2 no sheets. A line takes up to 16
+waypoints (`SheetRopes.update`'s `ways`: that many slots per line, unused ones NaN; the headsail lines one). Cost
+(native, debug build, best of batches): a wm7 with jib and kite about 75 µs per redraw with the outside route and the
+drape (about 58 µs before them): the route about 6 µs, the drape about 6 µs.
 
 ### 11.4 Levels of detail
 The generator writes three levels per class (`<id>.glb`, `<id>_lod1.glb`, `<id>_lod2.glb`, listed with their switch
@@ -856,7 +925,14 @@ Flutter phase `φ = 0` unless stated.
     scripted tack and gybe (no vertex of a line moves more than `0.05·Sa` of its sail between frames at 60 fps, away
     from the sag easing); a trimmed sheet (`I = 0`, 10 kn) sags under 1 % of its span and a flogging one (`I = 1`)
     over 8 %; a lazy line never lies below the deck height field; a sail `down` hides its lines; native and
-    reference agree within 1e-4 m. The test prints the cost per boat.
+    reference agree within 1e-4 m (lines, routes and the deck field). **Clearance**: over a sweep of configs and
+    trims (wm7 and wm12, jib up and down, kite up, TWA 60° to 170° on both tacks, the trims optimum, 15 % over-sheeted
+    and 25 % eased, and a scripted gybe and tack), no straight tube between two rings of a flying sail's sheet comes
+    within the rope radius of a triangle of the main's or the shown headsail's placed mid-surface or of the boom's
+    box, and every lazy line, sampled every 2 cm along its tube, lies at or above the true top of the deck (the
+    LOD0 `deck` mesh's triangles); through the gybe and a kite trimmed from 60 % to 130 % of its optimum no ring
+    moves more than `0.05·Sa` between frames. The test prints the smallest clearance, the deepest point under the
+    deck and the cost per boat.
 22. **Levels of detail.** A boat with the camera at 25, 35, 90, 110 m shows LOD0, LOD1, LOD1, LOD2; at 29 m coming
     from 35 m it stays at LOD1 (hysteresis) and at 28 m returns to LOD0; every level's hull, keel and sails carry the
     boat's livery materials (the same material objects on each level), the moving parts of the level shown follow the

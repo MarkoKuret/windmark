@@ -274,6 +274,7 @@ Flags after `--`:
 | `--perf-seconds=N` | quit after N seconds (from the scene's start, after loading) |
 | `--render-scale=0.67` | this run's render scale (0.5 to 1, or 50 to 100), over the setting; not saved |
 | `--upscaler=fsr` | this run's upscaler: `fsr`, `bilinear` or `metalfx` (MetalFX spatial, Metal only) |
+| `--aa=off` | this run's anti-aliasing: `off`, `fxaa` or `smaa` (the default, `water_render.md` §7); not saved |
 | `--quality=M` | this run's quality tier: `L`, `M` or `H`, over the setting; not saved |
 | `--no-vsync` | this run without vsync, to see the headroom; not saved |
 | `--shadow-splits=0` | this run's sun shadow cascades: `0` (off), `2` or `4`, over the tier; not saved |
@@ -286,6 +287,8 @@ Flags after `--`:
 | `--sea-grid=120x160` | this run's sea radial grid (rings x segments), over the tier; not saved |
 | `--water-shader=l` | this run's water shader (`water_l`, `_m` or `_h`), over the tier; not saved |
 | `--no-hud` | the HUD hidden from the start (as F10) |
+| `--look=off` | no colour grade, vignette, contact shading or depth of field (`water_render.md` §4.5), to compare |
+| `--ssao=on` | contact shading (SSAO) on any tier (`on`) or off on H (`off`); not saved |
 
 A measured race in a window (asks the owner first: it opens one), 10 boats for 60 s:
 
@@ -649,7 +652,8 @@ python3 game/tests/livery_cost.py
 
 `scenes/sea/sea.tscn` (`Sea`) draws the water of `docs/specs/water_render.md`: a camera-centred radial grid whose
 vertex shader evaluates the core's `sea_height` from the wave components, with detail normals, puffs and lulls,
-wakes (`SeaWakes`) and water overlays, in three quality tiers (`SeaQuality`: L, M, H). It reads:
+whitecaps (`SeaWhitecaps`: foam carried by the wave components, riding their crests), wakes (`SeaWakes`) and water
+overlays, in three quality tiers (`SeaQuality`: L, M, H). It reads:
 
 - a source with `sea_components()`, `sea_exposure()` and `wind_state(t_ms)`, and optionally
   `venue_wind_field()` (the venue file's land-effect field, drawn as the wind slowed near land; `Sea.set_wind_field`
@@ -679,11 +683,19 @@ The own boat always, on tier M also the 6 nearest within the shadow distance; th
 surface before the binding exists.
 
 `scenes/sea/sky_day.tscn` (`SkyRig`) is the daytime light: the sky shader (saturated blue ramp, sun disc and halo,
-cumulus), the sun light, fog toward the horizon colour, sky reflections, the camera exposure and the glow on the
+cumulus), the sun light, a distance haze toward the horizon colour, sky reflections, the camera exposure and the glow on the
 sun's glints, set from one group of parameters. Sun and sky keep their clear-day proportion (the sun about four
-fifths of the light on a level surface), and the exposure brings the scene back to screen range. Three weather
-presets (`water_render.md` §4.5): clear, fair (the default) and hazy, set with `SkyRig.preset` or, in the sail
-test, `--sky=clear|fair|hazy`.
+fifths of the light on a level surface), and the exposure brings the scene back to screen range. Four light
+presets (`water_render.md` §4.5): clear, fair (the default), hazy and late afternoon (a low warm sun), set with
+`SkyRig.preset` or, in the sail test, `--sky=clear|fair|hazy|late`. Each preset carries its colour grade, and
+`LookFx` (`scenes/sea/look_fx.gd`) adds the finishing look: the grade (a 3-D LUT built at load, applied by the
+environment after the tone mapping), the vignette under the HUD (owned by `CameraRig`, stronger on the clip
+cameras), the contact shading (SSAO, tier H) and the depth of field of the long lens and mark clip cameras.
+Previews of the grade, vignette and late light: `tests/look_lut_dump.gd`, `tests/water_preview_dump.gd` (with
+`-- --sky=late` for the late light) and `tests/cine_preview.py --publish` (`tests/previews/cine_*.jpg`; the
+commands are in its header). `tests/look_test.gd` (in `run_ui_tests.sh`) checks the presets, the grade and the SSAO
+per tier. The anti-aliasing is SMAA 1x on every tier (`water_render.md` §7): the project default, kept with
+the upscaler by `Settings.apply_render_scale` (off only under a temporal upscaler).
 
 ### Water tests
 
@@ -696,8 +708,9 @@ The script builds `core/tools/gen_sea_render_samples.cpp`, writes the core's sam
 on any error or warning) and runs `tests/water_test.gd`: every shader parses; the drawn height matches the core's
 `sea_height` within 1 mm (a double-precision mirror and a float32 emulation of the shader path, points up to
 8 km, times up to 4 h); slope, puff factor and exposure match; the far-field fade table; the components sorted by
-wavelength with their `comp_lam` and the per-pixel band loop against the full sum; the wake geometry; and
-the test scene on every tier. With the GDExtension built it then runs `tests/boat_shadow_test.gd` (the drawn boat shadows on a race in the sail scene: on the water, away from the sun, covering the projected hull, rig and sails, the tiers, native against reference, cost per boat) and `tests/wakes_native_test.gd`: the native
+wavelength with their `comp_lam` and the per-pixel band loop against the full sum; the wake geometry; the
+whitecaps on their CPU mirror (none under 8 kn, cover rising with the wind and the puffs near measured whitecap
+cover, caps riding their crests, no popping over 60 s at 60 frames per second); and the test scene on every tier. With the GDExtension built it then runs `tests/boat_shadow_test.gd` (the drawn boat shadows on a race in the sail scene: on the water, away from the sun, covering the projected hull, rig and sails, the tiers, native against reference, cost per boat) and `tests/wakes_native_test.gd`: the native
 wakes against their GDScript references (sea height, ribbons with spray, current and hidden rows, bow waves, mist,
 and a `SeaWakes` drawing each way), the in-place buffers byte for byte against Godot's own encoding, and the cost
 per boat of both paths.
@@ -712,6 +725,10 @@ JPEGs committed in `tests/previews/`. The previews stand in a shadow map from th
 takes it on tier H, the drawn boat shadows are used on L and M (`--shadows real|drawn|none` picks one), and `--compare`
 writes `<shot>.real.png`, `<shot>.drawn.png` and a side-by-side `<shot>.compare.png`. `--faded-slope` draws the per-pixel
 slope of faded waves on every tier (the shaders draw it on tier H only) and `--suffix=.x` names the outputs apart.
+`--no-caps` leaves the whitecaps out. The whitecap shots (`water_preview_dump.gd -- whitecaps`: 12, 18 and 24 kn from
+the chase camera, a sequence of 6 frames 0.5 s apart and one of 120 frames over 60 s from a still camera) publish as
+`whitecaps_*.jpg`; `--strip NAME` puts a sequence side by side with its times. `tests/water_cost.py` times the sea
+with and without the whitecaps on those dumps (per tier with `--tier`, an OpenGL proxy for the GPU cost).
 
 The previews draw the boats with the boat shader's textures, factors and baked AO, without shadows. The engine's
 own picture needs a short windowed run (it opens a window for about 7 seconds):

@@ -64,6 +64,30 @@ var SHOTS := [
 	{"name": "cloth_kite_close", "cls": "wm7", "tws": 12.0, "twa": 110.0,
 		"legs": [{"t": 10.0, "twa": 110.0}, {"t": 40.0, "twa": 110.0, "req": "kite"}],
 		"cam": {"side": 1, "fwd": 0.35, "up": 0.1, "dist": 11.0}},
+	# the running sheets (sail_visuals.md §11.3): the kite sheet's route round the main from aft and from above,
+	# and the lazy sheets on the deck close up
+	{"name": "sheets_reach_aft", "cls": "wm7", "tws": 12.0, "twa": 110.0,
+		"legs": [{"t": 10.0, "twa": 110.0}, {"t": 40.0, "twa": 110.0, "req": "kite"}],
+		"cam": {"side": 0.3, "fwd": -0.94, "up": 0.4, "dist": 11.0, "tup": 1.5, "tside": 1.0, "rope_hi": 0.02}},
+	{"name": "sheets_reach_above", "cls": "wm7", "tws": 12.0, "twa": 110.0,
+		"legs": [{"t": 10.0, "twa": 110.0}, {"t": 40.0, "twa": 110.0, "req": "kite"}],
+		"cam": {"side": 0.1, "fwd": -0.15, "up": 1.0, "dist": 19.0, "tup": 0.0, "tside": 1.5, "tfwd": -0.3, "rope_hi": 0.025}},
+	{"name": "sheets_run_aft", "cls": "wm7", "tws": 12.0, "twa": 150.0,
+		"legs": [{"t": 10.0, "twa": 150.0}, {"t": 40.0, "twa": 150.0, "req": "kite"}],
+		"cam": {"side": 0.3, "fwd": -0.94, "up": 0.4, "dist": 11.0, "tup": 1.5, "tside": 1.0, "rope_hi": 0.02}},
+	{"name": "sheets_run_above", "cls": "wm7", "tws": 12.0, "twa": 150.0,
+		"legs": [{"t": 10.0, "twa": 150.0}, {"t": 40.0, "twa": 150.0, "req": "kite"}],
+		"cam": {"side": 0.1, "fwd": -0.15, "up": 1.0, "dist": 19.0, "tup": 0.0, "tside": 1.5, "tfwd": -0.3, "rope_hi": 0.025}},
+	{"name": "sheets_wm12_reach_above", "cls": "wm12", "tws": 12.0, "twa": 110.0,
+		"legs": [{"t": 10.0, "twa": 110.0}, {"t": 40.0, "twa": 110.0, "req": "a2"}],
+		"cam": {"side": 0.1, "fwd": -0.15, "up": 1.0, "dist": 30.0, "tup": 0.0, "tside": 2.5, "tfwd": -0.5, "rope_hi": 0.035}},
+	{"name": "sheets_lazy_deck", "cls": "wm7", "tws": 12.0, "twa": 42.0, "legs": [{"t": 20.0, "twa": 42.0}],
+		"cam": {"side": -0.55, "fwd": -0.3, "up": 0.75, "dist": 3.4, "tup": 0.5, "tfwd": 0.0, "tside": -0.5, "rope_hi": 0.0001}},
+	{"name": "sheets_lazy_kite_deck", "cls": "wm7", "tws": 12.0, "twa": 110.0,
+		"legs": [{"t": 10.0, "twa": 110.0}, {"t": 40.0, "twa": 110.0, "req": "kite"}],
+		"cam": {"side": -0.6, "fwd": -0.5, "up": 0.6, "dist": 4.5, "tup": 0.5, "tfwd": -1.2, "tside": -0.6, "rope_hi": 0.0001}},
+	{"name": "sheets_wm12_lazy_deck", "cls": "wm12", "tws": 12.0, "twa": 40.0, "legs": [{"t": 20.0, "twa": 40.0}],
+		"cam": {"side": -0.55, "fwd": -0.3, "up": 0.75, "dist": 5.0, "tup": 0.8, "tside": -0.7, "rope_hi": 0.0001}},
 	{"name": "cloth_wm12_close", "cls": "wm12", "tws": 12.0, "twa": 40.0, "legs": [{"t": 20.0, "twa": 40.0}],
 		"cam": {"side": 1, "fwd": -0.7, "up": 0.1, "dist": 11.0}},
 ]
@@ -206,6 +230,11 @@ func _dump(spec: Dictionary, bv: BoatView, st: SimSource.BoatState, note: String
 			if is_sail:
 				pos = sail_nodes[mi].shape.positions()
 				nrm = sail_nodes[mi].shape.normals()
+			if bv.sheets != null and mi == bv.sheets.node:
+				# headless keeps no in-place writes: the sheets as last drawn, from their shapes
+				var shp: Variant = bv.sheets.surface_shape(si)
+				pos = shp.positions()
+				nrm = shp.normals()
 			var ind: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
 			if ind.is_empty():
 				ind.resize(pos.size())
@@ -214,9 +243,11 @@ func _dump(spec: Dictionary, bv: BoatView, st: SimSource.BoatState, note: String
 			var wp := PackedFloat32Array()
 			wp.resize(pos.size() * 6)
 			var nb := xf.basis.inverse().transposed()
+			# "rope_hi": the running sheets drawn fatter (by that many m) and coloured by surface, to see their route
+			var hi := float(spec["cam"].get("rope_hi", 0.0)) if bv.sheets != null and mi == bv.sheets.node else 0.0
 			for k in pos.size():
-				var p := xf * pos[k]
 				var q := (nb * nrm[k]).normalized() if nrm.size() == pos.size() else Vector3.UP
+				var p := xf * pos[k] + q * hi
 				wp[6 * k] = p.x
 				wp[6 * k + 1] = p.y
 				wp[6 * k + 2] = p.z
@@ -230,6 +261,8 @@ func _dump(spec: Dictionary, bv: BoatView, st: SimSource.BoatState, note: String
 			elif mat is ShaderMaterial and (mat as ShaderMaterial).get_shader_parameter("albedo_color") is Color:
 				col = (mat as ShaderMaterial).get_shader_parameter("albedo_color")
 			col = Color(minf(col.r, 0.8), minf(col.g, 0.8), minf(col.b, 0.8))  # the shaders' albedo cap
+			if hi > 0.0:
+				col = Color(0.8, 0.25, 0.05) if si == mi.mesh.get_surface_count() - 1 else Color(0.05, 0.3, 0.8)
 			var nm := "m%d" % meshes.size()
 			var fv := FileAccess.open(dir.path_join(nm + "_v.bin"), FileAccess.WRITE)
 			fv.store_buffer(wp.to_byte_array())
@@ -259,7 +292,8 @@ func _dump(spec: Dictionary, bv: BoatView, st: SimSource.BoatState, note: String
 	var eye := o + lee * float(cam["side"]) * d * sqrt(maxf(0.0, 1.0 - pow(float(cam["fwd"]), 2))) \
 		+ bow * float(cam["fwd"]) * d + Vector3.UP * float(cam["up"]) * d
 	var mast_h := 0.45 * float(bv.info.physics.get("rig", {}).get("masthead", [0, 0, 10])[2])
-	var target := o + Vector3.UP * mast_h
+	var target := o + Vector3.UP * float(cam.get("tup", mast_h)) + bow * float(cam.get("tfwd", 0.0)) \
+		+ lee * float(cam.get("tside", 0.0))
 	var scene := {"meshes": meshes, "eye": [eye.x, eye.y, eye.z], "target": [target.x, target.y, target.z],
 		"note": note, "sun": cam.get("sun", "side"), "light": _daylight()}
 	var f := FileAccess.open(dir.path_join("scene.json"), FileAccess.WRITE)

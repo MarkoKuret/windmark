@@ -9,6 +9,8 @@ class View:
 	var fov := 40.0  # vertical, degrees
 	var near := 0.5
 	var far := 30000.0
+	## distance from the eye to the subject the lens keeps sharp (cameras.md §9 depth of field), 0: none
+	var focus := 0.0
 
 
 ## The viewed boat and the world, per frame.

@@ -185,7 +185,7 @@ abreast the cockpit and the sheet leads aft to the quarter.
 | `handling` | designer | feel multipliers and `dynamics` overrides (§3.7.1) |
 | `boards` | designer | daggerboards of a multihull, in place of `keel` (§3.9) |
 | `vpp` | designer | VPP settings (§3.10) |
-| `visual` | boat generator | deck layout, hardware, and per sail `sails.<id>.look` (the front-end sail look of `sail_visuals.md` §4, copied into the physics sidecar with the defaults filled in); keys in `tools/boatgen/README.md`; opaque to the core and the VPP |
+| `visual` | boat generator | deck layout (the coachroof: §3.7.2), hardware, and per sail `sails.<id>.look` (the front-end sail look of `sail_visuals.md` §4, copied into the physics sidecar with the defaults filled in); keys in `tools/boatgen/README.md`; opaque to the core and the VPP |
 
 Top level: `"schema": "windmark.boatclass/1"`, `"id"`, `"name"`, `"version"` (integer, bumped on every change).
 
@@ -194,6 +194,12 @@ fitted to (no gap over 5 mm between a part and its host on the meshes as built: 
 mainsheet blocks on the boom and the traveller car, each shroud and stay on a rigging screw standing on its
 chainplate or stemhead, all deck hardware on the deck), and each material slot reads as its real material with a
 mean linear albedo of at most 0.8 (gelcoat, non-slip, metal, rope; `tools/boatgen/README.md` "Materials and UVs").
+The running rigging on deck lies on what it crosses: a halyard or control line led from the mast foot to its clutch
+or winch runs a few millimetres above the deck and the coachroof, following their curvature between the fittings it
+passes (turning blocks, organisers, clutches), and never passes through the cabin or floats clear of it. Lifelines run
+from the pushpit to the pulpit through every stanchion top and the eye of each stanchion for the lower tier, each
+segment ending on a stanchion, the pushpit or the pulpit (no gap); stanchions stand between the pushpit's and the
+pulpit's ends, never doubling one of their legs, at most 2.2 m apart.
 
 #### 3.7.1 `handling`
 
@@ -214,6 +220,29 @@ with every multiplier 1.0 the tables are exactly the physical ones.
 
 Any other key of `handling` names a `dynamics` value (§4.2) and overrides it absolutely: the VPP writes it as
 given, after the multipliers, unscaled. Unknown keys are reported and ignored.
+
+#### 3.7.2 `visual.deck.cabin`: the coachroof
+
+The coachroof of a performance cruiser-racer (generator only, like the rest of `visual`): a low top over the
+companionway that slopes down forward and fairs into the deck, with radiused edges and sides raked inward that follow
+the sheer in plan. There is no vertical front: forward the top's height runs smoothly to zero, tangent to the deck,
+where the coachroof meets the deck at or just aft of the mast. Only its aft face, over the cockpit, is upright (with
+the companionway). `null` gives a flush deck. Every key is optional; `s = (loa / 12)^0.5`.
+
+| key | unit | default | range | meaning |
+| --- | --- | --- | --- | --- |
+| `height` | m | 0.26 (loa/12)^0.6 | 0.05 to 0.6 | height of the top above the deck's centreline at the aft end (the companionway) |
+| `meet_aft_of_mast` | m | 0.05 s | 0 to 1.5 | where the top meets the deck: this far aft of the mast's aft face at the deck (the partners) |
+| `length` | m | | > 0.5 | instead of `meet_aft_of_mast`: from the cockpit's forward end to where the top meets the deck (one of the two) |
+| `slope_from` | of the length | 0.3 | 0 to 0.8 | the top keeps its height aft of this point, then slopes down to the deck along a smooth curve tangent at both ends (a half cosine); the build logs the steepest slope |
+| `width` | of the half-beam | 0.58 | 0.2 to 0.85 | half-width of the coachroof's base as a fraction of the local half-beam, so its sides follow the sheer (at most the cockpit's width; where it is narrower the deck steps in from the cockpit's edge to it); it rounds in to the centreline over the last fifth of its length |
+| `side_rake` | rad | 0.35 | 0 to 0.8 | inward lean of the sides from the vertical |
+| `edge_radius` | m | 0.05 s | 0.01 to 0.15 | radius of the edge between the sides (and the aft face) and the top; the foot of each side has a fillet of 0.4 of it into the deck; both shrink with the height where the top runs down |
+| `windows` | | true | | dark glazing along the sides where the top is at least 0.15 m high |
+
+Hatches on the coachroof are flush, their frames following the top's curve; the companionway's sliding hatch lies on
+the top aft. The deck's uv1 (the plan view, §8.5) covers the coachroof like every other deck surface: its sides take
+the texels of their narrow footprint between the base and the roof edge.
 
 ### 3.8 Example (sportsboat)
 

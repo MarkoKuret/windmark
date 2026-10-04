@@ -54,7 +54,7 @@
   "visual": {
     "deck": {
       "cockpit": {"length": 3.1, "width": 0.72, "depth": 0.30, "open_transom": true},
-      "cabin": {"length": 1.7, "height": 0.13, "width": 0.50},
+      "cabin": {"height": 0.15, "meet_aft_of_mast": 0.04, "slope_from": 0.2, "width": 0.50, "side_rake": 0.40, "edge_radius": 0.035},
       "lifelines": false,
       "steering": "tiller",
       "hatches": 1

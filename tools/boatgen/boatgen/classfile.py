@@ -41,6 +41,38 @@ class ClassFileError(ValueError):
     pass
 
 
+# the coachroof keys of visual.deck.cabin (docs/specs/data_format.md 3.7.2): key -> allowed range
+CABIN_KEYS = {"height": (0.05, 0.6), "meet_aft_of_mast": (0.0, 1.5), "length": (0.5, 1e9), "slope_from": (0.0, 0.8),
+              "width": (0.2, 0.85), "side_rake": (0.0, 0.8), "edge_radius": (0.01, 0.15), "windows": None}
+
+
+def _cabin(cab, given, L):
+    """The coachroof block with its defaults, validated; `meet_aft_of_mast` (default 0.05 s) unless `length` is
+    given (one of the two)."""
+    where = "$.visual.deck.cabin"
+    if not isinstance(given, dict):
+        raise ClassFileError(f"{where} must be an object or null")
+    for k, x in given.items():
+        if k not in CABIN_KEYS:
+            raise ClassFileError(f"{where}.{k} is not a coachroof key ({', '.join(CABIN_KEYS)})")
+        rng = CABIN_KEYS[k]
+        if rng is None:
+            if not isinstance(x, bool):
+                raise ClassFileError(f"{where}.{k} must be true or false")
+            continue
+        if isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x):
+            raise ClassFileError(f"{where}.{k} must be a number")
+        if not rng[0] <= x <= rng[1]:
+            raise ClassFileError(f"{where}.{k} must be between {rng[0]} and {rng[1]:g} (got {x})")
+    if "length" in given and "meet_aft_of_mast" in given:
+        raise ClassFileError(f"{where}: give either length or meet_aft_of_mast, not both")
+    out = dict(cab)
+    if "length" not in given:
+        out.pop("length", None)
+        out.setdefault("meet_aft_of_mast", 0.05 * (L / 12) ** 0.5)
+    return out
+
+
 def _shape(s, st, where):
     """The flying-sail shaping keys of one sails[] entry, validated; {key: float} of the keys given."""
     out = {}
@@ -165,17 +197,20 @@ def resolve(raw, path="<class>"):
     deck_defaults = {
         "cockpit": {"length": 0.30 * L, "width": 0.62, "depth": 0.42 * (L / 12) ** 0.5, "open_transom": True,
                     "aft_deck": 0.0},
-        "cabin": {"length": 0.28 * L, "height": 0.26 * (L / 12) ** 0.6, "width": 0.58, "side_slope": 0.22,
-                  "windows": True},
+        "cabin": {"height": 0.26 * (L / 12) ** 0.6, "width": 0.58, "slope_from": 0.3, "side_rake": 0.35,
+                  "edge_radius": 0.05 * (L / 12) ** 0.5, "windows": True},
         "nonslip_margin": 0.05,
         "toe_rail": 0.035 * (L / 12) ** 0.4,
         "lifelines": L >= 9.0,
         "steering": None,
         "hatches": 1 if L < 9.0 else 2,
     }
+    vcab = (vis.get("deck", {}) or {}).get("cabin", {})
     deck = _deep_merge(deck_defaults, vis.get("deck", {}))
-    if deck["cabin"] is not None and deck["cabin"].get("length", 1) <= 0:
+    if vcab is None:
         deck["cabin"] = None
+    else:
+        deck["cabin"] = _cabin(deck["cabin"], vcab, L)
     c["deck"] = deck
 
     # ---------------------------------------------------------------- keel

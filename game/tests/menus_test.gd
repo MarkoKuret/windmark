@@ -22,6 +22,7 @@ func _init() -> void:
 	await test_live_backdrop()
 	await test_main_menu()
 	await test_race_card()
+	await test_touches()
 	await test_pause_menu()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
 	t.finish(self, "menus")
@@ -131,6 +132,7 @@ func _odd_settings() -> Settings:
 	s.ambience_volume = 0.0
 	s.interface_volume = 0.6
 	s.last_setup = {"class_id": "wm12", "fleet_size": 7}
+	s.welcomed = true
 	s.bindings = {"let_fly": [["key", KEY_Q, ""], [], ["button", JOY_BUTTON_Y]]}
 	return s
 
@@ -358,7 +360,8 @@ func test_every_key_applied() -> void:
 		"graphics.fullscreen": DisplayServer.get_name() == "headless",  # the window mode: not in headless runs
 		"graphics.vsync": DisplayServer.get_name() == "headless",
 		"graphics.fps_limit": Engine.max_fps == s.fps_limit,
-		"menu.last_setup": true,  # the setup pages and Continue (test_main_menu, test_continue)
+		"menu.last_setup": true,  # the setup pages and Continue (test_main_menu, test_touches)
+		"menu.welcomed": true,  # the first-launch screen (test_touches)
 		"bindings.bindings": Bindings.slots("let_fly") == s.bindings["let_fly"],
 	}
 	for f in Settings.BUSES:
@@ -544,6 +547,7 @@ func _key(action: String) -> void:
 func test_live_backdrop() -> void:
 	t.begin("main menu: live backdrop")
 	Settings.reset_current()
+	Settings.current().welcomed = true
 	Settings.current().quality = SeaQuality.Tier.L
 	var m := (load("res://scenes/menu/main_menu.tscn") as PackedScene).instantiate() as MainMenu
 	m.change_scenes = false
@@ -592,6 +596,7 @@ func test_live_backdrop() -> void:
 func test_main_menu() -> void:
 	t.begin("main menu: quick race and free sail")
 	Settings.reset_current()
+	Settings.current().welcomed = true
 	var m := (load("res://scenes/menu/main_menu.tscn") as PackedScene).instantiate() as MainMenu
 	m.change_scenes = false
 	m.live_backdrop = false
@@ -717,6 +722,7 @@ func test_main_menu() -> void:
 func test_race_card() -> void:
 	t.begin("quick race: the race card")
 	Settings.reset_current()
+	Settings.current().welcomed = true
 	var c := MenuData.course_file("example_bay/example_wl")
 	t.ok(c.get("id", "") == "example_wl", "course file read")
 	var p := CourseMap.resolve(c, 0.0)
@@ -786,6 +792,142 @@ func test_race_card() -> void:
 	root.size = Vector2i(1280, 800)
 	m.queue_free()
 	await process_frame
+	Settings.reset_current()
+
+
+func _menu() -> MainMenu:
+	var m := (load("res://scenes/menu/main_menu.tscn") as PackedScene).instantiate() as MainMenu
+	m.change_scenes = false
+	m.live_backdrop = false
+	root.add_child(m)
+	return m
+
+
+## menus.md §1, §3, §4: the first-launch screen, Continue, the version, the wordmark, the help line, the sounds.
+func test_touches() -> void:
+	t.begin("first launch, Continue, version, wordmark, help line, sounds")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
+	Settings.reset_current()
+	root.size = Vector2i(1280, 800)
+	var m := _menu()
+	await process_frame
+	await process_frame
+	t.ok(m.welcome != null and not m._row.visible, "first launch: the welcome screen, the menu hidden")
+	t.ok(root.gui_get_focus_owner() == m.welcome.rows["helm_mode"], "focus on Steering")
+	_key("ui_right")
+	await process_frame
+	_key("ui_down")
+	await process_frame
+	_key("ui_right")
+	await process_frame
+	t.ok(m.welcome.rows["helm_mode"].value == PlayerControls.HelmMode.HOLD_TO_STEER
+		and m.welcome.rows["quality"].value == SeaQuality.Tier.H, "keyboard: Hold to steer, High")
+	m.welcome.go_button.pressed.emit()
+	await process_frame
+	var saved := Settings.new()
+	saved.load_file(TEST_PATH)
+	t.ok(saved.welcomed and saved.helm_mode == PlayerControls.HelmMode.HOLD_TO_STEER
+		and saved.quality == SeaQuality.Tier.H, "Let's sail keeps the choices and saves, welcomed")
+	t.ok(m.welcome == null and m._row.visible and root.gui_get_focus_owner() == m.buttons["quick"],
+		"then the menu, focus on Quick race")
+	t.ok(not m.buttons["continue"].visible, "no Continue before a first session")
+	m.queue_free()
+	await process_frame
+	Settings.reset_current()
+	m = _menu()
+	await process_frame
+	t.ok(m.welcome == null, "shown once")
+	m.queue_free()
+	await process_frame
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
+	Settings.reset_current()
+	m = _menu()
+	await process_frame
+	m.welcome.rows["quality"].set_value(SeaQuality.Tier.L)
+	_key("ui_cancel")
+	await process_frame
+	t.ok(m.welcome == null and m.settings.welcomed and m.settings.quality == Settings.new().quality, "Esc skips: the defaults")
+	# the wordmark and the version
+	var mark := m.find_child("Wordmark", true, false)
+	t.ok(mark != null and (mark.get_node("Title") as Label).text == "WINDMARK", "placeholder wordmark scene")
+	t.ok(m.version_label.text.begins_with("v" + str(ProjectSettings.get_setting("application/config/version")))
+		and root.get_visible_rect().encloses(m.version_label.get_global_rect()), "version in the corner: %s"
+		% m.version_label.text)
+	# Continue: after a session it starts that setup again
+	var asked: Array[String] = []
+	m.scene_requested.connect(func(p: String) -> void: asked.append(p))
+	m.open_page("quick")
+	await process_frame
+	m.quick.rows["fleet_size"].set_value(6.0, true)
+	m.quick.rows["wind_kn"].set_value(9.0, true)
+	m.quick.start_button.pressed.emit()
+	m.close_page()
+	t.ok(m.buttons["continue"].visible and m.continue_line.text.contains("Quick race") and
+		m.continue_line.text.contains("6 boats"), "Continue after a race: %s" % m.continue_line.text)
+	GameSetup.next = null
+	m.buttons["continue"].pressed.emit()
+	var g := GameSetup.current()
+	t.ok(g.mode == "race" and g.fleet_size == 6 and absf(g.wind_kn - 9.0) < 1e-6 and g.seed == 0
+		and asked.size() == 2, "Continue starts the same race again")
+	m.open_page("free")
+	await process_frame
+	m.free_sail.start_button.pressed.emit()
+	m.close_page()
+	t.ok(m.continue_text().begins_with("Free sail"), "then a free sail: %s" % m.continue_text())
+	m.settings.last_setup["mode"] = "race"
+	m.settings.last_setup["course"] = "example_bay/no_such_course"
+	m._refresh_continue()
+	t.ok(not m.buttons["continue"].visible and not m.can_continue(), "hidden when the setup cannot start")
+	m.settings.last_setup["course"] = "example_bay/example_wl"
+	m._refresh_continue()
+	# the sounds on the ui bus
+	var snd := m.sounds
+	t.ok(snd._players.values().all(func(p: AudioStreamPlayer) -> bool: return p.bus == "ui" and p.stream != null),
+		"three sounds, on the ui bus")
+	snd.played.clear()
+	m.buttons["quick"].grab_focus()
+	await process_frame
+	_key("ui_down")
+	await process_frame
+	_key("ui_accept")
+	await process_frame
+	_key("ui_cancel")
+	await process_frame
+	t.ok(snd.played.has("focus") and snd.played.has("accept") and snd.played.has("back"),
+		"focus, accept and back: %s" % [snd.played])
+	# the help line: every row of every section has its line, and it follows the focus
+	m.close_page()
+	m.open_page("settings")
+	await process_frame
+	var sp := m.settings_panel
+	var missing := []
+	for sec in SettingsPanel.SECTIONS:
+		sp.show_section(sec)
+		for k in sp.rows:
+			if (sp.rows[k] as MenuRow).help == "":
+				missing.append(k)
+	t.ok(missing.is_empty(), "every settings row has a help line (missing: %s)" % [missing])
+	sp.show_section("graphics")
+	await process_frame
+	sp.rows["vsync"].grab_focus()
+	await process_frame
+	await process_frame
+	t.ok(sp.help_label.text == SettingsPanel.HELP["vsync"] and sp.help_label.is_visible_in_tree(),
+		"help line follows the focus: %s" % sp.help_label.text)
+	sp.show_section("controls")
+	await process_frame
+	sp.binding_rows["let_fly"].grab_focus()
+	await process_frame
+	await process_frame
+	t.ok(sp.help_label.text.begins_with("Enter or A"), "a binding's help: %s" % sp.help_label.text)
+	sp.tabs["audio"].grab_focus()
+	await process_frame
+	await process_frame
+	t.ok(sp.help_label.text == SettingsPanel.HELP["tab"], "a tab's help")
+	sp.close()
+	m.queue_free()
+	await process_frame
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
 	Settings.reset_current()
 
 

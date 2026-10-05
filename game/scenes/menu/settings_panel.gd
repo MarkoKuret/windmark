@@ -7,6 +7,48 @@ signal changed(key: String)
 signal closed
 
 const SECTIONS := ["controls", "cameras", "hud", "graphics", "audio"]
+## the help line of every row and button (menus.md §3)
+const HELP := {
+	"helm_mode": "Set and hold: a tap moves the helm and it stays. Hold to steer: it comes back when you let go.",
+	"stick_dead_zone": "How far the stick moves before the helm answers. Raise it if the boat steers on its own.",
+	"stick_curve": "How the helm follows the stick: 1.0 is straight, higher is finer near the centre.",
+	"sheet_rate": "How fast the sheet keys trim the sails.",
+	"sheet_turns_auto_trim_off": "On: touching the sheet keys hands the trim back to you.",
+	"let_fly_toggle": "Hold: the sheets run free while the key is down. Toggle: one press frees them, the next trims.",
+	"helm_fine_toggle": "Hold: fine helm while the key is down. Toggle: one press turns it on, the next off.",
+	"rankings_toggle": "Hold: the ranking list shows while the key is down. Toggle: one press opens it, the next closes it.",
+	"camera_boost_toggle": "Hold: the free camera flies fast while the key is down. Toggle: one press on, the next off.",
+	"vibration": "Gamepad rumble when you touch a boat or a mark, a light buzz while the sails flog. Off: none.",
+	"camera_speed": "How fast the cameras orbit and look around.",
+	"invert_orbit_x": "Turns the orbiting cameras the other way, left and right.",
+	"invert_orbit_y": "Turns the orbiting cameras the other way, up and down.",
+	"invert_look_x": "Turns the onboard and free cameras' look the other way, left and right.",
+	"invert_look_y": "Turns the onboard and free cameras' look the other way, up and down.",
+	"heel_follow": "How much the onboard camera leans with the boat. Level horizon keeps it upright.",
+	"smooth_switch": "On: the camera glides to the next view instead of cutting.",
+	"reduced_motion": "No camera shake, a level horizon and a calmer chase camera.",
+	"assist": "How much the HUD helps: laylines, rules hints, start numbers. Online races may set a lower level.",
+	"hud_density": "How many instrument numbers show. Auto picks for your screen; G or a tap of View changes it.",
+	"ui_scale": "The size of the HUD and the menus.",
+	"palette": "Rules colours for colour-blind eyes. Every colour also comes with a word or a letter.",
+	"captions": "Caption lines for the race sounds. Kept for later: the sounds have no captions yet.",
+	"quality": "The detail of the sea, the sky and the shadows. Medium suits the Steam Deck, Low integrated graphics.",
+	"render_scale": "Draws the 3D view at fewer pixels and sharpens it up to the screen. The HUD stays sharp.",
+	"fullscreen": "Windowed or fullscreen.",
+	"vsync": "On: no tearing; the frame rate follows the screen.",
+	"fps_limit": "Caps the frame rate to save power. Off: no cap.",
+	"capture_preset": "Portrait 9:16: a tall window and HUD for vertical clips. Off again at the next start.",
+	"master_volume": "Everything.",
+	"effects_volume": "The boats, the water and the wind.",
+	"signals_volume": "Horns, beeps and penalty sounds.",
+	"voice_volume": "Hails.",
+	"ambience_volume": "The sea, the gulls and the venue.",
+	"interface_volume": "The menu sounds.",
+	"tab": "Left and right, LB and RB, or Page Up and Page Down: change the section.",
+	"Reset": "Puts this section's settings back to their defaults.",
+	"ResetBindings": "Puts every binding back to the defaults.",
+	"Done": "Saves the settings and goes back.",
+}
 const TITLES := ["Controls", "Cameras", "HUD", "Graphics", "Audio"]
 
 var settings: Settings
@@ -17,6 +59,8 @@ var rows := {}
 ## the Bindings list's rows, action -> BindingRow (Controls section)
 var binding_rows := {}
 var tabs := {}
+## the help line for the focused row (menus.md §3)
+var help_label: Label
 var _body: VBoxContainer
 var _scroll: ScrollContainer
 var _done: Button
@@ -57,6 +101,12 @@ func build(s: Settings) -> void:
 	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_body.add_theme_constant_override("separation", 2)
 	_scroll.add_child(_body)
+	help_label = MenuTheme.label("", MenuTheme.SMALL_SIZE - 1, MenuTheme.MUTED)
+	help_label.name = "Help"
+	help_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	help_label.custom_minimum_size = Vector2(0, 40)
+	help_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	add_child(help_label)
 	var foot := HBoxContainer.new()
 	foot.add_theme_constant_override("separation", 16)
 	add_child(foot)
@@ -132,6 +182,7 @@ func _tab_style() -> void:
 
 
 func _row(r: MenuRow) -> void:
+	r.help = HELP.get(r.key, "")
 	rows[r.key] = r
 	_body.add_child(r)
 	r.changed.connect(func(v: Variant) -> void:
@@ -239,7 +290,6 @@ func _cameras() -> void:
 		func(v: float) -> String: return "Level horizon" if v <= 0.0 else pct(v)))
 	_row(MenuRow.toggle("Smooth camera switch", "smooth_switch", s.smooth_switch))
 	_row(MenuRow.toggle("Reduced motion", "reduced_motion", s.reduced_motion))
-	_sub("Reduced motion: no camera shake, a level horizon and a calmer chase camera.")
 
 
 func _hud() -> void:
@@ -251,7 +301,6 @@ func _hud() -> void:
 	_row(MenuRow.choice("Colour palette", "palette", ["standard", "deuteranopia", "protanopia", "tritanopia"],
 		["Standard", "Deuteranopia", "Protanopia", "Tritanopia"], s.palette))
 	_row(MenuRow.toggle("Captions", "captions", s.captions))
-	_sub("Online races may set a lower assist level for everyone.")
 
 
 func _graphics() -> void:
@@ -273,7 +322,6 @@ func _graphics() -> void:
 		["Off", "30", "60", "90", "120", "144"], s.fps_limit))
 	_row(MenuRow.choice("Capture preset", "capture_preset", Settings.CAPTURE_PRESETS, ["Off", "Portrait 9:16"],
 		s.capture_preset))
-	_sub("Medium suits the Steam Deck; Low suits integrated graphics. Render scale draws the 3D view at fewer pixels and sharpens it up to the screen (FSR); the HUD stays sharp. Portrait 9:16 makes a 1080 x 1920 window for vertical clips, with the HUD laid out for it; it is not kept for the next start.")
 
 
 func _audio() -> void:
@@ -318,6 +366,24 @@ func _unhandled_input(e: InputEvent) -> void:
 	if is_visible_in_tree() and not listening() and e.is_action_pressed("ui_cancel") and not (esc_is_pause and e.is_action("pause_menu")):
 		get_viewport().set_input_as_handled()
 		close()
+
+
+## The help line follows the focus (menus.md §3).
+func _process(_dt: float) -> void:
+	if help_label == null or not is_visible_in_tree():
+		return
+	help_label.text = help_for(get_viewport().gui_get_focus_owner())
+
+
+## The help line of a focused control: a row's or binding's own, a tab's or a button's.
+func help_for(c: Control) -> String:
+	if c == null or not is_ancestor_of(c):
+		return ""
+	if c is MenuRow or c is BindingRow:
+		return c.help
+	if tabs.values().has(c):
+		return HELP["tab"]
+	return HELP.get(str(c.name), "")
 
 
 ## Saves the settings and hands back.

@@ -6,7 +6,27 @@ of `controls.md` §6, `cameras.md` §3 and §6, `hud.md` §14, `water_render.md`
 
 ## 1. Main menu
 
-The project's main scene. Items, top to bottom: **Quick race**, **Free sail**, **Settings**, **Quit**.
+The project's main scene. Items, top to bottom: **Continue**, **Quick race**, **Free sail**, **Settings**,
+**Quit**.
+
+- **Continue** starts the last remembered session again (§1: the setup Start last wrote, its mode, quick race or
+  free sail, with a new seed), straight to the sail scene, and has the focus when the menu opens. A line under it
+  says what it starts (`Quick race · Example Bay · 10 boats` or `Free sail · Example Bay`). Hidden on the first
+  launch, and whenever the remembered setup cannot start any more (a class, venue or course no longer on disk);
+  the focus then starts on Quick race.
+- **Wordmark**: the top-left corner keeps room for the game's logo (up to 420 × 96 px at 100 %). Until there is
+  one, a placeholder: `WINDMARK` in Barlow Semi Condensed Bold, all caps, wide tracking (+18 %), navy, with the line
+  `Tactical sailing races` under it. It is one scene (`scenes/menu/wordmark.tscn`), so a logo replaces it without
+  touching the menu.
+- **Version**: the bottom-right corner shows the build, small and dim: `v<version>` from the project settings
+  (`application/config/version`), followed by the export stamp when the build has one (`game/build.txt`, written
+  by `tools/stamp_build.sh` before an export from `git describe --tags --always --dirty`), else `dev`.
+- **First launch**: the first time the game starts (the settings file has no `menu.welcomed`), a short screen comes
+  before the menu: a heading, one line (`Two choices to start with. Both are in Settings later.`), two rows,
+  **Steering** (the helm key mode of `controls.md` §5.2: Set and hold or Hold to steer; the controls preset, since
+  the gamepad needs no choice) and **Quality** (Low, Medium, High; the settings' value preselected, Medium on a first
+  start), and **Let's sail** (keeps them) and **Skip** (keeps the defaults; Esc or B too). Either
+  saves the settings with `welcomed` set, so it shows once.
 
 - **Quick race**: class, sail number, venue, course, fleet size, AI level, wind speed, wind direction, then
   **Start**, on one screen, the **race card** (§1.1).
@@ -77,6 +97,9 @@ game has the setting and is saved when the settings screen closes, to one file p
 
 **Reset section** restores the section's defaults (in Controls, the options; the bindings have their own reset).
 
+**Help line.** Under the rows, one line of help for whatever has the focus: what the setting does, what its values
+mean, and for a binding how to change it or which action it conflicts with. Every row has its line.
+
 **Where each setting goes.** Every setting is applied where the game has it: the controls' options to the boat's
 controls (`PlayerControls`); rankings hold or toggle to the HUD's ranking list (toggle: `Tab` or a `View` press
 opens and closes it, and `View` then no longer cycles the density, `controls.md` §3); camera boost hold or toggle to
@@ -88,13 +111,14 @@ Captions are stored only, until the audio has caption lines (`audio.md` §8).
 
 **Rebinding** (the Controls section, `controls.md` §3 and §6). Under the options, a **Bindings** list: one row per
 action of `controls.md` §3, each with three slots, **Key 1**, **Key 2** (keyboard or mouse) and **Pad** (a
-gamepad button, or a stick or trigger direction). On a row, left and right pick the slot; Enter or A listens for
+gamepad button, or a stick or trigger direction). (Actions whose defaults have three keyboard or mouse bindings, the zoom keys with the wheel, get a **Key 3**.) On a
+row, left and right pick the slot; Enter or A listens for
 the new binding (the slot reads `Press a key` or `Press a button`): the next key (with Shift, Ctrl or Alt held, the
 combination; a modifier pressed and released alone is that key), mouse button, gamepad button or stick or
 trigger pushed past halfway becomes the slot's binding. Esc cancels listening (so Esc itself cannot be bound
 there; `pause_menu` keeps it), and so do 5 s without input. Delete, or the gamepad's X on a row, clears the
-selected slot. A keyboard or mouse input goes to a Key slot and a gamepad input to the Pad slot whichever is
-picked. **Conflicts**: a binding that another action also has is shown in red on both rows, with the other
+selected slot. A keyboard or mouse input goes to the picked Key slot (Key 1 when Pad is picked) and a gamepad input
+to the Pad slot. **Conflicts**: a binding that another action also has is shown in red on both rows, with the other
 action's name in the help line, unless the defaults already give both actions that input (the context pairs of
 `controls.md` §3, such as Shift for fine helm and camera boost, or LB for fine helm, camera boost and spectate
 previous); the binding is kept, and the player resolves it by rebinding one of them. **Reset bindings** (red, at
@@ -162,4 +186,7 @@ command line (`--resolution 1080x1920`).
   B), through Godot's built-in `ui_*` navigation actions. On a setting, left and right change the value; Enter or
   A steps it forward. B or Esc goes back one level (Esc in the pause menu resumes, it is `pause_menu`).
 - Fits 1280 × 800 (Steam Deck) at every UI scale; lists scroll with the focus.
+- **Sounds** on the `ui` bus (`audio.md` §1.1, the Interface volume): a soft tick when the focus moves or a value
+  steps, a brighter click on accept (Enter, A, a click), a lower one on back (Esc, B). Made by `tools/soundgen`
+  (`ui/focus`, `ui/accept`, `ui/back`), short (under 0.1 s) and quiet (peaks at -12 dBFS or lower).
 - Player-facing text has no em dashes.

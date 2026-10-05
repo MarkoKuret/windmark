@@ -12,6 +12,8 @@ enum Kind { CHOICE, RANGE, BOOL, INFO }
 var kind := Kind.CHOICE
 var key := ""
 var value: Variant
+## the settings screen's help line for this row (menus.md §3)
+var help := ""
 ## CHOICE: the values and their shown names
 var choices: Array = []
 var names: Array = []

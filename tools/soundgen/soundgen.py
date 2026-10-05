@@ -395,6 +395,16 @@ def beep(r):
     return peak_to(tone(n, [1000.0]) * env_asr(n, 0.005, 0.02), -6)
 
 
+def ui_click(f0, f1, seconds, db):
+    """Menu sounds (menus.md section 4): a short pitched click with a fast decay, a breath of noise on the attack."""
+    def make(r):
+        n = n_of(seconds)
+        y = tone(n, [f0, f1], [1.0, 0.35]) * env_ad(n, 0.002, seconds * 0.35)
+        click = highpass(r.standard_normal(n), 2000) * env_ad(n, 0.0005, 0.006) * 0.25
+        return peak_to(y + click, db)
+    return make
+
+
 def ambience(level):
     """Sea ambience beds, calm to strong (level 0..3), stereo."""
     def make(r):
@@ -511,6 +521,9 @@ SOUNDS = {
     "amb/engine_1": distant_engine,
     "venue/buoy_loop": buoy_loop,
     "venue/committee_loop": committee_loop,
+    "ui/focus": ui_click(1320.0, 2640.0, 0.045, -18),
+    "ui/accept": ui_click(880.0, 1760.0, 0.09, -12),
+    "ui/back": ui_click(587.0, 1174.0, 0.08, -14),
 }
 
 

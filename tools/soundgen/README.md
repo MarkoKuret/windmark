@@ -1,7 +1,8 @@
 # soundgen: the synthesised default sound set
 
 Writes the default sound set of `docs/specs/audio.md` (§10) into `game/audio/default`: every boat, wind, race,
-ambience and course-object sound the default map (`game/data/sound_map.json`) names, made from shaped noise, tones
+ambience and course-object sound the default map (`game/data/sound_map.json`) names, and the menu sounds
+(`ui/focus`, `ui/accept`, `ui/back`, `docs/specs/menus.md` §4), made from shaped noise, tones
 and impulses. No samples or recordings go in, so the files are our own.
 
 ```

@@ -68,8 +68,10 @@ var voice_volume := 1.0
 var ambience_volume := 1.0
 var interface_volume := 1.0
 
-## the last session chosen in the main menu (menus.md §1), GameSetup fields
+## the last session chosen in the main menu (menus.md §1), GameSetup fields and its `mode` (Continue)
 var last_setup := {}
+## the first-launch screen has been shown (menus.md §1)
+var welcomed := false
 
 ## the player's bindings that differ from the defaults (menus.md §3 Rebinding): action -> slots (Bindings)
 var bindings := {}
@@ -84,7 +86,7 @@ const FIELDS := {
 	"graphics": ["quality", "render_scale", "fullscreen", "vsync", "fps_limit"],
 	"audio": ["master_volume", "effects_volume", "signals_volume", "voice_volume", "ambience_volume",
 		"interface_volume"],
-	"menu": ["last_setup"],
+	"menu": ["last_setup", "welcomed"],
 	"bindings": ["bindings"],
 }
 

@@ -296,6 +296,21 @@ Flags after `--`:
 | `--caps=on` | whitecaps on (off by default, `water_render.md` §4.4); `--caps=off` turns them off |
 | `--drawn-wind=18` | the wind the water draws (whitecaps, puffs) in knots, over the simulation's; the waves stay |
 | `--breathing=off` | the chase camera's plain follow instead of its breathing (`cameras.md` §2.1) |
+| `--skip=S` | the race world fast-forwarded S seconds before the first frame (a measured moment of the race) |
+| `--lod=0` | every boat at this level of detail (0, 1 or 2) at any distance |
+| `--hide-parts=rigging,hardware` | these model part nodes of every boat never shown (hull, deck, keel, rudder, mast, rigging, boom, hardware, mainsheet) |
+| `--no-sheets` | no running sheets |
+| `--no-sails` | no sails drawn or shaped |
+| `--static-sails` | the sails shaped once, then not again (no per-frame sail work) |
+| `--no-boats` | the boats not drawn (the simulation, sails and wakes still run) |
+| `--no-venue` | no land, quays or rocks drawn |
+| `--no-wakes` | no wakes, bow waves, spray or wake normal buffer |
+| `--no-sky` | a plain gradient sky shader instead of the sky with clouds (it still lights the scene) |
+| `--no-water` | a flat plane with a plain material instead of the sea |
+| `--no-post` | no grade, vignette, contact shading, glow or filmic tone mapping |
+| `--no-course` | no marks, flags, lines or water overlays drawn |
+| `--no-audio` | no sound work and the master bus muted |
+| `--no-sim` | the simulation paused from the first frame (no ticks, no AI; the cameras still move) |
 
 ### Look panel (F9)
 
@@ -332,7 +347,7 @@ The CSV starts with a header line; each line is the means over one second: `time
 `render_cpu_ms`, `setup_cpu_ms`, `gpu_ms` (main view), `gpu_other_ms` (other views: the wake normal buffer),
 `draw_calls`, `primitives`, `objects`, the sections `input_ms` … `camera_ms` with `sim_max_ms` (the slowest frame's
 simulation, the tick frames), then the set-up: `render_scale`, `render_w`, `render_h`, `window_w`, `window_h`,
-`upscaler`, `quality`, `boats`, `camera`, `renderer`, `driver`, `vsync`, `max_fps`. The GPU columns are 0 where
+`upscaler`, `quality`, `boats`, `camera`, `renderer`, `driver`, `vsync`, `max_fps`, `video_mem_mb`, `main_ms` (the main thread's process step: every node's `_process`) and `rest_ms` (the rest of the frame: physics, the renderer's CPU work and any wait for the GPU). The GPU columns are 0 where
 the driver does not measure (headless). With vsync on the frame rate stops at the display's; turn it off in the
 settings (or compare `gpu_ms` with the frame time) to see the headroom. The first seconds include shader
 compilation.

@@ -102,6 +102,13 @@ static var _sail_mats := {}
 ## the levels of detail and the running sheets (off: the boat as before them, for cost comparisons)
 static var use_lods := true
 static var draw_sheets := true
+## measured runs only (the sail scene's run-only flags, game/README.md "Measuring performance"): a level of detail
+## for every distance (-1: by distance), model part nodes never shown (by name: "rigging", "hardware", ...), the
+## sails not drawn, the sails drawn once and then left in their first shape
+static var forced_lod := -1
+static var hidden_parts: Array[String] = []
+static var draw_sails := true
+static var animate_sails := true
 ## the GDScript reference shapes even when the native SailShape is loaded (set by create)
 var use_reference := false
 ## the hull and mast of the drawn shadow on the water (BoatShadows.caster_from_physics), built on first use
@@ -230,6 +237,9 @@ func _find_parts() -> void:
 	for k in range(1, levels.size()):
 		for n: Node3D in levels[k]["parts"]:
 			n.visible = false
+	for n: Node3D in levels[0]["parts"]:
+		if hidden_parts.has(String(n.name)):
+			n.visible = false
 	var side_sails: Dictionary = info.physics.get("sails", {})
 	pole_class = _pole != null or float(rig.get("pole_length", 0.0)) > 0.0
 	var furling := {}
@@ -351,7 +361,7 @@ func lod_for(dist: float) -> int:
 ## Shows the level of detail for a camera at `dist` m (every frame; tests call it directly).
 func update_lod(dist: float) -> void:
 	if levels.size() > 1:
-		_show_level(lod_for(dist))
+		_show_level(lod_for(dist) if forced_lod < 0 else mini(forced_lod, levels.size() - 1))
 
 
 func _show_level(k: int) -> void:
@@ -362,7 +372,7 @@ func _show_level(k: int) -> void:
 	lod = k
 	var lv := levels[k]
 	for n: Node3D in lv["parts"]:
-		n.visible = true
+		n.visible = not hidden_parts.has(String(n.name))
 	_rudder = lv["rudder"]
 	_rudder_rest = lv["rudder_rest"]
 	_wheel = lv["wheel"]
@@ -654,13 +664,16 @@ func apply_sails(prev: SimSource.SailsView, cur: SimSource.SailsView, alpha: flo
 func _place(sp: SailPart, phase: int, prog: float, shiver: float, backed: bool, awa: float, aws: float,
 		dt: float, cam: Camera3D) -> bool:
 	var was := sp.node.visible
+	if not draw_sails:
+		sp.node.visible = false
+		return was
 	sp.node.visible = phase != SimSource.Phase.DOWN or sp.mode == Mode.BOOM
 	_hoist_fractions(sp, phase, prog)
 	if sp.shape == null:
 		return was != sp.node.visible
 	sp.shape.advance(dt, aws, awa, backed)  # the flutter phase and the backed factor run on, drawn or not
 	sp.since += dt
-	if not sp.node.visible or not _due(sp, cam):
+	if not sp.node.visible or not _due(sp, cam) or (not animate_sails and sp.updates > 0):
 		return was != sp.node.visible
 	sp.since = 0.0
 	sp.updates += 1

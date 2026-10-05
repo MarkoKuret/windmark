@@ -623,7 +623,9 @@ and not saved.
   viewport render time measurement, `RenderingServer.viewport_get_measured_render_time_gpu`) and of the other
   viewports (the wake normal buffer), draw calls, primitives and objects drawn.
 - **Set-up**: the render scale (`menus.md` §3) with the 3D and window sizes and the upscaler, the quality tier,
-  the boat count, the renderer and driver, vsync and the frame rate limit, the camera mode.
+  the boat count, the renderer and driver, vsync and the frame rate limit, the camera mode; the log adds the video
+  memory in use, the main thread's process step (every node's per-frame work, from a stamp before the first node)
+  and the rest of the frame (physics, the renderer's CPU work on the main thread and any wait for the GPU).
 - **Sections**: the game's own per-frame work in milliseconds per frame, timed around the calls: `input` (devices
   and controls), `sim` (the 50 ms ticks: the simulation step and the sail snapshots), `hud` (`Hud.tick` and
   `Hud.frame`), `audio`, `sails` (the per-vertex sail shapes of every boat), `boats` (the boat nodes' poses, rudder,

@@ -381,7 +381,7 @@ wm_status wm_world_create(const wm_world_settings* s, const wm_venue* venue, wm_
   if (s->sequence < -1 || s->sequence > WM_SEQUENCE_MATCH) return fail(WM_ERR_ARG, "bad sequence");
   if (s->prep_flag < -1 || s->prep_flag > WM_FLAG_BLACK) return fail(WM_ERR_ARG, "bad preparatory flag");
   if (s->rules_level < 0 || s->rules_level > WM_RULES_FULL) return fail(WM_ERR_ARG, "bad rules level");
-  if (s->penalty < 0 || s->penalty > WM_PENALTY_TWO_TURNS) return fail(WM_ERR_ARG, "bad penalty");
+  if (s->penalty != WM_PENALTY_ONE_TURN) return fail(WM_ERR_ARG, "bad penalty (one turn only)");
   if (s->umpire < 0 || s->umpire > WM_UMPIRE_PROTEST) return fail(WM_ERR_ARG, "bad umpire mode");
   if (!(s->wind_speed >= 0.0f) || !std::isfinite(s->wind_speed) || !std::isfinite(s->wind_from))
     return fail(WM_ERR_ARG, "bad wind");

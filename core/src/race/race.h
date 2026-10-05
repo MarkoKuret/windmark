@@ -19,7 +19,7 @@ namespace wm {
 
 enum class RaceState : std::uint8_t { created, free_sailing, sequence, racing, closing, closed, abandoned };
 enum class RulesLevel : std::uint8_t { none, basic, full };
-enum class PenaltyKind : std::uint8_t { one_turn, two_turns };
+enum class PenaltyKind : std::uint8_t { one_turn };  // every penalty is one 360 turn (rules.md §9.2)
 enum class UmpireMode : std::uint8_t { standard, contact_only, protest };
 
 // race.md §9, in the order non-finishers are listed.
@@ -216,7 +216,8 @@ class Race {
   bool x_flag() const { return x_flag_; }
   bool rules_live() const { return rules_live_; }
   bool after_gun(std::uint32_t n) const { return static_cast<std::int64_t>(n) >= n_gun_; }
-  float zone_lengths() const { return course_.race.zone_lengths; }
+  // rules.md §7.1: the course's zone in hull lengths in a fleet race, 2 in a match race (Appendix C).
+  float zone_lengths() const { return race_type_ == RaceType::match ? 2.0f : course_.race.zone_lengths; }
   float L_max() const { return L_max_; }
 
   std::size_t boat_count() const { return boats_.size(); }

@@ -54,8 +54,9 @@ struct RulesParams {
   float incident_close = 5.0f;   // s clear
   float penalty_spacing = 3.0f;  // s
   float turn_rate_min = 2.0f * DEG, turn_start = 0.5f, turn_pause = 3.0f, turn_reversal = 20.0f * DEG;
-  float turn_one = 350.0f * DEG, turn_two = 710.0f * DEG;
-  float t_serve = 45.0f, t_serve_match = 15.0f;  // s
+  float turn_one = 350.0f * DEG;
+  float t_serve = 120.0f;        // s from the incident (§9.4, §9.6)
+  float r182d_tack = 3.0f;       // s, 18.2(d) overlap obtained by tacking (§7.3)
   std::int32_t dsq_pending = 3, dsq_total = 6;
   float protest_prompt = 8.0f;   // s
   float boundary_penalty = 15.0f, boundary_dsq = 60.0f;  // s
@@ -85,7 +86,7 @@ struct Penalty {
   RuleCode rule = RuleCode::none;
   std::int32_t other = -1;
   std::uint32_t tick = 0;
-  std::int32_t count = 1;
+  std::int32_t count = 1;  // always 1: every penalty is one turn (§9.2)
 };
 
 // rules.md §11.1
@@ -118,7 +119,7 @@ struct BoatRules {
   std::int32_t turn_tacks = 0, turn_gybes = 0;
   std::vector<Penalty> pending;
   std::int32_t served = 0, received = 0;
-  float deadline_s = -1.0f;     // < 0: none
+  float deadline_s = -1.0f;     // to the oldest pending penalty's deadline (§9.4); < 0: none
   bool returning_to_start = false;
   bool dsq = false;
   bool out_of_bounds = false;
@@ -141,7 +142,7 @@ struct RulesEvent {
   float deadline = 0.0f;    // protestable: seconds
 };
 
-enum class DsqReason : std::uint8_t { pending, total, boundary };
+enum class DsqReason : std::uint8_t { pending, total, boundary, late };
 
 class Rules {
  public:
@@ -229,10 +230,6 @@ class Rules {
     // penalties (§9)
     bool has_last_penalty = false;
     std::uint32_t last_penalty_tick = 0;
-    bool has_deadline_base = false;
-    std::uint32_t deadline_base = 0;
-    std::uint32_t last_served_tick = 0;
-    bool has_served = false;
     bool dsq_done = false;
     // zones (§7.1), per course mark
     std::vector<std::uint8_t> in_zone, stbd_since_zone;
@@ -359,7 +356,6 @@ class Rules {
   const VenueData* venue_ = nullptr;
   const ResolvedCourse* course_ = nullptr;
   UmpireMode umpire_ = UmpireMode::standard;
-  PenaltyKind penalty_kind_ = PenaltyKind::one_turn;
   std::vector<BoatState> st_;
   std::vector<BoatRules> rec_;
   std::vector<const PerfData*> boats_;
@@ -368,6 +364,7 @@ class Rules {
   std::vector<RulesEvent> events_;
   std::vector<std::pair<std::int32_t, DsqReason>> dsq_;
   std::vector<RulesBoatInput> in_;  // this tick's inputs (for the geometry helpers)
+  std::vector<std::uint8_t> keep_clear_;  // per boat: give-way under 21.2 in Warning or Breach last tick (§9.3)
   std::uint32_t n_ = 0;
   bool match_ = false;
   float zone_lengths_ = 3.0f;

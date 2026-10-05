@@ -132,7 +132,7 @@ enum { WM_RACE_FLEET = 0, WM_RACE_MATCH = 1 };
 enum { WM_SEQUENCE_5410 = 0, WM_SEQUENCE_3210 = 1, WM_SEQUENCE_MATCH = 2 };
 enum { WM_FLAG_P = 0, WM_FLAG_I, WM_FLAG_Z, WM_FLAG_U, WM_FLAG_BLACK };
 enum { WM_RULES_NONE = 0, WM_RULES_BASIC, WM_RULES_FULL };
-enum { WM_PENALTY_ONE_TURN = 0, WM_PENALTY_TWO_TURNS };
+enum { WM_PENALTY_ONE_TURN = 0 };  /* the only kind: every penalty is one 360 turn (rules.md §9.2) */
 enum { WM_UMPIRE_STANDARD = 0, WM_UMPIRE_CONTACT_ONLY, WM_UMPIRE_PROTEST };
 
 typedef struct wm_world_settings {

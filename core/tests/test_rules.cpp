@@ -340,7 +340,7 @@ TEST_CASE("rules: penalty turns, deadline and disqualification") {
     CHECK(rig.count(wm::RulesEventKind::penalty_served, 0) == 0);
     CHECK(rig.rules.boat(0).pending.size() == 1);
   }
-  SUBCASE("a turn inside the zone of the next mark does not") {
+  SUBCASE("fleet race: a turn inside the zone of the next mark counts") {
     RulesRig rig(1);
     rig.start_at({{{0.0f, 990.0f}, heading_for(0.0f, kBeat), 3.0f, 0.0f}});
     rig.touch(0, wm::ContactKind::mark, 2);  // the windward mark, her next mark: rule 31
@@ -350,13 +350,79 @@ TEST_CASE("rules: penalty turns, deadline and disqualification") {
     rig.b[0].v = 1.0f;
     rig.b[0].r = -20.0f * wm::DEG;
     rig.run(19.0f);
+    CHECK(rig.count(wm::RulesEventKind::penalty_served, 0) == 1);
+  }
+  SUBCASE("match race: a turn inside the zone of the next mark does not (Appendix C)") {
+    wm::RaceSettings ms = quick_settings();
+    ms.race_type = wm::RaceType::match;
+    ms.sequence = wm::SequenceKind::match;
+    RulesRig rig(2, ms);
+    CHECK(rig.race.zone_lengths() == 2.0f);
+    rig.start_at({{{0.0f, 990.0f}, heading_for(0.0f, kBeat), 3.0f, 0.0f},
+                  {{-90.0f, 700.0f}, heading_for(0.0f, kBeat), 0.0f, 0.0f}});
+    rig.run(0.5f);
+    REQUIRE(rig.rules.boat(1).pending.empty());
+    rig.touch(0, wm::ContactKind::mark, 2);  // the windward mark: rule 31
+    rig.step();
+    REQUIRE(rig.rules.boat(0).pending.size() == 1);
+    CHECK(rig.rules.boat(0).deadline_s < 0.0f);  // one penalty in a match: no deadline
+    rig.b[0].p = {8.0f, 988.0f};  // within 2 L of the mark
+    rig.b[0].v = 1.0f;
+    rig.b[0].r = -20.0f * wm::DEG;
+    rig.run(19.0f);
     CHECK(rig.count(wm::RulesEventKind::penalty_served, 0) == 0);
   }
-  SUBCASE("the deadline passes: 44.1-late") {
+  SUBCASE("a pause only to keep clear under 21.2 does not reset the turn") {
+    wm::RaceSettings ps = quick_settings();
+    ps.umpire = wm::UmpireMode::protest;  // the 21.2 breach of the pause is not penalised on its own
+    RulesRig rig(2, ps);
+    rig.b[0] = {{-40.0f, -150.0f}, heading_for(0.0f, kBeat), 3.0f, 0.0f};
+    rig.b[1] = {{60.0f, -150.0f}, 0.0f, 0.0f, 0.0f};
+    rig.to_prep();
+    rig.touch(0, wm::ContactKind::mark, 1);
+    rig.step();
+    REQUIRE(rig.rules.boat(0).pending.size() == 1);
+    rig.b[0].r = -20.0f * wm::DEG;
+    rig.run(9.0f);
+    REQUIRE(rig.rules.boat(0).turning_for_penalty);
+    // Boat 1 comes slowly at her bow; she stops turning to keep clear for 4 s.
+    rig.b[0].r = 0.0f;
+    rig.b[0].v = 0.0f;
+    const wm::Vec2 f = wm::dir(rig.b[0].psi);
+    rig.b[1] = {wm::v_add(rig.b[0].p, wm::v_scale(f, 9.2f)), wm::wrap_2pi(rig.b[0].psi + wm::PI), 0.5f, 0.0f};
+    bool kept_clear = false;
+    for (int k = 0; k < 80; ++k) {
+      rig.step();
+      const wm::PairRecord* r = rig.rules.pair(0, 1);
+      if (r != nullptr && r->kc_rule == RuleCode::r21_2 && r->kc_giver == 0 && r->kc_state != KcState::clear)
+        kept_clear = true;
+    }
+    CHECK(kept_clear);
+    rig.b[1].v = 0.0f;
+    rig.b[0].v = 3.0f;
+    rig.b[0].r = -20.0f * wm::DEG;
+    rig.run(10.0f);
+    CHECK(rig.count(wm::RulesEventKind::penalty_served, 0) == 1);
+    CHECK(rig.rules.boat(0).pending.empty());
+  }
+  SUBCASE("not completed within 120 s of the incident: disqualified, no extra penalty") {
     RulesRig rig = penalised();
-    rig.run(46.0f);
+    rig.run(110.0f);
+    CHECK(rig.rules.boat(0).pending.size() == 1);
+    CHECK(rig.rules.boat(0).deadline_s > 9.0f);
+    CHECK(rig.rules.boat(0).deadline_s < 10.5f);
+    // A turn still in progress when the time runs out does not save her.
+    rig.b[0].r = -20.0f * wm::DEG;
+    rig.run(10.5f);
+    CHECK(rig.count(wm::RulesEventKind::penalty_served, 0) == 0);
     CHECK(rig.count(wm::RulesEventKind::penalty_late, 0) == 1);
-    CHECK(rig.rules.boat(0).pending.size() == 2);
+    CHECK(rig.count(wm::RulesEventKind::disqualified, 0) == 1);
+    CHECK(rig.penalties(0) == 1);
+    CHECK(rig.rules.boat(0).dsq);
+    CHECK(rig.race.boat(0).code == wm::ScoreCode::DSQ);
+    for (const wm::RulesEvent& e : rig.events) {
+      if (e.kind == wm::RulesEventKind::disqualified) CHECK(e.rule == RuleCode::late);
+    }
   }
   SUBCASE("three pending: disqualified") {
     RulesRig rig = penalised();
@@ -388,6 +454,24 @@ TEST_CASE("rules: mark touches") {
   rig.touch(0, wm::ContactKind::mark, 2);  // again within 10 s: no second penalty
   rig.step();
   CHECK(rig.penalties(0, RuleCode::r31) == 1);
+}
+
+TEST_CASE("rules: a mark touch and a Part 2 breach in one incident owe the Part 2 penalty (44.1(a))") {
+  RulesRig rig = port_starboard(-1.0f);
+  rig.touch(1, wm::ContactKind::mark, 1);  // the port boat touches the pin before starting: rule 31
+  rig.step();
+  REQUIRE(rig.penalties(1, RuleCode::r31) == 1);
+  const std::uint32_t t31 = rig.rules.boat(1).pending.front().tick;
+  rig.run(1.0f);
+  rig.touch(1, wm::ContactKind::boat, 0);  // and hits the starboard boat 1 s later: rule 10
+  rig.step();
+  CHECK(rig.penalties(1, RuleCode::r10) == 1);
+  CHECK(rig.count(wm::RulesEventKind::penalty_cancelled, 1) == 1);
+  REQUIRE(rig.rules.boat(1).pending.size() == 1);
+  CHECK(rig.rules.boat(1).pending.front().rule == RuleCode::r10);
+  CHECK(rig.rules.boat(1).pending.front().tick == t31);
+  CHECK(rig.rules.boat(1).pending.front().count == 1);
+  CHECK(rig.rules.boat(1).received == 1);
 }
 
 TEST_CASE("rules: the same scenario gives the same events") {

@@ -370,9 +370,21 @@ void Rules::turn_tracker(std::uint32_t n, std::size_t i, const Race& race, const
     const RuleCode r = br.pending.front().rule;
     if ((r == RuleCode::c_prep || r == RuleCode::c_entry) && !race.after_gun(n)) allowed = false;
   }
-  // Where: outside the zones of the mark she is heading for and of the one she last rounded.
-  for (const std::uint8_t z : s.in_zone) allowed = allowed && z == 0;
-  if (race.boat(i).rounded_this_tick) allowed = false;
+  // Where: anywhere in a fleet race. In a match race (Appendix C) no part of the turn inside the zone of a rounding
+  // mark of her leg (the next mark and the last one rounded), and a rounding resets it.
+  if (match_ && allowed) {
+    const RaceBoat& rb = race.boat(i);
+    const ResolvedCourse& course = race.course();
+    const std::int32_t last = static_cast<std::int32_t>(course.steps.size()) - 1;
+    for (const std::int32_t k : {rb.next, rb.last_rounded}) {
+      if (k <= 0 || k >= last || !(rb.started || rb.ocs_scored)) continue;
+      const CourseStep& st = course.steps[static_cast<std::size_t>(k)];
+      for (const std::int32_t m : {st.marks[0], st.marks[1]}) {
+        if (m >= 0 && s.in_zone[static_cast<std::size_t>(m)]) allowed = false;
+      }
+    }
+    if (rb.rounded_this_tick) allowed = false;
+  }
   if (!allowed) {
     reset();
   } else {
@@ -397,8 +409,8 @@ void Rules::turn_tracker(std::uint32_t n, std::size_t i, const Race& race, const
       if (d == s.t_dir) {
         ++s.t_run;
         s.t_pause = 0;
-      } else {
-        ++s.t_pause;
+      } else if (!keep_clear_[i]) {
+        ++s.t_pause;  // a pause only as long as needed to keep clear under 21.2 is not counted (§9.3)
       }
       if (s.t_run >= static_cast<std::int32_t>(ticks(p_.turn_start))) s.t_started = true;
       // Tacks and gybes during the turn, in the turn's direction (a boat see-sawing in irons does not tack).
@@ -417,8 +429,7 @@ void Rules::turn_tracker(std::uint32_t n, std::size_t i, const Race& race, const
     }
     if (s.t_started && !br.pending.empty()) {
       const Penalty& pen = br.pending.front();
-      const float need = pen.count >= 2 ? p_.turn_two : p_.turn_one;
-      if (std::fabs(s.t_theta) >= need && s.t_tacks >= pen.count && s.t_gybes >= pen.count) {
+      if (std::fabs(s.t_theta) >= p_.turn_one && s.t_tacks >= 1 && s.t_gybes >= 1) {
         RulesEvent e;
         e.kind = RulesEventKind::penalty_served;
         e.tick = n;
@@ -427,9 +438,6 @@ void Rules::turn_tracker(std::uint32_t n, std::size_t i, const Race& race, const
         emit(e);
         br.pending.erase(br.pending.begin());
         ++br.served;
-        s.has_served = true;
-        s.last_served_tick = n;
-        s.has_deadline_base = false;
         reset();
       }
     }
@@ -1288,13 +1296,37 @@ void Rules::issue(std::uint32_t n, std::int32_t boat, RuleCode rule, std::int32_
   BoatState& s = st_[static_cast<std::size_t>(boat)];
   BoatRules& br = rec_[static_cast<std::size_t>(boat)];
   if (br.dsq) return;
-  const bool spaced = rule == RuleCode::late || rule == RuleCode::si_boundary;
-  if (!spaced && s.has_last_penalty && n - s.last_penalty_tick < ticks(p_.penalty_spacing)) return;
+  const bool spaced = rule == RuleCode::si_boundary;
+  if (!spaced && s.has_last_penalty && n - s.last_penalty_tick < ticks(p_.penalty_spacing)) {
+    // 44.1(a): a Part 2 breach in the same incident as a mark touch owes only the Part 2 penalty; it replaces the
+    // still pending rule-31 one (§8), which keeps its tick (the incident began with the touch).
+    if (part2(rule) && !br.pending.empty() && br.pending.back().rule == RuleCode::r31 &&
+        br.pending.back().tick == s.last_penalty_tick) {
+      Penalty& q = br.pending.back();
+      RulesEvent c;
+      c.kind = RulesEventKind::penalty_cancelled;
+      c.tick = n;
+      c.boat = boat;
+      c.rule = q.rule;
+      emit(c);
+      q.rule = rule;
+      q.other = other;
+      RulesEvent e;
+      e.kind = RulesEventKind::penalty;
+      e.tick = n;
+      e.boat = boat;
+      e.other = other;
+      e.rule = rule;
+      e.count = 1;
+      emit(e);
+    }
+    return;
+  }
   Penalty p;
   p.rule = rule;
   p.other = other;
   p.tick = n;
-  p.count = (!force_one && part2(rule) && penalty_kind_ == PenaltyKind::two_turns) ? 2 : 1;
+  p.count = 1;  // every penalty is one turn (§9.2)
   br.pending.push_back(p);
   ++br.received;
   if (!spaced) {
@@ -1302,18 +1334,13 @@ void Rules::issue(std::uint32_t n, std::int32_t boat, RuleCode rule, std::int32_
     s.last_penalty_tick = n;
   }
   RulesEvent e;
-  e.kind = rule == RuleCode::late ? RulesEventKind::penalty_late : RulesEventKind::penalty;
+  e.kind = RulesEventKind::penalty;
   e.tick = n;
   e.boat = boat;
   e.other = other;
   e.rule = rule;
   e.count = p.count;
   emit(e);
-  if (rule == RuleCode::late) {
-    RulesEvent q = e;
-    q.kind = RulesEventKind::penalty;
-    emit(q);
-  }
 }
 
 void Rules::contacts(std::uint32_t n, const Race& race, std::span<const ContactEvent> cs) {
@@ -1426,7 +1453,6 @@ void Rules::penalties(std::uint32_t n, const Race& race) {
       e.rule = rec_[i].pending.front().rule;
       emit(e);
       rec_[i].pending.erase(rec_[i].pending.begin());
-      st_[i].has_deadline_base = false;
     }
   }
   for (std::size_t i = 0; i < st_.size(); ++i) {
@@ -1436,38 +1462,46 @@ void Rules::penalties(std::uint32_t n, const Race& race) {
       br.deadline_s = -1.0f;
       continue;
     }
-    // §9.4 deadline of the oldest pending penalty.
+    // §9.4 deadline: the oldest pending penalty completed within T_serve of its incident, the clock never
+    // paused. Match races (§9.6): only with two pending, from the incident that made it two. A penalty that may
+    // only be taken after the starting signal (C-prep, C-entry) counts from the signal.
     br.deadline_s = -1.0f;
-    const bool no_deadline = match_ && br.pending.size() < 2;
-    if (!br.pending.empty() && !no_deadline && s.racing) {
-      if (!s.has_deadline_base) {
-        s.deadline_base = br.pending.front().tick;
-        if (s.has_served && s.last_served_tick > s.deadline_base) s.deadline_base = s.last_served_tick;
-        s.has_deadline_base = true;
-      }
-      const float t_serve = match_ ? p_.t_serve_match : p_.t_serve;
-      const std::uint32_t dl = s.deadline_base + ticks(t_serve);
-      if (n >= dl && !br.turning_for_penalty) {
-        issue(n, static_cast<std::int32_t>(i), RuleCode::late, -1, true);
-        s.deadline_base = n;
-      }
-      br.deadline_s = static_cast<float>(static_cast<std::int64_t>(s.deadline_base + ticks(t_serve)) -
-                                         static_cast<std::int64_t>(n)) * DT;
+    bool late = false;
+    const std::size_t np = br.pending.size();
+    const std::size_t base = match_ ? 1 : 0;
+    if (np > base && s.racing) {
+      const Penalty& pb = br.pending[base];
+      std::int64_t t0 = static_cast<std::int64_t>(pb.tick);
+      const RuleCode r0 = br.pending.front().rule;
+      if ((r0 == RuleCode::c_prep || r0 == RuleCode::c_entry) && race.n_gun() > t0) t0 = race.n_gun();
+      const std::int64_t dl = t0 + static_cast<std::int64_t>(ticks(p_.t_serve));
+      late = static_cast<std::int64_t>(n) >= dl;
+      br.deadline_s = static_cast<float>(std::max(dl - static_cast<std::int64_t>(n), std::int64_t{0})) * DT;
     }
     // §9.5 disqualification.
     const bool too_many = static_cast<std::int32_t>(br.pending.size()) >= p_.dsq_pending;
     const bool too_often = br.received >= p_.dsq_total;
-    if ((too_many || too_often) && !s.dsq_done) {
+    if ((late || too_many || too_often) && !s.dsq_done) {
       s.dsq_done = true;
       br.dsq = true;
-      const DsqReason why = too_many ? DsqReason::pending : DsqReason::total;
+      const DsqReason why = late ? DsqReason::late : (too_many ? DsqReason::pending : DsqReason::total);
       dsq_.push_back({static_cast<std::int32_t>(i), why});
+      if (late) {
+        RulesEvent l;
+        l.kind = RulesEventKind::penalty_late;
+        l.tick = n;
+        l.boat = static_cast<std::int32_t>(i);
+        l.rule = br.pending.front().rule;
+        emit(l);
+      }
       RulesEvent e;
       e.kind = RulesEventKind::disqualified;
       e.tick = n;
       e.boat = static_cast<std::int32_t>(i);
+      if (late) e.rule = RuleCode::late;
       emit(e);
       br.pending.clear();
+      br.deadline_s = -1.0f;
     }
   }
 }
@@ -1482,9 +1516,18 @@ void Rules::update(std::uint32_t n, const Race& race, std::span<const RulesBoatI
   pair_rec_.clear();
   dsq_.clear();
   umpire_ = race.settings().umpire;
-  penalty_kind_ = race.settings().penalty;
   const std::size_t nb = std::min(st_.size(), in_.size());
   const bool live = race.settings().rules_level != RulesLevel::none;
+
+  // §9.3 boats keeping clear under 21.2 while taking a penalty, from the pair states of the last tick.
+  keep_clear_.assign(nb, 0);
+  for (const auto& [key, ps] : pairs_) {
+    (void)key;
+    if (ps.judged && ps.kc_rule == RuleCode::r21_2 && ps.kc != KcState::clear && ps.giver >= 0 &&
+        static_cast<std::size_t>(ps.giver) < nb) {
+      keep_clear_[static_cast<std::size_t>(ps.giver)] = 1;
+    }
+  }
 
   // 1. per boat
   for (std::size_t i = 0; i < nb; ++i) {

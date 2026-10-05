@@ -394,6 +394,14 @@ density of §16.1: an item shows only when both allow it.
   1280 x 800.
 - Name tags (§16.4): a boat at 45 m has a tag, one at 55 m has none until it is selected; the penalty ring is drawn in
   the chase and aerial cameras and not onboard.
+- Selecting (§16.4.1): a click on a far boat's hull or rig selects her and draws her bracket and tag, a click on the
+  water or on her again clears, a click on another boat replaces her, a press dragged 20 px picks nothing
+  (`controls.md` §8 test 10), Esc clears it without pausing, `boat_select` goes nearest first, then the next, then
+  none; the radar marks her.
+- Boat card (§16.7): for a scripted race state every row matches the boat states, race and rules records it comes
+  from; at 1280 x 800 and 1080 x 1920 for UI scales 80 % to 130 % at every density, with a boat selected, every
+  text is on screen and no two blocks overlap.
+- Tack point (§16.4): the point and its `TACK IN` label are drawn, and no line runs from the boat to it.
 - Every text of the HUD fits its block at 1280 x 800 for UI scales 80 % to 130 %.
 - Portrait (§16.5): at 1080 x 1920 for UI scales 80 % to 130 %, in the pre-start, beat and penalty states at every
   density, every text is on screen and no two texts overlap, and no two blocks' drawn areas overlap (world tags
@@ -416,8 +424,8 @@ What the player can choose to see and what the colours mean; the layout, sizes a
 Three levels, **Glance**, **Race** and **Data**, cycled in that order by the `hud_density` action (`controls.md`
 §2). Density decides how many instrument values show. It never hides a contextual item (countdown, OVER and OCS,
 the rules line, the penalty panel, banners, protest and hail prompts) or anything in the world (start line, mark
-tag, laylines, tack point, zone circle, rounding arrow, name tags, edge pointers, penalty turn). The radar, the helm
-strip and, under manual trim, the trim gauges show at every level.
+tag, laylines, tack point, zone circle, rounding arrow, name tags, edge pointers, penalty turn) or the selected
+boat's card (§16.7). The radar, the helm strip and, under manual trim, the trim gauges show at every level.
 
 | Phase | Glance | Race | Data |
 | --- | --- | --- | --- |
@@ -495,16 +503,40 @@ bar (centre zero, ±30°). Numbers keep the 4 Hz refresh of §1; dial, bars and 
 - **Mark tag**: on the next mark (§7): name, distance, ETA, bearing and relative bearing. Off screen it becomes an
   edge pointer at the screen edge towards the mark.
 - **Tack point**: on a beat or run with the layline distance of §6 shown, a point on the water where the current COG
-  meets the other tack's layline, with `TACK IN <distance> <time>` on a beat and `GYBE IN <distance> <time>` on a
-  run (the turn onto the other tack downwind is a gybe), or `OVERSTOOD <distance>` at the boat.
+  meets the other tack's layline (a ring in the colour of the tack she will sail after it), with
+  `TACK IN <distance> <time>` on a beat and `GYBE IN <distance> <time>` on a run (the turn onto the other tack
+  downwind is a gybe), or `OVERSTOOD <distance>` at the boat. Only the point and its label: no line is drawn from
+  the boat to it (the owner's call: the forward path line was clutter in front of the bow).
 - **Name tags**: another boat's name over her mast when she is within 50 m of the viewed boat, or when the player
-  has selected her (the `boat_select` action, or a click or tap on her; again to clear). The tag takes the radar
-  colour of §8 (solid chip when there is a relation, paper on ink otherwise) and pulses as the radar icon does.
-  A selected boat off screen gets an edge pointer with her name and distance. `boat_names` turns all name tags off
-  and on.
+  has selected her (§16.4.1). The tag takes the radar colour of §8 (solid chip when there is a relation, paper on
+  ink otherwise) and pulses as the radar icon does. A selected boat off screen gets an edge pointer with her name
+  and distance. `boat_names` turns all name tags off and on (the selected boat's included; her bracket and card
+  stay).
 - **Penalty turn**: §12.1, chase and aerial cameras only.
 - `world_tags` (`controls.md` §7) hides and shows all of the above at once, with the course's on-water guides;
   it is independent of `hud_hide`.
+
+#### 16.4.1 Selecting a boat
+
+One other boat at a time can be selected, to keep her tag up whatever the distance and to read her card (§16.7).
+
+- **Pointer** (`boat_pick`, `controls.md` §2): a click or a tap that does not move more than 8 px between press and
+  release picks the boat under it. The hit area of a boat is the screen triangle from her bow and stern at the
+  waterline to her masthead, grown by 40 design px (`k` of §16.2.2), so a small far boat is still easy to hit;
+  when several are hit the one nearest that area wins, and between boats it covers, the one nearest the camera.
+  A pick on a boat selects her (replacing any other); on the selected boat again, or on open water, it clears the
+  selection. A press that moves further is a camera drag (`controls.md` §3) and never selects or clears.
+- **Cycle** (`boat_select`): the boats other than the viewed one ordered by distance from the viewed boat at the
+  press, nearest first; each press selects the next one after the selected boat, and after the farthest, none.
+- **Clear**: Esc (`pause_menu`) with a boat selected clears the selection and does nothing else; the next Esc opens
+  the pause menu as usual. Selecting the viewed boat (spectating) is not possible; when the viewed boat becomes the
+  selected one, or she leaves the race's boats, the selection clears.
+- **Marking**: the selected boat gets a bracket on the hull: four hairline corners (1.5 px, `hair` width rules)
+  round the screen box of her hull and rig (at least 16 px square), 6 px outside it, each corner a quarter of the side and at most 14 px,
+  in her tag colour (paper with no relation). No glow, no fill. On the radar (§8) her icon gets the same four
+  corners in paper, 9 px from its centre.
+- The pointer picks only in the 3D view: not through the pause menu, the look panel (§18) or the chat line, and not
+  while the simulation is paused with the menu open.
 
 ### 16.5 Portrait layout (capture)
 
@@ -529,6 +561,8 @@ these clips, so the alert lane is at the top and large; the instruments are comp
   feed right-aligned over the helm notes.
 - **Density**: the default is Glance (the player's stored choice still wins, §16.1); the density key works as in
   landscape.
+- **Selected boat card** (§16.7): left, over the helm notes, beside the feed; the edge pointers' box ends 56 px
+  above it while it shows.
 - **Tables** (ranking, results): centred and scaled down to fit between the margins.
 - **World tags**: as in landscape, kept inside the margins; the mark tag also stays under the alert lane (its
   leader still points at the mark), so it never covers the rule text, and the edge pointers run along a box from
@@ -550,6 +584,32 @@ x0.5`, `Slow motion x0.25` or `Normal speed`. It is the only capture feedback; t
 - **Hidden HUD**: it shows also with `hud_hide` and `world_tags` off, since that is how clips are captured; it
   belongs to the scene's overlay layer, not to the HUD blocks.
 - A restart (`reset_boat`, the pause menu) clears it.
+
+### 16.7 Selected boat card
+
+While a boat is selected (§16.4.1) a small card says who she is and how she stands against the viewed boat. It
+uses only what the HUD already reads (the race and rules records, the boat states, the liveries); a field with no
+value is left out, never guessed. Numbers refresh at the 4 Hz of §1 with the rest.
+
+| Row | Content | Source |
+| --- | --- | --- |
+| Header | sail number and skipper in caps (`SLO 7 · AI EXPERT`; a human skipper is `PLAYER`, or the skipper's name when the race has one), then the boat name large; on the right, after the start, `PLACE` over her place `3 / 6` (her finishing place once finished) | livery (sail number, boat name), the race's skipper and AI level, the shown ranking order of §10 |
+| Cells | `DIST` her distance from the viewed boat; `BRG` the compass bearing to her with the relative bearing to the bow (`045 · 35° R`); `SPEED` her boat speed in knots; `HDG` her heading with her tack letter in the tack colour | the boat states of the tick, formats of §1 |
+| Course | `Next <mark>` (the label of her next step: a mark's label, `Gate`, `Finish`; `Start` before she starts), or her status (`Finished`, `RET`, `DSQ`), with `OCS · ` before it while she must return; after a ` · `, how far she is ahead of or behind the viewed boat along the course: `45 m behind you`, `120 m ahead of you` (the difference of the two course distances to go `D` of `race.md` §8.2), only while both are racing on the course | race record |
+| Rules | while the pair record with the viewed boat has a relation (the radar colour of §8): one line in that colour, `YOU KEEP CLEAR`, `SHE KEEPS CLEAR`, `YOU GIVE ROOM` or `SHE GIVES YOU ROOM` (room wins over keep-clear, as on the radar), with `· BREACH` when the state is Breach; under it the rule's text of §12.3 with its number (`Port tack keeps clear of starboard (10)`). Not with the Minimal assist (§14), as the radar colours | pair record (`rules.md` §11.1) |
+| Penalty | `1 PENALTY OWED` (or `2 PENALTIES OWED`) in `port` while she has penalties pending, `TURNING` added while she is taking one | her rules record |
+
+- **Look**: an ink chip at 86 %, 340 design px wide, a hairline along the top edge and a 4 px bar down the left
+  side in her tag colour (`hair` with no relation); labels in `mist`, values in `paper`, numbers tabular. Text no
+  smaller than the 11 px floor (§16.2.2): a line too long for the card is set smaller down to the floor, then cut
+  with an ellipsis.
+- **Place**: landscape, left, its bottom 48 px above the instrument page (clear of the density chip) and never
+  higher than 16 px under the race bug; portrait (§16.5), left, its bottom 8 px over the helm notes, beside the
+  feed. It is a panel, not a world tag: `world_tags` leaves it, `hud_hide` hides it.
+- **Density**: it shows the same at every level (§16.1: density never hides it); it only appears on the player's
+  request.
+- The card goes when the selection clears and in the results. Without a race (free sailing) it has the header
+  (without the place) and the cells only.
 
 ## 17. Frame-time overlay (development)
 

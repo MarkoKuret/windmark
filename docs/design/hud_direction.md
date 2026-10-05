@@ -133,8 +133,9 @@ Four corners, a top-centre alert lane, a bottom-centre helm strip, and the world
   manual trim adds two short gauges above it; auto trim collapses to "SHEETS AUTO".
 - **World:** the next mark's tag (name, distance, ETA, bearing, rounding side, ZONE chip inside the zone), name tags on
   mast tops (paper on ink when there is no relation, solid rule colour when there is), laylines, zone circle, rounding
-  arrow, start line, course to the tack point or to the line, penalty turn around your boat. Anything worth pointing at
-  that is off screen gets an edge pointer with name and distance.
+  arrow, start line, course to the line, the tack point (a ring and its label; no line from the boat to it, owner
+  2026-10-05), penalty turn around your boat. A boat the player picks gets a hairline bracket and a small card
+  (`hud.md` §16.4.1, §16.7). Anything worth pointing at that is off screen gets an edge pointer with name and distance.
 
 **Steam Deck (1280 x 800, 16:10):** margins 32 px left and right, 28 px top and bottom. The same layout scaled by 0.82 of
 the 1080p sizes (not the 0.74 that pure height would give), text clamped to 11 px, numbers 18 px or more on the 7"

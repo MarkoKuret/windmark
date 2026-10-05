@@ -50,11 +50,11 @@ keys become the boat's commands, and the accessibility options. The boat command
 | `world_tags` | toggle | hide or show the world tags and the on-water guides (§7, `hud.md` §16.4) |
 | `hud_density` | button | cycle the instrument density Glance, Race, Data (`hud.md` §16.1) |
 | `boat_names` | toggle | name tags over boats |
-| `boat_select` | button | select the next boat for a name tag, nearest first, then none (`hud.md` §16.4) |
-| `boat_pick` | pointer | select or clear the boat under the pointer (click or tap) |
+| `boat_select` | button | select the next boat for her tag and card, nearest first, then none (`hud.md` §16.4.1) |
+| `boat_pick` | pointer | a click or tap without a drag: select the boat under the pointer, or clear on open water or on the selected boat (`hud.md` §16.4.1) |
 | `spectate_next`, `spectate_prev`, `spectate_leader` | button | viewed boat, when not racing (`cameras.md` §1) |
 | `chat` | button | open the chat line |
-| `pause_menu` | button | pause offline, menu online (§7) |
+| `pause_menu` | button | pause offline, menu online (§7); with a boat selected it first clears the selection (`hud.md` §16.4.1) |
 | `capture_pause` | toggle | offline: clean pause, no menu and no label (§7) |
 | `capture_slow` | button | offline: slow motion, cycling ×1, ×0.5, ×0.25 (§7) |
 | `screenshot` | button | save a screenshot |
@@ -83,7 +83,7 @@ up to two keyboard or mouse bindings and one gamepad binding; all are rebindable
 | `protest` | P | D-pad up while the protest prompt shows | same |
 | `camera_next` | C | Y | Y |
 | `camera_chase` … `camera_free` | F5, F6, F7, F8 | – | – |
-| `camera_orbit` | right mouse drag; numpad 4/6/8/2; I/J/K/L | right stick | right stick, right trackpad |
+| `camera_orbit` | right or left mouse drag; numpad 4/6/8/2; I/J/K/L | right stick | right stick, right trackpad, touch drag |
 | `camera_zoom_in` / `out` | wheel; numpad 9 / 7; O / U | RB / RB + LB held | R1 / R1 + L1 held |
 | `camera_recentre` | numpad 5, R | R3 (click) | R3 |
 | `camera_preset_1` … `8` | F1 … F4, Shift+F1 … F4 recall; Ctrl + key stores | – | – |
@@ -107,6 +107,11 @@ up to two keyboard or mouse bindings and one gamepad binding; all are rebindable
 | `capture_pause` / `capture_slow` | . / , | – | – |
 | `screenshot` | F12 | – | Steam button + R1 |
 | `reset_boat` | Backspace | – (in the pause menu) | – (in the pause menu) |
+
+**Click or drag.** The left mouse button (and a touch, which arrives as the left button) is both `boat_pick` and a
+camera drag: a press that is released within 8 px of where it went down is a click and picks; once it has moved
+further it is a drag, orbits (or looks) as the right button does from that point, and picks nothing on release. The
+right button always drags. A press over a menu, the look panel or the chat line belongs to them.
 
 Notes: `helm_fine` and `camera_boost` share Shift, which is fine because the free camera takes no helm input.
 On the gamepad `View` is both `rankings` and `hud_density`: a press released within 0.3 s is a tap (density), a
@@ -289,3 +294,7 @@ The options are saved per player in the settings file and set in the settings sc
    and 2 s of frames at ×0.5 step 20 ticks (±1), at ×0.25 10 ticks (±1); each `capture_slow` press shows its rate
    note, gone after 1.5 s of frames (also in a clean pause), and `capture_pause` shows none; `world_tags` hides the HUD's world
    tags and the course's water overlays and shows them again; online the two capture actions change nothing.
+10. Click or drag: a left press released after 3 px of motion is one pick at its point and orbits nothing; one
+    dragged 20 px is a camera drag of the motion past the 8 px and picks nothing on release; in the race scene a
+    click on a boat selects her (`hud.md` §16.4.1), Esc with a boat selected clears the selection and does not
+    pause, the next Esc pauses, and a click while paused picks nothing.

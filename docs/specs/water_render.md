@@ -601,7 +601,8 @@ The tiers do not set the render scale (`menus.md` §3): it is its own setting, A
 1920 × 1200 or on a HiDPI screen, else 100 %), and it scales every per-pixel cost here (the normal-map taps, the
 puff loop, the sail cloth) by its square.
 
-Budget: the water within 2.5 ms of GPU time per frame on the Steam Deck at 1280 × 800 on tier M. The vertex work is
+Budget: the water within 2.5 ms of GPU time per frame on the Steam Deck at 1280 × 800 on tier M. The Deck starts on
+tier L (owner, 2026-10-05); the budget stays on M so a Deck player can choose M. The vertex work is
 small (22 cosines per vertex, 1 M per frame on tier M); the pixel work is dominated by the normal-map taps and the
 puff loop (at most 10 patches). The per-pixel slope of the faded components (tier H) evaluates only the
 components in the band `2·px < lam < 4·s` (§3.2), each with one sine and two smoothsteps from the uploaded

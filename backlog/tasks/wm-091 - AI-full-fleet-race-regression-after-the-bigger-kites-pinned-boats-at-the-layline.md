@@ -6,7 +6,7 @@ title: >-
 status: In Progress
 assignee: []
 created_date: '2026-10-04 23:09'
-updated_date: '2026-10-04 23:20'
+updated_date: '2026-10-05 07:36'
 labels:
   - core
   - ai
@@ -48,4 +48,6 @@ Fix (commit separate from the telemetry tool so it can be dropped): ai.md 4.2 (r
 - Tests with the fix: quick, long (full AI race 9/10, twice identical), ai_long all pass.
 
 Owner decision open: keep the AI fix (the pinned-pair behaviour is a real defect, also WM-054), and/or make the full race test robust to chaos (several seeds), which changes the test.
+
+Owner decision (2026-10-05): the AI fix (commit e5fbf79) is NOT merged; it is parked on branch park/ai-pinned-tack (also on origin) and listed in WM-054. The full-race test stays a single race (seed 33). Consequence: on main, the long test 'full AI race' fails with 6 of 10 finishers since the WM-090 sails merge (a re-rolled chaotic race, no systematic regression over 40 seeds: 90.0 % vs 89.5 % finished). The telemetry tool (race_trace --telemetry) is merged.
 <!-- SECTION:NOTES:END -->

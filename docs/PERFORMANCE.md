@@ -18,7 +18,7 @@ per-feature ablation measurements are in "Measured cost per feature" (to be fill
 | Default tier | M for everyone (`scripts/settings.gd:56`) | a weak laptop starts on the heavier tier |
 | Auto render scale | 100 % on a non-HiDPI 1080p screen (`settings.gd:94-98, 347-352`) | |
 | Game CPU per frame | 3.6 ms on M5 (tier H), about 3 ms tier L | 7 to 11 ms on i3/Ryzen 3, about 20 ms on Celeron |
-| Core tick, 16 AI boats | mean 0.59 ms, p99 4.1 ms, max 7.5 ms on M5 | 15 to 45 ms one-frame hitches on cheap CPUs at starts and roundings |
+| Core tick, 16 AI boats | mean 0.59 ms, p99 4.1 ms, max 7.5 ms on M5; after WM-102 racing mean 0.12 ms, p99 0.42 ms, max 0.94 ms | 15 to 45 ms one-frame hitches on cheap CPUs at starts and roundings (before WM-102) |
 | VRAM, one class, 16 boats | about 190 MB (L), 235 MB (M), 270 MB (H) | |
 | Download | about 237 MB of imported content | most of it 4K liveries and duplicated boat textures |
 | Threads | everything on the main thread | no Thread or WorkerThreadPool in `game/scripts` or `game/native/src` |
@@ -68,9 +68,9 @@ Effort: S (hours), M (a day or two), L (several days). Grouped into the work pac
 | --- | --- | --- | --- | --- |
 | G1 | Pick tier and render scale from the GPU at first launch: integrated GPU (`RenderingServer.get_video_adapter_name()` or the RenderingDevice device type) starts on tier L at 67 to 75 % render scale | `scripts/settings.gd:56, 94-98, 347-352` | 2 to 3x on the first experience | S |
 | G4 | Sky clouds at half or quarter resolution (`AT_HALF_RES_PASS` / `AT_QUARTER_RES_PASS`), or bake the sky to a panorama per preset (clouds are static per preset) | `sky.gdshader:15-17`, `sky_common.gdshaderinc:56-73` | 0.7 to 1 ms GPU on UHD | S |
-| C2 | Hull gap geometry: squared distances and a bounding-box cull in `vertex_edge_min` (prototyped: mean 0.595 to 0.450 ms, -24 %; max 7.5 to 5.45 ms; checksum bit-identical c574b95525e4ea39) | `core/src/course/geometry.cpp:93-140` | -24 % tick | S |
-| C2b | Further: cull in the other boat's frame; precompute unit edge normals (`max_separation` takes a sqrt per edge per call); cache placed outlines per track sample instead of rebuilding them per candidate and neighbour; stop allocating a vector per call | `ai/ai_predict.cpp:67-83`, `ai_rules.cpp:440-475`, `rules/rules_geom.cpp:69-160` | another 30 to 50 % of the tick (untested) | M |
-| C3 | Checksum on demand or every N ticks instead of serialising the whole world every tick (game ignores it); check the networking spec first | `core/src/world/world.cpp:206-212, 328` | 12 % of the tick | S |
+| C2 | Done (WM-102). Hull gap geometry: squared distances and a bounding-box cull in `vertex_edge_min` (prototyped: mean 0.595 to 0.450 ms, -24 %; max 7.5 to 5.45 ms; checksum bit-identical c574b95525e4ea39) | `core/src/course/geometry.cpp:93-140` | -24 % tick | S |
+| C2b | Done (WM-102), plus samples taken nearest first with an oriented-box bound. Further: cull in the other boat's frame; precompute unit edge normals (`max_separation` takes a sqrt per edge per call); cache placed outlines per track sample instead of rebuilding them per candidate and neighbour; stop allocating a vector per call | `ai/ai_predict.cpp:67-83`, `ai_rules.cpp:440-475`, `rules/rules_geom.cpp:69-160` | another 30 to 50 % of the tick (untested) | M |
+| C3 | Done (WM-102): `wm_world_step` takes no checksum, C API version 3. Checksum on demand or every N ticks instead of serialising the whole world every tick (game ignores it); check the networking spec first | `core/src/world/world.cpp:206-212, 328` | 12 % of the tick | S |
 | A2 | Boatgen tiling textures VRAM-compressed (187 of 207 imported lossless, mode 0; `BoatMaterials._shared` keeps the first-loaded, lossless copy) | `game/generated/boats/*.jpg.import` | about 33 MB to 5 MB VRAM for wm7 | S |
 | C5 | Wakes and drawn shadows: build `shadow_state()` only for selected boats (built for all 16 every frame though tier H draws none and L draws one: 0.15 ms on L); no Dictionary per boat per frame in `_wake_state`; copy the about 10 shader uniforms (textures included) onto the 2 materials only when the sea changes; avoid sorting arrays of arrays in `_select` | `sail_test.gd:752-753`, `boat_view.gd:739-759`, `sea_wakes.gd:303-308` | 0.3 to 0.8 ms CPU on M5 | S |
 | C6 | Sails: full-rate update by screen size or for the nearest N boats, others at 30 Hz on tier L (today every boat within `NEAR_M` 200 m, about 1,250 vertices each, every frame); move `cam.get_frustum()` out of the per-sail loop (48 Array allocations per frame) | `boat_view.gd:17-20, 684-694` | 0.3 to 0.4 ms CPU on M5 | S |
@@ -114,7 +114,7 @@ meshes are written in place with `mesh_surface_update_*_region` (ribbons 80x15 v
 | --- | --- | --- | --- | --- |
 | C1 | Step the core on a worker thread one tick ahead; CoreSim keeps double-buffered render poses, sails and wakes so the frame never reads the world while it steps. Also spread the `_on_tick` work (HUD tick, audio tick, `_snapshot_sails`), which all lands on one frame in three | `scripts/sim/sim_runner.gd:29-53`, `native/src/core_sim.cpp:223`, `scenes/sail_test.gd:593-611` | removes the 7.5 ms (M5) / 15 to 45 ms (cheap) hitches, uses a second core | M/L |
 | C6b | Later: SailShape and ribbon updates as WorkerThreadPool tasks, upload on the main thread | native | | M |
-| C9 | Stagger AI decisions by boat index (today all on even ticks, `(x.n % 2u) == 0u`): halves the AI peak. Changes behaviour: spec update and new checksum files | `core/src/ai/ai.cpp:365` | half the AI peak | S |
+| C9 | Done (WM-102), neutral on the fleet measurements over 140 races. Stagger AI decisions by boat index (today all on even ticks, `(x.n % 2u) == 0u`): halves the AI peak. Changes behaviour: spec update and new checksum files | `core/src/ai/ai.cpp:365` | half the AI peak | S |
 
 ### Package 6: potato tier and lighter renderers (also the phone and web baseline)
 
@@ -172,7 +172,7 @@ A race with both classes adds about 80 MB.
 
 1. SMAA to FXAA on tier L (G5): decide after a measurement.
 2. 4K liveries only on tier H (A1).
-3. AI decisions staggered by boat (C9): halves the AI peak, slightly changes behaviour.
+3. AI decisions staggered by boat (C9): done in WM-102; it changes individual races but not the fleet averages.
 4. A real cheap laptop to measure on (ideally Windows, Intel UHD): `--quality=L --no-vsync --perf-log --fleet=16`
    at `--render-scale` 1.0, 0.75 and 0.67, with `--aa=fxaa` and `--shadow-splits=0` (matches WM-016.29).
 
@@ -356,6 +356,20 @@ On this Mac the frame is main-thread CPU plus renderer CPU; the GPU is not the l
 Without AI the same 16 boats cost 350 to 375 us per tick: the AI is about half the mean and all of the spikes.
 24 boats: 1.45 ms mean, 13 ms max. A spike lands in one frame, so it shows as a hitch.
 
+After WM-102 (C2, C2b, C3, C9), `windmark_race_bench` seed 7, the build before and after run back to back on a
+quiet M5 (the audit's numbers above were taken on a busier machine), µs per tick, mean / p99 / max:
+
+| Phase | 16 boats before | 16 boats after | 24 boats before | 24 boats after |
+| --- | --- | --- | --- | --- |
+| Free sailing | 88 / 94 / 1,225 | 57 / 71 / 244 | 129 / 144 / 1,247 | 72 / 76 / 146 |
+| Sequence | 244 / 1,509 / 2,400 | 123 / 405 / 613 | 690 / 3,505 / 6,188 | 214 / 598 / 944 |
+| Gun to +60 s | 376 / 1,451 / 1,677 | 105 / 252 / 286 | 701 / 3,178 / 4,116 | 208 / 597 / 669 |
+| Racing | 426 / 2,227 / 3,964 | 124 / 416 / 938 | 766 / 4,357 / 7,208 | 186 / 463 / 964 |
+| First finish to close | 145 / 1,213 / 1,461 | 63 / 100 / 238 | 485 / 1,942 / 2,452 | 127 / 290 / 460 |
+
+Without AI, racing: 16 boats 201 to 77 µs mean, 24 boats 307 to 121. Seeds 3, 11 and 21 at 16 boats: racing max
+631 to 851 µs.
+
 ### Menu backdrop (4 boats)
 
 3.2 ms per frame (about 310 fps): GPU 2.6 ms, main 1.0 ms, about 300 draws, 280 to 340k primitives, about two
@@ -385,7 +399,8 @@ AI tick spikes become 10 to 25 ms hitches.
 1. **Shadow casting:** a cheap proxy caster per boat (LOD2 or hull and sails), hardware out of the shadow pass,
    fewer cascades or a shorter distance on L and M: about 290 draws and 240k primitives.
 2. **Boat draw calls:** merge surfaces per boat by material (G3, B5), LOD1 from about 15 m, no hardware at distance.
-3. **AI spikes:** spread AI planning across ticks (C9) plus the hull gap geometry (C2): no 4 to 10 ms ticks.
+3. **AI spikes:** spread AI planning across ticks (C9) plus the hull gap geometry (C2): no 4 to 10 ms ticks (done,
+   WM-102: under 1 ms at 16 and 24 boats on M5).
 4. **Main-thread GDScript:** sails, wakes and audio (about 1.5 to 2 ms) native or at a lower rate for boats nobody
    is watching (C5, C6, C7); the simulation on a second core (C1).
 5. **Low-end defaults:** tier L and 0.67 render scale on integrated GPUs (G1); a lighter menu backdrop on L (M1).

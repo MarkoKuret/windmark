@@ -643,9 +643,6 @@ func apply_sails(prev: SimSource.SailsView, cur: SimSource.SailsView, alpha: flo
 	if dt < 0.0:
 		dt = get_process_delta_time() if is_inside_tree() else 0.0
 	dt = clampf(dt, 0.0, 0.1)
-	var p0 := prev if prev != null else cur
-	var awa := Frames.wrap_pi(p0.awa + Frames.angle_diff(cur.awa, p0.awa) * alpha)
-	var aws := lerpf(p0.aws, cur.aws, alpha)
 	var cam: Camera3D = get_viewport().get_camera_3d() if is_inside_tree() else null
 	if cam != null:
 		update_lod(cam.global_position.distance_to(global_position))
@@ -656,6 +653,9 @@ func apply_sails(prev: SimSource.SailsView, cur: SimSource.SailsView, alpha: flo
 		return
 	dt = minf(_sail_dt, FAR_INTERVAL)
 	_sail_dt = 0.0
+	var p0 := prev if prev != null else cur
+	var awa := Frames.wrap_pi(p0.awa + Frames.angle_diff(cur.awa, p0.awa) * alpha)
+	var aws := lerpf(p0.aws, cur.aws, alpha)
 	var drawn := false
 	for sp in sail_parts:
 		if sp.index >= cur.sails.size():

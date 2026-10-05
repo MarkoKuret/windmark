@@ -171,6 +171,17 @@ var _sails_cur: SimSource.SailsView
 ## every boat's sail states of the last two ticks, by boat index
 var _sails_prev_all: Array = []
 var _sails_cur_all: Array = []
+## the wake state of every boat (CoreSimSource.wake_state_into), kept so a frame makes no Dictionary
+var _wake_states: Array = []
+
+## Ticks ahead on the core's thread and the tick's work spread over the frames (game/README.md "The simulation on a
+## second core"): on while the scene processes itself (auto_process), off for the tests that drive step_frame.
+var threaded := false
+enum TickWork { HUD, AUDIO, COURSE }
+## the last tick's HUD, audio and course work not yet run (one part per frame, the rest before the next tick)
+var _tick_due: Array[int] = []
+var _in_advance := false
+var _ticked_this_frame := false
 
 
 func _ready() -> void:
@@ -245,6 +256,12 @@ func _ready() -> void:
 	_update_sea_time(0.0)
 	_update_target(0.0)
 	set_process(auto_process)
+	threaded = auto_process
+	if threaded:
+		var late := _EndOfFrame.new()
+		late.name = "EndOfFrame"
+		late.scene = self
+		add_child(late)
 	_add_pause_menu()
 	_add_results()
 	if Settings.render_scale_override > 0.0 or Settings.upscaler_override != "" or Settings.aa_override != "":
@@ -724,6 +741,7 @@ func reset_boat(new_world := false) -> void:
 		for i in boat_views.size():
 			wakes.remove_boat(i)
 			shadows.remove_boat(i)
+		_wake_states.clear()
 		viewed = b
 		hud.local_commands = true
 		_race_over_seen = false
@@ -775,29 +793,77 @@ func _setup_fake() -> int:
 	return fs.add_boat(class_id, 0.0, 0.0, psi, 2.5)
 
 
+## After every tick: the sail snapshots at once (the render interpolation), the HUD, audio and course work of the
+## tick one part per frame when `threaded` (the rest before the next tick starts), else all of it now.
 func _on_tick(_t: int) -> void:
+	_ticked_this_frame = true
+	_flush_tick_work()
 	if scenario_run != null and scenario_run.finished(sim):
 		runner.paused = true  # race.md §14: the clip ends paused; reset_boat runs it again
-	var t0 := Time.get_ticks_usec()
-	hud.tick(sim, viewed)
-	if not _race_over_seen and hud.race.race_over and is_quick_race():
-		_race_over_seen = true
-		(sim as CoreSimSource).ai_add_autopilot(runner.boat)  # race.md §6.2: she sails clear by herself
-		rig.ease_to(CameraRig.Mode.FINISH, target)  # cameras.md §9.1
-	controls.rumble.tick(sim, runner.boat)
-	var t1 := Time.get_ticks_usec()
-	if not measure_off.has("audio"):
-		audio.tick()
-	var t2 := Time.get_ticks_usec()
 	_snapshot_sails()
-	var t3 := Time.get_ticks_usec()
-	if course_view:
-		course_view.tick()
-	var t4 := Time.get_ticks_usec()
-	PerfStats.add(&"hud", t1 - t0)
-	PerfStats.add(&"audio", t2 - t1)
-	PerfStats.add(&"course", t4 - t3)
-	_tick_usec += (t2 - t0) + (t4 - t3)
+	_tick_due = [TickWork.HUD, TickWork.AUDIO, TickWork.COURSE]
+	if threaded:
+		_run_tick_work(_tick_due.pop_front())
+	else:
+		_flush_tick_work()
+
+
+func _flush_tick_work() -> void:
+	while not _tick_due.is_empty():
+		_run_tick_work(_tick_due.pop_front())
+
+
+func _run_tick_work(w: int) -> void:
+	var t0 := Time.get_ticks_usec()
+	match w:
+		TickWork.HUD:
+			hud.tick(sim, viewed)
+			if not _race_over_seen and hud.race.race_over and is_quick_race():
+				_race_over_seen = true
+				(sim as CoreSimSource).ai_add_autopilot(runner.boat)  # race.md §6.2: she sails clear by herself
+				rig.ease_to(CameraRig.Mode.FINISH, target)  # cameras.md §9.1
+			controls.rumble.tick(sim, runner.boat)
+		TickWork.AUDIO:
+			if not measure_off.has("audio"):
+				audio.tick()
+		TickWork.COURSE:
+			if course_view:
+				course_view.tick()
+	var us := Time.get_ticks_usec() - t0
+	PerfStats.add([&"hud", &"audio", &"course"][w], us)
+	if _in_advance:
+		_tick_usec += us
+
+
+## The last node to process in a frame (while `threaded`): calls _end_of_frame.
+class _EndOfFrame extends Node:
+	var scene: Node
+
+	func _ready() -> void:
+		process_priority = 900  # after the scene's nodes, before the PerfMonitor (1000) that times the frame
+
+	func _process(_dt: float) -> void:
+		scene._end_of_frame()
+
+
+## The end of the frame's game work (_EndOfFrame, while `threaded`): the tick's work left over, then the next tick
+## started on the core's thread when the next frame steps it (SimRunner.prefetch), so it runs while this frame is
+## drawn.
+func _end_of_frame() -> void:
+	if not is_processing() or not is_inside_tree():
+		return
+	var t0 := Time.get_ticks_usec()
+	if not _tick_due.is_empty() and runner.next_frame_ticks():
+		_flush_tick_work()
+	_in_advance = true
+	runner.prefetch()
+	_in_advance = false
+	PerfStats.add(&"sim", Time.get_ticks_usec() - t0)
+
+
+func _exit_tree() -> void:
+	if runner != null:
+		runner.settle()
 
 
 ## FakeSim: the sea of the chosen source, shared with the sim; the sim's wind from the core scenario when there
@@ -850,6 +916,13 @@ func _notification(what: int) -> void:
 ## One frame; each part is timed into its PerfStats section (hud.md §17).
 func step_frame(dt: float) -> void:
 	var t0 := Time.get_ticks_usec()
+	_tick_usec = 0
+	_ticked_this_frame = false
+	_in_advance = true
+	runner.settle()  # the tick started ahead at the end of the last frame: in before anything reads the world
+	_in_advance = false
+	PerfStats.add(&"sim", Time.get_ticks_usec() - t0 - _tick_usec)
+	t0 = Time.get_ticks_usec()
 	var raw := scripted_input if scripted_input != null else reader.read()
 	if look_panel != null and look_panel.blocks_input():
 		raw = raw.without_buttons()  # the look panel has the keys (hud.md §18); the sim keeps running
@@ -862,9 +935,14 @@ func step_frame(dt: float) -> void:
 	var t1 := Time.get_ticks_usec()
 	PerfStats.add(&"input", t1 - t0)
 	_tick_usec = 0
+	_in_advance = true
 	runner.advance(capture.sim_dt(dt))  # slow motion and the clean pause (controls.md §7)
+	_in_advance = false
 	var t2 := Time.get_ticks_usec()
 	PerfStats.add(&"sim", t2 - t1 - _tick_usec)
+	if not _ticked_this_frame and not _tick_due.is_empty():
+		_run_tick_work(_tick_due.pop_front())  # a frame without a tick: one part of the last tick's work
+	t2 = Time.get_ticks_usec()
 	_update_sea_time(runner.alpha())
 	PerfStats.add(&"sea", Time.get_ticks_usec() - t2)
 	_update_target(runner.alpha())
@@ -929,39 +1007,57 @@ func _place_rate_note() -> void:
 
 
 ## Every boat node at its render pose: the boat (`boats`), its sails (`sails`) and its wake (`wakes`), timed into
-## those PerfStats sections.
+## those PerfStats sections. The drawn shadows (water_render.md §4.7) are built only for the boats the tier draws.
 func _update_target(alpha: float) -> void:
 	var n := mini(sim.boat_count(), boat_views.size())
+	var poses := sim.render_poses(alpha)
 	var us_boats := 0
 	var us_sails := 0
 	var us_wakes := 0
+	var draw_shadows := shadows.enabled
+	var origins := PackedVector3Array()
+	if draw_shadows:
+		origins.resize(n)
+	if _wake_states.size() != n:
+		_wake_states.resize(n)
+		for b in n:
+			_wake_states[b] = {}
+	BoatView.begin_frame()
+	BoatView.near_interval = BoatView.NEAR_INTERVAL_L if sea.quality == SeaQuality.Tier.L else BoatView.NEAR_INTERVAL
 	for b in n:
 		var ta := Time.get_ticks_usec()
-		var p := sim.render_pose(b, alpha)
+		var p: SimSource.RenderPose = poses[b]
 		var v := boat_views[b]
+		v.full_rate = b == viewed
 		v.apply(p)
 		var tb := Time.get_ticks_usec()
 		v.apply_sails(_sails_prev_all[b] if b < _sails_prev_all.size() else null,
 			_sails_cur_all[b] if b < _sails_cur_all.size() else null, alpha)
 		var tc := Time.get_ticks_usec()
 		wakes.update_boat(b, _wake_state(b, p))
-		if shadows.enabled:
-			shadows.update_boat(b, v.shadow_state(b == runner.boat))
+		if draw_shadows:
+			origins[b] = v.global_position
 		var td := Time.get_ticks_usec()
 		us_boats += tb - ta
 		us_sails += tc - tb
 		us_wakes += td - tc
 		if b == viewed:
 			target.pose = p
+	if draw_shadows:
+		var te := Time.get_ticks_usec()
+		for b in shadows.choose(origins, runner.boat):
+			shadows.update_boat(b, boat_views[b].shadow_state(b == runner.boat))
+		us_wakes += Time.get_ticks_usec() - te
 	PerfStats.add(&"boats", us_boats)
 	PerfStats.add(&"sails", us_sails)
 	PerfStats.add(&"wakes", us_wakes)
 
 
-## SeaWakes.update_boat state: the render pose and the class waterline (perf dynamics lwl, bwl).
+## SeaWakes.update_boat state: the render pose and the class waterline (perf dynamics lwl, bwl), in the boat's
+## kept Dictionary.
 func _wake_state(b: int, p: SimSource.RenderPose) -> Dictionary:
 	if on_core:
-		return (sim as CoreSimSource).wake_state(b, p, b == runner.boat)
+		return (sim as CoreSimSource).wake_state_into(_wake_states[b], b, p, b == runner.boat)
 	var dyn: Dictionary = (sim as FakeSim).boats[b].d.dyn
 	var info := sim.class_info(b)
 	var lwl := float(dyn.get("lwl", 0.9 * info.loa))

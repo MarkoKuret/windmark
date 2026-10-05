@@ -1541,10 +1541,11 @@ func _all_canvases() -> Array[HudCanvas]:
 	return out
 
 
+## hud.md §17: every visible block built again, redrawn only when what it draws changed.
 func _redraw() -> void:
 	for n in _all_canvases():
 		if n.is_visible_in_tree():
-			n.queue_redraw()
+			n.refresh()
 
 
 ## Every visible HudCanvas of the HUD as laid out now (tests, previews).

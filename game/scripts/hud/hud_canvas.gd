@@ -15,6 +15,9 @@ var painter := Callable()
 var text_shadow := true
 
 var _prims: Array = []
+## the primitives last drawn or about to be (refresh), and whether the next _draw uses them as they are
+var _drawn: Array = []
+var _fresh := false
 
 
 func _init() -> void:
@@ -31,6 +34,16 @@ func primitives() -> Array:
 	_prims = []
 	_build()
 	return _prims
+
+
+## Once per frame (the HUD's redraw): builds the primitives and redraws the block only when they changed.
+func refresh() -> void:
+	var prims := primitives()
+	if prims == _drawn:
+		return
+	_drawn = prims
+	_fresh = true
+	queue_redraw()
 
 
 func _rect(r: Rect2, col: Color) -> void:
@@ -121,7 +134,10 @@ static func text_width(text: String, size_px: int, weight := 600, tracking := 0.
 
 
 func _draw() -> void:
-	for q in primitives():
+	if not _fresh:
+		_drawn = primitives()  # a redraw the engine asked for (shown again, resized): built now
+	_fresh = false
+	for q in _drawn:
 		match q["k"]:
 			"rect":
 				draw_rect(q["r"], q["col"])

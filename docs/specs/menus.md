@@ -22,8 +22,8 @@ The project's main scene. Items, top to bottom: **Continue**, **Quick race**, **
 - **First launch**: the first time the game starts (the settings file has no `menu.welcomed`), a short screen comes
   before the menu: a heading, one line (`Two choices to start with. Both are in Settings later.`), two rows,
   **Steering** (the helm key mode of `controls.md` §5.2: Set and hold or Hold to steer; the controls preset, since
-  the gamepad needs no choice) and **Quality** (Low, Medium, High; the settings' value preselected, Medium on a first
-  start), and **Let's sail** (keeps them) and **Skip** (keeps the defaults; Esc or B too). Either
+  the gamepad needs no choice) and **Quality** (Low, Medium, High; the settings' value preselected, on a first
+  start the device default of §3), and **Let's sail** (keeps them) and **Skip** (keeps the defaults, the device's for quality; Esc or B too). Either
   saves the settings with `welcomed` set, so it shows once.
 
 - **Quick race**: class, sail number, venue, course, fleet size, AI level, wind speed, wind direction, then
@@ -122,12 +122,31 @@ game has the setting and is saved when the settings screen closes, to one file p
 | Controls | helm key mode, stick dead zone, stick curve, sheet key rate, hold or toggle for let fly, fine helm, rankings and camera boost, sheet turns auto trim off, vibration (off, 10 % to 100 %), the bindings (rebinding, below) |
 | Cameras | camera and look speed, invert orbit X and Y, invert look X and Y, onboard heel follow, smooth switch, reduced motion |
 | HUD | assist preset (Full, Standard, Minimal; online lobbies may force a lower one), instruments (Auto, Glance, Race, Data: the density of `hud.md` §16.1; Auto picks the device default, the `hud_density` key stores its choice here), UI scale (80 % to 130 %, `hud.md` §16.2.2), colour-blind palette (standard, deuteranopia, protanopia, tritanopia: `hud.md` §16.2.1), captions (stored; the audio has no caption lines yet, `audio.md` §8) |
-| Graphics | quality (Low, Medium, High: the tiers of `water_render.md` §7, default Medium), render scale (Auto, 50 %, 67 %, 75 %, 85 %, 100 %; default Auto; below), display (windowed, fullscreen), vsync, frame rate limit (off, 30, 60, 90, 120, 144), capture preset (Off, Portrait 9:16; below) |
+| Graphics | quality (Low, Medium, High: the tiers of `water_render.md` §7, default Medium or the device default, below), render scale (Auto, 50 %, 67 %, 75 %, 85 %, 100 %; default Auto or the device default; below), display (windowed, fullscreen), vsync, frame rate limit (off, 30, 60, 90, 120, 144), capture preset (Off, Portrait 9:16; below) |
 | Audio | master, effects, signals, voice, ambience, interface volumes, 0 to 100 % (default 100 %, master 80 %) |
 
 **Window mode.** The display setting is the player's: the game sets the window mode at its start (from the settings file) and when the display or capture setting changes, never when a race, free sail or the menu opens. Entering or leaving fullscreen through the system (the window's green button on macOS, a system shortcut) becomes the new display setting and is saved at once, so the game never puts the old mode back. A new windowed game opens at 1280 × 800 (the Steam Deck's size; the system may cap it to the screen). While the engine loads, the boot splash shows the logo on navy (`game/branding/boot_splash.png`, background #1A2A3A).
 
-**Reset section** restores the section's defaults (in Controls, the options; the bindings have their own reset).
+**Reset section** restores the section's defaults (in Controls, the options; the bindings have their own reset;
+in Graphics, the device defaults below).
+
+**Device defaults** (WM-101, `PERFORMANCE.md` G1). At the first start (no settings file) the game picks quality and
+render scale from the graphics adapter, so a cheap laptop starts on a frame rate it can hold; the player can change
+both at once. The adapter's name and vendor (`RenderingServer.get_video_adapter_name()` and `_vendor()`) and the
+RenderingDevice's device type (integrated, discrete, CPU; none on the Compatibility renderer) are read once:
+
+| adapter | examples | quality | render scale |
+| --- | --- | --- | --- |
+| Steam Deck (the `SteamDeck` environment variable Steam sets, or an AMD Custom GPU 0405 / 0932, VanGogh or Sephiroth) | | Low | Auto (native on its 1280 × 800 screen) |
+| Apple | Apple M1 to M5 | Medium | Auto |
+| integrated Intel (any Intel but an Arc A or B card) | Intel UHD 620, Iris Xe, HD Graphics, Arc Graphics (Core Ultra) | Low | 67 % |
+| integrated AMD (a Radeon named `Graphics` or `<number>M` / `<number>S`, without RX or Pro) | Radeon Graphics, Radeon Vega 8 Graphics, Radeon 780M | Low | 67 % |
+| other integrated or software (Adreno, Mali, PowerVR, llvmpipe, SwiftShader, Microsoft Basic Render, or device type integrated or CPU) | | Low | 67 % |
+| discrete (NVIDIA, AMD RX or Pro, Intel Arc A or B, or device type discrete) | GeForce RTX 3060, Radeon RX 6600 | Medium | Auto |
+| unknown (headless, no name) | | Medium | Auto |
+
+A settings file that exists keeps the player's values; the device defaults are not applied again (Reset section in
+Graphics and Skip on the first-launch screen use them).
 
 **Help line.** Under the rows, one line of help for whatever has the focus: what the setting does, what its values
 mean, and for a binding how to change it or which action it conflicts with. Every row has its line.
@@ -198,8 +217,11 @@ command line (`--resolution 1080x1920`).
   breathing over 40 s, with the boat a little right of centre (clear of the menu); every 35 s it eases (over about
   4 s) on to the next boat of the fleet. With reduced motion (`cameras.md` §6) the drift is a third of that speed.
   **Cost**: the scene draws at the player's quality tier and render scale (§3; a change in the settings applies to
-  the backdrop at once), 4 boats, no HUD and no audio: cheaper than a race, so it holds the race's frame rate on the
-  Steam Deck at 1280 × 800. **Fallback**: when the sail scene is not there or does not load (a build without it, a
+  the backdrop at once), 4 boats, no HUD and no audio: about two thirds of a race (3.2 ms a frame, 300 draws on an
+  Apple M5, `PERFORMANCE.md` M1). On tier **Low** it is lighter still: **2 boats** (the fleet is set when the menu
+  opens; a quality change applies to the boat count the next time the menu opens), **no sun shadows** (the boats'
+  shadows drawn on the water stay, `water_render.md` §4.7) and the frame rate **capped at 30** while the menu shows
+  (or the player's frame rate limit when that is lower); leaving the menu puts the player's limit back. **Fallback**: when the sail scene is not there or does not load (a build without it, a
   missing boat file), the painted backdrop is drawn instead: a hazy sky over a calm sea with long swells and one
   distant sail, drawn without image files. Over either backdrop a soft haze in the top-left corner keeps the
   wordmark and the menu legible.

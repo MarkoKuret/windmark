@@ -152,8 +152,10 @@ For the next step (`race.md` §5):
 | Leg | Beat / Run / Reach |
 | ETA | beat or run: axis distance `D` of the leg (`race.md` §8.2) / VMG; reach: distance / VMC; `--:--` when the divisor is below 0.3 kn |
 
-In the 3-D view: an arrow on the mark on the rounding side, the zone circle (the viewed boat's `3·L`, `rules.md` §7.1)
-drawn on the water when she is within `6·L`, and a bouncing marker over the next mark when it is more than 500 m away.
+In the 3-D view: an arrow on the mark on the rounding side, the zone circle (radius `zone_lengths·L` of the viewed
+boat plus the mark's radius, measured from the mark: `3·L` in a fleet race unless the course says otherwise, `2·L`
+in a match race, `rules.md` §7.1; drawn at the finishing line's ends too on the last leg) drawn on the water when she
+is within `6·L`, and a bouncing marker over the next mark when it is more than 500 m away.
 The mark tag (§16.4) carries the name, distance, ETA and bearing on the mark itself; the distance to the layline is
 shown at the tack point on the water (the point along the current COG where she meets the other tack's layline).
 
@@ -251,10 +253,12 @@ From the pair records of the viewed boat (`rules.md` §11.1), highest-priority f
 Visible while the boat has pending penalties, is taking one, or was penalised in the last 5 s:
 
 - **Pending count** and the current one's rule text (§12.3) and the other boat's name.
-- **Turn progress**: a ring filling with the tracker's `|Θ|` (`rules.md` §9.3) to 360° (or 720°), with a tack tick and a
-  gybe tick that light when done; state text: `Turn: 210°`, `Not counted: inside the zone`, `Turn reset: paused`.
-- **Deadline**: `rules.md` §9.4 countdown `0:32`, red below 10 s; hidden when there is no deadline (match race single
-  penalty).
+- **Turn progress**: a ring filling with the tracker's `|Θ|` (`rules.md` §9.3) to 360° (every penalty is one turn),
+  with a tack tick and a gybe tick that light when done; state text: `Turn: 210°`, `Turn reset: paused`, and in a
+  match race only `Not counted: inside the zone` (a fleet-race turn counts anywhere). With nothing turning yet:
+  `Sail clear and turn: one tack and one gybe`.
+- **Deadline**: `rules.md` §9.4 countdown `1:32` to the time the turn must be **completed** (120 s after the
+  incident), red below 30 s (a turn takes 10 to 25 s); hidden when there is no deadline (match race single penalty).
 - **Disqualification warning**: `One more penalty = disqualification` when pending = `dsq_pending − 1` or
   received = `dsq_total − 1`.
 - **Finish blocked**: `Take your penalty before finishing` on a `FinishBlocked` event.
@@ -266,7 +270,8 @@ Visible while the boat has pending penalties, is taking one, or was penalised in
 
 On a `Penalty` event for the viewed boat: a 4 s banner `PENALTY: <rule text> (<other boat>)` and a sound; for other
 boats, a fleet feed line `<boat> penalised, rule 10 (<other>)`. `PenaltyServed`: `Penalty done` banner 2 s.
-`PenaltyLate`: `Penalty not taken in time: +1 turn`. `Disqualified`: full-width banner with the reason.
+`PenaltyLate`: no banner of its own; the `Disqualified` event that follows it shows the full-width banner with the
+reason, `DISQUALIFIED: penalty not taken within 2 minutes`.
 
 ### 12.3 Rule texts
 
@@ -286,17 +291,19 @@ boats, a fleet feed line `<boat> penalised, rule 10 (<other>)`. `PenaltyServed`:
 | 18.4 | Gybe at the mark, don't sail wide |
 | 19 | Give room at the obstruction |
 | 20 | Room to tack at an obstruction |
-| 22.1 | Returning starter keeps clear |
-| 22.2 | Boat taking a penalty keeps clear |
+| 21.1 | Returning starter keeps clear |
+| 21.2 | Boat taking a penalty keeps clear |
 | 31 | Touched a mark |
-| 44.1-late | Penalty not taken in time |
+| 44.2-late | Penalty not taken within 2 minutes |
+
 | C-prep | Not outside the line at the preparatory signal |
 | C-entry | Did not enter through the line in time |
 | SI-boundary | Outside the race area |
 | 29.1 / 30.1 / 30.2 / 30.3 / 30.4 | Over early (P / I / Z / U / black flag) |
 
-The in-game rules help explains each rule at length in our own words, with a diagram, and lists Windmark's
-simplifications (`rules.md` §7.8–§7.10).
+The in-game rules help explains each rule at length in our own words, with a diagram, and lists Windmark's two
+penalty departures from the rules (one 360° turn, completed within 120 s, `rules.md` intro) and what the automatic
+umpire does not judge (`rules.md` §15). Rule numbers are those of the 2025-2028 rules.
 
 ## 13. Event feed and results
 

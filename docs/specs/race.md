@@ -3,8 +3,9 @@
 What a race is, tick by tick: the start sequence and its signals, starting and recalls, sailing the course (mark
 rounding, gates, laps), finishing, the live ranking and the results. The racing rules between boats are in
 `rules.md`, the course file in `courses.md`, the computer skippers in `ai.md`, the instruments in `hud.md` and the
-online layer in `networking.md`. Rule numbers refer to the World Sailing Racing Rules of Sailing (RRS) 2021–2024;
-the text here explains them in our own words.
+online layer in `networking.md`. Rule numbers refer to the World Sailing Racing Rules of Sailing (RRS) 2025–2028;
+the text here explains them in our own words. Windmark follows the rules except for two documented penalty
+departures (`rules.md` intro: every penalty one 360° turn, completed within 120 s of the incident).
 
 Everything in this file runs in the core on the authoritative side (the server online, the local process offline)
 and is deterministic: the same course, settings, seed and inputs give the same race.
@@ -68,8 +69,8 @@ course also defines are overridden by the lobby.
 | `prep_flag` | `P`, `I`, `Z`, `U`, `black` (§3.3) | `I` fleet; `P` match |
 | `free_sailing_s` | time between the boats' spawn and the warning signal | 30 s |
 | `general_recall` | off / on (§4.5) | off |
-| `rules_level` | `none`, `basic` (rules 10–16, 22, 31), `full` | `full` |
-| `penalty` | `one_turn`, `two_turns` (`rules.md` §9) | `one_turn` |
+| `rules_level` | `none`, `basic` (rules 10–16, 21, 31), `full` | `full` |
+| `penalty` | `one_turn` only: every penalty is one 360° turn (`rules.md` §9.2) | `one_turn` |
 | `umpire` | `standard`, `contact_only`, `protest` (`rules.md` §10) | `standard` |
 | `time_limit_s` | race time limit after the start signal, 0 = from the course | 0 |
 | `finish_window` | first-finisher window rule (§7.3) | on |
@@ -136,7 +137,7 @@ extensions** when any hull point has `s > 0`. It is **completely on the pre-star
 | --- | --- | --- | --- |
 | `P` | 29.1 | hull over at the start signal | OCS: return to be completely on the pre-start side, then start (§4.2) |
 | `I` | 30.1 | hull on the course side of the line or its extensions at any tick of the last minute | OCS-I: return to the pre-start side **across an extension** (round an end), then start (§4.3) |
-| `Z` | 30.2 | any hull point inside the start triangle at any tick of the last minute | the boat may start normally; she receives a scoring penalty of 20 % of the number of entries, rounded to the nearest whole number, minimum 1 (`ZFP`, §9) |
+| `Z` | 30.2 | any hull point inside the start triangle at any tick of the last minute | the boat may start normally; she receives a scoring penalty of 20 % of the `DNF` score, rounded to the nearest tenth of a point (`ZFP`, §9). The identification stands if the race is restarted after a general recall |
 | `U` | 30.3 | any hull point inside the start triangle at any tick of the last minute | disqualified without a hearing (`UFD`); the boat becomes a ghost (§6.3) at the start signal |
 | `black` | 30.4 | as U | disqualified (`BFD`); she also may not sail a restart after a general recall |
 
@@ -253,7 +254,9 @@ OCS-I, the race committee (the server) signals a general recall (rule 29.2). All
 (`Z` → `U`, `U` → `black`). A boat identified under `black` may not start the restart and scores `BFD`. At most two
 general recalls; the third start is sailed with `black`. Off by default because recalls cost online players
 minutes. The recall is decided before the U and black disqualifications of §3.3: a recall cancels a U-flag
-identification (the race is restarted), a black-flag one stands. From the recall until the new preparatory signal
+identification (the race is restarted), a black-flag one stands, and so does a Z-flag one (rule 30.2: the scoring
+penalty applies even if the race is restarted; the restart's flag is U, so a boat cannot be identified under Z a
+second time). From the recall until the new preparatory signal
 the rules are not live (the boats are not racing, as between the warning and preparatory signals). The time limit
 keeps its length from the new gun.
 
@@ -379,7 +382,7 @@ can sail freely; offline and for AI boats an autopilot sails her 5 L beyond the 
 
 A ghost boat is shown semi-transparent. The race layer sets its `collides = false` (`collisions.md` §6: no contact
 with anything) and `casts = false` (`wind_shadow.md` §3: no shadow on others); it is ignored by the rules and the AI
-and cannot interfere with racing boats (rule 24). It still sails normally (it still feels the other boats'
+and cannot interfere with racing boats (rule 23.1). It still sails normally (it still feels the other boats'
 shadows). Boats become ghosts when they have cleared the finish, retired (`RET`), been disqualified (`DSQ`, `UFD`, `BFD`), timed out (`DNF` at the close),
 or lost their connection for more than the grace period (`networking.md` §9).
 
@@ -393,8 +396,9 @@ it).
 ### 7.1 Time limit
 
 `time_limit_s` from the settings, else from the course (`courses.md` §5.2), else `2.5 × course target duration`
-(`courses.md` §6.3), else 30:00. If no boat has finished when race time reaches the limit, the race closes: every
-boat that has not finished scores `DNF` (rule 35).
+(`courses.md` §6.3), else 30:00. If no boat has finished when race time reaches the limit, the race is
+**abandoned** (rule 35: when no boat sails the course and finishes within the time limit, the race committee
+abandons the race): event `Abandoned`, state `abandoned`, no results and no rating change, as §7.4.
 
 ### 7.2 Early close
 
@@ -480,7 +484,8 @@ Appendix A low-point system:
 | Code | Meaning | Points |
 | --- | --- | --- |
 | (none) | finished in place n | n (ties share the average of the places) |
-| `ZFP` | finished, Z-flag penalty (§3.3) | place + 20 % of entries (rounded, min 1), not above `DNF` points |
+| `ZFP` | finished, Z-flag penalty (§3.3) | place + 20 % of the `DNF` points (entries + 1), rounded to the nearest tenth (halves to even), not above `DNF` points |
+
 | `DNC` | did not come to the starting area (§4.4) | entries + 1 |
 | `DNS` | did not start | entries + 1 |
 | `OCS` | on the course side at the start and did not return (§4.3) | entries + 1 |
@@ -539,6 +544,10 @@ The rules layer adds its own events (`rules.md` §11).
   does not; passing between, sailing back through, and rounding does not until the boat passes between again.
 - Finish: a boat with an unserved turn penalty crossing the line does not finish; sub-tick finish times of two
   boats crossing in the same tick order them by the crossing fraction.
+- Time limit: a race in which no boat has finished at the time limit is abandoned with no results.
+- Z flag: in a fleet of 10 a Z-flag finisher in place 3 scores 3 + 2.2 points; her identification stands after a
+  general recall.
+
 - Ranking: two boats on a beat level on the wind axis but 300 m apart laterally have equal D (± 1 m).
 - A full headless race (the default course, 10 AI boats, `sim` harness) ends with every boat finished or scored,
   and the same seed reproduces the identical results table and final state hash.

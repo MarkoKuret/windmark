@@ -373,7 +373,7 @@ reference values are in the owning spec.
 | `full_leeway` | optional bool [false] | boat.md §6.4; true needs `drift_grip` and a `leeway` table in every config |
 | `hull_points` | optional `[[x, y], …]` | sea.md §5.1 (default from `lwl`, `bwl`) |
 | `lwl`, `bwl`, `loa` | float | copied from the class (hull points, AI, HUD) |
-| `collision` | `{ "outline": [[x, y], …], "mass": kg, "yaw_gyration": m }` | collisions.md §2.1 |
+| `collision` | `{ "outline": [[x, y], …], "mass": kg, "yaw_gyration": m, "sprit": m }`; `sprit` optional, ≥ 0 [0]: the bowsprit's reach ahead of the outline's bow point (the class's `rig.bowsprit` when a sail is tacked to it, else 0), used only for the rules' overlap (`rules.md` §3.2) | collisions.md §2.1 |
 | `wind_shadow` | object with every key of `wind_shadow.md` §2 | wind_shadow.md §2 |
 
 Ranges checked at load (besides those of the owning specs): `decel_linear`, `decel_const`, `decel_windage` ≥ 0;

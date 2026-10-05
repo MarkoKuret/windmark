@@ -248,7 +248,7 @@ purpose.
 - At the gun: trim on, sail the first-leg heading (beat: close-hauled on starboard, then the strategy of §4).
 - **OCS (P flag)**, and a boat not yet seen completely on the pre-start side after the gun (`race.md` §4.2, her bow
   over at the gun): bear away and gybe back to `2·L` behind the line by the shortest turn that does not cross a boat
-  (§7 avoidance still applies; the boat now keeps clear of everyone under rule 22.1), then start again at full speed.
+  (§7 avoidance still applies; the boat now keeps clear of everyone under rule 21.1), then start again at full speed.
 - **OCS-I**: route around the nearer end: a waypoint `1.5·L + B` beyond the end and `1·L` on the course side, then
   one as far beyond the end and `2.5·L` behind the line, then start. The second waypoint is taken once the boat is on
   the course side beyond the end, so the crossing back is around the end; a boat that dives back through the band
@@ -415,33 +415,34 @@ A manoeuvre started by the avoidance layer is not cancelled by strategy for 1.5 
 
 ### 7.6 Penalty turns
 
-With a pending penalty the AI starts a turn when all of:
+A penalty is one 360° turn that must be completed within 120 s of the incident, and in a fleet race it counts
+anywhere (`rules.md` §9.3, §9.4). With a pending penalty the AI starts a turn when all of:
 
-- the turn's circle keeps the hull out of the zones of the next mark and the last one rounded (the turn only counts
-  there, `rules.md` §9.3): the circle's centre, `1.3·R` to the side of the turn (`R` the radius at the turn's helm,
-  a margin for the speed the turn loses), is at least `Z + 1.3·R + 0.6·L` from those marks;
+- **match races only**: the turn's circle keeps the hull out of the zones of the next mark and the last one rounded
+  (a turn only counts there, Appendix C): the circle's centre, `1.3·R` to the side of the turn (`R` the radius at
+  the turn's helm, a margin for the speed the turn loses), is at least `Z + r_mark + 1.3·R + 0.6·L` from those
+  marks, and the next zone is more than 20 s of sailing (plus the circle) away. A fleet race has no zone condition;
 - boat speed ≥ 0.75 × target, and not within 5 s after a failed turn;
-- the next zone is more than 20 s of sailing (plus the circle) away;
 - the turn's circle is clear of the other boats as they move: no hull within `0.5·L` of the circle over the next
   6 s, each boat moved on her present course and speed with her drift (`rules.md` §3.1) (a boat coming up fast is in the way, one sailing away is
-  not; a boat taking a penalty must keep clear of all others, rule 22.2), and none within `3·L` ahead.
+  not; a boat taking a penalty must keep clear of all others, rule 21.2), and none within `3·L` ahead.
 
-From 20 s before the deadline (`rules.md` §9.4; the turn must be in progress when it passes) it is **urgent**: only
-the zones, 0.4 × target speed and a hull inside the circle within the next 6 s hold it back. Direction: on a beat
-start by luffing into a tack (turn towards the wind), on a run start by bearing away into a gybe, on a reach turn
-towards the wind; the other way when only that keeps the circle out of the zones. Helm 0.8 of full (0.6 below 9 kn
-true wind, where a slammed turn stalls), sheets on auto-trim through the turn, downwind sail dropped first in more
-than 10 kn. The turn is kept up until the engine reports it served, through the tracker's resets; stopped for 4 s
-(in irons) it is given up and started again after 5 s of speed building, and so is a turn that enters a zone.
+From 45 s before the deadline (`rules.md` §9.4: the turn must be **completed** by then; a turn takes 10 to 25 s)
+it is **urgent**: only the zones (match), 0.4 × target speed and a hull inside the circle within the next 6 s hold
+it back. Direction: on a beat start by luffing into a tack (turn towards the wind), on a run start by bearing away
+into a gybe, on a reach turn towards the wind; in a match race the other way when only that keeps the circle out of
+the zones. Helm 0.8 of full (0.6 below 9 kn true wind, where a slammed turn stalls), sheets on auto-trim through the
+turn, downwind sail dropped first in more than 10 kn. The turn is kept up until the engine reports it served, through
+the tracker's resets; stopped for 4 s (in irons) it is given up and started again after 5 s of speed building, and
+so is a turn that enters a zone in a match race.
 
 While a penalty waits, the AI makes the conditions: before the start it leaves the parking and sails a broad reach
 on starboard (`twa 110°`) away from the line with the sails in until it can turn; racing, it steers up to 15° away
-from the boat in the way (not above close-hauled). When only the zones hold the turn back and the boat is outside
-the zone of the mark she is heading for, she sails away from the marks whose zones are in the way (the next and the
-last rounded, those within `3·Z`), on her present tack and not above close-hauled, until the turn's circle is clear
-of them: a few lengths away is quicker than rounding and going on to the next mark, which on a course with an offset
-mark close to the windward mark takes longer than the deadline. A pre-start penalty is taken before the start (`rules.md` §9.3),
-except in the last 20 s.
+from the boat in the way (not above close-hauled). In a match race, when only the zones hold the turn back and the
+boat is outside the zone of the mark she is heading for, she sails away from the marks whose zones are in the way
+(the next and the last rounded, those within `3·Z`), on her present tack and not above close-hauled, until the
+turn's circle is clear of them. A pre-start penalty is taken before the start (`rules.md` §9.3), except in the last
+20 s.
 
 ## 8. Bad air
 

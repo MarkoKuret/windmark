@@ -7,8 +7,10 @@ extends Control
 signal scene_requested(path: String)
 
 const SAIL_SCENE := "res://scenes/sail_test.tscn"
-## the logo's room (menus.md §1): the placeholder wordmark until there is a logo
+## the logo (menus.md §1.2): the wordmark scene
 const WORDMARK_SCENE := "res://scenes/menu/wordmark.tscn"
+## the space round the menu, px
+const MARGIN := 40
 
 ## tests: false keeps the menu from changing scene (scene_requested still fires)
 var change_scenes := true
@@ -39,6 +41,7 @@ var _panel: PanelContainer
 var _opener: Control
 var _left: Control
 var _row: BoxContainer
+var _mark: Control
 
 
 func _ready() -> void:
@@ -64,10 +67,8 @@ func _ready() -> void:
 
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	for side in ["left", "right"]:
-		margin.add_theme_constant_override("margin_" + side, 40)
-	for side in ["top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + side, 40)
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, MARGIN)
 	add_child(margin)
 	var row := BoxContainer.new()
 	row.add_theme_constant_override("separation", 28)
@@ -81,11 +82,13 @@ func _ready() -> void:
 	left.add_theme_constant_override("separation", 4)
 	row.add_child(left)
 	_left = left
-	# the logo's room: the placeholder wordmark until there is a logo (menus.md §1)
+	# the logo, top left (menus.md §1.2)
 	if ResourceLoader.exists(WORDMARK_SCENE):
 		var mark := (load(WORDMARK_SCENE) as PackedScene).instantiate()
 		mark.name = "Wordmark"
+		mark.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 		left.add_child(mark)
+		_mark = mark
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	left.add_child(spacer)
@@ -239,10 +242,23 @@ func continue_last() -> void:
 	request_scene(SAIL_SCENE)
 
 
-## Menu beside the page, or above it in a portrait window (too narrow for both side by side).
+## Menu beside the page, or above it in a portrait window (too narrow for both side by side); the logo scaled
+## down when the window is narrower than it and the margins (menus.md §1.2).
 func _fit() -> void:
 	var s := get_viewport_rect().size
 	_row.vertical = s.y > s.x
+	var mark := _mark as Wordmark
+	if mark == null:
+		return
+	var room := s.x - 2 * MARGIN
+	if not _row.vertical:
+		# beside the page: leave the race card its two columns (§1.1) when that costs the logo at most 10 %
+		var pad := _panel.get_theme_stylebox("panel")
+		var beside := room - _row.get_theme_constant("separation") - SetupPanel.TWO_COLUMNS_MIN \
+			- pad.get_content_margin(SIDE_LEFT) - pad.get_content_margin(SIDE_RIGHT)
+		if beside >= mark.natural_size(roundi(0.9 * Wordmark.SIZE)).x:
+			room = minf(room, beside)
+	mark.fit_width(room)
 
 
 func _setup_page(race: bool) -> SetupPanel:

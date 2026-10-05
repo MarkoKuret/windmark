@@ -90,7 +90,9 @@ func _font_info(c: Control, font_name := "font", size_name := "font_size") -> Di
 		spacing = (f as FontVariation).spacing_glyph
 	elif f is FontFile:
 		path = f.resource_path
-	return {"font": path.get_file(), "size": c.get_theme_font_size(size_name), "spacing": spacing}
+	return {"font": path.get_file(), "size": c.get_theme_font_size(size_name), "spacing": spacing,
+		"outline": c.get_theme_constant("outline_size") if c is Label else 0,
+		"outline_col": _col(c.get_theme_color("font_outline_color")) if c is Label else [0, 0, 0, 0]}
 
 
 func _text(c: Control, text: String, col: Color, r: Rect2, clip: Rect2, align: int, valign: int, wrap: bool) -> Dictionary:
@@ -120,6 +122,10 @@ func _walk(n: Node, clip: Rect2, items: Array) -> void:
 	var c := n as Control
 	if c != null:
 		var r := c.get_global_rect()
+		if c.has_method("preview_polys"):
+			for it in c.call("preview_polys"):
+				it["clip"] = _rect(clip)
+				items.append(it)
 		if c is MenuBackdrop:
 			items.append({"k": "haze", "r": _rect(r)})
 		elif c is CourseMap:

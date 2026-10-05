@@ -35,7 +35,7 @@ Runs alongside phases 3 and 4; plan in `marketing/social_plan.md`, strategy in `
   social, not the online prototype): two of 1,000 followers across platforms, 150 Discord members, one clip over
   50K views, weekly "where can I wishlist?" requests; plus capsule, a 30–60 s trailer and three distinct scenes.
   Reviewed monthly, aiming for a page before Steam Racing Fest (12–19 April 2027), which lists Coming Soon games.
-- The EU trademark search (WM-030) runs before any spend or the Steam page.
+- Name search closed by owner decision (2026-10-05, WM-030): no WINDMARK in the EU register; no legal gate.
 
 ## 1. Foundations
 
@@ -81,7 +81,8 @@ Opens when the marketing track's traction gate holds, which may be during phase 
 
 - Clips and the Discord are already running (marketing track); classic sailing game communities join with the
   Founders' Fleet once online races work.
-- Capsule and key art from an in-engine render (no image-model art); Steam app fee ($100) paid at the gate.
+- Capsule and key art from in-engine renders, edited by hand afterwards; the app icon is the one exception (image-model
+  art, `docs/branding/`). Steam app fee ($100) paid at the gate.
 - Steam Coming Soon page with the first trailer (in-engine capture); Playtest signup enabled.
 - First paid test (€50–200), a boost of the best quiz clip, measured by cost per Discord join or wishlist.
 

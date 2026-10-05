@@ -91,3 +91,6 @@ taken .com, an existing app or a crowded search.
 The owner ran the "sounds like" web searches and is not worried; together with the register check in
 `LOGO_TRADEMARK.md` (no WINDMARK or SAILMARK in any EU or UK register) that closes the name search. No lawyer,
 no filing for now; the name and logo go ahead. Revisit only if the game takes off.
+
+Owner check of the EU register (2026-10-05): no WINDMARK in the EU. Marks of that word exist in New Zealand, the
+USA, China and Turkey (other owners, other classes; marks are per country and per class).

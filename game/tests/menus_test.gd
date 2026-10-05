@@ -711,6 +711,15 @@ func test_main_menu() -> void:
 					print("  vis %s: %s" % [vis, need.map(func(c: Control) -> Rect2: return c.get_global_rect())])
 				t.ok(inside, "%s page within %s at %d %%" % [p, scr, roundi(sc * 100)])
 				m.close_page()
+			# the logo inside the window, clear of the menu (menus.md §1.2)
+			await process_frame
+			var mark := m.find_child("Wordmark", true, false) as Wordmark
+			var mr := mark.get_global_rect()
+			var menu_r := (m.find_child("Menu", true, false) as Control).get_global_rect()
+			print("  logo %s at %d %%: %s, WINDMARK %d px" % [scr, roundi(sc * 100), mr.size, mark.title_px])
+			t.ok(root.get_visible_rect().grow(1).encloses(mr) and not mr.intersects(menu_r),
+				"logo within %s at %d %%, clear of the menu: %s, WINDMARK %d px" % [scr, roundi(sc * 100), mr,
+				mark.title_px])
 	m.settings.ui_scale = 1.0
 	root.content_scale_factor = 1.0
 	m.queue_free()
@@ -779,6 +788,8 @@ func test_race_card() -> void:
 		t.ok(q.body.vertical != wide, "%s at %d %%: %s (page %d px)" % [c2[0], roundi(c2[1] * 100),
 			"preview beside the rows" if wide else "preview under the rows", q.size.x])
 		t.ok(vis.encloses(q.start_button.get_global_rect()), "Start on screen")
+		if c2[0] == Vector2i(1280, 800) and c2[1] <= 1.0:
+			t.ok(wide, "the logo leaves the race card two columns at %d %%" % roundi(c2[1] * 100))
 		if wide:
 			t.ok(vis.encloses(q.course_map.get_global_rect()), "the course map on screen")
 		# the last row and Start reachable by the keyboard at this size
@@ -849,7 +860,39 @@ func test_touches() -> void:
 	t.ok(m.welcome == null and m.settings.welcomed and m.settings.quality == Settings.new().quality, "Esc skips: the defaults")
 	# the wordmark and the version
 	var mark := m.find_child("Wordmark", true, false)
-	t.ok(mark != null and (mark.get_node("Title") as Label).text == "WINDMARK", "placeholder wordmark scene")
+	t.ok(mark is Wordmark and (mark.get_node("Title") as Label).text == "WINDMARK", "the wordmark scene")
+	var wm := mark as Wordmark
+	var tf := wm.title.get_theme_font("font") as FontVariation
+	var gf := wm.tagline.get_theme_font("font") as FontVariation
+	t.ok(tf != null and tf.base_font.resource_path.ends_with("BarlowSemiCondensed-BlackItalic.ttf")
+		and tf.base_font.get_font_style_name() == "Black Italic",
+		"WINDMARK in Black Italic: %s" % (tf.base_font.resource_path if tf else "none"))
+	t.ok(gf != null and gf.base_font.resource_path.ends_with("BarlowSemiCondensed-ExtraBoldItalic.ttf")
+		and gf.base_font.get_font_style_name() == "ExtraBold Italic",
+		"tagline in ExtraBold Italic")
+	# 1280 x 800 at 100 %: 73 px, so the race card keeps its two columns (menus.md §1.2)
+	t.ok(wm.title_px >= roundi(0.9 * Wordmark.SIZE) and wm.title_px < Wordmark.SIZE, "WINDMARK %d px at 1280 x 800, 100 %%"
+		% wm.title_px)
+	wm.fit_width(10000.0)
+	t.ok(wm.title_px == Wordmark.SIZE and wm.tagline.text == "TACTICAL SAILING RACES", "WINDMARK at 76 px with room")
+	t.ok(wm.title.get_theme_constant("outline_size") == 9 and wm.shadow_navy.position - wm.title.position
+		== Vector2(3, 3) and wm.shadow_yellow.position - wm.title.position == Vector2(6, 6)
+		and wm.shadow_yellow.get_index() < wm.shadow_navy.get_index() and wm.shadow_navy.get_index()
+		< wm.title.get_index(), "outline 9 (2.25 px a side), shadows +3 and +6 px, yellow at the back")
+	t.ok(wm.title.get_theme_color("font_color") == Color("f4f1e8") and wm.title.get_theme_color("font_outline_color")
+		== Color("1a2a3a") and wm.shadow_yellow.get_theme_color("font_outline_color") == Color("ffd23f"),
+		"cream fill, navy outline, yellow shadow outlined in yellow")
+	var lean := (wm.bar[1].x - wm.bar[2].x) / (wm.bar[2].y - wm.bar[1].y)
+	t.near(rad_to_deg(atan(lean)), 14.0, 0.01, "tagline bar slanted 14°")
+	t.ok(wm.bar_shadow[0] - wm.bar[0] == Vector2(4, 4), "bar shadow +4 px")
+	var wsz := wm.natural_size(Wordmark.SIZE)
+	t.ok(wsz.x <= 420.0 and wsz.y <= 110.0, "lockup %s at 76 px" % wsz)
+	wm.fit_width(200.0)
+	t.ok(wm.natural_size(wm.title_px).x <= 200.0 and wm.title_px < Wordmark.SIZE, "fit to 200 px: WINDMARK %d px"
+		% wm.title_px)
+	wm.fit_width(10000.0)
+	t.ok(wm.title_px == Wordmark.SIZE, "never above 76 px")
+	m._fit()
 	t.ok(m.version_label.text.begins_with("v" + str(ProjectSettings.get_setting("application/config/version")))
 		and root.get_visible_rect().encloses(m.version_label.get_global_rect()), "version in the corner: %s"
 		% m.version_label.text)

@@ -60,7 +60,13 @@ def text_width(f, t, spacing):
     return w - (S(spacing) if t else 0)
 
 
-def draw_text_line(d, x, y, t, f, col, spacing):
+def draw_text_line(d, x, y, t, f, col, spacing, stroke=0.0, stroke_col=None):
+    # the outline first under every letter (Godot strokes outline_size / 4 px each side), then the fills
+    if stroke > 0:
+        sx = x
+        for ch in t:
+            d.text((sx, y), ch, font=f, fill=stroke_col, stroke_width=int(round(S(stroke))), stroke_fill=stroke_col)
+            sx += f.getlength(ch) + S(spacing)
     for ch in t:
         d.text((x, y), ch, font=f, fill=col)
         x += f.getlength(ch) + S(spacing)
@@ -104,7 +110,8 @@ def draw_text(d, it):
             tx = x + w - tw
         else:
             tx = x
-        draw_text_line(d, tx, ty, ln, f, col, it["spacing"])
+        draw_text_line(d, tx, ty, ln, f, col, it["spacing"], it.get("outline", 0) / 4.0,
+                       c255(it.get("outline_col", [0, 0, 0, 0])))
         ty += lh
 
 
@@ -237,6 +244,8 @@ def render(path):
             elif k == "rect":
                 x, y, rw, rh = [S(v) for v in it["r"]]
                 ImageDraw.Draw(layer).rectangle([x, y, x + rw - 1, y + rh - 1], fill=c255(it["col"]))
+            elif k == "poly":
+                ImageDraw.Draw(layer).polygon([(S(p[0]), S(p[1])) for p in it["pts"]], fill=c255(it["col"]))
             elif k == "text":
                 draw_text(ImageDraw.Draw(layer), it)
             elif k == "map":

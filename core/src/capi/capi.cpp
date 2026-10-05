@@ -1146,6 +1146,7 @@ wm_status wm_world_course(const wm_world* w, wm_course_info* out) {
   out->step_count = static_cast<int32_t>(c.steps.size());
   out->laps = c.laps;
   out->boundary_count = c.has_boundary ? static_cast<int32_t>(c.boundary.size()) : 0;
+  out->zone_lengths = w->world->race().zone_lengths();
   return WM_OK;
 }
 
@@ -1162,6 +1163,10 @@ wm_status wm_world_course_mark(const wm_world* w, int32_t mark, wm_mark* out) {
   out->heading = m.heading;
   out->length = m.length;
   out->beam = m.beam;
+  out->zone_r = m.radius;  // the bounding radius of a committee or mark boat, as the rules use (rules.md §7.4)
+  for (const wm::CourseObject& o : c.objects) {
+    if (o.mark == mark) out->zone_r = o.r;
+  }
   return WM_OK;
 }
 

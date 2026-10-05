@@ -29,7 +29,7 @@ static func from_race(cv: CourseView, viewed: int, loa: float) -> ClipCourse:
 	if cv == null or cv.sim == null or cv.course.is_empty() or not cv.sim.core.has_race():
 		return null
 	var c := ClipCourse.new()
-	c.zone_r = 3.0 * loa
+	c.zone_r = float(cv.course.get("zone_lengths", 3.0)) * loa  # rules.md §7.1 (2 L in a match race)
 	var steps: Array = cv.course["steps"]
 	if steps.size() > 0 and int(steps[0]["kind"]) == CourseView.STEP_START:
 		var ab := cv.start_line()  # A -> B with the course on the left: B is the starboard end

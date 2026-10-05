@@ -526,12 +526,14 @@ typedef struct wm_course_info {
   float k;                       /* scale (courses.md §6.3) */
   int32_t mark_count, step_count, laps;
   int32_t boundary_count;        /* 0 = no boundary */
+  float zone_lengths;            /* rules.md §7.1 zone in hull lengths of the race (2 in a match race) */
 } wm_course_info;
 
 typedef struct wm_mark {
   const char* id;
   int32_t type;                  /* WM_MARK_* */
   float x, y, radius, heading, length, beam;
+  float zone_r;                  /* rules.md §7.1: the zone is zone_lengths·L plus this, from the mark's centre */
 } wm_mark;
 
 /* One expanded step: start line, marks, gates, finish line (courses.md §4.4). */

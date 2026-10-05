@@ -794,7 +794,7 @@ func _race_text() -> void:
 	var dl := ""
 	if r.deadline >= 0.0 and r.pending > 0:
 		dl = "Deadline  %s" % HudFormat.clock(r.deadline)
-	_put("pen_deadline", dl, red if r.deadline < 10.0 else white, HudFormat.clock(maxf(r.deadline, 0.0)))
+	_put("pen_deadline", dl, red if r.deadline < 30.0 else white, HudFormat.clock(maxf(r.deadline, 0.0)))
 	_put("pen_dsq", "One more penalty = disqualification" if r.dsq_warning and r.pending > 0 else "", red)
 
 

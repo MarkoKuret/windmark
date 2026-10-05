@@ -1,7 +1,7 @@
 class_name PenaltyRingView
 extends HudCanvas
-## hud.md §12.1 turn progress: a ring filling in `port` with |turn| up to 360 (or 720) degrees, the degrees in
-## its middle, and the tack and gybe chips beside it that fill when done.
+## hud.md §12.1 turn progress: a ring filling in `port` with |turn| up to 360 degrees (every penalty is one turn),
+## the degrees in its middle, and the tack and gybe chips beside it that fill when done.
 
 var turn_deg := 0.0
 var target_deg := 360.0

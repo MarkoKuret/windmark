@@ -6,6 +6,8 @@ extends RefCounted
 ## rules.md §11.3 rule codes (WM_RULE_*), in the C API's order
 enum Rule { NONE, R10, R11, R12, R13, R14, R15, R16_1, R16_2, R17, R18_2, R18_3, R18_4, R19, R20, R21_1, R21_2,
 	R31, LATE, C_PREP, C_ENTRY, SI_BOUNDARY }
+## race.md §0 race types (WM_RACE_*)
+const RACE_MATCH := 1
 ## race.md §3.3 prep flags (WM_FLAG_*)
 enum Flag { P, I, Z, U, BLACK }
 ## race.md §3.1 (WM_RACE_*)

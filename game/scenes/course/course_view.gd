@@ -469,12 +469,15 @@ func _update_overlays(pose: SimSource.RenderPose) -> void:
 			for l in laylines:
 				lines.append({"a": l["a"], "b": l["b"], "color": HudStyle.STBD if l["tack"] > 0 else HudStyle.PORT,
 					"width": 0.22, "kind": "layline", "tack": l["tack"]})
-		if show_zone and int(st["kind"]) != STEP_FINISH:
+		if show_zone:
+			# rules.md §7.1: the zone from the mark (its radius added), 2 L in a match race; finishing ends too
 			var c := Vector2(pose.pos_x, pose.pos_y)
+			var zl := float(course.get("zone_lengths", 3.0))
 			for i in pts.size():
 				var mi: int = st["marks"][i]
+				var zr := float(course["marks"][mi].get("zone_r", 0.0))
 				if c.distance_to(pts[i]) <= 6.0 * _loa:
-					circles.append({"c": pts[i], "r": 3.0 * _loa, "color": COL_YELLOW, "width": 0.25, "mark": mi})
+					circles.append({"c": pts[i], "r": zl * _loa + zr, "color": COL_YELLOW, "width": 0.25, "mark": mi})
 	if sea:
 		sea.set_overlay_lines(lines)
 		sea.set_overlay_circles(circles)

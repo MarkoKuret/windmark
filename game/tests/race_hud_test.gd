@@ -572,22 +572,26 @@ func test_penalties_prompts() -> void:
 	_refresh(h, sim)
 	t.ok(h.text_of("pen_turn") == "Turn: 210°" and h.ring_view.turn_deg > 209.9 and h.ring_view.tack_done
 		and not h.ring_view.gybe_done, "turn progress: " + h.text_of("pen_turn"))
-	# in the zone of the next mark: not counted
+	# in the zone of the next mark: counted in a fleet race, not in a match race (rules.md §9.3)
 	sim.put(0, 0, 985, 0.7, 3.0)
 	_refresh(h, sim)
+	t.ok(h.text_of("pen_turn") == "Turn: 210°", "fleet race, in the zone: " + h.text_of("pen_turn"))
+	sim.race_d["race_type"] = RaceText.RACE_MATCH
+	_refresh(h, sim)
 	t.ok(h.text_of("pen_turn") == "Not counted: inside the zone", h.text_of("pen_turn"))
+	sim.race_d["race_type"] = 0
 	# the turn resets
 	sim.put(0, 0, 500, 0.7, 3.0)
 	sim.rules_d[0]["turning_for_penalty"] = false
 	sim.rules_d[0]["turn_progress"] = 0.0
 	_refresh(h, sim)
 	t.ok(h.text_of("pen_turn").begins_with("Turn reset"), "turn reset: " + h.text_of("pen_turn"))
-	# deadline red below 10 s, dsq warning at dsq_pending - 1 pending
-	sim.rules_d[0]["deadline_s"] = 8.0
+	# deadline red below 30 s, dsq warning at dsq_pending - 1 pending
+	sim.rules_d[0]["deadline_s"] = 25.0
 	sim.rules_d[0]["pending"] = [{"rule": R.R10, "other": 1, "count": 1}, {"rule": R.R31, "other": -1, "count": 1}]
 	_refresh(h, sim)
 	t.ok(h.colour_of("pen_deadline") == HudStyle.TINTS[RaceHudValues.Tint.RED],
-		"deadline red below 10 s")
+		"deadline red below 30 s")
 	t.ok(h.text_of("pen_head") == "Penalty 1 of 2: Port tack keeps clear of starboard (Nora)", h.text_of("pen_head"))
 	t.ok(h.text_of("pen_dsq") == "One more penalty = disqualification", "disqualification warning")
 	# finish blocked, late, served
@@ -597,7 +601,7 @@ func test_penalties_prompts() -> void:
 	t.ok(h.text_of("banner") == "Take your penalty before finishing", h.text_of("banner"))
 	sim.rules_ev = [_uev(RaceText.Rev.PENALTY_LATE, {"boat": 0})]
 	_refresh(h, sim)
-	t.ok(h.text_of("banner") == "Penalty not taken in time: +1 turn", h.text_of("banner"))
+	t.ok(h.text_of("banner") == "Take your penalty before finishing", "no banner of its own: " + h.text_of("banner"))
 	sim.rules_ev = [_uev(RaceText.Rev.PENALTY_SERVED, {"boat": 0, "rule": R.R10})]
 	sim.rules_d[0]["pending"] = []
 	sim.rules_d[0]["deadline_s"] = -1.0
@@ -623,6 +627,10 @@ func test_penalties_prompts() -> void:
 	_refresh(h, sim)
 	sim.rules_ev = []
 	t.ok(h.race.banner.full and h.text_of("banner") == "DISQUALIFIED: too many penalties", h.text_of("banner"))
+	sim.rules_ev = [_uev(RaceText.Rev.DISQUALIFIED, {"boat": 0, "rule": R.LATE})]
+	_refresh(h, sim)
+	sim.rules_ev = []
+	t.ok(h.text_of("banner") == "DISQUALIFIED: penalty not taken within 2 minutes", h.text_of("banner"))
 	# protest prompt with its 8 s countdown, wired into PlayerControls
 	var pc := PlayerControls.new()
 	h.frame(0.01, pc)

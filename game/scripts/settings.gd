@@ -53,6 +53,8 @@ var quality := SeaQuality.Tier.M
 ## the 3D view's share of the window's pixels in each direction (menus.md §3): 0 = Auto, else one of RENDER_SCALES
 var render_scale := 0.0
 var fullscreen := false
+## the window mode was set this run (apply_display): after that only a display or capture change sets it
+var _mode_set := false
 var vsync := true
 ## frames per second, 0 = no limit
 var fps_limit := 0
@@ -287,8 +289,10 @@ func apply_sea(sea: Sea, sky: SkyRig = null) -> void:
 		SeaQuality.apply_environment(sky.environment(), q)
 
 
-## Display mode, vsync, frame rate limit, UI scale (the root window's content scale) and render scale.
-func apply_display(win: Window) -> void:
+## Display mode, vsync, frame rate limit, UI scale (the root window's content scale) and render scale. The window
+## mode is the player's (menus.md §3): it is set at the first call (the game's start) and when `set_mode` is true (the
+## display or capture setting changed), never on a scene change.
+func apply_display(win: Window, set_mode := false) -> void:
 	Engine.max_fps = fps_limit
 	if win == null:
 		return
@@ -296,10 +300,12 @@ func apply_display(win: Window) -> void:
 	apply_render_scale(win)
 	if DisplayServer.get_name() == "headless":
 		return
-	var want := Window.MODE_FULLSCREEN if fullscreen and capture_preset == "off" else Window.MODE_WINDOWED
-	if win.mode != want:
-		win.mode = want
-	apply_capture(win)
+	if set_mode or not _mode_set:
+		_mode_set = true
+		var want := Window.MODE_FULLSCREEN if fullscreen and capture_preset == "off" else Window.MODE_WINDOWED
+		if win.mode != want:
+			win.mode = want
+		apply_capture(win)
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if (vsync if vsync_override < 0 else vsync_override == 1)
 		else DisplayServer.VSYNC_DISABLED)
 
@@ -432,7 +438,20 @@ func apply_render_scale(win: Window) -> void:
 
 static func _window_resized() -> void:
 	if is_instance_valid(_resize_hooked):
-		Settings.current().apply_render_scale(_resize_hooked)
+		var s := Settings.current()
+		s.apply_render_scale(_resize_hooked)
+		s.sync_window_mode(_resize_hooked)
+
+
+## The player entered or left fullscreen through the system (the window's green button, a shortcut): that is the
+## new display setting, saved at once, so the game never puts the old mode back (menus.md §3).
+func sync_window_mode(win: Window) -> void:
+	if not _mode_set or capture_preset != "off" or DisplayServer.get_name() == "headless":
+		return
+	var fs := win.mode in [Window.MODE_FULLSCREEN, Window.MODE_EXCLUSIVE_FULLSCREEN]
+	if fs != fullscreen:
+		fullscreen = fs
+		save_file()
 
 
 ## The bindings on the input map: the defaults of controls.md §3, the player's over them (menus.md §3).

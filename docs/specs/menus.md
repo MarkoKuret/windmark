@@ -83,7 +83,7 @@ menus' cloth, navy and accent, §4).
   (`outline_size` is 4 times the visible width: the engine strokes `outline_size / 4` px each side), the shadows
   are two copies of the label behind it (yellow, then navy, each with the outline in its own colour). Offsets and
   sizes are whole pixels, so it stays crisp at every UI scale.
-- **Tagline bar**: `TACTICAL SAILING RACES` in Barlow Semi Condensed ExtraBold Italic (800), tracking +30 %, at
+- **Tagline bar**: `REGATTA SAILING SIMULATOR` in Barlow Semi Condensed ExtraBold Italic (800), tracking +30 %, at
   22 % of the WINDMARK size, navy on a yellow parallelogram slanted 14° (the text keeps its own italic, no extra
   slant), with a hard navy shadow offset 5.3 % of the WINDMARK size (4 px at 76 px). The bar starts under the left
   edge of WINDMARK, 4 % of its size below the yellow shadow.
@@ -121,6 +121,8 @@ game has the setting and is saved when the settings screen closes, to one file p
 | HUD | assist preset (Full, Standard, Minimal; online lobbies may force a lower one), instruments (Auto, Glance, Race, Data: the density of `hud.md` §16.1; Auto picks the device default, the `hud_density` key stores its choice here), UI scale (80 % to 130 %, `hud.md` §16.2.2), colour-blind palette (standard, deuteranopia, protanopia, tritanopia: `hud.md` §16.2.1), captions (stored; the audio has no caption lines yet, `audio.md` §8) |
 | Graphics | quality (Low, Medium, High: the tiers of `water_render.md` §7, default Medium), render scale (Auto, 50 %, 67 %, 75 %, 85 %, 100 %; default Auto; below), display (windowed, fullscreen), vsync, frame rate limit (off, 30, 60, 90, 120, 144), capture preset (Off, Portrait 9:16; below) |
 | Audio | master, effects, signals, voice, ambience, interface volumes, 0 to 100 % (default 100 %, master 80 %) |
+
+**Window mode.** The display setting is the player's: the game sets the window mode at its start (from the settings file) and when the display or capture setting changes, never when a race, free sail or the menu opens. Entering or leaving fullscreen through the system (the window's green button on macOS, a system shortcut) becomes the new display setting and is saved at once, so the game never puts the old mode back.
 
 **Reset section** restores the section's defaults (in Controls, the options; the bindings have their own reset).
 

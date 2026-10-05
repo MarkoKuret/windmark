@@ -187,7 +187,7 @@ func _pressed(id: String) -> void:
 
 func _setting_changed(key: String) -> void:
 	if key in ["fullscreen", "vsync", "fps_limit", "ui_scale", "render_scale", "capture_preset"]:
-		Settings.current().apply_display(get_tree().root)
+		Settings.current().apply_display(get_tree().root, key in ["fullscreen", "capture_preset"])
 
 
 func _settings_closed() -> void:

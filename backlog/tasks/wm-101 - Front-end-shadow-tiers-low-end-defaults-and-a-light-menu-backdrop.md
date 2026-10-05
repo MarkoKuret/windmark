@@ -1,11 +1,11 @@
 ---
 id: WM-101
 title: 'Front end: shadow tiers, low-end defaults and a light menu backdrop'
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-05 17:12'
-updated_date: '2026-10-05 17:25'
+updated_date: '2026-10-05 17:28'
 labels:
   - performance
 dependencies: []

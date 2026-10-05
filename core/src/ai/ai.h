@@ -110,6 +110,8 @@ class AiSkippers {
   void release(std::int32_t boat);
   // race.md §6.2: only the finished-boat autopilot (offline human boats).
   void add_autopilot(std::int32_t boat);
+  // ai.md §3.1: builds the class tables of a boat's performance file now (at load) rather than on the first step.
+  void prepare(const PerfData& perf);
 
   // Tick step 2: every AI boat decides and writes its controls (World::Controller).
   void step(World& w);

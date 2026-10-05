@@ -193,7 +193,6 @@ class Rules {
     bool racing = false;
     // this tick
     std::vector<Vec2> hull;
-    PolarVmgCache vmg;                               // derived, for polar_vmg every tick
     Hull placed;                                     // the same hull for the gap tests (after boat_step)
     Vec2 c{0.0f, 0.0f}, bow{0.0f, 0.0f}, stern{0.0f, 0.0f};
     float twa = 0.0f, theta_ch = 0.7f, theta_dn = 2.6f, vmg_tws = -1.0f;
@@ -365,6 +364,7 @@ class Rules {
   const ResolvedCourse* course_ = nullptr;
   UmpireMode umpire_ = UmpireMode::standard;
   std::vector<BoatState> st_;
+  std::map<const PerfData*, PolarVmgCache> vmg_;  // derived: polar_vmg rows per class, filled on first use
   std::vector<BoatRules> rec_;
   std::vector<const PerfData*> boats_;
   std::map<std::uint64_t, PairState> pairs_;  // key i << 32 | j, i < j (ordered: deterministic iteration)

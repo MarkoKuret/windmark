@@ -321,6 +321,8 @@ float convex_gap(const Hull& a, const Hull& b) {
 }
 
 float convex_gap_capped(const Hull& a, const Hull& b, float cap) {
+  // Clearly apart: no separating-axis search, the vertex-edge distance (exact below the cap) is the gap.
+  if (cap > 0.0f && (outside_box(a, b) || outside_box(b, a))) return vertex_edge_min(a, b, cap);
   const float stop = cap > 0.0f ? cap : 0.0f;
   float s = -INFINITY;
   if (separation(a, b, stop, s) || separation(b, a, stop, s)) return s;

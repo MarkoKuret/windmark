@@ -659,6 +659,7 @@ wm_status wm_world_add_ai_boat(wm_world* w, const wm_perf* perf, int32_t level, 
   int32_t i = -1;
   if (const wm_status st = wm_world_add_boat(w, &e, &i); st != WM_OK) return st;
   w->ai->add(i, ai_level(level), speed_only != 0);
+  w->ai->prepare(*perf->p);
   ai_on(w);
   if (index != nullptr) *index = i;
   return WM_OK;
@@ -668,6 +669,7 @@ wm_status wm_world_ai_add(wm_world* w, int32_t boat, int32_t level, int32_t spee
   if (bad_boat(w, boat)) return fail(WM_ERR_ARG, "bad boat index");
   if (bad_level(level)) return fail(WM_ERR_ARG, "bad AI level");
   w->ai->add(boat, ai_level(level), speed_only != 0);
+  w->ai->prepare(w->world->boat(static_cast<std::size_t>(boat)).perf());
   ai_on(w);
   return WM_OK;
 }
@@ -675,6 +677,7 @@ wm_status wm_world_ai_add(wm_world* w, int32_t boat, int32_t level, int32_t spee
 wm_status wm_world_ai_take_over(wm_world* w, int32_t boat) {
   if (bad_boat(w, boat)) return fail(WM_ERR_ARG, "bad boat index");
   w->ai->take_over(boat);
+  w->ai->prepare(w->world->boat(static_cast<std::size_t>(boat)).perf());
   ai_on(w);
   return WM_OK;
 }

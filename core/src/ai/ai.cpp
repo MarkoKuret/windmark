@@ -137,6 +137,11 @@ const AiDebug& AiSkippers::debug(std::int32_t boat) const {
   return none;
 }
 
+void AiSkippers::prepare(const PerfData& perf) {
+  (void)polar(&perf);
+  (void)shadow_class(&perf);
+}
+
 const AiPolar& AiSkippers::polar(const PerfData* perf) {
   auto it = polars_.find(perf);
   if (it == polars_.end()) it = polars_.emplace(perf, std::make_unique<AiPolar>(*perf)).first;

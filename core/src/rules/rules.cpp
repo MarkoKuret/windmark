@@ -317,11 +317,12 @@ void Rules::zones(std::uint32_t n, std::size_t i, const Race& race) {
   const ResolvedCourse& course = race.course();
   const float Z = zone_lengths_ * s.L;
   std::vector<std::int32_t> marks;
+  const std::int32_t last = static_cast<std::int32_t>(course.steps.size()) - 1;
   auto add_step = [&](std::int32_t k) {
-    if (k <= 0 || k >= static_cast<std::int32_t>(course.steps.size()) - 1) return;
+    if (k <= 0 || k > last) return;
     const CourseStep& st = course.steps[static_cast<std::size_t>(k)];
     marks.push_back(st.marks[0]);
-    if (st.kind == StepKind::gate) marks.push_back(st.marks[1]);
+    if (st.kind != StepKind::mark) marks.push_back(st.marks[1]);  // gate buoys; finishing line ends (§7.10)
   };
   if (rb.started || rb.ocs_scored) {
     add_step(rb.next);
@@ -333,7 +334,8 @@ void Rules::zones(std::uint32_t n, std::size_t i, const Race& race) {
     bool in = false;
     const Vec2 M = course.marks[m].pos;
     if (relevant) {
-      for (const Vec2 p : s.hull) in = in || v_dist(p, M) <= Z;
+      const float Zm = Z + mark_radius(static_cast<std::int32_t>(m));  // measured from the mark (§7.1)
+      for (const Vec2 p : s.hull) in = in || v_dist(p, M) <= Zm;
     }
     if (in && !s.in_zone[m]) {
       s.zone_enter[m] = n;
@@ -462,7 +464,7 @@ void Rules::boundary(std::uint32_t n, std::size_t i, const Race& race) {
   }
   ++s.out_ticks;
   if (s.out_ticks == static_cast<std::int32_t>(ticks(p_.boundary_penalty))) {
-    issue(n, static_cast<std::int32_t>(i), RuleCode::si_boundary, -1, true);
+    issue(n, static_cast<std::int32_t>(i), RuleCode::si_boundary, -1);
   }
   if (s.out_ticks == static_cast<std::int32_t>(ticks(p_.boundary_dsq)) && !s.dsq_done) {
     s.dsq_done = true;
@@ -523,7 +525,54 @@ std::int32_t Rules::buoy_of(std::size_t i, const Race& race, std::int32_t& step)
     step = rb.next;
     return st.marks[st_[i].gate_step == rb.next ? st_[i].gate_buoy : 0];
   }
+  if (rb.next == static_cast<std::int32_t>(race.course().steps.size()) - 1) {
+    // §7.10 finishing marks: the end she is nearer to.
+    const ResolvedCourse& course = race.course();
+    step = rb.next;
+    const float d0 = v_dist(st_[i].c, course.marks[static_cast<std::size_t>(st.marks[0])].pos);
+    const float d1 = v_dist(st_[i].c, course.marks[static_cast<std::size_t>(st.marks[1])].pos);
+    return st.marks[d0 <= d1 ? 0 : 1];
+  }
   return -1;
+}
+
+float Rules::mark_radius(std::int32_t mark) const {
+  float r = course_->marks[static_cast<std::size_t>(mark)].radius;
+  for (const CourseObject& o : course_->objects) {
+    if (o.mark == mark) r = o.r;
+  }
+  return r;
+}
+
+// The side a mark of step k is left on; a finishing line end as a gate buoy seen from the last mark (§7.10).
+Side Rules::mark_side(const ResolvedCourse& course, std::int32_t k, std::int32_t mark) const {
+  const CourseStep& st = course.steps[static_cast<std::size_t>(k)];
+  if (st.kind == StepKind::finish) {
+    const Vec2 P = course.steps[static_cast<std::size_t>(k - 1)].ref;
+    return side_left(course.marks[static_cast<std::size_t>(mark)].pos, P, st.ref) > 0.0f ? Side::port : Side::starboard;
+  }
+  return st.marks[0] == mark ? st.sides[0] : st.sides[1];
+}
+
+// Where the course goes after mark `mark` of step k (§7.4): the next step's reference point; past a finishing
+// mark, `reach` metres beyond it across the line.
+Vec2 Rules::after_mark(const ResolvedCourse& course, std::int32_t k, std::int32_t mark, float reach) const {
+  const CourseStep& st = course.steps[static_cast<std::size_t>(k)];
+  if (st.kind == StepKind::finish) {
+    const Vec2 P = course.steps[static_cast<std::size_t>(k - 1)].ref;
+    const Vec2 u = v_unit(v_sub(st.ref, P), {0.0f, 1.0f});
+    return v_add(course.marks[static_cast<std::size_t>(mark)].pos, v_scale(u, reach));
+  }
+  return course.steps[static_cast<std::size_t>(k + 1)].ref;
+}
+
+// §7.6 fetching: her straight track passes the mark on the required side within 2 L, the mark ahead.
+bool Rules::fetching(std::size_t x, Vec2 M, Side side, const RulesBoatInput& in) const {
+  const float cog = in.sog > 0.05f ? in.cog : in.psi;
+  const Vec2 d = dir(cog);
+  const float off = side_left(M, st_[x].c, v_add(st_[x].c, d));
+  const bool ahead = v_dot(v_sub(M, st_[x].c), d) > 0.0f;
+  return ahead && std::fabs(off) <= 2.0f * st_[x].L && (side == Side::port ? off > 0.0f : off < 0.0f);
 }
 
 bool Rules::within_mark_room(std::size_t e, const MarkRoom& mr) const {
@@ -547,10 +596,8 @@ void Rules::mark_rules(std::uint32_t n, PairState& ps, const Race& race, std::sp
   std::int32_t M = -1;
   Side side = Side::port;
   if (ma >= 0 && ma == mb) {
-    const CourseStep& ka = course.steps[static_cast<std::size_t>(sa)];
-    const CourseStep& kb = course.steps[static_cast<std::size_t>(sb)];
-    const Side side_a = ka.marks[0] == ma ? ka.sides[0] : ka.sides[1];
-    const Side side_b = kb.marks[0] == mb ? kb.sides[0] : kb.sides[1];
+    const Side side_a = mark_side(course, sa, ma);
+    const Side side_b = mark_side(course, sb, mb);
     if (side_a == side_b) {
       M = ma;
       side = side_a;
@@ -564,18 +611,30 @@ void Rules::mark_rules(std::uint32_t n, PairState& ps, const Race& race, std::sp
     Mp = course.marks[static_cast<std::size_t>(M)].pos;
     const float La = st_[A].L, Lb = st_[B].L;
     const float L_near = v_dist(st_[A].c, Mp) <= v_dist(st_[B].c, Mp) ? La : Lb;
-    Z = zone_lengths_ * L_near;
+    Z = zone_lengths_ * L_near + mark_radius(M);  // measured from the mark (§7.1)
     for (const Vec2 p : st_[A].hull) zone_a = zone_a || v_dist(p, Mp) <= Z;
     for (const Vec2 p : st_[B].hull) zone_b = zone_b || v_dist(p, Mp) <= Z;
     applies = zone_a || zone_b;
-    // Not between opposite-tack boats both beating to the mark.
     if (applies && st_[A].tack != st_[B].tack) {
+      // 18.1(a)(1): not between opposite-tack boats both beating to the mark.
       auto beating = [&](std::size_t x) {
         const float br = compass(v_sub(Mp, st_[x].c));
         return std::fabs(st_[x].twa) < HALF_PI &&
                std::fabs(wrap_pi(br - in[x].twd)) <= st_[x].theta_ch + 10.0f * DEG;
       };
       if (beating(A) && beating(B)) applies = false;
+      // 18.1(a)(2): nor when at the mark one of them must tack to sail her proper course and the other need not.
+      // From her heading, turning the rounding way to the course after the mark: a tack when the turn passes head
+      // to wind; none when a beat follows (the turn stops at the first close-hauled heading).
+      const float h_out = compass(v_sub(after_mark(course, sa, M, 5.0f * st_[A].L), Mp));
+      auto must_tack = [&](std::size_t x) {
+        if (std::fabs(wrap_pi(in[x].twd - h_out)) < st_[x].theta_ch) return false;
+        const bool ccw = side == Side::port;  // a mark left to port is rounded turning to port
+        const float sweep = ccw ? wrap_2pi(in[x].psi - h_out) : wrap_2pi(h_out - in[x].psi);
+        const float to_wind = ccw ? wrap_2pi(in[x].psi - in[x].twd) : wrap_2pi(in[x].twd - in[x].psi);
+        return to_wind < sweep;
+      };
+      if (applies && must_tack(A) != must_tack(B)) applies = false;
     }
   }
   // Rule 18 applies: clear astern / ahead / overlap are used for opposite tacks too (§7.2).
@@ -597,7 +656,7 @@ void Rules::mark_rules(std::uint32_t n, PairState& ps, const Race& race, std::sp
   if (!zone_a && !zone_b) ps.used_marks.clear();
   if (!applies) return;
 
-  const Vec2 next_ref = course.steps[static_cast<std::size_t>(sa + 1)].ref;
+  const Vec2 next_ref = after_mark(course, sa, M, 5.0f * min(st_[A].L, st_[B].L));
   auto has_room = [&](std::int32_t mark) {
     for (const MarkRoom& mr : ps.rooms) {
       if (mr.mark == mark) return true;
@@ -619,23 +678,20 @@ void Rules::mark_rules(std::uint32_t n, PairState& ps, const Race& race, std::sp
     return a_inside ? ps.i : ps.j;
   };
 
-  // §7.5 rule 18.3: a boat that tacked onto starboard in the zone and is fetching.
+  // §7.5 rule 18.3 (port-hand marks only): a boat T that passed head to wind onto starboard in the zone and a
+  // starboard boat S fetching the mark: no 18.2 between them; T's duties if S has been on starboard since she
+  // entered the zone.
   std::int32_t tacker = -1;
   for (const std::size_t T : {A, B}) {
     const std::size_t S = T == A ? B : A;
-    if (st_[T].r183_mark != M || st_[S].stbd_since_zone.empty() || !st_[S].stbd_since_zone[static_cast<std::size_t>(M)]) continue;
+    if (side != Side::port || st_[T].r183_mark != M || st_[T].tack != 1) continue;
     if (st_[S].tack != 1 || !rule_on(RuleCode::r18_3, race)) continue;
-    // Fetching (§7.6).
-    const float cog = in[T].sog > 0.05f ? in[T].cog : in[T].psi;
-    const Vec2 dcog = dir(cog);
-    const float off = side_left(Mp, st_[T].c, v_add(st_[T].c, dcog));
-    const bool ahead = v_dot(v_sub(Mp, st_[T].c), dcog) > 0.0f;
-    const bool fetch = ahead && std::fabs(off) <= 2.0f * st_[T].L && (side == Side::port ? off > 0.0f : off < 0.0f);
-    if (!fetch) continue;
+    if (!fetching(S, Mp, side, in[S])) continue;
     tacker = static_cast<std::int32_t>(T);
     ps.rooms.erase(std::remove_if(ps.rooms.begin(), ps.rooms.end(),
                                   [&](const MarkRoom& mr) { return mr.rule == RuleCode::r18_2; }),
                    ps.rooms.end());
+    if (st_[S].stbd_since_zone.empty() || !st_[S].stbd_since_zone[static_cast<std::size_t>(M)]) continue;
     if (std::fabs(st_[S].twa) <= st_[S].theta_ch + 3.0f * DEG && pred_gap(T, S, 1.0f, 1.0f) < margin(T, S)) {
       ps.r183 = true;
       ps.r183_holder = static_cast<std::int32_t>(T);
@@ -659,6 +715,16 @@ void Rules::mark_rules(std::uint32_t n, PairState& ps, const Race& race, std::sp
       MarkRoom mr;
       mr.mark = M;
       mr.entitled = inside_of(rel);
+      if (!overlapped(rel)) {
+        // 18.2(a)(2): not overlapped when the first of them reaches the zone: the boat that has not reached it
+        // gives. Both inside already: the one that entered earlier; the same tick: the one clear ahead.
+        const std::size_t mi = static_cast<std::size_t>(M);
+        if (zone_a != zone_b) {
+          mr.entitled = zone_a ? ps.i : ps.j;
+        } else if (st_[A].in_zone[mi] && st_[B].in_zone[mi] && st_[A].zone_enter[mi] != st_[B].zone_enter[mi]) {
+          mr.entitled = st_[A].zone_enter[mi] < st_[B].zone_enter[mi] ? ps.i : ps.j;
+        }
+      }
       mr.giver = mr.entitled == ps.i ? ps.j : ps.i;
       mr.frozen = true;
       mark_room_path(static_cast<std::size_t>(mr.entitled), M, side, next_ref, mr.corridor);
@@ -680,7 +746,15 @@ void Rules::mark_rules(std::uint32_t n, PairState& ps, const Race& race, std::sp
       std::vector<Pose> gp(ep.size());
       for (std::size_t k = 0; k < gp.size(); ++k) gp[k] = st_[Gb].pred[k];
       const bool room_now = poses_gap(Gb, gp, E, ep, margin(E, Gb) + 0.5f) >= margin(E, Gb);
-      if (room_now || escape_room(Gb, ep, E, p_.room_horizon, margin(E, Gb))) ps.rooms.push_back(std::move(mr));
+      // 18.2(d): the 'unable from the start of the overlap' exemption only for an inside overlap obtained from
+      // clear astern or by tacking to windward of the outside boat.
+      const Relation e_astern = mr.entitled == ps.i ? Relation::i_astern : Relation::i_ahead;
+      const bool e_tacked = st_[E].tacking ||
+                            (st_[E].has_tacking_end && n - st_[E].tacking_end_tick <= ticks(p_.r182d_tack));
+      const bool exempt_kind = ps.raw_before == e_astern || (e_tacked && windward_of(E, Gb, race));
+      if (room_now || !exempt_kind || escape_room(Gb, ep, E, p_.room_horizon, margin(E, Gb))) {
+        ps.rooms.push_back(std::move(mr));
+      }
     }
   }
 
@@ -717,7 +791,8 @@ void Rules::mark_rules(std::uint32_t n, PairState& ps, const Race& race, std::sp
   }
 
   // §7.7 rule 18.4: an entitled right-of-way boat that must gybe at the mark sails no farther than needed.
-  if (rule_on(RuleCode::r18_4, race)) {
+  const StepKind kind_m = course.steps[static_cast<std::size_t>(sa)].kind;
+  if (rule_on(RuleCode::r18_4, race) && kind_m == StepKind::mark) {  // not at a gate mark nor a finishing mark
     for (const MarkRoom& mr : ps.rooms) {
       if (mr.rule != RuleCode::r18_2) continue;
       const std::size_t E = static_cast<std::size_t>(mr.entitled);
@@ -1239,7 +1314,7 @@ void Rules::counted_breach(std::uint32_t n, PairState& ps, std::int32_t culprit,
   if (ps.inc_open) {
     // A contact after a non-contact penalty: only the other boat's own fault gives a second penalty.
     if (contact && ps.inc_penalised_noncontact && culprit != ps.inc_culprit) {
-      issue(n, culprit, rule, other, false);
+      issue(n, culprit, rule, other);
       ps.inc_penalised_noncontact = false;
     }
     return;
@@ -1273,7 +1348,7 @@ void Rules::counted_breach(std::uint32_t n, PairState& ps, std::int32_t culprit,
     emit(q);
     return;
   }
-  issue(n, culprit, rule, other, false);
+  issue(n, culprit, rule, other);
   ps.inc_penalised_noncontact = !contact;
 }
 
@@ -1289,12 +1364,12 @@ void Rules::protest(std::int32_t boat, std::uint32_t n) {
     e.other = boat;
     e.rule = ps.inc_rule;
     emit(e);
-    issue(n, ps.inc_culprit, ps.inc_rule, boat, false);
+    issue(n, ps.inc_culprit, ps.inc_rule, boat);
     ps.inc_penalised_noncontact = true;
   }
 }
 
-void Rules::issue(std::uint32_t n, std::int32_t boat, RuleCode rule, std::int32_t other, bool force_one) {
+void Rules::issue(std::uint32_t n, std::int32_t boat, RuleCode rule, std::int32_t other) {
   BoatState& s = st_[static_cast<std::size_t>(boat)];
   BoatRules& br = rec_[static_cast<std::size_t>(boat)];
   if (br.dsq) return;
@@ -1391,7 +1466,7 @@ void Rules::contacts(std::uint32_t n, const Race& race, std::span<const ContactE
             if (hs.v_hist[k] <= 0.9f * v0) acted = true;
           }
         }
-        if (!acted) issue(n, holder, RuleCode::r14, giver, false);
+        if (!acted) issue(n, holder, RuleCode::r14, giver);
       }
       continue;
     }
@@ -1436,14 +1511,14 @@ void Rules::contacts(std::uint32_t n, const Race& race, std::span<const ContactE
     if (s.touched[mi] && n - s.touch_tick[mi] < ticks(p_.mark_touch_gap)) continue;
     s.touched[mi] = 1;
     s.touch_tick[mi] = n;
-    issue(n, c.boat, RuleCode::r31, -1, true);
+    issue(n, c.boat, RuleCode::r31, -1);
   }
 }
 
 void Rules::penalties(std::uint32_t n, const Race& race) {
   // Race penalties (match entry).
   for (const RacePenaltyRequest& r : race.penalty_requests()) {
-    issue(n, r.boat, r.rule == RacePenaltyRule::c_prep ? RuleCode::c_prep : RuleCode::c_entry, -1, true);
+    issue(n, r.boat, r.rule == RacePenaltyRule::c_prep ? RuleCode::c_prep : RuleCode::c_entry, -1);
   }
   // §9.6 match offsetting.
   if (match_ && rec_.size() == 2 && !rec_[0].pending.empty() && !rec_[1].pending.empty()) {

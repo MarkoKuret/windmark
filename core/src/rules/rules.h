@@ -344,10 +344,14 @@ class Rules {
   void obstruction_rules(std::uint32_t n, PairState& ps, const Race& race, std::span<const RulesBoatInput> in);
   void contacts(std::uint32_t n, const Race& race, std::span<const ContactEvent> contacts);
   void counted_breach(std::uint32_t n, PairState& ps, std::int32_t culprit, RuleCode rule, bool contact);
-  void issue(std::uint32_t n, std::int32_t boat, RuleCode rule, std::int32_t other, bool force_one);
+  void issue(std::uint32_t n, std::int32_t boat, RuleCode rule, std::int32_t other);
   void penalties(std::uint32_t n, const Race& race);
   std::int32_t buoy_of(std::size_t i, const Race& race, std::int32_t& step) const;
   bool within_mark_room(std::size_t e, const MarkRoom& mr) const;
+  float mark_radius(std::int32_t mark) const;  // §7.1, §7.4 r_mark
+  Side mark_side(const ResolvedCourse& course, std::int32_t step, std::int32_t mark) const;
+  Vec2 after_mark(const ResolvedCourse& course, std::int32_t step, std::int32_t mark, float reach) const;
+  bool fetching(std::size_t x, Vec2 M, Side side, const RulesBoatInput& in) const;
   bool rule_on(RuleCode r, const Race& race) const;
   void emit(RulesEvent e) { events_.push_back(e); }
   PairState& pair_state(std::int32_t i, std::int32_t j);

@@ -632,3 +632,215 @@ TEST_CASE("rules: mark-room at a port-rounding mark") {
     CHECK(rig.penalties(1) == 0);
   }
 }
+
+namespace {
+
+// A course whose first step is `seq` near (20, 300), approached running south from above, with the finish line to
+// the north-west (so the beat after the mark is on starboard tack); `extra` adds marks.
+std::string leeward_course(const std::string& seq, const std::string& extra) {
+  return R"({"schema": "windmark.course/1", "id": "t", "name": "T", "venue": "v", "frame": "world",
+    "marks": [{"id": "rc", "type": "buoy", "at": {"x": 100, "y": 0}},
+              {"id": "pin", "type": "buoy", "at": {"x": -100, "y": 0}},
+              {"id": "f1", "type": "buoy", "at": {"x": -260, "y": 600}},
+              {"id": "f2", "type": "buoy", "at": {"x": -140, "y": 600}})" +
+         extra + R"(],
+    "start": {"ends": ["pin", "rc"]}, "finish": {"ends": ["f1", "f2"]},
+    "sequence": [)" + seq + "]}";
+}
+
+// Two boats running south on port tack towards a mark at (20, 300) left to starboard: the inside leeward boat 0
+// (right of way) on a track 6 m from it, the outside boat 1 alongside 4 m further out. 10 m before the mark both
+// bear away from it together and sail on, away from the mark, still in the zone.
+RulesRig sail_wide_past(const std::string& course) {
+  RulesRig rig(2, quick_settings(), course);
+  const float h = 178.0f * wm::DEG;
+  rig.start_at({{{26.0f, 345.0f}, h, 3.0f, 0.0f}, {{30.0f, 345.0f}, h, 3.0f, 0.0f}});
+  for (int k = 0; k < 2000 && rig.b[0].p.y > 310.0f; ++k) rig.step();
+  rig.b[0].psi = rig.b[1].psi = 150.0f * wm::DEG;
+  rig.run(10.0f);
+  return rig;
+}
+
+}  // namespace
+
+TEST_CASE("rules: 18.4, an inside right-of-way boat sailing wide before she gybes") {
+  SUBCASE("at a mark: 18.4") {
+    RulesRig rig = sail_wide_past(leeward_course(R"({"mark": "m", "round": "starboard"})",
+                                                 R"(, {"id": "m", "type": "buoy", "at": {"x": 20, "y": 300}})"));
+    CHECK(rig.penalties(0, RuleCode::r18_4) == 1);
+    CHECK(rig.penalties(1) == 0);
+  }
+  SUBCASE("at a gate buoy: no 18.4") {
+    // The other buoy far up the course, so that the boats stay assigned to g2 as they sail away from it.
+    RulesRig rig = sail_wide_past(leeward_course(R"({"gate": ["g1", "g2"]})",
+                                                 R"(, {"id": "g1", "type": "buoy", "at": {"x": 20, "y": 700}},
+                                                      {"id": "g2", "type": "buoy", "at": {"x": 20, "y": 300}})"));
+    CHECK(rig.penalties(0) == 0);
+    CHECK(rig.penalties(1) == 0);
+  }
+}
+
+TEST_CASE("rules: 18.2(a)(2), not overlapped when the first boat reaches the zone") {
+  // Boat 1 is clear ahead but wide of the mark; boat 0, clear astern on the line to it, reaches the zone first.
+  RulesRig rig(2, quick_settings(), mark_course());
+  const float h = 185.0f * wm::DEG;
+  rig.start_at({{{-4.0f, 333.0f}, h, 3.0f, 0.0f}, {{-34.0f, 320.0f}, h, 3.0f, 0.0f}});
+  std::int32_t entitled = -2;
+  bool clear_astern_then = false;
+  for (int k = 0; k < 200 && entitled == -2; ++k) {
+    rig.step();
+    const wm::PairRecord* r = rig.rules.pair(0, 1);
+    if (r != nullptr && r->room_rule == RuleCode::r18_2) {
+      entitled = r->room_entitled;
+      clear_astern_then = r->relation == wm::Relation::i_astern;
+    }
+  }
+  CHECK(clear_astern_then);
+  CHECK(entitled == 0);
+}
+
+TEST_CASE("rules: the zone is measured from the mark (its radius counts)") {
+  auto course = [](float radius) {
+    return R"({"schema": "windmark.course/1", "id": "t", "name": "T", "venue": "v", "frame": "world",
+      "marks": [{"id": "rc", "type": "buoy", "at": {"x": 100, "y": 0}},
+                {"id": "pin", "type": "buoy", "at": {"x": -100, "y": 0}},
+                {"id": "m", "type": "buoy", "at": {"x": 0, "y": 300}, "radius": )" + std::to_string(radius) + R"(},
+                {"id": "f1", "type": "buoy", "at": {"x": -60, "y": 600}},
+                {"id": "f2", "type": "buoy", "at": {"x": 60, "y": 600}}],
+      "start": {"ends": ["pin", "rc"]}, "finish": {"ends": ["f1", "f2"]},
+      "sequence": [{"mark": "m", "round": "port"}]})";
+  };
+  // Two boats side by side, bows 3 m outside 3 L of the mark's centre, stopped.
+  auto room_after = [&](float radius) {
+    RulesRig rig(2, quick_settings(), course(radius));
+    const float Z = 3.0f * rig.race.boat(0).L;
+    const float bow = 3.455f;  // the wm7 outline's bow ahead of the reference point
+    // Approached from the south (the start's jump to the place must not pass the mark).
+    rig.start_at({{{-4.0f, 300.0f - Z - 3.0f - bow}, 0.0f, 0.0f, 0.0f},
+                  {{-9.0f, 300.0f - Z - 3.0f - bow}, 0.0f, 0.0f, 0.0f}});
+    rig.step();
+    const wm::PairRecord* r = rig.rules.pair(0, 1);
+    return r != nullptr ? r->room_rule : RuleCode::none;
+  };
+  CHECK(room_after(0.8f) == RuleCode::none);
+  CHECK(room_after(6.0f) == RuleCode::r18_2);
+}
+
+TEST_CASE("rules: 18.3 only at a mark left to port") {
+  // The 18.3 scenario of the port-rounding test with the mark moved to the right of the starboard boat's track, 4 m
+  // off it 20 m ahead: she fetches it as a mark to be left to starboard.
+  const wm::PolarVmg v = wm::polar_vmg(perf("wm7"), 5.0f);
+  const float hs = heading_for(0.0f, v.up_twa), hp = heading_for(0.0f, -v.up_twa);
+  const Vec2 f = wm::dir(hs);
+  const std::string course = R"({"schema": "windmark.course/1", "id": "t", "name": "T", "venue": "v", "frame": "world",
+    "marks": [{"id": "rc", "type": "buoy", "at": {"x": 100, "y": 0}},
+              {"id": "pin", "type": "buoy", "at": {"x": -100, "y": 0}},
+              {"id": "m", "type": "buoy", "at": {"x": 5.3, "y": 302.75}},
+              {"id": "f1", "type": "buoy", "at": {"x": -60, "y": 600}},
+              {"id": "f2", "type": "buoy", "at": {"x": 60, "y": 600}}],
+    "start": {"ends": ["pin", "rc"]}, "finish": {"ends": ["f1", "f2"]},
+    "sequence": [{"mark": "m", "round": "starboard"}]})";
+  RulesRig rig(2, quick_settings(), course);
+  const Vec2 T0{10.0f, 292.0f};
+  const Vec2 S0 = wm::v_sub(T0, wm::v_scale(f, 9.0f));
+  const Vec2 M{5.3f, 302.75f}, right{f.y, -f.x};
+  REQUIRE(wm::v_dot(wm::v_sub(M, S0), right) > 2.0f);  // the mark is to the right of her track
+  rig.start_at({{T0, hp, 2.5f, 0.0f}, {S0, hs, 3.0f, 0.0f}});
+  rig.b[0].r = -90.0f * wm::DEG;
+  rig.b[0].v = 1.0f;
+  bool r183_room = false;
+  for (int k = 0; k < 200; ++k) {
+    rig.step();
+    if (std::fabs(wm::angle_diff(rig.b[0].psi, hs)) < 5.0f * wm::DEG) {
+      rig.b[0].r = 0.0f;
+      rig.b[0].psi = hs;
+    }
+    const wm::PairRecord* r = rig.rules.pair(0, 1);
+    if (r != nullptr && r->room_rule == RuleCode::r18_3) r183_room = true;
+  }
+  CHECK(!r183_room);
+  CHECK(rig.penalties(0, RuleCode::r18_3) == 0);
+}
+
+TEST_CASE("rules: 18.1(a)(2), opposite tacks where one must tack at the mark and the other need not") {
+  // Windward mark w (0, 1000) to port: a starboard boat beating to it (no tack needed to round) and a port boat
+  // reaching in from the west (she must tack to round): rule 18 does not apply between them.
+  RulesRig rig(2);
+  rig.start_at({{{10.0f, 990.0f}, heading_for(0.0f, kBeat), 3.0f, 0.0f}, {{-15.0f, 995.0f}, 90.0f * wm::DEG, 3.0f, 0.0f}});
+  rig.step();
+  const wm::PairRecord* r = rig.rules.pair(0, 1);
+  REQUIRE(r != nullptr);
+  CHECK(r->room_rule == RuleCode::none);
+}
+
+TEST_CASE("rules: rule 18 at a finishing mark") {
+  // Mark m (0, 200) to port, then the finish line y = 400 (x -60 .. 60); wind from the east, reaching north. Both
+  // pass m, then approach the finish end f2 (60, 400), left to starboard: the inside boat 0 aims 4 m inside it, the
+  // outside boat 1 squeezes towards 1 m inside it.
+  const std::string course = R"({"schema": "windmark.course/1", "id": "t", "name": "T", "venue": "v", "frame": "world",
+    "marks": [{"id": "rc", "type": "buoy", "at": {"x": 100, "y": 0}},
+              {"id": "pin", "type": "buoy", "at": {"x": -100, "y": 0}},
+              {"id": "m", "type": "buoy", "at": {"x": 0, "y": 200}},
+              {"id": "f1", "type": "buoy", "at": {"x": -60, "y": 400}},
+              {"id": "f2", "type": "buoy", "at": {"x": 60, "y": 400}}],
+    "start": {"ends": ["pin", "rc"]}, "finish": {"ends": ["f1", "f2"]},
+    "sequence": [{"mark": "m", "round": "port"}]})";
+  RulesRig rig(2, quick_settings(), course);
+  rig.twd = 0.5f * wm::PI;
+  rig.start_at({{{52.0f, 170.0f}, 0.0f, 3.0f, 0.0f}, {{46.0f, 170.0f}, 0.0f, 3.0f, 0.0f}});
+  for (int k = 0; k < 4000 && rig.b[0].p.y < 368.0f; ++k) rig.step();
+  REQUIRE(rig.race.boat(0).next == 2);
+  REQUIRE(rig.race.boat(1).next == 2);
+  const Vec2 F2{60.0f, 400.0f};
+  rig.b[0].psi = wm::compass(wm::v_sub(Vec2{F2.x - 4.0f, F2.y}, rig.b[0].p));
+  rig.b[1].psi = wm::compass(wm::v_sub(Vec2{F2.x - 1.0f, F2.y}, rig.b[1].p));
+  bool entitled = false;
+  for (int k = 0; k < 200; ++k) {
+    rig.step();
+    const wm::PairRecord* r = rig.rules.pair(0, 1);
+    if (r != nullptr && r->room_rule == RuleCode::r18_2 && r->room_entitled == 0 && r->room_giver == 1) entitled = true;
+  }
+  CHECK(entitled);
+  CHECK(rig.penalties(1, RuleCode::r18_2) == 1);
+  CHECK(rig.penalties(0) == 0);
+}
+
+TEST_CASE("rules: 18.2(d), an outside boat unable to give mark-room from the start of the overlap") {
+  // Mark m (0, 300) to port, boats heading south. A status is set and ends (the entitled boat leaves the zone, the
+  // other stays in it), then a new overlap begins (18.2(c)): the inside boat 0 at (-5, 320) moving at 3 m/s, the
+  // outside boat 1 stopped across her mark-room path at (-8, 315), heading 135, so that she cannot give room.
+  // `from_astern` says which boat came from clear astern into the overlap.
+  auto overlap = [](int from_astern) {
+    RulesRig rig(2, quick_settings(), mark_course());
+    rig.start_at({{{-60.0f, 250.0f}, wm::PI, 0.0f, 0.0f}, {{-75.0f, 250.0f}, wm::PI, 0.0f, 0.0f}});
+    const Vec2 E{-5.0f, 320.0f}, G{-8.0f, 315.0f};
+    const float hG = 135.0f * wm::DEG;
+    // The boat that will come from astern is in the zone alone and entitled; then she is out and the other in.
+    const std::size_t k = static_cast<std::size_t>(from_astern), o = 1 - k;
+    rig.b[k] = {{-5.0f, 312.0f}, wm::PI, 0.0f, 0.0f};
+    rig.b[o] = {{-8.0f, 345.0f}, wm::PI, 0.0f, 0.0f};
+    rig.run(0.1f);
+    rig.b[0] = {E, wm::PI, 0.0f, 0.0f};
+    rig.b[1] = {G, hG, 0.0f, 0.0f};
+    rig.b[k].p.y = rig.b[k].p.y + 14.0f;  // clear astern of the other, out of the zone
+    rig.run(0.1f);
+    const wm::PairRecord* before = rig.rules.pair(0, 1);
+    REQUIRE(before != nullptr);
+    REQUIRE(before->room_rule == RuleCode::none);
+    rig.b[0] = {E, wm::PI, 3.0f, 0.0f};
+    rig.b[1] = {G, hG, 0.0f, 0.0f};
+    rig.step();
+    const wm::PairRecord* r = rig.rules.pair(0, 1);
+    REQUIRE(r != nullptr);
+    REQUIRE(r->relation == wm::Relation::overlapped);
+    return std::make_pair(r->room_rule, r->room_entitled);
+  };
+  SUBCASE("the inside boat came from clear astern: no duty") {
+    CHECK(overlap(0).first == RuleCode::none);
+  }
+  SUBCASE("the outside boat came from clear astern: she owes mark-room all the same") {
+    const auto [rule, entitled] = overlap(1);
+    CHECK(rule == RuleCode::r18_2);
+    CHECK(entitled == 0);
+  }
+}

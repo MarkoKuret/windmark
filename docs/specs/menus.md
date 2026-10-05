@@ -78,6 +78,17 @@ command line (`--resolution 1080x1920`).
 ## 4. Look and input
 
 - A calm sea and sky backdrop, a light sail-cloth panel, navy text, one accent colour; no stock widgets' look.
+- **One accent across the game**: the HUD's `mark` yellow (`#FFD23F`, `hud.md` §16.2). Yellow on the cream cloth
+  fails as text (1.3:1), so the menus use it as a **fill** with navy text on it (navy `#1A2A3A` on yellow is
+  10:1): the focused row or button is a yellow bar with a 5 px navy edge on its left (the edge keeps the focus
+  visible against the cloth); the heading rules, the selected settings section's underline and the scroll grabber
+  are yellow bars. Navy text on the cloth is 13:1, the muted grey `#56646E` 5.4:1.
+- **Red** (`#B8361C`, 5.2:1 on the cloth) only for warnings, destructive actions (**Quit**, **Reset section**,
+  reset bindings) and penalties. A focused destructive button is a red bar with cloth-coloured text (5.2:1).
+- **Type**: Barlow Semi Condensed, the HUD's family (`docs/design/hud_direction.md` §2). Menu items and buttons:
+  Bold, all caps, tracking +6 %. Setting names and section tabs: SemiBold, all caps, tracking +8 %. Values:
+  SemiBold with tabular figures, as the HUD numerals. Headings: Bold caps; sentence text (sub-lines, notes, help)
+  Medium in sentence case.
 - Every screen works with the mouse, the keyboard (arrows, Enter, Esc) and the gamepad (D-pad or left stick, A,
   B), through Godot's built-in `ui_*` navigation actions. On a setting, left and right change the value; Enter or
   A steps it forward. B or Esc goes back one level (Esc in the pause menu resumes, it is `pause_menu`).

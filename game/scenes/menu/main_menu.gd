@@ -53,11 +53,7 @@ func _ready() -> void:
 	row.add_child(left)
 	var title := MenuTheme.label("WINDMARK", MenuTheme.TITLE_SIZE, MenuTheme.NAVY)
 	title.name = "Title"
-	var fv := FontVariation.new()
-	fv.base_font = ThemeDB.fallback_font
-	fv.spacing_glyph = 4
-	fv.variation_embolden = 0.6
-	title.add_theme_font_override("font", fv)
+	title.add_theme_font_override("font", MenuTheme.font(700, 0.18, MenuTheme.TITLE_SIZE))
 	left.add_child(title)
 	left.add_child(MenuTheme.label("Tactical sailing races", MenuTheme.ROW_SIZE, MenuTheme.INK))
 	var spacer := Control.new()
@@ -70,7 +66,7 @@ func _ready() -> void:
 	list.add_theme_constant_override("separation", 2)
 	card.add_child(list)
 	for e in [["quick", "Quick race"], ["free", "Free sail"], ["settings", "Settings"], ["quit", "Quit"]]:
-		var b := MenuTheme.button(e[1])
+		var b := MenuTheme.button(e[1], MenuTheme.ITEM_SIZE, e[0] == "quit")
 		b.name = e[1].replace(" ", "")
 		var id: String = e[0]
 		b.pressed.connect(func() -> void: _pressed(id))

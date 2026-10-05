@@ -56,7 +56,7 @@ func _ready() -> void:
 	gap.custom_minimum_size = Vector2(0, 8)
 	_list.add_child(gap)
 	for e in [["resume", "Resume"], ["restart", "Restart"], ["settings", "Settings"], ["quit", "Quit to menu"]]:
-		var b := MenuTheme.button(e[1])
+		var b := MenuTheme.button(e[1], MenuTheme.ITEM_SIZE, e[0] == "quit")
 		b.name = e[1].replace(" ", "")
 		var id: String = e[0]
 		b.pressed.connect(func() -> void: _pressed(id))

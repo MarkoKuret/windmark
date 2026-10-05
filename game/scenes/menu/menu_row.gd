@@ -1,6 +1,7 @@
 class_name MenuRow
 extends PanelContainer
-## One setting on a menu (menus.md §4): its name on the left, its value on the right between ‹ and ›.
+## One setting on a menu (menus.md §4): its name on the left in caps, its value on the right between ‹ and ›
+## (tabular figures, as the HUD numerals); focused, a yellow bar with a navy edge.
 ## Left and right (keys, D-pad, stick) step the value; Enter or A steps it forward; the mouse clicks the left or
 ## right half of the value. INFO rows only show a value (the bindings).
 
@@ -69,12 +70,12 @@ func _init_row(text: String, v: Variant) -> void:
 	var h := HBoxContainer.new()
 	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(h)
-	_name = MenuTheme.label(text, MenuTheme.ROW_SIZE, MenuTheme.INK)
+	_name = MenuTheme.caps(text, MenuTheme.ROW_SIZE - 2, MenuTheme.INK)
 	_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_name.clip_text = true
 	_name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	h.add_child(_name)
-	_value = MenuTheme.label("", MenuTheme.ROW_SIZE, MenuTheme.NAVY)
+	_value = MenuTheme.label("", MenuTheme.ROW_SIZE, MenuTheme.NAVY, 600)
 	_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_value.custom_minimum_size = Vector2(170 if kind != Kind.INFO else 0, 0)
 	h.add_child(_value)
@@ -87,9 +88,12 @@ func _init_row(text: String, v: Variant) -> void:
 
 
 func _style() -> void:
-	var fill := MenuTheme.FOCUS_FILL if _focused else Color(0, 0, 0, 0)
-	add_theme_stylebox_override("panel", MenuTheme.box(fill, 5 if _focused else 0, 3, Vector2(16, 7)))
+	var pad := Vector2(16, 7)
+	add_theme_stylebox_override("panel", MenuTheme.focus_box(pad) if _focused
+		else MenuTheme.box(Color(0, 0, 0, 0), 0, 2, pad))
 	_name.add_theme_color_override("font_color", MenuTheme.NAVY if _focused else MenuTheme.INK)
+	if kind == Kind.INFO:
+		_value.add_theme_color_override("font_color", MenuTheme.NAVY if _focused else MenuTheme.MUTED)
 
 
 func value_text() -> String:
@@ -107,7 +111,6 @@ func value_text() -> String:
 func _show() -> void:
 	if kind == Kind.INFO:
 		_value.text = str(value)
-		_value.add_theme_color_override("font_color", MenuTheme.MUTED)
 	else:
 		_value.text = "‹   %s   ›" % value_text()
 

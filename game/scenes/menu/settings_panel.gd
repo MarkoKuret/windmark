@@ -33,7 +33,8 @@ func build(s: Settings) -> void:
 	for i in SECTIONS.size():
 		var b := MenuTheme.button(TITLES[i], MenuTheme.ROW_SIZE)
 		b.name = TITLES[i]
-		for st in ["normal", "hover", "pressed", "focus", "disabled"]:
+		b.add_theme_font_override("font", MenuTheme.font(600, MenuTheme.LABEL_TRACKING, MenuTheme.ROW_SIZE))
+		for st in ["normal", "hover", "pressed", "focus", "hover_pressed", "disabled"]:
 			var sb := (MenuTheme.theme().get_stylebox(st, "Button") as StyleBoxFlat).duplicate() as StyleBoxFlat
 			sb.content_margin_left = 10
 			sb.content_margin_right = 10
@@ -57,7 +58,7 @@ func build(s: Settings) -> void:
 	var foot := HBoxContainer.new()
 	foot.add_theme_constant_override("separation", 16)
 	add_child(foot)
-	_reset = MenuTheme.button("Reset section", MenuTheme.ROW_SIZE)
+	_reset = MenuTheme.button("Reset section", MenuTheme.ROW_SIZE, true)
 	_reset.name = "Reset"
 	_reset.pressed.connect(func() -> void:
 		settings.reset(section)
@@ -112,13 +113,19 @@ func show_section(sec: String, focus := true) -> void:
 				break
 
 
+## The shown section: navy caps over a yellow underline; the others muted (menus.md §4).
 func _tab_style() -> void:
 	for sec in tabs:
 		var b: Button = tabs[sec]
 		var on: bool = sec == section
-		b.add_theme_color_override("font_color", MenuTheme.ACCENT if on else MenuTheme.MUTED)
-		b.add_theme_color_override("font_hover_color", MenuTheme.ACCENT if on else MenuTheme.NAVY)
-		b.add_theme_color_override("font_focus_color", MenuTheme.ACCENT)
+		var sb := MenuTheme.box(Color(0, 0, 0, 0), 0, 0, Vector2(10, 8))
+		if on:
+			sb.border_width_bottom = 4
+			sb.border_color = MenuTheme.ACCENT
+		b.add_theme_stylebox_override("normal", sb)
+		b.add_theme_color_override("font_color", MenuTheme.NAVY if on else MenuTheme.MUTED)
+		b.add_theme_color_override("font_hover_color", MenuTheme.NAVY)
+		b.add_theme_color_override("font_focus_color", MenuTheme.NAVY)
 
 
 func _row(r: MenuRow) -> void:

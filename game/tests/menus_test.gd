@@ -14,6 +14,7 @@ func _init() -> void:
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
 	Settings.reset_current()
 	test_data()
+	test_look()
 	test_settings_round_trip()
 	test_apply()
 	await test_main_menu()
@@ -46,6 +47,46 @@ func test_data() -> void:
 	t.ok(c7.has("example_bay/example_wl"), "example_bay courses for wm7: %s" % [c7])
 	t.ok(MenuData.courses("example_bay", "no_such_class").is_empty(), "no course lists an unknown class")
 	t.ok(MenuData.courses("no_such_venue", "wm7").is_empty(), "no courses for an unknown venue")
+
+
+## menus.md §4: one accent (the HUD's yellow) as a fill with navy text, red only for destructive actions, the
+## HUD's type.
+static func _lum(c: Color) -> float:
+	var l := func(x: float) -> float: return x / 12.92 if x <= 0.03928 else pow((x + 0.055) / 1.055, 2.4)
+	return 0.2126 * l.call(c.r) + 0.7152 * l.call(c.g) + 0.0722 * l.call(c.b)
+
+
+static func contrast(a: Color, b: Color) -> float:
+	var la := _lum(a)
+	var lb := _lum(b)
+	return (maxf(la, lb) + 0.05) / (minf(la, lb) + 0.05)
+
+
+func test_look() -> void:
+	t.begin("look: one accent, red for destructive actions, Barlow")
+	t.ok(MenuTheme.ACCENT == HudStyle.MARK, "menu accent is the HUD's mark yellow")
+	var cloth := MenuTheme.CLOTH_SOLID
+	t.ok(contrast(MenuTheme.NAVY, MenuTheme.ACCENT) >= 4.5, "navy text on the yellow fill: %.1f:1"
+		% contrast(MenuTheme.NAVY, MenuTheme.ACCENT))
+	t.ok(contrast(MenuTheme.NAVY, cloth) >= 4.5 and contrast(MenuTheme.MUTED, cloth) >= 4.5,
+		"navy and muted text on the cloth: %.1f:1, %.1f:1" % [contrast(MenuTheme.NAVY, cloth),
+		contrast(MenuTheme.MUTED, cloth)])
+	t.ok(contrast(MenuTheme.SIGNAL, cloth) >= 4.5, "red text on the cloth (and cloth text on red): %.1f:1"
+		% contrast(MenuTheme.SIGNAL, cloth))
+	var th := MenuTheme.theme()
+	var focus := th.get_stylebox("focus", "Button") as StyleBoxFlat
+	t.ok(focus.bg_color == MenuTheme.ACCENT and th.get_color("font_focus_color", "Button") == MenuTheme.NAVY,
+		"focused button: yellow fill, navy text")
+	var quit := MenuTheme.button("Quit", MenuTheme.ITEM_SIZE, true)
+	t.ok(quit.get_theme_color("font_color") == MenuTheme.SIGNAL and quit.text == "QUIT", "Quit: red caps")
+	var f := quit.get_theme_font("font") as FontVariation
+	t.ok(f != null and f.base_font.resource_path.ends_with("BarlowSemiCondensed-Bold.ttf"), "buttons in Barlow Bold")
+	quit.free()
+	var r := MenuRow.range_row("Wind speed", "wind_kn", 4, 25, 1, 12.0, func(v: float) -> String: return "%d kn" % v)
+	var vf := r._value.get_theme_font("font") as FontVariation
+	t.ok(r._name.text == "WIND SPEED" and vf != null and vf.opentype_features.size() > 0,
+		"rows: caps names, tabular values")
+	r.free()
 
 
 func _odd_settings() -> Settings:

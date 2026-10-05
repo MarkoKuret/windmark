@@ -52,12 +52,10 @@ func build(race: bool, last: Dictionary) -> void:
 	add_child(_gap(14))
 	start_button = MenuTheme.button("Start race" if race else "Set sail")
 	start_button.name = "Start"
-	start_button.add_theme_color_override("font_color", MenuTheme.ACCENT)
-	start_button.add_theme_color_override("font_focus_color", MenuTheme.ACCENT)
-	start_button.add_theme_color_override("font_hover_color", MenuTheme.ACCENT)
+	MenuTheme.set_primary(start_button)
 	start_button.pressed.connect(func() -> void: start_pressed.emit())
 	add_child(start_button)
-	_note = MenuTheme.label("", MenuTheme.SMALL_SIZE, MenuTheme.ACCENT)
+	_note = MenuTheme.label("", MenuTheme.SMALL_SIZE, MenuTheme.SIGNAL)
 	add_child(_note)
 	_refresh_courses()
 

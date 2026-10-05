@@ -227,6 +227,21 @@ Counted from the GLBs and an in-memory boatgen rebuild per tagged part; estimate
   - livery text: 1024x512 RGBA8 per boat, 2 MB (`livery_text.gd:9`);
   - wakes: a 512x512 buffer viewport redrawn every frame on M and H (`sea_wakes.gd:23,203`).
 
+### Boats after WM-100 (2026-10-05)
+
+| | wm7 LOD0 / 1 / 2 / 3 | wm12 LOD0 / 1 / 2 / 3 |
+| --- | --- | --- |
+| Model triangles without sails (before: LOD0 / 1 / 2) | 14.5k / 4.2k / 1.2k / 0.25k (72k / 23k / 6k) | 17.8k / 5.4k / 1.4k / 0.27k (92k / 31k / 7k) |
+| Surfaces drawn without sails (before) | 9 / 3 / 2 / 2 (29 / 26 / 20) | 10 / 3 / 2 / 2 (32 / 29 / 22) |
+| Shadow casters per cascade | proxy (about 600 triangles, 2 draws) and the sails | the same |
+| Sail triangles drawn | full on LOD0 and LOD1, a quarter on LOD2, a sixteenth on LOD3 | |
+| Staged textures of one class (imported) | boat atlas 14 MB, sails 7.5 MB, shared tiling atlas 7.5 MB (before 52, 30, 27 MB) | |
+| GLB scenes, both classes | 1.2 MB (before 8.5 MB) | |
+
+Per boat on the chase level with 2 shadow cascades, about 22 draws (prepass and colour of 3 surfaces and 3 sails,
+proxy and sails per cascade) where it was about 130: an estimate from the surfaces, to confirm with a windowed
+`matrix.py` run. Imported boat content for both classes: 56 MB, from 205 MB.
+
 ### Venue (example_bay)
 
 | Item | Triangles | Note |

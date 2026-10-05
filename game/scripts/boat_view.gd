@@ -521,7 +521,7 @@ func _shape_params(sp: SailPart, look: Dictionary, furling: bool) -> Dictionary:
 		d = {"fill_gain": 0.7, "fill_curve": 1.3, "flutter_amp": 0.08, "twist_top": 0.140, "camber": 0.12}
 	elif t == "spinnaker_asym":
 		kind = SailShapeRef.Kind.ASYM
-		d = {"fill_gain": 1.0, "fill_curve": 1.0, "flutter_amp": 1.0, "twist_top": 0.0, "camber": 0.26,
+		d = {"fill_gain": 1.0, "fill_curve": 1.0, "flutter_amp": 1.0, "twist_top": 0.45, "camber": 0.27,
 			"tack_line_max": 0.04}
 	elif t == "spinnaker_sym":
 		kind = SailShapeRef.Kind.SYM

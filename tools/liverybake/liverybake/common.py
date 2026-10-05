@@ -208,6 +208,12 @@ def save_normal(path, n):
     save_png(path, n * 0.5 + 0.5, srgb=False)
 
 
+def save_relief(path, relief):
+    """Writes an (H, W) 8-bit relief image as a greyscale PNG (data_format.md §8.5)."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    Image.fromarray(np.asarray(relief, dtype=np.uint8), "L").save(path, optimize=True, compress_level=9)
+
+
 def save_orm(path, occ, rough, third):
     save_png(path, np.stack([occ, rough, third], -1), srgb=False)
 

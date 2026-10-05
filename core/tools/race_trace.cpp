@@ -4,6 +4,16 @@
 //   windmark_race_trace ai   [--seed S] [--boats N] [--out FILE]   the AI fleet of tests/ai_fleet_race.h (10 boats)
 //   windmark_race_trace full [--seed S] [--out FILE]               the scripted six-boat race of the full-race tests
 //   windmark_race_trace ai --profile [--boats N]                   per-tick cost, split by how bunched the fleet is
+//   windmark_race_trace ai --telemetry FILE                        a per-boat CSV of the AI fleet every 0.5 s
+//
+// The telemetry CSV (for finding where a boat loses time): race time, boat, class, level, next step, rank,
+// position, heading, speed and polar target, true wind angle and speed at the boat, heel and its target, the
+// front sail (perf sail id, "-" for none; "*" while a sail change runs), helm, let fly, the AI's tactic and
+// manoeuvre, pending penalties, turning for a penalty, the deadline, the race status, and the AI's leg type
+// (0 beat, 1 reach, 2 run), target heading, the reason of its last tack or gybe, why a penalty turn waits and its
+// aim point. Rules events (penalties, served, late, mark touches, disqualifications) follow as "#ev" lines, and each
+// boat's splits at the end as "#split" lines (with the course distance still to sail when the boat last raced, and
+// the speed at the close).
 //
 // Lines: "<tick> <checksum hex>" for the tick the step made (world.tick() after the step). A summary goes to stderr.
 // The profile uses the wall clock of the tool only; nothing in the core reads it.
@@ -16,6 +26,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "ai/ai.h"
@@ -40,6 +51,7 @@ struct Options {
   int boats = 10;
   const char* out = nullptr;
   bool profile = false;
+  const char* telemetry = nullptr;
 };
 
 std::unique_ptr<wm::World> full_world(const Options& o, const wm_test::AiFleetRace& data) {
@@ -104,6 +116,8 @@ int main(int argc, char** argv) {
       o.out = next();
     } else if (a == "--profile") {
       o.profile = true;
+    } else if (a == "--telemetry") {
+      o.telemetry = next();
     } else {
       die("unknown argument " + a);
     }
@@ -156,9 +170,54 @@ int main(int argc, char** argv) {
   int worst_near = 0, worst_pairs = 0;
   const float r_bunch = 4.0f * w->race().L_max();
 
+  std::FILE* tel = nullptr;
+  if (o.telemetry != nullptr) {
+    if (o.mode != "ai") die("--telemetry needs the ai race");
+    tel = std::fopen(o.telemetry, "w");
+    if (tel == nullptr) die(std::string("cannot write ") + o.telemetry);
+    std::fprintf(tel, "t,i,cls,lvl,next,rank,x,y,psi,v,vt,twa,tws,heel,heel_t,front,helm,letfly,tactic,man,pend,"
+                 "pturn,deadline,status,leg,psi_t,why,pen_wait,aim_x,aim_y\n");
+  }
+  auto write_telemetry = [&]() {
+    const float t = w->race().race_time(w->tick());
+    for (std::size_t i = 0; i < w->boat_count(); ++i) {
+      const wm::Boat& b = w->boat(i);
+      const wm::BoatState& s = b.state();
+      const wm::RaceBoat& rb = w->race().boat(i);
+      const wm::BoatRules& br = w->rules().boat(i);
+      const wm::AiDebug& d = ai.debug(static_cast<std::int32_t>(i));
+      const std::int32_t f = b.sails().front();
+      const std::string front = (f >= 0 ? b.perf().sails[static_cast<std::size_t>(f)].id : std::string("-")) +
+                                (b.sails().busy() ? "*" : "");
+      const char* status = rb.finished ? "fin" : (rb.dsq || br.dsq ? "dsq" : (rb.ghost ? "ghost" : "race"));
+      std::fprintf(tel,
+                   "%.1f,%zu,%s,%d,%d,%d,%.1f,%.1f,%.1f,%.2f,%.2f,%.1f,%.2f,%.1f,%.1f,%s,%.2f,%d,%s,%d,%zu,%d,%.0f,%s,"
+                   "%d,%.1f,%s,%d,%.1f,%.1f\n",
+                   static_cast<double>(t), i, b.perf().class_id.c_str(),
+                   static_cast<int>(wm_test::AiFleetRace::level(static_cast<int>(i))),
+                   rb.next, rb.rank, static_cast<double>(s.pos_x), static_cast<double>(s.pos_y),
+                   static_cast<double>(s.psi / wm::DEG), static_cast<double>(s.v),
+                   static_cast<double>(b.outputs().target_speed), static_cast<double>(s.twa / wm::DEG),
+                   static_cast<double>(s.tws), static_cast<double>(s.phi / wm::DEG),
+                   static_cast<double>(b.outputs().heel_target / wm::DEG), front.c_str(), static_cast<double>(s.h),
+                   b.controls().let_fly ? 1 : 0, wm::ai_tactic_name(d.tactic), d.manoeuvre, br.pending.size(),
+                   br.turning_for_penalty ? 1 : 0, static_cast<double>(br.deadline_s), status, d.leg,
+                   static_cast<double>(d.psi_target / wm::DEG), wm::ai_tactic_name(d.man_why), d.pen_wait,
+                   static_cast<double>(d.aim.x), static_cast<double>(d.aim.y));
+    }
+  };
+
   std::int32_t contacts = 0, penalties = 0;
   std::uint64_t last = 0;
+  std::vector<float> last_d;  // remaining course distance while racing (race.md §8.2)
   for (std::uint32_t k = 0; k < 80000 && w->race().state() != wm::RaceState::closed; ++k) {
+    if (tel != nullptr && w->race_created() && w->tick() % 10u == 0u) write_telemetry();
+    if (tel != nullptr && w->race_created()) {
+      last_d.resize(w->boat_count(), 0.0f);
+      for (std::size_t i = 0; i < w->boat_count(); ++i) {
+        if (w->race().racing(i)) last_d[i] = w->race().boat(i).D;
+      }
+    }
     int near = 0, pairs = 0;
     if (o.profile) bunching(*w, r_bunch, near, pairs);
     const double ai_before = ai_s;
@@ -182,9 +241,30 @@ int main(int argc, char** argv) {
     for (const wm::ContactEvent& e : w->events().contacts) {
       if (e.begin && e.other_kind == wm::ContactKind::boat && e.boat < e.other) ++contacts;
     }
-    for (const wm::RulesEvent& e : w->events().rules) penalties += e.kind == wm::RulesEventKind::penalty ? 1 : 0;
+    for (const wm::RulesEvent& e : w->events().rules) {
+      penalties += e.kind == wm::RulesEventKind::penalty ? 1 : 0;
+      if (tel != nullptr && e.kind != wm::RulesEventKind::rule_warning && e.kind != wm::RulesEventKind::incident) {
+        static const char* const kinds[] = {"warning", "incident", "penalty", "served", "cancelled", "late",
+                                            "mark_touch", "protestable", "protested", "dsq"};
+        const std::string_view rule = wm::rule_code_str(e.rule);
+        std::fprintf(tel, "#ev,%.1f,%d,%s,%.*s,other %d,mark %d\n",
+                     static_cast<double>(w->race().race_time(e.tick)), e.boat, kinds[static_cast<int>(e.kind)],
+                     static_cast<int>(rule.size()), rule.data(), e.other, e.mark);
+      }
+    }
   }
   if (out != nullptr) std::fclose(out);
+  if (tel != nullptr) {
+    for (std::size_t i = 0; i < w->boat_count(); ++i) {
+      std::fprintf(tel, "#split,%zu", i);
+      for (const float t : w->race().boat(i).splits) std::fprintf(tel, ",%.1f", static_cast<double>(t));
+      const std::string_view code = wm::score_code_name(w->race().boat(i).code);
+      std::fprintf(tel, ",place %d %.*s,D %.1f m,v %.2f m/s\n", w->race().boat(i).place, static_cast<int>(code.size()),
+                   code.data(), static_cast<double>(i < last_d.size() ? last_d[i] : 0.0f),
+                   static_cast<double>(w->boat(i).state().v));
+    }
+    std::fclose(tel);
+  }
 
   int finished = 0;
   for (const wm::ResultRow& r : w->race().results()) finished += r.place > 0 ? 1 : 0;

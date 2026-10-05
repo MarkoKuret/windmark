@@ -63,9 +63,13 @@ void light() {
 	// through the cloth: brighter looking toward the sun, with the shadows of the rig and the other sails
 	float fwd = pow(max(dot(-VIEW, LIGHT), 0.0), 4.0);
 	DIFFUSE_LIGHT += max(-ndl, 0.0) * v_trans * (0.75 + 0.75 * fwd) * mix(1.0, ATTENUATION, 0.8) * LIGHT_COLOR / PI;
-	// a soft sheen (Blinn-Phong from the roughness), shadowed
+	// the cloth's sheen (sail_visuals.md §11.5: the Charlie sheen, no plastic highlight), shadowed
 	vec3 h = normalize(VIEW + LIGHT);
-	float shin = 2.0 / max(ROUGHNESS * ROUGHNESS * ROUGHNESS * ROUGHNESS, 1e-3) - 2.0;
-	float spec = pow(max(dot(NORMAL, h), 0.0), shin) * (shin + 8.0) / (8.0 * PI);
-	SPECULAR_LIGHT += 0.04 * spec * max(ndl, 0.0) * ATTENUATION * LIGHT_COLOR;
+	float nh = dot(NORMAL, h);
+	float nl = max(ndl, 0.0);
+	float nv = max(dot(NORMAL, VIEW), 1e-4);
+	float ia = 1.0 / max(ROUGHNESS, 0.05);
+	float d = (2.0 + ia) * pow(max(1.0 - nh * nh, 0.0), 0.5 * ia) / (2.0 * PI);
+	float vs = 1.0 / (4.0 * max(nl + nv - nl * nv, 1e-3));
+	SPECULAR_LIGHT += (0.03 + 0.35 * ALBEDO) * d * vs * nl * ATTENUATION * LIGHT_COLOR;
 }

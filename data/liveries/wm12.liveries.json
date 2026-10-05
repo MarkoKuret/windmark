@@ -3,10 +3,10 @@
   "class": "wm12",
   "insignia": {"text": "W12"},
   "sails": {
-    "main": {"cloth": "laminate", "color": "#5d6168", "fibre": "#121315", "number": "#e2e2dc"},
-    "headsail": {"cloth": "laminate", "color": "#5d6168", "fibre": "#121315", "number": "#e2e2dc"},
-    "code_zero": {"cloth": "laminate", "color": "#5d6168", "fibre": "#121315", "number": "#e2e2dc"},
-    "spinnaker": {"cloth": "nylon", "color": "#14284f", "design": "head", "radius": 0.24, "number": "#e2e2dc",
+    "main": {"cloth": "laminate", "color": "#8b8e93", "fibre": "#2c2d30", "number": "#e2e2dc"},
+    "headsail": {"cloth": "laminate", "color": "#8b8e93", "fibre": "#2c2d30", "number": "#e2e2dc"},
+    "code_zero": {"cloth": "laminate", "color": "#8b8e93", "fibre": "#2c2d30", "number": "#e2e2dc"},
+    "spinnaker": {"cloth": "nylon", "color": "#2a62ad", "design": "head", "radius": 0.24, "number": "#e2e2dc",
       "colors": ["#c3c5c7"]}
   },
   "ropes": {

@@ -1,12 +1,13 @@
 """Command line (tools/liverybake/README.md):
 
     python3 -m liverybake [CLASS ...] [--livery ID] [--force] [--only PART ...] [--no-stage] [--stage-only]
-                          [--out DIR] [--hull-size N] [--transom-size N] [--deck-size N] [--sail-size N]
+                          [--normals-from-relief] [--out DIR] [--hull-size N] [--transom-size N] [--deck-size N] [--sail-size N]
                           [--rope-size N] [--quiet]
 
 Bakes the starting livery textures of each class (default: every data/liveries/*.liveries.json) into
 data/liveries/<class>/ where a part's files are all missing, never over hand-edited files unless asked (--force,
---only), then stages them for the game (game/generated/liveries, with Godot import settings).
+--only), makes each sail's normal map from its relief image (data_format.md §8.5), then stages them for the game
+(game/generated/liveries, with Godot import settings).
 """
 import argparse
 import json
@@ -16,9 +17,10 @@ import time
 from pathlib import Path
 
 import numpy as np
+from PIL import Image
 
 from . import cloth, deck, geometry, hull, ropes, sails, text
-from .common import DATA, STAGE, Writer, save_normal, save_orm, save_png
+from .common import DATA, STAGE, Writer, save_normal, save_orm, save_png, save_relief
 
 PARTS = ("hull", "keel", "transom", "deck", "sails", "ropes")
 
@@ -39,7 +41,7 @@ def _r(v, n=6):
 HULL_FILES = ("hull_albedo.png", "hull_normal.png", "hull_orm.png")
 TRANSOM_FILES = ("transom_albedo.png", "transom_normal.png", "transom_orm.png")
 DECK_FILES = ("deck_albedo.png", "deck_normal.png", "deck_orm.png")
-SAIL_SUFFIXES = ("_port_albedo.png", "_stbd_albedo.png", "_normal.png", "_orm.png")
+SAIL_SUFFIXES = ("_port_albedo.png", "_stbd_albedo.png", "_normal.png", "_orm.png", "_relief.png")
 
 
 def _save_set(folder, names, r):
@@ -140,11 +142,13 @@ def bake_class(class_id, a, writer, log):
         save_png(paths[1], r["albedo_stbd"], srgb=True)
         save_normal(paths[2], r["normal"])
         save_png(paths[3], r["orm"], srgb=False)
+        save_relief(paths[4], r["relief"])
         writer.note(paths, True)
         info = r["info"]
         tx = info["text"]
         lay["sails"][sid] = {
-            "type": info["type"], "cloth": info["cloth"], "shear": _r(info["shear"], 7), "rect": _r(info["rect"]),
+            "type": info["type"], "cloth": info["cloth"], "relief_m": info["relief_m"], "shear": _r(info["shear"], 7),
+            "rect": _r(info["rect"]),
             "size": info["size"], "texel_m": round(info["texel_m"], 6),
             "text": {"axis": _r(tx["axis"], 7), "up": _r(tx["up"], 7), "tack": _r(tx["tack"]), "h": round(tx["h"], 4),
                      "rows": [{"kind": rw["kind"], "port": _r(rw["port"], 4), "stbd": _r(rw["stbd"], 4)}
@@ -153,6 +157,31 @@ def bake_class(class_id, a, writer, log):
         log(f"{class_id}/sails/{sid}: {info['cloth']} {info['size'][0]}x{info['size'][1]} in {time.time() - t:.1f} s"
             + ("" if info["arc_ok"] else " (numbers outside the rules' arc)"))
     _write_json(lay_path, lay)
+
+
+def normals_from_relief(classes, data=DATA, log=print):
+    """Rewrites each sail's normal map from its relief image (data_format.md §8.5) where the relief exists and the
+    normal map differs from what it gives. Returns the number of maps written."""
+    n = 0
+    for c in classes:
+        folder = Path(data) / c / "sails"
+        lay_path = folder / "layout.json"
+        if not lay_path.exists():
+            continue
+        lay = json.loads(lay_path.read_text()).get("sails", {})
+        for sid, info in sorted(lay.items()):
+            rp, npth = folder / f"{sid}_relief.png", folder / f"{sid}_normal.png"
+            if not rp.exists():
+                continue
+            relief = np.asarray(Image.open(rp).convert("L"))
+            nrm = sails.normal_from_relief(relief, float(info["texel_m"]), float(info.get("relief_m", sails.RELIEF_M)))
+            enc = (np.clip(nrm * 0.5 + 0.5, 0, 1) * 255.0 + 0.5).astype(np.uint8)
+            if npth.exists() and np.array_equal(np.asarray(Image.open(npth).convert("RGB")), enc):
+                continue
+            save_normal(npth, nrm)
+            n += 1
+            log(f"{c}/sails/{sid}: normal map made from {rp.name}")
+    return n
 
 
 # ----------------------------------------------------------------------------------------------------------------
@@ -212,8 +241,8 @@ def stage(classes, data=DATA, dest=STAGE, log=print):
         if not src.exists():
             continue
         for f in sorted(src.rglob("*")):
-            if f.is_dir() or f.suffix not in (".png", ".json"):
-                continue
+            if f.is_dir() or f.suffix not in (".png", ".json") or f.name.endswith("_relief.png"):
+                continue    # a relief image is the source of its normal map, the game does not load it
             rel = f.relative_to(Path(data))
             d = Path(dest) / rel
             d.parent.mkdir(parents=True, exist_ok=True)
@@ -228,9 +257,13 @@ def stage(classes, data=DATA, dest=STAGE, log=print):
     cdir.mkdir(parents=True, exist_ok=True)
     for name in sails.CLOTHS:
         p = cdir / f"{name}_detail.png"
-        if not p.exists():
-            save_png(p, cloth.detail(name), srgb=False)
+        tmp = cdir / f".{name}_detail.png"
+        save_png(tmp, cloth.detail(name), srgb=False)
+        if not p.exists() or p.read_bytes() != tmp.read_bytes():
+            tmp.replace(p)
             n += 1
+        else:
+            tmp.unlink()
         imp = p.with_name(p.name + ".import")
         if not imp.exists():
             imp.write_text(import_settings(f"_cloth/{p.name}"))
@@ -247,6 +280,8 @@ def main(argv=None):
                                                                   "deck, sails, ropes or a sail id (repeatable)")
     ap.add_argument("--no-stage", action="store_true", help="do not stage the textures for the game")
     ap.add_argument("--stage-only", action="store_true", help="only stage (no bake)")
+    ap.add_argument("--normals-from-relief", action="store_true",
+                    help="only make the sails' normal maps from their relief images (no bake), then stage")
     ap.add_argument("--data", default=str(DATA), help="livery files folder (default data/liveries)")
     ap.add_argument("--out", default=None, help="texture output folder (default: the data folder)")
     ap.add_argument("--stage-dir", default=str(STAGE))
@@ -265,12 +300,13 @@ def main(argv=None):
         if p not in PARTS and not p.replace("_", "").isalnum():
             ap.error(f"--only {p}: one of {', '.join(PARTS)} or a sail id")
     classes = a.classes or sorted(p.name.split(".")[0] for p in Path(a.data).glob("*.liveries.json"))
-    if not a.stage_only:
+    if not a.stage_only and not a.normals_from_relief:
         writer = Writer(force=a.force, only=a.only)
         for c in classes:
             bake_class(c, a, writer, log)
         if writer.kept and not writer.written:
             log("kept the existing (hand-owned) textures; --force or --only PART to rebake")
+    normals_from_relief(classes, a.out, log)
     if not a.no_stage:
         stage(classes, a.out, a.stage_dir, log)
     return 0

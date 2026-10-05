@@ -196,6 +196,7 @@ namespace {
 struct FleetStats {
   int boats = 0, finished = 0, dsq = 0, races = 0;
   int penalties = 0, contacts = 0, ocs = 0, started = 0;
+  int late = 0;  // penalties not taken in time (rules.md §9.4)
   double start_delay = 0.0, stuck = 0.0, stuck_max = 0.0;
   int bad_air = 0, bad_air_known = 0, bad_air_better = 0;
   double d_at = 0.0, d_after = 0.0;
@@ -203,6 +204,11 @@ struct FleetStats {
   void add(const wm_test::AiRaceOutcome& o) {
     ++races;
     contacts += o.contacts;
+    for (const wm::RulesEvent& e : o.rules_events) {
+      if (e.kind == wm::RulesEventKind::penalty_late ||
+          (e.kind == wm::RulesEventKind::disqualified && e.rule == wm::RuleCode::late))
+        ++late;
+    }
     for (const wm::ResultRow& r : o.results) {
       ++boats;
       if (r.place > 0) ++finished;
@@ -231,10 +237,10 @@ struct FleetStats {
   }
   double per_boat(double v) const { return boats > 0 ? v / boats : 0.0; }
   void print(const char* name) const {
-    std::printf("%s: %d races, finished %d/%d (DSQ %d), penalties/boat %.2f, contacts/race %.2f, OCS %d/%d, "
+    std::printf("%s: %d races, finished %d/%d (DSQ %d), penalties/boat %.2f, late %d, contacts/race %.2f, OCS %d/%d, "
                 "start delay %.1f s, stuck/boat %.1f s (max %.1f), bad air/boat %.2f (deficit %.3f -> %.3f 20 s later, "
                 "%d/%d lower), tacks/boat %.1f\n",
-                name, races, finished, boats, dsq, per_boat(penalties), races > 0 ? double(contacts) / races : 0.0,
+                name, races, finished, boats, dsq, per_boat(penalties), late, races > 0 ? double(contacts) / races : 0.0,
                 ocs, boats, started > 0 ? start_delay / started : 0.0, per_boat(stuck), stuck_max,
                 per_boat(bad_air), bad_air_known > 0 ? d_at / bad_air_known : 0.0,
                 bad_air_known > 0 ? d_after / bad_air_known : 0.0, bad_air_better, bad_air_known, per_boat(tacks));

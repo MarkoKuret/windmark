@@ -14,9 +14,15 @@ func _init() -> void:
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
 	Settings.reset_current()
 	test_data()
+	test_look()
 	test_settings_round_trip()
 	test_apply()
+	test_every_key_applied()
+	await test_rebinding()
+	await test_live_backdrop()
 	await test_main_menu()
+	await test_race_card()
+	await test_touches()
 	await test_pause_menu()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
 	t.finish(self, "menus")
@@ -46,6 +52,46 @@ func test_data() -> void:
 	t.ok(c7.has("example_bay/example_wl"), "example_bay courses for wm7: %s" % [c7])
 	t.ok(MenuData.courses("example_bay", "no_such_class").is_empty(), "no course lists an unknown class")
 	t.ok(MenuData.courses("no_such_venue", "wm7").is_empty(), "no courses for an unknown venue")
+
+
+## menus.md §4: one accent (the HUD's yellow) as a fill with navy text, red only for destructive actions, the
+## HUD's type.
+static func _lum(c: Color) -> float:
+	var l := func(x: float) -> float: return x / 12.92 if x <= 0.03928 else pow((x + 0.055) / 1.055, 2.4)
+	return 0.2126 * l.call(c.r) + 0.7152 * l.call(c.g) + 0.0722 * l.call(c.b)
+
+
+static func contrast(a: Color, b: Color) -> float:
+	var la := _lum(a)
+	var lb := _lum(b)
+	return (maxf(la, lb) + 0.05) / (minf(la, lb) + 0.05)
+
+
+func test_look() -> void:
+	t.begin("look: one accent, red for destructive actions, Barlow")
+	t.ok(MenuTheme.ACCENT == HudStyle.MARK, "menu accent is the HUD's mark yellow")
+	var cloth := MenuTheme.CLOTH_SOLID
+	t.ok(contrast(MenuTheme.NAVY, MenuTheme.ACCENT) >= 4.5, "navy text on the yellow fill: %.1f:1"
+		% contrast(MenuTheme.NAVY, MenuTheme.ACCENT))
+	t.ok(contrast(MenuTheme.NAVY, cloth) >= 4.5 and contrast(MenuTheme.MUTED, cloth) >= 4.5,
+		"navy and muted text on the cloth: %.1f:1, %.1f:1" % [contrast(MenuTheme.NAVY, cloth),
+		contrast(MenuTheme.MUTED, cloth)])
+	t.ok(contrast(MenuTheme.SIGNAL, cloth) >= 4.5, "red text on the cloth (and cloth text on red): %.1f:1"
+		% contrast(MenuTheme.SIGNAL, cloth))
+	var th := MenuTheme.theme()
+	var focus := th.get_stylebox("focus", "Button") as StyleBoxFlat
+	t.ok(focus.bg_color == MenuTheme.ACCENT and th.get_color("font_focus_color", "Button") == MenuTheme.NAVY,
+		"focused button: yellow fill, navy text")
+	var quit := MenuTheme.button("Quit", MenuTheme.ITEM_SIZE, true)
+	t.ok(quit.get_theme_color("font_color") == MenuTheme.SIGNAL and quit.text == "QUIT", "Quit: red caps")
+	var f := quit.get_theme_font("font") as FontVariation
+	t.ok(f != null and f.base_font.resource_path.ends_with("BarlowSemiCondensed-Bold.ttf"), "buttons in Barlow Bold")
+	quit.free()
+	var r := MenuRow.range_row("Wind speed", "wind_kn", 4, 25, 1, 12.0, func(v: float) -> String: return "%d kn" % v)
+	var vf := r._value.get_theme_font("font") as FontVariation
+	t.ok(r._name.text == "WIND SPEED" and vf != null and vf.opentype_features.size() > 0,
+		"rows: caps names, tabular values")
+	r.free()
 
 
 func _odd_settings() -> Settings:
@@ -86,6 +132,8 @@ func _odd_settings() -> Settings:
 	s.ambience_volume = 0.0
 	s.interface_volume = 0.6
 	s.last_setup = {"class_id": "wm12", "fleet_size": 7}
+	s.welcomed = true
+	s.bindings = {"let_fly": [["key", KEY_Q, ""], [], ["button", JOY_BUTTON_Y]]}
 	return s
 
 
@@ -255,6 +303,234 @@ func test_render_scale(s: Settings) -> void:
 	root.content_scale_factor = cs0
 
 
+class StubSim extends SimSource:
+	var ev := []
+
+	func contact_events() -> Array:
+		return ev
+
+
+## menus.md §3 "Where each setting goes": every key of the settings file reaches its target, except the ones
+## NOT_APPLIED lists (captions: the audio has no caption lines yet).
+func test_every_key_applied() -> void:
+	t.begin("every setting is applied")
+	var s := _odd_settings()
+	var fresh := Settings.new()
+	var pc := PlayerControls.new()
+	s.apply_controls(pc)
+	var rig := CameraRig.new()
+	s.apply_cameras(rig)
+	var hud := Hud.new()
+	s.apply_hud(hud)
+	var sea := (load("res://scenes/sea/sea.tscn") as PackedScene).instantiate() as Sea
+	s.apply_sea(sea)
+	var fps := Engine.max_fps
+	var cs := root.content_scale_factor
+	var sc3 := root.scaling_3d_scale
+	s.apply_display(root)
+	s.apply_audio()
+	s.apply_bindings()
+	var bus := func(n: String) -> float: return db_to_linear(AudioServer.get_bus_volume_db(AudioServer.get_bus_index(n)))
+	var got := {
+		"controls.helm_mode": pc.helm_mode == s.helm_mode,
+		"controls.stick_dead_zone": is_equal_approx(pc.stick_dead_zone, s.stick_dead_zone),
+		"controls.stick_curve": is_equal_approx(pc.stick_gamma, s.stick_curve),
+		"controls.sheet_rate": is_equal_approx(pc.sheet_rate_scale, s.sheet_rate),
+		"controls.let_fly_toggle": pc.let_fly_toggle,
+		"controls.helm_fine_toggle": pc.helm_fine_toggle,
+		"controls.rankings_toggle": hud.rankings_toggle,
+		"controls.camera_boost_toggle": rig.options.boost_toggle,
+		"controls.sheet_turns_auto_trim_off": pc.sheet_turns_auto_trim_off,
+		"controls.vibration": is_equal_approx(pc.rumble.strength, s.vibration),
+		"cameras.camera_speed": is_equal_approx(rig.options.speed, s.camera_speed),
+		"cameras.invert_orbit_x": rig.options.invert_orbit_x,
+		"cameras.invert_orbit_y": rig.options.invert_orbit_y,
+		"cameras.invert_look_x": rig.options.invert_look_x,
+		"cameras.invert_look_y": rig.options.invert_look_y,
+		"cameras.heel_follow": is_equal_approx(rig.onboard.heel_follow, s.heel_follow),
+		"cameras.smooth_switch": rig.options.smooth_switch,
+		"cameras.reduced_motion": rig.options.reduced_motion,
+		"hud.assist": hud.assist == s.assist,
+		"hud.hud_density": hud.density == s.hud_density and not hud.density_auto,
+		"hud.ui_scale": is_equal_approx(root.content_scale_factor, s.ui_scale),
+		"hud.palette": HudStyle.palette == "tritanopia" and HudStyle.STBD == HudStyle.PALETTES["tritanopia"][0]
+			and HudStyle.TINTS[RaceHudValues.Tint.RED] == HudStyle.PALETTES["tritanopia"][1],
+		"graphics.quality": sea.quality == s.quality,
+		"graphics.render_scale": is_equal_approx(root.scaling_3d_scale, s.render_scale),
+		"graphics.fullscreen": DisplayServer.get_name() == "headless",  # the window mode: not in headless runs
+		"graphics.vsync": DisplayServer.get_name() == "headless",
+		"graphics.fps_limit": Engine.max_fps == s.fps_limit,
+		"menu.last_setup": true,  # the setup pages and Continue (test_main_menu, test_touches)
+		"menu.welcomed": true,  # the first-launch screen (test_touches)
+		"bindings.bindings": Bindings.slots("let_fly") == s.bindings["let_fly"],
+	}
+	for f in Settings.BUSES:
+		got["audio." + f] = absf(bus.call(Settings.BUSES[f][0]) - float(s.get(f))) < 1e-3 or (float(s.get(f)) <= 0.0
+			and AudioServer.is_bus_mute(AudioServer.get_bus_index(Settings.BUSES[f][0])))
+	for sec in Settings.FIELDS:
+		for f in Settings.FIELDS[sec]:
+			var k: String = sec + "." + f
+			if k in Settings.NOT_APPLIED:
+				t.ok(not got.has(k), "%s stored only (listed in NOT_APPLIED)" % k)
+			else:
+				t.ok(got.get(k, false), "%s applied" % k)
+	t.ok(Settings.NOT_APPLIED == ["hud.captions"], "only captions stay stored: %s" % [Settings.NOT_APPLIED])
+	# back to the defaults
+	fresh.apply_hud(hud)
+	t.ok(HudStyle.palette == "standard" and HudStyle.PORT == Color("#FF4438"), "standard palette back")
+	fresh.apply_bindings()
+	Engine.max_fps = fps
+	root.content_scale_factor = cs
+	root.scaling_3d_scale = sc3
+	fresh.apply_audio()
+	hud.free()
+	rig.call("free")
+	sea.free()
+	# the options' behaviour: rankings toggle, camera boost toggle, vibration
+	var h := Hud.new()
+	h.ui_input(RawInput.new().hold(&"rankings"))
+	t.ok(h.show_ranking, "rankings hold: open while held")
+	h.ui_input(RawInput.new())
+	t.ok(not h.show_ranking, "rankings hold: closed on release")
+	h.rankings_toggle = true
+	h.ui_input(RawInput.new().press(&"rankings"))
+	h.ui_input(RawInput.new())
+	t.ok(h.show_ranking, "rankings toggle: a press opens it")
+	var dens := h.density
+	h.ui_input(RawInput.new().press(&"rankings_pad"), 0.05)
+	h.ui_input(RawInput.new(), 0.05)
+	t.ok(not h.show_ranking and h.density == dens, "rankings toggle: a View press closes it and leaves the density")
+	h.free()
+	var fc := FreeCamera.new()
+	var o := CamTypes.Options.new()
+	var ci := CameraInput.new()
+	ci.boost = true
+	fc.handle_input(ci, o, 0.016)
+	t.ok(fc._boost, "boost hold: on while held")
+	o.boost_toggle = true
+	ci = CameraInput.new()
+	fc.handle_input(ci, o, 0.016)
+	t.ok(fc._boost, "boost toggle: stays on when released")
+	ci.boost_pressed = true
+	fc.handle_input(ci, o, 0.016)
+	t.ok(not fc._boost, "boost toggle: the next press turns it off")
+	var rb := Rumble.new()
+	rb.devices = [99]  # no such pad: nothing is driven in the test
+	rb.strength = 0.5
+	var stub := StubSim.new()
+	stub.ev = [{"boat": 0, "begin": true, "closing_speed": 1.0}, {"boat": 1, "begin": true, "closing_speed": 4.0}]
+	rb.tick(stub, 0)
+	rb.frame(0.05, false)
+	t.near(rb.strong, 0.25, 1e-6, "vibration: own contact min(1, 1.0 / 2) x 50 %")
+	rb.frame(0.2, false)
+	t.near(rb.strong, 0.0, 1e-6, "vibration: the contact rumble lasts 0.2 s")
+	rb.frame(0.016, true)
+	t.near(rb.weak, 0.05, 1e-6, "vibration: let fly buzz 0.1 x 50 %")
+	rb.strength = 0.0
+	rb.frame(0.016, true)
+	t.ok(rb.weak == 0.0 and rb.strong == 0.0, "vibration Off: nothing")
+	rb.strength = 1.0
+	rb.frame(0.016, true, false)
+	t.ok(rb.weak == 0.0, "no vibration while not sailing (paused, watching)")
+
+
+## menus.md §3 Rebinding: bind a slot, the conflict shown on both rows, default pairs not conflicts, clear, reset,
+## saved and loaded with the settings.
+func test_rebinding() -> void:
+	t.begin("rebinding")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
+	Settings.reset_current()
+	var st := Settings.current()
+	st.apply_bindings()
+	t.ok(Bindings.all_conflicts().is_empty(), "the defaults have no conflicts (context pairs: %s)" %
+		["Shift for fine helm and camera boost" if Bindings.default_pair("helm_fine", "camera_boost") else "none"])
+	var p := SettingsPanel.new()
+	p.build(st)
+	root.add_child(p)
+	await process_frame
+	p.show_section("controls", false)
+	var row: BindingRow = p.binding_rows.get("let_fly")
+	t.ok(row != null and p.binding_rows.size() == Bindings.actions().size(), "a row per action (%d)"
+		% p.binding_rows.size())
+	t.ok(row._slots.size() == 3 and p.binding_rows["camera_zoom_in"]._slots.size() == 4,
+		"Key 1, Key 2, Pad (zoom: three keys, its defaults have three)")
+	# keyboard: focus the row, pick Key 2, Enter listens, T binds
+	row.grab_focus()
+	await process_frame
+	_key("ui_right")
+	await process_frame
+	t.ok(row.slot == 1, "right picks Key 2")
+	_key("ui_accept")
+	await process_frame
+	t.ok(row.listening and row._slots[1].text == "Press a key", "Enter listens: %s" % row._slots[1].text)
+	var k := InputEventKey.new()
+	k.physical_keycode = KEY_T
+	k.pressed = true
+	root.push_input(k)
+	await process_frame
+	t.ok(not row.listening and Bindings.slots("let_fly")[1] == ["key", KEY_T, ""], "T bound to let fly's Key 2")
+	t.ok(InputMap.action_has_event("let_fly", Bindings.decode(["key", KEY_T, ""])), "in the input map at once")
+	t.ok(row.conflicts.has(1) and p.binding_rows["auto_trim"].conflicts.has(0),
+		"conflict with auto trim shown on both rows")
+	t.ok(row.help.contains("Auto trim"), "the help names the other action: %s" % row.help)
+	t.ok(st.bindings.has("let_fly") and not st.bindings.has("auto_trim"), "only the changed action stored")
+	# a gamepad button goes to the Pad slot whichever slot is picked; Esc cancels
+	row.slot = 0
+	row.listen()
+	var jb := InputEventJoypadButton.new()
+	jb.button_index = JOY_BUTTON_Y
+	jb.pressed = true
+	root.push_input(jb)
+	await process_frame
+	t.ok(Bindings.slots("let_fly")[2] == ["button", JOY_BUTTON_Y] and row.conflicts.has(2),
+		"Y to the Pad slot (conflicts with camera next)")
+	row.listen()
+	var esc := InputEventKey.new()
+	esc.physical_keycode = KEY_ESCAPE
+	esc.keycode = KEY_ESCAPE
+	esc.pressed = true
+	root.push_input(esc)
+	await process_frame
+	t.ok(not row.listening and p.is_visible_in_tree(), "Esc cancels listening (the settings stay open)")
+	# a modifier alone binds itself on release; with a key, the combination
+	row.slot = 0
+	row.listen()
+	var sh := InputEventKey.new()
+	sh.physical_keycode = KEY_SHIFT
+	sh.pressed = true
+	root.push_input(sh)
+	var f2 := InputEventKey.new()
+	f2.physical_keycode = KEY_F2
+	f2.shift_pressed = true
+	f2.pressed = true
+	root.push_input(f2)
+	await process_frame
+	t.ok(Bindings.slots("let_fly")[0] == ["key", KEY_F2, "shift"], "Shift + F2: %s" % [Bindings.slots("let_fly")[0]])
+	# clear a slot
+	row.slot = 2
+	row.clear_slot()
+	t.ok(Bindings.slots("let_fly")[2].is_empty(), "Delete or X clears the slot")
+	# saved on close, applied at start
+	p.close()
+	var back := Settings.new()
+	back.load_file(TEST_PATH)
+	t.ok(back.bindings.get("let_fly", []) == Bindings.slots("let_fly"), "saved in the settings file: %s"
+		% [back.bindings.get("let_fly")])
+	Bindings.apply({})
+	back.apply_bindings()
+	t.ok(Bindings.slots("let_fly")[1] == ["key", KEY_T, ""], "loaded and applied at start")
+	# reset
+	p.reset_bindings()
+	t.ok(Bindings.slots("let_fly") == Bindings.default_slots("let_fly") and st.bindings.is_empty()
+		and Bindings.all_conflicts().is_empty(), "Reset bindings: the defaults, nothing stored, no conflicts")
+	t.ok(SettingsPanel.binding_text("let_fly").contains("Space"), "bindings shown: %s" %
+		SettingsPanel.binding_text("let_fly"))
+	p.queue_free()
+	await process_frame
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
+	Settings.reset_current()
+
+
 func _key(action: String) -> void:
 	var e := InputEventAction.new()
 	e.action = action
@@ -266,11 +542,64 @@ func _key(action: String) -> void:
 	root.push_input(r)
 
 
+## menus.md §4 live backdrop: the sail scene with AI boats only, no chrome, no input, no sound, a drifting
+## camera; the painted backdrop when it does not load.
+func test_live_backdrop() -> void:
+	t.begin("main menu: live backdrop")
+	Settings.reset_current()
+	Settings.current().welcomed = true
+	Settings.current().quality = SeaQuality.Tier.L
+	var m := (load("res://scenes/menu/main_menu.tscn") as PackedScene).instantiate() as MainMenu
+	m.change_scenes = false
+	root.add_child(m)
+	await process_frame
+	t.ok(m.stage != null and m.stage.scene != null, "the sail scene runs behind the menu")
+	if m.stage != null and m.stage.scene != null:
+		var sc: Variant = m.stage.scene
+		t.ok(not m.backdrop.draw_scene and m.backdrop.haze, "painted scene off, the haze on")
+		var n := m.stage.boat_count()
+		print("  backdrop: %d boats on %s" % [n, "the core" if sc.on_core else "FakeSim"])
+		t.ok(n == (MenuStage.FLEET if sc.on_core else 1), "%d boats (%s)" % [n, "core" if sc.on_core else "FakeSim"])
+		t.ok(not sc.racing and sc.watch, "no player: every boat sails itself")
+		t.ok(not sc.hud.visible, "no HUD")
+		t.ok(sc.get_node_or_null("PauseMenu") == null, "no pause menu")
+		t.ok(sc.scripted_input != null and sc.scripted_input.pressed.is_empty(), "no player input reaches it")
+		t.ok(not sc.audio.audible, "silent")
+		if sc.course_view != null:
+			t.ok(not sc.course_view.show_guides and not sc.course_view.show_laylines, "no course guides on the water")
+		t.ok(sc.sea.quality == SeaQuality.Tier.L, "the player's quality tier")
+		var cam := m.stage.camera()
+		t.ok(cam != null and cam.current, "seen through the scene's camera")
+		var p0 := cam.global_position
+		for i in 30:
+			await process_frame
+		var p1 := cam.global_position
+		var d := Vector2(p1.x, p1.z).distance_to(Vector2(m.stage._focus.x, m.stage._focus.z))
+		t.ok(p0.distance_to(p1) > 0.01 and d > MenuStage.DIST.x * 0.8 and d < MenuStage.DIST.y * 1.2
+			and p1.y >= 3.0, "the camera drifts round the boat at %.0f m, %.1f m up" % [d, p1.y])
+		Settings.current().quality = SeaQuality.Tier.H
+		m._setting_changed("quality")
+		t.ok(sc.sea.quality == SeaQuality.Tier.H, "a quality change reaches the backdrop at once")
+	m.queue_free()
+	await process_frame
+	var f := (load("res://scenes/menu/main_menu.tscn") as PackedScene).instantiate() as MainMenu
+	f.change_scenes = false
+	f.stage_scene = "res://scenes/no_such_scene.tscn"
+	root.add_child(f)
+	await process_frame
+	t.ok(f.stage == null and f.backdrop.draw_scene, "fallback: the painted backdrop when the scene does not load")
+	f.queue_free()
+	await process_frame
+	Settings.reset_current()
+
+
 func test_main_menu() -> void:
 	t.begin("main menu: quick race and free sail")
 	Settings.reset_current()
+	Settings.current().welcomed = true
 	var m := (load("res://scenes/menu/main_menu.tscn") as PackedScene).instantiate() as MainMenu
 	m.change_scenes = false
+	m.live_backdrop = false
 	var asked: Array[String] = []
 	m.scene_requested.connect(func(p: String) -> void: asked.append(p))
 	root.add_child(m)
@@ -386,6 +715,219 @@ func test_main_menu() -> void:
 	root.content_scale_factor = 1.0
 	m.queue_free()
 	await process_frame
+	Settings.reset_current()
+
+
+## menus.md §1.1: the course map from the course file, the fleet summary, Start always reachable, the layout.
+func test_race_card() -> void:
+	t.begin("quick race: the race card")
+	Settings.reset_current()
+	Settings.current().welcomed = true
+	var c := MenuData.course_file("example_bay/example_wl")
+	t.ok(c.get("id", "") == "example_wl", "course file read")
+	var p := CourseMap.resolve(c, 0.0)
+	t.ok(p["rc"].distance_to(Vector2(125, -300)) < 0.01 and p["pin"].distance_to(Vector2(-125, -300)) < 0.01,
+		"start ends square to a north wind: rc %s, pin %s" % [p["rc"], p["pin"]])
+	t.ok(p["w"].distance_to(Vector2(0, 400)) < 0.01, "windward mark 700 m upwind of the line: %s" % p["w"])
+	var e := CourseMap.resolve(c, PI * 0.5)
+	t.ok(e["w"].distance_to(Vector2(700, -300)) < 0.01, "wind from the east: windward mark to the east %s" % e["w"])
+	t.ok(CourseMap.laps_legs(c) == Vector2i(2, 6), "2 laps, 6 legs")
+	t.ok(CourseMap.rounding_ids(c).has("w") and CourseMap.rounding_ids(c).has("g1")
+		and not CourseMap.rounding_ids(c).has("rc"), "rounding marks: the sequence's marks and gates")
+	var m := (load("res://scenes/menu/main_menu.tscn") as PackedScene).instantiate() as MainMenu
+	m.change_scenes = false
+	m.live_backdrop = false
+	root.add_child(m)
+	root.size = Vector2i(1280, 800)
+	await process_frame
+	m.open_page("quick")
+	await process_frame
+	await process_frame
+	var q := m.quick
+	t.ok(q.course_map != null and q.course_map.points.has("w"), "the course map shows the chosen course")
+	q.rows["wind_from_deg"].set_value(90.0, true)
+	q.rows["wind_kn"].set_value(18.0, true)
+	t.ok(absf(q.course_map.wind_from_deg - 90.0) < 1e-6 and absf(q.course_map.wind_kn - 18.0) < 1e-6
+		and q.course_map.points["w"].x > 600.0, "the map follows the wind rows")
+	q.rows["fleet_size"].set_value(12.0, true)
+	q.rows["ai_level"].set_value("pro", true)
+	t.ok(q.fleet_text.text.contains("12 boats: you and 11 AI") and q.fleet_text.text.contains("Pro AI")
+		and q.fleet_text.text.contains(MenuData.name_of(MenuData.classes(), str(q.rows["class_id"].value))),
+		"fleet summary: %s" % q.fleet_text.text.replace("\n", " / "))
+	t.ok(q.course_text.text.contains("2 laps, 6 legs"), "course caption: %s" % q.course_text.text.replace("\n", " / "))
+	# keyboard: down from the last row is Start, up from Start the last row
+	q.rows["wind_from_deg"].grab_focus()
+	await process_frame
+	_key("ui_down")
+	await process_frame
+	t.ok(root.gui_get_focus_owner() == q.start_button, "down from the last row: Start")
+	_key("ui_up")
+	await process_frame
+	t.ok(root.gui_get_focus_owner() == q.rows["wind_from_deg"], "up from Start: the last row")
+	# the layout: preview beside the rows when there is room, under them when not; Start always on screen
+	for c2 in [[Vector2i(1280, 800), 0.8], [Vector2i(1280, 800), 1.0], [Vector2i(1280, 800), 1.3],
+			[Vector2i(1080, 1920), 0.8], [Vector2i(1080, 1920), 1.0], [Vector2i(1080, 1920), 1.3]]:
+		root.size = c2[0]
+		m.settings.ui_scale = c2[1]
+		m.settings.apply_display(root)
+		await process_frame
+		await process_frame
+		var vis := root.get_visible_rect().grow(1)
+		var wide: bool = q.size.x >= SetupPanel.TWO_COLUMNS_MIN
+		print("  race card %s at %d %%: page %d px, %s" % [c2[0], roundi(c2[1] * 100), q.size.x,
+			"two columns" if wide else "one column"])
+		t.ok(q.body.vertical != wide, "%s at %d %%: %s (page %d px)" % [c2[0], roundi(c2[1] * 100),
+			"preview beside the rows" if wide else "preview under the rows", q.size.x])
+		t.ok(vis.encloses(q.start_button.get_global_rect()), "Start on screen")
+		if wide:
+			t.ok(vis.encloses(q.course_map.get_global_rect()), "the course map on screen")
+		# the last row and Start reachable by the keyboard at this size
+		q.rows["wind_from_deg"].grab_focus()
+		await process_frame
+		_key("ui_down")
+		await process_frame
+		t.ok(root.gui_get_focus_owner() == q.start_button, "down to Start")
+	m.settings.ui_scale = 1.0
+	m.settings.apply_display(root)
+	root.size = Vector2i(1280, 800)
+	m.queue_free()
+	await process_frame
+	Settings.reset_current()
+
+
+func _menu() -> MainMenu:
+	var m := (load("res://scenes/menu/main_menu.tscn") as PackedScene).instantiate() as MainMenu
+	m.change_scenes = false
+	m.live_backdrop = false
+	root.add_child(m)
+	return m
+
+
+## menus.md §1, §3, §4: the first-launch screen, Continue, the version, the wordmark, the help line, the sounds.
+func test_touches() -> void:
+	t.begin("first launch, Continue, version, wordmark, help line, sounds")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
+	Settings.reset_current()
+	root.size = Vector2i(1280, 800)
+	var m := _menu()
+	await process_frame
+	await process_frame
+	t.ok(m.welcome != null and not m._row.visible, "first launch: the welcome screen, the menu hidden")
+	t.ok(root.gui_get_focus_owner() == m.welcome.rows["helm_mode"], "focus on Steering")
+	_key("ui_right")
+	await process_frame
+	_key("ui_down")
+	await process_frame
+	_key("ui_right")
+	await process_frame
+	t.ok(m.welcome.rows["helm_mode"].value == PlayerControls.HelmMode.HOLD_TO_STEER
+		and m.welcome.rows["quality"].value == SeaQuality.Tier.H, "keyboard: Hold to steer, High")
+	m.welcome.go_button.pressed.emit()
+	await process_frame
+	var saved := Settings.new()
+	saved.load_file(TEST_PATH)
+	t.ok(saved.welcomed and saved.helm_mode == PlayerControls.HelmMode.HOLD_TO_STEER
+		and saved.quality == SeaQuality.Tier.H, "Let's sail keeps the choices and saves, welcomed")
+	t.ok(m.welcome == null and m._row.visible and root.gui_get_focus_owner() == m.buttons["quick"],
+		"then the menu, focus on Quick race")
+	t.ok(not m.buttons["continue"].visible, "no Continue before a first session")
+	m.queue_free()
+	await process_frame
+	Settings.reset_current()
+	m = _menu()
+	await process_frame
+	t.ok(m.welcome == null, "shown once")
+	m.queue_free()
+	await process_frame
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
+	Settings.reset_current()
+	m = _menu()
+	await process_frame
+	m.welcome.rows["quality"].set_value(SeaQuality.Tier.L)
+	_key("ui_cancel")
+	await process_frame
+	t.ok(m.welcome == null and m.settings.welcomed and m.settings.quality == Settings.new().quality, "Esc skips: the defaults")
+	# the wordmark and the version
+	var mark := m.find_child("Wordmark", true, false)
+	t.ok(mark != null and (mark.get_node("Title") as Label).text == "WINDMARK", "placeholder wordmark scene")
+	t.ok(m.version_label.text.begins_with("v" + str(ProjectSettings.get_setting("application/config/version")))
+		and root.get_visible_rect().encloses(m.version_label.get_global_rect()), "version in the corner: %s"
+		% m.version_label.text)
+	# Continue: after a session it starts that setup again
+	var asked: Array[String] = []
+	m.scene_requested.connect(func(p: String) -> void: asked.append(p))
+	m.open_page("quick")
+	await process_frame
+	m.quick.rows["fleet_size"].set_value(6.0, true)
+	m.quick.rows["wind_kn"].set_value(9.0, true)
+	m.quick.start_button.pressed.emit()
+	m.close_page()
+	t.ok(m.buttons["continue"].visible and m.continue_line.text.contains("Quick race") and
+		m.continue_line.text.contains("6 boats"), "Continue after a race: %s" % m.continue_line.text)
+	GameSetup.next = null
+	m.buttons["continue"].pressed.emit()
+	var g := GameSetup.current()
+	t.ok(g.mode == "race" and g.fleet_size == 6 and absf(g.wind_kn - 9.0) < 1e-6 and g.seed == 0
+		and asked.size() == 2, "Continue starts the same race again")
+	m.open_page("free")
+	await process_frame
+	m.free_sail.start_button.pressed.emit()
+	m.close_page()
+	t.ok(m.continue_text().begins_with("Free sail"), "then a free sail: %s" % m.continue_text())
+	m.settings.last_setup["mode"] = "race"
+	m.settings.last_setup["course"] = "example_bay/no_such_course"
+	m._refresh_continue()
+	t.ok(not m.buttons["continue"].visible and not m.can_continue(), "hidden when the setup cannot start")
+	m.settings.last_setup["course"] = "example_bay/example_wl"
+	m._refresh_continue()
+	# the sounds on the ui bus
+	var snd := m.sounds
+	t.ok(snd._players.values().all(func(p: AudioStreamPlayer) -> bool: return p.bus == "ui" and p.stream != null),
+		"three sounds, on the ui bus")
+	snd.played.clear()
+	m.buttons["quick"].grab_focus()
+	await process_frame
+	_key("ui_down")
+	await process_frame
+	_key("ui_accept")
+	await process_frame
+	_key("ui_cancel")
+	await process_frame
+	t.ok(snd.played.has("focus") and snd.played.has("accept") and snd.played.has("back"),
+		"focus, accept and back: %s" % [snd.played])
+	# the help line: every row of every section has its line, and it follows the focus
+	m.close_page()
+	m.open_page("settings")
+	await process_frame
+	var sp := m.settings_panel
+	var missing := []
+	for sec in SettingsPanel.SECTIONS:
+		sp.show_section(sec)
+		for k in sp.rows:
+			if (sp.rows[k] as MenuRow).help == "":
+				missing.append(k)
+	t.ok(missing.is_empty(), "every settings row has a help line (missing: %s)" % [missing])
+	sp.show_section("graphics")
+	await process_frame
+	sp.rows["vsync"].grab_focus()
+	await process_frame
+	await process_frame
+	t.ok(sp.help_label.text == SettingsPanel.HELP["vsync"] and sp.help_label.is_visible_in_tree(),
+		"help line follows the focus: %s" % sp.help_label.text)
+	sp.show_section("controls")
+	await process_frame
+	sp.binding_rows["let_fly"].grab_focus()
+	await process_frame
+	await process_frame
+	t.ok(sp.help_label.text.begins_with("Enter or A"), "a binding's help: %s" % sp.help_label.text)
+	sp.tabs["audio"].grab_focus()
+	await process_frame
+	await process_frame
+	t.ok(sp.help_label.text == SettingsPanel.HELP["tab"], "a tab's help")
+	sp.close()
+	m.queue_free()
+	await process_frame
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
 	Settings.reset_current()
 
 

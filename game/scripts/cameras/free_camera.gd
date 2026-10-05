@@ -65,7 +65,11 @@ func handle_input(c: CameraInput, o: CamTypes.Options, dt: float) -> void:
 	var zoom := pow(ChaseCamera.NOTCH, c.zoom_notches)
 	fov = clampf(fov / zoom, 25.0, 90.0)
 	_move = c.move
-	_boost = c.boost
+	if o.boost_toggle:
+		if c.boost_pressed:
+			_boost = not _boost
+	else:
+		_boost = c.boost
 
 
 var _move := Vector3.ZERO

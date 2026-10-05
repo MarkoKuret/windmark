@@ -433,7 +433,7 @@ func test_rules_messages() -> void:
 	for cs in cases:
 		sim.pairs_a = [sim.pair(0, 1, cs[0])]
 		_refresh(h, sim)
-		t.ok(h.text_of("rules") == cs[1] and h.colour_of("rules") == Hud.TINT_COLOURS[cs[2]],
+		t.ok(h.text_of("rules") == cs[1] and h.colour_of("rules") == HudStyle.TINTS[cs[2]],
 			"%s (got %s)" % [cs[1], h.text_of("rules")])
 	sim.pairs_a = [sim.pair(0, 1, {"kc_giver": 1, "kc_holder": 0, "kc_rule": R.R10, "kc_state": 0})]
 	_refresh(h, sim)
@@ -508,9 +508,9 @@ func test_radar_colours() -> void:
 	_refresh(h, sim)
 	h.radar.size = Vector2(230, 230)
 	h.radar.drawn = h.radar.contact_colours()
-	t.ok(h.radar.drawn.get(1) == RadarView.TINTS[T.RED] and h.radar.drawn.get(3) == RadarView.TINTS[T.GREEN],
+	t.ok(h.radar.drawn.get(1) == HudStyle.TINTS[T.RED] and h.radar.drawn.get(3) == HudStyle.TINTS[T.GREEN],
 		"drawn red and green: %s" % str(h.radar.drawn))
-	t.ok(h.radar.drawn.get(2) == RadarView.TINTS[T.GREY], "ghost grey translucent")
+	t.ok(h.radar.drawn.get(2) == HudStyle.TINTS[T.GREY], "ghost grey translucent")
 	# pulsing: the Warning colour moves at 2 Hz
 	sim.pairs_a = [sim.pair(0, 1, {"kc_giver": 0, "kc_holder": 1, "kc_rule": R.R10, "kc_state": 1})]
 	_refresh(h, sim)
@@ -523,7 +523,7 @@ func test_radar_colours() -> void:
 	t.ok(c_a != c_b and h.radar.contact_colour(ct1).is_equal_approx(c_a), "Warning pulses at 2 Hz")
 	h.assist = Hud.Assist.MINIMAL
 	h.frame(0.01)
-	t.ok(h.radar.contact_colour(ct1) == RadarView.TINTS[T.WHITE], "Minimal: all white")
+	t.ok(h.radar.contact_colour(ct1) == HudStyle.TINTS[T.WHITE], "Minimal: all white")
 	h.assist = Hud.Assist.STANDARD
 	# range and orientation
 	var r0 := h.radar.range_m()
@@ -586,7 +586,7 @@ func test_penalties_prompts() -> void:
 	sim.rules_d[0]["deadline_s"] = 8.0
 	sim.rules_d[0]["pending"] = [{"rule": R.R10, "other": 1, "count": 1}, {"rule": R.R31, "other": -1, "count": 1}]
 	_refresh(h, sim)
-	t.ok(h.colour_of("pen_deadline") == Hud.TINT_COLOURS[RaceHudValues.Tint.RED],
+	t.ok(h.colour_of("pen_deadline") == HudStyle.TINTS[RaceHudValues.Tint.RED],
 		"deadline red below 10 s")
 	t.ok(h.text_of("pen_head") == "Penalty 1 of 2: Port tack keeps clear of starboard (Nora)", h.text_of("pen_head"))
 	t.ok(h.text_of("pen_dsq") == "One more penalty = disqualification", "disqualification warning")

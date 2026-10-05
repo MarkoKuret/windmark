@@ -7,6 +7,48 @@ signal changed(key: String)
 signal closed
 
 const SECTIONS := ["controls", "cameras", "hud", "graphics", "audio"]
+## the help line of every row and button (menus.md §3)
+const HELP := {
+	"helm_mode": "Set and hold: a tap moves the helm and it stays. Hold to steer: it comes back when you let go.",
+	"stick_dead_zone": "How far the stick moves before the helm answers. Raise it if the boat steers on its own.",
+	"stick_curve": "How the helm follows the stick: 1.0 is straight, higher is finer near the centre.",
+	"sheet_rate": "How fast the sheet keys trim the sails.",
+	"sheet_turns_auto_trim_off": "On: touching the sheet keys hands the trim back to you.",
+	"let_fly_toggle": "Hold: the sheets run free while the key is down. Toggle: one press frees them, the next trims.",
+	"helm_fine_toggle": "Hold: fine helm while the key is down. Toggle: one press turns it on, the next off.",
+	"rankings_toggle": "Hold: the ranking list shows while the key is down. Toggle: one press opens it, the next closes it.",
+	"camera_boost_toggle": "Hold: the free camera flies fast while the key is down. Toggle: one press on, the next off.",
+	"vibration": "Gamepad rumble when you touch a boat or a mark, a light buzz while the sails flog. Off: none.",
+	"camera_speed": "How fast the cameras orbit and look around.",
+	"invert_orbit_x": "Turns the orbiting cameras the other way, left and right.",
+	"invert_orbit_y": "Turns the orbiting cameras the other way, up and down.",
+	"invert_look_x": "Turns the onboard and free cameras' look the other way, left and right.",
+	"invert_look_y": "Turns the onboard and free cameras' look the other way, up and down.",
+	"heel_follow": "How much the onboard camera leans with the boat. Level horizon keeps it upright.",
+	"smooth_switch": "On: the camera glides to the next view instead of cutting.",
+	"reduced_motion": "No camera shake, a level horizon and a calmer chase camera.",
+	"assist": "How much the HUD helps: laylines, rules hints, start numbers. Online races may set a lower level.",
+	"hud_density": "How many instrument numbers show. Auto picks for your screen; G or a tap of View changes it.",
+	"ui_scale": "The size of the HUD and the menus.",
+	"palette": "Rules colours for colour-blind eyes. Every colour also comes with a word or a letter.",
+	"captions": "Caption lines for the race sounds. Kept for later: the sounds have no captions yet.",
+	"quality": "The detail of the sea, the sky and the shadows. Medium suits the Steam Deck, Low integrated graphics.",
+	"render_scale": "Draws the 3D view at fewer pixels and sharpens it up to the screen. The HUD stays sharp.",
+	"fullscreen": "Windowed or fullscreen.",
+	"vsync": "On: no tearing; the frame rate follows the screen.",
+	"fps_limit": "Caps the frame rate to save power. Off: no cap.",
+	"capture_preset": "Portrait 9:16: a tall window and HUD for vertical clips. Off again at the next start.",
+	"master_volume": "Everything.",
+	"effects_volume": "The boats, the water and the wind.",
+	"signals_volume": "Horns, beeps and penalty sounds.",
+	"voice_volume": "Hails.",
+	"ambience_volume": "The sea, the gulls and the venue.",
+	"interface_volume": "The menu sounds.",
+	"tab": "Left and right, LB and RB, or Page Up and Page Down: change the section.",
+	"Reset": "Puts this section's settings back to their defaults.",
+	"ResetBindings": "Puts every binding back to the defaults.",
+	"Done": "Saves the settings and goes back.",
+}
 const TITLES := ["Controls", "Cameras", "HUD", "Graphics", "Audio"]
 
 var settings: Settings
@@ -14,7 +56,11 @@ var settings: Settings
 var esc_is_pause := false
 var section := "controls"
 var rows := {}
+## the Bindings list's rows, action -> BindingRow (Controls section)
+var binding_rows := {}
 var tabs := {}
+## the help line for the focused row (menus.md §3)
+var help_label: Label
 var _body: VBoxContainer
 var _scroll: ScrollContainer
 var _done: Button
@@ -33,7 +79,8 @@ func build(s: Settings) -> void:
 	for i in SECTIONS.size():
 		var b := MenuTheme.button(TITLES[i], MenuTheme.ROW_SIZE)
 		b.name = TITLES[i]
-		for st in ["normal", "hover", "pressed", "focus", "disabled"]:
+		b.add_theme_font_override("font", MenuTheme.font(600, MenuTheme.LABEL_TRACKING, MenuTheme.ROW_SIZE))
+		for st in ["normal", "hover", "pressed", "focus", "hover_pressed", "disabled"]:
 			var sb := (MenuTheme.theme().get_stylebox(st, "Button") as StyleBoxFlat).duplicate() as StyleBoxFlat
 			sb.content_margin_left = 10
 			sb.content_margin_right = 10
@@ -54,10 +101,16 @@ func build(s: Settings) -> void:
 	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_body.add_theme_constant_override("separation", 2)
 	_scroll.add_child(_body)
+	help_label = MenuTheme.label("", MenuTheme.SMALL_SIZE - 1, MenuTheme.MUTED)
+	help_label.name = "Help"
+	help_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	help_label.custom_minimum_size = Vector2(0, 40)
+	help_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	add_child(help_label)
 	var foot := HBoxContainer.new()
 	foot.add_theme_constant_override("separation", 16)
 	add_child(foot)
-	_reset = MenuTheme.button("Reset section", MenuTheme.ROW_SIZE)
+	_reset = MenuTheme.button("Reset section", MenuTheme.ROW_SIZE, true)
 	_reset.name = "Reset"
 	_reset.pressed.connect(func() -> void:
 		settings.reset(section)
@@ -92,6 +145,7 @@ func show_section(sec: String, focus := true) -> void:
 		_body.remove_child(c)
 		c.queue_free()
 	rows.clear()
+	binding_rows.clear()
 	match sec:
 		"controls":
 			_controls()
@@ -112,16 +166,23 @@ func show_section(sec: String, focus := true) -> void:
 				break
 
 
+## The shown section: navy caps over a yellow underline; the others muted (menus.md §4).
 func _tab_style() -> void:
 	for sec in tabs:
 		var b: Button = tabs[sec]
 		var on: bool = sec == section
-		b.add_theme_color_override("font_color", MenuTheme.ACCENT if on else MenuTheme.MUTED)
-		b.add_theme_color_override("font_hover_color", MenuTheme.ACCENT if on else MenuTheme.NAVY)
-		b.add_theme_color_override("font_focus_color", MenuTheme.ACCENT)
+		var sb := MenuTheme.box(Color(0, 0, 0, 0), 0, 0, Vector2(10, 8))
+		if on:
+			sb.border_width_bottom = 4
+			sb.border_color = MenuTheme.ACCENT
+		b.add_theme_stylebox_override("normal", sb)
+		b.add_theme_color_override("font_color", MenuTheme.NAVY if on else MenuTheme.MUTED)
+		b.add_theme_color_override("font_hover_color", MenuTheme.NAVY)
+		b.add_theme_color_override("font_focus_color", MenuTheme.NAVY)
 
 
 func _row(r: MenuRow) -> void:
+	r.help = HELP.get(r.key, "")
 	rows[r.key] = r
 	_body.add_child(r)
 	r.changed.connect(func(v: Variant) -> void:
@@ -162,10 +223,59 @@ func _controls() -> void:
 	_hold("Camera boost", "camera_boost_toggle")
 	_row(MenuRow.range_row("Vibration", "vibration", 0.0, 1.0, 0.1, s.vibration,
 		func(v: float) -> String: return "Off" if v <= 0.0 else pct(v)))
-	_sub("Bindings  (changing them comes in a later update)")
-	for action in DefaultBindings.table():
-		var r := MenuRow.info(action_name(action), binding_text(action))
+	_bindings()
+
+
+## The Bindings list (menus.md §3 Rebinding): Reset bindings, then a row per action of controls.md §3.
+func _bindings() -> void:
+	_sub("Bindings")
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 4)
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(spacer)
+	for t in ["Key 1", "Key 2", "Pad"]:
+		var l := MenuTheme.caps(t, MenuTheme.SMALL_SIZE - 3, MenuTheme.MUTED)
+		l.custom_minimum_size = Vector2(BindingRow.SLOT_W, 0)
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		head.add_child(l)
+	var reset := MenuTheme.button("Reset bindings", MenuTheme.SMALL_SIZE + 2, true)
+	reset.name = "ResetBindings"
+	reset.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	reset.pressed.connect(reset_bindings)
+	_body.add_child(reset)
+	_body.add_child(head)
+	binding_rows.clear()
+	var snap := Bindings.snapshot()
+	for action in Bindings.actions():
+		var r := BindingRow.create(action)
+		r.refresh(snap)
+		r.rebound.connect(func(_a: String) -> void: _rebound())
 		_body.add_child(r)
+		binding_rows[action] = r
+
+
+func _rebound() -> void:
+	settings.bindings = Bindings.overrides()
+	var snap := Bindings.snapshot()
+	for a in binding_rows:
+		(binding_rows[a] as BindingRow).refresh(snap)
+	changed.emit("bindings")
+
+
+## Every action back to the defaults of controls.md §3 (menus.md §3).
+func reset_bindings() -> void:
+	settings.bindings = {}
+	settings.apply_bindings()
+	_rebound()
+
+
+## A binding row is listening for a new binding.
+func listening() -> bool:
+	for a in binding_rows:
+		if (binding_rows[a] as BindingRow).listening:
+			return true
+	return false
 
 
 func _cameras() -> void:
@@ -180,7 +290,6 @@ func _cameras() -> void:
 		func(v: float) -> String: return "Level horizon" if v <= 0.0 else pct(v)))
 	_row(MenuRow.toggle("Smooth camera switch", "smooth_switch", s.smooth_switch))
 	_row(MenuRow.toggle("Reduced motion", "reduced_motion", s.reduced_motion))
-	_sub("Reduced motion: no camera shake, a level horizon and a calmer chase camera.")
 
 
 func _hud() -> void:
@@ -192,7 +301,6 @@ func _hud() -> void:
 	_row(MenuRow.choice("Colour palette", "palette", ["standard", "deuteranopia", "protanopia", "tritanopia"],
 		["Standard", "Deuteranopia", "Protanopia", "Tritanopia"], s.palette))
 	_row(MenuRow.toggle("Captions", "captions", s.captions))
-	_sub("Online races may set a lower assist level for everyone.")
 
 
 func _graphics() -> void:
@@ -214,7 +322,6 @@ func _graphics() -> void:
 		["Off", "30", "60", "90", "120", "144"], s.fps_limit))
 	_row(MenuRow.choice("Capture preset", "capture_preset", Settings.CAPTURE_PRESETS, ["Off", "Portrait 9:16"],
 		s.capture_preset))
-	_sub("Medium suits the Steam Deck; Low suits integrated graphics. Render scale draws the 3D view at fewer pixels and sharpens it up to the screen (FSR); the HUD stays sharp. Portrait 9:16 makes a 1080 x 1920 window for vertical clips, with the HUD laid out for it; it is not kept for the next start.")
 
 
 func _audio() -> void:
@@ -230,59 +337,17 @@ static func action_name(action: String) -> String:
 	return t.substr(0, 1).to_upper() + t.substr(1)
 
 
-const JOY_NAMES := {
-	JOY_BUTTON_A: "A", JOY_BUTTON_B: "B", JOY_BUTTON_X: "X", JOY_BUTTON_Y: "Y", JOY_BUTTON_BACK: "View",
-	JOY_BUTTON_START: "Menu", JOY_BUTTON_LEFT_STICK: "L3", JOY_BUTTON_RIGHT_STICK: "R3",
-	JOY_BUTTON_LEFT_SHOULDER: "LB", JOY_BUTTON_RIGHT_SHOULDER: "RB", JOY_BUTTON_DPAD_UP: "D-pad up",
-	JOY_BUTTON_DPAD_DOWN: "D-pad down", JOY_BUTTON_DPAD_LEFT: "D-pad left", JOY_BUTTON_DPAD_RIGHT: "D-pad right",
-}
-const AXIS_NAMES := {
-	JOY_AXIS_LEFT_X: ["Left stick left", "Left stick right"], JOY_AXIS_LEFT_Y: ["Left stick up", "Left stick down"],
-	JOY_AXIS_RIGHT_X: ["Right stick left", "Right stick right"],
-	JOY_AXIS_RIGHT_Y: ["Right stick up", "Right stick down"],
-	JOY_AXIS_TRIGGER_LEFT: ["LT", "LT"], JOY_AXIS_TRIGGER_RIGHT: ["RT", "RT"],
-}
-const MOUSE_NAMES := {
-	MOUSE_BUTTON_LEFT: "Left mouse", MOUSE_BUTTON_RIGHT: "Right mouse", MOUSE_BUTTON_MIDDLE: "Middle mouse",
-	MOUSE_BUTTON_WHEEL_UP: "Wheel up", MOUSE_BUTTON_WHEEL_DOWN: "Wheel down",
-}
-
-
 ## The bindings of an action in the live input map, keys and mouse first, then the gamepad.
 static func binding_text(action: String) -> String:
 	if not InputMap.has_action(action):
 		return "Not bound"
-	var keys: Array[String] = []
-	var pad: Array[String] = []
-	for e in InputMap.action_get_events(action):
-		if e is InputEventKey:
-			var k := e as InputEventKey
-			var code := k.physical_keycode if k.physical_keycode != KEY_NONE else k.keycode
-			var shown := code
-			if k.physical_keycode != KEY_NONE and DisplayServer.get_name() != "headless":
-				shown = DisplayServer.keyboard_get_keycode_from_physical(code)  # the local key label
-			var t := OS.get_keycode_string(shown if shown != KEY_NONE else code)
-			if k.ctrl_pressed:
-				t = "Ctrl + " + t
-			if k.alt_pressed:
-				t = "Alt + " + t
-			if k.shift_pressed:
-				t = "Shift + " + t
-			keys.append(t)
-		elif e is InputEventMouseButton:
-			keys.append(MOUSE_NAMES.get((e as InputEventMouseButton).button_index, "Mouse"))
-		elif e is InputEventJoypadButton:
-			pad.append(JOY_NAMES.get((e as InputEventJoypadButton).button_index, "Pad"))
-		elif e is InputEventJoypadMotion:
-			var m := e as InputEventJoypadMotion
-			var names: Array = AXIS_NAMES.get(m.axis, ["Stick", "Stick"])
-			pad.append(names[0] if m.axis_value < 0 else names[1])
-	var all := keys + pad
+	var all := Bindings.slots(action).filter(func(x: Array) -> bool: return not x.is_empty()).map(
+		func(x: Array) -> String: return Bindings.text(x))
 	return "Not bound" if all.is_empty() else "  ·  ".join(all)
 
 
 func _input(e: InputEvent) -> void:
-	if not is_visible_in_tree():
+	if not is_visible_in_tree() or listening():
 		return
 	var dir := 0
 	if e is InputEventJoypadButton and e.pressed:
@@ -298,9 +363,27 @@ func _input(e: InputEvent) -> void:
 
 
 func _unhandled_input(e: InputEvent) -> void:
-	if is_visible_in_tree() and e.is_action_pressed("ui_cancel") and not (esc_is_pause and e.is_action("pause_menu")):
+	if is_visible_in_tree() and not listening() and e.is_action_pressed("ui_cancel") and not (esc_is_pause and e.is_action("pause_menu")):
 		get_viewport().set_input_as_handled()
 		close()
+
+
+## The help line follows the focus (menus.md §3).
+func _process(_dt: float) -> void:
+	if help_label == null or not is_visible_in_tree():
+		return
+	help_label.text = help_for(get_viewport().gui_get_focus_owner())
+
+
+## The help line of a focused control: a row's or binding's own, a tab's or a button's.
+func help_for(c: Control) -> String:
+	if c == null or not is_ancestor_of(c):
+		return ""
+	if c is MenuRow or c is BindingRow:
+		return c.help
+	if tabs.values().has(c):
+		return HELP["tab"]
+	return HELP.get(str(c.name), "")
 
 
 ## Saves the settings and hands back.

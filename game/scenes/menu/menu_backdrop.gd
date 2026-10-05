@@ -1,11 +1,14 @@
 class_name MenuBackdrop
 extends Control
-## The menus' backdrop: a hazy sky over a calm sea, a few long swells and one distant sail on the horizon.
-## Drawn, no image files. `dim` darkens it for the pause menu over the race.
+## The menus' painted backdrop: a hazy sky over a calm sea, a few long swells and one distant sail on the
+## horizon, drawn without image files (the main menu's fallback when the live backdrop does not load, menus.md §4).
+## `dim` darkens it for the pause menu over the race; `haze` lays a soft light haze in the top-left corner (under
+## the wordmark) over either backdrop.
 
 @export var horizon := 0.58
 @export var dim := 0.0
 @export var draw_scene := true
+@export var haze := false
 
 var _t := 0.0
 
@@ -61,5 +64,12 @@ func _draw() -> void:
 		draw_colored_polygon(PackedVector2Array([Vector2(bx - 30 * s, by - 3 * s), Vector2(bx + 36 * s, by - 3 * s),
 			Vector2(bx + 30 * s, by + 2 * s), Vector2(bx - 26 * s, by + 2 * s)]), MenuTheme.NAVY)
 		draw_line(Vector2(bx - 20 * s, by + 5 * s), Vector2(bx + 26 * s, by + 5 * s), Color(1, 1, 1, 0.25), 1.0)
+	if haze:
+		var c0 := Color(MenuTheme.SKY_HORIZON, 0.55)
+		var c1 := Color(MenuTheme.SKY_HORIZON, 0.0)
+		var hw := w * 0.6
+		var hh := h * 0.45
+		draw_polygon(PackedVector2Array([Vector2.ZERO, Vector2(hw, 0), Vector2(hw * 0.5, hh * 0.5), Vector2(0, hh)]),
+			PackedColorArray([c0, c1, Color(MenuTheme.SKY_HORIZON, 0.2), c1]))
 	if dim > 0.0:
 		draw_rect(Rect2(Vector2.ZERO, size), Color(MenuTheme.SEA_DEEP, dim))

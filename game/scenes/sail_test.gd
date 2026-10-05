@@ -608,6 +608,7 @@ func _on_tick(_t: int) -> void:
 		runner.paused = true  # race.md §14: the clip ends paused; reset_boat runs it again
 	var t0 := Time.get_ticks_usec()
 	hud.tick(sim, viewed)
+	controls.rumble.tick(sim, runner.boat)
 	var t1 := Time.get_ticks_usec()
 	audio.tick()
 	var t2 := Time.get_ticks_usec()
@@ -679,6 +680,7 @@ func step_frame(dt: float) -> void:
 	hud.ui_input(raw, dt)
 	controls.free_camera = rig.mode == CameraRig.Mode.FREE
 	controls.update(raw, dt)
+	controls.rumble.frame(dt, controls.let_fly, racing and not runner.paused and viewed == runner.boat)
 	var t1 := Time.get_ticks_usec()
 	PerfStats.add(&"input", t1 - t0)
 	_tick_usec = 0

@@ -74,6 +74,8 @@ class Options:
 	var reduced_motion := false
 	var onboard_look_stays := false
 	var smooth_switch := false
+	## camera_boost as a toggle (controls.md §6): a press turns the free camera's boost on, the next off
+	var boost_toggle := false
 	var auto_recentre := false
 	var follow_waves := false
 

@@ -79,3 +79,21 @@ static func ids(list: Array) -> Array:
 
 static func names(list: Array) -> Array:
 	return list.map(func(e: Dictionary) -> String: return e["name"])
+
+
+## The course file of "<venue>/<course id>" (game/data/courses/<venue>/<id>.course.json), {} when missing.
+static func course_file(id: String) -> Dictionary:
+	if id == "" or not id.contains("/"):
+		return {}
+	var p := "res://data/courses".path_join(id + ".course.json")
+	if not FileAccess.file_exists(p):
+		return {}
+	return _read(ProjectSettings.globalize_path(p))
+
+
+## The display name of an id in a list ({"id", "name"}), the id when it is not there.
+static func name_of(list: Array, id: String) -> String:
+	for e in list:
+		if e["id"] == id:
+			return e["name"]
+	return id

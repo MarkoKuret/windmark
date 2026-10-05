@@ -192,7 +192,9 @@ inline AiRaceOutcome run_ai_race(const AiRaceSpec& sp) {
   AiRaceOutcome o;
   std::FILE* tf = sp.trace != nullptr ? std::fopen(sp.trace, "w") : nullptr;
   if (tf != nullptr) std::fprintf(tf, "t,i,x,y,psi,v,twa,tws,tact,man,psit,next,rank,pend,d,leg,helm,letfly,phi,phid,tr,sx,sy,ax,ay,why,pw,dl\n");
-  for (std::uint32_t k = 0; k < sp.max_ticks && w->race().state() != wm::RaceState::closed; ++k) {
+  for (std::uint32_t k = 0; k < sp.max_ticks && w->race().state() != wm::RaceState::closed &&
+                          w->race().state() != wm::RaceState::abandoned;
+       ++k) {
     if (sp.reload_at != 0 && w->tick() == sp.reload_at) {
       // The world snapshot and the skippers' own block (ai.md §16), each as its own bytes.
       wm::SnapshotWriter sw, sa;

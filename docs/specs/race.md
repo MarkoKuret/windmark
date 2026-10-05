@@ -137,7 +137,7 @@ extensions** when any hull point has `s > 0`. It is **completely on the pre-star
 | --- | --- | --- | --- |
 | `P` | 29.1 | hull over at the start signal | OCS: return to be completely on the pre-start side, then start (§4.2) |
 | `I` | 30.1 | hull on the course side of the line or its extensions at any tick of the last minute | OCS-I: return to the pre-start side **across an extension** (round an end), then start (§4.3) |
-| `Z` | 30.2 | any hull point inside the start triangle at any tick of the last minute | the boat may start normally; she receives a scoring penalty of 20 % of the `DNF` score, rounded to the nearest tenth of a point (`ZFP`, §9). The identification stands if the race is restarted after a general recall |
+| `Z` | 30.2 | any hull point inside the start triangle at any tick of the last minute | the boat may start normally (a boat over at the start signal is OCS and must return as under `P`, rule 29.1); she receives a scoring penalty of 20 % of the `DNF` score, rounded to the nearest tenth of a point (`ZFP`, §9). The identification stands if the race is restarted after a general recall |
 | `U` | 30.3 | any hull point inside the start triangle at any tick of the last minute | disqualified without a hearing (`UFD`); the boat becomes a ghost (§6.3) at the start signal |
 | `black` | 30.4 | as U | disqualified (`BFD`); she also may not sail a restart after a general recall |
 

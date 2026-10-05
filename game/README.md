@@ -293,7 +293,7 @@ Flags after `--`:
 | `--ssao=on` | contact shading (SSAO) on any tier (`on`), off on H (`off`), or the tier's (`tier`); not saved |
 | `--dof=off` | no depth of field on the clip cameras |
 | `--haze=0.5` | the distance haze as a factor of the light preset's (0 to 1.5) |
-| `--caps=off` | no whitecaps |
+| `--caps=on` | whitecaps on (off by default, `water_render.md` §4.4); `--caps=off` turns them off |
 | `--drawn-wind=18` | the wind the water draws (whitecaps, puffs) in knots, over the simulation's; the waves stay |
 | `--breathing=off` | the chase camera's plain follow instead of its breathing (`cameras.md` §2.1) |
 

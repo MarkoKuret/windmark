@@ -176,6 +176,10 @@ steep components meet (a wave group), so they come and go as the components run 
 number follows the local wind. (A first version thresholded a scrolling noise texture on crest height: hard white
 blotches that popped on and off and slid over the waves; it was removed on 2026-10-03.)
 
+**Off by default** (owner, 2026-10-05): in play the caps read as too many and as a uniform, repeating pattern,
+worst from the helicopter camera, so the game draws none until a version that is sparse and non-repeating at every
+camera height is approved. The look panel and `--caps=on` still turn the mechanism below on for judging it.
+
 **Per component** (CPU, once per sea, `SeaWhitecaps`), with `lam_i` the wavelength, `k_i = 2π/lam_i` and `lam_p` the
 wavelength of the largest-amplitude component:
 ```

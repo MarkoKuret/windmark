@@ -160,7 +160,7 @@ static func quality(scene: Node) -> int:
 
 # ---- the sea ----------------------------------------------------------------------------------------------------
 
-## `--caps=off`: the whitecaps (water_render.md §4.4).
+## `--caps=on` / `--caps=off`: the whitecaps (water_render.md §4.4; off by default).
 static func set_whitecaps(scene: Node, on: bool) -> void:
 	var sea: Variant = _member(scene, "sea")
 	if sea is Sea:
@@ -169,7 +169,7 @@ static func set_whitecaps(scene: Node, on: bool) -> void:
 
 static func whitecaps(scene: Node) -> bool:
 	var sea: Variant = _member(scene, "sea")
-	return (sea as Sea).whitecaps if sea is Sea else true
+	return (sea as Sea).whitecaps if sea is Sea else false
 
 
 ## `--drawn-wind=<kn>`: the wind the water draws (whitecaps, puffs) instead of the simulation's, 0 the simulation's.

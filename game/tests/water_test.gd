@@ -800,13 +800,18 @@ func _process(_delta: float) -> bool:
 	check((wb != null) == bool(t["wake_buffer"]), "scene tier %s: wake buffer %s" % [t["name"],
 			"made for the drawn wakes" if t["wake_buffer"] else "not made"])
 	check_shadows(sea, t)
+	# §4.4: off by default (owner, 2026-10-05); the look panel / --caps=on turn the mechanism on
+	check(not sea.whitecaps, "scene tier %s: whitecaps off by default" % t["name"])
+	sea.whitecaps = true
+	sea.update_frame(Vector3(sea.origin.x, 5.0, -sea.origin.y))  # caps_k is uploaded per frame
 	var cw: PackedVector4Array = sea.material.get_shader_parameter("caps_w")
 	var ck: PackedVector4Array = sea.material.get_shader_parameter("caps_k")
 	var sel := SeaWhitecaps.select(sea.model.components)
 	check(sel.size() >= 4 and cw == SeaWhitecaps.window_uniforms(sea.model.components, sel) and ck[0].w > 0.0
 			and absf(ck[0].z - sea.model.phases(sea.render_time_ms, sea.origin.x, sea.origin.y)[sel[0]]) < 1e-6
 			and sea.material.get_shader_parameter("caps_tex") != null,
-			"scene tier %s: whitecap weights and foam texture uploaded" % t["name"])
+			"scene tier %s: whitecap weights and foam texture uploaded when turned on" % t["name"])
+	sea.whitecaps = false
 	if t["name"] == "M":
 		check_wake_buffer_lifecycle()
 		check_bow_spray()

@@ -220,7 +220,9 @@ func test_rows() -> void:
 	sc.sky.preset = p0
 	panel.activate("haze_reset")
 	t.near(env.fog_density, hm, 1e-6, "reset: the preset's haze")
-	# whitecaps: the sea's foam uniforms
+	# whitecaps: the sea's foam uniforms (off by default, water_render.md §4.4: start the round trip from on)
+	t.ok(not sea.whitecaps, "whitecaps off by default")
+	sea.whitecaps = true
 	_frames(1)
 	var cam: Vector3 = rig.camera.global_position
 	sea.update_frame(cam, rig.camera)
@@ -234,6 +236,7 @@ func test_rows() -> void:
 		else:
 			t.ok(is_equal_approx(_caps_weight(sea), k0) and is_equal_approx(sea.material.get_shader_parameter("caps_rest"),
 				rest0), "caps on: the weights back (%.4f)" % k0))
+	sea.whitecaps = false
 	# drawn wind: the sea's base speed
 	sea.update_frame(cam, rig.camera)
 	var w0: float = sea.material.get_shader_parameter("base_speed")

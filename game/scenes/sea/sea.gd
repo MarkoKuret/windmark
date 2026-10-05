@@ -37,8 +37,9 @@ var origin := Vector2.ZERO
 var material: ShaderMaterial
 ## §4.4 the components that carry whitecap foam (indices into model.components, heaviest first)
 var caps_select := PackedInt32Array()
-## Development (`--caps=off`, the look panel): false draws no whitecaps (no foam weights uploaded).
-var whitecaps := true:
+## Whitecaps (water_render.md §4.4): off by default (owner, 2026-10-05); the look panel and `--caps=on` turn them on.
+## false draws no whitecaps (no foam weights uploaded).
+var whitecaps := false:
 	set = set_whitecaps
 ## Development (`--drawn-wind=<kn>`, the look panel): the wind speed the water draws (whitecaps, puff texture) in
 ## place of the source's base speed, to judge the caps at another wind; 0 draws the source's. The waves stay.

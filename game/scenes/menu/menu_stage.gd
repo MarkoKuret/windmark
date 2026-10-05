@@ -99,6 +99,8 @@ func _quiet() -> void:
 			(p as AudioStreamPlayer3D).stop()
 	for n in ["look_panel", "perf"]:
 		var node: Variant = scene.get(n)
+		if node is PerfMonitor and (node as PerfMonitor).log_path != "":
+			continue  # a measured run of the menu (`--perf-log`) keeps its log
 		if node is Node:
 			(node as Node).process_mode = Node.PROCESS_MODE_DISABLED
 

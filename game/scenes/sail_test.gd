@@ -97,6 +97,11 @@ var no_boat_shadows := false
 var no_drawn_shadows := false
 ## `--no-hud` (measuring): the HUD hidden from the start, as the hud_hide key does
 var no_hud := false
+## measured runs only (game/README.md "Measuring performance"): `--skip=S` fast-forwards the new race world S s
+## before the first frame; `measure_off` holds the parts a run-only `--no-<part>` flag switches off ("venue",
+## "boats", "wakes", "sky", "water", "post", "course", "audio", "sim"); nothing of it is saved
+var skip_s := 0.0
+var measure_off := {}
 @onready var env_source: SeaEnvSource = $EnvSource
 @onready var sky: SkyRig = $SkyDay
 
@@ -245,6 +250,7 @@ func _ready() -> void:
 	if no_hud:
 		hud.toggle_hidden()
 	DevLook.apply_built(self)  # the look flags (shadows, grade, breathing) on the built scene
+	_apply_measure_off()
 	if scenario_run != null:
 		view_boat(scenario_run.scenario.view)
 	perf = PerfMonitor.new()
@@ -428,10 +434,87 @@ func _user_args() -> void:
 			no_hud = true
 		elif a.begins_with("--scenario="):
 			scenario = a.trim_prefix("--scenario=")
+		else:
+			_measure_flag(a)
 	if race_flag and not fleet_given and fleet_size < 2:
 		fleet_size = GameSetup.new().fleet_size
 	if watch:
 		racing = false
+
+
+## The run-only flags of measured runs (game/README.md "Measuring performance"); false for any other argument.
+func _measure_flag(a: String) -> bool:
+	if a.begins_with("--skip="):
+		skip_s = a.trim_prefix("--skip=").to_float()
+	elif a.begins_with("--lod="):
+		BoatView.forced_lod = a.trim_prefix("--lod=").to_int()
+	elif a.begins_with("--hide-parts="):
+		for n in a.trim_prefix("--hide-parts=").split(",", false):
+			BoatView.hidden_parts.append(n)
+	elif a == "--no-sheets":
+		BoatView.draw_sheets = false
+	elif a == "--no-sails":
+		BoatView.draw_sails = false
+	elif a == "--static-sails":
+		BoatView.animate_sails = false
+	elif a in ["--no-venue", "--no-boats", "--no-wakes", "--no-sky", "--no-water", "--no-post", "--no-course",
+			"--no-audio", "--no-sim"]:
+		measure_off[a.trim_prefix("--no-")] = true
+	else:
+		return false
+	return true
+
+
+## The parts `measure_off` switches off, on the built scene (measured runs only).
+func _apply_measure_off() -> void:
+	if Settings.vsync_override == 0 and DisplayServer.get_name() != "headless":
+		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)  # also where no settings apply (a menu stage)
+	if measure_off.has("venue"):
+		venue_view.visible = false
+	if measure_off.has("boats"):
+		for v in boat_views:
+			v.visible = false
+	if measure_off.has("wakes"):
+		wakes.visible = false
+		wakes.set_process(false)
+	if measure_off.has("sky"):
+		# a plain gradient sky shader instead of the clouds and sun disc; the sky still lights the scene
+		var env := sky.environment()
+		var sh := Shader.new()
+		sh.code = "shader_type sky;\nvoid sky() { COLOR = mix(vec3(0.5, 0.74, 1.1), vec3(0.05, 0.18, 0.62), " \
+				+ "clamp(EYEDIR.y, 0.0, 1.0)); }\n"
+		var m := ShaderMaterial.new()
+		m.shader = sh
+		env.sky.sky_material = m
+	if measure_off.has("water"):
+		sea.visible = false
+		var plane := MeshInstance3D.new()
+		plane.name = "FlatWater"
+		var pm := PlaneMesh.new()
+		pm.size = Vector2(30000.0, 30000.0)
+		plane.mesh = pm
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.05, 0.16, 0.25)
+		mat.roughness = 0.2
+		plane.material_override = mat
+		plane.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(plane)
+	if measure_off.has("post"):
+		DevLook.set_look(self, false)
+		var env := sky.environment()
+		env.glow_enabled = false
+		env.adjustment_enabled = false
+		env.adjustment_color_correction = null
+		env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
+	if measure_off.has("course") and course_view:
+		course_view.visible = false
+		sea.set_overlay_lines([])
+		sea.set_overlay_circles([])
+	if measure_off.has("audio"):
+		audio.process_mode = Node.PROCESS_MODE_DISABLED
+		AudioServer.set_bus_mute(0, true)
+	if measure_off.has("sim"):
+		runner.paused = true
 
 
 ## A rules scenario (race.md §14) onto the scene's settings: class, venue, course, fleet, wind and seed from the
@@ -553,6 +636,8 @@ func _setup_core() -> int:
 		on_core = false
 		race_mode = false
 		return _setup_fake()
+	if skip_s > 0.0:
+		cs.step_ticks(roundi(skip_s / SimSource.DT), false)
 	sim = cs
 	core_env = CoreEnvSource.new()
 	core_env.name = "CoreEnv"
@@ -699,7 +784,8 @@ func _on_tick(_t: int) -> void:
 		rig.ease_to(CameraRig.Mode.FINISH, target)  # cameras.md §9.1
 	controls.rumble.tick(sim, runner.boat)
 	var t1 := Time.get_ticks_usec()
-	audio.tick()
+	if not measure_off.has("audio"):
+		audio.tick()
 	var t2 := Time.get_ticks_usec()
 	_snapshot_sails()
 	var t3 := Time.get_ticks_usec()
@@ -781,7 +867,7 @@ func step_frame(dt: float) -> void:
 	PerfStats.add(&"sea", Time.get_ticks_usec() - t2)
 	_update_target(runner.alpha())
 	var t3 := Time.get_ticks_usec()
-	if course_view:
+	if course_view and not measure_off.has("course"):
 		course_view.frame(dt, rig.camera.global_position, target.pose)
 		rig.aerial.next_mark = course_view.next_mark_scene()
 	var t4 := Time.get_ticks_usec()
@@ -802,7 +888,8 @@ func step_frame(dt: float) -> void:
 	capture.frame(dt)
 	_place_rate_note()
 	audio.countdown_beeps = hud.assist == Hud.Assist.FULL
-	audio.frame(dt, rig.camera, rig.mode == CameraRig.Mode.ONBOARD)
+	if not measure_off.has("audio"):
+		audio.frame(dt, rig.camera, rig.mode == CameraRig.Mode.ONBOARD)
 	PerfStats.add(&"audio", Time.get_ticks_usec() - t6)
 
 

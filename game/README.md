@@ -154,7 +154,31 @@ components within 1 mm of the core's sea height.
 
 Records read every tick (`boat_state`, `boat_outputs`, `boat_controls`, `render_pose`, `sail`, `boat_env`) come from
 `CoreSim` as `PackedFloat32Array` in the C structs' field order (`CoreSimSource.STATE_FIELDS` and the rest), the
-others as Dictionaries with the C field names. `CoreSimSource` caches the per-boat records until the next step.
+others as Dictionaries with the C field names. `CoreSimSource` caches the per-boat records until the next step
+(integer keys). `render_poses(alpha)` reads every boat's pose in one `CoreSim.render_poses` call (9 floats per
+boat) and shares the `RenderPose` objects of an alpha until the next step, so they are read-only; `render_pose(b,
+alpha)` is one of them. `wake_state_into(d, b, pose, own)` writes the wake state into a Dictionary the scene keeps
+per boat.
+
+### The simulation on a second core
+
+`CoreSim` steps the world on a worker thread of its own (one per world, made at the first `step_begin()`, 8 MiB
+stack as the main thread's): `step_begin()` hands it the next tick, `step_end()` waits for it, `is_stepping()`
+tells. Every other `CoreSim` call waits for a running tick first, so the world is touched by one thread at a time
+and never read in the middle of a step. `CoreSimSource.step_begin()` / `step_end()` wrap them (`before_step`
+first, the caches dropped at the end; until then the records cached before the tick stay as they were);
+`SimSource.can_step_async()` says whether a sim has them (`FakeSim` steps in `step_begin()`).
+
+`SimRunner.prefetch()` is called by the sail scene at the end of a frame's game work (a node that processes after
+the scene's nodes, before the PerfMonitor): when the next frame will reach the tick boundary it stamps the input
+frame for the next tick, applies it and starts the tick. The tick runs while the frame is drawn; the next frame's
+`step_frame` takes it in first (`SimRunner.settle()`: wait, drop the caches, count the tick, `ticked`). The rules
+are in `docs/specs/controls.md` §1.1: the input frame of a tick is the one applied to it, the ticks run in order one
+at a time, so the same input frames give the same checksums with or without the thread (`tests/core_sim_test.gd`
+"the tick on the worker thread" checks it tick by tick at uneven frame times). The scene's work after a tick (HUD
+tick, sound inputs, course view) is spread over the tick's frames (`TickWork`), at the latest before the next tick
+starts. The prefetch and the spreading are on while the scene processes itself (`auto_process`); tests that call
+`step_frame` themselves step every tick on the main thread as before.
 
 ## Controls, cameras and HUD
 

@@ -24,6 +24,10 @@ var left_stick := Vector2.ZERO
 var mouse_drag := Vector2.ZERO
 ## mouse wheel notches this frame: + zoom in, - zoom out
 var wheel := 0
+## where the click or tap of a `boat_pick` press this frame was (viewport px); NAN when not given (controls.md §3)
+var pointer := Vector2(NAN, NAN)
+## the left button (or a touch) is dragging the camera this frame (controls.md §3 click or drag)
+var pointer_drag := false
 ## a gamepad was the last device used (for the RB + LB zoom-out combo)
 var gamepad := false
 
@@ -48,6 +52,13 @@ func press(action: StringName) -> RawInput:
 	return self
 
 
+## A click (boat_pick) at a screen point, for tests.
+func click(at: Vector2) -> RawInput:
+	pressed.append(&"boat_pick")
+	pointer = at
+	return self
+
+
 func copy() -> RawInput:
 	var r := RawInput.new()
 	r.held = held.duplicate()
@@ -60,6 +71,8 @@ func copy() -> RawInput:
 	r.left_stick = left_stick
 	r.mouse_drag = mouse_drag
 	r.wheel = wheel
+	r.pointer = pointer
+	r.pointer_drag = pointer_drag
 	r.gamepad = gamepad
 	return r
 
@@ -71,4 +84,6 @@ func without_buttons() -> RawInput:
 	r.pressed = []
 	r.mouse_drag = Vector2.ZERO
 	r.wheel = 0
+	r.pointer = Vector2(NAN, NAN)
+	r.pointer_drag = false
 	return r

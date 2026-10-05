@@ -22,6 +22,7 @@ func _init() -> void:
 	test_input_map()
 	test_input_frame()
 	test_capture_state()
+	test_click_or_drag()
 	await test_capture_scene_fake()
 	if CoreSimSource.available():
 		await test_capture_scene_race()
@@ -522,6 +523,36 @@ func test_capture_note() -> void:
 	t.ok(cm.note == "" and cm.note_alpha() == 0.0, "a restart clears the note")
 
 
+## controls.md §3 click or drag, §8 test 10: the pick button released within 8 px is a click at its point; moved
+## further it drags the camera by the motion past the 8 px and picks nothing
+func test_click_or_drag() -> void:
+	t.begin("10 click or drag (InputReader)")
+	var rd := InputReader.new()
+	rd.pointer_press(Vector2(100, 100))
+	rd.pointer_move(Vector2(103, 100), Vector2(3, 0))
+	rd.pointer_release(Vector2(103, 100))
+	var r := rd.read()
+	t.ok(r.was_pressed(&"boat_pick") and r.pointer == Vector2(103, 100), "3 px of motion: a click at its point")
+	t.ok(r.mouse_drag == Vector2.ZERO and not r.pointer_drag and not CameraInput.from_raw(r, false).dragging,
+		"the click orbits nothing")
+	t.ok(not rd.read().was_pressed(&"boat_pick"), "one pick per click")
+	rd.pointer_press(Vector2(200, 200))
+	for i in 4:
+		rd.pointer_move(Vector2(200 + 5 * (i + 1), 200), Vector2(5, 0))
+	r = rd.read()
+	var cin := CameraInput.from_raw(r, false)
+	t.ok(r.pointer_drag and cin.dragging, "dragged 20 px: a camera drag")
+	t.near(r.mouse_drag.x, 12.0, 1e-4, "the camera gets the motion past the 8 px")
+	rd.pointer_move(Vector2(230, 200), Vector2(10, 0))
+	rd.pointer_release(Vector2(230, 200))
+	r = rd.read()
+	t.ok(not r.was_pressed(&"boat_pick") and r.mouse_drag.x == 10.0, "the drag picks nothing on release")
+	t.ok(not rd.read().pointer_drag, "and ends with the release")
+	rd.pointer_move(Vector2(300, 300), Vector2(9, 9))
+	t.ok(rd.read().mouse_drag == Vector2.ZERO, "motion without a press is no drag")
+	rd.free()
+
+
 ## one frame of the scene with `actions` pressed (and `held` held)
 func _frame_with(sc: Node, actions: Array = [], held: Array = [], dt := 1.0 / 60.0) -> void:
 	var r := RawInput.new()
@@ -658,6 +689,39 @@ func test_capture_scene_race() -> void:
 	t.ok(hud.visible, "the rest of the HUD stays")
 	_frame_with(sc, [&"world_tags"])
 	t.ok(hud.world.visible and cv.lines.size() == n_lines, "world_tags again: shown")
+	# hud.md §16.4.1: a click on a boat in the scene selects her; Esc clears before it pauses
+	var runner: SimRunner = sc.runner
+	var other := -1
+	var tri := PackedVector2Array()
+	for b in sc.sim.boat_count():
+		if b != sc.viewed and not hud.boat_triangle(b).is_empty():
+			other = b
+			tri = hud.boat_triangle(b)
+			break
+	var at := Vector2(-1, -1)
+	if not tri.is_empty():
+		at = Vector2.ZERO
+		for q in tri:
+			at += q / tri.size()
+	var ck := RawInput.new().click(at)
+	sc.scripted_input = ck
+	sc.step_frame(1.0 / 30.0)
+	sc.scripted_input = RawInput.new()
+	t.ok(not tri.is_empty() and hud.selected_boat() == other, "a click on boat %d in the scene selects her (%s, %d)" % [
+		other, str(tri), hud.selected_boat()])
+	hud.select(other)
+	_frame_with(sc, [&"pause_menu"])
+	t.ok(hud.selected_boat() == -1 and not runner.paused, "Esc with a boat selected clears it and does not pause")
+	_frame_with(sc, [&"pause_menu"])
+	t.ok(runner.paused, "the next Esc pauses")
+	hud.select(other)
+	sc.scripted_input = RawInput.new().click(at)
+	sc.step_frame(1.0 / 30.0)
+	sc.scripted_input = RawInput.new()
+	t.ok(hud.selected_boat() == other, "no picks while paused")
+	_frame_with(sc, [&"pause_menu"])
+	t.ok(not runner.paused and hud.selected_boat() == other, "Esc in the pause resumes and keeps the selection")
+	hud.select(-1)
 	_frame_with(sc, [&"camera_clip"])
 	var rig: CameraRig = sc.rig
 	t.ok(rig.mode == CameraRig.Mode.START_LINE and rig.course != null and rig.course.has_line,

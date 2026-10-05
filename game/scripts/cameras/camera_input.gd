@@ -55,7 +55,7 @@ static func from_raw(r: RawInput, free_camera: bool) -> CameraInput:
 	c.look = Vector2(rs.x, -rs.y)
 	c.orbit = (c.keys + c.look).clampf(-1.0, 1.0)
 	c.mouse = r.mouse_drag
-	c.dragging = r.is_held(&"camera_orbit_drag")
+	c.dragging = r.is_held(&"camera_orbit_drag") or r.pointer_drag
 	c.fov_modifier = r.is_held(&"camera_fov")
 	c.zoom_notches = r.wheel
 	var zin := r.is_held(&"camera_zoom_in")

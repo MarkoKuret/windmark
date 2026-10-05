@@ -9,7 +9,8 @@ extends HudCanvas
 ## the laylines (red port, green starboard) and the true wind arrow at the edge. Positions are the render poses
 ## of the frame. With `colours` off (Minimal assist) every racing boat is white; `laylines` off hides them.
 ## Look (hud.md §16.2): a soft ink disc with hairline rings, the own boat and the next mark in `mark`, the range and
-## orientation under the disc (not with `compact`, the Glance density).
+## orientation under the disc (not with `compact`, the Glance density). The selected boat (hud.md §16.4.1) gets four
+## hairline corners round her icon.
 
 const RANGES := [100.0, 150.0, 225.0, 337.5, 506.25, 759.375, 1139.0625, 1708.59375, 2562.890625]
 const CFG := "user://hud.cfg"
@@ -27,6 +28,10 @@ var tws := 0.0
 var compact := false
 ## what was drawn last (tests): boat -> Color
 var drawn := {}
+## the selected boat (hud.md §16.4.1), -1 for none: her icon gets four hairline corners
+var selected := -1
+## where the selected boat's corners were drawn last (tests), Vector2.INF when not
+var selected_at := Vector2.INF
 
 var _t := 0.0
 
@@ -96,6 +101,7 @@ func contact_colour(ct: RaceHudValues.Contact) -> Color:
 ## fills the width, the labels sit under it.
 func _build() -> void:
 	drawn.clear()
+	selected_at = Vector2.INF
 	var r := minf(size.x, size.y) * 0.5
 	var c := Vector2(size.x * 0.5, r)
 	var hw := maxf(1.0, 1.5 * k)
@@ -189,6 +195,10 @@ func _build() -> void:
 		drawn[ct.boat] = col
 		var outline := colours and ct.pulse == RaceHudValues.Pulse.BREACH and not ct.ghost
 		_boat(q, p.psi - rot, sim.class_info(ct.boat).loa * scale, col, outline)
+		if ct.boat == selected:
+			var e := 9.0 * k
+			HudPaint.bracket(self, Rect2(q - Vector2(e, e), Vector2(e, e) * 2.0), HudStyle.PAPER, 4.0)
+			selected_at = q
 	_boat(c, me.psi - rot, values._loa * scale, HudStyle.MARK, false)
 	# message target pointer
 	if values.message != null and values.message.other >= 0:

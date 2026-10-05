@@ -6,7 +6,9 @@ extends SceneTree
 ##     for the portrait capture preset (hud.md §16.5), 1080 x 1920;
 ##   - a scripted incident on RaceStubSim (rules line, penalty panel and the turn on the water, radar colours, a
 ##     selected boat's tag, protest prompt) seen from a camera above (the backdrop is not the same scene);
-##   - the finish card (hud.md §13.1) and the results of a short race on the core.
+##   - the finish card (hud.md §13.1) and the results of a short race on the core;
+##   - boat_pick: the "fleet" shot (8 boats, course preview "fleet") with the boat nearest the middle of the screen
+##     picked (hud.md §16.4.1, §16.7: her bracket, tag and card), at 1280 x 720 and in portrait.
 ## Portrait shots end in _portrait. Every shot prints the block overlaps HudLayoutCheck finds ("no overlaps").
 ##   godot --headless --path game -s res://tests/race_hud_preview_dump.gd [-- shot ...]
 ## Writes generated/race_hud_preview/<name>.json: the size, the backdrop and every HudCanvas's primitives.
@@ -27,7 +29,12 @@ const SHOTS := [
 	["upwind", "windward", 330.0, ["look_mark", "w", Vector3(-50, -170, 45), 50.0],
 		[[G, WIDE], [R, WIDE], [D, WIDE], [G, DECK], [G, PORTRAIT], [R, PORTRAIT]]],
 	["aerial", "race_aerial", 262.0, ["aerial", 700.0], [[R, WIDE], [G, PORTRAIT]]],
+	# the fleet from behind the own boat (course_preview_dump.gd "fleet": 8 boats, world seed 84): boat pick frames only
+	["fleet", "fleet", 262.0, ["chase", 3.2, 0.3, 0.5], [], {"fleet": 8, "seed": 84}],
 ]
+
+## the scene shots that also get a boat_pick frame (a boat selected)
+const PICK_SHOTS := ["fleet"]
 
 var _only: PackedStringArray = OS.get_cmdline_user_args()
 
@@ -36,7 +43,7 @@ func _init() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT))
 	await process_frame
 	for s in SHOTS:
-		if _only.is_empty() or _only.has(s[0]):
+		if _only.is_empty() or _only.has(s[0]) or (_only.has("boat_pick") and s[0] in PICK_SHOTS):
 			await _scene_shot(s)
 	if _only.is_empty() or _only.has("incident"):
 		await _incident()
@@ -64,6 +71,9 @@ func _scene_shot(s: Array) -> void:
 	scene.race_mode = true
 	scene.core_settings = {"free_sailing_s": 10.0}
 	scene.puffs = true
+	var opts: Dictionary = s[5] if s.size() > 5 else {}
+	scene.fleet_size = opts.get("fleet", scene.fleet_size)
+	scene.world_seed = opts.get("seed", scene.world_seed)
 	get_root().add_child(scene)
 	scene.scripted_input = RawInput.new()
 	var t := 0.0
@@ -73,7 +83,8 @@ func _scene_shot(s: Array) -> void:
 		t += DT
 	var kind := _place_camera(scene, s[3])
 	var hud: Hud = scene.hud
-	hud.race.names = {1: "Nora", 2: "Ivo", 3: "Maja", 4: "Tine", 5: "Ana"}
+	if hud.race.names.is_empty():
+		hud.race.names = {1: "Nora", 2: "Ivo", 3: "Maja", 4: "Tine", 5: "Ana"}
 	for combo in s[4]:
 		var screen: Vector2 = combo[1]
 		var cam := _view_camera(scene.rig.camera, screen)
@@ -83,16 +94,62 @@ func _scene_shot(s: Array) -> void:
 		hud.density_auto = false
 		hud.density = combo[0]
 		var name: String = "%s_%s" % [s[0], _level(combo[0])] + _suffix(screen)
-		await _shot(hud, name, s[1], screen)
+		if _only.is_empty() or _only.has(s[0]):
+			await _shot(hud, name, s[1], screen)
 		cam.get_parent().queue_free()
+	# hud.md §16.4.1, §16.7: a boat picked on the same frame, her bracket, tag and card
+	if s[0] in PICK_SHOTS and (_only.is_empty() or _only.has("boat_pick")):
+		for combo in [[R, WIDE], [G, PORTRAIT]]:
+			var screen: Vector2 = combo[1]
+			var cam := _view_camera(scene.rig.camera, screen)
+			hud.camera = cam
+			hud.camera_kind = kind
+			hud.screen_size = screen
+			hud.density_auto = false
+			hud.density = combo[0]
+			hud.layout_now()
+			hud.select(_visible_boat(hud, screen))
+			if hud.selected_boat() < 0:
+				hud.select_next()  # none on screen: the nearest, with her edge pointer
+			var name: String = "boat_pick_%s_%s" % [s[0], _level(combo[0])] + _suffix(screen)
+			print("race hud preview: %s picks boat %d" % [name, hud.selected_boat()])
+			await _shot(hud, name, s[1], screen)
+			hud.select(-1)
+			cam.get_parent().queue_free()
 	scene.queue_free()
 	await process_frame
+
+
+## the other boat on screen nearest the middle of it (inside 8 % of its edges), -1 for none
+func _visible_boat(hud: Hud, screen: Vector2) -> int:
+	var best := -1
+	var best_d := INF
+	var inner := Rect2(screen * 0.08, screen * 0.84)
+	for b in hud.sim.boat_count():
+		if b == hud.viewed:
+			continue
+		var tri := hud.boat_triangle(b)
+		if tri.size() < 3:
+			continue
+		var c := (tri[0] + tri[1] + tri[2]) / 3.0
+		if inner.has_point(c) and c.distance_to(screen * 0.5) < best_d:
+			best_d = c.distance_to(screen * 0.5)
+			best = b
+	return best
 
 
 ## the course preview camera of the shot; returns the camera kind for the HUD
 func _place_camera(scene: Node, c: Array) -> String:
 	var cam: Camera3D = scene.rig.camera
 	match c[0]:
+		"chase":
+			var ch: ChaseCamera = scene.rig.chase
+			ch.R = scene.target.r0() * c[1]
+			ch.el = c[2]
+			ch.az = c[3]
+			for i in 30:
+				scene.step_frame(1.0 / 60.0)
+			return "chase"
 		"aerial":
 			scene.rig.select_mode(CameraRig.Mode.AERIAL, scene.target)
 			scene.rig.aerial.H = c[1]
@@ -182,7 +239,7 @@ func _incident() -> void:
 	cam.global_transform = Transform3D(Basis.IDENTITY, eye).looking_at(Frames.enu_to_scene(125.0, 440.0, 0.0), Vector3.UP)
 	hud.camera = cam
 	hud.camera_kind = "aerial"
-	hud.selected = {2: true}
+	hud.select(2)
 	hud.density_auto = false
 	hud.density = R
 	await _shot(hud, "incident_race", "race_aerial", WIDE)

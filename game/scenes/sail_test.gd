@@ -766,6 +766,7 @@ func step_frame(dt: float) -> void:
 	if look_panel != null and look_panel.blocks_input():
 		raw = raw.without_buttons()  # the look panel has the keys (hud.md §18); the sim keeps running
 	_ui_actions(raw)
+	hud.pick_enabled = not runner.paused and not controls.text_focus  # not through the menu or chat (hud.md §16.4.1)
 	hud.ui_input(raw, dt)
 	controls.free_camera = rig.mode == CameraRig.Mode.FREE
 	controls.update(raw, dt)
@@ -900,8 +901,10 @@ func _ui_actions(r: RawInput) -> void:
 		if course_view:
 			course_view.show_guides = capture.world_tags
 	if r.was_pressed(&"pause_menu"):
-		runner.paused = not runner.paused  # offline: pause the simulation, the cameras still move
-		_paused_label.visible = runner.paused
+		# Esc with a boat selected clears the selection first (hud.md §16.4.1)
+		if runner.paused or not hud.clear_selection():
+			runner.paused = not runner.paused  # offline: pause the simulation, the cameras still move
+			_paused_label.visible = runner.paused
 	if r.was_pressed(&"screenshot"):
 		_screenshot()
 	if r.was_pressed(&"reset_boat"):

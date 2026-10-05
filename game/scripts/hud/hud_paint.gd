@@ -708,18 +708,12 @@ static func world(b: HudCanvas, h: Hud) -> void:
 		var eta := "--:--" if is_nan(r.eta) else HudFormat.clock(r.eta)
 		edge_pointer(b, h, h.mark_world(), h.text_of("next").to_upper(), "%s · ETA %s" % [
 			HudFormat.distance(r.next_dist), eta], HudStyle.MARK)
-	# tack point
+	# tack point: the ring and its label only, no line from the boat (hud.md §16.4)
 	var tp: Variant = h.world_tack_point()
 	if tp != null:
-		var bs: Variant = h.project(h.own_world(0.0))
 		var ts: Variant = h.project(Vector3(tp.x, tp.y, 0.0))
-		if bs != null and ts != null:
-			var a: Vector2 = bs
+		if ts != null:
 			var c: Vector2 = ts
-			var n := int(a.distance_to(c) / (11.0 * k))
-			for i in n:
-				var t0 := float(i) / n
-				b._l(a.lerp(c, t0), a.lerp(c, t0 + 0.35 / n), Color(HudStyle.PAPER, 0.9), 2.0 * k)
 			var col := HudStyle.PORT if h.values.twa > 0.0 else HudStyle.STBD
 			b._a(c, 7.0 * k, 0.0, TAU, 24, col, 2.0 * k)
 			var t := h.text_of("layline")
@@ -749,11 +743,139 @@ static func world(b: HudCanvas, h: Hud) -> void:
 		b._s(Vector2(q.x, rr.position.y + 16.0 * k), name, fs, Color(HudStyle.INK, col.a) if solid else col, 700, 0.1,
 			HORIZONTAL_ALIGNMENT_CENTER)
 		b.text_shadow = sv
+	# the selected boat's bracket (hud.md §16.4.1)
+	var br := h.selected_bracket()
+	if br.has("r"):
+		bracket(b, br["r"], br["col"])
 	for e in h.selected_off_screen():
 		edge_pointer(b, h, e["w"], e["name"], HudFormat.distance(e["d"]), e["col"])
 	# penalty turn on the water (chase and aerial cameras)
 	if h.penalty_turn_shown():
 		_penalty_turn(b, h)
+
+
+## four hairline corners round `r` (screen px), each a quarter of the side and at most 14 design px
+static func bracket(b: HudCanvas, r: Rect2, col: Color, max_len := 14.0) -> void:
+	var hw := _hw(b)
+	var lx := minf(r.size.x * 0.25, max_len * b.k)
+	var ly := minf(r.size.y * 0.25, max_len * b.k)
+	var p0 := r.position
+	var p1 := Vector2(r.end.x, r.position.y)
+	var p2 := r.end
+	var p3 := Vector2(r.position.x, r.end.y)
+	b._pl(PackedVector2Array([p0 + Vector2(0, ly), p0, p0 + Vector2(lx, 0)]), col, hw)
+	b._pl(PackedVector2Array([p1 - Vector2(lx, 0), p1, p1 + Vector2(0, ly)]), col, hw)
+	b._pl(PackedVector2Array([p2 - Vector2(0, ly), p2, p2 - Vector2(lx, 0)]), col, hw)
+	b._pl(PackedVector2Array([p3 + Vector2(lx, 0), p3, p3 - Vector2(0, ly)]), col, hw)
+
+
+# ---- selected boat card (hud.md §16.7) ----
+
+const CARD_W := 340.0
+
+
+## the font size (px, already scaled) at which `text` fits `max_w` design px, from `size` down to the 11 px floor
+static func _fit(b: HudCanvas, text: String, size: float, max_w: float, weight := 600, tracking := 0.0) -> int:
+	var sz := int(roundf(size * b.k))
+	while sz > HudStyle.MIN_TEXT and HudCanvas.text_width(text, sz, weight, tracking) > max_w * b.k:
+		sz -= 1
+	return sz
+
+
+## `text` at the size _fit gives, cut with an ellipsis when it is still too wide at the floor
+static func _fit_cut(b: HudCanvas, text: String, size: float, max_w: float, weight := 600, tracking := 0.0) -> Array:
+	var sz := _fit(b, text, size, max_w, weight, tracking)
+	var t := text
+	while t.length() > 1 and HudCanvas.text_width(t, sz, weight, tracking) > max_w * b.k:
+		t = t.substr(0, t.length() - 2).strip_edges() + "…"
+	return [t, sz]
+
+
+## the card's rows' baselines (design px) and its height, from what the card has
+static func card_rows(h: Hud) -> Dictionary:
+	var c := h.card
+	var y := 166.0
+	var out := {}
+	if c.get("course", "") != "":
+		y += 34.0
+		out["course"] = y
+	if c.get("rules", "") != "":
+		y += 30.0
+		out["rules"] = y
+		y += 22.0
+		out["rule_text"] = y
+	if c.get("penalty", "") != "":
+		y += 28.0
+		out["penalty"] = y
+	out["height"] = y + 18.0
+	return out
+
+
+static func card_height(h: Hud) -> float:
+	return card_rows(h)["height"] if not h.card.is_empty() else 0.0
+
+
+static func boat_card(b: HudCanvas, h: Hud) -> void:
+	var c := h.card
+	if c.is_empty():
+		return
+	var k := b.k
+	var rows := card_rows(h)
+	var hgt: float = rows["height"]
+	var col: Color = c.get("col", HudStyle.PAPER)
+	var bar := HudStyle.HAIR if col.is_equal_approx(HudStyle.PAPER) else col
+	b._rect(Rect2(Vector2.ZERO, Vector2(CARD_W, hgt) * k), Color(HudStyle.INK, 0.86))
+	b._l(Vector2.ZERO, Vector2(CARD_W, 0) * k, HudStyle.HAIR, _hw(b))
+	b._rect(Rect2(Vector2.ZERO, Vector2(4, hgt) * k), bar)
+	var x := 20.0
+	var xr := CARD_W - 16.0
+	# header: sail number and skipper, the name; the place on the right
+	var place: String = c.get("place", "")
+	var head: String = c.get("head", "")
+	var right_w := 0.0
+	var cap_w := 0.0
+	if place != "":
+		var csz := int(roundf(LAB_S * k))
+		b._s(Vector2(xr, 22) * k, "PLACE", csz, HudStyle.MIST, 600, TRACK, HORIZONTAL_ALIGNMENT_RIGHT)
+		cap_w = HudCanvas.text_width("PLACE", csz, 600, TRACK) / k + 12.0
+		right_w = number_unit(b, xr, 54, place, "/ %d" % int(c.get("fleet", 0)), 26, HudStyle.PAPER,
+			HORIZONTAL_ALIGNMENT_RIGHT)
+	if head != "":
+		var hf := _fit_cut(b, head, LAB_S, xr - x - cap_w, 600, TRACK)
+		b._s(Vector2(x, 22) * k, hf[0], hf[1], HudStyle.MIST, 600, TRACK)
+	var name: String = c.get("name", "")
+	var nf := _fit_cut(b, name, 26, xr - x - right_w - 16.0, 700, 0.04)
+	b._s(Vector2(x, 54) * k, nf[0], nf[1], HudStyle.PAPER, 700, 0.04)
+	divider(b, Vector2(x, 70), Vector2(xr, 70))
+	# cells: distance and bearing, speed and heading
+	var cells := [["DIST", "dist", x, 94.0], ["BRG", "brg", 172.0, 94.0], ["SPEED", "speed", x, 150.0],
+		["HDG", "hdg", 172.0, 150.0]]
+	for cl in cells:
+		caption(b, cl[2], cl[3] - 2.0 - 14.0, cl[0])
+		var v: Array = c.get(cl[1], ["", ""])
+		if cl[1] == "hdg":
+			var w := number_unit(b, cl[2], cl[3] + 14.0, v[0], "", 26)
+			var tk: String = v[1]
+			if tk != "":
+				b._s(Vector2(cl[2] + w + 6.0, cl[3] + 14.0) * k, tk, int(roundf(16 * k)),
+					HudStyle.STBD if tk == "S" else HudStyle.PORT, 700)
+		else:
+			number_unit(b, cl[2], cl[3] + 14.0, v[0], v[1], 26)
+	if rows.has("course"):
+		divider(b, Vector2(x, 178), Vector2(xr, 178))
+		var t: String = c["course"]
+		var cf := _fit_cut(b, t, 16, xr - x, 600)
+		b._s(Vector2(x, rows["course"]) * k, cf[0], cf[1], HudStyle.PAPER, 600)
+	if rows.has("rules"):
+		var rc: Color = c.get("rules_col", HudStyle.PAPER)
+		var t: String = c["rules"]
+		b._s(Vector2(x, rows["rules"]) * k, t, _fit(b, t, 15, xr - x, 700, 0.06), rc, 700, 0.06)
+		var rt: String = c.get("rule_text", "")
+		var rf := _fit_cut(b, rt, 14, xr - x, 500)
+		b._s(Vector2(x, rows["rule_text"]) * k, rf[0], rf[1], HudStyle.PAPER, 500)
+	if rows.has("penalty"):
+		var t: String = c["penalty"]
+		b._s(Vector2(x, rows["penalty"]) * k, t, _fit(b, t, 15, xr - x, 700, 0.06), HudStyle.PORT, 700, 0.06)
 
 
 ## an arrow at the screen edge towards a world point off screen, with a name and a line under it

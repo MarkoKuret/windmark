@@ -27,6 +27,8 @@ const SHOTS := [
 	["haze_10km", true, [], 262.0, ["from_boat", 10000.0, 30.0, 2.0], HAZE],
 	["haze_3km_clear", true, [], 262.0, ["from_boat", 3000.0, 15.0, 6.7], {"fleet": 8, "seed": 84, "sky": "clear"}],
 	["haze_3km_hazy", true, [], 262.0, ["from_boat", 3000.0, 15.0, 6.7], {"fleet": 8, "seed": 84, "sky": "hazy"}],
+	# the fleet seen from behind and above the own boat (the boat pick frames of tests/race_hud_preview_dump.gd)
+	["fleet", true, [], 262.0, ["chase", 3.2, 0.3, 0.5], HAZE],
 ]
 
 var _shot := -1

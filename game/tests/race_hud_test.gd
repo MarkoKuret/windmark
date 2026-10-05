@@ -12,7 +12,10 @@ extends SceneTree
 ##   - the presentation of hud.md §16: what each instrument density shows in each phase, the density key and its
 ##     setting, name tags within 50 m and on selected boats, the penalty turn only in the chase and aerial cameras,
 ##     and every text fitting at 1280 x 800 for UI scales 80 % to 130 %; the portrait layout of §16.5 at
-##     1080 x 1920 (texts on screen and apart, no block over another, Glance by default, the compact radar).
+##     1080 x 1920 (texts on screen and apart, no block over another, Glance by default, the compact radar);
+##   - picking a boat (§16.4.1: a click on her selects, on water or on her again clears, another replaces, the
+##     bracket and the radar corners, boat_select nearest first), her card (§16.7) against the scripted state, the
+##     card fitting at 1280 x 800 and 1080 x 1920, and the tack point drawn without a line from the boat.
 ##   godot --headless --path game -s res://tests/race_hud_test.gd
 
 const KNOT := HudFormat.KNOT
@@ -34,7 +37,11 @@ func _init() -> void:
 	test_density()
 	test_density_key_and_settings()
 	await test_name_tags_and_penalty_turn()
+	await test_boat_pick()
+	await test_boat_card()
+	await test_tack_point_no_line()
 	test_text_fits()
+	test_card_fits()
 	test_fake_sim()
 	if CoreSimSource.available():
 		test_layline_core()
@@ -1025,6 +1032,286 @@ func test_name_tags_and_penalty_turn() -> void:
 			"drawn" if want else "not drawn"])
 	h.free()
 	vp.free()
+
+
+## a camera in a 1280 x 720 viewport at `eye` looking at `at` (ENU), for the world tags
+func _cam(eye: Vector3, at: Vector3, fov := 60.0) -> Camera3D:
+	var vp := SubViewport.new()
+	vp.size = Vector2i(1280, 720)
+	vp.disable_3d = false
+	get_root().add_child(vp)
+	var cam := Camera3D.new()
+	vp.add_child(cam)
+	cam.fov = fov
+	var e := Frames.enu_to_scene(eye.x, eye.y, eye.z)
+	cam.global_transform = Transform3D(Basis.IDENTITY, e).looking_at(Frames.enu_to_scene(at.x, at.y, at.z), Vector3.UP)
+	return cam
+
+
+## boat 0 at (0, 400) heading north; 1 at 45 m, 2 at 55 m, 3 far ahead at 320 m (a few px on screen)
+func _pick_sim() -> RaceStubSim:
+	var sim := RaceStubSim.new(4)
+	sim.race_d["state"] = RaceText.RaceState.RACING
+	sim.race_d["race_time"] = 100.0
+	for b in 4:
+		sim.boats_d[b]["started"] = true
+		sim.boats_d[b]["next"] = 1
+	sim.put(0, 0.0, 400.0, 0.0, 3.0)
+	sim.put(1, -12.0, 400.0 + sqrt(45.0 * 45.0 - 144.0), 0.0, 3.0)
+	sim.put(2, 20.0, 400.0 + sqrt(55.0 * 55.0 - 400.0), 0.0, 3.0)
+	sim.put(3, 30.0, 400.0 + sqrt(320.0 * 320.0 - 900.0), deg_to_rad(40.0), 3.4)
+	return sim
+
+
+func test_boat_pick() -> void:
+	t.begin("picking a boat: click, water, again, another, bracket, radar, boat_select (hud.md §16.4.1)")
+	var sim := _pick_sim()
+	await process_frame
+	var cam := _cam(Vector3(0.0, 370.0, 12.0), Vector3(0.0, 440.0, 2.0))
+	var h := Hud.new()
+	get_root().add_child(h)
+	h.screen_size = Vector2(1280, 720)
+	h.camera = cam
+	h.race.names = {1: "Nora", 2: "Ivo", 3: "Maja"}
+	h.tick(sim, 0)
+	h.frame(0.3)
+	var tri := h.boat_triangle(3)
+	var far := tri[2].distance_to((tri[0] + tri[1]) * 0.5)
+	t.ok(not tri.is_empty() and far < 40.0, "the far boat is small on screen (%.0f px hull to masthead)" % far)
+	var near_far := (tri[0] + tri[1] + tri[2]) / 3.0 + Vector2(22.0, 0.0)
+	var raw := RawInput.new().click(near_far)
+	h.ui_input(raw)
+	h.frame(0.1)
+	t.ok(h.selected_boat() == 3, "a click 22 px beside the far boat selects her (generous hit area)")
+	var names := h.name_tags().map(func(g: Dictionary) -> String: return g["name"])
+	t.ok(names.has("MAJA"), "her name tag shows at 320 m: %s" % str(names))
+	var br := h.selected_bracket()
+	var box := Rect2(tri[0], Vector2.ZERO).expand(tri[1]).expand(tri[2])
+	t.ok(br.has("r") and (br["r"] as Rect2).encloses(box), "the bracket stands round her hull and rig")
+	var corners := 0
+	for q in h.world.primitives():
+		if q["k"] == "polyline" and (q["pts"] as PackedVector2Array).size() == 3 and (br["r"] as Rect2).grow(1.0).has_point(q["pts"][1]):
+			corners += 1
+	t.ok(corners == 4, "four hairline corners drawn (%d)" % corners)
+	var ri := h.radar.range_index
+	h.radar.range_index = 4  # 506 m (not saved)
+	h.frame(0.1)
+	h.radar.primitives()
+	t.ok(h.radar.selected == 3 and h.radar.selected_at.is_finite(), "the radar marks her (%d, %s)" % [h.radar.selected,
+		h.radar.selected_at])
+	h.radar.range_index = ri
+	# water clears, again clears, another replaces
+	h.ui_input(RawInput.new().click(Vector2(640.0, 700.0)))
+	t.ok(h.selected_boat() == -1, "a click on open water clears the selection")
+	var mast: Variant = h.project(Vector3(sim.states[2].pos_x, sim.states[2].pos_y, 0.6 * h.mast_height(2)))
+	h.ui_input(RawInput.new().click(mast))
+	t.ok(h.selected_boat() == 2, "a click on her mast selects boat 2")
+	var hull: Variant = h.project(Vector3(sim.states[1].pos_x, sim.states[1].pos_y, 0.5))
+	h.ui_input(RawInput.new().click(hull))
+	t.ok(h.selected_boat() == 1 and h.selected.size() == 1, "a click on another boat's hull replaces her (one at a time)")
+	h.ui_input(RawInput.new().click(hull))
+	t.ok(h.selected_boat() == -1, "a click on the selected boat again clears")
+	h.pick_enabled = false
+	h.ui_input(RawInput.new().click(hull))
+	t.ok(h.selected_boat() == -1, "no pick while the pause menu has the pointer")
+	h.pick_enabled = true
+	# boat_select: nearest first, then the next, then none
+	var got := []
+	for i in 4:
+		h.ui_input(RawInput.new().press(&"boat_select"))
+		got.append(h.selected_boat())
+	t.ok(got == [1, 2, 3, -1], "boat_select: nearest first, then the next, then none: %s" % str(got))
+	t.ok(h.clear_selection() == false, "clear with nothing selected reports none")
+	h.select(2)
+	t.ok(h.clear_selection() and h.selected_boat() == -1, "clear_selection (Esc) clears")
+	# the viewed boat cannot be selected; the selection goes when she becomes the viewed one
+	h.select(1)
+	h.tick(sim, 1)
+	h.frame(0.1)
+	t.ok(h.selected_boat() == -1, "spectating the selected boat clears the selection")
+	h.queue_free()
+	cam.get_parent().queue_free()
+	await process_frame
+
+
+func test_boat_card() -> void:
+	t.begin("the selected boat's card against the scripted state (hud.md §16.7)")
+	var sim := _pick_sim()
+	var R := RaceText.Rule
+	sim.order = PackedInt32Array([3, 0, 1, 2])
+	for i in 4:
+		sim.boats_d[sim.order[i]]["D"] = 1200.0 + 25.0 * i
+	sim.pairs_a = [sim.pair(0, 3, {"kc_giver": 0, "kc_holder": 3, "kc_rule": R.R10, "kc_state": 1}),
+		sim.pair(0, 1, {"room_giver": 1, "room_entitled": 0, "room_rule": R.R18_2, "room_state": 2})]
+	sim.rules_d[3] = {"pending": [{"rule": R.R12, "other": 2, "count": 1}], "turn_progress": deg_to_rad(90.0),
+		"turn_tacks": 1, "turn_gybes": 0, "deadline_s": 30.0, "received": 1, "turning_for_penalty": true}
+	var h := Hud.new()
+	h.screen_size = Vector2(1280, 720)
+	h.assist = Hud.Assist.FULL
+	h.race.names = {1: "Nora", 2: "Ivo", 3: "Maja"}
+	h.race.sail_numbers = {3: "slo 7"}
+	h.race.ai_levels = {1: "Pro", 3: "Expert"}
+	for i in 3:
+		sim.step()
+		h.tick(sim, 0)
+	h.select(3)
+	h.frame(0.3)
+	h.refresh_text()
+	var c := h.card
+	var me := sim.states[0]
+	var her := sim.states[3]
+	var d := Vector2(her.pos_x - me.pos_x, her.pos_y - me.pos_y)
+	t.ok(c["head"] == "SLO 7 · AI EXPERT" and c["name"] == "MAJA", "header: %s / %s" % [c["head"], c["name"]])
+	t.ok(c["place"] == "1" and c["fleet"] == 4, "place 1 / 4 from the shown order")
+	t.near(c["d_m"], d.length(), 1e-6, "distance from the boat states")
+	t.ok(c["dist"] == HudStyle.split_unit(HudFormat.distance(d.length())), "distance text %s" % str(c["dist"]))
+	var brg := Frames.compass(d.x, d.y)
+	t.near(c["brg_rad"], brg, 1e-9, "bearing to her")
+	t.ok(c["brg"][0] == HudFormat.compass_deg(brg) and c["brg"][1] == "· " + HudFormat.relative_bearing(Frames.wrap_pi(brg - me.psi)).to_upper(),
+		"bearing text %s" % str(c["brg"]))
+	t.ok(c["speed"][0] == HudFormat.speed_kn(her.v) and c["hdg"][0] == HudFormat.compass_deg(her.psi),
+		"speed %s kn, heading %s" % [c["speed"][0], c["hdg"][0]])
+	t.ok(c["hdg"][1] == ("S" if her.twa > 0.0 else "P"), "her tack letter %s (TWA %.0f)" % [c["hdg"][1], rad_to_deg(her.twa)])
+	t.ok(c["course"] == "Next Windward · 25 m ahead of you", "course line: %s" % c["course"])
+	t.ok(c["rules"] == "YOU KEEP CLEAR" and c["rule_text"] == "Port tack keeps clear of starboard (10)"
+		and (c["rules_col"] as Color).is_equal_approx(HudStyle.PORT), "rules: %s, %s" % [c["rules"], c["rule_text"]])
+	t.ok(c["penalty"] == "1 PENALTY OWED · TURNING", "penalty: %s" % c["penalty"])
+	t.ok((c["col"] as Color).is_equal_approx(HudStyle.PORT), "her tag colour is the radar's (red: I keep clear)")
+	h.layout_now()
+	t.ok(h.card_block.visible and h.card_block.position.y + h.card_block.size.y <= h.inst_page.position.y,
+		"the card sits left, over the instrument page")
+	var texts := _page_texts(h.card_block)
+	t.ok(texts.has("MAJA") and texts.has("YOU KEEP CLEAR") and texts.has("1 PENALTY OWED · TURNING"),
+		"the card draws its rows")
+	# boat 1: she gives me room, breached; a player with no sail number
+	h.select(1)
+	h.refresh_text()
+	c = h.card
+	t.ok(c["head"] == "AI PRO" and c["rules"] == "SHE GIVES YOU ROOM · BREACH" and c["rule_text"] == "Give mark-room (18.2)"
+		and not c.has("penalty"), "boat 1: %s, %s, %s" % [c["head"], c["rules"], c["rule_text"]])
+	t.ok(c["course"] == "Next Windward · 25 m behind you", "boat 1 course: %s" % c["course"])
+	h.select(2)
+	h.refresh_text()
+	t.ok(h.card["head"] == "PLAYER" and not h.card.has("rules"), "boat 2: a player, no relation")
+	# Minimal assist: no rules row (as the radar colours)
+	h.assist = Hud.Assist.MINIMAL
+	h.select(3)
+	h.frame(0.1)
+	h.refresh_text()
+	t.ok(not h.card.has("rules") and h.card.has("penalty"), "Minimal assist: no relation row, the penalty stays")
+	h.free()
+
+
+func test_tack_point_no_line() -> void:
+	t.begin("the tack point: ring and TACK IN label, no line from the boat (hud.md §16.4)")
+	var sim := RaceStubSim.new()
+	sim.race_d["state"] = RaceText.RaceState.RACING
+	sim.race_d["race_time"] = 100.0
+	for b in 2:
+		sim.boats_d[b]["started"] = true
+		sim.boats_d[b]["next"] = 1
+	var th := deg_to_rad(42.0)
+	sim.put(0, 300.0, 200.0, Frames.wrap_2pi(-th), 3.0)
+	sim.put(1, 0, 0, 0.0, 3.0)
+	await process_frame
+	var h := Hud.new()
+	get_root().add_child(h)
+	h.screen_size = Vector2(1280, 720)
+	h.assist = Hud.Assist.FULL
+	for i in 5:
+		sim.step()
+		h.tick(sim, 0)
+	var tp0: Variant = null
+	h.frame(0.3)
+	h.refresh_text()
+	var dir := Vector2(sin(-th), cos(-th))
+	var o := Vector2(300, 200)
+	var tgt := o + dir * h.race.layline_dist
+	var eye := o - dir * 60.0
+	var cam := _cam(Vector3(eye.x, eye.y, 70.0), Vector3(tgt.x * 0.5 + o.x * 0.5, tgt.y * 0.5 + o.y * 0.5, 0.0), 70.0)
+	h.camera = cam
+	h.frame(0.1)
+	tp0 = h.world_tack_point()
+	t.ok(tp0 != null, "a tack point (%.0f m along the COG)" % h.race.layline_dist)
+	var bs: Variant = h.project(h.own_world(0.0))
+	var ts: Variant = h.project(Vector3(tp0.x, tp0.y, 0.0)) if tp0 != null else null
+	t.ok(bs != null and ts != null and h._on_screen(ts), "boat and tack point on screen")
+	var ring := false
+	var label := false
+	var line_from_boat := 0
+	for q in h.world.primitives():
+		if q["k"] == "arc" and ts != null and (q["p"] as Vector2).distance_to(ts) < 1.0:
+			ring = true
+		if q["k"] == "text" and q["text"] == "TACK IN":
+			label = true
+		if q["k"] == "line" and bs != null and ts != null:
+			var a: Vector2 = q["a"]
+			var b: Vector2 = q["b"]
+			# any segment on the boat-to-tack-point path
+			var on_path := Geometry2D.get_closest_point_to_segment(a, bs, ts).distance_to(a) < 2.0 \
+				and Geometry2D.get_closest_point_to_segment(b, bs, ts).distance_to(b) < 2.0
+			if on_path:
+				line_from_boat += 1
+	t.ok(ring and label, "the ring and TACK IN label are drawn")
+	t.ok(line_from_boat == 0, "no line from the boat to the tack point (%d segments)" % line_from_boat)
+	h.queue_free()
+	cam.get_parent().queue_free()
+	await process_frame
+
+
+func test_card_fits() -> void:
+	t.begin("the boat card fits: 1280 x 800 and 1080 x 1920, UI scale 80 % to 130 %, every density")
+	var R := RaceText.Rule
+	var bad := []
+	var checked := 0
+	for scr in [Vector2(1280, 800), Vector2(1080, 1920), Vector2(1280, 720)]:
+		for sname in ["beat", "penalty"]:
+			for scale in [0.8, 1.0, 1.3]:
+				for lvl in 3:
+					var sim := _beat_sim()
+					sim.order = PackedInt32Array([1, 0, 2])
+					sim.pairs_a = [sim.pair(0, 1, {"kc_giver": 0, "kc_holder": 1, "kc_rule": R.R16_1, "kc_state": 2})]
+					sim.rules_d[1] = {"pending": [{"rule": R.R10, "other": 0, "count": 2}, {"rule": R.R31, "other": -1}],
+						"turn_progress": 0.0, "turn_tacks": 0, "turn_gybes": 0, "deadline_s": 30.0, "received": 2,
+						"turning_for_penalty": true}
+					if sname == "penalty":
+						sim.rules_d[0] = {"pending": [{"rule": R.R10, "other": 1, "count": 2}], "turn_progress": deg_to_rad(200.0),
+							"turn_tacks": 1, "turn_gybes": 0, "deadline_s": 8.0, "received": 5, "turning_for_penalty": true}
+					var h := Hud.new()
+					h.screen_size = scr / scale
+					h.assist = Hud.Assist.FULL
+					h.race.names = {1: "Windflower", 2: "Ivo"}
+					h.race.sail_numbers = {1: "SLO 1234"}
+					h.race.ai_levels = {1: "Intermediate"}
+					h.set_density(lvl)
+					for i in 30:
+						sim.step()
+						h.tick(sim, 0)
+					h.select(1)
+					h.frame(0.3)
+					h.refresh_text()
+					h.frame(2.0)
+					var what := "%s %s %.0f%% %s" % [scr, sname, scale * 100, Hud.DENSITY_NAMES[lvl]]
+					if not h.card_block.visible:
+						bad.append("%s: no card" % what)
+					var rects := _text_rects(h)
+					var screen := Rect2(Vector2.ZERO, h.screen_size)
+					for a in rects:
+						if a["b"] != "BoatCard":
+							continue
+						checked += 1
+						if not screen.encloses(a["r"]):
+							bad.append("%s: '%s' off screen" % [what, a["t"]])
+						for c in rects:
+							if c == a or (c["b"] == "BoatCard" and c["t"] == a["t"]):
+								continue
+							if (a["r"] as Rect2).grow(-1.0).intersects((c["r"] as Rect2).grow(-1.0)):
+								bad.append("%s: '%s' overlaps '%s' (%s)" % [what, a["t"], c["t"], c["b"]])
+					for p in HudLayoutCheck.problems(h, h.screen_size):
+						if p.contains("BoatCard"):
+							bad.append("%s: %s" % [what, p])
+					h.free()
+	t.ok(bad.is_empty() and checked > 0, "%d card texts checked, %d problems: %s" % [checked, bad.size(), str(bad.slice(0, 8))])
 
 
 ## screen rects of every text the HUD paints now (blocks laid out inside the Hud, which is not in the tree)

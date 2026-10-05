@@ -10,8 +10,10 @@ extends Control
 ##
 ## The look is hud.md §16 and docs/design/hud_direction.md: glass instrument pages, Barlow Semi Condensed with
 ## tabular figures, the colour tokens of HudStyle; every block is a HudCanvas painted by HudPaint. World tags
-## (mark tag, tack point, name tags, edge pointers, penalty turn) need the scene's camera (`camera_rig`, or
-## `camera`); without one the mark tag is docked under the race bug and the rest is left out.
+## (mark tag, tack point, name tags, edge pointers, penalty turn, the selected boat's bracket) need the scene's
+## camera (`camera_rig`, or `camera`); without one the mark tag is docked under the race bug and the rest is left
+## out. A boat picked with a click or tap, or boat_select, gets her tag, a bracket and the boat card (§16.4.1,
+## §16.7).
 ##
 ## Numbers refresh at 4 Hz from HudValues and RaceHudValues into `texts` (key -> {text, col, value, unit}: `text`
 ## is the full line, value and unit what the cells show); dials, bars and the radar move every frame. The race
@@ -35,8 +37,10 @@ const TOAST_TIME := 1.5
 const ROUNDING_TIME := 6.0
 ## hud.md §16.4: name tags within this range of the viewed boat, m
 const TAG_RANGE := 50.0
-## a click or tap within this many px of a boat picks it (design px)
+## hud.md §16.4.1: a click or tap within this many px of a boat's hull and rig triangle picks her (design px)
 const PICK_RADIUS := 40.0
+## hud.md §16.4.1: the bracket stands this far outside the boat's screen box (design px)
+const BRACKET_GAP := 6.0
 ## controls.md §3: a View press shorter than this is a tap (density), longer the ranking list
 const VIEW_TAP := 0.3
 const RANK_W := [70.0, 260.0, 130.0, 120.0, 120.0]
@@ -67,7 +71,14 @@ var camera_kind := "chase"
 var show_names := true
 ## controls.md §7 world_tags: the world tags (mark tag, tack point, name tags, edge pointers, penalty turn) shown
 var world_tags := true
+## the selected boat (hud.md §16.4.1): boat -> true, at most one; see selected_boat, select, clear_selection
 var selected := {}
+## the pointer picks (off while the scene's pause menu is open)
+var pick_enabled := true
+## hud.md §16.7: the selected boat's card, refreshed with the texts; empty without one. Keys: boat, head, name,
+## place, fleet, dist [value, unit], brg [value, unit], speed [value, unit], hdg [value, tack letter], course,
+## rules, rules_col, rule_text, penalty, col (her tag colour), and the raw values d_m, brg_rad, rel_rad, v, psi
+var card := {}
 var sim: SimSource
 ## the screen the HUD lays out for, when set (tests, previews); zero: its viewport's
 var screen_size := Vector2.ZERO
@@ -89,6 +100,8 @@ var penalty_panel: HudCanvas
 var ring_view: PenaltyRingView
 var alerts_block: HudCanvas
 var next_panel: HudCanvas
+## hud.md §16.7 the selected boat's card
+var card_block: HudCanvas
 var arrow_view: RoundingArrowView
 var radar: RadarView
 var helm_block: HudCanvas
@@ -162,6 +175,8 @@ func _init() -> void:
 	arrow_view = RoundingArrowView.new()
 	arrow_view.name = "Rounding"
 	next_panel.add_child(arrow_view)
+	card_block = _block("BoatCard", HudPaint.boat_card)
+	card_block.visible = false
 	radar = RadarView.new()
 	radar.name = "Radar"
 	radar.values = race
@@ -413,8 +428,11 @@ func ui_input(raw: RawInput, dt := 1.0 / 60.0) -> void:
 		select_next()
 	if raw.was_pressed(&"boat_names"):
 		show_names = not show_names
-	if raw.was_pressed(&"boat_pick") and is_inside_tree():
-		pick_at(get_viewport().get_mouse_position())
+	if raw.was_pressed(&"boat_pick") and pick_enabled:
+		if not is_nan(raw.pointer.x):
+			pick_at(raw.pointer)
+		elif is_inside_tree():
+			pick_at(get_viewport().get_mouse_position())
 
 
 func _poll_input() -> void:
@@ -422,7 +440,7 @@ func _poll_input() -> void:
 		return
 	var raw := RawInput.new()
 	for a in [&"rankings", &"rankings_pad", &"radar_zoom_in", &"radar_zoom_out", &"radar_orientation", &"hud_density",
-			&"boat_select", &"boat_names", &"boat_pick"]:
+			&"boat_select", &"boat_names"]:  # boat_pick needs the click-or-drag of InputReader
 		if InputMap.has_action(a):
 			if Input.is_action_pressed(a):
 				raw.hold(a)
@@ -466,6 +484,8 @@ func frame(dt: float, controls: PlayerControls = null) -> void:
 	radar.tws = values.tws
 	radar.colours = shows("radar_colours")
 	radar.laylines = shows("laylines")
+	_check_selection()
+	radar.selected = selected_boat()
 	radar.advance(dt)
 	_race_frame()
 	_layout()
@@ -528,6 +548,7 @@ func refresh_text() -> void:
 	_put("vmg_kn", "", HudStyle.PAPER, "--")
 	_put("target_cell", "", HudStyle.PAPER, "--", "KN")
 	_race_text()
+	_card_text()
 
 
 static func _sail_name(n: String) -> String:
@@ -988,7 +1009,37 @@ func mast_height(b: int) -> float:
 	return 1.35 * sim.class_info(b).loa
 
 
-## boat_select: the next boat by distance after the one selected (nearest first), then none
+## the selected boat, -1 for none
+func selected_boat() -> int:
+	return int(selected.keys()[0]) if not selected.is_empty() else -1
+
+
+## selects boat `b` alone (-1 clears)
+func select(b: int) -> void:
+	selected.clear()
+	if b >= 0:
+		selected[b] = true
+	_card_text()
+
+
+## clears the selection; whether there was one (Esc clears it before it pauses, hud.md §16.4.1)
+func clear_selection() -> bool:
+	var had := not selected.is_empty()
+	select(-1)
+	return had
+
+
+## the selection clears when she is the viewed boat, is gone, or the race is over
+func _check_selection() -> void:
+	var b := selected_boat()
+	if b < 0:
+		return
+	if sim == null or b == viewed or b >= sim.boat_count() or race.race_over:
+		select(-1)
+
+
+## boat_select: the boats by distance from the viewed boat at the press, nearest first; the next one after the
+## selected boat, after the farthest none (hud.md §16.4.1)
 func select_next() -> void:
 	if sim == null:
 		return
@@ -1003,44 +1054,225 @@ func select_next() -> void:
 		if p != null:
 			order.append([Vector2(p.pos_x - me.pos_x, p.pos_y - me.pos_y).length(), b])
 	order.sort()
-	var cur := -1
-	if selected.size() == 1:
-		cur = selected.keys()[0]
-	selected.clear()
+	var cur := selected_boat()
 	var i := -1
 	for j in order.size():
 		if order[j][1] == cur:
 			i = j
-	if i + 1 < order.size():
-		selected[order[i + 1][1]] = true
+	select(order[i + 1][1] if i + 1 < order.size() else -1)
 
 
-## boat_pick: selects or clears the boat under a screen point (hull to mast top within PICK_RADIUS); -1 for none
-func pick_at(pos: Vector2) -> int:
-	if sim == null or world_camera() == null:
+## a boat's hull and rig on screen: the triangle from bow and stern at the waterline to the masthead, without the
+## corners behind the camera (empty when all are)
+func boat_triangle(b: int) -> PackedVector2Array:
+	var p := sim.render_pose(b, radar.alpha)
+	if p == null:
+		return PackedVector2Array()
+	var half := 0.5 * sim.class_info(b).loa
+	var f := Vector2(sin(p.psi), cos(p.psi)) * half
+	var out := PackedVector2Array()
+	for w in [Vector3(p.pos_x + f.x, p.pos_y + f.y, p.z), Vector3(p.pos_x - f.x, p.pos_y - f.y, p.z),
+			Vector3(p.pos_x, p.pos_y, p.z + mast_height(b))]:
+		var q: Variant = project(w)
+		if q != null:
+			out.append(q)
+	return out
+
+
+## the screen distance from `pos` to a triangle (0 inside), or to the segment or point left of it
+static func _tri_distance(pos: Vector2, tri: PackedVector2Array) -> float:
+	var n := tri.size()
+	if n == 3 and Geometry2D.is_point_in_polygon(pos, tri):
+		return 0.0
+	if n == 1:
+		return pos.distance_to(tri[0])
+	var d := INF
+	for i in n:
+		d = minf(d, pos.distance_to(Geometry2D.get_closest_point_to_segment(pos, tri[i], tri[(i + 1) % n])))
+	return d
+
+
+## the boat under a screen point (hud.md §16.4.1: her hull and rig triangle grown by PICK_RADIUS; the nearest one,
+## between boats covering the point the one nearest the camera); -1 for none
+func boat_at(pos: Vector2) -> int:
+	var cam := world_camera()
+	if sim == null or cam == null:
 		return -1
 	var best := -1
 	var best_d := PICK_RADIUS * _k
+	var best_depth := INF
 	for b in sim.boat_count():
 		if b == viewed:
 			continue
+		var tri := boat_triangle(b)
+		if tri.is_empty():
+			continue
+		var d := _tri_distance(pos, tri)
 		var p := sim.render_pose(b, radar.alpha)
-		if p == null:
-			continue
-		var a: Variant = project(Vector3(p.pos_x, p.pos_y, p.z + 1.0))
-		var t: Variant = project(Vector3(p.pos_x, p.pos_y, p.z + mast_height(b)))
-		if a == null or t == null:
-			continue
-		var d := pos.distance_to(Geometry2D.get_closest_point_to_segment(pos, a, t))
-		if d < best_d:
+		var depth := cam.global_position.distance_to(Frames.enu_to_scene(p.pos_x, p.pos_y, p.z))
+		if d < best_d - 1e-6 or (d <= 0.0 and best_d <= 0.0 and depth < best_depth):
 			best_d = d
 			best = b
-	if best >= 0:
-		if selected.has(best):
-			selected.erase(best)
-		else:
-			selected[best] = true
+			best_depth = depth
 	return best
+
+
+## boat_pick: a click or tap at a screen point selects the boat there; on the selected boat again or on open water
+## it clears (hud.md §16.4.1). Returns the boat picked, -1 for none.
+func pick_at(pos: Vector2) -> int:
+	if sim == null or world_camera() == null:
+		return -1
+	var b := boat_at(pos)
+	select(b if b >= 0 and b != selected_boat() else -1)
+	return b
+
+
+## the selected boat's bracket on screen (hud.md §16.4.1): {r (Rect2), col}; empty when she is off screen or none
+func selected_bracket() -> Dictionary:
+	var b := selected_boat()
+	if b < 0 or sim == null or world_camera() == null or b >= sim.boat_count():
+		return {}
+	var tri := boat_triangle(b)
+	if tri.is_empty():
+		return {}
+	var r := Rect2(tri[0], Vector2.ZERO)
+	for q in tri:
+		r = r.expand(q)
+	if not _on_screen(r.get_center()):
+		return {}
+	var c := r.get_center()
+	r = Rect2(c - (r.size * 0.5).max(Vector2(8, 8) * _k), (r.size * 0.5).max(Vector2(8, 8) * _k) * 2.0)
+	return {"r": r.grow(BRACKET_GAP * _k), "col": _tag(b, c)["col"]}
+
+
+# ---- selected boat card (hud.md §16.7) ----
+
+## the selected boat's card from the boat states and the race and rules records of the last tick
+func _card_text() -> void:
+	card = {}
+	var b := selected_boat()
+	if b < 0 or sim == null or viewed < 0 or b == viewed or b >= sim.boat_count():
+		return
+	var me := sim.state(viewed)
+	var s := sim.state(b)
+	if me == null or s == null:
+		return
+	var r := race
+	var c := {"boat": b}
+	# header
+	var head: Array[String] = []
+	var sail := str(r.sail_numbers.get(b, ""))
+	if sail != "":
+		head.append(sail.to_upper())
+	var ai := r.ai_badge(b)
+	var skipper := str(r.skippers.get(b, ""))
+	if ai != "":
+		head.append(("%s · AI %s" % [skipper, ai] if skipper != "" else "AI " + ai).to_upper())
+	else:
+		head.append(skipper.to_upper() if skipper != "" else "PLAYER")
+	c["head"] = " · ".join(head)
+	c["name"] = r.name_of(b).to_upper()
+	# cells
+	var d := Vector2(s.pos_x - me.pos_x, s.pos_y - me.pos_y)
+	var brg := Frames.compass(d.x, d.y)
+	var rel := Frames.wrap_pi(brg - me.psi)
+	c["d_m"] = d.length()
+	c["brg_rad"] = brg
+	c["rel_rad"] = rel
+	c["v"] = s.v
+	c["psi"] = s.psi
+	c["dist"] = HudStyle.split_unit(HudFormat.distance(d.length()))
+	c["brg"] = [HudFormat.compass_deg(brg), "· " + HudFormat.relative_bearing(rel).to_upper()]
+	c["speed"] = [HudFormat.speed_kn(s.v), "KN"]
+	c["hdg"] = [HudFormat.compass_deg(s.psi), "S" if s.twa > 0.0 else "P"]
+	var col := HudStyle.PAPER
+	var ct := r.contact(b)
+	if ct != null:
+		col = HudStyle.TINTS[RaceHudValues.Tint.GREY] if ct.ghost else (HudStyle.TINTS[ct.tint] if radar.colours
+			else HudStyle.PAPER)
+	c["col"] = col
+	if r.active:
+		_card_race(c, b)
+	card = c
+
+
+## the card's race rows: place, course and gap, the rules relation, penalties
+func _card_race(c: Dictionary, b: int) -> void:
+	var r := race
+	var rb := sim.race_boat(b)
+	var fin := bool(rb.get("finished", false))
+	if r.started:
+		var idx := r.shown_order.find(b)
+		var place := int(rb.get("place", idx + 1)) if fin else idx + 1
+		if place > 0:
+			c["place"] = str(place)
+			c["fleet"] = r.fleet
+	var course := ""
+	if fin:
+		course = "Finished"
+	elif bool(rb.get("dsq", false)):
+		course = "DSQ"
+	elif bool(rb.get("retired", false)):
+		course = "RET"
+	else:
+		var k := int(rb.get("next", 0))
+		var lab := "start" if k <= 0 or not bool(rb.get("started", false)) else r._step_label(k)
+		course = "Next " + (lab.capitalize() if lab in ["start", "gate", "finish"] else lab)
+		if bool(rb.get("ocs", false)) or bool(rb.get("ocs_i", false)):
+			course = "OCS · " + course
+		if r._racing_on_course(sim, b) and r._racing_on_course(sim, viewed) \
+				and not bool(sim.race_boat(viewed).get("finished", false)):
+			var g := float(rb.get("D", 0.0)) - float(sim.race_boat(viewed).get("D", 0.0))
+			c["gap_m"] = g
+			if absf(g) < 0.5:
+				course += " · level with you"
+			else:
+				course += " · %s %s" % [HudFormat.distance(absf(g)), "behind you" if g > 0.0 else "ahead of you"]
+	c["course"] = course
+	# the rules relation with the viewed boat (the radar colour's meaning, §8)
+	if shows("radar_colours"):
+		for p in sim.pairs():
+			var i := int(p["i"])
+			var j := int(p["j"])
+			if not ((i == viewed and j == b) or (i == b and j == viewed)):
+				continue
+			var text := ""
+			var rule := 0
+			var st := 0
+			var tint := RaceHudValues.Tint.WHITE
+			if int(p["room_rule"]) != 0 and int(p["room_giver"]) == viewed:
+				text = "YOU GIVE ROOM"
+				rule = int(p["room_rule"])
+				st = int(p["room_state"])
+				tint = RaceHudValues.Tint.ORANGE
+			elif int(p["room_rule"]) != 0 and int(p["room_entitled"]) == viewed:
+				text = "SHE GIVES YOU ROOM"
+				rule = int(p["room_rule"])
+				st = int(p["room_state"])
+				tint = RaceHudValues.Tint.CYAN
+			elif int(p["kc_rule"]) != 0 and int(p["kc_giver"]) == viewed:
+				text = "YOU KEEP CLEAR"
+				rule = int(p["kc_rule"])
+				st = int(p["kc_state"])
+				tint = RaceHudValues.Tint.RED
+			elif int(p["kc_rule"]) != 0 and int(p["kc_holder"]) == viewed:
+				text = "SHE KEEPS CLEAR"
+				rule = int(p["kc_rule"])
+				st = int(p["kc_state"])
+				tint = RaceHudValues.Tint.GREEN
+			if text != "":
+				c["rules"] = text + (" · BREACH" if st == RaceText.Kc.BREACH else "")
+				c["rules_col"] = HudStyle.TINTS[tint]
+				c["rule_text"] = "%s (%s)" % [RaceText.rule_text(rule), RaceText.code(rule)]
+				c["rule"] = rule
+			break
+	# penalties owed
+	var br := sim.boat_rules(b)
+	var n: int = br.get("pending", []).size()
+	if n > 0:
+		c["penalty"] = "%d %s OWED" % [n, "PENALTY" if n == 1 else "PENALTIES"]
+		if bool(br.get("turning_for_penalty", false)):
+			c["penalty"] += " · TURNING"
 
 
 ## hud.md §12.1: the turn on the water while a penalty is pending or being sailed, chase and aerial cameras only
@@ -1137,6 +1369,17 @@ func _layout() -> void:
 		next_panel.position = Vector2(m.x, m.y + 230.0 * k)
 	arrow_view.position = Vector2.ZERO
 	arrow_view.size = Vector2(26, 22) * k
+	# the selected boat's card (hud.md §16.7): left, 48 px over the page, never above 16 px under the race bug
+	if _card_shown():
+		var ch := HudPaint.card_height(self) * k
+		var y_min := m.y
+		if bug_block.visible:
+			y_min = bug_block.position.y + bug_block.extent().end.y + 16.0 * k
+		var x := m.x
+		if next_panel.visible and world_camera() == null:
+			x = next_panel.position.x + next_panel.size.x + 16.0 * k  # beside the docked mark tag (no camera)
+		card_block.position = Vector2(x, maxf(y_min, inst_page.position.y - 48.0 * k - ch))
+		card_block.size = Vector2(HudPaint.CARD_W * k, ch)
 	# tables, centred
 	var rs := HudPaint.table_size(RANK_W, race.ranking_rows().size() if ranking_panel.visible else 0) * k
 	ranking_panel.size = rs
@@ -1144,6 +1387,13 @@ func _layout() -> void:
 	var qs := HudPaint.table_size(RESULT_W, race.result_rows.size()) * k
 	results_panel.size = qs
 	results_panel.position = (sc - qs) * 0.5
+
+
+## hud.md §16.7: the card shows while a boat is selected, not with the results
+func _card_shown() -> bool:
+	card_block.visible = not card.is_empty() and not race.race_over and not results_panel.visible \
+		and not (race.active and race.results_visible and race.results_final)
+	return card_block.visible
 
 
 ## The helm strip at `pos`, `hw` wide: its bars and trim gauges inside it, the notes over it.
@@ -1259,9 +1509,16 @@ func _layout_portrait(sc: Vector2, k: float, m: Vector2, its: Array[String]) -> 
 		next_panel.position = Vector2(m.x, race_panel.position.y + lane_h + 12.0 * k)
 	arrow_view.position = Vector2.ZERO
 	arrow_view.size = Vector2(26, 22) * k
-	# edge pointers between the alert lane and the feed and helm notes
+	# the selected boat's card (hud.md §16.7): left, over the helm notes, beside the feed
+	var card_top := INF
+	if _card_shown():
+		var ch := HudPaint.card_height(self) * k
+		card_block.size = Vector2(HudPaint.CARD_W * k, ch)
+		card_block.position = Vector2(m.x, helm_notes.position.y - 8.0 * k - ch)
+		card_top = card_block.position.y
+	# edge pointers between the alert lane and the feed, helm notes and card
 	var e_top := race_panel.position.y + lane_h + 24.0 * k
-	var e_bottom := minf(helm_notes.position.y, feed_block.position.y if lines > 0 else INF) - 56.0 * k
+	var e_bottom := minf(minf(helm_notes.position.y, feed_block.position.y if lines > 0 else INF), card_top) - 56.0 * k
 	edge_box = Rect2(70.0 * k, e_top, sc.x - 140.0 * k, maxf(e_bottom - e_top, 1.0))
 	# tables centred, scaled down to the width
 	_place_table(ranking_panel, RANK_W, race.ranking_rows().size() if ranking_panel.visible else 0, k, inner, sc)
@@ -1277,7 +1534,7 @@ func _place_table(b: HudCanvas, widths: Array, rows: int, k: float, inner: float
 
 func _all_canvases() -> Array[HudCanvas]:
 	var out: Array[HudCanvas] = [world, inst_page, toast_block, bug_block, wind_page, feed_block, start_block,
-		flags_view, penalty_panel, ring_view, alerts_block, next_panel, arrow_view, radar, helm_block, helm_notes,
+		flags_view, penalty_panel, ring_view, alerts_block, next_panel, card_block, arrow_view, radar, helm_block, helm_notes,
 		rudder_bar, sheet_bar, ranking_panel, results_panel]
 	for g in gauge_views:
 		out.append(g)

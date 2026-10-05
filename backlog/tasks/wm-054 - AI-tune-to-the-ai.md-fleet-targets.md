@@ -4,7 +4,7 @@ title: 'AI: tune to the ai.md fleet targets'
 status: To Do
 assignee: []
 created_date: '2026-09-25 19:18'
-updated_date: '2026-10-05 07:36'
+updated_date: '2026-10-05 10:51'
 labels:
   - core
 dependencies: []
@@ -39,4 +39,6 @@ Rounding robustness pass (branch ai-round), ai.md 6.1, 6.4, 5.6, 7.2, 7.4, 7.6 a
 Owner (2026-09-29): AI boats are OK for now; postponed. Keep this task as the list of what to improve: penalties and contacts above target, late starts, level order (Intermediate beats Expert), no recovery when pinned against an object, windward mark crowding, chaotic results under small physics changes.
 
 2026-10-05 (WM-091): a fix for pinned boats overstanding the layline (bear away or drop astern to make room for a blocked tack; reach to the other tack by tacking while racing) is parked on branch park/ai-pinned-tack (commit e5fbf79): -11 % time overstood, but mark touches 0.60 -> 0.97 per race and the 40-seed effect is within noise. Revisit with the AI tuning.
+
+2026-10-05 (after WM-095): data/perf not yet regenerated with collision.sprit (wm7 1.65 m, wm12 1.85 m), so the rule's sprit overlap is dormant. With the sprit regenerated, 'ten Intermediate boats, five seeds' fails stuck_max 118.6 s > 60 s (a boat pinned at the windward mark until the 120 s penalty deadline). Regenerate perf (vpp with --physics game/generated/boats/<id>.physics.json) as part of this AI fix.
 <!-- SECTION:NOTES:END -->

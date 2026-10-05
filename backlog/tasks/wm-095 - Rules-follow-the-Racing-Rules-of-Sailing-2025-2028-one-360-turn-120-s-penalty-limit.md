@@ -7,7 +7,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-05 09:35'
-updated_date: '2026-10-05 10:35'
+updated_date: '2026-10-05 10:56'
 labels:
   - core
   - rules
@@ -28,3 +28,9 @@ Owner decisions (2026-10-05) on docs/design/rules_check.md: follow the Racing Ru
 - [x] #2 Core rules, race and AI implement them, each change with a unit test (rule codes renamed to 2025-2028 numbering)
 - [x] #3 Quick, long and ai_long tests pass; ai.md 15 measurements recorded before and after (penalties, late penalties, DSQ)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Owner (2026-10-05): all three open points accepted as implemented: the rules.md 15 simplifications stay, rule 29.1 OCS under Z, a rounding may be part of a penalty turn (Case 108).
+<!-- SECTION:NOTES:END -->

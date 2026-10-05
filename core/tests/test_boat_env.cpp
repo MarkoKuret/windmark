@@ -160,8 +160,10 @@ TEST_CASE("boat: determinism and snapshot round trip") {
   for (std::uint32_t i = 0; i < n; ++i) {
     script(a);
     script(b);
-    const std::uint64_t ca = a.step();
-    const std::uint64_t cb = b.step();
+    a.step();
+    b.step();
+    const std::uint64_t ca = a.checksum();
+    const std::uint64_t cb = b.checksum();
     if (ca != cb) same = false;
     sums.push_back(ca);
   }

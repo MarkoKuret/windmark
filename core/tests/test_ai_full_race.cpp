@@ -28,7 +28,8 @@ FleetRun run_fleet(const wm_test::AiFleetRace& data, std::uint64_t seed, int boa
   REQUIRE_MESSAGE(w != nullptr, why);
   w->set_controller([&ai](wm::World& world) { ai.step(world); });
   for (int k = 0; k < 80000 && w->race().state() != wm::RaceState::closed; ++k) {
-    r.sums.push_back(w->step());
+    w->step();
+    r.sums.push_back(w->checksum());
     for (const wm::ContactEvent& e : w->events().contacts) {
       if (e.begin && e.other_kind == wm::ContactKind::boat && e.boat < e.other) ++r.contacts;
     }

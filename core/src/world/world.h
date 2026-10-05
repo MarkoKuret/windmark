@@ -86,8 +86,8 @@ class World {
   using Controller = std::function<void(World&)>;
   void set_controller(Controller c) { controller_ = std::move(c); }
 
-  // One tick (conventions.md §4.1). Returns the tick checksum (conventions.md §9).
-  std::uint64_t step();
+  // One tick (conventions.md §4.1). The checksum is not taken here: checksum() on request (conventions.md §9).
+  void step();
 
   // State
   std::uint32_t tick() const { return tick_; }  // the next tick to run

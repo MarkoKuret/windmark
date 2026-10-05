@@ -598,12 +598,11 @@ void wm_world_set_controller(wm_world* w, wm_controller_fn fn, void* user) {
 
 // ---- stepping -----------------------------------------------------------------------------------------------
 
-uint64_t wm_world_step(wm_world* w) {
-  if (w == nullptr) return 0;
+void wm_world_step(wm_world* w) {
+  if (w == nullptr) return;
   refresh_prev(w);
-  const std::uint64_t c = w->world->step();
+  w->world->step();
   std::fill(w->req_valid.begin(), w->req_valid.end(), 0);
-  return c;
 }
 
 uint64_t wm_world_checksum(const wm_world* w) { return w != nullptr ? w->world->checksum() : 0; }
@@ -660,6 +659,7 @@ wm_status wm_world_add_ai_boat(wm_world* w, const wm_perf* perf, int32_t level, 
   int32_t i = -1;
   if (const wm_status st = wm_world_add_boat(w, &e, &i); st != WM_OK) return st;
   w->ai->add(i, ai_level(level), speed_only != 0);
+  w->ai->prepare(*perf->p);
   ai_on(w);
   if (index != nullptr) *index = i;
   return WM_OK;
@@ -669,6 +669,7 @@ wm_status wm_world_ai_add(wm_world* w, int32_t boat, int32_t level, int32_t spee
   if (bad_boat(w, boat)) return fail(WM_ERR_ARG, "bad boat index");
   if (bad_level(level)) return fail(WM_ERR_ARG, "bad AI level");
   w->ai->add(boat, ai_level(level), speed_only != 0);
+  w->ai->prepare(w->world->boat(static_cast<std::size_t>(boat)).perf());
   ai_on(w);
   return WM_OK;
 }
@@ -676,6 +677,7 @@ wm_status wm_world_ai_add(wm_world* w, int32_t boat, int32_t level, int32_t spee
 wm_status wm_world_ai_take_over(wm_world* w, int32_t boat) {
   if (bad_boat(w, boat)) return fail(WM_ERR_ARG, "bad boat index");
   w->ai->take_over(boat);
+  w->ai->prepare(w->world->boat(static_cast<std::size_t>(boat)).perf());
   ai_on(w);
   return WM_OK;
 }

@@ -220,7 +220,9 @@ PackedByteArray CoreSim::encode_input(double h_cmd, double sheet_cmd, int64_t sa
 
 // ---- stepping -------------------------------------------------------------------------------------------------
 
-int64_t CoreSim::step() { return world_ != nullptr ? static_cast<int64_t>(wm_world_step(world_)) : 0; }
+void CoreSim::step() {
+  if (world_ != nullptr) wm_world_step(world_);
+}
 
 // Fast-forward without rendering: n ticks (or until the race is closed); returns the ticks stepped. Only the last
 // tick's events remain readable.

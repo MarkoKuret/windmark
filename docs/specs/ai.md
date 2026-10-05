@@ -25,8 +25,12 @@ rules information from the rules engine records (`rules.md` §11); wind from `wi
   `conventions.md` §7 with the race seed, in the AI streams: stream 16 = start choices (spot spread, start error),
   stream 17 = other random choices; `index = (boat_index << 32) | k`, with `k` a per-boat draw counter for that
   stream (kept in the AI state, reset at race start). All loops run in a fixed order.
-- **Budget.** Decisions run at 10 Hz (on even ticks), the helm every tick. Average cost ≤ 0.2 ms per AI per decision
-  on the server reference machine, so a 40-boat race costs < 1 ms per tick for the AI.
+- **Budget.** Decisions run at 10 Hz, the helm every tick. The decisions are staggered by boat: boat index `i`
+  decides on the ticks `n` with `n + i` even, so half the fleet decides on each tick and the cost of a tick does not
+  peak every second tick (the fleet assignment of start spots, §5.2, stays on even ticks). A boat with no decision yet
+  decides on her first tick whatever its parity. Average cost ≤ 0.2 ms per AI per decision on the server reference
+  machine, so a 40-boat race costs < 1 ms per tick for the AI; no single tick should cost more than 2 ms for
+  16 boats on the development machine (`windmark_race_bench`).
 
 ## 2. Structure
 
@@ -74,7 +78,8 @@ OCS, penalties, deadline), rules records involving the boat.
 - Deficit `d = 1 − wind_speed / wind_speed_clean` (unsmoothed values; 0 = clean air), then smoothed 2 s. This is
   the shadow loss `l` of `wind_shadow.md` §5.
 - Reading the water (Expert, Pro): `wind_clean(x, y, t_n)` at sample points on the two candidate tracks (current tack
-  and other tack) at 100, 200, …, `R_read` m ahead (§13), at the present tick only.
+  and other tack) at 100, 200, …, `R_read` m ahead (§13), at the present tick only, once a second: on the boat's
+  decision ticks with `(n + i) mod 20 = 0` (boat index `i`, §1).
 
 ### 3.4 Others
 
@@ -595,19 +600,25 @@ sequence continuing bit for bit and rejected when damaged or of another tick, pr
 finished-boat autopilot, and the scenarios above (duck, hold course, no tack into a starboard boat's path, escape a
 shadow by tacking and by footing). The mark-room scenario is covered by the fleet runs only so far.
 
-The fleet runs are a separate test, `ai_races` (`core/tests/test_ai_race.cpp`, ctest label `ai_long`, about four
-minutes): `ctest --test-dir core/build -L ai_long` runs them, `-LE ai_long` leaves them out. They print their
-measurements. Measured on the default course (11 kn, stable shifts):
+The fleet runs are a separate test, `ai_races` (`core/tests/test_ai_race.cpp`, ctest label `ai_long`, about half
+a minute): `ctest --test-dir core/build -L ai_long` runs them, `-LE ai_long` leaves them out. They print their
+measurements. Measured on the default course (11 kn, stable shifts), with the decisions staggered by boat (§1,
+WM-102; the runs before it, all boats deciding on even ticks, in brackets where they differ):
 
 | run | measured | spec target |
 | --- | --- | --- |
-| 10 Intermediate, 5 seeds | 94 % finish (the rest DSQ); 0.64 penalties/boat; 3.8 contacts/race; stuck ≤ 18 s | all finish; ≤ 0.4; ≤ 1; ≤ 20 s |
-| same | bad air 3.3 triggers/boat, deficit 0.15 → 0.04 twenty seconds later (95 % lower) | ≥ 2, lower |
-| every level, 10 boats, 2 seeds | 90–95 % finish; OCS 0–15 %; mean start delay 14–19 s | Pro OCS < 5 %, delay < 2 s; Easy < 15 %, 3–8 s |
-| 1 nm beat, 10 boats | 5.1 tacks/boat | 3–14 |
-| match race, 2 Expert, 5 seeds | the leader covers in every race (2–6 activations) | ≥ 1 |
-| mixed fleet (2 per level, 3 seeds) | mean place Easy 6.3, Intermediate 5.5, Expert 4.0, Pro 2.3 | monotonic |
-| speed only (same) | mean place Easy 7.2, Intermediate 3.5, Expert 2.8, Pro 4.7; mean finish times 737 / 614 / 616 / 657 s: since WM-095 the ratios do not follow `performance_scale` (before: within 2.5 %), the six races are dominated by start delays and a few penalties (an Intermediate boat disqualified for three pending penalties in seed 32) | within 3 % |
+| 10 Intermediate, 5 seeds | 96 % finish (the rest DSQ) [94 %]; 0.66 penalties/boat [0.64]; 5.4 contacts/race [3.8]; stuck ≤ 22 s [18 s] | all finish; ≤ 0.4; ≤ 1; ≤ 20 s |
+| same | bad air 2.4 triggers/boat [3.3], deficit 0.14 → 0.04 twenty seconds later (93 % lower) | ≥ 2, lower |
+| every level, 10 boats, 2 seeds | 85–100 % finish [90–95 %]; OCS 0–5 % [0–15 %]; mean start delay 18–30 s [14–19 s] | Pro OCS < 5 %, delay < 2 s; Easy < 15 %, 3–8 s |
+| 1 nm beat, 10 boats | 4.2 tacks/boat [5.1] | 3–14 |
+| match race, 2 Expert, 5 seeds | the leader covers in every race (2–8 activations); one penalty and two contacts in seed 3 [none] | ≥ 1 |
+| mixed fleet (2 per level, 3 seeds) | mean place Easy 7.3, Intermediate 3.5, Expert 3.8, Pro 3.3 [6.3, 5.5, 4.0, 2.3] | monotonic |
+| speed only (same) | mean place Easy 7.2, Intermediate 4.3, Expert 3.3, Pro 3.3 [7.2, 3.5, 2.8, 4.7]; mean finish times 733 / 666 / 626 / 629 s [737 / 614 / 616 / 657]: since WM-095 the ratios do not follow `performance_scale` (before: within 2.5 %), the six races are dominated by start delays and a few penalties | within 3 % |
+
+These few races move a lot with any change of timing. Over 140 races of the 10 Intermediate fleet (`AI_SCENE=1
+AI_FLEET=1 AI_LEVEL=1`, seeds 100 to 239) the stagger is neutral: 4.20 contacts/race against 3.91 unstaggered
+(difference 0.29, standard error 0.32), 0.63 penalties/boat against 0.60, 78 DSQ against 73; over 40 races each of
+Expert and Pro fleets the same (contacts 5.2 / 5.0 and 4.3 / 4.8, penalties 0.72 / 0.72 and 0.62 / 0.67).
 
 The assertions of `ai_races` hold the measured level (finish ≥ 80 %, ≤ 1.3 penalties/boat, ≤ 6 contacts/race,
 bad air ≥ 1.0 and lower 20 s later, every level ≥ 70 % finish, tacks 3–14, cover in every match, Easy behind Pro).

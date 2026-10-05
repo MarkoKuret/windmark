@@ -131,11 +131,10 @@ struct Candidate {
 bool track_clear_of_objects(AC& x, const AB& a, const Track& own) {
   const std::vector<Vec2>& oh = hull(x, static_cast<std::size_t>(a.i));
   const float ro = x.r_hull[static_cast<std::size_t>(a.i)];
-  std::vector<Vec2> placed;
   for (const CourseObject& o : x.course.objects) {
     for (std::size_t k = 0; k < own.c.size(); k = k + 2) {
       if (v_dist(own.c[k], o.c) - ro - o.r > 1.0f) continue;
-      place_outline(oh, own.c[k], own.psi[k], placed);
+      const std::span<const Vec2> placed = own.hull(oh, k).pts();
       if (point_in_polygon(o.c, placed) || point_polygon_edge_dist(o.c, placed) < o.r + 0.3f) return false;
     }
   }
@@ -255,10 +254,9 @@ namespace {
 bool track_touches(AC& x, const AB& a, const Track& own, const CourseObject& o, float clear) {
   const std::vector<Vec2>& oh = hull(x, static_cast<std::size_t>(a.i));
   const float ro = x.r_hull[static_cast<std::size_t>(a.i)];
-  std::vector<Vec2> placed;
   for (std::size_t k = 0; k < own.c.size(); ++k) {
     if (v_dist(own.c[k], o.c) - ro - o.r > clear) continue;
-    place_outline(oh, own.c[k], own.psi[k], placed);
+    const std::span<const Vec2> placed = own.hull(oh, k).pts();
     if (point_in_polygon(o.c, placed) || point_polygon_edge_dist(o.c, placed) < o.r + clear) return true;
   }
   return false;
@@ -437,13 +435,14 @@ void rules_overlay(AC& x, AB& a, const Me& m, Vec2 aim) {
       }
       static thread_local std::vector<std::size_t> nb;
       neighbours(x, a, m, 5.0f * m.L + 2.0f * x.r_hull[i], nb);
-      std::vector<Track> tr(nb.size());
+      static thread_local std::vector<Track> tr;
+      if (tr.size() < nb.size()) tr.resize(nb.size());
       std::size_t kB = nb.size();
       for (std::size_t q = 0; q < nb.size(); ++q) {
         predict_ctrv(motion_of(x, nb[q]), kSamples, tr[q]);
         if (static_cast<std::int32_t>(nb[q]) == B) kB = q;
       }
-      Track trB;
+      static thread_local Track trB;
       if (kB == nb.size()) predict_ctrv(motion_of(x, static_cast<std::size_t>(B)), kSamples, trB);
       const Track& tB = kB < nb.size() ? tr[kB] : trB;
       const std::size_t jB = static_cast<std::size_t>(B);
@@ -461,7 +460,7 @@ void rules_overlay(AC& x, AB& a, const Me& m, Vec2 aim) {
           const float e = wrap_pi(c.psi - m.s.psi), eb = wrap_pi(brg_B - m.s.psi);
           if (std::fabs(e) > 1.0f * DEG && sgn(e) == sgn(eb)) continue;
         }
-        Track own;
+        static thread_local Track own;
         own_track(m, c.psi, c.turn, c.slow, c.manoeuvre, own);
         if (!track_clear_of_objects(x, a, own)) continue;  // never into a mark or a committee boat
         const float gB = tracks_gap(hull(x, jB), x.r_hull[jB], tB, oh, x.r_hull[i], own, 0, kSamples, 4.0f * m.L);

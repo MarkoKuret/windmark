@@ -3,9 +3,11 @@ id: WM-102
 title: >-
   Core: no AI tick spikes (staggered planning, faster hull gaps, checksum on
   demand)
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-10-05 17:12'
+updated_date: '2026-10-05 17:43'
 labels:
   - performance
 dependencies: []
@@ -21,7 +23,7 @@ docs/PERFORMANCE.md C2, C2b, C3, C9 and measured item 3: AI planning spread over
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Specs (ai.md, conventions/networking as needed) updated first; checksum files regenerated where behaviour changes
-- [ ] #2 race bench: 16 AI boats racing max tick under 2 ms and p99 under 1 ms on the dev Mac; 24 boats measured
-- [ ] #3 All core tests pass including ai_long; determinism holds
+- [x] #1 Specs (ai.md, conventions/networking as needed) updated first; checksum files regenerated where behaviour changes
+- [x] #2 race bench: 16 AI boats racing max tick under 2 ms and p99 under 1 ms on the dev Mac; 24 boats measured
+- [x] #3 All core tests pass including ai_long; determinism holds
 <!-- AC:END -->

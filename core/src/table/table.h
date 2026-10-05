@@ -70,6 +70,10 @@ class Table {
   // at(x, y) for every y of `ys` into `out` (same size), bit for bit the same as one at(x, y) per value: the x bracket
   // is found once and, `ys` being non-decreasing, the y bracket moves forward along the axis instead of searching.
   void at_each(float x, std::span<const float> ys, std::span<float> out) const;
+  // at_each split in two for a fixed `ys`: rows_at_each interpolates every row of the first axis along `ys` once
+  // (rows[i * ys.size() + k]), at_each_rows then only blends the two rows around x, with the same bits as at_each.
+  void rows_at_each(std::span<const float> ys, std::vector<float>& rows) const;
+  void at_each_rows(float x, std::span<const float> rows, std::span<float> out) const;
 
  private:
   std::vector<Axis> axes_;

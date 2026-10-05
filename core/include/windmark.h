@@ -2,7 +2,7 @@
  *
  * A stable C interface over the simulation world (core/src/world): load boat classes, venues and courses, create a
  * world, add boats, create a race (or sail freely without one), set controls, step the 50 ms tick, and read the
- * boat, sail, wind, sea, race and rules state, this tick's events and the tick checksum. The server and the engine
+ * boat, sail, wind, sea, race and rules state, this tick's events and the state checksum. The server and the engine
  * bindings (the Godot extension in game/native) use only this header.
  *
  * Conventions (docs/specs/conventions.md): SI units, world ENU metres (x east, y north, z up), compass angles in
@@ -46,7 +46,7 @@
 extern "C" {
 #endif
 
-#define WM_API_VERSION 2
+#define WM_API_VERSION 3
 
 /* ---- status ------------------------------------------------------------------------------------------------ */
 
@@ -332,9 +332,10 @@ WM_API wm_status wm_world_ai_load(wm_world* w, const uint8_t* data, size_t size)
 
 /* ---- stepping ---------------------------------------------------------------------------------------------- */
 
-/* One tick (conventions.md §4.1); returns the tick checksum (conventions.md §9). */
-WM_API uint64_t wm_world_step(wm_world* w);
-/* The checksum of the current state (the value the last step returned). */
+/* One tick (conventions.md §4.1). It takes no checksum: ask wm_world_checksum when one is needed. */
+WM_API void wm_world_step(wm_world* w);
+/* The checksum of the current state (conventions.md §9): taken on request, it hashes the whole world snapshot, so
+ * take it only when it is needed (the world hash every few seconds, replays, tests), not every tick. */
 WM_API uint64_t wm_world_checksum(const wm_world* w);
 /* The next tick to run (ticks stepped so far); its time is 50 * tick ms on the environment clock. */
 WM_API uint32_t wm_world_tick(const wm_world* w);

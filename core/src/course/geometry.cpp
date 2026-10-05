@@ -51,11 +51,12 @@ bool point_in_polygon(Vec2 p, std::span<const Vec2> poly) {
   return in;
 }
 
+namespace {
+float point_polygon_edge_dist2(Vec2 p, std::span<const Vec2> poly, float d2);
+}
+
 float point_polygon_edge_dist(Vec2 p, std::span<const Vec2> poly) {
-  float d = INFINITY;
-  const std::size_t n = poly.size();
-  for (std::size_t i = 0; i < n; ++i) d = min(d, point_segment_dist(p, poly[i], poly[(i + 1) % n]));
-  return d;
+  return std::sqrt(point_polygon_edge_dist2(p, poly, INFINITY));
 }
 
 namespace {
@@ -91,11 +92,31 @@ bool segments_cross(Vec2 a, Vec2 b, Vec2 c, Vec2 d) {
          o3 != 0.0f && o4 != 0.0f;
 }
 
+// The squared distance from p to the segment a-b, the same operations as point_segment_dist: the square root is
+// monotonic and correctly rounded, so the square root of the least squared distance is the least distance, bit
+// for bit, and only one square root is taken per polygon pair.
+float point_segment_dist2(Vec2 p, Vec2 a, Vec2 b) {
+  const Vec2 ab = v_sub(b, a);
+  const Vec2 ap = v_sub(p, a);
+  const float l2 = v_dot(ab, ab);
+  float t = 0.0f;
+  if (l2 > 0.0f) t = clamp(v_dot(ap, ab) / l2, 0.0f, 1.0f);
+  const Vec2 q = v_add(a, v_scale(ab, t));
+  const Vec2 r = v_sub(p, q);
+  return r.x * r.x + r.y * r.y;
+}
+
+float point_polygon_edge_dist2(Vec2 p, std::span<const Vec2> poly, float d2) {
+  const std::size_t n = poly.size();
+  for (std::size_t i = 0; i < n; ++i) d2 = min(d2, point_segment_dist2(p, poly[i], poly[i + 1 < n ? i + 1 : 0]));
+  return d2;
+}
+
 float vertex_edge_min(std::span<const Vec2> a, std::span<const Vec2> b) {
-  float d = INFINITY;
-  for (const Vec2 v : a) d = min(d, point_polygon_edge_dist(v, b));
-  for (const Vec2 v : b) d = min(d, point_polygon_edge_dist(v, a));
-  return d;
+  float d2 = INFINITY;
+  for (const Vec2 v : a) d2 = point_polygon_edge_dist2(v, b, d2);
+  for (const Vec2 v : b) d2 = point_polygon_edge_dist2(v, a, d2);
+  return std::sqrt(d2);
 }
 
 }  // namespace
@@ -157,6 +178,156 @@ float polygon_gap(std::span<const Vec2> convex, std::span<const Vec2> poly) {
     }
   }
   return vertex_edge_min(convex, poly);
+}
+
+
+// ---- placed hulls ----
+
+void place_hull(std::span<const Vec2> body, Vec2 pos, float psi, Hull& out) {
+  const SinCos sc = wm_sincos(psi);
+  const std::size_t n = body.size() < kMaxOutline ? body.size() : kMaxOutline;
+  out.n = static_cast<std::uint32_t>(n);
+  out.pos = pos;
+  out.s = sc.s;
+  out.c = sc.c;
+  float x0 = INFINITY, x1 = -INFINITY, y0 = INFINITY, y1 = -INFINITY;
+  for (std::size_t k = 0; k < n; ++k) {
+    const Vec2 b = body[k];
+    out.v[k] = {(pos.x + b.x * sc.s) + b.y * (-sc.c), (pos.y + b.x * sc.c) + b.y * sc.s};
+    x0 = min(x0, b.x);
+    x1 = max(x1, b.x);
+    y0 = min(y0, b.y);
+    y1 = max(y1, b.y);
+  }
+  out.x0 = x0;
+  out.x1 = x1;
+  out.y0 = y0;
+  out.y1 = y1;
+  out.axes = false;
+}
+
+namespace {
+
+// The culls below compare lower bounds taken in another frame with distances taken in world coordinates; both
+// carry rounding errors of about 1e-7 of the coordinates, so a bound only skips work when it clears by this much.
+constexpr float kCull = 0.1f;
+
+// p in the body frame of h.
+inline Vec2 to_body(const Hull& h, Vec2 p) {
+  const Vec2 d = v_sub(p, h.pos);
+  return {d.x * h.s + d.y * h.c, d.y * h.s - d.x * h.c};
+}
+
+// Squared distance from p to h's body-frame bounding box (0 inside): a lower bound of the distance to h.
+inline float box_dist2(const Hull& h, Vec2 p) {
+  const Vec2 l = to_body(h, p);
+  const float dx = max(max(h.x0 - l.x, l.x - h.x1), 0.0f);
+  const float dy = max(max(h.y0 - l.y, l.y - h.y1), 0.0f);
+  return dx * dx + dy * dy;
+}
+
+// A side of b's bounding box has every vertex of a beyond it by more than the cull margin.
+bool outside_box(const Hull& a, const Hull& b) {
+  float lx0 = INFINITY, lx1 = -INFINITY, ly0 = INFINITY, ly1 = -INFINITY;
+  for (std::uint32_t k = 0; k < a.n; ++k) {
+    const Vec2 l = to_body(b, a.v[k]);
+    lx0 = min(lx0, l.x);
+    lx1 = max(lx1, l.x);
+    ly0 = min(ly0, l.y);
+    ly1 = max(ly1, l.y);
+  }
+  return lx0 > b.x1 + kCull || lx1 < b.x0 - kCull || ly0 > b.y1 + kCull || ly1 < b.y0 - kCull;
+}
+
+// Unit edge normals and the hull's own projection on them, the same operations as max_separation.
+void ensure_axes(const Hull& h) {
+  if (h.axes) return;
+  h.axis_ok = 0;
+  const std::uint32_t n = h.n;
+  for (std::uint32_t i = 0; i < n; ++i) {
+    const Vec2 e = v_sub(h.v[i + 1 < n ? i + 1 : 0], h.v[i]);
+    const float l = v_len(e);
+    if (!(l > 0.0f)) continue;
+    const Vec2 axis{-e.y / l, e.x / l};
+    float lo = INFINITY, hi = -INFINITY;
+    for (std::uint32_t k = 0; k < n; ++k) {
+      const float d = v_dot(h.v[k], axis);
+      lo = min(lo, d);
+      hi = max(hi, d);
+    }
+    h.ax[i] = axis;
+    h.lo[i] = lo;
+    h.hi[i] = hi;
+    h.axis_ok |= 1u << i;
+  }
+  h.axes = true;
+}
+
+// max_separation(a, b) folded into `best`; stops early (returning true) at an axis that separates by `stop` or
+// more.
+bool separation(const Hull& a, const Hull& b, float stop, float& best) {
+  ensure_axes(a);
+  for (std::uint32_t i = 0; i < a.n; ++i) {
+    if (((a.axis_ok >> i) & 1u) == 0u) continue;
+    const Vec2 axis = a.ax[i];
+    float blo = INFINITY, bhi = -INFINITY;
+    for (std::uint32_t k = 0; k < b.n; ++k) {
+      const float d = v_dot(b.v[k], axis);
+      blo = min(blo, d);
+      bhi = max(bhi, d);
+    }
+    const float sep = max(blo - a.hi[i], a.lo[i] - bhi);
+    best = max(best, sep);
+    if (sep >= stop) return true;
+  }
+  return false;
+}
+
+// vertex_edge_min on placed hulls: the vertices are taken nearest first by their distance to the other hull's
+// bounding box, and a vertex whose bound already clears the best distance so far (or `ub`) is skipped. Exact
+// below `ub`; `ub` itself when every pair is at least `ub` apart.
+float vertex_edge_min(const Hull& a, const Hull& b, float ub) {
+  std::array<float, 2 * kMaxOutline> lb2;
+  const std::uint32_t na = a.n, nb = b.n;
+  std::uint32_t first = 0;
+  for (std::uint32_t k = 0; k < na + nb; ++k) {
+    lb2[k] = k < na ? box_dist2(b, a.v[k]) : box_dist2(a, b.v[k - na]);
+    if (lb2[k] < lb2[first]) first = k;
+  }
+  float d2 = INFINITY;
+  float thr2 = ub < INFINITY ? (ub + kCull) * (ub + kCull) : INFINITY;
+  auto visit = [&](std::uint32_t k) {
+    if (!(lb2[k] <= thr2)) return;
+    const float before = d2;
+    d2 = k < na ? point_polygon_edge_dist2(a.v[k], b.pts(), d2) : point_polygon_edge_dist2(b.v[k - na], a.pts(), d2);
+    if (d2 < before) {
+      const float lim = min(std::sqrt(d2), ub);
+      thr2 = (lim + kCull) * (lim + kCull);
+    }
+  };
+  visit(first);
+  for (std::uint32_t k = 0; k < na + nb; ++k) {
+    if (k != first) visit(k);
+  }
+  const float d = std::sqrt(d2);
+  return d < ub ? d : ub;
+}
+
+}  // namespace
+
+float convex_gap(const Hull& a, const Hull& b) {
+  if (!outside_box(a, b) && !outside_box(b, a) && convex_intersect(a.pts(), b.pts())) return 0.0f;
+  return vertex_edge_min(a, b, INFINITY);
+}
+
+float convex_gap_capped(const Hull& a, const Hull& b, float cap) {
+  // Clearly apart: no separating-axis search, the vertex-edge distance (exact below the cap) is the gap.
+  if (cap > 0.0f && (outside_box(a, b) || outside_box(b, a))) return vertex_edge_min(a, b, cap);
+  const float stop = cap > 0.0f ? cap : 0.0f;
+  float s = -INFINITY;
+  if (separation(a, b, stop, s) || separation(b, a, stop, s)) return s;
+  if (!(s >= 0.0f)) return 0.0f;  // no separating axis: they intersect
+  return vertex_edge_min(a, b, cap);
 }
 
 }  // namespace wm

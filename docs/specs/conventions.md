@@ -87,7 +87,7 @@ steps; the order of the steps is fixed here.
 | 4 | Shadow snapshot: each boat's wind-shadow source is frozen from its state at `t_n` | wind_shadow.md |
 | 5 | For each boat in index order: wind at the boat (field, then the other boats' shadows from the snapshot), then the boat step | boat.md, sails.md |
 | 6 | Collisions on the new positions: detection, response, contact events | collisions.md |
-| 7 | Outputs: snapshots for rendering and networking, state checksum | networking.md |
+| 7 | Outputs: snapshots for rendering and networking (the state checksum is taken on request, §9) | networking.md |
 
 Boats in step 5 depend only on the environment and the step-4 snapshot, never on another boat's new state, so
 the result does not depend on the boat order. Step 6 is the only place boats interact directly, and it uses a
@@ -316,7 +316,9 @@ rates). An absent table is not the same as an empty one: empty tables are a load
 - The **checksum** of a tick is FNV-1a 64 over the tick index (uint32) followed by the **body** of the world
   snapshot (§9.1): every boat in index order, the collision pair set, the race, the rules and the carried tick
   outputs. Server and clients compare checksums to detect divergence (`networking.md` §10.2); the own-boat hash of
-  `networking.md` §5.5 is a separate, smaller hash.
+  `networking.md` §5.5 is a separate, smaller hash. The checksum is a pure function of the state between two
+  ticks, so it is taken only when asked for (the world hash every 5 s, replays, tests), never as part of the tick:
+  serialising the whole world every tick would cost a tenth to a fifth of the tick.
 - Encodings: `vec2` = `x`, `y` as two floats; `list<T>` = uint32 count, then the items in order; an enum is one
   byte with the numeric value of its declaration order; tick numbers are uint32 and signed tick numbers
   (`n_gun` and the like) int64; infinities keep their raw bits like every float.

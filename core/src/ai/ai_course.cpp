@@ -943,7 +943,7 @@ void beat_run(AC& x, AB& a, const Me& m, Vec2 R, bool beat, float mlay, bool tri
                         std::fabs(a.shift) >= (beat ? a.P.h_up : a.P.h_dn);
     a.headed_t = headed ? a.headed_t + 2.0f * DT : 0.0f;
     bool pressure = false;
-    if (a.P.r_read > 0.0f && (x.n % 20u) == 0u) {
+    if (a.P.r_read > 0.0f && ((x.n + static_cast<std::uint32_t>(a.i)) % 20u) == 0u) {  // §3.3, once a second
       const float w_cur = read_track(x, a, m, psi_cur), w_oth = read_track(x, a, m, psi_oth);
       const float unfav = a.shift * sgn(wrap_pi(psi_oth - brg_R));
       pressure = w_oth >= 1.12f * w_cur && !(unfav > 3.0f * DEG);

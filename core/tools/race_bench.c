@@ -4,7 +4,8 @@
  *
  *   windmark_race_bench <data_dir> <courses_dir> <fleet> [level 0..3] [noai] [seed]
  *
- * Prints one line per phase: ticks, mean, 99th percentile and maximum µs per tick. */
+ * Prints one line per phase: ticks, mean, 99th percentile and maximum µs per tick, then a hash of the world
+ * checksum every 100 ticks (taken outside the timing) to show a change kept the race bit for bit. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -78,6 +79,7 @@ int main(int argc, char** argv) {
   wm_race_info ri;
   double total = 0.0;
   int ticks = 0;
+  uint64_t trail = 1469598103934665603ull;
   for (int k = 0; k < MAX_T; ++k) {
     wm_world_race(w, &ri);
     if (ri.state == WM_RACE_CLOSED || ri.state == WM_RACE_ABANDONED) break;
@@ -92,6 +94,7 @@ int main(int argc, char** argv) {
     total += d;
     ++ticks;
     t_us[ph][n[ph]++] = (float)d;
+    if (ticks % 100 == 0) trail = (trail ^ wm_world_checksum(w)) * 1099511628211ull;
     sum[ph] += d;
     if (!first_finish && ri.state >= WM_RACE_RACING) {
       for (int b = 0; b < wm_world_boat_count(w); ++b) {
@@ -109,6 +112,8 @@ int main(int argc, char** argv) {
     printf("  %-22s %6d ticks  mean %8.1f µs  p99 %8.1f µs  max %8.1f µs\n", PH_NAME[p], n[p], sum[p] / n[p],
            t_us[p][(int)(0.99 * (n[p] - 1))], t_us[p][n[p] - 1]);
   }
+  printf("  checksum trail %016llx, final %016llx\n", (unsigned long long)trail,
+         (unsigned long long)wm_world_checksum(w));
   wm_world_free(w);
   wm_course_free(course);
   wm_venue_free(venue);

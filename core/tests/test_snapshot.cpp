@@ -41,10 +41,18 @@ bool same(const wm::RaceEvent& a, const wm::RaceEvent& b) {
          a.block == b.block && a.ghost == b.ghost && a.value == b.value;
 }
 
+// One tick of each world; true when they end it with the same checksum.
+bool step_same(wm::World& a, wm::World& b) {
+  a.step();
+  b.step();
+  return a.checksum() == b.checksum();
+}
+
 // Steps `w` to the close of the race, appending to `run` (sums indexed by tick).
 void run_to_close(wm::World& w, Run& run, const std::function<void(wm::World&)>& after_step = {}) {
   for (int k = 0; k < 60000 && w.race().state() != wm::RaceState::closed; ++k) {
-    const std::uint64_t c = w.step();
+    w.step();
+    const std::uint64_t c = w.checksum();
     if (run.sums.size() <= w.tick()) run.sums.resize(w.tick() + 1, 0);
     run.sums[w.tick()] = c;
     for (const wm::RulesEvent& e : w.events().rules) run.rules_events.push_back(e);
@@ -191,7 +199,9 @@ TEST_CASE("snapshot: the checksum covers the race and rules state") {
   CHECK(u->checksum() == base);
   v->retire(4);
   CHECK(v->checksum() != base);  // the queued control is state too
-  const std::uint64_t cu = u->step(), cv = v->step();
+  u->step();
+  v->step();
+  const std::uint64_t cu = u->checksum(), cv = v->checksum();
   CHECK(cu != cv);
   CHECK(v->race().boat(4).retired);
 }
@@ -284,8 +294,8 @@ TEST_CASE("snapshot: damaged or foreign snapshots are rejected; a world is reset
       (w->tick() == ta ? pa : pb) = pilot;
       if (w->tick() == tb) outs_b = sail_outputs(*w);
     }
-    const std::uint64_t c = w->step();
-    sums[w->tick()] = c;
+    w->step();
+    sums[w->tick()] = w->checksum();
   }
   const wm::CourseData* course = &wm_test::full_race_course();
 
@@ -323,7 +333,7 @@ TEST_CASE("snapshot: damaged or foreign snapshots are rejected; a world is reset
   CHECK(u->checksum() == before);
   CHECK(u->race_created());
   bool same_sums = true;
-  for (int k = 0; k < 50; ++k) same_sums = same_sums && u->step() == twin->step();
+  for (int k = 0; k < 50; ++k) same_sums = same_sums && step_same(*u, *twin);
   CHECK(same_sums);
 
   // Then it takes the later save, the earlier one, and the later one again; each continues bit for bit. The loaded
@@ -338,7 +348,10 @@ TEST_CASE("snapshot: damaged or foreign snapshots are rejected; a world is reset
     if (t == tb) CHECK(same(sail_outputs(*u), outs_b));
     p = saved;
     bool ok = true;
-    for (std::uint32_t k = 1; k <= run; ++k) ok = ok && u->step() == sums[t + k];
+    for (std::uint32_t k = 1; k <= run && ok; ++k) {
+      u->step();
+      ok = u->checksum() == sums[t + k];
+    }
     CHECK(ok);
   };
   continues(b, tb, pb);
@@ -358,7 +371,7 @@ TEST_CASE("snapshot: damaged or foreign snapshots are rejected; a world is reset
   wm_test::Pilot pf = wm_test::full_race_pilot();
   fresh->set_controller([&pf](wm::World& world) { pf(world); });
   same_sums = true;
-  for (int k = 0; k < 100; ++k) same_sums = same_sums && u->step() == fresh->step();
+  for (int k = 0; k < 100; ++k) same_sums = same_sums && step_same(*u, *fresh);
   CHECK(same_sums);
 }
 
@@ -385,6 +398,6 @@ TEST_CASE("snapshot: a race with a joined boat is rebuilt as it was") {
   CHECK(v->race().L_max() == w->race().L_max());
   CHECK(v->course().k == w->course().k);
   bool same_sums = true;
-  for (int k = 0; k < 1000; ++k) same_sums = same_sums && w->step() == v->step();
+  for (int k = 0; k < 1000; ++k) same_sums = same_sums && step_same(*w, *v);
   CHECK(same_sums);
 }

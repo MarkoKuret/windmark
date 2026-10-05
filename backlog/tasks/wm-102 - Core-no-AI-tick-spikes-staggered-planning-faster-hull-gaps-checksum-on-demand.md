@@ -3,11 +3,11 @@ id: WM-102
 title: >-
   Core: no AI tick spikes (staggered planning, faster hull gaps, checksum on
   demand)
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-05 17:12'
-updated_date: '2026-10-05 17:43'
+updated_date: '2026-10-05 17:48'
 labels:
   - performance
 dependencies: []

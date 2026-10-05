@@ -7,6 +7,7 @@
 - **Working name: Windmark.** The final name is decided later.
 - **Candidates:** Windmark, pending an EU trademark search; **Sailmark** as the backup.
 - Until then use handles and domains that do not lock us in: `windmarkgame` / `playwindmark`.
+- Logo freedom, register re-check of 2026-10-05 and designer guardrails: `LOGO_TRADEMARK.md`.
 
 ## Rules for any name
 

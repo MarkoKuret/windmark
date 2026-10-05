@@ -14,10 +14,8 @@ The project's main scene. Items, top to bottom: **Continue**, **Quick race**, **
   says what it starts (`Quick race · Example Bay · 10 boats` or `Free sail · Example Bay`). Hidden on the first
   launch, and whenever the remembered setup cannot start any more (a class, venue or course no longer on disk);
   the focus then starts on Quick race.
-- **Wordmark**: the top-left corner keeps room for the game's logo (up to 420 × 96 px at 100 %). Until there is
-  one, a placeholder: `WINDMARK` in Barlow Semi Condensed Bold, all caps, wide tracking (+18 %), navy, with the line
-  `Tactical sailing races` under it. It is one scene (`scenes/menu/wordmark.tscn`), so a logo replaces it without
-  touching the menu.
+- **Wordmark**: the game's logo, `WINDMARK` with the tagline bar under it (§1.2), in the top-left corner. It is
+  one scene (`scenes/menu/wordmark.tscn`), so a later logo replaces it without touching the menu.
 - **Version**: the bottom-right corner shows the build, small and dim: `v<version>` from the project settings
   (`application/config/version`), followed by the export stamp when the build has one (`game/build.txt`, written
   by `tools/stamp_build.sh` before an export from `git describe --tags --always --dirty`), else `dev`.
@@ -72,6 +70,35 @@ The quick race is one screen: a header (the heading and one line), the body and 
   without a course for the class), in red.
 - Fits 1280 × 800 at every UI scale (80 % to 130 %) and the portrait capture window; the keyboard and the gamepad
   reach every row and Start (down from the last row is Start, up from Start the last row).
+
+### 1.2 Logo and app icon
+
+The logo is a wordmark only (no symbol, no badge). Colours: cream `#F4F1E8`, navy `#1A2A3A`, yellow `#FFD23F` (the
+menus' cloth, navy and accent, §4).
+
+- **WINDMARK**: Barlow Semi Condensed Black Italic (weight 900), all caps, letter spacing +3 %. Cream fill with a
+  navy outline of 3 % of the font size (4 px at 132 px, 2.3 px at 76 px), and two hard (unblurred) drop shadows
+  stacked behind it, each the outlined letters in one colour: navy offset (+3.8 %, +3.8 %) of the font size and
+  yellow offset (+7.6 %, +7.6 %), the yellow one furthest back. In Godot: the outline is the label's outline
+  (`outline_size` is 4 times the visible width: the engine strokes `outline_size / 4` px each side), the shadows
+  are two copies of the label behind it (yellow, then navy, each with the outline in its own colour). Offsets and
+  sizes are whole pixels, so it stays crisp at every UI scale.
+- **Tagline bar**: `TACTICAL SAILING RACES` in Barlow Semi Condensed ExtraBold Italic (800), tracking +30 %, at
+  22 % of the WINDMARK size, navy on a yellow parallelogram slanted 14° (the text keeps its own italic, no extra
+  slant), with a hard navy shadow offset 5.3 % of the WINDMARK size (4 px at 76 px). The bar starts under the left
+  edge of WINDMARK, 4 % of its size below the yellow shadow.
+- **Main menu**: WINDMARK at 76 px, the lockup 368 x 97 px, top-left. It scales down (a smaller font size, not a
+  scaled image) to fit the window's width inside the menu's margins, and beside the page it leaves the race card
+  its two columns (760 px, §1.1) when that costs it at most 10 % (73 px at 1280 x 800 and 100 % UI scale). It fits
+  1280 x 800 at 80 % to 130 % UI scale and the portrait capture window.
+- **App icon**: the owner's art, `game/branding/app_icon_1080.png` (1080 x 1080, a rounded square with a
+  transparent outside), is the master. Made from it (`tools/branding/make_icons.py`): `app_icon_512.png` (the
+  project icon, `application/config/icon`, and the window icon), `app_icon_256.png`, `app_icon.icns` (macOS:
+  `application/config/macos_native_icon`, the dock icon) and `app_icon.ico` (Windows, 16, 32, 48, 64, 128 and
+  256 px: `application/config/windows_native_icon`). There are no export presets yet: when they are set up, the
+  macOS preset's `application/icon` is `res://branding/app_icon.icns` and the Windows preset's
+  `application/icon` is `res://branding/app_icon.ico`.
+- Everything about the brand (files, colours, fonts) is listed in `docs/BRANDING.md`.
 
 ## 2. Pause menu
 

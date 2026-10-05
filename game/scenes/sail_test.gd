@@ -20,6 +20,12 @@ extends Node3D
 ## Spectating (spectate_next / prev / leader) steps through the boats when not racing (`racing` off, `watch`)
 ## or once the player has finished, retired or left the race (cameras.md §1).
 ##
+## The race end (menus.md §5, hud.md §13.1 to §13.3): offline the player's boat has the finished-boat autopilot
+## (race.md §6.2), so she sails clear after her finish; when her race is over the camera eases into the finish view
+## (cameras.md §9.1) and the results screen of scenes/menu (ResultsScreen, a child like the pause menu) takes over
+## from the HUD's own results table; it offers Race again (session_setup with a new seed), Change setup and Main
+## menu. retire() is the pause menu's Retire (race.md §6.4).
+##
 ## The venue's land and obstacles are drawn by a VenueView from the core's shapes (the venue file on FakeSim),
 ## and the cameras keep out of them through CamTypes.Target.ground. In race mode a CourseView draws the marks,
 ## committee and mark boats, flags, lines and laylines from the core's course and race state, and the Hud shows
@@ -34,6 +40,7 @@ extends Node3D
 ## on the same SeaModel the Sea draws (FakeSim.use_sea) and the Sea's clock follows the sim ticks.
 
 const PAUSE_MENU := "res://scenes/menu/pause_menu.tscn"
+const RESULTS_SCREEN := "res://scenes/menu/results_screen.gd"
 const SETTINGS_SCRIPT := "res://scripts/settings.gd"
 
 enum SimKind { AUTO, CORE, FAKE }
@@ -71,6 +78,8 @@ enum SeaSource { AUTO, CORE_SAMPLES, PLACEHOLDER }
 ## the pause menu of scenes/menu as a child (it applies the player's settings); without it, `apply_settings`
 ## applies them at start
 @export var with_pause_menu := true
+## the results screen of scenes/menu (menus.md §5) in a quick race (not watching, not a scenario)
+@export var with_results := true
 @export var apply_settings := true
 ## FakeSim only. AUTO: the core's example bay samples when they exist, otherwise the placeholder sea
 @export var sea_source: SeaSource = SeaSource.AUTO
@@ -106,6 +115,12 @@ var hud: Hud
 var boat_view: BoatView
 ## one BoatView per boat, by boat index
 var boat_views: Array[BoatView] = []
+## the livery (sail number, boat name) of each boat, by boat index (null where none was assigned)
+var boat_liveries: Array = []
+## the results screen (menus.md §5), null without one
+var results: Node = null
+## the player's race is over and the camera has eased into the finish view (cameras.md §9.1)
+var _race_over_seen := false
 ## the session set-up to apply instead of GameSetup.next (tests); null: GameSetup.next when the menus wrote one
 var setup: GameSetup = null
 ## a rules scenario id or .scenario.json path (race.md §14); "": none
@@ -193,6 +208,7 @@ func _ready() -> void:
 	hud = Hud.new()
 	hud.camera_rig = rig  # world tags and the penalty turn (hud.md §16.4)
 	layer.add_child(hud)
+	_name_boats()
 	_chat = LineEdit.new()
 	_chat.name = "Chat"
 	_chat.placeholder_text = "Say something"
@@ -223,6 +239,7 @@ func _ready() -> void:
 	_update_target(0.0)
 	set_process(auto_process)
 	_add_pause_menu()
+	_add_results()
 	if Settings.render_scale_override > 0.0 or Settings.upscaler_override != "" or Settings.aa_override != "":
 		Settings.current().apply_render_scale(get_tree().root)
 	if no_hud:
@@ -253,6 +270,54 @@ func _add_pause_menu() -> void:
 	elif apply_settings and ResourceLoader.exists(SETTINGS_SCRIPT):
 		var settings: Variant = load(SETTINGS_SCRIPT)
 		settings.current().apply_to_scene(self)
+
+
+## The results screen (menus.md §5) in a quick race the player sails (not --watch, not a rules scenario); the HUD's own
+## results table is off then. Loaded by path so the scene runs where the menus are not there.
+func _add_results() -> void:
+	if not with_results or not is_quick_race() or not ResourceLoader.exists(RESULTS_SCREEN):
+		return
+	results = (load(RESULTS_SCREEN) as GDScript).new()
+	results.name = "Results"
+	add_child(results)
+	hud.results_table = false
+
+
+## A quick race: whether this session is one (the results screen and Race again apply).
+func is_quick_race() -> bool:
+	return on_core and race_mode and not watch and scenario_run == null
+
+
+## This session as a GameSetup (menus.md §5 Race again and Change setup): the quick race's class, sail number,
+## venue, course, fleet, AI level and wind, with the seed it runs on.
+func session_setup() -> GameSetup:
+	var g := GameSetup.new()
+	g.mode = "race" if race_mode else "free"
+	g.class_id = class_id
+	g.livery = livery
+	g.venue = venue
+	g.course = course
+	g.fleet_size = fleet_size
+	g.ai_level = ai_level
+	g.wind_kn = wind_speed_kn
+	g.wind_from_deg = wind_from_deg
+	g.seed = world_seed
+	return g
+
+
+## race.md §6.4: the player retires (the pause menu's Retire); false when she cannot (can_retire).
+func retire() -> bool:
+	if not can_retire():
+		return false
+	return (sim as CoreSimSource).retire(runner.boat)
+
+
+## Whether the player's boat can retire now: a quick race from the warning signal until her race is over.
+func can_retire() -> bool:
+	if not is_quick_race() or not (sim as CoreSimSource).core.has_race():
+		return false
+	var st := int((sim as CoreSimSource).race().get("state", 0))
+	return st >= RaceText.RaceState.SEQUENCE and st <= RaceText.RaceState.CLOSING and not hud.race.race_over
 
 
 ## GameSetup (the menus' session set-up) onto the scene's settings: `setup`, else GameSetup.current() when the
@@ -435,9 +500,27 @@ func _paint_fleet() -> void:
 			if scenario_run != null and scenario_run.scenario.boats[b].livery != "":
 				entries[-1] = {"human": true, "choice": scenario_run.scenario.boats[b].livery}
 		var got := Livery.assign(list, entries, world_seed)
+		if boat_liveries.size() != boat_views.size():
+			boat_liveries.resize(boat_views.size())
 		for k in got.size():
 			if got[k] != null:
 				boat_views[by_class[id][k]].set_livery(got[k])
+			boat_liveries[by_class[id][k]] = got[k]
+
+
+## The race HUD's boat names and sail numbers from the liveries (the player stays "You"; the results screen shows
+## her boat's name too).
+func _name_boats() -> void:
+	if hud == null:
+		return
+	for b in boat_liveries.size():
+		var lv: Livery = boat_liveries[b]
+		if lv == null:
+			continue
+		hud.race.sail_numbers[b] = lv.sail_number
+		hud.race.boat_names[b] = lv.boat_name
+		if b != runner.boat and scenario_run == null:
+			hud.race.names[b] = lv.boat_name
 
 
 ## The sail states of every boat after a tick (`reset`: no previous ones).
@@ -556,6 +639,8 @@ func reset_boat(new_world := false) -> void:
 			shadows.remove_boat(i)
 		viewed = b
 		hud.local_commands = true
+		_race_over_seen = false
+		_name_boats()
 		_build_course()
 		audio.restart(sim, boat_views)
 		if scenario_run != null:
@@ -608,6 +693,10 @@ func _on_tick(_t: int) -> void:
 		runner.paused = true  # race.md §14: the clip ends paused; reset_boat runs it again
 	var t0 := Time.get_ticks_usec()
 	hud.tick(sim, viewed)
+	if not _race_over_seen and hud.race.race_over and is_quick_race():
+		_race_over_seen = true
+		(sim as CoreSimSource).ai_add_autopilot(runner.boat)  # race.md §6.2: she sails clear by herself
+		rig.ease_to(CameraRig.Mode.FINISH, target)  # cameras.md §9.1
 	controls.rumble.tick(sim, runner.boat)
 	var t1 := Time.get_ticks_usec()
 	audio.tick()

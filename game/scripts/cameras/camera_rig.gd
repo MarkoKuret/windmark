@@ -6,13 +6,16 @@ extends Node3D
 ## helicopter) are offline only (`clip_allowed`), chosen with camera_clip, outside the camera_next cycle; the
 ## start line and mark shots need `course` (ClipCourse, set by the scene). The lens finish of the camera: the
 ## vignette (LookFx, under the HUD; stronger on the clip cameras) and the depth of field of the long lens and the
-## mark shot (cameras.md §9). Presentation only.
+## mark shot (cameras.md §9). The finish view (cameras.md §9.1, FINISH) is entered with ease_to when the player's race
+## is over; it is neither a regular nor a clip camera. Presentation only.
 
-enum Mode { CHASE, ONBOARD, AERIAL, FREE, START_LINE, MARK, LONG_LENS, HELICOPTER }
+enum Mode { CHASE, ONBOARD, AERIAL, FREE, START_LINE, MARK, LONG_LENS, HELICOPTER, FINISH }
 
 const CLIP_MODES: Array[int] = [Mode.START_LINE, Mode.MARK, Mode.LONG_LENS, Mode.HELICOPTER]
 
 const BLEND_TIME := 0.4
+## cameras.md §9.1: the ease into the finish view, s
+const FINISH_EASE := 2.5
 ## cameras.md §9 depth of field per clip camera: the blur amount (Godot's practical units), the sharp zone either
 ## side of the subject (DOF_ZONE_LOA · loa + DOF_ZONE_M), the near and far blur ramps as shares of the focus
 ## distance, and the focus pull's smoothing. No other camera has depth of field.
@@ -36,6 +39,7 @@ var start_line := StartLineCamera.new()
 var mark := MarkCamera.new()
 var long_lens := LongLensCamera.new()
 var helicopter := HelicopterCamera.new()
+var finish := FinishCamera.new()
 ## offline: camera_clip selects the clip cameras (online it does nothing)
 var clip_allowed := true
 ## the course inputs of the start line and mark shots; null without a race
@@ -56,6 +60,7 @@ var focus := 0.0
 var _free_used := false
 var _blend_from := -1
 var _blend_t := 0.0
+var _blend_len := BLEND_TIME
 var _prev_mode := Mode.CHASE
 var _first := true
 ## the clip camera used last (camera_clip from a regular camera goes back to it)
@@ -91,11 +96,13 @@ func cam(m: int) -> RefCounted:
 			return long_lens
 		Mode.HELICOPTER:
 			return helicopter
+		Mode.FINISH:
+			return finish
 	return chase
 
 
 static func is_clip(m: int) -> bool:
-	return m >= Mode.START_LINE
+	return m in CLIP_MODES
 
 
 ## cameras.md §9: whether a clip camera can be placed now (start line and mark need the course)
@@ -134,7 +141,7 @@ func factory_presets(r0: float) -> void:
 
 
 func store_preset(slot: int) -> void:
-	if is_clip(mode):
+	if is_clip(mode) or mode == Mode.FINISH:
 		return  # presets hold the regular cameras only (cameras.md §6)
 	presets[slot] = {"mode": mode, "params": cam(mode).params().duplicate(true)}
 
@@ -151,9 +158,10 @@ func select_mode(m: int, t: CamTypes.Target) -> void:
 	var pair := (mode == Mode.CHASE and m == Mode.AERIAL) or (mode == Mode.AERIAL and m == Mode.CHASE)
 	_blend_from = mode if options.smooth_switch and pair else -1
 	_blend_t = 0.0
+	_blend_len = BLEND_TIME
 	_prev_mode = mode
 	mode = m
-	if not is_clip(m):
+	if not is_clip(m) and m != Mode.FINISH:
 		_regular = m
 	match m:
 		Mode.FREE:
@@ -166,7 +174,25 @@ func select_mode(m: int, t: CamTypes.Target) -> void:
 
 
 func next_mode(t: CamTypes.Target) -> void:
-	select_mode(Mode.CHASE if is_clip(mode) else (mode + 1) % 4, t)
+	select_mode(Mode.CHASE if is_clip(mode) or mode == Mode.FINISH else (mode + 1) % 4, t)
+
+
+## cameras.md §9.1: eases from the camera in use into `m` over `seconds` (the finish view starts on the side the
+## camera is on now). A blend in progress is replaced; easing into the mode shown does nothing.
+func ease_to(m: int, t: CamTypes.Target, seconds := FINISH_EASE) -> void:
+	if m == mode:
+		return
+	if m == Mode.FINISH:
+		finish.start_from(t, camera.transform.origin)
+	else:
+		cam(m).snap(t)
+	_blend_from = mode
+	_blend_t = 0.0
+	_blend_len = maxf(seconds, 0.01)
+	_prev_mode = mode
+	mode = m
+	if not is_clip(m) and m != Mode.FINISH:
+		_regular = m
 
 
 func recentre(t: CamTypes.Target) -> void:
@@ -181,7 +207,8 @@ func contact(closing_speed: float) -> void:
 
 ## Viewed boat changed: cut the smoothing to it.
 func retarget(t: CamTypes.Target) -> void:
-	for m in [Mode.CHASE, Mode.ONBOARD, Mode.AERIAL, Mode.START_LINE, Mode.MARK, Mode.LONG_LENS, Mode.HELICOPTER]:
+	for m in [Mode.CHASE, Mode.ONBOARD, Mode.AERIAL, Mode.START_LINE, Mode.MARK, Mode.LONG_LENS, Mode.HELICOPTER,
+			Mode.FINISH]:
 		cam(m).snap(t)
 
 
@@ -210,7 +237,7 @@ func frame(t: CamTypes.Target, c: CameraInput, dt_in: float) -> CamTypes.View:
 	var v: CamTypes.View = cam(mode).update(t, options, dt)
 	if _blend_from >= 0:
 		_blend_t += dt
-		var w := Frames.smoothstep01(_blend_t / BLEND_TIME)
+		var w := Frames.smoothstep01(_blend_t / _blend_len)
 		var a: CamTypes.View = cam(_blend_from).update(t, options, dt)
 		var bl := CamTypes.View.new()
 		bl.xform = Transform3D(a.xform.basis.get_rotation_quaternion().slerp(
@@ -218,7 +245,7 @@ func frame(t: CamTypes.Target, c: CameraInput, dt_in: float) -> CamTypes.View:
 		bl.fov = lerpf(a.fov, v.fov, w)
 		bl.near = minf(a.near, v.near)
 		v = bl
-		if _blend_t >= BLEND_TIME:
+		if _blend_t >= _blend_len:
 			_blend_from = -1
 	if (mode == Mode.CHASE or mode == Mode.ONBOARD) and shake.active() and not options.reduced_motion:
 		var s := shake.advance(dt)

@@ -406,6 +406,8 @@ static func start_height(h: Hud) -> float:
 	if not h.race.active:
 		return 0.0
 	var y := 150.0 if h.countdown_shown() else 0.0
+	if h.finish_card_shown():
+		y += CARD_H
 	if h.race.start_panel:
 		y += 96.0 if h.has_item("start_full") else 76.0
 	if h.flag_rule() != "":
@@ -429,6 +431,9 @@ static func start(b: HudCanvas, h: Hud) -> void:
 		b._s(Vector2(cx, 134) * k, t, int(roundf(128 * k)), HudStyle.MARK if last10 else HudStyle.PAPER, 600, 0.0,
 			HORIZONTAL_ALIGNMENT_CENTER)
 		y = 150.0
+	if h.finish_card_shown():
+		finish_card(b, h, y)
+		y += CARD_H
 	if r.start_panel:
 		if h.has_item("start_full"):
 			var cells := [["LINE", "line"], ["TO LINE", "tline"], ["BURN", "burn"], ["BIAS", "bias"]]
@@ -471,6 +476,37 @@ static func start(b: HudCanvas, h: Hud) -> void:
 		b.text_shadow = false
 		b._s(Vector2(cx, y + 32.0) * k, t, int(roundf(22 * k)), HudStyle.PAPER, 700, 0.06, HORIZONTAL_ALIGNMENT_CENTER)
 		b.text_shadow = sv
+
+
+const CARD_H := 186.0
+
+
+## hud.md §13.1 the finish card at `y` (design px) in the lane: caption, the place (or code) at the countdown's size
+## with the gap beside it, the finish time under them; faded by the card's opacity
+static func finish_card(b: HudCanvas, h: Hud, y: float) -> void:
+	var k := b.k
+	var c: Dictionary = h.race.card
+	var a := h.finish_card_alpha()
+	var cx := LANE_W * 0.5
+	b._s(Vector2(cx, y + 22) * k, c.get("caption", ""), int(roundf(15 * k)), Color(HudStyle.MIST, HudStyle.MIST.a * a),
+		600, TRACK, HORIZONTAL_ALIGNMENT_CENTER)
+	var big: String = c.get("big", "")
+	var gap: String = c.get("gap", "")
+	var big_px := int(roundf(128 * k))
+	var gap_px := int(roundf(48 * k))
+	var wb := HudCanvas.text_width(big, big_px)
+	var wg := HudCanvas.text_width(gap, gap_px) + 22.0 * k if gap != "" else 0.0
+	var x := cx * k - (wb + wg) * 0.5
+	var col: Color = HudStyle.MARK if bool(c.get("win", false)) else HudStyle.PAPER
+	if c.get("kind", "") != "finish":
+		col = HudStyle.PORT
+	b._s(Vector2(x, (y + 134) * k), big, big_px, Color(col, a), 600)
+	if gap != "":
+		b._s(Vector2(x + wb + 22.0 * k, (y + 134) * k), gap, gap_px, Color(HudStyle.MIST, HudStyle.MIST.a * a), 600)
+	var t: String = c.get("time", "")
+	if t != "":
+		b._s(Vector2(cx, y + 170) * k, t, int(roundf(20 * k)), Color(HudStyle.PAPER, a), 600, 0.04,
+			HORIZONTAL_ALIGNMENT_CENTER)
 
 
 ## late/early bar: +-30 s from the centre, yellow to the value

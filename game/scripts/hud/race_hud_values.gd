@@ -5,7 +5,8 @@ extends RefCounted
 ## countdown, flags and signal banners, the start line panel (distance, time to line, time to burn, bias, OVER,
 ## OCS), the next mark, VMG and VMC, the layline distance, the shift meter, the sail hint, the rank with its
 ## hysteresis, gaps and splits, rules awareness messages, the penalty panel, protest and hail prompts, the radar
-## colours, the event feed, banners and the results. Timers count ticks, so the values are a function of the
+## colours, the event feed, banners and the results, and the race end of the player's own boat (§13.1 to §13.3: the
+## finish card, when her race is over, the summary of her race). Timers count ticks, so the values are a function of the
 ## sim's states and events. Without a race (FakeSim, free sailing) `active` is false and nothing else is set.
 ## Player-facing text has no em dashes.
 
@@ -28,6 +29,10 @@ const HINT_TICKS := 100  # hud.md §4 sail hint: 5 s
 const RESET_TICKS := 60
 const START_SUMMARY_S := 30.0
 const MIN_KN := 0.3 * HudFormat.KNOT
+## hud.md §13.1 the finish card: 5 s, fading in over 0.3 s and out over the last 0.8 s
+const CARD_TICKS := 100
+const CARD_IN_S := 0.3
+const CARD_OUT_S := 0.8
 
 enum Tint { WHITE, RED, ORANGE, CYAN, YELLOW, GREEN, GREY }
 ## radar pulse (hud.md §8): none, Warning 2 Hz, Breach 4 Hz with an outline
@@ -173,8 +178,32 @@ var banner: Line = null
 var feed: Array[Line] = []
 var results_visible := false
 var results_final := false
-## [{place, boat, name, skipper, ai, time (s or NAN), gap (s or NAN), code, points, projected}]
+## [{place, boat, name, skipper, ai, time (s or NAN), gap (s or NAN), code, points, projected, status}]
 var result_rows: Array = []
+## boat index -> sail number ("7") and boat name ("Kestrel", the player's too); the results screen's Sail and Boat
+var sail_numbers := {}
+var boat_names := {}
+
+# ---- race end of the player's own boat (§13.1 to §13.3) ----
+## the finish card: {} none, else {kind ("finish", "ret", "dnf"), big, caption, gap, time, line, win}
+var card := {}
+## ticks since the card came up
+var card_ticks := 0
+## hud.md §13.2: the player's race is over, why ("finished", "retired", "dsq", "ghost", "dnf", "abandoned") and the
+## ticks since
+var race_over := false
+var end_reason := ""
+var over_ticks := 0
+## §13.3 records: start time after the gun (NAN before), OCS at the start; roundings [{step, label, place, gap}];
+## penalties [{rule, other, state ("pending", "done", "late", "cancelled")}]; the disqualification's reason; the
+## top boat speed (m/s) and the ground track sailed (m) while racing
+var start_t := NAN
+var start_ocs := false
+var roundings: Array = []
+var penalties: Array = []
+var dsq_reason := ""
+var top_speed := 0.0
+var distance_sailed := 0.0
 
 var _sim: SimSource
 var _course := {}
@@ -196,6 +225,7 @@ var _hint_ticks := 0
 var _turn_prev := 0.0
 var _reset_ticks := 0
 var _summary_done := false
+var _track_last := Vector2.INF
 var _tick := 0
 var _events_tick := -1
 
@@ -248,7 +278,7 @@ func course() -> Dictionary:
 
 ## Forget everything (a new sim or race).
 func reset() -> void:
-	var keep := [names, skippers, ai_levels, own_boat, dsq_pending, dsq_total]
+	var keep := [names, skippers, ai_levels, own_boat, dsq_pending, dsq_total, sail_numbers, boat_names]
 	var fresh := RaceHudValues.new()
 	for p in get_property_list():
 		if p["usage"] & PROPERTY_USAGE_SCRIPT_VARIABLE:
@@ -259,6 +289,8 @@ func reset() -> void:
 	own_boat = keep[3]
 	dsq_pending = keep[4]
 	dsq_total = keep[5]
+	sail_numbers = keep[6]
+	boat_names = keep[7]
 
 
 ## Once per tick after the step, for the viewed boat `b`.
@@ -304,6 +336,7 @@ func tick(sim: SimSource, b: int) -> void:
 	if sim.tick() != _events_tick:
 		_events_tick = sim.tick()
 		_events(sim, b)
+		_race_end(sim)
 		_timers()
 
 
@@ -972,6 +1005,8 @@ func _events(sim: SimSource, b: int) -> void:
 				_feed(text)
 				hud_event.emit("signal", {"kind": sk, "flag": int(e["flag"])})
 			RaceText.Ev.BOAT_OCS:
+				if eb == own_boat:
+					start_ocs = true
 				if eb == b:
 					var fl := int(e["flag"])
 					var txt: String = "OVER: " + RaceText.OVER_CONSEQUENCE[clampi(fl, 0, 4)]
@@ -985,6 +1020,8 @@ func _events(sim: SimSource, b: int) -> void:
 			RaceText.Ev.STARTED:
 				if eb == b:
 					_banner("Started", Tint.GREEN, BANNER_SERVED)
+				if eb == own_boat:
+					start_t = float(e.get("t", race_time))
 			RaceText.Ev.ROUNDED:
 				_rounded(sim, b, eb, int(e["step"]))
 			RaceText.Ev.FINISH_BLOCKED:
@@ -995,6 +1032,8 @@ func _events(sim: SimSource, b: int) -> void:
 				_finished(sim, b, eb, e)
 			RaceText.Ev.RETIRED:
 				_feed("%s retired" % name_of(eb), [eb])
+				if eb == own_boat:
+					_card("ret", "RET", "RETIRED", "", "", "Retired")
 			RaceText.Ev.JOINED:
 				_feed("%s joined" % name_of(eb), [eb])
 			RaceText.Ev.LEFT:
@@ -1019,6 +1058,8 @@ func _events(sim: SimSource, b: int) -> void:
 				if eb == b or eo == b:
 					hud_event.emit("rule_warning", {"giver": eb, "holder": eo, "rule": rule})
 			RaceText.Rev.PENALTY:
+				if eb == own_boat:
+					penalties.append({"rule": rule, "other": eo, "state": "pending"})
 				if eb == b:
 					_last_penalty_tick = _tick
 				var other_txt := " (%s)" % name_of(eo) if eo >= 0 else ""
@@ -1028,14 +1069,20 @@ func _events(sim: SimSource, b: int) -> void:
 					_feed("%s penalised, rule %s%s" % [name_of(eb), RaceText.code(rule), other_txt], [eb, eo])
 				hud_event.emit("penalty", {"boat": eb, "rule": rule, "other": eo})
 			RaceText.Rev.PENALTY_SERVED:
+				if eb == own_boat:
+					_penalty_state("done")
 				if eb == b:
 					_banner("Penalty done", Tint.GREEN, BANNER_SERVED)
 					hud_event.emit("penalty_served", {"boat": eb})
 			RaceText.Rev.PENALTY_CANCELLED:
+				if eb == own_boat:
+					_penalty_state("cancelled")
 				if eb == b:
 					_banner("Penalties offset: one each cancelled", Tint.GREEN, BANNER_SERVED)
 			RaceText.Rev.PENALTY_LATE:
 				# rules.md §9.4: no banner of its own, the disqualification that follows says why
+				if eb == own_boat:
+					_penalty_state("late")
 				if eb == b:
 					_last_penalty_tick = _tick
 			RaceText.Rev.PROTESTABLE:
@@ -1053,6 +1100,8 @@ func _events(sim: SimSource, b: int) -> void:
 					why = "outside the race area"
 				elif rule == RaceText.Rule.LATE:
 					why = "penalty not taken within 2 minutes"
+				if eb == own_boat:
+					dsq_reason = why
 				if eb == b:
 					_banner("DISQUALIFIED: %s" % why, Tint.RED, BANNER_DSQ, true)
 				else:
@@ -1085,6 +1134,13 @@ func _rounded(sim: SimSource, b: int, eb: int, k: int) -> void:
 			place += 1
 			first = minf(first, t)
 	var what := _step_label(k)
+	if eb == own_boat:
+		# §13.3: "Windward 2" on a course of more than one lap
+		var lbl := what.capitalize()
+		if int(_course.get("laps", 1)) > 1:
+			lbl += " %d" % int(_course["steps"][k].get("lap", 1))
+		roundings.append({"step": k, "label": lbl, "place": place,
+			"gap": mine - first if place > 1 and not is_nan(mine) else NAN})
 	if eb == b:
 		var txt := "%s · %s" % [what.capitalize() if what == "gate" else what, RaceText.ordinal(place)]
 		if place > 1 and not is_nan(mine):
@@ -1104,11 +1160,17 @@ func _finished(sim: SimSource, b: int, eb: int, e: Dictionary) -> void:
 			t_win = minf(t_win, float(r.get("t_finish_us", 0)) * 1e-6)
 	var place_txt := RaceText.ordinal(place) if place > 0 else "No place"
 	_feed("%s %s %s" % [name_of(eb), _verb(eb, "finishes", "finish"), place_txt], [eb])
-	if eb == b:
+	if eb == own_boat:
+		# hud.md §13.1: the card, not a banner
 		var txt := "Finished %s · %s" % [place_txt, HudFormat.finish_time(t)]
+		var gap_txt := ""
 		if t > t_win:
-			txt += " · %s" % HudFormat.gap(t - t_win)
-		_banner(txt, Tint.GREEN, BANNER_DSQ)
+			gap_txt = HudFormat.gap(t - t_win)
+			txt += " · %s" % gap_txt
+		var code := RaceText.score(int(sim.race_boat(eb).get("code", 0)))
+		_card("finish", place_txt.to_upper() if place > 0 else (code if code != "" else "OCS"), "FINISHED", gap_txt,
+			HudFormat.finish_time(t), txt, place == 1)
+	if eb == b:
 		hud_event.emit("finished", {"place": place})
 		_results(sim, false)
 
@@ -1131,7 +1193,7 @@ func _results(sim: SimSource, final: bool) -> void:
 			result_rows.append({"place": int(r["place"]), "boat": bi, "name": name_of(bi),
 				"skipper": skippers.get(bi, ""), "ai": ai_badge(bi), "time": tf,
 				"gap": tf - t_win if not is_nan(tf) else NAN, "code": str(r.get("code_name", RaceText.score(int(r["code"])))),
-				"points": float(r["points"]), "projected": bool(r["projected"])})
+				"points": float(r["points"]), "projected": bool(r["projected"]), "status": ""})
 		return
 	results_final = false
 	for bi in sim.race_order():
@@ -1143,13 +1205,156 @@ func _results(sim: SimSource, final: bool) -> void:
 		result_rows.append({"place": int(rb.get("place", 0)) if fin else 0, "boat": bi, "name": name_of(bi),
 			"skipper": skippers.get(bi, ""), "ai": ai_badge(bi), "time": tf, "gap": NAN,
 			"code": RaceText.score(int(rb.get("code", 0))) if not fin else "", "points": NAN,
-			"projected": false})
+			"projected": false, "status": "" if fin else _live_status(rb)})
 	for r in result_rows:
 		if not is_nan(r["time"]):
 			r["gap"] = r["time"] - t_win
 
 
+## a boat that has not finished in the live finishing rows (menus.md §5): Racing, RET, DSQ, OCS, or her score code
+static func _live_status(rb: Dictionary) -> String:
+	if bool(rb.get("dsq", false)):
+		return "DSQ"
+	if bool(rb.get("retired", false)):
+		return "RET"
+	if bool(rb.get("ocs", false)) or bool(rb.get("ocs_i", false)) or bool(rb.get("ocs_scored", false)):
+		return "OCS"
+	var code := RaceText.score(int(rb.get("code", 0)))
+	if code != "":
+		return code
+	return "Racing"
+
+
+# ---- race end (§13.1 to §13.3) ----
+
+func _card(kind: String, big: String, caption: String, gap_txt: String, time_txt: String, line: String,
+		win := false) -> void:
+	card = {"kind": kind, "big": big, "caption": caption, "gap": gap_txt, "time": time_txt, "line": line, "win": win}
+	card_ticks = 0
+
+
+func _penalty_state(st: String) -> void:
+	for p in penalties:
+		if p["state"] == "pending":
+			p["state"] = st
+			return
+
+
+## Once per tick after the events: the track records of the own boat, whether her race is over (§13.2), the DNF
+## card at a close with her still racing, the live finishing rows.
+func _race_end(sim: SimSource) -> void:
+	var ob := own_boat
+	if ob < 0 or ob >= sim.boat_count():
+		return
+	var rb := sim.race_boat(ob)
+	var fin := bool(rb.get("finished", false))
+	var ghost := bool(rb.get("ghost", false))
+	var racing := bool(rb.get("started", false)) and not fin and not ghost
+	# §13.3: the track from the start signal to her finish or race end, the top speed while racing
+	if not race_over and not fin and not ghost and state >= RaceText.RaceState.RACING:
+		var st := sim.state(ob)
+		var p := Vector2(st.pos_x, st.pos_y)
+		if racing:
+			top_speed = maxf(top_speed, st.v)
+		if _track_last != Vector2.INF:
+			distance_sailed += p.distance_to(_track_last)
+		_track_last = p
+	elif fin and _track_last != Vector2.INF and not race_over:
+		var st := sim.state(ob)
+		distance_sailed += Vector2(st.pos_x, st.pos_y).distance_to(_track_last)
+		_track_last = Vector2.INF
+	if not race_over:
+		var why := ""
+		if fin:
+			why = "finished"
+		elif bool(rb.get("dsq", false)):
+			why = "dsq"
+		elif bool(rb.get("retired", false)):
+			why = "retired"
+		elif ghost:
+			why = "ghost"
+		elif state == RaceText.RaceState.CLOSED:
+			why = "dnf"
+		elif state == RaceText.RaceState.ABANDONED:
+			why = "abandoned"
+		if why != "":
+			race_over = true
+			end_reason = why
+			if why == "dnf":
+				_card("dnf", "DNF", "RACE CLOSED", "", "", "Did not finish")
+			if not results_visible:
+				_results(sim, state == RaceText.RaceState.CLOSED)
+	if race_over:
+		over_ticks += 1  # the card counts the tick it came up on too
+	if results_visible and not results_final:
+		_results(sim, false)
+
+
+## hud.md §13.2: the results screen's time has come (the card's 5 s after the race is over)
+func results_due() -> bool:
+	return race_over and over_ticks >= CARD_TICKS
+
+
+## the card's opacity, `frac` ticks into the present tick (0..1): fading in, then out (§13.1); 0 when there is none
+func card_alpha(frac := 0.0) -> float:
+	if card.is_empty():
+		return 0.0
+	var t := (card_ticks + frac) * DT
+	var total := CARD_TICKS * DT
+	if t >= total:
+		return 0.0
+	return clampf(minf(t / CARD_IN_S, (total - t) / CARD_OUT_S), 0.0, 1.0)
+
+
+## the own boat's place in the result rows (final after the close, live before), 0 without one
+func own_place() -> int:
+	for r in result_rows:
+		if int(r["boat"]) == own_boat:
+			return int(r["place"])
+	return 0
+
+
+## hud.md §13.3 the summary lines: [[label, value]], the items that have data
+func summary_lines() -> Array:
+	var out := []
+	if not is_nan(start_t):
+		var s := "%s after the gun" % HudFormat.gap(start_t)
+		out.append(["Start", ("OCS, returned and started %s" % HudFormat.gap(start_t)) if start_ocs else s])
+	elif start_ocs:
+		out.append(["Start", "OCS"])
+	for r in roundings:
+		var v := RaceText.ordinal(int(r["place"]))
+		if not is_nan(r["gap"]):
+			v += "  ·  %s" % HudFormat.gap(r["gap"])
+		out.append([r["label"], v])
+	var place := own_place()
+	if not roundings.is_empty() and place > 0:
+		var d := int(roundings[0]["place"]) - place
+		var txt := "Held %s since the first mark" % RaceText.ordinal(place)
+		if d != 0:
+			txt = "%s%d since the first mark" % ["+" if d > 0 else "", d]
+		out.append(["Places", txt])
+	if penalties.is_empty() and dsq_reason == "" and not is_nan(start_t):
+		out.append(["Penalties", "No penalties"])
+	for p in penalties:
+		var other := " (%s)" % name_of(int(p["other"])) if int(p["other"]) >= 0 else ""
+		var how: String = {"pending": "not taken", "done": "done", "late": "late", "cancelled": "cancelled"}[p["state"]]
+		out.append(["Penalty", "Rule %s: %s%s, %s" % [RaceText.code(int(p["rule"])), RaceText.rule_text(int(p["rule"])),
+			other, how]])
+	if dsq_reason != "":
+		out.append(["Disqualified", dsq_reason.substr(0, 1).to_upper() + dsq_reason.substr(1)])
+	if top_speed > 0.0:
+		out.append(["Top speed", "%s kn" % HudFormat.speed_kn(top_speed)])
+	if distance_sailed > 0.0:
+		out.append(["Distance sailed", HudFormat.distance(distance_sailed)])
+	return out
+
+
 func _timers() -> void:
+	if not card.is_empty():
+		card_ticks += 1
+		if card_ticks >= CARD_TICKS:
+			card = {}
 	if banner != null:
 		banner.ticks -= 1
 		if banner.ticks <= 0:

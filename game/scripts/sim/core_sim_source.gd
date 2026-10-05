@@ -155,6 +155,16 @@ func ai_take_over(b: int) -> bool:
 	return core.ai_take_over(b)
 
 
+## race.md §6.2: only the finished-boat autopilot for boat b (an offline human boat: it steers her from her finish)
+func ai_add_autopilot(b: int) -> bool:
+	return core.ai_add_autopilot(b)
+
+
+## race.md §6.4: boat b retires (RET after her start, DNS before it)
+func retire(b: int) -> bool:
+	return core.retire(b)
+
+
 func ai_release(b: int) -> bool:
 	return core.ai_release(b)
 

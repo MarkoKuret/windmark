@@ -1,6 +1,7 @@
 class_name PauseMenu
 extends CanvasLayer
-## The in-race pause menu (menus.md §2, controls.md §7): Resume, Restart, Settings, Quit to menu.
+## The in-race pause menu (menus.md §2, controls.md §7): Resume, Restart, Retire (a quick race until the player's race
+## is over: a second press within 3 s retires her), Settings, Quit to menu. Scene changes fade (SceneFade).
 ##
 ## Instanced as a child of the sail scene, it follows the scene's own pause: the scene's `pause_menu` key pauses
 ## its SimRunner (`runner.paused`), the menu opens over it and holds the boat's controls (`controls.menu_open`);
@@ -10,6 +11,10 @@ extends CanvasLayer
 signal action_requested(action: String)
 
 const MAIN_MENU := "res://scenes/menu/main_menu.tscn"
+## menus.md §2: Retire asks again for this long
+const RETIRE_CONFIRM_S := 3.0
+const RETIRE_TEXT := "Retire"
+const RETIRE_ASK := "Retire? Press again"
 
 ## tests: false keeps restart and quit from changing scene (action_requested still fires)
 var act := true
@@ -25,6 +30,8 @@ var _card: PanelContainer
 var _list: VBoxContainer
 var _settings_card: PanelContainer
 var _was_paused := false
+## seconds left to confirm Retire, 0 when not asking
+var _retire_t := 0.0
 
 
 func _ready() -> void:
@@ -57,8 +64,9 @@ func _ready() -> void:
 	var gap := Control.new()
 	gap.custom_minimum_size = Vector2(0, 8)
 	_list.add_child(gap)
-	for e in [["resume", "Resume"], ["restart", "Restart"], ["settings", "Settings"], ["quit", "Quit to menu"]]:
-		var b := MenuTheme.button(e[1], MenuTheme.ITEM_SIZE, e[0] == "quit")
+	for e in [["resume", "Resume"], ["restart", "Restart"], ["retire", RETIRE_TEXT], ["settings", "Settings"],
+			["quit", "Quit to menu"]]:
+		var b := MenuTheme.button(e[1], MenuTheme.ITEM_SIZE, e[0] == "quit" or e[0] == "retire")
 		b.name = e[1].replace(" ", "")
 		var id: String = e[0]
 		b.pressed.connect(func() -> void: _pressed(id))
@@ -104,7 +112,11 @@ func _apply() -> void:
 		Settings.current().apply_display(get_tree().root)
 
 
-func _process(_dt: float) -> void:
+func _process(dt: float) -> void:
+	if _retire_t > 0.0:
+		_retire_t -= dt
+		if _retire_t <= 0.0:
+			_retire_ask(false)
 	var r := _host_runner()
 	if r == null:
 		return
@@ -131,7 +143,19 @@ func open() -> void:
 		_was_paused = true
 	_hold_controls(true)
 	_host_label(false)
+	_retire_ask(false)
+	buttons["retire"].visible = can_retire()
 	buttons["resume"].grab_focus.call_deferred()
+
+
+## Retire shows in a quick race until the player's race is over (menus.md §2).
+func can_retire() -> bool:
+	return host != null and host.has_method("can_retire") and bool(host.call("can_retire"))
+
+
+func _retire_ask(on: bool) -> void:
+	_retire_t = RETIRE_CONFIRM_S if on else 0.0
+	buttons["retire"].text = (RETIRE_ASK if on else RETIRE_TEXT).to_upper()
 
 
 ## Closes the menu and resumes the host.
@@ -175,14 +199,24 @@ func _pressed(id: String) -> void:
 			action_requested.emit(id)
 			if act:
 				if get_tree().current_scene != null:
-					get_tree().reload_current_scene()
+					SceneFade.reload(get_tree())
 				elif host != null and host.has_method("reset_boat"):
 					host.reset_boat()
+		"retire":
+			if _retire_t <= 0.0:
+				_retire_ask(true)
+				return
+			_retire_ask(false)
+			action_requested.emit(id)
+			if host != null and host.has_method("retire"):
+				host.call("retire")
+			close()
 		"quit":
 			close()
 			action_requested.emit(id)
 			if act:
-				get_tree().change_scene_to_file(MAIN_MENU)
+				MainMenu.open_on = ""
+				SceneFade.change(get_tree(), MAIN_MENU)
 
 
 func _setting_changed(key: String) -> void:

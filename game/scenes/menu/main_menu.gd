@@ -2,7 +2,8 @@ class_name MainMenu
 extends Control
 ## The main menu (menus.md §1): Quick race, Free sail, Settings, Quit on the left, the chosen page on a cloth
 ## panel on the right (under them in a portrait window, the capture preset of menus.md §3). Start writes
-## GameSetup.current() and changes to the sail scene.
+## GameSetup.current() and changes to the sail scene (with the fade of menus.md §5). `open_on` opens a page when the
+## menu starts (the results screen's Change setup: the race card with the setup it remembered).
 
 signal scene_requested(path: String)
 
@@ -11,6 +12,9 @@ const SAIL_SCENE := "res://scenes/sail_test.tscn"
 const WORDMARK_SCENE := "res://scenes/menu/wordmark.tscn"
 ## the space round the menu, px
 const MARGIN := 40
+
+## the page to open when the menu starts next ("quick": the race card), cleared when it has; "" none
+static var open_on := ""
 
 ## tests: false keeps the menu from changing scene (scene_requested still fires)
 var change_scenes := true
@@ -158,6 +162,10 @@ func _ready() -> void:
 	add_child(sounds)
 	if not settings.welcomed:
 		_show_welcome()
+	elif open_on in ["quick", "free", "settings"]:
+		var id := open_on
+		open_on = ""
+		open_page.call_deferred(id)
 	else:
 		_first_focus().grab_focus.call_deferred()
 
@@ -351,4 +359,4 @@ func start(p: SetupPanel) -> void:
 func request_scene(path: String) -> void:
 	scene_requested.emit(path)
 	if change_scenes:
-		get_tree().change_scene_to_file(path)
+		SceneFade.change(get_tree(), path)

@@ -100,6 +100,8 @@ var gauge_views: Array[TrimGaugeView] = []
 var ranking_panel: HudCanvas
 var results_panel: HudCanvas
 var results_title := ""
+## hud.md §13: the HUD draws the results as its own table (off where the results screen of menus.md §5 does it)
+var results_table := true
 ## the ranking list is held open (the `rankings` action)
 var show_ranking := false
 ## the rankings option (controls.md §6, menus.md §3): true = Tab or a View press opens and closes the list, and
@@ -321,6 +323,16 @@ func dial_target() -> float:
 	if race.active and race.leg_type in ["beat", "run"] and not is_nan(race.target_twa):
 		return race.target_twa
 	return NAN
+
+
+## hud.md §13.1: the finish card shows now
+func finish_card_shown() -> bool:
+	return race.active and race.card_alpha() > 0.0
+
+
+## the finish card's opacity this frame (between ticks)
+func finish_card_alpha() -> float:
+	return race.card_alpha(clampf(_since_tick / SimSource.DT, 0.0, 1.0))
 
 
 func countdown_shown() -> bool:
@@ -612,7 +624,8 @@ func _race_frame() -> void:
 		_put("rules", m.text, HudStyle.TINTS[m.tint])
 	else:
 		_put("rules", "")
-	results_panel.visible = r.results_visible and (r.results_final or r.banner == null)
+	results_panel.visible = results_table and r.results_visible and (r.results_final or r.banner == null) \
+		and not finish_card_shown()
 	ranking_panel.visible = show_ranking and not results_panel.visible
 	if results_panel.visible:
 		results_title = "Results" if r.results_final else "Provisional results"
@@ -688,6 +701,8 @@ func _race_text() -> void:
 		clock_v = HudFormat.clock(r.race_time)
 		clock = "Race  %s" % clock_v
 	_put("clock", clock, white, clock_v)
+	# the finish card (§13.1)
+	_put("finish", r.card.get("line", "") if finish_card_shown() else "", HudStyle.PAPER)
 	# start line panel (§9.2)
 	if r.start_panel:
 		var dv := HudStyle.split_unit(HudFormat.signed_distance(r.line_dist) if not r.line_end

@@ -4,7 +4,8 @@ extends Control
 ## two hard shadows (navy, then yellow, each the outlined letters in one colour), and the tagline bar under it:
 ## REGATTA SAILING SIMULATOR in ExtraBold Italic, navy on a yellow parallelogram with a hard navy shadow. One scene
 ## (wordmark.tscn), so a later logo replaces it without touching the menu. Every size and offset is a whole pixel
-## of the WINDMARK font size, so it stays crisp at every UI scale; fit_width scales it down by font size.
+## of the WINDMARK font size, so it stays crisp at every UI scale; fit_width scales it down by font size. The results
+## screen (menus.md §5) uses the same lockup with its own words (`text`, `tagline_text`, set_words).
 
 const TEXT := "WINDMARK"
 const TAGLINE := "REGATTA SAILING SIMULATOR"
@@ -38,6 +39,9 @@ const ASCENT := 1.0
 const CAP := 0.7
 const ITALIC_DEG := 7.0
 
+## the words: the title and the tagline bar's (the logo's by default)
+var text := TEXT
+var tagline_text := TAGLINE
 ## the WINDMARK font size now, px
 var title_px := SIZE
 var title: Label
@@ -51,10 +55,22 @@ var bar_shadow := PackedVector2Array()
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	shadow_yellow = _label("ShadowYellow", TEXT)
-	shadow_navy = _label("ShadowNavy", TEXT)
-	title = _label("Title", TEXT)
-	tagline = _label("Tagline", TAGLINE)
+	shadow_yellow = _label("ShadowYellow", text)
+	shadow_navy = _label("ShadowNavy", text)
+	title = _label("Title", text)
+	tagline = _label("Tagline", tagline_text)
+	_layout()
+
+
+## Other words in the lockup (the results screen's place and result); keeps the size.
+func set_words(t: String, tag: String) -> void:
+	text = t
+	tagline_text = tag
+	if not is_node_ready():
+		return
+	for l in [shadow_yellow, shadow_navy, title]:
+		l.text = t
+	tagline.text = tag
 	_layout()
 
 
@@ -99,7 +115,7 @@ func _geometry(px: int) -> Dictionary:
 	var r := ceili(outline / 4.0)
 	var spacing := roundi(TRACKING * t)
 	var tf := _font(BLACK_ITALIC, spacing)
-	var tw := tf.get_string_size(TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x - spacing
+	var tw := tf.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x - spacing
 	var ds1 := roundi(SHADOW_NAVY * t)
 	var ds2 := roundi(SHADOW_YELLOW * t)
 	# the italic's top-right lean past the last advance
@@ -112,7 +128,7 @@ func _geometry(px: int) -> Dictionary:
 	var s := maxi(roundi(TAG_SIZE * t), 8)
 	var ts := roundi(TAG_TRACKING * s)
 	var gf := _font(EXTRABOLD_ITALIC, ts)
-	var gw := gf.get_string_size(TAGLINE, HORIZONTAL_ALIGNMENT_LEFT, -1, s).x - ts
+	var gw := gf.get_string_size(tagline_text, HORIZONTAL_ALIGNMENT_LEFT, -1, s).x - ts
 	var bh := roundi(TAG_HEIGHT * s)
 	var skew := bh * tan(deg_to_rad(TAG_SLANT_DEG))
 	var pad := roundi(TAG_PAD * s)

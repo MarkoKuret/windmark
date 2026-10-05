@@ -35,3 +35,20 @@ static func current() -> GameSetup:
 	if next == null:
 		next = GameSetup.new()
 	return next
+
+
+## The fields the menus remember (menus.md §1, Settings.last_setup): mode, class, sail number, venue, course, fleet,
+## AI level and wind.
+func to_dict() -> Dictionary:
+	return {"mode": mode, "class_id": class_id, "livery": livery, "venue": venue, "course": course,
+		"fleet_size": fleet_size, "ai_level": ai_level, "wind_kn": wind_kn, "wind_from_deg": wind_from_deg}
+
+
+## A copy with a new seed (0: from the clock), as Race again starts it (menus.md §5).
+func again() -> GameSetup:
+	var g := GameSetup.new()
+	for k in to_dict():
+		g.set(k, get(k))
+	g.scenario = scenario
+	g.seed = 0
+	return g

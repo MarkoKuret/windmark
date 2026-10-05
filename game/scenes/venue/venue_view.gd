@@ -18,6 +18,9 @@ var terrain: LandTerrain
 ## the MeshInstance3D nodes by role (tests, previews): land_<id>, trees_<id>, quay_<id>, rock_<id>
 var parts := {}
 
+## the venue's trees cast the sun's shadows (the tier's `tree_shadows`, water_render.md §4.6; apply_quality)
+var tree_shadows := true
+
 var _land_material: ShaderMaterial
 var _quay_tops: Array = []  # [{points, top}] for ground_height
 
@@ -40,6 +43,15 @@ func build(s: VenueShapes) -> void:
 			_build_rock(o, rng)
 		else:
 			_build_quay(o)
+
+
+## The quality tier's share of the venue (water_render.md §4.6): on tier L the trees cast no sun shadow.
+func apply_quality(tier: int) -> void:
+	tree_shadows = bool(SeaQuality.get_tier(tier as SeaQuality.Tier).get("tree_shadows", true))
+	for n in parts:
+		if String(n).begins_with("trees_"):
+			(parts[n] as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if tree_shadows \
+				else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
 ## Height of the drawn ground (land, quays, rocks) at a world point, -INF where there is only water
@@ -154,7 +166,7 @@ func _build_trees(i: int, id: String, box: Rect2, nx: int, ny: int, hs: PackedFl
 			m.blob(base + Vector3(0, sr * 0.3, 0), Vector3(sr, sr * 0.6, sr * rng.randf_range(0.8, 1.2)), 3, 7,
 				shrub_top, shrub_low, rng, 0.25)
 	var mat := ColorMesh.material(0.95)
-	_add("trees_" + id, m.mesh(), mat)
+	_add("trees_" + id, m.mesh(), mat, tree_shadows)
 
 
 # ---- obstacles ------------------------------------------------------------------------------------------------

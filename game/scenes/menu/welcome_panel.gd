@@ -32,7 +32,7 @@ func build(s: Settings, _screen: Vector2i) -> void:
 	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	help.custom_minimum_size = Vector2(0, 40)
 	add_child(help)
-	rows["quality"].help = "The detail of the sea, the sky and the shadows. Medium suits most screens and the Steam Deck."
+	rows["quality"].help = "The detail of the sea, the sky and the shadows. Preselected for this computer's graphics."
 	for k in rows:
 		var r: MenuRow = rows[k]
 		r.focus_entered.connect(func() -> void: help.text = r.help)
@@ -61,7 +61,7 @@ func first_row() -> Control:
 
 ## Keeps the choices (or the defaults with `keep` false), marks the screen as shown and saves.
 func finish(keep: bool) -> void:
-	var d := Settings.new()
+	var d := Settings.device_defaults()
 	settings.helm_mode = rows["helm_mode"].value if keep else d.helm_mode
 	settings.quality = rows["quality"].value if keep else d.quality
 	settings.welcomed = true

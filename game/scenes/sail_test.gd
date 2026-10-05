@@ -197,6 +197,8 @@ func _ready() -> void:
 	venue_view = VenueView.new()
 	venue_view.name = "Venue"
 	add_child(venue_view)
+	venue_view.apply_quality(sea.quality)
+	sea.quality_changed.connect(venue_view.apply_quality)  # water_render.md §4.6: no tree shadows on L
 	venue_view.build(VenueShapes.from_core((sim as CoreSimSource).core) if on_core else VenueShapes.from_file(venue))
 	target.ground = venue_view.ground_height
 	rig = CameraRig.new()
@@ -360,7 +362,7 @@ func _apply_setup() -> void:
 ## `--wind=<kn>`, `--wind-from=<deg>`,
 ## `--fake` (FakeSim), `--core`; measuring (hud.md §17): `--perf` (the frame-time overlay), `--perf-log=PATH`,
 ## `--perf-seconds=N`, `--upscaler=fsr|bilinear|metalfx`, `--no-vsync`,
-## `--shadow-splits=0|2|4`, `--shadow-atlas=N`, `--shadow-distance=M`, `--shadow-soft=0..5`, `--no-wake-buffer`,
+## `--shadow-splits=0|1|2|4`, `--shadow-atlas=N`, `--shadow-distance=M`, `--shadow-soft=0..5`, `--no-wake-buffer`,
 ## `--sea-grid=RINGSxSEGMENTS`, `--water-shader=l|m|h` and `--no-hud` (this run only, not saved);
 ## `--scenario=<id>` (a rules scenario of game/data/scenarios, or a .scenario.json path; race.md §14).
 func _user_args() -> void:

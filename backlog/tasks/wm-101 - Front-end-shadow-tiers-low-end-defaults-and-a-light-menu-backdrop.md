@@ -1,9 +1,11 @@
 ---
 id: WM-101
 title: 'Front end: shadow tiers, low-end defaults and a light menu backdrop'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-10-05 17:12'
+updated_date: '2026-10-05 17:25'
 labels:
   - performance
 dependencies: []
@@ -19,7 +21,7 @@ docs/PERFORMANCE.md G1, G7, M1, A9b and measured items 1 and 5: fewer cascades a
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Tier L/M shadow settings reduced per the doc; spec water_render.md 7 updated first
-- [ ] #2 First launch on an integrated GPU picks tier L and 67 % render scale; settings tests cover it
-- [ ] #3 Menu backdrop lighter on L; menus tests pass
+- [x] #1 Tier L/M shadow settings reduced per the doc; spec water_render.md 7 updated first
+- [x] #2 First launch on an integrated GPU picks tier L and 67 % render scale; settings tests cover it
+- [x] #3 Menu backdrop lighter on L; menus tests pass
 <!-- AC:END -->

@@ -16,6 +16,7 @@ func _init() -> void:
 	test_data()
 	test_look()
 	test_settings_round_trip()
+	test_device_defaults()
 	test_apply()
 	test_every_key_applied()
 	await test_rebinding()
@@ -135,6 +136,88 @@ func _odd_settings() -> Settings:
 	s.welcomed = true
 	s.bindings = {"let_fly": [["key", KEY_Q, ""], [], ["button", JOY_BUTTON_Y]]}
 	return s
+
+
+## menus.md §3 device defaults: the adapter class from injected names, and what a first start picks for it.
+func test_device_defaults() -> void:
+	t.begin("settings: device defaults at the first start")
+	var I := Settings.Gpu.INTEGRATED
+	var D := Settings.Gpu.DISCRETE
+	var IG := RenderingDevice.DEVICE_TYPE_INTEGRATED_GPU
+	var DG := RenderingDevice.DEVICE_TYPE_DISCRETE_GPU
+	var cases := [
+		# adapter, vendor, device type, Steam Deck, class
+		["Intel(R) UHD Graphics 620", "Intel", IG, false, I],
+		["Intel(R) Iris(R) Xe Graphics", "Intel", IG, false, I],
+		["Intel(R) HD Graphics 520", "Intel", -1, false, I],
+		["Mesa Intel(R) UHD Graphics 620 (KBL GT2)", "Intel", IG, false, I],
+		["Intel(R) Arc(TM) Graphics", "Intel", IG, false, I],
+		["Intel(R) Arc(TM) A770 Graphics", "Intel", DG, false, D],
+		["Intel(R) Arc(TM) B580 Graphics", "Intel", -1, false, D],
+		["AMD Radeon(TM) Graphics", "AMD", IG, false, I],
+		["AMD Radeon(TM) Vega 8 Graphics", "AMD", -1, false, I],
+		["AMD Radeon(TM) RX Vega 10 Graphics", "AMD", IG, false, I],
+		["AMD Radeon 780M", "AMD", -1, false, I],
+		["AMD Radeon Graphics (RADV RENOIR)", "AMD", IG, false, I],
+		["AMD Radeon RX 6600", "AMD", DG, false, D],
+		["AMD Radeon RX 7600M XT", "AMD", DG, false, D],
+		["AMD Radeon Pro 5500M", "AMD", DG, false, D],
+		["NVIDIA GeForce RTX 3060", "NVIDIA", DG, false, D],
+		["NVIDIA GeForce MX450", "NVIDIA", DG, false, D],
+		["Apple M1", "Apple", IG, false, Settings.Gpu.APPLE],
+		["Apple M5", "Apple", -1, false, Settings.Gpu.APPLE],
+		["AMD Custom GPU 0405 (RADV VANGOGH)", "AMD", IG, false, Settings.Gpu.STEAM_DECK],
+		["AMD Custom GPU 0932", "AMD", IG, false, Settings.Gpu.STEAM_DECK],
+		["AMD Radeon Graphics", "AMD", IG, true, Settings.Gpu.STEAM_DECK],
+		["llvmpipe (LLVM 15.0.7, 256 bits)", "Mesa", RenderingDevice.DEVICE_TYPE_CPU, false, I],
+		["Qualcomm(R) Adreno(TM) X1-85 GPU", "Qualcomm", IG, false, I],
+		["Some New GPU", "Unknown", IG, false, I],
+		["Some New GPU", "Unknown", DG, false, D],
+		["", "", -1, false, Settings.Gpu.UNKNOWN],
+	]
+	var wrong := []
+	for c in cases:
+		var got := Settings.gpu_class(c[0], c[1], c[2], c[3])
+		if got != c[4]:
+			wrong.append("%s -> %s (want %s)" % [c[0], Settings.Gpu.keys()[got], Settings.Gpu.keys()[c[4]]])
+	t.ok(wrong.is_empty(), "adapter classes from %d names %s" % [cases.size(), wrong])
+	var g := Settings.device_graphics(I)
+	t.ok(g["quality"] == SeaQuality.Tier.L and is_equal_approx(g["render_scale"], 0.67), "integrated: tier L at 67 %")
+	g = Settings.device_graphics(Settings.Gpu.STEAM_DECK)
+	t.ok(g["quality"] == SeaQuality.Tier.L and g["render_scale"] == 0.0, "Steam Deck: tier L, Auto (native)")
+	for k in [D, Settings.Gpu.APPLE, Settings.Gpu.UNKNOWN]:
+		g = Settings.device_graphics(k)
+		t.ok(g["quality"] == SeaQuality.Tier.M and g["render_scale"] == 0.0,
+			"%s: today's defaults (M, Auto)" % Settings.Gpu.keys()[k])
+	# the first start: no file, so the detected device decides; a file keeps the player's values
+	var first := "user://menus_test_first_start.cfg"
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(first))
+	Settings.path = first
+	Settings.gpu_override = I
+	Settings.reset_current()
+	var s := Settings.current()
+	t.ok(s.quality == SeaQuality.Tier.L and is_equal_approx(s.render_scale, 0.67),
+		"first start on an integrated GPU: tier L at 67 %")
+	s.quality = SeaQuality.Tier.H
+	s.render_scale = 1.0
+	s.save_file()
+	Settings.reset_current()
+	s = Settings.current()
+	t.ok(s.quality == SeaQuality.Tier.H and s.render_scale == 1.0, "a saved file keeps the player's choice")
+	s.reset("graphics")
+	t.ok(s.quality == SeaQuality.Tier.L and is_equal_approx(s.render_scale, 0.67), "Reset Graphics: the device defaults")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(first))
+	Settings.gpu_override = Settings.Gpu.APPLE
+	Settings.reset_current()
+	s = Settings.current()
+	t.ok(s.quality == SeaQuality.Tier.M and s.render_scale == 0.0, "first start on Apple silicon: M, Auto")
+	Settings.gpu_override = Settings.Gpu.STEAM_DECK
+	Settings.reset_current()
+	s = Settings.current()
+	t.ok(s.quality == SeaQuality.Tier.L and s.render_scale == 0.0, "first start on a Steam Deck: L, Auto")
+	Settings.gpu_override = -1
+	Settings.path = TEST_PATH
+	Settings.reset_current()
 
 
 func test_settings_round_trip() -> void:
@@ -559,7 +642,14 @@ func test_live_backdrop() -> void:
 		t.ok(not m.backdrop.draw_scene and m.backdrop.haze, "painted scene off, the haze on")
 		var n := m.stage.boat_count()
 		print("  backdrop: %d boats on %s" % [n, "the core" if sc.on_core else "FakeSim"])
-		t.ok(n == (MenuStage.FLEET if sc.on_core else 1), "%d boats (%s)" % [n, "core" if sc.on_core else "FakeSim"])
+		t.ok(n == (MenuStage.FLEET_L if sc.on_core else 1), "%d boats on tier L (%s)" % [n,
+			"core" if sc.on_core else "FakeSim"])
+		t.ok(not m.stage.sun_shadows() and Engine.max_fps == MenuStage.FPS_L,
+			"tier L: no sun shadows, %d fps cap (max_fps %d)" % [MenuStage.FPS_L, Engine.max_fps])
+		Settings.current().fps_limit = 144
+		m._setting_changed("fps_limit")
+		t.ok(Engine.max_fps == MenuStage.FPS_L, "a display change keeps the 30 fps cap on L")
+		Settings.current().fps_limit = 0
 		t.ok(not sc.racing and sc.watch, "no player: every boat sails itself")
 		t.ok(not sc.hud.visible, "no HUD")
 		t.ok(sc.get_node_or_null("PauseMenu") == null, "no pause menu")
@@ -580,8 +670,17 @@ func test_live_backdrop() -> void:
 		Settings.current().quality = SeaQuality.Tier.H
 		m._setting_changed("quality")
 		t.ok(sc.sea.quality == SeaQuality.Tier.H, "a quality change reaches the backdrop at once")
+		t.ok(m.stage.sun_shadows() and Engine.max_fps == 0, "tier H: sun shadows back, no frame cap")
+		Settings.current().quality = SeaQuality.Tier.L
+		m._setting_changed("quality")
 	m.queue_free()
 	await process_frame
+	t.ok(Engine.max_fps == Settings.current().fps_limit, "leaving the menu puts the player's frame limit back")
+	t.ok(MenuStage.fleet_for(SeaQuality.Tier.M) == MenuStage.FLEET and MenuStage.fleet_for(SeaQuality.Tier.H)
+		== MenuStage.FLEET and MenuStage.FLEET_L == 2, "4 boats on M and H, 2 on L")
+	t.ok(MenuStage.frame_cap(SeaQuality.Tier.L, 0) == 30 and MenuStage.frame_cap(SeaQuality.Tier.L, 144) == 30
+		and MenuStage.frame_cap(SeaQuality.Tier.L, 24) == 24 and MenuStage.frame_cap(SeaQuality.Tier.M, 0) == 0
+		and MenuStage.frame_cap(SeaQuality.Tier.H, 90) == 90, "frame cap: 30 on L (or the lower limit), the player's on M and H")
 	var f := (load("res://scenes/menu/main_menu.tscn") as PackedScene).instantiate() as MainMenu
 	f.change_scenes = false
 	f.stage_scene = "res://scenes/no_such_scene.tscn"
@@ -857,7 +956,7 @@ func test_touches() -> void:
 	m.welcome.rows["quality"].set_value(SeaQuality.Tier.L)
 	_key("ui_cancel")
 	await process_frame
-	t.ok(m.welcome == null and m.settings.welcomed and m.settings.quality == Settings.new().quality, "Esc skips: the defaults")
+	t.ok(m.welcome == null and m.settings.welcomed and m.settings.quality == Settings.device_defaults().quality, "Esc skips: the defaults")
 	# the wordmark and the version
 	var mark := m.find_child("Wordmark", true, false)
 	t.ok(mark is Wordmark and (mark.get_node("Title") as Label).text == "WINDMARK", "the wordmark scene")

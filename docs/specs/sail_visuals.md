@@ -818,20 +818,48 @@ waypoints (`SheetRopes.update`'s `ways`: that many slots per line, unused ones N
 drape (about 58 µs before them): the route about 6 µs, the drape about 6 µs.
 
 ### 11.4 Levels of detail
-The generator writes three levels per class (`<id>.glb`, `<id>_lod1.glb`, `<id>_lod2.glb`, listed with their switch
-distance `from_m` in the sidecar's `model.lods`; `tools/boatgen/README.md` "Levels of detail"), with the same nodes,
-pivots, material slots, uv1 and sail grids. Each boat loads every level that exists and shows one:
+The generator writes four levels per class (`<id>.glb` for LOD0, `<id>_lod1.glb` to `<id>_lod3.glb`, listed with
+their switch distance `from_m`, model triangles, surfaces and sail grid step in the sidecar's `model.lods`;
+`tools/boatgen/README.md` "Levels of detail"), with the same pivots, uv1 and sail grids. The principle: model only
+what changes the outline, paint the flat detail, and nothing under a few pixels at 20 m gets geometry.
+
+| level | from | model triangles (without sails) | surfaces drawn | sails |
+| --- | --- | --- | --- | --- |
+| LOD0 | 0 m | at most 22 k (wm12 about 18 k, wm7 about 15 k) | one per node: hull, deck, keel, mast, rigging, hardware, rudder, boom, mainsheet, wheel, pole (10 or less) | full grid |
+| LOD1 | 15 m (the chase camera) | at most 5.6 k | `body` (every static part, the rudder and the wheel), boom, mainsheet, pole | full grid |
+| LOD2 | 80 m | at most 1.5 k | `body`, boom, pole | every 2nd row and column |
+| LOD3 | 250 m | at most 300 | as LOD2 | every 4th row and column |
+
+With the sails (main and one other) a boat is about 20 k triangles on LOD0, 7 to 8 k on LOD1, 2 k on LOD2 and
+under 500 on LOD3.
+- **One material**: every opaque surface of a level but the sails is drawn with one material per boat,
+  `shaders/boat_atlas.gdshader`: the slot of each vertex (vertex colour green, `data_format.md` §8.5) picks its mean
+  colour, roughness, metallic, tile of the shared tiling atlas and livery region; the livery regions (hull, deck,
+  transom, keel) read the boat's staged livery atlas. So a node is one draw: LOD1 three (a class with a spinnaker
+  pole four), LOD2 and LOD3 two (three with a pole).
+- **Painted, modelled, left out**: tracks, hatches, organisers, small cleats, turning blocks at the mast foot, the
+  halyards on deck, coils and tails are painted into the deck region of the livery atlas with their shading
+  (darker under and around a fitting, lighter edges), from the full model's pieces. Winches (about 200 triangles on
+  LOD0), clutches, cars, blocks (40 to 80), the wheel, stanchions, pulpit and pushpit stay low-poly geometry.
+  Halyard exits, mast instruments, the anemometer, bolts and screws go; the rigging screws stay on LOD0 only.
 - **Distance** `d` from the camera to the boat's origin, every frame. The boat goes to a coarser level when `d` passes
-  that level's `from_m` by `m = 0.05 · from_m` (1.5 m at 30 m, 5 m at 100 m) and back to a finer one when `d` falls
+  that level's `from_m` by `m = 0.05 · from_m` (0.75 m at 15 m, 4 m at 80 m) and back to a finer one when `d` falls
   below its `from_m` by `m`, so a boat near a switch distance does not flicker. Without a camera (headless), LOD0.
-- **What switches**: every non-sail part of the model (hull, deck, keel, mast, rigging, hardware, rudder, wheel, boom,
-  mainsheet, pole). The sails are the LOD0 sail meshes at every level (the grids are the same), updated at the
-  rates of §11; the sheets per §11.3. Hidden parts cast no shadow.
+- **What switches**: every non-sail node of the model. The sails are the LOD0 sail meshes at every level (the
+  vertex buffer is the simulation's whole grid, updated at the rates of §11); on LOD2 and LOD3 the sail's index
+  buffer draws only every 2nd or 4th row and column of it (always the last row and column too), set once when the
+  level comes in. The sheets per §11.3.
 - **Moving parts**: the rudder, wheel, boom, mainsheet and pole of the level shown follow the helm and the sail
-  angles every frame; a level that comes in is set at once.
-- **Livery**: the boat's livery materials (`data_format.md` §8, `game/README.md` "Liveries") go on every level's
-  surfaces by part and slot (the same uv1 atlas), shared between the levels, so a switch changes the triangles, never
-  the paint. The rope materials (§11.3, `data_format.md` §8.7) likewise.
+  angles every frame; a level that comes in is set at once. From LOD1 the rudder and wheel are part of `body` and
+  stand still; from LOD2 there is no mainsheet.
+- **Shadows**: the visible boat meshes cast no sun shadow. Each level carries the class's shadow proxy (a few
+  hundred triangles: the hull, the deck with its coachroof, keel, rudder and mast as `shadow`, and the boom as
+  `shadow_boom` under the boom node, so it swings with it), drawn only into the shadow maps (shadows only). The
+  sails keep casting their own shadows (their shape changes every frame and a proxy could not follow it); on LOD2
+  and LOD3 with their reduced index buffers. On a quality tier with `boat_cast_distance` > 0 (`water_render.md` §4.6)
+  the proxies and sails of boats other than the player's own stop casting beyond that distance from the camera.
+- **Livery**: the boat's livery material goes on every level's surfaces (the same slots, regions and uv1),
+  shared between the levels, so a switch changes the triangles, never the paint.
 
 ### 11.5 Light on the cloth
 Both sail shaders (`sail.gdshader`, `sail_baked.gdshader`) light the cloth the same way: Lambert diffuse from the

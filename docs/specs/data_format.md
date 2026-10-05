@@ -834,6 +834,38 @@ The flat plan point of uv0 `(a, l)` is `p = (a·sin θ, l + a·cos θ)`; it maps
 The game imports the images compressed with mipmaps (albedo in the high-quality format, BPTC or ASTC; ORM in
 S3TC or ETC2; normal maps as two-channel RGTC or the equivalent).
 
+**Staged boat atlas** (written by `tools/liverybake` when it stages the textures for the game, generated, never
+edited: the hand-owned images above stay the masters). The game draws every opaque surface of a boat with one
+material (`sail_visuals.md` §11.4), so per livery the stage packs the hull, deck, transom and keel images into one
+atlas per map, at 2048 × 2048 by default (`--hd`: 4096 × 4096, the masters' resolution):
+
+| file | content |
+| --- | --- |
+| `atlas_albedo.png` | sRGB: the hull image (2:1) across the top half, the deck (its own aspect) below it, then the transom and the keel side by side; each region padded by its edge colour into a 16-texel gutter (8 at 2048 per 4096 of the master), so mipmaps do not bleed |
+| `atlas_normal.png` | linear, the same layout; flat (`#8080ff`) in the keel region and the gutters |
+| `atlas_orm.png` | linear, the same layout; the keel region R 255, G its roughness, B 0 |
+| `atlas.json` | `schema` `"windmark.boatatlas/1"`, `size`, and per region (`hull`, `deck`, `transom`, `keel`) its rectangle `[u0, v0, width, height]` in atlas uv (0..1, v down); a region's own uv (the uv1 of §8.5, or the keel's side view) `t` maps to `rect.xy + t · rect.zw` |
+
+The deck region is the deck images with the **painted hardware** over them: the fittings the levels of detail do
+not model (`sail_visuals.md` §11.4; `tools/boatgen` `Boat.painted_part`: tracks, hatches, organisers, small cleats,
+turning blocks, the halyards on deck with their coils and tails), drawn from the generator's full-detail pieces seen
+from above: their colour by material (stainless, black plastic and rubber, tinted lens, the rope set's halyard and
+control colours), their relief in the normal map from the pieces' own normals, roughness by material, the non-slip
+mask cleared under them, and baked shading so they read solid without geometry: a soft contact shadow round each
+fitting in occlusion and albedo, the lower parts of a fitting darker and its upper edges lighter. The game reads
+only the atlas (and the per-boat text texture); the sails are staged at half the master size (1024 on the longer
+side; `--hd` keeps 2048).
+
+**Boat material slots** (written by the generator in the GLB, `tools/boatgen/README.md` "Materials and UVs"): every
+vertex of the material `boat` carries its slot in its vertex colour, green = slot id / 255 (red is the baked
+ambient occlusion). The material's extras list per slot its mean colour, roughness, metallic, tile of the shared
+tiling atlas, tile size in metres of uv0 and **livery region**: `hull` (slots `hull_gelcoat`, `hull_boottop`,
+`hull_antifouling`: the hull region on uv1), `deck` (`deck_gelcoat`, `deck_nonslip`: the deck region on the plan
+uv1, with the non-slip mask), `transom` (its uv1), `keel` (the keel in side view of the model frame, the layout's
+`keel.rect`), `keel_colour` (the rudder blade: the livery's keel colour, no map), or none (spars, hardware, ropes,
+glass, other gelcoat: the slot's own colour). Without a baked livery the regions take the livery file's colours
+(§8.1) and the topsides its procedural hull livery.
+
 ### 8.6 Who owns the textures
 
 The livery textures and their `layout.json` are **hand-owned assets, not generated tables**: the generator only

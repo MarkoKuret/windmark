@@ -17,6 +17,7 @@ func _init() -> void:
 	test_look()
 	test_settings_round_trip()
 	test_apply()
+	await test_live_backdrop()
 	await test_main_menu()
 	await test_pause_menu()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
@@ -307,11 +308,62 @@ func _key(action: String) -> void:
 	root.push_input(r)
 
 
+## menus.md §4 live backdrop: the sail scene with AI boats only, no chrome, no input, no sound, a drifting
+## camera; the painted backdrop when it does not load.
+func test_live_backdrop() -> void:
+	t.begin("main menu: live backdrop")
+	Settings.reset_current()
+	Settings.current().quality = SeaQuality.Tier.L
+	var m := (load("res://scenes/menu/main_menu.tscn") as PackedScene).instantiate() as MainMenu
+	m.change_scenes = false
+	root.add_child(m)
+	await process_frame
+	t.ok(m.stage != null and m.stage.scene != null, "the sail scene runs behind the menu")
+	if m.stage != null and m.stage.scene != null:
+		var sc: Variant = m.stage.scene
+		t.ok(not m.backdrop.draw_scene and m.backdrop.haze, "painted scene off, the haze on")
+		var n := m.stage.boat_count()
+		print("  backdrop: %d boats on %s" % [n, "the core" if sc.on_core else "FakeSim"])
+		t.ok(n == (MenuStage.FLEET if sc.on_core else 1), "%d boats (%s)" % [n, "core" if sc.on_core else "FakeSim"])
+		t.ok(not sc.racing and sc.watch, "no player: every boat sails itself")
+		t.ok(not sc.hud.visible, "no HUD")
+		t.ok(sc.get_node_or_null("PauseMenu") == null, "no pause menu")
+		t.ok(sc.scripted_input != null and sc.scripted_input.pressed.is_empty(), "no player input reaches it")
+		t.ok(not sc.audio.audible, "silent")
+		if sc.course_view != null:
+			t.ok(not sc.course_view.show_guides and not sc.course_view.show_laylines, "no course guides on the water")
+		t.ok(sc.sea.quality == SeaQuality.Tier.L, "the player's quality tier")
+		var cam := m.stage.camera()
+		t.ok(cam != null and cam.current, "seen through the scene's camera")
+		var p0 := cam.global_position
+		for i in 30:
+			await process_frame
+		var p1 := cam.global_position
+		var d := Vector2(p1.x, p1.z).distance_to(Vector2(m.stage._focus.x, m.stage._focus.z))
+		t.ok(p0.distance_to(p1) > 0.01 and d > MenuStage.DIST.x * 0.8 and d < MenuStage.DIST.y * 1.2
+			and p1.y >= 3.0, "the camera drifts round the boat at %.0f m, %.1f m up" % [d, p1.y])
+		Settings.current().quality = SeaQuality.Tier.H
+		m._setting_changed("quality")
+		t.ok(sc.sea.quality == SeaQuality.Tier.H, "a quality change reaches the backdrop at once")
+	m.queue_free()
+	await process_frame
+	var f := (load("res://scenes/menu/main_menu.tscn") as PackedScene).instantiate() as MainMenu
+	f.change_scenes = false
+	f.stage_scene = "res://scenes/no_such_scene.tscn"
+	root.add_child(f)
+	await process_frame
+	t.ok(f.stage == null and f.backdrop.draw_scene, "fallback: the painted backdrop when the scene does not load")
+	f.queue_free()
+	await process_frame
+	Settings.reset_current()
+
+
 func test_main_menu() -> void:
 	t.begin("main menu: quick race and free sail")
 	Settings.reset_current()
 	var m := (load("res://scenes/menu/main_menu.tscn") as PackedScene).instantiate() as MainMenu
 	m.change_scenes = false
+	m.live_backdrop = false
 	var asked: Array[String] = []
 	m.scene_requested.connect(func(p: String) -> void: asked.append(p))
 	root.add_child(m)

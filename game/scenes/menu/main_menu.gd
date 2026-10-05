@@ -18,6 +18,14 @@ var quick: SetupPanel
 var free_sail: SetupPanel
 var settings_panel: SettingsPanel
 
+## the live backdrop (menus.md §4): off in tests that do not need it; `stage_scene` replaces the sail scene
+## (tests: a missing path shows the fallback)
+var live_backdrop := true
+var stage_scene := MenuStage.SAIL_SCENE
+## the live backdrop, null when it did not load (the painted backdrop is drawn then)
+var stage: MenuStage
+var backdrop: MenuBackdrop
+
 var _panel: PanelContainer
 var _opener: Control
 var _row: BoxContainer
@@ -29,9 +37,19 @@ func _ready() -> void:
 	settings = Settings.current()
 	settings.apply_display(get_tree().root)
 	settings.apply_audio()
-	var back := MenuBackdrop.new()
-	back.name = "Backdrop"
-	add_child(back)
+	backdrop = MenuBackdrop.new()
+	backdrop.name = "Backdrop"
+	if live_backdrop:
+		stage = MenuStage.new()
+		stage.name = "StageDrift"
+		add_child(stage)
+		if stage.build(self, stage_scene):
+			backdrop.draw_scene = false  # menus.md §4: the live scene; the painted one is the fallback
+		else:
+			stage.queue_free()
+			stage = null
+	backdrop.haze = true
+	add_child(backdrop)
 
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -165,6 +183,8 @@ func _setting_changed(key: String) -> void:
 		settings.apply_display(get_tree().root)
 	elif key.ends_with("_volume"):
 		settings.apply_audio()
+	if stage != null and key in ["quality", "reduced_motion"]:
+		stage.apply_settings(settings)
 
 
 ## Writes the session (menus.md §1), remembers the choices and asks for the sail scene.

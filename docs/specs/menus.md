@@ -24,6 +24,7 @@ The project's main scene. Items, top to bottom: **Quick race**, **Free sail**, *
   0°, north).
 - **Start** fills `GameSetup.current()` (mode `race` or `free`, seed 0: from the clock) and changes to the sail
   scene, which reads it. The last choices are remembered in the settings file (§3) for the next visit.
+- **Backdrop** (§4): the live sail scene behind the menu.
 - Rules scenarios (`race.md` §14) have no menu item: they start from the command line of the sail scene,
   `--scenario=<id>`, which sets `GameSetup` mode `scenario` with the scenario id.
 
@@ -77,7 +78,24 @@ command line (`--resolution 1080x1920`).
 
 ## 4. Look and input
 
-- A calm sea and sky backdrop, a light sail-cloth panel, navy text, one accent colour; no stock widgets' look.
+- A live sea backdrop, a light sail-cloth panel, navy text, one accent colour; no stock widgets' look.
+- **Live backdrop.** Behind the main menu runs the sail scene itself (`scenes/sail_test.tscn`, the renderer of a
+  race): the example venue (`example_bay`), the default class, 12 kn from the north with the venue's puffs and
+  shifts, a race on the venue's first course with **4 AI boats** of the Expert level and no player (the player's
+  entry is taken over by the AI, `--watch`), the seed from the clock. The race starts from its sequence (the boats
+  mill round the line, then beat up the course); 30 s after the first boat finishes it starts again. Nothing of the
+  game's chrome shows: no HUD, no pause menu, no course guides on the water (laylines, start line, zone circles;
+  the marks and the committee boat stay), no player input reaches the scene, and the scene is silent (the menu has
+  its own sounds). **Camera**: a slow cinematic drift, not one of the game's cameras: it circles the boat it
+  follows at 45 to 70 m and 5 to 11 m above the water, going round it at 1.5° a second, its distance and height
+  breathing over 40 s, with the boat a little right of centre (clear of the menu); every 35 s it eases (over about
+  4 s) on to the next boat of the fleet. With reduced motion (`cameras.md` §6) the drift is a third of that speed.
+  **Cost**: the scene draws at the player's quality tier and render scale (§3; a change in the settings applies to
+  the backdrop at once), 4 boats, no HUD and no audio: cheaper than a race, so it holds the race's frame rate on the
+  Steam Deck at 1280 × 800. **Fallback**: when the sail scene is not there or does not load (a build without it, a
+  missing boat file), the painted backdrop is drawn instead: a hazy sky over a calm sea with long swells and one
+  distant sail, drawn without image files. Over either backdrop a soft haze in the top-left corner keeps the
+  wordmark and the menu legible.
 - **One accent across the game**: the HUD's `mark` yellow (`#FFD23F`, `hud.md` §16.2). Yellow on the cream cloth
   fails as text (1.3:1), so the menus use it as a **fill** with navy text on it (navy `#1A2A3A` on yellow is
   10:1): the focused row or button is a yellow bar with a 5 px navy edge on its left (the edge keeps the focus

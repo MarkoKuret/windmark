@@ -85,3 +85,9 @@ taken .com, an existing app or a crowded search.
 10. One native speaker each for FR, ES, IT, DE, SL, PT says it aloud and reports slang meanings.
 11. Confirm the name, capsule and tagline are clearly distinct from *Laylines* and *Tacking Duels*.
 12. File the trademark once the name is final and there is traction (`BUSINESS.md`).
+
+## Owner decision (2026-10-05)
+
+The owner ran the "sounds like" web searches and is not worried; together with the register check in
+`LOGO_TRADEMARK.md` (no WINDMARK or SAILMARK in any EU or UK register) that closes the name search. No lawyer,
+no filing for now; the name and logo go ahead. Revisit only if the game takes off.

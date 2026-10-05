@@ -231,6 +231,20 @@ defaults.
   helicopter shots and the regular cameras (chase, onboard, aerial, free) never have depth of field: the camera's
   attributes are cleared. The clip cameras also take the stronger vignette of `water_render.md` §4.5.
 
+### 9.1 Finish view
+
+When the player's race is over (`hud.md` §13.2: her finish, retirement or disqualification, or the race closing or
+being abandoned with her still racing), the rig **eases** from the camera in use into the finish view over 2.5 s:
+both views are computed every frame and blended (position and rotation slerped, the field of view mixed) by a
+smoothstep of the time. The finish view is the slow cinematic drift of the menu's backdrop (`menus.md` §4) on the
+viewed boat: it circles her at 45 to 70 m and 5 to 11 m above the water at 1.5° a second, its distance and height
+breathing over 40 s, starting from the azimuth the previous camera had, aimed 2 m above her reference point, with
+a 35° field of view; with reduced motion a third of that speed. While the results screen shows in its wide layout
+the boat is framed 12° left of centre (eased with `τ = 1.4 s`), clear of the panel on the right; otherwise
+centred. It takes no input; `camera_next` leaves it for the chase camera (the other camera keys as usual), and
+there is no way back to it in that race. It is not a clip camera (no depth of field, the regular vignette) and is
+never saved as the profile's camera. Online the same (it is presentation only).
+
 ## 10. Tests (headless)
 
 1. Chase geometry: boat at the origin, `ψ = 0`, defaults, `wm7` (`R0 = 24.5` m): eye at
@@ -266,6 +280,10 @@ defaults.
    at about 150 m with the whole boat inside the sharp zone and follows the boat as she moves away; the mark shot
    has depth of field; none on tier L. The vignette lies under the HUD, takes no mouse input, is the regular
    strength on the regular cameras and the clip strength on the clip cameras.
+
+15. Finish view: `ease_to` the finish view from the chase camera at a boat at the origin: the first frame's eye is
+   the chase eye (within 1 cm), after 2.5 s the drift's (45 to 70 m from the boat, 5 to 11 m up), and halfway in
+   between neither; `camera_next` from it gives chase; the profile keeps chase.
 
 ## 11. Later: TV director and replay
 

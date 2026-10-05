@@ -1,7 +1,7 @@
 # Menus
 
 The front end's menus before the phase 4 online screens: the main menu, the session setup it writes, the settings
-and the in-race pause menu. The session setup is `GameSetup` (`game/scripts/game_setup.gd`); the options are those
+the in-race pause menu and the race end with its results screen (§5). The session setup is `GameSetup` (`game/scripts/game_setup.gd`); the options are those
 of `controls.md` §6, `cameras.md` §3 and §6, `hud.md` §14, `water_render.md` §7 and `audio.md` §1.1.
 
 ## 1. Main menu
@@ -103,8 +103,11 @@ menus' cloth, navy and accent, §4).
 ## 2. Pause menu
 
 Opened by `pause_menu` in a race or free sail (`controls.md` §7). Offline the simulation stops while it is open.
-Items: **Resume**, **Restart** (the same session from its start), **Settings**, **Quit to menu**. `pause_menu`
-again resumes. While it is open the boat's controls are held as in `controls.md` §7 (held let-fly and
+Items: **Resume**, **Restart** (the same session from its start), **Retire** (a quick race only, from the warning
+signal until the player's race is over, `race.md` §6.4: red, as a destructive action; the first press turns it into
+`Retire? Press again` for 3 s and a second press within them retires the boat and closes the menu), **Settings**,
+**Quit to menu**. `pause_menu` again resumes. Over the results screen (§5) it works the same, Retire hidden, and
+Resume goes back to the results. While it is open the boat's controls are held as in `controls.md` §7 (held let-fly and
 hold-to-steer keys count as released). Settings changed here apply to the running scene when the settings
 screen closes.
 
@@ -219,3 +222,46 @@ command line (`--resolution 1080x1920`).
   steps, a brighter click on accept (Enter, A, a click), a lower one on back (Esc, B). Made by `tools/soundgen`
   (`ui/focus`, `ui/accept`, `ui/back`), short (under 0.1 s) and quiet (peaks at -12 dBFS or lower).
 - Player-facing text has no em dashes.
+
+## 5. Race end
+
+What follows the player's race (`hud.md` §13.1 to §13.3): the finish card, then the results screen over the live
+scene, then the next race or the menu.
+
+- **Timeline.** Crossing the line: the finish horn and the finish card in the HUD (5 s), the camera eases into the
+  finish view (`cameras.md` §9.1) and the boat sails clear on the autopilot (`race.md` §6.2). Retiring, a
+  disqualification or the race closing with her still racing end it the same way with their own card or banner.
+  5 s of race time after the end the results screen fades in (0.5 s) and the HUD hides; the race keeps running
+  behind it (the other boats finish, the camera drifts).
+- **Title**, over the scene in the logo's styles (§1.2, the Wordmark lockup with other words): the place
+  (`3RD`) or the code (`RET`, `DNF`, `DSQ`, `OCS`; `NO RACE` when the race was abandoned) as the title, and in the
+  tagline bar the result in words: `FINISHED 0:23:32.35  +0:42`, `WINNER 0:23:32.35`, `RETIRED`,
+  `DID NOT FINISH`, `DISQUALIFIED`, `RACE ABANDONED`. Top left at 76 px, scaled down by font size to fit.
+- **Panel** (cloth, §4), beside the title on the right, or under it when the window is narrower than 1100 px or in
+  portrait (there inside the HUD's portrait margins, `hud.md` §16.5), as tall as its content and at most the
+  window's height, so the scene stays in view around it: the heading `RESULTS` with one line under it (`Example Bay · Windward-leeward · 10 boats`; the venue is left out
+  when the course's name starts with it), the
+  **table**, the **summary** under the table, and a footer with the actions. The table and the summary scroll
+  (mouse wheel, or up and down on the actions) when they do not fit; the heading and the footer never scroll.
+- **Table**: Place, Sail (sail number), Boat (name), Skipper (`You` for the player; an AI boat shows the AI badge,
+  `AI · Expert`, here), Time (finish time, `h:mm:ss.ss`, `proj.` after a projected one), Gap (to the winner),
+  Code, Points (low point, `race.md` §9). The player's row is the accent: a yellow bar with navy text and the navy
+  edge on its left (the focus look of §4); the other rows navy on the cloth, a faint navy tint on every other row.
+- **Finishing** (before `RaceClosed`, e.g. while other humans race on): the heading reads `FINISHING` and the line
+  `4 of 10 home · results when the race closes`; the rows are the live order (finished boats with place, time
+  and gap, the others with their status: `Racing`, `RET`, `DSQ`, `OCS`) and fill in as boats finish; at the close
+  it becomes the final table.
+- **Summary** (`YOUR RACE`, a heading in caps and label value lines): the items of `hud.md` §13.3 that have data.
+- **Actions** in the footer: **Race again** (primary, the focus when the screen opens): the same setup (class,
+  sail number, venue, course, fleet, AI level, wind) with a new seed. **Change setup**: this setup becomes the
+  remembered one (§1) and the main menu opens on the race card (§1.1) with it. **Main menu**: the main menu.
+- **Input** (§4): left and right move between the actions, Enter or A accepts, the mouse focuses on hover and
+  accepts on a click; up and down scroll the table and summary; `pause_menu` opens the pause menu over the screen
+  (§2), and when it closes the focus is back on the action it was on.
+- **Fit**: 1280 × 800 at every UI scale (80 % to 130 %) and the portrait capture window, every text inside the
+  window (the table and summary may scroll); player-facing text has no em dashes.
+- **Fades.** Scene changes from the results (Race again, Change setup, Main menu), the pause menu (Restart, Quit
+  to menu) and the main menu (Start, Continue) fade to navy (`#0B1620`) over 0.35 s, change, and fade the new
+  scene in over 0.45 s; the input is ignored while the screen is dark.
+- The results screen is for the player's quick races: not in free sail, the rules scenarios (`race.md` §14) or
+  the menu's backdrop (`--watch`).

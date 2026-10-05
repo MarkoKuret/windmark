@@ -376,7 +376,11 @@ A finished boat stays racing for the rules until she has **cleared the finish**:
 every hull point is more than `2·L` beyond the line, whichever is first (RRS: racing lasts until she finishes and
 clears the finishing line and marks). Then she becomes a **ghost** (§6.3). Her controls stay with the player, who
 can sail freely; offline and for AI boats an autopilot sails her 5 L beyond the line and 2·(i+1)·L along it
-(`i` = finishing place) so finished boats spread out and leave the line clear.
+(`i` = finishing place) so finished boats spread out and leave the line clear, and stops her there (luffed, sails let
+fly, the spinnaker down). Offline the front end gives the player's boat this autopilot (`wm_world_ai_add_autopilot`) on the tick her race
+is over (`hud.md` §13.2: her finish, or she becomes a ghost; a ghost that did not finish stops where she is,
+luffed), so the boat sails on safely while the finish view and the results run (`menus.md` §5); before that the
+helm is the player's alone and the computer skippers' draws are those of a race without it.
 
 ### 6.3 Ghosts
 
@@ -389,7 +393,7 @@ or lost their connection for more than the grace period (`networking.md` §9).
 ### 6.4 Retiring
 
 A player may retire at any time (menu): the boat becomes a ghost and scores `RET` (after her start) or `DNS` (before
-it).
+it). Offline that is the pause menu's **Retire** (`menus.md` §2), from the warning signal until her finish.
 
 ## 7. Closing the race
 

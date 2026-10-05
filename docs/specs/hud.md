@@ -309,8 +309,51 @@ umpire does not judge (`rules.md` §15). Rule numbers are those of the 2025-2028
 
 - **Feed** (bottom corner, 6 lines, 8 s each): signals, starts (`12 boats started, 2 OCS`), roundings of the first
   three boats, penalties, finishes, joins and leaves, retirements.
-- **Results screen** (on `RaceClosed`, `race.md` §9): place, boat, skipper, AI badge, finish time, gap to winner,
-  code, points; series standings if a series. Projected AI finishes are marked `proj.`.
+- **Results screen** (`menus.md` §5): place, sail number and boat, skipper, AI badge, finish time, gap to winner,
+  code, points; series standings if a series. Projected AI finishes are marked `proj.`. Before `RaceClosed`
+  (`race.md` §9) it is the live **finishing** table, which fills in as boats finish. Where there is no results
+  screen (a front end without the menus, tests), the HUD draws the same rows as its own centred table
+  (`Provisional results` until the close, then `Results`); the sail scene turns that table off and uses the screen.
+
+### 13.1 Finish card
+
+The finish beat of the player's boat (the boat the HUD is the player's own, not a spectated one), in the alert lane
+where the countdown was (§16.5 in portrait):
+
+- On her `Finished` event: the finish horn (`audio.md`, `race.horn_finish`), and the card: the caption `FINISHED`
+  (15 px, mist), the place as a caps ordinal at the countdown's size (128 px, `3RD`; `mark` yellow for a win, paper
+  otherwise) with the gap to the winner beside it on the same baseline (48 px, mist, `+0:42`; nothing for the
+  winner), and the finish time under them (20 px, `0:23:32.35`). A finish that scores no place (an `OCS` boat
+  released onto the course, `race.md` §4.3) shows the code instead of the place. The line of the card,
+  `Finished 3rd · 0:23:32.35 · +0:42`, is what the old finish banner said; there is no banner as well.
+- On her retirement (`Retired`, the pause menu's Retire): `RET` with the caption `RETIRED` and no time.
+- When the race closes with her still racing (the finishing window, `race.md` §7.3; `DNF`): `DNF`, caption
+  `RACE CLOSED`.
+- A disqualification keeps its full-width banner of §12.2 and has no card; an abandoned race keeps its banner.
+- **Time**: 5 s of race time (it slows with the capture rate and stops in a pause), fading in over 0.3 s and out
+  over the last 0.8 s. The rest of the HUD stays as it is.
+
+### 13.2 Race end
+
+The player's race is **over** at her finish, her retirement, her disqualification (any ghost reason), or when the
+race closes or is abandoned with her still racing. From then the boat sails on by herself offline (`race.md` §6.2)
+and the camera eases into the finish view (`cameras.md` §9.1). 5 s of race time after the race is over (as the
+finish card ends) the results screen fades in (`menus.md` §5) and the HUD hides under it; it does not come back in
+this session (Race again starts a new one).
+
+### 13.3 Race summary
+
+What the results screen says about the player's own race, recorded by the race HUD from the readers and events it
+already has; nothing else is shown, and an item without data is left out:
+
+| Item | Recorded from | Shown as |
+| --- | --- | --- |
+| Start | her `Started` event: `t_start` after the gun; an `OCS` event before it | `+0:04 after the gun`; `OCS, returned and started +0:31` |
+| Roundings | her `Rounded` events: the step's label (with the lap on a course of more laps), her place in the order of that step's splits, the gap to the first | `Windward 2` `4th  ·  +0:18`, one line per rounding |
+| Places | her place at the first rounding and her final place (or projected rank) | `+2 since the first mark`, `-1 since the first mark`, `Held 3rd since the first mark` |
+| Penalties | her `Penalty` events (rule, other boat), `PenaltyServed`, `PenaltyLate`, `Disqualified` (reason) | `Rule 10: Port tack keeps clear of starboard (Nora), done`; none: `No penalties` |
+| Top speed | the largest boat speed through the water while racing (started, not finished or a ghost) | `7.4 kn` (§1 speed format) |
+| Distance sailed | the sum of her ground track over the ticks from the start signal to her finish or race end | `3.21 nm` (§1 distance format) |
 
 ## 14. Assist presets
 
@@ -355,6 +398,11 @@ density of §16.1: an item shows only when both allow it.
 - Portrait (§16.5): at 1080 x 1920 for UI scales 80 % to 130 %, in the pre-start, beat and penalty states at every
   density, every text is on screen and no two texts overlap, and no two blocks' drawn areas overlap (world tags
   aside); the default density is Glance; the radar is compact.
+- Race end (§13.1 to §13.3): on the player's finish the card shows the place, the gap and the time, fades in and
+  out and is gone after 5 s of race time; RET and DNF get their card, DSQ its banner; the race is over at each of
+  them; the finishing rows fill in as boats finish before the close and are the core's results after it; the
+  summary has the start, every rounding with its place, the places gained, each penalty with its rule text, the
+  top speed and the distance sailed of a scripted race.
 - Capture rate note (§16.6): each `capture_slow` press shows the note for the new rate, also with the HUD hidden;
   it is gone 1.5 s of frames later and fades over the last 0.4 s; `capture_pause` shows nothing.
 

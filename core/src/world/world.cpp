@@ -211,7 +211,7 @@ std::uint64_t World::checksum() const {
   return h.value();
 }
 
-std::uint64_t World::step() {
+void World::step() {
   const std::uint32_t n = tick_;
   const std::uint32_t t = t_ms();
   const std::size_t nb = boats_.size();
@@ -334,7 +334,6 @@ std::uint64_t World::step() {
   }
   events_.contacts = contacts_;
   ++tick_;
-  return checksum();
 }
 
 }  // namespace wm

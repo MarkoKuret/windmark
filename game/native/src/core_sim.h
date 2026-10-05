@@ -70,7 +70,7 @@ class CoreSim : public godot::RefCounted {
   bool ai_load(const godot::PackedByteArray& bytes);
 
   // stepping
-  int64_t step();
+  void step();
   int64_t step_ticks(int64_t n, bool stop_when_closed);
   int64_t checksum() const;
   int64_t tick() const;

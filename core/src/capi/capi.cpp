@@ -598,12 +598,11 @@ void wm_world_set_controller(wm_world* w, wm_controller_fn fn, void* user) {
 
 // ---- stepping -----------------------------------------------------------------------------------------------
 
-uint64_t wm_world_step(wm_world* w) {
-  if (w == nullptr) return 0;
+void wm_world_step(wm_world* w) {
+  if (w == nullptr) return;
   refresh_prev(w);
-  const std::uint64_t c = w->world->step();
+  w->world->step();
   std::fill(w->req_valid.begin(), w->req_valid.end(), 0);
-  return c;
 }
 
 uint64_t wm_world_checksum(const wm_world* w) { return w != nullptr ? w->world->checksum() : 0; }

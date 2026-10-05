@@ -229,8 +229,8 @@ inline AiRaceOutcome run_ai_race(const AiRaceSpec& sp) {
                      static_cast<double>(w->rules().boat(i).deadline_s));
       }
     }
-    const std::uint64_t c = w->step();
-    if (sp.keep_checksums) o.checksums.push_back(c);
+    w->step();
+    if (sp.keep_checksums) o.checksums.push_back(w->checksum());
     for (const wm::ContactEvent& e : w->events().contacts) {
       if (e.begin && e.other_kind == wm::ContactKind::boat && e.boat < e.other) ++o.contacts;
     }

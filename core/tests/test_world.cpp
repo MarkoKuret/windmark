@@ -115,7 +115,10 @@ TEST_CASE("world: same seed, same ticks; another seed, another race") {
     for (auto* w : {a.get(), b.get(), c.get()}) {
       for (std::int32_t i = 0; i < 5; ++i) w->set_helm(i, i % 2 == 0 ? h : -h);
     }
-    const std::uint64_t ca = a->step(), cb = b->step(), cc = c->step();
+    a->step();
+    b->step();
+    c->step();
+    const std::uint64_t ca = a->checksum(), cb = b->checksum(), cc = c->checksum();
     same = same && ca == cb;
     differ = differ || ca != cc;
   }

@@ -222,7 +222,7 @@ int main(int argc, char** argv) {
     if (o.profile) bunching(*w, r_bunch, near, pairs);
     const double ai_before = ai_s;
     const auto t0 = std::chrono::steady_clock::now();
-    last = w->step();
+    w->step();
     const double dt = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     if (o.profile) {
       Bucket& b = buckets[near >= 15 ? 15 : (near >= 10 ? 10 : (near >= 5 ? 5 : 0))];
@@ -237,7 +237,7 @@ int main(int argc, char** argv) {
         worst_pairs = pairs;
       }
     }
-    if (out != nullptr) std::fprintf(out, "%u %016" PRIx64 "\n", w->tick(), last);
+    if (out != nullptr) std::fprintf(out, "%u %016" PRIx64 "\n", w->tick(), w->checksum());
     for (const wm::ContactEvent& e : w->events().contacts) {
       if (e.begin && e.other_kind == wm::ContactKind::boat && e.boat < e.other) ++contacts;
     }
@@ -266,6 +266,7 @@ int main(int argc, char** argv) {
     std::fclose(tel);
   }
 
+  last = w->checksum();
   int finished = 0;
   for (const wm::ResultRow& r : w->race().results()) finished += r.place > 0 ? 1 : 0;
   std::fprintf(stderr, "%s race seed %" PRIu64 ": %s after %u ticks, %d of %zu finished, %d boat contacts, %d penalties, "

@@ -138,9 +138,16 @@ func _ready() -> void:
 	version_label.name = "Version"
 	version_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.45))
 	version_label.add_theme_constant_override("shadow_offset_y", 1)
-	version_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 10)
-	version_label.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	version_label.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	version_label.anchor_left = 1.0
+	version_label.anchor_right = 1.0
+	version_label.anchor_top = 1.0
+	version_label.anchor_bottom = 1.0
+	version_label.offset_left = -320.0
+	version_label.offset_right = -12.0
+	version_label.offset_top = -30.0
+	version_label.offset_bottom = -8.0
+	version_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	version_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
 	version_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(version_label)
 	sounds = MenuSounds.new()

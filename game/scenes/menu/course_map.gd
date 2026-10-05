@@ -214,8 +214,8 @@ func _wind() -> void:
 	draw_line(tail, tip - d * 6.0, PAPER, 2.5, true)
 	var s := Vector2(-d.y, d.x)
 	draw_colored_polygon(PackedVector2Array([tip, tip - d * 9.0 + s * 5.5, tip - d * 9.0 - s * 5.5]), PAPER)
-	_text(Vector2(c.x, c.y + 34), "%d KN  %03d°" % [roundi(wind_kn), posmod(roundi(wind_from_deg), 360)], PAPER, 13,
-		HORIZONTAL_ALIGNMENT_CENTER)
+	_text(Vector2(size.x - 10, c.y + 34), "%d KN  %03d°" % [roundi(wind_kn), posmod(roundi(wind_from_deg), 360)],
+		PAPER, 13, HORIZONTAL_ALIGNMENT_RIGHT)
 	_text(Vector2(18, 26), "N", MIST, 13, HORIZONTAL_ALIGNMENT_CENTER)
 	draw_line(Vector2(18, 30), Vector2(18, 44), MIST, 1.5)
 
@@ -223,5 +223,6 @@ func _wind() -> void:
 func _text(at: Vector2, t: String, col: Color, sz: int, align: HorizontalAlignment) -> void:
 	var f := MenuTheme.font(600, 0.06, sz)
 	var w := f.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, sz).x
-	var x := at.x - (w * 0.5 if align == HORIZONTAL_ALIGNMENT_CENTER else 0.0)
+	var x := at.x - (w * 0.5 if align == HORIZONTAL_ALIGNMENT_CENTER else (w if align == HORIZONTAL_ALIGNMENT_RIGHT
+		else 0.0))
 	draw_string(f, Vector2(x, at.y), t, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, col)

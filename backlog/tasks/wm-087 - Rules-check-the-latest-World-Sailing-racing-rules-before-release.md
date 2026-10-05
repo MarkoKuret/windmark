@@ -1,9 +1,11 @@
 ---
 id: WM-087
 title: 'Rules: check the latest World Sailing racing rules before release'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-10-04 10:54'
+updated_date: '2026-10-05 09:20'
 labels:
   - rules
 dependencies: []
@@ -19,6 +21,12 @@ Owner (2026-10-04): before the public release (demo or Early Access), check rule
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 rules.md compared with the edition in force; differences listed
+- [x] #1 rules.md compared with the edition in force; differences listed
 - [ ] #2 Each difference decided by the owner (follow or documented simplification)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Comparison with RRS 2025-2028 (Changes and Corrections v2) in docs/design/rules_check.md: edition and changes (§1), every difference with kind, impact and a recommendation (§2), penalty deadline options for WM-056 (§3), and the list of owner decisions (§4). AC #2 waits for the owner.
+<!-- SECTION:NOTES:END -->

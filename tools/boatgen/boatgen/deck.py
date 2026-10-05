@@ -276,10 +276,12 @@ class Deck:
         return (yb, ya, z_hi - 0.12 * band, z_lo + 0.08 * band)
 
     # ------------------------------------------------------------------------------------------------------
-    def build(self, n_out=9, n_st=90, skin=(18, 13)):
+    def build(self, n_out=9, n_st=90, skin=(18, 13), lite=0):
         """Deck part; `n_st` deck stations (plus the feature breaks) and the hull skin's girth counts `skin`
-        (the transom face must meet the skin) set the level of detail."""
+        (the transom face must meet the skin) set the level of detail. `lite` 1 (the game's LOD0) keeps the coaming
+        bevels and trims with plainer sections, 2 (LOD1) leaves the bevels and the rub strake out."""
         self._skin_n = skin
+        self._lite = lite
         part = Part()
         hull = self.hull
         L = hull.L
@@ -321,10 +323,37 @@ class Deck:
         self._cockpit(part, xs)
         if self.has_cabin:
             self._cabin(part, xs, n_roof=max(3, round(7 * n_st / 90)), fine=n_st >= 60)
-        self._sheer_trim(part, n=max(16, round(120 * n_st / 90)))
+        self._sheer_trim(part, n=max(16, round(120 * n_st / 90)), lite=lite)
         for gs in part.slots.values():          # every deck surface: the plan view (the transom has its own)
             for g in gs:
                 g.uv1 = self.plan_uv1(g.P)
+        self._transom(part)
+        return part
+
+    def build_simple(self, n_st, n_y):
+        """The far levels' deck (LOD2, LOD3): one height field over the plan between the sheers on the walking
+        surface (deck, coachroof, cockpit sole), `n_st` stations by `n_y` points across, and the transom face. The
+        livery's deck map draws the cockpit, coachroof and fittings on it."""
+        part = Part()
+        hull = self.hull
+        L = hull.L
+        xs = np.linspace(0.0, L, n_st)
+        if self.has_cabin:
+            xs = np.unique(np.concatenate([xs, [self.xc0, self.xc1, self.xk0, 0.5 * (self.xk0 + self.xk1)]]))
+        else:
+            xs = np.unique(np.concatenate([xs, [self.xc0, self.xc1]]))
+        bs = np.maximum(hull.bs(xs), 1e-4)
+        t = np.linspace(-1.0, 1.0, n_y)
+        Y = bs[:, None] * t[None, :]
+        X = np.broadcast_to(xs[:, None], Y.shape)
+        Z = self.surface_z(X, Y)
+        # the sheer points sit on the deck edge (the hull's top)
+        Z[:, 0] = self.deck_z(xs, bs)
+        Z[:, -1] = Z[:, 0]
+        P = np.stack([X, Y, Z], -1)
+        g = _orient_up(grid(P, np.stack([X, Y], -1)))
+        g.uv1 = self.plan_uv1(g.P)
+        part.add("gelcoat", g)
         self._transom(part)
         return part
 
@@ -353,6 +382,8 @@ class Deck:
             # small bevels: a rounded lip on the coaming edge (half sunk into the corner) and a fillet where
             # the wall meets the floor
             rb = 0.012 * (self.hull.L / 12) ** 0.3
+            if getattr(self, "_lite", 0) >= 2:
+                continue
             edge = np.stack([xs, ytop, ztop], -1)[::2]
             prof = rounded_rect(2 * rb, 2 * rb, 0.95 * rb, 2)
             part.add("gelcoat", sweep(edge + np.array([0, side * 0.35 * rb, -0.35 * rb]), prof, up=np.array([0, 0, 1.0])))
@@ -472,13 +503,14 @@ class Deck:
         xb = float(xs[ok.max()]) - 0.2
         if xb - xa < 0.3:
             return
-        xw = np.linspace(xa, xb, 24 if fine else 10)
+        lite = getattr(self, "_lite", 0) >= 2
+        xw = np.linspace(xa, xb, 24 if fine else (6 if lite else 10))
         hw, ybw = self.cab_height(xw), self.yk(xw)
         p = self._cab_prof(hw, ybw)
         t = np.linspace(0, 1, xw.size)
         env = np.sqrt(np.clip(np.sin(np.pi * t) * 1.8, 0, 1))
         rows = []
-        for f in np.linspace(-1, 1, 5):
+        for f in np.linspace(-1, 1, 3 if lite else 5):
             fm = 0.58 + 0.17 * f * env                 # along the raked side, from its foot (0) to its top (1)
             d = (p["d1"] + (p["d2"] - p["d1"]) * fm) / p["q"]
             y = ybw - d
@@ -498,8 +530,9 @@ class Deck:
         g.uv1 = self.transom_uv1(g.P)
         part.add("transom", g)
 
-    def _sheer_trim(self, part, n=120):
-        """Toe rail on the deck edge and a rub strake just below the sheer on the hull."""
+    def _sheer_trim(self, part, n=120, lite=0):
+        """Toe rail on the deck edge and a rub strake just below the sheer on the hull (`lite`: plainer sections,
+        2 without the rub strake)."""
         hull = self.hull
         xs = np.linspace(0.0, hull.L - 0.01, n)
         tr = float(self.cls["deck"]["toe_rail"])
@@ -508,13 +541,19 @@ class Deck:
             inboard = np.minimum(tr * 0.6, bs * 0.5)
             path = np.stack([xs, side * (bs - inboard), self.deck_z(xs, bs - inboard) + tr * 0.35], -1)
             prof = rounded_rect(tr * 0.9, tr * 0.7, tr * 0.25, 2)
+            if lite:
+                prof = np.array([[0.45, 0.35], [-0.45, 0.35], [-0.45, -0.35], [0.45, -0.35]]) * tr
             part.add("gelcoat", sweep(path, prof, up=np.array([0, 0, 1.0])))
+            if lite >= 2:
+                continue
             # rub strake: a small half-round just below the sheer, following the topside
             y2 = np.array([hull.half_breadth_at(x, float(hull.zs(np.array([x]))[0]) - 0.03) for x in xs])
             path2 = np.stack([xs, side * (y2 + 0.004), hull.zs(xs) - 0.03], -1)
             ok = y2 > 0.02
             if ok.sum() > 4 and n >= 40:     # the rub strake is left out of the far level of detail
-                part.add("rubber", sweep(path2[ok], rounded_rect(0.022, 0.018, 0.008, 2), up=np.array([0, 0, 1.0])))
+                rs = rounded_rect(0.022, 0.018, 0.008, 2) if not lite else \
+                    np.array([[0.009, 0.011], [-0.009, 0.011], [-0.009, -0.011], [0.009, -0.011]])
+                part.add("rubber", sweep(path2[ok], rs, up=np.array([0, 0, 1.0])))
 
 
 def _orient(g, want):

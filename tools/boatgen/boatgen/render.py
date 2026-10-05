@@ -6,6 +6,8 @@ metallic-roughness and normal maps on uv0 with the KHR_texture_transform scale) 
 (COLOR_0, multiplied into the base colour as glTF specifies) are used as written; sail panel seams, tapes and
 battens are drawn procedurally from the sail UVs. `uv_check=True` renders a metric checker on uv0 instead.
 """
+import os
+
 import numpy as np
 from PIL import Image
 
@@ -340,7 +342,7 @@ class Renderer:
         mats = {m["name"]: m for m in doc["materials"]}
         for t in getattr(self, "_texs", []):
             t.release()
-        texs = self._texs = self._textures(doc)
+        texs = self._texs = self._textures(doc, os.path.dirname(os.path.abspath(glb_path)))
         self.objs = []
         allP = []
         for name, mat, P, N, uv0, uv1, I, ao in prims:
@@ -367,14 +369,19 @@ class Renderer:
         self.bmin, self.bmax = allP.min(0), allP.max(0)
         self.tri_count = sum(len(p[6]) for p in prims)
 
-    def _textures(self, doc):
-        """moderngl textures (mipmapped, repeating, anisotropic) for the GLB's embedded images, by texture index."""
+    def _textures(self, doc, base="."):
+        """moderngl textures (mipmapped, repeating, anisotropic) for the GLB's images (embedded, by URI, or the
+        tiling sets read_glb names by path), by texture index."""
         import io
         out = []
         for t in doc.get("textures", []):
             img = doc["images"][t["source"]]
-            v = doc["bufferViews"][img["bufferView"]]
-            data = bytes(doc["_bin"][v["byteOffset"]:v["byteOffset"] + v["byteLength"]])
+            if "bufferView" in img:
+                v = doc["bufferViews"][img["bufferView"]]
+                data = bytes(doc["_bin"][v["byteOffset"]:v["byteOffset"] + v["byteLength"]])
+            else:
+                with open(img.get("_path") or os.path.join(base, img["uri"]), "rb") as f:
+                    data = f.read()
             # glTF puts uv (0, 0) at the first row of the image, as OpenGL does with rows uploaded first to last
             im = Image.open(io.BytesIO(data)).convert("RGB")
             tx = self.ctx.texture(im.size, 3, im.tobytes())

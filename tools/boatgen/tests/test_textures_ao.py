@@ -24,6 +24,11 @@ class TexturesAOTest(unittest.TestCase):
             f = os.path.join(d, "b.glb")
             cls.boat.write_glb(f)
             cls.prims, cls.doc = gltf.read_glb(f)
+            cls.data = open(f, "rb").read()
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.path = os.path.join(cls.tmp.name, "b.glb")
+        with open(cls.path, "wb") as fh:
+            fh.write(cls.data)
 
     def test_texture_files(self):
         for s in textures.SETS:
@@ -33,36 +38,46 @@ class TexturesAOTest(unittest.TestCase):
                 self.assertTrue(os.path.exists(p), p)
 
     def test_materials(self):
+        """One boat material for every opaque surface (slot table and tiling atlas in its extras), the sails on
+        their own; the images once per file."""
         doc = self.doc
-        self.assertIn("KHR_texture_transform", doc["extensionsUsed"])
-        self.assertEqual(len(doc["images"]), len({i["name"] for i in doc["images"]}), "each image embedded once")
-        for m in doc["materials"]:
-            tset, tiling = textures.SLOTS[m["name"]]
-            self.assertEqual(m["extras"]["tiling_m"], tiling)
-            pbr = m["pbrMetallicRoughness"]
-            self.assertTrue(all(0 <= c <= 1 for c in pbr["baseColorFactor"]) and 0 <= pbr["roughnessFactor"] <= 1)
-            if tset is None:
-                self.assertNotIn("baseColorTexture", pbr)
-                continue
-            for info in (pbr["baseColorTexture"], pbr["metallicRoughnessTexture"]):
-                self.assertEqual(info["texCoord"], 0)
-                np.testing.assert_allclose(info["extensions"]["KHR_texture_transform"]["scale"], [1 / tiling] * 2)
-            self.assertEqual("normalTexture" in m, textures.has_normal(tset))
-        # real-material albedo (data_format.md 3.7): every slot's mean at most 0.8 linear, and the gelcoat's factor
-        # too, so the boat shader's cap never flattens a white hull
+        names = [m["name"] for m in doc["materials"] if not m["name"].startswith(tuple(textures.SLOTS))
+                 or m["name"] in ("sailcloth",)]
+        raw, rdoc = gltf.read_glb(self.path, expand=False)
+        mats = [m["name"] for m in rdoc["materials"]]
+        self.assertEqual(sorted(mats), ["boat", "sailcloth", "shadow"], mats)
+        imgs = [i["name"] for i in rdoc["images"]]
+        self.assertEqual(len(imgs), len(set(imgs)), "each image once")
+        boat = next(m for m in rdoc["materials"] if m["name"] == "boat")
+        ex = boat["extras"]
+        self.assertEqual(len(ex["slots"]), len(gltf.ATLAS_SLOTS))
+        self.assertEqual(ex["atlas"]["sets"], list(textures.ATLAS_SETS))
+        for sl in ex["slots"]:
+            self.assertLessEqual(max(sl["color"]), 0.8, sl["name"])
+            self.assertTrue(0 <= sl["tile"] < len(textures.ATLAS_SETS))
+        for n, m, P, N, uv0, uv1, I, ao in raw:
+            if n.startswith("sail_"):
+                self.assertEqual(m, "sailcloth")
+            elif n.startswith("shadow"):
+                self.assertEqual(m, "shadow")
+            else:
+                self.assertEqual(m, "boat", n)
+        # the atlas images: 4 x 2 tiles of 512
+        img = textures.atlas_image("color")
+        self.assertEqual(img.shape, (2 * textures.SIZE, 4 * textures.SIZE, 3))
+        self.assertEqual(textures.SLOTS["nonslip"][0], "diamond", "non-slip has its moulded pattern")
         for name, (col, met, rough) in gltf.MATERIALS.items():
             self.assertLessEqual(max(col[:3]), 0.8, name)
-        gel = next(m for m in doc["materials"] if m["name"] == "gelcoat")
-        self.assertLessEqual(max(gel["pbrMetallicRoughness"]["baseColorFactor"][:3]), 0.8)
-        self.assertEqual(textures.SLOTS["nonslip"][0], "diamond", "non-slip has its moulded pattern")
-        sail = next(m for m in doc["materials"] if m["name"] == "sailcloth")
-        self.assertNotIn("normalTexture", sail, "sails carry no normal map (sail_visuals.md 9)")
+        del names
 
     def test_ao(self):
         for n, m, P, N, uv0, uv1, I, ao in self.prims:
             with self.subTest(node=n, slot=m):
-                if n.startswith("sail_") or n == "mainsheet":
+                if n.startswith("sail_") or n.startswith("shadow"):
                     self.assertIsNone(ao)
+                    continue
+                if n == "mainsheet":       # rebuilt as the boom moves: no bake, AO 1
+                    self.assertTrue((ao == 1).all())
                     continue
                 self.assertIsNotNone(ao)
                 self.assertTrue(((ao >= 0) & (ao <= 1)).all())

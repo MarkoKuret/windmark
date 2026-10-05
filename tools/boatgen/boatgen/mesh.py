@@ -344,7 +344,7 @@ def sweep(path, profile, closed_profile=True, scale_along=None, caps=True, up=No
     path = np.asarray(path, dtype=np.float64)
     prof = np.asarray(profile, dtype=np.float64)
     if max_seg is None:
-        max_seg = SWEEP_MAX_SEG / _SEG[0]
+        max_seg = SWEEP_MAX_SEG / _SEG[0] ** 2     # the far levels need no AO rings along a tube
     if max_seg and len(path) > 1:
         seg = np.linalg.norm(np.diff(path, axis=0), axis=-1)
         k = np.maximum(1, np.ceil(seg / max_seg).astype(int))

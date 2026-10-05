@@ -6,14 +6,15 @@ extends SceneTree
 ##   (wind.md §8) against the core's wind within 1e-3 (when the GDExtension is built) and the shader's texture path
 ##   against the mirror; the wavelength-sorted components and the per-pixel band loop (§3.2); wake geometry; the
 ##   whitecaps (§4.4: none under 8 kn, cover rising with the wind and the puffs, caps riding their crests without
-##   popping over 60 s); the test scene runs on every tier.
+##   popping over 60 s); the dry cockpits (§4.8: sidecar well, CPU mirror of the mask, upload); the test scene runs
+##   on every tier.
 ## Exit code 0 when every check passes.
 
 const SAMPLES := "res://generated/sea/sea_render_samples.json"
 const SHADERS := {
-	"res://shaders/water_l.gdshader": ["comp", "puff", "expo_tex", "detail_layer"],
-	"res://shaders/water_m.gdshader": ["comp", "puff", "expo_tex", "wake_tex"],
-	"res://shaders/water_h.gdshader": ["comp", "puff", "expo_tex", "wake_tex"],
+	"res://shaders/water_l.gdshader": ["comp", "puff", "expo_tex", "n_dry", "dry_m", "dry_g", "detail_layer"],
+	"res://shaders/water_m.gdshader": ["comp", "puff", "expo_tex", "n_dry", "dry_m", "dry_g", "wake_tex"],
+	"res://shaders/water_h.gdshader": ["comp", "puff", "expo_tex", "n_dry", "dry_m", "dry_g", "wake_tex"],
 	"res://shaders/sky.gdshader": ["sky_horizon", "sky_zenith", "sun_dir"],
 	"res://shaders/wake.gdshader": ["comp", "grid_q"],
 	"res://shaders/wake_normal.gdshader": [],
@@ -59,6 +60,7 @@ func _init() -> void:
 	check_land_core()
 	check_wake_ribbon()
 	check_whitecaps()
+	check_dry_wells()
 	_tiers_left = [SeaQuality.Tier.L, SeaQuality.Tier.M, SeaQuality.Tier.H]
 	_start_scene()
 
@@ -750,6 +752,74 @@ func _corr(a: PackedFloat32Array, b: PackedFloat32Array) -> float:
 	return sab / sqrt(maxf(saa * sbb, 1e-30))
 
 
+## §9.11 the cockpit well of each class's sidecar and the CPU mirror of the mask, in the body frame.
+func check_dry_wells() -> void:
+	for id in ["wm7", "wm12"]:
+		var path := "res://generated/boats/%s.physics.json" % id
+		var side: Variant = JSON.parse_string(FileAccess.get_file_as_string(path)) if FileAccess.file_exists(path) else null
+		var ck: Dictionary = side.get("cockpit", {}) if side is Dictionary else {}
+		check(not ck.is_empty(), "dry %s: cockpit block in the sidecar (run tests/run_boat_import_test.sh)" % id)
+		if ck.is_empty():
+			continue
+		var g := Sea.dry_well(ck)
+		var x0: float = ck["x0"]
+		var ln: float = ck["len"]
+		var ok := g.size() == 3
+		var fails: Array = []
+		for k in 21:
+			var tt := k / 20.0
+			var x := x0 + tt * ln
+			# the quadratics pass through the stations
+			if k % 10 == 0:
+				var j := k / 10
+				x = x0 + clampf(tt, 0.001, 0.999) * ln  # 1 mm inside the ends: t of the end itself rounds either way
+				var pin := Vector3(x, 0.0, float(ck["floor_z"][j]) + 0.01)
+				if not Sea.dry_masked(Vector3(x, float(ck["half_width"][j]) - 0.01, pin.z), g):
+					fails.append("inside wall at station %d" % j)
+				if Sea.dry_masked(Vector3(x, float(ck["half_width"][j]) + 0.05, pin.z), g):
+					fails.append("5 cm outside the wall at station %d" % j)
+				if Sea.dry_masked(Vector3(x, 0.0, float(ck["rim_z"][j]) + 0.1), g):
+					fails.append("above the rim at station %d" % j)
+				if Sea.dry_masked(Vector3(x, 0.0, float(ck["floor_z"][j]) - 0.1), g):
+					fails.append("under the floor at station %d" % j)
+			var f := float(ck["floor_z"][0]) + tt * (float(ck["floor_z"][2]) - float(ck["floor_z"][0]))
+			if k > 0 and k < 20 and not Sea.dry_masked(Vector3(x, 0.0, f + 0.1), g):
+				fails.append("centreline at t %.2f" % tt)
+		if Sea.dry_masked(Vector3(x0 - 0.05, 0.0, float(ck["floor_z"][0]) + 0.1), g):
+			fails.append("aft of the transom")
+		if Sea.dry_masked(Vector3(x0 + ln + 0.05, 0.0, float(ck["floor_z"][2]) + 0.1), g):
+			fails.append("forward of the well")
+		check(ok and fails.is_empty(), "dry %s: mask inside the well only (well %.2f m from x %.2f, half width %.2f to %.2f)%s"
+				% [id, ln, x0, float(ck["half_width"][0]), float(ck["half_width"][2]),
+				"" if fails.is_empty() else ": " + ", ".join(fails)])
+
+
+## §9.11 in the scene: the test boat's well is uploaded, and the uploaded rows take a scene point heeled 25 deg
+## back to the body frame.
+func check_dry_scene(sea: Sea, tier: String) -> void:
+	var n: int = sea.material.get_shader_parameter("n_dry")
+	var side: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://generated/boats/wm7.physics.json")) \
+			if FileAccess.file_exists("res://generated/boats/wm7.physics.json") else null
+	if not side is Dictionary:
+		return
+	check(n == 1, "scene tier %s: the test boat's cockpit kept dry (%d uploaded)" % [tier, n])
+	var g := Sea.dry_well(side.get("cockpit", {}))
+	var basis := Basis(Vector3.UP, 0.7) * Basis(Vector3.RIGHT, -0.03) * Basis(Vector3.BACK, deg_to_rad(25.0))
+	var xf := Transform3D(basis, Vector3(310.0, 0.2, -95.0)) * BoatView.BODY_TO_MODEL
+	var cks: Array = [{"xform": xf, "well": g}]
+	for k in 10:  # far boats are left out, the nearest kept
+		cks.append({"xform": Transform3D(Basis.IDENTITY, Vector3(310.0 + 30.0 * k, 0.0, -400.0)), "well": g})
+	var up := sea.set_dry_cockpits(cks, Vector3(300.0, 5.0, -100.0))
+	var m: PackedVector4Array = sea.material.get_shader_parameter("dry_m")
+	var p_body := Vector3(-3.2, -0.6, 0.4)
+	var w := xf * p_body
+	var h := Vector4(w.x, w.y, w.z, 1.0)
+	var back := Vector3(m[0].dot(h), m[1].dot(h), m[2].dot(h))
+	check(up == 1 and back.distance_to(p_body) < 1e-4,
+			"scene tier %s: dry rows map the scene to the body frame (%s m), boats beyond %.0f m left out"
+			% [tier, sci(back.distance_to(p_body)), Sea.DRY_RANGE])
+
+
 func _start_scene() -> void:
 	if _tiers_left.is_empty():
 		_finish()
@@ -800,6 +870,7 @@ func _process(_delta: float) -> bool:
 	check((wb != null) == bool(t["wake_buffer"]), "scene tier %s: wake buffer %s" % [t["name"],
 			"made for the drawn wakes" if t["wake_buffer"] else "not made"])
 	check_shadows(sea, t)
+	check_dry_scene(sea, t["name"])
 	# §4.4: off by default (owner, 2026-10-05); the look panel / --caps=on turn the mechanism on
 	check(not sea.whitecaps, "scene tier %s: whitecaps off by default" % t["name"])
 	sea.whitecaps = true

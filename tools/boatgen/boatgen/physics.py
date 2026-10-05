@@ -271,6 +271,20 @@ def collision_outline(boat):
     return {"outline": _r(P, 4), "vertices": len(P), "convex_ccw": ok}
 
 
+def cockpit_data(boat):
+    """The cockpit well for the sea renderer's dry mask (water_render.md 4.8): from the aft end x0 forward over len,
+    the half width, floor and rim (deck at the cockpit edge) at the aft end, middle and forward end, body frame."""
+    d, ox = boat.deck, boat.origin_x()
+    xs = [d.xc0, 0.5 * (d.xc0 + d.xc1), d.xc1]
+    w = [float(d.yc(x)) for x in xs]
+    return {
+        "x0": _r(d.xc0 - ox, 4), "len": _r(d.xc1 - d.xc0, 4), "open_transom": d.open_transom,
+        "half_width": _r(w, 4),
+        "floor_z": _r([float(d.floor_z(x)) for x in xs], 4),
+        "rim_z": _r([float(d.deck_z(x, wi)) for x, wi in zip(xs, w)], 4),
+    }
+
+
 def perf_inputs(boat):
     """Geometric values the performance file takes from the generator (data_format.md 4.2, sea.md 5.1,
     wind_shadow.md 2), for the VPP to copy."""

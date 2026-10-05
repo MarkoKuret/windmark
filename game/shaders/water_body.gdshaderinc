@@ -19,6 +19,33 @@ uniform sampler2D caps_tex : filter_linear_mipmap_anisotropic, repeat_enable;
 
 #include "res://shaders/sea_common.gdshaderinc"
 
+// water_render.md §4.8: the cockpits kept dry (Sea.set_dry_cockpits): per boat three rows of the scene-to-body
+// transform and the well's quadratics (Sea.dry_well)
+uniform int n_dry = 0;
+uniform vec4 dry_m[24];
+uniform vec4 dry_g[24];
+
+bool wm_dry(vec3 w) {
+	vec4 h = vec4(w, 1.0);
+	for (int i = 0; i < n_dry; i++) {
+		vec3 p = vec3(dot(dry_m[3 * i], h), dot(dry_m[3 * i + 1], h), dot(dry_m[3 * i + 2], h));
+		vec4 a = dry_g[3 * i];
+		vec4 b = dry_g[3 * i + 1];
+		vec4 c = dry_g[3 * i + 2];
+		float t = (p.x - a.x) * a.y;
+		if (t < 0.0 || t > 1.0) {
+			continue;
+		}
+		float wd = a.z + t * (a.w + t * b.x);
+		float f = b.y + t * (b.z + t * b.w);
+		float r = c.x + t * (c.y + t * c.z);
+		if (abs(p.y) < wd + 0.03 && p.z > f - 0.05 && p.z < r + 0.05) {
+			return true;
+		}
+	}
+	return false;
+}
+
 varying vec2 v_local;     // camera-relative world metres
 varying float v_spacing;  // grid spacing at the vertex, m
 varying float v_eta;
@@ -47,6 +74,9 @@ void vertex() {
 
 void fragment() {
 	vec3 wpos = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	if (wm_dry(wpos)) {
+		discard;
+	}
 	vec3 cam = CAMERA_POSITION_WORLD;
 	vec3 view = normalize(cam - wpos);
 	float dist = length(cam.xz - wpos.xz);

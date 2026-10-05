@@ -467,6 +467,8 @@ func _measure_flag(a: String) -> bool:
 
 ## The parts `measure_off` switches off, on the built scene (measured runs only).
 func _apply_measure_off() -> void:
+	if Settings.vsync_override == 0 and DisplayServer.get_name() != "headless":
+		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)  # also where no settings apply (a menu stage)
 	if measure_off.has("venue"):
 		venue_view.visible = false
 	if measure_off.has("boats"):

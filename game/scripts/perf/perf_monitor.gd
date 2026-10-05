@@ -1,7 +1,8 @@
 class_name PerfMonitor
 extends CanvasLayer
 ## The frame-time overlay and its CSV log (hud.md §17). Add it to a scene (the sail scene does, with `scene` set to
-## itself so the set-up columns can read its sea, sim and camera rig by name). F9 shows and hides the panel;
+## itself so the set-up columns can read its sea, sim and camera rig by name). Shift+F9 shows and hides the panel
+## (F9 alone is the look panel, LookPanel, which has a row for it too);
 ## `log_path` writes one line per second; `seconds` > 0 ends the run after that long (quits the game when
 ## `quit_when_done`). It measures only while the panel is shown or a log is open.
 
@@ -79,7 +80,8 @@ func _exit_tree() -> void:
 
 
 func _input(e: InputEvent) -> void:
-	if e is InputEventKey and e.pressed and not e.echo and (e as InputEventKey).keycode == TOGGLE_KEY:
+	if e is InputEventKey and e.pressed and not e.echo and (e as InputEventKey).keycode == TOGGLE_KEY \
+			and (e as InputEventKey).shift_pressed:
 		toggle()
 
 

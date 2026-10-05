@@ -658,6 +658,7 @@ Dictionary CoreSim::course() const {
   d["twd_c"] = ci.twd_c;
   d["k"] = ci.k;
   d["laps"] = ci.laps;
+  d["zone_lengths"] = ci.zone_lengths;
   Array marks;
   for (int32_t i = 0; i < ci.mark_count; ++i) {
     wm_mark m{};
@@ -671,6 +672,7 @@ Dictionary CoreSim::course() const {
     md["heading"] = m.heading;
     md["length"] = m.length;
     md["beam"] = m.beam;
+    md["zone_r"] = m.zone_r;
     marks.append(md);
   }
   d["marks"] = marks;

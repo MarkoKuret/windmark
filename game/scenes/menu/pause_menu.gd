@@ -17,6 +17,8 @@ var host: Node
 var is_open := false
 var buttons := {}
 var settings_panel: SettingsPanel
+## the menu sounds (menus.md §4), heard while the menu is open
+var sounds: MenuSounds
 
 var _root: Control
 var _card: PanelContainer
@@ -56,7 +58,7 @@ func _ready() -> void:
 	gap.custom_minimum_size = Vector2(0, 8)
 	_list.add_child(gap)
 	for e in [["resume", "Resume"], ["restart", "Restart"], ["settings", "Settings"], ["quit", "Quit to menu"]]:
-		var b := MenuTheme.button(e[1])
+		var b := MenuTheme.button(e[1], MenuTheme.ITEM_SIZE, e[0] == "quit")
 		b.name = e[1].replace(" ", "")
 		var id: String = e[0]
 		b.pressed.connect(func() -> void: _pressed(id))
@@ -82,6 +84,10 @@ func _ready() -> void:
 	settings_panel.closed.connect(_settings_closed)
 	_settings_card.add_child(settings_panel)
 	_root.visible = false
+	sounds = MenuSounds.new()
+	sounds.name = "Sounds"
+	sounds.active = false
+	add_child(sounds)
 	_apply.call_deferred()
 
 
@@ -114,6 +120,8 @@ func _process(_dt: float) -> void:
 ## Opens the menu (and pauses the host's simulation).
 func open() -> void:
 	is_open = true
+	sounds.active = true
+	sounds.quiet_next_focus()
 	_root.visible = true
 	_card.visible = true
 	_settings_card.visible = false
@@ -131,6 +139,7 @@ func close() -> void:
 	if _settings_card.visible:
 		settings_panel.close()
 	is_open = false
+	sounds.active = false
 	_root.visible = false
 	var r := _host_runner()
 	if r != null:
@@ -178,7 +187,7 @@ func _pressed(id: String) -> void:
 
 func _setting_changed(key: String) -> void:
 	if key in ["fullscreen", "vsync", "fps_limit", "ui_scale", "render_scale", "capture_preset"]:
-		Settings.current().apply_display(get_tree().root)
+		Settings.current().apply_display(get_tree().root, key in ["fullscreen", "capture_preset"])
 
 
 func _settings_closed() -> void:

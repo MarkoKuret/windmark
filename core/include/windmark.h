@@ -132,7 +132,7 @@ enum { WM_RACE_FLEET = 0, WM_RACE_MATCH = 1 };
 enum { WM_SEQUENCE_5410 = 0, WM_SEQUENCE_3210 = 1, WM_SEQUENCE_MATCH = 2 };
 enum { WM_FLAG_P = 0, WM_FLAG_I, WM_FLAG_Z, WM_FLAG_U, WM_FLAG_BLACK };
 enum { WM_RULES_NONE = 0, WM_RULES_BASIC, WM_RULES_FULL };
-enum { WM_PENALTY_ONE_TURN = 0, WM_PENALTY_TWO_TURNS };
+enum { WM_PENALTY_ONE_TURN = 0 };  /* the only kind: every penalty is one 360 turn (rules.md §9.2) */
 enum { WM_UMPIRE_STANDARD = 0, WM_UMPIRE_CONTACT_ONLY, WM_UMPIRE_PROTEST };
 
 typedef struct wm_world_settings {
@@ -526,12 +526,14 @@ typedef struct wm_course_info {
   float k;                       /* scale (courses.md §6.3) */
   int32_t mark_count, step_count, laps;
   int32_t boundary_count;        /* 0 = no boundary */
+  float zone_lengths;            /* rules.md §7.1 zone in hull lengths of the race (2 in a match race) */
 } wm_course_info;
 
 typedef struct wm_mark {
   const char* id;
   int32_t type;                  /* WM_MARK_* */
   float x, y, radius, heading, length, beam;
+  float zone_r;                  /* rules.md §7.1: the zone is zone_lengths·L plus this, from the mark's centre */
 } wm_mark;
 
 /* One expanded step: start line, marks, gates, finish line (courses.md §4.4). */
@@ -624,8 +626,8 @@ WM_API wm_status wm_world_race_start_status(const wm_world* w, int32_t boat, wm_
 
 /* rules.md §11.3 rule codes, in this order. */
 enum { WM_RULE_NONE = 0, WM_RULE_10, WM_RULE_11, WM_RULE_12, WM_RULE_13, WM_RULE_14, WM_RULE_15, WM_RULE_16_1,
-       WM_RULE_16_2, WM_RULE_17, WM_RULE_18_2, WM_RULE_18_3, WM_RULE_18_4, WM_RULE_19, WM_RULE_20, WM_RULE_22_1,
-       WM_RULE_22_2, WM_RULE_31, WM_RULE_LATE, WM_RULE_C_PREP, WM_RULE_C_ENTRY, WM_RULE_SI_BOUNDARY };
+       WM_RULE_16_2, WM_RULE_17, WM_RULE_18_2, WM_RULE_18_3, WM_RULE_18_4, WM_RULE_19, WM_RULE_20, WM_RULE_21_1,
+       WM_RULE_21_2, WM_RULE_31, WM_RULE_LATE, WM_RULE_C_PREP, WM_RULE_C_ENTRY, WM_RULE_SI_BOUNDARY };
 WM_API const char* wm_rule_code_name(int32_t rule);
 
 /* rules.md §11.2 per boat. */

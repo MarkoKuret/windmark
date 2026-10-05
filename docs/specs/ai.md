@@ -248,7 +248,7 @@ purpose.
 - At the gun: trim on, sail the first-leg heading (beat: close-hauled on starboard, then the strategy of §4).
 - **OCS (P flag)**, and a boat not yet seen completely on the pre-start side after the gun (`race.md` §4.2, her bow
   over at the gun): bear away and gybe back to `2·L` behind the line by the shortest turn that does not cross a boat
-  (§7 avoidance still applies; the boat now keeps clear of everyone under rule 22.1), then start again at full speed.
+  (§7 avoidance still applies; the boat now keeps clear of everyone under rule 21.1), then start again at full speed.
 - **OCS-I**: route around the nearer end: a waypoint `1.5·L + B` beyond the end and `1·L` on the course side, then
   one as far beyond the end and `2.5·L` behind the line, then start. The second waypoint is taken once the boat is on
   the course side beyond the end, so the crossing back is around the end; a boat that dives back through the band
@@ -415,33 +415,34 @@ A manoeuvre started by the avoidance layer is not cancelled by strategy for 1.5 
 
 ### 7.6 Penalty turns
 
-With a pending penalty the AI starts a turn when all of:
+A penalty is one 360° turn that must be completed within 120 s of the incident, and in a fleet race it counts
+anywhere (`rules.md` §9.3, §9.4). With a pending penalty the AI starts a turn when all of:
 
-- the turn's circle keeps the hull out of the zones of the next mark and the last one rounded (the turn only counts
-  there, `rules.md` §9.3): the circle's centre, `1.3·R` to the side of the turn (`R` the radius at the turn's helm,
-  a margin for the speed the turn loses), is at least `Z + 1.3·R + 0.6·L` from those marks;
+- **match races only**: the turn's circle keeps the hull out of the zones of the next mark and the last one rounded
+  (a turn only counts there, Appendix C): the circle's centre, `1.3·R` to the side of the turn (`R` the radius at
+  the turn's helm, a margin for the speed the turn loses), is at least `Z + r_mark + 1.3·R + 0.6·L` from those
+  marks, and the next zone is more than 20 s of sailing (plus the circle) away. A fleet race has no zone condition;
 - boat speed ≥ 0.75 × target, and not within 5 s after a failed turn;
-- the next zone is more than 20 s of sailing (plus the circle) away;
 - the turn's circle is clear of the other boats as they move: no hull within `0.5·L` of the circle over the next
   6 s, each boat moved on her present course and speed with her drift (`rules.md` §3.1) (a boat coming up fast is in the way, one sailing away is
-  not; a boat taking a penalty must keep clear of all others, rule 22.2), and none within `3·L` ahead.
+  not; a boat taking a penalty must keep clear of all others, rule 21.2), and none within `3·L` ahead.
 
-From 20 s before the deadline (`rules.md` §9.4; the turn must be in progress when it passes) it is **urgent**: only
-the zones, 0.4 × target speed and a hull inside the circle within the next 6 s hold it back. Direction: on a beat
-start by luffing into a tack (turn towards the wind), on a run start by bearing away into a gybe, on a reach turn
-towards the wind; the other way when only that keeps the circle out of the zones. Helm 0.8 of full (0.6 below 9 kn
-true wind, where a slammed turn stalls), sheets on auto-trim through the turn, downwind sail dropped first in more
-than 10 kn. The turn is kept up until the engine reports it served, through the tracker's resets; stopped for 4 s
-(in irons) it is given up and started again after 5 s of speed building, and so is a turn that enters a zone.
+From 45 s before the deadline (`rules.md` §9.4: the turn must be **completed** by then; a turn takes 10 to 25 s)
+it is **urgent**: only the zones (match), 0.4 × target speed and a hull inside the circle within the next 6 s hold
+it back. Direction: on a beat start by luffing into a tack (turn towards the wind), on a run start by bearing away
+into a gybe, on a reach turn towards the wind; in a match race the other way when only that keeps the circle out of
+the zones. Helm 0.8 of full (0.6 below 9 kn true wind, where a slammed turn stalls), sheets on auto-trim through the
+turn, downwind sail dropped first in more than 10 kn. The turn is kept up until the engine reports it served, through
+the tracker's resets; stopped for 4 s (in irons) it is given up and started again after 5 s of speed building, and
+so is a turn that enters a zone in a match race.
 
 While a penalty waits, the AI makes the conditions: before the start it leaves the parking and sails a broad reach
 on starboard (`twa 110°`) away from the line with the sails in until it can turn; racing, it steers up to 15° away
-from the boat in the way (not above close-hauled). When only the zones hold the turn back and the boat is outside
-the zone of the mark she is heading for, she sails away from the marks whose zones are in the way (the next and the
-last rounded, those within `3·Z`), on her present tack and not above close-hauled, until the turn's circle is clear
-of them: a few lengths away is quicker than rounding and going on to the next mark, which on a course with an offset
-mark close to the windward mark takes longer than the deadline. A pre-start penalty is taken before the start (`rules.md` §9.3),
-except in the last 20 s.
+from the boat in the way (not above close-hauled). In a match race, when only the zones hold the turn back and the
+boat is outside the zone of the mark she is heading for, she sails away from the marks whose zones are in the way
+(the next and the last rounded, those within `3·Z`), on her present tack and not above close-hauled, until the
+turn's circle is clear of them. A pre-start penalty is taken before the start (`rules.md` §9.3), except in the last
+20 s.
 
 ## 8. Bad air
 
@@ -600,22 +601,37 @@ measurements. Measured on the default course (11 kn, stable shifts):
 
 | run | measured | spec target |
 | --- | --- | --- |
-| 10 Intermediate, 5 seeds | 86 % finish (the rest DSQ); 0.9 penalties/boat; 4.8 contacts/race; stuck ≤ 22 s | all finish; ≤ 0.4; ≤ 1; ≤ 20 s |
-| same | bad air 1.1 triggers/boat (2.1 over seeds 6 to 20), deficit 0.15 → 0.02 twenty seconds later (95 % lower) | ≥ 2, lower |
-| every level, 10 boats, 2 seeds | 75–95 % finish; OCS 0–5 %; mean start delay 15–20 s | Pro OCS < 5 %, delay < 2 s; Easy < 15 %, 3–8 s |
-| 1 nm beat, 10 boats | 5.0 tacks/boat | 3–14 |
-| match race, 2 Expert, 5 seeds | the leader covers in every race (1–7 activations) | ≥ 1 |
-| mixed fleet (2 per level, 3 seeds) | mean place Easy 7.0, Intermediate 3.3, Expert 4.2, Pro 3.7 | monotonic |
-| speed only (same) | finish-time ratios to Pro within 2.5 % of the `performance_scale` ratios | within 3 % |
+| 10 Intermediate, 5 seeds | 94 % finish (the rest DSQ); 0.64 penalties/boat; 3.8 contacts/race; stuck ≤ 18 s | all finish; ≤ 0.4; ≤ 1; ≤ 20 s |
+| same | bad air 3.3 triggers/boat, deficit 0.15 → 0.04 twenty seconds later (95 % lower) | ≥ 2, lower |
+| every level, 10 boats, 2 seeds | 90–95 % finish; OCS 0–15 %; mean start delay 14–19 s | Pro OCS < 5 %, delay < 2 s; Easy < 15 %, 3–8 s |
+| 1 nm beat, 10 boats | 5.1 tacks/boat | 3–14 |
+| match race, 2 Expert, 5 seeds | the leader covers in every race (2–6 activations) | ≥ 1 |
+| mixed fleet (2 per level, 3 seeds) | mean place Easy 6.3, Intermediate 5.5, Expert 4.0, Pro 2.3 | monotonic |
+| speed only (same) | mean place Easy 7.2, Intermediate 3.5, Expert 2.8, Pro 4.7; mean finish times 737 / 614 / 616 / 657 s: since WM-095 the ratios do not follow `performance_scale` (before: within 2.5 %), the six races are dominated by start delays and a few penalties (an Intermediate boat disqualified for three pending penalties in seed 32) | within 3 % |
 
 The assertions of `ai_races` hold the measured level (finish ≥ 80 %, ≤ 1.3 penalties/boat, ≤ 6 contacts/race,
 bad air ≥ 1.0 and lower 20 s later, every level ≥ 70 % finish, tacks 3–14, cover in every match, Easy behind Pro).
 **Open**: the penalty and contact targets, the start delays (a lone boat starts within 1–9 s; in a fleet the
 crowd at the line and pre-start penalties make the mean 13–25 s) and strict level order in a mixed fleet are not
-met yet. Most remaining penalties come from the windward mark in a crowd (rule 31 and the `44.1-late` penalties
-that follow: on the default course the offset mark is 60 m from the windward mark, so a boat penalised at the
-windward mark is inside one zone or the other for most of the 45 s of `rules.md` §9.4; §7.6 now sails clear of the
-zones first).
+met yet. Most remaining penalties come from crowds at the line and the windward mark; the disqualifications left
+are boats that do not complete a penalty within the 120 s (`rules.md` §9.4), usually because the crowd at the
+windward mark keeps the turn's circle blocked until the urgent phase and the urgent turn then stalls.
+
+**Rules to the 2025-2028 RRS (WM-095), before and after** (same runs and seeds; "late" counts the penalties not
+taken in time: before, each added a `44.1-late` penalty, after, each disqualifies):
+
+| run | before (45 s deadline, zone ban, late = +1 penalty) | after (120 s from the incident, turns anywhere, late = DSQ) |
+| --- | --- | --- |
+| 10 Intermediate, 5 seeds | 43/50 finish, DSQ 7; 1.00 penalties/boat; late 6; 4.6 contacts/race | 47/50 finish, DSQ 3; 0.64 penalties/boat; late 4; 3.8 contacts/race |
+| Easy, 2 seeds | 20/20, DSQ 0; 0.60; late 2; 4.5 | 19/20, DSQ 1; 0.75; late 2; 8.0 |
+| Intermediate, 2 seeds | 19/20, DSQ 1; 0.75; late 2; 5.5 | 19/20, DSQ 1; 0.65; late 2; 3.0 |
+| Expert, 2 seeds | 18/20, DSQ 2; 0.90; late 3; 2.5 | 18/20, DSQ 2; 0.85; late 2; 3.0 (one boat pinned at the windward mark for 118 s, seed 22) |
+| Pro, 2 seeds | 19/20, DSQ 1; 0.70; late 3; 4.5 | 19/20, DSQ 1; 0.80; late 2; 8.0 |
+| 1 nm beat, 2 seeds | 17/20, DSQ 3; 0.70; late 4; 5.0 | 19/20, DSQ 1; 0.55; late 2; 6.0 |
+| match race, 5 seeds | no penalties, no contacts | no penalties, no contacts |
+| mixed fleet, mean place by level | 7.5 / 4.0 / 3.5 / 3.0 | 6.3 / 5.5 / 4.0 / 2.3 |
+| speed only, mean place by level | 6.0 / 4.8 / 4.0 / 3.3 | 7.2 / 3.5 / 2.8 / 4.7 |
+| full AI race (`core_long`, seed 33) | 6/10 finish | 9/10 finish |
 
 Development runs (skipped unless asked for, in `test_ai_race.cpp`): `AI_SCENE=1` races the game scene's fleet (6
 Expert wm7, 12 kn from 0°, the default shifts) over `AI_SEEDS=first,count` and prints per seed the first-mark

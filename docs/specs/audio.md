@@ -253,6 +253,8 @@ The default set must be our own recordings or permissively licensed (CC0 or CC-B
 row per file or pack; packs under custom "royalty-free" licences are not used). Until recordings exist, the default
 set (`game/audio/default`) is **synthesised by our own tool** (`tools/soundgen`: filtered noise, tones and
 impulses written as Ogg Vorbis, 22.05 kHz), so it is ours; a recording replaces a file by name or through the map.
+The menu sounds (`ui/focus`, `ui/accept`, `ui/back`, `menus.md` §4) come from the same tool and play on the `ui`
+bus outside the sound map.
 
 A **synthesised fallback** keeps a sound audible when its files are missing (the map entry's `synth`): wind as
 pink noise through a band-pass at `300 + 25·aws` Hz, water as brown noise through a low-pass at `600 + 60·v_kn` Hz,

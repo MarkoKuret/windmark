@@ -11,8 +11,12 @@ config_version=5
 [application]
 
 config/name="Windmark"
+config/version="0.1.0"
 run/main_scene="res://scenes/menu/main_menu.tscn"
 config/features=PackedStringArray("4.6", "Forward Plus")
+config/icon="res://branding/app_icon_512.png"
+config/macos_native_icon="res://branding/app_icon.icns"
+config/windows_native_icon="res://branding/app_icon.ico"
 
 [input]
 

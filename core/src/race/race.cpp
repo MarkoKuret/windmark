@@ -359,7 +359,8 @@ void Race::at_gun(std::uint32_t n) {
     RaceBoat& b = boats_[i];
     if (b.ghost) continue;
     ++racing_boats;
-    if (prep_flag_ == PrepFlag::P) {
+    // Rule 29.1 (individual recall) under P, and under Z too: the Z penalty comes on top of returning.
+    if (prep_flag_ == PrepFlag::P || prep_flag_ == PrepFlag::Z) {
       for (const Vec2 p : b.hull) {
         const float u = start_.u(p);
         if (start_.s(p) > 0.0f && u >= 0.0f && u <= 1.0f) {
@@ -372,7 +373,7 @@ void Race::at_gun(std::uint32_t n) {
         e.kind = RaceEventKind::boat_ocs;
         e.tick = n;
         e.boat = static_cast<std::int32_t>(i);
-        e.flag = PrepFlag::P;
+        e.flag = prep_flag_;
         emit(e);
       }
     }
@@ -422,7 +423,7 @@ void Race::general_recall(std::uint32_t n) {
       continue;
     }
     b.ocs = b.ocs_i = b.i_around_end = false;
-    b.z_flag = b.u_flag = false;
+    b.u_flag = false;  // a U identification is cancelled by the restart; a Z one stands (rule 30.2)
     b.pre_seen = false;
   }
   std::int64_t off[4];
@@ -457,7 +458,9 @@ void Race::pre_start(std::uint32_t n, std::size_t i, float /*t*/) {
       }
     }
     const bool tri_flag = prep_flag_ == PrepFlag::Z || prep_flag_ == PrepFlag::U || prep_flag_ == PrepFlag::black;
-    const bool already = b.z_flag || b.u_flag || b.black_flag;
+    // Identified once per sequence under its flag (a Z identification of an earlier attempt stands, race.md §4.5).
+    const bool already = (prep_flag_ == PrepFlag::Z && b.z_flag) || (prep_flag_ == PrepFlag::U && b.u_flag) ||
+                         (prep_flag_ == PrepFlag::black && b.black_flag);
     if (tri_flag && !already) {
       for (const Vec2 p : b.hull) {
         if (point_in_start_triangle(p)) {
@@ -918,7 +921,7 @@ void Race::rank(std::uint32_t n, std::span<const RaceBoatInput> in) {
     }
   }
   if (!any_finished_ && signals_done_ >= 4 && nn >= n_time_limit_) {
-    close(n);
+    abandon(n);  // rule 35: no boat finished within the time limit (race.md §7.1)
     return;
   }
   if (has_human && !any_human_racing()) {
@@ -977,7 +980,8 @@ void Race::close(std::uint32_t n) {
     const int ra = code_rank(A.code), rc = code_rank(C.code);
     return ra != rc ? ra < rc : a < c;
   });
-  const float zfp_add = max(1.0f, round_half_even(0.2f * entries));
+  // rule 30.2, 44.3(c): 20 % of the DNF score, to the nearest tenth (20 % of a whole number is a whole tenth).
+  const float zfp_add = static_cast<float>(2 * (boats_.size() + 1)) / 10.0f;
   std::size_t i = 0;
   while (i < fin.size()) {
     std::size_t j = i;

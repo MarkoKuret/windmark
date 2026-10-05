@@ -17,7 +17,6 @@ bool boat_ok(std::int32_t b, std::size_t n, bool allow_none = true) {
 void Rules::save(SnapshotWriter& w) const {
   w.put_u32(n_);
   put_enum(w, umpire_);
-  put_enum(w, penalty_kind_);
 
   put_count(w, st_.size());
   for (const BoatState& s : st_) {
@@ -64,10 +63,6 @@ void Rules::save(SnapshotWriter& w) const {
     w.put_f32(s.t_extreme);
     w.put_bool(s.has_last_penalty);
     w.put_u32(s.last_penalty_tick);
-    w.put_bool(s.has_deadline_base);
-    w.put_u32(s.deadline_base);
-    w.put_u32(s.last_served_tick);
-    w.put_bool(s.has_served);
     w.put_bool(s.dsq_done);
     put_u8s(w, s.in_zone);
     put_u8s(w, s.stbd_since_zone);
@@ -234,7 +229,6 @@ bool Rules::load(SnapshotReader& r) {
 
   std::uint32_t n = r.get_u32();
   const UmpireMode umpire = get_enum(r, UmpireMode::protest);
-  const PenaltyKind penalty_kind = get_enum(r, PenaltyKind::two_turns);
 
   if (get_count(r, 1) != nb) return false;
   std::vector<BoatState> st = st_;
@@ -282,10 +276,6 @@ bool Rules::load(SnapshotReader& r) {
     s.t_extreme = r.get_f32();
     s.has_last_penalty = r.get_bool();
     s.last_penalty_tick = r.get_u32();
-    s.has_deadline_base = r.get_bool();
-    s.deadline_base = r.get_u32();
-    s.last_served_tick = r.get_u32();
-    s.has_served = r.get_bool();
     s.dsq_done = r.get_bool();
     get_u8s(r, s.in_zone);
     get_u8s(r, s.stbd_since_zone);
@@ -475,7 +465,7 @@ bool Rules::load(SnapshotReader& r) {
   const std::uint32_t nd = get_count(r, 5);
   for (std::uint32_t k = 0; k < nd && !r.failed(); ++k) {
     const std::int32_t boat = r.get_i32();
-    const DsqReason why = get_enum(r, DsqReason::boundary);
+    const DsqReason why = get_enum(r, DsqReason::late);
     if (!boat_ok(boat, nb, false)) r.fail();
     dsq.emplace_back(boat, why);
   }
@@ -483,7 +473,6 @@ bool Rules::load(SnapshotReader& r) {
   if (r.failed()) return false;
   n_ = n;
   umpire_ = umpire;
-  penalty_kind_ = penalty_kind;
   st_ = std::move(st);
   rec_ = std::move(rec);
   pairs_ = std::move(pairs);

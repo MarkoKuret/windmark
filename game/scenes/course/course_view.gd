@@ -24,8 +24,6 @@ const WIND_TAU := 10.0
 const MARKER_DIST := 500.0
 # the HUD's colour tokens (hud.md §16.2): paper, port, stbd, mark; the finish line stays blue (its flag)
 const COL_WHITE := HudStyle.PAPER
-const COL_RED := HudStyle.PORT
-const COL_GREEN := HudStyle.STBD
 const COL_YELLOW := HudStyle.MARK
 const COL_BLUE := Color(0.35, 0.6, 1.0)
 
@@ -455,7 +453,7 @@ func _update_overlays(pose: SimSource.RenderPose) -> void:
 	elif state >= RACE_RACING and state < RACE_CLOSED and not started:
 		start_line_state = "green"
 	if start_line_state != "hidden":
-		var col: Color = {"white": COL_WHITE, "red": COL_RED, "green": COL_GREEN}[start_line_state]
+		var col: Color = {"white": COL_WHITE, "red": HudStyle.PORT, "green": HudStyle.STBD}[start_line_state]
 		lines.append({"a": ends[0], "b": ends[1], "color": col, "width": 0.35, "kind": "start"})
 	var k := next_step()
 	var n_steps: int = course["steps"].size()
@@ -469,14 +467,17 @@ func _update_overlays(pose: SimSource.RenderPose) -> void:
 				lines.append({"a": pts[0], "b": pts[1], "color": COL_BLUE, "width": 0.35, "kind": "finish"})
 		if show_laylines:
 			for l in laylines:
-				lines.append({"a": l["a"], "b": l["b"], "color": COL_GREEN if l["tack"] > 0 else COL_RED,
+				lines.append({"a": l["a"], "b": l["b"], "color": HudStyle.STBD if l["tack"] > 0 else HudStyle.PORT,
 					"width": 0.22, "kind": "layline", "tack": l["tack"]})
-		if show_zone and int(st["kind"]) != STEP_FINISH:
+		if show_zone:
+			# rules.md §7.1: the zone from the mark (its radius added), 2 L in a match race; finishing ends too
 			var c := Vector2(pose.pos_x, pose.pos_y)
+			var zl := float(course.get("zone_lengths", 3.0))
 			for i in pts.size():
 				var mi: int = st["marks"][i]
+				var zr := float(course["marks"][mi].get("zone_r", 0.0))
 				if c.distance_to(pts[i]) <= 6.0 * _loa:
-					circles.append({"c": pts[i], "r": 3.0 * _loa, "color": COL_YELLOW, "width": 0.25, "mark": mi})
+					circles.append({"c": pts[i], "r": zl * _loa + zr, "color": COL_YELLOW, "width": 0.25, "mark": mi})
 	if sea:
 		sea.set_overlay_lines(lines)
 		sea.set_overlay_circles(circles)

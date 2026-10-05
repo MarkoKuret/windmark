@@ -204,6 +204,8 @@ class PerfReader {
     const Value* ov = member(*cv, p, "outline", true, sink_);
     if (ov == nullptr || !data::read_points(*ov, p + ".outline", c.outline, sink_)) return false;
     if (!positive(*cv, p, "mass", c.mass) || !positive(*cv, p, "yaw_gyration", c.yaw_gyration)) return false;
+    c.sprit = 0.0f;  // optional (data_format.md §4.4)
+    if (cv->find("sprit") != nullptr && !ranged(*cv, p, "sprit", c.sprit, 0.0f, 20.0f)) return false;
     const std::size_t n = c.outline.size();
     if (n < 6 || n > 32) return fail(p + ".outline", "outline needs 6 to 32 vertices");
     for (std::size_t i = 0; i < n; ++i) {

@@ -241,7 +241,8 @@ Schematic:
 
 Defaults for the race settings of `race.md` §2 (the lobby may override). `time_limit` and `target_duration` in
 seconds; `target_duration` is the expected winner's time used for scaling (§6.3) and for the default time limit.
-`zone_lengths` is the mark zone radius in hull lengths (`rules.md` §7.1; RRS default 3).
+`zone_lengths` is the mark zone radius in hull lengths, measured from the mark (`rules.md` §7.1; RRS default 3). It
+applies to fleet races; a match race always uses 2 (Appendix C).
 
 ## 6. Laying a wind-relative course
 

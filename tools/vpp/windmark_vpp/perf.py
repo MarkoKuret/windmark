@@ -718,7 +718,9 @@ class Generator:
             "lwl": b.lwl,
             "bwl": b.bwl,
             "loa": b.loa,
-            "collision": {"outline": self._outline(), "mass": m, "yaw_gyration": 0.28 * b.loa},
+            "collision": {"outline": self._outline(), "mass": m, "yaw_gyration": 0.28 * b.loa,
+                          # rules.md §3.2: the sprit's reach counts for overlaps while a sail is tacked to it
+                          "sprit": b.bowsprit if any(s.type in ("spinnaker_asym", "code_zero") for s in b.sails) else 0.0},
             "wind_shadow": self._wind_shadow(),
         }
         # geometry from the boat generator's physics sidecar wins, copied as is

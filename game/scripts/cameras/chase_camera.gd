@@ -42,6 +42,9 @@ var fov_min := 25.0
 var fov_max := 75.0
 var zoom_is_fov := false
 
+## §2.1 breathing on; off (`--breathing=off`, the look panel) is the plain follow: a first-order heading lag of
+## tau_yaw, the target on the boat, no bank, to compare
+var breathing := true
 ## smoothed heading and heave (state, not parameters)
 var psi_c := 0.0
 var zt := 0.0
@@ -123,9 +126,12 @@ func update(t: CamTypes.Target, o: CamTypes.Options, dt: float) -> CamTypes.View
 	if not _started:
 		snap(t)
 	var ty := maxf(tau_yaw, 0.5) if o.reduced_motion else tau_yaw
-	_follow_heading(t.pose.psi, dt, ty)
 	zt += (t.pose.z - zt) * Frames.smooth_k(dt, 0.0 if o.follow_waves else tau_heave)
-	_breathe(t, o, dt)
+	if breathing:
+		_follow_heading(t.pose.psi, dt, ty)
+		_breathe(t, o, dt)
+	else:
+		_plain_follow(t, dt, ty)
 	var target := t.point(zt) + surge + lean
 	var v := CamTypes.View.new()
 	v.xform = frame(target, t, dt)
@@ -152,6 +158,19 @@ func _follow_heading(psi: float, dt: float, tau: float) -> void:
 	var e1 := (e + c * dt) * ex
 	psi_rate = (psi_rate - w * c * dt) * ex
 	psi_c = Frames.wrap_2pi(psi + e1)
+
+
+## The follow without breathing: the heading eased toward the boat's with one time constant, the target on the
+## boat. The breathing state is kept current so turning it back on starts from rest.
+func _plain_follow(t: CamTypes.Target, dt: float, tau: float) -> void:
+	psi_c = Frames.smooth_angle(psi_c, t.pose.psi, dt, tau)
+	psi_rate = 0.0
+	bank = 0.0
+	surge = Vector3.ZERO
+	lean = Vector3.ZERO
+	_vel_s = Vector3.ZERO
+	phi_s = t.pose.phi
+	_prev_pos = t.point(0.0)
 
 
 ## §2.1: bank with the camera's yaw rate, the target trailing speed changes and leaning with the heel; all off with

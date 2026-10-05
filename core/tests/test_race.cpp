@@ -543,7 +543,7 @@ TEST_CASE("race: closing and results") {
   CHECK(res[0].points == 1.0f);
   CHECK(res[1].boat == 1);
   CHECK(res[1].code == wm::ScoreCode::ZFP);
-  CHECK(res[1].points == 2.0f + 1.0f);  // place 2 + 20 % of 6 entries rounded (1)
+  CHECK(res[1].points == 2.0f + 1.4f);  // place 2 + 20 % of the DNF score (7 points), to the tenth
   CHECK(res[2].code == wm::ScoreCode::DNC);
   CHECK(res[2].boat == 4);
   CHECK(res[3].code == wm::ScoreCode::DNS);
@@ -626,4 +626,42 @@ TEST_CASE("race: general recall escalates the flag and moves the gun") {
   rig.run_to(static_cast<std::uint32_t>(rig.race.n_gun()) + 1);
   CHECK(rig.race.state() == wm::RaceState::racing);
   CHECK(rig.count(RaceEventKind::signal) >= 9);
+}
+
+TEST_CASE("race: a Z-flag identification stands after a general recall (rule 30.2)") {
+  const std::string json = gate_course();
+  wm::RaceSettings s = quick_settings(wm::PrepFlag::Z);
+  s.general_recall = true;
+  Rig rig(course_from(json), s, 5);
+  for (std::size_t i = 0; i < 5; ++i) rig.set(i, {-60.0f + 30.0f * static_cast<float>(i), -20.0f}, 0.0f);
+  rig.run_to(rig.gun() - 400);
+  rig.set(4, {0.0f, 20.0f}, 0.0f);  // boat 4 in the start triangle in the last minute
+  rig.step();
+  REQUIRE(rig.race.boat(4).z_flag);
+  rig.set(4, {60.0f, -20.0f}, 0.0f);
+  rig.run_to(rig.gun());
+  for (std::size_t i = 0; i < 3; ++i) rig.set(i, {-60.0f + 30.0f * static_cast<float>(i), 1.0f}, 0.0f);
+  rig.step();
+  REQUIRE(rig.race.general_recalls() == 1);
+  CHECK(rig.race.prep_flag() == wm::PrepFlag::U);
+  CHECK(rig.race.boat(4).z_flag);
+}
+
+TEST_CASE("race: no boat finished within the time limit: the race is abandoned (rule 35)") {
+  const std::string json = gate_course();
+  wm::RaceSettings s = quick_settings(wm::PrepFlag::P);
+  s.time_limit_s = 60.0f;
+  Rig rig(course_from(json), s, 2);
+  for (std::size_t i = 0; i < 2; ++i) rig.set(i, {-20.0f + 40.0f * static_cast<float>(i), -20.0f}, 0.0f);
+  rig.run_to(rig.gun() + 1);
+  for (int k = 1; k <= 120; ++k) {
+    for (std::size_t i = 0; i < 2; ++i) rig.set(i, {-20.0f + 40.0f * static_cast<float>(i), -20.0f + 0.25f * static_cast<float>(k)}, 0.0f);
+    rig.step();
+  }
+  REQUIRE(rig.race.boat(0).started);
+  rig.run_to(rig.gun() + 61 * 20);
+  CHECK(rig.race.state() == wm::RaceState::abandoned);
+  CHECK(rig.count(RaceEventKind::abandoned) == 1);
+  CHECK(rig.count(RaceEventKind::race_closed) == 0);
+  CHECK(rig.race.results().empty());
 }

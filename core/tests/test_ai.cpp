@@ -476,3 +476,34 @@ TEST_CASE("ai scenario: out of a boat's shadow by footing when a boat on the oth
   CHECK(!tacked_early);
   CHECK(sc.penalties(0) == 0);
 }
+
+TEST_CASE("ai scenario: a fleet-race penalty is taken in the zone, without sailing clear of it first (ai.md §7.6)") {
+  // Boat 0 (AI) touches the windward mark on her way to it: rule 31. A turn counts anywhere in a fleet race, so she
+  // turns where she is, inside the zone, and serves the penalty well within the 120 s.
+  Scenario sc({true, false});
+  const wm::ResolvedCourse& co = sc.w->course();
+  const wm::Vec2 M = co.marks[static_cast<std::size_t>(co.steps[1].marks[0])].pos;
+  const float stbd = sc.close_hauled(1.0f);
+  sc.place(1, sc.beat_point(20.0f, -300.0f), stbd);  // the scripted boat far away
+  sc.place(0, wm::v_sub(M, wm::v_scale(wm::dir(stbd), 3.0f)), stbd);
+  const float L = sc.w->race().boat(0).L;
+  const float Z = sc.w->race().zone_lengths() * L;
+  bool penalised = false, turned_in_zone = false;
+  float t_served = -1.0f, t = 0.0f;
+  sc.run(60.0f, [&]() {
+    t += wm::DT;
+    const wm::BoatRules& br = sc.w->rules().boat(0);
+    if (br.received > 0) penalised = true;
+    // The skipper's own penalty turn (not a rounding the tracker counts as part of one), inside the zone.
+    if (sc.ai.debug(0).tactic == wm::AiTactic::PenaltyTurn && wm::v_dist(sc.w->race().boat(0).c, M) < Z) {
+      turned_in_zone = true;
+    }
+    if (t_served < 0.0f && br.served > 0) t_served = t;
+  });
+  MESSAGE("penalty in the zone: served after ", t_served, " s");
+  REQUIRE(penalised);
+  CHECK(turned_in_zone);
+  CHECK(t_served > 0.0f);
+  CHECK(t_served < 45.0f);
+  CHECK(!sc.w->rules().boat(0).dsq);
+}

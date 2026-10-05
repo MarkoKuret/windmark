@@ -866,7 +866,8 @@ func _penalties(sim: SimSource, b: int, rb: Dictionary, s: SimSource.BoatState) 
 	if _turn_prev > 20.0 and turn_deg < 1.0:
 		_reset_ticks = RESET_TICKS
 	_turn_prev = turn_deg
-	var in_zone := _in_zone(rb, s)
+	# a fleet-race turn counts anywhere; only a match race keeps it out of the zones (rules.md §9.3)
+	var in_zone := int(sim.race().get("race_type", 0)) == RaceText.RACE_MATCH and _in_zone(rb, s)
 	if turning and in_zone:
 		turn_text = "Not counted: inside the zone"
 	elif turn_deg >= 1.0:
@@ -874,20 +875,25 @@ func _penalties(sim: SimSource, b: int, rb: Dictionary, s: SimSource.BoatState) 
 	elif _reset_ticks > 0:
 		turn_text = "Turn reset: inside the zone" if in_zone else "Turn reset: keep turning one way"
 	elif pending > 0:
-		turn_text = "Sail clear and turn: one tack and one gybe" if cnt == 1 else "Sail clear and turn twice"
+		turn_text = "Sail clear and turn: one tack and one gybe"
 	else:
 		turn_text = ""
 
 
-## rules.md §9.3 the hull in the zone of the mark she is heading for or the one she last rounded
+## rules.md §9.3 (match races) the hull in the zone of the mark she is heading for or the one she last rounded; the
+## zone measured from the mark (§7.1)
 func _in_zone(rb: Dictionary, s: SimSource.BoatState) -> bool:
 	var c := Vector2(s.pos_x, s.pos_y)
 	var steps: Array = _course["steps"]
+	var zl := float(_course.get("zone_lengths", 3.0))
 	for k in [int(rb.get("next", 0)), int(rb.get("last_rounded", -1))]:
 		if k <= 0 or k >= steps.size() or int(steps[k]["kind"]) == RaceText.Step.FINISH:
 			continue
-		for p in step_points(k):
-			if c.distance_to(p) < 3.0 * _loa + 0.5 * _loa:
+		var pts := step_points(k)
+		var ms: PackedInt32Array = steps[k]["marks"]
+		for i in pts.size():
+			var zr := float(_course["marks"][ms[i]].get("zone_r", 0.0)) if ms[i] >= 0 else 0.0
+			if c.distance_to(pts[i]) < zl * _loa + zr + 0.5 * _loa:
 				return true
 	return false
 
@@ -1029,9 +1035,9 @@ func _events(sim: SimSource, b: int) -> void:
 				if eb == b:
 					_banner("Penalties offset: one each cancelled", Tint.GREEN, BANNER_SERVED)
 			RaceText.Rev.PENALTY_LATE:
+				# rules.md §9.4: no banner of its own, the disqualification that follows says why
 				if eb == b:
 					_last_penalty_tick = _tick
-					_banner("Penalty not taken in time: +1 turn", Tint.RED, BANNER_PENALTY)
 			RaceText.Rev.PROTESTABLE:
 				if eo == b:
 					protest_culprit = eb
@@ -1042,7 +1048,11 @@ func _events(sim: SimSource, b: int) -> void:
 				if eo == b or eb == b:
 					protest_ticks = 0
 			RaceText.Rev.DISQUALIFIED:
-				var why := "outside the race area" if rule == RaceText.Rule.SI_BOUNDARY else "too many penalties"
+				var why := "too many penalties"
+				if rule == RaceText.Rule.SI_BOUNDARY:
+					why = "outside the race area"
+				elif rule == RaceText.Rule.LATE:
+					why = "penalty not taken within 2 minutes"
 				if eb == b:
 					_banner("DISQUALIFIED: %s" % why, Tint.RED, BANNER_DSQ, true)
 				else:

@@ -152,8 +152,10 @@ For the next step (`race.md` §5):
 | Leg | Beat / Run / Reach |
 | ETA | beat or run: axis distance `D` of the leg (`race.md` §8.2) / VMG; reach: distance / VMC; `--:--` when the divisor is below 0.3 kn |
 
-In the 3-D view: an arrow on the mark on the rounding side, the zone circle (the viewed boat's `3·L`, `rules.md` §7.1)
-drawn on the water when she is within `6·L`, and a bouncing marker over the next mark when it is more than 500 m away.
+In the 3-D view: an arrow on the mark on the rounding side, the zone circle (radius `zone_lengths·L` of the viewed
+boat plus the mark's radius, measured from the mark: `3·L` in a fleet race unless the course says otherwise, `2·L`
+in a match race, `rules.md` §7.1; drawn at the finishing line's ends too on the last leg) drawn on the water when she
+is within `6·L`, and a bouncing marker over the next mark when it is more than 500 m away.
 The mark tag (§16.4) carries the name, distance, ETA and bearing on the mark itself; the distance to the layline is
 shown at the tack point on the water (the point along the current COG where she meets the other tack's layline).
 
@@ -251,10 +253,12 @@ From the pair records of the viewed boat (`rules.md` §11.1), highest-priority f
 Visible while the boat has pending penalties, is taking one, or was penalised in the last 5 s:
 
 - **Pending count** and the current one's rule text (§12.3) and the other boat's name.
-- **Turn progress**: a ring filling with the tracker's `|Θ|` (`rules.md` §9.3) to 360° (or 720°), with a tack tick and a
-  gybe tick that light when done; state text: `Turn: 210°`, `Not counted: inside the zone`, `Turn reset: paused`.
-- **Deadline**: `rules.md` §9.4 countdown `0:32`, red below 10 s; hidden when there is no deadline (match race single
-  penalty).
+- **Turn progress**: a ring filling with the tracker's `|Θ|` (`rules.md` §9.3) to 360° (every penalty is one turn),
+  with a tack tick and a gybe tick that light when done; state text: `Turn: 210°`, `Turn reset: paused`, and in a
+  match race only `Not counted: inside the zone` (a fleet-race turn counts anywhere). With nothing turning yet:
+  `Sail clear and turn: one tack and one gybe`.
+- **Deadline**: `rules.md` §9.4 countdown `1:32` to the time the turn must be **completed** (120 s after the
+  incident), red below 30 s (a turn takes 10 to 25 s); hidden when there is no deadline (match race single penalty).
 - **Disqualification warning**: `One more penalty = disqualification` when pending = `dsq_pending − 1` or
   received = `dsq_total − 1`.
 - **Finish blocked**: `Take your penalty before finishing` on a `FinishBlocked` event.
@@ -266,7 +270,8 @@ Visible while the boat has pending penalties, is taking one, or was penalised in
 
 On a `Penalty` event for the viewed boat: a 4 s banner `PENALTY: <rule text> (<other boat>)` and a sound; for other
 boats, a fleet feed line `<boat> penalised, rule 10 (<other>)`. `PenaltyServed`: `Penalty done` banner 2 s.
-`PenaltyLate`: `Penalty not taken in time: +1 turn`. `Disqualified`: full-width banner with the reason.
+`PenaltyLate`: no banner of its own; the `Disqualified` event that follows it shows the full-width banner with the
+reason, `DISQUALIFIED: penalty not taken within 2 minutes`.
 
 ### 12.3 Rule texts
 
@@ -286,17 +291,19 @@ boats, a fleet feed line `<boat> penalised, rule 10 (<other>)`. `PenaltyServed`:
 | 18.4 | Gybe at the mark, don't sail wide |
 | 19 | Give room at the obstruction |
 | 20 | Room to tack at an obstruction |
-| 22.1 | Returning starter keeps clear |
-| 22.2 | Boat taking a penalty keeps clear |
+| 21.1 | Returning starter keeps clear |
+| 21.2 | Boat taking a penalty keeps clear |
 | 31 | Touched a mark |
-| 44.1-late | Penalty not taken in time |
+| 44.2-late | Penalty not taken within 2 minutes |
+
 | C-prep | Not outside the line at the preparatory signal |
 | C-entry | Did not enter through the line in time |
 | SI-boundary | Outside the race area |
 | 29.1 / 30.1 / 30.2 / 30.3 / 30.4 | Over early (P / I / Z / U / black flag) |
 
-The in-game rules help explains each rule at length in our own words, with a diagram, and lists Windmark's
-simplifications (`rules.md` §7.8–§7.10).
+The in-game rules help explains each rule at length in our own words, with a diagram, and lists Windmark's two
+penalty departures from the rules (one 360° turn, completed within 120 s, `rules.md` intro) and what the automatic
+umpire does not judge (`rules.md` §15). Rule numbers are those of the 2025-2028 rules.
 
 ## 13. Event feed and results
 
@@ -398,6 +405,34 @@ strip and, under manual trim, the trim gauges show at every level.
 These are the colours of §6, §8 and §11 (red = `port`, green = `stbd`, orange = `owe`, cyan = `have`, white =
 `paper`, yellow = `mark`). Colour is never the only signal: each coloured state also has a word or a letter.
 
+#### 16.2.1 Colour-blind palettes
+
+The settings' colour palette (`controls.md` §6, `menus.md` §3) swaps the four rules colours; `ink`, `paper`,
+`mist`, `hair`, `mark` and `ghost` never change, and neither do the words and letters that go with every colour.
+
+| Palette | `stbd` | `port` | `owe` | `have` |
+| --- | --- | --- | --- | --- |
+| Standard (default) | `#27D17C` | `#FF4438` | `#FF8A1F` | `#2FD8EE` |
+| Deuteranopia | `#4D8EFF` | `#FF7A66` | `#FF4D9F` | `#19E0FF` |
+| Protanopia | `#33CCFF` | `#FF974D` | `#FF338D` | `#A480FF` |
+| Tritanopia | `#80FF81` | `#FF667C` | `#E64DFF` | `#4D94FF` |
+
+How they were chosen: the six colours that must tell apart (`paper`, `mark` and the four rules colours) were run
+through the full-severity colour vision deficiency simulation of Machado, Oliveira and Fernandes (2009) and compared
+in CIELAB. With the standard palette the closest pair is 15 ΔE apart for deuteranopia (`mark` and `owe`), 21 for
+protanopia and 11 for tritanopia (`stbd` and `have`); each palette raises its own deficiency's closest pair to 32,
+33 and 30, keeps at least 39 ΔE between any two for normal vision, and keeps every colour at 5.5:1 or more against
+`ink`. For the red-green palettes starboard turns blue and port a warm orange-red; tritanopia keeps a green and a
+red. The palette applies to the HUD, the radar and the course drawn on the water (laylines, the start line's
+colours).
+
+#### 16.2.2 UI scale
+
+The settings' **UI scale** (`menus.md` §3) is 80 % to 130 % in 5 % steps, default 100 %: the root window's
+content scale, so the HUD and the menus grow and shrink together (the 3D view is not affected; its resolution is
+the render scale). The HUD's design px follow the logical size after it (§16.5, `hud_direction.md` §5), so every
+text fits its block at every step (§15); 11 px stays the floor for any text.
+
 ### 16.3 Instrument pages
 
 The instrument values of a corner sit on one page: ink glass from 14 % at the top to 44 % at the bottom, a hairline
@@ -470,8 +505,8 @@ x0.5`, `Slow motion x0.25` or `Normal speed`. It is the only capture feedback; t
 
 ## 17. Frame-time overlay (development)
 
-A measuring tool, not part of the race HUD: a small panel top left over everything, toggled with F9
-(`controls.md` §3 notes) or shown from the start with `--perf`, and a per-second CSV log (`--perf-log=PATH`) so a
+A measuring tool, not part of the race HUD: a small panel top left over everything, toggled with Shift+F9
+(`controls.md` §3 notes) or the look panel's row (§18), or shown from the start with `--perf`, and a per-second CSV log (`--perf-log=PATH`) so a
 windowed run can be measured without reading the screen. It measures only while shown or logging. Off by default,
 and not saved.
 
@@ -489,3 +524,44 @@ and not saved.
 - **Log**: a header line, then one line per second of the means over that second (the frame time's maximum
   too, and the 1 % worst over the last 5 s); `--perf-seconds=N` quits after N seconds. The GPU times are 0 where the
   driver does not measure (headless).
+
+## 18. Look panel (development)
+
+A developer tool for judging the picture in one session instead of restarting with flags: F9 in the race and free
+sail scene opens a side column on the right, under the top margin, over the HUD and under the pause menu (and the
+frame-time overlay). Not part of the player's settings, nothing saved; available in every build for now. Every row
+changes the look live through the same function as its startup flag (`DevLook`), so the flags and the panel stay
+the same:
+
+| Row | Values | Flag | Applies |
+| --- | --- | --- | --- |
+| Anti-aliasing | Off, FXAA, SMAA | `--aa=` | live (root viewport) |
+| Grade and vignette | On, Off | `--look=` | live; off also drops SSAO and depth of field |
+| SSAO | Tier, Off, On | `--ssao=on\|off\|tier` | live (environment) |
+| Clip camera DOF | On, Off | `--dof=` | live (long lens and mark shots, tiers M and H) |
+| Light | Clear, Fair, Hazy, Late | `--sky=` | live (sky rig and its grade) |
+| Quality tier | L, M, H | `--quality=` | live: sea grid and water shader, wakes, drawn shadows, sun shadows, glow, SSAO, reflections; a short hitch while the shaders compile |
+| Haze | x0.0 to x1.5 of the preset's haze, step 0.1 | `--haze=` | live; kept when the preset changes |
+| Reset haze | action | | back to x1.0 |
+| Whitecaps | On, Off | `--caps=` | live |
+| Drawn wind (sea) | Sim, 8 to 25 kn | `--drawn-wind=` | live: the wind the water draws (whitecaps, puffs); waves and boats keep the world's |
+| Wind for restart | 4 to 30 kn | `--wind=` | the value for the next row |
+| Restart with wind | action | | restart only: the core takes its wind when the world is made, so the race or free sail starts again with that wind, every other setting kept (a rules scenario keeps its file's wind) |
+| Chase breathing | On, Off | `--breathing=` | live: off is the plain follow (one heading lag, no bank, trail or lean) |
+| Drawn boat shadows | On, Off | `--no-drawn-shadows` | live (tiers L and M) |
+| Boat sun shadows | On, Off | `--no-boat-shadows` | live |
+| Render scale | Setting, 50, 67, 75, 85, 100 % | `--render-scale=` | live (root viewport) |
+| Frame-time overlay | On, Off | `--perf` | live (§17) |
+
+A readout line under the title shows the frame rate, the mean frame time over the last 0.25 s, the tier and the
+3D scale. The selected row's line at the bottom says how it applies.
+
+- **Keys** while the panel has the focus: Up and Down pick a row, Left and Right change it, Enter or Space toggles a
+  row or runs an action, Esc gives the keys back to the boat (the panel stays up), F9 closes it. F9 on an open
+  panel without the focus takes the focus again. **Mouse**: a click on a row steps it forward (or runs it), a right
+  click steps back, the wheel either way; a click on the panel takes the focus, a click outside gives it back.
+- **Input**: while the panel has the focus (and in the frame that gave it back, so that Esc does not also open the
+  pause menu) the scene hands the boat, the cameras and the scene keys no buttons, as the chat line does
+  (`controls.md` §7); the simulation keeps running. With the pause menu or the chat open the panel takes no input.
+- **Look**: HUD fonts and colours (`HudStyle`), an ink panel at 86 %, names in mist, values in paper, the selected
+  row in the mark colour; scaled like the HUD.

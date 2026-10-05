@@ -9,10 +9,6 @@ const DEFAULT_PATH := "user://settings.cfg"
 
 ## Stored but not used by the game yet (nothing reads them): kept here so the list stays honest.
 const NOT_APPLIED := [
-	"controls.rankings_toggle",  # the rankings list comes with the race HUD
-	"controls.camera_boost_toggle",  # the free camera boost is hold only
-	"controls.vibration",  # no rumble yet
-	"hud.palette",  # the HUD has one palette
 	"hud.captions",  # the audio has no caption lines yet (audio.md §8)
 ]
 
@@ -57,6 +53,8 @@ var quality := SeaQuality.Tier.M
 ## the 3D view's share of the window's pixels in each direction (menus.md §3): 0 = Auto, else one of RENDER_SCALES
 var render_scale := 0.0
 var fullscreen := false
+## the window mode was set this run (apply_display): after that only a display or capture change sets it
+var _mode_set := false
 var vsync := true
 ## frames per second, 0 = no limit
 var fps_limit := 0
@@ -72,8 +70,13 @@ var voice_volume := 1.0
 var ambience_volume := 1.0
 var interface_volume := 1.0
 
-## the last session chosen in the main menu (menus.md §1), GameSetup fields
+## the last session chosen in the main menu (menus.md §1), GameSetup fields and its `mode` (Continue)
 var last_setup := {}
+## the first-launch screen has been shown (menus.md §1)
+var welcomed := false
+
+## the player's bindings that differ from the defaults (menus.md §3 Rebinding): action -> slots (Bindings)
+var bindings := {}
 
 ## key -> [section, field]; the file layout
 const FIELDS := {
@@ -85,7 +88,8 @@ const FIELDS := {
 	"graphics": ["quality", "render_scale", "fullscreen", "vsync", "fps_limit"],
 	"audio": ["master_volume", "effects_volume", "signals_volume", "voice_volume", "ambience_volume",
 		"interface_volume"],
-	"menu": ["last_setup"],
+	"menu": ["last_setup", "welcomed"],
+	"bindings": ["bindings"],
 }
 
 ## the render scale choices (menus.md §3); 0 is Auto
@@ -242,6 +246,7 @@ func apply_controls(pc: PlayerControls) -> void:
 	pc.let_fly_toggle = let_fly_toggle
 	pc.helm_fine_toggle = helm_fine_toggle
 	pc.sheet_turns_auto_trim_off = sheet_turns_auto_trim_off
+	pc.rumble.strength = vibration
 
 
 func apply_cameras(rig: CameraRig) -> void:
@@ -253,13 +258,17 @@ func apply_cameras(rig: CameraRig) -> void:
 	o.invert_look_y = invert_look_y
 	o.smooth_switch = smooth_switch
 	o.reduced_motion = reduced_motion
+	o.boost_toggle = camera_boost_toggle
 	rig.onboard.heel_follow = heel_follow
 
 
-## The assist preset and the instrument density; the density key's choice is stored here and saved at once
-## (kept per device: the settings file is the device's).
+## The assist preset, the rankings hold or toggle, the colour-blind palette (hud.md §16.2.1) and the instrument
+## density; the density key's choice is stored here and saved at once (kept per device: the settings file is the
+## device's).
 func apply_hud(hud: Hud) -> void:
 	hud.assist = assist
+	hud.rankings_toggle = rankings_toggle
+	HudStyle.set_palette(palette)
 	hud.density_auto = hud_density < 0
 	if hud_density >= 0:
 		hud.density = hud_density as Hud.Density
@@ -280,8 +289,10 @@ func apply_sea(sea: Sea, sky: SkyRig = null) -> void:
 		SeaQuality.apply_environment(sky.environment(), q)
 
 
-## Display mode, vsync, frame rate limit, UI scale (the root window's content scale) and render scale.
-func apply_display(win: Window) -> void:
+## Display mode, vsync, frame rate limit, UI scale (the root window's content scale) and render scale. The window
+## mode is the player's (menus.md §3): it is set at the first call (the game's start) and when `set_mode` is true (the
+## display or capture setting changed), never on a scene change.
+func apply_display(win: Window, set_mode := false) -> void:
 	Engine.max_fps = fps_limit
 	if win == null:
 		return
@@ -289,10 +300,12 @@ func apply_display(win: Window) -> void:
 	apply_render_scale(win)
 	if DisplayServer.get_name() == "headless":
 		return
-	var want := Window.MODE_FULLSCREEN if fullscreen and capture_preset == "off" else Window.MODE_WINDOWED
-	if win.mode != want:
-		win.mode = want
-	apply_capture(win)
+	if set_mode or not _mode_set:
+		_mode_set = true
+		var want := Window.MODE_FULLSCREEN if fullscreen and capture_preset == "off" else Window.MODE_WINDOWED
+		if win.mode != want:
+			win.mode = want
+		apply_capture(win)
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if (vsync if vsync_override < 0 else vsync_override == 1)
 		else DisplayServer.VSYNC_DISABLED)
 
@@ -425,7 +438,25 @@ func apply_render_scale(win: Window) -> void:
 
 static func _window_resized() -> void:
 	if is_instance_valid(_resize_hooked):
-		Settings.current().apply_render_scale(_resize_hooked)
+		var s := Settings.current()
+		s.apply_render_scale(_resize_hooked)
+		s.sync_window_mode(_resize_hooked)
+
+
+## The player entered or left fullscreen through the system (the window's green button, a shortcut): that is the
+## new display setting, saved at once, so the game never puts the old mode back (menus.md §3).
+func sync_window_mode(win: Window) -> void:
+	if not _mode_set or capture_preset != "off" or DisplayServer.get_name() == "headless":
+		return
+	var fs := win.mode in [Window.MODE_FULLSCREEN, Window.MODE_EXCLUSIVE_FULLSCREEN]
+	if fs != fullscreen:
+		fullscreen = fs
+		save_file()
+
+
+## The bindings on the input map: the defaults of controls.md §3, the player's over them (menus.md §3).
+func apply_bindings() -> void:
+	Bindings.apply(bindings)
 
 
 ## Volumes on the buses of audio.md §1.1 (made here when missing, AudioBuses).
@@ -465,3 +496,4 @@ func apply_to_scene(scene: Node) -> void:
 	if scene.is_inside_tree():
 		apply_display(scene.get_tree().root)
 	apply_audio()
+	apply_bindings()

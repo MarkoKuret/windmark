@@ -6,3 +6,4 @@ generated/
 native/third_party/
 native/build/
 bin/
+build.txt

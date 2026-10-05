@@ -4,8 +4,10 @@ extends RefCounted
 ## (§9.2), rules awareness (§11) and score codes. No em dashes in any of them.
 
 ## rules.md §11.3 rule codes (WM_RULE_*), in the C API's order
-enum Rule { NONE, R10, R11, R12, R13, R14, R15, R16_1, R16_2, R17, R18_2, R18_3, R18_4, R19, R20, R22_1, R22_2,
+enum Rule { NONE, R10, R11, R12, R13, R14, R15, R16_1, R16_2, R17, R18_2, R18_3, R18_4, R19, R20, R21_1, R21_2,
 	R31, LATE, C_PREP, C_ENTRY, SI_BOUNDARY }
+## race.md §0 race types (WM_RACE_*)
+const RACE_MATCH := 1
 ## race.md §3.3 prep flags (WM_FLAG_*)
 enum Flag { P, I, Z, U, BLACK }
 ## race.md §3.1 (WM_RACE_*)
@@ -44,10 +46,10 @@ const RULE_TEXT := {
 	"18.4": "Gybe at the mark, don't sail wide",
 	"19": "Give room at the obstruction",
 	"20": "Room to tack at an obstruction",
-	"22.1": "Returning starter keeps clear",
-	"22.2": "Boat taking a penalty keeps clear",
+	"21.1": "Returning starter keeps clear",
+	"21.2": "Boat taking a penalty keeps clear",
 	"31": "Touched a mark",
-	"44.1-late": "Penalty not taken in time",
+	"44.2-late": "Penalty not taken within 2 minutes",
 	"C-prep": "Not outside the line at the preparatory signal",
 	"C-entry": "Did not enter through the line in time",
 	"SI-boundary": "Outside the race area",
@@ -59,7 +61,7 @@ const RULE_TEXT := {
 }
 ## code names in Rule order (wm_rule_code_name)
 const RULE_CODES := ["", "10", "11", "12", "13", "14", "15", "16.1", "16.2", "17", "18.2", "18.3", "18.4", "19",
-	"20", "22.1", "22.2", "31", "44.1-late", "C-prep", "C-entry", "SI-boundary"]
+	"20", "21.1", "21.2", "31", "44.2-late", "C-prep", "C-entry", "SI-boundary"]
 const FLAG_NAME := ["P", "I", "Z", "U", "Black"]
 ## the RRS rule of each prep flag (race.md §3.3)
 const FLAG_RULE := ["29.1", "30.1", "30.2", "30.3", "30.4"]

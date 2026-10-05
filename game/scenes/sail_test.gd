@@ -121,7 +121,7 @@ var target := CamTypes.Target.new()
 var viewed := 0
 ## tests: when set, used instead of the devices every frame
 var scripted_input: RawInput = null
-## the frame-time overlay and log (hud.md §17, PerfMonitor): F9 shows it; --perf shows it from the start,
+## the frame-time overlay and log (hud.md §17, PerfMonitor): Shift+F9 shows it; --perf shows it from the start,
 ## --perf-log=PATH writes the per-second CSV, --perf-seconds=N quits after N seconds
 var perf: PerfMonitor
 var perf_overlay := false
@@ -129,6 +129,12 @@ var perf_log := ""
 var perf_seconds := 0.0
 ## µs spent in the tick callbacks' HUD, audio and course parts this frame (taken out of `sim`)
 var _tick_usec := 0
+## the developer look panel (hud.md §18, LookPanel): F9
+var look_panel: LookPanel
+## the chase camera breathes (cameras.md §2.1); `--breathing=off` and the look panel turn it off (DevLook)
+var chase_breathing := true
+## the scene is built: DevLook's setters apply at once from here on (before, the flags only store their values)
+var built := false
 
 ## controls.md §7 capture: clean pause, slow motion, world tags (CaptureMode)
 var capture := CaptureMode.new()
@@ -177,6 +183,7 @@ func _ready() -> void:
 	rig.name = "CameraRig"
 	add_child(rig)
 	rig.camera.current = true
+	rig.chase.breathing = chase_breathing
 	rig.clip_allowed = not online
 	capture.allowed = not online
 	sea.camera = rig.camera
@@ -220,11 +227,7 @@ func _ready() -> void:
 		Settings.current().apply_render_scale(get_tree().root)
 	if no_hud:
 		hud.toggle_hidden()
-	shadows.enabled = not no_drawn_shadows
-	if no_boat_shadows:
-		for v in boat_views:
-			for g in v.find_children("*", "GeometryInstance3D", true, false):
-				(g as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	DevLook.apply_built(self)  # the look flags (shadows, grade, breathing) on the built scene
 	if scenario_run != null:
 		view_boat(scenario_run.scenario.view)
 	perf = PerfMonitor.new()
@@ -234,6 +237,10 @@ func _ready() -> void:
 	perf.log_path = perf_log
 	perf.seconds = perf_seconds
 	add_child(perf)
+	look_panel = LookPanel.new()
+	look_panel.scene = self
+	add_child(look_panel)
+	built = true
 
 
 ## The pause menu (scenes/menu, menus.md §2): it follows the scene's pause key, holds the controls while open and
@@ -273,19 +280,24 @@ func _apply_setup() -> void:
 ## Command line after `--` (over GameSetup): `--race` (race mode on `course`; the fleet of GameSetup when no
 ## `--fleet`), `--free`, `--fleet=10`, `--level=expert` (easy, intermediate, expert, pro), `--speed-only`,
 ## `--watch` (an AI sails the player's boat too, spectating on), `--class=wm12`, `--venue=<id>`,
-## `--sky=clear|fair|hazy|late` (the light preset, SkyRig; fair by default), `--look=off` (no colour grade,
-## vignette, contact shading or depth of field, to compare), `--ssao=on|off` (contact shading over the tier),
+## the look flags of DevLook.apply_flag (the look panel's rows, hud.md §18): `--sky=clear|fair|hazy|late` (the
+## light preset, SkyRig; fair by default), `--look=off` (no colour grade, vignette, contact shading or depth of
+## field, to compare), `--ssao=on|off|tier` (contact shading over the tier), `--dof=off`, `--haze=<factor>`,
+## `--caps=off`, `--drawn-wind=<kn>`, `--breathing=off`, `--aa=off|fxaa|smaa`, `--quality=L|M|H`,
+## `--render-scale=0.67`, `--no-boat-shadows`, `--no-drawn-shadows`;
 ## `--course=<venue>/<id>` (race mode), `--seed=<n>` (0: from the clock), `--livery=<id>` (the player's livery),
 ## `--wind=<kn>`, `--wind-from=<deg>`,
 ## `--fake` (FakeSim), `--core`; measuring (hud.md §17): `--perf` (the frame-time overlay), `--perf-log=PATH`,
-## `--perf-seconds=N`, `--render-scale=0.67`, `--upscaler=fsr|bilinear|metalfx`, `--aa=off|fxaa|smaa`, `--quality=L|M|H`, `--no-vsync`,
-## `--shadow-splits=0|2|4`, `--shadow-atlas=N`, `--shadow-distance=M`, `--shadow-soft=0..5`, `--no-wake-buffer`, `--no-boat-shadows`,
-## `--no-drawn-shadows`, `--sea-grid=RINGSxSEGMENTS`, `--water-shader=l|m|h` and `--no-hud` (this run only, not saved);
+## `--perf-seconds=N`, `--upscaler=fsr|bilinear|metalfx`, `--no-vsync`,
+## `--shadow-splits=0|2|4`, `--shadow-atlas=N`, `--shadow-distance=M`, `--shadow-soft=0..5`, `--no-wake-buffer`,
+## `--sea-grid=RINGSxSEGMENTS`, `--water-shader=l|m|h` and `--no-hud` (this run only, not saved);
 ## `--scenario=<id>` (a rules scenario of game/data/scenarios, or a .scenario.json path; race.md §14).
 func _user_args() -> void:
 	var fleet_given := false
 	var race_flag := false
 	for a in OS.get_cmdline_user_args():
+		if DevLook.apply_flag(self, a):
+			continue
 		if a.begins_with("--class="):
 			class_id = a.trim_prefix("--class=")
 		elif a == "--race":
@@ -309,14 +321,6 @@ func _user_args() -> void:
 			watch = true
 		elif a.begins_with("--venue="):
 			venue = a.trim_prefix("--venue=")
-		elif a.begins_with("--sky="):
-			if not sky.set_preset_name(a.trim_prefix("--sky=").to_lower()):
-				push_warning("--sky: clear, fair, hazy or late")
-		elif a.begins_with("--look="):
-			LookFx.enabled = a.trim_prefix("--look=").to_lower() != "off"
-			LookFx.apply_grade(sky.environment(), sky.preset)
-		elif a.begins_with("--ssao="):
-			LookFx.ssao_override = 1 if a.trim_prefix("--ssao=").to_lower() == "on" else 0
 		elif a.begins_with("--livery="):
 			livery = a.trim_prefix("--livery=")
 		elif a.begins_with("--seed="):
@@ -335,15 +339,8 @@ func _user_args() -> void:
 			perf_log = a.trim_prefix("--perf-log=")
 		elif a.begins_with("--perf-seconds="):
 			perf_seconds = a.trim_prefix("--perf-seconds=").to_float()
-		elif a.begins_with("--render-scale="):
-			var v := a.trim_prefix("--render-scale=").to_float()
-			Settings.render_scale_override = v / 100.0 if v > 1.0 else v
 		elif a.begins_with("--upscaler="):
 			Settings.upscaler_override = a.trim_prefix("--upscaler=").to_lower()
-		elif a.begins_with("--aa="):
-			Settings.aa_override = a.trim_prefix("--aa=").to_lower()
-		elif a.begins_with("--quality="):
-			Settings.quality_override = "LMH".find(a.trim_prefix("--quality=").to_upper())
 		elif a == "--no-vsync":
 			Settings.vsync_override = 0
 		elif a.begins_with("--shadow-splits="):
@@ -362,10 +359,6 @@ func _user_args() -> void:
 			SeaQuality.overrides["shadow_soft"] = a.trim_prefix("--shadow-soft=").to_int()
 		elif a == "--no-wake-buffer":
 			SeaQuality.overrides["wake_buffer"] = false
-		elif a == "--no-boat-shadows":
-			no_boat_shadows = true
-		elif a == "--no-drawn-shadows":
-			no_drawn_shadows = true
 		elif a == "--no-hud":
 			no_hud = true
 		elif a.begins_with("--scenario="):
@@ -420,6 +413,8 @@ func _build_views() -> void:
 			add_child(v)
 			boat_views.append(v)
 		_paint_fleet()
+		if no_boat_shadows:
+			DevLook.set_boat_shadows(self, false)
 	boat_view = boat_views[runner.boat]
 
 
@@ -482,7 +477,7 @@ func _setup_core() -> int:
 	add_child(core_env)
 	sea.source = core_env
 	sea.set_sea(cs.sea_components(), cs.sea_exposure())
-	sea.quality = sea_quality
+	sea.quality = sea_quality if Settings.quality_override < 0 else Settings.quality_override as SeaQuality.Tier
 	sea.use_internal_clock = false
 	SeaQuality.apply_environment(sky.environment(), sea.quality)
 	return 0
@@ -541,11 +536,12 @@ func _build_course() -> void:
 
 
 ## controls.md §2 reset_boat: free sailing re-places the boat at its start point, sailing; race mode restarts
-## the race from the spawn. The cameras cut to the boat.
-func reset_boat() -> void:
+## the race from the spawn. `new_world` makes the core world again in free sailing too (a new wind). The cameras
+## cut to the boat.
+func reset_boat(new_world := false) -> void:
 	var b := runner.boat
 	capture.reset()
-	if on_core and race_mode:
+	if on_core and (race_mode or new_world):
 		var cs := _make_core()
 		if cs == null:
 			return
@@ -579,6 +575,23 @@ func reset_boat() -> void:
 	rig.retarget(target)
 
 
+## The look panel's restart with a wind (hud.md §18): this race or free sail again with the wind of `kn`, every
+## other setting kept. The core takes its wind when the world is made, so the world is made again (the sea's waves
+## follow the new wind); on FakeSim the sim's wind and the placeholder sea change. A rules scenario keeps the wind
+## of its file.
+func restart_with_wind(kn: float) -> void:
+	if scenario_run == null:
+		wind_speed_kn = kn
+	if not on_core:
+		var fs := sim as FakeSim
+		fs.wind_speed = wind_speed_kn * HudFormat.KNOT
+		if env_source.mode == SeaEnvSource.Mode.PLACEHOLDER:
+			env_source.wind_kn = wind_speed_kn
+			env_source.rebuild()
+			sea.set_sea(env_source.sea_components(), env_source.sea_exposure())
+	reset_boat(true)
+
+
 func _setup_fake() -> int:
 	var fs := FakeSim.new()
 	sim = fs
@@ -595,6 +608,7 @@ func _on_tick(_t: int) -> void:
 		runner.paused = true  # race.md §14: the clip ends paused; reset_boat runs it again
 	var t0 := Time.get_ticks_usec()
 	hud.tick(sim, viewed)
+	controls.rumble.tick(sim, runner.boat)
 	var t1 := Time.get_ticks_usec()
 	audio.tick()
 	var t2 := Time.get_ticks_usec()
@@ -629,7 +643,7 @@ func _setup_sea(fs: FakeSim) -> void:
 		fs.wind_speed = w["base_speed"]
 		fs.wind_from = w["base_from"]
 	sea.set_sea(env_source.sea_components(), env_source.sea_exposure())
-	sea.quality = sea_quality
+	sea.quality = sea_quality if Settings.quality_override < 0 else Settings.quality_override as SeaQuality.Tier
 	sea.use_internal_clock = false
 	SeaQuality.apply_environment(sky.environment(), sea.quality)
 	fs.use_sea(sea.model, t0)
@@ -660,10 +674,13 @@ func _notification(what: int) -> void:
 func step_frame(dt: float) -> void:
 	var t0 := Time.get_ticks_usec()
 	var raw := scripted_input if scripted_input != null else reader.read()
+	if look_panel != null and look_panel.blocks_input():
+		raw = raw.without_buttons()  # the look panel has the keys (hud.md §18); the sim keeps running
 	_ui_actions(raw)
 	hud.ui_input(raw, dt)
 	controls.free_camera = rig.mode == CameraRig.Mode.FREE
 	controls.update(raw, dt)
+	controls.rumble.frame(dt, controls.let_fly, racing and not runner.paused and viewed == runner.boat)
 	var t1 := Time.get_ticks_usec()
 	PerfStats.add(&"input", t1 - t0)
 	_tick_usec = 0

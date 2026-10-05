@@ -295,7 +295,7 @@ func test_race() -> void:
 			for l in cv.lines:
 				if l["kind"] == "layline":
 					cnt += 1
-					layline_ok = layline_ok and l["color"] == (CourseView.COL_GREEN if l["tack"] > 0 else CourseView.COL_RED)
+					layline_ok = layline_ok and l["color"] == (HudStyle.STBD if l["tack"] > 0 else HudStyle.PORT)
 			layline_ok = layline_ok and cnt == cv.laylines.size() and cv.lines.size() <= 8
 		if i % 100 == 0:
 			await process_frame

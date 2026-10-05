@@ -18,6 +18,7 @@ struct CollisionShape {
   std::vector<Vec2> outline;  // convex, counter-clockwise, body frame (x forward, y port)
   float mass = 0.0f;          // kg, sailing displacement with crew
   float yaw_gyration = 0.0f;  // m
+  float sprit = 0.0f;         // m, bowsprit reach ahead of the outline's bow when a sail is tacked to it (rules.md §3.2)
 };
 
 // wind_shadow.md §2, every key required.

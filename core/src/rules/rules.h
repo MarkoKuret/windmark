@@ -76,6 +76,7 @@ struct RulesBoatInput {
   float main_beta = 0.0f;
   float helm = 0.0f;            // actual helm h
   float let_fly_drive = 0.0f;   // trim_speed with the sails let fly (boat.md §9), for the slow-down escape (§3.6)
+  float sprit = 0.0f;           // bowsprit reach ahead of the bow point while in normal position, else 0 (§3.2)
   bool ai = false;              // protest mode: the AI protests on its own (rules.md §10)
 };
 

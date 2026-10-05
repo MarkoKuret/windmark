@@ -244,6 +244,15 @@ std::uint64_t World::step() {
       r.main_beta = beta;
       r.helm = s.h;
       r.let_fly_drive = b.let_fly_drive();
+      r.sprit = 0.0f;  // the bowsprit is in normal position while the sail tacked to it is set (rules.md §3.2)
+      if (const std::int32_t f = b.sails().front(); f >= 0) {
+        const SailType t = b.perf().sails[static_cast<std::size_t>(f)].type;
+        const SailPhase ph = b.sails().sail(static_cast<std::size_t>(f)).phase;
+        if ((t == SailType::spinnaker_asym || t == SailType::code_zero) &&
+            (ph == SailPhase::up || ph == SailPhase::prepare_drop)) {
+          r.sprit = b.perf().dynamics.collision.sprit;
+        }
+      }
       r.ai = entries_[i].ai;
     }
     rules_.pending_flags(pending_);

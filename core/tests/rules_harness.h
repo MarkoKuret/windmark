@@ -18,6 +18,7 @@ struct KBoat {
   float v = 3.0f;
   float r = 0.0f;  // heading rate, rad/s
   bool ai = false;
+  float sprit = 0.0f;  // bowsprit reach in normal position (rules.md §3.2)
 };
 
 // Start line y = 0 (x -100..100), windward mark w (0, 1000) to port, a leeward buoy l (0, 300) to port, finish
@@ -83,6 +84,7 @@ struct RulesRig {
       x.main_beta = rin[i].main_beta;
       x.helm = 0.0f;
       x.ai = b[i].ai;
+      x.sprit = b[i].sprit;
     }
   }
 

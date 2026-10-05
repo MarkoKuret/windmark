@@ -844,3 +844,24 @@ TEST_CASE("rules: 18.2(d), an outside boat unable to give mark-room from the sta
     CHECK(entitled == 0);
   }
 }
+
+TEST_CASE("rules: overlap measured with the bowsprit in normal position") {
+  // Two boats on starboard close-hauled, A (0) 0.8 m clear astern of B (1) by hull: her sprit (1.65 m, sail set)
+  // reaches past B's stern line and makes them overlapped.
+  auto relation = [](float sprit) {
+    RulesRig rig(2);
+    const float ps = heading_for(0.0f, kBeat);
+    const Vec2 f = wm::dir(ps), left{-f.y, f.x};
+    const Vec2 B0{50.0f, 300.0f};
+    const float gap = 3.745f + 3.455f + 0.8f;  // wm7 stern and bow from the reference point, plus 0.8 m
+    const Vec2 A0 = wm::v_add(wm::v_sub(B0, wm::v_scale(f, gap)), wm::v_scale(left, 4.0f));
+    rig.start_at({{A0, ps, 3.0f, 0.0f}, {B0, ps, 3.0f, 0.0f}});
+    rig.b[0].sprit = sprit;
+    rig.step();
+    const wm::PairRecord* r = rig.rules.pair(0, 1);
+    REQUIRE(r != nullptr);
+    return r->relation;
+  };
+  CHECK(relation(0.0f) == wm::Relation::i_astern);
+  CHECK(relation(1.65f) == wm::Relation::overlapped);
+}

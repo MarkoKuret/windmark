@@ -492,6 +492,9 @@ Relation Rules::direct_relation(std::size_t a, std::size_t b) const {
     b_min_b = min(b_min_b, v_dot(q, fb));
     b_max_a = max(b_max_a, v_dot(q, fa));
   }
+  // Equipment in normal position: the bowsprit tip, while a sail is tacked to it (§3.2).
+  if (in_[a].sprit > 0.0f) a_max_b = max(a_max_b, v_dot(v_add(st_[a].bow, v_scale(fa, in_[a].sprit)), fb));
+  if (in_[b].sprit > 0.0f) b_max_a = max(b_max_a, v_dot(v_add(st_[b].bow, v_scale(fb, in_[b].sprit)), fa));
   if (a_max_b < b_min_b) return Relation::i_astern;
   if (b_max_a < a_min_a) return Relation::i_ahead;
   return Relation::overlapped;

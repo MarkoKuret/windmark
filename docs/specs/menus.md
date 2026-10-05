@@ -91,7 +91,7 @@ menus' cloth, navy and accent, §4).
   scaled image) to fit the window's width inside the menu's margins, and beside the page it leaves the race card
   its two columns (760 px, §1.1) when that costs it at most 10 % (73 px at 1280 x 800 and 100 % UI scale). It fits
   1280 x 800 at 80 % to 130 % UI scale and the portrait capture window.
-- **App icon**: the owner's art, `game/branding/app_icon_1080.png` (1080 x 1080, a rounded square with a
+- **App icon**: the owner's art, `docs/branding/app_icon_1080.png` (outside `game/` so it does not ship; 1080 x 1080, a rounded square with a
   transparent outside), is the master. Made from it (`tools/branding/make_icons.py`): `app_icon_512.png` (the
   project icon, `application/config/icon`, and the window icon), `app_icon_256.png`, `app_icon.icns` (macOS:
   `application/config/macos_native_icon`, the dock icon) and `app_icon.ico` (Windows, 16, 32, 48, 64, 128 and

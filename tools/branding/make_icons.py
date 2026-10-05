@@ -3,7 +3,7 @@
 
     python3 tools/branding/make_icons.py
 
-Reads game/branding/app_icon_1080.png and writes next to it: app_icon_512.png, app_icon_256.png, app_icon.ico
+Reads docs/branding/app_icon_1080.png (kept out of the game so it does not ship) and writes to game/branding/: app_icon_512.png, app_icon_256.png, app_icon.ico
 (16, 32, 48, 64, 128, 256 px) and app_icon.icns (16 to 1024 px, with the 2x sizes). Needs Pillow.
 """
 import os
@@ -15,7 +15,7 @@ from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(os.path.dirname(os.path.dirname(HERE)), "game", "branding")
-MASTER = os.path.join(OUT, "app_icon_1080.png")
+MASTER = os.path.join(os.path.dirname(os.path.dirname(HERE)), "docs", "branding", "app_icon_1080.png")
 
 
 def sized(img, px):

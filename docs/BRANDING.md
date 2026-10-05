@@ -32,7 +32,7 @@ SemiBold and Bold for the rest of the menus and the HUD.
 
 ## App icon
 
-The owner's art: `game/branding/app_icon_1080.png` (1080 x 1080, a rounded square with a transparent outside) is
+The owner's art: `docs/branding/app_icon_1080.png` (outside `game/` so it does not ship; 1080 x 1080, a rounded square with a transparent outside) is
 the master. `python3 tools/branding/make_icons.py` makes the rest from it, in `game/branding/`:
 
 | File | Use |

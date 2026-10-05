@@ -138,9 +138,9 @@ RenderingDevice's device type (integrated, discrete, CPU; none on the Compatibil
 | adapter | examples | quality | render scale |
 | --- | --- | --- | --- |
 | Steam Deck (the `SteamDeck` environment variable Steam sets, or an AMD Custom GPU 0405 / 0932, VanGogh or Sephiroth) | | Low | Auto (native on its 1280 × 800 screen) |
-| Apple | Apple M1 to M5 | Medium | Auto |
+| Apple (Apple silicon: the adapter name says Apple) | Apple M1 to M5 | Medium | Auto |
 | integrated Intel (any Intel but an Arc A or B card) | Intel UHD 620, Iris Xe, HD Graphics, Arc Graphics (Core Ultra) | Low | 67 % |
-| integrated AMD (a Radeon named `Graphics` or `<number>M` / `<number>S`, without RX or Pro) | Radeon Graphics, Radeon Vega 8 Graphics, Radeon 780M | Low | 67 % |
+| integrated AMD (a Radeon whose name ends in `Graphics`, or a number with M or S and no RX or Pro) | Radeon Graphics, Radeon Vega 8 Graphics, Radeon RX Vega 10 Graphics, Radeon 780M | Low | 67 % |
 | other integrated or software (Adreno, Mali, PowerVR, llvmpipe, SwiftShader, Microsoft Basic Render, or device type integrated or CPU) | | Low | 67 % |
 | discrete (NVIDIA, AMD RX or Pro, Intel Arc A or B, or device type discrete) | GeForce RTX 3060, Radeon RX 6600 | Medium | Auto |
 | unknown (headless, no name) | | Medium | Auto |

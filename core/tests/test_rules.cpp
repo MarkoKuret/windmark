@@ -192,21 +192,25 @@ TEST_CASE("rules: tacking too close") {
 }
 
 TEST_CASE("rules: rule 17, proper course of a leeward boat from clear astern") {
-  // Starboard tack close-hauled; the leeward boat L (1) comes up from clear astern to leeward of W (0).
-  auto setup = [](float lateral, float v_leeward) {
+  // Starboard tack close-hauled; the leeward boat L (1) comes up from clear astern to leeward of W (0). Racing
+  // (after the start) unless `prestart`.
+  auto setup = [](float lateral, float v_leeward, bool prestart = false) {
     RulesRig rig(2);
     const float ps = heading_for(0.0f, kBeat);
     const Vec2 f = wm::dir(ps);
     const Vec2 left{-f.y, f.x};  // leeward on starboard tack is to the left
     const Vec2 W0{50.0f, 300.0f};
     const Vec2 L0 = wm::v_add(wm::v_sub(W0, wm::v_scale(f, 12.0f)), wm::v_scale(left, lateral));
-    rig.b[0] = {W0, ps, 3.0f, 0.0f};
-    rig.b[1] = {L0, ps, v_leeward, 0.0f};
-    rig.to_prep();
+    if (prestart) {
+      rig.b[0] = {W0, ps, 3.0f, 0.0f};
+      rig.b[1] = {L0, ps, v_leeward, 0.0f};
+      rig.to_prep();
+    } else {
+      rig.start_at({{W0, ps, 3.0f, 0.0f}, {L0, ps, v_leeward, 0.0f}});
+    }
     return rig;
   };
-  SUBCASE("overlap within 2 L, then luffs above her proper course: 17") {
-    RulesRig rig = setup(9.0f, 4.0f);
+  auto luff_from_overlap = [](RulesRig& rig) {
     for (int k = 0; k < 400 && rig.rules.pair(0, 1) == nullptr; ++k) rig.step();
     int flagged = 0;
     for (int k = 0; k < 600; ++k) {
@@ -215,11 +219,21 @@ TEST_CASE("rules: rule 17, proper course of a leeward boat from clear astern") {
       if (r != nullptr && r->rule17_holder == 1) ++flagged;
       if (flagged == 20 && rig.b[1].r == 0.0f) rig.b[1].r = 10.0f * wm::DEG;  // luff to 25 degrees
       if (std::fabs(wm::wrap_pi(0.0f - rig.b[1].psi)) < 25.0f * wm::DEG) rig.b[1].r = 0.0f;
-      if (rig.penalties(1) > 0) break;
+      if (rig.penalties(1) > 0 || rig.penalties(0) > 0) break;
     }
-    CHECK(flagged > 0);
+    return flagged;
+  };
+  SUBCASE("overlap within 2 L, then luffs above her proper course: 17") {
+    RulesRig rig = setup(9.0f, 4.0f);
+    CHECK(luff_from_overlap(rig) > 0);
     CHECK(rig.penalties(1, RuleCode::r17) == 1);
     CHECK(rig.penalties(0) == 0);
+  }
+  SUBCASE("the same before the starting signal: no proper course, no 17; the windward boat keeps clear") {
+    RulesRig rig = setup(9.0f, 4.0f, true);
+    CHECK(luff_from_overlap(rig) > 0);
+    CHECK(rig.penalties(1) == 0);
+    CHECK(rig.penalties(0, RuleCode::r11) == 1);
   }
   SUBCASE("overlap established from 3 L to leeward: no flag, she may luff") {
     RulesRig rig = setup(22.0f, 3.3f);
@@ -237,6 +251,24 @@ TEST_CASE("rules: rule 17, proper course of a leeward boat from clear astern") {
     }
     CHECK(rig.penalties(1) == 0);
     CHECK(rig.penalties(0, RuleCode::r11) == 1);  // the windward boat did not keep clear
+  }
+  SUBCASE("the overlap begins while the windward boat is tacking: flagged (no tacking exception since 2025)") {
+    RulesRig rig(2);
+    const Vec2 W0{50.0f, 300.0f};
+    // W tacks slowly from port onto starboard; L comes from astern on starboard, to leeward.
+    rig.start_at({{W0, 3.0f * wm::DEG, 2.5f, 0.0f}, {{W0.x - 5.0f, W0.y - 13.0f}, heading_for(0.0f, 15.0f * wm::DEG), 4.0f, 0.0f}});
+    rig.b[0].r = -2.0f * wm::DEG;
+    bool flagged = false, w_tacking = false;
+    for (int k = 0; k < 400 && !flagged; ++k) {
+      rig.step();
+      const wm::PairRecord* r = rig.rules.pair(0, 1);
+      if (r != nullptr && r->rule17_holder == 1) {
+        flagged = true;
+        w_tacking = rig.rules.boat(0).tacking;
+      }
+    }
+    CHECK(flagged);
+    CHECK(w_tacking);
   }
 }
 

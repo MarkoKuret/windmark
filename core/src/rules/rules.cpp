@@ -272,7 +272,8 @@ void Rules::boat_step(std::uint32_t n, std::size_t i, const Race& race, const Ru
   const float beta = compass(v_sub(R, s.c));
   const float th_r = std::fabs(wrap_pi(in.twd - beta));
   const float proper = th_r < s.theta_ch ? s.theta_ch : (th_r > s.theta_dn ? s.theta_dn : th_r);
-  if (a < proper - p_.proper_tol) s.above_time = s.above_time + DT;
+  // No proper course before her starting signal (definition): never above it in the pre-start.
+  if (race.after_gun(n) && a < proper - p_.proper_tol) s.above_time = s.above_time + DT;
   else s.above_time = 0.0f;
   s.above = s.above_time > p_.proper_time;
 
@@ -1069,7 +1070,8 @@ void Rules::judge_pair(std::uint32_t n, PairState& ps, const Race& race, std::sp
       for (const std::size_t X : {A, B}) {
         const std::size_t W = X == A ? B : A;
         const Relation x_astern = X == A ? Relation::i_astern : Relation::i_ahead;
-        if (ps.raw_prev == x_astern && !windward_of(X, W, race) && gap < p_.r17_dist * st_[X].L && !st_[W].tacking) {
+        // 2025-2028: also when the overlap begins while the windward boat is tacking.
+        if (ps.raw_prev == x_astern && !windward_of(X, W, race) && gap < p_.r17_dist * st_[X].L) {
           ps.r17_holder = static_cast<std::int32_t>(X);
         }
       }

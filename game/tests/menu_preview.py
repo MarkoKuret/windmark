@@ -8,7 +8,8 @@ the boxes, texts, colour rects and the course map the menu draws at 1280 x 800) 
 The backdrop stands in for the live sail scene (menus.md section 4): a published render, tests/previews/
 cine_fair_chase.jpg, scaled to cover the frame. Text is set in the game's Barlow Semi Condensed (game/fonts/barlow)
 with the dump's tracking; the layout is the game's own (every rect comes from Godot). Writes
-generated/menu_preview/<shot>.jpg; with --publish also docs/design/frames/menus_<shot>.jpg.
+generated/menu_preview/<shot>.jpg; with --publish also docs/design/frames/menus_<shot>.jpg (the race end shots as
+race_end_results*.jpg).
 """
 import json
 import math
@@ -270,7 +271,8 @@ def main():
         img.save(out, quality=90)
         print(out)
         if publish:
-            img.save(os.path.join(PUBLISH, "menus_%s.jpg" % name), quality=88)
+            pub = name.replace("race_end", "race_end_results") if name.startswith("race_end") else "menus_" + name
+            img.save(os.path.join(PUBLISH, "%s.jpg" % pub), quality=88)
 
 
 if __name__ == "__main__":

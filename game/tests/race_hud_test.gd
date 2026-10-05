@@ -684,7 +684,8 @@ func test_results_feed() -> void:
 	sim.race_ev = [_rev(RaceText.Ev.FINISHED, {"boat": 0, "place": 2, "t_us": 1412350000})]
 	_refresh(h, sim)
 	sim.race_ev = []
-	t.ok(h.text_of("banner") == "Finished 2nd · 0:23:32.35 · +0:12", "finish banner: " + h.text_of("banner"))
+	t.ok(h.text_of("finish") == "Finished 2nd · 0:23:32.35 · +0:12" and h.finish_card_shown(),
+		"finish card (§13.1): " + h.text_of("finish"))
 	t.ok(h.text_of("clock") == "Finished  0:23:32.35", h.text_of("clock"))
 	t.ok(h.race.results_visible and not h.race.results_final and h.race.result_rows.size() == 3, "provisional results")
 	# the close: the core's results, the projected AI finish marked
@@ -697,6 +698,8 @@ func test_results_feed() -> void:
 	sim.race_ev = [_rev(RaceText.Ev.RACE_CLOSED, {})]
 	_refresh(h, sim)
 	sim.race_ev = []
+	t.ok(not h.results_panel.visible, "no results table over the finish card")
+	_refresh(h, sim, 0, RaceHudValues.CARD_TICKS)
 	var rows := h.results_text_rows()
 	t.ok(h.race.results_final and h.results_panel.visible and h.results_title == "Results", "final results shown")
 	t.ok(rows.size() == 3 and rows[0] == ["1", "Nora", "", "Expert", "0:23:20.00", "", "", "1"], "row 1: %s" % str(rows[0]))
@@ -1304,8 +1307,12 @@ func test_core_race() -> void:
 	t.ok(radar_ok, "radar colours follow the core's pair records (%d pair ticks)" % pairs_seen)
 	t.ok(pen_ok, "penalty panel follows the core's pending penalties")
 	t.ok(bool(rb0["finished"]), "the boat finished")
-	var fb := banners.keys().filter(func(k: String) -> bool: return k.begins_with("Finished "))
-	t.ok(fb.size() == 1, "finish banner: %s" % str(fb))
+	t.ok(h.race.card.get("kind", "") == "finish" and h.race.race_over and h.race.end_reason == "finished",
+		"finish card and race over: %s" % str(h.race.card))
+	for i in RaceHudValues.CARD_TICKS:
+		sim.step()
+		h.tick(sim, 0)
+	h.frame(0.25)
 	t.ok(closed and h.race.results_final and h.results_panel.visible and h.race.result_rows.size() == 2,
 		"results panel after the close (%d rows)" % h.race.result_rows.size())
 	t.ok(events.has("signal") and events.has("finished") and events.has("results"), "hud events for audio")

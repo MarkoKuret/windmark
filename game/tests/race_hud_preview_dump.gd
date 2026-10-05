@@ -6,7 +6,7 @@ extends SceneTree
 ##     for the portrait capture preset (hud.md §16.5), 1080 x 1920;
 ##   - a scripted incident on RaceStubSim (rules line, penalty panel and the turn on the water, radar colours, a
 ##     selected boat's tag, protest prompt) seen from a camera above (the backdrop is not the same scene);
-##   - the results of a short race on the core.
+##   - the finish card (hud.md §13.1) and the results of a short race on the core.
 ## Portrait shots end in _portrait. Every shot prints the block overlaps HudLayoutCheck finds ("no overlaps").
 ##   godot --headless --path game -s res://tests/race_hud_preview_dump.gd [-- shot ...]
 ## Writes generated/race_hud_preview/<name>.json: the size, the backdrop and every HudCanvas's primitives.
@@ -40,7 +40,7 @@ func _init() -> void:
 			await _scene_shot(s)
 	if _only.is_empty() or _only.has("incident"):
 		await _incident()
-	if _only.is_empty() or _only.has("results"):
+	if _only.is_empty() or _only.has("results") or _only.has("finish"):
 		await _results()
 	quit(0)
 
@@ -213,13 +213,26 @@ func _results() -> void:
 	hud.race.ai_levels = {1: "Expert", 2: "Intermediate", 3: "Pro"}
 	var pilot := RacePilot.new(sim)
 	var n := 0
+	var card_done := false
 	while n < 60000:
 		pilot.steer()
 		sim.step()
 		hud.tick(sim, 0)
 		n += 1
+		if not card_done and hud.race.card.get("kind", "") == "finish" and hud.race.card_ticks >= 12:
+			# hud.md §13.1 the finish card, fully shown
+			card_done = true
+			hud.density_auto = false
+			hud.density = R
+			hud.screen_size = WIDE
+			await _shot(hud, "finish_race", "committee", WIDE)
+			hud.screen_size = PORTRAIT
+			hud.density = G
+			await _shot(hud, "finish_glance_portrait", "committee", PORTRAIT)
+			hud.screen_size = WIDE
 		if int(sim.race()["state"]) == RaceText.RaceState.CLOSED:
-			for i in 30:
+			for i in RaceHudValues.CARD_TICKS + 30:
+				sim.step()
 				hud.tick(sim, 0)
 			hud.density_auto = false
 			hud.density = R

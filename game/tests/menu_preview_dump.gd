@@ -2,7 +2,9 @@ extends SceneTree
 ## Dumps the menus for the offline previews (tests/menu_preview.py draws them). No window opens. Each shot is the
 ## main menu at 1280 x 800 (100 % UI scale) in one state; the dump lists what the menu draws: the boxes (StyleBoxFlat
 ## of panels, buttons and rows), the texts (with their font file, size, tracking and colour), the colour rects and
-## the course map's geometry, each with the clip rect of the scroll container it sits in.
+## the course map's geometry, each with the clip rect of the scroll container it sits in. The race end shots
+## (menus.md §5) are the results screen after a short race on the core (the player steered by RacePilot against AI
+## boats), at 1280 x 800 and in the portrait window (race_end, race_end_portrait).
 ##   godot --headless --path game -s res://tests/menu_preview_dump.gd
 ## Writes generated/menu_preview/<shot>.json.
 
@@ -54,8 +56,75 @@ func _init() -> void:
 	await _frames(3)
 	_dump("bindings")
 	m.settings_panel.close()
+	await _race_end()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(Settings.path))
 	quit(0)
+
+
+## a stand-in for the sail scene the results screen reads (hud, rig, runner, venue, course, class_id, the setup)
+class Host extends Node:
+	var hud: Hud
+	var rig: CameraRig = null
+	var runner: SimRunner = null
+	var venue := "example_bay"
+	var course := "example_bay/example_wl"
+	var class_id := "wm7"
+
+	func session_setup() -> GameSetup:
+		var g := GameSetup.new()
+		g.mode = "race"
+		g.course = course
+		return g
+
+
+func _race_end() -> void:
+	m.queue_free()
+	await _frames(1)
+	if not CoreSimSource.available():
+		print("menu preview: race_end skipped (no GDExtension)")
+		return
+	var sim := CoreSimSource.new()
+	sim.settings = {"race_seed": 20261005, "wind_speed": 12.0 * HudFormat.KNOT, "wind_from": 0.0, "shift_preset": 1,
+		"free_sailing_s": 10.0}
+	sim.create("example_bay")
+	sim.add_entry("wm7", {"human": true})
+	for i in 7:
+		sim.add_ai("wm7", "intermediate")
+	sim.create_race("example_bay/example_wl")
+	var host := Host.new()
+	host.hud = Hud.new()
+	host.add_child(host.hud)
+	host.hud.results_table = false
+	var r := host.hud.race
+	var entries := []
+	for b in sim.boat_count():
+		entries.append({"human": b == 0, "choice": ""})
+	var got := Livery.assign(Livery.load_class("wm7"), entries, 20261005)
+	for b in got.size():
+		if got[b] != null:
+			r.sail_numbers[b] = got[b].sail_number
+			r.boat_names[b] = got[b].boat_name
+			if b != 0:
+				r.names[b] = got[b].boat_name
+	root.add_child(host)
+	var rs := ResultsScreen.new()
+	rs.act = false
+	host.add_child(rs)
+	var pilot := RacePilot.new(sim)
+	var n := 0
+	while n < 60000 and not r.results_due():
+		pilot.steer()
+		sim.step()
+		host.hud.tick(sim, 0)
+		n += 1
+	for sz in [SIZE, Vector2i(1080, 1920)]:
+		root.size = sz
+		await _frames(4)
+		rs._process(1.0)
+		await _frames(3)
+		_dump_node("race_end" if sz == SIZE else "race_end_portrait", rs._root, sz)
+	print("menu preview: race end after %d ticks, %s" % [n, str(rs.shown_rows)])
+	host.queue_free()
 
 
 func _frames(n: int) -> void:
@@ -112,6 +181,15 @@ func _dump(shot: String) -> void:
 	f.close()
 	print("menu preview: %s, %d items (menu %s, root %s, page %s, version %s)" % [shot, items.size(), m.size, root.size,
 		m._panel.get_global_rect(), m.version_label.get_global_rect()])
+
+
+func _dump_node(shot: String, node: Control, size: Vector2i) -> void:
+	var items: Array = []
+	_walk(node, Rect2(Vector2.ZERO, Vector2(size)), items)
+	var f := FileAccess.open(OUT.path_join(shot + ".json"), FileAccess.WRITE)
+	f.store_string(JSON.stringify({"size": [size.x, size.y], "shot": shot, "items": items}))
+	f.close()
+	print("menu preview: %s, %d items" % [shot, items.size()])
 
 
 func _walk(n: Node, clip: Rect2, items: Array) -> void:

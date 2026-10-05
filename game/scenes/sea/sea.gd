@@ -35,6 +35,9 @@ var camera: Camera3D
 ## Camera-relative origin of the last frame (world ENU metres).
 var origin := Vector2.ZERO
 var material: ShaderMaterial
+## counts the changes of the uniforms set outside the frame (_apply_static): the wakes and the drawn shadows copy
+## the ones they share again when it moves
+var static_version := 0
 ## §4.4 the components that carry whitecap foam (indices into model.components, heaviest first)
 var caps_select := PackedInt32Array()
 ## Whitecaps (water_render.md §4.4): off by default (owner, 2026-10-05); the look panel and `--caps=on` turn them on.
@@ -171,6 +174,7 @@ func _build() -> void:
 
 
 func _apply_static() -> void:
+	static_version += 1
 	material.set_shader_parameter("n_comp", model.components.size())
 	# water_render.md §2, §3.2: the wavelengths of the (sorted) components, for the pixel shader's band loop
 	var lam := model.wavelengths.duplicate()

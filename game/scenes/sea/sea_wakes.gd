@@ -54,9 +54,17 @@ var _buffer: SubViewport
 var _buffer_cam: Camera3D
 var _buffer_material: ShaderMaterial
 var _last_t := -1.0
+## the sea's uniforms as last copied (Sea.static_version, the sea's material, the tier's grid)
+var _static_version := -1
+var _static_material: Material = null
+var _static_grid := Vector2.ZERO
 
 const SHARED_UNIFORMS := ["n_comp", "comp", "sum_a", "sea_origin", "expo_tex", "expo_grid", "expo_size",
 		"expo_default", "foam_tex", "col_foam"]
+## SHARED_UNIFORMS that change every frame, and those that change only with Sea.static_version
+const FRAME_UNIFORMS := ["comp", "sea_origin"]
+const STATIC_UNIFORMS := ["n_comp", "sum_a", "expo_tex", "expo_grid", "expo_size", "expo_default", "foam_tex",
+		"col_foam"]
 const RIBBONS := ["bow", "stern"]
 
 
@@ -300,13 +308,22 @@ func _frame() -> void:
 	if _buffer_cam:
 		_buffer_cam.global_transform = Transform3D(Basis.looking_at(Vector3.DOWN, Vector3.FORWARD),
 				Vector3(o.x, 500.0, -o.y))
+	# the sea's uniforms: the per-frame ones every frame, the rest when the sea sets them again
+	var grid := Vector2(sea.grid_ratio(), float(tier["segments"]))
+	var fresh := _static_material != sea.material or _static_version != sea.static_version or _static_grid != grid
+	if fresh:
+		_static_material = sea.material
+		_static_version = sea.static_version
+		_static_grid = grid
 	for mat in [_material, _bow_material]:
-		for n in SHARED_UNIFORMS:
-			mat.set_shader_parameter(n, sea.material.get_shader_parameter(n))
-		mat.set_shader_parameter("grid_q", sea.grid_ratio())
-		mat.set_shader_parameter("grid_segments", float(tier["segments"]))
-	for n in ["foam_tex", "sky_horizon", "sun_color", "sun_dir"]:
-		_mist_material.set_shader_parameter(n, sea.material.get_shader_parameter(n))
+		copy_uniforms(sea.material, mat, FRAME_UNIFORMS)
+		if fresh:
+			copy_uniforms(sea.material, mat, STATIC_UNIFORMS)
+			mat.set_shader_parameter("grid_q", grid.x)
+			mat.set_shader_parameter("grid_segments", grid.y)
+	if fresh:
+		copy_uniforms(sea.material, _mist_material, ["foam_tex"])
+	copy_changed(sea.material, _mist_material, ["sky_horizon", "sun_color", "sun_dir"])
 
 	_sync_sampler()
 	var h := Callable(self, "_height")
@@ -409,25 +426,54 @@ func mist_sprites() -> Array:
 ## Boats that get wakes on this tier: own boat only (L), own and the 6 nearest (M), all within 400 m (H).
 func _select(tier: Dictionary, o: Vector2) -> Dictionary:
 	var out := {}
-	var others := []
+	var ids := PackedInt32Array()
+	var dist := PackedFloat32Array()
 	for id in _boats:
 		var st: Dictionary = _boats[id].get("state", {})
 		if st.get("own", false):
 			out[id] = true
 		else:
-			var d := Vector2(st.get("x", 0.0), st.get("y", 0.0)).distance_to(o)
-			others.append([d, id])
-	others.sort_custom(func(a, b): return a[0] < b[0])
-	var n: int = tier["wake_boats"] - 1
+			ids.append(id)
+			dist.append(Vector2(st.get("x", 0.0), st.get("y", 0.0)).distance_to(o))
 	var rmax: float = tier["wake_radius"]
-	for e in others:
-		if n <= 0:
-			break
-		if rmax > 0.0 and e[0] > rmax:
-			break
-		out[e[1]] = true
-		n -= 1
+	for i in nearest(dist, int(tier["wake_boats"]) - 1, rmax + 1e-3 if rmax > 0.0 else INF):
+		out[ids[i]] = true
 	return out
+
+
+## The indices of the n smallest distances under rmax, nearest first (a few picks: no sort of the whole list).
+static func nearest(dist: PackedFloat32Array, n: int, rmax: float) -> PackedInt32Array:
+	var out := PackedInt32Array()
+	if n <= 0:
+		return out
+	var taken := PackedByteArray()
+	taken.resize(dist.size())
+	for _k in mini(n, dist.size()):
+		var best := -1
+		var bd := rmax
+		for i in dist.size():
+			if taken[i] == 0 and dist[i] < bd:
+				bd = dist[i]
+				best = i
+		if best < 0:
+			break
+		taken[best] = 1
+		out.append(best)
+	return out
+
+
+## Copies the named shader uniforms from one material to another.
+static func copy_uniforms(from: ShaderMaterial, to: ShaderMaterial, names: Array) -> void:
+	for n in names:
+		to.set_shader_parameter(n, from.get_shader_parameter(n))
+
+
+## Copies the named uniforms whose values differ (cheap values: colours and vectors).
+static func copy_changed(from: ShaderMaterial, to: ShaderMaterial, names: Array) -> void:
+	for n in names:
+		var v: Variant = from.get_shader_parameter(n)
+		if v != to.get_shader_parameter(n):
+			to.set_shader_parameter(n, v)
 
 
 func _emit(b: Dictionary, st: Dictionary, t_s: float, spray: bool) -> void:

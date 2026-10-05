@@ -19,8 +19,10 @@ Presentation only: nothing here feeds the simulation. Values come from the rende
   `20·log10(g)`; a gain at or below 0.01 is silent and the player is stopped.
 - **Pitch** = the formula pitch (Godot `pitch_scale`, clamped to 0.5–2). **Doppler off** by default (option: on,
   with the velocities scaled by 0.3 so passing boats swoosh without a siren effect).
-- **Updates**: formulas are evaluated every frame from the interpolated render state; each driven parameter is
-  smoothed with its own `tau` (default 0.1 s) so nothing clicks. Loops start at a random point in the file so the
+- **Updates**: formulas, gates, the voice choice, ducking and the players' positions and buses are evaluated at
+  30 Hz from the interpolated render state (the boat inputs at each tick); every frame each driven parameter is
+  smoothed toward its last target with its own `tau` (default 0.1 s) so nothing clicks, and a player's volume or
+  pitch is set only when it moved (by more than 0.05 dB or 0.1 %). Loops start at a random point in the file so the
   same loop on several boats never phases.
 - **Voices**: at most 48 at once. Priority: the own boat, signals, then other boats by distance. Other boats get
   their full set within 150 m and only wake and collisions beyond; at most the 6 nearest other boats are voiced.

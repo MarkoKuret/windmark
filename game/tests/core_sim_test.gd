@@ -9,6 +9,9 @@ extends SceneTree
 ##   the sea clock, the drawn sea mirror against the core's height, race events, determinism
 ## - AI boats (WM-016.24): add_ai, take over and release, telemetry and debug, and a race saved at the gun
 ##   (world and AI memory) and continued in a new world to the same checksum
+## - the tick on the worker thread (SimRunner.prefetch, CoreSim.step_begin): a race with AI boats run by frames with
+##   ticks started ahead gives, tick by tick, the checksums of the same input frames stepped on the main thread;
+##   render_poses matches render_pose; a call during a running tick waits for it
 
 const KNOT := 0.514444470
 
@@ -26,6 +29,7 @@ func _init() -> void:
 	_free_sailing()
 	_race_world()
 	_ai()
+	_threaded()
 	t.finish(self, "core sim test")
 
 
@@ -258,3 +262,58 @@ func _ai() -> void:
 	var c := _ai_world()
 	var bad := {"world": snap["world"], "ai": snap["ai"].slice(0, snap["ai"].size() - 3)}
 	t.ok(not c.load_snapshot(bad, "example_bay/example_wl"), "a damaged AI block is rejected")
+
+
+func _threaded() -> void:
+	t.begin("the tick on the worker thread")
+	var a := _ai_world()
+	var b := _ai_world()
+	if not t.ok(a != null and b != null and a.create_race("example_bay/example_wl")
+			and b.create_race("example_bay/example_wl"), "two race worlds with AI boats"):
+		return
+	t.ok(a.can_step_async(), "CoreSimSource steps on a thread")
+	# a: frames of uneven length with the ticks started ahead at the end of each frame, as the sail scene does
+	var pc := PlayerControls.new()
+	pc.auto_trim = true
+	var run := SimRunner.new(a, pc, 0)
+	run.keep_frames = 100000
+	var sums := {}
+	run.ticked.connect(func(n: int) -> void: sums[n] = a.checksum())
+	var dts := [1.0 / 60.0, 1.0 / 144.0, 1.0 / 30.0, 0.021, 1.0 / 90.0, 0.07]
+	var total := 0.0
+	var ahead := 0
+	var waited_ok := true
+	for k in 6000:
+		var dt: float = dts[(k * 7 + k / 13) % dts.size()]
+		total += dt
+		pc.h_cmd = sin(k * 0.013) * 0.6
+		run.advance(dt)
+		if run.prefetch():
+			ahead += 1
+			if k % 97 == 0:
+				var n0 := a.tick()  # waits for the running tick: the world is never read mid-step
+				waited_ok = waited_ok and not a.core.is_stepping() and n0 == a.core.tick()
+	run.settle()
+	t.ok(ahead > 1000 and ahead <= run.frames.size(), "ticks started ahead: %d of %d" % [ahead, run.frames.size()])
+	t.ok(absi(a.tick() - int(total / SimSource.DT)) <= 2, "ticks follow the time: %d for %.2f s" % [a.tick(), total])
+	t.ok(waited_ok, "a read during a running tick waits for it")
+	# b: the same input frames, each applied to its tick and stepped on the main thread
+	var same := true
+	var first_bad := -1
+	for f in run.frames:
+		b.apply_input(0, f)
+		b.step()
+		if sums.get(b.tick(), -1) != b.checksum():
+			same = false
+			if first_bad < 0:
+				first_bad = b.tick()
+	t.ok(same and b.tick() == a.tick(), "the same checksum at every tick (%d ticks, first difference %d)"
+		% [b.tick(), first_bad])
+	var poses := a.render_poses(0.37)
+	var all_same := poses.size() == a.boat_count()
+	for i in a.boat_count():
+		var arr: PackedFloat32Array = a.core.render_pose(i, 0.37)
+		var p: SimSource.RenderPose = poses[i]
+		all_same = all_same and is_equal_approx(p.pos_x, arr[0]) and is_equal_approx(p.psi, arr[3]) \
+				and is_equal_approx(p.twd_from, arr[8])
+	t.ok(all_same and a.render_pose(2, 0.37) == poses[2], "render_poses: one call, the same poses, shared per alpha")

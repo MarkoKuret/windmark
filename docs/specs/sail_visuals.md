@@ -521,9 +521,19 @@ sail material uses no normal map).
   (8 bytes: the normal octahedral-encoded in two 16-bit units, then a tangent slot Godot adds even when none is
   given). The writer keeps a copy of the buffer from `mesh_get_surface`, rewrites positions and normals in it
   (tangent bytes untouched) and sends the whole buffer in one call per sail update.
-- **Update rate by distance** (the phase `φ` always advances): nearer than 200 m every frame; 200–800 m at 15 Hz;
-  beyond at 4 Hz; outside the view frustum not at all (a sphere around the sail against the camera's frustum
-  planes), and at once on coming back into view. The drivers `φ`, `s_b` and `tl` advance every frame either way.
+- **Update rate by size on screen and distance**, per boat (a sphere around all its sails at any angle): every
+  frame for the viewed boat (in view or not, so a camera cut never shows its sails a frame late) and for any boat
+  whose sphere spans at least 20 % of the screen height (its radius over the distance times the tangent of
+  half the vertical field of view; with an orthogonal camera its diameter over the view size); otherwise nearer
+  than 200 m at 30 Hz (20 Hz on tier L); 200–800 m at 15 Hz; beyond at 4 Hz; outside the view frustum (the sphere
+  against the camera's frustum planes) not at all, and at once on coming back into view. The boats keep out of step
+  (each boat's first update in view waits a fixed share of its interval), so a rate's updates spread over its
+  frames. At an update the sails, boom, pole, mainsheet tackle and running sheets are placed; between updates nothing
+  of them is, and the drivers `φ`, `s_b` and `tl` and the sheets' sag advance at the next update by the time since
+  the last one (at most 0.25 s), which is the same as advancing every frame. The camera's frustum is read once per
+  frame for the fleet.
+- **Mainsheet tackle**: its positions are rewritten in place like the sails' (uncompressed surface, positions
+  stride 12, a custom AABB over every boom angle); rebuilding the surface is the fallback.
 - **Material**: opaque, back faces culled (each layer faces its own side), with a back-light term (the sun through
   the cloth) and a cloth sheen instead of a plastic highlight (§11.5). With the class's baked sail textures (§11.2) the sail is drawn from them on the simple path of
   `shaders/sail_baked.gdshader`; without them, the generator's `sailcloth` slot (its colour and weave texture) with

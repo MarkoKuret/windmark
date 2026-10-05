@@ -1111,7 +1111,7 @@ func _parity_info(id: String) -> SimSource.ClassInfo:
 	return info
 
 
-## §11 update rate by distance and the frustum.
+## §11 update rate by size on screen, distance and the frustum.
 func _rate_by_distance() -> void:
 	t.begin("update rate by distance")
 	if not FileAccess.file_exists("res://generated/boats/wm7.glb"):
@@ -1131,7 +1131,8 @@ func _rate_by_distance() -> void:
 		st.beta = -0.3
 		sv.sails.append(st)
 		sv.out.append(SimSource.SailOutput.new())
-	for c in [[100.0, 60], [500.0, 15], [1500.0, 4], [-300.0, 0]]:
+	# every frame large on screen, 30 Hz smaller within 200 m, 15 Hz to 800 m, 4 Hz beyond, none behind the camera
+	for c in [[12.0, 60], [100.0, 30], [500.0, 15], [1500.0, 4], [-300.0, 0]]:
 		var bv := BoatView.create(data.info, 0.5)
 		root.add_child(bv)
 		# the camera looks north (-Z); the boat ahead at the distance, or behind it
@@ -1141,6 +1142,11 @@ func _rate_by_distance() -> void:
 			bv.apply_sails(sv, sv, 1.0, 1.0 / 60.0)
 		var n: int = bv.sail_parts[0].updates
 		t.ok(absi(n - int(c[1])) <= 1, "main at %.0f m: %d updates in 1 s (%d)" % [c[0], n, c[1]])
+		if c[1] == 0:
+			# back in view: placed at once, the flutter phase advanced by the time it was out of view
+			bv.global_position = Vector3(0, 0, -300.0)
+			bv.apply_sails(sv, sv, 1.0, 1.0 / 60.0)
+			t.ok(bv.sail_parts[0].updates == 1, "placed at once back in view")
 		t.ok(absf(bv.sail_parts[0].shape.get_phase() - phi0) > 0.1, "flutter phase runs on at %.0f m" % c[0])
 		bv.free()
 	cam.free()

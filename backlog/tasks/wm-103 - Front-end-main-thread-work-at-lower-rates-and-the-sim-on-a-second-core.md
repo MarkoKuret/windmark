@@ -1,9 +1,11 @@
 ---
 id: WM-103
 title: 'Front end: main-thread work at lower rates and the sim on a second core'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-10-05 17:12'
+updated_date: '2026-10-05 18:44'
 labels:
   - performance
 dependencies: []
@@ -20,6 +22,12 @@ docs/PERFORMANCE.md C1, C4, C5, C6, C7, C8 and measured item 4: sails full rate 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 Main-thread game CPU at 16 boats measured headless before and after (PerfStats), target -1.5 ms on the dev Mac
-- [ ] #2 Sim on a worker thread: no frame hitch from a slow tick; determinism and replays unchanged
-- [ ] #3 All headless game tests pass
+- [x] #2 Sim on a worker thread: no frame hitch from a slow tick; determinism and replays unchanged
+- [x] #3 All headless game tests pass
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Measured 2026-10-05 headless, 16 boats, seed 7, interleaved base/new runs. Clock-matched (a spinner keeps the P-cluster clock up; input section equal): main_ms L 1.18 -> 0.90, M 1.37 -> 1.12; process_ms L 2.15 -> 1.58, M 2.43 -> 1.72. As specified (144 fps cap): new looks slower because macOS lowers the clock when the main thread idles more (untouched input section 0.059 -> 0.072). Target -1.5 ms not reached: AC1 open.
+<!-- SECTION:NOTES:END -->

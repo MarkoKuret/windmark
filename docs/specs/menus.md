@@ -69,13 +69,39 @@ game has the setting and is saved when the settings screen closes, to one file p
 
 | section | settings |
 | --- | --- |
-| Controls | helm key mode, stick dead zone, stick curve, sheet key rate, hold or toggle for let fly, fine helm, rankings and camera boost, sheet turns auto trim off, vibration (off, 10 % to 100 %), the bindings (shown; rebinding comes later) |
+| Controls | helm key mode, stick dead zone, stick curve, sheet key rate, hold or toggle for let fly, fine helm, rankings and camera boost, sheet turns auto trim off, vibration (off, 10 % to 100 %), the bindings (rebinding, below) |
 | Cameras | camera and look speed, invert orbit X and Y, invert look X and Y, onboard heel follow, smooth switch, reduced motion |
-| HUD | assist preset (Full, Standard, Minimal; online lobbies may force a lower one), instruments (Auto, Glance, Race, Data: the density of `hud.md` §16.1; Auto picks the device default, the `hud_density` key stores its choice here), UI scale (80 % to 130 %), colour-blind palette (standard, deuteranopia, protanopia, tritanopia), captions |
+| HUD | assist preset (Full, Standard, Minimal; online lobbies may force a lower one), instruments (Auto, Glance, Race, Data: the density of `hud.md` §16.1; Auto picks the device default, the `hud_density` key stores its choice here), UI scale (80 % to 130 %, `hud.md` §16.2.2), colour-blind palette (standard, deuteranopia, protanopia, tritanopia: `hud.md` §16.2.1), captions (stored; the audio has no caption lines yet, `audio.md` §8) |
 | Graphics | quality (Low, Medium, High: the tiers of `water_render.md` §7, default Medium), render scale (Auto, 50 %, 67 %, 75 %, 85 %, 100 %; default Auto; below), display (windowed, fullscreen), vsync, frame rate limit (off, 30, 60, 90, 120, 144), capture preset (Off, Portrait 9:16; below) |
 | Audio | master, effects, signals, voice, ambience, interface volumes, 0 to 100 % (default 100 %, master 80 %) |
 
-**Reset section** restores the section's defaults.
+**Reset section** restores the section's defaults (in Controls, the options; the bindings have their own reset).
+
+**Where each setting goes.** Every setting is applied where the game has it: the controls' options to the boat's
+controls (`PlayerControls`); rankings hold or toggle to the HUD's ranking list (toggle: `Tab` or a `View` press
+opens and closes it, and `View` then no longer cycles the density, `controls.md` §3); camera boost hold or toggle to
+the free camera (toggle: a press turns the boost on and the next off); vibration to the gamepad rumble of
+`controls.md` §6 (scaled by the setting, none at Off, only while the player sails); the cameras' options to the
+camera rig; assists, density and the colour-blind palette to the HUD (`hud.md` §16.2.1); UI scale, display,
+render scale and the capture preset to the window; quality to the sea and sky; the volumes to the audio buses.
+Captions are stored only, until the audio has caption lines (`audio.md` §8).
+
+**Rebinding** (the Controls section, `controls.md` §3 and §6). Under the options, a **Bindings** list: one row per
+action of `controls.md` §3, each with three slots, **Key 1**, **Key 2** (keyboard or mouse) and **Pad** (a
+gamepad button, or a stick or trigger direction). On a row, left and right pick the slot; Enter or A listens for
+the new binding (the slot reads `Press a key` or `Press a button`): the next key (with Shift, Ctrl or Alt held, the
+combination; a modifier pressed and released alone is that key), mouse button, gamepad button or stick or
+trigger pushed past halfway becomes the slot's binding. Esc cancels listening (so Esc itself cannot be bound
+there; `pause_menu` keeps it), and so do 5 s without input. Delete, or the gamepad's X on a row, clears the
+selected slot. A keyboard or mouse input goes to a Key slot and a gamepad input to the Pad slot whichever is
+picked. **Conflicts**: a binding that another action also has is shown in red on both rows, with the other
+action's name in the help line, unless the defaults already give both actions that input (the context pairs of
+`controls.md` §3, such as Shift for fine helm and camera boost, or LB for fine helm, camera boost and spectate
+previous); the binding is kept, and the player resolves it by rebinding one of them. **Reset bindings** (red, at
+the top of the list) puts every action back to the defaults of `controls.md` §3. The bindings apply to the input
+map at once and are saved with the other settings when the screen closes, as the actions that differ from the
+defaults (section `bindings` of the settings file); at start-up the defaults are put in and the saved ones over
+them.
 
 **Render scale.** The 3D view is drawn at that fraction of the window's pixels in each direction and upscaled to
 the window; the HUD, the menus and everything 2D stay at the window's native resolution. The upscaler is AMD FSR

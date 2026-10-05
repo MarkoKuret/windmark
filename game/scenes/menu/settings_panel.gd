@@ -14,6 +14,8 @@ var settings: Settings
 var esc_is_pause := false
 var section := "controls"
 var rows := {}
+## the Bindings list's rows, action -> BindingRow (Controls section)
+var binding_rows := {}
 var tabs := {}
 var _body: VBoxContainer
 var _scroll: ScrollContainer
@@ -93,6 +95,7 @@ func show_section(sec: String, focus := true) -> void:
 		_body.remove_child(c)
 		c.queue_free()
 	rows.clear()
+	binding_rows.clear()
 	match sec:
 		"controls":
 			_controls()
@@ -169,10 +172,59 @@ func _controls() -> void:
 	_hold("Camera boost", "camera_boost_toggle")
 	_row(MenuRow.range_row("Vibration", "vibration", 0.0, 1.0, 0.1, s.vibration,
 		func(v: float) -> String: return "Off" if v <= 0.0 else pct(v)))
-	_sub("Bindings  (changing them comes in a later update)")
-	for action in DefaultBindings.table():
-		var r := MenuRow.info(action_name(action), binding_text(action))
+	_bindings()
+
+
+## The Bindings list (menus.md §3 Rebinding): Reset bindings, then a row per action of controls.md §3.
+func _bindings() -> void:
+	_sub("Bindings")
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 4)
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(spacer)
+	for t in ["Key 1", "Key 2", "Pad"]:
+		var l := MenuTheme.caps(t, MenuTheme.SMALL_SIZE - 3, MenuTheme.MUTED)
+		l.custom_minimum_size = Vector2(BindingRow.SLOT_W, 0)
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		head.add_child(l)
+	var reset := MenuTheme.button("Reset bindings", MenuTheme.SMALL_SIZE + 2, true)
+	reset.name = "ResetBindings"
+	reset.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	reset.pressed.connect(reset_bindings)
+	_body.add_child(reset)
+	_body.add_child(head)
+	binding_rows.clear()
+	var snap := Bindings.snapshot()
+	for action in Bindings.actions():
+		var r := BindingRow.create(action)
+		r.refresh(snap)
+		r.rebound.connect(func(_a: String) -> void: _rebound())
 		_body.add_child(r)
+		binding_rows[action] = r
+
+
+func _rebound() -> void:
+	settings.bindings = Bindings.overrides()
+	var snap := Bindings.snapshot()
+	for a in binding_rows:
+		(binding_rows[a] as BindingRow).refresh(snap)
+	changed.emit("bindings")
+
+
+## Every action back to the defaults of controls.md §3 (menus.md §3).
+func reset_bindings() -> void:
+	settings.bindings = {}
+	settings.apply_bindings()
+	_rebound()
+
+
+## A binding row is listening for a new binding.
+func listening() -> bool:
+	for a in binding_rows:
+		if (binding_rows[a] as BindingRow).listening:
+			return true
+	return false
 
 
 func _cameras() -> void:
@@ -237,59 +289,17 @@ static func action_name(action: String) -> String:
 	return t.substr(0, 1).to_upper() + t.substr(1)
 
 
-const JOY_NAMES := {
-	JOY_BUTTON_A: "A", JOY_BUTTON_B: "B", JOY_BUTTON_X: "X", JOY_BUTTON_Y: "Y", JOY_BUTTON_BACK: "View",
-	JOY_BUTTON_START: "Menu", JOY_BUTTON_LEFT_STICK: "L3", JOY_BUTTON_RIGHT_STICK: "R3",
-	JOY_BUTTON_LEFT_SHOULDER: "LB", JOY_BUTTON_RIGHT_SHOULDER: "RB", JOY_BUTTON_DPAD_UP: "D-pad up",
-	JOY_BUTTON_DPAD_DOWN: "D-pad down", JOY_BUTTON_DPAD_LEFT: "D-pad left", JOY_BUTTON_DPAD_RIGHT: "D-pad right",
-}
-const AXIS_NAMES := {
-	JOY_AXIS_LEFT_X: ["Left stick left", "Left stick right"], JOY_AXIS_LEFT_Y: ["Left stick up", "Left stick down"],
-	JOY_AXIS_RIGHT_X: ["Right stick left", "Right stick right"],
-	JOY_AXIS_RIGHT_Y: ["Right stick up", "Right stick down"],
-	JOY_AXIS_TRIGGER_LEFT: ["LT", "LT"], JOY_AXIS_TRIGGER_RIGHT: ["RT", "RT"],
-}
-const MOUSE_NAMES := {
-	MOUSE_BUTTON_LEFT: "Left mouse", MOUSE_BUTTON_RIGHT: "Right mouse", MOUSE_BUTTON_MIDDLE: "Middle mouse",
-	MOUSE_BUTTON_WHEEL_UP: "Wheel up", MOUSE_BUTTON_WHEEL_DOWN: "Wheel down",
-}
-
-
 ## The bindings of an action in the live input map, keys and mouse first, then the gamepad.
 static func binding_text(action: String) -> String:
 	if not InputMap.has_action(action):
 		return "Not bound"
-	var keys: Array[String] = []
-	var pad: Array[String] = []
-	for e in InputMap.action_get_events(action):
-		if e is InputEventKey:
-			var k := e as InputEventKey
-			var code := k.physical_keycode if k.physical_keycode != KEY_NONE else k.keycode
-			var shown := code
-			if k.physical_keycode != KEY_NONE and DisplayServer.get_name() != "headless":
-				shown = DisplayServer.keyboard_get_keycode_from_physical(code)  # the local key label
-			var t := OS.get_keycode_string(shown if shown != KEY_NONE else code)
-			if k.ctrl_pressed:
-				t = "Ctrl + " + t
-			if k.alt_pressed:
-				t = "Alt + " + t
-			if k.shift_pressed:
-				t = "Shift + " + t
-			keys.append(t)
-		elif e is InputEventMouseButton:
-			keys.append(MOUSE_NAMES.get((e as InputEventMouseButton).button_index, "Mouse"))
-		elif e is InputEventJoypadButton:
-			pad.append(JOY_NAMES.get((e as InputEventJoypadButton).button_index, "Pad"))
-		elif e is InputEventJoypadMotion:
-			var m := e as InputEventJoypadMotion
-			var names: Array = AXIS_NAMES.get(m.axis, ["Stick", "Stick"])
-			pad.append(names[0] if m.axis_value < 0 else names[1])
-	var all := keys + pad
+	var all := Bindings.slots(action).filter(func(x: Array) -> bool: return not x.is_empty()).map(
+		func(x: Array) -> String: return Bindings.text(x))
 	return "Not bound" if all.is_empty() else "  ·  ".join(all)
 
 
 func _input(e: InputEvent) -> void:
-	if not is_visible_in_tree():
+	if not is_visible_in_tree() or listening():
 		return
 	var dir := 0
 	if e is InputEventJoypadButton and e.pressed:
@@ -305,7 +315,7 @@ func _input(e: InputEvent) -> void:
 
 
 func _unhandled_input(e: InputEvent) -> void:
-	if is_visible_in_tree() and e.is_action_pressed("ui_cancel") and not (esc_is_pause and e.is_action("pause_menu")):
+	if is_visible_in_tree() and not listening() and e.is_action_pressed("ui_cancel") and not (esc_is_pause and e.is_action("pause_menu")):
 		get_viewport().set_input_as_handled()
 		close()
 

@@ -37,6 +37,7 @@ func _ready() -> void:
 	settings = Settings.current()
 	settings.apply_display(get_tree().root)
 	settings.apply_audio()
+	settings.apply_bindings()
 	backdrop = MenuBackdrop.new()
 	backdrop.name = "Backdrop"
 	if live_backdrop:

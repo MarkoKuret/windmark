@@ -39,13 +39,6 @@ const TAG_RANGE := 50.0
 const PICK_RADIUS := 40.0
 ## controls.md §3: a View press shorter than this is a tap (density), longer the ranking list
 const VIEW_TAP := 0.3
-const COLOURS := {
-	HudValues.Colour.NONE: HudStyle.PAPER,
-	HudValues.Colour.GREEN: HudStyle.STBD,
-	HudValues.Colour.YELLOW: HudStyle.MARK,
-	HudValues.Colour.RED: HudStyle.PORT,
-}
-const TINT_COLOURS := HudStyle.TINTS
 const RANK_W := [70.0, 260.0, 130.0, 120.0, 120.0]
 const RESULT_W := [70.0, 220.0, 200.0, 120.0, 170.0, 110.0, 90.0, 90.0]
 
@@ -109,6 +102,9 @@ var results_panel: HudCanvas
 var results_title := ""
 ## the ranking list is held open (the `rankings` action)
 var show_ranking := false
+## the rankings option (controls.md §6, menus.md §3): true = Tab or a View press opens and closes the list, and
+## View no longer cycles the density
+var rankings_toggle := false
 
 var _refresh_t := INF
 var _flash_t := 0.0
@@ -124,6 +120,16 @@ var _k := 1.0
 ## where edge pointers run in portrait (hud.md §16.5), screen px; empty in landscape (HudPaint.edge_pointer's own box)
 var edge_box := Rect2()
 
+
+
+## HudValues.Colour -> token, in the colour-blind palette in use (hud.md §16.2.1)
+static func colours() -> Dictionary:
+	return {
+		HudValues.Colour.NONE: HudStyle.PAPER,
+		HudValues.Colour.GREEN: HudStyle.STBD,
+		HudValues.Colour.YELLOW: HudStyle.MARK,
+		HudValues.Colour.RED: HudStyle.PORT,
+	}
 
 func _init() -> void:
 	name = "Hud"
@@ -370,14 +376,19 @@ func tick(s: SimSource, boat: int) -> void:
 ## frame() polls the input map.
 func ui_input(raw: RawInput, dt := 1.0 / 60.0) -> void:
 	_ui_fed = true
-	var view := raw.is_held(&"rankings_pad")
-	if view:
-		_view_held += dt
-	elif _view_held > 0.0:
-		if _view_held < VIEW_TAP:
-			cycle_density()
+	if rankings_toggle:
+		if raw.was_pressed(&"rankings") or raw.was_pressed(&"rankings_pad"):
+			show_ranking = not show_ranking
 		_view_held = 0.0
-	show_ranking = raw.is_held(&"rankings") or (view and _view_held >= VIEW_TAP)
+	else:
+		var view := raw.is_held(&"rankings_pad")
+		if view:
+			_view_held += dt
+		elif _view_held > 0.0:
+			if _view_held < VIEW_TAP:
+				cycle_density()
+			_view_held = 0.0
+		show_ranking = raw.is_held(&"rankings") or (view and _view_held >= VIEW_TAP)
 	if raw.was_pressed(&"radar_zoom_in"):
 		radar.zoom(-1)
 	if raw.was_pressed(&"radar_zoom_out"):
@@ -542,7 +553,7 @@ func _bars() -> void:
 		gv.greyed = g.greyed
 		gv.needle = g.needle
 		gv.show_needle = assist != Assist.MINIMAL
-		gv.colour = COLOURS[HudValues.Colour.NONE] if (g.auto or assist == Assist.MINIMAL) else COLOURS[g.colour]
+		gv.colour = colours()[HudValues.Colour.NONE] if (g.auto or assist == Assist.MINIMAL) else colours()[g.colour]
 		gv.telltale = g.telltale
 		gv.labels = not glance
 
@@ -591,14 +602,14 @@ func _race_frame() -> void:
 		prompt = "%s hails for room to tack: tack, or reply [H] you tack" % r.name_of(r.hailed_by)
 	elif r.hail_available:
 		prompt = "Hail: room to tack [H]"
-	_put("prompt", prompt, TINT_COLOURS[RaceHudValues.Tint.YELLOW])
+	_put("prompt", prompt, HudStyle.TINTS[RaceHudValues.Tint.YELLOW])
 	if r.banner != null:
-		_put("banner", r.banner.text, TINT_COLOURS[r.banner.tint])
+		_put("banner", r.banner.text, HudStyle.TINTS[r.banner.tint])
 	else:
 		_put("banner", "")
 	var m := r.message
 	if m != null and (assist != Assist.MINIMAL or m.breach):
-		_put("rules", m.text, TINT_COLOURS[m.tint])
+		_put("rules", m.text, HudStyle.TINTS[m.tint])
 	else:
 		_put("rules", "")
 	results_panel.visible = r.results_visible and (r.results_final or r.banner == null)

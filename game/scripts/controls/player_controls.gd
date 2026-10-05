@@ -41,6 +41,8 @@ var h_cmd := 0.0
 var sheet_cmd := 0.0
 var auto_trim := true
 var let_fly := false
+## the gamepad vibration (controls.md §6); its strength is the vibration setting
+var rumble := Rumble.new()
 var helm_fine := false
 var helm_source := Source.KEYS
 ## gamepad sail strip highlight (slot index), -1 until first used

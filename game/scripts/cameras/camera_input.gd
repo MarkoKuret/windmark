@@ -21,6 +21,8 @@ var fov_modifier := false
 ## free camera: x strafe right, y up, z forward, -1..1
 var move := Vector3.ZERO
 var boost := false
+## camera_boost pressed this frame (the toggle option)
+var boost_pressed := false
 var recentre := false
 var next := false
 ## camera_clip: the next clip camera (cameras.md §9)
@@ -64,6 +66,7 @@ static func from_raw(r: RawInput, free_camera: bool) -> CameraInput:
 		zout = true
 	c.zoom_held = (1.0 if zin else 0.0) - (1.0 if zout else 0.0)
 	c.boost = r.is_held(&"camera_boost")
+	c.boost_pressed = r.was_pressed(&"camera_boost")
 	if free_camera:
 		var ls := stick(r.left_stick)
 		c.move = Vector3(_axis(r, &"helm_left", &"helm_right") + ls.x,

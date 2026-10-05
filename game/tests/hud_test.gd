@@ -293,11 +293,11 @@ func test_hud_text() -> void:
 	t.ok(h.text_of("sheet") == "Sheet  42 %   LET FLY", h.text_of("sheet"))
 	t.ok(h.sheet_bar.visible and absf(h.sheet_bar.value - 0.42) < 1e-9, "sheet bar shows u")
 	var gv := h.gauge_views[1]
-	t.ok(gv.show_needle and gv.colour == Hud.COLOURS[HudValues.Colour.RED], "standard: needle and colour")
+	t.ok(gv.show_needle and gv.colour == Hud.colours()[HudValues.Colour.RED], "standard: needle and colour")
 	t.ok(gv.telltale == "Luffing: sheet in", "tell-tale")
 	h.assist = Hud.Assist.MINIMAL
 	h.frame(0.016)
-	t.ok(not gv.show_needle and gv.colour == Hud.COLOURS[HudValues.Colour.NONE] and gv.telltale != "",
+	t.ok(not gv.show_needle and gv.colour == Hud.colours()[HudValues.Colour.NONE] and gv.telltale != "",
 		"minimal: tell-tales only")
 	h.assist = Hud.Assist.FULL
 	h.frame(0.016)

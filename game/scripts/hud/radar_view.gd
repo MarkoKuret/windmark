@@ -13,7 +13,6 @@ extends HudCanvas
 
 const RANGES := [100.0, 150.0, 225.0, 337.5, 506.25, 759.375, 1139.0625, 1708.59375, 2562.890625]
 const CFG := "user://hud.cfg"
-const TINTS := HudStyle.TINTS
 
 var range_index := 4
 var north_up := false
@@ -85,8 +84,8 @@ func contact_colours() -> Dictionary:
 ## the colour a contact is drawn in now (pulse included), for tests and the draw
 func contact_colour(ct: RaceHudValues.Contact) -> Color:
 	if ct.ghost:
-		return TINTS[RaceHudValues.Tint.GREY]
-	var col: Color = TINTS[ct.tint] if colours else TINTS[RaceHudValues.Tint.WHITE]
+		return HudStyle.TINTS[RaceHudValues.Tint.GREY]
+	var col: Color = HudStyle.TINTS[ct.tint] if colours else HudStyle.TINTS[RaceHudValues.Tint.WHITE]
 	if colours and ct.pulse != RaceHudValues.Pulse.NONE:
 		var hz := 2.0 if ct.pulse == RaceHudValues.Pulse.WARNING else 4.0
 		col.a *= 1.0 - 0.45 * (0.5 + 0.5 * sin(TAU * hz * _t))

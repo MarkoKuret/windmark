@@ -17,6 +17,8 @@ func _init() -> void:
 	test_look()
 	test_settings_round_trip()
 	test_apply()
+	test_every_key_applied()
+	await test_rebinding()
 	await test_live_backdrop()
 	await test_main_menu()
 	await test_race_card()
@@ -129,6 +131,7 @@ func _odd_settings() -> Settings:
 	s.ambience_volume = 0.0
 	s.interface_volume = 0.6
 	s.last_setup = {"class_id": "wm12", "fleet_size": 7}
+	s.bindings = {"let_fly": [["key", KEY_Q, ""], [], ["button", JOY_BUTTON_Y]]}
 	return s
 
 
@@ -296,6 +299,233 @@ func test_render_scale(s: Settings) -> void:
 	root.scaling_3d_scale = sc0
 	root.scaling_3d_mode = mode0
 	root.content_scale_factor = cs0
+
+
+class StubSim extends SimSource:
+	var ev := []
+
+	func contact_events() -> Array:
+		return ev
+
+
+## menus.md §3 "Where each setting goes": every key of the settings file reaches its target, except the ones
+## NOT_APPLIED lists (captions: the audio has no caption lines yet).
+func test_every_key_applied() -> void:
+	t.begin("every setting is applied")
+	var s := _odd_settings()
+	var fresh := Settings.new()
+	var pc := PlayerControls.new()
+	s.apply_controls(pc)
+	var rig := CameraRig.new()
+	s.apply_cameras(rig)
+	var hud := Hud.new()
+	s.apply_hud(hud)
+	var sea := (load("res://scenes/sea/sea.tscn") as PackedScene).instantiate() as Sea
+	s.apply_sea(sea)
+	var fps := Engine.max_fps
+	var cs := root.content_scale_factor
+	var sc3 := root.scaling_3d_scale
+	s.apply_display(root)
+	s.apply_audio()
+	s.apply_bindings()
+	var bus := func(n: String) -> float: return db_to_linear(AudioServer.get_bus_volume_db(AudioServer.get_bus_index(n)))
+	var got := {
+		"controls.helm_mode": pc.helm_mode == s.helm_mode,
+		"controls.stick_dead_zone": is_equal_approx(pc.stick_dead_zone, s.stick_dead_zone),
+		"controls.stick_curve": is_equal_approx(pc.stick_gamma, s.stick_curve),
+		"controls.sheet_rate": is_equal_approx(pc.sheet_rate_scale, s.sheet_rate),
+		"controls.let_fly_toggle": pc.let_fly_toggle,
+		"controls.helm_fine_toggle": pc.helm_fine_toggle,
+		"controls.rankings_toggle": hud.rankings_toggle,
+		"controls.camera_boost_toggle": rig.options.boost_toggle,
+		"controls.sheet_turns_auto_trim_off": pc.sheet_turns_auto_trim_off,
+		"controls.vibration": is_equal_approx(pc.rumble.strength, s.vibration),
+		"cameras.camera_speed": is_equal_approx(rig.options.speed, s.camera_speed),
+		"cameras.invert_orbit_x": rig.options.invert_orbit_x,
+		"cameras.invert_orbit_y": rig.options.invert_orbit_y,
+		"cameras.invert_look_x": rig.options.invert_look_x,
+		"cameras.invert_look_y": rig.options.invert_look_y,
+		"cameras.heel_follow": is_equal_approx(rig.onboard.heel_follow, s.heel_follow),
+		"cameras.smooth_switch": rig.options.smooth_switch,
+		"cameras.reduced_motion": rig.options.reduced_motion,
+		"hud.assist": hud.assist == s.assist,
+		"hud.hud_density": hud.density == s.hud_density and not hud.density_auto,
+		"hud.ui_scale": is_equal_approx(root.content_scale_factor, s.ui_scale),
+		"hud.palette": HudStyle.palette == "tritanopia" and HudStyle.STBD == HudStyle.PALETTES["tritanopia"][0]
+			and HudStyle.TINTS[RaceHudValues.Tint.RED] == HudStyle.PALETTES["tritanopia"][1],
+		"graphics.quality": sea.quality == s.quality,
+		"graphics.render_scale": is_equal_approx(root.scaling_3d_scale, s.render_scale),
+		"graphics.fullscreen": DisplayServer.get_name() == "headless",  # the window mode: not in headless runs
+		"graphics.vsync": DisplayServer.get_name() == "headless",
+		"graphics.fps_limit": Engine.max_fps == s.fps_limit,
+		"menu.last_setup": true,  # the setup pages and Continue (test_main_menu, test_continue)
+		"bindings.bindings": Bindings.slots("let_fly") == s.bindings["let_fly"],
+	}
+	for f in Settings.BUSES:
+		got["audio." + f] = absf(bus.call(Settings.BUSES[f][0]) - float(s.get(f))) < 1e-3 or (float(s.get(f)) <= 0.0
+			and AudioServer.is_bus_mute(AudioServer.get_bus_index(Settings.BUSES[f][0])))
+	for sec in Settings.FIELDS:
+		for f in Settings.FIELDS[sec]:
+			var k: String = sec + "." + f
+			if k in Settings.NOT_APPLIED:
+				t.ok(not got.has(k), "%s stored only (listed in NOT_APPLIED)" % k)
+			else:
+				t.ok(got.get(k, false), "%s applied" % k)
+	t.ok(Settings.NOT_APPLIED == ["hud.captions"], "only captions stay stored: %s" % [Settings.NOT_APPLIED])
+	# back to the defaults
+	fresh.apply_hud(hud)
+	t.ok(HudStyle.palette == "standard" and HudStyle.PORT == Color("#FF4438"), "standard palette back")
+	fresh.apply_bindings()
+	Engine.max_fps = fps
+	root.content_scale_factor = cs
+	root.scaling_3d_scale = sc3
+	fresh.apply_audio()
+	hud.free()
+	rig.call("free")
+	sea.free()
+	# the options' behaviour: rankings toggle, camera boost toggle, vibration
+	var h := Hud.new()
+	h.ui_input(RawInput.new().hold(&"rankings"))
+	t.ok(h.show_ranking, "rankings hold: open while held")
+	h.ui_input(RawInput.new())
+	t.ok(not h.show_ranking, "rankings hold: closed on release")
+	h.rankings_toggle = true
+	h.ui_input(RawInput.new().press(&"rankings"))
+	h.ui_input(RawInput.new())
+	t.ok(h.show_ranking, "rankings toggle: a press opens it")
+	var dens := h.density
+	h.ui_input(RawInput.new().press(&"rankings_pad"), 0.05)
+	h.ui_input(RawInput.new(), 0.05)
+	t.ok(not h.show_ranking and h.density == dens, "rankings toggle: a View press closes it and leaves the density")
+	h.free()
+	var fc := FreeCamera.new()
+	var o := CamTypes.Options.new()
+	var ci := CameraInput.new()
+	ci.boost = true
+	fc.handle_input(ci, o, 0.016)
+	t.ok(fc._boost, "boost hold: on while held")
+	o.boost_toggle = true
+	ci = CameraInput.new()
+	fc.handle_input(ci, o, 0.016)
+	t.ok(fc._boost, "boost toggle: stays on when released")
+	ci.boost_pressed = true
+	fc.handle_input(ci, o, 0.016)
+	t.ok(not fc._boost, "boost toggle: the next press turns it off")
+	var rb := Rumble.new()
+	rb.devices = [99]  # no such pad: nothing is driven in the test
+	rb.strength = 0.5
+	var stub := StubSim.new()
+	stub.ev = [{"boat": 0, "begin": true, "closing_speed": 1.0}, {"boat": 1, "begin": true, "closing_speed": 4.0}]
+	rb.tick(stub, 0)
+	rb.frame(0.05, false)
+	t.near(rb.strong, 0.25, 1e-6, "vibration: own contact min(1, 1.0 / 2) x 50 %")
+	rb.frame(0.2, false)
+	t.near(rb.strong, 0.0, 1e-6, "vibration: the contact rumble lasts 0.2 s")
+	rb.frame(0.016, true)
+	t.near(rb.weak, 0.05, 1e-6, "vibration: let fly buzz 0.1 x 50 %")
+	rb.strength = 0.0
+	rb.frame(0.016, true)
+	t.ok(rb.weak == 0.0 and rb.strong == 0.0, "vibration Off: nothing")
+	rb.strength = 1.0
+	rb.frame(0.016, true, false)
+	t.ok(rb.weak == 0.0, "no vibration while not sailing (paused, watching)")
+
+
+## menus.md §3 Rebinding: bind a slot, the conflict shown on both rows, default pairs not conflicts, clear, reset,
+## saved and loaded with the settings.
+func test_rebinding() -> void:
+	t.begin("rebinding")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
+	Settings.reset_current()
+	var st := Settings.current()
+	st.apply_bindings()
+	t.ok(Bindings.all_conflicts().is_empty(), "the defaults have no conflicts (context pairs: %s)" %
+		["Shift for fine helm and camera boost" if Bindings.default_pair("helm_fine", "camera_boost") else "none"])
+	var p := SettingsPanel.new()
+	p.build(st)
+	root.add_child(p)
+	await process_frame
+	p.show_section("controls", false)
+	var row: BindingRow = p.binding_rows.get("let_fly")
+	t.ok(row != null and p.binding_rows.size() == Bindings.actions().size(), "a row per action (%d)"
+		% p.binding_rows.size())
+	t.ok(row._slots.size() == 3 and p.binding_rows["camera_zoom_in"]._slots.size() == 4,
+		"Key 1, Key 2, Pad (zoom: three keys, its defaults have three)")
+	# keyboard: focus the row, pick Key 2, Enter listens, T binds
+	row.grab_focus()
+	await process_frame
+	_key("ui_right")
+	await process_frame
+	t.ok(row.slot == 1, "right picks Key 2")
+	_key("ui_accept")
+	await process_frame
+	t.ok(row.listening and row._slots[1].text == "Press a key", "Enter listens: %s" % row._slots[1].text)
+	var k := InputEventKey.new()
+	k.physical_keycode = KEY_T
+	k.pressed = true
+	root.push_input(k)
+	await process_frame
+	t.ok(not row.listening and Bindings.slots("let_fly")[1] == ["key", KEY_T, ""], "T bound to let fly's Key 2")
+	t.ok(InputMap.action_has_event("let_fly", Bindings.decode(["key", KEY_T, ""])), "in the input map at once")
+	t.ok(row.conflicts.has(1) and p.binding_rows["auto_trim"].conflicts.has(0),
+		"conflict with auto trim shown on both rows")
+	t.ok(row.help.contains("Auto trim"), "the help names the other action: %s" % row.help)
+	t.ok(st.bindings.has("let_fly") and not st.bindings.has("auto_trim"), "only the changed action stored")
+	# a gamepad button goes to the Pad slot whichever slot is picked; Esc cancels
+	row.slot = 0
+	row.listen()
+	var jb := InputEventJoypadButton.new()
+	jb.button_index = JOY_BUTTON_Y
+	jb.pressed = true
+	root.push_input(jb)
+	await process_frame
+	t.ok(Bindings.slots("let_fly")[2] == ["button", JOY_BUTTON_Y] and row.conflicts.has(2),
+		"Y to the Pad slot (conflicts with camera next)")
+	row.listen()
+	var esc := InputEventKey.new()
+	esc.physical_keycode = KEY_ESCAPE
+	esc.keycode = KEY_ESCAPE
+	esc.pressed = true
+	root.push_input(esc)
+	await process_frame
+	t.ok(not row.listening and p.is_visible_in_tree(), "Esc cancels listening (the settings stay open)")
+	# a modifier alone binds itself on release; with a key, the combination
+	row.slot = 0
+	row.listen()
+	var sh := InputEventKey.new()
+	sh.physical_keycode = KEY_SHIFT
+	sh.pressed = true
+	root.push_input(sh)
+	var f2 := InputEventKey.new()
+	f2.physical_keycode = KEY_F2
+	f2.shift_pressed = true
+	f2.pressed = true
+	root.push_input(f2)
+	await process_frame
+	t.ok(Bindings.slots("let_fly")[0] == ["key", KEY_F2, "shift"], "Shift + F2: %s" % [Bindings.slots("let_fly")[0]])
+	# clear a slot
+	row.slot = 2
+	row.clear_slot()
+	t.ok(Bindings.slots("let_fly")[2].is_empty(), "Delete or X clears the slot")
+	# saved on close, applied at start
+	p.close()
+	var back := Settings.new()
+	back.load_file(TEST_PATH)
+	t.ok(back.bindings.get("let_fly", []) == Bindings.slots("let_fly"), "saved in the settings file: %s"
+		% [back.bindings.get("let_fly")])
+	Bindings.apply({})
+	back.apply_bindings()
+	t.ok(Bindings.slots("let_fly")[1] == ["key", KEY_T, ""], "loaded and applied at start")
+	# reset
+	p.reset_bindings()
+	t.ok(Bindings.slots("let_fly") == Bindings.default_slots("let_fly") and st.bindings.is_empty()
+		and Bindings.all_conflicts().is_empty(), "Reset bindings: the defaults, nothing stored, no conflicts")
+	t.ok(SettingsPanel.binding_text("let_fly").contains("Space"), "bindings shown: %s" %
+		SettingsPanel.binding_text("let_fly"))
+	p.queue_free()
+	await process_frame
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
+	Settings.reset_current()
 
 
 func _key(action: String) -> void:

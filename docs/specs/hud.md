@@ -398,6 +398,34 @@ strip and, under manual trim, the trim gauges show at every level.
 These are the colours of §6, §8 and §11 (red = `port`, green = `stbd`, orange = `owe`, cyan = `have`, white =
 `paper`, yellow = `mark`). Colour is never the only signal: each coloured state also has a word or a letter.
 
+#### 16.2.1 Colour-blind palettes
+
+The settings' colour palette (`controls.md` §6, `menus.md` §3) swaps the four rules colours; `ink`, `paper`,
+`mist`, `hair`, `mark` and `ghost` never change, and neither do the words and letters that go with every colour.
+
+| Palette | `stbd` | `port` | `owe` | `have` |
+| --- | --- | --- | --- | --- |
+| Standard (default) | `#27D17C` | `#FF4438` | `#FF8A1F` | `#2FD8EE` |
+| Deuteranopia | `#4D8EFF` | `#FF7A66` | `#FF4D9F` | `#19E0FF` |
+| Protanopia | `#33CCFF` | `#FF974D` | `#FF338D` | `#A480FF` |
+| Tritanopia | `#80FF81` | `#FF667C` | `#E64DFF` | `#4D94FF` |
+
+How they were chosen: the six colours that must tell apart (`paper`, `mark` and the four rules colours) were run
+through the full-severity colour vision deficiency simulation of Machado, Oliveira and Fernandes (2009) and compared
+in CIELAB. With the standard palette the closest pair is 15 ΔE apart for deuteranopia (`mark` and `owe`), 21 for
+protanopia and 11 for tritanopia (`stbd` and `have`); each palette raises its own deficiency's closest pair to 32,
+33 and 30, keeps at least 39 ΔE between any two for normal vision, and keeps every colour at 5.5:1 or more against
+`ink`. For the red-green palettes starboard turns blue and port a warm orange-red; tritanopia keeps a green and a
+red. The palette applies to the HUD, the radar and the course drawn on the water (laylines, the start line's
+colours).
+
+#### 16.2.2 UI scale
+
+The settings' **UI scale** (`menus.md` §3) is 80 % to 130 % in 5 % steps, default 100 %: the root window's
+content scale, so the HUD and the menus grow and shrink together (the 3D view is not affected; its resolution is
+the render scale). The HUD's design px follow the logical size after it (§16.5, `hud_direction.md` §5), so every
+text fits its block at every step (§15); 11 px stays the floor for any text.
+
 ### 16.3 Instrument pages
 
 The instrument values of a corner sit on one page: ink glass from 14 % at the top to 44 % at the bottom, a hairline

@@ -8,22 +8,23 @@ const PAPER := Color("#F5F8FA")
 const MIST := Color(0.961, 0.973, 0.98, 0.66)
 const HAIR := Color(0.961, 0.973, 0.98, 0.42)
 const MARK := Color("#FFD23F")
-const STBD := Color("#27D17C")
-const PORT := Color("#FF4438")
-const OWE := Color("#FF8A1F")
-const HAVE := Color("#2FD8EE")
 const GHOST := Color(0.961, 0.973, 0.98, 0.35)
-
-## RaceHudValues.Tint -> token
-const TINTS := {
-	RaceHudValues.Tint.WHITE: PAPER,
-	RaceHudValues.Tint.RED: PORT,
-	RaceHudValues.Tint.ORANGE: OWE,
-	RaceHudValues.Tint.CYAN: HAVE,
-	RaceHudValues.Tint.YELLOW: MARK,
-	RaceHudValues.Tint.GREEN: STBD,
-	RaceHudValues.Tint.GREY: GHOST,
+## the rules colours of each colour-blind palette (hud.md §16.2.1): [stbd, port, owe, have]
+const PALETTES := {
+	"standard": [Color("#27D17C"), Color("#FF4438"), Color("#FF8A1F"), Color("#2FD8EE")],
+	"deuteranopia": [Color("#4D8EFF"), Color("#FF7A66"), Color("#FF4D9F"), Color("#19E0FF")],
+	"protanopia": [Color("#33CCFF"), Color("#FF974D"), Color("#FF338D"), Color("#A480FF")],
+	"tritanopia": [Color("#80FF81"), Color("#FF667C"), Color("#E64DFF"), Color("#4D94FF")],
 }
+## the rules colours in use (set_palette)
+static var STBD := Color("#27D17C")
+static var PORT := Color("#FF4438")
+static var OWE := Color("#FF8A1F")
+static var HAVE := Color("#2FD8EE")
+static var palette := "standard"
+
+## RaceHudValues.Tint -> token (rebuilt by set_palette)
+static var TINTS := _tints()
 
 const FONT_FILES := {
 	500: "res://fonts/barlow/BarlowSemiCondensed-Medium.ttf",
@@ -40,6 +41,29 @@ const PORTRAIT_TOP := 140.0
 const PORTRAIT_BOTTOM := 200.0
 
 static var _fonts := {}
+
+
+static func _tints() -> Dictionary:
+	return {
+		RaceHudValues.Tint.WHITE: PAPER,
+		RaceHudValues.Tint.RED: PORT,
+		RaceHudValues.Tint.ORANGE: OWE,
+		RaceHudValues.Tint.CYAN: HAVE,
+		RaceHudValues.Tint.YELLOW: MARK,
+		RaceHudValues.Tint.GREEN: STBD,
+		RaceHudValues.Tint.GREY: GHOST,
+	}
+
+
+## The rules colours of a colour-blind palette (hud.md §16.2.1); an unknown name is the standard one.
+static func set_palette(name: String) -> void:
+	palette = name if PALETTES.has(name) else "standard"
+	var c: Array = PALETTES[palette]
+	STBD = c[0]
+	PORT = c[1]
+	OWE = c[2]
+	HAVE = c[3]
+	TINTS = _tints()
 
 
 ## The family at a weight (500, 600, 700) with tabular figures and `tracking` (em) between the letters.

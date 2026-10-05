@@ -284,14 +284,22 @@ Vec2 finish_aim(AC& x, AB& a, const Me& m, bool& beat) {
 // §7.6 penalty turns. True while the turn owns the helm.
 float penalty_helm(const Me& m) { return m.tws < 9.0f * KNOT ? 0.6f : kPenaltyHelm; }
 
+// The zone of mark k measured from the mark (rules.md §7.1): the race's zone length plus the mark's radius.
+float zone_radius(AC& x, const Me& m, std::int32_t k) {
+  float r = x.course.marks[static_cast<std::size_t>(k)].radius;
+  for (const CourseObject& o : x.course.objects) {
+    if (o.mark == k) r = o.r;
+  }
+  return x.race.zone_lengths() * m.L + r;
+}
+
 // Within `extra` metres of the zone of the step's marks.
 bool near_zone(AC& x, const Me& m, std::int32_t step, float extra) {
   const ResolvedCourse& co = x.course;
   if (step <= 0 || step >= static_cast<std::int32_t>(co.steps.size()) - 1) return false;
   const CourseStep& st = co.steps[static_cast<std::size_t>(step)];
-  const float Z = x.race.zone_lengths() * m.L;
   for (const std::int32_t k : {st.marks[0], st.marks[1]}) {
-    if (k >= 0 && v_dist(m.c, co.marks[static_cast<std::size_t>(k)].pos) < Z + 0.5f * m.L + extra) return true;
+    if (k >= 0 && v_dist(m.c, co.marks[static_cast<std::size_t>(k)].pos) < zone_radius(x, m, k) + 0.5f * m.L + extra) return true;
   }
   return false;
 }
@@ -301,12 +309,13 @@ bool near_zone(AC& x, const Me& m, std::int32_t step, float extra) {
 bool turn_clear_of_zones(AC& x, const Me& m, std::int32_t next, float dir_, float R) {
   const ResolvedCourse& co = x.course;
   const Vec2 C = v_add(m.c, v_scale(right_of(dir(m.s.psi)), dir_ * 1.3f * R));
-  const float Z = x.race.zone_lengths() * m.L;
   for (const std::int32_t step : {next, m.rb.last_rounded}) {
     if (step <= 0 || step >= static_cast<std::int32_t>(co.steps.size()) - 1) continue;
     const CourseStep& st = co.steps[static_cast<std::size_t>(step)];
     for (const std::int32_t k : {st.marks[0], st.marks[1]}) {
-      if (k >= 0 && v_dist(C, co.marks[static_cast<std::size_t>(k)].pos) < Z + 1.3f * R + 0.6f * m.L) return false;
+      if (k >= 0 && v_dist(C, co.marks[static_cast<std::size_t>(k)].pos) < zone_radius(x, m, k) + 1.3f * R + 0.6f * m.L) {
+        return false;
+      }
     }
   }
   return true;
@@ -385,6 +394,8 @@ bool penalty_turns(AC& x, AB& a, const Me& m, Leg leg) {
   if ((r0 == RuleCode::c_prep || r0 == RuleCode::c_entry) && !x.race.after_gun(x.n)) return false;
   const float R = radius_for_helm(m.b.perf().dynamics, penalty_helm(m));
   const std::int32_t next = m.rb.started ? m.rb.next : 0;
+  // A turn counts anywhere in a fleet race; only a match race keeps it out of the zones (rules.md §9.3).
+  const bool zones = x.race.race_type() == RaceType::match;
   if (a.pen_on) {
     if (br.served > a.pen_served0) {
       stop();
@@ -393,8 +404,8 @@ bool penalty_turns(AC& x, AB& a, const Me& m, Leg leg) {
     const float t = x.now - a.pen_t0;
     // In irons: stopped for 4 s. Give up this turn, build speed and start again.
     a.pen_stall_t = m.s.v < 0.3f ? a.pen_stall_t + 2.0f * DT : 0.0f;
-    if (a.pen_stall_t > 4.0f || t > 90.0f || near_zone(x, m, next, -0.5f * m.L) ||
-        near_zone(x, m, m.rb.last_rounded, -0.5f * m.L)) {
+    if (a.pen_stall_t > 4.0f || t > 90.0f ||
+        (zones && (near_zone(x, m, next, -0.5f * m.L) || near_zone(x, m, m.rb.last_rounded, -0.5f * m.L)))) {
       stop();
       a.low_until = x.now + 5.0f;
       return false;
@@ -417,19 +428,20 @@ bool penalty_turns(AC& x, AB& a, const Me& m, Leg leg) {
     return false;
   };
   if (a.man != Man::straight) return why("man");
-  // The turn only counts outside the zones of the next mark and the last one rounded: stay clear of them by the
-  // turn's diameter.
-  // Direction: on a beat or a reach luff into a tack, on a run bear away into a gybe; the other way if only that
-  // keeps the turn out of the zones.
+  // Direction: on a beat or a reach luff into a tack, on a run bear away into a gybe. In a match race the turn only
+  // counts outside the zones of the next mark and the last one rounded: stay clear of them by the turn's diameter,
+  // turning the other way if only that keeps the turn out of them.
   float dir_ = leg == Leg::run ? -m.tack : m.tack;
-  if (!turn_clear_of_zones(x, m, next, dir_, R)) dir_ = -dir_;
-  if (!turn_clear_of_zones(x, m, next, dir_, R)) {
-    a.pen_zone = true;
-    return why("zone");
+  if (zones) {
+    if (!turn_clear_of_zones(x, m, next, dir_, R)) dir_ = -dir_;
+    if (!turn_clear_of_zones(x, m, next, dir_, R)) {
+      a.pen_zone = true;
+      return why("zone");
+    }
   }
-  // Urgent from 20 s before the deadline (the turn must be in progress when it passes, rules.md §9.4): then only
-  // the zones, a minimum of way and an immediate collision risk hold it back.
-  const bool urgent = br.deadline_s >= 0.0f && br.deadline_s < 20.0f;
+  // Urgent from 45 s before the deadline (the turn must be completed by then, rules.md §9.4; it takes 10 to 25 s):
+  // then only the zones, a minimum of way and an immediate collision risk hold it back.
+  const bool urgent = br.deadline_s >= 0.0f && br.deadline_s < 45.0f;
   const float V = polar_speed(a, m, std::fabs(m.twa));
   if (m.s.v < (urgent ? 0.4f : 0.75f) * V && x.now < a.low_until + 8.0f) return why("slow");
   const float r_own = x.r_hull[static_cast<std::size_t>(a.i)];
@@ -444,8 +456,9 @@ bool penalty_turns(AC& x, AB& a, const Me& m, Leg leg) {
   } else {
     if (x.now < a.low_until) return why("low");
     if (m.s.v < 0.75f * V) return why("slow2");
-    // Not so close to the next zone that the turn could not be completed before it (about 20 s of sailing).
-    if (next > 0 && next < static_cast<std::int32_t>(x.course.steps.size()) - 1 &&
+    // Match race: not so close to the next zone that the turn could not be completed before it (about 20 s of
+    // sailing).
+    if (zones && next > 0 && next < static_cast<std::int32_t>(x.course.steps.size()) - 1 &&
         near_zone(x, m, next, 2.0f * R + 20.0f * max(1.0f, m.s.v))) {
       return why("nextzone");
     }

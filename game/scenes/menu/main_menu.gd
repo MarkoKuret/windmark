@@ -124,12 +124,8 @@ func _setup_page(race: bool) -> SetupPanel:
 	var p := SetupPanel.new()
 	p.build(race, settings.last_setup)
 	p.start_pressed.connect(func() -> void: start(p))
-	var scroll := ScrollContainer.new()
-	scroll.follow_focus = true
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(p)
-	_add_page("quick" if race else "free", scroll)
+	_add_page("quick" if race else "free", p)
 	return p
 
 

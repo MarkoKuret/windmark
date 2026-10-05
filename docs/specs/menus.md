@@ -9,8 +9,9 @@ of `controls.md` §6, `cameras.md` §3 and §6, `hud.md` §14, `water_render.md`
 The project's main scene. Items, top to bottom: **Quick race**, **Free sail**, **Settings**, **Quit**.
 
 - **Quick race**: class, sail number, venue, course, fleet size, AI level, wind speed, wind direction, then
-  **Start**.
-- **Free sail**: class, sail number, venue, wind speed, wind direction, then **Start**.
+  **Start**, on one screen, the **race card** (§1.1).
+- **Free sail**: class, sail number, venue, wind speed, wind direction, then **Start** (in the card's footer, as
+  on the race card, without the preview).
 - Lists come from the data on disk: classes from `data/classes/*.boat.json` (name from the file), venues from
   `data/venues/*.venue.json`, courses from `game/data/courses/<venue>/*.course.json` that list the chosen class
   in their `classes` (a course without `classes` suits every class). A venue without a course for the class cannot
@@ -27,6 +28,30 @@ The project's main scene. Items, top to bottom: **Quick race**, **Free sail**, *
 - **Backdrop** (§4): the live sail scene behind the menu.
 - Rules scenarios (`race.md` §14) have no menu item: they start from the command line of the sail scene,
   `--scenario=<id>`, which sets `GameSetup` mode `scenario` with the scenario id.
+
+### 1.1 Race card
+
+The quick race is one screen: a header (the heading and one line), the body and a footer.
+
+- **Body**: the setup rows on the left, the **preview** on the right; when the page is narrower than 760 px
+  (logical, after the UI scale: a large UI scale on the Steam Deck, a narrow window) the preview goes under the
+  rows. The body scrolls with the focus when it does not fit; the header and the footer never scroll.
+- **Preview**: the **course map** and the **fleet summary**, both following the rows as they change.
+  - The course map is drawn from the course file (`courses.md`) on a dark chart (the HUD's `ink`), north up: the
+    marks resolved as `courses.md` §3 resolves them with the course axis on the chosen wind direction, at the
+    file's distances (the preview skips the scaling of §6.3, so it shows the course's shape, not its exact size);
+    rounding marks as yellow diamonds (the HUD's `mark`, the course colour), other buoys as small paper dots, the
+    committee and mark boats as small paper hulls; the start line (between its two ends) as a dashed paper line, the
+    finish line as a checkered one; the course as a faint hairline from the start through the sequence's marks and
+    gates to the finish; the wind as an arrow in the top-right corner, blowing the way the wind goes, with the speed
+    and the direction under it (`12 KN  000°`), and a small N.
+  - Under the map: the course's name, and the laps and legs (`2 laps, 6 legs`).
+  - **Fleet summary**: fleet size (the player and the AI boats, `10 boats: you and 9 AI`), the AI level and the
+    class.
+- **Footer**: **Start race**, always visible, and under it the reason it cannot start when it cannot (a venue
+  without a course for the class), in red.
+- Fits 1280 × 800 at every UI scale (80 % to 130 %) and the portrait capture window; the keyboard and the gamepad
+  reach every row and Start (down from the last row is Start, up from Start the last row).
 
 ## 2. Pause menu
 

@@ -19,6 +19,7 @@ func _init() -> void:
 	test_apply()
 	await test_live_backdrop()
 	await test_main_menu()
+	await test_race_card()
 	await test_pause_menu()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
 	t.finish(self, "menus")
@@ -477,6 +478,82 @@ func test_main_menu() -> void:
 				m.close_page()
 	m.settings.ui_scale = 1.0
 	root.content_scale_factor = 1.0
+	m.queue_free()
+	await process_frame
+	Settings.reset_current()
+
+
+## menus.md §1.1: the course map from the course file, the fleet summary, Start always reachable, the layout.
+func test_race_card() -> void:
+	t.begin("quick race: the race card")
+	Settings.reset_current()
+	var c := MenuData.course_file("example_bay/example_wl")
+	t.ok(c.get("id", "") == "example_wl", "course file read")
+	var p := CourseMap.resolve(c, 0.0)
+	t.ok(p["rc"].distance_to(Vector2(125, -300)) < 0.01 and p["pin"].distance_to(Vector2(-125, -300)) < 0.01,
+		"start ends square to a north wind: rc %s, pin %s" % [p["rc"], p["pin"]])
+	t.ok(p["w"].distance_to(Vector2(0, 400)) < 0.01, "windward mark 700 m upwind of the line: %s" % p["w"])
+	var e := CourseMap.resolve(c, PI * 0.5)
+	t.ok(e["w"].distance_to(Vector2(700, -300)) < 0.01, "wind from the east: windward mark to the east %s" % e["w"])
+	t.ok(CourseMap.laps_legs(c) == Vector2i(2, 6), "2 laps, 6 legs")
+	t.ok(CourseMap.rounding_ids(c).has("w") and CourseMap.rounding_ids(c).has("g1")
+		and not CourseMap.rounding_ids(c).has("rc"), "rounding marks: the sequence's marks and gates")
+	var m := (load("res://scenes/menu/main_menu.tscn") as PackedScene).instantiate() as MainMenu
+	m.change_scenes = false
+	m.live_backdrop = false
+	root.add_child(m)
+	root.size = Vector2i(1280, 800)
+	await process_frame
+	m.open_page("quick")
+	await process_frame
+	await process_frame
+	var q := m.quick
+	t.ok(q.course_map != null and q.course_map.points.has("w"), "the course map shows the chosen course")
+	q.rows["wind_from_deg"].set_value(90.0, true)
+	q.rows["wind_kn"].set_value(18.0, true)
+	t.ok(absf(q.course_map.wind_from_deg - 90.0) < 1e-6 and absf(q.course_map.wind_kn - 18.0) < 1e-6
+		and q.course_map.points["w"].x > 600.0, "the map follows the wind rows")
+	q.rows["fleet_size"].set_value(12.0, true)
+	q.rows["ai_level"].set_value("pro", true)
+	t.ok(q.fleet_text.text.contains("12 boats: you and 11 AI") and q.fleet_text.text.contains("Pro AI")
+		and q.fleet_text.text.contains(MenuData.name_of(MenuData.classes(), str(q.rows["class_id"].value))),
+		"fleet summary: %s" % q.fleet_text.text.replace("\n", " / "))
+	t.ok(q.course_text.text.contains("2 laps, 6 legs"), "course caption: %s" % q.course_text.text.replace("\n", " / "))
+	# keyboard: down from the last row is Start, up from Start the last row
+	q.rows["wind_from_deg"].grab_focus()
+	await process_frame
+	_key("ui_down")
+	await process_frame
+	t.ok(root.gui_get_focus_owner() == q.start_button, "down from the last row: Start")
+	_key("ui_up")
+	await process_frame
+	t.ok(root.gui_get_focus_owner() == q.rows["wind_from_deg"], "up from Start: the last row")
+	# the layout: preview beside the rows when there is room, under them when not; Start always on screen
+	for c2 in [[Vector2i(1280, 800), 0.8], [Vector2i(1280, 800), 1.0], [Vector2i(1280, 800), 1.3],
+			[Vector2i(1080, 1920), 0.8], [Vector2i(1080, 1920), 1.0], [Vector2i(1080, 1920), 1.3]]:
+		root.size = c2[0]
+		m.settings.ui_scale = c2[1]
+		m.settings.apply_display(root)
+		await process_frame
+		await process_frame
+		var vis := root.get_visible_rect().grow(1)
+		var wide: bool = q.size.x >= SetupPanel.TWO_COLUMNS_MIN
+		print("  race card %s at %d %%: page %d px, %s" % [c2[0], roundi(c2[1] * 100), q.size.x,
+			"two columns" if wide else "one column"])
+		t.ok(q.body.vertical != wide, "%s at %d %%: %s (page %d px)" % [c2[0], roundi(c2[1] * 100),
+			"preview beside the rows" if wide else "preview under the rows", q.size.x])
+		t.ok(vis.encloses(q.start_button.get_global_rect()), "Start on screen")
+		if wide:
+			t.ok(vis.encloses(q.course_map.get_global_rect()), "the course map on screen")
+		# the last row and Start reachable by the keyboard at this size
+		q.rows["wind_from_deg"].grab_focus()
+		await process_frame
+		_key("ui_down")
+		await process_frame
+		t.ok(root.gui_get_focus_owner() == q.start_button, "down to Start")
+	m.settings.ui_scale = 1.0
+	m.settings.apply_display(root)
+	root.size = Vector2i(1280, 800)
 	m.queue_free()
 	await process_frame
 	Settings.reset_current()

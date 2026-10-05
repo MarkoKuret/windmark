@@ -339,6 +339,8 @@ func _setting_changed(key: String) -> void:
 		settings.apply_audio()
 	if stage != null and key in ["quality", "reduced_motion"]:
 		stage.apply_settings(settings)
+	elif stage != null and key in ["fullscreen", "vsync", "fps_limit", "ui_scale", "render_scale", "capture_preset"]:
+		stage.apply_frame_cap(settings)  # menus.md §4: apply_display put the player's limit back
 
 
 ## Writes the session (menus.md §1), remembers the choices and asks for the sail scene.

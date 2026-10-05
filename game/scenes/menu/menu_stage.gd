@@ -7,6 +7,9 @@ extends Node
 const SAIL_SCENE := "res://scenes/sail_test.tscn"
 const VENUE := "example_bay"
 const FLEET := 4
+## tier L (menus.md §4): two boats, no sun shadows, at most 30 frames a second while the menu shows
+const FLEET_L := 2
+const FPS_L := 30
 const AI_LEVEL := "expert"
 const WIND_KN := 12.0
 ## the drift (menus.md §4): circling rate, distance and height ranges, the breathing period, the time on each
@@ -57,7 +60,7 @@ func build(host: Node, path := SAIL_SCENE) -> bool:
 		g.mode = "free"
 	else:
 		g.course = courses[0]["id"]
-	g.fleet_size = FLEET
+	g.fleet_size = fleet_for(Settings.current().effective_quality())
 	g.ai_level = AI_LEVEL
 	g.wind_kn = WIND_KN
 	g.wind_from_deg = 0.0
@@ -105,13 +108,51 @@ func _quiet() -> void:
 			(node as Node).process_mode = Node.PROCESS_MODE_DISABLED
 
 
-## The player's quality tier on the sea and sky, and reduced motion on the drift (the render scale is the
-## window's, Settings.apply_display).
+## The backdrop's fleet for a quality tier (menus.md §4): set when the menu opens.
+static func fleet_for(tier: SeaQuality.Tier) -> int:
+	return FLEET_L if tier == SeaQuality.Tier.L else FLEET
+
+
+## The player's quality tier on the sea and sky (on L without sun shadows), the frame cap, and reduced motion on
+## the drift (the render scale is the window's, Settings.apply_display).
 func apply_settings(s: Settings) -> void:
 	if scene == null:
 		return
 	s.apply_sea(scene.sea, scene.sky)
+	_sun_shadows(s)
+	apply_frame_cap(s)
 	reduced_motion = s.reduced_motion
+
+
+## No sun shadows on tier L (menus.md §4); the tier's otherwise (Settings.apply_sea set them).
+func _sun_shadows(s: Settings) -> void:
+	var sun: DirectionalLight3D = (scene.sky as SkyRig).sun() if scene.sky is SkyRig else null
+	if sun != null and s.effective_quality() == SeaQuality.Tier.L:
+		sun.shadow_enabled = false
+
+
+## Sun shadows on (tests): false on tier L.
+func sun_shadows() -> bool:
+	var sun: DirectionalLight3D = (scene.sky as SkyRig).sun() if scene != null and scene.sky is SkyRig else null
+	return sun != null and sun.shadow_enabled
+
+
+## The menu's frame rate (menus.md §4): on tier L at most FPS_L (or the player's lower limit), else the player's.
+## Call after Settings.apply_display, which sets the player's.
+func apply_frame_cap(s: Settings) -> void:
+	Engine.max_fps = frame_cap(s.effective_quality(), s.fps_limit)
+
+
+## Engine.max_fps for the menu on a tier with the player's limit (0 = none).
+static func frame_cap(tier: SeaQuality.Tier, fps_limit: int) -> int:
+	if tier != SeaQuality.Tier.L:
+		return fps_limit
+	return FPS_L if fps_limit <= 0 else mini(fps_limit, FPS_L)
+
+
+## Leaving the menu: the player's frame rate limit back.
+func _exit_tree() -> void:
+	Engine.max_fps = Settings.current().fps_limit
 
 
 func boat_count() -> int:
@@ -177,6 +218,7 @@ func _restart_check(dt: float) -> void:
 		_finished_for = 0.0
 		scene.reset_boat()
 		_quiet()
+		_sun_shadows(Settings.current())
 
 
 ## The camera the backdrop is seen through.

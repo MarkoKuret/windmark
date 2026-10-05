@@ -32,7 +32,7 @@ const HELP := {
 	"ui_scale": "The size of the HUD and the menus.",
 	"palette": "Rules colours for colour-blind eyes. Every colour also comes with a word or a letter.",
 	"captions": "Caption lines for the race sounds. Kept for later: the sounds have no captions yet.",
-	"quality": "The detail of the sea, the sky and the shadows. Medium suits the Steam Deck, Low integrated graphics.",
+	"quality": "The detail of the sea, the sky and the shadows. Low suits built-in graphics and the Steam Deck.",
 	"render_scale": "Draws the 3D view at fewer pixels and sharpens it up to the screen. The HUD stays sharp.",
 	"fullscreen": "Windowed or fullscreen.",
 	"vsync": "On: no tearing; the frame rate follows the screen.",

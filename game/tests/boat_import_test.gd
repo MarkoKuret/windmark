@@ -6,8 +6,9 @@ extends SceneTree
 ## tools/boatgen/tests/fixtures/<id>.boat.json for generator test classes) and the
 ## physics sidecar (<id>.physics.json) that boatgen writes next to the GLB:
 ##   - scale and axes: glTF +Y up, bow toward +Z, port toward +X, origin on the DWL at mid LWL
-##   - node set and triangle counts match the sidecar
-##   - material slots present, imported as StandardMaterial3D with the boatgen PBR factors
+##   - node set and triangle counts match the sidecar, within the budgets of sail_visuals.md §11.4
+##   - one boat material (slot table and shared tiling atlas in its extras), every vertex on a known slot; the
+##     sails' own material; the shadow proxy (shadow, shadow_boom under the boom)
 ##   - pivot nodes (rudder, boom, wheel, pole) sit on the sidecar pivots, with geometry around them
 ##   - sails: every node of the two-layer grid survives the import and maps back to its grid index by uv1 and
 ##     the layer side (SailGrid), the contract that run-time deformation relies on
@@ -17,11 +18,13 @@ extends SceneTree
 ## Exit code 0 when every check passes, 1 otherwise.
 
 const BOAT_DIR := "res://generated/boats"
-const REQUIRED_MATERIALS := ["gelcoat", "nonslip", "antifouling", "boottop", "carbon", "metal", "sailcloth"]
-const KNOWN_MATERIALS := ["gelcoat", "nonslip", "antifouling", "boottop", "carbon", "metal", "sailcloth", "glass", "rope", "rubber",
-	"transom", "rope_mainsheet", "rope_halyard", "rope_control"]
-## the running rigging by function in the model (data_format.md §8.7); the sheets are drawn by the front end
-const ROPE_MATERIALS := ["rope_mainsheet", "rope_halyard", "rope_control"]
+const KNOWN_MATERIALS := ["boat", "sailcloth", "shadow"]
+## slots of the boat material every LOD0 has (data_format.md §8.5)
+const REQUIRED_SLOTS := ["hull_gelcoat", "hull_boottop", "hull_antifouling", "deck_gelcoat", "deck_nonslip", "transom",
+	"keel", "carbon", "metal", "rope_mainsheet"]
+## sail_visuals.md §11.4: model triangles without the sails and surfaces drawn per level
+const BUDGET_TRIS := {0: 22000, 1: 5600, 2: 1500, 3: 300}
+const BUDGET_SURFACES := {0: 12, 1: 3, 2: 3, 3: 3}
 ## Positions come through the importer's 16-bit vertex compression; 5 mm is well above its error for a 20 m boat.
 const POS_TOL := 0.005
 ## Hull extent against the class-file dimensions (stem rounding, toe rail and rub strake stand proud a little).
@@ -134,18 +137,43 @@ func _class_file(id: String) -> String:
 
 # ---------------------------------------------------------------- levels of detail
 
-## Counts of one imported model: triangles, surfaces (one draw call each, before any batching) and vertices.
+## Counts of one imported model: model triangles without the sails and the shadow proxy, surfaces drawn (one
+## draw call each, before any batching; the sails counted apart), vertices, and the shadow proxy's triangles.
 func _model_stats(root: Node) -> Dictionary:
-	var st := {"triangles": 0, "surfaces": 0, "vertices": 0}
-	for c in root.get_children():
+	var st := {"triangles": 0, "surfaces": 0, "vertices": 0, "sail_surfaces": 0, "shadow": 0}
+	for c in root.find_children("*", "MeshInstance3D", true, false):
 		var mi := c as MeshInstance3D
-		if mi == null or mi.mesh == null:
+		if mi.mesh == null:
+			continue
+		var n := String(mi.name)
+		if n.begins_with("shadow"):
+			st["shadow"] += _triangles(mi.mesh)
+			continue
+		if n.begins_with("sail_"):
+			st["sail_surfaces"] += mi.mesh.get_surface_count()
 			continue
 		st["triangles"] += _triangles(mi.mesh)
 		st["surfaces"] += mi.mesh.get_surface_count()
 		for s in mi.mesh.get_surface_count():
 			st["vertices"] += (mi.mesh.surface_get_arrays(s)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
 	return st
+
+
+## The slot names (BoatMaterials' table, the GLB's boat material extras) used by a mesh's boat surfaces.
+func _slots_of(mesh: Mesh) -> Dictionary:
+	var out := {}
+	for s in mesh.get_surface_count():
+		var m := mesh.surface_get_material(s)
+		if m == null or m.resource_name != "boat" or not m.has_meta("extras"):
+			continue
+		var table: Array = m.get_meta("extras").get("slots", [])
+		var col = mesh.surface_get_arrays(s)[Mesh.ARRAY_COLOR]
+		if col == null:
+			continue
+		for c in (col as PackedColorArray):
+			var k := roundi(c.g * 255.0)
+			out[String(table[k]["name"]) if k < table.size() else "?%d" % k] = true
+	return out
 
 
 ## The lower levels of detail listed in the sidecar (model.lods): same nodes and pivots as the full model, the
@@ -156,8 +184,6 @@ func _test_lods(id: String) -> void:
 		_warn("%s: no levels of detail in the sidecar" % id)
 		return
 	var stats := {}
-	var expected: Array = side["model"]["nodes"]
-	expected.sort()
 	var prev := -1
 	for entry in side["model"]["lods"]:
 		var lod := int(entry["lod"])
@@ -172,53 +198,68 @@ func _test_lods(id: String) -> void:
 			names.append(String(c.name))
 			parts[String(c.name)] = c
 		names.sort()
-		_check(names == expected, "%s LOD%d has the full model's nodes" % [id, lod])
+		var expected: Array = entry.get("nodes", [])
+		expected.sort()
+		_check(names == expected, "%s LOD%d nodes %s match the sidecar %s" % [id, lod, names, expected])
 		var st := _model_stats(root)
 		_check(st["triangles"] == int(entry["triangles"]), "%s LOD%d triangles %d match the sidecar %d" % [id, lod,
 			st["triangles"], int(entry["triangles"])])
+		_check(st["surfaces"] == int(entry.get("surfaces", -1)), "%s LOD%d surfaces %d match the sidecar %d" % [id, lod,
+			st["surfaces"], int(entry.get("surfaces", -1))])
+		_check(st["triangles"] <= int(BUDGET_TRIS.get(lod, 0)), "%s LOD%d: %d model triangles within the budget %d" % [
+			id, lod, st["triangles"], int(BUDGET_TRIS.get(lod, 0))])
+		# a class with a spinnaker pole draws the pole too (sail_visuals.md §11.4)
+		var budget := int(BUDGET_SURFACES.get(lod, 0)) + (1 if parts.has("pole") and lod == 1 else 0)
+		_check(st["surfaces"] <= budget, "%s LOD%d: %d surfaces within the budget %d" % [id, lod, st["surfaces"], budget])
+		_check(st["shadow"] > 0 and st["shadow"] < 1000, "%s LOD%d: a shadow proxy of %d triangles" % [id, lod, st["shadow"]])
 		if prev >= 0:
 			_check(st["triangles"] < prev, "%s LOD%d has fewer triangles than the level before" % [id, lod])
 		prev = st["triangles"]
-		# the livery slots on every level (data_format.md §8.5): the transom on its own slot, the deck's walking slots
-		if parts.has("deck"):
-			var dm: Mesh = (parts["deck"] as MeshInstance3D).mesh
-			var slots := []
-			for s in dm.get_surface_count():
-				slots.append(_surface_material_name(dm, s))
-			_check("transom" in slots and "gelcoat" in slots and "nonslip" in slots,
-				"%s LOD%d deck has the transom, gelcoat and nonslip slots" % [id, lod])
+		# the livery regions on every level (data_format.md §8.5): hull, deck, transom and keel slots
+		var host: String = "deck" if parts.has("deck") else "body"
+		if _check(parts.has(host), "%s LOD%d has its %s node" % [id, lod, host]):
+			var slots := _slots_of((parts[host] as MeshInstance3D).mesh)
+			if host == "body":
+				_check(slots.has("hull_gelcoat") and slots.has("keel"), "%s LOD%d body carries the hull and keel slots" % [id, lod])
+			_check(slots.has("transom") and slots.has("deck_gelcoat"),
+				"%s LOD%d %s has the transom and deck slots (%s)" % [id, lod, host, slots.keys()])
 		if lod > 0:
 			var rig: Dictionary = side["rig"]
 			var pivots := {"rudder": "rudder_stock", "boom": "boom_pivot", "wheel": "wheel_hub", "pole": "pole_pivot"}
 			for node in side["model"]["pivots"]:
 				if parts.has(node):
 					_near_v((parts[node] as Node3D).position, _body_to_model(rig[pivots[node]]), POS_TOL, "%s LOD%d %s pivot" % [id, lod, node])
-		print("  LOD%d from %d m: %d triangles, %d surfaces, %d vertices" % [lod, int(entry["from_m"]), st["triangles"],
-			st["surfaces"], st["vertices"]])
+			_check(parts.has("mainsheet") == (lod == 1), "%s LOD%d: the mainsheet on LOD1 only" % [id, lod])
+		_check(parts.has("boom") and (parts["boom"] as Node).find_child("shadow_boom", false, false) != null,
+			"%s LOD%d: the boom's shadow proxy swings with the boom" % [id, lod])
+		print("  LOD%d from %d m: %d triangles (sails %d, grid step %d), %d surfaces + %d sails, %d vertices, shadow proxy %d" % [
+			lod, int(entry["from_m"]), st["triangles"], int(entry.get("sail_triangles", 0)), int(entry.get("sail_step", 1)),
+			st["surfaces"], st["sail_surfaces"], st["vertices"], st["shadow"]])
 		stats[lod] = st
 		inst.free()
 	lod_stats[id] = stats
 
 
-## Fleet cost: a 16-boat fleet of each class as a race camera sees it (2 boats within 30 m, 4 from 30 to 100 m,
-## 10 beyond), counted from the imported levels of detail.
+## Fleet cost: a 16-boat fleet of each class as a race camera sees it, counted from the imported levels of detail
+## (model triangles and surfaces drawn, without the sails): the old mix (2 boats on LOD0, 4 on LOD1, 10 on LOD2)
+## and the chase at a start (1 on LOD0, 9 on LOD1 within 80 m, 6 on LOD2).
 func _fleet_cost() -> void:
-	var mix := {0: 2, 1: 4, 2: 10}
-	for id in lod_stats:
-		var st: Dictionary = lod_stats[id]
-		if not (st.has(0) and st.has(1) and st.has(2)):
-			continue
-		var tris := 0
-		var draws := 0
-		var verts := 0
-		for lod in mix:
-			tris += mix[lod] * int(st[lod]["triangles"])
-			draws += mix[lod] * int(st[lod]["surfaces"])
-			verts += mix[lod] * int(st[lod]["vertices"])
-		var full := 16 * int(st[0]["triangles"])
-		print("fleet %s x16 (2 LOD0, 4 LOD1, 10 LOD2): %d triangles (%.0f %% of 16 full models), %d surfaces, %d vertices" % [
-			id, tris, 100.0 * tris / max(full, 1), draws, verts])
-		_check(tris < full / 2, "%s fleet with levels of detail costs under half the full models" % id)
+	for mix in [{0: 2, 1: 4, 2: 10}, {0: 1, 1: 9, 2: 6}]:
+		for id in lod_stats:
+			var st: Dictionary = lod_stats[id]
+			if not (st.has(0) and st.has(1) and st.has(2)):
+				continue
+			var tris := 0
+			var draws := 0
+			var verts := 0
+			for lod in mix:
+				tris += mix[lod] * int(st[lod]["triangles"])
+				draws += mix[lod] * (int(st[lod]["surfaces"]) + int(st[lod]["sail_surfaces"]))
+				verts += mix[lod] * int(st[lod]["vertices"])
+			var full := 16 * int(st[0]["triangles"])
+			print("fleet %s x16 (%d LOD0, %d LOD1, %d LOD2): %d triangles (%.0f %% of 16 LOD0 models), %d surfaces with the sails, %d vertices" % [
+				id, mix[0], mix[1], mix[2], tris, 100.0 * tris / max(full, 1), draws, verts])
+			_check(tris < full / 2, "%s fleet with levels of detail costs under half the LOD0 models" % id)
 
 
 # ---------------------------------------------------------------- model
@@ -265,12 +306,13 @@ func _test_model(id: String) -> void:
 	_test_pivots(side, parts)
 	_test_sails(side, parts)
 
-	# Triangle counts.
+	# Triangle counts (the model without the sails and the shadow proxy).
 	var total := 0
 	var line := "  triangles:"
 	for n in names:
 		var t := _triangles((parts[n] as MeshInstance3D).mesh)
-		total += t
+		if not (String(n).begins_with("sail_") or String(n).begins_with("shadow")):
+			total += t
 		line += " %s %d," % [n, t]
 	print(line + " total %d" % total)
 	_check(total == int(side["model"]["triangles"]), "triangle total %d matches the sidecar %d" % [total, int(side["model"]["triangles"])])
@@ -320,43 +362,49 @@ func _test_axes(boat: Dictionary, parts: Dictionary) -> void:
 
 func _test_materials(id: String, parts: Dictionary) -> void:
 	var found := {}
-	var tiling := 0
-	for part in parts.values():
+	var slots := {}
+	var meshes: Array = parts.values()
+	if parts.has("boom"):
+		for c in (parts["boom"] as Node).get_children():
+			meshes.append(c)
+	for part in meshes:
 		var mesh: Mesh = (part as MeshInstance3D).mesh
 		for s in mesh.get_surface_count():
 			var m := mesh.surface_get_material(s)
 			var nm := _surface_material_name(mesh, s)
 			if not _check(m is StandardMaterial3D, "%s surface %d material %s is StandardMaterial3D" % [part.name, s, nm]):
 				continue
-			_check(nm in KNOWN_MATERIALS, "%s surface %d material '%s' is a boatgen slot" % [part.name, s, nm])
+			_check(nm in KNOWN_MATERIALS, "%s surface %d material '%s' is a boatgen material" % [part.name, s, nm])
 			if found.has(nm):
 				_check(found[nm] == m, "material %s is one shared resource" % nm)
-			# Baked AO as vertex colours on the fixed model (not on the sails or the rebuilt mainsheet).
-			if not (String(part.name).begins_with("sail_") or part.name == "mainsheet"):
-				var col = mesh.surface_get_arrays(s)[Mesh.ARRAY_COLOR]
-				_check(col != null and (col as PackedColorArray).size() > 0, "%s surface %d carries baked AO colours" % [part.name, s])
 			found[nm] = m
-	for nm in REQUIRED_MATERIALS:
-		_check(found.has(nm), "%s has material slot %s" % [id, nm])
-	if not id.ends_with("_lod1") and not id.ends_with("_lod2"):
-		for nm in ROPE_MATERIALS:
-			_check(found.has(nm), "%s has rope slot %s" % [id, nm])
-	var line := "  materials:"
-	for nm in found:
-		var m: StandardMaterial3D = found[nm]
-		line += " %s(%s m%.2f r%.2f cull %d%s)" % [nm, m.albedo_color.to_html(false), m.metallic, m.roughness,
-			m.cull_mode, " tiling %s" % m.get_meta("extras")["tiling_m"] if m.has_meta("extras") else ""]
-		if m.has_meta("extras"):
-			tiling += 1
-		# Texture set (tools/boatgen/boatgen/textures.py): tiling on uv0, one image per tiling_m metres.
-		if m.has_meta("extras") and m.get_meta("extras").has("texture_set"):
-			var s := 1.0 / float(m.get_meta("extras")["tiling_m"])
-			_check(m.albedo_texture != null and m.roughness_texture != null, "%s has its albedo and roughness textures" % nm)
-			_check(absf(m.uv1_scale.x - s) < 1e-4 and absf(m.uv1_scale.y - s) < 1e-4, "%s uv scale %s is 1 / tiling_m" % [nm, m.uv1_scale])
-		_check(m.cull_mode == BaseMaterial3D.CULL_BACK, "%s culls back faces" % nm)
-		_check(m.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED, "%s is opaque" % nm)
-	print(line)
-	_check(tiling == found.size(), "every material carries extras.tiling_m as metadata (%d of %d)" % [tiling, found.size()])
+			var col = mesh.surface_get_arrays(s)[Mesh.ARRAY_COLOR]
+			if nm == "boat":
+				# slot ids (green) and baked AO (red) as vertex colours (data_format.md §8.5)
+				if _check(col != null and (col as PackedColorArray).size() > 0, "%s surface %d carries slot and AO colours" % [part.name, s]):
+					for k in _slots_of(mesh):
+						slots[k] = true
+			elif nm == "shadow":
+				_check(String(part.name).begins_with("shadow"), "%s: the shadow material only on the proxy" % part.name)
+	_check(found.size() == 3, "%s: the boat, sailcloth and shadow materials (%s)" % [id, found.keys()])
+	for k in slots:
+		_check(not String(k).begins_with("?"), "%s: slot %s is in the table" % [id, k])
+	for k in REQUIRED_SLOTS:
+		_check(slots.has(k), "%s has slot %s" % [id, k])
+	if found.has("boat"):
+		var m: StandardMaterial3D = found["boat"]
+		var ex: Dictionary = m.get_meta("extras", {}) if m.has_meta("extras") else {}
+		_check(ex.get("slots", []).size() >= 20 and ex.has("atlas"), "%s: the boat material's slot table and atlas in its extras" % id)
+		_check(m.albedo_texture != null and m.roughness_texture != null and m.normal_texture != null,
+			"%s: the boat material has the shared tiling atlas" % id)
+		if m.albedo_texture != null:
+			_check(m.albedo_texture.resource_path.begins_with("res://generated/boats/_tex/"),
+				"%s: the tiling atlas is the shared file %s" % [id, m.albedo_texture.resource_path])
+			var img := m.albedo_texture.get_image()
+			_check(img != null and img.is_compressed(), "%s: the tiling atlas is VRAM-compressed" % id)
+		_check(m.cull_mode == BaseMaterial3D.CULL_BACK and m.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED,
+			"%s: the boat material is opaque and culls back faces" % id)
+	print("  materials: %s; slots: %s" % [found.keys(), slots.keys()])
 
 
 func _test_pivots(side: Dictionary, parts: Dictionary) -> void:

@@ -300,11 +300,15 @@ func _lods(id: String) -> void:
 	var data := BoatClassData.load_class(id)
 	var bv := BoatView.create(data.info, 0.5)
 	root.add_child(bv)
-	t.ok(bv.levels.size() == 3, "three levels loaded (%d)" % bv.levels.size())
+	t.ok(bv.levels.size() == 4, "four levels loaded (%d)" % bv.levels.size())
 	var lv := Livery.load_class(id)[0]
 	bv.set_livery(lv)
 	_run(bv, _sv(data.info, {"main": UP, "jib": UP}, -0.35, 0.8, 5.0), 10)
-	var seq := [[25.0, 0], [35.0, 1], [29.0, 1], [28.0, 0], [90.0, 1], [110.0, 2], [96.0, 2], [94.0, 1]]
+	var seq := [[10.0, 0], [16.0, 1], [14.5, 1], [14.0, 0], [85.0, 2], [270.0, 3], [240.0, 3], [230.0, 2], [75.0, 1]]
+	var main: BoatView.SailPart = null
+	for sp in bv.sail_parts:
+		if sp.type == "main":
+			main = sp
 	for e in seq:
 		bv.update_lod(e[0])
 		t.ok(bv.lod == e[1], "camera at %.0f m: LOD%d (%d)" % [e[0], e[1], bv.lod])
@@ -314,29 +318,32 @@ func _lods(id: String) -> void:
 				if n.visible and n.name != "pole":
 					shown += 1 if k == bv.lod else 100
 		t.ok(shown > 0 and shown < 100, "only LOD%d's parts are shown" % bv.lod)
-		t.ok(bv.sheets.detail == bv.lod and bv.sheets.node.visible == (bv.lod < 2),
+		t.ok(bv.sheets.detail == mini(bv.lod, 2) and bv.sheets.node.visible == (bv.lod < 2),
 			"sheets at detail %d, %s" % [bv.sheets.detail, "shown" if bv.sheets.node.visible else "hidden"])
-	# the livery on every level: the same material objects by part and slot
-	var by_slot := {}
+		if main != null:
+			# §11.4: the sail's index buffer on every 2nd (LOD2) or 4th (LOD3) row and column of the full grid
+			var step: int = [1, 1, 2, 4][bv.lod]
+			var nr := ceili((main.rows - 1) / float(step))
+			var nc := ceili((main.cols - 1) / float(step))
+			var tris := (main.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3
+			var verts := (main.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+			t.ok(tris == 4 * nr * nc and verts == 2 * main.rows * main.cols,
+				"main at grid step %d: %d triangles over the whole grid's %d vertices" % [step, tris, verts])
+	# the livery on every level: one material, the boat's own, on every non-sail surface
+	var mats := {}
 	var missing := []
 	for k in bv.levels.size():
-		for part in ["hull", "keel", "deck"]:
-			var mi := (bv.levels[k]["model"] as Node3D).find_child(part, true, false) as MeshInstance3D
-			if mi == null:
-				missing.append("%s@%d" % [part, k])
+		for mi in (bv.levels[k]["model"] as Node).find_children("*", "MeshInstance3D", true, false):
+			var nm := String(mi.name)
+			if nm.begins_with("sail_") or nm.begins_with("shadow") or mi == bv.sheets.node:
 				continue
-			for s in mi.mesh.get_surface_count():
-				var slot := mi.mesh.surface_get_material(s).resource_name
-				var key: String = part + "/" + slot
-				var m := mi.get_surface_override_material(s)
-				if k == 0:
-					by_slot[key] = m
-				elif by_slot.has(key) and by_slot[key] != m:
-					missing.append("%s@%d" % [key, k])
-	t.ok(missing.is_empty(), "every level's hull, keel and deck carry the boat's livery materials (%s)" % [missing])
-	for key in ["hull/gelcoat", "hull/antifouling", "keel/antifouling", "deck/transom", "deck/gelcoat"]:
-		if by_slot.has(key):
-			t.ok(by_slot[key] != null, "%s painted on every level" % key)
+			for s2 in (mi as MeshInstance3D).mesh.get_surface_count():
+				var m := (mi as MeshInstance3D).get_surface_override_material(s2)
+				if m == null:
+					missing.append("%s@%d" % [nm, k])
+				mats[m] = true
+	t.ok(missing.is_empty() and mats.size() == 1, "every level's surfaces carry the boat's one livery material (%s, %d)" % [
+		missing, mats.size()])
 	# the moving parts of the level shown follow the boom
 	bv.update_lod(50.0)
 	_run(bv, _sv(data.info, {"main": UP, "jib": UP}, -0.5, 0.8, 5.0), 3)
@@ -357,28 +364,16 @@ func _ropes(id: String) -> void:
 	t.ok(rs.get("albedo", {}).size() == Livery.ROPES.size(), "baked rope set: %d functions" % rs.get("albedo", {}).size())
 	var bv := BoatView.create(data.info, 0.5)
 	bv.set_livery(lv)
-	var found := {}
-	for k in bv.levels.size():
-		var stack: Array[Node] = [bv.levels[k]["model"]]
-		while not stack.is_empty():
-			var node: Node = stack.pop_back()
-			stack.append_array(node.get_children())
-			var mi := node as MeshInstance3D
-			if mi == null or mi.mesh == null or mi == bv.sheets.node:
-				continue
-			for s in mi.mesh.get_surface_count():
-				var slot := mi.mesh.surface_get_material(s).resource_name
-				if slot.begins_with("rope_"):
-					var m := mi.get_surface_override_material(s) as ShaderMaterial
-					var fn := slot.trim_prefix("rope_")
-					var key: String = "%d/%s/%s" % [k, mi.name, slot]
-					if not found.has(key):
-						t.ok(m != null and m.get_shader_parameter("albedo_tex") == rs["albedo"][fn],
-							"LOD%d %s/%s: the baked %s braid" % [k, mi.name, slot, fn])
-					found[key] = true
-					found[fn] = true
+	# the model's ropes are slots of the boat material in the function's mean braid colour (data_format.md §8.7):
+	# the mainsheet tackle drawn, the halyards, coils and control lines painted on the deck
+	var bm := bv.livery_materials[0] as ShaderMaterial
+	var col: PackedVector4Array = bm.get_shader_parameter("slot_color")
 	for fn in ["mainsheet", "halyard", "control"]:
-		t.ok(found.has(fn), "the model carries %s ropes" % fn)
+		var r: Dictionary = lv.ropes.get(fn, {}) if lv.ropes.has(fn) else Livery.rope_set_of({}, [])[fn]
+		var c := Livery.rope_mean(r).srgb_to_linear()
+		var v := col[BoatMaterials.slot_id("rope_" + fn)]
+		t.ok(absf(v.x - c.r) < 0.01 and absf(v.y - c.g) < 0.01 and absf(v.z - c.b) < 0.01,
+			"the boat material's rope_%s slot in the %s braid's colour" % [fn, fn])
 	for surf in 2:
 		var m := bv.sheets.get_material(surf) as ShaderMaterial
 		var fn: String = ["sheet", "kite_sheet"][surf]

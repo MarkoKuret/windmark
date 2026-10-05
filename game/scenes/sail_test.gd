@@ -577,6 +577,7 @@ func _build_views() -> void:
 			var info := sim.class_info(b)
 			var v := BoatView.create(info, info.rudder_max)
 			v.name = "Boat%d_%s" % [b, info.id]
+			v.own = runner != null and b == runner.boat
 			add_child(v)
 			boat_views.append(v)
 		_paint_fleet()
@@ -667,6 +668,7 @@ func _setup_core() -> int:
 	sea.quality = sea_quality if Settings.quality_override < 0 else Settings.quality_override as SeaQuality.Tier
 	sea.use_internal_clock = false
 	SeaQuality.apply_environment(sky.environment(), sea.quality)
+	BoatView.cast_distance = float(SeaQuality.get_tier(sea.quality).get("boat_cast_distance", 0.0))
 	return 0
 
 
@@ -889,6 +891,7 @@ func _setup_sea(fs: FakeSim) -> void:
 	sea.quality = sea_quality if Settings.quality_override < 0 else Settings.quality_override as SeaQuality.Tier
 	sea.use_internal_clock = false
 	SeaQuality.apply_environment(sky.environment(), sea.quality)
+	BoatView.cast_distance = float(SeaQuality.get_tier(sea.quality).get("boat_cast_distance", 0.0))
 	fs.use_sea(sea.model, t0)
 
 

@@ -1,23 +1,31 @@
 class_name BoatMaterials
 extends RefCounted
-## Boat materials for a fleet: every imported boatgen slot (a StandardMaterial3D with the class's tiling texture
-## set) is replaced on the imported meshes by a ShaderMaterial on shaders/boat.gdshader that
-##   - uses one shared texture per texture set and map for every boat of every class (the importer extracts each
-##     GLB's embedded copy of the set; the first one loaded is kept, the others are released with their
-##     StandardMaterial3D), and
-##   - applies the baked ambient occlusion (COLOR_0) to the ambient and reflected light only, where Godot's glTF
-##     import multiplies it into the albedo (vertex_color_use_as_albedo).
-## Slots with the same factors share one ShaderMaterial across classes. The meshes are changed in place (they
-## are the imported resources, shared by every instance of a class), so a second call is a no-op.
+## Boat materials for a fleet. The generator draws every opaque surface of a boat but the sails with one material,
+## `boat` (sail_visuals.md §11.4, data_format.md §8.5): its slot table (in the material's extras) and the shared
+## tiling atlas (generated/boats/_tex, imported once for every class and level) go into one ShaderMaterial on
+## shaders/boat_atlas.gdshader, shared by every class and boat until a livery gives a boat its own copy
+## (BoatLivery). The sails' own material (`sailcloth`) becomes a ShaderMaterial on shaders/boat.gdshader with its
+## tiling set, the base of the sail shaders. The baked ambient occlusion (COLOR_0 red) darkens the ambient and
+## reflected light only. The meshes are changed in place (they are the imported resources, shared by every
+## instance of a class), so a second call is a no-op.
 ##
 ##   BoatMaterials.apply(model_root)
 
 const SHADER := preload("res://shaders/boat.gdshader")
+const ATLAS_SHADER := preload("res://shaders/boat_atlas.gdshader")
+## livery regions of the slot table (data_format.md §8.5)
+const REGIONS := ["", "hull", "deck", "transom", "keel", "keel_colour"]
+## the shader's slot arrays
+const SLOTS := 24
 
 ## "<texture_set>/<map>" -> Texture2D, map in albedo, mr, normal
 static var _textures := {}
 ## factor signature -> ShaderMaterial
 static var _materials := {}
+## the shared boat material, the slot names by id and the slot ids by name
+static var _atlas: ShaderMaterial
+static var _slot_names: Array[String] = []
+static var _slot_ids := {}
 
 
 ## Replaces the boatgen materials on every mesh under `root`. Returns the number of surfaces changed.
@@ -33,12 +41,110 @@ static func apply(root: Node) -> int:
 		for s in mi.mesh.get_surface_count():
 			var m := mi.mesh.surface_get_material(s)
 			if m is StandardMaterial3D:
-				mi.mesh.surface_set_material(s, material_for(m))
+				var rn := (m as StandardMaterial3D).resource_name
+				if rn == "boat":
+					mi.mesh.surface_set_material(s, atlas_for(m))
+				elif rn == "shadow":
+					continue
+				else:
+					mi.mesh.surface_set_material(s, material_for(m))
 				n += 1
 	return n
 
 
-## The shared boat ShaderMaterial for an imported slot material.
+## The shared boat material (shaders/boat_atlas.gdshader) for the imported `boat` slot material.
+static func atlas_for(src: StandardMaterial3D) -> ShaderMaterial:
+	if _atlas != null:
+		return _atlas
+	var extras: Dictionary = src.get_meta("extras", {}) if src.has_meta("extras") else {}
+	var m := ShaderMaterial.new()
+	m.shader = ATLAS_SHADER
+	m.resource_name = "boat"
+	m.set_meta("extras", extras)
+	var col := PackedVector4Array()
+	var pbr := PackedVector4Array()
+	var map := PackedVector4Array()
+	col.resize(SLOTS)
+	pbr.resize(SLOTS)
+	map.resize(SLOTS)
+	_slot_names.clear()
+	_slot_ids.clear()
+	var slots: Array = extras.get("slots", [])
+	for i in mini(slots.size(), SLOTS):
+		var sl: Dictionary = slots[i]
+		var c: Array = sl.get("color", [0.5, 0.5, 0.5])
+		col[i] = Vector4(c[0], c[1], c[2], float(sl.get("normal_scale", 1.0)))
+		pbr[i] = Vector4(float(sl.get("roughness", 0.5)), float(sl.get("metallic", 0.0)), float(sl.get("tile", 7)),
+				1.0 / maxf(float(sl.get("tiling_m", 1.0)), 1e-3))
+		map[i] = Vector4(float(REGIONS.find(String(sl.get("region", "")))), 1.0, 0.5, 0.0)
+		_slot_names.append(String(sl.get("name", "")))
+		_slot_ids[String(sl.get("name", ""))] = i
+	m.set_shader_parameter("slot_color", col)
+	m.set_shader_parameter("slot_pbr", pbr)
+	m.set_shader_parameter("slot_map", map)
+	var at: Dictionary = extras.get("atlas", {})
+	m.set_shader_parameter("tile_grid", Vector2(float(at.get("cols", 4)), float(at.get("rows", 2))))
+	m.set_shader_parameter("tile_inset", 1.0 / maxf(float(at.get("tile_px", 512)), 1.0))
+	m.set_shader_parameter("detail_mean", float(extras.get("detail_mean", 0.92)))
+	m.set_shader_parameter("rough_mean", float(extras.get("rough_mean", 0.8)))
+	var g := slot_id("deck_gelcoat")
+	var ns := slot_id("deck_nonslip")
+	if g >= 0 and ns >= 0:
+		m.set_shader_parameter("deck_tiles", Vector4(pbr[g].z, pbr[g].w, pbr[ns].z, pbr[ns].w))
+		m.set_shader_parameter("ns_normal_scale", col[ns].w)
+	m.set_shader_parameter("tile_color", _shared("_atlas", "albedo", src.albedo_texture))
+	var mr := src.roughness_texture if src.roughness_texture else src.metallic_texture
+	m.set_shader_parameter("tile_mr", _shared("_atlas", "mr", mr))
+	m.set_shader_parameter("tile_normal", _shared("_atlas", "normal", src.normal_texture if src.normal_enabled else null))
+	_atlas = m
+	return m
+
+
+## The shared boat material once a boat is loaded (null before).
+static func atlas() -> ShaderMaterial:
+	return _atlas
+
+
+## The slot id of a slot name of the boat material (-1 when unknown).
+static func slot_id(slot_name: String) -> int:
+	return int(_slot_ids.get(slot_name, -1))
+
+
+## The slot names of the boat material by id.
+static func slot_names() -> Array[String]:
+	return _slot_names
+
+
+## The boat material's colour of a slot (linear) and its tile, for code that draws a slot elsewhere (the sheets).
+static func slot_color(slot_name: String) -> Color:
+	var i := slot_id(slot_name)
+	if _atlas == null or i < 0:
+		return Color(0.34, 0.33, 0.31)
+	var v: Vector4 = (_atlas.get_shader_parameter("slot_color") as PackedVector4Array)[i]
+	return Color(v.x, v.y, v.z)
+
+
+## A rope material on shaders/boat.gdshader in the boat material's `rope` slot colour, the base of the sheets'
+## materials (BoatLivery.rope_material puts the class's braid on it): one braid tile per 0.05 m of uv0.
+static var _rope_base: ShaderMaterial
+
+
+static func rope_base() -> ShaderMaterial:
+	if _rope_base != null:
+		return _rope_base
+	var m := ShaderMaterial.new()
+	m.shader = SHADER
+	m.resource_name = "rope"
+	m.set_shader_parameter("albedo_color", slot_color("rope").linear_to_srgb())
+	m.set_shader_parameter("roughness", 0.85)
+	m.set_shader_parameter("metallic", 0.0)
+	m.set_shader_parameter("uv_scale", Vector2(20.0, 20.0))
+	m.set_shader_parameter("ao_strength", 0.0)
+	_rope_base = m
+	return m
+
+
+## The shared ShaderMaterial for an imported slot material with its own tiling set (the sails' `sailcloth`).
 static func material_for(src: StandardMaterial3D) -> ShaderMaterial:
 	var extras: Dictionary = src.get_meta("extras", {}) if src.has_meta("extras") else {}
 	var tex_set: String = extras.get("texture_set", "")

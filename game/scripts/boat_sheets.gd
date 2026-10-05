@@ -147,6 +147,8 @@ func _setup(rig: Dictionary) -> void:
 	var bw := bv.info.beam_max
 	_aabb = AABB(Vector3(-bw - 4.0, -2.0, -loa), Vector3(2.0 * bw + 8.0, h + 4.0, 2.0 * loa + 4.0))
 	base_material = _rope_slot(bv.model)
+	if base_material == null:
+		base_material = BoatMaterials.rope_base()  # the boat material has no rope slot material of its own
 	if base_material != null:
 		_materials[Surface.HEADSAIL] = BoatLivery.rope_material(bv.info.id, base_material, "sheet", {})
 		_materials[Surface.FLYING] = BoatLivery.rope_material(bv.info.id, base_material, "kite_sheet", {})

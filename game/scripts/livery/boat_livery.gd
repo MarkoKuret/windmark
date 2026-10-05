@@ -1,29 +1,21 @@
 class_name BoatLivery
 extends RefCounted
-## Paints a BoatView in a livery at load (data_format.md §8, sail_visuals.md §11.2) without touching the
-## generated meshes. With the class's baked textures (BakedLivery, data_format.md §8.5), the normal case: per boat,
-## materials on shaders/boat_baked.gdshader for the hull (topsides, boot stripe and antifouling on the uv1 atlas),
-## the transom (its own slot and uv1, the boat's name), the deck (plan uv1, one material for its gelcoat and
-## non-slip slots) and the keel, and on shaders/sail_baked.gdshader for each baked sail, all reading the shared
-## images; per boat only the uniforms of its name and sail number over them. Without baked textures, the
-## procedural fallback: a copy of the shared boat material for each painted slot (topsides with the livery path of
-## hull_livery.gdshaderinc, boot stripe, antifouling, keel, the transom in the topsides colour, deck gelcoat and
-## non-slip) and a copy of each sail's
-## cloth material with the livery uniforms of sail_livery.gdshaderinc. Either way one text texture per boat
-## (LiveryText) and surface override materials on the boat's own MeshInstance3Ds; draw calls are unchanged (every
-## surface of every boat is its own draw anyway).
+## Paints a BoatView in a livery at load (data_format.md §8, sail_visuals.md §11.2 and §11.4) without touching the
+## generated meshes. The boat's opaque surfaces share one material, so per boat one copy of the shared boat material
+## (BoatMaterials, shaders/boat_atlas.gdshader) goes on every node of every level: the livery's colours in its slot
+## table (topsides, boot stripe, antifouling, keel, deck gelcoat and non-slip, rope functions) and, with the class's
+## baked textures (BakedLivery, data_format.md §8.5), the staged boat atlas (hull, deck with the painted hardware,
+## transom, keel) with the boat's name and number over it; without them the procedural hull livery
+## (hull_livery.gdshaderinc) on the topsides. Each baked sail gets shaders/sail_baked.gdshader, else a copy of its
+## cloth material with the livery uniforms of sail_livery.gdshaderinc. One text texture per boat (LiveryText) and
+## surface override materials on the boat's own MeshInstance3Ds; draw calls are unchanged.
 ##
 ##   BoatLivery.apply(boat_view, livery)
 
-const BAKED_BOAT := preload("res://shaders/boat_baked.gdshader")
 const BAKED_SAIL := preload("res://shaders/sail_baked.gdshader")
 ## the baked sails' tiling cloth detail (sail_visuals.md §11.2): tile size (m) and strength per cloth
 const DETAIL_TILE := 0.125
 const DETAIL_AMOUNT := {"dacron": 1.0, "laminate": 0.8, "nylon": 1.0}
-## boat.gdshader slot uniforms carried over to the baked materials
-const SLOT_KEYS := ["albedo_tex", "mr_tex", "normal_tex", "use_normal_tex", "normal_scale", "roughness", "metallic",
-	"specular", "uv_scale", "ao_strength", "albedo_max"]
-
 ## sail_visuals.md §11.1 per cloth style: roughness, weave share, fibre amount, back-light
 const STYLE_ROUGH := [0.55, 0.38, 0.45]
 const STYLE_WEAVE := [0.6, 0.15, 0.2]
@@ -49,7 +41,11 @@ static func apply(bv: BoatView, lv: Livery) -> int:
 	var hs := BakedLivery.hull_set(cid, lv.look_id)
 	var ss: Dictionary = BakedLivery.sail_set(cid).get("sails", {})
 	var n := 0
-	# every level of detail (sail_visuals.md §11.4): the same part and slot get the same material on each level
+	var shared := BoatMaterials.atlas()
+	var bm: ShaderMaterial = boat_material(shared, lv, text, geo, hs) if shared != null else null
+	if bm != null:
+		bv.livery_materials.append(bm)
+	# every level of detail (sail_visuals.md §11.4): the same material on each level
 	var stack: Array[Node] = []
 	for lvl in bv.levels:
 		stack.append(lvl["model"])
@@ -60,80 +56,15 @@ static func apply(bv: BoatView, lv: Livery) -> int:
 		sail_nodes[sp.node] = sp
 	if bv.sheets:
 		sail_nodes[bv.sheets.node] = true
-	var made := {}
-	var deck_m: ShaderMaterial = null
 	while not stack.is_empty():
 		var node: Node = stack.pop_back()
 		stack.append_array(node.get_children())
 		var mi := node as MeshInstance3D
 		if mi == null or mi.mesh == null or sail_nodes.has(mi):
 			continue
-		var part := String(mi.name)
-		# the deck's two walking slots share one material: the non-slip mask of the baked deck picks the detail
-		# (one for every level of detail: the levels share the deck's slot materials)
-		if part == "deck" and hs.has("deck") and deck_m == null:
-			deck_m = baked_deck_material(mi, hs["deck"])
 		for s in mi.mesh.get_surface_count():
-			var m := mi.mesh.surface_get_material(s) as ShaderMaterial
-			if m == null:
-				continue
-			var slot := m.resource_name
-			var key := "%s/%s/%d" % [part, slot, m.get_instance_id()]
-			if made.has(key):
-				if made[key] != null:
-					mi.set_surface_override_material(s, made[key])
-					n += 1
-				continue
-			made[key] = null
-			if slot.begins_with("rope_") and Livery.ROPES.has(slot.trim_prefix("rope_")):
-				# the class rope set (data_format.md §8.7): shared by the class, not per boat
-				var rm := rope_material(cid, m, slot.trim_prefix("rope_"), lv.ropes)
-				made[key] = rm
-				mi.set_surface_override_material(s, rm)
-				n += 1
-				continue
-			var bm: ShaderMaterial = null
-			if not hs.is_empty():
-				if part == "hull" and slot in ["gelcoat", "boottop", "antifouling"]:
-					bm = baked_hull_material(m, hs, lv, text, geo)
-				elif part == "keel" and slot == "antifouling" and hs.has("keel"):
-					bm = baked_view_material(m, hs["keel"], hs["keel_rect"], 1)
-				elif part == "deck" and slot in ["gelcoat", "nonslip"] and deck_m != null:
-					bm = deck_m
-				elif part == "deck" and slot == "transom" and hs.has("transom"):
-					bm = baked_transom_material(m, hs["transom"], lv, text, geo)
-			if bm != null:
-				if not bv.livery_materials.has(bm):
-					bv.livery_materials.append(bm)
-				made[key] = bm
+			if bm != null and mi.mesh.surface_get_material(s) == shared:
 				mi.set_surface_override_material(s, bm)
-				n += 1
-				continue
-			var c: Variant = null
-			if part == "hull" and slot == "gelcoat":
-				var tm := topsides_material(m, lv, text, geo)
-				bv.livery_materials.append(tm)
-				made[key] = tm
-				mi.set_surface_override_material(s, tm)
-				n += 1
-				continue
-			if part == "hull" and slot == "boottop":
-				c = lv.hull["boot_stripe"]
-			elif part == "hull" and slot == "antifouling":
-				c = lv.hull["antifouling"]
-			elif (part == "keel" or part == "rudder") and slot == "antifouling":
-				c = lv.hull["keel"]
-			elif part == "deck" and slot == "transom":
-				c = lv.hull["topsides"]
-			elif part == "deck" and slot == "gelcoat":
-				c = lv.deck["gelcoat"]
-			elif part == "deck" and slot == "nonslip":
-				c = lv.deck["nonslip"]
-			if c != null:
-				var cm := colour_material(m, c)
-				bv.livery_materials.append(cm)
-				made[key] = cm
-				mi.set_surface_override_material(s, cm)
 				n += 1
 	if bv.sheets:
 		var base := bv.sheets.base_material
@@ -155,29 +86,54 @@ static func apply(bv: BoatView, lv: Livery) -> int:
 	return n
 
 
-## A baked-livery material for a boat slot: the slot's tiling detail and factors on shaders/boat_baked.gdshader.
-static func _baked_slot(src: ShaderMaterial) -> ShaderMaterial:
-	var m := ShaderMaterial.new()
-	m.shader = BAKED_BOAT
-	m.resource_name = src.resource_name
-	for k in SLOT_KEYS:
-		var v: Variant = src.get_shader_parameter(k)
-		if v != null:
-			m.set_shader_parameter(k, v)
-	m.set_shader_parameter("bk_detail_mean", texture_mean(src.get_shader_parameter("albedo_tex")))
-	m.set_shader_parameter("bk_rough_mean", channel_mean(src.get_shader_parameter("mr_tex"), 1))
+## The boat's copy of the shared boat material `shared` in the livery: the slot colours (linear) of the livery's
+## hull, keel, deck and ropes; with the baked set `hs` (BakedLivery.hull_set) the staged atlas, its region
+## rectangles and the keel's side view, the name and number on the topsides and the name on the transom; without it
+## the procedural hull livery on the topsides.
+static func boat_material(shared: ShaderMaterial, lv: Livery, text: LiveryText, geo: Dictionary,
+		hs: Dictionary) -> ShaderMaterial:
+	var m := shared.duplicate() as ShaderMaterial
+	var col: PackedVector4Array = (shared.get_shader_parameter("slot_color") as PackedVector4Array).duplicate()
+	var paint := {"hull_gelcoat": lv.hull["topsides"], "hull_boottop": lv.hull["boot_stripe"],
+		"hull_antifouling": lv.hull["antifouling"], "keel": lv.hull["keel"], "rudder": lv.hull["keel"],
+		"transom": lv.hull["topsides"], "deck_gelcoat": lv.deck["gelcoat"], "deck_nonslip": lv.deck["nonslip"]}
+	for fn in Livery.ROPES:
+		var r: Dictionary = lv.ropes.get(fn, {}) if lv.ropes.has(fn) else Livery.rope_set_of({}, [])[fn]
+		paint["rope_" + fn] = Livery.rope_mean(r)
+	for slot in paint:
+		var i := BoatMaterials.slot_id(slot)
+		if i < 0 or i >= col.size():
+			continue
+		var c: Color = (paint[slot] as Color).srgb_to_linear()
+		col[i] = Vector4(c.r, c.g, c.b, col[i].w)
+	m.set_shader_parameter("slot_color", col)
+	m.set_shader_parameter("livery_text", text.texture)
+	m.set_shader_parameter("ov_color", _lin(lv.hull["text"]))
+	if hs.has("atlas"):
+		var at: Dictionary = hs["atlas"]
+		m.set_shader_parameter("bk_on", true)
+		m.set_shader_parameter("bk_albedo", at["albedo"])
+		m.set_shader_parameter("bk_normal", at["normal"])
+		m.set_shader_parameter("bk_orm", at["orm"])
+		var rects := PackedVector4Array([Vector4.ZERO, Vector4.ZERO, Vector4.ZERO, Vector4.ZERO, Vector4.ZERO])
+		var rs: Dictionary = hs.get("rects", {})
+		for k in ["hull", "deck", "transom", "keel"]:
+			rects[BoatMaterials.REGIONS.find(k)] = rs.get(k, Vector4.ZERO)
+		m.set_shader_parameter("bk_rect", rects)
+		m.set_shader_parameter("bk_keel", hs.get("keel_rect", Vector4(0, 0, 1, 1)))
+		_hull_text(m, lv, text, geo)
+		var box := transom_name_box(geo, text)
+		m.set_shader_parameter("tr_on", 1 if box != Vector4.ZERO and not text.rows[LiveryText.Row.NAME]["empty"] else 0)
+		m.set_shader_parameter("tr_box", box)
+		m.set_shader_parameter("tr_tex", text.rect(LiveryText.Row.NAME, false) if not text.rows[LiveryText.Row.NAME]["empty"] \
+				else Vector4.ZERO)
+	else:
+		_hull_livery(m, lv, text, geo)
 	return m
 
 
-## The hull's topsides, boot stripe or antifouling from the baked hull set, with the boat's name and number.
-static func baked_hull_material(src: ShaderMaterial, hs: Dictionary, lv: Livery, text: LiveryText,
-		geo: Dictionary) -> ShaderMaterial:
-	var m := _baked_slot(src)
-	m.set_shader_parameter("bk_albedo", hs["albedo"])
-	m.set_shader_parameter("bk_normal", hs["normal"])
-	m.set_shader_parameter("bk_orm", hs["orm"])
-	m.set_shader_parameter("bk_proj", 0)
-	m.set_shader_parameter("bk_maps", true)
+## The boat's name aft and number forward on both topsides in the generator's livery panels (the atlas path).
+static func _hull_text(m: ShaderMaterial, lv: Livery, text: LiveryText, geo: Dictionary) -> void:
 	var boxes := PackedVector4Array()
 	var rects := PackedVector4Array()
 	var length: float = geo["len"]
@@ -198,71 +154,8 @@ static func baked_hull_material(src: ShaderMaterial, hs: Dictionary, lv: Livery,
 			boxes.append(Vector4(cu - du, cv - dv, cu + du, cv + dv))
 			rects.append(text.rect(k[1], k[2]) if not text.rows[k[1]]["empty"] else Vector4.ZERO)
 	m.set_shader_parameter("ov_on", 1)
-	m.set_shader_parameter("ov_color", _lin(lv.hull["text"]))
 	m.set_shader_parameter("ov_box", boxes)
 	m.set_shader_parameter("ov_tex", rects)
-	m.set_shader_parameter("livery_text", text.texture)
-	return m
-
-
-## The deck from the livery's baked deck set on its plan uv1: one material for the deck's gelcoat and non-slip
-## surfaces, the gelcoat slot's detail and the non-slip slot's picked per pixel by the non-slip mask (ORM blue).
-static func baked_deck_material(mi: MeshInstance3D, ds: Dictionary) -> ShaderMaterial:
-	var gel: ShaderMaterial = null
-	var nsm: ShaderMaterial = null
-	for s in mi.mesh.get_surface_count():
-		var m := mi.mesh.surface_get_material(s) as ShaderMaterial
-		if m == null:
-			continue
-		if m.resource_name == "gelcoat":
-			gel = m
-		elif m.resource_name == "nonslip":
-			nsm = m
-	if gel == null:
-		gel = nsm
-	if gel == null:
-		return null
-	var m := _baked_slot(gel)
-	m.resource_name = "deck"
-	m.set_shader_parameter("bk_albedo", ds["albedo"])
-	m.set_shader_parameter("bk_normal", ds["normal"])
-	m.set_shader_parameter("bk_orm", ds["orm"])
-	m.set_shader_parameter("bk_proj", 0)
-	m.set_shader_parameter("bk_maps", true)
-	m.set_shader_parameter("bk_mask", nsm != null)
-	if nsm != null:
-		m.set_shader_parameter("ns_albedo_tex", nsm.get_shader_parameter("albedo_tex"))
-		m.set_shader_parameter("ns_mr_tex", nsm.get_shader_parameter("mr_tex"))
-		m.set_shader_parameter("ns_normal_tex", nsm.get_shader_parameter("normal_tex"))
-		m.set_shader_parameter("ns_use_normal", nsm.get_shader_parameter("use_normal_tex") == true)
-		var nsc: Variant = nsm.get_shader_parameter("normal_scale")
-		m.set_shader_parameter("ns_normal_scale", nsc if nsc != null else 1.0)
-		var uvs: Variant = nsm.get_shader_parameter("uv_scale")
-		m.set_shader_parameter("ns_uv_scale", uvs if uvs != null else Vector2.ONE)
-		m.set_shader_parameter("ns_detail_mean", texture_mean(nsm.get_shader_parameter("albedo_tex")))
-		m.set_shader_parameter("ns_rough_mean", channel_mean(nsm.get_shader_parameter("mr_tex"), 1))
-	return m
-
-
-## The transom from the livery's baked transom set on its uv1, with the boat's name in the transom's name panel
-## (the generator's `livery_transom`): one box, set in all four overlay slots so the hull's lookup finds it.
-static func baked_transom_material(src: ShaderMaterial, ts: Dictionary, lv: Livery, text: LiveryText,
-		geo: Dictionary) -> ShaderMaterial:
-	var m := _baked_slot(src)
-	m.set_shader_parameter("bk_albedo", ts["albedo"])
-	m.set_shader_parameter("bk_normal", ts["normal"])
-	m.set_shader_parameter("bk_orm", ts["orm"])
-	m.set_shader_parameter("bk_proj", 0)
-	m.set_shader_parameter("bk_maps", true)
-	var box := transom_name_box(geo, text)
-	var boxes := PackedVector4Array([box, box, box, box])
-	var r := text.rect(LiveryText.Row.NAME, false) if not text.rows[LiveryText.Row.NAME]["empty"] else Vector4.ZERO
-	m.set_shader_parameter("ov_on", 1 if box != Vector4.ZERO else 0)
-	m.set_shader_parameter("ov_color", _lin(lv.hull["text"]))
-	m.set_shader_parameter("ov_box", boxes)
-	m.set_shader_parameter("ov_tex", PackedVector4Array([r, r, r, r]))
-	m.set_shader_parameter("livery_text", text.texture)
-	return m
 
 
 ## The boat name's box on the transom's uv1 (u0, v0, u1, v1): centred in the name panel, 0.7 of its height, shrunk
@@ -282,16 +175,6 @@ static func transom_name_box(geo: Dictionary, text: LiveryText) -> Vector4:
 	var cu := 0.5 * (float(uv[0]) + float(uv[2]))
 	var cv := 0.5 * (float(uv[1]) + float(uv[3]))
 	return Vector4(cu - du, cv - dv, cu + du, cv + dv)
-
-
-## The keel from its baked albedo in side view (proj 1).
-static func baked_view_material(src: ShaderMaterial, tex: Texture2D, rect: Vector4, proj: int) -> ShaderMaterial:
-	var m := _baked_slot(src)
-	m.set_shader_parameter("bk_albedo", tex)
-	m.set_shader_parameter("bk_proj", proj)
-	m.set_shader_parameter("bk_rect", rect)
-	m.set_shader_parameter("bk_maps", false)
-	return m
 
 
 ## A sail from the class's baked sail set, with the boat's nation letters and sail number in the layout's slots.
@@ -402,11 +285,10 @@ static func colour_material(src: ShaderMaterial, c: Color) -> ShaderMaterial:
 	return m
 
 
-## The topsides material: the gelcoat slot with the hull livery path on.
-static func topsides_material(src: ShaderMaterial, lv: Livery, text: LiveryText, geo: Dictionary) -> ShaderMaterial:
-	var m := src.duplicate() as ShaderMaterial
+## The procedural hull livery on the topsides of the boat material `m` (hull_livery.gdshaderinc): colour, graphic,
+## name and number.
+static func _hull_livery(m: ShaderMaterial, lv: Livery, text: LiveryText, geo: Dictionary) -> void:
 	m.set_shader_parameter("hl_on", 1)
-	m.set_shader_parameter("hl_tex_mean", texture_mean(src.get_shader_parameter("albedo_tex")))
 	m.set_shader_parameter("hl_sheer", geo["sheer"])
 	m.set_shader_parameter("hl_boot", geo["boot"])
 	m.set_shader_parameter("hl_vm", geo["vm"])
@@ -462,7 +344,6 @@ static func topsides_material(src: ShaderMaterial, lv: Livery, text: LiveryText,
 		m.set_shader_parameter("hl_%s_panel" % k[0], pan)
 		m.set_shader_parameter("hl_%s_box" % k[0], box)
 		m.set_shader_parameter("hl_%s_tex" % k[0], text.rect(k[1], k[2]) if not text.rows[k[1]]["empty"] else Vector4.ZERO)
-	return m
 
 
 ## The sail's cloth material for this boat: cloth style and colours, design and the numbers (§11.2).
@@ -699,15 +580,17 @@ static func hull_geometry(bv: BoatView) -> Dictionary:
 	boot.fill(-INF)
 	var hull := bv.model.find_child("hull", true, false) as MeshInstance3D
 	if hull and hull.mesh:
+		# the topsides: the boat material's hull_gelcoat slot (vertex colour green, data_format.md §8.5)
+		var gel := BoatMaterials.slot_id("hull_gelcoat")
 		for s in hull.mesh.get_surface_count():
-			var m := hull.mesh.surface_get_material(s)
-			if m == null or m.resource_name != "gelcoat":
-				continue
 			var arr := hull.mesh.surface_get_arrays(s)
 			var uv2: PackedVector2Array = arr[Mesh.ARRAY_TEX_UV2]
 			var pos: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
 			var nrm: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
+			var cols: PackedColorArray = arr[Mesh.ARRAY_COLOR] if arr[Mesh.ARRAY_COLOR] != null else PackedColorArray()
 			for k in uv2.size():
+				if k >= cols.size() or roundi(cols[k].g * 255.0) != gel:
+					continue
 				var t := uv2[k]
 				if k < nrm.size() and absf(nrm[k].z) > 0.7:
 					continue  # the transom and the stem face, not the topsides

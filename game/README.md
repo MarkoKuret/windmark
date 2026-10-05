@@ -621,7 +621,9 @@ the fleet rule from the world seed (`Livery.assign`).
 
 **Textures in the game.** The game loads imported copies: `tools/liverybake` stages `data/liveries/<class>/` into
 `generated/liveries/<class>/` (git-ignored) with import settings (albedo BPTC/ASTC, normal maps RGTC, ORM S3TC/ETC2,
-mipmaps) and writes the shared cloth detail tiles (`generated/liveries/_cloth/`). After editing a PNG:
+mipmaps): per livery one boat atlas of 2048 x 2048 (hull, deck with the painted hardware, transom and keel,
+`data_format.md` §8.5), the sails at half size (1024 on the longer side; `--hd` keeps the masters' 4096 and 2048),
+the rope set, and the shared cloth detail tiles (`generated/liveries/_cloth/`). After editing a PNG:
 
 ```
 cd tools/liverybake && python3 -m liverybake --stage-only   # copies the changed files
@@ -634,38 +636,43 @@ Godot reimports only the files whose content changed (it compares their hashes).
 
 `BoatView.set_livery(livery)` (`BoatLivery.apply`) paints the boat at load without touching the generated meshes:
 
-- **Baked path** (the class's textures staged, `BakedLivery`): per boat, materials on `shaders/boat_baked.gdshader`
-  for the hull's topsides, boot stripe and antifouling (the uv1 atlas: albedo, normal and ORM, the slot's tiling
-  detail on top), the transom (its own slot `transom` and uv1: albedo, normal and ORM, the boat's name in its name
-  panel), the deck (plan uv1: albedo, normal and ORM, one material for the `gelcoat` and `nonslip` slots, the ORM's
-  non-slip mask picking the non-slip or the gelcoat tiling detail per pixel, steep faces kept plain), the keel (side
-  view), and on `shaders/sail_baked.gdshader` for each baked sail (the layer's albedo, ORM, normal map with the cloth detail, the
-  tangent frame from screen-space derivatives). No procedural livery or cloth runs. The images are loaded once per
-  class and shared by every boat (the deck material too); per boat only uniforms: the name and number boxes in the
-  hull's livery panels, the name box on the transom, and the nation and number in the sails' layout slots, read from the boat's text texture (one sample on the hull, one
-  per side on a sail). A faint dirt line follows the edge of the per-boat vinyl and stuck-on numbers.
-- **Procedural fallback** (no baked textures, or `BakedLivery.enabled = false`): a copy of the shared boat material
-  for each painted slot on `boat.gdshader` with the livery path of `shaders/hull_livery.gdshaderinc` on the
-  topsides (the transom in the topsides colour), and a copy of each sail's material on `sail.gdshader` with the cloth of `sail_cloth.gdshaderinc` and
-  `sail_livery.gdshaderinc`, as before the baked liveries. Kept for a class without textures and as the GPU-cost
-  reference.
+- **One material per boat** (`sail_visuals.md` §11.4): every opaque surface of every level shares the boat material
+  (`shaders/boat_atlas.gdshader`, `BoatMaterials`); a livery gives each boat its own copy, so a node stays one draw.
+  The livery's colours go into its slot table (topsides, boot stripe, antifouling, keel and rudder, deck gelcoat and
+  non-slip, the rope functions).
+- **Baked path** (the class's boat atlas staged, `BakedLivery`): the hull, deck, transom and keel slots read the
+  atlas regions (albedo, normal and ORM; the deck's ORM blue is the non-slip mask that picks the non-slip or the
+  gelcoat tiling detail per pixel, steep faces kept plain; the keel in side view), the boat's name and number in the
+  hull's livery panels and its name in the transom's name panel, and on `shaders/sail_baked.gdshader` each baked sail
+  (the layer's albedo, ORM, normal map with the cloth detail, the tangent frame from screen-space derivatives). No
+  procedural livery or cloth runs. The atlas is loaded once per class and livery and shared by every boat; per boat
+  only uniforms and its text texture (one sample on the hull, one per side on a sail). A faint dirt line follows the
+  edge of the per-boat vinyl and stuck-on numbers.
+- **Procedural fallback** (no baked textures, or `BakedLivery.enabled = false`): the same boat material with the
+  livery path of `shaders/hull_livery.gdshaderinc` on the topsides and the livery colours on the other slots, and a
+  copy of each sail's material on `sail.gdshader` with the cloth of `sail_cloth.gdshaderinc` and
+  `sail_livery.gdshaderinc`. Kept for a class without textures and as the GPU-cost reference.
 - **One text texture per boat** either way: `LiveryText` sets the boat name, sail number, nation letters (and the
   insignia, used by the fallback) in Barlow Semi Condensed Bold on the CPU into a 1024 x 512 single-channel image
   (about 0.7 MB with mipmaps).
 - **Ropes** (`data_format.md` §8.7): the class rope set (`data/liveries/<class>/rig/`, a braid tile per function)
-  goes on the model's `rope_mainsheet`, `rope_halyard` and `rope_control` slots of every level and on the sheets
-  (`sheet`, `kite_sheet`), one material per class and function (`BoatLivery.rope_material`); without the baked set
-  the slot is tinted to the function's braid colour.
-- Draw calls are unchanged (every surface of every boat is its own draw anyway); the baked path adds two shaders.
+  goes on the sheets (`sheet`, `kite_sheet`), one material per class and function (`BoatLivery.rope_material`);
+  without the baked set the line is tinted to the function's braid colour. The model's mainsheet tackle is a slot of
+  the boat material in the mainsheet's mean braid colour; the halyards, coils and control lines are painted on the
+  deck in theirs.
 
-**Cost** (WM-081). Load, headless M1: the first boat of a class loads the class's images (about 20 to 30 ms), every
-further boat 1.4 to 1.8 ms (procedural: 2.0 to 2.5 ms per boat; the text texture is most of either). On a GPU the
+**Cost** (WM-081; the video memory as before WM-100). Load, headless M1: the first boat of a class loads the
+class's images (about 20 to 30 ms), every further boat 1.4 to 1.8 ms (procedural: 2.0 to 2.5 ms per boat; the text texture is most of either). On a GPU the
 first boat also uploads the images. Video memory, shared by the fleet: wm7 about 79 MB, wm12 about 85 MB (hull set
 28 MB, deck set 18 to 20 MB, transom set 3.8 MB, keel 1.2 MB, sails 25 to 33 MB), plus 0.7 MB per boat. The transom's
 own slot (WM-085) adds one surface, so one draw, per boat; the deck adds three texture reads per pixel (the non-slip
 detail). Per pixel (`tests/livery_cost.py`, the offline
 programs on the M1's GPU, visible pixels shaded once): baked sails cost 0.42 to 0.71 of the procedural cloth, the
-baked topsides 1.05 to 1.13 of the procedural livery (three more texture reads for the relief and gloss).
+baked topsides 1.05 to 1.13 of the procedural livery (three more texture reads for the relief and gloss). Since
+WM-100 the staged textures of a class are about 14 MB for the boat atlas, 7 to 8 MB for the sails and 7.5 MB for
+the tiling atlas shared by every class (before: about 52 MB hull, deck, transom and keel, 30 MB sails, 27 MB of
+lossless tiling copies), and a topsides pixel of the boat material costs about the same as before (0.47 to 0.71
+ns against 0.34 to 0.70 ns on the development Mac, `livery_cost.py`; one more tile tap and relief perturbation).
 
 ```
 game/tests/run_livery_test.sh   # also run by run_boat_import_test.sh
@@ -704,20 +711,25 @@ python3 game/tests/livery_cost.py
   import, but the sidecar's row-major order holds only in the GLB file. The stable key is uv1 plus the layer side:
   `SailGrid.grid_index(mesh, rows, cols)` rebuilds the grid index from it; call it once on the flat sail as
   imported.
-- Materials come in as `StandardMaterial3D` with boatgen's tiling texture sets (albedo, roughness and normal maps
-  on uv0, scaled by `1 / tiling_m`) and its PBR factors (base colours converted from linear to sRGB). Every node
-  but the sails and the mainsheet carries baked ambient occlusion in `COLOR_0`, which Godot's import multiplies
-  into the albedo (`vertex_color_use_as_albedo`). boatgen's uv1 (liveries) arrives as Godot's `UV2`.
-- **Boat materials** (`BoatMaterials.apply(root)`, called by `BoatView.create` and the water test scene): every
-  imported slot is replaced on the imported meshes by a `ShaderMaterial` on `shaders/boat.gdshader` with the
-  slot's factors and textures. One texture per texture set and map serves every boat of every class (the importer
-  extracts a copy of the set from each GLB; the first loaded is kept and the others are released with their
-  `StandardMaterial3D`), and slots with the same factors share one material. The baked AO goes to `AO` with
-  `AO_LIGHT_AFFECT = 0`, so it darkens the ambient and reflected light only, never the sunlit albedo. The shader
-  caps the linear albedo at 0.8 (bright paint and gelcoat), so a white hull in full sun keeps its shading.
-  `tests/boat_materials_test.gd` (run by `run_boat_import_test.sh`) checks a fleet of both classes.
-- Default import settings generate LODs and shadow meshes and compress vertices. `BoatView` rebuilds each sail as
-  its own uncompressed `ArrayMesh` at load, so the import settings of the sail meshes do not matter.
+- Materials come in as `StandardMaterial3D`: `boat` (every opaque surface; the slot table and the shared tiling
+  atlas `generated/boats/_tex/tiles_*.png`, by URI, VRAM-compressed, in its extras), `sailcloth` (the sails, the
+  weave set by URI) and `shadow` (the shadow proxy). Every vertex of `boat` carries its slot id in `COLOR_0` green
+  and the baked ambient occlusion in red (`data_format.md` §8.5). boatgen's uv1 (liveries) arrives as Godot's `UV2`.
+- **Boat materials** (`BoatMaterials.apply(root)`, called by `BoatView.create` and the water test scene): `boat`
+  becomes one `ShaderMaterial` on `shaders/boat_atlas.gdshader` for every class and level (the slot table in
+  uniform arrays, the tiling atlas sampled per slot with its own wrap), `sailcloth` one on `shaders/boat.gdshader`.
+  The baked AO goes to `AO` with `AO_LIGHT_AFFECT = 0`, so it darkens the ambient and reflected light only, never
+  the sunlit albedo. The shader caps the linear albedo at 0.8 (bright paint and gelcoat), so a white hull in full
+  sun keeps its shading. `tests/boat_materials_test.gd` (run by `run_boat_import_test.sh`) checks a fleet of both
+  classes: one boat material, three compressed atlas textures, the imported copies released.
+- **Levels of detail and shadows** (`sail_visuals.md` §11.4): `BoatView` loads LOD0 to LOD3 and shows one by the
+  camera distance (15, 80 and 250 m); on LOD2 and LOD3 it redraws each sail's index buffer on every 2nd or 4th row and
+  column over the whole grid (`BoatView.sail_indices`). The visible boat meshes cast no sun shadow; each level's
+  `shadow` and `shadow_boom` nodes cast as shadows only, the sails cast their own, and `BoatView.cast_distance` (the
+  tier's `boat_cast_distance`) turns the casters of boats other than the own boat (`own`) off beyond it.
+- The boat GLBs import without Godot's automatic LODs and shadow meshes (boatgen writes their `.import` files).
+  `BoatView` rebuilds each sail as its own uncompressed `ArrayMesh` at load, so the import settings of the sail
+  meshes do not matter.
 
 ## Sea, sky and lighting
 

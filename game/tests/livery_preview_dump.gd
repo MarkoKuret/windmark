@@ -112,6 +112,21 @@ var SHOTS := [
 		"cam": {"mode": "boat", "eye": [0.3, 1.9, -4.9], "at": [0.0, 0.6, -1.0], "fov": 55.0}},
 	{"name": "ropes_wm12_cockpit", "cls": "wm12", "n": 1, "twa": 40.0, "t": 20.0, "liveries": ["nightjar"],
 		"cam": {"mode": "boat", "eye": [0.4, 2.7, -7.6], "at": [0.0, 0.9, -1.8], "fov": 55.0}},
+	# the chase camera's range (sail_visuals.md §11.4: LOD1 from 15 m) and a close look at the painted fittings
+	{"name": "chase_wm7_20", "cls": "wm7", "n": 1, "twa": 42.0, "t": 20.0, "liveries": ["kestrel"],
+		"cam": {"mode": "boat", "eye": [-7.0, 5.0, -18.0], "at": [0.0, 2.6, 0.5], "fov": 55.0}},
+	{"name": "chase_wm7_30", "cls": "wm7", "n": 1, "twa": 42.0, "t": 20.0, "liveries": ["kestrel"],
+		"cam": {"mode": "boat", "eye": [-10.0, 6.5, -27.5], "at": [0.0, 2.6, 0.5], "fov": 45.0}},
+	{"name": "chase_wm12_25", "cls": "wm12", "n": 1, "twa": 40.0, "t": 20.0, "liveries": ["nightjar"],
+		"cam": {"mode": "boat", "eye": [-9.0, 7.0, -22.0], "at": [0.0, 4.0, 0.5], "fov": 55.0}},
+	{"name": "chase_wm12_35", "cls": "wm12", "n": 1, "twa": 40.0, "t": 20.0, "liveries": ["nightjar"],
+		"cam": {"mode": "boat", "eye": [-12.0, 9.0, -31.0], "at": [0.0, 4.0, 0.5], "fov": 45.0}},
+	{"name": "chase_wm7_kite_25", "cls": "wm7", "n": 1, "twa": 135.0, "t": 40.0, "kite": true, "liveries": ["kestrel"],
+		"cam": {"mode": "boat", "eye": [9.0, 5.0, -22.0], "at": [1.0, 3.5, 1.0], "fov": 50.0}},
+	{"name": "fittings_wm12_mast", "cls": "wm12", "n": 1, "twa": 40.0, "t": 20.0, "liveries": ["seraphine"],
+		"cam": {"mode": "boat", "eye": [-1.6, 2.6, -0.2], "at": [0.0, 0.9, 2.2], "fov": 55.0}},
+	{"name": "fittings_wm7_coachroof", "cls": "wm7", "n": 1, "twa": 42.0, "t": 20.0, "liveries": ["kestrel"],
+		"cam": {"mode": "boat", "eye": [-1.2, 1.9, -1.8], "at": [0.0, 0.5, 0.4], "fov": 55.0}},
 	{"name": "lod_wm7_25", "cls": "wm7", "n": 1, "twa": 42.0, "t": 20.0, "liveries": ["kestrel"],
 		"cam": {"mode": "boat", "eye": [-22.50, 7.25, 10.12], "at": [0.00, 3.20, 0.00], "fov": 29.15}},
 	{"name": "lod_wm7_35", "cls": "wm7", "n": 1, "twa": 42.0, "t": 20.0, "liveries": ["kestrel"],
@@ -292,6 +307,8 @@ func _dump(spec: Dictionary, views: Array) -> void:
 			var mi := node as MeshInstance3D
 			if mi == null or mi.mesh == null or not _visible_chain(mi, bv):
 				continue
+			if mi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY:
+				continue  # the shadow proxy (sail_visuals.md §11.4) draws nothing
 			var xf := bv.transform * _chain(mi, bv)
 			var local := _chain(mi, bv)
 			var is_sail := sail_nodes.has(mi) and sail_nodes[mi].shape != null
@@ -316,35 +333,35 @@ func _dump(spec: Dictionary, views: Array) -> void:
 				var u0: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV] if arrays[Mesh.ARRAY_TEX_UV] != null else PackedVector2Array()
 				var u1: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV2] if arrays[Mesh.ARRAY_TEX_UV2] != null else PackedVector2Array()
 				var mat := mi.get_active_material(si)
-				# baked side or top views (keel, deck): their image coordinates in place of uv1, as the shader's vertex()
-				var proj := 0
-				var rect := Vector4.ZERO
-				if mat is ShaderMaterial and (mat as ShaderMaterial).shader == BoatLivery.BAKED_BOAT:
-					proj = int((mat as ShaderMaterial).get_shader_parameter("bk_proj"))
-					var r_: Variant = (mat as ShaderMaterial).get_shader_parameter("bk_rect")
-					rect = r_ if r_ is Vector4 else Vector4.ZERO
-				# position, normal (world), uv0, uv1, port side (model x > 0)
+				# the boat material (sail_visuals.md §11.4): the keel's side view in the mesh frame, as its vertex()
+				var keel := Vector4(0, 0, 1, 1)
+				if mat is ShaderMaterial and (mat as ShaderMaterial).shader == BoatMaterials.ATLAS_SHADER:
+					var r_: Variant = (mat as ShaderMaterial).get_shader_parameter("bk_keel")
+					keel = r_ if r_ is Vector4 else keel
+				var cols: PackedColorArray = arrays[Mesh.ARRAY_COLOR] if arrays[Mesh.ARRAY_COLOR] != null else PackedColorArray()
+				# position, normal (world), uv0, uv1, port side (model x > 0), slot, AO, keel side view
 				var w := PackedFloat32Array()
-				w.resize(pos.size() * 11)
+				w.resize(pos.size() * 15)
 				var nb := xf.basis.inverse().transposed()
 				for k in pos.size():
 					var p := xf * pos[k]
 					var q := (nb * nrm[k]).normalized() if nrm.size() == pos.size() else Vector3.UP
 					var a := u0[k] if u0.size() == pos.size() else Vector2.ZERO
 					var c := u1[k] if u1.size() == pos.size() else Vector2.ZERO
-					if proj == 1:
-						c = Vector2((pos[k].z - rect.x) / rect.z, (rect.y - pos[k].y) / rect.w)
-					elif proj == 2:
-						c = Vector2((pos[k].z - rect.x) / rect.z, (rect.y - pos[k].x) / rect.w)
-					var o := 11 * k
+					var o := 15 * k
 					w[o] = p.x; w[o + 1] = p.y; w[o + 2] = p.z
 					w[o + 3] = q.x; w[o + 4] = q.y; w[o + 5] = q.z
 					w[o + 6] = a.x; w[o + 7] = a.y; w[o + 8] = c.x; w[o + 9] = c.y
 					w[o + 10] = 1.0 if (local * pos[k]).x > 0.0 else 0.0
+					w[o + 11] = float(roundi(cols[k].g * 255.0)) if k < cols.size() else 0.0
+					w[o + 12] = cols[k].r if k < cols.size() else 1.0
+					w[o + 13] = (pos[k].z - keel.x) / keel.z
+					w[o + 14] = (keel.y - pos[k].y) / keel.w
 				var nm := "m%d" % meshes.size()
 				FileAccess.open(dir.path_join(nm + "_v.bin"), FileAccess.WRITE).store_buffer(w.to_byte_array())
 				FileAccess.open(dir.path_join(nm + "_i.bin"), FileAccess.WRITE).store_buffer(ind.to_byte_array())
-				var entry := {"name": nm, "node": String(mi.name), "kind": "flat", "albedo": [0.6, 0.6, 0.6], "rough": 0.5}
+				var entry := {"name": nm, "node": String(mi.name), "kind": "flat", "albedo": [0.6, 0.6, 0.6], "rough": 0.5,
+					"stride": 15}
 				if mat is ShaderMaterial:
 					var sm := mat as ShaderMaterial
 					var u := _uniforms(sm)
@@ -356,11 +373,10 @@ func _dump(spec: Dictionary, views: Array) -> void:
 						entry["kind"] = "sail_baked"
 						entry["uniforms"] = u
 						entry["text"] = text_png
-					elif sm.shader == BoatLivery.BAKED_BOAT:
-						entry["kind"] = "boat_baked"
+					elif sm.shader == BoatMaterials.ATLAS_SHADER:
+						entry["kind"] = "boat_atlas"
 						entry["uniforms"] = u
 						entry["text"] = text_png
-						entry["slot"] = sm.resource_name
 					elif is_sail:
 						entry["kind"] = "sail"
 						entry["uniforms"] = u

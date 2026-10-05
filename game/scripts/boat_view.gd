@@ -67,6 +67,11 @@ class SailPart:
 	## the newer snapshot's phase and the interpolated luff shiver drawn this frame (the sheets, §11.3)
 	var phase := 0
 	var shiver := 0.0
+	## the grid's triangles (every row and column) and its uv1, and the grid step drawn (§11.4: 2 on LOD2, 4 on
+	## LOD3)
+	var idx_full := PackedInt32Array()
+	var uv2 := PackedVector2Array()
+	var step := 1
 
 	## the placed clew (mid-surface, model axes)
 	func clew() -> Vector3:
@@ -142,6 +147,14 @@ static var animate_sails := true
 var use_reference := false
 ## the hull and mast of the drawn shadow on the water (BoatShadows.caster_from_physics), built on first use
 var _shadow_caster: Variant = null
+## sun shadows (sail_visuals.md §11.4): beyond this distance from the camera (m) the shadow proxies and sails of
+## boats other than the own boat cast none; 0: no limit (the quality tier's `boat_cast_distance`)
+static var cast_distance := 0.0
+## the player's own boat (casts at any distance)
+var own := false
+## the shadow-only proxies of every level and whether this boat casts now
+var _proxies: Array[GeometryInstance3D] = []
+var _casting := true
 ## the levels of detail (sail_visuals.md §11.4), finest first: {"lod", "from", "root" (the GLB wrapper), "model",
 ## "parts" (the non-sail part nodes), "rudder", "rudder_rest", "wheel", "wheel_rest", "boom", "boom_rest", "pole",
 ## "pole_rest", "sheet" (the mainsheet's rebuild data)}; the sails are LOD0's at every level
@@ -183,7 +196,7 @@ static func create(class_info: SimSource.ClassInfo, rudder_max: float, reference
 		b.add_child(wrapper)
 		b.model = wrapper.get_child(0) as Node3D if wrapper.get_child_count() > 0 else wrapper
 		BoatMaterials.apply(wrapper)
-		b.levels.append({"lod": 0, "from": 0.0, "root": wrapper, "model": b.model})
+		b.levels.append({"lod": 0, "from": 0.0, "root": wrapper, "model": b.model, "sail_step": 1})
 		if use_lods:
 			b._load_lods()
 	else:
@@ -194,6 +207,7 @@ static func create(class_info: SimSource.ClassInfo, rudder_max: float, reference
 		mi.mesh = bm
 		b.add_child(mi)
 	b._find_parts()
+	b._setup_shadows()
 	if b.model != null and draw_sheets:
 		b.sheets = BoatSheets.create(b, reference)
 	return b
@@ -221,7 +235,8 @@ func _load_lods() -> void:
 				c.free()
 		add_child(wrapper)
 		BoatMaterials.apply(wrapper)
-		levels.append({"lod": k, "from": float(e.get("from_m", 0.0)), "root": wrapper, "model": m})
+		levels.append({"lod": k, "from": float(e.get("from_m", 0.0)), "root": wrapper, "model": m,
+			"sail_step": int(e.get("sail_step", 1))})
 	levels.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["lod"] < b["lod"])
 
 
@@ -391,6 +406,7 @@ func lod_for(dist: float) -> int:
 
 ## Shows the level of detail for a camera at `dist` m (every frame; tests call it directly).
 func update_lod(dist: float) -> void:
+	_update_casting(dist)
 	if levels.size() > 1:
 		_show_level(lod_for(dist) if forced_lod < 0 else mini(forced_lod, levels.size() - 1))
 
@@ -426,6 +442,125 @@ func _show_level(k: int) -> void:
 		_pole.transform = _pole_rest * Transform3D(Basis(_pole_axis, _pole_gamma), Vector3.ZERO)
 	if sheets:
 		sheets.set_detail(k)
+	_set_sail_step(int(lv.get("sail_step", 1)))
+
+
+## Sun shadows (sail_visuals.md §11.4): the visible boat meshes cast none, each level's shadow proxy (`shadow`,
+## `shadow_boom`) casts only into the shadow maps, the sails cast their own.
+func _setup_shadows() -> void:
+	var sails := {}
+	for sp in sail_parts:
+		sails[sp.node] = true
+	for lv in levels:
+		var stack: Array[Node] = [lv["model"]]
+		while not stack.is_empty():
+			var node: Node = stack.pop_back()
+			stack.append_array(node.get_children())
+			var gi := node as GeometryInstance3D
+			if gi == null:
+				continue
+			if String(gi.name).begins_with("shadow"):
+				gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+				_proxies.append(gi)
+			elif sails.has(gi):
+				gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			else:
+				gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
+## Turns this boat's shadow proxies and sails off as casters beyond `cast_distance` (not the own boat).
+func _update_casting(dist: float) -> void:
+	var on := own or cast_distance <= 0.0 or dist <= cast_distance
+	if on == _casting:
+		return
+	_casting = on
+	var nodes: Array[GeometryInstance3D] = _proxies.duplicate()
+	for sp in sail_parts:
+		if sp.node is GeometryInstance3D:
+			nodes.append(sp.node as GeometryInstance3D)
+	for gi in nodes:
+		if gi.has_meta(&"dev_cast_shadow"):
+			continue  # the developer look panel holds the boats' shadows off
+		if String(gi.name).begins_with("shadow"):
+			gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if on \
+					else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		else:
+			gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if on \
+					else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
+## The sails' index buffers for a grid step (§11.4): every `step`-th row and column of the simulation's grid (and
+## always the last), over the same vertex buffer, which the per-vertex update keeps writing whole.
+func _set_sail_step(step: int) -> void:
+	for sp in sail_parts:
+		if sp.mesh == null or sp.shape == null or sp.idx_full.is_empty() or sp.step == step:
+			continue
+		sp.step = step
+		var out := []
+		out.resize(Mesh.ARRAY_MAX)
+		out[Mesh.ARRAY_VERTEX] = sp.shape.positions()
+		out[Mesh.ARRAY_NORMAL] = sp.shape.normals()
+		out[Mesh.ARRAY_TEX_UV] = sp.uv0
+		out[Mesh.ARRAY_TEX_UV2] = sp.uv2
+		out[Mesh.ARRAY_INDEX] = sail_indices(sp.idx_full, sp.rows, sp.cols, step)
+		var mat := sp.mesh.surface_get_material(0)
+		var aabb := sp.mesh.custom_aabb
+		sp.mesh.clear_surfaces()
+		sp.mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, out)
+		sp.mesh.surface_set_material(0, mat)
+		sp.mesh.custom_aabb = aabb
+		if sp.arrays.is_empty():
+			if not sp.shape.attach_mesh(sp.mesh.get_rid()):
+				sp.arrays = out
+		else:
+			sp.arrays = out
+
+
+## The triangles of a two-layer sail grid (§3.1: layer k's vertex (i, j) is k·rows·cols + i·cols + j) on every
+## `step`-th row and column and the last ones, wound as the full grid `full` winds each layer.
+static func sail_indices(full: PackedInt32Array, rows: int, cols: int, step: int) -> PackedInt32Array:
+	if step <= 1 or full.size() < 3:
+		return full
+	var rs: Array[int] = []
+	for i in range(0, rows, step):
+		rs.append(i)
+	if rs[-1] != rows - 1:
+		rs.append(rows - 1)
+	var cs: Array[int] = []
+	for j in range(0, cols, step):
+		cs.append(j)
+	if cs[-1] != cols - 1:
+		cs.append(cols - 1)
+	var n := rows * cols
+	var out := PackedInt32Array()
+	for layer in 2:
+		# the full grid's winding on this layer: the sign of its first non-degenerate triangle in (column, row)
+		var flip := false
+		for t in range(0, full.size(), 3):
+			if (full[t] >= n) != (layer == 1):
+				continue
+			var p: Array[Vector2] = []
+			for q in 3:
+				var g := full[t + q] - layer * n
+				p.append(Vector2(g % cols, g / cols))
+			var c := (p[1] - p[0]).cross(p[2] - p[0])
+			if absf(c) > 1e-6:
+				flip = c < 0.0
+				break
+		var base := layer * n
+		for a in rs.size() - 1:
+			for b in cs.size() - 1:
+				var i0 := base + rs[a] * cols
+				var i1 := base + rs[a + 1] * cols
+				var v00 := i0 + cs[b]
+				var v01 := i0 + cs[b + 1]
+				var v11 := i1 + cs[b + 1]
+				var v10 := i1 + cs[b]
+				if flip:
+					out.append_array(PackedInt32Array([v00, v11, v01, v00, v10, v11]))
+				else:
+					out.append_array(PackedInt32Array([v00, v01, v11, v00, v11, v10]))
+	return out
 
 
 static func _vec(a: Array) -> Vector3:
@@ -547,6 +682,8 @@ func _setup_shape(sp: SailPart, side: Dictionary, furling: bool) -> void:
 	sp.mesh = mesh
 	sp.shape = shape
 	sp.uv0 = uv
+	sp.uv2 = uv2
+	sp.idx_full = idx
 
 
 ## sail_visuals.md §4: the look block of the sidecar (the generator fills the defaults), with the table's

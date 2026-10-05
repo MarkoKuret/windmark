@@ -41,6 +41,8 @@ in vec3 in_pos;
 in vec3 in_normal;
 in vec4 in_uv;
 in float in_port;
+in vec4 in_extra;
+out vec4 v_extra;
 out vec3 v_n;
 out vec3 v_w;
 out vec4 v_uv;
@@ -52,6 +54,7 @@ void main() {
     v_w = in_pos;
     v_uv = in_uv;
     v_port = in_port;
+    v_extra = in_extra;
     v_side = gl_VertexID >= sl_layer_n ? 1.0 : 0.0;
     gl_Position = u_vp * vec4(in_pos, 1.0);
 }
@@ -245,6 +248,109 @@ void main() {
 }
 """
 
+# The boat material (shaders/boat_atlas.gdshader, sail_visuals.md §11.4): the same slot table, tiling atlas, livery
+# atlas regions, painted fittings and text, with the GGX stand-in above.
+BOAT_ATLAS_FS = """
+in vec3 v_n;
+in vec3 v_w;
+in vec4 v_uv;
+in float v_port;
+flat in float v_side;
+in vec4 v_extra;
+uniform vec4 slot_color[24];
+uniform vec4 slot_pbr[24];
+uniform vec4 slot_map[24];
+uniform sampler2D tile_color;
+uniform sampler2D tile_mr;
+uniform sampler2D tile_normal;
+uniform vec2 tile_grid;
+uniform float tile_inset;
+uniform float detail_mean;
+uniform float rough_mean;
+uniform vec4 deck_tiles;
+uniform int bk_on;
+uniform sampler2D bk_albedo;
+uniform sampler2D bk_normal;
+uniform sampler2D bk_orm;
+uniform vec4 bk_rect[5];
+uniform int tr_on;
+uniform vec4 tr_box;
+uniform vec4 tr_tex;
+out vec4 frag;
+vec4 tile_tex(sampler2D s, vec2 uv, float tile) {
+    vec2 cell = vec2(mod(tile, tile_grid.x), floor(tile / tile_grid.x));
+    vec2 inner = vec2(1.0 - 2.0 * tile_inset);
+    vec2 a = (cell + tile_inset + fract(uv) * inner) / tile_grid;
+    vec2 g = inner / tile_grid;
+    return textureGrad(s, a, dFdx(uv) * g, dFdy(uv) * g);
+}
+void main() {
+    int s = int(v_extra.x + 0.5);
+    vec4 sc = slot_color[s];
+    vec4 sp = slot_pbr[s];
+    vec4 sm = slot_map[s];
+    int region = int(sm.x + 0.5);
+    vec3 N = normalize(v_n);
+    vec3 V = normalize(u_cam - v_w);
+    if (dot(N, V) < 0.0) N = -N;
+    vec2 tuv = v_uv.xy * sp.w;
+    float tile = sp.z;
+    if (region == 2) { tuv = v_uv.xy * deck_tiles.y; tile = deck_tiles.x; }
+    vec3 det = srgb(tile_tex(tile_color, tuv, tile).rgb) / detail_mean;
+    vec4 mr = tile_tex(tile_mr, tuv, tile);
+    float rdet = mr.g / rough_mean;
+    vec3 a = sc.rgb * det;
+    float rough = sp.x * rdet;
+    float occ = 1.0;
+    if (bk_on != 0 && region >= 1 && region <= 4) {
+        vec2 t = clamp(region == 4 ? v_extra.zw : v_uv.zw, vec2(0.0), vec2(1.0));
+        vec4 r = bk_rect[region];
+        vec2 at = r.xy + t * r.zw;
+        vec3 base = srgb(texture(bk_albedo, at).rgb);
+        if (region == 4) {
+            a = base * det;
+        } else {
+            vec3 orm = texture(bk_orm, at).rgb;
+            float flat_k = 1.0;
+            if (region == 2) {
+                flat_k = smoothstep(0.35, 0.7, abs(normalize(v_n).y));
+                float ns = orm.b * flat_k;
+                vec2 nuv = v_uv.xy * deck_tiles.w;
+                det = mix(det, srgb(tile_tex(tile_color, nuv, deck_tiles.z).rgb) / detail_mean, ns);
+                rdet = mix(rdet, tile_tex(tile_mr, nuv, deck_tiles.z).g / rough_mean, ns);
+            }
+            a = base * det;
+            rough = orm.g * rdet;
+            occ = orm.r;
+            vec3 nb = texture(bk_normal, at).rgb * 2.0 - 1.0;
+            nb = mix(vec3(0.0, 0.0, 1.0), nb, flat_k);
+            N = wm_perturb(N, v_w, t, nb, -1.0);
+            if (region == 1 && ov_on != 0) {
+                vec2 c = wm_ov_hull(v_uv.zw);
+                a = mix(a, ov_color * det, c.x);
+                a *= 1.0 - 0.12 * c.y;
+                rough = mix(rough, 0.24, c.x);
+            } else if (region == 3 && tr_on != 0) {
+                vec2 q = (v_uv.zw - tr_box.xy) / max(tr_box.zw - tr_box.xy, vec2(1e-6));
+                vec2 c = wm_text_cov2(q, tr_tex);
+                a = mix(a, ov_color * det, c.x);
+                rough = mix(rough, 0.24, c.x);
+            }
+        }
+    } else if (s == 0 && hl_on != 0) {
+        a = det * wm_hull_livery(v_uv.zw, step(0.5, v_port));
+    }
+    vec3 m = tile_tex(tile_normal, tuv, tile).rgb * 2.0 - 1.0;
+    m.xy *= sc.a;
+    N = wm_perturb(N, v_w, tuv, m, -1.0);
+    float metal = sp.y * mr.b;
+    vec3 albedo = min(a, vec3(0.8));
+    vec3 col = metal > 0.5 ? lit(albedo, N, V, clamp(rough, 0.03, 1.0), metal)
+                           : lit_pbr(albedo, N, V, clamp(rough, 0.03, 1.0), occ);
+    frag = vec4(col, 1.0);
+}
+"""
+
 SAIL_BAKED_FS = """
 in vec3 v_n;
 in vec3 v_w;
@@ -401,11 +507,13 @@ def render(ctx, d, size):
     boat_b = ctx.program(vertex_shader=VS, fragment_shader="#version 410\n" + LIGHT + PBR + baked_inc + BOAT_BAKED_FS)
     sail_b = ctx.program(vertex_shader=VS, fragment_shader="#version 410\n" + LIGHT + PBR + baked_inc + SAIL_BAKED_FS)
     rope = ctx.program(vertex_shader=VS, fragment_shader="#version 410\n" + LIGHT + PBR + baked_inc + ROPE_FS)
+    atlas = ctx.program(vertex_shader=VS, fragment_shader="#version 410\n" + LIGHT + PBR + hull_inc
+                        + inc("livery_baked.gdshaderinc") + BOAT_ATLAS_FS)
     sky = ctx.program(vertex_shader=spv.SKY_VS, fragment_shader="#version 410\n" + spv.LIGHT + spv.SKY_INC + spv.SKY_FS)
     tone = ctx.program(vertex_shader=spv.SKY_VS, fragment_shader=spv.TONE_FS)
     sea_p = ctx.program(vertex_shader=spv.VS, fragment_shader="#version 410\n" + spv.LIGHT + spv.FS)
     light = sc.get("light", spv.DEFAULT_LIGHT)
-    for pr in (boat, sail, boat_b, sail_b, rope, sky, sea_p):
+    for pr in (boat, sail, boat_b, sail_b, rope, atlas, sky, sea_p):
         for k, v in (("u_sun_col", light["sun_color"]), ("u_hor", light["horizon"]), ("u_zen", light["zenith"])):
             if k in pr:
                 pr[k].value = tuple(v)
@@ -449,7 +557,7 @@ def render(ctx, d, size):
     if sc.get("sea", True):
         ctx.vertex_array(sea_p, [(ctx.buffer(sea.tobytes()), "3f 3f", "in_pos", "in_normal")]).render(
             moderngl.TRIANGLE_STRIP)
-    for prog in (boat, sail, boat_b, sail_b, rope):
+    for prog in (boat, sail, boat_b, sail_b, rope, atlas):
         prog["u_vp"].write(vp_b)
         prog["u_cam"].value = tuple(eye)
         prog["u_sun"].value = tuple(sun)
@@ -459,7 +567,9 @@ def render(ctx, d, size):
         if v.size == 0 or i.size == 0:
             continue
         vb = ctx.buffer(v.tobytes())
-        fmt = [(vb, "3f 3f 4f 1f", "in_pos", "in_normal", "in_uv", "in_port")]
+        stride = int(m.get("stride", 11))
+        fmt = [(vb, "3f 3f 4f 1f 4f", "in_pos", "in_normal", "in_uv", "in_port", "in_extra")] if stride == 15 else \
+            [(vb, "3f 3f 4f 1f", "in_pos", "in_normal", "in_uv", "in_port")]
         if m["kind"] == "sail_baked":
             u = m["uniforms"]
             set_uniforms(sail_b, u)
@@ -471,8 +581,21 @@ def render(ctx, d, size):
             sail_b["livery_text"].value = 5
             ctx.enable(moderngl.CULL_FACE)
             ctx.front_face = "cw"
-            ctx.vertex_array(sail_b, fmt, ctx.buffer(i.tobytes())).render(moderngl.TRIANGLES)
+            ctx.vertex_array(sail_b, fmt, ctx.buffer(i.tobytes()), skip_errors=True).render(moderngl.TRIANGLES)
             ctx.disable(moderngl.CULL_FACE)
+            continue
+        if m["kind"] == "boat_atlas":
+            u = m["uniforms"]
+            set_uniforms(atlas, u)
+            for unit, (k, rep, fb) in enumerate([("tile_color", True, (235, 235, 235)), ("tile_mr", True, (255, 204, 255)),
+                                                 ("tile_normal", True, (128, 128, 255)),
+                                                 ("bk_albedo", False, (255, 255, 255)), ("bk_normal", False, (128, 128, 255)),
+                                                 ("bk_orm", False, (255, 255, 255))]):
+                image_texture(ctx, u.get(k), rep, fb).use(unit)
+                atlas[k].value = unit
+            text_texture(ctx, d / m["text"]).use(6)
+            atlas["livery_text"].value = 6
+            ctx.vertex_array(atlas, fmt, ctx.buffer(i.tobytes()), skip_errors=True).render(moderngl.TRIANGLES)
             continue
         if m["kind"] == "rope":
             u = m["uniforms"]
@@ -481,7 +604,7 @@ def render(ctx, d, size):
                                             ("normal_tex", (128, 128, 255))]):
                 image_texture(ctx, u.get(k), True, fb).use(unit)
                 rope[k].value = unit
-            ctx.vertex_array(rope, fmt, ctx.buffer(i.tobytes())).render(moderngl.TRIANGLES)
+            ctx.vertex_array(rope, fmt, ctx.buffer(i.tobytes()), skip_errors=True).render(moderngl.TRIANGLES)
             continue
         if m["kind"] == "boat_baked":
             u = m["uniforms"]
@@ -502,7 +625,7 @@ def render(ctx, d, size):
             boat_b["mr_tex"].value = 1
             text_texture(ctx, d / m["text"]).use(5)
             boat_b["livery_text"].value = 5
-            ctx.vertex_array(boat_b, fmt, ctx.buffer(i.tobytes())).render(moderngl.TRIANGLES)
+            ctx.vertex_array(boat_b, fmt, ctx.buffer(i.tobytes()), skip_errors=True).render(moderngl.TRIANGLES)
             continue
         if m["kind"] == "sail":
             u = m["uniforms"]
@@ -513,7 +636,7 @@ def render(ctx, d, size):
             sail["livery_text"].value = 1
             ctx.enable(moderngl.CULL_FACE)  # each cloth layer faces its own side
             ctx.front_face = "cw"  # Godot meshes: clockwise front faces
-            ctx.vertex_array(sail, fmt, ctx.buffer(i.tobytes())).render(moderngl.TRIANGLES)
+            ctx.vertex_array(sail, fmt, ctx.buffer(i.tobytes()), skip_errors=True).render(moderngl.TRIANGLES)
             ctx.disable(moderngl.CULL_FACE)
             continue
         if m["kind"] == "hull":
@@ -526,7 +649,7 @@ def render(ctx, d, size):
         boat["u_albedo"].value = tuple(m["albedo"][:3])
         boat["u_rough"].value = float(m.get("rough", 0.5))
         boat["u_metal"].value = float(m.get("metal", 0.0))
-        ctx.vertex_array(boat, fmt, ctx.buffer(i.tobytes())).render(moderngl.TRIANGLES)
+        ctx.vertex_array(boat, fmt, ctx.buffer(i.tobytes()), skip_errors=True).render(moderngl.TRIANGLES)
     ctx.copy_framebuffer(resolved, ms)
     out = ctx.framebuffer(color_attachments=[ctx.renderbuffer((w, h), 4)])
     out.use()

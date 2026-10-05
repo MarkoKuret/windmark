@@ -16,7 +16,7 @@ ctest --test-dir core/build -LE long --output-on-failure   # the quick run, abou
 ```
 
 `-LE long` leaves out every test with a label matching `long` (`long` and `ai_long`); `ctest -L '^long$'` runs the
-long core tests (about half a minute), `-L ai_long` the AI fleet races (about four minutes), plain `ctest` all.
+long core tests (about half a minute), `-L ai_long` the AI fleet races (about half a minute), plain `ctest` all.
 
 Options:
 
@@ -42,7 +42,7 @@ Tests (`ctest`):
   loaded into a new world to continue bit for bit; and the full AI race (`test_ai_full_race.cpp`): the fleet of
   `tests/ai_fleet_race.h` (ten AI skippers of every level, wm7 and wm12) with collisions and rules, to the close,
   twice with the same checksum every tick.
-- `ai_races` (label `ai_long`, about four minutes): the fleet runs of `ai.md` §15 (`test_ai_race.cpp`); they
+- `ai_races` (label `ai_long`, about half a minute): the fleet runs of `ai.md` §15 (`test_ai_race.cpp`); they
   print their measurements. `ctest --test-dir core/build -LE ai_long` leaves them out, `-L ai_long` runs only them.
 - `core_no_fma`: disassembles `libwindmark_core.a` and fails on any fused multiply-add instruction.
 - `core_no_libm`: lists the library's undefined symbols and fails on any platform libm transcendental (`acosf`,

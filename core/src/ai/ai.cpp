@@ -367,6 +367,7 @@ void AiSkippers::step(World& w) {
     src.spinnaker = b.sails().spinnaker_flying();
     src.casts = w.setup().shadows && (!x.created || race.casts(j));
   }
+  // ai.md §1: the fleet decides at 10 Hz, half of it on each tick (boat index parity).
   const bool decide_tick = (x.n % 2u) == 0u;
   for (auto& bp : boats_) {
     Boat& a = *bp;
@@ -378,7 +379,8 @@ void AiSkippers::step(World& w) {
   for (auto& bp : boats_) {
     Boat& a = *bp;
     if (!a.active || a.i < 0 || static_cast<std::size_t>(a.i) >= nb) continue;
-    if (decide_tick || !a.decided) {
+    const bool own_tick = ((x.n + static_cast<std::uint32_t>(a.i)) % 2u) == 0u;
+    if (own_tick || !a.decided) {
       ai_decide(x, a);
       a.decided = true;
       if (a.tactic != a.prev_tactic && a.tactic != AiTactic::None) {

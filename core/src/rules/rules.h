@@ -12,6 +12,7 @@
 
 #include "collide/collide.h"
 #include "course/course.h"
+#include "course/geometry.h"
 #include "data/venue.h"
 #include "math/wm_math.h"
 #include "race/race.h"
@@ -192,10 +193,12 @@ class Rules {
     bool racing = false;
     // this tick
     std::vector<Vec2> hull;
+    PolarVmgCache vmg;                               // derived, for polar_vmg every tick
+    Hull placed;                                     // the same hull for the gap tests (after boat_step)
     Vec2 c{0.0f, 0.0f}, bow{0.0f, 0.0f}, stern{0.0f, 0.0f};
     float twa = 0.0f, theta_ch = 0.7f, theta_dn = 2.6f, vmg_tws = -1.0f;
     std::vector<Pose> pred;                          // 0 .. 10 s every 0.1 s
-    mutable std::vector<std::vector<Vec2>> pred_hulls;
+    mutable std::vector<Hull> pred_hulls;
     mutable std::vector<std::uint8_t> pred_placed;
     mutable std::vector<Pose> man[4];               // escape manoeuvres over the room horizon, this tick
     mutable bool man_valid[4] = {false, false, false, false};
@@ -319,7 +322,7 @@ class Rules {
 
   // --- geometry (rules_geom.cpp) ---
   void predict(std::size_t i, const RulesBoatInput& in);
-  const std::vector<Vec2>& pred_hull(std::size_t i, std::size_t k) const;
+  const Hull& pred_hull(std::size_t i, std::size_t k) const;
   float pred_gap(std::size_t a, std::size_t b, float H, float cap) const;
   bool turn_test_hits(std::size_t a, std::size_t b, float delta) const;
   bool escape(std::size_t a, std::size_t b, float H) const;

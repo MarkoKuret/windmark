@@ -10,10 +10,18 @@
 
 namespace wm::ai_detail {
 
-// One boat's predicted poses every 0.1 s, sample 0 = now.
+// One boat's predicted poses every 0.1 s, sample 0 = now, and the hull placed at each sample on first use (kept
+// until the poses are predicted again: whoever edits `c` or `psi` by hand calls forget_hulls).
 struct Track {
   std::vector<Vec2> c;
   std::vector<float> psi;
+  const Hull& hull(std::span<const Vec2> outline, std::size_t k) const;
+  void forget_hulls() const { placed.clear(); }
+
+ private:
+  mutable std::vector<Hull> hulls;
+  mutable std::vector<std::uint8_t> placed;
+  mutable const Vec2* body = nullptr;
 };
 
 // A boat on its current motion (rules.md §3.1).

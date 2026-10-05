@@ -6,8 +6,22 @@ namespace {
 constexpr float kStep = 0.1f;
 }
 
+const Hull& Track::hull(std::span<const Vec2> outline, std::size_t k) const {
+  if (body != outline.data() || placed.size() != c.size()) {
+    body = outline.data();
+    placed.assign(c.size(), 0);
+    if (hulls.size() < c.size()) hulls.resize(c.size());
+  }
+  if (placed[k] == 0) {
+    place_hull(outline, c[k], psi[k], hulls[k]);
+    placed[k] = 1;
+  }
+  return hulls[k];
+}
+
 void predict_ctrv(const Motion& m, std::int32_t samples, Track& out) {
   const std::size_t n = static_cast<std::size_t>(samples) + 1;
+  out.forget_hulls();
   out.c.resize(n);
   out.psi.resize(n);
   Vec2 c = m.c;
@@ -25,6 +39,7 @@ void predict_ctrv(const Motion& m, std::int32_t samples, Track& out) {
 
 void predict_plan(const Motion& m, const OwnPlan& p, std::int32_t samples, Track& out) {
   const std::size_t n = static_cast<std::size_t>(samples) + 1;
+  out.forget_hulls();
   out.c.resize(n);
   out.psi.resize(n);
   Vec2 c = m.c;
@@ -67,15 +82,12 @@ void predict_plan(const Motion& m, const OwnPlan& p, std::int32_t samples, Track
 float tracks_gap(std::span<const Vec2> hull_a, float r_a, const Track& a, std::span<const Vec2> hull_b, float r_b,
                  const Track& b, std::int32_t k0, std::int32_t k1, float cap) {
   float best = cap;
-  std::vector<Vec2> pa, pb;
   for (std::int32_t k = k0; k <= k1; ++k) {
     const std::size_t s = static_cast<std::size_t>(k);
     if (s >= a.c.size() || s >= b.c.size()) break;
     const float d = v_dist(a.c[s], b.c[s]) - r_a - r_b;
     if (d >= best) continue;
-    place_outline(hull_a, a.c[s], a.psi[s], pa);
-    place_outline(hull_b, b.c[s], b.psi[s], pb);
-    const float g = convex_gap_capped(pa, pb, best);
+    const float g = convex_gap_capped(a.hull(hull_a, s), b.hull(hull_b, s), best);
     if (g < best) best = g;
     if (best <= 0.0f) return 0.0f;
   }

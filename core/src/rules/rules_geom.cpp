@@ -14,8 +14,7 @@ constexpr std::size_t kPred = 101;  // samples 0 .. 10 s
 
 std::size_t samples(float H) { return static_cast<std::size_t>(std::lround(H / kSub)) + 1; }
 
-float gap_capped(const std::vector<Vec2>& a, Vec2 ca, float ra, const std::vector<Vec2>& b, Vec2 cb, float rb,
-                 float cap) {
+float gap_capped(const Hull& a, Vec2 ca, float ra, const Hull& b, Vec2 cb, float rb, float cap) {
   const float lb = v_dist(ca, cb) - ra - rb;
   if (lb >= cap) return lb;
   return convex_gap_capped(a, b, cap);
@@ -55,10 +54,10 @@ const std::vector<Rules::Pose>& Rules::manoeuvre_cached(std::size_t a, int kind)
   return s.man[kind];
 }
 
-const std::vector<Vec2>& Rules::pred_hull(std::size_t i, std::size_t k) const {
+const Hull& Rules::pred_hull(std::size_t i, std::size_t k) const {
   const BoatState& s = st_[i];
   if (!s.pred_placed[k]) {
-    place_outline(s.perf->dynamics.collision.outline, s.pred[k].c, s.pred[k].psi, s.pred_hulls[k]);
+    place_hull(s.perf->dynamics.collision.outline, s.pred[k].c, s.pred[k].psi, s.pred_hulls[k]);
     s.pred_placed[k] = 1;
   }
   return s.pred_hulls[k];
@@ -78,14 +77,14 @@ float Rules::pred_gap(std::size_t a, std::size_t b, float H, float cap) const {
   return g;
 }
 
-float Rules::hull_gap(std::size_t i, std::size_t j) const { return convex_gap(st_[i].hull, st_[j].hull); }
+float Rules::hull_gap(std::size_t i, std::size_t j) const { return convex_gap(st_[i].placed, st_[j].placed); }
 
 // §3.5 turn test: B rotated by δ about her reference point then moved T_react on the rotated heading; A on her
 // current motion. Hits = the hulls touch.
 bool Rules::turn_test_hits(std::size_t a, std::size_t b, float delta) const {
   const RulesBoatInput& ib = in_[b];
   const std::size_t K = samples(p_.t_react);
-  std::vector<Vec2> hb;
+  Hull hb;
   for (const float sgn : {1.0f, -1.0f}) {
     const float psi = ib.psi + sgn * delta;
     const Vec2 d = dir(psi);
@@ -93,7 +92,7 @@ bool Rules::turn_test_hits(std::size_t a, std::size_t b, float delta) const {
     for (std::size_t k = 0; k < K; ++k) {
       const float t = static_cast<float>(k) * kSub;
       const Vec2 c{ib.pos.x + vel.x * t, ib.pos.y + vel.y * t};
-      place_outline(st_[b].perf->dynamics.collision.outline, c, psi, hb);
+      place_hull(st_[b].perf->dynamics.collision.outline, c, psi, hb);
       const float g = gap_capped(pred_hull(a, k), st_[a].pred[k].c, st_[a].r_hull, hb, c, st_[b].r_hull, 0.5f);
       if (g <= 0.0f) return true;
     }
@@ -147,15 +146,15 @@ void Rules::manoeuvre(std::size_t a, int kind, float H, std::vector<Pose>& out) 
 
 float Rules::poses_gap(std::size_t a, const std::vector<Pose>& pa, std::size_t b, const std::vector<Pose>& pb,
                        float cap) const {
-  std::vector<Vec2> ha, hb;
+  Hull ha, hb;
   float g = INFINITY;
   const std::size_t K = std::min(pa.size(), pb.size());
   for (std::size_t k = 0; k < K; ++k) {
     const float lb = v_dist(pa[k].c, pb[k].c) - st_[a].r_hull - st_[b].r_hull;
     float x = lb;
     if (lb < cap) {
-      place_outline(st_[a].perf->dynamics.collision.outline, pa[k].c, pa[k].psi, ha);
-      place_outline(st_[b].perf->dynamics.collision.outline, pb[k].c, pb[k].psi, hb);
+      place_hull(st_[a].perf->dynamics.collision.outline, pa[k].c, pa[k].psi, ha);
+      place_hull(st_[b].perf->dynamics.collision.outline, pb[k].c, pb[k].psi, hb);
       x = convex_gap_capped(ha, hb, cap);
     }
     g = min(g, x);

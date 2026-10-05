@@ -209,28 +209,54 @@ struct VmgGrid {
   }
 };
 
+// The search over the 361 angles for one configuration's speeds.
+void vmg_scan(const VmgGrid& g, const std::array<float, 361>& speed, PolarVmg& r) {
+  for (std::size_t i = 0; i <= 360; ++i) {
+    const float twa = g.twa[i];
+    const float v = speed[i];
+    const float c = g.cos[i];
+    const float up = v * c, down = -(v * c);
+    if (up > r.up_speed) {
+      r.up_speed = up;
+      r.up_twa = twa;
+    }
+    if (down > r.down_speed) {
+      r.down_speed = down;
+      r.down_twa = twa;
+    }
+  }
+}
+
+const VmgGrid& vmg_grid() {
+  static const VmgGrid g;
+  return g;
+}
+
 }  // namespace
 
 PolarVmg polar_vmg(const PerfData& perf, float tws) {
-  static const VmgGrid g;
+  const VmgGrid& g = vmg_grid();
   std::array<float, 361> speed;
   PolarVmg r;
   for (const ConfigPerf& cfg : perf.configs) {
     cfg.polar.at_each(tws, g.twa, speed);
-    for (std::size_t i = 0; i <= 360; ++i) {
-      const float twa = g.twa[i];
-      const float v = speed[i];
-      const float c = g.cos[i];
-      const float up = v * c, down = -(v * c);
-      if (up > r.up_speed) {
-        r.up_speed = up;
-        r.up_twa = twa;
-      }
-      if (down > r.down_speed) {
-        r.down_speed = down;
-        r.down_twa = twa;
-      }
-    }
+    vmg_scan(g, speed, r);
+  }
+  return r;
+}
+
+PolarVmg polar_vmg(const PerfData& perf, float tws, PolarVmgCache& cache) {
+  const VmgGrid& g = vmg_grid();
+  if (cache.perf != &perf) {
+    cache.perf = &perf;
+    cache.rows.resize(perf.configs.size());
+    for (std::size_t c = 0; c < perf.configs.size(); ++c) perf.configs[c].polar.rows_at_each(g.twa, cache.rows[c]);
+  }
+  std::array<float, 361> speed;
+  PolarVmg r;
+  for (std::size_t c = 0; c < perf.configs.size(); ++c) {
+    perf.configs[c].polar.at_each_rows(tws, cache.rows[c], speed);
+    vmg_scan(g, speed, r);
   }
   return r;
 }

@@ -203,6 +203,13 @@ struct PolarVmg {
   float down_speed = 0.0f, down_twa = 0.0f;  // vmg toward downwind, > 0
 };
 PolarVmg polar_vmg(const PerfData& perf, float tws);
+// The same, bit for bit, with the polar rows along the search angles kept in `cache` (filled on first use for a
+// performance file): for callers that ask every tick.
+struct PolarVmgCache {
+  const PerfData* perf = nullptr;
+  std::vector<std::vector<float>> rows;  // per configuration
+};
+PolarVmg polar_vmg(const PerfData& perf, float tws, PolarVmgCache& cache);
 float polar_best(const PerfData& perf, float tws, float twa_abs);
 
 // courses.md §7 geometry checks of a resolved course.

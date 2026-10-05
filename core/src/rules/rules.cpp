@@ -175,12 +175,13 @@ void Rules::boat_step(std::uint32_t n, std::size_t i, const Race& race, const Ru
   const std::vector<Vec2>& body = s.perf->dynamics.collision.outline;
   s.c = in.pos;
   place_outline(body, in.pos, in.psi, s.hull);
+  place_hull(body, in.pos, in.psi, s.placed);
   s.bow = bow_point(body, in.pos, in.psi);
   s.stern = stern_point(body, in.pos, in.psi);
   s.twa_prev = s.has_prev ? s.twa : wrap_pi(in.twd - in.psi);
   s.twa = wrap_pi(in.twd - in.psi);
   if (in.tws != s.vmg_tws) {
-    const PolarVmg v = polar_vmg(*s.perf, in.tws);
+    const PolarVmg v = polar_vmg(*s.perf, in.tws, s.vmg);
     s.theta_ch = v.up_twa > 0.0f ? v.up_twa : 0.7f;
     s.theta_dn = v.down_twa > 0.0f ? v.down_twa : 2.6f;
     s.vmg_tws = in.tws;
@@ -695,7 +696,7 @@ void Rules::mark_rules(std::uint32_t n, PairState& ps, const Race& race, std::sp
                                   [&](const MarkRoom& mr) { return mr.rule == RuleCode::r18_2; }),
                    ps.rooms.end());
     if (st_[S].stbd_since_zone.empty() || !st_[S].stbd_since_zone[static_cast<std::size_t>(M)]) continue;
-    if (std::fabs(st_[S].twa) <= st_[S].theta_ch + 3.0f * DEG && pred_gap(T, S, 1.0f, 1.0f) < margin(T, S)) {
+    if (std::fabs(st_[S].twa) <= st_[S].theta_ch + 3.0f * DEG && pred_gap(T, S, 1.0f, max(1.0f, margin(T, S))) < margin(T, S)) {
       ps.r183 = true;
       ps.r183_holder = static_cast<std::int32_t>(T);
     }
@@ -884,7 +885,7 @@ void Rules::obstruction_rules(std::uint32_t /*n*/, PairState& ps, const Race& ra
     for (const Vec2 v : ex) r = max(r, v_dist(v, c));
     obs.push_back({id, false, c, r, &ex, false, false});
   }
-  auto gap_to = [&](const std::vector<Vec2>& hull, const Obst& o) {
+  auto gap_to = [&](std::span<const Vec2> hull, const Obst& o) {
     if (o.circle) return convex_circle_gap(hull, o.c, o.r);
     return o.convex ? convex_gap(hull, *o.poly) : polygon_gap(hull, *o.poly);
   };
@@ -920,7 +921,7 @@ void Rules::obstruction_rules(std::uint32_t /*n*/, PairState& ps, const Race& ra
         break;
       }
       float g = INFINITY;
-      for (std::size_t k = 0; k < K && g >= st_[x].L; k += 5) g = min(g, gap_to(pred_hull(x, k), o));
+      for (std::size_t k = 0; k < K && g >= st_[x].L; k += 5) g = min(g, gap_to(pred_hull(x, k).pts(), o));
       if (!(g < st_[x].L)) both = false;
     }
     if (!both) continue;
@@ -1139,7 +1140,7 @@ void Rules::judge_pair(std::uint32_t n, PairState& ps, const Race& race, std::sp
   // §5.4 rule 17.
   ps.r17 = false;
   if (rule_on(RuleCode::r17, race)) {
-    const float gap = hull_gap(A, B);
+    const float gap = ps.gap;  // hull_gap(A, B) of this tick (step 2)
     if (ps.r17_holder >= 0) {
       const std::size_t Lw = static_cast<std::size_t>(ps.r17_holder);
       if (!overlapped(ps.raw) || !same_tack || gap > p_.r17_clear * st_[Lw].L) ps.r17_holder = -1;
@@ -1244,7 +1245,7 @@ void Rules::judge_pair(std::uint32_t n, PairState& ps, const Race& race, std::sp
   if (!quiet) ps.clear_since = n;
   if (ps.inc_open && n - ps.clear_since >= ticks(p_.incident_close)) ps.inc_open = false;
   if (ps.protest_open) {
-    ps.protest_min_gap = min(ps.protest_min_gap, hull_gap(A, B));
+    ps.protest_min_gap = min(ps.protest_min_gap, ps.gap);  // hull_gap(A, B) of this tick (step 2)
     const std::size_t F = static_cast<std::size_t>(ps.protest_fouled);
     if (in[F].ai && ps.protest_min_gap < 0.5f * m) protest(ps.protest_fouled, n);
     if (ps.protest_open && n >= ps.protest_deadline) ps.protest_open = false;
@@ -1289,7 +1290,7 @@ void Rules::judge_pair(std::uint32_t n, PairState& ps, const Race& race, std::sp
   r.ttc = INFINITY;
   auto touching = [&](std::size_t k) {
     const float lb = v_dist(sa.pred[k].c, sb.pred[k].c) - sa.r_hull - sb.r_hull;
-    return lb <= 0.0f && convex_intersect(pred_hull(A, k), pred_hull(B, k));
+    return lb <= 0.0f && convex_intersect(pred_hull(A, k).pts(), pred_hull(B, k).pts());
   };
   if (touching(0)) {
     r.ttc = 0.0f;

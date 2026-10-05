@@ -3,6 +3,7 @@
 // Everything is binary32 in the written order (conventions.md §5); the load-time validators use double copies.
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -32,6 +33,26 @@ inline float signed_angle(Vec2 u, Vec2 v) { return wm_atan2(v_cross(u, v), v_dot
 void place_outline(std::span<const Vec2> body, Vec2 pos, float psi, std::vector<Vec2>& world);
 Vec2 place_point(Vec2 body, Vec2 pos, float psi);
 
+// A convex outline placed in the world for the gap tests below, with what they reuse between calls: the placement
+// frame, the outline's bounding box in its own frame (a cheap lower bound of the distance to it) and, filled on
+// first use, the unit edge normals with the outline's own projection on them. Its vertices have the same bits as
+// place_outline. Fixed size (outlines have at most kMaxOutline vertices, data_format.md §4.2): no allocation.
+constexpr std::size_t kMaxOutline = 32;
+struct Hull {
+  Hull() {}  // the arrays stay unset: `n` says what is valid, and a vector of hulls grows without clearing them
+  std::uint32_t n = 0;
+  std::array<Vec2, kMaxOutline> v;
+  Vec2 pos{0.0f, 0.0f};
+  float s = 0.0f, c = 1.0f;          // sin ψ, cos ψ: f = (s, c), p = (−c, s)
+  float x0 = 0.0f, x1 = 0.0f, y0 = 0.0f, y1 = 0.0f;  // bounding box in the body frame
+  mutable bool axes = false;
+  mutable std::uint32_t axis_ok = 0;  // bit k: edge k has a length
+  mutable std::array<Vec2, kMaxOutline> ax;
+  mutable std::array<float, kMaxOutline> lo, hi;
+  std::span<const Vec2> pts() const { return {v.data(), n}; }
+};
+void place_hull(std::span<const Vec2> body, Vec2 pos, float psi, Hull& out);
+
 // Distance from p to the segment a-b.
 float point_segment_dist(Vec2 p, Vec2 a, Vec2 b);
 // Even-odd point in polygon (either orientation).
@@ -46,6 +67,10 @@ float convex_gap(std::span<const Vec2> a, std::span<const Vec2> b);
 // The same gap where only values below `cap` must be exact: the largest separation along a unit edge normal
 // (a lower bound of the gap) is returned when it is at least `cap`.
 float convex_gap_capped(std::span<const Vec2> a, std::span<const Vec2> b, float cap);
+// The same on placed hulls, with the same bits; convex_gap_capped returns a value of at least `cap` (not the one
+// above) whenever the gap is at least `cap`.
+float convex_gap(const Hull& a, const Hull& b);
+float convex_gap_capped(const Hull& a, const Hull& b, float cap);
 // Gap between a convex polygon and a circle (0 when they overlap).
 float convex_circle_gap(std::span<const Vec2> a, Vec2 c, float r);
 // Gap between a convex polygon and any polygon (0 when a vertex of either is inside the other or edges cross).

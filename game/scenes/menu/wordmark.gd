@@ -2,12 +2,12 @@ class_name Wordmark
 extends Control
 ## The game's logo (menus.md §1.2): WINDMARK in Barlow Semi Condensed Black Italic, cream with a navy outline and
 ## two hard shadows (navy, then yellow, each the outlined letters in one colour), and the tagline bar under it:
-## TACTICAL SAILING RACES in ExtraBold Italic, navy on a yellow parallelogram with a hard navy shadow. One scene
+## REGATTA SAILING SIMULATOR in ExtraBold Italic, navy on a yellow parallelogram with a hard navy shadow. One scene
 ## (wordmark.tscn), so a later logo replaces it without touching the menu. Every size and offset is a whole pixel
 ## of the WINDMARK font size, so it stays crisp at every UI scale; fit_width scales it down by font size.
 
 const TEXT := "WINDMARK"
-const TAGLINE := "TACTICAL SAILING RACES"
+const TAGLINE := "REGATTA SAILING SIMULATOR"
 ## the WINDMARK font size on the main menu at 100 % UI scale, px
 const SIZE := 76
 ## the smallest WINDMARK size fit_width goes down to, px

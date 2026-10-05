@@ -874,7 +874,7 @@ func test_touches() -> void:
 	t.ok(wm.title_px >= roundi(0.9 * Wordmark.SIZE) and wm.title_px < Wordmark.SIZE, "WINDMARK %d px at 1280 x 800, 100 %%"
 		% wm.title_px)
 	wm.fit_width(10000.0)
-	t.ok(wm.title_px == Wordmark.SIZE and wm.tagline.text == "TACTICAL SAILING RACES", "WINDMARK at 76 px with room")
+	t.ok(wm.title_px == Wordmark.SIZE and wm.tagline.text == "REGATTA SAILING SIMULATOR", "WINDMARK at 76 px with room")
 	t.ok(wm.title.get_theme_constant("outline_size") == 9 and wm.shadow_navy.position - wm.title.position
 		== Vector2(3, 3) and wm.shadow_yellow.position - wm.title.position == Vector2(6, 6)
 		and wm.shadow_yellow.get_index() < wm.shadow_navy.get_index() and wm.shadow_navy.get_index()

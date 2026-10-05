@@ -5,7 +5,7 @@ Where the game's logo and icon live, and what they are made of. The behaviour is
 
 ## Logo
 
-A wordmark only (no symbol, no badge): **WINDMARK** with the tagline bar **TACTICAL SAILING RACES** under it.
+A wordmark only (no symbol, no badge): **WINDMARK** with the tagline bar **REGATTA SAILING SIMULATOR** under it.
 
 - Drawn by the game, not an image: `game/scenes/menu/wordmark.tscn` and `wordmark.gd` (class `Wordmark`).
   The main menu shows it top-left; any other screen can instance the same scene.

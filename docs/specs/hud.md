@@ -412,7 +412,8 @@ bar (centre zero, ±30°). Numbers keep the 4 Hz refresh of §1; dial, bars and 
 - **Mark tag**: on the next mark (§7): name, distance, ETA, bearing and relative bearing. Off screen it becomes an
   edge pointer at the screen edge towards the mark.
 - **Tack point**: on a beat or run with the layline distance of §6 shown, a point on the water where the current COG
-  meets the other tack's layline, with `TACK IN <distance> <time>`, or `OVERSTOOD <distance>` at the boat.
+  meets the other tack's layline, with `TACK IN <distance> <time>` on a beat and `GYBE IN <distance> <time>` on a
+  run (the turn onto the other tack downwind is a gybe), or `OVERSTOOD <distance>` at the boat.
 - **Name tags**: another boat's name over her mast when she is within 50 m of the viewed boat, or when the player
   has selected her (the `boat_select` action, or a click or tap on her; again to clear). The tag takes the radar
   colour of §8 (solid chip when there is a relation, paper on ink otherwise) and pulses as the radar icon does.

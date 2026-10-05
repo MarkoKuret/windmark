@@ -274,6 +274,8 @@ func test_next_mark() -> void:
 
 func test_laylines_shift_hint() -> void:
 	t.begin("layline distance, overstood, shift meter, sail hint (hud.md §6, §3.2, §4)")
+	t.ok(HudPaint.turn_in_label("beat") == "TACK IN" and HudPaint.turn_in_label("run") == "GYBE IN",
+		"the layline turn is a tack on a beat and a gybe on a run (hud.md §16.4)")
 	var sim := RaceStubSim.new()
 	sim.race_d["state"] = RaceText.RaceState.RACING
 	sim.race_d["race_time"] = 100.0

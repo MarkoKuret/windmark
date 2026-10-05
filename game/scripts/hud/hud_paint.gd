@@ -607,8 +607,13 @@ static func mark_tag(b: HudCanvas, h: Hud) -> void:
 	b._s(Vector2(x, 86) * k, sub, int(roundf(13 * k)), HudStyle.PAPER, 600, 0.1)
 	if h.world_tack_point() == null and h.text_of("layline") != "":
 		var t := h.text_of("layline")
-		b._s(Vector2(x, 112) * k, t.to_upper().replace("LAYLINE", "TACK IN"), int(roundf(13 * k)),
+		b._s(Vector2(x, 112) * k, t.to_upper().replace("LAYLINE", turn_in_label(r.leg_type)), int(roundf(13 * k)),
 			HudStyle.PORT if t.begins_with("OVER") else HudStyle.PAPER, 600, 0.1)
+
+
+## hud.md §16.4: the turn onto the other tack's layline is a tack on a beat and a gybe on a run
+static func turn_in_label(leg_type: String) -> String:
+	return "GYBE IN" if leg_type == "run" else "TACK IN"
 
 
 # ---- ranking list and results ----
@@ -683,7 +688,7 @@ static func world(b: HudCanvas, h: Hud) -> void:
 			b._a(c, 7.0 * k, 0.0, TAU, 24, col, 2.0 * k)
 			var t := h.text_of("layline")
 			if t.begins_with("Layline"):
-				b._s(c + Vector2(0, -44.0 * k), "TACK IN", int(roundf(LAB * k)), HudStyle.PAPER, 600, TRACK,
+				b._s(c + Vector2(0, -44.0 * k), turn_in_label(r.leg_type), int(roundf(LAB * k)), HudStyle.PAPER, 600, TRACK,
 					HORIZONTAL_ALIGNMENT_CENTER)
 				number_unit(b, c.x / k, c.y / k - 14.0, HudStyle.split_unit(HudFormat.distance(r.layline_dist))[0],
 					HudStyle.split_unit(HudFormat.distance(r.layline_dist))[1] + "  " + HudFormat.clock(r.layline_time), 36,

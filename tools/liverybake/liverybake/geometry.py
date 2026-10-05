@@ -16,7 +16,7 @@ import numpy as np
 from .common import BOATGEN, CLASSES, HERE
 
 CACHE = HERE / ".cache"
-VERSION = 4
+VERSION = 5
 
 
 def _key(class_id):
@@ -94,6 +94,8 @@ def build(path):
     geo["deck_max"] = np.vstack([g.P for g in dk.values()]).max(0).tolist()
     geo["deck"] = deck_info(boat)
     geo["footprints"] = footprints(boat)
+    geo["deck_plan"] = [float(v) for v in d_plan(boat)]
+    geo["painted"] = painted(boat)
     # the transom seen from astern: its uv1 frame, outline (y, z), top edge, name panel and the fittings on it
     d = boat.deck
     tr = boat.livery_transom()
@@ -113,6 +115,36 @@ def build(path):
         geo["sails"].append({"id": spec["id"], "type": s.type, "P": np.asarray(s.P, dtype=np.float64),
                              "corners": {k: list(v) for k, v in s.corners.items()}})
     return geo
+
+
+def d_plan(boat):
+    return boat.deck.plan_rect()
+
+
+def painted(boat):
+    """The fittings the game paints into the deck maps instead of modelling them (boatgen Boat.painted_part):
+    [{tag, slot, P (n, 3) boat frame, I (m, 3), N (n, 3), H (n,) height above the walking surface}] per tag and
+    slot."""
+    if not hasattr(boat, "painted_part"):
+        return []
+    d = boat.deck
+    by = {}
+    for slot, gs in boat.painted_part().slots.items():
+        for g in gs:
+            by.setdefault((g.tag or "", slot), []).append(g)
+    out = []
+    for (tag, slot), gs in sorted(by.items()):
+        off, Ps, Is, Ns = 0, [], [], []
+        for g in gs:
+            Ps.append(g.P)
+            Ns.append(g.N)
+            Is.append(g.I + off)
+            off += len(g.P)
+        P = np.vstack(Ps).astype(np.float64)
+        Hs = P[:, 2] - np.asarray(d.surface_z(P[:, 0], P[:, 1]), dtype=np.float64)
+        out.append({"tag": tag, "slot": slot, "P": P, "I": np.vstack(Is).astype(np.int64),
+                    "N": np.vstack(Ns).astype(np.float64), "H": Hs})
+    return out
 
 
 # ----------------------------------------------------------------------------------------------------------------

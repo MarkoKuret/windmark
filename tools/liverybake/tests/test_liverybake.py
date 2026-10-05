@@ -218,14 +218,85 @@ def test_stbd_is_the_port_view_mirrored(baked):
     assert np.abs(port - stbd[:, ::-1]).max() <= 1
 
 
-def test_stage_import_settings(baked, tmp_path):
-    n = cli.stage(["wm7"], baked, tmp_path, log=lambda *a: None)
+@pytest.fixture(scope="module")
+def staged(baked, tmp_path_factory):
+    dest = tmp_path_factory.mktemp("stage")
+    n = cli.stage(["wm7"], baked, dest, log=lambda *a: None)
+    return dest, n
+
+
+def test_stage_import_settings(baked, staged):
+    """data_format.md §8.5 "Staged boat atlas": the game gets the atlas (and layout.json), not the hull, deck,
+    transom and keel images; a repeat stage writes nothing."""
+    dest, n = staged
     assert n > 0
-    imp = (tmp_path / "wm7" / "navy" / "hull_normal.png.import").read_text()
+    nv = dest / "wm7" / "navy"
+    imp = (nv / "atlas_normal.png.import").read_text()
     assert "compress/mode=2" in imp and "compress/normal_map=1" in imp
-    assert "compress/high_quality=true" in (tmp_path / "wm7" / "navy" / "hull_albedo.png.import").read_text()
-    assert (tmp_path / "_cloth" / "nylon_detail.png").exists()
-    assert cli.stage(["wm7"], baked, tmp_path, log=lambda *a: None) == 0     # nothing changed, nothing copied
+    assert "compress/high_quality=true" in (nv / "atlas_albedo.png.import").read_text()
+    assert (nv / "layout.json").exists()
+    assert not any(nv.glob("hull_*")) and not any(nv.glob("deck_*")) and not any(nv.glob("keel_*"))
+    assert (dest / "_cloth" / "nylon_detail.png").exists()
+    assert cli.stage(["wm7"], baked, dest, log=lambda *a: None) == 0     # nothing changed, nothing written
+
+
+def test_atlas_layout(staged):
+    dest, _ = staged
+    nv = dest / "wm7" / "navy"
+    meta = json.loads((nv / "atlas.json").read_text())
+    assert meta["schema"] == "windmark.boatatlas/1" and meta["size"] == [2048, 2048]
+    r = meta["regions"]
+    rects = []
+    for k in ("hull", "deck", "transom", "keel"):
+        u, v, w, h = r[k]
+        assert 0 < u and 0 < v and u + w < 1 and v + h < 1, k
+        rects.append((u, v, u + w, v + h))
+    hu = r["hull"]
+    assert abs(hu[2] - 2 * hu[3]) < 2 / 2048, "the hull keeps its 2:1"
+    for i in range(4):          # no overlaps, at least one gutter (16 texels) apart
+        for j in range(i + 1, 4):
+            a, b = rects[i], rects[j]
+            gap = max(b[0] - a[2], a[0] - b[2], b[1] - a[3], a[1] - b[3])
+            assert gap >= 15 / 2048, (i, j, gap)
+    for m in ("albedo", "normal", "orm"):
+        assert Image.open(nv / f"atlas_{m}.png").size == (2048, 2048)
+    # the keel region: flat normal
+    nrm = np.asarray(Image.open(nv / "atlas_normal.png"), dtype=int)
+    x, y, w, h = meta["pixels"]["keel"]
+    assert np.abs(nrm[y + h // 2, x + w // 2] - [128, 128, 255]).max() <= 1
+
+
+def test_painted_hardware(staged):
+    """The jib tracks are painted on the deck region (no geometry in the game) with the non-slip mask cleared."""
+    dest, _ = staged
+    nv = dest / "wm7" / "navy"
+    meta = json.loads((nv / "atlas.json").read_text())
+    geo = geometry.load("wm7")
+    tr = [p for p in geo["painted"] if p["tag"].startswith("jib_track") and p["slot"] == "metal"]
+    assert tr, "the jib tracks are painted"
+    c = tr[0]["P"].mean(0)
+    x0, yt, w, h = geo["deck"]["plan"]
+    px, py, pw, ph = meta["pixels"]["deck"]
+    i = int(py + (yt - c[1]) / h * ph)
+    j = int(px + (c[0] - x0) / w * pw)
+    alb = np.asarray(Image.open(nv / "atlas_albedo.png"), dtype=float)
+    orm = np.asarray(Image.open(nv / "atlas_orm.png"), dtype=float)
+    win = (slice(i - 1, i + 2), slice(j - 1, j + 2))
+    assert orm[win][..., 2].max() < 40, "non-slip mask cleared under the track"
+    assert orm[win][..., 1].mean() < 0.5 * 255, "metal is smoother than the deck"
+    tags = {p["tag"].split("_")[0] for p in geo["painted"]}
+    for t in ("hatch", "halyard", "mast", "organiser"):
+        assert t in tags, t
+    assert alb.shape == (2048, 2048, 3)
+
+
+def test_sails_staged_at_half(baked, staged):
+    dest, _ = staged
+    src = Image.open(Path(baked) / "wm7" / "sails" / "main_port_albedo.png").size
+    got = Image.open(dest / "wm7" / "sails" / "main_port_albedo.png").size
+    assert got == (src[0] // 2, src[1] // 2)
+    n = np.asarray(Image.open(dest / "wm7" / "sails" / "main_normal.png"), dtype=float) / 127.5 - 1
+    assert abs(np.linalg.norm(n, axis=-1).mean() - 1) < 0.03
 
 
 def test_ropes_by_function(baked):

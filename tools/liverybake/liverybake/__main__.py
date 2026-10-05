@@ -10,6 +10,8 @@ data/liveries/<class>/ where a part's files are all missing, never over hand-edi
 (game/generated/liveries, with Godot import settings).
 """
 import argparse
+import hashlib
+import io
 import json
 import shutil
 import sys
@@ -232,10 +234,73 @@ def import_settings(name):
     return IMPORT.format(mode=2, hq="false", normal=2)
 
 
-def stage(classes, data=DATA, dest=STAGE, log=print):
-    """Copies the livery textures and layouts of `classes` to `dest` (only changed files), writes each image's
-    import settings once, and writes the shared cloth detail tiles. Returns the number of files copied."""
+# the hand-owned images the game reads through the boat atlas, not staged themselves
+ATLAS_SOURCES = ("hull_", "deck_", "transom_", "keel_")
+SAIL_MAPS = ("_albedo.png", "_normal.png", "_orm.png")
+
+
+def _stamp(folder):
+    p = Path(folder) / ".stage.json"
+    try:
+        return json.loads(p.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_stamp(folder, st):
+    p = Path(folder) / ".stage.json"
+    js = json.dumps(st, indent=1, sort_keys=True) + "\n"
+    if not p.exists() or p.read_text() != js:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(js)
+
+
+def _digest(*blobs):
+    h = hashlib.sha256()
+    for b in blobs:
+        h.update(b if isinstance(b, bytes) else str(b).encode())
+    return h.hexdigest()[:20]
+
+
+def _half_png(src, normal):
+    """A sail image at half its size (Lanczos; normals renormalised), as PNG bytes."""
+    im = Image.open(src).convert("RGB")
+    w, h = im.size
+    small = im.resize((max(1, w // 2), max(1, h // 2)), Image.LANCZOS)
+    a = np.asarray(small, dtype=np.float32) / 255.0
+    if normal:
+        n = a * 2 - 1
+        n /= np.maximum(np.linalg.norm(n, axis=-1, keepdims=True), 1e-9)
+        a = n * 0.5 + 0.5
+    buf = io.BytesIO()
+    Image.fromarray((np.clip(a, 0, 1) * 255 + 0.5).astype(np.uint8)).save(buf, "PNG", compress_level=6)
+    return buf.getvalue()
+
+
+def _put(path, data):
+    """Writes bytes when they differ; True when written."""
+    path = Path(path)
+    if path.exists() and path.read_bytes() == data:
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    return True
+
+
+def _import_file(d, rel):
+    imp = d.with_name(d.name + ".import")
+    if not imp.exists():
+        imp.write_text(import_settings(rel))
+
+
+def stage(classes, data=DATA, dest=STAGE, log=print, hd=False):
+    """Stages the livery textures of `classes` in `dest` for the game (only changed files) with their import
+    settings: per livery the boat atlas (atlas.py: hull, deck with the painted hardware, transom, keel; 2048, or
+    4096 with `hd`) and layout.json, the rope set, the sails at half size (full with `hd`) and the shared cloth
+    detail tiles. Returns the number of files written."""
+    from . import atlas
     n = 0
+    code = _digest(*(Path(__file__).with_name(f).read_bytes() for f in ("atlas.py", "painted.py")))
     for c in classes:
         src = Path(data) / c
         if not src.exists():
@@ -245,14 +310,49 @@ def stage(classes, data=DATA, dest=STAGE, log=print):
                 continue    # a relief image is the source of its normal map, the game does not load it
             rel = f.relative_to(Path(data))
             d = Path(dest) / rel
-            d.parent.mkdir(parents=True, exist_ok=True)
-            if not d.exists() or d.read_bytes() != f.read_bytes():
-                shutil.copyfile(f, d)
+            if f.name.startswith(ATLAS_SOURCES):
+                # read through the atlas: a copy staged before is removed
+                for old in (d, d.with_name(d.name + ".import")):
+                    if old.exists():
+                        old.unlink()
+                continue
+            if f.parent.name == "sails" and f.name.endswith(SAIL_MAPS) and not hd:
+                st = _stamp(d.parent)
+                key = _digest(f.read_bytes(), "half")
+                if st.get(f.name) != key or not d.exists():
+                    if _put(d, _half_png(f, f.name.endswith("_normal.png"))):
+                        n += 1
+                    st[f.name] = key
+                    _save_stamp(d.parent, st)
+            elif _put(d, f.read_bytes()):
                 n += 1
             if f.suffix == ".png":
-                imp = d.with_name(d.name + ".import")
-                if not imp.exists():
-                    imp.write_text(import_settings(str(rel.as_posix())))
+                _import_file(d, str(rel.as_posix()))
+        # the boat atlas of every livery folder with a hull set
+        liv = livery_file(c, data) if (Path(data) / f"{c}.liveries.json").exists() else {}
+        rs = ropes.rope_set(liv) if liv else {}
+        for folder in sorted(p.parent for p in src.glob("*/hull_albedo.png")):
+            need = [folder / f"{k}_{m}.png" for k in ("hull", "deck", "transom") for m in ("albedo", "normal", "orm")]
+            need.append(folder / "keel_albedo.png")
+            if not all(p.exists() for p in need):
+                log(f"{folder}: incomplete hull, deck, transom or keel set, no boat atlas")
+                continue
+            out = Path(dest) / folder.relative_to(Path(data))
+            size = 2 * atlas.SIZE if hd else atlas.SIZE
+            key = _digest(code, size, geometry._key(c), json.dumps(rs, sort_keys=True),
+                          *(p.read_bytes() for p in need))
+            st = _stamp(out)
+            files = [out / f"atlas_{m}.png" for m in ("albedo", "normal", "orm")] + [out / "atlas.json"]
+            if st.get("atlas") == key and all(p.exists() for p in files):
+                continue
+            t = time.time()
+            images, meta = atlas.build(folder, geometry.load(c), rs, size)
+            n += len(atlas.write(out, images, meta))
+            for m in ("albedo", "normal", "orm"):
+                _import_file(out / f"atlas_{m}.png", f"{c}/{folder.name}/atlas_{m}.png")
+            st["atlas"] = key
+            _save_stamp(out, st)
+            log(f"{c}/{folder.name}: boat atlas {size}x{size} in {time.time() - t:.1f} s")
     cdir = Path(dest) / "_cloth"
     cdir.mkdir(parents=True, exist_ok=True)
     for name in sails.CLOTHS:
@@ -291,6 +391,7 @@ def main(argv=None):
     ap.add_argument("--transom-size", type=int, default=2048)
     ap.add_argument("--deck-size", type=int, default=4096)
     ap.add_argument("--rope-size", type=int, default=ropes.SIZE)
+    ap.add_argument("--hd", action="store_true", help="stage the boat atlas at 4096 and the sails at full size")
     ap.add_argument("--quiet", action="store_true")
     a = ap.parse_args(argv)
     np.seterr(all="ignore")
@@ -308,7 +409,7 @@ def main(argv=None):
             log("kept the existing (hand-owned) textures; --force or --only PART to rebake")
     normals_from_relief(classes, a.out, log)
     if not a.no_stage:
-        stage(classes, a.out, a.stage_dir, log)
+        stage(classes, a.out, a.stage_dir, log, hd=a.hd)
     return 0
 
 

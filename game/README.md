@@ -279,7 +279,7 @@ Flags after `--`:
 | `--aa=off` | this run's anti-aliasing: `off`, `fxaa` or `smaa` (the default, `water_render.md` §7); not saved |
 | `--quality=M` | this run's quality tier: `L`, `M` or `H`, over the setting; not saved |
 | `--no-vsync` | this run without vsync, to see the headroom; not saved |
-| `--shadow-splits=0` | this run's sun shadow cascades: `0` (off), `2` or `4`, over the tier; not saved |
+| `--shadow-splits=0` | this run's sun shadow cascades: `0` (off), `1`, `2` or `4`, over the tier; not saved |
 | `--shadow-atlas=2048` | this run's directional shadow atlas size, over the tier; not saved |
 | `--shadow-distance=40` | this run's sun shadow distance in metres, over the tier; not saved |
 | `--shadow-soft=0` | this run's soft shadow filter (RenderingServer shadow quality 0 hard to 5 ultra), over the tier; not saved |

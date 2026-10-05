@@ -118,6 +118,13 @@ func test_land_scene() -> void:
 	t.ok(v.ground_height(420.0, 1950.0) > 2.0 and v.ground_height(420.0 + 6.5, 1950.0) == -INF,
 		"rock on its circle, water outside it")
 	t.ok(v.ground_height(0.0, -300.0) == -INF, "open water at the start")
+	# water_render.md §4.6: the trees cast on tiers M and H, not on L, following the sea's tier
+	var trees: MeshInstance3D = v.parts.get("trees_island_n")
+	var casts := func() -> bool: return trees.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	sc.sea.quality = SeaQuality.Tier.L
+	var on_l: bool = casts.call()
+	sc.sea.quality = SeaQuality.Tier.M
+	t.ok(trees != null and not on_l and casts.call(), "trees cast no sun shadow on tier L, cast on M")
 	# the camera never inside land: orbit a boat close to the island at every azimuth, low and far
 	var rig: CameraRig = sc.rig
 	var worst := INF

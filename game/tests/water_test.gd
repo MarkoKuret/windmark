@@ -214,13 +214,12 @@ func check_land_scene(sea: Sea, tier: String) -> void:
 ## the sea, the wakes and the spray cast none.
 func check_shadows(sea: Sea, t: Dictionary) -> void:
 	var sun: DirectionalLight3D = (_scene.get_node("SkyDay") as SkyRig).sun()
-	var want_mode := DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS if t["shadow_splits"] == 4 \
-			else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
-	var sp: Array = t["shadow_split"]
+	var want_mode := SeaQuality.shadow_mode(t["shadow_splits"])
+	var sp: Array = SeaQuality.shadow_splits(t)
 	var ok: bool = sun != null and sun.shadow_enabled and sun.directional_shadow_mode == want_mode \
 			and is_equal_approx(sun.directional_shadow_max_distance, t["shadow_distance"]) \
-			and is_equal_approx(sun.directional_shadow_split_1, sp[0]) \
-			and (t["shadow_splits"] == 2 or (is_equal_approx(sun.directional_shadow_split_2, sp[1])
+			and (t["shadow_splits"] < 2 or is_equal_approx(sun.directional_shadow_split_1, sp[0])) \
+			and (t["shadow_splits"] < 4 or (is_equal_approx(sun.directional_shadow_split_2, sp[1])
 				and is_equal_approx(sun.directional_shadow_split_3, sp[2]))) \
 			and sun.directional_shadow_blend_splits == t["shadow_blend"]
 	check(ok, "scene tier %s: sun shadows %d cascades to %.0f m, splits %s" % [t["name"], t["shadow_splits"],
@@ -234,6 +233,12 @@ func check_shadows(sea: Sea, t: Dictionary) -> void:
 	for k in edges.size() - 1:
 		one = one or (edges[k] <= 15.0 and edges[k + 1] >= 35.0)
 	check(one, "scene tier %s: the chase distance (15 to 35 m) lies in one cascade (edges %s m)" % [t["name"], edges])
+	# and before the fade (the last 20 %), so the chase boat's shadows are whole
+	check(0.8 * float(t["shadow_distance"]) >= 35.0, "scene tier %s: the shadows fade from %.0f m, past the chase boat"
+			% [t["name"], 0.8 * float(t["shadow_distance"])])
+	var want_soft: int = t["shadow_soft"]
+	check(want_soft == RenderingServer.SHADOW_QUALITY_HARD if t["name"] == "L" else want_soft > 0,
+			"scene tier %s: shadow filter %d (hard on L only)" % [t["name"], want_soft])
 	check(is_equal_approx(sun.shadow_bias, SeaQuality.SHADOW_BIAS) and is_equal_approx(sun.shadow_normal_bias,
 			SeaQuality.SHADOW_NORMAL_BIAS) and sun.directional_shadow_pancake_size >= 30.0,
 			"scene tier %s: shadow bias %.2f, normal bias %.1f, pancake %.0f m" % [t["name"], sun.shadow_bias,

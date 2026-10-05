@@ -624,8 +624,8 @@ WM_API wm_status wm_world_race_start_status(const wm_world* w, int32_t boat, wm_
 
 /* rules.md §11.3 rule codes, in this order. */
 enum { WM_RULE_NONE = 0, WM_RULE_10, WM_RULE_11, WM_RULE_12, WM_RULE_13, WM_RULE_14, WM_RULE_15, WM_RULE_16_1,
-       WM_RULE_16_2, WM_RULE_17, WM_RULE_18_2, WM_RULE_18_3, WM_RULE_18_4, WM_RULE_19, WM_RULE_20, WM_RULE_22_1,
-       WM_RULE_22_2, WM_RULE_31, WM_RULE_LATE, WM_RULE_C_PREP, WM_RULE_C_ENTRY, WM_RULE_SI_BOUNDARY };
+       WM_RULE_16_2, WM_RULE_17, WM_RULE_18_2, WM_RULE_18_3, WM_RULE_18_4, WM_RULE_19, WM_RULE_20, WM_RULE_21_1,
+       WM_RULE_21_2, WM_RULE_31, WM_RULE_LATE, WM_RULE_C_PREP, WM_RULE_C_ENTRY, WM_RULE_SI_BOUNDARY };
 WM_API const char* wm_rule_code_name(int32_t rule);
 
 /* rules.md §11.2 per boat. */

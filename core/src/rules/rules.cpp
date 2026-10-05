@@ -25,10 +25,10 @@ std::string_view rule_code_str(RuleCode r) {
     case RuleCode::r18_4: return "18.4";
     case RuleCode::r19: return "19";
     case RuleCode::r20: return "20";
-    case RuleCode::r22_1: return "22.1";
-    case RuleCode::r22_2: return "22.2";
+    case RuleCode::r21_1: return "21.1";
+    case RuleCode::r21_2: return "21.2";
     case RuleCode::r31: return "31";
-    case RuleCode::late: return "44.1-late";
+    case RuleCode::late: return "44.2-late";
     case RuleCode::c_prep: return "C-prep";
     case RuleCode::c_entry: return "C-entry";
     case RuleCode::si_boundary: return "SI-boundary";
@@ -46,14 +46,14 @@ std::uint64_t pair_key(std::int32_t i, std::int32_t j) {
 }
 bool fast_persist(RuleCode r) {
   return r == RuleCode::r10 || r == RuleCode::r13 || r == RuleCode::r15 || r == RuleCode::r16_1 ||
-         r == RuleCode::r16_2 || r == RuleCode::r18_3 || r == RuleCode::r22_1 || r == RuleCode::r22_2;
+         r == RuleCode::r16_2 || r == RuleCode::r18_3 || r == RuleCode::r21_1 || r == RuleCode::r21_2;
 }
 bool part2(RuleCode r) {
   switch (r) {
     case RuleCode::r10: case RuleCode::r11: case RuleCode::r12: case RuleCode::r13: case RuleCode::r14:
     case RuleCode::r15: case RuleCode::r16_1: case RuleCode::r16_2: case RuleCode::r17: case RuleCode::r18_2:
-    case RuleCode::r18_3: case RuleCode::r18_4: case RuleCode::r19: case RuleCode::r20: case RuleCode::r22_1:
-    case RuleCode::r22_2:
+    case RuleCode::r18_3: case RuleCode::r18_4: case RuleCode::r19: case RuleCode::r20: case RuleCode::r21_1:
+    case RuleCode::r21_2:
       return true;
     default:
       return false;
@@ -924,10 +924,10 @@ void Rules::judge_pair(std::uint32_t n, PairState& ps, const Race& race, std::sp
   const bool pen_a = rec_[A].turning_for_penalty, pen_b = rec_[B].turning_for_penalty;
   if (ret_a != ret_b) {
     giver = ret_a ? ps.i : ps.j;
-    rule = RuleCode::r22_1;
+    rule = RuleCode::r21_1;
   } else if (pen_a != pen_b) {
     giver = pen_a ? ps.i : ps.j;
-    rule = RuleCode::r22_2;
+    rule = RuleCode::r21_2;
   } else if (sa.tacking != sb.tacking) {
     giver = sa.tacking ? ps.i : ps.j;
     rule = RuleCode::r13;
@@ -1136,8 +1136,8 @@ void Rules::judge_pair(std::uint32_t n, PairState& ps, const Race& race, std::sp
     const UmpireMode um = race.settings().umpire;
     bool penalise = true;
     if (um == UmpireMode::contact_only) {
-      const bool hard = crule == RuleCode::r10 || crule == RuleCode::r13 || crule == RuleCode::r22_1 ||
-                        crule == RuleCode::r22_2;
+      const bool hard = crule == RuleCode::r10 || crule == RuleCode::r13 || crule == RuleCode::r21_1 ||
+                        crule == RuleCode::r21_2;
       penalise = hard;
       t_persist = p_.t_persist_slow;
     }

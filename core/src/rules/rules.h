@@ -22,8 +22,8 @@ namespace wm {
 // rules.md §11.3 rule codes.
 enum class RuleCode : std::uint8_t {
   none,
-  r10, r11, r12, r13, r14, r15, r16_1, r16_2, r17, r18_2, r18_3, r18_4, r19, r20, r22_1, r22_2, r31,
-  late,         // "44.1-late"
+  r10, r11, r12, r13, r14, r15, r16_1, r16_2, r17, r18_2, r18_3, r18_4, r19, r20, r21_1, r21_2, r31,
+  late,         // "44.2-late"
   c_prep,       // "C-prep"
   c_entry,      // "C-entry"
   si_boundary,  // "SI-boundary"

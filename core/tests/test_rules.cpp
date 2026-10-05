@@ -270,14 +270,14 @@ TEST_CASE("rules: rule 22") {
       rig.watch_step();
       const wm::PairRecord* r = rig.rules.pair(0, 1);
       if (r != nullptr && !hit && r->gap < 0.2f) {
-        CHECK(r->kc_rule == RuleCode::r22_1);
+        CHECK(r->kc_rule == RuleCode::r21_1);
         CHECK(r->kc_giver == 0);
         rig.touch(0, wm::ContactKind::boat, 1, 1.0f);
         hit = true;
       }
     }
     CHECK(hit);
-    CHECK(rig.penalties(0, RuleCode::r22_1) == 1);
+    CHECK(rig.penalties(0, RuleCode::r21_1) == 1);
     CHECK(rig.penalties(1) == 0);
   }
   SUBCASE("a boat doing a penalty turn hits another: 22.2") {
@@ -299,7 +299,7 @@ TEST_CASE("rules: rule 22") {
       rig.watch_step();
       turning = turning || rig.rules.boat(0).turning_for_penalty;
       const wm::PairRecord* r = rig.rules.pair(0, 1);
-      if (turning && r != nullptr && r->kc_rule == RuleCode::r22_2 && rig.n > t_pen + 70) {
+      if (turning && r != nullptr && r->kc_rule == RuleCode::r21_2 && rig.n > t_pen + 70) {
         CHECK(r->kc_giver == 0);
         rig.touch(0, wm::ContactKind::boat, 1, 1.0f);
         rig.step();
@@ -307,7 +307,7 @@ TEST_CASE("rules: rule 22") {
       }
     }
     CHECK(turning);
-    CHECK(rig.penalties(0, RuleCode::r22_2) == 1);
+    CHECK(rig.penalties(0, RuleCode::r21_2) == 1);
   }
 }
 

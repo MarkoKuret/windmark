@@ -74,7 +74,7 @@ are far off by a fest, take a later one rather than burn the one appearance.
 
 | Asset | Approach | Cost |
 | --- | --- | --- |
-| Capsule and key art | In-engine render composed by the owner, type set by hand (no image-model art: Steam's AI disclosure covers marketing art, and "AI art" is a reputational risk); readable at small size; name plus "Tactical Sailing Racing" descriptor | €0–50 |
+| Capsule and key art | In-engine render composed by the owner, type set by hand (no image-model art: Steam's AI disclosure covers marketing art, and "AI art" is a reputational risk); readable at small size; name plus the "Regatta Sailing Simulator" tagline (the app icon is the one image-model exception, disclosed in Steam's AI content survey) | €0–50 |
 | Trailer | In-house, scripted in-engine capture (camera paths over replays). 60–90 s, first 5 s a close crossing, no logo intro | €0 |
 | Screenshots, GIFs | From replays: crossing, start, mark rounding, penalty replay; one at Steam Deck resolution | €0 |
 | Press kit | One-page fact sheet, trailer, screenshots, GIFs, logo, developer bio, "why rules matter" explainer; a club/coach one-pager later | €0 |

@@ -46,3 +46,6 @@ There are no export presets yet. When they are set up: the macOS preset's `appli
 `res://branding/app_icon.icns`, the Windows preset's `application/icon` is `res://branding/app_icon.ico`, and the
 `.icns` and `.ico` go in each preset's non-resource include filter (`branding/*.icns, branding/*.ico`) so the
 running game can set them.
+
+Boot splash: `game/branding/boot_splash.png` (1280 x 800, the logo on navy #1A2A3A), set in `project.godot`
+(`application/boot_splash/*`).

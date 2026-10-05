@@ -3,9 +3,11 @@ id: WM-095
 title: >-
   Rules: follow the Racing Rules of Sailing 2025-2028 (one 360 turn, 120 s
   penalty limit)
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-10-05 09:35'
+updated_date: '2026-10-05 10:35'
 labels:
   - core
   - rules
@@ -22,7 +24,7 @@ Owner decisions (2026-10-05) on docs/design/rules_check.md: follow the Racing Ru
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 rules.md, race.md, ai.md and hud.md updated to the decisions; rules_check.md items marked done
-- [ ] #2 Core rules, race and AI implement them, each change with a unit test (rule codes renamed to 2025-2028 numbering)
-- [ ] #3 Quick, long and ai_long tests pass; ai.md 15 measurements recorded before and after (penalties, late penalties, DSQ)
+- [x] #1 rules.md, race.md, ai.md and hud.md updated to the decisions; rules_check.md items marked done
+- [x] #2 Core rules, race and AI implement them, each change with a unit test (rule codes renamed to 2025-2028 numbering)
+- [x] #3 Quick, long and ai_long tests pass; ai.md 15 measurements recorded before and after (penalties, late penalties, DSQ)
 <!-- AC:END -->

@@ -661,7 +661,8 @@ The two count limits are lobby settings; AI boats obey them like humans.
 - **Offsetting**: when both boats hold a pending penalty, one of each is cancelled at once (event
   `PenaltyCancelled`).
 - The pre-start entry penalties (`C-prep`, `C-entry`, `race.md` §3.4) are turn penalties taken after the start signal
-  (the turn tracker does not run for them before the gun).
+  (the turn tracker does not run for them before the gun); for the deadline their incident time is the starting
+  signal, the earliest moment they can be taken.
 - Rule 17 does not apply in match races (Appendix C removes it), and rules 13, 16.2 and 18 are judged as in fleet
   racing (Appendix C's changes to them are not made, §15).
 

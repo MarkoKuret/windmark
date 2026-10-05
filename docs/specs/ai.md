@@ -601,22 +601,37 @@ measurements. Measured on the default course (11 kn, stable shifts):
 
 | run | measured | spec target |
 | --- | --- | --- |
-| 10 Intermediate, 5 seeds | 86 % finish (the rest DSQ); 0.9 penalties/boat; 4.8 contacts/race; stuck ≤ 22 s | all finish; ≤ 0.4; ≤ 1; ≤ 20 s |
-| same | bad air 1.1 triggers/boat (2.1 over seeds 6 to 20), deficit 0.15 → 0.02 twenty seconds later (95 % lower) | ≥ 2, lower |
-| every level, 10 boats, 2 seeds | 75–95 % finish; OCS 0–5 %; mean start delay 15–20 s | Pro OCS < 5 %, delay < 2 s; Easy < 15 %, 3–8 s |
-| 1 nm beat, 10 boats | 5.0 tacks/boat | 3–14 |
-| match race, 2 Expert, 5 seeds | the leader covers in every race (1–7 activations) | ≥ 1 |
-| mixed fleet (2 per level, 3 seeds) | mean place Easy 7.0, Intermediate 3.3, Expert 4.2, Pro 3.7 | monotonic |
-| speed only (same) | finish-time ratios to Pro within 2.5 % of the `performance_scale` ratios | within 3 % |
+| 10 Intermediate, 5 seeds | 94 % finish (the rest DSQ); 0.64 penalties/boat; 3.8 contacts/race; stuck ≤ 18 s | all finish; ≤ 0.4; ≤ 1; ≤ 20 s |
+| same | bad air 3.3 triggers/boat, deficit 0.15 → 0.04 twenty seconds later (95 % lower) | ≥ 2, lower |
+| every level, 10 boats, 2 seeds | 90–95 % finish; OCS 0–15 %; mean start delay 14–19 s | Pro OCS < 5 %, delay < 2 s; Easy < 15 %, 3–8 s |
+| 1 nm beat, 10 boats | 5.1 tacks/boat | 3–14 |
+| match race, 2 Expert, 5 seeds | the leader covers in every race (2–6 activations) | ≥ 1 |
+| mixed fleet (2 per level, 3 seeds) | mean place Easy 6.3, Intermediate 5.5, Expert 4.0, Pro 2.3 | monotonic |
+| speed only (same) | mean place Easy 7.2, Intermediate 3.5, Expert 2.8, Pro 4.7; mean finish times 737 / 614 / 616 / 657 s: since WM-095 the ratios do not follow `performance_scale` (before: within 2.5 %), the six races are dominated by start delays and a few penalties (an Intermediate boat disqualified for three pending penalties in seed 32) | within 3 % |
 
 The assertions of `ai_races` hold the measured level (finish ≥ 80 %, ≤ 1.3 penalties/boat, ≤ 6 contacts/race,
 bad air ≥ 1.0 and lower 20 s later, every level ≥ 70 % finish, tacks 3–14, cover in every match, Easy behind Pro).
 **Open**: the penalty and contact targets, the start delays (a lone boat starts within 1–9 s; in a fleet the
 crowd at the line and pre-start penalties make the mean 13–25 s) and strict level order in a mixed fleet are not
-met yet. Most remaining penalties come from the windward mark in a crowd (rule 31 and the `44.1-late` penalties
-that follow: on the default course the offset mark is 60 m from the windward mark, so a boat penalised at the
-windward mark is inside one zone or the other for most of the 45 s of `rules.md` §9.4; §7.6 now sails clear of the
-zones first).
+met yet. Most remaining penalties come from crowds at the line and the windward mark; the disqualifications left
+are boats that do not complete a penalty within the 120 s (`rules.md` §9.4), usually because the crowd at the
+windward mark keeps the turn's circle blocked until the urgent phase and the urgent turn then stalls.
+
+**Rules to the 2025-2028 RRS (WM-095), before and after** (same runs and seeds; "late" counts the penalties not
+taken in time: before, each added a `44.1-late` penalty, after, each disqualifies):
+
+| run | before (45 s deadline, zone ban, late = +1 penalty) | after (120 s from the incident, turns anywhere, late = DSQ) |
+| --- | --- | --- |
+| 10 Intermediate, 5 seeds | 43/50 finish, DSQ 7; 1.00 penalties/boat; late 6; 4.6 contacts/race | 47/50 finish, DSQ 3; 0.64 penalties/boat; late 4; 3.8 contacts/race |
+| Easy, 2 seeds | 20/20, DSQ 0; 0.60; late 2; 4.5 | 19/20, DSQ 1; 0.75; late 2; 8.0 |
+| Intermediate, 2 seeds | 19/20, DSQ 1; 0.75; late 2; 5.5 | 19/20, DSQ 1; 0.65; late 2; 3.0 |
+| Expert, 2 seeds | 18/20, DSQ 2; 0.90; late 3; 2.5 | 18/20, DSQ 2; 0.85; late 2; 3.0 (one boat pinned at the windward mark for 118 s, seed 22) |
+| Pro, 2 seeds | 19/20, DSQ 1; 0.70; late 3; 4.5 | 19/20, DSQ 1; 0.80; late 2; 8.0 |
+| 1 nm beat, 2 seeds | 17/20, DSQ 3; 0.70; late 4; 5.0 | 19/20, DSQ 1; 0.55; late 2; 6.0 |
+| match race, 5 seeds | no penalties, no contacts | no penalties, no contacts |
+| mixed fleet, mean place by level | 7.5 / 4.0 / 3.5 / 3.0 | 6.3 / 5.5 / 4.0 / 2.3 |
+| speed only, mean place by level | 6.0 / 4.8 / 4.0 / 3.3 | 7.2 / 3.5 / 2.8 / 4.7 |
+| full AI race (`core_long`, seed 33) | 6/10 finish | 9/10 finish |
 
 Development runs (skipped unless asked for, in `test_ai_race.cpp`): `AI_SCENE=1` races the game scene's fleet (6
 Expert wm7, 12 kn from 0°, the default shifts) over `AI_SEEDS=first,count` and prints per seed the first-mark

@@ -1,8 +1,8 @@
 # Rules check against the racing rules in force (WM-087)
 
-Research and proposal only: nothing in `docs/specs/rules.md`, `docs/specs/race.md` or the core changes with this
-document. Every row below asks the owner to decide: follow the rule, or keep (or add) a documented simplification.
-The rules are referred to by number and described in our own words; no rule text is reproduced.
+Research and proposal; the owner decided on 2026-10-05 (WM-095) and the decisions are implemented in
+`docs/specs/rules.md`, `race.md`, `ai.md`, `hud.md` and the core: see §4 for each item and its status. The rules are
+referred to by number and described in our own words; no rule text is reproduced.
 
 Checked on 2026-10-05 against `docs/specs/rules.md`, `docs/specs/race.md` and `core/src/rules/` (`rules.cpp`) and
 `core/src/race/race.cpp` where behaviour matters.
@@ -198,25 +198,40 @@ changes (the offset distance stays a course-design question, not a rules one), a
 
 If the owner prefers the smallest change: **A alone**, which is what WM-056 proposed.
 
-## 4. Owner decisions needed
+## 4. Owner decisions (2026-10-05, WM-095) and status
 
-1. Penalty deadline and zone rule (§3): A, A+, B, C, D, with or without E.
-2. Rename rule codes and citations to the current numbering (D2: 21.1, 21.2, 43, 23) and cite 2025-2028 (D1).
-3. Rule 17: drop the tacking exception (P8).
-4. No proper course before the starting signal (D7): rule 17 and 18.4 off before the gun.
-5. Rule 18.2(a)(2): first boat into the zone gets mark-room when not overlapped (P12); 18.2(d) conditions (P13).
-6. Rule 18.3: port-hand marks only, starboard boat fetching (P15).
-7. Rule 18.4: no gate marks (P16).
-8. Rule 18.1(a)(2): follow or keep as simplification (P10).
-9. Rule 18 at finishing marks: demo as now, before 1.0 follow (P20).
-10. Zone measured from the mark outline (D5); 2 L zone in match races (M3).
-11. Z flag scoring and its survival over a general recall (S7).
-12. Rule 31 with a Part 2 breach in the same incident (S10).
-13. Turn pause while keeping clear (R5).
-14. Time limit with no finisher: abandon or DNF (S11).
-15. Confirm the documented simplifications to keep: one-turn default (R3), 350° turn (R4), hull-only overlap (D3),
-    rule 14(b)(c) (P4), 44.1(b) (P5), 19.2(a) and continuing obstructions (P18, D9), 23.2 (P26), Z with I (S2),
-    match-race penalty form and rules (M1, M2, M4).
+Follow the Racing Rules of Sailing 2025-2028 in everything, with exactly two documented exceptions: every penalty is
+one 360° turn (fleet and match), and a penalty must be completed within 120 s of the incident, the clock never
+paused. All items below are **done** on branch `rules2025` (WM-095), each with a unit test.
+
+1. Penalty deadline and zone rule (§3, R3, R6, R8): **done**. Fleet races: no zone ban, a turn counts anywhere (a
+   rounding may be part of it); a penalty not completed within 120 s of the incident disqualifies (no stacking).
+   Match races: Appendix C timing (one penalty may wait until finishing; with two, one within 120 s), no part of a
+   penalty in the zone of a rounding mark of the leg, 2-length zone (M2, M3). One 360° turn everywhere (M1 form not
+   used). `rules.md` §9.2 to §9.6.
+2. Rule codes and citations in the 2025-2028 numbering (D1, D2): **done**. Codes `21.1`, `21.2`, `44.2-late`;
+   exoneration cited as 43.1, interfering as 23 (`rules.md` §4, §6, §11; `hud.md` §12.3).
+3. Rule 17 without the tacking exception (P8): **done** (`rules.md` §5.4).
+4. No proper course before the starting signal (D7): **done**; rules 17 and 18.4 cannot be broken before it
+   (`rules.md` §3.7).
+5. 18.2(a)(2) first boat to reach the zone (P12) and 18.2(d) conditions (P13): **done** (`rules.md` §7.3).
+6. 18.3 only at port-hand marks, the starboard boat fetching (P15): **done** (`rules.md` §7.5).
+7. 18.4 not at gate marks (P16): **done**, and not at finishing marks (`rules.md` §7.7).
+8. 18.1(a)(2) (P10): **done**, judged from each boat's turn to the course after the mark (`rules.md` §7.2).
+9. Rule 18 at finishing marks (P20): **done** (`rules.md` §7.10).
+10. Zone measured from the mark outline (D5) and 2 L in match races (M3): **done** (`rules.md` §7.1; HUD zone circle,
+    `hud.md` §7).
+11. Z flag: 20 % of the DNF score to the nearest tenth, standing after a general recall (S7): **done** (`race.md`
+    §3.3, §4.5, §9). Rule 29.1 now also applies under Z (a boat over at the gun returns), which a recall under Z
+    needs.
+12. Rule 31 with a Part 2 breach in the same incident (S10): **done**, the Part 2 penalty replaces the rule-31 one
+    (`rules.md` §8).
+13. A turn that pauses only to keep clear under 21.2 is not reset (R5): **done** (`rules.md` §9.3).
+14. Time limit with no finisher abandons the race (S11): **done** (`race.md` §7.1).
+15. Overlap measured with hull and equipment in normal position, the bowsprit (D3): **done** in the core and the VPP
+    (`collision.sprit`); it takes effect for the shipped classes once `data/perf` is regenerated. The other
+    simplifications of the old item 15 (14(b)(c), 44.1(b), 19.2(a) and continuing obstructions, 23.2, Z with I,
+    Appendix C's rule changes) are listed as not judged in `rules.md` §15; open for the owner.
 
 ## 5. Sources
 

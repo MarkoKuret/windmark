@@ -1,11 +1,11 @@
 ---
 id: WM-099
 title: 'Front end: sea drawn inside open cockpits when heeled'
-status: Done
+status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-10-05 15:44'
-updated_date: '2026-10-05 16:02'
+updated_date: '2026-10-06 13:30'
 labels: []
 dependencies: []
 ordinal: 137000
@@ -23,4 +23,6 @@ The sea surface is drawn through the hull, so with an open transom the leeward c
 - [x] #2 boatgen writes the cockpit well (body frame) into the physics sidecar
 - [x] #3 the sea shaders of every tier skip water inside the cockpit well of up to 8 nearby boats
 - [x] #4 headless tests cover the mask (CPU mirror, shader parse) and the boat motion is unchanged
+- [x] #5 heeled hulls float: the generator computes rise and trim per heel from the drawn hull, the VPP copies them, the core adds them to the heave and pitch targets (boat.md 5.6)
+- [x] #6 cockpit floor wet at most 2 % of the time in 25 kn (probe), heel and speed unchanged; the water mask off by default (--dry-cockpits)
 <!-- AC:END -->

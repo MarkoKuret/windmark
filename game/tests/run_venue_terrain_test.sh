@@ -1,8 +1,8 @@
 #!/bin/sh
-# Headless checks of a real venue's drawn terrain (Lake Garda)
+# Headless checks of the real venues' drawn terrain (Lake Garda, Gulf of Trieste)
 # (tests/venue_terrain_test.gd, WM-106). Builds the GDExtension when game/bin has none; needs the
 # generated boats (runs run_boat_import_test.sh when missing). Nothing opens a window.
-#   game/tests/run_venue_terrain_test.sh [--preview]   (--preview: also the Garda offline previews,
+#   game/tests/run_venue_terrain_test.sh [--preview]   (--preview: also the Garda and Trieste offline previews,
 #   tests/course_preview_dump.gd then tests/course_preview.py, into game/generated/course_preview)
 set -eu
 here=$(cd "$(dirname "$0")/.." && pwd)
@@ -31,7 +31,7 @@ if [ $rc -ne 0 ] || grep -qE "SCRIPT ERROR|^ERROR|^WARNING" "$log"; then
 fi
 echo "venue terrain test passed"
 if [ "${1:-}" = "--preview" ]; then
-    shots="garda_chase garda_start garda_north garda_west garda_shore garda_south garda_aerial"
+    shots="garda_chase garda_start garda_north garda_west garda_shore garda_south garda_aerial trieste_chase trieste_start trieste_karst trieste_miramare trieste_city trieste_aerial"
     "$godot" --headless --path "$here" -s res://tests/course_preview_dump.gd -- $shots
     python3 "$here/tests/course_preview.py" $shots
 fi

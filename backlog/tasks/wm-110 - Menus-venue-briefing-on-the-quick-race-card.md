@@ -1,11 +1,11 @@
 ---
 id: WM-110
 title: 'Menus: venue briefing on the quick race card'
-status: In Progress
+status: Done
 assignee:
   - '@practice-menus'
 created_date: '2026-10-06 08:27'
-updated_date: '2026-10-06 11:40'
+updated_date: '2026-10-06 12:57'
 labels:
   - venues
   - menus

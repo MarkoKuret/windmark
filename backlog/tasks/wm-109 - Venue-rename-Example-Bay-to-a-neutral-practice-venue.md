@@ -1,11 +1,11 @@
 ---
 id: WM-109
 title: 'Venue: rename Example Bay to a neutral practice venue'
-status: In Progress
+status: Done
 assignee:
   - '@practice-menus'
 created_date: '2026-10-06 08:27'
-updated_date: '2026-10-06 11:40'
+updated_date: '2026-10-06 12:57'
 labels:
   - venues
 dependencies:

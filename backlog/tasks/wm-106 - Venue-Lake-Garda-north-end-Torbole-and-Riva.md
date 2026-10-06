@@ -1,11 +1,11 @@
 ---
 id: WM-106
 title: 'Venue: Lake Garda (north end, Torbole and Riva)'
-status: In Progress
+status: Done
 assignee:
   - '@garda'
 created_date: '2026-10-06 08:27'
-updated_date: '2026-10-06 12:21'
+updated_date: '2026-10-06 12:57'
 labels:
   - venues
 dependencies:

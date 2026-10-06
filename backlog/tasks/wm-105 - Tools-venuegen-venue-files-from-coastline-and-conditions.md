@@ -1,11 +1,11 @@
 ---
 id: WM-105
 title: 'Tools: venuegen, venue files from coastline and conditions'
-status: In Progress
+status: Done
 assignee:
   - '@venuegen'
 created_date: '2026-10-06 08:27'
-updated_date: '2026-10-06 10:00'
+updated_date: '2026-10-06 12:57'
 labels:
   - venues
 dependencies:

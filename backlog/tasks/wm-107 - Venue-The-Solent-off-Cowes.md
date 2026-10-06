@@ -1,11 +1,11 @@
 ---
 id: WM-107
 title: 'Venue: The Solent (off Cowes)'
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-06 08:27'
-updated_date: '2026-10-06 12:31'
+updated_date: '2026-10-06 12:57'
 labels:
   - venues
 dependencies:

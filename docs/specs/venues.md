@@ -54,10 +54,20 @@ day as well as a typical one. Trend, oscillation and current are the local ones.
 | Tide scale | | | ×0.5 to ×1.33 (neaps 0.3 to springs 0.8, 0.75 to 2 kn) | | |
 | Swell | | | | ×0.5 to ×1.5 (0.4 to 1.2 m) | |
 
-The briefing these give (`menus.md` §1.3; Garda's tip is a placeholder until WM-106 reads the shore effect off the
-generated wind field):
+The briefing these give (`menus.md` §1.3). Garda's tip is read off the generated wind field (WM-106): with the
+Ora from 195° the racing water averages a speed factor of 0.87 under the west cliffs, 0.91 in the middle and 0.87
+along the east shore, the strongest band (0.95 to 0.98) running just east of the middle toward Torbole; the wind
+veers about 7° under the west shore and backs about 8° along the east one, following the shores.
 
 ```
+GARDA · Ora
+Wind     12-18 kn from the S
+Shifts   Stable: small, slow (3°)
+Gusts    Light: to +15 %, frequent
+Current  None
+Sea      Flat to chop
+Tip      Less pressure under the west cliffs; play the middle and the Torbole side.
+
 SOLENT · Strong tide
 Wind     10-16 kn from the SW
 Shifts   Stable: small, slow (4°)
@@ -91,7 +101,7 @@ credits. OpenStreetMap (ODbL) is not used.
 | Venue | Coastline (land polygons and drawn shore) | Licence |
 | --- | --- | --- |
 | Practice | our own shapes (today's island, quay and rock) | own |
-| Garda | Provincia autonoma di Trento, "Laghi e specchi d'acqua" (lake outlines from the 2006-2008 LiDAR survey), for the Trentino north end where the racing is; the rest of the lake from the SRTM Water Body Data shoreline | CC-BY 4.0; public domain |
+| Garda | Provincia autonoma di Trento, "Laghi e specchi d'acqua" (lake outlines from the 2006-2008 LiDAR survey), for the Trentino north end where the racing is; the rest of the lake from the SRTM Water Body Data shoreline, as NASADEM carries it (the water flattened to one level, traced by `venuegen.prep dem-water`) | CC0 1.0 (the catalogue's licence at download, 2026-10-06; credited all the same); public domain |
 | Solent | EMODnet Bathymetry satellite-derived coastline (Mean High Water); the EMODnet DTM for the banks (Bramble Bank) that shape the current field and course exclusions | CC-BY 4.0 |
 | Fremantle | Australian Coastline 50K 2024 (AIMS, NESP MaC 3.17; mean high water, from Sentinel-2) | CC-BY 4.0 |
 | Trieste | EMODnet Bathymetry satellite-derived coastline (Mean High Water; Italy and Slovenia in one source) | CC-BY 4.0 |
@@ -144,17 +154,19 @@ regression.
 | Materials | one shared land material for every land and scenery mesh of a venue (the existing land shader: vertex colour and value noise, no unique terrain textures), plus the existing water |
 | Draw calls, main pass | at most 8 for the venue (terrain chunks, horizon ridge, scenery), at every tier |
 | Draw calls, shadow pass | at most 2 (near terrain chunks only) on M and H; none on L |
-| Terrain | at most 4 chunks around the racing area, each one mesh with 3 LODs: 5 m vertex spacing (LOD0, within 1.5 km of the camera), 20 m (LOD1, to 5 km), 80 m (LOD2, beyond) |
+| Terrain | at most 4 chunks (venuegen writes 2 near chunks within 1.5 km of `bounds`, west and east, which cast shadows, and 2 far ones), one static mesh each whose levels of detail are built into it by distance from the racing water (where the cameras are): 5 m cells at the shore within 500 m and 10 m to 1.5 km (LOD0), 20 m to 5 km (LOD1), 80 m beyond (LOD2); the relief refines down to 10 m (the elevation model has 30 m posts) while it misses the height by more than about 0.45° seen from the water. No run-time LOD switching, so no popping |
 | Horizon ridge | far mountains and islands as one low mesh, at most 10k triangles, no shadows |
 | Scenery (trees, buildings) | at most 2 MultiMesh draws, culled beyond 3 km |
 | Triangles drawn | at most 120k on a race camera at tier M (today about 80k) |
-| Drawn coastline | at most 20k vertices in total: 2 m tolerance inside `bounds`, 10 m to 5 km beyond, 50 m further out |
+| Drawn coastline | at most 20k vertices in total: within the land margin it is the physics land itself (§5.2), 10 m tolerance beyond to 5 km from `bounds`, 50 m further out |
 | Video memory | at most 32 MB per venue |
 | Placed sounds (`audio.md` §7) | at most 8 sources |
 
-The drawn land comes from the same coastline and terrain sources as the physics land but is simplified separately;
-the shore drawn inside `bounds` must stay within 5 m of the physics land so boats never visibly hit water or pass
-through rock.
+The drawn land comes from the same coastline and terrain sources as the physics land; within the land margin its
+waterline is the physics land's (the terrain is shaped on the signed distance to it, §5.7), so the shore drawn inside
+`bounds` stays within 5 m of the physics land (a venuegen test checks it 5 m either side) and boats never visibly hit
+water or pass through rock. Land polygons wider than 3 km are never drawn from their polygon (the island path of
+WM-016.21 tessellates a 5 m grid over a polygon's box): such a venue needs a terrain file.
 
 ## 5. The venue generator (`tools/venuegen`)
 
@@ -180,10 +192,11 @@ where each source of §3 comes from.
 | `current` | the current field description (§5.4); absent: no `current_field` |
 | `exposure` | `{ "from": rad, ... }`: the typical wind direction the exposure grid is made for [`conditions.wind.from`, else 0], plus §5.5 constants; `false`: no exposure grid |
 | `wind` | §5.3 constants; `"wind_field": false` leaves the field out |
-| `simplify` | `inside` [5 m], `outside` [20 m], `outside_max` [160 m], `min_area` [20 m²], `land_margin` [1000 m], `field_margin` [3000 m], `field_tolerance` [10 m] |
+| `simplify` | `inside` [5 m], `outside` [20 m], `outside_max` [160 m], `min_area` [20 m²], `land_margin` [1000 m], `field_margin` [3000 m], `field_tolerance` [10 m], `split` [1000 m] |
 | `grids` | `margin` [1000 m]: every grid covers `bounds` grown by this; `wind`, `current`, `exposure`: the wanted spacing [100 m], coarsened to a multiple of 10 m when the caps of §4.1 need it |
 | `conditions`, `briefing` | copied to the venue file (`data_format.md` §6.7, §6.8) after the checks there |
-| `terrain`, `note` | free text added to the venue's `source` note |
+| `terrain` | the drawn terrain and the elevation model (§5.7); a string is only free text for the `source` note |
+| `note` | free text added to the venue's `source` note |
 
 A `coastline` input is one of
 - `{"frame": "local", "role": "land", "polygons": [{"id", "height", "points"}]}`: polygons in local metres (our own
@@ -208,8 +221,11 @@ The written land is simplified with Douglas-Peucker at `inside` within `bounds` 
 clip box edge are kept), checked simple and counter-clockwise on the binary32 values the core reads (the tolerance is
 halved for a polygon until it is), and pieces under `min_area` are dropped (rocks are obstacles). Over the vertex caps
 of §4.1, `outside` is doubled up to `outside_max`; still over, `venuegen` refuses (shrink `bounds` or split the
-land). Land ids come from the input polygon ids, else `land_1`, `land_2`, ... in output order. The land is
-rasterised on a 25 m work grid (`wind.work_resolution`) with each polygon's height.
+land). Land ids come from the input polygon ids, else `land_1`, `land_2`, ... in output order. A written polygon
+wider or taller than `split` (a lake's whole surroundings, a mainland) is then cut on a grid of that spacing into
+pieces `<id>_1`, `<id>_2`, ... that share their cut edges, so the core's per-polygon bounding tests reject the far
+shore (the fields and the terrain use the uncut land). The land is rasterised on a 25 m work grid
+(`wind.work_resolution`) with each polygon's height, or with the elevation model's where the source has one (§5.7).
 
 ### 5.3 Wind field
 
@@ -256,3 +272,31 @@ open water.
 Numbers are written rounded (land to 0.1 m, `f`, `d`, current to 4 decimals, exposure to 3) and the file is
 checked against every rule of `data_format.md` §6 and the caps of §4.1 before it is written (`--check` validates
 any venue file). `venuegen` prints the land vertex count and any dropped piece or raised tolerance.
+
+### 5.7 Terrain
+
+`terrain: {"dem": [paths], "source", "version", "downloaded", "licence", "water_level", ...}` gives the venue an
+elevation model (NASADEM GeoTIFF tiles, §3, kept in `raw/` like the coastline) and the drawn terrain file
+(`data_format.md` §6.10). The constants (defaults in `windmark_venuegen/terrain.py`) may be overridden in the block.
+
+- **Wind heights.** Every land cell of the work raster takes the DEM height above `water_level` (the DEM height of
+  the still water: a lake's level, 0 at sea), clamped to [`wind_height_min` 2 m, `wind_height_max` 3000 m], instead
+  of its polygon's `height` (which stays the fallback where the DEM has no data, and for venues without a DEM). A
+  valley wind that flows between mountains rather than over them caps `wind_height_max` (Garda: 200 m).
+- **Drawn height.** With `s` the signed distance to the coastline (positive inland; the physics land within the land
+  margin, blended over 300 m into the drawn coastline beyond, §4.2) and `D` the DEM above the water: under water
+  `max(under_slope · s, −depth)` [0.35, 8 m]; on land a shore ramp `min(shore_slope · s, shore_cap)` [0.12, 2.5 m]
+  blended into `max(D, ramp)` over `shore_band` [80 m]. The waterline is exactly `s = 0`. Without `dem` the land
+  rises to its polygon's height over `hill_width` [400 m] inland.
+- **Mesh.** An adaptive quadtree over `bounds` grown by `margin` [6000 m] on a 5 m lattice, 640 m roots: a cell
+  splits while it holds the waterline or misses the drawn height by more than `tolerance + tolerance_per_km · d`
+  [1 m, 8 m/km], `d` the distance from the racing water, down to the cells of §4.2; a 2:1 balance and fans at the
+  T-junctions keep it crack-free; cells deep under water are dropped; a 30 m skirt hangs from the outer edge. Over
+  `triangles` [110k] both the tolerance and the fine zones scale by 1.25 until it fits.
+- **Ridge.** The DEM on a grid out to `ridge` [22 km] from the centre of `bounds`, at the finest of 320, 640, 1280 or
+  2560 m that fits `ridge_triangles` [10k], skipping the terrain box and open water.
+- **Ground grid.** The drawn height every `ground_spacing` [10 m] over `bounds` grown by `near`, for the cameras.
+
+Raw downloads stay out of the repo; `windmark_venuegen.prep` turns them into venuegen inputs without GDAL (`utm`:
+a UTM shapefile to lon/lat GeoJSON; `dem-water`: a DEM's flattened water body as a polygon; `splice`: two water
+polygons joined at a latitude). The tool README lists the commands per venue.

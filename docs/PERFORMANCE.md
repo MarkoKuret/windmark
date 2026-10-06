@@ -245,7 +245,7 @@ the static parts in one node; flat fittings painted; a shadow proxy casts instea
 Per boat at chase range with 2 cascades about 20 draws (prepass and colour of 5 to 7 surfaces, proxy and sails per
 cascade) where it was about 130: an estimate from the surfaces, to confirm with a windowed `matrix.py` run.
 
-### Venue (example_bay)
+### Venue (example_bay, now practice_waters)
 
 | Item | Triangles | Note |
 | --- | --- | --- |

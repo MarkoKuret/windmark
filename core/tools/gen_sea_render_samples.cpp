@@ -3,7 +3,7 @@
 // origin and tick times up to 4 hours; for the example venue, the exposure at random points and the puff patches
 // with the puff factor at random points of a 2 x 2 km area at 100 times. Numbers are printed with 9 significant
 // digits, so every binary32 value reads back exactly. Read-only use of the core: nothing here changes behaviour.
-//   build/tests/windmark_gen_sea_render_samples <repo>/data/venues/example_bay.venue.json > samples.json
+//   build/tests/windmark_gen_sea_render_samples <repo>/data/venues/practice_waters.venue.json > samples.json
 #include <cinttypes>
 #include <cstdint>
 #include <cstdio>
@@ -79,7 +79,7 @@ struct Scenario {
 
 int main(int argc, char** argv) {
   if (argc != 2) {
-    std::fprintf(stderr, "usage: %s <example_bay.venue.json>\n", argv[0]);
+    std::fprintf(stderr, "usage: %s <practice_waters.venue.json>\n", argv[0]);
     return 2;
   }
   wm::VenueData venue;
@@ -95,7 +95,7 @@ int main(int argc, char** argv) {
   // The example venue at 10 and 20 kn from the south-west, wind sea from the growth law with the venue fetch.
   for (const float kn : {10.0f, 20.0f}) {
     Scenario s;
-    s.name = "example_bay_" + std::to_string(static_cast<int>(kn)) + "kn";
+    s.name = "practice_waters_" + std::to_string(static_cast<int>(kn)) + "kn";
     s.seed = 0x42415921ull + static_cast<std::uint64_t>(kn);
     s.venue = true;
     s.wind.base_speed = kn * wm::KNOT;

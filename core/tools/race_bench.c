@@ -49,9 +49,9 @@ int main(int argc, char** argv) {
   wm_course* course = NULL;
   snprintf(path, sizeof path, "%s/perf/wm7.perf.json", argv[1]);
   if (!check(wm_perf_load(path, &perf), "wm7")) return 1;
-  snprintf(path, sizeof path, "%s/venues/example_bay.venue.json", argv[1]);
+  snprintf(path, sizeof path, "%s/venues/practice_waters.venue.json", argv[1]);
   if (!check(wm_venue_load(path, &venue), "venue")) return 1;
-  snprintf(path, sizeof path, "%s/example_bay/example_wl.course.json", argv[2]);
+  snprintf(path, sizeof path, "%s/practice_waters/example_wl.course.json", argv[2]);
   if (!check(wm_course_load(path, &course), "course")) return 1;
 
   wm_world_settings ws;

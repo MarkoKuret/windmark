@@ -185,9 +185,11 @@ bool CoreSim::boat_ok(int64_t boat) const {
 
 // ---- set-up ---------------------------------------------------------------------------------------------------
 
-Dictionary CoreSim::default_settings() {
-  wm_world_settings s;
-  wm_world_settings_init(&s);
+namespace {
+
+// wm_world_settings as a Dictionary with the C field names; `puff` is a Dictionary of wm_puff_params and `swells`
+// an Array of [hs, tp, from].
+Dictionary settings_dict(const wm_world_settings& s) {
   Dictionary d;
   d["race_seed"] = static_cast<int64_t>(s.race_seed);
   d["wind_speed"] = s.wind_speed;
@@ -212,17 +214,45 @@ Dictionary CoreSim::default_settings() {
   d["time_limit_s"] = s.time_limit_s;
   d["finish_window"] = s.finish_window != 0;
   d["start_limit_s"] = s.start_limit_s;
+  d["shift_amplitude"] = s.shift_amplitude;
+  d["shift_hold_max_ms"] = static_cast<int64_t>(s.shift_hold_max_ms);
+  d["shift_hold_min_ms"] = static_cast<int64_t>(s.shift_hold_min_ms);
+  d["shift_trend_max"] = s.shift_trend_max;
+  d["osc_amplitude"] = s.osc_amplitude;
+  d["osc_time_scale"] = s.osc_time_scale;
+  d["puff_preset"] = s.puff_preset;
+  Dictionary p;
+  p["tile"] = s.puff.tile;
+  p["puff_count"] = s.puff.puff_count;
+  p["lull_count"] = s.puff.lull_count;
+  p["diameter_min"] = s.puff.diameter_min;
+  p["diameter_max"] = s.puff.diameter_max;
+  p["puff_strength_min"] = s.puff.puff_strength_min;
+  p["puff_strength_max"] = s.puff.puff_strength_max;
+  p["lull_strength_min"] = s.puff.lull_strength_min;
+  p["lull_strength_max"] = s.puff.lull_strength_max;
+  p["life_min_ms"] = static_cast<int64_t>(s.puff.life_min_ms);
+  p["life_max_ms"] = static_cast<int64_t>(s.puff.life_max_ms);
+  p["cap_up"] = s.puff.cap_up;
+  p["cap_down"] = s.puff.cap_down;
+  d["puff"] = p;
+  d["tide_scale"] = s.tide_scale;
+  d["tide_period_ms"] = static_cast<int64_t>(s.tide_period_ms);
+  d["tide_phase_ms"] = static_cast<int64_t>(s.tide_phase_ms);
+  Array sw;
+  for (int32_t i = 0; i < s.swell_count && i < 4; ++i) {
+    Array one;
+    one.push_back(s.swells[i].hs);
+    one.push_back(s.swells[i].tp);
+    one.push_back(s.swells[i].from);
+    sw.push_back(one);
+  }
+  d["swells"] = sw;
+  d["weather"] = s.weather;
   return d;
 }
 
-bool CoreSim::create(const Dictionary& d, const String& venue_path) {
-  settle();
-  if (world_ != nullptr) {
-    error_ = "the world exists already";
-    return false;
-  }
-  wm_world_settings s;
-  wm_world_settings_init(&s);
+void settings_from(const Dictionary& d, wm_world_settings& s) {
   s.race_seed = static_cast<uint64_t>(get_i(d, "race_seed", static_cast<int64_t>(s.race_seed)));
   s.wind_speed = f32(get_f(d, "wind_speed", s.wind_speed));
   s.wind_from = f32(get_f(d, "wind_from", s.wind_from));
@@ -246,6 +276,81 @@ bool CoreSim::create(const Dictionary& d, const String& venue_path) {
   s.time_limit_s = f32(get_f(d, "time_limit_s", s.time_limit_s));
   s.finish_window = i32(get_i(d, "finish_window", s.finish_window));
   s.start_limit_s = f32(get_f(d, "start_limit_s", s.start_limit_s));
+  s.shift_amplitude = f32(get_f(d, "shift_amplitude", s.shift_amplitude));
+  s.shift_hold_max_ms = static_cast<uint32_t>(get_i(d, "shift_hold_max_ms", s.shift_hold_max_ms));
+  s.shift_hold_min_ms = static_cast<uint32_t>(get_i(d, "shift_hold_min_ms", s.shift_hold_min_ms));
+  s.shift_trend_max = f32(get_f(d, "shift_trend_max", s.shift_trend_max));
+  s.osc_amplitude = f32(get_f(d, "osc_amplitude", s.osc_amplitude));
+  s.osc_time_scale = f32(get_f(d, "osc_time_scale", s.osc_time_scale));
+  s.puff_preset = i32(get_i(d, "puff_preset", s.puff_preset));
+  if (d.has("puff")) {
+    const Dictionary p = d["puff"];
+    s.puff.tile = f32(get_f(p, "tile", s.puff.tile));
+    s.puff.puff_count = i32(get_i(p, "puff_count", s.puff.puff_count));
+    s.puff.lull_count = i32(get_i(p, "lull_count", s.puff.lull_count));
+    s.puff.diameter_min = f32(get_f(p, "diameter_min", s.puff.diameter_min));
+    s.puff.diameter_max = f32(get_f(p, "diameter_max", s.puff.diameter_max));
+    s.puff.puff_strength_min = f32(get_f(p, "puff_strength_min", s.puff.puff_strength_min));
+    s.puff.puff_strength_max = f32(get_f(p, "puff_strength_max", s.puff.puff_strength_max));
+    s.puff.lull_strength_min = f32(get_f(p, "lull_strength_min", s.puff.lull_strength_min));
+    s.puff.lull_strength_max = f32(get_f(p, "lull_strength_max", s.puff.lull_strength_max));
+    s.puff.life_min_ms = static_cast<uint32_t>(get_i(p, "life_min_ms", s.puff.life_min_ms));
+    s.puff.life_max_ms = static_cast<uint32_t>(get_i(p, "life_max_ms", s.puff.life_max_ms));
+    s.puff.cap_up = f32(get_f(p, "cap_up", s.puff.cap_up));
+    s.puff.cap_down = f32(get_f(p, "cap_down", s.puff.cap_down));
+  }
+  s.tide_scale = f32(get_f(d, "tide_scale", s.tide_scale));
+  s.tide_period_ms = static_cast<uint32_t>(get_i(d, "tide_period_ms", s.tide_period_ms));
+  s.tide_phase_ms = static_cast<uint32_t>(get_i(d, "tide_phase_ms", s.tide_phase_ms));
+  if (d.has("swells")) {
+    const Array sw = d["swells"];
+    s.swell_count = static_cast<int32_t>(sw.size() < 4 ? sw.size() : 4);
+    for (int32_t i = 0; i < s.swell_count; ++i) {
+      const Array one = sw[i];
+      s.swells[i].hs = one.size() > 0 ? f32(double(one[0])) : 0.0f;
+      s.swells[i].tp = one.size() > 1 ? f32(double(one[1])) : 0.0f;
+      s.swells[i].from = one.size() > 2 ? f32(double(one[2])) : 0.0f;
+    }
+  }
+  s.weather = i32(get_i(d, "weather", s.weather));
+}
+
+}  // namespace
+
+Dictionary CoreSim::default_settings() {
+  wm_world_settings s;
+  wm_world_settings_init(&s);
+  return settings_dict(s);
+}
+
+// race.md §2.1: the venue's conditions resolved for settings.weather and the seed into the explicit settings
+// (a copy of `settings` with every wind, current and sea field written out); {} with last_error() on failure.
+Dictionary CoreSim::resolve_settings(const Dictionary& d, const String& venue_path, const String& course_path) {
+  wm_world_settings s;
+  wm_world_settings_init(&s);
+  settings_from(d, s);
+  wm_venue* venue = nullptr;
+  if (!ok(wm_venue_load(os_path(venue_path).c_str(), &venue))) return Dictionary();
+  wm_course* course = nullptr;
+  if (!course_path.is_empty() && !ok(wm_course_load(os_path(course_path).c_str(), &course))) {
+    wm_venue_free(venue);
+    return Dictionary();
+  }
+  const bool r = ok(wm_world_settings_resolve(&s, venue, course));
+  wm_course_free(course);
+  wm_venue_free(venue);
+  return r ? settings_dict(s) : Dictionary();
+}
+
+bool CoreSim::create(const Dictionary& d, const String& venue_path) {
+  settle();
+  if (world_ != nullptr) {
+    error_ = "the world exists already";
+    return false;
+  }
+  wm_world_settings s;
+  wm_world_settings_init(&s);
+  settings_from(d, s);
   wm_venue* venue = nullptr;
   if (!venue_path.is_empty() && !ok(wm_venue_load(os_path(venue_path).c_str(), &venue))) return false;
   const bool r = ok(wm_world_create(&s, venue, &world_));
@@ -1143,6 +1248,7 @@ String CoreSim::score_code_name(int64_t code) { return String::utf8(wm_score_cod
 void CoreSim::_bind_methods() {
   ClassDB::bind_static_method("CoreSim", D_METHOD("default_settings"), &CoreSim::default_settings);
   ClassDB::bind_method(D_METHOD("create", "settings", "venue_path"), &CoreSim::create);
+  ClassDB::bind_method(D_METHOD("resolve_settings", "settings", "venue_path", "course_path"), &CoreSim::resolve_settings);
   ClassDB::bind_method(D_METHOD("is_created"), &CoreSim::is_created);
   ClassDB::bind_method(D_METHOD("add_boat", "perf_path", "entry"), &CoreSim::add_boat);
   ClassDB::bind_method(D_METHOD("place_boat", "boat", "x", "y", "psi"), &CoreSim::place_boat);

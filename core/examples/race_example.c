@@ -238,9 +238,9 @@ static outcome run_race(const char* data, const char* courses, int verbose) {
   if (!check(wm_perf_load(path, &perf[0]), "wm7")) goto done;
   snprintf(path, sizeof path, "%s/perf/wm12.perf.json", data);
   if (!check(wm_perf_load(path, &perf[1]), "wm12")) goto done;
-  snprintf(path, sizeof path, "%s/venues/example_bay.venue.json", data);
+  snprintf(path, sizeof path, "%s/venues/practice_waters.venue.json", data);
   if (!check(wm_venue_load(path, &venue), "venue")) goto done;
-  snprintf(path, sizeof path, "%s/example_bay/example_wl.course.json", courses);
+  snprintf(path, sizeof path, "%s/practice_waters/example_wl.course.json", courses);
   if (!check(wm_course_load(path, &course), "course")) goto done;
 
   wm_world_settings ws;
@@ -481,9 +481,9 @@ static int scenario(const char* data, const char* courses) {
   int ok = 0;
   snprintf(path, sizeof path, "%s/perf/wm7.perf.json", data);
   if (!check(wm_perf_load(path, &perf), "wm7")) return 0;
-  snprintf(path, sizeof path, "%s/venues/example_bay.venue.json", data);
+  snprintf(path, sizeof path, "%s/venues/practice_waters.venue.json", data);
   if (!check(wm_venue_load(path, &venue), "venue")) return 0;
-  snprintf(path, sizeof path, "%s/example_bay/example_wl.course.json", courses);
+  snprintf(path, sizeof path, "%s/practice_waters/example_wl.course.json", courses);
   if (!check(wm_course_load(path, &course), "course")) return 0;
   wm_world_settings ws;
   wm_world_settings_init(&ws);
@@ -640,9 +640,9 @@ static ai_outcome run_ai_race(const char* data, const char* courses, int quick) 
   uint32_t snap_tick = 0;
   snprintf(path, sizeof path, "%s/perf/wm7.perf.json", data);
   if (!check(wm_perf_load(path, &f.perf), "wm7")) goto done;
-  snprintf(path, sizeof path, "%s/venues/example_bay.venue.json", data);
+  snprintf(path, sizeof path, "%s/venues/practice_waters.venue.json", data);
   if (!check(wm_venue_load(path, &f.venue), "venue")) goto done;
-  snprintf(path, sizeof path, "%s/example_bay/example_wl.course.json", courses);
+  snprintf(path, sizeof path, "%s/practice_waters/example_wl.course.json", courses);
   if (!check(wm_course_load(path, &f.course), "course")) goto done;
   w = ai_world(&f);
   if (w == NULL || !check(wm_world_create_race(w, f.course), "create race")) goto done;

@@ -15,14 +15,14 @@ const DT_MS := 1000.0 / 60.0
 ## seq: dump that many frames step_ms apart (<name>_00, _01, ...), light: after the first frame only the uniforms
 ## (scene.json, the meshes are the first frame's), speed: the test boat's speed (0: it and the camera stay put)}
 const SHOTS := [
-	["bay20_chase_M", SeaEnvSource.Mode.CORE_SAMPLES, "example_bay_20kn", 0, SeaQuality.Tier.M],
-	["bay20_aerial_M", SeaEnvSource.Mode.CORE_SAMPLES, "example_bay_20kn", 1, SeaQuality.Tier.M],
-	["bay20_overview_M", SeaEnvSource.Mode.CORE_SAMPLES, "example_bay_20kn", 2, SeaQuality.Tier.M],
-	["bay20_sun_M", SeaEnvSource.Mode.CORE_SAMPLES, "example_bay_20kn", 3, SeaQuality.Tier.M],
-	["bay10_chase_M", SeaEnvSource.Mode.CORE_SAMPLES, "example_bay_10kn", 0, SeaQuality.Tier.M],
+	["bay20_chase_M", SeaEnvSource.Mode.CORE_SAMPLES, "practice_waters_20kn", 0, SeaQuality.Tier.M],
+	["bay20_aerial_M", SeaEnvSource.Mode.CORE_SAMPLES, "practice_waters_20kn", 1, SeaQuality.Tier.M],
+	["bay20_overview_M", SeaEnvSource.Mode.CORE_SAMPLES, "practice_waters_20kn", 2, SeaQuality.Tier.M],
+	["bay20_sun_M", SeaEnvSource.Mode.CORE_SAMPLES, "practice_waters_20kn", 3, SeaQuality.Tier.M],
+	["bay10_chase_M", SeaEnvSource.Mode.CORE_SAMPLES, "practice_waters_10kn", 0, SeaQuality.Tier.M],
 	["calm_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 2.0, 0, SeaQuality.Tier.M],
-	["bay20_chase_L", SeaEnvSource.Mode.CORE_SAMPLES, "example_bay_20kn", 0, SeaQuality.Tier.L],
-	["bay20_bow_M", SeaEnvSource.Mode.CORE_SAMPLES, "example_bay_20kn", 4, SeaQuality.Tier.M],
+	["bay20_chase_L", SeaEnvSource.Mode.CORE_SAMPLES, "practice_waters_20kn", 0, SeaQuality.Tier.L],
+	["bay20_bow_M", SeaEnvSource.Mode.CORE_SAMPLES, "practice_waters_20kn", 4, SeaQuality.Tier.M],
 	["calm_bow_M", SeaEnvSource.Mode.PLACEHOLDER, 2.0, 4, SeaQuality.Tier.M],
 	# whitecaps (water_render.md §4.4) at 12, 18 and 24 kn, and a time sequence at 20 kn from a still camera
 	["whitecaps_12kn_chase", SeaEnvSource.Mode.PLACEHOLDER, 12.0, 0, SeaQuality.Tier.M, {"puffs": true}],

@@ -15,7 +15,7 @@ script = ExtResource("1_test")
 [node name="EnvSource" type="Node" parent="."]
 script = ExtResource("4_src")
 mode = 1
-scenario = "example_bay_20kn"
+scenario = "practice_waters_20kn"
 
 [node name="Sea" parent="." instance=ExtResource("3_sea")]
 source_path = NodePath("../EnvSource")

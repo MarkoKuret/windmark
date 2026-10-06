@@ -38,6 +38,8 @@ var buttons := {}
 var title: Wordmark
 var heading_label: Label
 var line_label: Label
+## after a Random race, the conditions it had (menus.md §5): `Today: 18 kn from the SW · Shifty · Very strong gusts`
+var today_label: Label
 var summary_box: GridContainer
 var summary_heading: Label
 var table: VBoxContainer
@@ -113,6 +115,11 @@ func _ready() -> void:
 	line_label = MenuTheme.label("", MenuTheme.SMALL_SIZE, MenuTheme.MUTED, 500)
 	line_label.name = "Line"
 	col.add_child(line_label)
+	today_label = MenuTheme.label("", MenuTheme.SMALL_SIZE, MenuTheme.MUTED, 500)
+	today_label.name = "Today"
+	today_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	today_label.visible = false
+	col.add_child(today_label)
 	_scroll = ScrollContainer.new()
 	_scroll.name = "Scroll"
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -264,6 +271,16 @@ func heading_text() -> Array:
 	return ["Finishing", "%d of %d home · results when the race closes" % [home, n]]
 
 
+## The Today line after a Random race (menus.md §5), from the race's resolved settings; "" after Local and Custom.
+func today_text() -> String:
+	if host == null:
+		return ""
+	var ws: Variant = host.get("weather_settings")
+	if not (ws is Dictionary) or str(ws.get("weather_mode", "")) != "random":
+		return ""
+	return VenueWeather.today(ws)
+
+
 func _course_line(n: int) -> String:
 	if host == null:
 		return ""
@@ -323,6 +340,9 @@ func refresh() -> void:
 	var ht := heading_text()
 	heading_label.text = String(ht[0]).to_upper()
 	line_label.text = ht[1]
+	var today := today_text()
+	today_label.text = today
+	today_label.visible = today != ""
 	var rows := table_rows()
 	var own := -1
 	for i in r.result_rows.size():

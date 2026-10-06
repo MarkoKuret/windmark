@@ -11,7 +11,7 @@ The project's main scene. Items, top to bottom: **Continue**, **Quick race**, **
 
 - **Continue** starts the last remembered session again (§1: the setup Start last wrote, its mode, quick race or
   free sail, with a new seed), straight to the sail scene, and has the focus when the menu opens. A line under it
-  says what it starts (`Quick race · Example Bay · 10 boats` or `Free sail · Example Bay`). Hidden on the first
+  says what it starts (`Quick race · Practice Waters · 10 boats` or `Free sail · Practice Waters`). Hidden on the first
   launch, and whenever the remembered setup cannot start any more (a class, venue or course no longer on disk);
   the focus then starts on Quick race.
 - **Wordmark**: the game's logo, `WINDMARK` with the tagline bar under it (§1.2), in the top-left corner. It is
@@ -55,8 +55,12 @@ The project's main scene. Items, top to bottom: **Continue**, **Quick race**, **
     whose band in §1.3 holds it). The shifts themselves still come from the seed; current, tide and sea stay the
     venue's. The card shows the briefing without the Tip.
   - A venue without `conditions` (`data_format.md` §6.9) offers Custom only, at 12 kn, 0°, Shifty, Moderate.
-- **Start** fills `GameSetup.current()` (mode `race` or `free`, seed 0: from the clock) and changes to the sail
-  scene, which reads it. The last choices are remembered in the settings file (§3) for the next visit.
+  - Choosing another venue sets the Custom rows to that venue's defaults and offers its modes (a mode it lacks
+    falls back to its first, Custom for a venue without `conditions`).
+- **Start** fills `GameSetup.current()` (mode `race` or `free`, the weather mode and the Custom picks, seed 0: from
+  the clock) and changes to the sail scene, which reads it and resolves the weather once (`race.md` §2.1). The last
+  choices are remembered in the settings file (§3) for the next visit; a remembered choice that is no longer
+  offered (a venue, class or mode gone) falls back to the default (Practice Waters, Local), else the first.
 - **Backdrop** (§4): the live sail scene behind the menu.
 - Rules scenarios (`race.md` §14) have no menu item: they start from the command line of the sail scene,
   `--scenario=<id>`, which sets `GameSetup` mode `scenario` with the scenario id.
@@ -137,8 +141,10 @@ Sea      Flat to chop
 Tip      The stream runs hardest mid-channel; cheat it along the shore.
 ```
 
-Layout: the header line in the card's heading style, then the labels in one column (dim) and the values beside them
-(paper), one line each; the Tip may wrap to two lines. No em dashes anywhere in it.
+Layout: a box on the course map's dark chart colour (the HUD's `ink`): the header line in the card's heading
+style, then the labels in one column (dim) and the values beside them (paper), one line each; the Tip may wrap to
+two lines. No em dashes anywhere in it. In Random the box holds the one line `Weather  Unknown: read it on the
+water`.
 
 **Inputs.** `S = [s0, s1]` the wind speed (Local: the venue's range; Custom: `[v, v]`), `θ` the direction (Local:
 the venue's `from`; Custom: the chosen one), the shift and puff values (Local: the venue's after presets; Custom: the
@@ -163,7 +169,8 @@ Ranges join with a hyphen (`10-16 kn`); equal ends show one value.
 **Shifts.** Word by `A`: Steady `< 1.5°`, Stable `< 5.5°`, Oscillating `< 11.5°`, Shifty `< 20°`, Unstable
 `≥ 20°` (the presets of `wind.md` §1 fall in their own band). Size by `A`: small `< 5.5°`, medium `< 11.5°`, large
 `< 20°`, very large `≥ 20°`. Pace by `H`: slow `≥ 100 s`, regular `≥ 55 s`, fast `< 55 s`. Trend: the rotation during
-the race, `N = |trend(t_gun + T_race) − trend(t_gun)|` (`wind.md` §3) in whole degrees, shown when `N ≥ 3°`; veers
+the race, `N = |trend(t_gun + T_race) − trend(t_gun)|` (`wind.md` §3) in whole degrees, shown when the rounded `N`
+is at least 3°, also after `Steady`; veers
 for a positive rate, backs for a negative one. The oscillation is not rated (at most ±3°, texture).
 
 **Gusts.** Word by `g`: Light `< 0.18`, Moderate `< 0.28`, Strong `< 0.40`, Very strong `≥ 0.40`. Spread by the
@@ -185,8 +192,15 @@ give the same. Swell heights to 0.1 m, times `sea_scale`.
 `briefing.word.gusts.<none|light|moderate|strong|very_strong>`, `briefing.spread.<scattered|frequent|everywhere>`,
 `briefing.word.current.<none|light|moderate|strong|very_strong>`, `briefing.turn.<early|mid|late>`,
 `briefing.word.sea.<flat|chop|moderate|rough>`, `compass.<n|ne|e|se|s|sw|w|nw>`, `briefing.unknown` (Random),
-`weather.mode.<local|random|custom>`, `weather.gusts.<none|light|moderate|very_strong>`, and one template per line
-(`briefing.line.wind` = `{lo}-{hi} kn from the {point}` and so on) so a language can reorder the parts. The venue's
+`briefing.label.weather` (the Random line's label), `weather.mode.<local|random|custom>`,
+`weather.<label|wind_speed|wind_from|shifts|gusts>` (the row names), `weather.shifts.<preset>`,
+`weather.gusts.<none|light|moderate|very_strong>`, `briefing.trend.<veers|backs>`, and one template per line part
+so a language can reorder them: `briefing.header` (`{name} · {tag}`), `briefing.line.wind` (`{lo}-{hi} kn from the
+{point}`), `briefing.line.wind_one` (`{v} kn from the {point}`), `briefing.line.shifts`, `briefing.line.trend`,
+`briefing.line.gusts`, `briefing.line.current`, `briefing.line.current_turns`, `briefing.line.current_sets`,
+`briefing.line.sea_range` and `briefing.line.swell`; the results' `results.today` (`Today: {wind} · {shifts} ·
+{gusts}`), `results.today.gusts` (`{word} gusts`) and `results.today.no_gusts`. The table is
+`game/scripts/text/strings.gd`. The venue's
 name, tag and tip come from the venue file with its translations (`data_format.md` §6.8).
 
 ## 2. Pause menu
@@ -295,7 +309,7 @@ command line (`--resolution 1080x1920`).
 
 - A live sea backdrop, a light sail-cloth panel, navy text, one accent colour; no stock widgets' look.
 - **Live backdrop.** Behind the main menu runs the sail scene itself (`scenes/sail_test.tscn`, the renderer of a
-  race): the example venue (`example_bay`), the default class, 12 kn from the north with the venue's puffs and
+  race): the example venue (`practice_waters`), the default class, 12 kn from the north with the venue's puffs and
   shifts, a race on the venue's first course with **4 AI boats** of the Expert level and no player (the player's
   entry is taken over by the AI, `--watch`), the seed from the clock. The race starts from its sequence (the boats
   mill round the line, then beat up the course); 30 s after the first boat finishes it starts again. Nothing of the
@@ -350,10 +364,11 @@ scene, then the next race or the menu.
   `DID NOT FINISH`, `DISQUALIFIED`, `RACE ABANDONED`. Top left at 76 px, scaled down by font size to fit.
 - **Panel** (cloth, §4), beside the title on the right, or under it when the window is narrower than 1100 px or in
   portrait (there inside the HUD's portrait margins, `hud.md` §16.5), as tall as its content and at most the
-  window's height, so the scene stays in view around it: the heading `RESULTS` with one line under it (`Example Bay · Windward-leeward · 10 boats`; the venue is left out
+  window's height, so the scene stays in view around it: the heading `RESULTS` with one line under it (`Practice Waters · Windward-leeward · 10 boats`; the venue is left out
   when the course's name starts with it), after a Random race a second line `Today: 18 kn from the SW · Shifty ·
-  Gusty` built from the race's actual settings with the briefing's rating words (key `results.today`; Local and
-  Custom show none), the
+  Very strong gusts` built from the race's actual settings with the briefing's rating words (the drawn speed and
+  direction, the shift word, the gust word with `gusts`, or `No gusts`; keys `results.today`, `results.today.gusts`,
+  `results.today.no_gusts`; Local and Custom show none), the
   **table**, the **summary** under the table, and a footer with the actions. The table and the summary scroll
   (mouse wheel, or up and down on the actions) when they do not fit; the heading and the footer never scroll.
 - **Table**: Place, Sail (sail number), Boat (name), Skipper (`You` for the player; an AI boat shows the AI badge,

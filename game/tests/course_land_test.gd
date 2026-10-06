@@ -54,9 +54,9 @@ func _scene(race: bool, x := 0.0, y := -300.0, twa := 45.0, fleet := 1, level :=
 func test_shapes() -> void:
 	t.begin("venue shapes: core against the file")
 	var cs := CoreSimSource.new()
-	t.ok(cs.create("example_bay"), "world on example_bay")
+	t.ok(cs.create("practice_waters"), "world on practice_waters")
 	var a := VenueShapes.from_core(cs.core)
-	var b := VenueShapes.from_file("example_bay")
+	var b := VenueShapes.from_file("practice_waters")
 	t.ok(a.land.size() == 1 and a.obstacles.size() == 2, "one land polygon, two obstacles")
 	var same := a.land.size() == b.land.size() and a.obstacles.size() == b.obstacles.size()
 	for i in mini(a.land.size(), b.land.size()):
@@ -467,8 +467,10 @@ func test_setup() -> void:
 	gs.fleet_size = 4
 	gs.ai_level = "pro"
 	gs.class_id = "wm7"
+	gs.weather = "custom"
 	gs.wind_kn = 9.0
 	gs.wind_from_deg = 20.0
+	gs.shift = "oscillating"
 	gs.seed = 99
 	var sc := (load("res://scenes/sail_test.tscn") as PackedScene).instantiate()
 	sc.auto_process = false
@@ -483,10 +485,30 @@ func test_setup() -> void:
 	t.ok(absf(ctl[4] - CoreSim.ai_performance_scale(3)) < 1e-6, "AI boats at the pro performance_scale (%.3f)" % ctl[4])
 	var ws: Dictionary = sim.wind_state(0)
 	t.ok(absf(ws["base_speed"] - 9.0 * HudFormat.KNOT) < 1e-4 and absf(ws["base_from"] - deg_to_rad(20.0)) < 1e-4,
-		"wind from GameSetup")
+		"wind from GameSetup (Custom)")
+	t.ok(absf(float(sc.weather_settings.get("shift_amplitude", 0.0)) - deg_to_rad(8.0)) < 1e-6,
+		"Custom: the chosen shift preset resolved")
 	t.ok(sc.world_seed == 99, "seed from GameSetup")
 	sc.queue_free()
 	await process_frame
+	# Local and Random: the venue's conditions resolved once for the seed (race.md 2.1)
+	for mode in ["local", "random"]:
+		gs.weather = mode
+		var sw := (load("res://scenes/sail_test.tscn") as PackedScene).instantiate()
+		sw.auto_process = false
+		sw.sim_kind = sw.SimKind.CORE
+		sw.setup = gs
+		root.add_child(sw)
+		sw.scripted_input = RawInput.new()
+		await process_frame
+		var kn := float((sw.sim as CoreSimSource).wind_state(0)["base_speed"]) / HudFormat.KNOT
+		var lo := 10.0 if mode == "local" else 6.0
+		var hi := 14.0 if mode == "local" else 18.0
+		t.ok(sw.weather_settings.get("weather_mode", "") == mode and kn >= lo - 1e-3 and kn <= hi + 1e-3,
+			"%s weather: %.2f kn within %d to %d kn" % [mode, kn, lo, hi])
+		t.ok(absf(sw.wind_speed_kn - kn) < 1e-3, "%s: the scene's wind follows the resolved one" % mode)
+		sw.queue_free()
+		await process_frame
 	# the free-sailing default
 	var fs := (load("res://scenes/sail_test.tscn") as PackedScene).instantiate()
 	fs.auto_process = false

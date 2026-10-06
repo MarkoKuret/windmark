@@ -32,13 +32,13 @@ Tests (`ctest`):
 
 - `core_tests`: the doctest suite in `tests/` (check values of `conventions.md`, the math vector file, tables,
   checksums, JSON, loading and validating `data/perf/wm7.perf.json` and `wm12.perf.json` against their class
-  files, and loading `data/venues/example_bay.venue.json` into the environment; the course files, the race flow
+  files, and loading `data/venues/practice_waters.venue.json` into the environment; the course files, the race flow
   and the racing rules scenarios of `courses.md` §7, `race.md` §12 and `rules.md` §13; the world loop; world
   snapshots: the checksum as the hash of the snapshot body, damaged and foreign snapshots, a world reset and loaded
   again and again, sail outputs restored, a race with a joined boat); the AI skippers' fast checks and scenarios
   (`test_ai.cpp`). It runs every doctest case outside the test suite `long`.
 - `core_long` (label `long`): the doctest suite `long`, the full races run to the close: a full headless race of
-  six scripted boats with penalties on `example_bay`, run twice for determinism, and saved at nine ticks and
+  six scripted boats with penalties on `practice_waters`, run twice for determinism, and saved at nine ticks and
   loaded into a new world to continue bit for bit; and the full AI race (`test_ai_full_race.cpp`): the fleet of
   `tests/ai_fleet_race.h` (ten AI skippers of every level, wm7 and wm12) with collisions and rules, to the close,
   twice with the same checksum every tick.

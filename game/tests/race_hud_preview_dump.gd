@@ -259,10 +259,10 @@ func _results() -> void:
 	var sim := CoreSimSource.new()
 	sim.settings = {"race_seed": 20260925, "wind_speed": 11.0 * HudFormat.KNOT, "wind_from": 0.2, "shift_preset": 1,
 		"free_sailing_s": 10.0}
-	sim.create("example_bay")
+	sim.create("practice_waters")
 	for i in 4:
 		sim.add_entry("wm7", {"human": true})
-	sim.create_race("example_bay/example_wl")
+	sim.create_race("practice_waters/example_wl")
 	var hud := Hud.new()
 	get_root().add_child(hud)
 	hud.screen_size = WIDE

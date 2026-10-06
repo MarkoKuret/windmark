@@ -4,7 +4,7 @@
   "name": "Windward boat sails down",
   "note": "Both boats on starboard tack, overlapped on the first beat. Boat 0 foots off and sails down onto boat 1, which points higher. The windward boat (boat 0) must keep clear (rule 11) and takes the penalty.",
   "class": "wm7",
-  "course": "example_bay/example_wl",
+  "course": "practice_waters/example_wl",
   "seed": 1,
   "wind": { "speed_kn": 12, "from_deg": 0, "shifts": "steady", "puffs": false },
   "lead": 20,

@@ -128,7 +128,7 @@ Without a built library the rest of the project runs as before: nothing refers t
 `tests/core_sim_test.gd` (run by `run_core_sim_test.sh`, headless): one wm7 sailing freely for 60 s exactly as the C
 API example does it (`core/examples/race_example.c`), and the runner checks that both end at the same place and
 speed; every `SimSource` call, the render pose between ticks, the input frame wire form against the core's, sail
-requests; a race world on `example_bay`: two runs with the same inputs give the same checksum, race signals, the
+requests; a race world on `practice_waters`: two runs with the same inputs give the same checksum, race signals, the
 sea components and exposure, the wind state with live puff patches, the current, and `SeaModel` on the core's
 components within 1 mm of the core's sea height.
 
@@ -137,7 +137,8 @@ components within 1 mm of the core's sea height.
 | Call | Does |
 | --- | --- |
 | `settings` | world settings for `create()`, the keys of `CoreSimSource.default_settings()` (the C API's `wm_world_settings`: seed, wind, shift preset, puffs, sea, shadows, race and rules settings) |
-| `create(venue = "")` | the world on a venue (`example_bay` or a path; `""` open water); `last_error()` on failure |
+| `create(venue = "")` | the world on a venue (`practice_waters` or a path; `""` open water); `last_error()` on failure |
+| `CoreSimSource.resolve_settings(settings, venue, course = "")` | `race.md` §2.1: the venue's conditions resolved for `settings.weather` (0 local, 1 random, 2 custom) and the seed into every wind, current and sea setting (the C API's `wm_world_settings_resolve`), once before `create()`; `{}` on failure |
 | `add_boat(id, x, y, psi, v, auto_trim)` | FakeSim's call: a free-sailing boat of class `id` (creates an open-water world when none exists); the core starts it at 60 % of its polar speed, so `v` is unused |
 | `add_entry(id, entry)`, `create_race(course)`, `place_boat(b, x, y, psi)` | a race entry (`human`, `ai`, `performance_scale`, `auto_trim`, `front_sail`), the race on `venue/course` or a path, free-sailing placement |
 | `apply_input(b, frame)` | applies the frame decoded from its 6-byte wire form, the values every peer applies; the controls take effect at the next step (`controls(b)` shows them after it) |
@@ -193,13 +194,15 @@ starts. The prefetch and the spreading are on while the scene processes itself (
   written one (`GameSetup.next`) or a test sets `setup`, else the scene's exports (free sailing); command-line
   flags after `--` override both: `--race`, `--free`, `--fleet=10`, `--level=expert`, `--speed-only`, `--watch`
   (an AI sails the player's boat too), `--class=wm12`, `--venue=`, `--course=<venue>/<id>`, `--seed=` (0: from
-  the clock), `--wind=<kn>`, `--wind-from=<deg>`, `--fake`, `--core`, `--scenario=<id>` (a rules scenario, below). Spectating (`spectate_next`, `prev`,
+  the clock), `--wind=<kn>`, `--wind-from=<deg>` (Custom picks when a weather mode is set),
+  `--weather=local|random|custom` (the venue's weather resolved for the seed, `race.md` §2.1; GameSetup sets it
+  from the menus, the scene's default `""` takes the wind fields as they are), `--fake`, `--core`, `--scenario=<id>` (a rules scenario, below). Spectating (`spectate_next`, `prev`,
   `leader` by race rank) works when not racing (`--watch`) or once the player has finished, retired or left.
   To race in a window: `godot --path game res://scenes/sail_test.tscn -- --race --fleet=10 --level=intermediate`.
 - **Simulation** (`sim_kind`): `AUTO` (the default) runs the core through `CoreSimSource` when the GDExtension is
   loaded and `FakeSim` otherwise; `CORE` and `FAKE` force one. On the core the scene is free sailing without a race
   (`create(venue)`, `add_entry`, `place_boat` at `start_x`, `start_y`, `start_twa_deg` off the wind) on
-  `example_bay`, one `class_id` boat (`wm7`, or `wm12`), with the wind of `wind_speed_kn`, `wind_from_deg`,
+  `practice_waters`, one `class_id` boat (`wm7`, or `wm12`), with the wind of `wind_speed_kn`, `wind_from_deg`,
   `puffs`, `shift_preset` and `world_seed`. The Sea's source is a `CoreEnvSource`, its clock the core's
   `render_time_ms`, the wakes `CoreSimSource.wake_state`, so the puffs drawn are the ones the boat sails in.
 - **Boat** (`BoatView`): the node at the render pose (`conventions.md` §11), the rudder (with the tiller it
@@ -243,7 +246,7 @@ starts. The prefetch and the spreading are on while the scene processes itself (
   `boat_select`) belong in that template, which is not in the repo yet. The gamepad's View is `rankings_pad`: a tap
   cycles the instrument density, a hold shows the ranking (resolved in the Hud).
 - **Sea on FakeSim**: the scene holds the Sea node, its `SeaWakes` and the `SkyRig` of `scenes/sea/`. `sea_source` picks the
-  example bay as the core writes it (`CORE_SAMPLES`, scenario `sea_scenario`, default `example_bay_10kn`; its wind
+  Practice Waters as the core writes it (`CORE_SAMPLES`, scenario `sea_scenario`, default `practice_waters_10kn`; its wind
   replaces the scene's) or the placeholder sea from the scene's wind; `AUTO` (the default) takes the core samples
   when `generated/sea/sea_render_samples.json` exists (`tests/run_water_test.sh` writes it). The fake sim runs on
   the same `SeaModel` (`FakeSim.use_sea`), and the Sea's clock follows the ticks (`sea_time_ms(tick - 1 + alpha)`),
@@ -395,7 +398,7 @@ sailed by the AI) and every frame counts, from the scene's camera, the visible b
 godot --headless --path game -s res://tests/fleet_cost.gd -- --fleet=10 --seconds=15 [--no-lods] [--no-sheets]
 ```
 
-Measured on an M-series Mac (WM-016.31, race start on `example_bay`, chase camera, shadow passes not counted):
+Measured on an M-series Mac (WM-016.31, race start on `practice_waters`, chase camera, shadow passes not counted):
 
 | fleet | draw calls | primitives | CPU per boat (boats + sails) | boats at LOD0 / 1 / 2 |
 | --- | --- | --- | --- | --- |
@@ -483,7 +486,7 @@ Runs headless, with scripted input at fixed frame rates:
   the mark, layline distance and overstanding, shift meter, sail hint, rank hysteresis, gaps and splits, every
   rules awareness line, radar colours for the port-starboard, windward-leeward and mark-room pair records,
   penalties, protest and hail prompts, feed, results and assists; the layline test of §15 on the core; a race on
-  the core (`example_bay/example_wl`, two boats steered by `tests/race_pilot.gd` from the spawn to the results)
+  the core (`practice_waters/example_wl`, two boats steered by `tests/race_pilot.gd` from the spawn to the results)
   with the HUD checked against the race and rules records every tick; the sail test scene in race mode; the
   presentation of `hud.md` §16 (what each instrument density shows per phase, the density key, the View tap and
   hold, the stored setting, name tags within 50 m or selected, the penalty turn only in the chase and aerial
@@ -496,7 +499,7 @@ Runs headless, with scripted input at fixed frame rates:
   `tests/previews/race_hud_*.jpg`).
 - `tests/hud_test.gd`: `hud.md` formats, filters and time constants, trim gauge colours, tell-tales, tolerance and
   assist presets on a scripted boat state; then `scenes/sail_test.tscn` on FakeSim sails 20 s with scripted input
-  on the example bay sea and the HUD text is checked against the sim's values, with the sea checks: Sea and
+  on the Practice Waters sea and the HUD text is checked against the sim's values, with the sea checks: Sea and
   SkyRig in place, the sim on the drawn sea's model, the camera never below `Sea.height_at + 0.99` and its
   clearance hook being `Sea.height_at`, the hull heaving, both wakes of the boat laid; a short run on the
   placeholder sea; then the scene on the core, 40 s with a set-and-hold tack, a kite hoist and auto-trim off:
@@ -513,7 +516,7 @@ Runs headless, with scripted input at fixed frame rates:
 
 To sail the test scene yourself (opens a window): `game/native/build.sh` once (the core; without it the scene
 runs on FakeSim), then `godot --path game res://scenes/sail_test.tscn` (after `--`: `--class=wm12` for the
-12 m boat, `--fake` for FakeSim, `--race` to race alone on `example_bay/example_wl` through the start sequence,
+12 m boat, `--fake` for FakeSim, `--race` to race alone on `practice_waters/example_wl` through the start sequence,
 `--course=<venue>/<id>` for another course). Keys: ←/→ or
 A/D helm (set and hold, ↓ centres), T auto-trim, W/S sheet, Space let fly, 1/2 sails, C camera, F5 to F8 camera
 modes, right mouse drag or IJKL orbit, wheel or O/U zoom, R recentre, Backspace reset (free sailing: back to the

@@ -29,10 +29,10 @@ const SEA_O := [0.0, -25.0, 20.0, -10.0, 35.0, -40.0, 12.0, 45.0, -30.0, 5.0]
 @export var sea_scale: float = 1.0
 @export var puffs_enabled: bool = true
 @export var samples_path: String = "res://generated/sea/sea_render_samples.json"
-@export var scenario: String = "example_bay_20kn"
+@export var scenario: String = "practice_waters_20kn"
 ## The venue of the core samples (CORE_SAMPLES), for its land-effect wind field: a name under data/venues or a
 ## path; "" for none.
-@export var venue: String = "example_bay"
+@export var venue: String = "practice_waters"
 
 var _components: Array = []
 var _exposure: Dictionary = {}

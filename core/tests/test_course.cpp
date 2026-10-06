@@ -20,7 +20,7 @@ const wm::VenueData& bay() {
   static bool loaded = false;
   if (!loaded) {
     wm::LoadError err;
-    REQUIRE_MESSAGE(wm::load_venue(kData + "/venues/example_bay.venue.json", v, err), err.message());
+    REQUIRE_MESSAGE(wm::load_venue(kData + "/venues/practice_waters.venue.json", v, err), err.message());
     loaded = true;
   }
   return v;
@@ -28,7 +28,7 @@ const wm::VenueData& bay() {
 
 // A small world-frame course; the refusal cases replace one piece of it.
 struct Parts {
-  std::string header = R"("schema": "windmark.course/1", "id": "t", "name": "T", "venue": "example_bay",
+  std::string header = R"("schema": "windmark.course/1", "id": "t", "name": "T", "venue": "practice_waters",
                           "frame": "world")";
   std::string marks = R"([
     {"id": "rc", "type": "committee_boat", "at": {"x": 100, "y": 0}, "heading": 0},
@@ -76,9 +76,9 @@ bool geometry_fails(const std::string& name, const std::string& text, const std:
 TEST_CASE("course: the example course loads and validates for every wind direction") {
   wm::CourseData c;
   wm::LoadError err;
-  REQUIRE_MESSAGE(wm::load_course(kCourses + "/example_bay/example_wl.course.json", c, err), err.message());
+  REQUIRE_MESSAGE(wm::load_course(kCourses + "/practice_waters/example_wl.course.json", c, err), err.message());
   CHECK(c.id == "example_wl");
-  CHECK(c.venue == "example_bay");
+  CHECK(c.venue == "practice_waters");
   CHECK(c.frame == wm::CourseFrame::wind);
   CHECK(c.marks.size() == 10);
   CHECK(c.file_sha256.size() == 64);
@@ -103,7 +103,7 @@ TEST_CASE("course: the example course loads and validates for every wind directi
 TEST_CASE("course: laying the example course to the wind") {
   wm::CourseData c;
   wm::LoadError err;
-  REQUIRE(wm::load_course(kCourses + "/example_bay/example_wl.course.json", c, err));
+  REQUIRE(wm::load_course(kCourses + "/practice_waters/example_wl.course.json", c, err));
   wm::ResolvedCourse rc;
   wm::resolve_course(c, 0.0f, 1.0f, rc);
   auto at = [&](const char* id) { return rc.marks[static_cast<std::size_t>(c.find_mark(id))].pos; };
@@ -172,7 +172,7 @@ TEST_CASE("course: axis, scale and hash") {
 
   wm::CourseData c;
   wm::LoadError err;
-  REQUIRE(wm::load_course(kCourses + "/example_bay/example_wl.course.json", c, err));
+  REQUIRE(wm::load_course(kCourses + "/practice_waters/example_wl.course.json", c, err));
   const float k = wm::course_scale(c, 0.0f, wm_test::perf("wm7"), wm_test::kn(12.0f));
   MESSAGE("wm7 scale for 600 s at 12 kn: ", k);
   CHECK(k >= 0.5f);
@@ -234,13 +234,13 @@ TEST_CASE("course: the test course is valid") {
 TEST_CASE("course: file refusals") {
   {
     Parts p;
-    p.header = R"("schema": "windmark.course/2", "id": "t", "name": "T", "venue": "example_bay", "frame": "world")";
+    p.header = R"("schema": "windmark.course/2", "id": "t", "name": "T", "venue": "practice_waters", "frame": "world")";
     refuse("major version", p.text(), "$.schema");
   }
   {
     Parts p;
     p.header = R"("schema": "windmark.course/1", "id": "t", "name": "Bay )" "\xE2\x80\x94" R"( 2 laps",
-                  "venue": "example_bay", "frame": "world")";
+                  "venue": "practice_waters", "frame": "world")";
     refuse("em dash", p.text(), "$.name");
   }
   {
@@ -265,7 +265,7 @@ TEST_CASE("course: file refusals") {
   }
   {
     Parts p;
-    p.header = R"("schema": "windmark.course/1", "id": "t", "name": "T", "venue": "example_bay", "frame": "wind",
+    p.header = R"("schema": "windmark.course/1", "id": "t", "name": "T", "venue": "practice_waters", "frame": "wind",
                   "reference": {"x": 0, "y": 0})";
     p.marks = R"([{"id": "a", "type": "buoy", "at": {"bearing": 0, "dist": 10, "from": "b"}},
                   {"id": "b", "type": "buoy", "at": {"x": 0, "y": 0}}])";
@@ -273,7 +273,7 @@ TEST_CASE("course: file refusals") {
   }
   {
     Parts p;
-    p.header = R"("schema": "windmark.course/1", "id": "t", "name": "T", "venue": "example_bay", "frame": "wind")";
+    p.header = R"("schema": "windmark.course/1", "id": "t", "name": "T", "venue": "practice_waters", "frame": "wind")";
     refuse("wind frame without reference", p.text(), "$.reference");
   }
   {
@@ -383,7 +383,7 @@ TEST_CASE("course: geometry refusals") {
   {
     // A wind-frame course that reaches the island for a wind from the north.
     Parts p;
-    p.header = R"("schema": "windmark.course/1", "id": "t", "name": "T", "venue": "example_bay", "frame": "wind",
+    p.header = R"("schema": "windmark.course/1", "id": "t", "name": "T", "venue": "practice_waters", "frame": "wind",
                   "reference": {"x": 0, "y": 900})";
     p.marks = R"([
       {"id": "rc", "type": "committee_boat", "at": {"bearing": 1.5708, "dist": 100}},

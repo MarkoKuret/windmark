@@ -31,6 +31,8 @@ class CoreSim : public godot::RefCounted {
   // set-up
   static godot::Dictionary default_settings();
   bool create(const godot::Dictionary& settings, const godot::String& venue_path);
+  godot::Dictionary resolve_settings(const godot::Dictionary& settings, const godot::String& venue_path,
+                                     const godot::String& course_path);
   bool is_created() const { return world_ != nullptr; }
   int64_t add_boat(const godot::String& perf_path, const godot::Dictionary& entry);
   bool place_boat(int64_t boat, double x, double y, double psi);

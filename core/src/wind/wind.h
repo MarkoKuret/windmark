@@ -66,6 +66,12 @@ struct WindSettings {
 // Sets shift_amplitude, shift_hold_max_ms and shift_hold_min_ms = max / 5 from a §1 preset.
 void apply_shift_preset(WindSettings& s, ShiftPreset p);
 
+// §6.1 puff presets; `none` switches puffs off and leaves the parameters.
+enum class PuffPreset : std::uint8_t { none, light, standard, gusty };
+
+// Sets puffs_enabled and the §6.1 parameters of a preset (keys a preset does not list keep the defaults).
+void apply_puff_preset(WindSettings& s, PuffPreset p);
+
 // Checks the settings the formulas divide by or index with. nullptr when valid, else a reason.
 const char* check_wind_settings(const WindSettings& s);
 

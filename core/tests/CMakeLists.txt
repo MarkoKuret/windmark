@@ -115,3 +115,17 @@ target_include_directories(windmark_race_trace PRIVATE "${CMAKE_CURRENT_SOURCE_D
 target_compile_options(windmark_race_trace PRIVATE ${WINDMARK_WARNINGS})
 target_compile_definitions(windmark_race_trace PRIVATE
   WINDMARK_DATA_DIR="${WINDMARK_DATA_DIR}" WINDMARK_COURSES_DIR="${WINDMARK_COURSES_DIR}")
+# Venue conditions and weather modes (race.md §2.1, WM-110); the C API side links the static C API archive.
+target_sources(windmark_core_tests PRIVATE
+  test_conditions.cpp
+)
+if(NOT DEFINED WINDMARK_BUILD_CAPI OR WINDMARK_BUILD_CAPI)
+  add_executable(windmark_capi_tests test_main.cpp test_capi_conditions.cpp)
+  target_link_libraries(windmark_capi_tests PRIVATE windmark_static)
+  target_include_directories(windmark_capi_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src")
+  target_include_directories(windmark_capi_tests SYSTEM PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/doctest")
+  target_compile_options(windmark_capi_tests PRIVATE ${WINDMARK_WARNINGS})
+  target_compile_definitions(windmark_capi_tests PRIVATE
+    WINDMARK_DATA_DIR="${WINDMARK_DATA_DIR}" WINDMARK_COURSES_DIR="${WINDMARK_COURSES_DIR}")
+  add_test(NAME capi_tests COMMAND windmark_capi_tests)
+endif()

@@ -4,7 +4,7 @@
   "name": "Port meets starboard",
   "note": "Both boats close-hauled on the first beat, on a collision course. The port-tack boat (boat 1) must keep clear (rule 10) and takes the penalty.",
   "class": "wm7",
-  "course": "example_bay/example_wl",
+  "course": "practice_waters/example_wl",
   "seed": 1,
   "wind": { "speed_kn": 12, "from_deg": 0, "shifts": "steady", "puffs": false },
   "lead": 20,

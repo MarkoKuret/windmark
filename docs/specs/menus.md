@@ -45,7 +45,8 @@ The project's main scene. Items, top to bottom: **Continue**, **Quick race**, **
     the full briefing with the Tip.
   - **Random**: a surprise day from everything the venue can produce. Nothing to adjust and **no briefing**, ever:
     the card shows only `Weather  Unknown: read it on the water` (key `briefing.unknown`), and nothing before the
-    start or in the race tells the conditions; the player reads them from the instruments and the water.
+    start or in the race tells the conditions; the player reads them from the instruments and the water. After the
+    finish the results screen reveals them (§ results panel, `Today:` line).
   - **Custom**: four more rows. **Wind speed** 4 to 25 kn in 1 kn steps and **wind direction** 0° to 355° in 5°
     steps (defaults: the middle of the venue's range, rounded, and its typical direction rounded to 5°); **Shifts**
     Steady, Stable, Oscillating, Shifty, Unstable (the shift presets of `wind.md` §1); **Gusts** None, Light,
@@ -350,7 +351,9 @@ scene, then the next race or the menu.
 - **Panel** (cloth, §4), beside the title on the right, or under it when the window is narrower than 1100 px or in
   portrait (there inside the HUD's portrait margins, `hud.md` §16.5), as tall as its content and at most the
   window's height, so the scene stays in view around it: the heading `RESULTS` with one line under it (`Example Bay · Windward-leeward · 10 boats`; the venue is left out
-  when the course's name starts with it), the
+  when the course's name starts with it), after a Random race a second line `Today: 18 kn from the SW · Shifty ·
+  Gusty` built from the race's actual settings with the briefing's rating words (key `results.today`; Local and
+  Custom show none), the
   **table**, the **summary** under the table, and a footer with the actions. The table and the summary scroll
   (mouse wheel, or up and down on the actions) when they do not fit; the heading and the footer never scroll.
 - **Table**: Place, Sail (sail number), Boat (name), Skipper (`You` for the player; an AI boat shows the AI badge,

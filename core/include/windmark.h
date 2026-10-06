@@ -46,7 +46,7 @@
 extern "C" {
 #endif
 
-#define WM_API_VERSION 3
+#define WM_API_VERSION 4
 
 /* ---- status ------------------------------------------------------------------------------------------------ */
 
@@ -127,6 +127,27 @@ typedef struct wm_world wm_world;
 /* Wind shift presets (wind.md §1). */
 enum { WM_SHIFT_DEFAULT = -1, WM_SHIFT_STEADY = 0, WM_SHIFT_STABLE, WM_SHIFT_OSCILLATING, WM_SHIFT_SHIFTY,
        WM_SHIFT_UNSTABLE };
+/* Puff presets (wind.md §6.1). */
+enum { WM_PUFFS_DEFAULT = -1, WM_PUFFS_NONE = 0, WM_PUFFS_LIGHT, WM_PUFFS_STANDARD, WM_PUFFS_GUSTY };
+/* Weather modes (race.md §2.1), for wm_world_settings_resolve. */
+enum { WM_WEATHER_LOCAL = 0, WM_WEATHER_RANDOM = 1, WM_WEATHER_CUSTOM = 2 };
+
+/* wind.md §6.1 puff field parameters. */
+typedef struct wm_puff_params {
+  float tile;                    /* m */
+  int32_t puff_count, lull_count;
+  float diameter_min, diameter_max;            /* m */
+  float puff_strength_min, puff_strength_max;
+  float lull_strength_min, lull_strength_max;
+  uint32_t life_min_ms, life_max_ms;
+  float cap_up, cap_down;
+} wm_puff_params;
+
+/* sea.md §2 one swell. */
+typedef struct wm_swell {
+  float hs, tp, from;            /* m, s, rad compass */
+} wm_swell;
+
 /* Race settings (race.md §2); -1 = the course default, then the race type's default. */
 enum { WM_RACE_FLEET = 0, WM_RACE_MATCH = 1 };
 enum { WM_SEQUENCE_5410 = 0, WM_SEQUENCE_3210 = 1, WM_SEQUENCE_MATCH = 2 };
@@ -162,10 +183,32 @@ typedef struct wm_world_settings {
   float time_limit_s;            /* 0 = from the course */
   int32_t finish_window;         /* bool */
   float start_limit_s;           /* race.md §4.4 */
+  /* the rest of the wind (wind.md §1): used as given when shift_preset / puff_preset are DEFAULT */
+  float shift_amplitude;         /* rad */
+  uint32_t shift_hold_max_ms, shift_hold_min_ms;
+  float shift_trend_max;         /* rad */
+  float osc_amplitude;           /* rad */
+  float osc_time_scale;          /* s */
+  int32_t puff_preset;           /* WM_PUFFS_*; DEFAULT: `puffs` with `puff` */
+  wm_puff_params puff;
+  float tide_scale;              /* wind.md §7, on the venue's current field */
+  uint32_t tide_period_ms, tide_phase_ms;
+  /* the rest of the sea (sea.md §2) */
+  int32_t swell_count;           /* 0 to 4 */
+  wm_swell swells[4];
+  /* weather mode (race.md §2.1), read by wm_world_settings_resolve only */
+  int32_t weather;               /* WM_WEATHER_*; custom reads wind_speed, wind_from, shift_preset, puff_preset */
 } wm_world_settings;
 
 /* Fills the spec defaults (wind.md, sea.md, race.md §2). */
 WM_API void wm_world_settings_init(wm_world_settings* s);
+
+/* race.md §2.1: resolves the venue's conditions (data_format.md §6.7) for `s->weather` and `s->race_seed` into the
+ * explicit wind, current and sea fields of `s` (shift_preset and puff_preset become DEFAULT, every value written
+ * out), once, before wm_world_create. `course` gives the tide turn's timing with the race fields of `s` (null:
+ * free sailing). In custom mode wind_speed and wind_from are the player's, and shift_preset / puff_preset the
+ * chosen presets (DEFAULT: the venue's). A venue without conditions takes custom only (WM_ERR_ARG otherwise). */
+WM_API wm_status wm_world_settings_resolve(wm_world_settings* s, const wm_venue* venue, const wm_course* course);
 
 /* A world on `venue` (may be null: open water, no land, no race possible). Its tick 0 is the environment clock's
  * zero (race.md §0). Without wm_world_create_race it is a free-sailing world: boats, wind, sea, shadows and

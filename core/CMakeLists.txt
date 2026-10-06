@@ -62,6 +62,7 @@ target_sources(windmark_core PRIVATE
   src/course/course_resolve.cpp
   src/race/race.cpp
   src/race/race_state.cpp
+  src/race/conditions.cpp
   src/rules/rules.cpp
   src/rules/rules_geom.cpp
   src/rules/rules_state.cpp

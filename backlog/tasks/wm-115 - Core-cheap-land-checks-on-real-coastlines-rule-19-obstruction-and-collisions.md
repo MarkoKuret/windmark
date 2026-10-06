@@ -7,7 +7,7 @@ status: In Progress
 assignee:
   - '@land-cull'
 created_date: '2026-10-06 11:37'
-updated_date: '2026-10-06 11:37'
+updated_date: '2026-10-06 11:56'
 labels:
   - venues
   - perf
@@ -24,7 +24,7 @@ Found by the Fremantle venue (WM-108): the rule 19 obstruction check skips land 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Core tick at Fremantle within 10% of example_bay with 10 and 40 boats (same wind)
-- [ ] #2 Results bit-identical: determinism and checksum tests unchanged
-- [ ] #3 venues.md §4 budget says how land queries stay constant cost
+- [x] #1 Core tick at Fremantle within 10% of example_bay with 10 and 40 boats (same wind)
+- [x] #2 Results bit-identical: determinism and checksum tests unchanged
+- [x] #3 venues.md §4 budget says how land queries stay constant cost
 <!-- AC:END -->

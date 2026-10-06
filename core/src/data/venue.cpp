@@ -544,6 +544,7 @@ class VenueReader {
       if (pv == nullptr || !data::read_points(*pv, p + ".points", l.points, sink_)) return false;
       if (!simple(l.points, p + ".points")) return false;
       if (!(twice_area(l.points) > 0.0)) return fail(p + ".points", "land must be counter-clockwise");
+      l.index.build(l.points);
       seen.push_back(l.id);
       out_.land.push_back(std::move(l));
     }

@@ -2,7 +2,10 @@
  * windward-leeward course, a fleet of AI skippers (or, with `noai`, entries that nobody steers: the boats, wind,
  * rules and race without the skippers), every wm_world_step timed and summed by race phase.
  *
- *   windmark_race_bench <data_dir> <courses_dir> <fleet> [level 0..3] [noai] [seed]
+ *   windmark_race_bench <data_dir> <courses_dir> <fleet> [level 0..3] [noai] [seed] [venue course]
+ *
+ * `venue` names data_dir/venues/<venue>.venue.json and `course` a file under courses_dir (default: practice_waters and
+ * practice_waters/example_wl.course.json); `noai` may be given as `ai` to keep the skippers.
  *
  * Prints one line per phase: ticks, mean, 99th percentile and maximum µs per tick, then a hash of the world
  * checksum every 100 ticks (taken outside the timing) to show a change kept the race bit for bit. */
@@ -36,22 +39,24 @@ static int check(wm_status s, const char* what) {
 
 int main(int argc, char** argv) {
   if (argc < 4) {
-    fprintf(stderr, "usage: %s data_dir courses_dir fleet [level] [noai] [seed]\n", argv[0]);
+    fprintf(stderr, "usage: %s data_dir courses_dir fleet [level] [noai|ai] [seed] [venue course]\n", argv[0]);
     return 2;
   }
   const int fleet = atoi(argv[3]);
   const int level = argc > 4 ? atoi(argv[4]) : WM_AI_INTERMEDIATE;
   const int noai = argc > 5 && strcmp(argv[5], "noai") == 0;
   const uint32_t seed = argc > 6 ? (uint32_t)atoi(argv[6]) : 7u;
+  const char* venue_id = argc > 8 ? argv[7] : "practice_waters";
+  const char* course_file = argc > 8 ? argv[8] : "practice_waters/example_wl.course.json";
   char path[1024];
   wm_perf* perf = NULL;
   wm_venue* venue = NULL;
   wm_course* course = NULL;
   snprintf(path, sizeof path, "%s/perf/wm7.perf.json", argv[1]);
   if (!check(wm_perf_load(path, &perf), "wm7")) return 1;
-  snprintf(path, sizeof path, "%s/venues/practice_waters.venue.json", argv[1]);
+  snprintf(path, sizeof path, "%s/venues/%s.venue.json", argv[1], venue_id);
   if (!check(wm_venue_load(path, &venue), "venue")) return 1;
-  snprintf(path, sizeof path, "%s/practice_waters/example_wl.course.json", argv[2]);
+  snprintf(path, sizeof path, "%s/%s", argv[2], course_file);
   if (!check(wm_course_load(path, &course), "course")) return 1;
 
   wm_world_settings ws;

@@ -76,4 +76,37 @@ float convex_circle_gap(std::span<const Vec2> a, Vec2 c, float r);
 // Gap between a convex polygon and any polygon (0 when a vertex of either is inside the other or edges cross).
 float polygon_gap(std::span<const Vec2> convex, std::span<const Vec2> poly);
 
+// ---- large polygons (land) ----
+
+// A uniform grid over the edges of one large polygon, built once at load (venues.md §4.1), so point and hull
+// queries against a coastline visit only the edges near them. Edge k joins points k and k + 1 (cyclic). Every
+// indexed query below returns the same bits as the full query it names; a null or stale index (built for another
+// vertex count) falls back to the full query.
+struct PolygonIndex {
+  std::uint32_t n = 0;  // vertex count it was built for; 0 when not built
+  float x0 = 0.0f, y0 = 0.0f, cell = 1.0f;
+  std::int32_t nx = 1, ny = 1;
+  std::vector<std::uint32_t> cell_start, cell_edges;  // per cell (row-major): edges that may pass through it
+  std::vector<std::uint32_t> row_start, row_edges;    // per row of cells: edges whose y range touches it, once each
+  // The vertex mean and the largest vertex distance from it, in the written order of the rules' bounding circle.
+  Vec2 centre{0.0f, 0.0f};
+  float radius = 0.0f;
+
+  void build(std::span<const Vec2> poly);
+  bool usable(std::span<const Vec2> poly) const { return n >= 3 && n == poly.size(); }
+  std::int32_t col_of(float x) const;
+  std::int32_t row_of(float y) const;
+};
+
+// point_in_polygon, the same bits.
+bool point_in_polygon(Vec2 p, std::span<const Vec2> poly, const PolygonIndex* idx);
+// point_polygon_edge_dist where only values up to `cap` must be exact: the same bits when that distance is at most
+// `cap`, otherwise some value above `cap`. Comparisons with `cap` (d < cap, d > cap) keep their outcome.
+float point_polygon_edge_dist_capped(Vec2 p, std::span<const Vec2> poly, const PolygonIndex* idx, float cap);
+// polygon_gap(convex, poly), the same bits.
+float polygon_gap(std::span<const Vec2> convex, std::span<const Vec2> poly, const PolygonIndex* idx);
+// The nearest point of the polygon's boundary to p (the clamped projection on the nearest edge, lowest edge index on
+// ties of the distance); `fallback` when the polygon has no edge.
+Vec2 polygon_nearest_point(Vec2 p, std::span<const Vec2> poly, const PolygonIndex* idx, Vec2 fallback);
+
 }  // namespace wm

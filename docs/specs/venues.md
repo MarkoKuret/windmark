@@ -123,6 +123,13 @@ regression.
 - **Lookups cost the same as today.** Wind, current and exposure use the one bilinear sampler of `wind.md` §8.1:
   constant cost per query whatever the grid size, so a big venue costs what `practice_waters` costs. No lookup may loop
   over land, polygons or grid rows.
+- **Land queries cost what open water costs.** Each land polygon gets an edge grid when the venue loads (square
+  cells over its box, about two per edge, at most 256 a side, plus a per-row edge list and its bounding circle). The
+  per-tick land queries (rule 19's obstruction cull and gap, the AI's land check, the spawn search) visit only the
+  cells near the boat and grow the search radius only until the nearest edge is found, so their cost follows the
+  edges near the boat, not the coastline's length. Results are bit for bit those of the full scans (the rounding
+  of a distance is far below the 1 m slack of the search); the collision band index (`collisions.md` §3.4) is the
+  same idea.
 - **No new per-tick or per-frame work.** The conditions are resolved once when the race is created (`race.md`
   §2.1); the trend and the tide are the existing terms of `wind.md` §3 and §7 (a tide with a field already costs one
   cosine per current query, as `practice_waters` would with `tide_scale > 0`; an implementation may cache `tide(t)` per

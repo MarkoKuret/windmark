@@ -219,7 +219,7 @@ does not heel about a fixed axis: the leeward side, flared and wide aft, pushes 
 side gives up, so at the same displacement the heeled boat rises, and the immersed leeward quarter lifts the stern
 (it trims bow down). The generator computes both from the drawn hull (`tools/boatgen/README.md`, `heel_attitude`:
 free-floating equilibrium of volume and longitudinal centre of buoyancy at each heel) and the VPP copies them;
-S class at 25°: up 8.5 cm, 1.7° bow down. Without them the leeward corner of an open cockpit sank to the waterline
+S class at 25°: up 9.3 cm, 1.1° bow down. Without them the leeward corner of an open cockpit sank to the waterline
 at 25° (`water_render.md` §4.8). Both are part of the targets, so the heave lag and the pitch spring smooth them;
 the speed is not affected (§5.8 uses only the wave part of the pitch).
 

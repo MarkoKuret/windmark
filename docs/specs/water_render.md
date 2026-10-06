@@ -483,10 +483,12 @@ same probe gives:
 
 | floating heeled | 10 kn | 15 kn | 20 kn | 25 kn |
 | --- | --- | --- | --- | --- |
-| S, TWA 42° / 90° / 140° kite | 0 / 0 / 0 % | 0 / 0 / 0 % | 0 / 0.1 / 0 % | 0.2 / 1.0 / 1.8 % |
-| L, TWA 42° / 90° / 140° kite | 0 / 0 / 0 % | 0 / 0 / 0 % | 0 / 0 / 0.2 % | 0 / 0.1 / 0.3 % |
+| S, TWA 42° / 90° / 140° kite | 0 / 0 / 0 % | 0 / 0 / 0 % | 0.2 / 0.8 / 0.1 % | 0.7 / 3.1 / 4.2 % |
+| L, TWA 42° / 90° / 140° kite | 0 / 0 / 0 % | 0 / 0 / 0 % | 0 / 0 / 0.1 % | 0 / 0.1 / 0.3 % |
 
-so the sea reaches the floor only now and then in a breeze, as on a real boat (the heel itself unchanged).
+so the sea reaches the floor only now and then in a breeze, as on a real boat (the heel itself unchanged). These
+are the sterns of 2026-10-06 (S: rounder bilge and a U-shaped transom; L: transom 2.45 m and a rounder bilge),
+which give a little less stern lift than the first ones (S at 25°: 1.1° bow down instead of 1.7°).
 
 **Optional mask, off by default** (owner, 2026-10-06: judge the physics alone first): the sea can be kept out of
 the cockpit well of nearby boats (`--dry-cockpits` on the race scene, `Sea.dry_cockpits`).

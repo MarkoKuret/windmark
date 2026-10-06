@@ -171,7 +171,10 @@ class HullShape:
         sm = np.stack([np.convolve(pad[:, j], ker, mode="valid") for j in range(2)], -1)
         st = s[it]
         u = np.clip(np.abs(su - st) / (4 * r), 0, 1)
-        b = (0.5 * (1 + np.cos(np.pi * u)))[:, None]
+        # the ends stay where they are: the keel on the centreline (small sections near the stem) and the sheer on
+        # the deck edge, the blend fading out over two radii from each
+        e = np.clip(np.minimum(su, s[-1] - su) / (2 * r), 0, 1)
+        b = (0.5 * (1 + np.cos(np.pi * u)) * e * e * (3 - 2 * e))[:, None]
         out = (1 - b) * U + b * sm
         # split exactly at the raw turn's arc length (a grid index would jitter from station to station)
         k = int(np.clip(np.searchsorted(su, st), 1, m - 1))

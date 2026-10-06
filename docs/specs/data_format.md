@@ -614,7 +614,7 @@ The venue's typical weather, which the race layer turns into one race's settings
 | `shift.trend_rate`, `shift.trend_max` | steady rotation, rad/s (+ = veer, − = back) and its bound, rad | `trend_max` in [0, 0.35] [0, 0.35] |
 | `oscillation` | `amplitude` (rad, [0, 0.087]) and `time_scale` (s, > 0) of `wind.md` §5 | absent = oscillation off |
 | `puffs.preset` | a puff preset of `wind.md` §6.1, `none` = puffs off | [`standard`] |
-| `puffs.<key>` | any `wind.md` §6.1 parameter (lifetimes in s here), overriding the preset | checked as `wind.md` §6 |
+| `puffs.<key>` | a `wind.md` §6.1 parameter overriding the preset: `puff_tile`, `puff_count`, `lull_count`, `puff_diameter_min`, `puff_diameter_max`, `puff_strength_min`, `puff_strength_max`, `lull_strength_min`, `lull_strength_max`, `puff_life_min`, `puff_life_max` (lifetimes in s here), `puff_cap_up`, `puff_cap_down` | checked as `wind.md` §6; counts whole, at most 64; any other key is a load error |
 | `current` | uniform current, `speed` m/s (≥ 0) and `to` rad | [0, 0] |
 | `tide` | tidal current on `current_field` (§6.3): `scale` (≥ 0), `period` (integer s, > 0), `turn` (`[a, b]`, fractions of the race, `0 ≤ a ≤ b ≤ 1`, `b − a ≤ 0.4`) and `turn_to` (`+1` or `−1`: the sign of the tide factor after the turn) | requires `current_field`; absent = no tide |
 | `sea.scale` | `sea_scale` of `sea.md` §2 | ≥ 0 [1] |
@@ -646,7 +646,7 @@ English. The core ignores this block.
 ### 6.9 Old files
 `conditions`, `briefing`, `ref_speed` and `source` are optional additions, so the schema stays `windmark.venue/1`
 (§7). A venue without `conditions` offers only the Custom weather mode (`menus.md` §1), on the defaults of
-`wind.md` §1 and `sea.md` §2; its card shows the briefing computed from those settings without a Tip line. A venue with a
+`wind.md` §1 and `sea.md` §2 (the race layer refuses Local and Random there); its card shows the briefing computed from those settings without a Tip line. A venue with a
 `current_field` but no `ref_speed` gives the Current line from the uniform current only. Shipped venues have both
 blocks (venue test).
 

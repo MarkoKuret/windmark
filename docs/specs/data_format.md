@@ -857,6 +857,23 @@ geometry: a soft contact shadow round each fitting in occlusion and albedo, the 
 its upper edges lighter. The game reads only the atlas (and the per-boat text texture); the sails are staged at half
 the master size (1024 on the longer side; `--hd` keeps 2048).
 
+**Painted lines** are opaque in their own braid's mean colour, roughness and relief (a texel half covered by a line
+is the line's), so a line reads the same over gelcoat and non-slip; they clear the non-slip mask and cast only a faint
+contact shadow. Where a line runs down the coachroof's aft face (wm7's halyard tails into the cockpit) it is painted
+on the face's own rectangle of the deck image: the aft face (slot `deck_face`) has its own uv1 into a corner of the
+plan the deck does not use, forward of the bow on the port side (`tools/boatgen` `Deck.face_frame`), filled with
+the deck's smooth gelcoat; there the face reads its map even though it is upright.
+
+**Baked realism** (generated with the atlas, deterministic per class; subtle, a well-kept race boat): on the deck
+region ambient occlusion and contact shadows from a 1 cm height field of everything on the deck (the walking surface,
+the toe rail, coamings and hatch boxes, the hardware, the mast foot and the vang's foot; occluders over 0.4 m above
+the surface do not count), at 1.5, 5 and 12 cm, into the occlusion and a little into the albedo: under and round
+every fitting, along the coachroof's base and the toe rail, in the cockpit's corners; a faint warm grime where it is
+occluded; wear on the non-slip in the traffic areas (round the winches, the mast foot and on the cockpit floor: the
+pattern a little flatter, lighter and smoother in blotches); a faint low-frequency variation of the gelcoat's colour
+(±1.5 %) and roughness (±6 %). On the hull and transom regions a very faint colour (±0.8 %) and roughness (±3 %)
+variation, and on the transom faint dried streaks below the cockpit's drain.
+
 **Boat material slots** (written by the generator in the GLB, `tools/boatgen/README.md` "Materials and UVs"): every
 vertex of the material `boat` carries its slot in its vertex colour, green = slot id / 255 (red is the baked
 ambient occlusion; blue on the merged `body` node the part it comes from / 255: 1 hull, 2 deck, 3 keel, 4 mast, 5
@@ -864,8 +881,9 @@ rigging, 6 hardware, GLB root extras `body_parts`). The material's extras list p
 tiling atlas, tile size in metres of uv0 and **livery region**: `hull` (slots `hull_gelcoat`, `hull_boottop`,
 `hull_antifouling`: the hull region on uv1), `deck` (`deck_gelcoat`, `deck_nonslip`: the deck region on the plan
 uv1, with the non-slip mask; steep faces such as the coamings and the coachroof's sides and aft face take the slot's plain colour, not the map; also the hatches' raised boxes), `transom` (its uv1), `keel` (the keel in side view of the model frame, the layout's
-`keel.rect`), `keel_colour` (the rudder blade: the livery's keel colour, no map), or none (spars, hardware, ropes,
-glass, other gelcoat: the slot's own colour). Without a baked livery the regions take the livery file's colours
+`keel.rect`), `keel_colour` (the rudder blade: the livery's keel colour, no map), or none (spars and the helm in
+dark clear-coated `carbon` with no weave pattern, stainless `metal`, black plastic and rubber `rubber`, the ropes by
+function, glass, other gelcoat: the slot's own colour). Without a baked livery the regions take the livery file's colours
 (§8.1) and the topsides its procedural hull livery.
 
 ### 8.6 Who owns the textures
@@ -882,18 +900,22 @@ sail plan change the owner decides whether to repaint or rebake (`--only`).
 
 ### 8.7 Ropes
 
-The running rigging in braid colours by function, as on real boats: every boat of the class carries the same rope
-set. `ropes.<function>`, each `{ "color", "fleck", "pattern" }`, all optional:
+The running rigging in braid colours by function, as on a race boat's rope set: each function its own clear colour
+with a contrasting fleck, so the crew (and the player) tells the lines apart at a glance; every boat of the class
+carries the same rope set. `ropes.<function>`, each `{ "color", "fleck", "pattern" }`, all optional:
 
 | function | lines | default `color`, `fleck` |
 | --- | --- | --- |
-| `mainsheet` | the mainsheet tackle, its tail and coil | `#1f2b45` navy, `#d8d8d2` white fleck |
-| `sheet` | jib and genoa sheets (drawn by the front end, `sail_visuals.md` §11.3) | `#d2d2cb` white, `#b3242a` red fleck |
-| `kite_sheet` | spinnaker and code zero sheets, guys and the tack line (front end) | `#2b62a6` blue, `#dadad4` white fleck |
-| `halyard` | the halyards from the mast to the clutches and their coils | `#d4d4cd` white, `#2d7a40` green fleck |
-| `control` | traveller lines, the outhaul and the other control lines | `#1d1e21` black, `#c9a227` gold fleck |
+| `mainsheet` | the mainsheet tackle, its tail and coil | `#cf5f1d` orange, `#1f2b45` navy fleck |
+| `sheet` | jib and genoa sheets (drawn by the front end, `sail_visuals.md` §11.3) | `#168a8f` teal, `#e1e1da` white fleck |
+| `kite_sheet` | spinnaker and code zero sheets, guys and the tack line (front end) | `#b02e6a` raspberry, `#e1e1da` white fleck |
+| `halyard_main` | the main halyard (inboard of each bank) and the port coil | `#b81f24` red, `#e1e1da` white fleck |
+| `halyard_jib` | the jib halyard and the starboard coil | `#1f4fa8` blue, `#e1e1da` white fleck |
+| `halyard_kite` | the spinnaker halyard (and the kite's halyard on the posed previews) | `#2a8a3e` green, `#e1e1da` white fleck |
+| `halyard_code` | the code zero or spare halyard (a fourth halyard) | `#d6aa1e` yellow, `#1d1e21` black fleck |
+| `control` | traveller lines, the outhaul and the other control lines | `#6b3fa0` purple, `#e1e1da` white fleck |
 
-Lifelines and anything else stay the generator's grey `rope` slot.
+Lifelines and the standing rigging stay wire grey (the generator's `rope` and `metal` slots).
 
 | key | default | meaning |
 | --- | --- | --- |

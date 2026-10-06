@@ -102,6 +102,8 @@ class World {
   const SeaField* sea() const { return sea_.get(); }
   const CollisionScene& scene() const { return scene_; }
   const WorldEvents& events() const { return events_; }  // of the last step
+  // The contacts of the last collision step (what the rules read in step 1; the skippers feel them in step 2).
+  const std::vector<ContactEvent>& last_contacts() const { return contacts_; }
   std::uint64_t checksum() const;  // conventions.md §9: tick index, then the snapshot body
   bool race_created() const { return created_; }
   const WorldSetup& setup() const { return setup_; }  // as given (the venue's fields are applied inside)

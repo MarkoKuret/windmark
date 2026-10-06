@@ -11,7 +11,7 @@ namespace wm {
 namespace {
 
 constexpr std::uint32_t kAiMagic = 0x49414D57u;  // "WMAI"
-constexpr std::uint32_t kAiVersion = 1;
+constexpr std::uint32_t kAiVersion = 2;
 constexpr std::uint32_t kMaxBadAir = 100000;
 
 struct Put {
@@ -85,11 +85,12 @@ void visit_boat(V& v, AiSkippers::Boat& a) {
   v(a.twd_f); v(a.twd_ref); v(a.twd_5); v(a.shift);
   v(a.man); v(a.man_t0); v(a.man_from); v(a.man_to); v(a.man_passed); v(a.man_forced); v(a.irons_t);
   v(a.irons_until); v(a.last_man); v(a.low_until); v(a.pend_tack); v(a.pend_reason); v(a.turn_dir);
-  v(a.leg); v(a.leg_step); v(a.speed_build); v(a.headed_t); v(a.pressure_t); v(a.gate_step); v(a.gate_buoy);
+  v(a.leg); v(a.leg_step); v(a.speed_build); v(a.headed_t); v(a.pressure_t); v(a.route_t); v(a.route_gain); v(a.route_stay); v(a.gate_step); v(a.gate_buoy);
   v(a.rounding); v(a.round_mark);
   v(a.phase); v(a.spot_fixed); v(a.spot_u); v(a.spot_beta); v(a.spot_rank); v(a.drawn); v(a.spread_r); v(a.e_start); v(a.go);
   v(a.loop); v(a.hover_fly); v(a.ret_stage); v(a.match_stage);
   v(a.avoid_until); v(a.avoid_hold); v(a.avoid_psi); v(a.avoid_slow); v(a.avoid_other); v(a.avoid_kind);
+  v(a.pin_t); v(a.pin_until); v(a.pin_seen); v(a.pin_n);
   v(a.bad_t); v(a.foot_until); v(a.foot_delta); v(a.bad_src); v(a.bad_last);
   v(a.opp_other_t); v(a.cover_opp); v(a.opp_tack_prev); v(a.opp_tacked_at);
   v(a.pen_on); v(a.pen_t0); v(a.pen_dir); v(a.pen_seen_turning); v(a.pen_stall_t); v(a.pen_prepare); v(a.pen_block); v(a.pen_served0);

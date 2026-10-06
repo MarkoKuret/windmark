@@ -30,6 +30,23 @@ inline float bearing(Vec2 from, Vec2 to) { return compass(v_sub(to, from)); }
 inline Vec2 right_of(Vec2 d) { return {d.y, -d.x}; }
 inline Vec2 left_of(Vec2 d) { return {-d.y, d.x}; }
 
+// The wind relative to the water (ai.md §3.3): what a boat's instruments read and what she sails in (boat.md §5.1),
+// from the wind over the ground and the current. Without current it is the ground wind itself.
+struct WaterWind {
+  float speed = 0.0f;
+  float from = 0.0f;
+};
+inline WaterWind water_wind(float speed, float from, Vec2 cur) {
+  if (cur.x == 0.0f && cur.y == 0.0f) return {speed, from};
+  const Vec2 t = v_add(v_scale(dir(from), speed), cur);
+  const float s = v_len(t);
+  return {s, s > 1e-4f ? compass(t) : from};
+}
+// The clean wind relative to the water at boat j.
+inline WaterWind water_wind_clean(const EnvAtBoat& e) {
+  return water_wind(e.wind_speed_clean, e.wind_from_clean, {e.current_x, e.current_y});
+}
+
 // Exponential filter coefficient for a time constant (s) at the tick rate.
 inline float filt_a(float tau) { return DT / (tau + DT); }
 
@@ -75,6 +92,8 @@ struct AiSkippers::Boat {
   std::int32_t leg_step = -1;
   bool speed_build = false;
   float headed_t = 0.0f, pressure_t = 0.0f;
+  float route_t = 0.0f, route_gain = 0.0f;  // §4.7: seconds the other tack has paid, and its gain (s)
+  bool route_stay = false;                  // §4.7: this tack first pays
   std::int32_t gate_step = -1, gate_buoy = 0;
   bool rounding = false;
   std::int32_t round_mark = -1;  // the mark of the last rounding decision
@@ -102,6 +121,12 @@ struct AiSkippers::Boat {
   bool avoid_slow = false;
   std::int32_t avoid_other = -1;
   AiTactic avoid_kind = AiTactic::KeepClear;
+
+  // Pinned on an object (§6.5)
+  float pin_t = 0.0f;              // s in contact with an object with no way over the ground
+  float pin_until = -1e9f;         // the escape runs until then
+  float pin_seen = -1e9f;          // the last contact with an object
+  Vec2 pin_n{0.0f, 0.0f};          // the contact normal, from the object towards the boat
 
   // Bad air (§8)
   float bad_t = 0.0f;

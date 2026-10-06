@@ -36,6 +36,10 @@ float polar_speed(const AB& a, const Me& m, float twa_abs);
 inline float heading_for(float twd, float twa) { return wrap_2pi(twd - twa); }
 // A heading corrected for the current so the course over ground points along `bearing` (ai.md §4.2).
 float cog_heading(const Me& m, float bearing, float speed);
+// The direction over the ground of heading psi at the speed the boat will make on it, with the current here.
+Vec2 cog_dir(const AB& a, const Me& m, float psi);
+// The same at the speed the boat will make on that course (her own, at least 0.8 of the polar speed).
+float cog_heading_for(const AB& a, const Me& m, float bearing);
 
 // Manoeuvres (§10). `forced`: layline, rules or obstruction triggers (no cooldown or speed check).
 bool manoeuvre_checks(AC& x, AB& a, const Me& m, bool forced);
@@ -81,6 +85,8 @@ bool holding_course(AC& x, AB& a, const Me& m);
 // Course objects (marks, committee and mark boats) ahead on the planned heading: steer to pass them clear, on the
 // side they are on (`skip_mark`: the mark being rounded, which the rounding circle keeps clear).
 void avoid_objects(AC& x, AB& a, const Me& m, std::int32_t skip_mark);
+// §6.5 pinned on an object: the escape, when it runs (ai_course.cpp).
+void pinned_escape(AC& x, AB& a, const Me& m);
 // §4.6 land, obstacles and the race area: true (and the escape set) when the boat must turn away.
 bool land_check(AC& x, AB& a, const Me& m);
 

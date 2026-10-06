@@ -10,8 +10,12 @@
 #include <string>
 #include <vector>
 
+#include <cmath>
+#include <map>
+
 #include "ai/ai.h"
 #include "boat_harness.h"
+#include "race/conditions.h"
 #include "course/course.h"
 #include "doctest.h"
 #include "world/world.h"
@@ -28,6 +32,34 @@ inline const wm::VenueData& ai_venue() {
     loaded = true;
   }
   return venue;
+}
+
+// A shipped venue by id (data/venues/<id>.venue.json), loaded once.
+inline const wm::VenueData& venue_by_id(const std::string& id) {
+  static std::map<std::string, std::unique_ptr<wm::VenueData>> cache;
+  auto it = cache.find(id);
+  if (it == cache.end()) {
+    auto v = std::make_unique<wm::VenueData>();
+    wm::LoadError err;
+    REQUIRE_MESSAGE(wm::load_venue(std::string(WINDMARK_DATA_DIR) + "/venues/" + id + ".venue.json", *v, err),
+                    err.message());
+    it = cache.emplace(id, std::move(v)).first;
+  }
+  return *it->second;
+}
+
+// A shipped course by its path under the courses directory without the extension (e.g. "solent/cowes_wl").
+inline const wm::CourseData& course_by_path(const std::string& rel) {
+  static std::map<std::string, std::unique_ptr<wm::CourseData>> cache;
+  auto it = cache.find(rel);
+  if (it == cache.end()) {
+    auto c = std::make_unique<wm::CourseData>();
+    wm::LoadError err;
+    REQUIRE_MESSAGE(wm::load_course(std::string(WINDMARK_COURSES_DIR) + "/" + rel + ".course.json", *c, err),
+                    err.message());
+    it = cache.emplace(rel, std::move(c)).first;
+  }
+  return *it->second;
 }
 
 // The default course: the shipped example windward-leeward, two laps.
@@ -119,6 +151,13 @@ struct AiRaceSpec {
   // skippers' block saved by the game (`<snap_dir>/world.bin`, `<snap_dir>/ai.bin`) instead of created.
   bool human0 = false;
   const char* snap_dir = nullptr;
+  // Another venue (null: the example venue) and its own conditions for the race seed (race.md §2.1, local mode)
+  // instead of wind_kn / wind_from / shifts. `tide`: the tide factor at the gun forced to flood (+1), ebb (-1) or
+  // slack (0, turning to flood) instead of the drawn phase; NaN keeps the draw.
+  const wm::VenueData* venue = nullptr;
+  bool local_weather = false;
+  float tide = NAN;
+  bool no_current = false;  // the venue's conditions without any current (a reference for the tide's cost)
 };
 
 inline std::vector<std::uint8_t> read_bytes(const std::string& path) {
@@ -130,6 +169,21 @@ inline std::vector<std::uint8_t> read_bytes(const std::string& path) {
   }
   return b;
 }
+
+// Windward approaches (WM-111): on every beat to a mark, from the boat's last tack to the mark, the time sailed more
+// than 10° freer than her own close-hauled angle on that leg (overstanding: the median water TWA of the leg) while
+// farther than 3 L from the mark, and the tacks made within 5 L of the mark (understanding: a short tack to lay it).
+struct ApproachStats {
+  int approaches = 0;
+  double overstand_s = 0.0;
+  int overstood = 0;  // approaches with more than 10 s overstood
+  int near_tacks = 0;
+  double overstand_m = 0.0;  // distance sailed while overstood
+  // The fleet's side on the beats: the mean lateral offset from the line from the last mark to the next (m, + to
+  // the left looking upwind), over every boat and second on a beat.
+  double side_sum = 0.0;
+  int side_n = 0;
+};
 
 struct AiRaceOutcome {
   std::vector<wm::ResultRow> results;
@@ -143,17 +197,37 @@ struct AiRaceOutcome {
   std::vector<std::uint64_t> checksums;  // per tick, if kept
   bool reloaded = false;
   float n_gun_s = 0.0f;
+  ApproachStats approach;
+  std::vector<wm::RaceEvent> ocs_events;  // boat_ocs
+  float tide_at_gun = 0.0f;  // the tide factor at the gun (wind.md §7, without the scale)
 };
 
 inline std::unique_ptr<wm::World> ai_world(const AiRaceSpec& sp) {
   wm::WorldSetup s;
-  s.venue = &ai_venue();
+  s.venue = sp.venue != nullptr ? sp.venue : &ai_venue();
   s.race_seed = sp.seed;
   s.wind.base_speed = kn(sp.wind_kn);
   s.wind.base_from = sp.wind_from;
   if (!sp.wind_default) wm::apply_shift_preset(s.wind, sp.shifts);
   s.wind.puffs_enabled = sp.puffs;
   s.race.free_sailing_s = sp.free_sailing_s;
+  if (sp.local_weather) {
+    const wm::CourseData& course = sp.course != nullptr ? *sp.course : ai_default_course();
+    const wm::RaceTiming timing = wm::race_timing(s.race, &course);
+    wm::WeatherChoice c;
+    std::string error;
+    REQUIRE_MESSAGE(wm::resolve_weather(*s.venue, c, sp.seed, timing, s.wind, s.sea_settings, error), error);
+    if (!std::isnan(sp.tide) && s.wind.tide_period_ms > 0) {
+      // cos(2π (t_gun + phase) / P) = tide at the gun: flood 0, ebb P/2, slack 3P/4 (turning to flood).
+      const std::uint64_t P = s.wind.tide_period_ms;
+      const std::uint64_t at = sp.tide > 0.5f ? 0u : (sp.tide < -0.5f ? P / 2u : (3u * P) / 4u);
+      s.wind.tide_phase_ms = static_cast<std::uint32_t>((at + P - (timing.t_gun_ms % P)) % P);
+    }
+    if (sp.no_current) {
+      s.wind.tide_scale = 0.0f;
+      s.wind.current_speed = 0.0f;
+    }
+  }
   auto w = std::make_unique<wm::World>(s);
   for (std::size_t i = 0; i < sp.levels.size(); ++i) {
     const std::string cls = i < sp.classes.size() ? sp.classes[i] : std::string("wm7");
@@ -191,6 +265,25 @@ inline AiRaceOutcome run_ai_race(const AiRaceSpec& sp) {
   w->set_controller([aip](wm::World& world) { aip->step(world); });
   AiRaceOutcome o;
   std::FILE* tf = sp.trace != nullptr ? std::fopen(sp.trace, "w") : nullptr;
+  // Approach tracking (ApproachStats).
+  struct Track {
+    std::int32_t step = -1;
+    bool beat = false;
+    std::vector<float> twa;  // |water TWA| samples of the leg, 1 Hz
+    float med = 0.0f;
+    std::int8_t tack = 0;
+    double free_s = 0.0, free_m = 0.0;  // since the last tack
+    int near_tacks = 0;
+  };
+  std::vector<Track> trk;
+  auto close_approach = [&](Track& t) {
+    if (!t.beat || t.twa.empty()) return;
+    ++o.approach.approaches;
+    o.approach.overstand_s += t.free_s;
+    o.approach.overstand_m += t.free_m;
+    if (t.free_s > 10.0) ++o.approach.overstood;
+    o.approach.near_tacks += t.near_tacks;
+  };
   if (tf != nullptr) std::fprintf(tf, "t,i,x,y,psi,v,twa,tws,tact,man,psit,next,rank,pend,d,leg,helm,letfly,phi,phid,tr,sx,sy,ax,ay,why,pw,dl\n");
   for (std::uint32_t k = 0; k < sp.max_ticks && w->race().state() != wm::RaceState::closed &&
                           w->race().state() != wm::RaceState::abandoned;
@@ -231,8 +324,71 @@ inline AiRaceOutcome run_ai_race(const AiRaceSpec& sp) {
     }
     w->step();
     if (sp.keep_checksums) o.checksums.push_back(w->checksum());
+    if (w->race_created() && w->race().after_gun(w->tick())) {
+      if (o.tide_at_gun == 0.0f) {
+        const wm::WindSettings& ws = w->wind().settings();
+        const float ph = static_cast<float>((static_cast<std::uint64_t>(w->tick()) * 50u + ws.tide_phase_ms) %
+                                            ws.tide_period_ms) / static_cast<float>(ws.tide_period_ms);
+        o.tide_at_gun = std::cos(wm::TWO_PI * ph) + 1e-6f;
+      }
+      trk.resize(w->boat_count());
+      const wm::ResolvedCourse& co = w->course();
+      const wm::Vec2 wax = wm::dir(co.twd_c);
+      for (std::size_t i = 0; i < w->boat_count(); ++i) {
+        const wm::RaceBoat& rb = w->race().boat(i);
+        Track& t = trk[i];
+        if (!rb.started || rb.finished || rb.ghost) {
+          if (t.step >= 0 && (rb.finished || rb.ghost)) t.beat = false;
+          continue;
+        }
+        if (rb.next != t.step) {
+          if (t.step >= 0 && rb.next > t.step) close_approach(t);
+          t = Track{};
+          t.step = rb.next;
+          const wm::CourseStep& st = co.steps[static_cast<std::size_t>(rb.next)];
+          if (st.kind == wm::StepKind::mark && rb.next > 0) {
+            const wm::Vec2 d = wm::v_sub(st.ref, co.steps[static_cast<std::size_t>(rb.next - 1)].ref);
+            t.beat = wm::v_dot(d, wax) > 0.8f * wm::v_len(d);
+          }
+        }
+        if (!t.beat) continue;
+        const wm::BoatState& bs = w->boat(i).state();
+        const float twa = bs.twa;  // water relative (boat.md §5.1)
+        const std::int8_t tk = static_cast<std::int8_t>(twa >= 0.0f ? 1 : -1);
+        const wm::Vec2 M = co.marks[static_cast<std::size_t>(co.steps[static_cast<std::size_t>(t.step)].marks[0])].pos;
+        const float dm = wm::v_dist(rb.c, M);
+        if (std::fabs(twa) < wm::HALF_PI && t.tack != 0 && tk != t.tack) {
+          t.free_s = 0.0;
+          t.free_m = 0.0;
+          if (dm < 5.0f * rb.L) ++t.near_tacks;
+        }
+        if (std::fabs(twa) < wm::HALF_PI) t.tack = tk;
+        if (w->tick() % 20u == 0u) {
+          const wm::Vec2 P0 = co.steps[static_cast<std::size_t>(t.step - 1)].ref;
+          const wm::Vec2 ax = wm::v_unit(wm::v_sub(M, P0), wax);
+          o.approach.side_sum += static_cast<double>(wm::v_cross(ax, wm::v_sub(rb.c, P0)));
+          ++o.approach.side_n;
+        }
+        if (w->tick() % 20u == 0u && std::fabs(twa) < wm::HALF_PI &&
+            bs.v > 0.5f * w->boat(i).polar_at(bs.tws, twa, w->boat(i).sails().front())) {
+          t.twa.push_back(std::fabs(twa));
+          std::vector<float> c = t.twa;
+          std::nth_element(c.begin(), c.begin() + static_cast<std::ptrdiff_t>(c.size() / 2), c.end());
+          t.med = c[c.size() / 2];
+        }
+        if (t.twa.size() >= 10 && dm > 3.0f * rb.L) {
+          if (std::fabs(twa) > t.med + 10.0f * wm::DEG && std::fabs(twa) < wm::HALF_PI + 0.35f) {
+            t.free_s += 0.05;
+            t.free_m += 0.05 * static_cast<double>(bs.v);
+          }
+        }
+      }
+    }
     for (const wm::ContactEvent& e : w->events().contacts) {
       if (e.begin && e.other_kind == wm::ContactKind::boat && e.boat < e.other) ++o.contacts;
+    }
+    for (const wm::RaceEvent& e : w->events().race) {
+      if (e.kind == wm::RaceEventKind::boat_ocs) o.ocs_events.push_back(e);
     }
     for (const wm::RulesEvent& e : w->events().rules) {
       if (e.kind == wm::RulesEventKind::penalty) ++o.penalties;

@@ -261,7 +261,9 @@ nodes of wind grids as `(1, 0)` so leaving the box is seamless.
 | `current(x, y, t)` | current vector | boat step, AI, HUD |
 
 They are pure functions, but the AI only reads what a sailor could observe: the wind at its own boat and nearby
-water now, and its own history. It never evaluates future times or `global_from` (`ai.md`).
+water now, and its own history; and what a sailor knows before the race: the current anywhere now (the tidal
+stream, steady through a race) and the briefing's trend (`ai.md` §1). It never evaluates future times or
+`global_from` (`ai.md`).
 
 ## 10. Tests
 

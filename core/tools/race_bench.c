@@ -2,10 +2,10 @@
  * windward-leeward course, a fleet of AI skippers (or, with `noai`, entries that nobody steers: the boats, wind,
  * rules and race without the skippers), every wm_world_step timed and summed by race phase.
  *
- *   windmark_race_bench <data_dir> <courses_dir> <fleet> [level 0..3] [noai] [seed] [venue course]
+ *   windmark_race_bench <data_dir> <courses_dir> <fleet> [level 0..3] [noai] [seed] [venue course wind_from_deg]
  *
- * `venue` names data_dir/venues/<venue>.venue.json and `course` a file under courses_dir (default: practice_waters and
- * practice_waters/example_wl.course.json); `noai` may be given as `ai` to keep the skippers.
+ * `venue course wind_from_deg` race another venue (e.g. garda garda/garda_wl 195); default example_bay,
+ * example_bay/example_wl and a north wind.
  *
  * Prints one line per phase: ticks, mean, 99th percentile and maximum µs per tick, then a hash of the world
  * checksum every 100 ticks (taken outside the timing) to show a change kept the race bit for bit. */
@@ -39,15 +39,17 @@ static int check(wm_status s, const char* what) {
 
 int main(int argc, char** argv) {
   if (argc < 4) {
-    fprintf(stderr, "usage: %s data_dir courses_dir fleet [level] [noai|ai] [seed] [venue course]\n", argv[0]);
+    fprintf(stderr, "usage: %s data_dir courses_dir fleet [level] [noai|ai] [seed] [venue course wind_from_deg]\n",
+            argv[0]);
     return 2;
   }
   const int fleet = atoi(argv[3]);
   const int level = argc > 4 ? atoi(argv[4]) : WM_AI_INTERMEDIATE;
   const int noai = argc > 5 && strcmp(argv[5], "noai") == 0;
   const uint32_t seed = argc > 6 ? (uint32_t)atoi(argv[6]) : 7u;
-  const char* venue_id = argc > 8 ? argv[7] : "practice_waters";
-  const char* course_file = argc > 8 ? argv[8] : "practice_waters/example_wl.course.json";
+  const char* venue_id = argc > 7 ? argv[7] : "practice_waters";
+  const char* course_rel = argc > 8 ? argv[8] : "practice_waters/example_wl";
+  const float wind_from_deg = argc > 9 ? (float)atof(argv[9]) : 0.0f;
   char path[1024];
   wm_perf* perf = NULL;
   wm_venue* venue = NULL;
@@ -56,13 +58,14 @@ int main(int argc, char** argv) {
   if (!check(wm_perf_load(path, &perf), "wm7")) return 1;
   snprintf(path, sizeof path, "%s/venues/%s.venue.json", argv[1], venue_id);
   if (!check(wm_venue_load(path, &venue), "venue")) return 1;
-  snprintf(path, sizeof path, "%s/%s", argv[2], course_file);
+  snprintf(path, sizeof path, "%s/%s.course.json", argv[2], course_rel);
   if (!check(wm_course_load(path, &course), "course")) return 1;
 
   wm_world_settings ws;
   wm_world_settings_init(&ws);
   ws.race_seed = seed;
   ws.wind_speed = 12.0f * 0.514444470f;
+  ws.wind_from = wind_from_deg * 0.017453293f;
   wm_world* w = NULL;
   if (!check(wm_world_create(&ws, venue, &w), "world")) return 1;
   for (int i = 0; i < fleet; ++i) {

@@ -5,7 +5,7 @@ extends SceneTree
 ##     the draw estimate, the shadow casters per tier (2 on M, none on L), no per-polygon land, no props
 ##   - the ground the cameras read: open water at the course, land above the water inland of the core's polygons
 ##     and not above it offshore, the chase camera above the ground
-##   - cost against example_bay: scene build, frame (headless, no GPU) and core tick with 10 boats
+##   - cost against practice_waters: scene build, frame (headless, no GPU) and core tick with 10 boats
 ##   godot --headless --path game -s res://tests/venue_terrain_test.gd
 
 var t := TestLog.new()
@@ -38,7 +38,7 @@ func _scene(venue: String, course: String, fleet := 1, wind_from := 0.0) -> Node
 
 func test_file() -> void:
 	t.begin("terrain file")
-	t.ok(VenueTerrain.load_venue("example_bay") == null, "example_bay: no terrain file (drawn from its polygons)")
+	t.ok(VenueTerrain.load_venue("practice_waters") == null, "practice_waters: no terrain file (drawn from its polygons)")
 	var t0 := Time.get_ticks_usec()
 	var tr := VenueTerrain.load_venue("garda")
 	var ms := (Time.get_ticks_usec() - t0) / 1000.0
@@ -170,10 +170,10 @@ func _cost(venue: String, course: String, wind_from: float) -> Array:
 
 
 func test_cost() -> void:
-	t.begin("cost against example_bay, 10 boats")
-	var a: Array = await _cost("example_bay", "example_bay/example_wl", 0.0)
+	t.begin("cost against practice_waters, 10 boats")
+	var a: Array = await _cost("practice_waters", "practice_waters/example_wl", 0.0)
 	var b: Array = await _cost("garda", "garda/garda_wl", 195.0)
-	print("  example_bay: scene %.0f ms, frame %.2f ms (headless), core tick %.3f ms" % [a[0], a[1] / 1000.0, a[2] / 1000.0])
+	print("  practice_waters: scene %.0f ms, frame %.2f ms (headless), core tick %.3f ms" % [a[0], a[1] / 1000.0, a[2] / 1000.0])
 	print("  garda:       scene %.0f ms, frame %.2f ms (headless), core tick %.3f ms" % [b[0], b[1] / 1000.0, b[2] / 1000.0])
 	t.ok(b[1] < 16000.0, "garda frame under 16 ms headless (%.2f ms)" % (b[1] / 1000.0))
 	t.ok(b[2] < a[2] * 1.25 + 50.0, "core tick within the example's (%.3f against %.3f ms)" % [b[2] / 1000.0, a[2] / 1000.0])

@@ -22,7 +22,7 @@ const MAX_POLYGON_LAND := 3000.0
 
 var shapes: VenueShapes
 var terrain: LandTerrain
-## the venue's drawn terrain, null on venues drawn from their polygons (example_bay)
+## the venue's drawn terrain, null on venues drawn from their polygons (practice_waters)
 var venue_terrain: VenueTerrain
 ## the MeshInstance3D nodes by role (tests, previews): land_<id>, trees_<id>, quay_<id>, rock_<id>
 var parts := {}

@@ -4,8 +4,8 @@
  *
  *   windmark_race_bench <data_dir> <courses_dir> <fleet> [level 0..3] [noai] [seed] [venue course wind_from_deg]
  *
- * `venue course wind_from_deg` race another venue (e.g. garda garda/garda_wl 195); default example_bay,
- * example_bay/example_wl and a north wind.
+ * `venue course wind_from_deg` race another venue (e.g. garda garda/garda_wl 195); default practice_waters,
+ * practice_waters/example_wl and a north wind; `noai` may be given as `ai` to keep the skippers.
  *
  * Prints one line per phase: ticks, mean, 99th percentile and maximum µs per tick, then a hash of the world
  * checksum every 100 ticks (taken outside the timing) to show a change kept the race bit for bit. */

@@ -1,6 +1,7 @@
 // Venue conditions (data_format.md §6.7) and their resolution into one race's settings (race.md §2.1): the shipped
 // Practice Waters, a test venue with a tide and a trend, the three weather modes, the tide turn, the refusals, and
 // the C API path (wm_world_settings_resolve, then wm_world_create).
+#include <algorithm>
 #include <cmath>
 #include <string>
 
@@ -22,8 +23,8 @@ wm::VenueData practice() {
   return v;
 }
 
-// A small venue with a uniform current field (vx = 1 m/s everywhere), a tide turning to the ebb between 40 % and
-// 60 % of the race, a trend that backs, an oscillation and a swell. `cond` replaces the conditions block.
+// A small venue with a uniform current field (vx = 1 m/s everywhere), a tide of the real period, a trend that
+// backs, an oscillation and a swell. `cond` replaces the conditions block.
 std::string tidal_text(const std::string& cond = "", const std::string& briefing = "") {
   const std::string c = cond.empty() ? R"({
       "wind": {"speed": [6.0, 9.0], "from": 3.927, "from_spread": 0.2},
@@ -31,7 +32,7 @@ std::string tidal_text(const std::string& cond = "", const std::string& briefing
       "oscillation": {"amplitude": 0.0349, "time_scale": 17},
       "puffs": {"preset": "standard", "puff_cap_up": 0.3, "puff_life_min": 50},
       "current": {"speed": 0.1, "to": 1.0},
-      "tide": {"scale": 0.6, "period": 44712, "turn": [0.4, 0.6], "turn_to": -1},
+      "tide": {"scale": 0.6, "period": 44712},
       "sea": {"scale": 0.8, "swells": [{"hs": 0.8, "tp": 12.0, "from": 4.19}]},
       "random": {"tide_scale": [0.5, 1.5], "swell_scale": [0.5, 1.5]}})"
                                        : cond;
@@ -122,16 +123,14 @@ TEST_CASE("conditions: refusals") {
   CHECK(refused(tidal_text(R"({"puffs": {"preset": "storm"}})"), "$.conditions.puffs.preset"));
   CHECK(refused(tidal_text(R"({"puffs": {"puff_wobble": 1}})"), "$.conditions.puffs.puff_wobble"));
   CHECK(refused(tidal_text(R"({"puffs": {"lull_strength_max": 1.0}})"), "$.conditions.puffs"));
-  CHECK(refused(tidal_text(R"({"tide": {"scale": 1, "period": 44712, "turn": [0.1, 0.9], "turn_to": -1}})"),
-                "$.conditions.tide.turn"));
-  CHECK(refused(tidal_text(R"({"tide": {"scale": 1, "period": 44712, "turn": [0.4, 0.6], "turn_to": 0}})"),
-                "$.conditions.tide.turn_to"));
+  CHECK(refused(tidal_text(R"({"tide": {"scale": 1, "period": 0}})"), "$.conditions.tide.period"));
+  CHECK(refused(tidal_text(R"({"tide": {"scale": -1, "period": 44712}})"), "$.conditions.tide.scale"));
   CHECK(refused(tidal_text(R"({"sea": {"swells": [{"hs": 1, "tp": 0, "from": 0}]}})"), "$.conditions.sea.swells[0].tp"));
   CHECK(refused(tidal_text(R"({"random": {"shift": []}})"), "$.conditions.random.shift"));
   CHECK(refused(tidal_text(R"({"random": {"from_spread": 1.0}})"), "$.conditions.random.from_spread"));
   // a tide needs a current field
   CHECK(refused(R"({"schema": "windmark.venue/1", "id": "t", "name": "T", "version": 1, "bounds": [-1, -1, 1, 1],
-                    "conditions": {"tide": {"scale": 1, "period": 44712, "turn": [0.4, 0.6], "turn_to": 1}}})",
+                    "conditions": {"tide": {"scale": 1, "period": 44712}}})",
                 "$.conditions.tide"));
   // player-facing text: no em dashes
   CHECK(refused(tidal_text("{}", R"(, "briefing": {"tag": "Bora", "tip": "Gusts — tack"})"), "$.briefing.tip"));
@@ -210,7 +209,7 @@ TEST_CASE("conditions: random mode is wider, picks presets from the lists, custo
   CHECK(d.w.puffs.cap_up == doctest::Approx(0.15f));
 }
 
-TEST_CASE("conditions: the tide turns inside the race window, trend, oscillation and swells are the venue's") {
+TEST_CASE("conditions: the tide starts at a drawn phase of its cycle; trend, oscillation and swells are the venue's") {
   const wm::VenueData v = tidal();
   const wm::VenueConditions& c = v.conditions;
   CHECK(c.puffs.cap_up == doctest::Approx(0.3f));     // override over the preset
@@ -229,18 +228,20 @@ TEST_CASE("conditions: the tide turns inside the race window, trend, oscillation
       if (m == wm::WeatherMode::local) CHECK(r.w.shift_amplitude == doctest::Approx(0.0698f));
       REQUIRE(r.s.swells.size() == 1);
       CHECK(r.s.sea_scale == doctest::Approx(0.8f));
-      // the turn: tide(t_turn) == 0 and the factor's sign changes to turn_to (-1) there
-      const float a = m == wm::WeatherMode::local ? 0.4f : 0.0f, b = m == wm::WeatherMode::local ? 0.6f : 1.0f;
-      const float f = a + (b - a) * wm::rng_unit(seed, 8, 3);
-      const auto t_turn = static_cast<std::uint32_t>(t.t_gun_ms + static_cast<std::uint64_t>(f * t.t_race_s * 1000.0f));
-      CHECK(t_turn >= t.t_gun_ms + static_cast<std::uint64_t>(a * 1200000.0f) - 1);
-      CHECK(t_turn <= t.t_gun_ms + static_cast<std::uint64_t>(b * 1200000.0f) + 1);
+      // the phase: at the start signal the cycle is phi ms in, phi drawn from index 3 over the whole period
+      const std::uint64_t P = 44712000;
+      CHECK(r.w.tide_period_ms == P);
+      const std::uint64_t phi = std::min<std::uint64_t>(
+          static_cast<std::uint64_t>(wm::rng_unit(seed, 8, 3) * static_cast<float>(P)), P - 1);
+      CHECK((t.t_gun_ms + r.w.tide_phase_ms) % P == phi);
       r.w.venue_current_field = v.current_field_ptr();
       r.w.current_speed = 0.0f;  // the tide alone
       const wm::WindField wf(seed, r.w);
-      CHECK(std::fabs(wf.current(0, 0, t_turn).x) < 1e-3f);
-      CHECK(wf.current(0, 0, t_turn - 600000 > t_turn ? 0 : t_turn - 600000).x > 0.0f);
-      CHECK(wf.current(0, 0, t_turn + 600000).x < 0.0f);
+      const auto gun = static_cast<std::uint32_t>(t.t_gun_ms);
+      const float tau = r.w.tide_scale * std::cos(wm::TWO_PI * static_cast<float>(phi) / static_cast<float>(P));
+      CHECK(wf.current(0, 0, gun).x == doctest::Approx(tau).epsilon(1e-3).scale(1.0));
+      // nearly steady over a race: 20 minutes move the factor by at most 2π · 1200 / 44712 of the scale
+      CHECK(std::fabs(wf.current(0, 0, gun + 1200000).x - wf.current(0, 0, gun).x) <= 0.17f * r.w.tide_scale + 1e-3f);
       if (m == wm::WeatherMode::local) {
         CHECK(r.w.tide_scale == doctest::Approx(0.6f));
       } else {
@@ -251,6 +252,27 @@ TEST_CASE("conditions: the tide turns inside the race window, trend, oscillation
       }
     }
   }
+}
+
+TEST_CASE("conditions: the tide phases cover the whole cycle") {
+  const wm::VenueData v = tidal();
+  wm::RaceTiming t;
+  t.t_gun_ms = 210000;
+  int flood = 0, ebb = 0, slack = 0;
+  for (std::uint64_t seed = 1; seed <= 400; ++seed) {
+    wm::WeatherChoice ch;
+    Resolved r = resolve(v, ch, seed, t);
+    const std::uint64_t P = r.w.tide_period_ms;
+    const float tau = std::cos(wm::TWO_PI * static_cast<float>((t.t_gun_ms + r.w.tide_phase_ms) % P) /
+                               static_cast<float>(P));
+    if (tau > 0.7f) ++flood;
+    else if (tau < -0.7f) ++ebb;
+    else if (std::fabs(tau) < 0.2f) ++slack;
+  }
+  // uniform phases: |cos| > 0.7 on half the cycle each way, < 0.2 on about 13 %
+  CHECK(flood > 70);
+  CHECK(ebb > 70);
+  CHECK(slack > 25);
 }
 
 TEST_CASE("conditions: a venue without conditions offers custom only, on the defaults") {

@@ -1,5 +1,6 @@
 #include "race/conditions.h"
 
+#include <algorithm>
 #include <vector>
 
 #include "math/rng.h"
@@ -85,13 +86,10 @@ bool resolve_weather(const VenueData& v, const WeatherChoice& c, std::uint64_t s
   w.current_speed = k.current_speed;
   w.current_to = k.current_to;
   if (k.has_tide) {
+    // the race starts at a drawn point of the whole cycle, in every mode
     const std::uint64_t P = static_cast<std::uint64_t>(k.tide_period_s) * 1000u;
-    float a = k.turn_a, b = k.turn_b;
-    if (c.mode == WeatherMode::random) a = 0.0f, b = 1.0f;
-    const float f = a + (b - a) * u(seed, 3);
-    const std::uint64_t t_turn = timing.t_gun_ms + static_cast<std::uint64_t>(f * timing.t_race_s * 1000.0f);
-    const std::uint64_t x_turn = k.turn_to < 0 ? P / 4 : 3 * P / 4;
-    w.tide_phase_ms = static_cast<std::uint32_t>((x_turn + P - (t_turn % P)) % P);
+    const std::uint64_t phi = std::min(static_cast<std::uint64_t>(u(seed, 3) * static_cast<float>(P)), P - 1);
+    w.tide_phase_ms = static_cast<std::uint32_t>((phi + P - (timing.t_gun_ms % P)) % P);
     w.tide_period_ms = static_cast<std::uint32_t>(P);
     w.tide_scale = k.tide_scale;
     if (c.mode == WeatherMode::random) {

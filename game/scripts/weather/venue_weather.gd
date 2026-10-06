@@ -34,7 +34,8 @@ const NO_CONDITIONS_CUSTOM := {"kn": 12.0, "from_deg": 0.0, "shift": "shifty", "
 
 
 ## What the menus need of a venue file (its parsed JSON): {id, name, tag, tip, has_conditions, conditions (with
-## the defaults of data_format.md §6.7 filled), fetch, ref_speed, has_current_field}.
+## the defaults of data_format.md §6.7 filled), fetch, ref_speed, ref_to (-1 when the file has none),
+## has_current_field}.
 static func info(doc: Dictionary, lang := "") -> Dictionary:
 	var b: Dictionary = doc.get("briefing", {}) if doc.get("briefing") is Dictionary else {}
 	var tr: Dictionary = {}
@@ -51,6 +52,7 @@ static func info(doc: Dictionary, lang := "") -> Dictionary:
 		"fetch": float(doc.get("fetch", 10000.0)),
 		"has_current_field": cf is Dictionary,
 		"ref_speed": float(cf.get("ref_speed", 0.0)) if cf is Dictionary else 0.0,
+		"ref_to": float(cf.get("ref_to", -1.0)) if cf is Dictionary else -1.0,
 	}
 	out["conditions"] = conditions(doc.get("conditions", {}) if out["has_conditions"] else {})
 	return out
@@ -58,7 +60,7 @@ static func info(doc: Dictionary, lang := "") -> Dictionary:
 
 ## data_format.md §6.7 with its defaults: {speed: [s0, s1] m/s, from, from_spread, shift: {preset, amplitude
 ## (rad), hold_max (s)}, trend_rate, trend_max, oscillation, puffs (the preset with the overrides, plus `preset`
-## and `enabled`), current: {speed, to}, tide ({} or {scale, turn: [a, b], turn_to}), sea: {scale, swells}}.
+## and `enabled`), current: {speed, to}, tide ({} or {scale, period}), sea: {scale, swells}}.
 static func conditions(c: Dictionary) -> Dictionary:
 	var w: Dictionary = c.get("wind", {})
 	var s: Dictionary = c.get("shift", {})
@@ -123,6 +125,7 @@ static func custom_defaults(vi: Dictionary) -> Dictionary:
 
 ## The race's timing for the trend and the tide (race.md §2.1): t_gun (s after the boats appear) and T_race, from
 ## the course's sequence and target duration and the free sailing time; free sailing (no course) has no start.
+## The caller adds `tide_factor` (tide_at_gun) for a tidal venue; without it the Current line names no state.
 static func timing(course: Dictionary, free_sailing_s := 30.0) -> Dictionary:
 	if course.is_empty():
 		return {"t_gun": 0.0, "t_race": 900.0}
@@ -132,8 +135,19 @@ static func timing(course: Dictionary, free_sailing_s := 30.0) -> Dictionary:
 	return {"t_gun": free_sailing_s + warn, "t_race": td if td > 0.0 else 900.0}
 
 
+## wind.md §7 the tide factor at the start signal, from settings resolved for the race's seed (race.md §2.1,
+## CoreSimSource.resolve_settings): tide_scale · cos(2π ((t_gun + tide_phase_ms) mod P) / P).
+static func tide_at_gun(resolved: Dictionary, t_gun_s: float) -> float:
+	var p := int(resolved.get("tide_period_ms", 0))
+	if p <= 0:
+		return 0.0
+	var ph := (int(round(t_gun_s * 1000.0)) + int(resolved.get("tide_phase_ms", 0))) % p
+	return float(resolved.get("tide_scale", 0.0)) * cos(TAU * float(ph) / float(p))
+
+
 ## What the race will get, as the briefing reads it (menus.md §1.3 "Inputs"): {lo, hi (m/s), from, amplitude,
-## hold_max, trend (deg over the race, signed), puffs, current (m/s), uniform_to, tide, sea_scale, swells, fetch}.
+## hold_max, trend (deg over the race, signed), puffs, current (m/s), uniform, uniform_to, tide, tide_factor (when
+## known), tide_stream (m/s), ref_to, sea_scale, swells, fetch}.
 ## `custom`: {kn, from_deg, shift, gusts}.
 static func inputs(vi: Dictionary, mode: String, custom: Dictionary, tm: Dictionary) -> Dictionary:
 	var c: Dictionary = vi["conditions"]
@@ -161,7 +175,13 @@ static func inputs(vi: Dictionary, mode: String, custom: Dictionary, tm: Diction
 	var t1: float = t0 + float(tm["t_race"])
 	out["trend"] = rad_to_deg(clampf(rate * t1, -cap, cap) - clampf(rate * t0, -cap, cap))
 	var tide_scale := float(c["tide"].get("scale", 0.0)) if not c["tide"].is_empty() else 0.0
-	out["current"] = absf(c["current"]["speed"]) + tide_scale * float(vi.get("ref_speed", 0.0))
+	var tau := tide_scale
+	if not c["tide"].is_empty() and tm.has("tide_factor"):
+		tau = float(tm["tide_factor"])
+		out["tide_factor"] = tau
+	out["tide_stream"] = absf(tau) * float(vi.get("ref_speed", 0.0))
+	out["ref_to"] = float(vi.get("ref_to", -1.0))
+	out["current"] = absf(c["current"]["speed"]) + out["tide_stream"]
 	return out
 
 
@@ -275,17 +295,24 @@ static func gusts_text(puffs: Dictionary) -> String:
 
 static func current_text(x: Dictionary) -> String:
 	var kn: float = x["current"] / KNOT
+	var tide: Dictionary = x["tide"]
+	var known := not tide.is_empty() and x.has("tide_factor")
+	var near_slack := known and float(x.get("tide_stream", 0.0)) / KNOT < 0.3
+	if near_slack and absf(float(x["uniform"])) / KNOT < 0.2:
+		return Strings.t("briefing.line.current_slack")
 	if kn < 0.2:
 		return Strings.t("briefing.word.current.none")
 	var word := "light" if kn < 0.6 else ("moderate" if kn < 1.2 else ("strong" if kn < 2.0 else "very_strong"))
 	var line := Strings.t("briefing.line.current", {"word": Strings.t("briefing.word.current." + word),
 		"c": "%.1f" % (round_half_even(kn * 10.0) / 10.0)})
-	var tide: Dictionary = x["tide"]
-	if not tide.is_empty():
-		var turn: Array = tide.get("turn", [0.5, 0.5])
-		var m := 0.5 * (float(turn[0]) + float(turn[1]))
-		var when := "early" if m < 0.35 else ("mid" if m <= 0.65 else "late")
-		return Strings.t("briefing.line.current_turns", {"line": line, "when": Strings.t("briefing.turn." + when)})
+	if known and not near_slack:
+		var tau := float(x["tide_factor"])
+		var state := Strings.t("briefing.tide." + ("flooding" if tau > 0.0 else "ebbing"))
+		var to := float(x.get("ref_to", -1.0))
+		if to < 0.0:
+			return Strings.t("briefing.line.current_tide_noset", {"line": line, "state": state})
+		return Strings.t("briefing.line.current_tide", {"line": line, "state": state,
+			"point": point(to if tau > 0.0 else to + PI)})
 	if float(x["uniform"]) > 0.0:
 		return Strings.t("briefing.line.current_sets", {"line": line, "point": point(x["uniform_to"])})
 	return line

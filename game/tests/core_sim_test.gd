@@ -35,7 +35,8 @@ func _init() -> void:
 
 
 ## race.md §2.1 through the extension: resolve_settings for Local, Random and Custom on Practice Waters, the tide
-## and trend fixture's turn inside the race, and a world made on the resolved settings.
+## and trend fixture's tide at the drawn phase (the same in the world as in VenueWeather.tide_at_gun), and a world
+## made on the resolved settings.
 func _weather() -> void:
 	t.begin("weather modes resolved (race.md 2.1)")
 	var why := []
@@ -60,7 +61,7 @@ func _weather() -> void:
 		"shift_preset": 4, "puff_preset": 0}, "practice_waters", "")
 	t.ok(float(cus["wind_speed"]) == 9.0 and absf(float(cus["shift_amplitude"]) - deg_to_rad(25.0)) < 1e-6
 		and not bool(cus["puffs"]), "Custom: the player's wind, unstable shifts, no puffs")
-	# the tide and trend fixture: the tide turns to the ebb between 35 % and 65 % of the race
+	# the tide and trend fixture: the race starts at a drawn phase of the real cycle and the stream holds
 	var tidal := ProjectSettings.globalize_path("res://tests/fixtures/tidal_test.venue.json")
 	var tl := CoreSimSource.resolve_settings({"race_seed": 9, "weather": 0}, tidal, "practice_waters/example_wl", why)
 	t.ok(not tl.is_empty() and absf(float(tl["tide_scale"]) - 0.6) < 1e-6 and float(tl["shift_trend_rate"]) < 0.0
@@ -71,10 +72,18 @@ func _weather() -> void:
 	var ws := cs.wind_state(0.0)
 	t.ok(absf(float(ws.get("base_speed", 0.0)) - float(tl["wind_speed"])) < 1e-6, "the world's base wind is the resolved one")
 	var gun := (30.0 + 180.0) * 1000.0
-	var c_early: Vector2 = cs.core.current_at(0.0, 0.0, int(gun + 0.30 * 600000.0))
-	var c_late: Vector2 = cs.core.current_at(0.0, 0.0, int(gun + 0.70 * 600000.0))
-	t.ok(c_early.x > 0.0 and c_late.x < 0.0, "the tide turns inside 35 to 65 %% of the race: %.3f then %.3f" % [
-		c_early.x, c_late.x])
+	var c_gun: Vector2 = cs.core.current_at(0.0, 0.0, int(gun))
+	var c_end: Vector2 = cs.core.current_at(0.0, 0.0, int(gun + 600000.0))
+	var want := VenueWeather.tide_at_gun(tl, gun / 1000.0) * 1.29
+	t.ok(absf(c_gun.x - want) < 2e-3 and absf(c_end.x - c_gun.x) < 0.1 * 1.29 * 0.6,
+		"the tide at the gun is the drawn phase's (%.3f, want %.3f) and holds through the race (%.3f)" % [c_gun.x,
+		want, c_end.x])
+	var phases := {}
+	for sd in range(1, 41):
+		var r := CoreSimSource.resolve_settings({"race_seed": sd, "weather": 0}, tidal, "practice_waters/example_wl")
+		var f := VenueWeather.tide_at_gun(r, gun / 1000.0) / 0.6
+		phases["flood" if f > 0.7 else ("ebb" if f < -0.7 else "between")] = true
+	t.ok(phases.size() == 3, "over seeds the race draws flood, ebb and between: %s" % [phases.keys()])
 	t.ok(CoreSimSource.resolve_settings({"race_seed": 1, "weather": 5}, "practice_waters", "", why).is_empty(),
 		"a bad weather mode is refused")
 

@@ -3,18 +3,18 @@
   "origin": { "lat": 50.77, "lon": -1.3 },
   "bounds": [-2000, -2000, 2000, 2000],
   "fetch": 8000,
-  "source": "hand-written test fixture (menus and race layer tests): a tide that turns and a trend that backs",
+  "source": "hand-written test fixture (menus and race layer tests): a tide of the real period and a trend that backs",
   "current_field": {
     "grid": { "x0": -5000, "y0": -5000, "dx": 10000, "dy": 10000, "nx": 2, "ny": 2 },
     "vx": [1.29, 1.29, 1.29, 1.29], "vy": [0, 0, 0, 0],
-    "ref_speed": 1.29
+    "ref_speed": 1.29, "ref_to": 1.5708
   },
   "conditions": {
     "wind": { "speed": [5.1444, 8.2311], "from": 3.927, "from_spread": 0.1745 },
     "shift": { "preset": "stable", "amplitude": 0.0698, "trend_rate": -0.000145, "trend_max": 0.2618 },
     "oscillation": { "amplitude": 0.0349, "time_scale": 17 },
     "puffs": { "preset": "light" },
-    "tide": { "scale": 0.6, "period": 44712, "turn": [0.35, 0.65], "turn_to": -1 },
+    "tide": { "scale": 0.6, "period": 44712 },
     "sea": { "scale": 1.0, "swells": [ { "hs": 0.4, "tp": 9.0, "from": 4.19 } ] },
     "random": { "speed": [3.09, 10.29], "from_spread": 0.698, "shift": ["stable", "oscillating", "shifty"],
                 "puffs": ["light", "standard"], "tide_scale": [0.5, 1.33], "swell_scale": [0.5, 1.5] }

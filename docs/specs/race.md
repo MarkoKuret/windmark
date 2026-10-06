@@ -112,15 +112,11 @@ osc_enabled = oscillation present ; osc_amplitude, osc_time_scale = its values
 // puffs: the venue's (preset, then each key given; lifetimes s * 1000); random: pick(random.puffs, 7);
 //        custom: the chosen preset (a picked or chosen preset takes no venue overrides)
 current_speed, current_to = current.speed, current.to
-// tide (when present)
+// tide (when present): the race starts at a drawn point of the whole cycle, in every mode
 P       = period * 1000                                             // ms, a multiple of 4
-T_race  = course race.target_duration, or 900 s without one        // courses.md §5.2
 t_gun   = (uint64)(n_gun - n_created) * 50                          // ms of environment time at the start signal
-[a, b]  = tide.turn ; random: [0, 1]
-f       = a + (b - a) * rng_unit(seed, 8, 3)
-t_turn  = t_gun + (uint64)(f * (float)T_race * 1000.0f)             // ms
-x_turn  = turn_to < 0 ? P / 4 : 3 * P / 4                           // cos falls through 0 (to −) or rises (to +)
-tide_phase_ms = (x_turn + P - (t_turn % P)) % P                     // uint64; tide(t_turn) = 0
+phi     = min((uint64)(rng_unit(seed, 8, 3) * (float)P), P - 1)     // ms into the cycle at the start signal
+tide_phase_ms = (phi + P - (t_gun % P)) % P                         // uint64; tide(t_gun) = tide_scale * cos(2π phi / P)
 tide_scale = tide.scale ; random: tide.scale * (q0 + (q1 - q0) * rng_unit(seed, 8, 8))   // [q0, q1] = random.tide_scale
 tide_period_ms = P ; venue_current_field = the venue's current_field
 // sea
@@ -131,6 +127,11 @@ sea_scale = sea.scale
 - The local speed draw is the mean of two uniforms (most races near the middle of the range); random is uniform,
   so off days are as likely as typical ones. The local direction stays within `from_spread` (at most 20°) of the
   typical direction.
+- The tide keeps the venue's period (the real one, 12 h 25 min, at a tidal venue), so it is nearly steady over a
+  race: the draw gives a strong flood (`phi` near 0), a strong ebb (near `P / 2`) or a stream near slack and turning
+  (near `P / 4` or `3P / 4`), uniformly over the cycle. Random draws the strength on top (`tide_scale`).
+- `T_race` (the course's `race.target_duration`, or 900 s without one, `courses.md` §5.2) times the trend line of
+  the briefing (`menus.md` §1.3).
 - Free sailing has no start: `t_gun = 0`, `T_race = 900 s`.
 - Rules scenarios (§14) keep their own explicit settings and ignore the venue's conditions.
 - A venue without `conditions` offers `custom` only, on the defaults of `wind.md` §1 and `sea.md` §2.
@@ -570,7 +571,8 @@ of the race layer uses the counter-based generator of `conventions.md` §7 with 
 - **stream 7: race layer** (`conventions.md` §7, "spawn order shuffle"). Spawn shuffle:
   draw `j = min((uint32)(rng_unit(race_seed, 7, k) * (float)(k + 1)), k)` for `k = n−1 … 1` (Fisher–Yates from the
   end), swapping entries `k` and `j`. General recall restarts use indices from 1000 upwards.
-- **stream 8: venue conditions draw** (§2.1): indices 0 to 3 local (speed, direction, tide turn), 4 to 9 random.
+- **stream 8: venue conditions draw** (§2.1): indices 0 to 2 local (speed, direction), 3 the tide phase (every mode),
+  4 to 9 random.
 - AI boats use streams 16–31 (`ai.md` §1).
 
 No wall clock, address or thread order may enter any of these.

@@ -27,8 +27,9 @@ struct WeatherChoice {
   PuffPreset puffs = PuffPreset::standard;
 };
 
-// The race's timing for the tide turn: T_race (the course's target duration, else 900 s) and t_gun (ms of
-// environment time at the start signal). Free sailing: t_gun = 0, T_race = 900 s.
+// The race's timing: t_gun (ms of environment time at the start signal), where the drawn tide phase applies, and
+// T_race (the course's target duration, else 900 s), which times the briefing's trend. Free sailing: t_gun = 0,
+// T_race = 900 s.
 struct RaceTiming {
   float t_race_s = 900.0f;
   std::uint64_t t_gun_ms = 0;

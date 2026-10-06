@@ -57,10 +57,13 @@ The project's main scene. Items, top to bottom: **Continue**, **Quick race**, **
   - A venue without `conditions` (`data_format.md` §6.9) offers Custom only, at 12 kn, 0°, Shifty, Moderate.
   - Choosing another venue sets the Custom rows to that venue's defaults and offers its modes (a mode it lacks
     falls back to its first, Custom for a venue without `conditions`).
-- **Start** fills `GameSetup.current()` (mode `race` or `free`, the weather mode and the Custom picks, seed 0: from
-  the clock) and changes to the sail scene, which reads it and resolves the weather once (`race.md` §2.1). The last
+- **Start** fills `GameSetup.current()` (mode `race` or `free`, the weather mode and the Custom picks, and the card's
+  race seed) and changes to the sail scene, which reads it and resolves the weather once (`race.md` §2.1). The last
   choices are remembered in the settings file (§3) for the next visit; a remembered choice that is no longer
   offered (a venue, class or mode gone) falls back to the default (Practice Waters, Local), else the first.
+- **Race seed**: the card draws the race seed (non-zero, from the clock) when it opens and again after each start,
+  and computes the briefing for it (§1.3), so the tide the briefing names is the one the race gets. Starts without
+  the card (Continue, Race again) take a new seed from the clock and show no briefing.
 - **Backdrop** (§4): the live sail scene behind the menu.
 - Rules scenarios (`race.md` §14) have no menu item: they start from the command line of the sail scene,
   `--scenario=<id>`, which sets `GameSetup` mode `scenario` with the scenario id.
@@ -136,7 +139,7 @@ SOLENT · Strong tide
 Wind     10-16 kn from the SW
 Shifts   Stable: small, slow (4°)
 Gusts    Light: to +15 %, frequent
-Current  Strong, 1.5 kn, turns mid-race
+Current  Strong, 1.5 kn, flooding (sets E)
 Sea      Flat to chop
 Tip      The stream runs hardest mid-channel; cheat it along the shore.
 ```
@@ -150,7 +153,7 @@ water`.
 the venue's `from`; Custom: the chosen one), the shift and puff values (Local: the venue's after presets; Custom: the
 chosen presets), the venue's current, tide and sea values
 (`race.md` §2.1), the chosen course's `T_race` and `t_gun` (`race.md` §2.1; the card's sequence and
-`free_sailing_s`).
+`free_sailing_s`), and the card's race seed (§1), which fixes the tide's phase.
 
 **Number formats.** Knots: speeds as whole knots (`round_half_even`), current to 0.1 kn. Degrees: whole degrees.
 Compass: 8 points, `N NE E SE S SW W NW`, point `round_half_even(deg / 45) mod 8`. Percentages: whole percent.
@@ -162,7 +165,7 @@ Ranges join with a hyphen (`10-16 kn`); equal ends show one value.
 | Wind | `<s0>-<s1> kn from the <point>` | `S` and `θ`; e.g. `14 kn from the NE` with an explicit speed |
 | Shifts | `<word>: <size>, <pace> (<A>°)` and, with a trend, `, veers <N>°` or `, backs <N>°` | `A` = `shift_amplitude`, `H` = `shift_hold_max`; `steady` alone when `A < 1.5°`; trend below |
 | Gusts | `<word>: to +<g> %, <spread>`, or `None` | `g = min(puff_cap_up, puff_strength_max)`; `None` when puffs are off |
-| Current | `<word>, <c> kn` and `, turns <when>` (a tide) or `, sets <point>` (a uniform current only); or `None` | `c` below |
+| Current | `<word>, <c> kn` and `, flooding (sets <point>)` or `, ebbing (sets <point>)` (a tide), or `, sets <point>` (a uniform current only); `Slack, turning` (a tide near slack); or `None` | `c` below |
 | Sea | `<word>` or `<word> to <word>`, and `, swell <hs> m from the <point>` for each swell with `hs ≥ 0.3 m` | wind-sea `Hs` at `s0` and `s1` (below) |
 | Tip | `briefing.tip` | Local only (a tip is written for the venue's own weather); never in Custom, and none for a venue without `briefing` |
 
@@ -177,10 +180,19 @@ for a positive rate, backs for a negative one. The oscillation is not rated (at 
 puff cover `k = puff_count · π · ((puff_diameter_min + puff_diameter_max) / 4)² / puff_tile²`: scattered `< 0.15`,
 frequent `< 0.35`, everywhere `≥ 0.35`.
 
-**Current.** `c = |uniform| + tide_scale · ref_speed` (`data_format.md` §6.3; 0 for a missing part), in knots. Word:
-None `< 0.2 kn` (the line is `None`), Light `< 0.6`, Moderate `< 1.2`, Strong `< 2.0`, Very strong `≥ 2.0`. A tide's
-turn by the middle of `tide.turn`, `m = (a + b) / 2`: early `m < 0.35`, mid-race `m ≤ 0.65`, late `m > 0.65`. A
-uniform current alone gives `, sets <point>` from `current_to`.
+**Current.** The tide at the start signal of the race the card will start: the settings resolved for the card's
+seed (`race.md` §2.1) give `τ = tide_scale · cos(2π · ((t_gun + tide_phase_ms) mod P) / P)` (`wind.md` §7; `τ = 0`
+without a tide), the tidal stream `c_t = |τ| · ref_speed` and `c = |uniform| + c_t` (`data_format.md` §6.3; 0 for a
+missing part), in knots. The tide keeps the real period, so the stream named holds through the race (in 20 minutes
+`τ` moves by at most a sixth of the scale, and that only near slack). Word: None `< 0.2 kn` (the line is `None`), Light `< 0.6`, Moderate `< 1.2`,
+Strong `< 2.0`, Very strong `≥ 2.0`. With a tide:
+- `c_t < 0.3 kn` (near slack: about 50 minutes around each turn at the Solent's 1.5 kn) and `|uniform| < 0.2 kn`:
+  `Slack, turning`; near slack with a uniform current the line is the uniform one below;
+- otherwise `, flooding` for `τ > 0` (the field's own direction, the flood, `venues.md` §5.4) or `, ebbing` for
+  `τ < 0`, then ` (sets <point>)` from `ref_to` (flooding) or `ref_to + π` (ebbing); a file without `ref_to` gives
+  no set.
+
+A uniform current alone gives `, sets <point>` from `current_to`.
 
 **Sea.** `Hs` of the wind sea by `sea.md` §2 at the speed and the venue `fetch`, times `sea_scale`, at open-water
 exposure. Word: Flat `< 0.25 m`, Chop `< 0.5 m`, Moderate `< 1.0 m`, Rough `≥ 1.0 m`; one word when `s0` and `s1`
@@ -190,14 +202,16 @@ give the same. Swell heights to 0.1 m, times `sea_scale`.
 `briefing.label.<wind|shifts|gusts|current|sea|tip>`, `briefing.word.shifts.<steady|stable|oscillating|shifty|unstable>`,
 `briefing.size.<small|medium|large|very_large>`, `briefing.pace.<slow|regular|fast>`,
 `briefing.word.gusts.<none|light|moderate|strong|very_strong>`, `briefing.spread.<scattered|frequent|everywhere>`,
-`briefing.word.current.<none|light|moderate|strong|very_strong>`, `briefing.turn.<early|mid|late>`,
+`briefing.word.current.<none|light|moderate|strong|very_strong>`, `briefing.tide.<flooding|ebbing>`,
 `briefing.word.sea.<flat|chop|moderate|rough>`, `compass.<n|ne|e|se|s|sw|w|nw>`, `briefing.unknown` (Random),
 `briefing.label.weather` (the Random line's label), `weather.mode.<local|random|custom>`,
 `weather.<label|wind_speed|wind_from|shifts|gusts>` (the row names), `weather.shifts.<preset>`,
 `weather.gusts.<none|light|moderate|very_strong>`, `briefing.trend.<veers|backs>`, and one template per line part
 so a language can reorder them: `briefing.header` (`{name} · {tag}`), `briefing.line.wind` (`{lo}-{hi} kn from the
 {point}`), `briefing.line.wind_one` (`{v} kn from the {point}`), `briefing.line.shifts`, `briefing.line.trend`,
-`briefing.line.gusts`, `briefing.line.current`, `briefing.line.current_turns`, `briefing.line.current_sets`,
+`briefing.line.gusts`, `briefing.line.current`, `briefing.line.current_tide` (`{line}, {state} (sets {point})`),
+`briefing.line.current_tide_noset` (`{line}, {state}`), `briefing.line.current_slack` (`Slack, turning`),
+`briefing.line.current_sets`,
 `briefing.line.sea_range` and `briefing.line.swell`; the results' `results.today` (`Today: {wind} · {shifts} ·
 {gusts}`), `results.today.gusts` (`{word} gusts`) and `results.today.no_gusts`. The table is
 `game/scripts/text/strings.gd`. The venue's

@@ -30,12 +30,16 @@ var _note: Label
 var _rows_box: VBoxContainer
 var _classes := []
 var _venues := []
+## the race seed the card shows the briefing for and Start passes on (menus.md §1): drawn when the card is built
+var race_seed := 0
+var _tide_cache := {}
 
 
 ## `last`: the last setup (GameSetup fields) to start from.
 func build(race: bool, last: Dictionary) -> void:
 	mode = "race" if race else "free"
 	name = "QuickRace" if race else "FreeSail"
+	race_seed = draw_seed()
 	add_theme_constant_override("separation", 4)
 	size_flags_vertical = Control.SIZE_EXPAND_FILL
 	add_child(MenuTheme.heading("Quick race" if race else "Free sail"))
@@ -177,19 +181,41 @@ func custom_picks() -> Dictionary:
 		"shift": str(rows["shift"].value), "gusts": str(rows["gusts"].value)}
 
 
-## The briefing for the rows (menus.md §1.3): the venue, the weather mode, the Custom picks and the course's timing.
+## A new non-zero race seed from the clock (menus.md §1).
+static func draw_seed() -> int:
+	return 1 + (Time.get_ticks_usec() ^ int(Time.get_unix_time_from_system() * 1000.0)) % 2000000000
+
+
+## The briefing for the rows (menus.md §1.3): the venue, the weather mode, the Custom picks, the course's timing and,
+## at a tidal venue, the tide the card's race seed gives at the start signal.
 func briefing_lines() -> Array:
 	var vi := MenuData.venue_info(str(rows["venue"].value))
 	if vi.is_empty():
 		return []
-	return VenueWeather.lines(vi, str(rows["weather"].value), custom_picks(), VenueWeather.timing(_course_doc()))
+	return VenueWeather.lines(vi, str(rows["weather"].value), custom_picks(), _timing(vi))
 
 
 func briefing_text() -> String:
 	var vi := MenuData.venue_info(str(rows["venue"].value))
 	if vi.is_empty():
 		return ""
-	return VenueWeather.text(vi, str(rows["weather"].value), custom_picks(), VenueWeather.timing(_course_doc()))
+	return VenueWeather.text(vi, str(rows["weather"].value), custom_picks(), _timing(vi))
+
+
+func _timing(vi: Dictionary) -> Dictionary:
+	var tm := VenueWeather.timing(_course_doc())
+	if vi.get("conditions", {}).get("tide", {}).is_empty():
+		return tm
+	var venue := str(rows["venue"].value)
+	var course := str(rows["course"].value) if mode == "race" and not _course_doc().is_empty() else ""
+	var key := "%s|%s|%d" % [venue, course, race_seed]
+	if not _tide_cache.has(key):
+		# the tide's phase is the same in Local and Custom (race.md §2.1): resolve Local for the card's seed
+		var r := CoreSimSource.resolve_settings({"race_seed": race_seed, "weather": 0}, venue, course)
+		_tide_cache[key] = null if r.is_empty() else VenueWeather.tide_at_gun(r, float(tm["t_gun"]))
+	if _tide_cache[key] != null:
+		tm["tide_factor"] = _tide_cache[key]
+	return tm
 
 
 func _course_doc() -> Dictionary:
@@ -390,7 +416,9 @@ func write(g: GameSetup) -> void:
 	g.wind_from_deg = float(rows["wind_from_deg"].value)
 	g.shift = str(rows["shift"].value)
 	g.gusts = str(rows["gusts"].value)
-	g.seed = 0
+	g.seed = race_seed  # the seed the briefing was computed for
+	race_seed = draw_seed()  # the next start from this card is another race
+	_tide_cache.clear()
 
 
 ## The rows as GameSetup fields (remembered for the next visit).

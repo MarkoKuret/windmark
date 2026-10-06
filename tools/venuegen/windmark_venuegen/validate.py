@@ -142,6 +142,8 @@ def _current(c, cf):
     _values(c, cf.get("vy"), n, "$.current_field.vy")
     if "ref_speed" in cf:
         c.need(_num(cf["ref_speed"]) and cf["ref_speed"] >= 0, "$.current_field.ref_speed", ">= 0")
+    if "ref_to" in cf:
+        c.need(_num(cf["ref_to"]) and 0 <= cf["ref_to"] < 2 * math.pi, "$.current_field.ref_to", "in [0, 2pi)")
 
 
 def _exposure(c, e):
@@ -257,10 +259,8 @@ def check_conditions(c, cond, has_current_field):
         c.need(_num(t.get("scale")) and t["scale"] >= 0, p + ".tide.scale", ">= 0")
         per = t.get("period")
         c.need(isinstance(per, int) and not isinstance(per, bool) and per > 0, p + ".tide.period", "integer s > 0")
-        tu = t.get("turn")
-        c.need(isinstance(tu, list) and len(tu) == 2 and all(_num(x) for x in tu) and 0 <= tu[0] <= tu[1] <= 1
-               and tu[1] - tu[0] <= 0.4, p + ".tide.turn", "[a, b] with 0 <= a <= b <= 1, b - a <= 0.4")
-        c.need(t.get("turn_to") in (1, -1), p + ".tide.turn_to", "+1 or -1")
+        extra = sorted(set(t) - {"scale", "period"})
+        c.need(not extra, p + ".tide", f"unknown keys {extra} (each race draws the phase, race.md §2.1)")
     se = cond.get("sea", {})
     if "scale" in se:
         c.need(_num(se["scale"]) and se["scale"] >= 0, p + ".sea.scale", ">= 0")

@@ -150,7 +150,10 @@ std::vector<Vec2> spawn_slots(const ResolvedCourse& course, const VenueData* ven
           if (g < 2.0f * L) ok = false;
         }
         for (const VenueLand& l : venue->land) {
-          if (point_in_polygon(p, l.points) || point_polygon_edge_dist(p, l.points) < 2.0f * L) ok = false;
+          if (point_in_polygon(p, l.points, &l.index) ||
+              point_polygon_edge_dist_capped(p, l.points, &l.index, 2.0f * L) < 2.0f * L) {
+            ok = false;
+          }
         }
       }
       if (course.has_spawn && !point_in_polygon(p, course.spawn)) ok = false;

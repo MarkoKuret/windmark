@@ -831,6 +831,7 @@ void Rules::obstruction_rules(std::uint32_t /*n*/, PairState& ps, const Race& ra
     const std::vector<Vec2>* poly;
     bool convex;
     bool start_mark;
+    const PolygonIndex* idx = nullptr;  // land: the edge grid built at load
   };
   std::vector<Obst> obs;
   auto leg_mark = [&](std::size_t x, std::int32_t mark) {
@@ -868,6 +869,10 @@ void Rules::obstruction_rules(std::uint32_t /*n*/, PairState& ps, const Race& ra
     }
     for (const VenueLand& l : venue_->land) {
       ++id;
+      if (l.index.usable(l.points)) {  // the same circle, computed once at load
+        obs.push_back({id, false, l.index.centre, l.index.radius, &l.points, false, false, &l.index});
+        continue;
+      }
       Vec2 c{0.0f, 0.0f};
       for (const Vec2 v : l.points) c = v_add(c, v);
       c = v_scale(c, 1.0f / static_cast<float>(l.points.size()));
@@ -887,26 +892,11 @@ void Rules::obstruction_rules(std::uint32_t /*n*/, PairState& ps, const Race& ra
   }
   auto gap_to = [&](std::span<const Vec2> hull, const Obst& o) {
     if (o.circle) return convex_circle_gap(hull, o.c, o.r);
-    return o.convex ? convex_gap(hull, *o.poly) : polygon_gap(hull, *o.poly);
+    return o.convex ? convex_gap(hull, *o.poly) : polygon_gap(hull, *o.poly, o.idx);
   };
   auto near_point = [&](Vec2 p, const Obst& o) {
     if (o.circle) return v_add(o.c, v_scale(v_unit(v_sub(p, o.c), {1.0f, 0.0f}), o.r));
-    Vec2 best = o.c;
-    float bd = INFINITY;
-    const std::vector<Vec2>& q = *o.poly;
-    for (std::size_t k = 0; k < q.size(); ++k) {
-      const Vec2 a = q[k], b = q[(k + 1) % q.size()];
-      const Vec2 ab = v_sub(b, a);
-      const float l2 = v_dot(ab, ab);
-      const float t = l2 > 0.0f ? clamp(v_dot(v_sub(p, a), ab) / l2, 0.0f, 1.0f) : 0.0f;
-      const Vec2 x = v_add(a, v_scale(ab, t));
-      const float d = v_dist(p, x);
-      if (d < bd) {
-        bd = d;
-        best = x;
-      }
-    }
-    return best;
+    return polygon_nearest_point(p, *o.poly, o.idx, o.c);
   };
   const float H = p_.obstruction_h;
   const std::size_t K = static_cast<std::size_t>(std::lround(H / 0.1f)) + 1;
@@ -922,8 +912,8 @@ void Rules::obstruction_rules(std::uint32_t /*n*/, PairState& ps, const Race& ra
       }
       // A land polygon's bounding circle spans the whole shore; its edges are the real bound (no hull point
       // reaches beyond `reach` of the centre within the horizon).
-      if (!o.convex && !o.circle && !point_in_polygon(st_[x].c, *o.poly) &&
-          point_polygon_edge_dist(st_[x].c, *o.poly) > reach) {
+      if (!o.convex && !o.circle && !point_in_polygon(st_[x].c, *o.poly, o.idx) &&
+          point_polygon_edge_dist_capped(st_[x].c, *o.poly, o.idx, reach) > reach) {
         both = false;
         break;
       }

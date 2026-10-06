@@ -201,7 +201,8 @@ bool land_check(AC& x, AB& a, const Me& m) {
     const Vec2 p = v_add(m.c, v_scale(vel, static_cast<float>(k)));
     if (ven != nullptr) {
       for (const VenueLand& l : ven->land) {
-        if (point_in_polygon(p, l.points) || point_polygon_edge_dist(p, l.points) < lim) {
+        if (point_in_polygon(p, l.points, &l.index) ||
+            point_polygon_edge_dist_capped(p, l.points, &l.index, lim) < lim) {
           hit = true;
           near_pt = p;
         }

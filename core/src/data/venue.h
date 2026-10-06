@@ -8,6 +8,7 @@
 #include <string_view>
 #include <vector>
 
+#include "course/geometry.h"
 #include "data/load_error.h"
 #include "math/wm_math.h"
 #include "sea/sea.h"
@@ -19,6 +20,7 @@ namespace wm {
 struct VenueLand {
   std::string id;
   std::vector<Vec2> points;  // world ENU, m
+  PolygonIndex index;        // built at load (venues.md §4.1): land queries visit only the edges near them
 };
 
 // data_format.md §6.5: a convex counter-clockwise polygon or a circle.

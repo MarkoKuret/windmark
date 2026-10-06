@@ -4,7 +4,7 @@ title: 'Venue: Lake Garda (north end, Torbole and Riva)'
 status: To Do
 assignee: []
 created_date: '2026-10-06 08:27'
-updated_date: '2026-10-06 08:27'
+updated_date: '2026-10-06 10:04'
 labels:
   - venues
 dependencies:
@@ -25,3 +25,9 @@ Mountain lake: afternoon Ora from the south, channelled by the mountains and str
 - [ ] #2 Briefing reads true against a test race (shore effect visible in the wind field)
 - [ ] #3 Within the spec's performance budget: draw calls, frame time and core tick time measured headless against example_bay, no measurable regression
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Take land heights for the wind model from NASADEM (venuegen per-polygon height today), per the venuegen agent's question; owner to confirm.
+<!-- SECTION:NOTES:END -->

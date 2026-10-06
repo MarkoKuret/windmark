@@ -561,7 +561,7 @@ older files may lack it, §6.9) is the 90th percentile of `|(vx, vy)|` over the 
 included) that are on water (outside every land polygon): the field's typical strong stream, which the briefing
 reads (`menus.md` §1.3). The percentile interpolates linearly between the sorted values (position `0.9 · (n − 1)`,
 counted from 0); with no such node it is 0. A venue test recomputes it to within 0.001 m/s. `ref_to` (rad, in
-[0, 2π); written with `ref_speed`, optional in older files) is the direction the field sets at tide factor 1 (for a
+[0, 2π); written by `venuegen` for a venue with a tide, §6.7) is the direction the field sets at tide factor 1 (for a
 tide, the flood): `atan2(Σ vx, Σ vy)` over the same nodes, wrapped to [0, 2π) (0 with no node or a zero sum); the
 briefing names the set from it (`menus.md` §1.3).
 

@@ -34,7 +34,7 @@ for each sea component i (sea.md §3; at most 10 + 4·3 = 22):
     d_i' = frac(c_i - fmod(t_r, T_i) / T_i + kx_i*ox + ky_i*oy)          // double, then to float
     uniform comp[i] = (a_i, kx_i, ky_i, d_i')                            // vec4 array
 uniform n_comp, sum_a = Σ a_i, hs_eff = 4*sqrt(Σ a_i²/2)
-for each live puff patch j (wind.md §9 puff_patches(t_r), at most 10):
+for each live puff patch j (wind.md §9 puff_patches(t_r), at most 16; beyond 16 the strongest |e·s| are drawn):
     uniform puff[j] = (px_j - ox, py_j - oy, R_j, e_j * s_j)             // camera-relative
 uniform puff_tile, puff_cap_lo = 1 - puff_cap_down, puff_cap_hi = 1 + puff_cap_up
 uniform wind_to = unit vector the wind blows toward (global_from(t_r) + π), base_speed
@@ -605,7 +605,7 @@ puff loop, the sail cloth) by its square.
 Budget: the water within 2.5 ms of GPU time per frame on the Steam Deck at 1280 × 800 on tier M. The Deck starts on
 tier L (owner, 2026-10-05); the budget stays on M so a Deck player can choose M. The vertex work is
 small (22 cosines per vertex, 1 M per frame on tier M); the pixel work is dominated by the normal-map taps and the
-puff loop (at most 10 patches). The per-pixel slope of the faded components (tier H) evaluates only the
+puff loop (at most 16 patches; the presets use at most 12). The per-pixel slope of the faded components (tier H) evaluates only the
 components in the band `2·px < lam < 4·s` (§3.2), each with one sine and two smoothsteps from the uploaded
 wavelength; the others cost a compare (the carried ones) or end the loop (the ones too short for the pixel). Every tier renders with Godot's Forward+; tier L also works on the Mobile renderer,
 and nothing in §3–§6 needs compute shaders, so a Compatibility (web) port stays possible.

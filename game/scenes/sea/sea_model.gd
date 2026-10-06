@@ -6,7 +6,8 @@ extends RefCounted
 ## scene feeds it from a placeholder source (sea_env_source.gd); later the binding feeds the same fields.
 
 const MAX_COMPONENTS := 22
-const MAX_PUFFS := 10
+const MAX_PUFFS := 16
+static var _warned_puffs := false
 
 ## Each component: [a (m), kx, ky (cycles per metre), c (cycles), T (ms)], sorted by wavelength, longest first
 ## (water_render.md §3.2).
@@ -211,13 +212,19 @@ static func wrap_tile(d: float, tile: float) -> float:
 ## §2 puff uniforms: (px - ox, py - oy, R, e*s) per live patch, centres wrapped to the nearest image of the
 ## camera (the shader wraps again, which changes nothing). `patches`: [px, py, R, s, e] each.
 static func pack_puffs(patches: Array, ox: float, oy: float, tile: float) -> PackedVector4Array:
-	var out := PackedVector4Array()
+	var live: Array = []
 	for p in patches:
-		if float(p[4]) < 1e-4:
-			continue
-		if out.size() >= MAX_PUFFS:
-			push_warning("SeaModel: more than %d live puff patches, the rest are not drawn" % MAX_PUFFS)
-			break
+		if float(p[4]) >= 1e-4:
+			live.append(p)
+	if live.size() > MAX_PUFFS:
+		# More patches than the shader holds (only from hand-set counts): draw the strongest, warn once.
+		live.sort_custom(func(a, b): return absf(float(a[4]) * float(a[3])) > absf(float(b[4]) * float(b[3])))
+		live.resize(MAX_PUFFS)
+		if not _warned_puffs:
+			_warned_puffs = true
+			push_warning("SeaModel: more than %d live puff patches, the weakest are not drawn" % MAX_PUFFS)
+	var out := PackedVector4Array()
+	for p in live:
 		out.append(Vector4(wrap_tile(float(p[0]) - ox, tile), wrap_tile(float(p[1]) - oy, tile), float(p[2]),
 				float(p[4]) * float(p[3])))
 	return out

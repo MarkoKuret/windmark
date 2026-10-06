@@ -24,7 +24,7 @@ uniform float expo_default = 1.0;
 
 // §4.3 wind on the water
 uniform int n_puff = 0;
-uniform vec4 puff[10];                 // (px - ox, py - oy, R, e*s), unwrapped centres
+uniform vec4 puff[16];                 // (px - ox, py - oy, R, e*s), unwrapped centres
 uniform float puff_tile = 1000.0;
 uniform float puff_cap_lo = 0.6;
 uniform float puff_cap_hi = 1.25;

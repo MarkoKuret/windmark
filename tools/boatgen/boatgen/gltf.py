@@ -36,14 +36,14 @@ MATERIALS = {
 # generator's look of the class rope set's defaults: each function its own clear colour with a contrasting fleck. A slot's mean colour is the braid's: 14 of 16 carriers in the
 # main colour and 2 in the fleck. `rope` stays the grey of the lifelines and anything else.
 ROPES = {
-    "mainsheet": ("#cf5f1d", "#1f2b45"),
-    "sheet": ("#168a8f", "#e1e1da"),
-    "kite_sheet": ("#b02e6a", "#e1e1da"),
-    "halyard_main": ("#b81f24", "#e1e1da"),
-    "halyard_jib": ("#1f4fa8", "#e1e1da"),
-    "halyard_kite": ("#2a8a3e", "#e1e1da"),
-    "halyard_code": ("#d6aa1e", "#1d1e21"),
-    "control": ("#6b3fa0", "#e1e1da"),
+    "mainsheet": ("#b5652f", "#2a3348"),
+    "sheet": ("#2f7d80", "#d6d6ce"),
+    "kite_sheet": ("#97406a", "#d6d6ce"),
+    "halyard_main": ("#a2383a", "#d6d6ce"),
+    "halyard_jib": ("#355f98", "#d6d6ce"),
+    "halyard_kite": ("#3f7a4a", "#d6d6ce"),
+    "halyard_code": ("#bf9a42", "#2a2b2e"),
+    "control": ("#674f8c", "#d6d6ce"),
 }
 
 

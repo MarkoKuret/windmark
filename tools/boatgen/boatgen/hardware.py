@@ -637,6 +637,14 @@ def place_all(cls, hull, deck, rig, lod=0):
     else:
         x_cl, y_cl = deck.xc1 + 0.25 * s, 0.25 * s
     x_org = min(x_cl + 0.55 * s, rig.x_mast - 0.45 * s)
+    # where the tails go over the coachroof's aft edge (no halyard winches on top): a rope bag on the aft face either
+    # side of the companionway, its top at 0.6 of the face's height
+    bag = None
+    if deck.has_cabin and not winches_on_top:
+        zf_ = float(deck.floor_z(deck.xk0))
+        zt_ = float(deck.cabin_z(deck.xk0 + 0.01, y_cl))
+        bh = min(0.18 * s, 0.45 * (zt_ - zf_))
+        bag = {"top": zf_ + 0.62 * (zt_ - zf_), "h": bh, "w": (n_hal + 1.2) * hal_pitch, "d": 0.045 * s}
     o_in = 0.36 * hal_pitch             # the organiser's sheaves stand inboard of their lines by the groove radius
     for side in (1, -1):
         hw.extend(on_surface(deck, clutch_bank(n_hal, hal_pitch), x_cl, side * y_cl), tag=f"clutches_{side}")
@@ -676,16 +684,14 @@ def place_all(cls, hull, deck, rig, lod=0):
                 if winches_on_top:
                     pts += [(x_cl - 0.3 * s, yl + side * 0.02 * s)]
                 else:
-                    # over the aft edge and down the aft face into the cockpit, flaked on the floor
+                    # over the aft edge and down the aft face into the rope bag on the face
                     re = min(deck.cab_r, 0.8 * deck.cab_h)
                     lift = 0.9 * r_line + 0.002
                     zc = float(deck.cabin_z(deck.xk0 + re, yl)) - re      # the aft edge's radius centre
-                    zf = float(deck.floor_z(deck.xk0))
                     pts += [(x_top, yl)]
                     pts += [np.array([deck.xk0 + re - (re + lift) * np.sin(a), yl, zc + (re + lift) * np.cos(a)])
                             for a in np.radians([0, 25, 50, 70, 90])]
-                    pts += [np.array([deck.xk0 - lift - 0.002, yl, zf + 0.09]),
-                            (deck.xk0 - 0.1 * s, yl + side * 0.03 * s)]
+                    pts += [np.array([deck.xk0 - lift - 0.002, yl, bag["top"] - 0.03])]
                 hw.add(HALYARD_SLOTS[k % len(HALYARD_SLOTS)], lead(deck, pts, r_line * 0.9, paths=rope_paths,
                                                                    tag=f"halyard_{side}_{k}"),
                        tag=f"halyard_{side}_{k}")
@@ -694,13 +700,12 @@ def place_all(cls, hull, deck, rig, lod=0):
                 hw.attach(f"halyard_{side}_{k}", f"organiser_{side}")
                 hw.attach(f"halyard_{side}_{k}", f"clutches_{side}")
         if fine:
-            if winches_on_top:
-                xc_, yc_ = x_cl - 0.3 * s, side * (y_cl - 0.1 * s)
-            else:
-                xc_, yc_ = deck.xk0 - 0.2 * s, side * y_cl
-            hw.extend(on_surface(deck, rope_coil(0.11 * s, 3, r_line, HALYARD_SLOTS[0 if side > 0 else 1]), xc_, yc_, yaw=0.4 * side),
-                      tag=f"halyard_coil_{side}")
-            hw.attach(f"halyard_coil_{side}", "deck")
+            if bag is not None:
+                # the rope bag the tails drop into: a low soft pocket on the coachroof's aft face
+                hw.add("rubber", superellipsoid_box((bag["d"], bag["w"], bag["h"]), 0.35, 8, 4,
+                                                    center=[deck.xk0 - 0.5 * bag["d"] + 0.002, side * y_cl,
+                                                            bag["top"] - 0.5 * bag["h"]]), tag=f"rope_bag_{side}")
+                hw.attach(f"rope_bag_{side}", "deck")
             # halyard exit plates on the mast
             for k in range(n_hal):
                 hw.add("metal", superellipsoid_box((0.05 * s, 0.012, 0.09 * s), 0.3, 8, 4,

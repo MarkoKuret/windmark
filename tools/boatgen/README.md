@@ -309,13 +309,14 @@ builds the game model and `Boat.write_game_glb` writes it with the shadow proxy:
   120, cars, stanchions, the wheel about 1,100 (a smooth rim near the camera);
 - paint what is flat, model what sticks up, drop what is under a pixel (`hardware.PAINTED`, `hardware.DROPPED`, by
   the pieces' tags): the jib and traveller tracks, hatches, organisers, cam, horn and traveller cleats, the rudder
-  bearing ring, the halyard coils and the mainsheet coil are painted into the livery's deck maps; the halyards, the
+  bearing ring and the mainsheet coil are painted into the livery's deck maps; the halyards, the
   mainsheet tail and the traveller control lines are painted where they lie on surfaces (within 3.5 cm of the deck
   or the coachroof's top, `hardware.ROPE_LIFT_MAX`, and down the coachroof's aft face on its own rectangle of the
   plan, `Boat.line_on_face`) and stay thin rope geometry only where they hang in the air (`Boat.painted_part()`, drawn by `tools/liverybake`); each hatch also
   stands as a plain box about 3 cm proud on the deck node, whose top shows the painted frame and lens. The halyard
   exits, the anemometer, the antenna, the outhaul, sheaves, sheave boxes and bolts go. The mast-foot and traveller
-  blocks, the clutches, winches, cars, mast foot, mast instruments, the wind wand, stanchions, pulpit, pushpit,
+  blocks, the clutches, winches, cars, mast foot, mast instruments, the wind wand, the rope bags (where the halyard
+  tails go over the coachroof's aft edge they drop into a low bag on the aft face, no halyard coils), stanchions, pulpit, pushpit,
   lifelines, rigging screws and the helm stay modelled;
 - one node `body` for every static part (hull, deck, keel, mast, rigging, hardware; each vertex's source part in
   `COLOR_0` blue, GLB root extras `body_parts`) and the moving parts on their own: `rudder` (with the tiller),

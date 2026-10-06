@@ -200,7 +200,7 @@ def test_shipped_venues_are_generated():
     """Every committed venue file with a source is exactly venuegen's output from it (no hand edits)."""
     srcdir = os.path.join(REPO, "data", "venue_sources")
     sources = sorted(f for f in os.listdir(srcdir) if f.endswith(".venuesrc.json"))
-    assert "example_bay.venuesrc.json" in sources
+    assert "practice_waters.venuesrc.json" in sources
     for name in sources:
         with open(os.path.join(srcdir, name)) as f:
             vid = json.load(f)["id"]

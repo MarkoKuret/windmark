@@ -11,7 +11,7 @@ grids comes from the land shape and the numbers in the source file; the venue fi
 ```
 cd tools/venuegen
 uv venv .venv && uv pip install --python .venv/bin/python -e ".[test]"     # or: pip install -e ".[test]"
-.venv/bin/python -m windmark_venuegen ../../data/venue_sources/example_bay.venuesrc.json -o ../../data/venues/
+.venv/bin/python -m windmark_venuegen ../../data/venue_sources/practice_waters.venuesrc.json -o ../../data/venues/
 .venv/bin/python -m windmark_venuegen --check ../../data/venues/*.venue.json
 .venv/bin/python -m pytest
 ```
@@ -47,7 +47,7 @@ Big files are fine: shapefile records whose box misses the venue are skipped.
 
 | Venue | Source (`venues.md` §3) | How to feed it in |
 | --- | --- | --- |
-| Practice | our own shapes | inline `polygons` in local metres (`example_bay.venuesrc.json`) |
+| Practice | our own shapes | inline `polygons` in local metres (`practice_waters.venuesrc.json`) |
 | Garda | Provincia autonoma di Trento, "Laghi e specchi d'acqua" | the lake polygon (shapefile, reprojected from ETRS89 / UTM 32N to EPSG:4326) with `"role": "water"`: the land is everything outside the lake; islands come from its holes |
 | Garda (south of Trentino) | SRTM Water Body Data | the `SWBD` water polygons (shapefile, already lon/lat) with `"role": "water"`, as a second input for the shore outside Trentino |
 | Solent, Trieste | EMODnet Bathymetry satellite-derived coastline (MHW) | polygons: `"role": "land"`; if the download is coastline lines, `"role": "shore_left"` or `"shore_right"` after checking which side is land (lines must run past the clip box) |

@@ -12,9 +12,9 @@ var class_id := "wm7"
 ## number row); "": the first boat of the file
 var livery := ""
 ## venue id (data/venues/<id>.venue.json)
-var venue := "example_bay"
+var venue := "practice_waters"
 ## course as "<venue>/<course id>" (game/data/courses/<venue>/<id>.course.json), used in race mode
-var course := "example_bay/example_wl"
+var course := "practice_waters/example_wl"
 ## boats in the race including the player, 1 to 40
 var fleet_size := 10
 ## AI level of the AI boats: easy, intermediate, expert or pro (ai.md)

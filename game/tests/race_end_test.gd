@@ -298,8 +298,8 @@ class Host extends Node:
 	var hud: Hud
 	var rig: CameraRig
 	var runner: SimRunner
-	var venue := "example_bay"
-	var course := "example_bay/example_wl"
+	var venue := "practice_waters"
+	var course := "practice_waters/example_wl"
 	var class_id := "wm7"
 
 	func session_setup() -> GameSetup:
@@ -390,7 +390,7 @@ func test_screen() -> void:
 	_tick(host.hud.race, sim)
 	await process_frame
 	t.ok(rs.heading_label.text == "RESULTS" and rs.line_label.text == "%s · 5 boats"
-		% MenuData.name_of(MenuData.courses("example_bay", "wm7"), "example_bay/example_wl"),
+		% MenuData.name_of(MenuData.courses("practice_waters", "wm7"), "practice_waters/example_wl"),
 		"final heading: %s / %s" % [rs.heading_label.text, rs.line_label.text])
 	var codes := rs.shown_rows.map(func(x: Array) -> String: return x[6])
 	t.ok(codes == ["", "", "", "OCS", "DSQ"] and rs.shown_rows[2][4] == "0:25:00.00 proj." and rs.shown_rows[3][7] == "6",
@@ -459,7 +459,7 @@ func test_screen() -> void:
 	GameSetup.next = null
 	rs.press("again")
 	var g := GameSetup.next
-	t.ok(g != null and g.mode == "race" and g.course == "example_bay/example_wl" and g.fleet_size == 5
+	t.ok(g != null and g.mode == "race" and g.course == "practice_waters/example_wl" and g.fleet_size == 5
 		and g.ai_level == "pro" and g.livery == "kestrel" and absf(g.wind_kn - 17.0) < 1e-9
 		and absf(g.wind_from_deg - 45.0) < 1e-9, "Race again: the same setup")
 	t.ok(g != null and g.seed == 0, "Race again: a new seed (0, from the clock)")
@@ -541,12 +541,12 @@ func test_autopilot_core() -> void:
 	var sim := CoreSimSource.new()
 	sim.settings = {"race_seed": 20260925, "wind_speed": 11.0 * KNOT, "wind_from": 0.2, "shift_preset": 1,
 		"free_sailing_s": 10.0}
-	if not sim.create("example_bay"):
+	if not sim.create("practice_waters"):
 		t.ok(false, "world: " + sim.last_error())
 		return
 	sim.add_entry("wm7", {"human": true})
 	sim.add_entry("wm7", {"human": true})
-	sim.create_race("example_bay/example_wl")
+	sim.create_race("practice_waters/example_wl")
 	var pilot := RacePilot.new(sim)
 	var n := 0
 	while n < 60000 and not bool(sim.race_boat(0)["finished"]):

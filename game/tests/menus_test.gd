@@ -47,11 +47,11 @@ func test_data() -> void:
 	t.ok(sorted == disk and disk.size() >= 2, "classes %s = files %s" % [cls, disk])
 	t.ok(MenuData.names(MenuData.classes()).has("Windmark 7 Sportsboat"), "class names from the class files")
 	var ven := MenuData.ids(MenuData.venues())
-	t.ok(ven.has("example_bay") and ven.size() == _disk_ids(BoatClassData.repo_path("data/venues"),
+	t.ok(ven.has("practice_waters") and ven.size() == _disk_ids(BoatClassData.repo_path("data/venues"),
 		".venue.json").size(), "venues %s" % [ven])
-	var c7 := MenuData.ids(MenuData.courses("example_bay", "wm7"))
-	t.ok(c7.has("example_bay/example_wl"), "example_bay courses for wm7: %s" % [c7])
-	t.ok(MenuData.courses("example_bay", "no_such_class").is_empty(), "no course lists an unknown class")
+	var c7 := MenuData.ids(MenuData.courses("practice_waters", "wm7"))
+	t.ok(c7.has("practice_waters/example_wl"), "practice_waters courses for wm7: %s" % [c7])
+	t.ok(MenuData.courses("practice_waters", "no_such_class").is_empty(), "no course lists an unknown class")
 	t.ok(MenuData.courses("no_such_venue", "wm7").is_empty(), "no courses for an unknown venue")
 
 
@@ -708,7 +708,7 @@ func test_main_menu() -> void:
 	var q := m.quick
 	t.ok(q.rows["class_id"].choices == MenuData.ids(MenuData.classes()), "quick race: classes from disk")
 	t.ok(q.rows["venue"].choices == MenuData.ids(MenuData.venues()), "quick race: venues from disk")
-	t.ok(q.rows["course"].choices.has("example_bay/example_wl"), "quick race: the venue's courses")
+	t.ok(q.rows["course"].choices.has("practice_waters/example_wl"), "quick race: the venue's courses")
 	t.ok(q.rows["livery"].choices == MenuData.ids(MenuData.liveries(str(q.rows["class_id"].value)))
 		and q.rows["livery"].choices.size() >= 12, "quick race: the class's boats (sail numbers) from disk")
 	# keyboard: Enter opens the page, the focus lands on the first row, down and right change the fleet size
@@ -734,8 +734,8 @@ func test_main_menu() -> void:
 	q.rows["wind_from_deg"].set_value(90.0, true)
 	q.start_button.pressed.emit()
 	var g := GameSetup.current()
-	t.ok(g.mode == "race" and g.class_id == "wm12" and g.venue == "example_bay", "GameSetup: race, wm12, venue")
-	t.ok(g.course == "example_bay/example_wl" and g.fleet_size == fleet + 2 and g.ai_level == "pro",
+	t.ok(g.mode == "race" and g.class_id == "wm12" and g.venue == "practice_waters", "GameSetup: race, wm12, venue")
+	t.ok(g.course == "practice_waters/example_wl" and g.fleet_size == fleet + 2 and g.ai_level == "pro",
 		"GameSetup: course, fleet, AI level")
 	t.ok(g.livery == "nightjar", "GameSetup: the chosen boat")
 	t.near(g.wind_kn, 15.0, 1e-9, "GameSetup: wind speed")
@@ -831,7 +831,7 @@ func test_race_card() -> void:
 	t.begin("quick race: the race card")
 	Settings.reset_current()
 	Settings.current().welcomed = true
-	var c := MenuData.course_file("example_bay/example_wl")
+	var c := MenuData.course_file("practice_waters/example_wl")
 	t.ok(c.get("id", "") == "example_wl", "course file read")
 	var p := CourseMap.resolve(c, 0.0)
 	t.ok(p["rc"].distance_to(Vector2(125, -300)) < 0.01 and p["pin"].distance_to(Vector2(-125, -300)) < 0.01,
@@ -1017,10 +1017,10 @@ func test_touches() -> void:
 	m.close_page()
 	t.ok(m.continue_text().begins_with("Free sail"), "then a free sail: %s" % m.continue_text())
 	m.settings.last_setup["mode"] = "race"
-	m.settings.last_setup["course"] = "example_bay/no_such_course"
+	m.settings.last_setup["course"] = "practice_waters/no_such_course"
 	m._refresh_continue()
 	t.ok(not m.buttons["continue"].visible and not m.can_continue(), "hidden when the setup cannot start")
-	m.settings.last_setup["course"] = "example_bay/example_wl"
+	m.settings.last_setup["course"] = "practice_waters/example_wl"
 	m._refresh_continue()
 	# the sounds on the ui bus
 	var snd := m.sounds

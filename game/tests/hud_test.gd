@@ -353,7 +353,7 @@ func test_scene() -> void:
 	t.ok(sea.model.components.size() > 0, "sea has wave components (%d)" % sea.model.components.size())
 	var core := FileAccess.file_exists(sc.env_source.samples_path)
 	t.ok(sc.env_source.mode == (SeaEnvSource.Mode.CORE_SAMPLES if core else SeaEnvSource.Mode.PLACEHOLDER),
-		"sea source: %s" % ("core example bay samples" if core else "placeholder (no core samples)"))
+		"sea source: %s" % ("core Practice Waters samples" if core else "placeholder (no core samples)"))
 	print("  sea: %s, %d components, Hs %.2f m" % [sc.env_source.scenario if core else "placeholder",
 		sea.model.components.size(), sea.model.hs_eff])
 	t.ok(sc.sim.sea_model == sea.model, "fake sim runs on the drawn sea's model")
@@ -467,7 +467,7 @@ func test_scene() -> void:
 	ph.queue_free()
 
 
-## The sail test scene on the core (CoreSimSource, free sailing on example_bay): 40 s at 60 fps with a set-and-hold
+## The sail test scene on the core (CoreSimSource, free sailing on practice_waters): 40 s at 60 fps with a set-and-hold
 ## tack, a kite hoist and auto-trim off. Every frame the boat node is where the core's render pose puts it, the
 ## boom and the main follow the interpolated sail angle, the sails show their phases, the Sea's clock is the
 ## core's render time; the Sea's source is the core; the HUD shows the core's values and the local commands.

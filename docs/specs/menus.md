@@ -11,7 +11,7 @@ The project's main scene. Items, top to bottom: **Continue**, **Quick race**, **
 
 - **Continue** starts the last remembered session again (§1: the setup Start last wrote, its mode, quick race or
   free sail, with a new seed), straight to the sail scene, and has the focus when the menu opens. A line under it
-  says what it starts (`Quick race · Example Bay · 10 boats` or `Free sail · Example Bay`). Hidden on the first
+  says what it starts (`Quick race · Practice Waters · 10 boats` or `Free sail · Practice Waters`). Hidden on the first
   launch, and whenever the remembered setup cannot start any more (a class, venue or course no longer on disk);
   the focus then starts on Quick race.
 - **Wordmark**: the game's logo, `WINDMARK` with the tagline bar under it (§1.2), in the top-left corner. It is
@@ -295,7 +295,7 @@ command line (`--resolution 1080x1920`).
 
 - A live sea backdrop, a light sail-cloth panel, navy text, one accent colour; no stock widgets' look.
 - **Live backdrop.** Behind the main menu runs the sail scene itself (`scenes/sail_test.tscn`, the renderer of a
-  race): the example venue (`example_bay`), the default class, 12 kn from the north with the venue's puffs and
+  race): the example venue (`practice_waters`), the default class, 12 kn from the north with the venue's puffs and
   shifts, a race on the venue's first course with **4 AI boats** of the Expert level and no player (the player's
   entry is taken over by the AI, `--watch`), the seed from the clock. The race starts from its sequence (the boats
   mill round the line, then beat up the course); 30 s after the first boat finishes it starts again. Nothing of the
@@ -350,7 +350,7 @@ scene, then the next race or the menu.
   `DID NOT FINISH`, `DISQUALIFIED`, `RACE ABANDONED`. Top left at 76 px, scaled down by font size to fit.
 - **Panel** (cloth, §4), beside the title on the right, or under it when the window is narrower than 1100 px or in
   portrait (there inside the HUD's portrait margins, `hud.md` §16.5), as tall as its content and at most the
-  window's height, so the scene stays in view around it: the heading `RESULTS` with one line under it (`Example Bay · Windward-leeward · 10 boats`; the venue is left out
+  window's height, so the scene stays in view around it: the heading `RESULTS` with one line under it (`Practice Waters · Windward-leeward · 10 boats`; the venue is left out
   when the course's name starts with it), after a Random race a second line `Today: 18 kn from the SW · Shifty ·
   Gusty` built from the race's actual settings with the briefing's rating words (key `results.today`; Local and
   Custom show none), the

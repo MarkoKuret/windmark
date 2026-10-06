@@ -1007,7 +1007,7 @@ meeting 300 m up the first beat 20 s after the set-up, written in degrees and kn
   "id": "port_starboard",
   "name": "Port meets starboard",
   "class": "wm7",
-  "course": "example_bay/example_wl",
+  "course": "practice_waters/example_wl",
   "wind": { "speed_kn": 12, "from_deg": 0 },
   "lead": 20,
   "boats": [

@@ -402,7 +402,7 @@ TEST_CASE("collide: detection order, kinds, collides flag and the pair state") {
 TEST_CASE("collide: the venue's obstacles and land from the example venue") {
   wm::VenueData v;
   wm::LoadError err;
-  REQUIRE_MESSAGE(wm::load_venue(std::string(WINDMARK_DATA_DIR) + "/venues/example_bay.venue.json", v, err),
+  REQUIRE_MESSAGE(wm::load_venue(std::string(WINDMARK_DATA_DIR) + "/venues/practice_waters.venue.json", v, err),
                   err.message());
   World wd(1, 10.0f, wm::HALF_PI);
   wd.scene.set_venue(v);

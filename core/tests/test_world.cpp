@@ -20,7 +20,7 @@ const wm::VenueData& bay() {
   static bool loaded = false;
   if (!loaded) {
     wm::LoadError err;
-    REQUIRE_MESSAGE(wm::load_venue(kData + "/venues/example_bay.venue.json", v, err), err.message());
+    REQUIRE_MESSAGE(wm::load_venue(kData + "/venues/practice_waters.venue.json", v, err), err.message());
     loaded = true;
   }
   return v;
@@ -31,7 +31,7 @@ const wm::CourseData& example_course() {
   static bool loaded = false;
   if (!loaded) {
     wm::LoadError err;
-    REQUIRE_MESSAGE(wm::load_course(kCourses + "/example_bay/example_wl.course.json", c, err), err.message());
+    REQUIRE_MESSAGE(wm::load_course(kCourses + "/practice_waters/example_wl.course.json", c, err), err.message());
     loaded = true;
   }
   return c;

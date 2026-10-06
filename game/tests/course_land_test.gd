@@ -54,9 +54,9 @@ func _scene(race: bool, x := 0.0, y := -300.0, twa := 45.0, fleet := 1, level :=
 func test_shapes() -> void:
 	t.begin("venue shapes: core against the file")
 	var cs := CoreSimSource.new()
-	t.ok(cs.create("example_bay"), "world on example_bay")
+	t.ok(cs.create("practice_waters"), "world on practice_waters")
 	var a := VenueShapes.from_core(cs.core)
-	var b := VenueShapes.from_file("example_bay")
+	var b := VenueShapes.from_file("practice_waters")
 	t.ok(a.land.size() == 1 and a.obstacles.size() == 2, "one land polygon, two obstacles")
 	var same := a.land.size() == b.land.size() and a.obstacles.size() == b.obstacles.size()
 	for i in mini(a.land.size(), b.land.size()):

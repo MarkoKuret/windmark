@@ -20,7 +20,7 @@ inline const wm::VenueData& full_race_venue() {
   static bool loaded = false;
   if (!loaded) {
     wm::LoadError err;
-    REQUIRE_MESSAGE(wm::load_venue(std::string(WINDMARK_DATA_DIR) + "/venues/example_bay.venue.json", venue, err),
+    REQUIRE_MESSAGE(wm::load_venue(std::string(WINDMARK_DATA_DIR) + "/venues/practice_waters.venue.json", venue, err),
                     err.message());
     loaded = true;
   }

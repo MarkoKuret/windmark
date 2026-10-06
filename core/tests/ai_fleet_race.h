@@ -26,10 +26,10 @@ struct AiFleetRace {
   bool load(std::string& error) {
     wm::LoadError err;
     const std::string data = WINDMARK_DATA_DIR;
-    if (!wm::load_venue(data + "/venues/example_bay.venue.json", venue, err) ||
+    if (!wm::load_venue(data + "/venues/practice_waters.venue.json", venue, err) ||
         !wm::load_perf(data + "/perf/wm7.perf.json", wm7, err) ||
         !wm::load_perf(data + "/perf/wm12.perf.json", wm12, err) ||
-        !wm::load_course(std::string(WINDMARK_COURSES_DIR) + "/example_bay/example_wl.course.json", course, err)) {
+        !wm::load_course(std::string(WINDMARK_COURSES_DIR) + "/practice_waters/example_wl.course.json", course, err)) {
       error = err.message();
       return false;
     }

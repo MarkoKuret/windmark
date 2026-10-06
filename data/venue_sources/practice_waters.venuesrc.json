@@ -1,8 +1,8 @@
 {
   "schema": "windmark.venuesrc/1",
-  "id": "example_bay",
-  "name": "Example Bay",
-  "version": 2,
+  "id": "practice_waters",
+  "name": "Practice Waters",
+  "version": 3,
   "origin": { "lat": 45.5, "lon": 13.6 },
   "bounds": [-2000, -2000, 2000, 2000],
   "fetch": 12000,
@@ -25,5 +25,17 @@
   ],
   "simplify": { "outside": 5 },
   "current": { "to": 1.5707963, "speed": 0.35, "shore_floor": 0.4 },
-  "exposure": { "from": 0 }
+  "exposure": { "from": 0 },
+  "conditions": {
+    "wind": { "speed": [5.1444, 7.2022], "from": 0.0, "from_spread": 0.0 },
+    "shift": { "preset": "stable" },
+    "puffs": { "preset": "light" },
+    "current": { "speed": 0.1543, "to": 1.5708 },
+    "random": { "speed": [3.0867, 9.26], "from_spread": 0.3491, "shift": ["steady", "stable", "oscillating"],
+                "puffs": ["light", "standard"] }
+  },
+  "briefing": {
+    "tag": "Practice",
+    "tip": "Open water and a steady breeze: learn the boat, then practise starts."
+  }
 }

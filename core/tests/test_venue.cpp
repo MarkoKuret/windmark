@@ -108,8 +108,8 @@ TEST_CASE("venue: header only is open water") {
 TEST_CASE("venue: the example venue drives the wind, current and sea") {
   wm::VenueData v;
   wm::LoadError err;
-  REQUIRE_MESSAGE(wm::load_venue(kData + "/venues/example_bay.venue.json", v, err), err.message());
-  CHECK(v.id == "example_bay");
+  REQUIRE_MESSAGE(wm::load_venue(kData + "/venues/practice_waters.venue.json", v, err), err.message());
+  CHECK(v.id == "practice_waters");
   REQUIRE(v.has_wind_field);
   REQUIRE(v.has_current_field);
   REQUIRE(v.has_exposure);

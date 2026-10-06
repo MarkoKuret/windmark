@@ -21,7 +21,7 @@ func _init() -> void:
 	Settings.reset_current()
 	var s := Settings.current()
 	s.welcomed = true
-	s.last_setup = {"mode": "race", "class_id": "wm7", "venue": "example_bay", "course": "example_bay/example_wl",
+	s.last_setup = {"mode": "race", "class_id": "wm7", "venue": "practice_waters", "course": "practice_waters/example_wl",
 		"fleet_size": 10, "ai_level": "expert", "wind_kn": 14.0, "wind_from_deg": 30.0}
 	root.size = SIZE
 	m = (load("res://scenes/menu/main_menu.tscn") as PackedScene).instantiate() as MainMenu
@@ -66,8 +66,8 @@ class Host extends Node:
 	var hud: Hud
 	var rig: CameraRig = null
 	var runner: SimRunner = null
-	var venue := "example_bay"
-	var course := "example_bay/example_wl"
+	var venue := "practice_waters"
+	var course := "practice_waters/example_wl"
 	var class_id := "wm7"
 
 	func session_setup() -> GameSetup:
@@ -86,11 +86,11 @@ func _race_end() -> void:
 	var sim := CoreSimSource.new()
 	sim.settings = {"race_seed": 20261005, "wind_speed": 12.0 * HudFormat.KNOT, "wind_from": 0.0, "shift_preset": 1,
 		"free_sailing_s": 10.0}
-	sim.create("example_bay")
+	sim.create("practice_waters")
 	sim.add_entry("wm7", {"human": true})
 	for i in 7:
 		sim.add_ai("wm7", "intermediate")
-	sim.create_race("example_bay/example_wl")
+	sim.create_race("practice_waters/example_wl")
 	var host := Host.new()
 	host.hud = Hud.new()
 	host.add_child(host.hud)

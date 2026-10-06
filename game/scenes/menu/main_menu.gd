@@ -221,7 +221,7 @@ func can_continue() -> bool:
 	return mode == "free" or MenuData.ids(MenuData.courses(ven, cls)).has(str(last.get("course", "")))
 
 
-## "Quick race · Example Bay · 10 boats" or "Free sail · Example Bay"
+## "Quick race · Practice Waters · 10 boats" or "Free sail · Practice Waters"
 func continue_text() -> String:
 	var last := settings.last_setup
 	var ven := MenuData.name_of(MenuData.venues(), str(last.get("venue", "")))

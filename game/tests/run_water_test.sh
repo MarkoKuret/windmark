@@ -23,7 +23,7 @@ if [ ! -f "$build/build.ninja" ]; then
 fi
 cmake --build "$build" --target windmark_gen_sea_render_samples >/dev/null
 mkdir -p "$here/generated/sea"
-"$build/tests/windmark_gen_sea_render_samples" "$repo/data/venues/example_bay.venue.json" \
+"$build/tests/windmark_gen_sea_render_samples" "$repo/data/venues/practice_waters.venue.json" \
     > "$here/generated/sea/sea_render_samples.json"
 echo "core samples written"
 

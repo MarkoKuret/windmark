@@ -164,8 +164,8 @@ func check_land_core() -> void:
 	for from_deg in [0.0, 10.0, 44.0, 100.0, 181.0, 225.0, 300.0, 359.0]:
 		var cs := CoreSimSource.new()
 		cs.settings = {"puffs": false, "wind_speed": 8.0, "wind_from": deg_to_rad(from_deg)}
-		if not cs.create("example_bay"):
-			check(false, "land factor: core world on example_bay (%s)" % cs.last_error())
+		if not cs.create("practice_waters"):
+			check(false, "land factor: core world on practice_waters (%s)" % cs.last_error())
 			return
 		var w := cs.wind_state(0)
 		var m := SeaModel.new()
@@ -177,7 +177,7 @@ func check_land_core() -> void:
 			worst = maxf(worst, absf(cs.wind_clean(x, y).x / w["base_speed"] - f))
 			lo = minf(lo, f)
 			n += 1
-	check(lo < 0.9, "land factor: the example bay field slows the wind somewhere (lowest %.3f)" % lo)
+	check(lo < 0.9, "land factor: Practice Waters field slows the wind somewhere (lowest %.3f)" % lo)
 	check(worst <= 1e-3, "land factor within 1e-3 of the core's wind (worst %s, %d points)" % [sci(worst), n])
 
 

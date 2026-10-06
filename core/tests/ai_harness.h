@@ -23,7 +23,7 @@ inline const wm::VenueData& ai_venue() {
   static bool loaded = false;
   if (!loaded) {
     wm::LoadError err;
-    REQUIRE_MESSAGE(wm::load_venue(std::string(WINDMARK_DATA_DIR) + "/venues/example_bay.venue.json", venue, err),
+    REQUIRE_MESSAGE(wm::load_venue(std::string(WINDMARK_DATA_DIR) + "/venues/practice_waters.venue.json", venue, err),
                     err.message());
     loaded = true;
   }
@@ -36,7 +36,7 @@ inline const wm::CourseData& ai_default_course() {
   static bool loaded = false;
   if (!loaded) {
     wm::LoadError err;
-    REQUIRE_MESSAGE(wm::load_course(std::string(WINDMARK_COURSES_DIR) + "/example_bay/example_wl.course.json", c, err),
+    REQUIRE_MESSAGE(wm::load_course(std::string(WINDMARK_COURSES_DIR) + "/practice_waters/example_wl.course.json", c, err),
                     err.message());
     loaded = true;
   }
@@ -49,7 +49,7 @@ inline const wm::CourseData& ai_match_course() {
   static bool loaded = false;
   if (!loaded) {
     static const char* kText = R"({
-  "schema": "windmark.course/1", "id": "test_match", "name": "Test match race", "venue": "example_bay",
+  "schema": "windmark.course/1", "id": "test_match", "name": "Test match race", "venue": "practice_waters",
   "frame": "wind", "reference": { "x": 0.0, "y": -300.0 },
   "marks": [
     { "id": "rc",  "type": "committee_boat", "at": { "bearing": 1.57079633, "dist": 75, "fixed": true }, "heading": null },
@@ -75,7 +75,7 @@ inline const wm::CourseData& ai_beat_course() {
   static bool loaded = false;
   if (!loaded) {
     static const char* kText = R"({
-  "schema": "windmark.course/1", "id": "test_beat", "name": "Test 1 nm beat", "venue": "example_bay",
+  "schema": "windmark.course/1", "id": "test_beat", "name": "Test 1 nm beat", "venue": "practice_waters",
   "frame": "wind", "reference": { "x": 0.0, "y": -900.0 },
   "marks": [
     { "id": "rc",  "type": "committee_boat", "at": { "bearing": 1.57079633, "dist": 125, "fixed": true }, "heading": null },

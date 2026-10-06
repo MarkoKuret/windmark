@@ -5,7 +5,7 @@ extends Node
 ## returns false when the sail scene is not there or does not load; the menu then draws the painted backdrop.
 
 const SAIL_SCENE := "res://scenes/sail_test.tscn"
-const VENUE := "example_bay"
+const VENUE := "practice_waters"
 const FLEET := 4
 ## tier L (menus.md §4): two boats, no sun shadows, at most 30 frames a second while the menu shows
 const FLEET_L := 2

@@ -1,5 +1,5 @@
 extends Node3D
-## Sail test scene: one generated boat sailing freely on the example bay, with the cameras, the controls, the
+## Sail test scene: one generated boat sailing freely on Practice Waters, with the cameras, the controls, the
 ## minimal HUD, the sea, its wakes, the daytime sky and the sound (GameAudio). Frame order: read input, controls,
 ## ticks (stamp, step, HUD values, audio inputs, sail snapshots), sea render time, render pose, boat, sails and
 ## wakes (and the drawn boat shadows), cameras, HUD, audio; the Sea, SeaWakes and BoatShadows nodes draw after.
@@ -35,7 +35,7 @@ extends Node3D
 ## On the core, everything drawn comes from the core world: the Sea's source is a CoreEnvSource (wave
 ## components, exposure, live puffs, current), the Sea's clock is the core's render_time_ms of the frame, the
 ## wakes use CoreSimSource.wake_state and the HUD reads the core's boat records. On FakeSim the sea is the
-## example bay as the core writes it (SeaEnvSource CORE_SAMPLES, game/generated/sea, written by
+## Practice Waters as the core writes it (SeaEnvSource CORE_SAMPLES, game/generated/sea, written by
 ## tests/run_water_test.sh) or the placeholder sea built from wind_speed_kn and wind_from_deg; the fake sim runs
 ## on the same SeaModel the Sea draws (FakeSim.use_sea) and the Sea's clock follows the sim ticks.
 
@@ -50,7 +50,7 @@ enum SeaSource { AUTO, CORE_SAMPLES, PLACEHOLDER }
 @export var sim_kind: SimKind = SimKind.AUTO
 @export_enum("wm7", "wm12") var class_id := "wm7"
 ## core: the venue (data/venues/<venue>.venue.json) and the start point (world ENU m)
-@export var venue := "example_bay"
+@export var venue := "practice_waters"
 @export var start_x := 0.0
 @export var start_y := -300.0
 @export var wind_speed_kn := 12.0
@@ -67,7 +67,7 @@ enum SeaSource { AUTO, CORE_SAMPLES, PLACEHOLDER }
 @export var racing := true
 ## core only: race on `course` (game/data/courses/<venue>/<id>) instead of free sailing
 @export var race_mode := false
-@export var course := "example_bay/example_wl"
+@export var course := "practice_waters/example_wl"
 ## race mode: boats in the race including the player (the rest are AI), the AI level (CoreSimSource.AI_LEVELS),
 ## "speed only" levels (ai.md §13), and `watch`: an AI sails the player's boat too and spectating is on
 @export_range(1, 40) var fleet_size := 1
@@ -81,10 +81,10 @@ enum SeaSource { AUTO, CORE_SAMPLES, PLACEHOLDER }
 ## the results screen of scenes/menu (menus.md §5) in a quick race (not watching, not a scenario)
 @export var with_results := true
 @export var apply_settings := true
-## FakeSim only. AUTO: the core's example bay samples when they exist, otherwise the placeholder sea
+## FakeSim only. AUTO: the core's Practice Waters samples when they exist, otherwise the placeholder sea
 @export var sea_source: SeaSource = SeaSource.AUTO
 ## FakeSim only: core sample scenario (CORE_SAMPLES); its wind replaces wind_speed_kn and wind_from_deg
-@export var sea_scenario := "example_bay_10kn"
+@export var sea_scenario := "practice_waters_10kn"
 @export var sea_quality: SeaQuality.Tier = SeaQuality.Tier.M
 
 @onready var sea: Sea = $Sea

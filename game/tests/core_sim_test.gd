@@ -5,7 +5,7 @@ extends SceneTree
 ##   water, 12 kn steady wind, no puffs, placed at the origin on heading 1.2 rad, 60 s of auto trim with the helm
 ##   centred; prints the example's line so run_core_sim_test.sh can compare the two
 ## - every SimSource call, the render pose between ticks, the input frame wire form, sail requests
-## - a race world on example_bay: the sea renderer calls (components, exposure, wind state with puffs, current),
+## - a race world on practice_waters: the sea renderer calls (components, exposure, wind state with puffs, current),
 ##   the sea clock, the drawn sea mirror against the core's height, race events, determinism
 ## - AI boats (WM-016.24): add_ai, take over and release, telemetry and debug, and a race saved at the gun
 ##   (world and AI memory) and continued in a new world to the same checksum
@@ -142,7 +142,7 @@ func _free_sailing() -> void:
 
 
 func _race_world() -> void:
-	t.begin("race world on example_bay")
+	t.begin("race world on practice_waters")
 	var a := _make_race()
 	var b := _make_race()
 	if not t.ok(a != null and b != null, "two race worlds"):
@@ -208,12 +208,12 @@ func _make_race() -> CoreSimSource:
 	var sim := CoreSimSource.new()
 	sim.settings = {"race_seed": 20260925, "wind_speed": 11.0 * KNOT, "wind_from": 0.2, "shift_preset": 1,
 		"free_sailing_s": 10.0}
-	if not sim.create("example_bay"):
+	if not sim.create("practice_waters"):
 		t.ok(false, "race world: " + sim.last_error())
 		return null
 	sim.add_entry("wm7", {"human": true})
 	sim.add_entry("wm12")
-	if not sim.create_race("example_bay/example_wl"):
+	if not sim.create_race("practice_waters/example_wl"):
 		t.ok(false, "create race: " + sim.last_error())
 		return null
 	return sim
@@ -223,7 +223,7 @@ func _ai_world() -> CoreSimSource:
 	var sim := CoreSimSource.new()
 	sim.settings = {"race_seed": 5, "wind_speed": 11.0 * KNOT, "wind_from": 0.0, "shift_preset": 1,
 		"free_sailing_s": 5.0}
-	if not sim.create("example_bay"):
+	if not sim.create("practice_waters"):
 		return null
 	sim.add_entry("wm7", {"human": true})
 	for i in 3:
@@ -234,7 +234,7 @@ func _ai_world() -> CoreSimSource:
 func _ai() -> void:
 	t.begin("AI boats")
 	var a := _ai_world()
-	if not t.ok(a != null and a.create_race("example_bay/example_wl"), "race world with 3 AI boats"):
+	if not t.ok(a != null and a.create_race("practice_waters/example_wl"), "race world with 3 AI boats"):
 		return
 	t.ok(a.boat_count() == 4 and not a.ai_has(0) and a.ai_has(1) and a.ai_has(3) and a.core.ai_count() == 3,
 		"boats 1 to 3 AI, the player not")
@@ -256,20 +256,20 @@ func _ai() -> void:
 	t.ok(tel["start_delay"] >= 0.0 and d.has("tactic_name") and d["aim"] is Vector2,
 		"AI started and decided (%s, start %.1f s after the gun)" % [d.get("tactic_name", "?"), tel["start_delay"]])
 	var b := _ai_world()
-	t.ok(b.load_snapshot(snap, "example_bay/example_wl") and b.tick() == gun, "loaded into a new world")
+	t.ok(b.load_snapshot(snap, "practice_waters/example_wl") and b.tick() == gun, "loaded into a new world")
 	b.step_ticks(1200, false)
 	t.ok(b.checksum() == a.checksum() and b.tick() == a.tick(), "continues to the same checksum")
 	var c := _ai_world()
 	var bad := {"world": snap["world"], "ai": snap["ai"].slice(0, snap["ai"].size() - 3)}
-	t.ok(not c.load_snapshot(bad, "example_bay/example_wl"), "a damaged AI block is rejected")
+	t.ok(not c.load_snapshot(bad, "practice_waters/example_wl"), "a damaged AI block is rejected")
 
 
 func _threaded() -> void:
 	t.begin("the tick on the worker thread")
 	var a := _ai_world()
 	var b := _ai_world()
-	if not t.ok(a != null and b != null and a.create_race("example_bay/example_wl")
-			and b.create_race("example_bay/example_wl"), "two race worlds with AI boats"):
+	if not t.ok(a != null and b != null and a.create_race("practice_waters/example_wl")
+			and b.create_race("practice_waters/example_wl"), "two race worlds with AI boats"):
 		return
 	t.ok(a.can_step_async(), "CoreSimSource steps on a thread")
 	# a: frames of uneven length with the ticks started ahead at the end of each frame, as the sail scene does

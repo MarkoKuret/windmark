@@ -300,35 +300,37 @@ func _lods(id: String) -> void:
 	var data := BoatClassData.load_class(id)
 	var bv := BoatView.create(data.info, 0.5)
 	root.add_child(bv)
-	t.ok(bv.levels.size() == 4, "four levels loaded (%d)" % bv.levels.size())
+	t.ok(bv.levels.size() == 1, "one model, the engine's levels of detail (%d)" % bv.levels.size())
 	var lv := Livery.load_class(id)[0]
 	bv.set_livery(lv)
 	_run(bv, _sv(data.info, {"main": UP, "jib": UP}, -0.35, 0.8, 5.0), 10)
-	var seq := [[10.0, 0], [16.0, 1], [14.5, 1], [14.0, 0], [85.0, 2], [270.0, 3], [240.0, 3], [230.0, 2], [75.0, 1]]
-	var main: BoatView.SailPart = null
-	for sp in bv.sail_parts:
-		if sp.type == "main":
-			main = sp
-	for e in seq:
+	# the sheets by the size of a metre on screen (§11.3): full, thin, none
+	for e in [[25.0, 0], [50.0, 1], [150.0, 2], [20.0, 0]]:
 		bv.update_lod(e[0])
-		t.ok(bv.lod == e[1], "camera at %.0f m: LOD%d (%d)" % [e[0], e[1], bv.lod])
-		var shown := 0
-		for k in bv.levels.size():
-			for n: Node3D in bv.levels[k]["parts"]:
-				if n.visible and n.name != "pole":
-					shown += 1 if k == bv.lod else 100
-		t.ok(shown > 0 and shown < 100, "only LOD%d's parts are shown" % bv.lod)
-		t.ok(bv.sheets.detail == mini(bv.lod, 2) and bv.sheets.node.visible == (bv.lod < 2),
-			"sheets at detail %d, %s" % [bv.sheets.detail, "shown" if bv.sheets.node.visible else "hidden"])
-		if main != null:
-			# §11.4: the sail's index buffer on every 2nd (LOD2) or 4th (LOD3) row and column of the full grid
-			var step: int = [1, 1, 2, 4][bv.lod]
-			var nr := ceili((main.rows - 1) / float(step))
-			var nc := ceili((main.cols - 1) / float(step))
-			var tris := (main.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3
-			var verts := (main.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
-			t.ok(tris == 4 * nr * nc and verts == 2 * main.rows * main.cols,
-				"main at grid step %d: %d triangles over the whole grid's %d vertices" % [step, tris, verts])
+		t.ok(bv.sheets.detail == e[1] and bv.sheets.node.visible == (e[1] < 2),
+			"camera at %.0f m: sheets at detail %d, %s" % [e[0], bv.sheets.detail,
+			"shown" if bv.sheets.node.visible else "hidden"])
+	# §11.4: every sail mesh has the engine's levels on every 2nd and 4th row and column over the whole grid
+	for sp in bv.sail_parts:
+		if sp.mesh == null:
+			continue
+		var surfs: Array = sp.mesh.get("_surfaces")
+		var lods: Array = (surfs[0] as Dictionary).get("lods", []) if not surfs.is_empty() else []
+		var full := (sp.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX] as PackedInt32Array).size()
+		var ok := lods.size() >= 2 and float(lods[0]) > 0.0
+		var sizes := []
+		for k in range(0, lods.size(), 2):
+			var stride := 4 if int((surfs[0] as Dictionary).get("vertex_count", 0)) > 65535 else 2
+			sizes.append((lods[k + 1] as PackedByteArray).size() / stride)
+			ok = ok and int(sizes[-1]) < full and (k == 0 or float(lods[k]) > float(lods[k - 2]))
+		var verts := (sp.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+		t.ok(ok and verts == 2 * sp.rows * sp.cols, "%s: engine levels %s of %d indices over the whole grid's %d vertices" % [
+			sp.id, sizes, full, verts])
+	# the boat's own meshes keep the full model at chase range (lod_bias)
+	bv.own = true
+	var body := bv.model.find_child("body", true, false) as GeometryInstance3D
+	t.ok(body != null and body.lod_bias == BoatView.OWN_LOD_BIAS, "the own boat's meshes at LOD bias %.0f" % BoatView.OWN_LOD_BIAS)
+	bv.own = false
 	# the livery on every level: one material, the boat's own, on every non-sail surface
 	var mats := {}
 	var missing := []
@@ -342,17 +344,15 @@ func _lods(id: String) -> void:
 				if m == null:
 					missing.append("%s@%d" % [nm, k])
 				mats[m] = true
-	t.ok(missing.is_empty() and mats.size() == 1, "every level's surfaces carry the boat's one livery material (%s, %d)" % [
+	t.ok(missing.is_empty() and mats.size() == 1, "every surface carries the boat's one livery material (%s, %d)" % [
 		missing, mats.size()])
-	# the moving parts of the level shown follow the boom
-	bv.update_lod(50.0)
+	# the moving parts follow the boom and the helm at every distance
+	bv.update_lod(300.0)
 	_run(bv, _sv(data.info, {"main": UP, "jib": UP}, -0.5, 0.8, 5.0), 3)
-	var b1: Node3D = bv.levels[1]["boom"]
 	var b0: Node3D = bv.levels[0]["boom"]
-	t.ok(b1 != null and b1.transform.basis.is_equal_approx(b1.transform.basis) and
-		(b1.transform.basis * Vector3.BACK).dot(Basis(Vector3.UP, bv.boom_angle) * (bv.levels[1]["boom_rest"] as Transform3D).basis * Vector3.BACK) > 0.999,
-		"LOD1's boom at the main's angle")
-	t.ok(b0 != null, "LOD0 keeps its boom for when it comes back")
+	t.ok(b0 != null and (b0.transform.basis * Vector3.BACK).dot(Basis(Vector3.UP, bv.boom_angle)
+		* (bv.levels[0]["boom_rest"] as Transform3D).basis * Vector3.BACK) > 0.999, "the boom at the main's angle at 300 m")
+	t.ok(bv.levels[0]["rudder"] != null, "the rudder is its own node")
 	bv.queue_free()
 
 
@@ -675,26 +675,19 @@ func _check_lines(bv: BoatView, deck: Dictionary, r: Dictionary, what: String) -
 						r["under_first"] = "%s %s ring %d (%.4f m under)" % [what, ["headsail", "flying"][surf], k, -above]
 
 
-## The true top of the LOD0 deck mesh (model axes), bucketed for lookups.
+## The true top of the model's deck (model axes; the deck part of the merged body), bucketed for lookups.
 static func _true_deck(bv: BoatView) -> Dictionary:
 	var m: Node3D = bv.levels[0]["model"]
-	var mi := m.find_child("deck", true, false) as MeshInstance3D
-	if mi == null:
-		return {}
-	var xf := Transform3D.IDENTITY
-	var x: Node = mi
-	while x != null and x != m:
-		xf = (x as Node3D).transform * xf
-		x = x.get_parent()
 	var tri := PackedVector3Array()
-	for s in mi.mesh.get_surface_count():
-		var arr := mi.mesh.surface_get_arrays(s)
-		var p: PackedVector3Array = xf * (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array)
-		var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
-		for i in idx:
+	var box := AABB()
+	for e in BoatMaterials.part_surfaces(m, "deck"):
+		var p: PackedVector3Array = e["positions"]
+		for i in (e["indices"] as PackedInt32Array):
+			box = AABB(p[i], Vector3.ZERO) if tri.is_empty() else box.expand(p[i])
 			tri.append(p[i])
+	if tri.is_empty():
+		return {}
 	var cell := 0.25
-	var box := xf * mi.mesh.get_aabb()
 	var nx := int(ceil(box.size.x / cell)) + 1
 	var nz := int(ceil(box.size.z / cell)) + 1
 	var buckets := []

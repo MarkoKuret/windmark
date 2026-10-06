@@ -222,8 +222,8 @@ func _check_baked_transom_deck(id: String, bv: BoatView, other: BoatView, bm: Sh
 		and box.y >= float(uv[1]) - 1e-4 and box.w <= float(uv[3]) + 1e-4
 	check(inside and bm.get_shader_parameter("tr_on") == 1 and bm2.get_shader_parameter("livery_text") == other.livery_text.texture,
 		"%s baked: the boat's name in the transom's name panel (%.2f..%.2f of u), per boat over the shared atlas" % [id, box.x, box.z])
-	var deck := bv.model.find_child("deck", true, false) as MeshInstance3D
-	check(deck != null and deck.get_surface_override_material(0) == bm,
+	var deck := bv.model.find_child("body", true, false) as MeshInstance3D
+	check(deck != null and deck.get_surface_override_material(0) == bm and not BoatMaterials.part_surfaces(bv.model, "deck").is_empty(),
 		"%s baked: the deck on the boat's material (the deck region, the non-slip by the mask)" % id)
 
 
@@ -280,8 +280,8 @@ func check_paint(baked: bool) -> void:
 			"%s %s: text texture 1024 x 512, one channel, mipmapped (%.0f kB)" % [id, path, img.get_data().size() / 1024.0])
 		for row in [LiveryText.Row.NAME, LiveryText.Row.NUMBER]:
 			check(_ink(img, row) > 0.02, "%s %s: text row %d has ink" % [id, path, row])
-		var hull := bv.model.find_child("hull", true, false) as MeshInstance3D
-		var plain_hull := plain.model.find_child("hull", true, false) as MeshInstance3D
+		var hull := bv.model.find_child("body", true, false) as MeshInstance3D
+		var plain_hull := plain.model.find_child("body", true, false) as MeshInstance3D
 		var untouched := true
 		for s in plain_hull.mesh.get_surface_count():
 			untouched = untouched and plain_hull.get_surface_override_material(s) == null
@@ -320,9 +320,14 @@ func _check_baked_boat(id: String, views: Array, lv: Livery) -> void:
 	var rects: PackedVector4Array = bm.get_shader_parameter("bk_rect")
 	check(rects.size() == 5 and rects[1].z > 0.9 and rects[2].z > 0.9 and rects[3].z > 0.0 and rects[4].z > 0.0,
 		"%s baked: hull, deck, transom and keel regions of the atlas" % id)
-	var keel := bv.model.find_child("keel", true, false) as MeshInstance3D
 	var kr: Vector4 = bm.get_shader_parameter("bk_keel")
-	var aabb := keel.mesh.get_aabb() if keel else AABB()
+	var aabb := AABB()
+	var first := true
+	for e in BoatMaterials.part_surfaces(bv.model, "keel"):
+		for i in (e["indices"] as PackedInt32Array):
+			var q: Vector3 = (e["positions"] as PackedVector3Array)[i]
+			aabb = AABB(q, Vector3.ZERO) if first else aabb.expand(q)
+			first = false
 	# the side view's rectangle (forward min, top, length, height) holds the keel mesh
 	var holds := kr.z > 0.0 and aabb.position.z >= kr.x - 1e-3 and aabb.end.z <= kr.x + kr.z + 1e-3 \
 		and aabb.end.y <= kr.y + 1e-3 and aabb.position.y >= kr.y - kr.w - 1e-3

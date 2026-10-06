@@ -319,9 +319,9 @@ void main() {
                 det = mix(det, srgb(tile_tex(tile_color, nuv, deck_tiles.z).rgb) / detail_mean, ns);
                 rdet = mix(rdet, tile_tex(tile_mr, nuv, deck_tiles.z).g / rough_mean, ns);
             }
-            a = base * det;
-            rough = orm.g * rdet;
-            occ = orm.r;
+            a = mix(sc.rgb, base, flat_k) * det;
+            rough = mix(sp.x * rdet, orm.g * rdet, flat_k);
+            occ = mix(1.0, orm.r, flat_k);
             vec3 nb = texture(bk_normal, at).rgb * 2.0 - 1.0;
             nb = mix(vec3(0.0, 0.0, 1.0), nb, flat_k);
             N = wm_perturb(N, v_w, t, nb, -1.0);

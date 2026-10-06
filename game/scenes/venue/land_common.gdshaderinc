@@ -20,15 +20,17 @@ float wm_land_noise(vec2 p) {
 }
 
 // Linear albedo from the vertex colour at a scene position `wpos` with the world normal's up component `ny`.
-// `dist` is the camera distance: the fine grain fades out far away, where it would only shimmer.
-vec3 wm_land_albedo(vec3 base, vec3 wpos, float ny, float dist) {
+// `dist` is the camera distance: the fine grain fades out far away, where it would only shimmer. `bare_k` scales
+// the stone shown on steeper faces (1 for land drawn from polygons; less on elevation-model terrain, whose vertex
+// colours already carry its rock).
+vec3 wm_land_albedo(vec3 base, vec3 wpos, float ny, float dist, float bare_k) {
 	vec2 q = wpos.xz;
 	float fine = wm_land_noise(q * 0.9) * 0.6 + wm_land_noise(q * 3.1) * 0.4;
 	float coarse = wm_land_noise(q * 0.17);
 	float fade = 1.0 - smoothstep(150.0, 900.0, dist);
 	float k = 1.0 + ((fine - 0.5) * 0.45 * fade + (coarse - 0.5) * 0.25);
 	// steeper faces show bare stone through the vegetation
-	float bare = (1.0 - smoothstep(0.55, 0.85, ny)) * 0.35;
+	float bare = (1.0 - smoothstep(0.55, 0.85, ny)) * 0.35 * bare_k;
 	vec3 stone = vec3(0.40, 0.385, 0.35);
 	return mix(base, stone, bare * 0.5) * k;
 }

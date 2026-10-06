@@ -5,6 +5,9 @@ render_mode cull_back, diffuse_burley, specular_schlick_ggx;
 
 #include "res://scenes/venue/land_common.gdshaderinc"
 
+// the stone shown on steep faces (wm_land_albedo): 1 for polygon land, VenueTerrain sets less
+uniform float bare_rock = 1.0;
+
 varying vec3 v_wpos;
 varying vec3 v_wnormal;
 
@@ -15,7 +18,7 @@ void vertex() {
 
 void fragment() {
 	vec3 cam = (INV_VIEW_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
-	ALBEDO = wm_land_albedo(COLOR.rgb, v_wpos, normalize(v_wnormal).y, length(cam - v_wpos));
+	ALBEDO = wm_land_albedo(COLOR.rgb, v_wpos, normalize(v_wnormal).y, length(cam - v_wpos), bare_rock);
 	ROUGHNESS = wm_land_roughness(COLOR.a);
 	SPECULAR = 0.35;
 }

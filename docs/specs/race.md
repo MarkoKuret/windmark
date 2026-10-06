@@ -79,6 +79,46 @@ course also defines are overridden by the lobby.
 Game modes (for menus) are presets of these settings plus the HUD and assist options of `hud.md`. There is no mode
 that changes boat speed with the race position (no catch-up of any kind).
 
+### 2.1 Venue conditions
+
+The wind, current and sea settings of `wind.md` §1 and `sea.md` §2 come from the venue's `conditions`
+(`data_format.md` §6.7), the race seed and two lobby or menu choices: **wind speed** and **wind direction**, each
+either `venue` (default) or an explicit value (`menus.md` §1). Resolved once when the race is created, in this
+order, in binary32 with the draws of stream 8 (`conventions.md` §7); the resolved settings are what the server
+sends and what a replay records.
+
+```
+// wind
+base_speed = explicit ? kn * KNOT
+           : s0 + (s1 - s0) * (0.5f * (rng_unit(seed, 8, 0) + rng_unit(seed, 8, 1)))   // [s0, s1] = wind.speed
+base_from  = explicit ? deg * DEG
+           : wrap_2pi(from + from_spread * (2.0f * rng_unit(seed, 8, 2) - 1.0f))
+shift_amplitude, shift_hold_max_ms, shift_hold_min_ms = the preset, replaced by any explicit values (s * 1000)
+shift_trend_rate, shift_trend_max = shift.trend_rate, shift.trend_max
+osc_enabled = oscillation present ; osc_amplitude, osc_time_scale = its values
+puffs = the preset of wind.md §6.1, then each key given (lifetimes s * 1000)
+current_speed, current_to = current.speed, current.to
+// tide (when present)
+P       = period * 1000                                             // ms, a multiple of 4
+T_race  = course race.target_duration, or 900 s without one        // courses.md §5.2
+t_gun   = (uint64)(n_gun - n_created) * 50                          // ms of environment time at the start signal
+f       = a + (b - a) * rng_unit(seed, 8, 3)                        // [a, b] = tide.turn
+t_turn  = t_gun + (uint64)(f * (float)T_race * 1000.0f)             // ms
+x_turn  = turn_to < 0 ? P / 4 : 3 * P / 4                           // cos falls through 0 (to −) or rises (to +)
+tide_phase_ms = (x_turn + P - (t_turn % P)) % P                     // uint64; tide(t_turn) = 0
+tide_scale, tide_period_ms = tide.scale, P ; venue_current_field = the venue's current_field
+// sea
+sea_hs, sea_tp from base_speed and the venue fetch (sea.md §2) ; sea_from = base_from
+swells = sea.swells ; sea_scale = sea.scale
+```
+- The speed draw is the mean of two uniforms (a triangle, most races near the middle of the range); the direction
+  stays within `from_spread` (at most 20°) of the typical direction.
+- An explicit choice replaces only its own draw; everything else still follows the venue. The explicit values are
+  free within the menu's ranges (not clamped to the venue's range): the briefing follows them (`menus.md` §1.3).
+- Free sailing has no start: `t_gun = 0`, `T_race = 900 s`.
+- Rules scenarios (§14) keep their own explicit settings and ignore the venue's conditions.
+- A venue without `conditions` uses the defaults of `wind.md` §1 and `sea.md` §2 with the explicit wind.
+
 ## 3. The start sequence
 
 ### 3.1 Race-level states
@@ -514,6 +554,7 @@ of the race layer uses the counter-based generator of `conventions.md` §7 with 
 - **stream 7: race layer** (`conventions.md` §7, "spawn order shuffle"). Spawn shuffle:
   draw `j = min((uint32)(rng_unit(race_seed, 7, k) * (float)(k + 1)), k)` for `k = n−1 … 1` (Fisher–Yates from the
   end), swapping entries `k` and `j`. General recall restarts use indices from 1000 upwards.
+- **stream 8: venue conditions draw** (§2.1): indices 0 to 3 (speed, direction, tide turn).
 - AI boats use streams 16–31 (`ai.md` §1).
 
 No wall clock, address or thread order may enter any of these.

@@ -39,8 +39,12 @@ The project's main scene. Items, top to bottom: **Continue**, **Quick race**, **
   class livery and sails; the AI boats get the other sail numbers and names by the fleet rule of
   `data_format.md` §8.4.
 - Ranges: fleet size 2 to 40 boats including the player (default 10); AI level Easy, Intermediate (default),
-  Expert, Pro (`ai.md` §13); wind 4 to 25 kn (default 12) in 1 kn steps, from 0° to 355° in 5° steps (default
-  0°, north).
+  Expert, Pro (`ai.md` §13); wind speed **Venue** (default: the race draws it from the venue's range,
+  `race.md` §2.1; shown as `Venue (10-16 kn)`) or 4 to 25 kn in 1 kn steps; wind direction **Venue** (default:
+  drawn near the venue's typical direction; shown as `Venue (SW)`) or 0° to 355° in 5° steps. An explicit value is
+  free within these ranges, not clamped to the venue's. Stepping left from 4 kn or 0° reaches Venue, and stepping
+  right from Venue starts at the venue's typical value (the middle of its range, rounded; its direction rounded to
+  5°). A venue without `conditions` (`data_format.md` §6.9) has no Venue option: 12 kn and 0° as before.
 - **Start** fills `GameSetup.current()` (mode `race` or `free`, seed 0: from the clock) and changes to the sail
   scene, which reads it. The last choices are remembered in the settings file (§3) for the next visit.
 - **Backdrop** (§4): the live sail scene behind the menu.
@@ -51,10 +55,14 @@ The project's main scene. Items, top to bottom: **Continue**, **Quick race**, **
 
 The quick race is one screen: a header (the heading and one line), the body and a footer.
 
-- **Body**: the setup rows on the left, the **preview** on the right; when the page is narrower than 760 px
+- **Body**: the setup rows on the left, the **briefing** (§1.3) and the **preview** on the right; when the page is narrower than 760 px
   (logical, after the UI scale: a large UI scale on the Steam Deck, a narrow window) the preview goes under the
   rows. The body scrolls with the focus when it does not fit; the header and the footer never scroll.
-- **Preview**: the **course map** and the **fleet summary**, both following the rows as they change.
+- **Briefing**: the venue briefing of §1.3, at the top of the right column above the course map, following the
+  rows as they change (venue, course, wind speed, wind direction). It moves with the preview when the preview goes
+  under the rows.
+- **Preview**: the **course map** and the **fleet summary**, both following the rows as they change. With the wind
+  rows on Venue the map's wind arrow shows the venue's typical direction and the middle of its speed range.
   - The course map is drawn from the course file (`courses.md`) on a dark chart (the HUD's `ink`), north up: the
     marks resolved as `courses.md` §3 resolves them with the course axis on the chosen wind direction, at the
     file's distances (the preview skips the scaling of §6.3, so it shows the course's shape, not its exact size);
@@ -99,6 +107,74 @@ menus' cloth, navy and accent, §4).
   macOS preset's `application/icon` is `res://branding/app_icon.icns` and the Windows preset's
   `application/icon` is `res://branding/app_icon.ico`.
 - Everything about the brand (files, colours, fonts) is listed in `docs/BRANDING.md`.
+
+### 1.3 Venue briefing
+
+A short, standard briefing of the conditions the race will have, on the quick race card only (not on the loading
+screen, the free sail card or before the start). Fixed lines in a fixed order, fixed rating words chosen by the
+thresholds below from the venue's numbers (`data_format.md` §6.7) and the card's choices, plus one hand-written Tip.
+Computed in the menu when a row changes; it reads exactly the settings the race will resolve (`race.md` §2.1), so
+every line stays true for the race that starts.
+
+```
+SOLENT · Strong tide
+Wind     10-16 kn from the SW
+Shifts   Stable: small, slow (4°)
+Gusts    Light: to +15 %, frequent
+Current  Strong, 1.5 kn, turns mid-race
+Sea      Flat to chop
+Tip      The stream runs hardest mid-channel; cheat it along the shore.
+```
+
+Layout: the header line in the card's heading style, then the labels in one column (dim) and the values beside them
+(paper), one line each; the Tip may wrap to two lines. No em dashes anywhere in it.
+
+**Inputs.** `S = [s0, s1]` the wind speed (the venue's range, or `[v, v]` for an explicit speed), `θ` the direction
+(the venue's `from`, or the explicit one), the venue's shift, puff, current, tide and sea values after presets
+(`race.md` §2.1), the chosen course's `T_race` and `t_gun` (`race.md` §2.1; the card's sequence and
+`free_sailing_s`).
+
+**Number formats.** Knots: speeds as whole knots (`round_half_even`), current to 0.1 kn. Degrees: whole degrees.
+Compass: 8 points, `N NE E SE S SW W NW`, point `round_half_even(deg / 45) mod 8`. Percentages: whole percent.
+Ranges join with a hyphen (`10-16 kn`); equal ends show one value.
+
+| Line | Text | Source and rule |
+| --- | --- | --- |
+| header | `<NAME> · <tag>` | venue `name` in capitals, a middle dot, `briefing.tag` (`data_format.md` §6.8) |
+| Wind | `<s0>-<s1> kn from the <point>` | `S` and `θ`; e.g. `14 kn from the NE` with an explicit speed |
+| Shifts | `<word>: <size>, <pace> (<A>°)` and, with a trend, `, veers <N>°` or `, backs <N>°` | `A` = `shift_amplitude`, `H` = `shift_hold_max`; `steady` alone when `A < 1.5°`; trend below |
+| Gusts | `<word>: to +<g> %, <spread>`, or `None` | `g = min(puff_cap_up, puff_strength_max)`; `None` when puffs are off |
+| Current | `<word>, <c> kn` and `, turns <when>` (a tide) or `, sets <point>` (a uniform current only); or `None` | `c` below |
+| Sea | `<word>` or `<word> to <word>`, and `, swell <hs> m from the <point>` for each swell with `hs ≥ 0.3 m` | wind-sea `Hs` at `s0` and `s1` (below) |
+| Tip | `briefing.tip` | hidden when the direction is explicit and more than 20° from the venue's `from` (a tip is written for the typical wind), and for a venue without `briefing` |
+
+**Shifts.** Word by `A`: Steady `< 1.5°`, Stable `< 5.5°`, Oscillating `< 11.5°`, Shifty `< 20°`, Unstable
+`≥ 20°` (the presets of `wind.md` §1 fall in their own band). Size by `A`: small `< 5.5°`, medium `< 11.5°`, large
+`< 20°`, very large `≥ 20°`. Pace by `H`: slow `≥ 100 s`, regular `≥ 55 s`, fast `< 55 s`. Trend: the rotation during
+the race, `N = |trend(t_gun + T_race) − trend(t_gun)|` (`wind.md` §3) in whole degrees, shown when `N ≥ 3°`; veers
+for a positive rate, backs for a negative one. The oscillation is not rated (at most ±3°, texture).
+
+**Gusts.** Word by `g`: Light `< 0.18`, Moderate `< 0.28`, Strong `< 0.40`, Very strong `≥ 0.40`. Spread by the
+puff cover `k = puff_count · π · ((puff_diameter_min + puff_diameter_max) / 4)² / puff_tile²`: scattered `< 0.15`,
+frequent `< 0.35`, everywhere `≥ 0.35`.
+
+**Current.** `c = |uniform| + tide_scale · ref_speed` (`data_format.md` §6.3; 0 for a missing part), in knots. Word:
+None `< 0.2 kn` (the line is `None`), Light `< 0.6`, Moderate `< 1.2`, Strong `< 2.0`, Very strong `≥ 2.0`. A tide's
+turn by the middle of `tide.turn`, `m = (a + b) / 2`: early `m < 0.35`, mid-race `m ≤ 0.65`, late `m > 0.65`. A
+uniform current alone gives `, sets <point>` from `current_to`.
+
+**Sea.** `Hs` of the wind sea by `sea.md` §2 at the speed and the venue `fetch`, times `sea_scale`, at open-water
+exposure. Word: Flat `< 0.25 m`, Chop `< 0.5 m`, Moderate `< 1.0 m`, Rough `≥ 1.0 m`; one word when `s0` and `s1`
+give the same. Swell heights to 0.1 m, times `sea_scale`.
+
+**Strings.** Every fixed text comes from the front end's string table by key, English as the source:
+`briefing.label.<wind|shifts|gusts|current|sea|tip>`, `briefing.word.shifts.<steady|stable|oscillating|shifty|unstable>`,
+`briefing.size.<small|medium|large|very_large>`, `briefing.pace.<slow|regular|fast>`,
+`briefing.word.gusts.<none|light|moderate|strong|very_strong>`, `briefing.spread.<scattered|frequent|everywhere>`,
+`briefing.word.current.<none|light|moderate|strong|very_strong>`, `briefing.turn.<early|mid|late>`,
+`briefing.word.sea.<flat|chop|moderate|rough>`, `compass.<n|ne|e|se|s|sw|w|nw>`, and one template per line
+(`briefing.line.wind` = `{lo}-{hi} kn from the {point}` and so on) so a language can reorder the parts. The venue's
+name, tag and tip come from the venue file with its translations (`data_format.md` §6.8).
 
 ## 2. Pause menu
 

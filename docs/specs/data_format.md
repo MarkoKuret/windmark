@@ -6,7 +6,7 @@ Three kinds of files feed the simulation core:
 | --- | --- | --- | --- |
 | boat class `<class>.boat.json` | `windmark.boatclass/1` | designers (by hand or with tools) | boat generator (`tools/boatgen`), VPP (`tools/vpp`) |
 | performance `<class>.perf.json` | `windmark.perf/1` | VPP tool, **generated, never hand-edited** | core, AI, HUD |
-| venue physics `<venue>.venue.json` | `windmark.venue/1` | venue tools | core (wind field, current, sea exposure, land, obstacles) |
+| venue physics `<venue>.venue.json` | `windmark.venue/1` | venue tool (`tools/venuegen`, `venues.md`) | core (wind field, current, sea exposure, land, obstacles), race layer (conditions), front end (briefing) |
 
 Courses and marks are defined in `courses.md` (`windmark.course/1`). The core never reads the class file directly: everything it needs is
 in the performance file, which carries the hash of the class file it was made from.
@@ -514,7 +514,9 @@ Recommended axes for the VPP (fine where the tables bend):
 
 The physical environment of a sailing area, `data/venues/<venue>.venue.json`. Everything is optional except the
 header; an empty venue is open water with uniform wind. The core loads it once per race and points the wind,
-current and sea settings at it (`wind.md` §1, §7, §8; `sea.md` §2, §6).
+current and sea settings at it (`wind.md` §1, §7, §8; `sea.md` §2, §6). The venue's typical weather (§6.7) and its
+briefing text (§6.8) are in the same file; the venues, their sources and their performance budget are in
+`venues.md`.
 
 The **look** of a venue (terrain, scenery, sky, water colours, placed sound sources such as surf and harbour noise,
 `audio.md` §7) is not in this file: it lives in a front-end look file next to it, `<venue>.look.json`, whose format
@@ -529,12 +531,15 @@ Schematic (likewise §6.2–§6.5):
   "origin": { "lat": 45.5, "lon": 13.6 },       // geo-reference of world (0, 0), display only
   "bounds": [xmin, ymin, xmax, ymax],            // racing area, m; within ±8000
   "fetch": 12000,                                // m, for the wind-sea growth law (sea.md §2)
-  "exposure_default": 1.0
+  "exposure_default": 1.0,
+  "source": "…"                                  // provenance note written by venuegen, not shown
 }
 ```
 Required: `schema`, `id`, `name`, `version` (integer ≥ 1, bumped on every change) and `bounds` (`xmin < xmax`,
 `ymin < ymax`, every value in [−8000, 8000]). Optional: `origin` (`lat` in [−90, 90], `lon` in [−180, 180]),
-`fetch` (> 0) [10000], `exposure_default` (in [0, 1]) [1].
+`fetch` (> 0) [10000], `exposure_default` (in [0, 1]) [1], `source` (string: coastline and terrain sources with
+version and download date, `venues.md` §3). `name` is player-facing: no em dashes. `fetch` is the fetch for the
+venue's typical wind direction (§6.7), since the sea follows one fetch per race.
 
 ### 6.2 `wind_field`
 ```json
@@ -548,9 +553,13 @@ exactly `f = 1, d = 0` (validated). Grids: §6.6. Sampling: `wind.md` §8.
 
 ### 6.3 `current_field`
 ```json
-"current_field": { "grid": { … }, "vx": [ … ], "vy": [ … ] }     // m/s at tide factor 1, east/north
+"current_field": { "grid": { … }, "vx": [ … ], "vy": [ … ],     // m/s at tide factor 1, east/north
+                   "ref_speed": 1.29 }                            // m/s, written by venuegen
 ```
-Zero outside the grid. Used as `tide(t) · field` (`wind.md` §7).
+Zero outside the grid. Used as `tide(t) · field` (`wind.md` §7). `ref_speed` (≥ 0, required with a field) is the
+90th percentile of `|(vx, vy)|` over the grid nodes inside `bounds` that are on water (outside every land
+polygon): the field's typical strong stream, which the briefing reads (`menus.md` §1.3). `venuegen` writes it and a
+venue test recomputes it.
 
 ### 6.4 `exposure`
 ```json
@@ -573,6 +582,63 @@ counter-clockwise; an obstacle has exactly one of `polygon` and `circle`; circle
 Every field of §6.2–§6.4 sits on a grid `{ "x0", "y0", "dx", "dy", "nx", "ny" }` (`wind.md` §8.1): origin finite,
 `dx, dy > 0`, `nx`, `ny` integers from 2 to 1024 (a grid is at least one cell). Each value array holds exactly
 `nx·ny` finite numbers, row by row (`j` major, `i` fastest).
+Shipped venues also keep the tighter caps of the performance budget (`venues.md` §4: grid sizes, land vertices,
+file size); `venuegen` writes within them and a venue test checks every file in `data/venues/`, while the loader
+keeps the general limits above.
+
+### 6.7 `conditions`
+The venue's typical weather, which the race layer turns into one race's settings with the race seed
+(`race.md` §2.1). Schematic (SI units, as everywhere in the file):
+```json
+"conditions": {
+  "wind":   { "speed": [5.14, 8.23], "from": 3.927, "from_spread": 0.262 },
+  "shift":  { "preset": "stable", "trend_rate": 0.0, "trend_max": 0.0 },
+  "oscillation": { "amplitude": 0.0349, "time_scale": 17 },
+  "puffs":  { "preset": "light" },
+  "current": { "speed": 0.0, "to": 0.0 },
+  "tide":   { "scale": 0.6, "period": 44712, "turn": [0.35, 0.65], "turn_to": -1 },
+  "sea":    { "scale": 1.0, "swells": [ { "hs": 0.8, "tp": 12.0, "from": 4.19 } ] }
+}
+```
+
+| key | meaning | rules [default] |
+| --- | --- | --- |
+| `wind.speed` | `[min, max]` base wind speed at 10 m, m/s | `min ≤ max`, both in [2.06, 12.87] (the menu's 4 to 25 kn) [7.20, 7.20] |
+| `wind.from` | typical direction the wind comes from, rad | [0, 2π) [0] |
+| `wind.from_spread` | half-width of the direction draw, rad | [0, 0.349] (at most 20°, so the briefing's compass point stays true within a sector) [0] |
+| `shift.preset` | a shift preset of `wind.md` §1 | `steady`, `stable`, `oscillating`, `shifty`, `unstable` [`shifty`] |
+| `shift.amplitude`, `shift.hold_max`, `shift.hold_min` | explicit shift instead of the preset, rad and s | replace the preset's values when given; `hold_min ≤ hold_max` [preset; `hold_min = hold_max / 5`] |
+| `shift.trend_rate`, `shift.trend_max` | steady rotation, rad/s (+ = veer, − = back) and its bound, rad | `trend_max` in [0, 0.35] [0, 0.35] |
+| `oscillation` | `amplitude` (rad, [0, 0.087]) and `time_scale` (s, > 0) of `wind.md` §5 | absent = oscillation off |
+| `puffs.preset` | a puff preset of `wind.md` §6.1, `none` = puffs off | [`standard`] |
+| `puffs.<key>` | any `wind.md` §6.1 parameter (lifetimes in s here), overriding the preset | checked as `wind.md` §6 |
+| `current` | uniform current, `speed` m/s (≥ 0) and `to` rad | [0, 0] |
+| `tide` | tidal current on `current_field` (§6.3): `scale` (≥ 0), `period` (integer s, > 0), `turn` (`[a, b]`, fractions of the race, `0 ≤ a ≤ b ≤ 1`, `b − a ≤ 0.4`) and `turn_to` (`+1` or `−1`: the sign of the tide factor after the turn) | requires `current_field`; absent = no tide |
+| `sea.scale` | `sea_scale` of `sea.md` §2 | ≥ 0 [1] |
+| `sea.swells` | at most 4 swells `{hs (m), tp (s), from (rad)}` of `sea.md` §2 | [none] |
+
+The sea's wind waves are not listed: they follow the drawn wind speed and the header's `fetch` (`sea.md` §2).
+
+### 6.8 `briefing`
+The venue's hand-written lines of the pre-race briefing (`menus.md` §1.3); everything else in the briefing is
+computed from §6.7. Player-facing: no em dashes (validated: U+2014 is a load error).
+```json
+"briefing": {
+  "tag": "Strong tide",
+  "tip": "The stream runs hardest mid-channel; cheat it along the shore.",
+  "translations": { "fr": { "name": "…", "tag": "…", "tip": "…" } }
+}
+```
+`tag` at most 24 characters, `tip` at most 80 (counted in the English text; a translation may be up to 25 %
+longer). `translations` maps a language code to any of `name`, `tag` and `tip`; a missing one falls back to the
+English. The core ignores this block.
+
+### 6.9 Old files
+`conditions`, `briefing`, `ref_speed` and `source` are optional additions, so the schema stays `windmark.venue/1`
+(§7). A venue without `conditions` races on the defaults of `wind.md` §1 and `sea.md` §2 with the menu's explicit
+wind (`menus.md` §1); its card shows the briefing computed from those settings without a Tip line. A venue with a
+`current_field` but no `ref_speed` gives the Current line from the uniform current only. Shipped venues have both
+blocks (venue test).
 
 ## 7. Versioning and consistency
 

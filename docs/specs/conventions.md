@@ -268,6 +268,7 @@ Check values:
 | 5 | wave component phases and direction jitter | sea.md §3 |
 | 6 | per-boat attitude wobble phase | boat.md §6.5 |
 | 7 | spawn order shuffle | race.md |
+| 8 | venue conditions draw (wind speed, direction, tide turn) | race.md §2.1 |
 | 16–31 | AI decisions | ai.md |
 
 ## 8. Tables and lookup

@@ -597,7 +597,9 @@ The venue's typical weather, which the race layer turns into one race's settings
   "puffs":  { "preset": "light" },
   "current": { "speed": 0.0, "to": 0.0 },
   "tide":   { "scale": 0.6, "period": 44712, "turn": [0.35, 0.65], "turn_to": -1 },
-  "sea":    { "scale": 1.0, "swells": [ { "hs": 0.8, "tp": 12.0, "from": 4.19 } ] }
+  "sea":    { "scale": 1.0, "swells": [ { "hs": 0.8, "tp": 12.0, "from": 4.19 } ] },
+  "random": { "speed": [3.09, 10.29], "from_spread": 0.698, "shift": ["stable", "oscillating", "shifty"],
+              "puffs": ["light", "standard"], "tide_scale": [0.5, 1.33], "swell_scale": [0.5, 1.5] }
 }
 ```
 
@@ -616,12 +618,19 @@ The venue's typical weather, which the race layer turns into one race's settings
 | `tide` | tidal current on `current_field` (§6.3): `scale` (≥ 0), `period` (integer s, > 0), `turn` (`[a, b]`, fractions of the race, `0 ≤ a ≤ b ≤ 1`, `b − a ≤ 0.4`) and `turn_to` (`+1` or `−1`: the sign of the tide factor after the turn) | requires `current_field`; absent = no tide |
 | `sea.scale` | `sea_scale` of `sea.md` §2 | ≥ 0 [1] |
 | `sea.swells` | at most 4 swells `{hs (m), tp (s), from (rad)}` of `sea.md` §2 | [none] |
+| `random` | the wider range of the Random weather mode (`race.md` §2.1): `speed` (`[min, max]`, m/s, within the menu's range), `from_spread` (rad, [0, 0.785]), `shift` and `puffs` (non-empty lists of preset names), `tide_scale` and `swell_scale` (`[min, max]` multipliers, ≥ 0) | each key missing: widened from the local values as below |
+
+Random defaults, for each key of `random` not given: `speed` = the local range widened by 4 kn each way, clamped to
+4 to 25 kn; `from_spread` = twice the local spread, at most 45°; `shift` = the local preset (or the preset whose
+band in `menus.md` §1.3 holds an explicit amplitude) and its neighbours in the order `steady, stable, oscillating,
+shifty, unstable`; `puffs` = the local preset and its neighbours in `none, light, standard, gusty`, without `none`
+unless local is `none`; `tide_scale` = [0.5, 1.2]; `swell_scale` = [0.5, 1.5].
 
 The sea's wind waves are not listed: they follow the drawn wind speed and the header's `fetch` (`sea.md` §2).
 
 ### 6.8 `briefing`
 The venue's hand-written lines of the pre-race briefing (`menus.md` §1.3); everything else in the briefing is
-computed from §6.7. Player-facing: no em dashes (validated: U+2014 is a load error).
+computed from §6.7. The tag shows in the Local and Custom modes, the tip in Local only. Player-facing: no em dashes (validated: U+2014 is a load error).
 ```json
 "briefing": {
   "tag": "Strong tide",
@@ -635,8 +644,8 @@ English. The core ignores this block.
 
 ### 6.9 Old files
 `conditions`, `briefing`, `ref_speed` and `source` are optional additions, so the schema stays `windmark.venue/1`
-(§7). A venue without `conditions` races on the defaults of `wind.md` §1 and `sea.md` §2 with the menu's explicit
-wind (`menus.md` §1); its card shows the briefing computed from those settings without a Tip line. A venue with a
+(§7). A venue without `conditions` offers only the Custom weather mode (`menus.md` §1), on the defaults of
+`wind.md` §1 and `sea.md` §2; its card shows the briefing computed from those settings without a Tip line. A venue with a
 `current_field` but no `ref_speed` gives the Current line from the uniform current only. Shipped venues have both
 blocks (venue test).
 

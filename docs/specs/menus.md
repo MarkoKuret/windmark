@@ -26,10 +26,10 @@ The project's main scene. Items, top to bottom: **Continue**, **Quick race**, **
   start the device default of §3), and **Let's sail** (keeps them) and **Skip** (keeps the defaults, the device's for quality; Esc or B too). Either
   saves the settings with `welcomed` set, so it shows once.
 
-- **Quick race**: class, sail number, venue, course, fleet size, AI level, wind speed, wind direction, then
-  **Start**, on one screen, the **race card** (§1.1).
-- **Free sail**: class, sail number, venue, wind speed, wind direction, then **Start** (in the card's footer, as
-  on the race card, without the preview).
+- **Quick race**: class, sail number, venue, course, fleet size, AI level, weather (and in Custom: wind speed, wind
+  direction, shifts, gusts), then **Start**, on one screen, the **race card** (§1.1).
+- **Free sail**: class, sail number, venue, weather (as on the race card), then **Start** (in the card's footer, as
+  on the race card, without the preview or the briefing).
 - Lists come from the data on disk: classes from `data/classes/*.boat.json` (name from the file), venues from
   `data/venues/*.venue.json`, courses from `game/data/courses/<venue>/*.course.json` that list the chosen class
   in their `classes` (a course without `classes` suits every class). A venue without a course for the class cannot
@@ -39,12 +39,21 @@ The project's main scene. Items, top to bottom: **Continue**, **Quick race**, **
   class livery and sails; the AI boats get the other sail numbers and names by the fleet rule of
   `data_format.md` §8.4.
 - Ranges: fleet size 2 to 40 boats including the player (default 10); AI level Easy, Intermediate (default),
-  Expert, Pro (`ai.md` §13); wind speed **Venue** (default: the race draws it from the venue's range,
-  `race.md` §2.1; shown as `Venue (10-16 kn)`) or 4 to 25 kn in 1 kn steps; wind direction **Venue** (default:
-  drawn near the venue's typical direction; shown as `Venue (SW)`) or 0° to 355° in 5° steps. An explicit value is
-  free within these ranges, not clamped to the venue's. Stepping left from 4 kn or 0° reaches Venue, and stepping
-  right from Venue starts at the venue's typical value (the middle of its range, rounded; its direction rounded to
-  5°). A venue without `conditions` (`data_format.md` §6.9) has no Venue option: 12 kn and 0° as before.
+  Expert, Pro (`ai.md` §13).
+- **Weather**: **Local** (default), **Random** or **Custom** (`race.md` §2.1).
+  - **Local**: the venue's own conditions, drawn within its ranges from the seed. Nothing to adjust; the card shows
+    the full briefing with the Tip.
+  - **Random**: a surprise day from everything the venue can produce. Nothing to adjust and **no briefing**, ever:
+    the card shows only `Weather  Unknown: read it on the water` (key `briefing.unknown`), and nothing before the
+    start or in the race tells the conditions; the player reads them from the instruments and the water.
+  - **Custom**: four more rows. **Wind speed** 4 to 25 kn in 1 kn steps and **wind direction** 0° to 355° in 5°
+    steps (defaults: the middle of the venue's range, rounded, and its typical direction rounded to 5°); **Shifts**
+    Steady, Stable, Oscillating, Shifty, Unstable (the shift presets of `wind.md` §1); **Gusts** None, Light,
+    Moderate, Very strong (the puff presets `none`, `light`, `standard`, `gusty` of `wind.md` §6.1, named after the
+    word the briefing gives them). Shifts and Gusts default to the venue's (for an explicit venue shift, the preset
+    whose band in §1.3 holds it). The shifts themselves still come from the seed; current, tide and sea stay the
+    venue's. The card shows the briefing without the Tip.
+  - A venue without `conditions` (`data_format.md` §6.9) offers Custom only, at 12 kn, 0°, Shifty, Moderate.
 - **Start** fills `GameSetup.current()` (mode `race` or `free`, seed 0: from the clock) and changes to the sail
   scene, which reads it. The last choices are remembered in the settings file (§3) for the next visit.
 - **Backdrop** (§4): the live sail scene behind the menu.
@@ -55,14 +64,15 @@ The project's main scene. Items, top to bottom: **Continue**, **Quick race**, **
 
 The quick race is one screen: a header (the heading and one line), the body and a footer.
 
-- **Body**: the setup rows on the left, the **briefing** (§1.3) and the **preview** on the right; when the page is narrower than 760 px
+- **Body**: the setup rows on the left, the **briefing** (§1.3, Local and Custom) and the **preview** on the right; when the page is narrower than 760 px
   (logical, after the UI scale: a large UI scale on the Steam Deck, a narrow window) the preview goes under the
   rows. The body scrolls with the focus when it does not fit; the header and the footer never scroll.
 - **Briefing**: the venue briefing of §1.3, at the top of the right column above the course map, following the
-  rows as they change (venue, course, wind speed, wind direction). It moves with the preview when the preview goes
-  under the rows.
-- **Preview**: the **course map** and the **fleet summary**, both following the rows as they change. With the wind
-  rows on Venue the map's wind arrow shows the venue's typical direction and the middle of its speed range.
+  rows as they change (venue, course, weather and the Custom rows). It moves with the preview when the preview goes
+  under the rows. In Random its place holds the one `Unknown` line.
+- **Preview**: the **course map** and the **fleet summary**, both following the rows as they change. In Local the
+  map's wind arrow shows the venue's typical direction and the middle of its speed range; in Custom the chosen
+  values; in Random the course is drawn on the venue's typical direction with no wind arrow and no numbers.
   - The course map is drawn from the course file (`courses.md`) on a dark chart (the HUD's `ink`), north up: the
     marks resolved as `courses.md` §3 resolves them with the course axis on the chosen wind direction, at the
     file's distances (the preview skips the scaling of §6.3, so it shows the course's shape, not its exact size);
@@ -111,7 +121,7 @@ menus' cloth, navy and accent, §4).
 ### 1.3 Venue briefing
 
 A short, standard briefing of the conditions the race will have, on the quick race card only (not on the loading
-screen, the free sail card or before the start). Fixed lines in a fixed order, fixed rating words chosen by the
+screen, the free sail card or before the start), in the Local and Custom weather modes; Random has none (§1). Fixed lines in a fixed order, fixed rating words chosen by the
 thresholds below from the venue's numbers (`data_format.md` §6.7) and the card's choices, plus one hand-written Tip.
 Computed in the menu when a row changes; it reads exactly the settings the race will resolve (`race.md` §2.1), so
 every line stays true for the race that starts.
@@ -129,8 +139,9 @@ Tip      The stream runs hardest mid-channel; cheat it along the shore.
 Layout: the header line in the card's heading style, then the labels in one column (dim) and the values beside them
 (paper), one line each; the Tip may wrap to two lines. No em dashes anywhere in it.
 
-**Inputs.** `S = [s0, s1]` the wind speed (the venue's range, or `[v, v]` for an explicit speed), `θ` the direction
-(the venue's `from`, or the explicit one), the venue's shift, puff, current, tide and sea values after presets
+**Inputs.** `S = [s0, s1]` the wind speed (Local: the venue's range; Custom: `[v, v]`), `θ` the direction (Local:
+the venue's `from`; Custom: the chosen one), the shift and puff values (Local: the venue's after presets; Custom: the
+chosen presets), the venue's current, tide and sea values
 (`race.md` §2.1), the chosen course's `T_race` and `t_gun` (`race.md` §2.1; the card's sequence and
 `free_sailing_s`).
 
@@ -146,7 +157,7 @@ Ranges join with a hyphen (`10-16 kn`); equal ends show one value.
 | Gusts | `<word>: to +<g> %, <spread>`, or `None` | `g = min(puff_cap_up, puff_strength_max)`; `None` when puffs are off |
 | Current | `<word>, <c> kn` and `, turns <when>` (a tide) or `, sets <point>` (a uniform current only); or `None` | `c` below |
 | Sea | `<word>` or `<word> to <word>`, and `, swell <hs> m from the <point>` for each swell with `hs ≥ 0.3 m` | wind-sea `Hs` at `s0` and `s1` (below) |
-| Tip | `briefing.tip` | hidden when the direction is explicit and more than 20° from the venue's `from` (a tip is written for the typical wind), and for a venue without `briefing` |
+| Tip | `briefing.tip` | Local only (a tip is written for the venue's own weather); never in Custom, and none for a venue without `briefing` |
 
 **Shifts.** Word by `A`: Steady `< 1.5°`, Stable `< 5.5°`, Oscillating `< 11.5°`, Shifty `< 20°`, Unstable
 `≥ 20°` (the presets of `wind.md` §1 fall in their own band). Size by `A`: small `< 5.5°`, medium `< 11.5°`, large
@@ -172,7 +183,8 @@ give the same. Swell heights to 0.1 m, times `sea_scale`.
 `briefing.size.<small|medium|large|very_large>`, `briefing.pace.<slow|regular|fast>`,
 `briefing.word.gusts.<none|light|moderate|strong|very_strong>`, `briefing.spread.<scattered|frequent|everywhere>`,
 `briefing.word.current.<none|light|moderate|strong|very_strong>`, `briefing.turn.<early|mid|late>`,
-`briefing.word.sea.<flat|chop|moderate|rough>`, `compass.<n|ne|e|se|s|sw|w|nw>`, and one template per line
+`briefing.word.sea.<flat|chop|moderate|rough>`, `compass.<n|ne|e|se|s|sw|w|nw>`, `briefing.unknown` (Random),
+`weather.mode.<local|random|custom>`, `weather.gusts.<none|light|moderate|very_strong>`, and one template per line
 (`briefing.line.wind` = `{lo}-{hi} kn from the {point}` and so on) so a language can reorder the parts. The venue's
 name, tag and tip come from the venue file with its translations (`data_format.md` §6.8).
 

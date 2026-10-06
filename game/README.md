@@ -225,14 +225,12 @@ starts. The prefetch and the spreading are on while the scene processes itself (
   sags by its tension (the sail's area, the apparent wind, the luff shiver: a trimmed sheet is straight, a flogging
   one droops and swings with the sail's flutter phase); the lazy line hangs slack and lies on the deck (a 5 cm height
   field of the class's deck), round the mast front or the forestay. One mesh per boat with two surfaces (headsail and
-  flying-sail lines), rewritten in place by the native `SheetRopes` in the frames a sail is redrawn (at LOD1 at most
-  15 Hz). Cost on an M-series Mac: about 50 µs per redraw for a wm7 with jib and kite (1 870 vertices), 1 µs per frame
+  flying-sail lines), rewritten in place by the native `SheetRopes` in the frames a sail is redrawn (thin, when a
+  metre is under 31 px on screen, at most 15 Hz). Cost on an M-series Mac: about 50 µs per redraw for a wm7 with jib and kite (1 870 vertices), 1 µs per frame
   between redraws; the GDScript `SheetRopesRef` about 15 times slower.
-- **Levels of detail** (`sail_visuals.md` §11.4): every boat loads `<id>.glb`, `<id>_lod1.glb` and `<id>_lod2.glb`
-  (the sidecar's `model.lods`), shows one by the camera distance to the boat (LOD1 past 31.5 m, back below 28.5 m;
-  LOD2 past 105 m, back below 95 m), with the moving parts of the level shown following the helm and the sails. The
-  sails are LOD0's at every level; the sheets are full at LOD0, coarse at LOD1 and hidden at LOD2. `BoatLivery` puts
-  the same livery materials on every level.
+- **Levels of detail** (`sail_visuals.md` §11.4): one model per boat, simplified by the engine by size on screen (see
+  "Notes on the imported boats"); the moving parts follow the helm and the sails at every distance; the sheets are
+  full, thin or hidden by the size of a metre on screen. `BoatLivery` puts the boat's one material on every node.
 - **HUD commands**: the helm mark, the sheet bar and text, `AUTO` and `LET FLY` of the own boat come from the
   local `PlayerControls` every frame (`Hud.local_commands`), since the core applies a command at its next step.
 - **Input map**: `scripts/controls/default_bindings.gd` is the one source of the defaults of `controls.md` §3.
@@ -321,7 +319,7 @@ Flags after `--`:
 | `--drawn-wind=18` | the wind the water draws (whitecaps, puffs) in knots, over the simulation's; the waves stay |
 | `--breathing=off` | the chase camera's plain follow instead of its breathing (`cameras.md` §2.1) |
 | `--skip=S` | the race world fast-forwarded S seconds before the first frame (a measured moment of the race) |
-| `--lod=0` | every boat at this level of detail (0, 1 or 2) at any distance |
+| `--lod=0` | every boat's meshes at the own boat's LOD bias (the full model at chase range, `sail_visuals.md` §11.4) |
 | `--hide-parts=rigging,hardware` | these model part nodes of every boat never shown (hull, deck, keel, rudder, mast, rigging, boom, hardware, mainsheet) |
 | `--no-sheets` | no running sheets |
 | `--no-sails` | no sails drawn or shaped |
@@ -722,12 +720,17 @@ python3 game/tests/livery_cost.py
   the sunlit albedo. The shader caps the linear albedo at 0.8 (bright paint and gelcoat), so a white hull in full
   sun keeps its shading. `tests/boat_materials_test.gd` (run by `run_boat_import_test.sh`) checks a fleet of both
   classes: one boat material, three compressed atlas textures, the imported copies released.
-- **Levels of detail and shadows** (`sail_visuals.md` §11.4): `BoatView` loads LOD0 to LOD3 and shows one by the
-  camera distance (15, 80 and 250 m); on LOD2 and LOD3 it redraws each sail's index buffer on every 2nd or 4th row and
-  column over the whole grid (`BoatView.sail_indices`). The visible boat meshes cast no sun shadow; each level's
-  `shadow` and `shadow_boom` nodes cast as shadows only, the sails cast their own, and `BoatView.cast_distance` (the
-  tier's `boat_cast_distance`) turns the casters of boats other than the own boat (`own`) off beyond it.
-- The boat GLBs import without Godot's automatic LODs and shadow meshes (boatgen writes their `.import` files).
+- **Levels of detail and shadows** (`sail_visuals.md` §11.4): one model per class, nodes `body` (every static part)
+  and the moving parts; the boat GLBs import with Godot's automatic levels of detail (`generate_lods`, boatgen writes
+  their `.import` files), and every sail mesh carries two engine levels on every 2nd and 4th row and column of its
+  grid (`BoatView.sail_indices`), so the renderer simplifies by size on screen (the viewport's
+  `mesh_lod_threshold`, the tier's `mesh_lod_threshold`). The own boat's meshes have `lod_bias` 32
+  (`BoatView.OWN_LOD_BIAS`): the full model at chase range. The sheets' detail goes by the size of a metre on screen
+  (`BoatView.sheet_detail_for`). The visible boat meshes cast no sun shadow; the `shadow` and `shadow_boom` nodes cast
+  as shadows only, the sails cast their own, and `BoatView.cast_distance` (the tier's `boat_cast_distance`) turns the
+  casters of boats other than the own boat (`own`) off beyond it. Code that needs a part of the merged body (the
+  deck for the cameras and the sheets, the hull for the livery) reads it with `BoatMaterials.part_surfaces`.
+- No shadow meshes are generated on import (the proxy casts).
   `BoatView` rebuilds each sail as its own uncompressed `ArrayMesh` at load, so the import settings of the sail
   meshes do not matter.
 

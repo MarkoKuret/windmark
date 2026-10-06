@@ -901,19 +901,19 @@ sail plan change the owner decides whether to repaint or rebake (`--only`).
 ### 8.7 Ropes
 
 The running rigging in braid colours by function, as on a race boat's rope set: each function its own clear colour
-(dyed polyester braid, a little sun-faded, not fluorescent) with a contrasting fleck, so the crew (and the player) tells the lines apart at a glance; every boat of the class
+(dyed polyester braid, muted and a little sun-faded, never fluorescent) with a contrasting fleck, so the crew (and the player) tells the lines apart at a glance; every boat of the class
 carries the same rope set. `ropes.<function>`, each `{ "color", "fleck", "pattern" }`, all optional:
 
 | function | lines | default `color`, `fleck` |
 | --- | --- | --- |
-| `mainsheet` | the mainsheet tackle, its tail and coil | `#b5652f` orange, `#2a3348` navy fleck |
-| `sheet` | jib and genoa sheets (drawn by the front end, `sail_visuals.md` §11.3) | `#2f7d80` teal, `#d6d6ce` white fleck |
-| `kite_sheet` | spinnaker and code zero sheets, guys and the tack line (front end) | `#97406a` raspberry, `#d6d6ce` white fleck |
-| `halyard_main` | the main halyard (inboard of each bank) | `#a2383a` red, `#d6d6ce` white fleck |
-| `halyard_jib` | the jib halyard | `#355f98` blue, `#d6d6ce` white fleck |
-| `halyard_kite` | the spinnaker halyard (and the kite's halyard on the posed previews) | `#3f7a4a` green, `#d6d6ce` white fleck |
-| `halyard_code` | the code zero or spare halyard (a fourth halyard) | `#bf9a42` ochre yellow, `#2a2b2e` black fleck |
-| `control` | traveller lines, the outhaul and the other control lines | `#674f8c` purple, `#d6d6ce` white fleck |
+| `mainsheet` | the mainsheet tackle, its tail and coil | `#ae7249` orange, `#2d3548` navy fleck |
+| `sheet` | jib and genoa sheets (drawn by the front end, `sail_visuals.md` §11.3) | `#3e797b` teal, `#d6d6ce` white fleck |
+| `kite_sheet` | spinnaker and code zero sheets, guys and the tack line (front end) | `#91506f` raspberry, `#d6d6ce` white fleck |
+| `halyard_main` | the main halyard (inboard of each bank) | `#9c4c4e` red, `#d6d6ce` white fleck |
+| `halyard_jib` | the jib halyard | `#486792` blue, `#d6d6ce` white fleck |
+| `halyard_kite` | the spinnaker halyard (and the kite's halyard on the posed previews) | `#497551` green, `#d6d6ce` white fleck |
+| `halyard_code` | the code zero or spare halyard (a fourth halyard) | `#b79c5a` ochre yellow, `#2a2b2e` black fleck |
+| `control` | traveller lines, the outhaul and the other control lines | `#6b5986` purple, `#d6d6ce` white fleck |
 
 Lifelines and the standing rigging stay wire grey (the generator's `rope` and `metal` slots).
 

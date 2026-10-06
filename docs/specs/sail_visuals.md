@@ -841,9 +841,10 @@ pieces and materials:
   the cam, horn and traveller cleats, the rudder bearing ring and the lines lying on surfaces (halyards and their
   tails, the mainsheet tail and coil, traveller lines: on the deck and the coachroof's top within 3.5 cm of the
   surface, and down the coachroof's aft face on its own rectangle of the deck image, `data_format.md` §8.5; no
-  halyard coils: the tails run aft from the clutches (with halyard winches on the coachroof along a lane inboard of
-  them, clear of the sliding hatch), over the aft edge and down the aft face into a low rope bag either side of the
-  companionway, modelled, so a tail never ends in the air or flat on the top; opaque in their own colours; only where a line hangs clear in the air it stays thin rope geometry) are painted into the deck region of the livery atlas
+  halyard coils: each tail runs as straight as it can from its clutch to its place at a low rope bag on the aft face
+  either side of the companionway (the places a little unevenly spaced), passing a halyard winch's base or a hatch
+  on whichever side is shorter, then over the aft edge and down the face into the bag, modelled, so a tail never
+  ends in the air or flat on the top; opaque in their own colours; only where a line hangs clear in the air it stays thin rope geometry) are painted into the deck region of the livery atlas
   with their shading (darker under and around a fitting, lighter edges). Winches (about 450 triangles), clutches
   (about 80 each), the blocks that stand up (mast foot, traveller, mainsheet, cars, about 120), the cars, the mast
   foot, the mast instruments, the wind wand, stanchions, pulpit, pushpit, lifelines, rigging screws, a regatta helm

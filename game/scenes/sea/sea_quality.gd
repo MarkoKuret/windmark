@@ -3,7 +3,8 @@ extends RefCounted
 ## Water quality tiers (water_render.md §7). `sea_shadows`: the sea takes the sun's shadows (its shader defines
 ## WM_NO_SHADOWS otherwise); `shadow_splits`: the sun's cascades (0 off, 1, 2 or 4; §4.6); `tree_shadows`: the
 ## venue's trees cast (VenueView.apply_quality); `boat_cast_distance`: other boats farther than this from the camera
-## cast no sun shadow, 0 = no limit (for the boat view); `drawn_shadow_boats`: boats whose shadow BoatShadows draws
+## cast no sun shadow, 0 = no limit (for the boat view); `mesh_lod_threshold`: the viewport's automatic mesh LOD
+## threshold in pixels (the boats' engine levels of detail, sail_visuals.md §11.4); `drawn_shadow_boats`: boats whose shadow BoatShadows draws
 ## on the water (§4.7: the own boat and the nearest others within the shadow distance), 0 where the sea takes real
 ## shadows; `faded_slope`: the per-pixel slope of faded waves (WM_FADED_SLOPE).
 
@@ -15,21 +16,21 @@ const TIERS := {
 		"wake_boats": 1, "wake_radius": 0.0, "spray": "none", "wake_buffer": false, "ssr": false,
 		"shadow_splits": 1, "shadow_distance": 45.0, "shadow_split": [0.0, 0.0, 0.0], "shadow_atlas": 2048,
 		"shadow_soft": RenderingServer.SHADOW_QUALITY_HARD, "shadow_blend": false, "sea_shadows": false,
-		"tree_shadows": false, "boat_cast_distance": 30.0, "drawn_shadow_boats": 1, "faded_slope": false,
+		"tree_shadows": false, "boat_cast_distance": 30.0, "mesh_lod_threshold": 2.0, "drawn_shadow_boats": 1, "faded_slope": false,
 	},
 	Tier.M: {
 		"name": "M", "rings": 180, "segments": 256, "shader": "res://shaders/water_m.gdshader",
 		"wake_boats": 7, "wake_radius": 0.0, "spray": "own", "wake_buffer": true, "ssr": false,
 		"shadow_splits": 2, "shadow_distance": 90.0, "shadow_split": [0.5, 0.0, 0.0], "shadow_atlas": 2048,
 		"shadow_soft": RenderingServer.SHADOW_QUALITY_SOFT_LOW, "shadow_blend": false, "sea_shadows": false,
-		"tree_shadows": true, "boat_cast_distance": 0.0, "drawn_shadow_boats": 7, "faded_slope": false,
+		"tree_shadows": true, "boat_cast_distance": 0.0, "mesh_lod_threshold": 1.0, "drawn_shadow_boats": 7, "faded_slope": false,
 	},
 	Tier.H: {
 		"name": "H", "rings": 260, "segments": 384, "shader": "res://shaders/water_h.gdshader",
 		"wake_boats": 1000, "wake_radius": 400.0, "spray": "all", "wake_buffer": true, "ssr": true,
 		"shadow_splits": 4, "shadow_distance": 150.0, "shadow_split": [0.06, 0.26, 0.55], "shadow_atlas": 4096,
 		"shadow_soft": RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM, "shadow_blend": true, "sea_shadows": true,
-		"tree_shadows": true, "boat_cast_distance": 0.0, "drawn_shadow_boats": 0, "faded_slope": true,
+		"tree_shadows": true, "boat_cast_distance": 0.0, "mesh_lod_threshold": 1.0, "drawn_shadow_boats": 0, "faded_slope": true,
 	},
 }
 

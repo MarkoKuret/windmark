@@ -27,8 +27,9 @@ Nothing else: the GLB writer, triangulation, lofting and hydrostatics are in thi
 
 | file | content |
 | --- | --- |
-| `<id>.glb` | the model (LOD0), flat standard sails |
-| `<id>_lod1.glb`, `<id>_lod2.glb` | lower levels of detail, same nodes, pivots and sails (below) |
+| `<id>.glb` | the game model (below), flat standard sails |
+| `_tex/` | the shared tiling atlas (`tiles_color.png`, `tiles_mr.png`, `tiles_normal.png`) and the sails' weave set, referenced by URI from every GLB, with Godot import settings (VRAM-compressed); written once per output folder |
+| `*.glb.import` | Godot import settings for each GLB: the engine's automatic levels of detail on, no shadow meshes |
 | `<id>_collision.glb` | low-poly collision meshes (node names carry Godot's `-convcolonly` import suffix) |
 | `<id>.physics.json` | physics sidecar (below) |
 | `<id>_upwind.glb`, `<id>_downwind.glb` | preview poses only: sails set as the game draws them (below), boom and pole swung, sheets led (node `sheets`) |
@@ -246,8 +247,8 @@ that BoatView, native and reference, places every vertex within 0.01 m of them.
 self-tailing winches (ribbed drum, tailer, stripper arm, a handle in the starboard primary), rope clutches on a
 base plate, deck organisers, turning blocks on padeyes, blocks with cheeks, sheave and swivel, T-tracks with end
 stops, cars with a lead block and plunger, cam cleats with fairleads, horn cleats, hatches with frame, lens,
-hinges and handles, stanchions, bent-tube pulpit and pushpit, the wheel with its grip and a pedestal guard with
-an instrument pod, gudgeons or the rudder bearing cap, rigging screws. Placement: primaries beside the cockpit,
+hinges and handles, stanchions, bent-tube pulpit and pushpit, a regatta helm (the wheel with its grip on a slim
+pedestal with a small head round its shaft, no guard or instrument pod), gudgeons or the rudder bearing cap, rigging screws. Placement: primaries beside the cockpit,
 halyard winches (wm12), clutches and organisers on the coachroof clear of the sliding hatch, flush hatches bent
 to the top's slope and crown (`on_surface(..., conform=True)`), the halyards themselves from their exits low on the
 mast round the sheave of their turning block at the mast foot, then along the deck and up the sloping top lying on
@@ -296,22 +297,45 @@ in the demo livery. The transom has a name panel (`livery_transom.panel`: uv1 re
 metres): the band below the cockpit opening, above the boot stripe, or, with a transom-hung rudder, the part of it
 to starboard of the gudgeons. The game paints the liveries into them at load (`game/README.md` "Liveries").
 
-## Levels of detail
+## The game model
 
-`<id>.glb` is LOD0; `<id>_lod1.glb` and `<id>_lod2.glb` have the same node set, pivots and sails (the sail grids
-are the simulation's) with a coarser hull, deck and appendages, fewer segments on every round part, and the small
-pieces left out (bounding box under 35 mm at LOD1, 0.3 m at LOD2, plus the handles, coils, halyard tails and
-most fittings by rule). The sidecar's `model.lods` lists each file, its triangles and its switch distance.
+One detailed model per class (`docs/specs/sail_visuals.md` §11.4): Godot generates its levels of detail on import
+and picks one by size on screen, so there are no hand-made coarser models. `Boat.parts` stays the full model (the
+physics, the attachment and lead checks, the posed previews and `tools/liverybake` read it); `Boat.game_parts()`
+builds the game model and `Boat.write_game_glb` writes it with the shadow proxy:
 
-| level | from | wm7 | wm12 | what goes |
-| --- | --- | --- | --- | --- |
-| LOD0 | 0 m | ~76 k | ~96 k | full model |
-| LOD1 | 30 m | ~27 k | ~36 k | half the segments; handles, halyards, coils, small fittings, rub strake detail |
-| LOD2 | 100 m | ~9.6 k | ~11.9 k | quarter segments, 24 hull stations; only hull, deck, appendages, spars, wires, tracks, hatches, pulpit, helm and sails |
+- the hull, deck, keel and rig at the full model's detail;
+- the hardware low-poly (`hardware.lowpoly`): winches about 450 triangles, clutches about 80 each, blocks about
+  120, cars, stanchions, the wheel about 1,100 (a smooth rim near the camera);
+- paint what is flat, model what sticks up, drop what is under a pixel (`hardware.PAINTED`, `hardware.DROPPED`, by
+  the pieces' tags): the jib and traveller tracks, hatches, organisers, cam, horn and traveller cleats, the rudder
+  bearing ring and the mainsheet coil are painted into the livery's deck maps; the halyards, the
+  mainsheet tail and the traveller control lines are painted where they lie on surfaces (within 3.5 cm of the deck
+  or the coachroof's top, `hardware.ROPE_LIFT_MAX`, and down the coachroof's aft face on its own rectangle of the
+  plan, `Boat.line_on_face`) and stay thin rope geometry only where they hang in the air (`Boat.painted_part()`, drawn by `tools/liverybake`); each hatch also
+  stands as a plain box about 3 cm proud on the deck node, whose top shows the painted frame and lens. The halyard
+  exits, the anemometer, the antenna, the outhaul, sheaves, sheave boxes and bolts go. The mast-foot and traveller
+  blocks, the clutches, winches, cars, mast foot, mast instruments, the wind wand, the rope bags (each halyard tail
+  runs as straight as it can from its clutch to its place at a low bag on the aft face either side of the
+  companionway, past a winch base or hatch on the shorter side, `hardware.route_around`; no halyard coils), stanchions, pulpit, pushpit,
+  lifelines, rigging screws and the helm stay modelled;
+- one node `body` for every static part (hull, deck, keel, mast, rigging, hardware; each vertex's source part in
+  `COLOR_0` blue, GLB root extras `body_parts`) and the moving parts on their own: `rudder` (with the tiller),
+  `wheel`, `boom`, `mainsheet`, `pole`.
 
-Budgets: LOD0 at most 100 k triangles, LOD1 40 k, LOD2 12 k (sails included: about 3.7 k for the set sails of
-wm12). `game/tests/boat_import_test.gd` checks the levels and prints the fleet cost of 16 boats per class
-(2 at LOD0, 4 at LOD1, 10 at LOD2).
+| | wm7 | wm12 |
+| --- | --- | --- |
+| nodes drawn without the sails | 4 (body, rudder, boom, mainsheet) | 5 (with the wheel) |
+| model triangles without the sails (full model: 72 k, 92 k) | ~51 k | ~60 k |
+
+The sidecar's `model` gives the game model's `triangles` and `surfaces` without the sails, `sail_triangles`, the
+node set and `full_triangles` (the full model). `game/tests/boat_import_test.gd` prints the triangles the engine's
+levels draw at 25 to 400 m.
+
+**Shadow proxy** (`Boat.shadow_proxy`): about 500 triangles of hull, height-field deck with the coachroof, keel,
+rudder and mast (node `shadow`), and the boom (`shadow_boom`, a child of the `boom` node, so it swings with it), in
+the material `shadow`. The game casts the sun's shadows from it only; every vertex lies on the full model's
+surfaces, so the proxy sits inside the drawn boat.
 
 ## Model structure
 
@@ -319,13 +343,14 @@ Nodes under the root (named after the class id):
 
 | node | pivot | note |
 | --- | --- | --- |
-| `hull`, `deck`, `keel`, `mast`, `rigging`, `hardware` | | static |
+| `body` | | every static part: hull, deck, keel, mast, rigging, hardware |
 | `rudder` | rudder stock, turns about the vertical | carries the tiller when steering is `tiller` |
 | `wheel` | wheel hub, turns about fore and aft | only with `wheel` steering |
 | `boom` | gooseneck, turns about the vertical | carries the upper mainsheet block |
 | `mainsheet` | | tackle between boom and traveller; rebuild it as the boom moves |
 | `pole` | on the mast axis at the heel height, turns about the vertical | spinnaker pole, only for a class that flies a spinnaker on a pole (below) |
 | `sail_<id>` | | one per class sail, flat, two layers |
+| `shadow` (and `shadow_boom` under `boom`) | | the shadow proxy (above), material `shadow` |
 
 Pivot nodes store their geometry relative to the pivot and carry the pivot as their translation.
 
@@ -338,28 +363,33 @@ it out.
 
 ## Materials and UVs
 
-Material slots (glTF material names): `gelcoat`, `nonslip`, `antifouling`, `boottop`, `carbon`, `metal`,
-`sailcloth`, plus `glass`, `rope`, `rubber` and `transom` (the transom face on the `deck` node, gelcoat with its own
-uv1 so the livery paints it in the hull's colours; on every level of detail), and the running rigging by function
-(`docs/specs/data_format.md` §8.7): `rope_mainsheet` (the tackle, its tail and coil), `rope_halyard` (the halyards and
-their coils), `rope_control` (traveller lines, outhaul); the posed previews' sheets are `rope_sheet` and
-`rope_kite_sheet`; `rope` stays for the lifelines. Each rope slot's mean colour is the braid of the function's
-default rope set (`gltf.ROPES`), so the model reads right before any livery. Each material's `extras.tiling_m` is the size of one tile of its
-texture in metres of uv0, and `extras.texture_set` names its set.
+**One material** (`gltf.py`, `data_format.md` §8.5): every opaque surface but the sails is in the glTF material
+`boat`, one primitive per node. Each vertex carries its slot in `COLOR_0` (green = slot id / 255, red = the baked
+AO). The material's extras hold the slot table (`gltf.ATLAS_SLOTS`: name, mean colour (linear), roughness, metallic,
+tile of the atlas, tile size `tiling_m` in metres of uv0, livery region) and the atlas layout. The slots are the
+earlier material slots split by where they are: `hull_gelcoat`, `hull_boottop`, `hull_antifouling` (region `hull`),
+`deck_gelcoat`, `deck_nonslip` (region `deck`), `transom`, `keel` (region `keel`), `rudder` (region `keel_colour`),
+`deck_face` (the coachroof's aft face, region `deck` on its own rectangle of the plan, `Deck.face_frame`), and
+`gelcoat`, `carbon` (spars, pedestal, wheel, tiller: dark and slightly glossy, the clear coat's orange peel, no
+weave), `metal`, `rubber`,
+`glass`, `nonslip`, `antifouling`, `boottop` and the ropes (`rope` for the lifelines and the rope functions
+`rope_mainsheet`, `rope_halyard_main`, `rope_halyard_jib`, `rope_halyard_kite`, `rope_halyard_code`, `rope_control`,
+`rope_sheet`,
+`rope_kite_sheet`, `data_format.md` §8.7) without a region. Each rope slot's mean colour is the braid of the
+function's default rope set (`gltf.ROPES`). The sails keep their own material `sailcloth`, and the shadow proxy its
+`shadow`. `gltf.read_glb` hands the GLB back per slot (named after its base material) for the previews and tests.
 
-**Texture set** (`boatgen/textures.py`, images in `textures/`). Every slot but `glass` has a tiling
-`baseColorTexture` (grey detail), `metallicRoughnessTexture` (roughness in G, metallic in B) and, except
-`sailcloth`, a `normalTexture` (OpenGL convention), all on uv0 with a `KHR_texture_transform` scale of
-`1 / tiling_m`. The textures vary around a fixed mean, and the factors are the slot's mean colour and roughness
-divided by that mean, so a slot looks the same on average with or without its textures. Sets are shared between
-slots and each image is embedded once per GLB (JPEG, 512 x 512, about 1.2 MB in all):
+**Texture set** (`boatgen/textures.py`, images in `textures/`). Every slot reads one tile of the shared tiling atlas
+(`_tex/tiles_color.png`, `tiles_mr.png` with roughness in G and metallic in B, `tiles_normal.png` in the OpenGL
+convention): the sets below but the sails' weave side by side, 4 x 2 tiles of 512 (two free), and a flat tile for the glass. The textures vary
+around a fixed mean (`DETAIL_MEAN`, `ROUGH_MEAN`), so a slot looks the same on average with or without them. The game
+wraps each tile itself (`shaders/boat_atlas.gdshader`); a plain glTF viewer shows the atlas unwrapped.
 
 | set | slots | tile (m) | source (CC0, docs/THIRD_PARTY.md) |
 | --- | --- | --- | --- |
-| `orange_peel` | gelcoat, boottop, transom | 0.5 | ambientCG Plastic013A |
+| `orange_peel` | gelcoat, boottop, transom, carbon (its clear coat) | 0.5 | ambientCG Plastic013A |
 | `diamond` | nonslip | 0.1 | procedural (textures.py): moulded raised-diamond non-slip, about 6 mm pitch |
 | `grain` | antifouling, rubber | 0.5, 0.1 | ambientCG Rubber004 |
-| `carbon_twill` | carbon | 0.05 | ambientCG Fabric004 |
 | `brushed` | metal | 0.2 | ambientCG Metal009 |
 | `weave` | sailcloth | 0.5 | ambientCG Fabric062 (no normal map: the run-time sail mesh has no tangents) |
 | `braid` | rope and every `rope_*` slot | 0.05 | ambientCG Rope002 |
@@ -367,13 +397,13 @@ slots and each image is embedded once per GLB (JPEG, 512 x 512, about 1.2 MB in 
 `python3 -m boatgen.textures [--cache DIR]` downloads the 1K sources again and rewrites `textures/`; the build
 only reads the processed files.
 
-**Baked ambient occlusion** (`boatgen/bake.py`). Every node except the sails and the mainsheet (deformed or
-rebuilt at run time) carries per-vertex AO as `COLOR_0` (unsigned byte, normalised, grey, alpha 1): the
-cosine-weighted share of 160 directions over the vertex's hemisphere in which the fixed model (sails excluded)
-does not hide it, from GPU depth maps. glTF multiplies the base colour by `COLOR_0`; Godot imports it with
-`vertex_color_use_as_albedo` on those slots. The pivoting nodes (rudder, boom, wheel, pole) are baked in their
-rest position. Straight swept parts (tubes, wires, tracks) are split into segments of at most 0.5 m so the AO
-has vertices to vary on.
+**Baked ambient occlusion** (`boatgen/bake.py`). Every node except the sails, the mainsheet (deformed or rebuilt at
+run time, AO 1) and the shadow proxy carries per-vertex AO in the red of `COLOR_0` (unsigned byte, normalised; green
+is the slot id, alpha 1): the cosine-weighted share of 160 directions over the vertex's hemisphere in which the
+fixed model (sails excluded) does not hide it, from GPU depth maps. The game applies it to
+the ambient and reflected light only. The pivoting nodes (rudder, boom, wheel, pole) are baked in their rest
+position. Straight swept parts (tubes, wires, tracks) are split into segments of at most 0.5 m so the AO has
+vertices to vary on.
 
 - **uv0** is metric everywhere, for tiling PBR textures: hull `u` = x along the length, `v` = girth from the keel
   (both in metres); deck, cabin top and cockpit floor planar (x, y); walls (along, height); sails (distance from
@@ -417,7 +447,7 @@ Positions in the body frame.
 | `buoyancy_samples` | skin samples up to the sheer with outward normal and area, for pressure integration at any heel and trim (`canoe_volume_check_m3` is their immersed volume by the divergence theorem) |
 | `collision_meshes` | closed low-poly hull (canoe body to the deck crown), fin, bulb and rudder slabs |
 | `rig` | mast step, masthead, hounds, forestay tack, boom pivot and axis, sprit end, rudder stock and axis, wheel hub, spreader tips, `sheet_leads` (headsail and flying-sail sheet lead block and winch, starboard side, with the drum diameter); with a pole: `pole_pivot`, `pole_axis`, `pole_length` (from the mast front) and `pole_end` (rest position, the spinnaker tack) |
-| `model` | file, triangles, nodes, pivots, `lods` (file, triangles and switch distance of each level of detail) |
+| `model` | file, `triangles` and `surfaces` of the game model without the sails, `sail_triangles`, `full_triangles` (the full model), nodes, pivots |
 | `sails` | per sail: node, type, grid size, vertex order, flat area and target, centroid, corner vertices (tack, clew, head), `look` (the look parameters above, every applicable key filled); code zeros and spinnakers also `rule` (luff, leech, foot, mid girth and rule area of the planform) |
 
 ## Limits and next steps
@@ -428,7 +458,7 @@ Positions in the body frame.
 - No crew yet; headsail and kite sheets only on the posed previews (the engine draws them from
   `rig.sheet_leads`).
 - The flat spinnaker outline is a centreline projection; its flying shape comes from the simulation.
-- Surfaces per boat: one per node and material (about 30 to 40); no merging across nodes yet.
+- Surfaces per boat: one per node (4 or 5, a pole class 6) plus the sails.
 - Multihulls are not supported (one canoe body, one keel).
 - `sails[].leech` and `foot` are used for code zeros and spinnakers only; the hull fit leaves Cm as an outcome
   (see above).

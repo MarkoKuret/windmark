@@ -4,10 +4,183 @@ Every part is built in a local frame (x forward, y port, z along the surface nor
 few size parameters, then placed with `on_surface()`, which reads height and normal from the deck, cabin roof or
 cockpit floor. Placement rules scale with the boat and read positions from the hull, deck and rig.
 """
+import contextlib
+
 import numpy as np
 
-from .mesh import (Part, revolve, tube, sweep, superellipsoid_box, box, rounded_rect, circle, normalize, translate,
+from .mesh import (segment_scale, Part, revolve, tube, sweep, superellipsoid_box, box, rounded_rect, circle, normalize, translate,
                    rot_axis, frame_z, merge, extrude, seg)
+
+
+# ---------------------------------------------------------------------------------------------------------
+# the game model (build.py Boat.game_parts, docs/specs/sail_visuals.md 11.4): paint what is flat, model what sticks
+# up, drop what is under a pixel at chase range. Pieces are told apart by their tags.
+
+# flat or low fittings and the lines lying on the deck: painted into the livery's deck maps (tools/liverybake, from
+# the full model's pieces, Boat.painted_part); the hatches also stand as a plain raised box on the deck node
+PAINTED = ("jib_track", "hatch_", "organiser_", "cam_cleat_", "traveller_cleat_", "horn_cleat_", "halyard_coil",
+           "mainsheet_tail", "mainsheet_coil", "traveller_line", "rudder_bearing")
+# under a pixel at chase range: left out (the halyard exits on the mast wall, sheaves, bolts, the anemometer)
+DROPPED = ("halyard_exit", "anemometer", "antenna", "outhaul", "crane_sheave", "sheave_box", "tiller_bolt",
+           "rudder_head_bolt", "gooseneck_pin")
+
+
+# the halyards by the sail they hoist, inboard first (data_format.md 8.7): main, jib, kite, code zero
+HALYARD_SLOTS = ("rope_halyard_main", "rope_halyard_jib", "rope_halyard_kite", "rope_halyard_code")
+# a line lying within this of the walking surface under it is painted there; where it runs higher (through the air,
+# down the coachroof's aft face to the cockpit floor) it stays geometry, so a line is continuous (m)
+ROPE_LIFT_MAX = 0.035
+# the lines that are painted where they lie on the surface
+PAINTED_LINES = ("halyard_", "mainsheet_tail", "traveller_line")
+
+
+def is_painted_line(tag):
+    return bool(tag) and tag.startswith(PAINTED_LINES) and not tag.startswith(("halyard_exit", "halyard_coil"))
+
+
+def is_painted(tag):
+    if not tag:
+        return False
+    if tag == "traveller" or (tag.startswith("halyard_") and not tag.startswith(("halyard_exit", "halyard_coil"))):
+        return True
+    return tag.startswith(PAINTED)
+
+
+def is_dropped(tag):
+    return bool(tag) and tag.startswith(DROPPED)
+
+
+# True while the game model is built: the part builders below make their low-poly versions
+_LP = [None]
+
+
+@contextlib.contextmanager
+def lowpoly(on=True):
+    old = _LP[0]
+    _LP[0] = 0 if on else None
+    try:
+        yield
+    finally:
+        _LP[0] = old
+
+
+def _winch_lp(d, handle):
+    """Low-poly self-tailing winch (about 400 triangles): base flange, drum with three grip steps (the fine ribs are
+    the texture), rubber tailer, domed cap with its socket, stripper arm and feeder horn; the handle in the
+    starboard primary."""
+    p = Part()
+    r = d / 2
+    n = 16
+    with segment_scale(1.0):
+        p.add("metal", revolve([(r * 1.38, 0), (r * 1.38, 0.04 * d), (r * 1.15, 0.2 * d), (r * 1.05, 0.28 * d),
+                                (r * 0.99, 0.30 * d), (r * 0.97, 0.45 * d), (r * 0.94, 0.60 * d), (r * 0.92, 0.66 * d)],
+                               n, sharp=(1, 3)))
+        p.add("rubber", revolve([(r * 0.92, 0.66 * d), (r * 1.1, 0.70 * d), (r * 1.1, 0.84 * d), (r * 0.8, 0.88 * d)],
+                                n, cap_ends=False, sharp=(1, 2)))
+        p.add("metal", revolve([(r * 0.8, 0.88 * d), (r * 0.6, 0.98 * d), (r * 0.2, 1.0 * d), (0, 0.99 * d)], n,
+                               cap_ends=False))
+        p.add("rubber", box((r * 0.9, r * 0.35, 0.05 * d), center=(r * 1.05, 0, 0.73 * d)))
+        p.add("metal", box((r * 0.35, r * 0.28, 0.12 * d), center=(r * 1.45, 0, 0.72 * d)))
+        if handle:
+            arm = 2.1 * d
+            p.add("metal", box((arm, 0.16 * d, 0.07 * d), center=(-arm / 2, 0, 1.11 * d)))
+            p.add("rubber", tube(np.array([[-arm, 0, 1.12 * d], [-arm, 0, 1.7 * d]]), 0.085 * d, 6))
+    return p
+
+
+def _block_lp(d, swivel):
+    """Low-poly block (about 80 triangles): two cheeks and the sheave between them, the axle, a swivel."""
+    p = Part()
+    c = 0.62 * d
+    with segment_scale(1.0):
+        for sy in (-1, 1):
+            cheek = revolve([(0, -0.03 * d), (0.52 * d, -0.03 * d), (0.52 * d, 0.03 * d), (0, 0.03 * d)], 8, sharp=(1, 2))
+            p.add("metal", cheek.transformed(translate([0, sy * 0.16 * d, c]) @ rot_axis([1, 0, 0], np.pi / 2)))
+        sheave = revolve([(0, -0.12 * d), (0.46 * d, -0.12 * d), (0.40 * d, 0.0), (0.46 * d, 0.12 * d), (0, 0.12 * d)], 8)
+        p.add("rubber", sheave.transformed(translate([0, 0, c]) @ rot_axis([1, 0, 0], np.pi / 2)))
+        if swivel:
+            p.add("metal", box((0.3 * d, 0.3 * d, 0.2 * d), center=(0, 0, 0.1 * d)))
+    return p
+
+
+def _clutch_bank_lp(n_cl, pitch):
+    """Low-poly clutch bank: a base plate and per clutch a rounded body, a cap and its lever (about 90 triangles a
+    clutch)."""
+    p = Part()
+    w = pitch * n_cl
+    p.add("metal", box((2.7 * pitch, w + 0.3 * pitch, 0.06 * pitch), center=(0, 0, 0.03 * pitch)))
+    with segment_scale(1.0):
+        for i in range(n_cl):
+            y = (i - (n_cl - 1) / 2) * pitch
+            p.add("rubber", superellipsoid_box((2.4 * pitch, 0.82 * pitch, 0.62 * pitch), 0.3, 8, 4,
+                                               center=(0, y, 0.36 * pitch)))
+            p.add("metal", box((1.3 * pitch, 0.74 * pitch, 0.2 * pitch), center=(0.25 * pitch, y, 0.7 * pitch)))
+            p.add("metal", box((1.7 * pitch, 0.5 * pitch, 0.12 * pitch), center=(-0.65 * pitch, y, 0.82 * pitch)))
+    return p
+
+
+def _track_car_lp(length, width, sheave):
+    p = Part()
+    with segment_scale(1.0):
+        p.add("metal", superellipsoid_box((length, width * 1.6, width * 0.9), 0.3, 8, 4, center=(0, 0, width * 0.85)))
+    if sheave:
+        p.extend(_block_lp(0.55 * length, True), translate([-0.1 * length, 0, width * 1.25]))
+    return p
+
+
+def _padeye_block_lp(d):
+    p = Part()
+    p.add("metal", box((0.9 * d, 0.6 * d, 0.1 * d), center=(0, 0, 0.05 * d)))
+    p.extend(_block_lp(d, False), translate([0.62 * d, 0, 0.22 * d]) @ rot_axis([1, 0, 0], np.pi / 2)
+             @ translate([0, 0, -0.62 * d]))
+    return p
+
+
+def _stanchion_lp(h, r):
+    p = Part()
+    with segment_scale(1.0):
+        p.add("metal", tube(np.array([[0, 0, 0.0], [0, 0, h]]), r, 6))
+        p.add("metal", box((0.10, 0.07, 0.02), center=(0, 0, 0.01)))
+    return p
+
+
+def _turnbuckle_lp(length, r):
+    p = Part()
+    with segment_scale(1.0):
+        p.add("metal", tube(np.array([[0, 0, 0.0], [0, 0, length]]), 1.6 * r, 6))
+    return p
+
+
+def _wheel_lp(d, grip):
+    """The game model's wheel (about 1,100 triangles; it is near the camera): a smooth rim, 48 segments round and 10
+    round its section, five spokes, the hub."""
+    p = Part()
+    R = d / 2
+    with segment_scale(1.0):
+        th = np.linspace(0, 2 * np.pi, 49)[:-1]
+        ring = np.stack([np.zeros_like(th), R * np.cos(th), R * np.sin(th)], -1)
+        p.add("rubber" if grip else "carbon", sweep(np.vstack([ring, ring[:1]]), circle(0.018 * d / 0.9, 10), caps=False))
+        for k in range(5):
+            a = 2 * np.pi * k / 5
+            p.add("carbon", tube(np.array([[0, 0, 0], [0, R * np.cos(a), R * np.sin(a)]]), 0.012, 6))
+        p.add("metal", revolve([(0, -0.05), (0.06, -0.05), (0.06, 0.05), (0, 0.05)], 12)
+              .transformed(rot_axis([0, 1, 0], np.pi / 2)))
+    return p
+
+
+def _instrument_lp(w, h, t):
+    p = Part()
+    p.add("rubber", box((t, w, h), center=(t / 2, 0, 0)))
+    p.add("glass", box((0.2 * t, 0.84 * w, 0.8 * h), center=(t * 1.0, 0, 0)))
+    return p
+
+
+def _hatch_lp(lx, ly):
+    """A flush hatch as a plain raised box about 3 cm proud; its frame, lens, hinges and handles are painted on its
+    top (the deck maps). Built in the `gelcoat` slot: the game model moves it to the deck node."""
+    p = Part()
+    p.add("gelcoat", box((lx, ly, 0.03), center=(0, 0, 0.012)))
+    return p
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -16,6 +189,8 @@ from .mesh import (Part, revolve, tube, sweep, superellipsoid_box, box, rounded_
 def winch(d, handle=False):
     """Self-tailing winch, d = drum diameter: base flange, ribbed drum, rubber tailer jaws, top cap with the
     handle socket; `handle` puts a winch handle in the socket (arm pointing aft)."""
+    if _LP[0] is not None:
+        return _winch_lp(d, handle)
     p = Part()
     r = d / 2
     base = [(0, 0), (r * 1.38, 0), (r * 1.38, 0.04 * d), (r * 1.3, 0.07 * d), (r * 1.15, 0.2 * d), (r * 1.05, 0.28 * d)]
@@ -102,6 +277,8 @@ def clutch(pitch):
 
 def clutch_bank(n, pitch):
     """Row of rope clutches along y on a common base plate, levers pointing aft."""
+    if _LP[0] is not None:
+        return _clutch_bank_lp(n, pitch)
     p = Part()
     w = pitch * n
     p.add("metal", superellipsoid_box((2.7 * pitch, w + 0.3 * pitch, 0.06 * pitch), 0.2, 10, 4, center=(0, 0, 0.03 * pitch)))
@@ -142,6 +319,8 @@ def track(length, width, stops=True):
 
 def track_car(length, width, sheave=False):
     """Track car; `sheave` adds a lead block standing on it (for a sheet car)."""
+    if _LP[0] is not None:
+        return _track_car_lp(length, width, sheave)
     p = Part()
     p.add("metal", superellipsoid_box((length, width * 1.6, width * 0.9), 0.3, 10, 5, center=(0, 0, width * 0.85)))
     # pin-stop plunger knob at the forward end
@@ -155,6 +334,8 @@ def track_car(length, width, sheave=False):
 def block(d, swivel=True):
     """Single block standing on its base (local z up): two cheek plates round a sheave (axis along y), a head
     shackle on a swivel."""
+    if _LP[0] is not None:
+        return _block_lp(d, swivel)
     p = Part()
     c = 0.62 * d
     for sy in (-1, 1):
@@ -171,6 +352,8 @@ def block(d, swivel=True):
 
 def padeye_block(d):
     """Turning block lying on the deck (sheave axis vertical), on a padeye: for halyards at the mast foot."""
+    if _LP[0] is not None:
+        return _padeye_block_lp(d)
     p = Part()
     p.add("metal", superellipsoid_box((0.9 * d, 0.6 * d, 0.1 * d), 0.3, 8, 4, center=(0, 0, 0.05 * d)))
     b = block(d, swivel=False)
@@ -182,6 +365,8 @@ def padeye_block(d):
 
 def turnbuckle(length, r):
     """Rigging screw along +z from the origin (toggle, open body, two threaded studs)."""
+    if _LP[0] is not None:
+        return _turnbuckle_lp(length, r)
     p = Part()
     L = length
     p.add("metal", superellipsoid_box((2.6 * r, 1.6 * r, 0.18 * L), 0.4, 8, 5, center=(0, 0, 0.09 * L)))
@@ -195,9 +380,11 @@ def turnbuckle(length, r):
 
 
 def instrument(w, h, t):
-    """Instrument display (local x out of the face): carbon housing, dark glass face."""
+    """Instrument display (local x out of the face): black plastic housing, dark glass face."""
+    if _LP[0] is not None:
+        return _instrument_lp(w, h, t)
     p = Part()
-    p.add("carbon", superellipsoid_box((t, w, h), 0.2, 12, 5, center=(t / 2, 0, 0)))
+    p.add("rubber", superellipsoid_box((t, w, h), 0.2, 12, 5, center=(t / 2, 0, 0)))
     p.add("glass", superellipsoid_box((0.2 * t, 0.84 * w, 0.8 * h), 0.12, 12, 4, center=(t * 1.0, 0, 0)))
     return p
 
@@ -236,6 +423,8 @@ def rope(points, r, sag=0.0, n=12):
 
 
 def stanchion(h, r=0.0125):
+    if _LP[0] is not None:
+        return _stanchion_lp(h, r)
     p = Part()
     p.add("metal", tube(np.array([[0, 0, 0.02], [0, 0, h]]), r, 10))
     p.add("metal", superellipsoid_box((0.10, 0.07, 0.02), 0.3, 8, 4, center=(0, 0, 0.01)))
@@ -261,11 +450,13 @@ def rounded_path(pts, r, n=6):
 
 
 def wheel(d, grip=True):
-    """Racing wheel in the local frame, axis along x (forward), centre at the origin: carbon rim with a rubber
-    grip cover (`grip`), five spokes, hub."""
+    """Racing wheel in the local frame, axis along x (forward), centre at the origin: carbon rim with a dark grip
+    wrap (`grip`), five spokes, hub."""
+    if _LP[0] is not None:
+        return _wheel_lp(d, grip)
     p = Part()
     R = d / 2
-    th = np.linspace(0, 2 * np.pi, seg(49, 16))[:-1]
+    th = np.linspace(0, 2 * np.pi, seg(49, 6))[:-1]
     ring = np.stack([np.zeros_like(th), R * np.cos(th), R * np.sin(th)], -1)
     rim = sweep(np.vstack([ring, ring[:1]]), circle(0.018 * d / 0.9, 10), caps=False)
     p.add("rubber" if grip else "carbon", rim)
@@ -283,6 +474,8 @@ def wheel(d, grip=True):
 
 def hatch(lx, ly):
     """Flush deck hatch: low aluminium frame, tinted lens, two handles and two hinges (aft edge); about 3 cm proud."""
+    if _LP[0] is not None:
+        return _hatch_lp(lx, ly)
     p = Part()
     p.add("metal", superellipsoid_box((lx, ly, 0.03), 0.12, 16, 6, center=(0, 0, 0.011)))
     p.add("rubber", superellipsoid_box((lx * 0.95, ly * 0.95, 0.02), 0.12, 16, 5, center=(0, 0, 0.022)))
@@ -370,6 +563,57 @@ def lead_path(deck, pts, r, lift=None, step=0.025):
     return np.array(out), np.array(flags)
 
 
+def _inside(p, poly):
+    """Whether the 2-D point p is inside the convex counter-clockwise polygon."""
+    n = len(poly)
+    for i in range(n):
+        a, b = poly[i], poly[(i + 1) % n]
+        if (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]) < 0:
+            return False
+    return True
+
+
+def _blocked(a, b, poly):
+    return any(_inside(a + (b - a) * t, poly) for t in np.linspace(0.02, 0.98, 40))
+
+
+def route_around(a, b, obstacles, depth=0):
+    """A line's way over the deck from a to b (2-D points): straight where it can, past an obstacle (a convex
+    counter-clockwise polygon, already grown by the clearance) on whichever side is shorter, along the hull of the
+    obstacle and the two ends. Returns the points from a to b."""
+    a, b = np.asarray(a, dtype=np.float64), np.asarray(b, dtype=np.float64)
+    if depth > 3:
+        return [a, b]
+    for poly in obstacles:
+        poly = np.asarray(poly, dtype=np.float64)
+        if _inside(a, poly) or _inside(b, poly) or not _blocked(a, b, poly):
+            continue
+        from scipy.spatial import ConvexHull
+        pts = np.vstack([a, b, poly])
+        hv = list(ConvexHull(pts).vertices)          # counter-clockwise
+        ia, ib = hv.index(0), hv.index(1)
+        n = len(hv)
+        c1 = [hv[(ia + k) % n] for k in range((ib - ia) % n + 1)]
+        c2 = [hv[(ia - k) % n] for k in range((ia - ib) % n + 1)]
+        length = lambda c: sum(np.linalg.norm(pts[c[i + 1]] - pts[c[i]]) for i in range(len(c) - 1))
+        chain = [pts[i] for i in min(c1, c2, key=length)]
+        out = [chain[0]]
+        for p, q in zip(chain[:-1], chain[1:]):
+            out += route_around(p, q, obstacles, depth + 1)[1:]
+        return out
+    return [a, b]
+
+
+def obstacle_box(x0, x1, y0, y1, grow):
+    return np.array([[x0 - grow, y0 - grow], [x1 + grow, y0 - grow], [x1 + grow, y1 + grow], [x0 - grow, y1 + grow]])
+
+
+def obstacle_round(x, y, r, grow, n=10):
+    th = np.linspace(0, 2 * np.pi, n + 1)[:-1]
+    R = (r + grow) / np.cos(np.pi / n)
+    return np.stack([x + R * np.cos(th), y + R * np.sin(th)], -1)
+
+
 def lead(deck, pts, r, lift=None, paths=None, tag=None):
     """A line led over the deck (lead_path) as a rope; `paths[tag]` keeps its centre line, radius and flags for the
     lead checks (tests/test_attachments.py)."""
@@ -385,6 +629,20 @@ def to_world(deck, x, y, yaw, pts):
     M = frame_z(np.array([x, y, z]), n, np.array([np.cos(yaw), np.sin(yaw), 0.0]))
     pts = np.atleast_2d(np.asarray(pts, dtype=np.float64))
     return pts @ M[:3, :3].T + M[:3, 3]
+
+
+def _cabin_hatch_x(deck, d):
+    """Where the hatch on the coachroof's top stands (x), None without one."""
+    if not deck.has_cabin or d.get("hatches", 1) <= 1:
+        return None
+    x_rh = deck.xk0 + 0.6 * (deck.xk1 - deck.xk0)
+    return x_rh if deck.in_cabin_roof(x_rh, 0.0) else None
+
+
+def _tail_spacing(k, side, n):
+    """The small, uneven spacing of the tails at their bag (a fraction of the clutch pitch), fixed per line."""
+    h = (np.sin(12.9898 * (k + 1) + 78.233 * (side + 2)) * 43758.5453) % 1.0
+    return (k - (n - 1) / 2) * 0.75 + (h - 0.5) * 0.3
 
 
 def place_all(cls, hull, deck, rig, lod=0):
@@ -444,6 +702,33 @@ def place_all(cls, hull, deck, rig, lod=0):
     else:
         x_cl, y_cl = deck.xc1 + 0.25 * s, 0.25 * s
     x_org = min(x_cl + 0.55 * s, rig.x_mast - 0.45 * s)
+    # where the tails go over the coachroof's aft edge (no halyard winches on top): a rope bag on the aft face either
+    # side of the companionway, its top at 0.6 of the face's height
+    # side of the companionway, its top at 0.6 of the face's height. With halyard winches on the coachroof the tails
+    # first close in to a lane inboard of the winches, clear of the sliding hatch, and run aft along it to the edge
+    bag = None
+    y_lane = y_cl
+    if deck.has_cabin:
+        if winches_on_top:
+            half = 0.5 * (n_hal - 1) * hal_pitch
+            r_w = 1.38 * 0.5 * d_prim * 0.72
+            y_lane = min(0.5 * (cp["hatch_width"] if cp else 0.0) + 0.04 + half, y_h - r_w - half - 0.01)
+        zf_ = float(deck.floor_z(deck.xk0))
+        zt_ = float(deck.cabin_z(deck.xk0 + 0.01, y_lane))
+        bh = min(0.18 * s, 0.45 * (zt_ - zf_))
+        bag = {"top": zf_ + 0.62 * (zt_ - zf_), "h": bh, "w": (n_hal + 1.2) * hal_pitch, "d": 0.045 * s, "y": y_lane}
+    # what a tail on the coachroof passes round: the halyard winches' bases, the sliding hatch and the hatch on the top
+    clear = r_line + 0.012 * s
+    tail_obstacles = []
+    if winches_on_top:
+        for sd in (1, -1):
+            tail_obstacles.append(obstacle_round(x_h, sd * y_h, 1.38 * 0.5 * d_prim * 0.72, clear))
+    if cp:
+        tail_obstacles.append(obstacle_box(cp["hatch_x"] - 0.5 * cp["hatch_len"], cp["hatch_x"] + 0.5 * cp["hatch_len"],
+                                           -0.5 * cp["hatch_width"], 0.5 * cp["hatch_width"], clear))
+    x_rh_ = _cabin_hatch_x(deck, d)
+    if x_rh_ is not None:
+        tail_obstacles.append(obstacle_box(x_rh_ - 0.25 * s, x_rh_ + 0.25 * s, -0.25 * s, 0.25 * s, clear))
     o_in = 0.36 * hal_pitch             # the organiser's sheaves stand inboard of their lines by the groove radius
     for side in (1, -1):
         hw.extend(on_surface(deck, clutch_bank(n_hal, hal_pitch), x_cl, side * y_cl), tag=f"clutches_{side}")
@@ -454,7 +739,7 @@ def place_all(cls, hull, deck, rig, lod=0):
     # turning blocks round the mast foot and the halyards themselves
     z_exit = rig.z_step + 0.42 * s
     d_mb = 0.045 * s
-    x_top = deck.xk0 + 0.04          # wm7: the tails go over the coachroof's aft edge here
+    x_top = deck.xk0 + 0.04          # the tails go over the coachroof's aft edge here
     for side in (1, -1):
         for k in range(n_hal):
             # beside the mast foot, in a fan, so they sit on the deck forward of where the coachroof meets it
@@ -480,33 +765,36 @@ def place_all(cls, hull, deck, rig, lod=0):
                 top = np.array([rig.x_mast, side * 0.5 * rig.width, z_exit + 0.05 * s * k])
                 pts = [top] + sheave + [(c[0] - 0.08 * s, c[1] + side * rg),
                                         (org[0][0] + 0.1 * s, yl), org[0], org[1], clu[0], clu[1]]
-                if winches_on_top:
-                    pts += [(x_cl - 0.3 * s, yl + side * 0.02 * s)]
-                else:
-                    # over the aft edge and down the aft face into the cockpit, flaked on the floor
+                if bag is not None:
+                    # from the clutch as straight as it can to its place at the rope bag, past a winch or a hatch
+                    # on the shorter side (route_around), over the aft edge and down the aft face into the bag
+                    y_end = side * (bag["y"] + _tail_spacing(k, side, n_hal) * hal_pitch)
+                    a2 = np.array([clu[1][0] - 0.04 * s, yl])
+                    b2 = np.array([x_top + 0.06 * s, y_end])
+                    way = route_around(a2, b2, tail_obstacles)
+                    pts += [(float(q[0]), float(q[1])) for q in way]
+                    yl = y_end
                     re = min(deck.cab_r, 0.8 * deck.cab_h)
                     lift = 0.9 * r_line + 0.002
                     zc = float(deck.cabin_z(deck.xk0 + re, yl)) - re      # the aft edge's radius centre
-                    zf = float(deck.floor_z(deck.xk0))
                     pts += [(x_top, yl)]
                     pts += [np.array([deck.xk0 + re - (re + lift) * np.sin(a), yl, zc + (re + lift) * np.cos(a)])
                             for a in np.radians([0, 25, 50, 70, 90])]
-                    pts += [np.array([deck.xk0 - lift - 0.002, yl, zf + 0.09]),
-                            (deck.xk0 - 0.1 * s, yl + side * 0.03 * s)]
-                hw.add("rope_halyard", lead(deck, pts, r_line * 0.9, paths=rope_paths, tag=f"halyard_{side}_{k}"),
+                    pts += [np.array([deck.xk0 - lift - 0.002, yl, bag["top"] - 0.03])]
+                hw.add(HALYARD_SLOTS[k % len(HALYARD_SLOTS)], lead(deck, pts, r_line * 0.9, paths=rope_paths,
+                                                                   tag=f"halyard_{side}_{k}"),
                        tag=f"halyard_{side}_{k}")
                 hw.attach(f"halyard_{side}_{k}", f"halyard_exit_{side}_{k}")
                 hw.attach(f"halyard_{side}_{k}", f"mast_block_{side}_{k}")
                 hw.attach(f"halyard_{side}_{k}", f"organiser_{side}")
                 hw.attach(f"halyard_{side}_{k}", f"clutches_{side}")
         if fine:
-            if winches_on_top:
-                xc_, yc_ = x_cl - 0.3 * s, side * (y_cl - 0.1 * s)
-            else:
-                xc_, yc_ = deck.xk0 - 0.2 * s, side * y_cl
-            hw.extend(on_surface(deck, rope_coil(0.11 * s, 3, r_line, "rope_halyard"), xc_, yc_, yaw=0.4 * side),
-                      tag=f"halyard_coil_{side}")
-            hw.attach(f"halyard_coil_{side}", "deck")
+            if bag is not None:
+                # the rope bag the tails drop into: a low soft pocket on the coachroof's aft face
+                hw.add("rubber", superellipsoid_box((bag["d"], bag["w"], bag["h"]), 0.35, 8, 4,
+                                                    center=[deck.xk0 - 0.5 * bag["d"] + 0.002, side * bag["y"],
+                                                            bag["top"] - 0.5 * bag["h"]]), tag=f"rope_bag_{side}")
+                hw.attach(f"rope_bag_{side}", "deck")
             # halyard exit plates on the mast
             for k in range(n_hal):
                 hw.add("metal", superellipsoid_box((0.05 * s, 0.012, 0.09 * s), 0.3, 8, 4,
@@ -617,17 +905,17 @@ def place_all(cls, hull, deck, rig, lod=0):
         if x_fh < L - 1.2 * s:
             hw.extend(on_surface(deck, hatch(0.6 * s, 0.6 * s), x_fh, 0.0, conform=True), tag="hatch_fore")
             hw.attach("hatch_fore", "deck")
-        if d.get("hatches", 1) > 1:
-            x_rh = deck.xk0 + 0.6 * (deck.xk1 - deck.xk0)
-            if deck.in_cabin_roof(x_rh, 0.0):
-                hw.extend(on_surface(deck, hatch(0.5 * s, 0.5 * s), x_rh, 0.0, conform=True), tag="hatch_cabin")
-                hw.attach("hatch_cabin", "deck")
+        x_rh = _cabin_hatch_x(deck, d)
+        if x_rh is not None:
+            hw.extend(on_surface(deck, hatch(0.5 * s, 0.5 * s), x_rh, 0.0, conform=True), tag="hatch_cabin")
+            hw.attach("hatch_cabin", "deck")
 
     # --- lifelines, pulpit and pushpit
     if d.get("lifelines"):
         lifelines = _lifelines(hw, hull, deck, s, lod)
 
-    # --- helm: wheel on a pedestal with a guard and an instrument pod, or a tiller on the rudder head
+    # --- helm: a regatta helm, the wheel on a slim pedestal with a small head round its shaft (no guard, no
+    # instrument pod), or a tiller on the rudder head
     helm = Part()
     if d.get("steering") == "wheel":
         x_w = min(deck.xc0 + 1.25 * s, deck.xc1 - 0.8)
@@ -635,32 +923,15 @@ def place_all(cls, hull, deck, rig, lod=0):
         dw = min(1.9 * float(deck.yc(x_w)) * 0.9, 1.35 * s)
         hub = np.array([x_w, 0.0, zf + dw / 2 + 0.12])
         xp = x_w + 0.12
-        hw.add("carbon", revolve([(0, 0), (0.13 * s, 0), (0.12 * s, 0.03 * s), (0.065 * s, 0.1 * s), (0.06 * s, hub[2] - zf - 0.05),
-                                  (0, hub[2] - zf - 0.05)], 16, sharp=(1,)).transformed(translate([xp, 0, zf])), tag="pedestal")
+        hw.add("carbon", revolve([(0, 0), (0.09 * s, 0), (0.085 * s, 0.02 * s), (0.045 * s, 0.08 * s),
+                                  (0.04 * s, hub[2] - zf - 0.04), (0, hub[2] - zf - 0.04)], 16, sharp=(1,))
+               .transformed(translate([xp, 0, zf])), tag="pedestal")
         hw.attach("pedestal", "deck")
-        hw.add("carbon", superellipsoid_box((0.22 * s, 0.26 * s, 0.2 * s), 0.35, 12, 6, center=[x_w + 0.14, 0, hub[2]]),
+        hw.add("carbon", superellipsoid_box((0.16 * s, 0.11 * s, 0.11 * s), 0.4, 12, 6, center=[x_w + 0.1, 0, hub[2]]),
                tag="binnacle")
         hw.attach("binnacle", "pedestal")
-        hw.add("metal", tube(np.array([[x_w + 0.02, 0, hub[2]], [x_w + 0.14, 0, hub[2]]]), 0.02, 10), tag="wheel_shaft")
+        hw.add("metal", tube(np.array([[x_w + 0.02, 0, hub[2]], [x_w + 0.1, 0, hub[2]]]), 0.02, 10), tag="wheel_shaft")
         hw.attach("wheel_shaft", "binnacle")
-        if mid:
-            # pedestal guard: a bent tube hoop over the binnacle, and a compass / display pod on top
-            gz = hub[2] + 0.16 * s
-            guard = rounded_path([[xp + 0.22 * s, 0.2 * s, zf], [xp + 0.22 * s, 0.2 * s, gz], [xp + 0.22 * s, -0.2 * s, gz],
-                                  [xp + 0.22 * s, -0.2 * s, zf]], 0.1 * s, 4)
-            hw.add("metal", tube(guard, 0.014 * s, 8), tag="pedestal_guard")
-            hw.attach("pedestal_guard", "deck")
-            # the pod on two arms from the guard, the arms ending in the pod's side faces
-            w_pod, t_pod = 0.26 * s, 0.05 * s
-            M_pod = translate([xp + 0.08 * s, 0, hub[2] + 0.17 * s]) @ rot_axis([0, 1, 0], -1.25) @ rot_axis([0, 0, 1], np.pi)
-            hw.extend(instrument(w_pod, 0.14 * s, t_pod), M_pod, tag="pod")
-            hw.attach("pod", "pod_arm_1")
-            for sy in (1, -1):
-                tip = (M_pod @ np.array([0.5 * t_pod, sy * (0.5 * w_pod - 0.01 * s), 0.0, 1.0]))[:3]
-                hw.add("metal", tube(np.array([[xp + 0.22 * s, sy * 0.2 * s, gz - 0.02], tip]), 0.01 * s, 6),
-                       tag=f"pod_arm_{sy}")
-                hw.attach(f"pod_arm_{sy}", "pedestal_guard")
-                hw.attach(f"pod_arm_{sy}", "pod")
         helm.extend(wheel(dw, grip=mid), translate(hub), tag="wheel")
         helm.attach("wheel", "wheel_shaft")
         helm_pivot = hub
@@ -713,7 +984,7 @@ def tiller(app, deck, hull, s):
         p.attach("tiller_socket", "tiller_stock")
     length = 1.25 * s * (1.0 if app.transom_hung else 1.1)
     end = head + np.array([length, 0, 0.18 * s])
-    t = np.linspace(0, 1, 12)
+    t = np.linspace(0, 1, seg(12, 2))
     # straight out of the head, then a gentle rise to the hand
     path = head[None] + t[:, None] * (end - head)[None]
     path[:, 2] = head[2] + (end[2] - head[2]) * t ** 1.6 + 0.06 * s * np.sin(np.pi * t)

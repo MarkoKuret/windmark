@@ -582,6 +582,7 @@ colour-blind palettes).
 | screen-space reflections | no | no | yes |
 | sun shadows (§4.6) | 1 map to 45 m, hard, 2048 atlas, no trees or boats beyond 30 m casting, no shadows on the sea | 2 cascades to 90 m, 2048 atlas, no shadows on the sea | 4 blended cascades to 150 m, 4096 atlas |
 | boat shadows drawn on the sea (§4.7) | own boat | own boat and the 6 nearest within 90 m | no (real shadows) |
+| automatic mesh LOD threshold (the boats, `sail_visuals.md` §11.4) | 2 px | 1 px (Godot's default) | 1 px |
 | anti-aliasing | SMAA 1x | SMAA 1x | SMAA 1x |
 
 Anti-aliasing (WM-084, owner decision 2026-10-03: keep it simple): SMAA 1x on every tier, no per-tier choice

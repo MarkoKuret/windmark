@@ -1,8 +1,8 @@
 class_name BakedLivery
 extends RefCounted
 ## The baked livery textures of a class (data_format.md §8.5), as staged for import by tools/liverybake into
-## res://generated/liveries/<class>/ (game/README.md "Liveries"): the hull set of a livery (hull albedo, normal and
-## ORM maps, keel albedo, the transom's and the deck's albedo, normal and ORM maps, layout.json), the class sail set
+## res://generated/liveries/<class>/ (game/README.md "Liveries"): the boat atlas of a livery (hull, deck with the
+## painted hardware, transom and keel in one albedo, normal and ORM map; atlas.json, layout.json), the class sail set
 ## (per sail: port and starboard albedo, normal and ORM maps; layout.json) and the class rope set (rig/: a braid tile
 ## per rope function, §8.7). Loaded once per class and shared by every boat; a missing set gives an empty Dictionary
 ## and the procedural fallback.
@@ -16,9 +16,10 @@ static var _detail := {}
 static var _ropes := {}
 
 
-## {"albedo", "normal", "orm": Texture2D, "keel": Texture2D, "keel_rect": Vector4, "transom", "deck": {"albedo",
-## "normal", "orm"}} of the livery `look_id` of the class (keel, transom and deck when baked), or {} when the hull
-## is not baked.
+## {"atlas": {"albedo", "normal", "orm": Texture2D}, "rects": {region: Vector4 [u0, v0, w, h] in atlas uv},
+## "keel_rect": Vector4 (the keel image in the model frame: forward min, top, length, height)} of the livery
+## `look_id` of the class: the staged boat atlas (data_format.md §8.5 "Staged boat atlas"), or {} when it is not
+## there.
 static func hull_set(class_id: String, look_id: String) -> Dictionary:
 	if not enabled:
 		return {}
@@ -27,29 +28,22 @@ static func hull_set(class_id: String, look_id: String) -> Dictionary:
 		return _hulls[key]
 	var dir := "%s/%s/%s/" % [ROOT, class_id, look_id]
 	var out := {}
-	var alb := _tex(dir + "hull_albedo.png")
-	if alb != null:
-		out["albedo"] = alb
-		out["normal"] = _tex(dir + "hull_normal.png")
-		out["orm"] = _tex(dir + "hull_orm.png")
-		if out["normal"] == null or out["orm"] == null:
-			push_error("%s: hull_normal.png or hull_orm.png missing" % dir)
-			out = {}
-	if not out.is_empty():
+	var at := {"albedo": _tex(dir + "atlas_albedo.png"), "normal": _tex(dir + "atlas_normal.png"),
+		"orm": _tex(dir + "atlas_orm.png")}
+	if at["albedo"] != null and at["normal"] != null and at["orm"] != null:
+		var aj := _json(dir + "atlas.json")
+		var regions: Dictionary = aj.get("regions", aj)
+		var rects := {}
+		for k in ["hull", "deck", "transom", "keel"]:
+			var r: Array = regions.get(k, [])
+			if r.size() == 4:
+				rects[k] = Vector4(r[0], r[1], r[2], r[3])
 		var lay := _json(dir + "layout.json")
-		var t := _tex(dir + "keel_albedo.png")
-		var r: Array = lay.get("keel", {}).get("rect", [])
-		if t != null and r.size() == 4:
-			out["keel"] = t
-			out["keel_rect"] = Vector4(r[0], r[1], r[2], r[3])
-		# the transom and the deck on their own uv1: {"albedo", "normal", "orm"} each
-		for part in ["transom", "deck"]:
-			var s := {"albedo": _tex(dir + part + "_albedo.png"), "normal": _tex(dir + part + "_normal.png"),
-				"orm": _tex(dir + part + "_orm.png")}
-			if s["albedo"] != null and s["normal"] != null and s["orm"] != null:
-				out[part] = s
-			elif s["albedo"] != null or s["normal"] != null or s["orm"] != null:
-				push_error("%s: the %s images are incomplete" % [dir, part])
+		var kr: Array = lay.get("keel", {}).get("rect", [])
+		out = {"atlas": at, "rects": rects,
+			"keel_rect": Vector4(kr[0], kr[1], kr[2], kr[3]) if kr.size() == 4 else Vector4(0, 0, 1, 1)}
+	elif at["albedo"] != null or at["normal"] != null or at["orm"] != null:
+		push_error("%s: the boat atlas images are incomplete" % dir)
 	_hulls[key] = out
 	return out
 

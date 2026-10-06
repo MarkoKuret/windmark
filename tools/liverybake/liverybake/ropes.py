@@ -15,13 +15,16 @@ SIZE = 512
 TILE_M = 0.05
 CARRIERS = 8          # per direction
 SS = 2                # supersampling
-FUNCTIONS = ("mainsheet", "sheet", "kite_sheet", "halyard", "control")
+FUNCTIONS = ("mainsheet", "sheet", "kite_sheet", "halyard_main", "halyard_jib", "halyard_kite", "halyard_code", "control")
 DEFAULTS = {
-    "mainsheet": ("#1f2b45", "#d8d8d2"),
-    "sheet": ("#d2d2cb", "#b3242a"),
-    "kite_sheet": ("#2b62a6", "#dadad4"),
-    "halyard": ("#d4d4cd", "#2d7a40"),
-    "control": ("#1d1e21", "#c9a227"),
+    "mainsheet": ("#ae7249", "#2d3548"),
+    "sheet": ("#3e797b", "#d6d6ce"),
+    "kite_sheet": ("#91506f", "#d6d6ce"),
+    "halyard_main": ("#9c4c4e", "#d6d6ce"),
+    "halyard_jib": ("#486792", "#d6d6ce"),
+    "halyard_kite": ("#497551", "#d6d6ce"),
+    "halyard_code": ("#b79c5a", "#2a2b2e"),
+    "control": ("#6b5986", "#d6d6ce"),
 }
 PATTERNS = ("fleck", "tracer", "twill", "solid")
 # relief: carrier crown height (m) and the typical rope circumference the tile wraps (for the normal map's scale)

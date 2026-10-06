@@ -36,18 +36,12 @@ static func _deck_triangles(model: Node3D) -> PackedVector3Array:
 	var out := PackedVector3Array()
 	if model == null:
 		return out
-	var deck := model.find_child("deck", true, false) as MeshInstance3D
-	if deck == null or deck.mesh == null:
-		return out
-	var xf := model.global_transform.affine_inverse() * deck.global_transform if deck.is_inside_tree() \
-		else _relative(model, deck)
-	for si in deck.mesh.get_surface_count():
-		var arr := deck.mesh.surface_get_arrays(si)
-		var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
-		var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
-		var n := idx.size() if idx.size() > 0 else verts.size()
-		for k in n:
-			var m := xf * verts[idx[k] if idx.size() > 0 else k]
+	# the deck node, or the deck part of the merged body (BoatMaterials.part_surfaces, in the model's frame)
+	for e in BoatMaterials.part_surfaces(model, "deck"):
+		var verts: PackedVector3Array = e["positions"]
+		var idx: PackedInt32Array = e["indices"]
+		for k in idx.size():
+			var m := verts[idx[k]]
 			out.append(Vector3(m.z, m.x, m.y))  # model (port, up, bow) -> body (x, y, z)
 	return out
 

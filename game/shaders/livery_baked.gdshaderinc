@@ -1,4 +1,4 @@
-// Baked liveries (data_format.md §8.5, sail_visuals.md §11.2): what boat_baked.gdshader and sail_baked.gdshader
+// Baked liveries (data_format.md §8.5, sail_visuals.md §11.2): what boat_atlas.gdshader and sail_baked.gdshader
 // share, and the offline preview (tests/livery_preview.py) compiles too: normal mapping without mesh tangents, and
 // the per-boat overlay of the boat's name and sail number from its text texture (livery_text.gdshaderinc, included
 // before this file), one texture sample per side. Common subset of Godot's shading language and GLSL 4.1.

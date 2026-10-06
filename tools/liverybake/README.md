@@ -16,11 +16,12 @@ python3 -m liverybake wm7 --only deck      # rebake the deck set (overwrites its
 python3 -m liverybake wm7 --force          # rebake everything of wm7 (overwrites hand edits)
 python3 -m liverybake --stage-only         # only copy the current files to the game (after a hand edit)
 python3 -m liverybake --normals-from-relief   # only make the sails' normal maps from their relief images
+python3 -m liverybake --stage-only --hd    # stage the 4096 boat atlas and full-size sails
 ```
 
 Options: `--livery ID` (one livery of the file), `--only PART` (repeatable: `hull`, `keel`, `transom`, `deck`,
 `sails`, `ropes` or a sail id such as `main`, `jib`, `kite`, `code0`, `a2`), `--force`, `--no-stage`, `--stage-only`,
-`--normals-from-relief`,
+`--normals-from-relief`, `--hd`,
 `--out DIR` (bake somewhere else, for trying things), `--hull-size` (4096), `--transom-size` (2048), `--deck-size`
 (4096), `--sail-size` (2048), `--keel-size` (1024), `--rope-size` (512), `--quiet`. A full bake takes about 4 minutes per class on an
 M-series Mac (the deck about 30 s, the transom 4 s); the first run per class also builds
@@ -61,7 +62,8 @@ data/liveries/<class>/sails/            the class sail set, shared by the fleet
     layout.json                         the sails' plan rectangles, cloth, and the number slots
 data/liveries/<class>/rig/              the class rope set (data_format.md §8.7), shared by the fleet
     rope_<function>_albedo.png  512 x 512  one braid tile in the function's colours, sRGB: mainsheet, sheet,
-                                           kite_sheet, halyard, control
+                                           kite_sheet, halyard_main, halyard_jib, halyard_kite,
+                                           halyard_code, control
     rope_normal.png             512 x 512  the braid's relief, linear, shared by every function
     rope_orm.png                512 x 512  R occlusion, G roughness, B metallic (0); linear
 ```
@@ -140,9 +142,40 @@ metres, so after a hull, deck or sail plan change decide whether to repaint or r
 
 ## The game
 
-`python3 -m liverybake` (or `--stage-only`) copies the images and layouts into `game/generated/liveries/` (git-ignored)
-with Godot import settings, and writes the shared tiling cloth detail (`_cloth/<cloth>_detail.png`, procedural, not
-hand-owned). Godot imports them compressed with mipmaps the next time it imports (the editor on focus, or
+`python3 -m liverybake` (or `--stage-only`) stages the textures in `game/generated/liveries/` (git-ignored) with
+Godot import settings. The game draws every opaque surface of a boat with one material
+(`docs/specs/sail_visuals.md` §11.4), so it does not read the hull, deck, transom and keel images themselves:
+
+- **Boat atlas**, per livery: `atlas_albedo.png`, `atlas_normal.png`, `atlas_orm.png` (2048 x 2048) and
+  `atlas.json` (`docs/specs/data_format.md` §8.5 "Staged boat atlas"). The hull image (2:1) runs across the top,
+  the deck below it at its own aspect, then the transom and the keel side by side, each region padded by its edge
+  texels into a 16-texel gutter; `atlas.json` gives each region's rectangle in atlas uv (`regions`) and in texels
+  (`pixels`). The masters in `data/liveries` keep their full size; the atlas is made from them.
+- **Baked realism** in the deck region (`atlas.deck_wear`, from the generator's height field of everything on the
+  deck): ambient occlusion and contact shadows under and round every fitting, along the coachroof's base, the toe
+  rail and in the cockpit's corners, faint grime where occluded, wear on the non-slip round the winches, the mast foot
+  and on the cockpit floor, a faint gelcoat colour and roughness variation; very faint variation on the hull and
+  transom and dried streaks below the transom's drain (`atlas.faint_variation`). Deterministic per class, subtle.
+- **The coachroof's aft face** on its own rectangle of the deck region (`atlas.face_base`, boatgen
+  `Deck.face_frame`): the deck's smooth gelcoat, with the halyard tails painted down it.
+- **Painted fittings** in the deck region (`liverybake/painted.py`): what is flat on the deck (the jib and traveller
+  tracks, hatches, organisers, cam, horn and traveller cleats, the rudder bearing ring, the mainsheet coil, and the halyards,
+  tails and traveller lines where they lie on surfaces (within 3.5 cm of the deck, and down the coachroof's aft
+  face), opaque in the rope set's colours; `tools/boatgen` `Boat.painted_part`)
+  drawn from the generator's full-detail pieces seen from above: colour by
+  material (stainless, black plastic and rubber, tinted lens, the class rope set's halyard, control and mainsheet
+  colours), relief from the pieces' own normals, roughness by material, the non-slip mask cleared under them, and
+  baked shading so they read solid without geometry (a soft contact shadow in occlusion and a little in the deck
+  colour, the low parts of a fitting darker and its upper edges lighter). It is generated: repaint the deck image
+  and the fittings stay on top.
+- **Sails** at half the master size (1024 on the longer side), normal maps renormalised; the rope set and the
+  layouts as they are; the shared tiling cloth detail (`_cloth/<cloth>_detail.png`, procedural, not hand-owned).
+- `--hd` stages the atlas at 4096 x 4096 and the sails at full size (for a high tier or an HD set; the game does
+  not pick it on its own).
+
+A stage writes only what changed (each folder's `.stage.json` remembers the inputs of the atlas and of the halved
+sails), so a repeat run takes a second or two; the atlas takes about 15 s per livery when its inputs change.
+Godot imports the images compressed with mipmaps the next time it imports (the editor on focus, or
 `godot --headless --path game --import`); a changed PNG is reimported, an unchanged one is not.
 `game/tests/run_boat_import_test.sh` and `run_livery_test.sh` stage and import before testing. See
 `game/README.md` "Liveries".

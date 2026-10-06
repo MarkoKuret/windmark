@@ -1,9 +1,11 @@
 ---
 id: WM-100
 title: 'Boats: painted detail, slim geometry, one material, shadow proxy'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-10-05 17:12'
+updated_date: '2026-10-05 18:15'
 labels:
   - performance
 dependencies: []
@@ -19,8 +21,8 @@ docs/PERFORMANCE.md items B1-B6, G3, A7, A7b, A2, A3 and measured item 1/2. Pain
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Boatgen and liverybake: flat hardware baked into the deck maps; LOD0 <=25k, LOD1 <=8k, LOD2 <=2k, LOD3 <=500 triangles; <=12 surfaces per boat LOD0, <=3 on LOD1+
-- [ ] #2 Shadow proxy mesh per class cast with shadows-only; boat meshes and hardware do not cast
-- [ ] #3 Before/after preview frames at chase distance (20-30 m) and close up; boat import and livery tests pass
+- [x] #1 Boatgen and liverybake: flat hardware baked into the deck maps; LOD0 <=25k, LOD1 <=8k, LOD2 <=2k, LOD3 <=500 triangles; <=12 surfaces per boat LOD0, <=3 on LOD1+
+- [x] #2 Shadow proxy mesh per class cast with shadows-only; boat meshes and hardware do not cast
+- [x] #3 Before/after preview frames at chase distance (20-30 m) and close up; boat import and livery tests pass
 - [ ] #4 Owner approves the look
 <!-- AC:END -->

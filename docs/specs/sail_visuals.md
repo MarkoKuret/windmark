@@ -811,27 +811,62 @@ vertex and index counts (a hidden line collapses to a point), rewritten in place
 (`mesh_surface_update_vertex_region` for positions and normals, `mesh_surface_update_attribute_region` for uv0), in
 the native `SheetRopes` (one per surface; `SheetRopesRef` is the GDScript reference). The mesh is redrawn in the frames
 in which any of the boat's sails is updated (§11 rates: every frame within 200 m, and not outside the view frustum),
-at LOD1 (§11.4, where a rope is under a pixel wide) at most at 15 Hz; the eased sag runs every frame. Per line at LOD0 (§11.4) 16 rings on the free run, 4 on the lead run, 24 on the drum
-and 6 on the tail; at LOD1 8 and 2 rings, 4 sides, no drum turns or tail; at LOD2 no sheets. A line takes up to 16
+thin (a rope under a pixel wide) at most at 15 Hz; the eased sag runs every frame. The detail goes by the size of a
+metre on screen (§11.4, `BoatView.sheet_detail_for`): full while a metre is at least 31 px tall (about 30 m at 1080
+lines and 60°), thin to 9.4 px (about 100 m), none beyond. Per line full: 16 rings on the free run, 4 on the lead
+run, 24 on the drum and 6 on the tail; thin: 8 and 2 rings, 4 sides, no drum turns or tail. A line takes up to 16
 waypoints (`SheetRopes.update`'s `ways`: that many slots per line, unused ones NaN; the headsail lines one). Cost
 (native, debug build, best of batches): a wm7 with jib and kite about 75 µs per redraw with the outside route and the
 drape (about 58 µs before them): the route about 6 µs, the drape about 6 µs.
 
 ### 11.4 Levels of detail
-The generator writes three levels per class (`<id>.glb`, `<id>_lod1.glb`, `<id>_lod2.glb`, listed with their switch
-distance `from_m` in the sidecar's `model.lods`; `tools/boatgen/README.md` "Levels of detail"), with the same nodes,
-pivots, material slots, uv1 and sail grids. Each boat loads every level that exists and shows one:
-- **Distance** `d` from the camera to the boat's origin, every frame. The boat goes to a coarser level when `d` passes
-  that level's `from_m` by `m = 0.05 · from_m` (1.5 m at 30 m, 5 m at 100 m) and back to a finer one when `d` falls
-  below its `from_m` by `m`, so a boat near a switch distance does not flicker. Without a camera (headless), LOD0.
-- **What switches**: every non-sail part of the model (hull, deck, keel, mast, rigging, hardware, rudder, wheel, boom,
-  mainsheet, pole). The sails are the LOD0 sail meshes at every level (the grids are the same), updated at the
-  rates of §11; the sheets per §11.3. Hidden parts cast no shadow.
-- **Moving parts**: the rudder, wheel, boom, mainsheet and pole of the level shown follow the helm and the sail
-  angles every frame; a level that comes in is set at once.
-- **Livery**: the boat's livery materials (`data_format.md` §8, `game/README.md` "Liveries") go on every level's
-  surfaces by part and slot (the same uv1 atlas), shared between the levels, so a switch changes the triangles, never
-  the paint. The rope materials (§11.3, `data_format.md` §8.7) likewise.
+One detailed model per class (`<id>.glb`; `tools/boatgen/README.md` "The game model"), and the engine simplifies it
+by its size on screen: Godot's automatic mesh LOD, generated on import (`generate_lods`), picks per frame and per
+mesh the coarsest version whose error stays under the viewport's mesh LOD threshold (1 px, tier L 2 px,
+`water_render.md` §7). No hand-made coarser models and no distance switches. The performance comes from fewer
+pieces and materials:
+- **Nodes**: `body` (hull, deck, keel, mast, rigging and the static hardware, one mesh), the moving parts `rudder`
+  (with the tiller), `wheel`, `boom`, `mainsheet`, `pole`, and the sails; each node is one surface. A boat at chase
+  range is 4 to 6 draws without the sails (wm7 4: body, rudder, boom, mainsheet; wm12 5 with the wheel) and 6 to 8
+  with the sails shown. The moving parts are their own nodes and follow the helm and the sail angles at every
+  distance.
+- **One material**: every opaque surface but the sails is drawn with one material per boat,
+  `shaders/boat_atlas.gdshader`: the slot of each vertex (vertex colour green, `data_format.md` §8.5) picks its mean
+  colour, roughness, metallic, tile of the shared tiling atlas (stainless, rubber, rope and gelcoat detail; the spars,
+  pedestal and wheel are dark clear-coated carbon with no weave or stripe pattern, the wheel's rim a dark grip wrap)
+  and livery region; the livery regions (hull, deck, transom, keel) read the boat's staged livery atlas. Glass is a
+  dark opaque slot of it.
+- **Paint what is flat, model what sticks up, drop what is under a pixel**: the jib and traveller tracks, the flush
+  hatches (on the deck as a plain raised box about 3 cm proud whose top shows the painted frame and lens), organisers,
+  the cam, horn and traveller cleats, the rudder bearing ring and the lines lying on surfaces (halyards and their
+  tails, the mainsheet tail and coil, traveller lines: on the deck and the coachroof's top within 3.5 cm of the
+  surface, and down the coachroof's aft face on its own rectangle of the deck image, `data_format.md` §8.5; no
+  halyard coils: each tail runs as straight as it can from its clutch to its place at a low rope bag on the aft face
+  either side of the companionway (the places a little unevenly spaced), passing a halyard winch's base or a hatch
+  on whichever side is shorter, then over the aft edge and down the face into the bag, modelled, so a tail never
+  ends in the air or flat on the top; opaque in their own colours; only where a line hangs clear in the air it stays thin rope geometry) are painted into the deck region of the livery atlas
+  with their shading (darker under and around a fitting, lighter edges). Winches (about 450 triangles), clutches
+  (about 80 each), the blocks that stand up (mast foot, traveller, mainsheet, cars, about 120), the cars, the mast
+  foot, the mast instruments, the wind wand, stanchions, pulpit, pushpit, lifelines, rigging screws, a regatta helm
+  (the wheel with a smooth rim, about 1,100 triangles, on a slim pedestal, no guard or instrument pod) or the tiller
+  stay low-poly geometry. The upper mainsheet block hangs from a bail under the boom and the tackle runs from the
+  traveller car up to it; it is sheared with the boom angle so it stays on the block (`BoatView.sheet_positions`). The halyard exits, sheaves, sheave boxes, bolts, the anemometer,
+  the antenna and the outhaul go.
+- **The own boat** keeps its full detail at chase range: its meshes have a LOD bias of 32 (`BoatView.OWN_LOD_BIAS`),
+  so the engine simplifies them only where the error is under 1/32 of the threshold: the full model to about 70 m.
+- **Sails**: the vertex buffer is the simulation's whole grid, updated at the rates of §11. Each sail mesh carries
+  two engine levels over the same vertex buffer, every 2nd and every 4th row and column of the grid (always the last
+  row and column too), keyed by their error (a cambered row of `n` segments is off its arc by about `camber / n²` of
+  the chord, taken three times over for the shading); the renderer picks them by size on screen like the model's.
+- **Sheets** by the size of a metre on screen (§11.3).
+- **Shadows**: the visible boat meshes cast no sun shadow. The model carries the class's shadow proxy (a few
+  hundred triangles: the hull, the deck with its coachroof, keel, rudder and mast as `shadow`, and the boom as
+  `shadow_boom` under the boom node, so it swings with it), drawn only into the shadow maps (shadows only). The
+  sails keep casting their own shadows (their shape changes every frame and a proxy could not follow it), with their
+  engine levels. On a quality tier with `boat_cast_distance` > 0 (`water_render.md` §4.6) the proxies and sails of
+  boats other than the player's own stop casting beyond that distance from the camera.
+- **Livery**: the boat's livery material goes on every node, so the engine's levels change the triangles, never the
+  paint.
 
 ### 11.5 Light on the cloth
 Both sail shaders (`sail.gdshader`, `sail_baked.gdshader`) light the cloth the same way: Lambert diffuse from the
@@ -940,13 +975,12 @@ Flutter phase `φ = 0` unless stated.
     and 25 % eased, and a scripted gybe and tack), no straight tube between two rings of a flying sail's sheet comes
     within the rope radius of a triangle of the main's or the shown headsail's placed mid-surface or of the boom's
     box, and every lazy line, sampled every 2 cm along its tube, lies at or above the true top of the deck (the
-    LOD0 `deck` mesh's triangles); through the gybe and a kite trimmed from 60 % to 130 % of its optimum no ring
+    model's deck triangles); through the gybe and a kite trimmed from 60 % to 130 % of its optimum no ring
     moves more than `0.05·Sa` between frames. The test prints the smallest clearance, the deepest point under the
     deck and the cost per boat.
-22. **Levels of detail.** A boat with the camera at 25, 35, 90, 110 m shows LOD0, LOD1, LOD1, LOD2; at 29 m coming
-    from 35 m it stays at LOD1 (hysteresis) and at 28 m returns to LOD0; every level's hull, keel and sails carry the
-    boat's livery materials (the same material objects on each level), the moving parts of the level shown follow the
-    boom and the helm, and the sheets are full at LOD0, coarse at LOD1 and hidden at LOD2.
+22. **Levels of detail.** The model has its engine levels (generated on import) and every sail mesh its two reduced
+    grids over the whole grid's vertices; every node carries the boat's one livery material; the moving parts follow
+    the boom and the helm; the sheets are full with the camera at 25 m, thin at 50 m and hidden at 150 m.
 
 ## 13. Dependencies and open points
 

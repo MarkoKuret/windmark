@@ -142,6 +142,20 @@ static var animate_sails := true
 var use_reference := false
 ## the hull and mast of the drawn shadow on the water (BoatShadows.caster_from_physics), built on first use
 var _shadow_caster: Variant = null
+## sun shadows (sail_visuals.md §11.4): beyond this distance from the camera (m) the shadow proxies and sails of
+## boats other than the own boat cast none; 0: no limit (the quality tier's `boat_cast_distance`)
+static var cast_distance := 0.0
+## the player's own boat: casts at any distance, and its meshes keep the full detail at chase range (lod_bias)
+var own := false:
+	set(v):
+		own = v
+		_apply_lod_bias()
+## the own boat's mesh LOD bias (sail_visuals.md §11.4): the engine's automatic LOD drops detail only when its error
+## is under 1 / OWN_LOD_BIAS of the viewport's mesh LOD threshold (the full model to about 70 m)
+const OWN_LOD_BIAS := 32.0
+## the shadow-only proxies of every level and whether this boat casts now
+var _proxies: Array[GeometryInstance3D] = []
+var _casting := true
 ## the levels of detail (sail_visuals.md §11.4), finest first: {"lod", "from", "root" (the GLB wrapper), "model",
 ## "parts" (the non-sail part nodes), "rudder", "rudder_rest", "wheel", "wheel_rest", "boom", "boom_rest", "pole",
 ## "pole_rest", "sheet" (the mainsheet's rebuild data)}; the sails are LOD0's at every level
@@ -194,6 +208,9 @@ static func create(class_info: SimSource.ClassInfo, rudder_max: float, reference
 		mi.mesh = bm
 		b.add_child(mi)
 	b._find_parts()
+	b._setup_shadows()
+	if forced_lod == 0:
+		b._apply_lod_bias()
 	if b.model != null and draw_sheets:
 		b.sheets = BoatSheets.create(b, reference)
 	return b
@@ -391,6 +408,9 @@ func lod_for(dist: float) -> int:
 
 ## Shows the level of detail for a camera at `dist` m (every frame; tests call it directly).
 func update_lod(dist: float) -> void:
+	_update_casting(dist)
+	if sheets:
+		sheets.set_detail(sheet_detail_for(dist))
 	if levels.size() > 1:
 		_show_level(lod_for(dist) if forced_lod < 0 else mini(forced_lod, levels.size() - 1))
 
@@ -424,8 +444,133 @@ func _show_level(k: int) -> void:
 	if _pole:
 		_pole.visible = _pole_shown
 		_pole.transform = _pole_rest * Transform3D(Basis(_pole_axis, _pole_gamma), Vector3.ZERO)
-	if sheets:
-		sheets.set_detail(k)
+
+
+## Sun shadows (sail_visuals.md §11.4): the visible boat meshes cast none, each level's shadow proxy (`shadow`,
+## `shadow_boom`) casts only into the shadow maps, the sails cast their own.
+func _setup_shadows() -> void:
+	var sails := {}
+	for sp in sail_parts:
+		sails[sp.node] = true
+	for lv in levels:
+		var stack: Array[Node] = [lv["model"]]
+		while not stack.is_empty():
+			var node: Node = stack.pop_back()
+			stack.append_array(node.get_children())
+			var gi := node as GeometryInstance3D
+			if gi == null:
+				continue
+			if String(gi.name).begins_with("shadow"):
+				gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+				_proxies.append(gi)
+			elif sails.has(gi):
+				gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			else:
+				gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
+## Turns this boat's shadow proxies and sails off as casters beyond `cast_distance` (not the own boat).
+func _update_casting(dist: float) -> void:
+	var on := own or cast_distance <= 0.0 or dist <= cast_distance
+	if on == _casting:
+		return
+	_casting = on
+	var nodes: Array[GeometryInstance3D] = _proxies.duplicate()
+	for sp in sail_parts:
+		if sp.node is GeometryInstance3D:
+			nodes.append(sp.node as GeometryInstance3D)
+	for gi in nodes:
+		if gi.has_meta(&"dev_cast_shadow"):
+			continue  # the developer look panel holds the boats' shadows off
+		if String(gi.name).begins_with("shadow"):
+			gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if on \
+					else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		else:
+			gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if on \
+					else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
+## The running sheets' detail for a camera at `dist` m (§11.3), by the size of a metre on screen: full while a metre
+## is at least SHEET_PX_FULL pixels tall (about 30 m at 1080 lines and 60 deg), thin lines to SHEET_PX_THIN (about
+## 100 m), none beyond. The camera of the frame (begin_frame) gives the field of view, else 60 deg.
+const SHEET_PX_FULL := 31.0
+const SHEET_PX_THIN := 9.4
+const SHEET_SCREEN_LINES := 1080.0
+
+
+func sheet_detail_for(dist: float) -> int:
+	var t := _cam_tan if is_instance_valid(_frustum_cam) and _cam_tan > 0.0 else tan(deg_to_rad(30.0))
+	var px := SHEET_SCREEN_LINES / maxf(2.0 * dist * t, 1e-3)
+	return 0 if px >= SHEET_PX_FULL else (1 if px >= SHEET_PX_THIN else 2)
+
+
+func _apply_lod_bias() -> void:
+	for gi in find_children("*", "GeometryInstance3D", true, false):
+		(gi as GeometryInstance3D).lod_bias = OWN_LOD_BIAS if own or forced_lod == 0 else 1.0
+
+
+## The engine's levels of detail of a sail (§11.4): the index buffers of every 2nd and every 4th row and column of
+## its grid over the same vertex buffer (the per-vertex update keeps writing it whole), keyed by their geometric
+## error: a cambered row of n segments deviates from its arc by about camber / n² of the chord, taken three times
+## over for the shading. The renderer picks one by its size on screen.
+func _sail_lods(sp: SailPart, idx: PackedInt32Array, rest_mid: PackedVector3Array, camber: float) -> Dictionary:
+	var chord := 0.0
+	for i in sp.rows:
+		chord = maxf(chord, rest_mid[i * sp.cols].distance_to(rest_mid[i * sp.cols + sp.cols - 1]))
+	var out := {}
+	for step in [2, 4]:
+		var segs := maxf((sp.cols - 1) / float(step), 1.0)
+		if segs < 2.0 and step > 2:
+			continue
+		out[3.0 * camber * chord / (segs * segs)] = sail_indices(idx, sp.rows, sp.cols, step)
+	return out
+
+
+## The triangles of a two-layer sail grid (§3.1: layer k's vertex (i, j) is k·rows·cols + i·cols + j) on every
+## `step`-th row and column and the last ones, wound as the full grid `full` winds each layer.
+static func sail_indices(full: PackedInt32Array, rows: int, cols: int, step: int) -> PackedInt32Array:
+	if step <= 1 or full.size() < 3:
+		return full
+	var rs: Array[int] = []
+	for i in range(0, rows, step):
+		rs.append(i)
+	if rs[-1] != rows - 1:
+		rs.append(rows - 1)
+	var cs: Array[int] = []
+	for j in range(0, cols, step):
+		cs.append(j)
+	if cs[-1] != cols - 1:
+		cs.append(cols - 1)
+	var n := rows * cols
+	var out := PackedInt32Array()
+	for layer in 2:
+		# the full grid's winding on this layer: the sign of its first non-degenerate triangle in (column, row)
+		var flip := false
+		for t in range(0, full.size(), 3):
+			if (full[t] >= n) != (layer == 1):
+				continue
+			var p: Array[Vector2] = []
+			for q in 3:
+				var g := full[t + q] - layer * n
+				p.append(Vector2(g % cols, g / cols))
+			var c := (p[1] - p[0]).cross(p[2] - p[0])
+			if absf(c) > 1e-6:
+				flip = c < 0.0
+				break
+		var base := layer * n
+		for a in rs.size() - 1:
+			for b in cs.size() - 1:
+				var i0 := base + rs[a] * cols
+				var i1 := base + rs[a + 1] * cols
+				var v00 := i0 + cs[b]
+				var v01 := i0 + cs[b + 1]
+				var v11 := i1 + cs[b + 1]
+				var v10 := i1 + cs[b]
+				if flip:
+					out.append_array(PackedInt32Array([v00, v11, v01, v00, v10, v11]))
+				else:
+					out.append_array(PackedInt32Array([v00, v01, v11, v00, v11, v10]))
+	return out
 
 
 static func _vec(a: Array) -> Vector3:
@@ -507,7 +652,10 @@ func _setup_shape(sp: SailPart, side: Dictionary, furling: bool) -> void:
 	out[Mesh.ARRAY_TEX_UV2] = uv2
 	out[Mesh.ARRAY_INDEX] = idx
 	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, out)  # no compression flags: plain floats (§11)
+	var look0: Dictionary = side.get("look", {}) if side.get("look") is Dictionary else {}
+	var camber := float(look0.get("camber", 0.27 if sp.type.begins_with("spinnaker") else 0.12))
+	# no compression flags: plain floats (§11); the engine's levels of detail on reduced grids (§11.4)
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, out, [], _sail_lods(sp, idx, rest_mid, camber))
 	mesh.surface_set_material(0, BoatMaterials.sail_cloth(_sail_material(mi.get_active_material(0)), sp.type, info,
 			String(sp.node.name), pos, uv, uv2, sp.rows, sp.cols))
 	# a sphere around the sail at any angle: the rest sail about its luff centre, plus the belly, the swing
@@ -692,9 +840,9 @@ func apply_sails(prev: SimSource.SailsView, cur: SimSource.SailsView, alpha: flo
 				if _pole.visible:
 					_pole.transform = _pole_rest * Transform3D(Basis(_pole_axis, sp.gamma), Vector3.ZERO)
 	if sheets:
-		# §11.3: with the sails; at LOD1 (sub-pixel ropes) at most at the 15 Hz of §11
+		# §11.3: with the sails; thin (sub-pixel ropes) at most at the 15 Hz of §11
 		_sheets_since += dt
-		var due := drawn and (lod == 0 or _sheets_since + 1e-6 >= MID_INTERVAL)
+		var due := drawn and (sheets.detail == 0 or _sheets_since + 1e-6 >= MID_INTERVAL)
 		if due:
 			_sheets_since = 0.0
 		sheets.step(aws, dt, due)
@@ -841,6 +989,24 @@ func _update_sheet(beta: float) -> void:
 	_sheet_mesh.clear_surfaces()
 	_sheet_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _sheet_arrays)
 	_sheet_mesh.surface_set_material(0, mat)
+
+
+## The mainsheet's positions as drawn now (model frame of its level): the rest tackle sheared toward the boom end at
+## the boom angle drawn (tests and the offline previews; the renderer may hold them in place only).
+func sheet_positions() -> PackedVector3Array:
+	var v := PackedVector3Array()
+	if _sheet == null:
+		return v
+	var d := _about(_boom_pivot, _boom_axis, boom_angle) * _sheet_top - _sheet_top
+	v.resize(_sheet_rest.size())
+	for k in v.size():
+		v[k] = _sheet_rest[k] + d * _sheet_w[k]
+	return v
+
+
+## The mainsheet node shown now, null without one.
+func sheet_node() -> MeshInstance3D:
+	return _sheet
 
 
 ## Whether the mainsheet's positions can be rewritten in place: an uncompressed surface whose vertex stream is the

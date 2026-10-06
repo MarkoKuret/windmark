@@ -81,10 +81,10 @@ class Rig:
     def mast_part(self):
         p = Part()
         s = self.scale
-        zs = np.linspace(self.z_step - 0.1, self.z_top, seg(40, 8))
+        zs = np.linspace(self.z_step - 0.1, self.z_top, seg(40, 2))
         taper = self.taper(zs)
         path = np.stack([np.full_like(zs, self.x_mast), np.zeros_like(zs), zs], -1)
-        prof = _mast_section(self.chord, self.width, seg(24, 8))
+        prof = _mast_section(self.chord, self.width, seg(24, 4))
         p.add("carbon", sweep(path, prof, scale_along=taper, up=np.array([1.0, 0, 0])), tag="mast")
         p.attach("mast", "deck")
         # mast collar / partner ring at the deck
@@ -116,7 +116,7 @@ class Rig:
         for k in range(n_ins):
             z = self.z_boom + 0.35 * s + k * 0.2 * s
             ins = Part()
-            ins.add("carbon", superellipsoid_box((0.04 * s, 0.2 * s, 0.16 * s), 0.2, 10, 5, center=(0.02 * s, 0, 0)))
+            ins.add("rubber", superellipsoid_box((0.04 * s, 0.2 * s, 0.16 * s), 0.2, 10, 5, center=(0.02 * s, 0, 0)))
             ins.add("glass", superellipsoid_box((0.01 * s, 0.17 * s, 0.13 * s), 0.12, 10, 4, center=(0.042 * s, 0, 0)))
             p.extend(ins, translate([self.x_mast + self.chord / 2, 0, z]), tag=f"mast_instrument_{k}")
             p.attach(f"mast_instrument_{k}", "mast")
@@ -151,8 +151,8 @@ class Rig:
                 sp_tag = f"spreader_{i}_{'port' if side > 0 else 'stbd'}"
                 root = np.array([self.x_mast, side * self.width * 0.45, z])
                 t = tip * [1, side, 1]
-                path = np.linspace(root, t, 8)
-                sc = np.linspace(1.0, 0.55, 8)
+                path = np.linspace(root, t, seg(8, 2))
+                sc = np.linspace(1.0, 0.55, seg(8, 2))
                 sp = sweep(path, ellipse(0.045 * s, 0.014 * s, 12), scale_along=sc, up=np.array([1.0, 0, 0]))
                 p.add("carbon", sp, tag=sp_tag)
                 p.attach(sp_tag, "mast")
@@ -187,9 +187,10 @@ class Rig:
         if self.sprit > 0:
             L = self.hull.L
             a = np.array([L - 0.9 * s, 0, float(self.deck.deck_z(L - 0.9 * s, 0)) + 0.06 * s])
-            path = np.linspace(a, self.sprit_end, 10)
+            path = np.linspace(a, self.sprit_end, seg(10, 2))
             r0 = 0.04 * s
-            p.add("carbon", sweep(path, _circle(r0, 16), scale_along=np.linspace(1, 0.75, 10)), tag="sprit")
+            p.add("carbon", sweep(path, _circle(r0, seg(16, 4)), scale_along=np.linspace(1, 0.75, seg(10, 2))),
+                  tag="sprit")
             p.attach("sprit", "deck", "hull")
             p.add("metal", superellipsoid_box((0.06 * s, 0.06 * s, 0.06 * s), 0.5, 8, 5, center=self.sprit_end),
                   tag="sprit_end")
@@ -391,7 +392,7 @@ class Rig:
         """Boom in the boat frame (the writer stores it relative to the gooseneck pivot)."""
         p = Part()
         s = self.scale
-        n = 16
+        n = seg(16, 2)
         t = np.linspace(0, 1, n)
         path = np.stack([self.gooseneck[0] - t * self.boom_len, np.zeros(n), np.full(n, self.gooseneck[2])], -1)
         depth = 0.17 * s
@@ -436,9 +437,10 @@ class Rig:
         p = Part()
         s = self.scale
         heel = np.array([self.x_mast + self.chord / 2, 0.0, self.pole_pivot[2]])
-        path = np.linspace(heel + [0.04 * s, 0, 0], self.pole_end - [0.05 * s, 0, 0], 10)
-        t = np.linspace(-1.0, 1.0, 10)
-        p.add("carbon", sweep(path, _circle(0.03 * s, 16), scale_along=1.0 - 0.3 * t ** 2))
+        n = seg(10, 2)
+        path = np.linspace(heel + [0.04 * s, 0, 0], self.pole_end - [0.05 * s, 0, 0], n)
+        t = np.linspace(-1.0, 1.0, n)
+        p.add("carbon", sweep(path, _circle(0.03 * s, seg(16, 4)), scale_along=1.0 - 0.3 * t ** 2))
         # heel fitting on the mast ring and end fitting at the tack
         p.add("metal", superellipsoid_box((0.08 * s, 0.05 * s, 0.05 * s), 0.5, 8, 5, center=heel + [0.03 * s, 0, 0]))
         p.add("metal", superellipsoid_box((0.08 * s, 0.045 * s, 0.045 * s), 0.5, 8, 5,

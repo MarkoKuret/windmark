@@ -147,6 +147,8 @@ func _setup(rig: Dictionary) -> void:
 	var bw := bv.info.beam_max
 	_aabb = AABB(Vector3(-bw - 4.0, -2.0, -loa), Vector3(2.0 * bw + 8.0, h + 4.0, 2.0 * loa + 4.0))
 	base_material = _rope_slot(bv.model)
+	if base_material == null:
+		base_material = BoatMaterials.rope_base()  # the boat material has no rope slot material of its own
 	if base_material != null:
 		_materials[Surface.HEADSAIL] = BoatLivery.rope_material(bv.info.id, base_material, "sheet", {})
 		_materials[Surface.FLYING] = BoatLivery.rope_material(bv.info.id, base_material, "kite_sheet", {})
@@ -190,22 +192,10 @@ static func deck_field(view: BoatView) -> Dictionary:
 		var m: Node3D = lv["model"]
 		if m == null:
 			continue
+		# the deck node and the hardware node, or those parts of the merged body (BoatMaterials.part_surfaces)
 		for part in ["deck", "hardware"]:
-			var mi := m.find_child(part, true, false) as MeshInstance3D
-			if mi == null or mi.mesh == null:
-				continue
-			var xf := Transform3D.IDENTITY
-			var x: Node = mi
-			while x != null and x != m:
-				if x is Node3D:
-					xf = (x as Node3D).transform * xf
-				x = x.get_parent()
-			for s in mi.mesh.get_surface_count():
-				var arr := mi.mesh.surface_get_arrays(s)
-				var idx: Variant = arr[Mesh.ARRAY_INDEX]
-				if idx == null:
-					continue
-				surfaces.append({"positions": xf * (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array), "indices": idx,
+			for e in BoatMaterials.part_surfaces(m, part):
+				surfaces.append({"positions": e["positions"], "indices": e["indices"],
 					"cap": -1.0 if part == "deck" else FIT_MAX})
 	var builder: Variant = ClassDB.instantiate("SheetRopes") if ClassDB.class_exists("SheetRopes") else SheetRopesRef.new()
 	var out: Dictionary = builder.build_deck(surfaces, DECK_CELL, DECK_SKIRT, DECK_DILATE) if not surfaces.is_empty() else {}

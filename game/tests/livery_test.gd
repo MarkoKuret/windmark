@@ -2,9 +2,9 @@ extends SceneTree
 ## Headless checks of the liveries (data_format.md §8, sail_visuals.md §11.2, WM-014, WM-081): the class livery
 ## files load and follow the rules, bad files are refused, the fleet rule is distinct and deterministic from the
 ## seed, the baked textures are there (in data/liveries and staged for import) with their layouts, and a fleet of
-## both classes is painted: on the baked path (shared images on boat_baked and sail_baked, per-boat name and number
-## over them in the layout's slots, the starboard stack uppermost) and on the procedural fallback, each at a
-## measured cost. Run by tests/run_livery_test.sh (needs the generated boats and the staged textures).
+## both classes is painted: on the baked path (the staged boat atlas on the boat material, sail_baked for the sails,
+## per-boat name and number over them in the layout's slots, the starboard stack uppermost) and on the procedural
+## fallback, each at a measured cost. Run by tests/run_livery_test.sh (needs the generated boats and the staged textures).
 
 const CLASSES := ["wm7", "wm12"]
 const SAIL_FILES := ["_port_albedo.png", "_stbd_albedo.png", "_normal.png", "_orm.png"]
@@ -131,7 +131,8 @@ func check_shaders() -> void:
 	var want := {
 		"res://shaders/boat.gdshader": ["hl_on", "hl_sheer", "livery_text", "hl_name_tex"],
 		"res://shaders/sail.gdshader": ["sl_on", "sl_box", "sl_tex", "livery_text", "cloth_chord"],
-		"res://shaders/boat_baked.gdshader": ["bk_albedo", "bk_normal", "bk_orm", "ov_box", "livery_text", "albedo_tex"],
+		"res://shaders/boat_atlas.gdshader": ["bk_albedo", "bk_normal", "bk_orm", "bk_rect", "bk_keel", "ov_box", "tr_box",
+			"livery_text", "slot_color", "tile_color", "hl_on", "hl_sheer"],
 		"res://shaders/sail_baked.gdshader": ["sk_albedo_port", "sk_albedo_stbd", "sk_orm", "sk_detail", "sn_box", "sl_layer_n"],
 	}
 	for path in want:
@@ -146,8 +147,6 @@ func check_shaders() -> void:
 	var sb := (load("res://shaders/sail_baked.gdshader") as Shader).code
 	check(not sb.contains("sail_cloth") and not sb.contains("sail_livery") and sb.contains("void light()"),
 		"sail_baked.gdshader: no procedural cloth or livery, the sails' light")
-	var bb := (load("res://shaders/boat_baked.gdshader") as Shader).code
-	check(not bb.contains("hull_livery"), "boat_baked.gdshader: no procedural hull livery")
 
 
 ## The baked textures (data_format.md §8.5): in the repository and staged for import, with layouts that fit the
@@ -194,46 +193,54 @@ func check_baked_files() -> void:
 		check(all, "%s: every class sail baked with its four images" % id)
 		var hs := BakedLivery.hull_set(id, look)
 		var ss := BakedLivery.sail_set(id)
-		check(hs.has("albedo") and hs.has("keel") and hs.has("transom") and hs.has("deck")
-			and ss.get("sails", {}).size() == data.info.sails.size(),
-			"%s: staged and imported (hull, keel, transom, deck, %d sails)" % [id, ss.get("sails", {}).size()])
+		var rects: Dictionary = hs.get("rects", {})
+		check(hs.has("atlas") and rects.size() == 4 and ss.get("sails", {}).size() == data.info.sails.size(),
+			"%s: staged and imported (the boat atlas with %d regions, %d sails)" % [id, rects.size(), ss.get("sails", {}).size()])
+		if hs.has("atlas"):
+			var at: Texture2D = hs["atlas"]["albedo"]
+			check(at.get_width() == 2048 and at.get_height() == 2048, "%s: boat atlas 2048 x 2048 (data_format.md §8.5)" % id)
+			var inside := true
+			for k in rects:
+				var r: Vector4 = rects[k]
+				inside = inside and r.x >= 0.0 and r.y >= 0.0 and r.x + r.z <= 1.0 + 1e-5 and r.y + r.w <= 1.0 + 1e-5 and r.z > 0.0
+			check(inside, "%s: the atlas regions lie inside it" % id)
+		for sid in ss.get("sails", {}):
+			var t: Texture2D = ss["sails"][sid]["port"]
+			check(maxi(t.get_width(), t.get_height()) == 1024, "%s %s: sail staged at 1024 (%d x %d)" % [id, sid,
+				t.get_width(), t.get_height()])
 		for d in ["dacron", "laminate", "nylon"]:
 			check(BakedLivery.detail(d) != null, "cloth detail %s staged" % d)
 
 
-## The transom (its own slot: the baked transom set, the boat's name in the name panel) and the deck (one baked
-## material with the non-slip mask on the gelcoat and non-slip slots), data_format.md §8.5.
-func _check_baked_transom_deck(id: String, bv: BoatView, other: BoatView) -> void:
-	var deck := bv.model.find_child("deck", true, false) as MeshInstance3D
-	var deck2 := other.model.find_child("deck", true, false) as MeshInstance3D
-	var tm: ShaderMaterial = null
-	var tm2: ShaderMaterial = null
-	var dms := {}
-	for s in deck.mesh.get_surface_count():
-		var slot := deck.mesh.surface_get_material(s).resource_name
-		var o := deck.get_surface_override_material(s) as ShaderMaterial
-		if slot == "transom":
-			tm = o
-			tm2 = deck2.get_surface_override_material(s) as ShaderMaterial
-		elif slot in ["gelcoat", "nonslip"]:
-			dms[slot] = o
-	var hs := BakedLivery.hull_set(id, bv.livery.look_id)
-	var box: Vector4 = (tm.get_shader_parameter("ov_box") as PackedVector4Array)[0] if tm else Vector4.ZERO
+## The transom (the boat's name in the transom's name panel) and the deck (the deck region with the painted hardware
+## and the non-slip mask), data_format.md §8.5, on the boat's material.
+func _check_baked_transom_deck(id: String, bv: BoatView, other: BoatView, bm: ShaderMaterial, bm2: ShaderMaterial) -> void:
+	var box: Vector4 = bm.get_shader_parameter("tr_box")
 	var pan: Dictionary = BoatLivery.hull_geometry(bv)["transom"]
 	var uv: Array = pan.get("uv1", [0, 0, 0, 0])
 	var inside := box.z > box.x and box.w > box.y and box.x >= float(uv[0]) - 1e-4 and box.z <= float(uv[2]) + 1e-4 \
 		and box.y >= float(uv[1]) - 1e-4 and box.w <= float(uv[3]) + 1e-4
-	check(tm != null and tm.shader == BoatLivery.BAKED_BOAT and tm.get_shader_parameter("bk_albedo") == hs["transom"]["albedo"]
-		and tm.get_shader_parameter("bk_proj") == 0 and tm.get_shader_parameter("ov_on") == 1,
-		"%s baked: the transom on its own slot with the baked transom set" % id)
-	check(inside and tm2 != null and tm2 != tm and tm2.get_shader_parameter("livery_text") == other.livery_text.texture
-		and tm2.get_shader_parameter("bk_albedo") == tm.get_shader_parameter("bk_albedo"),
-		"%s baked: the boat's name in the transom's name panel (%.2f..%.2f of u), per boat over the shared images" % [id, box.x, box.z])
-	var dm: ShaderMaterial = dms.get("gelcoat")
-	check(dm != null and dms.get("nonslip") == dm and dm.shader == BoatLivery.BAKED_BOAT
-		and dm.get_shader_parameter("bk_albedo") == hs["deck"]["albedo"] and dm.get_shader_parameter("bk_orm") == hs["deck"]["orm"]
-		and dm.get_shader_parameter("bk_mask") == true and dm.get_shader_parameter("ns_albedo_tex") != null,
-		"%s baked: the deck's gelcoat and non-slip on the baked deck set, the non-slip detail by the mask" % id)
+	check(inside and bm.get_shader_parameter("tr_on") == 1 and bm2.get_shader_parameter("livery_text") == other.livery_text.texture,
+		"%s baked: the boat's name in the transom's name panel (%.2f..%.2f of u), per boat over the shared atlas" % [id, box.x, box.z])
+	var deck := bv.model.find_child("body", true, false) as MeshInstance3D
+	check(deck != null and deck.get_surface_override_material(0) == bm and not BoatMaterials.part_surfaces(bv.model, "deck").is_empty(),
+		"%s baked: the deck on the boat's material (the deck region, the non-slip by the mask)" % id)
+
+
+## The boat's material on every non-sail surface of every level (sail_visuals.md §11.4): one per boat.
+func _boat_material(bv: BoatView) -> Array:
+	var mats := {}
+	var n := 0
+	for lv in bv.levels:
+		for mi in (lv["model"] as Node).find_children("*", "MeshInstance3D", true, false):
+			var nm := String(mi.name)
+			if nm.begins_with("sail_") or nm.begins_with("shadow") or nm == "sheets":
+				continue
+			for s in (mi as MeshInstance3D).mesh.get_surface_count():
+				n += 1
+				var o = (mi as MeshInstance3D).get_surface_override_material(s)
+				mats[o] = true
+	return [mats.keys(), n]
 
 
 func check_paint(baked: bool) -> void:
@@ -273,8 +280,8 @@ func check_paint(baked: bool) -> void:
 			"%s %s: text texture 1024 x 512, one channel, mipmapped (%.0f kB)" % [id, path, img.get_data().size() / 1024.0])
 		for row in [LiveryText.Row.NAME, LiveryText.Row.NUMBER]:
 			check(_ink(img, row) > 0.02, "%s %s: text row %d has ink" % [id, path, row])
-		var hull := bv.model.find_child("hull", true, false) as MeshInstance3D
-		var plain_hull := plain.model.find_child("hull", true, false) as MeshInstance3D
+		var hull := bv.model.find_child("body", true, false) as MeshInstance3D
+		var plain_hull := plain.model.find_child("body", true, false) as MeshInstance3D
 		var untouched := true
 		for s in plain_hull.mesh.get_surface_count():
 			untouched = untouched and plain_hull.get_surface_override_material(s) == null
@@ -290,39 +297,42 @@ func check_paint(baked: bool) -> void:
 func _check_baked_boat(id: String, views: Array, lv: Livery) -> void:
 	var bv: BoatView = views[0]
 	var other: BoatView = views[1]
-	var hull := bv.model.find_child("hull", true, false) as MeshInstance3D
-	var n := 0
-	var shared := true
-	var boxes_ok := true
-	for s in hull.mesh.get_surface_count():
-		var o := hull.get_surface_override_material(s) as ShaderMaterial
-		var o2 := (other.model.find_child("hull", true, false) as MeshInstance3D).get_surface_override_material(s) as ShaderMaterial
-		if o == null or o.shader != BoatLivery.BAKED_BOAT:
-			continue
-		n += 1
-		shared = shared and o2 != null and o != o2 and o.get_shader_parameter("bk_albedo") == o2.get_shader_parameter("bk_albedo") \
-			and o.get_shader_parameter("livery_text") == bv.livery_text.texture \
-			and o2.get_shader_parameter("livery_text") == other.livery_text.texture
-		var boxes: PackedVector4Array = o.get_shader_parameter("ov_box")
-		boxes_ok = boxes_ok and boxes.size() == 4
-		for k in boxes.size():
-			var b := boxes[k]
-			# 0, 1 starboard (v < 0.5), name aft of the number; 2, 3 port (v > 0.5)
-			boxes_ok = boxes_ok and b.z > b.x and b.w > b.y and (b.w < 0.5 if k < 2 else b.y > 0.5)
-		boxes_ok = boxes_ok and boxes[0].z < boxes[1].x and boxes[3].z < boxes[2].x
-	check(n == 3, "%s baked: topsides, boot stripe and antifouling on boat_baked.gdshader" % id)
-	check(shared, "%s baked: the hull images shared by the fleet, the name and number per boat" % id)
+	var got := _boat_material(bv)
+	var bm: ShaderMaterial = got[0][0] if got[0].size() == 1 else null
+	var bm2: ShaderMaterial = _boat_material(other)[0][0]
+	check(bm != null and bm.shader == BoatMaterials.ATLAS_SHADER and bm.get_shader_parameter("bk_on") == true,
+		"%s baked: every boat surface of every level (%d) on one material with the boat atlas" % [id, got[1]])
+	if bm == null:
+		return
+	var hs := BakedLivery.hull_set(id, lv.look_id)
+	check(bm2 != bm and bm.get_shader_parameter("bk_albedo") == hs["atlas"]["albedo"]
+		and bm2.get_shader_parameter("bk_albedo") == bm.get_shader_parameter("bk_albedo")
+		and bm.get_shader_parameter("livery_text") == bv.livery_text.texture,
+		"%s baked: the atlas shared by the fleet, the name and number per boat" % id)
+	var boxes: PackedVector4Array = bm.get_shader_parameter("ov_box")
+	var boxes_ok := boxes.size() == 4
+	for k in boxes.size():
+		var b := boxes[k]
+		# 0, 1 starboard (v < 0.5), name aft of the number; 2, 3 port (v > 0.5)
+		boxes_ok = boxes_ok and b.z > b.x and b.w > b.y and (b.w < 0.5 if k < 2 else b.y > 0.5)
+	boxes_ok = boxes_ok and boxes[0].z < boxes[1].x and boxes[3].z < boxes[2].x
 	check(boxes_ok, "%s baked: name aft and number forward in the livery panels of both sides" % id)
-	var keel := bv.model.find_child("keel", true, false) as MeshInstance3D
-	var km := keel.get_surface_override_material(0) as ShaderMaterial if keel else null
-	var kr: Vector4 = km.get_shader_parameter("bk_rect") if km else Vector4.ZERO
-	var aabb := keel.mesh.get_aabb() if keel else AABB()
+	var rects: PackedVector4Array = bm.get_shader_parameter("bk_rect")
+	check(rects.size() == 5 and rects[1].z > 0.9 and rects[2].z > 0.9 and rects[3].z > 0.0 and rects[4].z > 0.0,
+		"%s baked: hull, deck, transom and keel regions of the atlas" % id)
+	var kr: Vector4 = bm.get_shader_parameter("bk_keel")
+	var aabb := AABB()
+	var first := true
+	for e in BoatMaterials.part_surfaces(bv.model, "keel"):
+		for i in (e["indices"] as PackedInt32Array):
+			var q: Vector3 = (e["positions"] as PackedVector3Array)[i]
+			aabb = AABB(q, Vector3.ZERO) if first else aabb.expand(q)
+			first = false
 	# the side view's rectangle (forward min, top, length, height) holds the keel mesh
 	var holds := kr.z > 0.0 and aabb.position.z >= kr.x - 1e-3 and aabb.end.z <= kr.x + kr.z + 1e-3 \
 		and aabb.end.y <= kr.y + 1e-3 and aabb.position.y >= kr.y - kr.w - 1e-3
-	check(km != null and km.get_shader_parameter("bk_proj") == 1 and holds,
-		"%s baked: keel in side view, its rectangle holds the keel (%.2f..%.2f m fwd)" % [id, aabb.position.z, aabb.end.z])
-	_check_baked_transom_deck(id, bv, other)
+	check(holds, "%s baked: keel in side view, its rectangle holds the keel (%.2f..%.2f m fwd)" % [id, aabb.position.z, aabb.end.z])
+	_check_baked_transom_deck(id, bv, other, bm, bm2)
 	for sp in bv.sail_parts:
 		var m := (sp.node as MeshInstance3D).get_surface_override_material(0) as ShaderMaterial
 		var m2 := (other.sail_parts[sp.index].node as MeshInstance3D).get_surface_override_material(0) as ShaderMaterial
@@ -366,38 +376,28 @@ func _check_baked_boat(id: String, views: Array, lv: Livery) -> void:
 
 
 func _check_procedural_boat(id: String, bv: BoatView, lv: Livery, data: BoatClassData) -> void:
-	var hull := bv.model.find_child("hull", true, false) as MeshInstance3D
-	var top: ShaderMaterial = null
-	var colours := 0
-	for s in hull.mesh.get_surface_count():
-		var o := hull.get_surface_override_material(s) as ShaderMaterial
-		if o == null:
-			continue
-		if o.get_shader_parameter("hl_on") == 1:
-			top = o
-		else:
-			colours += 1
-	check(top != null and colours == 2, "%s procedural: topsides on the livery path, boot stripe and antifouling recoloured" % id)
-	if top:
-		var sh: PackedFloat32Array = top.get_shader_parameter("hl_sheer")
-		var bt: PackedFloat32Array = top.get_shader_parameter("hl_boot")
-		var ok := sh.size() == 17
-		for i in range(2, 15):
-			ok = ok and bt[i] > sh[i] + 0.02 and sh[i] >= -0.001 and bt[i] <= 0.5
-		check(ok, "%s procedural: sheer and boot stripe curves (v %.3f..%.3f amidships)" % [id, sh[8], bt[8]])
-		check(top.shader == BoatMaterials.SHADER, "%s procedural: topsides on the shared boat shader" % id)
-	var deck := bv.model.find_child("deck", true, false) as MeshInstance3D
-	var tr_ok := false
-	for s in deck.mesh.get_surface_count():
-		if deck.mesh.surface_get_material(s).resource_name == "transom":
-			var o := deck.get_surface_override_material(s) as ShaderMaterial
-			var c: Variant = o.get_shader_parameter("albedo_color") if o else null
-			var mean := BoatLivery.texture_mean(o.get_shader_parameter("albedo_tex")) if o else 1.0
-			if c is Color:
-				var lin := (c as Color).srgb_to_linear()
-				var want: Color = (lv.hull["topsides"] as Color).srgb_to_linear()
-				tr_ok = absf(lin.b * mean - want.b) < 0.01 and absf(lin.r * mean - want.r) < 0.01
-	check(tr_ok, "%s procedural: the transom in the topsides colour" % id)
+	var got := _boat_material(bv)
+	var top: ShaderMaterial = got[0][0] if got[0].size() == 1 else null
+	check(top != null and top.shader == BoatMaterials.ATLAS_SHADER and top.get_shader_parameter("hl_on") == 1
+		and top.get_shader_parameter("bk_on") != true,
+		"%s procedural: the boat's material with the topsides on the livery path, no atlas" % id)
+	if top == null:
+		return
+	var sh: PackedFloat32Array = top.get_shader_parameter("hl_sheer")
+	var bt: PackedFloat32Array = top.get_shader_parameter("hl_boot")
+	var ok := sh.size() == 17
+	for i in range(2, 15):
+		ok = ok and bt[i] > sh[i] + 0.02 and sh[i] >= -0.001 and bt[i] <= 0.5
+	check(ok, "%s procedural: sheer and boot stripe curves (v %.3f..%.3f amidships)" % [id, sh[8], bt[8]])
+	var col: PackedVector4Array = top.get_shader_parameter("slot_color")
+	var want := {"transom": lv.hull["topsides"], "hull_boottop": lv.hull["boot_stripe"],
+		"hull_antifouling": lv.hull["antifouling"], "keel": lv.hull["keel"], "deck_nonslip": lv.deck["nonslip"]}
+	var all := true
+	for k in want:
+		var c: Color = (want[k] as Color).srgb_to_linear()
+		var v := col[BoatMaterials.slot_id(k)]
+		all = all and absf(v.x - c.r) < 0.01 and absf(v.y - c.g) < 0.01 and absf(v.z - c.b) < 0.01
+	check(all, "%s procedural: transom in the topsides colour, boot stripe, antifouling, keel and deck recoloured" % id)
 	for sp in bv.sail_parts:
 		var m := (sp.node as MeshInstance3D).get_surface_override_material(0) as ShaderMaterial
 		if m == null:

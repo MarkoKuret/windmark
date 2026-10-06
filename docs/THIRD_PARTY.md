@@ -12,7 +12,6 @@
 | godot-cpp 10.0.0-stable (commit 507ed9d) | the GDExtension (`game/native`; fetched by `game/native/build.sh` into `game/native/third_party`, not committed), linked into `game/bin/libwindmark_godot.*` | MIT | https://github.com/godotengine/godot-cpp |
 | ambientCG Plastic013A | tools/boatgen/textures/orange_peel_* (processed: grey, 512 px), embedded in generated boat GLBs | CC0 1.0 | https://ambientcg.com/a/Plastic013A |
 | ambientCG Rubber004 | tools/boatgen/textures/grain_* (processed: grey, 512 px), embedded in generated boat GLBs | CC0 1.0 | https://ambientcg.com/a/Rubber004 |
-| ambientCG Fabric004 | tools/boatgen/textures/carbon_twill_* (processed: grey, 512 px), embedded in generated boat GLBs | CC0 1.0 | https://ambientcg.com/a/Fabric004 |
 | ambientCG Metal009 | tools/boatgen/textures/brushed_* (processed: grey, 512 px), embedded in generated boat GLBs | CC0 1.0 | https://ambientcg.com/a/Metal009 |
 | ambientCG Fabric062 | tools/boatgen/textures/weave_* (processed: grey, 512 px), embedded in generated boat GLBs | CC0 1.0 | https://ambientcg.com/a/Fabric062 |
 | ambientCG Rope002 | tools/boatgen/textures/braid_* (processed: grey, 512 px), embedded in generated boat GLBs | CC0 1.0 | https://ambientcg.com/a/Rope002 |

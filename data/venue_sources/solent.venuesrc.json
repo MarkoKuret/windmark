@@ -2,7 +2,7 @@
   "schema": "windmark.venuesrc/1",
   "id": "solent",
   "name": "The Solent",
-  "version": 1,
+  "version": 2,
   "origin": {"lat": 50.785, "lon": -1.31},
   "bounds": [-6500, -2500, 6000, 4000],
   "fetch": 8000,
@@ -141,7 +141,7 @@
     "shift": {"preset": "stable", "amplitude": 0.0698, "hold_max": 120},
     "oscillation": {"amplitude": 0.0349, "time_scale": 17},
     "puffs": {"preset": "light"},
-    "tide": {"scale": 0.6, "period": 2400, "turn": [0.35, 0.65], "turn_to": -1},
+    "tide": {"scale": 0.6, "period": 44712},
     "sea": {"scale": 1.0},
     "random": {
       "speed": [3.087, 10.289],
@@ -153,5 +153,5 @@
   },
   "briefing": {"tag": "Strong tide", "tip": "The stream runs hardest mid-channel; cheat it along the shore."},
   "terrain": "land heights per input (mainland 25 m, Isle of Wight 45 m) until terrain heights come from the DEM",
-  "note": "Bramble Bank from the EMODnet Bathymetry DTM (2 m and 4 m depth contours, CC-BY 4.0); tide period shortened to 40 min so the stream is strong on both sides of the turn in a short race"
+  "note": "Bramble Bank from the EMODnet Bathymetry DTM (2 m and 4 m depth contours, CC-BY 4.0)"
 }

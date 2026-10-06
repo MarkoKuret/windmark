@@ -11,7 +11,7 @@ import numpy as np
 
 from . import __version__
 from .clip import clip_to_box
-from .fields import (CURRENT_DEFAULTS, EXPOSURE_DEFAULTS, WIND_DEFAULTS, current_field, exposure, ref_speed,
+from .fields import (CURRENT_DEFAULTS, EXPOSURE_DEFAULTS, WIND_DEFAULTS, current_field, exposure, ref_speed, ref_to,
                      wind_field)
 from .geo import InputError, load_entry, signed_area
 from .raster import Raster
@@ -242,6 +242,8 @@ def build(src, terrain_out=None):
         vx, vy = _round(vx, 4), _round(vy, 4)
         doc["current_field"] = {"grid": cg, "vx": vx, "vy": vy,
                                 "ref_speed": round(ref_speed(cg, vx, vy, bounds, land), 4)}
+        if "tide" in (src.get("conditions") or {}):  # the set the briefing names (data_format.md §6.3)
+            doc["current_field"]["ref_to"] = round(ref_to(cg, vx, vy, bounds, land), 4)
 
     if src.get("exposure") is not False:
         cond = src.get("conditions") or {}

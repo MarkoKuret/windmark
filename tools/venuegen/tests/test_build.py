@@ -128,6 +128,13 @@ def test_current_field(src):
     b = doc["bounds"]
     inside = (x >= b[0]) & (x <= b[2]) & (y >= b[1]) & (y <= b[3]) & ~land
     assert abs(cf["ref_speed"] - np.percentile(sp[inside], 90)) < 1e-3
+    assert "ref_to" not in cf  # only a tidal venue names the set
+    # with a tide: ref_to, the direction of the summed stream (to the east here)
+    src3 = copy.deepcopy(src)
+    src3["conditions"] = {"tide": {"scale": 0.6, "period": 44712}}
+    cf3 = build(src3)[0]["current_field"]
+    want = math.atan2(vx[inside].sum(), vy[inside].sum()) % (2 * math.pi)
+    assert abs(cf3["ref_to"] - want) < 1e-3 and abs(cf3["ref_to"] - math.pi / 2) < 0.05
     # banks slow the stream
     src2 = copy.deepcopy(src)
     src2["current"]["banks"] = [{"id": "bank", "points": [[-500, -500], [500, -500], [500, 500], [-500, 500]],
@@ -160,8 +167,12 @@ def test_conditions_and_briefing_copied_and_checked(src):
     with pytest.raises(SourceError):
         build(bad)
     bad = copy.deepcopy(src)
-    bad["conditions"]["tide"] = {"scale": 0.6, "period": 44712, "turn": [0.35, 0.65], "turn_to": -1}
+    bad["conditions"]["tide"] = {"scale": 0.6, "period": 44712}
     with pytest.raises(SourceError):  # a tide needs a current field
+        build(bad)
+    bad["current"] = {"to": math.pi / 2, "speed": 1.0}
+    bad["conditions"]["tide"]["turn"] = [0.35, 0.65]  # the turn window is gone: each race draws the phase
+    with pytest.raises(SourceError):
         build(bad)
     bad = copy.deepcopy(src)
     bad["conditions"]["wind"]["from_spread"] = 0.5

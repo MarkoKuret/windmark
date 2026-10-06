@@ -223,6 +223,19 @@ def ref_speed(grid, vx, vy, bounds, polygons):
     return float(np.percentile(np.hypot(vx[sel], vy[sel]), 90))
 
 
+def ref_to(grid, vx, vy, bounds, polygons):
+    """Direction (rad, [0, 2pi)) the field sets: atan2 of the summed (vx, vy) over the ref_speed nodes."""
+    x, y = grid_nodes(grid)
+    vx = np.asarray(vx, np.float32).astype(np.float64)
+    vy = np.asarray(vy, np.float32).astype(np.float64)
+    inside = (x >= bounds[0]) & (x <= bounds[2]) & (y >= bounds[1]) & (y <= bounds[3])
+    sel = inside & ~points_in_land(x, y, polygons)
+    sx, sy = float(vx[sel].sum()), float(vy[sel].sum())
+    if not sel.any() or (sx == 0.0 and sy == 0.0):
+        return 0.0
+    return math.atan2(sx, sy) % (2.0 * math.pi)
+
+
 def exposure(grid, R, mask, polygons, wind_from, fetch, p):
     """Sea height factor: the open-water fetch averaged over the wave directions around the typical wind
     (square root, as the wind-sea height grows), faded out near the shore, 0 on land."""

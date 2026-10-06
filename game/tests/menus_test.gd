@@ -972,10 +972,12 @@ func test_briefing() -> void:
 	t.ok(cd == {"kn": 12.0, "from_deg": 0.0, "shift": "stable", "gusts": "light"}, "Custom defaults: %s" % [cd])
 	# the tide and trend fixture
 	var td := _vi(TIDAL)
-	var tt := VenueWeather.text(td, "local", {}, tm)
+	var ttm := tm.duplicate()
+	ttm["tide_factor"] = 0.6  # a race drawn at the flood's peak
+	var tt := VenueWeather.text(td, "local", {}, ttm)
 	print("  Tidal fixture (Local):\n    " + tt.replace("\n", "\n    ").replace("\t", "  "))
 	t.ok(tt == "TIDAL TEST · Strong tide\nWind\t10-16 kn from the SW\nShifts\tStable: small, slow (4°), backs 7°\n"
-		+ "Gusts\tLight: to +15 %, frequent\nCurrent\tStrong, 1.5 kn, turns mid-race\n"
+		+ "Gusts\tLight: to +15 %, frequent\nCurrent\tStrong, 1.5 kn, flooding (sets E)\n"
 		+ "Sea\tFlat to chop, swell 0.4 m from the SW\nTip\tThe stream runs hardest mid-channel; cheat it along the shore.",
 		"tide and trend fixture briefing")
 	var short := VenueWeather.lines(td, "local", {}, VenueWeather.timing(MenuData.course_file("practice_waters/example_wl")))
@@ -983,11 +985,21 @@ func test_briefing() -> void:
 	# the spec's examples (venues.md §2) from their sketched conditions
 	var solent := _cond({"wind": {"speed": [10 * KN, 16 * KN], "from": deg_to_rad(225)},
 		"shift": {"amplitude": deg_to_rad(4.0), "hold_max": 120}, "puffs": {"preset": "light"},
-		"tide": {"scale": 0.6, "period": 44712, "turn": [0.35, 0.65], "turn_to": -1}},
-		{"fetch": 8000.0, "current_field": {"ref_speed": 1.29}})
-	var sl := VenueWeather.lines(solent, "local", {}, tm)
+		"tide": {"scale": 0.6, "period": 44712}},
+		{"fetch": 8000.0, "current_field": {"ref_speed": 1.29, "ref_to": deg_to_rad(75.0)}})
+	var stm := tm.duplicate()
+	stm["tide_factor"] = 0.6
+	var sl := VenueWeather.lines(solent, "local", {}, stm)
 	t.ok(sl.map(func(l: Array) -> String: return l[1]) == ["10-16 kn from the SW", "Stable: small, slow (4°)",
-		"Light: to +15 %, frequent", "Strong, 1.5 kn, turns mid-race", "Flat to chop"], "Solent example: %s" % [sl])
+		"Light: to +15 %, frequent", "Strong, 1.5 kn, flooding (sets E)", "Flat to chop"], "Solent example: %s" % [sl])
+	# the spec's other Solent races (venues.md §2): a moderate ebb and slack
+	for c in [[-0.45, "Moderate, 1.1 kn, ebbing (sets W)"], [0.05, "Slack, turning"], [-0.1, "Slack, turning"],
+			[0.15, "Light, 0.4 kn, flooding (sets E)"]]:
+		stm["tide_factor"] = c[0]
+		var cl: String = VenueWeather.lines(solent, "local", {}, stm)[3][1]
+		t.ok(cl == c[1], "Solent tide factor %+.2f: %s" % [c[0], cl])
+	# without the race's tide (no seed known) the line names no state
+	t.ok(VenueWeather.lines(solent, "local", {}, tm)[3][1] == "Strong, 1.5 kn", "tide state unknown: strength only")
 	var fre := _cond({"wind": {"speed": [16 * KN, 24 * KN], "from": deg_to_rad(230)},
 		"shift": {"amplitude": deg_to_rad(5.0), "hold_max": 90, "trend_rate": deg_to_rad(-0.5) / 60.0,
 		"trend_max": deg_to_rad(15.0)}, "puffs": {"preset": "standard"},
@@ -1030,9 +1042,13 @@ func test_briefing() -> void:
 			[0.6, "Moderate, 0.6 kn, sets N"], [1.2, "Strong, 1.2 kn, sets N"], [2.0, "Very strong, 2.0 kn, sets N"]]:
 		var x := {"current": c[0] * KN, "uniform": c[0] * KN, "uniform_to": 0.0, "tide": {}}
 		t.ok(VenueWeather.current_text(x) == c[1], "current %.2f kn: %s" % [c[0], VenueWeather.current_text(x)])
-	for c in [[[0.1, 0.4], "early"], [[0.35, 0.65], "mid-race"], [[0.5, 0.85], "late"]]:
-		var x := {"current": 1.0, "uniform": 0.0, "uniform_to": 0.0, "tide": {"turn": c[0]}}
-		t.ok(VenueWeather.current_text(x).ends_with("turns " + c[1]), "tide turn %s: %s" % [c[0], c[1]])
+	# the tide near slack: the stream under 0.3 kn; with a uniform current the uniform line
+	for c in [[0.29, 0.0, "Slack, turning"], [0.31, 0.0, "Light, 0.3 kn, ebbing (sets S)"],
+			[0.29, 0.3, "Light, 0.6 kn, sets N"]]:
+		var x := {"current": (c[0] + c[1]) * KN, "uniform": c[1] * KN, "uniform_to": 0.0, "tide": {"scale": 1.0},
+			"tide_factor": -0.5, "tide_stream": c[0] * KN, "ref_to": 0.0}
+		t.ok(VenueWeather.current_text(x) == c[2], "tide %.2f kn, uniform %.1f kn: %s" % [c[0], c[1],
+			VenueWeather.current_text(x)])
 	# sea words
 	for c in [[0.24, "Flat"], [0.25, "Chop"], [0.5, "Moderate"], [1.0, "Rough"]]:
 		t.ok(VenueWeather._sea_word(c[0]) == c[1].to_lower(), "sea %.2f m: %s" % [c[0], c[1]])
@@ -1111,6 +1127,32 @@ func test_weather_card() -> void:
 	t.ok(m.settings.last_setup.get("weather", "") == "random", "the weather mode is remembered")
 	m.open_page("quick")
 	await process_frame
+	# a tidal venue: the card's race seed fixes the tide the Current line names, and Start passes that seed on
+	if MenuData.ids(MenuData.venues()).has("solent"):
+		q.rows["venue"].set_value("solent", true)
+		q.rows["weather"].set_value("local", true)
+		var seed := q.race_seed
+		var r := CoreSimSource.resolve_settings({"race_seed": seed, "weather": 0}, "solent", str(q.rows["course"].value))
+		var tau := VenueWeather.tide_at_gun(r, float(VenueWeather.timing(q._course_doc())["t_gun"]))
+		var cur: String = q.briefing_lines()[3][1]
+		var want := "Slack, turning" if absf(tau) * 1.2873 / VenueWeather.KNOT < 0.3 else ("flooding (sets E)" if tau > 0.0
+			else "ebbing (sets W)")
+		print("  Solent card, seed %d: tide factor %+.3f, Current  %s" % [seed, tau, cur])
+		t.ok(seed != 0 and cur.ends_with(want), "Solent seed %d: tide factor %+.3f, Current %s" % [seed, tau, cur])
+		q.start_button.pressed.emit()
+		t.ok(GameSetup.current().seed == seed, "Start passes the seed the briefing was made for")
+		t.ok(q.race_seed != seed, "the card draws a new seed for its next start")
+		m.open_page("quick")
+		await process_frame
+		var seen := {}
+		for s in range(1, 41):  # flood, ebb and slack all come up over seeds
+			q.race_seed = s
+			q._tide_cache.clear()
+			var line: String = q.briefing_lines()[3][1]
+			seen["flood" if line.contains("flooding") else ("ebb" if line.contains("ebbing") else "slack")] = true
+		print("  Solent over 40 seeds: %s" % [seen.keys()])
+		t.ok(seen.size() == 3, "Solent over 40 seeds: %s" % [seen.keys()])
+		q.rows["venue"].set_value("practice_waters", true)
 	# every venue on disk has a briefing (Local on its conditions, Custom without), and it follows the venue
 	for vid in MenuData.ids(MenuData.venues()):
 		q.rows["venue"].set_value(vid, true)

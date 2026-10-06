@@ -578,7 +578,10 @@ static func hull_geometry(bv: BoatView) -> Dictionary:
 	boot.resize(17)
 	sheer.fill(INF)
 	boot.fill(-INF)
+	# the hull node, or the merged body (its hull_gelcoat slot is the topsides either way)
 	var hull := bv.model.find_child("hull", true, false) as MeshInstance3D
+	if hull == null:
+		hull = bv.model.find_child("body", true, false) as MeshInstance3D
 	if hull and hull.mesh:
 		# the topsides: the boat material's hull_gelcoat slot (vertex colour green, data_format.md §8.5)
 		var gel := BoatMaterials.slot_id("hull_gelcoat")

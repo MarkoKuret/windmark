@@ -669,6 +669,7 @@ func _setup_core() -> int:
 	sea.use_internal_clock = false
 	SeaQuality.apply_environment(sky.environment(), sea.quality)
 	BoatView.cast_distance = float(SeaQuality.get_tier(sea.quality).get("boat_cast_distance", 0.0))
+	get_viewport().mesh_lod_threshold = float(SeaQuality.get_tier(sea.quality).get("mesh_lod_threshold", 1.0))
 	return 0
 
 
@@ -892,6 +893,7 @@ func _setup_sea(fs: FakeSim) -> void:
 	sea.use_internal_clock = false
 	SeaQuality.apply_environment(sky.environment(), sea.quality)
 	BoatView.cast_distance = float(SeaQuality.get_tier(sea.quality).get("boat_cast_distance", 0.0))
+	get_viewport().mesh_lod_threshold = float(SeaQuality.get_tier(sea.quality).get("mesh_lod_threshold", 1.0))
 	fs.use_sea(sea.model, t0)
 
 

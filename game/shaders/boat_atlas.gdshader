@@ -120,9 +120,11 @@ void fragment() {
 				tn = mix(tn, tile_tex(tile_normal, nuv, deck_tiles.z).rgb, ns);
 				nscale = mix(nscale, ns_normal_scale, ns);
 			}
-			a = base * det;
-			rough = orm.g * rdet;
-			occ = orm.r;
+			// steep deck faces (coamings, the coachroof's sides and aft face) take the texels of their footprint, a line
+			// in the plan: plain gelcoat in the livery's deck colour there, so nothing painted on the top smears down
+			a = mix(sc.rgb, base, flat_k) * det;
+			rough = mix(sp.x * rdet, orm.g * rdet, flat_k);
+			occ = mix(1.0, orm.r, flat_k);
 			// the livery's relief (vinyl and tape edges, fairing, non-slip edges, sealant, painted fittings)
 			vec3 nb = texture(bk_normal, at).rgb * 2.0 - 1.0;
 			nb = mix(vec3(0.0, 0.0, 1.0), nb, flat_k);

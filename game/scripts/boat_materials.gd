@@ -100,6 +100,60 @@ static func atlas_for(src: StandardMaterial3D) -> ShaderMaterial:
 	return m
 
 
+## The source parts merged into a model's `body` node (data_format.md §8.5: COLOR_0 blue = part id / 255)
+const BODY_PARTS := {"hull": 1, "deck": 2, "keel": 3, "mast": 4, "rigging": 5, "hardware": 6}
+
+
+## The triangles of one source part of a boat model (`hull`, `deck`, `keel`, `mast`, `rigging`, `hardware`): from
+## the merged `body` node by the part id of its vertices, or from a node of that name. Each entry {"positions" (in
+## the frame of `model`), "indices" (the part's triangles), "uv2", "colors"}; `slots` keeps only those slots (by
+## name).
+static func part_surfaces(model: Node3D, part: String, slots: Array = []) -> Array:
+	var out := []
+	if model == null:
+		return out
+	var mi := model.find_child(part, true, false) as MeshInstance3D
+	var pid := -1
+	if mi == null:
+		mi = model.find_child("body", true, false) as MeshInstance3D
+		pid = int(BODY_PARTS.get(part, -1))
+	if mi == null or mi.mesh == null:
+		return out
+	var xf := Transform3D.IDENTITY
+	var x: Node = mi
+	while x != null and x != model:
+		if x is Node3D:
+			xf = (x as Node3D).transform * xf
+		x = x.get_parent()
+	var ids := {}
+	for k in slots:
+		ids[slot_id(String(k))] = true
+	for s in mi.mesh.get_surface_count():
+		var arr := mi.mesh.surface_get_arrays(s)
+		var idx: Variant = arr[Mesh.ARRAY_INDEX]
+		if idx == null:
+			continue
+		var cols: PackedColorArray = arr[Mesh.ARRAY_COLOR] if arr[Mesh.ARRAY_COLOR] != null else PackedColorArray()
+		var keep := idx as PackedInt32Array
+		if (pid >= 0 or not ids.is_empty()) and not cols.is_empty():
+			keep = PackedInt32Array()
+			var src := idx as PackedInt32Array
+			for t in range(0, src.size(), 3):
+				var c := cols[src[t]]
+				if pid >= 0 and roundi(c.b * 255.0) != pid:
+					continue
+				if not ids.is_empty() and not ids.has(roundi(c.g * 255.0)):
+					continue
+				keep.append(src[t])
+				keep.append(src[t + 1])
+				keep.append(src[t + 2])
+		if keep.is_empty():
+			continue
+		out.append({"positions": xf * (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array), "indices": keep,
+			"uv2": arr[Mesh.ARRAY_TEX_UV2], "normals": arr[Mesh.ARRAY_NORMAL], "colors": cols})
+	return out
+
+
 ## The shared boat material once a boat is loaded (null before).
 static func atlas() -> ShaderMaterial:
 	return _atlas

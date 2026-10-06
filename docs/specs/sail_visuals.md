@@ -838,11 +838,14 @@ pieces and materials:
 - **Paint what is flat, model what sticks up, drop what is under a pixel**: the jib and traveller tracks, the flush
   hatches (on the deck as a plain raised box about 3 cm proud whose top shows the painted frame and lens), organisers,
   the cam, horn and traveller cleats, the rudder bearing ring and the lines lying on the deck (halyards, coils,
-  tails, traveller lines; only where they lie on the surface) are painted into the deck region of the livery atlas
+  tails, traveller lines; only where they lie within 3.5 cm of the surface: where a line leaves it, through the air
+  or down the coachroof's aft face to the cockpit floor, it stays thin rope geometry, so it is continuous) are painted into the deck region of the livery atlas
   with their shading (darker under and around a fitting, lighter edges). Winches (about 450 triangles), clutches
   (about 80 each), the blocks that stand up (mast foot, traveller, mainsheet, cars, about 120), the cars, the mast
-  foot, the mast instruments, the wind wand, stanchions, pulpit, pushpit, lifelines, rigging screws, the wheel and
-  pedestal or the tiller stay low-poly geometry. The halyard exits, sheaves, sheave boxes, bolts, the anemometer,
+  foot, the mast instruments, the wind wand, stanchions, pulpit, pushpit, lifelines, rigging screws, a regatta helm
+  (the wheel with a smooth rim, about 1,100 triangles, on a slim pedestal, no guard or instrument pod) or the tiller
+  stay low-poly geometry. The upper mainsheet block hangs from a bail under the boom and the tackle runs from the
+  traveller car up to it; it is sheared with the boom angle so it stays on the block (`BoatView.sheet_positions`). The halyard exits, sheaves, sheave boxes, bolts, the anemometer,
   the antenna and the outhaul go.
 - **The own boat** keeps its full detail at chase range: its meshes have a LOD bias of 32 (`BoatView.OWN_LOD_BIAS`),
   so the engine simplifies them only where the error is under 1/32 of the threshold: the full model to about 70 m.

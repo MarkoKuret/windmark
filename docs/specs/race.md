@@ -79,6 +79,62 @@ course also defines are overridden by the lobby.
 Game modes (for menus) are presets of these settings plus the HUD and assist options of `hud.md`. There is no mode
 that changes boat speed with the race position (no catch-up of any kind).
 
+### 2.1 Venue conditions and weather modes
+
+The wind, current and sea settings of `wind.md` §1 and `sea.md` §2 come from the venue's `conditions`
+(`data_format.md` §6.7), the race seed and the **weather mode** of the lobby or menu (`menus.md` §1):
+
+| mode | what the race gets | briefing (`menus.md` §1.3) |
+| --- | --- | --- |
+| `local` (default) | the venue's own conditions, drawn within its ranges | full, with the Tip |
+| `random` | a surprise day from everything the venue can plausibly produce (`conditions.random`), wider than local: light days, weak or strong days, neap or spring tides | none, anywhere: not on the card, before the start or in the race |
+| `custom` | the player's wind speed and direction, a shift preset and a puff preset (defaults: the venue's); everything else the venue's | the lines without the Tip |
+
+The shifts themselves always come from the seed (`wind.md` §4); a mode only picks their size and pace. Online,
+scheduled and ranked rooms use `local` or `random` only; `custom` is for private lobbies and offline play
+(`networking.md` §12.2; the rule for phase 4).
+
+Resolved once when the race is created, in this order, in binary32 with the draws of stream 8
+(`conventions.md` §7); the resolved settings are what the server sends and what a replay records.
+`pick(list, i) = list[min((uint32)(rng_unit(seed, 8, i) * (float)n), n - 1)]` for a list of `n` entries.
+
+```
+// wind speed and direction
+local:  base_speed = s0 + (s1 - s0) * (0.5f * (rng_unit(seed, 8, 0) + rng_unit(seed, 8, 1)))  // [s0, s1] = wind.speed
+        base_from  = wrap_2pi(from + from_spread * (2.0f * rng_unit(seed, 8, 2) - 1.0f))
+random: base_speed = r0 + (r1 - r0) * rng_unit(seed, 8, 4)                                    // [r0, r1] = random.speed
+        base_from  = wrap_2pi(from + random.from_spread * (2.0f * rng_unit(seed, 8, 5) - 1.0f))
+custom: base_speed = kn * KNOT ; base_from = deg * DEG
+// shifts: the venue's (preset, replaced by any explicit values, s * 1000); random: pick(random.shift, 6);
+//         custom: the chosen preset. Trend and oscillation are the venue's in every mode.
+shift_trend_rate, shift_trend_max = shift.trend_rate, shift.trend_max
+osc_enabled = oscillation present ; osc_amplitude, osc_time_scale = its values
+// puffs: the venue's (preset, then each key given; lifetimes s * 1000); random: pick(random.puffs, 7);
+//        custom: the chosen preset (a picked or chosen preset takes no venue overrides)
+current_speed, current_to = current.speed, current.to
+// tide (when present)
+P       = period * 1000                                             // ms, a multiple of 4
+T_race  = course race.target_duration, or 900 s without one        // courses.md §5.2
+t_gun   = (uint64)(n_gun - n_created) * 50                          // ms of environment time at the start signal
+[a, b]  = tide.turn ; random: [0, 1]
+f       = a + (b - a) * rng_unit(seed, 8, 3)
+t_turn  = t_gun + (uint64)(f * (float)T_race * 1000.0f)             // ms
+x_turn  = turn_to < 0 ? P / 4 : 3 * P / 4                           // cos falls through 0 (to −) or rises (to +)
+tide_phase_ms = (x_turn + P - (t_turn % P)) % P                     // uint64; tide(t_turn) = 0
+tide_scale = tide.scale ; random: tide.scale * (q0 + (q1 - q0) * rng_unit(seed, 8, 8))   // [q0, q1] = random.tide_scale
+tide_period_ms = P ; venue_current_field = the venue's current_field
+// sea
+sea_hs, sea_tp from base_speed and the venue fetch (sea.md §2) ; sea_from = base_from
+swells = sea.swells ; random: each hs * (w0 + (w1 - w0) * rng_unit(seed, 8, 9))         // [w0, w1] = random.swell_scale
+sea_scale = sea.scale
+```
+- The local speed draw is the mean of two uniforms (most races near the middle of the range); random is uniform,
+  so off days are as likely as typical ones. The local direction stays within `from_spread` (at most 20°) of the
+  typical direction.
+- Free sailing has no start: `t_gun = 0`, `T_race = 900 s`.
+- Rules scenarios (§14) keep their own explicit settings and ignore the venue's conditions.
+- A venue without `conditions` offers `custom` only, on the defaults of `wind.md` §1 and `sea.md` §2.
+
 ## 3. The start sequence
 
 ### 3.1 Race-level states
@@ -514,6 +570,7 @@ of the race layer uses the counter-based generator of `conventions.md` §7 with 
 - **stream 7: race layer** (`conventions.md` §7, "spawn order shuffle"). Spawn shuffle:
   draw `j = min((uint32)(rng_unit(race_seed, 7, k) * (float)(k + 1)), k)` for `k = n−1 … 1` (Fisher–Yates from the
   end), swapping entries `k` and `j`. General recall restarts use indices from 1000 upwards.
+- **stream 8: venue conditions draw** (§2.1): indices 0 to 3 local (speed, direction, tide turn), 4 to 9 random.
 - AI boats use streams 16–31 (`ai.md` §1).
 
 No wall clock, address or thread order may enter any of these.

@@ -8,7 +8,9 @@ are applied on top, per receiving boat (`wind_shadow.md`).
 
 ## 1. Settings
 
-The race layer (`race.md`) chooses the settings for a race and sends them with the seed. Defaults in brackets.
+The race layer (`race.md`) chooses the settings for a race and sends them with the seed. Defaults in brackets. At
+a venue with `conditions` (`data_format.md` §6.7) the race layer derives them from the venue's typical weather and
+the seed (`race.md` §2.1); nothing below changes, a venue only picks other numbers.
 
 | block | name | unit | meaning |
 | --- | --- | --- | --- |
@@ -145,6 +147,16 @@ lifetimes as in the table, `lull_strength_max < 1`, `puff_cap_up ≥ 0`, `0 ≤ 
 | `puff_life_min_ms`, `_max_ms` | 60 000, 120 000 | lifetime of a patch; `0 < puff_life_min_ms ≤ puff_life_max_ms` |
 | `puff_cap_up`, `puff_cap_down` | 0.25, 0.4 | the combined factor is clamped to `[1 − cap_down, 1 + cap_up]` |
 
+Puff presets (named in a venue's conditions; any key above may still be overridden). Keys not listed keep the
+defaults; `standard` is the defaults.
+
+| preset | puff strength | lull strength | diameter | life | counts (puff, lull) | caps (up, down) |
+| --- | --- | --- | --- | --- | --- | --- |
+| `none` | puffs off (`puffs_enabled = false`) | | | | | |
+| `light` | 0.10 – 0.20 | 0.15 – 0.30 | 200 – 300 m | 60 – 120 s | 5, 5 | 0.15, 0.25 |
+| `standard` | 0.30 – 0.50 | 0.50 – 0.70 | 200 – 300 m | 60 – 120 s | 5, 5 | 0.25, 0.40 |
+| `gusty` | 0.40 – 0.70 | 0.50 – 0.70 | 150 – 300 m | 30 – 90 s | 7, 5 | 0.45, 0.40 |
+
 ### 6.2 Slots and generations
 Slot `j` (`0 ≤ j < N`, `N = puff_count + lull_count`; `j < puff_count` are puffs) has a fixed lifetime and stagger:
 ```
@@ -208,6 +220,7 @@ uniform = current_speed * (sin(current_to), cos(current_to))
 tide(t) = tide_scale * wm_cos(TWO_PI * ((float)(((uint64)t + tide_phase_ms) % tide_period_ms) / (float)tide_period_ms))
 ```
 The sum `t + tide_phase_ms` is taken in 64 bits, so it never wraps before the modulo; `tide_period_ms > 0`.
+At a venue the race layer sets `tide_phase_ms` so the tide turns at a drawn time inside the race (`race.md` §2.1).
 `venue_current_field` is a grid of velocity vectors at the reference (spring) tide (`data_format.md` §6.3),
 bilinear, zero outside its box; absent = zero. `tide_period_ms` default 44 712 000 (12 h 25 min). The boat step
 takes the current at its hull reference point (`boat.md` §5.1): it drifts the boat and it changes the

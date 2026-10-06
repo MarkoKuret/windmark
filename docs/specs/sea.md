@@ -39,7 +39,10 @@ Hs = 0.0016 · sqrt(χ) · U² / G
 Tp = 0.286 · χ^(1/3) · U / G                 // Hs = 0 when U < 1 m/s
 ```
 evaluated in any precision; only the resulting floats are sent, so clients never evaluate the cube root.
-Reference values (fetch 10 km): 10 kn → Hs 0.26 m, Tp 2.3 s; 15 kn → 0.39 m, 2.7 s; 20 kn → 0.53 m, 2.9 s;
+At a venue, `U` is the drawn `base_speed` of the race (`race.md` §2.1), `F` the header's `fetch` (the fetch for the
+venue's typical wind direction), and `swells` and `sea_scale` come from the venue's `conditions.sea`
+(`data_format.md` §6.7). The exposure grid is made by `venuegen` for that typical direction, so a lee shore (land
+upwind, as in an offshore bora) reads as flat water near it. Reference values (fetch 10 km): 10 kn → Hs 0.26 m, Tp 2.3 s; 15 kn → 0.39 m, 2.7 s; 20 kn → 0.53 m, 2.9 s;
 25 kn → 0.66 m, 3.2 s. Open-sea venues use a longer fetch (30 km: 15 kn → 0.68 m, 3.8 s) and add a swell.
 The sea does not follow wind shifts or puffs during a race (it takes minutes to hours to change).
 

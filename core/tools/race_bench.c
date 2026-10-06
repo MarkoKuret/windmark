@@ -4,8 +4,8 @@
  *
  *   windmark_race_bench <data_dir> <courses_dir> <fleet> [level 0..3] [noai] [seed] [venue course]
  *
- * `venue` names data_dir/venues/<venue>.venue.json and `course` a file under courses_dir (default: example_bay and
- * example_bay/example_wl.course.json); `noai` may be given as `ai` to keep the skippers.
+ * `venue` names data_dir/venues/<venue>.venue.json and `course` a file under courses_dir (default: practice_waters and
+ * practice_waters/example_wl.course.json); `noai` may be given as `ai` to keep the skippers.
  *
  * Prints one line per phase: ticks, mean, 99th percentile and maximum µs per tick, then a hash of the world
  * checksum every 100 ticks (taken outside the timing) to show a change kept the race bit for bit. */

@@ -98,6 +98,8 @@ ATLAS_SLOTS = [
     ("boottop", "boottop", ""),
 ]
 SLOT_ID = {n: i for i, (n, _, _) in enumerate(ATLAS_SLOTS)}
+# the source part of a merged node's vertex (COLOR_0 blue, data_format.md 8.5): 0 the node itself
+PART_IDS = {"hull": 1, "deck": 2, "keel": 3, "mast": 4, "rigging": 5, "hardware": 6}
 REGIONS = ["", "hull", "deck", "transom", "keel", "keel_colour"]
 # slots that keep their own material: the sails (deformed per vertex at run time, their own shaders)
 OWN_MATERIAL = ("sailcloth",)
@@ -236,10 +238,11 @@ class GLBWriter:
             a = None
             if ao is not None and mat in ao:
                 a = np.asarray(ao[mat], dtype=np.float64)
-            groups.setdefault(key, []).append((g, sid, a))
+            pid = PART_IDS.get(mat.split(":")[0], 0) if ":" in mat else 0
+            groups.setdefault(key, []).append((g, sid, a, pid))
         for key, items in groups.items():
             off, Ps, Ns, U0, U1, Is, C = 0, [], [], [], [], [], []
-            for g, sid, a in items:
+            for g, sid, a, pid in items:
                 Ps.append(g.P)
                 Ns.append(g.N)
                 U0.append(g.uv0)
@@ -249,7 +252,7 @@ class GLBWriter:
                 if sid is not None:
                     av = np.ones(len(g.P)) if a is None else a
                     q = np.clip(np.rint(av * 255), 0, 255).astype(np.uint8)
-                    C.append(np.stack([q, np.full_like(q, sid), np.zeros_like(q), np.full_like(q, 255)], -1))
+                    C.append(np.stack([q, np.full_like(q, sid), np.full_like(q, pid), np.full_like(q, 255)], -1))
                 elif a is not None:
                     q = np.clip(np.rint(a * 255), 0, 255).astype(np.uint8)
                     C.append(np.stack([q, q, q, np.full_like(q, 255)], -1))
@@ -322,7 +325,8 @@ def read_glb(path, expand=True):
     COLOR_0 red as 0..1, or None), and the glTF document with the binary chunk as `doc["_bin"]`. With `expand` a
     primitive in the `boat` material comes back as one entry per slot, named after the slot's base material
     (gelcoat, metal, ...), and `doc["materials"]` gains a plain material of that name with its tiling set (images
-    by path), as the GLB was before the boat material; `doc["_slots"]` lists (node, slot name, triangles)."""
+    by path), as the GLB was before the boat material; `doc["_slots"]` lists (node, slot name, triangles) and `doc["_prim_slots"]` the slot name of each returned entry
+    (None outside the boat material)."""
     with open(path, "rb") as f:
         data = f.read()
     jl = struct.unpack_from("<I", data, 12)[0]
@@ -340,6 +344,7 @@ def read_glb(path, expand=True):
 
     out = []
     doc["_slots"] = []
+    doc["_prim_slots"] = []
     plain = {}
 
     def plain_mat(base):
@@ -391,10 +396,12 @@ def read_glb(path, expand=True):
                         remap[used] = np.arange(len(used))
                         sname, base, _ = ATLAS_SLOTS[k]
                         doc["_slots"].append((n["name"], sname, len(It)))
+                        doc["_prim_slots"].append(sname)
                         out.append((n["name"], plain_mat(base), P[used], Nn[used], u0[used], u1[used], remap[It],
                                     ao[used]))
                     continue
                 out.append((n["name"], mname, P, Nn, u0, u1, I, ao))
+                doc["_prim_slots"].append(None)
         for c in n.get("children", []):
             walk(c, T)
 

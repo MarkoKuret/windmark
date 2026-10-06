@@ -81,10 +81,11 @@ class TexturesAOTest(unittest.TestCase):
                     continue
                 self.assertIsNotNone(ao)
                 self.assertTrue(((ao >= 0) & (ao <= 1)).all())
-        hull = [ao for n, m, P, N, uv0, uv1, I, ao in self.prims if n == "hull" and m == "gelcoat"][0]
+        slots = self.doc["_prim_slots"]
+        hull = [p[7] for p, sl in zip(self.prims, slots) if sl == "hull_gelcoat"][0]
         self.assertGreater(np.median(hull), 0.9, "open topsides stay light")
         # the cockpit floor is darker than the open side decks
-        deck = [(P, N, ao) for n, m, P, N, uv0, uv1, I, ao in self.prims if n == "deck" and m == "nonslip"][0]
+        deck = [(p[2], p[3], p[7]) for p, sl in zip(self.prims, slots) if sl == "deck_nonslip"][0]
         P, N, ao = deck
         up = N[:, 1] > 0.9
         self.assertGreater(np.median(ao[up]), 0.8)

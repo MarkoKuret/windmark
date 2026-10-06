@@ -13,16 +13,16 @@ from .mesh import (segment_scale, Part, revolve, tube, sweep, superellipsoid_box
 
 
 # ---------------------------------------------------------------------------------------------------------
-# game levels of detail (build.py, docs/specs/sail_visuals.md 11.4): what stays geometry, what is painted into the
-# deck maps (tools/liverybake) and what goes. Pieces are told apart by their tags.
+# the game model (build.py Boat.game_parts, docs/specs/sail_visuals.md 11.4): paint what is flat, model what sticks
+# up, drop what is under a pixel at chase range. Pieces are told apart by their tags.
 
-# flat or small fittings: no geometry on any level; the livery's deck maps carry them, drawn from the full model's
-# pieces (Boat.painted_part)
-PAINTED = ("jib_track", "hatch_", "organiser_", "cam_cleat_", "traveller_cleat_", "horn_cleat_", "mast_block_",
-           "halyard_coil", "mainsheet_tail", "mainsheet_coil", "traveller_line", "rudder_bearing")
-# under a few pixels at 20 m and not on the deck: left out of every level
-DROPPED = ("halyard_exit", "mast_instrument", "anemometer", "antenna", "outhaul", "crane_sheave", "sheave_box",
-           "tiller_bolt", "rudder_head_bolt", "gooseneck_pin")
+# flat or low fittings and the lines lying on the deck: painted into the livery's deck maps (tools/liverybake, from
+# the full model's pieces, Boat.painted_part); the hatches also stand as a plain raised box on the deck node
+PAINTED = ("jib_track", "hatch_", "organiser_", "cam_cleat_", "traveller_cleat_", "horn_cleat_", "halyard_coil",
+           "mainsheet_tail", "mainsheet_coil", "traveller_line", "rudder_bearing")
+# under a pixel at chase range: left out (the halyard exits on the mast wall, sheaves, bolts, the anemometer)
+DROPPED = ("halyard_exit", "anemometer", "antenna", "outhaul", "crane_sheave", "sheave_box", "tiller_bolt",
+           "rudder_head_bolt", "gooseneck_pin")
 
 
 def is_painted(tag):
@@ -37,99 +37,105 @@ def is_dropped(tag):
     return bool(tag) and tag.startswith(DROPPED)
 
 
-# the level of detail the part builders below make their low-poly versions for (None: the full model)
+# True while the game model is built: the part builders below make their low-poly versions
 _LP = [None]
+_SEG_LP = [True]
 
 
 @contextlib.contextmanager
-def lowpoly(lod):
+def lowpoly(on=True):
     old = _LP[0]
-    _LP[0] = lod
+    _LP[0] = 0 if on else None
     try:
         yield
     finally:
         _LP[0] = old
 
 
-def _lp(counts):
-    """The segment count of the level being built from a (LOD0, LOD1, LOD2, LOD3) tuple."""
-    return counts[min(_LP[0], len(counts) - 1)]
-
-
 def _winch_lp(d, handle):
-    """Low-poly winch (about 200 triangles on LOD0): base cone, plain drum (grooves are the texture), rubber tailer,
-    domed cap, stripper arm; from LOD1 a base cone and a drum with its cap."""
+    """Low-poly self-tailing winch (about 400 triangles): base flange, drum with three grip steps (the fine ribs are
+    the texture), rubber tailer, domed cap with its socket, stripper arm and feeder horn; the handle in the
+    starboard primary."""
     p = Part()
     r = d / 2
-    n = _lp((10, 6, 5, 4))
+    n = 16
     with segment_scale(1.0):
-        if _LP[0] >= 1:
-            p.add("metal", revolve([(r * 1.38, 0), (r * 1.05, 0.28 * d), (r * 0.95, 0.30 * d), (r * 0.95, 0.86 * d),
-                                    (r * 0.6, 1.0 * d)], n, sharp=(1, 3)))
-            return p
-        p.add("metal", revolve([(r * 1.38, 0), (r * 1.38, 0.04 * d), (r * 1.05, 0.28 * d), (r * 0.98, 0.30 * d),
-                                (r * 0.92, 0.66 * d)], n, sharp=(1, 2)))
+        p.add("metal", revolve([(r * 1.38, 0), (r * 1.38, 0.04 * d), (r * 1.15, 0.2 * d), (r * 1.05, 0.28 * d),
+                                (r * 0.99, 0.30 * d), (r * 0.97, 0.45 * d), (r * 0.94, 0.60 * d), (r * 0.92, 0.66 * d)],
+                               n, sharp=(1, 3)))
         p.add("rubber", revolve([(r * 0.92, 0.66 * d), (r * 1.1, 0.70 * d), (r * 1.1, 0.84 * d), (r * 0.8, 0.88 * d)],
                                 n, cap_ends=False, sharp=(1, 2)))
-        p.add("metal", revolve([(r * 0.8, 0.88 * d), (r * 0.55, 0.99 * d), (0, 1.0 * d)], n, cap_ends=False))
-        p.add("rubber", superellipsoid_box((r * 0.9, r * 0.35, 0.05 * d), 0.3, 4, 3, center=(r * 1.05, 0, 0.73 * d)))
+        p.add("metal", revolve([(r * 0.8, 0.88 * d), (r * 0.6, 0.98 * d), (r * 0.2, 1.0 * d), (0, 0.99 * d)], n,
+                               cap_ends=False))
+        p.add("rubber", box((r * 0.9, r * 0.35, 0.05 * d), center=(r * 1.05, 0, 0.73 * d)))
+        p.add("metal", box((r * 0.35, r * 0.28, 0.12 * d), center=(r * 1.45, 0, 0.72 * d)))
         if handle:
             arm = 2.1 * d
             p.add("metal", box((arm, 0.16 * d, 0.07 * d), center=(-arm / 2, 0, 1.11 * d)))
-            p.add("rubber", tube(np.array([[-arm, 0, 1.12 * d], [-arm, 0, 1.7 * d]]), 0.085 * d, 5))
+            p.add("rubber", tube(np.array([[-arm, 0, 1.12 * d], [-arm, 0, 1.7 * d]]), 0.085 * d, 6))
     return p
 
 
 def _block_lp(d, swivel):
-    """Low-poly block (about 40 triangles): cheeks and sheave as one disc across y, the swivel as a box."""
+    """Low-poly block (about 80 triangles): two cheeks and the sheave between them, the axle, a swivel."""
     p = Part()
     c = 0.62 * d
-    n = _lp((8, 6, 4, 4))
     with segment_scale(1.0):
-        disc = revolve([(0, -0.19 * d), (0.52 * d, -0.19 * d), (0.52 * d, 0.19 * d), (0, 0.19 * d)], n, sharp=(1, 2))
-        p.add("metal", disc.transformed(translate([0, 0, c]) @ rot_axis([1, 0, 0], np.pi / 2)))
+        for sy in (-1, 1):
+            cheek = revolve([(0, -0.03 * d), (0.52 * d, -0.03 * d), (0.52 * d, 0.03 * d), (0, 0.03 * d)], 8, sharp=(1, 2))
+            p.add("metal", cheek.transformed(translate([0, sy * 0.16 * d, c]) @ rot_axis([1, 0, 0], np.pi / 2)))
+        sheave = revolve([(0, -0.12 * d), (0.46 * d, -0.12 * d), (0.40 * d, 0.0), (0.46 * d, 0.12 * d), (0, 0.12 * d)], 8)
+        p.add("rubber", sheave.transformed(translate([0, 0, c]) @ rot_axis([1, 0, 0], np.pi / 2)))
         if swivel:
             p.add("metal", box((0.3 * d, 0.3 * d, 0.2 * d), center=(0, 0, 0.1 * d)))
     return p
 
 
 def _clutch_bank_lp(n_cl, pitch):
-    """Low-poly clutch bank: a base plate and per clutch a body and its lever (about 40 triangles each); from LOD1
-    one block."""
+    """Low-poly clutch bank: a base plate and per clutch a rounded body, a cap and its lever (about 90 triangles a
+    clutch)."""
     p = Part()
     w = pitch * n_cl
-    if _LP[0] >= 1:
-        p.add("rubber", box((2.4 * pitch, w, 0.62 * pitch), center=(0, 0, 0.36 * pitch)))
-        return p
     p.add("metal", box((2.7 * pitch, w + 0.3 * pitch, 0.06 * pitch), center=(0, 0, 0.03 * pitch)))
     with segment_scale(1.0):
         for i in range(n_cl):
             y = (i - (n_cl - 1) / 2) * pitch
-            p.add("rubber", superellipsoid_box((2.4 * pitch, 0.82 * pitch, 0.62 * pitch), 0.3, 6, 3,
+            p.add("rubber", superellipsoid_box((2.4 * pitch, 0.82 * pitch, 0.62 * pitch), 0.3, 8, 4,
                                                center=(0, y, 0.36 * pitch)))
-            p.add("metal", box((1.7 * pitch, 0.5 * pitch, 0.12 * pitch), center=(-0.65 * pitch, y, 0.8 * pitch)))
+            p.add("metal", box((1.3 * pitch, 0.74 * pitch, 0.2 * pitch), center=(0.25 * pitch, y, 0.7 * pitch)))
+            p.add("metal", box((1.7 * pitch, 0.5 * pitch, 0.12 * pitch), center=(-0.65 * pitch, y, 0.82 * pitch)))
     return p
 
 
 def _track_car_lp(length, width, sheave):
     p = Part()
-    p.add("metal", box((length, width * 1.6, width * 0.9), center=(0, 0, width * 0.85)))
+    with segment_scale(1.0):
+        p.add("metal", superellipsoid_box((length, width * 1.6, width * 0.9), 0.3, 8, 4, center=(0, 0, width * 0.85)))
     if sheave:
         p.extend(_block_lp(0.55 * length, True), translate([-0.1 * length, 0, width * 1.25]))
+    return p
+
+
+def _padeye_block_lp(d):
+    p = Part()
+    p.add("metal", box((0.9 * d, 0.6 * d, 0.1 * d), center=(0, 0, 0.05 * d)))
+    p.extend(_block_lp(d, False), translate([0.62 * d, 0, 0.22 * d]) @ rot_axis([1, 0, 0], np.pi / 2)
+             @ translate([0, 0, -0.62 * d]))
     return p
 
 
 def _stanchion_lp(h, r):
     p = Part()
     with segment_scale(1.0):
-        p.add("metal", tube(np.array([[0, 0, 0.0], [0, 0, h]]), r, _lp((6, 4, 3, 3))))
+        p.add("metal", tube(np.array([[0, 0, 0.0], [0, 0, h]]), r, 6))
+        p.add("metal", box((0.10, 0.07, 0.02), center=(0, 0, 0.01)))
     return p
 
 
 def _turnbuckle_lp(length, r):
     p = Part()
     with segment_scale(1.0):
-        p.add("metal", tube(np.array([[0, 0, 0.0], [0, 0, length]]), 1.6 * r, _lp((6, 4, 3, 3))))
+        p.add("metal", tube(np.array([[0, 0, 0.0], [0, 0, length]]), 1.6 * r, 6))
     return p
 
 
@@ -137,6 +143,14 @@ def _instrument_lp(w, h, t):
     p = Part()
     p.add("carbon", box((t, w, h), center=(t / 2, 0, 0)))
     p.add("glass", box((0.2 * t, 0.84 * w, 0.8 * h), center=(t * 1.0, 0, 0)))
+    return p
+
+
+def _hatch_lp(lx, ly):
+    """A flush hatch as a plain raised box about 3 cm proud; its frame, lens, hinges and handles are painted on its
+    top (the deck maps). Built in the `gelcoat` slot: the game model moves it to the deck node."""
+    p = Part()
+    p.add("gelcoat", box((lx, ly, 0.03), center=(0, 0, 0.012)))
     return p
 
 
@@ -309,6 +323,8 @@ def block(d, swivel=True):
 
 def padeye_block(d):
     """Turning block lying on the deck (sheave axis vertical), on a padeye: for halyards at the mast foot."""
+    if _LP[0] is not None:
+        return _padeye_block_lp(d)
     p = Part()
     p.add("metal", superellipsoid_box((0.9 * d, 0.6 * d, 0.1 * d), 0.3, 8, 4, center=(0, 0, 0.05 * d)))
     b = block(d, swivel=False)
@@ -407,18 +423,23 @@ def rounded_path(pts, r, n=6):
 def wheel(d, grip=True):
     """Racing wheel in the local frame, axis along x (forward), centre at the origin: carbon rim with a rubber
     grip cover (`grip`), five spokes, hub."""
+    if _LP[0] is not None and _SEG_LP[0]:
+        _SEG_LP[0] = False
+        try:
+            with segment_scale(0.45):        # the game model's wheel: about 700 triangles
+                return wheel(d, grip)
+        finally:
+            _SEG_LP[0] = True
     p = Part()
     R = d / 2
     th = np.linspace(0, 2 * np.pi, seg(49, 6))[:-1]
     ring = np.stack([np.zeros_like(th), R * np.cos(th), R * np.sin(th)], -1)
     rim = sweep(np.vstack([ring, ring[:1]]), circle(0.018 * d / 0.9, 10), caps=False)
     p.add("rubber" if grip else "carbon", rim)
-    if grip and (_LP[0] is None or _LP[0] == 0):
+    if grip:
         # inner carbon rim the spokes run into
         ring2 = ring * (1 - 0.05)
         p.add("carbon", sweep(np.vstack([ring2, ring2[:1]]), circle(0.009 * d / 0.9, 8), caps=False))
-    if _LP[0] is not None and _LP[0] >= 2:      # far: the rim alone
-        return p
     for k in range(5):
         a = 2 * np.pi * k / 5
         p.add("carbon", tube(np.array([[0, 0, 0], [0, R * np.cos(a), R * np.sin(a)]]), 0.012, 8))
@@ -429,6 +450,8 @@ def wheel(d, grip=True):
 
 def hatch(lx, ly):
     """Flush deck hatch: low aluminium frame, tinted lens, two handles and two hinges (aft edge); about 3 cm proud."""
+    if _LP[0] is not None:
+        return _hatch_lp(lx, ly)
     p = Part()
     p.add("metal", superellipsoid_box((lx, ly, 0.03), 0.12, 16, 6, center=(0, 0, 0.011)))
     p.add("rubber", superellipsoid_box((lx * 0.95, ly * 0.95, 0.02), 0.12, 16, 5, center=(0, 0, 0.022)))

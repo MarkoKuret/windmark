@@ -11,8 +11,8 @@ from . import classfile, physics, sail_set, textures
 from .build import Boat
 
 
-# Godot import settings of the boat GLBs: no automatic levels of detail or shadow meshes (the generator writes the
-# levels, sail_visuals.md 11.4, and the shadow proxy); written once, Godot completes the file on import
+# Godot import settings of the boat GLBs: the engine's automatic levels of detail (sail_visuals.md 11.4), no
+# shadow meshes (the generator writes the shadow proxy); written once, Godot completes the file on import
 GLB_IMPORT = """[remap]
 
 importer="scene"
@@ -22,7 +22,7 @@ type="PackedScene"
 [params]
 
 meshes/ensure_tangents=false
-meshes/generate_lods=false
+meshes/generate_lods=true
 meshes/create_shadow_meshes=false
 meshes/light_baking=0
 """
@@ -30,7 +30,7 @@ meshes/light_baking=0
 
 def write_import(path):
     imp = path + ".import"
-    if not os.path.exists(imp) or "meshes/generate_lods=false" not in open(imp).read():
+    if not os.path.exists(imp) or "meshes/generate_lods=true" not in open(imp).read():
         with open(imp, "w") as f:
             f.write(GLB_IMPORT)
 
@@ -70,15 +70,11 @@ def main(argv=None):
             boat.tex_uri = "_tex"
         cid = cls["id"]
         glb = os.path.join(a.out, f"{cid}.glb")
-        lods = []
-        for lod in sorted(boat.LODS):
-            path_l = glb if lod == 0 else os.path.join(a.out, f"{cid}_lod{lod}.glb")
-            parts = boat.write_lod_glb(path_l, lod)
-            write_import(path_l)
-            tris, surf, sail_tris = boat.model_counts(parts)
-            lods.append({"lod": lod, "file": os.path.basename(path_l), "triangles": tris, "surfaces": surf,
-                         "sail_triangles": sail_tris, "sail_step": boat.SAIL_STEP[lod],
-                         "from_m": boat.LODS[lod]["from_m"], "nodes": sorted(list(parts) + ["shadow"])})
+        parts = boat.write_game_glb(glb)
+        write_import(glb)
+        tris, surf, sail_tris = boat.model_counts(parts)
+        game = {"triangles": tris, "surfaces": surf, "sail_triangles": sail_tris,
+                "nodes": sorted(list(parts) + ["shadow"])}
         col = physics.collision(boat)
         physics.write_collision_glb(boat, col, os.path.join(a.out, f"{cid}_collision.glb"))
         side = {
@@ -94,17 +90,15 @@ def main(argv=None):
                                      "triangles": g.I.tolist()} for k, g in col.items()},
             "rig": physics.rig_data(boat),
             "sails": physics.sail_data(boat),
-            "model": {"file": os.path.basename(glb), "triangles": lods[0]["triangles"],
-                      "full_triangles": boat.tri_count(), "nodes": lods[0]["nodes"], "pivots": sorted(boat.pivots),
-                      "lods": lods},
+            "model": {"file": os.path.basename(glb), "triangles": tris, "surfaces": surf, "sail_triangles": sail_tris,
+                      "full_triangles": boat.tri_count(), "nodes": game["nodes"], "pivots": sorted(boat.pivots)},
         }
         with open(os.path.join(a.out, f"{cid}.physics.json"), "w") as f:
             json.dump(side, f, indent=1)
         # the preview poses as drawn, for the game's sail shape parity test (sail_set.py)
         sail_set.write_sets(boat, os.path.join(a.out, f"{cid}.sets.json"))
         h = side["hydrostatics"]
-        log("  levels of detail: " + ", ".join(f"LOD{l['lod']} {l['triangles']} in {l['surfaces']} surfaces from "
-                                             f"{l['from_m']:.0f} m" for l in lods))
+        log(f"  game model: {tris} triangles in {surf} surfaces, sails {sail_tris}")
         log(f"  {glb}: full model {boat.tri_count()} triangles; displaced {h['displaced_mass_generated_kg']} kg "
             f"({h['displacement_error_pct']:+.2f} %), LCB {h['lcb_pct_lwl_aft_of_fwd_end']} % LWL, "
             f"Cp {h['prismatic']}, Cm {h['midship']}")

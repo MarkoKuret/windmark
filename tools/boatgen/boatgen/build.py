@@ -13,7 +13,7 @@ from .hull import HullShape
 from .mesh import Part, split_by_plane_z
 from .rig import Rig
 from .sails import build_sails
-from . import hardware
+from . import gltf, hardware
 
 
 def paint_zones(geoms, boot):
@@ -130,68 +130,29 @@ class Boat:
         for name, sail in self.sails.items():
             self.parts["sail_" + name] = sail.part()
 
-    # The game's levels of detail (docs/specs/sail_visuals.md 11.4, tools/boatgen/README.md "Levels of detail"),
-    # built from the class like the full model but with the game's budgets: segment scale of the round parts, hull
-    # stations with bottom and topside girth points, deck (strip columns, stations, lite) or the simple height-field
-    # deck (stations, points across), keel and rudder chord points, bulb (along, round), smallest piece kept (m)
-    # and the switch distance (m). Flat fittings are painted into the livery's deck maps (hardware.PAINTED), the
-    # hardware is low-poly (hardware.lowpoly), and from LOD1 every static part, the rudder and the wheel are one
-    # node, `body`, so a far boat is two or three draws.
-    LODS = {
-        0: {"seg": 0.45, "hull": (56, 12, 9), "deck": (5, 40, 1), "keel": 14, "rudder": 10, "bulb": (24, 14),
-            "min": 0.012, "from_m": 0.0},
-        1: {"seg": 0.3, "hull": (28, 7, 5), "deck": (3, 14, 2), "keel": 8, "rudder": 6, "bulb": (8, 5),
-            "min": 0.05, "from_m": 15.0},
-        2: {"seg": 0.2, "hull": (14, 4, 3), "deck_simple": (10, 5), "keel": 4, "rudder": 3, "bulb": (6, 4),
-            "min": 0.3, "from_m": 80.0},
-        3: {"seg": 0.1, "hull": (7, 3, 2), "deck_simple": (5, 3), "keel": 3, "rudder": 3, "bulb": (4, 3),
-            "min": 0.8, "from_m": 250.0},
-    }
-    # the sails' grid step on each level: the game draws every n-th row and column of the simulation's grid
-    SAIL_STEP = {0: 1, 1: 1, 2: 2, 3: 4}
-    # nodes merged into `body` from LOD1
-    BODY = ("hull", "deck", "keel", "mast", "rigging", "hardware", "rudder", "wheel")
+    # The game model (docs/specs/sail_visuals.md 11.4, tools/boatgen/README.md "The game model"): one detailed model
+    # per class, the engine simplifies it by screen size (Godot's automatic mesh LOD, generated on import). The hull,
+    # deck, keel and rig keep the full model's detail; the hardware is low-poly (hardware.lowpoly); flat fittings and
+    # the lines on deck are painted (hardware.PAINTED), sub-pixel pieces dropped (hardware.DROPPED). Every static
+    # part is one node, `body` (one draw); the moving parts stay their own nodes.
+    BODY = ("hull", "deck", "keel", "mast", "rigging", "hardware")
 
-    def lod_parts(self, lod):
-        """Nodes of a game level of detail (LODS): pivots and sails as the full model (the sail grids are the
-        simulation's), a coarser hull, deck and appendages, low-poly hardware without the painted and dropped
-        pieces; from LOD1 the static parts, rudder and wheel merged into `body`; from LOD2 no mainsheet."""
-        from .mesh import segment_scale
-        c = self.LODS[lod]
+    def game_parts(self):
+        """The nodes of the game model: `body` (hull, deck, keel, mast, rigging and static hardware, pieces named
+        "<part>:<slot>"), the moving parts (rudder with the tiller, wheel, boom, mainsheet, pole) and the sails."""
         cls = self.cls
-        saved = {k: getattr(self.hull, k) for k in ("skin_grid", "girth", "girth_max", "skin_xs", "i_turn")}
-        parts = {}
-        with segment_scale(c["seg"]), hardware.lowpoly(lod):
-            n_st, nb, nt = c["hull"]
-            port, stbd = self.hull.skin(n_st, nb, nt)
-            for k, v in saved.items():
-                setattr(self.hull, k, v)
-            # the far level: one zone (the livery's hull map draws the boot stripe and antifouling)
-            parts["hull"] = paint_zones([port, stbd], cls["hull"]["boot_top"]) if lod < 3 else \
-                Part().add("gelcoat", port).add("gelcoat", stbd)
-            deck = Deck(cls, self.hull)
-            if "deck" in c:
-                n_out, n_deck, lite = c["deck"]
-                parts["deck"] = deck.build(n_out=n_out, n_st=n_deck, skin=(nb, nt), lite=lite)
-            else:
-                deck.build(n_out=3, n_st=12, skin=(nb, nt), lite=2)     # the fittings read its outlines
-                parts["deck"] = deck.build_simple(*c["deck_simple"])
+        parts = {"hull": self.parts["hull"], "deck": self.parts["deck"], "keel": self.parts["keel"]}
+        with hardware.lowpoly():
             app = Appendages(cls, self.hull)
-            parts["keel"] = app.keel_part(n_chord=c["keel"])
-            if app.has_bulb:
-                parts["keel"] = Part().add("antifouling", app.fin_geom)
-                parts["keel"].add("antifouling", app.bulb_geom(nl=c["bulb"][0], nr=c["bulb"][1]))
-            parts["rudder"] = app.rudder_part(n_chord=c["rudder"])
-            rig = Rig(cls, self.hull, deck)
-            rig.jib_clew = getattr(self.rig, "jib_clew", None)
-            if rig.jib_clew is None:
-                del rig.jib_clew
+            app.keel_part()
+            parts["rudder"] = app.rudder_part()
+            rig = self.rig
             parts["mast"] = rig.mast_part()
             parts["rigging"] = rig.rigging_part()
             parts["boom"] = rig.boom_part()
-            hw = hardware.place_all(cls, self.hull, deck, rig, lod=min(lod, 1))
+            hw = hardware.place_all(cls, self.hull, self.deck, rig, lod=0)
             parts["hardware"] = hw["hardware"]
-            parts["hardware"].extend(hardware.rudder_fittings(app, deck, self.hull, (self.hull.L / 12) ** 0.7))
+            parts["hardware"].extend(hardware.rudder_fittings(app, self.deck, self.hull, (self.hull.L / 12) ** 0.7))
             parts["boom"].extend(hw["boom_hardware"])
             parts["mainsheet"] = hw["mainsheet"]
             if rig.pole_flown:
@@ -199,10 +160,7 @@ class Boat:
             if hw["helm"].tri_count():
                 parts["wheel"] = hw["helm"]
             else:
-                parts["rudder"].extend(hardware.tiller(app, deck, self.hull, (self.hull.L / 12) ** 0.7))
-        # painted and dropped pieces go; on the far levels the lines and small fittings too
-        far = ("lifeline", "screw_", "chainplate", "bobstay_eye", "backstay_split", "stemhead", "wind_wand",
-               "pod", "pedestal_guard", "tiller_joint", "tiller_grip", "vang_foot", "boom_bail", "mainsheet_")
+                parts["rudder"].extend(hardware.tiller(app, self.deck, self.hull, (self.hull.L / 12) ** 0.7))
         for name in ("mast", "rigging", "boom", "hardware", "rudder", "wheel", "pole"):
             if name not in parts:
                 continue
@@ -210,34 +168,25 @@ class Boat:
             for mat, gs in parts[name].slots.items():
                 for g in gs:
                     t = g.tag or ""
-                    if hardware.is_painted(t) or hardware.is_dropped(t) or (lod >= 1 and t.startswith(far)):
+                    if t.startswith("hatch_") and name == "hardware":
+                        # the hatch's raised box reads the deck maps (its painted top): a deck surface
+                        g = g.copy()
+                        g.uv1 = self.deck.plan_uv1(g.P)
+                        parts["deck"] = Part().extend(parts["deck"]).add(mat, g)
                         continue
-                    if lod >= 2 and name == "hardware" and t.startswith(("stanchion", "pulpit", "pushpit")):
-                        continue
-                    if lod >= 1 and t.endswith(("_tip", "_boot", "_root", "_a", "_b")):
-                        continue
-                    ext = g.P.max(0) - g.P.min(0)
-                    if lod >= 1 and ext.min() < 0.015 and ext.max() < 0.25:
-                        continue        # flat plates and pads: the deck maps carry them
-                    if lod >= 3 and (name == "rudder" or t.startswith(("spreader", "wheel", "pedestal", "binnacle"))):
+                    if hardware.is_painted(t) or hardware.is_dropped(t):
                         continue
                     q.add(mat, g)
-            parts[name] = _drop_small(q, c["min"]) if q.tri_count() else q
-        if lod >= 3:
-            parts.pop("rigging", None)
-            parts.pop("hardware", None)
-        if lod >= 2:
-            parts.pop("mainsheet", None)
-        if lod >= 1:
-            body = Part()
-            for name in self.BODY:
-                for mat, gs in parts.pop(name, Part()).slots.items():
-                    for g in gs:
-                        body.add(f"{name}:{mat}", g)
-            parts = {"body": body, **parts}
+            parts[name] = q
+        body = Part()
+        for name in self.BODY:
+            for mat, gs in parts.pop(name).slots.items():
+                for g in gs:
+                    body.add(f"{name}:{mat}", g)
+        out = {"body": body, **parts}
         for name in self.sails:
-            parts["sail_" + name] = self.parts["sail_" + name]
-        return parts
+            out["sail_" + name] = self.parts["sail_" + name]
+        return out
 
     def painted_part(self):
         """The full model's pieces the game paints into the livery's deck maps instead of modelling them
@@ -293,11 +242,13 @@ class Boat:
                         boom.add("shadow", g)
         return static, boom
 
-    def write_lod_glb(self, path, lod):
-        parts = self.lod_parts(lod)
+    def write_game_glb(self, path):
+        """The game model with its shadow proxy (sail_visuals.md 11.4)."""
+        parts = self.game_parts()
         self._write(path, self.cls["id"], parts, self.pivots,
-                    extras={"class": self.cls["id"], "name": self.cls.get("name", ""), "lod": lod,
-                            "sail_step": self.SAIL_STEP[lod], **self.livery_extras()}, shadow=True)
+                    extras={"class": self.cls["id"], "name": self.cls.get("name", ""),
+                            "body_parts": dict(gltf.PART_IDS), **self.livery_extras()},
+                    shadow=True)
         return parts
 
     @staticmethod
@@ -432,8 +383,8 @@ class Boat:
     tex_uri = None
 
     def write_glb(self, path):
-        """The game's LOD0 (lod_parts(0))."""
-        return self.write_lod_glb(path, 0)
+        """The game model (game_parts)."""
+        return self.write_game_glb(path)
 
     def _write(self, path, root, parts, pivots, extras=None, shadow=False):
         w = GLBWriter(self.origin_x(), textures=self.textures, tex_uri=self.tex_uri)

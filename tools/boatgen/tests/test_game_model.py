@@ -99,7 +99,7 @@ class GameModelTest(unittest.TestCase):
         body = [r for r in raw if r[0] == "body"]
         self.assertEqual(len(body), 1)
         names = {(n, s) for n, s, t in doc["_slots"]}
-        for want in ("hull_gelcoat", "hull_antifouling", "deck_gelcoat", "transom", "keel", "metal", "carbon"):
+        for want in ("hull_gelcoat", "hull_antifouling", "deck_gelcoat", "transom", "keel", "metal", "carbon", "deck_face"):
             self.assertIn(("body", want), names)
         self.assertEqual(rdoc["nodes"][rdoc["scenes"][0]["nodes"][0]]["extras"]["body_parts"], gltf.PART_IDS)
         self.assertEqual(gltf.atlas_slot("body", "rudder:antifouling"), gltf.SLOT_ID["rudder"])

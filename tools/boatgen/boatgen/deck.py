@@ -215,6 +215,54 @@ class Deck:
         P = np.asarray(P, dtype=np.float64)
         return np.stack([(P[:, 0] - x0) / w, (yt - P[:, 1]) / h], -1)
 
+    def face_frame(self):
+        """The coachroof's aft face on the deck's uv1 (data_format.md 8.5): its own rectangle in a corner of the plan
+        image the deck does not use (forward of the bow on the port side), so lines painted down it read as on the
+        top and the cockpit floor. {"x": the face's x, "y": (min, max), "z": (min, max) of the face, "plan": (x, y)
+        of the face's (y min, z max) corner in the plan, "scale": plan metres per face metre}, or None without a
+        coachroof."""
+        if not self.has_cabin:
+            return None
+        if hasattr(self, "_face_frame"):
+            return self._face_frame
+        x = float(self.xk0)
+        yb = float(self.yk(x))
+        yck = float(self.yc(x))
+        z0 = float(self.floor_z(x))
+        z1 = float(np.max(self.cabin_z(np.full(9, x), np.linspace(-yb, yb, 9))))
+        fy = max(yb, yck)
+        W, H = 2 * fy, max(z1 - z0, 0.05)
+        x0, yt, w, h = self.plan_rect()
+        L = self.hull.L
+        best = None
+        for xa in np.linspace(0.55 * L, 0.98 * L, 44):
+            xs = np.linspace(xa, L, 40)
+            room_y = yt - 0.01 * L - float(np.max(self.hull.bs(xs))) - 0.03      # clear of the deck edge
+            room_x = (x0 + w - 0.005 * L) - xa
+            if room_y <= 0 or room_x <= 0:
+                continue
+            sc = min(room_x / W, room_y / H)
+            if best is None or sc > best[0]:
+                best = (sc, xa)
+        if best is None:
+            self._face_frame = None
+            return None
+        sc, xa = best
+        self._face_frame = {"x": x, "y": (-fy, fy), "z": (z0, z1), "plan": (xa, yt - 0.01 * L), "scale": sc}
+        return self._face_frame
+
+    def face_plan(self, P):
+        """Points on the aft face (boat frame) to their place in the plan (x, y) of face_frame."""
+        f = self.face_frame()
+        P = np.asarray(P, dtype=np.float64)
+        px = f["plan"][0] + (P[:, 1] - f["y"][0]) * f["scale"]
+        py = f["plan"][1] - (f["z"][1] - P[:, 2]) * f["scale"]
+        return np.stack([px, py], -1)
+
+    def face_uv1(self, P):
+        xy = self.face_plan(P)
+        return self.plan_uv1(np.stack([xy[:, 0], xy[:, 1], np.zeros(len(xy))], -1))
+
     def transom_outline(self, skin=None):
         """The transom face as a closed polygon in the plane x = 0 (boat frame), the skin's station at the
         transom from the starboard sheer down to the keel and up to the port sheer, closed along the deck edge
@@ -324,9 +372,9 @@ class Deck:
         if self.has_cabin:
             self._cabin(part, xs, n_roof=max(3, round(7 * n_st / 90)), fine=n_st >= 60)
         self._sheer_trim(part, n=max(16, round(120 * n_st / 90)), lite=lite)
-        for gs in part.slots.values():          # every deck surface: the plan view (the transom has its own)
+        for mat, gs in part.slots.items():      # every deck surface: the plan view (the transom has its own)
             for g in gs:
-                g.uv1 = self.plan_uv1(g.P)
+                g.uv1 = self.face_uv1(g.P) if mat == "face" and self.face_frame() else self.plan_uv1(g.P)
         self._transom(part)
         return part
 
@@ -461,7 +509,7 @@ class Deck:
         poly = [[x, -yck, zf], [x, yck, zf]] + [[x, y, float(self.deck_z(x, y))] for y in lip]
         poly += [[x, p[1], p[2]] for p in row[::-1]]
         poly += [[x, -y, float(self.deck_z(x, y))] for y in lip[::-1]]
-        part.add("gelcoat", planar_polygon(np.array(poly), [-1, 0, 0]))
+        part.add("face", planar_polygon(np.array(poly), [-1, 0, 0]))
         self._companionway(part, x, yck, zf, row)
         self._windows(part, xs, pr, yb, fine)
 

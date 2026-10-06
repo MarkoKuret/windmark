@@ -22,24 +22,28 @@ MATERIALS = {
     "nonslip":     ((0.47, 0.47, 0.45, 1.0), 0.0, 0.85),
     "antifouling": ((0.035, 0.045, 0.07, 1.0), 0.0, 0.75),
     "boottop":     ((0.50, 0.03, 0.03, 1.0), 0.0, 0.25),
-    "carbon":      ((0.035, 0.035, 0.038, 1.0), 0.1, 0.30),
+    "carbon":      ((0.035, 0.035, 0.038, 1.0), 0.0, 0.30),   # clear-coated carbon: dark, slightly glossy, no weave
     "metal":       ((0.62, 0.62, 0.64, 1.0), 1.0, 0.22),
     "sailcloth":   ((0.80, 0.80, 0.78, 1.0), 0.0, 0.55),
     "glass":       ((0.02, 0.025, 0.03, 1.0), 0.0, 0.05),
+    "face":        ((0.72, 0.72, 0.70, 1.0), 0.0, 0.22),     # the coachroof's aft face: deck gelcoat on its own uv1
     "rope":        ((0.34, 0.33, 0.31, 1.0), 0.0, 0.85),
     "rubber":      ((0.05, 0.05, 0.05, 1.0), 0.0, 0.80),
     "shadow":      ((0.5, 0.5, 0.5, 1.0), 0.0, 1.0),       # the shadow proxy: never drawn, only casts
 }
 
 # The running rigging by function (docs/specs/data_format.md 8.7): braid colour and fleck colour (sRGB), the
-# generator's look of the class rope set's defaults. A slot's mean colour is the braid's: 14 of 16 carriers in the
+# generator's look of the class rope set's defaults: each function its own clear colour with a contrasting fleck. A slot's mean colour is the braid's: 14 of 16 carriers in the
 # main colour and 2 in the fleck. `rope` stays the grey of the lifelines and anything else.
 ROPES = {
-    "mainsheet": ("#1f2b45", "#d8d8d2"),
-    "sheet": ("#d2d2cb", "#b3242a"),
-    "kite_sheet": ("#2b62a6", "#dadad4"),
-    "halyard": ("#d4d4cd", "#2d7a40"),
-    "control": ("#1d1e21", "#c9a227"),
+    "mainsheet": ("#cf5f1d", "#1f2b45"),
+    "sheet": ("#168a8f", "#e1e1da"),
+    "kite_sheet": ("#b02e6a", "#e1e1da"),
+    "halyard_main": ("#b81f24", "#e1e1da"),
+    "halyard_jib": ("#1f4fa8", "#e1e1da"),
+    "halyard_kite": ("#2a8a3e", "#e1e1da"),
+    "halyard_code": ("#d6aa1e", "#1d1e21"),
+    "control": ("#6b3fa0", "#e1e1da"),
 }
 
 
@@ -87,7 +91,6 @@ ATLAS_SLOTS = [
     ("metal", "metal", ""),
     ("rubber", "rubber", ""),
     ("rope", "rope", ""),
-    ("rope_halyard", "rope_halyard", ""),
     ("rope_control", "rope_control", ""),
     ("glass", "glass", ""),
     ("rope_mainsheet", "rope_mainsheet", ""),
@@ -96,6 +99,11 @@ ATLAS_SLOTS = [
     ("rope_kite_sheet", "rope_kite_sheet", ""),
     ("antifouling", "antifouling", ""),
     ("boottop", "boottop", ""),
+    ("rope_halyard_main", "rope_halyard_main", ""),
+    ("rope_halyard_jib", "rope_halyard_jib", ""),
+    ("rope_halyard_kite", "rope_halyard_kite", ""),
+    ("rope_halyard_code", "rope_halyard_code", ""),
+    ("deck_face", "gelcoat", "deck"),
 ]
 SLOT_ID = {n: i for i, (n, _, _) in enumerate(ATLAS_SLOTS)}
 # the source part of a merged node's vertex (COLOR_0 blue, data_format.md 8.5): 0 the node itself
@@ -112,6 +120,8 @@ def atlas_slot(node, mat):
         node, mat = mat.split(":", 1)
     if node == "hull" and mat in ("gelcoat", "boottop", "antifouling"):
         return SLOT_ID["hull_" + mat]
+    if node == "deck" and mat == "face":
+        return SLOT_ID["deck_face"]
     if node == "deck" and mat in ("gelcoat", "nonslip"):
         return SLOT_ID["deck_" + mat]
     if node == "keel" and mat == "antifouling":
@@ -129,7 +139,7 @@ def atlas_extras():
         tset, tiling = tex.SLOTS[base]
         slots.append({"name": name, "region": region, "color": [round(float(c), 5) for c in col[:3]],
                       "roughness": rough, "metallic": met, "tile": tex.ATLAS_SETS.index(tset or "flat"),
-                      "tiling_m": tiling, "normal_scale": 1.0})
+                      "tiling_m": tiling, "normal_scale": 1.0, "steep_map": name == "deck_face"})
     return {"slots": slots, "atlas": {"cols": tex.ATLAS_COLS, "rows": tex.ATLAS_ROWS, "tile_px": tex.SIZE,
                                       "sets": list(tex.ATLAS_SETS)},
             "detail_mean": tex.DETAIL_MEAN, "rough_mean": tex.ROUGH_MEAN}

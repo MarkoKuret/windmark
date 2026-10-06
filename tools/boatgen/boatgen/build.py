@@ -194,12 +194,24 @@ class Boat:
             out["sail_" + name] = self.parts["sail_" + name]
         return out
 
+    def line_on_face(self, P):
+        """Points of a line that lie against the coachroof's aft face (within 3 cm of it, inside its outline):
+        painted on the face's own uv1 (Deck.face_frame)."""
+        f = self.deck.face_frame()
+        P = np.asarray(P, dtype=np.float64)
+        if f is None:
+            return np.zeros(len(P), bool)
+        return ((np.abs(P[:, 0] - f["x"]) < 0.03) & (P[:, 1] >= f["y"][0]) & (P[:, 1] <= f["y"][1])
+                & (P[:, 2] >= f["z"][0] - 0.01) & (P[:, 2] <= f["z"][1] + 0.01))
+
     def _rope_off_surface(self, g):
-        """The triangles of a line with a vertex more than hardware.ROPE_LIFT_MAX above the walking surface under
-        it (None when it lies on the surface all along)."""
+        """The triangles of a line that hang in the air: a vertex more than hardware.ROPE_LIFT_MAX above the walking
+        surface under it and not against the coachroof's aft face (None when the line lies on surfaces all along;
+        the deck maps paint it there)."""
         from .mesh import Geom
         h = g.P[:, 2] - np.asarray(self.deck.surface_z(g.P[:, 0], g.P[:, 1]), dtype=np.float64)
-        keep = (h[g.I] >= hardware.ROPE_LIFT_MAX).any(1)
+        air = (h >= hardware.ROPE_LIFT_MAX) & ~self.line_on_face(g.P)
+        keep = air[g.I].any(1) & ~self.line_on_face(g.P)[g.I].all(1)
         if not keep.any():
             return None
         out = Geom(g.P, g.I[keep], g.N, g.uv0, g.uv1)

@@ -310,9 +310,9 @@ builds the game model and `Boat.write_game_glb` writes it with the shadow proxy:
 - paint what is flat, model what sticks up, drop what is under a pixel (`hardware.PAINTED`, `hardware.DROPPED`, by
   the pieces' tags): the jib and traveller tracks, hatches, organisers, cam, horn and traveller cleats, the rudder
   bearing ring, the halyard coils and the mainsheet coil are painted into the livery's deck maps; the halyards, the
-  mainsheet tail and the traveller control lines are painted where they lie on the surface (within 3.5 cm,
-  `hardware.ROPE_LIFT_MAX`) and stay thin rope geometry where they leave it (through the air, down the coachroof's
-  aft face to the cockpit floor), so a line is continuous (`Boat.painted_part()`, drawn by `tools/liverybake`); each hatch also
+  mainsheet tail and the traveller control lines are painted where they lie on surfaces (within 3.5 cm of the deck
+  or the coachroof's top, `hardware.ROPE_LIFT_MAX`, and down the coachroof's aft face on its own rectangle of the
+  plan, `Boat.line_on_face`) and stay thin rope geometry only where they hang in the air (`Boat.painted_part()`, drawn by `tools/liverybake`); each hatch also
   stands as a plain box about 3 cm proud on the deck node, whose top shows the painted frame and lens. The halyard
   exits, the anemometer, the antenna, the outhaul, sheaves, sheave boxes and bolts go. The mast-foot and traveller
   blocks, the clutches, winches, cars, mast foot, mast instruments, the wind wand, stanchions, pulpit, pushpit,
@@ -367,24 +367,27 @@ AO). The material's extras hold the slot table (`gltf.ATLAS_SLOTS`: name, mean c
 tile of the atlas, tile size `tiling_m` in metres of uv0, livery region) and the atlas layout. The slots are the
 earlier material slots split by where they are: `hull_gelcoat`, `hull_boottop`, `hull_antifouling` (region `hull`),
 `deck_gelcoat`, `deck_nonslip` (region `deck`), `transom`, `keel` (region `keel`), `rudder` (region `keel_colour`),
-and `gelcoat`, `carbon`, `metal`, `rubber`, `glass`, `nonslip`, `antifouling`, `boottop` and the ropes (`rope` for
-the lifelines and the rope functions `rope_mainsheet`, `rope_halyard`, `rope_control`, `rope_sheet`,
+`deck_face` (the coachroof's aft face, region `deck` on its own rectangle of the plan, `Deck.face_frame`), and
+`gelcoat`, `carbon` (spars, pedestal, wheel, tiller: dark and slightly glossy, the clear coat's orange peel, no
+weave), `metal`, `rubber`,
+`glass`, `nonslip`, `antifouling`, `boottop` and the ropes (`rope` for the lifelines and the rope functions
+`rope_mainsheet`, `rope_halyard_main`, `rope_halyard_jib`, `rope_halyard_kite`, `rope_halyard_code`, `rope_control`,
+`rope_sheet`,
 `rope_kite_sheet`, `data_format.md` §8.7) without a region. Each rope slot's mean colour is the braid of the
 function's default rope set (`gltf.ROPES`). The sails keep their own material `sailcloth`, and the shadow proxy its
 `shadow`. `gltf.read_glb` hands the GLB back per slot (named after its base material) for the previews and tests.
 
 **Texture set** (`boatgen/textures.py`, images in `textures/`). Every slot reads one tile of the shared tiling atlas
 (`_tex/tiles_color.png`, `tiles_mr.png` with roughness in G and metallic in B, `tiles_normal.png` in the OpenGL
-convention): the sets below side by side, 4 x 2 tiles of 512, and a flat tile for the glass. The textures vary
+convention): the sets below but the sails' weave side by side, 4 x 2 tiles of 512 (two free), and a flat tile for the glass. The textures vary
 around a fixed mean (`DETAIL_MEAN`, `ROUGH_MEAN`), so a slot looks the same on average with or without them. The game
 wraps each tile itself (`shaders/boat_atlas.gdshader`); a plain glTF viewer shows the atlas unwrapped.
 
 | set | slots | tile (m) | source (CC0, docs/THIRD_PARTY.md) |
 | --- | --- | --- | --- |
-| `orange_peel` | gelcoat, boottop, transom | 0.5 | ambientCG Plastic013A |
+| `orange_peel` | gelcoat, boottop, transom, carbon (its clear coat) | 0.5 | ambientCG Plastic013A |
 | `diamond` | nonslip | 0.1 | procedural (textures.py): moulded raised-diamond non-slip, about 6 mm pitch |
 | `grain` | antifouling, rubber | 0.5, 0.1 | ambientCG Rubber004 |
-| `carbon_twill` | carbon | 0.05 | ambientCG Fabric004 |
 | `brushed` | metal | 0.2 | ambientCG Metal009 |
 | `weave` | sailcloth | 0.5 | ambientCG Fabric062 (no normal map: the run-time sail mesh has no tangents) |
 | `braid` | rope and every `rope_*` slot | 0.05 | ambientCG Rope002 |

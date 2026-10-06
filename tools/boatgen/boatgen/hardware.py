@@ -25,6 +25,8 @@ DROPPED = ("halyard_exit", "anemometer", "antenna", "outhaul", "crane_sheave", "
            "rudder_head_bolt", "gooseneck_pin")
 
 
+# the halyards by the sail they hoist, inboard first (data_format.md 8.7): main, jib, kite, code zero
+HALYARD_SLOTS = ("rope_halyard_main", "rope_halyard_jib", "rope_halyard_kite", "rope_halyard_code")
 # a line lying within this of the walking surface under it is painted there; where it runs higher (through the air,
 # down the coachroof's aft face to the cockpit floor) it stays geometry, so a line is continuous (m)
 ROPE_LIFT_MAX = 0.035
@@ -168,7 +170,7 @@ def _wheel_lp(d, grip):
 
 def _instrument_lp(w, h, t):
     p = Part()
-    p.add("carbon", box((t, w, h), center=(t / 2, 0, 0)))
+    p.add("rubber", box((t, w, h), center=(t / 2, 0, 0)))
     p.add("glass", box((0.2 * t, 0.84 * w, 0.8 * h), center=(t * 1.0, 0, 0)))
     return p
 
@@ -378,11 +380,11 @@ def turnbuckle(length, r):
 
 
 def instrument(w, h, t):
-    """Instrument display (local x out of the face): carbon housing, dark glass face."""
+    """Instrument display (local x out of the face): black plastic housing, dark glass face."""
     if _LP[0] is not None:
         return _instrument_lp(w, h, t)
     p = Part()
-    p.add("carbon", superellipsoid_box((t, w, h), 0.2, 12, 5, center=(t / 2, 0, 0)))
+    p.add("rubber", superellipsoid_box((t, w, h), 0.2, 12, 5, center=(t / 2, 0, 0)))
     p.add("glass", superellipsoid_box((0.2 * t, 0.84 * w, 0.8 * h), 0.12, 12, 4, center=(t * 1.0, 0, 0)))
     return p
 
@@ -448,8 +450,8 @@ def rounded_path(pts, r, n=6):
 
 
 def wheel(d, grip=True):
-    """Racing wheel in the local frame, axis along x (forward), centre at the origin: carbon rim with a rubber
-    grip cover (`grip`), five spokes, hub."""
+    """Racing wheel in the local frame, axis along x (forward), centre at the origin: carbon rim with a dark grip
+    wrap (`grip`), five spokes, hub."""
     if _LP[0] is not None:
         return _wheel_lp(d, grip)
     p = Part()
@@ -684,7 +686,8 @@ def place_all(cls, hull, deck, rig, lod=0):
                             for a in np.radians([0, 25, 50, 70, 90])]
                     pts += [np.array([deck.xk0 - lift - 0.002, yl, zf + 0.09]),
                             (deck.xk0 - 0.1 * s, yl + side * 0.03 * s)]
-                hw.add("rope_halyard", lead(deck, pts, r_line * 0.9, paths=rope_paths, tag=f"halyard_{side}_{k}"),
+                hw.add(HALYARD_SLOTS[k % len(HALYARD_SLOTS)], lead(deck, pts, r_line * 0.9, paths=rope_paths,
+                                                                   tag=f"halyard_{side}_{k}"),
                        tag=f"halyard_{side}_{k}")
                 hw.attach(f"halyard_{side}_{k}", f"halyard_exit_{side}_{k}")
                 hw.attach(f"halyard_{side}_{k}", f"mast_block_{side}_{k}")
@@ -695,7 +698,7 @@ def place_all(cls, hull, deck, rig, lod=0):
                 xc_, yc_ = x_cl - 0.3 * s, side * (y_cl - 0.1 * s)
             else:
                 xc_, yc_ = deck.xk0 - 0.2 * s, side * y_cl
-            hw.extend(on_surface(deck, rope_coil(0.11 * s, 3, r_line, "rope_halyard"), xc_, yc_, yaw=0.4 * side),
+            hw.extend(on_surface(deck, rope_coil(0.11 * s, 3, r_line, HALYARD_SLOTS[0 if side > 0 else 1]), xc_, yc_, yaw=0.4 * side),
                       tag=f"halyard_coil_{side}")
             hw.attach(f"halyard_coil_{side}", "deck")
             # halyard exit plates on the mast

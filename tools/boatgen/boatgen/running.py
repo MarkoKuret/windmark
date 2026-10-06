@@ -87,5 +87,5 @@ def sheets(boat, corners, types):
                 part.add(slot, rope([tack, end], r))
             head = c["head"]
             mast = np.array([boat.rig.x_mast + 0.5 * boat.rig.chord, 0.0, min(head[2] + 0.05, boat.rig.z_top - 0.1)])
-            part.add("rope_halyard", rope([head, mast], r))
+            part.add("rope_halyard_kite", rope([head, mast], r))
     return part

@@ -31,7 +31,6 @@ ROUGH_MEAN = 0.80
 SETS = {
     "orange_peel": ("Plastic013A", 0.15, 0.4, 1.0),   # gelcoat and paint: slight orange peel
     "grain": ("Rubber004", 0.35, 0.5, 0.8),           # rolled antifouling, rubber
-    "carbon_twill": ("Fabric004", 1.0, 0.6, 1.0),     # carbon twill weave
     "brushed": ("Metal009", 0.4, 0.6, 0.6),           # brushed stainless and aluminium
     "weave": ("Fabric062", 0.35, 0.3, 0.0),           # sailcloth (no normal map, sail_visuals.md 9)
     "braid": ("Rope002", 0.8, 0.4, 1.0),              # braided rope
@@ -46,15 +45,19 @@ SLOTS = {
     "nonslip": ("diamond", 0.1),
     "antifouling": ("grain", 0.5),
     "rubber": ("grain", 0.1),
-    "carbon": ("carbon_twill", 0.05),
+    "carbon": ("orange_peel", 0.5),      # the clear coat's slight orange peel: no weave pattern
     "metal": ("brushed", 0.2),
     "sailcloth": ("weave", 0.5),
     "rope": ("braid", 0.05),
     "rope_mainsheet": ("braid", 0.05),
     "rope_sheet": ("braid", 0.05),
     "rope_kite_sheet": ("braid", 0.05),
-    "rope_halyard": ("braid", 0.05),
     "rope_control": ("braid", 0.05),
+    "rope_halyard_main": ("braid", 0.05),
+    "rope_halyard_jib": ("braid", 0.05),
+    "rope_halyard_kite": ("braid", 0.05),
+    "rope_halyard_code": ("braid", 0.05),
+    "face": ("orange_peel", 0.5),
     "glass": (None, 1.0),
     "shadow": (None, 1.0),
 }
@@ -64,7 +67,7 @@ SLOTS = {
 # per map (colour, metallic-roughness, normal), plus a flat tile (the mean, for slots without a set: glass). The
 # game samples a tile with its own wrap (shaders/boat_atlas.gdshader). Written once per output folder as
 # `_tex/tiles_<map>.png` and referenced by URI from every GLB, so every class and level of detail shares one copy.
-ATLAS_SETS = ("orange_peel", "diamond", "grain", "carbon_twill", "brushed", "braid", "weave", "flat")
+ATLAS_SETS = ("orange_peel", "diamond", "grain", "brushed", "braid", "flat")
 ATLAS_COLS, ATLAS_ROWS = 4, 2
 ATLAS_FILES = {"color": "tiles_color.png", "mr": "tiles_mr.png", "normal": "tiles_normal.png"}
 # the sails keep their own material on the weave set

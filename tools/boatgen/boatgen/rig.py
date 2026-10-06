@@ -116,7 +116,7 @@ class Rig:
         for k in range(n_ins):
             z = self.z_boom + 0.35 * s + k * 0.2 * s
             ins = Part()
-            ins.add("carbon", superellipsoid_box((0.04 * s, 0.2 * s, 0.16 * s), 0.2, 10, 5, center=(0.02 * s, 0, 0)))
+            ins.add("rubber", superellipsoid_box((0.04 * s, 0.2 * s, 0.16 * s), 0.2, 10, 5, center=(0.02 * s, 0, 0)))
             ins.add("glass", superellipsoid_box((0.01 * s, 0.17 * s, 0.13 * s), 0.12, 10, 4, center=(0.042 * s, 0, 0)))
             p.extend(ins, translate([self.x_mast + self.chord / 2, 0, z]), tag=f"mast_instrument_{k}")
             p.attach(f"mast_instrument_{k}", "mast")

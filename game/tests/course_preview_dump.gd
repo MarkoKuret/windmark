@@ -14,6 +14,7 @@ const DT := 0.1
 ## the same fleet from 1, 3 and 10 km downwind at one image scale (["from_boat", distance, eye height, fov]).
 const HAZE := {"fleet": 8, "seed": 84}
 const GARDA := {"fleet": 8, "seed": 84, "venue": "garda", "course": "garda/garda_wl", "wind": 195.0}
+const TRIESTE := {"fleet": 8, "seed": 84, "venue": "trieste", "course": "trieste/barcola_wl", "wind": 65.0}
 const SHOTS := [
 	["island_chase", false, [140.0, 1800.0, 50.0], 20.0, ["chase", 1.35, 0.14, 0.4]],
 	["island_wide", false, [600.0, 1300.0, 45.0], 4.0, ["look", Vector3(760, 1500, 38), Vector3(60, 2380, 20), 45.0]],
@@ -40,6 +41,13 @@ const SHOTS := [
 	["garda_shore", true, [], 20.0, ["look", Vector3(-1100, 600, 5), Vector3(-1500, 1100, 40), 55.0], GARDA],
 	["garda_south", true, [], 20.0, ["look", Vector3(0, 1500, 12), Vector3(-2500, -15000, 150), 55.0], GARDA],
 	["garda_aerial", true, [], 262.0, ["aerial", 700.0], GARDA],
+	# Gulf of Trieste (WM-112): the Karst edge behind Barcola, Miramare, the city, from the race cameras and the water
+	["trieste_chase", true, [], 185.0, ["chase", 1.35, 0.14, 0.4], TRIESTE],
+	["trieste_start", true, [], 185.0, ["look_boat", Vector3(1000, 0, 7), 0.0, 50.0], TRIESTE],
+	["trieste_karst", true, [], 20.0, ["look", Vector3(300, -200, 8), Vector3(2600, 1600, 250), 55.0], TRIESTE],
+	["trieste_miramare", true, [], 20.0, ["look", Vector3(400, 1300, 6), Vector3(-600, 2500, 40), 55.0], TRIESTE],
+	["trieste_city", true, [], 20.0, ["look", Vector3(800, -400, 8), Vector3(3000, -2600, 80), 55.0], TRIESTE],
+	["trieste_aerial", true, [], 262.0, ["aerial", 700.0], TRIESTE],
 ]
 
 var _shot := -1

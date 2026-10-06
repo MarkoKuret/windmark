@@ -246,6 +246,13 @@ func continue_last() -> void:
 	g.ai_level = str(last.get("ai_level", d.ai_level))
 	g.wind_kn = float(last.get("wind_kn", d.wind_kn))
 	g.wind_from_deg = float(last.get("wind_from_deg", d.wind_from_deg))
+	g.shift = str(last.get("shift", d.shift))
+	g.gusts = str(last.get("gusts", d.gusts))
+	# the weather mode the venue still offers (a venue without conditions: Custom only, menus.md §1)
+	var modes := VenueWeather.modes(MenuData.venue_info(g.venue))
+	g.weather = str(last.get("weather", d.weather))
+	if not modes.has(g.weather):
+		g.weather = modes[0]
 	g.seed = 0
 	request_scene(SAIL_SCENE)
 

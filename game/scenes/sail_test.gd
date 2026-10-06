@@ -60,6 +60,18 @@ enum SeaSource { AUTO, CORE_SAMPLES, PLACEHOLDER }
 @export var puffs := true
 @export var shift_preset := -1
 @export var world_seed := 1
+## core: the weather mode of race.md §2.1 (local, random, custom; menus.md §1): the venue's conditions resolved for
+## the seed when the world is made (CoreSimSource.resolve_settings), the result in weather_settings and the wind
+## fields above. "" (the default, rules scenarios): the wind fields above as they are.
+@export var weather := ""
+## Custom: the player's wind speed (kn), direction (deg), shift preset and puff preset (VenueWeather.SHIFTS, GUSTS)
+var weather_kn := 12.0
+var weather_from_deg := 0.0
+var weather_shift := "shifty"
+var weather_gusts := "standard"
+## the resolved settings of the last world made with a weather mode ({} without one): the results screen reads
+## them (menus.md §5, the Today line after a Random race)
+var weather_settings := {}
 ## the player's livery id (data_format.md §8); "": the class default. The AI boats get theirs by the fleet rule
 @export var livery := ""
 ## start heading relative to the wind: + = starboard tack
@@ -324,8 +336,11 @@ func session_setup() -> GameSetup:
 	g.course = course
 	g.fleet_size = fleet_size
 	g.ai_level = ai_level
-	g.wind_kn = wind_speed_kn
-	g.wind_from_deg = wind_from_deg
+	g.weather = weather
+	g.wind_kn = weather_kn if weather != "" else wind_speed_kn
+	g.wind_from_deg = weather_from_deg if weather != "" else wind_from_deg
+	g.shift = weather_shift
+	g.gusts = weather_gusts
 	g.seed = world_seed
 	return g
 
@@ -361,6 +376,11 @@ func _apply_setup() -> void:
 	ai_level = gs.ai_level
 	wind_speed_kn = gs.wind_kn
 	wind_from_deg = gs.wind_from_deg
+	weather = gs.weather if gs.mode != "scenario" else ""
+	weather_kn = gs.wind_kn
+	weather_from_deg = gs.wind_from_deg
+	weather_shift = gs.shift
+	weather_gusts = gs.gusts
 	world_seed = gs.seed
 	livery = gs.livery
 	if gs.mode == "scenario":
@@ -417,8 +437,14 @@ func _user_args() -> void:
 			world_seed = a.trim_prefix("--seed=").to_int()
 		elif a.begins_with("--wind="):
 			wind_speed_kn = a.trim_prefix("--wind=").to_float()
+			weather_kn = wind_speed_kn
+			weather = "custom" if weather != "" else ""
 		elif a.begins_with("--wind-from="):
 			wind_from_deg = a.trim_prefix("--wind-from=").to_float()
+			weather_from_deg = wind_from_deg
+			weather = "custom" if weather != "" else ""
+		elif a.begins_with("--weather="):
+			weather = a.trim_prefix("--weather=")
 		elif a == "--fake":
 			sim_kind = SimKind.FAKE
 		elif a == "--core":
@@ -559,6 +585,7 @@ func _load_scenario() -> void:
 	wind_from_deg = rad_to_deg(s.wind_from)
 	puffs = s.puffs
 	shift_preset = s.shift_preset
+	weather = ""
 	if not s.player_sails():
 		racing = false
 
@@ -686,6 +713,7 @@ func _make_core() -> CoreSimSource:
 	cs.settings = {"wind_speed": wind_speed_kn * HudFormat.KNOT, "wind_from": deg_to_rad(wind_from_deg),
 		"puffs": puffs, "shift_preset": shift_preset, "race_seed": world_seed}
 	cs.settings.merge(core_settings, true)
+	_resolve_weather(cs)
 	var ok := cs.create(venue)
 	var b := cs.add_entry(class_id, {"human": true}) if ok else -1
 	if b >= 0:
@@ -702,6 +730,39 @@ func _make_core() -> CoreSimSource:
 		push_warning("sail test: the core did not start (%s); using FakeSim" % cs.last_error())
 		return null
 	return cs
+
+
+## race.md §2.1: the weather mode's settings for this seed, venue and course, resolved once before the world is
+## made; the scene's wind fields follow the result (start heading, sea, HUD). A venue without conditions takes
+## Custom (menus.md §1). Without a weather mode, or when it does not resolve, the explicit settings stand.
+func _resolve_weather(cs: CoreSimSource) -> void:
+	weather_settings = {}
+	if weather == "" or venue == "":
+		return
+	var vi := {}
+	if not venue.contains("/"):
+		vi = MenuData.venue_info(venue)
+	elif FileAccess.file_exists(venue):
+		var doc: Variant = BoatClassData._read_json(venue)
+		vi = VenueWeather.info(doc) if doc is Dictionary else {}
+	var mode := weather if VenueWeather.modes(vi).has(weather) else "custom"
+	var s := cs.settings.duplicate()
+	s["weather"] = VenueWeather.MODES.find(mode)
+	s["wind_speed"] = weather_kn * HudFormat.KNOT
+	s["wind_from"] = deg_to_rad(weather_from_deg)
+	s["shift_preset"] = VenueWeather.SHIFTS.find(weather_shift)
+	s["puff_preset"] = VenueWeather.GUSTS.find(weather_gusts)
+	var why := []
+	var r := CoreSimSource.resolve_settings(s, venue, course if race_mode else "", why)
+	if r.is_empty():
+		push_warning("sail test: the %s weather did not resolve (%s)" % [mode, why[0] if not why.is_empty() else "?"])
+		return
+	r["weather_mode"] = mode
+	weather_settings = r
+	cs.settings = r
+	wind_speed_kn = float(r["wind_speed"]) / HudFormat.KNOT
+	wind_from_deg = rad_to_deg(float(r["wind_from"]))
+	puffs = bool(r["puffs"])
 
 
 func _start_psi() -> float:

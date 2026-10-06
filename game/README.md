@@ -138,6 +138,7 @@ components within 1 mm of the core's sea height.
 | --- | --- |
 | `settings` | world settings for `create()`, the keys of `CoreSimSource.default_settings()` (the C API's `wm_world_settings`: seed, wind, shift preset, puffs, sea, shadows, race and rules settings) |
 | `create(venue = "")` | the world on a venue (`practice_waters` or a path; `""` open water); `last_error()` on failure |
+| `CoreSimSource.resolve_settings(settings, venue, course = "")` | `race.md` §2.1: the venue's conditions resolved for `settings.weather` (0 local, 1 random, 2 custom) and the seed into every wind, current and sea setting (the C API's `wm_world_settings_resolve`), once before `create()`; `{}` on failure |
 | `add_boat(id, x, y, psi, v, auto_trim)` | FakeSim's call: a free-sailing boat of class `id` (creates an open-water world when none exists); the core starts it at 60 % of its polar speed, so `v` is unused |
 | `add_entry(id, entry)`, `create_race(course)`, `place_boat(b, x, y, psi)` | a race entry (`human`, `ai`, `performance_scale`, `auto_trim`, `front_sail`), the race on `venue/course` or a path, free-sailing placement |
 | `apply_input(b, frame)` | applies the frame decoded from its 6-byte wire form, the values every peer applies; the controls take effect at the next step (`controls(b)` shows them after it) |
@@ -193,7 +194,9 @@ starts. The prefetch and the spreading are on while the scene processes itself (
   written one (`GameSetup.next`) or a test sets `setup`, else the scene's exports (free sailing); command-line
   flags after `--` override both: `--race`, `--free`, `--fleet=10`, `--level=expert`, `--speed-only`, `--watch`
   (an AI sails the player's boat too), `--class=wm12`, `--venue=`, `--course=<venue>/<id>`, `--seed=` (0: from
-  the clock), `--wind=<kn>`, `--wind-from=<deg>`, `--fake`, `--core`, `--scenario=<id>` (a rules scenario, below). Spectating (`spectate_next`, `prev`,
+  the clock), `--wind=<kn>`, `--wind-from=<deg>` (Custom picks when a weather mode is set),
+  `--weather=local|random|custom` (the venue's weather resolved for the seed, `race.md` §2.1; GameSetup sets it
+  from the menus, the scene's default `""` takes the wind fields as they are), `--fake`, `--core`, `--scenario=<id>` (a rules scenario, below). Spectating (`spectate_next`, `prev`,
   `leader` by race rank) works when not racing (`--watch`) or once the player has finished, retired or left.
   To race in a window: `godot --path game res://scenes/sail_test.tscn -- --race --fleet=10 --level=intermediate`.
 - **Simulation** (`sim_kind`): `AUTO` (the default) runs the core through `CoreSimSource` when the GDExtension is

@@ -389,7 +389,7 @@ func test_screen() -> void:
 	sim.race_ev = [_rev(RaceText.Ev.RACE_CLOSED, {})]
 	_tick(host.hud.race, sim)
 	await process_frame
-	t.ok(rs.heading_label.text == "RESULTS" and rs.line_label.text == "%s · 5 boats"
+	t.ok(rs.heading_label.text == "RESULTS" and rs.line_label.text == "Practice Waters · %s · 5 boats"
 		% MenuData.name_of(MenuData.courses("practice_waters", "wm7"), "practice_waters/example_wl"),
 		"final heading: %s / %s" % [rs.heading_label.text, rs.line_label.text])
 	var codes := rs.shown_rows.map(func(x: Array) -> String: return x[6])

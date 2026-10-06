@@ -58,6 +58,20 @@ static func venues() -> Array:
 	return _sorted(out)
 
 
+## the venues' weather read once per file (VenueWeather.info), by path
+static var _venue_info := {}
+
+
+## A venue's weather and briefing (VenueWeather.info of data/venues/<id>.venue.json), {} when the file is missing.
+static func venue_info(id: String) -> Dictionary:
+	var p := BoatClassData.repo_path("data/venues/%s.venue.json" % id)
+	if not _venue_info.has(p):
+		if not FileAccess.file_exists(p):
+			return {}
+		_venue_info[p] = VenueWeather.info(_read(p))
+	return _venue_info[p]
+
+
 ## Courses of a venue for a class, ids "<venue>/<course id>": those whose `classes` list the class, and those
 ## without a `classes` list.
 static func courses(venue: String, class_id: String) -> Array:

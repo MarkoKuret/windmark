@@ -24,13 +24,59 @@ func _init() -> void:
 		t.finish(self, "core sim test")
 		return
 	var probe: Object = ClassDB.instantiate(&"CoreSim")
-	t.ok(probe.api_version() == 3, "C API version 3")
+	t.ok(probe.api_version() == 4, "C API version 4")
 	t.ok(CoreSimSource.default_settings().has("race_seed"), "default settings")
 	_free_sailing()
+	_weather()
 	_race_world()
 	_ai()
 	_threaded()
 	t.finish(self, "core sim test")
+
+
+## race.md §2.1 through the extension: resolve_settings for Local, Random and Custom on Practice Waters, the tide
+## and trend fixture's turn inside the race, and a world made on the resolved settings.
+func _weather() -> void:
+	t.begin("weather modes resolved (race.md 2.1)")
+	var why := []
+	var base := {"race_seed": 4242, "weather": 0}
+	var loc := CoreSimSource.resolve_settings(base, "practice_waters", "practice_waters/example_wl", why)
+	t.ok(not loc.is_empty(), "Local resolves on Practice Waters %s" % [why])
+	if loc.is_empty():
+		return
+	var kn := float(loc["wind_speed"]) / KNOT
+	t.ok(kn >= 10.0 - 1e-3 and kn <= 14.0 + 1e-3 and float(loc["wind_from"]) == 0.0, "Local: %.2f kn from 0" % kn)
+	t.ok(int(loc["shift_preset"]) == -1 and absf(float(loc["shift_amplitude"]) - deg_to_rad(3.0)) < 1e-6
+		and int(loc["shift_hold_max_ms"]) == 120000, "Local: stable shifts written out")
+	t.ok(absf(float(loc["puff"]["cap_up"]) - 0.15) < 1e-6 and bool(loc["puffs"]), "Local: light puffs")
+	t.ok(loc == CoreSimSource.resolve_settings(base, "practice_waters", "practice_waters/example_wl"),
+		"the same seed resolves the same settings")
+	var other := CoreSimSource.resolve_settings({"race_seed": 77, "weather": 0}, "practice_waters", "")
+	t.ok(float(other["wind_speed"]) != float(loc["wind_speed"]), "another seed, another day")
+	var rnd := CoreSimSource.resolve_settings({"race_seed": 4242, "weather": 1}, "practice_waters", "")
+	var rk := float(rnd["wind_speed"]) / KNOT
+	t.ok(rk >= 6.0 - 1e-3 and rk <= 18.0 + 1e-3, "Random: %.2f kn within 6 to 18 kn" % rk)
+	var cus := CoreSimSource.resolve_settings({"race_seed": 1, "weather": 2, "wind_speed": 9.0, "wind_from": 1.0,
+		"shift_preset": 4, "puff_preset": 0}, "practice_waters", "")
+	t.ok(float(cus["wind_speed"]) == 9.0 and absf(float(cus["shift_amplitude"]) - deg_to_rad(25.0)) < 1e-6
+		and not bool(cus["puffs"]), "Custom: the player's wind, unstable shifts, no puffs")
+	# the tide and trend fixture: the tide turns to the ebb between 35 % and 65 % of the race
+	var tidal := ProjectSettings.globalize_path("res://tests/fixtures/tidal_test.venue.json")
+	var tl := CoreSimSource.resolve_settings({"race_seed": 9, "weather": 0}, tidal, "practice_waters/example_wl", why)
+	t.ok(not tl.is_empty() and absf(float(tl["tide_scale"]) - 0.6) < 1e-6 and float(tl["shift_trend_rate"]) < 0.0
+		and (tl["swells"] as Array).size() == 1, "fixture: tide, trend and swell resolved %s" % [why])
+	var cs := CoreSimSource.new()
+	cs.settings = tl
+	t.ok(cs.create(tidal), "a world on the resolved settings")
+	var ws := cs.wind_state(0.0)
+	t.ok(absf(float(ws.get("base_speed", 0.0)) - float(tl["wind_speed"])) < 1e-6, "the world's base wind is the resolved one")
+	var gun := (30.0 + 180.0) * 1000.0
+	var c_early: Vector2 = cs.core.current_at(0.0, 0.0, int(gun + 0.30 * 600000.0))
+	var c_late: Vector2 = cs.core.current_at(0.0, 0.0, int(gun + 0.70 * 600000.0))
+	t.ok(c_early.x > 0.0 and c_late.x < 0.0, "the tide turns inside 35 to 65 %% of the race: %.3f then %.3f" % [
+		c_early.x, c_late.x])
+	t.ok(CoreSimSource.resolve_settings({"race_seed": 1, "weather": 5}, "practice_waters", "", why).is_empty(),
+		"a bad weather mode is refused")
 
 
 func _free_sailing() -> void:

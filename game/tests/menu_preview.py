@@ -183,20 +183,21 @@ def draw_map(layer, it):
         else:
             r = S(3)
             d.ellipse([px - r, py - r, px + r, py + r], fill=PAPER + (255,))
-    # wind arrow, top right
-    cx, cy = x + w - S(34), y + S(34)
-    to = math.radians(it["wind_from"]) + math.pi
-    dx, dy = math.sin(to), -math.cos(to)
-    tail = (cx - dx * S(16), cy - dy * S(16))
-    tip = (cx + dx * S(16), cy + dy * S(16))
-    d.line([tail, (tip[0] - dx * S(6), tip[1] - dy * S(6))], fill=PAPER + (255,), width=int(2.5 * SS))
-    sx, sy = -dy, dx
-    d.polygon([tip, (tip[0] - dx * S(9) + sx * S(5.5), tip[1] - dy * S(9) + sy * S(5.5)),
-               (tip[0] - dx * S(9) - sx * S(5.5), tip[1] - dy * S(9) - sy * S(5.5))], fill=PAPER + (255,))
+    # wind arrow, top right (none in the Random weather mode)
     f = font("BarlowSemiCondensed-SemiBold.ttf", 13)
-    t = "%d KN  %03d°" % (round(it["wind_kn"]), round(it["wind_from"]) % 360)
-    tw = text_width(f, t, 0.8)
-    draw_text_line(d, x + w - S(10) - tw, cy + S(34) - f.getmetrics()[0], t, f, PAPER + (255,), 0.8)
+    if it.get("wind_shown", True):
+        cx, cy = x + w - S(34), y + S(34)
+        to = math.radians(it["wind_from"]) + math.pi
+        dx, dy = math.sin(to), -math.cos(to)
+        tail = (cx - dx * S(16), cy - dy * S(16))
+        tip = (cx + dx * S(16), cy + dy * S(16))
+        d.line([tail, (tip[0] - dx * S(6), tip[1] - dy * S(6))], fill=PAPER + (255,), width=int(2.5 * SS))
+        sx, sy = -dy, dx
+        d.polygon([tip, (tip[0] - dx * S(9) + sx * S(5.5), tip[1] - dy * S(9) + sy * S(5.5)),
+                   (tip[0] - dx * S(9) - sx * S(5.5), tip[1] - dy * S(9) - sy * S(5.5))], fill=PAPER + (255,))
+        t = "%d KN  %03d°" % (round(it["wind_kn"]), round(it["wind_from"]) % 360)
+        tw = text_width(f, t, 0.8)
+        draw_text_line(d, x + w - S(10) - tw, cy + S(34) - f.getmetrics()[0], t, f, PAPER + (255,), 0.8)
     draw_text_line(d, x + S(18) - f.getlength("N") / 2, y + S(26) - f.getmetrics()[0], "N", f, (164, 170, 175, 255), 0)
     d.line([x + S(18), y + S(30), x + S(18), y + S(44)], fill=(164, 170, 175, 255), width=int(1.5 * SS))
 

@@ -1,7 +1,7 @@
 {
   "schema": "windmark.course/1",
   "id": "example_wl",
-  "name": "Practice Waters windward-leeward, 2 laps",
+  "name": "Windward-leeward, 2 laps",
   "venue": "practice_waters",
   "classes": ["wm7", "wm12"],
   "frame": "wind",

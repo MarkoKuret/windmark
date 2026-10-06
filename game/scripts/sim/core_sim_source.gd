@@ -83,6 +83,34 @@ static func default_settings() -> Dictionary:
 	return ClassDB.instantiate(&"CoreSim").default_settings() if available() else {}
 
 
+## The venue file of a bare venue id (data/venues/<id>.venue.json); a path stays as it is.
+static func venue_file(venue: String) -> String:
+	if venue != "" and not venue.contains("/"):
+		return BoatClassData.repo_path("data/venues/%s.venue.json" % venue)
+	return venue
+
+
+## The course file of "<venue>/<id>" (game/data/courses/<venue>/<id>.course.json); a .json path stays as it is.
+static func course_file(course: String) -> String:
+	if course == "" or course.ends_with(".json"):
+		return course
+	return BoatClassData.repo_path("game/data/courses/%s.course.json" % course)
+
+
+## race.md §2.1: `settings` (CoreSim keys, with `weather`: 0 local, 1 random, 2 custom) with the venue's conditions
+## resolved for the seed into every wind, current and sea setting, once before create(); `course` gives the tide's
+## timing ("" free sailing). {} on failure, with the reason appended to `why`.
+static func resolve_settings(s: Dictionary, venue: String, course := "", why := []) -> Dictionary:
+	if not available():
+		why.append("the Windmark GDExtension is not loaded")
+		return {}
+	var c: Object = ClassDB.instantiate(&"CoreSim")
+	var r: Dictionary = c.resolve_settings(s, venue_file(venue), course_file(course))
+	if r.is_empty():
+		why.append(c.last_error())
+	return r
+
+
 ## the venue file the world was created on ("" for open water)
 var venue_path := ""
 ## the course file of the race ("" without one)
@@ -99,9 +127,7 @@ func create(venue := "") -> bool:
 		_err = "the world exists already"
 		return false
 	core = ClassDB.instantiate(&"CoreSim")
-	var path := venue
-	if venue != "" and not venue.contains("/"):
-		path = BoatClassData.repo_path("data/venues/%s.venue.json" % venue)
+	var path := venue_file(venue)
 	if not core.create(settings, path):
 		_err = core.last_error()
 		core = null
@@ -271,9 +297,7 @@ func ai_add(b: int, level: Variant = "intermediate", speed_only := false) -> boo
 
 ## Creates the race on a course file (game/data/courses/<venue>/<course>.course.json when "venue/course").
 func create_race(course: String) -> bool:
-	var path := course
-	if not course.ends_with(".json"):
-		path = BoatClassData.repo_path("game/data/courses/%s.course.json" % course)
+	var path := course_file(course)
 	_invalidate()
 	if core.create_race(path):
 		course_path = path

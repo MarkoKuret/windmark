@@ -19,7 +19,9 @@ rules information from the rules engine records (`rules.md` §11); wind from `wi
   water" (sample the present clean wind within a radius, §3.3), which a human does by looking at the puffs. No AI
   evaluates the wind at a future time or reads the race-wide `global_from` / `dir_offset` (`wind.md` §9 allows it
   technically; Windmark's AI does not, so it knows no more than a good sailor could see), and no AI reads another
-  boat's inputs.
+  boat's inputs. Two things a sailor knows before the gun it may use: the **tidal stream** (`wind.md` §7: the current
+  anywhere on the course now, as from a tidal atlas and the stream round the marks; it is steady through a race), and
+  the **briefing** (`menus.md` §1.3: the venue's trend over the race, the same number the race card shows).
 - **No catch-up.** Nothing in the AI or its boat depends on the race position or the gap to others.
 - **Deterministic.** Same seed, same inputs, same results: all randomness comes from the generator of
   `conventions.md` §7 with the race seed, in the AI streams: stream 16 = start choices (spot spread, start error),
@@ -69,9 +71,13 @@ OCS, penalties, deadline), rules records involving the boat.
 
 ### 3.3 Wind
 
-- Clean wind at the boat: `wind_speed_clean` and its direction (`boat.md` §2, `wind.md` §9 `wind_clean`), smoothed
-  with a 2 s exponential filter: `TWD_f`, `TWS_f`.
-- Felt wind: the boat's `wind_speed`, `wind_from` (with other boats' shadow), smoothed 2 s: `TWS_felt`.
+- Clean wind at the boat: `wind_speed_clean` and its direction (`boat.md` §2, `wind.md` §9 `wind_clean`), taken
+  **relative to the water** (the wind over the ground minus the current at the boat, as her instruments read it and
+  as she sails in it, `boat.md` §5.1; without current it is the ground wind itself), smoothed with a 2 s exponential
+  filter: `TWD_f`, `TWS_f`. Every TWA, close-hauled heading and polar speed of this file uses it; so does the tack of
+  another boat (her clean water wind).
+- Felt wind: the boat's `wind_speed`, `wind_from` (with other boats' shadow), relative to the water, smoothed 2 s:
+  `TWS_felt`.
 - `TWD_ref`: the AI's idea of the mean direction: exponential average of `TWD_f` with a 90 s time constant (angles
   averaged as unit vectors).
 - Shift `Δ = wrap_pi(TWD_f,5s − TWD_ref)`, with `TWD_f,5s` a 5 s average (positive = clockwise veer).
@@ -108,8 +114,9 @@ with a 3° hysteresis on each boundary so the type does not flicker.
 
 Steer the direct course to the aim point of the mark approach (§6.1), adjusted for the current so the course over
 ground points at it: `ψ = compass(R − c) − wrap_pi(cog − ψ)` with the present drift angle (the boat model folds
-the leeway of a sailing boat into the polar, `boat.md` §6.4, so with way on the drift is the current alone). Sail: `best_sail` for the
-present TWA.
+the leeway of a sailing boat into the polar, `boat.md` §6.4, so with way on the drift is the current alone). The
+correction is solved for the speed she will make on that course, her own and at least `0.8 ×` the polar speed: a
+slow boat's own speed would turn the heading into the wind and keep her slow. Sail: `best_sail` for the present TWA.
 
 ### 4.3 Beating and running: headings, laylines, tack points
 
@@ -118,8 +125,10 @@ present TWA.
 - **Speed build**: if boat speed < 0.85 × the polar target, sail 4° lower upwind (away from the wind) or 4° higher
   downwind until it is back above 0.92 ×.
 - **Laylines**: the layline of tack t through R is the ray from R backwards along the course over ground the boat
-  would have on tack t: `COG_t = compass(V_t·dir(ψ_t) + current)` with `V_t` the polar speed on that tack and the
-  current at the boat (`wind.md` §7); without current, `COG_t = ψ_t`.
+  would have on tack t: `COG_t = compass(V_t·dir(ψ_t) + current)` with `V_t` the polar speed on that tack. The present
+  tack's track takes the current at the boat; the layline through R takes the mean current between the boat and R
+  (three samples at 1/6, 1/2 and 5/6 of the way, `wind.md` §7), so a stream that is stronger mid-channel or weaker
+  near the mark sets the tack point; without current, `COG_t = ψ_t`.
 - **Tack point** `I`: the intersection of the ray from `c` along the current COG and the layline of the other tack.
   If it exists, `d_I = |I − c|`.
 - **Layline trigger**: tack (gybe) when `d_I ≤ 0.5·V·t_man + M_lay`, with `t_man` the class's typical tack (gybe)
@@ -143,8 +152,13 @@ or obstruction triggers), and the tack is legal and safe (§7.3).
    not already past it). Easy does not play shifts.
 5. **Pressure** (Expert, Pro): the mean free wind speed sampled on the other tack's track (§3.3) is ≥ 12 % higher
    than on the current track, for 10 s, and the other tack is not unfavoured by more than 3° of shift.
-6. **Bad air** (§8).
-7. **Cover** (§9).
+6. **Stream and trend** (§4.7, all but Easy): the other tack first is the quicker route by the level's margin, three
+   evaluations in a row (tactic `Pressure`).
+
+While the present tack first is the quicker route (§4.7 "stay"), triggers 3 to 5 do not fire: the boat holds on to
+the side that pays.
+7. **Bad air** (§8).
+8. **Cover** (§9).
 
 ### 4.5 Finish leg
 
@@ -158,6 +172,29 @@ Every decision: if `PredGap(boat, obstruction, 8 s)` on the current motion is be
 gybes (run) or turns away to the side of the course (reach) — the side where the obstruction's nearest point is not.
 Fixed courses may give waypoints per step (`courses.md` §8); when the direct line to R crosses land the AI routes
 through them in order.
+
+### 4.7 Stream and trend: which side pays
+
+Once a second (on the decision ticks with `(n + i) mod 20 = 0`), on a beat or a run outside `6·L` of the mark, the AI
+times the two routes to R of two legs each: the present tack first, then the other tack along its layline, and the
+other tack first (a tack now), then back. Each leg is sailed at the polar target speed `V` (`V_up` or `V_dn`) on its
+VMG heading in the mean wind `TWD_ref` turned by the briefed trend `r` (§1: the trend term's rotation from the gun to
+the gun plus the course's target time, divided by that time; 0 without a trend), with the mean current along that
+leg (three samples, §4.3):
+
+```
+leg 1 heading ψ1 from TWD_ref + r·T1/2, leg 2 heading ψ2 from TWD_ref + r·(T1 + T2/2)
+g1 = V·dir(ψ1) + c1 ; g2 = V·dir(ψ2) + c2          c1, c2: the current at the boat and the mean of boat and R,
+c + g1·T1 + g2·T2 = R  (solve for T1, T2 ≥ 0)       then (a second pass) the means along the legs found
+T_route = T1 + T2 ; a route with T1 < 0 or T2 < 0 is not timed
+gain = T_present − (T_other + t_man)                 t_man of §4.3: the tack (gybe) it costs
+tack (trigger 6 of §4.4)  when gain > m·T_present + 1 s for three evaluations
+stay                      while T_other − T_present > 3 s
+```
+
+With a uniform current and no trend both routes take the same time (they are the two sides of one parallelogram):
+only a stream that differs across the course (stronger mid-channel, weaker inshore or over a bank) or a turning wind
+makes a side pay. The margin `m` is the level's (§13). The wind's own shifts are left to triggers 4 and 5.
 
 ## 5. The start
 
@@ -192,7 +229,7 @@ With `n̂` the line normal towards the course side and `w` towards `TWD_ref`:
 ### 5.3 Approach heading
 
 Starboard tack, towards the spot: the heading of the bearing to the spot corrected for the current (§4.2), its TWA
-kept between `θ_CH + 2°` and 115°. The **setup bearing** `ψ_app = TWD_f − (θ_CH + 25°)` is the middle of the sector
+kept between `θ_CH + 2°` and 115° (after the correction too). The **setup bearing** `ψ_app = TWD_f − (θ_CH + 25°)` is the middle of the sector
 from which the spot can be laid on starboard (between close-hauled and a beam reach): a setup point on it stays
 inside that sector when the boat drifts while parked, where a point on the close-hauled edge would not.
 
@@ -217,7 +254,9 @@ v = v0 ; x = 0 ; t = turn_time (+ 2 s if the sails are let fly: they take that l
 while x < d_path:                                 steps of 0.1 s, at most 120 s
     V = polar(TWS_f, θ_a)·scale
     a = v < V ? (v < V/2 ? accel_rest + (accel − accel_rest)·v/(V/2) : accel) : 0     boat.md §5.8, at θ_a
-    v = min(v + a·0.1, V) ; x = x + v·0.1 ; t = t + 0.1
+    v = min(v + a·0.1, V) ; x = x + v_g·0.1 ; t = t + 0.1
+                                                  v_g = sqrt(max(0, v² − c_x²)) + c_a: over the ground, with the
+                                                  current along (c_a) and across (c_x) the path to the spot
 t_run = t
 θ_a, ψ_a = the approach TWA and heading of §5.3 from the present position
 d_path = distance from the bow to the spot (straight line)
@@ -245,8 +284,9 @@ points her more at the line), not the present one. **Hard brake**, within the sa
 sails let fly (the deceleration law of `boat.md` §5.8 from the present speed, down to `let_fly_drive · v`, the drive
 the let-fly sails keep), times the share of it towards the line, would bring the bow to within `0.3·L` of the line
 before −0.3 s, or she is within `0.3·L` already: let fly and luff to `|twa| = 40°`. The coast is read from the
-class's own deceleration and let-fly drive, so a class that coasts far starts braking earlier. Never cross early on
-purpose.
+class's own deceleration and let-fly drive, so a class that coasts far starts braking earlier. A current setting
+towards the line adds its drift until the gun (`max(0, current·n̂)·min(−t_race, 30 s)`) to both the distance within
+which she brakes and the coast. Never cross early on purpose.
 
 ### 5.7 Launch and OCS
 
@@ -277,7 +317,9 @@ the line's middle and start as in fleet with `u* = 0.5`. Dial-ups and hooks are 
   takes hold: the **reaction time** `t_r = yaw_time + 0.5 / helm_rate` (the hull's yaw lag and the rudder's travel
   to half helm, `boat.md` §5.9), read from the class's data, so the margin follows the boat and its speed. `ρ` is at
   least the turning radius at the helm of a smooth turn (0.6, §10): a tighter circle cannot be followed, and a boat
-  that cannot follow it swings out of it on the exit.
+  that cannot follow it swings out of it on the exit. In a current `c` the circle grows by the set over the reaction
+  and the first quarter of the turn, half of it towards the mark on average:
+  `0.5·|c|·(t_r + (π/2)·R_0.6 / max(|v|, 1 m/s))`.
 - **Aim point** while more than `4·L` away: the tangent point of the circle on the required side as seen from the
   boat. Within `4·L`: follow the circle; the turn starts when the distance to the tangent point is below the turning
   radius at the planned helm (`boat.md` §5.9 radius law), so the boat leaves the circle on the exit tangent towards the next leg's
@@ -292,7 +334,8 @@ the line's middle and start as in fleet with `u* = 0.5`. Dial-ups and hooks are 
   winding test counts it. With less than `70°` of winding to go she leaves on the exit heading once the guide has
   turned past it.
   - Guide above close-hauled: the present tack if it moves round in the rounding direction and passes the mark on
-    the required side by at least `0.9·ρ` (or the mark is behind), else a beat to the pass point on its laylines, so
+    the required side by at least `0.9·ρ` (or the mark is behind), both judged along the course over ground the tack
+    makes (§4.2: the current sets her on or off the mark; so does the wrong-side test below and in §7.2), else a beat to the pass point on its laylines, so
     a boat that cannot lay the mark tacks away early and comes back on the layline, not at the mark. A present tack
     that runs at the mark on the wrong side, passing it closer than `ρ + 0.5·L` within `ρ + 3·L`, tacks away at
     once (if the tack is safe) instead of sailing on to the mark.
@@ -325,7 +368,8 @@ from the next leg's TWA:
 ### 6.4 Course objects
 
 Every decision, the planned heading is checked against every course object (marks, committee and mark boats,
-`courses.md` §2) ahead within `max(3·L, 6 s)` of travel: one whose centre is closer to the track than
+`courses.md` §2) ahead within `max(3·L, 6 s)` of travel along the course over ground it makes (§4.2; a tangent found
+there is turned back into the heading that makes it good): one whose centre is closer to the track than
 `r + 0.5·B + 1 m + 0.15·L` (a committee or mark boat another `0.5·L`: the bow of a boat still turning onto the
 tangent reaches its long flat side first) is passed by the tangent to that clearance circle on the side it is on
 (the other side when that side is above close-hauled). The mark being rounded is only checked for a collision course (clearance
@@ -342,6 +386,18 @@ side) in 5° steps up to 45° and not above close-hauled; when none does, it is 
 So a rounding that would touch is dropped before the touch, whatever the class's turning circle and speed.
 Tacks, gybes (§7.3) and the avoidance candidates (§7.2) are rejected when the predicted hull would touch a course
 object.
+
+### 6.5 Pinned on an object
+
+A boat in contact with a course object, an obstacle or land (the contacts of the last collision step, felt as a
+bump; one within the last second counts, since the contact comes and goes while she lies against it) with less than
+0.3 m/s over the ground for 2 s is **pinned** (a current holding her on a mark, a crowd pressing her onto a committee
+boat). Racing, she then sails for 6 s on the heading that takes her away: the bow not into the object
+(`dot(dir(ψ), n) ≥ 0`, `n` the contact normal towards her), the course over the ground leading most directly away
+(`dot(V(ψ)·dir(ψ) + current, n) + 0.5·dot(dir(ψ), n) − 0.3·|ψ − ψ_now|`, 5° steps, not above close-hauled), on the
+present tack (a stopped boat cannot tack), else on the other by bearing away round; the sails drawing and the helm
+free of the drag limit (tactic `Land`). Still held after 8 s, she lets fly for 6 s out of every 12 so the stream
+carries her round the object, then sails again. Rules avoidance (§7) still applies.
 
 ### 6.3 Gate choice
 
@@ -556,6 +612,7 @@ anyone else.
 | Rounding clearance `c_lvl` | 1.5·B | 1.0·B | 0.6·B | 0.4·B |
 | Bad-air reaction | 6 s, no anticipation | 3 s | 2 s, anticipates | 2 s, anticipates |
 | Covers | no | match only | yes | yes |
+| Stream and trend margin `m` (§4.7) | off | 2 % | 1.2 % | 0.6 % |
 
 - The race layer sets the AI boat's `performance_scale` (`boat.md` §2, §5.8: it multiplies the target speed of
   every config at every angle) to the level's value at spawn, for the whole race (`race.md` §3.5). It is the main
@@ -644,11 +701,36 @@ taken in time: before, each added a `44.1-late` penalty, after, each disqualifie
 | speed only, mean place by level | 6.0 / 4.8 / 4.0 / 3.3 | 7.2 / 3.5 / 2.8 / 4.7 |
 | full AI race (`core_long`, seed 33) | 6/10 finish | 9/10 finish |
 
+**Current, a trending wind and the venues (WM-111).** `ai_races` also races ten Intermediate boats at the Solent on
+its own conditions with the tide forced to a strong flood, a strong ebb and slack (seeds 1 and 2 each): at least
+80 % finish, nobody stopped for more than 60 s, at most one windward approach in five overstood by more than 10 s
+and at most 8 s overstood per approach on average, and the beats lean further to the left (the shore, out of the
+stream) in the flood than in the ebb. The windward approach measure: from a boat's last tack to the mark, the time
+sailed more than 10° freer than her own median close-hauled TWA on that leg, farther than `3·L` from the mark.
+Measured over 80 seeds each (10 Intermediate boats, `AI_VENUE=<venue> [AI_TIDE=flood|ebb|slack]`), before and after:
+
+| venue | finished | DSQ/race | winner (s) | boats stopped > 60 s (races) | overstood s/approach (> 10 s) | beats' side |
+| --- | --- | --- | --- | --- | --- | --- |
+| Solent flood | 92.0 → 92.1 % | 0.80 → 0.78 | 1174 → 1134 | 17 → 14 (longest 129 → 132 s) | 1.6 (5 %) → 2.4 (9 %) | +49 → +99 m |
+| Solent ebb | 94.4 → 97.6 % | 0.50 → 0.21 | 803 → 796 | 15 → 6 (longest 1101 → 93 s) | 5.5 (12 %) → 5.3 (10 %) | +39 → +35 m |
+| Solent slack | 94.9 → 94.0 % | 0.51 → 0.60 | 915 → 915 | 2 → 1 | 3.4 (14 %) → 3.1 (12 %) | +58 → +60 m |
+| Solent, drawn tide | 92.1 → 92.6 % | 0.76 → 0.68 | 926 → 918 | 11 → 8 (longest 481 → 118 s) | 3.3 (8 %) → 3.6 (10 %) | +49 → +59 m |
+| Fremantle | 95.9 → 95.8 % | 0.41 → 0.42 | 1038 → 1039 | 4 → 6 | 2.4 (6 %) → 2.8 (7 %) | +55 → +68 m |
+| Trieste (200 seeds) | 96.3 → 96.3 % | 0.37 → 0.36 | 981 → 987 | 19 → 11 | 2.7 → 2.7 | +43 → +43 m |
+| Garda | 95.1 → 95.2 % | 0.46 → 0.45 | 742 → 742 | 3 → 3 | 2.9 → 2.9 | +47 → +47 m |
+
+The flood's start had boats in irons behind the line (the current correction solved at their own low speed turned
+them into the wind): mean start delay 76 → 27 s. Open: in a strong stream a boat that touches the windward mark can
+still lie pinned on it for up to about two minutes before she gets clear (§6.5); a stream setting the fleet over the
+line still gives OCS 13 % of starts in the ebb (no current: 4 %).
+
 Development runs (skipped unless asked for, in `test_ai_race.cpp`): `AI_SCENE=1` races the game scene's fleet (6
 Expert wm7, 12 kn from 0°, the default shifts) over `AI_SEEDS=first,count` and prints per seed the first-mark
 roundings, mark touches, penalties, DSQs, finishes and OCS boats; `AI_FLEET=1` switches to the fleet of the runs
 above, `AI_WM12=1` to a mixed wm7 and wm12 fleet, `AI_TRACE` writes a CSV of every boat every 0.5 s (with the reason
-of the last manoeuvre and why a penalty turn waits), and `AI_SNAP=<dir>` resumes a race the game saved (the world
+of the last manoeuvre and why a penalty turn waits), `AI_VENUE=<venue>` races a venue on its own conditions over
+`AI_SEEDS` (with `AI_TIDE`, `AI_N`, `AI_LEVEL`, `AI_MIXED`) and prints the windward approaches and the beats' side,
+and `AI_SNAP=<dir>` resumes a race the game saved (the world
 snapshot and the skippers' block, `world.bin` and `ai.bin`, boat 0 the player) instead of creating one, so a
 failure seen in the game scene is replayed in the core.
 
@@ -660,13 +742,14 @@ themselves and serialise it as a **block of their own**, taken at the same momen
 ticks) and stored or sent next to it:
 
 ```
-uint32 magic 0x49414D57 ("WMAI"), uint32 version = 1
+uint32 magic 0x49414D57 ("WMAI"), uint32 version = 2
 uint32 tick (the world's next tick), uint64 race_seed, uint32 boat count of the world
 list   AI boats, in the order they were added:
   int32 boat index
   every carried field of the per-boat state (ai_internal.h, AiSkippers::Boat) in declaration order: level,
     speed_only, autopilot_only, active; the RNG draw counters of streams 16 and 17 (§1); the wind filters; the
-    manoeuvre, strategy, start, rules, bad air, cover, penalty and sail state; the outputs of the last decision
+    manoeuvre, strategy (with the stream and trend routing of §4.7), start, rules, pinned (§6.5), bad air, cover,
+    penalty and sail state; the outputs of the last decision
     (target heading, let fly, fixed helm, helm integral, tactic); the telemetry (§15) and the debug record
   list bad air records (§15): uint32 tick, float deficit at the trigger, float deficit 20 s later
 ```

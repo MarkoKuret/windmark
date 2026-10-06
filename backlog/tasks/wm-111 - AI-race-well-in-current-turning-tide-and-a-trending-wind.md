@@ -1,9 +1,11 @@
 ---
 id: WM-111
 title: 'AI: race well in current, turning tide and a trending wind'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@ai-current'
 created_date: '2026-10-06 08:27'
+updated_date: '2026-10-06 12:43'
 labels:
   - venues
   - ai

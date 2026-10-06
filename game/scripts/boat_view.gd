@@ -991,6 +991,24 @@ func _update_sheet(beta: float) -> void:
 	_sheet_mesh.surface_set_material(0, mat)
 
 
+## The mainsheet's positions as drawn now (model frame of its level): the rest tackle sheared toward the boom end at
+## the boom angle drawn (tests and the offline previews; the renderer may hold them in place only).
+func sheet_positions() -> PackedVector3Array:
+	var v := PackedVector3Array()
+	if _sheet == null:
+		return v
+	var d := _about(_boom_pivot, _boom_axis, boom_angle) * _sheet_top - _sheet_top
+	v.resize(_sheet_rest.size())
+	for k in v.size():
+		v[k] = _sheet_rest[k] + d * _sheet_w[k]
+	return v
+
+
+## The mainsheet node shown now, null without one.
+func sheet_node() -> MeshInstance3D:
+	return _sheet
+
+
 ## Whether the mainsheet's positions can be rewritten in place: an uncompressed surface whose vertex stream is the
 ## positions alone (stride 12). Sets its custom AABB to cover the tackle at any boom angle.
 func _sheet_writable() -> bool:

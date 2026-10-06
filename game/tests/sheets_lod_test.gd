@@ -353,6 +353,21 @@ func _lods(id: String) -> void:
 	t.ok(b0 != null and (b0.transform.basis * Vector3.BACK).dot(Basis(Vector3.UP, bv.boom_angle)
 		* (bv.levels[0]["boom_rest"] as Transform3D).basis * Vector3.BACK) > 0.999, "the boom at the main's angle at 300 m")
 	t.ok(bv.levels[0]["rudder"] != null, "the rudder is its own node")
+	# the mainsheet's top stays under the upper block on the boom as it swings (sail_visuals.md §11.4)
+	var sp := bv.sheet_positions()
+	var y1 := -INF
+	for q in sp:
+		y1 = maxf(y1, q.y)
+	var top := Vector3.ZERO
+	var nt := 0
+	for q in sp:
+		if q.y > y1 - 0.02:
+			top += q
+			nt += 1
+	top /= maxf(nt, 1)
+	var want: Vector3 = b0.transform * (bv.levels[0]["boom_rest"] as Transform3D).affine_inverse() * bv._sheet_top
+	t.ok(nt > 0 and Vector2(top.x - want.x, top.z - want.z).length() < 0.02,
+		"the mainsheet's top under the boom's block at the boom angle (%.3f m off)" % Vector2(top.x - want.x, top.z - want.z).length())
 	bv.queue_free()
 
 

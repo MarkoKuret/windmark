@@ -127,6 +127,8 @@ var SHOTS := [
 		"cam": {"mode": "boat", "eye": [-1.6, 2.6, -0.2], "at": [0.0, 0.9, 2.2], "fov": 55.0}},
 	{"name": "fittings_wm7_coachroof", "cls": "wm7", "n": 1, "twa": 42.0, "t": 20.0, "liveries": ["kestrel"],
 		"cam": {"mode": "boat", "eye": [-1.2, 1.9, -1.8], "at": [0.0, 0.5, 0.4], "fov": 55.0}},
+	{"name": "boom_wm12", "cls": "wm12", "n": 1, "twa": 40.0, "t": 20.0, "liveries": ["nightjar"],
+		"cam": {"mode": "boat", "eye": [-4.5, 2.4, -2.6], "at": [0.0, 1.6, -3.0], "fov": 50.0}},
 	{"name": "lod_wm7_25", "cls": "wm7", "n": 1, "twa": 42.0, "t": 20.0, "liveries": ["kestrel"],
 		"cam": {"mode": "boat", "eye": [-22.50, 7.25, 10.12], "at": [0.00, 3.20, 0.00], "fov": 29.15}},
 	{"name": "lod_wm7_35", "cls": "wm7", "n": 1, "twa": 42.0, "t": 20.0, "liveries": ["kestrel"],
@@ -320,6 +322,8 @@ func _dump(spec: Dictionary, views: Array) -> void:
 				if is_sail:
 					pos = sail_nodes[mi].shape.positions()
 					nrm = sail_nodes[mi].shape.normals()
+				if mi == bv.sheet_node():  # the mainsheet as swung with the boom (headless keeps no in-place writes)
+					pos = bv.sheet_positions()
 				if is_sheets:  # headless keeps no in-place writes: the sheets as last drawn, from their shapes
 					var shp: Variant = bv.sheets.surface_shape(si)
 					pos = shp.positions()

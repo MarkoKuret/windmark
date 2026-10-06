@@ -257,9 +257,9 @@ in vec4 v_uv;
 in float v_port;
 flat in float v_side;
 in vec4 v_extra;
-uniform vec4 slot_color[24];
-uniform vec4 slot_pbr[24];
-uniform vec4 slot_map[24];
+uniform vec4 slot_color[32];
+uniform vec4 slot_pbr[32];
+uniform vec4 slot_map[32];
 uniform sampler2D tile_color;
 uniform sampler2D tile_mr;
 uniform sampler2D tile_normal;
@@ -313,7 +313,7 @@ void main() {
             vec3 orm = texture(bk_orm, at).rgb;
             float flat_k = 1.0;
             if (region == 2) {
-                flat_k = smoothstep(0.35, 0.7, abs(normalize(v_n).y));
+                flat_k = max(smoothstep(0.35, 0.7, abs(normalize(v_n).y)), sm.w);
                 float ns = orm.b * flat_k;
                 vec2 nuv = v_uv.xy * deck_tiles.w;
                 det = mix(det, srgb(tile_tex(tile_color, nuv, deck_tiles.z).rgb) / detail_mean, ns);

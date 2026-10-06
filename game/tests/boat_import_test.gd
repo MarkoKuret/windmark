@@ -22,7 +22,7 @@ const BOAT_DIR := "res://generated/boats"
 const KNOWN_MATERIALS := ["boat", "sailcloth", "shadow"]
 ## slots of the boat material every LOD0 has (data_format.md §8.5)
 const REQUIRED_SLOTS := ["hull_gelcoat", "hull_boottop", "hull_antifouling", "deck_gelcoat", "deck_nonslip", "transom",
-	"keel", "carbon", "metal", "rope_mainsheet"]
+	"keel", "carbon", "metal", "rope_mainsheet", "deck_face"]
 ## sail_visuals.md §11.4: surfaces drawn without the sails (body and the moving parts)
 const MAX_SURFACES := 6
 ## the camera the automatic levels are read for: 1920 pixels wide, 60 deg vertical field of view at 16:9, the

@@ -383,7 +383,7 @@ func _ropes(id: String) -> void:
 	# the mainsheet tackle drawn, the halyards, coils and control lines painted on the deck
 	var bm := bv.livery_materials[0] as ShaderMaterial
 	var col: PackedVector4Array = bm.get_shader_parameter("slot_color")
-	for fn in ["mainsheet", "halyard", "control"]:
+	for fn in ["mainsheet", "halyard_main", "halyard_jib", "control"]:
 		var r: Dictionary = lv.ropes.get(fn, {}) if lv.ropes.has(fn) else Livery.rope_set_of({}, [])[fn]
 		var c := Livery.rope_mean(r).srgb_to_linear()
 		var v := col[BoatMaterials.slot_id("rope_" + fn)]

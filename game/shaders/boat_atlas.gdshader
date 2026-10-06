@@ -3,7 +3,8 @@
 // (slot id / 255; COLOR.r is the baked ambient occlusion). The slot table gives the slot's mean colour (linear),
 // roughness, metallic, its tile in the shared tiling atlas (a 4 x 2 grid of 512 tiles: tile_color, tile_mr,
 // tile_normal) with the tile size in metres of uv0, and its livery region:
-//   0 none (the slot colour), 1 hull, 2 deck, 3 transom (the boat's livery atlas on uv1), 4 keel (the atlas in side
+//   0 none (the slot colour), 1 hull, 2 deck (and the coachroof's aft face on its own rectangle of the deck image),
+//   3 transom (the boat's livery atlas on uv1), 4 keel (the atlas in side
 //   view of the model frame), 5 keel colour (the slot colour, which the livery sets).
 // With the livery atlas (bk_on) the regions read its albedo, normal and ORM maps (the deck's ORM blue is the
 // non-slip mask, which picks the non-slip tile's detail over the gelcoat's); without it the regions take the slot
@@ -14,11 +15,12 @@
 shader_type spatial;
 render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx;
 
-const int SLOTS = 24;
+const int SLOTS = 32;
 const int HULL_GELCOAT = 0;
 
 // the slot table: colour (linear rgb, a: normal strength), pbr (roughness, metallic, tile index, 1 / tile size m),
-// map (region, ao strength, specular, unused)
+// map (region, ao strength, specular, steep: 1 when a steep face reads its own map (the coachroof's aft face, on its
+// own rectangle of the deck image), 0 when a steep deck face takes the slot's plain colour)
 uniform vec4 slot_color[SLOTS];
 uniform vec4 slot_pbr[SLOTS];
 uniform vec4 slot_map[SLOTS];
@@ -112,7 +114,7 @@ void fragment() {
 			float flat_k = 1.0;
 			if (region == 2) {
 				// the deck's non-slip by the mask; steep faces (coamings, cabin sides) keep plain gelcoat
-				flat_k = smoothstep(0.35, 0.7, v_up);
+				flat_k = max(smoothstep(0.35, 0.7, v_up), sm.w);
 				float ns = orm.b * flat_k;
 				vec2 nuv = UV * deck_tiles.w;
 				det = mix(det, tile_tex(tile_color, nuv, deck_tiles.z).rgb / detail_mean, ns);

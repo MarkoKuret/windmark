@@ -16,7 +16,7 @@ const ATLAS_SHADER := preload("res://shaders/boat_atlas.gdshader")
 ## livery regions of the slot table (data_format.md §8.5)
 const REGIONS := ["", "hull", "deck", "transom", "keel", "keel_colour"]
 ## the shader's slot arrays
-const SLOTS := 24
+const SLOTS := 32
 
 ## "<texture_set>/<map>" -> Texture2D, map in albedo, mr, normal
 static var _textures := {}
@@ -76,7 +76,8 @@ static func atlas_for(src: StandardMaterial3D) -> ShaderMaterial:
 		col[i] = Vector4(c[0], c[1], c[2], float(sl.get("normal_scale", 1.0)))
 		pbr[i] = Vector4(float(sl.get("roughness", 0.5)), float(sl.get("metallic", 0.0)), float(sl.get("tile", 7)),
 				1.0 / maxf(float(sl.get("tiling_m", 1.0)), 1e-3))
-		map[i] = Vector4(float(REGIONS.find(String(sl.get("region", "")))), 1.0, 0.5, 0.0)
+		map[i] = Vector4(float(REGIONS.find(String(sl.get("region", "")))), 1.0, 0.5,
+				1.0 if bool(sl.get("steep_map", false)) else 0.0)
 		_slot_names.append(String(sl.get("name", "")))
 		_slot_ids[String(sl.get("name", ""))] = i
 	m.set_shader_parameter("slot_color", col)

@@ -1,4 +1,4 @@
-"""Terrain from an elevation model (venues.md §5.7, data_format.md §6.10), the land split, and the prep tools."""
+"""Terrain from an elevation model (venues.md §5.7, data_format.md §6.10) and the prep tools."""
 
 import copy
 import gzip
@@ -214,29 +214,6 @@ def test_terrain_needs_its_dem(tsrc):
     tsrc["terrain"]["dem"] = ["missing.tif"]
     with pytest.raises(SourceError):
         build(tsrc)
-
-
-def test_big_land_is_split(src):
-    """A big land polygon is cut into tiles of at most `split` m; the pieces cover the same land."""
-    big = [[-3000.0, 1000.0], [3000.0, 1000.0], [3000.0, 4000.0], [800.0, 4000.0], [0.0, 1600.0],
-           [-800.0, 4000.0], [-3000.0, 4000.0]]
-    src["coastline"] = [{"source": "t", "frame": "local", "role": "land",
-                         "polygons": [{"id": "shore", "height": 30, "points": big}]}]
-    doc, notes = build(src)
-    pieces = doc["land"]
-    assert len(pieces) > 4 and len({l["id"] for l in pieces}) == len(pieces)
-    for l in pieces:
-        p = np.array(l["points"])
-        assert p[:, 0].max() - p[:, 0].min() <= 1000.0 + 1e-6 and p[:, 1].max() - p[:, 1].min() <= 1000.0 + 1e-6
-        assert signed_area(p) > 0
-    # same land: points in the union are in the original
-    rng = np.random.default_rng(3)
-    x = rng.uniform(-2900, 2900, 400)
-    y = rng.uniform(900, 3000, 400)
-    a = points_in_land(x, y, [{"points": np.array(l["points"], float)} for l in pieces])
-    b = points_in_land(x, y, [{"points": np.array(big, float)}])
-    assert np.array_equal(a, b)
-    assert validate(json.loads(dumps(doc))) == []
 
 
 def test_prep_tools():

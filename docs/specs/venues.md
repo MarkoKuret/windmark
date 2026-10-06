@@ -192,7 +192,7 @@ where each source of §3 comes from.
 | `current` | the current field description (§5.4); absent: no `current_field` |
 | `exposure` | `{ "from": rad, ... }`: the typical wind direction the exposure grid is made for [`conditions.wind.from`, else 0], plus §5.5 constants; `false`: no exposure grid |
 | `wind` | §5.3 constants; `"wind_field": false` leaves the field out |
-| `simplify` | `inside` [5 m], `outside` [20 m], `outside_max` [160 m], `min_area` [20 m²], `land_margin` [1000 m], `field_margin` [3000 m], `field_tolerance` [10 m], `split` [1000 m] |
+| `simplify` | `inside` [5 m], `outside` [20 m], `outside_max` [160 m], `min_area` [20 m²], `land_margin` [1000 m], `field_margin` [3000 m], `field_tolerance` [10 m] |
 | `grids` | `margin` [1000 m]: every grid covers `bounds` grown by this; `wind`, `current`, `exposure`: the wanted spacing [100 m], coarsened to a multiple of 10 m when the caps of §4.1 need it |
 | `conditions`, `briefing` | copied to the venue file (`data_format.md` §6.7, §6.8) after the checks there |
 | `terrain` | the drawn terrain and the elevation model (§5.7); a string is only free text for the `source` note |
@@ -221,10 +221,9 @@ The written land is simplified with Douglas-Peucker at `inside` within `bounds` 
 clip box edge are kept), checked simple and counter-clockwise on the binary32 values the core reads (the tolerance is
 halved for a polygon until it is), and pieces under `min_area` are dropped (rocks are obstacles). Over the vertex caps
 of §4.1, `outside` is doubled up to `outside_max`; still over, `venuegen` refuses (shrink `bounds` or split the
-land). Land ids come from the input polygon ids, else `land_1`, `land_2`, ... in output order. A written polygon
-wider or taller than `split` (a lake's whole surroundings, a mainland) is then cut on a grid of that spacing into
-pieces `<id>_1`, `<id>_2`, ... that share their cut edges, so the core's per-polygon bounding tests reject the far
-shore (the fields and the terrain use the uncut land). The land is rasterised on a 25 m work grid
+land). Land ids come from the input polygon ids, else `land_1`, `land_2`, ... in output order. Big land polygons
+(a lake's whole surroundings, a mainland) stay whole: the core's land queries go through a per-polygon edge grid
+(WM-115), and cutting the land into tiles measured slower with it. The land is rasterised on a 25 m work grid
 (`wind.work_resolution`) with each polygon's height, or with the elevation model's where the source has one (§5.7).
 
 ### 5.3 Wind field

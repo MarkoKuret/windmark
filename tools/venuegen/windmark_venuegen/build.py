@@ -27,7 +27,6 @@ SIMPLIFY_DEFAULTS = {
     "land_margin": 1000.0,  # m, written land is clipped to bounds grown by this
     "field_margin": 3000.0,  # m, land used for the fields is clipped to bounds grown by this
     "field_tolerance": 10.0,  # m
-    "split": 1000.0,        # m, written land polygons wider or taller than this are cut into tiles of this size
 }
 
 GRID_DEFAULTS = {"margin": 1000.0, "wind": 100.0, "current": 100.0, "exposure": 100.0}
@@ -92,49 +91,6 @@ def _simplify_all(rings, bounds, box, tol_in, tol_out, min_area, notes):
             continue
         out.append({"points": q, "height": r["height"], "id": r.get("id")})
     return out
-
-
-def _split_land(land, size, notes):
-    """Land polygons whose box is wider or taller than `size` cut on a grid of that spacing (aligned to world
-    0), so the core's per-polygon bounding tests reject the far shore of a big piece of land (a lake's whole
-    surroundings); the pieces share their cut edges and keep the polygon's id with a suffix."""
-    out = []
-    for p in land:
-        q = p["points"]
-        lo, hi = q.min(axis=0), q.max(axis=0)
-        if size <= 0 or max(hi[0] - lo[0], hi[1] - lo[1]) <= size:
-            out.append(p)
-            continue
-        pieces = []
-        for gx in np.arange(math.floor(lo[0] / size) * size, hi[0], size):
-            for gy in np.arange(math.floor(lo[1] / size) * size, hi[1], size):
-                tile = (float(gx), float(gy), float(gx + size), float(gy + size))
-                for r in clip_to_box([{"points": q, "closed": True, "height": None}], tile):
-                    pts = _snap_tile(r["points"], tile)
-                    if len(pts) >= 3 and signed_area(pts) > 1.0:
-                        pieces.append(pts)
-        for k, pts in enumerate(pieces):
-            out.append({"points": pts, "height": p["height"], "id": f"{p['id']}_{k + 1}"})
-        notes.append(f"land {p['id']} cut into {len(pieces)} pieces of at most {size:g} m")
-    return out
-
-
-def _snap_tile(pts, tile):
-    """Clip points nudged off the tile edge back onto it (the pieces then share their cut edges exactly) and
-    repeated points dropped."""
-    pts = pts.copy()
-    for k, lim in ((0, tile[0]), (0, tile[2]), (1, tile[1]), (1, tile[3])):
-        near = np.abs(pts[:, k] - lim) < 1e-2
-        pts[near, k] = lim
-    keep = np.any(np.abs(pts - np.roll(pts, 1, 0)) > 1e-6, axis=1)
-    pts = pts[keep]
-    # drop collinear points along the tile edges
-    keep = np.ones(len(pts), bool)
-    for k in range(len(pts)):
-        a, b, c = pts[k - 1], pts[k], pts[(k + 1) % len(pts)]
-        if abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])) < 1e-9:
-            keep[k] = False
-    return pts[keep]
 
 
 def _land_ids(polys):
@@ -294,8 +250,7 @@ def build(src, terrain_out=None):
         e = exposure(eg, R, mask, land, wfrom, float(src.get("fetch", 10000.0)), ep)
         doc["exposure"] = {"grid": eg, "e": _round(e, 3)}
 
-    out_land = _split_land(land, simp["split"], notes)
-    doc["land"] = [{"id": p["id"], "points": [[_num(v) for v in q] for q in p["points"]]} for p in out_land]
+    doc["land"] = [{"id": p["id"], "points": [[_num(v) for v in q] for q in p["points"]]} for p in land]
     doc["obstacles"] = copy.deepcopy(src.get("obstacles", []))
     if "conditions" in src:
         doc["conditions"] = copy.deepcopy(src["conditions"])

@@ -114,7 +114,7 @@ regression.
 
 | Item | Cap | Why |
 | --- | --- | --- |
-| Land polygons (`data_format.md` §6.5) | at most 4000 vertices in total, at most 1500 per polygon; simplified (Douglas-Peucker) with a 5 m tolerance inside `bounds`, coarser outside; clipped to `bounds` grown by 1 km | collision and AI land checks scale with nearby edges |
+| Land polygons (`data_format.md` §6.5) | at most 4000 vertices in total, at most 1500 per polygon; simplified (Douglas-Peucker) with a 5 m tolerance inside `bounds`, coarser outside (20 m unless the source says otherwise, §5.2); clipped to `bounds` grown by 1 km | collision and AI land checks scale with nearby edges |
 | Obstacles | at most 64 | |
 | `wind_field` grid | at most 96 × 96 nodes, spacing at least 50 m | 8 sectors: at most 0.6 MB in memory, 75 KB per texture upload |
 | `current_field`, `exposure` grids | at most 128 × 128 nodes each, spacing at least 50 m | |
@@ -148,3 +148,104 @@ regression.
 The drawn land comes from the same coastline and terrain sources as the physics land but is simplified separately;
 the shore drawn inside `bounds` must stay within 5 m of the physics land so boats never visibly hit water or pass
 through rock.
+
+## 5. The venue generator (`tools/venuegen`)
+
+`venuegen` turns a hand-owned **venue source file** and its coastline inputs into the venue file of
+`data_format.md` §6. Everything in the generated grids and land comes from the land shape and the source's numbers;
+nothing is edited by hand afterwards (the tool's tests regenerate each `data/venues/<id>.venue.json` from its source and
+compares). The model below is deliberately simple and deterministic (NumPy, no randomness); its constants are
+defaults that a venue may override in its source, and the venue tasks tune them against a test race.
+
+### 5.1 Source file (`windmark.venuesrc/1`)
+
+`data/venue_sources/<id>.venuesrc.json`, JSON, SI units and radians like the venue file (`data_format.md` §1).
+Raw coastline downloads live in `data/venue_sources/raw/` (not committed, `.gitignore`); the README of the tool says
+where each source of §3 comes from.
+
+| key | meaning |
+| --- | --- |
+| `schema` | `"windmark.venuesrc/1"` |
+| `id`, `name`, `version`, `origin`, `bounds`, `fetch`, `exposure_default` | copied to the venue header (`data_format.md` §6.1); `version` is bumped by hand on every change |
+| `coastline` | list of inputs (below); empty or absent: open water |
+| `land_height` | m [20]: height of land with no height of its own (drives the wind effects, §5.3) |
+| `obstacles` | copied as they are (`data_format.md` §6.5) and validated |
+| `current` | the current field description (§5.4); absent: no `current_field` |
+| `exposure` | `{ "from": rad, ... }`: the typical wind direction the exposure grid is made for [`conditions.wind.from`, else 0], plus §5.5 constants; `false`: no exposure grid |
+| `wind` | §5.3 constants; `"wind_field": false` leaves the field out |
+| `simplify` | `inside` [5 m], `outside` [20 m], `outside_max` [160 m], `min_area` [20 m²], `land_margin` [1000 m], `field_margin` [3000 m], `field_tolerance` [10 m] |
+| `grids` | `margin` [1000 m]: every grid covers `bounds` grown by this; `wind`, `current`, `exposure`: the wanted spacing [100 m], coarsened to a multiple of 10 m when the caps of §4.1 need it |
+| `conditions`, `briefing` | copied to the venue file (`data_format.md` §6.7, §6.8) after the checks there |
+| `terrain`, `note` | free text added to the venue's `source` note |
+
+A `coastline` input is one of
+- `{"frame": "local", "role": "land", "polygons": [{"id", "height", "points"}]}`: polygons in local metres (our own
+  shapes, e.g. the Practice island);
+- `{"path": "raw/...", "frame": "lonlat" | "local", "role": ..., "height": m}`: a GeoJSON file (Polygon,
+  MultiPolygon, LineString, MultiLineString) or an ESRI shapefile (`.shp` polygons or polylines; a `.prj`, when
+  present, must be geographic: projected data is reprojected to EPSG:4326 first). Lon/lat is projected to the
+  local east/north metres of the tangent plane at `origin` (WGS84).
+
+`role`: `land` (polygons are land; their holes are dropped), `water` (polygons are water, e.g. a lake; land is
+outside them, their holes are islands), `shore_left` / `shore_right` (open lines with the land on that side of
+their direction; they must run past the clip box at both ends). Each input may carry `source`, `version`,
+`downloaded` (date) and `licence`, which make up the venue's `source` note.
+
+### 5.2 Land
+
+The inputs are clipped to `bounds` grown by `land_margin` (the written land) and, separately, by `field_margin`
+(the land the grids are computed from, so a shore beyond the written land still shelters the water). Clipping keeps
+the land on the left of every path and closes the pieces along the clip box edge, counter-clockwise, so the result
+is simple counter-clockwise polygons; a water body wholly inside the box is handled by splitting the box through it.
+The written land is simplified with Douglas-Peucker at `inside` within `bounds` and `outside` beyond (points on the
+clip box edge are kept), checked simple and counter-clockwise on the binary32 values the core reads (the tolerance is
+halved for a polygon until it is), and pieces under `min_area` are dropped (rocks are obstacles). Over the vertex caps
+of §4.1, `outside` is doubled up to `outside_max`; still over, `venuegen` refuses (shrink `bounds` or split the
+land). Land ids come from the input polygon ids, else `land_1`, `land_2`, ... in output order. The land is
+rasterised on a 25 m work grid (`wind.work_resolution`) with each polygon's height.
+
+### 5.3 Wind field
+
+For each of the 8 sectors (`data_format.md` §6.2), with `u` the downwind unit vector:
+
+1. **Wake.** Marching downwind row by row, land of height `h` sets a speed deficit
+   `S = shadow_max · h / (h + shadow_h_ref)` [0.5, 15 m]; behind the land `S` decays as `exp(−s / L)` with
+   `L = wake_per_height · h` [30, clamped to 400 to 6000 m] and spreads sideways like a plane wake (diffusion with
+   `wake_diffusivity` [45 m]: width `sqrt(2 K s)`), so a rock's wake fades in a few hundred metres and a mountain's
+   lasts kilometres.
+2. **Shore bending.** The land mask blurred with `σ_b = bend_per_height · h̄` [6, clamped to 150 to 1000 m; `h̄`
+   the mean land height] gives the seaward shore normal `n` and a shore strength `b` (1 at a long straight shore,
+   fading over `σ_b`). Where the wind blows toward the shore, a share `onshore_block · b · h / (h + 15 m)` [0.5] of
+   its shoreward component is removed, so it turns to run along the shore (and slows close to it: the same share
+   times `b` again); where it blows off the shore, a share `offshore_turn · b` [0.5] of its along-shore component is
+   removed, so it leaves the shore more square to it. The offset `d` is the turn, at most `max_bend` [0.5 rad].
+3. **Coastal convergence.** With the land mask blurred over `coriolis_length` [1500 m], wind blowing along a shore
+   with the land on its right (looking downwind; on its left in the southern hemisphere, from `origin.lat`) is
+   stronger and with the land on its left weaker, by up to `coriolis` [8 %].
+4. `f = (1 − S) · blocking · convergence`, clamped to [0, 1.5]; `f` and `d` fade to `(1, 0)` over the outer
+   `taper` [500 m] of the grid, and the border nodes are exactly `(1, 0)`.
+
+### 5.4 Current field
+
+`current: {"to": rad, "speed": m/s, "shore_length", "shore_floor", "bank_blur", "banks": [{"id", "points",
+"factor"}]}`: a stream of `speed` toward `to` (for a tide, the spring-tide flood at tide factor 1), slowed near the
+shore to `shore_floor` [0.2] of it and recovering as `1 − exp(−d / shore_length)` [400 m] with the distance `d` to
+land; steered along the shore (the shoreward component removed with the shore strength of §5.3 at
+`σ = shore_length`, so a stream meeting land head-on also slows); over each bank polygon multiplied by its `factor`
+(edges softened over `bank_blur` [100 m]); zero on land. A uniform current of `conditions.current` needs no field.
+`ref_speed` follows `data_format.md` §6.3.
+
+### 5.5 Exposure
+
+For the typical wind direction (§5.1), the open-water fetch upwind of each node is found along 61 directions over
+`±spread` [90°] around it (rays stop at land; beyond the work raster the water is open; capped at the header
+`fetch`), and `E = Σ cos²(δ) · sqrt(F(δ) / fetch) / Σ cos²(δ)` (the wind-sea height grows with the square root of
+fetch, `sea.md` §2). Near the shore `E` is multiplied by `1 − exp(−d / fade_length)` [100 m, a few wavelengths],
+and land nodes are 0. So the windward side of an island sees the full sea and its lee is flat, fading back over the
+open water.
+
+### 5.6 Output and checks
+
+Numbers are written rounded (land to 0.1 m, `f`, `d`, current to 4 decimals, exposure to 3) and the file is
+checked against every rule of `data_format.md` §6 and the caps of §4.1 before it is written (`--check` validates
+any venue file). `venuegen` prints the land vertex count and any dropped piece or raised tolerance.

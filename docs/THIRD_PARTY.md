@@ -2,12 +2,12 @@
 
 | Name | Where used | Licence | Source |
 | --- | --- | --- | --- |
-| NumPy | tools/boatgen, tools/vpp, tools/soundgen, tools/liverybake (build time only), game/tests/water_preview.py and course_preview.py (test time only) | BSD-3-Clause | https://numpy.org |
+| NumPy | tools/boatgen, tools/vpp, tools/venuegen, tools/soundgen, tools/liverybake (build time only), game/tests/water_preview.py and course_preview.py (test time only) | BSD-3-Clause | https://numpy.org |
 | Pillow | tools/boatgen, tools/liverybake (build time only: PNG output and text), game/tests/water_preview.py and course_preview.py (test time only) | MIT-CMU (HPND) | https://python-pillow.org |
 | moderngl, glcontext | tools/boatgen previews (build time only: headless OpenGL), game/tests/water_preview.py, course_preview.py, livery_preview.py and livery_cost.py (test time only) | MIT | https://github.com/moderngl/moderngl |
 | SciPy | tools/vpp (build time only: root finding), tools/liverybake (build time only: the nearest-texel fill) | BSD-3-Clause | https://scipy.org |
 | Matplotlib | tools/vpp (build time only: polar plots) | Matplotlib licence (PSF-based, BSD-compatible) | https://matplotlib.org |
-| pytest | tools/vpp tests | MIT | https://pytest.org |
+| pytest | tools/vpp and tools/venuegen tests | MIT | https://pytest.org |
 | doctest 2.4.12 | core tests (`core/third_party/doctest`, test builds only) | MIT | https://github.com/doctest/doctest |
 | godot-cpp 10.0.0-stable (commit 507ed9d) | the GDExtension (`game/native`; fetched by `game/native/build.sh` into `game/native/third_party`, not committed), linked into `game/bin/libwindmark_godot.*` | MIT | https://github.com/godotengine/godot-cpp |
 | ambientCG Plastic013A | tools/boatgen/textures/orange_peel_* (processed: grey, 512 px), embedded in generated boat GLBs | CC0 1.0 | https://ambientcg.com/a/Plastic013A |

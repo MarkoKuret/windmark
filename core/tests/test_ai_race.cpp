@@ -289,14 +289,14 @@ TEST_CASE("ai race: a fleet completes races at every level (ai.md §13)") {
 }
 
 TEST_CASE("ai race: level separation in a mixed fleet and with speed-only levels (ai.md §13, §15)") {
-  // Mixed: 3 boats per level would need 12; 8 boats, 2 per level, 3 seeds.
+  // Mixed: 3 boats per level would need 12; 8 boats, 2 per level, 8 seeds (3 seeds was noise).
   std::vector<wm::AiLevel> mixed;
   for (int k = 0; k < 8; ++k) mixed.push_back(static_cast<wm::AiLevel>(k % 4));
   double place[4] = {0, 0, 0, 0}, time_sum[4] = {0, 0, 0, 0};
   int n[4] = {0, 0, 0, 0}, nt[4] = {0, 0, 0, 0};
   for (const bool speed_only : {false, true}) {
     for (int k = 0; k < 4; ++k) place[k] = time_sum[k] = n[k] = nt[k] = 0;
-    for (const std::uint64_t seed : {31u, 32u, 33u}) {
+    for (const std::uint64_t seed : {31u, 32u, 33u, 34u, 35u, 36u, 37u, 38u}) {
       wm_test::AiRaceSpec sp;
       sp.seed = seed;
       sp.levels = mixed;

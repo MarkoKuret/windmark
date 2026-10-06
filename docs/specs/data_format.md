@@ -556,10 +556,11 @@ exactly `f = 1, d = 0` (validated). Grids: §6.6. Sampling: `wind.md` §8.
 "current_field": { "grid": { … }, "vx": [ … ], "vy": [ … ],     // m/s at tide factor 1, east/north
                    "ref_speed": 1.29 }                            // m/s, written by venuegen
 ```
-Zero outside the grid. Used as `tide(t) · field` (`wind.md` §7). `ref_speed` (≥ 0, required with a field) is the
-90th percentile of `|(vx, vy)|` over the grid nodes inside `bounds` that are on water (outside every land
-polygon): the field's typical strong stream, which the briefing reads (`menus.md` §1.3). `venuegen` writes it and a
-venue test recomputes it.
+Zero outside the grid. Used as `tide(t) · field` (`wind.md` §7). `ref_speed` (≥ 0; `venuegen` always writes it,
+older files may lack it, §6.9) is the 90th percentile of `|(vx, vy)|` over the grid nodes inside `bounds` (edges
+included) that are on water (outside every land polygon): the field's typical strong stream, which the briefing
+reads (`menus.md` §1.3). The percentile interpolates linearly between the sorted values (position `0.9 · (n − 1)`,
+counted from 0); with no such node it is 0. A venue test recomputes it to within 0.001 m/s.
 
 ### 6.4 `exposure`
 ```json

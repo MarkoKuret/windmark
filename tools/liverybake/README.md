@@ -62,7 +62,8 @@ data/liveries/<class>/sails/            the class sail set, shared by the fleet
     layout.json                         the sails' plan rectangles, cloth, and the number slots
 data/liveries/<class>/rig/              the class rope set (data_format.md §8.7), shared by the fleet
     rope_<function>_albedo.png  512 x 512  one braid tile in the function's colours, sRGB: mainsheet, sheet,
-                                           kite_sheet, halyard, control
+                                           kite_sheet, halyard_main, halyard_jib, halyard_kite,
+                                           halyard_code, control
     rope_normal.png             512 x 512  the braid's relief, linear, shared by every function
     rope_orm.png                512 x 512  R occlusion, G roughness, B metallic (0); linear
 ```
@@ -150,9 +151,17 @@ Godot import settings. The game draws every opaque surface of a boat with one ma
   the deck below it at its own aspect, then the transom and the keel side by side, each region padded by its edge
   texels into a 16-texel gutter; `atlas.json` gives each region's rectangle in atlas uv (`regions`) and in texels
   (`pixels`). The masters in `data/liveries` keep their full size; the atlas is made from them.
+- **Baked realism** in the deck region (`atlas.deck_wear`, from the generator's height field of everything on the
+  deck): ambient occlusion and contact shadows under and round every fitting, along the coachroof's base, the toe
+  rail and in the cockpit's corners, faint grime where occluded, wear on the non-slip round the winches, the mast foot
+  and on the cockpit floor, a faint gelcoat colour and roughness variation; very faint variation on the hull and
+  transom and dried streaks below the transom's drain (`atlas.faint_variation`). Deterministic per class, subtle.
+- **The coachroof's aft face** on its own rectangle of the deck region (`atlas.face_base`, boatgen
+  `Deck.face_frame`): the deck's smooth gelcoat, with the halyard tails painted down it.
 - **Painted fittings** in the deck region (`liverybake/painted.py`): what is flat on the deck (the jib and traveller
   tracks, hatches, organisers, cam, horn and traveller cleats, the rudder bearing ring, and the halyards, coils,
-  tails and traveller lines only where they lie within 3.5 cm of the surface; `tools/boatgen` `Boat.painted_part`)
+  tails and traveller lines where they lie on surfaces (within 3.5 cm of the deck, and down the coachroof's aft
+  face), opaque in the rope set's colours; `tools/boatgen` `Boat.painted_part`)
   drawn from the generator's full-detail pieces seen from above: colour by
   material (stainless, black plastic and rubber, tinted lens, the class rope set's halyard, control and mainsheet
   colours), relief from the pieces' own normals, roughness by material, the non-slip mask cleared under them, and

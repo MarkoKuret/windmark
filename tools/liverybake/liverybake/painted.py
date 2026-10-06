@@ -16,13 +16,14 @@ from .common import ALBEDO_MAX, F32, blur, hex_lin, smoothstep
 SLOTS = {
     "metal": ((0.45, 0.45, 0.46), 0.30),
     "rubber": ((0.045, 0.045, 0.045), 0.80),
-    "carbon": ((0.04, 0.04, 0.042), 0.35),
+    "carbon": ((0.04, 0.04, 0.042), 0.30),
     "glass": ((0.025, 0.03, 0.036), 0.06),
     "gelcoat": ((0.72, 0.72, 0.70), 0.25),
     "nonslip": ((0.47, 0.47, 0.45), 0.80),
     "rope": ((0.34, 0.33, 0.31), 0.85),
 }
-ROPE_FN = {"rope_halyard": "halyard", "rope_control": "control", "rope_mainsheet": "mainsheet",
+ROPE_FN = {"rope_halyard_main": "halyard_main", "rope_halyard_jib": "halyard_jib", "rope_halyard_kite": "halyard_kite",
+           "rope_halyard_code": "halyard_code", "rope_control": "control", "rope_mainsheet": "mainsheet",
            "rope_sheet": "sheet", "rope_kite_sheet": "kite_sheet"}
 
 
@@ -100,6 +101,8 @@ def bake(pieces, plan, W, H, rope_set, ss=2):
     nothing: the colour where covered), "normal" (H, W, 3), "occ", "rough" (H, W), "shadow" (H, W): the contact
     shadow (0..1) for the deck under and round the fittings}."""
     sid, nrm, hgt, names = rasterize(pieces, plan, W, H, ss)
+    rope_k = [k for k, n in enumerate(names) if n.startswith("rope")]
+    is_rope = np.isin(sid, rope_k) if rope_k else np.zeros(sid.shape, bool)
     cov_s = (sid >= 0).astype(F32)
     alb_s = np.zeros(sid.shape + (3,), F32)
     rough_s = np.zeros(sid.shape, F32)
@@ -108,22 +111,29 @@ def bake(pieces, plan, W, H, rope_set, ss=2):
         m = sid == k
         alb_s[m] = a
         rough_s[m] = r
-    # baked shading on the fittings: low parts darker, upper edges (tilted faces high up) lighter
+    # baked shading on the fittings: low parts darker, upper edges (tilted faces high up) lighter; a line is round
+    # (lighter along its crown) and keeps its own colour on every surface
     up = smoothstep(0.0, 0.035, hgt)
     tilt = np.clip((1.0 - nrm[..., 2]) * 1.6, 0.0, 1.0)
-    shade = (0.62 + 0.38 * up) * (1.0 + 0.22 * tilt * up)
+    shade = np.where(is_rope, 0.82 + 0.18 * nrm[..., 2], (0.62 + 0.38 * up) * (1.0 + 0.22 * tilt * up))
     alb_s = alb_s * shade[..., None]
-    occ_s = 0.7 + 0.3 * up
-    cov = _down(cov_s, ss)
-    c = np.maximum(cov, 1e-6)
-    albedo = (_down(alb_s * cov_s[..., None], ss) / c[..., None]).astype(F32)
-    rough = (_down(rough_s * cov_s, ss) / c).astype(F32)
-    occ = (_down(occ_s * cov_s, ss) / c).astype(F32)
-    n = _down(nrm * cov_s[..., None], ss) + np.array([0, 0, 1.0], F32) * (1.0 - cov)[..., None]
+    occ_s = np.where(is_rope, 0.92, 0.7 + 0.3 * up)
+    cov_f = _down((cov_s * ~is_rope).astype(F32), ss)
+    # a line is opaque over its width: half a texel of it covers the texel (no blend with the deck below, so it
+    # reads the same colour over gelcoat and non-slip)
+    cov_r = np.clip(_down(is_rope.astype(F32), ss) * 2.5, 0.0, 1.0)
+    cov = np.maximum(cov_f, cov_r)
+    craw = np.maximum(_down(cov_s, ss), 1e-6)
+    albedo = (_down(alb_s * cov_s[..., None], ss) / craw[..., None]).astype(F32)
+    rough = (_down(rough_s * cov_s, ss) / craw).astype(F32)
+    occ = (_down(occ_s * cov_s, ss) / craw).astype(F32)
+    n = _down(nrm * cov_s[..., None], ss)
+    n = n + np.array([0, 0, 1.0], F32) * np.clip(1.0 - _down(cov_s, ss), 0, 1)[..., None]
     n /= np.maximum(np.linalg.norm(n, axis=-1, keepdims=True), 1e-9)
-    # contact shadow: the coverage blurred over a few centimetres (texels from the plan's scale)
+    # contact shadow: the fittings' coverage blurred over a few centimetres (texels from the plan's scale), a faint
+    # one along the lines
     px = 0.5 * (plan[2] / W + plan[3] / H)
-    sh = np.clip(blur(cov, max(1.0, 0.02 / px)) * 1.6, 0.0, 1.0)
+    sh = np.clip(blur(cov_f + 0.3 * cov_r, max(1.0, 0.02 / px)) * 1.6, 0.0, 1.0)
     return {"cov": cov, "albedo": np.minimum(albedo, ALBEDO_MAX), "normal": n.astype(F32), "occ": occ,
             "rough": rough, "shadow": sh.astype(F32)}
 

@@ -48,7 +48,7 @@ def test_writes_the_folders(baked):
     assert Image.open(hull / "transom_albedo.png").size == tuple(lay["transom"]["size"]) and lay["transom"]["size"][0] == 256
     assert Image.open(hull / "deck_albedo.png").size == tuple(lay["deck"]["size"]) and lay["deck"]["size"][0] == 512
     rig = baked / "wm7" / "rig"
-    for fn in ("mainsheet", "sheet", "kite_sheet", "halyard", "control"):
+    for fn in ("mainsheet", "sheet", "kite_sheet", "halyard_main", "halyard_jib", "halyard_kite", "halyard_code", "control"):
         assert Image.open(rig / f"rope_{fn}_albedo.png").size == (64, 64), fn
     for f in ("rope_normal.png", "rope_orm.png"):
         assert (rig / f).exists(), f

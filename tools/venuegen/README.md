@@ -61,7 +61,7 @@ Big files are fine: shapefile records whose box misses the venue are skipped.
 | Solent | EMODnet Bathymetry satellite-derived coastline (MHW) | the MHW lines from the WFS (layer `emodnet:coastlines`, type MHW) are chained, polygonized and committed as small lon/lat land polygons by `data/venue_sources/solent/prepare.py` (download commands in its docstring), then read with `"role": "land"` |
 | Trieste | EMODnet Bathymetry satellite-derived coastline (MHW) | polygons: `"role": "land"`; if the download is coastline lines, `"role": "shore_left"` or `"shore_right"` after checking which side is land (lines must run past the clip box) |
 | Solent banks | EMODnet DTM | the WCS coverage `emodnet__mean` contoured by the same script (Bramble Bank at 2 m and 4 m depth) into `current.banks` polygons in local metres, each with a speed `factor` |
-| Fremantle | Australian Coastline 50K 2024 (AIMS) | land polygons (shapefile, lon/lat): `"role": "land"`; the national file is read with the box filter |
+| Fremantle | Australian Coastline 50K 2024 (AIMS), V1-1 Full | land polygons (shapefile, lon/lat): the national file (40 MB zipped, in `raw/fremantle/`) is clipped once by `data/venue_sources/fremantle/clip_coastline.py` into two small GeoJSON files (Rottnest, mainland) that are committed, so the venue builds from a plain checkout; each is an input with `"role": "land"` and its own `height` |
 | Solent fallback | OS Open Zoomstack | the land or sea polygons (GeoPackage, British National Grid): reproject to EPSG:4326, then `land` or `water` |
 | Terrain heights | NASADEM | GeoTIFF tiles in `terrain.dem` (below); without them the wind effects use a `height` per input or polygon (`land_height` default) |
 

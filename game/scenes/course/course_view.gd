@@ -71,6 +71,8 @@ var _marker: MeshInstance3D
 var _marker_label: Label3D
 var _t := 0.0
 var _mat: StandardMaterial3D
+## committee and mark boats: the vertex colours worn by course_boat.gdshader
+var _boat_mat: ShaderMaterial
 var _guide_mat: StandardMaterial3D
 var _flag_mat: StandardMaterial3D
 var _loa := 7.2
@@ -84,6 +86,8 @@ func bind(source: CoreSimSource, boat_index: int, sea_node: Sea, course_path := 
 	_loa = sim.class_info(boat).loa
 	_read_file(course_path)
 	_mat = ColorMesh.material(0.55)
+	_boat_mat = ShaderMaterial.new()
+	_boat_mat.shader = preload("res://scenes/course/course_boat.gdshader")
 	_flag_mat = ColorMesh.material(0.8, 0.0, true)
 	_guide_mat = ColorMesh.material(1.0)
 	_guide_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -145,6 +149,7 @@ func _build_marks() -> void:
 			_:
 				var small: bool = rec["type"] == MARK_BOAT
 				mi.mesh = CourseProps.committee_boat(rec["length"], rec["beam"], small)
+				mi.material_override = _boat_mat
 		n.add_child(mi)
 		if rec["type"] == MARK_COMMITTEE and _flag_boat < 0:
 			_flag_boat = i

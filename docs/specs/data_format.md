@@ -859,7 +859,7 @@ the master size (1024 on the longer side; `--hd` keeps 2048).
 
 **Painted lines** are opaque in their own braid's mean colour, roughness and relief (a texel half covered by a line
 is the line's), so a line reads the same over gelcoat and non-slip; they clear the non-slip mask and cast only a faint
-contact shadow. Where a line runs down the coachroof's aft face (wm7's halyard tails, down into the rope bags on the face) it is painted
+contact shadow. Where a line runs down the coachroof's aft face (the halyard tails, down into the rope bags on the face) it is painted
 on the face's own rectangle of the deck image: the aft face (slot `deck_face`) has its own uv1 into a corner of the
 plan the deck does not use, forward of the bow on the port side (`tools/boatgen` `Deck.face_frame`), filled with
 the deck's smooth gelcoat; there the face reads its map even though it is upright.

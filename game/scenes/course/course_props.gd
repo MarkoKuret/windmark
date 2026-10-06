@@ -299,7 +299,7 @@ static func _cruiser(m: ColorMesh, length: float, beam: float) -> void:
 	m.cylinder(_local(STAFF_X * length, 0.0, _deck(STAFF_X * length, length, FB)), 0.03, 0.025, 2.4, 6, WHITE)
 
 
-## A mark boat: a RIB, tubes round a hard hull, a centre console, an outboard and the flag staff.
+## A mark boat: a RIB, tubes round a hard hull, a centre console and the flag staff.
 static func _rib(m: ColorMesh, length: float, beam: float) -> void:
 	var x_t := -0.47 * length
 	var hull_beam := beam - 2.0 * RIB_TUBE * 0.6
@@ -327,7 +327,6 @@ static func _rib(m: ColorMesh, length: float, beam: float) -> void:
 			radii.append(RIB_TUBE * 0.75)
 	_tube(m, tube, radii, 10, TUBE_GREY)
 	# grab lines looped along the top of the tubes
-	var rng := RandomNumberGenerator.new()
 	for s in [-1.0, 1.0]:
 		var line := []
 		for i in 57:
@@ -353,14 +352,6 @@ static func _rib(m: ColorMesh, length: float, beam: float) -> void:
 			_tube(m, [_local(cx + sx, sy, d), _local(cx + sx, sy, d + 2.0)], _radii(2, 0.025), 5, STEEL)
 	m.box(Transform3D(Basis.IDENTITY, _local(cx - 0.05, 0.0, d + 2.03)), Vector3(1.0, 0.06, 1.1), NAVY)
 	m.cylinder(_local(cx - 0.05, 0.0, d + 2.06), 0.02, 0.01, 1.0, 4, WHITE)
-	# outboard on the transom: leg, anti-cavitation plate, propeller, cowl
-	var ob := x_t - 0.28
-	m.box(Transform3D(Basis.IDENTITY, _local(ob, 0.0, -0.05)), Vector3(0.14, 1.0, 0.24), BLACK)
-	m.box(Transform3D(Basis.IDENTITY, _local(ob - 0.05, 0.0, -0.3)), Vector3(0.34, 0.03, 0.42), BLACK)
-	m.cylinder(_local(ob - 0.05, 0.0, -0.62), 0.07, 0.07, 0.22, 6, BLACK)
-	m.box(Transform3D(Basis.IDENTITY, _local(ob, 0.0, RIB_FB + 0.18)), Vector3(0.3, 0.4, 0.4), BLACK)
-	m.blob(_local(ob - 0.03, 0.0, RIB_FB + 0.55), Vector3(0.22, 0.25, 0.33), 5, 10, Color(0.03, 0.03, 0.035), BLACK,
-		rng, 0.0)
 	# anchor locker lid and the bow light
 	m.box(Transform3D(Basis.IDENTITY, _local(0.3 * length, 0.0, _deck(0.3 * length, length, RIB_FB) + 0.04)),
 		Vector3(0.5, 0.06, 0.5), WHITE)

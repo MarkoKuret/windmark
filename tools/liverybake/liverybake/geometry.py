@@ -16,7 +16,7 @@ import numpy as np
 from .common import BOATGEN, CLASSES, HERE
 
 CACHE = HERE / ".cache"
-VERSION = 6
+VERSION = 7
 
 
 def _key(class_id):
@@ -121,7 +121,8 @@ def d_plan(boat):
     return boat.deck.plan_rect()
 
 
-# a line more than this above the walking surface under it is not painted (m)
+# a line more than this above the walking surface under it is not painted (m): there the game model keeps it as
+# geometry (boatgen hardware.ROPE_LIFT_MAX)
 ROPE_LIFT_MAX = 0.035
 
 
@@ -189,7 +190,7 @@ def deck_info(boat):
 
 # hardware tags that are not fastened to the deck (lines, coils, rails, cars) and kinds by tag prefix
 _SKIP = ("halyard_", "mainsheet_tail", "mainsheet_coil", "mainsheet_lower", "traveller_line", "traveller_car",
-         "lifeline", "jib_car", "halyard_coil", "pod", "wheel", "binnacle", "pedestal_guard", "tiller")
+         "lifeline", "jib_car", "halyard_coil", "wheel", "binnacle", "tiller")
 _KINDS = (("winch", "winch"), ("clutch", "clutch"), ("organiser", "organiser"), ("mast_block", "block"),
           ("traveller_block", "block"), ("cam_cleat", "cleat"), ("traveller_cleat", "cleat"), ("horn_cleat", "cleat"),
           ("jib_track", "track"), ("traveller", "track"), ("hatch", "hatch"), ("stanchion", "stanchion"),

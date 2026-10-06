@@ -24,9 +24,6 @@ const FLAG_GREEN := Color(0.02, 0.30, 0.08)
 const TEAK := Color(0.30, 0.15, 0.06)
 const STEEL := Color(0.55, 0.56, 0.58)
 const TUBE_GREY := Color(0.06, 0.065, 0.07)
-const SKIN := Color(0.62, 0.36, 0.24)
-const NAVY_JACKET := Color(0.02, 0.05, 0.16)
-const YELLOW_JACKET := Color(0.85, 0.55, 0.02)
 
 ## courses.md §2 default outline stations: body x / L and half-breadth / B
 const OUT_X := [-0.5, -0.35, -0.2, 0.0, 0.1, 0.25, 0.37, 0.45]
@@ -132,7 +129,7 @@ const RIB_TUBE := 0.27
 
 
 ## A committee boat (a flybridge motor cruiser of length x beam) or a small mark boat (`small`, a RIB), inside
-## the outline: shaped hull with antifouling, boot stripe and rubbing strake, deck, rails and fittings, crew.
+## the outline: shaped hull with antifouling, boot stripe and rubbing strake, deck, rails and fittings.
 static func committee_boat(length: float, beam: float, small := false) -> ArrayMesh:
 	var m := ColorMesh.new()
 	if small:
@@ -224,14 +221,9 @@ static func _cruiser(m: ColorMesh, length: float, beam: float) -> void:
 			m.cylinder(_local(x, s * hb, 0.3), 0.13, 0.13, 0.65, 8, NAVY)
 	# the stern staff for the orange flag
 	m.cylinder(_local(STAFF_X * length, 0.0, _deck(STAFF_X * length, length, FB)), 0.03, 0.025, 2.4, 6, WHITE)
-	# the race officers: two on the flybridge, one in the cockpit
-	var rng := RandomNumberGenerator.new()
-	_person(m, _local(cx - 0.75, 0.45, roof + FLY_FLOOR), RED, rng)
-	_person(m, _local(f0 + 0.6, -0.5, roof + FLY_FLOOR), NAVY_JACKET, rng)
-	_person(m, _local(-0.4 * length, 0.6, _deck(-0.4 * length, length, FB)), YELLOW_JACKET, rng)
 
 
-## A mark boat: a RIB, tubes round a hard hull, a centre console, an outboard, the flag staff and the driver.
+## A mark boat: a RIB, tubes round a hard hull, a centre console, an outboard and the flag staff.
 static func _rib(m: ColorMesh, length: float, beam: float) -> void:
 	var x_t := -0.47 * length
 	var hull_beam := beam - 2.0 * RIB_TUBE * 0.6
@@ -268,7 +260,6 @@ static func _rib(m: ColorMesh, length: float, beam: float) -> void:
 	m.box(Transform3D(Basis.IDENTITY, _local(x_t - 0.25, 0.0, 0.0)), Vector3(0.22, 1.0, 0.18), BLACK)
 	m.box(Transform3D(Basis.IDENTITY, _local(x_t - 0.28, 0.0, RIB_FB + 0.4)), Vector3(0.42, 0.55, 0.5), BLACK)
 	m.cylinder(_local(RIB_STAFF_X * length, 0.0, d), 0.03, 0.025, 3.2, 6, WHITE)
-	_person(m, _local(0.05 * length - 0.6, 0.0, d), RED, RandomNumberGenerator.new())
 
 
 ## The deck edge height at body x (freeboard plus sheer).
@@ -447,14 +438,6 @@ static func _radii(n: int, r: float) -> PackedFloat32Array:
 	out.resize(n)
 	out.fill(r)
 	return out
-
-
-## A standing figure (about 1.75 m) at a local foot point.
-static func _person(m: ColorMesh, foot: Vector3, jacket: Color, rng: RandomNumberGenerator) -> void:
-	m.cylinder(foot, 0.1, 0.13, 0.85, 6, NAVY)
-	m.cylinder(foot + Vector3(0, 0.85, 0), 0.16, 0.2, 0.62, 8, jacket)
-	m.cylinder(foot + Vector3(0, 1.47, 0), 0.06, 0.06, 0.08, 6, SKIN)
-	m.blob(foot + Vector3(0, 1.64, 0), Vector3(0.1, 0.12, 0.1), 5, 8, SKIN, SKIN, rng, 0.0)
 
 
 ## The foot of the committee boat's signal mast on the flybridge floor (local); its yard is 4.6 m above.

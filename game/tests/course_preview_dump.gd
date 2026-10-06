@@ -211,8 +211,8 @@ func _write_arrays(dir: String, name: String, arrays: Array, xform: Transform3D)
 	return info
 
 
-## Every visible MeshInstance3D under `node`: kind "land" (land shader), "unshaded", "prop" (vertex colours)
-## or "albedo" (imported boat materials).
+## Every visible MeshInstance3D under `node`: kind "land" (land shader), "boat" (committee and mark boats),
+## "unshaded", "prop" (vertex colours) or "albedo" (imported boat materials).
 func _meshes(dir: String, node: Node, out: Array) -> void:
 	var stack: Array = [node]
 	while not stack.is_empty():
@@ -233,7 +233,12 @@ func _meshes(dir: String, node: Node, out: Array) -> void:
 			info["kind"] = "albedo"
 			info["albedo"] = [0.6, 0.6, 0.6, 1.0]
 			info["roughness"] = 0.6
-			if mat is ShaderMaterial:
+			if mat is ShaderMaterial and (mat as ShaderMaterial).shader.resource_path.ends_with("course_boat.gdshader"):
+				# the boat-frame positions and normals the shared boat surface reads
+				info["kind"] = "boat"
+				_save(dir, name + "_opos.bin", (arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array).to_byte_array())
+				_save(dir, name + "_onormal.bin", (arrays[Mesh.ARRAY_NORMAL] as PackedVector3Array).to_byte_array())
+			elif mat is ShaderMaterial:
 				info["kind"] = "land"
 			elif mat is BaseMaterial3D:
 				var bm := mat as BaseMaterial3D

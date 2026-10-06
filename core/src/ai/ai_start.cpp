@@ -199,6 +199,11 @@ float time_to_spot(const AB& a, const Me& m, Vec2 spot, float psi_app) {
   const float acc_rest = cp != nullptr && cp->accel_rest.present ? cp->accel_rest.table.at(tws, th_a) : acc;
   const Vec2 bow = v_add(m.c, v_scale(dir(m.s.psi), 0.5f * m.L));
   const float d_path = v_dist(bow, spot);
+  // The current along the path and across it (§5.5): the boat steers to cancel the cross part, so she makes good
+  // sqrt(v² − cross²) + along over the ground.
+  const Vec2 up = v_unit(v_sub(spot, bow), dir(m.s.psi));
+  const float along = v_dot(m.cur, up), cross = v_cross(up, m.cur);
+  const bool cur = m.cur.x != 0.0f || m.cur.y != 0.0f;
   float v = v0, xx = 0.0f;
   for (std::int32_t k = 0; k < 1200 && xx < d_path; ++k) {
     float aa = 0.0f;
@@ -207,7 +212,8 @@ float time_to_spot(const AB& a, const Me& m, Vec2 spot, float psi_app) {
       aa = v < vb ? acc_rest + (acc - acc_rest) * (v / vb) : acc;
     }
     v = min(v + aa * 0.1f, max(V, v0));
-    xx = xx + v * 0.1f;
+    const float vg = cur ? std::sqrt(max(0.0f, v * v - cross * cross)) + along : v;
+    xx = xx + vg * 0.1f;
     t = t + 0.1f;
   }
   (void)a;
@@ -318,7 +324,9 @@ void prestart(AC& x, AB& a, const Me& m) {
     }
   }
   // §5.6 final approach on starboard: the bearing to the spot (current corrected), no higher than close-hauled.
-  float psi = cog_heading(m, heading_for(m.twd, approach_twa(m, spot)), m.s.v);
+  float psi = cog_heading_for(a, m, heading_for(m.twd, approach_twa(m, spot)));
+  // Not above close-hauled on starboard, whatever the current asks.
+  if (wrap_pi(m.twd - psi) < m.theta_up + 2.0f * DEG) psi = heading_for(m.twd, m.theta_up + 2.0f * DEG);
   if (v_dist(m.c, spot) < 2.0f * m.L) psi = heading_for(m.twd, m.theta_up + 2.0f * DEG);
   const float t_run = time_to_spot(a, m, spot, psi_app);
   const float want = (-t) + a.e_start;  // arrival time wanted, from now
@@ -347,8 +355,10 @@ void prestart(AC& x, AB& a, const Me& m) {
       coast = coast + vv * 0.1f;
     }
   }
-  const bool near_line = D < v_n * 5.0f + 0.3f * m.L;
-  if (t < -0.3f && (D < 0.3f * m.L || (near_line && coast * cos_n > D - 0.3f * m.L))) {
+  // A current towards the line carries her on while she coasts and after she has stopped.
+  const float drift = max(0.0f, v_dot(m.cur, l.n)) * min(-t, 30.0f);
+  const bool near_line = D < v_n * 5.0f + 0.3f * m.L + drift;
+  if (t < -0.3f && (D < 0.3f * m.L || (near_line && coast * cos_n + drift > D - 0.3f * m.L))) {
     psi = heading_for(m.twd, 40.0f * DEG);
     a.let_fly = true;
   }

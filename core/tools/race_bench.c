@@ -3,9 +3,11 @@
  * rules and race without the skippers), every wm_world_step timed and summed by race phase.
  *
  *   windmark_race_bench <data_dir> <courses_dir> <fleet> [level 0..3] [noai] [seed] [venue course wind_from_deg]
+ *                       [local]
  *
  * `venue course wind_from_deg` race another venue (e.g. garda garda/garda_wl 195); default practice_waters,
- * practice_waters/example_wl and a north wind; `noai` may be given as `ai` to keep the skippers.
+ * practice_waters/example_wl and a north wind; `noai` may be given as `ai` to keep the skippers. `local` races the
+ * venue's own conditions for the seed (race.md §2.1: its wind, trend and tide; wind_from_deg is then ignored).
  *
  * Prints one line per phase: ticks, mean, 99th percentile and maximum µs per tick, then a hash of the world
  * checksum every 100 ticks (taken outside the timing) to show a change kept the race bit for bit. */
@@ -39,7 +41,7 @@ static int check(wm_status s, const char* what) {
 
 int main(int argc, char** argv) {
   if (argc < 4) {
-    fprintf(stderr, "usage: %s data_dir courses_dir fleet [level] [noai|ai] [seed] [venue course wind_from_deg]\n",
+    fprintf(stderr, "usage: %s data_dir courses_dir fleet [level] [noai|ai] [seed] [venue course wind_from_deg] [local]\n",
             argv[0]);
     return 2;
   }
@@ -50,6 +52,7 @@ int main(int argc, char** argv) {
   const char* venue_id = argc > 7 ? argv[7] : "practice_waters";
   const char* course_rel = argc > 8 ? argv[8] : "practice_waters/example_wl";
   const float wind_from_deg = argc > 9 ? (float)atof(argv[9]) : 0.0f;
+  const int local = argc > 10 && strcmp(argv[10], "local") == 0;
   char path[1024];
   wm_perf* perf = NULL;
   wm_venue* venue = NULL;
@@ -66,6 +69,7 @@ int main(int argc, char** argv) {
   ws.race_seed = seed;
   ws.wind_speed = 12.0f * 0.514444470f;
   ws.wind_from = wind_from_deg * 0.017453293f;
+  if (local && !check(wm_world_settings_resolve(&ws, venue, course), "conditions")) return 1;
   wm_world* w = NULL;
   if (!check(wm_world_create(&ws, venue, &w), "world")) return 1;
   for (int i = 0; i < fleet; ++i) {

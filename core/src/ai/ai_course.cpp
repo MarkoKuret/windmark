@@ -44,10 +44,18 @@ float rounding_radius(AC& x, AB& a, const Me& m, std::int32_t mark) {
   }
   // The helm's reaction (boat.md §5.9): the boat runs on about |v| times the rudder's travel and the yaw lag before a
   // turn takes hold.
-  const float lag = max(m.s.v, 0.0f) * reaction_time(m.b.perf().dynamics);
-  const float rho = (((rm.radius + 0.5f * m.B) + a.P.c_lvl * m.B) + static_cast<float>(n_in) * (m.B + 1.0f)) + lag;
+  const Dynamics& dy = m.b.perf().dynamics;
+  const float lag = max(m.s.v, 0.0f) * reaction_time(dy);
+  float rho = (((rm.radius + 0.5f * m.B) + a.P.c_lvl * m.B) + static_cast<float>(n_in) * (m.B + 1.0f)) + lag;
+  // The current sets her sideways while she reacts and turns the first quarter (half of it, on average, towards
+  // the mark).
+  const float c = v_len(m.cur);
+  if (c > 0.0f) {
+    const float r_turn = radius_for_helm(dy, 0.6f);
+    rho = rho + (0.5f * c) * (reaction_time(dy) + (HALF_PI * r_turn) / max(m.s.v, 1.0f));
+  }
   // Not tighter than the boat can follow at the rounding's helm (the tack helm, boat.md §5.9 radius law).
-  return max(rho, radius_for_helm(m.b.perf().dynamics, 0.6f));
+  return max(rho, radius_for_helm(dy, 0.6f));
 }
 
 // §6.3 gate choice.
@@ -208,7 +216,8 @@ bool round_mark(AC& x, AB& a, const Me& m, const MarkTarget& t) {
     // its laylines, so the tack comes where the other tack clears the mark.
     const float pc = heading_for(m.twd, m.tack * m.theta_up);
     const Vec2 to_m = v_sub(t.M, m.c);
-    const bool clears = t.sigma * v_cross(dir(pc), to_m) >= 0.9f * t.rho || v_dot(dir(pc), to_m) < 0.0f;
+    const Vec2 gc = cog_dir(a, m, pc);
+    const bool clears = t.sigma * v_cross(gc, to_m) >= 0.9f * t.rho || v_dot(gc, to_m) < 0.0f;
     // This tack runs at the mark on the wrong side, close enough for the hull to touch it when she turns: tack
     // away now (ai.md §6.1), not when she is on top of it.
     const bool into = into_rounding_mark(a, m, pc);
@@ -216,7 +225,7 @@ bool round_mark(AC& x, AB& a, const Me& m, const MarkTarget& t) {
       a.tactic = AiTactic::Rounding;
       return true;
     }
-    if ((v_dot(dir(pc), dir(psi_tan)) > 0.0f && clears) || a.man != Man::straight || dist <= 1.15f * t.rho) {
+    if ((v_dot(gc, dir(psi_tan)) > 0.0f && clears) || a.man != Man::straight || dist <= 1.15f * t.rho) {
       a.psi_target = pc;
       return true;
     }
@@ -368,7 +377,8 @@ bool turn_clear_of_boat(AC& x, const Me& m, std::size_t j, float dir_, float R, 
 
 bool into_rounding_mark(const AB& a, const Me& m, float psi) {
   const Vec2 to_m = v_sub(a.round_M, m.c);
-  const Vec2 f = dir(psi);
+  // Along the course over ground the heading makes (the current sets the boat on or off the mark).
+  const Vec2 f = cog_dir(a, m, psi);
   const float lat = v_cross(f, to_m);
   return a.round_sigma * lat < 0.0f && v_dot(f, to_m) > 0.0f && std::fabs(lat) < a.round_rho + 0.5f * m.L &&
          v_len(to_m) < a.round_rho + 3.0f * m.L;
@@ -490,6 +500,57 @@ bool penalty_turns(AC& x, AB& a, const Me& m, Leg leg) {
 
 namespace {
 
+// The current at a point now (§3.5: the tidal stream is steady through a race and charted).
+Vec2 current_at(AC& x, Vec2 p) { return x.w.wind().current(p.x, p.y, x.w.t_ms()); }
+
+// The mean current over the segment from p to q: three samples (§4.3, §4.7).
+Vec2 current_along(AC& x, Vec2 p, Vec2 q) {
+  const Vec2 d = v_sub(q, p);
+  Vec2 sum{0.0f, 0.0f};
+  for (const float f : {1.0f / 6.0f, 0.5f, 5.0f / 6.0f}) sum = v_add(sum, current_at(x, v_add(p, v_scale(d, f))));
+  return v_scale(sum, 1.0f / 3.0f);
+}
+
+// §4.7 the trend the race card's briefing gives (menus.md §1.3): the rotation of the wind's trend term from the gun
+// to the gun plus the race's target time, as a rate (rad/s, + veer). The venue's known habit, not the wind itself.
+float briefed_trend(AC& x) {
+  const WindSettings& ws = x.w.wind().settings();
+  if (ws.shift_trend_rate == 0.0f) return 0.0f;
+  const float T = x.course.race.target_duration > 0.0f ? x.course.race.target_duration : 900.0f;
+  const float t0 = x.created ? -x.race.race_time(0) : 0.0f;  // environment time at the gun, s
+  auto trend = [&](float t) { return clamp(ws.shift_trend_rate * t, -ws.shift_trend_max, ws.shift_trend_max); };
+  return (trend(t0 + T) - trend(t0)) / T;
+}
+
+// §4.7 the time to R by a route of two legs: tack `s` (+1 starboard) first, then the other tack on its layline, in
+// the mean wind turning at the observed trend and the current along each leg. Negative when R cannot be reached
+// that way (it lies outside the laylines from here).
+float route_time(AC& x, const AB& a, const Me& m, Vec2 R, bool beat, float s, float V) {
+  const float th = beat ? m.theta_up : m.theta_dn;
+  const float r = a.P.trend ? briefed_trend(x) : 0.0f;
+  const Vec2 d = v_sub(R, m.c);
+  Vec2 c1 = m.cur, c2 = current_at(x, R);
+  c2 = v_scale(v_add(c1, c2), 0.5f);
+  float T1 = 0.0f, T2 = 0.0f;
+  for (std::int32_t it = 0; it < 2; ++it) {
+    const float tw1 = a.twd_ref + r * (0.5f * T1);
+    const float tw2 = a.twd_ref + r * (T1 + 0.5f * T2);
+    const Vec2 g1 = v_add(v_scale(dir(heading_for(tw1, s * th)), V), c1);
+    const Vec2 g2 = v_add(v_scale(dir(heading_for(tw2, -s * th)), V), c2);
+    const float det = v_cross(g1, g2);
+    if (std::fabs(det) < 1e-3f) return -1.0f;
+    T1 = v_cross(d, g2) / det;
+    T2 = v_cross(g1, d) / det;
+    if (T1 < 0.0f || T2 < 0.0f) return -1.0f;
+    if (it == 0) {
+      const Vec2 I = v_add(m.c, v_scale(g1, T1));
+      c1 = current_along(x, m.c, I);
+      c2 = current_along(x, I, R);
+    }
+  }
+  return T1 + T2;
+}
+
 // Mean clean wind speed sampled along a heading (§3.3 reading the water).
 float read_track(AC& x, const AB& a, const Me& m, float psi) {
   const WindField& wf = x.w.wind();
@@ -557,7 +618,7 @@ bool cover(AC& x, AB& a, const Me& m, bool beat, Vec2 R) {
     if (opp < 0) return false;
   }
   const wm::Boat& ob = x.w.boat(static_cast<std::size_t>(opp));
-  const float otwa = wrap_pi(x.w.env(static_cast<std::size_t>(opp)).wind_from_clean - ob.state().psi);
+  const float otwa = wrap_pi(water_wind_clean(x.w.env(static_cast<std::size_t>(opp))).from - ob.state().psi);
   const std::int8_t otk = static_cast<std::int8_t>(sgn(otwa));
   if (a.cover_opp != opp) {
     a.cover_opp = opp;
@@ -619,7 +680,7 @@ bool bad_air(AC& x, AB& a, const Me& m, Leg leg) {
         if (static_cast<std::int32_t>(j) == a.i || !x.race.racing(j)) continue;
         const Vec2 cj = x.race.boat(j).c;
         if (v_dist(cj, m.c) > 5.0f * m.L) continue;
-        const float tj = wrap_pi(x.w.env(j).wind_from_clean - x.w.boat(j).state().psi);
+        const float tj = wrap_pi(water_wind_clean(x.w.env(j)).from - x.w.boat(j).state().psi);
         if (tj >= 0.0f && std::fabs(tj) < HALF_PI && v_dot(v_sub(cj, m.c), dir(psi_new)) > -m.L) duck = true;
       }
     }
@@ -790,6 +851,19 @@ float cog_heading(const Me& m, float brg, float speed) {
   return wrap_2pi(brg - wm_asin(s));
 }
 
+Vec2 cog_dir(const AB& a, const Me& m, float psi) {
+  if (m.cur.x == 0.0f && m.cur.y == 0.0f) return dir(psi);
+  const float V = max(m.s.v, 0.8f * polar_speed(a, m, max(std::fabs(wrap_pi(m.twd - psi)), m.theta_up)));
+  return v_unit(v_add(v_scale(dir(psi), V), m.cur), dir(psi));
+}
+
+float cog_heading_for(const AB& a, const Me& m, float brg) {
+  // The boat's speed through the water on that course: at least most of the polar speed, since she is about to
+  // sail it. A slow boat's own speed would turn the correction into the wind and keep her slow.
+  const float twa = std::fabs(wrap_pi(m.twd - brg));
+  return cog_heading(m, brg, max(m.s.v, 0.8f * polar_speed(a, m, max(twa, m.theta_up))));
+}
+
 bool manoeuvre_checks(AC& x, AB& a, const Me& m, bool forced) {
   if (a.man != Man::straight) return false;
   if (!forced) {
@@ -871,8 +945,12 @@ void beat_run(AC& x, AB& a, const Me& m, Vec2 R, bool beat, float mlay, bool tri
   }
   const float tk = m.tack;
   const float psi_cur = heading_for(m.twd, tk * th), psi_oth = heading_for(m.twd, -tk * th);
+  // The present tack's track takes the current here; the layline through R the mean current between here and R
+  // (§4.3: the stream at the mark and across the course, from the chart).
+  const bool has_cur = m.cur.x != 0.0f || m.cur.y != 0.0f;
+  const Vec2 cur_lay = has_cur ? current_along(x, m.c, R) : m.cur;
   const Vec2 u = v_unit(v_add(v_scale(dir(psi_cur), Vp), m.cur), dir(psi_cur));
-  const Vec2 vv = v_unit(v_add(v_scale(dir(psi_oth), Vp), m.cur), dir(psi_oth));
+  const Vec2 vv = v_unit(v_add(v_scale(dir(psi_oth), Vp), cur_lay), dir(psi_oth));
   const Vec2 d = v_sub(R, m.c);
   const float det = v_cross(u, vv);
   bool lay = false;
@@ -882,7 +960,7 @@ void beat_run(AC& x, AB& a, const Me& m, Vec2 R, bool beat, float mlay, bool tri
     B_ = v_cross(u, d) / det;
     if (B_ < 0.0f) {
       // The point is to leeward of this tack's course: sail straight at it (current corrected).
-      float psi = cog_heading(m, bearing(m.c, R), m.s.v);
+      float psi = cog_heading_for(a, m, bearing(m.c, R));
       const float twa = wrap_pi(m.twd - psi);
       if (beat && std::fabs(twa) < th) psi = psi_cur;
       if (!beat && std::fabs(twa) > th) psi = psi_cur;
@@ -950,9 +1028,33 @@ void beat_run(AC& x, AB& a, const Me& m, Vec2 R, bool beat, float mlay, bool tri
       a.pressure_t = pressure ? a.pressure_t + 1.0f : 0.0f;
     }
     const bool not_overstand = A_ > 0.0f && B_ > 0.0f;
-    if (std::fabs(e) >= Wc && away > 0.0f && man(AiTactic::Corridor)) return;
-    if (a.headed_t >= 6.0f && not_overstand && man(AiTactic::Shift)) return;
-    if (a.pressure_t >= 10.0f && not_overstand && man(AiTactic::Pressure)) return;
+    // §4.7 stream and trend: the two routes to R (this tack first, or the other tack now), once a second.
+    bool stay = false;
+    if (a.P.route_margin > 0.0f) {
+      if (((x.n + static_cast<std::uint32_t>(a.i)) % 20u) == 0u) {
+        const float t_cur = route_time(x, a, m, R, beat, tk, Vp);
+        const float t_oth = route_time(x, a, m, R, beat, -tk, Vp);
+        if (t_cur > 0.0f && t_oth > 0.0f) {
+          // Tack when the other tack first is quicker by the margin and a tack; stay (no corridor, shift or
+          // pressure tacks) while this tack first is quicker by 3 s.
+          const float thr = a.P.route_margin * t_cur + 1.0f;
+          a.route_gain = t_cur - (t_oth + t_manoeuvre(m, beat));
+          a.route_t = a.route_gain > thr ? a.route_t + 1.0f : 0.0f;
+          a.route_stay = t_oth - t_cur > 3.0f;
+        } else {
+          a.route_gain = 0.0f;
+          a.route_t = 0.0f;
+          a.route_stay = false;
+        }
+      }
+      stay = a.route_stay;
+      if (a.route_t >= 3.0f && not_overstand && man(AiTactic::Pressure)) return;
+    }
+    if (!stay) {
+      if (std::fabs(e) >= Wc && away > 0.0f && man(AiTactic::Corridor)) return;
+      if (a.headed_t >= 6.0f && not_overstand && man(AiTactic::Shift)) return;
+      if (a.pressure_t >= 10.0f && not_overstand && man(AiTactic::Pressure)) return;
+    }
     if (cover(x, a, m, beat, R)) return;
   }
   // §8 bad air on every beat and run (the zones excluded inside), also close to the mark.
@@ -979,7 +1081,7 @@ void sail_to_point(AC& x, AB& a, const Me& m, Vec2 p) {
     a.psi_target = heading_for(m.twd, static_cast<float>(a.man_to) * m.theta_up);
     return;
   }
-  float psi = cog_heading(m, brg, m.s.v);
+  float psi = cog_heading_for(a, m, brg);
   const float twa = wrap_pi(m.twd - psi);
   if (std::fabs(twa) < m.theta_up) psi = heading_for(m.twd, sgn(twa) * m.theta_up);
   // Never turn through the wind to get there: go the other way round.
@@ -1000,6 +1102,9 @@ void racing(AC& x, AB& a, const Me& m) {
     a.leg_step = next;
     a.headed_t = 0.0f;
     a.pressure_t = 0.0f;
+    a.route_t = 0.0f;
+    a.route_gain = 0.0f;
+    a.route_stay = false;
     a.foot_until = -1e9f;
     a.pend_tack = 0;
   }
@@ -1072,6 +1177,43 @@ void racing(AC& x, AB& a, const Me& m) {
     const float twa = wrap_pi(m.twd - psi);
     if (std::fabs(twa) >= m.theta_up && sgn(twa) == m.tack) a.psi_target = psi;
   }
+}
+
+// §6.5 pinned on an object (a mark the current holds her against, a committee boat, land): after 2 s in contact
+// with no way over the ground, sail for 6 s on the heading that takes her away from it: her bow not into it, and the
+// course over the ground leading most directly away; on the present tack (a stopped boat cannot tack), else on the
+// other by bearing away round. The sails drawing and the helm free of the drag limit.
+void pinned_escape(AC& x, AB& a, const Me& m) {
+  if (a.pin_t >= 2.0f && x.now >= a.pin_until) a.pin_until = x.now + 6.0f;
+  if (x.now >= a.pin_until || a.man == Man::penalty) return;
+  const Vec2 n = v_unit(a.pin_n, dir(m.s.psi));
+  const float tk = m.tack != 0.0f ? m.tack : 1.0f;
+  float best = -1e30f, psi_best = m.s.psi;
+  bool other = false;
+  for (std::int32_t pass = 0; pass < 2 && best < -1e29f; ++pass) {
+    for (std::int32_t k = 0; k < 72; ++k) {
+      const float psi = static_cast<float>(k) * 5.0f * DEG;
+      const float twa = wrap_pi(m.twd - psi);
+      if (std::fabs(twa) < m.theta_up || (pass == 0 && sgn(twa) != tk)) continue;
+      const Vec2 f = dir(psi);
+      if (v_dot(f, n) < 0.0f) continue;  // the bow away from it, or along it
+      const Vec2 g = v_add(v_scale(f, polar_speed(a, m, std::fabs(twa))), m.cur);
+      const float score = v_dot(g, n) + 0.5f * v_dot(f, n) - 0.3f * std::fabs(wrap_pi(psi - m.s.psi));
+      if (score > best) {
+        best = score;
+        psi_best = psi;
+        other = pass == 1;
+      }
+    }
+  }
+  if (a.man == Man::tack || a.man == Man::gybe) a.man = Man::straight;
+  a.helm_fixed = NAN;
+  a.psi_target = psi_best;
+  a.turn_dir = other ? static_cast<std::int8_t>(-tk) : 0;  // to the other tack by bearing away (a gybe)
+  // Still held after a try under sail: let fly for a while and let the stream carry her round it, then sail again.
+  a.let_fly = a.pin_t >= 8.0f && (static_cast<std::int32_t>((a.pin_t - 8.0f) / 6.0f) % 2) == 0;
+  a.forced = true;
+  a.tactic = AiTactic::Land;
 }
 
 // race.md §6.2 the finished-boat autopilot: 5 L beyond the finish line and 2·(i + 1)·L along it (i = the finishing
@@ -1158,6 +1300,7 @@ void ai_decide(AC& x, AB& a) {
     aim = a.dbg.aim;
   }
   avoid_objects(x, a, m, a.tactic == AiTactic::Rounding ? a.round_mark : -1);
+  if (m.rb.started) pinned_escape(x, a, m);
   if (!land_check(x, a, m)) rules_overlay(x, a, m, aim);
 }
 

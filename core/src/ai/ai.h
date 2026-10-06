@@ -53,6 +53,8 @@ struct AiLevelParams {
   bool anticipate = false;
   AiCover cover = AiCover::match_only;
   float drop_lead = 4.0f;                      // s, §6.2 drop timing
+  float route_margin = 0.04f;                  // §4.7 stream and trend routing: share of the leg time, 0 = off
+  bool trend = true;                           // §4.7 plays the briefed trend of the wind
 };
 
 // `speed_only`: the decision rows of Intermediate with the level's performance_scale (§13).

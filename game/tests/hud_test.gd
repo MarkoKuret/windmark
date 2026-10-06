@@ -509,10 +509,6 @@ func test_core_scene() -> void:
 	var main_bent := 0
 	var err_rudder := 0.0
 	var rudder_side_bad := 0
-	var rudder_frames := 0
-	var no_rudder_ok := true
-	var continue_rudder := true
-	var last_h := 0.0
 	var err_mark := 0.0
 	var vis_ok := true
 	var side_ok := true
@@ -571,20 +567,11 @@ func test_core_scene() -> void:
 		err_ang = maxf(err_ang, absf(port.y - cos(a[4]) * sin(a[5])))
 		# the moving parts of the level of detail shown (sail_visuals.md §11.4)
 		boom = bv.levels[bv.lod]["boom"]
-		# from LOD1 the rudder is part of the static `body` and stands still (sail_visuals.md §11.4); its turn is
-		# checked on LOD0 below
 		rudder = bv.levels[bv.lod]["rudder"]
-		last_h = a[6]
-		if rudder == null:
-			no_rudder_ok = no_rudder_ok and bv.lod >= 1
-			continue_rudder = false
-		else:
-			continue_rudder = true
-			rudder_frames += 1
-			err_rudder = maxf(err_rudder, (rudder.transform.basis * Vector3.BACK).distance_to(
-				Basis(axis, a[6] * info.rudder_max) * Vector3.BACK))
+		err_rudder = maxf(err_rudder, (rudder.transform.basis * Vector3.BACK).distance_to(
+			Basis(axis, a[6] * info.rudder_max) * Vector3.BACK))
 		# bow to starboard (h > 0): the blade's trailing edge (model -Z, aft) points to starboard (model -X)
-		if continue_rudder and absf(a[6]) > 0.05:
+		if absf(a[6]) > 0.05:
 			var trail: Vector3 = rudder.transform.basis * Vector3.FORWARD
 			if signf(-trail.x) != signf(a[6]):
 				rudder_side_bad += 1
@@ -634,16 +621,7 @@ func test_core_scene() -> void:
 	var tol := 1e-4
 	t.ok(err_pos < tol, "boat node origin = core render pose every frame (%.7f m)" % err_pos)
 	t.ok(err_ang < tol, "boat node heading, pitch and heel = core render pose (%.7f)" % err_ang)
-	t.ok(no_rudder_ok, "a level without its own rudder node is LOD1 or coarser (sail_visuals.md §11.4)")
-	if rudder_frames == 0:
-		# the chase camera saw only coarser levels: bring LOD0 in, its rudder is set at once from the last helm
-		bv.update_lod(1.0)
-		var r0: Node3D = bv.levels[0]["rudder"]
-		t.ok(bv.lod == 0 and r0 != null, "LOD0 has its own rudder node")
-		if r0 != null:
-			err_rudder = (r0.transform.basis * Vector3.BACK).distance_to(Basis(axis, last_h * info.rudder_max) * Vector3.BACK)
-	t.ok(err_rudder < tol, "rudder at +h * rudder_max of the render pose (%.7f, %d frames on a level with a rudder)" % [
-		err_rudder, rudder_frames])
+	t.ok(err_rudder < tol, "rudder at +h * rudder_max of the render pose (%.7f)" % err_rudder)
 	t.ok(rudder_side_bad == 0, "rudder trailing edge to starboard when the bow turns to starboard (%d bad frames)" % rudder_side_bad)
 	t.ok(err_clock < 1e-3, "Sea clock = core render_time_ms (%.7f ms)" % err_clock)
 	t.ok(err_boom < tol, "boom at the interpolated main beta (%.7f)" % err_boom)

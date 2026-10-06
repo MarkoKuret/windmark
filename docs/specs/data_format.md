@@ -554,13 +554,16 @@ exactly `f = 1, d = 0` (validated). Grids: §6.6. Sampling: `wind.md` §8.
 ### 6.3 `current_field`
 ```json
 "current_field": { "grid": { … }, "vx": [ … ], "vy": [ … ],     // m/s at tide factor 1, east/north
-                   "ref_speed": 1.29 }                            // m/s, written by venuegen
+                   "ref_speed": 1.29, "ref_to": 1.31 }            // m/s and rad, written by venuegen
 ```
 Zero outside the grid. Used as `tide(t) · field` (`wind.md` §7). `ref_speed` (≥ 0; `venuegen` always writes it,
 older files may lack it, §6.9) is the 90th percentile of `|(vx, vy)|` over the grid nodes inside `bounds` (edges
 included) that are on water (outside every land polygon): the field's typical strong stream, which the briefing
 reads (`menus.md` §1.3). The percentile interpolates linearly between the sorted values (position `0.9 · (n − 1)`,
-counted from 0); with no such node it is 0. A venue test recomputes it to within 0.001 m/s.
+counted from 0); with no such node it is 0. A venue test recomputes it to within 0.001 m/s. `ref_to` (rad, in
+[0, 2π); written with `ref_speed`, optional in older files) is the direction the field sets at tide factor 1 (for a
+tide, the flood): `atan2(Σ vx, Σ vy)` over the same nodes, wrapped to [0, 2π) (0 with no node or a zero sum); the
+briefing names the set from it (`menus.md` §1.3).
 
 ### 6.4 `exposure`
 ```json
@@ -597,7 +600,7 @@ The venue's typical weather, which the race layer turns into one race's settings
   "oscillation": { "amplitude": 0.0349, "time_scale": 17 },
   "puffs":  { "preset": "light" },
   "current": { "speed": 0.0, "to": 0.0 },
-  "tide":   { "scale": 0.6, "period": 44712, "turn": [0.35, 0.65], "turn_to": -1 },
+  "tide":   { "scale": 0.6, "period": 44712 },
   "sea":    { "scale": 1.0, "swells": [ { "hs": 0.8, "tp": 12.0, "from": 4.19 } ] },
   "random": { "speed": [3.09, 10.29], "from_spread": 0.698, "shift": ["stable", "oscillating", "shifty"],
               "puffs": ["light", "standard"], "tide_scale": [0.5, 1.33], "swell_scale": [0.5, 1.5] }
@@ -616,7 +619,7 @@ The venue's typical weather, which the race layer turns into one race's settings
 | `puffs.preset` | a puff preset of `wind.md` §6.1, `none` = puffs off | [`standard`] |
 | `puffs.<key>` | a `wind.md` §6.1 parameter overriding the preset: `puff_tile`, `puff_count`, `lull_count`, `puff_diameter_min`, `puff_diameter_max`, `puff_strength_min`, `puff_strength_max`, `lull_strength_min`, `lull_strength_max`, `puff_life_min`, `puff_life_max` (lifetimes in s here), `puff_cap_up`, `puff_cap_down` | checked as `wind.md` §6; counts whole, at most 64; any other key is a load error |
 | `current` | uniform current, `speed` m/s (≥ 0) and `to` rad | [0, 0] |
-| `tide` | tidal current on `current_field` (§6.3): `scale` (≥ 0), `period` (integer s, > 0), `turn` (`[a, b]`, fractions of the race, `0 ≤ a ≤ b ≤ 1`, `b − a ≤ 0.4`) and `turn_to` (`+1` or `−1`: the sign of the tide factor after the turn) | requires `current_field`; absent = no tide |
+| `tide` | tidal current on `current_field` (§6.3): `scale` (≥ 0; the tide factor's amplitude) and `period` (integer s, > 0; the real tide is 44712); each race draws its phase over the whole cycle (`race.md` §2.1) | requires `current_field`; absent = no tide |
 | `sea.scale` | `sea_scale` of `sea.md` §2 | ≥ 0 [1] |
 | `sea.swells` | at most 4 swells `{hs (m), tp (s), from (rad)}` of `sea.md` §2 | [none] |
 | `random` | the wider range of the Random weather mode (`race.md` §2.1): `speed` (`[min, max]`, m/s, within the menu's range), `from_spread` (rad, [0, 0.785]), `shift` and `puffs` (non-empty lists of preset names), `tide_scale` and `swell_scale` (`[min, max]` multipliers, ≥ 0) | each key missing: widened from the local values as below |
@@ -644,10 +647,11 @@ longer). `translations` maps a language code to any of `name`, `tag` and `tip`; 
 English. The core ignores this block.
 
 ### 6.9 Old files
-`conditions`, `briefing`, `ref_speed` and `source` are optional additions, so the schema stays `windmark.venue/1`
+`conditions`, `briefing`, `ref_speed`, `ref_to` and `source` are optional additions, so the schema stays `windmark.venue/1`
 (§7). A venue without `conditions` offers only the Custom weather mode (`menus.md` §1), on the defaults of
 `wind.md` §1 and `sea.md` §2 (the race layer refuses Local and Random there); its card shows the briefing computed from those settings without a Tip line. A venue with a
-`current_field` but no `ref_speed` gives the Current line from the uniform current only. Shipped venues have both
+`current_field` but no `ref_speed` gives the Current line from the uniform current only; one without `ref_to`
+gives a tide's line without the set. Shipped venues have both
 blocks (venue test).
 
 ### 6.10 Drawn terrain file (`windmark.terrain/1`)

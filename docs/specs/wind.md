@@ -220,7 +220,8 @@ uniform = current_speed * (sin(current_to), cos(current_to))
 tide(t) = tide_scale * wm_cos(TWO_PI * ((float)(((uint64)t + tide_phase_ms) % tide_period_ms) / (float)tide_period_ms))
 ```
 The sum `t + tide_phase_ms` is taken in 64 bits, so it never wraps before the modulo; `tide_period_ms > 0`.
-At a venue the race layer sets `tide_phase_ms` so the tide turns at a drawn time inside the race (`race.md` §2.1).
+At a venue the race layer sets `tide_phase_ms` from the race seed: each race starts at a drawn point of the tidal
+cycle (`race.md` §2.1).
 `venue_current_field` is a grid of velocity vectors at the reference (spring) tide (`data_format.md` §6.3),
 bilinear, zero outside its box; absent = zero. `tide_period_ms` default 44 712 000 (12 h 25 min). The boat step
 takes the current at its hull reference point (`boat.md` §5.1): it drifts the boat and it changes the

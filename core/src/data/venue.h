@@ -53,8 +53,6 @@ struct VenueConditions {
   bool has_tide = false;
   float tide_scale = 0.0f;
   std::uint32_t tide_period_s = 44712;
-  float turn_a = 0.0f, turn_b = 0.0f;
-  std::int32_t turn_to = -1;
   float sea_scale = 1.0f;
   std::vector<WaveTrain> swells;
   // random (race.md §2.1)

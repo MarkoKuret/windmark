@@ -205,7 +205,7 @@ WM_API void wm_world_settings_init(wm_world_settings* s);
 
 /* race.md §2.1: resolves the venue's conditions (data_format.md §6.7) for `s->weather` and `s->race_seed` into the
  * explicit wind, current and sea fields of `s` (shift_preset and puff_preset become DEFAULT, every value written
- * out), once, before wm_world_create. `course` gives the tide turn's timing with the race fields of `s` (null:
+ * out), once, before wm_world_create. `course` gives the start signal's time (the tide phase) with the race fields of `s` (null:
  * free sailing). In custom mode wind_speed and wind_from are the player's, and shift_preset / puff_preset the
  * chosen presets (DEFAULT: the venue's). A venue without conditions takes custom only (WM_ERR_ARG otherwise). */
 WM_API wm_status wm_world_settings_resolve(wm_world_settings* s, const wm_venue* venue, const wm_course* course);

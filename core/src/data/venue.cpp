@@ -414,13 +414,6 @@ class VenueReader {
       if (!data::read_int(*o, q, "period", per, sink_)) return false;
       if (per <= 0 || per > 4000000) return fail(q + ".period", "a whole number of seconds > 0");
       c.tide_period_s = static_cast<std::uint32_t>(per);
-      if (o->find("turn") == nullptr) return fail(q + ".turn", "required");
-      if (!range(*o, q, "turn", c.turn_a, c.turn_b, 0.0f, 1.0f)) return false;
-      if (!(c.turn_b - c.turn_a <= 0.4f + 1e-6f)) return fail(q + ".turn", "b - a <= 0.4");
-      std::int64_t to = 0;
-      if (!data::read_int(*o, q, "turn_to", to, sink_)) return false;
-      if (to != 1 && to != -1) return fail(q + ".turn_to", "+1 or -1");
-      c.turn_to = static_cast<std::int32_t>(to);
       c.has_tide = true;
     }
 

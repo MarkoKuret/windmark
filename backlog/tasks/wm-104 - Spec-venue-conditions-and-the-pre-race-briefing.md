@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@venues-spec'
 created_date: '2026-10-06 08:27'
-updated_date: '2026-10-06 08:30'
+updated_date: '2026-10-06 08:39'
 labels:
   - venues
 dependencies: []
@@ -21,8 +21,8 @@ Each venue carries its own conditions instead of the race layer's generic defaul
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 data_format.md §6 has a conditions block and briefing fields; wind.md, sea.md, race.md and menus.md say how the race layer and the card use them
-- [ ] #2 Rating words and thresholds for each briefing line are defined in the spec, so the text follows from the numbers
-- [ ] #3 Coastline data source picked and recorded
-- [ ] #4 Performance budget per venue in the spec: land as few meshes with one shared material and LODs, simplified coastline (vertex cap), grid sizes capped, wind and current lookups no costlier than example_bay; no per-frame work added
+- [x] #1 data_format.md §6 has a conditions block and briefing fields; wind.md, sea.md, race.md and menus.md say how the race layer and the card use them
+- [x] #2 Rating words and thresholds for each briefing line are defined in the spec, so the text follows from the numbers
+- [x] #3 Coastline data source picked and recorded
+- [x] #4 Performance budget per venue in the spec: land as few meshes with one shared material and LODs, simplified coastline (vertex cap), grid sizes capped, wind and current lookups no costlier than example_bay; no per-frame work added
 <!-- AC:END -->

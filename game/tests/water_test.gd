@@ -802,7 +802,8 @@ func check_dry_scene(sea: Sea, tier: String) -> void:
 			if FileAccess.file_exists("res://generated/boats/wm7.physics.json") else null
 	if not side is Dictionary:
 		return
-	check(n == 1, "scene tier %s: the test boat's cockpit kept dry (%d uploaded)" % [tier, n])
+	check(n == 0, "scene tier %s: no cockpit mask by default (%d uploaded)" % [tier, n])
+	sea.dry_cockpits = true
 	var g := Sea.dry_well(side.get("cockpit", {}))
 	var basis := Basis(Vector3.UP, 0.7) * Basis(Vector3.RIGHT, -0.03) * Basis(Vector3.BACK, deg_to_rad(25.0))
 	var xf := Transform3D(basis, Vector3(310.0, 0.2, -95.0)) * BoatView.BODY_TO_MODEL
@@ -818,6 +819,8 @@ func check_dry_scene(sea: Sea, tier: String) -> void:
 	check(up == 1 and back.distance_to(p_body) < 1e-4,
 			"scene tier %s: dry rows map the scene to the body frame (%s m), boats beyond %.0f m left out"
 			% [tier, sci(back.distance_to(p_body)), Sea.DRY_RANGE])
+	sea.dry_cockpits = false
+	sea.set_dry_cockpits(cks, Vector3(300.0, 5.0, -100.0))
 
 
 func _start_scene() -> void:

@@ -285,6 +285,55 @@ def cockpit_data(boat):
     }
 
 
+def heel_attitude(boat, heels_deg=tuple(range(0, 36, 5)), samples=None):
+    """How the free-floating hull sits when heeled (docs/specs/boat.md 5.6): at each heel the rise (m, + up) and the
+    trim (rad, + bow up) that keep the immersed volume and the longitudinal centre of buoyancy of the upright DWL,
+    from the skin samples (the weight, its line of action and the displacement unchanged). Heel to port; the hull is
+    symmetric. Up to 35 deg, below where the sheer immerses and the open skin stops holding water."""
+    b = samples or buoyancy_samples(boat)
+    P = np.asarray(b["position"], dtype=np.float64)
+    N = np.asarray(b["normal"], dtype=np.float64)
+    A = np.asarray(b["area_m2"], dtype=np.float64)
+
+    def rot(phi, th):
+        cp, sp, ct, st = np.cos(phi), np.sin(phi), np.cos(th), np.sin(th)
+        rx = np.array([[1, 0, 0], [0, cp, -sp], [0, sp, cp]])
+        ry = np.array([[ct, 0, -st], [0, 1, 0], [st, 0, ct]])
+        return ry @ rx
+
+    def buoy(phi, th, rise):
+        R = rot(phi, th)
+        W = P @ R.T
+        W[:, 2] += rise
+        fz = -np.clip(-W[:, 2], 0, None) * A * (N @ R.T)[:, 2]     # vertical pressure force per rho g
+        V = fz.sum()
+        return V, (fz * W[:, 0]).sum() / V
+
+    V0, x0 = buoy(0.0, 0.0, 0.0)
+
+    def res(phi, v):
+        V, xb = buoy(phi, v[0], v[1])
+        return np.array([V / V0 - 1.0, xb - (rot(phi, v[0]) @ np.array([x0, 0.0, 0.0]))[0]])
+
+    rise, trim = [], []
+    v = np.zeros(2)
+    for d in heels_deg:
+        phi = -np.radians(d)
+        for _ in range(40):
+            f = res(phi, v)
+            if np.max(np.abs(f)) < 1e-9:
+                break
+            J = np.empty((2, 2))
+            for k in range(2):
+                dv = v.copy()
+                dv[k] += 1e-6
+                J[:, k] = (res(phi, dv) - f) / 1e-6
+            v = v - np.linalg.solve(J, f)
+        trim.append(float(v[0]))
+        rise.append(float(v[1]))
+    return {"heel": _r(np.radians(heels_deg), 5), "rise": _r(rise, 4), "trim": _r(trim, 5)}
+
+
 def perf_inputs(boat):
     """Geometric values the performance file takes from the generator (data_format.md 4.2, sea.md 5.1,
     wind_shadow.md 2), for the VPP to copy."""
@@ -315,4 +364,5 @@ def perf_inputs(boat):
                         "width_spinnaker": _r(spin_foot + cls["rig"]["E"], 3) if spin else None,
                         "turb_width": _r(cls["hull"]["beam_max"], 3)},
         "sail_plan_ce": _r(to_body(ce[None], ox)[0], 3),
+        "heel_attitude": heel_attitude(boat),
     }

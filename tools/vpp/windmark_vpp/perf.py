@@ -735,6 +735,13 @@ class Generator:
                 if v is not None:
                     dyn["wind_shadow"][k] = v
             self.notes.append("collision outline, hull points and wind-shadow geometry from the boat generator")
+            # boat.md 5.6: how the drawn hull floats when heeled (rise and trim), computed on its skin by the generator
+            ha = pin.get("heel_attitude")
+            if ha:
+                hh = np.asarray(ha["heel"], float)
+                dyn["heel_rise"] = table([("heel_abs", hh)], "m", np.asarray(ha["rise"], float))
+                dyn["heel_trim"] = table([("heel_abs", hh)], "rad", np.asarray(ha["trim"], float))
+                self.notes.append("heel rise and trim from the boat generator")
         return dyn
 
     @property
@@ -967,7 +974,8 @@ def generate(boat: Boat, thin_ship: Optional[bool] = None, physics: Optional[Dic
 
 RANGES = {"polar": (-5, 40), "heel": (0, math.pi / 2), "accel": (0, None), "accel_rest": (0, None),
           "fall_off": (0, None), "flog_drag": (0, None), "drift": (0, None), "drift_flog": (0, None), "trim_speed": (0, 3), "trim_heel": (0, 3),
-          "heel_speed_factor": (0, 3), "optimal_angle": (0, math.pi)}
+          "heel_speed_factor": (0, 3), "optimal_angle": (0, math.pi), "heel_rise": (-1, 1),
+          "heel_trim": (-math.pi / 8, math.pi / 8)}
 QUANTITIES = ("tws", "twa_abs", "awa_abs", "trim_error", "boat_speed", "boat_speed_abs", "helm_abs", "heel_abs", "aws")
 
 
@@ -990,7 +998,7 @@ def validate_table(t: Dict, path: str):
         n *= len(p)
     if len(t["values"]) != n:
         raise ValueError(f"{path}: {len(t['values'])} values for {n}")
-    if t["unit"] not in ("m/s", "rad", "m/s2", "rad/s", "s", "1"):
+    if t["unit"] not in ("m", "m/s", "rad", "m/s2", "rad/s", "s", "1"):
         raise ValueError(f"{path}: unit {t['unit']}")
 
 

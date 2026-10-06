@@ -21,7 +21,7 @@ uv venv .venv && uv pip install --python .venv/bin/python -e ".[test]"     # or:
 
 Options: `-o FILE` (one class) or `-o DIR` (several classes, `<id>.perf.json` each); `--plots DIR` writes four
 PNGs per class; `--physics FILE_OR_DIR` copies the boat generator's `perf_inputs` (collision outline, hull
-points, wind-shadow geometry) from `<id>.physics.json`; `--thin-ship` uses the thin-ship wave resistance for a
+points, wind-shadow geometry, heel rise and trim) from `<id>.physics.json`; `--thin-ship` uses the thin-ship wave resistance for a
 monohull too (for comparison). Every run validates its output against the table rules of `data_format.md` §5
 and prints the assumptions it made.
 
@@ -230,6 +230,7 @@ tables, the VMG optima and the `dynamics` fits.
 | `heel_freq`, `heel_damping` | roll stiffness (righting-moment slope) over roll inertia (hull, rig, bulb, crew, +20 % added); aerodynamic roll damping of the sail plan |
 | `pitch_freq` | waterplane pitch stiffness over pitch inertia (+80 % added) |
 | `collision`, `hull_points`, `wind_shadow` geometry | the generator's `perf_inputs` when given, else the reference constructions of `collisions.md` §2.1 and `wind_shadow.md` §2 |
+| `heel_rise`, `heel_trim` | the generator's `perf_inputs.heel_attitude` (how the drawn hull floats when heeled, `boat.md` §5.6) when given, else absent (0) |
 
 The rest (`helm_rate`, `yaw_time` (S 0.35 s, L 0.6 s), `pitch_damping`, `heave_time`, `surf_gain`, wobble, wave gains, sail rates, handling
 times, slowdowns) use the reference values of the owning specs, interpolated between the sportsboat and

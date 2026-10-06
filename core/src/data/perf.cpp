@@ -35,6 +35,8 @@ const TableSpec kDrift{{Quantity::tws, Quantity::twa_abs}, Unit::m_s, 0.0f, kInf
 const TableSpec kLeeway{{Quantity::tws, Quantity::twa_abs}, Unit::rad, 0.0f, 0.5f};
 const TableSpec kOptimalAngle{{Quantity::tws, Quantity::awa_abs}, Unit::rad, 0.0f, PI};
 const TableSpec kHeelSpeedFactor{{Quantity::heel_abs}, Unit::one, 0.0f, 3.0f};
+const TableSpec kHeelRise{{Quantity::heel_abs}, Unit::m, -1.0f, 1.0f};
+const TableSpec kHeelTrim{{Quantity::heel_abs}, Unit::rad, -PI / 8.0f, PI / 8.0f};
 const TableSpec kRudderDrag{{Quantity::boat_speed_abs, Quantity::helm_abs}, Unit::m_s2, -kInf, kInf};
 // Sail angle magnitudes: the spec gives no explicit range; a magnitude lies in [0, pi].
 const TableSpec kSheetMaxByHeel{{Quantity::heel_abs}, Unit::rad, 0.0f, PI};
@@ -142,7 +144,9 @@ class PerfReader {
         read_float(d, p, "wobble_freq", y.wobble_freq, sink_) &&
         ranged(d, p, "heave_time", y.heave_time, 0.0f, kInf) &&
         read_float(d, p, "waterline_offset", y.waterline_offset, sink_) &&
-        read_float(d, p, "surf_gain", y.surf_gain, sink_) && positive(d, p, "lwl", y.lwl) &&
+        read_float(d, p, "surf_gain", y.surf_gain, sink_) &&
+        optional_table(d, p, "heel_rise", kHeelRise, y.heel_rise) &&
+        optional_table(d, p, "heel_trim", kHeelTrim, y.heel_trim) && positive(d, p, "lwl", y.lwl) &&
         positive(d, p, "bwl", y.bwl) && positive(d, p, "loa", y.loa);
     if (!scalars) return false;
 

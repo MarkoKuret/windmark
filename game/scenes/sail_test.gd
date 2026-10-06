@@ -390,6 +390,8 @@ func _user_args() -> void:
 			livery = a.trim_prefix("--livery=")
 		elif a.begins_with("--seed="):
 			world_seed = a.trim_prefix("--seed=").to_int()
+		elif a == "--dry-cockpits":
+			sea.dry_cockpits = true
 		elif a.begins_with("--wind="):
 			wind_speed_kn = a.trim_prefix("--wind=").to_float()
 		elif a.begins_with("--wind-from="):

@@ -31,6 +31,7 @@ constexpr Name kUnits[] = {
     {"m/s", static_cast<std::uint8_t>(Unit::m_s)},   {"rad", static_cast<std::uint8_t>(Unit::rad)},
     {"m/s2", static_cast<std::uint8_t>(Unit::m_s2)}, {"rad/s", static_cast<std::uint8_t>(Unit::rad_s)},
     {"s", static_cast<std::uint8_t>(Unit::s)},       {"1", static_cast<std::uint8_t>(Unit::one)},
+    {"m", static_cast<std::uint8_t>(Unit::m)},
 };
 
 }  // namespace

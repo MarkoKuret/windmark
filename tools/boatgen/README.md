@@ -412,7 +412,7 @@ Positions in the body frame.
 | key | content |
 | --- | --- |
 | `hydrostatics` | displaced volume at the DWL (canoe body, fin, bulb, immersed rudder) and its error against displacement + crew, LCB (x and % LWL), VCB, LWL, BWL, Tc, waterplane area, LCF, transverse and longitudinal BM, Cp, Cm (with the requested Cm), Cb, Cwp, wetted surface, kg per cm immersion, lightship rise, bulb lead volume and ballast ratio, lateral areas, and the solver's fitted knobs |
-| `perf_inputs` | what the performance file takes from the generator: `collision.outline` (convex, counter-clockwise, `collisions.md` §2.1), `hull_points` on the real waterline in the order of `sea.md` §5.1, `wind_shadow` geometry (height, ce_x, stern_x, chord, width_min, width_spinnaker, turb_width), loa, lwl, bwl |
+| `perf_inputs` | what the performance file takes from the generator: `collision.outline` (convex, counter-clockwise, `collisions.md` §2.1), `hull_points` on the real waterline in the order of `sea.md` §5.1, `wind_shadow` geometry (height, ce_x, stern_x, chord, width_min, width_spinnaker, turb_width), loa, lwl, bwl, `heel_attitude` (`heel`, `rise`, `trim`: at each heel from 0 to 35° the free-floating equilibrium of the skin samples below, the volume and the longitudinal centre of buoyancy held at the upright DWL; `docs/specs/boat.md` §5.6) |
 | `waterline` | the DWL contour, port and starboard |
 | `buoyancy_samples` | skin samples up to the sheer with outward normal and area, for pressure integration at any heel and trim (`canoe_volume_check_m3` is their immersed volume by the divergence theorem) |
 | `collision_meshes` | closed low-poly hull (canoe body to the deck crown), fin, bulb and rudder slabs |

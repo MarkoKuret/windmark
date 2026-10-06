@@ -23,7 +23,7 @@ enum class Quantity : std::uint8_t {
 };
 
 // Units of table values.
-enum class Unit : std::uint8_t { m_s, rad, m_s2, rad_s, s, one };
+enum class Unit : std::uint8_t { m_s, rad, m_s2, rad_s, s, one, m };
 
 bool quantity_from_name(std::string_view name, Quantity& out);
 std::string_view quantity_name(Quantity q);

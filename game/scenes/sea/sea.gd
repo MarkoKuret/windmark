@@ -11,7 +11,8 @@ extends Node3D
 ##   render_time_ms  the environment clock at this frame (fractional ms); advanced by delta when
 ##                 use_internal_clock is on, otherwise set by the owner every frame before _process
 ## Or push data directly with set_sea() and set_wind().
-## Every frame after the boats are posed, set_dry_cockpits() keeps the sea out of the nearby cockpits (§4.8).
+## Every frame after the boats are posed, set_dry_cockpits() keeps the sea out of the nearby cockpits (§4.8) when
+## dry_cockpits is on (off by default: the boats float clear of the water when heeled, boat.md §5.6).
 
 signal quality_changed(tier: int)
 
@@ -53,6 +54,8 @@ var whitecaps := false:
 ## place of the source's base speed, to judge the caps at another wind; 0 draws the source's. The waves stay.
 var drawn_wind_kn := 0.0
 
+## water_render.md §4.8: the optional mask keeping the sea out of nearby cockpits (the race scene's --dry-cockpits)
+var dry_cockpits := false
 var _mesh_instance: MeshInstance3D
 var _overlay_lines: Array = []
 var _overlay_circles: Array = []
@@ -331,7 +334,7 @@ func set_dry_cockpits(cockpits: Array, cam_pos: Vector3) -> int:
 	if material == null:
 		return 0
 	var near: Array = []
-	for ck in cockpits:
+	for ck in cockpits if dry_cockpits else []:
 		var g: PackedVector4Array = ck.get("well", PackedVector4Array())
 		if g.size() < 3:
 			continue

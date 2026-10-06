@@ -50,6 +50,9 @@ struct Dynamics {
   float pitch_freq, pitch_damping, wave_roll_gain, wave_pitch_gain;
   float wobble_heel, wobble_pitch, wobble_freq;
   float heave_time, waterline_offset, surf_gain;
+  // boat.md §5.6: how the heeled hull floats, optional (absent 0)
+  OptionalTable heel_rise;  // (heel_abs) -> m
+  OptionalTable heel_trim;  // (heel_abs) -> rad, + bow up
   // Sideways drift (boat.md §4, §6.4): optional, both or neither; absent, the boat never drifts sideways.
   bool has_drift = false;
   float drift_grip = 0.0f;    // keel grip: grip speed over the drift speed

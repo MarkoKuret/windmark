@@ -139,10 +139,15 @@ void Boat::step(const BoatEnv& env) {
 
   // 5.6 waves: heave and pitch; wobble (§6.5)
   const HullSample hs = sample_hull(hull_, env.sea, s_.pos_x, s_.pos_y, s_.psi);
-  s_.z = s_.z + k.heave_a * ((hs.hm + d.waterline_offset) - s_.z);
+  // how the heeled hull floats: it rises and trims (the previous tick's heel); absent tables add an exact 0
+  const float heel_abs = std::fabs(s_.phi);
+  const float heel_rise = d.heel_rise.present ? d.heel_rise.table.at(heel_abs) : 0.0f;
+  const float heel_trim = d.heel_trim.present ? d.heel_trim.table.at(heel_abs) : 0.0f;
+  s_.z = s_.z + k.heave_a * (((hs.hm + d.waterline_offset) + heel_rise) - s_.z);
   const float wk = 0.4f + s_.tws * 0.0388769f;
   s_.wobble_phase = wrap_2pi(s_.wobble_phase + (d.wobble_freq * wk) * DT);
-  const float theta_target = d.wave_pitch_gain * hs.wave_pitch + (d.wobble_pitch * wk) * wm_sin(s_.wobble_phase);
+  const float theta_target =
+      (d.wave_pitch_gain * hs.wave_pitch + (d.wobble_pitch * wk) * wm_sin(s_.wobble_phase)) + heel_trim;
   s_.theta_rate = k.pitch_k2 * s_.theta_rate + k.pitch_k1 * (theta_target - s_.theta);
   s_.theta = s_.theta + s_.theta_rate * DT;
 

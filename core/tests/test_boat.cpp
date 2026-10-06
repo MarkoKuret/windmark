@@ -716,3 +716,32 @@ TEST_CASE("boat: over-sheeting on a reach heels the boat more") {
     }
   }
 }
+
+// boat.md §5.6: on flat water a steadily heeled boat sits at the shipped classes' heel_rise and heel_trim for its
+// heel (both tables come from the generator's free-floating hull), and upright at neither.
+TEST_CASE("boat: heeled hull rises and trims") {
+  for (const std::string cls : kClasses) {
+    const wm::PerfData& p = perf_no_wobble(cls);
+    const wm::Dynamics& d = p.dynamics;
+    REQUIRE(d.heel_rise.present);
+    REQUIRE(d.heel_trim.present);
+    Sim sim(p, 16.0f, 0.0f);
+    sim.place(deg(60.0f), 3.0f, p.start_front_sail);
+    for (int i = 0; i < 1200; ++i) {
+      sim.steer_twa(deg(60.0f));
+      sim.step();
+    }
+    const wm::BoatState& s = sim.boat.state();
+    const float rise = d.heel_rise.table.at(std::fabs(s.phi));
+    const float trim = d.heel_trim.table.at(std::fabs(s.phi));
+    MESSAGE(cls, ": heel ", to_deg(std::fabs(s.phi)), " deg, z ", s.z, " m (table ", rise, "), pitch ",
+            to_deg(s.theta), " deg (table ", to_deg(trim), ")");
+    CHECK(to_deg(std::fabs(s.phi)) > 10.0f);
+    CHECK(rise > 0.01f);
+    CHECK(trim < 0.0f);  // bow down: the immersed leeward quarter lifts the stern
+    CHECK(std::fabs(s.z - rise) < 0.002f);
+    CHECK(std::fabs(s.theta - trim) < deg(0.05f));
+    CHECK(d.heel_rise.table.at(0.0f) == 0.0f);
+    CHECK(d.heel_trim.table.at(0.0f) == 0.0f);
+  }
+}

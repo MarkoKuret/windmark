@@ -21,7 +21,8 @@ rules information from the rules engine records (`rules.md` §11); wind from `wi
   technically; Windmark's AI does not, so it knows no more than a good sailor could see), and no AI reads another
   boat's inputs. Two things a sailor knows before the gun it may use: the **tidal stream** (`wind.md` §7: the current
   anywhere on the course now, as from a tidal atlas and the stream round the marks; it is steady through a race), and
-  the **briefing** (`menus.md` §1.3: the venue's trend over the race, the same number the race card shows).
+  the **briefing** (`menus.md` §1.3: the venue's trend over the race, the same number the race card shows). Both hold
+  in every weather mode, Random included, where the player sees no briefing (owner decision, 2026-10-06).
 - **No catch-up.** Nothing in the AI or its boat depends on the race position or the gap to others.
 - **Deterministic.** Same seed, same inputs, same results: all randomness comes from the generator of
   `conventions.md` §7 with the race seed, in the AI streams: stream 16 = start choices (spot spread, start error),

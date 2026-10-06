@@ -1,10 +1,11 @@
 ---
 id: WM-112
 title: 'Venue: Gulf of Trieste in a bora (Mediterranean)'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@trieste'
 created_date: '2026-10-06 08:27'
-updated_date: '2026-10-06 08:30'
+updated_date: '2026-10-06 10:59'
 labels:
   - venues
 dependencies:

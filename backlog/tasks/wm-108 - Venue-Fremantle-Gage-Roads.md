@@ -1,10 +1,11 @@
 ---
 id: WM-108
 title: 'Venue: Fremantle (Gage Roads)'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@fremantle'
 created_date: '2026-10-06 08:27'
-updated_date: '2026-10-06 08:27'
+updated_date: '2026-10-06 10:59'
 labels:
   - venues
 dependencies:

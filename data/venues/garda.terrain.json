@@ -1,0 +1,76 @@
+{
+  "schema": "windmark.terrain/1",
+  "id": "garda",
+  "version": 1,
+  "water_level": 63.0,
+  "box": [-7800, -8400, 7900, 8600],
+  "chunks": [
+    {
+      "id": "near_w",
+      "aabb": [-3360, -3820, -8, 80, 4160, 1440],
+      "vertices": 26275,
+      "triangles": 51557,
+      "shadows": true,
+      "offset": 0,
+      "bytes": 649916,
+      "raw_bytes": 1354384
+    },
+    {
+      "id": "near_e",
+      "aabb": [0, -4000, -8, 3520, 4160, 1423.9],
+      "vertices": 16351,
+      "triangles": 31775,
+      "shadows": true,
+      "offset": 649916,
+      "bytes": 391784,
+      "raw_bytes": 839128
+    },
+    {
+      "id": "far_w",
+      "aabb": [-7840, -8560, -8, 80, 8640, 1909.6],
+      "vertices": 5422,
+      "triangles": 9987,
+      "shadows": false,
+      "offset": 1041700,
+      "bytes": 129506,
+      "raw_bytes": 271660
+    },
+    {
+      "id": "far_e",
+      "aabb": [0, -8400, -8, 7920, 8640, 1998.6],
+      "vertices": 3982,
+      "triangles": 7339,
+      "shadows": false,
+      "offset": 1171206,
+      "bytes": 92587,
+      "raw_bytes": 199564
+    }
+  ],
+  "ridge": {
+    "id": "ridge",
+    "aabb": [-22400, -22400, -2, 22400, 22400, 2754.5],
+    "vertices": 4275,
+    "triangles": 8102,
+    "shadows": false,
+    "spacing": 640.0,
+    "offset": 1263793,
+    "bytes": 90812,
+    "raw_bytes": 216924
+  },
+  "ground": {
+    "grid": {"x0": -3300, "y0": -3900, "dx": 10.0, "dy": 10.0, "nx": 671, "ny": 801},
+    "scale": 0.1,
+    "offset": 1354605,
+    "bytes": 616937,
+    "raw_bytes": 1074942
+  },
+  "stats": {
+    "triangles": 100658,
+    "vertices": 52030,
+    "ridge_triangles": 8102,
+    "coast_vertices": 506,
+    "tolerance_scale": 1.56
+  },
+  "bin": "garda.terrain.bin",
+  "source": "venuegen 0.1.0; Provincia autonoma di Trento, Laghi e specchi d'acqua (Trentino shore, LiDAR 2006-2008), joined at 45.840 N to the SRTM Water Body Data shore as flattened into NASADEM (south of it) PAT p_TN:0f1fdc33 2015-11; NASADEM v001, downloaded 2026-10-06 (CC0 1.0 and public domain); terrain: NASADEM 1 arc-second (NASA JPL, via OpenTopography) v001, downloaded 2026-10-06 (public domain); raw inputs: see tools/venuegen/README.md, Garda"
+}

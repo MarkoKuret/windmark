@@ -7,7 +7,8 @@ import numpy as np
 import pytest
 
 from conftest import REPO, circle
-from windmark_venuegen.build import SourceError, build, build_file, dumps, make_grid
+from windmark_venuegen.build import SourceError, build, build_file, dumps, make_grid, terrain_paths
+from windmark_venuegen.terrain import check_terrain
 from windmark_venuegen.fields import grid_nodes
 from windmark_venuegen.raster import points_in_land
 from windmark_venuegen.validate import CAPS, validate
@@ -201,10 +202,42 @@ def test_shipped_venues_are_generated():
     srcdir = os.path.join(REPO, "data", "venue_sources")
     sources = sorted(f for f in os.listdir(srcdir) if f.endswith(".venuesrc.json"))
     assert "practice_waters.venuesrc.json" in sources
+    missing = []
     for name in sources:
         with open(os.path.join(srcdir, name)) as f:
-            vid = json.load(f)["id"]
-        _, text, _ = build_file(os.path.join(srcdir, name))
-        with open(os.path.join(REPO, "data", "venues", f"{vid}.venue.json")) as f:
+            src = json.load(f)
+        vid = src["id"]
+        raw = [e["path"] for e in src.get("coastline", []) if "path" in e]
+        if isinstance(src.get("terrain"), dict):
+            raw += src["terrain"].get("dem", [])
+        if any(not os.path.exists(os.path.join(srcdir, p)) for p in raw):
+            missing.append(vid)  # raw downloads are kept out of the repo (README); the file checks still run
+            continue
+        venue_path = os.path.join(REPO, "data", "venues", f"{vid}.venue.json")
+        _, text, _, terrain = build_file(os.path.join(srcdir, name), None)
+        with open(venue_path) as f:
             same = f.read() == text
         assert same, f"{vid}.venue.json differs from venuegen's output (regenerate it, never hand-edit)"
+        tj, tb = terrain_paths(venue_path)
+        if terrain:
+            with open(tj) as f, open(tb, "rb") as g:
+                assert f.read() == terrain[0] and g.read() == terrain[1], f"{vid} terrain differs (regenerate it)"
+        else:
+            assert not os.path.exists(tj), f"{vid}: a terrain file without an elevation model in the source"
+    if missing:
+        pytest.skip(f"raw inputs not downloaded for {', '.join(missing)} (tools/venuegen/README.md)")
+
+
+def test_shipped_venue_files_validate():
+    """Every committed venue file passes the checks, and every terrain file is within its caps."""
+    vdir = os.path.join(REPO, "data", "venues")
+    for name in sorted(os.listdir(vdir)):
+        path = os.path.join(vdir, name)
+        if name.endswith(".venue.json"):
+            with open(path) as f:
+                text = f.read()
+            assert validate(json.loads(text), text) == [], name
+        elif name.endswith(".terrain.json"):
+            with open(path) as f:
+                t = json.load(f)
+            assert check_terrain(t, os.path.getsize(os.path.join(vdir, t["bin"]))) == [], name

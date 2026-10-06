@@ -1,0 +1,51 @@
+{
+  "schema": "windmark.venuesrc/1",
+  "id": "garda",
+  "name": "Lake Garda",
+  "version": 1,
+  "origin": { "lat": 45.862, "lon": 10.853 },
+  "bounds": [-1800, -2400, 1900, 2600],
+  "fetch": 8000,
+  "exposure_default": 1.0,
+  "coastline": [
+    {
+      "path": "raw/garda/garda_lake.geojson",
+      "frame": "lonlat",
+      "role": "water",
+      "source": "Provincia autonoma di Trento, Laghi e specchi d'acqua (Trentino shore, LiDAR 2006-2008), joined at 45.840 N to the SRTM Water Body Data shore as flattened into NASADEM (south of it)",
+      "version": "PAT p_TN:0f1fdc33 2015-11; NASADEM v001",
+      "downloaded": "2026-10-06",
+      "licence": "CC0 1.0 and public domain"
+    }
+  ],
+  "terrain": {
+    "dem": [
+      "raw/garda/nasadem/NASADEM_HGT_n45e010.tif",
+      "raw/garda/nasadem/NASADEM_HGT_n45e011.tif",
+      "raw/garda/nasadem/NASADEM_HGT_n46e010.tif",
+      "raw/garda/nasadem/NASADEM_HGT_n46e011.tif"
+    ],
+    "source": "NASADEM 1 arc-second (NASA JPL, via OpenTopography)",
+    "version": "v001",
+    "downloaded": "2026-10-06",
+    "licence": "public domain",
+    "water_level": 63,
+    "wind_height_max": 200
+  },
+  "wind": { "shadow_max": 0.2, "coriolis": 0.12 },
+  "note": "raw inputs: see tools/venuegen/README.md, Garda",
+  "exposure": { "from": 3.4034 },
+  "conditions": {
+    "wind": { "speed": [6.17, 9.26], "from": 3.4034, "from_spread": 0.1745 },
+    "shift": { "preset": "stable", "trend_rate": 0.0, "trend_max": 0.0 },
+    "puffs": { "preset": "light" },
+    "current": { "speed": 0.0, "to": 0.0 },
+    "sea": { "scale": 1.0 },
+    "random": { "speed": [3.09, 11.32], "from_spread": 0.2618, "shift": ["steady", "stable", "oscillating"],
+                "puffs": ["light", "standard"] }
+  },
+  "briefing": {
+    "tag": "Ora",
+    "tip": "Less pressure under the west cliffs; play the middle and the Torbole side."
+  }
+}

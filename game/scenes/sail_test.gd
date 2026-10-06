@@ -222,7 +222,8 @@ func _ready() -> void:
 	add_child(venue_view)
 	venue_view.apply_quality(sea.quality)
 	sea.quality_changed.connect(venue_view.apply_quality)  # water_render.md §4.6: no tree shadows on L
-	venue_view.build(VenueShapes.from_core((sim as CoreSimSource).core) if on_core else VenueShapes.from_file(venue))
+	venue_view.build(VenueShapes.from_core((sim as CoreSimSource).core) if on_core else VenueShapes.from_file(venue),
+		venue)
 	target.ground = venue_view.ground_height
 	rig = CameraRig.new()
 	rig.name = "CameraRig"

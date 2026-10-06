@@ -93,6 +93,7 @@ in vec3 v_on;
 uniform int u_kind;      // 0 prop (vertex colour), 1 land, 2 unshaded, 3 albedo, 4 boat
 uniform vec3 u_albedo;
 uniform float u_rough;
+uniform float u_bare;
 out vec4 frag;
 void main() {
     vec3 N = normalize(v_n);
@@ -102,7 +103,7 @@ void main() {
     if (u_kind == 2) {
         c = v_col.rgb * 1.2;
     } else if (u_kind == 1) {
-        vec3 alb = wm_land_albedo(v_col.rgb, v_wpos, N.y, length(u_cam - v_wpos));
+        vec3 alb = wm_land_albedo(v_col.rgb, v_wpos, N.y, length(u_cam - v_wpos), u_bare);
         c = shade(alb, wm_land_roughness(v_col.a), 0.35, N, V);
     } else if (u_kind == 4) {
         vec3 alb;
@@ -217,6 +218,8 @@ def render(ctx, d, size):
         mesh["u_kind"].value = kinds[m["kind"]]
         mesh["u_albedo"].value = tuple(m["albedo"][:3])
         mesh["u_rough"].value = float(m.get("roughness", 0.6))
+        if "u_bare" in mesh:
+            mesh["u_bare"].value = float(m.get("bare_rock", 1.0))
         if m["kind"] == "land":
             ctx.enable(moderngl.CULL_FACE)
         else:

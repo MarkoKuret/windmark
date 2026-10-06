@@ -16,6 +16,7 @@ from .fields import (CURRENT_DEFAULTS, EXPOSURE_DEFAULTS, WIND_DEFAULTS, current
 from .geo import InputError, load_entry, signed_area
 from .raster import Raster
 from .simplify import simplify_ring
+from .terrain import TERRAIN_DEFAULTS, build_terrain, check_terrain, wind_heights
 from .validate import CAPS, _Checker, check_briefing, check_conditions, validate
 
 SIMPLIFY_DEFAULTS = {
@@ -115,15 +116,39 @@ def _source_note(src):
         if e.get("licence"):
             s += f" ({e['licence']})"
         parts.append(s)
-    if src.get("terrain"):
-        parts.append(f"terrain: {src['terrain']}")
+    t = src.get("terrain")
+    if isinstance(t, dict):
+        s = t.get("source") or "elevation model"
+        if t.get("version"):
+            s += f" {t['version']}"
+        if t.get("downloaded"):
+            s += f", downloaded {t['downloaded']}"
+        if t.get("licence"):
+            s += f" ({t['licence']})"
+        parts.append(f"terrain: {s}")
+    elif t:
+        parts.append(f"terrain: {t}")
     if src.get("note"):
         parts.append(src["note"])
     return f"venuegen {__version__}; " + "; ".join(parts)
 
 
-def build(src):
-    """The venue document and a list of notes."""
+TERRAIN_META = ("dem", "source", "version", "downloaded", "licence")
+
+
+def terrain_params(src):
+    """The `terrain` block's constants (None without an elevation model)."""
+    t = src.get("terrain")
+    if not isinstance(t, dict):
+        return None
+    if "dem" in t and not isinstance(t["dem"], list):
+        raise SourceError("$.terrain.dem: a list of elevation tiles (GeoTIFF paths relative to the source)")
+    return _merged(TERRAIN_DEFAULTS, {k: v for k, v in t.items() if k not in TERRAIN_META}, "$.terrain")
+
+
+def build(src, terrain_out=None):
+    """The venue document and a list of notes. With a list `terrain_out` and an elevation model in the source,
+    the drawn terrain (header document and binary blob) is appended to it."""
     notes = []
     bounds = tuple(float(v) for v in src["bounds"])
     simp = _merged(SIMPLIFY_DEFAULTS, src.get("simplify"), "$.simplify")
@@ -181,6 +206,18 @@ def build(src):
             flands.append({"points": q, "height": h})
     R = Raster(field_box, wp["work_resolution"])
     mask, height = R.rasterize(flands)
+    tp = terrain_params(src)
+    if tp is not None and src["terrain"].get("dem"):
+        from .dem import Dem
+        try:
+            dem = Dem([os.path.join(src["_dir"], q) for q in src["terrain"]["dem"]])
+        except InputError as ex:
+            raise SourceError(f"$.terrain: {ex}") from ex
+        height = wind_heights(R, mask, height, dem, origin, tp)
+        land_h = height[mask > 0.5]
+        if land_h.size:
+            notes.append(f"wind land heights from the elevation model: mean {land_h.mean():.0f} m, "
+                         f"max {land_h.max():.0f} m")
 
     gbox = _grow(bounds, grids["margin"])
     doc = {k: copy.deepcopy(src[k]) for k in COPY_HEADER if k in src}
@@ -228,6 +265,11 @@ def build(src):
     if c.problems:
         raise SourceError("; ".join(c.problems))
     notes.append(f"land: {len(land)} polygons, {sum(len(p['points']) for p in land)} vertices")
+    if tp is not None and tp["draw"] and terrain_out is not None:
+        try:
+            terrain_out.append(build_terrain(src, tp, origin, bounds, land_box, land, notes, default_h))
+        except InputError as ex:
+            raise SourceError(f"$.terrain: {ex}") from ex
     return doc, notes
 
 
@@ -269,14 +311,38 @@ def dumps(doc):
     return enc(doc, 0) + "\n"
 
 
+def terrain_paths(venue_path):
+    """The drawn terrain files next to a venue file: <id>.terrain.json and <id>.terrain.bin."""
+    base = venue_path[:-len(".venue.json")] if venue_path.endswith(".venue.json") else venue_path
+    return base + ".terrain.json", base + ".terrain.bin"
+
+
 def build_file(src_path, out_path=None):
+    """Builds a venue; with `out_path` writes it (and, with an elevation model, the terrain files beside it).
+    Returns (doc, text, notes, terrain) with terrain None or (header text, blob)."""
     src = load_source(src_path)
-    doc, notes = build(src)
+    tout = []
+    doc, notes = build(src, tout)
     text = dumps(doc)
     problems = validate(json.loads(text), text)
     if problems:
         raise SourceError("generated venue fails validation: " + "; ".join(problems[:10]))
+    terrain = None
+    if tout:
+        tdoc, blob = tout[0]
+        tdoc["bin"] = os.path.basename(terrain_paths(out_path or f"{src['id']}.venue.json")[1])
+        tdoc["source"] = doc["source"]
+        tp = check_terrain(tdoc, len(blob))
+        if tp:
+            raise SourceError("generated terrain fails its checks: " + "; ".join(tp))
+        terrain = (dumps(tdoc), blob)
     if out_path:
         with open(out_path, "w") as f:
             f.write(text)
-    return doc, text, notes
+        if terrain:
+            tj, tb = terrain_paths(out_path)
+            with open(tj, "w") as f:
+                f.write(terrain[0])
+            with open(tb, "wb") as f:
+                f.write(terrain[1])
+    return doc, text, notes, terrain

@@ -639,12 +639,19 @@ def place_all(cls, hull, deck, rig, lod=0):
     x_org = min(x_cl + 0.55 * s, rig.x_mast - 0.45 * s)
     # where the tails go over the coachroof's aft edge (no halyard winches on top): a rope bag on the aft face either
     # side of the companionway, its top at 0.6 of the face's height
+    # side of the companionway, its top at 0.6 of the face's height. With halyard winches on the coachroof the tails
+    # first close in to a lane inboard of the winches, clear of the sliding hatch, and run aft along it to the edge
     bag = None
-    if deck.has_cabin and not winches_on_top:
+    y_lane = y_cl
+    if deck.has_cabin:
+        if winches_on_top:
+            half = 0.5 * (n_hal - 1) * hal_pitch
+            r_w = 1.38 * 0.5 * d_prim * 0.72
+            y_lane = min(0.5 * (cp["hatch_width"] if cp else 0.0) + 0.04 + half, y_h - r_w - half - 0.01)
         zf_ = float(deck.floor_z(deck.xk0))
-        zt_ = float(deck.cabin_z(deck.xk0 + 0.01, y_cl))
+        zt_ = float(deck.cabin_z(deck.xk0 + 0.01, y_lane))
         bh = min(0.18 * s, 0.45 * (zt_ - zf_))
-        bag = {"top": zf_ + 0.62 * (zt_ - zf_), "h": bh, "w": (n_hal + 1.2) * hal_pitch, "d": 0.045 * s}
+        bag = {"top": zf_ + 0.62 * (zt_ - zf_), "h": bh, "w": (n_hal + 1.2) * hal_pitch, "d": 0.045 * s, "y": y_lane}
     o_in = 0.36 * hal_pitch             # the organiser's sheaves stand inboard of their lines by the groove radius
     for side in (1, -1):
         hw.extend(on_surface(deck, clutch_bank(n_hal, hal_pitch), x_cl, side * y_cl), tag=f"clutches_{side}")
@@ -655,7 +662,7 @@ def place_all(cls, hull, deck, rig, lod=0):
     # turning blocks round the mast foot and the halyards themselves
     z_exit = rig.z_step + 0.42 * s
     d_mb = 0.045 * s
-    x_top = deck.xk0 + 0.04          # wm7: the tails go over the coachroof's aft edge here
+    x_top = deck.xk0 + 0.04          # the tails go over the coachroof's aft edge here
     for side in (1, -1):
         for k in range(n_hal):
             # beside the mast foot, in a fan, so they sit on the deck forward of where the coachroof meets it
@@ -681,10 +688,12 @@ def place_all(cls, hull, deck, rig, lod=0):
                 top = np.array([rig.x_mast, side * 0.5 * rig.width, z_exit + 0.05 * s * k])
                 pts = [top] + sheave + [(c[0] - 0.08 * s, c[1] + side * rg),
                                         (org[0][0] + 0.1 * s, yl), org[0], org[1], clu[0], clu[1]]
-                if winches_on_top:
-                    pts += [(x_cl - 0.3 * s, yl + side * 0.02 * s)]
-                else:
-                    # over the aft edge and down the aft face into the rope bag on the face
+                if bag is not None:
+                    # (on the lane inboard of the halyard winches) over the aft edge and down the aft face into the
+                    # rope bag on the face
+                    if winches_on_top:
+                        yl = side * (y_lane + (k - (n_hal - 1) / 2) * hal_pitch)
+                        pts += [(x_cl - 1.2 * hal_pitch - 0.25 * s, yl), (x_h, yl)]
                     re = min(deck.cab_r, 0.8 * deck.cab_h)
                     lift = 0.9 * r_line + 0.002
                     zc = float(deck.cabin_z(deck.xk0 + re, yl)) - re      # the aft edge's radius centre
@@ -703,7 +712,7 @@ def place_all(cls, hull, deck, rig, lod=0):
             if bag is not None:
                 # the rope bag the tails drop into: a low soft pocket on the coachroof's aft face
                 hw.add("rubber", superellipsoid_box((bag["d"], bag["w"], bag["h"]), 0.35, 8, 4,
-                                                    center=[deck.xk0 - 0.5 * bag["d"] + 0.002, side * y_cl,
+                                                    center=[deck.xk0 - 0.5 * bag["d"] + 0.002, side * bag["y"],
                                                             bag["top"] - 0.5 * bag["h"]]), tag=f"rope_bag_{side}")
                 hw.attach(f"rope_bag_{side}", "deck")
             # halyard exit plates on the mast

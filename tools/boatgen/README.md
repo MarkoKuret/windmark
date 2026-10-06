@@ -315,8 +315,9 @@ builds the game model and `Boat.write_game_glb` writes it with the shadow proxy:
   plan, `Boat.line_on_face`) and stay thin rope geometry only where they hang in the air (`Boat.painted_part()`, drawn by `tools/liverybake`); each hatch also
   stands as a plain box about 3 cm proud on the deck node, whose top shows the painted frame and lens. The halyard
   exits, the anemometer, the antenna, the outhaul, sheaves, sheave boxes and bolts go. The mast-foot and traveller
-  blocks, the clutches, winches, cars, mast foot, mast instruments, the wind wand, the rope bags (where the halyard
-  tails go over the coachroof's aft edge they drop into a low bag on the aft face, no halyard coils), stanchions, pulpit, pushpit,
+  blocks, the clutches, winches, cars, mast foot, mast instruments, the wind wand, the rope bags (the halyard tails
+  run aft from the clutches, inboard of any halyard winches, over the coachroof's aft edge and down into a low bag on
+  the aft face either side of the companionway; no halyard coils), stanchions, pulpit, pushpit,
   lifelines, rigging screws and the helm stay modelled;
 - one node `body` for every static part (hull, deck, keel, mast, rigging, hardware; each vertex's source part in
   `COLOR_0` blue, GLB root extras `body_parts`) and the moving parts on their own: `rudder` (with the tiller),

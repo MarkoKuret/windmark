@@ -425,3 +425,26 @@ AI tick spikes become 10 to 25 ms hitches.
 
 Re-run for clean numbers on AC power, avoiding the display refresh cap, with 3 repetitions (`matrix.py PLAN 3`),
 and on a real Windows laptop with Intel UHD graphics.
+
+## Before and after on another machine
+
+Tags: `perf-before` (the last commit before WM-100 to WM-103, with the measurement flags) and `perf-after`. Each
+side gets its own folder, its own native build and its own generated boats:
+
+```
+git clone https://github.com/MarkoKuret/windmark.git wm-after
+cd wm-after && git checkout perf-after && game/native/build.sh && game/tests/run_boat_import_test.sh && cd ..
+git -C wm-after worktree add ../wm-before perf-before
+cd wm-before && game/native/build.sh && game/tests/run_boat_import_test.sh && cd ..
+```
+
+Needs Godot 4.6, CMake, Ninja and Python 3 with numpy, scipy, pillow and moderngl. Run each side the same way, on AC
+power, Low Power Mode off, one at a time, nothing else running:
+
+```
+godot --path game --resolution 1920x1080 res://scenes/sail_test.tscn -- --race --fleet=16 --watch --seed=7 \
+  --skip=185 --quality=M --no-vsync --perf-log=start_M.csv --perf-seconds=60
+```
+
+Repeat with `--skip=330` (open leg) and `--quality=L`, three times each, and compare the median `fps`, `main_ms`
+and draw calls in the CSVs.

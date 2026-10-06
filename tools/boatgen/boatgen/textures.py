@@ -119,8 +119,9 @@ def _tile(set_name, k):
 
 
 def atlas_image(k):
-    """The atlas of map k (color, mr, normal) as an RGB uint8 array."""
-    img = np.zeros((ATLAS_ROWS * SIZE, ATLAS_COLS * SIZE, 3), np.uint8)
+    """The atlas of map k (color, mr, normal) as an RGB uint8 array. The unused cells hold the flat tile, so the
+    wrap and the coarse mipmaps blend in the detail's mean and a flat normal, not black."""
+    img = np.tile(_tile("flat", k), (ATLAS_ROWS, ATLAS_COLS, 1))
     for i, sname in enumerate(ATLAS_SETS):
         r, c = divmod(i, ATLAS_COLS)
         img[r * SIZE:(r + 1) * SIZE, c * SIZE:(c + 1) * SIZE] = _tile(sname, k)

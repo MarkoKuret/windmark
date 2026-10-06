@@ -21,6 +21,13 @@ uniform vec3 sn_color = vec3(0.0, 0.0, 0.0);    // linear
 uniform vec4 sn_box[4];
 uniform vec4 sn_tex[4];
 
+// A tangent-space normal from a normal map's texel c: x and y from red and green, z rebuilt. Godot imports a texture
+// sampled with hint_normal as two-channel RGTC, whose blue reads 0, so the blue channel is never used.
+vec3 wm_normal_texel(vec3 c) {
+	vec2 xy = c.xy * 2.0 - 1.0;
+	return vec3(xy, sqrt(max(1.0 - dot(xy, xy), 0.0)));
+}
+
 // Perturbs the unit normal n by the tangent-space normal m (OpenGL convention in an image's own axes) sampled at
 // the texture coordinates uv, p the position (both in one space): the tangent and bitangent are the surface
 // gradients of uv from screen-space derivatives (Mikkelsen 2010), so the mesh needs no tangents. up_sign: +1 when

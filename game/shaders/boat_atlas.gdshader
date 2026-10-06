@@ -128,7 +128,7 @@ void fragment() {
 			rough = mix(sp.x * rdet, orm.g * rdet, flat_k);
 			occ = mix(1.0, orm.r, flat_k);
 			// the livery's relief (vinyl and tape edges, fairing, non-slip edges, sealant, painted fittings)
-			vec3 nb = texture(bk_normal, at).rgb * 2.0 - 1.0;
+			vec3 nb = wm_normal_texel(texture(bk_normal, at).rgb);
 			nb = mix(vec3(0.0, 0.0, 1.0), nb, flat_k);
 			n = wm_perturb(n, VERTEX, t, nb, -1.0);
 			if (region == 1 && ov_on != 0) {
@@ -150,7 +150,7 @@ void fragment() {
 		a = det * wm_hull_livery(UV2, v_port);
 	}
 	// the tile's relief (orange peel, non-slip diamonds, weave, braid, brushed grain)
-	vec3 m = tn * 2.0 - 1.0;
+	vec3 m = wm_normal_texel(tn);
 	m.xy *= nscale;
 	n = wm_perturb(n, VERTEX, tuv, m, -1.0);
 	NORMAL = n;

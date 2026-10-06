@@ -45,6 +45,7 @@ target_compile_definitions(windmark_core_tests PRIVATE
 # Venue physics file loader (data_format.md §6).
 target_sources(windmark_core_tests PRIVATE
   test_venue.cpp
+  test_land_index.cpp
 )
 # collisions (WM-008)
 target_sources(windmark_core_tests PRIVATE

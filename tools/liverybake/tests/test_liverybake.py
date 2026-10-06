@@ -285,8 +285,13 @@ def test_painted_hardware(staged):
     assert orm[win][..., 2].max() < 40, "non-slip mask cleared under the track"
     assert orm[win][..., 1].mean() < 0.5 * 255, "metal is smoother than the deck"
     tags = {p["tag"].split("_")[0] for p in geo["painted"]}
-    for t in ("hatch", "halyard", "mast", "organiser"):
+    for t in ("hatch", "halyard", "jib", "organiser"):
         assert t in tags, t
+    assert "mast" not in tags, "the mast-foot blocks stand up: modelled, not painted"
+    # a line is painted only where it lies on the surface (no stripes down the coachroof's aft face)
+    for p in geo["painted"]:
+        if p["slot"].startswith("rope"):
+            assert (p["H"][p["I"]] < 0.035 + 1e-9).all(), p["tag"]
     assert alb.shape == (2048, 2048, 3)
 
 

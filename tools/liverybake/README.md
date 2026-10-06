@@ -150,9 +150,10 @@ Godot import settings. The game draws every opaque surface of a boat with one ma
   the deck below it at its own aspect, then the transom and the keel side by side, each region padded by its edge
   texels into a 16-texel gutter; `atlas.json` gives each region's rectangle in atlas uv (`regions`) and in texels
   (`pixels`). The masters in `data/liveries` keep their full size; the atlas is made from them.
-- **Painted hardware** in the deck region (`liverybake/painted.py`): the fittings the game does not model (tracks,
-  hatches, organisers, small cleats, the turning blocks at the mast foot, the halyards on deck, coils and tails;
-  `tools/boatgen` `Boat.painted_part`) drawn from the generator's full-detail pieces seen from above: colour by
+- **Painted fittings** in the deck region (`liverybake/painted.py`): what is flat on the deck (the jib and traveller
+  tracks, hatches, organisers, cam, horn and traveller cleats, the rudder bearing ring, and the halyards, coils,
+  tails and traveller lines only where they lie within 3.5 cm of the surface; `tools/boatgen` `Boat.painted_part`)
+  drawn from the generator's full-detail pieces seen from above: colour by
   material (stainless, black plastic and rubber, tinted lens, the class rope set's halyard, control and mainsheet
   colours), relief from the pieces' own normals, roughness by material, the non-slip mask cleared under them, and
   baked shading so they read solid without geometry (a soft contact shadow in occlusion and a little in the deck

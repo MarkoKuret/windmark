@@ -16,7 +16,7 @@ import numpy as np
 from .common import BOATGEN, CLASSES, HERE
 
 CACHE = HERE / ".cache"
-VERSION = 5
+VERSION = 6
 
 
 def _key(class_id):
@@ -121,6 +121,10 @@ def d_plan(boat):
     return boat.deck.plan_rect()
 
 
+# a line more than this above the walking surface under it is not painted (m)
+ROPE_LIFT_MAX = 0.035
+
+
 def painted(boat):
     """The fittings the game paints into the deck maps instead of modelling them (boatgen Boat.painted_part):
     [{tag, slot, P (n, 3) boat frame, I (m, 3), N (n, 3), H (n,) height above the walking surface}] per tag and
@@ -142,8 +146,14 @@ def painted(boat):
             off += len(g.P)
         P = np.vstack(Ps).astype(np.float64)
         Hs = P[:, 2] - np.asarray(d.surface_z(P[:, 0], P[:, 1]), dtype=np.float64)
-        out.append({"tag": tag, "slot": slot, "P": P, "I": np.vstack(Is).astype(np.int64),
-                    "N": np.vstack(Ns).astype(np.float64), "H": Hs})
+        I = np.vstack(Is).astype(np.int64)
+        if slot.startswith("rope"):
+            # a line is painted only where it lies on the surface: not where it spans through the air or runs
+            # down an upright face (the coachroof's aft face takes the texels of its footprint)
+            I = I[(Hs[I] < ROPE_LIFT_MAX).all(1)]
+            if not len(I):
+                continue
+        out.append({"tag": tag, "slot": slot, "P": P, "I": I, "N": np.vstack(Ns).astype(np.float64), "H": Hs})
     return out
 
 

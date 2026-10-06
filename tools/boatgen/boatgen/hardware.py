@@ -563,6 +563,57 @@ def lead_path(deck, pts, r, lift=None, step=0.025):
     return np.array(out), np.array(flags)
 
 
+def _inside(p, poly):
+    """Whether the 2-D point p is inside the convex counter-clockwise polygon."""
+    n = len(poly)
+    for i in range(n):
+        a, b = poly[i], poly[(i + 1) % n]
+        if (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]) < 0:
+            return False
+    return True
+
+
+def _blocked(a, b, poly):
+    return any(_inside(a + (b - a) * t, poly) for t in np.linspace(0.02, 0.98, 40))
+
+
+def route_around(a, b, obstacles, depth=0):
+    """A line's way over the deck from a to b (2-D points): straight where it can, past an obstacle (a convex
+    counter-clockwise polygon, already grown by the clearance) on whichever side is shorter, along the hull of the
+    obstacle and the two ends. Returns the points from a to b."""
+    a, b = np.asarray(a, dtype=np.float64), np.asarray(b, dtype=np.float64)
+    if depth > 3:
+        return [a, b]
+    for poly in obstacles:
+        poly = np.asarray(poly, dtype=np.float64)
+        if _inside(a, poly) or _inside(b, poly) or not _blocked(a, b, poly):
+            continue
+        from scipy.spatial import ConvexHull
+        pts = np.vstack([a, b, poly])
+        hv = list(ConvexHull(pts).vertices)          # counter-clockwise
+        ia, ib = hv.index(0), hv.index(1)
+        n = len(hv)
+        c1 = [hv[(ia + k) % n] for k in range((ib - ia) % n + 1)]
+        c2 = [hv[(ia - k) % n] for k in range((ia - ib) % n + 1)]
+        length = lambda c: sum(np.linalg.norm(pts[c[i + 1]] - pts[c[i]]) for i in range(len(c) - 1))
+        chain = [pts[i] for i in min(c1, c2, key=length)]
+        out = [chain[0]]
+        for p, q in zip(chain[:-1], chain[1:]):
+            out += route_around(p, q, obstacles, depth + 1)[1:]
+        return out
+    return [a, b]
+
+
+def obstacle_box(x0, x1, y0, y1, grow):
+    return np.array([[x0 - grow, y0 - grow], [x1 + grow, y0 - grow], [x1 + grow, y1 + grow], [x0 - grow, y1 + grow]])
+
+
+def obstacle_round(x, y, r, grow, n=10):
+    th = np.linspace(0, 2 * np.pi, n + 1)[:-1]
+    R = (r + grow) / np.cos(np.pi / n)
+    return np.stack([x + R * np.cos(th), y + R * np.sin(th)], -1)
+
+
 def lead(deck, pts, r, lift=None, paths=None, tag=None):
     """A line led over the deck (lead_path) as a rope; `paths[tag]` keeps its centre line, radius and flags for the
     lead checks (tests/test_attachments.py)."""
@@ -578,6 +629,20 @@ def to_world(deck, x, y, yaw, pts):
     M = frame_z(np.array([x, y, z]), n, np.array([np.cos(yaw), np.sin(yaw), 0.0]))
     pts = np.atleast_2d(np.asarray(pts, dtype=np.float64))
     return pts @ M[:3, :3].T + M[:3, 3]
+
+
+def _cabin_hatch_x(deck, d):
+    """Where the hatch on the coachroof's top stands (x), None without one."""
+    if not deck.has_cabin or d.get("hatches", 1) <= 1:
+        return None
+    x_rh = deck.xk0 + 0.6 * (deck.xk1 - deck.xk0)
+    return x_rh if deck.in_cabin_roof(x_rh, 0.0) else None
+
+
+def _tail_spacing(k, side, n):
+    """The small, uneven spacing of the tails at their bag (a fraction of the clutch pitch), fixed per line."""
+    h = (np.sin(12.9898 * (k + 1) + 78.233 * (side + 2)) * 43758.5453) % 1.0
+    return (k - (n - 1) / 2) * 0.75 + (h - 0.5) * 0.3
 
 
 def place_all(cls, hull, deck, rig, lod=0):
@@ -652,6 +717,18 @@ def place_all(cls, hull, deck, rig, lod=0):
         zt_ = float(deck.cabin_z(deck.xk0 + 0.01, y_lane))
         bh = min(0.18 * s, 0.45 * (zt_ - zf_))
         bag = {"top": zf_ + 0.62 * (zt_ - zf_), "h": bh, "w": (n_hal + 1.2) * hal_pitch, "d": 0.045 * s, "y": y_lane}
+    # what a tail on the coachroof passes round: the halyard winches' bases, the sliding hatch and the hatch on the top
+    clear = r_line + 0.012 * s
+    tail_obstacles = []
+    if winches_on_top:
+        for sd in (1, -1):
+            tail_obstacles.append(obstacle_round(x_h, sd * y_h, 1.38 * 0.5 * d_prim * 0.72, clear))
+    if cp:
+        tail_obstacles.append(obstacle_box(cp["hatch_x"] - 0.5 * cp["hatch_len"], cp["hatch_x"] + 0.5 * cp["hatch_len"],
+                                           -0.5 * cp["hatch_width"], 0.5 * cp["hatch_width"], clear))
+    x_rh_ = _cabin_hatch_x(deck, d)
+    if x_rh_ is not None:
+        tail_obstacles.append(obstacle_box(x_rh_ - 0.25 * s, x_rh_ + 0.25 * s, -0.25 * s, 0.25 * s, clear))
     o_in = 0.36 * hal_pitch             # the organiser's sheaves stand inboard of their lines by the groove radius
     for side in (1, -1):
         hw.extend(on_surface(deck, clutch_bank(n_hal, hal_pitch), x_cl, side * y_cl), tag=f"clutches_{side}")
@@ -689,11 +766,14 @@ def place_all(cls, hull, deck, rig, lod=0):
                 pts = [top] + sheave + [(c[0] - 0.08 * s, c[1] + side * rg),
                                         (org[0][0] + 0.1 * s, yl), org[0], org[1], clu[0], clu[1]]
                 if bag is not None:
-                    # (on the lane inboard of the halyard winches) over the aft edge and down the aft face into the
-                    # rope bag on the face
-                    if winches_on_top:
-                        yl = side * (y_lane + (k - (n_hal - 1) / 2) * hal_pitch)
-                        pts += [(x_cl - 1.2 * hal_pitch - 0.25 * s, yl), (x_h, yl)]
+                    # from the clutch as straight as it can to its place at the rope bag, past a winch or a hatch
+                    # on the shorter side (route_around), over the aft edge and down the aft face into the bag
+                    y_end = side * (bag["y"] + _tail_spacing(k, side, n_hal) * hal_pitch)
+                    a2 = np.array([clu[1][0] - 0.04 * s, yl])
+                    b2 = np.array([x_top + 0.06 * s, y_end])
+                    way = route_around(a2, b2, tail_obstacles)
+                    pts += [(float(q[0]), float(q[1])) for q in way]
+                    yl = y_end
                     re = min(deck.cab_r, 0.8 * deck.cab_h)
                     lift = 0.9 * r_line + 0.002
                     zc = float(deck.cabin_z(deck.xk0 + re, yl)) - re      # the aft edge's radius centre
@@ -825,11 +905,10 @@ def place_all(cls, hull, deck, rig, lod=0):
         if x_fh < L - 1.2 * s:
             hw.extend(on_surface(deck, hatch(0.6 * s, 0.6 * s), x_fh, 0.0, conform=True), tag="hatch_fore")
             hw.attach("hatch_fore", "deck")
-        if d.get("hatches", 1) > 1:
-            x_rh = deck.xk0 + 0.6 * (deck.xk1 - deck.xk0)
-            if deck.in_cabin_roof(x_rh, 0.0):
-                hw.extend(on_surface(deck, hatch(0.5 * s, 0.5 * s), x_rh, 0.0, conform=True), tag="hatch_cabin")
-                hw.attach("hatch_cabin", "deck")
+        x_rh = _cabin_hatch_x(deck, d)
+        if x_rh is not None:
+            hw.extend(on_surface(deck, hatch(0.5 * s, 0.5 * s), x_rh, 0.0, conform=True), tag="hatch_cabin")
+            hw.attach("hatch_cabin", "deck")
 
     # --- lifelines, pulpit and pushpit
     if d.get("lifelines"):

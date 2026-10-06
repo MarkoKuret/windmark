@@ -52,10 +52,17 @@ class GameModelTest(unittest.TestCase):
                         for g in gs:
                             t = g.tag or ""
                             painted = hardware.is_painted(t) and not t.startswith("hatch_")
+                            if hardware.is_painted_line(t):
+                                # a painted line's geometry only where it leaves the surface
+                                h = g.P[:, 2] - b.deck.surface_z(g.P[:, 0], g.P[:, 1])
+                                self.assertTrue((h[g.I] >= hardware.ROPE_LIFT_MAX).any(1).all(), t)
+                                continue
                             self.assertFalse(painted or hardware.is_dropped(t), (n, t))
                 tags = {(g.tag or "").split("_")[0] for gs in parts["body"].slots.values() for g in gs}
                 self.assertIn("wind", tags)          # the wind wand
                 self.assertIn("winch", tags)
+                self.assertNotIn("pod", tags)          # a regatta helm: no instrument pod or guard
+                self.assertNotIn("pedestal_guard", {g.tag for gs in parts["body"].slots.values() for g in gs})
 
     def test_painted(self):
         for c in CLASSES:

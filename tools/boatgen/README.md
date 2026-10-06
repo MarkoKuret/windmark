@@ -247,8 +247,8 @@ that BoatView, native and reference, places every vertex within 0.01 m of them.
 self-tailing winches (ribbed drum, tailer, stripper arm, a handle in the starboard primary), rope clutches on a
 base plate, deck organisers, turning blocks on padeyes, blocks with cheeks, sheave and swivel, T-tracks with end
 stops, cars with a lead block and plunger, cam cleats with fairleads, horn cleats, hatches with frame, lens,
-hinges and handles, stanchions, bent-tube pulpit and pushpit, the wheel with its grip and a pedestal guard with
-an instrument pod, gudgeons or the rudder bearing cap, rigging screws. Placement: primaries beside the cockpit,
+hinges and handles, stanchions, bent-tube pulpit and pushpit, a regatta helm (the wheel with its grip on a slim
+pedestal with a small head round its shaft, no guard or instrument pod), gudgeons or the rudder bearing cap, rigging screws. Placement: primaries beside the cockpit,
 halyard winches (wm12), clutches and organisers on the coachroof clear of the sliding hatch, flush hatches bent
 to the top's slope and crown (`on_surface(..., conform=True)`), the halyards themselves from their exits low on the
 mast round the sheave of their turning block at the mast foot, then along the deck and up the sloping top lying on
@@ -306,11 +306,13 @@ builds the game model and `Boat.write_game_glb` writes it with the shadow proxy:
 
 - the hull, deck, keel and rig at the full model's detail;
 - the hardware low-poly (`hardware.lowpoly`): winches about 450 triangles, clutches about 80 each, blocks about
-  120, cars, stanchions, the wheel about 450;
+  120, cars, stanchions, the wheel about 1,100 (a smooth rim near the camera);
 - paint what is flat, model what sticks up, drop what is under a pixel (`hardware.PAINTED`, `hardware.DROPPED`, by
   the pieces' tags): the jib and traveller tracks, hatches, organisers, cam, horn and traveller cleats, the rudder
-  bearing ring, the halyards on deck with their coils, the mainsheet tail and coil and the traveller control lines
-  are painted into the livery's deck maps (`Boat.painted_part()`, drawn by `tools/liverybake`); each hatch also
+  bearing ring, the halyard coils and the mainsheet coil are painted into the livery's deck maps; the halyards, the
+  mainsheet tail and the traveller control lines are painted where they lie on the surface (within 3.5 cm,
+  `hardware.ROPE_LIFT_MAX`) and stay thin rope geometry where they leave it (through the air, down the coachroof's
+  aft face to the cockpit floor), so a line is continuous (`Boat.painted_part()`, drawn by `tools/liverybake`); each hatch also
   stands as a plain box about 3 cm proud on the deck node, whose top shows the painted frame and lens. The halyard
   exits, the anemometer, the antenna, the outhaul, sheaves, sheave boxes and bolts go. The mast-foot and traveller
   blocks, the clutches, winches, cars, mast foot, mast instruments, the wind wand, stanchions, pulpit, pushpit,

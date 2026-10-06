@@ -25,6 +25,17 @@ DROPPED = ("halyard_exit", "anemometer", "antenna", "outhaul", "crane_sheave", "
            "rudder_head_bolt", "gooseneck_pin")
 
 
+# a line lying within this of the walking surface under it is painted there; where it runs higher (through the air,
+# down the coachroof's aft face to the cockpit floor) it stays geometry, so a line is continuous (m)
+ROPE_LIFT_MAX = 0.035
+# the lines that are painted where they lie on the surface
+PAINTED_LINES = ("halyard_", "mainsheet_tail", "traveller_line")
+
+
+def is_painted_line(tag):
+    return bool(tag) and tag.startswith(PAINTED_LINES) and not tag.startswith(("halyard_exit", "halyard_coil"))
+
+
 def is_painted(tag):
     if not tag:
         return False
@@ -39,7 +50,6 @@ def is_dropped(tag):
 
 # True while the game model is built: the part builders below make their low-poly versions
 _LP = [None]
-_SEG_LP = [True]
 
 
 @contextlib.contextmanager
@@ -136,6 +146,23 @@ def _turnbuckle_lp(length, r):
     p = Part()
     with segment_scale(1.0):
         p.add("metal", tube(np.array([[0, 0, 0.0], [0, 0, length]]), 1.6 * r, 6))
+    return p
+
+
+def _wheel_lp(d, grip):
+    """The game model's wheel (about 1,100 triangles; it is near the camera): a smooth rim, 48 segments round and 10
+    round its section, five spokes, the hub."""
+    p = Part()
+    R = d / 2
+    with segment_scale(1.0):
+        th = np.linspace(0, 2 * np.pi, 49)[:-1]
+        ring = np.stack([np.zeros_like(th), R * np.cos(th), R * np.sin(th)], -1)
+        p.add("rubber" if grip else "carbon", sweep(np.vstack([ring, ring[:1]]), circle(0.018 * d / 0.9, 10), caps=False))
+        for k in range(5):
+            a = 2 * np.pi * k / 5
+            p.add("carbon", tube(np.array([[0, 0, 0], [0, R * np.cos(a), R * np.sin(a)]]), 0.012, 6))
+        p.add("metal", revolve([(0, -0.05), (0.06, -0.05), (0.06, 0.05), (0, 0.05)], 12)
+              .transformed(rot_axis([0, 1, 0], np.pi / 2)))
     return p
 
 
@@ -423,13 +450,8 @@ def rounded_path(pts, r, n=6):
 def wheel(d, grip=True):
     """Racing wheel in the local frame, axis along x (forward), centre at the origin: carbon rim with a rubber
     grip cover (`grip`), five spokes, hub."""
-    if _LP[0] is not None and _SEG_LP[0]:
-        _SEG_LP[0] = False
-        try:
-            with segment_scale(0.45):        # the game model's wheel: about 700 triangles
-                return wheel(d, grip)
-        finally:
-            _SEG_LP[0] = True
+    if _LP[0] is not None:
+        return _wheel_lp(d, grip)
     p = Part()
     R = d / 2
     th = np.linspace(0, 2 * np.pi, seg(49, 6))[:-1]
@@ -796,7 +818,8 @@ def place_all(cls, hull, deck, rig, lod=0):
     if d.get("lifelines"):
         lifelines = _lifelines(hw, hull, deck, s, lod)
 
-    # --- helm: wheel on a pedestal with a guard and an instrument pod, or a tiller on the rudder head
+    # --- helm: a regatta helm, the wheel on a slim pedestal with a small head round its shaft (no guard, no
+    # instrument pod), or a tiller on the rudder head
     helm = Part()
     if d.get("steering") == "wheel":
         x_w = min(deck.xc0 + 1.25 * s, deck.xc1 - 0.8)
@@ -804,32 +827,15 @@ def place_all(cls, hull, deck, rig, lod=0):
         dw = min(1.9 * float(deck.yc(x_w)) * 0.9, 1.35 * s)
         hub = np.array([x_w, 0.0, zf + dw / 2 + 0.12])
         xp = x_w + 0.12
-        hw.add("carbon", revolve([(0, 0), (0.13 * s, 0), (0.12 * s, 0.03 * s), (0.065 * s, 0.1 * s), (0.06 * s, hub[2] - zf - 0.05),
-                                  (0, hub[2] - zf - 0.05)], 16, sharp=(1,)).transformed(translate([xp, 0, zf])), tag="pedestal")
+        hw.add("carbon", revolve([(0, 0), (0.09 * s, 0), (0.085 * s, 0.02 * s), (0.045 * s, 0.08 * s),
+                                  (0.04 * s, hub[2] - zf - 0.04), (0, hub[2] - zf - 0.04)], 16, sharp=(1,))
+               .transformed(translate([xp, 0, zf])), tag="pedestal")
         hw.attach("pedestal", "deck")
-        hw.add("carbon", superellipsoid_box((0.22 * s, 0.26 * s, 0.2 * s), 0.35, 12, 6, center=[x_w + 0.14, 0, hub[2]]),
+        hw.add("carbon", superellipsoid_box((0.16 * s, 0.11 * s, 0.11 * s), 0.4, 12, 6, center=[x_w + 0.1, 0, hub[2]]),
                tag="binnacle")
         hw.attach("binnacle", "pedestal")
-        hw.add("metal", tube(np.array([[x_w + 0.02, 0, hub[2]], [x_w + 0.14, 0, hub[2]]]), 0.02, 10), tag="wheel_shaft")
+        hw.add("metal", tube(np.array([[x_w + 0.02, 0, hub[2]], [x_w + 0.1, 0, hub[2]]]), 0.02, 10), tag="wheel_shaft")
         hw.attach("wheel_shaft", "binnacle")
-        if mid:
-            # pedestal guard: a bent tube hoop over the binnacle, and a compass / display pod on top
-            gz = hub[2] + 0.16 * s
-            guard = rounded_path([[xp + 0.22 * s, 0.2 * s, zf], [xp + 0.22 * s, 0.2 * s, gz], [xp + 0.22 * s, -0.2 * s, gz],
-                                  [xp + 0.22 * s, -0.2 * s, zf]], 0.1 * s, 4)
-            hw.add("metal", tube(guard, 0.014 * s, 8), tag="pedestal_guard")
-            hw.attach("pedestal_guard", "deck")
-            # the pod on two arms from the guard, the arms ending in the pod's side faces
-            w_pod, t_pod = 0.26 * s, 0.05 * s
-            M_pod = translate([xp + 0.08 * s, 0, hub[2] + 0.17 * s]) @ rot_axis([0, 1, 0], -1.25) @ rot_axis([0, 0, 1], np.pi)
-            hw.extend(instrument(w_pod, 0.14 * s, t_pod), M_pod, tag="pod")
-            hw.attach("pod", "pod_arm_1")
-            for sy in (1, -1):
-                tip = (M_pod @ np.array([0.5 * t_pod, sy * (0.5 * w_pod - 0.01 * s), 0.0, 1.0]))[:3]
-                hw.add("metal", tube(np.array([[xp + 0.22 * s, sy * 0.2 * s, gz - 0.02], tip]), 0.01 * s, 6),
-                       tag=f"pod_arm_{sy}")
-                hw.attach(f"pod_arm_{sy}", "pedestal_guard")
-                hw.attach(f"pod_arm_{sy}", "pod")
         helm.extend(wheel(dw, grip=mid), translate(hub), tag="wheel")
         helm.attach("wheel", "wheel_shaft")
         helm_pivot = hub

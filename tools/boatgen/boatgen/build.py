@@ -174,6 +174,12 @@ class Boat:
                         g.uv1 = self.deck.plan_uv1(g.P)
                         parts["deck"] = Part().extend(parts["deck"]).add(mat, g)
                         continue
+                    if hardware.is_painted_line(t):
+                        # the line's lengths off the surface stay geometry (the deck maps paint the rest)
+                        g = self._rope_off_surface(g)
+                        if g is not None:
+                            q.add(mat, g)
+                        continue
                     if hardware.is_painted(t) or hardware.is_dropped(t):
                         continue
                     q.add(mat, g)
@@ -186,6 +192,18 @@ class Boat:
         out = {"body": body, **parts}
         for name in self.sails:
             out["sail_" + name] = self.parts["sail_" + name]
+        return out
+
+    def _rope_off_surface(self, g):
+        """The triangles of a line with a vertex more than hardware.ROPE_LIFT_MAX above the walking surface under
+        it (None when it lies on the surface all along)."""
+        from .mesh import Geom
+        h = g.P[:, 2] - np.asarray(self.deck.surface_z(g.P[:, 0], g.P[:, 1]), dtype=np.float64)
+        keep = (h[g.I] >= hardware.ROPE_LIFT_MAX).any(1)
+        if not keep.any():
+            return None
+        out = Geom(g.P, g.I[keep], g.N, g.uv0, g.uv1)
+        out.tag = g.tag
         return out
 
     def painted_part(self):

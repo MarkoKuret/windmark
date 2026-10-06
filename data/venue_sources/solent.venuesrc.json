@@ -2,7 +2,7 @@
   "schema": "windmark.venuesrc/1",
   "id": "solent",
   "name": "The Solent",
-  "version": 2,
+  "version": 3,
   "origin": {"lat": 50.785, "lon": -1.31},
   "bounds": [-6500, -2500, 6000, 4000],
   "fetch": 8000,
@@ -152,6 +152,13 @@
     }
   },
   "briefing": {"tag": "Strong tide", "tip": "The stream runs hardest mid-channel; cheat it along the shore."},
-  "terrain": "land heights per input (mainland 25 m, Isle of Wight 45 m) until terrain heights come from the DEM",
+  "terrain": {
+    "dem": ["raw/solent/nasadem/NASADEM_HGT_n50w002.tif", "raw/solent/nasadem/NASADEM_HGT_n50w001.tif", "raw/solent/nasadem/NASADEM_HGT_n51w002.tif", "raw/solent/nasadem/NASADEM_HGT_n51w001.tif"],
+    "source": "NASADEM 1 arc-second (NASA JPL, via OpenTopography)",
+    "version": "v001",
+    "downloaded": "2026-10-06",
+    "licence": "public domain",
+    "water_level": 0
+  },
   "note": "Bramble Bank from the EMODnet Bathymetry DTM (2 m and 4 m depth contours, CC-BY 4.0)"
 }

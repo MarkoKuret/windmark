@@ -1,0 +1,76 @@
+{
+  "schema": "windmark.terrain/1",
+  "id": "solent",
+  "version": 3,
+  "water_level": 0.0,
+  "box": [-12500, -8500, 12000, 10000],
+  "chunks": [
+    {
+      "id": "near_w",
+      "aabb": [-8000, -4160, -8, 0, 5760, 54.7],
+      "vertices": 30570,
+      "triangles": 58910,
+      "shadows": true,
+      "offset": 0,
+      "bytes": 676979,
+      "raw_bytes": 1562880
+    },
+    {
+      "id": "near_e",
+      "aabb": [-320, -4160, -8, 7680, 5760, 59.4],
+      "vertices": 20403,
+      "triangles": 39132,
+      "shadows": true,
+      "offset": 676979,
+      "bytes": 463785,
+      "raw_bytes": 1040868
+    },
+    {
+      "id": "far_w",
+      "aabb": [-10960, -7040, -8, 0, 8640, 74.3],
+      "vertices": 3020,
+      "triangles": 5287,
+      "shadows": false,
+      "offset": 1140764,
+      "bytes": 65730,
+      "raw_bytes": 148004
+    },
+    {
+      "id": "far_e",
+      "aabb": [-640, -7040, -8, 10640, 8640, 64.3],
+      "vertices": 3398,
+      "triangles": 5910,
+      "shadows": false,
+      "offset": 1206494,
+      "bytes": 73929,
+      "raw_bytes": 166064
+    }
+  ],
+  "ridge": {
+    "id": "ridge",
+    "aabb": [-22400, -21760, -2, 21760, 23040, 232.9],
+    "vertices": 2995,
+    "triangles": 5516,
+    "shadows": false,
+    "spacing": 640.0,
+    "offset": 1280423,
+    "bytes": 51866,
+    "raw_bytes": 150052
+  },
+  "ground": {
+    "grid": {"x0": -8000, "y0": -4000, "dx": 10.0, "dy": 10.0, "nx": 1551, "ny": 951},
+    "scale": 0.1,
+    "offset": 1332289,
+    "bytes": 494814,
+    "raw_bytes": 2950002
+  },
+  "stats": {
+    "triangles": 109239,
+    "vertices": 57391,
+    "ridge_triangles": 5516,
+    "coast_vertices": 1198,
+    "tolerance_scale": 4.77
+  },
+  "bin": "solent.terrain.bin",
+  "source": "venuegen 0.1.0; EMODnet Bathymetry satellite-derived coastline (Mean High Water) WFS ows.emodnet-bathymetry.eu, downloaded 2026-10-06 (CC-BY 4.0); EMODnet Bathymetry satellite-derived coastline (Mean High Water) WFS ows.emodnet-bathymetry.eu, downloaded 2026-10-06 (CC-BY 4.0); terrain: NASADEM 1 arc-second (NASA JPL, via OpenTopography) v001, downloaded 2026-10-06 (public domain); Bramble Bank from the EMODnet Bathymetry DTM (2 m and 4 m depth contours, CC-BY 4.0)"
+}

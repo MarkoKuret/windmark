@@ -19,6 +19,8 @@ const SHOTS := [
 	["pier_rock", false, [-400.0, 1500.0, 45.0], 4.0, ["look", Vector3(210, 1600, 6), Vector3(210, 1970, 2), 45.0]],
 	["start_line", true, [], 185.0, ["look_boat", Vector3(-150, -330, 7), 0.0, 50.0]],
 	["committee", true, [], 150.0, ["look_mark", "rc", Vector3(-30, -24, 5), 50.0]],
+	["committee_close", true, [], 150.0, ["look_mark", "rc", Vector3(16, 12, 5), 50.0]],
+	["mark_boat", true, [], 150.0, ["look_mark", "fb", Vector3(-9, -7, 3), 50.0]],
 	["windward", true, [], 330.0, ["look_mark", "w", Vector3(-50, -170, 45), 50.0]],
 	["race_aerial", true, [], 262.0, ["aerial", 700.0]],
 	["haze_chase", true, [], 262.0, ["chase", 1.35, 0.14, 0.4], HAZE],

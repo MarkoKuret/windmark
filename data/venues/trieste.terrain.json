@@ -1,0 +1,76 @@
+{
+  "schema": "windmark.terrain/1",
+  "id": "trieste",
+  "version": 2,
+  "water_level": 0.0,
+  "box": [-10000, -9500, 9000, 9000],
+  "chunks": [
+    {
+      "id": "near_w",
+      "aabb": [-1820, 2420, -8, -480, 4520, 268.9],
+      "vertices": 3549,
+      "triangles": 6721,
+      "shadows": true,
+      "offset": 0,
+      "bytes": 84302,
+      "raw_bytes": 180024
+    },
+    {
+      "id": "near_e",
+      "aabb": [-640, -4960, -8, 4480, 4480, 392.4],
+      "vertices": 23246,
+      "triangles": 44877,
+      "shadows": true,
+      "offset": 84302,
+      "bytes": 537018,
+      "raw_bytes": 1189412
+    },
+    {
+      "id": "far_w",
+      "aabb": [-6400, 4480, -8, -320, 9200, 275.2],
+      "vertices": 2117,
+      "triangles": 3799,
+      "shadows": false,
+      "offset": 621320,
+      "bytes": 53258,
+      "raw_bytes": 104864
+    },
+    {
+      "id": "far_e",
+      "aabb": [-640, -9600, -38, 9040, 9040, 519.1],
+      "vertices": 7620,
+      "triangles": 13706,
+      "shadows": false,
+      "offset": 674578,
+      "bytes": 173879,
+      "raw_bytes": 377832
+    }
+  ],
+  "ridge": {
+    "id": "ridge",
+    "aabb": [-23040, -22400, -2, 21760, 21760, 982.1],
+    "vertices": 3184,
+    "triangles": 5878,
+    "shadows": false,
+    "spacing": 640.0,
+    "offset": 848457,
+    "bytes": 60849,
+    "raw_bytes": 159688
+  },
+  "ground": {
+    "grid": {"x0": -5500, "y0": -5000, "dx": 10.0, "dy": 10.0, "nx": 1001, "ny": 951},
+    "scale": 0.1,
+    "offset": 909306,
+    "bytes": 340470,
+    "raw_bytes": 1903902
+  },
+  "stats": {
+    "triangles": 69103,
+    "vertices": 36532,
+    "ridge_triangles": 5878,
+    "coast_vertices": 604,
+    "tolerance_scale": 1
+  },
+  "bin": "trieste.terrain.bin",
+  "source": "venuegen 0.1.0; EMODnet Bathymetry satellite-derived coastline, Mean High Water (Miramare tile edge from the ITA file; clipped by trieste/prep_coast.py) 2024, downloaded 2026-10-06 (CC-BY 4.0); EMODnet Bathymetry satellite-derived coastline, Mean High Water, moles and breakwaters 2024, downloaded 2026-10-06 (CC-BY 4.0); terrain: NASADEM 1 arc-second (NASA JPL, via OpenTopography) v001, downloaded 2026-10-06 (public domain); raw inputs: trieste/prep_coast.py and tools/venuegen/README.md; the bora is a fall wind off the Karst and leaves no lee on the water, so the land wake is off (wind.shadow_max 0) whatever the DEM heights; the shore still turns the wind"
+}

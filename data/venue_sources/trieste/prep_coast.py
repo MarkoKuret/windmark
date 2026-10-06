@@ -10,7 +10,7 @@ for example with Python's zipfile, and run from the repo root:
     python3 data/venue_sources/trieste/prep_coast.py
 
 It writes the two small inputs committed next to this script (WGS84 lon/lat, 1e-6 degree):
-- coast.geojson: the Mean High Water shore from Muggia to Duino as one line with the land on its right (role
+- coast.geojson: the Mean High Water shore from Koper bay to Duino as one line with the land on its right (role
   shore_right). The lines are cut at a 0.1 degree tile edge (13.7125 E) that runs through Miramare, and the MHW
   file has no piece west of it there, which would cut off the promontory and the castle; the ITA file of the same
   release has that piece (its records 124267 and 126253), so the line takes it there.
@@ -28,11 +28,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 RAW_DIR = os.path.join(HERE, "..", "raw", "trieste")
 MHW = os.path.join(RAW_DIR, "Europe_2024_satellite_coastline_MHW")
 ITA = os.path.join(RAW_DIR, "Europe_2024_satellite_coastline_ITA")
-BOX = (13.60, 45.60, 13.84, 45.76)  # lon/lat box written: the venue's field box with room to spare
-# The shore line, pieces in order (file, record, keep up to this latitude): MHW from Muggia north to just short of
-# the tile edge at Miramare, the promontory west of the edge and the shore back east of it (ITA), then the MHW
-# shore west to Duino.
-CHAIN = ((MHW, 64421, 45.70225), (ITA, 124267, None), (ITA, 126253, None), (MHW, 63552, None))
+BOX = (13.56, 45.565, 13.86, 45.78)  # lon/lat box written: the drawn terrain box (bounds + 6 km) with room to spare
+# The shore line, pieces in order (file, record, keep up to this latitude, reversed): MHW from Koper bay round
+# Debeli rtic (the first piece runs the other way in the file), from Muggia north to just short of the tile edge
+# at Miramare, the promontory west of the edge and the shore back east of it (ITA), then the MHW shore west to
+# Duino.
+CHAIN = ((MHW, 64422, None, True), (MHW, 63647, None, False), (MHW, 64421, 45.70225, False),
+         (ITA, 124267, None, False), (ITA, 126253, None, False), (MHW, 63552, None, False))
 TOL = 1.0  # m
 
 
@@ -112,8 +114,10 @@ def rnd(p):
 
 def main():
     line = []
-    for raw, i, lat_max in CHAIN:
+    for raw, i, lat_max, rev in CHAIN:
         p = records([i], raw)[i]
+        if rev:
+            p = p[::-1]
         if lat_max is not None:
             p = p[:max(k for k, q in enumerate(p) if q[1] <= lat_max) + 1]
         line += p if not line or p[0] != line[-1] else p[1:]

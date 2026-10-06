@@ -2,7 +2,7 @@
   "schema": "windmark.venuesrc/1",
   "id": "trieste",
   "name": "Gulf of Trieste",
-  "version": 1,
+  "version": 2,
   "origin": { "lat": 45.68, "lon": 13.72 },
   "bounds": [-4000, -3500, 3000, 3000],
   "fetch": 3000,
@@ -30,8 +30,15 @@
       "licence": "CC-BY 4.0"
     }
   ],
-  "terrain": "one height per input until the NASADEM terrain step: the Karst edge behind Barcola and Trieste at 350 m, breakwaters 6 m",
-  "note": "the bora is a fall wind off the Karst and leaves no lee on the water, so the land wake is off (wind.shadow_max 0); the shore still turns the wind",
+  "terrain": {
+    "dem": ["raw/trieste/nasadem/NASADEM_HGT_n45e013.tif", "raw/trieste/nasadem/NASADEM_HGT_n45e014.tif"],
+    "source": "NASADEM 1 arc-second (NASA JPL, via OpenTopography)",
+    "version": "v001",
+    "downloaded": "2026-10-06",
+    "licence": "public domain",
+    "water_level": 0
+  },
+  "note": "raw inputs: trieste/prep_coast.py and tools/venuegen/README.md; the bora is a fall wind off the Karst and leaves no lee on the water, so the land wake is off (wind.shadow_max 0) whatever the DEM heights; the shore still turns the wind",
   "wind": { "shadow_max": 0.0 },
   "conditions": {
     "wind": { "speed": [8.231, 12.347], "from": 1.1345, "from_spread": 0.1745 },

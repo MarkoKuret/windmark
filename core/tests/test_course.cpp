@@ -100,6 +100,18 @@ TEST_CASE("course: the example course loads and validates for every wind directi
   }
 }
 
+TEST_CASE("course: the Garda course validates on its venue for every wind direction") {
+  wm::VenueData garda;
+  wm::LoadError err;
+  REQUIRE_MESSAGE(wm::load_venue(kData + "/venues/garda.venue.json", garda, err), err.message());
+  wm::CourseData c;
+  REQUIRE_MESSAGE(wm::load_course(kCourses + "/garda/garda_wl.course.json", c, err), err.message());
+  CHECK(c.venue == "garda");
+  std::vector<std::string> warnings;
+  CHECK_MESSAGE(wm::validate_course(c, garda, {12.0f, 12}, warnings, err), err.message());
+  for (const std::string& w : warnings) MESSAGE("warning: ", w);
+}
+
 TEST_CASE("course: laying the example course to the wind") {
   wm::CourseData c;
   wm::LoadError err;

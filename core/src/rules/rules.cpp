@@ -920,6 +920,13 @@ void Rules::obstruction_rules(std::uint32_t /*n*/, PairState& ps, const Race& ra
         both = false;
         break;
       }
+      // A land polygon's bounding circle spans the whole shore; its edges are the real bound (no hull point
+      // reaches beyond `reach` of the centre within the horizon).
+      if (!o.convex && !o.circle && !point_in_polygon(st_[x].c, *o.poly) &&
+          point_polygon_edge_dist(st_[x].c, *o.poly) > reach) {
+        both = false;
+        break;
+      }
       float g = INFINITY;
       for (std::size_t k = 0; k < K && g >= st_[x].L; k += 5) g = min(g, gap_to(pred_hull(x, k).pts(), o));
       if (!(g < st_[x].L)) both = false;

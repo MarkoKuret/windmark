@@ -9,11 +9,14 @@
       "colors": ["#c3c5c7"]}
   },
   "ropes": {
-    "mainsheet": {"color": "#1f2b45", "fleck": "#d8d8d2"},
-    "sheet": {"color": "#d2d2cb", "fleck": "#b3242a"},
-    "kite_sheet": {"color": "#2b62a6", "fleck": "#dadad4"},
-    "halyard": {"color": "#d4d4cd", "fleck": "#2d7a40"},
-    "control": {"color": "#1d1e21", "fleck": "#c9a227"}
+    "mainsheet": {"color": "#cf5f1d", "fleck": "#1f2b45"},
+    "sheet": {"color": "#168a8f", "fleck": "#e1e1da"},
+    "kite_sheet": {"color": "#b02e6a", "fleck": "#e1e1da"},
+    "halyard_main": {"color": "#b81f24", "fleck": "#e1e1da"},
+    "halyard_jib": {"color": "#1f4fa8", "fleck": "#e1e1da"},
+    "halyard_kite": {"color": "#2a8a3e", "fleck": "#e1e1da"},
+    "halyard_code": {"color": "#d6aa1e", "fleck": "#1d1e21"},
+    "control": {"color": "#6b3fa0", "fleck": "#e1e1da"}
   },
   "liveries": [
     {

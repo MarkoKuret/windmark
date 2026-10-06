@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@practice-menus'
 created_date: '2026-10-06 08:27'
-updated_date: '2026-10-06 10:59'
+updated_date: '2026-10-06 11:40'
 labels:
   - venues
 dependencies:
@@ -22,6 +22,6 @@ Owner: Example Bay is fine but is not a bay. Keep the open water and island, giv
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 New id and name everywhere (data, courses folder, menus defaults, tests)
-- [ ] #2 Has a conditions block and briefing
+- [x] #1 New id and name everywhere (data, courses folder, menus defaults, tests)
+- [x] #2 Has a conditions block and briefing
 <!-- AC:END -->

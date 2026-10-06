@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@practice-menus'
 created_date: '2026-10-06 08:27'
-updated_date: '2026-10-06 10:59'
+updated_date: '2026-10-06 11:40'
 labels:
   - venues
   - menus
@@ -23,6 +23,6 @@ When a venue is chosen, the quick race card shows its briefing (standard lines p
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Briefing shows for every venue on disk and updates when the venue changes
-- [ ] #2 Fits the card at Steam Deck size
+- [x] #1 Briefing shows for every venue on disk and updates when the venue changes
+- [x] #2 Fits the card at Steam Deck size
 <!-- AC:END -->

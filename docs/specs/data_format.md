@@ -849,7 +849,7 @@ atlas per map, at 2048 × 2048 by default (`--hd`: 4096 × 4096, the masters' re
 The deck region is the deck images with the **painted fittings** over them: what is flat on the deck and the game
 model does not stand up (`sail_visuals.md` §11.4; `tools/boatgen` `Boat.painted_part`: the jib and traveller
 tracks, hatches, organisers, cam, horn and traveller cleats, the rudder bearing ring, and the lines lying on the
-deck: halyards, coils, tails and the traveller lines, only where they lie within 3.5 cm of the surface), drawn from
+deck: halyards and their tails, the mainsheet tail and coil, the traveller lines (no halyard coils), only where they lie within 3.5 cm of the surface), drawn from
 the generator's full-detail pieces seen from above: their colour by material (stainless, black plastic and rubber,
 tinted lens, the rope set's halyard and control colours), their relief in the normal map from the pieces' own
 normals, roughness by material, the non-slip mask cleared under them, and baked shading so they read solid without
@@ -859,7 +859,7 @@ the master size (1024 on the longer side; `--hd` keeps 2048).
 
 **Painted lines** are opaque in their own braid's mean colour, roughness and relief (a texel half covered by a line
 is the line's), so a line reads the same over gelcoat and non-slip; they clear the non-slip mask and cast only a faint
-contact shadow. Where a line runs down the coachroof's aft face (wm7's halyard tails into the cockpit) it is painted
+contact shadow. Where a line runs down the coachroof's aft face (wm7's halyard tails, down into the rope bags on the face) it is painted
 on the face's own rectangle of the deck image: the aft face (slot `deck_face`) has its own uv1 into a corner of the
 plan the deck does not use, forward of the bow on the port side (`tools/boatgen` `Deck.face_frame`), filled with
 the deck's smooth gelcoat; there the face reads its map even though it is upright.
@@ -901,19 +901,19 @@ sail plan change the owner decides whether to repaint or rebake (`--only`).
 ### 8.7 Ropes
 
 The running rigging in braid colours by function, as on a race boat's rope set: each function its own clear colour
-with a contrasting fleck, so the crew (and the player) tells the lines apart at a glance; every boat of the class
+(dyed polyester braid, a little sun-faded, not fluorescent) with a contrasting fleck, so the crew (and the player) tells the lines apart at a glance; every boat of the class
 carries the same rope set. `ropes.<function>`, each `{ "color", "fleck", "pattern" }`, all optional:
 
 | function | lines | default `color`, `fleck` |
 | --- | --- | --- |
-| `mainsheet` | the mainsheet tackle, its tail and coil | `#cf5f1d` orange, `#1f2b45` navy fleck |
-| `sheet` | jib and genoa sheets (drawn by the front end, `sail_visuals.md` §11.3) | `#168a8f` teal, `#e1e1da` white fleck |
-| `kite_sheet` | spinnaker and code zero sheets, guys and the tack line (front end) | `#b02e6a` raspberry, `#e1e1da` white fleck |
-| `halyard_main` | the main halyard (inboard of each bank) and the port coil | `#b81f24` red, `#e1e1da` white fleck |
-| `halyard_jib` | the jib halyard and the starboard coil | `#1f4fa8` blue, `#e1e1da` white fleck |
-| `halyard_kite` | the spinnaker halyard (and the kite's halyard on the posed previews) | `#2a8a3e` green, `#e1e1da` white fleck |
-| `halyard_code` | the code zero or spare halyard (a fourth halyard) | `#d6aa1e` yellow, `#1d1e21` black fleck |
-| `control` | traveller lines, the outhaul and the other control lines | `#6b3fa0` purple, `#e1e1da` white fleck |
+| `mainsheet` | the mainsheet tackle, its tail and coil | `#b5652f` orange, `#2a3348` navy fleck |
+| `sheet` | jib and genoa sheets (drawn by the front end, `sail_visuals.md` §11.3) | `#2f7d80` teal, `#d6d6ce` white fleck |
+| `kite_sheet` | spinnaker and code zero sheets, guys and the tack line (front end) | `#97406a` raspberry, `#d6d6ce` white fleck |
+| `halyard_main` | the main halyard (inboard of each bank) | `#a2383a` red, `#d6d6ce` white fleck |
+| `halyard_jib` | the jib halyard | `#355f98` blue, `#d6d6ce` white fleck |
+| `halyard_kite` | the spinnaker halyard (and the kite's halyard on the posed previews) | `#3f7a4a` green, `#d6d6ce` white fleck |
+| `halyard_code` | the code zero or spare halyard (a fourth halyard) | `#bf9a42` ochre yellow, `#2a2b2e` black fleck |
+| `control` | traveller lines, the outhaul and the other control lines | `#674f8c` purple, `#d6d6ce` white fleck |
 
 Lifelines and the standing rigging stay wire grey (the generator's `rope` and `metal` slots).
 

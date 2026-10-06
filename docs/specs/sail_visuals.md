@@ -838,10 +838,11 @@ pieces and materials:
   dark opaque slot of it.
 - **Paint what is flat, model what sticks up, drop what is under a pixel**: the jib and traveller tracks, the flush
   hatches (on the deck as a plain raised box about 3 cm proud whose top shows the painted frame and lens), organisers,
-  the cam, horn and traveller cleats, the rudder bearing ring and the lines lying on surfaces (halyards, coils,
-  tails, traveller lines: on the deck and the coachroof's top within 3.5 cm of the surface, and down the coachroof's
-  aft face on its own rectangle of the deck image, `data_format.md` §8.5, so a tail runs on unbroken into the
-  cockpit; opaque in their own colours; only where a line hangs clear in the air it stays thin rope geometry) are painted into the deck region of the livery atlas
+  the cam, horn and traveller cleats, the rudder bearing ring and the lines lying on surfaces (halyards and their
+  tails, the mainsheet tail and coil, traveller lines: on the deck and the coachroof's top within 3.5 cm of the
+  surface, and down the coachroof's aft face on its own rectangle of the deck image, `data_format.md` §8.5; no
+  halyard coils: on a boat without halyard winches on the coachroof the tails drop down the aft face into a low rope
+  bag either side of the companionway, modelled, so a tail never ends in the air; opaque in their own colours; only where a line hangs clear in the air it stays thin rope geometry) are painted into the deck region of the livery atlas
   with their shading (darker under and around a fitting, lighter edges). Winches (about 450 triangles), clutches
   (about 80 each), the blocks that stand up (mast foot, traveller, mainsheet, cars, about 120), the cars, the mast
   foot, the mast instruments, the wind wand, stanchions, pulpit, pushpit, lifelines, rigging screws, a regatta helm

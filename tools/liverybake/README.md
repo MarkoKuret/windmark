@@ -159,7 +159,7 @@ Godot import settings. The game draws every opaque surface of a boat with one ma
 - **The coachroof's aft face** on its own rectangle of the deck region (`atlas.face_base`, boatgen
   `Deck.face_frame`): the deck's smooth gelcoat, with the halyard tails painted down it.
 - **Painted fittings** in the deck region (`liverybake/painted.py`): what is flat on the deck (the jib and traveller
-  tracks, hatches, organisers, cam, horn and traveller cleats, the rudder bearing ring, and the halyards, coils,
+  tracks, hatches, organisers, cam, horn and traveller cleats, the rudder bearing ring, the mainsheet coil, and the halyards,
   tails and traveller lines where they lie on surfaces (within 3.5 cm of the deck, and down the coachroof's aft
   face), opaque in the rope set's colours; `tools/boatgen` `Boat.painted_part`)
   drawn from the generator's full-detail pieces seen from above: colour by

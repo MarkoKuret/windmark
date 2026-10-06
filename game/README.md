@@ -656,7 +656,7 @@ Godot reimports only the files whose content changed (it compares their hashes).
 - **Ropes** (`data_format.md` §8.7): the class rope set (`data/liveries/<class>/rig/`, a braid tile per function)
   goes on the sheets (`sheet`, `kite_sheet`), one material per class and function (`BoatLivery.rope_material`);
   without the baked set the line is tinted to the function's braid colour. The model's mainsheet tackle is a slot of
-  the boat material in the mainsheet's mean braid colour; the halyards, coils and control lines are painted on the
+  the boat material in the mainsheet's mean braid colour; the halyards, the mainsheet coil and the control lines are painted on the
   deck in theirs.
 
 **Cost** (WM-081; the video memory as before WM-100). Load, headless M1: the first boat of a class loads the

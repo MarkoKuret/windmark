@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-10-06 08:27'
-updated_date: '2026-10-06 11:40'
+updated_date: '2026-10-06 12:06'
 labels:
   - venues
 dependencies:
@@ -30,5 +30,5 @@ Tidal strait: moderate SW breeze, strong tide that turns during a race, banks (B
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Built: data/venue_sources/solent.venuesrc.json (+ solent/ derived EMODnet inputs, prepare.py), data/venues/solent.venue.json, game/data/courses/solent/cowes_wl. Tide period 2400 s (spec note in venues.md). Tide checked over 200 seeds (harness reproducing race.md 2.1): turns inside the race every seed, 73-100 % of full stream at gun and finish, briefing Current 1.5 kn Strong. Core tick (16 AI) matches example_bay after the rule 19 land cull (c5e0657). Open for #3: the game's land drawing builds 12 surfaces / 10.4 M triangles in 41 s for this venue (per-polygon bounding-box terrain); needs the chunked LOD terrain of venues.md 4.2 (Garda's land drawing work). Regenerate with terrain heights once that merges.
+Built: data/venue_sources/solent.venuesrc.json (+ solent/ derived EMODnet inputs, prepare.py), data/venues/solent.venue.json, game/data/courses/solent/cowes_wl. Owner decision: the real tide (12 h 25 min); each race draws its phase from the seed (race.md 2.1), the card draws the race seed up front and the Current line names flood, ebb (with the set) or slack for it (menus.md 1.3). Core tick (16 AI) matches practice_waters after the rule 19 land cull. Open for #3: the game's land drawing builds 12 surfaces / 10.4 M triangles in 41 s for this venue; needs the chunked LOD terrain of venues.md 4.2 (Garda's land drawing work). Regenerate with terrain heights once that merges.
 <!-- SECTION:NOTES:END -->

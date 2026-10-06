@@ -52,6 +52,7 @@
   "crew": {"count": 4, "weight": 340},
   "start": {"front_sail": "jib"},
   "visual": {
+    "hull": {"bilge_fillet": 0.30, "transom_bottom_width": 1.64, "topside_flare": 2.3},
     "deck": {
       "cockpit": {"length": 3.1, "width": 0.72, "depth": 0.30, "open_transom": true},
       "cabin": {"height": 0.15, "meet_aft_of_mast": 0.04, "slope_from": 0.2, "width": 0.50, "side_rake": 0.40, "edge_radius": 0.035},

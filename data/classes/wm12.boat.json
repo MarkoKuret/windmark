@@ -14,7 +14,7 @@
     "section_shape": {"type": "round", "midship_coefficient": 0.71},
     "rocker": {"fwd": 0.34, "aft": 0.40},
     "freeboard": {"bow": 1.32, "mid": 1.08, "stern": 0.90},
-    "transom_width": 3.05,
+    "transom_width": 2.45,
     "stem_x": 5.85,
     "transom_x": -6.15,
     "max_beam_station": 0.40,
@@ -54,6 +54,7 @@
   "crew": {"count": 8, "weight": 680},
   "start": {"front_sail": "jib"},
   "visual": {
+    "hull": {"bilge_fillet": 0.30},
     "deck": {
       "cockpit": {"length": 3.9, "width": 0.66, "depth": 0.46, "open_transom": true},
       "cabin": {"height": 0.30, "meet_aft_of_mast": 0.06, "slope_from": 0.3, "width": 0.56, "side_rake": 0.38, "edge_radius": 0.06},

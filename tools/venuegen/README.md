@@ -60,7 +60,7 @@ Big files are fine: shapefile records whose box misses the venue are skipped.
 | Garda | Provincia autonoma di Trento, "Laghi e specchi d'acqua" and SRTM Water Body Data | one water polygon, `raw/garda/garda_lake.geojson`, made by the commands below |
 | Solent, Trieste | EMODnet Bathymetry satellite-derived coastline (MHW) | polygons: `"role": "land"`; if the download is coastline lines, `"role": "shore_left"` or `"shore_right"` after checking which side is land (lines must run past the clip box) |
 | Solent banks | EMODnet DTM | contour the banks (for example the 2 m depth line around Bramble Bank) into polygons and list them in `current.banks` with a speed `factor` |
-| Fremantle | Australian Coastline 50K 2024 (AIMS) | land polygons (shapefile, lon/lat): `"role": "land"`; the national file is read with the box filter |
+| Fremantle | Australian Coastline 50K 2024 (AIMS), V1-1 Full | land polygons (shapefile, lon/lat): the national file (40 MB zipped, in `raw/fremantle/`) is clipped once by `data/venue_sources/fremantle/clip_coastline.py` into two small GeoJSON files (Rottnest, mainland) that are committed, so the venue builds from a plain checkout; each is an input with `"role": "land"` and its own `height` |
 | Solent fallback | OS Open Zoomstack | the land or sea polygons (GeoPackage, British National Grid): reproject to EPSG:4326, then `land` or `water` |
 | Terrain heights | NASADEM | GeoTIFF tiles in `terrain.dem` (below); without them the wind effects use a `height` per input or polygon (`land_height` default) |
 

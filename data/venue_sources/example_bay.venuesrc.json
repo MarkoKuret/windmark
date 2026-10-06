@@ -1,0 +1,29 @@
+{
+  "schema": "windmark.venuesrc/1",
+  "id": "example_bay",
+  "name": "Example Bay",
+  "version": 2,
+  "origin": { "lat": 45.5, "lon": 13.6 },
+  "bounds": [-2000, -2000, 2000, 2000],
+  "fetch": 12000,
+  "exposure_default": 1.0,
+  "coastline": [
+    {
+      "source": "own shapes",
+      "frame": "local",
+      "role": "land",
+      "polygons": [
+        { "id": "island_n", "height": 44,
+          "points": [[380, 2400], [303.1, 2575], [160, 2677.1], [0, 2750], [-190, 2729.1], [-303.1, 2575],
+                     [-320, 2400], [-303.1, 2225], [-190, 2070.9], [0, 2050], [160, 2122.9], [303.1, 2225]] }
+      ]
+    }
+  ],
+  "obstacles": [
+    { "id": "pier", "polygon": [[-6, 1990], [6, 1990], [6, 2075], [-6, 2075]] },
+    { "id": "rock_e", "circle": { "c": [420, 1950], "r": 6 } }
+  ],
+  "simplify": { "outside": 5 },
+  "current": { "to": 1.5707963, "speed": 0.35, "shore_floor": 0.4 },
+  "exposure": { "from": 0 }
+}

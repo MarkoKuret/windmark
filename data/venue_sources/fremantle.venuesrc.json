@@ -1,0 +1,48 @@
+{
+  "schema": "windmark.venuesrc/1",
+  "id": "fremantle",
+  "name": "Fremantle",
+  "version": 1,
+  "origin": { "lat": -32.02, "lon": 115.665 },
+  "bounds": [-8000, -6000, 8000, 6000],
+  "fetch": 30000,
+  "exposure_default": 1.0,
+  "coastline": [
+    {
+      "path": "fremantle/rottnest.geojson",
+      "frame": "lonlat",
+      "role": "land",
+      "height": 20,
+      "source": "Australian Coastline 50K 2024 (NESP MaC 3.17, AIMS), Rottnest Island",
+      "version": "V1-1",
+      "downloaded": "2026-10-06",
+      "licence": "CC-BY 4.0"
+    },
+    {
+      "path": "fremantle/mainland.geojson",
+      "frame": "lonlat",
+      "role": "land",
+      "height": 25,
+      "source": "Australian Coastline 50K 2024 (NESP MaC 3.17, AIMS), mainland Cottesloe to Woodman Point",
+      "version": "V1-1",
+      "downloaded": "2026-10-06",
+      "licence": "CC-BY 4.0"
+    }
+  ],
+  "simplify": { "field_margin": 6000 },
+  "note": "inputs clipped from the national file by fremantle/clip_coastline.py; land heights are flat per input until the terrain step",
+  "conditions": {
+    "wind": { "speed": [8.231104, 12.346656], "from": 4.014257, "from_spread": 0.174533 },
+    "shift": { "preset": "stable", "amplitude": 0.087266, "hold_max": 90, "trend_rate": -0.0001454441,
+               "trend_max": 0.261799 },
+    "puffs": { "preset": "standard" },
+    "current": { "speed": 0.0, "to": 0.0 },
+    "sea": { "scale": 1.0, "swells": [ { "hs": 0.8, "tp": 12.0, "from": 4.18879 } ] },
+    "random": { "speed": [4.115552, 12.8611], "from_spread": 0.436332, "shift": ["stable", "oscillating"],
+                "puffs": ["light", "standard", "gusty"], "swell_scale": [0.5, 1.5] }
+  },
+  "briefing": {
+    "tag": "Fremantle Doctor",
+    "tip": "The Doctor swings left all afternoon; work the left side upwind."
+  }
+}

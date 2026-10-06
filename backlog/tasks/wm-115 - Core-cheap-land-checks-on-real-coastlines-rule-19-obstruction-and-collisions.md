@@ -3,11 +3,11 @@ id: WM-115
 title: >-
   Core: cheap land checks on real coastlines (rule 19 obstruction and
   collisions)
-status: In Progress
+status: Done
 assignee:
   - '@land-cull'
 created_date: '2026-10-06 11:37'
-updated_date: '2026-10-06 11:56'
+updated_date: '2026-10-06 12:03'
 labels:
   - venues
   - perf

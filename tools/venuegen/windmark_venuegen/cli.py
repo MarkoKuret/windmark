@@ -1,4 +1,6 @@
-"""Command line: python -m windmark_venuegen <id>.venuesrc.json [-o <id>.venue.json | -o DIR] [--check]."""
+"""Command line: python -m windmark_venuegen <id>.venuesrc.json [-o <id>.venue.json | -o DIR] [--check].
+
+--check validates venue files (and <id>.terrain.json files with their binary)."""
 
 from __future__ import annotations
 
@@ -10,6 +12,7 @@ import time
 
 from .build import SourceError, build_file
 from .geo import InputError
+from .terrain import check_terrain
 from .validate import validate
 
 
@@ -24,7 +27,12 @@ def main(argv=None):
         for path in args.source:
             with open(path) as f:
                 text = f.read()
-            problems = validate(json.loads(text), text)
+            if path.endswith(".terrain.json"):
+                t = json.loads(text)
+                binp = os.path.join(os.path.dirname(path), t.get("bin", ""))
+                problems = check_terrain(t, os.path.getsize(binp) if os.path.isfile(binp) else None)
+            else:
+                problems = validate(json.loads(text), text)
             print(f"{path}: {'ok' if not problems else str(len(problems)) + ' problems'}")
             for p in problems:
                 print("  ", p)
@@ -40,7 +48,7 @@ def main(argv=None):
                 vid = json.load(f).get("id", "venue")
             out = os.path.join(d, f"{vid}.venue.json")
         try:
-            _, text, notes = build_file(path, out)
+            _, text, notes, _terrain = build_file(path, out)
         except (SourceError, InputError) as e:
             print(f"{path}: {e}", file=sys.stderr)
             return 2

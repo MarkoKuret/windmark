@@ -476,10 +476,20 @@ corner was below the sea:
 | S, TWA 42° / 90° / 140° kite | 0.2 / 0 / 0 % | 7 / 37 / 0 % | 11 / 64 / 2 % | 10 / 78 / 74 % |
 | L, TWA 42° / 90° / 140° kite | 0.8 / 0 / 0 % | 10 / 16 / 0 % | 17 / 62 / 0.5 % | 16 / 68 / 10 % |
 
-With the heel taken out the floor stayed dry (under 1 % in every case): the waves and the heave and pitch lags only
-add to the heel. The boat's motion is not changed for this (owner, 2026-10-05: the way the boats move and sit in
-the sea stays); the leeward deck edge still dips at 25° to 30° of heel, as on a real boat. Instead **the sea is
-not drawn inside the cockpit well**, which a real self-draining cockpit keeps nearly dry anyway.
+With the heel taken out the floor stayed dry (under 1 % in every case): heel did it, the waves and the heave and
+pitch lags only add to it. The heel itself is realistic; what was missing is how a heeled hull floats: it rises
+and trims bow down as the leeward quarter immerses (`boat.md` §5.6, `heel_rise`, `heel_trim`). With that the
+same probe gives:
+
+| floating heeled | 10 kn | 15 kn | 20 kn | 25 kn |
+| --- | --- | --- | --- | --- |
+| S, TWA 42° / 90° / 140° kite | 0 / 0 / 0 % | 0 / 0 / 0 % | 0 / 0.1 / 0 % | 0.2 / 1.0 / 1.8 % |
+| L, TWA 42° / 90° / 140° kite | 0 / 0 / 0 % | 0 / 0 / 0 % | 0 / 0 / 0.2 % | 0 / 0.1 / 0.3 % |
+
+so the sea reaches the floor only now and then in a breeze, as on a real boat (the heel itself unchanged).
+
+**Optional mask, off by default** (owner, 2026-10-06: judge the physics alone first): the sea can be kept out of
+the cockpit well of nearby boats (`--dry-cockpits` on the race scene, `Sea.dry_cockpits`).
 
 **The well** comes from the physics sidecar (`cockpit`, `tools/boatgen/README.md`): in the body frame, from the
 transom `x0` forward over the length `len`, three stations (aft end, middle, forward end) of the half width `w`,
@@ -612,7 +622,7 @@ colour-blind palettes).
 | screen-space reflections | no | no | yes |
 | sun shadows (§4.6) | 2 cascades to 60 m, no shadows on the sea | 4 cascades to 100 m, no shadows on the sea | 4 blended cascades to 150 m |
 | boat shadows drawn on the sea (§4.7) | own boat | own boat and the 6 nearest within 100 m | no (real shadows) |
-| dry cockpits (§4.8) | 8 nearest within 120 m | 8 nearest within 120 m | 8 nearest within 120 m |
+| dry cockpits (§4.8, off by default) | 8 nearest within 120 m | 8 nearest within 120 m | 8 nearest within 120 m |
 | anti-aliasing | SMAA 1x | SMAA 1x | SMAA 1x |
 
 Anti-aliasing (WM-084, owner decision 2026-10-03: keep it simple): SMAA 1x on every tier, no per-tier choice

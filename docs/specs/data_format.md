@@ -212,7 +212,7 @@ or any other speed target, so a class's speeds (and the AI's and HUD's view of t
 | `accel` | | – | 1.0 | 0.2 to 5 | every config's `accel` table (how fast the boat builds speed towards the polar) |
 | `decel` | | – | 1.0 | 0.2 to 5 | `dynamics.decel_linear`, `decel_const` and `decel_windage` (how fast it slows above its target, coasting, in irons) |
 | `turn_rate` | | – | 1.0 | 0.2 to 5 | yaw rate at every helm and speed: `dynamics.turn_radius_full` and `turn_radius_offset` are divided by it (`boat.md` §5.9); `rudder_drag_*` unchanged |
-| `heel` | | – | 1.0 | 0.2 to 5 | every config's `heel` table (clamped to π/2) and `dynamics.heel_max` (kept below `heel_limit`); `heel_speed_factor` and the main's `sheet_max_by_heel` are stretched along their heel axes by the same factor, so the speed at the scaled heel is what it was at the physical heel |
+| `heel` | | – | 1.0 | 0.2 to 5 | every config's `heel` table (clamped to π/2) and `dynamics.heel_max` (kept below `heel_limit`); `heel_speed_factor` and the main's `sheet_max_by_heel` are stretched along their heel axes by the same factor, so the speed at the scaled heel is what it was at the physical heel; `heel_rise` and `heel_trim` are not, they follow the drawn hull at the drawn heel |
 | `tack_time` | | – | 1.0 | 0.2 to 5 | crew and helm speed in manoeuvres (> 1 is slower): `dynamics.helm_rate` and every sail's `rate_in`, `rate_out` and `pole_rate` are divided by it |
 
 The multipliers used are recorded in the performance file's `handling` block (§4.1), all five, defaults included;
@@ -369,6 +369,7 @@ reference values are in the owning spec.
 | `pitch_freq`, `pitch_damping`, `wave_roll_gain`, `wave_pitch_gain` | float | boat.md §4 |
 | `wobble_heel`, `wobble_pitch`, `wobble_freq` | float | boat.md §6.5 |
 | `heave_time`, `waterline_offset`, `surf_gain` | float | boat.md §4 |
+| `heel_rise`, `heel_trim` | optional Table1D(`heel_abs`), m and rad | boat.md §4, §5.6; absent: 0 |
 | `drift_grip`, `drift_length` | optional float, ≥ 0 and > 0 | boat.md §4, §6.4; absent: no sideways drift (both or neither) |
 | `full_leeway` | optional bool [false] | boat.md §6.4; true needs `drift_grip` and a `leeway` table in every config |
 | `hull_points` | optional `[[x, y], …]` | sea.md §5.1 (default from `lwl`, `bwl`) |
@@ -489,13 +490,14 @@ Schematic:
   | `heel_abs` | rad | [0, π/2] | absolute heel |
   | `aws` | m/s | ≥ 0 | apparent wind speed (over the moving boat, 10 m reference height) |
 
-- `unit` of the values: one of `m/s`, `rad`, `m/s2`, `rad/s`, `s`, `1`; it must be the unit this spec gives for
+- `unit` of the values: one of `m`, `m/s`, `rad`, `m/s2`, `rad/s`, `s`, `1`; it must be the unit this spec gives for
   that table.
 - Axes: 1 to 3, each with 1 to 256 points, non-decreasing, at most two equal points in a row (a step,
   `conventions.md` §8.1). The number of values is the product of the axis lengths.
 - Every value finite. Range checks per table: `polar` in [−5, 40], `heel` in [0, π/2], `accel`, `accel_rest`,
   `fall_off`, `flog_drag` and durations ≥ 0, `trim_*` and `heel_speed_factor` in [0, 3], `optimal_angle`,
-  `sheet_max_by_heel`, `pole_angle`, `shiver_angle` in [0, π], `rudder_drag_*` and `weather_helm` any finite value.
+  `sheet_max_by_heel`, `pole_angle`, `shiver_angle` in [0, π], `heel_rise` in [−1, 1] m, `heel_trim` in
+  [−π/8, π/8], `rudder_drag_*` and `weather_helm` any finite value.
 - Lookup and interpolation: `conventions.md` §8.
 
 Recommended axes for the VPP (fine where the tables bend):

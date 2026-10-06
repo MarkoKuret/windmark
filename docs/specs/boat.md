@@ -94,6 +94,7 @@ monohull. They are targets for the VPP/boat generator, not constants.
 | `wobble_freq` | rad/s | 2.0 | 2.0 | its base angular frequency |
 | `heave_time` | s | 0.25 | 0.4 | heave lag behind the mean wave height |
 | `waterline_offset` | m | 0 | 0 | `z` above the mean wave height at rest |
+| `heel_rise`, `heel_trim` | Table1D(`heel_abs`) → m, rad | 0 | 0 | how the free-floating hull sits when heeled: it rises by `heel_rise` and trims by `heel_trim` (+ bow up) (§5.6); optional, absent 0 |
 | `surf_gain` | 1/rad | 4.0 | 2.3 | speed change per radian of pitch (§5.8) |
 | `hull_points` | list of 1 to 64 (x, y), body m | derived | | wave sample points (`sea.md` §5) |
 | `drift_grip` | – | 1.9 | 2.7 | keel grip of the sideways drift: the speed at which the keel holds the drift, over the drift (§6.4) |
@@ -206,12 +207,21 @@ If the race has a sea (`sea.md`), sample it at the hull points placed by the cur
 (`sea.md` §5) to get the mean height `hm`, the wave pitch `wave_pitch` and the wave roll `wave_roll`; on flat
 water all three are 0.
 ```
-z = z + heave_a * ((hm + waterline_offset) - z)
+z = z + heave_a * (((hm + waterline_offset) + heel_rise(fabsf(phi))) - z)
 wobble step (§6.5) -> wobble_phase, wk
-theta_target = wave_pitch_gain*wave_pitch + wobble_pitch*wk*sin(wobble_phase)
+theta_target = (wave_pitch_gain*wave_pitch + wobble_pitch*wk*sin(wobble_phase)) + heel_trim(fabsf(phi))
 theta_rate = pitch_k2*theta_rate + pitch_k1*(theta_target - theta)
 theta = theta + theta_rate*DT
 ```
+
+`phi` is the heel of the previous tick (§5.7 runs after this step). **Heeled hulls float differently.** The hull
+does not heel about a fixed axis: the leeward side, flared and wide aft, pushes more water away than the windward
+side gives up, so at the same displacement the heeled boat rises, and the immersed leeward quarter lifts the stern
+(it trims bow down). The generator computes both from the drawn hull (`tools/boatgen/README.md`, `heel_attitude`:
+free-floating equilibrium of volume and longitudinal centre of buoyancy at each heel) and the VPP copies them;
+S class at 25°: up 8.5 cm, 1.7° bow down. Without them the leeward corner of an open cockpit sank to the waterline
+at 25° (`water_render.md` §4.8). Both are part of the targets, so the heave lag and the pitch spring smooth them;
+the speed is not affected (§5.8 uses only the wave part of the pitch).
 
 ### 5.7 Heel
 ```

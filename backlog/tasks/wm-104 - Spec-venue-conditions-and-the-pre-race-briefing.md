@@ -1,11 +1,11 @@
 ---
 id: WM-104
 title: 'Spec: venue conditions and the pre-race briefing'
-status: In Progress
+status: Done
 assignee:
   - '@venues-spec'
 created_date: '2026-10-06 08:27'
-updated_date: '2026-10-06 08:39'
+updated_date: '2026-10-06 09:35'
 labels:
   - venues
 dependencies: []

@@ -6,3 +6,4 @@ build/
 .DS_Store
 __pycache__/
 core/build*/
+data/venue_sources/raw/

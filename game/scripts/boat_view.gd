@@ -106,7 +106,6 @@ static var draw_sheets := true
 var use_reference := false
 ## the hull and mast of the drawn shadow on the water (BoatShadows.caster_from_physics), built on first use
 var _shadow_caster: Variant = null
-var _dry_well: Variant = null
 ## the levels of detail (sail_visuals.md §11.4), finest first: {"lod", "from", "root" (the GLB wrapper), "model",
 ## "parts" (the non-sail part nodes), "rudder", "rudder_rest", "wheel", "wheel_rest", "boom", "boom_rest", "pole",
 ## "pole_rest", "sheet" (the mainsheet's rebuild data)}; the sails are LOD0's at every level
@@ -747,13 +746,6 @@ func shadow_state(own: bool) -> Dictionary:
 		"xform": (model.global_transform if model else global_transform) * BODY_TO_MODEL,
 		"caster": _shadow_caster, "sails": pts, "sail_counts": counts, "own": own,
 	}
-
-
-## Sea.set_dry_cockpits entry (water_render.md §4.8): the body frame at the render pose and the cockpit well.
-func dry_state() -> Dictionary:
-	if _dry_well == null:
-		_dry_well = Sea.dry_well(info.physics.get("cockpit", {}))
-	return {"xform": (model.global_transform if model else global_transform) * BODY_TO_MODEL, "well": _dry_well}
 
 
 ## The outline points of every sail shown, in the scene (BoatShadows.sail_indices of its placed mid-surface).

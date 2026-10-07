@@ -11,8 +11,6 @@ extends Node3D
 ##   render_time_ms  the environment clock at this frame (fractional ms); advanced by delta when
 ##                 use_internal_clock is on, otherwise set by the owner every frame before _process
 ## Or push data directly with set_sea() and set_wind().
-## Every frame after the boats are posed, set_dry_cockpits() keeps the sea out of the nearby cockpits (§4.8) when
-## dry_cockpits is on (off by default: the boats float clear of the water when heeled, boat.md §5.6).
 
 signal quality_changed(tier: int)
 
@@ -20,13 +18,6 @@ signal quality_changed(tier: int)
 const DETAIL_SCALE := [1.0 / 13.0, 1.0 / 22.0, 1.0 / 48.0, 1.0 / 70.0, 1.0 / 3.2]
 const DETAIL_DRIFT := [1.4, 1.0, 0.9, 0.6, 1.6]
 const DETAIL_ANGLE := [0.0, 0.35, -0.6, 0.95, 1.25]
-## water_render.md §4.8: the cockpits kept dry, nearest to the camera, and how far away
-const MAX_DRY := 8
-const DRY_RANGE := 120.0
-## §4.8: beyond the walls and below the floor (inside the hull), above the rim
-const DRY_WALL := 0.03
-const DRY_BELOW := 0.05
-const DRY_ABOVE := 0.05
 
 @export var quality: SeaQuality.Tier = SeaQuality.Tier.M:
 	set = set_quality
@@ -54,8 +45,6 @@ var whitecaps := false:
 ## place of the source's base speed, to judge the caps at another wind; 0 draws the source's. The waves stay.
 var drawn_wind_kn := 0.0
 
-## water_render.md §4.8: the optional mask keeping the sea out of nearby cockpits (the race scene's --dry-cockpits)
-var dry_cockpits := false
 var _mesh_instance: MeshInstance3D
 var _overlay_lines: Array = []
 var _overlay_circles: Array = []
@@ -290,74 +279,6 @@ func update_frame(cam_pos: Vector3, cam: Camera3D = null) -> void:
 		material.set_shader_parameter("sun_color", sky.sun_radiance())
 
 	_update_overlays(ox, oy, cam)
-
-
-## water_render.md §4.8: the sidecar's `cockpit` block as the mask's three vec4 (x0, 1/len, w0, wa),
-## (wb, f0, fa, fb), (r0, ra, rb, 0); empty when the sidecar has none.
-static func dry_well(cockpit: Dictionary) -> PackedVector4Array:
-	var out := PackedVector4Array()
-	if cockpit.is_empty() or float(cockpit.get("len", 0.0)) <= 0.0:
-		return out
-	var q := func(v: Array) -> Vector3:  # v0, then the linear and square coefficients of the quadratic
-		var v0 := float(v[0])
-		var vm := float(v[1])
-		var v1 := float(v[2])
-		return Vector3(v0, -3.0 * v0 + 4.0 * vm - v1, 2.0 * v0 - 4.0 * vm + 2.0 * v1)
-	var w: Vector3 = q.call(cockpit["half_width"])
-	var f: Vector3 = q.call(cockpit["floor_z"])
-	var r: Vector3 = q.call(cockpit["rim_z"])
-	out.append(Vector4(float(cockpit["x0"]), 1.0 / float(cockpit["len"]), w.x, w.y))
-	out.append(Vector4(w.z, f.x, f.y, f.z))
-	out.append(Vector4(r.x, r.y, r.z, 0.0))
-	return out
-
-
-## CPU mirror of the shader's mask (§4.8): whether a water point, in the boat's body frame, is inside the well.
-static func dry_masked(p: Vector3, g: PackedVector4Array) -> bool:
-	if g.size() < 3:
-		return false
-	var a := g[0]
-	var b := g[1]
-	var c := g[2]
-	var t := (p.x - a.x) * a.y
-	if t < 0.0 or t > 1.0:
-		return false
-	var wd := a.z + t * (a.w + t * b.x)
-	var f := b.y + t * (b.z + t * b.w)
-	var r := c.x + t * (c.y + t * c.z)
-	return absf(p.y) < wd + DRY_WALL and p.z > f - DRY_BELOW and p.z < r + DRY_ABOVE
-
-
-## §4.8, every frame once the boats are at their render pose: `cockpits` holds per boat {xform: body frame to the
-## scene, well: dry_well()}; the MAX_DRY nearest to `cam_pos` within DRY_RANGE are uploaded. Returns how many.
-func set_dry_cockpits(cockpits: Array, cam_pos: Vector3) -> int:
-	if material == null:
-		return 0
-	var near: Array = []
-	for ck in cockpits if dry_cockpits else []:
-		var g: PackedVector4Array = ck.get("well", PackedVector4Array())
-		if g.size() < 3:
-			continue
-		var xf: Transform3D = ck["xform"]
-		var d := Vector2(xf.origin.x - cam_pos.x, xf.origin.z - cam_pos.z).length()
-		if d <= DRY_RANGE:
-			near.append([d, xf, g])
-	near.sort_custom(func(u: Array, v: Array) -> bool: return u[0] < v[0])
-	var n := mini(near.size(), MAX_DRY)
-	var m := PackedVector4Array()
-	var gg := PackedVector4Array()
-	m.resize(3 * MAX_DRY)
-	gg.resize(3 * MAX_DRY)
-	for i in n:
-		var inv: Transform3D = (near[i][1] as Transform3D).affine_inverse()
-		var bs := inv.basis
-		for k in 3:
-			m[3 * i + k] = Vector4(bs.x[k], bs.y[k], bs.z[k], inv.origin[k])
-			gg[3 * i + k] = (near[i][2] as PackedVector4Array)[k]
-	material.set_shader_parameter("dry_m", m)
-	material.set_shader_parameter("dry_g", gg)
-	material.set_shader_parameter("n_dry", n)
-	return n
 
 
 ## wind.md §8 for the current direction: the two sector grids around it in one RG32F texture, uploaded again

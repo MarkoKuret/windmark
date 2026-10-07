@@ -63,7 +63,6 @@ def main(argv=None):
             "collision_meshes": {k: {"vertices": physics._r(physics.to_body(g.P, boat.origin_x()), 4),
                                      "triangles": g.I.tolist()} for k, g in col.items()},
             "rig": physics.rig_data(boat),
-            "cockpit": physics.cockpit_data(boat),
             "sails": physics.sail_data(boat),
             "model": {"file": os.path.basename(glb), "triangles": boat.tri_count(),
                       "nodes": sorted(boat.parts), "pivots": sorted(boat.pivots), "lods": lods},

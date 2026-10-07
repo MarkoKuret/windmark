@@ -463,61 +463,6 @@ sky presets or the water colours of §4.2 change.
 the GPU draws one 32 × 16 grid per boat with a loop over at most 96 edges, skipping polygons by their bounding
 circle, on the pixels of its rectangle.
 
-### 4.8 Dry cockpits
-The sea is one surface drawn through the hulls, so wherever it stands higher than a boat's cockpit floor it would
-show inside the cockpit. With an open transom that happens whenever the boat heels: the leeward corner of the
-cockpit floor at the transom drops by `half width · sin(heel)`, 0.25 to 0.35 m at the 15° to 29° the boats sail
-at, while the floor stands only 0.35 m (S class) and 0.51 m (L class) above the DWL there. A headless probe of the
-core (2026-10-05; boat on autopilot, wind sea of `sea.md` §2 at fetch 10 km) gave the share of time the leeward
-corner was below the sea:
-
-| | 10 kn | 15 kn | 20 kn | 25 kn |
-| --- | --- | --- | --- | --- |
-| S, TWA 42° / 90° / 140° kite | 0.2 / 0 / 0 % | 7 / 37 / 0 % | 11 / 64 / 2 % | 10 / 78 / 74 % |
-| L, TWA 42° / 90° / 140° kite | 0.8 / 0 / 0 % | 10 / 16 / 0 % | 17 / 62 / 0.5 % | 16 / 68 / 10 % |
-
-With the heel taken out the floor stayed dry (under 1 % in every case): heel did it, the waves and the heave and
-pitch lags only add to it. The heel itself is realistic; what was missing is how a heeled hull floats: it rises
-and trims bow down as the leeward quarter immerses (`boat.md` §5.6, `heel_rise`, `heel_trim`). With that the
-same probe gives:
-
-| floating heeled | 10 kn | 15 kn | 20 kn | 25 kn |
-| --- | --- | --- | --- | --- |
-| S, TWA 42° / 90° / 140° kite | 0 / 0 / 0 % | 0 / 0 / 0 % | 0.2 / 0.8 / 0.1 % | 0.7 / 3.1 / 4.2 % |
-| L, TWA 42° / 90° / 140° kite | 0 / 0 / 0 % | 0 / 0 / 0 % | 0 / 0 / 0.1 % | 0 / 0.1 / 0.3 % |
-
-so the sea reaches the floor only now and then in a breeze, as on a real boat (the heel itself unchanged). These
-are the sterns of 2026-10-06 (S: rounder bilge and a U-shaped transom; L: transom 2.45 m and a rounder bilge),
-which give a little less stern lift than the first ones (S at 25°: 1.1° bow down instead of 1.7°).
-
-**Optional mask, off by default** (owner, 2026-10-06: judge the physics alone first): the sea can be kept out of
-the cockpit well of nearby boats (`--dry-cockpits` on the race scene, `Sea.dry_cockpits`).
-
-**The well** comes from the physics sidecar (`cockpit`, `tools/boatgen/README.md`): in the body frame, from the
-transom `x0` forward over the length `len`, three stations (aft end, middle, forward end) of the half width `w`,
-the floor height `f` and the rim height `r` (the deck at the cockpit edge). Each is drawn as the quadratic through
-its stations, `v(t) = v0 + t·(−3·v0 + 4·vm − v1) + t²·(2·v0 − 4·vm + 2·v1)`, `t = (x − x0)/len`.
-
-**Which boats**: the 8 nearest to the camera within 120 m (the own boat among them whenever it is that close),
-on every tier; further away a cockpit is a few pixels.
-
-**Per frame** (CPU), per boat: the scene-to-body affine transform of its render pose (three rows,
-`dry_m[3·i + k]`) and its well (`dry_g[3·i + k]`: `(x0, 1/len, w0, wa)`, `(wb, f0, fa, fb)`, `(r0, ra, rb, 0)` with
-`wa`, `wb` the linear and square coefficients above), uniform `n_dry`.
-
-**Per pixel** (first thing in the fragment stage, every tier):
-```
-for each boat i < n_dry:
-    p = dry_m[i] · (world position, 1)                      // body frame
-    t = (p.x − x0) / len
-    if 0 ≤ t ≤ 1 and |p.y| < w(t) + 0.03 and f(t) − 0.05 < p.z < r(t) + 0.05: discard
-```
-The 3 cm beyond the walls and 5 cm below the floor lie inside the hull, which hides that water anyway, so the
-mask never leaves a sliver along the walls; aft of the transom (`t < 0`) the sea is drawn as before, so it meets
-the open transom. A sea higher than the rim (`r + 0.05`) is drawn: a stern that is really under shows it.
-Cost: a loop of at most 8 affine transforms per water pixel; the discard keeps the sea material on
-the depth pre-pass's alpha-tested path, where only the mask's few instructions run.
-
 ## 5. Bow waves, wakes and spray
 
 Per boat, a **wake ribbon**: a strip of the water laid down behind the bow and left where it was laid, which opens
@@ -624,7 +569,6 @@ colour-blind palettes).
 | screen-space reflections | no | no | yes |
 | sun shadows (§4.6) | 2 cascades to 60 m, no shadows on the sea | 4 cascades to 100 m, no shadows on the sea | 4 blended cascades to 150 m |
 | boat shadows drawn on the sea (§4.7) | own boat | own boat and the 6 nearest within 100 m | no (real shadows) |
-| dry cockpits (§4.8, off by default) | 8 nearest within 120 m | 8 nearest within 120 m | 8 nearest within 120 m |
 | anti-aliasing | SMAA 1x | SMAA 1x | SMAA 1x |
 
 Anti-aliasing (WM-084, owner decision 2026-10-03: keep it simple): SMAA 1x on every tier, no per-tier choice
@@ -707,7 +651,3 @@ stated clearly.
     (every triangle above the water, rasterised on a 10 cm grid, outside the hull's plan) within an
     intersection-over-union of 0.75; on tier H there is none and on tier L only the own boat's. The native
     geometry equals the GDScript reference within 1e-4 m, and its cost per boat is printed.
-11. **Dry cockpits** (§4.8, headless): the cockpit block of each class's sidecar matches the generator's cockpit
-    (floor, half width and rim within 1 cm at 20 stations); a CPU mirror of the mask on a boat placed heeled 25°
-    in 20 kn: water points inside the well are masked, points 5 cm outside the walls, aft of the transom or above
-    the rim are not; the sea shaders of all tiers parse with the mask; the boat's motion (core tests) is unchanged.

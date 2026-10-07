@@ -1,6 +1,6 @@
 // Diagnostic, skipped by default (run with -tc="probe*" --no-skip): how far the cockpit floor and the deck edge at
 // the transom stand above the sea, by class, wind and heading, with and without the heel. The numbers behind
-// water_render.md §4.8; the geometry is the generator's (tools/boatgen deck.py) for the shipped classes.
+// boat.md §5.6; the geometry is the generator's (tools/boatgen deck.py) for the shipped classes.
 #include <cmath>
 #include <cstdio>
 

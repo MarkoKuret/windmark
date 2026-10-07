@@ -32,7 +32,6 @@ var _boat_state := {}
 ## the drawn shadow (water_render.md §4.7): the class's hull and mast, and the outline of each flat sail of the
 ## generated model in the Boat node's space (they do not move here)
 var _shadow_caster := {}
-var _dry_well := PackedVector4Array()
 var _sail_outlines: Array[PackedVector3Array] = []
 
 
@@ -87,7 +86,6 @@ func _build_shadow_caster(model: Node) -> void:
 	if not physics is Dictionary:
 		return
 	_shadow_caster = BoatShadows.caster_from_physics(physics)
-	_dry_well = Sea.dry_well(physics.get("cockpit", {}))
 	for side: Dictionary in (physics.get("sails", {}) as Dictionary).values():
 		var mi := model.find_child(String(side.get("node", "")), true, false) as MeshInstance3D
 		if mi == null or mi.mesh == null or not mi.is_visible_in_tree():
@@ -145,8 +143,6 @@ func _update_boat(t_s: float) -> void:
 			counts.append(o.size())
 		shadows.update_boat(0, {"xform": boat.global_transform * BoatView.BODY_TO_MODEL, "caster": _shadow_caster,
 				"sails": sails, "sail_counts": counts, "own": true})
-	sea.set_dry_cockpits([{"xform": boat.global_transform * BoatView.BODY_TO_MODEL, "well": _dry_well}],
-			cam.global_position if cam else Vector3.ZERO)
 	_place_camera()
 
 

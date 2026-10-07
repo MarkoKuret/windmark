@@ -390,8 +390,6 @@ func _user_args() -> void:
 			livery = a.trim_prefix("--livery=")
 		elif a.begins_with("--seed="):
 			world_seed = a.trim_prefix("--seed=").to_int()
-		elif a == "--dry-cockpits":
-			sea.dry_cockpits = true
 		elif a.begins_with("--wind="):
 			wind_speed_kn = a.trim_prefix("--wind=").to_float()
 		elif a.begins_with("--wind-from="):
@@ -848,7 +846,6 @@ func _update_target(alpha: float) -> void:
 	var us_boats := 0
 	var us_sails := 0
 	var us_wakes := 0
-	var dry: Array = []
 	for b in n:
 		var ta := Time.get_ticks_usec()
 		var p := sim.render_pose(b, alpha)
@@ -865,11 +862,8 @@ func _update_target(alpha: float) -> void:
 		us_boats += tb - ta
 		us_sails += tc - tb
 		us_wakes += td - tc
-		dry.append(v.dry_state())
 		if b == viewed:
 			target.pose = p
-	var cam := get_viewport().get_camera_3d()
-	sea.set_dry_cockpits(dry, cam.global_position if cam else Vector3.ZERO)
 	PerfStats.add(&"boats", us_boats)
 	PerfStats.add(&"sails", us_sails)
 	PerfStats.add(&"wakes", us_wakes)

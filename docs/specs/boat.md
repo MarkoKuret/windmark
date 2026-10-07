@@ -219,9 +219,25 @@ does not heel about a fixed axis: the leeward side, flared and wide aft, pushes 
 side gives up, so at the same displacement the heeled boat rises, and the immersed leeward quarter lifts the stern
 (it trims bow down). The generator computes both from the drawn hull (`tools/boatgen/README.md`, `heel_attitude`:
 free-floating equilibrium of volume and longitudinal centre of buoyancy at each heel) and the VPP copies them;
-S class at 25°: up 9.3 cm, 1.1° bow down. Without them the leeward corner of an open cockpit sank to the waterline
-at 25° (`water_render.md` §4.8). Both are part of the targets, so the heave lag and the pitch spring smooth them;
-the speed is not affected (§5.8 uses only the wave part of the pitch).
+S class at 25°: up 9.3 cm, 1.1° bow down. Both are part of the targets, so the heave lag and the pitch spring
+smooth them; the speed is not affected (§5.8 uses only the wave part of the pitch).
+
+This is what keeps the sea out of an open cockpit: the renderer draws the sea through the hull, so wherever it
+stands higher than the cockpit floor it shows inside. Turned about a fixed axis, the hull put the leeward corner of
+the floor at the transom (0.35 m above the DWL on S, 0.51 m on L) at the waterline by 25° of heel. The probe in
+the core tests (`probe: stern clearance`, skipped by default; boat on autopilot, the wind sea of `sea.md` §2 at
+fetch 10 km) gives the share of time that corner is below the sea, at TWA 42° / 90° / 140° under the kite:
+
+| | 15 kn | 20 kn | 25 kn |
+| --- | --- | --- | --- |
+| S, turned about a fixed axis | 7 / 37 / 0 % | 11 / 64 / 2 % | 10 / 78 / 74 % |
+| S, floating heeled | 0 / 0 / 0 % | 0.2 / 0.8 / 0.1 % | 0.7 / 3.1 / 4.2 % |
+| L, turned about a fixed axis | 10 / 16 / 0 % | 17 / 62 / 0.5 % | 16 / 68 / 10 % |
+| L, floating heeled | 0 / 0 / 0 % | 0 / 0 / 0.1 % | 0 / 0.1 / 0.3 % |
+
+so the sea reaches the floor only now and then when pressed in a breeze, as on a real boat (the 2026-10-06 sterns:
+S rounder bilge and U-shaped transom, L transom 2.45 m and rounder bilge). No mask keeps the sea out of the
+cockpit; one was tried and dropped as unneeded (owner, 2026-10-07).
 
 ### 5.7 Heel
 ```

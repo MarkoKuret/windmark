@@ -417,7 +417,6 @@ Positions in the body frame.
 | `buoyancy_samples` | skin samples up to the sheer with outward normal and area, for pressure integration at any heel and trim (`canoe_volume_check_m3` is their immersed volume by the divergence theorem) |
 | `collision_meshes` | closed low-poly hull (canoe body to the deck crown), fin, bulb and rudder slabs |
 | `rig` | mast step, masthead, hounds, forestay tack, boom pivot and axis, sprit end, rudder stock and axis, wheel hub, spreader tips, `sheet_leads` (headsail and flying-sail sheet lead block and winch, starboard side, with the drum diameter); with a pole: `pole_pivot`, `pole_axis`, `pole_length` (from the mast front) and `pole_end` (rest position, the spinnaker tack) |
-| `cockpit` | the cockpit well for the sea renderer's dry mask (`docs/specs/water_render.md` §4.8): `x0` (aft end), `len`, `open_transom`, and at the aft end, middle and forward end `half_width`, `floor_z` and `rim_z` (the deck at the cockpit edge) |
 | `model` | file, triangles, nodes, pivots, `lods` (file, triangles and switch distance of each level of detail) |
 | `sails` | per sail: node, type, grid size, vertex order, flat area and target, centroid, corner vertices (tack, clew, head), `look` (the look parameters above, every applicable key filled); code zeros and spinnakers also `rule` (luff, leech, foot, mid girth and rule area of the planform) |
 

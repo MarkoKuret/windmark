@@ -233,10 +233,10 @@ fetch 10 km) gives the share of time that corner is below the sea, at TWA 42° /
 | S, turned about a fixed axis | 7 / 37 / 0 % | 11 / 64 / 2 % | 10 / 78 / 74 % |
 | S, floating heeled | 0 / 0 / 0 % | 0.2 / 0.8 / 0.1 % | 0.7 / 3.1 / 4.2 % |
 | L, turned about a fixed axis | 10 / 16 / 0 % | 17 / 62 / 0.5 % | 16 / 68 / 10 % |
-| L, floating heeled | 0 / 0 / 0 % | 0 / 0 / 0.1 % | 0 / 0.1 / 0.3 % |
+| L, floating heeled | 0 / 0 / 0 % | 0 / 0 / 0 % | 0 / 0 / 0.1 % |
 
 so the sea reaches the floor only now and then when pressed in a breeze, as on a real boat (the 2026-10-06 sterns:
-S rounder bilge and U-shaped transom, L transom 2.45 m and rounder bilge). No mask keeps the sea out of the
+S rounder bilge and U-shaped transom, L transom 2.75 m and rounder bilge). No mask keeps the sea out of the
 cockpit; one was tried and dropped as unneeded (owner, 2026-10-07).
 
 ### 5.7 Heel

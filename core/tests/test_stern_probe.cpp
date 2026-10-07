@@ -86,7 +86,7 @@ void run(const char* cls, Geo g, float tws_kn, float twa_deg, bool kite) {
 }  // namespace
 
 TEST_CASE("probe: stern clearance" * doctest::skip()) {
-  const Geo g7{-3.745f, 0.346f, 0.756f, 0.60f, 1.05f}, g12{-6.15f, 0.494f, 0.809f, 0.90f, 1.225f};
+  const Geo g7{-3.745f, 0.346f, 0.756f, 0.60f, 1.05f}, g12{-6.15f, 0.501f, 0.908f, 0.90f, 1.375f};
   for (float tws : {10.0f, 15.0f, 20.0f, 25.0f}) {
     run("wm7", g7, tws, 42, false);
     run("wm7", g7, tws, 90, false);

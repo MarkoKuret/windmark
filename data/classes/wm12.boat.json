@@ -14,7 +14,7 @@
     "section_shape": {"type": "round", "midship_coefficient": 0.71},
     "rocker": {"fwd": 0.34, "aft": 0.40},
     "freeboard": {"bow": 1.32, "mid": 1.08, "stern": 0.90},
-    "transom_width": 2.45,
+    "transom_width": 2.75,
     "stem_x": 5.85,
     "transom_x": -6.15,
     "max_beam_station": 0.40,

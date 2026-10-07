@@ -16,7 +16,7 @@ ctest --test-dir core/build -LE long --output-on-failure   # the quick run, abou
 ```
 
 `-LE long` leaves out every test with a label matching `long` (`long` and `ai_long`); `ctest -L '^long$'` runs the
-long core tests (about half a minute), `-L ai_long` the AI fleet races (about four minutes), plain `ctest` all.
+long core tests (about half a minute), `-L ai_long` the AI fleet races (about half a minute), plain `ctest` all.
 
 Options:
 
@@ -32,17 +32,17 @@ Tests (`ctest`):
 
 - `core_tests`: the doctest suite in `tests/` (check values of `conventions.md`, the math vector file, tables,
   checksums, JSON, loading and validating `data/perf/wm7.perf.json` and `wm12.perf.json` against their class
-  files, and loading `data/venues/example_bay.venue.json` into the environment; the course files, the race flow
+  files, and loading `data/venues/practice_waters.venue.json` into the environment; the course files, the race flow
   and the racing rules scenarios of `courses.md` §7, `race.md` §12 and `rules.md` §13; the world loop; world
   snapshots: the checksum as the hash of the snapshot body, damaged and foreign snapshots, a world reset and loaded
   again and again, sail outputs restored, a race with a joined boat); the AI skippers' fast checks and scenarios
   (`test_ai.cpp`). It runs every doctest case outside the test suite `long`.
 - `core_long` (label `long`): the doctest suite `long`, the full races run to the close: a full headless race of
-  six scripted boats with penalties on `example_bay`, run twice for determinism, and saved at nine ticks and
+  six scripted boats with penalties on `practice_waters`, run twice for determinism, and saved at nine ticks and
   loaded into a new world to continue bit for bit; and the full AI race (`test_ai_full_race.cpp`): the fleet of
   `tests/ai_fleet_race.h` (ten AI skippers of every level, wm7 and wm12) with collisions and rules, to the close,
   twice with the same checksum every tick.
-- `ai_races` (label `ai_long`, about four minutes): the fleet runs of `ai.md` §15 (`test_ai_race.cpp`); they
+- `ai_races` (label `ai_long`, about half a minute): the fleet runs of `ai.md` §15 (`test_ai_race.cpp`); they
   print their measurements. `ctest --test-dir core/build -LE ai_long` leaves them out, `-L ai_long` runs only them.
 - `core_no_fma`: disassembles `libwindmark_core.a` and fails on any fused multiply-add instruction.
 - `core_no_libm`: lists the library's undefined symbols and fails on any platform libm transcendental (`acosf`,
@@ -129,7 +129,7 @@ is the environment clock's zero, `race.md` §0).
 | `set_helm`, `set_sheet`, `set_auto_trim`, `set_let_fly`, `hoist`, `drop_front`, `retire`, `protest` | controls queued for step 2 of the next tick | boat.md §2, race.md §6.4, rules.md §10 |
 | `set_controller(fn)` | called in step 2 before the queued controls: computer skippers and scripts decide there | ai.md |
 | `place_boat(i, x, y, psi, v, front_sail)` | scenario set-up (tests, tools, rules scenarios): puts a boat at a pose as a spawn does, between ticks, before or after `create_race`; `front_sail` -2 keeps the one up | boat.md §6.6 |
-| `step()` | one tick: race and rules on `t_n` and the last contacts, controls, environment, shadow snapshot, boat steps, collisions, publish; returns the tick checksum | conventions.md §4.1 |
+| `step()` | one tick: race and rules on `t_n` and the last contacts, controls, environment, shadow snapshot, boat steps, collisions, publish (no checksum: `checksum()` on request) | conventions.md §4.1 |
 | `boat(i)`, `env(i)`, `race()`, `rules()`, `course()`, `scene()`, `events()`, `checksum()` | state, the race and rules records, this tick's race, rules and contact events | race.md §11, rules.md §11 |
 | `save(SnapshotWriter&)`, `load(bytes, course, err)` | the world snapshot between ticks; `load` goes into a world built with the same setup and entries, whatever it has run (it is reset first; any number of loads), rebuilds it (the race is recreated at its creation tick, joiners join again) and continues bit for bit; a failed load leaves the world as it was; the controller stays installed, the AI memory is loaded on its own | conventions.md §9.1 |
 | `reset()` | back to the world as built with its entries: tick 0, no race | conventions.md §9.1 |
@@ -150,7 +150,7 @@ hosts that link it in. Everything is built under the float rules; hosts must not
 | data | `wm_perf_load/parse`, `wm_venue_load/parse`, `wm_course_load/parse`; `wm_perf_info`, `wm_perf_sail`, `wm_perf_polar`, `wm_perf_polar_vmg`, `wm_perf_trim_speed`, `wm_perf_table` (any config table by name, e.g. `weather_helm`, `flog_drag`) |
 | set-up | `wm_world_settings_init`, `wm_world_create(settings, venue or NULL)`, `wm_world_add_boat`, `wm_world_place_boat` (free sailing), `wm_world_create_race`, `wm_world_scenario_place` (a pose and speed at any time: rules scenarios, tests) |
 | controls | `wm_world_apply_input` (the input frame of networking.md §4.1; the sail request result is answered at once), `wm_input_encode/decode` (the 6-byte wire form), single controls, `wm_world_set_controller` (step-2 callback) |
-| step | `wm_world_step` (returns the tick checksum), `wm_world_checksum`, `wm_world_tick`, `wm_world_time_ms`, `wm_world_render_time_ms` |
+| step | `wm_world_step`, `wm_world_checksum` (on request, conventions.md §9), `wm_world_tick`, `wm_world_time_ms`, `wm_world_render_time_ms` |
 | boats | state, controls, outputs, the environment at the boat, `wm_world_render_pose(alpha)` (interpolated between the last two ticks), `wm_world_trim_speed_at` (HUD trim tolerance), sails, per-sail state and outputs, sail phase events |
 | environment | clean wind, global direction, current, puff patches (now or at any `t_ms`), `wm_world_wind_state`, sea height (now or at any `t_ms`), slope, exposure and its grid, wave components |
 | race and rules | course marks, steps and boundary; race state, per-boat race state, order, results; per-boat rules state, pending penalties, pair records; race, rules and contact events of the last tick |

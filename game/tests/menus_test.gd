@@ -16,12 +16,15 @@ func _init() -> void:
 	test_data()
 	test_look()
 	test_settings_round_trip()
+	test_device_defaults()
 	test_apply()
 	test_every_key_applied()
 	await test_rebinding()
 	await test_live_backdrop()
 	await test_main_menu()
 	await test_race_card()
+	test_briefing()
+	await test_weather_card()
 	await test_touches()
 	await test_pause_menu()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
@@ -46,11 +49,11 @@ func test_data() -> void:
 	t.ok(sorted == disk and disk.size() >= 2, "classes %s = files %s" % [cls, disk])
 	t.ok(MenuData.names(MenuData.classes()).has("Windmark 7 Sportsboat"), "class names from the class files")
 	var ven := MenuData.ids(MenuData.venues())
-	t.ok(ven.has("example_bay") and ven.size() == _disk_ids(BoatClassData.repo_path("data/venues"),
+	t.ok(ven.has("practice_waters") and ven.size() == _disk_ids(BoatClassData.repo_path("data/venues"),
 		".venue.json").size(), "venues %s" % [ven])
-	var c7 := MenuData.ids(MenuData.courses("example_bay", "wm7"))
-	t.ok(c7.has("example_bay/example_wl"), "example_bay courses for wm7: %s" % [c7])
-	t.ok(MenuData.courses("example_bay", "no_such_class").is_empty(), "no course lists an unknown class")
+	var c7 := MenuData.ids(MenuData.courses("practice_waters", "wm7"))
+	t.ok(c7.has("practice_waters/example_wl"), "practice_waters courses for wm7: %s" % [c7])
+	t.ok(MenuData.courses("practice_waters", "no_such_class").is_empty(), "no course lists an unknown class")
 	t.ok(MenuData.courses("no_such_venue", "wm7").is_empty(), "no courses for an unknown venue")
 
 
@@ -135,6 +138,88 @@ func _odd_settings() -> Settings:
 	s.welcomed = true
 	s.bindings = {"let_fly": [["key", KEY_Q, ""], [], ["button", JOY_BUTTON_Y]]}
 	return s
+
+
+## menus.md §3 device defaults: the adapter class from injected names, and what a first start picks for it.
+func test_device_defaults() -> void:
+	t.begin("settings: device defaults at the first start")
+	var I := Settings.Gpu.INTEGRATED
+	var D := Settings.Gpu.DISCRETE
+	var IG := RenderingDevice.DEVICE_TYPE_INTEGRATED_GPU
+	var DG := RenderingDevice.DEVICE_TYPE_DISCRETE_GPU
+	var cases := [
+		# adapter, vendor, device type, Steam Deck, class
+		["Intel(R) UHD Graphics 620", "Intel", IG, false, I],
+		["Intel(R) Iris(R) Xe Graphics", "Intel", IG, false, I],
+		["Intel(R) HD Graphics 520", "Intel", -1, false, I],
+		["Mesa Intel(R) UHD Graphics 620 (KBL GT2)", "Intel", IG, false, I],
+		["Intel(R) Arc(TM) Graphics", "Intel", IG, false, I],
+		["Intel(R) Arc(TM) A770 Graphics", "Intel", DG, false, D],
+		["Intel(R) Arc(TM) B580 Graphics", "Intel", -1, false, D],
+		["AMD Radeon(TM) Graphics", "AMD", IG, false, I],
+		["AMD Radeon(TM) Vega 8 Graphics", "AMD", -1, false, I],
+		["AMD Radeon(TM) RX Vega 10 Graphics", "AMD", IG, false, I],
+		["AMD Radeon 780M", "AMD", -1, false, I],
+		["AMD Radeon Graphics (RADV RENOIR)", "AMD", IG, false, I],
+		["AMD Radeon RX 6600", "AMD", DG, false, D],
+		["AMD Radeon RX 7600M XT", "AMD", DG, false, D],
+		["AMD Radeon Pro 5500M", "AMD", DG, false, D],
+		["NVIDIA GeForce RTX 3060", "NVIDIA", DG, false, D],
+		["NVIDIA GeForce MX450", "NVIDIA", DG, false, D],
+		["Apple M1", "Apple", IG, false, Settings.Gpu.APPLE],
+		["Apple M5", "Apple", -1, false, Settings.Gpu.APPLE],
+		["AMD Custom GPU 0405 (RADV VANGOGH)", "AMD", IG, false, Settings.Gpu.STEAM_DECK],
+		["AMD Custom GPU 0932", "AMD", IG, false, Settings.Gpu.STEAM_DECK],
+		["AMD Radeon Graphics", "AMD", IG, true, Settings.Gpu.STEAM_DECK],
+		["llvmpipe (LLVM 15.0.7, 256 bits)", "Mesa", RenderingDevice.DEVICE_TYPE_CPU, false, I],
+		["Qualcomm(R) Adreno(TM) X1-85 GPU", "Qualcomm", IG, false, I],
+		["Some New GPU", "Unknown", IG, false, I],
+		["Some New GPU", "Unknown", DG, false, D],
+		["", "", -1, false, Settings.Gpu.UNKNOWN],
+	]
+	var wrong := []
+	for c in cases:
+		var got := Settings.gpu_class(c[0], c[1], c[2], c[3])
+		if got != c[4]:
+			wrong.append("%s -> %s (want %s)" % [c[0], Settings.Gpu.keys()[got], Settings.Gpu.keys()[c[4]]])
+	t.ok(wrong.is_empty(), "adapter classes from %d names %s" % [cases.size(), wrong])
+	var g := Settings.device_graphics(I)
+	t.ok(g["quality"] == SeaQuality.Tier.L and is_equal_approx(g["render_scale"], 0.67), "integrated: tier L at 67 %")
+	g = Settings.device_graphics(Settings.Gpu.STEAM_DECK)
+	t.ok(g["quality"] == SeaQuality.Tier.L and g["render_scale"] == 0.0, "Steam Deck: tier L, Auto (native)")
+	for k in [D, Settings.Gpu.APPLE, Settings.Gpu.UNKNOWN]:
+		g = Settings.device_graphics(k)
+		t.ok(g["quality"] == SeaQuality.Tier.M and g["render_scale"] == 0.0,
+			"%s: today's defaults (M, Auto)" % Settings.Gpu.keys()[k])
+	# the first start: no file, so the detected device decides; a file keeps the player's values
+	var first := "user://menus_test_first_start.cfg"
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(first))
+	Settings.path = first
+	Settings.gpu_override = I
+	Settings.reset_current()
+	var s := Settings.current()
+	t.ok(s.quality == SeaQuality.Tier.L and is_equal_approx(s.render_scale, 0.67),
+		"first start on an integrated GPU: tier L at 67 %")
+	s.quality = SeaQuality.Tier.H
+	s.render_scale = 1.0
+	s.save_file()
+	Settings.reset_current()
+	s = Settings.current()
+	t.ok(s.quality == SeaQuality.Tier.H and s.render_scale == 1.0, "a saved file keeps the player's choice")
+	s.reset("graphics")
+	t.ok(s.quality == SeaQuality.Tier.L and is_equal_approx(s.render_scale, 0.67), "Reset Graphics: the device defaults")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(first))
+	Settings.gpu_override = Settings.Gpu.APPLE
+	Settings.reset_current()
+	s = Settings.current()
+	t.ok(s.quality == SeaQuality.Tier.M and s.render_scale == 0.0, "first start on Apple silicon: M, Auto")
+	Settings.gpu_override = Settings.Gpu.STEAM_DECK
+	Settings.reset_current()
+	s = Settings.current()
+	t.ok(s.quality == SeaQuality.Tier.L and s.render_scale == 0.0, "first start on a Steam Deck: L, Auto")
+	Settings.gpu_override = -1
+	Settings.path = TEST_PATH
+	Settings.reset_current()
 
 
 func test_settings_round_trip() -> void:
@@ -559,7 +644,14 @@ func test_live_backdrop() -> void:
 		t.ok(not m.backdrop.draw_scene and m.backdrop.haze, "painted scene off, the haze on")
 		var n := m.stage.boat_count()
 		print("  backdrop: %d boats on %s" % [n, "the core" if sc.on_core else "FakeSim"])
-		t.ok(n == (MenuStage.FLEET if sc.on_core else 1), "%d boats (%s)" % [n, "core" if sc.on_core else "FakeSim"])
+		t.ok(n == (MenuStage.FLEET_L if sc.on_core else 1), "%d boats on tier L (%s)" % [n,
+			"core" if sc.on_core else "FakeSim"])
+		t.ok(not m.stage.sun_shadows() and Engine.max_fps == MenuStage.FPS_L,
+			"tier L: no sun shadows, %d fps cap (max_fps %d)" % [MenuStage.FPS_L, Engine.max_fps])
+		Settings.current().fps_limit = 144
+		m._setting_changed("fps_limit")
+		t.ok(Engine.max_fps == MenuStage.FPS_L, "a display change keeps the 30 fps cap on L")
+		Settings.current().fps_limit = 0
 		t.ok(not sc.racing and sc.watch, "no player: every boat sails itself")
 		t.ok(not sc.hud.visible, "no HUD")
 		t.ok(sc.get_node_or_null("PauseMenu") == null, "no pause menu")
@@ -580,8 +672,17 @@ func test_live_backdrop() -> void:
 		Settings.current().quality = SeaQuality.Tier.H
 		m._setting_changed("quality")
 		t.ok(sc.sea.quality == SeaQuality.Tier.H, "a quality change reaches the backdrop at once")
+		t.ok(m.stage.sun_shadows() and Engine.max_fps == 0, "tier H: sun shadows back, no frame cap")
+		Settings.current().quality = SeaQuality.Tier.L
+		m._setting_changed("quality")
 	m.queue_free()
 	await process_frame
+	t.ok(Engine.max_fps == Settings.current().fps_limit, "leaving the menu puts the player's frame limit back")
+	t.ok(MenuStage.fleet_for(SeaQuality.Tier.M) == MenuStage.FLEET and MenuStage.fleet_for(SeaQuality.Tier.H)
+		== MenuStage.FLEET and MenuStage.FLEET_L == 2, "4 boats on M and H, 2 on L")
+	t.ok(MenuStage.frame_cap(SeaQuality.Tier.L, 0) == 30 and MenuStage.frame_cap(SeaQuality.Tier.L, 144) == 30
+		and MenuStage.frame_cap(SeaQuality.Tier.L, 24) == 24 and MenuStage.frame_cap(SeaQuality.Tier.M, 0) == 0
+		and MenuStage.frame_cap(SeaQuality.Tier.H, 90) == 90, "frame cap: 30 on L (or the lower limit), the player's on M and H")
 	var f := (load("res://scenes/menu/main_menu.tscn") as PackedScene).instantiate() as MainMenu
 	f.change_scenes = false
 	f.stage_scene = "res://scenes/no_such_scene.tscn"
@@ -609,7 +710,7 @@ func test_main_menu() -> void:
 	var q := m.quick
 	t.ok(q.rows["class_id"].choices == MenuData.ids(MenuData.classes()), "quick race: classes from disk")
 	t.ok(q.rows["venue"].choices == MenuData.ids(MenuData.venues()), "quick race: venues from disk")
-	t.ok(q.rows["course"].choices.has("example_bay/example_wl"), "quick race: the venue's courses")
+	t.ok(q.rows["course"].choices.has("practice_waters/example_wl"), "quick race: the venue's courses")
 	t.ok(q.rows["livery"].choices == MenuData.ids(MenuData.liveries(str(q.rows["class_id"].value)))
 		and q.rows["livery"].choices.size() >= 12, "quick race: the class's boats (sail numbers) from disk")
 	# keyboard: Enter opens the page, the focus lands on the first row, down and right change the fleet size
@@ -635,8 +736,8 @@ func test_main_menu() -> void:
 	q.rows["wind_from_deg"].set_value(90.0, true)
 	q.start_button.pressed.emit()
 	var g := GameSetup.current()
-	t.ok(g.mode == "race" and g.class_id == "wm12" and g.venue == "example_bay", "GameSetup: race, wm12, venue")
-	t.ok(g.course == "example_bay/example_wl" and g.fleet_size == fleet + 2 and g.ai_level == "pro",
+	t.ok(g.mode == "race" and g.class_id == "wm12" and g.venue == "practice_waters", "GameSetup: race, wm12, venue")
+	t.ok(g.course == "practice_waters/example_wl" and g.fleet_size == fleet + 2 and g.ai_level == "pro",
 		"GameSetup: course, fleet, AI level")
 	t.ok(g.livery == "nightjar", "GameSetup: the chosen boat")
 	t.near(g.wind_kn, 15.0, 1e-9, "GameSetup: wind speed")
@@ -732,7 +833,7 @@ func test_race_card() -> void:
 	t.begin("quick race: the race card")
 	Settings.reset_current()
 	Settings.current().welcomed = true
-	var c := MenuData.course_file("example_bay/example_wl")
+	var c := MenuData.course_file("practice_waters/example_wl")
 	t.ok(c.get("id", "") == "example_wl", "course file read")
 	var p := CourseMap.resolve(c, 0.0)
 	t.ok(p["rc"].distance_to(Vector2(125, -300)) < 0.01 and p["pin"].distance_to(Vector2(-125, -300)) < 0.01,
@@ -754,6 +855,7 @@ func test_race_card() -> void:
 	await process_frame
 	var q := m.quick
 	t.ok(q.course_map != null and q.course_map.points.has("w"), "the course map shows the chosen course")
+	q.rows["weather"].set_value("custom", true)
 	q.rows["wind_from_deg"].set_value(90.0, true)
 	q.rows["wind_kn"].set_value(18.0, true)
 	t.ok(absf(q.course_map.wind_from_deg - 90.0) < 1e-6 and absf(q.course_map.wind_kn - 18.0) < 1e-6
@@ -764,15 +866,26 @@ func test_race_card() -> void:
 		and q.fleet_text.text.contains(MenuData.name_of(MenuData.classes(), str(q.rows["class_id"].value))),
 		"fleet summary: %s" % q.fleet_text.text.replace("\n", " / "))
 	t.ok(q.course_text.text.contains("2 laps, 6 legs"), "course caption: %s" % q.course_text.text.replace("\n", " / "))
-	# keyboard: down from the last row is Start, up from Start the last row
-	q.rows["wind_from_deg"].grab_focus()
+	# keyboard: down from the last row is Start, up from Start the last row (Gusts in Custom, Weather otherwise)
+	t.ok(q.last_row() == q.rows["gusts"], "Custom: the last row is Gusts")
+	q.rows["gusts"].grab_focus()
 	await process_frame
 	_key("ui_down")
 	await process_frame
 	t.ok(root.gui_get_focus_owner() == q.start_button, "down from the last row: Start")
 	_key("ui_up")
 	await process_frame
-	t.ok(root.gui_get_focus_owner() == q.rows["wind_from_deg"], "up from Start: the last row")
+	t.ok(root.gui_get_focus_owner() == q.rows["gusts"], "up from Start: the last row")
+	q.rows["weather"].set_value("local", true)
+	t.ok(q.last_row() == q.rows["weather"] and not q.rows["wind_kn"].visible, "Local: the Custom rows hidden")
+	q.rows["weather"].grab_focus()
+	await process_frame
+	_key("ui_down")
+	await process_frame
+	t.ok(root.gui_get_focus_owner() == q.start_button, "Local: down from Weather is Start")
+	_key("ui_up")
+	await process_frame
+	t.ok(root.gui_get_focus_owner() == q.rows["weather"], "Local: up from Start is Weather")
 	# the layout: preview beside the rows when there is room, under them when not; Start always on screen
 	for c2 in [[Vector2i(1280, 800), 0.8], [Vector2i(1280, 800), 1.0], [Vector2i(1280, 800), 1.3],
 			[Vector2i(1080, 1920), 0.8], [Vector2i(1080, 1920), 1.0], [Vector2i(1080, 1920), 1.3]]:
@@ -792,8 +905,10 @@ func test_race_card() -> void:
 			t.ok(wide, "the logo leaves the race card two columns at %d %%" % roundi(c2[1] * 100))
 		if wide:
 			t.ok(vis.encloses(q.course_map.get_global_rect()), "the course map on screen")
+		if wide:
+			t.ok(vis.encloses(q.briefing.get_global_rect()), "the briefing on screen")
 		# the last row and Start reachable by the keyboard at this size
-		q.rows["wind_from_deg"].grab_focus()
+		q.last_row().grab_focus()
 		await process_frame
 		_key("ui_down")
 		await process_frame
@@ -801,6 +916,305 @@ func test_race_card() -> void:
 	m.settings.ui_scale = 1.0
 	m.settings.apply_display(root)
 	root.size = Vector2i(1280, 800)
+	m.queue_free()
+	await process_frame
+	Settings.reset_current()
+
+
+const TIDAL := "res://tests/fixtures/tidal_test.venue.json"
+
+
+## A venue file's weather info (VenueWeather.info), {} when it does not read.
+func _vi(path: String) -> Dictionary:
+	var v: Variant = BoatClassData._read_json(ProjectSettings.globalize_path(path) if path.begins_with("res://")
+		else path)
+	return VenueWeather.info(v) if v is Dictionary else {}
+
+
+## A venue doc with these conditions (SI), for the threshold checks.
+func _cond(c: Dictionary, extra := {}) -> Dictionary:
+	var d := {"id": "t", "name": "Test", "fetch": 10000.0, "conditions": c}
+	d.merge(extra, true)
+	return VenueWeather.info(d)
+
+
+## menus.md §1.3: the briefing's lines, number formats and thresholds; the spec's examples; Random shows nothing
+## but the Unknown line; the Tip in Local only; the Today line of menus.md §5.
+func test_briefing() -> void:
+	t.begin("venue briefing: lines, thresholds, modes")
+	var KN := VenueWeather.KNOT
+	var tm := {"t_gun": 330.0, "t_race": 900.0}
+	# Practice Waters, Local
+	var pw := MenuData.venue_info("practice_waters")
+	t.ok(pw.get("has_conditions", false) and VenueWeather.modes(pw) == ["local", "random", "custom"],
+		"Practice Waters: conditions, three weather modes")
+	var txt := VenueWeather.text(pw, "local", {}, tm)
+	print("  Practice Waters (Local):\n    " + txt.replace("\n", "\n    ").replace("\t", "  "))
+	t.ok(txt == "PRACTICE WATERS · Practice\nWind\t10-14 kn from the N\nShifts\tStable: small, slow (3°)\n"
+		+ "Gusts\tLight: to +15 %, frequent\nCurrent\tLight, 0.3 kn, sets E\nSea\tChop\nTip\t" + str(pw["tip"]),
+		"Practice Waters briefing (Local)")
+	t.ok(str(pw["tip"]).length() <= 80 and not str(pw["tip"]).contains("—"), "the tip: at most 80 characters, no em dash")
+	# Random: only the Unknown line, nothing about the conditions
+	var rnd := VenueWeather.lines(pw, "random", {}, tm)
+	t.ok(rnd.size() == 1 and rnd[0][0] == "Weather" and rnd[0][1] == "Unknown: read it on the water",
+		"Random: only `Weather  Unknown: read it on the water`")
+	t.ok(not VenueWeather.text(pw, "random", {}, tm).contains(" kn"), "Random: no numbers at all")
+	# Custom: the picks, the venue's current and sea, no Tip
+	var cus := VenueWeather.text(pw, "custom", {"kn": 18.0, "from_deg": 90.0, "shift": "unstable", "gusts": "gusty"}, tm)
+	t.ok(cus == "PRACTICE WATERS · Practice\nWind\t18 kn from the E\nShifts\tUnstable: very large, fast (25°)\n"
+		+ "Gusts\tVery strong: to +45 %, frequent\nCurrent\tLight, 0.3 kn, sets E\nSea\tModerate", "Custom briefing: %s"
+		% cus.replace("\n", " / "))
+	t.ok(not cus.contains("Tip"), "Custom: no Tip")
+	var none := VenueWeather.text(pw, "custom", {"kn": 4.0, "from_deg": 0.0, "shift": "steady", "gusts": "none"}, tm)
+	t.ok(none.contains("Shifts\tSteady\n") and none.contains("Gusts\tNone") and none.contains("Sea\tFlat"),
+		"Custom steady, no gusts, 4 kn: %s" % none.replace("\n", " / "))
+	var cd := VenueWeather.custom_defaults(pw)
+	t.ok(cd == {"kn": 12.0, "from_deg": 0.0, "shift": "stable", "gusts": "light"}, "Custom defaults: %s" % [cd])
+	# the tide and trend fixture
+	var td := _vi(TIDAL)
+	var ttm := tm.duplicate()
+	ttm["tide_factor"] = 0.6  # a race drawn at the flood's peak
+	var tt := VenueWeather.text(td, "local", {}, ttm)
+	print("  Tidal fixture (Local):\n    " + tt.replace("\n", "\n    ").replace("\t", "  "))
+	t.ok(tt == "TIDAL TEST · Strong tide\nWind\t10-16 kn from the SW\nShifts\tStable: small, slow (4°), backs 7°\n"
+		+ "Gusts\tLight: to +15 %, frequent\nCurrent\tStrong, 1.5 kn, flooding (sets E)\n"
+		+ "Sea\tFlat to chop, swell 0.4 m from the SW\nTip\tThe stream runs hardest mid-channel; cheat it along the shore.",
+		"tide and trend fixture briefing")
+	var short := VenueWeather.lines(td, "local", {}, VenueWeather.timing(MenuData.course_file("practice_waters/example_wl")))
+	t.ok(short[1][1] == "Stable: small, slow (4°), backs 5°", "the trend over the course's own timing: %s" % short[1][1])
+	# the spec's examples (venues.md §2) from their sketched conditions
+	var solent := _cond({"wind": {"speed": [10 * KN, 16 * KN], "from": deg_to_rad(225)},
+		"shift": {"amplitude": deg_to_rad(4.0), "hold_max": 120}, "puffs": {"preset": "light"},
+		"tide": {"scale": 0.6, "period": 44712}},
+		{"fetch": 8000.0, "current_field": {"ref_speed": 1.29, "ref_to": deg_to_rad(75.0)}})
+	var stm := tm.duplicate()
+	stm["tide_factor"] = 0.6
+	var sl := VenueWeather.lines(solent, "local", {}, stm)
+	t.ok(sl.map(func(l: Array) -> String: return l[1]) == ["10-16 kn from the SW", "Stable: small, slow (4°)",
+		"Light: to +15 %, frequent", "Strong, 1.5 kn, flooding (sets E)", "Flat to chop"], "Solent example: %s" % [sl])
+	# the spec's other Solent races (venues.md §2): a moderate ebb and slack
+	for c in [[-0.45, "Moderate, 1.1 kn, ebbing (sets W)"], [0.05, "Slack, turning"], [-0.1, "Slack, turning"],
+			[0.15, "Light, 0.4 kn, flooding (sets E)"]]:
+		stm["tide_factor"] = c[0]
+		var cl: String = VenueWeather.lines(solent, "local", {}, stm)[3][1]
+		t.ok(cl == c[1], "Solent tide factor %+.2f: %s" % [c[0], cl])
+	# without the race's tide (no seed known) the line names no state
+	t.ok(VenueWeather.lines(solent, "local", {}, tm)[3][1] == "Strong, 1.5 kn", "tide state unknown: strength only")
+	var fre := _cond({"wind": {"speed": [16 * KN, 24 * KN], "from": deg_to_rad(230)},
+		"shift": {"amplitude": deg_to_rad(5.0), "hold_max": 90, "trend_rate": deg_to_rad(-0.5) / 60.0,
+		"trend_max": deg_to_rad(15.0)}, "puffs": {"preset": "standard"},
+		"sea": {"swells": [{"hs": 0.8, "tp": 12.0, "from": deg_to_rad(240)}]}}, {"fetch": 30000.0})
+	var fl := VenueWeather.lines(fre, "local", {}, tm)
+	t.ok(fl.map(func(l: Array) -> String: return l[1]) == ["16-24 kn from the SW",
+		"Stable: small, regular (5°), backs 8°", "Moderate: to +25 %, frequent", "None",
+		"Moderate to rough, swell 0.8 m from the SW"], "Fremantle example: %s" % [fl])
+	var tri := _cond({"wind": {"speed": [16 * KN, 24 * KN], "from": deg_to_rad(65)},
+		"shift": {"amplitude": deg_to_rad(22.0), "hold_max": 45}, "puffs": {"preset": "gusty"},
+		"current": {"speed": 0.3 * KN, "to": deg_to_rad(225)}}, {"fetch": 3000.0})
+	var tl := VenueWeather.lines(tri, "local", {}, tm)
+	t.ok(tl.map(func(l: Array) -> String: return l[1]) == ["16-24 kn from the NE", "Unstable: very large, fast (22°)",
+		"Very strong: to +45 %, frequent", "Light, 0.3 kn, sets SW", "Flat to chop"], "Trieste example: %s" % [tl])
+	# shift thresholds: word and size by A, pace by H
+	for c in [[1.4, 120, "Steady"], [1.5, 120, "Stable: small, slow (2°)"], [5.4, 100, "Stable: small, slow (5°)"],
+			[5.5, 99, "Oscillating: medium, regular (6°)"], [11.4, 55, "Oscillating: medium, regular (11°)"],
+			[11.5, 54, "Shifty: large, fast (12°)"], [19.9, 60, "Shifty: large, regular (20°)"],
+			[20.0, 45, "Unstable: very large, fast (20°)"]]:
+		var s := VenueWeather.shifts_text(deg_to_rad(c[0]), c[1], 0.0)
+		t.ok(s == c[2], "shifts A %.1f°, H %d s: %s" % [c[0], c[1], s])
+	t.ok(VenueWeather.shifts_text(deg_to_rad(3.0), 120, 2.4) == "Stable: small, slow (3°)", "a trend under 3° not shown")
+	t.ok(VenueWeather.shifts_text(deg_to_rad(3.0), 120, 3.0) == "Stable: small, slow (3°), veers 3°", "veers 3°")
+	t.ok(VenueWeather.shifts_text(0.0, 0, -6.0) == "Steady, backs 6°", "steady with a back")
+	# gust thresholds by g = min(cap_up, strength_max), spread by cover
+	for c in [[0.17, "Light"], [0.18, "Moderate"], [0.279, "Moderate"], [0.28, "Strong"], [0.399, "Strong"],
+			[0.40, "Very strong"]]:
+		var p := VenueWeather.puff_preset("standard")
+		p["puff_cap_up"] = c[0]
+		p["puff_strength_max"] = 0.9
+		t.ok(VenueWeather.gusts_text(p).begins_with(c[1] + ":"), "gusts g %.3f: %s" % [c[0], VenueWeather.gusts_text(p)])
+	var sp := VenueWeather.puff_preset("standard")
+	sp["puff_count"] = 2
+	t.ok(VenueWeather.gusts_text(sp).ends_with("scattered"), "few puffs: scattered")
+	sp["puff_count"] = 8
+	t.ok(VenueWeather.gusts_text(sp).ends_with("everywhere"), "many puffs: everywhere")
+	t.ok(VenueWeather.gusts_text(VenueWeather.puff_preset("none")) == "None", "puffs off: None")
+	# current thresholds and the tide's turn
+	for c in [[0.19, "None"], [0.2, "Light, 0.2 kn, sets N"], [0.59, "Light, 0.6 kn, sets N"],
+			[0.6, "Moderate, 0.6 kn, sets N"], [1.2, "Strong, 1.2 kn, sets N"], [2.0, "Very strong, 2.0 kn, sets N"]]:
+		var x := {"current": c[0] * KN, "uniform": c[0] * KN, "uniform_to": 0.0, "tide": {}}
+		t.ok(VenueWeather.current_text(x) == c[1], "current %.2f kn: %s" % [c[0], VenueWeather.current_text(x)])
+	# the tide near slack: the stream under 0.3 kn; with a uniform current the uniform line
+	for c in [[0.29, 0.0, "Slack, turning"], [0.31, 0.0, "Light, 0.3 kn, ebbing (sets S)"],
+			[0.29, 0.3, "Light, 0.6 kn, sets N"]]:
+		var x := {"current": (c[0] + c[1]) * KN, "uniform": c[1] * KN, "uniform_to": 0.0, "tide": {"scale": 1.0},
+			"tide_factor": -0.5, "tide_stream": c[0] * KN, "ref_to": 0.0}
+		t.ok(VenueWeather.current_text(x) == c[2], "tide %.2f kn, uniform %.1f kn: %s" % [c[0], c[1],
+			VenueWeather.current_text(x)])
+	# sea words
+	for c in [[0.24, "Flat"], [0.25, "Chop"], [0.5, "Moderate"], [1.0, "Rough"]]:
+		t.ok(VenueWeather._sea_word(c[0]) == c[1].to_lower(), "sea %.2f m: %s" % [c[0], c[1]])
+	# the Today line after a Random race (menus.md §5)
+	var today := VenueWeather.today({"wind_speed": 18 * KN, "wind_from": deg_to_rad(225), "shift_amplitude":
+		deg_to_rad(15.0), "puffs": true, "puff": {"cap_up": 0.45, "puff_strength_max": 0.7}})
+	t.ok(today == "Today: 18 kn from the SW · Shifty · Very strong gusts", "Today line: %s" % today)
+	t.ok(VenueWeather.today({"wind_speed": 8 * KN, "wind_from": 0.0, "shift_amplitude": 0.0, "puffs": false})
+		== "Today: 8 kn from the N · Steady · No gusts", "Today line without gusts")
+	# no em dashes in any fixed text
+	var dash := false
+	for k in Strings.EN:
+		dash = dash or str(Strings.EN[k]).contains("—")
+	t.ok(not dash, "no em dashes in the string table")
+
+
+## menus.md §1, §1.1, §1.3: the Weather row and its modes on the race card, the Custom rows, the briefing following
+## the rows for every venue on disk, a venue without conditions (Custom only), GameSetup and the results' Today line.
+func test_weather_card() -> void:
+	t.begin("quick race: weather row and briefing")
+	Settings.reset_current()
+	Settings.current().welcomed = true
+	var m := _menu()
+	root.size = Vector2i(1280, 800)
+	await process_frame
+	m.open_page("quick")
+	await process_frame
+	await process_frame
+	var q := m.quick
+	q.rows["venue"].set_value("practice_waters", true)
+	t.ok(q.rows["weather"].choices == ["local", "random", "custom"] and q.rows["weather"].value == "local",
+		"Weather row: Local, Random, Custom; Local by default")
+	t.ok(q.rows["weather"].names == ["Local", "Random", "Custom"], "mode names: %s" % [q.rows["weather"].names])
+	for k in SetupPanel.CUSTOM_ROWS:
+		t.ok(not q.rows[k].visible, "Local: %s hidden" % k)
+	t.ok(q.briefing_header.visible and q.briefing_header.text == "PRACTICE WATERS · Practice",
+		"Local: the header %s" % q.briefing_header.text)
+	t.ok(q.briefing_grid.get_child_count() == 12, "Local: six lines with the Tip (%d cells)" % q.briefing_grid.get_child_count())
+	t.ok(q.briefing_text().contains("Tip\t"), "Local: the Tip")
+	t.ok(q.course_map.wind_shown and absf(q.course_map.wind_kn - 12.0) < 0.01 and q.course_map.wind_from_deg == 0.0,
+		"Local: the map's wind is the typical direction and the middle of the range")
+	# Random: nothing but the Unknown line, no wind on the map
+	q.rows["weather"].set_value("random", true)
+	t.ok(not q.briefing_header.visible and q.briefing_grid.get_child_count() == 2
+		and (q.briefing_grid.get_child(1) as Label).text == "Unknown: read it on the water",
+		"Random: only the Unknown line")
+	t.ok(not q.course_map.wind_shown, "Random: no wind arrow or numbers on the map")
+	for k in SetupPanel.CUSTOM_ROWS:
+		t.ok(not q.rows[k].visible, "Random: %s hidden" % k)
+	# Custom: four rows on the venue's defaults, the briefing follows them, no Tip
+	q.rows["weather"].set_value("custom", true)
+	for k in SetupPanel.CUSTOM_ROWS:
+		t.ok(q.rows[k].visible, "Custom: %s shown" % k)
+	t.ok(q.rows["wind_kn"].value == 12.0 and q.rows["shift"].value == "stable" and q.rows["gusts"].value == "light",
+		"Custom rows on the venue's defaults")
+	t.ok(q.rows["gusts"].names == ["None", "Light", "Moderate", "Very strong"], "Gusts names: %s" % [q.rows["gusts"].names])
+	q.rows["wind_kn"].set_value(18.0, true)
+	q.rows["wind_from_deg"].set_value(225.0, true)
+	q.rows["shift"].set_value("shifty", true)
+	q.rows["gusts"].set_value("standard", true)
+	var bt := q.briefing_text()
+	t.ok(bt.contains("Wind\t18 kn from the SW") and bt.contains("Shifts\tShifty: large, regular (15°)")
+		and bt.contains("Gusts\tModerate: to +25 %, frequent") and not bt.contains("Tip"),
+		"Custom: the briefing follows the rows, no Tip: %s" % bt.replace("\n", " / "))
+	t.ok(q.briefing_header.text == "PRACTICE WATERS · Practice", "Custom: the header keeps the tag")
+	t.ok(q.course_map.wind_shown and absf(q.course_map.wind_kn - 18.0) < 1e-6, "Custom: the map's wind is the pick")
+	q.start_button.pressed.emit()
+	var g := GameSetup.current()
+	t.ok(g.weather == "custom" and g.wind_kn == 18.0 and g.wind_from_deg == 225.0 and g.shift == "shifty"
+		and g.gusts == "standard", "GameSetup: the weather and the Custom picks")
+	m.open_page("quick")
+	await process_frame
+	q.rows["weather"].set_value("random", true)
+	q.start_button.pressed.emit()
+	t.ok(GameSetup.current().weather == "random", "GameSetup: Random")
+	t.ok(m.settings.last_setup.get("weather", "") == "random", "the weather mode is remembered")
+	m.open_page("quick")
+	await process_frame
+	# a tidal venue: the card's race seed fixes the tide the Current line names, and Start passes that seed on
+	if MenuData.ids(MenuData.venues()).has("solent"):
+		q.rows["venue"].set_value("solent", true)
+		q.rows["weather"].set_value("local", true)
+		var seed := q.race_seed
+		var r := CoreSimSource.resolve_settings({"race_seed": seed, "weather": 0}, "solent", str(q.rows["course"].value))
+		var tau := VenueWeather.tide_at_gun(r, float(VenueWeather.timing(q._course_doc())["t_gun"]))
+		var cur: String = q.briefing_lines()[3][1]
+		var want := "Slack, turning" if absf(tau) * 1.2873 / VenueWeather.KNOT < 0.3 else ("flooding (sets E)" if tau > 0.0
+			else "ebbing (sets W)")
+		print("  Solent card, seed %d: tide factor %+.3f, Current  %s" % [seed, tau, cur])
+		t.ok(seed != 0 and cur.ends_with(want), "Solent seed %d: tide factor %+.3f, Current %s" % [seed, tau, cur])
+		q.start_button.pressed.emit()
+		t.ok(GameSetup.current().seed == seed, "Start passes the seed the briefing was made for")
+		t.ok(q.race_seed != seed, "the card draws a new seed for its next start")
+		m.open_page("quick")
+		await process_frame
+		var seen := {}
+		for s in range(1, 41):  # flood, ebb and slack all come up over seeds
+			q.race_seed = s
+			q._tide_cache.clear()
+			var line: String = q.briefing_lines()[3][1]
+			seen["flood" if line.contains("flooding") else ("ebb" if line.contains("ebbing") else "slack")] = true
+		print("  Solent over 40 seeds: %s" % [seen.keys()])
+		t.ok(seen.size() == 3, "Solent over 40 seeds: %s" % [seen.keys()])
+		q.rows["venue"].set_value("practice_waters", true)
+	# every venue on disk has a briefing (Local on its conditions, Custom without), and it follows the venue
+	for vid in MenuData.ids(MenuData.venues()):
+		q.rows["venue"].set_value(vid, true)
+		var vi := MenuData.venue_info(vid)
+		var want := "local" if vi.get("has_conditions", false) else "custom"
+		q.rows["weather"].set_value(want, true)
+		var ls := q.briefing_lines()
+		t.ok(ls.size() >= 5 and q.briefing_header.text.begins_with(str(vi["name"]).to_upper()),
+			"%s: a %s briefing of %d lines" % [vid, want, ls.size()])
+	# a venue without conditions (data_format.md §6.9): Custom only, on 12 kn, 0°, Shifty, Moderate, no Tip
+	var old := {"id": "old_bay", "name": "Old Bay", "fetch": 10000.0}
+	MenuData._venue_info[BoatClassData.repo_path("data/venues/old_bay.venue.json")] = VenueWeather.info(old)
+	var ids: Array = q.rows["venue"].choices.duplicate()
+	ids.append("old_bay")
+	q.rows["venue"].set_choices(ids, q.rows["venue"].names + ["Old Bay"])
+	q.rows["venue"].set_value("old_bay", true)
+	t.ok(q.rows["weather"].choices == ["custom"] and q.rows["weather"].value == "custom", "no conditions: Custom only")
+	t.ok(q.rows["wind_kn"].value == 12.0 and q.rows["wind_from_deg"].value == 0.0 and q.rows["shift"].value == "shifty"
+		and q.rows["gusts"].value == "standard", "no conditions: 12 kn, 0°, Shifty, Moderate")
+	var ob := q.briefing_text()
+	t.ok(ob == "OLD BAY\nWind\t12 kn from the N\nShifts\tShifty: large, regular (15°)\n"
+		+ "Gusts\tModerate: to +25 %, frequent\nCurrent\tNone\nSea\tChop", "no conditions: %s" % ob.replace("\n", " / "))
+	MenuData._venue_info.erase(BoatClassData.repo_path("data/venues/old_bay.venue.json"))
+	q.rows["venue"].set_value("practice_waters", true)
+	t.ok(q.rows["weather"].choices.size() == 3, "back on Practice Waters: three modes")
+	# a remembered setup on a venue that is gone falls back to the default venue
+	t.ok(SetupPanel._pick(["a_venue", "practice_waters", "z_venue"], "example_bay") == "practice_waters",
+		"a remembered venue no longer on disk falls back to the default")
+	# Steam Deck: the card at 1280 x 800 in every mode, the briefing and Start on screen
+	for mode in ["local", "random", "custom"]:
+		q.rows["weather"].set_value(mode, true)
+		for sc in [0.8, 1.0, 1.3]:
+			m.settings.ui_scale = sc
+			m.settings.apply_display(root)
+			await process_frame
+			await process_frame
+			var vis := root.get_visible_rect().grow(1)
+			var wide: bool = q.size.x >= SetupPanel.TWO_COLUMNS_MIN
+			t.ok(vis.encloses(q.start_button.get_global_rect()), "%s at %d %%: Start on screen" % [mode, roundi(sc * 100)])
+			if wide:
+				t.ok(vis.encloses(q.briefing.get_global_rect()), "%s at %d %%: the briefing on screen" % [mode,
+					roundi(sc * 100)])
+	m.settings.ui_scale = 1.0
+	m.settings.apply_display(root)
+	# the results screen's Today line: after a Random race only
+	var rs: Node = (load("res://scenes/menu/results_screen.gd") as GDScript).new()
+	var hs := GDScript.new()
+	hs.source_code = "extends Node\nvar weather_settings := {}\n"
+	hs.reload()
+	var host: Node = hs.new()
+	rs.host = host
+	host.weather_settings = {"weather_mode": "random", "wind_speed": 18 * VenueWeather.KNOT,
+		"wind_from": deg_to_rad(225), "shift_amplitude": deg_to_rad(15.0), "puffs": true,
+		"puff": {"cap_up": 0.45, "puff_strength_max": 0.7}}
+	t.ok(rs.today_text() == "Today: 18 kn from the SW · Shifty · Very strong gusts", "results after Random: %s"
+		% rs.today_text())
+	host.weather_settings["weather_mode"] = "local"
+	t.ok(rs.today_text() == "", "results after Local: no Today line")
+	host.weather_settings["weather_mode"] = "custom"
+	t.ok(rs.today_text() == "", "results after Custom: no Today line")
+	rs.free()
+	host.free()
 	m.queue_free()
 	await process_frame
 	Settings.reset_current()
@@ -857,7 +1271,7 @@ func test_touches() -> void:
 	m.welcome.rows["quality"].set_value(SeaQuality.Tier.L)
 	_key("ui_cancel")
 	await process_frame
-	t.ok(m.welcome == null and m.settings.welcomed and m.settings.quality == Settings.new().quality, "Esc skips: the defaults")
+	t.ok(m.welcome == null and m.settings.welcomed and m.settings.quality == Settings.device_defaults().quality, "Esc skips: the defaults")
 	# the wordmark and the version
 	var mark := m.find_child("Wordmark", true, false)
 	t.ok(mark is Wordmark and (mark.get_node("Title") as Label).text == "WINDMARK", "the wordmark scene")
@@ -918,10 +1332,10 @@ func test_touches() -> void:
 	m.close_page()
 	t.ok(m.continue_text().begins_with("Free sail"), "then a free sail: %s" % m.continue_text())
 	m.settings.last_setup["mode"] = "race"
-	m.settings.last_setup["course"] = "example_bay/no_such_course"
+	m.settings.last_setup["course"] = "practice_waters/no_such_course"
 	m._refresh_continue()
 	t.ok(not m.buttons["continue"].visible and not m.can_continue(), "hidden when the setup cannot start")
-	m.settings.last_setup["course"] = "example_bay/example_wl"
+	m.settings.last_setup["course"] = "practice_waters/example_wl"
 	m._refresh_continue()
 	# the sounds on the ui bus
 	var snd := m.sounds

@@ -1,6 +1,7 @@
 // AI fleet races (ai.md §15 headless acceptance tests). Long: run with `ctest --test-dir core/build -L ai_long`
 // or `core/build/tests/windmark_ai_race_tests`.
 #include <algorithm>
+#include <map>
 #include <cstdio>
 #include <vector>
 #include <cstdlib>
@@ -289,14 +290,14 @@ TEST_CASE("ai race: a fleet completes races at every level (ai.md §13)") {
 }
 
 TEST_CASE("ai race: level separation in a mixed fleet and with speed-only levels (ai.md §13, §15)") {
-  // Mixed: 3 boats per level would need 12; 8 boats, 2 per level, 3 seeds.
+  // Mixed: 3 boats per level would need 12; 8 boats, 2 per level, 8 seeds (3 seeds was noise).
   std::vector<wm::AiLevel> mixed;
   for (int k = 0; k < 8; ++k) mixed.push_back(static_cast<wm::AiLevel>(k % 4));
   double place[4] = {0, 0, 0, 0}, time_sum[4] = {0, 0, 0, 0};
   int n[4] = {0, 0, 0, 0}, nt[4] = {0, 0, 0, 0};
   for (const bool speed_only : {false, true}) {
     for (int k = 0; k < 4; ++k) place[k] = time_sum[k] = n[k] = nt[k] = 0;
-    for (const std::uint64_t seed : {31u, 32u, 33u}) {
+    for (const std::uint64_t seed : {31u, 32u, 33u, 34u, 35u, 36u, 37u, 38u}) {
       wm_test::AiRaceSpec sp;
       sp.seed = seed;
       sp.levels = mixed;
@@ -348,6 +349,49 @@ TEST_CASE("ai race: the match race leader covers (ai.md §9, §15)") {
   CHECK(covered == 5);
 }
 
+// A tidal venue (WM-111): ten Intermediate boats at the Solent on its own conditions, the tide forced to a strong
+// flood, a strong ebb and slack, two seeds each. The fleet finishes, nobody is pinned for long, the windward marks
+// are not overstood, and in the flood (foul upwind, weaker towards the shore on the left) the beats lean further
+// left than in the ebb (fair upwind, strongest mid-channel).
+TEST_CASE("ai race: a fleet races the Solent tide (ai.md §4.3, §4.7, §6.5)") {
+  double side[3] = {0.0, 0.0, 0.0};
+  const char* name[3] = {"flood", "ebb", "slack"};
+  const float tide[3] = {1.0f, -1.0f, 0.0f};
+  for (int k = 0; k < 3; ++k) {
+    FleetStats st;
+    wm_test::ApproachStats ap;
+    for (const std::uint64_t seed : {1u, 2u}) {
+      wm_test::AiRaceSpec sp;
+      sp.seed = seed;
+      sp.venue = &wm_test::venue_by_id("solent");
+      sp.course = &wm_test::course_by_path("solent/cowes_wl");
+      sp.local_weather = true;
+      sp.tide = tide[k];
+      sp.levels.assign(10, wm::AiLevel::intermediate);
+      const wm_test::AiRaceOutcome o = wm_test::run_ai_race(sp);
+      st.add(o);
+      ap.approaches += o.approach.approaches;
+      ap.overstand_s += o.approach.overstand_s;
+      ap.overstood += o.approach.overstood;
+      ap.side_sum += o.approach.side_sum;
+      ap.side_n += o.approach.side_n;
+    }
+    const std::string label = std::string("solent ") + name[k];
+    st.print(label.c_str());
+    side[k] = ap.side_n > 0 ? ap.side_sum / ap.side_n : 0.0;
+    std::printf("%s: %d windward approaches, overstood %.1f s each, %d over 10 s; beats' mean side %+.0f m\n",
+                label.c_str(), ap.approaches, ap.approaches > 0 ? ap.overstand_s / ap.approaches : 0.0, ap.overstood,
+                side[k]);
+    CAPTURE(label);
+    CHECK(st.finished >= st.boats * 8 / 10);
+    CHECK(st.stuck_max <= 60.0);
+    CHECK(ap.approaches >= 30);
+    CHECK(ap.overstood * 5 <= ap.approaches);
+    CHECK(ap.overstand_s <= 8.0 * ap.approaches);
+  }
+  CHECK(side[0] > side[1]);
+}
+
 TEST_CASE("ai race: an AI race reproduces, and saved mid-race it continues identically (race.md §12)") {
   wm_test::AiRaceSpec sp;
   sp.seed = 9;
@@ -366,3 +410,129 @@ TEST_CASE("ai race: an AI race reproduces, and saved mid-race it continues ident
     CHECK(a.results[k].t_finish_us == c.results[k].t_finish_us);
   }
 }
+
+// A venue's own conditions (race.md §2.1, local mode) over seeds (WM-111): AI_VENUE=solent (fremantle, trieste, garda,
+// practice_waters), AI_COURSE (default the venue's windward-leeward), AI_TIDE=flood|ebb|slack (default the drawn
+// phase), AI_SEEDS=first,count (default 1,6), AI_N (default 10), AI_LEVEL (default Intermediate), AI_MIXED.
+// Prints per seed the finishes, DSQs, winner time, penalties, contacts, stuck time and the windward approaches.
+TEST_CASE("ai dev: a venue's fleet over seeds" * doctest::skip(std::getenv("AI_VENUE") == nullptr)) {
+  const std::string venue = std::getenv("AI_VENUE");
+  std::string course = venue + "/";
+  if (const char* c = std::getenv("AI_COURSE")) course = c;
+  else if (venue == "solent") course += "cowes_wl";
+  else if (venue == "fremantle") course += "gage_roads_wl";
+  else if (venue == "trieste") course += "barcola_wl";
+  else if (venue == "garda") course += "garda_wl";
+  else course += "example_wl";
+  unsigned long long s0 = 1, ns = 6;
+  if (const char* e = std::getenv("AI_SEEDS")) std::sscanf(e, "%llu,%llu", &s0, &ns);
+  float tide = NAN;
+  if (const char* e = std::getenv("AI_TIDE")) {
+    const std::string t = e;
+    tide = t == "flood" ? 1.0f : (t == "ebb" ? -1.0f : (t == "slack" ? 0.0f : NAN));
+  }
+  const std::size_t n = std::getenv("AI_N") != nullptr ? std::strtoul(std::getenv("AI_N"), nullptr, 10) : 10;
+  const wm::AiLevel lv = std::getenv("AI_LEVEL") != nullptr
+                             ? static_cast<wm::AiLevel>(std::strtoul(std::getenv("AI_LEVEL"), nullptr, 10))
+                             : wm::AiLevel::intermediate;
+  FleetStats st;
+  wm_test::ApproachStats ap;
+  std::map<std::string, int> rules_tally;
+  double lv_place[4] = {0, 0, 0, 0};
+  int lv_n[4] = {0, 0, 0, 0};
+  double win_sum = 0.0, mean_sum = 0.0;
+  int wins = 0;
+  for (unsigned long long seed = s0; seed < s0 + ns; ++seed) {
+    wm_test::AiRaceSpec sp;
+    sp.seed = seed;
+    sp.venue = &wm_test::venue_by_id(venue);
+    sp.course = &wm_test::course_by_path(course);
+    sp.local_weather = true;
+    sp.tide = tide;
+    sp.no_current = std::getenv("AI_TIDE") != nullptr && std::string(std::getenv("AI_TIDE")) == "none";
+    sp.levels.assign(n, lv);
+    if (std::getenv("AI_MIXED") != nullptr) {
+      for (std::size_t k = 0; k < n; ++k) sp.levels[k] = static_cast<wm::AiLevel>(k % 4);
+    }
+    if (std::getenv("AI_WM12") != nullptr) {
+      for (std::size_t k = 0; k < n; ++k) sp.classes.push_back(k % 2 == 1 ? "wm12" : "wm7");
+    }
+    sp.trace = std::getenv("AI_TRACE");
+    if (sp.trace != nullptr) {
+      auto w = wm_test::ai_world(sp);
+      std::string why;
+      REQUIRE_MESSAGE(w->create_race(*sp.course, why), why);
+      for (const wm::ResolvedMark& m : w->course().marks)
+        std::printf("mark type %d (%.1f, %.1f) r %.1f\n", static_cast<int>(m.type), static_cast<double>(m.pos.x),
+                    static_cast<double>(m.pos.y), static_cast<double>(m.radius));
+      std::printf("twd %.1f deg, wind %.1f kn\n", static_cast<double>(w->course().twd_c / wm::DEG),
+                  static_cast<double>(w->wind().settings().base_speed / wm::KNOT));
+    }
+    const wm_test::AiRaceOutcome o = wm_test::run_ai_race(sp);
+    st.add(o);
+    for (const wm::RulesEvent& e : o.rules_events) {
+      if (e.kind == wm::RulesEventKind::penalty) ++rules_tally["pen " + std::string(wm::rule_code_str(e.rule))];
+      if (e.kind == wm::RulesEventKind::disqualified) ++rules_tally["DSQ " + std::string(wm::rule_code_str(e.rule))];
+      if (e.kind == wm::RulesEventKind::mark_touch) ++rules_tally["touch"];
+    }
+    if (std::getenv("AI_OCS") != nullptr) {
+      for (const wm::RaceEvent& e : o.ocs_events)
+        std::printf("  OCS t %.1f boat %d flag %d\n", static_cast<double>(e.tick) * 0.05 - static_cast<double>(o.n_gun_s),
+                    e.boat, static_cast<int>(e.flag));
+    }
+    int fin = 0, dsq = 0;
+    double win = 0.0, mean = 0.0;
+    for (const wm::ResultRow& r : o.results) {
+      const int lvk = static_cast<int>(sp.levels[static_cast<std::size_t>(r.boat)]);
+      lv_place[lvk] += r.place > 0 ? r.place : static_cast<double>(n) + 1.0;
+      ++lv_n[lvk];
+      if (r.place > 0) {
+        ++fin;
+        mean += static_cast<double>(r.t_finish_us) * 1e-6;
+        if (r.place == 1) win = static_cast<double>(r.t_finish_us) * 1e-6;
+      }
+      dsq += r.code == wm::ScoreCode::DSQ ? 1 : 0;
+    }
+    double stuck = 0.0;
+    int ocs = 0;
+    for (const wm::AiTelemetry& t : o.tel) {
+      stuck = std::max(stuck, static_cast<double>(t.stuck_s));
+      ocs += t.ocs;
+    }
+    if (win > 0.0) {
+      win_sum += win;
+      mean_sum += mean / fin;
+      ++wins;
+    }
+    ap.approaches += o.approach.approaches;
+    ap.overstand_s += o.approach.overstand_s;
+    ap.overstand_m += o.approach.overstand_m;
+    ap.overstood += o.approach.overstood;
+    ap.near_tacks += o.approach.near_tacks;
+    ap.side_sum += o.approach.side_sum;
+    ap.side_n += o.approach.side_n;
+    std::printf("seed %3llu tide %+.2f: finished %2d/%zu DSQ %d winner %6.1f s mean %6.1f s pen %d contacts %d "
+                "stuck max %5.1f s ocs %d | approaches %d overstood %.1f s/app (%d > 10 s) near tacks %d side %+.1f ostot %.1f\n",
+                seed, static_cast<double>(o.tide_at_gun), fin, o.results.size(), dsq, win, fin > 0 ? mean / fin : 0.0,
+                o.penalties, o.contacts, stuck, ocs, o.approach.approaches,
+                o.approach.approaches > 0 ? o.approach.overstand_s / o.approach.approaches : 0.0, o.approach.overstood,
+                o.approach.near_tacks, o.approach.side_n > 0 ? o.approach.side_sum / o.approach.side_n : 0.0,
+                o.approach.overstand_s);
+  }
+  st.print(venue.c_str());
+  std::printf("LEVELS mean place");
+  for (int k = 0; k < 4; ++k) std::printf(" %.2f", lv_n[k] > 0 ? lv_place[k] / lv_n[k] : 0.0);
+  std::printf("\n");
+  std::printf("RULES");
+  for (const auto& [k, v] : rules_tally) std::printf(" [%s %d]", k.c_str(), v);
+  std::printf("\n");
+  std::printf("TOTAL %s: winner mean %.1f s, finishers' mean %.1f s; approaches %d, overstood %.1f s/app, %.0f m/app, %d > 10 s (%.0f %%), "
+              "near tacks %.2f/app; beats' mean side %+.1f m (+ left)\n",
+              venue.c_str(), wins > 0 ? win_sum / wins : 0.0, wins > 0 ? mean_sum / wins : 0.0, ap.approaches,
+              ap.approaches > 0 ? ap.overstand_s / ap.approaches : 0.0,
+              ap.approaches > 0 ? ap.overstand_m / ap.approaches : 0.0, ap.overstood,
+              ap.approaches > 0 ? 100.0 * ap.overstood / ap.approaches : 0.0,
+              ap.approaches > 0 ? double(ap.near_tacks) / ap.approaches : 0.0,
+              ap.side_n > 0 ? ap.side_sum / ap.side_n : 0.0);
+}
+

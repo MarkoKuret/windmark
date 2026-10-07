@@ -16,6 +16,7 @@
 #include "data/perf.h"
 #include "data/venue.h"
 #include "math/wm_math.h"
+#include "race/conditions.h"
 #include "world/world.h"
 
 struct wm_perf {
@@ -341,6 +342,101 @@ wm_status wm_perf_table(const wm_perf* h, int32_t front_sail, const char* name, 
 
 // ---- world set-up -------------------------------------------------------------------------------------------
 
+namespace {
+
+// The explicit environment fields of wm_world_settings to and from the core's settings.
+void puff_out(const wm::PuffParams& q, wm_puff_params& o) {
+  o.tile = q.tile;
+  o.puff_count = static_cast<int32_t>(q.puff_count);
+  o.lull_count = static_cast<int32_t>(q.lull_count);
+  o.diameter_min = q.diameter_min;
+  o.diameter_max = q.diameter_max;
+  o.puff_strength_min = q.puff_strength_min;
+  o.puff_strength_max = q.puff_strength_max;
+  o.lull_strength_min = q.lull_strength_min;
+  o.lull_strength_max = q.lull_strength_max;
+  o.life_min_ms = q.life_min_ms;
+  o.life_max_ms = q.life_max_ms;
+  o.cap_up = q.cap_up;
+  o.cap_down = q.cap_down;
+}
+
+bool puff_in(const wm_puff_params& o, wm::PuffParams& q) {
+  if (o.puff_count < 0 || o.lull_count < 0 || o.puff_count > 64 || o.lull_count > 64) return false;
+  q.tile = o.tile;
+  q.puff_count = static_cast<std::uint32_t>(o.puff_count);
+  q.lull_count = static_cast<std::uint32_t>(o.lull_count);
+  q.diameter_min = o.diameter_min;
+  q.diameter_max = o.diameter_max;
+  q.puff_strength_min = o.puff_strength_min;
+  q.puff_strength_max = o.puff_strength_max;
+  q.lull_strength_min = o.lull_strength_min;
+  q.lull_strength_max = o.lull_strength_max;
+  q.life_min_ms = o.life_min_ms;
+  q.life_max_ms = o.life_max_ms;
+  q.cap_up = o.cap_up;
+  q.cap_down = o.cap_down;
+  return true;
+}
+
+void env_out(const wm::WindSettings& w, const wm::SeaSettings& sea, wm_world_settings* s) {
+  s->wind_speed = w.base_speed;
+  s->wind_from = w.base_from;
+  s->shift_preset = WM_SHIFT_DEFAULT;
+  s->shift_amplitude = w.shift_amplitude;
+  s->shift_hold_max_ms = w.shift_hold_max_ms;
+  s->shift_hold_min_ms = w.shift_hold_min_ms;
+  s->shift_trend_rate = w.shift_trend_rate;
+  s->shift_trend_max = w.shift_trend_max;
+  s->oscillation = w.osc_enabled ? 1 : 0;
+  s->osc_amplitude = w.osc_amplitude;
+  s->osc_time_scale = w.osc_time_scale;
+  s->puffs = w.puffs_enabled ? 1 : 0;
+  s->puff_preset = WM_PUFFS_DEFAULT;
+  puff_out(w.puffs, s->puff);
+  s->current_speed = w.current_speed;
+  s->current_to = w.current_to;
+  s->tide_scale = w.tide_scale;
+  s->tide_period_ms = w.tide_period_ms;
+  s->tide_phase_ms = w.tide_phase_ms;
+  s->sea_scale = sea.sea_scale;
+  s->swell_count = static_cast<int32_t>(sea.swells.size());
+  for (std::size_t i = 0; i < 4; ++i) {
+    const wm::WaveTrain t = i < sea.swells.size() ? sea.swells[i] : wm::WaveTrain{};
+    s->swells[i] = {t.hs, t.tp, t.from};
+  }
+}
+
+void race_in(const wm_world_settings* s, wm::RaceSettings& r) {
+  r = wm::RaceSettings{};
+  if (s->race_type >= 0) r.race_type = static_cast<wm::RaceType>(s->race_type);
+  if (s->sequence >= 0) r.sequence = static_cast<wm::SequenceKind>(s->sequence);
+  if (s->prep_flag >= 0) r.prep_flag = static_cast<wm::PrepFlag>(s->prep_flag);
+  r.free_sailing_s = s->free_sailing_s;
+  r.general_recall = s->general_recall != 0;
+  r.rules_level = static_cast<wm::RulesLevel>(s->rules_level);
+  r.penalty = static_cast<wm::PenaltyKind>(s->penalty);
+  r.umpire = static_cast<wm::UmpireMode>(s->umpire);
+  r.time_limit_s = s->time_limit_s;
+  r.finish_window = s->finish_window != 0;
+  r.start_limit_s = s->start_limit_s;
+}
+
+const char* check_settings_enums(const wm_world_settings* s) {
+  if (s->shift_preset < WM_SHIFT_DEFAULT || s->shift_preset > WM_SHIFT_UNSTABLE) return "bad shift preset";
+  if (s->puff_preset < WM_PUFFS_DEFAULT || s->puff_preset > WM_PUFFS_GUSTY) return "bad puff preset";
+  if (s->race_type < -1 || s->race_type > WM_RACE_MATCH) return "bad race type";
+  if (s->sequence < -1 || s->sequence > WM_SEQUENCE_MATCH) return "bad sequence";
+  if (s->prep_flag < -1 || s->prep_flag > WM_FLAG_BLACK) return "bad preparatory flag";
+  if (s->rules_level < 0 || s->rules_level > WM_RULES_FULL) return "bad rules level";
+  if (s->penalty != WM_PENALTY_ONE_TURN) return "bad penalty (one turn only)";
+  if (s->umpire < 0 || s->umpire > WM_UMPIRE_PROTEST) return "bad umpire mode";
+  if (s->swell_count < 0 || s->swell_count > 4) return "bad swell count";
+  return nullptr;
+}
+
+}  // namespace
+
 void wm_world_settings_init(wm_world_settings* s) {
   if (s == nullptr) return;
   std::memset(s, 0, sizeof *s);
@@ -370,19 +466,40 @@ void wm_world_settings_init(wm_world_settings* s) {
   s->time_limit_s = rd.time_limit_s;
   s->finish_window = rd.finish_window ? 1 : 0;
   s->start_limit_s = rd.start_limit_s;
+  env_out(wd, sd, s);
+  s->shift_preset = WM_SHIFT_DEFAULT;
+  s->weather = WM_WEATHER_LOCAL;
+}
+
+wm_status wm_world_settings_resolve(wm_world_settings* s, const wm_venue* venue, const wm_course* course) {
+  if (s == nullptr || venue == nullptr) return fail(WM_ERR_ARG, "null argument");
+  if (const char* why = check_settings_enums(s)) return fail(WM_ERR_ARG, why);
+  if (s->weather < WM_WEATHER_LOCAL || s->weather > WM_WEATHER_CUSTOM) return fail(WM_ERR_ARG, "bad weather mode");
+  if (!(s->wind_speed >= 0.0f) || !std::isfinite(s->wind_speed) || !std::isfinite(s->wind_from))
+    return fail(WM_ERR_ARG, "bad wind");
+  wm::WeatherChoice c;
+  c.mode = static_cast<wm::WeatherMode>(s->weather);
+  c.speed = s->wind_speed;
+  c.from = s->wind_from;
+  c.has_shift = s->shift_preset != WM_SHIFT_DEFAULT;
+  if (c.has_shift) c.shift = static_cast<wm::ShiftPreset>(s->shift_preset);
+  c.has_puffs = s->puff_preset != WM_PUFFS_DEFAULT;
+  if (c.has_puffs) c.puffs = static_cast<wm::PuffPreset>(s->puff_preset);
+  wm::RaceSettings race;
+  race_in(s, race);
+  const wm::RaceTiming timing = wm::race_timing(race, course != nullptr ? course->c.get() : nullptr);
+  wm::WindSettings w;
+  wm::SeaSettings sea;
+  std::string error;
+  if (!wm::resolve_weather(*venue->v, c, s->race_seed, timing, w, sea, error)) return fail(WM_ERR_ARG, error);
+  env_out(w, sea, s);
+  return WM_OK;
 }
 
 wm_status wm_world_create(const wm_world_settings* s, const wm_venue* venue, wm_world** out) {
   if (s == nullptr || out == nullptr) return fail(WM_ERR_ARG, "null argument");
   *out = nullptr;
-  if (s->shift_preset < WM_SHIFT_DEFAULT || s->shift_preset > WM_SHIFT_UNSTABLE)
-    return fail(WM_ERR_ARG, "bad shift preset");
-  if (s->race_type < -1 || s->race_type > WM_RACE_MATCH) return fail(WM_ERR_ARG, "bad race type");
-  if (s->sequence < -1 || s->sequence > WM_SEQUENCE_MATCH) return fail(WM_ERR_ARG, "bad sequence");
-  if (s->prep_flag < -1 || s->prep_flag > WM_FLAG_BLACK) return fail(WM_ERR_ARG, "bad preparatory flag");
-  if (s->rules_level < 0 || s->rules_level > WM_RULES_FULL) return fail(WM_ERR_ARG, "bad rules level");
-  if (s->penalty != WM_PENALTY_ONE_TURN) return fail(WM_ERR_ARG, "bad penalty (one turn only)");
-  if (s->umpire < 0 || s->umpire > WM_UMPIRE_PROTEST) return fail(WM_ERR_ARG, "bad umpire mode");
+  if (const char* why = check_settings_enums(s)) return fail(WM_ERR_ARG, why);
   if (!(s->wind_speed >= 0.0f) || !std::isfinite(s->wind_speed) || !std::isfinite(s->wind_from))
     return fail(WM_ERR_ARG, "bad wind");
 
@@ -393,28 +510,30 @@ wm_status wm_world_create(const wm_world_settings* s, const wm_venue* venue, wm_
   ws.race_seed = s->race_seed;
   ws.wind.base_speed = s->wind_speed;
   ws.wind.base_from = wm::wrap_2pi(s->wind_from);
+  ws.wind.shift_amplitude = s->shift_amplitude;
+  ws.wind.shift_hold_max_ms = s->shift_hold_max_ms;
+  ws.wind.shift_hold_min_ms = s->shift_hold_min_ms;
   if (s->shift_preset != WM_SHIFT_DEFAULT) wm::apply_shift_preset(ws.wind, static_cast<wm::ShiftPreset>(s->shift_preset));
   ws.wind.shift_trend_rate = s->shift_trend_rate;
-  ws.wind.puffs_enabled = s->puffs != 0;
+  ws.wind.shift_trend_max = s->shift_trend_max;
   ws.wind.osc_enabled = s->oscillation != 0;
+  ws.wind.osc_amplitude = s->osc_amplitude;
+  ws.wind.osc_time_scale = s->osc_time_scale;
+  if (!puff_in(s->puff, ws.wind.puffs)) return fail(WM_ERR_ARG, "bad puff counts");
+  ws.wind.puffs_enabled = s->puffs != 0;
+  if (s->puff_preset != WM_PUFFS_DEFAULT) wm::apply_puff_preset(ws.wind, static_cast<wm::PuffPreset>(s->puff_preset));
   ws.wind.current_speed = s->current_speed;
   ws.wind.current_to = s->current_to;
+  ws.wind.tide_scale = s->tide_scale;
+  ws.wind.tide_period_ms = s->tide_period_ms;
+  ws.wind.tide_phase_ms = s->tide_phase_ms;
   if (const char* why = wm::check_wind_settings(ws.wind)) return fail(WM_ERR_ARG, std::string("wind: ") + why);
   ws.sea = s->sea != 0;
   ws.sea_settings.sea_scale = s->sea_scale;
+  for (int32_t i = 0; i < s->swell_count; ++i) ws.sea_settings.swells.push_back({s->swells[i].hs, s->swells[i].tp, s->swells[i].from});
   if (const char* why = wm::check_sea_settings(ws.sea_settings)) return fail(WM_ERR_ARG, std::string("sea: ") + why);
   ws.shadows = s->shadows != 0;
-  if (s->race_type >= 0) ws.race.race_type = static_cast<wm::RaceType>(s->race_type);
-  if (s->sequence >= 0) ws.race.sequence = static_cast<wm::SequenceKind>(s->sequence);
-  if (s->prep_flag >= 0) ws.race.prep_flag = static_cast<wm::PrepFlag>(s->prep_flag);
-  ws.race.free_sailing_s = s->free_sailing_s;
-  ws.race.general_recall = s->general_recall != 0;
-  ws.race.rules_level = static_cast<wm::RulesLevel>(s->rules_level);
-  ws.race.penalty = static_cast<wm::PenaltyKind>(s->penalty);
-  ws.race.umpire = static_cast<wm::UmpireMode>(s->umpire);
-  ws.race.time_limit_s = s->time_limit_s;
-  ws.race.finish_window = s->finish_window != 0;
-  ws.race.start_limit_s = s->start_limit_s;
+  race_in(s, ws.race);
   h->world = std::make_unique<wm::World>(ws);
   h->wind = std::make_unique<wm::WindField>(ws.race_seed, h->world->wind().settings());
   *out = h.release();
@@ -598,12 +717,11 @@ void wm_world_set_controller(wm_world* w, wm_controller_fn fn, void* user) {
 
 // ---- stepping -----------------------------------------------------------------------------------------------
 
-uint64_t wm_world_step(wm_world* w) {
-  if (w == nullptr) return 0;
+void wm_world_step(wm_world* w) {
+  if (w == nullptr) return;
   refresh_prev(w);
-  const std::uint64_t c = w->world->step();
+  w->world->step();
   std::fill(w->req_valid.begin(), w->req_valid.end(), 0);
-  return c;
 }
 
 uint64_t wm_world_checksum(const wm_world* w) { return w != nullptr ? w->world->checksum() : 0; }
@@ -660,6 +778,7 @@ wm_status wm_world_add_ai_boat(wm_world* w, const wm_perf* perf, int32_t level, 
   int32_t i = -1;
   if (const wm_status st = wm_world_add_boat(w, &e, &i); st != WM_OK) return st;
   w->ai->add(i, ai_level(level), speed_only != 0);
+  w->ai->prepare(*perf->p);
   ai_on(w);
   if (index != nullptr) *index = i;
   return WM_OK;
@@ -669,6 +788,7 @@ wm_status wm_world_ai_add(wm_world* w, int32_t boat, int32_t level, int32_t spee
   if (bad_boat(w, boat)) return fail(WM_ERR_ARG, "bad boat index");
   if (bad_level(level)) return fail(WM_ERR_ARG, "bad AI level");
   w->ai->add(boat, ai_level(level), speed_only != 0);
+  w->ai->prepare(w->world->boat(static_cast<std::size_t>(boat)).perf());
   ai_on(w);
   return WM_OK;
 }
@@ -676,6 +796,7 @@ wm_status wm_world_ai_add(wm_world* w, int32_t boat, int32_t level, int32_t spee
 wm_status wm_world_ai_take_over(wm_world* w, int32_t boat) {
   if (bad_boat(w, boat)) return fail(WM_ERR_ARG, "bad boat index");
   w->ai->take_over(boat);
+  w->ai->prepare(w->world->boat(static_cast<std::size_t>(boat)).perf());
   ai_on(w);
   return WM_OK;
 }

@@ -53,6 +53,8 @@ struct AiLevelParams {
   bool anticipate = false;
   AiCover cover = AiCover::match_only;
   float drop_lead = 4.0f;                      // s, §6.2 drop timing
+  float route_margin = 0.04f;                  // §4.7 stream and trend routing: share of the leg time, 0 = off
+  bool trend = true;                           // §4.7 plays the briefed trend of the wind
 };
 
 // `speed_only`: the decision rows of Intermediate with the level's performance_scale (§13).
@@ -110,6 +112,8 @@ class AiSkippers {
   void release(std::int32_t boat);
   // race.md §6.2: only the finished-boat autopilot (offline human boats).
   void add_autopilot(std::int32_t boat);
+  // ai.md §3.1: builds the class tables of a boat's performance file now (at load) rather than on the first step.
+  void prepare(const PerfData& perf);
 
   // Tick step 2: every AI boat decides and writes its controls (World::Controller).
   void step(World& w);

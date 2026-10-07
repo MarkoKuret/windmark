@@ -39,24 +39,25 @@ AiLevelParams ai_level_params(AiLevel level, bool speed_only) {
       p.e_start_lo = 1.0f; p.e_start_hi = 6.0f; p.spread = 0.9f; p.t_final = 35.0f; p.m_lay = 3.0f;
       p.shifts = false; p.h_up = 0.0f; p.h_dn = 0.0f; p.r_read = 0.0f; p.t_cool = 30.0f; p.h_avoid = 6.0f;
       p.c_lvl = 1.5f; p.badair_react = 6.0f; p.anticipate = false; p.cover = AiCover::none; p.drop_lead = 7.0f;
+      p.route_margin = 0.0f; p.trend = false;
       break;
     case AiLevel::intermediate:
       p.e_start_lo = 0.0f; p.e_start_hi = 2.5f; p.spread = 0.6f; p.t_final = 30.0f; p.m_lay = 2.0f;
       p.shifts = true; p.h_up = 10.0f * DEG; p.h_dn = 15.0f * DEG; p.r_read = 0.0f; p.t_cool = 20.0f;
       p.h_avoid = 5.0f; p.c_lvl = 1.0f; p.badair_react = 3.0f; p.anticipate = false; p.cover = AiCover::match_only;
-      p.drop_lead = 4.0f;
+      p.drop_lead = 4.0f; p.route_margin = 0.02f; p.trend = true;
       break;
     case AiLevel::expert:
       p.e_start_lo = -0.5f; p.e_start_hi = 1.2f; p.spread = 0.45f; p.t_final = 25.0f; p.m_lay = 1.0f;
       p.shifts = true; p.h_up = 7.0f * DEG; p.h_dn = 11.0f * DEG; p.r_read = 250.0f; p.t_cool = 15.0f;
       p.h_avoid = 4.0f; p.c_lvl = 0.6f; p.badair_react = 2.0f; p.anticipate = true; p.cover = AiCover::all;
-      p.drop_lead = 4.0f;
+      p.drop_lead = 4.0f; p.route_margin = 0.012f; p.trend = true;
       break;
     case AiLevel::pro:
       p.e_start_lo = -0.3f; p.e_start_hi = 0.5f; p.spread = 0.35f; p.t_final = 22.0f; p.m_lay = 0.5f;
       p.shifts = true; p.h_up = 5.0f * DEG; p.h_dn = 8.0f * DEG; p.r_read = 400.0f; p.t_cool = 12.0f;
       p.h_avoid = 3.5f; p.c_lvl = 0.4f; p.badair_react = 2.0f; p.anticipate = true; p.cover = AiCover::all;
-      p.drop_lead = 3.0f;
+      p.drop_lead = 3.0f; p.route_margin = 0.006f; p.trend = true;
       break;
   }
   switch (level) {
@@ -137,6 +138,11 @@ const AiDebug& AiSkippers::debug(std::int32_t boat) const {
   return none;
 }
 
+void AiSkippers::prepare(const PerfData& perf) {
+  (void)polar(&perf);
+  (void)shadow_class(&perf);
+}
+
 const AiPolar& AiSkippers::polar(const PerfData* perf) {
   auto it = polars_.find(perf);
   if (it == polars_.end()) it = polars_.emplace(perf, std::make_unique<AiPolar>(*perf)).first;
@@ -155,12 +161,15 @@ namespace {
 void perceive(AiSkippers::Ctx& x, AiSkippers::Boat& a) {
   const std::size_t i = static_cast<std::size_t>(a.i);
   const EnvAtBoat& env = x.w.env(i);
-  const float from = env.wind_from_clean;
+  // The wind relative to the water, clean and felt (§3.3): what the boat sails in.
+  const WaterWind wc = water_wind_clean(env);
+  const WaterWind wfelt = water_wind(env.wind_speed, env.wind_from, {env.current_x, env.current_y});
+  const float from = wc.from;
   const Vec2 f = dir(from);
   if (!a.init) {
     a.fx = f.x; a.fy = f.y; a.rx = f.x; a.ry = f.y; a.sx = f.x; a.sy = f.y;
-    a.tws_f = env.wind_speed_clean;
-    a.tws_felt = env.wind_speed;
+    a.tws_f = wc.speed;
+    a.tws_felt = wfelt.speed;
     a.d_f = 0.0f;
     a.init = true;
   }
@@ -169,8 +178,8 @@ void perceive(AiSkippers::Ctx& x, AiSkippers::Boat& a) {
   a.fy = a.fy + a2 * (f.y - a.fy);
   a.sx = a.sx + a5 * (f.x - a.sx);
   a.sy = a.sy + a5 * (f.y - a.sy);
-  a.tws_f = a.tws_f + a2 * (env.wind_speed_clean - a.tws_f);
-  a.tws_felt = a.tws_felt + a2 * (env.wind_speed - a.tws_felt);
+  a.tws_f = a.tws_f + a2 * (wc.speed - a.tws_f);
+  a.tws_felt = a.tws_felt + a2 * (wfelt.speed - a.tws_felt);
   const float d_raw = env.wind_speed_clean > 0.05f ? max(0.0f, 1.0f - env.wind_speed / env.wind_speed_clean) : 0.0f;
   a.d_f = a.d_f + a2 * (d_raw - a.d_f);
   a.twd_f = compass({a.fx, a.fy});
@@ -195,6 +204,17 @@ void perceive(AiSkippers::Ctx& x, AiSkippers::Boat& a) {
     }
   }
   if (rb.started && a.tel.start_delay < 0.0f) a.tel.start_delay = rb.t_start;
+  // §6.5 pinned: in contact with a course object, an obstacle or land, with no way over the ground.
+  // The contact comes and goes from tick to tick while she lies against it: within the last second counts.
+  for (const ContactEvent& e : x.w.last_contacts()) {
+    if (e.boat == a.i && e.other_kind != ContactKind::boat) {
+      a.pin_seen = x.now;
+      a.pin_n = e.normal;
+    }
+  }
+  const float sog = x.w.boat(i).outputs().sog;
+  if (x.now - a.pin_seen < 1.0f && rb.started && !rb.finished && sog < 0.3f) a.pin_t = a.pin_t + DT;
+  else if (x.now - a.pin_seen >= 1.0f || sog > 0.6f) a.pin_t = 0.0f;
   if (!a.ocs_counted && (rb.ocs || rb.ocs_i) && x.race.after_gun(x.n)) {
     a.ocs_counted = true;
     a.tel.ocs = a.tel.ocs + 1;
@@ -229,7 +249,7 @@ void helm(AiSkippers::Ctx& x, AiSkippers::Boat& a) {
   const wm::Boat& b = x.w.boat(i);
   const BoatState& s = b.state();
   const Dynamics& dyn = b.perf().dynamics;
-  const float twd = x.w.env(i).wind_from_clean;
+  const float twd = water_wind_clean(x.w.env(i)).from;
   const float twa = wrap_pi(twd - s.psi);
   const float av = std::fabs(s.v);
   const std::int32_t ib = a.i;
@@ -362,6 +382,7 @@ void AiSkippers::step(World& w) {
     src.spinnaker = b.sails().spinnaker_flying();
     src.casts = w.setup().shadows && (!x.created || race.casts(j));
   }
+  // ai.md §1: the fleet decides at 10 Hz, half of it on each tick (boat index parity).
   const bool decide_tick = (x.n % 2u) == 0u;
   for (auto& bp : boats_) {
     Boat& a = *bp;
@@ -373,7 +394,8 @@ void AiSkippers::step(World& w) {
   for (auto& bp : boats_) {
     Boat& a = *bp;
     if (!a.active || a.i < 0 || static_cast<std::size_t>(a.i) >= nb) continue;
-    if (decide_tick || !a.decided) {
+    const bool own_tick = ((x.n + static_cast<std::uint32_t>(a.i)) % 2u) == 0u;
+    if (own_tick || !a.decided) {
       ai_decide(x, a);
       a.decided = true;
       if (a.tactic != a.prev_tactic && a.tactic != AiTactic::None) {

@@ -16,7 +16,7 @@ const COLUMNS := ["time_s", "frames", "fps", "frame_ms", "frame_max_ms", "frame_
 	"render_cpu_ms", "setup_cpu_ms", "gpu_ms", "gpu_other_ms", "draw_calls", "primitives", "objects",
 	"input_ms", "sim_ms", "sim_max_ms", "hud_ms", "audio_ms", "sails_ms", "boats_ms", "wakes_ms", "sea_ms",
 	"course_ms", "camera_ms", "render_scale", "render_w", "render_h", "window_w", "window_h", "upscaler",
-	"quality", "boats", "camera", "renderer", "driver", "vsync", "max_fps"]
+	"quality", "boats", "camera", "renderer", "driver", "vsync", "max_fps", "video_mem_mb", "main_ms", "rest_ms"]
 
 ## the scene whose `sea`, `sim` and `rig` the set-up columns read (duck typed); may be null
 var scene: Node = null
@@ -44,6 +44,19 @@ var _frame_max := 0.0
 var _sim_max := 0.0
 var _subs: Array = []  # other viewports measured (RIDs)
 var _done := false
+## the start of this frame's process step (µs), stamped by the first node to process (_Stamp)
+static var _process_start_us := 0
+var _stamp: Node
+
+
+## Stamps the start of the frame's process step: it processes before every other node.
+class _Stamp extends Node:
+	func _ready() -> void:
+		process_mode = Node.PROCESS_MODE_ALWAYS
+		process_priority = -1000000
+
+	func _process(_dt: float) -> void:
+		PerfMonitor._process_start_us = Time.get_ticks_usec()
 
 
 func _ready() -> void:
@@ -66,6 +79,9 @@ func _ready() -> void:
 	_label.add_theme_color_override("font_color", Color(0.92, 0.96, 0.9))
 	_label.text = "measuring..."
 	_panel.add_child(_label)
+	_stamp = _Stamp.new()
+	_stamp.name = "PerfStamp"
+	get_tree().root.add_child.call_deferred(_stamp)
 	_start_us = Time.get_ticks_usec()
 	_second_us = _start_us
 	if log_path != "":
@@ -76,6 +92,8 @@ func _ready() -> void:
 
 func _exit_tree() -> void:
 	close_log()
+	if is_instance_valid(_stamp):
+		_stamp.queue_free()
 	PerfStats.enabled = false
 
 
@@ -159,6 +177,11 @@ func _process(delta: float) -> void:
 	_n += 1
 	_frame_max = maxf(_frame_max, frame_ms)
 	_add("frame_ms", frame_ms)
+	# the main thread's process step (every node's _process, the game's work) and the rest of the frame (physics,
+	# the renderer's CPU work on the main thread and any wait for the GPU)
+	var main := float(now - _process_start_us) * 0.001 if _process_start_us > 0 else 0.0
+	_add("main_ms", main)
+	_add("rest_ms", maxf(frame_ms - main, 0.0))
 	_add("process_ms", Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0)
 	_add("physics_ms", Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0)
 	var rid := root.get_viewport_rid()
@@ -197,6 +220,7 @@ func _close_second(now: int) -> void:
 	d["frame_p99_ms"] = snappedf(worst_1pct(_frames.map(func(f: Array) -> float: return f[1])), 0.001)
 	d["sim_max_ms"] = snappedf(_sim_max, 0.001)
 	d.merge(setup_columns(), true)
+	d["video_mem_mb"] = snappedf(Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0, 0.1)
 	last = d
 	if _file != null:
 		var row := PackedStringArray()

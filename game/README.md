@@ -128,7 +128,7 @@ Without a built library the rest of the project runs as before: nothing refers t
 `tests/core_sim_test.gd` (run by `run_core_sim_test.sh`, headless): one wm7 sailing freely for 60 s exactly as the C
 API example does it (`core/examples/race_example.c`), and the runner checks that both end at the same place and
 speed; every `SimSource` call, the render pose between ticks, the input frame wire form against the core's, sail
-requests; a race world on `example_bay`: two runs with the same inputs give the same checksum, race signals, the
+requests; a race world on `practice_waters`: two runs with the same inputs give the same checksum, race signals, the
 sea components and exposure, the wind state with live puff patches, the current, and `SeaModel` on the core's
 components within 1 mm of the core's sea height.
 
@@ -137,7 +137,8 @@ components within 1 mm of the core's sea height.
 | Call | Does |
 | --- | --- |
 | `settings` | world settings for `create()`, the keys of `CoreSimSource.default_settings()` (the C API's `wm_world_settings`: seed, wind, shift preset, puffs, sea, shadows, race and rules settings) |
-| `create(venue = "")` | the world on a venue (`example_bay` or a path; `""` open water); `last_error()` on failure |
+| `create(venue = "")` | the world on a venue (`practice_waters` or a path; `""` open water); `last_error()` on failure |
+| `CoreSimSource.resolve_settings(settings, venue, course = "")` | `race.md` §2.1: the venue's conditions resolved for `settings.weather` (0 local, 1 random, 2 custom) and the seed into every wind, current and sea setting (the C API's `wm_world_settings_resolve`), once before `create()`; `{}` on failure |
 | `add_boat(id, x, y, psi, v, auto_trim)` | FakeSim's call: a free-sailing boat of class `id` (creates an open-water world when none exists); the core starts it at 60 % of its polar speed, so `v` is unused |
 | `add_entry(id, entry)`, `create_race(course)`, `place_boat(b, x, y, psi)` | a race entry (`human`, `ai`, `performance_scale`, `auto_trim`, `front_sail`), the race on `venue/course` or a path, free-sailing placement |
 | `apply_input(b, frame)` | applies the frame decoded from its 6-byte wire form, the values every peer applies; the controls take effect at the next step (`controls(b)` shows them after it) |
@@ -154,7 +155,31 @@ components within 1 mm of the core's sea height.
 
 Records read every tick (`boat_state`, `boat_outputs`, `boat_controls`, `render_pose`, `sail`, `boat_env`) come from
 `CoreSim` as `PackedFloat32Array` in the C structs' field order (`CoreSimSource.STATE_FIELDS` and the rest), the
-others as Dictionaries with the C field names. `CoreSimSource` caches the per-boat records until the next step.
+others as Dictionaries with the C field names. `CoreSimSource` caches the per-boat records until the next step
+(integer keys). `render_poses(alpha)` reads every boat's pose in one `CoreSim.render_poses` call (9 floats per
+boat) and shares the `RenderPose` objects of an alpha until the next step, so they are read-only; `render_pose(b,
+alpha)` is one of them. `wake_state_into(d, b, pose, own)` writes the wake state into a Dictionary the scene keeps
+per boat.
+
+### The simulation on a second core
+
+`CoreSim` steps the world on a worker thread of its own (one per world, made at the first `step_begin()`, 8 MiB
+stack as the main thread's): `step_begin()` hands it the next tick, `step_end()` waits for it, `is_stepping()`
+tells. Every other `CoreSim` call waits for a running tick first, so the world is touched by one thread at a time
+and never read in the middle of a step. `CoreSimSource.step_begin()` / `step_end()` wrap them (`before_step`
+first, the caches dropped at the end; until then the records cached before the tick stay as they were);
+`SimSource.can_step_async()` says whether a sim has them (`FakeSim` steps in `step_begin()`).
+
+`SimRunner.prefetch()` is called by the sail scene at the end of a frame's game work (a node that processes after
+the scene's nodes, before the PerfMonitor): when the next frame will reach the tick boundary it stamps the input
+frame for the next tick, applies it and starts the tick. The tick runs while the frame is drawn; the next frame's
+`step_frame` takes it in first (`SimRunner.settle()`: wait, drop the caches, count the tick, `ticked`). The rules
+are in `docs/specs/controls.md` §1.1: the input frame of a tick is the one applied to it, the ticks run in order one
+at a time, so the same input frames give the same checksums with or without the thread (`tests/core_sim_test.gd`
+"the tick on the worker thread" checks it tick by tick at uneven frame times). The scene's work after a tick (HUD
+tick, sound inputs, course view) is spread over the tick's frames (`TickWork`), at the latest before the next tick
+starts. The prefetch and the spreading are on while the scene processes itself (`auto_process`); tests that call
+`step_frame` themselves step every tick on the main thread as before.
 
 ## Controls, cameras and HUD
 
@@ -169,13 +194,15 @@ others as Dictionaries with the C field names. `CoreSimSource` caches the per-bo
   written one (`GameSetup.next`) or a test sets `setup`, else the scene's exports (free sailing); command-line
   flags after `--` override both: `--race`, `--free`, `--fleet=10`, `--level=expert`, `--speed-only`, `--watch`
   (an AI sails the player's boat too), `--class=wm12`, `--venue=`, `--course=<venue>/<id>`, `--seed=` (0: from
-  the clock), `--wind=<kn>`, `--wind-from=<deg>`, `--fake`, `--core`, `--scenario=<id>` (a rules scenario, below). Spectating (`spectate_next`, `prev`,
+  the clock), `--wind=<kn>`, `--wind-from=<deg>` (Custom picks when a weather mode is set),
+  `--weather=local|random|custom` (the venue's weather resolved for the seed, `race.md` §2.1; GameSetup sets it
+  from the menus, the scene's default `""` takes the wind fields as they are), `--fake`, `--core`, `--scenario=<id>` (a rules scenario, below). Spectating (`spectate_next`, `prev`,
   `leader` by race rank) works when not racing (`--watch`) or once the player has finished, retired or left.
   To race in a window: `godot --path game res://scenes/sail_test.tscn -- --race --fleet=10 --level=intermediate`.
 - **Simulation** (`sim_kind`): `AUTO` (the default) runs the core through `CoreSimSource` when the GDExtension is
   loaded and `FakeSim` otherwise; `CORE` and `FAKE` force one. On the core the scene is free sailing without a race
   (`create(venue)`, `add_entry`, `place_boat` at `start_x`, `start_y`, `start_twa_deg` off the wind) on
-  `example_bay`, one `class_id` boat (`wm7`, or `wm12`), with the wind of `wind_speed_kn`, `wind_from_deg`,
+  `practice_waters`, one `class_id` boat (`wm7`, or `wm12`), with the wind of `wind_speed_kn`, `wind_from_deg`,
   `puffs`, `shift_preset` and `world_seed`. The Sea's source is a `CoreEnvSource`, its clock the core's
   `render_time_ms`, the wakes `CoreSimSource.wake_state`, so the puffs drawn are the ones the boat sails in.
 - **Boat** (`BoatView`): the node at the render pose (`conventions.md` §11), the rudder (with the tiller it
@@ -201,14 +228,12 @@ others as Dictionaries with the C field names. `CoreSimSource` caches the per-bo
   sags by its tension (the sail's area, the apparent wind, the luff shiver: a trimmed sheet is straight, a flogging
   one droops and swings with the sail's flutter phase); the lazy line hangs slack and lies on the deck (a 5 cm height
   field of the class's deck), round the mast front or the forestay. One mesh per boat with two surfaces (headsail and
-  flying-sail lines), rewritten in place by the native `SheetRopes` in the frames a sail is redrawn (at LOD1 at most
-  15 Hz). Cost on an M-series Mac: about 50 µs per redraw for a wm7 with jib and kite (1 870 vertices), 1 µs per frame
+  flying-sail lines), rewritten in place by the native `SheetRopes` in the frames a sail is redrawn (thin, when a
+  metre is under 31 px on screen, at most 15 Hz). Cost on an M-series Mac: about 50 µs per redraw for a wm7 with jib and kite (1 870 vertices), 1 µs per frame
   between redraws; the GDScript `SheetRopesRef` about 15 times slower.
-- **Levels of detail** (`sail_visuals.md` §11.4): every boat loads `<id>.glb`, `<id>_lod1.glb` and `<id>_lod2.glb`
-  (the sidecar's `model.lods`), shows one by the camera distance to the boat (LOD1 past 31.5 m, back below 28.5 m;
-  LOD2 past 105 m, back below 95 m), with the moving parts of the level shown following the helm and the sails. The
-  sails are LOD0's at every level; the sheets are full at LOD0, coarse at LOD1 and hidden at LOD2. `BoatLivery` puts
-  the same livery materials on every level.
+- **Levels of detail** (`sail_visuals.md` §11.4): one model per boat, simplified by the engine by size on screen (see
+  "Notes on the imported boats"); the moving parts follow the helm and the sails at every distance; the sheets are
+  full, thin or hidden by the size of a metre on screen. `BoatLivery` puts the boat's one material on every node.
 - **HUD commands**: the helm mark, the sheet bar and text, `AUTO` and `LET FLY` of the own boat come from the
   local `PlayerControls` every frame (`Hud.local_commands`), since the core applies a command at its next step.
 - **Input map**: `scripts/controls/default_bindings.gd` is the one source of the defaults of `controls.md` §3.
@@ -221,7 +246,7 @@ others as Dictionaries with the C field names. `CoreSimSource` caches the per-bo
   `boat_select`) belong in that template, which is not in the repo yet. The gamepad's View is `rankings_pad`: a tap
   cycles the instrument density, a hold shows the ranking (resolved in the Hud).
 - **Sea on FakeSim**: the scene holds the Sea node, its `SeaWakes` and the `SkyRig` of `scenes/sea/`. `sea_source` picks the
-  example bay as the core writes it (`CORE_SAMPLES`, scenario `sea_scenario`, default `example_bay_10kn`; its wind
+  Practice Waters as the core writes it (`CORE_SAMPLES`, scenario `sea_scenario`, default `practice_waters_10kn`; its wind
   replaces the scene's) or the placeholder sea from the scene's wind; `AUTO` (the default) takes the core samples
   when `generated/sea/sea_render_samples.json` exists (`tests/run_water_test.sh` writes it). The fake sim runs on
   the same `SeaModel` (`FakeSim.use_sea`), and the Sea's clock follows the ticks (`sea_time_ms(tick - 1 + alpha)`),
@@ -279,7 +304,7 @@ Flags after `--`:
 | `--aa=off` | this run's anti-aliasing: `off`, `fxaa` or `smaa` (the default, `water_render.md` §7); not saved |
 | `--quality=M` | this run's quality tier: `L`, `M` or `H`, over the setting; not saved |
 | `--no-vsync` | this run without vsync, to see the headroom; not saved |
-| `--shadow-splits=0` | this run's sun shadow cascades: `0` (off), `2` or `4`, over the tier; not saved |
+| `--shadow-splits=0` | this run's sun shadow cascades: `0` (off), `1`, `2` or `4`, over the tier; not saved |
 | `--shadow-atlas=2048` | this run's directional shadow atlas size, over the tier; not saved |
 | `--shadow-distance=40` | this run's sun shadow distance in metres, over the tier; not saved |
 | `--shadow-soft=0` | this run's soft shadow filter (RenderingServer shadow quality 0 hard to 5 ultra), over the tier; not saved |
@@ -296,6 +321,21 @@ Flags after `--`:
 | `--caps=on` | whitecaps on (off by default, `water_render.md` §4.4); `--caps=off` turns them off |
 | `--drawn-wind=18` | the wind the water draws (whitecaps, puffs) in knots, over the simulation's; the waves stay |
 | `--breathing=off` | the chase camera's plain follow instead of its breathing (`cameras.md` §2.1) |
+| `--skip=S` | the race world fast-forwarded S seconds before the first frame (a measured moment of the race) |
+| `--lod=0` | every boat's meshes at the own boat's LOD bias (the full model at chase range, `sail_visuals.md` §11.4) |
+| `--hide-parts=rigging,hardware` | these model part nodes of every boat never shown (hull, deck, keel, rudder, mast, rigging, boom, hardware, mainsheet) |
+| `--no-sheets` | no running sheets |
+| `--no-sails` | no sails drawn or shaped |
+| `--static-sails` | the sails shaped once, then not again (no per-frame sail work) |
+| `--no-boats` | the boats not drawn (the simulation, sails and wakes still run) |
+| `--no-venue` | no land, quays or rocks drawn |
+| `--no-wakes` | no wakes, bow waves, spray or wake normal buffer |
+| `--no-sky` | a plain gradient sky shader instead of the sky with clouds (it still lights the scene) |
+| `--no-water` | a flat plane with a plain material instead of the sea |
+| `--no-post` | no grade, vignette, contact shading, glow or filmic tone mapping |
+| `--no-course` | no marks, flags, lines or water overlays drawn |
+| `--no-audio` | no sound work and the master bus muted |
+| `--no-sim` | the simulation paused from the first frame (no ticks, no AI; the cameras still move) |
 
 ### Look panel (F9)
 
@@ -332,7 +372,7 @@ The CSV starts with a header line; each line is the means over one second: `time
 `render_cpu_ms`, `setup_cpu_ms`, `gpu_ms` (main view), `gpu_other_ms` (other views: the wake normal buffer),
 `draw_calls`, `primitives`, `objects`, the sections `input_ms` … `camera_ms` with `sim_max_ms` (the slowest frame's
 simulation, the tick frames), then the set-up: `render_scale`, `render_w`, `render_h`, `window_w`, `window_h`,
-`upscaler`, `quality`, `boats`, `camera`, `renderer`, `driver`, `vsync`, `max_fps`. The GPU columns are 0 where
+`upscaler`, `quality`, `boats`, `camera`, `renderer`, `driver`, `vsync`, `max_fps`, `video_mem_mb`, `main_ms` (the main thread's process step: every node's `_process`) and `rest_ms` (the rest of the frame: physics, the renderer's CPU work and any wait for the GPU). The GPU columns are 0 where
 the driver does not measure (headless). With vsync on the frame rate stops at the display's; turn it off in the
 settings (or compare `gpu_ms` with the frame time) to see the headroom. The first seconds include shader
 compilation.
@@ -358,7 +398,7 @@ sailed by the AI) and every frame counts, from the scene's camera, the visible b
 godot --headless --path game -s res://tests/fleet_cost.gd -- --fleet=10 --seconds=15 [--no-lods] [--no-sheets]
 ```
 
-Measured on an M-series Mac (WM-016.31, race start on `example_bay`, chase camera, shadow passes not counted):
+Measured on an M-series Mac (WM-016.31, race start on `practice_waters`, chase camera, shadow passes not counted):
 
 | fleet | draw calls | primitives | CPU per boat (boats + sails) | boats at LOD0 / 1 / 2 |
 | --- | --- | --- | --- | --- |
@@ -446,7 +486,7 @@ Runs headless, with scripted input at fixed frame rates:
   the mark, layline distance and overstanding, shift meter, sail hint, rank hysteresis, gaps and splits, every
   rules awareness line, radar colours for the port-starboard, windward-leeward and mark-room pair records,
   penalties, protest and hail prompts, feed, results and assists; the layline test of §15 on the core; a race on
-  the core (`example_bay/example_wl`, two boats steered by `tests/race_pilot.gd` from the spawn to the results)
+  the core (`practice_waters/example_wl`, two boats steered by `tests/race_pilot.gd` from the spawn to the results)
   with the HUD checked against the race and rules records every tick; the sail test scene in race mode; the
   presentation of `hud.md` §16 (what each instrument density shows per phase, the density key, the View tap and
   hold, the stored setting, name tags within 50 m or selected, the penalty turn only in the chase and aerial
@@ -459,7 +499,7 @@ Runs headless, with scripted input at fixed frame rates:
   `tests/previews/race_hud_*.jpg`).
 - `tests/hud_test.gd`: `hud.md` formats, filters and time constants, trim gauge colours, tell-tales, tolerance and
   assist presets on a scripted boat state; then `scenes/sail_test.tscn` on FakeSim sails 20 s with scripted input
-  on the example bay sea and the HUD text is checked against the sim's values, with the sea checks: Sea and
+  on the Practice Waters sea and the HUD text is checked against the sim's values, with the sea checks: Sea and
   SkyRig in place, the sim on the drawn sea's model, the camera never below `Sea.height_at + 0.99` and its
   clearance hook being `Sea.height_at`, the hull heaving, both wakes of the boat laid; a short run on the
   placeholder sea; then the scene on the core, 40 s with a set-and-hold tack, a kite hoist and auto-trim off:
@@ -476,7 +516,7 @@ Runs headless, with scripted input at fixed frame rates:
 
 To sail the test scene yourself (opens a window): `game/native/build.sh` once (the core; without it the scene
 runs on FakeSim), then `godot --path game res://scenes/sail_test.tscn` (after `--`: `--class=wm12` for the
-12 m boat, `--fake` for FakeSim, `--race` to race alone on `example_bay/example_wl` through the start sequence,
+12 m boat, `--fake` for FakeSim, `--race` to race alone on `practice_waters/example_wl` through the start sequence,
 `--course=<venue>/<id>` for another course). Keys: ←/→ or
 A/D helm (set and hold, ↓ centres), T auto-trim, W/S sheet, Space let fly, 1/2 sails, C camera, F5 to F8 camera
 modes, right mouse drag or IJKL orbit, wheel or O/U zoom, R recentre, Backspace reset (free sailing: back to the
@@ -582,7 +622,9 @@ the fleet rule from the world seed (`Livery.assign`).
 
 **Textures in the game.** The game loads imported copies: `tools/liverybake` stages `data/liveries/<class>/` into
 `generated/liveries/<class>/` (git-ignored) with import settings (albedo BPTC/ASTC, normal maps RGTC, ORM S3TC/ETC2,
-mipmaps) and writes the shared cloth detail tiles (`generated/liveries/_cloth/`). After editing a PNG:
+mipmaps): per livery one boat atlas of 2048 x 2048 (hull, deck with the painted hardware, transom and keel,
+`data_format.md` §8.5), the sails at half size (1024 on the longer side; `--hd` keeps the masters' 4096 and 2048),
+the rope set, and the shared cloth detail tiles (`generated/liveries/_cloth/`). After editing a PNG:
 
 ```
 cd tools/liverybake && python3 -m liverybake --stage-only   # copies the changed files
@@ -595,38 +637,43 @@ Godot reimports only the files whose content changed (it compares their hashes).
 
 `BoatView.set_livery(livery)` (`BoatLivery.apply`) paints the boat at load without touching the generated meshes:
 
-- **Baked path** (the class's textures staged, `BakedLivery`): per boat, materials on `shaders/boat_baked.gdshader`
-  for the hull's topsides, boot stripe and antifouling (the uv1 atlas: albedo, normal and ORM, the slot's tiling
-  detail on top), the transom (its own slot `transom` and uv1: albedo, normal and ORM, the boat's name in its name
-  panel), the deck (plan uv1: albedo, normal and ORM, one material for the `gelcoat` and `nonslip` slots, the ORM's
-  non-slip mask picking the non-slip or the gelcoat tiling detail per pixel, steep faces kept plain), the keel (side
-  view), and on `shaders/sail_baked.gdshader` for each baked sail (the layer's albedo, ORM, normal map with the cloth detail, the
-  tangent frame from screen-space derivatives). No procedural livery or cloth runs. The images are loaded once per
-  class and shared by every boat (the deck material too); per boat only uniforms: the name and number boxes in the
-  hull's livery panels, the name box on the transom, and the nation and number in the sails' layout slots, read from the boat's text texture (one sample on the hull, one
-  per side on a sail). A faint dirt line follows the edge of the per-boat vinyl and stuck-on numbers.
-- **Procedural fallback** (no baked textures, or `BakedLivery.enabled = false`): a copy of the shared boat material
-  for each painted slot on `boat.gdshader` with the livery path of `shaders/hull_livery.gdshaderinc` on the
-  topsides (the transom in the topsides colour), and a copy of each sail's material on `sail.gdshader` with the cloth of `sail_cloth.gdshaderinc` and
-  `sail_livery.gdshaderinc`, as before the baked liveries. Kept for a class without textures and as the GPU-cost
-  reference.
+- **One material per boat** (`sail_visuals.md` §11.4): every opaque surface of every level shares the boat material
+  (`shaders/boat_atlas.gdshader`, `BoatMaterials`); a livery gives each boat its own copy, so a node stays one draw.
+  The livery's colours go into its slot table (topsides, boot stripe, antifouling, keel and rudder, deck gelcoat and
+  non-slip, the rope functions).
+- **Baked path** (the class's boat atlas staged, `BakedLivery`): the hull, deck, transom and keel slots read the
+  atlas regions (albedo, normal and ORM; the deck's ORM blue is the non-slip mask that picks the non-slip or the
+  gelcoat tiling detail per pixel, steep faces kept plain; the keel in side view), the boat's name and number in the
+  hull's livery panels and its name in the transom's name panel, and on `shaders/sail_baked.gdshader` each baked sail
+  (the layer's albedo, ORM, normal map with the cloth detail, the tangent frame from screen-space derivatives). No
+  procedural livery or cloth runs. The atlas is loaded once per class and livery and shared by every boat; per boat
+  only uniforms and its text texture (one sample on the hull, one per side on a sail). A faint dirt line follows the
+  edge of the per-boat vinyl and stuck-on numbers.
+- **Procedural fallback** (no baked textures, or `BakedLivery.enabled = false`): the same boat material with the
+  livery path of `shaders/hull_livery.gdshaderinc` on the topsides and the livery colours on the other slots, and a
+  copy of each sail's material on `sail.gdshader` with the cloth of `sail_cloth.gdshaderinc` and
+  `sail_livery.gdshaderinc`. Kept for a class without textures and as the GPU-cost reference.
 - **One text texture per boat** either way: `LiveryText` sets the boat name, sail number, nation letters (and the
   insignia, used by the fallback) in Barlow Semi Condensed Bold on the CPU into a 1024 x 512 single-channel image
   (about 0.7 MB with mipmaps).
 - **Ropes** (`data_format.md` §8.7): the class rope set (`data/liveries/<class>/rig/`, a braid tile per function)
-  goes on the model's `rope_mainsheet`, `rope_halyard` and `rope_control` slots of every level and on the sheets
-  (`sheet`, `kite_sheet`), one material per class and function (`BoatLivery.rope_material`); without the baked set
-  the slot is tinted to the function's braid colour.
-- Draw calls are unchanged (every surface of every boat is its own draw anyway); the baked path adds two shaders.
+  goes on the sheets (`sheet`, `kite_sheet`), one material per class and function (`BoatLivery.rope_material`);
+  without the baked set the line is tinted to the function's braid colour. The model's mainsheet tackle is a slot of
+  the boat material in the mainsheet's mean braid colour; the halyards, the mainsheet coil and the control lines are painted on the
+  deck in theirs.
 
-**Cost** (WM-081). Load, headless M1: the first boat of a class loads the class's images (about 20 to 30 ms), every
-further boat 1.4 to 1.8 ms (procedural: 2.0 to 2.5 ms per boat; the text texture is most of either). On a GPU the
+**Cost** (WM-081; the video memory as before WM-100). Load, headless M1: the first boat of a class loads the
+class's images (about 20 to 30 ms), every further boat 1.4 to 1.8 ms (procedural: 2.0 to 2.5 ms per boat; the text texture is most of either). On a GPU the
 first boat also uploads the images. Video memory, shared by the fleet: wm7 about 79 MB, wm12 about 85 MB (hull set
 28 MB, deck set 18 to 20 MB, transom set 3.8 MB, keel 1.2 MB, sails 25 to 33 MB), plus 0.7 MB per boat. The transom's
 own slot (WM-085) adds one surface, so one draw, per boat; the deck adds three texture reads per pixel (the non-slip
 detail). Per pixel (`tests/livery_cost.py`, the offline
 programs on the M1's GPU, visible pixels shaded once): baked sails cost 0.42 to 0.71 of the procedural cloth, the
-baked topsides 1.05 to 1.13 of the procedural livery (three more texture reads for the relief and gloss).
+baked topsides 1.05 to 1.13 of the procedural livery (three more texture reads for the relief and gloss). Since
+WM-100 the staged textures of a class are about 14 MB for the boat atlas, 7 to 8 MB for the sails and 7.5 MB for
+the tiling atlas shared by every class (before: about 52 MB hull, deck, transom and keel, 30 MB sails, 27 MB of
+lossless tiling copies), and a topsides pixel of the boat material costs about the same as before (0.47 to 0.71
+ns against 0.34 to 0.70 ns on the development Mac, `livery_cost.py`; one more tile tap and relief perturbation).
 
 ```
 game/tests/run_livery_test.sh   # also run by run_boat_import_test.sh
@@ -665,20 +712,30 @@ python3 game/tests/livery_cost.py
   import, but the sidecar's row-major order holds only in the GLB file. The stable key is uv1 plus the layer side:
   `SailGrid.grid_index(mesh, rows, cols)` rebuilds the grid index from it; call it once on the flat sail as
   imported.
-- Materials come in as `StandardMaterial3D` with boatgen's tiling texture sets (albedo, roughness and normal maps
-  on uv0, scaled by `1 / tiling_m`) and its PBR factors (base colours converted from linear to sRGB). Every node
-  but the sails and the mainsheet carries baked ambient occlusion in `COLOR_0`, which Godot's import multiplies
-  into the albedo (`vertex_color_use_as_albedo`). boatgen's uv1 (liveries) arrives as Godot's `UV2`.
-- **Boat materials** (`BoatMaterials.apply(root)`, called by `BoatView.create` and the water test scene): every
-  imported slot is replaced on the imported meshes by a `ShaderMaterial` on `shaders/boat.gdshader` with the
-  slot's factors and textures. One texture per texture set and map serves every boat of every class (the importer
-  extracts a copy of the set from each GLB; the first loaded is kept and the others are released with their
-  `StandardMaterial3D`), and slots with the same factors share one material. The baked AO goes to `AO` with
-  `AO_LIGHT_AFFECT = 0`, so it darkens the ambient and reflected light only, never the sunlit albedo. The shader
-  caps the linear albedo at 0.8 (bright paint and gelcoat), so a white hull in full sun keeps its shading.
-  `tests/boat_materials_test.gd` (run by `run_boat_import_test.sh`) checks a fleet of both classes.
-- Default import settings generate LODs and shadow meshes and compress vertices. `BoatView` rebuilds each sail as
-  its own uncompressed `ArrayMesh` at load, so the import settings of the sail meshes do not matter.
+- Materials come in as `StandardMaterial3D`: `boat` (every opaque surface; the slot table and the shared tiling
+  atlas `generated/boats/_tex/tiles_*.png`, by URI, VRAM-compressed, in its extras), `sailcloth` (the sails, the
+  weave set by URI) and `shadow` (the shadow proxy). Every vertex of `boat` carries its slot id in `COLOR_0` green
+  and the baked ambient occlusion in red (`data_format.md` §8.5). boatgen's uv1 (liveries) arrives as Godot's `UV2`.
+- **Boat materials** (`BoatMaterials.apply(root)`, called by `BoatView.create` and the water test scene): `boat`
+  becomes one `ShaderMaterial` on `shaders/boat_atlas.gdshader` for every class and level (the slot table in
+  uniform arrays, the tiling atlas sampled per slot with its own wrap), `sailcloth` one on `shaders/boat.gdshader`.
+  The baked AO goes to `AO` with `AO_LIGHT_AFFECT = 0`, so it darkens the ambient and reflected light only, never
+  the sunlit albedo. The shader caps the linear albedo at 0.8 (bright paint and gelcoat), so a white hull in full
+  sun keeps its shading. `tests/boat_materials_test.gd` (run by `run_boat_import_test.sh`) checks a fleet of both
+  classes: one boat material, three compressed atlas textures, the imported copies released.
+- **Levels of detail and shadows** (`sail_visuals.md` §11.4): one model per class, nodes `body` (every static part)
+  and the moving parts; the boat GLBs import with Godot's automatic levels of detail (`generate_lods`, boatgen writes
+  their `.import` files), and every sail mesh carries two engine levels on every 2nd and 4th row and column of its
+  grid (`BoatView.sail_indices`), so the renderer simplifies by size on screen (the viewport's
+  `mesh_lod_threshold`, the tier's `mesh_lod_threshold`). The own boat's meshes have `lod_bias` 32
+  (`BoatView.OWN_LOD_BIAS`): the full model at chase range. The sheets' detail goes by the size of a metre on screen
+  (`BoatView.sheet_detail_for`). The visible boat meshes cast no sun shadow; the `shadow` and `shadow_boom` nodes cast
+  as shadows only, the sails cast their own, and `BoatView.cast_distance` (the tier's `boat_cast_distance`) turns the
+  casters of boats other than the own boat (`own`) off beyond it. Code that needs a part of the merged body (the
+  deck for the cameras and the sheets, the hull for the livery) reads it with `BoatMaterials.part_surfaces`.
+- No shadow meshes are generated on import (the proxy casts).
+  `BoatView` rebuilds each sail as its own uncompressed `ArrayMesh` at load, so the import settings of the sail
+  meshes do not matter.
 
 ## Sea, sky and lighting
 

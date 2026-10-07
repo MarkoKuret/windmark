@@ -65,6 +65,12 @@ var _texture: ImageTexture
 var _zero_row := PackedFloat32Array()
 var _shader_checked: Shader
 var _sea_unshadowed := false
+## choose(): the boats drawn this frame (id -> strength) and the frame it was made in (-1: none, select() in _frame)
+var _chosen := {}
+var _chosen_frame := -1
+## the sea's uniforms the drape shares, as last copied (Sea.static_version, the sea's material)
+var _static_version := -1
+var _static_material: Material = null
 
 
 func _ready() -> void:
@@ -445,27 +451,53 @@ func _sea_takes_no_shadows() -> bool:
 ## The boats that get a drawn shadow on this tier and their strength: the own boat always (1), the nearest
 ## others within the shadow distance of the camera, faded over its last 20 %. id -> strength.
 func select(tier: Dictionary, cam: Vector3) -> Dictionary:
-	var out := {}
-	var n: int = int(tier.get("drawn_shadow_boats", 0)) if enabled and _sea_takes_no_shadows() else 0
-	if n <= 0:
-		return out
-	var rmax: float = tier["shadow_distance"]
-	var others := []
+	var ids := PackedInt32Array()
+	var origins := PackedVector3Array()
+	var own := -1
 	for id in _boats:
 		var st: Dictionary = _boats[id].get("state", {})
 		if st.is_empty():
 			continue
 		if st.get("own", false):
-			out[id] = 1.0
+			own = id
+		ids.append(id)
+		origins.append((st["xform"] as Transform3D).origin)
+	return _select_from(tier, cam, ids, origins, own)
+
+
+## Picks this frame's boats before their states are built (only those then need update_boat): boat b at
+## origins[b] (scene), `own` the player's boat. Returns the ids picked; _frame draws these.
+func choose(origins: PackedVector3Array, own: int) -> PackedInt32Array:
+	var ids := PackedInt32Array()
+	ids.resize(origins.size())
+	for i in ids.size():
+		ids[i] = i
+	_chosen = {}
+	_chosen_frame = Engine.get_process_frames()
+	if sea != null and sea.material != null:
+		var cam_node: Camera3D = sea.camera if sea.camera else get_viewport().get_camera_3d()
+		var cam := cam_node.global_position if cam_node else Vector3(sea.origin.x, 0.0, -sea.origin.y)
+		_chosen = _select_from(sea.get_tier(), cam, ids, origins, own)
+	return PackedInt32Array(_chosen.keys())
+
+
+func _select_from(tier: Dictionary, cam: Vector3, ids: PackedInt32Array, origins: PackedVector3Array,
+		own: int) -> Dictionary:
+	var out := {}
+	var n: int = int(tier.get("drawn_shadow_boats", 0)) if enabled and _sea_takes_no_shadows() else 0
+	if n <= 0:
+		return out
+	var rmax: float = tier["shadow_distance"]
+	var dist := PackedFloat32Array()
+	dist.resize(ids.size())
+	for i in ids.size():
+		if ids[i] == own:
+			out[own] = 1.0
+			dist[i] = INF
 		else:
-			others.append([(st["xform"] as Transform3D).origin.distance_to(cam), id])
-	others.sort_custom(func(a, b): return a[0] < b[0])
-	n -= out.size()
-	for e in others:
-		if n <= 0 or e[0] >= rmax:
-			break
-		out[e[1]] = 1.0 - smoothstep(FADE_START * rmax, rmax, e[0])
-		n -= 1
+			dist[i] = origins[i].distance_to(cam)
+	for i in SeaWakes.nearest(dist, n - out.size(), rmax):
+		out[ids[i]] = 1.0 - smoothstep(FADE_START * rmax, rmax, dist[i])
 	return out
 
 
@@ -475,9 +507,11 @@ func _frame() -> void:
 			_boats[id]["mi"].visible = false
 		return
 	var tier := sea.get_tier()
-	var cam_node: Camera3D = sea.camera if sea.camera else get_viewport().get_camera_3d()
-	var cam := cam_node.global_position if cam_node else Vector3(sea.origin.x, 0.0, -sea.origin.y)
-	var active := select(tier, cam)
+	var active := _chosen
+	if _chosen_frame != Engine.get_process_frames():
+		var cam_node: Camera3D = sea.camera if sea.camera else get_viewport().get_camera_3d()
+		var cam := cam_node.global_position if cam_node else Vector3(sea.origin.x, 0.0, -sea.origin.y)
+		active = select(tier, cam)
 	# the Sea hands its sky's sun to the water every frame (the cheaper read)
 	var sun_v: Variant = sea.material.get_shader_parameter("sun_dir") if sea.sky or sky == null \
 			else sky.sun_direction()
@@ -526,9 +560,11 @@ func _frame() -> void:
 		buf.append_array(r if not r.is_empty() else _zero_row)
 	_image.set_data(ROW_WIDTH, _rows, false, Image.FORMAT_RGBAF, buf.to_byte_array())
 	_texture.update(_image)
-	for n in SeaWakes.SHARED_UNIFORMS:
-		_material.set_shader_parameter(n, sea.material.get_shader_parameter(n))
-	for n in ["sky_horizon", "sky_zenith", "sun_color"]:
-		_material.set_shader_parameter(n, sea.material.get_shader_parameter(n))
-	_material.set_shader_parameter("grid_q", sea.grid_ratio())
-	_material.set_shader_parameter("grid_segments", float(tier["segments"]))
+	if _static_material != sea.material or _static_version != sea.static_version:
+		_static_material = sea.material
+		_static_version = sea.static_version
+		SeaWakes.copy_uniforms(sea.material, _material, SeaWakes.STATIC_UNIFORMS)
+		_material.set_shader_parameter("grid_q", sea.grid_ratio())
+		_material.set_shader_parameter("grid_segments", float(tier["segments"]))
+	SeaWakes.copy_uniforms(sea.material, _material, SeaWakes.FRAME_UNIFORMS)
+	SeaWakes.copy_changed(sea.material, _material, ["sky_horizon", "sky_zenith", "sun_color"])

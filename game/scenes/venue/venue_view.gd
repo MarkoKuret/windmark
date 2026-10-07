@@ -6,23 +6,35 @@ extends Node3D
 ## mole, with bollards and a harbour light at its seaward end) and every circle obstacle as a rock whose
 ## waterline is the circle. Presentation only; the cameras read the same ground through ground_height().
 ##
-##   var v := VenueView.new(); add_child(v); v.build(VenueShapes.from_core(sim.core))
+##   var v := VenueView.new(); add_child(v); v.build(VenueShapes.from_core(sim.core), "garda")
+##
+## A real venue with a drawn terrain file (VenueTerrain, data_format.md §6.10) draws that instead of the
+## per-polygon land: up to four terrain chunks and the horizon ridge, one shared land material, the near chunks
+## casting the sun's shadows on tiers M and H only (venues.md §4.2). No trees, quays or props are added there.
 
 const GRID := 5.0
 const QUAY_TOP := 1.3
 const QUAY_FOOT := -4.0
 const ROCK_HEIGHT := 3.4
+## land polygons wider or taller than this are not drawn by the per-polygon path (venues.md §4.2): a real venue's
+## big land comes from its terrain file
+const MAX_POLYGON_LAND := 3000.0
 
 var shapes: VenueShapes
 var terrain: LandTerrain
+## the venue's drawn terrain, null on venues drawn from their polygons (practice_waters)
+var venue_terrain: VenueTerrain
 ## the MeshInstance3D nodes by role (tests, previews): land_<id>, trees_<id>, quay_<id>, rock_<id>
 var parts := {}
+
+## the venue's trees cast the sun's shadows (the tier's `tree_shadows`, water_render.md §4.6; apply_quality)
+var tree_shadows := true
 
 var _land_material: ShaderMaterial
 var _quay_tops: Array = []  # [{points, top}] for ground_height
 
 
-func build(s: VenueShapes) -> void:
+func build(s: VenueShapes, venue := "") -> void:
 	for c in get_children():
 		c.queue_free()
 	parts.clear()
@@ -31,8 +43,18 @@ func build(s: VenueShapes) -> void:
 	terrain = LandTerrain.new(s)
 	_land_material = ShaderMaterial.new()
 	_land_material.shader = load("res://scenes/venue/land.gdshader")
-	for i in s.land.size():
-		_build_land(i)
+	venue_terrain = VenueTerrain.load_venue(venue)
+	if venue_terrain != null:
+		_build_terrain()
+	else:
+		for i in s.land.size():
+			# a 5 m grid over the polygon's box: fine for an island, millions of triangles for a mainland
+			var size := s.land_box(i).size
+			if maxf(size.x, size.y) > MAX_POLYGON_LAND:
+				push_warning("venue land %s (%.0f by %.0f m) is too big to draw from its polygon: give the venue a "
+					% [s.land[i]["id"], size.x, size.y] + "terrain file (venuegen `terrain` block)")
+				continue
+			_build_land(i)
 	var rng := RandomNumberGenerator.new()
 	for o in s.obstacles:
 		rng.seed = hash(o["id"])
@@ -42,13 +64,26 @@ func build(s: VenueShapes) -> void:
 			_build_quay(o)
 
 
+## The quality tier's share of the venue (water_render.md §4.6): on tier L the trees cast no sun shadow.
+## The near terrain chunks follow the same switch (venues.md §4.2: at most 2 shadow draws on M and H, none on L).
+func apply_quality(tier: int) -> void:
+	tree_shadows = bool(SeaQuality.get_tier(tier as SeaQuality.Tier).get("tree_shadows", true))
+	for n in parts:
+		var caster := String(n).begins_with("trees_")
+		if String(n).begins_with("terrain_"):
+			caster = bool((parts[n] as MeshInstance3D).get_meta("shadows", false))
+		if caster:
+			(parts[n] as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if tree_shadows \
+				else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
 ## Height of the drawn ground (land, quays, rocks) at a world point, -INF where there is only water
 ## (cameras.md §7 land avoidance).
 func ground_height(x: float, y: float) -> float:
 	if shapes == null:
 		return -INF
 	var p := Vector2(x, y)
-	var h := terrain.height(x, y)
+	var h := venue_terrain.height(x, y) if venue_terrain != null else terrain.height(x, y)
 	for q in _quay_tops:
 		if Geometry2D.is_point_in_polygon(p, q["points"]):
 			h = maxf(h, q["top"])
@@ -73,6 +108,17 @@ func _add(n: String, mesh: Mesh, mat: Material, shadows := true) -> MeshInstance
 
 
 # ---- land -----------------------------------------------------------------------------------------------------
+
+## The venue's terrain file: one MeshInstance3D per chunk (terrain_<id>) and the ridge (terrain_ridge), all on
+## the shared land material.
+func _build_terrain() -> void:
+	_land_material.set_shader_parameter("bare_rock", VenueTerrain.BARE_ROCK)
+	for c in venue_terrain.chunks:
+		var shadows: bool = c["shadows"] and tree_shadows
+		var mi := _add("terrain_" + String(c["id"]), c["mesh"], _land_material, shadows)
+		mi.basis = VenueTerrain.enu_basis()
+		mi.set_meta("shadows", c["shadows"])
+
 
 func _build_land(i: int) -> void:
 	var id: String = shapes.land[i]["id"]
@@ -154,7 +200,7 @@ func _build_trees(i: int, id: String, box: Rect2, nx: int, ny: int, hs: PackedFl
 			m.blob(base + Vector3(0, sr * 0.3, 0), Vector3(sr, sr * 0.6, sr * rng.randf_range(0.8, 1.2)), 3, 7,
 				shrub_top, shrub_low, rng, 0.25)
 	var mat := ColorMesh.material(0.95)
-	_add("trees_" + id, m.mesh(), mat)
+	_add("trees_" + id, m.mesh(), mat, tree_shadows)
 
 
 # ---- obstacles ------------------------------------------------------------------------------------------------

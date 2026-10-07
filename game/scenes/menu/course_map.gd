@@ -15,6 +15,8 @@ var course := {}
 ## where the wind blows from, degrees (0 = north), and its speed, kn
 var wind_from_deg := 0.0
 var wind_kn := 12.0
+## the wind arrow and its numbers are drawn (none in the Random weather mode, menus.md §1.1)
+var wind_shown := true
 ## mark id -> Vector2 world ENU m (x east, y north), filled by show_course
 var points := {}
 
@@ -25,10 +27,11 @@ func _init() -> void:
 	clip_contents = true
 
 
-func show_course(c: Dictionary, from_deg: float, kn: float) -> void:
+func show_course(c: Dictionary, from_deg: float, kn: float, shown := true) -> void:
 	course = c
 	wind_from_deg = from_deg
 	wind_kn = kn
+	wind_shown = shown
 	points = resolve(c, deg_to_rad(from_deg))
 	queue_redraw()
 
@@ -206,6 +209,10 @@ func _hull(p: Vector2, l: float) -> void:
 
 ## The wind arrow in the top-right corner, blowing the way the wind goes, with speed and direction under it, and N.
 func _wind() -> void:
+	_text(Vector2(18, 26), "N", MIST, 13, HORIZONTAL_ALIGNMENT_CENTER)
+	draw_line(Vector2(18, 30), Vector2(18, 44), MIST, 1.5)
+	if not wind_shown:
+		return
 	var c := Vector2(size.x - 34, 34)
 	var to := deg_to_rad(wind_from_deg) + PI
 	var d := Vector2(sin(to), -cos(to))  # screen: north up
@@ -216,8 +223,6 @@ func _wind() -> void:
 	draw_colored_polygon(PackedVector2Array([tip, tip - d * 9.0 + s * 5.5, tip - d * 9.0 - s * 5.5]), PAPER)
 	_text(Vector2(size.x - 10, c.y + 34), "%d KN  %03d°" % [roundi(wind_kn), posmod(roundi(wind_from_deg), 360)],
 		PAPER, 13, HORIZONTAL_ALIGNMENT_RIGHT)
-	_text(Vector2(18, 26), "N", MIST, 13, HORIZONTAL_ALIGNMENT_CENTER)
-	draw_line(Vector2(18, 30), Vector2(18, 44), MIST, 1.5)
 
 
 func _text(at: Vector2, t: String, col: Color, sz: int, align: HorizontalAlignment) -> void:

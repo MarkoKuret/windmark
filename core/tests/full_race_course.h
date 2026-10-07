@@ -5,7 +5,7 @@
 namespace wm_test {
 
 inline const char* kFullRaceCourse = R"({
-  "schema": "windmark.course/1", "id": "test_wl_1", "name": "Test windward-leeward, 1 lap", "venue": "example_bay",
+  "schema": "windmark.course/1", "id": "test_wl_1", "name": "Test windward-leeward, 1 lap", "venue": "practice_waters",
   "frame": "wind", "reference": { "x": 0.0, "y": -300.0 },
   "marks": [
     { "id": "rc",  "type": "committee_boat", "at": { "bearing": 1.57079633, "dist": 90, "fixed": true } },

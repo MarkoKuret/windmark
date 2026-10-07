@@ -34,7 +34,7 @@ for each sea component i (sea.md §3; at most 10 + 4·3 = 22):
     d_i' = frac(c_i - fmod(t_r, T_i) / T_i + kx_i*ox + ky_i*oy)          // double, then to float
     uniform comp[i] = (a_i, kx_i, ky_i, d_i')                            // vec4 array
 uniform n_comp, sum_a = Σ a_i, hs_eff = 4*sqrt(Σ a_i²/2)
-for each live puff patch j (wind.md §9 puff_patches(t_r), at most 10):
+for each live puff patch j (wind.md §9 puff_patches(t_r), at most 16; beyond 16 the strongest |e·s| are drawn):
     uniform puff[j] = (px_j - ox, py_j - oy, R_j, e_j * s_j)             // camera-relative
 uniform puff_tile, puff_cap_lo = 1 - puff_cap_down, puff_cap_hi = 1 + puff_cap_up
 uniform wind_to = unit vector the wind blows toward (global_from(t_r) + π), base_speed
@@ -370,18 +370,31 @@ the whole race area: beyond the shadow distance the fleet is small on screen and
 
 | | L | M | H |
 | --- | --- | --- | --- |
-| cascades | 2 | 4 | 4 |
-| distance | 60 m | 100 m | 150 m |
-| cascade edges | 36 m | 8, 36, 65 m | 9, 39, 82 m |
+| cascades | 1 | 2 | 4 |
+| distance | 45 m | 90 m | 150 m |
+| cascade edges | none | 45 m | 9, 39, 82 m |
 | blend between cascades | no | no | yes |
-| directional shadow atlas | 2048 | 4096 | 4096 |
-| soft shadow filter | very low | low | medium |
+| directional shadow atlas | 2048 | 2048 | 4096 |
+| soft shadow filter | hard | low | medium |
+| other boats cast | within 30 m of the camera | all | all |
+| trees cast | no | yes | yes |
 | the sea takes shadows | no | no | yes |
-| boat shadows drawn on the sea (§4.7) | own boat | own boat and the 6 nearest within 100 m | no |
+| boat shadows drawn on the sea (§4.7) | own boat | own boat and the 6 nearest within 90 m | no |
 
 - The chase camera's own boat (about 15 to 35 m from the camera) lies inside one cascade on every tier, so its
-  shadows never change resolution or cross a seam; on board the first cascade (8 to 9 m, about 5 mm per texel)
-  carries the deck, the boom and the sails. The shadows fade out over the last 20 % of the distance.
+  shadows never change resolution or cross a seam; on tier H on board the first cascade (9 m, about 5 mm per
+  texel) carries the deck, the boom and the sails. On M the first cascade (45 m) carries both the chase and the
+  on-board view, on L the single map does. The shadows fade out over the last 20 % of the distance (L: from 36 m,
+  past the chase boat).
+- **Cost** (WM-101, `PERFORMANCE.md` measured items 1 and 5): the shadow pass draws every caster again in each
+  cascade it touches, and was about half of all draw calls (tier M at a 16-boat start: 256 of 548). So the low tiers
+  use fewer cascades and a shorter distance: L one map over 45 m, M two cascades over 90 m (the menu's drift camera
+  at 45 to 70 m, `menus.md` §4, stays inside it). The atlas is 2048 on L and M (a 4096 atlas is 32 MB of video
+  memory, 2048 is 8 MB). L's filter is hard (one tap; the very low soft filter still takes several), and on L the
+  trees (one mesh per island, `VenueView`, whose box usually reaches into the shadow map) and the other boats beyond
+  30 m of the camera cast none: they are small on screen there and their shadows mostly fall on the water, which does
+  not take them on L. The boats' casters are the boat view's (`SeaQuality` key `boat_cast_distance`); the venue's
+  trees follow the tier (`VenueView.apply_quality`).
 - Bias 0.1, normal bias 2.0 (Godot's scaled units, the same on every tier), pancake 30 m (a mast of 20 m with the
   sun at 38° stays inside the caster range), blur 1. With the late-afternoon sun (17°) the masthead lies 68 m up
   the light ray from its shadow, beyond the pancake: Godot then clamps that caster onto the cascade's near plane
@@ -406,7 +419,7 @@ Where the sea takes no shadows, each nearby boat's shadow on the water is drawn 
 per boat lying on the sea that darkens the water as a real shadow would. The boats still cast and receive the real
 shadows of §4.6 on each other and on themselves; only the water's share is drawn.
 
-**Which boats**: the own boat always; on tier M also the 6 nearest others within the tier's shadow distance (100 m)
+**Which boats**: the own boat always; on tier M also the 6 nearest others within the tier's shadow distance (90 m)
 of the camera, faded out over the last 20 % of it like the real shadows; on tier L the own boat only (its cost is
 one draw call of a few hundred vertices and a short per-pixel loop, small next to the sea itself); tier H none (it
 draws the real ones).
@@ -554,7 +567,7 @@ colour-blind palettes).
 
 ## 7. Quality tiers
 
-| | L (low-end, integrated GPUs) | M (Steam Deck default) | H (desktop) |
+| | L (low-end, integrated GPUs, Steam Deck default) | M (default) | H (desktop) |
 | --- | --- | --- | --- |
 | radial grid `N_r × N_s` | 120 × 160 (19 k vertices) | 180 × 256 (46 k) | 260 × 384 (100 k) |
 | components in the vertex shader | all | all | all |
@@ -567,8 +580,9 @@ colour-blind palettes).
 | mist (and spray reach) | no | own boat | yes |
 | wake normal buffer | no | yes | yes |
 | screen-space reflections | no | no | yes |
-| sun shadows (§4.6) | 2 cascades to 60 m, no shadows on the sea | 4 cascades to 100 m, no shadows on the sea | 4 blended cascades to 150 m |
-| boat shadows drawn on the sea (§4.7) | own boat | own boat and the 6 nearest within 100 m | no (real shadows) |
+| sun shadows (§4.6) | 1 map to 45 m, hard, 2048 atlas, no trees or boats beyond 30 m casting, no shadows on the sea | 2 cascades to 90 m, 2048 atlas, no shadows on the sea | 4 blended cascades to 150 m, 4096 atlas |
+| boat shadows drawn on the sea (§4.7) | own boat | own boat and the 6 nearest within 90 m | no (real shadows) |
+| automatic mesh LOD threshold (the boats, `sail_visuals.md` §11.4) | 2 px | 1 px (Godot's default) | 1 px |
 | anti-aliasing | SMAA 1x | SMAA 1x | SMAA 1x |
 
 Anti-aliasing (WM-084, owner decision 2026-10-03: keep it simple): SMAA 1x on every tier, no per-tier choice
@@ -588,9 +602,10 @@ The tiers do not set the render scale (`menus.md` §3): it is its own setting, A
 1920 × 1200 or on a HiDPI screen, else 100 %), and it scales every per-pixel cost here (the normal-map taps, the
 puff loop, the sail cloth) by its square.
 
-Budget: the water within 2.5 ms of GPU time per frame on the Steam Deck at 1280 × 800 on tier M. The vertex work is
+Budget: the water within 2.5 ms of GPU time per frame on the Steam Deck at 1280 × 800 on tier M. The Deck starts on
+tier L (owner, 2026-10-05); the budget stays on M so a Deck player can choose M. The vertex work is
 small (22 cosines per vertex, 1 M per frame on tier M); the pixel work is dominated by the normal-map taps and the
-puff loop (at most 10 patches). The per-pixel slope of the faded components (tier H) evaluates only the
+puff loop (at most 16 patches; the presets use at most 12). The per-pixel slope of the faded components (tier H) evaluates only the
 components in the band `2·px < lam < 4·s` (§3.2), each with one sine and two smoothsteps from the uploaded
 wavelength; the others cost a compare (the carried ones) or end the loop (the ones too short for the pixel). Every tier renders with Godot's Forward+; tier L also works on the Mobile renderer,
 and nothing in §3–§6 needs compute shaders, so a Compatibility (web) port stays possible.

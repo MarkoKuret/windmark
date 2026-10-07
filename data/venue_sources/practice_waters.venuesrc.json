@@ -1,0 +1,41 @@
+{
+  "schema": "windmark.venuesrc/1",
+  "id": "practice_waters",
+  "name": "Practice Waters",
+  "version": 3,
+  "origin": { "lat": 45.5, "lon": 13.6 },
+  "bounds": [-2000, -2000, 2000, 2000],
+  "fetch": 12000,
+  "exposure_default": 1.0,
+  "coastline": [
+    {
+      "source": "own shapes",
+      "frame": "local",
+      "role": "land",
+      "polygons": [
+        { "id": "island_n", "height": 44,
+          "points": [[380, 2400], [303.1, 2575], [160, 2677.1], [0, 2750], [-190, 2729.1], [-303.1, 2575],
+                     [-320, 2400], [-303.1, 2225], [-190, 2070.9], [0, 2050], [160, 2122.9], [303.1, 2225]] }
+      ]
+    }
+  ],
+  "obstacles": [
+    { "id": "pier", "polygon": [[-6, 1990], [6, 1990], [6, 2075], [-6, 2075]] },
+    { "id": "rock_e", "circle": { "c": [420, 1950], "r": 6 } }
+  ],
+  "simplify": { "outside": 5 },
+  "current": { "to": 1.5707963, "speed": 0.35, "shore_floor": 0.4 },
+  "exposure": { "from": 0 },
+  "conditions": {
+    "wind": { "speed": [5.1444, 7.2022], "from": 0.0, "from_spread": 0.0 },
+    "shift": { "preset": "stable" },
+    "puffs": { "preset": "light" },
+    "current": { "speed": 0.1543, "to": 1.5708 },
+    "random": { "speed": [3.0867, 9.26], "from_spread": 0.3491, "shift": ["steady", "stable", "oscillating"],
+                "puffs": ["light", "standard"] }
+  },
+  "briefing": {
+    "tag": "Practice",
+    "tip": "Open water and a steady breeze: learn the boat, then practise starts."
+  }
+}

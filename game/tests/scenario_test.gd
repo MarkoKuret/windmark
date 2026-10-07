@@ -37,7 +37,7 @@ func test_files() -> void:
 		var s := Scenario.load_file(f.trim_suffix(".scenario.json"), why)
 		t.ok(s != null, "%s loads%s" % [f, "" if why.is_empty() else ": " + str(why[0])])
 	var s := Scenario.load_file("port_starboard")
-	t.ok(s.class_id == "wm7" and s.course == "example_bay/example_wl" and s.venue == "example_bay", "class, course")
+	t.ok(s.class_id == "wm7" and s.course == "practice_waters/example_wl" and s.venue == "practice_waters", "class, course")
 	t.ok(s.boats.size() == 2 and s.boats[0].tack == 1 and s.boats[1].tack == -1, "starboard and port boats")
 	t.ok(s.lead == 20.0 and s.after == 5.0 and s.shift_preset == 0 and not s.puffs, "lead, after, steady, no puffs")
 	t.ok(s.boats[0].helm == "hold" and s.boats[0].speed < 0.0 and s.boats[0].front_sail == "", "defaults")
@@ -46,7 +46,7 @@ func test_files() -> void:
 		["schema", "windmark.scenario/2", "$.schema"],
 		["wind", {"speed": 6.0}, "$.wind.from"],
 		["boats", [], "$.boats"],
-		["course", "example_bay/nowhere", "$.course"],
+		["course", "practice_waters/nowhere", "$.course"],
 	]
 	for c in cases:
 		var d := good.duplicate(true)

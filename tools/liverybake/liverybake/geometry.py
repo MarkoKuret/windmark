@@ -16,7 +16,7 @@ import numpy as np
 from .common import BOATGEN, CLASSES, HERE
 
 CACHE = HERE / ".cache"
-VERSION = 4
+VERSION = 10
 
 
 def _key(class_id):
@@ -94,6 +94,10 @@ def build(path):
     geo["deck_max"] = np.vstack([g.P for g in dk.values()]).max(0).tolist()
     geo["deck"] = deck_info(boat)
     geo["footprints"] = footprints(boat)
+    geo["deck_plan"] = [float(v) for v in d_plan(boat)]
+    geo["painted"] = painted(boat)
+    geo["face"] = face_info(boat)
+    geo["ao"] = ao_heights(boat, geo["deck"]["plan"])
     # the transom seen from astern: its uv1 frame, outline (y, z), top edge, name panel and the fittings on it
     d = boat.deck
     tr = boat.livery_transom()
@@ -113,6 +117,122 @@ def build(path):
         geo["sails"].append({"id": spec["id"], "type": s.type, "P": np.asarray(s.P, dtype=np.float64),
                              "corners": {k: list(v) for k, v in s.corners.items()}})
     return geo
+
+
+def d_plan(boat):
+    return boat.deck.plan_rect()
+
+
+# a line more than this above the walking surface under it is not painted (m): there the game model keeps it as
+# geometry (boatgen hardware.ROPE_LIFT_MAX)
+ROPE_LIFT_MAX = 0.035
+
+
+def painted(boat):
+    """The fittings the game paints into the deck maps instead of modelling them (boatgen Boat.painted_part):
+    [{tag, slot, P (n, 3) boat frame, I (m, 3), N (n, 3), H (n,) height above the walking surface}] per tag and
+    slot."""
+    if not hasattr(boat, "painted_part"):
+        return []
+    d = boat.deck
+    by = {}
+    for slot, gs in boat.painted_part().slots.items():
+        for g in gs:
+            by.setdefault((g.tag or "", slot), []).append(g)
+    out = []
+    for (tag, slot), gs in sorted(by.items()):
+        off, Ps, Is, Ns = 0, [], [], []
+        for g in gs:
+            Ps.append(g.P)
+            Ns.append(g.N)
+            Is.append(g.I + off)
+            off += len(g.P)
+        P = np.vstack(Ps).astype(np.float64)
+        Hs = P[:, 2] - np.asarray(d.surface_z(P[:, 0], P[:, 1]), dtype=np.float64)
+        I = np.vstack(Is).astype(np.int64)
+        N = np.vstack(Ns).astype(np.float64)
+        if slot.startswith("rope"):
+            # a line is painted where it lies on the walking surface, and down the coachroof's aft face on the
+            # face's own rectangle of the plan (boatgen Deck.face_frame); where it hangs in the air the game model
+            # keeps it as geometry
+            face = boat.line_on_face(P) if hasattr(boat, "line_on_face") else np.zeros(len(P), bool)
+            on = I[(Hs[I] < ROPE_LIFT_MAX).all(1) & ~face[I].all(1)]
+            if len(on):
+                out.append({"tag": tag, "slot": slot, "P": P, "I": on, "N": N, "H": Hs, "rope": True})
+            fi = I[face[I].all(1)]
+            if len(fi):
+                f = d.face_frame()
+                xy = d.face_plan(P)
+                out_d = f["x"] - P[:, 0]                       # out of the face, toward the cockpit
+                Pf = np.stack([xy[:, 0], xy[:, 1], out_d], -1)
+                Nf = np.stack([N[:, 1], N[:, 2], -N[:, 0]], -1)
+                out.append({"tag": tag + "_face", "slot": slot, "P": Pf, "I": fi, "N": Nf, "H": out_d, "rope": True,
+                            "zbuf": "own"})
+            continue
+        out.append({"tag": tag, "slot": slot, "P": P, "I": I, "N": N, "H": Hs})
+    return out
+
+
+# the ambient-occlusion height field: grid step (m), occluders counted up to this height above the walking surface
+# and only from triangles wholly within reach of it (the boom, the vang rod and the upper rig cast nothing here) (m)
+AO_STEP = 0.01
+AO_CAP = 0.3
+AO_REACH = 0.4
+
+
+def ao_heights(boat, plan):
+    from boatgen.mesh import Part
+    """The top of everything on the deck, seen from above, for the atlas's baked occlusion and wear (atlas.py): {"Z"
+    (H, W) the walking surface plus what stands on it (the deck mesh with its toe rail, coamings and hatches, the
+    game model's hardware, the mast foot, the vang), capped at AO_CAP above the surface; "floor" (H, W) the cockpit
+    floor; "wear" [(x, y)] traffic spots (winches, the mast foot); "plan", "step"}."""
+    from . import painted as pt
+    d = boat.deck
+    x0, yt, w, h = plan
+    W, H = int(round(w / AO_STEP)), int(round(h / AO_STEP))
+    xs = x0 + (np.arange(W) + 0.5) * w / W
+    ys = yt - (np.arange(H) + 0.5) * h / H
+    X, Y = np.meshgrid(xs, ys)
+    S = np.asarray(d.surface_z(X, Y), dtype=np.float64)
+    pieces = []
+    gp = boat.game_parts() if hasattr(boat, "game_parts") else {"body": Part()}
+    wear = []
+    for mat, gs in gp["body"].slots.items():
+        part = mat.split(":")[0]
+        if part not in ("deck", "hardware", "mast"):
+            continue
+        for g in gs:
+            Hv = g.P[:, 2] - np.asarray(d.surface_z(g.P[:, 0], g.P[:, 1]), dtype=np.float64)
+            I = g.I[Hv[g.I].max(1) < AO_REACH]
+            if len(I):
+                pieces.append({"slot": "x", "P": g.P, "I": I, "N": g.N, "H": Hv})
+            if (g.tag or "").startswith("winch"):
+                c = g.P.mean(0)
+                wear.append((float(c[0]), float(c[1])))
+    for gs in gp["boom"].slots.values():
+        for g in gs:
+            if (g.tag or "").startswith("vang"):
+                Hv = g.P[:, 2] - np.asarray(d.surface_z(g.P[:, 0], g.P[:, 1]), dtype=np.float64)
+                I = g.I[Hv[g.I].max(1) < AO_REACH]
+                if len(I):
+                    pieces.append({"slot": "x", "P": g.P, "I": I, "N": g.N, "H": Hv})
+    sid, _, hgt, _ = pt.rasterize(pieces, plan, W, H, ss=1)
+    Z = S + np.where(sid >= 0, np.clip(hgt, 0.0, AO_CAP), 0.0)
+    wear.append((float(boat.rig.x_mast), 0.0))
+    floor = np.asarray(d.surface_z(X, Y)) < np.asarray(d.deck_z(X, np.abs(Y))) - 0.08
+    return {"Z": Z.astype(np.float32), "floor": floor, "wear": sorted(set(wear)), "plan": list(plan), "step": AO_STEP}
+
+
+def face_info(boat):
+    """The coachroof's aft face rectangle on the deck plan (boatgen Deck.face_frame): {"x0", "y_top", "w", "h"} in
+    plan metres, or None."""
+    d = boat.deck
+    f = d.face_frame() if hasattr(d, "face_frame") else None
+    if f is None:
+        return None
+    w = (f["y"][1] - f["y"][0]) * f["scale"]
+    h = (f["z"][1] - f["z"][0]) * f["scale"]
+    return {"x0": float(f["plan"][0]), "y_top": float(f["plan"][1]), "w": float(w), "h": float(h)}
 
 
 # ----------------------------------------------------------------------------------------------------------------
@@ -147,7 +267,7 @@ def deck_info(boat):
 
 # hardware tags that are not fastened to the deck (lines, coils, rails, cars) and kinds by tag prefix
 _SKIP = ("halyard_", "mainsheet_tail", "mainsheet_coil", "mainsheet_lower", "traveller_line", "traveller_car",
-         "lifeline", "jib_car", "halyard_coil", "pod", "wheel", "binnacle", "pedestal_guard", "tiller")
+         "lifeline", "jib_car", "halyard_coil", "wheel", "binnacle", "tiller")
 _KINDS = (("winch", "winch"), ("clutch", "clutch"), ("organiser", "organiser"), ("mast_block", "block"),
           ("traveller_block", "block"), ("cam_cleat", "cleat"), ("traveller_cleat", "cleat"), ("horn_cleat", "cleat"),
           ("jib_track", "track"), ("traveller", "track"), ("hatch", "hatch"), ("stanchion", "stanchion"),

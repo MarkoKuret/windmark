@@ -128,12 +128,104 @@ const BUSES := {
 }
 
 
-## The player's settings, loaded from `path` on first use (defaults when there is no file).
+## The player's settings, loaded from `path` on first use; when there is no file, the defaults with the device's
+## graphics (menus.md §3 Device defaults).
 static func current() -> Settings:
 	if _current == null:
 		_current = Settings.new()
-		_current.load_file(path)
+		if _current.load_file(path) != OK:
+			_current.apply_device_defaults(detect_gpu())
 	return _current
+
+
+# ---- device defaults (menus.md §3) ----
+
+enum Gpu { UNKNOWN, DISCRETE, INTEGRATED, APPLE, STEAM_DECK }
+
+## the render scale an integrated GPU starts on
+const INTEGRATED_RENDER_SCALE := 0.67
+## tests: a Gpu value replaces the detection (-1 detects)
+static var gpu_override := -1
+
+
+## The adapter class from its name and vendor (RenderingServer.get_video_adapter_name/_vendor), the RenderingDevice
+## device type (-1 when there is none: Compatibility, headless) and whether Steam says this is a Steam Deck.
+static func gpu_class(adapter: String, vendor := "", device_type := -1, steam_deck := false) -> Gpu:
+	var n := (adapter + " " + vendor).to_lower()
+	if steam_deck or n.contains("custom gpu 0405") or n.contains("custom gpu 0932") or n.contains("vangogh") \
+			or n.contains("sephiroth"):
+		return Gpu.STEAM_DECK
+	if adapter.to_lower().contains("apple"):
+		return Gpu.APPLE
+	for k in ["llvmpipe", "swiftshader", "lavapipe", "softpipe", "basic render", "adreno", "mali", "powervr",
+			"qualcomm"]:
+		if n.contains(k):
+			return Gpu.INTEGRATED
+	if device_type == RenderingDevice.DEVICE_TYPE_CPU:
+		return Gpu.INTEGRATED
+	if n.contains("nvidia") or n.contains("geforce") or n.contains("quadro"):
+		return Gpu.DISCRETE
+	var rx := RegEx.create_from_string("\\b\\d{3,4}[ms]\\b")
+	if n.contains("intel"):
+		# Arc A and B cards are discrete; "Arc Graphics" (Core Ultra) and UHD, Iris, HD are on the processor
+		var arc := RegEx.create_from_string("arc(\\(tm\\))?\\s+[ab]\\d")
+		return Gpu.DISCRETE if arc.search(n) != null else Gpu.INTEGRATED
+	if n.contains("amd") or n.contains("radeon") or n.contains("advanced micro") or n.contains("ati technologies"):
+		# processor graphics end in "Graphics" (Radeon Graphics, Vega 8 Graphics, RX Vega 10 Graphics, 8060S
+		# Graphics) or are a number with M or S (680M, 780M); cards are RX, Pro or a plain number
+		var a := adapter.to_lower().get_slice("(rad", 0).strip_edges()  # Mesa adds "(RADV RENOIR)" and the like
+		var card := a.contains(" rx") or a.contains(" pro") or a.contains("firepro")
+		if a.ends_with("graphics") or (not card and rx.search(a) != null):
+			return Gpu.INTEGRATED
+		if device_type == RenderingDevice.DEVICE_TYPE_INTEGRATED_GPU:
+			return Gpu.INTEGRATED
+		return Gpu.DISCRETE
+	match device_type:
+		RenderingDevice.DEVICE_TYPE_INTEGRATED_GPU:
+			return Gpu.INTEGRATED
+		RenderingDevice.DEVICE_TYPE_DISCRETE_GPU:
+			return Gpu.DISCRETE
+	return Gpu.APPLE if n.contains("apple") else Gpu.UNKNOWN
+
+
+## This machine's adapter class (gpu_override in tests).
+static func detect_gpu() -> Gpu:
+	if gpu_override >= 0:
+		return gpu_override as Gpu
+	var rd := RenderingServer.get_rendering_device()
+	var dt: int = rd.get_device_type() if rd != null else -1
+	return gpu_class(RenderingServer.get_video_adapter_name(), RenderingServer.get_video_adapter_vendor(), dt,
+		OS.get_environment("SteamDeck") == "1")
+
+
+## The graphics a first start picks for an adapter class (menus.md §3): integrated GPUs tier L at 67 %, the Steam
+## Deck tier L at Auto (native on its screen), everything else the plain defaults (tier M, Auto).
+static func device_graphics(gpu: Gpu) -> Dictionary:
+	match gpu:
+		Gpu.INTEGRATED:
+			return {"quality": SeaQuality.Tier.L, "render_scale": INTEGRATED_RENDER_SCALE}
+		Gpu.STEAM_DECK:
+			return {"quality": SeaQuality.Tier.L, "render_scale": 0.0}
+	var d := Settings.new()
+	return {"quality": d.quality, "render_scale": d.render_scale}
+
+
+func apply_device_defaults(gpu: Gpu) -> void:
+	var g := device_graphics(gpu)
+	quality = g["quality"]
+	render_scale = g["render_scale"]
+
+
+## The defaults for this device: Settings.new() with the device's graphics (Reset section, the first-launch Skip).
+static func device_defaults() -> Settings:
+	var d := Settings.new()
+	d.apply_device_defaults(detect_gpu())
+	return d
+
+
+## The quality tier in effect: the command line's `--quality` over the setting.
+func effective_quality() -> SeaQuality.Tier:
+	return quality if quality_override < 0 else quality_override as SeaQuality.Tier
 
 
 ## Forget the loaded settings (tests; a new `path`).
@@ -227,7 +319,7 @@ func load_file(p := "") -> Error:
 
 ## Back to the defaults of one section (the settings screen's reset), or of everything with "".
 func reset(section := "") -> void:
-	var fresh := Settings.new()
+	var fresh := device_defaults() if section in ["", "graphics"] else Settings.new()
 	for s in FIELDS:
 		if section == "" or s == section:
 			for f in FIELDS[s]:
@@ -283,7 +375,7 @@ func _density_chosen(level: int) -> void:
 
 ## The sea's tier, and the environment's part of it (screen-space reflections) when a sky is given.
 func apply_sea(sea: Sea, sky: SkyRig = null) -> void:
-	var q: SeaQuality.Tier = quality if quality_override < 0 else quality_override as SeaQuality.Tier
+	var q := effective_quality()
 	sea.quality = q
 	if sky != null and sky.environment() != null:
 		SeaQuality.apply_environment(sky.environment(), q)

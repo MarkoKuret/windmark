@@ -239,8 +239,8 @@ TEST_CASE("ai: the skippers' memory saved mid-race and reloaded continues identi
       world_bytes[k] = sw.bytes();
       ai_bytes[k] = sa.bytes();
     }
-    const std::uint64_t c = w->step();
-    sums[w->tick()] = c;
+    w->step();
+    sums[w->tick()] = w->checksum();
   }
   REQUIRE(w->tick() == at[1] + len);
   for (int k = 0; k < 2; ++k) {
@@ -256,7 +256,8 @@ TEST_CASE("ai: the skippers' memory saved mid-race and reloaded continues identi
     w2->set_controller([&ai2](wm::World& world) { ai2.step(world); });
     std::uint32_t first_diff = 0;
     while (w2->tick() < at[k] + len) {
-      const std::uint64_t c = w2->step();
+      w2->step();
+      const std::uint64_t c = w2->checksum();
       if (c != sums[w2->tick()] && first_diff == 0) first_diff = w2->tick();
     }
     CHECK(first_diff == 0);

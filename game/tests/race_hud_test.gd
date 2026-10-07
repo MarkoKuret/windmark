@@ -6,7 +6,7 @@ extends SceneTree
 ##     radar colours for the port-starboard, windward-leeward and mark-room pair records, penalties, protest and
 ##     hail prompts, the feed, the results and the assist presets;
 ##   - the layline test of §15 on the core (a boat on the computed starboard layline fetches the mark);
-##   - a real race on the core, example_bay/example_wl, two boats steered by RacePilot from the spawn to the
+##   - a real race on the core, practice_waters/example_wl, two boats steered by RacePilot from the spawn to the
 ##     results, the HUD checked against the core's race and rules records every tick;
 ##   - the sail test scene in race mode: the HUD shows the race and hides the stand-in label;
 ##   - the presentation of hud.md §16: what each instrument density shows in each phase, the density key and its
@@ -1480,19 +1480,19 @@ func _core_race(seed_: int) -> CoreSimSource:
 	var sim := CoreSimSource.new()
 	sim.settings = {"race_seed": seed_, "wind_speed": 11.0 * KNOT, "wind_from": 0.2, "shift_preset": 1,
 		"free_sailing_s": 10.0}
-	if not sim.create("example_bay"):
+	if not sim.create("practice_waters"):
 		t.ok(false, "world: " + sim.last_error())
 		return null
 	sim.add_entry("wm7", {"human": true})
 	sim.add_entry("wm7", {"human": true})
-	if not sim.create_race("example_bay/example_wl"):
+	if not sim.create_race("practice_waters/example_wl"):
 		t.ok(false, "race: " + sim.last_error())
 		return null
 	return sim
 
 
 func test_core_race() -> void:
-	t.begin("a race on the core: example_bay/example_wl, two boats from the spawn to the results")
+	t.begin("a race on the core: practice_waters/example_wl, two boats from the spawn to the results")
 	var sim := _core_race(20260925)
 	if sim == null:
 		return

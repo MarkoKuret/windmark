@@ -235,6 +235,28 @@ func step() -> void:
 	pass
 
 
+## A tick in two halves, for a sim that steps on another thread (CoreSimSource): step_begin() starts it and
+## step_end() takes it in; in between the records read before it stay as they were. Here both halves are step().
+func can_step_async() -> bool:
+	return false
+
+
+func step_begin() -> void:
+	step()
+
+
+func step_end() -> void:
+	pass
+
+
+## every boat's render_pose at alpha, by boat index
+func render_poses(alpha: float) -> Array:
+	var out := []
+	for b in boat_count():
+		out.append(render_pose(b, alpha))
+	return out
+
+
 # ---- race and rules (race.md, rules.md §11): the HUD's readers. A sim without a race (FakeSim, free sailing)
 # returns the empty values below. Dictionaries carry the C API's field names (CoreSim, game/README.md).
 

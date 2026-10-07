@@ -1,0 +1,66 @@
+{
+  "schema": "windmark.terrain/1",
+  "id": "fremantle",
+  "version": 2,
+  "water_level": 0.0,
+  "box": [-14000, -12000, 14000, 12000],
+  "chunks": [
+    {
+      "id": "near_e",
+      "aabb": [5520, -7440, -8, 9600, 7460, 59.8],
+      "vertices": 51447,
+      "triangles": 100044,
+      "shadows": true,
+      "offset": 0,
+      "bytes": 1146744,
+      "raw_bytes": 2641044
+    },
+    {
+      "id": "far_w",
+      "aabb": [-14080, -11680, -38, 0, 3680, 25.5],
+      "vertices": 1246,
+      "triangles": 2152,
+      "shadows": false,
+      "offset": 1146744,
+      "bytes": 28348,
+      "raw_bytes": 60712
+    },
+    {
+      "id": "far_e",
+      "aabb": [0, -12160, -38, 12960, 12160, 66.2],
+      "vertices": 3638,
+      "triangles": 6520,
+      "shadows": false,
+      "offset": 1175092,
+      "bytes": 77980,
+      "raw_bytes": 180104
+    }
+  ],
+  "ridge": {
+    "id": "ridge",
+    "aabb": [-20480, -22080, -2, 22080, 22080, 89.2],
+    "vertices": 5037,
+    "triangles": 9486,
+    "shadows": false,
+    "spacing": 320.0,
+    "offset": 1253072,
+    "bytes": 82308,
+    "raw_bytes": 254868
+  },
+  "ground": {
+    "grid": {"x0": -9500, "y0": -7500, "dx": 10.0, "dy": 10.0, "nx": 1901, "ny": 1501},
+    "scale": 0.1,
+    "offset": 1335380,
+    "bytes": 306283,
+    "raw_bytes": 5706802
+  },
+  "stats": {
+    "triangles": 108716,
+    "vertices": 56331,
+    "ridge_triangles": 9486,
+    "coast_vertices": 893,
+    "tolerance_scale": 1.95
+  },
+  "bin": "fremantle.terrain.bin",
+  "source": "venuegen 0.1.0; Australian Coastline 50K 2024 (NESP MaC 3.17, AIMS), Rottnest Island V1-1, downloaded 2026-10-06 (CC-BY 4.0); Australian Coastline 50K 2024 (NESP MaC 3.17, AIMS), mainland Cottesloe to Woodman Point V1-1, downloaded 2026-10-06 (CC-BY 4.0); terrain: NASADEM 1 arc-second (NASA JPL, via OpenTopography) v001, downloaded 2026-10-06 (public domain); coastline inputs clipped from the national file by fremantle/clip_coastline.py; input heights are the fallback where the DEM has no data"
+}

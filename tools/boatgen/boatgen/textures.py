@@ -31,7 +31,6 @@ ROUGH_MEAN = 0.80
 SETS = {
     "orange_peel": ("Plastic013A", 0.15, 0.4, 1.0),   # gelcoat and paint: slight orange peel
     "grain": ("Rubber004", 0.35, 0.5, 0.8),           # rolled antifouling, rubber
-    "carbon_twill": ("Fabric004", 1.0, 0.6, 1.0),     # carbon twill weave
     "brushed": ("Metal009", 0.4, 0.6, 0.6),           # brushed stainless and aluminium
     "weave": ("Fabric062", 0.35, 0.3, 0.0),           # sailcloth (no normal map, sail_visuals.md 9)
     "braid": ("Rope002", 0.8, 0.4, 1.0),              # braided rope
@@ -46,17 +45,123 @@ SLOTS = {
     "nonslip": ("diamond", 0.1),
     "antifouling": ("grain", 0.5),
     "rubber": ("grain", 0.1),
-    "carbon": ("carbon_twill", 0.05),
+    "carbon": ("orange_peel", 0.5),      # the clear coat's slight orange peel: no weave pattern
     "metal": ("brushed", 0.2),
     "sailcloth": ("weave", 0.5),
     "rope": ("braid", 0.05),
     "rope_mainsheet": ("braid", 0.05),
     "rope_sheet": ("braid", 0.05),
     "rope_kite_sheet": ("braid", 0.05),
-    "rope_halyard": ("braid", 0.05),
     "rope_control": ("braid", 0.05),
+    "rope_halyard_main": ("braid", 0.05),
+    "rope_halyard_jib": ("braid", 0.05),
+    "rope_halyard_kite": ("braid", 0.05),
+    "rope_halyard_code": ("braid", 0.05),
+    "face": ("orange_peel", 0.5),
     "glass": (None, 1.0),
+    "shadow": (None, 1.0),
 }
+
+
+# The shared tiling atlas of the boat material (gltf.py "boat"): every set's 512 x 512 tile side by side, 4 x 2,
+# per map (colour, metallic-roughness, normal), plus a flat tile (the mean, for slots without a set: glass). The
+# game samples a tile with its own wrap (shaders/boat_atlas.gdshader). Written once per output folder as
+# `_tex/tiles_<map>.png` and referenced by URI from every GLB, so every class and level of detail shares one copy.
+ATLAS_SETS = ("orange_peel", "diamond", "grain", "brushed", "braid", "flat")
+ATLAS_COLS, ATLAS_ROWS = 4, 2
+ATLAS_FILES = {"color": "tiles_color.png", "mr": "tiles_mr.png", "normal": "tiles_normal.png"}
+# the sails keep their own material on the weave set
+OWN_FILES = ("weave_color.jpg", "weave_mr.jpg")
+
+# Godot import settings for the shared textures: VRAM-compressed with mipmaps (colour BPTC, normal RGTC)
+IMPORT = """[remap]
+
+importer="texture"
+type="CompressedTexture2D"
+
+[params]
+
+compress/mode=2
+compress/high_quality={hq}
+compress/lossy_quality=0.7
+compress/uastc_level=0
+compress/rdo_quality_loss=0.0
+compress/hdr_compression=1
+compress/normal_map={normal}
+compress/channel_pack=0
+mipmaps/generate=true
+mipmaps/limit=-1
+roughness/mode=0
+roughness/src_normal=""
+process/channel_remap/red=0
+process/channel_remap/green=1
+process/channel_remap/blue=2
+process/channel_remap/alpha=3
+process/fix_alpha_border=true
+process/premult_alpha=false
+process/normal_map_invert_y=false
+process/hdr_as_srgb=false
+process/hdr_clamp_exposure=false
+process/size_limit=0
+detect_3d/compress_to=0
+"""
+
+
+def _tile(set_name, k):
+    if set_name == "flat":
+        v = {"color": [_lin_to_srgb(np.array(DETAIL_MEAN))] * 3, "mr": [1.0, ROUGH_MEAN, 1.0],
+             "normal": [0.5, 0.5, 1.0]}[k]
+        return np.broadcast_to((np.asarray(v, dtype=np.float64) * 255 + 0.5).astype(np.uint8), (SIZE, SIZE, 3))
+    p = paths(set_name)[k]
+    if k == "normal" and not has_normal(set_name):
+        return _tile("flat", "normal")
+    return np.asarray(Image.open(p).convert("RGB").resize((SIZE, SIZE)))
+
+
+def atlas_image(k):
+    """The atlas of map k (color, mr, normal) as an RGB uint8 array. The unused cells hold the flat tile, so the
+    wrap and the coarse mipmaps blend in the detail's mean and a flat normal, not black."""
+    img = np.tile(_tile("flat", k), (ATLAS_ROWS, ATLAS_COLS, 1))
+    for i, sname in enumerate(ATLAS_SETS):
+        r, c = divmod(i, ATLAS_COLS)
+        img[r * SIZE:(r + 1) * SIZE, c * SIZE:(c + 1) * SIZE] = _tile(sname, k)
+    return img
+
+
+_bytes = {}
+
+
+def image_bytes(name):
+    """The encoded bytes of a shared texture file (an atlas PNG or a set's JPEG)."""
+    if name not in _bytes:
+        k = next((k for k, f in ATLAS_FILES.items() if f == name), None)
+        if k is not None:
+            buf = io.BytesIO()
+            Image.fromarray(atlas_image(k)).save(buf, "PNG", optimize=False, compress_level=6)
+            _bytes[name] = buf.getvalue()
+        else:
+            with open(os.path.join(TEX_DIR, name), "rb") as f:
+                _bytes[name] = f.read()
+    return _bytes[name]
+
+
+def write_shared(out_dir):
+    """Writes `<out_dir>/_tex/` (the atlas images and the sails' set) with Godot import settings, only where
+    changed. Returns the folder."""
+    d = os.path.join(out_dir, "_tex")
+    os.makedirs(d, exist_ok=True)
+    for name in list(ATLAS_FILES.values()) + list(OWN_FILES):
+        path = os.path.join(d, name)
+        data = image_bytes(name)
+        if not os.path.exists(path) or open(path, "rb").read() != data:
+            with open(path, "wb") as f:
+                f.write(data)
+        imp = path + ".import"
+        want = IMPORT.format(hq="true" if "color" in name else "false", normal=1 if "normal" in name else 2)
+        if not os.path.exists(imp) or "compress/mode=2" not in open(imp).read():
+            with open(imp, "w") as f:
+                f.write(want)
+    return d
 
 
 def paths(set_name):

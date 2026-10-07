@@ -474,6 +474,9 @@ accumulator (§5.1) then lowers the far bands first.
 | Match race | 2 humans (or 1 + AI) | first to 2 wins |
 | Private lobby | host's choice (up to 40) | any settings, invite code, optional AI fill, protest umpire mode allowed |
 
+Weather (`race.md` §2.1): quick races, series and match races (the scheduled and ranked rooms) use the Local or
+Random weather mode only; Custom is for private lobbies and offline play. This is the rule for phase 4.
+
 Region choice: the client pings the regions' probe endpoints at start and queues in the lowest-RTT region (≤ 120 ms);
 otherwise the best available with a warning.
 

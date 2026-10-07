@@ -131,11 +131,10 @@ struct Candidate {
 bool track_clear_of_objects(AC& x, const AB& a, const Track& own) {
   const std::vector<Vec2>& oh = hull(x, static_cast<std::size_t>(a.i));
   const float ro = x.r_hull[static_cast<std::size_t>(a.i)];
-  std::vector<Vec2> placed;
   for (const CourseObject& o : x.course.objects) {
     for (std::size_t k = 0; k < own.c.size(); k = k + 2) {
       if (v_dist(own.c[k], o.c) - ro - o.r > 1.0f) continue;
-      place_outline(oh, own.c[k], own.psi[k], placed);
+      const std::span<const Vec2> placed = own.hull(oh, k).pts();
       if (point_in_polygon(o.c, placed) || point_polygon_edge_dist(o.c, placed) < o.r + 0.3f) return false;
     }
   }
@@ -160,7 +159,7 @@ bool tack_safe(AC& x, AB& a, const Me& m, float psi_new, bool gybe) {
   for (const std::size_t j : nb) {
     Track tj;
     predict_ctrv(motion_of(x, j), kSamples, tj);
-    const float tj_twa = wrap_pi(x.w.env(j).wind_from_clean - x.w.boat(j).state().psi);
+    const float tj_twa = wrap_pi(water_wind_clean(x.w.env(j)).from - x.w.boat(j).state().psi);
     const float g = tracks_gap(hull(x, j), x.r_hull[j], tj, oh, ro, own, 0, kSamples, 2.0f * m.L);
     // Rule 13: never tack within 3 L into the path of a boat on the tack we go to... or of one we must keep clear of.
     if (v_dist(x.race.boat(j).c, m.c) < 3.0f * m.L + x.r_hull[j] && g < m.L) return false;
@@ -202,7 +201,8 @@ bool land_check(AC& x, AB& a, const Me& m) {
     const Vec2 p = v_add(m.c, v_scale(vel, static_cast<float>(k)));
     if (ven != nullptr) {
       for (const VenueLand& l : ven->land) {
-        if (point_in_polygon(p, l.points) || point_polygon_edge_dist(p, l.points) < lim) {
+        if (point_in_polygon(p, l.points, &l.index) ||
+            point_polygon_edge_dist_capped(p, l.points, &l.index, lim) < lim) {
           hit = true;
           near_pt = p;
         }
@@ -255,10 +255,9 @@ namespace {
 bool track_touches(AC& x, const AB& a, const Track& own, const CourseObject& o, float clear) {
   const std::vector<Vec2>& oh = hull(x, static_cast<std::size_t>(a.i));
   const float ro = x.r_hull[static_cast<std::size_t>(a.i)];
-  std::vector<Vec2> placed;
   for (std::size_t k = 0; k < own.c.size(); ++k) {
     if (v_dist(own.c[k], o.c) - ro - o.r > clear) continue;
-    place_outline(oh, own.c[k], own.psi[k], placed);
+    const std::span<const Vec2> placed = own.hull(oh, k).pts();
     if (point_in_polygon(o.c, placed) || point_polygon_edge_dist(o.c, placed) < o.r + clear) return true;
   }
   return false;
@@ -297,7 +296,11 @@ void avoid_objects(AC& x, AB& a, const Me& m, std::int32_t skip_mark) {
   if (a.man != Man::straight) return;
   const float v = max(1.0f, m.s.v);
   const float reach = max(3.0f * m.L, 6.0f * v);
-  const Vec2 f = dir(a.psi_target);
+  // Along the track over the ground: the current sets the boat onto an object her heading would clear.
+  const Vec2 f = cog_dir(a, m, a.psi_target);
+  const bool cur = m.cur.x != 0.0f || m.cur.y != 0.0f;
+  // A track over the ground back to the heading that makes it (ai.md §4.2).
+  auto heading_of = [&](float track) { return cur ? cog_heading_for(a, m, track) : track; };
   float best_t = 1e30f;
   const CourseObject* hit = nullptr;
   float need = 0.0f;
@@ -337,7 +340,7 @@ void avoid_objects(AC& x, AB& a, const Me& m, std::int32_t skip_mark) {
   float side = v_cross(f, v_sub(hit->c, m.c)) > 0.0f ? 1.0f : -1.0f;  // > 0: object to the left
   const bool rounding_mark = hit->mark == skip_mark && skip_mark == a.round_mark;
   if (rounding_mark) side = a.round_sigma;
-  float psi = wrap_2pi(brg + side * g);
+  float psi = heading_of(wrap_2pi(brg + side * g));
   float twa = wrap_pi(m.twd - psi);
   // Sailable from here without a tack or gybe: not above close-hauled and on the present tack.
   auto on_this_tack = [&](float t) { return std::fabs(t) >= m.theta_up - 2.0f * DEG && sgn(t) == m.tack; };
@@ -349,7 +352,7 @@ void avoid_objects(AC& x, AB& a, const Me& m, std::int32_t skip_mark) {
     // mark keeps her sails drawing, or she could never steer away (ai.md §6.4).
     const bool gybe = std::fabs(twa) > HALF_PI && std::fabs(m.twa) > HALF_PI;
     if (gybe ? request_gybe(x, a, m, AiTactic::Rounding, true) : request_tack(x, a, m, AiTactic::Rounding, true)) return;
-    const float psi_o = wrap_2pi(brg - side * g);
+    const float psi_o = heading_of(wrap_2pi(brg - side * g));
     if (on_this_tack(wrap_pi(m.twd - psi_o))) {
       a.psi_target = psi_o;
       return;
@@ -366,7 +369,7 @@ void avoid_objects(AC& x, AB& a, const Me& m, std::int32_t skip_mark) {
   }
   if (std::fabs(twa) < m.theta_up - 2.0f * DEG) {
     // Not sailable that way: the other side.
-    psi = wrap_2pi(brg - side * g);
+    psi = heading_of(wrap_2pi(brg - side * g));
     twa = wrap_pi(m.twd - psi);
     if (std::fabs(twa) < m.theta_up - 2.0f * DEG) psi = heading_for(m.twd, m.tack * m.theta_up);
   }
@@ -437,13 +440,14 @@ void rules_overlay(AC& x, AB& a, const Me& m, Vec2 aim) {
       }
       static thread_local std::vector<std::size_t> nb;
       neighbours(x, a, m, 5.0f * m.L + 2.0f * x.r_hull[i], nb);
-      std::vector<Track> tr(nb.size());
+      static thread_local std::vector<Track> tr;
+      if (tr.size() < nb.size()) tr.resize(nb.size());
       std::size_t kB = nb.size();
       for (std::size_t q = 0; q < nb.size(); ++q) {
         predict_ctrv(motion_of(x, nb[q]), kSamples, tr[q]);
         if (static_cast<std::int32_t>(nb[q]) == B) kB = q;
       }
-      Track trB;
+      static thread_local Track trB;
       if (kB == nb.size()) predict_ctrv(motion_of(x, static_cast<std::size_t>(B)), kSamples, trB);
       const Track& tB = kB < nb.size() ? tr[kB] : trB;
       const std::size_t jB = static_cast<std::size_t>(B);
@@ -461,7 +465,7 @@ void rules_overlay(AC& x, AB& a, const Me& m, Vec2 aim) {
           const float e = wrap_pi(c.psi - m.s.psi), eb = wrap_pi(brg_B - m.s.psi);
           if (std::fabs(e) > 1.0f * DEG && sgn(e) == sgn(eb)) continue;
         }
-        Track own;
+        static thread_local Track own;
         own_track(m, c.psi, c.turn, c.slow, c.manoeuvre, own);
         if (!track_clear_of_objects(x, a, own)) continue;  // never into a mark or a committee boat
         const float gB = tracks_gap(hull(x, jB), x.r_hull[jB], tB, oh, x.r_hull[i], own, 0, kSamples, 4.0f * m.L);
@@ -482,7 +486,7 @@ void rules_overlay(AC& x, AB& a, const Me& m, Vec2 aim) {
         if (sgn(twa_c) < 0.0f && m.tack > 0.0f) {
           for (const std::size_t j : nb) {
             if (static_cast<std::int32_t>(j) == B) continue;
-            if (wrap_pi(x.w.env(j).wind_from_clean - x.w.boat(j).state().psi) >= 0.0f) {
+            if (wrap_pi(water_wind_clean(x.w.env(j)).from - x.w.boat(j).state().psi) >= 0.0f) {
               cost = cost + 10.0f;
               break;
             }

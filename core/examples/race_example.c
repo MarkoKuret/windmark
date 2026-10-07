@@ -238,9 +238,9 @@ static outcome run_race(const char* data, const char* courses, int verbose) {
   if (!check(wm_perf_load(path, &perf[0]), "wm7")) goto done;
   snprintf(path, sizeof path, "%s/perf/wm12.perf.json", data);
   if (!check(wm_perf_load(path, &perf[1]), "wm12")) goto done;
-  snprintf(path, sizeof path, "%s/venues/example_bay.venue.json", data);
+  snprintf(path, sizeof path, "%s/venues/practice_waters.venue.json", data);
   if (!check(wm_venue_load(path, &venue), "venue")) goto done;
-  snprintf(path, sizeof path, "%s/example_bay/example_wl.course.json", courses);
+  snprintf(path, sizeof path, "%s/practice_waters/example_wl.course.json", courses);
   if (!check(wm_course_load(path, &course), "course")) goto done;
 
   wm_world_settings ws;
@@ -293,7 +293,7 @@ static outcome run_race(const char* data, const char* courses, int verbose) {
   wm_world_race(w, &ri);
   const int64_t gun = ri.n_gun;
   for (int k = 0; k < 80000; ++k) {
-    o.checksum = wm_world_step(w);
+    wm_world_step(w);
     for (int e = 0; verbose && e < wm_world_race_event_count(w); ++e) {
       wm_race_event ev;
       wm_world_race_event(w, e, &ev);
@@ -313,7 +313,7 @@ static outcome run_race(const char* data, const char* courses, int verbose) {
     if (ri.state == WM_RACE_CLOSED) break;
   }
   o.ticks = wm_world_tick(w);
-  if (o.checksum != wm_world_checksum(w)) fprintf(stderr, "checksum reader differs from the step's\n");
+  o.checksum = wm_world_checksum(w);
   wm_world_race(w, &ri);
   o.results = wm_world_result_count(w);
   if (verbose) {
@@ -481,9 +481,9 @@ static int scenario(const char* data, const char* courses) {
   int ok = 0;
   snprintf(path, sizeof path, "%s/perf/wm7.perf.json", data);
   if (!check(wm_perf_load(path, &perf), "wm7")) return 0;
-  snprintf(path, sizeof path, "%s/venues/example_bay.venue.json", data);
+  snprintf(path, sizeof path, "%s/venues/practice_waters.venue.json", data);
   if (!check(wm_venue_load(path, &venue), "venue")) return 0;
-  snprintf(path, sizeof path, "%s/example_bay/example_wl.course.json", courses);
+  snprintf(path, sizeof path, "%s/practice_waters/example_wl.course.json", courses);
   if (!check(wm_course_load(path, &course), "course")) return 0;
   wm_world_settings ws;
   wm_world_settings_init(&ws);
@@ -640,9 +640,9 @@ static ai_outcome run_ai_race(const char* data, const char* courses, int quick) 
   uint32_t snap_tick = 0;
   snprintf(path, sizeof path, "%s/perf/wm7.perf.json", data);
   if (!check(wm_perf_load(path, &f.perf), "wm7")) goto done;
-  snprintf(path, sizeof path, "%s/venues/example_bay.venue.json", data);
+  snprintf(path, sizeof path, "%s/venues/practice_waters.venue.json", data);
   if (!check(wm_venue_load(path, &f.venue), "venue")) goto done;
-  snprintf(path, sizeof path, "%s/example_bay/example_wl.course.json", courses);
+  snprintf(path, sizeof path, "%s/practice_waters/example_wl.course.json", courses);
   if (!check(wm_course_load(path, &f.course), "course")) goto done;
   w = ai_world(&f);
   if (w == NULL || !check(wm_world_create_race(w, f.course), "create race")) goto done;
@@ -664,7 +664,7 @@ static ai_outcome run_ai_race(const char* data, const char* courses, int quick) 
       memcpy(mem, b, mem_n);
       snap_tick = wm_world_tick(w);
     }
-    o.checksum = wm_world_step(w);
+    wm_world_step(w);
     /* The taken-over human is handed back for a moment and taken over again (a short reconnect). */
     if ((int64_t)wm_world_tick(w) == ri.n_gun - 600) {
       wm_world_ai_release(w, N_AI - 1);
@@ -673,6 +673,7 @@ static ai_outcome run_ai_race(const char* data, const char* courses, int quick) 
     }
   }
   o.ticks = wm_world_tick(w);
+  o.checksum = wm_world_checksum(w);
   const int results = wm_world_result_count(w);
   int finished = 0;
   for (int r = 0; r < results; ++r) {
@@ -700,8 +701,8 @@ static ai_outcome run_ai_race(const char* data, const char* courses, int quick) 
       !check(wm_world_ai_load(w2, mem, mem_n), "AI load"))
     goto done;
   const int bad_mem = wm_world_ai_load(w2, mem, mem_n - 1) == WM_ERR_LOAD; /* truncated: rejected */
-  uint64_t c2 = 0;
-  while (!race_closed(w2) && wm_world_tick(w2) < o.ticks) c2 = wm_world_step(w2);
+  while (!race_closed(w2) && wm_world_tick(w2) < o.ticks) wm_world_step(w2);
+  const uint64_t c2 = wm_world_checksum(w2);
   printf("AI race from the snapshot at tick %u: %u ticks, checksum %016llx (%s)\n", snap_tick, wm_world_tick(w2),
          (unsigned long long)c2, c2 == o.checksum && wm_world_tick(w2) == o.ticks ? "same" : "DIFFERENT");
   /* The world that ran on takes the snapshot too (it is reset first); a damaged one leaves it as it was. */
@@ -710,8 +711,8 @@ static ai_outcome run_ai_race(const char* data, const char* courses, int quick) 
                        wm_world_tick(w) == o.ticks;
   if (!check(wm_world_load(w, f.course, snap, snap_n), "reload") || !check(wm_world_ai_load(w, mem, mem_n), "AI reload"))
     goto done;
-  uint64_t c3 = 0;
-  while (!race_closed(w) && wm_world_tick(w) < o.ticks) c3 = wm_world_step(w);
+  while (!race_closed(w) && wm_world_tick(w) < o.ticks) wm_world_step(w);
+  const uint64_t c3 = wm_world_checksum(w);
   printf("AI race reloaded into the first world: %u ticks, checksum %016llx (%s)\n", wm_world_tick(w),
          (unsigned long long)c3, c3 == o.checksum && wm_world_tick(w) == o.ticks ? "same" : "DIFFERENT");
   o.ok = (quick || (race_closed(w) && results == N_AI && finished >= N_AI / 2)) && c2 == o.checksum &&

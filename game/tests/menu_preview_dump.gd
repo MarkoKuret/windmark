@@ -21,8 +21,9 @@ func _init() -> void:
 	Settings.reset_current()
 	var s := Settings.current()
 	s.welcomed = true
-	s.last_setup = {"mode": "race", "class_id": "wm7", "venue": "example_bay", "course": "example_bay/example_wl",
-		"fleet_size": 10, "ai_level": "expert", "wind_kn": 14.0, "wind_from_deg": 30.0}
+	s.last_setup = {"mode": "race", "class_id": "wm7", "venue": "practice_waters", "course": "practice_waters/example_wl",
+		"fleet_size": 10, "ai_level": "expert", "weather": "local", "wind_kn": 14.0, "wind_from_deg": 30.0,
+		"shift": "shifty", "gusts": "standard"}
 	root.size = SIZE
 	m = (load("res://scenes/menu/main_menu.tscn") as PackedScene).instantiate() as MainMenu
 	m.change_scenes = false
@@ -39,6 +40,14 @@ func _init() -> void:
 	m.quick.rows["fleet_size"].grab_focus()
 	await _frames(2)
 	_dump("race_card")
+	# the weather modes (menus.md §1, §1.3): Local with the full briefing, Random with only the Unknown line, Custom
+	# with its four rows and the briefing without the Tip
+	for mode in ["local", "random", "custom"]:
+		m.quick.rows["weather"].set_value(mode, true)
+		m.quick.rows["weather"].grab_focus()
+		await _frames(3)
+		_dump("race_card_" + mode)
+	m.quick.rows["weather"].set_value("local", true)
 	m.close_page()
 	m.open_page("settings")
 	await _frames(2)
@@ -66,8 +75,8 @@ class Host extends Node:
 	var hud: Hud
 	var rig: CameraRig = null
 	var runner: SimRunner = null
-	var venue := "example_bay"
-	var course := "example_bay/example_wl"
+	var venue := "practice_waters"
+	var course := "practice_waters/example_wl"
 	var class_id := "wm7"
 
 	func session_setup() -> GameSetup:
@@ -86,11 +95,11 @@ func _race_end() -> void:
 	var sim := CoreSimSource.new()
 	sim.settings = {"race_seed": 20261005, "wind_speed": 12.0 * HudFormat.KNOT, "wind_from": 0.0, "shift_preset": 1,
 		"free_sailing_s": 10.0}
-	sim.create("example_bay")
+	sim.create("practice_waters")
 	sim.add_entry("wm7", {"human": true})
 	for i in 7:
 		sim.add_ai("wm7", "intermediate")
-	sim.create_race("example_bay/example_wl")
+	sim.create_race("practice_waters/example_wl")
 	var host := Host.new()
 	host.hud = Hud.new()
 	host.add_child(host.hud)
@@ -273,4 +282,4 @@ func _map(cm: CourseMap, r: Rect2) -> Dictionary:
 			var b: Vector2 = to_px.call(cm.points[str(ends[1])])
 			lines[key] = [a.x, a.y, b.x, b.y]
 	return {"k": "map", "r": _rect(r), "marks": marks, "path": path, "lines": lines,
-		"wind_from": cm.wind_from_deg, "wind_kn": cm.wind_kn}
+		"wind_from": cm.wind_from_deg, "wind_kn": cm.wind_kn, "wind_shown": cm.wind_shown}

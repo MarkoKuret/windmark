@@ -14,11 +14,14 @@ const CLOTHS := ["dacron", "laminate", "nylon"]
 const ROLES := ["main", "headsail", "code_zero", "spinnaker"]
 ## data_format.md §8.7: the class rope set by function, with each function's default braid and fleck colours
 const ROPES := {
-	"mainsheet": ["#1f2b45", "#d8d8d2"],
-	"sheet": ["#d2d2cb", "#b3242a"],
-	"kite_sheet": ["#2b62a6", "#dadad4"],
-	"halyard": ["#d4d4cd", "#2d7a40"],
-	"control": ["#1d1e21", "#c9a227"],
+	"mainsheet": ["#ae7249", "#2d3548"],
+	"sheet": ["#3e797b", "#d6d6ce"],
+	"kite_sheet": ["#91506f", "#d6d6ce"],
+	"halyard_main": ["#9c4c4e", "#d6d6ce"],
+	"halyard_jib": ["#486792", "#d6d6ce"],
+	"halyard_kite": ["#497551", "#d6d6ce"],
+	"halyard_code": ["#b79c5a", "#2a2b2e"],
+	"control": ["#6b5986", "#d6d6ce"],
 }
 const ROPE_PATTERNS := ["fleck", "tracer", "twill", "solid"]
 

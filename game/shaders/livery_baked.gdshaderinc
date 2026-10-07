@@ -1,4 +1,4 @@
-// Baked liveries (data_format.md §8.5, sail_visuals.md §11.2): what boat_baked.gdshader and sail_baked.gdshader
+// Baked liveries (data_format.md §8.5, sail_visuals.md §11.2): what boat_atlas.gdshader and sail_baked.gdshader
 // share, and the offline preview (tests/livery_preview.py) compiles too: normal mapping without mesh tangents, and
 // the per-boat overlay of the boat's name and sail number from its text texture (livery_text.gdshaderinc, included
 // before this file), one texture sample per side. Common subset of Godot's shading language and GLSL 4.1.
@@ -20,6 +20,13 @@ uniform vec3 sn_color = vec3(0.0, 0.0, 0.0);    // linear
 // boxes (centre along, centre up, half width, half height), m from the tack: rows 0, 1 port, 2, 3 starboard
 uniform vec4 sn_box[4];
 uniform vec4 sn_tex[4];
+
+// A tangent-space normal from a normal map's texel c: x and y from red and green, z rebuilt. Godot imports a texture
+// sampled with hint_normal as two-channel RGTC, whose blue reads 0, so the blue channel is never used.
+vec3 wm_normal_texel(vec3 c) {
+	vec2 xy = c.xy * 2.0 - 1.0;
+	return vec3(xy, sqrt(max(1.0 - dot(xy, xy), 0.0)));
+}
 
 // Perturbs the unit normal n by the tangent-space normal m (OpenGL convention in an image's own axes) sampled at
 // the texture coordinates uv, p the position (both in one space): the tangent and bitangent are the surface

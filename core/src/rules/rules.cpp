@@ -175,12 +175,13 @@ void Rules::boat_step(std::uint32_t n, std::size_t i, const Race& race, const Ru
   const std::vector<Vec2>& body = s.perf->dynamics.collision.outline;
   s.c = in.pos;
   place_outline(body, in.pos, in.psi, s.hull);
+  place_hull(body, in.pos, in.psi, s.placed);
   s.bow = bow_point(body, in.pos, in.psi);
   s.stern = stern_point(body, in.pos, in.psi);
   s.twa_prev = s.has_prev ? s.twa : wrap_pi(in.twd - in.psi);
   s.twa = wrap_pi(in.twd - in.psi);
   if (in.tws != s.vmg_tws) {
-    const PolarVmg v = polar_vmg(*s.perf, in.tws);
+    const PolarVmg v = polar_vmg(*s.perf, in.tws, vmg_[s.perf]);
     s.theta_ch = v.up_twa > 0.0f ? v.up_twa : 0.7f;
     s.theta_dn = v.down_twa > 0.0f ? v.down_twa : 2.6f;
     s.vmg_tws = in.tws;
@@ -695,7 +696,7 @@ void Rules::mark_rules(std::uint32_t n, PairState& ps, const Race& race, std::sp
                                   [&](const MarkRoom& mr) { return mr.rule == RuleCode::r18_2; }),
                    ps.rooms.end());
     if (st_[S].stbd_since_zone.empty() || !st_[S].stbd_since_zone[static_cast<std::size_t>(M)]) continue;
-    if (std::fabs(st_[S].twa) <= st_[S].theta_ch + 3.0f * DEG && pred_gap(T, S, 1.0f, 1.0f) < margin(T, S)) {
+    if (std::fabs(st_[S].twa) <= st_[S].theta_ch + 3.0f * DEG && pred_gap(T, S, 1.0f, max(1.0f, margin(T, S))) < margin(T, S)) {
       ps.r183 = true;
       ps.r183_holder = static_cast<std::int32_t>(T);
     }
@@ -830,6 +831,7 @@ void Rules::obstruction_rules(std::uint32_t /*n*/, PairState& ps, const Race& ra
     const std::vector<Vec2>* poly;
     bool convex;
     bool start_mark;
+    const PolygonIndex* idx = nullptr;  // land: the edge grid built at load
   };
   std::vector<Obst> obs;
   auto leg_mark = [&](std::size_t x, std::int32_t mark) {
@@ -867,6 +869,10 @@ void Rules::obstruction_rules(std::uint32_t /*n*/, PairState& ps, const Race& ra
     }
     for (const VenueLand& l : venue_->land) {
       ++id;
+      if (l.index.usable(l.points)) {  // the same circle, computed once at load
+        obs.push_back({id, false, l.index.centre, l.index.radius, &l.points, false, false, &l.index});
+        continue;
+      }
       Vec2 c{0.0f, 0.0f};
       for (const Vec2 v : l.points) c = v_add(c, v);
       c = v_scale(c, 1.0f / static_cast<float>(l.points.size()));
@@ -884,28 +890,13 @@ void Rules::obstruction_rules(std::uint32_t /*n*/, PairState& ps, const Race& ra
     for (const Vec2 v : ex) r = max(r, v_dist(v, c));
     obs.push_back({id, false, c, r, &ex, false, false});
   }
-  auto gap_to = [&](const std::vector<Vec2>& hull, const Obst& o) {
+  auto gap_to = [&](std::span<const Vec2> hull, const Obst& o) {
     if (o.circle) return convex_circle_gap(hull, o.c, o.r);
-    return o.convex ? convex_gap(hull, *o.poly) : polygon_gap(hull, *o.poly);
+    return o.convex ? convex_gap(hull, *o.poly) : polygon_gap(hull, *o.poly, o.idx);
   };
   auto near_point = [&](Vec2 p, const Obst& o) {
     if (o.circle) return v_add(o.c, v_scale(v_unit(v_sub(p, o.c), {1.0f, 0.0f}), o.r));
-    Vec2 best = o.c;
-    float bd = INFINITY;
-    const std::vector<Vec2>& q = *o.poly;
-    for (std::size_t k = 0; k < q.size(); ++k) {
-      const Vec2 a = q[k], b = q[(k + 1) % q.size()];
-      const Vec2 ab = v_sub(b, a);
-      const float l2 = v_dot(ab, ab);
-      const float t = l2 > 0.0f ? clamp(v_dot(v_sub(p, a), ab) / l2, 0.0f, 1.0f) : 0.0f;
-      const Vec2 x = v_add(a, v_scale(ab, t));
-      const float d = v_dist(p, x);
-      if (d < bd) {
-        bd = d;
-        best = x;
-      }
-    }
-    return best;
+    return polygon_nearest_point(p, *o.poly, o.idx, o.c);
   };
   const float H = p_.obstruction_h;
   const std::size_t K = static_cast<std::size_t>(std::lround(H / 0.1f)) + 1;
@@ -919,8 +910,15 @@ void Rules::obstruction_rules(std::uint32_t /*n*/, PairState& ps, const Race& ra
         both = false;
         break;
       }
+      // A land polygon's bounding circle spans the whole shore; its edges are the real bound (no hull point
+      // reaches beyond `reach` of the centre within the horizon).
+      if (!o.convex && !o.circle && !point_in_polygon(st_[x].c, *o.poly, o.idx) &&
+          point_polygon_edge_dist_capped(st_[x].c, *o.poly, o.idx, reach) > reach) {
+        both = false;
+        break;
+      }
       float g = INFINITY;
-      for (std::size_t k = 0; k < K && g >= st_[x].L; k += 5) g = min(g, gap_to(pred_hull(x, k), o));
+      for (std::size_t k = 0; k < K && g >= st_[x].L; k += 5) g = min(g, gap_to(pred_hull(x, k).pts(), o));
       if (!(g < st_[x].L)) both = false;
     }
     if (!both) continue;
@@ -1139,7 +1137,7 @@ void Rules::judge_pair(std::uint32_t n, PairState& ps, const Race& race, std::sp
   // §5.4 rule 17.
   ps.r17 = false;
   if (rule_on(RuleCode::r17, race)) {
-    const float gap = hull_gap(A, B);
+    const float gap = ps.gap;  // hull_gap(A, B) of this tick (step 2)
     if (ps.r17_holder >= 0) {
       const std::size_t Lw = static_cast<std::size_t>(ps.r17_holder);
       if (!overlapped(ps.raw) || !same_tack || gap > p_.r17_clear * st_[Lw].L) ps.r17_holder = -1;
@@ -1244,7 +1242,7 @@ void Rules::judge_pair(std::uint32_t n, PairState& ps, const Race& race, std::sp
   if (!quiet) ps.clear_since = n;
   if (ps.inc_open && n - ps.clear_since >= ticks(p_.incident_close)) ps.inc_open = false;
   if (ps.protest_open) {
-    ps.protest_min_gap = min(ps.protest_min_gap, hull_gap(A, B));
+    ps.protest_min_gap = min(ps.protest_min_gap, ps.gap);  // hull_gap(A, B) of this tick (step 2)
     const std::size_t F = static_cast<std::size_t>(ps.protest_fouled);
     if (in[F].ai && ps.protest_min_gap < 0.5f * m) protest(ps.protest_fouled, n);
     if (ps.protest_open && n >= ps.protest_deadline) ps.protest_open = false;
@@ -1289,7 +1287,7 @@ void Rules::judge_pair(std::uint32_t n, PairState& ps, const Race& race, std::sp
   r.ttc = INFINITY;
   auto touching = [&](std::size_t k) {
     const float lb = v_dist(sa.pred[k].c, sb.pred[k].c) - sa.r_hull - sb.r_hull;
-    return lb <= 0.0f && convex_intersect(pred_hull(A, k), pred_hull(B, k));
+    return lb <= 0.0f && convex_intersect(pred_hull(A, k).pts(), pred_hull(B, k).pts());
   };
   if (touching(0)) {
     r.ttc = 0.0f;

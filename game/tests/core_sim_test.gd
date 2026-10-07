@@ -5,10 +5,13 @@ extends SceneTree
 ##   water, 12 kn steady wind, no puffs, placed at the origin on heading 1.2 rad, 60 s of auto trim with the helm
 ##   centred; prints the example's line so run_core_sim_test.sh can compare the two
 ## - every SimSource call, the render pose between ticks, the input frame wire form, sail requests
-## - a race world on example_bay: the sea renderer calls (components, exposure, wind state with puffs, current),
+## - a race world on practice_waters: the sea renderer calls (components, exposure, wind state with puffs, current),
 ##   the sea clock, the drawn sea mirror against the core's height, race events, determinism
 ## - AI boats (WM-016.24): add_ai, take over and release, telemetry and debug, and a race saved at the gun
 ##   (world and AI memory) and continued in a new world to the same checksum
+## - the tick on the worker thread (SimRunner.prefetch, CoreSim.step_begin): a race with AI boats run by frames with
+##   ticks started ahead gives, tick by tick, the checksums of the same input frames stepped on the main thread;
+##   render_poses matches render_pose; a call during a running tick waits for it
 
 const KNOT := 0.514444470
 
@@ -21,12 +24,68 @@ func _init() -> void:
 		t.finish(self, "core sim test")
 		return
 	var probe: Object = ClassDB.instantiate(&"CoreSim")
-	t.ok(probe.api_version() == 2, "C API version 2")
+	t.ok(probe.api_version() == 4, "C API version 4")
 	t.ok(CoreSimSource.default_settings().has("race_seed"), "default settings")
 	_free_sailing()
+	_weather()
 	_race_world()
 	_ai()
+	_threaded()
 	t.finish(self, "core sim test")
+
+
+## race.md §2.1 through the extension: resolve_settings for Local, Random and Custom on Practice Waters, the tide
+## and trend fixture's tide at the drawn phase (the same in the world as in VenueWeather.tide_at_gun), and a world
+## made on the resolved settings.
+func _weather() -> void:
+	t.begin("weather modes resolved (race.md 2.1)")
+	var why := []
+	var base := {"race_seed": 4242, "weather": 0}
+	var loc := CoreSimSource.resolve_settings(base, "practice_waters", "practice_waters/example_wl", why)
+	t.ok(not loc.is_empty(), "Local resolves on Practice Waters %s" % [why])
+	if loc.is_empty():
+		return
+	var kn := float(loc["wind_speed"]) / KNOT
+	t.ok(kn >= 10.0 - 1e-3 and kn <= 14.0 + 1e-3 and float(loc["wind_from"]) == 0.0, "Local: %.2f kn from 0" % kn)
+	t.ok(int(loc["shift_preset"]) == -1 and absf(float(loc["shift_amplitude"]) - deg_to_rad(3.0)) < 1e-6
+		and int(loc["shift_hold_max_ms"]) == 120000, "Local: stable shifts written out")
+	t.ok(absf(float(loc["puff"]["cap_up"]) - 0.15) < 1e-6 and bool(loc["puffs"]), "Local: light puffs")
+	t.ok(loc == CoreSimSource.resolve_settings(base, "practice_waters", "practice_waters/example_wl"),
+		"the same seed resolves the same settings")
+	var other := CoreSimSource.resolve_settings({"race_seed": 77, "weather": 0}, "practice_waters", "")
+	t.ok(float(other["wind_speed"]) != float(loc["wind_speed"]), "another seed, another day")
+	var rnd := CoreSimSource.resolve_settings({"race_seed": 4242, "weather": 1}, "practice_waters", "")
+	var rk := float(rnd["wind_speed"]) / KNOT
+	t.ok(rk >= 6.0 - 1e-3 and rk <= 18.0 + 1e-3, "Random: %.2f kn within 6 to 18 kn" % rk)
+	var cus := CoreSimSource.resolve_settings({"race_seed": 1, "weather": 2, "wind_speed": 9.0, "wind_from": 1.0,
+		"shift_preset": 4, "puff_preset": 0}, "practice_waters", "")
+	t.ok(float(cus["wind_speed"]) == 9.0 and absf(float(cus["shift_amplitude"]) - deg_to_rad(25.0)) < 1e-6
+		and not bool(cus["puffs"]), "Custom: the player's wind, unstable shifts, no puffs")
+	# the tide and trend fixture: the race starts at a drawn phase of the real cycle and the stream holds
+	var tidal := ProjectSettings.globalize_path("res://tests/fixtures/tidal_test.venue.json")
+	var tl := CoreSimSource.resolve_settings({"race_seed": 9, "weather": 0}, tidal, "practice_waters/example_wl", why)
+	t.ok(not tl.is_empty() and absf(float(tl["tide_scale"]) - 0.6) < 1e-6 and float(tl["shift_trend_rate"]) < 0.0
+		and (tl["swells"] as Array).size() == 1, "fixture: tide, trend and swell resolved %s" % [why])
+	var cs := CoreSimSource.new()
+	cs.settings = tl
+	t.ok(cs.create(tidal), "a world on the resolved settings")
+	var ws := cs.wind_state(0.0)
+	t.ok(absf(float(ws.get("base_speed", 0.0)) - float(tl["wind_speed"])) < 1e-6, "the world's base wind is the resolved one")
+	var gun := (30.0 + 180.0) * 1000.0
+	var c_gun: Vector2 = cs.core.current_at(0.0, 0.0, int(gun))
+	var c_end: Vector2 = cs.core.current_at(0.0, 0.0, int(gun + 600000.0))
+	var want := VenueWeather.tide_at_gun(tl, gun / 1000.0) * 1.29
+	t.ok(absf(c_gun.x - want) < 2e-3 and absf(c_end.x - c_gun.x) < 0.1 * 1.29 * 0.6,
+		"the tide at the gun is the drawn phase's (%.3f, want %.3f) and holds through the race (%.3f)" % [c_gun.x,
+		want, c_end.x])
+	var phases := {}
+	for sd in range(1, 41):
+		var r := CoreSimSource.resolve_settings({"race_seed": sd, "weather": 0}, tidal, "practice_waters/example_wl")
+		var f := VenueWeather.tide_at_gun(r, gun / 1000.0) / 0.6
+		phases["flood" if f > 0.7 else ("ebb" if f < -0.7 else "between")] = true
+	t.ok(phases.size() == 3, "over seeds the race draws flood, ebb and between: %s" % [phases.keys()])
+	t.ok(CoreSimSource.resolve_settings({"race_seed": 1, "weather": 5}, "practice_waters", "", why).is_empty(),
+		"a bad weather mode is refused")
 
 
 func _free_sailing() -> void:
@@ -138,7 +197,7 @@ func _free_sailing() -> void:
 
 
 func _race_world() -> void:
-	t.begin("race world on example_bay")
+	t.begin("race world on practice_waters")
 	var a := _make_race()
 	var b := _make_race()
 	if not t.ok(a != null and b != null, "two race worlds"):
@@ -204,12 +263,12 @@ func _make_race() -> CoreSimSource:
 	var sim := CoreSimSource.new()
 	sim.settings = {"race_seed": 20260925, "wind_speed": 11.0 * KNOT, "wind_from": 0.2, "shift_preset": 1,
 		"free_sailing_s": 10.0}
-	if not sim.create("example_bay"):
+	if not sim.create("practice_waters"):
 		t.ok(false, "race world: " + sim.last_error())
 		return null
 	sim.add_entry("wm7", {"human": true})
 	sim.add_entry("wm12")
-	if not sim.create_race("example_bay/example_wl"):
+	if not sim.create_race("practice_waters/example_wl"):
 		t.ok(false, "create race: " + sim.last_error())
 		return null
 	return sim
@@ -219,7 +278,7 @@ func _ai_world() -> CoreSimSource:
 	var sim := CoreSimSource.new()
 	sim.settings = {"race_seed": 5, "wind_speed": 11.0 * KNOT, "wind_from": 0.0, "shift_preset": 1,
 		"free_sailing_s": 5.0}
-	if not sim.create("example_bay"):
+	if not sim.create("practice_waters"):
 		return null
 	sim.add_entry("wm7", {"human": true})
 	for i in 3:
@@ -230,7 +289,7 @@ func _ai_world() -> CoreSimSource:
 func _ai() -> void:
 	t.begin("AI boats")
 	var a := _ai_world()
-	if not t.ok(a != null and a.create_race("example_bay/example_wl"), "race world with 3 AI boats"):
+	if not t.ok(a != null and a.create_race("practice_waters/example_wl"), "race world with 3 AI boats"):
 		return
 	t.ok(a.boat_count() == 4 and not a.ai_has(0) and a.ai_has(1) and a.ai_has(3) and a.core.ai_count() == 3,
 		"boats 1 to 3 AI, the player not")
@@ -252,9 +311,64 @@ func _ai() -> void:
 	t.ok(tel["start_delay"] >= 0.0 and d.has("tactic_name") and d["aim"] is Vector2,
 		"AI started and decided (%s, start %.1f s after the gun)" % [d.get("tactic_name", "?"), tel["start_delay"]])
 	var b := _ai_world()
-	t.ok(b.load_snapshot(snap, "example_bay/example_wl") and b.tick() == gun, "loaded into a new world")
+	t.ok(b.load_snapshot(snap, "practice_waters/example_wl") and b.tick() == gun, "loaded into a new world")
 	b.step_ticks(1200, false)
 	t.ok(b.checksum() == a.checksum() and b.tick() == a.tick(), "continues to the same checksum")
 	var c := _ai_world()
 	var bad := {"world": snap["world"], "ai": snap["ai"].slice(0, snap["ai"].size() - 3)}
-	t.ok(not c.load_snapshot(bad, "example_bay/example_wl"), "a damaged AI block is rejected")
+	t.ok(not c.load_snapshot(bad, "practice_waters/example_wl"), "a damaged AI block is rejected")
+
+
+func _threaded() -> void:
+	t.begin("the tick on the worker thread")
+	var a := _ai_world()
+	var b := _ai_world()
+	if not t.ok(a != null and b != null and a.create_race("practice_waters/example_wl")
+			and b.create_race("practice_waters/example_wl"), "two race worlds with AI boats"):
+		return
+	t.ok(a.can_step_async(), "CoreSimSource steps on a thread")
+	# a: frames of uneven length with the ticks started ahead at the end of each frame, as the sail scene does
+	var pc := PlayerControls.new()
+	pc.auto_trim = true
+	var run := SimRunner.new(a, pc, 0)
+	run.keep_frames = 100000
+	var sums := {}
+	run.ticked.connect(func(n: int) -> void: sums[n] = a.checksum())
+	var dts := [1.0 / 60.0, 1.0 / 144.0, 1.0 / 30.0, 0.021, 1.0 / 90.0, 0.07]
+	var total := 0.0
+	var ahead := 0
+	var waited_ok := true
+	for k in 6000:
+		var dt: float = dts[(k * 7 + k / 13) % dts.size()]
+		total += dt
+		pc.h_cmd = sin(k * 0.013) * 0.6
+		run.advance(dt)
+		if run.prefetch():
+			ahead += 1
+			if k % 97 == 0:
+				var n0 := a.tick()  # waits for the running tick: the world is never read mid-step
+				waited_ok = waited_ok and not a.core.is_stepping() and n0 == a.core.tick()
+	run.settle()
+	t.ok(ahead > 1000 and ahead <= run.frames.size(), "ticks started ahead: %d of %d" % [ahead, run.frames.size()])
+	t.ok(absi(a.tick() - int(total / SimSource.DT)) <= 2, "ticks follow the time: %d for %.2f s" % [a.tick(), total])
+	t.ok(waited_ok, "a read during a running tick waits for it")
+	# b: the same input frames, each applied to its tick and stepped on the main thread
+	var same := true
+	var first_bad := -1
+	for f in run.frames:
+		b.apply_input(0, f)
+		b.step()
+		if sums.get(b.tick(), -1) != b.checksum():
+			same = false
+			if first_bad < 0:
+				first_bad = b.tick()
+	t.ok(same and b.tick() == a.tick(), "the same checksum at every tick (%d ticks, first difference %d)"
+		% [b.tick(), first_bad])
+	var poses := a.render_poses(0.37)
+	var all_same := poses.size() == a.boat_count()
+	for i in a.boat_count():
+		var arr: PackedFloat32Array = a.core.render_pose(i, 0.37)
+		var p: SimSource.RenderPose = poses[i]
+		all_same = all_same and is_equal_approx(p.pos_x, arr[0]) and is_equal_approx(p.psi, arr[3]) \
+				and is_equal_approx(p.twd_from, arr[8])
+	t.ok(all_same and a.render_pose(2, 0.37) == poses[2], "render_poses: one call, the same poses, shared per alpha")

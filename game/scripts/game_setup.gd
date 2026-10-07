@@ -12,16 +12,22 @@ var class_id := "wm7"
 ## number row); "": the first boat of the file
 var livery := ""
 ## venue id (data/venues/<id>.venue.json)
-var venue := "example_bay"
+var venue := "practice_waters"
 ## course as "<venue>/<course id>" (game/data/courses/<venue>/<id>.course.json), used in race mode
-var course := "example_bay/example_wl"
+var course := "practice_waters/example_wl"
 ## boats in the race including the player, 1 to 40
 var fleet_size := 10
 ## AI level of the AI boats: easy, intermediate, expert or pro (ai.md)
 var ai_level := "intermediate"
-## base true wind speed in knots and the direction it blows from in degrees (0 = north)
+## weather mode (race.md §2.1): local (the venue's own weather), random (a surprise day) or custom (wind_kn,
+## wind_from_deg, shift and gusts below); "" sets the wind of the fields below directly (tests, tools)
+var weather := "local"
+## Custom: base true wind speed in knots and the direction it blows from in degrees (0 = north), the shift preset
+## (steady, stable, oscillating, shifty, unstable) and the puff preset (none, light, standard, gusty)
 var wind_kn := 12.0
 var wind_from_deg := 0.0
+var shift := "shifty"
+var gusts := "standard"
 ## seed of the world (wind shifts, puffs, AI randomness); 0 picks one from the clock
 var seed := 0
 ## scenario mode: the scenario id (game/data/scenarios/<id>.scenario.json) or a path to a .scenario.json file
@@ -38,10 +44,11 @@ static func current() -> GameSetup:
 
 
 ## The fields the menus remember (menus.md §1, Settings.last_setup): mode, class, sail number, venue, course, fleet,
-## AI level and wind.
+## AI level and weather.
 func to_dict() -> Dictionary:
 	return {"mode": mode, "class_id": class_id, "livery": livery, "venue": venue, "course": course,
-		"fleet_size": fleet_size, "ai_level": ai_level, "wind_kn": wind_kn, "wind_from_deg": wind_from_deg}
+		"fleet_size": fleet_size, "ai_level": ai_level, "weather": weather, "wind_kn": wind_kn,
+		"wind_from_deg": wind_from_deg, "shift": shift, "gusts": gusts}
 
 
 ## A copy with a new seed (0: from the clock), as Race again starts it (menus.md §5).

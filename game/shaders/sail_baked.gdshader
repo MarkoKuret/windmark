@@ -42,7 +42,7 @@ void fragment() {
 	vec2 t = vec2((v_plan.x - sk_rect.x) / sk_rect.z, (sk_rect.y - v_plan.y) / sk_rect.w);
 	vec3 a = v_side > 0.5 ? texture(sk_albedo_stbd, vec2(1.0 - t.x, t.y)).rgb : texture(sk_albedo_port, t).rgb;
 	vec3 orm = texture(sk_orm, t).rgb;
-	vec3 nm = texture(sk_normal, t).rgb * 2.0 - 1.0;
+	vec3 nm = wm_normal_texel(texture(sk_normal, t).rgb);
 	vec3 dt = texture(sk_detail, vec2(v_plan.x, -v_plan.y) / sk_detail_tile).rgb;
 	nm = normalize(vec3(nm.xy + (dt.xy * 2.0 - 1.0) * sk_detail_amount, nm.z));
 	a *= mix(1.0, dt.b * 2.0, sk_detail_amount);

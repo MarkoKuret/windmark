@@ -154,6 +154,42 @@ void Table::at_each(float x, std::span<const float> ys, std::span<float> out) co
   }
 }
 
+void Table::rows_at_each(std::span<const float> ys, std::vector<float>& rows) const {
+  assert(rank() == 2);
+  const std::uint32_t n0 = static_cast<std::uint32_t>(axes_[0].points.size());
+  const float* a = axes_[1].points.data();
+  const std::uint32_t n1 = static_cast<std::uint32_t>(axes_[1].points.size());
+  const float* v = values_.data();
+  rows.resize(static_cast<std::size_t>(n0) * ys.size());
+  std::uint32_t lo = 0;
+  for (std::size_t k = 0; k < ys.size(); ++k) {
+    const float y = ys[k];
+    assert(k == 0 || !(y < ys[k - 1]));
+    Bracket by;  // as in at_each
+    if (n1 == 1 || !(y >= a[0])) {
+      by = {0, 0, 0.0f};
+    } else if (y >= a[n1 - 1]) {
+      by = {n1 - 1, n1 - 1, 0.0f};
+    } else {
+      while (a[lo + 1] <= y) ++lo;
+      by = {lo, lo + 1, (y - a[lo]) / (a[lo + 1] - a[lo])};
+    }
+    for (std::uint32_t i = 0; i < n0; ++i) {
+      rows[i * ys.size() + k] = lerp(v[i * n1 + by.i0], v[i * n1 + by.i1], by.t);
+    }
+  }
+}
+
+void Table::at_each_rows(float x, std::span<const float> rows, std::span<float> out) const {
+  assert(rank() == 2);
+  const Axis& ax = axes_[0];
+  const Bracket bx = bracket(ax.points.data(), static_cast<std::uint32_t>(ax.points.size()), x);
+  const std::size_t m = out.size();
+  const float* r0 = rows.data() + bx.i0 * m;
+  const float* r1 = rows.data() + bx.i1 * m;
+  for (std::size_t k = 0; k < m; ++k) out[k] = lerp(r0[k], r1[k], bx.t);
+}
+
 float Table::at(float x, float y, float w) const {
   assert(rank() == 3);
   const Axis& ax = axes_[0];

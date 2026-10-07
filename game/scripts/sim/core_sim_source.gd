@@ -49,7 +49,28 @@ var _info := {}  # class id -> ClassInfo
 var _ai_level := {}  # boat -> AI level name of add_ai
 var _fixed := {}  # records fixed for the world's life: the course, its labels
 var _boat_class: Array[String] = []
-var _cache := {}  # records of the last tick, "kind:boat" -> record
+## records of the last tick, by integer key: K_* * KIND + boat (the per-boat records) or K_* (the others)
+var _cache := {}
+## render poses of the last tick by alpha: alpha -> Array of RenderPose by boat (one CoreSim call per alpha)
+var _poses := {}
+
+const KIND := 4096
+const K_STATE := 1
+const K_CONTROLS := 2
+const K_OUTPUTS := 3
+const K_SAILS := 4
+const K_RACE_BOAT := 5
+const K_START := 6
+const K_RULES := 7
+const K_RACE := 8
+const K_ORDER := 9
+const K_RESULTS := 10
+const K_PAIRS := 11
+const K_RACE_EVENTS := 12
+const K_RULES_EVENTS := 13
+const K_CONTACT_EVENTS := 14
+## distinct alphas kept per tick (the frame's, the radar's, 1.0)
+const POSE_ALPHAS := 4
 
 
 ## Whether the GDExtension is loaded.
@@ -60,6 +81,34 @@ static func available() -> bool:
 ## The world settings of the C API with their spec defaults (wm_world_settings_init), {} without the extension.
 static func default_settings() -> Dictionary:
 	return ClassDB.instantiate(&"CoreSim").default_settings() if available() else {}
+
+
+## The venue file of a bare venue id (data/venues/<id>.venue.json); a path stays as it is.
+static func venue_file(venue: String) -> String:
+	if venue != "" and not venue.contains("/"):
+		return BoatClassData.repo_path("data/venues/%s.venue.json" % venue)
+	return venue
+
+
+## The course file of "<venue>/<id>" (game/data/courses/<venue>/<id>.course.json); a .json path stays as it is.
+static func course_file(course: String) -> String:
+	if course == "" or course.ends_with(".json"):
+		return course
+	return BoatClassData.repo_path("game/data/courses/%s.course.json" % course)
+
+
+## race.md §2.1: `settings` (CoreSim keys, with `weather`: 0 local, 1 random, 2 custom) with the venue's conditions
+## resolved for the seed into every wind, current and sea setting, once before create(); `course` gives the tide's
+## timing ("" free sailing). {} on failure, with the reason appended to `why`.
+static func resolve_settings(s: Dictionary, venue: String, course := "", why := []) -> Dictionary:
+	if not available():
+		why.append("the Windmark GDExtension is not loaded")
+		return {}
+	var c: Object = ClassDB.instantiate(&"CoreSim")
+	var r: Dictionary = c.resolve_settings(s, venue_file(venue), course_file(course))
+	if r.is_empty():
+		why.append(c.last_error())
+	return r
 
 
 ## the venue file the world was created on ("" for open water)
@@ -78,9 +127,7 @@ func create(venue := "") -> bool:
 		_err = "the world exists already"
 		return false
 	core = ClassDB.instantiate(&"CoreSim")
-	var path := venue
-	if venue != "" and not venue.contains("/"):
-		path = BoatClassData.repo_path("data/venues/%s.venue.json" % venue)
+	var path := venue_file(venue)
 	if not core.create(settings, path):
 		_err = core.last_error()
 		core = null
@@ -121,7 +168,7 @@ func add_entry(id: String, entry := {}) -> int:
 	while _boat_class.size() <= b:
 		_boat_class.append("")
 	_boat_class[b] = id
-	_cache.clear()
+	_invalidate()
 	return b
 
 
@@ -138,7 +185,7 @@ func add_ai(id: String, level: Variant = "intermediate", speed_only := false) ->
 	while _boat_class.size() <= b:
 		_boat_class.append("")
 	_boat_class[b] = id
-	_cache.clear()
+	_invalidate()
 	return b
 
 
@@ -202,7 +249,7 @@ func load_snapshot(snap: Dictionary, course := "") -> bool:
 	var path := course
 	if course != "" and not course.ends_with(".json"):
 		path = BoatClassData.repo_path("game/data/courses/%s.course.json" % course)
-	_cache.clear()
+	_invalidate()
 	if not core.load_world(path, snap.get("world", PackedByteArray())):
 		_err = core.last_error()
 		return false
@@ -216,12 +263,12 @@ func load_snapshot(snap: Dictionary, course := "") -> bool:
 ## Only the last tick's events stay readable.
 func step_ticks(n: int, stop_when_closed := true) -> int:
 	var k: int = core.step_ticks(n, stop_when_closed)
-	_cache.clear()
+	_invalidate()
 	return k
 
 
 func place_boat(b: int, x: float, y: float, psi: float) -> bool:
-	_cache.clear()
+	_invalidate()
 	if core.place_boat(b, x, y, psi):
 		return true
 	_err = core.last_error()
@@ -231,7 +278,7 @@ func place_boat(b: int, x: float, y: float, psi: float) -> bool:
 ## Rules scenarios (race.md §14): puts boat b at a pose with speed v (m/s) and front sail (index, -1 none, -2 the one
 ## up now) at any time, before or after the race is created (wm_world_scenario_place).
 func scenario_place(b: int, x: float, y: float, psi: float, v: float, front_sail := -2) -> bool:
-	_cache.clear()
+	_invalidate()
 	if core.scenario_place(b, x, y, psi, v, front_sail):
 		return true
 	_err = core.last_error()
@@ -250,10 +297,8 @@ func ai_add(b: int, level: Variant = "intermediate", speed_only := false) -> boo
 
 ## Creates the race on a course file (game/data/courses/<venue>/<course>.course.json when "venue/course").
 func create_race(course: String) -> bool:
-	var path := course
-	if not course.ends_with(".json"):
-		path = BoatClassData.repo_path("game/data/courses/%s.course.json" % course)
-	_cache.clear()
+	var path := course_file(course)
+	_invalidate()
 	if core.create_race(path):
 		course_path = path
 		return true
@@ -293,42 +338,79 @@ func class_info(boat: int) -> ClassInfo:
 
 
 func state(boat: int) -> BoatState:
-	var k := "state:%d" % boat
-	if not _cache.has(k):
-		_cache[k] = _fill(BoatState.new(), STATE_FIELDS, core.boat_state(boat))
-	return _cache[k]
+	var k := K_STATE * KIND + boat
+	var v: BoatState = _cache.get(k)
+	if v == null:
+		v = _state_of(core.boat_state(boat))
+		_cache[k] = v
+	return v
 
 
 func controls(boat: int) -> BoatControls:
-	var k := "controls:%d" % boat
-	if not _cache.has(k):
+	var k := K_CONTROLS * KIND + boat
+	var c: BoatControls = _cache.get(k)
+	if c == null:
 		var a: PackedFloat32Array = core.boat_controls(boat)
-		var c := BoatControls.new()
+		c = BoatControls.new()
 		c.h_cmd = a[0]
 		c.sheet_cmd = a[1]
 		c.auto_trim = a[2] != 0.0
 		c.let_fly = a[3] != 0.0
 		c.performance_scale = a[4]
 		_cache[k] = c
-	return _cache[k]
+	return c
 
 
 func outputs(boat: int) -> BoatOutputs:
-	var k := "outputs:%d" % boat
-	if not _cache.has(k):
-		_cache[k] = _fill(BoatOutputs.new(), OUTPUT_FIELDS, core.boat_outputs(boat))
-	return _cache[k]
+	var k := K_OUTPUTS * KIND + boat
+	var v: BoatOutputs = _cache.get(k)
+	if v == null:
+		v = _fill(BoatOutputs.new(), OUTPUT_FIELDS, core.boat_outputs(boat))
+		_cache[k] = v
+	return v
 
 
 func sails(boat: int) -> SailsView:
-	var k := "sails:%d" % boat
-	if not _cache.has(k):
-		_cache[k] = _build_sails(boat)
-	return _cache[k]
+	var k := K_SAILS * KIND + boat
+	var v: SailsView = _cache.get(k)
+	if v == null:
+		v = _build_sails(boat)
+		_cache[k] = v
+	return v
 
 
+## One CoreSim call per alpha and tick for every boat's pose (render_poses); the poses are shared by the callers of
+## the same alpha until the next tick, so they are read-only.
 func render_pose(boat: int, alpha: float) -> RenderPose:
-	return _fill(RenderPose.new(), POSE_FIELDS, core.render_pose(boat, clampf(alpha, 0.0, 1.0)))
+	return render_poses(alpha)[boat]
+
+
+func render_poses(alpha: float) -> Array:
+	var a := clampf(alpha, 0.0, 1.0)
+	var list: Variant = _poses.get(a)
+	if list != null:
+		return list
+	if _poses.size() >= POSE_ALPHAS:
+		_poses.clear()
+	var f: PackedFloat32Array = core.render_poses(a)
+	var out := []
+	var n := f.size() / POSE_FIELDS.size()
+	out.resize(n)
+	for b in n:
+		var o := b * 9
+		var p := RenderPose.new()
+		p.pos_x = f[o]
+		p.pos_y = f[o + 1]
+		p.z = f[o + 2]
+		p.psi = f[o + 3]
+		p.theta = f[o + 4]
+		p.phi = f[o + 5]
+		p.h = f[o + 6]
+		p.twa = f[o + 7]
+		p.twd_from = f[o + 8]
+		out[b] = p
+	_poses[a] = out
+	return out
 
 
 func wind_clean(x: float, y: float) -> Vector2:
@@ -359,15 +441,34 @@ func step() -> void:
 	if before_step.is_valid():
 		before_step.call()
 	core.step()
-	_cache.clear()
+	_invalidate()
+
+
+## The tick on the CoreSim's worker thread (game/README.md "The simulation on a second core"): step_begin() starts
+## it, step_end() waits for it and drops the cached records. In between every CoreSim call waits for the tick
+## first, and the records cached before it (the frame's) stay readable.
+func can_step_async() -> bool:
+	return core != null
+
+
+func step_begin() -> void:
+	if before_step.is_valid():
+		before_step.call()
+	if not core.step_begin():
+		core.step()
+
+
+func step_end() -> void:
+	core.step_end()
+	_invalidate()
 
 
 # ---- race and rules (SimSource readers, cached until the next step) ------------------------------------------
 
-func _cached(k: String, f: Callable) -> Variant:
-	if not _cache.has(k):
-		_cache[k] = f.call()
-	return _cache[k]
+## the records of the last tick by key (null: not read yet)
+func _put(k: int, v: Variant) -> Variant:
+	_cache[k] = v
+	return v
 
 
 func has_race() -> bool:
@@ -375,15 +476,24 @@ func has_race() -> bool:
 
 
 func race() -> Dictionary:
-	return _cached("race", func() -> Dictionary: return core.race()) if core else {}
+	if core == null:
+		return {}
+	var v: Variant = _cache.get(K_RACE)
+	return v if v != null else _put(K_RACE, core.race())
 
 
 func race_boat(boat: int) -> Dictionary:
-	return _cached("race_boat:%d" % boat, func() -> Dictionary: return core.race_boat(boat)) if core else {}
+	if core == null:
+		return {}
+	var v: Variant = _cache.get(K_RACE_BOAT * KIND + boat)
+	return v if v != null else _put(K_RACE_BOAT * KIND + boat, core.race_boat(boat))
 
 
 func race_order() -> PackedInt32Array:
-	return _cached("order", func() -> PackedInt32Array: return core.race_order()) if core else PackedInt32Array()
+	if core == null:
+		return PackedInt32Array()
+	var v: Variant = _cache.get(K_ORDER)
+	return v if v != null else _put(K_ORDER, core.race_order())
 
 
 ## the resolved course does not change during the race: cached for the world's life
@@ -408,7 +518,10 @@ func course_labels() -> Dictionary:
 
 
 func results() -> Array:
-	return _cached("results", func() -> Array: return core.results()) if core else []
+	if core == null:
+		return []
+	var v: Variant = _cache.get(K_RESULTS)
+	return v if v != null else _put(K_RESULTS, core.results())
 
 
 func race_split(boat: int, step_index: int) -> float:
@@ -416,27 +529,45 @@ func race_split(boat: int, step_index: int) -> float:
 
 
 func race_start_status(boat: int) -> Dictionary:
-	return _cached("start:%d" % boat, func() -> Dictionary: return core.race_start_status(boat)) if core else {}
+	if core == null:
+		return {}
+	var v: Variant = _cache.get(K_START * KIND + boat)
+	return v if v != null else _put(K_START * KIND + boat, core.race_start_status(boat))
 
 
 func boat_rules(boat: int) -> Dictionary:
-	return _cached("rules:%d" % boat, func() -> Dictionary: return core.boat_rules(boat)) if core else {}
+	if core == null:
+		return {}
+	var v: Variant = _cache.get(K_RULES * KIND + boat)
+	return v if v != null else _put(K_RULES * KIND + boat, core.boat_rules(boat))
 
 
 func pairs() -> Array:
-	return _cached("pairs", func() -> Array: return core.pairs()) if core else []
+	if core == null:
+		return []
+	var v: Variant = _cache.get(K_PAIRS)
+	return v if v != null else _put(K_PAIRS, core.pairs())
 
 
 func race_events() -> Array:
-	return _cached("race_events", func() -> Array: return core.race_events()) if core else []
+	if core == null:
+		return []
+	var v: Variant = _cache.get(K_RACE_EVENTS)
+	return v if v != null else _put(K_RACE_EVENTS, core.race_events())
 
 
 func rules_events() -> Array:
-	return _cached("rules_events", func() -> Array: return core.rules_events()) if core else []
+	if core == null:
+		return []
+	var v: Variant = _cache.get(K_RULES_EVENTS)
+	return v if v != null else _put(K_RULES_EVENTS, core.rules_events())
 
 
 func contact_events() -> Array:
-	return _cached("contact_events", func() -> Array: return core.contact_events()) if core else []
+	if core == null:
+		return []
+	var v: Variant = _cache.get(K_CONTACT_EVENTS)
+	return v if v != null else _put(K_CONTACT_EVENTS, core.contact_events())
 
 
 func polar_vmg(boat: int, tws: float) -> Dictionary:
@@ -482,15 +613,65 @@ func boat_env(boat: int) -> Dictionary:
 
 ## SeaWakes.update_boat state of a boat at a render pose: pose, class waterline and transom.
 func wake_state(boat: int, p: RenderPose, own := false) -> Dictionary:
-	var info := class_info(boat)
-	return {
-		"x": p.pos_x, "y": p.pos_y, "z": p.z, "psi": p.psi, "heel": p.phi, "pitch": p.theta, "lwl": info.lwl,
-		"bwl": info.bwl, "transom_width": info.transom_width, "bow_x": 0.5 * info.lwl,
-		"stern_x": -0.5 * info.lwl, "own": own,
-	}
+	return wake_state_into({}, boat, p, own)
+
+
+## wake_state written into `d` (a Dictionary kept per boat, so a frame makes none): the class keys once, the pose
+## every call. Returns d.
+func wake_state_into(d: Dictionary, boat: int, p: RenderPose, own := false) -> Dictionary:
+	if not d.has("lwl"):
+		var info := class_info(boat)
+		d["lwl"] = info.lwl
+		d["bwl"] = info.bwl
+		d["transom_width"] = info.transom_width
+		d["bow_x"] = 0.5 * info.lwl
+		d["stern_x"] = -0.5 * info.lwl
+	d["x"] = p.pos_x
+	d["y"] = p.pos_y
+	d["z"] = p.z
+	d["psi"] = p.psi
+	d["heel"] = p.phi
+	d["pitch"] = p.theta
+	d["own"] = own
+	return d
 
 
 # ---- internals ----------------------------------------------------------------------------------------------
+
+## The world changed: every record of the last tick is read again.
+func _invalidate() -> void:
+	_cache.clear()
+	_poses.clear()
+
+
+static func _state_of(a: PackedFloat32Array) -> BoatState:
+	var s := BoatState.new()
+	s.pos_x = a[0]
+	s.pos_y = a[1]
+	s.z = a[2]
+	s.psi = a[3]
+	s.v = a[4]
+	s.sway = a[5]
+	s.h = a[6]
+	s.yaw_rate = a[7]
+	s.phi = a[8]
+	s.phi_rate = a[9]
+	s.theta = a[10]
+	s.theta_rate = a[11]
+	s.wobble_phase = a[12]
+	s.contact_vx = a[13]
+	s.contact_vy = a[14]
+	s.contact_yaw_rate = a[15]
+	s.twd_from = a[16]
+	s.awd_from = a[17]
+	s.tws = a[18]
+	s.twa = a[19]
+	s.aws = a[20]
+	s.awa = a[21]
+	s.v_filt = a[22]
+	s.sog_filt_x = a[23]
+	s.sog_filt_y = a[24]
+	return s
 
 static func _fill(obj: Object, fields: Array, a: PackedFloat32Array) -> Object:
 	for i in fields.size():

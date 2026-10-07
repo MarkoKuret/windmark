@@ -28,6 +28,7 @@ GAME = Path(__file__).resolve().parents[1]
 OUT = GAME / "generated" / "course_preview"
 PUBLISHED = GAME / "tests" / "previews"
 LAND_INC = (GAME / "scenes" / "venue" / "land_common.gdshaderinc").read_text()
+BOAT_INC = (GAME / "scenes" / "course" / "course_boat_common.gdshaderinc").read_text()
 
 WATER_FS = """
 in vec2 v_local;
@@ -66,11 +67,17 @@ uniform mat4 u_vp;
 in vec3 in_pos;
 in vec3 in_normal;
 in vec4 in_color;
+in vec3 in_opos;
+in vec3 in_onormal;
 out vec3 v_n;
 out vec3 v_wpos;
 out vec4 v_col;
+out vec3 v_opos;
+out vec3 v_on;
 void main() {
     v_n = in_normal;
+    v_opos = in_opos;
+    v_on = in_onormal;
     v_wpos = in_pos;
     v_col = in_color;
     gl_Position = u_vp * vec4(in_pos, 1.0);
@@ -81,9 +88,12 @@ MESH_FS = """
 in vec3 v_n;
 in vec3 v_wpos;
 in vec4 v_col;
-uniform int u_kind;      // 0 prop (vertex colour), 1 land, 2 unshaded, 3 albedo
+in vec3 v_opos;
+in vec3 v_on;
+uniform int u_kind;      // 0 prop (vertex colour), 1 land, 2 unshaded, 3 albedo, 4 boat
 uniform vec3 u_albedo;
 uniform float u_rough;
+uniform float u_bare;
 out vec4 frag;
 void main() {
     vec3 N = normalize(v_n);
@@ -93,8 +103,13 @@ void main() {
     if (u_kind == 2) {
         c = v_col.rgb * 1.2;
     } else if (u_kind == 1) {
-        vec3 alb = wm_land_albedo(v_col.rgb, v_wpos, N.y, length(u_cam - v_wpos));
+        vec3 alb = wm_land_albedo(v_col.rgb, v_wpos, N.y, length(u_cam - v_wpos), u_bare);
         c = shade(alb, wm_land_roughness(v_col.a), 0.35, N, V);
+    } else if (u_kind == 4) {
+        vec3 alb;
+        float rough;
+        wm_cb_surface(v_col.rgb, v_opos, normalize(v_on), length(u_cam - v_wpos), alb, rough);
+        c = shade(alb, rough, 0.5, N, V);
     } else if (u_kind == 3) {
         c = shade(u_albedo, u_rough, 0.5, N, V);
     } else {
@@ -132,7 +147,7 @@ def render(ctx, d, size):
     water = ctx.program(vertex_shader=hdr + wp.WATER_VS, fragment_shader=hdr + sky_inc + wp.LIGHTING + WATER_FS)
     wake = ctx.program(vertex_shader=hdr + wake_inc + wp.WAKE_VS,
                        fragment_shader=hdr + sky_inc + wp.LIGHTING + wake_inc + wp.WAKE_FS)
-    mesh = ctx.program(vertex_shader=MESH_VS, fragment_shader=hdr + sky_inc + wp.LIGHTING + LAND_INC + MESH_FS)
+    mesh = ctx.program(vertex_shader=MESH_VS, fragment_shader=hdr + sky_inc + wp.LIGHTING + LAND_INC + BOAT_INC + MESH_FS)
     sky = ctx.program(vertex_shader=wp.SKY_VS, fragment_shader=hdr + sky_inc + wp.LIGHTING + wp.SKY_FS)
     tone = ctx.program(vertex_shader=wp.SKY_VS, fragment_shader=wp.TONEMAP_FS)
 
@@ -191,7 +206,7 @@ def render(ctx, d, size):
     ctx.vertex_array(water, [(vbo, "3f 2f", "in_pos", "in_uv")], ctx.buffer(idx.astype("i4").tobytes())).render(
         moderngl.TRIANGLES)
 
-    kinds = {"prop": 0, "land": 1, "unshaded": 2, "albedo": 3}
+    kinds = {"prop": 0, "land": 1, "unshaded": 2, "albedo": 3, "boat": 4}
     for m in sc["meshes"]:
         mp = wp.load_bin(d, m["name"] + "_pos.bin", "f4", 3)
         mn = wp.load_bin(d, m["name"] + "_normal.bin", "f4", 3)
@@ -203,12 +218,19 @@ def render(ctx, d, size):
         mesh["u_kind"].value = kinds[m["kind"]]
         mesh["u_albedo"].value = tuple(m["albedo"][:3])
         mesh["u_rough"].value = float(m.get("roughness", 0.6))
+        if "u_bare" in mesh:
+            mesh["u_bare"].value = float(m.get("bare_rock", 1.0))
         if m["kind"] == "land":
             ctx.enable(moderngl.CULL_FACE)
         else:
             ctx.disable(moderngl.CULL_FACE)
-        vb = ctx.buffer(np.hstack([mp, mn, mc]).astype("f4").tobytes())
-        ctx.vertex_array(mesh, [(vb, "3f 3f 4f", "in_pos", "in_normal", "in_color")],
+        if m["kind"] == "boat":
+            mo = wp.load_bin(d, m["name"] + "_opos.bin", "f4", 3)
+            mon = wp.load_bin(d, m["name"] + "_onormal.bin", "f4", 3)
+        else:
+            mo, mon = mp, mn
+        vb = ctx.buffer(np.hstack([mp, mn, mc, mo, mon]).astype("f4").tobytes())
+        ctx.vertex_array(mesh, [(vb, "3f 3f 4f 3f 3f", "in_pos", "in_normal", "in_color", "in_opos", "in_onormal")],
                          ctx.buffer(mi.astype("i4").tobytes())).render(moderngl.TRIANGLES)
     ctx.disable(moderngl.CULL_FACE)
 

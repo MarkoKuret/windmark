@@ -5,8 +5,8 @@
 # tests/look_panel_test.gd), the audio (audio.md §11,
 # tests/audio_test.gd), the frame-time overlay and its log (hud.md §17, tests/perf_test.gd, and the sail scene run
 # with --perf-log and --perf-seconds from the command line), including
-# runs of scenes/sail_test.tscn with scripted input on the core (free sailing on example_bay; the GDExtension is
-# built when missing) and on FakeSim with the example bay sea. Needs the generated boats: when
+# runs of scenes/sail_test.tscn with scripted input on the core (free sailing on practice_waters; the GDExtension is
+# built when missing) and on FakeSim with the Practice Waters sea. Needs the generated boats: when
 # game/generated/boats has no wm7.glb, runs run_boat_import_test.sh first; when game/generated/sea has no core
 # samples, writes them as run_water_test.sh does. Fails on any failed check, script error or engine error.
 # Nothing opens a window.
@@ -27,7 +27,7 @@ if [ ! -f "$here/generated/sea/sea_render_samples.json" ]; then
     fi
     cmake --build "$build" --target windmark_gen_sea_render_samples >/dev/null
     mkdir -p "$here/generated/sea"
-    "$build/tests/windmark_gen_sea_render_samples" "$repo/data/venues/example_bay.venue.json" \
+    "$build/tests/windmark_gen_sea_render_samples" "$repo/data/venues/practice_waters.venue.json" \
         > "$here/generated/sea/sea_render_samples.json"
 fi
 

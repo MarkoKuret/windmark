@@ -6,7 +6,7 @@ Three kinds of files feed the simulation core:
 | --- | --- | --- | --- |
 | boat class `<class>.boat.json` | `windmark.boatclass/1` | designers (by hand or with tools) | boat generator (`tools/boatgen`), VPP (`tools/vpp`) |
 | performance `<class>.perf.json` | `windmark.perf/1` | VPP tool, **generated, never hand-edited** | core, AI, HUD |
-| venue physics `<venue>.venue.json` | `windmark.venue/1` | venue tools | core (wind field, current, sea exposure, land, obstacles) |
+| venue physics `<venue>.venue.json` | `windmark.venue/1` | venue tool (`tools/venuegen`, `venues.md`) | core (wind field, current, sea exposure, land, obstacles), race layer (conditions), front end (briefing) |
 
 Courses and marks are defined in `courses.md` (`windmark.course/1`). The core never reads the class file directly: everything it needs is
 in the performance file, which carries the hash of the class file it was made from.
@@ -516,12 +516,14 @@ Recommended axes for the VPP (fine where the tables bend):
 
 The physical environment of a sailing area, `data/venues/<venue>.venue.json`. Everything is optional except the
 header; an empty venue is open water with uniform wind. The core loads it once per race and points the wind,
-current and sea settings at it (`wind.md` §1, §7, §8; `sea.md` §2, §6).
+current and sea settings at it (`wind.md` §1, §7, §8; `sea.md` §2, §6). The venue's typical weather (§6.7) and its
+briefing text (§6.8) are in the same file; the venues, their sources and their performance budget are in
+`venues.md`.
 
 The **look** of a venue (terrain, scenery, sky, water colours, placed sound sources such as surf and harbour noise,
 `audio.md` §7) is not in this file: it lives in a front-end look file next to it, `<venue>.look.json`, whose format
 belongs to the front end (`water_render.md`, `audio.md`). The core never reads it; a look file never changes
-physics.
+physics. The drawn terrain is generated, so it has its own file (§6.10), not the hand-owned look file.
 
 ### 6.1 Header
 Schematic (likewise §6.2–§6.5):
@@ -531,12 +533,15 @@ Schematic (likewise §6.2–§6.5):
   "origin": { "lat": 45.5, "lon": 13.6 },       // geo-reference of world (0, 0), display only
   "bounds": [xmin, ymin, xmax, ymax],            // racing area, m; within ±8000
   "fetch": 12000,                                // m, for the wind-sea growth law (sea.md §2)
-  "exposure_default": 1.0
+  "exposure_default": 1.0,
+  "source": "…"                                  // provenance note written by venuegen, not shown
 }
 ```
 Required: `schema`, `id`, `name`, `version` (integer ≥ 1, bumped on every change) and `bounds` (`xmin < xmax`,
 `ymin < ymax`, every value in [−8000, 8000]). Optional: `origin` (`lat` in [−90, 90], `lon` in [−180, 180]),
-`fetch` (> 0) [10000], `exposure_default` (in [0, 1]) [1].
+`fetch` (> 0) [10000], `exposure_default` (in [0, 1]) [1], `source` (string: coastline and terrain sources with
+version and download date, `venues.md` §3). `name` is player-facing: no em dashes. `fetch` is the fetch for the
+venue's typical wind direction (§6.7), since the sea follows one fetch per race.
 
 ### 6.2 `wind_field`
 ```json
@@ -550,9 +555,17 @@ exactly `f = 1, d = 0` (validated). Grids: §6.6. Sampling: `wind.md` §8.
 
 ### 6.3 `current_field`
 ```json
-"current_field": { "grid": { … }, "vx": [ … ], "vy": [ … ] }     // m/s at tide factor 1, east/north
+"current_field": { "grid": { … }, "vx": [ … ], "vy": [ … ],     // m/s at tide factor 1, east/north
+                   "ref_speed": 1.29, "ref_to": 1.31 }            // m/s and rad, written by venuegen
 ```
-Zero outside the grid. Used as `tide(t) · field` (`wind.md` §7).
+Zero outside the grid. Used as `tide(t) · field` (`wind.md` §7). `ref_speed` (≥ 0; `venuegen` always writes it,
+older files may lack it, §6.9) is the 90th percentile of `|(vx, vy)|` over the grid nodes inside `bounds` (edges
+included) that are on water (outside every land polygon): the field's typical strong stream, which the briefing
+reads (`menus.md` §1.3). The percentile interpolates linearly between the sorted values (position `0.9 · (n − 1)`,
+counted from 0); with no such node it is 0. A venue test recomputes it to within 0.001 m/s. `ref_to` (rad, in
+[0, 2π); written by `venuegen` for a venue with a tide, §6.7) is the direction the field sets at tide factor 1 (for a
+tide, the flood): `atan2(Σ vx, Σ vy)` over the same nodes, wrapped to [0, 2π) (0 with no node or a zero sum); the
+briefing names the set from it (`menus.md` §1.3).
 
 ### 6.4 `exposure`
 ```json
@@ -575,6 +588,104 @@ counter-clockwise; an obstacle has exactly one of `polygon` and `circle`; circle
 Every field of §6.2–§6.4 sits on a grid `{ "x0", "y0", "dx", "dy", "nx", "ny" }` (`wind.md` §8.1): origin finite,
 `dx, dy > 0`, `nx`, `ny` integers from 2 to 1024 (a grid is at least one cell). Each value array holds exactly
 `nx·ny` finite numbers, row by row (`j` major, `i` fastest).
+Shipped venues also keep the tighter caps of the performance budget (`venues.md` §4: grid sizes, land vertices,
+file size); `venuegen` writes within them and a venue test checks every file in `data/venues/`, while the loader
+keeps the general limits above.
+
+### 6.7 `conditions`
+The venue's typical weather, which the race layer turns into one race's settings with the race seed
+(`race.md` §2.1). Schematic (SI units, as everywhere in the file):
+```json
+"conditions": {
+  "wind":   { "speed": [5.14, 8.23], "from": 3.927, "from_spread": 0.262 },
+  "shift":  { "preset": "stable", "trend_rate": 0.0, "trend_max": 0.0 },
+  "oscillation": { "amplitude": 0.0349, "time_scale": 17 },
+  "puffs":  { "preset": "light" },
+  "current": { "speed": 0.0, "to": 0.0 },
+  "tide":   { "scale": 0.6, "period": 44712 },
+  "sea":    { "scale": 1.0, "swells": [ { "hs": 0.8, "tp": 12.0, "from": 4.19 } ] },
+  "random": { "speed": [3.09, 10.29], "from_spread": 0.698, "shift": ["stable", "oscillating", "shifty"],
+              "puffs": ["light", "standard"], "tide_scale": [0.5, 1.33], "swell_scale": [0.5, 1.5] }
+}
+```
+
+| key | meaning | rules [default] |
+| --- | --- | --- |
+| `wind.speed` | `[min, max]` base wind speed at 10 m, m/s | `min ≤ max`, both in [2.06, 12.87] (the menu's 4 to 25 kn) [7.20, 7.20] |
+| `wind.from` | typical direction the wind comes from, rad | [0, 2π) [0] |
+| `wind.from_spread` | half-width of the direction draw, rad | [0, 0.349] (at most 20°, so the briefing's compass point stays true within a sector) [0] |
+| `shift.preset` | a shift preset of `wind.md` §1 | `steady`, `stable`, `oscillating`, `shifty`, `unstable` [`shifty`] |
+| `shift.amplitude`, `shift.hold_max`, `shift.hold_min` | explicit shift instead of the preset, rad and s | replace the preset's values when given; `hold_min ≤ hold_max` [preset; `hold_min = hold_max / 5`] |
+| `shift.trend_rate`, `shift.trend_max` | steady rotation, rad/s (+ = veer, − = back) and its bound, rad | `trend_max` in [0, 0.35] [0, 0.35] |
+| `oscillation` | `amplitude` (rad, [0, 0.087]) and `time_scale` (s, > 0) of `wind.md` §5 | absent = oscillation off |
+| `puffs.preset` | a puff preset of `wind.md` §6.1, `none` = puffs off | [`standard`] |
+| `puffs.<key>` | a `wind.md` §6.1 parameter overriding the preset: `puff_tile`, `puff_count`, `lull_count`, `puff_diameter_min`, `puff_diameter_max`, `puff_strength_min`, `puff_strength_max`, `lull_strength_min`, `lull_strength_max`, `puff_life_min`, `puff_life_max` (lifetimes in s here), `puff_cap_up`, `puff_cap_down` | checked as `wind.md` §6; counts whole, at most 64; any other key is a load error |
+| `current` | uniform current, `speed` m/s (≥ 0) and `to` rad | [0, 0] |
+| `tide` | tidal current on `current_field` (§6.3): `scale` (≥ 0; the tide factor's amplitude) and `period` (integer s, > 0; the real tide is 44712); each race draws its phase over the whole cycle (`race.md` §2.1) | requires `current_field`; absent = no tide |
+| `sea.scale` | `sea_scale` of `sea.md` §2 | ≥ 0 [1] |
+| `sea.swells` | at most 4 swells `{hs (m), tp (s), from (rad)}` of `sea.md` §2 | [none] |
+| `random` | the wider range of the Random weather mode (`race.md` §2.1): `speed` (`[min, max]`, m/s, within the menu's range), `from_spread` (rad, [0, 0.785]), `shift` and `puffs` (non-empty lists of preset names), `tide_scale` and `swell_scale` (`[min, max]` multipliers, ≥ 0) | each key missing: widened from the local values as below |
+
+Random defaults, for each key of `random` not given: `speed` = the local range widened by 4 kn each way, clamped to
+4 to 25 kn; `from_spread` = twice the local spread, at most 45°; `shift` = the local preset (or the preset whose
+band in `menus.md` §1.3 holds an explicit amplitude) and its neighbours in the order `steady, stable, oscillating,
+shifty, unstable`; `puffs` = the local preset and its neighbours in `none, light, standard, gusty`, without `none`
+unless local is `none`; `tide_scale` = [0.5, 1.2]; `swell_scale` = [0.5, 1.5].
+
+The sea's wind waves are not listed: they follow the drawn wind speed and the header's `fetch` (`sea.md` §2).
+
+### 6.8 `briefing`
+The venue's hand-written lines of the pre-race briefing (`menus.md` §1.3); everything else in the briefing is
+computed from §6.7. The tag shows in the Local and Custom modes, the tip in Local only. Player-facing: no em dashes (validated: U+2014 is a load error).
+```json
+"briefing": {
+  "tag": "Strong tide",
+  "tip": "The stream runs hardest mid-channel; cheat it along the shore.",
+  "translations": { "fr": { "name": "…", "tag": "…", "tip": "…" } }
+}
+```
+`tag` at most 24 characters, `tip` at most 80 (counted in the English text; a translation may be up to 25 %
+longer). `translations` maps a language code to any of `name`, `tag` and `tip`; a missing one falls back to the
+English. The core ignores this block.
+
+### 6.9 Old files
+`conditions`, `briefing`, `ref_speed`, `ref_to` and `source` are optional additions, so the schema stays `windmark.venue/1`
+(§7). A venue without `conditions` offers only the Custom weather mode (`menus.md` §1), on the defaults of
+`wind.md` §1 and `sea.md` §2 (the race layer refuses Local and Random there); its card shows the briefing computed from those settings without a Tip line. A venue with a
+`current_field` but no `ref_speed` gives the Current line from the uniform current only; one without `ref_to`
+gives a tide's line without the set. Shipped venues have both
+blocks (venue test).
+
+### 6.10 Drawn terrain file (`windmark.terrain/1`)
+A real venue's drawn land, generated by `venuegen` from the coastline and the elevation model (`venues.md` §5.7):
+`data/venues/<venue>.terrain.json` (header) and the binary it names (`<venue>.terrain.bin`). Presentation only: the
+core never reads it, and it never changes physics. A venue without one (`practice_waters`) is drawn from its land
+polygons (`VenueView`).
+```json
+{
+  "schema": "windmark.terrain/1", "id": "garda", "version": 1,     // the venue's id and version
+  "water_level": 63.0,                                              // DEM height of the still water, m (info)
+  "box": [xmin, ymin, xmax, ymax],                                  // the terrain mesh's extent, world m
+  "chunks": [ { "id": "near_w", "aabb": [x0, y0, h0, x1, y1, h1], "vertices": 27895, "triangles": 54754,
+                "shadows": true, "offset": 0, "bytes": 691651, "raw_bytes": 1438776 }, … at most 4 ],
+  "ridge":  { "id": "ridge", …same keys…, "shadows": false, "spacing": 640 },   // or null
+  "ground": { "grid": { "x0", "y0", "dx", "dy", "nx", "ny" }, "scale": 0.1, "offset", "bytes", "raw_bytes" },
+  "stats":  { "triangles", "vertices", "ridge_triangles", "coast_vertices", "tolerance_scale" },
+  "bin": "garda.terrain.bin",
+  "source": "…"                                                     // the venue file's source note
+}
+```
+Each blob is `bytes` gzip bytes at `offset` in the binary, `raw_bytes` once unpacked, little-endian:
+- a mesh (chunk or ridge, `n` vertices, `m` triangles): float32 positions `n × (x east, y north, h up)` in world
+  metres (`h` above the still water), float32 unit normals `n × 3` in the same axes, float32 signed shore
+  distances `n` (m, positive inland, clamped to ±200), int32 triangle indices `m × 3`, counter-clockwise seen from
+  above;
+- the ground grid: int16 heights × `scale` m, `nx · ny` row by row (`j` major), on the grid of §6.6, for the
+  cameras' land avoidance (`cameras.md` §7); at most `−depth` on open water.
+
+Checks (`venuegen --check`): at most 4 chunks and 2 shadow casters, at most 120k triangles with the ridge, the
+ridge at most 10k and casting no shadows, the drawn coastline at most 20k vertices, the blobs inside the binary,
+the binary at most 8 MB (`venues.md` §4.2).
 
 ## 7. Versioning and consistency
 
@@ -760,6 +871,58 @@ The flat plan point of uv0 `(a, l)` is `p = (a·sin θ, l + a·cos θ)`; it maps
 The game imports the images compressed with mipmaps (albedo in the high-quality format, BPTC or ASTC; ORM in
 S3TC or ETC2; normal maps as two-channel RGTC or the equivalent).
 
+**Staged boat atlas** (written by `tools/liverybake` when it stages the textures for the game, generated, never
+edited: the hand-owned images above stay the masters). The game draws every opaque surface of a boat with one
+material (`sail_visuals.md` §11.4), so per livery the stage packs the hull, deck, transom and keel images into one
+atlas per map, at 2048 × 2048 by default (`--hd`: 4096 × 4096, the masters' resolution):
+
+| file | content |
+| --- | --- |
+| `atlas_albedo.png` | sRGB: the hull image (2:1) across the top half, the deck (its own aspect) below it, then the transom and the keel side by side; each region padded by its edge colour into a 16-texel gutter (8 at 2048 per 4096 of the master), so mipmaps do not bleed |
+| `atlas_normal.png` | linear, the same layout; flat (`#8080ff`) in the keel region and the gutters |
+| `atlas_orm.png` | linear, the same layout; the keel region R 255, G its roughness, B 0 |
+| `atlas.json` | `schema` `"windmark.boatatlas/1"`, `size`, and per region (`hull`, `deck`, `transom`, `keel`) its rectangle `[u0, v0, width, height]` in atlas uv (0..1, v down); a region's own uv (the uv1 of §8.5, or the keel's side view) `t` maps to `rect.xy + t · rect.zw` |
+
+The deck region is the deck images with the **painted fittings** over them: what is flat on the deck and the game
+model does not stand up (`sail_visuals.md` §11.4; `tools/boatgen` `Boat.painted_part`: the jib and traveller
+tracks, hatches, organisers, cam, horn and traveller cleats, the rudder bearing ring, and the lines lying on the
+deck: halyards and their tails, the mainsheet tail and coil, the traveller lines (no halyard coils), only where they lie within 3.5 cm of the surface), drawn from
+the generator's full-detail pieces seen from above: their colour by material (stainless, black plastic and rubber,
+tinted lens, the rope set's halyard and control colours), their relief in the normal map from the pieces' own
+normals, roughness by material, the non-slip mask cleared under them, and baked shading so they read solid without
+geometry: a soft contact shadow round each fitting in occlusion and albedo, the lower parts of a fitting darker and
+its upper edges lighter. The game reads only the atlas (and the per-boat text texture); the sails are staged at half
+the master size (1024 on the longer side; `--hd` keeps 2048).
+
+**Painted lines** are opaque in their own braid's mean colour, roughness and relief (a texel half covered by a line
+is the line's), so a line reads the same over gelcoat and non-slip; they clear the non-slip mask and cast only a faint
+contact shadow. Where a line runs down the coachroof's aft face (the halyard tails, down into the rope bags on the face) it is painted
+on the face's own rectangle of the deck image: the aft face (slot `deck_face`) has its own uv1 into a corner of the
+plan the deck does not use, forward of the bow on the port side (`tools/boatgen` `Deck.face_frame`), filled with
+the deck's smooth gelcoat; there the face reads its map even though it is upright.
+
+**Baked realism** (generated with the atlas, deterministic per class; subtle, a well-kept race boat): on the deck
+region ambient occlusion and contact shadows from a 1 cm height field of everything on the deck (the walking surface,
+the toe rail, coamings and hatch boxes, the hardware, the mast foot and the vang's foot; occluders over 0.4 m above
+the surface do not count), at 1.5, 5 and 12 cm, into the occlusion and a little into the albedo: under and round
+every fitting, along the coachroof's base and the toe rail, in the cockpit's corners; a faint warm grime where it is
+occluded; wear on the non-slip in the traffic areas (round the winches, the mast foot and on the cockpit floor: the
+pattern a little flatter, lighter and smoother in blotches); a faint low-frequency variation of the gelcoat's colour
+(±1.5 %) and roughness (±6 %). On the hull and transom regions a very faint colour (±0.8 %) and roughness (±3 %)
+variation, and on the transom faint dried streaks below the cockpit's drain.
+
+**Boat material slots** (written by the generator in the GLB, `tools/boatgen/README.md` "Materials and UVs"): every
+vertex of the material `boat` carries its slot in its vertex colour, green = slot id / 255 (red is the baked
+ambient occlusion; blue on the merged `body` node the part it comes from / 255: 1 hull, 2 deck, 3 keel, 4 mast, 5
+rigging, 6 hardware, GLB root extras `body_parts`). The material's extras list per slot its mean colour, roughness, metallic, tile of the shared
+tiling atlas, tile size in metres of uv0 and **livery region**: `hull` (slots `hull_gelcoat`, `hull_boottop`,
+`hull_antifouling`: the hull region on uv1), `deck` (`deck_gelcoat`, `deck_nonslip`: the deck region on the plan
+uv1, with the non-slip mask; steep faces such as the coamings and the coachroof's sides and aft face take the slot's plain colour, not the map; also the hatches' raised boxes), `transom` (its uv1), `keel` (the keel in side view of the model frame, the layout's
+`keel.rect`), `keel_colour` (the rudder blade: the livery's keel colour, no map), or none (spars and the helm in
+dark clear-coated `carbon` with no weave pattern, stainless `metal`, black plastic and rubber `rubber`, the ropes by
+function, glass, other gelcoat: the slot's own colour). Without a baked livery the regions take the livery file's colours
+(§8.1) and the topsides its procedural hull livery.
+
 ### 8.6 Who owns the textures
 
 The livery textures and their `layout.json` are **hand-owned assets, not generated tables**: the generator only
@@ -774,18 +937,22 @@ sail plan change the owner decides whether to repaint or rebake (`--only`).
 
 ### 8.7 Ropes
 
-The running rigging in braid colours by function, as on real boats: every boat of the class carries the same rope
-set. `ropes.<function>`, each `{ "color", "fleck", "pattern" }`, all optional:
+The running rigging in braid colours by function, as on a race boat's rope set: each function its own clear colour
+(dyed polyester braid, muted and a little sun-faded, never fluorescent) with a contrasting fleck, so the crew (and the player) tells the lines apart at a glance; every boat of the class
+carries the same rope set. `ropes.<function>`, each `{ "color", "fleck", "pattern" }`, all optional:
 
 | function | lines | default `color`, `fleck` |
 | --- | --- | --- |
-| `mainsheet` | the mainsheet tackle, its tail and coil | `#1f2b45` navy, `#d8d8d2` white fleck |
-| `sheet` | jib and genoa sheets (drawn by the front end, `sail_visuals.md` §11.3) | `#d2d2cb` white, `#b3242a` red fleck |
-| `kite_sheet` | spinnaker and code zero sheets, guys and the tack line (front end) | `#2b62a6` blue, `#dadad4` white fleck |
-| `halyard` | the halyards from the mast to the clutches and their coils | `#d4d4cd` white, `#2d7a40` green fleck |
-| `control` | traveller lines, the outhaul and the other control lines | `#1d1e21` black, `#c9a227` gold fleck |
+| `mainsheet` | the mainsheet tackle, its tail and coil | `#ae7249` orange, `#2d3548` navy fleck |
+| `sheet` | jib and genoa sheets (drawn by the front end, `sail_visuals.md` §11.3) | `#3e797b` teal, `#d6d6ce` white fleck |
+| `kite_sheet` | spinnaker and code zero sheets, guys and the tack line (front end) | `#91506f` raspberry, `#d6d6ce` white fleck |
+| `halyard_main` | the main halyard (inboard of each bank) | `#9c4c4e` red, `#d6d6ce` white fleck |
+| `halyard_jib` | the jib halyard | `#486792` blue, `#d6d6ce` white fleck |
+| `halyard_kite` | the spinnaker halyard (and the kite's halyard on the posed previews) | `#497551` green, `#d6d6ce` white fleck |
+| `halyard_code` | the code zero or spare halyard (a fourth halyard) | `#b79c5a` ochre yellow, `#2a2b2e` black fleck |
+| `control` | traveller lines, the outhaul and the other control lines | `#6b5986` purple, `#d6d6ce` white fleck |
 
-Lifelines and anything else stay the generator's grey `rope` slot.
+Lifelines and the standing rigging stay wire grey (the generator's `rope` and `metal` slots).
 
 | key | default | meaning |
 | --- | --- | --- |
@@ -877,7 +1044,7 @@ meeting 300 m up the first beat 20 s after the set-up, written in degrees and kn
   "id": "port_starboard",
   "name": "Port meets starboard",
   "class": "wm7",
-  "course": "example_bay/example_wl",
+  "course": "practice_waters/example_wl",
   "wind": { "speed_kn": 12, "from_deg": 0 },
   "lead": 20,
   "boats": [

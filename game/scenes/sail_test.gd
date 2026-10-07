@@ -1,5 +1,5 @@
 extends Node3D
-## Sail test scene: one generated boat sailing freely on the example bay, with the cameras, the controls, the
+## Sail test scene: one generated boat sailing freely on Practice Waters, with the cameras, the controls, the
 ## minimal HUD, the sea, its wakes, the daytime sky and the sound (GameAudio). Frame order: read input, controls,
 ## ticks (stamp, step, HUD values, audio inputs, sail snapshots), sea render time, render pose, boat, sails and
 ## wakes (and the drawn boat shadows), cameras, HUD, audio; the Sea, SeaWakes and BoatShadows nodes draw after.
@@ -35,7 +35,7 @@ extends Node3D
 ## On the core, everything drawn comes from the core world: the Sea's source is a CoreEnvSource (wave
 ## components, exposure, live puffs, current), the Sea's clock is the core's render_time_ms of the frame, the
 ## wakes use CoreSimSource.wake_state and the HUD reads the core's boat records. On FakeSim the sea is the
-## example bay as the core writes it (SeaEnvSource CORE_SAMPLES, game/generated/sea, written by
+## Practice Waters as the core writes it (SeaEnvSource CORE_SAMPLES, game/generated/sea, written by
 ## tests/run_water_test.sh) or the placeholder sea built from wind_speed_kn and wind_from_deg; the fake sim runs
 ## on the same SeaModel the Sea draws (FakeSim.use_sea) and the Sea's clock follows the sim ticks.
 
@@ -50,7 +50,7 @@ enum SeaSource { AUTO, CORE_SAMPLES, PLACEHOLDER }
 @export var sim_kind: SimKind = SimKind.AUTO
 @export_enum("wm7", "wm12") var class_id := "wm7"
 ## core: the venue (data/venues/<venue>.venue.json) and the start point (world ENU m)
-@export var venue := "example_bay"
+@export var venue := "practice_waters"
 @export var start_x := 0.0
 @export var start_y := -300.0
 @export var wind_speed_kn := 12.0
@@ -60,6 +60,18 @@ enum SeaSource { AUTO, CORE_SAMPLES, PLACEHOLDER }
 @export var puffs := true
 @export var shift_preset := -1
 @export var world_seed := 1
+## core: the weather mode of race.md §2.1 (local, random, custom; menus.md §1): the venue's conditions resolved for
+## the seed when the world is made (CoreSimSource.resolve_settings), the result in weather_settings and the wind
+## fields above. "" (the default, rules scenarios): the wind fields above as they are.
+@export var weather := ""
+## Custom: the player's wind speed (kn), direction (deg), shift preset and puff preset (VenueWeather.SHIFTS, GUSTS)
+var weather_kn := 12.0
+var weather_from_deg := 0.0
+var weather_shift := "shifty"
+var weather_gusts := "standard"
+## the resolved settings of the last world made with a weather mode ({} without one): the results screen reads
+## them (menus.md §5, the Today line after a Random race)
+var weather_settings := {}
 ## the player's livery id (data_format.md §8); "": the class default. The AI boats get theirs by the fleet rule
 @export var livery := ""
 ## start heading relative to the wind: + = starboard tack
@@ -67,7 +79,7 @@ enum SeaSource { AUTO, CORE_SAMPLES, PLACEHOLDER }
 @export var racing := true
 ## core only: race on `course` (game/data/courses/<venue>/<id>) instead of free sailing
 @export var race_mode := false
-@export var course := "example_bay/example_wl"
+@export var course := "practice_waters/example_wl"
 ## race mode: boats in the race including the player (the rest are AI), the AI level (CoreSimSource.AI_LEVELS),
 ## "speed only" levels (ai.md §13), and `watch`: an AI sails the player's boat too and spectating is on
 @export_range(1, 40) var fleet_size := 1
@@ -81,10 +93,10 @@ enum SeaSource { AUTO, CORE_SAMPLES, PLACEHOLDER }
 ## the results screen of scenes/menu (menus.md §5) in a quick race (not watching, not a scenario)
 @export var with_results := true
 @export var apply_settings := true
-## FakeSim only. AUTO: the core's example bay samples when they exist, otherwise the placeholder sea
+## FakeSim only. AUTO: the core's Practice Waters samples when they exist, otherwise the placeholder sea
 @export var sea_source: SeaSource = SeaSource.AUTO
 ## FakeSim only: core sample scenario (CORE_SAMPLES); its wind replaces wind_speed_kn and wind_from_deg
-@export var sea_scenario := "example_bay_10kn"
+@export var sea_scenario := "practice_waters_10kn"
 @export var sea_quality: SeaQuality.Tier = SeaQuality.Tier.M
 
 @onready var sea: Sea = $Sea
@@ -97,6 +109,11 @@ var no_boat_shadows := false
 var no_drawn_shadows := false
 ## `--no-hud` (measuring): the HUD hidden from the start, as the hud_hide key does
 var no_hud := false
+## measured runs only (game/README.md "Measuring performance"): `--skip=S` fast-forwards the new race world S s
+## before the first frame; `measure_off` holds the parts a run-only `--no-<part>` flag switches off ("venue",
+## "boats", "wakes", "sky", "water", "post", "course", "audio", "sim"); nothing of it is saved
+var skip_s := 0.0
+var measure_off := {}
 @onready var env_source: SeaEnvSource = $EnvSource
 @onready var sky: SkyRig = $SkyDay
 
@@ -166,6 +183,17 @@ var _sails_cur: SimSource.SailsView
 ## every boat's sail states of the last two ticks, by boat index
 var _sails_prev_all: Array = []
 var _sails_cur_all: Array = []
+## the wake state of every boat (CoreSimSource.wake_state_into), kept so a frame makes no Dictionary
+var _wake_states: Array = []
+
+## Ticks ahead on the core's thread and the tick's work spread over the frames (game/README.md "The simulation on a
+## second core"): on while the scene processes itself (auto_process), off for the tests that drive step_frame.
+var threaded := false
+enum TickWork { HUD, AUDIO, COURSE }
+## the last tick's HUD, audio and course work not yet run (one part per frame, the rest before the next tick)
+var _tick_due: Array[int] = []
+var _in_advance := false
+var _ticked_this_frame := false
 
 
 func _ready() -> void:
@@ -192,7 +220,10 @@ func _ready() -> void:
 	venue_view = VenueView.new()
 	venue_view.name = "Venue"
 	add_child(venue_view)
-	venue_view.build(VenueShapes.from_core((sim as CoreSimSource).core) if on_core else VenueShapes.from_file(venue))
+	venue_view.apply_quality(sea.quality)
+	sea.quality_changed.connect(venue_view.apply_quality)  # water_render.md §4.6: no tree shadows on L
+	venue_view.build(VenueShapes.from_core((sim as CoreSimSource).core) if on_core else VenueShapes.from_file(venue),
+		venue)
 	target.ground = venue_view.ground_height
 	rig = CameraRig.new()
 	rig.name = "CameraRig"
@@ -238,6 +269,12 @@ func _ready() -> void:
 	_update_sea_time(0.0)
 	_update_target(0.0)
 	set_process(auto_process)
+	threaded = auto_process
+	if threaded:
+		var late := _EndOfFrame.new()
+		late.name = "EndOfFrame"
+		late.scene = self
+		add_child(late)
 	_add_pause_menu()
 	_add_results()
 	if Settings.render_scale_override > 0.0 or Settings.upscaler_override != "" or Settings.aa_override != "":
@@ -245,6 +282,7 @@ func _ready() -> void:
 	if no_hud:
 		hud.toggle_hidden()
 	DevLook.apply_built(self)  # the look flags (shadows, grade, breathing) on the built scene
+	_apply_measure_off()
 	if scenario_run != null:
 		view_boat(scenario_run.scenario.view)
 	perf = PerfMonitor.new()
@@ -299,8 +337,11 @@ func session_setup() -> GameSetup:
 	g.course = course
 	g.fleet_size = fleet_size
 	g.ai_level = ai_level
-	g.wind_kn = wind_speed_kn
-	g.wind_from_deg = wind_from_deg
+	g.weather = weather
+	g.wind_kn = weather_kn if weather != "" else wind_speed_kn
+	g.wind_from_deg = weather_from_deg if weather != "" else wind_from_deg
+	g.shift = weather_shift
+	g.gusts = weather_gusts
 	g.seed = world_seed
 	return g
 
@@ -336,6 +377,11 @@ func _apply_setup() -> void:
 	ai_level = gs.ai_level
 	wind_speed_kn = gs.wind_kn
 	wind_from_deg = gs.wind_from_deg
+	weather = gs.weather if gs.mode != "scenario" else ""
+	weather_kn = gs.wind_kn
+	weather_from_deg = gs.wind_from_deg
+	weather_shift = gs.shift
+	weather_gusts = gs.gusts
 	world_seed = gs.seed
 	livery = gs.livery
 	if gs.mode == "scenario":
@@ -354,7 +400,7 @@ func _apply_setup() -> void:
 ## `--wind=<kn>`, `--wind-from=<deg>`,
 ## `--fake` (FakeSim), `--core`; measuring (hud.md §17): `--perf` (the frame-time overlay), `--perf-log=PATH`,
 ## `--perf-seconds=N`, `--upscaler=fsr|bilinear|metalfx`, `--no-vsync`,
-## `--shadow-splits=0|2|4`, `--shadow-atlas=N`, `--shadow-distance=M`, `--shadow-soft=0..5`, `--no-wake-buffer`,
+## `--shadow-splits=0|1|2|4`, `--shadow-atlas=N`, `--shadow-distance=M`, `--shadow-soft=0..5`, `--no-wake-buffer`,
 ## `--sea-grid=RINGSxSEGMENTS`, `--water-shader=l|m|h` and `--no-hud` (this run only, not saved);
 ## `--scenario=<id>` (a rules scenario of game/data/scenarios, or a .scenario.json path; race.md §14).
 func _user_args() -> void:
@@ -392,8 +438,14 @@ func _user_args() -> void:
 			world_seed = a.trim_prefix("--seed=").to_int()
 		elif a.begins_with("--wind="):
 			wind_speed_kn = a.trim_prefix("--wind=").to_float()
+			weather_kn = wind_speed_kn
+			weather = "custom" if weather != "" else ""
 		elif a.begins_with("--wind-from="):
 			wind_from_deg = a.trim_prefix("--wind-from=").to_float()
+			weather_from_deg = wind_from_deg
+			weather = "custom" if weather != "" else ""
+		elif a.begins_with("--weather="):
+			weather = a.trim_prefix("--weather=")
 		elif a == "--fake":
 			sim_kind = SimKind.FAKE
 		elif a == "--core":
@@ -428,10 +480,87 @@ func _user_args() -> void:
 			no_hud = true
 		elif a.begins_with("--scenario="):
 			scenario = a.trim_prefix("--scenario=")
+		else:
+			_measure_flag(a)
 	if race_flag and not fleet_given and fleet_size < 2:
 		fleet_size = GameSetup.new().fleet_size
 	if watch:
 		racing = false
+
+
+## The run-only flags of measured runs (game/README.md "Measuring performance"); false for any other argument.
+func _measure_flag(a: String) -> bool:
+	if a.begins_with("--skip="):
+		skip_s = a.trim_prefix("--skip=").to_float()
+	elif a.begins_with("--lod="):
+		BoatView.forced_lod = a.trim_prefix("--lod=").to_int()
+	elif a.begins_with("--hide-parts="):
+		for n in a.trim_prefix("--hide-parts=").split(",", false):
+			BoatView.hidden_parts.append(n)
+	elif a == "--no-sheets":
+		BoatView.draw_sheets = false
+	elif a == "--no-sails":
+		BoatView.draw_sails = false
+	elif a == "--static-sails":
+		BoatView.animate_sails = false
+	elif a in ["--no-venue", "--no-boats", "--no-wakes", "--no-sky", "--no-water", "--no-post", "--no-course",
+			"--no-audio", "--no-sim"]:
+		measure_off[a.trim_prefix("--no-")] = true
+	else:
+		return false
+	return true
+
+
+## The parts `measure_off` switches off, on the built scene (measured runs only).
+func _apply_measure_off() -> void:
+	if Settings.vsync_override == 0 and DisplayServer.get_name() != "headless":
+		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)  # also where no settings apply (a menu stage)
+	if measure_off.has("venue"):
+		venue_view.visible = false
+	if measure_off.has("boats"):
+		for v in boat_views:
+			v.visible = false
+	if measure_off.has("wakes"):
+		wakes.visible = false
+		wakes.set_process(false)
+	if measure_off.has("sky"):
+		# a plain gradient sky shader instead of the clouds and sun disc; the sky still lights the scene
+		var env := sky.environment()
+		var sh := Shader.new()
+		sh.code = "shader_type sky;\nvoid sky() { COLOR = mix(vec3(0.5, 0.74, 1.1), vec3(0.05, 0.18, 0.62), " \
+				+ "clamp(EYEDIR.y, 0.0, 1.0)); }\n"
+		var m := ShaderMaterial.new()
+		m.shader = sh
+		env.sky.sky_material = m
+	if measure_off.has("water"):
+		sea.visible = false
+		var plane := MeshInstance3D.new()
+		plane.name = "FlatWater"
+		var pm := PlaneMesh.new()
+		pm.size = Vector2(30000.0, 30000.0)
+		plane.mesh = pm
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.05, 0.16, 0.25)
+		mat.roughness = 0.2
+		plane.material_override = mat
+		plane.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(plane)
+	if measure_off.has("post"):
+		DevLook.set_look(self, false)
+		var env := sky.environment()
+		env.glow_enabled = false
+		env.adjustment_enabled = false
+		env.adjustment_color_correction = null
+		env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
+	if measure_off.has("course") and course_view:
+		course_view.visible = false
+		sea.set_overlay_lines([])
+		sea.set_overlay_circles([])
+	if measure_off.has("audio"):
+		audio.process_mode = Node.PROCESS_MODE_DISABLED
+		AudioServer.set_bus_mute(0, true)
+	if measure_off.has("sim"):
+		runner.paused = true
 
 
 ## A rules scenario (race.md §14) onto the scene's settings: class, venue, course, fleet, wind and seed from the
@@ -457,6 +586,7 @@ func _load_scenario() -> void:
 	wind_from_deg = rad_to_deg(s.wind_from)
 	puffs = s.puffs
 	shift_preset = s.shift_preset
+	weather = ""
 	if not s.player_sails():
 		racing = false
 
@@ -475,6 +605,7 @@ func _build_views() -> void:
 			var info := sim.class_info(b)
 			var v := BoatView.create(info, info.rudder_max)
 			v.name = "Boat%d_%s" % [b, info.id]
+			v.own = runner != null and b == runner.boat
 			add_child(v)
 			boat_views.append(v)
 		_paint_fleet()
@@ -553,6 +684,8 @@ func _setup_core() -> int:
 		on_core = false
 		race_mode = false
 		return _setup_fake()
+	if skip_s > 0.0:
+		cs.step_ticks(roundi(skip_s / SimSource.DT), false)
 	sim = cs
 	core_env = CoreEnvSource.new()
 	core_env.name = "CoreEnv"
@@ -563,6 +696,8 @@ func _setup_core() -> int:
 	sea.quality = sea_quality if Settings.quality_override < 0 else Settings.quality_override as SeaQuality.Tier
 	sea.use_internal_clock = false
 	SeaQuality.apply_environment(sky.environment(), sea.quality)
+	BoatView.cast_distance = float(SeaQuality.get_tier(sea.quality).get("boat_cast_distance", 0.0))
+	get_viewport().mesh_lod_threshold = float(SeaQuality.get_tier(sea.quality).get("mesh_lod_threshold", 1.0))
 	return 0
 
 
@@ -579,6 +714,7 @@ func _make_core() -> CoreSimSource:
 	cs.settings = {"wind_speed": wind_speed_kn * HudFormat.KNOT, "wind_from": deg_to_rad(wind_from_deg),
 		"puffs": puffs, "shift_preset": shift_preset, "race_seed": world_seed}
 	cs.settings.merge(core_settings, true)
+	_resolve_weather(cs)
 	var ok := cs.create(venue)
 	var b := cs.add_entry(class_id, {"human": true}) if ok else -1
 	if b >= 0:
@@ -595,6 +731,39 @@ func _make_core() -> CoreSimSource:
 		push_warning("sail test: the core did not start (%s); using FakeSim" % cs.last_error())
 		return null
 	return cs
+
+
+## race.md §2.1: the weather mode's settings for this seed, venue and course, resolved once before the world is
+## made; the scene's wind fields follow the result (start heading, sea, HUD). A venue without conditions takes
+## Custom (menus.md §1). Without a weather mode, or when it does not resolve, the explicit settings stand.
+func _resolve_weather(cs: CoreSimSource) -> void:
+	weather_settings = {}
+	if weather == "" or venue == "":
+		return
+	var vi := {}
+	if not venue.contains("/"):
+		vi = MenuData.venue_info(venue)
+	elif FileAccess.file_exists(venue):
+		var doc: Variant = BoatClassData._read_json(venue)
+		vi = VenueWeather.info(doc) if doc is Dictionary else {}
+	var mode := weather if VenueWeather.modes(vi).has(weather) else "custom"
+	var s := cs.settings.duplicate()
+	s["weather"] = VenueWeather.MODES.find(mode)
+	s["wind_speed"] = weather_kn * HudFormat.KNOT
+	s["wind_from"] = deg_to_rad(weather_from_deg)
+	s["shift_preset"] = VenueWeather.SHIFTS.find(weather_shift)
+	s["puff_preset"] = VenueWeather.GUSTS.find(weather_gusts)
+	var why := []
+	var r := CoreSimSource.resolve_settings(s, venue, course if race_mode else "", why)
+	if r.is_empty():
+		push_warning("sail test: the %s weather did not resolve (%s)" % [mode, why[0] if not why.is_empty() else "?"])
+		return
+	r["weather_mode"] = mode
+	weather_settings = r
+	cs.settings = r
+	wind_speed_kn = float(r["wind_speed"]) / HudFormat.KNOT
+	wind_from_deg = rad_to_deg(float(r["wind_from"]))
+	puffs = bool(r["puffs"])
 
 
 func _start_psi() -> float:
@@ -637,6 +806,7 @@ func reset_boat(new_world := false) -> void:
 		for i in boat_views.size():
 			wakes.remove_boat(i)
 			shadows.remove_boat(i)
+		_wake_states.clear()
 		viewed = b
 		hud.local_commands = true
 		_race_over_seen = false
@@ -688,28 +858,77 @@ func _setup_fake() -> int:
 	return fs.add_boat(class_id, 0.0, 0.0, psi, 2.5)
 
 
+## After every tick: the sail snapshots at once (the render interpolation), the HUD, audio and course work of the
+## tick one part per frame when `threaded` (the rest before the next tick starts), else all of it now.
 func _on_tick(_t: int) -> void:
+	_ticked_this_frame = true
+	_flush_tick_work()
 	if scenario_run != null and scenario_run.finished(sim):
 		runner.paused = true  # race.md §14: the clip ends paused; reset_boat runs it again
-	var t0 := Time.get_ticks_usec()
-	hud.tick(sim, viewed)
-	if not _race_over_seen and hud.race.race_over and is_quick_race():
-		_race_over_seen = true
-		(sim as CoreSimSource).ai_add_autopilot(runner.boat)  # race.md §6.2: she sails clear by herself
-		rig.ease_to(CameraRig.Mode.FINISH, target)  # cameras.md §9.1
-	controls.rumble.tick(sim, runner.boat)
-	var t1 := Time.get_ticks_usec()
-	audio.tick()
-	var t2 := Time.get_ticks_usec()
 	_snapshot_sails()
-	var t3 := Time.get_ticks_usec()
-	if course_view:
-		course_view.tick()
-	var t4 := Time.get_ticks_usec()
-	PerfStats.add(&"hud", t1 - t0)
-	PerfStats.add(&"audio", t2 - t1)
-	PerfStats.add(&"course", t4 - t3)
-	_tick_usec += (t2 - t0) + (t4 - t3)
+	_tick_due = [TickWork.HUD, TickWork.AUDIO, TickWork.COURSE]
+	if threaded:
+		_run_tick_work(_tick_due.pop_front())
+	else:
+		_flush_tick_work()
+
+
+func _flush_tick_work() -> void:
+	while not _tick_due.is_empty():
+		_run_tick_work(_tick_due.pop_front())
+
+
+func _run_tick_work(w: int) -> void:
+	var t0 := Time.get_ticks_usec()
+	match w:
+		TickWork.HUD:
+			hud.tick(sim, viewed)
+			if not _race_over_seen and hud.race.race_over and is_quick_race():
+				_race_over_seen = true
+				(sim as CoreSimSource).ai_add_autopilot(runner.boat)  # race.md §6.2: she sails clear by herself
+				rig.ease_to(CameraRig.Mode.FINISH, target)  # cameras.md §9.1
+			controls.rumble.tick(sim, runner.boat)
+		TickWork.AUDIO:
+			if not measure_off.has("audio"):
+				audio.tick()
+		TickWork.COURSE:
+			if course_view:
+				course_view.tick()
+	var us := Time.get_ticks_usec() - t0
+	PerfStats.add([&"hud", &"audio", &"course"][w], us)
+	if _in_advance:
+		_tick_usec += us
+
+
+## The last node to process in a frame (while `threaded`): calls _end_of_frame.
+class _EndOfFrame extends Node:
+	var scene: Node
+
+	func _ready() -> void:
+		process_priority = 900  # after the scene's nodes, before the PerfMonitor (1000) that times the frame
+
+	func _process(_dt: float) -> void:
+		scene._end_of_frame()
+
+
+## The end of the frame's game work (_EndOfFrame, while `threaded`): the tick's work left over, then the next tick
+## started on the core's thread when the next frame steps it (SimRunner.prefetch), so it runs while this frame is
+## drawn.
+func _end_of_frame() -> void:
+	if not is_processing() or not is_inside_tree():
+		return
+	var t0 := Time.get_ticks_usec()
+	if not _tick_due.is_empty() and runner.next_frame_ticks():
+		_flush_tick_work()
+	_in_advance = true
+	runner.prefetch()
+	_in_advance = false
+	PerfStats.add(&"sim", Time.get_ticks_usec() - t0)
+
+
+func _exit_tree() -> void:
+	if runner != null:
+		runner.settle()
 
 
 ## FakeSim: the sea of the chosen source, shared with the sim; the sim's wind from the core scenario when there
@@ -735,6 +954,8 @@ func _setup_sea(fs: FakeSim) -> void:
 	sea.quality = sea_quality if Settings.quality_override < 0 else Settings.quality_override as SeaQuality.Tier
 	sea.use_internal_clock = false
 	SeaQuality.apply_environment(sky.environment(), sea.quality)
+	BoatView.cast_distance = float(SeaQuality.get_tier(sea.quality).get("boat_cast_distance", 0.0))
+	get_viewport().mesh_lod_threshold = float(SeaQuality.get_tier(sea.quality).get("mesh_lod_threshold", 1.0))
 	fs.use_sea(sea.model, t0)
 
 
@@ -762,6 +983,13 @@ func _notification(what: int) -> void:
 ## One frame; each part is timed into its PerfStats section (hud.md §17).
 func step_frame(dt: float) -> void:
 	var t0 := Time.get_ticks_usec()
+	_tick_usec = 0
+	_ticked_this_frame = false
+	_in_advance = true
+	runner.settle()  # the tick started ahead at the end of the last frame: in before anything reads the world
+	_in_advance = false
+	PerfStats.add(&"sim", Time.get_ticks_usec() - t0 - _tick_usec)
+	t0 = Time.get_ticks_usec()
 	var raw := scripted_input if scripted_input != null else reader.read()
 	if look_panel != null and look_panel.blocks_input():
 		raw = raw.without_buttons()  # the look panel has the keys (hud.md §18); the sim keeps running
@@ -774,14 +1002,19 @@ func step_frame(dt: float) -> void:
 	var t1 := Time.get_ticks_usec()
 	PerfStats.add(&"input", t1 - t0)
 	_tick_usec = 0
+	_in_advance = true
 	runner.advance(capture.sim_dt(dt))  # slow motion and the clean pause (controls.md §7)
+	_in_advance = false
 	var t2 := Time.get_ticks_usec()
 	PerfStats.add(&"sim", t2 - t1 - _tick_usec)
+	if not _ticked_this_frame and not _tick_due.is_empty():
+		_run_tick_work(_tick_due.pop_front())  # a frame without a tick: one part of the last tick's work
+	t2 = Time.get_ticks_usec()
 	_update_sea_time(runner.alpha())
 	PerfStats.add(&"sea", Time.get_ticks_usec() - t2)
 	_update_target(runner.alpha())
 	var t3 := Time.get_ticks_usec()
-	if course_view:
+	if course_view and not measure_off.has("course"):
 		course_view.frame(dt, rig.camera.global_position, target.pose)
 		rig.aerial.next_mark = course_view.next_mark_scene()
 	var t4 := Time.get_ticks_usec()
@@ -802,7 +1035,8 @@ func step_frame(dt: float) -> void:
 	capture.frame(dt)
 	_place_rate_note()
 	audio.countdown_beeps = hud.assist == Hud.Assist.FULL
-	audio.frame(dt, rig.camera, rig.mode == CameraRig.Mode.ONBOARD)
+	if not measure_off.has("audio"):
+		audio.frame(dt, rig.camera, rig.mode == CameraRig.Mode.ONBOARD)
 	PerfStats.add(&"audio", Time.get_ticks_usec() - t6)
 
 
@@ -840,39 +1074,57 @@ func _place_rate_note() -> void:
 
 
 ## Every boat node at its render pose: the boat (`boats`), its sails (`sails`) and its wake (`wakes`), timed into
-## those PerfStats sections.
+## those PerfStats sections. The drawn shadows (water_render.md §4.7) are built only for the boats the tier draws.
 func _update_target(alpha: float) -> void:
 	var n := mini(sim.boat_count(), boat_views.size())
+	var poses := sim.render_poses(alpha)
 	var us_boats := 0
 	var us_sails := 0
 	var us_wakes := 0
+	var draw_shadows := shadows.enabled
+	var origins := PackedVector3Array()
+	if draw_shadows:
+		origins.resize(n)
+	if _wake_states.size() != n:
+		_wake_states.resize(n)
+		for b in n:
+			_wake_states[b] = {}
+	BoatView.begin_frame()
+	BoatView.near_interval = BoatView.NEAR_INTERVAL_L if sea.quality == SeaQuality.Tier.L else BoatView.NEAR_INTERVAL
 	for b in n:
 		var ta := Time.get_ticks_usec()
-		var p := sim.render_pose(b, alpha)
+		var p: SimSource.RenderPose = poses[b]
 		var v := boat_views[b]
+		v.full_rate = b == viewed
 		v.apply(p)
 		var tb := Time.get_ticks_usec()
 		v.apply_sails(_sails_prev_all[b] if b < _sails_prev_all.size() else null,
 			_sails_cur_all[b] if b < _sails_cur_all.size() else null, alpha)
 		var tc := Time.get_ticks_usec()
 		wakes.update_boat(b, _wake_state(b, p))
-		if shadows.enabled:
-			shadows.update_boat(b, v.shadow_state(b == runner.boat))
+		if draw_shadows:
+			origins[b] = v.global_position
 		var td := Time.get_ticks_usec()
 		us_boats += tb - ta
 		us_sails += tc - tb
 		us_wakes += td - tc
 		if b == viewed:
 			target.pose = p
+	if draw_shadows:
+		var te := Time.get_ticks_usec()
+		for b in shadows.choose(origins, runner.boat):
+			shadows.update_boat(b, boat_views[b].shadow_state(b == runner.boat))
+		us_wakes += Time.get_ticks_usec() - te
 	PerfStats.add(&"boats", us_boats)
 	PerfStats.add(&"sails", us_sails)
 	PerfStats.add(&"wakes", us_wakes)
 
 
-## SeaWakes.update_boat state: the render pose and the class waterline (perf dynamics lwl, bwl).
+## SeaWakes.update_boat state: the render pose and the class waterline (perf dynamics lwl, bwl), in the boat's
+## kept Dictionary.
 func _wake_state(b: int, p: SimSource.RenderPose) -> Dictionary:
 	if on_core:
-		return (sim as CoreSimSource).wake_state(b, p, b == runner.boat)
+		return (sim as CoreSimSource).wake_state_into(_wake_states[b], b, p, b == runner.boat)
 	var dyn: Dictionary = (sim as FakeSim).boats[b].d.dyn
 	var info := sim.class_info(b)
 	var lwl := float(dyn.get("lwl", 0.9 * info.loa))

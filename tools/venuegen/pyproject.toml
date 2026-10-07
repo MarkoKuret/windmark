@@ -1,0 +1,22 @@
+[project]
+name = "windmark-venuegen"
+version = "0.1.0"
+description = "Windmark venue generator: venue source file and coastline to the venue physics file"
+requires-python = ">=3.9"
+dependencies = ["numpy>=1.24"]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.scripts]
+windmark-venuegen = "windmark_venuegen.cli:main"
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["windmark_venuegen"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

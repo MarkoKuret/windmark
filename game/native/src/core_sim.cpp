@@ -6,7 +6,14 @@
 #include <godot_cpp/variant/packed_int32_array.hpp>
 
 #include <cmath>
+#include <condition_variable>
 #include <cstring>
+#include <mutex>
+#include <thread>
+
+#if !defined(_WIN32)
+#include <pthread.h>
+#endif
 
 using namespace godot;
 
@@ -37,7 +44,123 @@ int64_t get_i(const Dictionary& d, const char* k, int64_t def) { return d.has(k)
 
 }  // namespace
 
+// ---- the worker thread ----------------------------------------------------------------------------------------
+//
+// One thread per world, made at the first step_begin(): it sleeps until a tick is handed to it, steps the world
+// and signals the end. The main thread hands the tick over and takes it back (step_end, or settle() in any other
+// call), so the world is touched by one thread at a time and steps exactly as it does on the main thread.
+
+struct CoreSim::Worker {
+  std::mutex m;
+  std::condition_variable cv;
+  wm_world* world = nullptr;
+  bool job = false;
+  bool done = false;
+  bool quit = false;
+#if defined(_WIN32)
+  std::thread thread;
+#else
+  pthread_t thread{};
+#endif
+
+  void run() {
+    std::unique_lock<std::mutex> lk(m);
+    for (;;) {
+      cv.wait(lk, [this] { return job || quit; });
+      if (quit) return;
+      wm_world* w = world;
+      lk.unlock();
+      wm_world_step(w);
+      lk.lock();
+      job = false;
+      done = true;
+      cv.notify_all();
+    }
+  }
+
+#if !defined(_WIN32)
+  static void* entry(void* self) {
+    static_cast<Worker*>(self)->run();
+    return nullptr;
+  }
+#endif
+
+  bool start() {
+#if defined(_WIN32)
+    thread = std::thread([this] { run(); });
+    return true;
+#else
+    // the main thread's stack size: the core is written for it (std::thread would give 512 KiB on macOS)
+    pthread_attr_t a;
+    pthread_attr_init(&a);
+    pthread_attr_setstacksize(&a, 8u << 20);
+    const bool r = pthread_create(&thread, &a, &Worker::entry, this) == 0;
+    pthread_attr_destroy(&a);
+    return r;
+#endif
+  }
+
+  void begin(wm_world* w) {
+    std::lock_guard<std::mutex> lk(m);
+    world = w;
+    done = false;
+    job = true;
+    cv.notify_all();
+  }
+
+  void wait() {
+    std::unique_lock<std::mutex> lk(m);
+    cv.wait(lk, [this] { return done; });
+  }
+
+  void stop() {
+    {
+      std::lock_guard<std::mutex> lk(m);
+      quit = true;
+      cv.notify_all();
+    }
+#if defined(_WIN32)
+    if (thread.joinable()) thread.join();
+#else
+    pthread_join(thread, nullptr);
+#endif
+  }
+};
+
+CoreSim::CoreSim() = default;
+
+void CoreSim::settle() const {
+  if (!stepping_) return;
+  worker_->wait();
+  stepping_ = false;
+}
+
+// Starts the next tick on the worker thread; false (nothing started) without a world or a thread.
+bool CoreSim::step_begin() {
+  settle();
+  if (world_ == nullptr) return false;
+  if (!worker_) {
+    auto w = std::make_unique<Worker>();
+    if (!w->start()) {
+      error_ = "the simulation thread did not start";
+      return false;
+    }
+    worker_ = std::move(w);
+  }
+  worker_->begin(world_);
+  stepping_ = true;
+  return true;
+}
+
+// Waits for the tick started by step_begin() (at once when it is done); returns the tick count.
+int64_t CoreSim::step_end() {
+  settle();
+  return world_ != nullptr ? static_cast<int64_t>(wm_world_tick(world_)) : 0;
+}
+
 CoreSim::~CoreSim() {
+  settle();
+  if (worker_) worker_->stop();
   wm_world_free(world_);
   for (auto& p : perfs_) wm_perf_free(p.second);
 }
@@ -62,9 +185,11 @@ bool CoreSim::boat_ok(int64_t boat) const {
 
 // ---- set-up ---------------------------------------------------------------------------------------------------
 
-Dictionary CoreSim::default_settings() {
-  wm_world_settings s;
-  wm_world_settings_init(&s);
+namespace {
+
+// wm_world_settings as a Dictionary with the C field names; `puff` is a Dictionary of wm_puff_params and `swells`
+// an Array of [hs, tp, from].
+Dictionary settings_dict(const wm_world_settings& s) {
   Dictionary d;
   d["race_seed"] = static_cast<int64_t>(s.race_seed);
   d["wind_speed"] = s.wind_speed;
@@ -89,16 +214,45 @@ Dictionary CoreSim::default_settings() {
   d["time_limit_s"] = s.time_limit_s;
   d["finish_window"] = s.finish_window != 0;
   d["start_limit_s"] = s.start_limit_s;
+  d["shift_amplitude"] = s.shift_amplitude;
+  d["shift_hold_max_ms"] = static_cast<int64_t>(s.shift_hold_max_ms);
+  d["shift_hold_min_ms"] = static_cast<int64_t>(s.shift_hold_min_ms);
+  d["shift_trend_max"] = s.shift_trend_max;
+  d["osc_amplitude"] = s.osc_amplitude;
+  d["osc_time_scale"] = s.osc_time_scale;
+  d["puff_preset"] = s.puff_preset;
+  Dictionary p;
+  p["tile"] = s.puff.tile;
+  p["puff_count"] = s.puff.puff_count;
+  p["lull_count"] = s.puff.lull_count;
+  p["diameter_min"] = s.puff.diameter_min;
+  p["diameter_max"] = s.puff.diameter_max;
+  p["puff_strength_min"] = s.puff.puff_strength_min;
+  p["puff_strength_max"] = s.puff.puff_strength_max;
+  p["lull_strength_min"] = s.puff.lull_strength_min;
+  p["lull_strength_max"] = s.puff.lull_strength_max;
+  p["life_min_ms"] = static_cast<int64_t>(s.puff.life_min_ms);
+  p["life_max_ms"] = static_cast<int64_t>(s.puff.life_max_ms);
+  p["cap_up"] = s.puff.cap_up;
+  p["cap_down"] = s.puff.cap_down;
+  d["puff"] = p;
+  d["tide_scale"] = s.tide_scale;
+  d["tide_period_ms"] = static_cast<int64_t>(s.tide_period_ms);
+  d["tide_phase_ms"] = static_cast<int64_t>(s.tide_phase_ms);
+  Array sw;
+  for (int32_t i = 0; i < s.swell_count && i < 4; ++i) {
+    Array one;
+    one.push_back(s.swells[i].hs);
+    one.push_back(s.swells[i].tp);
+    one.push_back(s.swells[i].from);
+    sw.push_back(one);
+  }
+  d["swells"] = sw;
+  d["weather"] = s.weather;
   return d;
 }
 
-bool CoreSim::create(const Dictionary& d, const String& venue_path) {
-  if (world_ != nullptr) {
-    error_ = "the world exists already";
-    return false;
-  }
-  wm_world_settings s;
-  wm_world_settings_init(&s);
+void settings_from(const Dictionary& d, wm_world_settings& s) {
   s.race_seed = static_cast<uint64_t>(get_i(d, "race_seed", static_cast<int64_t>(s.race_seed)));
   s.wind_speed = f32(get_f(d, "wind_speed", s.wind_speed));
   s.wind_from = f32(get_f(d, "wind_from", s.wind_from));
@@ -122,6 +276,81 @@ bool CoreSim::create(const Dictionary& d, const String& venue_path) {
   s.time_limit_s = f32(get_f(d, "time_limit_s", s.time_limit_s));
   s.finish_window = i32(get_i(d, "finish_window", s.finish_window));
   s.start_limit_s = f32(get_f(d, "start_limit_s", s.start_limit_s));
+  s.shift_amplitude = f32(get_f(d, "shift_amplitude", s.shift_amplitude));
+  s.shift_hold_max_ms = static_cast<uint32_t>(get_i(d, "shift_hold_max_ms", s.shift_hold_max_ms));
+  s.shift_hold_min_ms = static_cast<uint32_t>(get_i(d, "shift_hold_min_ms", s.shift_hold_min_ms));
+  s.shift_trend_max = f32(get_f(d, "shift_trend_max", s.shift_trend_max));
+  s.osc_amplitude = f32(get_f(d, "osc_amplitude", s.osc_amplitude));
+  s.osc_time_scale = f32(get_f(d, "osc_time_scale", s.osc_time_scale));
+  s.puff_preset = i32(get_i(d, "puff_preset", s.puff_preset));
+  if (d.has("puff")) {
+    const Dictionary p = d["puff"];
+    s.puff.tile = f32(get_f(p, "tile", s.puff.tile));
+    s.puff.puff_count = i32(get_i(p, "puff_count", s.puff.puff_count));
+    s.puff.lull_count = i32(get_i(p, "lull_count", s.puff.lull_count));
+    s.puff.diameter_min = f32(get_f(p, "diameter_min", s.puff.diameter_min));
+    s.puff.diameter_max = f32(get_f(p, "diameter_max", s.puff.diameter_max));
+    s.puff.puff_strength_min = f32(get_f(p, "puff_strength_min", s.puff.puff_strength_min));
+    s.puff.puff_strength_max = f32(get_f(p, "puff_strength_max", s.puff.puff_strength_max));
+    s.puff.lull_strength_min = f32(get_f(p, "lull_strength_min", s.puff.lull_strength_min));
+    s.puff.lull_strength_max = f32(get_f(p, "lull_strength_max", s.puff.lull_strength_max));
+    s.puff.life_min_ms = static_cast<uint32_t>(get_i(p, "life_min_ms", s.puff.life_min_ms));
+    s.puff.life_max_ms = static_cast<uint32_t>(get_i(p, "life_max_ms", s.puff.life_max_ms));
+    s.puff.cap_up = f32(get_f(p, "cap_up", s.puff.cap_up));
+    s.puff.cap_down = f32(get_f(p, "cap_down", s.puff.cap_down));
+  }
+  s.tide_scale = f32(get_f(d, "tide_scale", s.tide_scale));
+  s.tide_period_ms = static_cast<uint32_t>(get_i(d, "tide_period_ms", s.tide_period_ms));
+  s.tide_phase_ms = static_cast<uint32_t>(get_i(d, "tide_phase_ms", s.tide_phase_ms));
+  if (d.has("swells")) {
+    const Array sw = d["swells"];
+    s.swell_count = static_cast<int32_t>(sw.size() < 4 ? sw.size() : 4);
+    for (int32_t i = 0; i < s.swell_count; ++i) {
+      const Array one = sw[i];
+      s.swells[i].hs = one.size() > 0 ? f32(double(one[0])) : 0.0f;
+      s.swells[i].tp = one.size() > 1 ? f32(double(one[1])) : 0.0f;
+      s.swells[i].from = one.size() > 2 ? f32(double(one[2])) : 0.0f;
+    }
+  }
+  s.weather = i32(get_i(d, "weather", s.weather));
+}
+
+}  // namespace
+
+Dictionary CoreSim::default_settings() {
+  wm_world_settings s;
+  wm_world_settings_init(&s);
+  return settings_dict(s);
+}
+
+// race.md §2.1: the venue's conditions resolved for settings.weather and the seed into the explicit settings
+// (a copy of `settings` with every wind, current and sea field written out); {} with last_error() on failure.
+Dictionary CoreSim::resolve_settings(const Dictionary& d, const String& venue_path, const String& course_path) {
+  wm_world_settings s;
+  wm_world_settings_init(&s);
+  settings_from(d, s);
+  wm_venue* venue = nullptr;
+  if (!ok(wm_venue_load(os_path(venue_path).c_str(), &venue))) return Dictionary();
+  wm_course* course = nullptr;
+  if (!course_path.is_empty() && !ok(wm_course_load(os_path(course_path).c_str(), &course))) {
+    wm_venue_free(venue);
+    return Dictionary();
+  }
+  const bool r = ok(wm_world_settings_resolve(&s, venue, course));
+  wm_course_free(course);
+  wm_venue_free(venue);
+  return r ? settings_dict(s) : Dictionary();
+}
+
+bool CoreSim::create(const Dictionary& d, const String& venue_path) {
+  settle();
+  if (world_ != nullptr) {
+    error_ = "the world exists already";
+    return false;
+  }
+  wm_world_settings s;
+  wm_world_settings_init(&s);
+  settings_from(d, s);
   wm_venue* venue = nullptr;
   if (!venue_path.is_empty() && !ok(wm_venue_load(os_path(venue_path).c_str(), &venue))) return false;
   const bool r = ok(wm_world_create(&s, venue, &world_));
@@ -140,6 +369,7 @@ wm_perf* CoreSim::perf_for(const String& path) {
 }
 
 int64_t CoreSim::add_boat(const String& perf_path, const Dictionary& d) {
+  settle();
   if (world_ == nullptr) {
     error_ = "no world";
     return -1;
@@ -159,15 +389,18 @@ int64_t CoreSim::add_boat(const String& perf_path, const Dictionary& d) {
 }
 
 bool CoreSim::place_boat(int64_t boat, double x, double y, double psi) {
+  settle();
   return boat_ok(boat) && ok(wm_world_place_boat(world_, i32(boat), f32(x), f32(y), f32(psi)));
 }
 
 bool CoreSim::scenario_place(int64_t boat, double x, double y, double psi, double v, int64_t front_sail) {
+  settle();
   return boat_ok(boat) &&
          ok(wm_world_scenario_place(world_, i32(boat), f32(x), f32(y), f32(psi), f32(v), i32(front_sail)));
 }
 
 bool CoreSim::create_race(const String& course_path) {
+  settle();
   if (world_ == nullptr) {
     error_ = "no world";
     return false;
@@ -182,6 +415,7 @@ bool CoreSim::create_race(const String& course_path) {
 // ---- controls -------------------------------------------------------------------------------------------------
 
 int64_t CoreSim::apply_input(int64_t boat, double h_cmd, double sheet_cmd, int64_t sail_req, int64_t flags) {
+  settle();
   if (!boat_ok(boat)) return WM_REQUEST_NONE;
   const wm_input_frame f{f32(h_cmd), f32(sheet_cmd), static_cast<uint8_t>(sail_req & 0xFF),
                          static_cast<uint8_t>(flags & 0xFF)};
@@ -190,22 +424,36 @@ int64_t CoreSim::apply_input(int64_t boat, double h_cmd, double sheet_cmd, int64
   return r;
 }
 
-bool CoreSim::set_helm(int64_t b, double h) { return boat_ok(b) && ok(wm_world_set_helm(world_, i32(b), f32(h))); }
-bool CoreSim::set_sheet(int64_t b, double s) { return boat_ok(b) && ok(wm_world_set_sheet(world_, i32(b), f32(s))); }
-bool CoreSim::set_auto_trim(int64_t b, bool on) { return boat_ok(b) && ok(wm_world_set_auto_trim(world_, i32(b), on)); }
-bool CoreSim::set_let_fly(int64_t b, bool on) { return boat_ok(b) && ok(wm_world_set_let_fly(world_, i32(b), on)); }
+bool CoreSim::set_helm(int64_t b, double h) {
+  settle();
+  return boat_ok(b) && ok(wm_world_set_helm(world_, i32(b), f32(h)));
+}
+bool CoreSim::set_sheet(int64_t b, double s) {
+  settle();
+  return boat_ok(b) && ok(wm_world_set_sheet(world_, i32(b), f32(s)));
+}
+bool CoreSim::set_auto_trim(int64_t b, bool on) {
+  settle();
+  return boat_ok(b) && ok(wm_world_set_auto_trim(world_, i32(b), on));
+}
+bool CoreSim::set_let_fly(int64_t b, bool on) {
+  settle();
+  return boat_ok(b) && ok(wm_world_set_let_fly(world_, i32(b), on));
+}
 int64_t CoreSim::hoist(int64_t b, int64_t sail) {
+  settle();
   int32_t r = WM_REQUEST_NONE;
   if (boat_ok(b)) ok(wm_world_hoist(world_, i32(b), i32(sail), &r));
   return r;
 }
 int64_t CoreSim::drop_front(int64_t b) {
+  settle();
   int32_t r = WM_REQUEST_NONE;
   if (boat_ok(b)) ok(wm_world_drop_front(world_, i32(b), &r));
   return r;
 }
-bool CoreSim::retire(int64_t b) { return boat_ok(b) && ok(wm_world_retire(world_, i32(b))); }
-bool CoreSim::protest(int64_t b) { return boat_ok(b) && ok(wm_world_protest(world_, i32(b))); }
+bool CoreSim::retire(int64_t b) { settle(); return boat_ok(b) && ok(wm_world_retire(world_, i32(b))); }
+bool CoreSim::protest(int64_t b) { settle(); return boat_ok(b) && ok(wm_world_protest(world_, i32(b))); }
 
 PackedByteArray CoreSim::encode_input(double h_cmd, double sheet_cmd, int64_t sail_req, int64_t flags) {
   const wm_input_frame f{f32(h_cmd), f32(sheet_cmd), static_cast<uint8_t>(sail_req & 0xFF),
@@ -220,11 +468,15 @@ PackedByteArray CoreSim::encode_input(double h_cmd, double sheet_cmd, int64_t sa
 
 // ---- stepping -------------------------------------------------------------------------------------------------
 
-int64_t CoreSim::step() { return world_ != nullptr ? static_cast<int64_t>(wm_world_step(world_)) : 0; }
+void CoreSim::step() {
+  settle();
+  if (world_ != nullptr) wm_world_step(world_);
+}
 
 // Fast-forward without rendering: n ticks (or until the race is closed); returns the ticks stepped. Only the last
 // tick's events remain readable.
 int64_t CoreSim::step_ticks(int64_t n, bool stop_when_closed) {
+  settle();
   if (world_ == nullptr) return 0;
   int64_t k = 0;
   for (; k < n; ++k) {
@@ -240,6 +492,7 @@ int64_t CoreSim::step_ticks(int64_t n, bool stop_when_closed) {
 // ---- AI skippers ----------------------------------------------------------------------------------------------
 
 int64_t CoreSim::add_ai_boat(const String& perf_path, int64_t level, bool speed_only) {
+  settle();
   if (world_ == nullptr) {
     error_ = "no world";
     return -1;
@@ -252,15 +505,20 @@ int64_t CoreSim::add_ai_boat(const String& perf_path, int64_t level, bool speed_
 }
 
 bool CoreSim::ai_add(int64_t b, int64_t level, bool speed_only) {
+  settle();
   return boat_ok(b) && ok(wm_world_ai_add(world_, i32(b), i32(level), speed_only ? 1 : 0));
 }
-bool CoreSim::ai_take_over(int64_t b) { return boat_ok(b) && ok(wm_world_ai_take_over(world_, i32(b))); }
-bool CoreSim::ai_release(int64_t b) { return boat_ok(b) && ok(wm_world_ai_release(world_, i32(b))); }
-bool CoreSim::ai_add_autopilot(int64_t b) { return boat_ok(b) && ok(wm_world_ai_add_autopilot(world_, i32(b))); }
-bool CoreSim::ai_has(int64_t b) const { return world_ != nullptr && wm_world_ai_has(world_, i32(b)) != 0; }
-int64_t CoreSim::ai_count() const { return wm_world_ai_count(world_); }
+bool CoreSim::ai_take_over(int64_t b) { settle(); return boat_ok(b) && ok(wm_world_ai_take_over(world_, i32(b))); }
+bool CoreSim::ai_release(int64_t b) { settle(); return boat_ok(b) && ok(wm_world_ai_release(world_, i32(b))); }
+bool CoreSim::ai_add_autopilot(int64_t b) {
+  settle();
+  return boat_ok(b) && ok(wm_world_ai_add_autopilot(world_, i32(b)));
+}
+bool CoreSim::ai_has(int64_t b) const { settle(); return world_ != nullptr && wm_world_ai_has(world_, i32(b)) != 0; }
+int64_t CoreSim::ai_count() const { settle(); return wm_world_ai_count(world_); }
 
 Dictionary CoreSim::ai_telemetry(int64_t boat) const {
+  settle();
   Dictionary d;
   wm_ai_telemetry t;
   if (!boat_ok(boat) || !ok(wm_world_ai_telemetry(world_, i32(boat), &t))) return d;
@@ -291,6 +549,7 @@ Dictionary CoreSim::ai_telemetry(int64_t boat) const {
 }
 
 Dictionary CoreSim::ai_debug(int64_t boat) const {
+  settle();
   Dictionary d;
   wm_ai_debug g;
   if (!boat_ok(boat) || !ok(wm_world_ai_debug(world_, i32(boat), &g))) return d;
@@ -323,6 +582,7 @@ PackedByteArray bytes_of(const uint8_t* p, size_t n) {
 }  // namespace
 
 PackedByteArray CoreSim::save_world() {
+  settle();
   const uint8_t* p = nullptr;
   size_t n = 0;
   if (world_ == nullptr || !ok(wm_world_save(world_, &p, &n))) return PackedByteArray();
@@ -330,6 +590,7 @@ PackedByteArray CoreSim::save_world() {
 }
 
 bool CoreSim::load_world(const String& course_path, const PackedByteArray& bytes) {
+  settle();
   if (world_ == nullptr) {
     error_ = "no world";
     return false;
@@ -342,6 +603,7 @@ bool CoreSim::load_world(const String& course_path, const PackedByteArray& bytes
 }
 
 PackedByteArray CoreSim::ai_save() {
+  settle();
   const uint8_t* p = nullptr;
   size_t n = 0;
   if (world_ == nullptr || !ok(wm_world_ai_save(world_, &p, &n))) return PackedByteArray();
@@ -349,22 +611,24 @@ PackedByteArray CoreSim::ai_save() {
 }
 
 bool CoreSim::ai_load(const PackedByteArray& bytes) {
+  settle();
   if (world_ == nullptr) {
     error_ = "no world";
     return false;
   }
   return ok(wm_world_ai_load(world_, bytes.ptr(), static_cast<size_t>(bytes.size())));
 }
-int64_t CoreSim::checksum() const { return static_cast<int64_t>(wm_world_checksum(world_)); }
-int64_t CoreSim::tick() const { return wm_world_tick(world_); }
-int64_t CoreSim::boat_count() const { return wm_world_boat_count(world_); }
-bool CoreSim::has_race() const { return wm_world_has_race(world_) != 0; }
-int64_t CoreSim::time_ms() const { return wm_world_time_ms(world_); }
-double CoreSim::render_time_ms(double alpha) const { return wm_world_render_time_ms(world_, f32(alpha)); }
+int64_t CoreSim::checksum() const { settle(); return static_cast<int64_t>(wm_world_checksum(world_)); }
+int64_t CoreSim::tick() const { settle(); return wm_world_tick(world_); }
+int64_t CoreSim::boat_count() const { settle(); return wm_world_boat_count(world_); }
+bool CoreSim::has_race() const { settle(); return wm_world_has_race(world_) != 0; }
+int64_t CoreSim::time_ms() const { settle(); return wm_world_time_ms(world_); }
+double CoreSim::render_time_ms(double alpha) const { settle(); return wm_world_render_time_ms(world_, f32(alpha)); }
 
 // ---- boats ----------------------------------------------------------------------------------------------------
 
 Dictionary CoreSim::class_info(int64_t boat) const {
+  settle();
   Dictionary d;
   if (!boat_ok(boat)) return d;
   const wm_perf* p = wm_world_boat_perf(world_, i32(boat));
@@ -394,12 +658,14 @@ Dictionary CoreSim::class_info(int64_t boat) const {
 }
 
 PackedFloat32Array CoreSim::boat_state(int64_t boat) const {
+  settle();
   wm_boat_state s{};
   if (boat_ok(boat)) ok(wm_world_boat_state(world_, i32(boat), &s));
   return floats(s);
 }
 
 PackedFloat32Array CoreSim::boat_controls(int64_t boat) const {
+  settle();
   wm_boat_controls c{};
   if (boat_ok(boat)) ok(wm_world_boat_controls(world_, i32(boat), &c));
   PackedFloat32Array a;
@@ -412,12 +678,14 @@ PackedFloat32Array CoreSim::boat_controls(int64_t boat) const {
 }
 
 PackedFloat32Array CoreSim::boat_outputs(int64_t boat) const {
+  settle();
   wm_boat_outputs o{};
   if (boat_ok(boat)) ok(wm_world_boat_outputs(world_, i32(boat), &o));
   return floats(o);
 }
 
 PackedFloat32Array CoreSim::boat_env(int64_t boat) const {
+  settle();
   wm_boat_env e{};
   if (boat_ok(boat)) ok(wm_world_boat_env(world_, i32(boat), &e));
   PackedFloat32Array a;
@@ -428,12 +696,31 @@ PackedFloat32Array CoreSim::boat_env(int64_t boat) const {
 }
 
 PackedFloat32Array CoreSim::render_pose(int64_t boat, double alpha) const {
+  settle();
   wm_render_pose p{};
   if (boat_ok(boat)) ok(wm_world_render_pose(world_, i32(boat), f32(alpha), &p));
   return floats(p);
 }
 
+// Every boat's render pose at alpha in one array: boat b's fields (POSE_FIELDS) at 9 b.
+PackedFloat32Array CoreSim::render_poses(double alpha) const {
+  settle();
+  PackedFloat32Array a;
+  if (world_ == nullptr) return a;
+  constexpr int64_t kN = static_cast<int64_t>(sizeof(wm_render_pose) / sizeof(float));
+  const int32_t n = wm_world_boat_count(world_);
+  a.resize(kN * n);
+  float* out = a.ptrw();
+  for (int32_t b = 0; b < n; ++b) {
+    wm_render_pose p{};
+    wm_world_render_pose(world_, b, f32(alpha), &p);
+    std::memcpy(out + kN * b, &p, sizeof(p));
+  }
+  return a;
+}
+
 double CoreSim::trim_speed_at(int64_t boat, double tws, double awa_abs, double eps) const {
+  settle();
   float v = NAN;
   if (boat_ok(boat)) (void)wm_world_trim_speed_at(world_, i32(boat), f32(tws), f32(awa_abs), f32(eps), &v);
   return v;
@@ -441,6 +728,7 @@ double CoreSim::trim_speed_at(int64_t boat, double tws, double awa_abs, double e
 
 double CoreSim::perf_table(int64_t boat, int64_t front_sail, const String& name, double x, double y,
                            double w) const {
+  settle();
   float v = NAN;
   if (!boat_ok(boat)) return v;
   (void)wm_perf_table(wm_world_boat_perf(world_, i32(boat)), i32(front_sail), name.utf8().get_data(), f32(x), f32(y),
@@ -449,11 +737,13 @@ double CoreSim::perf_table(int64_t boat, int64_t front_sail, const String& name,
 }
 
 double CoreSim::polar(int64_t boat, double tws, double twa, int64_t front_sail) const {
+  settle();
   if (!boat_ok(boat)) return NAN;
   return wm_perf_polar(wm_world_boat_perf(world_, i32(boat)), f32(tws), f32(twa), i32(front_sail));
 }
 
 Dictionary CoreSim::polar_vmg(int64_t boat, double tws) const {
+  settle();
   Dictionary d;
   float us = NAN, ua = NAN, ds = NAN, da = NAN;
   if (!boat_ok(boat) || wm_perf_polar_vmg(wm_world_boat_perf(world_, i32(boat)), f32(tws), &us, &ua, &ds, &da) != WM_OK)
@@ -466,6 +756,7 @@ Dictionary CoreSim::polar_vmg(int64_t boat, double tws) const {
 }
 
 Dictionary CoreSim::sails(int64_t boat) const {
+  settle();
   Dictionary d;
   wm_sails s{};
   if (!boat_ok(boat) || !ok(wm_world_sails(world_, i32(boat), &s))) return d;
@@ -487,6 +778,7 @@ Dictionary CoreSim::sails(int64_t boat) const {
 }
 
 PackedFloat32Array CoreSim::sail(int64_t boat, int64_t sail) const {
+  settle();
   wm_sail s{};
   if (boat_ok(boat)) ok(wm_world_sail(world_, i32(boat), i32(sail), &s));
   PackedFloat32Array a;
@@ -497,6 +789,7 @@ PackedFloat32Array CoreSim::sail(int64_t boat, int64_t sail) const {
 }
 
 Array CoreSim::sail_events(int64_t boat) const {
+  settle();
   Array out;
   if (!boat_ok(boat)) return out;
   for (int32_t i = 0; i < wm_world_sail_event_count(world_, i32(boat)); ++i) {
@@ -513,20 +806,23 @@ Array CoreSim::sail_events(int64_t boat) const {
 // ---- environment ----------------------------------------------------------------------------------------------
 
 Vector2 CoreSim::wind_clean(double x, double y) {
+  settle();
   float s = 0.0f, f = 0.0f;
   if (world_ != nullptr) wm_world_wind_clean(world_, f32(x), f32(y), &s, &f);
   return Vector2(s, f);
 }
 
-double CoreSim::wind_global_from() { return world_ != nullptr ? wm_world_wind_global_from(world_) : 0.0; }
+double CoreSim::wind_global_from() { settle(); return world_ != nullptr ? wm_world_wind_global_from(world_) : 0.0; }
 
 Vector2 CoreSim::current_at(double x, double y, int64_t t_ms) {
+  settle();
   float cx = 0.0f, cy = 0.0f;
   if (world_ != nullptr) wm_world_current_at(world_, f32(x), f32(y), static_cast<uint32_t>(t_ms), &cx, &cy);
   return Vector2(cx, cy);
 }
 
 Dictionary CoreSim::wind_state(int64_t t_ms) {
+  settle();
   Dictionary d;
   if (world_ == nullptr) return d;
   const uint32_t t = static_cast<uint32_t>(t_ms < 0 ? 0 : t_ms);
@@ -557,21 +853,25 @@ Dictionary CoreSim::wind_state(int64_t t_ms) {
 }
 
 double CoreSim::sea_height(double x, double y) {
+  settle();
   return world_ != nullptr ? wm_world_sea_height(world_, f32(x), f32(y)) : 0.0;
 }
 
 double CoreSim::sea_height_at(double x, double y, int64_t t_ms) {
+  settle();
   if (world_ == nullptr) return 0.0;
   return wm_world_sea_height_at(world_, f32(x), f32(y), static_cast<uint32_t>(t_ms < 0 ? 0 : t_ms));
 }
 
 Vector2 CoreSim::sea_slope(double x, double y) {
+  settle();
   float dx = 0.0f, dy = 0.0f;
   if (world_ != nullptr) wm_world_sea_slope(world_, f32(x), f32(y), &dx, &dy);
   return Vector2(dx, dy);
 }
 
 Array CoreSim::sea_components() const {
+  settle();
   Array out;
   if (world_ == nullptr) return out;
   const int32_t n = wm_world_sea_components(world_, nullptr, 0);
@@ -590,6 +890,7 @@ Array CoreSim::sea_components() const {
 }
 
 Dictionary CoreSim::sea_exposure() const {
+  settle();
   Dictionary d;
   wm_exposure_grid g{};
   if (world_ == nullptr || wm_world_sea_exposure_grid(world_, &g) != WM_OK) return d;
@@ -610,6 +911,7 @@ Dictionary CoreSim::sea_exposure() const {
 // ---- course, race and rules -----------------------------------------------------------------------------------
 
 Array CoreSim::venue_land() const {
+  settle();
   Array out;
   for (int32_t i = 0; i < wm_world_land_count(world_); ++i) {
     wm_land l{};
@@ -629,6 +931,7 @@ Array CoreSim::venue_land() const {
 }
 
 Array CoreSim::venue_obstacles() const {
+  settle();
   Array out;
   for (int32_t i = 0; i < wm_world_obstacle_count(world_); ++i) {
     wm_obstacle o{};
@@ -651,6 +954,7 @@ Array CoreSim::venue_obstacles() const {
 }
 
 Dictionary CoreSim::course() const {
+  settle();
   Dictionary d;
   wm_course_info ci{};
   if (world_ == nullptr || wm_world_course(world_, &ci) != WM_OK) return d;
@@ -702,6 +1006,7 @@ Dictionary CoreSim::course() const {
 }
 
 Dictionary CoreSim::race() const {
+  settle();
   Dictionary d;
   wm_race_info r{};
   if (world_ == nullptr || wm_world_race(world_, &r) != WM_OK) return d;
@@ -722,6 +1027,7 @@ Dictionary CoreSim::race() const {
 }
 
 Dictionary CoreSim::race_boat(int64_t boat) const {
+  settle();
   Dictionary d;
   wm_race_boat b{};
   if (world_ == nullptr || wm_world_race_boat(world_, i32(boat), &b) != WM_OK) return d;
@@ -747,6 +1053,7 @@ Dictionary CoreSim::race_boat(int64_t boat) const {
 }
 
 PackedInt32Array CoreSim::race_order() const {
+  settle();
   PackedInt32Array a;
   if (world_ == nullptr) return a;
   const int32_t n = wm_world_race_order(world_, nullptr, 0);
@@ -758,6 +1065,7 @@ PackedInt32Array CoreSim::race_order() const {
 }
 
 Array CoreSim::results() const {
+  settle();
   Array out;
   for (int32_t i = 0; i < wm_world_result_count(world_); ++i) {
     wm_result r{};
@@ -776,12 +1084,14 @@ Array CoreSim::results() const {
 }
 
 double CoreSim::race_split(int64_t boat, int64_t step) const {
+  settle();
   float t = 0.0f;
   if (world_ == nullptr || wm_world_race_split(world_, i32(boat), i32(step), &t) != WM_OK) return NAN;
   return t;
 }
 
 Dictionary CoreSim::race_start_status(int64_t boat) const {
+  settle();
   Dictionary d;
   wm_start_status st{};
   if (world_ == nullptr || wm_world_race_start_status(world_, i32(boat), &st) != WM_OK) return d;
@@ -798,6 +1108,7 @@ Dictionary CoreSim::race_start_status(int64_t boat) const {
 }
 
 Dictionary CoreSim::boat_rules(int64_t boat) const {
+  settle();
   Dictionary d;
   wm_boat_rules r{};
   if (world_ == nullptr || wm_world_boat_rules(world_, i32(boat), &r) != WM_OK) return d;
@@ -830,6 +1141,7 @@ Dictionary CoreSim::boat_rules(int64_t boat) const {
 }
 
 Array CoreSim::pairs() const {
+  settle();
   Array out;
   for (int32_t i = 0; i < wm_world_pair_count(world_); ++i) {
     wm_pair p{};
@@ -860,6 +1172,7 @@ Array CoreSim::pairs() const {
 }
 
 Array CoreSim::race_events() const {
+  settle();
   Array out;
   for (int32_t i = 0; i < wm_world_race_event_count(world_); ++i) {
     wm_race_event e{};
@@ -884,6 +1197,7 @@ Array CoreSim::race_events() const {
 }
 
 Array CoreSim::rules_events() const {
+  settle();
   Array out;
   for (int32_t i = 0; i < wm_world_rules_event_count(world_); ++i) {
     wm_rules_event e{};
@@ -905,6 +1219,7 @@ Array CoreSim::rules_events() const {
 }
 
 Array CoreSim::contact_events() const {
+  settle();
   Array out;
   for (int32_t i = 0; i < wm_world_contact_event_count(world_); ++i) {
     wm_contact_event e{};
@@ -933,6 +1248,7 @@ String CoreSim::score_code_name(int64_t code) { return String::utf8(wm_score_cod
 void CoreSim::_bind_methods() {
   ClassDB::bind_static_method("CoreSim", D_METHOD("default_settings"), &CoreSim::default_settings);
   ClassDB::bind_method(D_METHOD("create", "settings", "venue_path"), &CoreSim::create);
+  ClassDB::bind_method(D_METHOD("resolve_settings", "settings", "venue_path", "course_path"), &CoreSim::resolve_settings);
   ClassDB::bind_method(D_METHOD("is_created"), &CoreSim::is_created);
   ClassDB::bind_method(D_METHOD("add_boat", "perf_path", "entry"), &CoreSim::add_boat);
   ClassDB::bind_method(D_METHOD("place_boat", "boat", "x", "y", "psi"), &CoreSim::place_boat);
@@ -973,6 +1289,9 @@ void CoreSim::_bind_methods() {
 
   ClassDB::bind_method(D_METHOD("step"), &CoreSim::step);
   ClassDB::bind_method(D_METHOD("step_ticks", "n", "stop_when_closed"), &CoreSim::step_ticks);
+  ClassDB::bind_method(D_METHOD("step_begin"), &CoreSim::step_begin);
+  ClassDB::bind_method(D_METHOD("step_end"), &CoreSim::step_end);
+  ClassDB::bind_method(D_METHOD("is_stepping"), &CoreSim::is_stepping);
   ClassDB::bind_method(D_METHOD("checksum"), &CoreSim::checksum);
   ClassDB::bind_method(D_METHOD("tick"), &CoreSim::tick);
   ClassDB::bind_method(D_METHOD("boat_count"), &CoreSim::boat_count);
@@ -986,6 +1305,7 @@ void CoreSim::_bind_methods() {
   ClassDB::bind_method(D_METHOD("boat_outputs", "boat"), &CoreSim::boat_outputs);
   ClassDB::bind_method(D_METHOD("boat_env", "boat"), &CoreSim::boat_env);
   ClassDB::bind_method(D_METHOD("render_pose", "boat", "alpha"), &CoreSim::render_pose);
+  ClassDB::bind_method(D_METHOD("render_poses", "alpha"), &CoreSim::render_poses);
   ClassDB::bind_method(D_METHOD("trim_speed_at", "boat", "tws", "awa_abs", "eps"), &CoreSim::trim_speed_at);
   ClassDB::bind_method(D_METHOD("perf_table", "boat", "front_sail", "name", "x", "y", "w"), &CoreSim::perf_table);
   ClassDB::bind_method(D_METHOD("polar", "boat", "tws", "twa", "front_sail"), &CoreSim::polar);

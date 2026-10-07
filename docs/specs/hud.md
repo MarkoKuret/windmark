@@ -23,6 +23,9 @@ function; race and rules states (rank, penalties, right-of-way colours) come fro
   `k = 1 − wm_exp(−DT/τ)`; directions are filtered as unit vectors.
 - **Refresh**: numeric text refreshes at 4 Hz (so digits do not flicker at the tick rate); needles, arrows and lines
   follow the latest tick every frame.
+- **Drawing**: every frame each shown block builds its drawing (its primitives) and is redrawn only when they
+  differ from what it shows; a block that shows the same is not drawn again. The HUD's tick work (`Hud.tick`) may
+  run one frame after the tick that it reads (`controls.md` §1.1: the tick's work is spread over the frames of a tick).
 - **Formats**:
 
 | Quantity | Format |
@@ -623,9 +626,12 @@ and not saved.
   viewport render time measurement, `RenderingServer.viewport_get_measured_render_time_gpu`) and of the other
   viewports (the wake normal buffer), draw calls, primitives and objects drawn.
 - **Set-up**: the render scale (`menus.md` §3) with the 3D and window sizes and the upscaler, the quality tier,
-  the boat count, the renderer and driver, vsync and the frame rate limit, the camera mode.
+  the boat count, the renderer and driver, vsync and the frame rate limit, the camera mode; the log adds the video
+  memory in use, the main thread's process step (every node's per-frame work, from a stamp before the first node)
+  and the rest of the frame (physics, the renderer's CPU work on the main thread and any wait for the GPU).
 - **Sections**: the game's own per-frame work in milliseconds per frame, timed around the calls: `input` (devices
-  and controls), `sim` (the 50 ms ticks: the simulation step and the sail snapshots), `hud` (`Hud.tick` and
+  and controls), `sim` (the 50 ms ticks: the simulation step or taking in the tick that ran on the worker thread, starting the next
+  one, and the sail snapshots), `hud` (`Hud.tick` and
   `Hud.frame`), `audio`, `sails` (the per-vertex sail shapes of every boat), `boats` (the boat nodes' poses, rudder,
   boom), `wakes` (the wake ribbons, bow waves and spray, and the boat shadows drawn on the water), `sea` (the Sea's per-frame uniforms), `course` (the course
   view), `camera`.

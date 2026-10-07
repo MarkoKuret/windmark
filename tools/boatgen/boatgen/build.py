@@ -13,7 +13,7 @@ from .hull import HullShape
 from .mesh import Part, split_by_plane_z
 from .rig import Rig
 from .sails import build_sails
-from . import hardware
+from . import gltf, hardware
 
 
 def paint_zones(geoms, boot):
@@ -130,44 +130,29 @@ class Boat:
         for name, sail in self.sails.items():
             self.parts["sail_" + name] = sail.part()
 
-    # levels of detail: (segment scale of the round parts, hull stations, bottom and topside girth points, deck
-    # stations, keel and rudder chord points, switch distance in m); LOD0 is the full model built above
-    LODS = {1: (0.5, 48, 10, 7, 45, 12, 10, 30.0), 2: (0.28, 24, 6, 4, 22, 8, 6, 100.0)}
-    # pieces with a smaller bounding-box diagonal are left out of that level (m)
-    LOD_MIN_SIZE = {1: 0.035, 2: 0.3}
+    # The game model (docs/specs/sail_visuals.md 11.4, tools/boatgen/README.md "The game model"): one detailed model
+    # per class, the engine simplifies it by screen size (Godot's automatic mesh LOD, generated on import). The hull,
+    # deck, keel and rig keep the full model's detail; the hardware is low-poly (hardware.lowpoly); flat fittings and
+    # the lines on deck are painted (hardware.PAINTED), sub-pixel pieces dropped (hardware.DROPPED). Every static
+    # part is one node, `body` (one draw); the moving parts stay their own nodes.
+    BODY = ("hull", "deck", "keel", "mast", "rigging", "hardware")
 
-    def lod_parts(self, lod):
-        """Nodes of a lower level of detail: the same node set, pivots and sails as the full model (the sail grids
-        are the simulation's and stay as they are), with a coarser hull, deck and appendages, fewer segments on
-        every round part, and the small fittings dropped (hardware.place_all)."""
-        from .mesh import segment_scale
-        f, n_st, nb, nt, n_deck, n_keel, n_rud, _ = self.LODS[lod]
+    def game_parts(self):
+        """The nodes of the game model: `body` (hull, deck, keel, mast, rigging and static hardware, pieces named
+        "<part>:<slot>"), the moving parts (rudder with the tiller, wheel, boom, mainsheet, pole) and the sails."""
         cls = self.cls
-        saved = {k: getattr(self.hull, k) for k in ("skin_grid", "girth", "girth_max", "skin_xs", "i_turn")}
-        parts = {}
-        with segment_scale(f):
-            port, stbd = self.hull.skin(n_st, nb, nt)
-            for k, v in saved.items():
-                setattr(self.hull, k, v)
-            parts["hull"] = paint_zones([port, stbd], cls["hull"]["boot_top"])
-            deck = Deck(cls, self.hull)
-            parts["deck"] = deck.build(n_out=max(3, round(9 * f)), n_st=n_deck, skin=(nb, nt))
+        parts = {"hull": self.parts["hull"], "deck": self.parts["deck"], "keel": self.parts["keel"]}
+        with hardware.lowpoly():
             app = Appendages(cls, self.hull)
-            parts["keel"] = app.keel_part(n_chord=n_keel)
-            if app.has_bulb:
-                parts["keel"] = Part().add("antifouling", app.fin_geom)
-                parts["keel"].add("antifouling", app.bulb_geom(nl=max(12, round(48 * f)), nr=max(8, round(28 * f))))
-            parts["rudder"] = app.rudder_part(n_chord=n_rud)
-            rig = Rig(cls, self.hull, deck)
-            rig.jib_clew = getattr(self.rig, "jib_clew", None)
-            if rig.jib_clew is None:
-                del rig.jib_clew
+            app.keel_part()
+            parts["rudder"] = app.rudder_part()
+            rig = self.rig
             parts["mast"] = rig.mast_part()
             parts["rigging"] = rig.rigging_part()
             parts["boom"] = rig.boom_part()
-            hw = hardware.place_all(cls, self.hull, deck, rig, lod=lod)
+            hw = hardware.place_all(cls, self.hull, self.deck, rig, lod=0)
             parts["hardware"] = hw["hardware"]
-            parts["hardware"].extend(hardware.rudder_fittings(app, deck, self.hull, (self.hull.L / 12) ** 0.7))
+            parts["hardware"].extend(hardware.rudder_fittings(app, self.deck, self.hull, (self.hull.L / 12) ** 0.7))
             parts["boom"].extend(hw["boom_hardware"])
             parts["mainsheet"] = hw["mainsheet"]
             if rig.pole_flown:
@@ -175,23 +160,135 @@ class Boat:
             if hw["helm"].tri_count():
                 parts["wheel"] = hw["helm"]
             else:
-                parts["rudder"].extend(hardware.tiller(app, deck, self.hull, (self.hull.L / 12) ** 0.7))
-        # drop the pieces too small to read at the level's distance (fittings, terminals, screws, bolts)
-        min_size = self.LOD_MIN_SIZE[lod]
+                parts["rudder"].extend(hardware.tiller(app, self.deck, self.hull, (self.hull.L / 12) ** 0.7))
         for name in ("mast", "rigging", "boom", "hardware", "rudder", "wheel", "pole"):
-            if name in parts:
-                parts[name] = _drop_small(parts[name], min_size)
+            if name not in parts:
+                continue
+            q = Part()
+            for mat, gs in parts[name].slots.items():
+                for g in gs:
+                    t = g.tag or ""
+                    if t.startswith("hatch_") and name == "hardware":
+                        # the hatch's raised box reads the deck maps (its painted top): a deck surface
+                        g = g.copy()
+                        g.uv1 = self.deck.plan_uv1(g.P)
+                        parts["deck"] = Part().extend(parts["deck"]).add(mat, g)
+                        continue
+                    if hardware.is_painted_line(t):
+                        # the line's lengths off the surface stay geometry (the deck maps paint the rest)
+                        g = self._rope_off_surface(g)
+                        if g is not None:
+                            q.add(mat, g)
+                        continue
+                    if hardware.is_painted(t) or hardware.is_dropped(t):
+                        continue
+                    q.add(mat, g)
+            parts[name] = q
+        body = Part()
+        for name in self.BODY:
+            for mat, gs in parts.pop(name).slots.items():
+                for g in gs:
+                    body.add(f"{name}:{mat}", g)
+        out = {"body": body, **parts}
         for name in self.sails:
-            parts["sail_" + name] = self.parts["sail_" + name]
-        assert sorted(parts) == sorted(self.parts), (sorted(parts), sorted(self.parts))
+            out["sail_" + name] = self.parts["sail_" + name]
+        return out
+
+    def line_on_face(self, P):
+        """Points of a line that lie against the coachroof's aft face (within 3 cm of it, inside its outline):
+        painted on the face's own uv1 (Deck.face_frame)."""
+        f = self.deck.face_frame()
+        P = np.asarray(P, dtype=np.float64)
+        if f is None:
+            return np.zeros(len(P), bool)
+        return ((np.abs(P[:, 0] - f["x"]) < 0.03) & (P[:, 1] >= f["y"][0]) & (P[:, 1] <= f["y"][1])
+                & (P[:, 2] >= f["z"][0] - 0.01) & (P[:, 2] <= f["z"][1] + 0.01))
+
+    def _rope_off_surface(self, g):
+        """The triangles of a line that hang in the air: a vertex more than hardware.ROPE_LIFT_MAX above the walking
+        surface under it and not against the coachroof's aft face (None when the line lies on surfaces all along;
+        the deck maps paint it there)."""
+        from .mesh import Geom
+        h = g.P[:, 2] - np.asarray(self.deck.surface_z(g.P[:, 0], g.P[:, 1]), dtype=np.float64)
+        air = (h >= hardware.ROPE_LIFT_MAX) & ~self.line_on_face(g.P)
+        keep = air[g.I].any(1) & ~self.line_on_face(g.P)[g.I].all(1)
+        if not keep.any():
+            return None
+        out = Geom(g.P, g.I[keep], g.N, g.uv0, g.uv1)
+        out.tag = g.tag
+        return out
+
+    def painted_part(self):
+        """The full model's pieces the game paints into the livery's deck maps instead of modelling them
+        (hardware.PAINTED): tracks, hatches, organisers, small cleats, turning blocks, the halyards on deck, the
+        coils and tails (boat frame, slots and tags as built). tools/liverybake draws them."""
+        out = Part()
+        for name in ("hardware",):
+            for mat, gs in self.parts[name].slots.items():
+                for g in gs:
+                    if hardware.is_painted(g.tag or ""):
+                        out.add(mat, g)
+        return out
+
+    def shadow_proxy(self):
+        """The shadow casters of every level (sail_visuals.md 11.4): the hull, the deck with its coachroof, keel,
+        rudder and mast as a few hundred triangles (`shadow`, static), and the boom (`shadow_boom`, under the boom
+        node). Every vertex lies on the full model's surfaces or inside them, so the proxy never shades a lit face
+        of the drawn boat."""
+        from .mesh import segment_scale, tube
+        cls = self.cls
+        saved = {k: getattr(self.hull, k) for k in ("skin_grid", "girth", "girth_max", "skin_xs", "i_turn")}
+        static = Part()
+        with segment_scale(0.1):
+            port, stbd = self.hull.skin(12, 4, 3)
+            for k, v in saved.items():
+                setattr(self.hull, k, v)
+            static.add("shadow", port)
+            static.add("shadow", stbd)
+            deck = Deck(cls, self.hull)
+            deck.build(n_out=3, n_st=12, skin=(4, 3), lite=2)
+            for gs in deck.build_simple(8, 5).slots.values():
+                for g in gs:
+                    static.add("shadow", g)
+            app = Appendages(cls, self.hull)
+            keel = app.keel_part(n_chord=4)
+            if app.has_bulb:
+                static.add("shadow", app.fin_geom)
+                static.add("shadow", app.bulb_geom(nl=6, nr=4))
+            else:
+                for gs in keel.slots.values():
+                    for g in gs:
+                        static.add("shadow", g)
+            for gs in app.rudder_part(n_chord=3).slots.values():
+                for g in gs:
+                    static.add("shadow", g)
+            r = self.rig
+            static.add("shadow", tube(np.array([[r.x_mast, 0, r.z_step], [r.x_mast, 0, r.z_top]]),
+                                      0.5 * float(cls["rig"]["mast_chord"]) * 0.8, 4, caps=False))
+            boom = Part()
+            for gs in r.boom_part().slots.values():
+                for g in gs:
+                    if (g.tag or "") == "boom":
+                        boom.add("shadow", g)
+        return static, boom
+
+    def write_game_glb(self, path):
+        """The game model with its shadow proxy (sail_visuals.md 11.4)."""
+        parts = self.game_parts()
+        self._write(path, self.cls["id"], parts, self.pivots,
+                    extras={"class": self.cls["id"], "name": self.cls.get("name", ""),
+                            "body_parts": dict(gltf.PART_IDS), **self.livery_extras()},
+                    shadow=True)
         return parts
 
-    def write_lod_glb(self, path, lod):
-        parts = self.lod_parts(lod)
-        self._write(path, self.cls["id"], parts, self.pivots,
-                    extras={"class": self.cls["id"], "name": self.cls.get("name", ""), "lod": lod,
-                            **self.livery_extras()})
-        return sum(p.tri_count() for p in parts.values()), parts
+    @staticmethod
+    def model_counts(parts):
+        """(triangles without the sails, surfaces without the sails, sail triangles) of a level's parts as the
+        GLB holds them: one surface per node in the boat material, the sails apart."""
+        tris = sum(p.tri_count() for n, p in parts.items() if not n.startswith("sail_"))
+        surf = sum(1 for n, p in parts.items() if not n.startswith("sail_") and p.tri_count())
+        sails = sum(p.tri_count() for n, p in parts.items() if n.startswith("sail_"))
+        return tris, surf, sails
 
     # poses for previews (the exported model keeps the flat standard sail shapes); the sails are drawn with the
     # game's shape and placement (sail_set.py, sail_visuals.md 6 and 7). awa: apparent wind angle, deg (negative:
@@ -310,20 +407,28 @@ class Boat:
     def origin_x(self):
         return 0.5 * (self.hull.x_awl + self.hull.x_fwl)
 
-    # set by the command line: embed the texture set, bake per-vertex AO
+    # set by the command line: write the texture atlas (by URI under `tex_uri`, else embedded), bake per-vertex AO
     textures = True
     bake = True
+    tex_uri = None
 
     def write_glb(self, path):
-        self._write(path, self.cls["id"], self.parts, self.pivots,
-                    extras={"class": self.cls["id"], "name": self.cls.get("name", ""), "lod": 0,
-                            **self.livery_extras()})
+        """The game model (game_parts)."""
+        return self.write_game_glb(path)
 
-    def _write(self, path, root, parts, pivots, extras=None):
-        w = GLBWriter(self.origin_x(), textures=self.textures)
+    def _write(self, path, root, parts, pivots, extras=None, shadow=False):
+        w = GLBWriter(self.origin_x(), textures=self.textures, tex_uri=self.tex_uri)
         merged = {n: p.merged() for n, p in parts.items()}
         ao = self.bake_ao(merged) if self.bake else {}
         kids = [w.add_mesh(n, parts[n], pivot=pivots.get(n), ao=ao.get(n), merged=merged[n]) for n in parts]
+        if shadow:
+            static, boom = self.shadow_proxy()
+            kids.append(w.add_mesh("shadow", static, material="shadow"))
+            bn = next((k for k in kids if k is not None and k["name"] == "boom"), None)
+            if bn is not None and boom.tri_count():
+                child = w.add_mesh("shadow_boom", boom, pivot=pivots.get("boom"), material="shadow")
+                child.pop("translation", None)
+                bn["children"] = [child]
         w.write(path, root, kids, extras=extras)
 
     def bake_ao(self, merged):

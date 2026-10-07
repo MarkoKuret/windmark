@@ -33,6 +33,37 @@ void apply_shift_preset(WindSettings& s, ShiftPreset p) {
   s.shift_hold_min_ms = hold_max / 5;
 }
 
+void apply_puff_preset(WindSettings& s, PuffPreset p) {
+  s.puffs_enabled = p != PuffPreset::none;
+  if (p == PuffPreset::none) return;
+  PuffParams q;  // the defaults are `standard`
+  switch (p) {
+    case PuffPreset::light:
+      q.puff_strength_min = 0.10f;
+      q.puff_strength_max = 0.20f;
+      q.lull_strength_min = 0.15f;
+      q.lull_strength_max = 0.30f;
+      q.cap_up = 0.15f;
+      q.cap_down = 0.25f;
+      break;
+    case PuffPreset::gusty:
+      q.puff_strength_min = 0.40f;
+      q.puff_strength_max = 0.70f;
+      q.diameter_min = 150.0f;
+      q.diameter_max = 300.0f;
+      q.life_min_ms = 30000;
+      q.life_max_ms = 90000;
+      q.puff_count = 7;
+      q.cap_up = 0.45f;
+      q.cap_down = 0.40f;
+      break;
+    case PuffPreset::none:
+    case PuffPreset::standard:
+      break;
+  }
+  s.puffs = q;
+}
+
 const char* check_wind_settings(const WindSettings& s) {
   const float fs[] = {s.base_speed, s.base_from, s.shift_amplitude, s.shift_trend_rate, s.shift_trend_max,
                       s.osc_amplitude, s.osc_time_scale, s.current_speed, s.current_to, s.tide_scale};

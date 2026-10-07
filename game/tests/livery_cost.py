@@ -65,6 +65,8 @@ def programs(ctx):
                             + inc("sail_livery.gdshaderinc") + lp.SAIL_FS),
         "boat_baked": ctx.program(vertex_shader=lp.VS, fragment_shader=head + lp.PBR + baked + lp.BOAT_BAKED_FS),
         "sail_baked": ctx.program(vertex_shader=lp.VS, fragment_shader=head + lp.PBR + baked + lp.SAIL_BAKED_FS),
+        "boat_atlas": ctx.program(vertex_shader=lp.VS, fragment_shader=head + lp.PBR + inc("hull_livery.gdshaderinc")
+                                  + inc("livery_baked.gdshaderinc") + lp.BOAT_ATLAS_FS),
         "depth": ctx.program(vertex_shader=lp.VS, fragment_shader=DEPTH_FS),
     }
 
@@ -88,6 +90,13 @@ def bind(ctx, prog, kind, m, d):
         for unit, k in enumerate(["bk_albedo", "bk_normal", "bk_orm"], start=2):
             lp.image_texture(ctx, u.get(k), False).use(unit)
             prog[k].value = unit
+    elif kind == "boat_atlas":
+        for unit, k in enumerate(["tile_color", "tile_mr", "tile_normal", "bk_albedo", "bk_normal", "bk_orm"]):
+            lp.image_texture(ctx, u.get(k), k.startswith("tile_")).use(unit)
+            prog[k].value = unit
+        lp.text_texture(ctx, d / m["text"]).use(6)
+        prog["livery_text"].value = 6
+        return
     if "livery_text" in prog:
         lp.text_texture(ctx, d / m["text"]).use(5)
         prog["livery_text"].value = 5
@@ -97,6 +106,13 @@ def bind(ctx, prog, kind, m, d):
         lp.image_texture(ctx, mp, True).use(1)
         prog["albedo_tex"].value = 0
         prog["mr_tex"].value = 1
+
+
+def fmt(m, vb):
+    """The dumped vertex layout (tests/livery_preview_dump.gd: 15 floats, or 11 in older dumps)."""
+    if int(m.get("stride", 11)) == 15:
+        return [(vb, "3f 3f 4f 1f 4f", "in_pos", "in_normal", "in_uv", "in_port", "in_extra")]
+    return [(vb, "3f 3f 4f 1f", "in_pos", "in_normal", "in_uv", "in_port")]
 
 
 def measure(ctx, P, d, size, repeat):
@@ -129,11 +145,11 @@ def measure(ctx, P, d, size, repeat):
             continue
         vb, ib = ctx.buffer(v.tobytes()), ctx.buffer(i.tobytes())
         meshes.append((m, vb, ib))
-        ctx.vertex_array(P["depth"], [(vb, "3f 3f 4f 1f", "in_pos", "in_normal", "in_uv", "in_port")], ib).render()
+        ctx.vertex_array(P["depth"], fmt(m, vb), ib, skip_errors=True).render()
     out = {}
     ctx.depth_func = "=="
     # sails, and the topsides (the hull's gelcoat surface, the one the procedural livery paints)
-    for group, kinds in (("sails", ("sail", "sail_baked")), ("tops", ("hull", "boat_baked"))):
+    for group, kinds in (("sails", ("sail", "sail_baked")), ("tops", ("hull", "boat_baked", "boat_atlas"))):
         sel = [(m, vb, ib) for m, vb, ib in meshes if m["kind"] in kinds
                and (group != "tops" or (m["node"] == "hull" and m.get("slot", "gelcoat") == "gelcoat"))]
         if not sel:
@@ -141,7 +157,7 @@ def measure(ctx, P, d, size, repeat):
         vaos = []
         for m, vb, ib in sel:
             prog = P[m["kind"]]
-            vaos.append((m, prog, ctx.vertex_array(prog, [(vb, "3f 3f 4f 1f", "in_pos", "in_normal", "in_uv", "in_port")], ib)))
+            vaos.append((m, prog, ctx.vertex_array(prog, fmt(m, vb), ib, skip_errors=True)))
         qs = ctx.query(samples=True)
         with qs:
             for m, prog, vao in vaos:

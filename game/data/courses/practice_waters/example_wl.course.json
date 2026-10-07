@@ -1,0 +1,35 @@
+{
+  "schema": "windmark.course/1",
+  "id": "example_wl",
+  "name": "Windward-leeward, 2 laps",
+  "venue": "practice_waters",
+  "classes": ["wm7", "wm12"],
+  "frame": "wind",
+  "reference": { "x": 0.0, "y": -300.0 },
+  "marks": [
+    { "id": "rc",  "type": "committee_boat", "at": { "bearing": 1.57079633, "dist": 125, "fixed": true }, "heading": null },
+    { "id": "pin", "type": "buoy", "style": "tetra", "at": { "bearing": 4.71238898, "dist": 125, "fixed": true } },
+    { "id": "w",   "type": "buoy", "style": "large", "at": { "bearing": 0, "dist": 700, "from": "rc_pin_mid" } },
+    { "id": "off", "type": "buoy", "at": { "bearing": 4.71238898, "dist": 60, "from": "w", "fixed": true } },
+    { "id": "gc",  "type": "virtual", "at": { "bearing": 0, "dist": 150, "from": "rc_pin_mid", "fixed": true } },
+    { "id": "g1",  "type": "buoy", "at": { "bearing": 1.57079633, "dist": 40, "from": "gc", "fixed": true } },
+    { "id": "g2",  "type": "buoy", "at": { "bearing": 4.71238898, "dist": 40, "from": "gc", "fixed": true } },
+    { "id": "fc",  "type": "virtual", "at": { "bearing": 1.57079633, "dist": 180, "from": "gc", "fixed": true } },
+    { "id": "fb",  "type": "mark_boat", "at": { "bearing": 1.57079633, "dist": 50, "from": "fc", "fixed": true }, "heading": null },
+    { "id": "fp",  "type": "buoy", "style": "tetra", "at": { "bearing": 4.71238898, "dist": 50, "from": "fc", "fixed": true } }
+  ],
+  "start": { "ends": ["pin", "rc"] },
+  "finish": { "ends": ["fp", "fb"] },
+  "sequence": [
+    { "mark": "w", "round": "port" },
+    { "mark": "off", "round": "port" },
+    { "gate": ["g1", "g2"] },
+    "lap",
+    { "mark": "w", "round": "port" },
+    { "mark": "off", "round": "port" }
+  ],
+  "race": { "type": "fleet", "sequence": "3-2-1-0", "prep_flag": "I", "target_duration": 600, "zone_lengths": 3 },
+  "display": {
+    "labels": { "w": "Windward", "off": "Offset", "g1": "Gate 1", "g2": "Gate 2", "fb": "Finish", "fp": "Finish pin" }
+  }
+}

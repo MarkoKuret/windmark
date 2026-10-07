@@ -17,6 +17,27 @@ keys become the boat's commands, and the accessibility options. The boat command
   (`sails.md` §5.5): controls set targets, they never move the boat directly.
 - Commands are clamped to their ranges before they are stamped (`h_cmd` ∈ [−1, 1], `sheet_cmd` ∈ [0, 1]).
 
+### 1.1 Ticks ahead (the simulation on a second core)
+
+- Offline the core steps on a worker thread. At the end of a frame's game work (after every node's frame update,
+  before the frame is drawn), when the next frame will reach the tick boundary (the accumulated time plus this
+  frame's time is at least one tick), the controls stamp the input frame for the next tick from the latest state,
+  it is applied, and the tick starts on the worker thread. It runs while the frame is drawn; the next frame takes it
+  in at its start, before anything reads the world, and counts it as that frame's tick. Otherwise (the first frame,
+  a frame longer than the last one) the frame stamps and steps the tick itself as before.
+- The input of a tick is therefore read up to one frame before the frame that first shows it (one frame of input
+  latency at most). The tick a frame is applied to, the order of the ticks and the world's results are unchanged:
+  the same input frames give the same ticks and the same checksums, with or without the worker thread.
+- A tick taken in early (the next frame shorter than predicted) leaves the accumulated time slightly negative; the
+  render fraction is clamped at 0 and the clock catches up over the next frames, so the tick rate stays 20 Hz.
+- While a tick runs, nothing reads or changes the world: every core call waits for it first. The frame reads only
+  what it cached before the tick started.
+- The pause stops the next tick from starting; a tick already started is still taken in. Tests that drive the
+  frames themselves step every tick on the main thread.
+- The scene's work after a tick is spread over the frames of the tick: the sail snapshots (the render
+  interpolation) and the HUD's tick with the tick, the sound's tick inputs in the next frame, the course view in the
+  one after; whatever is left runs before the next tick starts or is stepped.
+
 ## 2. Actions
 
 | action | kind | effect |

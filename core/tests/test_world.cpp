@@ -20,7 +20,7 @@ const wm::VenueData& bay() {
   static bool loaded = false;
   if (!loaded) {
     wm::LoadError err;
-    REQUIRE_MESSAGE(wm::load_venue(kData + "/venues/example_bay.venue.json", v, err), err.message());
+    REQUIRE_MESSAGE(wm::load_venue(kData + "/venues/practice_waters.venue.json", v, err), err.message());
     loaded = true;
   }
   return v;
@@ -31,7 +31,7 @@ const wm::CourseData& example_course() {
   static bool loaded = false;
   if (!loaded) {
     wm::LoadError err;
-    REQUIRE_MESSAGE(wm::load_course(kCourses + "/example_bay/example_wl.course.json", c, err), err.message());
+    REQUIRE_MESSAGE(wm::load_course(kCourses + "/practice_waters/example_wl.course.json", c, err), err.message());
     loaded = true;
   }
   return c;
@@ -115,7 +115,10 @@ TEST_CASE("world: same seed, same ticks; another seed, another race") {
     for (auto* w : {a.get(), b.get(), c.get()}) {
       for (std::int32_t i = 0; i < 5; ++i) w->set_helm(i, i % 2 == 0 ? h : -h);
     }
-    const std::uint64_t ca = a->step(), cb = b->step(), cc = c->step();
+    a->step();
+    b->step();
+    c->step();
+    const std::uint64_t ca = a->checksum(), cb = b->checksum(), cc = c->checksum();
     same = same && ca == cb;
     differ = differ || ca != cc;
   }

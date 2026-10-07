@@ -68,7 +68,8 @@ func _save() -> void:
 
 func advance(dt: float) -> void:
 	_t += dt
-	queue_redraw()
+	if not is_inside_tree() or get_parent() is not Hud:
+		queue_redraw()  # on its own (tests, previews); in the HUD its redraw comes with the others (Hud._redraw)
 
 
 ## boat -> the colour it is drawn in now, for the contacts inside the range

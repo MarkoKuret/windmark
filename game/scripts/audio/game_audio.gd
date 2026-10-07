@@ -15,6 +15,9 @@ extends Node3D
 ## the race sounds, then other boats and course objects by distance. Other boats get their full set within
 ## FULL_RANGE and only the wake and collisions beyond; only the MAX_OTHER nearest are voiced. `played` logs every
 ## one-shot (id, file, boat, space, t) for the tests. Headless the players are not started (`audible`).
+##
+## Rates (audio.md §1): the formulas, gates, voice choice, ducking and the players' positions and buses at
+## PARAM_HZ; every frame only the smoothing toward those targets and the players' volume and pitch when they moved.
 
 const MAX_VOICES := 48
 const MAX_OTHER := 6
@@ -34,6 +37,11 @@ const AMB_DIST := 30.0
 const BEEPS := [30.0, 20.0, 10.0, 5.0, 4.0, 3.0, 2.0, 1.0]
 const WIND_PAN := 0.6
 const PLAYED_MAX := 2000
+## the formulas' rate (audio.md §1 updates), Hz
+const PARAM_HZ := 30.0
+## a player's volume and pitch are set again when they move more than this (dB, ratio)
+const SET_DB := 0.05
+const SET_PITCH := 0.001
 const SIGNAL_NAMES := {
 	RaceText.SignalKind.WARNING: "warning",
 	RaceText.SignalKind.PREP_UP: "prep_up",
@@ -84,6 +92,10 @@ var _hail_t := {}
 var _furling := {}  # class id -> {sail id: furling}
 var _k := 1.0  # the frame's smoothing weight (TAU)
 var _cands: Array = []  # the boat loops that want to sound or still play, this frame
+## time since the last formula update (s), INF: due at the next frame
+var _param_t := INF
+## the loops driven between formula updates: the candidates of the last one
+var _driven: Array = []
 
 
 ## A looping sound of a boat, the listener or a course object.
@@ -104,6 +116,12 @@ class Voice:
 	var bus := ""
 	## world position (scene) for sources not on a boat
 	var pos := Vector3.ZERO
+	## the targets of the last formula update (volume, pitch)
+	var tv := 0.0
+	var tp := 1.0
+	## what the player was last given
+	var set_db := INF
+	var set_pitch := -1.0
 
 	func _init(sound_id: String, entry: Dictionary, b := -1) -> void:
 		id = sound_id
@@ -178,6 +196,8 @@ func set_boats(nodes: Array) -> void:
 		elif is_instance_valid(slot.audio):
 			slot.audio.queue_free()
 	_boats.clear()
+	_driven.clear()
+	_param_t = INF
 	if sim == null or map == null:
 		return
 	for b in sim.boat_count():
@@ -542,12 +562,28 @@ func _make_room(prio: float) -> bool:
 	return true
 
 
-## Every frame after the ticks and the camera.
+## Every frame after the ticks and the camera: the formula update at PARAM_HZ, the smoothing every frame.
 func frame(dt: float, cam: Camera3D = null, onboard := false) -> void:
 	if map == null or sim == null:
 		return
 	time += dt
 	_k = Frames.smooth_k(dt, TAU)
+	while not _queue.is_empty() and float(_queue[0]["t"]) <= time + 1e-6:
+		_signal_sound(String(_queue.pop_front()["id"]))
+	_param_t += dt
+	if _param_t + 1e-6 < 1.0 / PARAM_HZ:
+		for v in _driven:
+			_drive(v, v.tv, v.tp)
+			if v.active:
+				_set_level(v)
+		return
+	var pdt := dt if is_inf(_param_t) else _param_t
+	_param_t = 0.0
+	_update(pdt, cam, onboard)
+
+
+## The formula update: listener, gates, formulas, targets, voices, ducking; `dt` the time since the last one.
+func _update(dt: float, cam: Camera3D, onboard: bool) -> void:
 	_cands.clear()
 	_listener_pos = cam.global_position if cam != null else (
 		_boats[viewed].node.global_position if viewed < _boats.size() else Vector3.ZERO)
@@ -556,8 +592,6 @@ func frame(dt: float, cam: Camera3D = null, onboard := false) -> void:
 	_cam["cam_height"] = cam_h
 	_cam["cam_onboard"] = 1.0 if onboard else 0.0
 	_cam["cam_wind"] = 1.0 if onboard else clampf(1.0 - (cam_h - 5.0) / 200.0, 0.4, 0.8)
-	while not _queue.is_empty() and float(_queue[0]["t"]) <= time + 1e-6:
-		_signal_sound(String(_queue.pop_front()["id"]))
 	_boat_voices(dt)
 	_listener_voices(dt, cam, onboard)
 	for v in _course_loops:
@@ -568,6 +602,7 @@ func frame(dt: float, cam: Camera3D = null, onboard := false) -> void:
 	_expire_one_shots()
 	_allocate()
 	_ducking(dt)
+	_driven = _cands + _listener_loops + _beds + _course_loops
 
 
 func _boat_voices(dt: float) -> void:
@@ -581,10 +616,13 @@ func _boat_voices(dt: float) -> void:
 		slot.dist = slot.node.global_position.distance_to(_listener_pos)
 		if b != viewed:
 			others.append(b)
-	others.sort_custom(func(x: int, y: int) -> bool: return _boats[x].dist < _boats[y].dist)
-	for i in others.size():
+	var dist := PackedFloat32Array()
+	for b in others:
+		_boats[b].mode = 3
+		dist.append(_boats[b].dist)
+	for i in SeaWakes.nearest(dist, MAX_OTHER, INF):
 		var slot: BoatSlot = _boats[others[i]]
-		slot.mode = 3 if i >= MAX_OTHER else (1 if slot.dist <= FULL_RANGE else 2)
+		slot.mode = 1 if slot.dist <= FULL_RANGE else 2
 	if viewed >= 0 and viewed < _boats.size():
 		_boats[viewed].mode = 0
 	for b in _boats.size():
@@ -611,6 +649,7 @@ func _boat_voices(dt: float) -> void:
 			v.priority = prio
 			if slot.mode == 2 and not id in FAR_SOUNDS:
 				v.vol = 0.0
+				v.tv = 0.0
 				v.want = false
 				if v.active:
 					_cands.append(v)
@@ -629,8 +668,11 @@ func _boat_voices(dt: float) -> void:
 			_cands.append(v)
 
 
-## smooth toward the target volume and pitch (the frame's weight _k); wants a player while audible
+## smooth toward the target volume and pitch (the frame's weight _k); wants a player while audible. The targets
+## stay for the frames until the next formula update.
 func _drive(v: Voice, tv: float, tp: float) -> void:
+	v.tv = tv
+	v.tp = tp
 	if not v.active and v.vol <= SILENT:
 		v.pitch = tp  # a loop starting from silence fades in at its current pitch
 	v.vol += (tv - v.vol) * _k
@@ -745,6 +787,8 @@ func _start(v: Voice) -> void:
 			v.player = p2
 	v.player.set("stream", pick["stream"])
 	v.active = true
+	v.set_db = INF
+	v.set_pitch = -1.0
 	_update_player(v)
 	var length: float = pick["stream"].get_length()
 	if audible:
@@ -760,10 +804,21 @@ func _pick_entry(v: Voice) -> Dictionary:
 	return {} if s == null else {"file": map.resolve(String(files[0])), "stream": s, "synth": ""}
 
 
+## the player's volume and pitch, set only when they moved (between formula updates)
+func _set_level(v: Voice) -> void:
+	var db := linear_to_db(maxf(v.vol, 1e-4))
+	if absf(db - v.set_db) > SET_DB:
+		v.set_db = db
+		v.player.set("volume_db", db)
+	var pitch := clampf(v.pitch, 0.5, 2.0)
+	if absf(pitch - v.set_pitch) > SET_PITCH:
+		v.set_pitch = pitch
+		v.player.set("pitch_scale", pitch)
+
+
 func _update_player(v: Voice) -> void:
 	var p := v.player
-	p.set("volume_db", linear_to_db(maxf(v.vol, 1e-4)))
-	p.set("pitch_scale", clampf(v.pitch, 0.5, 2.0))
+	_set_level(v)
 	p.set("bus", v.bus)
 	if p is AudioStreamPlayer3D:
 		var p3 := p as AudioStreamPlayer3D

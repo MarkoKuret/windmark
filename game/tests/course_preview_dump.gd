@@ -13,12 +13,16 @@ const DT := 0.1
 ## optional: {"fleet": boats, "seed": world seed, "sky": weather preset}. The haze shots (water_render.md §4.5) see
 ## the same fleet from 1, 3 and 10 km downwind at one image scale (["from_boat", distance, eye height, fov]).
 const HAZE := {"fleet": 8, "seed": 84}
+const GARDA := {"fleet": 8, "seed": 84, "venue": "garda", "course": "garda/garda_wl", "wind": 195.0}
+const TRIESTE := {"fleet": 8, "seed": 84, "venue": "trieste", "course": "trieste/barcola_wl", "wind": 65.0}
 const SHOTS := [
 	["island_chase", false, [140.0, 1800.0, 50.0], 20.0, ["chase", 1.35, 0.14, 0.4]],
 	["island_wide", false, [600.0, 1300.0, 45.0], 4.0, ["look", Vector3(760, 1500, 38), Vector3(60, 2380, 20), 45.0]],
 	["pier_rock", false, [-400.0, 1500.0, 45.0], 4.0, ["look", Vector3(210, 1600, 6), Vector3(210, 1970, 2), 45.0]],
 	["start_line", true, [], 185.0, ["look_boat", Vector3(-150, -330, 7), 0.0, 50.0]],
 	["committee", true, [], 150.0, ["look_mark", "rc", Vector3(-30, -24, 5), 50.0]],
+	["committee_close", true, [], 150.0, ["look_mark", "rc", Vector3(16, 12, 5), 50.0]],
+	["mark_boat", true, [], 150.0, ["look_mark", "fb", Vector3(-9, -7, 3), 50.0]],
 	["windward", true, [], 330.0, ["look_mark", "w", Vector3(-50, -170, 45), 50.0]],
 	["race_aerial", true, [], 262.0, ["aerial", 700.0]],
 	["haze_chase", true, [], 262.0, ["chase", 1.35, 0.14, 0.4], HAZE],
@@ -29,6 +33,21 @@ const SHOTS := [
 	["haze_3km_hazy", true, [], 262.0, ["from_boat", 3000.0, 15.0, 6.7], {"fleet": 8, "seed": 84, "sky": "hazy"}],
 	# the fleet seen from behind and above the own boat (the boat pick frames of tests/race_hud_preview_dump.gd)
 	["fleet", true, [], 262.0, ["chase", 3.2, 0.3, 0.5], HAZE],
+	# Lake Garda (WM-106): the drawn terrain from the race cameras and from the water
+	["garda_chase", true, [], 185.0, ["chase", 1.35, 0.14, 0.4], GARDA],
+	["garda_start", true, [], 185.0, ["look_boat", Vector3(300, -400, 7), 0.0, 50.0], GARDA],
+	["garda_north", true, [], 20.0, ["look", Vector3(100, -1800, 8), Vector3(0, 2600, 250), 55.0], GARDA],
+	["garda_west", true, [], 20.0, ["look", Vector3(900, -300, 8), Vector3(-1800, 300, 350), 55.0], GARDA],
+	["garda_shore", true, [], 20.0, ["look", Vector3(-1100, 600, 5), Vector3(-1500, 1100, 40), 55.0], GARDA],
+	["garda_south", true, [], 20.0, ["look", Vector3(0, 1500, 12), Vector3(-2500, -15000, 150), 55.0], GARDA],
+	["garda_aerial", true, [], 262.0, ["aerial", 700.0], GARDA],
+	# Gulf of Trieste (WM-112): the Karst edge behind Barcola, Miramare, the city, from the race cameras and the water
+	["trieste_chase", true, [], 185.0, ["chase", 1.35, 0.14, 0.4], TRIESTE],
+	["trieste_start", true, [], 185.0, ["look_boat", Vector3(1000, 0, 7), 0.0, 50.0], TRIESTE],
+	["trieste_karst", true, [], 20.0, ["look", Vector3(300, -200, 8), Vector3(2600, 1600, 250), 55.0], TRIESTE],
+	["trieste_miramare", true, [], 20.0, ["look", Vector3(400, 1300, 6), Vector3(-600, 2500, 40), 55.0], TRIESTE],
+	["trieste_city", true, [], 20.0, ["look", Vector3(800, -400, 8), Vector3(3000, -2600, 80), 55.0], TRIESTE],
+	["trieste_aerial", true, [], 262.0, ["aerial", 700.0], TRIESTE],
 ]
 
 var _shot := -1
@@ -60,6 +79,9 @@ func _next() -> void:
 	_scene.puffs = true
 	var opts: Dictionary = s[5] if s.size() > 5 else {}
 	_scene.fleet_size = opts.get("fleet", _scene.fleet_size)
+	_scene.venue = opts.get("venue", _scene.venue)
+	_scene.course = opts.get("course", _scene.course)
+	_scene.wind_from_deg = opts.get("wind", _scene.wind_from_deg)
 	_scene.world_seed = opts.get("seed", _scene.world_seed)
 	if not s[2].is_empty():
 		_scene.start_x = s[2][0]
@@ -209,8 +231,8 @@ func _write_arrays(dir: String, name: String, arrays: Array, xform: Transform3D)
 	return info
 
 
-## Every visible MeshInstance3D under `node`: kind "land" (land shader), "unshaded", "prop" (vertex colours)
-## or "albedo" (imported boat materials).
+## Every visible MeshInstance3D under `node`: kind "land" (land shader), "boat" (committee and mark boats),
+## "unshaded", "prop" (vertex colours) or "albedo" (imported boat materials).
 func _meshes(dir: String, node: Node, out: Array) -> void:
 	var stack: Array = [node]
 	while not stack.is_empty():
@@ -231,8 +253,15 @@ func _meshes(dir: String, node: Node, out: Array) -> void:
 			info["kind"] = "albedo"
 			info["albedo"] = [0.6, 0.6, 0.6, 1.0]
 			info["roughness"] = 0.6
-			if mat is ShaderMaterial:
+			if mat is ShaderMaterial and (mat as ShaderMaterial).shader.resource_path.ends_with("course_boat.gdshader"):
+				# the boat-frame positions and normals the shared boat surface reads
+				info["kind"] = "boat"
+				_save(dir, name + "_opos.bin", (arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array).to_byte_array())
+				_save(dir, name + "_onormal.bin", (arrays[Mesh.ARRAY_NORMAL] as PackedVector3Array).to_byte_array())
+			elif mat is ShaderMaterial:
 				info["kind"] = "land"
+				var br = (mat as ShaderMaterial).get_shader_parameter("bare_rock")
+				info["bare_rock"] = 1.0 if br == null else float(br)
 			elif mat is BaseMaterial3D:
 				var bm := mat as BaseMaterial3D
 				info["roughness"] = bm.roughness

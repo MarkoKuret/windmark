@@ -378,5 +378,5 @@ downwind; the gate is 80 m wide (about 10 hull lengths of an 8 m class). Gate si
 g1 (on the right when looking upwind) is on the boat's left, so g1 is rounded to port and g2 to starboard.
 
 The example files in `game/data/courses/` are the reference and are validated in CI. The shipped example is
-`game/data/courses/example_bay/example_wl.course.json` (the course above with a 700 m beat, laid on the
-`example_bay` venue); the core test suite loads it and validates it for every axis.
+`game/data/courses/practice_waters/example_wl.course.json` (the course above with a 700 m beat, laid on the
+`practice_waters` venue); the core test suite loads it and validates it for every axis.

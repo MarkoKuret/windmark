@@ -221,7 +221,7 @@ func can_continue() -> bool:
 	return mode == "free" or MenuData.ids(MenuData.courses(ven, cls)).has(str(last.get("course", "")))
 
 
-## "Quick race · Example Bay · 10 boats" or "Free sail · Example Bay"
+## "Quick race · Practice Waters · 10 boats" or "Free sail · Practice Waters"
 func continue_text() -> String:
 	var last := settings.last_setup
 	var ven := MenuData.name_of(MenuData.venues(), str(last.get("venue", "")))
@@ -246,6 +246,13 @@ func continue_last() -> void:
 	g.ai_level = str(last.get("ai_level", d.ai_level))
 	g.wind_kn = float(last.get("wind_kn", d.wind_kn))
 	g.wind_from_deg = float(last.get("wind_from_deg", d.wind_from_deg))
+	g.shift = str(last.get("shift", d.shift))
+	g.gusts = str(last.get("gusts", d.gusts))
+	# the weather mode the venue still offers (a venue without conditions: Custom only, menus.md §1)
+	var modes := VenueWeather.modes(MenuData.venue_info(g.venue))
+	g.weather = str(last.get("weather", d.weather))
+	if not modes.has(g.weather):
+		g.weather = modes[0]
 	g.seed = 0
 	request_scene(SAIL_SCENE)
 
@@ -339,6 +346,8 @@ func _setting_changed(key: String) -> void:
 		settings.apply_audio()
 	if stage != null and key in ["quality", "reduced_motion"]:
 		stage.apply_settings(settings)
+	elif stage != null and key in ["fullscreen", "vsync", "fps_limit", "ui_scale", "render_scale", "capture_preset"]:
+		stage.apply_frame_cap(settings)  # menus.md §4: apply_display put the player's limit back
 
 
 ## Writes the session (menus.md §1), remembers the choices and asks for the sail scene.

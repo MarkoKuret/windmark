@@ -14,6 +14,7 @@
 #include <godot_cpp/variant/string.hpp>
 #include <godot_cpp/variant/vector2.hpp>
 
+#include <memory>
 #include <vector>
 
 #include "windmark.h"
@@ -24,12 +25,14 @@ class CoreSim : public godot::RefCounted {
   GDCLASS(CoreSim, godot::RefCounted)
 
  public:
-  CoreSim() = default;
+  CoreSim();
   ~CoreSim() override;
 
   // set-up
   static godot::Dictionary default_settings();
   bool create(const godot::Dictionary& settings, const godot::String& venue_path);
+  godot::Dictionary resolve_settings(const godot::Dictionary& settings, const godot::String& venue_path,
+                                     const godot::String& course_path);
   bool is_created() const { return world_ != nullptr; }
   int64_t add_boat(const godot::String& perf_path, const godot::Dictionary& entry);
   bool place_boat(int64_t boat, double x, double y, double psi);
@@ -69,8 +72,12 @@ class CoreSim : public godot::RefCounted {
   godot::PackedByteArray ai_save();
   bool ai_load(const godot::PackedByteArray& bytes);
 
-  // stepping
-  int64_t step();
+  // stepping. step_begin() runs the next tick on the worker thread (game/README.md "The simulation on a second
+  // core"); every other call waits for it first, so nothing reads or changes the world while it steps.
+  void step();
+  bool step_begin();
+  int64_t step_end();
+  bool is_stepping() const { return stepping_; }
   int64_t step_ticks(int64_t n, bool stop_when_closed);
   int64_t checksum() const;
   int64_t tick() const;
@@ -86,6 +93,7 @@ class CoreSim : public godot::RefCounted {
   godot::PackedFloat32Array boat_outputs(int64_t boat) const;
   godot::PackedFloat32Array boat_env(int64_t boat) const;
   godot::PackedFloat32Array render_pose(int64_t boat, double alpha) const;
+  godot::PackedFloat32Array render_poses(double alpha) const;
   double trim_speed_at(int64_t boat, double tws, double awa_abs, double eps) const;
   double perf_table(int64_t boat, int64_t front_sail, const godot::String& name, double x, double y, double w) const;
   double polar(int64_t boat, double tws, double twa, int64_t front_sail) const;
@@ -132,10 +140,16 @@ class CoreSim : public godot::RefCounted {
   bool ok(wm_status s) const;
   bool boat_ok(int64_t boat) const;
   wm_perf* perf_for(const godot::String& path);
+  // waits for a tick running on the worker thread
+  void settle() const;
+
+  struct Worker;
 
   wm_world* world_ = nullptr;
   std::vector<std::pair<godot::String, wm_perf*>> perfs_;  // loaded classes by file path
   mutable godot::String error_;
+  std::unique_ptr<Worker> worker_;
+  mutable bool stepping_ = false;
 };
 
 }  // namespace windmark_godot

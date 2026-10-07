@@ -1,11 +1,11 @@
 ---
 id: WM-099
 title: 'Boats: sea in open cockpits when heeled'
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-05 15:44'
-updated_date: '2026-10-07 13:28'
+updated_date: '2026-10-07 14:05'
 labels: []
 dependencies: []
 ordinal: 137000

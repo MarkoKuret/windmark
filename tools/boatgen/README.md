@@ -333,10 +333,16 @@ The sidecar's `model` gives the game model's `triangles` and `surfaces` without 
 node set and `full_triangles` (the full model). `game/tests/boat_import_test.gd` prints the triangles the engine's
 levels draw at 25 to 400 m.
 
-**Shadow proxy** (`Boat.shadow_proxy`): about 500 triangles of hull, height-field deck with the coachroof, keel,
-rudder and mast (node `shadow`), and the boom (`shadow_boom`, a child of the `boom` node, so it swings with it), in
-the material `shadow`. The game casts the sun's shadows from it only; every vertex lies on the full model's
-surfaces, so the proxy sits inside the drawn boat.
+**Shadow proxy** (`Boat.shadow_proxy`, `boatgen/shadow.py`, `docs/specs/sail_visuals.md` §11.4): about 500
+triangles of hull, deck open over the cockpit (walls down to a floor under the drawn one), coachroof, transom and mast
+(node `shadow`), the boom (`shadow_boom`, a child of the `boom` node, so it swings with it) and a rudder that stands
+above the waterline (`shadow_rudder`, a child of the `rudder` node, so it turns with the helm; wm7's), in the
+material `shadow`. The game casts the sun's shadows from it only. Every face lies inside the drawn surfaces: hull,
+deck, cockpit and coachroof by `shadow.INSET` (4 cm), mast, boom and rudder shrunk by `shadow.INSET_SPAR` (1.2 cm)
+a side, so no proxy face is coplanar with or above a drawn one; the keel, bulb and a spade rudder stay under the
+water and are left out. `tests/test_shadow_proxy.py` checks it: no face over the cockpit opening, every face at
+least 70 % of the inset from every drawn hull and deck surface the sun can light (a quarter of it from the hull's
+bottom), facing out of the shell, the spars inside the drawn spars.
 
 ## Model structure
 
@@ -351,7 +357,7 @@ Nodes under the root (named after the class id):
 | `mainsheet` | | tackle between boom and traveller; rebuild it as the boom moves |
 | `pole` | on the mast axis at the heel height, turns about the vertical | spinnaker pole, only for a class that flies a spinnaker on a pole (below) |
 | `sail_<id>` | | one per class sail, flat, two layers |
-| `shadow` (and `shadow_boom` under `boom`) | | the shadow proxy (above), material `shadow` |
+| `shadow` (and `shadow_boom` under `boom`, `shadow_rudder` under `rudder`) | | the shadow proxy (above), material `shadow` |
 
 Pivot nodes store their geometry relative to the pivot and carry the pivot as their translation.
 

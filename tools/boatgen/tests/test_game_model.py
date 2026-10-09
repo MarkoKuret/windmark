@@ -83,9 +83,9 @@ class GameModelTest(unittest.TestCase):
 
     def test_shadow_proxy(self):
         for c in CLASSES:
-            static, boom = boat(c).shadow_proxy()
+            static, boom, rudder = boat(c).shadow_proxy()
             with self.subTest(cls=c):
-                self.assertLess(static.tri_count() + boom.tri_count(), 800)
+                self.assertLess(static.tri_count() + boom.tri_count() + rudder.tri_count(), 800)
                 self.assertGreater(boom.tri_count(), 0)
 
     def test_glb_slots(self):

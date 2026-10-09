@@ -244,6 +244,20 @@ Hatches on the coachroof are flush, their frames following the top's curve; the 
 the top aft. The deck's uv1 (the plan view, §8.5) covers the coachroof like every other deck surface: its sides take
 the texels of their narrow footprint between the base and the roof edge.
 
+
+#### 3.7.3 `visual.deck.wheel`: the helm of a wheel boat
+
+| key | default | meaning |
+| --- | --- | --- |
+| `diameter` | min(0.855 · cockpit width, 1.35 · (LOA/12)^0.7) m | outer diameter of the rim |
+| `well` | false | true: the lower part of the wheel runs through a slot in the cockpit floor, as on a regatta boat with one big wheel |
+| `hub_height` | with a well 0.62 · (LOA/12)^0.5 m, else `diameter`/2 + 0.12 m | hub above the cockpit floor |
+
+A regatta helm on the centreline: the wheel on a slim pedestal with a small head round its shaft, no guard,
+instrument pod or arms. With `well` the slot is a box let into the floor: fore and aft the rim's thickness plus
+5 cm each side, athwartships the rim's chord at the floor plus 5 cm each side, 4 cm deeper than the rim, with
+gelcoat walls and bottom, at least 5 cm inside the hull's bottom and sides. The rudder stock stays clear of it: the wheel moves forward until the slot's aft wall is
+5 cm ahead of the stock's bearing. `diameter` must fit the cockpit (at most 0.95 of its width at the wheel).
 ### 3.8 Example (sportsboat)
 
 ```json

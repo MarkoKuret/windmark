@@ -3,9 +3,11 @@ id: WM-120
 title: >-
   Boats: wm12 racing helm, one big wheel through a floor well, no pedestal
   extras
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-10-07 13:35'
+updated_date: '2026-10-09 11:32'
 labels: []
 dependencies: []
 ordinal: 140000
@@ -19,6 +21,6 @@ Owner, 2026-10-07: the wm12 wheel looks cruiser-like. Wanted: a plain racing set
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 wm12 helm: one wheel of racing size (about 1.6 to 1.8 m) with its lower part in a floor well, no guard, pod or arms; previews approved by the owner
-- [ ] #2 spec and boatgen README describe the helm; boatgen attachment tests pass (wheel on its shaft, shaft on its bearing, well in the floor)
+- [x] #1 wm12 helm: one wheel of racing size (about 1.6 to 1.8 m) with its lower part in a floor well, no guard, pod or arms; previews approved by the owner
+- [x] #2 spec and boatgen README describe the helm; boatgen attachment tests pass (wheel on its shaft, shaft on its bearing, well in the floor)
 <!-- AC:END -->

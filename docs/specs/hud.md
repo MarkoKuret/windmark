@@ -663,7 +663,7 @@ the same:
 | Restart with wind | action | | restart only: the core takes its wind when the world is made, so the race or free sail starts again with that wind, every other setting kept (a rules scenario keeps its file's wind) |
 | Chase breathing | On, Off | `--breathing=` | live: off is the plain follow (one heading lag, no bank, trail or lean) |
 | Drawn boat shadows | On, Off | `--no-drawn-shadows` | live (tiers L and M) |
-| Boat sun shadows | On, Off | `--no-boat-shadows` | live |
+| Boat sun shadows | On, Off | `--no-boat-shadows` | live: the shadow proxies hidden and the sails not casting (`sail_visuals.md` §11.4) |
 | Render scale | Setting, 50, 67, 75, 85, 100 % | `--render-scale=` | live (root viewport) |
 | Frame-time overlay | On, Off | `--perf` | live (§17) |
 

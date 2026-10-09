@@ -860,11 +860,27 @@ pieces and materials:
   the chord, taken three times over for the shading); the renderer picks them by size on screen like the model's.
 - **Sheets** by the size of a metre on screen (§11.3).
 - **Shadows**: the visible boat meshes cast no sun shadow. The model carries the class's shadow proxy (a few
-  hundred triangles: the hull, the deck with its coachroof, keel, rudder and mast as `shadow`, and the boom as
-  `shadow_boom` under the boom node, so it swings with it), drawn only into the shadow maps (shadows only). The
-  sails keep casting their own shadows (their shape changes every frame and a proxy could not follow it), with their
-  engine levels. On a quality tier with `boat_cast_distance` > 0 (`water_render.md` §4.6) the proxies and sails of
-  boats other than the player's own stop casting beyond that distance from the camera.
+  hundred triangles: the hull with the deck, cockpit and coachroof, and the mast as `shadow`; the boom as
+  `shadow_boom` under the boom node, so it swings with it; a rudder that stands above the waterline as
+  `shadow_rudder` under the rudder node, so it turns with the helm), drawn only into the shadow maps (shadows
+  only). The sails keep casting their own shadows (their shape changes every frame and a proxy could not follow
+  it), with their engine levels. On a quality tier with `boat_cast_distance` > 0 (`water_render.md` §4.6) the
+  proxies and sails of boats other than the player's own stop casting beyond that distance from the camera.
+  - **Proxy shape** (`tools/boatgen`, `Boat.shadow_proxy`): it only casts where the drawn boat would, and never
+    onto the boat's own lit faces. Every face lies at least the inset inside the drawn surfaces (hull, deck,
+    cockpit and coachroof 4 cm; mast, boom and rudder 1.2 cm a side, shrunk toward their axes), so no face is
+    coplanar with or above a drawn surface (a coplanar caster shades its receiver in facets that crawl as the boat
+    moves). The deck is open over the cockpit: its edge stands the inset back from the cockpit's sides, walls go
+    down from there and the floor lies the inset under the cockpit floor (the wheel well under it stays shaded), so
+    the cockpit takes the shadows of its coamings and of the coachroof, mast, boom and sails and nothing else. The
+    coachroof is its section inset (the deck, raked side and top lines moved in and met at their corners). Hull and
+    deck close into one shell, so the hull's shadow on the sea has no holes. Parts that stay under the water (keel,
+    bulb, a spade rudder) are left out. No fittings, rigging or lines: thin casters break up into crawling dashes
+    in the low tiers' shadow maps.
+  - **Turning casting off** (beyond `boat_cast_distance`, or the look panel's "Boat sun shadows", `hud.md` §18):
+    a proxy keeps `SHADOWS_ONLY` in every state and is hidden instead (a hidden instance draws into no pass;
+    `OFF` would draw the grey proxy in the colour pass); the sails go from `ON` to `OFF`. Turning it back on
+    restores exactly that set-up: drawn meshes `OFF`, proxies shown and `SHADOWS_ONLY`, sails `ON`.
 - **Livery**: the boat's livery material goes on every node, so the engine's levels change the triangles, never the
   paint.
 

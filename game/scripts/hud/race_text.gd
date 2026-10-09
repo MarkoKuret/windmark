@@ -22,6 +22,11 @@ enum SignalKind { WARNING, PREP_UP, PREP_DOWN, START, GENERAL_RECALL, X_UP, X_DO
 ## rules.md §11.3 (WM_REV_*)
 enum Rev { RULE_WARNING, INCIDENT, PENALTY, PENALTY_SERVED, PENALTY_CANCELLED, PENALTY_LATE, MARK_TOUCH,
 	PROTESTABLE, PROTESTED, DISQUALIFIED }
+## rules.md §9.3 why the last started penalty turn was reset (WM_TURN_RESET_*)
+enum TurnReset { NONE, PAUSED, REVERSED, ZONE, ROUNDED }
+## hud.md §12.1 the panel's reset text by reason
+const TURN_RESET_TEXT := ["", "Turn reset: paused", "Turn reset: turned back", "Turn reset: inside the zone",
+	"Turn reset: mark rounded"]
 ## rules.md §11.1 keep-clear and room states (WM_KC_*)
 enum Kc { CLEAR, WARNING, BREACH }
 ## courses.md steps (WM_STEP_*), marks (WM_MARK_*), sides (WM_SIDE_*)

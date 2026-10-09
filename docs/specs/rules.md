@@ -624,7 +624,14 @@ Windmark turn tracker, per boat with a pending penalty:
 - **Where (fleet)**: anywhere. Zones do not matter and a rounding during the turn does not reset it.
 - **Where (match, Appendix C)**: no part of the turn may be inside the zone of a rounding mark of her leg (the mark
   she is heading for and the one she last rounded; the starting and finishing marks are not rounding marks):
-  entering such a zone, or rounding a mark, resets the turn.
+  entering such a zone, or rounding a mark, resets the turn. While she has a penalty she may take now and any part
+  of her hull is in such a zone (§7.1, the engine's own zone membership), the tracker does not run and the record
+  says so (`turn_in_zone`, §11.2).
+- **Reset report**: when a reset discards a turn that had started (the 0.5 s above), the record keeps its reason and
+  tick (`turn_reset`, `turn_reset_tick`, §11.2) until the next such reset. Reasons: `paused` (a pause of more than
+  3 s), `reversed` (a reversal of more than 20°), `zone` (entered the zone of a rounding mark, match only),
+  `rounded` (rounded a mark, match only; when both happen on one tick the rounding is reported). Serving the
+  penalty, a cancelled penalty and the 21.2 keep-clear pause are not resets.
 - **Before the start**: a penalty from a pre-start incident may be taken before the start signal.
 - **Finishing**: a boat with a pending penalty cannot finish (`race.md` §6.1).
 - While the tracker has a turn in progress the boat is **taking a penalty** for rule 21.2 (§4 row 3).
@@ -703,6 +710,10 @@ PairRecord {
 ```
 BoatRules {
   tack, tacking, turning_for_penalty, turn_progress_deg, turn_tacks, turn_gybes
+  turn_in_zone                match race: a penalty she may take now, but inside the zone of a rounding mark of her
+                              leg, so no turn counts (§9.3)
+  turn_reset, turn_reset_tick the last reset of a started turn: none | paused | reversed | zone | rounded, and the
+                              tick it happened (§9.3)
   pending_penalties [ {rule, other, tick, count} ], served_count, received_count
   deadline_s                  seconds to the §9.4 deadline of the oldest pending penalty, or none
   zones [ {mark_step, in_zone, entered_tick} ]
@@ -792,7 +803,9 @@ Scenario tests (two or three scripted boats, headless) with the expected obligat
 - Barging at the committee boat → windward boat penalised under 11, no room.
 - OCS returner hits a starting boat → 21.1; boat doing a penalty turn hits another → 21.2.
 - Penalty turn: a 360 with a tack and a gybe serves it; 360 with a pause of 4 s does not, unless she paused to keep
-  clear under 21.2; a turn inside the zone of the next mark counts in a fleet race and not in a match; not completed
+  clear under 21.2; a turn inside the zone of the next mark counts in a fleet race and not in a match
+  (`turn_in_zone` set in the match only); the reset reasons `paused`, `reversed`, `zone` and `rounded` each reported
+  with their tick, none for a served turn; not completed
   120 s after the incident → `PenaltyLate` and DSQ, with no extra penalty; three pending → DSQ; every penalty one
   turn.
 - Mark touch of the next mark → one-turn penalty; touch of an unrelated mark → none; touch then a Part 2 breach
@@ -828,6 +841,7 @@ list  boats, per boat, engine state:
   int32 gate_step; int8 gate_buoy
 list  boats, per boat, the record of §11.2:
   int8 tack; bool tacking, turning_for_penalty; float turn_progress; int32 turn_tacks, turn_gybes
+  bool turn_in_zone; uint8 turn_reset; uint32 turn_reset_tick
   list  pending: uint8 rule, int32 other, uint32 tick, int32 count
   int32 served, received; float deadline_s; bool returning_to_start, dsq, out_of_bounds
 list  pair states in ascending (i, j), per pair:

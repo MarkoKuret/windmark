@@ -88,6 +88,9 @@ void Rules::save(SnapshotWriter& w) const {
     w.put_f32(b.turn_progress);
     w.put_i32(b.turn_tacks);
     w.put_i32(b.turn_gybes);
+    w.put_bool(b.turn_in_zone);
+    put_enum(w, b.turn_reset);
+    w.put_u32(b.turn_reset_tick);
     put_count(w, b.pending.size());
     for (const Penalty& p : b.pending) {
       put_enum(w, p.rule);
@@ -315,6 +318,9 @@ bool Rules::load(SnapshotReader& r) {
     b.turn_progress = r.get_f32();
     b.turn_tacks = r.get_i32();
     b.turn_gybes = r.get_i32();
+    b.turn_in_zone = r.get_bool();
+    b.turn_reset = get_enum(r, TurnReset::rounded);
+    b.turn_reset_tick = r.get_u32();
     const std::uint32_t np = get_count(r, 13);
     for (std::uint32_t k = 0; k < np && !r.failed(); ++k) {
       Penalty p;

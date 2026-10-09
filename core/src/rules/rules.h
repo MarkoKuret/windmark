@@ -112,6 +112,9 @@ struct PairRecord {
   float ttc = INFINITY;
 };
 
+// rules.md §9.3: why the last started penalty turn was reset.
+enum class TurnReset : std::uint8_t { none, paused, reversed, zone, rounded };
+
 // rules.md §11.2
 struct BoatRules {
   std::int8_t tack = 1;         // +1 starboard, -1 port
@@ -119,6 +122,9 @@ struct BoatRules {
   bool turning_for_penalty = false;
   float turn_progress = 0.0f;   // rad, signed
   std::int32_t turn_tacks = 0, turn_gybes = 0;
+  bool turn_in_zone = false;    // match: a penalty she may take now, inside a rounding mark's zone (no turn counts)
+  TurnReset turn_reset = TurnReset::none;
+  std::uint32_t turn_reset_tick = 0;
   std::vector<Penalty> pending;
   std::int32_t served = 0, received = 0;
   float deadline_s = -1.0f;     // to the oldest pending penalty's deadline (§9.4); < 0: none

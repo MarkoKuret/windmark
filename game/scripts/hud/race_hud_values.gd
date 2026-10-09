@@ -26,7 +26,7 @@ const FEED_TICKS := 160  # 8 s
 const FEED_LINES := 6
 const PENALTY_RECENT := 100  # hud.md §12.1: 5 s
 const HINT_TICKS := 100  # hud.md §4 sail hint: 5 s
-const RESET_TICKS := 60
+const RESET_TICKS := 60  # hud.md §12.1: the reset text, 3 s
 const START_SUMMARY_S := 30.0
 const MIN_KN := 0.3 * HudFormat.KNOT
 ## hud.md §13.1 the finish card: 5 s, fading in over 0.3 s and out over the last 0.8 s
@@ -221,8 +221,6 @@ var _finished_count := 0
 var _last_penalty_tick := -1000000
 var _hint_best := -2
 var _hint_ticks := 0
-var _turn_prev := 0.0
-var _reset_ticks := 0
 var _summary_done := false
 var _track_last := Vector2.INF
 var _tick := 0
@@ -329,7 +327,7 @@ func tick(sim: SimSource, b: int) -> void:
 	_next_mark(sim, rb, s)
 	_position(sim, b)
 	_rules(sim, b)
-	_penalties(sim, b, rb, s)
+	_penalties(sim, b)
 	_radar(sim, b)
 	# events and timers once per simulation tick (a scene may tick the HUD again without a step, e.g. on reset)
 	if sim.tick() != _events_tick:
@@ -870,7 +868,7 @@ func protest_prompt() -> bool:
 
 # ---- penalties (§12.1) ----
 
-func _penalties(sim: SimSource, b: int, rb: Dictionary, s: SimSource.BoatState) -> void:
+func _penalties(sim: SimSource, b: int) -> void:
 	var br := sim.boat_rules(b)
 	var pend: Array = br.get("pending", [])
 	pending = pend.size()
@@ -888,39 +886,20 @@ func _penalties(sim: SimSource, b: int, rb: Dictionary, s: SimSource.BoatState) 
 	deadline = float(br.get("deadline_s", -1.0))
 	var received := int(br.get("received", 0))
 	dsq_warning = pending == dsq_pending - 1 or received == dsq_total - 1
-	if _turn_prev > 20.0 and turn_deg < 1.0:
-		_reset_ticks = RESET_TICKS
-	_turn_prev = turn_deg
-	# a fleet-race turn counts anywhere; only a match race keeps it out of the zones (rules.md §9.3)
-	var in_zone := int(sim.race().get("race_type", 0)) == RaceText.RACE_MATCH and _in_zone(rb, s)
-	if turning and in_zone:
+	# both from the core's turn tracker (rules.md §9.3, §11.2): the match-race zone and the last reset
+	var why := int(br.get("turn_reset", RaceText.TurnReset.NONE))
+	var reset_age := sim.tick() - int(br.get("turn_reset_tick", 0))
+	if bool(br.get("turn_in_zone", false)):
 		turn_text = "Not counted: inside the zone"
+	elif why != RaceText.TurnReset.NONE and why < RaceText.TURN_RESET_TEXT.size() and reset_age >= 0 \
+			and reset_age <= RESET_TICKS and (pending > 0 or turning):
+		turn_text = RaceText.TURN_RESET_TEXT[why]
 	elif turn_deg >= 1.0:
 		turn_text = "Turn: %d°" % int(HudFormat.round_half_away(turn_deg))
-	elif _reset_ticks > 0:
-		turn_text = "Turn reset: inside the zone" if in_zone else "Turn reset: keep turning one way"
 	elif pending > 0:
 		turn_text = "Sail clear and turn: one tack and one gybe"
 	else:
 		turn_text = ""
-
-
-## rules.md §9.3 (match races) the hull in the zone of the mark she is heading for or the one she last rounded; the
-## zone measured from the mark (§7.1)
-func _in_zone(rb: Dictionary, s: SimSource.BoatState) -> bool:
-	var c := Vector2(s.pos_x, s.pos_y)
-	var steps: Array = _course["steps"]
-	var zl := float(_course.get("zone_lengths", 3.0))
-	for k in [int(rb.get("next", 0)), int(rb.get("last_rounded", -1))]:
-		if k <= 0 or k >= steps.size() or int(steps[k]["kind"]) == RaceText.Step.FINISH:
-			continue
-		var pts := step_points(k)
-		var ms: PackedInt32Array = steps[k]["marks"]
-		for i in pts.size():
-			var zr := float(_course["marks"][ms[i]].get("zone_r", 0.0)) if ms[i] >= 0 else 0.0
-			if c.distance_to(pts[i]) < zl * _loa + zr + 0.5 * _loa:
-				return true
-	return false
 
 
 # ---- radar colours (§8) ----
@@ -1357,5 +1336,3 @@ func _timers() -> void:
 			feed.remove_at(i)
 	if protest_ticks > 0:
 		protest_ticks -= 1
-	if _reset_ticks > 0:
-		_reset_ticks -= 1

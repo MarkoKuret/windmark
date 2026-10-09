@@ -46,7 +46,7 @@
 extern "C" {
 #endif
 
-#define WM_API_VERSION 4
+#define WM_API_VERSION 5
 
 /* ---- status ------------------------------------------------------------------------------------------------ */
 
@@ -674,12 +674,19 @@ enum { WM_RULE_NONE = 0, WM_RULE_10, WM_RULE_11, WM_RULE_12, WM_RULE_13, WM_RULE
        WM_RULE_21_2, WM_RULE_31, WM_RULE_LATE, WM_RULE_C_PREP, WM_RULE_C_ENTRY, WM_RULE_SI_BOUNDARY };
 WM_API const char* wm_rule_code_name(int32_t rule);
 
+/* rules.md §9.3 why the last started penalty turn was reset. */
+enum { WM_TURN_RESET_NONE = 0, WM_TURN_RESET_PAUSED, WM_TURN_RESET_REVERSED, WM_TURN_RESET_ZONE,
+       WM_TURN_RESET_ROUNDED };
+
 /* rules.md §11.2 per boat. */
 typedef struct wm_boat_rules {
   int32_t tack;                  /* +1 starboard, -1 port */
   int32_t tacking, turning_for_penalty;
   float turn_progress;           /* rad, signed */
   int32_t turn_tacks, turn_gybes;
+  int32_t turn_in_zone;          /* match: a penalty she may take now, inside a rounding mark's zone (no turn counts) */
+  int32_t turn_reset;            /* WM_TURN_RESET_*: the last reset of a started turn */
+  uint32_t turn_reset_tick;      /* the tick of that reset */
   int32_t pending;               /* penalties to serve */
   int32_t served, received;
   float deadline_s;              /* < 0: none */

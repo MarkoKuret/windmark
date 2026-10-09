@@ -122,7 +122,6 @@ An array; exactly one entry of type `main`, any number of front sails. Its order
 | `luff_round`, `leech_round`, `foot_round` | | – | flying sails: edge round depth as a fraction of the straight edge, -0.1 to 0.3 [below] |
 | `luff_round_pos`, `leech_round_pos`, `foot_round_pos` | | – | flying sails: where along the edge the round is deepest, 0.1 to 0.9 [below] |
 | `furling` | | bool | headsail on a furler (hoist animation, and faster handling) [false] |
-| `kite_sheet_in` | | rad | main only: how far the main is sheeted in from its own optimum while a spinnaker or code zero is set, 0 to 0.7 (`sails.md` §5.1) [0] |
 | `handling` | | object | overrides of the handling block the VPP writes (§4.4) |
 
 Sail areas of the main, jib, genoa, code zero and spinnakers (symmetric or asymmetric) are `sails[].area` with the
@@ -474,7 +473,8 @@ Durations are numbers or Table2D(`tws`, `twa_abs`) → s (`sails.md` §4.4). The
 `handling` block on the main is a load error); every front sail has one with all eight keys: the four durations
 (≥ 0) and `slow_prepare_hoist`, `slow_hoist`, `slow_prepare_drop`, `slow_drop` (≥ 0).
 
-Other values: `sheet_min`, `sheet_max` in [0, π] with `sheet_min ≤ sheet_max`; `rate_in`, `rate_out` > 0;
+Other values: `sheet_min` in [−π/16, π] (negative only for the main: its boom on the traveller to windward,
+`sails.md` §5.1), `sheet_max` in [0, π] with `sheet_min ≤ sheet_max`; `rate_in`, `rate_out` > 0;
 `sheet_max_by_heel`, `pole_angle` and `shiver_angle` values in [0, π]; `pole_rate` > 0, required when `pole_angle`
 is present (optional otherwise); `shiver_angle` and `shiver_free` required.
 
@@ -509,7 +509,7 @@ Schematic:
 - Axes: 1 to 3, each with 1 to 256 points, non-decreasing, at most two equal points in a row (a step,
   `conventions.md` §8.1). The number of values is the product of the axis lengths.
 - Every value finite. Range checks per table: `polar` in [−5, 40], `heel` in [0, π/2], `accel`, `accel_rest`,
-  `fall_off`, `flog_drag` and durations ≥ 0, `trim_*` and `heel_speed_factor` in [0, 3], `optimal_angle`,
+  `fall_off`, `flog_drag` and durations ≥ 0, `trim_*` and `heel_speed_factor` in [0, 3], `optimal_angle` in [−π/16, π],
   `sheet_max_by_heel`, `pole_angle`, `shiver_angle` in [0, π], `heel_rise` in [−1, 1] m, `heel_trim` in
   [−π/8, π/8], `rudder_drag_*` and `weather_helm` any finite value.
 - Lookup and interpolation: `conventions.md` §8.

@@ -369,6 +369,12 @@ void Rules::turn_tracker(std::uint32_t n, std::size_t i, const Race& race, const
     s.t_tacks = 0;
     s.t_gybes = 0;
   };
+  // A reset that discards a started turn is reported with its reason (§9.3).
+  auto report = [&](TurnReset why) {
+    if (!s.t_started) return;
+    br.turn_reset = why;
+    br.turn_reset_tick = n;
+  };
   bool allowed = !br.pending.empty();
   if (allowed) {
     const RuleCode r = br.pending.front().rule;
@@ -376,6 +382,7 @@ void Rules::turn_tracker(std::uint32_t n, std::size_t i, const Race& race, const
   }
   // Where: anywhere in a fleet race. In a match race (Appendix C) no part of the turn inside the zone of a rounding
   // mark of her leg (the next mark and the last one rounded), and a rounding resets it.
+  bool in_zone = false, rounded = false;
   if (match_ && allowed) {
     const RaceBoat& rb = race.boat(i);
     const ResolvedCourse& course = race.course();
@@ -384,12 +391,16 @@ void Rules::turn_tracker(std::uint32_t n, std::size_t i, const Race& race, const
       if (k <= 0 || k >= last || !(rb.started || rb.ocs_scored)) continue;
       const CourseStep& st = course.steps[static_cast<std::size_t>(k)];
       for (const std::int32_t m : {st.marks[0], st.marks[1]}) {
-        if (m >= 0 && s.in_zone[static_cast<std::size_t>(m)]) allowed = false;
+        if (m >= 0 && s.in_zone[static_cast<std::size_t>(m)]) in_zone = true;
       }
     }
-    if (rb.rounded_this_tick) allowed = false;
+    rounded = rb.rounded_this_tick;
+    if (in_zone || rounded) allowed = false;
   }
+  br.turn_in_zone = in_zone;
   if (!allowed) {
+    if (rounded) report(TurnReset::rounded);
+    else if (in_zone) report(TurnReset::zone);
     reset();
   } else {
     const float r = in.turn_rate;
@@ -422,7 +433,9 @@ void Rules::turn_tracker(std::uint32_t n, std::size_t i, const Race& race, const
         if (std::fabs(s.twa) < HALF_PI) ++s.t_tacks;
         else ++s.t_gybes;
       }
-      if (s.t_pause > static_cast<std::int32_t>(ticks(p_.turn_pause)) || along < s.t_extreme - p_.turn_reversal) {
+      const bool paused = s.t_pause > static_cast<std::int32_t>(ticks(p_.turn_pause));
+      if (paused || along < s.t_extreme - p_.turn_reversal) {
+        report(paused ? TurnReset::paused : TurnReset::reversed);
         reset();
         if (d != 0) {
           s.t_dir = d;
@@ -1617,6 +1630,7 @@ void Rules::update(std::uint32_t n, const Race& race, std::span<const RulesBoatI
       boundary(n, i, race);
     } else {
       rec_[i].turning_for_penalty = false;
+      rec_[i].turn_in_zone = false;
     }
   }
 

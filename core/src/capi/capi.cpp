@@ -1473,6 +1473,9 @@ wm_status wm_world_boat_rules(const wm_world* w, int32_t boat, wm_boat_rules* ou
   out->turn_progress = b.turn_progress;
   out->turn_tacks = b.turn_tacks;
   out->turn_gybes = b.turn_gybes;
+  out->turn_in_zone = b.turn_in_zone ? 1 : 0;
+  out->turn_reset = static_cast<int32_t>(b.turn_reset);
+  out->turn_reset_tick = b.turn_reset_tick;
   out->pending = static_cast<int32_t>(b.pending.size());
   out->served = b.served;
   out->received = b.received;

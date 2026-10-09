@@ -472,6 +472,125 @@ TEST_CASE("rules: penalty turns, deadline and disqualification") {
   }
 }
 
+TEST_CASE("rules: penalty turn resets and the match-race zone flag (§9.3, §11.2)") {
+  using wm::TurnReset;
+  constexpr float kRate = 20.0f * wm::DEG;
+  auto penalised = []() {
+    RulesRig rig(1);
+    rig.b[0] = {{-40.0f, -150.0f}, heading_for(0.0f, kBeat), 3.0f, 0.0f};
+    rig.to_prep();
+    rig.touch(0, wm::ContactKind::mark, 1);
+    rig.step();
+    REQUIRE(rig.rules.boat(0).pending.size() == 1);
+    return rig;
+  };
+  // A match race, both boats started, boat 0 at `at` with a rule 31 penalty (the windward mark).
+  auto match = [](const KBoat& at, wm::RaceType type) {
+    wm::RaceSettings ms = quick_settings();
+    ms.race_type = type;
+    if (type == wm::RaceType::match) ms.sequence = wm::SequenceKind::match;
+    RulesRig rig(2, ms);
+    rig.start_at({at, {{-90.0f, 700.0f}, heading_for(0.0f, kBeat), 0.0f, 0.0f}});
+    rig.run(0.5f);
+    rig.touch(0, wm::ContactKind::mark, 2);
+    rig.step();
+    REQUIRE(rig.rules.boat(0).pending.size() == 1);
+    return rig;
+  };
+  SUBCASE("a pause of more than 3 s: paused, with its tick") {
+    RulesRig rig = penalised();
+    rig.b[0].r = -kRate;
+    rig.run(9.0f);
+    REQUIRE(rig.rules.boat(0).turning_for_penalty);
+    CHECK(rig.rules.boat(0).turn_reset == TurnReset::none);
+    rig.b[0].r = 0.0f;
+    const std::uint32_t n0 = rig.n;
+    rig.run(4.0f);
+    const wm::BoatRules& br = rig.rules.boat(0);
+    CHECK(br.turn_reset == TurnReset::paused);
+    CHECK(br.turn_reset_tick >= n0 + 60);
+    CHECK(br.turn_reset_tick <= n0 + 63);
+    CHECK_FALSE(br.turning_for_penalty);
+    CHECK_FALSE(br.turn_in_zone);
+  }
+  SUBCASE("a reversal of more than 20°: reversed") {
+    RulesRig rig = penalised();
+    rig.b[0].r = -kRate;
+    rig.run(9.0f);
+    rig.b[0].r = kRate;
+    const std::uint32_t n0 = rig.n;
+    rig.run(2.0f);
+    const wm::BoatRules& br = rig.rules.boat(0);
+    CHECK(br.turn_reset == TurnReset::reversed);
+    CHECK(br.turn_reset_tick > n0 + 15);
+    CHECK(br.turn_reset_tick < n0 + 25);
+  }
+  SUBCASE("a served turn and a turn that never started report no reset") {
+    RulesRig rig = penalised();
+    rig.b[0].r = -kRate;
+    rig.run(0.3f);  // under the 0.5 s start
+    rig.b[0].r = 0.0f;
+    rig.run(4.0f);
+    CHECK(rig.rules.boat(0).turn_reset == TurnReset::none);
+    rig.b[0].r = -kRate;
+    rig.run(19.0f);
+    REQUIRE(rig.count(wm::RulesEventKind::penalty_served, 0) == 1);
+    CHECK(rig.rules.boat(0).turn_reset == TurnReset::none);
+  }
+  SUBCASE("match race: entering the zone of the next mark resets the turn and sets the zone flag") {
+    RulesRig rig = match({{0.0f, 900.0f}, 0.0f, 1.0f, 0.0f}, wm::RaceType::match);
+    rig.b[0].r = -kRate;
+    rig.run(3.0f);
+    REQUIRE(rig.rules.boat(0).turning_for_penalty);
+    CHECK_FALSE(rig.rules.boat(0).turn_in_zone);
+    rig.b[0].p = {8.0f, 988.0f};  // within 2 L of the windward mark
+    const std::uint32_t n0 = rig.n;
+    rig.step();
+    const wm::BoatRules& br = rig.rules.boat(0);
+    CHECK(br.turn_in_zone);
+    CHECK(br.turn_reset == TurnReset::zone);
+    CHECK(br.turn_reset_tick == n0);
+    CHECK_FALSE(br.turning_for_penalty);
+    rig.run(5.0f);  // still turning inside: nothing counts, nothing more is reset
+    CHECK(rig.rules.boat(0).turn_in_zone);
+    CHECK(rig.rules.boat(0).turn_reset_tick == n0);
+    CHECK(std::fabs(rig.rules.boat(0).turn_progress) == 0.0f);
+    rig.b[0].p = {0.0f, 900.0f};
+    rig.step();
+    CHECK_FALSE(rig.rules.boat(0).turn_in_zone);
+  }
+  SUBCASE("fleet race: the zone does not matter") {
+    RulesRig rig = match({{0.0f, 900.0f}, 0.0f, 1.0f, 0.0f}, wm::RaceType::fleet);
+    rig.b[0].r = -kRate;
+    rig.run(3.0f);
+    rig.b[0].p = {8.0f, 988.0f};
+    rig.run(1.0f);
+    CHECK_FALSE(rig.rules.boat(0).turn_in_zone);
+    CHECK(rig.rules.boat(0).turn_reset == TurnReset::none);
+    CHECK(rig.rules.boat(0).turning_for_penalty);
+  }
+  SUBCASE("match race: rounding a mark outside its zone resets the turn") {
+    // A wide circle (40 m) around the windward mark, left to port: she rounds it during the turn.
+    RulesRig rig = match({{40.0f, 1000.0f}, 0.0f, 40.0f * kRate, -kRate}, wm::RaceType::match);
+    bool rounded = false;
+    std::uint32_t n_round = 0;
+    for (int k = 0; k < 400 && !rounded; ++k) {
+      const std::uint32_t n0 = rig.n;
+      rig.step();
+      if (rig.race.boat(0).last_rounded == 1) {
+        rounded = true;
+        n_round = n0;
+      }
+    }
+    REQUIRE(rounded);
+    const wm::BoatRules& br = rig.rules.boat(0);
+    CHECK(br.turn_reset == TurnReset::rounded);
+    CHECK(br.turn_reset_tick == n_round);
+    CHECK_FALSE(br.turn_in_zone);
+    CHECK(rig.count(wm::RulesEventKind::penalty_served, 0) == 0);
+  }
+}
+
 TEST_CASE("rules: mark touches") {
   RulesRig rig(1);
   rig.start_at({{{0.0f, 900.0f}, heading_for(0.0f, kBeat), 3.0f, 0.0f}});

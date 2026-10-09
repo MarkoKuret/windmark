@@ -60,10 +60,14 @@ All fields of `data_format.md` §3 are read as specified there. How the VPP uses
   `tack_time`, default 1.0) are applied to the physical tables as the file is written (`perf.apply_handling`) and
   recorded in the performance file's `handling` block; they never change a speed table. Any other key overrides
   that `dynamics` value as given. `sails[].handling` overrides the sail's handling block.
-- `sails[main].kite_sheet_in` [0]: the kite configs' main `optimal_angle` is the main's own best angle less this
-  (never below `sheet_min`): with a spinnaker or code zero set the main is sailed well inside the shrouds
-  (`sails.md` §5.1). The equilibrium itself keeps the main at its own best angle, so the polars do not change;
-  with a front sail up only its trim drives the core's speed. wm7 and wm12 use 0.26 rad (15°).
+- The main's sheet angles: its chord at the centre of effort stays within 0 to `sheet_max` in the equilibrium;
+  the performance file's `sheet_min` for the main is −3° (`boatclass.MAIN_WINDWARD`: the traveller carries the
+  boom to windward). With a front sail F set, the main's `optimal_angle` is its slot trim (`sails.md` §5.1,
+  `Generator._main_in_slot`): the main's best angle, from its sail model without sheeting limits, for a wind
+  from F's best angle instead of the free stream's effective angle (the flow leaving F's leech), fading back to
+  the free stream from 110° to 180° for a jib, genoa or symmetric spinnaker. The equilibrium keeps the main at
+  its own best angle, so the polars do not change; with a front sail up only its trim drives the core's speed.
+  (The class key `kite_sheet_in`, a fixed offset for the kite configs, is gone: a class file with it is an error.)
 - Multihulls (`hull.type`, `hull.floats`, `hull.hull_spacing`, `boards`, `rudder.count`) and the `vpp` block
   (`max_heel`) are specified in `data_format.md` §3.9 and §3.10, with their units and defaults. The float
   bodies are extra polygons of the same hydrostatics; the boards are read like a keel fin without a bulb.

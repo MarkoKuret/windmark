@@ -122,10 +122,10 @@ class Envelope:
 
 
 def envelope(sail_type: str, sheet_min: float, sheet_max: float, flats, dbeta: float = 0.25 * DEG,
-             coeffs: SailCoeffs = None) -> Envelope:
+             coeffs: SailCoeffs = None, n_delta: int = 241) -> Envelope:
     c = coeffs or COEFFS[sail_type]
     beta = np.arange(0.0, np.pi + 1e-9, dbeta)
-    deltas = np.linspace(sheet_min, sheet_max, 241)
+    deltas = np.linspace(sheet_min, sheet_max, n_delta)
     flats = np.asarray(flats, float)
     alpha = beta[None, :, None] - deltas[None, None, :]
     cl, cd = coefficients(c, alpha, flats[:, None, None], deltas[None, None, :])

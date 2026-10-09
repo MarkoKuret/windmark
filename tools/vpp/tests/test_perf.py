@@ -81,25 +81,34 @@ def test_trim_tables(generated):
     assert np.all(np.diff(opt[i]) >= -1e-6)                    # eased progressively as the wind goes aft
 
 
-def test_main_sheeted_in_with_the_kite(generated, raw):
-    """sails.md 5.1: with a spinnaker set the main's optimum is kite_sheet_in inside its own best angle, never below
-    sheet_min; the polar does not change."""
-    _, p0 = generated
-    k = 0.26
-    for s in raw["sails"]:
-        if s["type"] == "main":
-            s["kite_sheet_in"] = k
-    p1 = perf.generate(boatclass.from_dict(raw))
-    for c0, c1 in zip(p0["configs"], p1["configs"]):
-        assert c1["polar"] == c0["polar"]
-        _, _, m0 = _t2(c0["optimal_angle"]["main"])
-        _, _, m1 = _t2(c1["optimal_angle"]["main"])
-        if c1["front_sail"] == "a2":
-            assert np.allclose(m1, np.maximum(m0 - k, 0.0), atol=1e-6)
-            assert m1.max() < m0.max() - 0.2                   # off the shrouds running
-        else:
-            assert np.allclose(m1, m0)
-    raw["sails"][1]["kite_sheet_in"] = 0.1
+def test_main_trims_to_the_front_sail(generated, raw):
+    """sails.md 5.1: behind a front sail the main trims to the flow leaving the front sail's leech. Close-hauled in
+    light and medium air the boom is on the centreline (or a little to windward), never beyond the traveller's
+    windward limit; with the kite set it follows the apparent wind inside the kite; the main-only optimum is the
+    main's own best angle. The polars do not depend on it; kite_sheet_in is gone."""
+    b, p = generated
+    main = next(s for s in b.sails if s.type == "main")
+    assert p["sails"]["main"]["sheet_min"] == pytest.approx(-boatclass.MAIN_WINDWARD)
+    cfg = {c["front_sail"]: c for c in p["configs"]}
+    tws, awa, mj = _t2(cfg["jib"]["optimal_angle"]["main"])
+    _, _, jj = _t2(cfg["jib"]["optimal_angle"]["jib"])
+    _, _, m0 = _t2(cfg[None]["optimal_angle"]["main"])
+    assert mj.min() >= -boatclass.MAIN_WINDWARD - 1e-6 and m0.min() >= 0.0
+    for w in (3.0, 4.0, 6.0, 8.0):
+        i = int(np.argmin(abs(tws - w)))
+        for a in (20, 25):
+            j = int(np.argmin(abs(awa - a * DEG)))
+            assert abs(mj[i, j]) <= 3.0 * DEG + 1e-6, (w, a, mj[i, j] / DEG)
+            assert m0[i, j] > mj[i, j] + 5 * DEG                # alone it has no slot: eased off the centreline
+        assert np.all(mj[i][awa < 100 * DEG] <= jj[i][awa < 100 * DEG] + 1e-6)   # inside the jib (its lee from 110)
+    _, _, mk = _t2(cfg["a2"]["optimal_angle"]["main"])
+    _, _, kk = _t2(cfg["a2"]["optimal_angle"]["a2"])
+    i = int(np.argmin(abs(tws - 4.0)))
+    at = lambda m, a: np.interp(a * DEG, awa, m[i])
+    assert 20 * DEG < at(mk, 90) < 40 * DEG
+    assert at(mk, 60) < at(mk, 90) < at(mk, 130) < main.sheet_max - 10 * DEG
+    assert np.all(mk[i] <= kk[i] + 1e-6)
+    raw["sails"][0]["kite_sheet_in"] = 0.26
     with pytest.raises(boatclass.ClassFileError):
         boatclass.from_dict(raw)
 

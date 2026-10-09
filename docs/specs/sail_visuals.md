@@ -868,8 +868,10 @@ pieces and materials:
   proxies and sails of boats other than the player's own stop casting beyond that distance from the camera.
   - **Proxy shape** (`tools/boatgen`, `Boat.shadow_proxy`): it only casts where the drawn boat would, and never
     onto the boat's own lit faces. Every face lies at least the inset inside the drawn surfaces (hull, deck,
-    cockpit and coachroof 4 cm; mast, boom and rudder 1.2 cm a side, shrunk toward their axes), so no face is
-    coplanar with or above a drawn surface (a coplanar caster shades its receiver in facets that crawl as the boat
+    cockpit and coachroof 4 cm; mast, boom and rudder 1.2 cm a side, shrunk toward their axes; near the transom,
+    where the cockpit's sides come close to the narrowing topsides, at least 70 % of it, and the hull's bottom, which
+    looks away from the sun, gives way to the lit cockpit floor over it), so no face is coplanar with or above a
+    drawn surface (a coplanar caster shades its receiver in facets that crawl as the boat
     moves). The deck is open over the cockpit: its edge stands the inset back from the cockpit's sides, walls go
     down from there and the floor lies the inset under the cockpit floor (the wheel well under it stays shaded), so
     the cockpit takes the shadows of its coamings and of the coachroof, mast, boom and sails and nothing else. The

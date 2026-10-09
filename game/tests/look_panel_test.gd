@@ -271,14 +271,24 @@ func test_rows() -> void:
 			any_visible = true
 	t.ok(not any_visible, "drawn shadows off: none drawn")
 	panel.step("drawn_shadows", -1)
-	# boat sun shadows: every boat surface
+	# boat sun shadows (sail_visuals.md §11.4): off hides the shadow proxies (never drawn in the colour pass) and
+	# turns the sails off; on puts every surface's setting and visibility back
 	var casts := _casts()
 	_round_trip("boat_shadows", func(n: int) -> void:
 		if n == 1:
-			t.ok(_casts().values().all(func(c: int) -> bool: return c == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF),
-				"sun shadows off on every boat surface")
+			var off := true
+			for v in sc.boat_views:
+				for g in v.find_children("*", "GeometryInstance3D", true, false):
+					var gi := g as GeometryInstance3D
+					if String(gi.name).begins_with("shadow"):
+						off = off and not gi.visible \
+								and gi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+					else:
+						off = off and gi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			t.ok(off, "sun shadows off: proxies hidden (still shadows only), every other boat surface off")
 		else:
-			t.ok(_casts() == casts, "sun shadows: every surface's own setting back"))
+			t.ok(_casts() == casts, "sun shadows: every surface's own setting and visibility back")
+		t.ok(_proxies_drawn() == 0, "no shadow proxy drawn in the colour pass (step %d)" % n))
 	# render scale: the root viewport
 	var s0 := win.scaling_3d_scale
 	_round_trip("render_scale", func(n: int) -> void:
@@ -300,8 +310,19 @@ func _casts() -> Dictionary:
 	var d := {}
 	for v in sc.boat_views:
 		for g in v.find_children("*", "GeometryInstance3D", true, false):
-			d[g.get_instance_id()] = (g as GeometryInstance3D).cast_shadow
+			d[g.get_instance_id()] = [(g as GeometryInstance3D).cast_shadow, (g as GeometryInstance3D).visible]
 	return d
+
+
+## The shadow proxies the colour pass would draw: shown and not shadows-only.
+func _proxies_drawn() -> int:
+	var n := 0
+	for v in sc.boat_views:
+		for g in v.find_children("shadow*", "GeometryInstance3D", true, false):
+			var gi := g as GeometryInstance3D
+			if gi.is_visible_in_tree() and gi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY:
+				n += 1
+	return n
 
 
 func test_flags() -> void:

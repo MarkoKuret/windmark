@@ -3,7 +3,10 @@ extends SceneTree
 ## the sail scene. On tier M the own boat's drawn shadow lies on the water, points away from the sun and covers the
 ## projected silhouette of the drawn hull, rig and sails; the others get one within the shadow distance; tier L
 ## draws the own boat's only, tier H none (the sea takes real shadows there). The native BoatShadowShape against
-## the GDScript reference, and the cost per boat.
+## the GDScript reference, and the cost per boat. The sun shadow casters on every tier (sail_visuals.md §11.4): no
+## shadow proxy is ever drawn in the colour pass, the drawn meshes cast none, a boat casts (proxies shown, sails on)
+## only within the tier's cast distance (the own boat always) and while "Boat sun shadows" is on, and turning it off
+## and on again puts every caster back.
 ##   godot --headless --path game -s res://tests/boat_shadow_test.gd
 
 const CELL := 0.1
@@ -33,12 +36,15 @@ func _init() -> void:
 	await _run(90)
 	await check_tier_m()
 	await check_native()
+	await check_sun_casters("M")
 	sc.sea.quality = SeaQuality.Tier.L
 	await _run(3)
 	check_tier_l()
+	await check_sun_casters("L")
 	sc.sea.quality = SeaQuality.Tier.H
 	await _run(3)
 	check_tier_h()
+	await check_sun_casters("H")
 	sc.queue_free()
 	await process_frame
 	t.finish(self, "boat shadows")
@@ -178,7 +184,8 @@ func _boat_triangles(v: BoatView) -> Dictionary:
 		sail_nodes[sp.node] = sp
 	for n in v.find_children("*", "MeshInstance3D", true, false):
 		var mi := n as MeshInstance3D
-		if not mi.is_visible_in_tree() or mi.mesh == null:
+		if not mi.is_visible_in_tree() or mi.mesh == null \
+				or mi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY:
 			continue
 		var xf := mi.global_transform
 		var is_sail := sail_nodes.has(mi)
@@ -278,3 +285,90 @@ func check_tier_h() -> void:
 			any += 1
 	t.ok(any == 0, "no drawn shadows (%d)" % any)
 	t.ok(not (sc.sea.material.shader as Shader).code.contains("WM_NO_SHADOWS"), "the sea takes the real shadows")
+
+
+func check_sun_casters(tier: String) -> void:
+	t.begin("tier %s: sun shadow casters" % tier)
+	var cd := BoatView.cast_distance
+	var cam: Vector3 = sc.rig.camera.global_position
+	# as the scene left them: each boat casts by its distance from the camera
+	var bad := 0
+	for v: BoatView in sc.boat_views:
+		var d := v.global_position.distance_to(cam)
+		if cd > 0.0 and absf(d - cd) < 2.0:
+			continue  # at the threshold the frame's camera may differ from this one
+		bad += 0 if _casts_as(v, v.own or cd <= 0.0 or d <= cd) else 1
+	t.ok(bad == 0, "every boat casts by its distance (cast distance %.0f m): %d wrong" % [cd, bad])
+	t.ok(_colour_pass_proxies() == 0, "no proxy drawn in the colour pass")
+	var before := _caster_state()
+	# near and far, the own boat and another
+	var other: BoatView = null
+	for v: BoatView in sc.boat_views:
+		if not v.own:
+			other = v
+	other.update_lod(5.0)
+	t.ok(_casts_as(other, true), "another boat 5 m from the camera casts")
+	other.update_lod(1000.0)
+	t.ok(_casts_as(other, cd <= 0.0), "another boat 1 km from the camera: %s" % ("casts" if cd <= 0.0 else "casts none"))
+	sc.boat_view.update_lod(1000.0)
+	t.ok(_casts_as(sc.boat_view, true), "the own boat casts at any distance")
+	t.ok(_colour_pass_proxies() == 0, "near and far: no proxy drawn in the colour pass")
+	# the look panel's Boat sun shadows: off, a near and far switch while off, on
+	DevLook.set_boat_shadows(sc, false)
+	var off := 0
+	for v: BoatView in sc.boat_views:
+		off += 1 if _casts_as(v, false) else 0
+	other.update_lod(5.0)
+	other.update_lod(1000.0)
+	other.update_lod(5.0)
+	t.ok(off == sc.boat_views.size() and _casts_as(other, false), "sun shadows off: no boat casts, near or far")
+	t.ok(_colour_pass_proxies() == 0, "sun shadows off: no proxy drawn in the colour pass")
+	DevLook.set_boat_shadows(sc, true)
+	await _run(1)
+	t.ok(_caster_state() == before, "sun shadows on again: every caster's setting and visibility as before")
+	t.ok(_colour_pass_proxies() == 0, "sun shadows on again: no proxy drawn in the colour pass")
+
+
+## The boat's casters as a casting (`on`) or not-casting boat: proxies shadows-only and shown (hidden), sails ON
+## (OFF), every other surface OFF.
+func _casts_as(v: BoatView, on: bool) -> bool:
+	var sails := {}
+	for sp in v.sail_parts:
+		sails[sp.node] = true
+	var proxies := 0
+	for g in v.find_children("*", "GeometryInstance3D", true, false):
+		var gi := g as GeometryInstance3D
+		if String(gi.name).begins_with("shadow"):
+			if gi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY:
+				return false
+			if v.shadow_proxies().has(gi) and v.levels[v.lod]["proxies"].has(gi):
+				proxies += 1
+				if gi.visible != on:
+					return false
+			elif gi.visible:
+				return false  # a level not shown
+		elif sails.has(gi):
+			if gi.cast_shadow != (GeometryInstance3D.SHADOW_CASTING_SETTING_ON if on \
+					else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF):
+				return false
+		elif gi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+			return false
+	return proxies >= 2  # the static proxy and the boom's at least
+
+
+func _colour_pass_proxies() -> int:
+	var n := 0
+	for v: BoatView in sc.boat_views:
+		for g in v.find_children("shadow*", "GeometryInstance3D", true, false):
+			var gi := g as GeometryInstance3D
+			if gi.is_visible_in_tree() and gi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY:
+				n += 1
+	return n
+
+
+func _caster_state() -> Dictionary:
+	var d := {}
+	for v: BoatView in sc.boat_views:
+		for g in v.find_children("*", "GeometryInstance3D", true, false):
+			d[g.get_instance_id()] = [(g as GeometryInstance3D).cast_shadow, (g as GeometryInstance3D).visible]
+	return d

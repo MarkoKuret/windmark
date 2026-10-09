@@ -257,9 +257,15 @@ Visible while the boat has pending penalties, is taking one, or was penalised in
 
 - **Pending count** and the current one's rule text (§12.3) and the other boat's name.
 - **Turn progress**: a ring filling with the tracker's `|Θ|` (`rules.md` §9.3) to 360° (every penalty is one turn),
-  with a tack tick and a gybe tick that light when done; state text: `Turn: 210°`, `Turn reset: paused`, and in a
-  match race only `Not counted: inside the zone` (a fleet-race turn counts anywhere). With nothing turning yet:
-  `Sail clear and turn: one tack and one gybe`.
+  with a tack tick and a gybe tick that light when done; state text, the first that applies:
+  - `Not counted: inside the zone` while the core's `turn_in_zone` is set (match races only, `rules.md` §9.3; a
+    fleet-race turn counts anywhere);
+  - for 3 s after the core's last turn reset (`turn_reset`, `turn_reset_tick`, `rules.md` §11.2), by its reason:
+    `Turn reset: paused`, `Turn reset: turned back`, `Turn reset: inside the zone`, `Turn reset: mark rounded`;
+  - `Turn: 210°` while the turn has progress;
+  - with nothing turning yet: `Sail clear and turn: one tack and one gybe`.
+
+  The HUD reads both states from the core and does not infer them.
 - **Deadline**: `rules.md` §9.4 countdown `1:32` to the time the turn must be **completed** (120 s after the
   incident), red below 30 s (a turn takes 10 to 25 s); hidden when there is no deadline (match race single penalty).
 - **Disqualification warning**: `One more penalty = disqualification` when pending = `dsq_pending − 1` or

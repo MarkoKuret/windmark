@@ -1,9 +1,10 @@
 ---
 id: WM-057
 title: 'Decide: jib camber upwind'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-25 19:18'
+updated_date: '2026-10-09 21:34'
 labels:
   - decide-later
 dependencies:
@@ -22,3 +23,9 @@ From WM-016.09: with the sail_visuals.md fill curve a jib at about 15 deg to the
 <!-- AC:BEGIN -->
 - [ ] #1 Owner decided; spec and code updated to match
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Answered 2026-10-09: owner wants the jib a bit deeper and more twisted, see WM-123.
+<!-- SECTION:NOTES:END -->

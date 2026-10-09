@@ -53,6 +53,47 @@ class Deck:
         else:
             self.xk0 = self.xk1 = self.xc1
         self.margin = float(d["nonslip_margin"])
+        self.helm = self._helm() if d.get("steering") == "wheel" else None
+
+    def _helm(self):
+        """The helm of a wheel boat (data_format.md 3.7.3): wheel position, diameter and hub on the centreline, and
+        with `well` the slot let into the cockpit floor for the wheel's lower part (x0, x1, half width, bottom)."""
+        L = self.hull.L
+        s = (L / 12.0) ** 0.7
+        w = self.cls["deck"].get("wheel") or {}
+        well = bool(w.get("well", False))
+        x_w = min(self.xc0 + 1.25 * s, self.xc1 - 0.8)
+        dw = float(w.get("diameter") or min(1.9 * float(self.yc(x_w)) * 0.9, 1.35 * s))
+        hub_h = float(w.get("hub_height") or (0.62 * (L / 12.0) ** 0.5 if well else dw / 2 + 0.12))
+        slot = None
+        if well and hub_h < dw / 2:
+            half_x = 0.5 * 0.04 * dw + 0.05                    # the rim's thickness (hardware.wheel) and 5 cm
+            r = self.cls.get("rudder") or {}
+            if r.get("type", "spade") == "spade" and r.get("x_stock") is not None:
+                # the slot's aft wall 5 cm ahead of the rudder stock's bearing (hardware.rudder_fittings)
+                x_w = max(x_w, float(r["x_stock"]) + 0.11 * s + 0.05 + half_x)
+            zf = float(self.floor_z(x_w))
+            R = dw / 2
+            slot = {"x0": x_w - half_x, "x1": x_w + half_x, "y": float(np.sqrt(R * R - hub_h * hub_h)) + 0.05,
+                    "z": zf - (R - hub_h) - 0.04}
+            # the box stays inside the hull: 5 cm above the canoe body's bottom and inside its sides
+            for x in (slot["x0"], slot["x1"]):
+                zk = float(self.hull.zk(np.array([x]))[0])
+                if slot["z"] < zk + 0.05 or slot["y"] > self.hull.half_breadth_at(x, slot["z"]) - 0.05:
+                    raise ValueError(f"wheel slot ({2 * slot['y']:.2f} m wide, bottom {slot['z']:.2f} m) does not fit "
+                                     "inside the hull: raise visual.deck.wheel.hub_height (data_format.md 3.7.3)")
+        if dw > 1.9 * float(self.yc(x_w)):
+            raise ValueError(f"wheel diameter {dw:.2f} m does not fit the cockpit ({2 * float(self.yc(x_w)):.2f} m wide "
+                             "at the wheel; data_format.md 3.7.3)")
+        zf = float(self.floor_z(x_w))
+        return {"x": x_w, "diameter": dw, "hub": np.array([x_w, 0.0, zf + hub_h]), "floor_z": zf, "slot": slot}
+
+    def in_slot(self, x, y):
+        """Inside the wheel slot in the cockpit floor (arrays)."""
+        sl = self.helm["slot"] if self.helm else None
+        if sl is None:
+            return np.zeros(np.broadcast(np.asarray(x), np.asarray(y)).shape, dtype=bool)
+        return (np.asarray(x) > sl["x0"]) & (np.asarray(x) < sl["x1"]) & (np.abs(np.asarray(y)) < sl["y"])
 
     # ------------------------------------------------------------------------------------------------------
     # analytic surfaces (for placing hardware)
@@ -180,13 +221,16 @@ class Deck:
         x, y = np.broadcast_arrays(np.asarray(x, dtype=np.float64), np.asarray(y, dtype=np.float64))
         ck = (x >= self.xc0) & (x <= self.xc1) & (np.abs(y) < self.yc(x))
         cab = self.has_cabin & (x >= self.xk0) & (x <= self.xk1) & (np.abs(y) < self.yk(x))
-        return np.where(ck & ~cab, self.floor_z(x), self.cabin_z(x, y))
+        z = np.where(ck & ~cab, self.floor_z(x), self.cabin_z(x, y))
+        return np.where(ck & self.in_slot(x, y), self.helm["slot"]["z"] if self.helm and self.helm["slot"] else z, z)
 
     def surface(self, x, y, h=2e-3):
         """(z, normal, kind) of the walking surface at (x, y): coachroof ("roof", its sides included), cockpit floor
         or deck."""
         if self.in_cabin(x, y):
             f, kind = (lambda a, b: self.roof_z(a, b)), "roof"
+        elif self.in_cockpit(x, y) and bool(self.in_slot(x, y)):
+            f, kind = (lambda a, b: self.helm["slot"]["z"]), "floor"
         elif self.in_cockpit(x, y):
             f, kind = (lambda a, b: float(self.floor_z(a))), "floor"
         else:
@@ -406,17 +450,45 @@ class Deck:
         return part
 
     # ------------------------------------------------------------------------------------------------------
+    def _floor(self, part, xs, ya, yb, n):
+        """A strip of the cockpit floor over stations `xs`, across from ya(x) to yb(x) in n columns."""
+        t = np.linspace(0, 1, n)
+        ya, yb = np.broadcast_to(ya, xs.shape), np.broadcast_to(yb, xs.shape)
+        Xf = np.broadcast_to(xs[:, None], (len(xs), n))
+        Yf = ya[:, None] + (yb - ya)[:, None] * t[None, :]
+        Zf = np.broadcast_to(self.floor_z(xs)[:, None], Yf.shape)
+        part.add("nonslip", _orient_up(grid(np.stack([Xf, Yf, Zf], -1), np.stack([Xf, Yf], -1))))
+
     def _cockpit(self, part, xs):
         xs = xs[(xs >= self.xc0 - 1e-9) & (xs <= self.xc1 + 1e-9)]
         yc = self.yc(xs)
         zf = self.floor_z(xs)
-        n = 9
-        t = np.linspace(-1, 1, n)
-        Xf = np.broadcast_to(xs[:, None], (len(xs), n))
-        Yf = yc[:, None] * t[None, :]
-        Zf = np.broadcast_to(zf[:, None], Yf.shape)
-        Pf = np.stack([Xf, Yf, Zf], -1)
-        part.add("nonslip", _orient_up(grid(Pf, np.stack([Xf, Yf], -1))))
+        sl = self.helm["slot"] if self.helm else None
+        if sl is None:
+            self._floor(part, xs, -yc, yc, 9)
+        else:
+            # the floor round the wheel slot (data_format.md 3.7.3): aft and forward of it whole, beside it in two
+            # strips; the slot a box with gelcoat walls and bottom
+            xs_f = np.unique(np.concatenate([xs, [sl["x0"], sl["x1"]]]))
+            aft, fwd = xs_f[xs_f <= sl["x0"] + 1e-9], xs_f[xs_f >= sl["x1"] - 1e-9]
+            mid = xs_f[(xs_f >= sl["x0"] - 1e-9) & (xs_f <= sl["x1"] + 1e-9)]
+            if len(aft) > 1:
+                self._floor(part, aft, -self.yc(aft), self.yc(aft), 9)
+            if len(fwd) > 1:
+                self._floor(part, fwd, -self.yc(fwd), self.yc(fwd), 9)
+            self._floor(part, mid, -self.yc(mid), -sl["y"], 3)
+            self._floor(part, mid, sl["y"], self.yc(mid), 3)
+            x0, x1, yw, zb = sl["x0"], sl["x1"], sl["y"], sl["z"]
+            z0, z1 = float(self.floor_z(x0)), float(self.floor_z(x1))
+            part.add("gelcoat", planar_polygon(np.array([[x0, -yw, zb], [x1, -yw, zb], [x1, yw, zb], [x0, yw, zb]]),
+                                               [0, 0, 1]))
+            part.add("gelcoat", planar_polygon(np.array([[x0, -yw, zb], [x0, yw, zb], [x0, yw, z0], [x0, -yw, z0]]),
+                                               [1, 0, 0]))
+            part.add("gelcoat", planar_polygon(np.array([[x1, yw, zb], [x1, -yw, zb], [x1, -yw, z1], [x1, yw, z1]]),
+                                               [-1, 0, 0]))
+            for sy in (1.0, -1.0):
+                part.add("gelcoat", planar_polygon(np.array([[x0, sy * yw, zb], [x1, sy * yw, zb], [x1, sy * yw, z1],
+                                                             [x0, sy * yw, z0]]), [0, -sy, 0]))
         # side walls
         for side in (1.0, -1.0):
             ytop = side * yc

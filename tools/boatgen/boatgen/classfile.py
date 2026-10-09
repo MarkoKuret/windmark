@@ -203,6 +203,7 @@ def resolve(raw, path="<class>"):
         "toe_rail": 0.035 * (L / 12) ** 0.4,
         "lifelines": L >= 9.0,
         "steering": None,
+        "wheel": {"diameter": None, "well": False, "hub_height": None},   # data_format.md 3.7.3
         "hatches": 1 if L < 9.0 else 2,
     }
     vcab = (vis.get("deck", {}) or {}).get("cabin", {})
@@ -289,4 +290,11 @@ def resolve(raw, path="<class>"):
     c["crew"] = {"count": int(_req(crew, "count", "$.crew")), "weight": crew_w}
     if c["deck"]["steering"] is None:
         c["deck"]["steering"] = "wheel" if L >= 11.0 else "tiller"
+    wh = c["deck"]["wheel"]
+    for k in ("diameter", "hub_height"):
+        v = wh.get(k)
+        if v is not None and (isinstance(v, bool) or not isinstance(v, (int, float)) or not v > 0):
+            raise ClassFileError(f"$.visual.deck.wheel.{k} must be a number > 0 m (got {v})")
+    if not isinstance(wh.get("well", False), bool):
+        raise ClassFileError("$.visual.deck.wheel.well must be true or false")
     return c

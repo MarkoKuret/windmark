@@ -914,23 +914,24 @@ def place_all(cls, hull, deck, rig, lod=0):
     if d.get("lifelines"):
         lifelines = _lifelines(hw, hull, deck, s, lod)
 
-    # --- helm: a regatta helm, the wheel on a slim pedestal with a small head round its shaft (no guard, no
-    # instrument pod), or a tiller on the rudder head
+    # --- helm: a regatta helm (data_format.md 3.7.3), the wheel on a slim pedestal with a small head round its
+    # shaft (no guard, no instrument pod), its lower part in a slot in the floor with `well`; or a tiller on the
+    # rudder head
     helm = Part()
-    if d.get("steering") == "wheel":
-        x_w = min(deck.xc0 + 1.25 * s, deck.xc1 - 0.8)
-        zf = float(deck.floor_z(x_w))
-        dw = min(1.9 * float(deck.yc(x_w)) * 0.9, 1.35 * s)
-        hub = np.array([x_w, 0.0, zf + dw / 2 + 0.12])
-        xp = x_w + 0.12
+    if deck.helm is not None:
+        hm = deck.helm
+        x_w, zf, dw, hub = hm["x"], hm["floor_z"], hm["diameter"], hm["hub"]
+        # the pedestal stands forward of the wheel, clear of the slot
+        xp = x_w + 0.12 if hm["slot"] is None else max(x_w + 0.12, hm["slot"]["x1"] + 0.1 * s)
+        zp = float(deck.floor_z(xp))
         hw.add("carbon", revolve([(0, 0), (0.09 * s, 0), (0.085 * s, 0.02 * s), (0.045 * s, 0.08 * s),
-                                  (0.04 * s, hub[2] - zf - 0.04), (0, hub[2] - zf - 0.04)], 16, sharp=(1,))
-               .transformed(translate([xp, 0, zf])), tag="pedestal")
+                                  (0.04 * s, hub[2] - zp - 0.04), (0, hub[2] - zp - 0.04)], 16, sharp=(1,))
+               .transformed(translate([xp, 0, zp])), tag="pedestal")
         hw.attach("pedestal", "deck")
-        hw.add("carbon", superellipsoid_box((0.16 * s, 0.11 * s, 0.11 * s), 0.4, 12, 6, center=[x_w + 0.1, 0, hub[2]]),
+        hw.add("carbon", superellipsoid_box((0.16 * s, 0.11 * s, 0.11 * s), 0.4, 12, 6, center=[xp - 0.02, 0, hub[2]]),
                tag="binnacle")
         hw.attach("binnacle", "pedestal")
-        hw.add("metal", tube(np.array([[x_w + 0.02, 0, hub[2]], [x_w + 0.1, 0, hub[2]]]), 0.02, 10), tag="wheel_shaft")
+        hw.add("metal", tube(np.array([[x_w + 0.02, 0, hub[2]], [xp - 0.02, 0, hub[2]]]), 0.02, 10), tag="wheel_shaft")
         hw.attach("wheel_shaft", "binnacle")
         helm.extend(wheel(dw, grip=mid), translate(hub), tag="wheel")
         helm.attach("wheel", "wheel_shaft")

@@ -182,6 +182,7 @@ Every key is optional; defaults scale with LOA.
 | `deck.toe_rail` | 0.035 (LOA/12)^0.4 | toe-rail size (m) |
 | `deck.lifelines` | LOA >= 9 m | stanchions, lifelines, pulpit and pushpit |
 | `deck.steering` | wheel from 11 m, else tiller | `wheel` or `tiller` |
+| `deck.wheel` | diameter min(0.855 cockpit width, 1.35 (LOA/12)^0.7), well false, hub_height (well) 0.62 (LOA/12)^0.5 else diameter/2 + 0.12 | the helm of a wheel boat (`docs/specs/data_format.md` §3.7.3): with `well` the wheel's lower part runs through a slot in the cockpit floor |
 | `deck.hatches` | 2 from 9 m, else 1 | foredeck hatch, plus one on the cabin top |
 | `keel.bulb_flat` | 1.25 | bulb cross-section width / height |
 | `rudder.sweep` | 0.10 | rudder quarter-chord sweep (rad) |
@@ -248,7 +249,7 @@ self-tailing winches (ribbed drum, tailer, stripper arm, a handle in the starboa
 base plate, deck organisers, turning blocks on padeyes, blocks with cheeks, sheave and swivel, T-tracks with end
 stops, cars with a lead block and plunger, cam cleats with fairleads, horn cleats, hatches with frame, lens,
 hinges and handles, stanchions, bent-tube pulpit and pushpit, a regatta helm (the wheel with its grip on a slim
-pedestal with a small head round its shaft, no guard or instrument pod), gudgeons or the rudder bearing cap, rigging screws. Placement: primaries beside the cockpit,
+pedestal with a small head round its shaft, no guard or instrument pod; with `deck.wheel.well` a big wheel whose lower part runs through a slot in the cockpit floor), gudgeons or the rudder bearing cap, rigging screws. Placement: primaries beside the cockpit,
 halyard winches (wm12), clutches and organisers on the coachroof clear of the sliding hatch, flush hatches bent
 to the top's slope and crown (`on_surface(..., conform=True)`), the halyards themselves from their exits low on the
 mast round the sheave of their turning block at the mast foot, then along the deck and up the sloping top lying on

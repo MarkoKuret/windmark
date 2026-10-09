@@ -172,12 +172,7 @@ func _build() -> void:
 				if zr > 5.0:
 					_a(q, zr, 0.0, TAU, 32, Color(HudStyle.MARK, 0.5), hw)
 				# rounding arrow: an arc on the side the boat passes, with its head in the rounding direction
-				var port := sides[i] == RaceText.Side.PORT
-				var a0 := -PI * 0.5
-				var sweep := -PI * 0.6 if port else PI * 0.6  # port: anticlockwise on screen
-				_a(q, 10.0 * self.k, a0, a0 + sweep, 10, col, 2.0 * self.k)
-				var tip := q + 10.0 * self.k * Vector2(cos(a0 + sweep), sin(a0 + sweep))
-				_c(tip, 2.5 * self.k, col)
+				HudPaint.rounding_arc(self, q, 10.0 * self.k, sides[i] == RaceText.Side.PORT, col, 2.0 * self.k)
 	for i in marks.size():
 		if shown.has(i) or int(marks[i]["type"]) == 3:
 			continue
@@ -221,14 +216,7 @@ func _build() -> void:
 
 
 func _boat(q: Vector2, psi_screen: float, len_px: float, col: Color, outline: bool) -> void:
-	var l := maxf(len_px, 13.0 * k)
-	var f := Vector2(sin(psi_screen), -cos(psi_screen))
-	var s := Vector2(-f.y, f.x)
-	var pts := PackedVector2Array([q + f * 0.5 * l, q - f * 0.5 * l + s * 0.22 * l, q - f * 0.5 * l - s * 0.22 * l])
-	_p(pts, col)
-	if outline:
-		pts.append(pts[0])
-		_pl(pts, HudStyle.PAPER, 1.5 * k)
+	HudPaint.boat_icon(self, q, psi_screen, maxf(len_px, 13.0 * k), col, outline)
 
 
 func _seg(a: Vector2, b: Vector2, c: Vector2, r: float, col: Color, w: float) -> void:

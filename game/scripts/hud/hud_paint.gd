@@ -729,20 +729,8 @@ static func world(b: HudCanvas, h: Hud) -> void:
 		var name: String = tag["name"]
 		var col: Color = tag["col"]
 		var solid: bool = tag["solid"]
-		var fs := int(roundf(13 * k))
-		var tw := HudCanvas.text_width(name, fs, 700, 0.1) + 16.0 * k
-		var rr := Rect2(q + Vector2(-tw * 0.5, -34.0 * k), Vector2(tw, 22.0 * k))
 		b._l(q + Vector2(0, -12.0 * k), q, Color(col, col.a * 0.8), hw)
-		b._rect(rr, Color(col, col.a) if solid else Color(HudStyle.INK, 0.8 * col.a))
-		if tag["outline"]:
-			var o := rr.grow(3.0 * k)
-			b._pl(PackedVector2Array([o.position, Vector2(o.end.x, o.position.y), o.end, Vector2(o.position.x, o.end.y),
-				o.position]), col, hw)
-		var sv := b.text_shadow
-		b.text_shadow = false
-		b._s(Vector2(q.x, rr.position.y + 16.0 * k), name, fs, Color(HudStyle.INK, col.a) if solid else col, 700, 0.1,
-			HORIZONTAL_ALIGNMENT_CENTER)
-		b.text_shadow = sv
+		name_chip(b, q + Vector2(0, -12.0 * k), name, col, solid, tag["outline"])
 	# the selected boat's bracket (hud.md §16.4.1)
 	var br := h.selected_bracket()
 	if br.has("r"):
@@ -752,6 +740,46 @@ static func world(b: HudCanvas, h: Hud) -> void:
 	# penalty turn on the water (chase and aerial cameras)
 	if h.penalty_turn_shown():
 		_penalty_turn(b, h)
+
+
+## A boat icon (hud.md §8): a triangle `l` px long at `q`, bow along `psi_screen` (0 = up, clockwise), with a paper
+## outline when `outline` (Breach). The radar and the course map.
+static func boat_icon(b: HudCanvas, q: Vector2, psi_screen: float, l: float, col: Color, outline: bool) -> void:
+	var f := Vector2(sin(psi_screen), -cos(psi_screen))
+	var s := Vector2(-f.y, f.x)
+	var pts := PackedVector2Array([q + f * 0.5 * l, q - f * 0.5 * l + s * 0.22 * l, q - f * 0.5 * l - s * 0.22 * l])
+	b._p(pts, col)
+	if outline:
+		pts.append(pts[0])
+		b._pl(pts, HudStyle.PAPER, 1.5 * b.k)
+
+
+## A mark's rounding arrow (hud.md §8, §8.1): an arc of radius `r` px from the top of the mark at `q`, 0.6 pi
+## anticlockwise on the screen to leave it to port, clockwise to starboard, with a dot at its head.
+static func rounding_arc(b: HudCanvas, q: Vector2, r: float, port: bool, col: Color, w: float) -> void:
+	var a0 := -PI * 0.5
+	var sweep := -PI * 0.6 if port else PI * 0.6
+	b._a(q, r, a0, a0 + sweep, 10, col, w)
+	b._c(q + r * Vector2(cos(a0 + sweep), sin(a0 + sweep)), 2.5 * b.k, col)
+
+
+## A name chip (hud.md §16.4) with its bottom centre at `bottom`: solid in `col` with ink text when `solid`, else
+## `col` text on ink; a hairline frame in `col` when `outline` (Breach). World name tags and the course map.
+static func name_chip(b: HudCanvas, bottom: Vector2, name: String, col: Color, solid: bool, outline: bool) -> void:
+	var k := b.k
+	var fs := int(roundf(13 * k))
+	var tw := HudCanvas.text_width(name, fs, 700, 0.1) + 16.0 * k
+	var rr := Rect2(bottom + Vector2(-tw * 0.5, -22.0 * k), Vector2(tw, 22.0 * k))
+	b._rect(rr, Color(col, col.a) if solid else Color(HudStyle.INK, 0.8 * col.a))
+	if outline:
+		var o := rr.grow(3.0 * k)
+		b._pl(PackedVector2Array([o.position, Vector2(o.end.x, o.position.y), o.end, Vector2(o.position.x, o.end.y),
+			o.position]), col, _hw(b))
+	var sv := b.text_shadow
+	b.text_shadow = false
+	b._s(Vector2(bottom.x, rr.position.y + 16.0 * k), name, fs, Color(HudStyle.INK, col.a) if solid else col, 700, 0.1,
+		HORIZONTAL_ALIGNMENT_CENTER)
+	b.text_shadow = sv
 
 
 ## four hairline corners round `r` (screen px), each a quarter of the side and at most 14 design px

@@ -5,8 +5,9 @@ extends Control
 ## (§9.1), signal banners, the start numbers with time to burn and bias, OVER and OCS (§9.2), the next mark tag
 ## with its rounding side, distance, bearing and ETA (§7), VMG / VMC and targets (§4), the tack point (§6), the
 ## shift meter (§3.2), the sail hint, rank, gaps and splits (§10), the rules line (§11), the protest and hail
-## prompts, the penalty panel and the turn on the water (§12), the radar (§8), the event feed and the ranking
-## list and results (§13), each shown per the assist preset (§14) and the instrument density (§16.1).
+## prompts, the penalty panel and the turn on the water (§12), the radar (§8) and the course map (§8.1, M), the
+## event feed and the ranking list and results (§13), each shown per the assist preset (§14) and the instrument
+## density (§16.1).
 ##
 ## The look is hud.md §16 and docs/design/hud_direction.md: glass instrument pages, Barlow Semi Condensed with
 ## tabular figures, the colour tokens of HudStyle; every block is a HudCanvas painted by HudPaint. World tags
@@ -112,6 +113,12 @@ var gauge_box: Control
 var gauge_views: Array[TrimGaugeView] = []
 var ranking_panel: HudCanvas
 var results_panel: HudCanvas
+## hud.md §8.1 the course map, under the alert lane (race_panel) and over everything else that shows with it
+var map_view: CourseMapView
+## the course map is open (the `map` action; Esc closes it first, close_map)
+var map_open := false
+## the `map` key opens it (off while the scene's pause menu or the chat line has the keys)
+var map_enabled := true
 var results_title := ""
 ## hud.md §13: the HUD draws the results as its own table (off where the results screen of menus.md §5 does it)
 var results_table := true
@@ -131,6 +138,7 @@ var _since_tick := 0.0
 var _ui_fed := false
 var _view_held := 0.0
 var _wired: PlayerControls = null
+var _map_sim: SimSource = null
 var _k := 1.0
 ## where edge pointers run in portrait (hud.md §16.5), screen px; empty in landscape (HudPaint.edge_pointer's own box)
 var edge_box := Rect2()
@@ -158,6 +166,11 @@ func _init() -> void:
 	bug_block = _block("RaceBug", HudPaint.bug)
 	wind_page = _block("Wind", HudPaint.wind)
 	feed_block = _block("Feed", HudPaint.feed)
+	map_view = CourseMapView.new()
+	map_view.name = "CourseMap"
+	map_view.values = race
+	map_view.visible = false
+	add_child(map_view)
 	race_panel = Control.new()
 	race_panel.name = "Race"
 	race_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -181,6 +194,7 @@ func _init() -> void:
 	radar.name = "Radar"
 	radar.values = race
 	add_child(radar)
+	map_view.radar = radar
 	helm_block = _block("Boat", HudPaint.helm)
 	helm_notes = _block("Notes", HudPaint.helm_notes)
 	gauge_box = Control.new()
@@ -398,9 +412,9 @@ func tick(s: SimSource, boat: int) -> void:
 	_since_tick = 0.0
 
 
-## The HUD keys of this frame (controls.md §2): rankings (Tab, or a long View press), radar zoom and orientation,
-## hud_density (G, or a short View press), boat_select, boat_pick (click or tap), boat_names. Optional: without it
-## frame() polls the input map.
+## The HUD keys of this frame (controls.md §2): rankings (Tab, or a long View press), the course map (M), radar zoom
+## and orientation, hud_density (G, or a short View press), boat_select, boat_pick (click or tap), boat_names.
+## Optional: without it frame() polls the input map.
 func ui_input(raw: RawInput, dt := 1.0 / 60.0) -> void:
 	_ui_fed = true
 	if rankings_toggle:
@@ -416,6 +430,8 @@ func ui_input(raw: RawInput, dt := 1.0 / 60.0) -> void:
 				cycle_density()
 			_view_held = 0.0
 		show_ranking = raw.is_held(&"rankings") or (view and _view_held >= VIEW_TAP)
+	if raw.was_pressed(&"map") and map_enabled:
+		toggle_map()
 	if raw.was_pressed(&"radar_zoom_in"):
 		radar.zoom(-1)
 	if raw.was_pressed(&"radar_zoom_out"):
@@ -439,7 +455,7 @@ func _poll_input() -> void:
 	if _ui_fed or not is_inside_tree() or DisplayServer.get_name() == "headless":
 		return
 	var raw := RawInput.new()
-	for a in [&"rankings", &"rankings_pad", &"radar_zoom_in", &"radar_zoom_out", &"radar_orientation", &"hud_density",
+	for a in [&"rankings", &"rankings_pad", &"map", &"radar_zoom_in", &"radar_zoom_out", &"radar_orientation", &"hud_density",
 			&"boat_select", &"boat_names"]:  # boat_pick needs the click-or-drag of InputReader
 		if InputMap.has_action(a):
 			if Input.is_action_pressed(a):
@@ -488,6 +504,7 @@ func frame(dt: float, controls: PlayerControls = null) -> void:
 	radar.selected = selected_boat()
 	radar.advance(dt)
 	_race_frame()
+	_map_frame()
 	_layout()
 	_redraw()
 
@@ -500,6 +517,38 @@ func _wire(c: PlayerControls) -> void:
 	c.protest_prompt = func() -> bool: return race.active and race.protest_prompt()
 	c.hail_available = func() -> bool: return race.active and race.hail_available
 	c.hailed = func() -> bool: return race.active and race.hailed_by >= 0
+
+
+# ---- course map (hud.md §8.1) ----
+
+## Opens or closes the course map (the `map` action); it opens only with a race.
+func toggle_map() -> void:
+	if map_open:
+		close_map()
+	elif race.active and sim != null:
+		map_open = true
+		_map_sim = sim
+
+
+## Closes the course map; whether it was open (Esc closes it before anything else, hud.md §8.1).
+func close_map() -> bool:
+	var was := map_open
+	map_open = false
+	return was
+
+
+## Every frame: the map closes by itself without a race, on a new sim, or when the results or the finish card show;
+## it follows the radar's pose blend, the felt wind, the assist, the name tags and the selection.
+func _map_frame() -> void:
+	if map_open and (not race.active or sim != _map_sim or results_panel.visible or finish_card_shown()):
+		map_open = false
+	map_view.sim = sim
+	map_view.alpha = radar.alpha
+	map_view.twd = values.twd
+	map_view.tws = values.tws
+	map_view.zone = shows("zone")
+	map_view.names = show_names
+	map_view.selected = selected_boat()
 
 
 func toggle_hidden() -> void:
@@ -1120,6 +1169,10 @@ func boat_at(pos: Vector2) -> int:
 ## boat_pick: a click or tap at a screen point selects the boat there; on the selected boat again or on open water
 ## it clears (hud.md §16.4.1). Returns the boat picked, -1 for none.
 func pick_at(pos: Vector2) -> int:
+	if map_open:  # hud.md §8.1: on the map's icons, never in the 3D view behind it
+		var mb := map_view.boat_at(pos)
+		select(mb if mb >= 0 and mb != selected_boat() else -1)
+		return mb
 	if sim == null or world_camera() == null:
 		return -1
 	var b := boat_at(pos)
@@ -1303,6 +1356,43 @@ func layout_now() -> void:
 
 
 func _layout() -> void:
+	_layout_blocks()
+	_layout_map()
+
+
+## hud.md §8.1: the map over the whole screen; while it shows only the alert lane stays over it, the other blocks
+## and the world tags are hidden.
+func _layout_map() -> void:
+	map_view.visible = map_open
+	map_view.position = Vector2.ZERO
+	map_view.size = _screen_size()
+	map_view.k = _k
+	map_view.lane_left = 0.0
+	map_view.lane_top = 0.0
+	if map_open:
+		# the alert lane clear of the course, at the HUD's scale: a column on the left under the map's header
+		# (landscape), or a band under the header (portrait)
+		var sc := map_view.size
+		var m := HudStyle.margins(sc)
+		var top := m.y + (CourseMapView.HEADER + 8.0) * _k
+		_place_lane(_k)
+		if HudStyle.portrait(sc):
+			race_panel.position = Vector2(sc.x * 0.5 - HudPaint.LANE_W * _k * 0.5, top)
+			map_view.lane_top = MAP_LANE_BAND * _k
+		else:
+			race_panel.position = Vector2(m.x, top)
+			map_view.lane_left = (HudPaint.LANE_W + 24.0) * _k
+	var on := not map_open
+	if on:
+		world.visible = world_tags
+	for b in [inst_page, helm_block, helm_notes]:
+		(b as CanvasItem).visible = on
+	if map_open:
+		for b in [world, toast_block, bug_block, wind_page, feed_block, next_panel, card_block, radar, ranking_panel]:
+			(b as CanvasItem).visible = false
+
+
+func _layout_blocks() -> void:
 	var sc := _screen_size()
 	var k := HudStyle.ui_k(sc)
 	var m := HudStyle.margins(sc)
@@ -1445,6 +1535,9 @@ func _place_lane(k: float) -> float:
 
 # ---- portrait layout (hud.md §16.5) ----
 
+## hud.md §8.1: the band the alert lane keeps on top of the course map in portrait (design px)
+const MAP_LANE_BAND := 440.0
+
 ## the alert lane's scale over the rest in portrait, at most (hud.md §16.5)
 const PORTRAIT_LANE_MAX := 1.15
 
@@ -1535,7 +1628,7 @@ func _place_table(b: HudCanvas, widths: Array, rows: int, k: float, inner: float
 func _all_canvases() -> Array[HudCanvas]:
 	var out: Array[HudCanvas] = [world, inst_page, toast_block, bug_block, wind_page, feed_block, start_block,
 		flags_view, penalty_panel, ring_view, alerts_block, next_panel, card_block, arrow_view, radar, helm_block, helm_notes,
-		rudder_bar, sheet_bar, ranking_panel, results_panel]
+		rudder_bar, sheet_bar, ranking_panel, results_panel, map_view]
 	for g in gauge_views:
 		out.append(g)
 	return out

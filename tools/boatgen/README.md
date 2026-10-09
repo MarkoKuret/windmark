@@ -230,7 +230,12 @@ rail and rub strake close it off. `Deck.surface` and `Deck.surface_z` give the w
 its sides, the cockpit floor, the deck) that the hardware and the rope leads sit on.
 
 **Appendages** (`appendages.py`). NACA 00xx fin and rudder lofted from root to tip; the bulb is a flattened body
-of revolution sized so its volume holds the bulb mass in lead.
+of revolution sized so its volume holds the bulb mass in lead. A transom-hung rudder has a sportboat's blade: a
+straight swept leading edge on the pintles, a neck narrowing to 0.6 of the root chord (at the root's thickness)
+from the hull's bottom up to the head, a taper below and a quarter-elliptical tip over the last 30 % of the immersed
+span; the immersed chords are scaled so the blade below the DWL keeps the class trapezoid's area. Its head sits
+0.12 m above the transom's top (the cockpit floor's edge on an open transom), so the tiller runs forward low over
+the floor.
 
 **Rig and sails** (`rig.py`, `sails.py`). Tapered mast section, swept spreaders, shrouds with terminals, forestay,
 backstay, bobstay, sprit, boom with vang. Sails are Coons patches over their edges on a regular grid (rows from

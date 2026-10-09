@@ -231,46 +231,11 @@ class Boat:
         return out
 
     def shadow_proxy(self):
-        """The shadow casters of every level (sail_visuals.md 11.4): the hull, the deck with its coachroof, keel,
-        rudder and mast as a few hundred triangles (`shadow`, static), and the boom (`shadow_boom`, under the boom
-        node). Every vertex lies on the full model's surfaces or inside them, so the proxy never shades a lit face
-        of the drawn boat."""
-        from .mesh import segment_scale, tube
-        cls = self.cls
-        saved = {k: getattr(self.hull, k) for k in ("skin_grid", "girth", "girth_max", "skin_xs", "i_turn")}
-        static = Part()
-        with segment_scale(0.1):
-            port, stbd = self.hull.skin(12, 4, 3)
-            for k, v in saved.items():
-                setattr(self.hull, k, v)
-            static.add("shadow", port)
-            static.add("shadow", stbd)
-            deck = Deck(cls, self.hull)
-            deck.build(n_out=3, n_st=12, skin=(4, 3), lite=2)
-            for gs in deck.build_simple(8, 5).slots.values():
-                for g in gs:
-                    static.add("shadow", g)
-            app = Appendages(cls, self.hull)
-            keel = app.keel_part(n_chord=4)
-            if app.has_bulb:
-                static.add("shadow", app.fin_geom)
-                static.add("shadow", app.bulb_geom(nl=6, nr=4))
-            else:
-                for gs in keel.slots.values():
-                    for g in gs:
-                        static.add("shadow", g)
-            for gs in app.rudder_part(n_chord=3).slots.values():
-                for g in gs:
-                    static.add("shadow", g)
-            r = self.rig
-            static.add("shadow", tube(np.array([[r.x_mast, 0, r.z_step], [r.x_mast, 0, r.z_top]]),
-                                      0.5 * float(cls["rig"]["mast_chord"]) * 0.8, 4, caps=False))
-            boom = Part()
-            for gs in r.boom_part().slots.values():
-                for g in gs:
-                    if (g.tag or "") == "boom":
-                        boom.add("shadow", g)
-        return static, boom
+        """The shadow casters (sail_visuals.md 11.4, shadow.py): (static, boom, rudder) for the nodes `shadow`,
+        `shadow_boom` (under the boom node) and `shadow_rudder` (under the rudder node; empty for a rudder under the
+        water). Every face lies inside the drawn surfaces by the inset, open over the cockpit."""
+        from .shadow import proxy
+        return proxy(self)
 
     def write_game_glb(self, path):
         """The game model with its shadow proxy (sail_visuals.md 11.4)."""
@@ -422,13 +387,14 @@ class Boat:
         ao = self.bake_ao(merged) if self.bake else {}
         kids = [w.add_mesh(n, parts[n], pivot=pivots.get(n), ao=ao.get(n), merged=merged[n]) for n in parts]
         if shadow:
-            static, boom = self.shadow_proxy()
+            static, boom, rudder = self.shadow_proxy()
             kids.append(w.add_mesh("shadow", static, material="shadow"))
-            bn = next((k for k in kids if k is not None and k["name"] == "boom"), None)
-            if bn is not None and boom.tri_count():
-                child = w.add_mesh("shadow_boom", boom, pivot=pivots.get("boom"), material="shadow")
-                child.pop("translation", None)
-                bn["children"] = [child]
+            for host, name, part in (("boom", "shadow_boom", boom), ("rudder", "shadow_rudder", rudder)):
+                hn = next((k for k in kids if k is not None and k["name"] == host), None)
+                if hn is not None and part.tri_count():
+                    child = w.add_mesh(name, part, pivot=pivots.get(host), material="shadow")
+                    child.pop("translation", None)
+                    hn["children"] = hn.get("children", []) + [child]
         w.write(path, root, kids, extras=extras)
 
     def bake_ao(self, merged):

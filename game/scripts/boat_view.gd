@@ -153,7 +153,13 @@ var own := false:
 ## the own boat's mesh LOD bias (sail_visuals.md §11.4): the engine's automatic LOD drops detail only when its error
 ## is under 1 / OWN_LOD_BIAS of the viewport's mesh LOD threshold (the full model to about 70 m)
 const OWN_LOD_BIAS := 32.0
-## the shadow-only proxies of every level and whether this boat casts now
+## the boat casts the sun's shadows at all (the look panel's "Boat sun shadows", `--no-boat-shadows`)
+var sun_shadows := true:
+	set(v):
+		sun_shadows = v
+		_apply_casting()
+## the shadow-only proxies (`shadow`, `shadow_boom`, `shadow_rudder`), per level, and whether this boat is within
+## `cast_distance` of the camera now
 var _proxies: Array[GeometryInstance3D] = []
 var _casting := true
 ## the levels of detail (sail_visuals.md §11.4), finest first: {"lod", "from", "root" (the GLB wrapper), "model",
@@ -341,7 +347,7 @@ func _level_parts(lv: Dictionary, sail_names: Dictionary) -> void:
 	var m: Node3D = lv["model"]
 	var parts: Array[Node3D] = []
 	for c in m.get_children():
-		if c is Node3D and not sail_names.has(String(c.name)):
+		if c is Node3D and not sail_names.has(String(c.name)) and not String(c.name).begins_with("shadow"):
 			parts.append(c)
 	lv["parts"] = parts
 	for k in ["rudder", "wheel", "boom", "pole"]:
@@ -424,6 +430,7 @@ func _show_level(k: int) -> void:
 	var lv := levels[k]
 	for n: Node3D in lv["parts"]:
 		n.visible = not hidden_parts.has(String(n.name))
+	_apply_casting()
 	_rudder = lv["rudder"]
 	_rudder_rest = lv["rudder_rest"]
 	_wheel = lv["wheel"]
@@ -447,12 +454,14 @@ func _show_level(k: int) -> void:
 
 
 ## Sun shadows (sail_visuals.md §11.4): the visible boat meshes cast none, each level's shadow proxy (`shadow`,
-## `shadow_boom`) casts only into the shadow maps, the sails cast their own.
+## `shadow_boom`, `shadow_rudder`) casts only into the shadow maps, the sails cast their own.
 func _setup_shadows() -> void:
 	var sails := {}
 	for sp in sail_parts:
 		sails[sp.node] = true
-	for lv in levels:
+	for k in levels.size():
+		var lv := levels[k]
+		var proxies: Array[GeometryInstance3D] = []
 		var stack: Array[Node] = [lv["model"]]
 		while not stack.is_empty():
 			var node: Node = stack.pop_back()
@@ -462,11 +471,14 @@ func _setup_shadows() -> void:
 				continue
 			if String(gi.name).begins_with("shadow"):
 				gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+				proxies.append(gi)
 				_proxies.append(gi)
 			elif sails.has(gi):
 				gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 			else:
 				gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		lv["proxies"] = proxies
+	_apply_casting()
 
 
 ## Turns this boat's shadow proxies and sails off as casters beyond `cast_distance` (not the own boat).
@@ -475,19 +487,27 @@ func _update_casting(dist: float) -> void:
 	if on == _casting:
 		return
 	_casting = on
-	var nodes: Array[GeometryInstance3D] = _proxies.duplicate()
+	_apply_casting()
+
+
+## Whether this boat casts now: `sun_shadows` and within `cast_distance`. A proxy stays SHADOWS_ONLY in every state
+## and is hidden when it must not cast (OFF would draw it in the colour pass); only the level shown has its proxies
+## shown. The sails go between ON and OFF.
+func _apply_casting() -> void:
+	var on := sun_shadows and _casting
+	for k in levels.size():
+		for gi: GeometryInstance3D in levels[k].get("proxies", []):
+			gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+			gi.visible = on and k == lod
 	for sp in sail_parts:
 		if sp.node is GeometryInstance3D:
-			nodes.append(sp.node as GeometryInstance3D)
-	for gi in nodes:
-		if gi.has_meta(&"dev_cast_shadow"):
-			continue  # the developer look panel holds the boats' shadows off
-		if String(gi.name).begins_with("shadow"):
-			gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if on \
+			(sp.node as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if on \
 					else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		else:
-			gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if on \
-					else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
+## Every shadow proxy of this boat, all levels (tests).
+func shadow_proxies() -> Array[GeometryInstance3D]:
+	return _proxies
 
 
 ## The running sheets' detail for a camera at `dist` m (§11.3), by the size of a metre on screen: full while a metre

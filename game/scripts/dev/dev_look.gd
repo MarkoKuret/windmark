@@ -201,7 +201,8 @@ static func drawn_shadows(scene: Node) -> bool:
 	return (sh as BoatShadows).enabled if sh is BoatShadows else true
 
 
-## `--no-boat-shadows`: the boats cast the sun's shadows.
+## `--no-boat-shadows`: the boats cast the sun's shadows (BoatView.sun_shadows: the proxies hidden, the sails OFF;
+## sail_visuals.md §11.4).
 static func set_boat_shadows(scene: Node, on: bool) -> void:
 	if scene != null and "no_boat_shadows" in scene:
 		scene.set("no_boat_shadows", not on)
@@ -209,15 +210,8 @@ static func set_boat_shadows(scene: Node, on: bool) -> void:
 	if not views is Array:
 		return
 	for v in views:
-		for g in (v as Node).find_children("*", "GeometryInstance3D", true, false):
-			var gi := g as GeometryInstance3D
-			if not on:
-				if not gi.has_meta(&"dev_cast_shadow"):
-					gi.set_meta(&"dev_cast_shadow", gi.cast_shadow)  # put back when turned on again
-				gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			elif gi.has_meta(&"dev_cast_shadow"):
-				gi.cast_shadow = gi.get_meta(&"dev_cast_shadow")
-				gi.remove_meta(&"dev_cast_shadow")
+		if v is BoatView:
+			(v as BoatView).sun_shadows = on
 
 
 static func boat_shadows(scene: Node) -> bool:

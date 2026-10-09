@@ -69,8 +69,8 @@ Colour is never the only signal: every coloured state also has a word (the rules
 | Size (1080p) | Deck (800 px) | Values |
 | --- | --- | --- |
 | 128 px | 105 px | Hero: boat speed; the countdown before the start |
-| 52 to 72 px | 43 to 59 px | Primary: VMG % (or polar % on reaches and before the start), TWA, HDG, VMG, TWS, deadline, mark distance (44) |
-| 22 to 40 px | 18 to 33 px | Tertiary row (SOG, COG, AWS, AWA, heel, polar %), clock and rank in the bug (40), table values |
+| 52 to 72 px | 43 to 59 px | Primary: speed to target (`7.1 / 7.4`), TWA, HDG, VMG, TWS, deadline, mark distance (44) |
+| 22 to 40 px | 18 to 33 px | Tertiary row (SOG, COG, AWS, AWA, heel), clock and rank in the bug (40), table values |
 | 14 px labels | 11.5 px | Caps labels in instrument cells; 11 px is the floor for any text (smaller sizes clamp to it on the Deck) |
 
 - In instrument cells the unit sits top right in `mist` at label size; the number is right-aligned in a fixed field, so
@@ -111,9 +111,9 @@ Four corners, a top-centre alert lane, a bottom-centre helm strip, and the world
 |                  world tags: marks, boats, laylines, tack point                |
 | edge pointers <                                               > edge pointers  |
 |                                                                                |
-| INSTRUMENTS (hero BSP, VMG %)                                          RADAR   |
+| INSTRUMENTS (hero BSP, speed to target)                                RADAR   |
 | TWA  HDG  VMG                        trim gauges (manual)                      |
-| sog cog aws awa heel polar           HELM ------+------ SAIL                   |
+| sog cog aws awa heel                 HELM ------+------ SAIL                   |
 +-------------------------------------------------------------------------------+
 ```
 
@@ -123,10 +123,10 @@ Four corners, a top-centre alert lane, a bottom-centre helm strip, and the world
   and the one rules line (stacked, penalty first). Nothing else ever goes here.
 - **Top right, wind page** (Race and Data): TWS cell and a north-up TWD dial cell. The shift chip hangs under it, then
   the event feed, right-aligned, fading.
-- **Bottom left, instrument page:** row 1: boat speed (hero), VMG to target (polar % before the start and on reaches)
-  with a meter (target tick at 100 %, yellow bar to the value), the TWA dial spanning rows 1 and 2 with the TWA number
+- **Bottom left, instrument page:** row 1: boat speed (hero), speed to target (boat speed over the leg's target
+  speed in knots, `7.1 / 7.4`; the polar speed at the present TWA before the start), the TWA dial spanning rows 1 and 2 with the TWA number
   under it. Row 2: heading (Data: HDG and VMG) and target angle with target speed as its unit. Row 3 (Data): SOG, COG,
-  AWS, polar %, heel bar.
+  AWS, heel bar.
 - **Bottom right, radar:** heading-up, hairline rings, a soft ink disc (38 %), boats as rule-coloured triangles, the
   next mark as a yellow diamond, laylines, wind arrow outside the ring, range under it.
 - **Bottom centre, helm strip:** one hairline for the helm with the command mark in yellow, the sail on the right;
@@ -154,10 +154,10 @@ only when both allow it.
 
 | Phase | Glance | Race | Data |
 | --- | --- | --- | --- |
-| Pre-start | Boat speed, TWA dial. Start block: countdown and burn with the late/early bar, the flag rule in one line. No race bug, no wind page | + polar % with meter, heading, target speed. Full start block (line, to line, burn, bias, flags). Wind page. Race bug (class, fleet). Feed 3 lines | + VMG, AWA, SOG, COG, AWS, heel bar. Race bug adds laps and legs. Feed 6 lines |
-| Upwind | Boat speed, TWA dial with target ticks, VMG % with meter (the one cue). Race bug: clock and rank | + heading, target angle and speed. Wind page, shift chip. Lap and leg line. Feed 3 lines | + VMG, AWA pointer and value, SOG, COG, AWS, polar %, heel bar. Leader gap, ahead and behind. Feed 6 lines. Sail hint (assist allowing) |
-| Downwind | As upwind with the run targets; on a reach the cue is polar % and the dial has no target ticks | As upwind | As upwind |
-| Rounding (within 6 L and 6 s after) | Boat speed, TWA dial. Live order cut to ahead, you, behind | + VMG %, heading, target. Full live order. Wind page, shift chip | + all of Data upwind; live order with rounded tags and the estimate note |
+| Pre-start | Boat speed, TWA dial. Start block: countdown and burn with the late/early bar, the flag rule in one line. No race bug, no wind page | + speed to target, heading, target speed. Full start block (line, to line, burn, bias, flags). Wind page. Race bug (class, fleet). Feed 3 lines | + VMG, AWA, SOG, COG, AWS, heel bar. Race bug adds laps and legs. Feed 6 lines |
+| Upwind | Boat speed, TWA dial with target ticks, speed to target in knots (the one cue). Race bug: clock and rank | + heading, target angle and speed. Wind page, shift chip. Lap and leg line. Feed 3 lines | + VMG, AWA pointer and value, SOG, COG, AWS, heel bar. Leader gap, ahead and behind. Feed 6 lines. Sail hint (assist allowing) |
+| Downwind | As upwind with the run targets; on a reach the target is the polar speed with the best sail and the dial has no target ticks | As upwind | As upwind |
+| Rounding (within 6 L and 6 s after) | Boat speed, TWA dial. Live order cut to ahead, you, behind | + speed to target, heading, target. Full live order. Wind page, shift chip | + all of Data upwind; live order with rounded tags and the estimate note |
 | Penalty | Boat speed, TWA dial; the panel and the turn on the water carry the rest | As the leg it is taken on | As the leg it is taken on |
 
 In Glance the radar is drawn at 72 % size without its range and orientation labels, the helm strip loses its labels,
@@ -228,8 +228,9 @@ the v1 question about instrument pages on a button.
    player a separate accent.
 2. Level names: Glance, Race, Data. "Minimal, Standard, Full" would clash with the assist presets of `hud.md` §14,
    which already use those words for something else.
-3. Glance upwind shows VMG % as its one cue. The alternative is the shift (lift or header); VMG % was chosen because it
-   is always meaningful, and the shift chip joins at Race.
+3. Glance upwind shows speed to target in knots as its one cue (VMG % and polar % were dropped by the owner,
+   2026-10-09: percentages are not useful). The alternative is the shift (lift or header); speed to target is always
+   meaningful, and the shift chip joins at Race.
 4. The glass page: is 14 to 44 % ink the right amount, or should it be lighter still (the numbers keep their text
    shadow either way)?
 5. Gamepad control: a tap of `View` (hold stays the ranking). If the ranking is set to toggle, the density needs its own

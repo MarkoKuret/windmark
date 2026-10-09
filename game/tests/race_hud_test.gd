@@ -247,12 +247,13 @@ func test_next_mark() -> void:
 	t.ok(h.text_of("leg").begins_with("Beat  ·  ETA "), h.text_of("leg"))
 	t.ok(h.text_of("vmg").begins_with("VMG  %s kn" % HudFormat.speed_kn(r.vmg)), h.text_of("vmg"))
 	t.near(r.target_speed, 3.0, 1e-3, "target speed on a beat: V_up")
-	t.near(r.vmg_pct, 100.0, 0.5, "VMG %% at the optimum")
-	# no display smoothing (hud.md §1): a speed change shows in VMG, VMG % and VMC on the next tick
+	t.ok(h.value_of("cue") == "%s / %s" % [HudFormat.speed_kn(h.values.bsp), HudFormat.speed_kn(3.0)] and h.unit_of("cue") == "KN",
+		"cue on a beat: boat speed / V_up in knots: " + h.value_of("cue"))
+	t.ok(not h.text_of("vmg").contains("%"), "no VMG %%: " + h.text_of("vmg"))
+	# no display smoothing (hud.md §1): a speed change shows in VMG and VMC on the next tick
 	sim.put(0, 200.0, 400.0, psi, 2.0)
 	_refresh(h, sim, 0, 1)
 	t.near(r.vmg, 2.0 * cos(deg_to_rad(42.0)), 1e-3, "VMG unsmoothed")
-	t.near(r.vmg_pct, 100.0 * 2.0 / 3.0, 0.5, "VMG %% unsmoothed")
 	t.near(r.vmc, 2.0 * Vector2(sin(psi), cos(psi)).dot((w - Vector2(200, 400)).normalized()), 1e-3, "VMC unsmoothed")
 	# a run to the gate: VMG positive when sailing towards it
 	for b in 2:
@@ -262,6 +263,9 @@ func test_next_mark() -> void:
 	_refresh(h, sim, 0, 200)
 	t.ok(r.leg_type == "run", "run to the gate")
 	t.ok(r.vmg > 0.0, "VMG on a run is positive towards the leeward mark (%.2f)" % r.vmg)
+	t.near(r.target_speed, 3.5, 1e-3, "target speed on a run: V_dn")
+	t.ok(h.value_of("cue") == "%s / %s" % [HudFormat.speed_kn(h.values.bsp), HudFormat.speed_kn(3.5)],
+		"cue on a run: boat speed / V_dn: " + h.value_of("cue"))
 	t.ok(r.next_name == "Gate Gate left / Gate right" and r.next_sides.size() == 2, "gate: both buoys' arrows: " + r.next_name)
 	t.near(r.next_dist, (Vector2(60, 700) + 3.5 * Vector2(sin(psi_run), cos(psi_run))).distance_to(Vector2(20, 100)) - 1.0,
 		1e-2, "gate: the nearer buoy")
@@ -273,6 +277,8 @@ func test_next_mark() -> void:
 	t.ok(r.leg_type == "reach" and r.vmc < 0.0, "VMC negative when sailing away from the mark (%s, %.2f)" % [r.leg_type, r.vmc])
 	t.ok(is_nan(r.eta) and h.text_of("leg") == "Reach  ·  ETA --:--", "ETA --:-- below 0.3 kn of VMC: " + h.text_of("leg"))
 	t.ok(h.text_of("vmg").begins_with("VMC  "), "VMC replaces VMG on a reach")
+	t.ok(h.value_of("cue") == "%s / %s" % [HudFormat.speed_kn(h.values.bsp), HudFormat.speed_kn(r.target_speed)],
+		"cue on a reach: boat speed / the reach target: " + h.value_of("cue"))
 	# the finish: distance to the nearest point of the line
 	for b in 2:
 		sim.boats_d[b]["next"] = 4
@@ -836,7 +842,8 @@ func test_density() -> void:
 	var d := _items_at(h, D)
 	t.ok(_has_all(d, data_only + ["bug_lap"]), "pre-start Data: %s" % str(d))
 	h.frame(0.3)
-	t.ok(not h.cue_is_vmg(), "pre-start cue is polar %")
+	t.ok(h.value_of("cue") == "%s / %s" % [HudFormat.speed_kn(h.values.bsp), HudFormat.speed_kn(h.values.polar_speed)],
+		"pre-start cue: boat speed / the polar speed at the present TWA: " + h.value_of("cue"))
 	h.free()
 	# beat
 	sim = _beat_sim()
@@ -849,21 +856,21 @@ func test_density() -> void:
 		"shift", "bug_lap", "feed"] + data_only), "beat Glance: %s" % str(g))
 	h.frame(0.3)
 	var page := _page_texts(h.inst_page)
-	t.ok(page.has("BOAT SPEED") and page.has("VMG TARGET") and not page.has("HEADING") and h.cue_is_vmg(),
-		"Glance page: speed, TWA dial, VMG %%: %s" % str(page))
+	t.ok(page.has("BOAT SPEED") and page.has("SPEED / TARGET") and not page.has("HEADING")
+		and page.has(h.value_of("cue")) and not " ".join(page).contains("%"), "Glance page: speed, TWA dial, speed to target: %s" % str(page))
 	t.ok(h.radar.compact and not h.wind_page.visible and h.bug_block.visible, "Glance: small radar, no wind page")
 	rc = _items_at(h, RC)
 	t.ok(_has_all(rc, ["cue", "hdg", "target", "wind_page", "shift", "bug_lap", "feed"]) and _has_none(rc,
-		data_only + ["bug_gaps", "hint", "polar"]), "beat Race: %s" % str(rc))
+		data_only + ["bug_gaps", "hint"]), "beat Race: %s" % str(rc))
 	h.frame(0.3)
 	page = _page_texts(h.inst_page)
 	t.ok(page.has("HEADING") and page.has("TARGET") and not page.has("SOG") and h.wind_page.visible,
 		"Race page: heading and target, wind page: %s" % str(page))
 	d = _items_at(h, D)
-	t.ok(_has_all(d, data_only + ["bug_gaps", "hint", "polar"]), "beat Data: %s" % str(d))
+	t.ok(_has_all(d, data_only + ["bug_gaps", "hint"]), "beat Data: %s" % str(d))
 	h.frame(0.3)
 	page = _page_texts(h.inst_page)
-	t.ok(page.has("SOG") and page.has("COG") and page.has("AWS") and page.has("POLAR %") and page.has("HEEL")
+	t.ok(page.has("SOG") and page.has("COG") and page.has("AWS") and not page.has("POLAR %") and page.has("HEEL")
 		and page.has("VMG") and page.has("AWA"), "Data page: %s" % str(page))
 	# the assist still decides: no sail hint below Full, no shift on Minimal
 	h.assist = Hud.Assist.STANDARD
@@ -891,7 +898,7 @@ func test_density() -> void:
 	t.ok(h.phase() == "rounding", "within 6 L of the mark: rounding (%s, %.0f m)" % [h.phase(), h.race.next_dist])
 	t.ok(not _items_at(h, G).has("cue") and _items_at(h, RC).has("cue"), "rounding: Glance drops the cue")
 	h.free()
-	# reach: polar % is the cue, VMC in Data
+	# reach: the cue's target is the reach target, VMC in Data
 	sim = _beat_sim()
 	sim.put(0, 200.0, 400.0, Frames.wrap_2pi(-deg_to_rad(90.0)), 3.0)
 	sim.put(0, -300.0, 900.0, deg_to_rad(90.0), 3.0)
@@ -899,7 +906,7 @@ func test_density() -> void:
 	_refresh(h, sim, 0, 200)
 	if h.race.leg_type == "reach":
 		d = _items_at(h, D)
-		t.ok(not h.cue_is_vmg() and not d.has("polar") and d.has("vmg_kn"), "reach: polar %% is the cue: %s" % str(d))
+		t.ok(d.has("cue") and d.has("vmg_kn") and h.cue_target() == h.race.target_speed, "reach: cue and VMC: %s" % str(d))
 		h.frame(0.3)
 		t.ok(_page_texts(h.inst_page).has("VMC"), "reach Data: VMC")
 	else:

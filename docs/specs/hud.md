@@ -99,13 +99,12 @@ A human boat's `performance_scale` is 1.
 | VMC | velocity made good on course: `dot((sog_filt_x, sog_filt_y), unit(R − c))`, R = the next step's target point (`race.md` §5; gate: the chosen buoy, see §7) |
 | Target speed | beat: `V_up`; run: `V_dn`; reach: `V_pol` at the current TWA with the best sail |
 | Target TWA | beat: `θ_up`; run: `θ_dn`; reach: none |
-| VMG % | `100 · VMG / (V_up·cos θ_up)` on a beat, `100 · VMG / (−V_dn·cos θ_dn)` on a run |
-| Polar % | `100 · v / polar_speed`: how well the boat is sailed at the angle she is on, whatever the angle; `--` while `polar_speed` is below 0.3 kn (head to wind) |
+| Speed to target | the boat speed (§2) against the target speed, both in knots: `7.1 / 7.4 kn`. The target is the target speed above while racing on a leg; before the start, free sailing and after the finish it is `V_pol` (the polar speed at the present TWA), `--` while that is below 0.3 kn (head to wind) |
 | Sail hint | when the best config for the present TWA and TWS (`ai.md` §3.1) is ≥ 3 % faster than the current one for 5 s: "Code zero +6 %" (the gain in polar speed) |
 
-The leg type is `ai.md` §4.1 (beat / run / reach). Polar % above 100 is possible (surfing, a puff before the boat has
-picked up speed, the carried speed of a tack); it is not clipped. VMG % measures the angle choice as well as the speed;
-polar % the speed only.
+The leg type is `ai.md` §4.1 (beat / run / reach). No indicator is a percentage of a target: the player compares
+speeds in knots. A boat speed above the target is possible (surfing, a puff before the boat has picked up speed, the
+carried speed of a tack) and is shown as it is.
 
 ## 5. Trim gauge
 
@@ -435,7 +434,7 @@ Assists change what is shown, never the physics or the rules.
 
 | Indicator | Full | Standard | Minimal |
 | --- | --- | --- | --- |
-| Instruments, wind, VMG / polar % | yes | yes | yes |
+| Instruments, wind, VMG / VMC, speed to target | yes | yes | yes |
 | Trim gauge colours and tell-tales | yes | yes | tell-tales only |
 | Laylines (water and radar) | yes | yes | no |
 | Distance / time to layline | yes | yes | no |
@@ -457,6 +456,9 @@ density of §16.1: an item shows only when both allow it.
 - Through a scripted tack the shown TWA equals the core's `twa` every tick (no lag, no overshoot) and its tack letter
   changes on the tick the sign of `twa` does.
 - VMG on a run is positive when sailing towards the leeward mark; VMC is negative when sailing away from the mark.
+- Speed to target: the cue shows the boat speed over `V_up` on a beat, `V_dn` on a run, `V_pol` with the best sail
+  on a reach and the boat's `polar_speed` before the start and when free sailing (`--` head to wind); no HUD text is
+  a percentage of a target.
 - Layline test: a boat placed on the computed starboard layline, sailing at `θ_up` with no current, reaches the mark
   within 0.5 L in a steady wind (headless sim).
 - Radar colours follow the pair records for the port–starboard, windward–leeward and mark-room scenarios of
@@ -510,9 +512,9 @@ boat's card (§16.7). The radar, the helm strip and, under manual trim, the trim
 
 | Phase | Glance | Race | Data |
 | --- | --- | --- | --- |
-| Pre-start (race sequence, not started) | boat speed, TWA dial; start block: countdown, time to burn with its late/early bar, the flag rule in one line; no race bug, no wind page | + polar % with its meter, heading, target speed; full start block (distance and time to line, burn, bias, flags); wind page; race bug (fleet); feed 3 lines | + VMG, AWA, SOG, COG, AWS, heel bar; race bug adds laps and legs; feed 6 lines |
-| Beat or run | boat speed, TWA dial with the target ticks, VMG % with its meter; race bug: clock and rank | + heading, target angle and speed; wind page and shift meter; lap, leg and leg type; feed 3 lines | + VMG, AWA, SOG, COG, AWS, polar %, heel bar; leader gap, ahead and behind; feed 6 lines; sail hint |
-| Reach | as a beat, with polar % as the cue and no target ticks; target is the target speed | as a beat | as a beat, with VMC in place of VMG |
+| Pre-start (race sequence, not started) | boat speed, TWA dial; start block: countdown, time to burn with its late/early bar, the flag rule in one line; no race bug, no wind page | + speed to target (the polar speed at the present TWA), heading, target speed; full start block (distance and time to line, burn, bias, flags); wind page; race bug (fleet); feed 3 lines | + VMG, AWA, SOG, COG, AWS, heel bar; race bug adds laps and legs; feed 6 lines |
+| Beat or run | boat speed, TWA dial with the target ticks, speed to target (`V_up` on a beat, `V_dn` on a run) as the cue; race bug: clock and rank | + heading, target angle and speed; wind page and shift meter; lap, leg and leg type; feed 3 lines | + VMG, AWA, SOG, COG, AWS, heel bar; leader gap, ahead and behind; feed 6 lines; sail hint |
+| Reach | as a beat, with the target `V_pol` with the best sail and no target ticks | as a beat | as a beat, with VMC in place of VMG |
 | Rounding (within `6·L` of the next mark, and 6 s after a rounding) | boat speed, TWA dial | as the leg | as the leg |
 | Penalty (panel shown) | boat speed, TWA dial | as the leg | as the leg |
 
@@ -577,7 +579,9 @@ along the top edge and hairline dividers between the cells; no blur, no corner t
 has its label top left, the unit top right and the value right-aligned at the bottom. Numbers use tabular figures.
 The two analogue parts are the TWA dial (bow up, the close-hauled sectors in `port` and `stbd`, the target angle
 ticks in `mark` on a beat or run, the true wind pointer; Data adds the apparent wind pointer) and, at Data, the heel
-bar (centre zero, ±30°). Numbers keep the 4 Hz refresh of §1; dial, bars and meters move every frame.
+bar (centre zero, ±30°). The cue cell (Glance and Race) shows the speed to target of §4 as one number pair,
+`7.1 / 7.4` with the unit `KN`, set smaller when it would not fit its cell; it has no meter and no percentage.
+Numbers keep the 4 Hz refresh of §1; dial and bars move every frame.
 
 ### 16.4 World tags
 

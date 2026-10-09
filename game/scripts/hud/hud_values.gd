@@ -1,6 +1,6 @@
 class_name HudValues
 extends RefCounted
-## The values behind the minimal HUD (hud.md §2, §3.1, §4 polar %, §5): the core's values of the tick, shown
+## The values behind the minimal HUD (hud.md §2, §3.1, §4 polar speed, §5): the core's values of the tick, shown
 ## without display smoothing (hud.md §1). A placeholder for the core's HudValues record: same definitions, computed
 ## here from SimSource until the binding provides it.
 
@@ -8,7 +8,7 @@ const DT := SimSource.DT
 const TOL_DEFAULT := deg_to_rad(2.0)
 const TOL_STEP := deg_to_rad(0.1)
 const TOL_MAX := deg_to_rad(30.0)
-const POLAR_MIN := 0.3 * HudFormat.KNOT  # m/s: polar % shows -- below this polar speed
+const POLAR_MIN := 0.3 * HudFormat.KNOT  # m/s: no polar target below this polar speed
 
 enum Colour { NONE, GREEN, YELLOW, RED }
 
@@ -38,7 +38,7 @@ var twa := 0.0  # signed: the core's twa, heading against the true wind directio
 var twd := 0.0
 var aws := 0.0
 var awa := 0.0  # signed
-var polar_pct := NAN  # NAN while polar_speed < 0.3 kn (head to wind)
+var polar_speed := NAN  # m/s, V_pol at the present TWA; NAN below 0.3 kn (head to wind)
 var sheet_cmd := 0.0
 var auto_trim := true
 var let_fly := false
@@ -91,7 +91,7 @@ func tick(sim: SimSource, boat: int) -> void:
 	twd = s.twd_from
 	aws = s.aws
 	awa = s.awa
-	polar_pct = 100.0 * s.v / o.polar_speed if o.polar_speed >= POLAR_MIN else NAN
+	polar_speed = o.polar_speed if o.polar_speed >= POLAR_MIN else NAN
 	sail_up = info.sails[sv.front].name if sv.front >= 0 else ""
 	sail_hoisting = ""
 	hoist_progress = 0.0

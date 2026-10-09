@@ -347,7 +347,8 @@ class Renderer:
         self.objs = []
         allP = []
         for name, mat, P, N, uv0, uv1, I, ao in prims:
-            if any(h in name for h in hide):
+            # the shadow proxy (`shadow`, `shadow_boom`) only casts shadows in the engine: never drawn here
+            if any(h in name for h in hide) or name.startswith("shadow") or mat == "shadow":
                 continue
             ao = np.ones(len(P)) if ao is None else ao
             data = np.hstack([P, N, uv0, uv1, ao[:, None]]).astype("f4")

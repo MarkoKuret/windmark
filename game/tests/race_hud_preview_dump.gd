@@ -5,7 +5,8 @@ extends SceneTree
 ##     the marks and boats; each at the instrument densities listed, at 1280 x 720, for the Deck 1280 x 800 and,
 ##     for the portrait capture preset (hud.md §16.5), 1080 x 1920;
 ##   - a scripted incident on RaceStubSim (rules line, penalty panel and the turn on the water, radar colours, a
-##     selected boat's tag, protest prompt) seen from a camera above (the backdrop is not the same scene);
+##     selected boat's tag, protest prompt) seen from a camera above (the backdrop is not the same scene), and the
+##     course map (hud.md §8.1) open over it;
 ##   - the finish card (hud.md §13.1) and the results of a short race on the core;
 ##   - boat_pick: the "fleet" shot (8 boats, course preview "fleet") with the boat nearest the middle of the screen
 ##     picked (hud.md §16.4.1, §16.7: her bracket, tag and card), at 1280 x 720 and in portrait.
@@ -249,6 +250,12 @@ func _incident() -> void:
 	for lvl in [G, R]:
 		hud.density = lvl
 		await _shot(hud, "incident_%s_portrait" % _level(lvl), "race_aerial", PORTRAIT)
+	# the course map over the same incident (hud.md §8.1)
+	hud.toggle_map()
+	await _shot(hud, "map_portrait", "race_aerial", PORTRAIT)
+	vp.size = Vector2i(WIDE)
+	hud.screen_size = WIDE
+	await _shot(hud, "map_race", "race_aerial", WIDE)
 	hud.queue_free()
 	vp.queue_free()
 

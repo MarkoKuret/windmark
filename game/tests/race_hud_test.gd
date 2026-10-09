@@ -15,7 +15,10 @@ extends SceneTree
 ##     1080 x 1920 (texts on screen and apart, no block over another, Glance by default, the compact radar);
 ##   - picking a boat (§16.4.1: a click on her selects, on water or on her again clears, another replaces, the
 ##     bracket and the radar corners, boat_select nearest first), her card (§16.7) against the scripted state, the
-##     card fitting at 1280 x 800 and 1080 x 1920, and the tack point drawn without a line from the boat.
+##     card fitting at 1280 x 800 and 1080 x 1920, and the tack point drawn without a line from the boat;
+##   - the course map of §8.1: the map key and Esc, the frame at three screen sizes, boat colours, the course line,
+##     rounding arrows and the next step, the scale bar, the blocks it hides, picking on it, and (in the sail scene)
+##     the race running on and the boat answering the helm while it is open.
 ##   godot --headless --path game -s res://tests/race_hud_test.gd
 
 const KNOT := HudFormat.KNOT
@@ -42,6 +45,7 @@ func _init() -> void:
 	await test_tack_point_no_line()
 	test_text_fits()
 	test_card_fits()
+	test_course_map()
 	test_fake_sim()
 	if CoreSimSource.available():
 		test_layline_core()
@@ -1421,6 +1425,138 @@ func test_text_fits() -> void:
 	ph.free()
 
 
+# ---- §8.1 course map ---------------------------------------------------------------------------------------------
+
+func test_course_map() -> void:
+	t.begin("course map: key, frame, colours, course line, arrows, scale bar, hidden blocks, picking (hud.md §8.1)")
+	var sim := RaceStubSim.new(4)
+	sim.race_d["state"] = RaceText.RaceState.RACING
+	sim.race_d["race_time"] = 100.0
+	for b in 4:
+		sim.boats_d[b]["started"] = true
+		sim.boats_d[b]["next"] = 1
+	sim.put(0, 0, 300, 0.7, 3.0)
+	sim.put(1, 60, 330, -0.7, 3.0)
+	sim.put(2, -40, 290, 0.7, 3.0)
+	sim.put(3, 30, 250, 0.7, 3.0)
+	var R := RaceText.Rule
+	var T := RaceHudValues.Tint
+	sim.pairs_a = [sim.pair(0, 1, {"kc_giver": 0, "kc_holder": 1, "kc_rule": R.R10}),
+		sim.pair(0, 3, {"kc_giver": 3, "kc_holder": 0, "kc_rule": R.R12})]
+	sim.boats_d[2]["ghost"] = true
+	var h := _hud(sim)
+	h.screen_size = Vector2(1920, 1080)
+	_refresh(h, sim)
+	t.ok(not h.map_open and not h.map_view.visible, "closed at the start")
+	var raw := RawInput.new()
+	raw.pressed.append(&"map")
+	h.map_enabled = false
+	h.ui_input(raw)
+	t.ok(not h.map_open, "the map key does nothing while the menu or the chat has the keys")
+	h.map_enabled = true
+	h.ui_input(raw)
+	h.frame(0.01)
+	t.ok(h.map_open and h.map_view.visible, "the map key opens it")
+	# what it hides and what stays over it
+	t.ok(h.race_panel.visible and h.race_panel.get_index() > h.map_view.get_index(), "the alert lane stays over it")
+	var hidden := [h.radar, h.inst_page, h.helm_block, h.world, h.bug_block, h.feed_block, h.wind_page, h.next_panel,
+		h.card_block, h.ranking_panel]
+	t.ok(hidden.all(func(b: CanvasItem) -> bool: return not b.visible), "radar, instruments, helm, world tags hidden")
+	var m := h.map_view
+	m.primitives()
+	# boats: radar colours, ghost grey, viewed boat in mark
+	t.ok(m.drawn.get(1) == HudStyle.TINTS[T.RED] and m.drawn.get(3) == HudStyle.TINTS[T.GREEN],
+		"boats in their radar colours: %s" % str(m.drawn))
+	t.ok(m.drawn.get(2) == HudStyle.TINTS[T.GREY], "ghost grey")
+	var me_px: Vector2 = m.icons.get(0, Vector2.INF)
+	var mark_icon := false
+	for q in m.primitives():
+		if q["k"] == "poly" and q["col"] == HudStyle.MARK and Geometry2D.is_point_in_polygon(me_px, q["pts"]):
+			mark_icon = true
+	t.ok(mark_icon, "the viewed boat's icon in mark")
+	t.ok(m.chips.has(0) and m.chips.has(1) and m.chips.has(3) and not m.chips.has(2),
+		"name chips: the viewed boat and the related boats (%s)" % str(m.chips))
+	# the course line through every step, one arrow per rounding mark on its side, the next step in mark
+	var steps: Array = h.race.course()["steps"]
+	var line_ok := m.path_px.size() == steps.size()
+	for i in steps.size():
+		line_ok = line_ok and m.path_px[i].is_equal_approx(m.to_px(m.step_point(i)))
+	t.ok(line_ok, "the course line runs through all %d steps" % steps.size())
+	var S := RaceText.Side
+	t.ok(m.arrows.size() == 3 and m.arrows[2][0] == S.PORT and m.arrows[3][0] == S.STARBOARD
+		and m.arrows[4][0] == S.PORT, "one rounding arrow per rounding mark, on the course's side: %s" % str(m.arrows))
+	t.ok(m.arrows[2][1] == HudStyle.MARK and m.arrows[3][1] == HudStyle.MIST, "the next step's arrow in mark")
+	var cur_leg := false
+	for q in m.primitives():
+		if q["k"] == "line" and q["col"] == HudStyle.MARK and (q["a"] as Vector2).is_equal_approx(m.path_px[0]) \
+				and (q["b"] as Vector2).is_equal_approx(m.path_px[1]):
+			cur_leg = true
+	t.ok(cur_leg, "the current leg in mark")
+	# the frame fits every mark, at three screens
+	var fits := []
+	for sc in [Vector2(1920, 1080), Vector2(1280, 800), Vector2(1080, 1920)]:
+		h.screen_size = sc
+		h.frame(0.01)
+		m.primitives()
+		var f := m.frame
+		var inside := true
+		for mk in h.race.course()["marks"]:
+			inside = inside and f.has_point(m.to_px(Vector2(mk["x"], mk["y"])))
+		var on_screen := Rect2(Vector2.ZERO, sc).encloses(f)
+		if not (inside and on_screen):
+			fits.append("%s: frame %s" % [sc, f])
+		var lane_areas := HudLayoutCheck.areas(h)
+		for lane in ["Start", "Penalty", "Alerts"]:
+			if lane_areas.has(lane) and (lane_areas[lane] as Rect2).intersects(f):
+				fits.append("%s: the alert lane's %s over the frame" % [sc, lane])
+		# the scale bar: a round length in the distance format, at most a fifth of the frame
+		var sb: Array = m.scale_bar
+		if sb.size() != 3 or sb[2] != HudFormat.distance(sb[0]) or absf(sb[1] * m.m_per_px - sb[0]) > 1e-3 \
+				or sb[1] > f.size.x * 0.2 + 1e-3:
+			fits.append("%s: scale bar %s" % [sc, sb])
+		print("  map %s: frame %s, %.2f m/px, scale %s" % [sc, f, m.m_per_px, sb])
+	t.ok(fits.is_empty(), "every mark in the frame, the lane clear of it, the scale bar right at 1920 x 1080, 1280 x 800, 1080 x 1920 %s"
+		% str(fits))
+	h.screen_size = Vector2(1920, 1080)
+	h.frame(0.01)
+	m.primitives()
+	# picking on the map
+	var p3: Vector2 = m.icons[3]
+	h.pick_at(p3 + Vector2(5, 5))
+	t.ok(h.selected_boat() == 3, "a click on her icon selects her")
+	h.frame(0.01)
+	t.ok(m.primitives().size() > 0 and m.selected == 3, "the map marks the selected boat")
+	h.pick_at(Vector2(5, 5))
+	t.ok(h.selected_boat() == -1, "a click elsewhere clears")
+	# Minimal: all white, no zone circles; boat_names off: only the viewed boat's chip
+	h.assist = Hud.Assist.MINIMAL
+	h.show_names = false
+	h.frame(0.01)
+	m.primitives()
+	t.ok(m.drawn.get(1) == HudStyle.TINTS[T.WHITE] and m.drawn.get(3) == HudStyle.TINTS[T.WHITE] and not m.zone,
+		"Minimal: all white, no zone circles")
+	t.ok(_same(m.chips, [0]), "boat_names off: the viewed boat's chip only")
+	h.assist = Hud.Assist.STANDARD
+	h.show_names = true
+	# Esc closes it (close_map reports it, the scene then neither pauses nor clears)
+	h.select(1)
+	t.ok(h.close_map() and not h.map_open and h.selected_boat() == 1, "Esc: closes the map, keeps the selection")
+	t.ok(not h.close_map(), "nothing more to close")
+	h.frame(0.01)
+	t.ok(not h.map_view.visible and h.radar.visible and h.inst_page.visible and h.world.visible,
+		"closed: the HUD is back")
+	# it closes by itself when the race is gone
+	h.toggle_map()
+	sim.race_d["state"] = RaceText.RaceState.RACING
+	h.frame(0.01)
+	t.ok(h.map_open, "open again")
+	var raw2 := RawInput.new()
+	raw2.pressed.append(&"map")
+	h.ui_input(raw2)
+	t.ok(not h.map_open, "the map key closes it")
+	h.free()
+
+
 func test_fake_sim() -> void:
 	t.begin("no race: FakeSim and free sailing")
 	var fs := FakeSim.new()
@@ -1642,6 +1778,32 @@ func test_scene_race() -> void:
 	t.ok(badges.size() == 3, "AI badges from the sim (%d)" % badges.size())
 	t.ok(hud.race.contacts.size() == 3, "three boats on the radar")
 	raw.held.erase(&"rankings")
+	sc.call("step_frame", 1.0 / 30.0)
+	# the course map over the running race (hud.md §8.1): M opens it, the race and the helm go on, Esc closes it
+	raw.pressed.append(&"map")
+	sc.call("step_frame", 1.0 / 30.0)
+	raw.pressed.erase(&"map")
+	t.ok(hud.map_open and hud.map_view.visible and not hud.radar.visible, "M opens the course map in the scene")
+	var runner: SimRunner = sc.get("runner")
+	var pc: PlayerControls = sc.get("controls")
+	var t0 := hud.race.race_time
+	raw.held[&"helm_right"] = true
+	for i in 30:
+		sc.call("step_frame", 1.0 / 30.0)
+	raw.held.erase(&"helm_right")
+	t.ok(hud.map_open and not runner.paused and hud.race.race_time > t0 + 0.5,
+		"the race runs on under the map (%.2f s to %.2f s)" % [t0, hud.race.race_time])
+	t.ok(pc.h_cmd > 0.05, "the boat answers the helm under the map (h_cmd %.2f)" % pc.h_cmd)
+	hud.select(1)
+	raw.pressed.append(&"pause_menu")
+	sc.call("step_frame", 1.0 / 30.0)
+	raw.pressed.erase(&"pause_menu")
+	t.ok(not hud.map_open and not runner.paused and hud.selected_boat() == 1,
+		"Esc closes the map only (no pause, the selection kept)")
+	raw.pressed.append(&"pause_menu")
+	sc.call("step_frame", 1.0 / 30.0)
+	raw.pressed.erase(&"pause_menu")
+	t.ok(hud.selected_boat() == -1 and not runner.paused, "the next Esc clears the selection")
 	sc.queue_free()
 	await process_frame
 

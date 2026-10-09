@@ -995,6 +995,7 @@ func step_frame(dt: float) -> void:
 		raw = raw.without_buttons()  # the look panel has the keys (hud.md §18); the sim keeps running
 	_ui_actions(raw)
 	hud.pick_enabled = not runner.paused and not controls.text_focus  # not through the menu or chat (hud.md §16.4.1)
+	hud.map_enabled = hud.pick_enabled  # nor the map key (hud.md §8.1)
 	hud.ui_input(raw, dt)
 	controls.free_camera = rig.mode == CameraRig.Mode.FREE
 	controls.update(raw, dt)
@@ -1153,8 +1154,8 @@ func _ui_actions(r: RawInput) -> void:
 		if course_view:
 			course_view.show_guides = capture.world_tags
 	if r.was_pressed(&"pause_menu"):
-		# Esc with a boat selected clears the selection first (hud.md §16.4.1)
-		if runner.paused or not hud.clear_selection():
+		# Esc closes the course map first (hud.md §8.1), then clears a selection (hud.md §16.4.1), then pauses
+		if runner.paused or not (hud.close_map() or hud.clear_selection()):
 			runner.paused = not runner.paused  # offline: pause the simulation, the cameras still move
 			_paused_label.visible = runner.paused
 	if r.was_pressed(&"screenshot"):

@@ -3,8 +3,8 @@ extends RefCounted
 ## Layout checks of the HUD as laid out now (hud.md §15, §16.5), for the tests and the offline previews: the screen
 ## area each block draws (HudCanvas.extent), and the overlaps between blocks. A block's children (the flags in the
 ## start block, the ring in the penalty panel, the bars and gauges in the helm strip) belong to it. World tags (the
-## world layer, the mark tag) and the centred tables (ranking, results), which sit over everything by design, are
-## left out.
+## world layer, the mark tag), the centred tables (ranking, results), which sit over everything by design, and the
+## course map (hud.md §8.1, under the alert lane by design) are left out.
 
 
 ## The HudCanvas's offset on the screen (its position plus its Control parents' up to the Hud).
@@ -28,7 +28,7 @@ static func group(h: Hud, b: Node) -> Node:
 
 ## block name -> its drawn screen rect (merged with its children's), for the visible blocks that draw something.
 static func areas(h: Hud) -> Dictionary:
-	var skip: Array[Node] = [h.world, h.next_panel, h.ranking_panel, h.results_panel]
+	var skip: Array[Node] = [h.world, h.next_panel, h.ranking_panel, h.results_panel, h.map_view]
 	var out := {}
 	for b in h.blocks():
 		var g := group(h, b)

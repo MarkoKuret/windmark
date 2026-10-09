@@ -64,7 +64,7 @@ keys become the boat's commands, and the accessibility options. The boat command
 | `camera_boost` | modifier | free camera ×4 |
 | `camera_clip` | button | offline: the next clip camera (start line, mark, long lens, helicopter, `cameras.md` §9) |
 | `rankings` | hold (option: toggle) | ranking list (`hud.md` §10) |
-| `map` | toggle | full course map (`hud.md` §8) |
+| `map` | toggle | full course map, an overlay over the running race; Esc also closes it (`hud.md` §8.1) |
 | `radar_zoom_in`, `radar_zoom_out`, `radar_orientation` | button | radar range ×1.5 steps, heading-up / north-up |
 | `wind_shadow_view` | toggle | the wind shadow assist, when allowed (`hud.md` §3.3) |
 | `hud_hide` | toggle | hide every HUD element |

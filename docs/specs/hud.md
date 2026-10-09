@@ -184,8 +184,79 @@ shown at the tack point on the water (the point along the current COG where she 
   marks as small grey dots; start and finish lines (start line until the boat has started; finish line on the last
   leg); the course area boundary if any.
 - **Laylines** (§6), **true wind arrow** at the edge, and the viewed boat's **shadow** (assist §3.3).
-- The full map view (a separate screen) shows the whole course with every boat, the course line through the steps
-  with rounding arrows, and the same colours.
+- The **course map** (§8.1, the `map` action) shows the whole course with every boat.
+
+### 8.1 Course map
+
+A full-screen overlay of the whole course, opened and closed with `map` (M, `controls.md` §2, §3). It is a view,
+not a pause: the race and the simulation run on underneath, the boat answers the helm and the sheets as before, the
+cameras keep moving and every sound plays. Offline and online alike.
+
+- **Open and close**: `map` toggles it; Esc (`pause_menu`) with the map open closes it and does nothing else (before
+  clearing a selection, §16.4.1, and before the pause menu: the next Esc does those as usual). It does not open
+  while the pause menu or the chat line has the keys, and it closes by itself when the race is gone (the scene
+  leaves race mode, a new race starts). It is not remembered: every race starts with it closed. On a gamepad there
+  is no default binding (the pause menu row of `controls.md` §3 is a later item).
+- **Frame**: north up, always (the radar's orientation setting does not apply). The view is fitted once per course
+  to the bounds of every mark (start and finish line ends included, virtual marks excluded) with 12 % of the larger
+  span added on each side, at least 300 m across, inside the screen's margins (§16.2.2, `hud_direction.md` §5) under
+  a header row of 72 design px, over a footer row of 48 and clear of the alert lane (below); the scale is the same
+  on both axes and the course is centred. It does not follow the boats: a boat outside the frame is drawn as a small arrow on the frame's edge
+  pointing towards her, in her colour.
+- **Background**: an `ink` scrim at 82 % over the whole screen; no grid, no land.
+- **Course** (in this order, bottom to top):
+  - the course area boundary, if the course has one, as the radar draws it (`port` at 50 %, 1.5 px), clipped to the
+    frame;
+  - the **course line** through the steps (`race.md` §5): from the start line's middle through each mark and each
+    gate's middle to the finish line's middle, laps included (a leg sailed twice is drawn twice on the same line).
+    Legs the viewed boat has finished in `hair` at 45 %, the leg she sails now (from the step she last passed to
+    the next step) in `mark` at 2 px, the legs after it in `hair` at 1.5 px. Before her start the current leg is the
+    first one;
+  - the **start line** dashed in `paper` (2 px) and the **finish line** checkered `paper` and `ink` (4 px), as the
+    race card's map draws them (`menus.md` §1.1); the start line at full strength until the viewed boat has
+    started and at 45 % after, the finish line at full strength on the last leg and at 45 % before it;
+  - **zone circles** (§7: `zone_lengths·L` of the viewed boat plus the mark's radius) round each rounding mark, in
+    `hair`; the next step's in `mark` at 50 %. A circle under 4 px across is not drawn;
+  - **marks**: rounding marks (the sequence's marks and gate buoys) as diamonds 5 design px across their half
+    diagonal, the next step's in `mark` and the others in `paper`; other buoys as `paper` dots at 60 %; the
+    committee boat and mark boats as small `paper` hulls; virtual marks not drawn;
+  - a **rounding arrow** on every rounding mark, as the radar draws it (a 0.6 π arc of 10 design px radius from the
+    top of the mark, anticlockwise on the screen to leave it to port, clockwise to starboard, with a dot at its head):
+    the next step's in `mark`, the others in `mist`. A mark rounded on more than one lap gets one arrow (its side
+    is the same every lap).
+- **Boats**: every boat of the race as an oriented icon, the radar's triangle (§8) at least 14 design px long (its
+  true length when that is larger), coloured as on the radar: the rules relation with the viewed boat, `ghost` for
+  ghosts, all `paper` with the Minimal assist, the same 2 Hz and 4 Hz pulses and the outline on `Breach`. The viewed
+  boat in `mark`, 1.3 times the size, drawn last. The selected boat (§16.4.1) gets the radar's four hairline corners.
+- **Name tags**: the viewed boat always (her name, or `YOU` for the player's own boat), the selected boat, and every
+  boat with a rules relation to the viewed boat (red, green, orange or cyan): a chip above the icon as the world
+  name tags draw it (§16.4: solid in her colour with a relation, `paper` on `ink` otherwise, the viewed boat's in
+  `mark`). `boat_names` off leaves only the viewed boat's tag. Tags never hide the icons: each sits 14 design px
+  above its boat.
+- **Header** (top left): `COURSE MAP` in `mist`, and under it the lap and leg (`Lap 1/2 · Leg 3/4`, §7) and the
+  next step's name with its distance (`Next  Windward  420 m`, §7 and §1 formats), the name in `mark`. Before the
+  start the second line reads `Start` with the distance to the line (§9.2). After the viewed boat finishes: `Finished`.
+- **Wind** (top right): the viewed boat's true wind (§3.1, `twd` and `tws`) as an arrow blowing the way the wind
+  goes, with `12 KN  000°` under it, and a small `N` with a north tick, as on the race card's map.
+- **Footer**: a **scale bar** bottom left, the longest of 10, 20, 50, 100 and 150 m and 0.2, 0.25, 0.5, 1, 2 and
+  5 nm that is not longer than a fifth of the frame's width (10 m when none is), with its length in the §1 distance
+  format (`150 m`, `0.25 nm`), so the label is always a round number; and `M  CLOSE` bottom right in `mist`.
+- **The rest of the HUD**: while the map is open the alert lane stays above it (countdown and flags, the start
+  numbers, OVER and OCS, the penalty panel, the rules line, banners and the protest and hail prompts: whatever
+  needs an answer now) at its usual scale, moved clear of the course: in landscape to a column on the left under
+  the map's header (the frame starts 24 design px right of it), in portrait centred under the header with a band
+  of 440 design px kept for it above the frame. Both are kept whether the lane shows anything or not, so the frame
+  never moves. Everything else is hidden: the instrument page and its chip, the helm strip and its
+  notes, the race bug, the wind page, the feed, the radar, the ranking list, the boat card and every world tag. The
+  results table and the finish card (§13) are not hidden by it: the map closes when either shows.
+- **Pointer**: with the map open, `boat_pick` picks on the map: a click within 24 design px of a boat's icon
+  selects her (the nearest wins), a click on the selected boat again or anywhere else clears, as in §16.4.1. It
+  never picks in the 3D view behind the map.
+- **Assists and density** (§14, §16.1): the map follows the assist preset's rows: right-of-way colours (none with
+  Minimal), the zone circle (none with Minimal; the rounding arrows always). The instrument density does not change
+  it. `hud_hide` hides it with the rest of the HUD (and it stays open underneath); `world_tags` does not touch it.
+- **Colours**: the tokens of §16.2 only, in the colour-blind palette in use (§16.2.1). `mark` is the course and
+  the viewed boat; the rules colours mean what they mean on the radar.
 
 ## 9. Start
 
@@ -368,8 +439,8 @@ Assists change what is shown, never the physics or the rules.
 | Trim gauge colours and tell-tales | yes | yes | tell-tales only |
 | Laylines (water and radar) | yes | yes | no |
 | Distance / time to layline | yes | yes | no |
-| Next-mark arrows and zone circle | yes | yes | arrows only |
-| Radar right-of-way colours | yes | yes | no (all white) |
+| Next-mark arrows and zone circle (3-D view, radar, course map) | yes | yes | arrows only |
+| Radar and course map right-of-way colours | yes | yes | no (all white) |
 | Rules awareness messages (§11) | all | all | `Breach` lines only |
 | Start: time to burn, bias | yes | yes | distance to line only |
 | Wind shadow view | yes | no | no |
@@ -414,6 +485,13 @@ density of §16.1: an item shows only when both allow it.
   them; the finishing rows fill in as boats finish before the close and are the core's results after it; the
   summary has the start, every rounding with its place, the places gained, each penalty with its rule text, the
   top speed and the distance sailed of a scripted race.
+- Course map (§8.1): `map` opens and closes it and Esc closes it without pausing or clearing the selection; the
+  race runs on while it shows (the race time advances, the boat answers the helm); the frame fits every mark at
+  1920 x 1080, 1280 x 800 and 1080 x 1920; every boat is drawn in its radar colour (ghosts grey, all white with
+  Minimal) and the viewed boat in `mark`; the course line runs through every step with one rounding arrow per
+  rounding mark on the side of the course; the next step's marks are in `mark`; the scale bar's label matches its
+  length; while it is open the alert lane shows and the radar, the instrument page and the world tags do not; a
+  click on a boat's icon selects her.
 - Capture rate note (§16.6): each `capture_slow` press shows the note for the new rate, also with the HUD hidden;
   it is gone 1.5 s of frames later and fades over the last 0.4 s; `capture_pause` shows nothing.
 

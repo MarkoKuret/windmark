@@ -52,7 +52,8 @@ func _init(n := 2) -> void:
 			"rank": i + 1, "place": 0, "t_finish_us": 0, "code": 0})
 		start_d.append({})
 		rules_d.append({"pending": [], "turn_progress": 0.0, "turn_tacks": 0, "turn_gybes": 0, "deadline_s": -1.0,
-			"received": 0, "served": 0, "turning_for_penalty": false})
+			"received": 0, "served": 0, "turning_for_penalty": false, "turn_in_zone": false, "turn_reset": 0,
+			"turn_reset_tick": 0})
 		order.append(i)
 	for nm in ["main", "jib", "code_zero"]:
 		var st := SailState.new()

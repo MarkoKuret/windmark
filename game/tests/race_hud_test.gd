@@ -581,20 +581,41 @@ func test_penalties_prompts() -> void:
 	_refresh(h, sim)
 	t.ok(h.text_of("pen_turn") == "Turn: 210°" and h.ring_view.turn_deg > 209.9 and h.ring_view.tack_done
 		and not h.ring_view.gybe_done, "turn progress: " + h.text_of("pen_turn"))
-	# in the zone of the next mark: counted in a fleet race, not in a match race (rules.md §9.3)
+	# the zone is the core's (rules.md §9.3): near the mark the HUD does not guess, the core's flag says not counted
 	sim.put(0, 0, 985, 0.7, 3.0)
-	_refresh(h, sim)
-	t.ok(h.text_of("pen_turn") == "Turn: 210°", "fleet race, in the zone: " + h.text_of("pen_turn"))
 	sim.race_d["race_type"] = RaceText.RACE_MATCH
 	_refresh(h, sim)
+	t.ok(h.text_of("pen_turn") == "Turn: 210°", "no zone guess near the mark: " + h.text_of("pen_turn"))
+	sim.rules_d[0]["turn_in_zone"] = true
+	_refresh(h, sim)
 	t.ok(h.text_of("pen_turn") == "Not counted: inside the zone", h.text_of("pen_turn"))
+	sim.rules_d[0]["turn_in_zone"] = false
 	sim.race_d["race_type"] = 0
-	# the turn resets
 	sim.put(0, 0, 500, 0.7, 3.0)
+	# the progress dropping to 0 is not a reset by itself: only the core's turn_reset is
 	sim.rules_d[0]["turning_for_penalty"] = false
 	sim.rules_d[0]["turn_progress"] = 0.0
 	_refresh(h, sim)
-	t.ok(h.text_of("pen_turn").begins_with("Turn reset"), "turn reset: " + h.text_of("pen_turn"))
+	t.ok(h.text_of("pen_turn") == "Sail clear and turn: one tack and one gybe", "no reset inferred: "
+		+ h.text_of("pen_turn"))
+	# each reset reason from the core, shown for 3 s
+	var texts := {RaceText.TurnReset.PAUSED: "Turn reset: paused", RaceText.TurnReset.REVERSED: "Turn reset: turned back",
+		RaceText.TurnReset.ZONE: "Turn reset: inside the zone", RaceText.TurnReset.ROUNDED: "Turn reset: mark rounded"}
+	for why in texts:
+		sim.rules_d[0]["turn_reset"] = why
+		sim.rules_d[0]["turn_reset_tick"] = sim.tick()
+		_refresh(h, sim)
+		t.ok(h.text_of("pen_turn") == texts[why], "turn reset: " + h.text_of("pen_turn"))
+	# over a new turn's progress while it shows, then gone after 3 s
+	sim.rules_d[0]["turning_for_penalty"] = true
+	sim.rules_d[0]["turn_progress"] = deg_to_rad(15.0)
+	_refresh(h, sim, 0, RaceHudValues.RESET_TICKS - 2)
+	t.ok(h.text_of("pen_turn") == "Turn reset: mark rounded", "reset text over the new turn: " + h.text_of("pen_turn"))
+	_refresh(h, sim, 0, 3)
+	t.ok(h.text_of("pen_turn") == "Turn: 15°", "reset text gone after 3 s: " + h.text_of("pen_turn"))
+	sim.rules_d[0]["turning_for_penalty"] = false
+	sim.rules_d[0]["turn_progress"] = 0.0
+	sim.rules_d[0]["turn_reset"] = RaceText.TurnReset.NONE
 	# deadline red below 30 s, dsq warning at dsq_pending - 1 pending
 	sim.rules_d[0]["deadline_s"] = 25.0
 	sim.rules_d[0]["pending"] = [{"rule": R.R10, "other": 1, "count": 1}, {"rule": R.R31, "other": -1, "count": 1}]

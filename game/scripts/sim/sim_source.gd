@@ -309,6 +309,7 @@ func race_start_status(_boat: int) -> Dictionary:
 
 
 ## rules.md §11.2 per boat: tack, tacking, turning_for_penalty, turn_progress (rad), turn_tacks, turn_gybes,
+## turn_in_zone, turn_reset (RaceText.TurnReset), turn_reset_tick,
 ## pending [{rule, rule_name, other, tick, count}], served, received, deadline_s (< 0 none), dsq, ...
 func boat_rules(_boat: int) -> Dictionary:
 	return {}

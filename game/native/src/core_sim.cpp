@@ -1118,6 +1118,9 @@ Dictionary CoreSim::boat_rules(int64_t boat) const {
   d["turn_progress"] = r.turn_progress;
   d["turn_tacks"] = r.turn_tacks;
   d["turn_gybes"] = r.turn_gybes;
+  d["turn_in_zone"] = r.turn_in_zone != 0;
+  d["turn_reset"] = r.turn_reset;
+  d["turn_reset_tick"] = static_cast<int64_t>(r.turn_reset_tick);
   d["served"] = r.served;
   d["received"] = r.received;
   d["deadline_s"] = r.deadline_s;

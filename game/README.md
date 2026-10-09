@@ -439,8 +439,8 @@ viewed boat. What it shows (`docs/specs/hud.md`):
   (distance to the line or to the nearer end, time to the line along the COG, time to burn, the bias with the
   favoured end), `OVER` with the flag's consequence in the last minute, `OCS` with the way back after the gun.
 - **Next mark** (§7, §4, §6, §3.2): name (course file label), lap and leg, rounding arrows (red port, green
-  starboard; both for a gate), distance and bearing, leg type and ETA, VMG and VMG % (VMC on a reach) with the
-  target speed and angle, the distance and time to the layline or `OVERSTOOD`, the shift meter, the sail hint.
+  starboard; both for a gate), distance and bearing, leg type and ETA, VMG (VMC on a reach), the target speed and
+  angle, boat speed against the target speed in knots (`7.1 / 7.4`), the distance and time to the layline or `OVERSTOOD`, the shift meter, the sail hint.
 - **Position** (§10): rank with the 2 s hysteresis (finishes at once), gap to the leader at the last common split or
   as an estimate (`~`), the boats ahead and behind; the ranking list while `rankings` is held (Tab).
 - **Rules** (§11, §12): the highest priority awareness line, the protest prompt (8 s) and the hail button and reply,

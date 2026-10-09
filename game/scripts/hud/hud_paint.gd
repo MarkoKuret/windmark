@@ -120,39 +120,19 @@ static func _bsp(b: HudCanvas, h: Hud) -> void:
 	number(b, 236, 134, h.value_of("bsp"), 112)
 
 
-## the cue cell: VMG % on a beat or run, polar % otherwise, with its meter
+## the cue cell: boat speed against the target speed in knots (hud.md §4 speed to target, §16.3), set smaller when the
+## pair would not fit between x and x_right
 static func _cue(b: HudCanvas, h: Hud, x: float, y_cap: float, x_right: float, y_num: float, size: float,
-		meter: Rect2, compact := false) -> void:
-	var vmg := h.cue_is_vmg()
-	var name := "VMG TARGET" if vmg else "POLAR"
+		compact := false) -> void:
+	var text := h.value_of("cue")
 	if compact:
-		caption(b, x, y_cap, name)
-	else:
-		caption(b, x, y_cap, name, x_right, "%")
-	var pct := h.cue_pct()
-	number(b, x_right, y_num, "--" if is_nan(pct) else HudFormat.percent(pct), size)
-	_meter(b, meter, pct)
-
-
-## hairline 80 % to 110 % with a tall paper tick at 100 % and a yellow bar and pointer at the value
-static func _meter(b: HudCanvas, r: Rect2, pct: float) -> void:
-	var k := b.k
-	var y := r.position.y * k
-	var x0 := r.position.x * k
-	var x1 := r.end.x * k
-	var hw := _hw(b)
-	b._l(Vector2(x0, y), Vector2(x1, y), HudStyle.HAIR, hw)
-	for i in 4:
-		var tx := lerpf(x0, x1, i / 3.0)
-		b._l(Vector2(tx, y - 4.0 * k), Vector2(tx, y), HudStyle.HAIR, hw)
-	var xt := lerpf(x0, x1, 20.0 / 30.0)
-	b._l(Vector2(xt, y - 10.0 * k), Vector2(xt, y + 6.0 * k), HudStyle.PAPER, hw)
-	if is_nan(pct):
+		caption(b, x, y_cap, "SPEED / TARGET")
+		number_unit(b, x_right, y_num, text, "KN", size, HudStyle.PAPER, HORIZONTAL_ALIGNMENT_RIGHT)
 		return
-	var xv := lerpf(x0, x1, clampf((pct - 80.0) / 30.0, 0.0, 1.0))
-	b._rect(Rect2(minf(xv, xt), y - 2.0 * k, maxf(absf(xt - xv), hw), 5.0 * k), HudStyle.MARK)
-	b._p(PackedVector2Array([Vector2(xv, y - 4.0 * k), Vector2(xv - 6.0 * k, y - 14.0 * k),
-		Vector2(xv + 6.0 * k, y - 14.0 * k)]), HudStyle.MARK)
+	caption(b, x, y_cap, "SPEED / TARGET", x_right, "KN")
+	var w := HudCanvas.text_width(text, int(roundf(size * b.k))) / b.k
+	var avail := x_right - x
+	number(b, x_right, y_num, text, size * avail / w if w > avail else size)
 
 
 static func _twa_value(b: HudCanvas, h: Hud, x_right: float, y: float, size: float) -> void:
@@ -168,7 +148,7 @@ static func _page_glance(b: HudCanvas, h: Hud, sz: Vector2) -> void:
 	_twa_value(b, h, 472, 134, 44)
 	if h.has_item("cue"):
 		divider(b, Vector2(10, 150), Vector2(sz.x - 10, 150))
-		_cue(b, h, 14, 182, 472, 188, 30, Rect2(170, 178, 200, 0), true)
+		_cue(b, h, 14, 182, 472, 188, 30, true)
 
 
 static func _page_race(b: HudCanvas, h: Hud, data: bool) -> void:
@@ -176,7 +156,7 @@ static func _page_race(b: HudCanvas, h: Hud, data: bool) -> void:
 	_bsp(b, h)
 	divider(b, Vector2(250, 10), Vector2(250, 236))
 	if h.has_item("cue"):
-		_cue(b, h, 264, 24, 446, 98, 64, Rect2(274, 124, 162, 0))
+		_cue(b, h, 264, 24, 446, 112, 64)
 	divider(b, Vector2(460, 10), Vector2(460, 236))
 	caption(b, 474, 24, "TWA")
 	var dc := Vector2(474 + (w - 474) * 0.5 - 6.0, 104)
@@ -205,8 +185,6 @@ static func _page_race(b: HudCanvas, h: Hud, data: bool) -> void:
 	divider(b, Vector2(10, 246), Vector2(w - 10, 246))
 	# row 3: small cells, the label over the value (room for the 11 px floor of small screens)
 	var cells := [["SOG", "sog", 86.0], ["COG", "cog", 186.0], ["AWS", "aws", 294.0]]
-	if h.has_item("polar"):
-		cells.append(["POLAR %", "polar", 418.0])
 	var x := 14.0
 	for c in cells:
 		caption(b, x, 268, c[0], -1, "", LAB_S)

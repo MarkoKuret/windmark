@@ -126,7 +126,6 @@ var vmg := 0.0
 var vmc := 0.0
 var target_speed := 0.0
 var target_twa := NAN
-var vmg_pct := 0.0
 var layline_dist := NAN
 var layline_time := NAN
 var overstood := NAN
@@ -543,13 +542,6 @@ func _next_mark(sim: SimSource, rb: Dictionary, s: SimSource.BoatState) -> void:
 		if not is_nan(best.y):
 			tgt = best.y
 	target_speed = tgt
-	var vmg_opt := NAN
-	if leg_type == "beat" and not is_nan(v_up):
-		vmg_opt = v_up * cos(th_up)
-	elif leg_type == "run" and not is_nan(v_dn):
-		vmg_opt = -v_dn * cos(th_dn)
-	if not is_nan(vmg_opt) and vmg_opt > 0.05:
-		vmg_pct = 100.0 * vmg / vmg_opt
 	# ETA: axis distance of the leg / VMG (beat, run), distance / VMC (reach)
 	if leg_type == "reach":
 		eta = next_dist / vmc if vmc >= MIN_KN else NAN

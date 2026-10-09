@@ -120,7 +120,7 @@ func test_values() -> void:
 	t.near(rad_to_deg(v.twd), 3.0, 1e-4, "TWD")
 	t.near(v.aws, 8.5, 1e-9, "AWS")
 	t.near(rad_to_deg(v.awa), -28.0, 1e-4, "AWA")
-	t.near(v.polar_pct, 100.0 * 3.0 / 3.2, 0.01, "polar %")
+	t.near(v.polar_speed, 3.2, 1e-9, "polar speed: V_pol at the present TWA")
 	# no display smoothing (hud.md §1): a step shows on the next tick
 	s.tws = 10.0
 	s.aws = 12.5
@@ -130,7 +130,7 @@ func test_values() -> void:
 	t.ok(v.tws == 10.0 and v.aws == 12.5 and v.heel == s.phi and v.hdg == s.psi, "steps show at once")
 	sim.o.polar_speed = 0.1
 	_ticks(v, sim, 1)
-	t.ok(is_nan(v.polar_pct), "polar %% is -- head to wind")
+	t.ok(is_nan(v.polar_speed), "no polar target head to wind")
 
 
 ## hud.md §15: through a scripted tack the shown TWA is the core's twa every tick, with the tack letter from its sign

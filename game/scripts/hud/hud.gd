@@ -196,7 +196,7 @@ func _init() -> void:
 	helm_block.add_child(rudder_bar)
 	ranking_panel = _block("Ranking", _paint_ranking, self, false)
 	results_panel = _block("Results", _paint_results, self, false)
-	for k in ["bsp", "sog", "hdg", "cog", "heel", "polar", "tws", "twa", "twd", "aws", "awa", "sail", "sheet", "rudder",
+	for k in ["bsp", "sog", "hdg", "cog", "heel", "tws", "twa", "twd", "aws", "awa", "sail", "sheet", "rudder",
 			"message"]:
 		_put(k, "")
 	_show_race(false)
@@ -278,7 +278,7 @@ func phase() -> String:
 
 
 ## The items the density and the assist show now (hud.md §16.1, §14): instrument cells ("bsp", "twa_dial",
-## "twa", "cue", "hdg", "target", "vmg_kn", "awa", "sog", "cog", "aws", "polar", "heel_bar"), "bug", "bug_lap",
+## "twa", "cue", "hdg", "target", "vmg_kn", "awa", "sog", "cog", "aws", "heel_bar"), "bug", "bug_lap",
 ## "bug_gaps", "wind_page", "shift", "feed", "feed_own", "start_min", "start_full", "hint", "radar", "helm".
 func items() -> Array[String]:
 	var out: Array[String] = ["bsp", "twa_dial", "twa", "radar", "helm"]
@@ -311,8 +311,6 @@ func items() -> Array[String]:
 				if lvl == Density.DATA:
 					out.append_array(data)
 					out.append_array(["bug_gaps", "hint"])
-					if race.leg_type != "reach":
-						out.append("polar")
 	if not shows("shift"):
 		out.erase("shift")
 	if not shows("sail_hint"):
@@ -324,13 +322,12 @@ func has_item(what: String) -> bool:
 	return items().has(what)
 
 
-## the cue cell shows VMG % (beat or run, racing) rather than polar %
-func cue_is_vmg() -> bool:
-	return race.active and race.started and race.next_step > 0 and race.leg_type in ["beat", "run"]
-
-
-func cue_pct() -> float:
-	return race.vmg_pct if cue_is_vmg() else values.polar_pct
+## The target of the speed to target cue (hud.md §4), m/s: the leg's target speed while racing on a leg (beat V_up,
+## run V_dn, reach V_pol with the best sail), else the polar speed at the present TWA (NAN head to wind).
+func cue_target() -> float:
+	if race.active and race.started and race.next_step > 0 and race.leg_type != "":
+		return race.target_speed
+	return values.polar_speed
 
 
 ## the target angle ticks on the TWA dial: the leg's target TWA on a beat or run, NAN otherwise
@@ -530,8 +527,9 @@ func refresh_text() -> void:
 	_put("cog", "COG  %s" % ("---" if cog == "--" else cog), HudStyle.PAPER, cog)
 	var heel := HudFormat.side_angle(v.heel, "S", "P")
 	_put("heel", "Heel  %s" % heel, HudStyle.PAPER, heel)
-	var pol := "--" if is_nan(v.polar_pct) else HudFormat.percent(v.polar_pct)
-	_put("polar", "Polar  --" if pol == "--" else "Polar  %s %%" % pol, HudStyle.PAPER, pol)
+	var tg := cue_target()
+	var cue := "%s / %s" % [HudFormat.speed_kn(v.bsp), "--" if is_nan(tg) else HudFormat.speed_kn(tg)]
+	_put("cue", "Target  %s kn" % cue, HudStyle.PAPER, cue, "KN")
 	var twa := HudFormat.side_angle(v.twa, "S", "P")
 	_put("twa", "TWA  %s" % twa, HudStyle.PAPER, twa)
 	_put("twd", "TWD  %s" % HudFormat.compass_deg(v.twd), HudStyle.PAPER, HudFormat.compass_deg(v.twd))
@@ -770,8 +768,7 @@ func _race_text() -> void:
 			_put("target_cell", "", white, HudFormat.speed_kn(r.target_speed), "KN")
 			_put("vmg_kn", "", white, HudFormat.speed_kn(r.vmc), "KN")
 		else:
-			_put("vmg", "VMG  %s kn  %s %%" % [HudFormat.speed_kn(r.vmg), HudFormat.percent(r.vmg_pct)], white,
-				HudFormat.percent(r.vmg_pct), "%")
+			_put("vmg", "VMG  %s kn" % HudFormat.speed_kn(r.vmg), white, HudFormat.speed_kn(r.vmg), "KN")
 			var tdeg := "" if is_nan(r.target_twa) else "%d°" % int(HudFormat.round_half_away(rad_to_deg(r.target_twa)))
 			var tt := "" if tdeg == "" else "  " + tdeg
 			_put("target", "Target  %s kn%s" % [HudFormat.speed_kn(r.target_speed), tt])
@@ -802,8 +799,9 @@ func _race_text() -> void:
 	else:
 		for k in ["next", "lap", "mark_dist", "bearing", "leg", "layline", "hint", "vmg", "target", "shift"]:
 			_put(k, "")
-		if not r.started and r.target_speed > 0.0:
-			_put("target_cell", "", white, HudFormat.speed_kn(r.target_speed), "KN")
+		var tg := cue_target()
+		if not r.started and not is_nan(tg):
+			_put("target_cell", "", white, HudFormat.speed_kn(tg), "KN")
 	# position (§10)
 	_put("rank", "%d / %d" % [r.rank, r.fleet] if r.rank > 0 else "")
 	var gap := ""

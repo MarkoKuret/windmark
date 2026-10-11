@@ -774,16 +774,23 @@ surface before the binding exists.
 `scenes/sea/sky_day.tscn` (`SkyRig`) is the daytime light: the sky shader (saturated blue ramp, sun disc and halo,
 cumulus), the sun light, a distance haze toward the horizon colour, sky reflections, the camera exposure and the glow on the
 sun's glints, set from one group of parameters. Sun and sky keep their clear-day proportion (the sun about four
-fifths of the light on a level surface), and the exposure brings the scene back to screen range. Four light
-presets (`water_render.md` §4.5): clear, fair (the default), hazy and late afternoon (a low warm sun), set with
-`SkyRig.preset` or, in the sail test, `--sky=clear|fair|hazy|late`. Each preset carries its colour grade, and
+fifths of the light on a level surface), and the exposure brings the scene back to screen range. Two inputs
+set it (`water_render.md` §4.5, `scenes/sea/daylight.gd`, `Daylight`): the time of day (`SkyRig.hour`, a local clock
+hour; the sun from it and the venue's latitude, longitude and date) and the conditions (`SkyRig.conditions`: clear,
+fair, hazy, overcast). The venue's look file (`data/venues/<venue>.look.json`, `scripts/venue/venue_look.gd`,
+`VenueLook`) gives the date, race window and defaults; GameSetup (`light_time`, `light_conditions`,
+`light_advance`) and the sail test flags `--time=HH:MM`, `--conditions=`, `--light-advance=` override them, and
+`--sky=clear|fair|hazy|late` keeps the old preset names as aliases. Each light carries its colour grade (strength
+`--grade=`, vignette `--vignette=`, both 0 to 1.5), and
 `LookFx` (`scenes/sea/look_fx.gd`) adds the finishing look: the grade (a 3-D LUT built at load, applied by the
 environment after the tone mapping), the vignette under the HUD (owned by `CameraRig`, stronger on the clip
 cameras), the contact shading (SSAO, tier H) and the depth of field of the long lens and mark clip cameras.
 Previews of the grade, vignette and late light: `tests/look_lut_dump.gd`, `tests/water_preview_dump.gd` (with
 `-- --sky=late` for the late light) and `tests/cine_preview.py --publish` (`tests/previews/cine_*.jpg`; the
-commands are in its header). `tests/look_test.gd` (in `run_ui_tests.sh`) checks the presets, the grade and the SSAO
-per tier. The anti-aliasing is SMAA 1x on every tier (`water_render.md` §7): the project default, kept with
+commands are in its header). The daylight previews: `python3 tests/daylight_preview.py --dump --publish` (the
+chase shot at five hours and four conditions, grade off against the default: `tests/previews/daylight_*.jpg`).
+`tests/look_test.gd` (in `run_ui_tests.sh`) checks the sun position, the hour keys and conditions, the look files,
+the grade and vignette and the SSAO per tier. The anti-aliasing is SMAA 1x on every tier (`water_render.md` §7): the project default, kept with
 the upscaler by `Settings.apply_render_scale` (off only under a temporal upscaler).
 
 ### Water tests

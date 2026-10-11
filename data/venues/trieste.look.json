@@ -1,0 +1,14 @@
+{
+  "schema": "windmark.look/1",
+  "id": "trieste",
+  "version": 1,
+  "light": {
+    "date": "10-11",
+    "utc_offset_h": 2,
+    "race_window": ["10:00", "16:30"],
+    "time": "12:00",
+    "conditions": "clear",
+    "typical": ["clear", "fair"],
+    "note": "Barcolana season in October: a low autumn sun (at most 38 degrees), and a bora that clears the air."
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "schema": "windmark.look/1",
+  "id": "fremantle",
+  "version": 1,
+  "light": {
+    "date": "01-25",
+    "utc_offset_h": 8,
+    "race_window": ["12:30", "18:00"],
+    "time": "15:00",
+    "conditions": "clear",
+    "typical": ["clear", "fair"],
+    "note": "Southern high summer: the Doctor arrives around midday and blows through the afternoon in clear, dry air; the sun stands to the north."
+  }
+}

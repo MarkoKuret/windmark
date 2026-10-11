@@ -27,7 +27,8 @@ var scene: Node
 var is_open := false
 var focused := false
 var selected := 0
-## the rows: {id, label, kind ("choice", "slider", "action"), values, fmt (value -> text), get, set, note}
+## the rows: {id, label, kind ("choice", "slider", "action"), values (a slider: [min, max, step, snap to the
+## step]), fmt (value -> text), get, set, note (how it applies), look (where to look, hud.md §18)}
 var rows: Array[Dictionary] = []
 ## the wind the restart row uses, kn
 var restart_wind_kn := 12.0
@@ -63,79 +64,113 @@ func _ready() -> void:
 func _build_rows() -> void:
 	var s := scene
 	var on_off := func(v: Variant) -> String: return "On" if v else "Off"
+	var k_text := func(v: Variant) -> String: return "x%.1f" % float(v) if float(v) > 0.0 else "Off"
 	_add("aa", "Anti-aliasing", "choice", DevLook.AA_MODES,
 		func(v: Variant) -> String: return {"off": "Off", "fxaa": "FXAA", "smaa": "SMAA"}.get(v, str(v)),
 		func() -> Variant: return DevLook.aa(s), func(v: Variant) -> void: DevLook.set_aa(s, v),
-		"Live. Screen-space AA of the 3D view (--aa)")
+		"Live. Screen-space AA of the 3D view (--aa)",
+		"masts, stays and sheets against the sky; subtle on Retina")
 	_add("look", "Grade and vignette", "choice", [true, false], on_off,
 		func() -> Variant: return DevLook.look(), func(v: Variant) -> void: DevLook.set_look(s, v),
-		"Live. Off also drops SSAO and depth of field (--look)")
+		"Live. Off also drops SSAO and depth of field (--look)",
+		"the whole picture: the sea's blues and the screen corners")
+	_add("grade", "Grade strength", "slider", [DevLook.STRENGTH_MIN, DevLook.STRENGTH_MAX, DevLook.STRENGTH_STEP],
+		k_text,
+		func() -> Variant: return DevLook.grade_strength(),
+		func(v: Variant) -> void: DevLook.set_grade_strength(s, v),
+		"Live. The film grade, 0 off to 1.5 (--grade)",
+		"sky and sea colour, warm sunlit water, cool shadow sides; whites stay white")
+	_add("vignette", "Vignette strength", "slider", [DevLook.STRENGTH_MIN, DevLook.STRENGTH_MAX, DevLook.STRENGTH_STEP],
+		k_text,
+		func() -> Variant: return DevLook.vignette_strength(),
+		func(v: Variant) -> void: DevLook.set_vignette_strength(s, v),
+		"Live. Corner darkening, 0 off to 1.5 (--vignette)",
+		"the screen corners and the left and right edges")
 	_add("ssao", "SSAO", "choice", [-1, 0, 1],
 		_ssao_text,
 		func() -> Variant: return DevLook.ssao_choice(), func(v: Variant) -> void: DevLook.set_ssao(s, v),
-		"Live. Contact shading; the tier has it on H only (--ssao)")
+		"Live. Contact shading; the tier has it on H only (--ssao)",
+		"high tier only: deck at the foot of the mast, cockpit corners")
 	_add("dof", "Clip camera DOF", "choice", [true, false], on_off,
 		func() -> Variant: return DevLook.dof(), func(v: Variant) -> void: DevLook.set_dof(s, v),
-		"Live. Long lens and mark shots, tiers M and H (--dof)")
-	_add("sky", "Light", "choice", DevLook.PRESETS,
+		"Live. Long lens and mark shots, tiers M and H (--dof)",
+		"clip cameras only: press X for the long lens")
+	var tr := DevLook.time_range(s)
+	_add("time", "Time of day", "slider", [tr.x, tr.y, DevLook.TIME_STEP, true],
+		func(v: Variant) -> String: return "%s  sun %d°" % [Daylight.hour_text(float(v)),
+			roundi(DevLook.sun_elevation(s))],
+		func() -> Variant: return DevLook.time(s), func(v: Variant) -> void: DevLook.set_time(s, v),
+		"Live. Local clock on the venue's date, sun 6° or more (--time)",
+		"the sun's height and colour, shadow length on the water, the sky toward the sun")
+	_add("conditions", "Conditions", "choice", DevLook.CONDITIONS,
 		func(v: Variant) -> String: return str(v).capitalize(),
-		func() -> Variant: return DevLook.preset(s), func(v: Variant) -> void: DevLook.set_preset(s, v),
-		"Live. Light preset with its grade (--sky)")
+		func() -> Variant: return DevLook.conditions(s), func(v: Variant) -> void: DevLook.set_conditions(s, v),
+		"Live. Sky, sun, haze and grade (--conditions)",
+		"clouds, how far land and boats fade, shadow strength")
 	_add("quality", "Quality tier", "choice", [0, 1, 2],
 		func(v: Variant) -> String: return "LMH"[clampi(int(v), 0, 2)] if int(v) >= 0 else "Setting",
 		func() -> Variant: return DevLook.quality(s), func(v: Variant) -> void: DevLook.set_quality(s, v),
-		"Live: sea grid and shader, wakes, shadows, glow, SSAO. Short hitch while shaders compile (--quality)")
+		"Live: sea grid and shader, wakes, shadows, glow, SSAO. Short hitch while shaders compile (--quality)",
+		"water detail near the boat, wakes, shadows on the water")
 	_add("haze", "Haze", "slider", [DevLook.HAZE_MIN, DevLook.HAZE_MAX, 0.1],
 		func(v: Variant) -> String: return "x%.1f (%.2f)" % [float(v), _haze_max() * float(v)],
 		func() -> Variant: return DevLook.haze(s), func(v: Variant) -> void: DevLook.set_haze(s, v),
-		"Live. Factor on the preset's haze, 0 to 1.5 (--haze)")
+		"Live. Factor on the light's haze, 0 to 1.5 (--haze)",
+		"far boats, marks and the land at 1 to 10 km")
 	_add("haze_reset", "Reset haze", "action", [], func(_v: Variant) -> String: return "x1.0",
 		func() -> Variant: return null, func(_v: Variant) -> void: DevLook.set_haze(s, 1.0),
-		"Haze back to the preset's")
+		"Haze back to the light's", "")
 	_add("caps", "Whitecaps", "choice", [true, false], on_off,
 		func() -> Variant: return DevLook.whitecaps(s), func(v: Variant) -> void: DevLook.set_whitecaps(s, v),
-		"Live (--caps)")
+		"Live (--caps)",
+		"set the drawn wind to 20 kn or more")
 	var winds: Array = [0.0]
 	for kn in range(8, 26):
 		winds.append(float(kn))
 	_add("drawn_wind", "Drawn wind (sea)", "choice", winds,
 		func(v: Variant) -> String: return "Sim" if float(v) <= 0.0 else "%d kn" % int(v),
 		func() -> Variant: return DevLook.drawn_wind(s), func(v: Variant) -> void: DevLook.set_drawn_wind(s, v),
-		"Live: the wind the water draws (caps, puffs); waves and boats keep the race's (--drawn-wind)")
+		"Live: the wind the water draws (caps, puffs); waves and boats keep the race's (--drawn-wind)",
+		"puff patches and whitecaps on the water")
 	var restart: Array = []
 	for kn in range(4, 31):
 		restart.append(float(kn))
 	_add("wind", "Wind for restart", "choice", restart,
 		func(v: Variant) -> String: return "%d kn" % int(v),
 		func() -> Variant: return restart_wind_kn, func(v: Variant) -> void: restart_wind_kn = float(v),
-		"Restart only: the core takes its wind when the world is made. Enter on the next row")
+		"Restart only: the core takes its wind when the world is made. Enter on the next row", "")
 	_add("restart", "Restart with wind", "action", [],
 		func(_v: Variant) -> String: return "%d kn" % int(restart_wind_kn),
 		func() -> Variant: return null, func(_v: Variant) -> void: restart(),
-		"Restarts this race or free sail with that wind, other settings kept (--wind)")
+		"Restarts this race or free sail with that wind, other settings kept (--wind)",
+		"the waves and the boat speed after the restart")
 	_add("breathing", "Chase breathing", "choice", [true, false], on_off,
 		func() -> Variant: return DevLook.breathing(s), func(v: Variant) -> void: DevLook.set_breathing(s, v),
-		"Live. Off: the plain heading follow, no bank, trail or lean (--breathing)")
+		"Live. Off: the plain heading follow, no bank, trail or lean (--breathing)",
+		"chase camera in a tack or a gybe")
 	_add("drawn_shadows", "Drawn boat shadows", "choice", [true, false], on_off,
 		func() -> Variant: return DevLook.drawn_shadows(s), func(v: Variant) -> void: DevLook.set_drawn_shadows(s, v),
-		"Live. Shadows drawn on the water, tiers L and M (--no-drawn-shadows)")
+		"Live. Shadows drawn on the water, tiers L and M (--no-drawn-shadows)",
+		"tiers L and M: the boat's shadow on the water")
 	_add("boat_shadows", "Boat sun shadows", "choice", [true, false], on_off,
 		func() -> Variant: return DevLook.boat_shadows(s), func(v: Variant) -> void: DevLook.set_boat_shadows(s, v),
-		"Live. The boats cast the sun's shadows (--no-boat-shadows)")
+		"Live. The boats cast the sun's shadows (--no-boat-shadows)",
+		"the sails' and boom's shadows on the deck")
 	_add("render_scale", "Render scale", "choice", DevLook.RENDER_SCALES,
 		_scale_text,
 		func() -> Variant: return DevLook.render_scale_choice(),
 		func(v: Variant) -> void: DevLook.set_render_scale(s, v),
-		"Live. The 3D view's resolution, FSR above it (--render-scale)")
+		"Live. The 3D view's resolution, FSR above it (--render-scale)",
+		"fine detail: rigging, sail numbers, the far fleet")
 	_add("perf", "Frame-time overlay", "choice", [true, false], on_off,
 		func() -> Variant: return _perf() != null and _perf().overlay, _set_perf,
-		"Live. The measuring overlay top left; also Shift+F9 (--perf)")
+		"Live. The measuring overlay top left; also Shift+F9 (--perf)", "top left")
 
 
 func _add(id: String, label: String, kind: String, values: Array, fmt: Callable, getter: Callable, setter: Callable,
-		note: String) -> void:
+		note: String, look := "") -> void:
 	rows.append({"id": id, "label": label, "kind": kind, "values": values, "fmt": fmt, "get": getter,
-		"set": setter, "note": note})
+		"set": setter, "note": note, "look": look})
 
 
 func _ssao_text(v: Variant) -> String:
@@ -206,7 +241,8 @@ func step(id: String, dir: int) -> void:
 			(r["set"] as Callable).call(null)
 		"slider":
 			var v := float((r["get"] as Callable).call())
-			(r["set"] as Callable).call(clampf(snappedf(v + dir * float(vals[2]), 0.01), float(vals[0]), float(vals[1])))
+			var snap := float(vals[2]) if vals.size() > 3 and vals[3] else 0.01
+			(r["set"] as Callable).call(clampf(snappedf(v + dir * float(vals[2]), snap), float(vals[0]), float(vals[1])))
 		_:
 			var k := _index_of(vals, (r["get"] as Callable).call())
 			(r["set"] as Callable).call(vals[posmod((k if k >= 0 else 0) + dir, vals.size())])
@@ -412,6 +448,8 @@ func refresh() -> void:
 	var note: String = rows[selected]["note"]
 	if rows[selected]["id"] in ["wind", "restart"] and scene != null and scene.get("scenario_run") != null:
 		note = "A rules scenario sets its own wind: the restart keeps it"
+	if rows[selected]["look"] != "":
+		note += "\nLook at: " + rows[selected]["look"]
 	_hint.text = note + ("\nUp, Down  Left, Right  Enter   Esc: keys back to the boat" if focused
 		else "\nF9 or click: keys to the panel")
 	_title.text = "Look panel (developer)   F9" + ("" if focused else "   (boat has the keys)")

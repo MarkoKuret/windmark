@@ -250,6 +250,23 @@ func check_native() -> void:
 			% [us_state, us_native, us_ref, us_frame, drawn])
 	print("  about %.0f us per boat: %.2f ms for 10 boats" % [per_boat, per_boat * 10.0 / 1000.0])
 	t.ok(per_boat * 10.0 < 300.0, "10 boats well under 0.3 ms of CPU: %.2f ms" % (per_boat * 10.0 / 1000.0))
+	# the lowest sun of the daylight model (water_render.md §4.6, Daylight.MIN_SUN): the shadow stays one valid
+	# shape within the row's limits, native and reference agree, and it grows as the sun drops
+	var az := atan2(sun.x, -sun.z)
+	var lens := {}
+	for el in [17.0, Daylight.MIN_SUN]:
+		var e := deg_to_rad(el)
+		var s_low := Vector3(cos(e) * sin(az), sin(e), -cos(e) * cos(az))
+		var a: Dictionary = shape.build(st["xform"], s_low, st["sails"], st["sail_counts"])
+		var b := BoatShadows.build(st["caster"], st["xform"], s_low, st["sails"], st["sail_counts"])
+		var ok: bool = not a.is_empty() and a["n_poly"] == b["n_poly"] and a["n_poly"] <= 8
+		var ra: Transform3D = a["rect"]
+		lens[el] = maxf(ra.basis.x.length(), ra.basis.z.length())
+		t.ok(ok and (a["corners"] as PackedVector2Array).size() <= 96,
+				"sun %.0f deg: %d polygons, native as reference, %.0f m long" % [el, a["n_poly"], lens[el]])
+	var want := tan(deg_to_rad(17.0)) / tan(deg_to_rad(Daylight.MIN_SUN))
+	t.ok(lens[Daylight.MIN_SUN] / lens[17.0] > 0.7 * want and lens[Daylight.MIN_SUN] < 250.0,
+			"the 6 deg shadow about %.1f x the 17 deg one (%.1f), under 250 m" % [want, lens[Daylight.MIN_SUN] / lens[17.0]])
 
 
 ## µs per call, the best of five batches of n.

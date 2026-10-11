@@ -40,6 +40,9 @@ const SUN_MIN_Y := 0.0523
 const FADE_START := 0.8
 ## every Nth point of the DWL waterline goes into the hull caster
 const WATERLINE_STEP := 8
+## water_render.md §4.7: the share of the light a real shadow on the water keeps under the full sun (linear); a
+## weaker sun (the conditions' shadow factor, SkyRig.shadow_strength) keeps more: mix(1, KEEP, shadow)
+const KEEP := Vector3(0.76, 0.66, 0.70)
 
 @export var sea_path: NodePath
 @export var sky_path: NodePath
@@ -71,6 +74,8 @@ var _chosen_frame := -1
 ## the sea's uniforms the drape shares, as last copied (Sea.static_version, the sea's material)
 var _static_version := -1
 var _static_material: Material = null
+## the shadow factor last uploaded (shadow_keep)
+var _keep_k := -1.0
 
 
 func _ready() -> void:
@@ -439,6 +444,16 @@ func _process(_delta: float) -> void:
 	PerfStats.add(&"wakes", Time.get_ticks_usec() - t0)
 
 
+## The conditions' shadow factor of the sky (1 without a SkyRig).
+func shadow_factor() -> float:
+	return float(sky.get("shadow_strength")) if sky != null and "shadow_strength" in sky else 1.0
+
+
+## shadow_keep for a shadow factor k: the full-sun KEEP at 1, no shadow at 0.
+static func keep_for(k: float) -> Vector3:
+	return Vector3.ONE.lerp(KEEP, clampf(k, 0.0, 1.0))
+
+
 ## Whether the sea's shader takes no shadows (it defines WM_NO_SHADOWS): only then are shadows drawn.
 func _sea_takes_no_shadows() -> bool:
 	var sh := sea.material.shader if sea and sea.material else null
@@ -568,3 +583,7 @@ func _frame() -> void:
 		_material.set_shader_parameter("grid_segments", float(tier["segments"]))
 	SeaWakes.copy_uniforms(sea.material, _material, SeaWakes.FRAME_UNIFORMS)
 	SeaWakes.copy_changed(sea.material, _material, ["sky_horizon", "sky_zenith", "sun_color"])
+	var k := shadow_factor()
+	if k != _keep_k:
+		_keep_k = k
+		_material.set_shader_parameter("shadow_keep", keep_for(k))

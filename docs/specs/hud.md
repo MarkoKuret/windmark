@@ -735,28 +735,32 @@ frame-time overlay). Not part of the player's settings, nothing saved; available
 changes the look live through the same function as its startup flag (`DevLook`), so the flags and the panel stay
 the same:
 
-| Row | Values | Flag | Applies |
-| --- | --- | --- | --- |
-| Anti-aliasing | Off, FXAA, SMAA | `--aa=` | live (root viewport) |
-| Grade and vignette | On, Off | `--look=` | live; off also drops SSAO and depth of field |
-| SSAO | Tier, Off, On | `--ssao=on\|off\|tier` | live (environment) |
-| Clip camera DOF | On, Off | `--dof=` | live (long lens and mark shots, tiers M and H) |
-| Light | Clear, Fair, Hazy, Late | `--sky=` | live (sky rig and its grade) |
-| Quality tier | L, M, H | `--quality=` | live: sea grid and water shader, wakes, drawn shadows, sun shadows, glow, SSAO, reflections; a short hitch while the shaders compile |
-| Haze | x0.0 to x1.5 of the preset's haze, step 0.1 | `--haze=` | live; kept when the preset changes |
-| Reset haze | action | | back to x1.0 |
-| Whitecaps | On, Off | `--caps=` | live |
-| Drawn wind (sea) | Sim, 8 to 25 kn | `--drawn-wind=` | live: the wind the water draws (whitecaps, puffs); waves and boats keep the world's |
-| Wind for restart | 4 to 30 kn | `--wind=` | the value for the next row |
-| Restart with wind | action | | restart only: the core takes its wind when the world is made, so the race or free sail starts again with that wind, every other setting kept (a rules scenario keeps its file's wind) |
-| Chase breathing | On, Off | `--breathing=` | live: off is the plain follow (one heading lag, no bank, trail or lean) |
-| Drawn boat shadows | On, Off | `--no-drawn-shadows` | live (tiers L and M) |
-| Boat sun shadows | On, Off | `--no-boat-shadows` | live: the shadow proxies hidden and the sails not casting (`sail_visuals.md` §11.4) |
-| Render scale | Setting, 50, 67, 75, 85, 100 % | `--render-scale=` | live (root viewport) |
-| Frame-time overlay | On, Off | `--perf` | live (§17) |
+| Row | Values | Flag | Applies | Where to look (the hint) |
+| --- | --- | --- | --- | --- |
+| Anti-aliasing | Off, FXAA, SMAA | `--aa=` | live (root viewport) | masts, stays and sheets against the sky; subtle on Retina |
+| Grade and vignette | On, Off | `--look=` | live; off also drops SSAO and depth of field | the whole picture: compare the sea's blues and the corners |
+| Grade strength | 0.0 to 1.5, step 0.1 | `--grade=` | live (the LUT is rebuilt) | sky and sea saturation, warm sunlit water, cool shadow sides; whites stay white |
+| Vignette strength | 0.0 to 1.5, step 0.1 | `--vignette=` | live | the screen corners and the left and right edges |
+| SSAO | Tier, Off, On | `--ssao=on\|off\|tier` | live (environment) | high tier only: deck at the foot of the mast, cockpit corners |
+| Clip camera DOF | On, Off | `--dof=` | live (long lens and mark shots, tiers M and H) | clip cameras only: press X for the long lens |
+| Time of day | the venue's date, 30 min steps over the hours with the sun at 6° or more | `--time=HH:MM` | live (sky, sun, haze, grade) | the sun's height and colour, shadow length on the water, the sky toward the sun |
+| Conditions | Clear, Fair, Hazy, Overcast | `--conditions=` (`--sky=` the old names) | live (sky, sun, haze, grade, drawn shadows) | clouds, how far the land and far boats fade, shadow strength |
+| Quality tier | L, M, H | `--quality=` | live: sea grid and water shader, wakes, drawn shadows, sun shadows, glow, SSAO, reflections; a short hitch while the shaders compile | water detail near the boat, wakes, shadows on the water |
+| Haze | x0.0 to x1.5 of the light's haze, step 0.1 | `--haze=` | live; kept when the time or the conditions change | far boats, marks and the land at 1 to 10 km |
+| Reset haze | action | | back to x1.0 | |
+| Whitecaps | On, Off | `--caps=` | live | set the drawn wind to 20 kn or more |
+| Drawn wind (sea) | Sim, 8 to 25 kn | `--drawn-wind=` | live: the wind the water draws (whitecaps, puffs); waves and boats keep the world's | puff patches and whitecaps on the water |
+| Wind for restart | 4 to 30 kn | `--wind=` | the value for the next row | |
+| Restart with wind | action | | restart only: the core takes its wind when the world is made, so the race or free sail starts again with that wind, every other setting kept (a rules scenario keeps its file's wind) | the waves and the boat speed after the restart |
+| Chase breathing | On, Off | `--breathing=` | live: off is the plain follow (one heading lag, no bank, trail or lean) | chase camera in a tack or a gybe |
+| Drawn boat shadows | On, Off | `--no-drawn-shadows` | live (tiers L and M) | tiers L and M: the boat's shadow on the water |
+| Boat sun shadows | On, Off | `--no-boat-shadows` | live: the shadow proxies hidden and the sails not casting (`sail_visuals.md` §11.4) | the sails' and boom's shadows on the deck |
+| Render scale | Setting, 50, 67, 75, 85, 100 % | `--render-scale=` | live (root viewport) | fine detail: rigging, sail numbers, the far fleet |
+| Frame-time overlay | On, Off | `--perf` | live (§17) | top left |
 
 A readout line under the title shows the frame rate, the mean frame time over the last 0.25 s, the tier and the
-3D scale. The selected row's line at the bottom says how it applies.
+3D scale. The selected row's lines at the bottom say how it applies and where to look; the Time of day row's value
+also shows the sun's height (`14:30  sun 51°`).
 
 - **Keys** while the panel has the focus: Up and Down pick a row, Left and Right change it, Enter or Space toggles a
   row or runs an action, Esc gives the keys back to the boat (the panel stays up), F9 closes it. F9 on an open

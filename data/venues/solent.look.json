@@ -1,0 +1,14 @@
+{
+  "schema": "windmark.look/1",
+  "id": "solent",
+  "version": 1,
+  "light": {
+    "date": "08-05",
+    "utc_offset_h": 1,
+    "race_window": ["10:30", "17:30"],
+    "time": "13:00",
+    "conditions": "fair",
+    "typical": ["fair", "hazy", "overcast"],
+    "note": "Cowes Week in early August: starts from late morning into the afternoon, often under hazy or grey skies."
+  }
+}

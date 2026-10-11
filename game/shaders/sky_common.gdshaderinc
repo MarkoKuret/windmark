@@ -53,6 +53,7 @@ vec3 wm_sky_color(vec3 d, vec3 sun, vec3 horizon, vec3 zenith, vec3 sun_col, flo
 	// fair-weather cumulus: a layer projected on a plane above the camera. The coarse octaves give the cloud masses,
 	// the fine ones their billowed edges; one more look-up of the coarse octaves a little toward the sun lights the
 	// side facing the sun and leaves the far side and the base grey.
+	float cloud = 0.0;
 	if (h > 0.0 && cover > 0.0) {
 		vec2 uv = d.xz / (h + 0.06) * 0.55 + cloud_off;
 		vec2 p = uv * 1.7;
@@ -70,11 +71,12 @@ vec3 wm_sky_color(vec3 d, vec3 sun, vec3 horizon, vec3 zenith, vec3 sun_col, flo
 			cc += sun_col * pow(mu, 10.0) * (1.0 - c) * 0.8;
 			// distant clouds fade into the horizon haze
 			cc = mix(horizon * 1.08, cc, smoothstep(0.0, 0.3, h));
-			col = mix(col, cc, c * 0.95);
+			cloud = c * 0.95;
+			col = mix(col, cc, cloud);
 		}
 	}
-	// sun disc (0.53 deg across) with a soft rim, and a tight bright halo of a few degrees
+	// sun disc (0.53 deg across) with a soft rim, and a tight bright halo of a few degrees, hidden by a cloud in front
 	float disc_mu = smoothstep(0.999955, 0.999985, mu);
-	col += disc * sun_col * (20.0 * disc_mu + 0.35 * pow(mu, 2048.0) + 0.06 * pow(mu, 256.0));
+	col += disc * (1.0 - cloud) * sun_col * (20.0 * disc_mu + 0.35 * pow(mu, 2048.0) + 0.06 * pow(mu, 256.0));
 	return col;
 }

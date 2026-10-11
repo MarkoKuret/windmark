@@ -181,8 +181,8 @@ angle is its **boom** angle; a negative `m_opt` (main only) puts the boom to win
     interaction", AIAA Symposium on the Aero/Hydronautics of Sailing; Marchaj (1979), Aero-Hydrodynamics of
     Sailing.
   - With an asymmetric spinnaker or a code zero the main trims to the kite: it follows the apparent wind inside
-    the kite (wm7 at 4 m/s: 3° up to 60° AWA, where the kite is at its inboard limit, 30° at 90°, 51° from
-    120° with the kite fully eased), as on a real boat where the main is eased until the kite's flow starts to
+    the kite (wm7 at 4 m/s: 10° up to about 70° AWA, held by the floor below, 30° at 90°, 51° from 120°
+    with the kite fully eased), as on a real boat where the main is eased until the kite's flow starts to
     backwind it and the mainsheet follows the kite sheet (never eased alone: it closes the slot). Trim guides
     describe it in these terms, without boom angles: the kite's flow "attaches to the backside of the main", the
     main is eased until it starts to luff and trimmed until the luff stops, with a small bubble accepted in a
@@ -190,6 +190,10 @@ angle is its **boom** angle; a negative `m_opt` (main only) puts the boom to win
     "Optimizing wind flow across your asymmetric", Sailing World, 2015; North Sails, "Trim an asymmetric
     spinnaker on a sport boat"). So the boom follows the apparent wind through the kite's angle: a slow boat
     with the apparent wind aft eases, a fast one with it drawn forward sails the main sheeted in.
+    The main is never trimmed closer than 10° with a kite or code zero set (the backwind floor): with the kite at
+    its inboard stop on a close reach its flow would put the main near the centreline, where it only backwinds;
+    the crew eases it until it luffs and trims until the luff stops (Ingham 2015), which keeps it off the
+    centreline. So `m_opt[main] = max(10°, best angle of the main for the wind angle min(β_e, m_opt[F]))`.
   - A jib or genoa, and a symmetric spinnaker set to windward on its pole, fall into the main's lee abaft the
     beam: the slot fades out from 110° to 180° effective AWA (the blanketing range of §6) and the main returns to
     its own best angle (eased to the shrouds running).
@@ -382,7 +386,7 @@ Semantics and reference shapes:
   in the no-go zone; written only for a class with `full_leeway` on (`boat.md` §6.4).
 - **optimal_angle**: main alone: its own best angle, 10–20° close-hauled rising to the shrouds from about 90°
   AWA; behind a front sail the slot trim of §5.1 (jib: −3 to 2° close-hauled up to 6 m/s TWS, 3–12° from 8 m/s
-  where the VPP depowers; kite: following the apparent wind inside the kite, about 30° at 90° AWA); jib/genoa 14–25° close hauled rising to 55–70°; spinnakers 12–30° at their lowest AWA rising to 85–90° dead downwind.
+  where the VPP depowers; kite: following the apparent wind inside the kite, at least 10°, about 30° at 90° AWA); jib/genoa 14–25° close hauled rising to 55–70°; spinnakers 12–30° at their lowest AWA rising to 85–90° dead downwind.
 
 ## 7. Outputs for drawing, crew and sound
 

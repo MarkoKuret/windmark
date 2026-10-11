@@ -174,13 +174,22 @@ angle is its **boom** angle; a negative `m_opt` (main only) puts the boom to win
     apparent wind widens: the jib is eased (15 to 23°) and the main with it (3 to 12° from 8 to 16 m/s), as a
     crew drops the traveller when overpowered. This is the trim of the sportsboat tuning guides: boom on or just
     above the centreline in light air, traveller down as the breeze builds (North Sails, "J/70 light air speed
-    notes", 2018; Quantum Sails, J/70 tuning guide). The slot itself: Gentry (1971), "The aerodynamics of sail
+    notes", 2018; North Sails, J/70 tuning guide: boom near the centreline until overpowered, slightly above
+    it to point; Doyle Sails, J/70 tuning guide: traveller to weather, boom on or just above the centreline up
+    to 8 kn, car above the centreline as it builds; Ullman Sails, Melges 24 guide: boom on the centreline until
+    overpowered, then drop the traveller). The slot itself: Gentry (1971), "The aerodynamics of sail
     interaction", AIAA Symposium on the Aero/Hydronautics of Sailing; Marchaj (1979), Aero-Hydrodynamics of
     Sailing.
   - With an asymmetric spinnaker or a code zero the main trims to the kite: it follows the apparent wind inside
     the kite (wm7 at 4 m/s: 3° up to 60° AWA, where the kite is at its inboard limit, 30° at 90°, 51° from
     120° with the kite fully eased), as on a real boat where the main is eased until the kite's flow starts to
-    backwind it and the mainsheet follows the kite sheet (never eased alone: it closes the slot).
+    backwind it and the mainsheet follows the kite sheet (never eased alone: it closes the slot). Trim guides
+    describe it in these terms, without boom angles: the kite's flow "attaches to the backside of the main", the
+    main is eased until it starts to luff and trimmed until the luff stops, with a small bubble accepted in a
+    breeze, and the boat is steered to keep the apparent wind near 90° in reach-to-VMG mode (M. Ingham,
+    "Optimizing wind flow across your asymmetric", Sailing World, 2015; North Sails, "Trim an asymmetric
+    spinnaker on a sport boat"). So the boom follows the apparent wind through the kite's angle: a slow boat
+    with the apparent wind aft eases, a fast one with it drawn forward sails the main sheeted in.
   - A jib or genoa, and a symmetric spinnaker set to windward on its pole, fall into the main's lee abaft the
     beam: the slot fades out from 110° to 180° effective AWA (the blanketing range of §6) and the main returns to
     its own best angle (eased to the shrouds running).

@@ -92,5 +92,27 @@ class TexturesAOTest(unittest.TestCase):
         self.assertLess(np.percentile(ao[up], 5), np.median(ao[up]) - 0.1)
 
 
+class SharedTextureFilesTest(unittest.TestCase):
+    def test_glbs_reference_one_shared_set(self):
+        """The command line writes the texture set once into `_tex/` and every GLB references those files by
+        relative URI, with no image data in the GLB."""
+        from boatgen.__main__ import main
+        wm12 = os.path.join(os.path.dirname(WM7), "wm12.boat.json")
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(main([WM7, wm12, "--out", d, "--no-previews", "--no-bake", "--quiet"]), 0)
+            uris = []
+            for cid in ("wm7", "wm12"):
+                _, doc = gltf.read_glb(os.path.join(d, f"{cid}.glb"), expand=False)
+                for im in doc["images"]:
+                    self.assertNotIn("bufferView", im, im)
+                    self.assertTrue(im["uri"].startswith("_tex/"), im)
+                    self.assertTrue(os.path.isfile(os.path.join(d, im["uri"])), im["uri"])
+                    self.assertTrue(os.path.isfile(os.path.join(d, im["uri"] + ".import")), im["uri"])
+                uris.append(sorted(im["uri"] for im in doc["images"]))
+            self.assertEqual(uris[0], uris[1], "both GLBs use the same files")
+            self.assertEqual(sorted(os.listdir(os.path.join(d, "_tex"))),
+                             sorted(n for u in uris[0] for n in (u[5:], u[5:] + ".import")))
+
+
 if __name__ == "__main__":
     unittest.main()

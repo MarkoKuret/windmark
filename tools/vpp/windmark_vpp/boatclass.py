@@ -29,7 +29,7 @@ FEEL_RANGE = (0.2, 5.0)
 SAIL_TYPES = ("main", "jib", "genoa", "code_zero", "spinnaker_sym", "spinnaker_asym")
 FRONT_TYPES = SAIL_TYPES[1:]
 SPINNAKER_TYPES = ("spinnaker_sym", "spinnaker_asym")
-# Default vpp.max_heel_kite: under a spinnaker, gennaker or code zero the crew keeps the heel below this (rad):
+# Default vpp.max_heel_kite: under a spinnaker or gennaker the crew keeps the heel below this (rad):
 # beyond it the rudder nears the surface and the boat broaches (ORC VPP Documentation 2023 section 5.2.3: about
 # 21.5 deg since 2014; README "Heel").
 KITE_MAX_HEEL = math.radians(21.5)
@@ -175,7 +175,7 @@ class Boat:
     app_depth: float          # depth of its centroid below the DWL, m
     sails: List[Sail]
     heel_max: float           # rad, the equilibrium never settles beyond this
-    heel_max_kite: float      # rad, the same under a spinnaker, gennaker or code zero
+    heel_max_kite: float      # rad, the same under a spinnaker or gennaker
     start: dict = field(default_factory=dict)
     handling: dict = field(default_factory=dict)   # absolute overrides of dynamics values
     feel: dict = field(default_factory=lambda: {k: 1.0 for k in FEEL_KEYS})   # handling multipliers

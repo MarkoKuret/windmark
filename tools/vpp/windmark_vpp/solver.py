@@ -47,7 +47,7 @@ MAIN_ALONE_CL = 0.72
 # of its height, frac = I / (P + BAS) the fractionality (BAS: boom above the sheer).
 TWIST_A = 0.406
 TWIST_B = 0.902
-# A kite has no flattening controls (no backstay, outhaul or traveller): its flat (with the main's) goes no lower than
+# A spinnaker has no flattening controls (no backstay, outhaul or traveller): its flat (with the main's) goes no lower than
 # the ORC VPP's minimum (2023 section 5: lift cut by at most 58 %); where that still heels the boat beyond the kite
 # heel limit the kite is overpowered and the config broaches.
 KITE_FLAT_MIN = 0.42
@@ -71,8 +71,9 @@ class Rig:
 
     @property
     def kite(self) -> bool:
-        """Flies a spinnaker, gennaker or code zero (the kite heel limit applies)."""
-        return any(s.type in SPINNAKER_TYPES + ("code_zero",) for s in self.sails)
+        """Flies a spinnaker or gennaker (the kite heel limit applies; a code zero is a flying headsail, sheeted
+        flat and set lower, and sails to the class limit like a jib)."""
+        return any(s.type in SPINNAKER_TYPES for s in self.sails)
 
     def areas(self, reef):
         return [s.area * (reef ** 2 if r else 1.0) for s, r in zip(self.sails, self.reefable)]

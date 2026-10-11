@@ -1,7 +1,7 @@
 """Headless preview renderer for generated boats (OpenGL 4.1 core through moderngl's standalone context).
 
 Reads the GLB back (so the preview checks the exported file), then draws it with a sun shadow map, GGX
-specular, a sky-gradient reflection and screen-space ambient occlusion. The embedded texture set (base colour,
+specular, a sky-gradient reflection and screen-space ambient occlusion. The texture set (base colour,
 metallic-roughness and normal maps on uv0 with the KHR_texture_transform scale) and the baked per-vertex AO
 (COLOR_0, multiplied into the base colour as glTF specifies) are used as written; sail panel seams, tapes and
 battens are drawn procedurally from the sail UVs. `uv_check=True` renders a metric checker on uv0 instead.

@@ -8,10 +8,18 @@ extends RefCounted
 ## node with the sail scene's `sea`, `sky`, `shadows`, `rig`, `boat_views` members works.
 
 const AA_MODES := ["off", "fxaa", "smaa"]
+## the old light preset names (`--sky=`), aliases of a time of day and conditions (Daylight.ALIASES)
 const PRESETS := ["clear", "fair", "hazy", "late"]
+const CONDITIONS := ["clear", "fair", "hazy", "overcast"]
+## the time of day row's steps (h)
+const TIME_STEP := 0.5
+## the grade strength row's range and step
+const STRENGTH_MIN := 0.0
+const STRENGTH_MAX := 1.5
+const STRENGTH_STEP := 0.1
 ## the render scale choices: 0 keeps the player's setting (Settings.render_scale), the rest are run overrides
 const RENDER_SCALES := [0.0, 0.5, 0.67, 0.75, 0.85, 1.0]
-## haze factor on the preset's haze_max
+## haze factor on the light's haze_max
 const HAZE_MIN := 0.0
 const HAZE_MAX := 1.5
 
@@ -68,17 +76,26 @@ static func render_scale_choice() -> float:
 
 # ---- the finishing look (LookFx) ----------------------------------------------------------------------------------
 
-## `--look=off`: the colour grade, the vignette, the contact shading and the depth of field together.
+## `--look=off`: the colour grade, the contact shading and the depth of field together.
 static func set_look(scene: Node, on: bool) -> void:
 	LookFx.enabled = on
 	var sky: Variant = _member(scene, "sky")
 	var env := _env(scene)
 	if env != null:
-		LookFx.apply_grade(env, (sky as SkyRig).preset)
+		(sky as SkyRig).apply_grade()
 		LookFx.apply_quality(env, LookFx.tier)
-	var rig: Variant = _member(scene, "rig")
-	if rig is CameraRig:
-		(rig as CameraRig).look.strength = LookFx.vignette_for(CameraRig.is_clip((rig as CameraRig).mode))
+
+
+## `--grade=<k>`: the colour grade's strength (0 to 1.5, 0 off; water_render.md §4.5).
+static func set_grade_strength(scene: Node, k: float) -> void:
+	LookFx.grade_strength = clampf(k, STRENGTH_MIN, STRENGTH_MAX)
+	var sky: Variant = _member(scene, "sky")
+	if sky is SkyRig and (sky as SkyRig).is_inside_tree():
+		(sky as SkyRig).apply_grade()
+
+
+static func grade_strength() -> float:
+	return LookFx.grade_strength
 
 
 static func look() -> bool:
@@ -114,18 +131,91 @@ static func dof() -> bool:
 
 # ---- light ------------------------------------------------------------------------------------------------------
 
-## `--sky=clear|fair|hazy|late`: the light preset with its grade (SkyRig). Returns whether the name is known.
+## The scene stores the light flags (its `light_time`, `light_conditions`, `light_alias` members) and applies them
+## over the venue's defaults as it builds (the sail scene's _apply_light); a built scene, or one without them, takes
+## them on its sky at once.
+static func _light_live(scene: Node) -> bool:
+	return _live(scene) or not (scene != null and "light_time" in scene)
+
+
+## `--sky=clear|fair|hazy|late`: an old light preset name, its conditions at the hour of its afternoon sun (SkyRig,
+## Daylight.ALIASES). Before the scene is built it replaces any earlier `--time` and `--conditions`. Returns whether
+## the name is known.
 static func set_preset(scene: Node, name: String) -> bool:
+	name = name.to_lower()
+	if not Daylight.ALIASES.has(name):
+		return false
+	if scene != null and "light_alias" in scene:
+		scene.set("light_alias", name)
+		scene.set("light_time", -1.0)
+		scene.set("light_conditions", "")
 	var sky: Variant = _member(scene, "sky")
-	return sky is SkyRig and (sky as SkyRig).set_preset_name(name.to_lower())
+	if sky is SkyRig and _light_live(scene):
+		(sky as SkyRig).set_preset_name(name)
+	return true
 
 
+## The old preset name the light matches now, else "".
 static func preset(scene: Node) -> String:
 	var sky: Variant = _member(scene, "sky")
-	return PRESETS[(sky as SkyRig).preset] if sky is SkyRig else ""
+	return (sky as SkyRig).preset_name() if sky is SkyRig else ""
 
 
-## `--haze=<factor>`: the distance haze as a factor of the preset's haze_max (0 to 1.5); 1 is the preset's.
+## `--time=HH:MM` (or hours): the time of day (SkyRig.hour, clamped to the hours with the sun at 6 deg or more).
+static func set_time(scene: Node, h: float) -> void:
+	if scene != null and "light_time" in scene:
+		scene.set("light_time", h)
+	var sky: Variant = _member(scene, "sky")
+	if sky is SkyRig and _light_live(scene):
+		(sky as SkyRig).hour = h
+
+
+static func time(scene: Node) -> float:
+	var sky: Variant = _member(scene, "sky")
+	return (sky as SkyRig).hour if sky is SkyRig else VenueLook.DEFAULT_TIME
+
+
+## The time of day row's range on the scene's site: the hours with the sun at 6 deg or more, on TIME_STEP.
+static func time_range(scene: Node) -> Vector2:
+	var sky: Variant = _member(scene, "sky")
+	var r := (sky as SkyRig).hour_range() if sky is SkyRig else Vector2(6.0, 20.0)
+	return Vector2(ceilf(r.x / TIME_STEP - 1e-6) * TIME_STEP, floorf(r.y / TIME_STEP + 1e-6) * TIME_STEP)
+
+
+## The sun's elevation now (deg).
+static func sun_elevation(scene: Node) -> float:
+	var sky: Variant = _member(scene, "sky")
+	return (sky as SkyRig).sun_elevation_deg if sky is SkyRig else 0.0
+
+
+## `--conditions=clear|fair|hazy|overcast`. Returns whether the name is known.
+static func set_conditions(scene: Node, c: String) -> bool:
+	c = c.to_lower()
+	if not Daylight.is_condition(c):
+		return false
+	if scene != null and "light_conditions" in scene:
+		scene.set("light_conditions", c)
+	var sky: Variant = _member(scene, "sky")
+	if sky is SkyRig and _light_live(scene):
+		(sky as SkyRig).conditions = c
+	return true
+
+
+static func conditions(scene: Node) -> String:
+	var sky: Variant = _member(scene, "sky")
+	return (sky as SkyRig).conditions if sky is SkyRig else "fair"
+
+
+## `--light-advance=<rate>`: the clock runs at rate game hours per real hour (0 fixed, 1 real time).
+static func set_light_advance(scene: Node, rate: float) -> void:
+	if scene != null and "light_advance" in scene:
+		scene.set("light_advance", maxf(rate, 0.0))
+	var sky: Variant = _member(scene, "sky")
+	if sky is SkyRig:
+		(sky as SkyRig).light_advance = rate
+
+
+## `--haze=<factor>`: the distance haze as a factor of the light's haze_max (0 to 1.5); 1 is the light's.
 static func set_haze(scene: Node, k: float) -> void:
 	var sky: Variant = _member(scene, "sky")
 	if sky is SkyRig:
@@ -239,7 +329,7 @@ static func breathing(scene: Node) -> bool:
 # ---- everything a built scene takes from the stored values ------------------------------------------------------
 
 ## The stored look on a scene that has just been built (the end of the sail scene's _ready): grade, SSAO,
-## vignette, shadows and the camera breathing. The render scale, anti-aliasing and tier follow the settings' own
+## shadows and the camera breathing. The render scale, anti-aliasing and tier follow the settings' own
 ## apply calls.
 static func apply_built(scene: Node) -> void:
 	set_look(scene, LookFx.enabled)
@@ -268,6 +358,19 @@ static func apply_flag(scene: Node, a: String) -> bool:
 		"--sky":
 			if not set_preset(scene, val):
 				push_warning("--sky: clear, fair, hazy or late")
+		"--time":
+			var h := Daylight.parse_hour(val) if val.contains(":") else (val.to_float() if val.is_valid_float() else -1.0)
+			if h >= 0.0:
+				set_time(scene, h)
+			else:
+				push_warning("--time: HH:MM")
+		"--conditions":
+			if not set_conditions(scene, val):
+				push_warning("--conditions: clear, fair, hazy or overcast")
+		"--light-advance":
+			set_light_advance(scene, val.to_float())
+		"--grade":
+			set_grade_strength(scene, val.to_float())
 		"--haze":
 			set_haze(scene, val.to_float())
 		"--quality":

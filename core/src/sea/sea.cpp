@@ -100,6 +100,15 @@ SeaTick::SeaTick(const SeaField* field, std::uint32_t t) : field_(field), t_(t) 
     d_[i] = cs[i].c - static_cast<float>(t % cs[i].T) / static_cast<float>(cs[i].T);
 }
 
+SeaTick::SeaTick(const SeaField* field, std::uint32_t t, double frac) : SeaTick(field, t) {
+  if (!(frac > 0.0)) return;
+  const std::vector<SeaComponent>& cs = field_->components();
+  for (std::size_t i = 0; i < cs.size(); ++i) {
+    const double T = static_cast<double>(cs[i].T);
+    d_[i] = cs[i].c - static_cast<float>((static_cast<double>(t % cs[i].T) + frac) / T);
+  }
+}
+
 float SeaTick::exposure(float x, float y) const { return field_ ? field_->exposure(x, y) : 1.0f; }
 
 // §4

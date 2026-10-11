@@ -28,7 +28,7 @@ per-feature ablation measurements are in "Measured cost per feature" (to be fill
 
 | Part | ms | Where |
 | --- | --- | --- |
-| Bandwidth floor: HDR buffer, depth prepass, tonemap with 3D LUT, SMAA 3 passes, vignette, HUD | 4 to 5 | `scenes/sea/look_fx.gd:92` |
+| Bandwidth floor: HDR buffer, depth prepass, tonemap with 3D LUT, SMAA 3 passes, HUD (no vignette since 2026-10-11) | 4 to 5 | `scenes/sea/look_fx.gd` |
 | Water pixels (Godot Burley + GGX + sky reflection dominate; own code: 3 taps, puff loop up to 10, overlay loop up to 12) | 2 to 3 | `water_body.gdshaderinc:7`, `sea_common.gdshaderinc:167-276` |
 | Sky: about 9 value-noise octaves per pixel every frame | about 1 | `sky_common.gdshaderinc:56-73` |
 | Sails (baked path) | about 0.5 | |
@@ -120,10 +120,10 @@ meshes are written in place with `mesh_surface_update_*_region` (ribbons 80x15 v
 
 | # | What | Where | Gain | Effort |
 | --- | --- | --- | --- | --- |
-| G2 | Potato tier below L: render scale 0.5 to 0.67 with FSR, FXAA instead of SMAA, sun shadows off (keep the drawn BoatShadows on the water), no LUT grade or vignette; water `unshaded` with a hand-written sun specular and the sky-ramp Fresnel (already uniforms in `sea_common.gdshaderinc:45-48`), so no IBL fetch; 1 detail layer, no glint tap, puff loop capped at 4; sky without clouds or a baked panorama | quality tiers, shaders | 50 to 65 % of tier L GPU time | M |
+| G2 | Potato tier below L: render scale 0.5 to 0.67 with FSR, FXAA instead of SMAA, sun shadows off (keep the drawn BoatShadows on the water), no LUT grade; water `unshaded` with a hand-written sun specular and the sky-ramp Fresnel (already uniforms in `sea_common.gdshaderinc:45-48`), so no IBL fetch; 1 detail layer, no glint tap, puff loop capped at 4; sky without clouds or a baked panorama | quality tiers, shaders | 50 to 65 % of tier L GPU time | M |
 | G6 | Try the Mobile renderer for tier L and potato: no depth prepass (about half the geometry and draws), no clustered-light compute. Everything tier L uses works there. Caveat: the 10-bit buffer clips highlights at exposure 0.5 / white 6 (`env_day.tres:26-28`), so the sun disc, glints and sails need a retune; renderer is chosen per export or launch, not live | `project.godot` | 15 to 30 % | M |
 | G7 | Tier L shadows: hard filter (`SHADOW_QUALITY_SOFT_VERY_LOW` still takes several PCF taps), boats beyond about 30 m do not cast | `sea_quality.gd` | 0.3 to 0.6 ms GPU | S |
-| G8 | Vignette folded into the LUT/tonemap or dropped on L (a full-screen blended pass) | `look_fx.gd:92` | about 0.3 ms GPU on iGPU | S |
+| G8 | Done 2026-10-11: the vignette is gone on every tier (owner decision: no vignette at all) | | about 0.3 ms GPU on iGPU | |
 | G5 | SMAA to FXAA on L and potato, or SMAA only at 100 % scale (one pass instead of three). Against the owner's "SMAA everywhere" decision of 2026-10-03: owner decides after a measurement | `project.godot`, quality tiers | 1 to 2 ms GPU on iGPU | S |
 | G9 | Mobile textures: `rendering/textures/vram_compression/import_etc2_astc` is unset. Enabling it on today's BC set roughly doubles the imported size (pair with A1 and A3), or use Basis Universal (mode 4, UASTC with RDO), one transcodable texture for desktop and mobile. All dimensions are multiples of 4 (ETC2/ASTC-safe) | `project.godot` | phone builds | S to set, M to check |
 
@@ -304,7 +304,7 @@ Menu fix (M1): cap the backdrop at 30 fps or 2 boats on the low tiers.
   `light()`); `boat_shadow` (polygon loops).
 - Light to medium: `sky` (5 octaves, sky pixels only), `land` (3 noises), `wake` and `bow_wave` (wave loop in the
   vertex stage), `mist` (2 reads, alpha blended).
-- Light: `boat.gdshader` (4 taps), `wake_normal`, the full-screen vignette and grade.
+- Light: `boat.gdshader` (4 taps), `wake_normal`, the grade (in the tonemap pass; there is no vignette).
 
 Cheaper sea on L (W1): no whitecaps or puffs, the course overlays on their own mesh instead of in every sea pixel,
 1 detail tap.

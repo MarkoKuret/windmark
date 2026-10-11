@@ -167,6 +167,15 @@ var look_panel: LookPanel
 var chase_breathing := true
 ## the scene is built: DevLook's setters apply at once from here on (before, the flags only store their values)
 var built := false
+## the light (water_render.md §4.5): the time of day (-1: the venue's look file, by the weather mode), the conditions
+## ("": the venue's), an old preset name (`--sky=`, applied before the two) and the clock's run (game hours per real
+## hour); from GameSetup, then the flags (DevLook), applied over the venue's defaults by _apply_light
+var light_time := -1.0
+var light_conditions := ""
+var light_alias := ""
+var light_advance := 0.0
+## the venue's look file (VenueLook) the light took its defaults from
+var venue_look: VenueLook
 
 ## controls.md §7 capture: clean pause, slow motion, world tags (CaptureMode)
 var capture := CaptureMode.new()
@@ -202,6 +211,7 @@ func _ready() -> void:
 	_load_scenario()
 	if world_seed == 0:
 		world_seed = 1 + (Time.get_ticks_usec() ^ int(Time.get_unix_time_from_system() * 1000.0)) % 2000000000
+	_apply_light()
 	on_core = sim_kind == SimKind.CORE or (sim_kind == SimKind.AUTO and CoreSimSource.available())
 	var b := _setup_core() if on_core else _setup_fake()
 	assert(b >= 0, "class %s did not load" % class_id)
@@ -384,6 +394,9 @@ func _apply_setup() -> void:
 	weather_gusts = gs.gusts
 	world_seed = gs.seed
 	livery = gs.livery
+	light_time = gs.light_time
+	light_conditions = gs.light_conditions
+	light_advance = gs.light_advance
 	if gs.mode == "scenario":
 		scenario = gs.scenario
 
@@ -391,9 +404,11 @@ func _apply_setup() -> void:
 ## Command line after `--` (over GameSetup): `--race` (race mode on `course`; the fleet of GameSetup when no
 ## `--fleet`), `--free`, `--fleet=10`, `--level=expert` (easy, intermediate, expert, pro), `--speed-only`,
 ## `--watch` (an AI sails the player's boat too, spectating on), `--class=wm12`, `--venue=<id>`,
-## the look flags of DevLook.apply_flag (the look panel's rows, hud.md §18): `--sky=clear|fair|hazy|late` (the
-## light preset, SkyRig; fair by default), `--look=off` (no colour grade, vignette, contact shading or depth of
-## field, to compare), `--ssao=on|off|tier` (contact shading over the tier), `--dof=off`, `--haze=<factor>`,
+## the look flags of DevLook.apply_flag (the look panel's rows, hud.md §18): `--time=HH:MM` and
+## `--conditions=clear|fair|hazy|overcast` (the light, SkyRig; the venue's look file by default), `--sky=clear|fair|
+## hazy|late` (the old preset names), `--light-advance=<rate>`, `--grade=<k>` (0 to 1.5),
+## `--look=off` (no colour grade, contact shading or depth of field, to
+## compare), `--ssao=on|off|tier` (contact shading over the tier), `--dof=off`, `--haze=<factor>`,
 ## `--caps=off`, `--drawn-wind=<kn>`, `--breathing=off`, `--aa=off|fxaa|smaa`, `--quality=L|M|H`,
 ## `--render-scale=0.67`, `--no-boat-shadows`, `--no-drawn-shadows`;
 ## `--course=<venue>/<id>` (race mode), `--seed=<n>` (0: from the clock), `--livery=<id>` (the player's livery),
@@ -561,6 +576,23 @@ func _apply_measure_off() -> void:
 		AudioServer.set_bus_mute(0, true)
 	if measure_off.has("sim"):
 		runner.paused = true
+
+
+## The light of the session (water_render.md §4.5): the venue's look file gives the site and the defaults (a Random
+## weather race draws its hour and conditions from the seed), then an old preset name, then the time and conditions
+## of GameSetup or the flags. One resolve of the sky.
+func _apply_light() -> void:
+	venue_look = VenueLook.load_venue(venue)
+	for p in venue_look.problems:
+		push_warning("%s.look.json: %s" % [venue, p])
+	var pick := venue_look.pick(weather, world_seed)
+	sky.set_site(venue_look.site())
+	sky.set_light(pick["hour"], pick["conditions"])
+	if light_alias != "":
+		sky.set_preset_name(light_alias)
+	sky.set_light(light_time if light_time >= 0.0 else sky.hour,
+		light_conditions if light_conditions != "" else sky.conditions)
+	sky.light_advance = light_advance
 
 
 ## A rules scenario (race.md §14) onto the scene's settings: class, venue, course, fleet, wind and seed from the

@@ -41,8 +41,10 @@ struct wm_world {
   std::uint32_t wind_t = 0xFFFFFFFFu;
   wm::SeaTick sea_tick;
   std::uint32_t sea_t = 0xFFFFFFFFu;
-  wm::SeaTick sea_tick_any;  // the last other time asked for (render clock)
-  std::uint32_t sea_t_any = 0xFFFFFFFFu;
+  wm::SeaTick sea_tick_any;  // the last other time asked for (render clock, fractional ms)
+  double sea_t_any = -1.0;
+  wm::WindTick wind_r;       // the wind at the last fractional render time (wind.md §9)
+  double wind_r_t = -1.0;
   std::vector<wm::BoatState> prev;  // state before the last step
   // Sail requests of the coming tick, answered on a copy of the sails (see wm_world_apply_input).
   std::vector<wm::Sails> req_sails;
@@ -97,6 +99,41 @@ const wm::WindTick& wind_at(wm_world* w, std::uint32_t t) {
 }
 
 const wm::WindTick& wind_now(wm_world* w) { return wind_at(w, w->world->t_ms()); }
+
+// A render time (ms, fractional) as its whole millisecond n and the fraction f in [0, 1): NaN and negative
+// times are 0, times past the clock's range its last millisecond.
+struct RenderTime {
+  std::uint32_t n;
+  double f;
+};
+RenderTime render_time(double t) {
+  if (!(t > 0.0)) return {0u, 0.0};
+  if (t >= 4294967295.0) return {0xFFFFFFFFu, 0.0};
+  const double n = std::floor(t);
+  return {static_cast<std::uint32_t>(n), t - n};
+}
+
+// wind.md §9 render time: the tick at n with its direction and its patches (same generation) lerped toward n + 1.
+const wm::WindTick& wind_render(wm_world* w, double t_ms) {
+  const RenderTime r = render_time(t_ms);
+  if (r.f == 0.0) return wind_at(w, r.n);
+  const double key = static_cast<double>(r.n) + r.f;
+  if (w->wind_r_t == key) return w->wind_r;
+  w->wind_r = wind_at(w, r.n);
+  const wm::WindTick& b = wind_at(w, r.n + 1);
+  const float f = static_cast<float>(r.f);
+  w->wind_r.global_from = wm::angle_lerp(w->wind_r.global_from, b.global_from, f);
+  for (std::size_t j = 0; j < w->wind_r.slots.size() && j < b.slots.size(); ++j) {
+    wm::PuffPatch& p = w->wind_r.slots[j];
+    const wm::PuffPatch& q = b.slots[j];
+    if (p.generation != q.generation) continue;
+    p.px = wm::lerp(p.px, q.px, f);
+    p.py = wm::lerp(p.py, q.py, f);
+    p.e = wm::lerp(p.e, q.e, f);
+  }
+  w->wind_r_t = key;
+  return w->wind_r;
+}
 
 const wm::SeaTick* sea_now(wm_world* w) {
   const wm::SeaField* sea = w->world->sea();
@@ -1089,28 +1126,29 @@ int32_t wm_world_puffs(wm_world* w, wm_puff* out, int32_t cap) {
 
 float wm_world_puff_tile(const wm_world* w) { return w != nullptr ? w->wind->settings().puffs.tile : NAN; }
 
-int32_t wm_world_puffs_at(wm_world* w, uint32_t t_ms, wm_puff* out, int32_t cap) {
+int32_t wm_world_puffs_at(wm_world* w, double t_ms, wm_puff* out, int32_t cap) {
   if (w == nullptr) return 0;
-  const std::vector<wm::PuffPatch> p = w->wind->puff_patches(wind_at(w, t_ms));
+  const std::vector<wm::PuffPatch> p = w->wind->puff_patches(wind_render(w, t_ms));
   for (std::size_t i = 0; out != nullptr && i < p.size() && static_cast<int32_t>(i) < cap; ++i)
     out[i] = {p[i].px, p[i].py, p[i].R, p[i].s, p[i].e};
   return static_cast<int32_t>(p.size());
 }
 
-wm_status wm_world_current_at(wm_world* w, float x, float y, uint32_t t_ms, float* cx, float* cy) {
+wm_status wm_world_current_at(wm_world* w, float x, float y, double t_ms, float* cx, float* cy) {
   if (w == nullptr) return fail(WM_ERR_ARG, "null argument");
-  const wm::Vec2 c = w->wind->current(x, y, t_ms);
+  const RenderTime r = render_time(t_ms);
+  const wm::Vec2 c = w->wind->current(x, y, r.n, r.f);
   if (cx) *cx = c.x;
   if (cy) *cy = c.y;
   return WM_OK;
 }
 
-wm_status wm_world_wind_state(wm_world* w, uint32_t t_ms, wm_wind_state* out) {
+wm_status wm_world_wind_state(wm_world* w, double t_ms, wm_wind_state* out) {
   if (w == nullptr || out == nullptr) return fail(WM_ERR_ARG, "null argument");
   const wm::WindSettings& s = w->wind->settings();
   out->base_speed = s.base_speed;
   out->base_from = s.base_from;
-  out->global_from = wind_at(w, t_ms).global_from;
+  out->global_from = wind_render(w, t_ms).global_from;
   out->puff_tile = s.puffs.tile;
   out->cap_up = s.puffs.cap_up;
   out->cap_down = s.puffs.cap_down;
@@ -1145,12 +1183,14 @@ wm_status wm_world_sea_exposure_grid(const wm_world* w, wm_exposure_grid* out) {
   return WM_OK;
 }
 
-float wm_world_sea_height_at(wm_world* w, float x, float y, uint32_t t_ms) {
+float wm_world_sea_height_at(wm_world* w, float x, float y, double t_ms) {
   if (w == nullptr || w->world->sea() == nullptr) return 0.0f;
-  if (t_ms == w->world->t_ms()) return wm_world_sea_height(w, x, y);
-  if (w->sea_t_any != t_ms) {
-    w->sea_tick_any = w->world->sea()->at(t_ms);
-    w->sea_t_any = t_ms;
+  const RenderTime r = render_time(t_ms);
+  if (r.f == 0.0 && r.n == w->world->t_ms()) return wm_world_sea_height(w, x, y);
+  const double key = static_cast<double>(r.n) + r.f;
+  if (w->sea_t_any != key) {
+    w->sea_tick_any = wm::SeaTick(w->world->sea(), r.n, r.f);
+    w->sea_t_any = key;
   }
   return w->sea_tick_any.sea_height(x, y);
 }

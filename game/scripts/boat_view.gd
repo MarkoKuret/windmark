@@ -26,6 +26,11 @@ const NEAR_INTERVAL_L := 1.0 / 20.0
 static var near_interval := NEAR_INTERVAL
 
 ## one sail of the class and how it is placed
+## §7.6 steps of the main's angle scanned out from the centreline, and bisection steps of its stop
+const STOP_SCAN := 24
+const STOP_STEPS := 10
+
+
 class SailPart:
 	var index := 0
 	var id := ""
@@ -39,6 +44,12 @@ class SailPart:
 	var ah := Vector3.BACK
 	var nh := Vector3.RIGHT
 	var sl := 1.0  # luff extent, m
+	## the main's region for its stop on a flying sail's sheet (§7.6): rest foot direction (horizontal, from the
+	## gooseneck), its length, and the heights of the rest tack and head along the boom axis from the gooseneck
+	var stop_aft := Vector3.BACK
+	var stop_span := 0.0
+	var stop_z0 := 0.0
+	var stop_z1 := 0.0
 	## BOOM (the main), LUFF (about the stay or sprit line), SPRIT (asymmetric on a bowsprit), POLE
 	var mode := 0
 	var tack_line_max := 0.0
@@ -96,6 +107,11 @@ var _pole_axis := Vector3.UP
 var _mast_step := Vector3.ZERO
 var _mast_head := Vector3.ZERO
 var _mast_axis := Vector3.UP
+## §7.5 the flying sails' sheet lead block on starboard (model axes; the sidecar's rig.sheet_leads.flying.lead)
+var _flying_lead := Vector3.ZERO
+var _has_flying_lead := false
+## §7.6 the main's drawn angle less the core's, the last update (tests)
+var main_stop := 0.0
 var _sheet: MeshInstance3D
 var _sheet_mesh: ArrayMesh
 var _sheet_arrays: Array = []
@@ -282,6 +298,9 @@ func _find_parts() -> void:
 		_mast_step = Frames.body_to_model(_vec(rig["mast_step"]))
 		_mast_head = Frames.body_to_model(_vec(rig["masthead"]))
 		_mast_axis = (_mast_head - _mast_step).normalized()
+	if rig.has("sheet_leads") and rig["sheet_leads"] is Dictionary and rig["sheet_leads"].has("flying"):
+		_flying_lead = Frames.body_to_model(_vec(rig["sheet_leads"]["flying"]["lead"]))
+		_has_flying_lead = true
 	_pole = levels[0]["pole"]
 	if _pole:
 		_pole_rest = _pole.transform
@@ -703,6 +722,15 @@ func _setup_shape(sp: SailPart, side: Dictionary, furling: bool) -> void:
 		shape = ClassDB.instantiate("SailShape")
 	else:
 		shape = SailShapeRef.new()
+	if sp.mode == Mode.BOOM:  # §7.6 the main's region for its stop on a flying sail's sheet
+		var foot := rest_mid[sp.cols - 1] - _boom_pivot
+		foot -= _boom_axis * foot.dot(_boom_axis)
+		sp.stop_aft = foot / maxf(foot.length(), 1e-6)
+		sp.stop_span = 0.0
+		for q in rest_mid:  # the farthest the rest sail reaches aft (the roach)
+			sp.stop_span = maxf(sp.stop_span, (q - _boom_pivot).dot(sp.stop_aft))
+		sp.stop_z0 = (rest_mid[0] - _boom_pivot).dot(_boom_axis)
+		sp.stop_z1 = (rest_mid[(sp.rows - 1) * sp.cols] - _boom_pivot).dot(_boom_axis)
 	if not shape.configure(rest_mid, sp.rows, sp.cols, params):
 		push_warning("%s: sail shape set-up failed; the sail stays flat" % sp.node.name)
 		return
@@ -722,7 +750,7 @@ func _setup_shape(sp: SailPart, side: Dictionary, furling: bool) -> void:
 func _shape_params(sp: SailPart, look: Dictionary, furling: bool) -> Dictionary:
 	var kind := SailShapeRef.Kind.HEADSAIL
 	var t := sp.type
-	var d := {"fill_gain": 0.75, "fill_curve": 1.2, "flutter_amp": 0.07, "twist_top": 0.105}
+	var d := {"fill_gain": 0.75, "fill_curve": 1.2, "flutter_amp": 0.07, "twist_top": 0.175}
 	if t == "main":
 		kind = SailShapeRef.Kind.MAIN
 		d = {"fill_gain": 0.6, "fill_curve": 4.0, "flutter_amp": 0.15, "twist_top": 0.070}
@@ -759,6 +787,8 @@ func _shape_params(sp: SailPart, look: Dictionary, furling: bool) -> Dictionary:
 	if is_flying(t):  # §7.4: kept clear of the other sails and the mast
 		p["clearance"] = 0.042 * loa
 		p["mast_head"] = _mast_head
+		if _has_flying_lead:  # §7.5, §7.6 its sheet's lead block
+			p["sheet_lead"] = _flying_lead
 	return p
 
 
@@ -844,6 +874,10 @@ func apply_sails(prev: SimSource.SailsView, cur: SimSource.SailsView, alpha: flo
 			backed = o1.backed
 		sp.phase = s1.phase
 		sp.shiver = shiver
+		if sp.mode == Mode.BOOM:
+			var core_beta := sp.beta
+			sp.beta = _main_stopped(sp)
+			main_stop = sp.beta - core_beta
 		var placed := _place(sp, s1.phase, prog, shiver, backed, awa, aws, dt)
 		drawn = placed or drawn
 		if sp.mode == Mode.BOOM:
@@ -866,6 +900,84 @@ func apply_sails(prev: SimSource.SailsView, cur: SimSource.SailsView, alpha: flo
 		if due:
 			_sheets_since = 0.0
 		sheets.step(aws, dt, due)
+
+
+## §7.6: the main's drawn angle: it stops on the straight sheet of the flying sail shown (its clew and angle as last
+## placed), `c` short of it; the core's angle when no flying sail is set.
+func _main_stopped(main: SailPart) -> float:
+	var fl: SailPart = null
+	var w := 0.0
+	for o in sail_parts:
+		if o == main or o.shape == null or not is_flying(o.type) or not o.node.visible or o.updates == 0:
+			continue
+		var wo: float = o.shape.sheet_weight() if o.shape.has_method("sheet_weight") else 0.0
+		if wo > w:
+			w = wo
+			fl = o
+	if fl == null or main.stop_span <= 0.0 or not _has_flying_lead:
+		return main.beta
+	var c := 0.042 * info.loa
+	return stop_angle(main.beta, fl.shape.sheet_clew(), fl.shape.working_lead(fl.beta), _boom_pivot, _boom_axis, main.stop_aft,
+		main.stop_span, -main.stop_z0, main.stop_z1, c, w)
+
+
+## §7.6: the main's angle eased out from the centreline up to |beta| until its region (the vertical rectangle through
+## the gooseneck `g` along `aft` turned by the angle about `up`, `span` long, `z0` to `z1` up from `g`) first comes
+## within `c` of the sheet `clew`-`lead`; blended in by `w`.
+static func stop_angle(beta: float, clew: Vector3, lead: Vector3, g: Vector3, up: Vector3, aft: Vector3,
+		span: float, z0: float, z1: float, c: float, w: float) -> float:
+	if w <= 0.0 or c <= 0.0:
+		return beta
+	var p0 := clew - g
+	var p1 := lead - g
+	var sb := 1.0 if beta >= 0.0 else -1.0
+	var b := absf(beta)
+	var lo := -1.0
+	var hi := 0.0
+	for k in range(1, STOP_SCAN + 1):
+		var th := b * k / STOP_SCAN
+		if rect_gap(p0, p1, aft.rotated(up, sb * th), up, span, z0, z1) < c:
+			lo = b * (k - 1) / STOP_SCAN
+			hi = th
+			break
+	if lo < 0.0:
+		return beta
+	for _i in STOP_STEPS:
+		var m := 0.5 * (lo + hi)
+		if rect_gap(p0, p1, aft.rotated(up, sb * m), up, span, z0, z1) >= c:
+			lo = m
+		else:
+			hi = m
+	return sb * (b - w * (b - lo))
+
+
+## §7.6: the distance of the segment p0-p1 (from the gooseneck) from the vertical rectangle along `u`, 0 to `span`
+## long and `z0` to `z1` high; 0 when the segment passes through it.
+static func rect_gap(p0: Vector3, p1: Vector3, u: Vector3, up: Vector3, span: float, z0: float, z1: float) -> float:
+	var nv := up.cross(u)
+	var n0 := p0.dot(nv)
+	var n1 := p1.dot(nv)
+	if n0 * n1 <= 0.0 and n0 != n1:
+		var q := p0 + (p1 - p0) * (n0 / (n0 - n1))
+		var qs := q.dot(u)
+		var qz := q.dot(up)
+		if qs >= 0.0 and qs <= span and qz >= z0 and qz <= z1:
+			return 0.0
+	var corners := [up * z0, u * span + up * z0, u * span + up * z1, up * z1]
+	var best := minf(_rect_pt(p0, u, up, nv, span, z0, z1), _rect_pt(p1, u, up, nv, span, z0, z1))
+	for e in 4:
+		var pts := Geometry3D.get_closest_points_between_segments(p0, p1, corners[e], corners[(e + 1) % 4])
+		best = minf(best, pts[0].distance_to(pts[1]))
+	return best
+
+
+static func _rect_pt(p: Vector3, u: Vector3, up: Vector3, nv: Vector3, span: float, z0: float, z1: float) -> float:
+	var s := p.dot(u)
+	var z := p.dot(up)
+	var nn := p.dot(nv)
+	var ds := maxf(0.0, maxf(-s, s - span))
+	var dz := maxf(0.0, maxf(z0 - z, z - z1))
+	return sqrt(nn * nn + ds * ds + dz * dz)
 
 
 ## Bends and places one sail; true when its mesh was redrawn (or it was shown or hidden) this frame.

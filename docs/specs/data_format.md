@@ -139,7 +139,7 @@ the generator warns when they differ by more than 3 %). The corners, in the cent
 
 | type | `SLE` | `SF` | mid girth `SHW` |
 | --- | --- | --- | --- |
-| `spinnaker_asym` | 0.82 `SLU` (0.85 along the rounded edges) | 0.57 `SLU` | 0.88 `SF` (real asymmetrics: 0.93 to 1.0, ORC's usual case above 0.85, `sail_visuals.md` §14.1; a little under them so the reaching clew stays aft of the mast) |
+| `spinnaker_asym` | 0.82 `SLU` (0.86 along the rounded edges) | 0.57 `SLU` | 0.95 `SF` (real running asymmetrics: 0.93 to 1.02, `sail_visuals.md` §14.1, §14.6) |
 | `spinnaker_sym` | `SLU` (equal luffs) | 1.75 × pole length, at most 0.6 `SLU` | 0.95 `SF` |
 | `code_zero` | 0.90 `SLU` | 0.46 `SLU` | 0.56 `SF` (below the 0.75 `SF` spinnaker line: flatter and narrower) |
 
@@ -700,6 +700,30 @@ Each blob is `bytes` gzip bytes at `offset` in the binary, `raw_bytes` once unpa
 Checks (`venuegen --check`): at most 4 chunks and 2 shadow casters, at most 120k triangles with the ridge, the
 ridge at most 10k and casting no shadows, the drawn coastline at most 20k vertices, the blobs inside the binary,
 the binary at most 8 MB (`venues.md` §4.2).
+
+### 6.11 Venue look file (`windmark.look/1`)
+The front end's hand-owned look of a venue, `data/venues/<venue>.look.json`, next to the venue file. Presentation
+only: the core never reads it. So far it holds the venue's daylight (`water_render.md` §4.5); the scenery, sky and
+water colours and the placed sound sources (`audio.md` §7) join it as blocks of their own. A venue without one
+takes the defaults below (`VenueLook`).
+```json
+{
+  "schema": "windmark.look/1", "id": "garda", "version": 1,
+  "light": {
+    "date": "07-20",                     // month-day of the venue's racing season (sun position)
+    "utc_offset_h": 2,                   // the local clock on that date (summer time included), hours east of UTC
+    "race_window": ["12:30", "18:30"],   // typical race hours, local clock; a Random race draws its hour in it
+    "time": "14:30",                     // the default hour (Local and Custom races, free sailing)
+    "conditions": "fair",                // the default: clear, fair, hazy or overcast
+    "typical": ["clear", "fair", "hazy"],// what a Random race draws from
+    "note": "…"                          // why (free text, not shown)
+  }
+}
+```
+The latitude and longitude are the venue file's `origin` (§6.1); open water without a venue file uses
+`practice_waters`'s. Defaults when a key is missing: date 07-15, UTC offset +2, window 11:00 to 17:00, time 14:30,
+conditions fair, typical clear, fair and hazy. Checks (`tests/look_test.gd`): times as `HH:MM`, the window inside
+the hours with the sun at 10° or more on the date, the default time inside the window, known conditions.
 
 ## 7. Versioning and consistency
 

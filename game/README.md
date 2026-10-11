@@ -143,8 +143,8 @@ components within 1 mm of the core's sea height.
 | `add_entry(id, entry)`, `create_race(course)`, `place_boat(b, x, y, psi)` | a race entry (`human`, `ai`, `performance_scale`, `auto_trim`, `front_sail`), the race on `venue/course` or a path, free-sailing placement |
 | `apply_input(b, frame)` | applies the frame decoded from its 6-byte wire form, the values every peer applies; the controls take effect at the next step (`controls(b)` shows them after it) |
 | `sea_time_ms(ticks)`, `render_time_ms(alpha)` | the environment clock: tick n at 50 n ms (the world's tick 0 is its zero); a pose at alpha at `sea_time_ms(tick() - 1 + alpha)` |
-| `sea_height_at(x, y, t_s)` | sea height at any time (s since tick 0) |
-| `sea_components()`, `sea_exposure()`, `wind_state(t_ms)`, `current_at(x, y, t_ms)` | the Sea node's source calls (as `SeaEnvSource`), from the core: the drawn puffs are the ones the boats sail in. `CoreEnvSource` is the Node that hands them to the Sea (`source`) |
+| `sea_height_at(x, y, t_s)` | sea height at any time (s since tick 0, fractional: the core resolves sub-millisecond render times) |
+| `sea_components()`, `sea_exposure()`, `wind_state(t_ms)`, `current_at(x, y, t_ms)` | the Sea node's source calls (as `SeaEnvSource`), from the core: the drawn puffs are the ones the boats sail in; `t_ms` is fractional (`wind.md` §9 render time). `CoreEnvSource` is the Node that hands them to the Sea (`source`) |
 | `boat_env(b)`, `wake_state(b, pose, own)`, `checksum()` | the wind, current and shadow the boat stepped in; the `SeaWakes.update_boat` state with the class waterline and transom; the tick checksum |
 | `add_ai(id, level, speed_only)` | an AI boat of class `id` sailed by the core's AI skippers (ai.md) at `level` (`AI_LEVELS`: easy, intermediate, expert, pro, or its index) |
 | `ai_take_over(b)`, `ai_release(b)`, `ai_has(b)` | an AI sails a boat as it is (a disconnected human, ai.md §14), hands it back; whether an AI sails it |
@@ -314,7 +314,7 @@ Flags after `--`:
 | `--sea-grid=120x160` | this run's sea radial grid (rings x segments), over the tier; not saved |
 | `--water-shader=l` | this run's water shader (`water_l`, `_m` or `_h`), over the tier; not saved |
 | `--no-hud` | the HUD hidden from the start (as F10) |
-| `--look=off` | no colour grade, vignette, contact shading or depth of field (`water_render.md` §4.5), to compare |
+| `--look=off` | no colour grade, contact shading or depth of field (`water_render.md` §4.5), to compare |
 | `--ssao=on` | contact shading (SSAO) on any tier (`on`), off on H (`off`), or the tier's (`tier`); not saved |
 | `--dof=off` | no depth of field on the clip cameras |
 | `--haze=0.5` | the distance haze as a factor of the light preset's (0 to 1.5) |
@@ -332,7 +332,7 @@ Flags after `--`:
 | `--no-wakes` | no wakes, bow waves, spray or wake normal buffer |
 | `--no-sky` | a plain gradient sky shader instead of the sky with clouds (it still lights the scene) |
 | `--no-water` | a flat plane with a plain material instead of the sea |
-| `--no-post` | no grade, vignette, contact shading, glow or filmic tone mapping |
+| `--no-post` | no grade, contact shading, glow or filmic tone mapping |
 | `--no-course` | no marks, flags, lines or water overlays drawn |
 | `--no-audio` | no sound work and the master bus muted |
 | `--no-sim` | the simulation paused from the first frame (no ticks, no AI; the cameras still move) |
@@ -342,7 +342,7 @@ Flags after `--`:
 A developer tool (`docs/specs/hud.md` §18, `scripts/dev/`): F9 in the sail scene opens a side column on the right
 that changes the look live, so a new look can be judged in one session. `DevLook` holds one function per setting,
 and the flags above call the same functions, so the panel and the flags stay in sync. Rows (live unless noted):
-anti-aliasing (Off, FXAA, SMAA), grade and vignette, SSAO (Tier, Off, On), clip camera depth of field, light
+anti-aliasing (Off, FXAA, SMAA), grade on or off, grade strength, SSAO (Tier, Off, On), clip camera depth of field, light
 preset, quality tier (sea grid and water shader, wakes, shadows, glow, SSAO, reflections; a short hitch while the
 shaders compile), haze strength (x0 to x1.5) and its reset, whitecaps, drawn wind for the sea (8 to 25 kn), the wind
 for a restart and "Restart with wind" (restart only: the core takes its wind when the world is made; a rules
@@ -774,16 +774,23 @@ surface before the binding exists.
 `scenes/sea/sky_day.tscn` (`SkyRig`) is the daytime light: the sky shader (saturated blue ramp, sun disc and halo,
 cumulus), the sun light, a distance haze toward the horizon colour, sky reflections, the camera exposure and the glow on the
 sun's glints, set from one group of parameters. Sun and sky keep their clear-day proportion (the sun about four
-fifths of the light on a level surface), and the exposure brings the scene back to screen range. Four light
-presets (`water_render.md` §4.5): clear, fair (the default), hazy and late afternoon (a low warm sun), set with
-`SkyRig.preset` or, in the sail test, `--sky=clear|fair|hazy|late`. Each preset carries its colour grade, and
+fifths of the light on a level surface), and the exposure brings the scene back to screen range. Two inputs
+set it (`water_render.md` §4.5, `scenes/sea/daylight.gd`, `Daylight`): the time of day (`SkyRig.hour`, a local clock
+hour; the sun from it and the venue's latitude, longitude and date) and the conditions (`SkyRig.conditions`: clear,
+fair, hazy, overcast). The venue's look file (`data/venues/<venue>.look.json`, `scripts/venue/venue_look.gd`,
+`VenueLook`) gives the date, race window and defaults; GameSetup (`light_time`, `light_conditions`,
+`light_advance`) and the sail test flags `--time=HH:MM`, `--conditions=`, `--light-advance=` override them, and
+`--sky=clear|fair|hazy|late` keeps the old preset names as aliases. Each light carries its colour grade (strength
+`--grade=`, 0 to 1.5), and
 `LookFx` (`scenes/sea/look_fx.gd`) adds the finishing look: the grade (a 3-D LUT built at load, applied by the
-environment after the tone mapping), the vignette under the HUD (owned by `CameraRig`, stronger on the clip
-cameras), the contact shading (SSAO, tier H) and the depth of field of the long lens and mark clip cameras.
-Previews of the grade, vignette and late light: `tests/look_lut_dump.gd`, `tests/water_preview_dump.gd` (with
+environment after the tone mapping), the contact shading (SSAO, tier H) and the depth of field
+of the long lens and mark clip cameras. There is no vignette on any camera (owner decision 2026-10-11).
+Previews of the grade and late light: `tests/look_lut_dump.gd`, `tests/water_preview_dump.gd` (with
 `-- --sky=late` for the late light) and `tests/cine_preview.py --publish` (`tests/previews/cine_*.jpg`; the
-commands are in its header). `tests/look_test.gd` (in `run_ui_tests.sh`) checks the presets, the grade and the SSAO
-per tier. The anti-aliasing is SMAA 1x on every tier (`water_render.md` §7): the project default, kept with
+commands are in its header). The daylight previews: `python3 tests/daylight_preview.py --dump --publish` (the
+chase shot at five hours and four conditions, grade off against the default: `tests/previews/daylight_*.jpg`).
+`tests/look_test.gd` (in `run_ui_tests.sh`) checks the sun position, the hour keys and conditions, the look files,
+the grade and the SSAO per tier. The anti-aliasing is SMAA 1x on every tier (`water_render.md` §7): the project default, kept with
 the upscaler by `Settings.apply_render_scale` (off only under a temporal upscaler).
 
 ### Water tests

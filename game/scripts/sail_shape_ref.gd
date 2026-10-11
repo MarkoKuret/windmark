@@ -24,11 +24,22 @@ enum Mode { BOOM, LUFF, SPRIT, POLE }
 
 const KNOT := 1852.0 / 3600.0
 const C_HOOK := 0.0369260386
+## §6.2 the jib's and genoa's camber k_j, its fill scale b_j and the largest of x (1 - x) (2 - x)
+const JIB_CAMBER := 0.135
+const JIB_FILL := 0.15
+const JIB_PROFILE_MAX := 0.3849002
+## §7.5 the clew on its sheet: the share of the turn, its reach (of the foot's rest chord), the grid steps that give
+## the foot and leech directions, and the fade round the bow (|beta| from, to)
+const CLEW_TURN := 0.6
+const CLEW_SPAN := 0.6
+const CLEW_REACH := 2
+const CLEW_FADE_FROM := 1.9198622  # 110 deg
+const CLEW_FADE_TO := 2.6179939    # 150 deg
 const TAU_SMOOTH := 0.25
 const DT_MAX := 0.1
 ## §4, §7.4 clearance constants: push slope, ease threshold (in clearances), ease cap (rad)
 const PUSH_SLOPE := 0.3
-const PUSH_EASE := 3.0
+const PUSH_EASE := 2.0
 const EASE_MAX := 0.35
 
 var rows := 0
@@ -82,6 +93,9 @@ var _uc := PackedFloat32Array()
 var _c := PackedFloat32Array()
 var _amid := PackedFloat32Array()
 var _hrow := PackedFloat32Array()
+var _u0row := PackedFloat32Array()  # §6.2 u of each row's luff and leech vertex
+var _ulrow := PackedFloat32Array()
+var _jcam := 0.0                     # §6.2 the jib's signed camber m, per update
 ## per row, per update: camber over chord and chord shortening (§6.3)
 var _drow := PackedFloat32Array()
 var _srow := PackedFloat32Array()
@@ -98,6 +112,14 @@ var _tl_set := false
 var _obs: Array = []
 var _secs: Array = []
 var _ease := 0.0
+## §7.5 the working lead block on starboard (model axes), with the flag; the rest distance of each vertex from the clew
+var has_lead := false
+var sheet_lead := Vector3.ZERO
+var _clew_d := PackedFloat32Array()
+var _clew_r := 1.0
+var _fa := 0.0        # §7.5 the flying shape's share this update (the main's stop weight of §7.6)
+var _clew_turn := 0.0
+var _clew0 := Vector3.ZERO  # §7.6 the clew as placed, before the clearance push
 ## §7.4 rest distances from vertex k to its neighbour along the row, up the column and the two diagonals up
 var _ec := PackedFloat32Array()
 var _er := PackedFloat32Array()
@@ -145,6 +167,8 @@ func configure(rest_mid: PackedVector3Array, r: int, c: int, p: Dictionary) -> b
 	mast_axis = (p.get("mast_axis", up) as Vector3).normalized()
 	phi = float(p.get("phi", 0.0))
 	clearance = float(p.get("clearance", 0.0))
+	has_lead = p.has("sheet_lead")
+	sheet_lead = p.get("sheet_lead", Vector3.ZERO)
 	has_mast_head = p.has("mast_head")
 	mast_head = p.get("mast_head", mast_step + mast_axis)
 	_obs = []
@@ -178,6 +202,8 @@ func configure(rest_mid: PackedVector3Array, r: int, c: int, p: Dictionary) -> b
 	_c.resize(rows)
 	_amid.resize(rows)
 	_hrow.resize(rows)
+	_u0row.resize(rows)
+	_ulrow.resize(rows)
 	_drow.resize(rows)
 	_drow.fill(0.0)
 	_srow.resize(rows)
@@ -195,6 +221,8 @@ func configure(rest_mid: PackedVector3Array, r: int, c: int, p: Dictionary) -> b
 		_c[i] = rest_mid[i * cols + cols - 1].distance_to(rest_mid[i * cols])
 		_amid[i] = 0.5 * (_a[i * cols] + _a[i * cols + cols - 1])
 		_hrow[i] = _h[i * cols]
+		_u0row[i] = _u[i * cols]
+		_ulrow[i] = _u[i * cols + cols - 1]
 		# §6.3 (asymmetric: deepest at 0.3 of the height, the draft forward) and §6.4 (symmetric)
 		var hr := _hrow[i]
 		if kind == Kind.ASYM:
@@ -212,6 +240,11 @@ func configure(rest_mid: PackedVector3Array, r: int, c: int, p: Dictionary) -> b
 				var uc := _uc[i * cols + j]
 				_prof[i * cols + j] = 4.0 * uc * (1.0 - uc)
 	furl_radius = float(p.get("furl_radius", 0.02 + 0.006 * sa))
+	_clew_d.resize(n)
+	for k in n:
+		_clew_d[k] = rest_mid[k].distance_to(rest_mid[cols - 1])
+	_clew_r = maxf(CLEW_SPAN * _c[0], 1e-3)
+	_fa = 0.0
 	_ec.resize(n)
 	_ec.fill(0.0)
 	_er.resize(n)
@@ -385,6 +418,7 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 		if cam_cap > 0.0:
 			var dm := cam_cap * sa / 0.2362
 			d_cam = dm * tanh(d_cam / dm)
+		_jcam = _sgn(b) * JIB_CAMBER * tanh(absf(b) / JIB_FILL) if b != 0.0 else 0.0
 	else:
 		if kind == Kind.SYM:
 			f_fly = absf(fill(sin(beta), fill_gain, fill_curve))
@@ -425,7 +459,7 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 			loc = _main(k, d_cam, amp, shiver)
 		elif kind == Kind.HEADSAIL:
 			if up_shape:
-				loc = Vector3(_a[k], _l[k], _head_n(_u[k], _a[k], d_cam, amp, shiver))
+				loc = Vector3(_a[k], _l[k], _head_n(i, _u[k], _a[k], d_cam, amp, shiver, 0.0))
 			elif furling:
 				loc = _furl(k, p, d_cam, amp, shiver)
 			else:
@@ -455,9 +489,78 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 			var k := i * cols + j
 			var lc := _loc[k]
 			_mid[k] = xr * (tack + ah * lc.x + lh * lc.y + nh * lc.z)
+	# §7.5 the share of the flying shape: 1 up, growing over the last tenth of the hoist, going with the drop
+	_fa = 0.0
+	if kind == Kind.ASYM or kind == Kind.SYM:
+		if up_shape:
+			_fa = 1.0
+		elif phase == 2:
+			var kh := clampf((p - 0.9) / 0.1, 0.0, 1.0)
+			_fa = kh * kh
+		elif phase == 5:
+			_fa = 1.0 - pow(p, 0.3)
+	_clew_turn = 0.0
+	_clew0 = _mid[cols - 1]
+	if kind == Kind.ASYM and has_lead and _fa > 0.0:
+		_clew_on_sheet(beta)
 	if clearing:
 		_push(awa, hd)
 	_layers(np)
+
+
+## §7.5, §7.6 the working lead block: the starboard lead mirrored to the side of beta (starboard for beta > 0)
+func working_lead(beta: float) -> Vector3:
+	var y := sheet_lead.dot(port)
+	return sheet_lead + port * (-_sgn(beta) * absf(y) - y)
+
+
+## §7.6 the flying shape's share of the last update (0 down or bagged, 1 up)
+func sheet_weight() -> float:
+	return _fa
+
+
+## §7.6 the clew the sheet leaves from: as placed, before the clearance push of §7.4
+func sheet_clew() -> Vector3:
+	return _clew0
+
+
+func get_clew_turn() -> float:
+	return _clew_turn
+
+
+## §7.5 the cloth round the clew turns about the clew toward the sheet
+func _clew_on_sheet(beta: float) -> void:
+	var g := 1.0 - _smoothstep01((absf(beta) - CLEW_FADE_FROM) / (CLEW_FADE_TO - CLEW_FADE_FROM))
+	var kt := CLEW_TURN * _fa * g
+	if kt <= 0.0:
+		return
+	var c := _mid[cols - 1]
+	var sv := c - working_lead(beta)
+	var f := _mid[cols - 1 - CLEW_REACH] - c
+	var e := _mid[CLEW_REACH * cols + cols - 1] - c
+	if sv.length_squared() < 1e-12 or f.length_squared() < 1e-12 or e.length_squared() < 1e-12:
+		return
+	var b := f.normalized() + e.normalized()
+	if b.length_squared() < 1e-12:
+		return
+	b = b.normalized()
+	sv = sv.normalized()
+	var axv := b.cross(sv)
+	var sn := axv.length()
+	if sn < 1e-9:
+		return
+	axv /= sn
+	var ang := atan2(sn, b.dot(sv))
+	_clew_turn = ang * kt
+	for k in n:
+		var w := kt * (1.0 - _smoothstep01(_clew_d[k] / _clew_r))
+		if w > 0.0:
+			_mid[k] = c + Basis(axv, ang * w) * (_mid[k] - c)
+
+
+static func _smoothstep01(x: float) -> float:
+	var t := clampf(x, 0.0, 1.0)
+	return t * t * (3.0 - 2.0 * t)
 
 
 ## §7.4: the other sails this (flying) sail keeps clear of, as last placed; set before each update.
@@ -715,15 +818,26 @@ func _main(k: int, d_cam: float, amp: float, shiver: float) -> Vector3:
 	return Vector3(_a[k], _l[k], f * d_cam * u * (1.0 - u) + amp * shiver * h * u * sin(phi - _a[k]))
 
 
-func _head_n(u: float, a: float, d_cam: float, amp: float, shiver: float) -> float:
-	return 0.5 * d_cam * (pow(u, 4) - C_HOOK * u) + amp * shiver * u * sin(phi - a)
+## §6.2 a headsail's offset off its rest plane; `us` is the furled fraction of §8.3 (0 when up or on a halyard)
+func _head_n(i: int, u: float, a: float, d_cam: float, amp: float, shiver: float, us: float) -> float:
+	var fl := amp * shiver * u * sin(phi - a)
+	if cam_cap > 0.0:
+		return 0.5 * d_cam * (pow(u, 4) - C_HOOK * u) + fl
+	var u0 := _u0row[i] if us <= 0.0 else 0.0
+	var ul := _ulrow[i] - us
+	var x := clampf((u - u0) / maxf(ul - u0, 1e-3), 0.0, 1.0)
+	var c := _c[i] * clampf((ul - u0) / maxf(_ulrow[i] - _u0row[i], 1e-3), 0.0, 1.0)
+	var hh := 2.0 * _hrow[i] - 1.0
+	var g := x * (1.0 - x) * (2.0 - x) / JIB_PROFILE_MAX
+	return 0.5 * d_cam * (pow(ul, 4) - C_HOOK * ul) * x - _jcam * (1.0 - 0.15 * hh * hh) * c * g + fl
 
 
 ## §8.2
 func _halyard(k: int, p: float, d_cam: float, amp: float, shiver: float) -> Vector3:
 	var hc := 1.0 - p
 	if _h[k] >= hc:
-		return Vector3(_a[k], _l[k] - hc * sl, _head_n(_u[k], _a[k], d_cam, amp, shiver))
+		@warning_ignore("integer_division")
+		return Vector3(_a[k], _l[k] - hc * sl, _head_n(k / cols, _u[k], _a[k], d_cam, amp, shiver, 0.0))
 	return Vector3(_a[k], _a[k] * kappa + 0.03, 0.02 * sl * sin(12.0 * _h[k]))
 
 
@@ -735,7 +849,8 @@ func _furl(k: int, p: float, d_cam: float, amp: float, shiver: float) -> Vector3
 		var t := 6.0 * PI * _uc[k]
 		return Vector3(a_min + r * (1.0 - cos(t)), _l[k], r * sin(t))
 	var a2 := _a[k] - ac
-	return Vector3(a2, _l[k], _head_n((a2 - a_min) / sa, a2, d_cam, amp, shiver))
+	@warning_ignore("integer_division")
+	return Vector3(a2, _l[k], _head_n(k / cols, (a2 - a_min) / sa, a2, d_cam, amp, shiver, 1.0 - p))
 
 
 ## §6.3, §6.4 the flying shape

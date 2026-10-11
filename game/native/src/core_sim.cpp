@@ -814,18 +814,18 @@ Vector2 CoreSim::wind_clean(double x, double y) {
 
 double CoreSim::wind_global_from() { settle(); return world_ != nullptr ? wm_world_wind_global_from(world_) : 0.0; }
 
-Vector2 CoreSim::current_at(double x, double y, int64_t t_ms) {
+Vector2 CoreSim::current_at(double x, double y, double t_ms) {
   settle();
   float cx = 0.0f, cy = 0.0f;
-  if (world_ != nullptr) wm_world_current_at(world_, f32(x), f32(y), static_cast<uint32_t>(t_ms), &cx, &cy);
+  if (world_ != nullptr) wm_world_current_at(world_, f32(x), f32(y), t_ms, &cx, &cy);
   return Vector2(cx, cy);
 }
 
-Dictionary CoreSim::wind_state(int64_t t_ms) {
+Dictionary CoreSim::wind_state(double t_ms) {
   settle();
   Dictionary d;
   if (world_ == nullptr) return d;
-  const uint32_t t = static_cast<uint32_t>(t_ms < 0 ? 0 : t_ms);
+  const double t = t_ms;  // fractional ms: the core resolves render times between whole milliseconds
   wm_wind_state w{};
   wm_world_wind_state(world_, t, &w);
   d["base_speed"] = w.base_speed;
@@ -857,10 +857,10 @@ double CoreSim::sea_height(double x, double y) {
   return world_ != nullptr ? wm_world_sea_height(world_, f32(x), f32(y)) : 0.0;
 }
 
-double CoreSim::sea_height_at(double x, double y, int64_t t_ms) {
+double CoreSim::sea_height_at(double x, double y, double t_ms) {
   settle();
   if (world_ == nullptr) return 0.0;
-  return wm_world_sea_height_at(world_, f32(x), f32(y), static_cast<uint32_t>(t_ms < 0 ? 0 : t_ms));
+  return wm_world_sea_height_at(world_, f32(x), f32(y), t_ms);
 }
 
 Vector2 CoreSim::sea_slope(double x, double y) {

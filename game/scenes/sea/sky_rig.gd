@@ -1,42 +1,21 @@
 @tool
 class_name SkyRig
 extends Node3D
-## Sky and lighting preset (WM-016.03, WM-080): the sky shader, the sun light, exposure, tone mapping, glow, fog and
+## Sky and lighting (WM-016.03, WM-080, WM-124): the sky shader, the sun light, exposure, tone mapping, glow, fog and
 ## reflections, from one set of parameters, so the water's crest light (water_render.md §4.2) and the reflections
 ## use the same sky and sun. Colours are linear. Children: WorldEnvironment (environment with the sky material) and Sun
-## (DirectionalLight3D). Four light presets (water_render.md §4.5): clear, fair-weather cumulus (the default), hazy
-## and late afternoon. The venue's look file or the race picks one with `preset`; single values can still be set
-## after it. Each preset also sets its colour grade (LookFx).
+## (DirectionalLight3D). Two inputs set every value (water_render.md §4.5, Daylight): the time of day `hour` (local
+## clock) and the `conditions` (clear, fair, hazy, overcast), on the venue's `site` (latitude, longitude, UTC
+## offset, date; set_site). The venue's look file or the race picks them; single values can still be set after.
+## Each light also sets its colour grade (LookFx). The light is fixed unless `light_advance` lets the clock run.
 
-enum Preset { CLEAR, FAIR, HAZY, LATE }
-
-## water_render.md §4.5: sun energy and colour, sky ramp, cloud cover, camera exposure, distance haze.
-const PRESETS := {
-	Preset.CLEAR: {
-		"sun_energy": 3.6, "sun_color": Color(1.0, 0.92, 0.80), "horizon": Color(0.50, 0.74, 1.10),
-		"zenith": Color(0.05, 0.18, 0.62), "cloud_cover": 0.0, "exposure": 0.50,
-		"haze_begin": 300.0, "haze_end": 16000.0, "haze_max": 0.45, "haze_curve": 0.42,
-	},
-	Preset.FAIR: {
-		"sun_energy": 3.6, "sun_color": Color(1.0, 0.92, 0.80), "horizon": Color(0.50, 0.74, 1.10),
-		"zenith": Color(0.05, 0.18, 0.62), "cloud_cover": 0.40, "exposure": 0.50,
-		"haze_begin": 200.0, "haze_end": 14000.0, "haze_max": 0.60, "haze_curve": 0.40,
-	},
-	Preset.HAZY: {
-		"sun_energy": 2.8, "sun_color": Color(1.0, 0.95, 0.88), "horizon": Color(0.80, 0.88, 1.00),
-		"zenith": Color(0.24, 0.40, 0.74), "cloud_cover": 0.25, "exposure": 0.55,
-		"haze_begin": 150.0, "haze_end": 10000.0, "haze_max": 0.80, "haze_curve": 0.40,
-	},
-	Preset.LATE: {
-		"sun_energy": 3.8, "sun_color": Color(1.0, 0.72, 0.44), "horizon": Color(0.60, 0.70, 0.94),
-		"zenith": Color(0.05, 0.17, 0.58), "cloud_cover": 0.30, "exposure": 0.60,
-		"haze_begin": 200.0, "haze_end": 14000.0, "haze_max": 0.65, "haze_curve": 0.40,
-		"sun_elevation_deg": 17.0, "sun_azimuth_deg": 250.0,
-	},
-}
-## The sun's place for a preset that does not set its own.
-const PRESET_SUN := {"sun_elevation_deg": 38.0, "sun_azimuth_deg": 200.0}
-const PRESET_NAMES := {"clear": Preset.CLEAR, "fair": Preset.FAIR, "hazy": Preset.HAZY, "late": Preset.LATE}
+## The old light preset names (`--sky=`), Daylight.ALIASES.
+const PRESET_NAMES := ["clear", "fair", "hazy", "late"]
+## With light_advance: at most one step of the light per this much real time (s), and only once the hour has moved
+## by STEP_MIN_H; the grade's LUT is rebuilt once the hour has moved by GRADE_STEP_H (water_render.md §4.5 Updates).
+const STEP_REAL_S := 5.0
+const STEP_MIN_H := 1.0 / 60.0
+const GRADE_STEP_H := 0.25
 
 ## Glow on the brightest highlights only (the sun disc and its glints on the water), per quality tier
 ## (water_render.md §4.5): off on L, the coarse levels on M, one finer level more on H. Godot's levels 1 to 7.
@@ -46,15 +25,27 @@ const GLOW_LEVELS := {0: [], 1: [3, 4, 5], 2: [2, 3, 4, 5]}
 const GLOW_THRESHOLD := 4.0
 const GLOW_INTENSITY := 0.5
 
-## Weather preset; setting it sets the values below.
-@export var preset := Preset.FAIR:
+## Time of day: the local clock hour (clamped to the hours with the sun at least Daylight.MIN_SUN high).
+@export_range(0.0, 24.0, 0.25) var hour := VenueLook.DEFAULT_TIME:
 	set(v):
-		preset = v
-		var p: Dictionary = PRESET_SUN.merged(PRESETS[v], true)
-		for k in p:
-			set(k, p[k])
-		_apply()
-		LookFx.apply_grade(environment(), v)
+		hour = v
+		_resolve()
+## Conditions: clear, fair, hazy or overcast (Daylight.CONDITIONS).
+@export_enum("clear", "fair", "hazy", "overcast") var conditions := "fair":
+	set(v):
+		conditions = v if Daylight.is_condition(v) else "fair"
+		_resolve()
+## Game hours per real hour the clock runs during a race (0: fixed, 1: real time; `--light-advance=`).
+var light_advance := 0.0:
+	set(v):
+		light_advance = maxf(v, 0.0)
+		set_process(light_advance > 0.0 and not Engine.is_editor_hint())
+## The sun formula's site (Daylight.sun_position): lat, lon, utc_offset_h, day.
+var site: Dictionary = Daylight.DEFAULT_SITE.duplicate()
+## The light last resolved (Daylight.light), the drawn boat shadows' factor and the grade it set.
+var light := {}
+var shadow_strength := 1.0
+var grade := {}
 @export_range(0.0, 90.0) var sun_elevation_deg := 38.0:
 	set(v):
 		sun_elevation_deg = v
@@ -116,24 +107,112 @@ const GLOW_INTENSITY := 0.5
 	set(v):
 		haze_curve = v
 		_apply()
-## Development (`--haze=`, the look panel): a factor on the preset's haze_max, kept when the preset changes.
+## Development (`--haze=`, the look panel): a factor on the light's haze_max, kept when the hour or conditions change.
 var haze_scale := 1.0:
 	set(v):
 		haze_scale = maxf(v, 0.0)
 		_apply()
 
 
+var _batch := false
+var _grade_hour := -100.0
+var _grade_key := ""
+var _advance_real := 0.0
+var _advance_hours := 0.0
+
+
 func _ready() -> void:
-	_apply()
-	LookFx.apply_grade(environment(), preset)
+	set_process(light_advance > 0.0 and not Engine.is_editor_hint())
+	_resolve()
 
 
-## The preset for a name ("clear", "fair", "hazy", "late"); unknown names keep the current one. Returns whether it was known.
+## The venue's site (VenueLook.site()): the light is resolved again at the same hour and conditions.
+func set_site(s: Dictionary) -> void:
+	site = Daylight.DEFAULT_SITE.merged(s, true)
+	_resolve()
+
+
+## Time of day and conditions together, one resolve.
+func set_light(h: float, c: String) -> void:
+	_batch = true
+	hour = h
+	conditions = c
+	_batch = false
+	_resolve()
+
+
+## An old light preset name (clear, fair, hazy, late; Daylight.ALIASES): its conditions at the hour of its
+## afternoon sun on this site. Unknown names change nothing; returns whether it was known.
 func set_preset_name(name: String) -> bool:
-	if not PRESET_NAMES.has(name):
+	if not Daylight.ALIASES.has(name):
 		return false
-	preset = PRESET_NAMES[name]
+	var a: Dictionary = Daylight.ALIASES[name]
+	set_light(Daylight.hour_for_sun(site, a["sun"]), a["conditions"])
 	return true
+
+
+## The old preset name the light matches now (its conditions at its hour, within a minute), else "".
+func preset_name() -> String:
+	for n in PRESET_NAMES:
+		var a: Dictionary = Daylight.ALIASES[n]
+		if conditions == a["conditions"] and absf(hour - Daylight.hour_for_sun(site, a["sun"])) < 1.0 / 60.0:
+			return n
+	return ""
+
+
+## The hours the light can take on this site: [first, last] with the sun at least Daylight.MIN_SUN high.
+func hour_range() -> Vector2:
+	return Daylight.hour_range(site)
+
+
+## Every value from the hour and the conditions (Daylight.light), applied in one pass; the grade too unless
+## `grade_too` is false and the hour has moved less than GRADE_STEP_H since the last grade (the clock steps).
+func _resolve(grade_too := true) -> void:
+	if _batch:
+		return
+	light = Daylight.light(site, hour, conditions)
+	_batch = true
+	hour = light["hour"]
+	for k in ["sun_elevation_deg", "sun_azimuth_deg", "sun_color", "sun_energy", "horizon", "zenith", "cloud_cover",
+			"exposure", "haze_begin", "haze_end", "haze_max", "haze_curve"]:
+		set(k, light[k])
+	shadow_strength = light["shadow"]
+	_batch = false
+	_apply()
+	if grade_too or absf(hour - _grade_hour) >= GRADE_STEP_H:
+		grade = light["grade"]
+		_grade_hour = hour
+		apply_grade()
+
+
+## The light's grade on the environment at LookFx.grade_strength (again after the strength or --look change).
+func apply_grade() -> void:
+	if grade.is_empty():
+		grade = Daylight.light(site, hour, conditions)["grade"]
+	LookFx.apply_grade(environment(), grade)
+
+
+## light_advance: the clock runs; the light steps at most every STEP_REAL_S of real time and only once it has
+## moved by STEP_MIN_H (Godot redraws the sky's radiance map only when a value changes).
+func _process(dt: float) -> void:
+	if light_advance <= 0.0:
+		return
+	_advance_real += dt
+	_advance_hours += dt * light_advance / 3600.0
+	if _advance_real < STEP_REAL_S or _advance_hours < STEP_MIN_H:
+		return
+	var h := hour + _advance_hours
+	_advance_real = 0.0
+	_advance_hours = 0.0
+	advance_to(h)
+
+
+## One step of the running clock to hour h (the grade only every GRADE_STEP_H).
+func advance_to(h: float) -> void:
+	_batch = true
+	hour = h
+	_batch = false
+	_resolve(false)
 
 
 ## Unit vector toward the sun, scene axes (X east, Y up, Z south).
@@ -192,7 +271,7 @@ func environment() -> Environment:
 
 
 func _apply() -> void:
-	if not is_inside_tree():
+	if _batch or not is_inside_tree():
 		return
 	var sun := get_node_or_null("Sun") as DirectionalLight3D
 	var d := sun_direction()

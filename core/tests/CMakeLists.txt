@@ -122,7 +122,7 @@ target_sources(windmark_core_tests PRIVATE
   test_conditions.cpp
 )
 if(NOT DEFINED WINDMARK_BUILD_CAPI OR WINDMARK_BUILD_CAPI)
-  add_executable(windmark_capi_tests test_main.cpp test_capi_conditions.cpp)
+  add_executable(windmark_capi_tests test_main.cpp test_capi_conditions.cpp test_capi_render_time.cpp)
   target_link_libraries(windmark_capi_tests PRIVATE windmark_static)
   target_include_directories(windmark_capi_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src")
   target_include_directories(windmark_capi_tests SYSTEM PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/doctest")

@@ -20,11 +20,12 @@ def sheet_leads(boat):
     s = (L / 12.0) ** 0.7
     xw, yw, zw, dw = lead["primary"]
     car = lead["jib_car"] * [1, -1, 1]
-    # flying sails: a block on the aft quarter, near the sheer
-    xq = 0.35 * s + 0.25 * s
+    # flying sails: a block on the rail of the aft quarter, a little aft of the winch it leads to (sail_visuals.md
+    # 11.3, "Lead block"), so the sheet clears the boom end and the main's leech
+    fly_w = lead.get("secondary", lead["primary"])
+    xq = float(fly_w[0]) - 0.35 * s
     yq = float(boat.hull.bs(np.array([xq]))[0]) - 0.1 * s
     zq = float(boat.deck.deck_z(xq, yq)) + 0.06 * s
-    fly_w = lead.get("secondary", lead["primary"])
     return {"headsail": {"lead": car, "winch": np.array([xw, -yw, zw]), "drum": dw},
             "flying": {"lead": np.array([xq, -yq, zq]),
                        "winch": np.array([fly_w[0], -fly_w[1], fly_w[2]]), "drum": fly_w[3]}}

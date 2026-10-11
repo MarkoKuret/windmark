@@ -34,6 +34,12 @@ class SailShape : public godot::RefCounted {
   // §7.4: the other sails this (flying) sail keeps clear of, as last placed; set before each update
   void set_obstacles(const godot::Array& obstacles);
   double get_ease() const { return ease_; }
+  // §7.5, §7.6: the working lead block on the side of beta, the flying shape's share of the last update and the
+  // clew's last turn toward its sheet
+  godot::Vector3 working_lead(double beta) const;
+  double sheet_weight() const { return fa_; }
+  double get_clew_turn() const { return clew_turn_; }
+  godot::Vector3 sheet_clew() const { return clew0_; }
   void update(int64_t phase, double progress, double beta, double gamma, double luff_shiver, double awa,
               double aws);
 
@@ -66,13 +72,14 @@ class SailShape : public godot::RefCounted {
 
  private:
   godot::Vector3 main_shape(int k, float d_cam, float amp, float shiver) const;
-  float head_n(float u, float a, float d_cam, float amp, float shiver) const;
+  float head_n(int i, float u, float a, float d_cam, float amp, float shiver, float us) const;
   godot::Vector3 halyard(int k, float p, float d_cam, float amp, float shiver) const;
   godot::Vector3 furl(int k, float p, float d_cam, float amp, float shiver) const;
   godot::Vector3 fly(int k, int i, const godot::Vector3& w, float shiver) const;
   godot::Vector3 hoist(int k, float c, const godot::Vector3& f) const;
   godot::Vector3 drop(int k, float c, const godot::Vector3& f) const;
   void layers(const godot::Vector3& np);
+  void clew_on_sheet(float beta);
   // §7.4 clearance
   struct Section {
     const SailShape* s = nullptr;
@@ -110,6 +117,13 @@ class SailShape : public godot::RefCounted {
 
   std::vector<float> a_, l_, u_, h_, uc_;  // per vertex
   std::vector<float> c_, amid_, hrow_;     // per row
+  std::vector<float> u0row_, ulrow_;       // per row: u of the luff and leech vertex (§6.2)
+  float jcam_ = 0.0f;
+  bool has_lead_ = false;                  // §7.5 the working lead block (starboard, model axes)
+  godot::Vector3 sheet_lead_;
+  std::vector<float> clew_d_;              // §7.5 rest distance of each vertex from the clew
+  float clew_r_ = 1.0f, fa_ = 0.0f, clew_turn_ = 0.0f;
+  godot::Vector3 clew0_;                   // §7.6 the clew as placed, before the clearance push                      // §6.2 the jib's signed camber over chord, per update
   std::vector<float> drow_, srow_;         // per row, per update: camber over chord and chord shortening
   std::vector<float> prow_, trow_;         // per row: the camber's height profile (§6.3, §6.4), the twist (§7, per update)
   std::vector<float> prof_;                // per vertex: the chordwise camber profile (§6.3, §6.4)

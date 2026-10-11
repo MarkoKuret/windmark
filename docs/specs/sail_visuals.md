@@ -108,7 +108,7 @@ every size of boat.
 | `flutter_amp` | – | 0.15 | 0.07 | 0.08 | 1.0 | 1.0 | flutter amplitude: main and headsails as a fraction of `Sa` (metres = `flutter_amp·Sa`); spinnakers a multiplier of §6.3, §6.4 |
 | `flutter_rate` `r_f` | rad/s per m/s | size rule | size rule | size rule | size rule | size rule | flutter phase speed per m/s of `aws` |
 | `flutter_rate_max` `w_max` | rad/s | size rule | … | … | … | … | cap of the phase speed |
-| `twist_top` | rad | 0.070 (4°) | 0.105 (6°) | 0.140 (8°) | 0.45 (26°) | 0 | extra rotation of the head row to leeward (§7.1; the asymmetric spinnaker's grows with the AWA, §7.3) |
+| `twist_top` | rad | 0.070 (4°) | 0.175 (10°) | 0.140 (8°) | 0.45 (26°) | 0 | extra rotation of the head row to leeward (§7.1; the asymmetric spinnaker's grows with the AWA, §7.3) |
 | `camber` `k_c` | – | – | – | 0.12 | 0.27 | 0.26 | largest camber over chord: flying sails when full, at a third of the height (asymmetric) or mid height (symmetric) (§6.3), the cap of the code zero (§6.2) |
 | `tack_line_max` | – | – | – | – | 0.04 | – | largest tack swing on a fixed sprit, fraction of `Sl` (§7.3) |
 | `furl_radius` | m | – | size rule | size rule | – | – | radius of a furled sail's roll (§8.3) |
@@ -118,16 +118,23 @@ Size rules (smaller sails flutter faster):
 r_f   = 0.6 + 2.4 * clamp((12 - loa) / 5, 0, 1)        // 3.0 at 7 m LOA and below, 0.6 at 12 m and above
 w_max = 9.0 + clamp((loa - 7) / 5, 0, 1)               // 9 rad/s small, 10 rad/s large
 furl_radius = 0.02 + 0.006 * Sa
-clearance   = 0.042 * loa                          // m, flying sails off the other sails and the mast (§7.4): 0.30 on wm7
+clearance   = 0.042 * loa                          // m, flying sails off the other sails and the mast (§7.4), and the
+                                                   // main and boom off a flying sail's sheet (§7.6): 0.30 on wm7
 ```
+Fixed constants of the clew on its sheet (§7.5): the share of the turn `k_t = 0.6`, its reach `0.6` of the foot's rest
+chord, the fade from `|β|` 110° to 150°; of the main's stop (§7.6): 24 scan steps, 10 bisection steps.
 Fixed constants of the clearance (§7.4): push slope `k_p = 0.3` (m of push lost per m of cloth), ease threshold
-`P_e = 3·c` (the leech depth the push takes on before the sail is eased), ease cap `e_max = 0.35` rad (20°).
+`P_e = 2·c` (the leech depth the push takes on before the sail is eased; 3·c before 2026-10-10: a push deeper than
+2·c could jump between frames where the stopped main of §7.6 lies along the kite's leech), ease cap `e_max = 0.35`
+rad (20°).
 The `camber` key replaces an earlier `depth` (0.30, 0.35 of the flat row chord, applied without shortening the
 chord), which drew the kites about 40 % too deep and too wide; a `depth` key in a look block is ignored. The
 asymmetric spinnaker's `camber` 0.27 and `twist_top` 0.45 (2026-10-04, were 0.26 and 0) follow the measured J/80
 flying shapes of §14.2.
-Fixed constants of the shapes: `c_hook = 0.0369260386` (headsail leech hook), foot fade rate 8 (§6.1), flutter
-spatial frequency 1 rad/m (§6.1, §6.2), flake frequency 12 and flake amplitude 0.02 (§8.2).
+Fixed constants of the shapes: `c_hook = 0.0369260386` (headsail leech hook), the jib and genoa camber `k_j = 0.135`
+and its fill scale `b_j = 0.15` (§6.2), foot fade rate 8 (§6.1), flutter spatial frequency 1 rad/m (§6.1, §6.2),
+flake frequency 12 and flake amplitude 0.02 (§8.2). The jib's and genoa's `twist_top` 0.175 and the camber of §6.2
+(2026-10-09, were 0.105 and a belly of `0.5·|D|·(u − u⁴)` against the whole sail's chord) follow §14.5.
 
 ## 5. Per-frame drivers
 
@@ -188,23 +195,41 @@ a' = a ; l' = l
   first and the whole leech flaps when it is let fly.
 
 ### 6.2 Jib, genoa, code zero
+A jib or genoa keeps its **clew line**: the leech of every row sits where the sheet puts it, off the rest plane by
+the hook term of the sheet angle, and the camber is laid against each row's own chord, so the upper sail is as full
+as the lower one (§14.5):
 ```
-n' = 0.5 * D * (pow(u, 4) - c_hook * u)  +  A * I * u * sin(phi - a)
+u0_i, ul_i = u of row i's luff and leech vertex
+x   = clamp((u - u0_i) / max(ul_i - u0_i, 1e-3), 0, 1)       // fraction along the row's chord
+n_l = 0.5 * D * (ul_i^4 - c_hook * ul_i)                      // the row's leech off the rest plane (the clew line)
+m   = sgn(D) * k_j * tanh(sqrt(|D| / (4 * Sa)) / b_j)          // camber over chord, signed (|b| = sqrt(|D| / 4 Sa))
+p_i = 1 - 0.15 * (2 * h_i - 1)^2                              // 0.85 at the foot and the head, 1 at mid height
+g   = x * (1 - x) * (2 - x) / 0.3849                          // chordwise profile, 1 at the draft x = 0.42
+n'  = n_l * x  -  m * p_i * C_i * g  +  A * I * u * sin(phi - a)
 a' = a ; l' = l
 ```
-- Relative to the line from the luff to the clew the sail carries a belly of `0.5·|D|·(u − u⁴)`, deepest at
-  `u = 0.63`, on the leeward side; the clew itself sits `0.5·|D|·(1 − c_hook) = 0.48·|D|` inboard of the rest plane,
-  so the leech hooks slightly toward the centreline as a sheeted headsail does.
+- The leech and clew lie where they always did (the clew `0.5·|D|·(1 − c_hook) = 0.48·|D|` inboard of the rest
+  plane at the foot, so the leech hooks slightly toward the centreline as a sheeted headsail does; the upper
+  leech near the rest plane): the jib's angle and trim are those of the core. Between luff and leech each row
+  carries a belly of `|m|·p_i` of its chord on the leeward side, deepest at 0.42 of the chord, with an entry of
+  about 32° and an exit of about 17° to the chord at 12 % camber.
+- The camber grows with the fill: at the jib's upwind sheet angles (`β` 8° to 12°: `b` 0.15 to 0.20) 9 to 12 %
+  over the height, 10 to 13 % at `β` 15° to 20°, and at most `k_j` (13.5 %) eased. Strapped in on the centreline
+  (`β = 0`) the sail is flat.
 - The flutter grows from the luff aft (no height factor): a headsail luffs along its whole luff at once.
-- Backed (`s_b = −1`): `D` changes sign, the belly lies on the other side and the clew is pressed out.
-- **Code zero** (a headsail with a `camber` key): a flat reaching sail, so its camber scale saturates,
+- Backed (`s_b = −1`): `D` and `m` change sign, the belly lies on the other side and the clew is pressed out.
+- On a furler (§8.3) the unrolled part takes the same shape with `u0_i = 0`, `ul_i` reduced by the furled
+  fraction `1 − p` and the chord `C_i` scaled by the unrolled share of the row.
+- **Code zero** (a headsail with a `camber` key): a flat reaching sail with its draft aft; it keeps the shape
   ```
+  n' = 0.5 * D * (pow(u, 4) - c_hook * u)  +  A * I * u * sin(phi - a)
   D_max = k_c * Sa / 0.2362
   D     = D_max * tanh(D / D_max)
   ```
-  The belly against the luff–clew line of a row reaching `u = U` is at most `0.2362·|D|·U³/Sa` of its chord
-  (largest on the foot), so the code zero never passes `k_c` (12 %) and sits at 7.5 to 11 % across its normal trim
-  (`β` 25° to 60°; 10 % at 40°). Jibs and genoas have no `camber` key and no cap.
+  Relative to the line from the luff to the clew it carries a belly of `0.5·|D|·(u − u⁴)`, deepest at
+  `u = 0.63`. The belly against the luff–clew line of a row reaching `u = U` is at most `0.2362·|D|·U³/Sa` of its
+  chord (largest on the foot), so the code zero never passes `k_c` (12 %) and sits at 7.5 to 11 % across its
+  normal trim (`β` 25° to 60°; 10 % at 40°).
 
 ### 6.3 Asymmetric spinnaker
 The flat grid carries no depth, so the flying shape is built from a camber field extruded **down the apparent
@@ -401,6 +426,55 @@ then the mast: P = P + g * (c_P + smax(x - c_P) - x)
   ease: about 60 µs per flying sail on a 26 × 16 grid (native), with the kite sheeted at the main's angle so that
   most of it is near the main (the whole kite update 83 µs, a wm7 with three sails 100 µs per frame).
 
+### 7.5 The clew on its sheet
+A loaded sheet pulls the clew along itself, so the corner of a set spinnaker turns until the sheet runs out of it
+between the foot and the leech, as the radial clew panels of a real sail point at the lead. After the placement of
+§7.3 (and before the clearance of §7.4), the cloth of an asymmetric spinnaker round its clew turns about the clew:
+```
+C   = the placed clew (row 0, last column) ; B = the working lead: the sidecar's rig.sheet_leads.flying.lead on
+      the side of beta (sgn(beta) = starboard), §11.3
+f   = unit(P[0][cols-1-2] - C) ; e = unit(P[2][cols-1] - C)       // the foot and the leech leaving the clew
+b   = unit(f + e)                                                // the corner's bisector, into the sail
+s   = unit(C - B)                                                // the sheet's pull, reversed
+alpha = angle from b to s, about the axis unit(b x s)            // none when b x s vanishes
+g   = 1 - smoothstep(0, 1, (|beta| - 110 deg) / 40 deg)           // fades out as the clew goes round the bow
+r_c = 0.6 * C_0                                                  // the foot's rest chord
+w_k = k_t * g * fa * (1 - smoothstep(0, 1, d_k / r_c))           // d_k: rest distance of vertex k from the clew
+P_k = C + R(axis, w_k * alpha) (P_k - C)
+```
+with `k_t = 0.6` and `fa` the flying shape's share of §8.4, §8.5 (1 when up, `k²` hoisting, `1 − c^0.3`
+dropping), so the turn grows in with the filling sail. The clew itself does not move (the core's angle stays where it
+puts the clew); the corner takes 0.6 of the turn, leaving the sheet 4 to 27° off the bisector where the plain shape
+had it 17 to 50° off, mostly out of the sail's plane (the downwind extrusion of §6.3 turns the clew to face the wind
+while the sheet runs down and inboard to the deck). A full turn kinks the lower leech; 0.6 keeps the cloth smooth.
+
+### 7.6 The main stops on the sheet
+A flying sail's working sheet runs straight from its clew to its lead block (§11.3), outside the main and the boom.
+Eased past that line, a real main comes to rest against the loaded sheet: the boom cannot swing through it. The
+drawn main does the same; the core's main angle is not changed (presentation only):
+```
+S   = the sheet segment C..B of the flying sail shown (§7.5; its clew and angle as last placed, the clew taken
+      before the clearance push of §7.4 so the main's angle does not feed back into it; with two flying sails the
+      one with the larger share fa)
+the main's region at angle th: the vertical rectangle through the gooseneck G along the rest foot direction
+      (horizontal) turned by sgn(beta_m) * th about the boom axis: along 0 .. E_m (the farthest the rest sail reaches
+      aft of G, the roach included), height -h_t .. h_head up the boom axis from G (h_t, h_head: the rest tack and
+      head; the boom's underside taken as far under the pivot as the foot is above it)
+x(th) = the distance of S from that rectangle (exact: its ends from the face, S from the four edges); 0 when S
+        passes through it
+th_s  = |beta_m| when x stays >= c from th = 0 to |beta_m| (checked in 24 steps); else the first step k with
+        x < c, then 10 bisection steps between steps k - 1 and k
+drawn = sgn(beta_m) * (|beta_m| - w_f * (|beta_m| - th_s))
+```
+`c` is the clearance of §4; `w_f` is the flying sail's `fa` of §7.5 (0 while it is down), so the stop comes in with
+the hoist and goes with the drop. The main eases out from the centreline and stops where it first meets the sheet, so
+the stop moves smoothly with the clew. The boom, the mainsheet tackle and the main's shape and fill all follow the
+drawn angle. A sheet that passes `c` under the boom or aft of the leech does not stop the main. On reaches with the
+main trimmed to the kite (the main about the kite's angle less 12.5°) nothing stops; running with the kite eased to
+its `sheet_max` (64°) the main's 51.5° would bring the boom end onto the sheet, and the stop holds it at about 40°
+(wm7, 39° wm12), as a real boom comes to rest on a loaded kite sheet; let fly (`sheet_max`) it holds the boom off the
+sheet on every point of sail. The flying sail is placed after the main (its obstacles of §7.4 are the main as drawn).
+
 ## 8. Hoisting and dropping
 
 ### 8.1 Which shape in which phase
@@ -440,7 +514,8 @@ if a - a_min < ac:                                 // on the roll
     a' = a_min + r * (1 - cos(t)) ; n' = r * sin(t) ; l' = l
 else:                                              // unrolled, moved forward so its cut edge is on the luff
     a' = a - ac ; u' = (a' - a_min) / Sa
-    n' = the §6.2 shape evaluated with u' (and a')  ; l' = l
+    n' = the §6.2 shape evaluated with u' (and a'), u0_i = 0, ul_i - (1 - p) in place of ul_i and the chord
+         C_i * clamp((ul_i - (1 - p)) / (ul_i - u0_i), 0, 1)  ; l' = l
 ```
 
 ### 8.4 Spinnaker hoist
@@ -493,7 +568,7 @@ sail material uses no normal map).
 
 | situation | drivers | picture |
 | --- | --- | --- |
-| trimmed upwind | `d` 20–30°, `I = 0` | main with 12–15 % camber and an upper leech open to leeward; jib full with a slight leech hook |
+| trimmed upwind | `d` 20–30°, `I = 0` | main with 12–15 % camber and an upper leech open to leeward; jib with 10–12 % camber at every height, draft 0.42 to 0.45, its sections opening about 11° from the foot to five sixths of the height, a slight leech hook |
 | eased past the optimum | `d → 0`, `I` rising | belly thins, a flutter starts at the upper leech (main) and along the luff (headsail) and runs aft |
 | let fly, head to wind | `d ≈ 0`, `I = 1` | flat cloth, the whole leech flapping at 0.3–1.5 Hz depending on size and wind, boom on the wind line |
 | over-sheeted main | `d < 0` | belly flips to windward (backwinded main) |
@@ -677,6 +752,13 @@ The working sheets of the headsails and flying sails follow the trimmed sail, so
 (`tools/boatgen/README.md` "Running rigging"): the front end draws them every update from the placed clew to the
 sidecar's `rig.sheet_leads` (lead block and winch, given on starboard; port is the mirror in `y`). Presentation only.
 
+**Lead block.** A flying sail's sheet leads to a block on the rail of the aft quarter, `0.35·s` aft of the winch it
+leads to (`s = (loa / 12)^0.7`; wm7 1.55 m forward of the transom, wm12 2.75 m), as on sportsboats and racers whose
+spinnaker blocks sit "outboard of the primary winches and aft" (J/70 spec) or on the gunwale 2 m forward of the
+transom corner (Viper 640 class rule 6.5). A block at the transom corner, the other common place, leaves the sheet
+crossing the boom end when the main is eased for a run; this one lets it pass outside the leech and under the boom
+(§7.6, test 23).
+
 **Lines.** Per sail shown (not `down`), the front headsail (jib or genoa) and the flying sail (spinnaker or code
 zero) each get one line per side; when two headsails or two flying sails are shown at once (a peel), the lines follow
 the one further hoisted. The side of the sail angle (`sgn β`, starboard for `β > 0`) is the **working** side, the
@@ -709,7 +791,8 @@ path that keeps every obstacle point on the boat's side. Per update:
 ```
 obstacles (each point with its margin m, model axes as last placed):
   the main's placed mid-surface (every grid vertex), the shown headsail's (jib, genoa; not down), and the boom
-    (the corners of its mesh's box, turned with the boom): m = c_s = 0.05 + 2 * r      // r: the rope radius
+    (the corners of the box over its mesh's vertices within 0.35 s of its top, turned with the boom: the spar and
+    the fittings under it, not the vang down to the mast foot): m = c_s = 0.05 + 2 * r      // r: the rope radius
   the rail on side σ: the outer edge of the deck height field (below) every 0.1 m, out by
     m = (0.01 + r) * smoothstep(B.z, B.z + 0.6, z), so the line comes in over the toe rail to the block
 pivot O = (−σ · 0.15 · beam_max, 0, mast_step.z)     // a point inside the boat, a little to the other side
@@ -918,8 +1001,10 @@ Flutter phase `φ = 0` unless stated.
    vertex.
 3. **Mirror.** `awa = −30°`, `β = +5°`: the shape of test 1 mirrored (`n'` of equal size, negative).
 4. **Headsail.** Type jib, defaults, `awa = 30°`, `β = −25°`, `s_b = 1`: `b = −0.3207`, `D = −0.4113·Sa`; clew
-   `n' = −0.198·Sa` (inboard, toward the windward side of the rest plane); the belly against the luff–clew line is
-   largest at `u = 0.63` with `0.0972·Sa` toward port. `β = 0`: every `n' = 0`.
+   `n' = −0.198·Sa` (inboard, toward the windward side of the rest plane); camber `m = −0.1313`; the belly of the
+   mid row (`p_i = 1`) against its luff–clew line is largest on the grid at `x = 0.4` (next to the draft 0.42) with
+   `0.1310·Sa` toward port. `β = 0`: every `n' = 0`. A code zero (`camber` 0.12) keeps the shape of §6.2's last
+   item.
 5. **Backed headsail.** `backed` switches on: `s_b` passes 0 after 0.173 s and is within 0.04 of −1 after 1 s (−0.963); the
    belly then lies on the other side.
 6. **Flutter.** Main, `I = 1`: at the head–leech corner of the rectangle the flutter term swings `±0.15·Sa = ±0.45` m.
@@ -999,6 +1084,16 @@ Flutter phase `φ = 0` unless stated.
 22. **Levels of detail.** The model has its engine levels (generated on import) and every sail mesh its two reduced
     grids over the whole grid's vertices; every node carries the boat's one livery material; the moving parts follow
     the boom and the helm; the sheets are full with the camera at 25 m, thin at 50 m and hidden at 150 m.
+
+23. **Kite sheet straight and clear.** On the generated `wm7` and `wm12` with each asymmetric spinnaker up, through
+    BoatView (native; the reference at 12 kn), over TWA 60° to 170° (10° steps), TWS 6, 12 and 22 kn, both tacks,
+    the flying sail at 85 %, 100 % and 120 % of its optimum and the main at its optimum, 15 % eased and at its
+    `sheet_max` (let fly), the jib down: the straight line from the placed clew to the working lead block keeps at
+    least `0.5·c` from every triangle of the main's placed mid-surface and from the boom's box, the drawn main never
+    exceeds the core's angle, and the corner's bisector at the clew (§7.5) lies within 30° of the sheet for the
+    asymmetric spinnakers at the optimum. A kite trimmed from 60 % to 130 % of its optimum over 2 s with the main let
+    fly moves no vertex of the main more than `0.05·Sa` between frames at 60 fps (the stop eases in and out). The test
+    prints the smallest distances and the largest stop.
 
 ## 13. Dependencies and open points
 
@@ -1116,3 +1211,81 @@ Sources: [J/70 class rules](https://www.sailing.org/tools/documents/J70CR2018112
 [UK Sailmakers, cross cut](https://www.uksailmakers.com/encyclopedia/glossary/cross-cut/),
 [Cruising World, Sailcloth 101](https://www.cruisingworld.com/story/how-to/sail-materials-101/),
 [Sadeghi et al. 2013](http://graphics.ucsd.edu/~henrik/papers/practical_microcylinder_appearance_model_for_cloth_rendering.pdf).
+
+### 14.5 Jib camber and twist
+
+Owner (2026-10-09): the jib sits where it should but is a little too flat and lacks twist. The shape before this
+pass carried its belly against the whole sail's chord `Sa` (§3.2), so a row reaching only part of `Sa` got only a
+little of it: at the jib's upwind sheet angles (8° to 12°) 2 to 4 % camber on the foot, under 1 % from mid height up,
+the draft at 0.64 of the chord.
+
+| | before | after (§6.2) | references |
+| --- | --- | --- | --- |
+| camber at `β` 8°, foot / 1/3 / 1/2 / 5/6 | 2.1, 0.8, 0.4, 0.1 % | 8.8, 10.2, 10.4, 9.8 % | headsails sail upwind at about 10 to 14 % camber (sailmaking practice; a 10 % section with the draft at 40 % is the worked example of One Metre's twist and camber notes) |
+| camber at `β` 12° | 3.7, 1.3, 0.7, 0.2 % | 9.9, 11.6, 11.8, 11.1 % | |
+| draft (fraction of the chord from the luff) | 0.55 to 0.64 | 0.44 to 0.45 | 40 to 45 % (Dellenbaugh, "Visualize the shape of your jib"; Speed and Smarts, jib and genoa trim: 40 to 45 % draft-forward, 45 to 47 % a No. 1 genoa) |
+| twist, foot to 5/6 of the height, at `β` 12° (chord angles, wm7) | 7.2° to 15.7° (8.5°) | 7.2° to 18.5° (11.3°) | the leech opens up the sail to follow the twisted apparent wind (the top tell-tales break with the bottom ones) |
+| foot chord angle (the clew) | 7.2° | 7.2° | unchanged: the owner's "position is good" |
+
+Sources: [Dellenbaugh, Visualize the shape of your jib (Scuttlebutt)](https://www.sailingscuttlebutt.com/?p=131526),
+[Speed and Smarts, jib and genoa trim](https://www.speedandsmarts.com/toolbox/articles2/the-fast-course/jib-and-genoa-trim),
+[One Metre, sail twist](https://onemetre.net/Design/Twist/twist.htm).
+
+### 14.6 Asymmetric spinnaker size, planform and sheet (2026-10-09)
+
+Owner: the kite's clew sits at a bad angle, mostly from the kite's shape; a bigger kite is fine if real data supports
+it; the sheet must never come close to the boom or the main. ORC one-design and individual certificates (**SLU**,
+**SLE**, **SFL**, **SHW**; **TPS** the tack point from the mast; ratios computed here):
+
+| boat | area m² | SLU | SLE | SFL | SHW | TPS | main m² | A / SLU² | SF / SLU | SLE / SLU | SHW / SF |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| J/70 | 45.64 | 10.80 | 8.80 | 5.70 | 5.56 | 4.00 | 15.44 | 0.39 | 0.53 | 0.81 | 0.98 |
+| Melges 24 (rig of wm7: I 8.62, J 2.51, P 8.82) | 56.18 | 11.59 | 11.08 | 6.30 | 5.86 | 4.11 | 21.38 | 0.42 | 0.54 | 0.96 | 0.93 |
+| J/80 | 64.99 | 12.20 | 9.90 | 7.37 | 6.98 | 4.80 | 20.91 | 0.44 | 0.60 | 0.81 | 0.95 |
+| Viper 640, RS21 (class maxima) | | 9.72, 10.21 | 7.60, 8.10 | 5.63, 5.40 | 5.50, 5.22 | | | | 0.58, 0.53 | 0.78, 0.79 | 0.98, 0.97 |
+| Melges 32 | 125.49 | 17.00 | 14.57 | 9.70 | 9.50 | 5.90 | 41.31 | 0.43 | 0.57 | 0.86 | 0.98 |
+| IC37 | 149.91 | 18.54 | 15.91 | 11.06 | 10.29 | 6.79 | 49.41 | 0.44 | 0.60 | 0.86 | 0.93 |
+| J/111 A2 | 149.58 | 18.40 | 15.20 | 10.54 | 10.72 | 6.62 | 36.34 | 0.44 | 0.57 | 0.83 | 1.02 |
+| J/122E A4 (rig of wm12: I 16.6, J 4.57, P 15.65) | 159.43 | 20.20 | 16.55 | 10.50 | 10.39 | 6.49 | 49.50 | 0.39 | 0.52 | 0.82 | 0.99 |
+| ClubSwan 50 | 236.13 | 24.96 | 19.91 | 12.67 | 12.62 | 8.24 | 90.26 | 0.38 | 0.51 | 0.80 | 1.00 |
+
+Asymmetric areas on the ORC certificates of comparable 12 m racers: J/122 143 to 152 m², J/121 149 to 167, ClubSwan 36
+143 to 145 (class rule 125 to 145, `SHW` at least 0.85 `SFL`), J/124 131 to 157; sportsboats: SB20 43 to 45, Melges 20
+39 to 44. Running spinnakers have `SHW / SF` 0.93 to 1.02 (sailmakers: about 1.05 measured as `SMG`), reachers less
+(J/111 A3 0.93, A5 0.76); ORC calls a sail with `SHW` under 0.75 `SFL` a headsail.
+
+- **Size**: our planform's mid girth goes from 0.88 to 0.95 of the foot (§14.3 kept it under the references so the
+  reaching clew stayed aft of the mast; the clew is set by the foot and the leech, not the mid girth, so it stays where
+  it was). Luff, leech and foot stay (SF/SLU 0.56, SLE/SLU 0.86 along the edges, inside the references). Areas: wm7
+  48.5 to 52.5 m² (A/SLU² 0.41; the Melges 24 on the same rig carries 56), wm12 142.5 to 153.5 m² (0.41; J/122 and
+  J/111 A2 about 150). Area over the main: wm7 2.2, wm12 2.6 (references 2.6 to 4.1; our mains are large for the rig).
+- **Clew**: the plain set shape (§6.3, §7.3) turns the clew to face the wind, so the sheet left the corner 17 to 50°
+  off its bisector, mostly out of the sail's plane: the corner looked twisted against its sheet. §7.5 turns the cloth
+  round the clew toward the sheet (4 to 27° off).
+- **Lead block**: §11.3. Trim guides lead the sheet to "blocks on the leeward quarter", "just forward of the stern
+  pulpit" (Quantum), "outboard of primary winches and aft" (J/70); the Viper 640 rule puts them 2 m forward of the
+  transom corner. The sheet runs outside all rigging (Quantum, Flynn), the clew flies outside and aft of the boom and
+  main, and an over-eased main traps the kite behind the boom (North Sails J/80 guide).
+- **Tack line**: two-blocked reaching, eased 0.3 to 0.45 m running deep (North Sails Melges 24 and J/80 guides): the
+  existing `tack_line_max` 0.04 of the luff (0.45 m on wm7, 0.77 m on wm12).
+- No source gives the clew height above the deck or a sheeting angle in degrees; trim guides say the clew rises as the
+  sheet is eased and twings bring it down running (Yachting World).
+
+Sources: [ORC J/70](https://data.orc.org/public/od/2019/j70.od.pdf),
+[ORC Melges 24](https://data.orc.org/public/od/2019/melg24.od.pdf),
+[ORC J/80](https://data.orc.org/public/od/2019/j80.od.pdf),
+[ORC Melges 32](https://data.orc.org/public/od/2020/melg32.od.pdf),
+[ORC IC37](https://data.orc.org/public/od/2020/ic37.od.pdf),
+[ORC ClubSwan 50](https://data.orc.org/public/od/2019/CLUBSWAN50.od.pdf),
+[J/111 ORC certificate PER 066](http://www.copagalapagos.com/certificados-orc/2017/PER066.pdf),
+[J/122E ORC certificate](https://www.vicmaui.org/pdfs/2018-documents/VM2018%20ORC%20Joy%20Ride%20ORCi%20Certificate%20rev%20June%202018.pdf),
+ORC certificate data (`data.orc.org`, boat RMS files) for the J/121, J/122, J/124, ClubSwan 36, SB20, Melges 20,
+[ClubSwan 36 class rules 2026](https://www.nautorswan.com/w1/wp-content/uploads/2026/03/36-ClubSwan36-Class-Rules-2026_Version-26-01_March-2026_clean.pdf),
+[Viper 640 class rules](https://www.ussailing.org/wp-content/uploads/2020/09/Viper-640-Intl-Class-Rules-updated-January-1-2020-1.pdf),
+[RS21 class rules](https://www.rs21italianclass.org/_files/ugd/812873_96486ffcf2db4d5482bbe7bb94eeb435.pdf),
+[J/70 specifications](https://jboatssouthwest.com/wp-json/wp/v2/posts/334),
+[Quantum asymmetrical trim guide](https://www.quantumsails.com/en/resources-and-expertise/articles/asymmetrical-trim-guide),
+[North Sails J/80 tuning guide](https://yachting.web.cern.ch/documentation/keelboats/files/j80/North_Sails_Tuning_Guide.pdf),
+[North Sails Melges 24 tuning guide](https://www.northsails.com/sailing/en/resources/melges-24-tuning-guide),
+[Yachting World, spinnaker trim](https://www.yachtingworld.com/features/sail-faster-sail-safer-advanced-techniques-series-part-9-spinnaker-trim-76224),
+[UK Sailmakers, spinnaker design brief](https://www.uksailmakers.com/2023/10/02/spinnaker-design-technical-brief-in-seahorse-magazine/).

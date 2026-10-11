@@ -30,6 +30,12 @@ var shift := "shifty"
 var gusts := "standard"
 ## seed of the world (wind shifts, puffs, AI randomness); 0 picks one from the clock
 var seed := 0
+## the light (water_render.md §4.5): the time of day as a local clock hour (-1: the venue's, by the weather mode),
+## the conditions ("": the venue's; clear, fair, hazy, overcast) and the clock's run during the race (game hours per
+## real hour, 0 fixed)
+var light_time := -1.0
+var light_conditions := ""
+var light_advance := 0.0
 ## scenario mode: the scenario id (game/data/scenarios/<id>.scenario.json) or a path to a .scenario.json file
 var scenario := ""
 
@@ -57,5 +63,8 @@ func again() -> GameSetup:
 	for k in to_dict():
 		g.set(k, get(k))
 	g.scenario = scenario
+	g.light_time = light_time
+	g.light_conditions = light_conditions
+	g.light_advance = light_advance
 	g.seed = 0
 	return g

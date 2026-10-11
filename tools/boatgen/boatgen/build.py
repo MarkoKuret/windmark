@@ -285,7 +285,10 @@ class Boat:
             parts[key] = sail.part(G)
             corners[sid] = {k: G[i, j] for k, (i, j) in sail.corners.items()}
             types[sid] = sail.type
-        main_angle =float(spec["sails"].get("main", 0.0)) * (1.0 if spec["awa"] <= 0 else -1.0)
+        # the boom follows the main as drawn (it stops on a flying sail's sheet, sail_visuals.md 7.6)
+        mid_ = next((k for k, v in shapes.items() if v.kind == 0), None)
+        main_angle = float(np.degrees(shapes[mid_].beta)) if mid_ is not None else \
+            float(spec["sails"].get("main", 0.0)) * (1.0 if spec["awa"] <= 0 else -1.0)
         if "pole" in parts and self.rig.pole_flown:
             gam = float(spec.get("gamma", 0.0)) * (1.0 if spec["awa"] <= 0 else -1.0)
             pv = self.rig.pole_pivot

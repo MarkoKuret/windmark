@@ -14,6 +14,9 @@ import numpy as np
 
 KNOT = 1852.0 / 3600.0
 C_HOOK = 0.0369260386
+JIB_CAMBER = 0.135      # 6.2 k_j: a jib's or genoa's largest camber over chord, eased
+JIB_FILL = 0.15         # 6.2 b_j: the fill at which it reaches tanh(1) of that
+JIB_PROFILE_MAX = 2 * np.sqrt(3) / 9    # 6.2: the largest of x (1 - x) (2 - x), at x = 1 - 1/sqrt(3)
 FWD, PORT, UP = np.array([1.0, 0, 0]), np.array([0, 1.0, 0]), np.array([0, 0, 1.0])
 
 MAIN, HEADSAIL, ASYM, SYM = range(4)
@@ -69,13 +72,24 @@ class Xf:
         return p @ self.R.T + self.t
 
 
+CLEW_TURN = 0.6         # 7.5: the share of the turn that lays the clew's bisector on the sheet
+CLEW_REACH = 2          # 7.5: the grid steps from the clew that give the foot and leech directions
+CLEW_SPAN = 0.6         # 7.5: the turned cloth reaches this share of the foot's rest chord from the clew
+CLEW_FADE = (np.radians(110.0), np.radians(150.0))  # 7.5: the turn fades out as |beta| goes round the bow
+STOP_SCAN = 24          # 7.6: steps of the main's angle scanned out from the centreline
+STOP_STEPS = 10         # 7.6: bisection steps of the main's stop
 PUSH_SLOPE = 0.3        # 7.4 k_p: the local push falls off by this much per metre of cloth
-PUSH_EASE = 3.0         # 7.4 P_e: the ease starts where the leech is deeper than this many clearances
+PUSH_EASE = 2.0         # 7.4 P_e: the ease starts where the leech is deeper than this many clearances
 EASE_MAX = 0.35         # 7.4 e_max: the largest ease, rad
 
 
 def smoothstep01(x):
     x = min(max(x, 0.0), 1.0)
+    return x * x * (3 - 2 * x)
+
+
+def smoothstep_v(x):
+    x = np.clip(x, 0.0, 1.0)
     return x * x * (3 - 2 * x)
 
 
@@ -165,6 +179,11 @@ class SailSet:
         self.ease = 0.0
         self.trow = np.zeros(rows)
         self.push_max = 0.0     # the largest local push of the last update (7.4), m
+        self.rest_q = Q.copy()
+        self.lead = None if rig.get("flying_lead") is None else np.asarray(rig["flying_lead"], dtype=np.float64)
+        self.clew_turn = 0.0
+        self._clew_d = np.linalg.norm(Q - Q[cols - 1], axis=-1)     # 7.5 rest distance from the clew
+        self._clew_r = max(CLEW_SPAN * float(self.C[0]), 1e-3)
         self._secs = []
         # 7.4: distances between grid neighbours on the rest cloth (along a row, up a column, the two diagonals)
         E = Q.reshape(rows, cols, 3)
@@ -178,6 +197,7 @@ class SailSet:
 
     def update(self, beta, gamma, awa, aws, obstacles=()):
         rows, cols = self.rows, self.cols
+        self.beta = beta
         tl = -sgn(awa)
         s_t = Xf()
         ge = 0.0
@@ -210,7 +230,7 @@ class SailSet:
             if self.cam_cap > 0:
                 dm = self.cam_cap * self.sa / 0.2362
                 D = dm * np.tanh(D / dm)
-            loc = np.stack([a, l, 0.5 * D * (u ** 4 - C_HOOK * u)], -1)
+            loc = np.stack([a, l, self._head_n(u, D)], -1)
         else:
             if self.kind == SYM:
                 F = abs(fill(np.sin(beta), self.fill_gain, self.fill_curve))
@@ -257,12 +277,64 @@ class SailSet:
             xr = Xf.about(piv, ax, th) * s_t
             mid[r * cols:(r + 1) * cols] = xr(rest[r * cols:(r + 1) * cols])
         self.mid = mid
+        self.clew_turn = 0.0
+        self.clew0 = mid[cols - 1].copy()      # 7.6: the clew as placed, before the clearance push
+        if self.kind == ASYM and self.lead is not None:
+            self._clew_on_sheet(beta)
         if clearing:
             self._push(awa, hd)
         return self.mid
 
+    def sheet_line(self, beta):
+        """7.5, 7.6: the working sheet as a straight line: (the placed clew, the lead on the side of beta)."""
+        return self.clew0.copy(), np.array([self.lead[0], -sgn(beta) * abs(self.lead[1]), self.lead[2]])
+
+    def _clew_on_sheet(self, beta, fa=1.0):
+        """7.5: the cloth round the clew turns about the clew so the corner's bisector lies along the sheet."""
+        rows, cols = self.rows, self.cols
+        g = 1.0 - smoothstep01((abs(beta) - CLEW_FADE[0]) / (CLEW_FADE[1] - CLEW_FADE[0]))
+        k = CLEW_TURN * fa * g
+        if k <= 0:
+            return
+        M = self.mid
+        c = M[cols - 1]
+        sv = c - np.array([self.lead[0], -sgn(beta) * abs(self.lead[1]), self.lead[2]])
+        f = M[cols - 1 - CLEW_REACH] - c
+        e = M[CLEW_REACH * cols + cols - 1] - c
+        b = f / np.linalg.norm(f) + e / np.linalg.norm(e)
+        ln_s, ln_b = np.linalg.norm(sv), np.linalg.norm(b)
+        if ln_s < 1e-6 or ln_b < 1e-6:
+            return
+        sv, b = sv / ln_s, b / ln_b
+        ax = np.cross(b, sv)
+        sn = np.linalg.norm(ax)
+        ang = np.arctan2(sn, b @ sv)
+        if sn < 1e-9:
+            return
+        ax = ax / sn
+        self.clew_turn = float(ang * k)
+        w = k * (1.0 - smoothstep_v(self._clew_d / self._clew_r))
+        for i in np.nonzero(w > 0)[0]:
+            M[i] = c + rot(ax, ang * w[i]) @ (M[i] - c)
+
     def grid(self):
         return self.mid.reshape(self.rows, self.cols, 3)
+
+    def _head_n(self, u, D):
+        """6.2: the headsail's offset off its rest plane (up shape, no flutter); u per vertex."""
+        if self.cam_cap > 0:
+            return 0.5 * D * (u ** 4 - C_HOOK * u)
+        rows, cols = self.rows, self.cols
+        U = u.reshape(rows, cols)
+        u0, ul = U[:, :1], U[:, -1:]
+        x = np.clip((U - u0) / np.maximum(ul - u0, 1e-3), 0.0, 1.0)
+        nl = 0.5 * D * (ul ** 4 - C_HOOK * ul)
+        b = np.sqrt(abs(D) / (4 * self.sa))
+        m = sgn(D) * JIB_CAMBER * np.tanh(b / JIB_FILL)
+        hh = 2 * self.hrow[:, None] - 1
+        p = 1 - 0.15 * hh * hh
+        g = x * (1 - x) * (2 - x) / JIB_PROFILE_MAX
+        return (nl * x - m * p * self.C[:, None] * g).reshape(-1)
 
     # ------------------------------------------------------------------ clearance (7.4)
 
@@ -436,8 +508,10 @@ class SailSet:
 def rig_points(boat):
     """The rig numbers of sail_visuals.md 7 in the generator's internal frame (the sidecar's `rig`, unshifted)."""
     rig = boat.rig
+    from .running import sheet_leads
     return {"boom_pivot": np.asarray(rig.gooseneck, dtype=np.float64), "boom_axis": UP,
-            "mast_step": np.array([rig.x_mast, 0.0, rig.z_step]), "masthead": np.array([rig.x_mast, 0.0, rig.z_top])}
+            "mast_step": np.array([rig.x_mast, 0.0, rig.z_step]), "masthead": np.array([rig.x_mast, 0.0, rig.z_top]),
+            "flying_lead": sheet_leads(boat)["flying"]["lead"]}
 
 
 def sail_mode(boat, sail_type):
@@ -505,9 +579,104 @@ def set_sails(boat, pose):
         shapes[sid] = SailSet(sail.P, sail.type, sail.look(L), sail_mode(boat, sail.type), rp, L)
         order.append(sid)
     order.sort(key=lambda s: shapes[s].flying)
-    for sid in order:
+    aws = pose.get("aws", 6.0)
+    betas = {sid: side * np.radians(pose["sails"][boat.sails[sid].type]) for sid in order}
+
+    def place(sid):
         sh = shapes[sid]
-        beta = side * np.radians(pose["sails"][boat.sails[sid].type])
         obs = [shapes[o] for o in order if o != sid and not shapes[o].flying] if sh.flying else ()
-        sh.update(beta, gamma if sh.mode in (SPRIT, POLE) else beta, awa, pose.get("aws", 6.0), obs)
+        sh.update(betas[sid], gamma if sh.mode in (SPRIT, POLE) else betas[sid], awa, aws, obs)
+    for sid in order:
+        place(sid)
+    # 7.6: the main stops on a flying sail's sheet (its clew as placed); then the flying sails again round it
+    main = next((o for o in order if shapes[o].kind == MAIN), None)
+    fly = next((o for o in order if shapes[o].kind in (ASYM, SYM)), None)
+    if main is not None and fly is not None and shapes[fly].lead is not None:
+        core = betas[main]
+        for _ in range(3):      # the game reads the clew as last placed: a few updates settle it
+            betas[main] = main_stop(shapes[main], core, shapes[fly].sheet_line(betas[fly]), shapes[fly].clearance)
+            for sid in order:
+                place(sid)
     return {sid: shapes[sid].grid().copy() for sid in order}, shapes
+
+
+def main_stop(main, beta, sheet, c, w=1.0):
+    """7.6: the main's drawn angle with a flying sail's sheet (clew, lead) set: eased out from the centreline, the
+    main stops where its region first comes within c of the straight sheet (at most |beta|); w (0..1) blends it in."""
+    clew, lead = sheet
+    if w <= 0 or c <= 0:
+        return beta
+    g = main.boom_pivot
+    up = main.boom_axis / np.linalg.norm(main.boom_axis)
+    rest = main.rest_q
+    d = rest - g
+    d = d - np.outer(d @ up, up)
+    foot = d[main.cols - 1]
+    aft = foot / max(float(np.linalg.norm(foot)), 1e-6)
+    span = float((d @ aft).max())                       # the farthest the rest sail reaches aft (the roach)
+    z1 = float((rest[(main.rows - 1) * main.cols] - g) @ up)
+    z0 = -float((rest[0] - g) @ up)                     # the boom's underside
+    sb = sgn(beta)
+    b = abs(beta)
+
+    def gap(th):
+        return rect_gap(clew - g, lead - g, rot(up, sb * th) @ aft, up, span, z0, z1)
+    lo = hi = None
+    for k in range(1, STOP_SCAN + 1):
+        th = b * k / STOP_SCAN
+        if gap(th) < c:
+            lo, hi = b * (k - 1) / STOP_SCAN, th
+            break
+    if lo is None:
+        return beta
+    for _ in range(STOP_STEPS):
+        m = 0.5 * (lo + hi)
+        if gap(m) >= c:
+            lo = m
+        else:
+            hi = m
+    return sb * (b - w * (b - lo))
+
+
+def seg_seg(p0, p1, q0, q1):
+    """Distance between the segments p0-p1 and q0-q1."""
+    d1, d2, r = p1 - p0, q1 - q0, p0 - q0
+    a, e, f = d1 @ d1, d2 @ d2, d2 @ r
+    if a <= 1e-12 and e <= 1e-12:
+        return float(np.linalg.norm(r))
+    if a <= 1e-12:
+        s, t = 0.0, min(max(f / e, 0.0), 1.0)
+    else:
+        cc = d1 @ r
+        if e <= 1e-12:
+            t, s = 0.0, min(max(-cc / a, 0.0), 1.0)
+        else:
+            bb = d1 @ d2
+            den = a * e - bb * bb
+            s = min(max((bb * f - cc * e) / den, 0.0), 1.0) if den > 1e-12 else 0.0
+            t = (bb * s + f) / e
+            if t < 0:
+                t, s = 0.0, min(max(-cc / a, 0.0), 1.0)
+            elif t > 1:
+                t, s = 1.0, min(max((bb - cc) / a, 0.0), 1.0)
+    return float(np.linalg.norm(p0 + d1 * s - (q0 + d2 * t)))
+
+
+def rect_gap(p0, p1, u, up, span, z0, z1):
+    """7.6: the distance of the segment p0-p1 (relative to the gooseneck) from the vertical rectangle along u, 0 to
+    span long and z0 to z1 high; 0 when the segment passes through it."""
+    nv = np.cross(up, u)
+    n0, n1 = p0 @ nv, p1 @ nv
+    if n0 * n1 <= 0 and n0 != n1:
+        q = p0 + (p1 - p0) * (n0 / (n0 - n1))
+        if 0 <= q @ u <= span and z0 <= q @ up <= z1:
+            return 0.0
+
+    def pt(p):
+        s_, z_, n_ = p @ u, p @ up, p @ nv
+        ds = max(0.0, -s_, s_ - span)
+        dz = max(0.0, z0 - z_, z_ - z1)
+        return float(np.sqrt(n_ * n_ + ds * ds + dz * dz))
+    c00, c10, c11, c01 = up * z0, u * span + up * z0, u * span + up * z1, up * z1
+    return min(pt(p0), pt(p1), seg_seg(p0, p1, c00, c10), seg_seg(p0, p1, c10, c11), seg_seg(p0, p1, c11, c01),
+               seg_seg(p0, p1, c01, c00))

@@ -636,15 +636,15 @@ func test_breathing() -> void:
 
 
 func test_lens() -> void:
-	t.begin("14 lens: vignette and depth of field")
+	t.begin("14 lens: depth of field, no vignette")
 	var keep_tier := LookFx.tier
 	LookFx.tier = SeaQuality.Tier.M
 	var tg := _target()
 	tg.loa = 7.2
 	var rig := _rig()
 	rig.course = _course()
-	t.ok(rig.look != null and rig.look.layer < 1, "the vignette layer (%d) is under the HUD (1)" % rig.look.layer)
-	t.ok((rig.look.get_child(0) as Control).mouse_filter == Control.MOUSE_FILTER_IGNORE, "the vignette takes no mouse input")
+	t.ok(rig.find_children("*", "CanvasLayer", true, false).is_empty() and rig.find_children("*", "CanvasItem", true,
+		false).is_empty(), "no vignette: the rig has no 2-D layer over the 3-D image")
 	rig.frame(tg, CameraInput.new(), 0.016)
 	for m in [CameraRig.Mode.CHASE, CameraRig.Mode.ONBOARD, CameraRig.Mode.AERIAL, CameraRig.Mode.FREE]:
 		var c := CameraInput.new()
@@ -652,17 +652,10 @@ func test_lens() -> void:
 		rig.frame(tg, c, 0.016)
 		rig.frame(tg, CameraInput.new(), 0.016)
 		t.ok(rig.camera.attributes == null, "no depth of field on %s" % CameraRig.Mode.keys()[m])
-		t.near(rig.look.strength, LookFx.VIGNETTE_REGULAR, 1e-9, "regular vignette on %s" % CameraRig.Mode.keys()[m])
 	for m in [CameraRig.Mode.START_LINE, CameraRig.Mode.HELICOPTER]:
 		_select_clip(rig, tg, m)
 		rig.frame(tg, CameraInput.new(), 0.016)
 		t.ok(rig.camera.attributes == null, "no depth of field on %s" % CameraRig.Mode.keys()[m])
-		t.near(rig.look.strength, LookFx.VIGNETTE_CLIP, 1e-9, "clip vignette on %s" % CameraRig.Mode.keys()[m])
-	t.ok(LookFx.VIGNETTE_REGULAR <= 0.1 and LookFx.VIGNETTE_CLIP > LookFx.VIGNETTE_REGULAR, "clip vignette stronger, regular light")
-	var size := Vector2(1280, 720)
-	t.near(LookFx.vignette_at(Vector2(0.5, 0.5), size, 0.22), 1.0, 1e-9, "centre untouched")
-	t.near(LookFx.vignette_at(Vector2(0.5, 0.0), size, 0.08), 1.0, 1e-3, "top edge centre untouched (regular)")
-	t.near(LookFx.vignette_at(Vector2(0.0, 0.0), size, 0.22), 0.78, 1e-6, "corner darkened by the strength")
 	# long lens: sharp around the boat at 150 m
 	var v := _select_clip(rig, tg, CameraRig.Mode.LONG_LENS)
 	v = rig.frame(tg, CameraInput.new(), 0.016)

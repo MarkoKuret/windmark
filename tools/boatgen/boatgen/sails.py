@@ -63,8 +63,8 @@ def poly_area(P):
 # follow the size rules in Sail.look()
 LOOK_DEFAULTS = {
     "main": {"fill_gain": 0.6, "fill_curve": 4.0, "flutter_amp": 0.15, "twist_top": 0.070},
-    "jib": {"fill_gain": 0.75, "fill_curve": 1.2, "flutter_amp": 0.07, "twist_top": 0.105},
-    "genoa": {"fill_gain": 0.75, "fill_curve": 1.2, "flutter_amp": 0.07, "twist_top": 0.105},
+    "jib": {"fill_gain": 0.75, "fill_curve": 1.2, "flutter_amp": 0.07, "twist_top": 0.175},
+    "genoa": {"fill_gain": 0.75, "fill_curve": 1.2, "flutter_amp": 0.07, "twist_top": 0.175},
     "code_zero": {"fill_gain": 0.7, "fill_curve": 1.3, "flutter_amp": 0.08, "twist_top": 0.140, "camber": 0.12},
     "spinnaker_asym": {"fill_gain": 1.0, "fill_curve": 1.0, "flutter_amp": 1.0, "twist_top": 0.45, "camber": 0.27,
                        "tack_line_max": 0.04},
@@ -234,7 +234,7 @@ def _headsail(spec, cls, rig, deck):
 # flying-sail planform (docs/specs/data_format.md 3.5): leech / luff, foot / luff, mid girth / foot, then the
 # drawing: foot round (fraction of the foot), the luff's share of the edge round, clew grid (cols, rows)
 FLYING = {
-    "spinnaker_asym": {"leech": 0.82, "foot": 0.57, "mid": 0.88, "foot_round": 0.08, "luff_share": 0.45, "grid": (16, 26),
+    "spinnaker_asym": {"leech": 0.82, "foot": 0.57, "mid": 0.95, "foot_round": 0.08, "luff_share": 0.45, "grid": (16, 26),
                        "round_pos": 0.55},
     "spinnaker_sym": {"leech": 1.00, "foot": None, "mid": 0.95, "foot_round": 0.10, "luff_share": 0.50, "grid": (16, 26)},
     "code_zero": {"leech": 0.90, "foot": 0.46, "mid": 0.56, "foot_round": 0.02, "luff_share": 0.20, "grid": (12, 24)},

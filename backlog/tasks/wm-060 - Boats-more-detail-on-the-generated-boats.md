@@ -1,10 +1,10 @@
 ---
 id: WM-060
 title: 'Boats: more detail on the generated boats'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-25 20:42'
-updated_date: '2026-09-26 12:20'
+updated_date: '2026-10-11 12:12'
 labels:
   - boats
 dependencies:
@@ -29,4 +29,6 @@ Owner (2026-09-25): the boats generally lack details. Add deck hardware and rigg
 
 <!-- SECTION:NOTES:BEGIN -->
 Superseded by WM-064 (round hulls and the detail pass, 2026-09-26).
+
+Closed 2026-10-11 as superseded by WM-064.
 <!-- SECTION:NOTES:END -->

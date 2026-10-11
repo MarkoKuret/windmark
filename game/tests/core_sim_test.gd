@@ -24,7 +24,7 @@ func _init() -> void:
 		t.finish(self, "core sim test")
 		return
 	var probe: Object = ClassDB.instantiate(&"CoreSim")
-	t.ok(probe.api_version() == 5, "C API version 5")
+	t.ok(probe.api_version() == 6, "C API version 6")
 	t.ok(CoreSimSource.default_settings().has("race_seed"), "default settings")
 	_free_sailing()
 	_weather()
@@ -255,6 +255,23 @@ func _race_world() -> void:
 		worst = maxf(worst, absf(hc - hm))
 		t.near(a.sea_height_at(p.x, p.y, tm * 0.001), hc, 1e-6, "sea_height_at the tick time")
 	t.ok(worst < 1e-3, "drawn sea within 1 mm of the core: %.7f m" % worst)
+	# render times between whole milliseconds reach the core (wind.md §9, sea.md §7.2)
+	var sub_ok := 0
+	var sub_worst := 0.0
+	for p in [Vector2(0, 0), Vector2(250, -130), Vector2(-420, 610), Vector2(900, 40)]:
+		var h0 := a.sea_height_at(p.x, p.y, (tm + 1000.0) * 0.001)
+		var h1 := a.sea_height_at(p.x, p.y, (tm + 1001.0) * 0.001)
+		var hh := a.sea_height_at(p.x, p.y, (tm + 1000.5) * 0.001)
+		if h0 != h1 and minf(h0, h1) < hh and hh < maxf(h0, h1):
+			sub_ok += 1
+		sub_worst = maxf(sub_worst, absf(a.sea_height_at(p.x, p.y, (tm + 1000.37) * 0.001)
+			- model.height(p.x, p.y, tm + 1000.37)))
+	t.ok(sub_ok >= 3, "sea height at half a millisecond lies between its neighbours: %d of 4" % sub_ok)
+	t.ok(sub_worst < 1e-3, "drawn sea within 1 mm of the core at a fractional time: %.7f m" % sub_worst)
+	var g0: float = a.wind_state(tm + 1000.0)["global_from"]
+	var g1: float = a.wind_state(tm + 1001.0)["global_from"]
+	var gh: float = a.wind_state(tm + 1000.5)["global_from"]
+	t.near(gh, g0 + 0.5 * angle_difference(g0, g1), 1e-6, "wind direction at half a millisecond")
 	var st := a.state(0)
 	t.ok(is_finite(st.z) and is_finite(st.theta), "hull heave and pitch")
 

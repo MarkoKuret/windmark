@@ -956,7 +956,7 @@ def mainsheet_tackle(lower, upper, s):
 
 def tiller(app, deck, hull, s):
     """Tiller and extension in the boat frame (moves with the rudder). On a transom rudder the tiller butt sits
-    between the rudder-head cheeks on the head's horizontal bolt (`app.tiller_pivot`), sized to the cheek gap; on a
+    in a slot in the rudder head's forward end on the head's horizontal bolt (`app.tiller_pivot`); on a
     spade rudder it is clamped on top of the stock where it comes through the deck."""
     p = Part()
     st = app.rud_stock
@@ -964,7 +964,7 @@ def tiller(app, deck, hull, s):
     if app.transom_hung:
         pv = np.asarray(app.tiller_pivot, dtype=np.float64)
         gap, th = app.head_gap, app.head_cheek
-        x0, x1 = pv[0] - 0.05, app.head_front + 0.04 * s
+        x0, x1 = pv[0] - 0.05, app.head_front + 0.012
         p.add("metal", superellipsoid_box((x1 - x0, gap + 0.002, 1.15 * ht), 0.3, 10, 5,
                                           center=[0.5 * (x0 + x1), 0, pv[2]]), tag="tiller_socket")
         p.attach("tiller_socket", "rudder_head")

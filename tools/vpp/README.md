@@ -367,28 +367,68 @@ were judged to be properties of the references, not of the physics, and left alo
 The regression coefficients and sail tables are published numerical data, used with attribution; no third-party
 code is included.
 
+## Deliberate simplifications
+
+Five points of the model are kept simple on purpose: the boats handle the way they should with them, and a
+physical fix would change the handling. Each is listed with what it is, why it stays, what it affects and what a
+real fix would need.
+
+1. **Flogging drag `CD_FLOG` 0.30** (`solver.py`, next to `CD_LUFF` 0.06). An estimate at the heavy end of flag
+   drag (Hoerner), not a measurement of a sail on a free sheet. *Why*: no published data for flogging sails was
+   found, and the let-fly feel is right with it. *Affects*: `flog_drag`, the let-fly share of `trim_speed` (the
+   downwind push of flogging sails) and `drift_flog`. *Real fix*: wind tunnel or full-scale data for flogging
+   cloth by weight and aspect ratio, or a calibration against timed let-fly runs; the VPP would then take
+   `CD_flog` per sail type.
+2. **Windage linear in the apparent wind** (`decel_windage`, `perf.py` `_dynamics`, `WINDAGE_AWS_REF` 3.4 m/s).
+   The windage is not charged at a fixed wind: the core multiplies `decel_windage` by its own apparent wind each
+   tick, times `max(cos awa, 0)` (`boat.md` §5.8). The simplification is the law: one coefficient, the secant of
+   the square drag law through 3.4 m/s, so the brake grows with `aws` instead of `aws²`, uses the start config's
+   sails for every config and drops the topsides' side area off the wind line. `decel_const` holds no windage at
+   all: it is the upright hull's resistance at 1 m/s over the mass plus added mass. *Why*: the coast law gives
+   the sails no drive anywhere in the no-go zone, so the whole square law made a tack in a breeze lose most of
+   its way; the secant keeps the tack targets of `boat.md` §7.2 while a boat head to wind still stops faster in
+   more wind. *Affects*: how quickly a boat loses way in a tack, a luff or in irons, more so in a breeze.
+   *Real fix*: the square law per config, together with sails that still draw part of their drive through the
+   tack (a drive curve into the no-go zone), recalibrated against the tack tests.
+3. **`fall_off` rates are reference values** (`perf.py`: `FALL_OFF_RATE` 8°/s for S and 5°/s for L by
+   waterline length, `FALL_OFF_FN` 0.05, shape `FALL_OFF_TWA`/`FALL_OFF_SHAPE`). The rates are the spec's
+   (`boat.md` §7.4, `sails.md` §6), not a yaw balance of the windage forward of the keel against the hull's yaw
+   damping. *Why*: getting out of irons is a feel target, and the reference rates give it. *Affects*: how fast a
+   boat with no way on (or in sternway) swings off onto a tack. *Real fix*: the yaw moment of hull, rig and
+   flogging sail windage about the lateral plane at a crawl, against the yaw damping and inertia of the hull and
+   keel at that speed (which `yaw_time` would need as well).
+4. **`accel_rest` is the drive at rest** (`perf.py` `_accel_rest`). The steady VPP keel carries the whole side
+   force, and its induced drag grows without bound as the speed goes to 0, so the VPP cannot give the build-up
+   from rest. `accel_rest` is the drive of the trimmed sail plan in the true wind at rest over the mass plus added
+   mass, with no hull resistance (the boat slides to leeward until it has way on); the core blends it into
+   `accel` below half the target speed (`boat.md` §5.8). *Why*: it gives sensible starts from rest with no
+   unsteady model. *Affects*: acceleration from a standstill (start line, out of irons, after a collision).
+   *Real fix*: an unsteady low-speed model with leeway free to grow at a crawl (keel stall, the hull sliding
+   sideways), integrated in time instead of a steady equilibrium.
+5. **Helm balance without hull terms** (`perf.py` `_yaw_moment`, `x_clr`, `_weather_helm`; `WH_BALANCE_TWS`
+   6.17 m/s, `WH_HELM_MAX` 3.0, `WH_BROACH_TWA` 45°). Only the sail plan's yaw moment is computed; the heeled
+   hull's asymmetry and the Munk moment of the canoe body are folded into `x_clr` at the balance point
+   (close-hauled in 12 kn), and their change with speed and heel is left out. *Why*: the balance point is a design
+   statement (a racing boat is set up to go upwind with the helm centred), and the sail plan gives the trends
+   that matter (weather helm when pressed, lee helm from a kite far forward). *Affects*: `weather_helm` away from
+   the balance point, and so the rudder drag of holding a course. *Real fix*: the heeled hull's yaw moment per
+   speed, heel and leeway (towing tank data or a regression such as the Delft series heeled tests) and the
+   lateral plane's own centre from the keel, rudder and hull geometry.
+
 ## Limits and next steps
 
-- The helm balance has no hull terms (the heeled hull's asymmetry, the Munk moment of the canoe body): their
-  value at the balance point is folded into `x_clr`, their change with speed and heel is left out. The balance
-  point is a design statement (12 kn, close-hauled), not derived from the lateral plane geometry. The sail plan's
-  forces act at its area-weighted centre of effort (a kite far forward on its sprit gives lee helm close
-  reaching). The polar is the fastest trim, not a balanced one: a crew easing the main to keep the helm light on
+- Five deliberate simplifications (flogging drag, the windage law, `fall_off`, `accel_rest`, the helm balance's
+  hull terms): see "Deliberate simplifications" above. Besides them: the balance point is not derived from the
+  lateral plane geometry. The sail plan's forces act at its area-weighted centre of effort (a kite far forward on
+  its sprit gives lee helm close reaching). The polar is the fastest trim, not a balanced one: a crew easing the main to keep the helm light on
   a breezy reach is not modelled, so near its heel limit the boat carries 4 to 7°/s of weather helm.
 - `yaw_time` is a reference value by length, not derived from the yaw inertia and damping.
-- `fall_off` uses the spec's reference rate, not a yaw balance of the windage.
 - The drift tables take the cross-flow drag coefficients from Hoerner's plates and blunt bodies, not a measurement
   of a hull drifting; the drift is the windage alone (sails on the wind line), so the side force of stalled,
   over-sheeted sails at a crawl is not in it.
 - The radius law's offset and the rudder drag rest on an assumed share (0.5) of the rudder angle reaching the
   blade in a turn (the rest is the flow curving round the stern and the drift the turn needs), the same for
   every helm; a manoeuvring model would give it per helm and speed.
-- `CD_flog` is an estimate. `decel_windage` is one coefficient for every config (the start config's sails), linear
-  in the apparent wind (a calibrated secant of the square law, above), and takes the windage along the heading as
-  `cos(awa)` of its head-to-wind value (the topsides' side area is left out).
-- The VPP cannot give the build-up from rest physically: its steady keel carries the whole side force, whose
-  induced drag grows without bound as the speed goes to 0. `accel_rest` is the drive at rest instead, and the
-  core blends it into `accel` below half the target speed.
 - Level trim only; no pitch trim with speed, no wave added resistance, no leeway in the apparent wind.
 - The planing blend and the mainsail-alone loss are calibrated, not derived; flat-bottomed sportsboats sit at the
   edge of the Delft series.

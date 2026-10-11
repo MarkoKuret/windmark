@@ -1,9 +1,11 @@
 ---
 id: WM-051
 title: 'VPP: open model points after the let-fly fix'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-09-25 17:32'
+updated_date: '2026-10-11 12:15'
 labels:
   - vpp
 dependencies: []
@@ -19,5 +21,11 @@ From WM-044/045: flogging drag coefficient 0.30 is an estimate (find data or cal
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Each point resolved or documented as a deliberate simplification in tools/vpp/README.md
+- [x] #1 Each point resolved or documented as a deliberate simplification in tools/vpp/README.md
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Owner decision: no handling change. All five points documented as deliberate simplifications in tools/vpp/README.md (what, why, affects, real fix). Point 2 was out of date: the core already charges decel_windage at its own apparent wind (secant through WINDAGE_AWS_REF 3.4 m/s); decel_const is hull-only. Documented the linear law as the simplification. No model or data change.
+<!-- SECTION:NOTES:END -->

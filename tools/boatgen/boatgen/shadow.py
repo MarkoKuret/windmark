@@ -344,7 +344,10 @@ def rudder_geoms(boat, ms=INSET_SPAR):
     the blade stands above the waterline; none for a rudder under the water."""
     from .appendages import Appendages
     with segment_scale(0.1):
-        rp = Appendages(boat.cls, boat.hull).rudder_part(n_chord=3)
+        app = Appendages(boat.cls, boat.hull)
+        st = app.rud_stations
+        app.rud_stations = st[:-1:4] + st[-1:]            # every fourth station of a finely drawn blade, and the tip
+        rp = app.rudder_part(n_chord=3)
     pieces = [g for gs in rp.slots.values() for g in gs if (g.tag or "") in ("rudder", "rudder_head")]
     blade = [g for g in pieces if g.tag == "rudder"]
     if not blade or max(float(g.P[:, 2].max()) for g in blade) < RUDDER_ABOVE:

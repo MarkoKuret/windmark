@@ -325,7 +325,9 @@ WindSample WindField::wind_clean(const WindTick& tick, float x, float y) const {
 }
 
 // §7
-Vec2 WindField::current(float x, float y, std::uint32_t t) const {
+Vec2 WindField::current(float x, float y, std::uint32_t t) const { return current(x, y, t, 0.0); }
+
+Vec2 WindField::current(float x, float y, std::uint32_t t, double frac) const {
   const SinCos sc = wm_sincos(s_.current_to);
   const float ux = s_.current_speed * sc.s;
   const float uy = s_.current_speed * sc.c;
@@ -339,8 +341,11 @@ Vec2 WindField::current(float x, float y, std::uint32_t t) const {
   }
   // (t + tide_phase_ms) in 64 bits so it never wraps before the modulo.
   const std::uint64_t ph = (static_cast<std::uint64_t>(t) + s_.tide_phase_ms) % s_.tide_period_ms;
-  const float tide =
-      s_.tide_scale * wm_cos(TWO_PI * (static_cast<float>(ph) / static_cast<float>(s_.tide_period_ms)));
+  // §9 a render time adds its fraction of a millisecond to the phase, in double.
+  const double period = static_cast<double>(s_.tide_period_ms);
+  const float phase = frac > 0.0 ? static_cast<float>((static_cast<double>(ph) + frac) / period)
+                                 : static_cast<float>(ph) / static_cast<float>(s_.tide_period_ms);
+  const float tide = s_.tide_scale * wm_cos(TWO_PI * phase);
   return {ux + tide * fx, uy + tide * fy};
 }
 

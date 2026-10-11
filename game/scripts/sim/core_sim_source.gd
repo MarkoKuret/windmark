@@ -421,9 +421,9 @@ func sea_height(x: float, y: float) -> float:
 	return core.sea_height(x, y)
 
 
-## Sea height at time t (s since tick 0), as FakeSim.sea_height_at (the core resolves whole milliseconds).
+## Sea height at time t (s since tick 0), as FakeSim.sea_height_at (fractional milliseconds reach the core).
 func sea_height_at(x: float, y: float, t: float) -> float:
-	return core.sea_height_at(x, y, int(maxf(0.0, t * 1000.0)))
+	return core.sea_height_at(x, y, maxf(0.0, t * 1000.0))
 
 
 func trim_speed_at(boat: int, tws: float, awa_abs: float, eps: float) -> float:
@@ -593,12 +593,12 @@ func sea_exposure() -> Dictionary:
 ## wind.md: {base_speed, base_from, global_from, puff_tile, cap_up, cap_down, puffs, patches: [[px, py, R, s, e]]}
 ## at environment time t_ms (whole ms)
 func wind_state(t_ms: float) -> Dictionary:
-	return core.wind_state(int(maxf(0.0, t_ms)))
+	return core.wind_state(maxf(0.0, t_ms))
 
 
 ## wind.md §7 current at a point and time, Vector2(east, north) m/s
 func current_at(x: float, y: float, t_ms: float) -> Vector2:
-	return core.current_at(x, y, int(maxf(0.0, t_ms)))
+	return core.current_at(x, y, maxf(0.0, t_ms))
 
 
 ## wind_shadow.md §5 environment the boat stepped in: {wind_speed, wind_from, ..., shadow_source}

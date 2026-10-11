@@ -265,6 +265,18 @@ water now, and its own history; and what a sailor knows before the race: the cur
 stream, steady through a race) and the briefing's trend (`ai.md` §1). It never evaluates future times or
 `global_from` (`ai.md`).
 
+**Render time.** The simulation only evaluates tick times (whole milliseconds). Renderers draw at a fractional
+frame time `t_r` (ms, `water_render.md` §2), and `global_from`, `puff_patches` and `current` take it as is: with
+`n = floor(t_r)` and `f = t_r − n`,
+```
+global_from(t_r)  = angle_lerp(global_from(n), global_from(n + 1), f)
+puff_patches(t_r) = per slot, the patch at n with px, py, e lerped toward the patch at n + 1 by f when both are of
+                    the same generation (§6.2), else the patch at n; live when e >= 1e-4
+current(x, y, t_r): tide phase ((double)(((uint64)n + tide_phase_ms) % tide_period_ms) + f) / tide_period_ms,
+                    in double, then to float
+```
+At `f = 0` each is the tick value bit for bit. None of this feeds the simulation, so it need not be deterministic.
+
 ## 10. Tests
 
 1. Determinism: `wind_clean` over a 50 × 50 grid at 100 times equals a stored vector file bit for bit. The file

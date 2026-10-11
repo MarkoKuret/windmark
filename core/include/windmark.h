@@ -46,7 +46,7 @@
 extern "C" {
 #endif
 
-#define WM_API_VERSION 5
+#define WM_API_VERSION 6
 
 /* ---- status ------------------------------------------------------------------------------------------------ */
 
@@ -490,10 +490,11 @@ typedef struct wm_puff {
 WM_API int32_t wm_world_puffs(wm_world* w, wm_puff* out, int32_t cap);
 WM_API float wm_world_puff_tile(const wm_world* w);
 
-/* The same at any time t_ms of the environment clock (renderers draw between ticks). The wind is a pure function
- * of (seed, t, position), so these give the bits the simulation sees at a tick time. */
-WM_API int32_t wm_world_puffs_at(wm_world* w, uint32_t t_ms, wm_puff* out, int32_t cap);
-WM_API wm_status wm_world_current_at(wm_world* w, float x, float y, uint32_t t_ms, float* cx, float* cy);
+/* The same at any time t_ms of the environment clock, fractional: renderers draw between ticks (wind.md §9 render
+ * time; NaN and negative times are 0). The wind is a pure function of (seed, t, position), so at a whole
+ * millisecond these give the bits the simulation sees. */
+WM_API int32_t wm_world_puffs_at(wm_world* w, double t_ms, wm_puff* out, int32_t cap);
+WM_API wm_status wm_world_current_at(wm_world* w, float x, float y, double t_ms, float* cx, float* cy);
 
 /* wind.md §1, §3, §6 what a renderer needs besides the patches. */
 typedef struct wm_wind_state {
@@ -503,7 +504,7 @@ typedef struct wm_wind_state {
   float cap_up, cap_down;        /* puff factor caps */
   int32_t puffs;                 /* bool: puffs enabled */
 } wm_wind_state;
-WM_API wm_status wm_world_wind_state(wm_world* w, uint32_t t_ms, wm_wind_state* out);
+WM_API wm_status wm_world_wind_state(wm_world* w, double t_ms, wm_wind_state* out);  /* t_ms as wm_world_puffs_at */
 
 /* The environment clock: tick 0 of the world is its zero (race.md §0), so the state after the last step is at
  * 50 * tick ms and a render pose at alpha is at 50 * (tick - 1 + alpha) ms (0 before the first step). */
@@ -530,8 +531,9 @@ typedef struct wm_exposure_grid {
   const float* e;
 } wm_exposure_grid;
 WM_API wm_status wm_world_sea_exposure_grid(const wm_world* w, wm_exposure_grid* out);
-/* sea.md §4 height at any time of the environment clock (renderers, cameras between ticks). */
-WM_API float wm_world_sea_height_at(wm_world* w, float x, float y, uint32_t t_ms);
+/* sea.md §4, §7.2 height at any time of the environment clock, fractional ms (renderers, cameras between ticks;
+ * NaN and negative times are 0). */
+WM_API float wm_world_sea_height_at(wm_world* w, float x, float y, double t_ms);
 
 /* ---- venue ------------------------------------------------------------------------------------------------- */
 

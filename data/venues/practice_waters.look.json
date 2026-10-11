@@ -1,0 +1,14 @@
+{
+  "schema": "windmark.look/1",
+  "id": "practice_waters",
+  "version": 1,
+  "light": {
+    "date": "08-25",
+    "utc_offset_h": 2,
+    "race_window": ["10:00", "18:30"],
+    "time": "14:30",
+    "conditions": "fair",
+    "typical": ["clear", "fair", "hazy"],
+    "note": "A late-summer day on the northern Adriatic: a high midday sun, a long golden evening."
+  }
+}

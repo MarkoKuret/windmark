@@ -1,0 +1,14 @@
+{
+  "schema": "windmark.look/1",
+  "id": "garda",
+  "version": 1,
+  "light": {
+    "date": "07-20",
+    "utc_offset_h": 2,
+    "race_window": ["12:30", "18:30"],
+    "time": "14:30",
+    "conditions": "fair",
+    "typical": ["clear", "fair", "hazy"],
+    "note": "High summer. The Ora from the south fills from about midday and the races run through the afternoon; the early morning Peler from the north would be a different wind (a venue matter), so the window starts at midday."
+  }
+}

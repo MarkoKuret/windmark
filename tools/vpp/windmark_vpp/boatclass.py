@@ -29,6 +29,10 @@ FEEL_RANGE = (0.2, 5.0)
 SAIL_TYPES = ("main", "jib", "genoa", "code_zero", "spinnaker_sym", "spinnaker_asym")
 FRONT_TYPES = SAIL_TYPES[1:]
 SPINNAKER_TYPES = ("spinnaker_sym", "spinnaker_asym")
+# Default vpp.max_heel_kite: under a spinnaker, gennaker or code zero the crew keeps the heel below this (rad):
+# beyond it the rudder nears the surface and the boat broaches (ORC VPP Documentation 2023 section 5.2.3: about
+# 21.5 deg since 2014; README "Heel").
+KITE_MAX_HEEL = math.radians(21.5)
 
 # Sheeting limits per sail type (rad from the aft centreline): chord as far in and out as a typical deck layout
 # allows (outboard leads for headsails off the wind, the spreaders for the boom, pole or clew for the kites).
@@ -171,6 +175,7 @@ class Boat:
     app_depth: float          # depth of its centroid below the DWL, m
     sails: List[Sail]
     heel_max: float           # rad, the equilibrium never settles beyond this
+    heel_max_kite: float      # rad, the same under a spinnaker, gennaker or code zero
     start: dict = field(default_factory=dict)
     handling: dict = field(default_factory=dict)   # absolute overrides of dynamics values
     feel: dict = field(default_factory=lambda: {k: 1.0 for k in FEEL_KEYS})   # handling multipliers
@@ -521,6 +526,7 @@ def from_dict(raw: dict) -> Boat:
         notes.append(f"VCG estimated {vcg:+.2f} m (bulb, fin, rig at 0.45 mast height, rest at 0.25 freeboard)")
     vd = raw.get("vpp") or {}
     heel_max = _num(vd, "max_heel", "vpp", 0.56 if kind == "monohull" else 0.28)
+    heel_max_kite = _num(vd, "max_heel_kite", "vpp", min(KITE_MAX_HEEL, heel_max))
 
     hd = raw.get("handling") or {}
     if not isinstance(hd, dict):
@@ -541,7 +547,7 @@ def from_dict(raw: dict) -> Boat:
                 rudder=rudder, rudder_max=rudder_max, draft_total=draft_total, rig_I=I, rig_J=J, rig_P=P, rig_E=E,
                 mast_height=mast_height, mast_x=mast_x, boom_height=boom_height, mast_chord=mast_chord,
                 bowsprit=bowsprit, pole=pole, freeboard=freeboard, app_volume=app_v, app_depth=app_depth,
-                sails=sails, heel_max=heel_max,
+                sails=sails, heel_max=heel_max, heel_max_kite=heel_max_kite,
                 start=dict(raw.get("start") or {}), handling=overrides, feel=feel, notes=notes,
                 source=raw,
                 sha256=hashlib.sha256(json.dumps(raw, sort_keys=True).encode()).hexdigest())

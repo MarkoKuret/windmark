@@ -38,10 +38,16 @@ from .boatclass import SPINNAKER_TYPES, Boat
 from .constants import DEG, RHO_AIR, RHO_WATER, G
 from .geometry import hydrostatics, loft, _plan
 from .hydro import build as build_hull
+from .sails import envelope
 from .solver import CD_FLOG, CD_LUFF, FLATS, REEFS, Rig, Solver, added_mass_coefficient, apparent, make_rig, wind_at
 
 SCHEMA = "windmark.perf/1"
-KITE_TYPES = SPINNAKER_TYPES + ("code_zero",)
+# Sheet range of the main's unlimited best-angle envelope (rad): the main's best angle in the slot of a front sail
+# (Generator._main_in_slot) is taken from it before the boom limits apply.
+MAIN_FREE_RANGE = (-30 * DEG, 180 * DEG)
+# With a kite or code zero set the main is never trimmed closer than this (rad): eased until it luffs, it stays off
+# the centreline where the kite's flow would only backwind it (sails.md 5.1).
+MAIN_KITE_FLOOR = 10 * DEG
 TWS = np.array([0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 20.6])
 TWA_SAIL = np.concatenate([np.arange(20, 60, 2), np.arange(60, 180.01, 5)]) * DEG
 AWA = np.concatenate([[0, 5], np.arange(10, 180.01, 5)]) * DEG
@@ -516,12 +522,42 @@ class Generator:
 
     def _opt_angle(self, r: ConfigResult, k: int):
         s = r.rig.sails[k]
-        o = self._to_awa(r, r.deltas[k], s.sheet_min)
+        d = r.deltas[k]
+        if s.type == "main" and len(r.rig.sails) > 1:
+            d = self._main_in_slot(r)
+        o = self._to_awa(r, d, s.boom_min)
         o[0] = o[1]
-        if s.type == "main" and any(f.type in KITE_TYPES for f in r.rig.sails):
-            # with a spinnaker or code zero set the main is sailed inside its own best angle (sails.md 5.1)
-            o = o - s.kite_sheet_in
-        return np.clip(o, s.sheet_min, s.sheet_max)
+        return np.clip(o, s.boom_min, s.sheet_max)
+
+    def _main_in_slot(self, r: ConfigResult):
+        """Best boom angle of the main behind front sail F (sails.md 5.1), on the (tws, twa) solve grid.
+
+        The main sits in the flow that leaves F's leech (the slot): F's circulation heads the wind the main sees,
+        and where the main's luff lies behind F the flow there runs along F's leech (Kutta condition). The main's
+        local wind therefore comes from F's sheet angle instead of the free stream's effective angle beta_e, and
+        the main trims to its own best angle for that wind. A jib or genoa (and a symmetric spinnaker, set to
+        windward) falls into the main's lee from 110 deg (the blanketing range of sails.md 6): the slot fades out
+        and the main trims to the free stream again by 180 deg. The forces of the equilibrium are untouched (the
+        coefficients are in-situ ones against the free stream), so only the main's drawn angle moves."""
+        front = r.rig.sails[-1]
+        lam = r.deltas[-1]
+        _, _, _, beta_e = apparent(1.0, r.awa, 0.0, r.heel)
+        beta_e = np.abs(beta_e)
+        if front.type not in ("spinnaker_asym", "code_zero"):
+            u = np.clip((beta_e - np.radians(110)) / np.radians(70), 0, 1)
+            lam = lam + (beta_e - lam) * u * u * (3 - 2 * u)
+        local = np.minimum(beta_e, lam)
+        e = self._main_free_envelope()
+        _, _, de = e.at(r.fi, local)
+        if front.type in ("spinnaker_asym", "spinnaker_sym", "code_zero"):
+            de = np.maximum(de, MAIN_KITE_FLOOR)
+        return de
+
+    def _main_free_envelope(self):
+        """The main's best chord angle for any wind, without the sheeting limits (MAIN_FREE_RANGE)."""
+        if getattr(self, "_free_env", None) is None:
+            self._free_env = envelope("main", *MAIN_FREE_RANGE, FLATS, dbeta=0.5 * DEG, n_delta=421)
+        return self._free_env
 
     def _trim_tables(self, r: ConfigResult):
         S = self.solver
@@ -872,7 +908,7 @@ class Generator:
         spin = t in SPINNAKER_TYPES
         rates = {"main": (0.55, 0.75), "jib": (0.65, 0.95), "genoa": (0.55, 0.9), "code_zero": (0.4, 0.9),
                  "spinnaker_sym": (0.3, 0.85), "spinnaker_asym": (0.3, 0.85)}[t]
-        out = {"type": t, "sheet_min": s.sheet_min, "sheet_max": s.sheet_max, "rate_in": rates[0],
+        out = {"type": t, "sheet_min": s.boom_min, "sheet_max": s.sheet_max, "rate_in": rates[0],
                "rate_out": rates[1], "shiver_free": spin}
         tw = TWS
         if t == "main":
@@ -974,7 +1010,7 @@ def generate(boat: Boat, thin_ship: Optional[bool] = None, physics: Optional[Dic
 
 RANGES = {"polar": (-5, 40), "heel": (0, math.pi / 2), "accel": (0, None), "accel_rest": (0, None),
           "fall_off": (0, None), "flog_drag": (0, None), "drift": (0, None), "drift_flog": (0, None), "trim_speed": (0, 3), "trim_heel": (0, 3),
-          "heel_speed_factor": (0, 3), "optimal_angle": (0, math.pi), "heel_rise": (-1, 1),
+          "heel_speed_factor": (0, 3), "optimal_angle": (-math.pi / 16, math.pi), "heel_rise": (-1, 1),
           "heel_trim": (-math.pi / 8, math.pi / 8)}
 QUANTITIES = ("tws", "twa_abs", "awa_abs", "trim_error", "boat_speed", "boat_speed_abs", "helm_abs", "heel_abs", "aws")
 

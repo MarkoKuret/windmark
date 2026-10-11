@@ -424,3 +424,60 @@ TEST_CASE("sails: trim tables are 0 on the wind line") {
     }
   }
 }
+
+// §5.1, §5.2: behind the jib the main trims to the jib's leech flow: close-hauled in light and medium air the boom
+// is on the centreline (within the traveller's few degrees either side); the manual sheet hard in puts it on the
+// centreline or to windward, never aback. With the kite set the main follows the apparent wind inside the kite.
+TEST_CASE("sails: main on the centreline upwind, inside the kite downwind") {
+  for (const char* cls : {"wm7", "wm12"}) {
+    const wm::PerfData& p = perf_no_helm_balance(cls);
+    const std::int32_t main = p.main_sail;
+    const std::int32_t jib = p.find_sail("jib");
+    const std::int32_t kite = p.find_sail(std::string(cls) == "wm7" ? "kite" : "a2");
+    const std::size_t mi = static_cast<std::size_t>(main);
+    const float windward = -p.sails[mi].sheet_min;
+    CHECK(windward > 0.0f);
+    for (float tws : {6.0f, 10.0f}) {
+      Sim sim(p, tws, 0.0f);
+      const float twa = deg(43.0f);
+      sim.place(twa, p.config_for(jib)->polar.at(kn(tws), twa), jib);
+      for (int i = 0; i < static_cast<int>(30.0f / DT); ++i) {
+        sim.steer_twa(twa);
+        sim.step();
+      }
+      const float side = -wm::sgn(sim.s().awa);
+      const float m = side * sim.boat.sails().sail(mi).beta;  // + to leeward
+      MESSAGE(std::string(cls), " ", tws, " kn close-hauled: AWA ", to_deg(std::fabs(sim.s().awa)), " deg, main ", to_deg(m),
+              " deg, jib ", to_deg(side * sim.boat.sails().sail(static_cast<std::size_t>(jib)).beta), " deg");
+      CHECK(m >= -windward - 1e-4f);
+      CHECK(m <= deg(3.0f));
+      CHECK_FALSE(sim.boat.sails().output(mi).backed);
+      // the manual sheet hard in: the main on the centreline or to windward
+      sim.boat.set_auto_trim(false);
+      sim.boat.set_sheet(0.0f);
+      for (int i = 0; i < static_cast<int>(10.0f / DT); ++i) {
+        sim.steer_twa(twa);
+        sim.step();
+      }
+      const float mm = side * sim.boat.sails().sail(mi).beta;
+      MESSAGE("  sheet hard in: main ", to_deg(mm), " deg");
+      CHECK(mm <= 1e-4f);
+      CHECK(mm >= -windward - 1e-4f);
+      CHECK_FALSE(sim.boat.sails().output(mi).backed);
+    }
+    Sim sim(p, 10.0f, 0.0f);
+    const float twa = deg(135.0f);
+    sim.place(twa, p.config_for(kite)->polar.at(kn(10.0f), twa), kite);
+    for (int i = 0; i < static_cast<int>(30.0f / DT); ++i) {
+      sim.steer_twa(twa);
+      sim.step();
+    }
+    const float side = -wm::sgn(sim.s().awa);
+    const float m = side * sim.boat.sails().sail(mi).beta;
+    const float k = side * sim.boat.sails().sail(static_cast<std::size_t>(kite)).beta;
+    MESSAGE(std::string(cls), " kite at 135 deg TWA: AWA ", to_deg(std::fabs(sim.s().awa)), " deg, main ", to_deg(m),
+            " deg, kite ", to_deg(k), " deg");
+    CHECK(m > deg(15.0f));
+    CHECK(m < k);
+  }
+}

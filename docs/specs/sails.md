@@ -27,7 +27,7 @@ From the performance file (`data_format.md` §4.4). Reference values: S = sports
 
 | name | unit | meaning | reference |
 | --- | --- | --- | --- |
-| `sheet_min`, `sheet_max` | rad | range of the sail angle magnitude the sheet can reach | main 0–45° (S), 0–60° (L); jib/genoa 14–70° (L), 25–90° (S genoa); code zero 26–180°; spinnaker sym 25–90°; asym 12–170° |
+| `sheet_min`, `sheet_max` | rad | range of the sail angle magnitude the sheet can reach; the main's `sheet_min` may be negative (the traveller carries the boom to windward, at most π/16) | main −3°–45° (S), −3°–60° (L); jib/genoa 14–70° (L), 25–90° (S genoa); code zero 26–180°; spinnaker sym 25–90°; asym 12–170° |
 | `sheet_max_by_heel` | Table1D(`heel_abs`) → rad, optional | lower limit on `sheet_max` when heeled (the boom end reaches the water) | L main: (23°, 57°) (30°, 43°) (45°, 25°) (65°, 11°) |
 | `rate_in`, `rate_out` | 1/s | sheeting-in and easing speed factors (§5.5) | main 0.5–0.65 / 0.5–1.0; jib 0.5–0.8 / 0.9–1.0; spinnakers 0.1–0.5 / 0.7–1.0 |
 | `pole_angle` | Table2D(`tws`, `awa_abs`) → rad, optional | spinnaker pole / tack line angle target, magnitude | asym: 1–5° close reaching, 20–35° at 140–160° AWA |
@@ -154,21 +154,59 @@ cfg_for(S) = S is main ? the current config : the config "main + S"
 m_opt = clamp(cfg_for(S).optimal_angle[S](tws, fabsf(awa)), sheet_min, sheet_max)   // sheet_min if no table
 beta_opt = -sgn(awa) * m_opt
 ```
-The main's optimum depends on which front sail is up (it trims to the headsail's slot), which is why it lives in
-the config tables. With a spinnaker or a code zero set the main is sailed well inside its own best angle (the
-kite's flow backwinds a main eased to the shrouds, and the crew keeps it clear of them): the VPP writes the kite
-configs' main optimum sheeted in by the class's `kite_sheet_in` (`data_format.md` §3.5) from the main's own best
-angle for that apparent wind, never below `sheet_min`, so the main still follows the apparent wind. With a front
-sail up only the front sail's trim drives the boat (`boat.md` §5.4): the offset moves the drawn main (and the
-main's place on the single manual sheet, §5.2), not the speed.
+The main's optimum depends on which front sail is up, which is why it lives in the config tables. The main's
+angle is its **boom** angle; a negative `m_opt` (main only) puts the boom to windward of the centreline.
+
+- **Main alone**: the main's own best angle for the apparent wind (the VPP's sail optimum).
+- **Behind a front sail F (the slot)**: the main sits in the flow that leaves F's leech. F's circulation turns
+  the wind the main meets (a header: the forward sail of a two-sail rig lifts the wind ahead of it and heads the
+  wind behind it), and where the main's luff lies behind F the flow there leaves F's leech along it (the
+  trailing-edge, or Kutta, condition). The main therefore trims to its own best angle for a wind coming from F's
+  sail angle, not from the free stream: `m_opt[main] = best angle of the main for the wind angle
+  min(β_e, m_opt[F])` (`β_e` the free stream's effective angle at the rig, `tools/vpp/README.md`). The forces are
+  unchanged (the sail coefficients are in-situ coefficients against the free stream), so this moves only the
+  drawn main and its place on the single manual sheet (§5.2): with a front sail up only the front sail's trim
+  drives the boat (`boat.md` §5.4).
+  - Close-hauled, the jib's optimum is 11 to 13° in light air and the main's best angle of attack is about
+    12°: the boom is on the centreline, and a little to windward when the jib nears its inboard limit
+    (pinching), as the traveller carries it there (the main's `sheet_min` −3°, an estimate of a sportsboat
+    traveller's reach). As the wind builds the VPP depowers (from about 6 m/s TWS on wm7 and wm12) and the
+    apparent wind widens: the jib is eased (15 to 23°) and the main with it (3 to 12° from 8 to 16 m/s), as a
+    crew drops the traveller when overpowered. This is the trim of the sportsboat tuning guides: boom on or just
+    above the centreline in light air, traveller down as the breeze builds (North Sails, "J/70 light air speed
+    notes", 2018; North Sails, J/70 tuning guide: boom near the centreline until overpowered, slightly above
+    it to point; Doyle Sails, J/70 tuning guide: traveller to weather, boom on or just above the centreline up
+    to 8 kn, car above the centreline as it builds; Ullman Sails, Melges 24 guide: boom on the centreline until
+    overpowered, then drop the traveller). The slot itself: Gentry (1971), "The aerodynamics of sail
+    interaction", AIAA Symposium on the Aero/Hydronautics of Sailing; Marchaj (1979), Aero-Hydrodynamics of
+    Sailing.
+  - With an asymmetric spinnaker or a code zero the main trims to the kite: it follows the apparent wind inside
+    the kite (wm7 at 4 m/s: 10° up to about 70° AWA, held by the floor below, 30° at 90°, 51° from 120°
+    with the kite fully eased), as on a real boat where the main is eased until the kite's flow starts to
+    backwind it and the mainsheet follows the kite sheet (never eased alone: it closes the slot). Trim guides
+    describe it in these terms, without boom angles: the kite's flow "attaches to the backside of the main", the
+    main is eased until it starts to luff and trimmed until the luff stops, with a small bubble accepted in a
+    breeze, and the boat is steered to keep the apparent wind near 90° in reach-to-VMG mode (M. Ingham,
+    "Optimizing wind flow across your asymmetric", Sailing World, 2015; North Sails, "Trim an asymmetric
+    spinnaker on a sport boat"). So the boom follows the apparent wind through the kite's angle: a slow boat
+    with the apparent wind aft eases, a fast one with it drawn forward sails the main sheeted in.
+    The main is never trimmed closer than 10° with a kite or code zero set (the backwind floor): with the kite at
+    its inboard stop on a close reach its flow would put the main near the centreline, where it only backwinds;
+    the crew eases it until it luffs and trims until the luff stops (Ingham 2015), which keeps it off the
+    centreline. So `m_opt[main] = max(10°, best angle of the main for the wind angle min(β_e, m_opt[F]))`.
+  - A jib or genoa, and a symmetric spinnaker set to windward on its pole, fall into the main's lee abaft the
+    beam: the slot fades out from 110° to 180° effective AWA (the blanketing range of §6) and the main returns to
+    its own best angle (eased to the shrouds running).
 
 ### 5.2 Sheet target magnitude `m_s`
 - `auto_trim` on: `m_s = m_opt`.
 - `auto_trim` off (manual sheet `u = sheet_cmd`):
   - every front sail: `m_s = sheet_min + u*(sheet_max − sheet_min)`;
   - the main with no front sail up: the same with the main's range;
-  - the main with front sail `F` up: `m_s = clamp((m_s[F] − m_opt[F]) + m_opt[main], 0, sheet_max[main])`. One
-    sheet control therefore trims both sails and the main keeps its trim relative to the headsail.
+  - the main with front sail `F` up: `m_s = clamp((m_s[F] − m_opt[F]) + m_opt[main], sheet_min[main],
+    sheet_max[main])`. One sheet control therefore trims both sails and the main keeps its trim relative to the
+    headsail: hard in (`u = 0`) close-hauled the main is on the centreline or on the traveller to windward, and
+    eased from there it passes through its slot trim to the depowered and fully eased angles.
 
 ### 5.3 Let-fly
 While `let_fly` is held: `m_s = sheet_max` for every sail. The sheets are let run to their fully eased position at
@@ -189,12 +227,13 @@ k_h  = hoist_factor(sail)              // down, prepare_hoist, dropping: 0.1
 beta_t = -sgn(awa) * m * k_h
 if type == spinnaker_asym and beta * beta_t < -1e-5:
     beta_t = (beta >= 0 ? 1 : -1) * 4.71238898f          // gybe: drive round the bow (3π/2)
-elif fabsf(awa) < fabsf(beta_t):
+elif m > 0 and fabsf(awa) < fabsf(beta_t):
     beta_t = sgn(beta_t) * fabsf(awa)                     // cannot be eased past the wind line
 ```
 - The target sits to leeward; when the wind crosses the bow or the stern `sgn(awa)` flips and the target jumps to
   the other side, which is how tacks and gybes move the sails.
 - A sail whose sheet is eased beyond the wind line stops at the wind line: it luffs, it cannot fly forward of it.
+  A main on the traveller to windward (`m < 0`) is not eased and keeps its angle.
 - **Asymmetric spinnaker gybe**: while the sail is still on the old side, its target is pushed to ±270° on its own
   side, so it travels forward, passes the bow (`|β| = π`, where `wrap_pi` carries it to the new side) and then
   comes back aft to the normal target, as a kite gybed round the front of the forestay does.
@@ -345,8 +384,9 @@ Semantics and reference shapes:
   flogging; it grows in proportion to the TWS. Used by the core only at a crawl (`boat.md` §6.4).
 - **leeway**: the VPP's leeway angle at the polar's equilibrium (keel and rudder lift against the side force), 0
   in the no-go zone; written only for a class with `full_leeway` on (`boat.md` §6.4).
-- **optimal_angle**: main: 0 up to about 20–30° AWA, then rising to 35–60° at 120–170° (with a spinnaker or code
-  zero set: `kite_sheet_in` less, §5.1); jib/genoa 14–25° close hauled rising to 55–70°; spinnakers 12–30° at their lowest AWA rising to 85–90° dead downwind.
+- **optimal_angle**: main alone: its own best angle, 10–20° close-hauled rising to the shrouds from about 90°
+  AWA; behind a front sail the slot trim of §5.1 (jib: −3 to 2° close-hauled up to 6 m/s TWS, 3–12° from 8 m/s
+  where the VPP depowers; kite: following the apparent wind inside the kite, at least 10°, about 30° at 90° AWA); jib/genoa 14–25° close hauled rising to 55–70°; spinnakers 12–30° at their lowest AWA rising to 85–90° dead downwind.
 
 ## 7. Outputs for drawing, crew and sound
 
@@ -361,7 +401,7 @@ Per sail, each tick:
 | `motion` | idle / sheeting / easing (winch and crew animation, sheet sounds) |
 | `trim_error` | `eps` (HUD trim indicator) |
 | `luff_shiver` | luff flutter intensity 0..1, below |
-| `backed` | `sgn(beta) == sgn(awa)` and `fabsf(beta) > 0.02` (the sail is aback on the windward side) |
+| `backed` | `sgn(beta) == sgn(awa)` and `fabsf(beta) > 0.02 + max(−sheet_min, 0)` (the sail is aback on the windward side; a main on its traveller to windward is not) |
 
 ```
 luff_shiver:

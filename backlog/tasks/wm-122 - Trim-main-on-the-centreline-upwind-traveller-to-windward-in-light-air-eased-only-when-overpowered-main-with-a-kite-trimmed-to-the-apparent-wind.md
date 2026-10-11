@@ -3,9 +3,11 @@ id: WM-122
 title: >-
   Trim: main on the centreline upwind (traveller to windward in light air),
   eased only when overpowered; main with a kite trimmed to the apparent wind
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@main-trim'
 created_date: '2026-10-09 21:34'
+updated_date: '2026-10-09 22:04'
 labels:
   - physics
   - sails
@@ -22,7 +24,7 @@ Owner (2026-10-09): fully sheeted the main must reach the centreline; today it n
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Spec (sails.md, data_format.md if keys change) gives the main's upwind optimum (centreline or slightly to windward until overpowered) and the main-with-kite angle as a function of AWA, with sources
-- [ ] #2 VPP tables: main close-hauled optimum about 0 (or to windward) in light and medium air on wm7 and wm12, eased only where the VPP finds it faster; main with kite follows AWA; manual sheet fully in puts the main on the centreline (or windward in light air)
+- [x] #1 Spec (sails.md, data_format.md if keys change) gives the main's upwind optimum (centreline or slightly to windward until overpowered) and the main-with-kite angle as a function of AWA, with sources
+- [x] #2 VPP tables: main close-hauled optimum about 0 (or to windward) in light and medium air on wm7 and wm12, eased only where the VPP finds it faster; main with kite follows AWA; manual sheet fully in puts the main on the centreline (or windward in light air)
 - [ ] #3 Core tests and AI tests (incl. ai_long) green with the regenerated performance files
 <!-- AC:END -->

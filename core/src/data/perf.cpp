@@ -33,7 +33,7 @@ const TableSpec kFallOff{{Quantity::boat_speed, Quantity::twa_abs}, Unit::rad_s,
 const TableSpec kFlogDrag{{Quantity::aws, Quantity::awa_abs}, Unit::m_s2, 0.0f, kInf};
 const TableSpec kDrift{{Quantity::tws, Quantity::twa_abs}, Unit::m_s, 0.0f, kInf};
 const TableSpec kLeeway{{Quantity::tws, Quantity::twa_abs}, Unit::rad, 0.0f, 0.5f};
-const TableSpec kOptimalAngle{{Quantity::tws, Quantity::awa_abs}, Unit::rad, 0.0f, PI};
+const TableSpec kOptimalAngle{{Quantity::tws, Quantity::awa_abs}, Unit::rad, -PI / 16.0f, PI};
 const TableSpec kHeelSpeedFactor{{Quantity::heel_abs}, Unit::one, 0.0f, 3.0f};
 const TableSpec kHeelRise{{Quantity::heel_abs}, Unit::m, -1.0f, 1.0f};
 const TableSpec kHeelTrim{{Quantity::heel_abs}, Unit::rad, -PI / 8.0f, PI / 8.0f};
@@ -319,7 +319,7 @@ class PerfReader {
       std::string type;
       if (!data::read_string(s, p, "type", type, sink_)) return false;
       if (!sail_type_from_name(type, sail.type)) return fail(p + ".type", "unknown sail type \"" + type + "\"");
-      if (!ranged(s, p, "sheet_min", sail.sheet_min, 0.0f, PI) || !ranged(s, p, "sheet_max", sail.sheet_max, 0.0f, PI)) {
+      if (!ranged(s, p, "sheet_min", sail.sheet_min, -PI / 16.0f, PI) || !ranged(s, p, "sheet_max", sail.sheet_max, 0.0f, PI)) {
         return false;
       }
       if (!(sail.sheet_min <= sail.sheet_max)) return fail(p + ".sheet_max", "sheet_max < sheet_min");

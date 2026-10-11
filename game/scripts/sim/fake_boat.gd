@@ -442,7 +442,7 @@ func _trim(place: bool) -> void:
 		elif i != main or front < 0:
 			m_s[i] = si.sheet_min + ctl.sheet_cmd * (si.sheet_max - si.sheet_min)
 	if not ctl.auto_trim and front >= 0:
-		m_s[main] = clampf((m_s[front] - m_opt[front]) + m_opt[main], 0.0, d.info.sails[main].sheet_max)
+		m_s[main] = clampf((m_s[front] - m_opt[front]) + m_opt[main], d.info.sails[main].sheet_min, d.info.sails[main].sheet_max)
 	for i in n:
 		var si: SimSource.SailInfo = d.info.sails[i]
 		var sd: Dictionary = d.sail_data[i]
@@ -460,7 +460,7 @@ func _trim(place: bool) -> void:
 		var beta_t := -sg * m * o.k_h
 		if si.type == "spinnaker_asym" and st.beta * beta_t < -1e-5 and not place:
 			beta_t = (1.0 if st.beta >= 0.0 else -1.0) * 4.71238898
-		elif awa_abs < absf(beta_t):
+		elif m > 0.0 and awa_abs < absf(beta_t):
 			beta_t = Frames.sgn(beta_t) * awa_abs
 		o.beta_t = beta_t
 		o.motion = SimSource.Motion.IDLE
@@ -490,4 +490,4 @@ func _trim(place: bool) -> void:
 			var sa: float = sd["shiver_angle"].at(s.tws) if sd["shiver_angle"] else 0.1
 			var q := clampf(absf(sin(dl)) / (sin(sa) + 1e-4), 0.0, 1.0)
 			o.luff_shiver = 1.0 - q * q
-		o.backed = Frames.sgn(st.beta) == Frames.sgn(s.awa) and absf(st.beta) > 0.02
+		o.backed = Frames.sgn(st.beta) == Frames.sgn(s.awa) and absf(st.beta) > 0.02 + maxf(-si.sheet_min, 0.0)

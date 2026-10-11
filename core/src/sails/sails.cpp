@@ -246,7 +246,7 @@ void Sails::trim(const TrimInput& in, bool place) {
       m_s_[main] = sp.sheet_min + in.sheet_cmd * (sp.sheet_max - sp.sheet_min);
     } else {
       const std::size_t f = static_cast<std::size_t>(front_);
-      m_s_[main] = clamp((m_s_[f] - out_[f].m_opt) + out_[main].m_opt, 0.0f, sp.sheet_max);
+      m_s_[main] = clamp((m_s_[f] - out_[f].m_opt) + out_[main].m_opt, sp.sheet_min, sp.sheet_max);
     }
   }
   // §5.3: let fly runs every sheet out to fully eased at once; §5.4 still holds the sail at the heel limit and on
@@ -272,7 +272,7 @@ void Sails::trim(const TrimInput& in, bool place) {
     if (!place && sp.type == SailType::spinnaker_asym && s.beta * beta_t < -1e-5f) {
       beta_t = (s.beta >= 0.0f ? 1.0f : -1.0f) * kGybeTarget;
       gybe_target = true;
-    } else if (aa < std::fabs(beta_t)) {
+    } else if (m > 0.0f && aa < std::fabs(beta_t)) {  // a boom to windward of the centreline is not eased
       beta_t = sgn(beta_t) * aa;
     }
 
@@ -319,7 +319,8 @@ void Sails::trim(const TrimInput& in, bool place) {
       const float q = clamp(std::fabs(wm_sin(d)) / (wm_sin(sp.shiver_angle.at(in.tws)) + 1e-4f), 0.0f, 1.0f);
       o.luff_shiver = 1.0f - q * q;
     }
-    o.backed = sgn(s.beta) == sgn(in.awa) && std::fabs(s.beta) > 0.02f;
+    // A main trimmed to windward on its traveller (sheet_min < 0) is not aback.
+    o.backed = sgn(s.beta) == sgn(in.awa) && std::fabs(s.beta) > 0.02f + max(-sp.sheet_min, 0.0f);
   }
 }
 

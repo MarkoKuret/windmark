@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Offline previews of the daylight model (water_render.md section 4.5: time of day, conditions, colour grade,
-vignette), no window. Dumps the chase shot of the water test scene at several hours and conditions
+"""Offline previews of the daylight model (water_render.md section 4.5: time of day, conditions, colour grade),
+no window. Dumps the chase shot of the water test scene at several hours and conditions
 (tests/water_preview_dump.gd with --time, --conditions and --tag), renders them (tests/water_preview.py), applies
-each shot's own colour grade (its LUT strip, sampled as Godot does) and the regular cameras' vignette
-(tests/cine_preview.py), and composes labelled contact sheets:
+each shot's own colour grade (its LUT strip, sampled as Godot does, tests/cine_preview.py; no vignette, there is
+none in the game), and composes labelled contact sheets:
 
     python3 game/tests/daylight_preview.py [--dump] [--size 960x540] [--publish]
 
@@ -11,7 +11,7 @@ each shot's own colour grade (its LUT strip, sampled as Godot does) and the regu
 (with --publish also game/tests/previews/daylight_*.jpg):
   times       the chase camera at 08:00, 11:00, 14:00, 17:00 and 19:00 in fair conditions (Practice Waters, 25 Aug)
   conditions  14:00 in clear, fair, hazy and overcast
-  grade       14:00 and 19:00 fair, grade and vignette off against the default
+  grade       14:00 and 19:00 fair, grade off against the default
 Needs numpy, Pillow and moderngl (docs/THIRD_PARTY.md).
 """
 import argparse
@@ -56,14 +56,13 @@ def load_strip(path):
 
 
 def frames(ctx, tag, size):
-    """(before: the tone-mapped frame, after: graded with the regular vignette, the light) of one dumped shot."""
+    """(before: the tone-mapped frame, after: graded, the light) of one dumped shot."""
     d = wp.OUT / ("%s_%s" % (tag, SHOT))
     scene = json.loads((d / "scene.json").read_text())
-    look = json.loads((d / "look.json").read_text())
     before = wp.render(ctx, d, size, True, "auto")
     src = np.asarray(before, dtype="f4") / 255.0
     graded = cp.apply_lut(src, load_strip(d / "lut.png"))
-    after = cp.to_image(cp.vignette(graded, look["vignette_regular"], look["vignette_inner"]))
+    after = cp.to_image(graded)
     return before, after, scene.get("light", {})
 
 
@@ -116,8 +115,8 @@ def main():
     tiles = []
     for t in ("d1400", "d1900"):
         b, af, li = get(t)
-        tiles.append(label(b.copy(), "grade and vignette off, " + light_text(li)))
-        tiles.append(label(af.copy(), "default grade and vignette"))
+        tiles.append(label(b.copy(), "grade off, " + light_text(li)))
+        tiles.append(label(af.copy(), "default grade"))
     outs["grade"] = sheet(tiles, 2)
     for t, _, _ in TIMES + CONDITIONS:
         outs["shot_" + t] = get(t)[1]

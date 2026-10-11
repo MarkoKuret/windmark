@@ -261,8 +261,10 @@ heel. Three things keep that heel where crews sail:
 - under a spinnaker, gennaker or code zero the heel is held within `vpp.max_heel_kite` [21.5°]: beyond about
   that the rudder nears the surface and the boat broaches, and crews ease the main and the kite to stay below it.
   The ORC VPP has held spinnaker heel to about 21.5° since 2014 (2023 documentation §5.2.3), which also moves the
-  crossover from kite to jib to where it is seen on the water. A kite that no depowering holds there is broached
-  ("Broached speed").
+  crossover from kite to jib to where it is seen on the water. A kite has no flattening controls (backstay,
+  outhaul, traveller), so in a kite config the flat goes no lower than the ORC VPP's minimum of 0.42; a kite that
+  still heels the boat beyond the limit is overpowered and broached ("Broached speed"). wm7 and wm12 broach an
+  asymmetric kite at 110° TWA from 12 m/s (23 kn), and hold it at 135° to 16 m/s.
 
 Reference heel figures (racing practice and design data; the shipped classes are checked against them):
 

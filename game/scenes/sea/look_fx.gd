@@ -2,37 +2,26 @@
 class_name LookFx
 extends CanvasLayer
 ## The finishing look over the 3-D image (water_render.md §4.5 "Colour grade", "Vignette", "Contact shading";
-## cameras.md §9 "Depth of field"): a gentle film grade through the environment's colour correction (a small 3-D LUT
-## per light preset, built here at load), the vignette (this node: one full-screen multiply under the HUD, no screen
+## cameras.md §9 "Depth of field"): a film grade through the environment's colour correction (a 3-D LUT built here
+## from the light's grade, Daylight), the vignette (this node: one full-screen multiply under the HUD, no screen
 ## read), the contact shading (SSAO, tier H) and the depth of field of the long lens and mark clip cameras. SkyRig
-## applies the grade with its preset and the SSAO with the tier; CameraRig owns a LookFx for the vignette and the
+## applies the grade with its light and the SSAO with the tier; CameraRig owns a LookFx for the vignette and the
 ## depth of field of its camera. Presentation only.
 
 ## LUT edge length: 33³ RGBA8 (144 kB), sampled once per pixel in Godot's tonemap pass.
 const LUT_SIZE := 33
-
-## water_render.md §4.5 grade per light preset (display-referred, on the tone-mapped sRGB values):
-## `contrast` the share of a smoothstep S-curve about mid grey mixed in per channel; `warm` the tint added to the
-## highlights (fading back to neutral at white, so white sails stay white); `cool` the tint added to the shadows
-## (zero at black); `saturation` about the luminance (1 keeps it).
-const GRADES := {
-	SkyRig.Preset.CLEAR: {"contrast": 0.14, "warm": Vector3(0.018, 0.006, -0.018), "cool": Vector3(-0.010, 0.002, 0.020),
-		"saturation": 1.0},
-	SkyRig.Preset.FAIR: {"contrast": 0.14, "warm": Vector3(0.018, 0.006, -0.018), "cool": Vector3(-0.010, 0.002, 0.020),
-		"saturation": 1.0},
-	SkyRig.Preset.HAZY: {"contrast": 0.18, "warm": Vector3(0.016, 0.006, -0.014), "cool": Vector3(-0.008, 0.002, 0.016),
-		"saturation": 1.03},
-	SkyRig.Preset.LATE: {"contrast": 0.12, "warm": Vector3(0.026, 0.010, -0.022), "cool": Vector3(-0.012, 0.000, 0.022),
-		"saturation": 1.0},
-}
+## LUTs kept for reuse (a light and strength each); the oldest goes first.
+const LUT_CACHE := 12
+## water_render.md §4.5 grade strength range (the look panel's row, `--grade=`).
+const STRENGTH_MAX := 1.5
 ## Rec. 709 luma weights, used on the sRGB values as a grading weight.
 const LUMA := Vector3(0.2126, 0.7152, 0.0722)
 
 ## water_render.md §4.5 vignette: corner darkening (display-referred multiply) per camera kind; it starts at
 ## VIGNETTE_INNER of the half diagonal and reaches its strength in the corners.
-const VIGNETTE_REGULAR := 0.08
-const VIGNETTE_CLIP := 0.22
-const VIGNETTE_INNER := 0.5
+const VIGNETTE_REGULAR := 0.30
+const VIGNETTE_CLIP := 0.42
+const VIGNETTE_INNER := 0.40
 ## Under every other 2-D layer: the HUD (layer 1), the pause menu (60) and the frame-time overlay (128) draw over it.
 const VIGNETTE_LAYER := -1
 
@@ -56,8 +45,8 @@ const DOF_QUALITY := {
 const VIGNETTE_SHADER := """
 shader_type canvas_item;
 render_mode blend_mul, unshaded;
-uniform float strength = 0.08;
-uniform float inner = 0.5;
+uniform float strength = 0.30;
+uniform float inner = 0.40;
 void fragment() {
 	vec2 size = 1.0 / SCREEN_PIXEL_SIZE;
 	vec2 d = (SCREEN_UV - 0.5) * size;
@@ -75,7 +64,12 @@ static var enabled := true
 static var ssao_override := -1
 ## Development runs (`--dof=off`, the look panel): no depth of field on the clip cameras.
 static var dof_enabled := true
+## water_render.md §4.5 grade strength (0 to 1.5, 0 off; `--grade=`, the look panel) and vignette strength (a
+## factor on the camera's vignette, 0 off; `--vignette=`).
+static var grade_strength := 1.0
+static var vignette_scale := 1.0
 static var _luts := {}
+static var _lut_order: Array[String] = []
 
 var strength := VIGNETTE_REGULAR:
 	set = set_strength
@@ -108,9 +102,10 @@ func set_strength(s: float) -> void:
 		_rect.visible = strength > 0.0
 
 
-## The vignette strength for a camera mode (CameraRig.Mode): the clip cameras' broadcast frame, a trace on the rest.
+## The vignette strength for a camera mode (CameraRig.Mode): the clip cameras' broadcast frame, the regular one on
+## the rest, times the vignette strength.
 static func vignette_for(clip: bool) -> float:
-	return VIGNETTE_CLIP if clip else VIGNETTE_REGULAR
+	return (VIGNETTE_CLIP if clip else VIGNETTE_REGULAR) * vignette_scale
 
 
 ## The vignette factor at screen uv (0..1) for a screen `size` in pixels: the shader's formula.
@@ -122,7 +117,8 @@ static func vignette_at(uv: Vector2, size: Vector2, s: float) -> float:
 
 # ---- colour grade ------------------------------------------------------------------------------------------------
 
-## water_render.md §4.5 grade of one display colour (sRGB-encoded, 0..1).
+## water_render.md §4.5 grade of one display colour (sRGB-encoded, 0..1) with a grade {contrast, warm, cool,
+## saturation, white_keep} (Daylight.light()["grade"], scaled by its strength).
 static func grade(c: Vector3, g: Dictionary) -> Vector3:
 	var k: float = g["contrast"]
 	var y := Vector3(
@@ -130,12 +126,22 @@ static func grade(c: Vector3, g: Dictionary) -> Vector3:
 		lerpf(c.y, c.y * c.y * (3.0 - 2.0 * c.y), k),
 		lerpf(c.z, c.z * c.z * (3.0 - 2.0 * c.z), k))
 	var l := c.dot(LUMA)
-	var w_lo := (1.0 - smoothstep(0.05, 0.5, l)) * smoothstep(0.0, 0.08, l)
-	var w_hi := smoothstep(0.35, 0.85, l) * (1.0 - smoothstep(0.9, 1.0, l))
+	var chroma := maxf(c.x, maxf(c.y, c.z)) - minf(c.x, minf(c.y, c.z))
+	var w_lo := (1.0 - smoothstep(0.05, 0.45, l)) * smoothstep(0.0, 0.08, l)
+	var w_hi := smoothstep(0.25, 0.55, l) * (1.0 - smoothstep(0.80, 0.97, l))
+	w_hi *= 1.0 - smoothstep(0.02, 0.20, c.z - c.x)
+	w_hi *= 1.0 - float(g.get("white_keep", 0.0)) * (1.0 - smoothstep(0.03, 0.12, chroma)) * smoothstep(0.40, 0.60, l)
 	y += (g["cool"] as Vector3) * w_lo + (g["warm"] as Vector3) * w_hi
 	var ly := y.dot(LUMA)
 	y = Vector3(ly, ly, ly).lerp(y, g["saturation"])
 	return y.clamp(Vector3.ZERO, Vector3.ONE)
+
+
+## A grade at a strength k (0 to 1.5): contrast, warm and cool times k, saturation 1 + (s - 1) k.
+static func scaled(g: Dictionary, k: float) -> Dictionary:
+	return {"contrast": float(g["contrast"]) * k, "warm": (g["warm"] as Vector3) * k,
+		"cool": (g["cool"] as Vector3) * k, "saturation": 1.0 + (float(g["saturation"]) - 1.0) * k,
+		"white_keep": g.get("white_keep", 0.0)}
 
 
 ## The LUT's input at texel i: Godot samples the LUT with the colour itself as the coordinate, so texel i is read
@@ -151,34 +157,67 @@ static func lut_coord(i: int, n := LUT_SIZE) -> float:
 ## The LUT's slices (blue along the depth), RGBA8.
 static func lut_images(g: Dictionary, n := LUT_SIZE) -> Array[Image]:
 	var out: Array[Image] = []
+	var bytes := PackedByteArray()
+	bytes.resize(n * n * 4)
 	for b in n:
-		var img := Image.create_empty(n, n, false, Image.FORMAT_RGBA8)
+		var i := 0
 		for gi in n:
 			for r in n:
 				var o := grade(Vector3(lut_coord(r, n), lut_coord(gi, n), lut_coord(b, n)), g)
-				img.set_pixel(r, gi, Color(o.x, o.y, o.z, 1.0))
-		out.append(img)
+				bytes[i] = int(o.x * 255.0 + 0.5)
+				bytes[i + 1] = int(o.y * 255.0 + 0.5)
+				bytes[i + 2] = int(o.z * 255.0 + 0.5)
+				bytes[i + 3] = 255
+				i += 4
+		out.append(Image.create_from_data(n, n, false, Image.FORMAT_RGBA8, bytes))
 	return out
 
 
-static func lut(preset: int) -> ImageTexture3D:
-	if not _luts.has(preset):
+## The LUT as one image for the offline previews: the N slices side by side (blue across the slices).
+static func lut_strip(g: Dictionary, n := LUT_SIZE) -> Image:
+	var slices := lut_images(g, n)
+	var strip := Image.create_empty(n * n, n, false, Image.FORMAT_RGBA8)
+	for b in n:
+		strip.blit_rect(slices[b], Rect2i(0, 0, n, n), Vector2i(b * n, 0))
+	return strip
+
+
+## The vignette constants for the offline previews (tests/cine_preview.py, daylight_preview.py).
+static func look_constants() -> Dictionary:
+	return {"lut_size": LUT_SIZE, "vignette_regular": VIGNETTE_REGULAR * vignette_scale,
+		"vignette_clip": VIGNETTE_CLIP * vignette_scale, "vignette_inner": VIGNETTE_INNER}
+
+
+## The LUT of a grade (already scaled), cached by its values.
+static func lut(g: Dictionary) -> ImageTexture3D:
+	var key := _key(g)
+	if not _luts.has(key):
 		var t := ImageTexture3D.new()
-		t.create(Image.FORMAT_RGBA8, LUT_SIZE, LUT_SIZE, LUT_SIZE, false, lut_images(GRADES[preset]))
-		_luts[preset] = t
-	return _luts[preset]
+		t.create(Image.FORMAT_RGBA8, LUT_SIZE, LUT_SIZE, LUT_SIZE, false, lut_images(g))
+		_luts[key] = t
+		_lut_order.append(key)
+		if _lut_order.size() > LUT_CACHE:
+			_luts.erase(_lut_order.pop_front())
+	return _luts[key]
 
 
-## The grade for a light preset on the environment (SkyRig, with its preset). Brightness, contrast and saturation
-## stay at 1: everything is in the LUT.
-static func apply_grade(env: Environment, preset: int) -> void:
+static func _key(g: Dictionary) -> String:
+	var w: Vector3 = g["warm"]
+	var c: Vector3 = g["cool"]
+	return "%.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.3f" % [g["contrast"], w.x, w.y, w.z, c.x, c.y, c.z,
+		g["saturation"], g.get("white_keep", 0.0)]
+
+
+## The grade of a light (SkyRig) on the environment at grade_strength; none with --look=off or strength 0.
+## Brightness, contrast and saturation stay at 1: everything is in the LUT.
+static func apply_grade(env: Environment, g: Dictionary) -> void:
 	if env == null:
 		return
-	env.adjustment_enabled = enabled and GRADES.has(preset)
+	env.adjustment_enabled = enabled and not g.is_empty() and grade_strength > 0.0
 	env.adjustment_brightness = 1.0
 	env.adjustment_contrast = 1.0
 	env.adjustment_saturation = 1.0
-	env.adjustment_color_correction = lut(preset) if env.adjustment_enabled else null
+	env.adjustment_color_correction = lut(scaled(g, grade_strength)) if env.adjustment_enabled else null
 
 
 # ---- per tier ----------------------------------------------------------------------------------------------------

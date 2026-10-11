@@ -292,8 +292,8 @@ lets the clock run. There is no night: the hour is clamped to the hours with the
   | midday, ≥ 38° | (1.0, 0.92, 0.80) | 3.6 | (0.50, 0.74, 1.10) | (0.05, 0.18, 0.62) | 0.50 | 1.0 | 1.0 |
   | afternoon, 26° | (1.0, 0.86, 0.68) | 3.7 | (0.55, 0.72, 1.02) | (0.05, 0.175, 0.60) | 0.55 | 1.04 | 0.88 |
   | afternoon, 17° (late) | (1.0, 0.72, 0.44) | 3.8 | (0.60, 0.70, 0.94) | (0.05, 0.17, 0.58) | 0.60 | 1.083 | 0.75 |
-  | afternoon, 12° (golden) | (1.0, 0.64, 0.34) | 3.7 | (0.66, 0.68, 0.86) | (0.055, 0.16, 0.53) | 0.66 | 1.13 | 0.72 |
-  | afternoon, 6° | (1.0, 0.54, 0.24) | 3.3 | (0.76, 0.64, 0.70) | (0.06, 0.14, 0.45) | 0.78 | 1.25 | 0.70 |
+  | afternoon, 12° (golden) | (1.0, 0.64, 0.34) | 3.7 | (0.74, 0.72, 0.76) | (0.07, 0.18, 0.54) | 0.66 | 1.13 | 0.72 |
+  | afternoon, 6° | (1.0, 0.54, 0.24) | 3.3 | (0.86, 0.72, 0.58) | (0.09, 0.19, 0.50) | 0.78 | 1.25 | 0.70 |
   | morning, 26° | (1.0, 0.90, 0.78) | 3.6 | (0.50, 0.72, 1.08) | (0.05, 0.18, 0.63) | 0.54 | 1.10 | 0.70 |
   | morning, 17° | (1.0, 0.84, 0.66) | 3.6 | (0.56, 0.70, 1.00) | (0.055, 0.175, 0.60) | 0.60 | 1.20 | 0.50 |
   | morning, 12° | (1.0, 0.80, 0.58) | 3.5 | (0.62, 0.72, 0.95) | (0.055, 0.17, 0.57) | 0.65 | 1.28 | 0.45 |
@@ -313,12 +313,12 @@ lets the clock run. There is no night: the hour is clamped to the hours with the
   | clear | 300 m, 16 km, 0.45, 0.42 | 0 | 1.0 | as fair | as fair | 1.0 | 1.0 |
   | fair (default) | 200 m, 14 km, 0.60, 0.40 | 0.40, cumulus | 1.0 | (1.0, 0.92, 0.80) | (0.50, 0.74, 1.10), (0.05, 0.18, 0.62) | 1.0 | 1.0 |
   | hazy | 150 m, 10 km, 0.80, 0.40 | 0.25, cumulus | 0.78 | (1.0, 0.95, 0.88) | (0.80, 0.88, 1.00), (0.24, 0.40, 0.74) | 1.10 | 0.85 |
-  | overcast | 120 m, 9 km, 0.75, 0.40 | 0.97, a deck | 0.30 | (1.0, 0.97, 0.94) | (0.66, 0.70, 0.76), (0.44, 0.49, 0.56) | 1.60 | 0.35 |
+  | overcast | 120 m, 9 km, 0.75, 0.40 | 0.88, a deck | 0.30 | (1.0, 0.97, 0.94) | (0.58, 0.62, 0.68), (0.40, 0.44, 0.50) | 1.20 | 0.35 |
 
-  Cumulus build through the day (the hour's cloud factor); the overcast deck does not (its cover stays 0.97, so a
-  few breaks show). `haze max` is the conditions' times the hour's factor, at most 0.9. The haze colour is the
+  Cumulus build through the day (the hour's cloud factor); the overcast deck does not (its cover stays 0.88, so a
+  few thinner patches show). `haze max` is the conditions' times the hour's factor, at most 0.9. The haze colour is the
   horizon colour, as before.
-- **Overcast** is kept because the sky shader can draw it: at cover 0.97 the cumulus layer becomes a grey deck with
+- **Overcast** is kept because the sky shader can draw it: at cover 0.88 the cumulus layer becomes a grey deck with
   its billowed texture and a few breaks, the sun disc and halo are hidden by the cloud in front of them (the disc is
   drawn times `1 − cloud`), the weak sun (0.30 of the hour's) still gives soft, faint shadows and some shape on the
   sails, and the sea reflects the grey ramp. It is a flat, grey racing day, not a storm: no rain, no dark base.
@@ -396,13 +396,14 @@ saturation stay at 1. On a display colour `c` (0..1), with `L = c · (0.2126, 0.
 y   = mix(c, smoothstep S-curve of c, contrast)                            // per channel, pivot mid grey
 y  += cool · (1 − smoothstep(0.05, 0.45, L)) · smoothstep(0, 0.08, L)       // shadows, nothing at black
 w   = smoothstep(0.25, 0.55, L) · (1 − smoothstep(0.80, 0.97, L))           // the light, neutral again at white
-w  *= 1 − white_keep · (1 − smoothstep(0.03, 0.12, chroma)) · smoothstep(0.55, 0.80, L)   // white guard
+w  *= 1 − smoothstep(0.02, 0.20, c.b − c.r)                                // not on blue: sky and sea keep their colour
+w  *= 1 − white_keep · (1 − smoothstep(0.03, 0.12, chroma)) · smoothstep(0.40, 0.60, L)   // white guard
 y  += warm · w
 y   = mix(luma(y), y, saturation), clamped to 0..1
 ```
 The **white guard** keeps bright, nearly neutral colours (a white sail or hull in the sun, its lit shading) out of
-the warm tint, so whites stay white at midday while the coloured light (the sea's highlights, a red hull, the
-deck) warms; at golden hour it lets go (`white_keep` 0.3) and the sails take the warm light. The grade follows the
+the warm tint, so whites stay white at midday while the warm colours (a red hull, the deck, the skin of a sunlit
+face) warm; blue (the sky, the sea) takes no warm tint, so the grade never greys the sky; at golden hour it lets go (`white_keep` 0.3) and the sails take the warm light. The grade follows the
 same keys as the light (its morning and afternoon tables over the sun's elevation, the noon blend), then the
 conditions:
 

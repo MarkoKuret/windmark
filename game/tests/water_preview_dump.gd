@@ -4,8 +4,11 @@ extends SceneTree
 ## sun, fog) plus the boat triangles to generated/water_preview/<shot>/. Step 2, tests/water_preview.py,
 ## renders them with the same shader functions (sea_common, sky_common, wake_common) on an offscreen GL context.
 ##   godot --headless --path game -s res://tests/water_preview_dump.gd [-- --sky=late] [shot ...]
-## `--sky=<preset>` lights the shots with another SkyRig preset and names them `<preset>_<shot>`; with shot names
-## after `--`, only those (or the shots starting with them) are dumped.
+##   godot --headless --path game -s res://tests/water_preview_dump.gd -- --time=08:00 --conditions=fair --tag=d0800 bay20_chase_M
+## `--sky=<name>` lights the shots with an old preset name (SkyRig.set_preset_name) and names them `<name>_<shot>`;
+## `--time=HH:MM` and `--conditions=` set the daylight (water_render.md §4.5) and `--tag=` names them `<tag>_<shot>`;
+## with shot names after `--`, only those (or the shots starting with them) are dumped. Each shot's folder also gets
+## its colour grade as a LUT strip (lut.png) and the vignette constants (look.json) for tests/daylight_preview.py.
 
 const OUT := "res://generated/water_preview"
 const FRAMES := 260
@@ -38,6 +41,9 @@ var _shot := -1
 var _frames := 0
 var _scene: Node
 var _sky := ""
+var _time := -1.0
+var _conditions := ""
+var _tag := ""
 var _only: PackedStringArray = []
 var _seq := 0
 var _dumped := 0
@@ -48,12 +54,20 @@ func _init() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--sky="):
 			_sky = a.trim_prefix("--sky=")
+		elif a.begins_with("--time="):
+			_time = Daylight.parse_hour(a.trim_prefix("--time="))
+		elif a.begins_with("--conditions="):
+			_conditions = a.trim_prefix("--conditions=")
+		elif a.begins_with("--tag="):
+			_tag = a.trim_prefix("--tag=")
 		else:
 			_only.append(a)
 	_next()
 
 
 func _name(s: Array) -> String:
+	if _tag != "":
+		return "%s_%s" % [_tag, s[0]]
 	return s[0] if _sky == "" else "%s_%s" % [_sky, s[0]]
 
 
@@ -82,8 +96,11 @@ func _next() -> void:
 	_seq = 0
 	var s: Array = SHOTS[_shot]
 	_scene = (load("res://scenes/water_test.tscn") as PackedScene).instantiate()
+	var rig: SkyRig = _scene.get_node("SkyDay")
 	if _sky != "":
-		(_scene.get_node("SkyDay") as SkyRig).set_preset_name(_sky)
+		rig.set_preset_name(_sky)
+	if _time >= 0.0 or _conditions != "":
+		rig.set_light(_time if _time >= 0.0 else rig.hour, _conditions if _conditions != "" else rig.conditions)
 	var src: SeaEnvSource = _scene.get_node("EnvSource")
 	src.mode = s[1]
 	if s[1] == SeaEnvSource.Mode.CORE_SAMPLES:
@@ -324,6 +341,11 @@ func _dump(name: String, light := false) -> void:
 				info.merge(_boat_material(mat, dir, tex_files))
 				boats.append(info)
 	data["boat"] = boats
+	data["light"] = {"hour": sky.hour, "conditions": sky.conditions, "sun_elevation_deg": sky.sun_elevation_deg,
+		"sun_azimuth_deg": sky.sun_azimuth_deg}
+	LookFx.lut_strip(LookFx.scaled(sky.grade, LookFx.grade_strength)).save_png(dir.path_join("lut.png"))
+	var lf := FileAccess.open(dir.path_join("look.json"), FileAccess.WRITE)
+	lf.store_string(JSON.stringify(LookFx.look_constants(), "  "))
 	var f := FileAccess.open(dir.path_join("scene.json"), FileAccess.WRITE)
 	f.store_string(JSON.stringify(data, "  "))
 	_dumped += 1

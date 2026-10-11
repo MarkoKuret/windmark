@@ -658,10 +658,11 @@ func test_lens() -> void:
 		rig.frame(tg, CameraInput.new(), 0.016)
 		t.ok(rig.camera.attributes == null, "no depth of field on %s" % CameraRig.Mode.keys()[m])
 		t.near(rig.look.strength, LookFx.VIGNETTE_CLIP, 1e-9, "clip vignette on %s" % CameraRig.Mode.keys()[m])
-	t.ok(LookFx.VIGNETTE_REGULAR <= 0.1 and LookFx.VIGNETTE_CLIP > LookFx.VIGNETTE_REGULAR, "clip vignette stronger, regular light")
+	t.ok(LookFx.VIGNETTE_REGULAR > 0.1 and LookFx.VIGNETTE_REGULAR <= 0.35 and LookFx.VIGNETTE_CLIP > LookFx.VIGNETTE_REGULAR,
+		"clip vignette stronger, regular noticeable")
 	var size := Vector2(1280, 720)
 	t.near(LookFx.vignette_at(Vector2(0.5, 0.5), size, 0.22), 1.0, 1e-9, "centre untouched")
-	t.near(LookFx.vignette_at(Vector2(0.5, 0.0), size, 0.08), 1.0, 1e-3, "top edge centre untouched (regular)")
+	t.near(LookFx.vignette_at(Vector2(0.5, 0.0), size, LookFx.VIGNETTE_REGULAR), 1.0, 0.03, "top edge centre a trace (regular)")
 	t.near(LookFx.vignette_at(Vector2(0.0, 0.0), size, 0.22), 0.78, 1e-6, "corner darkened by the strength")
 	# long lens: sharp around the boat at 150 m
 	var v := _select_clip(rig, tg, CameraRig.Mode.LONG_LENS)

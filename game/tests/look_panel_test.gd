@@ -186,12 +186,55 @@ func test_rows() -> void:
 		t.ok((rig.camera.attributes != null) == (n == 0), "dof step %d: attributes %s" % [n, rig.camera.attributes]))
 	rig.select_mode(CameraRig.Mode.CHASE, sc.target)
 	_frames(1)
-	# light preset: the sky rig and its grade
-	var p0: int = sc.sky.preset
-	_round_trip("sky", func(n: int) -> void:
-		var p: int = sc.sky.preset
-		t.ok(p == (p0 + n) % 4 and env.adjustment_color_correction == LookFx.lut(p), "sky step %d: %s"
-			% [n, DevLook.PRESETS[p]]))
+	# time of day: the sky rig's hour, its sun and its grade
+	var h0: float = sc.sky.hour
+	var el0: float = sc.sky.sun_elevation_deg
+	_round_trip("time", func(n: int) -> void:
+		var want := h0 + 0.5 * n if n == 1 else h0
+		t.ok(absf(sc.sky.hour - snappedf(want, 0.5 if n == 1 else 0.0001)) < 1e-3
+			and (n == 0) == is_equal_approx(sc.sky.sun_elevation_deg, el0)
+			and env.adjustment_color_correction == LookFx.lut(LookFx.scaled(sc.sky.grade, LookFx.grade_strength)),
+			"time step %d: %s, sun %.1f deg" % [n, Daylight.hour_text(sc.sky.hour), sc.sky.sun_elevation_deg]))
+	t.ok(panel.value_text("time").contains("sun") and panel.value_text("time").contains(":"),
+		"time row shows the clock and the sun (%s)" % panel.value_text("time"))
+	for i in 60:
+		panel.step("time", 1)
+	t.ok(sc.sky.sun_elevation_deg >= Daylight.MIN_SUN - 0.01, "time stops with the sun at 6 deg or more (%.1f)"
+		% sc.sky.sun_elevation_deg)
+	DevLook.set_time(sc, h0)
+	# conditions: the sky rig's clouds, haze and grade
+	var c0: String = sc.sky.conditions
+	var cc0: float = sc.sky.cloud_cover
+	_round_trip("conditions", func(n: int) -> void:
+		var want: String = DevLook.CONDITIONS[(DevLook.CONDITIONS.find(c0) + n) % 4]
+		t.ok(sc.sky.conditions == want and (n == 0) == is_equal_approx(sc.sky.cloud_cover, cc0)
+			and is_equal_approx(env.fog_density, sc.sky.haze_max * sc.sky.haze_scale),
+			"conditions step %d: %s, clouds %.2f" % [n, sc.sky.conditions, sc.sky.cloud_cover]))
+	# grade and vignette strength: the environment's LUT and the rig's vignette
+	var lutg := env.adjustment_color_correction
+	_round_trip("grade", func(n: int) -> void:
+		t.ok(is_equal_approx(LookFx.grade_strength, 1.0 + 0.1 * n) and (env.adjustment_color_correction == lutg) == (n == 0)
+			and env.adjustment_color_correction == LookFx.lut(LookFx.scaled(sc.sky.grade, LookFx.grade_strength)),
+			"grade step %d: x%.1f" % [n, LookFx.grade_strength]))
+	panel.rows[panel.row_index("grade")]["set"].call(0.0)
+	t.ok(not env.adjustment_enabled and panel.value_text("grade") == "Off", "grade strength 0: off")
+	panel.rows[panel.row_index("grade")]["set"].call(1.0)
+	var v0 := rig.look.strength
+	_round_trip("vignette", func(n: int) -> void:
+		t.near(rig.look.strength, v0 * (1.0 + 0.1 * n), 1e-6, "vignette step %d: %.3f" % [n, rig.look.strength]))
+	panel.rows[panel.row_index("vignette")]["set"].call(0.0)
+	t.ok(rig.look.strength == 0.0, "vignette strength 0: off")
+	panel.rows[panel.row_index("vignette")]["set"].call(1.0)
+	# every row says where to look, except the plain actions and the wind value
+	var missing := []
+	for r in panel.rows:
+		if r["look"] == "" and not r["id"] in ["haze_reset", "wind"]:
+			missing.append(r["id"])
+	t.ok(missing.is_empty(), "every row has a where-to-look hint (%s)" % ", ".join(missing))
+	panel.select(panel.row_index("ssao"))
+	panel.set_focused(true)
+	t.ok((panel.get_node("Panel").find_child("Hint", true, false) as Label).text.contains("foot of the mast"),
+		"the selected row's hint is shown")
 	# quality: the sea's shader and grid, reflections, the sun's shadows
 	var q0 := sea.quality
 	panel.rows[panel.row_index("quality")]["set"].call(SeaQuality.Tier.H)
@@ -215,11 +258,11 @@ func test_rows() -> void:
 	for i in 20:
 		panel.step("haze", 1)
 	t.near(sc.sky.haze_scale, DevLook.HAZE_MAX, 1e-6, "haze stops at x1.5")
-	sc.sky.preset = SkyRig.Preset.HAZY
-	t.near(env.fog_density, sc.sky.haze_max * 1.5, 1e-5, "the factor stays with a new preset")
-	sc.sky.preset = p0
+	sc.sky.conditions = "hazy"
+	t.near(env.fog_density, sc.sky.haze_max * 1.5, 1e-5, "the factor stays with new conditions")
+	sc.sky.conditions = c0
 	panel.activate("haze_reset")
-	t.near(env.fog_density, hm, 1e-6, "reset: the preset's haze")
+	t.near(env.fog_density, hm, 1e-6, "reset: the light's haze")
 	# whitecaps: the sea's foam uniforms (off by default, water_render.md §4.4: start the round trip from on)
 	t.ok(not sea.whitecaps, "whitecaps off by default")
 	sea.whitecaps = true
@@ -337,8 +380,17 @@ func test_flags() -> void:
 		["--ssao=tier", func() -> bool: return panel.value("ssao") == -1],
 		["--dof=off", func() -> bool: return not LookFx.dof_allowed() and panel.value("dof") == false],
 		["--dof=on", func() -> bool: return panel.value("dof") == true],
-		["--sky=late", func() -> bool: return sc.sky.preset == SkyRig.Preset.LATE and panel.value("sky") == "late"],
-		["--sky=fair", func() -> bool: return panel.value("sky") == "fair"],
+		["--sky=late", func() -> bool: return sc.sky.preset_name() == "late" and panel.value("conditions") == "fair" and absf(sc.sky.sun_elevation_deg - 17.0) < 0.05],
+		["--sky=fair", func() -> bool: return sc.sky.preset_name() == "fair"],
+		["--time=10:30", func() -> bool: return is_equal_approx(panel.value("time"), 10.5)],
+		["--conditions=overcast", func() -> bool: return sc.sky.conditions == "overcast" and panel.value("conditions") == "overcast"],
+		["--conditions=fair", func() -> bool: return panel.value("conditions") == "fair"],
+		["--time=14:30", func() -> bool: return is_equal_approx(sc.sky.hour, 14.5)],
+		["--grade=0.5", func() -> bool: return is_equal_approx(panel.value("grade"), 0.5) and env.adjustment_enabled],
+		["--grade=1", func() -> bool: return is_equal_approx(LookFx.grade_strength, 1.0)],
+		["--vignette=0", func() -> bool: return sc.rig.look.strength == 0.0 and panel.value("vignette") == 0.0],
+		["--vignette=1", func() -> bool: return sc.rig.look.strength > 0.0],
+		["--light-advance=0", func() -> bool: return sc.sky.light_advance == 0.0],
 		["--haze=0.5", func() -> bool: return is_equal_approx(env.fog_density, sc.sky.haze_max * 0.5)],
 		["--haze=1", func() -> bool: return is_equal_approx(panel.value("haze"), 1.0)],
 		["--quality=H", func() -> bool: return sc.sea.quality == SeaQuality.Tier.H and panel.value("quality") == 2],
@@ -375,7 +427,7 @@ func test_restart() -> void:
 	t.near(float(w["base_speed"]) / HudFormat.KNOT, 20.0, 0.05, "the core's base wind is 20 kn")
 	t.ok(sc.sea.model.hs_eff > hs0, "the sea follows it (Hs %.2f m, was %.2f m)" % [sc.sea.model.hs_eff, hs0])
 	t.ok(not sc.race_mode and sc.sim.boat_count() == 1, "still free sailing")
-	t.ok(sc.sea.quality == SeaQuality.Tier.M and sc.sky.preset == SkyRig.Preset.FAIR, "the look kept")
+	t.ok(sc.sea.quality == SeaQuality.Tier.M and sc.sky.conditions == "fair", "the look kept")
 	panel.rows[panel.row_index("wind")]["set"].call(12.0)
 	panel.activate("restart")
 	_frames(2)
@@ -429,3 +481,5 @@ func _restore_statics() -> void:
 	LookFx.enabled = true
 	LookFx.ssao_override = -1
 	LookFx.dof_enabled = true
+	LookFx.grade_strength = 1.0
+	LookFx.vignette_scale = 1.0

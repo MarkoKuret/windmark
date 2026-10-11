@@ -61,6 +61,9 @@ class SeaTick final : public SeaSurface {
  public:
   SeaTick() = default;
   SeaTick(const SeaField* field, std::uint32_t t);
+  // §7.2 a render time t + frac (frac in [0, 1) ms): d_i = c_i − (float)(((double)(t mod T_i) + frac) / T_i).
+  // frac = 0 is the tick constructor bit for bit.
+  SeaTick(const SeaField* field, std::uint32_t t, double frac);
 
   std::uint32_t t() const { return t_; }
   float sea_height(float x, float y) const override;

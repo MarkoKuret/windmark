@@ -139,6 +139,8 @@ class WindField {
   std::vector<PuffPatch> puff_patches(const WindTick& tick) const;
   // §7 current at a point and time (m/s, east/north).
   Vec2 current(float x, float y, std::uint32_t t) const;
+  // §9 the same at a render time t + frac (frac in [0, 1) ms); frac = 0 is current(x, y, t) bit for bit.
+  Vec2 current(float x, float y, std::uint32_t t, double frac) const;
 
   // Walk access for tests and debug views: segment k of the shift walk, and the tick-cached one.
   ShiftSegment segment(std::uint32_t k) const;

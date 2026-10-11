@@ -105,10 +105,10 @@ class CoreSim : public godot::RefCounted {
   // environment
   godot::Vector2 wind_clean(double x, double y);
   double wind_global_from();
-  godot::Vector2 current_at(double x, double y, int64_t t_ms);
-  godot::Dictionary wind_state(int64_t t_ms);
+  godot::Vector2 current_at(double x, double y, double t_ms);
+  godot::Dictionary wind_state(double t_ms);
   double sea_height(double x, double y);
-  double sea_height_at(double x, double y, int64_t t_ms);
+  double sea_height_at(double x, double y, double t_ms);
   godot::Vector2 sea_slope(double x, double y);
   godot::Array sea_components() const;
   godot::Dictionary sea_exposure() const;

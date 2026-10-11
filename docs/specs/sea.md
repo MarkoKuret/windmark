@@ -154,7 +154,9 @@ and the shader evaluates, for a local position `(xl, yl) = (x − ox, y − oy)`
 η = E(x, y) · Σ_i a_i · cos(2π · fract(kx_i·xl + ky_i·yl + d_i'))
 ```
 which is the physics function up to float rounding (well under a millimetre for venue-size coordinates). At a
-tick time `t_r = t_env_ms` the drawn surface is the one the boats sampled.
+tick time `t_r = t_env_ms` the drawn surface is the one the boats sampled. The core's `sea_height` at a render
+time takes `t_r` as is, with `d_i = c_i − (float)(((double)(n mod T_i) + f) / T_i)` for `n = floor(t_r)`,
+`f = t_r − n` (`f = 0` is the tick formula of §4 bit for bit).
 
 ### 7.3 Visual detail
 The renderer may add visual-only layers: normal maps and ripples, foam, crest sharpening, and horizontal

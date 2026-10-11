@@ -738,9 +738,8 @@ the same:
 | Row | Values | Flag | Applies | Where to look (the hint) |
 | --- | --- | --- | --- | --- |
 | Anti-aliasing | Off, FXAA, SMAA | `--aa=` | live (root viewport) | masts, stays and sheets against the sky; subtle on Retina |
-| Grade and vignette | On, Off | `--look=` | live; off also drops SSAO and depth of field | the whole picture: compare the sea's blues and the corners |
+| Grade | On, Off | `--look=` | live; off also drops SSAO and depth of field | the whole picture: compare the sea's blues |
 | Grade strength | 0.0 to 1.5, step 0.1 | `--grade=` | live (the LUT is rebuilt) | sky and sea saturation, warm sunlit water, cool shadow sides; whites stay white |
-| Vignette strength | 0.0 to 1.5, step 0.1 | `--vignette=` | live | the screen corners and the left and right edges |
 | SSAO | Tier, Off, On | `--ssao=on\|off\|tier` | live (environment) | high tier only: deck at the foot of the mast, cockpit corners |
 | Clip camera DOF | On, Off | `--dof=` | live (long lens and mark shots, tiers M and H) | clip cameras only: press X for the long lens |
 | Time of day | the venue's date, 30 min steps over the hours with the sun at 6° or more | `--time=HH:MM` | live (sky, sun, haze, grade) | the sun's height and colour, shadow length on the water, the sky toward the sun |
@@ -757,6 +756,9 @@ the same:
 | Boat sun shadows | On, Off | `--no-boat-shadows` | live: the shadow proxies hidden and the sails not casting (`sail_visuals.md` §11.4) | the sails' and boom's shadows on the deck |
 | Render scale | Setting, 50, 67, 75, 85, 100 % | `--render-scale=` | live (root viewport) | fine detail: rigging, sail numbers, the far fleet |
 | Frame-time overlay | On, Off | `--perf` | live (§17) | top left |
+
+There is no vignette row and no `--vignette=` flag: the game has no vignette (owner decision 2026-10-11,
+`water_render.md` §4.5).
 
 A readout line under the title shows the frame rate, the mean frame time over the last 0.25 s, the tier and the
 3D scale. The selected row's lines at the bottom say how it applies and where to look; the Time of day row's value

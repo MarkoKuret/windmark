@@ -431,17 +431,10 @@ saturation `1 + (s − 1)·k`; 0 is no grade (the LUT is skipped). At strength 1
 0.12 (the old gentle grade: 0.06). Godot samples the LUT with the colour itself as the texture coordinate, so texel
 `i` holds the grade of `(i + 0.5)/33`, and the end texels the grade of 0 and 1: black stays black and white stays
 white. A white or light grey (`L` ≥ 0.6, chroma 0) at midday stays within 0.02 of neutral at strength 1.5.
-`--look=off` in the sail test turns the grade, the vignette, the contact shading and the depth of field off, to
-compare.
+`--look=off` in the sail test turns the grade, the contact shading and the depth of field off, to compare.
 
-**Vignette** (`LookFx`, a `CanvasLayer` on layer −1 owned by `CameraRig`): a darkening toward the corners that pulls
-the eye to the boat, clearly there on every camera without looking dirty. One full-screen rectangle multiplying the
-3-D image (display values) by `1 − s · smoothstep(inner, 1, r)`, `r` the distance from the centre over the half
-diagonal: no screen read, one multiply per pixel. Under the HUD (layer 1), the pause menu and the frame-time
-overlay, which never darken; it takes no mouse input. `s` = 0.30 with `inner` 0.40 on the regular cameras (chase,
-onboard, aerial, free: on a 16:9 screen the corners about 30 % darker, the left and right edge centres about 18 %,
-the top and bottom edge centres a trace) and 0.42 on the clip cameras of `cameras.md` §9 (the broadcast frame).
-**Vignette strength** (0 to 1.5, default 1; the look panel's row, `--vignette=`) scales `s`; 0 is off.
+**No vignette** (owner decision 2026-10-11): no camera darkens the corners or edges of the picture, regular or clip;
+there is no vignette layer, strength setting or flag. The colour grade is the only full-picture finish.
 
 **Contact shading** (SSAO, tier H only): Godot's screen-space ambient occlusion, soft darkening where the deck meets
 the rig, in the cockpit and under the boom: radius 0.8 m, intensity 1.6, power 1.5, detail 0.5, horizon 0.06,

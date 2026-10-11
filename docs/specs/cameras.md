@@ -229,7 +229,8 @@ defaults.
 
   Bokeh circle, quality low on tier M and medium on H, off on tier L (`LookFx.dof_allowed`). The start line and
   helicopter shots and the regular cameras (chase, onboard, aerial, free) never have depth of field: the camera's
-  attributes are cleared. The clip cameras also take the stronger vignette of `water_render.md` §4.5.
+  attributes are cleared. No camera has a vignette, clip cameras included (owner decision 2026-10-11,
+  `water_render.md` §4.5).
 
 ### 9.1 Finish view
 
@@ -242,7 +243,7 @@ breathing over 40 s, starting from the azimuth the previous camera had, aimed 2 
 a 35° field of view; with reduced motion a third of that speed. While the results screen shows in its wide layout
 the boat is framed 12° left of centre (eased with `τ = 1.4 s`), clear of the panel on the right; otherwise
 centred. It takes no input; `camera_next` leaves it for the chase camera (the other camera keys as usual), and
-there is no way back to it in that race. It is not a clip camera (no depth of field, the regular vignette) and is
+there is no way back to it in that race. It is not a clip camera (no depth of field) and is
 never saved as the profile's camera. Online the same (it is presentation only).
 
 ## 10. Tests (headless)
@@ -278,8 +279,7 @@ never saved as the profile's camera. Online the same (it is presentation only).
    none of it.
 14. Lens: chase, onboard, aerial, free, start line and helicopter have no depth of field; the long lens focuses
    at about 150 m with the whole boat inside the sharp zone and follows the boat as she moves away; the mark shot
-   has depth of field; none on tier L. The vignette lies under the HUD, takes no mouse input, is the regular
-   strength on the regular cameras and the clip strength on the clip cameras.
+   has depth of field; none on tier L. No camera has a vignette: the rig adds no 2-D layer over the 3-D image.
 
 15. Finish view: `ease_to` the finish view from the chase camera at a boat at the origin: the first frame's eye is
    the chase eye (within 1 cm), after 2.5 s the drift's (45 to 70 m from the boat, 5 to 11 m up), and halfway in

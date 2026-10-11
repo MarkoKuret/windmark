@@ -314,7 +314,7 @@ Flags after `--`:
 | `--sea-grid=120x160` | this run's sea radial grid (rings x segments), over the tier; not saved |
 | `--water-shader=l` | this run's water shader (`water_l`, `_m` or `_h`), over the tier; not saved |
 | `--no-hud` | the HUD hidden from the start (as F10) |
-| `--look=off` | no colour grade, vignette, contact shading or depth of field (`water_render.md` §4.5), to compare |
+| `--look=off` | no colour grade, contact shading or depth of field (`water_render.md` §4.5), to compare |
 | `--ssao=on` | contact shading (SSAO) on any tier (`on`), off on H (`off`), or the tier's (`tier`); not saved |
 | `--dof=off` | no depth of field on the clip cameras |
 | `--haze=0.5` | the distance haze as a factor of the light preset's (0 to 1.5) |
@@ -332,7 +332,7 @@ Flags after `--`:
 | `--no-wakes` | no wakes, bow waves, spray or wake normal buffer |
 | `--no-sky` | a plain gradient sky shader instead of the sky with clouds (it still lights the scene) |
 | `--no-water` | a flat plane with a plain material instead of the sea |
-| `--no-post` | no grade, vignette, contact shading, glow or filmic tone mapping |
+| `--no-post` | no grade, contact shading, glow or filmic tone mapping |
 | `--no-course` | no marks, flags, lines or water overlays drawn |
 | `--no-audio` | no sound work and the master bus muted |
 | `--no-sim` | the simulation paused from the first frame (no ticks, no AI; the cameras still move) |
@@ -342,7 +342,7 @@ Flags after `--`:
 A developer tool (`docs/specs/hud.md` §18, `scripts/dev/`): F9 in the sail scene opens a side column on the right
 that changes the look live, so a new look can be judged in one session. `DevLook` holds one function per setting,
 and the flags above call the same functions, so the panel and the flags stay in sync. Rows (live unless noted):
-anti-aliasing (Off, FXAA, SMAA), grade and vignette, SSAO (Tier, Off, On), clip camera depth of field, light
+anti-aliasing (Off, FXAA, SMAA), grade on or off, grade strength, SSAO (Tier, Off, On), clip camera depth of field, light
 preset, quality tier (sea grid and water shader, wakes, shadows, glow, SSAO, reflections; a short hitch while the
 shaders compile), haze strength (x0 to x1.5) and its reset, whitecaps, drawn wind for the sea (8 to 25 kn), the wind
 for a restart and "Restart with wind" (restart only: the core takes its wind when the world is made; a rules
@@ -781,16 +781,16 @@ fair, hazy, overcast). The venue's look file (`data/venues/<venue>.look.json`, `
 `VenueLook`) gives the date, race window and defaults; GameSetup (`light_time`, `light_conditions`,
 `light_advance`) and the sail test flags `--time=HH:MM`, `--conditions=`, `--light-advance=` override them, and
 `--sky=clear|fair|hazy|late` keeps the old preset names as aliases. Each light carries its colour grade (strength
-`--grade=`, vignette `--vignette=`, both 0 to 1.5), and
+`--grade=`, 0 to 1.5), and
 `LookFx` (`scenes/sea/look_fx.gd`) adds the finishing look: the grade (a 3-D LUT built at load, applied by the
-environment after the tone mapping), the vignette under the HUD (owned by `CameraRig`, stronger on the clip
-cameras), the contact shading (SSAO, tier H) and the depth of field of the long lens and mark clip cameras.
-Previews of the grade, vignette and late light: `tests/look_lut_dump.gd`, `tests/water_preview_dump.gd` (with
+environment after the tone mapping), the contact shading (SSAO, tier H) and the depth of field
+of the long lens and mark clip cameras. There is no vignette on any camera (owner decision 2026-10-11).
+Previews of the grade and late light: `tests/look_lut_dump.gd`, `tests/water_preview_dump.gd` (with
 `-- --sky=late` for the late light) and `tests/cine_preview.py --publish` (`tests/previews/cine_*.jpg`; the
 commands are in its header). The daylight previews: `python3 tests/daylight_preview.py --dump --publish` (the
 chase shot at five hours and four conditions, grade off against the default: `tests/previews/daylight_*.jpg`).
 `tests/look_test.gd` (in `run_ui_tests.sh`) checks the sun position, the hour keys and conditions, the look files,
-the grade and vignette and the SSAO per tier. The anti-aliasing is SMAA 1x on every tier (`water_render.md` §7): the project default, kept with
+the grade and the SSAO per tier. The anti-aliasing is SMAA 1x on every tier (`water_render.md` §7): the project default, kept with
 the upscaler by `Settings.apply_render_scale` (off only under a temporal upscaler).
 
 ### Water tests

@@ -92,13 +92,13 @@ class Appendages:
         self.rud_le_tip = np.array([x_stock - span_r * np.tan(float(r["sweep"])) + 0.25 * self.rud_ct, 0, z_tip_r])
         self.rud_stations = (self._transom_rudder_stations(float(hull.zk(np.array([0.0]))[0])) if self.transom_hung
                              else _foil_stations(self.rud_le_root, self.rud_le_tip, self.rud_cr, self.rud_ct, self.rud_tc))
-        # tiller section (width, depth) and, on a transom rudder, the rudder head it is bolted into: two cheeks
-        # clamping the blade top, the tiller butt between them on a horizontal bolt (`tiller_pivot`)
+        # tiller section (width, depth) and, on a transom rudder, the rudder head it is bolted into: a casting round
+        # the blade top, the tiller butt in a slot in its forward end on a horizontal bolt (`tiller_pivot`)
         sh = (hull.L / 12.0) ** 0.7
         self.tiller_size = (0.045 * sh, 0.06 * sh)
-        self.head_gap = self.rud_tc * self.rud_cr             # between the cheeks: the blade's root thickness
+        self.head_gap = self.rud_tc * self.rud_cr             # inside the head: the blade's root thickness
         self.tiller_pivot = self.rud_stock + [0.12 * self.rud_cr, 0, 0.5 * self.tiller_size[1] + 0.03]
-        self.head_cheek = 0.012 + 0.004 * (hull.L / 12.0)       # cheek thickness
+        self.head_cheek = 0.012 + 0.004 * (hull.L / 12.0)       # the head's wall either side of the blade
         self.head_front = min(self.tiller_pivot[0] + 0.2 * self.rud_cr, -0.02)
 
     def _transom_rudder_stations(self, z_hull, n=26):
@@ -141,7 +141,7 @@ class Appendages:
         b = np.clip((z - z_h) / 0.12, 0, 1)
         c = np.where(z >= z_h, (1 - b * b * (3 - 2 * b)) * k * cr + b * b * (3 - 2 * b) * c, c)
         le_x = le_x - 0.3 * (1 - e) * np.where(z < z_h, k * lin, 0.0)  # the tip closes on 30 % chord
-        # above the hull the section keeps the root's thickness, so the blade fills the head between its cheeks
+        # above the hull the section keeps the root's thickness, so the blade fills the head
         tc = np.where(z >= z_h, self.rud_tc * cr / c, self.rud_tc)
         return [(np.array([le_x[i], 0.0, z[i]]), np.array([-1.0, 0, 0]), np.array([0, 1.0, 0]), float(c[i]),
                  float(tc[i])) for i in range(n)]
@@ -185,21 +185,24 @@ class Appendages:
         p.add("antifouling" if not self.transom_hung else "gelcoat", blade, tag="rudder")
         self.rudder_geom = blade
         if self.transom_hung:
-            # rudder head cheeks and pintles on the transom
-            # rudder head: two carbon cheeks either side of the blade top with a through bolt; pintle straps
-            # round the leading edge at the transom gudgeons (hardware.rudder_fittings), pins on the stock axis
+            # rudder head with a through bolt; pintle straps round the leading edge at the transom gudgeons
+            # (hardware.rudder_fittings), pins on the stock axis
             top = self.rud_stock + [0, 0, 0.0]
             t = self.rud_tc * self.rud_cr
-            # cheeks: from 0.12 m down the blade sides to just over the tiller butt, fore and aft round the bolt
+            # the head: one casting round the blade top, a streamlined section a cheek thicker than the blade on each
+            # side, from ahead of the leading edge to past the trailing edge, so the blade goes into it on every side;
+            # from 0.10 m down the blade to just over the tiller butt, domed on top
             pv, th = self.tiller_pivot, self.head_cheek
             z0, z1 = top[2] - 0.10, pv[2] + 0.5 * self.tiller_size[1] + 0.03
-            x0, x1 = top[0] - 0.08 * self.rud_cr, self.head_front
-            for sy in (-1, 1):
-                p.add("carbon", superellipsoid_box((x1 - x0, th, z1 - z0), 0.4,
-                                                   center=[0.5 * (x0 + x1), sy * (0.5 * self.head_gap + 0.5 * th - 0.001),
-                                                           0.5 * (z0 + z1)]), tag="rudder_head")
+            le_b, c_b = self.rud_stations[0][0], self.rud_stations[0][3]
+            x_le, x_te = self.head_front, le_b[0] - c_b - 0.03
+            c_h = x_le - x_te
+            tc_h = (t + 2 * th) / c_h
+            nh = n_chord + 6 if n_chord > 6 else n_chord               # the shadow proxy's low detail stays low
+            p.add("carbon", foil([(np.array([x_le, 0.0, z]), np.array([-1.0, 0, 0]), np.array([0, 1.0, 0]), c_h, tc_h)
+                                  for z in (z0, z1)], n_chord=nh, tip_cap=True, root_cap=True), tag="rudder_head")
             p.attach("rudder_head", "rudder")
-            # bolt through the lower cheeks and the blade top
+            # bolt through the head's lower part and the blade top
             p.add("metal", tube(np.array([[top[0] + 0.1 * self.rud_cr, -0.5 * t - th - 0.006, top[2] - 0.06],
                                           [top[0] + 0.1 * self.rud_cr, 0.5 * t + th + 0.006, top[2] - 0.06]]), 0.007, 8),
                   tag="rudder_head_bolt")

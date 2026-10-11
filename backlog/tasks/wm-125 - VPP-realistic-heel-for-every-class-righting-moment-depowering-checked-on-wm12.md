@@ -3,9 +3,11 @@ id: WM-125
 title: >-
   VPP: realistic heel for every class (righting moment, depowering), checked on
   wm12
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@heel'
 created_date: '2026-10-11 11:44'
+updated_date: '2026-10-11 11:45'
 labels:
   - physics
   - vpp

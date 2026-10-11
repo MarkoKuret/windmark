@@ -262,23 +262,85 @@ shadows that are blue (lit by the sky), never black.
 
 The daytime light (`SkyRig`) keeps sun and sky in their clear-day proportion: on a level surface the sun gives
 about four fifths of the light and the sky the rest, and a white deck in full sun is about three times as bright
-as the horizon sky. Sun at 38° elevation, bearing 200° (late afternoon: its own); ambient and reflections from
-the sky; a distance haze toward the horizon colour (below). Four light presets, chosen by the venue's look file (or
-the race, which may override it; `--sky=` in the sail test); **fair** is the default:
+as the horizon sky; ambient and reflections from the sky; a distance haze toward the horizon colour (below).
 
-| preset | sun energy, colour | sky horizon | sky zenith | clouds | exposure | haze begin, end, max, curve |
-| --- | --- | --- | --- | --- | --- | --- |
-| clear | 3.6, (1.0, 0.92, 0.80) | (0.50, 0.74, 1.10) | (0.05, 0.18, 0.62) | 0 | 0.50 | 300 m, 16 km, 0.45, 0.42 |
-| fair (default) | 3.6, (1.0, 0.92, 0.80) | (0.50, 0.74, 1.10) | (0.05, 0.18, 0.62) | 0.40 | 0.50 | 200 m, 14 km, 0.60, 0.40 |
-| hazy | 2.8, (1.0, 0.95, 0.88) | (0.80, 0.88, 1.00) | (0.24, 0.40, 0.74) | 0.25 | 0.55 | 150 m, 10 km, 0.80, 0.40 |
-| late afternoon | 3.8, (1.0, 0.72, 0.44); sun 17° high, bearing 250° | (0.60, 0.70, 0.94) | (0.05, 0.17, 0.58) | 0.30 | 0.60 | 200 m, 14 km, 0.65, 0.40 |
+**Time of day and conditions** (WM-124). The light has two independent inputs: the **time of day** (a local clock
+hour, continuous, e.g. 14:30) and the **conditions** (clear, fair, hazy or overcast). The venue's look file gives
+their defaults (data_format.md §6.11), the race may override them (`GameSetup.light_time`, `light_conditions`;
+`--time=HH:MM` and `--conditions=` in the sail test), the look panel changes them live (hud.md §18). The light is
+fixed for a race; `--light-advance=<rate>` (`GameSetup.light_advance`, game time per real time, 1 = real time)
+lets the clock run. There is no night: the hour is clamped to the hours with the sun at least
+`MIN_SUN` = 6° high on the venue's date.
 
-**Late afternoon** (`late`): the same racing day two hours before sunset. A low, warm sun (17° up, so a 20 m mast
-throws a 65 m shadow and the sails take the light across their faces), a paler, slightly warm horizon under a deeper
-zenith, fewer clouds, and the sun's glitter as a path on the water toward a camera that faces it (the water's own
-sun specular and the glow of §4.5 at this elevation; nothing added). The exposure rises a little (0.60) because a
-level surface gets half the sun it gets at 38°; the scene stays a little darker and warmer than fair, never dim.
-Its haze follows fair's (begin 200 m, end 14 km, curve 0.40) with a little more of it (max 0.65) for the low warm sun.
+- **Sun position** (`Daylight.sun_position`): from the hour, the venue's latitude and longitude (the venue file's
+  `origin`), its UTC offset and its date (the look file), with the short NOAA formulas: the fractional year
+  `γ = 2π/365 · (day − 1 + (hour_utc − 12)/24)`, the declination and the equation of time as the usual five-term
+  Fourier series in γ, the true solar time `hour·60 + eqtime + 4·lon − 60·utc_offset` minutes, the hour angle
+  `tst/4 − 180°`, then the elevation `asin(sin φ sin δ + cos φ cos δ cos ha)` and the azimuth (compass, clockwise
+  from north) `atan2(sin ha, cos ha sin φ − tan δ cos φ) + 180°`. No refraction, no almanac: about 0.2° from the
+  NOAA calculator (reference: Greenwich, 21 June, 12:00 UTC: 61.97° high, bearing 179.4°). World north is the venue
+  file's north (scene −Z).
+- **Hour keyframes**: the colours follow the **sun's elevation**, not the clock, so a venue's date and latitude set
+  how the day looks. Two branches, morning (the sun rising: cooler, cleaner, a little more mist and fewer cumulus)
+  and afternoon (warmer), each a table over the elevation, linear between its keys and held beyond them; around
+  solar noon the two blend over three hours (`w_pm = smoothstep(−1.5 h, +1.5 h, solar time − 12 h)`), so the light
+  is continuous through the day even where the sun never reaches 38°. At 38° and above both branches are the
+  WM-080 midday: ACES, exposure 0.50 with sun 3.6, glow, cumulus.
+
+  | branch, sun | sun colour | energy | sky horizon | sky zenith | exposure | haze × | clouds × |
+  | --- | --- | --- | --- | --- | --- | --- | --- |
+  | midday, ≥ 38° | (1.0, 0.92, 0.80) | 3.6 | (0.50, 0.74, 1.10) | (0.05, 0.18, 0.62) | 0.50 | 1.0 | 1.0 |
+  | afternoon, 26° | (1.0, 0.86, 0.68) | 3.7 | (0.55, 0.72, 1.02) | (0.05, 0.175, 0.60) | 0.55 | 1.04 | 0.88 |
+  | afternoon, 17° (late) | (1.0, 0.72, 0.44) | 3.8 | (0.60, 0.70, 0.94) | (0.05, 0.17, 0.58) | 0.60 | 1.083 | 0.75 |
+  | afternoon, 12° (golden) | (1.0, 0.64, 0.34) | 3.7 | (0.66, 0.68, 0.86) | (0.055, 0.16, 0.53) | 0.66 | 1.13 | 0.72 |
+  | afternoon, 6° | (1.0, 0.54, 0.24) | 3.3 | (0.76, 0.64, 0.70) | (0.06, 0.14, 0.45) | 0.78 | 1.25 | 0.70 |
+  | morning, 26° | (1.0, 0.90, 0.78) | 3.6 | (0.50, 0.72, 1.08) | (0.05, 0.18, 0.63) | 0.54 | 1.10 | 0.70 |
+  | morning, 17° | (1.0, 0.84, 0.66) | 3.6 | (0.56, 0.70, 1.00) | (0.055, 0.175, 0.60) | 0.60 | 1.20 | 0.50 |
+  | morning, 12° | (1.0, 0.80, 0.58) | 3.5 | (0.62, 0.72, 0.95) | (0.055, 0.17, 0.57) | 0.65 | 1.28 | 0.45 |
+  | morning, 6° | (1.0, 0.70, 0.46) | 3.2 | (0.72, 0.72, 0.86) | (0.06, 0.155, 0.50) | 0.76 | 1.40 | 0.40 |
+
+  The afternoon 17° key is the former late-afternoon preset (a 20 m mast throws a 65 m shadow, the sails take the
+  light across their faces, the sun's glitter is a path toward a camera that faces it); the exposure rises as the
+  sun drops because a level surface gets less of it, so a low sun stays a little darker and warmer than midday,
+  never dim. The haze and cloud columns are factors on the conditions' `haze max` and cloud cover.
+- **Conditions** (`Daylight.CONDITIONS`), over the hour: the distance haze (WM-084's numbers), the cloud cover, a
+  factor on the sun's energy, the sky and sun colours as a per-channel ratio to fair (the conditions' midday colours
+  over fair's, so hazy midday is exactly the former hazy preset and a hazy evening a pale, warm one), a factor on the
+  exposure, a factor on the drawn boat shadows (§4.7) and the grade's change (below).
+
+  | conditions | haze begin, end, max, curve | clouds | sun × | sun colour at midday | sky horizon, zenith at midday | exposure × | shadow × |
+  | --- | --- | --- | --- | --- | --- | --- | --- |
+  | clear | 300 m, 16 km, 0.45, 0.42 | 0 | 1.0 | as fair | as fair | 1.0 | 1.0 |
+  | fair (default) | 200 m, 14 km, 0.60, 0.40 | 0.40, cumulus | 1.0 | (1.0, 0.92, 0.80) | (0.50, 0.74, 1.10), (0.05, 0.18, 0.62) | 1.0 | 1.0 |
+  | hazy | 150 m, 10 km, 0.80, 0.40 | 0.25, cumulus | 0.78 | (1.0, 0.95, 0.88) | (0.80, 0.88, 1.00), (0.24, 0.40, 0.74) | 1.10 | 0.85 |
+  | overcast | 120 m, 9 km, 0.75, 0.40 | 0.97, a deck | 0.30 | (1.0, 0.97, 0.94) | (0.66, 0.70, 0.76), (0.44, 0.49, 0.56) | 1.60 | 0.35 |
+
+  Cumulus build through the day (the hour's cloud factor); the overcast deck does not (its cover stays 0.97, so a
+  few breaks show). `haze max` is the conditions' times the hour's factor, at most 0.9. The haze colour is the
+  horizon colour, as before.
+- **Overcast** is kept because the sky shader can draw it: at cover 0.97 the cumulus layer becomes a grey deck with
+  its billowed texture and a few breaks, the sun disc and halo are hidden by the cloud in front of them (the disc is
+  drawn times `1 − cloud`), the weak sun (0.30 of the hour's) still gives soft, faint shadows and some shape on the
+  sails, and the sea reflects the grey ramp. It is a flat, grey racing day, not a storm: no rain, no dark base.
+- **Old names**: `--sky=clear|fair|hazy|late` stays as an alias. clear, fair and hazy set those conditions at the
+  hour of the afternoon sun at 38° (the former presets' sun; solar noon where the sun never gets so high); `late` is
+  fair at the hour of the afternoon sun at 17°.
+- **Updates**: the sky shader has no `TIME`, so Godot only redraws the radiance map when a value changes. A change of
+  hour or conditions sets every value at once and applies them in one pass. With `--light-advance` the clock moves
+  in steps: at most every 5 s of real time and only once the hour has moved by a game minute; the grade's LUT is
+  rebuilt when the hour has moved by 15 game minutes (about 40 ms of CPU, cached per light).
+
+| venue | date | UTC offset | race window | default | conditions | typical | why |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| practice_waters | 25 Aug | +2 | 10:00 to 18:30 | 14:30, sun 51° | fair | clear, fair, hazy | a late-summer day on the northern Adriatic |
+| garda | 20 Jul | +2 | 12:30 to 18:30 | 14:30, sun 63° | fair | clear, fair, hazy | the Ora fills from about midday and races run through the afternoon (the morning Peler from the north is a different wind, a venue matter) |
+| solent | 5 Aug | +1 | 10:30 to 17:30 | 13:00, sun 56° | fair | fair, hazy, overcast | Cowes Week: starts from late morning |
+| fremantle | 25 Jan | +8 | 12:30 to 18:00 | 15:00, sun 54° | clear | clear, fair | the Doctor arrives around midday in high summer; clear dry air |
+| trieste | 11 Oct | +2 | 10:00 to 16:30 | 12:00, sun 36° | clear | clear, fair | Barcolana season; a bora clears the air, a low autumn sun |
+
+In a **Random** weather race (race.md §2.1) the light is drawn from the race seed too: an hour in the venue's window
+(30 min steps) and one of its typical conditions; Local and Custom take the venue's defaults. A rules scenario takes
+the venue's defaults.
 
 Colours are linear. With these the sunlit white of a hull or sail (albedo 0.8) lands just under display white
 with its shading still visible, the sky between the zenith and 20° up is a saturated mid blue, and the horizon a
@@ -296,15 +358,15 @@ light blue, not grey.
   threshold (`smoothstep(1 − c, 1 − c + 0.16, n)`). One more look-up of the coarse octaves a little toward the sun
   lights the side of the cloud facing the sun (`sun · 0.40 + horizon · 0.25`) and leaves the far side and the base
   grey-blue (`mix(horizon, zenith, 0.35) · 0.85 + sun · 0.07`); thin edges toward the sun glow (silver lining);
-  clouds fade into the horizon haze below 17°. The sky has no `TIME`, so Godot only redraws its radiance map
-  when a preset value changes.
+  clouds fade into the horizon haze below 17°. The sun disc and halo are drawn times `1 − 0.95·c` (hidden behind a
+  cloud). The sky has no `TIME`, so Godot only redraws its radiance map when a value changes.
 - **Distance haze** (WM-084): aerial perspective, so far boats, marks and land fade softly toward the horizon and
   the race area reads with depth and scale. Godot's depth fog (`FOG_MODE_DEPTH`) toward the horizon colour: at a
   distance `d` from the camera the share of haze is `max · smoothstep(begin, end, d)^curve`. None on the near water
   (the own boat and its neighbours stay crisp), rising from a few hundred metres, flattening toward `max` at the
   horizon (the sea grid ends at 24 km). A curve below 1 makes it rise early. The share at a distance:
 
-  | preset | 500 m | 1 km | 3 km | 5 km | 10 km | horizon |
+  | conditions (midday) | 500 m | 1 km | 3 km | 5 km | 10 km | horizon |
   | --- | --- | --- | --- | --- | --- | --- |
   | clear | 2 % | 5 % | 15 % | 24 % | 38 % | 45 % |
   | fair | 4 % | 9 % | 25 % | 36 % | 55 % | 60 % |
@@ -322,35 +384,63 @@ light blue, not grey.
 - Boats cap their linear albedo at 0.8 and take their baked AO on the ambient and reflected light only; the sails
   keep their cloth (`sail_visuals.md` §11.1), which reads in this light without change.
 
-**Colour grade** (WM-016.38, `LookFx`): a gentle film look over the final image, on top of the ACES tone mapping,
-never instead of it: slightly richer contrast, a touch of warmth in the light and cooler shadows. Godot applies it
-after the tone mapping on the display (sRGB) values through the environment's colour correction, a 3-D LUT of
-33³ texels (RGBA8, 144 kB per preset) built at load from the formula below, one texture read per pixel in the tone
-mapping pass that already runs (cost: nil to measure). Brightness, contrast and saturation stay at 1. On a display
-colour `c` (0..1), with `L = c · (0.2126, 0.7152, 0.0722)`:
+**Colour grade** (WM-016.38, WM-124, `LookFx`): a recognisable film look over the final image, on top of the ACES
+tone mapping, never instead of it: richer contrast, warm light, cooler shadows, a little more colour, changing with
+the time of day (cleaner and cooler in the morning, neutral at midday, warmer through the afternoon, warmest at golden
+hour) and the conditions. Godot applies it after the tone mapping on the display (sRGB) values through the
+environment's colour correction, a 3-D LUT of 33³ texels (RGBA8, 144 kB) built from the formula below, one texture
+read per pixel in the tone mapping pass that already runs (cost: nil to measure). Brightness, contrast and
+saturation stay at 1. On a display colour `c` (0..1), with `L = c · (0.2126, 0.7152, 0.0722)` and
+`chroma = max(c) − min(c)`:
 ```
-y   = mix(c, smoothstep S-curve of c, contrast)                           // per channel, pivot mid grey
-y  += cool · (1 − smoothstep(0.05, 0.5, L)) · smoothstep(0, 0.08, L)       // shadows, nothing at black
-y  += warm · smoothstep(0.35, 0.85, L) · (1 − smoothstep(0.9, 1, L))       // light, back to neutral at white
+y   = mix(c, smoothstep S-curve of c, contrast)                            // per channel, pivot mid grey
+y  += cool · (1 − smoothstep(0.05, 0.45, L)) · smoothstep(0, 0.08, L)       // shadows, nothing at black
+w   = smoothstep(0.25, 0.55, L) · (1 − smoothstep(0.80, 0.97, L))           // the light, neutral again at white
+w  *= 1 − white_keep · (1 − smoothstep(0.03, 0.12, chroma)) · smoothstep(0.55, 0.80, L)   // white guard
+y  += warm · w
 y   = mix(luma(y), y, saturation), clamped to 0..1
 ```
-| preset | contrast | warm (r, g, b) | cool (r, g, b) | saturation |
+The **white guard** keeps bright, nearly neutral colours (a white sail or hull in the sun, its lit shading) out of
+the warm tint, so whites stay white at midday while the coloured light (the sea's highlights, a red hull, the
+deck) warms; at golden hour it lets go (`white_keep` 0.3) and the sails take the warm light. The grade follows the
+same keys as the light (its morning and afternoon tables over the sun's elevation, the noon blend), then the
+conditions:
+
+| key | contrast | warm (r, g, b) | cool (r, g, b) | saturation | white keep |
+| --- | --- | --- | --- | --- | --- |
+| midday, ≥ 38° | 0.30 | (+0.040, +0.014, −0.036) | (−0.030, +0.004, +0.044) | 1.07 | 1.0 |
+| afternoon, 26° | 0.30 | (+0.052, +0.018, −0.044) | (−0.030, +0.002, +0.046) | 1.08 | 0.9 |
+| afternoon, 17° | 0.28 | (+0.066, +0.024, −0.052) | (−0.032, 0, +0.048) | 1.09 | 0.6 |
+| afternoon, 12° | 0.27 | (+0.076, +0.028, −0.056) | (−0.034, 0, +0.050) | 1.10 | 0.4 |
+| afternoon, 6° | 0.26 | (+0.084, +0.030, −0.060) | (−0.036, 0, +0.052) | 1.10 | 0.3 |
+| morning, 26° | 0.28 | (+0.026, +0.012, −0.020) | (−0.034, +0.006, +0.050) | 1.05 | 1.0 |
+| morning, 17° | 0.27 | (+0.030, +0.014, −0.016) | (−0.036, +0.008, +0.054) | 1.04 | 1.0 |
+| morning, 12° | 0.27 | (+0.036, +0.016, −0.014) | (−0.038, +0.008, +0.056) | 1.04 | 0.8 |
+| morning, 6° | 0.26 | (+0.044, +0.018, −0.012) | (−0.040, +0.008, +0.058) | 1.04 | 0.6 |
+
+| conditions | contrast + | warm × | cool × | saturation × |
 | --- | --- | --- | --- | --- |
-| clear, fair | 0.14 | (+0.018, +0.006, −0.018) | (−0.010, +0.002, +0.020) | 1 |
-| hazy | 0.18 | (+0.016, +0.006, −0.014) | (−0.008, +0.002, +0.016) | 1.03 |
-| late afternoon | 0.12 | (+0.026, +0.010, −0.022) | (−0.012, 0, +0.022) | 1 |
+| clear | +0.02 | 1.0 | 1.0 | 1.02 |
+| fair | 0 | 1.0 | 1.0 | 1.0 |
+| hazy | +0.06 | 0.9 | 0.9 | 1.0 |
+| overcast | +0.04 | 0.5 | 0.8 | 0.92 |
 
-Godot samples the LUT with the colour itself as the texture coordinate, so texel `i` holds the grade of
-`(i + 0.5)/33`, and the end texels the grade of 0 and 1: black stays black and white stays white (a white sail in
-sun is not tinted). Every display value moves by at most 0.06. `--look=off` in the sail test turns the grade, the
-vignette, the contact shading and the depth of field off, to compare.
+**Grade strength** `k` (0 to 1.5, default 1; the look panel's row, `--grade=`): contrast, warm and cool times `k`,
+saturation `1 + (s − 1)·k`; 0 is no grade (the LUT is skipped). At strength 1 a display value moves by up to about
+0.12 (the old gentle grade: 0.06). Godot samples the LUT with the colour itself as the texture coordinate, so texel
+`i` holds the grade of `(i + 0.5)/33`, and the end texels the grade of 0 and 1: black stays black and white stays
+white. A white or light grey (`L` ≥ 0.6, chroma 0) at midday stays within 0.02 of neutral at strength 1.5.
+`--look=off` in the sail test turns the grade, the vignette, the contact shading and the depth of field off, to
+compare.
 
-**Vignette** (`LookFx`, a `CanvasLayer` on layer −1 owned by `CameraRig`): a slight darkening toward the corners
-that pulls the eye to the boat. One full-screen rectangle multiplying the 3-D image (display values) by
-`1 − s · smoothstep(0.5, 1, r)`, `r` the distance from the centre over the half diagonal: no screen read, one
-multiply per pixel. Under the HUD (layer 1), the pause menu and the frame-time overlay, which never darken; it takes
-no mouse input. `s` = 0.08 on the regular cameras (chase, onboard, aerial, free: a trace in the corners; on a 16:9 screen the top
-and bottom edge centres untouched) and 0.22 on the clip cameras of `cameras.md` §9 (the broadcast frame).
+**Vignette** (`LookFx`, a `CanvasLayer` on layer −1 owned by `CameraRig`): a darkening toward the corners that pulls
+the eye to the boat, clearly there on every camera without looking dirty. One full-screen rectangle multiplying the
+3-D image (display values) by `1 − s · smoothstep(inner, 1, r)`, `r` the distance from the centre over the half
+diagonal: no screen read, one multiply per pixel. Under the HUD (layer 1), the pause menu and the frame-time
+overlay, which never darken; it takes no mouse input. `s` = 0.30 with `inner` 0.40 on the regular cameras (chase,
+onboard, aerial, free: on a 16:9 screen the corners about 30 % darker, the left and right edge centres about 18 %,
+the top and bottom edge centres a trace) and 0.42 on the clip cameras of `cameras.md` §9 (the broadcast frame).
+**Vignette strength** (0 to 1.5, default 1; the look panel's row, `--vignette=`) scales `s`; 0 is off.
 
 **Contact shading** (SSAO, tier H only): Godot's screen-space ambient occlusion, soft darkening where the deck meets
 the rig, in the cockpit and under the boom: radius 0.8 m, intensity 1.6, power 1.5, detail 0.5, horizon 0.06,
@@ -396,11 +486,19 @@ the whole race area: beyond the shadow distance the fleet is small on screen and
   not take them on L. The boats' casters are the boat view's (`SeaQuality` key `boat_cast_distance`); the venue's
   trees follow the tier (`VenueView.apply_quality`).
 - Bias 0.1, normal bias 2.0 (Godot's scaled units, the same on every tier), pancake 30 m (a mast of 20 m with the
-  sun at 38° stays inside the caster range), blur 1. With the late-afternoon sun (17°) the masthead lies 68 m up
-  the light ray from its shadow, beyond the pancake: Godot then clamps that caster onto the cascade's near plane
-  (its depth only; an orthographic light keeps its outline), which still shadows every receiver in the cascade, so
-  no setting changes. The own boat's long shadows on the water are the drawn ones of §4.7 on tiers L and M (any sun
-  above 3°); on tier H a 65 m mast shadow seen from the chase camera lies inside the 150 m shadow distance.
+  sun at 38° stays inside the caster range), blur 1. With a low sun the masthead lies far up the light ray from its
+  shadow (68 m at 17°, 191 m at the lowest sun of 6°), beyond the pancake: Godot then clamps that caster onto the
+  cascade's near plane (its depth only; an orthographic light keeps its outline), which still shadows every receiver
+  in the cascade, so no setting changes with the time of day. The own boat's long shadows on the water are the
+  drawn ones of §4.7 on tiers L and M (any sun above 3°; at 6° a 20 m mast's shadow is 190 m long and the drawn
+  grid's 32 cells along it are 6 m each, still finer than the shadow's 0.7 m penumbra needs across it); on tier H a
+  mast shadow seen from the chase camera fades out from 120 m (the last 20 % of the 150 m distance), so below about
+  10° the tip of a long mast shadow on the water fades before it ends. **Low sun limit** (WM-124): the light never
+  goes below `MIN_SUN` = 6° (the hour is clamped), and the venues' race windows end with the sun at 10° or more,
+  where the shadow map's texels on a level deck are stretched at most 6 times (1/sin 10°) and the normal bias still
+  covers them. Below 6° the stretch passes 10 times and the water on tier H and the decks would start to show
+  shadow acne and stripes; the 6 to 10° band is the panel's (Time of day past the window) and is to be checked in a
+  window on tier H.
 - **Sails** (`sail_visuals.md` §11): their two cloth layers are 2 mm apart, closer than any bias can separate, so
   the sail shader draws the sail 5 cm away from the light along its normal in the shadow pass (only the layer
   facing the light is drawn there). Neither layer shadows itself or its twin, while the mast, the boom and the
@@ -468,7 +566,9 @@ shadows, the per-pixel ratio inside the shadow (linear, median): real (0.72, 0.5
 water body, so it reads darker and slightly violet-navy rather than grey. A view-dependent `keep` built from the
 §4.2 lighting terms was tried first and dropped: under the bright day of §4.5 it came out far too dark in the
 engine (luminance 0.26 to 0.42) because Godot's light on the sea is not that model. Recheck the factor when the
-sky presets or the water colours of §4.2 change.
+daylight of §4.5 or the water colours of §4.2 change. Under weaker sun the drawn shadow is fainter as the real one
+is: `shadow_keep` is `mix(1, keep, shadow)` with the conditions' shadow factor (clear and fair 1, hazy 0.85,
+overcast 0.35; `Daylight.CONDITIONS`), set by `BoatShadows` when the sky's light changes.
 
 **Cost**: the per-boat geometry (about 70 points projected, five convex hulls) runs in the GDExtension
 (`BoatShadowShape`, with the GDScript reference `BoatShadows.build`); with the sails' outline read natively

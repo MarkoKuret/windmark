@@ -47,6 +47,10 @@ MAIN_ALONE_CL = 0.72
 # of its height, frac = I / (P + BAS) the fractionality (BAS: boom above the sheer).
 TWIST_A = 0.406
 TWIST_B = 0.902
+# A kite has no flattening controls (no backstay, outhaul or traveller): its flat (with the main's) goes no lower than
+# the ORC VPP's minimum (2023 section 5: lift cut by at most 58 %); where that still heels the boat beyond the kite
+# heel limit the kite is overpowered and the config broaches.
+KITE_FLAT_MIN = 0.42
 
 
 def wind_at(tws, z):
@@ -302,6 +306,8 @@ class Solver:
         heel, over = self.solve_heel(rig, fi, reef, tws, twa, V, eps=eps)
         fx, fh, _, aws, beta, deltas = self.moment(rig, fi, reef, tws, twa, V, heel, eps)
         valid = ~over & (V < 0.98 * vmax)
+        if rig.kite:
+            valid = valid & (rig.env[0].flat[fi] >= KITE_FLAT_MIN - 1e-9)
         return State(V=V, heel=heel, valid=valid, aws=aws, awa=beta, fh=fh, fx=fx, deltas=deltas)
 
     def sternway(self, rig, tws, twa):

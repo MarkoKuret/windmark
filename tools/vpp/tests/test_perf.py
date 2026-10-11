@@ -403,6 +403,10 @@ def test_kite_heel_limit(generated):
         _, _, H = _t2(c["heel"])
         top = b.heel_max_kite if c["front_sail"] == "a2" else b.heel_max
         assert H.max() <= top + 1e-6, c["front_sail"]
+    a2 = next(c for c in p["configs"] if c["front_sail"] == "a2")
+    _, btwa, F = _t2(a2["vpp"]["flat"])
+    _, _, B = _t2(a2["vpp"]["broached"])
+    assert F[B == 0].min() >= 0.42 - 1e-9                     # a kite is depowered only so far
     _, _, Hj = _t2(p["configs"][1]["heel"])
     assert Hj.max() > b.heel_max_kite                          # the upwind config is not held to the kite limit
 

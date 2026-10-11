@@ -406,9 +406,9 @@ func _apply_setup() -> void:
 ## `--watch` (an AI sails the player's boat too, spectating on), `--class=wm12`, `--venue=<id>`,
 ## the look flags of DevLook.apply_flag (the look panel's rows, hud.md §18): `--time=HH:MM` and
 ## `--conditions=clear|fair|hazy|overcast` (the light, SkyRig; the venue's look file by default), `--sky=clear|fair|
-## hazy|late` (the old preset names), `--light-advance=<rate>`, `--grade=<k>` and `--vignette=<k>` (0 to 1.5),
-## `--look=off` (no colour grade, vignette, contact shading or depth of
-## field, to compare), `--ssao=on|off|tier` (contact shading over the tier), `--dof=off`, `--haze=<factor>`,
+## hazy|late` (the old preset names), `--light-advance=<rate>`, `--grade=<k>` (0 to 1.5),
+## `--look=off` (no colour grade, contact shading or depth of field, to
+## compare), `--ssao=on|off|tier` (contact shading over the tier), `--dof=off`, `--haze=<factor>`,
 ## `--caps=off`, `--drawn-wind=<kn>`, `--breathing=off`, `--aa=off|fxaa|smaa`, `--quality=L|M|H`,
 ## `--render-scale=0.67`, `--no-boat-shadows`, `--no-drawn-shadows`;
 ## `--course=<venue>/<id>` (race mode), `--seed=<n>` (0: from the clock), `--livery=<id>` (the player's livery),

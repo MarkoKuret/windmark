@@ -162,13 +162,12 @@ func test_rows() -> void:
 	_round_trip("aa", func(n: int) -> void:
 		t.ok(win.screen_space_aa == (Viewport.SCREEN_SPACE_AA_DISABLED if n == 1 else Viewport.SCREEN_SPACE_AA_SMAA),
 			"aa step %d: %d" % [n, win.screen_space_aa]))
-	# grade and vignette: the environment and the rig's vignette
+	# grade on and off: the environment
 	var lut0 := env.adjustment_color_correction
 	_round_trip("look", func(n: int) -> void:
 		var on := n == 0
-		t.ok(env.adjustment_enabled == on and (env.adjustment_color_correction == lut0) == on
-			and (rig.look.strength > 0.0) == on, "look step %d: grade %s, vignette %.2f" % [n, env.adjustment_enabled,
-			rig.look.strength]))
+		t.ok(env.adjustment_enabled == on and (env.adjustment_color_correction == lut0) == on,
+			"look step %d: grade %s" % [n, env.adjustment_enabled]))
 	# SSAO: the environment
 	panel.rows[panel.row_index("ssao")]["set"].call(1)
 	t.ok(env.ssao_enabled, "SSAO on: the environment draws it")
@@ -210,7 +209,7 @@ func test_rows() -> void:
 		t.ok(sc.sky.conditions == want and (n == 0) == is_equal_approx(sc.sky.cloud_cover, cc0)
 			and is_equal_approx(env.fog_density, sc.sky.haze_max * sc.sky.haze_scale),
 			"conditions step %d: %s, clouds %.2f" % [n, sc.sky.conditions, sc.sky.cloud_cover]))
-	# grade and vignette strength: the environment's LUT and the rig's vignette
+	# grade strength: the environment's LUT
 	var lutg := env.adjustment_color_correction
 	_round_trip("grade", func(n: int) -> void:
 		t.ok(is_equal_approx(LookFx.grade_strength, 1.0 + 0.1 * n) and (env.adjustment_color_correction == lutg) == (n == 0)
@@ -219,12 +218,10 @@ func test_rows() -> void:
 	panel.rows[panel.row_index("grade")]["set"].call(0.0)
 	t.ok(not env.adjustment_enabled and panel.value_text("grade") == "Off", "grade strength 0: off")
 	panel.rows[panel.row_index("grade")]["set"].call(1.0)
-	var v0 := rig.look.strength
-	_round_trip("vignette", func(n: int) -> void:
-		t.near(rig.look.strength, v0 * (1.0 + 0.1 * n), 1e-6, "vignette step %d: %.3f" % [n, rig.look.strength]))
-	panel.rows[panel.row_index("vignette")]["set"].call(0.0)
-	t.ok(rig.look.strength == 0.0, "vignette strength 0: off")
-	panel.rows[panel.row_index("vignette")]["set"].call(1.0)
+	# hud.md §18: no vignette row (there is no vignette, owner decision 2026-10-11)
+	var vignette_rows := panel.rows.filter(func(r: Dictionary) -> bool:
+		return (str(r["id"]) + str(r["label"]) + str(r["note"]) + str(r["look"])).to_lower().contains("vignette"))
+	t.ok(panel.row_index("vignette") < 0 and vignette_rows.is_empty(), "no panel row mentions a vignette")
 	# every row says where to look, except the plain actions and the wind value
 	var missing := []
 	for r in panel.rows:
@@ -388,8 +385,6 @@ func test_flags() -> void:
 		["--time=14:30", func() -> bool: return is_equal_approx(sc.sky.hour, 14.5)],
 		["--grade=0.5", func() -> bool: return is_equal_approx(panel.value("grade"), 0.5) and env.adjustment_enabled],
 		["--grade=1", func() -> bool: return is_equal_approx(LookFx.grade_strength, 1.0)],
-		["--vignette=0", func() -> bool: return sc.rig.look.strength == 0.0 and panel.value("vignette") == 0.0],
-		["--vignette=1", func() -> bool: return sc.rig.look.strength > 0.0],
 		["--light-advance=0", func() -> bool: return sc.sky.light_advance == 0.0],
 		["--haze=0.5", func() -> bool: return is_equal_approx(env.fog_density, sc.sky.haze_max * 0.5)],
 		["--haze=1", func() -> bool: return is_equal_approx(panel.value("haze"), 1.0)],
@@ -408,6 +403,7 @@ func test_flags() -> void:
 	for c in checks:
 		t.ok(DevLook.apply_flag(sc, c[0]) and (c[1] as Callable).call(), "%s" % c[0])
 	t.ok(not DevLook.apply_flag(sc, "--race"), "other flags left to the scene")
+	t.ok(not DevLook.apply_flag(sc, "--vignette=0"), "--vignette= is no look flag (no vignette): left to the scene, which ignores it")
 	DevLook.set_drawn_shadows(sc, true)
 	DevLook.set_boat_shadows(sc, true)
 	DevLook.set_render_scale(sc, 0.0)
@@ -482,4 +478,3 @@ func _restore_statics() -> void:
 	LookFx.ssao_override = -1
 	LookFx.dof_enabled = true
 	LookFx.grade_strength = 1.0
-	LookFx.vignette_scale = 1.0

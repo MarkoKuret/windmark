@@ -2,8 +2,8 @@ extends SceneTree
 ## Writes the colour grade LUT of each old light preset name (clear, fair, hazy, late: their conditions at the hour
 ## of their afternoon sun on the default site, Daylight.ALIASES; LookFx, water_render.md §4.5) to
 ## generated/look/lut_<name>.png for the offline previews (tests/cine_preview.py): the N slices of the N³ LUT side by
-## side (blue across the slices), and generated/look/look.json with the vignette constants. The daylight previews
-## take each shot's own LUT from its dump (tests/water_preview_dump.gd).
+## side (blue across the slices), and generated/look/look.json with the look constants (the LUT size; no
+## vignette). The daylight previews take each shot's own LUT from its dump (tests/water_preview_dump.gd).
 ##   godot --headless --path game -s res://tests/look_lut_dump.gd
 
 const OUT := "res://generated/look"

@@ -13,7 +13,7 @@ const PRESETS := ["clear", "fair", "hazy", "late"]
 const CONDITIONS := ["clear", "fair", "hazy", "overcast"]
 ## the time of day row's steps (h)
 const TIME_STEP := 0.5
-## the grade and vignette strength rows' range and step
+## the grade strength row's range and step
 const STRENGTH_MIN := 0.0
 const STRENGTH_MAX := 1.5
 const STRENGTH_STEP := 0.1
@@ -76,7 +76,7 @@ static func render_scale_choice() -> float:
 
 # ---- the finishing look (LookFx) ----------------------------------------------------------------------------------
 
-## `--look=off`: the colour grade, the vignette, the contact shading and the depth of field together.
+## `--look=off`: the colour grade, the contact shading and the depth of field together.
 static func set_look(scene: Node, on: bool) -> void:
 	LookFx.enabled = on
 	var sky: Variant = _member(scene, "sky")
@@ -84,13 +84,6 @@ static func set_look(scene: Node, on: bool) -> void:
 	if env != null:
 		(sky as SkyRig).apply_grade()
 		LookFx.apply_quality(env, LookFx.tier)
-	_vignette(scene)
-
-
-static func _vignette(scene: Node) -> void:
-	var rig: Variant = _member(scene, "rig")
-	if rig is CameraRig:
-		(rig as CameraRig).look.strength = LookFx.vignette_for(CameraRig.is_clip((rig as CameraRig).mode))
 
 
 ## `--grade=<k>`: the colour grade's strength (0 to 1.5, 0 off; water_render.md §4.5).
@@ -103,16 +96,6 @@ static func set_grade_strength(scene: Node, k: float) -> void:
 
 static func grade_strength() -> float:
 	return LookFx.grade_strength
-
-
-## `--vignette=<k>`: the vignette's strength, a factor on every camera's (0 to 1.5, 0 off).
-static func set_vignette_strength(scene: Node, k: float) -> void:
-	LookFx.vignette_scale = clampf(k, STRENGTH_MIN, STRENGTH_MAX)
-	_vignette(scene)
-
-
-static func vignette_strength() -> float:
-	return LookFx.vignette_scale
 
 
 static func look() -> bool:
@@ -346,7 +329,7 @@ static func breathing(scene: Node) -> bool:
 # ---- everything a built scene takes from the stored values ------------------------------------------------------
 
 ## The stored look on a scene that has just been built (the end of the sail scene's _ready): grade, SSAO,
-## vignette, shadows and the camera breathing. The render scale, anti-aliasing and tier follow the settings' own
+## shadows and the camera breathing. The render scale, anti-aliasing and tier follow the settings' own
 ## apply calls.
 static func apply_built(scene: Node) -> void:
 	set_look(scene, LookFx.enabled)
@@ -388,8 +371,6 @@ static func apply_flag(scene: Node, a: String) -> bool:
 			set_light_advance(scene, val.to_float())
 		"--grade":
 			set_grade_strength(scene, val.to_float())
-		"--vignette":
-			set_vignette_strength(scene, val.to_float())
 		"--haze":
 			set_haze(scene, val.to_float())
 		"--quality":

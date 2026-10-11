@@ -70,22 +70,16 @@ func _build_rows() -> void:
 		func() -> Variant: return DevLook.aa(s), func(v: Variant) -> void: DevLook.set_aa(s, v),
 		"Live. Screen-space AA of the 3D view (--aa)",
 		"masts, stays and sheets against the sky; subtle on Retina")
-	_add("look", "Grade and vignette", "choice", [true, false], on_off,
+	_add("look", "Grade", "choice", [true, false], on_off,
 		func() -> Variant: return DevLook.look(), func(v: Variant) -> void: DevLook.set_look(s, v),
 		"Live. Off also drops SSAO and depth of field (--look)",
-		"the whole picture: the sea's blues and the screen corners")
+		"the whole picture: compare the sea's blues")
 	_add("grade", "Grade strength", "slider", [DevLook.STRENGTH_MIN, DevLook.STRENGTH_MAX, DevLook.STRENGTH_STEP],
 		k_text,
 		func() -> Variant: return DevLook.grade_strength(),
 		func(v: Variant) -> void: DevLook.set_grade_strength(s, v),
 		"Live. The film grade, 0 off to 1.5 (--grade)",
 		"sky and sea colour, warm sunlit water, cool shadow sides; whites stay white")
-	_add("vignette", "Vignette strength", "slider", [DevLook.STRENGTH_MIN, DevLook.STRENGTH_MAX, DevLook.STRENGTH_STEP],
-		k_text,
-		func() -> Variant: return DevLook.vignette_strength(),
-		func(v: Variant) -> void: DevLook.set_vignette_strength(s, v),
-		"Live. Corner darkening, 0 off to 1.5 (--vignette)",
-		"the screen corners and the left and right edges")
 	_add("ssao", "SSAO", "choice", [-1, 0, 1],
 		_ssao_text,
 		func() -> Variant: return DevLook.ssao_choice(), func(v: Variant) -> void: DevLook.set_ssao(s, v),

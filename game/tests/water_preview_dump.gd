@@ -8,7 +8,7 @@ extends SceneTree
 ## `--sky=<name>` lights the shots with an old preset name (SkyRig.set_preset_name) and names them `<name>_<shot>`;
 ## `--time=HH:MM` and `--conditions=` set the daylight (water_render.md §4.5) and `--tag=` names them `<tag>_<shot>`;
 ## with shot names after `--`, only those (or the shots starting with them) are dumped. Each shot's folder also gets
-## its colour grade as a LUT strip (lut.png) and the vignette constants (look.json) for tests/daylight_preview.py.
+## its colour grade as a LUT strip (lut.png) and the look constants (look.json) for tests/daylight_preview.py.
 
 const OUT := "res://generated/water_preview"
 const FRAMES := 260

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Offline previews of the cinematic look (water_render.md section 4.5: colour grade, vignette, late-afternoon
-light), no window. Renders water preview shots (tests/water_preview.py on the dumps of tests/water_preview_dump.gd),
-then applies the colour grade as Godot does after the tone mapping (the preset's 3-D LUT, written by
-tests/look_lut_dump.gd, sampled with the display colour as the coordinate, trilinear) and the vignette (a
-display-space multiply, the LookFx shader's formula).
+"""Offline previews of the cinematic look (water_render.md section 4.5: colour grade, late-afternoon light), no
+window. Renders water preview shots (tests/water_preview.py on the dumps of tests/water_preview_dump.gd), then
+applies the colour grade as Godot does after the tone mapping (the preset's 3-D LUT, written by
+tests/look_lut_dump.gd, sampled with the display colour as the coordinate, trilinear). No vignette (there is none
+in the game).
 
     godot --headless --path game -s res://tests/look_lut_dump.gd
     godot --headless --path game -s res://tests/water_preview_dump.gd -- bay20_chase_M bay20_sun_M bay20_aerial_M
@@ -11,11 +11,9 @@ display-space multiply, the LookFx shader's formula).
     python3 game/tests/cine_preview.py [--size 1280x720] [--publish]
 
 Writes game/generated/cine_preview/*.png (with --publish also game/tests/previews/cine_*.jpg): for each shot the
-graded frame with the regular cameras' vignette, a before/after pair (left: the frame as before, right: graded),
-and a clip camera frame with the stronger vignette. Needs numpy, Pillow and moderngl (docs/THIRD_PARTY.md).
+graded frame and, for the fair shots, a before/after pair (left: the frame as before, right: graded). Needs numpy, Pillow and moderngl (docs/THIRD_PARTY.md).
 """
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -31,14 +29,14 @@ LOOK = GAME / "generated" / "look"
 OUT = GAME / "generated" / "cine_preview"
 PUBLISHED = GAME / "tests" / "previews"
 
-# (output name, dumped shot, light preset of the grade, clip camera vignette)
+# (output name, dumped shot, light preset of the grade)
 SHOTS = [
-    ("fair_chase", "bay20_chase_M", "fair", False),
-    ("fair_sun", "bay20_sun_M", "fair", False),
-    ("fair_aerial", "bay20_aerial_M", "fair", False),
-    ("fair_bow", "bay20_bow_M", "fair", False),
-    ("late_chase", "late_bay20_chase_M", "late", False),
-    ("late_sun", "late_bay20_sun_M", "late", True),
+    ("fair_chase", "bay20_chase_M", "fair"),
+    ("fair_sun", "bay20_sun_M", "fair"),
+    ("fair_aerial", "bay20_aerial_M", "fair"),
+    ("fair_bow", "bay20_bow_M", "fair"),
+    ("late_chase", "late_bay20_chase_M", "late"),
+    ("late_sun", "late_bay20_sun_M", "late"),
 ]
 
 
@@ -73,16 +71,6 @@ def apply_lut(img, lut):
     return c0 * (1 - tb) + c1 * tb
 
 
-def vignette(img, strength, inner):
-    h, w = img.shape[:2]
-    y, x = np.mgrid[0:h, 0:w].astype("f4")
-    d = np.dstack([(x + 0.5) / w - 0.5, (y + 0.5) / h - 0.5]) * np.array([w, h], dtype="f4")
-    r = np.linalg.norm(d, axis=2) / (0.5 * np.hypot(w, h))
-    s = np.clip((r - inner) / (1.0 - inner), 0.0, 1.0)
-    v = s * s * (3.0 - 2.0 * s)
-    return img * (1.0 - strength * v)[..., None]
-
-
 def to_image(a):
     return Image.fromarray((np.clip(a, 0.0, 1.0) * 255.0 + 0.5).astype("u1"))
 
@@ -108,10 +96,9 @@ def main():
     if not (LOOK / "look.json").exists():
         print("no LUTs in %s: run tests/look_lut_dump.gd first" % LOOK)
         return 1
-    look = json.loads((LOOK / "look.json").read_text())
     OUT.mkdir(parents=True, exist_ok=True)
     ctx = moderngl.create_standalone_context(require=410)
-    for name, shot, preset, clip in SHOTS:
+    for name, shot, preset in SHOTS:
         d = wp.OUT / shot
         if not (d / "scene.json").exists():
             print("skipped %s: no dump %s (run tests/water_preview_dump.gd)" % (name, d))
@@ -119,12 +106,10 @@ def main():
         before = wp.render(ctx, d, size, True, "auto")
         src = np.asarray(before, dtype="f4") / 255.0
         graded = apply_lut(src, load_lut(preset))
-        reg = to_image(vignette(graded, look["vignette_regular"], look["vignette_inner"]))
+        reg = to_image(graded)
         outs = {name: reg}
-        if clip:
-            outs[name + "_clip"] = to_image(vignette(graded, look["vignette_clip"], look["vignette_inner"]))
         if preset == "fair":
-            outs[name + "_compare"] = pair(before, reg, ("as before", "graded, regular camera vignette"))
+            outs[name + "_compare"] = pair(before, reg, ("as before", "graded"))
         for n, img in outs.items():
             path = OUT / (n + ".png")
             img.save(path)

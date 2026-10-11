@@ -1,8 +1,8 @@
 extends SceneTree
 ## The cinematic look's settings (water_render.md §4.5, WM-016.38, WM-124), headless: the sun position from the hour,
 ## latitude and date, the hour keyframes (anchors and continuity), conditions over the hour, the SkyRig inputs and
-## old preset names, the clock's steps, the venue look files, the colour grade (bounds, whites, strength) and the
-## vignette, the contact shading per tier.
+## old preset names, the clock's steps, the venue look files, the colour grade (bounds, whites, strength), the
+## drawn shadows' strength and the contact shading per tier.
 ##   godot --headless --path game -s res://tests/look_test.gd
 
 const VENUES := ["practice_waters", "garda", "solent", "fremantle", "trieste"]
@@ -29,7 +29,7 @@ func _run() -> void:
 	test_sky(sky)
 	test_advance(sky)
 	test_grade(sky)
-	test_vignette()
+	test_drawn_shadows()
 	test_ssao(sky)
 	sky.queue_free()
 	t.finish(self, "look_test")
@@ -328,20 +328,8 @@ func test_grade(sky: SkyRig) -> void:
 	t.ok(env.adjustment_enabled, "grade back on")
 
 
-func test_vignette() -> void:
-	t.begin("vignette")
-	var size := Vector2(1920, 1080)
-	var corner := LookFx.vignette_at(Vector2(0.0, 0.0), size, LookFx.vignette_for(false))
-	var side := LookFx.vignette_at(Vector2(0.0, 0.5), size, LookFx.vignette_for(false))
-	var top := LookFx.vignette_at(Vector2(0.5, 0.0), size, LookFx.vignette_for(false))
-	t.ok(corner <= 0.75 and corner >= 0.6, "regular cameras: corners clearly darker (x%.2f)" % corner)
-	t.ok(side < 0.9 and top > 0.97, "left and right edges darker (x%.2f), top and bottom a trace (x%.2f)" % [side, top])
-	t.ok(LookFx.vignette_for(true) > LookFx.vignette_for(false), "clip cameras stronger")
-	LookFx.vignette_scale = 0.0
-	t.ok(LookFx.vignette_for(false) == 0.0 and LookFx.vignette_for(true) == 0.0, "strength 0: off")
-	LookFx.vignette_scale = 1.5
-	t.near(LookFx.vignette_for(false), 1.5 * LookFx.VIGNETTE_REGULAR, 1e-9, "strength 1.5 scales it")
-	LookFx.vignette_scale = 1.0
+func test_drawn_shadows() -> void:
+	t.begin("drawn shadows")
 	t.near(BoatShadows.keep_for(1.0).x, BoatShadows.KEEP.x, 1e-9, "drawn shadows: full sun keeps the matched factor")
 	t.ok(BoatShadows.keep_for(0.35).y > BoatShadows.KEEP.y and BoatShadows.keep_for(0.0) == Vector3.ONE,
 		"overcast drawn shadows fainter, none without sun")

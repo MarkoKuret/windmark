@@ -1799,6 +1799,15 @@ func test_scene_race() -> void:
 	print("  scene ranking: %s" % str(rows))
 	t.ok(hud.race.active and hud.race_panel.visible, "race HUD shown")
 	t.ok(hud.get_parent().get_node_or_null("RaceStatus") == null, "no stand-in label")
+	# water_render.md §4.5: no vignette (owner decision 2026-10-11): no vignette node, no 2-D layer under the HUD
+	# over the 3-D image, no canvas shader that darkens toward the corners
+	var vignette := sc.find_children("*", "", true, false).filter(func(n: Node) -> bool:
+		var mat: Material = (n as CanvasItem).material if n is CanvasItem else null
+		return n.name.to_lower().contains("vignette") or (n is CanvasLayer and (n as CanvasLayer).layer < 1) \
+			or (mat is ShaderMaterial and (mat as ShaderMaterial).shader != null
+				and (mat as ShaderMaterial).shader.code.to_lower().contains("vignette")))
+	t.ok(vignette.is_empty(), "no vignette in the race scene (%s)" % ", ".join(vignette.map(func(n: Node) -> String:
+		return str(n.get_path()))))
 	t.ok(hud.text_of("clock").begins_with("Warning in") or hud.text_of("clock").begins_with("Start in"),
 		"countdown: " + hud.text_of("clock"))
 	t.ok(hud.ranking_panel.visible and rows.size() == 4, "ranking list held open through ui_input")

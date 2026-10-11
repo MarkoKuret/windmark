@@ -63,7 +63,7 @@ class KitePlanformTest(unittest.TestCase):
 
     def test_defaults_unchanged(self):
         """With no shaping keys the planform is the standard proportions' (fixtures/kite_planform_ref.json; the
-        asymmetric entries rewritten with the proportions of 2026-10-04, docs/specs/sail_visuals.md 14)."""
+        asymmetric entries rewritten with the proportions of 2026-10-09, docs/specs/sail_visuals.md 14.6)."""
         with open(os.path.join(HERE, "fixtures", "kite_planform_ref.json")) as f:
             ref = json.load(f)
         n = 0

@@ -139,7 +139,7 @@ the generator warns when they differ by more than 3 %). The corners, in the cent
 
 | type | `SLE` | `SF` | mid girth `SHW` |
 | --- | --- | --- | --- |
-| `spinnaker_asym` | 0.82 `SLU` (0.85 along the rounded edges) | 0.57 `SLU` | 0.88 `SF` (real asymmetrics: 0.93 to 1.0, ORC's usual case above 0.85, `sail_visuals.md` §14.1; a little under them so the reaching clew stays aft of the mast) |
+| `spinnaker_asym` | 0.82 `SLU` (0.86 along the rounded edges) | 0.57 `SLU` | 0.95 `SF` (real running asymmetrics: 0.93 to 1.02, `sail_visuals.md` §14.1, §14.6) |
 | `spinnaker_sym` | `SLU` (equal luffs) | 1.75 × pole length, at most 0.6 `SLU` | 0.95 `SF` |
 | `code_zero` | 0.90 `SLU` | 0.46 `SLU` | 0.56 `SF` (below the 0.75 `SF` spinnaker line: flatter and narrower) |
 

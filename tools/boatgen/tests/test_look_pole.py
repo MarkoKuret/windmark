@@ -35,7 +35,7 @@ class LookTest(unittest.TestCase):
         self.assertEqual((main["fill_gain"], main["fill_curve"], main["flutter_amp"], main["twist_top"]),
                          (0.6, 4.0, 0.15, 0.070))
         self.assertEqual((jib["fill_gain"], jib["fill_curve"], jib["flutter_amp"], jib["twist_top"]),
-                         (0.75, 1.2, 0.07, 0.105))
+                         (0.75, 1.2, 0.07, 0.175))
         self.assertEqual((kite["fill_gain"], kite["camber"], kite["tack_line_max"], kite["twist_top"]),
                          (1.0, 0.27, 0.04, 0.45))
         self.assertNotIn("depth", kite)

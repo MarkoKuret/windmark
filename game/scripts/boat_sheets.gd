@@ -228,7 +228,23 @@ func _setup_route(sl: Dictionary) -> void:
 	if bm == null and boom != null:
 		bm = boom.find_child("*", true, false) as MeshInstance3D
 	if bm != null and bm.mesh != null:
+		# the spar: the box over the vertices within 0.35 s of the boom's top, so the vang (down to the mast foot) and
+		# the slab under the whole boom it would add are left out (sail_visuals.md §11.3)
 		var box := bm.mesh.get_aabb()
+		var top := box.position.y + box.size.y
+		var spar := AABB()
+		var first := true
+		for si in bm.mesh.get_surface_count():
+			var va: PackedVector3Array = bm.mesh.surface_get_arrays(si)[Mesh.ARRAY_VERTEX]
+			for v in va:
+				if v.y >= top - 0.35 * _s:
+					if first:
+						spar = AABB(v, Vector3.ZERO)
+						first = false
+					else:
+						spar = spar.expand(v)
+		if not first:
+			box = spar
 		var to_boom := Transform3D.IDENTITY
 		var x: Node = bm
 		while x != null and x != boom:

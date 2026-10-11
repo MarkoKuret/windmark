@@ -37,6 +37,7 @@ func _main() -> void:
 	_boats()
 	_clearance()
 	_reach_clew()
+	_sheet_clear()
 	_parity()
 	await _rate_by_distance()
 	_perf()
@@ -71,7 +72,7 @@ func mk(impl: String, kind: int, mode: int, extra: Dictionary = {}, grid: Packed
 	p["mode"] = mode
 	var defaults := {
 		K.MAIN: {"fill_gain": 0.6, "fill_curve": 4.0, "flutter_amp": 0.15, "twist_top": 0.07},
-		K.HEADSAIL: {"fill_gain": 0.75, "fill_curve": 1.2, "flutter_amp": 0.07, "twist_top": 0.105},
+		K.HEADSAIL: {"fill_gain": 0.75, "fill_curve": 1.2, "flutter_amp": 0.07, "twist_top": 0.175},
 		K.ASYM: {"fill_gain": 1.0, "fill_curve": 1.0, "flutter_amp": 1.0, "twist_top": 0.45, "camber": 0.27,
 			"tack_line_max": 0.04},
 		K.SYM: {"fill_gain": 1.5, "fill_curve": 1.5, "flutter_amp": 1.0, "twist_top": 0.0, "camber": 0.26},
@@ -155,11 +156,10 @@ func _spec_tests(impl: String) -> void:
 		if belly > best:
 			best = belly
 			best_j = j
-	var d_cam := -0.4113 * 3.0
-	var fine := 0.5 * absf(d_cam) * (0.63 - pow(0.63, 4)) / 3.0
-	t.near(fine, 0.0972, 5e-4, "belly against the luff-clew line at u = 0.63 (formula)")
-	t.ok(best_j == 6 and absf(best / 3.0 - 0.5 * 0.4113 * (0.6 - pow(0.6, 4))) < 1e-3,
-		"grid belly largest at u = 0.6 next to 0.63, toward port (%.4f Sa)" % (best / 3.0))
+	var cam := 0.135 * tanh(sqrt(0.4113 / 4.0) / 0.15)
+	t.near(cam, 0.1313, 5e-4, "jib camber over chord m at beta -25 (formula)")
+	t.ok(best_j == 4 and absf(best / 3.0 - cam * 0.4 * 0.6 * 1.6 / 0.3849002) < 1e-3,
+		"grid belly largest at x = 0.4 next to the draft 0.42, toward port (%.4f Sa)" % (best / 3.0))
 	jb.update(UP, 1.0, 0.0, 0.0, 0.0, 30.0 * d2r, 5.0)
 	var flat := 0.0
 	for p in jb.local_shape():
@@ -177,7 +177,9 @@ func _spec_tests(impl: String) -> void:
 	t.ok(absf(t0 - 0.173) <= 1.0 / 60.0, "s_b passes 0 at %.3f s (0.173)" % t0)
 	t.near(jb.get_backed_factor(), -0.963, 1e-3, "s_b after 1 s")
 	jb.update(UP, 1.0, -25.0 * d2r, 0.0, 0.0, 30.0 * d2r, 5.0)
-	t.ok(jb.local_shape()[10].z > 0.0 and jb.local_shape()[5 * 11 + 6].z > 0.0, "backed: belly and clew on the other side")
+	var lbk: PackedVector3Array = jb.local_shape()
+	t.ok(lbk[10].z > 0.0 and lbk[5 * 11 + 6].z - 0.6 * lbk[5 * 11 + 10].z < 0.0,
+		"backed: clew pressed out, belly on the other side of the luff-clew line")
 
 	t.begin("%s: 6 flutter" % impl)
 	var mf: Variant = mk(impl, K.MAIN, M.BOOM, {"twist_top": 0.0})
@@ -451,8 +453,8 @@ func _camber_tests(impl: String) -> void:
 		print("  code zero camber at beta " + line)
 	var jb: Variant = mk(impl, K.HEADSAIL, M.LUFF)
 	jb.update(UP, 1.0, -60.0 * d2r, 0.0, 0.0, 100.0 * d2r, 5.0)
-	t.ok(row_camber(jb.local_shape(), 0, 11) > 0.15, "a jib has no camber cap (%.3f at 60 deg)" %
-		row_camber(jb.local_shape(), 0, 11))
+	var jc := row_camber(jb.local_shape(), 0, 11)
+	t.ok(jc >= 0.08 and jc <= 0.135, "a jib eased to 60 deg: foot camber %.3f, at most k_j 0.135 (§6.2)" % jc)
 
 
 func _native_vs_ref() -> void:
@@ -601,7 +603,8 @@ func _boats() -> void:
 				var nr: PackedVector3Array = sp.shape.normals()
 				for k in n:
 					worst = minf(worst, nr[k].dot(port))
-				t.ok(worst > 0.99, "%s: rest pose port normals dot(N, +y) > 0.99 (%.4f)" % [sp.id, worst])
+				# the head row is turned by twist_top toward leeward (10 deg on the jib, §4)
+				t.ok(worst > 0.98, "%s: rest pose port normals dot(N, +y) > 0.98 (%.4f)" % [sp.id, worst])
 			# the uv sets follow the grid (uv1 = (j / (cols - 1), 1 - i / (rows - 1)))
 			var uv2: PackedVector2Array = sp.mesh.surface_get_arrays(0)[Mesh.ARRAY_TEX_UV2]
 			var uv_ok := true
@@ -925,6 +928,119 @@ func _reach_clew() -> void:
 		bv.free()
 
 
+## §12 test 23: an asymmetric spinnaker's working sheet runs straight from its placed clew to the lead block and keeps
+## half the margin off the main and the boom over configs and trims up to a let-fly main; the main's stop (§7.6) never
+## eases the main past the core's angle; the clew's corner lies along its sheet (§7.5); the stop is continuous.
+func _sheet_clear() -> void:
+	for id in ["wm7", "wm12"]:
+		if not FileAccess.file_exists("res://generated/boats/%s.glb" % id):
+			continue
+		var data := BoatClassData.load_class(id)
+		var main_i: int = data.info.main_sail
+		for reference in ([false, true] if native else [true]):
+			var bv := BoatView.create(data.info, 0.5, reference)
+			var c: float = 0.042 * data.info.loa
+			var parts := {}
+			for sp in bv.sail_parts:
+				parts[sp.index] = sp
+			var mp: BoatView.SailPart = parts[main_i]
+			for fi in data.info.front_sails:
+				var fp: BoatView.SailPart = parts[fi]
+				if fp.type != "spinnaker_asym":
+					continue
+				var impl := "reference" if reference else "native"
+				t.begin("23 kite sheet: %s %s (%s)" % [id, fp.id, impl])
+				var t0 := Time.get_ticks_msec()
+				var worst_m := INF
+				var worst_b := INF
+				var at_m := ""
+				var at_b := ""
+				var over := 0
+				var cross := 0
+				var off := 0.0
+				var at_off := ""
+				var stop := 0.0
+				var n := 0
+				for twa_deg in range(60, 171, 10):
+					for kn in ([6.0, 12.0, 22.0] if not reference else [12.0]):
+						for side in [1.0, -1.0]:
+							var tws: float = kn * KNOT
+							var ap := _apparent(data, fi, tws, deg_to_rad(float(twa_deg)), side)
+							for kt in [0.85, 1.0, 1.2]:
+								for mt in [1.0, 1.15, 10.0]:
+									var sv := _sails_view(data, ap.x, ap.y, tws, fi, -1, [kt, mt])
+									for k in 3:
+										bv.apply_sails(sv, sv, 1.0, 0.1)
+									n += 1
+									var core: float = sv.sails[main_i].beta
+									if absf(mp.beta) > absf(core) + 1e-5:
+										over += 1
+									stop = maxf(stop, absf(core) - absf(mp.beta))
+									var what := "twa %d tws %.0f %s kite %.2f main %s" % [twa_deg, kn,
+										"stbd" if side > 0 else "port", kt, "let fly" if mt > 5.0 else "%.2f" % mt]
+									var cl: Vector3 = fp.clew()
+									var ld: Vector3 = fp.shape.working_lead(fp.beta)
+									var mm: PackedVector3Array = mp.shape.mid()
+									var mtris := grid_tris(mm, mp.rows, mp.cols)
+									var mh := tri_hash(mtris)
+									cross += crossings(PackedVector3Array([cl, ld]), mtris, mh)
+									var dm := INF
+									for q in 61:
+										dm = minf(dm, dist_to(cl.lerp(ld, q / 60.0), mtris, mh))
+									var be: Vector3 = bv._boom_pivot + (mp.stop_aft * mp.stop_span).rotated(bv._boom_axis, mp.beta)
+									var pts := Geometry3D.get_closest_points_between_segments(cl, ld, bv._boom_pivot, be)
+									var db: float = pts[0].distance_to(pts[1])
+									if dm < worst_m:
+										worst_m = dm
+										at_m = what
+									if db < worst_b:
+										worst_b = db
+										at_b = what
+									if kt == 1.0 and mt == 1.0:
+										var km: PackedVector3Array = fp.shape.mid()
+										var f := (km[fp.cols - 3] - cl).normalized()
+										var e := (km[2 * fp.cols + fp.cols - 1] - cl).normalized()
+										var a := rad_to_deg((f + e).normalized().angle_to((cl - ld).normalized()))
+										if a > off:
+											off = a
+											at_off = what
+				t.ok(cross == 0 and worst_m >= 0.5 * c, "%s %s: %d cases, the straight sheet %d crossings, at least %.3f m off the main (>= %.3f) at %s" % [
+					id, fp.id, n, cross, worst_m, 0.5 * c, at_m])
+				t.ok(worst_b >= 0.5 * c, "%s %s: at least %.3f m off the boom (>= %.3f) at %s" % [id, fp.id, worst_b, 0.5 * c, at_b])
+				t.ok(over == 0, "%s %s: the drawn main never past the core's angle (%d over); largest stop %.1f deg" % [
+					id, fp.id, over, rad_to_deg(stop)])
+				t.ok(off <= 30.0, "%s %s: the clew's bisector at most %.1f deg off the sheet at the optimum (<= 30) at %s" % [
+					id, fp.id, off, at_off])
+				print("  %s %s (%s): %d cases, sheet off the main %.3f m, off the boom %.3f m, largest stop %.1f deg, bisector %.1f deg, %d ms" % [
+					id, fp.id, impl, n, worst_m, worst_b, rad_to_deg(stop), off, Time.get_ticks_msec() - t0])
+				if not reference:
+					_stop_sweep(data, bv, fp, mp)
+			bv.free()
+
+
+## §7.6: with the main let fly, the kite sheeted from 60 % to 130 % of its optimum over 2 s at TWA 100 deg, 12 kn,
+## moves no vertex of the main more than 0.05 Sa between frames.
+func _stop_sweep(data: BoatClassData, bv: BoatView, fp: BoatView.SailPart, mp: BoatView.SailPart) -> void:
+	var tws := 12.0 * KNOT
+	var ap := _apparent(data, fp.index, tws, deg_to_rad(100.0), 1.0)
+	var prev := PackedVector3Array()
+	var worst := 0.0
+	for f in 121:
+		var k := 0.6 + 0.7 * f / 120.0
+		var sv := _sails_view(data, ap.x, ap.y, tws, fp.index, -1, [k, 10.0])
+		for w in (3 if f == 0 else 1):  # the stop reads the clew as last placed: settle the start
+			bv.apply_sails(sv, sv, 1.0, 1.0 / 60.0)
+		var m: PackedVector3Array = mp.shape.mid()
+		if not prev.is_empty():
+			worst = maxf(worst, max_move(prev, m))
+		prev = m.duplicate()
+	var sa: float = mp.shape.frame()["sa"]
+	var msg := "main let fly, %s sheeted from 60 to 130 %%: the main moves at most %.3f m per frame (<= %.3f)" % [
+		fp.id, worst, 0.05 * sa]
+	t.ok(worst <= 0.05 * sa, msg)
+	print("  " + msg)
+
+
 ## §7.4 the ease and the push are continuous: at TWA 100 deg, 12 kn, the flying sail sheeted from 60 % to 130 % of
 ## its optimum over 2 s with the main eased 20 % and the jib up moves no vertex more than 0.05 Sa between frames.
 func _clear_sweep(data: BoatClassData, bv: BoatView, fp: BoatView.SailPart, jib_i: int) -> void:
@@ -935,7 +1051,8 @@ func _clear_sweep(data: BoatClassData, bv: BoatView, fp: BoatView.SailPart, jib_
 	for f in 121:
 		var k := 0.6 + 0.7 * f / 120.0
 		var sv := _sails_view(data, ap.x, ap.y, tws, fp.index, jib_i, [k, 1.2])
-		bv.apply_sails(sv, sv, 1.0, 1.0 / 60.0)
+		for w in (3 if f == 0 else 1):  # settle the main's stop (§7.6) on this start before measuring
+			bv.apply_sails(sv, sv, 1.0, 1.0 / 60.0)
 		var m: PackedVector3Array = fp.shape.mid()
 		if not prev.is_empty():
 			worst = maxf(worst, max_move(prev, m))
@@ -1066,7 +1183,7 @@ func _parity() -> void:
 						ss.pole = float(w["gamma"])
 					sv.sails.append(ss)
 					sv.out.append(SimSource.SailOutput.new())
-				for k in 2:
+				for k in 3:  # the main's stop (§7.6) reads the flying sail's clew as last placed
 					bv.apply_sails(sv, sv, 1.0, 0.1)
 				for sid in want:
 					var sp: BoatView.SailPart = parts.get(sid)

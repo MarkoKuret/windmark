@@ -19,11 +19,22 @@ constexpr float PI_F = 3.14159265358979f;
 constexpr float TAU_F = 6.28318530717959f;
 constexpr float KNOT = 1852.0f / 3600.0f;
 constexpr float C_HOOK = 0.0369260386f;
+// §6.2 the jib's and genoa's camber k_j, its fill scale b_j and the largest of x (1 - x) (2 - x)
+constexpr float JIB_CAMBER = 0.135f;
+constexpr float JIB_FILL = 0.15f;
+constexpr float JIB_PROFILE_MAX = 0.3849002f;
+// §7.5 the clew on its sheet: the share of the turn, its reach (of the foot's rest chord), the grid steps that give
+// the foot and leech directions, and the fade round the bow (|beta| from, to)
+constexpr float CLEW_TURN = 0.6f;
+constexpr float CLEW_SPAN = 0.6f;
+constexpr int CLEW_REACH = 2;
+constexpr float CLEW_FADE_FROM = 1.9198622f;
+constexpr float CLEW_FADE_TO = 2.6179939f;
 constexpr float TAU_SMOOTH = 0.25f;
 constexpr float DT_MAX = 0.1f;
 // §4, §7.4 clearance constants: push slope, ease threshold (in clearances), ease cap (rad)
 constexpr float PUSH_SLOPE = 0.3f;
-constexpr float PUSH_EASE = 3.0f;
+constexpr float PUSH_EASE = 2.0f;
 constexpr float EASE_MAX = 0.35f;
 
 inline float sgn(float x) { return x >= 0.0f ? 1.0f : -1.0f; }
@@ -33,6 +44,10 @@ inline float wrap_pi(float x) {
   return r - PI_F;
 }
 inline float clampf(float x, float a, float b) { return std::min(std::max(x, a), b); }
+inline float smooth01(float x) {
+  const float t = clampf(x, 0.0f, 1.0f);
+  return t * t * (3.0f - 2.0f * t);
+}
 
 // Rotation by `angle` about the line through `p` along the unit `axis` (right-handed).
 inline Transform3D about(const Vector3& p, const Vector3& axis, float angle) {
@@ -107,6 +122,8 @@ bool SailShape::configure(const PackedVector3Array& rest, int64_t rows, int64_t 
   mast_axis_ = getv(p, "mast_axis", up_).normalized();
   phi_ = getf(p, "phi", 0.0f);
   clearance_ = getf(p, "clearance", 0.0f);
+  has_lead_ = p.has("sheet_lead");
+  sheet_lead_ = getv(p, "sheet_lead", Vector3());
   has_mast_head_ = p.has("mast_head");
   mast_head_ = getv(p, "mast_head", mast_step_ + mast_axis_);
   obs_.clear();
@@ -140,6 +157,8 @@ bool SailShape::configure(const PackedVector3Array& rest, int64_t rows, int64_t 
   c_.assign(rows_, 0.0f);
   amid_.assign(rows_, 0.0f);
   hrow_.assign(rows_, 0.0f);
+  u0row_.assign(rows_, 0.0f);
+  ulrow_.assign(rows_, 0.0f);
   drow_.assign(rows_, 0.0f);
   srow_.assign(rows_, 1.0f);
   prow_.assign(rows_, 0.0f);
@@ -155,6 +174,8 @@ bool SailShape::configure(const PackedVector3Array& rest, int64_t rows, int64_t 
     c_[i] = r[i * cols_ + cols_ - 1].distance_to(r[i * cols_]);
     amid_[i] = 0.5f * (a_[i * cols_] + a_[i * cols_ + cols_ - 1]);
     hrow_[i] = h_[i * cols_];
+    u0row_[i] = u_[i * cols_];
+    ulrow_[i] = u_[i * cols_ + cols_ - 1];
     // §6.3 (asymmetric: deepest at 0.3 of the height, the draft forward) and §6.4 (symmetric)
     const float hr = hrow_[i];
     if (kind_ == ASYM) {
@@ -173,6 +194,10 @@ bool SailShape::configure(const PackedVector3Array& rest, int64_t rows, int64_t 
     }
   }
   furl_radius_ = getf(p, "furl_radius", 0.02f + 0.006f * sa_);
+  clew_d_.assign(n_, 0.0f);
+  for (int k = 0; k < n_; ++k) clew_d_[k] = r[k].distance_to(r[cols_ - 1]);
+  clew_r_ = std::max(CLEW_SPAN * c_[0], 1e-3f);
+  fa_ = 0.0f;
   // §7.4 rest distances between grid neighbours, for the spread of the push
   ec_.assign(n_, 0.0f);
   er_.assign(n_, 0.0f);
@@ -238,14 +263,26 @@ Vector3 SailShape::main_shape(int k, float d_cam, float amp, float shiver) const
   return Vector3(a_[k], l_[k], f * d_cam * u * (1.0f - u) + amp * shiver * h * u * std::sin(phi_ - a_[k]));
 }
 
-float SailShape::head_n(float u, float a, float d_cam, float amp, float shiver) const {
-  const float u2 = u * u;
-  return 0.5f * d_cam * (u2 * u2 - C_HOOK * u) + amp * shiver * u * std::sin(phi_ - a);
+float SailShape::head_n(int i, float u, float a, float d_cam, float amp, float shiver, float us) const {
+  const float fl = amp * shiver * u * std::sin(phi_ - a);
+  if (cam_cap_ > 0.0f) {
+    const float u2 = u * u;
+    return 0.5f * d_cam * (u2 * u2 - C_HOOK * u) + fl;
+  }
+  // §6.2 the clew line plus a belly against each row's own chord
+  const float u0 = us <= 0.0f ? u0row_[i] : 0.0f;
+  const float ul = ulrow_[i] - us;
+  const float x = clampf((u - u0) / std::max(ul - u0, 1e-3f), 0.0f, 1.0f);
+  const float c = c_[i] * clampf((ul - u0) / std::max(ulrow_[i] - u0row_[i], 1e-3f), 0.0f, 1.0f);
+  const float hh = 2.0f * hrow_[i] - 1.0f;
+  const float g = x * (1.0f - x) * (2.0f - x) / JIB_PROFILE_MAX;
+  const float ul2 = ul * ul;
+  return 0.5f * d_cam * (ul2 * ul2 - C_HOOK * ul) * x - jcam_ * (1.0f - 0.15f * hh * hh) * c * g + fl;
 }
 
 Vector3 SailShape::halyard(int k, float p, float d_cam, float amp, float shiver) const {
   const float hc = 1.0f - p;
-  if (h_[k] >= hc) return Vector3(a_[k], l_[k] - hc * sl_, head_n(u_[k], a_[k], d_cam, amp, shiver));
+  if (h_[k] >= hc) return Vector3(a_[k], l_[k] - hc * sl_, head_n(k / cols_, u_[k], a_[k], d_cam, amp, shiver, 0.0f));
   return Vector3(a_[k], a_[k] * kappa_ + 0.03f, 0.02f * sl_ * std::sin(12.0f * h_[k]));
 }
 
@@ -257,7 +294,7 @@ Vector3 SailShape::furl(int k, float p, float d_cam, float amp, float shiver) co
     return Vector3(a_min_ + r * (1.0f - std::cos(t)), l_[k], r * std::sin(t));
   }
   const float a2 = a_[k] - ac;
-  return Vector3(a2, l_[k], head_n((a2 - a_min_) / sa_, a2, d_cam, amp, shiver));
+  return Vector3(a2, l_[k], head_n(k / cols_, (a2 - a_min_) / sa_, a2, d_cam, amp, shiver, 1.0f - p));
 }
 
 Vector3 SailShape::fly(int k, int i, const Vector3& w, float shiver) const {
@@ -355,6 +392,7 @@ void SailShape::update(int64_t phase, double progress, double beta_in, double ga
       const float dm = cam_cap_ * sa_ / 0.2362f;
       d_cam = dm * std::tanh(d_cam / dm);
     }
+    jcam_ = sgn(b) * JIB_CAMBER * std::tanh(std::fabs(b) / JIB_FILL);
   } else {
     float f_fly;
     if (kind_ == SYM)
@@ -403,7 +441,7 @@ void SailShape::update(int64_t phase, double progress, double beta_in, double ga
         lc = main_shape(k, d_cam, amp, shiver);
       } else if (kind_ == HEADSAIL) {
         if (up_shape)
-          lc = Vector3(a_[k], l_[k], head_n(u_[k], a_[k], d_cam, amp, shiver));
+          lc = Vector3(a_[k], l_[k], head_n(i, u_[k], a_[k], d_cam, amp, shiver, 0.0f));
         else if (furling_)
           lc = furl(k, p, d_cam, amp, shiver);
         else
@@ -439,8 +477,53 @@ void SailShape::update(int64_t phase, double progress, double beta_in, double ga
       mid_[k] = xr.xform(tack_ + ah_ * lc.x + lh_ * lc.y + nh_ * lc.z);
     }
   }
+  // §7.5 the share of the flying shape: 1 up, growing over the last tenth of the hoist, going with the drop
+  fa_ = 0.0f;
+  if (kind_ == ASYM || kind_ == SYM) {
+    if (up_shape) {
+      fa_ = 1.0f;
+    } else if (phase == 2) {
+      const float kh = clampf((p - 0.9f) / 0.1f, 0.0f, 1.0f);
+      fa_ = kh * kh;
+    } else if (phase == 5) {
+      fa_ = 1.0f - std::pow(p, 0.3f);
+    }
+  }
+  clew_turn_ = 0.0f;
+  clew0_ = mid_[cols_ - 1];
+  if (kind_ == ASYM && has_lead_ && fa_ > 0.0f) clew_on_sheet(static_cast<float>(beta));
   if (clearing) push(awa, hd);
   layers(np);
+}
+
+Vector3 SailShape::working_lead(double beta) const {
+  const float y = sheet_lead_.dot(port_);
+  return sheet_lead_ + port_ * (-sgn(static_cast<float>(beta)) * std::fabs(y) - y);
+}
+
+void SailShape::clew_on_sheet(float beta) {
+  const float g = 1.0f - smooth01((std::fabs(beta) - CLEW_FADE_FROM) / (CLEW_FADE_TO - CLEW_FADE_FROM));
+  const float kt = CLEW_TURN * fa_ * g;
+  if (kt <= 0.0f) return;
+  const Vector3 c = mid_[cols_ - 1];
+  Vector3 sv = c - working_lead(beta);
+  const Vector3 f = mid_[cols_ - 1 - CLEW_REACH] - c;
+  const Vector3 e = mid_[CLEW_REACH * cols_ + cols_ - 1] - c;
+  if (sv.length_squared() < 1e-12f || f.length_squared() < 1e-12f || e.length_squared() < 1e-12f) return;
+  Vector3 b = f.normalized() + e.normalized();
+  if (b.length_squared() < 1e-12f) return;
+  b = b.normalized();
+  sv = sv.normalized();
+  Vector3 axv = b.cross(sv);
+  const float sn = axv.length();
+  if (sn < 1e-9f) return;
+  axv /= sn;
+  const float ang = std::atan2(sn, b.dot(sv));
+  clew_turn_ = ang * kt;
+  for (int k = 0; k < n_; ++k) {
+    const float w = kt * (1.0f - smooth01(clew_d_[k] / clew_r_));
+    if (w > 0.0f) mid_[k] = c + Basis(axv, ang * w).xform(mid_[k] - c);
+  }
 }
 
 void SailShape::set_obstacles(const Array& obstacles) {
@@ -770,6 +853,10 @@ void SailShape::_bind_methods() {
   ClassDB::bind_method(D_METHOD("advance", "dt", "aws", "awa", "backed"), &SailShape::advance);
   ClassDB::bind_method(D_METHOD("set_obstacles", "obstacles"), &SailShape::set_obstacles);
   ClassDB::bind_method(D_METHOD("get_ease"), &SailShape::get_ease);
+  ClassDB::bind_method(D_METHOD("working_lead", "beta"), &SailShape::working_lead);
+  ClassDB::bind_method(D_METHOD("sheet_weight"), &SailShape::sheet_weight);
+  ClassDB::bind_method(D_METHOD("get_clew_turn"), &SailShape::get_clew_turn);
+  ClassDB::bind_method(D_METHOD("sheet_clew"), &SailShape::sheet_clew);
   ClassDB::bind_method(D_METHOD("update", "phase", "progress", "beta", "gamma", "luff_shiver", "awa", "aws"),
                        &SailShape::update);
   ClassDB::bind_method(D_METHOD("get_phase"), &SailShape::get_phase);

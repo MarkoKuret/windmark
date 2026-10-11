@@ -94,7 +94,7 @@ How the generator reads a few of them:
 
   | type | tack | leech | foot | mid girth | edge round (luff share) |
   | --- | --- | --- | --- | --- | --- |
-  | `spinnaker_asym` | sprit end | 0.82 luff | 0.57 luff | 0.88 foot | 45 % |
+  | `spinnaker_asym` | sprit end | 0.82 luff | 0.57 luff | 0.95 foot | 45 % |
   | `spinnaker_sym` | pole end | = luff | 1.75 pole, at most 0.6 luff | 0.95 foot | 50 % |
   | `code_zero` | sprit end | 0.90 luff | 0.46 luff | 0.56 foot | 20 % |
 

@@ -333,7 +333,7 @@ lets the clock run. There is no night: the hour is clamped to the hours with the
 | venue | date | UTC offset | race window | default | conditions | typical | why |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | practice_waters | 25 Aug | +2 | 10:00 to 18:30 | 14:30, sun 51° | fair | clear, fair, hazy | a late-summer day on the northern Adriatic |
-| garda | 20 Jul | +2 | 12:30 to 18:30 | 14:30, sun 63° | fair | clear, fair, hazy | the Ora fills from about midday and races run through the afternoon (the morning Peler from the north is a different wind, a venue matter) |
+| garda | 20 Jul | +2 | 12:30 to 18:30 | 14:30, sun 61° | fair | clear, fair, hazy | the Ora fills from about midday and races run through the afternoon (the morning Peler from the north is a different wind, a venue matter) |
 | solent | 5 Aug | +1 | 10:30 to 17:30 | 13:00, sun 56° | fair | fair, hazy, overcast | Cowes Week: starts from late morning |
 | fremantle | 25 Jan | +8 | 12:30 to 18:00 | 15:00, sun 54° | clear | clear, fair | the Doctor arrives around midday in high summer; clear dry air |
 | trieste | 11 Oct | +2 | 10:00 to 16:30 | 12:00, sun 36° | clear | clear, fair | Barcolana season; a bora clears the air, a low autumn sun |

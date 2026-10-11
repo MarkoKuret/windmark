@@ -33,7 +33,7 @@
     "bulb_mass": 2150,
     "bulb_length": 2.7
   },
-  "rudder": {"type": "spade", "depth": 2.05, "chord_root": 0.47, "chord_tip": 0.30, "thickness": 0.12, "x": -5.10},
+  "rudder": {"type": "spade", "depth": 2.05, "chord_root": 0.47, "chord_tip": 0.30, "thickness": 0.12, "x": -4.40},
   "rig": {
     "I": 16.2,
     "J": 4.45,

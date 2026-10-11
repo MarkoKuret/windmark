@@ -107,7 +107,8 @@ def test_main_trims_to_the_front_sail(generated, raw):
     at = lambda m, a: np.interp(a * DEG, awa, m[i])
     assert 20 * DEG < at(mk, 90) < 40 * DEG
     assert at(mk, 60) < at(mk, 90) < at(mk, 130) < main.sheet_max - 10 * DEG
-    assert np.all(mk[i] <= kk[i] + 1e-6)
+    assert np.all(mk[i] <= np.maximum(kk[i], perf.MAIN_KITE_FLOOR) + 1e-6)
+    assert mk[1:].min() >= perf.MAIN_KITE_FLOOR - 1e-6          # the backwind floor
     raw["sails"][0]["kite_sheet_in"] = 0.26
     with pytest.raises(boatclass.ClassFileError):
         boatclass.from_dict(raw)

@@ -45,6 +45,9 @@ SCHEMA = "windmark.perf/1"
 # Sheet range of the main's unlimited best-angle envelope (rad): the main's best angle in the slot of a front sail
 # (Generator._main_in_slot) is taken from it before the boom limits apply.
 MAIN_FREE_RANGE = (-30 * DEG, 180 * DEG)
+# With a kite or code zero set the main is never trimmed closer than this (rad): eased until it luffs, it stays off
+# the centreline where the kite's flow would only backwind it (sails.md 5.1).
+MAIN_KITE_FLOOR = 10 * DEG
 TWS = np.array([0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 20.6])
 TWA_SAIL = np.concatenate([np.arange(20, 60, 2), np.arange(60, 180.01, 5)]) * DEG
 AWA = np.concatenate([[0, 5], np.arange(10, 180.01, 5)]) * DEG
@@ -546,6 +549,8 @@ class Generator:
         local = np.minimum(beta_e, lam)
         e = self._main_free_envelope()
         _, _, de = e.at(r.fi, local)
+        if front.type in ("spinnaker_asym", "spinnaker_sym", "code_zero"):
+            de = np.maximum(de, MAIN_KITE_FLOOR)
         return de
 
     def _main_free_envelope(self):

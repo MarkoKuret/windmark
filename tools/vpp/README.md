@@ -65,7 +65,8 @@ All fields of `data_format.md` §3 are read as specified there. How the VPP uses
   boom to windward). With a front sail F set, the main's `optimal_angle` is its slot trim (`sails.md` §5.1,
   `Generator._main_in_slot`): the main's best angle, from its sail model without sheeting limits, for a wind
   from F's best angle instead of the free stream's effective angle (the flow leaving F's leech), fading back to
-  the free stream from 110° to 180° for a jib, genoa or symmetric spinnaker. The equilibrium keeps the main at
+  the free stream from 110° to 180° for a jib, genoa or symmetric spinnaker. With a kite or code zero set it is
+  at least `MAIN_KITE_FLOOR` (10°, the backwind floor). The equilibrium keeps the main at
   its own best angle, so the polars do not change; with a front sail up only its trim drives the core's speed.
   (The class key `kite_sheet_in`, a fixed offset for the kite configs, is gone: a class file with it is an error.)
 - Multihulls (`hull.type`, `hull.floats`, `hull.hull_spacing`, `boards`, `rudder.count`) and the `vpp` block

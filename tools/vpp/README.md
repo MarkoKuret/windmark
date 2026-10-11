@@ -230,7 +230,7 @@ tables, the VMG optima and the `dynamics` fits.
 | `decel_const` | the hull at 1 m/s (a crawl), over the mass plus added mass |
 | `decel_windage` | windage of hull, mast and the start config's sails luffing on their sheets head to wind per m/s of apparent wind: the square law's secant through `WINDAGE_AWS_REF` 3.4 m/s, with the wind profile factor at the centre of effort (the core's apparent wind is at 10 m), over the mass plus added mass; the core charges it at its own apparent wind, times `max(cos awa, 0)`. The whole square law made a tack in 22 kn lose most of its way (the coast law gives the sails no drive anywhere in the no-go zone) and full-helm tacks cheaper than half-helm ones; the secant keeps the tack targets of `boat.md` §7.2 |
 | `heel_speed_factor` | 1 up to `vpp.max_heel`; beyond, the surge equilibrium with the heel held there, relative to the limit |
-| `rudder_drag_luff`, `_bear` | rudder lift-line drag with stall, plus the keel's induced drag carrying the turn's centripetal force at the turn radius of that helm (the radius law with the offset above), over the mass. The blade's incidence is the same share (0.5) of the rudder angle the radius law's offset assumes, so the drag's stall knee is the radius law's stall helm `h_s`; past the stall incidence the flow separates over 5° and the blade's force becomes a normal force of about its maximum lift, whose drag is `cl_max sin α`. The bear-away table is the same evaluated 0.75 m/s slower |
+| `rudder_drag_luff`, `_bear` | rudder lift-line drag with stall beyond the centred blade's own drag (which is in the hull resistance, so in the polar: 0 at helm 0, `boat.md` §4), plus the keel's induced drag carrying the turn's centripetal force at the turn radius of that helm (the radius law with the offset above), over the mass. The blade's incidence is the same share (0.5) of the rudder angle the radius law's offset assumes, so the drag's stall knee is the radius law's stall helm `h_s`; past the stall incidence the flow separates over 5° and the blade's force becomes a normal force of about its maximum lift, whose drag is `cl_max sin α`. The bear-away table is the same evaluated 0.75 m/s slower |
 | `heel_max` | heel of the maximum righting moment, at most 65° |
 | `heel_freq`, `heel_damping` | roll stiffness (righting-moment slope) over roll inertia (hull, rig, bulb, crew, +20 % added); aerodynamic roll damping of the sail plan |
 | `pitch_freq` | waterplane pitch stiffness over pitch inertia (+80 % added) |
@@ -258,13 +258,14 @@ heel. Three things keep that heel where crews sail:
   edge immersion the hull drag grows fast (the ORC VPP's rail-under drag does the same from 30°);
 - flattening lowers the heeling arm (the twist function above), so a crew depowers with less loss of drive than
   a lift cut alone would give. Without it (before 2026-10) the optimiser carried wm12 at 21 to 22° from 12 kn;
-- under a spinnaker, gennaker or code zero the heel is held within `vpp.max_heel_kite` [21.5°]: beyond about
+- under a spinnaker or gennaker the heel is held within `vpp.max_heel_kite` [21.5°]: beyond about
   that the rudder nears the surface and the boat broaches, and crews ease the main and the kite to stay below it.
   The ORC VPP has held spinnaker heel to about 21.5° since 2014 (2023 documentation §5.2.3), which also moves the
-  crossover from kite to jib to where it is seen on the water. A kite has no flattening controls (backstay,
-  outhaul, traveller), so in a kite config the flat goes no lower than the ORC VPP's minimum of 0.42; a kite that
+  crossover from kite to jib to where it is seen on the water. A spinnaker has no flattening controls (backstay,
+  outhaul, traveller), so in a spinnaker config the flat goes no lower than the ORC VPP's minimum of 0.42; a kite that
   still heels the boat beyond the limit is overpowered and broached ("Broached speed"). wm7 and wm12 broach an
-  asymmetric kite at 110° TWA from 12 m/s (23 kn), and hold it at 135° to 16 m/s.
+  asymmetric kite at 110° TWA from 12 m/s (23 kn), and hold it at 135° to 16 m/s. A code zero is a flying headsail (ORC
+  measures it apart from the spinnakers), sheeted flat and set low: it sails to `vpp.max_heel` like a jib.
 
 Reference heel figures (racing practice and design data; the shipped classes are checked against them):
 

@@ -110,7 +110,7 @@ every size of boat.
 | `flutter_rate_max` `w_max` | rad/s | size rule | … | … | … | … | cap of the phase speed |
 | `twist_top` | rad | 0.070 (4°) | 0.175 (10°) | 0.140 (8°) | 0.45 (26°) | 0 | extra rotation of the head row to leeward (§7.1; the asymmetric spinnaker's grows with the AWA, §7.3) |
 | `camber` `k_c` | – | – | – | 0.12 | 0.27 | 0.26 | largest camber over chord: flying sails when full, at a third of the height (asymmetric) or mid height (symmetric) (§6.3), the cap of the code zero (§6.2) |
-| `tack_line_max` | – | – | – | – | 0.04 | – | largest tack swing on a fixed sprit, fraction of `Sl` (§7.3) |
+| `tack_line_max` | – | – | – | – | 0 | – | largest tack swing on a fixed sprit, fraction of `Sl` (§7.3); 0: the tack stays on its fitting (owner, 2026-10-11; was 0.04) |
 | `furl_radius` | m | – | size rule | size rule | – | – | radius of a furled sail's roll (§8.3) |
 
 Size rules (smaller sails flutter faster):
@@ -121,8 +121,7 @@ furl_radius = 0.02 + 0.006 * Sa
 clearance   = 0.042 * loa                          // m, flying sails off the other sails and the mast (§7.4), and the
                                                    // main and boom off a flying sail's sheet (§7.6): 0.30 on wm7
 ```
-Fixed constants of the clew on its sheet (§7.5): the share of the turn `k_t = 0.6`, its reach `0.6` of the foot's rest
-chord, the fade from `|β|` 110° to 150°; of the main's stop (§7.6): 24 scan steps, 10 bisection steps.
+Fixed constants of the tack pin (§7.5): its reach `0.25·Sl`; of the main's stop (§7.6): 24 scan steps, 10 bisection steps.
 Fixed constants of the clearance (§7.4): push slope `k_p = 0.3` (m of push lost per m of cloth), ease threshold
 `P_e = 2·c` (the leech depth the push takes on before the sail is eased; 3·c before 2026-10-10: a push deeper than
 2·c could jump between frames where the stopped main of §7.6 lies along the kite's leech), ease cap `e_max = 0.35`
@@ -320,7 +319,8 @@ at `β`:
   r_h = horizontal distance from the head to the rest tack
   gamma_e = sgn(gamma) * min(fabs(gamma), asin(min(1, tack_line_max * Sl / r_h)))
   ```
-  so the tack swings to windward on its tack line by at most `tack_line_max·Sl`. The **tack line** is drawn from
+  so the tack swings to windward on its tack line by at most `tack_line_max·Sl` (0 by default: the tack stays on its
+  fitting, §7.5). The **tack line** is drawn from
   the sidecar `bowsprit_end` to the swung tack.
 - **Code zero**: `γ_e = 0` (tacked hard to the sprit end).
 
@@ -378,8 +378,10 @@ clearance x of a point P (with its push direction g):
   row pair r, r + 1 with z_r <= z < z_(r+1) (row 0 below z_0), t = (z - z_r) / (z_(r+1) - z_r) clamped to [0, 1]
   Q_j  = lerp(M[r][j], M[r + 1][j], t)                      // the obstacle's section at that height
   nearest point Q of the polyline Q_0 .. Q_last to P in the horizontal plane, its last segment run on past the
-  leech by 2c (so a flying sail's leech meeting the obstacle's leech end is kept on the bow-facing side
-  instead of wrapping round behind it)
+  leech by 6c (so a flying sail's leech meeting the obstacle's leech end is kept on the bow-facing side
+  instead of wrapping round behind it; 2c until 2026-10-11: with the main sheeted near the kite's angle the
+  kite's lower leech lies along the main's leech over more than 2c, and cloth that reached the end of the run-on
+  flipped round it between frames)
   on a segment:  g = its horizontal normal on f's side,   x = dot(P - Q, g)
   at an end:     g = horizontal unit (P - Q),             x = |P - Q| horizontal
 mast: x = horizontal distance of P from the mast line, g radial (to leeward, sgn(awa)·port, when P is on it)
@@ -426,34 +428,30 @@ then the mast: P = P + g * (c_P + smax(x - c_P) - x)
   ease: about 60 µs per flying sail on a 26 × 16 grid (native), with the kite sheeted at the main's angle so that
   most of it is near the main (the whole kite update 83 µs, a wm7 with three sails 100 µs per frame).
 
-### 7.5 The clew on its sheet
-A loaded sheet pulls the clew along itself, so the corner of a set spinnaker turns until the sheet runs out of it
-between the foot and the leech, as the radial clew panels of a real sail point at the lead. After the placement of
-§7.3 (and before the clearance of §7.4), the cloth of an asymmetric spinnaker round its clew turns about the clew:
+### 7.5 The tack on its fitting
+A flying sail on a sprit is tacked to the fitting at the sprit end (the generator puts the rest tack there,
+`tools/boatgen/README.md`), and the tack stays on it in every trim, hoist, drop and gybe:
 ```
-C   = the placed clew (row 0, last column) ; B = the working lead: the sidecar's rig.sheet_leads.flying.lead on
-      the side of beta (sgn(beta) = starboard), §11.3
-f   = unit(P[0][cols-1-2] - C) ; e = unit(P[2][cols-1] - C)       // the foot and the leech leaving the clew
-b   = unit(f + e)                                                // the corner's bisector, into the sail
-s   = unit(C - B)                                                // the sheet's pull, reversed
-alpha = angle from b to s, about the axis unit(b x s)            // none when b x s vanishes
-g   = 1 - smoothstep(0, 1, (|beta| - 110 deg) / 40 deg)           // fades out as the clew goes round the bow
-r_c = 0.6 * C_0                                                  // the foot's rest chord
-w_k = k_t * g * fa * (1 - smoothstep(0, 1, d_k / r_c))           // d_k: rest distance of vertex k from the clew
-P_k = C + R(axis, w_k * alpha) (P_k - C)
+the placement (§7.3) turns the sail about its luff through the tack, so the tack does not move; with
+  tack_line_max = 0 there is no swing either
+the hoist and drop shapes (§8.4, §8.5) move the tack corner (the bundle's flutter, the gathered folds): their offset
+  of the tack, dT = loc[tack] - (a_tack, l_tack, 0), is taken out of the cloth round it:
+  loc_k = loc_k - dT * w_k^2,  w_k = 1 - clamp(d_k / (0.25 * Sl), 0, 1)       // d_k: rest distance from the tack
+the clearance (§7.4): the margin c_P fades out at the placed tack as it does at the head, so neither push moves it
 ```
-with `k_t = 0.6` and `fa` the flying shape's share of §8.4, §8.5 (1 when up, `k²` hoisting, `1 − c^0.3`
-dropping), so the turn grows in with the filling sail. The clew itself does not move (the core's angle stays where it
-puts the clew); the corner takes 0.6 of the turn, leaving the sheet 4 to 27° off the bisector where the plain shape
-had it 17 to 50° off, mostly out of the sail's plane (the downwind extrusion of §6.3 turns the clew to face the wind
-while the sheet runs down and inboard to the deck). A full turn kinks the lower leech; 0.6 keeps the cloth smooth.
+The share of the flying shape, `fa` (1 when up or about to drop, `k²` while hoisting with `k` of §8.4, `1 − c^0.3`
+dropping, 0 otherwise), weights the main's stop of §7.6.
+
+An earlier version of this section (2026-10-10) turned the cloth round the clew toward the sheet. It put a bulge in
+the lower leech (owner, 2026-10-11) and was removed: the corner keeps the shape of §6.3.
 
 ### 7.6 The main stops on the sheet
 A flying sail's working sheet runs straight from its clew to its lead block (§11.3), outside the main and the boom.
 Eased past that line, a real main comes to rest against the loaded sheet: the boom cannot swing through it. The
 drawn main does the same; the core's main angle is not changed (presentation only):
 ```
-S   = the sheet segment C..B of the flying sail shown (§7.5; its clew and angle as last placed, the clew taken
+S   = the sheet segment C..B of the flying sail shown (the working lead B of §11.3 on the side of its beta; its clew
+      and angle as last placed, the clew taken
       before the clearance push of §7.4 so the main's angle does not feed back into it; with two flying sails the
       one with the larger share fa)
 the main's region at angle th: the vertical rectangle through the gooseneck G along the rest foot direction
@@ -466,7 +464,7 @@ th_s  = |beta_m| when x stays >= c from th = 0 to |beta_m| (checked in 24 steps)
         x < c, then 10 bisection steps between steps k - 1 and k
 drawn = sgn(beta_m) * (|beta_m| - w_f * (|beta_m| - th_s))
 ```
-`c` is the clearance of §4; `w_f` is the flying sail's `fa` of §7.5 (0 while it is down), so the stop comes in with
+`c` is the clearance of §4; `w_f` is the flying sail's `fa` (§7.5; 0 while it is down), so the stop comes in with
 the hoist and goes with the drop. The main eases out from the centreline and stops where it first meets the sheet, so
 the stop moves smoothly with the clew. The boom, the mainsheet tackle and the main's shape and fill all follow the
 drawn angle. A sheet that passes `c` under the boom or aft of the leech does not stop the main. On reaches with the
@@ -1089,11 +1087,15 @@ Flutter phase `φ = 0` unless stated.
     BoatView (native; the reference at 12 kn), over TWA 60° to 170° (10° steps), TWS 6, 12 and 22 kn, both tacks,
     the flying sail at 85 %, 100 % and 120 % of its optimum and the main at its optimum, 15 % eased and at its
     `sheet_max` (let fly), the jib down: the straight line from the placed clew to the working lead block keeps at
-    least `0.5·c` from every triangle of the main's placed mid-surface and from the boom's box, the drawn main never
-    exceeds the core's angle, and the corner's bisector at the clew (§7.5) lies within 30° of the sheet for the
-    asymmetric spinnakers at the optimum. A kite trimmed from 60 % to 130 % of its optimum over 2 s with the main let
+    least `0.5·c` from every triangle of the main's placed mid-surface and from the boom's box, and the drawn main
+    never exceeds the core's angle. A kite trimmed from 60 % to 130 % of its optimum over 2 s with the main let
     fly moves no vertex of the main more than `0.05·Sa` between frames at 60 fps (the stop eases in and out). The test
     prints the smallest distances and the largest stop.
+
+24. **Tack on the sprit.** On the generated `wm7` and `wm12`, the asymmetric spinnaker through BoatView (native and
+    reference) at 12 kn over TWA 60° to 170° on both tacks, the kite at 60 %, 100 % and 130 % of its optimum with the
+    main at its optimum and let fly, through a hoist and a drop (progress 0 to 1) and a gybe round the bow (the kite's
+    angle through ±180°): the placed tack is within 1 mm of the sidecar's `bowsprit_end`.
 
 ## 13. Dependencies and open points
 
@@ -1259,15 +1261,16 @@ Asymmetric areas on the ORC certificates of comparable 12 m racers: J/122 143 to
   it was). Luff, leech and foot stay (SF/SLU 0.56, SLE/SLU 0.86 along the edges, inside the references). Areas: wm7
   48.5 to 52.5 m² (A/SLU² 0.41; the Melges 24 on the same rig carries 56), wm12 142.5 to 153.5 m² (0.41; J/122 and
   J/111 A2 about 150). Area over the main: wm7 2.2, wm12 2.6 (references 2.6 to 4.1; our mains are large for the rig).
-- **Clew**: the plain set shape (§6.3, §7.3) turns the clew to face the wind, so the sheet left the corner 17 to 50°
-  off its bisector, mostly out of the sail's plane: the corner looked twisted against its sheet. §7.5 turns the cloth
-  round the clew toward the sheet (4 to 27° off).
+- **Clew**: the plain set shape (§6.3, §7.3) turns the clew to face the wind, so the sheet leaves the corner 17 to 50°
+  off its bisector, mostly out of the sail's plane. Turning the cloth round the clew toward the sheet (2026-10-10)
+  bulged the lower leech and was removed (§7.5); the sheet's lead and the main's stop do the rest.
 - **Lead block**: §11.3. Trim guides lead the sheet to "blocks on the leeward quarter", "just forward of the stern
   pulpit" (Quantum), "outboard of primary winches and aft" (J/70); the Viper 640 rule puts them 2 m forward of the
   transom corner. The sheet runs outside all rigging (Quantum, Flynn), the clew flies outside and aft of the boom and
   main, and an over-eased main traps the kite behind the boom (North Sails J/80 guide).
-- **Tack line**: two-blocked reaching, eased 0.3 to 0.45 m running deep (North Sails Melges 24 and J/80 guides): the
-  existing `tack_line_max` 0.04 of the luff (0.45 m on wm7, 0.77 m on wm12).
+- **Tack line**: two-blocked reaching, eased 0.3 to 0.45 m running deep (North Sails Melges 24 and J/80 guides);
+  the J/70 sails it two-blocked (Doyle). Owner (2026-10-11): the tack stays on the sprit fitting, so `tack_line_max`
+  is 0 and the rest tack is the sprit end itself (it was 0.12 m above it).
 - No source gives the clew height above the deck or a sheeting angle in degrees; trim guides say the clew rises as the
   sheet is eased and twings bring it down running (Yachting World).
 

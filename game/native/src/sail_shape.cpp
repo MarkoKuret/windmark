@@ -23,13 +23,10 @@ constexpr float C_HOOK = 0.0369260386f;
 constexpr float JIB_CAMBER = 0.135f;
 constexpr float JIB_FILL = 0.15f;
 constexpr float JIB_PROFILE_MAX = 0.3849002f;
-// §7.5 the clew on its sheet: the share of the turn, its reach (of the foot's rest chord), the grid steps that give
-// the foot and leech directions, and the fade round the bow (|beta| from, to)
-constexpr float CLEW_TURN = 0.6f;
-constexpr float CLEW_SPAN = 0.6f;
-constexpr int CLEW_REACH = 2;
-constexpr float CLEW_FADE_FROM = 1.9198622f;
-constexpr float CLEW_FADE_TO = 2.6179939f;
+// §7.3 the tack pin reaches this share of the luff from the tack
+constexpr float TACK_PIN = 0.25f;
+// §7.4 the last segment of an obstacle section runs on past its leech by this many clearances
+constexpr float RUN_ON = 6.0f;
 constexpr float TAU_SMOOTH = 0.25f;
 constexpr float DT_MAX = 0.1f;
 // §4, §7.4 clearance constants: push slope, ease threshold (in clearances), ease cap (rad)
@@ -194,9 +191,8 @@ bool SailShape::configure(const PackedVector3Array& rest, int64_t rows, int64_t 
     }
   }
   furl_radius_ = getf(p, "furl_radius", 0.02f + 0.006f * sa_);
-  clew_d_.assign(n_, 0.0f);
-  for (int k = 0; k < n_; ++k) clew_d_[k] = r[k].distance_to(r[cols_ - 1]);
-  clew_r_ = std::max(CLEW_SPAN * c_[0], 1e-3f);
+  tack_d_.assign(n_, 0.0f);
+  for (int k = 0; k < n_; ++k) tack_d_[k] = r[k].distance_to(r[0]);
   fa_ = 0.0f;
   // §7.4 rest distances between grid neighbours, for the spread of the push
   ec_.assign(n_, 0.0f);
@@ -458,8 +454,20 @@ void SailShape::update(int64_t phase, double progress, double beta_in, double ga
       loc_[k] = lc;
     }
   }
+  // §7.3 the tack stays on its fitting: the hoist and drop shapes' offset of the tack corner is taken out of the
+  // cloth round it
+  if (kind_ == ASYM || kind_ == SYM) {
+    const Vector3 dt0 = loc_[0] - Vector3(a_[0], l_[0], 0.0f);
+    if (dt0.length_squared() > 0.0f) {
+      for (int k = 0; k < n_; ++k) {
+        const float w = 1.0f - clampf(tack_d_[k] / (TACK_PIN * sl_), 0.0f, 1.0f);
+        if (w > 0.0f) loc_[k] -= dt0 * (w * w);
+      }
+    }
+  }
   // §7.4 the ease of a flying sail off the other sails (the head lies on the luff axis)
   const Vector3 hd = s_t.xform(head_);
+  tack_at_ = s_t.xform(tack_);
   const bool clearing = clearance_ > 0.0f && (!obs_.empty() || has_mast_head_);
   ease_ = 0.0f;
   if (clearing && !obs_.empty()) {
@@ -477,7 +485,7 @@ void SailShape::update(int64_t phase, double progress, double beta_in, double ga
       mid_[k] = xr.xform(tack_ + ah_ * lc.x + lh_ * lc.y + nh_ * lc.z);
     }
   }
-  // §7.5 the share of the flying shape: 1 up, growing over the last tenth of the hoist, going with the drop
+  // §7.6 the share of the flying shape: 1 up, growing over the last tenth of the hoist, going with the drop
   fa_ = 0.0f;
   if (kind_ == ASYM || kind_ == SYM) {
     if (up_shape) {
@@ -489,9 +497,7 @@ void SailShape::update(int64_t phase, double progress, double beta_in, double ga
       fa_ = 1.0f - std::pow(p, 0.3f);
     }
   }
-  clew_turn_ = 0.0f;
   clew0_ = mid_[cols_ - 1];
-  if (kind_ == ASYM && has_lead_ && fa_ > 0.0f) clew_on_sheet(static_cast<float>(beta));
   if (clearing) push(awa, hd);
   layers(np);
 }
@@ -501,30 +507,6 @@ Vector3 SailShape::working_lead(double beta) const {
   return sheet_lead_ + port_ * (-sgn(static_cast<float>(beta)) * std::fabs(y) - y);
 }
 
-void SailShape::clew_on_sheet(float beta) {
-  const float g = 1.0f - smooth01((std::fabs(beta) - CLEW_FADE_FROM) / (CLEW_FADE_TO - CLEW_FADE_FROM));
-  const float kt = CLEW_TURN * fa_ * g;
-  if (kt <= 0.0f) return;
-  const Vector3 c = mid_[cols_ - 1];
-  Vector3 sv = c - working_lead(beta);
-  const Vector3 f = mid_[cols_ - 1 - CLEW_REACH] - c;
-  const Vector3 e = mid_[CLEW_REACH * cols_ + cols_ - 1] - c;
-  if (sv.length_squared() < 1e-12f || f.length_squared() < 1e-12f || e.length_squared() < 1e-12f) return;
-  Vector3 b = f.normalized() + e.normalized();
-  if (b.length_squared() < 1e-12f) return;
-  b = b.normalized();
-  sv = sv.normalized();
-  Vector3 axv = b.cross(sv);
-  const float sn = axv.length();
-  if (sn < 1e-9f) return;
-  axv /= sn;
-  const float ang = std::atan2(sn, b.dot(sv));
-  clew_turn_ = ang * kt;
-  for (int k = 0; k < n_; ++k) {
-    const float w = kt * (1.0f - smooth01(clew_d_[k] / clew_r_));
-    if (w > 0.0f) mid_[k] = c + Basis(axv, ang * w).xform(mid_[k] - c);
-  }
-}
 
 void SailShape::set_obstacles(const Array& obstacles) {
   obs_.clear();
@@ -610,8 +592,8 @@ float SailShape::clear_x(const Section& o, const Vector3& p, float reach, Vector
     const Vector3 q1 = sec(j + 1);
     const Vector3 d = q1 - q0;
     const float l2 = d.length_squared();
-    // the last segment runs on past the leech by 2 clearances (§7.4)
-    const float hi = (j == c_n - 2 && l2 > 1e-12f) ? 1.0f + 2.0f * clearance_ / std::sqrt(l2) : 1.0f;
+    // the last segment runs on past the leech by RUN_ON clearances (§7.4)
+    const float hi = (j == c_n - 2 && l2 > 1e-12f) ? 1.0f + RUN_ON * clearance_ / std::sqrt(l2) : 1.0f;
     const float sp = l2 > 1e-12f ? clampf((ph - q0).dot(d) / l2, 0.0f, hi) : 0.0f;
     const Vector3 q = q0 + d * sp;
     const float d2 = (ph - q).length_squared();
@@ -652,7 +634,8 @@ float SailShape::mast_x(const Vector3& p, const Vector3& lee, Vector3& g) const 
 
 float SailShape::margin_at(const Vector3& p, const Vector3& hd) const {
   const float x = clampf(p.distance_to(hd) / (5.0f * clearance_), 0.0f, 1.0f);
-  return clearance_ * x * x * (3.0f - 2.0f * x);
+  const float y = clampf(p.distance_to(tack_at_) / (5.0f * clearance_), 0.0f, 1.0f);
+  return clearance_ * x * x * (3.0f - 2.0f * x) * y * y * (3.0f - 2.0f * y);
 }
 
 // §7.4 the ease: the extra turn about the luff that brings the leech samples clear of the obstacles.
@@ -855,7 +838,6 @@ void SailShape::_bind_methods() {
   ClassDB::bind_method(D_METHOD("get_ease"), &SailShape::get_ease);
   ClassDB::bind_method(D_METHOD("working_lead", "beta"), &SailShape::working_lead);
   ClassDB::bind_method(D_METHOD("sheet_weight"), &SailShape::sheet_weight);
-  ClassDB::bind_method(D_METHOD("get_clew_turn"), &SailShape::get_clew_turn);
   ClassDB::bind_method(D_METHOD("sheet_clew"), &SailShape::sheet_clew);
   ClassDB::bind_method(D_METHOD("update", "phase", "progress", "beta", "gamma", "luff_shiver", "awa", "aws"),
                        &SailShape::update);

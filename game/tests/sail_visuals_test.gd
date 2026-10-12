@@ -38,6 +38,7 @@ func _main() -> void:
 	_clearance()
 	_reach_clew()
 	_sheet_clear()
+	_tack_on_sprit()
 	_parity()
 	await _rate_by_distance()
 	_perf()
@@ -930,7 +931,7 @@ func _reach_clew() -> void:
 
 ## §12 test 23: an asymmetric spinnaker's working sheet runs straight from its placed clew to the lead block and keeps
 ## half the margin off the main and the boom over configs and trims up to a let-fly main; the main's stop (§7.6) never
-## eases the main past the core's angle; the clew's corner lies along its sheet (§7.5); the stop is continuous.
+## eases the main past the core's angle; the stop is continuous.
 func _sheet_clear() -> void:
 	for id in ["wm7", "wm12"]:
 		if not FileAccess.file_exists("res://generated/boats/%s.glb" % id):
@@ -957,8 +958,6 @@ func _sheet_clear() -> void:
 				var at_b := ""
 				var over := 0
 				var cross := 0
-				var off := 0.0
-				var at_off := ""
 				var stop := 0.0
 				var n := 0
 				for twa_deg in range(60, 171, 10):
@@ -996,25 +995,85 @@ func _sheet_clear() -> void:
 									if db < worst_b:
 										worst_b = db
 										at_b = what
-									if kt == 1.0 and mt == 1.0:
-										var km: PackedVector3Array = fp.shape.mid()
-										var f := (km[fp.cols - 3] - cl).normalized()
-										var e := (km[2 * fp.cols + fp.cols - 1] - cl).normalized()
-										var a := rad_to_deg((f + e).normalized().angle_to((cl - ld).normalized()))
-										if a > off:
-											off = a
-											at_off = what
 				t.ok(cross == 0 and worst_m >= 0.5 * c, "%s %s: %d cases, the straight sheet %d crossings, at least %.3f m off the main (>= %.3f) at %s" % [
 					id, fp.id, n, cross, worst_m, 0.5 * c, at_m])
 				t.ok(worst_b >= 0.5 * c, "%s %s: at least %.3f m off the boom (>= %.3f) at %s" % [id, fp.id, worst_b, 0.5 * c, at_b])
 				t.ok(over == 0, "%s %s: the drawn main never past the core's angle (%d over); largest stop %.1f deg" % [
 					id, fp.id, over, rad_to_deg(stop)])
-				t.ok(off <= 30.0, "%s %s: the clew's bisector at most %.1f deg off the sheet at the optimum (<= 30) at %s" % [
-					id, fp.id, off, at_off])
-				print("  %s %s (%s): %d cases, sheet off the main %.3f m, off the boom %.3f m, largest stop %.1f deg, bisector %.1f deg, %d ms" % [
-					id, fp.id, impl, n, worst_m, worst_b, rad_to_deg(stop), off, Time.get_ticks_msec() - t0])
+				print("  %s %s (%s): %d cases, sheet off the main %.3f m, off the boom %.3f m, largest stop %.1f deg, %d ms" % [
+					id, fp.id, impl, n, worst_m, worst_b, rad_to_deg(stop), Time.get_ticks_msec() - t0])
 				if not reference:
 					_stop_sweep(data, bv, fp, mp)
+			bv.free()
+
+
+## §12 test 24: an asymmetric spinnaker's tack stays on the sprit fitting (§7.5): over configs and trims, a hoist, a
+## drop and a gybe round the bow, native and reference.
+const TACK_TOL := 0.001
+
+
+func _tack_on_sprit() -> void:
+	for id in ["wm7", "wm12"]:
+		if not FileAccess.file_exists("res://generated/boats/%s.glb" % id):
+			continue
+		var data := BoatClassData.load_class(id)
+		var rig: Dictionary = data.info.physics.get("rig", {})
+		if not rig.get("bowsprit_end") is Array:
+			continue
+		var end := Frames.body_to_model(BoatView._vec(rig["bowsprit_end"]))
+		for reference in ([false, true] if native else [true]):
+			var bv := BoatView.create(data.info, 0.5, reference)
+			var parts := {}
+			for sp in bv.sail_parts:
+				parts[sp.index] = sp
+			for fi in data.info.front_sails:
+				var fp: BoatView.SailPart = parts[fi]
+				if fp.type != "spinnaker_asym":
+					continue
+				var impl := "reference" if reference else "native"
+				t.begin("24 tack on the sprit: %s %s (%s)" % [id, fp.id, impl])
+				var worst := 0.0
+				var at := ""
+				var n := 0
+				var tws := 12.0 * KNOT
+				for twa_deg in range(60, 171, 20 if reference else 10):
+					for side in [1.0, -1.0]:
+						var ap := _apparent(data, fi, tws, deg_to_rad(float(twa_deg)), side)
+						for kt in [0.6, 1.0, 1.3]:
+							for mt in [1.0, 10.0]:
+								var sv := _sails_view(data, ap.x, ap.y, tws, fi, -1, [kt, mt])
+								bv.apply_sails(sv, sv, 1.0, 0.1)
+								var d: float = fp.shape.mid()[0].distance_to(end)
+								n += 1
+								if d > worst:
+									worst = d
+									at = "twa %d %s kite %.2f" % [twa_deg, "stbd" if side > 0 else "port", kt]
+				# hoist and drop at a reach, then a gybe round the bow (the kite's angle through +-180 deg)
+				var ap2 := _apparent(data, fi, tws, deg_to_rad(110.0), 1.0)
+				for ph in [SimSource.Phase.HOISTING, SimSource.Phase.DROPPING]:
+					for f in 21:
+						var sv := _sails_view(data, ap2.x, ap2.y, tws, fi, -1, [1.0, 1.0])
+						sv.sails[fi].phase = ph
+						sv.sails[fi].progress = f / 20.0
+						bv.apply_sails(sv, sv, 1.0, 0.1)
+						var d: float = fp.shape.mid()[0].distance_to(end)
+						n += 1
+						if d > worst:
+							worst = d
+							at = "%s %.2f" % ["hoist" if ph == SimSource.Phase.HOISTING else "drop", f / 20.0]
+				for f in 41:
+					var sv := _sails_view(data, ap2.x, ap2.y, tws, fi, -1, [1.0, 1.0])
+					sv.sails[fi].beta = Frames.wrap_pi(deg_to_rad(-150.0) - deg_to_rad(60.0) * f / 40.0)
+					bv.apply_sails(sv, sv, 1.0, 0.1)
+					var d: float = fp.shape.mid()[0].distance_to(end)
+					n += 1
+					if d > worst:
+						worst = d
+						at = "gybe step %d" % f
+				var msg := "%s %s (%s): %d cases, the tack at most %.4f m from the sprit end (<= %.3f) at %s" % [
+					id, fp.id, impl, n, worst, TACK_TOL, at]
+				t.ok(n > 0 and worst <= TACK_TOL, msg)
+				print("  " + msg)
 			bv.free()
 
 
@@ -1051,8 +1110,10 @@ func _clear_sweep(data: BoatClassData, bv: BoatView, fp: BoatView.SailPart, jib_
 	for f in 121:
 		var k := 0.6 + 0.7 * f / 120.0
 		var sv := _sails_view(data, ap.x, ap.y, tws, fp.index, jib_i, [k, 1.2])
-		for w in (3 if f == 0 else 1):  # settle the main's stop (§7.6) on this start before measuring
-			bv.apply_sails(sv, sv, 1.0, 1.0 / 60.0)
+		# a steady start: the jib's eased twist side (§7.1) settled on this tack and the main's stop (§7.6) on this
+		# clew, so only the kite's trim changes during the sweep
+		for w in (20 if f == 0 else 1):
+			bv.apply_sails(sv, sv, 1.0, 0.1 if f == 0 else 1.0 / 60.0)
 		var m: PackedVector3Array = fp.shape.mid()
 		if not prev.is_empty():
 			worst = maxf(worst, max_move(prev, m))

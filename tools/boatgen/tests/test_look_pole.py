@@ -37,7 +37,7 @@ class LookTest(unittest.TestCase):
         self.assertEqual((jib["fill_gain"], jib["fill_curve"], jib["flutter_amp"], jib["twist_top"]),
                          (0.75, 1.2, 0.07, 0.175))
         self.assertEqual((kite["fill_gain"], kite["camber"], kite["tack_line_max"], kite["twist_top"]),
-                         (1.0, 0.27, 0.04, 0.45))
+                         (1.0, 0.27, 0.0, 0.45))
         self.assertNotIn("depth", kite)
         # wm7: LOA 7.2 m -> r_f = 2.904, w_max = 9.04 (sail_visuals.md 12, test 6)
         for look in (main, jib, kite):

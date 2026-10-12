@@ -28,13 +28,10 @@ const C_HOOK := 0.0369260386
 const JIB_CAMBER := 0.135
 const JIB_FILL := 0.15
 const JIB_PROFILE_MAX := 0.3849002
-## §7.5 the clew on its sheet: the share of the turn, its reach (of the foot's rest chord), the grid steps that give
-## the foot and leech directions, and the fade round the bow (|beta| from, to)
-const CLEW_TURN := 0.6
-const CLEW_SPAN := 0.6
-const CLEW_REACH := 2
-const CLEW_FADE_FROM := 1.9198622  # 110 deg
-const CLEW_FADE_TO := 2.6179939    # 150 deg
+## §7.3 the tack pin reaches this share of the luff from the tack
+const TACK_PIN := 0.25
+## §7.4 the last segment of an obstacle section runs on past its leech by this many clearances
+const RUN_ON := 6.0
 const TAU_SMOOTH := 0.25
 const DT_MAX := 0.1
 ## §4, §7.4 clearance constants: push slope, ease threshold (in clearances), ease cap (rad)
@@ -112,14 +109,13 @@ var _tl_set := false
 var _obs: Array = []
 var _secs: Array = []
 var _ease := 0.0
-## §7.5 the working lead block on starboard (model axes), with the flag; the rest distance of each vertex from the clew
+## §7.6 the working lead block on starboard (model axes), with the flag
 var has_lead := false
 var sheet_lead := Vector3.ZERO
-var _clew_d := PackedFloat32Array()
-var _clew_r := 1.0
-var _fa := 0.0        # §7.5 the flying shape's share this update (the main's stop weight of §7.6)
-var _clew_turn := 0.0
+var _fa := 0.0        # §7.6 the flying shape's share this update (the main's stop weight)
 var _clew0 := Vector3.ZERO  # §7.6 the clew as placed, before the clearance push
+var _tack_d := PackedFloat32Array()  # §7.3 rest distance of each vertex from the tack (the tack pin)
+var _tack_at := Vector3.ZERO  # §7.4 the placed tack, where the margin fades out as at the head
 ## §7.4 rest distances from vertex k to its neighbour along the row, up the column and the two diagonals up
 var _ec := PackedFloat32Array()
 var _er := PackedFloat32Array()
@@ -240,10 +236,9 @@ func configure(rest_mid: PackedVector3Array, r: int, c: int, p: Dictionary) -> b
 				var uc := _uc[i * cols + j]
 				_prof[i * cols + j] = 4.0 * uc * (1.0 - uc)
 	furl_radius = float(p.get("furl_radius", 0.02 + 0.006 * sa))
-	_clew_d.resize(n)
+	_tack_d.resize(n)
 	for k in n:
-		_clew_d[k] = rest_mid[k].distance_to(rest_mid[cols - 1])
-	_clew_r = maxf(CLEW_SPAN * _c[0], 1e-3)
+		_tack_d[k] = rest_mid[k].distance_to(rest_mid[0])
 	_fa = 0.0
 	_ec.resize(n)
 	_ec.fill(0.0)
@@ -473,8 +468,18 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 			else:
 				loc = _hoist(k, p, fly)
 		_loc[k] = loc
+	# §7.3 the tack stays on its fitting: the hoist and drop shapes' offset of the tack corner is taken out of the
+	# cloth round it
+	if kind == Kind.ASYM or kind == Kind.SYM:
+		var dt0 := _loc[0] - Vector3(_a[0], _l[0], 0.0)
+		if dt0.length_squared() > 0.0:
+			for k in n:
+				var w := 1.0 - clampf(_tack_d[k] / (TACK_PIN * sl), 0.0, 1.0)
+				if w > 0.0:
+					_loc[k] -= dt0 * (w * w)
 	# §7.4 the ease of a flying sail off the other sails (the head lies on the luff axis)
 	var hd := s_t * head
+	_tack_at = s_t * tack
 	var clearing := clearance > 0.0 and (not _obs.is_empty() or has_mast_head)
 	_ease = 0.0
 	if clearing and not _obs.is_empty():
@@ -489,7 +494,7 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 			var k := i * cols + j
 			var lc := _loc[k]
 			_mid[k] = xr * (tack + ah * lc.x + lh * lc.y + nh * lc.z)
-	# §7.5 the share of the flying shape: 1 up, growing over the last tenth of the hoist, going with the drop
+	# §7.6 the share of the flying shape: 1 up, growing over the last tenth of the hoist, going with the drop
 	_fa = 0.0
 	if kind == Kind.ASYM or kind == Kind.SYM:
 		if up_shape:
@@ -499,16 +504,13 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 			_fa = kh * kh
 		elif phase == 5:
 			_fa = 1.0 - pow(p, 0.3)
-	_clew_turn = 0.0
 	_clew0 = _mid[cols - 1]
-	if kind == Kind.ASYM and has_lead and _fa > 0.0:
-		_clew_on_sheet(beta)
 	if clearing:
 		_push(awa, hd)
 	_layers(np)
 
 
-## §7.5, §7.6 the working lead block: the starboard lead mirrored to the side of beta (starboard for beta > 0)
+## §7.6 the working lead block: the starboard lead mirrored to the side of beta (starboard for beta > 0)
 func working_lead(beta: float) -> Vector3:
 	var y := sheet_lead.dot(port)
 	return sheet_lead + port * (-_sgn(beta) * absf(y) - y)
@@ -522,40 +524,6 @@ func sheet_weight() -> float:
 ## §7.6 the clew the sheet leaves from: as placed, before the clearance push of §7.4
 func sheet_clew() -> Vector3:
 	return _clew0
-
-
-func get_clew_turn() -> float:
-	return _clew_turn
-
-
-## §7.5 the cloth round the clew turns about the clew toward the sheet
-func _clew_on_sheet(beta: float) -> void:
-	var g := 1.0 - _smoothstep01((absf(beta) - CLEW_FADE_FROM) / (CLEW_FADE_TO - CLEW_FADE_FROM))
-	var kt := CLEW_TURN * _fa * g
-	if kt <= 0.0:
-		return
-	var c := _mid[cols - 1]
-	var sv := c - working_lead(beta)
-	var f := _mid[cols - 1 - CLEW_REACH] - c
-	var e := _mid[CLEW_REACH * cols + cols - 1] - c
-	if sv.length_squared() < 1e-12 or f.length_squared() < 1e-12 or e.length_squared() < 1e-12:
-		return
-	var b := f.normalized() + e.normalized()
-	if b.length_squared() < 1e-12:
-		return
-	b = b.normalized()
-	sv = sv.normalized()
-	var axv := b.cross(sv)
-	var sn := axv.length()
-	if sn < 1e-9:
-		return
-	axv /= sn
-	var ang := atan2(sn, b.dot(sv))
-	_clew_turn = ang * kt
-	for k in n:
-		var w := kt * (1.0 - _smoothstep01(_clew_d[k] / _clew_r))
-		if w > 0.0:
-			_mid[k] = c + Basis(axv, ang * w) * (_mid[k] - c)
 
 
 static func _smoothstep01(x: float) -> float:
@@ -644,8 +612,8 @@ func _clear_x(o: Dictionary, p: Vector3, reach: float) -> Array:
 		var q1 := _sec_pt(sh, r, j + 1, t)
 		var d := q1 - q0
 		var l2 := d.length_squared()
-		# the last segment runs on past the leech by 2 clearances (§7.4)
-		var hi := 1.0 + 2.0 * clearance / sqrt(l2) if j == cn - 2 and l2 > 1e-12 else 1.0
+		# the last segment runs on past the leech by RUN_ON clearances (§7.4)
+		var hi := 1.0 + RUN_ON * clearance / sqrt(l2) if j == cn - 2 and l2 > 1e-12 else 1.0
 		var sp := clampf((ph - q0).dot(d) / l2, 0.0, hi) if l2 > 1e-12 else 0.0
 		var q := q0 + d * sp
 		var d2 := (ph - q).length_squared()
@@ -690,7 +658,8 @@ func _mast_x(p: Vector3, lee: Vector3) -> Array:
 
 func _margin_at(p: Vector3, hd: Vector3) -> float:
 	var x := clampf(p.distance_to(hd) / (5.0 * clearance), 0.0, 1.0)
-	return clearance * x * x * (3.0 - 2.0 * x)
+	var y := clampf(p.distance_to(_tack_at) / (5.0 * clearance), 0.0, 1.0)
+	return clearance * x * x * (3.0 - 2.0 * x) * y * y * (3.0 - 2.0 * y)
 
 
 ## §7.4 the ease: the extra turn about the luff that brings the leech samples clear of the obstacles.

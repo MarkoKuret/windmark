@@ -860,8 +860,6 @@ class Generator:
         R = np.maximum(R, 0.5)
         fc = np.where(hh[None, :] > 0, b.mass * V ** 2 / R, 0.0)
         d_keel = self.hull.induced(np.maximum(V, 0.05), np.zeros_like(V), fc) * (V > 0)
-        # the centred blade's own drag is in the hull resistance, so in the polar: only the helm's drag is added
-        d_rudder = d_rudder - d_rudder[:, :1]
         return table([("boat_speed_abs", v), ("helm_abs", hh)], "m/s2", (d_rudder + d_keel) / self.mass_eff)
 
     def _outline(self):

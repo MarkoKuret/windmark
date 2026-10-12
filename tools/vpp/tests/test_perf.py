@@ -126,7 +126,6 @@ def test_dynamics_ranges(generated):
     assert hsf[0] == 1.0 and np.all(np.diff(hsf) <= 0) and hsf[-1] < 0.9
     tws, h, rd = _t2(d["rudder_drag_luff"])
     assert np.all(rd[:, 0] <= rd[:, -1])                       # harder helm costs more
-    assert np.all(rd[:, 0] == 0)                               # the centred blade's drag is in the polar
     out = np.array(d["collision"]["outline"])
     e = np.roll(out, -1, 0) - out
     cr = e[:, 0] * np.roll(e, -1, 0)[:, 1] - e[:, 1] * np.roll(e, -1, 0)[:, 0]

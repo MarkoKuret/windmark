@@ -1,7 +1,7 @@
 ---
 id: WM-135
 title: Boats roll and pitch with the sea (no wave yaw)
-status: In Progress
+status: Done
 assignee:
   - '@sea-look'
 created_date: '2026-10-15 18:00'

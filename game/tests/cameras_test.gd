@@ -122,7 +122,7 @@ func test_water_clearance() -> void:
 	tg.sea_height = sim.sea_height
 	var cam := ChaseCamera.new()
 	cam.recentre(tg)
-	cam.el = deg_to_rad(2.0)
+	cam.el = deg_to_rad(1.0)
 	var o := CamTypes.Options.new()
 	var dt := 1.0 / 60.0
 	var acc := 0.0

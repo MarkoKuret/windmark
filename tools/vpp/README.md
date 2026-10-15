@@ -70,7 +70,7 @@ All fields of `data_format.md` §3 are read as specified there. How the VPP uses
   its own best angle, so the polars do not change; with a front sail up only its trim drives the core's speed.
   (The class key `kite_sheet_in`, a fixed offset for the kite configs, is gone: a class file with it is an error.)
 - Multihulls (`hull.type`, `hull.floats`, `hull.hull_spacing`, `boards`, `rudder.count`) and the `vpp` block
-  (`max_heel`) are specified in `data_format.md` §3.9 and §3.10, with their units and defaults. The float
+  (`max_heel`, `max_heel_kite`) are specified in `data_format.md` §3.9 and §3.10, with their units and defaults. The float
   bodies are extra polygons of the same hydrostatics; the boards are read like a keel fin without a bulb.
 
 ## Output: performance file
@@ -211,8 +211,8 @@ the boat towards it rather than stopping it:
 
 - speed: 0.4 × the speed the config makes at the same TWA in the strongest wind it still holds there (the last
   sailing TWS row below), at least 0.1 m/s (the value at the no-go edge);
-- heel: the heel limit (`vpp.max_heel`, or the heel of the maximum righting moment when lower) where it was the
-  heel that failed, else the heel of that last sailing row;
+- heel: the heel limit (`vpp.max_heel`, under a kite `vpp.max_heel_kite`, or the heel of the maximum righting
+  moment when lower) where it was the heel that failed, else the heel of that last sailing row;
 - acceleration: that of the last sailing row, so the boat settles to its broached speed about as quickly as it
   sailed there.
 
@@ -230,7 +230,7 @@ tables, the VMG optima and the `dynamics` fits.
 | `decel_const` | the hull at 1 m/s (a crawl), over the mass plus added mass |
 | `decel_windage` | windage of hull, mast and the start config's sails luffing on their sheets head to wind per m/s of apparent wind: the square law's secant through `WINDAGE_AWS_REF` 3.4 m/s, with the wind profile factor at the centre of effort (the core's apparent wind is at 10 m), over the mass plus added mass; the core charges it at its own apparent wind, times `max(cos awa, 0)`. The whole square law made a tack in 22 kn lose most of its way (the coast law gives the sails no drive anywhere in the no-go zone) and full-helm tacks cheaper than half-helm ones; the secant keeps the tack targets of `boat.md` §7.2 |
 | `heel_speed_factor` | 1 up to `vpp.max_heel`; beyond, the surge equilibrium with the heel held there, relative to the limit |
-| `rudder_drag_luff`, `_bear` | rudder lift-line drag with stall, plus the keel's induced drag carrying the turn's centripetal force at the turn radius of that helm (the radius law with the offset above), over the mass. The blade's incidence is the same share (0.5) of the rudder angle the radius law's offset assumes, so the drag's stall knee is the radius law's stall helm `h_s`; past the stall incidence the flow separates over 5° and the blade's force becomes a normal force of about its maximum lift, whose drag is `cl_max sin α`. The bear-away table is the same evaluated 0.75 m/s slower |
+| `rudder_drag_luff`, `_bear` | rudder lift-line drag with stall beyond the centred blade's own drag (which is in the hull resistance, so in the polar: 0 at helm 0, `boat.md` §4), plus the keel's induced drag carrying the turn's centripetal force at the turn radius of that helm (the radius law with the offset above), over the mass. The blade's incidence is the same share (0.5) of the rudder angle the radius law's offset assumes, so the drag's stall knee is the radius law's stall helm `h_s`; past the stall incidence the flow separates over 5° and the blade's force becomes a normal force of about its maximum lift, whose drag is `cl_max sin α`. The bear-away table is the same evaluated 0.75 m/s slower |
 | `heel_max` | heel of the maximum righting moment, at most 65° |
 | `heel_freq`, `heel_damping` | roll stiffness (righting-moment slope) over roll inertia (hull, rig, bulb, crew, +20 % added); aerodynamic roll damping of the sail plan |
 | `pitch_freq` | waterplane pitch stiffness over pitch inertia (+80 % added) |
@@ -242,6 +242,52 @@ times, slowdowns) use the reference values of the owning specs, interpolated bet
 large-monohull archetypes by waterline length. The `vpp` block (ignored by the core) records the notes, VMG
 optima, the righting-moment curve, the added-mass coefficient and diagnostic tables (flat, reef, AWA, leeway,
 broached).
+
+### Heel and depowering
+
+The heel comes from the roll balance of the equilibrium (below): the side force of the sails at the height of
+their heeling force plus 0.45 of the draft, against the righting moment of the lofted hull at that heel (boat
+weight at its VCG against the heeled buoyancy) and of the crew on the rail. The crew sit at
+`crew.hiking_arm` (0.45 `beam_max`, about 0.9 of the half-beam: the rail position of the ORC VPP's crew model,
+2023 eq. 4.30, whose helm and trimmer sit at 0.7 of the half-beam), hiking from a quarter of the arm upright to
+the whole arm by 14°. The optimiser then depowers (flat, reef) to the fastest heel; nothing aims at a target
+heel. Three things keep that heel where crews sail:
+
+- the heel itself costs speed: the rig sees only the wind normal to the heeled mast (Kerwin), the keel's
+  residuary resistance grows with heel and the effective draft shrinks (Keuning and Sonnenberg), and past deck
+  edge immersion the hull drag grows fast (the ORC VPP's rail-under drag does the same from 30°);
+- flattening lowers the heeling arm (the twist function above), so a crew depowers with less loss of drive than
+  a lift cut alone would give. Without it (before 2026-10) the optimiser carried wm12 at 21 to 22° from 12 kn;
+- under a spinnaker or gennaker the heel is held within `vpp.max_heel_kite` [21.5°]: beyond about
+  that the rudder nears the surface and the boat broaches, and crews ease the main and the kite to stay below it.
+  The ORC VPP has held spinnaker heel to about 21.5° since 2014 (2023 documentation §5.2.3), which also moves the
+  crossover from kite to jib to where it is seen on the water. A spinnaker has no flattening controls (backstay,
+  outhaul, traveller), so in a spinnaker config the flat goes no lower than the ORC VPP's minimum of 0.42; a kite that
+  still heels the boat beyond the limit is overpowered and broached ("Broached speed"). wm7 and wm12 broach an
+  asymmetric kite at 110° TWA from 12 m/s (23 kn), and hold it at 135° to 16 m/s. A code zero is a flying headsail (ORC
+  measures it apart from the spinnakers), sheeted flat and set low: it sails to `vpp.max_heel` like a jib.
+
+Reference heel figures (racing practice and design data; the shipped classes are checked against them):
+
+| boat | upwind heel | source |
+| --- | --- | --- |
+| J/70 (7 m sportsboat) | about 10° is fast; 14 to 17° target in 17 to 22 kn, a "cliff" past 20° | Quantum J/70 tuning guide; North Sails, "J/70 upwind tips for big breeze and chop" |
+| J/111 (11 m) | 10° to 8 kn, 10 to 15° in 9 to 13 kn, 18 to 22° in 14 to 25 kn (18 flat water, 22 in waves) | W. Cross (Quantum), "Three modes of upwind sailing", Sailing Scuttlebutt 2021-09-22 |
+| J/121 (12 m) | 12 to 15° "magic"; water ballast filled from 18 to 20°, about 15 kn fully crewed | North Sails J/121 notes |
+| ClubSwan 50 (15 m) | hull optimum about 22° upwind; 15 to 22° reaching | Doyle Sails, ClubSwan 50 one-design notes |
+| any, under spinnaker | held to about 21.5° | ORC VPP Documentation 2023 §5.2.3 |
+
+Righting moment at 1° (boat in sailing trim, no crew; kg·m) from ORC one-design certificates (2019): Farr 40
+171.6 (4,967 kg, beam 3.96 m, default crew 777 kg), J/122E 185.8 (6,902 kg), X-41 195.2 (6,802 kg), J/70 21.6
+(811 kg), Melges 24 25.3 (821 kg). The VPP gives wm12 206 (5,000 kg, beam 3.75 m, crew 680 kg) and wm7 24.5
+(900 kg, crew 340 kg), in line with them.
+
+Equilibrium heel of the shipped classes (jib config at 42° TWA; kite config at 110° and 135°; TWS in m/s):
+
+| class | 4 | 6 | 8 | 10 | 12 | kite 110°, 4 / 8 | kite 135°, 4 / 8 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| wm7 | 11.3° | 14.0° | 15.4° | 17.7° | 17.1° | 8.1° / 18.6° | 1.8° / 10.8° |
+| wm12 | 11.6° | 17.3° | 19.8° | 21.4° | 21.0° | 9.8° / 21.3° | 2.8° / 7.7° |
 
 ## Model
 
@@ -309,15 +355,19 @@ and scaled to the centre of effort with a logarithmic sea profile (`z0` = 0.2 mm
 wind component normal to the heeled mast (Kerwin 1978).
 
 Depowering: `flat` (0.1 to 1, scales attached lift) and `reef` (0.55 to 1, area × reef², heights × reef;
-main and jib or genoa). Every sail is trimmed to its best angle.
+main and jib or genoa). Every sail is trimmed to its best angle. Flattening also twists the heads off, which lowers
+the height of the heeling force: the twist function of the ORC VPP (2023, eq. 5.49, from wind tunnel tests),
+`z_ce × [1 − 0.406 (1 − flat) − 0.902 (1 − flat)(1 − frac)]`, `frac = I / (P + BAS)` (BAS: boom above the
+sheer), so a fractional rig depowers more readily than a masthead one. The wind on the sails is still taken at
+the untwisted centre of effort (see "Heel and depowering").
 
 ### Equilibrium and optimisation
 Two degrees of freedom: surge (drive = resistance) and roll (side force × (centre of effort + 0.45 draft) =
 righting moment). For each (TWS, TWA, flat, reef) the roll equation is solved for the heel at every probe speed,
 so the surge balance is one equation in the speed, solved by a scan up from rest and a bisection, all
 combinations at once. The speed is the lowest stable root: a boat that cannot get over a resistance hump stays
-below it. The fastest valid combination (heel within `vpp.max_heel` and below the
-maximum righting moment) wins, ties going to more power. VMG optima are searched on a 0.5° grid around the table
+below it. The fastest valid combination (heel within `vpp.max_heel`, under a kite within `vpp.max_heel_kite`,
+and below the maximum righting moment) wins, ties going to more power. VMG optima are searched on a 0.5° grid around the table
 optimum with the neighbouring controls.
 
 ## Calibration
@@ -358,7 +408,12 @@ were judged to be properties of the references, not of the physics, and left alo
   in ship hydrodynamics. Journal of the Australian Mathematical Society B 30, 365 to 377.
 - Hazen, G.S. (1980). A model of sail aerodynamics for diverse rig types. New England Sailing Yacht Symposium,
   SNAME.
-- Offshore Racing Congress (2023). ORC VPP Documentation (sail force coefficient tables).
+- Offshore Racing Congress (2023). ORC VPP Documentation (sail force coefficient tables; crew righting moment
+  eq. 4.30; twist function eq. 5.49; spinnaker heel limit §5.2.3; rail-under drag eq. 6.60).
+- Offshore Racing Congress (2019). One-design certificates: Farr 40, J/70, Melges 24, X-41 (righting moment at 1°);
+  J/122E ORC International certificate (2018).
+- Heel practice: Quantum Sails J/70 tuning guide; North Sails, J/70 upwind tips for big breeze and chop and J/121
+  notes; W. Cross, Three modes of upwind sailing (Sailing Scuttlebutt, 2021); Doyle Sails, ClubSwan 50.
 - Kerwin, J.E. (1978). A velocity prediction program for ocean racing yachts. MIT report 78-11.
 - Lamb, H. (1932). Hydrodynamics, 6th ed. Cambridge University Press (added mass of a spheroid).
 - Larsson, L., Eliasson, R.E., Orych, M. (2014). Principles of Yacht Design, 4th ed. Adlard Coles (general VPP

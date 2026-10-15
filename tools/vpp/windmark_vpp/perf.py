@@ -222,7 +222,7 @@ class Generator:
         k = np.argmax(score, axis=-1)
         take = lambda a: np.take_along_axis(np.asarray(a).reshape(T, A, NF * NR), k[..., None], -1)[..., 0]
         ok = take(st.valid) & (take(st.V) > 0.02)
-        limited = (st.heel >= self.solver.heel_top * (1 - 1e-6)).reshape(T, A, NF * NR).any(axis=-1)
+        limited = (st.heel >= self.solver.heel_limit(rig) * (1 - 1e-6)).reshape(T, A, NF * NR).any(axis=-1)
         rows = np.where(ok, np.arange(T)[:, None], -1)
         src = np.maximum.accumulate(rows, axis=0)
         return ConfigResult(front=front, rig=rig, V=np.where(ok, take(st.V), 0.0),
@@ -241,7 +241,7 @@ class Generator:
         s = np.maximum(r.src, 0)
         has = r.src >= 0
         V = np.maximum(np.where(has, BROACH_SHARE * r.V[s, cols], 0.0), BROACH_MIN)
-        heel = np.where(r.heel_limited, self.solver.heel_top, np.where(has, r.heel[s, cols], 0.0))
+        heel = np.where(r.heel_limited, self.solver.heel_limit(r.rig), np.where(has, r.heel[s, cols], 0.0))
         a = np.where(has, acc[s, cols], 0.005)
         return V, heel, a
 
@@ -397,7 +397,7 @@ class Generator:
         the drive acting at the centre of effort, which the sheet angle and the heel carry out to leeward, and the
         side force acting at the centre of effort ahead of (or behind) the centre of lateral resistance."""
         fx, fh, _, _, _, deltas = self.solver.moment(rig, fi, reef, tws, twa, V, heel)
-        z = rig.ce_height(reef)
+        z = rig.heel_arm(fi, reef)
         x, y = self._ce(rig, deltas)
         return fx * (z * np.sin(heel) + y) - fh * (x - x_clr)
 
@@ -415,7 +415,7 @@ class Generator:
             j = int(np.argmax(np.where(r.valid[i], r.V[i] * np.cos(self.twa), -1.0)))
             fx, fh, _, _, _, deltas = self.solver.moment(r.rig, r.fi[i, j], r.reef[i, j], self.tws[i],
                                                         self.twa[j], r.V[i, j], r.heel[i, j])
-            z = r.rig.ce_height(r.reef[i, j])
+            z = r.rig.heel_arm(r.fi[i, j], r.reef[i, j])
             x, y = self._ce(r.rig, deltas)
             self._x_clr = float(x - fx * (z * math.sin(r.heel[i, j]) + y) / fh)
         return self._x_clr
@@ -860,6 +860,8 @@ class Generator:
         R = np.maximum(R, 0.5)
         fc = np.where(hh[None, :] > 0, b.mass * V ** 2 / R, 0.0)
         d_keel = self.hull.induced(np.maximum(V, 0.05), np.zeros_like(V), fc) * (V > 0)
+        # the centred blade's own drag is in the hull resistance, so in the polar: only the helm's drag is added
+        d_rudder = d_rudder - d_rudder[:, :1]
         return table([("boat_speed_abs", v), ("helm_abs", hh)], "m/s2", (d_rudder + d_keel) / self.mass_eff)
 
     def _outline(self):

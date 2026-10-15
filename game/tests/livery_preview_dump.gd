@@ -16,7 +16,8 @@ const SEED := 2026
 ## the spinnaker hoisted); `liveries`: ids for the boats in order, else the fleet rule from SEED. Camera "boat":
 ## eye and target in boat 0's heading frame (port, up, fwd), m, level with the sea; "line": eye from the starboard
 ## (east) end of the line ("mid": from the fleet's middle) and target from the fleet's middle, in world east,
-## north, up, m.
+## north, up, m. "onboard": the game's onboard camera (cameras.md §3: OnboardCamera on BoatGeometry, look centred,
+## its default fov, near plane 0.1 m).
 var SHOTS := [
 	{"name": "start_wm7", "cls": "wm7", "n": 10, "twa": 42.0, "gap": 1.9, "t": 25.0,
 		"cam": {"mode": "mid", "eye": [80.0, 42.0, 3.5], "at": [30.0, 0.0, 3.2], "fov": 38.0}},
@@ -129,6 +130,15 @@ var SHOTS := [
 		"cam": {"mode": "boat", "eye": [-1.2, 1.9, -1.8], "at": [0.0, 0.5, 0.4], "fov": 55.0}},
 	{"name": "boom_wm12", "cls": "wm12", "n": 1, "twa": 40.0, "t": 20.0, "liveries": ["nightjar"],
 		"cam": {"mode": "boat", "eye": [-4.5, 2.4, -2.6], "at": [0.0, 1.6, -3.0], "fov": 50.0}},
+	# the onboard (cockpit) camera as the game computes it: upwind with the jib, downwind with the kite
+	{"name": "cockpit_wm7_upwind", "cls": "wm7", "n": 1, "twa": 42.0, "t": 20.0, "liveries": ["kestrel"],
+		"cam": {"mode": "onboard"}},
+	{"name": "cockpit_wm7_kite", "cls": "wm7", "n": 1, "twa": 135.0, "t": 40.0, "kite": true, "liveries": ["kestrel"],
+		"cam": {"mode": "onboard"}},
+	{"name": "cockpit_wm12_upwind", "cls": "wm12", "n": 1, "twa": 40.0, "t": 20.0, "liveries": ["nightjar"],
+		"cam": {"mode": "onboard"}},
+	{"name": "cockpit_wm12_kite", "cls": "wm12", "n": 1, "twa": 120.0, "t": 40.0, "kite": true,
+		"liveries": ["nightjar"], "cam": {"mode": "onboard"}},
 	{"name": "lod_wm7_25", "cls": "wm7", "n": 1, "twa": 42.0, "t": 20.0, "liveries": ["kestrel"],
 		"cam": {"mode": "boat", "eye": [-22.50, 7.25, 10.12], "at": [0.00, 3.20, 0.00], "fov": 29.15}},
 	{"name": "lod_wm7_35", "cls": "wm7", "n": 1, "twa": 42.0, "t": 20.0, "liveries": ["kestrel"],
@@ -234,6 +244,15 @@ func _shot(spec: Dictionary) -> void:
 	for k in n:
 		views[k].apply(sim.render_pose(boats[k], 1.0))
 		views[k].apply_sails(prev[k], cur[k], 1.0, 1.0 / 60.0)
+	if spec["cam"]["mode"] == "onboard":
+		var tg := CamTypes.Target.new()
+		tg.pose = sim.render_pose(boats[0], 1.0)
+		tg.loa = info.loa
+		tg.beam_max = info.beam_max
+		tg.geometry = BoatGeometry.onboard(info, (views[0] as BoatView).model)
+		var v := OnboardCamera.new().update(tg, CamTypes.Options.new(), 1.0 / 60.0)
+		spec["cam"]["view"] = v
+		print("  onboard eye (body) x %.3f y %.3f z %.3f, fov %.1f" % [tg.geometry.xh, tg.geometry.yh_abs, tg.geometry.zh, v.fov])
 	_dump(spec, views)
 	holder.queue_free()
 	await process_frame
@@ -271,11 +290,24 @@ func _dump(spec: Dictionary, views: Array) -> void:
 	var fwd := frame.basis.z
 	frame.basis = Basis.looking_at(-Vector3(fwd.x, 0.0, fwd.z).normalized(), Vector3.UP)
 	frame.origin.y = 0.0
-	var e: Array = cam["eye"]
-	var at: Array = cam["at"]
-	var eye := frame * Vector3(e[0], e[1], e[2])
-	var target := frame * Vector3(at[0], at[1], at[2])
+	var eye: Vector3
+	var target: Vector3
+	var fov: float = cam.get("fov", 50.0)
+	var near := 0.3
+	if cam["mode"] == "onboard":
+		var v: CamTypes.View = cam["view"]
+		eye = v.xform.origin
+		target = eye - 10.0 * v.xform.basis.z
+		fov = v.fov
+		near = v.near
+	else:
+		var e: Array = cam["eye"]
+		var at: Array = cam["at"]
+		eye = frame * Vector3(e[0], e[1], e[2])
+		target = frame * Vector3(at[0], at[1], at[2])
 	if cam["mode"] == "line" or cam["mode"] == "mid":
+		var e: Array = cam["eye"]
+		var at: Array = cam["at"]
 		var east_end: Vector3 = (views[0] as BoatView).transform.origin
 		var mid := Vector3.ZERO
 		for v in views:
@@ -401,7 +433,7 @@ func _dump(spec: Dictionary, views: Array) -> void:
 						entry["metal"] = me
 				meshes.append(entry)
 	var scene := {"meshes": meshes, "eye": [eye.x, eye.y, eye.z], "target": [target.x, target.y, target.z],
-		"fov": cam["fov"], "sun": cam.get("sun", "side"), "sea": spec.get("sea", true),
+		"fov": fov, "near": near, "sun": cam.get("sun", "side"), "sea": spec.get("sea", true),
 		"note": "%s: %s" % [spec["name"], ", ".join(views.map(func(v: BoatView) -> String: return "%s %s" % [v.livery.boat_name, v.livery.sail_number]))]}
 	FileAccess.open(dir.path_join("scene.json"), FileAccess.WRITE).store_string(JSON.stringify(scene, "  "))
 	print("  dumped ", spec["name"], " (", meshes.size(), " meshes, LOD ", (views[0] as BoatView).lod, ")")

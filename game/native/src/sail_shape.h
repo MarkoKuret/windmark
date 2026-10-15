@@ -77,6 +77,17 @@ class SailShape : public godot::RefCounted {
   godot::Vector3 fly(int k, int i, const godot::Vector3& w, float shiver) const;
   godot::Vector3 hoist(int k, float c, const godot::Vector3& f) const;
   godot::Vector3 drop(int k, float c, const godot::Vector3& f) const;
+  // rows 0 .. rows_to - 1 (all with -1)
+  void locals(int64_t phase, bool up_shape, float p, float d_cam, float amp, float shiver, const godot::Vector3& w,
+              int rows_to = -1);
+  // §7.7 the clew set by its sheet
+  void clew_rows(float kd, float kl);
+  godot::Vector3 fly_at(int k, const godot::Vector3& w, float kd, float kl) const;
+  void clew_corner(float kd, float kl, float beta, float base, const godot::Vector3& piv, const godot::Vector3& ax,
+                   const godot::Transform3D& s_t, const godot::Vector3& w, godot::Vector3& b,
+                   godot::Vector3& s) const;
+  void clew_set(float beta, float base, const godot::Vector3& piv, const godot::Vector3& ax,
+                const godot::Transform3D& s_t, const godot::Vector3& w);
   void layers(const godot::Vector3& np);
   // §7.4 clearance
   struct Section {
@@ -125,6 +136,8 @@ class SailShape : public godot::RefCounted {
   godot::Vector3 clew0_;                   // §7.6 the clew as placed, before the clearance push                      // §6.2 the jib's signed camber over chord, per update
   std::vector<float> drow_, srow_;         // per row, per update: camber over chord and chord shortening
   std::vector<float> prow_, trow_;         // per row: the camber's height profile (§6.3, §6.4), the twist (§7, per update)
+  std::vector<float> crow_, d0row_;        // per row: §7.7 the clew set's share; the camber before it (per update)
+  float kd_ = 0.0f, kl_ = 0.0f;            // §7.7 the draw-in and draw-down of the last update
   std::vector<float> prof_;                // per vertex: the chordwise camber profile (§6.3, §6.4)
   // §7.4 rest distances from vertex k to its neighbour along the row (k + 1), up the column (k + cols), and the
   // two diagonals up (k + cols + 1, k + cols - 1); scratch per vertex for the push

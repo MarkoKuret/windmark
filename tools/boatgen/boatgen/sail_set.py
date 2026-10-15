@@ -78,6 +78,14 @@ RUN_ON = 6.0            # 7.4: the last segment of an obstacle section runs on p
 PUSH_SLOPE = 0.3        # 7.4 k_p: the local push falls off by this much per metre of cloth
 PUSH_EASE = 2.0         # 7.4 P_e: the ease starts where the leech is deeper than this many clearances
 EASE_MAX = 0.35         # 7.4 e_max: the largest ease, rad
+CLEW_REACH = 2          # 7.7: the grid steps from the clew that give the foot and leech directions
+CLEW_H = 0.3            # 7.7: the clew's draw-in and draw-down fade out at this share of the height
+CLEW_KD = (-0.1, 0.25)  # 7.7: bounds of the draw-in k_d (share of the row's chord)
+CLEW_KL = (-0.1, 0.3)   # 7.7: bounds of the draw-down k_l (share of the foot's chord)
+CLEW_STEP = 0.01        # 7.7: the difference step of the solve
+CLEW_ITER = 2           # 7.7: Newton steps of the solve
+CLEW_FADE = (np.radians(75.0), np.radians(105.0))  # 7.7: the clew set fades out as |beta| goes round the bow
+CLEW_AWA = (np.radians(45.0), np.radians(65.0))    # 7.7: and in with the AWA, over the kite's lowest angles
 
 
 def smoothstep01(x):
@@ -118,6 +126,12 @@ def asym_draft(h):
 def asym_profile(uc, q):
     """6.3: the chordwise camber profile sin(pi uc^q), 0 at the luff and the leech, 1 at the draft."""
     return np.sin(np.pi * np.power(np.clip(uc, 0.0, 1.0), q))
+
+
+def asym_twist_h(h):
+    """7.3: the asymmetric spinnaker's twist over its largest by row height h: 1 - (1 - h)^2.5 (a finite slope at
+    the foot, 0.37 at a sixth of the height, 0.82 at half, 0.99 at five sixths)."""
+    return 1.0 - np.power(1.0 - np.clip(np.asarray(h, dtype=np.float64), 0.0, 1.0), 2.5)
 
 
 def asym_twist(awa):
@@ -169,6 +183,8 @@ class SailSet:
         A = self.a.reshape(rows, cols)
         self.amid = 0.5 * (A[:, 0] + A[:, -1])
         self.hrow = self.h.reshape(rows, cols)[:, 0].copy()
+        self.crow = np.clip(1.0 - self.hrow / CLEW_H, 0.0, 1.0) ** 3     # 7.7: the clew set's fade with height
+        self.kd = self.kl = 0.0
         dh = self.tack - self.head
         self.r_h = max(np.linalg.norm(dh - UP * (dh @ UP)), 1e-3)
         self.mid = Q.copy()
@@ -243,19 +259,17 @@ class SailSet:
                 hh = 2 * self.hrow - 1
                 drow = fc * (1 - 0.45 * hh * hh)
                 prof = 4 * self.uc * (1 - self.uc)
-            srow = 1 / (1 + 8 / 3 * drow * drow)
             a0 = a.reshape(rows, cols)[:, 0][i]
-            s = srow[i]
-            e = drow[i] * s * self.C[i] * prof
-            loc = np.stack([a0 + (a - a0) * s, l, np.zeros_like(a)], -1) - e[:, None] * w[None]
-        self.loc = loc
+            self._fly_args = (drow, prof, w, a0, i)
+            loc = self._fly(0.0, 0.0)
         # 7.1 to 7.3: the twist of each row toward leeward (an asymmetric spinnaker: opening with the AWA)
         # (signed, rad; the asymmetric spinnaker's on the side away from the wind at once: it is zero where awa
         # changes sign)
         if self.kind == ASYM:
-            self.trow = -sgn(awa) * self.twist_top * asym_twist(awa) * np.sqrt(self.hrow)
+            self.trow = -sgn(awa) * self.twist_top * asym_twist(awa) * asym_twist_h(self.hrow)
         else:
             self.trow = tl * self.twist_top * self.hrow ** 1.5
+        self.loc = loc
         hd = s_t(self.head)
         self.tack_at = s_t(self.tack)           # 7.4: the margin fades out at the tack as at the head
         clearing = self.clearance > 0
@@ -266,6 +280,15 @@ class SailSet:
         else:
             self._secs = []
         es = sgn(beta) * self.ease
+        # 7.7: the clew set by its sheet (with the sail as eased)
+        self.kd = self.kl = 0.0
+        if self.kind == ASYM and self.lead is not None:
+            g = (1.0 - smoothstep01((abs(wrap_pi(beta)) - CLEW_FADE[0]) / (CLEW_FADE[1] - CLEW_FADE[0]))) * \
+                smoothstep01((abs(awa) - CLEW_AWA[0]) / (CLEW_AWA[1] - CLEW_AWA[0]))
+            if g > 0.0:
+                kd, kl = self._clew_set(beta, base + es, piv, ax, s_t)
+                self.kd, self.kl = g * kd, g * kl
+            self.loc = loc = self._fly(self.kd, self.kl)
         mid = np.empty_like(self.mid)
         rest = self.tack + loc[:, :1] * self.ah + loc[:, 1:2] * self.lh + loc[:, 2:] * self.nh
         for r in range(rows):
@@ -277,6 +300,59 @@ class SailSet:
         if clearing:
             self._push(awa, hd)
         return self.mid
+
+    def _fly(self, kd, kl, k=None):
+        """6.3, 6.4 (up, no flutter) with the clew set of 7.7 (draw-in kd, draw-down kl; 0 for none): the local
+        position of every vertex, or of the vertices `k`."""
+        drow, prof, w, a0, i = self._fly_args
+        a, l, uc = self.a, self.l, self.uc
+        if k is not None:
+            a, l, uc, prof, a0, i = a[k], l[k], uc[k], prof[k], a0[k], i[k]
+        srow = 1 / (1 + 8 / 3 * drow * drow)
+        if kd != 0.0 or kl != 0.0:
+            srow = np.minimum(srow * (1 - kd * self.crow), 1.0)
+            drow = np.sqrt(np.maximum(1 / srow - 1, 0.0) * 3 / 8)       # the cloth keeps its length
+            l = l - kl * self.C[0] * self.crow[i] * uc * uc
+        s = srow[i]
+        e = drow[i] * s * self.C[i] * prof
+        return np.stack([a0 + (a - a0) * s, l, np.zeros_like(a)], -1) - e[:, None] * w[None]
+
+    def _clew_set(self, beta, base, piv, ax, s_t):
+        """7.7: the draw-in and draw-down (kd, kl) that lay the clew's bisector on the sheet: two Newton steps from
+        (0, 0) with difference derivatives, each clamped to its bounds."""
+        cols = self.cols
+        idx = np.array([cols - 1, cols - 1 - CLEW_REACH, CLEW_REACH * cols + cols - 1])
+        xr = [Xf.about(piv, ax, base + self.trow[r]) * s_t for r in (0, 0, CLEW_REACH)]
+        B = np.array([self.lead[0], -sgn(beta) * abs(self.lead[1]), self.lead[2]])
+
+        def corner(kd, kl):
+            lc = self._fly(kd, kl, idx)
+            C, F, E = (x(self.tack + self.ah * q[0] + self.lh * q[1] + self.nh * q[2]) for x, q in zip(xr, lc))
+            f, e = F - C, E - C
+            b = f / np.linalg.norm(f) + e / np.linalg.norm(e)
+            return b / np.linalg.norm(b), (C - B) / np.linalg.norm(C - B)
+
+        b, s = corner(0.0, 0.0)
+        u1 = np.cross(s, UP)
+        if u1 @ u1 < 1e-12:
+            u1 = np.cross(s, FWD)
+        u1 = u1 / np.linalg.norm(u1)
+        u2 = np.cross(u1, s)
+
+        def res(kd, kl):
+            b, s = corner(kd, kl)
+            return np.array([(b - s) @ u1, (b - s) @ u2])
+        kd = kl = 0.0
+        h = CLEW_STEP
+        for _ in range(CLEW_ITER):
+            r0 = res(kd, kl)
+            j0, j1 = (res(kd + h, kl) - r0) / h, (res(kd, kl + h) - r0) / h
+            det = j0[0] * j1[1] - j1[0] * j0[1]
+            if abs(det) < 1e-9:
+                break
+            kd = min(max(kd - (j1[1] * r0[0] - j1[0] * r0[1]) / det, CLEW_KD[0]), CLEW_KD[1])
+            kl = min(max(kl - (-j0[1] * r0[0] + j0[0] * r0[1]) / det, CLEW_KL[0]), CLEW_KL[1])
+        return kd, kl
 
     def sheet_line(self, beta):
         """7.6: the working sheet as a straight line: (the placed clew, the lead on the side of beta)."""
@@ -331,6 +407,7 @@ class SailSet:
         if pz < z[0] - self.clearance or pz > z[-1]:
             return np.inf, np.zeros(3)
         r = min(max(int(np.searchsorted(z, pz, side="right")) - 1, 0), rn - 2)
+        reach = reach + RUN_ON * self.clearance     # the bounds cover the leech's run-on (7.4)
         if p[0] < box[r, 0] - reach or p[0] > box[r, 1] + reach or p[1] < box[r, 2] - reach \
                 or p[1] > box[r, 3] + reach:
             return np.inf, np.zeros(3)

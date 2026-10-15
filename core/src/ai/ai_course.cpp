@@ -1007,6 +1007,9 @@ void beat_run(AC& x, AB& a, const Me& m, Vec2 R, bool beat, float mlay, bool tri
     auto man = [&](AiTactic why) {
       return beat ? request_tack(x, a, m, why, false) : request_gybe(x, a, m, why, false);
     };
+    // §4.4, §9: a match-race leader's cover yields only to laylines and rules avoidance.
+    const bool match_cover = x.race.race_type() == RaceType::match;
+    if (match_cover && cover(x, a, m, beat, R)) return;
     const Vec2 w = dir(a.twd_ref);
     const float e = v_cross(w, v_sub(m.c, R));
     const float D_axis = beat ? v_dot(d, w) : -v_dot(d, w);
@@ -1061,7 +1064,7 @@ void beat_run(AC& x, AB& a, const Me& m, Vec2 R, bool beat, float mlay, bool tri
       if (a.headed_t >= 6.0f && not_overstand && man(AiTactic::Shift)) return;
       if (a.pressure_t >= 10.0f && not_overstand && man(AiTactic::Pressure)) return;
     }
-    if (cover(x, a, m, beat, R)) return;
+    if (!match_cover && cover(x, a, m, beat, R)) return;
   }
   // §8 bad air on every beat and run (the zones excluded inside), also close to the mark.
   if (bad_air(x, a, m, beat ? Leg::beat : Leg::run) && a.man != Man::straight) return;
@@ -1309,8 +1312,8 @@ void ai_decide(AC& x, AB& a) {
         a.tactic = AiTactic::PenaltyTurn;
         a.psi_target = heading_for(m.twd, 110.0f * DEG);
         if (m.tack < 0.0f && std::fabs(m.twa) < HALF_PI) a.turn_dir = 1;
-        avoid_objects(x, a, m, -1);
-        if (!land_check(x, a, m)) rules_overlay(x, a, m, m.c);
+        const bool obj_turn = avoid_objects(x, a, m, -1);
+        if (!land_check(x, a, m)) rules_overlay(x, a, m, m.c, obj_turn);
         return;
       }
     }
@@ -1321,11 +1324,11 @@ void ai_decide(AC& x, AB& a) {
     racing(x, a, m);
     aim = a.dbg.aim;
   }
-  avoid_objects(x, a, m, a.tactic == AiTactic::Rounding ? a.round_mark : -1);
+  const bool obj_turn = avoid_objects(x, a, m, a.tactic == AiTactic::Rounding ? a.round_mark : -1);
   if (m.rb.started) pinned_escape(x, a, m);
   // Pinned (§6.5): no other plan can steer her until she is off it.
   if (x.now < a.pin_until) return;
-  if (!land_check(x, a, m)) rules_overlay(x, a, m, aim);
+  if (!land_check(x, a, m)) rules_overlay(x, a, m, aim, obj_turn);
 }
 
 }  // namespace wm::ai_detail

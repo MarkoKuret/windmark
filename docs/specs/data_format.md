@@ -325,7 +325,7 @@ carry the side force.
 | `x` | | m | body x of the quarter chord [0] |
 | `count` | | – | boards in the water at once [1] |
 
-Multihull defaults elsewhere: `crew.hiking_arm` [0.3 · `beam_max`], `vpp.max_heel` [0.28 rad].
+Multihull defaults elsewhere: `crew.hiking_arm` [0.3 · `beam_max`], `vpp.max_heel` [0.28 rad] (and so `vpp.max_heel_kite`).
 
 ### 3.10 `vpp`
 
@@ -335,6 +335,7 @@ own `vpp` blocks are VPP diagnostics, §4.1).
 | field | | unit | meaning |
 | --- | --- | --- | --- |
 | `max_heel` | | rad | heel the VPP equilibrium may not exceed; where no depowering keeps a config below it the VPP writes a broached speed (§4.3). The limit used is the lower of this and the heel of the maximum righting moment. [0.56 monohull, 0.28 multihull] |
+| `max_heel_kite` | | rad | the same for the configs flying a spinnaker or gennaker (not a code zero, a flying headsail that sails to `max_heel`): the crew depowers to stay below it (such a config's flat no lower than 0.42), and where none does the config is broached (the boat would broach). The ORC VPP holds spinnaker heel to about 21.5° (`tools/vpp/README.md`, "Heel and depowering"). [lower of 0.375 (21.5°) and `max_heel`] |
 
 ## 4. Performance file (`windmark.perf/1`)
 

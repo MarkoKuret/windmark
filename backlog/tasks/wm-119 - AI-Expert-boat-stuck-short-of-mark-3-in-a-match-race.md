@@ -19,5 +19,6 @@ On the stern-clearance branch (2026-10-06, WM7 hull with the rounder stern, whic
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-2026-10-15 (WM-126, branch ai-reliable): does not reproduce on main (match seed 4 finishes). Same failure class as WM-126: on the match course mark 3 is the second windward mark, reached by beating up from the leeward mark through the line past the committee boat; base sweeps (400 seeds each, wm7 and wm12) had 79 races with a boat pinned there over 30 s, after the WM-126 fixes 1. Closed with WM-126.
+Fixed by heel-fix (c8483c8): committee-boat hold-course bug; merged 2026-10-15.
+2026-10-15 (WM-126, branch ai-reliable): does not reproduce on main (match seed 4 finishes). Same failure class as WM-126: on the match course mark 3 is the second windward mark, reached by beating up from the leeward mark through the line past the committee boat; base sweeps (400 seeds each, wm7 and wm12) had 79 races with a boat pinned there over 30 s, after the WM-126 fixes 1. Both fixes merged on branch ai-reliable.
 <!-- SECTION:NOTES:END -->

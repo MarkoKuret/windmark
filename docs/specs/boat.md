@@ -114,8 +114,10 @@ Reference shapes:
   | 20 | 0 | 0.51 | 1.03 | 1.54 | 2.57 | 4.63 |
 
   The bear-away table is the same shape shifted to about 1–2 kn higher speeds (bearing away costs less).
-  Gentle helm is free; hard helm at speed bleeds speed quickly, which is what makes a smooth tack faster than a
-  slammed one: past its stall (§5.9) the rudder turns the boat little faster but drags much more.
+  The column at helm 0 is 0: the centred blade's own drag is part of the hull resistance and so already in the
+  polar, and the tables carry only what the helm adds. Gentle helm is free; hard helm at speed bleeds speed
+  quickly, which is what makes a smooth tack faster than a slammed one: past its stall (§5.9) the rudder turns the
+  boat little faster but drags much more.
 
 The speed, heel, acceleration, helm-balance and trim tables per sail combination are in `sails.md` §6 and
 `data_format.md` §4.3.
@@ -589,7 +591,9 @@ start needs speed built before the gun.
    attitude wobble on, the mean heel stays within 0.2° and the mean speed within 1.5 % (the wobble reaches the
    speed only through the heel). Where the polar is a broached speed below the grip speed the boat drifts sideways
    (§6.4), its apparent wind and with it its heel (§5.5) move off the table's: those points are checked on speed
-   only.
+   only, and the speed against the target of §5.8 with the trim at that apparent wind (`polar_speed ·
+   trim_speed · heel_speed_factor(heel)`): where the sheets cannot reach the optimum there (a spinnaker sheeted
+   fully in on a close reach) the drive is the trimmed share of the polar.
 2. **Turning circle**: at 8 kn TWS on a beam reach, full helm, helm balance and yaw inertia off: the steady circle
    radius equals `turn_radius_full` within 1 %.
 3. **Tack**: from steady close-hauled at 10 kn, a tack with helm 0.5: time and distance lost against a reference
@@ -608,7 +612,7 @@ start needs speed built before the gun.
 7. **Helm balance**: close-hauled at 12 kn with the upwind config the helm balance is within 1°/s of 0 and the boat
    holds its course with the helm centred; with the helm centred the upwind config drifts at most 2°/s at its VMG
    angle from 6 to 16 kn and at most 3°/s reaching (60° to 120°) at 10 kn; on a spinnaker at 130° in 22 kn it
-   rounds up with the helm centred (more than 10° in 5 s) and holding the course takes helm to bear away and
+   rounds up with the helm centred (more than 5° in 5 s) and holding the course takes helm to bear away and
    costs speed; reaching at 100° under the spinnaker in 20 kn, a gust to 26 kn overpowers it: with the helm
    centred it broaches (closer than 75° to the wind within 5 s), with full helm to bear away it stays below 80° on
    its own tack (held on, the full helm may carry it round through a gybe onto the other tack).

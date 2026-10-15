@@ -4,7 +4,7 @@
 The water, wake and sky colours come from the same shader functions Godot runs (shaders/sea_common.gdshaderinc,
 sky_common.gdshaderinc, wake_common.gdshaderinc), compiled here as GLSL 4.1 on an offscreen OpenGL context, with
 the uniforms, meshes and textures Godot computed. Only the lighting model around them is a stand-in for Godot's
-Forward+ (GGX sun specular, Schlick sky reflection, Lambert, Godot's fog, Godot's ACES curve), so colours are
+Forward+ (GGX sun specular, sky reflection blurred by the roughness with Godot's environment BRDF, Lambert, Godot's fog, Godot's ACES curve), so colours are
 close to, not identical with, the engine's. Boats are drawn with the boat shader's textures, factors and baked AO
 (on the ambient light only), without shadows.
 
@@ -94,6 +94,25 @@ float sun_vis(vec3 wpos, vec3 N) {
     return vis / 25.0;
 }
 
+// The sky seen in a rough mirror (Godot's radiance map, blurred by roughness): the sky averaged over a GGX-sized cone
+// of 13 fixed directions around R (half angle about 1.5 alpha), the sharp sky below alpha 0.01.
+vec3 env_rough(vec3 R, float a) {
+    if (a < 0.01) return env_sky(R);
+    vec3 t = normalize(abs(R.y) < 0.99 ? cross(R, vec3(0.0, 1.0, 0.0)) : cross(R, vec3(1.0, 0.0, 0.0)));
+    vec3 b = cross(R, t);
+    vec3 c = env_sky(R);
+    float w = 1.0;
+    for (int i = 0; i < 12; i++) {
+        float ang = float(i) * 2.39996;
+        float r = sqrt((float(i) + 0.5) / 12.0) * 1.5 * a;
+        vec3 d = normalize(R + r * (cos(ang) * t + sin(ang) * b));
+        d.y = max(d.y, 0.002);
+        c += env_sky(normalize(d));
+        w += 1.0;
+    }
+    return c / w;
+}
+
 // Stand-in for Godot's PBR: F0 = 0.16 specular^2, GGX with alpha = roughness^2, Schlick sky reflection. vis: the
 // sun's share that reaches the surface (its shadow).
 vec3 shade_vis(vec3 albedo, float rough, float spec, vec3 N, vec3 V, float vis_sun);
@@ -116,9 +135,14 @@ vec3 shade_vis(vec3 albedo, float rough, float spec, vec3 N, vec3 V, float vis_s
     float vis = 0.25 / ((NdotL * (1.0 - k) + k) * (NdotV * (1.0 - k) + k));
     float F = f0 + (1.0 - f0) * pow(1.0 - LdotH, 5.0);
     vec3 direct = vis_sun * sun_color * NdotL * (albedo * (1.0 - F) + WM_PI * D * vis * F);
-    float Fe = f0 + (max(1.0 - rough, f0) - f0) * pow(1.0 - NdotV, 5.0);
+    // Godot's environment BRDF approximation (scene_forward: Lazarov 2013 / Karis mobile), which dims the sky's
+    // reflection of a rough surface at grazing angles
+    vec4 rc = rough * vec4(-1.0, -0.0275, -0.572, 0.022) + vec4(1.0, 0.0425, 1.04, -0.04);
+    float a004 = min(rc.x * rc.x, exp2(-9.28 * NdotV)) * rc.x + rc.y;
+    vec2 envb = vec2(-1.04, 1.04) * a004 + rc.zw;
+    float Fe = envb.x * f0 + envb.y * clamp(50.0 * f0, 0.0, 1.0);
     vec3 R = reflect(-V, N);
-    vec3 refl = env_sky(R) * Fe;
+    vec3 refl = env_rough(R, a) * Fe;
     vec3 amb = albedo * mix(sky_horizon, sky_zenith, 0.5) * u_ambient * (1.0 - Fe);
     return direct + refl + amb;
 }
@@ -199,7 +223,7 @@ void main() {
     vec2 g = wm_faded_slope(v_local, v_spacing, px) * v_expo;
     n_geo = normalize(n_geo + vec3(-g.x, 0.0, g.y));
 #endif
-    WmSurface S = wm_surface(v_local, v_eta, n_geo, view, dist, vec2(0.0), v_land);
+    WmSurface S = wm_surface(v_local, v_eta, n_geo, view, dist, px, vec2(0.0), v_land);
 #ifdef WM_WHITECAPS
     wm_apply_caps(S, v_local, px, v_expo, dist, n_geo);
 #endif

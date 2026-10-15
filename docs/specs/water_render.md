@@ -107,12 +107,10 @@ detail   = 2 to 4 layers of a tiling normal map, sampled in a wind-aligned frame
            uv_k = rot(angle_k) * scale_k * (dot(p, dir) - drift_k * t, dot(p, perp(dir)))
            dir = the median wind's downwind direction (base_from + π), so the pattern does not swirl in shifts
            scales 1/13 m, 1/22 m, 1/48 m, 1/70 m; drifts 1.4, 1.0, 0.9, 0.6 m/s; angles 0, 0.35, -0.6, 0.95 rad
-           break the tiling
-m        = wind factor at the pixel (§4.3)
-k_detail = 0.22 * clamp(m * base_speed / 7.2, 0.15, 1.6) * fade(dist; 300 m -> 1, 3 km -> 0)
+           break the tiling; the layers are averaged
 glint    = one more tap of the same normal map in the same frame: scale 1/3.2 m, drift 1.6 m/s, angle 1.25 rad
 near     = 1 - smoothstep(30 m, 200 m, dist)
-k_glint  = 0.12 * clamp(m * base_speed / 7.2, 0.2, 1.4) * near
+k_detail, k_glint = the strengths of §4.1.1 (wind roughness)
 n        = normalize(n_geo + k_detail * detail + k_glint * glint, each as (x * wind_to + y * perp(wind_to)) in the
            water plane)
 ```
@@ -123,13 +121,57 @@ The normal map (256², tiling) and the foam noise are generated at load from God
 (`FastNoiseLite`, bump to normal map), so no texture files ship. Under 1.5 m/s of wind (`m·base_speed`) the
 detail fades out (fully gone at 0.5 m/s): glassy water.
 
+#### 4.1.1 Wind roughness
+How rough the water looks follows the local wind by the measured slope statistics of the sea surface (Cox and Munk,
+1954, from the sun's glitter): the mean square slope of a clean sea is
+```
+U         = m·base_speed                         // local wind, m/s (§4.3: puffs, lulls and the venue's land effect)
+sig2_all  = 0.003 + 0.00512·U                    // all waves, down to the capillaries
+sig2_long = min(0.008 + 0.00156·U, sig2_all)     // a slick sea (an oil film damps the waves shorter than ~0.3 m)
+sig2_short = sig2_all - sig2_long                 // the capillaries and short ripples: smaller than a pixel
+```
+At 8 kn that is a mean square slope of 0.024 (rms 8.9°), at 15 kn 0.042, at 25 kn 0.069 (rms 15°): a 25 kn sea has
+three times the slope variance of an 8 kn one, and the extra is mostly in the short waves, which is what turns a
+mirror into a rough, broken surface. The slope is split between what the picture can show and what it cannot:
+- the **waves of the sea** (§3) carry `geo_var = Σ (2π·a_i/lam_i)²/2` (CPU, once per sea);
+- the **detail and glint layers** carry the rest of the long waves, `sig2_d = max(sig2_long - geo_var, 0.3·sig2_long)`,
+  0.6 of it in the detail layers and 0.4 in the glint layer near the camera, and the glint layer also the short waves
+  the pixel resolves. With a saturated slope spectrum every octave of the short waves (0.3 m down to the capillaries'
+  4 mm) carries the same slope, so the share smaller than the pixel footprint `px` is
+  `sub = clamp(log(2·px / 4 mm) / log(0.3 m / 4 mm), 0, 1)` (about 0.4 at 1 cm, 0.75 at 5 cm, 1 from 15 cm):
+  ```
+  V        = mean of |rg·2 − 1|² over the normal map (CPU at load, about 0.118); N layers averaged have V/N
+  k_detail = sqrt(0.6·sig2_d / (V/N)) · (1 − smoothstep(300 m, 3 km, dist)) · glassy
+  k_glint  = sqrt((0.4·sig2_d + sig2_short·(1 − sub)) / V) · near · glassy     // glassy = smoothstep(0.5, 1.5, U)
+  ```
+- the **roughness** of the lighting carries the short waves under the pixel, and the share of the long waves the
+  layers lose with distance (their fade, and the mip-maps averaging the map once the footprint passes their
+  ripples):
+  ```
+  vis      = (0.6·(1 − smoothstep(300 m, 3 km, dist)) + 0.4·near) / (1 + (px / 0.25 m)²)
+  sig2_r   = (sig2_short·(1 − (1 − sub)·near) + sig2_d·(1 − vis)) · glassy
+  r        = sqrt(sqrt(sig2_r))                     // GGX alpha = r² = rms slope (Beckmann match)
+  ROUGHNESS = clamp(r · (1 − 0.6·(1 − n_geo·v)⁶), 0.035, 0.6)
+  ```
+  The last factor is for Godot's lighting: its environment BRDF (the Lazarov/Karis approximation) dims the sky's
+  reflection of a rough surface toward grazing far below a measured rough sea, which still reflects about half of
+  what a calm one does near the horizon (at roughness 0.45 it would keep 0.19 of the calm 0.94); lowering the
+  roughness only in the last few degrees above the horizon keeps the horizon band of §4.5 and leaves the sun's
+  glitter (seen at steeper angles) as computed.
+So an 8 kn sea is a mirror broken by ripples (roughness about 0.27 near the boats), a 25 kn sea is matte with a wide
+sun glitter (about 0.4 near, 0.5 far away), and flat calm stays glassy (0.035). Godot's sky reflection is blurred by the
+roughness and its Fresnel term falls with it (`F0 + (max(1 − roughness, F0) − F0)·(1 − n·v)⁵`), so the long bright sky
+streaks of a glassy sea shorten and dim as the wind rises. Every tier uses it; it costs a few arithmetic operations
+per pixel (a log and two square roots) from the uniforms `geo_var` and `detail_var`, no texture taps. The tiers keep their layer counts: the
+`V/N` normalisation gives each tier the same slope variance.
+
 ### 4.2 Colour, Fresnel, reflection
 Godot's PBR does the lighting; the shader sets:
 ```
 crest    = clamp(eta / max(sum_a, 1e-3), 0, 1)
 ALBEDO   = mix(deep, shallow, 0.55 * crest)                         // deep (0.006, 0.042, 0.115), shallow (0.012, 0.100, 0.155), linear
 SPECULAR = 0.40                                                      // Godot's F0 = 0.16·SPECULAR² = 0.026 (water 0.02, a little lifted)
-ROUGHNESS = 0.035 + 0.025 * (1 - near) + 0.05 * clamp(m - 1, -0.4, 0.25) / 0.25 + 0.18 * fade_far(dist)   // rougher in puffs and far away
+ROUGHNESS = the wind roughness of §4.1.1                            // rougher in puffs, in a breeze and far away
 EMISSION = sss * crest * (pow(max(0, dot(-view, sun)), 3) * 0.3 * sun_radiance + 0.05)  // light through the crests, sss (0.03, 0.33, 0.40)
 ```
 - **Body colour**: a deep, saturated blue (about sRGB `#004684` from the aerial camera in the default light), a
@@ -142,8 +184,9 @@ EMISSION = sss * crest * (pow(max(0, dot(-view, sun)), 3) * 0.3 * sun_radiance +
   detail facet into a white blotch at grazing angles; the PBR reflection of the stronger sky gradient shows the
   wave shapes by itself.
 - **Boats and marks in the reflection**: screen-space reflections on tier H only; elsewhere the sky alone.
-- **Sun glitter** is the PBR specular on the detail and glint normals, sharp near the camera (roughness 0.035) and
-  a broad glitter path far away; the glow of §4.5 blooms the brightest glints.
+- **Sun glitter** is the PBR specular on the detail and glint normals with the wind roughness of §4.1.1: sharp
+  sparkle in light air, a wide glitter path in a breeze, broader far away; the glow of §4.5 blooms the brightest
+  glints.
 - **Fog** blends to the sky's horizon colour with distance; the detail normals flatten between 2 and 4 km.
 
 ### 4.3 Wind on the water
@@ -156,7 +199,9 @@ for each patch j:
     if r2 <= R2: m *= 1 + puff[j].es * (1 - r2 / R2)
 m = clamp(m, puff_cap_lo, puff_cap_hi)
 ```
-A puff (`m > 1`) is rougher and so darker (it mirrors less bright horizon), a lull (`m < 1`) smoother and brighter.
+A puff (`m > 1`) is rougher and so darker (it mirrors less bright horizon), a lull (`m < 1`) smoother and brighter:
+the wind roughness of §4.1.1 takes the local wind `U = m·base_speed`, so a puff of 1.25 on 16 kn has the slope of
+20 kn.
 The effect is also made explicit so it reads from the aerial camera and in flat light:
 ```
 ALBEDO *= 1 - k_puff * clamp((m - 1) / 0.25, 0, 1) + k_lull * clamp((1 - m) / 0.4, 0, 1)    // k_puff 0.25, k_lull 0.15

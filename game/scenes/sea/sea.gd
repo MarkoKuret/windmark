@@ -167,10 +167,43 @@ func _build() -> void:
 	material.set_shader_parameter("detail_tex", SeaTextures.detail())
 	material.set_shader_parameter("foam_tex", SeaTextures.foam())
 	material.set_shader_parameter("caps_tex", SeaTextures.caps())
+	material.set_shader_parameter("detail_var", SeaTextures.detail_variance())
 	set_wake_buffer(_wake_texture, 400.0, _wake_strength)
 	_apply_static()
 	if sky and sky.has_method("apply_quality"):
 		sky.apply_quality(quality)
+
+
+## water_render.md §4.1.1: the mean square slope of the sea's waves, Σ (2π·a_i/lam_i)²/2.
+static func geo_slope_variance(components: Array) -> float:
+	var v := 0.0
+	for c in components:
+		var k := TAU * Vector2(c[1], c[2]).length()
+		v += 0.5 * (c[0] * k) * (c[0] * k)
+	return v
+
+
+## CPU mirror of the shader's wind roughness (water_render.md §4.1.1, wm_surface): [roughness, k_detail, k_glint]
+## at a local wind u (m/s) on a sea with slope variance geo_var, for a pixel footprint px (m), distance dist (m), the
+## view's cosine on the wave normal, the normal map's variance and the tier's layer count.
+static func wind_roughness(u: float, geo_var: float, px: float, dist: float, n_dot_v: float, detail_var: float,
+		layers: int) -> Array:
+	var glassy := smoothstep(0.5, 1.5, u)
+	var sig_all := 0.003 + 0.00512 * u
+	var sig_long := minf(0.008 + 0.00156 * u, sig_all)
+	var sig_d := maxf(sig_long - geo_var, 0.3 * sig_long)
+	var far_d := 1.0 - smoothstep(300.0, 3000.0, dist)
+	var near := 1.0 - smoothstep(30.0, 200.0, dist)
+	var k_detail := sqrt(0.6 * sig_d * layers / detail_var) * far_d * glassy
+	var pq := px * 4.0
+	var vis := (0.6 * far_d + 0.4 * near) / (1.0 + pq * pq)
+	var sub := clampf(log(px * 500.0) * 0.2316, 0.0, 1.0)
+	var sig_s := sig_all - sig_long
+	var k_glint := sqrt((0.4 * sig_d + sig_s * (1.0 - sub)) / detail_var) * near * glassy
+	var sig_r := (sig_s * (1.0 - (1.0 - sub) * near) + sig_d * (1.0 - vis)) * glassy
+	var gz := 1.0 - maxf(n_dot_v, 0.0)
+	var r := clampf(sqrt(sqrt(sig_r)) * (1.0 - 0.6 * pow(gz, 6.0)), 0.035, 0.6)
+	return [r, k_detail, k_glint]
 
 
 func _apply_static() -> void:
@@ -181,6 +214,8 @@ func _apply_static() -> void:
 	lam.resize(SeaModel.MAX_COMPONENTS)
 	material.set_shader_parameter("comp_lam", lam)
 	material.set_shader_parameter("sum_a", model.sum_a)
+	# §4.1.1 wind roughness: the slope variance the waves carry
+	material.set_shader_parameter("geo_var", geo_slope_variance(model.components))
 	# §4.4 whitecaps: the components that carry foam and their crest windows
 	caps_select = SeaWhitecaps.select(model.components)
 	material.set_shader_parameter("caps_w", SeaWhitecaps.window_uniforms(model.components, caps_select))

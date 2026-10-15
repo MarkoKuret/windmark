@@ -1,9 +1,11 @@
 ---
 id: WM-098
 title: 'Water: whitecaps that look natural from every camera (sparse, non-repeating)'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@sea-look'
 created_date: '2026-10-05 15:27'
+updated_date: '2026-10-15 18:00'
 labels:
   - front-end
   - visuals

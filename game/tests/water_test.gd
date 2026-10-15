@@ -59,6 +59,7 @@ func _init() -> void:
 	check_land_core()
 	check_wake_ribbon()
 	check_whitecaps()
+	check_wind_roughness()
 	_tiers_left = [SeaQuality.Tier.L, SeaQuality.Tier.M, SeaQuality.Tier.H]
 	_start_scene()
 
@@ -705,6 +706,34 @@ func check_whitecaps() -> void:
 
 
 ## The reference wind sea of sea.md §2 at kn knots (fetch 10 km) through the Sea's model, with the whitecap uniforms.
+## §4.1.1 wind roughness: the slope the picture carries follows Cox and Munk's clean-sea mean square slope.
+func check_wind_roughness() -> void:
+	print("- wind roughness (§4.1.1)")
+	var v := SeaTextures.detail_variance()
+	check(v > 0.05 and v < 0.3, "normal map slope variance %.3f" % v)
+	var r := {}
+	for kn in [0.0, 8.0, 15.0, 25.0]:
+		var sea := _caps_sea(maxf(kn, 1.0), 0.0)
+		var geo := Sea.geo_slope_variance((sea["model"] as SeaModel).components) if kn > 0.0 else 0.0
+		var u: float = kn * SeaWhitecaps.KNOT
+		r[kn] = Sea.wind_roughness(u, geo, 0.02, 20.0, 0.5, v, 3)
+		# near the camera the picture carries the clean sea's slope: the waves, the layers and the roughness
+		var near_var: float = geo + r[kn][1] * r[kn][1] * v / 3.0 + r[kn][2] * r[kn][2] * v + pow(r[kn][0], 4.0)
+		print("    %2d kn: roughness %.3f, k_detail %.3f, k_glint %.3f, slope variance %.4f (Cox-Munk %.4f)" % [
+				kn, r[kn][0], r[kn][1], r[kn][2], near_var, 0.003 + 0.00512 * u])
+		if kn > 0.0:
+			check(absf(near_var - (0.003 + 0.00512 * u)) < 0.25 * (0.003 + 0.00512 * u) or geo > 0.008 + 0.00156 * u,
+					"%d kn: the slope variance drawn near the camera within 25 %% of Cox-Munk" % kn)
+	check(r[0.0][0] == 0.035 and r[0.0][1] == 0.0, "flat calm stays glassy")
+	check(r[8.0][0] < r[15.0][0] and r[15.0][0] < r[25.0][0], "rougher with the wind (8 < 15 < 25 kn)")
+	var far8: float = Sea.wind_roughness(8.0 * SeaWhitecaps.KNOT, 0.005, 1.0, 1500.0, 0.3, v, 3)[0]
+	var far25: float = Sea.wind_roughness(25.0 * SeaWhitecaps.KNOT, 0.011, 1.0, 1500.0, 0.3, v, 3)[0]
+	check(far25 > far8 and far25 > 0.4, "far away 25 kn matte (%.2f), 8 kn %.2f" % [far25, far8])
+	var lv := Sea.wind_roughness(15.0 * SeaWhitecaps.KNOT, 0.008, 0.02, 20.0, 0.5, v, 2)
+	var mv := Sea.wind_roughness(15.0 * SeaWhitecaps.KNOT, 0.008, 0.02, 20.0, 0.5, v, 3)
+	check(absf(lv[1] * lv[1] / 2.0 - mv[1] * mv[1] / 3.0) < 1e-6, "tiers L and M draw the same detail slope variance")
+
+
 func _caps_sea(kn: float, _t_ms: float) -> Dictionary:
 	var src := SeaEnvSource.new()
 	src.wind_kn = kn

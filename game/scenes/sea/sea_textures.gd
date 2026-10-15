@@ -40,6 +40,24 @@ static func detail_image() -> Image:
 	return _detail_image
 
 
+static var _detail_var := -1.0
+
+
+## The normal map's slope variance (water_render.md §4.1.1): the mean of |rg·2 − 1|² over its full-size level.
+static func detail_variance() -> float:
+	if _detail_var < 0.0:
+		var img := detail_image()
+		var s := 0.0
+		for y in SIZE:
+			for x in SIZE:
+				var c := img.get_pixel(x, y)
+				var dx := c.r * 2.0 - 1.0
+				var dy := c.g * 2.0 - 1.0
+				s += dx * dx + dy * dy
+		_detail_var = s / float(SIZE * SIZE)
+	return _detail_var
+
+
 ## RG8: R streak noise (stretched along the wind by the shader's uv), G coarse breakup, with mipmaps.
 static func foam_image() -> Image:
 	if _foam_image == null:

@@ -28,6 +28,10 @@ const SEA_O := [0.0, -25.0, 20.0, -10.0, 35.0, -40.0, 12.0, 45.0, -30.0, 5.0]
 @export var fetch_m: float = 12000.0
 @export var sea_scale: float = 1.0
 @export var puffs_enabled: bool = true
+## PLACEHOLDER: one swell (sea.md §3.2), significant height (m), peak period (s) and the direction it comes from
+@export var swell_hs: float = 0.0
+@export var swell_tp: float = 10.0
+@export var swell_from_deg: float = 225.0
 @export var samples_path: String = "res://generated/sea/sea_render_samples.json"
 @export var scenario: String = "practice_waters_20kn"
 ## The venue of the core samples (CORE_SAMPLES), for its land-effect wind field: a name under data/venues or a
@@ -131,6 +135,19 @@ func _placeholder_components() -> Array:
 		var a := minf(hs * 0.353553391 * SEA_W[i] * sea_scale, 0.1 / (kap * TAU))
 		if a > 0.0:
 			out.append([a, kap * sin(dir), kap * cos(dir), rng.randf(), T])
+	if swell_hs > 0.0:
+		var sw_r := [0.92, 1.0, 1.08]
+		var sw_w := [0.5, 0.70710678, 0.5]
+		var sw_o := [-8.0, 0.0, 8.0]
+		var sfrom := deg_to_rad(swell_from_deg)
+		for m in 3:
+			var T := maxi(200, int(swell_tp * 1000.0 / sw_r[m] + 0.5))
+			var w := TAU * 1000.0 / T
+			var kap := (w * w / G) / TAU
+			var dir := fposmod(sfrom + PI + deg_to_rad(sw_o[m]) + (rng.randf() - 0.5) * deg_to_rad(10.0), TAU)
+			var a := minf(swell_hs * 0.353553391 * sw_w[m] * sea_scale, 0.1 / (kap * TAU))
+			if a > 0.0:
+				out.append([a, kap * sin(dir), kap * cos(dir), rng.randf(), T])
 	return out
 
 

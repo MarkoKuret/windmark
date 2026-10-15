@@ -41,6 +41,10 @@ uniform vec2 detail_dir = vec2(0.0, 1.0);   // world (east, north) unit vector t
 uniform vec4 detail_layer[5];               // [0..3] detail layers, [4] the fine glint layer (§4.1)
 uniform float wake_extent = 400.0;          // m, side of the camera-centred wake normal buffer
 uniform float wake_strength = 0.0;          // 0 when the buffer is off (tier L)
+// §4.1.1 wind roughness: the slope variance the sea's waves carry, sum (2 pi a / lam)^2 / 2, and the normal map's
+// mean |rg*2 - 1|^2 (one layer)
+uniform float geo_var = 0.0;
+uniform float detail_var = 0.118;
 
 // sky ramp and sun (the sky preset sets them)
 uniform vec3 sky_horizon = vec3(0.60, 0.72, 0.85);
@@ -210,9 +214,9 @@ struct WmSurface {
 
 // §4 shading inputs at a pixel. xl: camera-relative position; eta: height (after the exposure); n_geo: the
 // geometric normal (scene axes); view: unit vector from the surface to the camera (scene axes); dist: horizontal
-// distance to the camera, m; wake: wake normal disturbance (world east, north); land: the venue speed factor
-// (wm_land, sampled per vertex).
-WmSurface wm_surface(vec2 xl, float eta, vec3 n_geo, vec3 view, float dist, vec2 wake, float land) {
+// distance to the camera, m; px: the pixel footprint, m; wake: wake normal disturbance (world east, north); land:
+// the venue speed factor (wm_land, sampled per vertex).
+WmSurface wm_surface(vec2 xl, float eta, vec3 n_geo, vec3 view, float dist, float px, vec2 wake, float land) {
 	WmSurface S;
 	float m = wm_puff_factor(xl) * land * land_factor;
 	S.m = m;
@@ -220,25 +224,45 @@ WmSurface wm_surface(vec2 xl, float eta, vec3 n_geo, vec3 view, float dist, vec2
 	vec3 across = wm_scene(vec2(-detail_dir.y, detail_dir.x));
 	vec2 q = vec2(dot(xl, detail_dir), dot(xl, vec2(-detail_dir.y, detail_dir.x)));
 
-	// §4.1 normal: the detail layers, and the fine glint layer near the camera (the sun's glitter)
+	// §4.1.1 wind roughness (Cox and Munk): the mean square slope of the sea at the local wind, split between the
+	// sea's waves (geo_var), the detail and glint layers and the roughness (the short waves, and what the layers
+	// lose with distance and mip-mapping)
 	float wind = m * base_speed;
 	float glassy = smoothstep(0.5, 1.5, wind);
-	float k_detail = 0.22 * clamp(wind / 7.2, 0.15, 1.6) * (1.0 - smoothstep(300.0, 3000.0, dist)) * glassy;
+	float sig_all = 0.003 + 0.00512 * wind;
+	float sig_long = min(0.008 + 0.00156 * wind, sig_all);
+	float sig_d = max(sig_long - geo_var, 0.3 * sig_long);
+	float far_d = 1.0 - smoothstep(300.0, 3000.0, dist);
+	float near = 1.0 - smoothstep(30.0, 200.0, dist);
+	float k_detail = sqrt(0.6 * sig_d * float(WM_DETAIL_LAYERS) / detail_var) * far_d * glassy;
+	float k_glint = sqrt(0.4 * sig_d / detail_var) * near * glassy;
+	float pq = px * 4.0;   // px / 0.25 m
+	float vis = (0.6 * far_d + 0.4 * near) / (1.0 + pq * pq);
+	// the short waves (0.3 m down to the capillaries' 4 mm) are smaller than the pixel only in part near the camera:
+	// with a saturated slope spectrum each octave carries the same slope, so the share under the pixel is
+	// log(2 px / 4 mm) / log(0.3 m / 4 mm); the rest sparkles in the glint layer
+	float sub = clamp(log(px * 500.0) * 0.2316, 0.0, 1.0);
+	float sig_s = sig_all - sig_long;
+	k_glint = sqrt((0.4 * sig_d + sig_s * (1.0 - sub)) / detail_var) * near * glassy;
+	float sig_r = (sig_s * (1.0 - (1.0 - sub) * near) + sig_d * (1.0 - vis)) * glassy;
+	// Godot's environment BRDF dims a rough surface's sky reflection toward grazing far more than a measured rough
+	// sea (about half the calm reflectance near the horizon): lower the lighting's roughness toward grazing
+	float gz = 1.0 - max(dot(n_geo, view), 0.0);
+	float gz3 = gz * gz * gz;
+	float rough = clamp(sqrt(sqrt(sig_r)) * (1.0 - 0.6 * gz3 * gz3), 0.035, 0.6);
+
+	// §4.1 normal: the detail layers, and the fine glint layer near the camera (the sun's glitter)
 	vec2 dn = wm_detail(xl);
 	vec4 G = detail_layer[4];
 	vec2 gn = texture(detail_tex, vec2(G.x * q.x - G.y * q.y, G.y * q.x + G.x * q.y) + G.zw).rg * 2.0 - 1.0;
-	float near = 1.0 - smoothstep(30.0, 200.0, dist);
-	float k_glint = 0.12 * clamp(wind / 7.2, 0.2, 1.4) * near * glassy;
 	vec3 n = n_geo + k_detail * (dn.x * along + dn.y * across) + k_glint * (gn.x * along + gn.y * across);
 	n += wake_strength * vec3(wake.x, 0.0, -wake.y);
 	n = normalize(n);
 	S.normal = n;
 
-	// §4.2 colour, roughness (smoother near the camera, where the glint layer carries the ripples)
+	// §4.2 colour
 	float crest = clamp(eta / max(sum_a, 1e-3), 0.0, 1.0);
 	vec3 albedo = mix(col_deep, col_shallow, 0.55 * crest);
-	float fade_far = smoothstep(500.0, 4000.0, dist);
-	float rough = 0.035 + 0.025 * (1.0 - near) + 0.05 * clamp(m - 1.0, -0.4, 0.25) / 0.25 + 0.18 * fade_far;
 
 	// §4.3 puffs darker, lulls brighter
 	albedo *= 1.0 - 0.25 * clamp((m - 1.0) / 0.25, 0.0, 1.0) + 0.15 * clamp((1.0 - m) / 0.4, 0.0, 1.0);

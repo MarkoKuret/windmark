@@ -5,6 +5,7 @@ extends SceneTree
 ## renders them with the same shader functions (sea_common, sky_common, wake_common) on an offscreen GL context.
 ##   godot --headless --path game -s res://tests/water_preview_dump.gd [-- --sky=late] [shot ...]
 ##   godot --headless --path game -s res://tests/water_preview_dump.gd -- --time=08:00 --conditions=fair --tag=d0800 bay20_chase_M
+## `--caps=on` draws the whitecaps in every shot (the whitecaps_* shots always have them).
 ## `--sky=<name>` lights the shots with an old preset name (SkyRig.set_preset_name) and names them `<name>_<shot>`;
 ## `--time=HH:MM` and `--conditions=` set the daylight (water_render.md §4.5) and `--tag=` names them `<tag>_<shot>`;
 ## with shot names after `--`, only those (or the shots starting with them) are dumped. Each shot's folder also gets
@@ -35,7 +36,25 @@ const SHOTS := [
 			{"puffs": true, "seq": 6, "step_ms": 500.0, "speed": 0.0}],
 	["whitecaps_20kn_60s", SeaEnvSource.Mode.PLACEHOLDER, 20.0, 0, SeaQuality.Tier.M,
 			{"puffs": true, "seq": 120, "step_ms": 500.0, "speed": 0.0, "light": true}],
+	# the same from the helicopter (overview) camera
+	["whitecaps_12kn_heli", SeaEnvSource.Mode.PLACEHOLDER, 12.0, 2, SeaQuality.Tier.M, {"puffs": true}],
+	["whitecaps_18kn_heli", SeaEnvSource.Mode.PLACEHOLDER, 18.0, 2, SeaQuality.Tier.M, {"puffs": true}],
+	["whitecaps_24kn_heli", SeaEnvSource.Mode.PLACEHOLDER, 24.0, 2, SeaQuality.Tier.M, {"puffs": true}],
+	# an open-sea venue in a breeze (Fremantle: fetch 30 km, a 0.8 m / 12 s swell), the boat at 19 kn on a wide
+	# circle: the look of the sea, wake, bow spray and whitecaps by wind (water_render.md §4.1-§4.4, §5)
+	["sea25_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 0, SeaQuality.Tier.M, {"puffs": true, "fetch": 30000.0, "from": 230.0, "swell": [0.8, 12.0, 240.0], "radius": 400.0, "speed": 9.8}],
+	["sea25_aerial_M", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 1, SeaQuality.Tier.M, {"puffs": true, "fetch": 30000.0, "from": 230.0, "swell": [0.8, 12.0, 240.0], "radius": 400.0, "speed": 9.8}],
+	["sea25_heli_M", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 2, SeaQuality.Tier.M, {"puffs": true, "fetch": 30000.0, "from": 230.0, "swell": [0.8, 12.0, 240.0], "radius": 400.0, "speed": 9.8}],
+	["sea25_bow_M", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 4, SeaQuality.Tier.M, {"puffs": true, "fetch": 30000.0, "from": 230.0, "swell": [0.8, 12.0, 240.0], "radius": 400.0, "speed": 9.8}],
+	["sea25_sun_M", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 3, SeaQuality.Tier.M, {"puffs": true, "fetch": 30000.0, "from": 230.0, "swell": [0.8, 12.0, 240.0], "radius": 400.0, "speed": 9.8}],
+	["sea25_chase_L", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 0, SeaQuality.Tier.L, {"puffs": true, "fetch": 30000.0, "from": 230.0, "swell": [0.8, 12.0, 240.0], "radius": 400.0, "speed": 9.8}],
+	["sea25_chase_H", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 0, SeaQuality.Tier.H, {"puffs": true, "fetch": 30000.0, "from": 230.0, "swell": [0.8, 12.0, 240.0], "radius": 400.0, "speed": 9.8}],
+	["sea15_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 15.0, 0, SeaQuality.Tier.M, {"puffs": true, "fetch": 30000.0, "from": 230.0, "swell": [0.8, 12.0, 240.0], "radius": 400.0, "speed": 6.5}],
+	["sea15_aerial_M", SeaEnvSource.Mode.PLACEHOLDER, 15.0, 1, SeaQuality.Tier.M, {"puffs": true, "fetch": 30000.0, "from": 230.0, "swell": [0.8, 12.0, 240.0], "radius": 400.0, "speed": 6.5}],
+	["sea8_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 8.0, 0, SeaQuality.Tier.M, {"puffs": true, "fetch": 30000.0, "from": 230.0, "swell": [0.8, 12.0, 240.0], "radius": 400.0, "speed": 3.5}],
+	["sea8_aerial_M", SeaEnvSource.Mode.PLACEHOLDER, 8.0, 1, SeaQuality.Tier.M, {"puffs": true, "fetch": 30000.0, "from": 230.0, "swell": [0.8, 12.0, 240.0], "radius": 400.0, "speed": 3.5}],
 ]
+
 
 var _shot := -1
 var _frames := 0
@@ -47,6 +66,7 @@ var _tag := ""
 var _only: PackedStringArray = []
 var _seq := 0
 var _dumped := 0
+var _caps := false
 
 
 func _init() -> void:
@@ -58,6 +78,8 @@ func _init() -> void:
 			_time = Daylight.parse_hour(a.trim_prefix("--time="))
 		elif a.begins_with("--conditions="):
 			_conditions = a.trim_prefix("--conditions=")
+		elif a == "--caps=on":
+			_caps = true
 		elif a.begins_with("--tag="):
 			_tag = a.trim_prefix("--tag=")
 		else:
@@ -108,10 +130,20 @@ func _next() -> void:
 	else:
 		src.wind_kn = s[2]
 		src.puffs_enabled = _opt("puffs", false)
+		src.fetch_m = _opt("fetch", src.fetch_m)
+		src.wind_from_deg = _opt("from", src.wind_from_deg)
+		var sw: Array = _opt("swell", [])
+		if not sw.is_empty():
+			src.swell_hs = sw[0]
+			src.swell_tp = sw[1]
+			src.swell_from_deg = sw[2]
 	_scene.camera_mode = s[3]
 	_scene.boat_speed = _opt("speed", _scene.boat_speed)
+	_scene.circle_radius = _opt("radius", _scene.circle_radius)
 	var sea: Sea = _scene.get_node("Sea")
 	sea.quality = s[4]
+	# the whitecaps are off by default (water_render.md §4.4): on for the whitecap shots and with --caps=on
+	sea.whitecaps = _caps or String(s[0]).begins_with("whitecaps")
 	sea.use_internal_clock = false
 	# headless meshes do not keep the native wakes' in-place updates: dump the references' meshes (the same
 	# geometry, tests/wakes_native_test.gd)

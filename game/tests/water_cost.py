@@ -35,6 +35,9 @@ def programs(ctx, sc, caps):
     tier = {"L": 1, "M": 2, "H": 3}[TIER or sc["tier"]]
     hdr = wp.header(tier, {1: 2, 2: 3, 3: 4}[tier])
     fs = hdr + wp.inc("sky_common.gdshaderinc") + wp.LIGHTING + wp.WATER_FS
+    # the preview's blurred sky (13 sky evaluations standing in for Godot's radiance map lookup) is not the sea's
+    # cost: one sky evaluation, as before the stand-in had it
+    fs = fs.replace("env_rough(R, a)", "env_sky(R)")
     return ctx.program(vertex_shader=hdr + wp.WATER_VS, fragment_shader=fs), \
         ctx.program(vertex_shader=hdr + wp.WATER_VS, fragment_shader="#version 410\n" + DEPTH_FS)
 

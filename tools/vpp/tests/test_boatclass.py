@@ -1,3 +1,5 @@
+import math
+
 import pytest
 
 from windmark_vpp import boatclass
@@ -47,3 +49,12 @@ def test_wrong_schema(raw):
     raw["schema"] = "windmark.boatclass/2"
     with pytest.raises(boatclass.ClassFileError):
         boatclass.from_dict(raw)
+
+
+def test_kite_heel_limit_key(raw):
+    b = boatclass.from_dict(raw)
+    assert b.heel_max_kite == pytest.approx(math.radians(21.5))
+    raw["vpp"] = {"max_heel": 0.3}
+    assert boatclass.from_dict(raw).heel_max_kite == pytest.approx(0.3)      # never above max_heel by default
+    raw["vpp"] = {"max_heel_kite": 0.42}
+    assert boatclass.from_dict(raw).heel_max_kite == pytest.approx(0.42)

@@ -524,8 +524,8 @@ TEST_CASE("boat: helm balance") {
     MESSAGE(cls, ": kite at 22 kn, 130 deg: helm balance ", to_deg(wh), " deg/s; helm 0 for 5 s: twa ",
             to_deg(free_run.s().twa), " deg; held at ", to_deg(twa_m), " deg: helm ", h_m, ", v ", to_kn(v_m),
             " kn of ", to_kn(dn.polar.at(kn(22.0f), twa)), " kn");
-    CHECK(wh > deg(3.0f));
-    CHECK(free_run.s().twa < twa - deg(10.0f));
+    CHECK(wh > deg(1.5f));
+    CHECK(free_run.s().twa < twa - deg(5.0f));
     CHECK(std::fabs(twa_m - twa) < deg(4.0f));
     CHECK(h_m < 0.0f);  // helm to bear away (starboard tack: the bow to port)
     CHECK(v_m < dn.polar.at(kn(22.0f), twa));

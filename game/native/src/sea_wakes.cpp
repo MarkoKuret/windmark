@@ -576,6 +576,7 @@ void MistCloud::add(const Dictionary& m) {
   s.s0 = getd(m, "s0", 0.5);
   s.s1 = getd(m, "s1", 1.2);
   s.seed = getd(m, "seed", 0.0);
+  s.a = getd(m, "a", 1.0);
   m_.push_back(s);
 }
 
@@ -606,6 +607,7 @@ Array MistCloud::sprites() const {
     d["s0"] = s.s0;
     d["s1"] = s.s1;
     d["seed"] = s.seed;
+    d["a"] = s.a;
     out.push_back(d);
   }
   return out;
@@ -622,7 +624,7 @@ PackedFloat32Array MistCloud::buffer() {
     // BowWave.mist_look: size and alpha, kept as a (float) Vector2 like the reference
     const double f = s.age / s.life;
     const float size = static_cast<float>(lerpd(s.s0, s.s1, std::sqrt(f)));
-    const float a = static_cast<float>(MIST_ALPHA * clampd(s.age / 0.12, 0.0, 1.0) * (1.0 - f) * (1.0 - f));
+    const float a = static_cast<float>(MIST_ALPHA * s.a * clampd(s.age / 0.12, 0.0, 1.0) * (1.0 - f) * (1.0 - f));
     float* o = b + i * STRIDE;
     const float t[STRIDE] = {size, 0, 0, s.pos.x, 0, size, 0, s.pos.z, 0, 0, size, -s.pos.y,
                              a,    static_cast<float>(s.seed), 0, 0};

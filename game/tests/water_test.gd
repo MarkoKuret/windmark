@@ -319,6 +319,32 @@ func check_bow_spray() -> void:
 		"bow: mist at hull speed, %d soft sprites of at least 0.5 m (smallest %.2f m), alpha at most %.2f" % [
 		fast["mist"], fast["min_size"], fast["max_alpha"]])
 	check(not fast["spray_nodes"], "bow: no spray particles drawn (no dots)")
+	# impact bursts (§5): a bow sinking into the sea at 1 m/s for 0.3 s, at speed and slowly
+	var drv := BowWave.Drivers.new()
+	var steady := BowWave.Drivers.new()
+	var slow_drv := BowWave.Drivers.new()
+	var rel := 0.5
+	var n_burst := 0
+	var n_steady := 0
+	var top := 0.0
+	for k in 40:
+		var sink := 1.0 if k >= 10 and k < 16 else 0.0
+		rel -= sink * 0.05
+		drv.advance(0.05, 9.0, 2.5, rel)
+		steady.advance(0.05, 9.0, 2.5, 0.5)
+		slow_drv.advance(0.05, 0.8, 0.2, rel)
+		top = maxf(top, BowWave.burst(drv))
+		if k >= 10 and k < 22:
+			n_burst += BowWave.mist_count(drv, 1.0, 0.05)
+			n_steady += BowWave.mist_count(steady, 1.0, 0.05)
+	check(top > 1.2 and BowWave.burst(drv) < 0.2, "bow: the impact bursts (I %.2f) and dies down within a second (%.2f)" % [
+			top, BowWave.burst(drv)])
+	check(n_burst > 2 * n_steady, "bow: an impact throws more spray (%d sprites in 0.6 s, %d riding steadily)" % [n_burst, n_steady])
+	check(BowWave.burst(slow_drv) == 0.0, "bow: no burst at speed ratio 0.2")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	var spr := BowWave.mist_sprite({"lwl": 6.8, "bwl": 2.2}, drv, 0.0, Vector2.ZERO, rng)
+	check(float(spr["a"]) >= 1.0 and float(spr["a"]) <= 2.8, "bow: burst sprites are denser, alpha scale %.2f (at most 2.8)" % spr["a"])
 	var low_tier := _sail_bow(SeaQuality.Tier.L, 1.0)
 	check(low_tier["wave"] > 0 and low_tier["mist"] == 0, "bow: tier L draws the bow wave without mist")
 

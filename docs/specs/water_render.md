@@ -712,15 +712,27 @@ the crest (alpha 0.18), a broken foam band on the crest (τ 0.28 to 0.78) and fo
 foam texture flowing aft at the boat's speed; foam is the wake's colour, roughness 0.6.
 
 **Mist** (quality H, and M for the own boat): soft spray clouds, never dots. They appear only above
-`ratio = 0.55` or when the bow plunges:
+`ratio = 0.55`, when the bow plunges, and in bursts when the bow meets a wave:
 ```
-rate      = 14 /s · (clamp((ratio − 0.55) / 0.5, 0, 1) · pulse + 0.8 · clamp(plunge, 0, 1.5))   // per boat
+impact    = the bow sinking into the sea, as the plunge (the bow's height above the sea the front end evaluates,
+            sea.md §7, so a bow meeting a wave face counts as much as one dropping off a crest), but quick:
+            it follows a rise within 0.05 s and decays over 0.25 s
+I         = clamp(impact / 0.6 m/s, 0, 2) · smoothstep(0.3, 1.0, ratio)          // the impact burst, 0..2
+rate      = 14 /s · (clamp((ratio − 0.55) / 0.5, 0, 1) · pulse + 0.8 · clamp(plunge, 0, 1.5) + 3 · I)   // per boat
 spawn     on the crest, σ = 0.05..0.35, the lee side twice as often as the windward side
 velocity  outward (0.8..2.0)·ratio m/s, up 0.5..1.5 m/s (· (1 + plunge)), plus 0.7 of the boat's velocity
 motion    drag exp(−2.5 t) on the velocity, gravity 2 m/s² (fine droplets fall slowly), life 0.8..1.3 s
 size      0.5 m growing to (1.2 + 0.8·ratio) m over its life
 alpha     0.16 · fade in over 0.12 s · (1 − age/life)² ; at most 256 sprites in the scene
+burst     a sprite launched at impact I also flies faster and higher, grows bigger and is denser:
+          outward × (1 + 0.5·I), up + (1.0..2.5)·I m/s, size × (1 + 0.5·I), alpha × min(1 + 1.2·I, 2.8)
 ```
+Why: a hull section entering the water at a relative speed `w` throws a jet of several times `w` along its surface
+(Wagner's wedge-entry result, the jet tip at about π/(2·tan β)·w, 4 to 5 times `w` for the 20° to 25° deadrise of a
+sportsboat's forward sections); drag in the air and the breakup into droplets keep only a share of that. The
+relative sink speed is what matters, so the same bow that rides the sea quietly bursts into spray when it overtakes
+a wave and its stem meets the back of the next one; and a slow boat does not throw spray (the `ratio` term). The
+bursts reuse the mist sprites and their cap: no other particle system.
 Each is a camera-facing quad with a soft round falloff broken up by the foam texture (`wm_mist_alpha`), unshaded
 with the sky's horizon colour plus a share of the sun that grows looking toward it (forward scattering), faded where
 it meets the water or the hull (depth fade over 0.6 m) and near the camera (under 3 m).

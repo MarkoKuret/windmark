@@ -5,6 +5,7 @@ status: In Progress
 assignee:
   - '@sea-look'
 created_date: '2026-10-15 18:00'
+updated_date: '2026-10-15 18:28'
 labels:
   - front-end
   - visuals
@@ -20,8 +21,14 @@ No bow spray at 19 kn in a 25 kn sea. Drive the existing bow wave sheet and mist
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Spec 5 gives the relative bow speed law for the sheet and mist
-- [ ] #2 Native and reference agree; mist cap unchanged
+- [x] #1 Spec 5 gives the relative bow speed law for the sheet and mist
+- [x] #2 Native and reference agree; mist cap unchanged
 - [ ] #3 Before/after bow previews
-- [ ] #4 Water tests green
+- [x] #4 Water tests green
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Offline previews use the water test's placeholder boat, whose bow follows the sea without the physics heave lag, so it rarely plunges: the bursts need the engine clip to judge (bow previews in game/generated/sea_look/step4_bow.jpg show no change).
+<!-- SECTION:NOTES:END -->

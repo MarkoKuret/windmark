@@ -20,6 +20,8 @@ class Drivers:
 	var v := 0.0
 	var ratio := 0.0
 	var plunge := 0.0
+	## the impact: the bow's sink speed into the sea, quick (rise 0.05 s, decay 0.25 s), m/s
+	var impact := 0.0
 	var last_rel := NAN
 	var mist_acc := 0.0
 
@@ -33,6 +35,10 @@ class Drivers:
 			p = maxf(0.0, -(rel - last_rel) / dt)
 		last_rel = rel
 		plunge += (p - plunge) * k
+		if p > impact:
+			impact += (p - impact) * (1.0 - exp(-dt / 0.05))
+		else:
+			impact *= exp(-dt / 0.25)
 
 
 ## Visibility of the bow wave at a speed ratio (none at low speed).
@@ -107,9 +113,16 @@ static func build_arrays(st: Dictionary, d: Drivers) -> Array:
 	return arrays
 
 
-## Mist sprites to launch over dt (s): the rate grows above ratio 0.55 (with the spray pulse) and with the plunge.
+## The impact burst I (0..2): the bow meeting the sea fast, at speed (water_render.md §5).
+static func burst(d: Drivers) -> float:
+	return clampf(d.impact / 0.6, 0.0, 2.0) * smoothstep(0.3, 1.0, d.ratio)
+
+
+## Mist sprites to launch over dt (s): the rate grows above ratio 0.55 (with the spray pulse), with the plunge and
+## with the impact burst.
 static func mist_count(d: Drivers, pulse: float, dt: float) -> int:
-	var rate := MIST_RATE * (clampf((d.ratio - 0.55) / 0.5, 0.0, 1.0) * pulse + 0.8 * clampf(d.plunge, 0.0, 1.5))
+	var rate := MIST_RATE * (clampf((d.ratio - 0.55) / 0.5, 0.0, 1.0) * pulse + 0.8 * clampf(d.plunge, 0.0, 1.5)
+			+ 3.0 * burst(d))
 	d.mist_acc += rate * dt
 	var n := int(floor(d.mist_acc))
 	d.mist_acc -= n
@@ -137,11 +150,13 @@ static func mist_sprite(st: Dictionary, d: Drivers, sea_z: float, boat_vel: Vect
 	var width := (0.12 + 0.5 * along) * (1.0 + 0.3 * d.ratio)
 	var stem := Vector2(st.get("x", 0.0), st.get("y", 0.0)) + fwd * float(st.get("bow_x", 0.5 * lwl))
 	var q := stem - fwd * along + port * sgn * (yh + TAU_CREST * width)
-	var out := port * sgn * rng.randf_range(0.8, 2.0) * d.ratio + boat_vel * 0.7
-	var up := rng.randf_range(0.5, 1.5) * (1.0 + minf(d.plunge, 1.5))
+	var bi := burst(d)
+	var out := port * sgn * rng.randf_range(0.8, 2.0) * d.ratio * (1.0 + 0.5 * bi) + boat_vel * 0.7
+	var up := rng.randf_range(0.5, 1.5) * (1.0 + minf(d.plunge, 1.5)) + rng.randf_range(1.0, 2.5) * bi
 	return {
 		"pos": Vector3(q.x, q.y, sea_z + 0.75 * hl.x), "vel": Vector3(out.x, out.y, up), "age": 0.0,
-		"life": rng.randf_range(0.8, 1.3), "s0": 0.5, "s1": 1.2 + 0.8 * minf(d.ratio, 1.2), "seed": rng.randf(),
+		"life": rng.randf_range(0.8, 1.3), "s0": 0.5, "s1": (1.2 + 0.8 * minf(d.ratio, 1.2)) * (1.0 + 0.5 * bi),
+		"seed": rng.randf(), "a": minf(1.0 + 1.2 * bi, 2.8),
 	}
 
 
@@ -160,5 +175,5 @@ static func mist_step(m: Dictionary, dt: float) -> bool:
 ## Size (m) and alpha of a mist sprite now.
 static func mist_look(m: Dictionary) -> Vector2:
 	var f: float = m["age"] / m["life"]
-	var a := MIST_ALPHA * clampf(m["age"] / 0.12, 0.0, 1.0) * (1.0 - f) * (1.0 - f)
+	var a := MIST_ALPHA * float(m.get("a", 1.0)) * clampf(m["age"] / 0.12, 0.0, 1.0) * (1.0 - f) * (1.0 - f)
 	return Vector2(lerpf(m["s0"], m["s1"], sqrt(f)), a)

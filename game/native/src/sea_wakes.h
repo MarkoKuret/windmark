@@ -171,7 +171,7 @@ class MistCloud : public godot::RefCounted {
   static constexpr int MAX = 256;
   static constexpr int STRIDE = 16;  // 3x4 transform and custom data
 
-  // a sprite as BowWave.mist_sprite makes it: {pos, vel (ENU), age, life, s0, s1, seed}
+  // a sprite as BowWave.mist_sprite makes it: {pos, vel (ENU), age, life, s0, s1, seed, a}
   void add(const godot::Dictionary& m);
   int64_t count() const { return static_cast<int64_t>(m_.size()); }
   // BowWave.mist_step on every sprite, dropping the lived-out ones
@@ -189,7 +189,7 @@ class MistCloud : public godot::RefCounted {
  private:
   struct Sprite {
     godot::Vector3 pos, vel;
-    double age, life, s0, s1, seed;
+    double age, life, s0, s1, seed, a;  // a: the alpha scale of a burst sprite (1 otherwise)
   };
   std::vector<Sprite> m_;
   godot::PackedFloat32Array buf_;

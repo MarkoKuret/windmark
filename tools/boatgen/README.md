@@ -230,7 +230,12 @@ rail and rub strake close it off. `Deck.surface` and `Deck.surface_z` give the w
 its sides, the cockpit floor, the deck) that the hardware and the rope leads sit on.
 
 **Appendages** (`appendages.py`). NACA 00xx fin and rudder lofted from root to tip; the bulb is a flattened body
-of revolution sized so its volume holds the bulb mass in lead.
+of revolution sized so its volume holds the bulb mass in lead. A transom-hung rudder has a sportboat's blade: a
+straight swept leading edge on the pintles, a neck narrowing to 0.6 of the root chord (at the root's thickness)
+from the hull's bottom up to the head, a taper below and a quarter-elliptical tip over the last 30 % of the immersed
+span; the immersed chords are scaled so the blade below the DWL keeps the class trapezoid's area. Its head sits
+0.12 m above the transom's top (the cockpit floor's edge on an open transom), so the tiller runs forward low over
+the floor.
 
 **Rig and sails** (`rig.py`, `sails.py`). Tapered mast section, swept spreaders, shrouds with terminals, forestay,
 backstay, bobstay, sprit, boom with vang. Sails are Coons patches over their edges on a regular grid (rows from
@@ -274,9 +279,9 @@ starts on top of its own rigging screw, in line with the wire, on a chainplate s
 forestay on the stemhead fitting; on an open transom the backstay splits into two legs to plates on the quarters),
 the cap shrouds end in the mast wall at its tapered width, the backstay at the crane end, the bobstay on an eye on the
 stem as meshed. The mainsheet's upper block hangs from a bail on the boom's real underside (`Rig.boom_bottom`), the
-lower block stands on the traveller car, and the tackle runs between the two sheaves. On a transom rudder the tiller
-butt sits between the rudder-head cheeks on the head's bolt (`Appendages.tiller_pivot`, cheek gap = blade
-thickness), and the pintle straps sit between the gudgeon arms below the transom's top. The builders tag each
+lower block stands on the traveller car, and the tackle runs between the two sheaves. On a transom rudder the blade top
+goes into the rudder head, a streamlined casting a wall thicker than the blade on each side and longer than its top
+chord, and the tiller butt sits in a slot in the head's forward end on its bolt (`Appendages.tiller_pivot`), and the pintle straps sit between the gudgeon arms below the transom's top. The builders tag each
 piece (`Part.add(..., tag=)`) and record what it is fitted to (`Part.attach(piece, *hosts)`); `Boat.attachment_gaps()`
 measures the gap of every attachment on the meshes as built, and `tests/test_attachments.py` holds it at 5 mm or
 less for wm7 and wm12. The same test checks the lifelines end by end (`Boat.lifelines`: the last 2 cm of every

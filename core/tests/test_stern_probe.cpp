@@ -1,5 +1,6 @@
 // Diagnostic, skipped by default (run with -tc="probe*" --no-skip): how far the cockpit floor and the deck edge at
-// the transom stand above the sea, by class, wind and heading, with and without the heel. The numbers behind
+// the transom stand above the sea, how far the rudder's root stands out of it (wm7: the transom-hung blade's top at
+// the transom, out by design), by class, wind and heading, with and without the heel. The numbers behind
 // boat.md §5.6; the geometry is the generator's (tools/boatgen deck.py) for the shipped classes.
 #include <cmath>
 #include <cstdio>
@@ -11,8 +12,9 @@ using namespace wm_test;
 
 namespace {
 
-// transom x, cockpit floor height and half width there, sheer height and half breadth there (body frame, m)
-struct Geo { float tx, floor, halfw, sheer, sheer_y; };
+// transom x, cockpit floor height and half width there, sheer height and half breadth there, and where the rudder
+// blade leaves the hull (the stock's x, the canoe body's bottom there) (body frame, m)
+struct Geo { float tx, floor, halfw, sheer, sheer_y, rx, rz; };
 
 float point_z(const wm::BoatState& s, float x, float y, float z) {
   // conventions.md §3: R = Rz Ry(-theta) Rx(phi); only the vertical component matters
@@ -39,6 +41,8 @@ void run(const char* cls, Geo g, float tws_kn, float twa_deg, bool kite) {
   int n = 0, wet_sh = 0, wet = 0, wet_c = 0, wet_nh = 0;
   double heel = 0, pitch = 0, cmid = 0;
   float worst = 1e9f;
+  int rud_out = 0, rud_out5 = 0;
+  double rud = 0;
   double sum = 0;
   for (std::uint32_t i = 0; i < 12000; ++i) {
     st = sea.at(i * wm::DT_MS);
@@ -67,6 +71,13 @@ void run(const char* cls, Geo g, float tws_kn, float twa_deg, bool kite) {
       sh = std::fmin(sh, point_z(s, g.tx, y, g.sheer) - st.sea_height(wx, wy));
     }
     if (sh < 0) ++wet_sh;
+    {
+      const float wx = s.pos_x + g.rx * sc.s, wy = s.pos_y + g.rx * sc.c;
+      const float r = point_z(s, g.rx, 0.0f, g.rz) - st.sea_height(wx, wy);
+      rud += static_cast<double>(r);
+      if (r > 0) ++rud_out;
+      if (r > 0.05f) ++rud_out5;
+    }
     heel += static_cast<double>(std::fabs(s.phi));
     pitch += static_cast<double>(s.theta);
     cmid += static_cast<double>(cc);
@@ -78,15 +89,18 @@ void run(const char* cls, Geo g, float tws_kn, float twa_deg, bool kite) {
     worst = std::fmin(worst, c);
   }
   std::printf("%-5s %3.0fkn %3.0f%s Hs %.2f | corner mean %5.2f min %5.2f wet %4.1f%% | centre mean %.2f wet %4.1f%% | "
-              "no-heel wet %4.1f%% | deck edge wet %4.1f%% | heel %4.1f pitch %4.1f\n", cls, (double)tws_kn, (double)twa_deg, kite ? "k" : " ",
+              "no-heel wet %4.1f%% | deck edge wet %4.1f%% | heel %4.1f pitch %4.1f | rudder root %+.2f out %4.1f%% "
+              ">5cm %4.1f%%\n", cls, (double)tws_kn, (double)twa_deg, kite ? "k" : " ",
               (double)ss.wind_sea.hs, sum / n, (double)worst, 100.0 * wet / n, cmid / n, 100.0 * wet_c / n,
-              100.0 * wet_nh / n, 100.0 * wet_sh / n, (double)to_deg((float)(heel / n)), (double)to_deg((float)(pitch / n)));
+              100.0 * wet_nh / n, 100.0 * wet_sh / n, (double)to_deg((float)(heel / n)), (double)to_deg((float)(pitch / n)), rud / n,
+              100.0 * rud_out / n, 100.0 * rud_out5 / n);
 }
 
 }  // namespace
 
 TEST_CASE("probe: stern clearance" * doctest::skip()) {
-  const Geo g7{-3.745f, 0.346f, 0.756f, 0.60f, 1.05f}, g12{-6.15f, 0.501f, 0.908f, 0.90f, 1.375f};
+  const Geo g7{-3.745f, 0.346f, 0.756f, 0.60f, 1.05f, -3.745f, 0.063f},
+      g12{-6.15f, 0.501f, 0.908f, 0.90f, 1.375f, -4.40f, -0.159f};
   for (float tws : {10.0f, 15.0f, 20.0f, 25.0f}) {
     run("wm7", g7, tws, 42, false);
     run("wm7", g7, tws, 90, false);

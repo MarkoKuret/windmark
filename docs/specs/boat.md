@@ -114,8 +114,10 @@ Reference shapes:
   | 20 | 0 | 0.51 | 1.03 | 1.54 | 2.57 | 4.63 |
 
   The bear-away table is the same shape shifted to about 1–2 kn higher speeds (bearing away costs less).
-  Gentle helm is free; hard helm at speed bleeds speed quickly, which is what makes a smooth tack faster than a
-  slammed one: past its stall (§5.9) the rudder turns the boat little faster but drags much more.
+  The column at helm 0 is 0: the centred blade's own drag is part of the hull resistance and so already in the
+  polar, and the tables carry only what the helm adds. Gentle helm is free; hard helm at speed bleeds speed
+  quickly, which is what makes a smooth tack faster than a slammed one: past its stall (§5.9) the rudder turns the
+  boat little faster but drags much more.
 
 The speed, heel, acceleration, helm-balance and trim tables per sail combination are in `sails.md` §6 and
 `data_format.md` §4.3.

@@ -1,5 +1,6 @@
 // Rules-aware sailing (ai.md §7): keeping clear by candidate evaluation, the checks before gaining right of way,
 // holding course, rule 17, the emergency evasion; land and the race area (§4.6); the anticipated wind deficit.
+#include <algorithm>
 #include <cmath>
 
 #include "ai/ai_predict.h"
@@ -175,18 +176,14 @@ bool heading_clear_ahead(AC& x, const AB& a, const Me& m, Vec2 from, float psi) 
 }  // namespace
 
 bool tack_safe(AC& x, AB& a, const Me& m, float psi_new, bool gybe) {
-  {
-    Track own;
-    own_track(m, psi_new, static_cast<std::int8_t>(gybe ? -m.tack : m.tack), false, true, own);
-    if (!track_clear_of_objects(x, a, own)) return false;
-    if (!heading_clear_ahead(x, a, m, own.c.back(), psi_new)) return false;
-  }
+  static thread_local Track own;
+  own_track(m, psi_new, static_cast<std::int8_t>(gybe ? -m.tack : m.tack), false, true, own);
+  if (!track_clear_of_objects(x, a, own)) return false;
+  if (!heading_clear_ahead(x, a, m, own.c.back(), psi_new)) return false;
   if (!x.race.rules_live()) return true;
   static thread_local std::vector<std::size_t> nb;
   neighbours(x, a, m, 5.0f * m.L + 2.0f * x.r_hull[static_cast<std::size_t>(a.i)], nb);
   if (nb.empty()) return true;
-  Track own;
-  own_track(m, psi_new, static_cast<std::int8_t>(gybe ? -m.tack : m.tack), false, true, own);
   const std::vector<Vec2>& oh = hull(x, static_cast<std::size_t>(a.i));
   const float ro = x.r_hull[static_cast<std::size_t>(a.i)];
   const float new_tack = -m.tack;
@@ -593,27 +590,24 @@ void rules_overlay(AC& x, AB& a, const Me& m, Vec2 aim) {
       const float vmc_ref = V_ref * wm_cos(wrap_pi(a.psi_target - brg_aim));
       const float brg_B = bearing(m.c, x.race.boat(jB).c);
       const std::vector<Vec2>& oh = hull(x, i);
-      Candidate* pick = nullptr;
-      Candidate* keep = nullptr;
-      for (Candidate& c : cand) {
+      // The full evaluation of a candidate: false when it is ruled out (∞), else its cost.
+      auto evaluate = [&](Candidate& c) -> bool {
         if (emergency && !c.slow) {
           // Never turn towards the other boat in an emergency.
           const float e = wrap_pi(c.psi - m.s.psi), eb = wrap_pi(brg_B - m.s.psi);
-          if (std::fabs(e) > 1.0f * DEG && sgn(e) == sgn(eb)) continue;
+          if (std::fabs(e) > 1.0f * DEG && sgn(e) == sgn(eb)) return false;
         }
         static thread_local Track own;
         own_track(m, c.psi, c.turn, c.slow, c.manoeuvre, own);
-        if (!track_clear_of_objects(x, a, own)) continue;  // never into a mark or a committee boat
+        if (!track_clear_of_objects(x, a, own)) return false;  // never into a mark or a committee boat
         const float gB = tracks_gap(hull(x, jB), x.r_hull[jB], tB, oh, x.r_hull[i], own, 0, kSamples, 4.0f * m.L);
-        if (gB < mg) continue;
-        bool contact = false;
-        for (std::size_t q = 0; q < nb.size() && !contact; ++q) {
+        if (gB < mg) return false;
+        for (std::size_t q = 0; q < nb.size(); ++q) {
           if (q == kB) continue;
           if (tracks_gap(hull(x, nb[q]), x.r_hull[nb[q]], tr[q], oh, x.r_hull[i], own, 0, kSamples, 0.5f) <= 0.0f) {
-            contact = true;
+            return false;
           }
         }
-        if (contact) continue;
         const float twa_c = wrap_pi(m.twd - c.psi);
         const float V = (c.slow ? m.b.let_fly_drive() : 1.0f) * polar_speed(a, m, std::fabs(twa_c));
         const float vmc = V * wm_cos(wrap_pi(c.psi - brg_aim));
@@ -632,10 +626,49 @@ void rules_overlay(AC& x, AB& a, const Me& m, Vec2 aim) {
         // §7.2: not onto the wrong side of the mark being rounded.
         if (rounding && !c.slow && into_rounding_mark(a, m, c.psi)) cost = cost + 30.0f;
         c.cost = cost;
-        if (pick == nullptr || cost < pick->cost) pick = &c;
-        if (x.now < a.avoid_hold && !c.manoeuvre && c.slow == a.avoid_slow &&
-            std::fabs(wrap_pi(c.psi - a.avoid_psi)) < 2.6f * DEG) {
-          keep = &c;
+        return true;
+      };
+      // The candidate held from an earlier decision (kept for 1.5 s unless it is ruled out) is evaluated first: when
+      // it stands, no other is needed.
+      Candidate* pick = nullptr;
+      Candidate* keep = nullptr;
+      if (x.now < a.avoid_hold) {
+        // The last one that matches and is not ruled out (two may match when the held heading lies midway).
+        for (std::size_t k = cand.size(); k-- > 0 && keep == nullptr;) {
+          Candidate& c = cand[k];
+          if (!c.manoeuvre && c.slow == a.avoid_slow && std::fabs(wrap_pi(c.psi - a.avoid_psi)) < 2.6f * DEG &&
+              evaluate(c)) {
+            keep = &c;
+          }
+        }
+      }
+      if (keep == nullptr) {
+        // The cheapest candidate, taken in the order of a lower bound of the cost (the proximity term is at least
+        // 20 / (4·L), the gap's cap) so the expensive track checks are skipped for candidates that cannot win. The
+        // result is the same as evaluating all of them (ties go to the earlier candidate).
+        static thread_local std::vector<std::pair<float, std::int32_t>> order;
+        order.clear();
+        const float prox_min = 20.0f / max(4.0f * m.L, 0.5f);
+        for (std::size_t k = 0; k < cand.size(); ++k) {
+          const Candidate& c = cand[k];
+          const float twa_c = wrap_pi(m.twd - c.psi);
+          const float V = (c.slow ? m.b.let_fly_drive() : 1.0f) * polar_speed(a, m, std::fabs(twa_c));
+          const float vmc = V * wm_cos(wrap_pi(c.psi - brg_aim));
+          float lb = prox_min + 4.0f * (vmc_ref - vmc) / V_ref + (c.manoeuvre ? 3.0f : 0.0f);
+          if (emergency) lb = lb + 2.0f * std::fabs(wrap_pi(c.psi - x.w.boat(jB).state().psi));
+          if (rounding && !c.slow && into_rounding_mark(a, m, c.psi)) lb = lb + 30.0f;
+          order.push_back({lb - 1e-3f * (1.0f + std::fabs(lb)), static_cast<std::int32_t>(k)});
+        }
+        std::sort(order.begin(), order.end());
+        std::int32_t pick_k = -1;
+        for (const auto& [lb, k] : order) {
+          if (pick != nullptr && lb > pick->cost) break;
+          Candidate& c = cand[static_cast<std::size_t>(k)];
+          if (!evaluate(c)) continue;
+          if (pick == nullptr || c.cost < pick->cost || (c.cost == pick->cost && k < pick_k)) {
+            pick = &c;
+            pick_k = k;
+          }
         }
       }
       if (keep != nullptr) pick = keep;

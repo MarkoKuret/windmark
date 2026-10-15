@@ -413,6 +413,7 @@ static func mist_buffer(sprites: Array) -> PackedFloat32Array:
 		buf[o + 11] = -p.y
 		buf[o + 12] = look.y
 		buf[o + 13] = m["seed"]
+		buf[o + 14] = m.get("k", 0.0)
 	return buf
 
 

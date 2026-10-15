@@ -51,13 +51,16 @@ vec2 wm_bow_alpha(vec2 uv, float a, float n1, float n2) {
 	return vec2(foam, clamp(a * max(foam, sheet), 0.0, 1.0));
 }
 
-// Mist sprite coverage (water_render.md §5): a soft round cloud broken up by the foam noise. uv: the quad's 0..1;
-// n: a foam noise sample for the sprite.
-float wm_mist_alpha(vec2 uv, float n) {
+// Mist sprite coverage (water_render.md §5): a soft round cloud broken up by the foam noise, or (kind 1, a burst's
+// sheet of droplets) only the noise's high values, a speckle thinning toward the edge. uv: the quad's 0..1; n: a
+// foam noise sample for the sprite.
+float wm_mist_alpha(vec2 uv, float n, float kind) {
 	vec2 q = uv * 2.0 - 1.0;
 	float r2 = clamp(dot(q, q), 0.0, 1.0);
 	float soft = (1.0 - r2) * (1.0 - r2);
-	return soft * mix(0.35, 1.0, smoothstep(0.2, 0.8, n));
+	float cloud = mix(0.35, 1.0, smoothstep(0.2, 0.8, n));
+	float drops = smoothstep(0.5 + 0.2 * r2, 0.62 + 0.2 * r2, n) * 1.8;
+	return soft * mix(cloud, drops, kind);
 }
 
 // Wake foam coverage (shared with the offline preview, water_render.md §5). uv: (across 0..1, distance sailed /

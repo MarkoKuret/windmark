@@ -129,7 +129,8 @@ static func mist_count(d: Drivers, pulse: float, dt: float) -> int:
 	return n
 
 
-## One mist sprite on the crest of a boat's bow wave: {pos, vel (ENU), age, life, s0, s1, seed}.
+## One mist sprite on the crest of a boat's bow wave: {pos, vel (ENU), age, life, s0, s1, seed}, and for a burst's
+## droplet sheet also {a: alpha scale, g: gravity, drag, k: 1 (the droplet look)}.
 static func mist_sprite(st: Dictionary, d: Drivers, sea_z: float, boat_vel: Vector2, rng: RandomNumberGenerator) -> Dictionary:
 	var lwl: float = st.get("lwl", 6.0)
 	var bwl: float = st.get("bwl", 2.0)
@@ -151,12 +152,21 @@ static func mist_sprite(st: Dictionary, d: Drivers, sea_z: float, boat_vel: Vect
 	var stem := Vector2(st.get("x", 0.0), st.get("y", 0.0)) + fwd * float(st.get("bow_x", 0.5 * lwl))
 	var q := stem - fwd * along + port * sgn * (yh + TAU_CREST * width)
 	var bi := burst(d)
-	var out := port * sgn * rng.randf_range(0.8, 2.0) * d.ratio * (1.0 + 0.5 * bi) + boat_vel * 0.7
-	var up := rng.randf_range(0.5, 1.5) * (1.0 + minf(d.plunge, 1.5)) + rng.randf_range(1.0, 2.5) * bi
+	if bi > 0.0 and rng.randf() < bi / (1.0 + bi):
+		# a sheet of droplets thrown off the flare: outboard and a little aft, flat, falling like water
+		var sp := rng.randf_range(2.5, 4.5) * (0.5 + 0.5 * minf(d.ratio, 1.5)) * (0.6 + 0.4 * bi)
+		var hz := port * sgn * sp - fwd * (0.15 * sp) + boat_vel * 0.85
+		var vz := rng.randf_range(0.8, 1.6) * (0.5 + 0.5 * bi)
+		return {
+			"pos": Vector3(q.x, q.y, sea_z + 0.75 * hl.x), "vel": Vector3(hz.x, hz.y, vz), "age": 0.0,
+			"life": rng.randf_range(0.35, 0.6), "s0": 0.25, "s1": rng.randf_range(0.6, 0.9), "seed": rng.randf(),
+			"a": minf(1.0 + bi, 2.2), "g": GRAVITY, "drag": 1.0, "k": 1.0,
+		}
+	var out := port * sgn * rng.randf_range(0.8, 2.0) * d.ratio + boat_vel * 0.7
+	var up := rng.randf_range(0.5, 1.5) * (1.0 + minf(d.plunge, 1.5))
 	return {
 		"pos": Vector3(q.x, q.y, sea_z + 0.75 * hl.x), "vel": Vector3(out.x, out.y, up), "age": 0.0,
-		"life": rng.randf_range(0.8, 1.3), "s0": 0.5, "s1": (1.2 + 0.8 * minf(d.ratio, 1.2)) * (1.0 + 0.5 * bi),
-		"seed": rng.randf(), "a": minf(1.0 + 1.2 * bi, 2.8),
+		"life": rng.randf_range(0.8, 1.3), "s0": 0.5, "s1": 1.2 + 0.8 * minf(d.ratio, 1.2), "seed": rng.randf(),
 	}
 
 
@@ -165,8 +175,8 @@ static func mist_step(m: Dictionary, dt: float) -> bool:
 	m["age"] += dt
 	if m["age"] >= m["life"]:
 		return false
-	var v: Vector3 = m["vel"] * exp(-MIST_DRAG * dt)
-	v.z -= MIST_GRAVITY * dt
+	var v: Vector3 = m["vel"] * exp(-float(m.get("drag", MIST_DRAG)) * dt)
+	v.z -= float(m.get("g", MIST_GRAVITY)) * dt
 	m["vel"] = v
 	m["pos"] += v * dt
 	return true

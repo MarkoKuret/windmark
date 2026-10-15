@@ -1,6 +1,6 @@
 // Bow mist (water_render.md §5): soft camera-facing spray clouds, unshaded (sky horizon colour plus a share of the
 // sun that grows toward it), faded where they meet the water or the hull and near the camera. MultiMesh instances:
-// the transform carries position and size; INSTANCE_CUSTOM = (alpha, seed, 0, 0).
+// the transform carries position and size; INSTANCE_CUSTOM = (alpha, seed, kind: 0 mist, 1 a burst's droplets, 0).
 shader_type spatial;
 render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, shadows_disabled;
 
@@ -17,6 +17,7 @@ uniform sampler2D depth_tex : hint_depth_texture, filter_linear_mipmap;
 
 varying float v_alpha;
 varying float v_seed;
+varying float v_kind;
 
 void vertex() {
 	float s = length(MODEL_MATRIX[0].xyz);
@@ -25,14 +26,15 @@ void vertex() {
 	MODELVIEW_NORMAL_MATRIX = mat3(MODELVIEW_MATRIX);
 	v_alpha = INSTANCE_CUSTOM.x;
 	v_seed = INSTANCE_CUSTOM.y;
+	v_kind = INSTANCE_CUSTOM.z;
 }
 
 void fragment() {
 	float c = cos(v_seed * 6.2831);
 	float sn = sin(v_seed * 6.2831);
 	vec2 ruv = mat2(vec2(c, sn), vec2(-sn, c)) * (UV - 0.5);
-	float n = texture(foam_tex, ruv * 0.7 + v_seed * 3.7).r;
-	float a = wm_mist_alpha(UV, n) * v_alpha;
+	float n = texture(foam_tex, ruv * (0.7 + 1.3 * v_kind) + v_seed * 3.7).r;
+	float a = wm_mist_alpha(UV, n, v_kind) * v_alpha;
 	// depth fade against the water and the hull, and near the camera
 	float depth = textureLod(depth_tex, SCREEN_UV, 0.0).r;
 	vec4 vp = INV_PROJECTION_MATRIX * vec4(SCREEN_UV * 2.0 - 1.0, depth, 1.0);

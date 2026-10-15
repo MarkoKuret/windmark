@@ -577,18 +577,20 @@ void MistCloud::add(const Dictionary& m) {
   s.s1 = getd(m, "s1", 1.2);
   s.seed = getd(m, "seed", 0.0);
   s.a = getd(m, "a", 1.0);
+  s.g = getd(m, "g", MIST_GRAVITY);
+  s.drag = getd(m, "drag", MIST_DRAG);
+  s.k = getd(m, "k", 0.0);
   m_.push_back(s);
 }
 
 void MistCloud::step(double dt) {
   size_t w = 0;
-  const double drag = std::exp(-MIST_DRAG * dt);
   for (size_t k = 0; k < m_.size(); ++k) {
     Sprite s = m_[k];
     s.age += dt;
     if (s.age >= s.life) continue;
-    Vector3 v = s.vel * drag;
-    v.z = static_cast<real_t>(static_cast<double>(v.z) - MIST_GRAVITY * dt);
+    Vector3 v = s.vel * std::exp(-s.drag * dt);
+    v.z = static_cast<real_t>(static_cast<double>(v.z) - s.g * dt);
     s.vel = v;
     s.pos += v * dt;
     m_[w++] = s;
@@ -608,6 +610,9 @@ Array MistCloud::sprites() const {
     d["s1"] = s.s1;
     d["seed"] = s.seed;
     d["a"] = s.a;
+    d["g"] = s.g;
+    d["drag"] = s.drag;
+    d["k"] = s.k;
     out.push_back(d);
   }
   return out;
@@ -627,7 +632,7 @@ PackedFloat32Array MistCloud::buffer() {
     const float a = static_cast<float>(MIST_ALPHA * s.a * clampd(s.age / 0.12, 0.0, 1.0) * (1.0 - f) * (1.0 - f));
     float* o = b + i * STRIDE;
     const float t[STRIDE] = {size, 0, 0, s.pos.x, 0, size, 0, s.pos.z, 0, 0, size, -s.pos.y,
-                             a,    static_cast<float>(s.seed), 0, 0};
+                             a,    static_cast<float>(s.seed), static_cast<float>(s.k), 0};
     std::memcpy(o, t, sizeof(t));
   }
   // the instances that lived out since the last buffer: zero, as a fresh buffer

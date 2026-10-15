@@ -189,7 +189,8 @@ class MistCloud : public godot::RefCounted {
  private:
   struct Sprite {
     godot::Vector3 pos, vel;
-    double age, life, s0, s1, seed, a;  // a: the alpha scale of a burst sprite (1 otherwise)
+    double age, life, s0, s1, seed;
+    double a, g, drag, k;  // a burst's droplet sheet: alpha scale, gravity, drag, look (1); mist: 1, MIST_*, 0
   };
   std::vector<Sprite> m_;
   godot::PackedFloat32Array buf_;

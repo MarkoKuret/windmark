@@ -72,12 +72,9 @@ class Xf:
         return p @ self.R.T + self.t
 
 
-CLEW_TURN = 0.6         # 7.5: the share of the turn that lays the clew's bisector on the sheet
-CLEW_REACH = 2          # 7.5: the grid steps from the clew that give the foot and leech directions
-CLEW_SPAN = 0.6         # 7.5: the turned cloth reaches this share of the foot's rest chord from the clew
-CLEW_FADE = (np.radians(110.0), np.radians(150.0))  # 7.5: the turn fades out as |beta| goes round the bow
 STOP_SCAN = 24          # 7.6: steps of the main's angle scanned out from the centreline
 STOP_STEPS = 10         # 7.6: bisection steps of the main's stop
+RUN_ON = 6.0            # 7.4: the last segment of an obstacle section runs on past its leech by this many clearances
 PUSH_SLOPE = 0.3        # 7.4 k_p: the local push falls off by this much per metre of cloth
 PUSH_EASE = 2.0         # 7.4 P_e: the ease starts where the leech is deeper than this many clearances
 EASE_MAX = 0.35         # 7.4 e_max: the largest ease, rad
@@ -181,9 +178,7 @@ class SailSet:
         self.push_max = 0.0     # the largest local push of the last update (7.4), m
         self.rest_q = Q.copy()
         self.lead = None if rig.get("flying_lead") is None else np.asarray(rig["flying_lead"], dtype=np.float64)
-        self.clew_turn = 0.0
-        self._clew_d = np.linalg.norm(Q - Q[cols - 1], axis=-1)     # 7.5 rest distance from the clew
-        self._clew_r = max(CLEW_SPAN * float(self.C[0]), 1e-3)
+        self.tack_at = self.tack.copy()
         self._secs = []
         # 7.4: distances between grid neighbours on the rest cloth (along a row, up a column, the two diagonals)
         E = Q.reshape(rows, cols, 3)
@@ -262,6 +257,7 @@ class SailSet:
         else:
             self.trow = tl * self.twist_top * self.hrow ** 1.5
         hd = s_t(self.head)
+        self.tack_at = s_t(self.tack)           # 7.4: the margin fades out at the tack as at the head
         clearing = self.clearance > 0
         self.ease = 0.0
         if clearing and obstacles:
@@ -277,45 +273,14 @@ class SailSet:
             xr = Xf.about(piv, ax, th) * s_t
             mid[r * cols:(r + 1) * cols] = xr(rest[r * cols:(r + 1) * cols])
         self.mid = mid
-        self.clew_turn = 0.0
         self.clew0 = mid[cols - 1].copy()      # 7.6: the clew as placed, before the clearance push
-        if self.kind == ASYM and self.lead is not None:
-            self._clew_on_sheet(beta)
         if clearing:
             self._push(awa, hd)
         return self.mid
 
     def sheet_line(self, beta):
-        """7.5, 7.6: the working sheet as a straight line: (the placed clew, the lead on the side of beta)."""
+        """7.6: the working sheet as a straight line: (the placed clew, the lead on the side of beta)."""
         return self.clew0.copy(), np.array([self.lead[0], -sgn(beta) * abs(self.lead[1]), self.lead[2]])
-
-    def _clew_on_sheet(self, beta, fa=1.0):
-        """7.5: the cloth round the clew turns about the clew so the corner's bisector lies along the sheet."""
-        rows, cols = self.rows, self.cols
-        g = 1.0 - smoothstep01((abs(beta) - CLEW_FADE[0]) / (CLEW_FADE[1] - CLEW_FADE[0]))
-        k = CLEW_TURN * fa * g
-        if k <= 0:
-            return
-        M = self.mid
-        c = M[cols - 1]
-        sv = c - np.array([self.lead[0], -sgn(beta) * abs(self.lead[1]), self.lead[2]])
-        f = M[cols - 1 - CLEW_REACH] - c
-        e = M[CLEW_REACH * cols + cols - 1] - c
-        b = f / np.linalg.norm(f) + e / np.linalg.norm(e)
-        ln_s, ln_b = np.linalg.norm(sv), np.linalg.norm(b)
-        if ln_s < 1e-6 or ln_b < 1e-6:
-            return
-        sv, b = sv / ln_s, b / ln_b
-        ax = np.cross(b, sv)
-        sn = np.linalg.norm(ax)
-        ang = np.arctan2(sn, b @ sv)
-        if sn < 1e-9:
-            return
-        ax = ax / sn
-        self.clew_turn = float(ang * k)
-        w = k * (1.0 - smoothstep_v(self._clew_d / self._clew_r))
-        for i in np.nonzero(w > 0)[0]:
-            M[i] = c + rot(ax, ang * w[i]) @ (M[i] - c)
 
     def grid(self):
         return self.mid.reshape(self.rows, self.cols, 3)
@@ -378,8 +343,8 @@ class SailSet:
         for j in range(cn - 1):
             q0, d = Qs[j], Qs[j + 1] - Qs[j]
             l2 = d @ d
-            # the last segment runs on past the leech by 2 clearances (7.4)
-            hi = 1.0 + 2 * self.clearance / np.sqrt(l2) if j == cn - 2 and l2 > 1e-12 else 1.0
+            # the last segment runs on past the leech by RUN_ON clearances (7.4)
+            hi = 1.0 + RUN_ON * self.clearance / np.sqrt(l2) if j == cn - 2 and l2 > 1e-12 else 1.0
             sp = min(max((ph - q0) @ d / l2, 0.0), hi) if l2 > 1e-12 else 0.0
             q = q0 + d * sp
             d2 = (ph - q) @ (ph - q)
@@ -408,7 +373,8 @@ class SailSet:
         return x, (rad / x if x > 1e-6 else lee)
 
     def _margin(self, p, hd):
-        return self.clearance * smoothstep01(np.linalg.norm(p - hd) / (5 * self.clearance))
+        return self.clearance * smoothstep01(np.linalg.norm(p - hd) / (5 * self.clearance)) * \
+            smoothstep01(np.linalg.norm(p - self.tack_at) / (5 * self.clearance))
 
     def _ease_for(self, beta, s_t, piv, ax, base, hd, tl):
         rows, cols = self.rows, self.cols

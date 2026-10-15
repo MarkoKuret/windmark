@@ -67,7 +67,7 @@ LOOK_DEFAULTS = {
     "genoa": {"fill_gain": 0.75, "fill_curve": 1.2, "flutter_amp": 0.07, "twist_top": 0.175},
     "code_zero": {"fill_gain": 0.7, "fill_curve": 1.3, "flutter_amp": 0.08, "twist_top": 0.140, "camber": 0.12},
     "spinnaker_asym": {"fill_gain": 1.0, "fill_curve": 1.0, "flutter_amp": 1.0, "twist_top": 0.45, "camber": 0.27,
-                       "tack_line_max": 0.04},
+                       "tack_line_max": 0.0},
     "spinnaker_sym": {"fill_gain": 1.5, "fill_curve": 1.5, "flutter_amp": 1.0, "twist_top": 0.0, "camber": 0.26},
 }
 
@@ -272,7 +272,7 @@ def _flying(spec, cls, rig, deck):
     if t.startswith("spinnaker") and rig.pole_flown:
         tk = rig.pole_end.copy()
     elif rig.sprit > 0:
-        tk = rig.sprit_end + [0, 0, 0.12]
+        tk = rig.sprit_end.copy()            # on the tack fitting at the sprit end
     else:
         tk = np.array([rig.x_tack, 0, rig.z_tack + 0.1])
     if spec.get("tack_x") is not None:

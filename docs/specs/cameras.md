@@ -76,13 +76,19 @@ the look-at. Reduced motion (`controls.md` §6) turns the bank, the trail and th
 
 The helmsman's eye, fixed in the heeled, pitching boat, looking forward past the sails.
 
-**Eye position** (body frame, computed at load from the generated boat):
+**Eye position** (body frame, computed at load from the generated boat): well aft, so the whole boat ahead, both
+luffs, the bow and the water beyond it are in the frame (owner decision 2026-10-15: further back, less zoom).
 ```
-tiller steering: xh = rudder_stock.x + 0.12 * loa ; zh = deck(xh, yh) + 0.95   // sitting out, eye height
-wheel steering:  xh = wheel_hub.x - 0.45          ; zh = deck(xh, yh) + 1.65   // standing behind the wheel
+tiller steering: xh = x_aft + 0.05 * loa          ; zh = deck(xh, yh) + 1.00   // sitting on the aft quarter
+wheel steering:  xh = wheel_hub.x - 0.08 * loa    ; zh = deck(xh, yh) + 1.65   // standing well behind the wheel
 yh_abs = 0.85 * half-beam of the deck at xh
+x_aft = the aft end of the deck mesh (the transom); -0.5 * loa without a deck mesh
 deck(x, y) = height of the deck mesh under (x, y), found by a vertical ray at load
 ```
+On the classes this gives: `wm7` (tiller) `xh = −3.39 m`, 0.36 m forward of the transom; `wm12` (wheel)
+`xh = −5.12 m`, 0.96 m aft of the wheel and 1.03 m forward of the transom. The eye stays clear of the boat: at
+least 0.9 m from any part of the model (lifelines, pushpit, backstay legs, wheel, tiller) where it sits, and at
+least 0.3 m along its whole crossing path (below the boom end and forward of the backstay at the centreline).
 The helmsman sits to windward: `yh = −sgn(twa)·yh_abs` (starboard tack: wind from starboard, eye on the starboard
 side, `y < 0`). When the tack sign changes and has held for 0.6 s (the helmsman waits for the boom), the eye crosses
 at the same `x` in `2·yh_abs / 1.5 m/s` seconds along a smoothstep, dipping 0.3 m at the centreline. A tack back
@@ -97,7 +103,7 @@ roll  = heel_follow * phi                                       // horizon: leve
 ```
 | parameter | default | range |
 | --- | --- | --- |
-| `fov` | 65° vertical | 50° – 90° |
+| `fov` | 75° vertical (about 107° across at 16:9) | 50° – 90° |
 | `heel_follow` | 0 (horizon level) | 0 – 1 (accessibility, `controls.md` §6) |
 | `look_yaw` | 0 | ±150° |
 | `look_pitch` | 0 | −60° … +75° |
@@ -105,7 +111,8 @@ roll  = heel_follow * phi                                       // horizon: leve
 - Looking around: mouse drag (0.15° per pixel) or right stick as an absolute look (stick direction = look direction
   scaled to the limits), or the orbit keys as a rate (90°/s yaw, 60°/s pitch); on release the look returns to
   centre with `τ = 0.6 s` (option: stay).
-- Zoom changes `fov` within its range (×1.12 per notch, ×2 per second held).
+- Zoom changes `fov` within its range (×1.12 per notch, ×2 per second held). A profile saved with the earlier
+  default of 65° (never zoomed) loads with the new default.
 - The near plane is 0.1 m (the boom, the backstay and the crew pass close to the eye).
 - The own boat is drawn; nothing of it is hidden.
 
@@ -255,7 +262,10 @@ never saved as the profile's camera. Online the same (it is presentation only).
 3. Frame-rate independence: holding orbit for 1 s gives 120° ± 0.5° at 30, 60 and 144 fps.
 4. Water clearance: 10 minutes of chase at `el = 2°` in `Hs = 1.5 m`: the eye is never below `sea_height + 0.99`.
 5. Onboard side: a tack at `t = 0` (tack sign flips) puts the eye on the new windward side by
-   `0.6 + 2·yh_abs/1.5` s (±1 frame) and never crosses outside the deck edge.
+   `0.6 + 2·yh_abs/1.5` s (±1 frame) and never crosses outside the deck edge. On the generated `wm7` and `wm12`
+   the eye follows §3 (tiller: 0.05·loa forward of the deck's aft end; wheel: 0.08·loa aft of the hub), is at
+   least 0.9 m from the model's meshes (sails excluded) on either side and at least 0.3 m along the crossing; the
+   default `fov` is 75°.
 6. Aerial up modes: with `up = north` the scene `−Z` direction points to the top of the screen; with `up = wind` the
    true wind comes from the top of the screen within 1°.
 7. Presets: store in slot 3, change every parameter, recall slot 3: all parameters and the mode restored exactly;

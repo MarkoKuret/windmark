@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@sea-look'
 created_date: '2026-10-05 15:27'
-updated_date: '2026-10-15 18:21'
+updated_date: '2026-10-15 19:33'
 labels:
   - front-end
   - visuals
@@ -31,5 +31,5 @@ Owner (2026-10-05): the WM-083 whitecaps are bad: far too many, and they follow 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-sea-look: cover drawn as area by Monahan's law, thresholds calibrated per sea, wave-group envelope breaks the lattice (autocorrelation excess 0.15, was 0.8). Cost on the heli view +0.11/+0.14/+0.13 ms L/M/H (was +0.10/+0.14/+0.10, noise). Still off by default: needs the owner's look (chase and heli previews whitecaps_{12,18,24}kn_{chase,heli}.jpg).
+Engine fix 2026-10-15: additive group envelope made foam sheets; now multiplicative envelope plus short-crest breakup, wind sea only (wave age 1.2), cover calibrated as area F>=0.5. Patches at 25 kn with swell: median 1 m, 95% 4 m, max 11 m (was 27/51 m). Game-scene previews: game/generated/sea_look/caps_engine.jpg.
 <!-- SECTION:NOTES:END -->

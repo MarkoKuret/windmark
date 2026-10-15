@@ -523,7 +523,7 @@ def render(ctx, d, size):
     sky["u_cloud_offset"].value = tuple(light["cloud_offset"])
     eye = np.array(sc["eye"], "f8")
     target = np.array(sc["target"], "f8")
-    vp = spv.perspective(sc.get("fov", 50.0), w / h, 0.3, 3000.0) @ spv.look_at(eye, target)
+    vp = spv.perspective(sc.get("fov", 50.0), w / h, sc.get("near", 0.3), 3000.0) @ spv.look_at(eye, target)
     vp_b = vp.T.astype("f4").tobytes()
     view = target - eye
     view[1] = 0.0

@@ -33,6 +33,16 @@ constexpr float DT_MAX = 0.1f;
 constexpr float PUSH_SLOPE = 0.3f;
 constexpr float PUSH_EASE = 2.0f;
 constexpr float EASE_MAX = 0.35f;
+// §7.7 the clew set: corner reach (grid steps), fade height (of Sl), bounds of the draw-in and draw-down, the
+// difference step and the Newton steps of the solve
+constexpr int CLEW_REACH = 2;
+constexpr float CLEW_H = 0.3f;
+constexpr float CLEW_KD_LO = -0.1f, CLEW_KD_HI = 0.25f;
+constexpr float CLEW_KL_LO = -0.1f, CLEW_KL_HI = 0.3f;
+constexpr float CLEW_STEP = 0.01f;
+constexpr int CLEW_ITER = 2;
+constexpr float CLEW_FADE0 = 75.0f * PI_F / 180.0f, CLEW_FADE1 = 105.0f * PI_F / 180.0f;  // round the bow
+constexpr float CLEW_AWA0 = 45.0f * PI_F / 180.0f, CLEW_AWA1 = 65.0f * PI_F / 180.0f;     // the lowest AWA
 
 inline float sgn(float x) { return x >= 0.0f ? 1.0f : -1.0f; }
 inline float wrap_pi(float x) {
@@ -160,6 +170,9 @@ bool SailShape::configure(const PackedVector3Array& rest, int64_t rows, int64_t 
   srow_.assign(rows_, 1.0f);
   prow_.assign(rows_, 0.0f);
   trow_.assign(rows_, 0.0f);
+  crow_.assign(rows_, 0.0f);
+  d0row_.assign(rows_, 0.0f);
+  kd_ = kl_ = 0.0f;
   prof_.assign(n_, 0.0f);
   for (int i = 0; i < rows_; ++i) {
     for (int j = 0; j < cols_; ++j) {
@@ -171,6 +184,8 @@ bool SailShape::configure(const PackedVector3Array& rest, int64_t rows, int64_t 
     c_[i] = r[i * cols_ + cols_ - 1].distance_to(r[i * cols_]);
     amid_[i] = 0.5f * (a_[i * cols_] + a_[i * cols_ + cols_ - 1]);
     hrow_[i] = h_[i * cols_];
+    const float cr = clampf(1.0f - hrow_[i] / CLEW_H, 0.0f, 1.0f);
+    crow_[i] = cr * cr * cr;
     u0row_[i] = u_[i * cols_];
     ulrow_[i] = u_[i * cols_ + cols_ - 1];
     // §6.3 (asymmetric: deepest at 0.3 of the height, the draft forward) and §6.4 (symmetric)
@@ -300,7 +315,7 @@ Vector3 SailShape::fly(int k, int i, const Vector3& w, float shiver) const {
   const float i2 = 0.33f * flutter_amp_ * shiver;
   const float q = phi_ - 7.0f * uc;
   const Vector3 m(w.x + 0.1f * i2 * std::sin(q), w.y, w.z + i2 * std::cos(q));
-  Vector3 r = Vector3(a0 + (a_[k] - a0) * s, l_[k], 0.0f) - m * e;
+  Vector3 r = Vector3(a0 + (a_[k] - a0) * s, l_[k] - kl_ * c_[0] * crow_[i] * uc * uc, 0.0f) - m * e;
   if (kind_ == SYM) {
     const float hh = 2.0f * h_[k] - 1.0f;
     const float g = std::max(0.0f, shiver - uc) * (1.0f - hh * hh);
@@ -399,10 +414,8 @@ void SailShape::update(int64_t phase, double progress, double beta_in, double ga
     w = Vector3(uw.dot(ap) * 0.5f / fill_curve_, uw.dot(lp) * 0.5f, uw.dot(np));
     w = w.length_squared() > 1e-12f ? w.normalized() : Vector3(0, 0, 1);
     const float fc = camber_ * std::min(f_fly, 1.15f);
-    for (int i = 0; i < rows_; ++i) {
-      drow_[i] = fc * prow_[i];
-      srow_[i] = 1.0f / (1.0f + 8.0f / 3.0f * drow_[i] * drow_[i]);
-    }
+    for (int i = 0; i < rows_; ++i) d0row_[i] = fc * prow_[i];
+    clew_rows(0.0f, 0.0f);
   }
   // §7.1 to §7.3 the row twist (an asymmetric spinnaker's opens with the AWA)
   {
@@ -414,7 +427,8 @@ void SailShape::update(int64_t phase, double progress, double beta_in, double ga
     }
     // (signed; the asymmetric spinnaker's on the side away from the wind at once: zero where awa changes sign)
     for (int i = 0; i < rows_; ++i)
-      trow_[i] = kind_ == ASYM ? -sgn(awa) * tw * std::sqrt(hrow_[i]) : tl_ * tw * std::pow(hrow_[i], 1.5f);
+      trow_[i] = kind_ == ASYM ? -sgn(awa) * tw * (1.0f - std::pow(1.0f - hrow_[i], 2.5f))
+                               : tl_ * tw * std::pow(hrow_[i], 1.5f);
   }
 
   // §8.1 which shape in which phase
@@ -429,7 +443,67 @@ void SailShape::update(int64_t phase, double progress, double beta_in, double ga
       p = 0.0f;
     p = clampf(p, 0.0f, 1.0f);
   }
+  locals(phase, up_shape, p, d_cam, amp, shiver, w);
+  // §7.4 the ease of a flying sail off the other sails (the head lies on the luff axis)
+  const Vector3 hd = s_t.xform(head_);
+  tack_at_ = s_t.xform(tack_);
+  const bool clearing = clearance_ > 0.0f && (!obs_.empty() || has_mast_head_);
+  ease_ = 0.0f;
+  if (clearing && !obs_.empty()) {
+    sections(s_t, piv, ax, base);
+    ease_ = ease(beta, s_t, piv, ax, base, hd);
+  } else {
+    secs_.clear();  // no obstacles: none left over from the last update
+  }
+  const float es = sgn(beta) * ease_;
+  // §7.7 the clew set by its sheet (with the sail as eased): the low rows again with the solved draw-in, draw-down
+  kd_ = kl_ = 0.0f;
+  const float g_c = (1.0f - smooth01((std::fabs(wrap_pi(beta)) - CLEW_FADE0) / (CLEW_FADE1 - CLEW_FADE0))) *
+                    smooth01((std::fabs(awa) - CLEW_AWA0) / (CLEW_AWA1 - CLEW_AWA0));
+  if (kind_ == ASYM && has_lead_ && g_c > 0.0f) {
+    clew_set(beta, base + es, piv, ax, s_t, w);
+    kd_ *= g_c;
+    kl_ *= g_c;
+    if (kd_ != 0.0f || kl_ != 0.0f) {
+      clew_rows(kd_, kl_);
+      // only the rows the clew set reaches change (the tack corner does not: its offset is the same)
+      int r_to = 0;
+      while (r_to < rows_ && crow_[r_to] > 0.0f) ++r_to;
+      locals(phase, up_shape, p, d_cam, amp, shiver, w, r_to);
+    }
+  }
+  // §7 placement, row by row with the twist toward leeward
   for (int i = 0; i < rows_; ++i) {
+    const float th = base + trow_[i] + es;
+    const Transform3D xr = about(piv, ax, th) * s_t;
+    for (int j = 0; j < cols_; ++j) {
+      const int k = i * cols_ + j;
+      const Vector3& lc = loc_[k];
+      mid_[k] = xr.xform(tack_ + ah_ * lc.x + lh_ * lc.y + nh_ * lc.z);
+    }
+  }
+  // §7.6 the share of the flying shape: 1 up, growing over the last tenth of the hoist, going with the drop
+  fa_ = 0.0f;
+  if (kind_ == ASYM || kind_ == SYM) {
+    if (up_shape) {
+      fa_ = 1.0f;
+    } else if (phase == 2) {
+      const float kh = clampf((p - 0.9f) / 0.1f, 0.0f, 1.0f);
+      fa_ = kh * kh;
+    } else if (phase == 5) {
+      fa_ = 1.0f - std::pow(p, 0.3f);
+    }
+  }
+  clew0_ = mid_[cols_ - 1];
+  if (clearing) push(awa, hd);
+  layers(np);
+}
+
+// §6, §8 the local shape of every vertex, with the tack pin of §7.5
+void SailShape::locals(int64_t phase, bool up_shape, float p, float d_cam, float amp, float shiver,
+                       const Vector3& w, int rows_to) {
+  const int r_to = rows_to < 0 ? rows_ : std::min(rows_to, rows_);
+  for (int i = 0; i < r_to; ++i) {
     for (int j = 0; j < cols_; ++j) {
       const int k = i * cols_ + j;
       Vector3 lc;
@@ -459,47 +533,91 @@ void SailShape::update(int64_t phase, double progress, double beta_in, double ga
   if (kind_ == ASYM || kind_ == SYM) {
     const Vector3 dt0 = loc_[0] - Vector3(a_[0], l_[0], 0.0f);
     if (dt0.length_squared() > 0.0f) {
-      for (int k = 0; k < n_; ++k) {
-        const float w = 1.0f - clampf(tack_d_[k] / (TACK_PIN * sl_), 0.0f, 1.0f);
-        if (w > 0.0f) loc_[k] -= dt0 * (w * w);
+      for (int k = 0; k < r_to * cols_; ++k) {
+        const float wt = 1.0f - clampf(tack_d_[k] / (TACK_PIN * sl_), 0.0f, 1.0f);
+        if (wt > 0.0f) loc_[k] -= dt0 * (wt * wt);
       }
     }
   }
-  // §7.4 the ease of a flying sail off the other sails (the head lies on the luff axis)
-  const Vector3 hd = s_t.xform(head_);
-  tack_at_ = s_t.xform(tack_);
-  const bool clearing = clearance_ > 0.0f && (!obs_.empty() || has_mast_head_);
-  ease_ = 0.0f;
-  if (clearing && !obs_.empty()) {
-    sections(s_t, piv, ax, base);
-    ease_ = ease(beta, s_t, piv, ax, base, hd);
-  }
-  const float es = sgn(beta) * ease_;
-  // §7 placement, row by row with the twist toward leeward
+}
+
+// §7.7 the rows' chord over flat chord and camber with the draw-in kd (the low rows drawn in, the cloth's length
+// kept as camber), and the draw-down kl
+void SailShape::clew_rows(float kd, float kl) {
   for (int i = 0; i < rows_; ++i) {
-    const float th = base + trow_[i] + es;
-    const Transform3D xr = about(piv, ax, th) * s_t;
-    for (int j = 0; j < cols_; ++j) {
-      const int k = i * cols_ + j;
-      const Vector3& lc = loc_[k];
-      mid_[k] = xr.xform(tack_ + ah_ * lc.x + lh_ * lc.y + nh_ * lc.z);
+    float s = 1.0f / (1.0f + 8.0f / 3.0f * d0row_[i] * d0row_[i]);
+    if (kd != 0.0f && crow_[i] > 0.0f) {
+      s = std::min(s * (1.0f - kd * crow_[i]), 1.0f);
+      drow_[i] = std::sqrt(std::max(1.0f / s - 1.0f, 0.0f) * 3.0f / 8.0f);
+    } else {
+      drow_[i] = d0row_[i];
     }
+    srow_[i] = s;
   }
-  // §7.6 the share of the flying shape: 1 up, growing over the last tenth of the hoist, going with the drop
-  fa_ = 0.0f;
-  if (kind_ == ASYM || kind_ == SYM) {
-    if (up_shape) {
-      fa_ = 1.0f;
-    } else if (phase == 2) {
-      const float kh = clampf((p - 0.9f) / 0.1f, 0.0f, 1.0f);
-      fa_ = kh * kh;
-    } else if (phase == 5) {
-      fa_ = 1.0f - std::pow(p, 0.3f);
-    }
+  kl_ = kl;
+}
+
+// §7.7 the flying shape (up, no flutter) of vertex k with the draw-in kd and draw-down kl
+Vector3 SailShape::fly_at(int k, const Vector3& w, float kd, float kl) const {
+  const int i = k / cols_;
+  float s = 1.0f / (1.0f + 8.0f / 3.0f * d0row_[i] * d0row_[i]);
+  float d = d0row_[i];
+  if (kd != 0.0f && crow_[i] > 0.0f) {
+    s = std::min(s * (1.0f - kd * crow_[i]), 1.0f);
+    d = std::sqrt(std::max(1.0f / s - 1.0f, 0.0f) * 3.0f / 8.0f);
   }
-  clew0_ = mid_[cols_ - 1];
-  if (clearing) push(awa, hd);
-  layers(np);
+  const float a0 = a_[i * cols_], uc = uc_[k];
+  const float e = d * s * c_[i] * prof_[k];
+  return Vector3(a0 + (a_[k] - a0) * s, l_[k] - kl * c_[0] * crow_[i] * uc * uc, 0.0f) - w * e;
+}
+
+// §7.7 the corner's bisector b and the sheet's direction s with (kd, kl)
+void SailShape::clew_corner(float kd, float kl, float beta, float base, const Vector3& piv, const Vector3& ax,
+                            const Transform3D& s_t, const Vector3& w, Vector3& b, Vector3& s) const {
+  const Transform3D x0 = about(piv, ax, base + trow_[0]) * s_t;
+  const Transform3D x2 = about(piv, ax, base + trow_[CLEW_REACH]) * s_t;
+  Vector3 lc = fly_at(cols_ - 1, w, kd, kl);
+  const Vector3 cl = x0.xform(tack_ + ah_ * lc.x + lh_ * lc.y + nh_ * lc.z);
+  lc = fly_at(cols_ - 1 - CLEW_REACH, w, kd, kl);
+  const Vector3 ft = x0.xform(tack_ + ah_ * lc.x + lh_ * lc.y + nh_ * lc.z);
+  lc = fly_at(CLEW_REACH * cols_ + cols_ - 1, w, kd, kl);
+  const Vector3 et = x2.xform(tack_ + ah_ * lc.x + lh_ * lc.y + nh_ * lc.z);
+  b = ((ft - cl).normalized() + (et - cl).normalized()).normalized();
+  s = (cl - working_lead(beta)).normalized();
+}
+
+// §7.7 the draw-in and draw-down that lay the clew's bisector on the sheet: two Newton steps from (0, 0) with
+// difference derivatives, each clamped to its bounds; into kd_, kl_
+void SailShape::clew_set(float beta, float base, const Vector3& piv, const Vector3& ax, const Transform3D& s_t,
+                         const Vector3& w) {
+  Vector3 b, s0;
+  clew_corner(0.0f, 0.0f, beta, base, piv, ax, s_t, w, b, s0);
+  Vector3 u1 = s0.cross(up_);
+  if (u1.length_squared() < 1e-12f) u1 = s0.cross(fwd_);
+  u1 = u1.normalized();
+  const Vector3 u2 = u1.cross(s0);
+  auto res = [&](float kd, float kl, float& r0, float& r1) {
+    Vector3 bb, ss;
+    clew_corner(kd, kl, beta, base, piv, ax, s_t, w, bb, ss);
+    const Vector3 d = bb - ss;
+    r0 = d.dot(u1);
+    r1 = d.dot(u2);
+  };
+  float kd = 0.0f, kl = 0.0f;
+  for (int it = 0; it < CLEW_ITER; ++it) {
+    float r0, r1, a0, a1, c0, c1;
+    res(kd, kl, r0, r1);
+    res(kd + CLEW_STEP, kl, a0, a1);
+    res(kd, kl + CLEW_STEP, c0, c1);
+    const float j00 = (a0 - r0) / CLEW_STEP, j10 = (a1 - r1) / CLEW_STEP;  // d r / d kd
+    const float j01 = (c0 - r0) / CLEW_STEP, j11 = (c1 - r1) / CLEW_STEP;  // d r / d kl
+    const float det = j00 * j11 - j01 * j10;
+    if (std::fabs(det) < 1e-9f) break;
+    kd = clampf(kd - (j11 * r0 - j01 * r1) / det, CLEW_KD_LO, CLEW_KD_HI);
+    kl = clampf(kl - (-j10 * r0 + j00 * r1) / det, CLEW_KL_LO, CLEW_KL_HI);
+  }
+  kd_ = kd;
+  kl_ = kl;
 }
 
 Vector3 SailShape::working_lead(double beta) const {
@@ -574,6 +692,7 @@ float SailShape::clear_x(const Section& o, const Vector3& p, float reach, Vector
                                                                  o.z.begin()) - 1));
   const float* bx = o.box.data() + 4 * r;
   const float px = p.dot(fwd_), py = p.dot(port_);
+  reach += RUN_ON * clearance_;  // the bounds cover the leech's run-on
   if (px < bx[0] - reach || px > bx[1] + reach || py < bx[2] - reach || py > bx[3] + reach) return INFINITY;
   const float den = o.z[r + 1] - o.z[r];
   const float t = den > 1e-6f ? clampf((z - o.z[r]) / den, 0.0f, 1.0f) : 0.0f;

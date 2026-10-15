@@ -762,7 +762,9 @@ alpha     k · smoothstep(0, 0.08, σ) · (1 − smoothstep(0.7, 1, σ))
 The drape adds the lift to the sea height and keeps the ribbon's clearance pull, reduced by the lift above 0.1 m
 (so the high part is not pulled). Shading (`wm_bow_alpha`): a translucent, lighter water sheet between the hull and
 the crest (alpha 0.18), a broken foam band on the crest (τ 0.28 to 0.78) and foam spilling on its outer face, the
-foam texture flowing aft at the boat's speed; foam is the wake's colour, roughness 0.6.
+foam texture flowing aft at the boat's speed; foam is the wake's colour, roughness 0.6. The foam is speckled along
+its length (the blob channel of the foam noise at 0.6 m, not the streak channel, which drew the sheet as rigid
+rays) and ends raggedly, each part at its own length (`σ` from 0.35..0.75 to 0.6..1.0 with the coarse noise).
 
 **Mist** (quality H, and M for the own boat): soft spray clouds, never dots. They appear only above
 `ratio = 0.55`, when the bow plunges, and in bursts when the bow meets a wave:
@@ -816,8 +818,10 @@ the fine foam noise (two taps) and `p` the coarse patch noise (one tap):
 lw      = b · (0.6 + 0.8·p) · (1 − 0.5·smoothstep(0, 0.3, age))   // width varies slowly along the line, thins with age
 line    = s ≤ 1 ? exp(−((s − (1 − lw)) / (0.5·lw))²) : 0     // a soft band just inside each edge, nothing outside
 broken  = smoothstep(0.42, 0.68, 0.6·p + 0.4·n2)           // continuous but broken, opacity varying slowly
-lace    = 0.45 + 0.55·smoothstep(0.35, 0.7, n)              // foam texture within the line, never a smooth rope
-lines   = line · broken · lace · (1 − smoothstep(0, 0.3, age))   // brightest at the hull, gone after 1 to 3 s
+lace    = 0.15 + 0.85·smoothstep(0.4, 0.65, 0.6·n + 0.4·p)    // the centre wake's lace within the line
+lines   = line · broken · lace · smoothstep(0, 0.015, age) · (1 − smoothstep(0, 0.3, age))
+                                                            // out of the bow wave, brightest near the hull,
+                                                            // gone after 1 to 3 s
 mid     = 1 − smoothstep(0.6·r, r, s)                       // the turbulent wake
 th      = 0.45 + 0.35·age                                   // the foam thins: more of it falls under the threshold
 breakup = smoothstep(th, th + 0.4 − 0.25·age, 0.6·n + 0.4·p)   // and its patches get sharper borders
@@ -831,7 +835,10 @@ operations; nothing in the sea shader.
 
 A second ribbon from the **transom** (no spray) is the **turbulent wake**: `w0 = 0.45·bwl` (the hull's breadth near
 the stern), widening slowly as the turbulence spreads, `w = w0·(1 + 0.15·t)` (to about twice the hull's width after
-9 s), not at the wake angle. On tiers
+9 s), not at the wake angle. It emerges from under the transom: over the first `bwl` of distance sailed
+(`v·t`) its alpha ramps in and its band narrows to 0.4 of its width at the start
+(`k = smoothstep(0, bwl, v·t)`: alpha × k, `COLOR.r = 0.4 + 0.6·k`), so it has a feathered, rounded start instead of
+a straight edge. On tiers
 M and H every ribbon is also drawn into a camera-centred **wake normal buffer** (RG8, 512 × 512 over 400 m, cleared
 each frame) as a normal disturbance that the sea shader adds to its detail normal, so wakes also ripple the
 reflections. The buffer is a sub-viewport with its own world (the ribbons' meshes shared), so the scene's cameras

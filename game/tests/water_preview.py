@@ -306,7 +306,7 @@ in vec3 v_wpos;
 out vec4 frag;
 const vec3 COL_SHEET = vec3(0.10, 0.22, 0.24);
 void main() {
-    vec2 f = wm_bow_alpha(v_uv, v_a, texture(foam_tex, v_flow * vec2(0.9, 0.35)).r,
+    vec2 f = wm_bow_alpha(v_uv, v_a, texture(foam_tex, v_flow * vec2(1.6, 0.9)).g,
                           texture(foam_tex, v_flow * vec2(0.45, 0.2) + 0.61).g);
     vec3 V = normalize(u_cam - v_wpos);
     vec3 c = shade(mix(COL_SHEET, col_foam, f.x), mix(0.12, 0.6, f.x), 0.4, vec3(0.0, 1.0, 0.0), V);

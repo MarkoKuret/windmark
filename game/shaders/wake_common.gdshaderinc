@@ -44,7 +44,11 @@ vec2 wm_bow_alpha(vec2 uv, float a, float n1, float n2) {
 	float crest = smoothstep(0.28, 0.42, tau) * (1.0 - smoothstep(0.58, 0.78, tau));
 	float spill = smoothstep(0.5, 0.62, tau) * (1.0 - smoothstep(0.8, 1.0, tau));
 	float br = smoothstep(0.35, 0.8, n1 * 0.75 + n2 * 0.45);
-	float foam = clamp(crest * (0.7 + 0.3 * br) + spill * (0.35 + 0.65 * br) * (1.0 - 0.5 * sigma), 0.0, 1.0);
+	// thrown water, not rays: speckled along its length, ragged ends of varied length
+	float speck = smoothstep(0.38, 0.62, n1);
+	float ends = 1.0 - smoothstep(0.35 + 0.4 * n2, 0.6 + 0.4 * n2, sigma);
+	float foam = clamp((crest * (0.25 + 0.75 * speck) + spill * (0.25 + 0.75 * br) * speck * (1.0 - 0.5 * sigma)) * ends,
+			0.0, 1.0);
 	// the stem throws white water right at the bow
 	foam = max(foam, (1.0 - smoothstep(0.0, 0.22, sigma)) * (1.0 - smoothstep(0.0, 0.5, tau)) * (0.6 + 0.4 * br));
 	float sheet = 0.18 * (1.0 - smoothstep(0.35, 0.5, tau));
@@ -76,8 +80,9 @@ float wm_wake_alpha(vec2 uv, float centre, float line, float a, float age, float
 	float lw = line * (0.6 + 0.8 * p) * (1.0 - 0.5 * smoothstep(0.0, 0.3, age));
 	float lq = (s - (1.0 - lw)) / max(0.5 * lw, 1e-4);
 	float band = line > 0.0 && s <= 1.0 ? exp(-lq * lq) : 0.0;
-	float lines = band * smoothstep(0.42, 0.68, 0.6 * p + 0.4 * n2) * (0.45 + 0.55 * smoothstep(0.35, 0.7, n1))
-			* (1.0 - smoothstep(0.0, 0.3, age));
+	float lace = smoothstep(0.4, 0.65, 0.6 * (n1 * 0.7 + n2 * 0.5) + 0.4 * p);
+	float lines = band * smoothstep(0.42, 0.68, 0.6 * p + 0.4 * n2) * (0.15 + 0.85 * lace)
+			* smoothstep(0.0, 0.015, age) * (1.0 - smoothstep(0.0, 0.3, age));
 	// the turbulent wake
 	float mid = 1.0 - smoothstep(0.6 * centre, centre, s);
 	// the bubbles break up into clumps and streaks, and with age into separate patches that thin out

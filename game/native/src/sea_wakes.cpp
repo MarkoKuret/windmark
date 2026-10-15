@@ -370,7 +370,14 @@ void WakeRibbon::build(double t_s) {
     ex /= wsum;
     const double reach[2] = {hw + feather + ex.x, hw + feather + ex.y};
     const int base = static_cast<int>(pos_.size());
-    const double centre = kind_ == 1 ? 1.0 : 0.0;
+    double centre = kind_ == 1 ? 1.0 : 0.0;
+    double a_draw = a;
+    if (kind_ == 1) {
+      // WakeRibbonRef: the turbulent wake emerges from under the transom over a hull's breadth
+      const double ks = smooth(0.0, r.w0 / 0.45, r.v * (t_s - r.t));
+      centre = 0.4 + 0.6 * ks;
+      a_draw = a * ks;
+    }
     const double line = kind_ == 1 ? 0.0 : clampd(LINE_M / std::max(hw, 1e-3), 0.0, 1.0);
     const float vv = static_cast<float>(r.dist / 10.0);
     const double age = clampd((t_s - r.t) / LIFE_S, 0.0, 1.0);
@@ -390,7 +397,7 @@ void WakeRibbon::build(double t_s) {
       uv_.emplace_back(static_cast<real_t>(u), vv);
       uv2_.push_back(lp);
       col_.emplace_back(static_cast<float>(centre), static_cast<float>(age), static_cast<float>(line),
-                        (i == 0 || i == ACROSS - 1) ? 0.0f : static_cast<float>(a));
+                        (i == 0 || i == ACROSS - 1) ? 0.0f : static_cast<float>(a_draw));
     }
     if (prev >= 0) {
       for (int i = 0; i < ACROSS - 1; ++i) {

@@ -29,7 +29,7 @@ void vertex() {
 }
 
 void fragment() {
-	vec2 f = wm_bow_alpha(UV, COLOR.a, texture(foam_tex, v_flow * vec2(0.9, 0.35)).r,
+	vec2 f = wm_bow_alpha(UV, COLOR.a, texture(foam_tex, v_flow * vec2(1.6, 0.9)).g,
 			texture(foam_tex, v_flow * vec2(0.45, 0.2) + 0.61).g);
 	ALBEDO = mix(col_sheet, col_foam, f.x);
 	ALPHA = f.y;

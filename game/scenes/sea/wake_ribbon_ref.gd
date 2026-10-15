@@ -211,6 +211,11 @@ func build_arrays(t_s: float) -> Array:
 		var reach := [hw + feather + ex.x, hw + feather + ex.y]
 		var base := verts.size()
 		var centre := 1.0 if kind == 1 else 0.0
+		if kind == 1:
+			# the turbulent wake emerges from under the transom: feathered, rounded start over a hull's breadth
+			var ks := smoothstep(0.0, float(row["w0"]) / 0.45, float(row["v"]) * age(row, t_s))
+			centre = 0.4 + 0.6 * ks
+			a *= ks
 		var line := 0.0 if kind == 1 else clampf(LINE_M / maxf(hw, 1e-3), 0.0, 1.0)
 		var p: Vector2 = row["p"]
 		for i in ACROSS:

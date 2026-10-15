@@ -315,9 +315,9 @@ MIST_VS = """
 uniform mat4 u_vp;
 in vec3 in_pos;
 in vec2 in_uv;
-in vec2 in_as;
+in vec3 in_as;
 out vec2 v_uv;
-out vec2 v_as;
+out vec3 v_as;
 out vec3 v_wpos;
 void main() {
     v_wpos = in_pos;
@@ -330,16 +330,16 @@ void main() {
 # mist.gdshader's fragment() (the engine also fades the sprite against the scene depth)
 MIST_FS = """
 in vec2 v_uv;
-in vec2 v_as;
+in vec3 v_as;
 in vec3 v_wpos;
 out vec4 frag;
 void main() {
     float c = cos(v_as.y * 6.2831);
     float sn = sin(v_as.y * 6.2831);
     vec2 ruv = mat2(vec2(c, sn), vec2(-sn, c)) * (v_uv - 0.5);
-    float n = texture(foam_tex, ruv * 0.7 + v_as.y * 3.7).r;
+    float n = texture(foam_tex, ruv * (0.7 + 1.3 * v_as.z) + v_as.y * 3.7).r;
     float d = length(v_wpos - u_cam);
-    float a = wm_mist_alpha(v_uv, n) * v_as.x * smoothstep(1.0, 3.0, d);
+    float a = wm_mist_alpha(v_uv, n, v_as.z) * v_as.x * smoothstep(1.0, 3.0, d);
     vec3 view_dir = normalize(v_wpos - u_cam);
     float fwd = pow(max(dot(view_dir, normalize(sun_dir)), 0.0), 3.0);
     vec3 col = 0.35 * sky_horizon + 0.12 * sun_color * (1.0 + 2.0 * fwd);
@@ -842,13 +842,15 @@ def render(ctx, d, size, wakes=True, shadows="auto"):
         # camera-facing quads, as the mist shader's billboard
         right, up = basis[:, 0], basis[:, 1]
         verts = []
-        for x, y, z, size, alpha, seed in sc["mist"]:
+        for m in sc["mist"]:
+            x, y, z, size, alpha, seed = m[:6]
+            kind = m[6] if len(m) > 6 else 0.0
             ctr = np.array([x, z, -y])
             for (cu, cv) in ((0, 0), (1, 0), (1, 1), (0, 0), (1, 1), (0, 1)):
                 p = ctr + right * (cu - 0.5) * size + up * (cv - 0.5) * size
-                verts.append([p[0], p[1], p[2], cu, 1 - cv, alpha, seed])
+                verts.append([p[0], p[1], p[2], cu, 1 - cv, alpha, seed, kind])
         mv = ctx.buffer(np.array(verts, "f4").tobytes())
-        ctx.vertex_array(mist, [(mv, "3f 2f 2f", "in_pos", "in_uv", "in_as")]).render(moderngl.TRIANGLES)
+        ctx.vertex_array(mist, [(mv, "3f 2f 3f", "in_pos", "in_uv", "in_as")]).render(moderngl.TRIANGLES)
     fbo.depth_mask = True
     ctx.disable(moderngl.BLEND)
 

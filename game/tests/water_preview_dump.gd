@@ -53,6 +53,12 @@ const SHOTS := [
 	["sea15_aerial_M", SeaEnvSource.Mode.PLACEHOLDER, 15.0, 1, SeaQuality.Tier.M, {"puffs": true, "fetch": 30000.0, "from": 230.0, "swell": [0.8, 12.0, 240.0], "radius": 400.0, "speed": 6.5}],
 	["sea8_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 8.0, 0, SeaQuality.Tier.M, {"puffs": true, "fetch": 30000.0, "from": 230.0, "swell": [0.8, 12.0, 240.0], "radius": 400.0, "speed": 3.5}],
 	["sea8_aerial_M", SeaEnvSource.Mode.PLACEHOLDER, 8.0, 1, SeaQuality.Tier.M, {"puffs": true, "fetch": 30000.0, "from": 230.0, "swell": [0.8, 12.0, 240.0], "radius": 400.0, "speed": 3.5}],
+	# the game itself (scenes/sail_test.tscn on the core): WM7 at Fremantle running under main and jib, the chase
+	# camera, after `seconds` of sailing; the sea, wind and puffs are the core's (no swell in this setup)
+	["sail25_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0}],
+	["sail18_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 18.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0}],
+	["sail12_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 12.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0}],
+	["sailseq25_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0, "seq": 24, "step_ms": 250.0}],
 ]
 
 
@@ -117,6 +123,9 @@ func _next() -> void:
 		return
 	_seq = 0
 	var s: Array = SHOTS[_shot]
+	if _opt("sail", false):
+		_start_sail(s)
+		return
 	_scene = (load("res://scenes/water_test.tscn") as PackedScene).instantiate()
 	var rig: SkyRig = _scene.get_node("SkyDay")
 	if _sky != "":
@@ -152,9 +161,59 @@ func _next() -> void:
 	_frames = 0
 
 
+var _sail_t0 := -1.0
+
+
+## A shot of the game scene: WM7 at Fremantle on the core (as generated/clip/downwind_clip.gd sets it up).
+func _start_sail(s: Array) -> void:
+	_scene = (load("res://scenes/sail_test.tscn") as PackedScene).instantiate()
+	_scene.class_id = "wm7"
+	_scene.venue = "fremantle"
+	_scene.start_x = 3000.0
+	_scene.start_y = -500.0
+	_scene.wind_speed_kn = s[2]
+	_scene.wind_from_deg = rad_to_deg(4.014257)
+	_scene.puffs = true
+	_scene.world_seed = 7
+	_scene.start_twa_deg = 145.0
+	_scene.with_pause_menu = false
+	_scene.with_results = false
+	_scene.no_hud = true
+	_scene.sea_quality = s[4]
+	_scene.scripted_input = RawInput.new()
+	root.add_child(_scene)
+	(_scene.get_node("Wakes") as SeaWakes).use_reference = true
+	(_scene.get_node("Sea") as Sea).whitecaps = _caps
+	_sail_t0 = -1.0
+	_frames = 0
+
+
+func _process_sail() -> bool:
+	var sea: Sea = _scene.get_node("Sea")
+	if _sail_t0 < 0.0:
+		_sail_t0 = sea.render_time_ms
+	var n_seq: int = _opt("seq", 0)
+	var due := 1000.0 * float(_opt("seconds", 15.0)) + _seq * float(_opt("step_ms", 250.0))
+	if sea.render_time_ms - _sail_t0 < due:
+		return false
+	if n_seq > 0:
+		_dump("%s_%02d" % [_name(SHOTS[_shot]), _seq])
+		_seq += 1
+		if _seq < n_seq:
+			return false
+	else:
+		_dump(_name(SHOTS[_shot]))
+	_scene.queue_free()
+	_scene = null
+	_next()
+	return false
+
+
 func _process(_delta: float) -> bool:
 	if _scene == null:
 		return false
+	if _opt("sail", false):
+		return _process_sail()
 	var sea: Sea = _scene.get_node("Sea")
 	sea.render_time_ms += DT_MS
 	_frames += 1
@@ -280,7 +339,8 @@ func _dump(name: String, light := false) -> void:
 				"water": _uniforms(sea.material)}, "  "))
 		_dumped += 1
 		return
-	var cam: Camera3D = _scene.get_node("Camera")
+	var sail: bool = _opt("sail", false)
+	var cam: Camera3D = _scene.rig.camera if sail else _scene.get_node("Camera")
 	var sky: SkyRig = _scene.get_node("SkyDay")
 	var env := sky.environment()
 	var data := {
@@ -356,12 +416,12 @@ func _dump(name: String, light := false) -> void:
 	var mist := []
 	for m in wakes.mist_sprites():
 		var look := BowWave.mist_look(m)
-		mist.append([m["pos"].x, m["pos"].y, m["pos"].z, look.x, look.y, m["seed"]])
+		mist.append([m["pos"].x, m["pos"].y, m["pos"].z, look.x, look.y, m["seed"], m.get("k", 0.0)])
 	data["mist"] = mist
 	# boat triangles (world), one entry per mesh surface with its material (boat shader or a BaseMaterial3D)
 	var boats := []
 	var tex_files := {}
-	var stack: Array = [_scene.get_node("Boat")]
+	var stack: Array = [_scene.boat_view if sail else _scene.get_node("Boat")]
 	while not stack.is_empty():
 		var n: Node = stack.pop_back()
 		stack.append_array(n.get_children())

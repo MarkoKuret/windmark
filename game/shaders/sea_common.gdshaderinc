@@ -295,14 +295,16 @@ uniform vec4 caps_w[6];
 uniform float caps_rest = 0.0;   // the components not uploaded, each at its window mean: sum of b * mean
 uniform vec4 caps_uv = vec4(0.0, 1.0, 0.0, 0.0);
 uniform vec4 caps_thr = vec4(1e3);              // breaking thresholds calibrated at the covers 0.05, 0.2, 0.8, 3.2 %
-uniform vec4 caps_grp = vec4(0.0, 0.5, 0.0, 0.0);   // wave-group envelope: (amplitude, noise mean, ug, vg)
+uniform vec4 caps_grp = vec4(0.0, 0.5, 0.0, 0.0);   // wave-group envelope: (amplitude / noise sd, noise mean, ug, vg)
+uniform vec2 caps_brk = vec2(0.0);                  // short-crest breakup frame (ub, vb)
 const float WM_GROUP_TILE = 600.0;
+const vec2 WM_BREAK_TILE = vec2(30.0, 15.0);
 
 const vec2 WM_CAPS_TILE = vec2(4.5, 3.0);     // m along e, across
 
 // Foam intensity F in [0, 1]: the steepness-weighted crest windows of the components that pass a crest here,
-// summed (crests meeting in a wave group make a cap), plus the wave-group envelope (the foam noise's coarse channel,
-// drifting at the group speed), against the sea's threshold for the measured cover at the local wind (m/s).
+// summed (crests meeting in a wave group make a cap), scaled by the wave-group envelope (the foam noise's coarse
+// channel, drifting at the group speed) and the short-crest breakup, against the sea's threshold for the measured cover at the local wind (m/s).
 // Components the pixel footprint px cannot show count with their window mean, so far caps never alias.
 float wm_caps_intensity(vec2 xl, float px, float expo, float wind) {
 	float kn = wind / WM_KNOT;
@@ -323,13 +325,18 @@ float wm_caps_intensity(vec2 xl, float px, float expo, float wind) {
 		float q = d * (d >= 0.0 ? w.x : w.y);
 		S += k.w * mix(w.z, exp(-q * q), smoothstep(2.0, 4.0, w.w * inv_px));
 	}
-	vec2 qg = vec2(dot(xl, caps_uv.xy), dot(xl, vec2(-caps_uv.y, caps_uv.x))) / WM_GROUP_TILE + caps_grp.zw;
-	S = S * expo + caps_grp.x * (texture(foam_tex, qg).g - caps_grp.y);
+	// the wave groups scale the crests' steepness, and the short-crest breakup lets only a few metres of each crest
+	// break (multiplying: foam stays on the crests, never a sheet over a group)
+	vec2 qd = vec2(dot(xl, caps_uv.xy), dot(xl, vec2(-caps_uv.y, caps_uv.x)));
+	float env = max(0.0, 1.0 + caps_grp.x * (texture(foam_tex, qd / WM_GROUP_TILE + caps_grp.zw).g - caps_grp.y));
+	float brk = clamp((texture(foam_tex, qd / WM_BREAK_TILE + caps_brk).g - 0.55) * 4.0, 0.0, 1.0);
+	brk = mix(0.6, brk, smoothstep(2.0, 4.0, 6.0 * inv_px));
+	S = S * expo * env * brk;
 	// Monahan's cover W = 3.84e-6 U^3.41; x = log2(W / 0.0005) / 2 indexes the calibrated thresholds
 	float x = 0.5 * log2(3.84e-6 * pow(max(wind, 0.1), 3.41) / 0.0005);
 	float Sb = x < 1.0 ? mix(caps_thr.x, caps_thr.y, x) : (x < 2.0 ? mix(caps_thr.y, caps_thr.z, x - 1.0)
 			: mix(caps_thr.z, caps_thr.w, x - 2.0));
-	return clamp((S - Sb) * 40.0, 0.0, 1.0) * gate;   // S_W = 0.025
+	return clamp((S - Sb) * 28.5714, 0.0, 1.0) * gate;   // S_W = 0.035
 }
 
 // Coverage of intensity F on the four nested density levels of the foam texture (lace .. near-solid).
@@ -354,7 +361,7 @@ void wm_apply_caps(inout WmSurface S, vec2 xl, float px, float expo, float dist,
 	S.albedo = mix(S.albedo, vec3(0.05, 0.20, 0.23), 0.3 * smoothstep(0.2, 0.8, F));
 	vec2 q = vec2(dot(xl, caps_uv.xy), dot(xl, vec2(-caps_uv.y, caps_uv.x)));
 	vec4 L = texture(caps_tex, q / WM_CAPS_TILE + caps_uv.zw);
-	float a = 0.92 * wm_caps_cover(F, L) * (0.3 + 0.7 * smoothstep(0.0, 0.6, F));   // thin foam is translucent
+	float a = 0.92 * wm_caps_cover(0.8 * F, L) * (0.3 + 0.7 * smoothstep(0.0, 0.6, F));   // lace, never a solid sheet; thin foam is translucent
 	S.albedo = mix(S.albedo, col_foam, a);
 	S.roughness = mix(S.roughness, 0.55, a);
 	S.emission *= 1.0 - a;

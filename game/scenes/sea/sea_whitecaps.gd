@@ -13,18 +13,29 @@ const MONAHAN_B := 3.41
 ## the covers the thresholds are calibrated at: COVER_0 · 4^k, k = 0..3 (0.05, 0.2, 0.8, 3.2 %)
 const COVER_0 := 0.0005
 ## steepness above the threshold for full foam intensity
-const S_W := 0.025
+const S_W := 0.035
 ## wave-group envelope: the foam noise's coarse channel over GROUP_TILE metres, drifting at half the dominant
-## wave's phase speed, scaled to GROUP_AMP of the spread of the steepness sum
+## wave's phase speed; it scales the steepness sum by 1 + GROUP_AMP·(G − mean)/sd (at least 0)
 const GROUP_TILE := 600.0
-const GROUP_AMP := 1.5
+const GROUP_AMP := 0.5
+## short-crestedness: the same channel over BREAK_TILE metres (along the dominant wave, across), riding it at its
+## phase speed, passes a crest's foam only where it is above BREAK_LO (fully above BREAK_HI), so a cap is a few
+## metres long, not a crest-long bar; BREAK_FEATURE is its feature size, for the pixel footprint
+const BREAK_TILE := Vector2(30.0, 15.0)
+const BREAK_LO := 0.55
+const BREAK_HI := 0.8
+const BREAK_FEATURE := 6.0
+const BREAK_FAR := 0.6
+## wave age: a component is wind sea (forced by the wind, can break) when its phase speed is at most WIND_SEA_AGE
+## times the wind speed; slower than that it is a swell and never carries foam
+const WIND_SEA_AGE := 1.2
 ## calibration sample: points over a CAL_SIZE square
-const CAL_POINTS := 16384
+const CAL_POINTS := 32768
 const CAL_SIZE := 600.0
 ## crest window half widths, cycles, ahead of the crest (front) and behind it (back), each at least the width in
 ## metres below over the wavelength
 const SIGMA_FRONT := 0.08
-const SIGMA_BACK := 0.20
+const SIGMA_BACK := 0.15
 const WIDTH_FRONT_M := 0.6
 const WIDTH_BACK_M := 1.2
 ## foam texture tile, metres along the dominant wave's travel and across it
@@ -38,6 +49,20 @@ const MIN_WEIGHT := 0.004
 
 ## Foam components uploaded at most (the shader's WM_CAPS_N: 4 on tier L, 6 on M and H, heaviest first)
 const MAX_CAPS := 6
+
+
+## The components as the whitecaps see them (water_render.md §4.4): the swell, every component faster than
+## WIND_SEA_AGE·u (u: the base wind, m/s), set to amplitude 0, so it carries no foam and is never the dominant wave.
+## Sea order and indices are kept.
+static func wind_sea_only(components: Array, u: float) -> Array:
+	var out := []
+	for c in components:
+		var speed := 9.81 * (float(c[4]) * 0.001) / TAU   # deep water: c = g T / 2 pi
+		if speed <= WIND_SEA_AGE * u:
+			out.append(c)
+		else:
+			out.append([0.0, c[1], c[2], c[3], c[4]])
+	return out
 
 
 ## The foam weight of each component (Sea order): b = a·k·min(1, lam/lam_p)², its steepness weighted down for waves
@@ -106,7 +131,7 @@ static func wave_uniforms(components: Array, sel: PackedInt32Array, phases: Pack
 	return out
 
 
-## The largest-amplitude component (the peak of the wind sea, or a swell when it is bigger), -1 for none.
+## The largest-amplitude component (of the wind sea after wind_sea_only), -1 for none.
 static func dominant_index(components: Array) -> int:
 	var best := -1
 	for i in components.size():
@@ -204,8 +229,8 @@ static func group_stats() -> Vector2:
 
 
 ## Calibration, once per sea: {thr: caps_thr, amp: g_amp, mean: G_mean}. The steepness sum (every component
-## resolved) plus the group envelope at CAL_POINTS fixed points; each threshold makes the mean foam opacity, on the
-## texture's mean density levels, equal to its cover COVER_0·4^k.
+## resolved) times the group envelope and the short-crest breakup at CAL_POINTS fixed points; each threshold makes the
+## foamed area (F at least 0.5, what a whitecap photograph counts) equal to its cover COVER_0·4^k.
 static func calibrate(components: Array, sel: PackedInt32Array) -> Dictionary:
 	var gs := group_stats()
 	var out := {"thr": Vector4(1e3, 1e3, 1e3, 1e3), "amp": 0.0, "mean": gs.x}
@@ -222,28 +247,18 @@ static func calibrate(components: Array, sel: PackedInt32Array) -> Dictionary:
 	var e := _dir(components)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 98
-	var s_raw := PackedFloat32Array()
-	var g := PackedFloat32Array()
-	s_raw.resize(CAL_POINTS)
-	g.resize(CAL_POINTS)
-	var sm := 0.0
-	var s2 := 0.0
+	var tot := PackedFloat32Array()
+	tot.resize(CAL_POINTS)
+	var amp := GROUP_AMP / maxf(gs.y, 1e-4)
 	for k in CAL_POINTS:
 		var x := Vector2(rng.randf_range(-0.5, 0.5), rng.randf_range(-0.5, 0.5)) * CAL_SIZE
 		var s := rest
 		for j in sel.size():
 			s += ck[j].w * window(ck[j].x * x.x + ck[j].y * x.y + ck[j].z, cw[j])
-		s_raw[k] = s
-		sm += s
-		s2 += s * s
-		g[k] = group_noise(Vector2(x.dot(e), x.dot(Vector2(-e.y, e.x))) / GROUP_TILE + Vector2(0.37, 0.61))
-	sm /= CAL_POINTS
-	var sd := sqrt(maxf(s2 / CAL_POINTS - sm * sm, 0.0))
-	var amp := GROUP_AMP * sd / maxf(gs.y, 1e-4)
-	var tot := PackedFloat32Array()
-	tot.resize(CAL_POINTS)
-	for k in CAL_POINTS:
-		tot[k] = s_raw[k] + amp * (g[k] - gs.x)
+		var q := Vector2(x.dot(e), x.dot(Vector2(-e.y, e.x)))
+		var g := group_noise(q / GROUP_TILE + Vector2(0.37, 0.61))
+		var br := group_noise(q / BREAK_TILE + Vector2(0.13, 0.29))
+		tot[k] = s * maxf(0.0, 1.0 + amp * (g - gs.x)) * breakup(br, 0.0)
 	tot.sort()
 	# only the top of the distribution can pass a threshold for covers up to a few per cent
 	var top := tot.slice(int(CAL_POINTS * 0.85))
@@ -257,8 +272,8 @@ static func calibrate(components: Array, sel: PackedInt32Array) -> Dictionary:
 			var mid := 0.5 * (lo + hi)
 			var a := 0.0
 			for v in top:
-				if v > mid:
-					a += opacity(clampf((v - mid) / S_W, 0.0, 1.0), lm)
+				if v > mid + 0.5 * S_W:
+					a += 1.0
 			if a / CAL_POINTS > want:
 				lo = mid
 			else:
@@ -267,6 +282,30 @@ static func calibrate(components: Array, sel: PackedInt32Array) -> Dictionary:
 	out["thr"] = Vector4(thr[0], thr[1], thr[2], thr[3])
 	out["amp"] = amp
 	return out
+
+
+## The short-crest breakup factor of a noise value g at a pixel footprint px (m): 0 below BREAK_LO, 1 above
+## BREAK_HI; where the pixel cannot resolve the breakup's features it tends to BREAK_FAR.
+static func breakup(g: float, px: float) -> float:
+	var b := clampf((g - BREAK_LO) / (BREAK_HI - BREAK_LO), 0.0, 1.0)
+	if px <= 0.0:
+		return b
+	return lerpf(BREAK_FAR, b, smoothstep(2.0, 4.0, BREAK_FEATURE / px))
+
+
+## The breakup frame for a camera at (ox, oy) at t_ms: the camera-origin part of the breakup's texture coordinates,
+## riding the dominant wave at its phase speed (in double, mod 1).
+static func break_frame(components: Array, ox: float, oy: float, t_ms: float) -> Vector2:
+	var p := dominant_index(components)
+	if p < 0:
+		return Vector2.ZERO
+	var c: Array = components[p]
+	var kap := Vector2(c[1], c[2]).length()
+	var e := Vector2(c[1], c[2]) / kap
+	var speed := (1.0 / kap) / (float(c[4]) * 0.001)
+	var u := (ox * e.x + oy * e.y - speed * t_ms * 0.001) / BREAK_TILE.x + 0.13
+	var v := (-ox * e.y + oy * e.x) / BREAK_TILE.y + 0.29
+	return Vector2(u - floorf(u), v - floorf(v))
 
 
 static func _dir(components: Array) -> Vector2:
@@ -293,11 +332,12 @@ static func group_frame(components: Array, cal: Dictionary, ox: float, oy: float
 
 
 ## CPU mirror of wm_caps_intensity: the foam intensity F in [0, 1] at a camera-relative point xl (m) for the
-## uniforms caps_k, caps_w, caps_rest, caps_thr and caps_grp (cal: the calibration; grp: the group frame), the tier's
+## uniforms caps_k, caps_w, caps_rest, caps_thr, caps_grp and caps_brk (cal: the calibration; grp: the group frame;
+## brk: the breakup frame), the tier's
 ## count n, a pixel footprint px (m; 0 = every component resolved), the exposure and the local wind (m/s, the puff
 ## factor times the base).
 static func intensity(ck: PackedVector4Array, cw: PackedVector4Array, rest: float, n: int, xl: Vector2, px: float,
-		expo: float, wind: float, cal: Dictionary, grp: Vector4, e: Vector2) -> float:
+		expo: float, wind: float, cal: Dictionary, grp: Vector4, e: Vector2, brk: Vector2) -> float:
 	var kn := wind / KNOT
 	var gate := smoothstep(GATE_KN.x, GATE_KN.y, kn)
 	if gate <= 0.0 or expo <= 0.0:
@@ -310,8 +350,10 @@ static func intensity(ck: PackedVector4Array, cw: PackedVector4Array, rest: floa
 		var w := cw[i]
 		var r := 1.0 if px <= 0.0 else smoothstep(2.0, 4.0, w.w / px)
 		s += k.w * lerpf(w.z, window(k.x * xl.x + k.y * xl.y + k.z, w), r)
-	var g := group_noise(Vector2(xl.dot(e), xl.dot(Vector2(-e.y, e.x))) / GROUP_TILE + Vector2(grp.z, grp.w))
-	s = s * expo + grp.x * (g - grp.y)
+	var q := Vector2(xl.dot(e), xl.dot(Vector2(-e.y, e.x)))
+	var g := group_noise(q / GROUP_TILE + Vector2(grp.z, grp.w))
+	var br := group_noise(q / BREAK_TILE + brk)
+	s = s * expo * maxf(0.0, 1.0 + grp.x * (g - grp.y)) * breakup(br, px)
 	return clampf((s - threshold(wind, cal["thr"])) / S_W, 0.0, 1.0) * gate
 
 
@@ -326,7 +368,7 @@ static func level_cover(f: float, L: Color) -> float:
 ## CPU mirror of the drawn foam opacity of wm_apply_caps (before the distance fade): intensity F on the density
 ## levels L, thin foam translucent.
 static func opacity(f: float, L: Color) -> float:
-	return OPACITY * level_cover(f, L) * (0.3 + 0.7 * smoothstep(0.0, 0.6, f))
+	return OPACITY * level_cover(0.8 * f, L) * (0.3 + 0.7 * smoothstep(0.0, 0.6, f))
 
 
 static var _level_means := Color(-1, 0, 0, 0)

@@ -42,6 +42,9 @@ var static_version := 0
 var caps_select := PackedInt32Array()
 ## §4.4 whitecap calibration of this sea (SeaWhitecaps.calibrate), {} with the caps off
 var caps_cal := {}
+## §4.4 the components as the whitecaps see them (the swell at amplitude 0) and the base wind they were chosen at
+var caps_comps: Array = []
+var _caps_u := 7.2
 ## Whitecaps (water_render.md §4.4): off by default (owner, 2026-10-05); the look panel and `--caps=on` turn them on.
 ## false draws no whitecaps (no foam weights uploaded).
 var whitecaps := false:
@@ -208,6 +211,17 @@ static func wind_roughness(u: float, geo_var: float, px: float, dist: float, n_d
 	return [r, k_detail, k_glint]
 
 
+## §4.4 whitecaps, once per sea and again when the base wind changes by more than 5 %: the wind sea's components
+## (the swell never carries caps), the ones that carry foam, their windows and the calibration.
+func _update_caps() -> void:
+	caps_comps = SeaWhitecaps.wind_sea_only(model.components, _caps_u)
+	caps_select = SeaWhitecaps.select(caps_comps)
+	material.set_shader_parameter("caps_w", SeaWhitecaps.window_uniforms(caps_comps, caps_select))
+	material.set_shader_parameter("caps_rest", SeaWhitecaps.rest_mean(caps_comps, caps_select) if whitecaps else 0.0)
+	caps_cal = SeaWhitecaps.calibrate(caps_comps, caps_select) if whitecaps else {}
+	material.set_shader_parameter("caps_thr", caps_cal.get("thr", Vector4(1e3, 1e3, 1e3, 1e3)))
+
+
 func _apply_static() -> void:
 	static_version += 1
 	material.set_shader_parameter("n_comp", model.components.size())
@@ -219,11 +233,7 @@ func _apply_static() -> void:
 	# §4.1.1 wind roughness: the slope variance the waves carry
 	material.set_shader_parameter("geo_var", geo_slope_variance(model.components))
 	# §4.4 whitecaps: the components that carry foam and their crest windows
-	caps_select = SeaWhitecaps.select(model.components)
-	material.set_shader_parameter("caps_w", SeaWhitecaps.window_uniforms(model.components, caps_select))
-	material.set_shader_parameter("caps_rest", SeaWhitecaps.rest_mean(model.components, caps_select) if whitecaps else 0.0)
-	caps_cal = SeaWhitecaps.calibrate(model.components, caps_select) if whitecaps else {}
-	material.set_shader_parameter("caps_thr", caps_cal.get("thr", Vector4(1e3, 1e3, 1e3, 1e3)))
+	_update_caps()
 	var g := model.exposure
 	material.set_shader_parameter("expo_tex", SeaTextures.exposure_texture(g))
 	if g.is_empty():
@@ -273,7 +283,11 @@ func update_frame(cam_pos: Vector3, cam: Camera3D = null) -> void:
 		var c: Array = model.components[i]
 		comp[i] = Vector4(c[0], c[1], c[2], ph[i])
 	material.set_shader_parameter("comp", comp)
-	var ck := SeaWhitecaps.wave_uniforms(model.components, caps_select, ph)
+	var base: float = drawn_wind_kn * HudFormat.KNOT if drawn_wind_kn > 0.0 else wind.get("base_speed", 7.2)
+	if whitecaps and absf(base - _caps_u) > 0.05 * maxf(base, 1.0):
+		_caps_u = base
+		_update_caps()
+	var ck := SeaWhitecaps.wave_uniforms(caps_comps, caps_select, ph)
 	if not whitecaps:
 		ck = PackedVector4Array()
 		ck.resize(6)  # no foam weight on any component: nothing passes the breaking threshold
@@ -313,9 +327,10 @@ func update_frame(cam_pos: Vector3, cam: Camera3D = null) -> void:
 		layers.append(Vector4(c, s, u - floor(u), v - floor(v)))
 	material.set_shader_parameter("detail_layer", layers)
 	# §4.4 the whitecap foam texture rides the dominant wave
-	material.set_shader_parameter("caps_uv", SeaWhitecaps.uv_frame(model.components, ox, oy, t))
+	material.set_shader_parameter("caps_uv", SeaWhitecaps.uv_frame(caps_comps, ox, oy, t))
 	if not caps_cal.is_empty():
-		material.set_shader_parameter("caps_grp", SeaWhitecaps.group_frame(model.components, caps_cal, ox, oy, t))
+		material.set_shader_parameter("caps_grp", SeaWhitecaps.group_frame(caps_comps, caps_cal, ox, oy, t))
+		material.set_shader_parameter("caps_brk", SeaWhitecaps.break_frame(caps_comps, ox, oy, t))
 
 	if sky:
 		material.set_shader_parameter("sky_horizon", sky.horizon_linear())

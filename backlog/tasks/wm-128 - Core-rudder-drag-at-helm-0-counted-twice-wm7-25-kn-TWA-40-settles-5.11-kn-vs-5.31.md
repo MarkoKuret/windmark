@@ -3,9 +3,11 @@ id: WM-128
 title: >-
   Core: rudder drag at helm 0 counted twice (wm7 25 kn TWA 40 settles 5.11 kn vs
   5.31)
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-10-15 17:14'
+updated_date: '2026-10-15 17:53'
 labels:
   - physics
   - core
@@ -22,5 +24,5 @@ From WM-125: the core charges rudder drag with the helm centred, though the pola
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 core_tests steady state passes at every cell; AI races (incl. ai_long) green
+- [x] #1 core_tests steady state passes at every cell; AI races (incl. ai_long) green
 <!-- AC:END -->

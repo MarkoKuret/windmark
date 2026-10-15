@@ -121,7 +121,8 @@ furl_radius = 0.02 + 0.006 * Sa
 clearance   = 0.042 * loa                          // m, flying sails off the other sails and the mast (§7.4), and the
                                                    // main and boom off a flying sail's sheet (§7.6): 0.30 on wm7
 ```
-Fixed constants of the tack pin (§7.5): its reach `0.25·Sl`; of the main's stop (§7.6): 24 scan steps, 10 bisection steps.
+Fixed constants of the clew set (§7.7): fade height 0.3 of `Sl`, corner reach 2 grid steps, bounds `k_d` −0.1 to
+0.25 and `k_l` −0.1 to 0.3, difference step 0.01, two Newton steps. Fixed constants of the tack pin (§7.5): its reach `0.25·Sl`; of the main's stop (§7.6): 24 scan steps, 10 bisection steps.
 Fixed constants of the clearance (§7.4): push slope `k_p = 0.3` (m of push lost per m of cloth), ease threshold
 `P_e = 2·c` (the leech depth the push takes on before the sail is eased; 3·c before 2026-10-10: a push deeper than
 2·c could jump between frames where the stopped main of §7.6 lies along the kite's leech), ease cap `e_max = 0.35`
@@ -328,11 +329,14 @@ Then each vertex `P` (from §3.2) of row `i` is placed as `P'' = R(Lh', T', β �
 with `T' = S·T`, `Lh' = S·Lh`, `tl` the eased side toward leeward of §7.1 and the row twist
 ```
 tau_i = twist_top * pow(h_row_i, 1.5)                                   // code zero, symmetric spinnaker (0)
-tau_i = twist_top * smoothstep(0, 1, (|awa| - 60°) / 70°) * sqrt(h_row_i)  // asymmetric spinnaker
+tau_i = twist_top * smoothstep(0, 1, (|awa| - 60°) / 70°) * (1 - (1 - h_row_i)^2.5)  // asymmetric spinnaker
 ```
 The asymmetric spinnaker does not twist on a close reach and opens with the apparent wind angle: from 130° AWA its
-upper rows turn up to `twist_top` (26°) further to leeward, most of it low down (`sqrt`), as the J/80's sections do
-running (10° at a sixth of the height, 26° at the top, §14.2) while the head stays on the luff. `wrap_pi` of `β` at ±π (an asymmetric spinnaker gybing round the bow) is the same rotation, so the
+upper rows turn up to `twist_top` (26°) further to leeward, most of it low down, as the J/80's sections do
+running (10°, 18°, 23°, 25°, 26° at 1/6 to 5/6 of the height, §14.2; the profile gives 10°, 17°, 21°, 24°, 26°) while
+the head stays on the luff. The profile starts with a finite slope at the foot (2.5 `twist_top` per unit height), so
+the leech leaves the clew without a kink (until 2026-10-15 it was `sqrt(h_row_i)`, whose infinite slope at the foot
+turned the leech 12 to 24° at the first row above the clew). `wrap_pi` of `β` at ±π (an asymmetric spinnaker gybing round the bow) is the same rotation, so the
 sail moves continuously through the gybe.
 
 **Pivot.** A flying sail turns about its own luff through its tack: the sprit end (asymmetric spinnaker, code
@@ -410,8 +414,10 @@ then the mast: P = P + g * (c_P + smax(x - c_P) - x)
   moved.
 - The ease starts only when the leech is more than `P_e` inside the margin (a kite sheeted well inside the main, or
   the main eased onto it), and turns the sail just far enough to bring that depth back to `P_e`, at most `e_max`.
-  At the core's optimum both boats need little or no ease (under 3° on the reaches of test 20; the reach of the
-  example above takes a local push of 0.59 m on wm7, 1.25 m on wm12, and no ease).
+  At the core's optimum with the jib down both boats need no ease (the reach of the example above takes a local push
+  of 0.59 m on wm7, 1.25 m on wm12, and no ease); with the jib up on a close reach the kite's foot is held outside
+  the jib's leech and its run-on, up to 10° (wm7) and 12° (wm12) at AWA 70° (2026-10-15; before then the bounds test
+  below cut the run-on off and the kite passed through it).
 - The height slice makes it a horizontal distance: the sails stand close to vertical, so it is within a few per
   cent of the true one.
 - The side is the one facing the bow (an obstacle eased out is passed on its forward, outboard face); only for an
@@ -423,7 +429,8 @@ then the mast: P = P + g * (c_P + smax(x - c_P) - x)
   first touches the margin. Sheeting the kite in past the point where its leech meets the main presses it harder
   against the main's lee side, as a real kite that stalls there. The ease and the push are visual only (the core's
   `β` is not changed).
-- Cost: per vertex and obstacle a row search and a bounds test, one polyline only near the obstacle, and a second
+- Cost: per vertex and obstacle a row search and a bounds test (the row pair's horizontal bounds widened by the
+  reach asked for plus the run-on, `6c`, so the test never cuts off a point the polyline would find), one polyline only near the obstacle, and a second
   one for the vertices the local push moved; two passes over the grid for the spread; plus a few dozen for the
   ease: about 60 µs per flying sail on a 26 × 16 grid (native), with the kite sheeted at the main's angle so that
   most of it is near the main (the whole kite update 83 µs, a wm7 with three sails 100 µs per frame).
@@ -443,7 +450,7 @@ The share of the flying shape, `fa` (1 when up or about to drop, `k²` while hoi
 dropping, 0 otherwise), weights the main's stop of §7.6.
 
 An earlier version of this section (2026-10-10) turned the cloth round the clew toward the sheet. It put a bulge in
-the lower leech (owner, 2026-10-11) and was removed: the corner keeps the shape of §6.3.
+the lower leech (owner, 2026-10-11) and was removed. The clew is now set by the shape itself (§7.7).
 
 ### 7.6 The main stops on the sheet
 A flying sail's working sheet runs straight from its clew to its lead block (§11.3), outside the main and the boom.
@@ -472,6 +479,58 @@ main trimmed to the kite (the main about the kite's angle less 12.5°) nothing s
 its `sheet_max` (64°) the main's 51.5° would bring the boom end onto the sheet, and the stop holds it at about 40°
 (wm7, 39° wm12), as a real boom comes to rest on a loaded kite sheet; let fly (`sheet_max`) it holds the boom off the
 sheet on every point of sail. The flying sail is placed after the main (its obstacles of §7.4 are the main as drawn).
+
+### 7.7 The clew on its sheet
+A loaded corner of cloth carries no load out of its own surface, so on a real sail the sheet leaves the clew in the
+plane of the cloth there, between the foot and the leech (the radial clew panels and the clew patch are cut to fan
+out round that line). The plain set shape of §6.3 does not do this: the clew corner faces the wind while the sheet
+runs down and inboard to the quarter block, so the sheet left the corner 17 to 50° off its bisector (wm7 10 to 47°,
+wm12 26 to 53° over AWA 60 to 160 at the optimum trims), mostly out of the cloth's plane. A real asymmetric meets the
+sheet with its shape, not with a turned corner (§14.6): the sheet holds the clew in and down, the foot takes up the
+cloth as a deeper round (the J/80 running is deepest at the foot, 31 %), and the lower leech leans out from the clew
+to the shoulder above it. The asymmetric spinnaker's flying shape takes those two degrees of freedom, solved every
+update so the corner's bisector lies on the sheet:
+```
+c_i = (1 - h_i / 0.3)^3 for h_i < 0.3, else 0           // the clew set's share of row i, 1 on the foot
+draw-in k_d:    S_i = min(1, s_i * (1 - k_d * c_i))       // row i's chord over its flat chord (s_i of §6.3)
+                d_i = sqrt(3/8 * (1 / S_i - 1))           // its camber: the cloth keeps its length
+draw-down k_l:  l' = l - k_l * C_0 * c_i * uc^2           // the clew end of the low rows pulled down the luff
+(a', l', n') = (a0_i + (a - a0_i) * S_i, l', 0) - e * m   // §6.3 with these S_i, d_i (e = d_i S_i C_i sin(PI uc^q_i))
+corner(k_d, k_l), with the rows placed by §7.3 (twist and the ease of §7.4 included, no flutter):
+  C = row 0, last column; F = row 0, column cols - 3; E = row 2, last column; B = the working lead (§11.3)
+  b = unit(unit(F - C) + unit(E - C))                     // the corner's bisector, into the sail
+  s = unit(C - B)                                         // the sheet, from the block through the clew
+  r = ((b - s) . u1, (b - s) . u2)                        // u1 = unit(s0 x up), u2 = u1 x s0, s0 = s at (0, 0)
+solve r = 0 from (0, 0): two Newton steps with forward differences (step 0.01), each step's (k_d, k_l) clamped to
+  k_d in [-0.1, 0.25], k_l in [-0.1, 0.3]; a step whose Jacobian determinant is under 1e-9 stops the solve
+(k_d, k_l) = g * solution,  g = (1 - smoothstep(0, 1, (|wrap_pi(beta)| - 75°) / 30°)) * smoothstep(0, 1, (|awa| - 45°) / 20°)
+```
+The fade `g` takes the clew set out as the kite goes round the bow in a gybe (the working sheet changes side at
+`|β| = 180°`, where the sheet's load passes to the other sheet; past about 120° the corner's equations have no
+solution near the start and the Newton steps could jump). No trim reaches 75°: the kites' `sheet_max` is 64°. It
+also brings the clew set in from AWA 45° to 65°: closer to the wind the kite is past its working range, strapped at
+`sheet_min` and luffing, the sheet carries little, and a clew drawn down there would sit on the jib's leech.
+- **Draw-in** shortens the chord of the low rows and gives the cloth back as camber: the clew comes in toward the
+  tack, the foot rounds (its exit at the clew steepens), and since the rows above are drawn in less the leech leans
+  out from the clew to the shoulder. It is what turns the corner to face the sheet's side. Solved values at the optimum
+  trims: −0.06 to −0.04 at AWA 60 (the clew let out a little), 0.03 to 0.05 at AWA 75, 0.09 to 0.11 at 90, 0.15 to
+  0.25 running; running the foot then carries 39 % (wm7) to 43 % (wm12) camber (the J/80's 31 %), and the clew
+  sits 0.5 m (AWA 90) to 1.1 m (running) nearer the tack on wm7, up to 2.4 m on wm12.
+- **Draw-down** lowers the clew end of the low rows: the foot comes down into the clew, which lays the bisector
+  toward a steep sheet (the close reach, where the clew is high over a block close aft of it). Solved values −0.02 to
+  0.06 on wm7; on wm12, whose block is closer under its high clew, 0.04 to 0.12 (the clew 1.3 m lower at AWA 60).
+- Both fade out smoothly up the sail (zero slope and curvature at 0.3 of the height) and along the foot toward the tack (`uc²`), so
+  the foot and the leech stay fair: one curve each, no bulge or kink (test 25). The luff, the tack and the head do
+  not move.
+- The solve is continuous in the sail's angle, the wind and the ease, so the shape moves smoothly from frame to frame
+  (tests 9, 15, 18, 21, 23 and 24 hold). Over AWA 60 to 160, the kite at 60 to 130 % of its optimum and the main from
+  its optimum to let fly, the sheet leaves the clew within 4° (wm7) and 6° (wm12) of the bisector, the most at AWA 60
+  where the AWA fade holds part of it back (it was up to 47° and 53°; 27° and 36° at AWA 90 at the optimum).
+- The solve applies to an asymmetric spinnaker with a working lead (`sheet_lead`) in every phase: the hoist and drop
+  shapes of §8.4, §8.5 take the solved flying shape as their target. Its cost is seven evaluations of three vertices
+  and a second pass over the rows it reaches (about 2 µs native).
+- Order per update: the shape of §6.3 with no clew set, the ease of §7.4 from it, the clew set (with that ease),
+  then the placement, the clew `C0` of §7.6 and the push of §7.4.
 
 ## 8. Hoisting and dropping
 
@@ -1052,8 +1111,8 @@ Flutter phase `φ = 0` unless stated.
     Each config is a steady state: the eased twist side of §7.1 is settled on its tack before the check.
     Sheeting the flying sail from 60 % to 130 % of its optimum over 2 s (TWA 100°, 12 kn, main eased 20 %, jib up)
     moves no vertex more than `0.05·Sa` between frames at 60 fps (no pop as the local push starts, grows or hands
-    over to the ease). The test also prints the largest ease found (9 to 10° on the over-sheeted kite with the main
-    eased since the broader kite of §14.3, well under `e_max`; at the optimum trims none: the push does the work).
+    over to the ease). The test also prints the largest ease found (13 to 15° on the over-sheeted kite with the main
+    eased or the jib up, under `e_max`; at the optimum trims with the jib down none: the push does the work).
 19. **Generator parity.** The generator's preview poses and `kite_preview` set the sails with a port of §5.1,
     §6.1 to §6.4 and §7 (`tools/boatgen/boatgen/sail_set.py`: `up` phase, no luff shiver, headsails drawing) and
     write each pose's wind, angles and placed mid-surfaces to `<id>.sets.json`. BoatView, native and reference,
@@ -1062,8 +1121,10 @@ Flutter phase `φ = 0` unless stated.
 
 20. **Reaching kite.** On the generated `wm7` and `wm12`, the asymmetric spinnaker at the core's optimum (main and
     kite at their optimum angles, jib down and up) on every reach with AWA 70° to 90° (TWS 6, 12, 22 kn, TWA in 2°
-    steps, both tacks): the clew (row 0, last column) stays aft of the mast and at most `0.3·LOA` outboard of the
-    widest beam (2.2 m on wm7, 3.6 m on wm12), where a real reaching asymmetric sheeted to the quarter flies, while
+    steps, both tacks): the clew (row 0, last column) stays at most `0.05·LOA` forward of the mast (abreast of it or
+    aft; the clew set of §7.7 draws it up to 0.25 m forward at AWA 90°, wm7 is then 0.03 m forward of the mast) and at
+    most `0.3·LOA` outboard of the widest beam (2.2 m on wm7, 3.6 m on wm12), where a real reaching asymmetric sheeted
+    to the quarter flies, while
     test 18 holds in every config and trim. The test prints the clew's worst position and the largest ease.
 21. **Sheets.** On the generated `wm7` (jib and kite) and `wm12` (jib, code zero and kite), native and reference:
     every working and lazy line starts at its sail's placed clew (the guy and the tack line at the tack) within 1 mm,
@@ -1096,6 +1157,16 @@ Flutter phase `φ = 0` unless stated.
     reference) at 12 kn over TWA 60° to 170° on both tacks, the kite at 60 %, 100 % and 130 % of its optimum with the
     main at its optimum and let fly, through a hoist and a drop (progress 0 to 1) and a gybe round the bow (the kite's
     angle through ±180°): the placed tack is within 1 mm of the sidecar's `bowsprit_end`.
+
+25. **Clew on its sheet.** On the generated `wm7` and `wm12`, the asymmetric spinnaker through BoatView (native and
+    reference) at 12 kn over AWA 60° to 160° (10° steps) on both tacks, the kite at 60 %, 85 %, 100 %, 120 % and 130 %
+    of its optimum with the main at its optimum and let fly: the straight sheet from the placed clew to the working
+    lead leaves the clew at most 12° off the bisector of the corner (§7.7: foot to the third vertex along the foot,
+    leech to the third vertex up the leech), and the foot (row 0) and the lower leech (last column, rows 0 to 45 % of
+    the height) of the flying shape, placed again without obstacles (the push of §7.4 is test 18's), are fair: the turn
+    at each vertex, signed about the clew corner's normal, changes by at most 3° from one vertex to the next (no kink)
+    and changes sign at most once outside a 0.5° dead band (no bulge; the 2026-10-10 clew turn fails it). The test
+    prints the largest angle and turn step found.
 
 ## 13. Dependencies and open points
 
@@ -1263,7 +1334,17 @@ Asymmetric areas on the ORC certificates of comparable 12 m racers: J/122 143 to
   J/111 A2 about 150). Area over the main: wm7 2.2, wm12 2.6 (references 2.6 to 4.1; our mains are large for the rig).
 - **Clew**: the plain set shape (§6.3, §7.3) turns the clew to face the wind, so the sheet leaves the corner 17 to 50°
   off its bisector, mostly out of the sail's plane. Turning the cloth round the clew toward the sheet (2026-10-10)
-  bulged the lower leech and was removed (§7.5); the sheet's lead and the main's stop do the rest.
+  bulged the lower leech and was removed (§7.5). What real sails show (2026-10-15): no source measures the angle at
+  the clew, but the cloth decides it. A membrane corner carries load only in its own surface, so the sheet lies in the
+  cloth's plane at the clew, between the foot and leech tapes, which take most of the load; sailmakers cut the radial
+  clew panels to fan out from the sheet's line, and photographs of set kites from astern and to leeward show the clew
+  pointing along its sheet, the clew patch flat along it, the foot rounding forward from the clew and the leech
+  leaning out from the clew to a shoulder wider than the clew (the sheet holds the clew in under it). The J/80
+  sections (§14.2) are deepest at the foot running (31 %) and their luff entries match circular arcs of their camber
+  (50° at 20 %, 61° at 31 %), as a pressure-loaded membrane under even tension sets. §7.7 reproduces that: the sheet
+  pulls the clew in (a deeper foot round, the leech leaning out) and down, solved so the sheet runs along the corner's
+  bisector; within 6° in every trim, where a real corner sits within roughly 10 to 15° (the sheet nearer the tape
+  that carries more load).
 - **Lead block**: §11.3. Trim guides lead the sheet to "blocks on the leeward quarter", "just forward of the stern
   pulpit" (Quantum), "outboard of primary winches and aft" (J/70); the Viper 640 rule puts them 2 m forward of the
   transom corner. The sheet runs outside all rigging (Quantum, Flynn), the clew flies outside and aft of the boom and

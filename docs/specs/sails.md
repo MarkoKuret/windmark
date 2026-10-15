@@ -361,8 +361,7 @@ Semantics and reference shapes:
   heeled near its limit, a helm of about 0.05); main alone: weather helm (S at 10 kn about +1.5°/s); spinnakers:
   negative close reaching in light air (the kite, far forward, pulls the bow off: S at 10 kn −3 to −6°/s from 50°
   to 80°, where the kite is the wrong sail), small across the normal range, a moderate weather helm broad reaching
-  in a breeze (S at 22 kn about +2°/s at 130°, L about +8°/s: the crew holds the heel within the spinnaker heel
-  limit, `tools/vpp/README.md` "Heel and depowering"), and a broach where the kite is overpowered (S
+  in a breeze (S at 22 kn about +5°/s at 130°, L about +11°/s), and a broach where the kite is overpowered (S
   from 50° at 14 kn and on a reach from about 20 kn: +10 to +20°/s). Scaled by `trim_heel` (`boat.md` §5.5,
   §5.9), so an over-sheeted sail plan rounds up sooner and flogging sails have none.
 - **fall_off**: the same for every config (the sails are flogging). Speed axis from sternway to a crawl ahead

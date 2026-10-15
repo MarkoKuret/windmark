@@ -42,15 +42,6 @@ REEFABLE = ("main", "jib", "genoa")
 # A mainsail without a headsail in front loses the slot's upwash: its lift is scaled by MAIN_ALONE_CL close-hauled,
 # fading to no loss by 110 deg effective AWA (calibration, README).
 MAIN_ALONE_CL = 0.72
-# Twist function (ORC VPP Documentation 2023, eq. 5.49, from wind tunnel tests): flattening a sail plan twists its
-# heads off, lowering the centre of effort of its heeling force by TWIST_A (1 - flat) + TWIST_B (1 - flat)(1 - frac)
-# of its height, frac = I / (P + BAS) the fractionality (BAS: boom above the sheer).
-TWIST_A = 0.406
-TWIST_B = 0.902
-# A spinnaker has no flattening controls (no backstay, outhaul or traveller): its flat (with the main's) goes no lower than
-# the ORC VPP's minimum (2023 section 5: lift cut by at most 58 %); where that still heels the boat beyond the kite
-# heel limit the kite is overpowered and the config broaches.
-KITE_FLAT_MIN = 0.42
 
 
 def wind_at(tws, z):
@@ -69,24 +60,8 @@ class Rig:
     def downwind(self) -> bool:
         return any(s.type in SPINNAKER_TYPES for s in self.sails)
 
-    @property
-    def kite(self) -> bool:
-        """Flies a spinnaker or gennaker (the kite heel limit applies; a code zero is a flying headsail, sheeted
-        flat and set lower, and sails to the class limit like a jib)."""
-        return any(s.type in SPINNAKER_TYPES for s in self.sails)
-
     def areas(self, reef):
         return [s.area * (reef ** 2 if r else 1.0) for s, r in zip(self.sails, self.reefable)]
-
-    def twist(self, flat):
-        """Factor on the centre of effort height of the flattened sail plan (TWIST_A, TWIST_B)."""
-        b = self.boat
-        frac = min(b.rig_I / (b.rig_P + max(b.boom_height - b.freeboard, 0.0)), 1.0)
-        return 1.0 - (1.0 - flat) * (TWIST_A + TWIST_B * (1.0 - frac))
-
-    def heel_arm(self, fi, reef):
-        """Height (m) of the sail plan's heeling force above the waterline at flat index fi and reef."""
-        return self.ce_height(reef) * self.twist(self.env[0].flat[fi])
 
     def ce_height(self, reef):
         fb = self.boat.freeboard
@@ -214,26 +189,19 @@ class Solver:
         rm = H.rm_boat + H.rm_crew
         i = int(np.argmax(rm))
         self.heel_top = float(min(boat.heel_max, H.heel[i]))
-        self.heel_top_kite = float(min(boat.heel_max_kite, self.heel_top))
         self.zclr = 0.45 * boat.draft_total
-
-    def heel_limit(self, rig):
-        """Heel (rad) the equilibrium may not exceed with this sail plan: the class limit, under a kite the lower
-        kite limit."""
-        return self.heel_top_kite if rig.kite else self.heel_top
 
     def moment(self, rig, fi, reef, tws, twa, V, heel, eps=None, hold_stall=False):
         z = rig.ce_height(reef)
         tw = wind_at(tws, z)
         aws, beta, aws_e, beta_e = apparent(tw, twa, V, heel)
         fx, fh, deltas = rig.forces(fi, reef, beta_e, aws_e, eps, hold_stall)
-        return fx, fh, fh * (rig.heel_arm(fi, reef) + self.zclr), aws, beta, deltas
+        return fx, fh, fh * (z + self.zclr), aws, beta, deltas
 
     def solve_heel(self, rig, fi, reef, tws, twa, V, iters=20, eps=None, hold_stall=False):
         rm = self.hull.hydro.righting_moment
         lo = np.zeros_like(V)
-        top = self.heel_limit(rig)
-        hi = np.full_like(V, top)
+        hi = np.full_like(V, self.heel_top)
         _, _, m_hi, _, _, _ = self.moment(rig, fi, reef, tws, twa, V, hi, eps, hold_stall)
         over = rm(hi) < m_hi
         for _ in range(iters):
@@ -242,7 +210,7 @@ class Solver:
             up = rm(mid) < m
             lo = np.where(up, mid, lo)
             hi = np.where(up, hi, mid)
-        heel = np.where(over, top, 0.5 * (lo + hi))
+        heel = np.where(over, self.heel_top, 0.5 * (lo + hi))
         return heel, over
 
     def net_force(self, rig, fi, reef, tws, twa, V, heel, eps=None):
@@ -307,8 +275,6 @@ class Solver:
         heel, over = self.solve_heel(rig, fi, reef, tws, twa, V, eps=eps)
         fx, fh, _, aws, beta, deltas = self.moment(rig, fi, reef, tws, twa, V, heel, eps)
         valid = ~over & (V < 0.98 * vmax)
-        if rig.kite:
-            valid = valid & (rig.env[0].flat[fi] >= KITE_FLAT_MIN - 1e-9)
         return State(V=V, heel=heel, valid=valid, aws=aws, awa=beta, fh=fh, fx=fx, deltas=deltas)
 
     def sternway(self, rig, tws, twa):

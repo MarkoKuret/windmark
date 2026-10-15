@@ -392,33 +392,3 @@ def test_handling_block_parsing(raw):
     raw["handling"] = {"tack_time": 9.0}
     with pytest.raises(boatclass.ClassFileError):
         boatclass.from_dict(raw)
-
-
-def test_kite_heel_limit(generated):
-    """README "Heel": under a kite the equilibrium never heels beyond vpp.max_heel_kite (21.5 deg by default), the
-    jib config may heel to vpp.max_heel."""
-    b, p = generated
-    assert b.heel_max_kite == pytest.approx(math.radians(21.5))
-    for c in p["configs"]:
-        _, _, H = _t2(c["heel"])
-        top = b.heel_max_kite if c["front_sail"] == "a2" else b.heel_max
-        assert H.max() <= top + 1e-6, c["front_sail"]
-    a2 = next(c for c in p["configs"] if c["front_sail"] == "a2")
-    _, btwa, F = _t2(a2["vpp"]["flat"])
-    _, _, B = _t2(a2["vpp"]["broached"])
-    assert F[B == 0].min() >= 0.42 - 1e-9                     # a kite is depowered only so far
-    _, _, Hj = _t2(p["configs"][1]["heel"])
-    assert Hj.max() > b.heel_max_kite                          # the upwind config is not held to the kite limit
-
-
-def test_twist_lowers_the_heeling_arm():
-    """README "Depowering": flattening lowers the centre of effort (ORC twist function), more on a masthead rig."""
-    from conftest import BASE
-    from windmark_vpp.solver import FLATS, make_rig
-    b = boatclass.from_dict(json.loads(json.dumps(BASE)))
-    rig = make_rig(b, "jib", [s for s in b.sails if s.type in ("main", "jib")])
-    full = len(FLATS) - 1
-    assert rig.heel_arm(full, 1.0) == pytest.approx(rig.ce_height(1.0))
-    assert rig.twist(0.7) == pytest.approx(1 - 0.3 * (0.406 + 0.902 * (1 - b.rig_I / (b.rig_P + b.boom_height
-                                                                                        - b.freeboard))))
-    assert rig.heel_arm(0, 1.0) < rig.heel_arm(full // 2, 1.0) < rig.heel_arm(full, 1.0)

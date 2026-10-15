@@ -10,6 +10,8 @@
 #include <string>
 #include <vector>
 
+#include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <map>
 
@@ -158,6 +160,7 @@ struct AiRaceSpec {
   bool local_weather = false;
   float tide = NAN;
   bool no_current = false;  // the venue's conditions without any current (a reference for the tide's cost)
+  bool time_ai = false;     // development: time the skippers' step every tick (AiRaceOutcome::ai_us_*)
 };
 
 inline std::vector<std::uint8_t> read_bytes(const std::string& path) {
@@ -200,6 +203,13 @@ struct AiRaceOutcome {
   ApproachStats approach;
   std::vector<wm::RaceEvent> ocs_events;  // boat_ocs
   float tide_at_gun = 0.0f;  // the tide factor at the gun (wind.md §7, without the scale)
+  // time_ai: the skippers' step, µs per tick, from the warning signal on (sum, ticks, worst tick)
+  double ai_us_sum = 0.0, ai_us_max = 0.0;
+  std::uint32_t ai_ticks = 0;
+  std::vector<float> ai_us;  // every timed tick
+  // Per boat: time pinned on a course object, obstacle or land (in contact within the last second, under 0.3 m/s
+  // over the ground, racing), in total and the longest spell.
+  std::vector<float> pinned_s, pinned_max;
 };
 
 inline std::unique_ptr<wm::World> ai_world(const AiRaceSpec& sp) {
@@ -262,8 +272,24 @@ inline AiRaceOutcome run_ai_race(const AiRaceSpec& sp) {
     ai_add_all(*ai, sp);
   }
   wm::AiSkippers* aip = ai.get();
-  w->set_controller([aip](wm::World& world) { aip->step(world); });
   AiRaceOutcome o;
+  auto controller = [&aip, &o, &sp](wm::World& world) {
+    if (!sp.time_ai) {
+      aip->step(world);
+      return;
+    }
+    const auto t0 = std::chrono::steady_clock::now();
+    aip->step(world);
+    const double us = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count();
+    if (world.race_created() && world.race().state() != wm::RaceState::free_sailing &&
+        world.race().state() != wm::RaceState::created) {
+      o.ai_us_sum += us;
+      o.ai_us_max = std::max(o.ai_us_max, us);
+      ++o.ai_ticks;
+      o.ai_us.push_back(static_cast<float>(us));
+    }
+  };
+  w->set_controller(controller);
   std::FILE* tf = sp.trace != nullptr ? std::fopen(sp.trace, "w") : nullptr;
   // Approach tracking (ApproachStats).
   struct Track {
@@ -276,6 +302,8 @@ inline AiRaceOutcome run_ai_race(const AiRaceSpec& sp) {
     int near_tacks = 0;
   };
   std::vector<Track> trk;
+  std::vector<std::uint32_t> pin_seen;
+  std::vector<float> pin_run;
   auto close_approach = [&](Track& t) {
     if (!t.beat || t.twa.empty()) return;
     ++o.approach.approaches;
@@ -300,7 +328,7 @@ inline AiRaceOutcome run_ai_race(const AiRaceSpec& sp) {
       w = std::move(w2);
       ai = std::move(ai2);
       aip = ai.get();
-      w->set_controller([aip](wm::World& world) { aip->step(world); });
+      w->set_controller(controller);
       o.reloaded = true;
     }
     if (tf != nullptr && w->race_created() && w->tick() % 10u == 0u) {
@@ -386,6 +414,30 @@ inline AiRaceOutcome run_ai_race(const AiRaceSpec& sp) {
     }
     for (const wm::ContactEvent& e : w->events().contacts) {
       if (e.begin && e.other_kind == wm::ContactKind::boat && e.boat < e.other) ++o.contacts;
+    }
+    if (w->race_created()) {
+      const std::size_t nb = w->boat_count();
+      if (o.pinned_s.size() != nb) {
+        o.pinned_s.assign(nb, 0.0f);
+        o.pinned_max.assign(nb, 0.0f);
+        pin_seen.assign(nb, 0u);
+        pin_run.assign(nb, 0.0f);
+      }
+      for (const wm::ContactEvent& e : w->last_contacts()) {
+        if (e.other_kind != wm::ContactKind::boat && e.boat >= 0 && static_cast<std::size_t>(e.boat) < nb)
+          pin_seen[static_cast<std::size_t>(e.boat)] = w->tick();
+      }
+      for (std::size_t i = 0; i < nb; ++i) {
+        const wm::RaceBoat& rb = w->race().boat(i);
+        const bool racing = rb.started && !rb.finished && !rb.ghost;
+        if (racing && pin_seen[i] != 0u && w->tick() - pin_seen[i] < 20u && w->boat(i).outputs().sog < 0.3f) {
+          o.pinned_s[i] += 0.05f;
+          pin_run[i] += 0.05f;
+          o.pinned_max[i] = std::max(o.pinned_max[i], pin_run[i]);
+        } else {
+          pin_run[i] = 0.0f;
+        }
+      }
     }
     for (const wm::RaceEvent& e : w->events().race) {
       if (e.kind == wm::RaceEventKind::boat_ocs) o.ocs_events.push_back(e);

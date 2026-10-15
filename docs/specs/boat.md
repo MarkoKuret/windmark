@@ -89,7 +89,7 @@ monohull. They are targets for the VPP/boat generator, not constants.
 | `heel_limit` | rad | 1.40 | 1.40 | hard clamp of the heel itself |
 | `heel_freq`, `heel_damping` | rad/s, – | 3.16, 0.63 | 1.41, 1.41 | heel spring (§6.1) |
 | `pitch_freq`, `pitch_damping` | rad/s, – | 3.16, 0.63 | 2.83, 0.71 | pitch spring |
-| `wave_roll_gain`, `wave_pitch_gain` | – | 0.3, 1.0 | 0.3, 1.0 | share of the wave slope the hull follows |
+| `wave_roll_gain`, `wave_pitch_gain` | – | 1.0, 1.0 | 1.0, 1.0 | share of the wave slope the hull follows (§6.3) |
 | `wobble_heel`, `wobble_pitch` | rad | 0.0175, 0.0175 | 0.0175, 0.0175 | amplitude of the wind-driven attitude motion |
 | `wobble_freq` | rad/s | 2.0 | 2.0 | its base angular frequency |
 | `heave_time` | s | 0.25 | 0.4 | heave lag behind the mean wave height |
@@ -419,6 +419,17 @@ speed through `heel_speed_factor`) and gains weather helm (`sails.md` §6: the w
 `sea.md` gives the height field and the sampling. The hull follows the waves only as much as its sample points
 see them: points spread over the waterline average out waves shorter than the hull, so a big boat is steady in a
 short chop while a small one pitches.
+
+**Both gains are 1** (2026-10-15; the roll gain was 0.3). Under a wave the water accelerates with it, and the
+apparent gravity a floating body feels (gravity less the water's acceleration) stands normal to the local
+surface: a hull small against the wave settles square to the surface, not to the horizon. That is the static
+response to a wave slope, so the target of each spring is the full sampled slope; how much of it the hull shows is
+then the spring's job, from its own frequency and damping (roll and pitch inertia against the righting and
+waterplane stiffness, the rig's aerodynamic roll damping, `tools/vpp`), and the sampling plane's averaging over the
+hull. The earlier 0.3 had no physical basis and kept a sportsboat in a 25 kn sea and swell rolling ±3° about its
+heel; with 1 it rolls about ±8° (heel standard deviation 3.9°, up from 1.8°), while speed, course and the helm are
+unchanged. **Waves never turn the boat** (owner, 2026-10-15): nothing from the sea enters the yaw rate of §5.9;
+the waves change the attitude, the heave and, through the pitch (§5.8, surfing), the speed.
 
 ### 6.4 Leeway and sideways drift
 **With way on the boat moves along its heading.** Leeway is small for racing keelboats and is folded into the

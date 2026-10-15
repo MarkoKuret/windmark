@@ -3,11 +3,11 @@ id: WM-125
 title: >-
   VPP: realistic heel for every class (righting moment, depowering), checked on
   wm12
-status: In Progress
+status: Done
 assignee:
   - '@heel'
 created_date: '2026-10-11 11:44'
-updated_date: '2026-10-11 12:23'
+updated_date: '2026-10-15 17:53'
 labels:
   - physics
   - vpp
@@ -25,6 +25,6 @@ Owner (2026-10-11): wm12 heels too much (21-24 deg close hauled from 6 m/s, 30 d
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 Spec and tools/vpp/README.md describe the heel and depowering model with sources for the reference heel figures
-- [ ] #2 wm7 and wm12 heel tables (upwind and kite) fall within the sourced ranges, from a general VPP change (no per-class hot fix)
-- [ ] #3 Perf regenerated; VPP, core and AI tests green (ai_long stuck failure is pre-existing, WM-119)
+- [x] #2 wm7 and wm12 heel tables (upwind and kite) fall within the sourced ranges, from a general VPP change (no per-class hot fix)
+- [x] #3 Perf regenerated; VPP, core and AI tests green (ai_long stuck failure is pre-existing, WM-119)
 <!-- AC:END -->

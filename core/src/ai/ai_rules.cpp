@@ -292,8 +292,8 @@ bool rounding_track_check(AC& x, AB& a, const Me& m, const CourseObject& o) {
 
 }  // namespace
 
-void avoid_objects(AC& x, AB& a, const Me& m, std::int32_t skip_mark) {
-  if (a.man != Man::straight) return;
+bool avoid_objects(AC& x, AB& a, const Me& m, std::int32_t skip_mark) {
+  if (a.man != Man::straight) return false;
   const float v = max(1.0f, m.s.v);
   const float reach = max(3.0f * m.L, 6.0f * v);
   // Along the track over the ground: the current sets the boat onto an object her heading would clear.
@@ -325,13 +325,13 @@ void avoid_objects(AC& x, AB& a, const Me& m, std::int32_t skip_mark) {
     // she runs on before the turn takes hold).
     for (const CourseObject& o : x.course.objects) {
       if (o.mark != skip_mark || v_dist(o.c, m.c) > reach + o.r) continue;
-      if (rounding_track_check(x, a, m, o)) return;
+      if (rounding_track_check(x, a, m, o)) return false;
       hit = &o;
       need = (o.r + 0.5f * m.B) + 0.5f;
       best_t = 0.0f;
     }
   }
-  if (hit == nullptr) return;
+  if (hit == nullptr) return false;
   // Pass it on the side it already is on, by the tangent to the clearance circle; the mark being rounded on the
   // rounding side (port rounding: on the left), even when the planned heading has it a little on the other.
   const float dist = v_dist(m.c, hit->c);
@@ -344,39 +344,57 @@ void avoid_objects(AC& x, AB& a, const Me& m, std::int32_t skip_mark) {
   float twa = wrap_pi(m.twd - psi);
   // Sailable from here without a tack or gybe: not above close-hauled and on the present tack.
   auto on_this_tack = [&](float t) { return std::fabs(t) >= m.theta_up - 2.0f * DEG && sgn(t) == m.tack; };
-  if (rounding_mark && !on_this_tack(twa)) {
-    // The mark being rounded is passed on its side only: tack (or gybe) away from it when that side is not on this
-    // tack. If the manoeuvre is not safe, past it on the other side when that is sailable on this tack, rather than
-    // into it: the rounding then goes on round (the winding of §6.1 counts it), which costs less than a touch and
-    // its turn. Only when neither is possible pinch and slow; slowing needs way on: a boat nearly stopped at the
-    // mark keeps her sails drawing, or she could never steer away (ai.md §6.4).
-    const bool gybe = std::fabs(twa) > HALF_PI && std::fabs(m.twa) > HALF_PI;
+  // The mark being rounded is passed on its side only: tack (or gybe) away from it when that side cannot be made on
+  // this tack. If the manoeuvre is not safe, past it on the other side when that is sailable on this tack, rather
+  // than into it: the rounding then goes on round (the winding of §6.1 counts it), which costs less than a touch and
+  // its turn. Only when neither is possible pinch and slow; slowing needs way on: a boat nearly stopped at the
+  // mark keeps her sails drawing, or she could never steer away (ai.md §6.4).
+  auto away_or_round = [&](bool gybe) {
     if (gybe ? request_gybe(x, a, m, AiTactic::Rounding, true) : request_tack(x, a, m, AiTactic::Rounding, true)) return;
     const float psi_o = heading_of(wrap_2pi(brg - side * g));
     if (on_this_tack(wrap_pi(m.twd - psi_o))) {
-      a.psi_target = psi_o;
-      return;
+      // Only when the turn onto it keeps the hull off the mark: close to it, bearing away swings the bow into it.
+      Track own;
+      own_track(m, psi_o, 0, false, false, own);
+      own.c.resize(41);
+      own.psi.resize(41);
+      if (!track_touches(x, a, own, *hit, 0.3f)) {
+        a.psi_target = psi_o;
+        return;
+      }
     }
     a.psi_target = heading_for(m.twd, m.tack * m.theta_up);
-    a.let_fly = m.s.v > 0.5f;
-    return;
+    // Slowing needs way on, and not with the stream setting her towards the mark: there it only carries her onto it.
+    a.let_fly = m.s.v > 0.5f && v_dot(m.cur, v_sub(hit->c, m.c)) <= 0.0f;
+  };
+  if (rounding_mark && !on_this_tack(twa)) {
+    away_or_round(std::fabs(twa) > HALF_PI && std::fabs(m.twa) > HALF_PI);
+    return true;
   }
   if (rounding_mark) {
-    // The tangent, and then the track through the turn onto it: the bow and stern sweep as she turns.
+    // The tangent, and then the track through the turn onto it: the bow and stern sweep as she turns. When no
+    // heading on this tack keeps the turn off the mark (a stream setting her onto it, ai.md §6.4), the same as a
+    // side not on this tack: slowing there only lets the stream carry her onto it.
     a.psi_target = psi;
-    if (!rounding_track_check(x, a, m, *hit)) a.let_fly = m.s.v > 0.5f;
-    return;
+    if (!rounding_track_check(x, a, m, *hit)) away_or_round(std::fabs(m.twa) > HALF_PI);
+    return true;
   }
-  if (std::fabs(twa) < m.theta_up - 2.0f * DEG) {
-    // Not sailable that way: the other side.
+  // Not sailable from here: above close-hauled, or through the wind onto the other tack (close to the object the
+  // tangent swings towards the beam; only a tack would reach it).
+  auto unsailable = [&](float t) {
+    return std::fabs(t) < m.theta_up - 2.0f * DEG || (sgn(t) != m.tack && std::fabs(t) < HALF_PI && m.tack != 0.0f);
+  };
+  if (unsailable(twa)) {
+    // The other side.
     psi = heading_of(wrap_2pi(brg - side * g));
     twa = wrap_pi(m.twd - psi);
-    if (std::fabs(twa) < m.theta_up - 2.0f * DEG) psi = heading_for(m.twd, m.tack * m.theta_up);
+    if (unsailable(twa)) psi = heading_for(m.twd, m.tack * m.theta_up);
   }
   a.psi_target = psi;
+  return true;
 }
 
-void rules_overlay(AC& x, AB& a, const Me& m, Vec2 aim) {
+void rules_overlay(AC& x, AB& a, const Me& m, Vec2 aim, bool obj_turn) {
   if (!x.race.rules_live() || m.rb.ghost) return;
   const std::size_t i = static_cast<std::size_t>(a.i);
   std::int32_t B = -1;
@@ -531,13 +549,17 @@ void rules_overlay(AC& x, AB& a, const Me& m, Vec2 aim) {
       return;
     }
   }
-  // §7.4 hold course while a give-way boat is near.
-  if (a.man == Man::straight) {
+  // §7.4 hold course while a give-way boat is near; never into a course object (§6.4).
+  if (a.man == Man::straight && !obj_turn) {
     for (const std::int32_t j : holds) {
       const float eb = wrap_pi(bearing(m.c, x.race.boat(static_cast<std::size_t>(j)).c) - m.s.psi);
       const float et = wrap_pi(a.psi_target - m.s.psi);
-      if (sgn(et) == sgn(eb) && std::fabs(et) > 5.0f * DEG && a.tactic != AiTactic::Rounding) {
-        a.psi_target = wrap_2pi(m.s.psi + sgn(et) * 5.0f * DEG);
+      // The way she turns: the long way round when the plan goes round (the helm's turn_dir, ai.cpp).
+      const float dt = a.turn_dir != 0 && sgn(et) != static_cast<float>(a.turn_dir) && std::fabs(et) > 10.0f * DEG
+                           ? static_cast<float>(a.turn_dir)
+                           : sgn(et);
+      if (dt == sgn(eb) && std::fabs(et) > 5.0f * DEG && a.tactic != AiTactic::Rounding) {
+        a.psi_target = wrap_2pi(m.s.psi + dt * 5.0f * DEG);
       }
     }
   }

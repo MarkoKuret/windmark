@@ -159,7 +159,9 @@ or obstruction triggers), and the tack is legal and safe (§7.3).
 While the present tack first is the quicker route (§4.7 "stay"), triggers 3 to 5 do not fire: the boat holds on to
 the side that pays.
 7. **Bad air** (§8).
-8. **Cover** (§9).
+8. **Cover** (§9). In a match race the leader's cover comes right after the layline, before triggers 3 to 7: it
+   yields only to laylines and rules avoidance (§9), so a tack the leader makes to stay with the opponent is a
+   cover, not a corridor or shift tack that happens to put her there.
 
 ### 4.5 Finish leg
 
@@ -373,13 +375,17 @@ Every decision, the planned heading is checked against every course object (mark
 there is turned back into the heading that makes it good): one whose centre is closer to the track than
 `r + 0.5·B + 1 m + 0.15·L` (a committee or mark boat another `0.5·L`: the bow of a boat still turning onto the
 tangent reaches its long flat side first) is passed by the tangent to that clearance circle on the side it is on
-(the other side when that side is above close-hauled). The mark being rounded is only checked for a collision course (clearance
-`r + 0.5·B + 0.5 m`, the rounding circle keeps the planned one), and it is never passed on the other side (the side
+(the other side when that side is above close-hauled, or through the wind on the other tack: close to the object the
+tangent swings round towards the beam, and a heading the boat could only reach by tacking is not a way past it).
+The mark being rounded is only checked for a collision course (clearance `r + 0.5·B + 0.5 m`, the rounding circle
+keeps the planned one), and it is never passed on the other side (the side
 it is passed on is the rounding side, whichever side of the planned track it lies on at that moment): if its
 side is above close-hauled the AI tacks away from it (if safe); if it cannot tack, it bears away past the mark on
-the other side when that is sailable on the present tack (the rounding then goes on round, §6.1: going round again
-costs less than a touch and its turn), and only when neither is possible pinches and lets fly (only with way on, faster
-than 0.5 m/s: nearly stopped at the mark it keeps its sails drawing so that it can steer away). The mark being
+the other side when that is sailable on the present tack and the turn onto it keeps the hull off the mark (the
+predicted track below; close to the mark bearing away swings the bow into it) (the rounding then goes on round,
+§6.1: going round again costs less than a touch and its turn), and only when neither is possible pinches and lets
+fly (only with way on, faster than 0.5 m/s: nearly stopped at the mark it keeps its sails drawing so that it can
+steer away; and not while the stream sets her towards the mark, where slowing only lets it carry her onto it). The mark being
 rounded is also checked along the predicted track, not only the straight line: the planned heading sailed from here
 (the reaction time `t_r` of §6.1, then the turn at the radius law's full rate) for 4 s must keep the hull 0.3 m off
 the mark, or the rounding is re-planned on the nearest heading that does, turning away from the mark (the rounding
@@ -463,7 +469,10 @@ or chooses another). It never tacks within `3·L` directly into the path of a bo
 ### 7.4 With right of way
 
 - **Hold course**: while a give-way boat is within `5·L` and not in `Breach`, the AI makes no course change of more
-  than 5° towards it (rule 16) unless rounding a mark within its mark-room.
+  than 5° towards it (rule 16; towards it the way she turns, the long way round when the plan bears away round
+  rather than through the wind, §11) unless rounding a mark within its mark-room or passing a course object ahead
+  (§6.4): she never holds a course into a mark or a committee boat (rule 16 lets a right-of-way boat change course;
+  the give-way boat's room is the keeping clear of §7.2 on her side).
 - **Rule 17**: when the pair has the rule-17 flag with the AI as holder, the AI's heading is limited to not above its
   proper course (`rules.md` §3.7); not while rounding a mark (§6.1), where the rounding is her proper course.
 - **Emergency (rule 14)**: if the give-way boat is in `Breach` and `ttc < 1.5 s`, the AI evades with the candidate
@@ -672,6 +681,13 @@ WM-102; the runs before it, all boats deciding on even ticks, in brackets where 
 | match race, 2 Expert, 5 seeds | the leader covers in every race (2–8 activations); one penalty and two contacts in seed 3 [none] | ≥ 1 |
 | mixed fleet (2 per level, 3 seeds) | mean place Easy 7.3, Intermediate 3.5, Expert 3.8, Pro 3.3 [6.3, 5.5, 4.0, 2.3] | monotonic |
 | speed only (same) | mean place Easy 7.2, Intermediate 4.3, Expert 3.3, Pro 3.3 [7.2, 3.5, 2.8, 4.7]; mean finish times 733 / 666 / 626 / 629 s [737 / 614 / 616 / 657]: since WM-095 the ratios do not follow `performance_scale` (before: within 2.5 %), the six races are dominated by start delays and a few penalties | within 3 % |
+
+After WM-128 (the centred rudder's drag charged once, in the polar; course objects passed without holding a course
+into them or tangents through the wind, §6.4, §7.4; a rounding the stream sets onto the mark handled as a collision
+course; the match-race cover ahead of the strategy triggers, §4.4), same runs and seeds: 10 Intermediate 98 % finish,
+0.44 penalties/boat, 2.8 contacts/race, stuck ≤ 15 s, bad air 1.2 triggers/boat (0.14 → 0.03, 98 % lower); every
+level 95–100 % finish, OCS 0–5 %; 1 nm beat 4.5 tacks/boat; the match leader covers in every race (1–8
+activations); the Solent fleets stuck ≤ 10 s (before: up to 33 s, and boats pinned on the offset mark by the flood).
 
 These few races move a lot with any change of timing. Over 140 races of the 10 Intermediate fleet (`AI_SCENE=1
 AI_FLEET=1 AI_LEVEL=1`, seeds 100 to 239) the stagger is neutral: 4.20 contacts/race against 3.91 unstaggered

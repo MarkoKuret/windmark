@@ -79,12 +79,14 @@ float time_to_spot_go(const AB& a, const Me& m, Vec2 spot);
 // of a boat on the other tack within 3 L.
 bool tack_safe(AC& x, AB& a, const Me& m, float psi_new, bool gybe);
 // §7.2, §7.4: keeping clear, holding course, rule 17 and the emergency; applied after the plan of the decision.
-void rules_overlay(AC& x, AB& a, const Me& m, Vec2 aim);
+// `obj_turn`: this decision's heading was turned to pass a course object (§6.4), which holding course never undoes.
+void rules_overlay(AC& x, AB& a, const Me& m, Vec2 aim, bool obj_turn = false);
 // True when a right-of-way constraint (§7.4 hold course) forbids starting a manoeuvre now.
 bool holding_course(AC& x, AB& a, const Me& m);
 // Course objects (marks, committee and mark boats) ahead on the planned heading: steer to pass them clear, on the
-// side they are on (`skip_mark`: the mark being rounded, which the rounding circle keeps clear).
-void avoid_objects(AC& x, AB& a, const Me& m, std::int32_t skip_mark);
+// side they are on (`skip_mark`: the mark being rounded, which the rounding circle keeps clear). True when it turned
+// the heading for one.
+bool avoid_objects(AC& x, AB& a, const Me& m, std::int32_t skip_mark);
 // §6.5 pinned on an object: the escape, when it runs (ai_course.cpp).
 void pinned_escape(AC& x, AB& a, const Me& m);
 // §4.6 land, obstacles and the race area: true (and the escape set) when the boat must turn away.

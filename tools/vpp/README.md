@@ -230,7 +230,7 @@ tables, the VMG optima and the `dynamics` fits.
 | `decel_const` | the hull at 1 m/s (a crawl), over the mass plus added mass |
 | `decel_windage` | windage of hull, mast and the start config's sails luffing on their sheets head to wind per m/s of apparent wind: the square law's secant through `WINDAGE_AWS_REF` 3.4 m/s, with the wind profile factor at the centre of effort (the core's apparent wind is at 10 m), over the mass plus added mass; the core charges it at its own apparent wind, times `max(cos awa, 0)`. The whole square law made a tack in 22 kn lose most of its way (the coast law gives the sails no drive anywhere in the no-go zone) and full-helm tacks cheaper than half-helm ones; the secant keeps the tack targets of `boat.md` §7.2 |
 | `heel_speed_factor` | 1 up to `vpp.max_heel`; beyond, the surge equilibrium with the heel held there, relative to the limit |
-| `rudder_drag_luff`, `_bear` | rudder lift-line drag with stall, plus the keel's induced drag carrying the turn's centripetal force at the turn radius of that helm (the radius law with the offset above), over the mass. The blade's incidence is the same share (0.5) of the rudder angle the radius law's offset assumes, so the drag's stall knee is the radius law's stall helm `h_s`; past the stall incidence the flow separates over 5° and the blade's force becomes a normal force of about its maximum lift, whose drag is `cl_max sin α`. The bear-away table is the same evaluated 0.75 m/s slower |
+| `rudder_drag_luff`, `_bear` | rudder lift-line drag with stall beyond the centred blade's own drag (which is in the hull resistance, so in the polar: 0 at helm 0, `boat.md` §4), plus the keel's induced drag carrying the turn's centripetal force at the turn radius of that helm (the radius law with the offset above), over the mass. The blade's incidence is the same share (0.5) of the rudder angle the radius law's offset assumes, so the drag's stall knee is the radius law's stall helm `h_s`; past the stall incidence the flow separates over 5° and the blade's force becomes a normal force of about its maximum lift, whose drag is `cl_max sin α`. The bear-away table is the same evaluated 0.75 m/s slower |
 | `heel_max` | heel of the maximum righting moment, at most 65° |
 | `heel_freq`, `heel_damping` | roll stiffness (righting-moment slope) over roll inertia (hull, rig, bulb, crew, +20 % added); aerodynamic roll damping of the sail plan |
 | `pitch_freq` | waterplane pitch stiffness over pitch inertia (+80 % added) |
@@ -286,8 +286,8 @@ Equilibrium heel of the shipped classes (jib config at 42° TWA; kite config at 
 
 | class | 4 | 6 | 8 | 10 | 12 | kite 110°, 4 / 8 | kite 135°, 4 / 8 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| wm7 | 11.3° | 14.0° | 15.4° | 17.7° | 17.1° | 7.3° / 20.3° | 1.4° / 9.1° |
-| wm12 | 11.6° | 17.3° | 19.8° | 21.4° | 21.0° | 8.9° / 21.4° | 2.4° / 6.9° |
+| wm7 | 11.3° | 14.0° | 15.4° | 17.7° | 17.1° | 8.1° / 18.6° | 1.8° / 10.8° |
+| wm12 | 11.6° | 17.3° | 19.8° | 21.4° | 21.0° | 9.8° / 21.3° | 2.8° / 7.7° |
 
 ## Model
 

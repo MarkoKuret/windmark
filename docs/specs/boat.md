@@ -608,7 +608,7 @@ start needs speed built before the gun.
 7. **Helm balance**: close-hauled at 12 kn with the upwind config the helm balance is within 1°/s of 0 and the boat
    holds its course with the helm centred; with the helm centred the upwind config drifts at most 2°/s at its VMG
    angle from 6 to 16 kn and at most 3°/s reaching (60° to 120°) at 10 kn; on a spinnaker at 130° in 22 kn it
-   rounds up with the helm centred (more than 10° in 5 s) and holding the course takes helm to bear away and
+   rounds up with the helm centred (more than 5° in 5 s) and holding the course takes helm to bear away and
    costs speed; reaching at 100° under the spinnaker in 20 kn, a gust to 26 kn overpowers it: with the helm
    centred it broaches (closer than 75° to the wind within 5 s), with full helm to bear away it stays below 80° on
    its own tack (held on, the full helm may carry it round through a gybe onto the other tack).

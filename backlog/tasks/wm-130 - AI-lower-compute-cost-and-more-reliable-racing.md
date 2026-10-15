@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-10-15 17:30'
-updated_date: '2026-10-15 20:20'
+updated_date: '2026-10-15 20:39'
 labels:
   - ai
 dependencies: []
@@ -34,4 +34,6 @@ Reliability: dev sweep AI_REL (fleet7, fleet12, mixed, match7, match12, big, big
 Cost: AI step timed alone, 16 boats, 10 races, Release M5: mean 24.0 -> 12.4 us/tick, p99 249 -> 140, worst 815 -> 838 us (Intermediate wm7); mixed levels and classes 23.4 -> 12.8, p99 250 -> 166, worst 769 -> 679. The cut (keep-clear: held candidate first, the others in lower-bound order) makes the same decisions bit for bit; determinism and memory-block tests pass.
 Tried and dropped: start spots 1.5 L from the line ends (worse), hold-course exemption without the touch test (Solent overstanding), several escape variants (hard helm turns wedge the boat; let fly first loses boats that would slide off).
 Open (AC 2 not met): fleet boats still pinned over 30 s in about 1 race in 20, nearly all near head to wind against a buoy (windward mark after a keep-clear luff in a crowd, the pin end just after the start, the offset mark) or against the finish mark boat, wedged before the escape starts; most fleet DSQs are late penalties (44.2-late). Rules engine, not AI, is now most of the core tick (polar_vmg per boat per tick about a fifth): owner decision.
+
+After merging main (heel model, WM-128, WM-119 fix c8483c8; merged with c8483c8's hold-course exemption, through-the-wind tangent rule and stream-set rounding fallback kept), 400 seeds each, main -> merged: match7 finished 779 -> 794/800, DNF 15 -> 0, pinned > 30 s races 20 -> 0; match12 770 -> 781, DNF 17 -> 8, pinned 20 -> 1; fleet7 3855 -> 3842, pinned 27 -> 19; fleet12 3536 -> 3544, pinned 16 -> 12; mixed 3757 -> 3740, pinned 16 -> 8; big 2961 -> 2983/3200, pinned 29 -> 21. Solent (42 seeds): slack 404 -> 412/420, flood 414 -> 416, ebb 403 -> 403. AI cost (16 boats, 10 races): mean 18.8 -> 10.1 us/tick, p99 206 -> 110, worst 574 -> 539 (Intermediate wm7); mixed 22.9 -> 11.1, p99 234 -> 126, worst 680 -> 520. ctest (ai_long included), run_core_sim_test pass. AC 2 still open (fleet pins).
 <!-- SECTION:NOTES:END -->

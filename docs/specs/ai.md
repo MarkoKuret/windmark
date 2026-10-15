@@ -778,25 +778,26 @@ line) she beat up through the line on port, bore away to pass below the committe
 the hold-course rule (§7.4) against the other boat, so she sailed into its side; other seeds tacked onto starboard
 just beside it and then bore away across its stern into it. Once against it with no way on, nothing the old escape
 (a hard helm towards the heading away) did could free her. Over 400 seeds of each run (`AI_REL`, below; the wind
-8, 11, 15 or 19 kn by seed; "pinned" = racing, in contact with an object, under 0.3 m/s over the ground), before ->
-after the changes of §6.4, §6.5, §7.3, §7.4 and §7.6:
+8, 11, 15 or 19 kn by seed; "pinned" = racing, in contact with an object, under 0.3 m/s over the ground), main with
+the heel model and WM-119's fixes (2026-10-15) -> with the changes of §6.4, §6.5, §7.3, §7.4 and §7.6 as well:
 
 | run (400 races, `big` 200) | finished | DNF | DSQ | races with a boat pinned > 30 s | pinned s/race | mark touches/race |
 | --- | --- | --- | --- | --- | --- | --- |
-| `match7` (2 Expert wm7, match course) | 777 → 798 of 800 | 20 → 0 | 3 → 2 | 51 → 1 | 53.6 → 0.3 | 0.32 → 0.23 |
-| `match12` (2 Expert wm12) | 764 → 781 of 800 | 18 → 4 | 16 → 15 | 28 → 0 | 34.5 → 0.0 | 0.40 → 0.34 |
-| `fleet7` (10 wm7, levels mixed) | 3780 → 3802 of 4000 | 9 → 5 | 211 → 193 | 29 → 14 | 8.2 → 4.1 | 1.25 → 1.00 |
-| `fleet12` (10 wm12, levels mixed) | 3309 → 3327 | 36 → 36 | 655 → 637 | 28 → 28 | 9.9 → 8.5 | 1.68 → 1.35 |
-| `mixed` (10, both classes and all levels) | 3659 → 3649 | 32 → 35 | 309 → 316 | 19 → 16 | 7.5 → 6.0 | 1.31 → 1.15 |
-| `big` (16 Intermediate wm7) | 2841 → 2823 of 3200 | 1 → 4 | 358 → 373 | 13 → 8 | 7.9 → 4.6 | 2.31 → 2.06 |
+| `match7` (2 Expert wm7, match course) | 779 → 794 of 800 | 15 → 0 | 6 → 6 | 20 → 0 | 32.3 → 0.1 | 0.35 → 0.29 |
+| `match12` (2 Expert wm12) | 770 → 781 of 800 | 17 → 8 | 13 → 11 | 20 → 1 | 27.9 → 2.1 | 0.40 → 0.40 |
+| `fleet7` (10 wm7, levels mixed) | 3855 → 3842 of 4000 | 4 → 12 | 141 → 146 | 27 → 19 | 7.0 → 5.7 | 1.08 → 1.06 |
+| `fleet12` (10 wm12, levels mixed) | 3536 → 3544 | 63 → 49 | 401 → 407 | 16 → 12 | 5.1 → 3.2 | 0.99 → 0.80 |
+| `mixed` (10, both classes and all levels) | 3757 → 3740 | 32 → 37 | 211 → 223 | 16 → 8 | 6.3 → 2.4 | 0.83 → 0.79 |
+| `big` (16 Intermediate wm7) | 2961 → 2983 of 3200 | 9 → 10 | 230 → 207 | 29 → 21 | 17.3 → 12.7 | 2.65 → 2.38 |
 
-Contacts and penalties per race are unchanged within the noise. The Solent tide over 42 seeds each: flood 379 → 392
-of 420 finished (DSQ 40 → 27, boats stopped > 60 s in 7 → 2 races), ebb 398 → 400, slack 394 → 392; the windward
-approaches overstood by more than 10 s 8 → 8 % (flood), 15 → 13 % (ebb), 11 → 10 % (slack). **Open**: fleet boats
-are still pinned for more than 30 s in about one race in twenty: nearly all of them near head to wind against a buoy
-(the windward mark in a crowd after a keep-clear luff, the pin end just after the start, the offset mark) or
-against the finish mark boat, where they have lost all way before the escape starts; most of the fleet DSQs are
-penalties not served in time (`44.2-late`), many of them by such boats. Keeping the start spots 1.5 L from the line's
+Contacts and penalties per race are unchanged within the noise. The Solent tide over 42 seeds each: slack 404 → 412
+of 420 finished (DSQ 16 → 8), flood 414 → 416, ebb 403 → 403; the windward approaches overstood by more than 10 s
+7.8 → 7.8 % (slack), 6.5 → 6.0 % (flood), 10.7 → 11.7 % (ebb). (Against main before the heel model the match runs
+went 777 → 798 and 764 → 781 finished, pinned races 51 → 1 and 28 → 0.) **Open**: fleet boats are still pinned for
+more than 30 s in about one race in thirty: nearly all of them near head to wind against a buoy (the windward mark in
+a crowd after a keep-clear luff, the pin end just after the start, the offset mark) or against the finish mark boat,
+where they have lost all way before the escape starts; most of the fleet DSQs are penalties not served in time
+(`44.2-late`), many of them by such boats. Keeping the start spots 1.5 L from the line's
 ends was tried and dropped (measured worse).
 
 The keep-clear evaluation (§7.2) takes the candidate held from the last decision first and the others in the order

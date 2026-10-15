@@ -403,9 +403,14 @@ seeds), µs per tick over the ten races:
 | | bigmix | 23.8 | 4.8 | 259 | 452 | 971 |
 | WM-126 + WM-130 | big | 12.4 | 4.9 | 140 | 293 | 838 |
 | | bigmix | 12.8 | 4.8 | 166 | 343 | 679 |
+| main with the heel model and WM-119's fixes | big | 18.8 | 4.8 | 206 | 332 | 574 |
+| | bigmix | 22.9 | 4.9 | 234 | 368 | 680 |
+| the same merged with WM-126 + WM-130 | big | 10.1 | 4.8 | 110 | 246 | 539 |
+| | bigmix | 11.1 | 5.0 | 126 | 261 | 520 |
 
 The rows "WM-126 fixes alone" and "WM-126 + WM-130" race the same races bit for bit (the cost cut does not change a
-decision): the mean halves and the 99th percentile drops by about 40 %. The cost was the keep-clear candidate
+decision): the mean halves and the 99th percentile drops by about 40 %; against main with the new heel model the
+merged branch halves the mean and the 99th percentile too (the last two rows race different races). The cost was the keep-clear candidate
 evaluation (ai.md §7.2: about 70 % of the AI time, nearly all of it hull-to-hull gaps along the predicted tracks):
 the candidate held from the last decision is now checked first and stands when it is still clear, and the others are
 taken in the order of a lower bound of their cost, so the track checks of candidates that cannot win are skipped. The

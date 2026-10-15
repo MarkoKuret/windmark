@@ -119,7 +119,7 @@ func update(t: CamTypes.Target, o: CamTypes.Options, dt: float) -> CamTypes.View
 	var boat := Frames.boat_transform(p.pos_x, p.pos_y, p.z, p.psi, p.theta, p.phi)
 	var eye := boat * Frames.body_to_model(eye_body)
 	var yaw := p.psi + look_yaw
-	var pitch := 0.5 * p.theta + look_pitch
+	var pitch := 0.5 * p.theta - g.look_down + look_pitch
 	var follow := 0.0 if o.reduced_motion else heel_follow
 	var roll := -follow * p.phi  # starboard down (phi > 0) rolls the right of the frame down
 	var b := Basis(Vector3.UP, -yaw) * Basis(Vector3.RIGHT, pitch) * Basis(Vector3.BACK, roll)

@@ -96,7 +96,7 @@ bool escape(AC& x, std::size_t j, const Track& tj, std::int32_t k0, const Track&
 }
 
 // The own track of a candidate: a heading (turning at |v|/R_full), a tack or gybe (helm 0.6), or braking.
-void own_track(const Me& m, float psi_to, std::int8_t turn, bool slow, bool manoeuvre, Track& out) {
+void own_track(const Me& m, float psi_to, std::int8_t turn, bool slow, bool manoeuvre, Track& out, float delay = 0.0f) {
   Motion mo;
   mo.c = m.c;
   mo.psi = m.s.psi;
@@ -109,6 +109,7 @@ void own_track(const Me& m, float psi_to, std::int8_t turn, bool slow, bool mano
     rate = max(0.5f, mo.v) / R;
   }
   OwnPlan p = plan_to(m, psi_to, turn, slow, rate);
+  p.delay = delay;
   // A slow boat with the sails drawing picks up speed (boat.md §5.8): without it a stopped boat sees no way out.
   const float twa = std::fabs(wrap_pi(m.twd - psi_to));
   const std::int32_t front = m.b.sails().front();
@@ -141,11 +142,44 @@ bool track_clear_of_objects(AC& x, const AB& a, const Track& own) {
   return true;
 }
 
+namespace {
+
+// §6.4 the clearance the object check keeps from a course object.
+float object_clearance(const Me& m, const CourseObject& o) {
+  float clear = (o.r + 0.5f * m.B) + (1.0f + 0.15f * m.L);
+  if (o.is_boat) clear = clear + 0.5f * m.L;
+  return clear;
+}
+
+// §7.3: the heading after a tack or gybe, sailed on from where the manoeuvre ends, does not run at a course object
+// within the object check's reach and clearance (§6.4): the check would turn her across the object's bow or stern
+// straight after the manoeuvre, too close to clear it. The buoys of the boat's next step are left to the rounding.
+bool heading_clear_ahead(AC& x, const AB& a, const Me& m, Vec2 from, float psi) {
+  const Vec2 f = cog_dir(a, m, psi);
+  const float reach = max(3.0f * m.L, 6.0f * max(1.0f, m.s.v));
+  const std::int32_t nx = m.rb.next;
+  const bool has_step = nx >= 0 && static_cast<std::size_t>(nx) < x.course.steps.size();
+  for (const CourseObject& o : x.course.objects) {
+    if (!o.is_boat && has_step) {
+      const CourseStep& st = x.course.steps[static_cast<std::size_t>(nx)];
+      if (o.mark == st.marks[0] || o.mark == st.marks[1]) continue;
+    }
+    const Vec2 d = v_sub(o.c, from);
+    const float along = v_dot(d, f);
+    if (along <= 0.0f || along > reach + o.r) continue;
+    if (std::fabs(v_cross(f, d)) < object_clearance(m, o)) return false;
+  }
+  return true;
+}
+
+}  // namespace
+
 bool tack_safe(AC& x, AB& a, const Me& m, float psi_new, bool gybe) {
   {
     Track own;
     own_track(m, psi_new, static_cast<std::int8_t>(gybe ? -m.tack : m.tack), false, true, own);
     if (!track_clear_of_objects(x, a, own)) return false;
+    if (!heading_clear_ahead(x, a, m, own.c.back(), psi_new)) return false;
   }
   if (!x.race.rules_live()) return true;
   static thread_local std::vector<std::size_t> nb;
@@ -263,23 +297,96 @@ bool track_touches(AC& x, const AB& a, const Track& own, const CourseObject& o, 
   return false;
 }
 
+void avoid_objects_plan(AC& x, AB& a, const Me& m, std::int32_t skip_mark);
+
+// The smallest clearance (m) between the hull and a course object near the boat along the track of a turn onto
+// `psi` (the reaction time, then the turn at the radius law's rate, 4 s); the mark being rounded is left out. 1e9
+// when no object is near.
+float turn_gap(AC& x, const AB& a, const Me& m, float psi, std::int8_t turn, std::int32_t skip_mark) {
+  const float ro = x.r_hull[static_cast<std::size_t>(a.i)];
+  const float reach = 4.0f * max(1.0f, m.s.v) + ro;
+  bool near = false;
+  for (const CourseObject& o : x.course.objects) {
+    if (o.mark != skip_mark && v_dist(o.c, m.c) - o.r < reach) near = true;
+  }
+  if (!near) return 1e9f;
+  Track own;
+  own_track(m, psi, turn, false, false, own, reaction_time(m.b.perf().dynamics));
+  own.c.resize(41);
+  own.psi.resize(41);
+  const std::vector<Vec2>& oh = hull(x, static_cast<std::size_t>(a.i));
+  float best = 1e9f;
+  for (const CourseObject& o : x.course.objects) {
+    if (o.mark == skip_mark || v_dist(o.c, m.c) - o.r >= reach) continue;
+    for (std::size_t k = 0; k < own.c.size(); ++k) {
+      if (v_dist(own.c[k], o.c) - ro - o.r > best) continue;
+      const std::span<const Vec2> placed = own.hull(oh, k).pts();
+      const float g = point_in_polygon(o.c, placed) ? -o.r : point_polygon_edge_dist(o.c, placed) - o.r;
+      best = min(best, g);
+    }
+  }
+  return best;
+}
+
+// §6.4: a large change of heading near a course object is checked along the track of the turn: the bow and stern
+// sweep as she turns and she runs on before the turn takes hold. A turn that would come within 0.3 m is replaced by
+// the heading nearest the planned one, between it and the present heading, on this tack, whose turn keeps clear;
+// with none clear, a tack away when she has way on, else the one of them that keeps farthest off (letting fly if
+// even that touches). After the start only.
+void turn_check(AC& x, AB& a, const Me& m, std::int32_t skip_mark) {
+  if (!m.rb.started) return;  // before the start the boats manoeuvre round the line's ends at speed (§5)
+  const float e = wrap_pi(a.psi_target - m.s.psi);
+  if (std::fabs(e) < 20.0f * DEG) return;
+  const std::int32_t skip = skip_mark >= 0 && skip_mark == a.round_mark ? skip_mark : -1;
+  constexpr float kClear = 0.3f;
+  const float g0 = turn_gap(x, a, m, a.psi_target, a.turn_dir, skip);
+  if (g0 >= kClear) return;
+  float best_g = g0, best_psi = a.psi_target;
+  bool best_is_target = true;
+  for (std::int32_t k = 1; k <= 12; ++k) {
+    const float frac = 1.0f - static_cast<float>(k) / 12.0f;
+    const float psi = wrap_2pi(m.s.psi + e * frac);
+    const float twa = wrap_pi(m.twd - psi);
+    if (k < 12 && (std::fabs(twa) < m.theta_up - 2.0f * DEG || sgn(twa) != m.tack)) continue;
+    const float g = turn_gap(x, a, m, psi, 0, skip);
+    if (g >= kClear) {
+      a.psi_target = psi;
+      a.turn_dir = 0;
+      return;
+    }
+    if (g > best_g) {
+      best_g = g;
+      best_psi = psi;
+      best_is_target = false;
+    }
+  }
+  const bool way_on = m.s.v >= 0.6f * polar_speed(a, m, max(std::fabs(m.twa), m.theta_up));
+  if (std::fabs(m.twa) < HALF_PI && way_on && request_tack(x, a, m, AiTactic::Land, true)) return;
+  if (!best_is_target) {
+    a.psi_target = best_psi;
+    a.turn_dir = 0;
+  }
+  a.let_fly = m.s.v > 0.5f && best_g < 0.0f;
+}
+
 // §6.4 the rounding check: the planned heading of a rounding, sailed from here with the turn the helm makes (the
 // reaction time, then the radius law's rate), keeps the hull off the mark for 4 s. If not, the nearest heading that
-// does, turning away from the mark (the rounding side) by up to 45°, and still sailable; false when none is.
-bool rounding_track_check(AC& x, AB& a, const Me& m, const CourseObject& o) {
+// does, turning away from the mark (from the side it is on now: the rounding side, or the other for a boat on the
+// wrong side of it) by up to 90°, and still sailable; false when none is (`away`: that direction, +1 clockwise).
+bool rounding_track_check(AC& x, AB& a, const Me& m, const CourseObject& o, float& away) {
   const float clear = 0.3f;
+  const float t_r = reaction_time(m.b.perf().dynamics);
+  away = v_cross(dir(m.s.psi), v_sub(o.c, m.c)) > 0.0f ? 1.0f : -1.0f;  // on the left: away is clockwise
   Track own;
-  own_track(m, a.psi_target, 0, false, false, own);
+  own_track(m, a.psi_target, 0, false, false, own, t_r);
   own.c.resize(41);
   own.psi.resize(41);
   if (!track_touches(x, a, own, o, clear)) return true;
-  // Away from the mark: a port rounding has it on the left, so away is clockwise.
-  const float away = -a.round_sigma;
-  for (std::int32_t k = 1; k <= 9; ++k) {
+  for (std::int32_t k = 1; k <= 18; ++k) {
     const float psi = wrap_2pi(a.psi_target + away * static_cast<float>(k) * 5.0f * DEG);
     const float twa = wrap_pi(m.twd - psi);
     if (std::fabs(twa) < m.theta_up - 2.0f * DEG) break;  // not sailable: the caller tacks or slows
-    own_track(m, psi, 0, false, false, own);
+    own_track(m, psi, 0, false, false, own, t_r);
     own.c.resize(41);
     own.psi.resize(41);
     if (!track_touches(x, a, own, o, clear)) {
@@ -290,10 +397,36 @@ bool rounding_track_check(AC& x, AB& a, const Me& m, const CourseObject& o) {
   return false;
 }
 
+// The rounding check failed: tack away from the mark when the tack turns away from it, else keep the present heading
+// if that clears it, else slow (with way on).
+void rounding_fallback(AC& x, AB& a, const Me& m, const CourseObject& o, float away) {
+  if (std::fabs(m.twa) < HALF_PI && m.tack == away && request_tack(x, a, m, AiTactic::Rounding, true)) return;
+  const float t_r = reaction_time(m.b.perf().dynamics);
+  Track own;
+  own_track(m, m.s.psi, 0, false, false, own, t_r);
+  own.c.resize(41);
+  own.psi.resize(41);
+  if (!track_touches(x, a, own, o, 0.3f)) {
+    a.psi_target = m.s.psi;
+    return;
+  }
+  // Slow down, with way on and unless a stream sets her onto it (let fly, she would only drift onto it).
+  a.let_fly = m.s.v > 0.5f && v_dot(m.cur, v_sub(o.c, m.c)) <= 0.0f;
+}
+
 }  // namespace
 
 void avoid_objects(AC& x, AB& a, const Me& m, std::int32_t skip_mark) {
+  a.obj_turn = false;
   if (a.man != Man::straight) return;
+  const float psi_in = a.psi_target;
+  avoid_objects_plan(x, a, m, skip_mark);
+  turn_check(x, a, m, skip_mark);
+  a.obj_turn = a.psi_target != psi_in;
+}
+
+namespace {
+void avoid_objects_plan(AC& x, AB& a, const Me& m, std::int32_t skip_mark) {
   const float v = max(1.0f, m.s.v);
   const float reach = max(3.0f * m.L, 6.0f * v);
   // Along the track over the ground: the current sets the boat onto an object her heading would clear.
@@ -325,7 +458,8 @@ void avoid_objects(AC& x, AB& a, const Me& m, std::int32_t skip_mark) {
     // she runs on before the turn takes hold).
     for (const CourseObject& o : x.course.objects) {
       if (o.mark != skip_mark || v_dist(o.c, m.c) > reach + o.r) continue;
-      if (rounding_track_check(x, a, m, o)) return;
+      float away = 0.0f;
+      if (rounding_track_check(x, a, m, o, away)) return;
       hit = &o;
       need = (o.r + 0.5f * m.B) + 0.5f;
       best_t = 0.0f;
@@ -364,7 +498,8 @@ void avoid_objects(AC& x, AB& a, const Me& m, std::int32_t skip_mark) {
   if (rounding_mark) {
     // The tangent, and then the track through the turn onto it: the bow and stern sweep as she turns.
     a.psi_target = psi;
-    if (!rounding_track_check(x, a, m, *hit)) a.let_fly = m.s.v > 0.5f;
+    float away = 0.0f;
+    if (!rounding_track_check(x, a, m, *hit, away)) rounding_fallback(x, a, m, *hit, away);
     return;
   }
   if (std::fabs(twa) < m.theta_up - 2.0f * DEG) {
@@ -375,6 +510,7 @@ void avoid_objects(AC& x, AB& a, const Me& m, std::int32_t skip_mark) {
   }
   a.psi_target = psi;
 }
+}  // namespace
 
 void rules_overlay(AC& x, AB& a, const Me& m, Vec2 aim) {
   if (!x.race.rules_live() || m.rb.ghost) return;
@@ -537,7 +673,10 @@ void rules_overlay(AC& x, AB& a, const Me& m, Vec2 aim) {
       const float eb = wrap_pi(bearing(m.c, x.race.boat(static_cast<std::size_t>(j)).c) - m.s.psi);
       const float et = wrap_pi(a.psi_target - m.s.psi);
       if (sgn(et) == sgn(eb) && std::fabs(et) > 5.0f * DEG && a.tactic != AiTactic::Rounding) {
-        a.psi_target = wrap_2pi(m.s.psi + sgn(et) * 5.0f * DEG);
+        const float held = wrap_2pi(m.s.psi + sgn(et) * 5.0f * DEG);
+        // Not into a course object: the turn that passes it stands when holding course would touch it (§6.4).
+        if (a.obj_turn && turn_gap(x, a, m, held, 0, -1) < 0.3f) continue;
+        a.psi_target = held;
       }
     }
   }

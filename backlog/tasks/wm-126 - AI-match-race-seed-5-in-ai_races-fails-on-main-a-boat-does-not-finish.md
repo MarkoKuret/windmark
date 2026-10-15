@@ -1,9 +1,11 @@
 ---
 id: WM-126
 title: 'AI: match race seed 5 in ai_races fails on main (a boat does not finish)'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-10-11 12:28'
+updated_date: '2026-10-15 19:55'
 labels:
   - ai
 dependencies: []

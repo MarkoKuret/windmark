@@ -1,9 +1,11 @@
 ---
 id: WM-130
 title: 'AI: lower compute cost and more reliable racing'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-10-15 17:30'
+updated_date: '2026-10-15 19:55'
 labels:
   - ai
 dependencies: []

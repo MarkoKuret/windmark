@@ -101,6 +101,8 @@ struct AiSkippers::Boat {
   // so not in the memory block).
   Vec2 round_M{0.0f, 0.0f};
   float round_sigma = 1.0f, round_rho = 0.0f;
+  // This decision's heading was turned to pass a course object (§6.4); not memory either.
+  bool obj_turn = false;
 
   // Start (§5)
   ai_detail::StartPhase phase = ai_detail::StartPhase::free;
@@ -127,6 +129,10 @@ struct AiSkippers::Boat {
   float pin_until = -1e9f;         // the escape runs until then
   float pin_seen = -1e9f;          // the last contact with an object
   Vec2 pin_n{0.0f, 0.0f};          // the contact normal, from the object towards the boat
+  std::int8_t pin_mode = 0;        // the escape's way off: 0 sails drawing, 1 let fly, 2 sailing away
+  float pin_check_t = 0.0f;        // the escape's next progress check, and the pose at the last one
+  Vec2 pin_c{0.0f, 0.0f};
+  float pin_psi = 0.0f;
 
   // Bad air (§8)
   float bad_t = 0.0f;

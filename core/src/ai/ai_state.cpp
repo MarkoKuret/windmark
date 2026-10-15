@@ -11,7 +11,7 @@ namespace wm {
 namespace {
 
 constexpr std::uint32_t kAiMagic = 0x49414D57u;  // "WMAI"
-constexpr std::uint32_t kAiVersion = 2;
+constexpr std::uint32_t kAiVersion = 3;
 constexpr std::uint32_t kMaxBadAir = 100000;
 
 struct Put {
@@ -90,7 +90,7 @@ void visit_boat(V& v, AiSkippers::Boat& a) {
   v(a.phase); v(a.spot_fixed); v(a.spot_u); v(a.spot_beta); v(a.spot_rank); v(a.drawn); v(a.spread_r); v(a.e_start); v(a.go);
   v(a.loop); v(a.hover_fly); v(a.ret_stage); v(a.match_stage);
   v(a.avoid_until); v(a.avoid_hold); v(a.avoid_psi); v(a.avoid_slow); v(a.avoid_other); v(a.avoid_kind);
-  v(a.pin_t); v(a.pin_until); v(a.pin_seen); v(a.pin_n);
+  v(a.pin_t); v(a.pin_until); v(a.pin_seen); v(a.pin_n); v(a.pin_mode); v(a.pin_check_t); v(a.pin_c); v(a.pin_psi);
   v(a.bad_t); v(a.foot_until); v(a.foot_delta); v(a.bad_src); v(a.bad_last);
   v(a.opp_other_t); v(a.cover_opp); v(a.opp_tack_prev); v(a.opp_tacked_at);
   v(a.pen_on); v(a.pen_t0); v(a.pen_dir); v(a.pen_seen_turning); v(a.pen_stall_t); v(a.pen_prepare); v(a.pen_block); v(a.pen_served0);
@@ -152,7 +152,8 @@ bool AiSkippers::load(std::span<const std::uint8_t> bytes, const World& world, s
     const std::uint32_t nr = r.get_u32();
     if (a->i < 0 || static_cast<std::uint32_t>(a->i) >= nb || nr > kMaxBadAir ||
         static_cast<std::uint8_t>(a->level) > 3 || static_cast<std::uint8_t>(a->man) > 4 ||
-        static_cast<std::uint8_t>(a->leg) > 2 || static_cast<std::uint8_t>(a->phase) > 3 ||
+        static_cast<std::uint8_t>(a->leg) > 2 || static_cast<std::uint8_t>(a->phase) > 3 || a->pin_mode < 0 ||
+        a->pin_mode > 2 ||
         static_cast<std::size_t>(a->tactic) >= kAiTacticCount ||
         static_cast<std::size_t>(a->prev_tactic) >= kAiTacticCount ||
         static_cast<std::size_t>(a->pend_reason) >= kAiTacticCount ||

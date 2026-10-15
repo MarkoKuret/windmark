@@ -701,7 +701,7 @@ WM-102; the runs before it, all boats deciding on even ticks, in brackets where 
 | same | bad air 2.4 triggers/boat [3.3], deficit 0.14 → 0.04 twenty seconds later (93 % lower) | ≥ 2, lower |
 | every level, 10 boats, 2 seeds | 85–100 % finish [90–95 %]; OCS 0–5 % [0–15 %]; mean start delay 18–30 s [14–19 s] | Pro OCS < 5 %, delay < 2 s; Easy < 15 %, 3–8 s |
 | 1 nm beat, 10 boats | 4.2 tacks/boat [5.1] | 3–14 |
-| match race, 2 Expert, 5 seeds | the leader covers in every race (2–8 activations); one penalty and two contacts in seed 3 [none] | ≥ 1 |
+| match race, 2 Expert, 5 seeds | the leader covers in every race (2–7 activations), no penalties or contacts, both boats finish every race (before WM-126 a boat of seed 5 lay pinned on the committee boat to the end) | ≥ 1 |
 | mixed fleet (2 per level, 3 seeds) | mean place Easy 7.3, Intermediate 3.5, Expert 3.8, Pro 3.3 [6.3, 5.5, 4.0, 2.3] | monotonic |
 | speed only (same) | mean place Easy 7.2, Intermediate 4.3, Expert 3.3, Pro 3.3 [7.2, 3.5, 2.8, 4.7]; mean finish times 733 / 666 / 626 / 629 s [737 / 614 / 616 / 657]: since WM-095 the ratios do not follow `performance_scale` (before: within 2.5 %), the six races are dominated by start delays and a few penalties | within 3 % |
 
@@ -757,13 +757,47 @@ them into the wind): mean start delay 76 → 27 s. Open: in a strong stream a bo
 still lie pinned on it for up to about two minutes before she gets clear (§6.5); a stream setting the fleet over the
 line still gives OCS 13 % of starts in the ebb (no current: 4 %).
 
+**Pinned and stuck boats, and the AI's cost (WM-126, WM-130).** On main before WM-126, match seed 5 of `ai_races`
+left a boat pinned on the committee boat for the rest of the race: after rounding the leeward mark (60 m below the
+line) she beat up through the line on port, bore away to pass below the committee boat and was held to 5° turns by
+the hold-course rule (§7.4) against the other boat, so she sailed into its side; other seeds tacked onto starboard
+just beside it and then bore away across its stern into it. Once against it with no way on, nothing the old escape
+(a hard helm towards the heading away) did could free her. Over 400 seeds of each run (`AI_REL`, below; the wind
+8, 11, 15 or 19 kn by seed; "pinned" = racing, in contact with an object, under 0.3 m/s over the ground), before ->
+after the changes of §6.4, §6.5, §7.3, §7.4 and §7.6:
+
+| run (400 races, `big` 200) | finished | DNF | DSQ | races with a boat pinned > 30 s | pinned s/race | mark touches/race |
+| --- | --- | --- | --- | --- | --- | --- |
+| `match7` (2 Expert wm7, match course) | 777 → 798 of 800 | 20 → 0 | 3 → 2 | 51 → 1 | 53.6 → 0.3 | 0.32 → 0.23 |
+| `match12` (2 Expert wm12) | 764 → 781 of 800 | 18 → 4 | 16 → 15 | 28 → 0 | 34.5 → 0.0 | 0.40 → 0.34 |
+| `fleet7` (10 wm7, levels mixed) | 3780 → 3802 of 4000 | 9 → 5 | 211 → 193 | 29 → 14 | 8.2 → 4.1 | 1.25 → 1.00 |
+| `fleet12` (10 wm12, levels mixed) | 3309 → 3327 | 36 → 36 | 655 → 637 | 28 → 28 | 9.9 → 8.5 | 1.68 → 1.35 |
+| `mixed` (10, both classes and all levels) | 3659 → 3649 | 32 → 35 | 309 → 316 | 19 → 16 | 7.5 → 6.0 | 1.31 → 1.15 |
+| `big` (16 Intermediate wm7) | 2841 → 2823 of 3200 | 1 → 4 | 358 → 373 | 13 → 8 | 7.9 → 4.6 | 2.31 → 2.06 |
+
+Contacts and penalties per race are unchanged within the noise. The Solent tide over 42 seeds each: flood 379 → 392
+of 420 finished (DSQ 40 → 27, boats stopped > 60 s in 7 → 2 races), ebb 398 → 400, slack 394 → 392; the windward
+approaches overstood by more than 10 s 8 → 8 % (flood), 15 → 13 % (ebb), 11 → 10 % (slack). **Open**: fleet boats
+are still pinned for more than 30 s in about one race in twenty: nearly all of them near head to wind against a buoy
+(the windward mark in a crowd after a keep-clear luff, the pin end just after the start, the offset mark) or
+against the finish mark boat, where they have lost all way before the escape starts; most of the fleet DSQs are
+penalties not served in time (`44.2-late`), many of them by such boats. Keeping the start spots 1.5 L from the line's
+ends was tried and dropped (measured worse).
+
+The keep-clear evaluation (§7.2) takes the candidate held from the last decision first and the others in the order
+of a lower bound of their cost; it makes the same choice as evaluating all of them, and halves the AI's time:
+`PERFORMANCE.md` ("AI skippers alone") has the numbers.
+
 Development runs (skipped unless asked for, in `test_ai_race.cpp`): `AI_SCENE=1` races the game scene's fleet (6
 Expert wm7, 12 kn from 0°, the default shifts) over `AI_SEEDS=first,count` and prints per seed the first-mark
 roundings, mark touches, penalties, DSQs, finishes and OCS boats; `AI_FLEET=1` switches to the fleet of the runs
 above, `AI_WM12=1` to a mixed wm7 and wm12 fleet, `AI_TRACE` writes a CSV of every boat every 0.5 s (with the reason
 of the last manoeuvre and why a penalty turn waits), `AI_VENUE=<venue>` races a venue on its own conditions over
 `AI_SEEDS` (with `AI_TIDE`, `AI_N`, `AI_LEVEL`, `AI_MIXED`) and prints the windward approaches and the beats' side,
-and `AI_SNAP=<dir>` resumes a race the game saved (the world
+`AI_REL=fleet7|fleet12|mixed|match7|match12|big|bigmix` with `AI_SEEDS` prints per race the finishes, DNF, DSQ,
+the longest stuck and pinned times, contacts, penalties, touches and the skippers' cost per tick (mean, percentiles,
+worst), `AI_PIN=<t>` (with `AI_REL`, `AI_SEED`, `AI_PIN_B`, `AI_PIN_SEQ`) replays a race to race time t and sails
+one boat on fixed controls from there (how a pinned boat can get free), and `AI_SNAP=<dir>` resumes a race the game saved (the world
 snapshot and the skippers' block, `world.bin` and `ai.bin`, boat 0 the player) instead of creating one, so a
 failure seen in the game scene is replayed in the core.
 

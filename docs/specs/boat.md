@@ -591,7 +591,9 @@ start needs speed built before the gun.
    attitude wobble on, the mean heel stays within 0.2° and the mean speed within 1.5 % (the wobble reaches the
    speed only through the heel). Where the polar is a broached speed below the grip speed the boat drifts sideways
    (§6.4), its apparent wind and with it its heel (§5.5) move off the table's: those points are checked on speed
-   only.
+   only, and the speed against the target of §5.8 with the trim at that apparent wind (`polar_speed ·
+   trim_speed · heel_speed_factor(heel)`): where the sheets cannot reach the optimum there (a spinnaker sheeted
+   fully in on a close reach) the drive is the trimmed share of the polar.
 2. **Turning circle**: at 8 kn TWS on a beam reach, full helm, helm balance and yaw inertia off: the steady circle
    radius equals `turn_radius_full` within 1 %.
 3. **Tack**: from steady close-hauled at 10 kn, a tack with helm 0.5: time and distance lost against a reference

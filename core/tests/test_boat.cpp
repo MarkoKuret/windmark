@@ -71,6 +71,9 @@ Steady run_steady(const wm::PerfData& p, const wm::ConfigPerf& c, float tws_kn, 
   r.v_mean = static_cast<float>(v_sum / tail);
   const float ta = std::fabs(s.twa);
   r.expect_v = c.polar.at(s.tws, ta) * p.dynamics.heel_speed_factor.at(std::fabs(s.phi));
+  // Drifting, the boat's apparent wind is off the table's, and the sheets may not reach the optimum there: the
+  // target is the trimmed share of the polar (boat.md §5.8, §10.1). On the table's wind trim_speed is 1.
+  if (s.sway != 0.0f) r.expect_v = r.expect_v * boat.outputs().trim_speed;
   r.heel_target = -wm::sgn(s.twa) * wm::clamp(c.heel.at(s.tws, ta), 0.0f, p.dynamics.heel_max);
   const wm::SailPerf& main = p.sails[static_cast<std::size_t>(p.main_sail)];
   if (c.front_sail < 0 && main.sheet_max_by_heel.present) {

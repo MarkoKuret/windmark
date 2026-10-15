@@ -24,7 +24,7 @@ constexpr double TAU_D = 6.283185307179586;
 constexpr double LIFE_S = 9.0;
 constexpr double SPREAD_S = 4.0;
 constexpr double TURB_SPREAD = 0.15;  // the transom ribbon: w = w0 (1 + TURB_SPREAD t)
-constexpr double LINE_M = 0.3;        // the bow ribbon's foam lines, just inside each edge  // the edges stop opening (the diverging waves have broken)
+constexpr double LINE_M = 0.25;        // the bow ribbon's foam lines, just inside each edge  // the edges stop opening (the diverging waves have broken)
 constexpr double KELVIN = 0.354;
 constexpr double GRAVITY = 9.81;
 constexpr double U_OUTER = 0.0;

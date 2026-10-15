@@ -65,6 +65,8 @@ const SHOTS := [
 	["sail25_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0}],
 	["sail18_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 18.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0}],
 	["sail12_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 12.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0}],
+	["sail25_close_M", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0, "close": 0.45}],
+	["sail18_close_M", SeaEnvSource.Mode.PLACEHOLDER, 18.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0, "close": 0.45}],
 	["sailseq25_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0, "seq": 24, "step_ms": 250.0}],
 ]
 
@@ -199,6 +201,12 @@ func _process_sail() -> bool:
 	var sea: Sea = _scene.get_node("Sea")
 	if _sail_t0 < 0.0:
 		_sail_t0 = sea.render_time_ms
+	var close: float = _opt("close", 0.0)
+	if close > 0.0 and sea.render_time_ms - _sail_t0 >= 1000.0 * float(_opt("seconds", 15.0)):
+		# the camera moved toward the boat along its line (a close chase view), same direction
+		var cam: Camera3D = _scene.rig.camera
+		var bp: Vector3 = (_scene.boat_view as Node3D).global_position
+		cam.global_position = bp + (cam.global_position - bp) * close
 	var n_seq: int = _opt("seq", 0)
 	var due := 1000.0 * float(_opt("seconds", 15.0)) + _seq * float(_opt("step_ms", 250.0))
 	if sea.render_time_ms - _sail_t0 < due:

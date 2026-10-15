@@ -710,6 +710,38 @@ func check_whitecaps() -> void:
 		check(cs > w / 1.4 and cs < w * 1.4, "%.0f kn with a swell: cover %.2f %% within x1.4 of the law (%.2f %%)" % [
 				case[0], 100.0 * cs, 100.0 * w])
 	var sea25 := _caps_sea(25.0, 0.0)
+	# a cap grades from a bright core to a translucent trail, never one flat opacity
+	var ck_g := _caps_comp(sea25, 100000.0)
+	var grp_g := _caps_grp(sea25, 100000.0)
+	var a_all := PackedFloat32Array()
+	var core_a := 0.0
+	var core_n := 0
+	var trail_a := 0.0
+	var trail_n := 0
+	for x in pts:
+		var dr := _caps_drawn(sea25, ck_g, grp_g, x, 25.0 * SeaWhitecaps.KNOT, 100000.0)
+		if dr.x > 0.02:
+			a_all.append(dr.x)
+		if dr.y > 0.5:
+			core_a += dr.x
+			core_n += 1
+		elif dr.y < 0.1 and dr.z > 0.5:
+			trail_a += dr.x
+			trail_n += 1
+	var am := 0.0
+	for v in a_all:
+		am += v
+	am /= maxf(a_all.size(), 1)
+	var asd := 0.0
+	for v in a_all:
+		asd += (v - am) * (v - am)
+	asd = sqrt(asd / maxf(a_all.size(), 1))
+	core_a /= maxf(core_n, 1)
+	trail_a /= maxf(trail_n, 1)
+	print("    drawn caps at 25 kn: opacity mean %.2f, spread %.2f; core %.2f (%d points), trail %.2f (%d points)" % [
+			am, asd, core_a, core_n, trail_a, trail_n])
+	check(asd >= 0.15 and core_a > trail_a + 0.2 and trail_n > 0,
+			"caps grade from a bright core (%.2f) to a translucent trail (%.2f), opacity spread %.2f (at least 0.15)" % [core_a, trail_a, asd])
 	var area25 := _caps_cover(sea25, pts, 25.0 * SeaWhitecaps.KNOT, lm, SeaWhitecaps.MAX_CAPS, true)
 	var area15 := _caps_cover(_caps_sea(15.0, 0.0), pts, 15.0 * SeaWhitecaps.KNOT, lm, SeaWhitecaps.MAX_CAPS, true)
 	check(area25 < 2.0 * covers[25.0] and area15 < 2.0 * covers[15.0] + 0.0005,
@@ -819,15 +851,23 @@ func check_whitecaps() -> void:
 	var lives := []
 	var max_jump := 0.0
 	var frames := 3600
+	# a point riding the dominant wave keeps its streak sample (the streaks ride the crests)
+	var st_k := PackedFloat32Array()
+	var e20: Vector2 = sea20["e"]
+	var sf0 := SeaWhitecaps.streak_frame(sea20["comps"], 0.0, 0.0, t0)
+	for k in n_pts:
+		var x0 := pts[k] * 0.5
+		st_k.append(SeaWhitecaps.foam_noise(Vector2(x0.dot(e20), x0.dot(Vector2(-e20.y, e20.x))) / SeaWhitecaps.STREAK_TILE + sf0, 0))
 	for fr in frames:
 		var t := t0 + fr * 1000.0 / 60.0
 		var comp := _caps_comp(sea20, t)
 		var grp := _caps_grp(sea20, t)
+		var brk := _caps_brk(sea20, t)
 		for k in n_pts:
 			var x := pts[k] * 0.5 + vp * (fr / 60.0)
 			# the texture coordinate stays fixed for a point riding the dominant wave
 			var L := img.get_pixel(int(absf(pts[k].x) * 37.0) % n_img, int(absf(pts[k].y) * 53.0) % n_img)
-			var a := SeaWhitecaps.opacity(_caps_f(sea20, comp, grp, x, wind, n6, 0.0, t), L)
+			var a := _caps_drawn(sea20, comp, grp, x, wind, t, L, st_k[k], brk).x
 			if fr > 0:
 				max_jump = maxf(max_jump, absf(a - prev[k]))
 			prev[k] = a
@@ -925,15 +965,37 @@ func _caps_cover(sea: Dictionary, pts: PackedVector2Array, wind: float, lm: Colo
 		var ck := _caps_comp(sea, t)
 		var grp := _caps_grp(sea, t)
 		for x in pts:
-			var f := _caps_f(sea, ck, grp, x, wind, n_caps, 0.0, t)
-			var a := SeaWhitecaps.opacity(f, lm)
-			s += (1.0 if a > 0.1 else 0.0) if area else (1.0 if f >= 0.5 else 0.0)
+			if area:
+				s += 1.0 if _caps_drawn(sea, ck, grp, x, wind, t).x > 0.1 else 0.0
+			else:
+				s += 1.0 if _caps_f(sea, ck, grp, x, wind, n_caps, 0.0, t) >= 0.5 else 0.0
 			n += 1
 	return s / n
 
 
+## The drawn cap at a point (SeaWhitecaps.drawn: opacity, core, trail), every component resolved; L the lace sample
+## (by default the caps texture at the point), the streaks from the foam noise.
+func _caps_drawn(sea: Dictionary, ck: PackedVector4Array, grp: Vector4, x: Vector2, wind: float, t_ms: float,
+		L = null, st := -1.0, brk = null) -> Vector3:
+	var f := SeaWhitecaps.field(ck, sea["cw"], sea["rest"], SeaWhitecaps.MAX_CAPS, x, 0.0, 1.0, wind, sea["cal"], grp,
+			sea["e"], brk if brk != null else _caps_brk(sea, t_ms))
+	if f.z <= 0.0 or f.x <= -2.0:
+		return Vector3.ZERO
+	var e: Vector2 = sea["e"]
+	var q := Vector2(x.dot(e), x.dot(Vector2(-e.y, e.x)))
+	if st < 0.0:
+		st = SeaWhitecaps.foam_noise(q / SeaWhitecaps.STREAK_TILE + SeaWhitecaps.streak_frame(sea["comps"], 0.0, 0.0, t_ms), 0)
+	if L == null:
+		var img := SeaTextures.caps_image()
+		var uv := SeaWhitecaps.uv_frame(sea["comps"], 0.0, 0.0, t_ms)
+		var c := Vector2(q.x / SeaWhitecaps.TILE.x + uv.z, q.y / SeaWhitecaps.TILE.y + uv.w)
+		var n := img.get_width()
+		L = img.get_pixel(posmod(int(floorf(c.x * n)), n), posmod(int(floorf(c.y * n)), n))
+	return SeaWhitecaps.drawn(f.x, f.y, f.z, L, st)
+
+
 ## Foam patches in the chase view (every component resolved, 0.5 m cells over 200 m, a cell foamed when its
-## opacity is over 0.25): {cover: the foamed share, n, median, p95, max: patch sizes (the longer side of the bounding
+## intensity is at least 0.5, the active area): {cover: the foamed share, n, median, p95, max: patch sizes (the longer side of the bounding
 ## box, m)}.
 func _caps_patches(sea: Dictionary, kn: float) -> Dictionary:
 	var n := 400
@@ -947,9 +1009,9 @@ func _caps_patches(sea: Dictionary, kn: float) -> Dictionary:
 	var count := 0
 	for j in n:
 		for i in n:
-			var a := SeaWhitecaps.opacity(_caps_f(sea, ck, grp, Vector2(i * res - 100.0, j * res - 100.0),
-					kn * SeaWhitecaps.KNOT, SeaWhitecaps.MAX_CAPS, 0.0, t), lm)
-			if a > 0.25:
+			var a := _caps_f(sea, ck, grp, Vector2(i * res - 100.0, j * res - 100.0),
+					kn * SeaWhitecaps.KNOT, SeaWhitecaps.MAX_CAPS, 0.0, t)
+			if a >= 0.5:
 				on[j * n + i] = 1
 				count += 1
 	var seen := PackedByteArray()

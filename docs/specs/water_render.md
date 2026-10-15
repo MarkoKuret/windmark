@@ -321,12 +321,26 @@ lace and a milky film), A near-solid white with a few holes; built from periodic
 smooth warp that curves its borders, and seamless value noise for the breakup. It is mapped `4.5 m` along `e` by
 `3 m` across, moving with the dominant wave. Mip-mapped, anisotropic: the mips average coverage, so a distant cap
 fades to its true mean whiteness. With caps a few metres across and far apart the tiling inside them does not read.
+**A breaking cap, not a cut-out** (round 3, 2026-10-15: drawn as one flat opacity the caps read as white paper
+cut-outs up close). A real cap has a small bright, nearly opaque breaking core on the crest and its forward face,
+soft lacy edges, and a thinner, translucent, streaky residual foam trailing behind it (on the back of the wave,
+upwind), drawn out along the wind and decaying over seconds. The intensity keeps its definition (`F` above, which
+the cover and the calibration count); the look uses `x = (S − S_b)/S_W` before the clamp, and `dm`, the distance
+in metres from the crest of the heaviest foam component (ahead > 0; where the pixel cannot resolve that component,
+`front = behind = 1`):
 ```
 q        = (dot(xl, e), dot(xl, perp(e))) / (4.5, 3) + (u0, v0)
-L        = texture(caps_tex, q)
-cover    = L.r·min(4F, 1) + (L.g - L.r)·clamp(4F - 1, 0, 1) + (L.b - L.g)·clamp(4F - 2, 0, 1) + (L.a - L.b)·clamp(4F - 3, 0, 1)
-a        = 0.92 · cover(0.8·F) · (0.3 + 0.7·smoothstep(0, 0.6, F))   // dense lace at most, never a solid sheet
-ALBEDO   = mix(mix(ALBEDO, (0.05, 0.20, 0.23), 0.3·smoothstep(0.2, 0.8, F)), col_foam, a)   // aerated water, then foam
+L        = texture(caps_tex, q)                                        // lace, 4.5 m tile
+st       = texture(foam_tex, (dot(xl, e), dot(xl, perp(e))) / (14, 1.6) + caps_str).r   // streaks along the wind,
+                                                                       // riding the crest (one more tap)
+xj       = x + 1.2·(L.g − 0.5) + 0.8·(st − 0.5)                        // outlines from three noise scales (the
+                                                                       // breakup's 6 m, the lace's 1 m, the streaks)
+front    = smoothstep(−4 m, −1 m, dm)                              // the crest and its forward face
+behind   = 1 − smoothstep(0, 1.5 m, dm)                                // the back of the wave
+core     = smoothstep(0.0, 1.2, xj) · front · g                        // g = gate · fade
+trail    = smoothstep(−1.0, 0.7, xj) · behind · smoothstep(0.3, 0.75, st) · g
+a        = 0.95 · core · mix(L.b, L.a, smoothstep(1, 2, xj)) + 0.5 · trail · L.g · (1 − core)
+ALBEDO   = mix(mix(ALBEDO, (0.05, 0.20, 0.23), 0.3·smoothstep(0.2, 0.8, max(core, 0.5·trail))), col_foam, a)
 ROUGHNESS = mix(ROUGHNESS, 0.55, a) ; EMISSION *= 1 - a ; normal = normalize(mix(normal, n_geo, 0.6·a))   // no glints in foam
 ```
 **Cover** (the area with `F ≥ 0.5`, every component resolved, on the reference wind seas of `sea.md` §2 at fetch
@@ -341,15 +355,20 @@ tap of the foam texture where `F > 0`; nothing below 8 kn or beyond 2.5 km. The 
 metres wide, narrower than the vertex spacing at the chase camera's distance (1.5 m at 25 m, 6 m at 100 m on tier
 M), so they are evaluated per pixel; what the vertex stage already has (exposure, venue factor) comes as varyings.
 Measured with `tests/water_cost.py` (the development M1, OpenGL proxy, 1280 × 800): the helicopter view of the
-25 kn open sea, where every water pixel runs the loop, +0.13 ms on tier L, +0.15 ms on M, +0.08 to 0.11 ms on H
+25 kn open sea, where every water pixel runs the loop, +0.16 ms on tier L, +0.18 ms on M, +0.13 ms on H (with the graded cap and its streak tap)
 (the first version +0.10, +0.14, +0.10 ms on the same view; the runs vary by ±0.05 ms); the game's chase view at
 25 kn +0.00 to 0.01 ms. On the Steam Deck (about 0.6 of the M1's GPU) about
 +0.25 ms, inside the 2.5 ms of §7.
 
-**Checks** (`tests/water_test.gd`, on the CPU mirror `SeaWhitecaps.intensity`): no caps under 8 kn (6 and 7.9 kn, and
+The opacity grades from the core (up to 0.95) to the trail (at most 0.5, streaky lace); the trail reaches a little
+below the threshold (`x > −1`), the residual foam of a cap that has stopped breaking, and fades with it. The cover
+counts the active area (`F ≥ 0.5`) as before.
+
+**Checks** (`tests/water_test.gd`, on the CPU mirror `SeaWhitecaps.intensity` and `SeaWhitecaps.drawn`): no caps under 8 kn (6 and 7.9 kn, and
 a puff on a 7 kn breeze); cover never falling and rising over 10 to 25 kn, within ×1.3 of the law at 12, 15, 20 and 25
 kn, on the fetch-10 km seas and on an open sea (fetch 30 km with a 0.8 m swell), tier L within ×1.6; the area with
-visible foam at most twice the cover; with a swell bigger than the wind sea's peak (25 kn with 1.2 m, 18 and 12 kn
+visible foam (`a > 0.1`, core and trail) at most twice the cover; the drawn opacity is never one flat value
+(over the foamed points its spread is at least 0.15) and the core is brighter than the trail; with a swell bigger than the wind sea's peak (25 kn with 1.2 m, 18 and 12 kn
 with 0.8 m, 12 s): no swell component carries caps, cover within ×1.4 of the law, and in the chase view (0.5 m
 cells over 200 m) 95 % of the patches at most 8 m and the largest at most 16 m (the second version: 27 and 51 m); more caps in puffs, fewer in lulls; no lattice: the autocorrelation of the foam
 field at 25 kn over 512 m (8 m cells) rises nowhere more than 0.3 above its mean at the same distance (2 to 16 cells;
@@ -786,19 +805,23 @@ it meets the water or the hull (depth fade over 0.6 m) and near the camera (unde
   (tens of seconds behind a sportsboat at speed), which spreads slowly and, as the bubbles rise, breaks up into
   separate patches and streaks that thin and fade.
 
-The bow ribbon draws the lines, the transom ribbon (below) the turbulent wake. Per vertex `COLOR.r` is the turbulent
+The bow ribbon draws the lines, the transom ribbon (below) the turbulent wake. The lines take their variation from
+the coarse noise `p`, whose tile is 60 m along the ribbon (round 3: the fine noise, repeating every 5 m, made them
+evenly spaced dashes like road markings). Per vertex `COLOR.r` is the turbulent
 band's half width over the ribbon's (1 on the transom ribbon: all of it; 0 on the bow ribbon), `COLOR.b` the line's
-width over the ribbon's half width (`0.3 m / w` on the bow ribbon, 0 on the transom's), `COLOR.g` the age. With
+width over the ribbon's half width (`0.25 m / w` on the bow ribbon, 0 on the transom's), `COLOR.g` the age. With
 `s = |2u − 1| / 0.6` the distance across in half widths (1 at the edge vertex, beyond it the feathered margin), `n`
 the fine foam noise (two taps) and `p` the coarse patch noise (one tap):
 ```
-line    = s ≤ 1 ? 1 − smoothstep(0.5·b, b, |s − (1 − 0.5·b)|) : 0   // a thin band just inside each edge, nothing outside
-dash    = smoothstep(0.48, 0.62, n)                         // broken into dashes along the line
-lines   = line · dash · (1 − smoothstep(0.08, 0.3, age))    // gone after 1 to 3 s: a few boat lengths at speed
+lw      = b · (0.6 + 0.8·p) · (1 − 0.5·smoothstep(0, 0.3, age))   // width varies slowly along the line, thins with age
+line    = s ≤ 1 ? exp(−((s − (1 − lw)) / (0.5·lw))²) : 0     // a soft band just inside each edge, nothing outside
+broken  = smoothstep(0.42, 0.68, 0.6·p + 0.4·n2)           // continuous but broken, opacity varying slowly
+lace    = 0.45 + 0.55·smoothstep(0.35, 0.7, n)              // foam texture within the line, never a smooth rope
+lines   = line · broken · lace · (1 − smoothstep(0, 0.3, age))   // brightest at the hull, gone after 1 to 3 s
 mid     = 1 − smoothstep(0.6·r, r, s)                       // the turbulent wake
 th      = 0.45 + 0.35·age                                   // the foam thins: more of it falls under the threshold
 breakup = smoothstep(th, th + 0.4 − 0.25·age, 0.6·n + 0.4·p)   // and its patches get sharper borders
-a       = alpha² · (0.6·lines + 0.9·mid·breakup)
+a       = alpha² · (0.7·lines + 0.9·mid·breakup)
 ```
 Nothing is drawn beyond the edge vertex, so the spray reach (which pushes the outer vertices out, invisible) no
 longer smears foam sideways into a comb of streaks (the first ribbons: a band out to 0.9 of the ribbon and texture

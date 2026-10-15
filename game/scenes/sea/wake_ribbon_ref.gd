@@ -26,7 +26,7 @@ var kind := 0
 ## the transom ribbon's widening: w = w0·(1 + TURB_SPREAD·t)
 const TURB_SPREAD := 0.15
 ## the bow ribbon's foam lines: LINE_M wide just inside each edge
-const LINE_M := 0.3
+const LINE_M := 0.25
 
 
 func set_kind(k: int) -> void:

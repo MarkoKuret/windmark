@@ -297,6 +297,8 @@ uniform vec4 caps_uv = vec4(0.0, 1.0, 0.0, 0.0);
 uniform vec4 caps_thr = vec4(1e3);              // breaking thresholds calibrated at the covers 0.05, 0.2, 0.8, 3.2 %
 uniform vec4 caps_grp = vec4(0.0, 0.5, 0.0, 0.0);   // wave-group envelope: (amplitude / noise sd, noise mean, ug, vg)
 uniform vec2 caps_brk = vec2(0.0);                  // short-crest breakup frame (ub, vb)
+uniform vec2 caps_str = vec2(0.0);                  // the trail's streak frame (us, vs)
+const vec2 WM_STREAK_TILE = vec2(14.0, 1.6);
 const float WM_GROUP_TILE = 600.0;
 const vec2 WM_BREAK_TILE = vec2(30.0, 15.0);
 
@@ -306,12 +308,15 @@ const vec2 WM_CAPS_TILE = vec2(4.5, 3.0);     // m along e, across
 // summed (crests meeting in a wave group make a cap), scaled by the wave-group envelope (the foam noise's coarse
 // channel, drifting at the group speed) and the short-crest breakup, against the sea's threshold for the measured cover at the local wind (m/s).
 // Components the pixel footprint px cannot show count with their window mean, so far caps never alias.
-float wm_caps_intensity(vec2 xl, float px, float expo, float wind) {
+// (x, dm, gate): x = (S - S_b) / S_W before the clamp, dm the distance from the heaviest component's crest in metres
+// (ahead positive; 0 where the pixel cannot resolve it), gate the wind gate (0: no caps).
+vec3 wm_caps_field(vec2 xl, float px, float expo, float wind) {
 	float kn = wind / WM_KNOT;
 	float gate = smoothstep(8.0, 10.0, kn);
 	if (gate <= 0.0 || expo <= 0.0) {
-		return 0.0;
+		return vec3(-1e3, 0.0, 0.0);
 	}
+	float dm = 0.0;
 	float S = caps_rest;
 	float inv_px = 1.0 / max(px, 1e-4);
 	for (int i = WM_CAPS_N; i < 6; i++) {
@@ -323,7 +328,11 @@ float wm_caps_intensity(vec2 xl, float px, float expo, float wind) {
 		float f = fract(k.x * xl.x + k.y * xl.y + k.z);
 		float d = f - step(0.5, f);                        // cycles from the crest, ahead positive
 		float q = d * (d >= 0.0 ? w.x : w.y);
-		S += k.w * mix(w.z, exp(-q * q), smoothstep(2.0, 4.0, w.w * inv_px));
+		float r = smoothstep(2.0, 4.0, w.w * inv_px);
+		S += k.w * mix(w.z, exp(-q * q), r);
+		if (i == 0) {
+			dm = d * w.w * r;
+		}
 	}
 	// the wave groups scale the crests' steepness, and the short-crest breakup lets only a few metres of each crest
 	// break (multiplying: foam stays on the crests, never a sheet over a group)
@@ -336,14 +345,12 @@ float wm_caps_intensity(vec2 xl, float px, float expo, float wind) {
 	float x = 0.5 * log2(3.84e-6 * pow(max(wind, 0.1), 3.41) / 0.0005);
 	float Sb = x < 1.0 ? mix(caps_thr.x, caps_thr.y, x) : (x < 2.0 ? mix(caps_thr.y, caps_thr.z, x - 1.0)
 			: mix(caps_thr.z, caps_thr.w, x - 2.0));
-	return clamp((S - Sb) * 28.5714, 0.0, 1.0) * gate;   // S_W = 0.035
+	return vec3((S - Sb) * 28.5714, dm, gate);   // S_W = 0.035
 }
 
-// Coverage of intensity F on the four nested density levels of the foam texture (lace .. near-solid).
-float wm_caps_cover(float F, vec4 L) {
-	float x = 4.0 * F;
-	return L.r * clamp(x, 0.0, 1.0) + (L.g - L.r) * clamp(x - 1.0, 0.0, 1.0)
-			+ (L.b - L.g) * clamp(x - 2.0, 0.0, 1.0) + (L.a - L.b) * clamp(x - 3.0, 0.0, 1.0);
+float wm_caps_intensity(vec2 xl, float px, float expo, float wind) {
+	vec3 f = wm_caps_field(xl, px, expo, wind);
+	return clamp(f.x, 0.0, 1.0) * f.z;
 }
 
 // The whitecaps on a shaded surface (after wm_surface): xl camera-relative position, px pixel footprint (m), expo
@@ -353,15 +360,23 @@ void wm_apply_caps(inout WmSurface S, vec2 xl, float px, float expo, float dist,
 	if (fade <= 0.0) {
 		return;
 	}
-	float F = wm_caps_intensity(xl, px, expo, S.m * base_speed) * fade;
-	if (F <= 0.0) {
+	vec3 cf = wm_caps_field(xl, px, expo, S.m * base_speed);
+	float g = cf.z * fade;
+	if (g <= 0.0 || cf.x <= -2.0) {
 		return;
 	}
-	// the bubbles under a breaking crest turn the water a lighter turquoise around the foam
-	S.albedo = mix(S.albedo, vec3(0.05, 0.20, 0.23), 0.3 * smoothstep(0.2, 0.8, F));
+	// a breaking core on the crest and its forward face, lacy edges, a translucent streaky trail behind it
 	vec2 q = vec2(dot(xl, caps_uv.xy), dot(xl, vec2(-caps_uv.y, caps_uv.x)));
 	vec4 L = texture(caps_tex, q / WM_CAPS_TILE + caps_uv.zw);
-	float a = 0.92 * wm_caps_cover(0.8 * F, L) * (0.3 + 0.7 * smoothstep(0.0, 0.6, F));   // lace, never a solid sheet; thin foam is translucent
+	float st = texture(foam_tex, q / WM_STREAK_TILE + caps_str).r;
+	float xj = cf.x + 1.2 * (L.g - 0.5) + 0.8 * (st - 0.5);
+	float front = smoothstep(-4.0, -1.0, cf.y);
+	float behind = 1.0 - smoothstep(0.0, 1.5, cf.y);
+	float core = smoothstep(0.0, 1.2, xj) * front * g;
+	float trail = smoothstep(-1.0, 0.7, xj) * behind * smoothstep(0.3, 0.75, st) * g;
+	float a = clamp(0.95 * core * mix(L.b, L.a, smoothstep(1.0, 2.0, xj)) + 0.5 * trail * L.g * (1.0 - core), 0.0, 1.0);
+	// the bubbles under a breaking crest turn the water a lighter turquoise around the foam
+	S.albedo = mix(S.albedo, vec3(0.05, 0.20, 0.23), 0.3 * smoothstep(0.2, 0.8, max(core, 0.5 * trail)));
 	S.albedo = mix(S.albedo, col_foam, a);
 	S.roughness = mix(S.roughness, 0.55, a);
 	S.emission *= 1.0 - a;

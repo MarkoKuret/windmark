@@ -71,12 +71,17 @@ float wm_mist_alpha(vec2 uv, float n, float kind) {
 float wm_wake_alpha(vec2 uv, float centre, float line, float a, float age, float n1, float n2, float p) {
 	float s = abs(uv.x * 2.0 - 1.0) / 0.6;
 	// the diverging waves' breaking crests: thin broken lines just inside the edges, gone within a few boat lengths
-	float band = line > 0.0 && s <= 1.0 ? 1.0 - smoothstep(0.5 * line, line, abs(s - (1.0 - 0.5 * line))) : 0.0;
-	float lines = band * smoothstep(0.48, 0.62, 0.6 * n1 + 0.4 * n2) * (1.0 - smoothstep(0.08, 0.3, age));
+	// (soft, uneven: width and opacity vary slowly along the line with the coarse noise, which repeats only every
+	// 60 m; thinner and fainter with age, brightest at the hull)
+	float lw = line * (0.6 + 0.8 * p) * (1.0 - 0.5 * smoothstep(0.0, 0.3, age));
+	float lq = (s - (1.0 - lw)) / max(0.5 * lw, 1e-4);
+	float band = line > 0.0 && s <= 1.0 ? exp(-lq * lq) : 0.0;
+	float lines = band * smoothstep(0.42, 0.68, 0.6 * p + 0.4 * n2) * (0.45 + 0.55 * smoothstep(0.35, 0.7, n1))
+			* (1.0 - smoothstep(0.0, 0.3, age));
 	// the turbulent wake
 	float mid = 1.0 - smoothstep(0.6 * centre, centre, s);
 	// the bubbles break up into clumps and streaks, and with age into separate patches that thin out
 	float th = 0.45 + 0.35 * age;
 	float breakup = smoothstep(th, th + 0.4 - 0.25 * age, 0.6 * (n1 * 0.7 + n2 * 0.5) + 0.4 * p);
-	return clamp(a * a * (0.6 * lines + 0.9 * mid * breakup), 0.0, 1.0);
+	return clamp(a * a * (0.7 * lines + 0.9 * mid * breakup), 0.0, 1.0);
 }

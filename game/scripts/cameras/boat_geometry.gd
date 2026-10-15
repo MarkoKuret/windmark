@@ -10,6 +10,13 @@ var zh := 0.0
 ## half-beam of the deck at xh (the deck edge)
 var deck_half_beam := 0.0
 
+## cameras.md §3: tiller, the eye this fraction of loa forward of the transom, sitting; wheel, this fraction of loa
+## aft of the wheel hub, standing (m above the deck)
+const TILLER_FROM_TRANSOM := 0.05
+const WHEEL_AFT := 0.08
+const EYE_SITTING := 1.0
+const EYE_STANDING := 1.65
+
 
 ## `model` is the imported boat root (the GLB's child named after the class) or null; without a deck mesh the
 ## deck is estimated from the class beam.
@@ -17,18 +24,24 @@ static func onboard(info: SimSource.ClassInfo, model: Node3D) -> BoatGeometry:
 	var g := BoatGeometry.new()
 	var rig: Dictionary = info.physics.get("rig", {})
 	var wheel := info.steering == "wheel" and rig.has("wheel_hub")
-	if wheel:
-		g.xh = float(rig["wheel_hub"][0]) - 0.45
-	elif rig.has("rudder_stock"):
-		g.xh = float(rig["rudder_stock"][0]) + 0.12 * info.loa
-	else:
-		g.xh = -0.38 * info.loa
 	var tris := _deck_triangles(model)
+	if wheel:
+		g.xh = float(rig["wheel_hub"][0]) - WHEEL_AFT * info.loa
+	else:
+		g.xh = (_aft_end(tris) if tris.size() > 0 else -0.5 * info.loa) + TILLER_FROM_TRANSOM * info.loa
 	g.deck_half_beam = _half_beam(tris, g.xh) if tris.size() > 0 else 0.45 * info.beam_max
 	g.yh_abs = 0.85 * g.deck_half_beam
 	var deck := _deck_height(tris, g.xh, g.yh_abs) if tris.size() > 0 else 0.6
-	g.zh = deck + (1.65 if wheel else 0.95)
+	g.zh = deck + (EYE_STANDING if wheel else EYE_SITTING)
 	return g
+
+
+## the aft end of the deck (the transom), body x
+static func _aft_end(tris: PackedVector3Array) -> float:
+	var x := INF
+	for p in tris:
+		x = minf(x, p.x)
+	return x
 
 
 ## deck triangles in body coordinates

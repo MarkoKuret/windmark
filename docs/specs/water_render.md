@@ -696,8 +696,13 @@ push the row into a ring buffer of N = 180 rows (a 9 s ribbon)
 **Each frame**, for every row of age `t` (a row is drawn with 15 vertices across: a feathered, transparent outer
 vertex `0.3 + 0.25·w` outside each edge, and 13 from edge to edge, so it follows the waves between its edges):
 ```
-half width  w = w0 + 0.354 * v_row * min(t, 4 s)              // edges open at the Kelvin angle, tan 19.47°, while the
-                                                              // diverging waves break (their foam is gone by 4 s)
+half width  w = w0 + tan(α) * v_row * min(t, 4 s)            // edges open at the wake angle α while the diverging
+                                                              // waves break (their foam is gone well before 4 s)
+wake angle  Fr = 0.399·ratio_row                               // hull Froude number v/sqrt(g·lwl) (hull speed: 0.4)
+            α = min(19.47°, 0.1995 rad / Fr)                   // Kelvin's angle at low speed; at high Froude the
+                                                              // apparent angle falls as 1/Fr (Rabaud and Moisy, 2013:
+                                                              // α ≈ 1/(2·sqrt(2π)·Fr)): WM7 at 8 kn 19.5°, 15 kn 12°,
+                                                              // 19 kn 9.5°
 edges       = row point ± w across the frozen heading, each draped on the drawn sea + 0.1 m (in the vertex shader,
               with the sea's uniforms and grid fade) and pulled toward the camera along the view ray (the pixel
               stays, only the depth moves) far enough to clear the sea by h_c = 0.15 m + 2 Σ a_i·w_i·(1 − fade_i(1 m))
@@ -774,26 +779,36 @@ Each is a camera-facing quad with a soft round falloff broken up by the foam tex
 with the sky's horizon colour plus a share of the sun that grows looking toward it (forward scattering), faded where
 it meets the water or the hull (depth fade over 0.6 m) and near the camera (under 3 m).
 
-**Wake foam** (`wm_wake_alpha`): the foam of a real wake does not stay a set of even stripes. The breaking diverging
-waves at the edges leave foam for a few seconds; the turbulent wake behind the hull keeps its bubbles much longer
-(tens of seconds behind a sportsboat at speed, its trail 50 to 100 m long) and, as the bubbles rise and the
-turbulence spreads, breaks up into separate patches and streaks that thin and fade. So, with `n` the fine foam
-noise (two taps, as before) and `p` a coarse patch noise (the foam noise's coarse channel at a quarter of the fine
-scale along the ribbon, one more tap):
-```
-edge    = band just inside the edges, as before, · (1 − smoothstep(0.12, 0.45, age))     // gone by about 4 s
-mid     = the centre band, about the hull's width, widening by (1 + 0.6·age)            // the turbulent wake
-th      = 0.45 + 0.35·age                                // the foam thins: more of it falls under the threshold
-breakup = smoothstep(th, th + 0.4 − 0.25·age, 0.6·n + 0.4·p)   // and its patches get sharper borders
-a       = alpha² · (0.45·edge + mid) · breakup
-```
-Fresh foam is the dense, lacy band of the previous version; after a few seconds only the patches where the coarse
-noise is high survive, with sharper borders, and they fade with `alpha`. The ribbon stops widening at 4 s, so the
-long tail adds rows but no wide transparent area to the blending (a 9 s ribbon at 19 kn: 180 rows of 15 vertices,
-the oldest 5 s about the width of the 4 s ribbon). Cost: one more foam noise tap per wake pixel; nothing in the sea
-shader.
+**Wake foam** (`wm_wake_alpha`): the foam of a real wake is not a set of even stripes. Two things make it:
+- the **diverging waves** off the bow and quarters: their crests break in thin, broken foam lines along the wake's
+  edges that start at the bow and are gone within a few boat lengths;
+- the **turbulent wake** behind the hull: churned water about the hull's width, the widest and most lasting foam
+  (tens of seconds behind a sportsboat at speed), which spreads slowly and, as the bubbles rise, breaks up into
+  separate patches and streaks that thin and fade.
 
-A second, narrower ribbon from the **transom** (`w0 = 0.4·transom width`, no spray) gives the stern wake. On tiers
+The bow ribbon draws the lines, the transom ribbon (below) the turbulent wake. Per vertex `COLOR.r` is the turbulent
+band's half width over the ribbon's (1 on the transom ribbon: all of it; 0 on the bow ribbon), `COLOR.b` the line's
+width over the ribbon's half width (`0.3 m / w` on the bow ribbon, 0 on the transom's), `COLOR.g` the age. With
+`s = |2u − 1| / 0.6` the distance across in half widths (1 at the edge vertex, beyond it the feathered margin), `n`
+the fine foam noise (two taps) and `p` the coarse patch noise (one tap):
+```
+line    = s ≤ 1 ? 1 − smoothstep(0.5·b, b, |s − (1 − 0.5·b)|) : 0   // a thin band just inside each edge, nothing outside
+dash    = smoothstep(0.48, 0.62, n)                         // broken into dashes along the line
+lines   = line · dash · (1 − smoothstep(0.08, 0.3, age))    // gone after 1 to 3 s: a few boat lengths at speed
+mid     = 1 − smoothstep(0.6·r, r, s)                       // the turbulent wake
+th      = 0.45 + 0.35·age                                   // the foam thins: more of it falls under the threshold
+breakup = smoothstep(th, th + 0.4 − 0.25·age, 0.6·n + 0.4·p)   // and its patches get sharper borders
+a       = alpha² · (0.6·lines + 0.9·mid·breakup)
+```
+Nothing is drawn beyond the edge vertex, so the spray reach (which pushes the outer vertices out, invisible) no
+longer smears foam sideways into a comb of streaks (the first ribbons: a band out to 0.9 of the ribbon and texture
+coordinates stretched over the spray's reach). The ribbons stop widening at 4 s, so the long tail adds rows but no
+wide transparent area to the blending. Cost: the same three foam noise taps per wake pixel as before and a few more
+operations; nothing in the sea shader.
+
+A second ribbon from the **transom** (no spray) is the **turbulent wake**: `w0 = 0.45·bwl` (the hull's breadth near
+the stern), widening slowly as the turbulence spreads, `w = w0·(1 + 0.15·t)` (to about twice the hull's width after
+9 s), not at the wake angle. On tiers
 M and H every ribbon is also drawn into a camera-centred **wake normal buffer** (RG8, 512 × 512 over 400 m, cleared
 each frame) as a normal disturbance that the sea shader adds to its detail normal, so wakes also ripple the
 reflections. The buffer is a sub-viewport with its own world (the ribbons' meshes shared), so the scene's cameras

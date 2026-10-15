@@ -92,6 +92,8 @@ class WakeRibbon : public godot::RefCounted {
   // spray lands on sea.height(x, y, t_ms)
   void step(double t_s, double dt, const godot::Ref<SeaSampler>& sea, double t_ms, const godot::Variant& current);
   int64_t row_count() const { return static_cast<int64_t>(rows_.size()); }
+  // WakeRibbonRef.set_kind: 0 the bow ribbon, 1 the transom ribbon (water_render.md §5)
+  void set_kind(int64_t k) { kind_ = static_cast<int>(k); }
   // row k (oldest first) as WakeRibbonRef keeps it: {t, p, fwd, v, w0, ratio, visible, dist, spray}
   godot::Dictionary row(int64_t k) const;
   // the reference's compact arrays (WakeRibbonRef.build_arrays)
@@ -120,11 +122,12 @@ class WakeRibbon : public godot::RefCounted {
     Spray spray[2];
   };
   static godot::Vector2 port(const Row& r) { return godot::Vector2(-r.fwd.y, r.fwd.x); }
-  static double half_width(const Row& r, double t_s);
+  double half_width(const Row& r, double t_s) const;
   static double alpha(const Row& r, double t_s);
-  static godot::Vector2 spray_excess(const Row& r, double t_s);
+  godot::Vector2 spray_excess(const Row& r, double t_s) const;
   void build(double t_s);
 
+  int kind_ = 0;  // 0 the bow ribbon (foam lines at the wake angle), 1 the transom ribbon (the turbulent wake)
   std::deque<Row> rows_;
   std::vector<godot::Vector3> pos_;
   std::vector<godot::Vector2> uv_, uv2_;

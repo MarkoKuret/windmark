@@ -243,6 +243,7 @@ in vec4 in_color;
 out vec2 v_uv;
 out float v_a;
 out float v_c;
+out float v_line;
 out float v_age;
 out vec3 v_wpos;
 void main() {
@@ -250,6 +251,7 @@ void main() {
     v_uv = in_uv;
     v_a = in_color.a;
     v_c = in_color.r;
+    v_line = in_color.b;
     v_age = in_color.g;
     gl_Position = u_vp * vec4(v_wpos, 1.0);
 }
@@ -259,11 +261,12 @@ WAKE_FS = """
 in vec2 v_uv;
 in float v_a;
 in float v_c;
+in float v_line;
 in float v_age;
 in vec3 v_wpos;
 out vec4 frag;
 void main() {
-    float a = wm_wake_alpha(v_uv, v_c, v_a, v_age, texture(foam_tex, v_uv * vec2(1.5, 2.0)).r,
+    float a = wm_wake_alpha(v_uv, v_c, v_line, v_a, v_age, texture(foam_tex, v_uv * vec2(1.5, 2.0)).r,
                             texture(foam_tex, v_uv * vec2(0.6, 0.7) + 0.37).g, texture(foam_tex, v_uv * vec2(0.15, 0.17) + 0.71).g);
     vec3 V = normalize(u_cam - v_wpos);
     vec3 c = shade(col_foam, 0.6, 0.3, vec3(0.0, 1.0, 0.0), V);

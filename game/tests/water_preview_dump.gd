@@ -53,6 +53,13 @@ const SHOTS := [
 	["sea15_aerial_M", SeaEnvSource.Mode.PLACEHOLDER, 15.0, 1, SeaQuality.Tier.M, {"puffs": true, "fetch": 30000.0, "from": 230.0, "swell": [0.8, 12.0, 240.0], "radius": 400.0, "speed": 6.5}],
 	["sea8_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 8.0, 0, SeaQuality.Tier.M, {"puffs": true, "fetch": 30000.0, "from": 230.0, "swell": [0.8, 12.0, 240.0], "radius": 400.0, "speed": 3.5}],
 	["sea8_aerial_M", SeaEnvSource.Mode.PLACEHOLDER, 8.0, 1, SeaQuality.Tier.M, {"puffs": true, "fetch": 30000.0, "from": 230.0, "swell": [0.8, 12.0, 240.0], "radius": 400.0, "speed": 3.5}],
+	# the wake at 8, 15 and 19 kn of boat speed (water_render.md §5), a 12 kn sea, a wide circle
+	["wake8_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 12.0, 0, SeaQuality.Tier.M, {"radius": 400.0, "speed": 4.1}],
+	["wake15_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 12.0, 0, SeaQuality.Tier.M, {"radius": 400.0, "speed": 7.7}],
+	["wake19_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 12.0, 0, SeaQuality.Tier.M, {"radius": 400.0, "speed": 9.8}],
+	["wake8_aerial_M", SeaEnvSource.Mode.PLACEHOLDER, 12.0, 1, SeaQuality.Tier.M, {"radius": 400.0, "speed": 4.1}],
+	["wake15_aerial_M", SeaEnvSource.Mode.PLACEHOLDER, 12.0, 1, SeaQuality.Tier.M, {"radius": 400.0, "speed": 7.7}],
+	["wake19_aerial_M", SeaEnvSource.Mode.PLACEHOLDER, 12.0, 1, SeaQuality.Tier.M, {"radius": 400.0, "speed": 9.8}],
 	# the game itself (scenes/sail_test.tscn on the core): WM7 at Fremantle running under main and jib, the chase
 	# camera, after `seconds` of sailing; the sea, wind and puffs are the core's (no swell in this setup)
 	["sail25_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0}],

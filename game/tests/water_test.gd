@@ -580,6 +580,24 @@ func check_wake_ribbon() -> void:
 			row6 = k
 	check(row6 != null and absf(WakeRibbonRef.half_width(row6, t) - (w0 + 0.354 * v * 4.0)) < 1e-6,
 			"wake: it stops opening at 4 s (half width 6 s behind %.3f m)" % (WakeRibbonRef.half_width(row6, t) if row6 else 0.0))
+	# the wake angle (Rabaud and Moisy): Kelvin's 19.47° up to Fr 0.59, then 0.1995 rad / Fr
+	var lwl := 6.75
+	var ok_angle := true
+	var line_a := "  wake half angle:"
+	for kn in [8.0, 15.0, 19.0]:
+		var vv: float = kn * SeaWhitecaps.KNOT
+		var ratio: float = vv / (1.34 * sqrt(lwl / 0.3048) * SeaWhitecaps.KNOT)
+		var fr := vv / sqrt(9.81 * lwl)
+		var want := minf(deg_to_rad(19.47), 0.1995 / fr)
+		var got := atan(WakeRibbonRef.wake_tan(ratio))
+		line_a += "  %.0f kn (Fr %.2f) %.1f°" % [kn, fr, rad_to_deg(got)]
+		ok_angle = ok_angle and absf(got - want) < deg_to_rad(0.3)
+	print(line_a)
+	check(ok_angle, "wake: the wedge narrows with the Froude number as 1/Fr above Fr 0.59 (WM7: 19.5°, 12°, 9.5° at 8, 15, 19 kn)")
+	var st := WakeRibbonRef.new()
+	st.set_kind(1)
+	var row_t := {"t": 0.0, "w0": 1.0, "v": 9.8, "ratio": 3.0}
+	check(absf(WakeRibbonRef.half_width(row_t, 6.0, 1) - 1.9) < 1e-6, "wake: the turbulent wake widens slowly (1 m to 1.9 m in 6 s at 19 kn)")
 	var arr := r2.build_arrays(t)
 	var cols: PackedColorArray = arr[Mesh.ARRAY_COLOR]
 	check(cols.size() > 0 and absf(cols[0].g) < 1e-6 and cols[cols.size() - 1].g > 0.98,

@@ -20,6 +20,19 @@ const U_EDGE := 0.2
 ## 0.8 m apart on a 4 s ribbon), so the ribbon follows the waves between its edges.
 const ACROSS := 15
 
+## 0: the bow ribbon (the diverging waves' foam lines, opening at the wake angle); 1: the transom ribbon (the
+## turbulent wake, widening slowly). water_render.md §5.
+var kind := 0
+## the transom ribbon's widening: w = w0·(1 + TURB_SPREAD·t)
+const TURB_SPREAD := 0.15
+## the bow ribbon's foam lines: LINE_M wide just inside each edge
+const LINE_M := 0.3
+
+
+func set_kind(k: int) -> void:
+	kind = k
+
+
 ## Rows, oldest first. Each: {t, p: Vector2, fwd: Vector2, v, w0, ratio, visible, dist, spray: Array}
 var rows: Array = []
 
@@ -46,8 +59,19 @@ static func age(row: Dictionary, t_s: float) -> float:
 	return t_s - float(row["t"])
 
 
-static func half_width(row: Dictionary, t_s: float) -> float:
-	return float(row["w0"]) + KELVIN * float(row["v"]) * minf(age(row, t_s), SPREAD_S)
+## The tangent of the wake's half angle at a speed ratio: Kelvin's 19.47° at low Froude number, falling as 1/Fr
+## above (Rabaud and Moisy 2013: α ≈ 0.1995 rad / Fr), with Fr = 0.399·ratio (the hull Froude number).
+static func wake_tan(ratio: float) -> float:
+	var fr := 0.399 * ratio
+	if fr <= 0.1995 / 0.33983:
+		return KELVIN
+	return tan(0.1995 / fr)
+
+
+static func half_width(row: Dictionary, t_s: float, k := 0) -> float:
+	if k == 1:
+		return float(row["w0"]) * (1.0 + TURB_SPREAD * minf(age(row, t_s), LIFE_S))
+	return float(row["w0"]) + wake_tan(float(row["ratio"])) * float(row["v"]) * minf(age(row, t_s), SPREAD_S)
 
 
 static func alpha(row: Dictionary, t_s: float) -> float:
@@ -147,8 +171,9 @@ static func spray_excess(row: Dictionary, t_s: float) -> Vector2:
 
 ## Mesh arrays of the ribbon at t_s, newest row first, ACROSS vertices per row from the outer port vertex to the
 ## outer starboard one in scene axes with y = 0 (the wake shader drapes it on the sea). UV: (across,
-## distance sailed / 10 m); UV2: the row's port direction (world x, y); COLOR.r: the bow half width as a
-## fraction of the ribbon's (the centre wake); COLOR.g: the row's age over LIFE_S; COLOR.a: the row alpha. The outer vertices sit a feathered margin
+## distance sailed / 10 m); UV2: the row's port direction (world x, y);
+## COLOR.r: 1 on the transom ribbon (all of it is the turbulent wake), 0 on the bow ribbon; COLOR.g: the row's age over
+## LIFE_S; COLOR.b: the foam line's width over the half width (bow ribbon), 0 on the transom's; COLOR.a: the row alpha. The outer vertices sit a feathered margin
 ## outside the edges, pushed out by the spray reach smoothed over neighbouring rows (never inside the edge, so
 ## the strip does not fold, and without steps from row to row).
 func build_arrays(t_s: float) -> Array:
@@ -169,7 +194,7 @@ func build_arrays(t_s: float) -> Array:
 		if a <= 0.0:
 			prev = -1
 			continue
-		var hw := half_width(row, t_s)
+		var hw := half_width(row, t_s, kind)
 		var lp := port(row)
 		var feather := 0.3 + 0.25 * hw
 		# triangular smoothing of the spray reach over the neighbouring rows
@@ -185,7 +210,8 @@ func build_arrays(t_s: float) -> Array:
 		ex /= wsum
 		var reach := [hw + feather + ex.x, hw + feather + ex.y]
 		var base := verts.size()
-		var centre := clampf(float(row["w0"]) / maxf(hw + feather, 1e-3), 0.0, 1.0)
+		var centre := 1.0 if kind == 1 else 0.0
+		var line := 0.0 if kind == 1 else clampf(LINE_M / maxf(hw, 1e-3), 0.0, 1.0)
 		var p: Vector2 = row["p"]
 		for i in ACROSS:
 			var u: float = U_OUTER if i == 0 else (1.0 - U_OUTER if i == ACROSS - 1 else
@@ -201,7 +227,7 @@ func build_arrays(t_s: float) -> Array:
 			verts.append(Vector3(q.x, 0.0, -q.y))
 			uvs.append(Vector2(u, float(row["dist"]) / 10.0))
 			uv2s.append(lp)
-			cols.append(Color(centre, clampf(age(row, t_s) / LIFE_S, 0.0, 1.0), 1, 0.0 if i == 0 or i == ACROSS - 1 else a))
+			cols.append(Color(centre, clampf(age(row, t_s) / LIFE_S, 0.0, 1.0), line, 0.0 if i == 0 or i == ACROSS - 1 else a))
 		if prev >= 0:
 			for i in ACROSS - 1:
 				idx.append_array([prev + i, base + i, base + i + 1, prev + i, base + i + 1, prev + i + 1])

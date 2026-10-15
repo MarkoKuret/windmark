@@ -64,19 +64,19 @@ float wm_mist_alpha(vec2 uv, float n, float kind) {
 }
 
 // Wake foam coverage (shared with the offline preview, water_render.md §5). uv: (across 0..1, distance sailed /
-// 10 m); centre: the bow half width as a fraction of the ribbon's; a: row alpha; age: the row's age over the
-// ribbon's life; n1, n2: fine foam noise samples; p: the coarse patch noise. The edge vertices sit at across 0.2 and
-// 0.8 (|2u - 1| = 0.6), the outer vertices at 0 and 1 are a feathered margin.
-float wm_wake_alpha(vec2 uv, float centre, float a, float age, float n1, float n2, float p) {
-	float across = abs(uv.x * 2.0 - 1.0);
-	// the diverging waves: a band just inside the edges, their foam gone after a few seconds
-	float edge = smoothstep(0.38, 0.58, across) * (1.0 - smoothstep(0.62, 0.9, across))
-			* (1.0 - smoothstep(0.12, 0.45, age));
-	// the turbulent centre wake, about the hull's width, spreading slowly
-	float c = 0.6 * centre * (1.0 + 0.6 * age);
-	float mid = 0.6 * (1.0 - smoothstep(0.4 * c, c, across));
+// 10 m); centre: the turbulent band's half width over the ribbon's (1 on the transom ribbon, 0 on the bow's); line:
+// the foam line's width over the half width (bow ribbon); a: row alpha; age: the row's age over the ribbon's life;
+// n1, n2: fine foam noise samples; p: the coarse patch noise. The edge vertices sit at across 0.2 and 0.8
+// (|2u - 1| = 0.6), the outer vertices at 0 and 1 are a feathered margin where nothing is drawn.
+float wm_wake_alpha(vec2 uv, float centre, float line, float a, float age, float n1, float n2, float p) {
+	float s = abs(uv.x * 2.0 - 1.0) / 0.6;
+	// the diverging waves' breaking crests: thin broken lines just inside the edges, gone within a few boat lengths
+	float band = line > 0.0 && s <= 1.0 ? 1.0 - smoothstep(0.5 * line, line, abs(s - (1.0 - 0.5 * line))) : 0.0;
+	float lines = band * smoothstep(0.48, 0.62, 0.6 * n1 + 0.4 * n2) * (1.0 - smoothstep(0.08, 0.3, age));
+	// the turbulent wake
+	float mid = 1.0 - smoothstep(0.6 * centre, centre, s);
 	// the bubbles break up into clumps and streaks, and with age into separate patches that thin out
 	float th = 0.45 + 0.35 * age;
 	float breakup = smoothstep(th, th + 0.4 - 0.25 * age, 0.6 * (n1 * 0.7 + n2 * 0.5) + 0.4 * p);
-	return clamp(a * a * (0.45 * edge + mid) * breakup, 0.0, 1.0);
+	return clamp(a * a * (0.6 * lines + 0.9 * mid * breakup), 0.0, 1.0);
 }

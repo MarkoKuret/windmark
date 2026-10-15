@@ -134,6 +134,7 @@ func update_boat(id: int, state: Dictionary) -> void:
 				if not rib.attach_mesh(mesh.get_rid()):
 					push_error("SeaWakes: the native wake ribbon could not attach to its mesh")
 			b[r] = rib
+			rib.set_kind(1 if r == "stern" else 0)   # water_render.md §5: the transom ribbon is the turbulent wake
 			mi.mesh = mesh
 			mi.material_override = _material
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -525,4 +526,4 @@ func _emit(b: Dictionary, st: Dictionary, t_s: float, spray: bool) -> void:
 		b["bow"].launch_last_spray(SPRAY_K * ratio * ratio * pulse, st.get("heel", 0.0),
 				_height(e[0].x, e[0].y) + 0.1, _height(e[1].x, e[1].y) + 0.1)
 	var tw: float = st.get("transom_width", 0.6 * bwl)
-	b["stern"].emit(t_s, stern, psi, v_s, 0.4 * tw, v_s / v_ref, true, b["dist"])
+	b["stern"].emit(t_s, stern, psi, v_s, 0.45 * bwl, v_s / v_ref, true, b["dist"])

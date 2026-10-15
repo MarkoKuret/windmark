@@ -22,7 +22,9 @@ namespace {
 
 constexpr double TAU_D = 6.283185307179586;
 constexpr double LIFE_S = 9.0;
-constexpr double SPREAD_S = 4.0;  // the edges stop opening (the diverging waves have broken)
+constexpr double SPREAD_S = 4.0;
+constexpr double TURB_SPREAD = 0.15;  // the transom ribbon: w = w0 (1 + TURB_SPREAD t)
+constexpr double LINE_M = 0.3;        // the bow ribbon's foam lines, just inside each edge  // the edges stop opening (the diverging waves have broken)
 constexpr double KELVIN = 0.354;
 constexpr double GRAVITY = 9.81;
 constexpr double U_OUTER = 0.0;
@@ -213,7 +215,17 @@ void FixedSurface::write(const std::vector<Vector3>& pos, const std::vector<Vect
 // ---------------------------------------------------------------------------------------------------------------
 // WakeRibbon
 
-double WakeRibbon::half_width(const Row& r, double t_s) { return r.w0 + KELVIN * r.v * std::min(t_s - r.t, SPREAD_S); }
+// WakeRibbonRef.wake_tan: Kelvin's angle at low Froude number, 0.1995 rad / Fr above (Fr = 0.399 ratio)
+static double wake_tan(double ratio) {
+  const double fr = 0.399 * ratio;
+  if (fr <= 0.1995 / 0.33983) return KELVIN;
+  return std::tan(0.1995 / fr);
+}
+
+double WakeRibbon::half_width(const Row& r, double t_s) const {
+  if (kind_ == 1) return r.w0 * (1.0 + TURB_SPREAD * std::min(t_s - r.t, LIFE_S));
+  return r.w0 + wake_tan(r.ratio) * r.v * std::min(t_s - r.t, SPREAD_S);
+}
 
 double WakeRibbon::alpha(const Row& r, double t_s) {
   if (!r.visible) return 0.0;
@@ -313,7 +325,7 @@ Dictionary WakeRibbon::row(int64_t k) const {
   return d;
 }
 
-Vector2 WakeRibbon::spray_excess(const Row& r, double t_s) {
+Vector2 WakeRibbon::spray_excess(const Row& r, double t_s) const {
   const double hw = half_width(r, t_s);
   const double base = hw + 0.3 + 0.25 * hw;
   const Vector2 lp = port(r);
@@ -358,7 +370,8 @@ void WakeRibbon::build(double t_s) {
     ex /= wsum;
     const double reach[2] = {hw + feather + ex.x, hw + feather + ex.y};
     const int base = static_cast<int>(pos_.size());
-    const double centre = clampd(r.w0 / std::max(hw + feather, 1e-3), 0.0, 1.0);
+    const double centre = kind_ == 1 ? 1.0 : 0.0;
+    const double line = kind_ == 1 ? 0.0 : clampd(LINE_M / std::max(hw, 1e-3), 0.0, 1.0);
     const float vv = static_cast<float>(r.dist / 10.0);
     const double age = clampd((t_s - r.t) / LIFE_S, 0.0, 1.0);
     for (int i = 0; i < ACROSS; ++i) {
@@ -376,7 +389,7 @@ void WakeRibbon::build(double t_s) {
       pos_.emplace_back(q.x, 0.0f, -q.y);
       uv_.emplace_back(static_cast<real_t>(u), vv);
       uv2_.push_back(lp);
-      col_.emplace_back(static_cast<float>(centre), static_cast<float>(age), 1.0f,
+      col_.emplace_back(static_cast<float>(centre), static_cast<float>(age), static_cast<float>(line),
                         (i == 0 || i == ACROSS - 1) ? 0.0f : static_cast<float>(a));
     }
     if (prev >= 0) {
@@ -434,6 +447,7 @@ bool WakeRibbon::write_mesh(double t_s) {
 }
 
 void WakeRibbon::_bind_methods() {
+  ClassDB::bind_method(D_METHOD("set_kind", "kind"), &WakeRibbon::set_kind);
   ClassDB::bind_method(D_METHOD("emit", "t_s", "p", "heading", "v", "w0", "ratio", "visible", "dist"),
                        &WakeRibbon::emit);
   ClassDB::bind_method(D_METHOD("last_edges", "t_s"), &WakeRibbon::last_edges);

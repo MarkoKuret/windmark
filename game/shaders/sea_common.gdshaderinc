@@ -294,12 +294,16 @@ uniform vec4 caps_k[6];
 uniform vec4 caps_w[6];
 uniform float caps_rest = 0.0;   // the components not uploaded, each at its window mean: sum of b * mean
 uniform vec4 caps_uv = vec4(0.0, 1.0, 0.0, 0.0);
+uniform vec4 caps_thr = vec4(1e3);              // breaking thresholds calibrated at the covers 0.05, 0.2, 0.8, 3.2 %
+uniform vec4 caps_grp = vec4(0.0, 0.5, 0.0, 0.0);   // wave-group envelope: (amplitude, noise mean, ug, vg)
+const float WM_GROUP_TILE = 600.0;
 
 const vec2 WM_CAPS_TILE = vec2(4.5, 3.0);     // m along e, across
 
 // Foam intensity F in [0, 1]: the steepness-weighted crest windows of the components that pass a crest here,
-// summed (crests meeting in a wave group make a cap), against a breaking threshold that falls with the local wind
-// (m/s). Components the pixel footprint px cannot show count with their window mean, so far caps never alias.
+// summed (crests meeting in a wave group make a cap), plus the wave-group envelope (the foam noise's coarse channel,
+// drifting at the group speed), against the sea's threshold for the measured cover at the local wind (m/s).
+// Components the pixel footprint px cannot show count with their window mean, so far caps never alias.
 float wm_caps_intensity(vec2 xl, float px, float expo, float wind) {
 	float kn = wind / WM_KNOT;
 	float gate = smoothstep(8.0, 10.0, kn);
@@ -319,10 +323,13 @@ float wm_caps_intensity(vec2 xl, float px, float expo, float wind) {
 		float q = d * (d >= 0.0 ? w.x : w.y);
 		S += k.w * mix(w.z, exp(-q * q), smoothstep(2.0, 4.0, w.w * inv_px));
 	}
-	S *= expo;
-	float u = 15.0 / max(kn, 1.0);
-	float Sb = 0.0677 + 0.0208 * u * u * u;
-	return clamp((S - Sb) / 0.06, 0.0, 1.0) * gate;
+	vec2 qg = vec2(dot(xl, caps_uv.xy), dot(xl, vec2(-caps_uv.y, caps_uv.x))) / WM_GROUP_TILE + caps_grp.zw;
+	S = S * expo + caps_grp.x * (texture(foam_tex, qg).g - caps_grp.y);
+	// Monahan's cover W = 3.84e-6 U^3.41; x = log2(W / 0.0005) / 2 indexes the calibrated thresholds
+	float x = 0.5 * log2(3.84e-6 * pow(max(wind, 0.1), 3.41) / 0.0005);
+	float Sb = x < 1.0 ? mix(caps_thr.x, caps_thr.y, x) : (x < 2.0 ? mix(caps_thr.y, caps_thr.z, x - 1.0)
+			: mix(caps_thr.z, caps_thr.w, x - 2.0));
+	return clamp((S - Sb) * 40.0, 0.0, 1.0) * gate;   // S_W = 0.025
 }
 
 // Coverage of intensity F on the four nested density levels of the foam texture (lace .. near-solid).

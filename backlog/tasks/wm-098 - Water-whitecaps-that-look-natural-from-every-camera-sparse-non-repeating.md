@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@sea-look'
 created_date: '2026-10-05 15:27'
-updated_date: '2026-10-15 18:00'
+updated_date: '2026-10-15 18:21'
 labels:
   - front-end
   - visuals
@@ -22,8 +22,14 @@ Owner (2026-10-05): the WM-083 whitecaps are bad: far too many, and they follow 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 No visible repetition or regular pattern from the chase, aerial and helicopter cameras at 12, 18, 24 kn
-- [ ] #2 Cover within the measured whitecap fractions
-- [ ] #3 Tier M frame time unchanged on the M1
+- [x] #1 No visible repetition or regular pattern from the chase, aerial and helicopter cameras at 12, 18, 24 kn
+- [x] #2 Cover within the measured whitecap fractions
+- [x] #3 Tier M frame time unchanged on the M1
 - [ ] #4 Owner approves; then on by default
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+sea-look: cover drawn as area by Monahan's law, thresholds calibrated per sea, wave-group envelope breaks the lattice (autocorrelation excess 0.15, was 0.8). Cost on the heli view +0.11/+0.14/+0.13 ms L/M/H (was +0.10/+0.14/+0.10, noise). Still off by default: needs the owner's look (chase and heli previews whitecaps_{12,18,24}kn_{chase,heli}.jpg).
+<!-- SECTION:NOTES:END -->

@@ -7,12 +7,20 @@ extends RefCounted
 const KNOT := 0.51444447
 ## no caps under GATE_KN.x knots of local wind, full from GATE_KN.y
 const GATE_KN := Vector2(8.0, 10.0)
-## breaking threshold on the crest steepness sum: S_b = S_B0 + S_B1 * (U_REF_KN / U_kn)^3
-const S_B0 := 0.0677
-const S_B1 := 0.0208
-const U_REF_KN := 15.0
+## measured whitecap cover W(U) = MONAHAN_A · U^MONAHAN_B (U in m/s, fraction of the surface)
+const MONAHAN_A := 3.84e-6
+const MONAHAN_B := 3.41
+## the covers the thresholds are calibrated at: COVER_0 · 4^k, k = 0..3 (0.05, 0.2, 0.8, 3.2 %)
+const COVER_0 := 0.0005
 ## steepness above the threshold for full foam intensity
-const S_W := 0.06
+const S_W := 0.025
+## wave-group envelope: the foam noise's coarse channel over GROUP_TILE metres, drifting at half the dominant
+## wave's phase speed, scaled to GROUP_AMP of the spread of the steepness sum
+const GROUP_TILE := 600.0
+const GROUP_AMP := 1.5
+## calibration sample: points over a CAL_SIZE square
+const CAL_POINTS := 16384
+const CAL_SIZE := 600.0
 ## crest window half widths, cycles, ahead of the crest (front) and behind it (back), each at least the width in
 ## metres below over the wavelength
 const SIGMA_FRONT := 0.08
@@ -142,17 +150,154 @@ static func window(f: float, w: Vector4) -> float:
 	return exp(-q * q)
 
 
-## Breaking threshold for a local wind of kn knots.
-static func threshold(kn: float) -> float:
-	var u := U_REF_KN / maxf(kn, 1.0)
-	return S_B0 + S_B1 * u * u * u
+## The measured whitecap cover at a local wind of u m/s (fraction of the surface).
+static func cover_law(u: float) -> float:
+	return MONAHAN_A * pow(maxf(u, 0.1), MONAHAN_B)
+
+
+## Breaking threshold for a local wind of u m/s from the sea's calibrated thresholds thr (caps_thr): piecewise
+## linear in x = log2(W(u)/COVER_0)/2, extrapolated beyond the ends.
+static func threshold(u: float, thr: Vector4) -> float:
+	var x := 0.5 * log(cover_law(u) / COVER_0) / log(2.0)
+	if x < 1.0:
+		return lerpf(thr.x, thr.y, x)
+	if x < 2.0:
+		return lerpf(thr.y, thr.z, x - 1.0)
+	return lerpf(thr.z, thr.w, x - 2.0)
+
+
+## The group envelope's noise value at a texture coordinate (the coarse channel G of the foam noise, bilinear).
+static func group_noise(uv: Vector2) -> float:
+	var img := SeaTextures.foam_image()
+	var n := img.get_width()
+	var x := uv.x * n - 0.5
+	var y := uv.y * n - 0.5
+	var i := int(floorf(x))
+	var j := int(floorf(y))
+	var tx := x - i
+	var ty := y - j
+	var g00 := img.get_pixel(posmod(i, n), posmod(j, n)).g
+	var g10 := img.get_pixel(posmod(i + 1, n), posmod(j, n)).g
+	var g01 := img.get_pixel(posmod(i, n), posmod(j + 1, n)).g
+	var g11 := img.get_pixel(posmod(i + 1, n), posmod(j + 1, n)).g
+	return lerpf(lerpf(g00, g10, tx), lerpf(g01, g11, tx), ty)
+
+
+static var _g_stats := Vector2(-1.0, 0.0)
+
+
+## Mean and standard deviation of the group noise.
+static func group_stats() -> Vector2:
+	if _g_stats.x < 0.0:
+		var img := SeaTextures.foam_image()
+		var n := img.get_width()
+		var s := 0.0
+		var s2 := 0.0
+		for y in n:
+			for x in n:
+				var g := img.get_pixel(x, y).g
+				s += g
+				s2 += g * g
+		var m := s / (n * n)
+		_g_stats = Vector2(m, sqrt(maxf(s2 / (n * n) - m * m, 0.0)))
+	return _g_stats
+
+
+## Calibration, once per sea: {thr: caps_thr, amp: g_amp, mean: G_mean}. The steepness sum (every component
+## resolved) plus the group envelope at CAL_POINTS fixed points; each threshold makes the mean foam opacity, on the
+## texture's mean density levels, equal to its cover COVER_0·4^k.
+static func calibrate(components: Array, sel: PackedInt32Array) -> Dictionary:
+	var gs := group_stats()
+	var out := {"thr": Vector4(1e3, 1e3, 1e3, 1e3), "amp": 0.0, "mean": gs.x}
+	if sel.is_empty():
+		return out
+	var cw := window_uniforms(components, sel)
+	var rest := rest_mean(components, sel)
+	var ck := PackedVector4Array()
+	ck.resize(MAX_CAPS)
+	var b := weights(components)
+	for k in sel.size():
+		var c: Array = components[sel[k]]
+		ck[k] = Vector4(c[1], c[2], c[3], b[sel[k]])
+	var e := _dir(components)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 98
+	var s_raw := PackedFloat32Array()
+	var g := PackedFloat32Array()
+	s_raw.resize(CAL_POINTS)
+	g.resize(CAL_POINTS)
+	var sm := 0.0
+	var s2 := 0.0
+	for k in CAL_POINTS:
+		var x := Vector2(rng.randf_range(-0.5, 0.5), rng.randf_range(-0.5, 0.5)) * CAL_SIZE
+		var s := rest
+		for j in sel.size():
+			s += ck[j].w * window(ck[j].x * x.x + ck[j].y * x.y + ck[j].z, cw[j])
+		s_raw[k] = s
+		sm += s
+		s2 += s * s
+		g[k] = group_noise(Vector2(x.dot(e), x.dot(Vector2(-e.y, e.x))) / GROUP_TILE + Vector2(0.37, 0.61))
+	sm /= CAL_POINTS
+	var sd := sqrt(maxf(s2 / CAL_POINTS - sm * sm, 0.0))
+	var amp := GROUP_AMP * sd / maxf(gs.y, 1e-4)
+	var tot := PackedFloat32Array()
+	tot.resize(CAL_POINTS)
+	for k in CAL_POINTS:
+		tot[k] = s_raw[k] + amp * (g[k] - gs.x)
+	tot.sort()
+	# only the top of the distribution can pass a threshold for covers up to a few per cent
+	var top := tot.slice(int(CAL_POINTS * 0.85))
+	var lm := level_means()
+	var thr := PackedFloat32Array()
+	for k in 4:
+		var want := COVER_0 * pow(4.0, k)
+		var lo := tot[0]
+		var hi := tot[CAL_POINTS - 1] + S_W
+		for it in 40:
+			var mid := 0.5 * (lo + hi)
+			var a := 0.0
+			for v in top:
+				if v > mid:
+					a += opacity(clampf((v - mid) / S_W, 0.0, 1.0), lm)
+			if a / CAL_POINTS > want:
+				lo = mid
+			else:
+				hi = mid
+		thr.append(0.5 * (lo + hi))
+	out["thr"] = Vector4(thr[0], thr[1], thr[2], thr[3])
+	out["amp"] = amp
+	return out
+
+
+static func _dir(components: Array) -> Vector2:
+	var p := dominant_index(components)
+	if p < 0:
+		return Vector2(0.0, 1.0)
+	var c: Array = components[p]
+	return Vector2(c[1], c[2]).normalized()
+
+
+## The group envelope frame for a camera at (ox, oy) at t_ms: (amp, mean, ug, vg), the camera-origin part of the
+## envelope's texture coordinates drifting along the dominant wave at half its phase speed (in double, mod 1).
+static func group_frame(components: Array, cal: Dictionary, ox: float, oy: float, t_ms: float) -> Vector4:
+	var p := dominant_index(components)
+	if p < 0:
+		return Vector4(0.0, cal.get("mean", 0.5), 0.0, 0.0)
+	var c: Array = components[p]
+	var kap := Vector2(c[1], c[2]).length()
+	var e := Vector2(c[1], c[2]) / kap
+	var cg := 0.5 * (1.0 / kap) / (float(c[4]) * 0.001)
+	var u := (ox * e.x + oy * e.y - cg * t_ms * 0.001) / GROUP_TILE + 0.37
+	var v := (-ox * e.y + oy * e.x) / GROUP_TILE + 0.61
+	return Vector4(cal["amp"], cal["mean"], u - floorf(u), v - floorf(v))
 
 
 ## CPU mirror of wm_caps_intensity: the foam intensity F in [0, 1] at a camera-relative point xl (m) for the
-## uniforms caps_k, caps_w, caps_rest and the tier's count n, a pixel footprint px (m; 0 = every component resolved), the
-## exposure and the local wind (m/s, the puff factor times the base).
+## uniforms caps_k, caps_w, caps_rest, caps_thr and caps_grp (cal: the calibration; grp: the group frame), the tier's
+## count n, a pixel footprint px (m; 0 = every component resolved), the exposure and the local wind (m/s, the puff
+## factor times the base).
 static func intensity(ck: PackedVector4Array, cw: PackedVector4Array, rest: float, n: int, xl: Vector2, px: float,
-		expo: float, wind: float) -> float:
+		expo: float, wind: float, cal: Dictionary, grp: Vector4, e: Vector2) -> float:
 	var kn := wind / KNOT
 	var gate := smoothstep(GATE_KN.x, GATE_KN.y, kn)
 	if gate <= 0.0 or expo <= 0.0:
@@ -165,8 +310,9 @@ static func intensity(ck: PackedVector4Array, cw: PackedVector4Array, rest: floa
 		var w := cw[i]
 		var r := 1.0 if px <= 0.0 else smoothstep(2.0, 4.0, w.w / px)
 		s += k.w * lerpf(w.z, window(k.x * xl.x + k.y * xl.y + k.z, w), r)
-	s *= expo
-	return clampf((s - threshold(kn)) / S_W, 0.0, 1.0) * gate
+	var g := group_noise(Vector2(xl.dot(e), xl.dot(Vector2(-e.y, e.x))) / GROUP_TILE + Vector2(grp.z, grp.w))
+	s = s * expo + grp.x * (g - grp.y)
+	return clampf((s - threshold(wind, cal["thr"])) / S_W, 0.0, 1.0) * gate
 
 
 ## The foam coverage of intensity F on the four nested density levels L (r, g, b, a): F = 0.25 shows all of
@@ -183,15 +329,21 @@ static func opacity(f: float, L: Color) -> float:
 	return OPACITY * level_cover(f, L) * (0.3 + 0.7 * smoothstep(0.0, 0.6, f))
 
 
+static var _level_means := Color(-1, 0, 0, 0)
+
+
 ## The mean coverage of each density level of the foam texture (its smallest mip).
 static func level_means() -> Color:
+	if _level_means.r >= 0.0:
+		return _level_means
 	var img := SeaTextures.caps_image()
 	var n := img.get_width()
 	var s := Color(0, 0, 0, 0)
 	for y in n:
 		for x in n:
 			s += img.get_pixel(x, y)
-	return s / float(n * n)
+	_level_means = s / float(n * n)
+	return _level_means
 
 
 static func _lam(c: Array) -> float:

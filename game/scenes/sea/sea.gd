@@ -40,6 +40,8 @@ var material: ShaderMaterial
 var static_version := 0
 ## §4.4 the components that carry whitecap foam (indices into model.components, heaviest first)
 var caps_select := PackedInt32Array()
+## §4.4 whitecap calibration of this sea (SeaWhitecaps.calibrate), {} with the caps off
+var caps_cal := {}
 ## Whitecaps (water_render.md §4.4): off by default (owner, 2026-10-05); the look panel and `--caps=on` turn them on.
 ## false draws no whitecaps (no foam weights uploaded).
 var whitecaps := false:
@@ -220,6 +222,8 @@ func _apply_static() -> void:
 	caps_select = SeaWhitecaps.select(model.components)
 	material.set_shader_parameter("caps_w", SeaWhitecaps.window_uniforms(model.components, caps_select))
 	material.set_shader_parameter("caps_rest", SeaWhitecaps.rest_mean(model.components, caps_select) if whitecaps else 0.0)
+	caps_cal = SeaWhitecaps.calibrate(model.components, caps_select) if whitecaps else {}
+	material.set_shader_parameter("caps_thr", caps_cal.get("thr", Vector4(1e3, 1e3, 1e3, 1e3)))
 	var g := model.exposure
 	material.set_shader_parameter("expo_tex", SeaTextures.exposure_texture(g))
 	if g.is_empty():
@@ -310,6 +314,8 @@ func update_frame(cam_pos: Vector3, cam: Camera3D = null) -> void:
 	material.set_shader_parameter("detail_layer", layers)
 	# §4.4 the whitecap foam texture rides the dominant wave
 	material.set_shader_parameter("caps_uv", SeaWhitecaps.uv_frame(model.components, ox, oy, t))
+	if not caps_cal.is_empty():
+		material.set_shader_parameter("caps_grp", SeaWhitecaps.group_frame(model.components, caps_cal, ox, oy, t))
 
 	if sky:
 		material.set_shader_parameter("sky_horizon", sky.horizon_linear())

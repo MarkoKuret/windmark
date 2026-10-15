@@ -225,6 +225,18 @@ blotches that popped on and off and slid over the waves; it was removed on 2026-
 worst from the helicopter camera, so the game draws none until a version that is sparse and non-repeating at every
 camera height is approved. The look panel and `--caps=on` still turn the mechanism below on for judging it.
 
+**Why the first version read as too many** (2026-10-15): its threshold let about a fifth of the water (22 % at 25 kn)
+carry some foam, as faint lace over wide patches; the mean opacity matched the measured cover, but the eye counts the
+area with any foam. And the sum of six crest windows tops out on a regular lattice (the beats of components of
+nearly the same wavelength and direction), which from the helicopter is a grid of dots. The version below draws
+the measured cover as the **area** of foam, nearly opaque where it is, and lets the waves break in groups.
+
+**Cover law** (Monahan and O'Muircheartaigh, 1980, the fraction of the sea surface covered by whitecaps):
+```
+W(U) = 3.84e-6 · U^3.41          // U the local wind at 10 m, m/s: 8 kn 0.05 %, 12 kn 0.19 %, 15 kn 0.41 %,
+                                 // 20 kn 1.1 %, 25 kn 2.3 %
+```
+
 **Per component** (CPU, once per sea, `SeaWhitecaps`), with `lam_i` the wavelength, `k_i = 2π/lam_i` and `lam_p` the
 wavelength of the largest-amplitude component:
 ```
@@ -235,35 +247,53 @@ mean_i    = mean over a cycle of W_i (below)
 selected  = the 6 components with the largest b_i ≥ 0.004, heaviest first (tier L evaluates the first 4)
 caps_w[j] = (1/sf, 1/sb, mean, lam) of selected j ; caps_rest = Σ b_i·mean_i of the components not selected
 ```
-Every frame: `caps_k[j] = (kx, ky, d', b)` of selected `j`, with the phase `d'` of `comp` (§2), and the foam texture
-frame `caps_uv = (e, u0, v0)`: `e` the travel direction of the largest-amplitude component, `(u0, v0)` the camera-origin
-part of the texture coordinates below, drifting along `e` at that component's phase speed `c_p = lam_p/T_p` (in double,
-mod 1).
+**Wave groups**: waves break where a group of them is highest, and a group travels at the group speed, half the
+phase speed of its waves, so the crests run through it: a cap builds at the back of a group and fades at its front.
+The six crest windows alone give groups on a regular lattice; a slow envelope breaks it up: the coarse channel (G)
+of the wake foam noise (`foam_tex`, §5), mapped over a `GROUP_TILE = 600 m` square along the dominant wave and
+drifting with it at the group speed `c_p/2` (features of about 100 m, a few groups of the peak waves), raises and
+lowers the steepness sum:
+```
+S_g = g_amp · (G − G_mean)       // g_amp = 1.5·σ_S / σ_G: one and a half times the spread of S over the water
+```
+**Calibration** (CPU, once per sea): the steepness sum `S` (below, every component resolved) plus `S_g` at 16 384
+fixed points of a 600 m square (one tile of the envelope), at time 0, gives its distribution; for each of the four covers `W_k = 0.05, 0.2, 0.8,
+3.2 %` the threshold `caps_thr[k]` at which the mean foam opacity (below, on the texture's mean density levels) over
+those points equals `W_k` (bisection). So the cover follows the law on any sea (a short fetch, a swell, an open
+ocean) without a per-sea tuning. It takes about 0.1 s of GDScript on the development Mac, once per sea (at the race start, or
+when the caps are turned on).
+
+Every frame: `caps_k[j] = (kx, ky, d', b)` of selected `j`, with the phase `d'` of `comp` (§2), the foam texture frame
+`caps_uv = (e, u0, v0)` (`e` the travel direction of the largest-amplitude component, `(u0, v0)` the camera-origin
+part of the texture coordinates below, drifting along `e` at that component's phase speed `c_p = lam_p/T_p`), and the
+group frame `caps_grp = (g_amp, G_mean, ug, vg)` (the same along `GROUP_TILE`, drifting at `c_p/2`), in double, mod 1.
 
 **Per pixel** (`wm_caps_intensity`, `wm_apply_caps`; `m` the drawn wind factor of §4.3, `E` the exposure, `px` the pixel
 footprint):
 ```
-U     = m·base_speed / KNOT                                      // local wind, kn
-gate  = smoothstep(8, 10, U)                                     // no caps under 8 kn
+U     = m·base_speed                                             // local wind, m/s
+gate  = smoothstep(8, 10, U/KNOT)                                // no caps under 8 kn
 fade  = 1 - smoothstep(1200 m, 2500 m, dist)                     // both 0: no further work
 for each selected j:  d = signed cycles from the crest (fract of the phase, ahead > 0)
                       W = exp(-(d/sf)²) ahead, exp(-(d/sb)²) behind
                       S += b · mix(mean, W, smoothstep(2, 4, lam/px))   // too short for the pixel: its mean
-S     = E · (S + caps_rest + Σ b·mean of the selected beyond the tier's count)
-S_b   = 0.0677 + 0.0208·(15/U)³                                  // breaking threshold, falls with the wind
-F     = clamp((S - S_b)/0.06, 0, 1) · gate · fade                // foam intensity
+G     = texture(foam_tex, (dot(xl, e), dot(xl, perp(e))) / GROUP_TILE + (ug, vg)).g
+S     = E · (S + caps_rest + Σ b·mean of the selected beyond the tier's count) + g_amp·(G − G_mean)
+x     = log2(W(U) / 0.0005) / 2                                  // 0..3 at the four calibrated covers
+S_b   = caps_thr piecewise linear in x (extrapolated beyond the ends)
+F     = clamp((S - S_b)/S_W, 0, 1) · gate · fade                 // foam intensity, S_W = 0.025
 ```
 The crest windows travel with their components, so a cap moves with its crests; the sum only passes the threshold
-where crests coincide, and a cap builds and fades as they drift in and out of step (median life about 1.5 s for a point
-riding the waves at 20 kn, at most about 0.05 opacity change between frames). The components the pixel cannot
-resolve count with their mean, so far away the caps thin out instead of aliasing.
+where crests coincide inside a high group, and a cap builds and fades as they drift in and out of step and as its
+crest runs through the group. The narrow ramp `S_W` makes a cap mostly full foam: the drawn area is the cover. The
+components the pixel cannot resolve count with their mean, so far away the caps thin out instead of aliasing.
 
 **Look**: the foam texture (`SeaTextures.caps`, 256², RGBA8, tiling, generated at load) holds four nested density
 levels as coverage: R sparse fizz (broken fine lace and a few longer filaments), G the lace net, B dense foam (thick
 lace and a milky film), A near-solid white with a few holes; built from periodic cellular noise (exact tiling) with a
 smooth warp that curves its borders, and seamless value noise for the breakup. It is mapped `4.5 m` along `e` by
 `3 m` across, moving with the dominant wave. Mip-mapped, anisotropic: the mips average coverage, so a distant cap
-fades to its true mean whiteness.
+fades to its true mean whiteness. With caps a few metres across and far apart the tiling inside them does not read.
 ```
 q        = (dot(xl, e), dot(xl, perp(e))) / (4.5, 3) + (u0, v0)
 L        = texture(caps_tex, q)
@@ -272,32 +302,34 @@ a        = 0.92 · cover · (0.3 + 0.7·smoothstep(0, 0.6, F))      // thin foam
 ALBEDO   = mix(mix(ALBEDO, (0.05, 0.20, 0.23), 0.3·smoothstep(0.2, 0.8, F)), col_foam, a)   // aerated water, then foam
 ROUGHNESS = mix(ROUGHNESS, 0.55, a) ; EMISSION *= 1 - a ; normal = normalize(mix(normal, n_geo, 0.6·a))   // no glints in foam
 ```
-**Cover** (drawn foam, the mean of `a` over the water, on the reference wind seas of `sea.md` §2, fetch 10 km), against
-measured whitecap cover (about 0.2 % at 15 kn, 1.4 % at 20 kn, 2.5 % at 25 kn):
-
-| wind | 8 kn | 12 kn | 15 kn | 18 kn | 20 kn | 24 kn | 25 kn |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| cover (tiers M, H) | 0 | 0.004 % | 0.18 % | 0.75 % | 1.2 % | 2.4 % | 2.5 % |
-| cover (tier L) | 0 | | 0.14 % | | 1.1 % | | 2.3 % |
-
-On a 20 kn sea the puffs and lulls change it (local wind `m` times the base): m 0.6: 0.06 %, 0.8: 0.6 %, 1.1: 1.4 %,
-1.25: 1.7 %; caps show the puffs, and a lull is almost free of them.
+**Cover** (drawn foam, the mean of `a` over the water, every component resolved, on the reference wind seas of
+`sea.md` §2 at fetch 10 km) against the law, and the share of the water with any visible foam (`a > 0.1`): see the
+checks below, which print both; the area with foam stays within twice the cover (the first version: about ten
+times). Puffs and lulls change it through the local wind `U`, so caps show the puffs and a lull is almost free of
+them.
 
 **Cost**: one loop of 6 (tier L 4) components with a fract, an exp and a smoothstep each, from 12 vec4 uniforms with
-a constant bound, and one texture tap where `F > 0`; nothing below 8 kn or beyond 2.5 km. The per-component windows are
-a few metres wide, narrower than the vertex spacing at the chase camera's distance (1.5 m at 25 m, 6 m at 100 m on
-tier M), so they are evaluated per pixel; what the vertex stage already has (exposure, venue factor) comes as varyings.
-Measured on the development M1 (OpenGL proxy, `tests/water_cost.py`, the 1280 × 800 chase view): about +0.15 ms on
-tier L and +0.2 ms on tiers M and H, 10 to 15 % of the water pass; on the Steam Deck (about 0.6 of the M1's GPU)
-about +0.3 ms, inside the 2.5 ms of §7.
+a constant bound, one tap of the foam noise for the group envelope, a `pow` and a `log2` for the threshold, and one
+tap of the foam texture where `F > 0`; nothing below 8 kn or beyond 2.5 km. The per-component windows are a few
+metres wide, narrower than the vertex spacing at the chase camera's distance (1.5 m at 25 m, 6 m at 100 m on tier
+M), so they are evaluated per pixel; what the vertex stage already has (exposure, venue factor) comes as varyings.
+Measured with `tests/water_cost.py` (the development M1, OpenGL proxy, 1280 × 800): the helicopter view of the
+25 kn open sea, where every water pixel runs the loop, +0.11 ms on tier L, +0.14 ms on M, +0.13 ms on H (10 to 20 %
+of the water pass; the first version +0.10, +0.14, +0.10 ms on the same view, the difference is within the
+measurement noise); the chase view at 24 kn +0.01 to 0.04 ms. On the Steam Deck (about 0.6 of the M1's GPU) about
++0.25 ms, inside the 2.5 ms of §7.
 
 **Checks** (`tests/water_test.gd`, on the CPU mirror `SeaWhitecaps.intensity`): no caps under 8 kn (6 and 7.9 kn, and
-a puff on a 7 kn breeze); cover rising with the wind from 10 to 25 kn and within ×1.6 of the measured cover at 15,
-20 and 25 kn (tier L at least half at 20 kn); more caps in puffs, fewer in lulls; each component's window equal after
-moving with its phase velocity; the foam texture drifting with the dominant wave; the foam field 0.5 s later
-correlating with itself moved with the waves (0.9), not in place (0); over 60 s at 60 frames per second, points riding
+a puff on a 7 kn breeze); cover rising with the wind from 10 to 25 kn and within ×1.3 of the law at 12, 15, 20 and 25
+kn, on the fetch-10 km seas and on an open sea (fetch 30 km with a 0.8 m swell), tier L within ×1.6; the area with
+visible foam at most twice the cover; more caps in puffs, fewer in lulls; no lattice: the autocorrelation of the foam
+field at 25 kn over 512 m (8 m cells) rises nowhere more than 0.3 above its mean at the same distance (2 to 16 cells;
+the first version 0.8, the six crest windows alone 0.7); each component's window equal after moving with its phase velocity;
+the foam texture drifting with the dominant wave and the group envelope at half its speed; the foam field 0.5 s
+later correlating with itself moved with the waves, not in place; over 60 s at 60 frames per second, points riding
 the dominant wave see the opacity change by at most 0.15 per frame and caps living a median 0.8 s or more.
-Previews: `tests/previews/whitecaps_{12,18,24}kn_chase.jpg` and `whitecaps_20kn_sequence.jpg` (6 frames 0.5 s apart).
+Previews: `tests/previews/whitecaps_{12,18,24}kn_{chase,heli}.jpg` and `whitecaps_20kn_sequence.jpg` (6 frames 0.5 s
+apart).
 
 ### 4.5 Daylight
 Target look (WM-080): a bright, sunny, high-contrast racing day. A hard sun, a clear saturated blue sky (deep at

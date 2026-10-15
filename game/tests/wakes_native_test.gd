@@ -218,8 +218,8 @@ func _ribbon_bytes() -> void:
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, nat.blank_arrays())
 	_report(nat.attach_mesh(mesh.get_rid()), "a ribbon attaches to its fixed-size mesh")
-	var n_vert := 80 * 15
-	var n_index := 79 * 14 * 6
+	var n_vert := WakeRibbonRef.N_ROWS * 15
+	var n_index := (WakeRibbonRef.N_ROWS - 1) * 14 * 6
 	var ok := true
 	var nv := 0
 	var t_s := 10.0

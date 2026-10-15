@@ -22,7 +22,8 @@ void vertex() {
 }
 
 void fragment() {
-	float a = wm_wake_alpha(UV, COLOR.r, COLOR.a, texture(foam_tex, UV * vec2(1.5, 2.0)).r, texture(foam_tex, UV * vec2(0.6, 0.7) + 0.37).g);
+	float a = wm_wake_alpha(UV, COLOR.r, COLOR.a, COLOR.g, texture(foam_tex, UV * vec2(1.5, 2.0)).r,
+			texture(foam_tex, UV * vec2(0.6, 0.7) + 0.37).g, texture(foam_tex, UV * vec2(0.15, 0.17) + 0.71).g);
 	ALBEDO = col_foam;
 	ALPHA = a;
 	ROUGHNESS = 0.6;

@@ -78,7 +78,7 @@ class WakeRibbon : public godot::RefCounted {
   GDCLASS(WakeRibbon, godot::RefCounted)
 
  public:
-  static constexpr int N_ROWS = 80;
+  static constexpr int N_ROWS = 180;
   static constexpr int ACROSS = 15;
   static constexpr int MAX_INDEX = (N_ROWS - 1) * (ACROSS - 1) * 6;
 

@@ -662,18 +662,20 @@ if the bow point is more than 1 m above the sea (a bow out of the water on a wav
 row = { frozen boat frame (heading, heel), P, v, age 0, alpha 1,
         w0 = 0.35 * bwl * min(1, ratio + 0.2),               // half width at the bow
         spray: two particles, port and starboard }
-push the row into a ring buffer of N = 80 rows (a 4 s ribbon)
+push the row into a ring buffer of N = 180 rows (a 9 s ribbon)
 ```
 **Each frame**, for every row of age `t` (a row is drawn with 15 vertices across: a feathered, transparent outer
 vertex `0.3 + 0.25·w` outside each edge, and 13 from edge to edge, so it follows the waves between its edges):
 ```
-half width  w = w0 + 0.354 * v_row * t                       // edges open at the Kelvin angle, tan 19.47°
+half width  w = w0 + 0.354 * v_row * min(t, 4 s)              // edges open at the Kelvin angle, tan 19.47°, while the
+                                                              // diverging waves break (their foam is gone by 4 s)
 edges       = row point ± w across the frozen heading, each draped on the drawn sea + 0.1 m (in the vertex shader,
               with the sea's uniforms and grid fade) and pulled toward the camera along the view ray (the pixel
               stays, only the depth moves) far enough to clear the sea by h_c = 0.15 m + 2 Σ a_i·w_i·(1 − fade_i(1 m))
               (the short waves the sea grid carries but the ribbon, flat between its vertices, does not):
               pull = min(h_c / sin(elevation of the view), 0.3 · distance), so the sea's facets never cover it
-alpha       = (1 - t / 4 s) * min(1, ratio_row * 2)          // fades with age, faint at low speed
+alpha       = (1 - t / 9 s) * min(1, ratio_row * 2)          // fades with age, faint at low speed
+age         = t / 9 s (COLOR.g)                               // the foam's breakup (below)
 texture v   = distance sailed at emission / 10 m              // foam texture along the ribbon
 the row drifts with the surface current at its point (wind.md §7)
 ```
@@ -722,6 +724,25 @@ alpha     0.16 · fade in over 0.12 s · (1 − age/life)² ; at most 256 sprite
 Each is a camera-facing quad with a soft round falloff broken up by the foam texture (`wm_mist_alpha`), unshaded
 with the sky's horizon colour plus a share of the sun that grows looking toward it (forward scattering), faded where
 it meets the water or the hull (depth fade over 0.6 m) and near the camera (under 3 m).
+
+**Wake foam** (`wm_wake_alpha`): the foam of a real wake does not stay a set of even stripes. The breaking diverging
+waves at the edges leave foam for a few seconds; the turbulent wake behind the hull keeps its bubbles much longer
+(tens of seconds behind a sportsboat at speed, its trail 50 to 100 m long) and, as the bubbles rise and the
+turbulence spreads, breaks up into separate patches and streaks that thin and fade. So, with `n` the fine foam
+noise (two taps, as before) and `p` a coarse patch noise (the foam noise's coarse channel at a quarter of the fine
+scale along the ribbon, one more tap):
+```
+edge    = band just inside the edges, as before, · (1 − smoothstep(0.12, 0.45, age))     // gone by about 4 s
+mid     = the centre band, about the hull's width, widening by (1 + 0.6·age)            // the turbulent wake
+th      = 0.45 + 0.35·age                                // the foam thins: more of it falls under the threshold
+breakup = smoothstep(th, th + 0.4 − 0.25·age, 0.6·n + 0.4·p)   // and its patches get sharper borders
+a       = alpha² · (0.45·edge + mid) · breakup
+```
+Fresh foam is the dense, lacy band of the previous version; after a few seconds only the patches where the coarse
+noise is high survive, with sharper borders, and they fade with `alpha`. The ribbon stops widening at 4 s, so the
+long tail adds rows but no wide transparent area to the blending (a 9 s ribbon at 19 kn: 180 rows of 15 vertices,
+the oldest 5 s about the width of the 4 s ribbon). Cost: one more foam noise tap per wake pixel; nothing in the sea
+shader.
 
 A second, narrower ribbon from the **transom** (`w0 = 0.4·transom width`, no spray) gives the stern wake. On tiers
 M and H every ribbon is also drawn into a camera-centred **wake normal buffer** (RG8, 512 × 512 over 400 m, cleared
@@ -819,8 +840,9 @@ stated clearly.
    base speed (puffs off) within 1e-3 at 2000 random points over eight directions, and the shader's texture path
    (float32 emulation on the uploaded texture) equals the mirror within 1e-3; the texture follows the wind into the
    next sector.
-6. **Wake geometry**: a boat at a steady 3 m/s: the ribbon's half width 2 s behind the bow is `w0 + 2.12 m` (±5 %),
-   and its rows stay where they were laid (no drift without current).
+6. **Wake geometry**: a boat at a steady 3 m/s: the ribbon's half width 2 s behind the bow is `w0 + 2.12 m` (±5 %)
+   and 6 s behind `w0 + 4.25 m` (it stops opening at 4 s), the ribbon lasts 9 s, and its rows stay where they were
+   laid (no drift without current).
 7. **Band loop**: the components the sea uploads are sorted by wavelength, longest first, `comp_lam` equals
    `1/|(kx, ky)|` of each, and the band loop of §3.2 equals the per-pixel slope summed over every component with the
    full weights (CPU mirror, random points, spacings and footprints).

@@ -5,6 +5,7 @@ status: In Progress
 assignee:
   - '@sea-look'
 created_date: '2026-10-15 18:00'
+updated_date: '2026-10-15 18:25'
 labels:
   - front-end
   - visuals
@@ -20,8 +21,8 @@ The wake reads as a tidy three-stripe pattern. Foam lives longer and breaks up i
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Spec 5 describes the longer life and the age-driven breakup
-- [ ] #2 Native ribbon and GDScript reference agree (wakes_native_test)
-- [ ] #3 Before/after previews of the wake at 19 kn
-- [ ] #4 Water tests green
+- [x] #1 Spec 5 describes the longer life and the age-driven breakup
+- [x] #2 Native ribbon and GDScript reference agree (wakes_native_test)
+- [x] #3 Before/after previews of the wake at 19 kn
+- [x] #4 Water tests green
 <!-- AC:END -->

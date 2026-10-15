@@ -1,15 +1,17 @@
 class_name WakeRibbonRef
 extends RefCounted
 ## One wake ribbon (water_render.md §5): rows laid down behind the bow (or the transom) every 50 ms of render
-## time, left where they were laid, opening at the Kelvin angle and fading over 4 s. Rows optionally launch two
+## time, left where they were laid, opening at the Kelvin angle for 4 s and fading over 9 s. Rows optionally launch two
 ## spray particles that fly under gravity, stick where they reach the surface and become the ribbon's outer
 ## vertices. World coordinates are ENU metres (x east, y north, z up); heights come from a callable.
 ##
 ## The GDScript reference of the native WakeRibbon (game/native/src/sea_wakes.h): SeaWakes uses it when the
 ## extension is missing, and tests/wakes_native_test.gd compares the two. Keep them in step.
 
-const N_ROWS := 80
-const LIFE_S := 4.0
+const N_ROWS := 180
+const LIFE_S := 9.0
+## the edges stop opening after SPREAD_S (the diverging waves have broken)
+const SPREAD_S := 4.0
 const KELVIN := 0.354      # tan 19.47 deg
 const GRAVITY := 9.81
 const U_OUTER := 0.0
@@ -45,7 +47,7 @@ static func age(row: Dictionary, t_s: float) -> float:
 
 
 static func half_width(row: Dictionary, t_s: float) -> float:
-	return float(row["w0"]) + KELVIN * float(row["v"]) * age(row, t_s)
+	return float(row["w0"]) + KELVIN * float(row["v"]) * minf(age(row, t_s), SPREAD_S)
 
 
 static func alpha(row: Dictionary, t_s: float) -> float:
@@ -91,7 +93,7 @@ func launch_last_spray(speed: float, heel: float, z_port: float, z_stbd: float) 
 		launch_spray(rows[-1], speed, heel, [z_port, z_stbd])
 
 
-## Advances the ribbon to render time t_s: drops rows older than 4 s, drifts rows with the current and moves
+## Advances the ribbon to render time t_s: drops rows older than LIFE_S, drifts rows with the current and moves
 ## the spray. height: Callable(x, y) -> sea height (m); current: Callable(x, y) -> Vector2 (m/s) or null.
 func step(t_s: float, dt: float, height: Callable, current = null) -> void:
 	while not rows.is_empty() and age(rows[0], t_s) > LIFE_S:
@@ -146,7 +148,7 @@ static func spray_excess(row: Dictionary, t_s: float) -> Vector2:
 ## Mesh arrays of the ribbon at t_s, newest row first, ACROSS vertices per row from the outer port vertex to the
 ## outer starboard one in scene axes with y = 0 (the wake shader drapes it on the sea). UV: (across,
 ## distance sailed / 10 m); UV2: the row's port direction (world x, y); COLOR.r: the bow half width as a
-## fraction of the ribbon's (the centre wake); COLOR.a: the row alpha. The outer vertices sit a feathered margin
+## fraction of the ribbon's (the centre wake); COLOR.g: the row's age over LIFE_S; COLOR.a: the row alpha. The outer vertices sit a feathered margin
 ## outside the edges, pushed out by the spray reach smoothed over neighbouring rows (never inside the edge, so
 ## the strip does not fold, and without steps from row to row).
 func build_arrays(t_s: float) -> Array:
@@ -199,7 +201,7 @@ func build_arrays(t_s: float) -> Array:
 			verts.append(Vector3(q.x, 0.0, -q.y))
 			uvs.append(Vector2(u, float(row["dist"]) / 10.0))
 			uv2s.append(lp)
-			cols.append(Color(centre, 1, 1, 0.0 if i == 0 or i == ACROSS - 1 else a))
+			cols.append(Color(centre, clampf(age(row, t_s) / LIFE_S, 0.0, 1.0), 1, 0.0 if i == 0 or i == ACROSS - 1 else a))
 		if prev >= 0:
 			for i in ACROSS - 1:
 				idx.append_array([prev + i, base + i, base + i + 1, prev + i, base + i + 1, prev + i + 1])

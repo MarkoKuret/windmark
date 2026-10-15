@@ -521,7 +521,28 @@ func check_wake_ribbon() -> void:
 		for i in 10:
 			r.step(t + 0.05 * (i + 1), 0.05, flat)
 		check(row["p"] == p0 and absf(p0.y - v * 1.0) < 1e-6, "wake: rows stay where they were laid")
-	check(r.rows.size() <= WakeRibbonRef.N_ROWS, "wake: at most 80 rows")
+	check(r.rows.size() <= WakeRibbonRef.N_ROWS, "wake: at most %d rows" % WakeRibbonRef.N_ROWS)
+	# a long run: the ribbon stops opening at 4 s and lasts 9 s
+	var r2 := WakeRibbonRef.new()
+	t = 0.0
+	while t <= 12.0001:
+		r2.emit(t, Vector2(0.0, v * t), 0.0, v, w0, 0.5, true, v * t)
+		r2.step(t, 0.05, flat)
+		t += 0.05
+	t -= 0.05
+	var oldest: Dictionary = r2.rows[0]
+	var age_old := WakeRibbonRef.age(oldest, t)
+	check(age_old > 8.9 and age_old <= 9.0 + 1e-6, "wake: the ribbon lasts 9 s (oldest row %.2f s)" % age_old)
+	var row6 = null
+	for k in r2.rows:
+		if absf(WakeRibbonRef.age(k, t) - 6.0) < 1e-6:
+			row6 = k
+	check(row6 != null and absf(WakeRibbonRef.half_width(row6, t) - (w0 + 0.354 * v * 4.0)) < 1e-6,
+			"wake: it stops opening at 4 s (half width 6 s behind %.3f m)" % (WakeRibbonRef.half_width(row6, t) if row6 else 0.0))
+	var arr := r2.build_arrays(t)
+	var cols: PackedColorArray = arr[Mesh.ARRAY_COLOR]
+	check(cols.size() > 0 and absf(cols[0].g) < 1e-6 and cols[cols.size() - 1].g > 0.98,
+			"wake: COLOR.g carries the row age over the life (newest %.2f, oldest %.2f)" % [cols[0].g, cols[cols.size() - 1].g])
 	check_wake_edges()
 
 

@@ -21,7 +21,8 @@ namespace windmark_godot {
 namespace {
 
 constexpr double TAU_D = 6.283185307179586;
-constexpr double LIFE_S = 4.0;
+constexpr double LIFE_S = 9.0;
+constexpr double SPREAD_S = 4.0;  // the edges stop opening (the diverging waves have broken)
 constexpr double KELVIN = 0.354;
 constexpr double GRAVITY = 9.81;
 constexpr double U_OUTER = 0.0;
@@ -212,7 +213,7 @@ void FixedSurface::write(const std::vector<Vector3>& pos, const std::vector<Vect
 // ---------------------------------------------------------------------------------------------------------------
 // WakeRibbon
 
-double WakeRibbon::half_width(const Row& r, double t_s) { return r.w0 + KELVIN * r.v * (t_s - r.t); }
+double WakeRibbon::half_width(const Row& r, double t_s) { return r.w0 + KELVIN * r.v * std::min(t_s - r.t, SPREAD_S); }
 
 double WakeRibbon::alpha(const Row& r, double t_s) {
   if (!r.visible) return 0.0;
@@ -359,6 +360,7 @@ void WakeRibbon::build(double t_s) {
     const int base = static_cast<int>(pos_.size());
     const double centre = clampd(r.w0 / std::max(hw + feather, 1e-3), 0.0, 1.0);
     const float vv = static_cast<float>(r.dist / 10.0);
+    const double age = clampd((t_s - r.t) / LIFE_S, 0.0, 1.0);
     for (int i = 0; i < ACROSS; ++i) {
       const double u = i == 0 ? U_OUTER
                               : (i == ACROSS - 1 ? 1.0 - U_OUTER
@@ -374,7 +376,7 @@ void WakeRibbon::build(double t_s) {
       pos_.emplace_back(q.x, 0.0f, -q.y);
       uv_.emplace_back(static_cast<real_t>(u), vv);
       uv2_.push_back(lp);
-      col_.emplace_back(static_cast<float>(centre), 1.0f, 1.0f,
+      col_.emplace_back(static_cast<float>(centre), static_cast<float>(age), 1.0f,
                         (i == 0 || i == ACROSS - 1) ? 0.0f : static_cast<float>(a));
     }
     if (prev >= 0) {

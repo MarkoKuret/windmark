@@ -709,6 +709,16 @@ func check_whitecaps() -> void:
 		var cs := _caps_cover(sw, pts, case[0] * SeaWhitecaps.KNOT, lm)
 		check(cs > w / 1.4 and cs < w * 1.4, "%.0f kn with a swell: cover %.2f %% within x1.4 of the law (%.2f %%)" % [
 				case[0], 100.0 * cs, 100.0 * w])
+	# short-crested breaking, not a zebra crossing: crests break in segments of one or two peak wavelengths and
+	# neighbouring crests not in step (round 6)
+	for kn in [25.0, 18.0]:
+		var zs := _caps_sea(kn, 0.0, 30000.0)
+		var z := _caps_zebra(zs, kn)
+		print("    %.0f kn, 800 m aerial window: %d caps; crest-aligned runs 99th percentile %.1f lam_p (longest %.1f)" % [
+				kn, z["caps"], z["run99"], z["run_max"]])
+		check(z["run99"] < ZEBRA_RUN,
+				"%.0f kn: no zebra crossing: crest-aligned runs of caps (99 %%) %.1f lam_p (under %.1f; the synchronised lines of round 5: 3.8 to 5.0)" % [
+				kn, z["run99"], ZEBRA_RUN])
 	var sea25 := _caps_sea(25.0, 0.0)
 	# a cap grades from a bright core to a translucent trail, never one flat opacity
 	var ck_g := _caps_comp(sea25, 100000.0)
@@ -843,7 +853,7 @@ func check_whitecaps() -> void:
 	# 60 s at 60 frames per second, points riding the dominant wave: no jumps, caps build and fade over seconds
 	var img := SeaTextures.caps_image()
 	var n_img := img.get_width()
-	var n_pts := 150
+	var n_pts := 300
 	var prev := PackedFloat32Array()
 	prev.resize(n_pts)
 	var run := PackedInt32Array()
@@ -951,8 +961,9 @@ func _caps_brk(sea: Dictionary, t_ms: float) -> Vector2:
 ## Foam intensity of a caps sea at a point, time and local wind (m/s), every component resolved.
 func _caps_f(sea: Dictionary, ck: PackedVector4Array, grp: Vector4, x: Vector2, wind: float, n_caps := SeaWhitecaps.MAX_CAPS,
 		px := 0.0, t_ms := -1.0) -> float:
-	var brk: Vector2 = sea.get("brk", Vector2.ZERO) if t_ms < 0.0 else _caps_brk(sea, t_ms)
-	return SeaWhitecaps.intensity(ck, sea["cw"], sea["rest"], n_caps, x, px, 1.0, wind, sea["cal"], grp, sea["e"], brk)
+	var tt := maxf(t_ms, 0.0)
+	return SeaWhitecaps.intensity(ck, sea["cw"], sea["rest"], n_caps, x, px, 1.0, wind, sea["cal"], grp, sea["e"],
+			_caps_brk(sea, tt), SeaWhitecaps.segment_frame(sea["comps"], 0.0, 0.0, tt))
 
 
 ## Foam cover: the share of the points at two times with a foam intensity of at least 0.5 (the whitecap area a
@@ -978,8 +989,8 @@ func _caps_cover(sea: Dictionary, pts: PackedVector2Array, wind: float, lm: Colo
 func _caps_drawn(sea: Dictionary, ck: PackedVector4Array, grp: Vector4, x: Vector2, wind: float, t_ms: float,
 		L = null, st := -1.0, brk = null) -> Vector3:
 	var f := SeaWhitecaps.field(ck, sea["cw"], sea["rest"], SeaWhitecaps.MAX_CAPS, x, 0.0, 1.0, wind, sea["cal"], grp,
-			sea["e"], brk if brk != null else _caps_brk(sea, t_ms))
-	if f.z <= 0.0 or f.x <= -2.0:
+			sea["e"], brk if brk != null else _caps_brk(sea, t_ms), SeaWhitecaps.segment_frame(sea["comps"], 0.0, 0.0, t_ms))
+	if f.z <= 0.0 or f.x <= -1.5:
 		return Vector3.ZERO
 	var e: Vector2 = sea["e"]
 	var q := Vector2(x.dot(e), x.dot(Vector2(-e.y, e.x)))
@@ -991,7 +1002,98 @@ func _caps_drawn(sea: Dictionary, ck: PackedVector4Array, grp: Vector4, x: Vecto
 		var c := Vector2(q.x / SeaWhitecaps.TILE.x + uv.z, q.y / SeaWhitecaps.TILE.y + uv.w)
 		var n := img.get_width()
 		L = img.get_pixel(posmod(int(floorf(c.x * n)), n), posmod(int(floorf(c.y * n)), n))
-	return SeaWhitecaps.drawn(f.x, f.y, f.z, L, st, (sea["cw"] as PackedVector4Array)[0].w)
+	return SeaWhitecaps.drawn(f.x, f.y, f.z, L, st, (sea["cw"] as PackedVector4Array)[0].w, f.w)
+
+
+## The cap mask (F >= 0.5) of an 800 m aerial window at 2 m: {caps, run99, run_max: crest-aligned runs of caps in
+## peak wavelengths (caps linked when within an ellipse of 0.15 lam_p across the crests and 0.6 lam_p along them)}.
+## threshold of the zebra check, calibrated on the synchronised lines of round 5 (3.8 to 5.0 lam_p over five 800 m
+## windows at 25 kn) and on caps shifted at random across the crests (1.5 to 2.1)
+const ZEBRA_RUN := 3.0
+
+
+func _caps_zebra(sea: Dictionary, kn: float) -> Dictionary:
+	var res := 2.0
+	var n := 400
+	var t := 100000.0
+	var ck := _caps_comp(sea, t)
+	var grp := _caps_grp(sea, t)
+	var comps: Array = sea["comps"]
+	var p := SeaWhitecaps.dominant_index(comps)
+	var lam := 1.0 / Vector2(comps[p][1], comps[p][2]).length()
+	var e: Vector2 = sea["e"]
+	var perp := Vector2(-e.y, e.x)
+	var on := PackedByteArray()
+	on.resize(n * n)
+	for j in n:
+		for i in n:
+			var x := Vector2(i * res - 400.0, j * res - 400.0)
+			if _caps_f(sea, ck, grp, x, kn * SeaWhitecaps.KNOT, SeaWhitecaps.MAX_CAPS, 0.0, t) >= 0.5:
+				on[j * n + i] = 1
+	# caps: connected cells, their centroids in (along e, along the crest)
+	var seen := PackedByteArray()
+	seen.resize(n * n)
+	var cents := PackedVector2Array()
+	var stack := PackedInt32Array()
+	for k in n * n:
+		if on[k] == 0 or seen[k] == 1:
+			continue
+		var sum := Vector2.ZERO
+		var cnt := 0
+		stack.append(k)
+		seen[k] = 1
+		while not stack.is_empty():
+			var c := stack[stack.size() - 1]
+			stack.resize(stack.size() - 1)
+			var cx := c % n
+			var cy := c / n
+			var cp := Vector2(cx * res - 400.0, cy * res - 400.0)
+			sum += cp
+			cnt += 1
+			for d in [[1, 0], [-1, 0], [0, 1], [0, -1]]:
+				var nx: int = cx + d[0]
+				var ny: int = cy + d[1]
+				if nx < 0 or ny < 0 or nx >= n or ny >= n:
+					continue
+				var q := ny * n + nx
+				if on[q] == 1 and seen[q] == 0:
+					seen[q] = 1
+					stack.append(q)
+		var cpt := sum / cnt
+		cents.append(Vector2(cpt.dot(e), cpt.dot(perp)))
+	# crest-aligned runs (union-find)
+	var m := cents.size()
+	var parent := PackedInt32Array()
+	parent.resize(m)
+	for i in m:
+		parent[i] = i
+	for i in m:
+		for j in range(i + 1, m):
+			var da := (cents[i].x - cents[j].x) / (0.15 * lam)
+			var db := (cents[i].y - cents[j].y) / (0.6 * lam)
+			if da * da + db * db < 1.0:
+				var a := i
+				while parent[a] != a:
+					a = parent[a]
+				var b := j
+				while parent[b] != b:
+					b = parent[b]
+				if a != b:
+					parent[a] = b
+	var lo := {}
+	var hi := {}
+	for i in m:
+		var r := i
+		while parent[r] != r:
+			r = parent[r]
+		lo[r] = minf(lo.get(r, INF), cents[i].y)
+		hi[r] = maxf(hi.get(r, -INF), cents[i].y)
+	var runs := []
+	for r in lo:
+		runs.append((hi[r] - lo[r]) / lam)
+	runs.sort()
+	return {"caps": m, "run99": runs[int(runs.size() * 0.99)] if runs.size() > 0 else 0.0,
+			"run_max": runs[-1] if runs.size() > 0 else 0.0}
 
 
 ## Foam patches in the chase view (every component resolved, 0.5 m cells over 200 m, a cell foamed when its

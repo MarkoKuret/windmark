@@ -331,6 +331,7 @@ func update_frame(cam_pos: Vector3, cam: Camera3D = null) -> void:
 	if not caps_cal.is_empty():
 		material.set_shader_parameter("caps_grp", SeaWhitecaps.group_frame(caps_comps, caps_cal, ox, oy, t))
 		material.set_shader_parameter("caps_brk", SeaWhitecaps.break_frame(caps_comps, ox, oy, t))
+		material.set_shader_parameter("caps_seg", SeaWhitecaps.segment_frame(caps_comps, ox, oy, t))
 		material.set_shader_parameter("caps_str", SeaWhitecaps.streak_frame(caps_comps, ox, oy, t, _caps_u))
 
 	if sky:

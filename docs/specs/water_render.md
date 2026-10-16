@@ -289,8 +289,30 @@ crest), passes a crest's foam only where it is high:
 ```
 brk = clamp((G_b − 0.55)/0.25, 0, 1), and 0.6 where the pixel cannot resolve it (mix by smoothstep(2, 4, 6 m/px))
 ```
-**Calibration** (CPU, once per sea): the steepness sum `S` (below, every component resolved) times `env` and `brk` at
-32 768 fixed points of a 600 m square (one tile of the envelope), at time 0, gives its distribution; for each of the
+**Crest segments, not lines** (round 6, 2026-10-16): with the windows, the groups and the 6 m breakup alone, whole
+crests of the dominant wave broke in step across the sea, a line of caps, a line of nothing, like a zebra crossing
+(from the air, runs of caps along a crest of 4 to 5 peak wavelengths). Real wind seas are short-crested: a breaking
+crest segment is half to two peak wavelengths long, and neighbouring crests do not break in step. A third factor of
+the same noise channel over `SEG_TILE = 45 m` along the dominant wave by `120 m` across it (features of about 9 m
+across the crests, so neighbouring crests differ, and 25 m along them), riding the crests at `c_p`, passes a crest's
+foam only on its segments:
+```
+seg = clamp((G_s − 0.5)/0.2, 0, 1), and 0.45 where the pixel cannot resolve it (mix by smoothstep(2, 4, 9 m/px))
+S  ×= seg
+```
+Measured on the CPU mirror, 25 kn, fetch 30 km, a 1.2 km aerial window: the 99th percentile of crest-aligned runs of
+caps fell from 4.4 to 2.2 peak wavelengths (18 kn: 1.0); the mask's power within 20° of the wave direction on the
+ring 0.6 to 1.4 `k_p`, over the same for the caps moved at random across the crests, from 2.1 to 1.3 (18 kn 1.4). A
+narrow peak at `k_p` itself remains: the caps sit on the crests of the dominant wave, which are long in a sea of ten
+components.
+
+The cap's surroundings (the trail, the residual foam, the darker face and the bubble glow) are measured relative to
+the threshold, `xr = (S − S_b)/(0.25·S_b)`, and take `xs = min(x, xr)` plus the same lace and streak noise as `xj`:
+with the segments multiplying `S` the thresholds of a sea can be small, and a fixed band below them (`x > −1.5`)
+then lit whole bands of the wave's back.
+
+**Calibration** (CPU, once per sea): the steepness sum `S` (below, every component resolved) times `env`, `brk` and `seg` at
+65 536 points of a jittered grid over a 600 m square (one tile of the envelope), at time 0, gives its distribution; for each of the
 four covers `W_k = 0.05, 0.2, 0.8, 3.2 %` the threshold `caps_thr[k]` at which the share of those points with
 `F ≥ 0.5` (the whitecap area a photograph counts, as Monahan's data) equals `W_k` (bisection). So the cover follows
 the law on any sea (a short fetch, a swell, an open ocean) without a per-sea tuning. It takes about 0.2 s of
@@ -315,7 +337,7 @@ for each selected j:  d = signed cycles from the crest (fract of the phase, ahea
 qd    = (dot(xl, e), dot(xl, perp(e)))
 env   = max(0, 1 + g_amp·(texture(foam_tex, qd / GROUP_TILE + (ug, vg)).g − G_mean))
 brk   = the short-crest breakup above, from texture(foam_tex, qd / BREAK_TILE + (ub, vb)).g
-S     = E · (S + caps_rest + Σ b·mean of the selected beyond the tier's count) · env · brk
+S     = E · (S + caps_rest + Σ b·mean of the selected beyond the tier's count) · env · brk · seg
 x     = log2(W(U) / 0.0005) / 2                                  // 0..3 at the four calibrated covers
 S_b   = caps_thr piecewise linear in x (extrapolated beyond the ends)
 F     = clamp((S - S_b)/S_W, 0, 1) · gate · fade                 // foam intensity, S_W = 0.035
@@ -351,7 +373,7 @@ behind   = (1 − smoothstep(0, 1.5 m, dm)) · smoothstep(−0.4·lam, −0.15·
                                                                        // the crest, not across the trough (lam: the
                                                                        // heaviest component's wavelength)
 core     = smoothstep(0.0, 1.2, xj) · front · g                        // g = gate · fade
-trail    = smoothstep(−1.0, 0.7, xj) · behind · smoothstep(0.3, 0.75, st) · g
+trail    = smoothstep(−1.0, 0.7, xs) · behind · smoothstep(0.3, 0.75, st) · g
 a        = 0.95 · core · mix(L.b, L.a, smoothstep(1, 2, xj)) + 0.5 · trail · L.g · (1 − core)
 ALBEDO   = mix(mix(ALBEDO, (0.05, 0.20, 0.23), 0.3·smoothstep(0.2, 0.8, max(core, 0.5·trail))), col_foam, a)
 ROUGHNESS = mix(ROUGHNESS, 0.55, a) ; EMISSION *= 1 - a ; normal = normalize(mix(normal, n_geo, 0.6·a))   // no glints in foam
@@ -368,7 +390,7 @@ tap of the foam texture where `F > 0`; nothing below 8 kn or beyond 2.5 km. The 
 metres wide, narrower than the vertex spacing at the chase camera's distance (1.5 m at 25 m, 6 m at 100 m on tier
 M), so they are evaluated per pixel; what the vertex stage already has (exposure, venue factor) comes as varyings.
 Measured with `tests/water_cost.py` (the development M1, OpenGL proxy, 1280 × 800): the helicopter view of the
-25 kn open sea, where every water pixel runs the loop, +0.16 to 0.18 ms on tier L, +0.21 to 0.24 ms on M, +0.22 to 0.24 ms on H (round 5, the streak tap near caps only again; runs vary by ±0.05 ms)
+25 kn open sea, where every water pixel runs the loop, +0.21 ms on tier L, +0.23 ms on M, +0.14 ms on H (round 6, with the crest-segment tap; round 5 +0.16 to 0.18, +0.21 to 0.24, +0.22 to 0.24 ms; runs vary by ±0.05 ms)
 (the first version +0.10, +0.14, +0.10 ms on the same view; the runs vary by ±0.05 ms); the game's chase view at
 25 kn +0.00 to 0.01 ms. On the Steam Deck (about 0.6 of the M1's GPU) about
 +0.25 ms, inside the 2.5 ms of §7.
@@ -376,7 +398,7 @@ Measured with `tests/water_cost.py` (the development M1, OpenGL proxy, 1280 × 8
 **Caps belong to the wave** (round 4): the face ahead of a breaking crest is the steepest and darkest part of the
 wave, and the bubble cloud under and behind the crest glows a lighter turquoise:
 ```
-near     = smoothstep(−0.8, 0.4, xj)                                   // close to a cap (the cap's own outline)
+near     = smoothstep(−0.8, 0.4, xs)                                   // close to a cap (the cap's own outline)
 ahead    = near · (1 − behind) · (1 − smoothstep(0.5 m, 3 m, dm)) · g   // the face just ahead of it
 ALBEDO  *= 1 − 0.22·ahead                                              // the steep front, darker
 bubbles  = near · behind · g                                           // under and behind it
@@ -386,7 +408,7 @@ ALBEDO   = mix(ALBEDO, (0.05, 0.20, 0.23), 0.35·bubbles)               // the b
 speed), so the trail's streaks no longer ride the crest: their frame `caps_str` drifts along the wind at `0.03·U`.
 Behind a cap that has stopped breaking, faint patches stay:
 ```
-residual = 0.15 · smoothstep(12 kn, 20 kn, U) · smoothstep(−1.5, −0.8, xj) · (1 − smoothstep(−0.8, 0, xj)) · behind · smoothstep(0.3, 0.75, st) · g
+residual = 0.15 · smoothstep(12 kn, 20 kn, U) · smoothstep(−1.5, −0.8, xs) · (1 − smoothstep(−0.8, 0, xs)) · behind · smoothstep(0.3, 0.75, st) · g
 a        = max(a, residual)
 ```
 (Round 4 also drew wind-aligned foam lanes between the caps from the same streak tap; in the game they read as
@@ -408,7 +430,9 @@ field at 25 kn over 512 m (8 m cells) rises nowhere more than 0.3 above its mean
 the first version 0.8, the six crest windows alone 0.7); each component's window equal after moving with its phase velocity;
 the foam texture drifting with the dominant wave and the group envelope at half its speed; the foam field 0.5 s
 later correlating with itself moved with the waves, not in place; over 60 s at 60 frames per second, points riding
-the dominant wave see the opacity change by at most 0.15 per frame and caps living a median 0.8 s or more.
+the dominant wave see the opacity change by at most 0.15 per frame and caps living a median 0.8 s or more. No zebra crossing (an 800 m aerial window at 25 and
+18 kn, fetch 30 km): caps linked along a crest (within 0.15 `lam_p` across and 0.6 `lam_p` along it) run at most 3
+peak wavelengths (99th percentile; round 5: 3.8 to 5.0).
 Previews: `tests/previews/whitecaps_{12,18,24}kn_{chase,heli}.jpg` and `whitecaps_20kn_sequence.jpg` (6 frames 0.5 s
 apart).
 

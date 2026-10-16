@@ -302,6 +302,8 @@ uniform vec4 caps_thr = vec4(1e3);              // breaking thresholds calibrate
 uniform vec4 caps_grp = vec4(0.0, 0.5, 0.0, 0.0);   // wave-group envelope: (amplitude / noise sd, noise mean, ug, vg)
 uniform vec2 caps_brk = vec2(0.0);                  // short-crest breakup frame (ub, vb)
 uniform vec2 caps_str = vec2(0.0);                  // the trail's streak frame (us, vs)
+uniform vec2 caps_seg = vec2(0.0);                  // the crest-segment frame (ug, vg)
+const vec2 WM_SEG_TILE = vec2(45.0, 120.0);
 const vec2 WM_STREAK_TILE = vec2(14.0, 1.6);
 const float WM_GROUP_TILE = 600.0;
 const vec2 WM_BREAK_TILE = vec2(30.0, 15.0);
@@ -312,13 +314,14 @@ const vec2 WM_CAPS_TILE = vec2(4.5, 3.0);     // m along e, across
 // summed (crests meeting in a wave group make a cap), scaled by the wave-group envelope (the foam noise's coarse
 // channel, drifting at the group speed) and the short-crest breakup, against the sea's threshold for the measured cover at the local wind (m/s).
 // Components the pixel footprint px cannot show count with their window mean, so far caps never alias.
-// (x, dm, gate): x = (S - S_b) / S_W before the clamp, dm the distance from the heaviest component's crest in metres
-// (ahead positive; 0 where the pixel cannot resolve it), gate the wind gate (0: no caps).
-vec3 wm_caps_field(vec2 xl, float px, float expo, float wind) {
+// (x, dm, gate, xr): x = (S - S_b) / S_W before the clamp, dm the distance from the heaviest component's crest in
+// metres (ahead positive; 0 where the pixel cannot resolve it), gate the wind gate (0: no caps), xr = (S - S_b) /
+// (0.25 S_b) the same relative to the threshold (the cap's surroundings: trail, residual foam, bubbles).
+vec4 wm_caps_field(vec2 xl, float px, float expo, float wind) {
 	float kn = wind / WM_KNOT;
 	float gate = smoothstep(8.0, 10.0, kn);
 	if (gate <= 0.0 || expo <= 0.0) {
-		return vec3(-1e3, 0.0, 0.0);
+		return vec4(-1e3, 0.0, 0.0, -1e3);
 	}
 	float dm = 0.0;
 	float S = caps_rest;
@@ -344,16 +347,20 @@ vec3 wm_caps_field(vec2 xl, float px, float expo, float wind) {
 	float env = max(0.0, 1.0 + caps_grp.x * (texture(foam_tex, qd / WM_GROUP_TILE + caps_grp.zw).g - caps_grp.y));
 	float brk = clamp((texture(foam_tex, qd / WM_BREAK_TILE + caps_brk).g - 0.55) * 4.0, 0.0, 1.0);
 	brk = mix(0.6, brk, smoothstep(2.0, 4.0, 6.0 * inv_px));
-	S = S * expo * env * brk;
+	// crest segments: a crest breaks over one or two peak wavelengths, not along its whole length, and its
+	// neighbours do not break in step (the field varies over about 25 m along the crests, 9 m across them)
+	float seg = clamp((texture(foam_tex, qd / WM_SEG_TILE + caps_seg).g - 0.5) * 5.0, 0.0, 1.0);
+	seg = mix(0.45, seg, smoothstep(2.0, 4.0, 9.0 * inv_px));
+	S = S * expo * env * brk * seg;
 	// Monahan's cover W = 3.84e-6 U^3.41; x = log2(W / 0.0005) / 2 indexes the calibrated thresholds
 	float x = 0.5 * log2(3.84e-6 * pow(max(wind, 0.1), 3.41) / 0.0005);
 	float Sb = x < 1.0 ? mix(caps_thr.x, caps_thr.y, x) : (x < 2.0 ? mix(caps_thr.y, caps_thr.z, x - 1.0)
 			: mix(caps_thr.z, caps_thr.w, x - 2.0));
-	return vec3((S - Sb) * 28.5714, dm, gate);   // S_W = 0.035
+	return vec4((S - Sb) * 28.5714, dm, gate, (S - Sb) / max(0.25 * Sb, 1e-4));   // S_W = 0.035
 }
 
 float wm_caps_intensity(vec2 xl, float px, float expo, float wind) {
-	vec3 f = wm_caps_field(xl, px, expo, wind);
+	vec4 f = wm_caps_field(xl, px, expo, wind);
 	return clamp(f.x, 0.0, 1.0) * f.z;
 }
 
@@ -364,7 +371,7 @@ void wm_apply_caps(inout WmSurface S, vec2 xl, float px, float expo, float dist,
 	if (fade <= 0.0) {
 		return;
 	}
-	vec3 cf = wm_caps_field(xl, px, expo, S.m * base_speed);
+	vec4 cf = wm_caps_field(xl, px, expo, S.m * base_speed);
 	float g = cf.z * fade;
 	if (g <= 0.0) {
 		return;
@@ -381,17 +388,19 @@ void wm_apply_caps(inout WmSurface S, vec2 xl, float px, float expo, float dist,
 		float st = texture(foam_tex, q / WM_STREAK_TILE + caps_str).r;
 		vec4 L = texture(caps_tex, q / WM_CAPS_TILE + caps_uv.zw);
 		float xj = cf.x + 1.2 * (L.g - 0.5) + 0.8 * (st - 0.5);
+		float xs = min(cf.w, cf.x) + 1.2 * (L.g - 0.5) + 0.8 * (st - 0.5);   // the surroundings: never wider than
+		                                                                       // a quarter of the threshold
 		float front = smoothstep(-4.0, -1.0, cf.y);
 		// behind the crest, within the part of the wave's back a cap's foam trails over (never across the trough)
 		float lam0 = caps_w[0].w;
 		float behind = (1.0 - smoothstep(0.0, 1.5, cf.y)) * (cf.y == 0.0 ? 1.0 : smoothstep(-0.4 * lam0, -0.15 * lam0, cf.y));
 		// the steep face ahead of a crest near breaking is darker; the bubble cloud under and behind it glows
-		float near_cap = smoothstep(-0.8, 0.4, xj);
+		float near_cap = smoothstep(-0.8, 0.4, xs);
 		S.albedo *= 1.0 - 0.22 * near_cap * (1.0 - behind) * (1.0 - smoothstep(0.5, 3.0, cf.y)) * g;
 		S.albedo = mix(S.albedo, vec3(0.05, 0.20, 0.23), 0.35 * near_cap * behind * g);
 		float core = smoothstep(0.0, 1.2, xj) * front * g;
-		float trail = smoothstep(-1.0, 0.7, xj) * behind * smoothstep(0.3, 0.75, st) * g;
-		float residual = 0.15 * smoothstep(12.0, 20.0, kn) * smoothstep(-1.5, -0.8, xj) * (1.0 - smoothstep(-0.8, 0.0, xj)) * behind
+		float trail = smoothstep(-1.0, 0.7, xs) * behind * smoothstep(0.3, 0.75, st) * g;
+		float residual = 0.15 * smoothstep(12.0, 20.0, kn) * smoothstep(-1.5, -0.8, xs) * (1.0 - smoothstep(-0.8, 0.0, xs)) * behind
 				* smoothstep(0.3, 0.75, st) * g;
 		a = max(residual, clamp(0.95 * core * mix(L.b, L.a, smoothstep(1.0, 2.0, xj))
 				+ 0.5 * trail * L.g * (1.0 - core), 0.0, 1.0));

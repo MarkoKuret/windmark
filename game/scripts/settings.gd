@@ -56,6 +56,9 @@ var fps_limit := 0
 ## the capture preset (menus.md §3): "off", or "portrait" (a 1080 x 1920 window, the HUD's portrait layout).
 ## Session only: not in FIELDS, so never saved or loaded; every run starts with it off.
 var capture_preset := "off"
+## the window kept as the command line made it, its mode and size never set (a shot script under Movie Maker, whose
+## frame size is fixed at start, cameras.md §9.2). Session only.
+var keep_window := false
 
 # ---- audio (audio.md §1.1), linear 0..1 ----
 var master_volume := 0.8
@@ -385,7 +388,7 @@ func apply_display(win: Window, set_mode := false) -> void:
 	apply_render_scale(win)
 	if DisplayServer.get_name() == "headless":
 		return
-	if set_mode or not _mode_set:
+	if (set_mode or not _mode_set) and not keep_window:
 		_mode_set = true
 		var want := Window.MODE_FULLSCREEN if fullscreen and capture_preset == "off" else Window.MODE_WINDOWED
 		if win.mode != want:

@@ -508,6 +508,11 @@ Runs headless, with scripted input at fixed frame rates:
   wind state the core's, the HUD commands the local ones (while the core's lag a step); at the end the HUD
   numbers against the core's state; and a short wm12 run. The script writes the core sea samples first when they
   are missing, and builds the GDExtension when `game/bin` has none.
+- `tests/shot_test.gd`: shot scripts (`cameras.md` §9.2, §10 test 16): the files of `data/shots` load, bad ones
+  are refused, cues run in time order and once; the sail scene runs a shot on the core (camera cues, slow, pause
+  and resume with the shot time running through the pause, HUD and tags off, let fly held for 1 s, the end after
+  the expected number of frames) and a race shot that starts 10 s before the gun with the start line camera and
+  ends by `--quit-at`.
 - `tests/perf_test.gd`: the frame-time overlay (`hud.md` §17): the 1 % worst statistic, the sections, and the
   sail scene (a three-boat race on the core, FakeSim without it) with the overlay shown and a log for 2.6 s of
   real frames: every column, one line per second, the sections timed, Shift+F9 hiding it. The runner then starts the
@@ -526,6 +531,25 @@ frame-time overlay.
 Capture (offline): X the clip cameras (start line, mark, long lens, helicopter), `.` clean pause (no menu, no
 label), `,` slow motion (x0.5, x0.25, x1; a small note shows the new rate for 1.5 s), `/` world tags and
 on-water guides on and off.
+
+### Shot scripts (unattended clips)
+
+A shot script (`cameras.md` §9.2, `scripts/controls/shot_script.gd`) runs the capture keys, the cameras, the HUD
+and held boat actions at set times and quits by itself, for Godot's Movie Maker. Times are simulation seconds from
+the scenario's clip start, the race's gun (negative before it) or the start of free sailing; slow motion stretches
+them on screen, a clean pause runs them on the frame time. The files are in `data/shots/`:
+
+```
+godot --path game --write-movie out/rule10.avi --fixed-fps 60 --resolution 1080x1920 res://scenes/sail_test.tscn \
+    -- --scenario=port_starboard --shot=rule10_penalty
+godot --path game --write-movie out/start.avi --fixed-fps 60 --resolution 1080x1920 res://scenes/sail_test.tscn \
+    -- --race --fleet=6 --watch --shot=ai_start
+```
+
+Under Movie Maker the frame size is fixed when the run starts, so a portrait shot takes `--resolution 1080x1920`
+and the game then leaves the window alone (no fullscreen, no capture resize). `--quit-at=<s>` quits at a shot time
+with or without a shot. A shot with `start` steps the world to that time before the first frame (a race shot at
+`-15` does not record the sequence before it). The run prints `shot: end at <s>` when it ends.
 
 ## Menus
 

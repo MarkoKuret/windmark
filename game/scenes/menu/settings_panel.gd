@@ -7,47 +7,33 @@ signal changed(key: String)
 signal closed
 
 const SECTIONS := ["controls", "cameras", "hud", "graphics", "audio"]
-## the help line of every row and button (menus.md §3)
+## the help line of the rows whose name does not say it all (menus.md §3); the others show none
 const HELP := {
 	"helm_mode": "Set and hold: a tap moves the helm and it stays. Hold to steer: it comes back when you let go.",
 	"stick_dead_zone": "How far the stick moves before the helm answers. Raise it if the boat steers on its own.",
 	"stick_curve": "How the helm follows the stick: 1.0 is straight, higher is finer near the centre.",
-	"sheet_rate": "How fast the sheet keys trim the sails.",
 	"sheet_turns_auto_trim_off": "On: touching the sheet keys hands the trim back to you.",
 	"let_fly_toggle": "Hold: the sheets run free while the key is down. Toggle: one press frees them, the next trims.",
 	"helm_fine_toggle": "Hold: fine helm while the key is down. Toggle: one press turns it on, the next off.",
 	"rankings_toggle": "Hold: the ranking list shows while the key is down. Toggle: one press opens it, the next closes it.",
 	"camera_boost_toggle": "Hold: the free camera flies fast while the key is down. Toggle: one press on, the next off.",
 	"vibration": "Gamepad rumble when you touch a boat or a mark, a light buzz while the sails flog. Off: none.",
-	"camera_speed": "How fast the cameras orbit and look around.",
-	"invert_orbit_x": "Turns the orbiting cameras the other way, left and right.",
-	"invert_orbit_y": "Turns the orbiting cameras the other way, up and down.",
-	"invert_look_x": "Turns the onboard and free cameras' look the other way, left and right.",
-	"invert_look_y": "Turns the onboard and free cameras' look the other way, up and down.",
+	"invert_look_x": "The onboard and free cameras.",
+	"invert_look_y": "The onboard and free cameras.",
 	"heel_follow": "How much the onboard camera leans with the boat. Level horizon keeps it upright.",
 	"smooth_switch": "On: the camera glides to the next view instead of cutting.",
 	"reduced_motion": "No camera shake, a level horizon and a calmer chase camera.",
 	"assist": "How much the HUD helps: laylines, rules hints, start numbers. Online races may set a lower level.",
 	"hud_density": "How many instrument numbers show. Auto picks for your screen; G or a tap of View changes it.",
-	"ui_scale": "The size of the HUD and the menus.",
 	"palette": "Rules colours for colour-blind eyes. Every colour also comes with a word or a letter.",
-	"captions": "Caption lines for the race sounds. Kept for later: the sounds have no captions yet.",
 	"quality": "The detail of the sea, the sky and the shadows. Low suits built-in graphics and the Steam Deck.",
 	"render_scale": "Draws the 3D view at fewer pixels and sharpens it up to the screen. The HUD stays sharp.",
-	"fullscreen": "Windowed or fullscreen.",
 	"vsync": "On: no tearing; the frame rate follows the screen.",
-	"fps_limit": "Caps the frame rate to save power. Off: no cap.",
 	"capture_preset": "Portrait 9:16: a tall window and HUD for vertical clips. Off again at the next start.",
-	"master_volume": "Everything.",
 	"effects_volume": "The boats, the water and the wind.",
-	"signals_volume": "Horns, beeps and penalty sounds.",
-	"voice_volume": "Hails.",
+	"signals_volume": "Horns, beeps, penalties and hails.",
 	"ambience_volume": "The sea, the gulls and the venue.",
-	"interface_volume": "The menu sounds.",
-	"tab": "Left and right, LB and RB, or Page Up and Page Down: change the section.",
-	"Reset": "Puts this section's settings back to their defaults.",
-	"ResetBindings": "Puts every binding back to the defaults.",
-	"Done": "Saves the settings and goes back.",
+	"tab": "LB and RB, or Page Up and Page Down, change the section.",
 }
 const TITLES := ["Controls", "Cameras", "HUD", "Graphics", "Audio"]
 
@@ -101,7 +87,7 @@ func build(s: Settings) -> void:
 	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_body.add_theme_constant_override("separation", 2)
 	_scroll.add_child(_body)
-	help_label = MenuTheme.label("", MenuTheme.SMALL_SIZE - 1, MenuTheme.MUTED)
+	help_label = MenuTheme.label("", MenuTheme.SMALL_SIZE, MenuTheme.MUTED)
 	help_label.name = "Help"
 	help_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	help_label.custom_minimum_size = Vector2(0, 40)
@@ -110,7 +96,7 @@ func build(s: Settings) -> void:
 	var foot := HBoxContainer.new()
 	foot.add_theme_constant_override("separation", 16)
 	add_child(foot)
-	_reset = MenuTheme.button("Reset section", MenuTheme.ROW_SIZE, true)
+	_reset = MenuTheme.button("Reset section", MenuTheme.ACTION_SIZE, true)
 	_reset.name = "Reset"
 	_reset.pressed.connect(func() -> void:
 		settings.reset(section)
@@ -119,12 +105,11 @@ func build(s: Settings) -> void:
 		show_section(section, false)
 		_reset.grab_focus())
 	foot.add_child(_reset)
-	var hint := MenuTheme.label("LB / RB: section", MenuTheme.SMALL_SIZE, MenuTheme.MUTED)
-	hint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	foot.add_child(hint)
-	_done = MenuTheme.button("Done", MenuTheme.ROW_SIZE)
+	var push := Control.new()
+	push.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	foot.add_child(push)
+	_done = MenuTheme.button("Done", MenuTheme.ACTION_SIZE)
+	MenuTheme.set_primary(_done)
 	_done.name = "Done"
 	_done.pressed.connect(close)
 	foot.add_child(_done)
@@ -171,7 +156,7 @@ func _tab_style() -> void:
 	for sec in tabs:
 		var b: Button = tabs[sec]
 		var on: bool = sec == section
-		var sb := MenuTheme.box(Color(0, 0, 0, 0), 0, 0, Vector2(10, 8))
+		var sb := MenuTheme.box(Color(0, 0, 0, 0), 0, 0, Vector2(10, 10))
 		if on:
 			sb.border_width_bottom = 4
 			sb.border_color = MenuTheme.ACCENT
@@ -300,7 +285,6 @@ func _hud() -> void:
 	_row(MenuRow.range_row("Interface scale", "ui_scale", 0.8, 1.3, 0.05, s.ui_scale, pct))
 	_row(MenuRow.choice("Colour palette", "palette", ["standard", "deuteranopia", "protanopia", "tritanopia"],
 		["Standard", "Deuteranopia", "Protanopia", "Tritanopia"], s.palette))
-	_row(MenuRow.toggle("Captions", "captions", s.captions))
 
 
 func _graphics() -> void:
@@ -327,7 +311,7 @@ func _graphics() -> void:
 func _audio() -> void:
 	var s := settings
 	for e in [["Master", "master_volume"], ["Effects", "effects_volume"], ["Signals", "signals_volume"],
-			["Voice", "voice_volume"], ["Ambience", "ambience_volume"], ["Interface", "interface_volume"]]:
+			["Ambience", "ambience_volume"], ["Interface", "interface_volume"]]:
 		_row(MenuRow.range_row(e[0], e[1], 0.0, 1.0, 0.05, s.get(e[1]), pct))
 
 

@@ -100,11 +100,11 @@ func _ready() -> void:
 	card.name = "Menu"
 	left.add_child(card)
 	var list := VBoxContainer.new()
-	list.add_theme_constant_override("separation", 2)
+	list.add_theme_constant_override("separation", 4)
 	card.add_child(list)
 	for e in [["continue", "Continue"], ["quick", "Quick race"], ["free", "Free sail"], ["settings", "Settings"],
 			["quit", "Quit"]]:
-		var b := MenuTheme.button(e[1], MenuTheme.ITEM_SIZE, e[0] == "quit")
+		var b := MenuTheme.button(e[1], MenuTheme.ITEM_SIZE)
 		b.name = e[1].replace(" ", "")
 		var id: String = e[0]
 		b.pressed.connect(func() -> void: _pressed(id))
@@ -114,8 +114,8 @@ func _ready() -> void:
 			continue_line = MenuTheme.label("", MenuTheme.SMALL_SIZE - 1, MenuTheme.MUTED, 600)
 			continue_line.name = "ContinueLine"
 			var pad := MarginContainer.new()
-			pad.add_theme_constant_override("margin_left", 18)
-			pad.add_theme_constant_override("margin_bottom", 6)
+			pad.add_theme_constant_override("margin_left", int(MenuTheme.ITEM_PAD.x))
+			pad.add_theme_constant_override("margin_bottom", 8)
 			pad.add_child(continue_line)
 			list.add_child(pad)
 	_refresh_continue()

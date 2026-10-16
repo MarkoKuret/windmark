@@ -26,10 +26,9 @@ const SURPRISE := "surprise"
 var briefing: PanelContainer
 var briefing_header: Label
 var briefing_grid: GridContainer
-## the race card's preview (quick race only): the course map, its caption and the fleet summary
+## the race card's preview (quick race only): the course map and its caption (laps and legs)
 var course_map: CourseMap
 var course_text: Label
-var fleet_text: Label
 var body: BoxContainer
 var scroll: ScrollContainer
 var _note: Label
@@ -52,10 +51,7 @@ func build(race: bool, last: Dictionary) -> void:
 	add_theme_constant_override("separation", 4)
 	size_flags_vertical = Control.SIZE_EXPAND_FILL
 	add_child(MenuTheme.heading("Quick race" if race else "Free sail"))
-	var sub := MenuTheme.label("Race the AI fleet round a course." if race else
-		"Sail on your own, no course and no clock.", MenuTheme.SMALL_SIZE, MenuTheme.MUTED)
-	add_child(sub)
-	add_child(_gap(8))
+	add_child(_gap(12))
 	scroll = ScrollContainer.new()
 	scroll.name = "Body"
 	scroll.follow_focus = true
@@ -126,11 +122,11 @@ func build(race: bool, last: Dictionary) -> void:
 		for k in rows:
 			rows[k].changed.connect(func(_v: Variant) -> void: refresh_preview())
 	# the footer: Start, always visible, and the reason it cannot start
-	add_child(_gap(6))
-	start_button = MenuTheme.button("Start race" if race else "Set sail")
+	add_child(_gap(16))
+	start_button = MenuTheme.button("Start race" if race else "Set sail", MenuTheme.ITEM_SIZE)
 	start_button.name = "Start"
 	start_button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	start_button.custom_minimum_size = Vector2(220, 0)
+	start_button.custom_minimum_size = Vector2(280, MenuTheme.ITEM_H)
 	MenuTheme.set_primary(start_button)
 	start_button.pressed.connect(func() -> void: start_pressed.emit())
 	add_child(start_button)
@@ -162,14 +158,9 @@ func _build_preview() -> void:
 	course_map = CourseMap.new()
 	course_map.name = "CourseMap"
 	v.add_child(course_map)
-	course_text = MenuTheme.label("", MenuTheme.SMALL_SIZE, MenuTheme.INK, 600)
+	course_text = MenuTheme.label("", MenuTheme.SMALL_SIZE, MenuTheme.MUTED, 600)
 	course_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(course_text)
-	v.add_child(MenuTheme.caps("Fleet", MenuTheme.SMALL_SIZE - 2, MenuTheme.MUTED))
-	fleet_text = MenuTheme.label("", MenuTheme.SMALL_SIZE, MenuTheme.INK, 600)
-	fleet_text.name = "FleetSummary"
-	fleet_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	v.add_child(fleet_text)
 
 
 ## The briefing box at the top of the preview column (menus.md §1.3): dark like the course map, the header in the
@@ -361,29 +352,19 @@ func map_wind() -> Array:
 	return [rad_to_deg(c["from"]), mid, mode == "local"]
 
 
-## The course map, the briefing and the fleet summary from the rows (menus.md §1.1).
+## The course map, its caption and the briefing from the rows (menus.md §1.1).
 func refresh_preview() -> void:
 	if course_map == null:
 		return
 	var c := _course_doc()
-	var cid := str(rows["course"].value) if rows["course"].value != null else ""
 	var mw := map_wind()
 	course_map.show_course(c, mw[0], mw[1], mw[2])
 	refresh_briefing()
 	if c.is_empty():
-		course_text.text = "No course"
+		course_text.text = ""
 	else:
 		var ll := CourseMap.laps_legs(c)
-		course_text.text = "%s\n%d %s, %d legs" % [str(c.get("name", cid)), ll.x, "lap" if ll.x == 1 else "laps", ll.y]
-	fleet_text.text = fleet_summary()
-
-
-## "10 boats: you and 9 AI\nIntermediate AI\nWindmark 7 Sportsboat"
-func fleet_summary() -> String:
-	var n := int(rows["fleet_size"].value)
-	var lvl: String = MenuData.AI_NAMES[maxi(MenuData.AI_LEVELS.find(rows["ai_level"].value), 0)]
-	return "%d boats: you and %d AI\n%s AI\n%s" % [n, n - 1, lvl,
-		MenuData.name_of(_classes, str(rows["class_id"].value))]
+		course_text.text = "%d %s, %d legs" % [ll.x, "lap" if ll.x == 1 else "laps", ll.y]
 
 
 static func _gap(h: float) -> Control:

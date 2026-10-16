@@ -517,17 +517,16 @@ func test_buses_settings() -> void:
 	t.ok(AudioServer.bus_count == count, "ensure() adds nothing twice")
 	var s := Settings.new()
 	s.effects_volume = 0.5
-	s.signals_volume = 0.25
-	s.voice_volume = 0.0
+	s.signals_volume = 0.0
 	s.ambience_volume = 0.8
 	s.interface_volume = 0.6
 	s.apply_audio()
-	for pair in [["own_boat", 0.5], ["fleet", 0.5], ["wind", 0.5], ["race", 0.25], ["ambience", 0.8],
+	for pair in [["own_boat", 0.5], ["fleet", 0.5], ["wind", 0.5], ["ambience", 0.8],
 			["venue", 0.8], ["ui", 0.6]]:
 		t.near(AudioServer.get_bus_volume_db(AudioServer.get_bus_index(pair[0])), linear_to_db(pair[1]), 1e-3,
 			"%s volume from the settings" % pair[0])
-	t.ok(AudioServer.is_bus_mute(AudioServer.get_bus_index("voice")), "voice at 0 is muted")
-	t.ok(not "audio.*" in Settings.NOT_APPLIED, "the audio settings are applied")
+	t.ok(AudioServer.is_bus_mute(AudioServer.get_bus_index("race")) and AudioServer.is_bus_mute(
+		AudioServer.get_bus_index("voice")), "signals at 0 mute the race and voice buses")
 	Settings.new().apply_audio()
 	# pause
 	var sim := RaceStubSim.new(1)

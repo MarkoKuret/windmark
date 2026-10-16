@@ -86,8 +86,17 @@ func test_look() -> void:
 	var focus := th.get_stylebox("focus", "Button") as StyleBoxFlat
 	t.ok(focus.bg_color == MenuTheme.ACCENT and th.get_color("font_focus_color", "Button") == MenuTheme.NAVY,
 		"focused button: yellow fill, navy text")
-	var quit := MenuTheme.button("Quit", MenuTheme.ITEM_SIZE, true)
-	t.ok(quit.get_theme_color("font_color") == MenuTheme.SIGNAL and quit.text == "QUIT", "Quit: red caps")
+	var quit := MenuTheme.button("Reset section", MenuTheme.ACTION_SIZE, true)
+	t.ok(quit.get_theme_color("font_color") == MenuTheme.SIGNAL and quit.text == "RESET SECTION",
+		"a destructive action: red caps")
+	t.ok(quit.custom_minimum_size.y >= MenuTheme.ACTION_H, "footer actions are at least %d px tall" % MenuTheme.ACTION_H)
+	var item := MenuTheme.button("Quit")
+	t.ok(not item.has_theme_color_override("font_color") and th.get_color("font_color", "Button") == MenuTheme.NAVY
+		and item.custom_minimum_size.y >= MenuTheme.ITEM_H,
+		"menu items: navy, at least %d px tall" % MenuTheme.ITEM_H)
+	item.free()
+	var pnl := MenuTheme.panel()
+	t.ok(pnl.shadow_size == 0 and pnl.border_width_bottom == 0, "cloth panels are flat: no shadow, no edge")
 	var f := quit.get_theme_font("font") as FontVariation
 	t.ok(f != null and f.base_font.resource_path.ends_with("BarlowSemiCondensed-Bold.ttf"), "buttons in Barlow Bold")
 	quit.free()
@@ -122,7 +131,6 @@ func _odd_settings() -> Settings:
 	s.hud_density = Hud.Density.DATA
 	s.ui_scale = 1.15
 	s.palette = "tritanopia"
-	s.captions = true
 	s.quality = SeaQuality.Tier.H
 	s.render_scale = 0.75
 	s.fullscreen = true
@@ -132,7 +140,6 @@ func _odd_settings() -> Settings:
 	s.master_volume = 0.5
 	s.effects_volume = 0.25
 	s.signals_volume = 0.75
-	s.voice_volume = 0.1
 	s.ambience_volume = 0.0
 	s.interface_volume = 0.6
 	s.last_setup = {"class_id": "wm12", "fleet_size": 7}
@@ -396,8 +403,8 @@ class StubSim extends SimSource:
 		return ev
 
 
-## menus.md §3 "Where each setting goes": every key of the settings file reaches its target, except the ones
-## NOT_APPLIED lists (captions: the audio has no caption lines yet).
+## menus.md §3 "Where each setting goes": every key of the settings file reaches its target (only settings the game
+## reads are offered).
 func test_every_key_applied() -> void:
 	t.begin("every setting is applied")
 	var s := _odd_settings()
@@ -451,16 +458,32 @@ func test_every_key_applied() -> void:
 		"bindings.bindings": Bindings.slots("let_fly") == s.bindings["let_fly"],
 	}
 	for f in Settings.BUSES:
-		got["audio." + f] = absf(bus.call(Settings.BUSES[f][0]) - float(s.get(f))) < 1e-3 or (float(s.get(f)) <= 0.0
-			and AudioServer.is_bus_mute(AudioServer.get_bus_index(Settings.BUSES[f][0])))
+		var ok := true
+		for b in Settings.BUSES[f]:
+			ok = ok and (absf(bus.call(b) - float(s.get(f))) < 1e-3 or (float(s.get(f)) <= 0.0
+				and AudioServer.is_bus_mute(AudioServer.get_bus_index(b))))
+		got["audio." + f] = ok
 	for sec in Settings.FIELDS:
 		for f in Settings.FIELDS[sec]:
 			var k: String = sec + "." + f
-			if k in Settings.NOT_APPLIED:
-				t.ok(not got.has(k), "%s stored only (listed in NOT_APPLIED)" % k)
-			else:
-				t.ok(got.get(k, false), "%s applied" % k)
-	t.ok(Settings.NOT_APPLIED == ["hud.captions"], "only captions stay stored: %s" % [Settings.NOT_APPLIED])
+			t.ok(got.get(k, false), "%s applied" % k)
+	t.ok("voice" in Settings.BUSES["signals_volume"], "the signals volume drives the hails' voice bus too")
+	# a file from an older build with the dropped keys: the others load, the dropped ones are not written again
+	var old := ConfigFile.new()
+	old.set_value("settings", "version", 1)
+	old.set_value("hud", "captions", true)
+	old.set_value("audio", "voice_volume", 0.2)
+	old.set_value("audio", "master_volume", 0.4)
+	var old_path := "user://menus_test_old.cfg"
+	old.save(old_path)
+	var older := Settings.new()
+	t.ok(older.load_file(old_path) == OK and is_equal_approx(older.master_volume, 0.4), "an older file still loads")
+	older.save_file(old_path)
+	var back := ConfigFile.new()
+	back.load(old_path)
+	t.ok(not back.has_section_key("hud", "captions") and not back.has_section_key("audio", "voice_volume"),
+		"the dropped keys are not saved again")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(old_path))
 	# back to the defaults
 	fresh.apply_hud(hud)
 	t.ok(HudStyle.palette == "standard" and HudStyle.PORT == Color("#FF4438"), "standard palette back")
@@ -863,10 +886,7 @@ func test_race_card() -> void:
 		and q.course_map.points["w"].x > 600.0, "the map follows the wind rows")
 	q.rows["fleet_size"].set_value(12.0, true)
 	q.rows["ai_level"].set_value("pro", true)
-	t.ok(q.fleet_text.text.contains("12 boats: you and 11 AI") and q.fleet_text.text.contains("Pro AI")
-		and q.fleet_text.text.contains(MenuData.name_of(MenuData.classes(), str(q.rows["class_id"].value))),
-		"fleet summary: %s" % q.fleet_text.text.replace("\n", " / "))
-	t.ok(q.course_text.text.contains("2 laps, 6 legs"), "course caption: %s" % q.course_text.text.replace("\n", " / "))
+	t.ok(q.course_text.text == "2 laps, 6 legs", "course caption: %s" % q.course_text.text)
 	# keyboard: down from the last row is Start, up from Start the last row (Sky, after the weather rows)
 	t.ok(q.last_row() == q.rows["light_conditions"], "Custom: the last row is Sky")
 	q.rows["light_conditions"].grab_focus()
@@ -1435,18 +1455,23 @@ func test_touches() -> void:
 	await process_frame
 	t.ok(snd.played.has("focus") and snd.played.has("accept") and snd.played.has("back"),
 		"focus, accept and back: %s" % [snd.played])
-	# the help line: every row of every section has its line, and it follows the focus
+	# the help line: only where the name does not say it all (menus.md §3), and it follows the focus
 	m.close_page()
 	m.open_page("settings")
 	await process_frame
 	var sp := m.settings_panel
 	var missing := []
+	var shown := []
 	for sec in SettingsPanel.SECTIONS:
 		sp.show_section(sec)
 		for k in sp.rows:
-			if (sp.rows[k] as MenuRow).help == "":
+			shown.append(k)
+			if (sp.rows[k] as MenuRow).help == "" and k in ["helm_mode", "stick_dead_zone", "stick_curve",
+					"heel_follow", "assist", "hud_density", "palette", "quality", "render_scale", "capture_preset"]:
 				missing.append(k)
-	t.ok(missing.is_empty(), "every settings row has a help line (missing: %s)" % [missing])
+	t.ok(missing.is_empty(), "the rows that need it have a help line (missing: %s)" % [missing])
+	t.ok(not "captions" in shown and not "voice_volume" in shown, "no captions or voice rows")
+	t.ok((sp.rows["master_volume"] as MenuRow).help == "", "self-explanatory rows have no help line")
 	sp.show_section("graphics")
 	await process_frame
 	sp.rows["vsync"].grab_focus()

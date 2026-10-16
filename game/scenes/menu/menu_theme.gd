@@ -26,9 +26,18 @@ const SEA_DEEP := Color("16344c")
 
 const TITLE_SIZE := 54
 const HEADING_SIZE := 30
-const ITEM_SIZE := 26
+const ITEM_SIZE := 28
 const ROW_SIZE := 20
 const SMALL_SIZE := 16
+## the footer actions (Start, Race again, Done, ...): one size on every screen
+const ACTION_SIZE := 24
+
+## the hit sizes (menus.md §4): menu items, footer actions and setting rows, px tall at least; the padding inside
+const ITEM_H := 58
+const ACTION_H := 54
+const ROW_H := 46
+const ITEM_PAD := Vector2(22, 12)
+const ROW_PAD := Vector2(18, 10)
 
 ## tracking (em) of the caps styles (menus.md §4)
 const ITEM_TRACKING := 0.06
@@ -42,7 +51,7 @@ static func font(weight := 500, tracking := 0.0, size := ROW_SIZE) -> Font:
 	return HudStyle.font(weight, tracking, size)
 
 
-static func box(fill: Color, left := 0, radius := 2, pad := Vector2(18, 8), edge := NAVY) -> StyleBoxFlat:
+static func box(fill: Color, left := 0, radius := 2, pad := ITEM_PAD, edge := NAVY) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
 	s.bg_color = fill
 	s.border_width_left = left
@@ -56,20 +65,15 @@ static func box(fill: Color, left := 0, radius := 2, pad := Vector2(18, 8), edge
 
 
 ## The focused look: a yellow bar with the navy edge on its left; `danger`: a red bar (menus.md §4).
-static func focus_box(pad := Vector2(18, 8), danger := false) -> StyleBoxFlat:
+static func focus_box(pad := ITEM_PAD, danger := false) -> StyleBoxFlat:
 	if danger:
 		return box(SIGNAL, 0, 2, pad)
 	return box(FOCUS_FILL, FOCUS_EDGE, 2, pad)
 
 
+## A cloth panel: flat, no edge, no shadow (menus.md §4).
 static func panel() -> StyleBoxFlat:
-	var s := box(CLOTH, 0, 3, Vector2(28, 24))
-	s.border_width_bottom = 3
-	s.border_color = CLOTH_EDGE
-	s.shadow_color = Color(0.03, 0.08, 0.12, 0.30)
-	s.shadow_size = 20
-	s.shadow_offset = Vector2(0, 6)
-	return s
+	return box(CLOTH, 0, 3, Vector2(28, 26))
 
 
 static func theme() -> Theme:
@@ -119,13 +123,17 @@ static func caps(text: String, size := ROW_SIZE, color := INK) -> Label:
 	return label(text.to_upper(), size, color, 600, LABEL_TRACKING)
 
 
-## A menu button: Bold caps. `danger`: a destructive action, red (menus.md §4).
-static func button(text: String, size := ITEM_SIZE, danger := false) -> Button:
+## A menu button: Bold caps, at least `min_h` px tall (ITEM_H for menu items, ACTION_H at ACTION_SIZE, the row
+## height below). `danger`: a destructive action, red (menus.md §4).
+static func button(text: String, size := ITEM_SIZE, danger := false, min_h := -1) -> Button:
 	var b := Button.new()
 	b.text = text.to_upper()
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	b.add_theme_font_override("font", font(700, ITEM_TRACKING, size))
 	b.add_theme_font_size_override("font_size", size)
+	if min_h < 0:
+		min_h = ITEM_H if size >= ITEM_SIZE else (ACTION_H if size >= ACTION_SIZE else ROW_H)
+	b.custom_minimum_size = Vector2(0, min_h)
 	b.focus_mode = Control.FOCUS_ALL
 	if danger:
 		set_danger(b)
@@ -136,7 +144,7 @@ static func button(text: String, size := ITEM_SIZE, danger := false) -> Button:
 
 
 ## Red caps text, a red bar with cloth-coloured text when focused or hovered (menus.md §4).
-static func set_danger(b: Button, pad := Vector2(18, 8)) -> void:
+static func set_danger(b: Button, pad := ITEM_PAD) -> void:
 	for st in ["focus", "pressed", "hover_pressed", "hover"]:
 		b.add_theme_stylebox_override(st, focus_box(pad, true))
 	b.add_theme_color_override("font_color", SIGNAL)
@@ -144,21 +152,15 @@ static func set_danger(b: Button, pad := Vector2(18, 8)) -> void:
 		b.add_theme_color_override(c, CLOTH_SOLID)
 
 
-## A heading in Bold caps with the short yellow rule under it.
+## A heading in Bold caps (no rule under it, menus.md §4); the label is the box's first child.
 static func heading(text: String) -> VBoxContainer:
 	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 6)
 	v.add_child(label(text.to_upper(), HEADING_SIZE, NAVY, 700, ITEM_TRACKING))
-	var rule := ColorRect.new()
-	rule.color = ACCENT
-	rule.custom_minimum_size = Vector2(48, 4)
-	rule.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	v.add_child(rule)
 	return v
 
 
 ## The primary action (Start): a yellow bar with navy text at all times, the navy edge added when focused.
-static func set_primary(b: Button, pad := Vector2(18, 8)) -> void:
+static func set_primary(b: Button, pad := ITEM_PAD) -> void:
 	b.add_theme_stylebox_override("normal", box(ACCENT, 0, 2, pad))
 	b.add_theme_stylebox_override("hover", box(ACCENT, FOCUS_EDGE, 2, pad))
 	b.add_theme_stylebox_override("disabled", box(Color(NAVY, 0.08), 0, 2, pad))

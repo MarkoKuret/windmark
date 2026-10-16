@@ -26,6 +26,8 @@ var _scene: Node
 var _tiers_left: Array = []
 
 
+var _last_glow := 0.0   # the bubble glow of the last _caps_drawn
+
 func f32(x: float) -> float:
 	_f[0] = x
 	return _f[0]
@@ -835,6 +837,7 @@ func check_whitecaps() -> void:
 	dug -= roundf(dug)
 	check(absf(dug) < 1e-5, "the wave-group envelope drifts at half the dominant wave's speed (slip %s)" % sci(dug))
 	check_caps_lifecycle()
+	check_caps_solid_and_glow()
 
 
 ## The reference wind sea of sea.md §2 at kn knots (fetch 10 km) through the Sea's model, with the whitecap uniforms.
@@ -982,6 +985,7 @@ func _caps_drawn(sea: Dictionary, ck: PackedVector4Array, grp: Vector4, x: Vecto
 		var n := img.get_width()
 		L = img.get_pixel(posmod(int(floorf(c.x * n)), n), posmod(int(floorf(c.y * n)), n))
 	var d := SeaWhitecaps.drawn(f, res, L, st, nb, blob, (sea["cw"] as PackedVector4Array)[0].w)
+	_last_glow = SeaWhitecaps.glow(f, L, (sea["cw"] as PackedVector4Array)[0].w)
 	# w: the residual foam older than 1.5 s (no longer growing at the crest)
 	return Vector4(d.x, d.y, d.z, d.z if res.y > 1.5 else 0.0)
 
@@ -1098,6 +1102,67 @@ func check_caps_lifecycle() -> void:
 
 
 ## The drawn foam (what 0 all, 2 the residual alone, 3 the residual older than 1.5 s) on a 150 m window at 1.5 m around the origin, shifted by `shift`.
+## Foam patches (4-connected cells with opacity over 0.1, at least 20 cells, 11 m2) of a side x side grid: for each,
+## the share of its cells that are opaque (over 0.9).
+func _opaque_shares(a: PackedFloat32Array, side := 100) -> PackedFloat32Array:
+	var seen := PackedByteArray()
+	seen.resize(a.size())
+	var out := PackedFloat32Array()
+	for k in a.size():
+		if seen[k] or a[k] <= 0.1:
+			continue
+		var stack := [k]
+		seen[k] = 1
+		var n := 0
+		var op := 0
+		while stack.size() > 0:
+			var c: int = stack.pop_back()
+			n += 1
+			op += 1 if a[c] > 0.9 else 0
+			var ci := c % side
+			var cj := c / side
+			for nb in [[ci - 1, cj], [ci + 1, cj], [ci, cj - 1], [ci, cj + 1]]:
+				if nb[0] < 0 or nb[0] >= side or nb[1] < 0 or nb[1] >= side:
+					continue
+				var m: int = nb[1] * side + nb[0]
+				if not seen[m] and a[m] > 0.1:
+					seen[m] = 1
+					stack.append(m)
+		if n >= 20:
+			out.append(float(op) / n)
+	return out
+
+
+func check_caps_solid_and_glow() -> void:
+	var sea := _caps_sea(25.0, 0.0, 30000.0)
+	var wind := 25.0 * SeaWhitecaps.KNOT
+	var worst := 0.0
+	var n_p := 0
+	var glow_max := 0.0
+	for k in 6:
+		var t := 100000.0 + 1700.0 * k
+		# a 150 m window at 0.75 m
+		var g := PackedFloat32Array()
+		var ckg := _caps_comp(sea, t)
+		var grpg := _caps_grp(sea, t)
+		for j in 200:
+			for i in 200:
+				g.append(_caps_drawn(sea, ckg, grpg, Vector2(i * 0.75 - 75.0, j * 0.75 - 75.0), wind, t).x)
+		var sh := _opaque_shares(g, 200)
+		n_p += sh.size()
+		for v in sh:
+			worst = maxf(worst, v)
+		var ck := _caps_comp(sea, t)
+		var grp := _caps_grp(sea, t)
+		for j in range(0, 100, 2):
+			for i in range(0, 100, 2):
+				_caps_drawn(sea, ck, grp, Vector2(i * 1.5 - 75.0, j * 1.5 - 75.0), wind, t)
+				glow_max = maxf(glow_max, _last_glow)
+	print("    25 kn: %d foam patches, the most opaque has %.0f %% of its area over 0.9; bubble glow mix at most %.3f" % [n_p, 100.0 * worst, glow_max])
+	check(n_p >= 10 and worst < 0.3, "no solid foam slabs: under 30 %% of any patch is opaque (worst %.0f %%)" % (100.0 * worst))
+	check(glow_max <= SeaWhitecaps.GLOW_MAX + 1e-4, "the bubble glow is a slight lift: its mix toward green-blue at most %.2f (%.3f)" % [SeaWhitecaps.GLOW_MAX, glow_max])
+
+
 func _caps_grid(sea: Dictionary, wind: float, t_ms: float, legacy: bool, what: int, shift := Vector2.ZERO) -> PackedFloat32Array:
 	var out := PackedFloat32Array()
 	var ck := _caps_comp(sea, t_ms)

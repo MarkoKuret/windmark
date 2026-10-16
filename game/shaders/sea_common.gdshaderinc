@@ -310,6 +310,7 @@ const vec2 WM_SEG_TILE = vec2(45.0, 120.0);
 const vec2 WM_STREAK_TILE = vec2(14.0, 1.6);
 const float WM_GROUP_TILE = 600.0;
 const vec2 WM_BREAK_TILE = vec2(30.0, 15.0);
+const vec2 WM_EVENT_TILE = vec2(270.0, 900.0);
 
 const vec2 WM_CAPS_TILE = vec2(4.5, 3.0);     // m along e, across
 
@@ -317,10 +318,13 @@ const vec2 WM_CAPS_TILE = vec2(4.5, 3.0);     // m along e, across
 // summed (crests meeting in a wave group make a cap), scaled by the wave-group envelope (the foam noise's coarse
 // channel, drifting at the group speed) and the short-crest breakup, against the sea's threshold for the measured cover at the local wind (m/s).
 // Components the pixel footprint px cannot show count with their window mean, so far caps never alias.
-// §4.4 the breaking event of a crest spot: once per event period (T_ev = 0.9 T_p), at a phase of its own, active for
-// 0.4 T_p, rising over 0.15 T_p and falling over the last 0.12 T_p (ph in event periods).
-float wm_caps_event(float ph, float inv_tev) {
-	return smoothstep(0.0, 0.1667, ph) * (1.0 - smoothstep(0.311, 0.444, ph));
+// §4.4 the breaking event of a patch: once per event period (T_ev = 0.9 T_p), at the patch's phase ph (event periods),
+// for 0.4 T_p. Each point joins after its delay (0 to 0.06 periods from the local noise: the break starts at one point and spreads), rising
+// over 0.15 periods (as long as the spread, so no sharp front rings a patch); the whole patch stops together, falling over the last 0.13 periods (an end by local phase left
+// rings where the first points stopped while the later ones still broke), except that parts of it stop up to 0.22
+// periods early (early, from metre-scale noise), so the end, and the foam it leaves, has a ragged outline.
+float wm_caps_event(float ph, float delay, float early) {
+	return smoothstep(delay, delay + 0.15, ph) * (1.0 - smoothstep(0.311 - early, 0.444 - early, ph));
 }
 
 // The breaking threshold S_b for the local wind (m/s): Monahan's cover W = 3.84e-6 U^3.41, x = log2(W / 0.0005) / 2
@@ -341,10 +345,15 @@ float wm_caps_sum(vec2 xl, vec2 qd, float inv_px, float tau, float env, float wi
 	for (int i = WM_CAPS_N; i < 6; i++) {
 		S += caps_k[i].w * caps_w[i].z;               // beyond the tier's count: the window mean
 	}
+	float back = caps_ev.z * tau;   // how far the crests have run since
+	// the short-crest breakup (it also bends the shorter components' crests: straight crest lines drew straight foam
+	// edges where they cut a cap)
+	float bky = texture(foam_tex, qd / WM_BREAK_TILE + caps_brk + vec2(back / WM_BREAK_TILE.x, 0.0)).g;
 	for (int i = 0; i < WM_CAPS_N; i++) {
 		vec4 k = caps_k[i];
 		vec4 w = caps_w[i];
-		float f = fract(k.x * xl.x + k.y * xl.y + k.z + tau / sqrt(0.6405 * w.w));   // T = sqrt(2 pi lam / g)
+		float f = fract(k.x * xl.x + k.y * xl.y + k.z + tau / sqrt(0.6405 * w.w)   // T = sqrt(2 pi lam / g)
+				+ (i > 0 ? 0.5 * (bky - 0.5) : 0.0));
 		float d = f - step(0.5, f);                        // cycles from the crest, ahead positive
 		float q = d * (d >= 0.0 ? w.x : w.y);
 		float r = smoothstep(2.0, 4.0, w.w * inv_px);
@@ -352,34 +361,42 @@ float wm_caps_sum(vec2 xl, vec2 qd, float inv_px, float tau, float env, float wi
 			r = 0.0;   // the residual: the other crests at their mean (their coincidence lines swept along the wave
 			           // read as streaks; the residual's own lace carries the detail)
 		}
-		S += k.w * mix(w.z, exp(-q * q), r);
+		// tapered to 0 at the trough: a broad back window cut there left a straight edge along the trough
+		S += k.w * mix(w.z, exp(-q * q) * (1.0 - smoothstep(0.3, 0.5, abs(d))), r);
 		if (i == 0) {
 			dm = d * w.w * r;
 		}
 	}
-	float back = caps_ev.z * tau;   // how far the crests have run since
-	// the short-crest breakup
-	float bky = texture(foam_tex, qd / WM_BREAK_TILE + caps_brk + vec2(back / WM_BREAK_TILE.x, 0.0)).g;
 	float brk = clamp((bky - 0.55) * 4.0, 0.0, 1.0);
 	// the residual (wide > 0) takes the breakup's mean: the crest swept its fine detail into streaks along the wave
 	brk = wide > 0.0 ? 0.6 : mix(0.6, 0.2 + 0.8 * brk, smoothstep(2.0, 4.0, 6.0 * inv_px));
 	// crest segments
-	float sgy = texture(foam_tex, qd / WM_SEG_TILE + caps_seg.xy + vec2(back / WM_SEG_TILE.x, 0.0)).g;
+	vec2 sgt = texture(foam_tex, qd / WM_SEG_TILE + caps_seg.xy + vec2(back / WM_SEG_TILE.x, 0.0)).rg;
+	float sgy = sgt.y;
 	float rs = smoothstep(2.0, 4.0, 9.0 * inv_px);
 	float seg = mix(0.45, clamp((sgy - 0.5) * 5.0, 0.0, 1.0), rs);
 	// each breaking patch's event phase: smooth noise a few metres across, so an event starts at a point of the crest
 	// and spreads along it (and the foam it leaves is a patch, not the fine noise swept into streaks)
 	// (the segments' frame, another part of the noise)
 	float pn = texture(foam_tex, qd / WM_SEG_TILE + caps_seg.xy + vec2(back / WM_SEG_TILE.x + 0.37, 0.61)).g;
-	// and a slow part over 8 tiles, so the phases spread evenly over the cycle across the sea (no sea-wide pulse)
-	float pf = texture(foam_tex, qd / (8.0 * WM_SEG_TILE) + caps_seg.zw + vec2(back / (8.0 * WM_SEG_TILE.x), 0.0)).g;
-	float ph = fract(caps_ev.x - tau * caps_ev.y + 1.5 * pn + 8.0 * pf);
-	float evv = wm_caps_event(ph, caps_ev.y);
+	// the patch phase: a smooth field stretched across the crests (270 m along the wave, 900 m across): along a
+	// crest it changes by about 0.01 periods per metre, so an event's edges are soft and no band of phase shows on a
+	// cap, while from one crest to the next (0.03 per metre) it changes by most of a period, so neighbouring crests
+	// do not break in step and the cover holds steady over any view
+	// (warped by the local part: the contours of a slow field are nearly straight, and an event front along one
+	// drew a straight edge)
+	float pf = texture(foam_tex, qd / WM_EVENT_TILE + caps_seg.zw + vec2(back / WM_EVENT_TILE.x, 0.0)
+			+ 0.02 * (pn - 0.5)).g;
+	float ph = fract(caps_ev.x - tau * caps_ev.y + 2.0 * pf);
+	// the point's delay (the break spreads from the lows of the local noise and of the breakup) and early end
+	float dl = 0.06 * clamp((pn - 0.35) / 0.3, 0.0, 1.0) + 0.15 * clamp((bky - 0.3) / 0.4, 0.0, 1.0);
+	float ee = 0.22 * clamp((sgt.x - 0.3) / 0.4, 0.0, 1.0);
+	float evv = wm_caps_event(ph, dl, ee);
 	if (wide > 0.0) {   // the foam a crest leaves: the event at any time within +- wide s of the crest's passing
-		evv = max(evv, max(wm_caps_event(fract(ph + wide * caps_ev.y), caps_ev.y),
-				wm_caps_event(fract(ph - wide * caps_ev.y), caps_ev.y)));
+		evv = max(evv, max(wm_caps_event(fract(ph + wide * caps_ev.y), dl, ee),
+				wm_caps_event(fract(ph - wide * caps_ev.y), dl, ee)));
 	}
-	float ev = mix(0.35, evv, rs);
+	float ev = mix(0.15, evv, rs);
 	ev_out = ev;
 	return S * env * brk * seg;   // the steepness of the crests; the event gates the foam, not the steepness
 }
@@ -406,6 +423,18 @@ vec4 wm_caps_field(vec2 xl, float px, float expo, float wind) {
 	float Sb = wm_caps_sb(wind);
 	float x = (S - Sb) / max(0.35 * Sb, 1e-6);   // S_W = 0.35 of the threshold
 	return vec4(x, dm, gate, ev);
+}
+
+// The solid-white share of the active core: a thin band at the crest (the tumbling water), broken along its length
+// by the streak noise and feathered at its edges; dense lace elsewhere.
+float wm_caps_solid(float xj, float dm, float lam0, float st) {
+	float band = dm == 0.0 ? 0.5 : (1.0 - smoothstep(0.0, 0.03 * lam0, -dm)) * (1.0 - smoothstep(0.0, 0.03 * lam0, dm));
+	return smoothstep(1.5, 2.5, xj) * band * smoothstep(0.55, 0.75, st);
+}
+
+// The bubble glow's mix toward green-blue around a breaking cap (at most 0.1).
+float wm_caps_glow(float near_cap, float behind, float ev, float lace) {
+	return 0.1 * near_cap * behind * ev * ev * lace;
 }
 
 float wm_caps_intensity(vec2 xl, float px, float expo, float wind) {
@@ -482,17 +511,21 @@ void wm_apply_caps(inout WmSurface S, vec2 xl, float px, float expo, float dist,
 		// active breaking (stage A): a bright core on the crest and its forward face, lacy edges
 		float xj = cf.x + 1.2 * (L.g - 0.5);   // the lace rides the crest with the core
 		float xs = xj;
-		float front = smoothstep(-4.0, -1.0, cf.y);
-		float behind = (1.0 - smoothstep(0.0, 1.5, cf.y)) * (cf.y == 0.0 ? 1.0 : smoothstep(-0.4 * lam0, -0.15 * lam0, cf.y));
+		// the crest and its forward face, back to 0 before the trough: dm jumps from +lam/2 to -lam/2 there, and a
+		// factor that differs on the two sides drew a straight edge along the trough
+		float front = smoothstep(-4.0, -1.0, cf.y) * (1.0 - smoothstep(0.25 * lam0, 0.45 * lam0, cf.y));
+		float behind = (1.0 - smoothstep(0.0, 1.5, cf.y)) * (cf.y == 0.0 ? 0.0 : smoothstep(-0.4 * lam0, -0.15 * lam0, cf.y));
 		// the steep face ahead of a breaking crest is darker; the bubble cloud under and behind it glows
 		float near_cap = smoothstep(-0.8, 0.4, xs) * smoothstep(0.0, 0.7, cf.w);   // around a cap that is breaking
 		S.albedo *= 1.0 - 0.22 * near_cap * (1.0 - behind) * (1.0 - smoothstep(0.5, 3.0, cf.y)) * g;
-		S.albedo = mix(S.albedo, vec3(0.05, 0.20, 0.23), 0.35 * near_cap * behind * g);
+		// a slight green-blue lift, broken like the foam, fading faster than the foam (ev squared)
+		S.albedo = mix(S.albedo, vec3(0.05, 0.20, 0.23), wm_caps_glow(near_cap, behind, cf.w, L.b) * g);
 		float core = smoothstep(0.0, 3.0, xj) * smoothstep(0.0, 0.7, cf.w) * front * g;
 		// solid white only on the crest's front, the tumbling water; dense lace behind it
-		float solid = smoothstep(1.0, 2.0, xj) * (cf.y == 0.0 ? 1.0
-				: (1.0 - smoothstep(0.0, 0.1 * lam0, -cf.y)) * (1.0 - smoothstep(0.04 * lam0, 0.12 * lam0, cf.y)));
-		a = max(a, clamp(0.95 * core * mix(L.b, L.a, solid), 0.0, 1.0));
+		float solid = wm_caps_solid(xj, cf.y, lam0, st);
+		float dense = mix(L.g, L.b, smoothstep(2.0, 5.0, xj));   // the lace net at the edges, dense foam inside
+		// only the thin solid band is fully opaque; the dense foam stays a little translucent (at most 0.85)
+		a = max(a, clamp(core * mix(0.85 * dense, 0.95 * L.a, solid), 0.0, 1.0));
 	}
 	if (a <= 0.0) {
 		return;

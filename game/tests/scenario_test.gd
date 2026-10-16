@@ -6,12 +6,26 @@ extends SceneTree
 ##     port-tack boat is the one to keep clear under rule 10 and receives the rule 10 penalty, in every run (two
 ##     worlds), with the same checksum every tick
 ##   - windward/leeward: the windward boat keeps clear under rule 11 and receives the penalty
+##   - the "Who's wrong?" quiz scenarios (docs/marketing/quiz_scenarios.md): each gives exactly one penalty, to the
+##     boat and under the rule a real umpire would give (rules 10, 12, 18.2, 18.3), at the clip time the doc quotes
+##   - `turns` (data_format.md §9.2): parsed in degrees, refused on a non-hold boat, out of order or past the clip;
+##     a hold boat steers to the heading of her last turn begun
 ##   - the sail scene started with GameSetup mode scenario: the scenario's boats, the player watching, paused at the
 ##     clip's end, and reset_boat running it again
 ##   godot --headless --path game -s res://tests/scenario_test.gd
 
 const RULE_10 := 1
 const RULE_11 := 2
+const RULE_12 := 3
+const RULE_18_2 := 10
+const RULE_18_3 := 11
+## the quiz scenarios: id, the penalised boat, the other boat, the rule, the clip time of the penalty (s)
+const QUIZ := [
+	["port_starboard", 1, 0, RULE_10, 18.60],
+	["clear_astern", 1, 0, RULE_12, 19.00],
+	["mark_room", 0, 1, RULE_18_2, 20.90],
+	["tack_in_zone", 0, 1, RULE_18_3, 18.70],
+]
 const REV_PENALTY := 2
 
 var t := TestLog.new()
@@ -24,6 +38,8 @@ func _init() -> void:
 	test_files()
 	test_port_starboard()
 	test_windward_leeward()
+	test_turns()
+	test_quiz()
 	await test_scene()
 	t.finish(self, "scenario test")
 
@@ -140,7 +156,8 @@ func _run(run: ScenarioRun, cs: CoreSimSource) -> Dictionary:
 				out["kc"][k] = true
 		for e in cs.rules_events():
 			if e["kind"] == REV_PENALTY:
-				out["penalties"].append({"boat": e["boat"], "rule": e["rule"], "t": run.clip_time(cs)})
+				out["penalties"].append({"boat": e["boat"], "other": e["other"], "rule": e["rule"],
+					"t": run.clip_time(cs)})
 	return out
 
 
@@ -202,6 +219,60 @@ func test_windward_leeward() -> void:
 	t.ok(r["kc"].has("0>1:%d" % RULE_11), "boat 0 (windward) keeps clear under rule 11 (%s)" % [r["kc"].keys()])
 	var pen: Array = r["penalties"]
 	t.ok(pen.size() == 1 and pen[0]["boat"] == 0 and pen[0]["rule"] == RULE_11, "one penalty, boat 0, rule 11: %s" % [pen])
+
+
+## `turns` of data_format.md §9.2: validation, and the held heading switching at each turn's clip time.
+func test_turns() -> void:
+	t.begin("scenario turns")
+	var good: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(Scenario.file_of("tack_in_zone")))
+	var s := Scenario.parse(good, [])
+	if not t.ok(s != null and s.boats[0].turns.size() == 1, "tack_in_zone loads with a turn"):
+		return
+	var tn: Dictionary = s.boats[0].turns[0]
+	t.ok(tn["t"] == 13.0 and tn["tack"] == 1, "turn at 13 s onto starboard")
+	t.near(tn["twa"], deg_to_rad(42.0), 1e-6, "turn twa_deg 42")
+	var bad := [
+		[func(d: Dictionary) -> void: d["boats"][0]["helm"] = "ai", "$.boats[0].turns"],
+		[func(d: Dictionary) -> void: d["boats"][0]["turns"] = {"t": 1}, "$.boats[0].turns"],
+		[func(d: Dictionary) -> void: d["boats"][0]["turns"].append({"t": 12, "tack": "port", "twa_deg": 42}),
+			"$.boats[0].turns[1].t"],
+		[func(d: Dictionary) -> void: d["boats"][0]["turns"][0]["tack"] = "up", "$.boats[0].turns[0].tack"],
+		[func(d: Dictionary) -> void: d["boats"][0]["turns"][0]["twa_deg"] = 200, "$.boats[0].turns[0].twa_deg"],
+		[func(d: Dictionary) -> void: d["boats"][0]["turns"][0]["twa"] = 0.7, "$.boats[0].turns[0].twa_deg"],
+		[func(d: Dictionary) -> void: d["boats"][0]["turns"][0]["t"] = 26, "$.boats[0].turns[0].t"],
+	]
+	for c in bad:
+		var d := good.duplicate(true)
+		(c[0] as Callable).call(d)
+		var why := []
+		t.ok(Scenario.parse(d, why) == null and str(why[0]).begins_with(c[1]), "refused at %s: %s" % [c[1], why])
+	var run := ScenarioRun.new(s)
+	var cs := run.make_core()
+	if not t.ok(cs != null, "starts: " + run.error):
+		return
+	t.near(Frames.wrap_pi(run.held_psi(0, 12.9) - run.psi[0]), 0.0, 1e-6, "before the turn: the set-up heading")
+	t.near(Frames.wrap_pi(run.held_psi(0, 13.0) - run.turn_psi[0][0]), 0.0, 1e-6, "from the turn: its heading")
+	t.near(Frames.wrap_pi(run.turn_psi[0][0] - run.psi[0]), -deg_to_rad(84.0), 1e-4, "port to starboard: 84° to port")
+
+
+## The "Who's wrong?" quiz (docs/marketing/quiz_scenarios.md): one penalty each, the right boat and rule.
+func test_quiz() -> void:
+	for q in QUIZ:
+		t.begin("quiz %s: rule %s" % [q[0], RaceText.code(q[3])])
+		var run := ScenarioRun.new(Scenario.load_file(q[0]))
+		var cs := run.make_core()
+		if not t.ok(cs != null, "starts: " + run.error):
+			continue
+		var r := _run(run, cs)
+		var pen: Array = r["penalties"]
+		t.ok(pen.size() == 1, "exactly one penalty: %s" % [pen])
+		if pen.is_empty():
+			continue
+		t.ok(pen[0]["boat"] == q[1] and pen[0]["other"] == q[2], "boat %d penalised towards boat %d" % [q[1], q[2]])
+		t.ok(pen[0]["rule"] == q[3], "rule %s: %s" % [RaceText.code(q[3]), RaceText.rule_text(pen[0]["rule"])])
+		t.near(pen[0]["t"], q[4], 0.026, "at clip time %.2f s" % q[4])
+		print("quiz %s: penalty boat %d rule %s \"%s\" at clip time %.2f s" % [q[0], pen[0]["boat"],
+			RaceText.code(pen[0]["rule"]), RaceText.rule_text(pen[0]["rule"]), pen[0]["t"]])
 
 
 func test_scene() -> void:

@@ -1034,6 +1034,7 @@ in the unit of the key used. Only these keys have the alternative:
 | `boats[].at.bearing` (rad) | `boats[].at.bearing_deg` |
 | `boats[].twa` (rad) | `boats[].twa_deg` |
 | `boats[].speed` (m/s) | `boats[].speed_kn` |
+| `boats[].turns[].twa` (rad) | `boats[].turns[].twa_deg` |
 
 Distances stay in metres (`at.dist`) and times in seconds. Every other data format keeps SI only.
 
@@ -1067,12 +1068,17 @@ Distances stay in metres (`at.dist`) and times in seconds. Every other data form
 | `helm` | | `"hold"` | `hold` (keeps her set-up heading, `race.md` §14), `ai` (the core's AI skipper), `player` (boat 0 only: the player's controls) |
 | `ai_level` | | `intermediate` | `easy`, `intermediate`, `expert`, `pro` (`ai.md` §13), for `helm: ai` |
 | `livery` | | fleet rule | a boat id of the class's livery file (§8.4); boats with one take it as human entries do, the rest by the fleet rule |
+| `turns` | | `[]` | `hold` boats only: course changes during the clip, in order of `t`, each `{"t", "tack", "twa"}` (`twa_deg` in degrees in place of `twa`): from clip time `t` (s, 0 to `lead + after`, strictly increasing) the boat holds the heading of that tack and TWA instead (`race.md` §14 step 5). A tack, a gybe or a bear-away at a mark |
 
 The set-up pose: heading `ψ = wrap_2pi(TWD_c − s · twa)` with `s = +1` on starboard and `−1` on port (the wind on
 the starboard side is a positive TWA, `conventions.md`), and position `p = p_at − speed · lead · dir(ψ)`: the boat
 starts `lead` seconds back along her heading, so boats given the same `at` meet there if they hold their course and
 speed. Set-up positions must lie on the first beat, on the course side of the start line and short of the first
 mark, so that the race sees the jump of `race.md` §14 step 4 as plain track.
+
+A turn's heading is found the same way, `ψ_k = wrap_2pi(TWD_c − s_k · twa_k)`. The hold helm turns the short way
+to it (`race.md` §14 step 5), so a turn from port to starboard close-hauled is a tack through the wind and a turn
+from close-hauled to a reach on the same tack is a bear-away.
 
 Example (`game/data/scenarios/port_starboard.scenario.json`): the starboard boat and the port boat close-hauled,
 meeting 300 m up the first beat 20 s after the set-up, written in degrees and knots.

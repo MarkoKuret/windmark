@@ -667,7 +667,9 @@ The file is `data_format.md` §9; the front end starts it (offline only, never o
    `helm: ai` get their AI skipper now (`wm_world_ai_add`). The race sees the jump as one tick of track up the first
    beat, before any mark. This tick is clip time 0.
 5. **Running.** A `hold` boat is steered by the front end before every tick: `h_cmd = clamp(2.5 · wrap_pi(ψ_set −
-   ψ), −0.6, 0.6)`, let fly off, auto trim as the file says. AI boats sail as in any race; a `player` boat (boat 0
+   ψ), −0.6, 0.6)`, let fly off, auto trim as the file says. `ψ_set` is her set-up heading until the clip time of
+   her first `turns` entry (`data_format.md` §9.2), then that entry's heading, and so on: a scripted tack, gybe or
+   bear-away at a mark, the same every run. AI boats sail as in any race; a `player` boat (boat 0
    only) follows the player's controls. The race and the rules run as in any race: the race clock shows the time
    since the gun, a few ticks at clip time 0.
 6. **End.** At clip time `lead + after` the scene pauses the simulation (the offline pause, `controls.md` §7); the

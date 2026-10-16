@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "data/load_error.h"
+#include "data/vmg_table.h"
 #include "math/wm_math.h"
 #include "table/table.h"
 
@@ -130,6 +131,7 @@ struct PerfData {
   std::int32_t main_sail = -1;      // index of the main in sails
   std::vector<ConfigPerf> configs;  // in file order; one main-only config and one per front sail
   std::int32_t start_front_sail = -1;
+  VmgTable vmg;  // derived at load from the configs' polars (rules.md §3.7)
 
   std::int32_t find_sail(std::string_view id) const;  // -1 if absent
   // The config driven by the front sail at `front_sail` (-1 = main only); never null after a successful load.

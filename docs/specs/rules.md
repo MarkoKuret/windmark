@@ -136,7 +136,7 @@ directions.
 
 - A boat **passes head to wind** on the tick her tack label flips (`race.md` §0) while `|twa| < 90°`.
 - From that tick she is **tacking** until `|twa| ≥ θ_CH − 5°` on the new tack, where θ_CH is her class's upwind VMG
-  angle at the current true wind speed (`boat.md` polar), or until she flips back to the old tack (then she is
+  angle at the current true wind speed (§3.7), or until she flips back to the old tack (then she is
   simply back on it). A boat stuck head to wind after passing it stays tacking.
 - Gybing is not a rule-13 state; a gybe only changes the tack label (via the boom, `race.md` §0).
 
@@ -197,6 +197,22 @@ direct course:
 The boat is **above her proper course** when `|twa| < proper TWA − 10°` for more than 2 s continuously (the 10°
 covers wave and steering noise and the speed-building footing of real boats). This estimate is used by rule 17 and
 by rule 18.4.
+
+**θ_CH and θ_DN.** At true wind speed TWS (the boat's, recomputed on every tick it changes), θ_CH is the true wind
+angle of the best upwind VMG `v·cos θ` and θ_DN that of the best downwind VMG `−v·cos θ`, over every sail config of
+the class's polar (`boat.md`) at the 361 angles `θ = k·π/360` (k = 0 … 360, half degrees), taking the first strict
+maximum in config order (the performance file's), then angle order; with no positive VMG (a calm) they are 0.7 rad
+and 2.6 rad. The core does not scan per tick: when the performance file is loaded it builds a **per-class table**
+of the scan's answer as a staircase in TWS from 1e-20 m/s to the polars' top wind (constant above it; below it the
+scan runs). Every polar is linear in TWS between its wind breakpoints, so between probes every 0.05 m/s and at
+every breakpoint each config and angle wins over one stretch at most; each stretch starts at the first binary32 TWS
+where the scan picks it, found by bisection over the float bits, and keeps the configs and angles whose VMG comes
+within 10⁻⁵ of the winner anywhere in it (near ties, decided by rounding). A lookup finds the stretch (an index every
+0.05 m/s) and takes the best of its few candidates in the scan's order, the speeds from the polar exactly as the
+scan computes them. Nothing is interpolated: the answer is the scan's, bit for bit, at every TWS, so where the best
+config switches the angle jumps at the same speed as in the scan and is never a blend of the two configs' angles.
+The table is built with the same binary32 operations on every machine. The race's projected finishes (`race.md`
+§7.2) and course scaling (`courses.md` §6.3) use the same table for their VMG speeds.
 
 **Before her starting signal a boat has no proper course** (definition), so she is never above it: the estimate
 starts at the starting signal (`race.md` §3), and rules 17 and 18.4 cannot be broken before it. In the pre-start a

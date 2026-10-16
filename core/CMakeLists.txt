@@ -27,6 +27,7 @@ add_library(windmark_core STATIC
   src/data/load_error.cpp
   src/data/table_reader.cpp
   src/data/perf.cpp
+  src/data/vmg_table.cpp
   src/data/boat_class.cpp
 )
 

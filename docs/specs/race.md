@@ -468,7 +468,7 @@ or left). This applies only to a race with at least one human entry; a race of c
 `sim` harness, server soak runs) closes by the rules below. Every race also closes as soon as no boat at all is
 still racing (all finished or ghosts). Offline and online the AI boats still racing are then given **projected finishes**:
 `t_proj = t_now + D / V_ref`, with `D` the boat's remaining course distance (§8.2) and `V_ref` 0.9 × `s` × her polar
-VMG (upwind and downwind legs) or polar speed (reaching legs) averaged over the remaining legs at the current wind,
+VMG (upwind and downwind legs, from the class's VMG table, `rules.md` §3.7) or polar speed (reaching legs) averaged over the remaining legs at the current wind,
 where `s` is the boat's `performance_scale` (`boat.md` §2, set at spawn, §3.5), so an Easy AI boat (`s = 0.90`,
 `ai.md` §13) is projected at the pace she would sail. The average is weighted by distance:
 `D / V_ref = Σ_j d_j / (0.9·s·V_j)` over the remaining part `d_j` of each remaining leg, with the leg types of §8.1,

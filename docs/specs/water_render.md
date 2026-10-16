@@ -174,6 +174,17 @@ SPECULAR = 0.40                                                      // Godot's 
 ROUGHNESS = the wind roughness of §4.1.1                            // rougher in puffs, in a breeze and far away
 EMISSION = sss * crest * (pow(max(0, dot(-view, sun)), 3) * 0.3 * sun_radiance + 0.05)  // light through the crests, sss (0.03, 0.33, 0.40)
 ```
+- **Wind on the body colour** (round 4): in a strong breeze the sea looks greyer and darker, not the saturated blue of
+  a fair-weather day. The water under a rough, aerated surface scatters more white from bubbles near the top and
+  shows less of its deep blue, and its glossy blue reflections are broken up; Beaufort's own descriptions run from
+  "blue" through "white horses" to "sea heaps up, foam blown in streaks". From 12 kn of local wind the body colour
+  moves toward its own grey (its luminance) and darkens:
+  ```
+  gw     = smoothstep(12 kn, 30 kn, U)                // U = m·base_speed (§4.3)
+  ALBEDO = mix(ALBEDO, luma(ALBEDO)·(0.75, 0.82, 0.88), 0.45·gw)        // 25 kn: about 30 % greyer, 10 % darker
+  sss    × (1 − 0.35·gw)                                // less clear-water glow through the crests
+  ```
+  8 to 12 kn are unchanged; the sun, the sky, the exposure and the grade (§4.5, WM-080) are not touched.
 - **Body colour**: a deep, saturated blue (about sRGB `#004684` from the aerial camera in the default light), a
   little greener on the crests; it is what the sea shows looking down, so it carries the race-day look.
 - **Sky reflection** comes from the scene's sky radiance through PBR (Schlick Fresnel: under 3 % looking straight
@@ -332,11 +343,13 @@ in metres from the crest of the heaviest foam component (ahead > 0; where the pi
 q        = (dot(xl, e), dot(xl, perp(e))) / (4.5, 3) + (u0, v0)
 L        = texture(caps_tex, q)                                        // lace, 4.5 m tile
 st       = texture(foam_tex, (dot(xl, e), dot(xl, perp(e))) / (14, 1.6) + caps_str).r   // streaks along the wind,
-                                                                       // riding the crest (one more tap)
+                                                                       // drifting with the surface (one more tap)
 xj       = x + 1.2·(L.g − 0.5) + 0.8·(st − 0.5)                        // outlines from three noise scales (the
                                                                        // breakup's 6 m, the lace's 1 m, the streaks)
 front    = smoothstep(−4 m, −1 m, dm)                              // the crest and its forward face
-behind   = 1 − smoothstep(0, 1.5 m, dm)                                // the back of the wave
+behind   = (1 − smoothstep(0, 1.5 m, dm)) · smoothstep(−0.4·lam, −0.15·lam, dm)   // the back of the wave behind
+                                                                       // the crest, not across the trough (lam: the
+                                                                       // heaviest component's wavelength)
 core     = smoothstep(0.0, 1.2, xj) · front · g                        // g = gate · fade
 trail    = smoothstep(−1.0, 0.7, xj) · behind · smoothstep(0.3, 0.75, st) · g
 a        = 0.95 · core · mix(L.b, L.a, smoothstep(1, 2, xj)) + 0.5 · trail · L.g · (1 − core)
@@ -355,10 +368,33 @@ tap of the foam texture where `F > 0`; nothing below 8 kn or beyond 2.5 km. The 
 metres wide, narrower than the vertex spacing at the chase camera's distance (1.5 m at 25 m, 6 m at 100 m on tier
 M), so they are evaluated per pixel; what the vertex stage already has (exposure, venue factor) comes as varyings.
 Measured with `tests/water_cost.py` (the development M1, OpenGL proxy, 1280 × 800): the helicopter view of the
-25 kn open sea, where every water pixel runs the loop, +0.16 ms on tier L, +0.18 ms on M, +0.13 ms on H (with the graded cap and its streak tap)
+25 kn open sea, where every water pixel runs the loop, +0.15 ms on tier L, +0.22 ms on M, +0.25 ms on H (round 4: the streak tap on every pixel in a breeze, the foam lanes; round 3 +0.16, +0.18, +0.13 ms)
 (the first version +0.10, +0.14, +0.10 ms on the same view; the runs vary by ±0.05 ms); the game's chase view at
 25 kn +0.00 to 0.01 ms. On the Steam Deck (about 0.6 of the M1's GPU) about
 +0.25 ms, inside the 2.5 ms of §7.
+
+**Caps belong to the wave** (round 4): the face ahead of a breaking crest is the steepest and darkest part of the
+wave, and the bubble cloud under and behind the crest glows a lighter turquoise:
+```
+near     = smoothstep(−0.8, 0.4, xj)                                   // close to a cap (the cap's own outline)
+ahead    = near · (1 − behind) · (1 − smoothstep(0.5 m, 3 m, dm)) · g   // the face just ahead of it
+ALBEDO  *= 1 − 0.22·ahead                                              // the steep front, darker
+bubbles  = near · behind · g                                           // under and behind it
+ALBEDO   = mix(ALBEDO, (0.05, 0.20, 0.23), 0.35·bubbles)               // the bubble cloud
+```
+**Residual foam and foam streaks**: foam that a cap leaves stays where it fell and drifts with the surface (about 3 %
+of the wind speed), so the trail's streaks no longer ride the crest: their frame `caps_str` drifts along the wind
+at `0.03·U`. Between the caps, the same streak tap (its R channel the streaks, its G channel their breakup) draws
+faint, wind-aligned foam lanes whose density rises with the wind (Beaufort 7, 28 to 33 kn: "foam blown in streaks
+along the direction of the wind"), nothing at 12 kn; and faint patches where a cap has stopped breaking:
+```
+dens     = smoothstep(15 kn, 32 kn, U)
+lanes    = 0.22 · dens · smoothstep(0.62, 0.82, st.r) · smoothstep(0.35, 0.7, st.g) · fade
+residual = 0.15 · smoothstep(12 kn, 20 kn, U) · smoothstep(−1.5, −0.8, xj) · (1 − smoothstep(−0.8, 0, xj)) · behind · smoothstep(0.3, 0.75, st.r) · g
+a        = max(a, max(lanes, residual))
+```
+The streak tap is now taken wherever the caps are evaluated (gate and fade, within 2.5 km), not only near a cap:
+one tap more on most water pixels in a breeze.
 
 The opacity grades from the core (up to 0.95) to the trail (at most 0.5, streaky lace); the trail reaches a little
 below the threshold (`x > −1`), the residual foam of a cap that has stopped breaking, and fades with it. The cover
@@ -801,37 +837,52 @@ with the sky's horizon colour plus a share of the sun that grows looking toward 
 it meets the water or the hull (depth fade over 0.6 m) and near the camera (under 3 m).
 
 **Wake foam** (`wm_wake_alpha`): the foam of a real wake is not a set of even stripes. Two things make it:
-- the **diverging waves** off the bow and quarters: their crests break in thin, broken foam lines along the wake's
-  edges that start at the bow and are gone within a few boat lengths;
+- the **diverging waves** off the bow and quarters: their crests break into bands of foam along the wake's edges that
+  start narrow at the bow and quarters and widen and soften as the waves spread away from the boat (round 4: the
+  owner preferred these broad bands to thin lines), gone within a few boat lengths;
 - the **turbulent wake** behind the hull: churned water about the hull's width, the widest and most lasting foam
   (tens of seconds behind a sportsboat at speed), which spreads slowly and, as the bubbles rise, breaks up into
   separate patches and streaks that thin and fade.
 
-The bow ribbon draws the lines, the transom ribbon (below) the turbulent wake. The lines take their variation from
-the coarse noise `p`, whose tile is 60 m along the ribbon (round 3: the fine noise, repeating every 5 m, made them
-evenly spaced dashes like road markings). Per vertex `COLOR.r` is the turbulent
-band's half width over the ribbon's (1 on the transom ribbon: all of it; 0 on the bow ribbon), `COLOR.b` the line's
-width over the ribbon's half width (`0.25 m / w` on the bow ribbon, 0 on the transom's), `COLOR.g` the age. With
-`s = |2u − 1| / 0.6` the distance across in half widths (1 at the edge vertex, beyond it the feathered margin), `n`
-the fine foam noise (two taps) and `p` the coarse patch noise (one tap):
+The bow ribbon draws the bands, the transom ribbon (below) the turbulent wake. Per vertex `COLOR.r` is the turbulent
+band's half width over the ribbon's (1 on the transom ribbon; 0 on the bow ribbon), `COLOR.b` on the bow ribbon
+`0.25 m / w` (so `w = 0.25/b`), on the transom ribbon the hollow behind a planing transom (below), `COLOR.g` the age.
+With `s = |2u − 1| / 0.6` the distance across in half widths (1 at the edge vertex, beyond it the feathered margin),
+`t = 9 s·age`, `n = 0.7·n1 + 0.5·n2` the fine foam noise (`n1` sampled in **world metres**, `world xz / 3 m`, so it
+is never stretched across a wide ribbon into a comb; `n2` along the ribbon) and `p` the coarse patch noise (one tap
+along the ribbon):
 ```
-lw      = b · (0.6 + 0.8·p) · (1 − 0.5·smoothstep(0, 0.3, age))   // width varies slowly along the line, thins with age
-line    = s ≤ 1 ? exp(−((s − (1 − lw)) / (0.5·lw))²) : 0     // a soft band just inside each edge, nothing outside
-broken  = smoothstep(0.42, 0.68, 0.6·p + 0.4·n2)           // continuous but broken, opacity varying slowly
-lace    = 0.15 + 0.85·smoothstep(0.4, 0.65, 0.6·n + 0.4·p)    // the centre wake's lace within the line
-lines   = line · broken · lace · smoothstep(0, 0.015, age) · (1 − smoothstep(0, 0.3, age))
-                                                            // out of the bow wave, brightest near the hull,
-                                                            // gone after 1 to 3 s
-mid     = 1 − smoothstep(0.6·r, r, s)                       // the turbulent wake
+W       = 0.5 m + 0.55 m/s · t                              // the band's width, m: narrow at the bow, widening
+bw      = W · b / 0.25                                      // in half widths
+band    = s ≤ 1 ? smoothstep(1 − bw, 1 − 0.35·bw, s) · (1 − smoothstep(0.9, 1, s)) : 0   // soft, inside the edge
+lace    = smoothstep(th, th + 0.35, 0.6·n + 0.4·p)          // th = 0.5 + 0.25·age: broken foam, thinning
+bands   = band · lace · (1 − smoothstep(0.05, 0.38, age)) · 0.65 / (1 + 0.25·t)   // softer as it spreads, gone
+                                                            // after 2 to 3 s (a few boat lengths at speed)
+mid     = 1 − smoothstep(0.6·r, r, s)                       // the turbulent wake (hollowed when planing, below)
 th      = 0.45 + 0.35·age                                   // the foam thins: more of it falls under the threshold
 breakup = smoothstep(th, th + 0.4 − 0.25·age, 0.6·n + 0.4·p)   // and its patches get sharper borders
-a       = alpha² · (0.7·lines + 0.9·mid·breakup)
+a       = alpha² · (bands + 0.9·mid·breakup)
 ```
 Nothing is drawn beyond the edge vertex, so the spray reach (which pushes the outer vertices out, invisible) no
 longer smears foam sideways into a comb of streaks (the first ribbons: a band out to 0.9 of the ribbon and texture
 coordinates stretched over the spray's reach). The ribbons stop widening at 4 s, so the long tail adds rows but no
 wide transparent area to the blending. Cost: the same three foam noise taps per wake pixel as before and a few more
 operations; nothing in the sea shader.
+
+**Planing: the hourglass.** Behind a planing transom the flow off the two quarters converges: right behind the
+transom the water is hollow, the foam closes in to a waist and, past it, spreads again (and sometimes peaks in a small
+rooster tail at the waist). The waist lies where the quarter flows meet, at a distance that scales with the
+transom's Froude length `v²/g`; for a sportsboat it is half to one and a half boat lengths behind. Above a length
+Froude number of about 0.8 the transom ribbon follows that profile, with `d = v·t` the distance behind the transom:
+```
+P       = smoothstep(0.8, 1.05, Fr)                         // Fr = 0.399·ratio; displacement speeds: off
+x_w     = 0.7 · v²/g                                        // the waist: WM7 at 19 kn about 6.8 m, one boat length
+pinch   = exp(−((d − x_w)/(0.5·x_w))²)
+w       = w0·(1 + 0.15·t)·(1 − 0.55·P·pinch)                // narrows to under half at the waist, widens after
+hollow  = P · (1 − smoothstep(0.3·x_w, x_w, d))             // COLOR.b: the centre right behind the transom is clear
+mid    ×= 1 − 0.85·hollow·(1 − smoothstep(0.25, 0.75, s))   // foam on the converging sides only
+alpha  ×= 1 + 0.3·P·pinch                                   // the waist is the brightest
+```
 
 A second ribbon from the **transom** (no spray) is the **turbulent wake**: `w0 = 0.45·bwl` (the hull's breadth near
 the stern), widening slowly as the turbulence spreads, `w = w0·(1 + 0.15·t)` (to about twice the hull's width after

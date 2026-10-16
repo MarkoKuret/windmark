@@ -67,6 +67,8 @@ const SHOTS := [
 	["sail12_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 12.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0}],
 	["sail25_close_M", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0, "close": 0.45}],
 	["sail18_close_M", SeaEnvSource.Mode.PLACEHOLDER, 18.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0, "close": 0.45}],
+	["sail12_aerial_M", SeaEnvSource.Mode.PLACEHOLDER, 12.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0, "aerial": true}],
+	["sail25_aerial_M", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0, "aerial": true}],
 	["sailseq25_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0, "seq": 24, "step_ms": 250.0}],
 ]
 
@@ -201,6 +203,14 @@ func _process_sail() -> bool:
 	var sea: Sea = _scene.get_node("Sea")
 	if _sail_t0 < 0.0:
 		_sail_t0 = sea.render_time_ms
+	if _opt("aerial", false) and sea.render_time_ms - _sail_t0 >= 1000.0 * float(_opt("seconds", 15.0)):
+		# a high aerial view: 120 m up, 90 m behind the boat, looking at it
+		var cam_a: Camera3D = _scene.rig.camera
+		var bpa: Vector3 = (_scene.boat_view as Node3D).global_position
+		var back := -(_scene.boat_view as Node3D).global_basis.z
+		back.y = 0.0
+		back = back.normalized() if back.length() > 1e-3 else Vector3(0, 0, 1)
+		cam_a.look_at_from_position(bpa + back * 90.0 + Vector3(0.0, 120.0, 0.0), bpa, Vector3.UP)
 	var close: float = _opt("close", 0.0)
 	if close > 0.0 and sea.render_time_ms - _sail_t0 >= 1000.0 * float(_opt("seconds", 15.0)):
 		# the camera moved toward the boat along its line (a close chase view), same direction

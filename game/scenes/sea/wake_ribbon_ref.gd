@@ -68,9 +68,22 @@ static func wake_tan(ratio: float) -> float:
 	return tan(0.1995 / fr)
 
 
+## The hourglass of a planing transom (water_render.md §5): [P, pinch, hollow] of a transom row at t_s.
+static func hourglass(row: Dictionary, t_s: float) -> Vector3:
+	var pl := smoothstep(0.8, 1.05, 0.399 * float(row["ratio"]))
+	if pl <= 0.0:
+		return Vector3.ZERO
+	var v := float(row["v"])
+	var xw := maxf(0.7 * v * v / GRAVITY, 0.5)
+	var d := v * age(row, t_s)
+	var q := (d - xw) / (0.5 * xw)
+	return Vector3(pl, exp(-q * q), pl * (1.0 - smoothstep(0.3 * xw, xw, d)))
+
+
 static func half_width(row: Dictionary, t_s: float, k := 0) -> float:
 	if k == 1:
-		return float(row["w0"]) * (1.0 + TURB_SPREAD * minf(age(row, t_s), LIFE_S))
+		var hg := hourglass(row, t_s)
+		return float(row["w0"]) * (1.0 + TURB_SPREAD * minf(age(row, t_s), LIFE_S)) * (1.0 - 0.55 * hg.x * hg.y)
 	return float(row["w0"]) + wake_tan(float(row["ratio"])) * float(row["v"]) * minf(age(row, t_s), SPREAD_S)
 
 
@@ -211,12 +224,14 @@ func build_arrays(t_s: float) -> Array:
 		var reach := [hw + feather + ex.x, hw + feather + ex.y]
 		var base := verts.size()
 		var centre := 1.0 if kind == 1 else 0.0
+		var line := 0.0 if kind == 1 else clampf(LINE_M / maxf(hw, 1e-3), 0.0, 1.0)
 		if kind == 1:
 			# the turbulent wake emerges from under the transom: feathered, rounded start over a hull's breadth
 			var ks := smoothstep(0.0, float(row["w0"]) / 0.45, float(row["v"]) * age(row, t_s))
 			centre = 0.4 + 0.6 * ks
-			a *= ks
-		var line := 0.0 if kind == 1 else clampf(LINE_M / maxf(hw, 1e-3), 0.0, 1.0)
+			var hg := hourglass(row, t_s)
+			a *= ks * (1.0 + 0.3 * hg.x * hg.y)
+			line = hg.z
 		var p: Vector2 = row["p"]
 		for i in ACROSS:
 			var u: float = U_OUTER if i == 0 else (1.0 - U_OUTER if i == ACROSS - 1 else

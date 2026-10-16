@@ -598,6 +598,17 @@ func check_wake_ribbon() -> void:
 	st.set_kind(1)
 	var row_t := {"t": 0.0, "w0": 1.0, "v": 9.8, "ratio": 3.0}
 	check(absf(WakeRibbonRef.half_width(row_t, 6.0, 1) - 1.9) < 1e-6, "wake: the turbulent wake widens slowly (1 m to 1.9 m in 6 s at 19 kn)")
+	# the hourglass behind a planing transom: a waist about a boat length behind it, none at displacement speed
+	var rp := {"t": 0.0, "w0": 1.0, "v": 9.8, "ratio": 3.0}
+	var xw := 0.7 * 9.8 * 9.8 / 9.81
+	var w_waist := WakeRibbonRef.half_width(rp, xw / 9.8, 1)
+	var w_before := WakeRibbonRef.half_width(rp, 0.1, 1)
+	var w_after := WakeRibbonRef.half_width(rp, 2.0 * xw / 9.8, 1)
+	var rd := {"t": 0.0, "w0": 1.0, "v": 3.5, "ratio": 1.0}
+	var hg_d := WakeRibbonRef.hourglass(rd, 1.0)
+	check(w_waist < 0.6 * w_before and w_after > 1.5 * w_waist and hg_d == Vector3.ZERO and WakeRibbonRef.hourglass(rp, 0.05).z > 0.9,
+			"wake: planing at 19 kn the turbulent wake is hollow behind the transom and pinches to %.2f m at %.1f m (%.2f m before, %.2f m after); none at displacement speed" % [
+			w_waist, xw, w_before, w_after])
 	var arr := r2.build_arrays(t)
 	var cols: PackedColorArray = arr[Mesh.ARRAY_COLOR]
 	check(cols.size() > 0 and absf(cols[0].g) < 1e-6 and cols[cols.size() - 1].g > 0.98,
@@ -991,7 +1002,7 @@ func _caps_drawn(sea: Dictionary, ck: PackedVector4Array, grp: Vector4, x: Vecto
 		var c := Vector2(q.x / SeaWhitecaps.TILE.x + uv.z, q.y / SeaWhitecaps.TILE.y + uv.w)
 		var n := img.get_width()
 		L = img.get_pixel(posmod(int(floorf(c.x * n)), n), posmod(int(floorf(c.y * n)), n))
-	return SeaWhitecaps.drawn(f.x, f.y, f.z, L, st)
+	return SeaWhitecaps.drawn(f.x, f.y, f.z, L, st, (sea["cw"] as PackedVector4Array)[0].w)
 
 
 ## Foam patches in the chase view (every component resolved, 0.5 m cells over 200 m, a cell foamed when its

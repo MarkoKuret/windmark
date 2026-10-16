@@ -17,12 +17,15 @@ uniform sampler2D wake_tex : filter_linear, repeat_disable;
 uniform float grid_q = 1.06;
 uniform float grid_segments = 256.0;
 
+varying vec2 v_world;
+
 void vertex() {
+	v_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xz;   // where the row lies on the water, before the drape
 	VERTEX = wm_wake_drape(VERTEX, CAMERA_POSITION_WORLD, grid_q, grid_segments);
 }
 
 void fragment() {
-	float a = wm_wake_alpha(UV, COLOR.r, COLOR.b, COLOR.a, COLOR.g, texture(foam_tex, UV * vec2(1.5, 2.0)).r,
+	float a = wm_wake_alpha(UV, COLOR.r, COLOR.b, COLOR.a, COLOR.g, texture(foam_tex, v_world / 3.0).r,
 			texture(foam_tex, UV * vec2(0.6, 0.7) + 0.37).g, texture(foam_tex, UV * vec2(0.15, 0.17) + 0.71).g);
 	ALBEDO = col_foam;
 	ALPHA = a;

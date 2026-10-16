@@ -267,10 +267,14 @@ WmSurface wm_surface(vec2 xl, float eta, vec3 n_geo, vec3 view, float dist, floa
 	// §4.3 puffs darker, lulls brighter
 	albedo *= 1.0 - 0.25 * clamp((m - 1.0) / 0.25, 0.0, 1.0) + 0.15 * clamp((1.0 - m) / 0.4, 0.0, 1.0);
 
+	// §4.2 a strong breeze greys and darkens the water's body colour (from 12 kn of local wind)
+	float gw = smoothstep(12.0, 30.0, wind / WM_KNOT);
+	albedo = mix(albedo, dot(albedo, vec3(0.2126, 0.7152, 0.0722)) * vec3(0.75, 0.82, 0.88), 0.45 * gw);
+
 	// §4.4 whitecaps: wm_apply_caps, after this function (the sea surface only)
 
 	// §4.2 light through the crests
-	vec3 emission = col_sss * crest * (pow(max(0.0, dot(-view, sun_dir)), 3.0) * 0.3 * sun_color + 0.05);
+	vec3 emission = col_sss * (1.0 - 0.35 * gw) * crest * (pow(max(0.0, dot(-view, sun_dir)), 3.0) * 0.3 * sun_color + 0.05);
 
 	S.albedo = albedo;
 	S.roughness = rough;
@@ -362,21 +366,39 @@ void wm_apply_caps(inout WmSurface S, vec2 xl, float px, float expo, float dist,
 	}
 	vec3 cf = wm_caps_field(xl, px, expo, S.m * base_speed);
 	float g = cf.z * fade;
-	if (g <= 0.0 || cf.x <= -2.0) {
+	if (g <= 0.0) {
 		return;
 	}
-	// a breaking core on the crest and its forward face, lacy edges, a translucent streaky trail behind it
+	// the streak tap (R streaks, G their breakup), drifting with the surface: the trail's streaks and, between the
+	// caps, wind-aligned foam lanes that thicken with the wind (§4.4)
 	vec2 q = vec2(dot(xl, caps_uv.xy), dot(xl, vec2(-caps_uv.y, caps_uv.x)));
-	vec4 L = texture(caps_tex, q / WM_CAPS_TILE + caps_uv.zw);
-	float st = texture(foam_tex, q / WM_STREAK_TILE + caps_str).r;
-	float xj = cf.x + 1.2 * (L.g - 0.5) + 0.8 * (st - 0.5);
-	float front = smoothstep(-4.0, -1.0, cf.y);
-	float behind = 1.0 - smoothstep(0.0, 1.5, cf.y);
-	float core = smoothstep(0.0, 1.2, xj) * front * g;
-	float trail = smoothstep(-1.0, 0.7, xj) * behind * smoothstep(0.3, 0.75, st) * g;
-	float a = clamp(0.95 * core * mix(L.b, L.a, smoothstep(1.0, 2.0, xj)) + 0.5 * trail * L.g * (1.0 - core), 0.0, 1.0);
-	// the bubbles under a breaking crest turn the water a lighter turquoise around the foam
-	S.albedo = mix(S.albedo, vec3(0.05, 0.20, 0.23), 0.3 * smoothstep(0.2, 0.8, max(core, 0.5 * trail)));
+	vec2 stv = texture(foam_tex, q / WM_STREAK_TILE + caps_str).rg;
+	float st = stv.x;
+	float kn = S.m * base_speed / WM_KNOT;
+	float dens = smoothstep(15.0, 32.0, kn);
+	float a = 0.22 * dens * smoothstep(0.62, 0.82, st) * smoothstep(0.35, 0.7, stv.y) * fade;
+	if (cf.x > -1.5) {
+		// a breaking core on the crest and its forward face, lacy edges, a translucent streaky trail behind it
+		vec4 L = texture(caps_tex, q / WM_CAPS_TILE + caps_uv.zw);
+		float xj = cf.x + 1.2 * (L.g - 0.5) + 0.8 * (st - 0.5);
+		float front = smoothstep(-4.0, -1.0, cf.y);
+		// behind the crest, within the part of the wave's back a cap's foam trails over (never across the trough)
+		float lam0 = caps_w[0].w;
+		float behind = (1.0 - smoothstep(0.0, 1.5, cf.y)) * (cf.y == 0.0 ? 1.0 : smoothstep(-0.4 * lam0, -0.15 * lam0, cf.y));
+		// the steep face ahead of a crest near breaking is darker; the bubble cloud under and behind it glows
+		float near_cap = smoothstep(-0.8, 0.4, xj);
+		S.albedo *= 1.0 - 0.22 * near_cap * (1.0 - behind) * (1.0 - smoothstep(0.5, 3.0, cf.y)) * g;
+		S.albedo = mix(S.albedo, vec3(0.05, 0.20, 0.23), 0.35 * near_cap * behind * g);
+		float core = smoothstep(0.0, 1.2, xj) * front * g;
+		float trail = smoothstep(-1.0, 0.7, xj) * behind * smoothstep(0.3, 0.75, st) * g;
+		float residual = 0.15 * smoothstep(12.0, 20.0, kn) * smoothstep(-1.5, -0.8, xj) * (1.0 - smoothstep(-0.8, 0.0, xj)) * behind
+				* smoothstep(0.3, 0.75, st) * g;
+		a = max(a, max(residual, clamp(0.95 * core * mix(L.b, L.a, smoothstep(1.0, 2.0, xj))
+				+ 0.5 * trail * L.g * (1.0 - core), 0.0, 1.0)));
+	}
+	if (a <= 0.0) {
+		return;
+	}
 	S.albedo = mix(S.albedo, col_foam, a);
 	S.roughness = mix(S.roughness, 0.55, a);
 	S.emission *= 1.0 - a;

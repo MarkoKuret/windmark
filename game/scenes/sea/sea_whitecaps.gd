@@ -310,19 +310,19 @@ static func break_frame(components: Array, ox: float, oy: float, t_ms: float) ->
 	return Vector2(u - floorf(u), v - floorf(v))
 
 
-## The trail's streak frame (caps_str) for a camera at (ox, oy) at t_ms, riding the dominant wave at its phase
-## speed (in double, mod 1).
-static func streak_frame(components: Array, ox: float, oy: float, t_ms: float) -> Vector2:
+## The streak frame (caps_str) for a camera at (ox, oy) at t_ms: foam left on the water drifts with the surface,
+## about 3 % of the wind speed u (m/s), along the dominant wave (in double, mod 1).
+static func streak_frame(components: Array, ox: float, oy: float, t_ms: float, u := 0.0) -> Vector2:
 	var p := dominant_index(components)
 	if p < 0:
 		return Vector2.ZERO
 	var c: Array = components[p]
 	var kap := Vector2(c[1], c[2]).length()
 	var e := Vector2(c[1], c[2]) / kap
-	var speed := (1.0 / kap) / (float(c[4]) * 0.001)
-	var u := (ox * e.x + oy * e.y - speed * t_ms * 0.001) / STREAK_TILE.x + 0.21
-	var v := (-ox * e.y + oy * e.x) / STREAK_TILE.y + 0.47
-	return Vector2(u - floorf(u), v - floorf(v))
+	var speed := 0.03 * u
+	var su := (ox * e.x + oy * e.y - speed * t_ms * 0.001) / STREAK_TILE.x + 0.21
+	var sv := (-ox * e.y + oy * e.x) / STREAK_TILE.y + 0.47
+	return Vector2(su - floorf(su), sv - floorf(sv))
 
 
 ## The foam noise channel ch (0 R streaks, 1 G coarse) at a texture coordinate, bilinear.
@@ -345,10 +345,10 @@ static func foam_noise(uv: Vector2, ch: int) -> float:
 ## CPU mirror of the drawn cap opacity of wm_apply_caps: x the intensity before the clamp, dm the distance from the
 ## heaviest component's crest (m, ahead > 0), g the gate times the fade, L the lace texture sample, st the streak
 ## noise. Returns (opacity, core, trail).
-static func drawn(x: float, dm: float, g: float, L: Color, st: float) -> Vector3:
+static func drawn(x: float, dm: float, g: float, L: Color, st: float, lam0 := 1e9) -> Vector3:
 	var xj := x + 1.2 * (L.g - 0.5) + 0.8 * (st - 0.5)
 	var front := smoothstep(-4.0, -1.0, dm)
-	var behind := 1.0 - smoothstep(0.0, 1.5, dm)
+	var behind := (1.0 - smoothstep(0.0, 1.5, dm)) * (1.0 if dm == 0.0 else smoothstep(-0.4 * lam0, -0.15 * lam0, dm))
 	var core := smoothstep(0.0, 1.2, xj) * front * g
 	var trail := smoothstep(-1.0, 0.7, xj) * behind * smoothstep(0.3, 0.75, st) * g
 	var a := clampf(0.95 * core * lerpf(L.b, L.a, smoothstep(1.0, 2.0, xj)) + 0.5 * trail * L.g * (1.0 - core), 0.0, 1.0)

@@ -222,8 +222,23 @@ static double wake_tan(double ratio) {
   return std::tan(0.1995 / fr);
 }
 
+// WakeRibbonRef.hourglass: (P, pinch, hollow) of a transom row behind a planing hull
+static Vector3 hourglass(double ratio, double v, double age_s) {
+  const double pl = Math::smoothstep(0.8, 1.05, 0.399 * ratio);
+  if (pl <= 0.0) return Vector3();
+  const double xw = std::max(0.7 * v * v / GRAVITY, 0.5);
+  const double d = v * age_s;
+  const double q = (d - xw) / (0.5 * xw);
+  return Vector3(static_cast<real_t>(pl), static_cast<real_t>(std::exp(-q * q)),
+                 static_cast<real_t>(pl * (1.0 - Math::smoothstep(0.3 * xw, xw, d))));
+}
+
 double WakeRibbon::half_width(const Row& r, double t_s) const {
-  if (kind_ == 1) return r.w0 * (1.0 + TURB_SPREAD * std::min(t_s - r.t, LIFE_S));
+  if (kind_ == 1) {
+    const Vector3 hg = hourglass(r.ratio, r.v, t_s - r.t);
+    return r.w0 * (1.0 + TURB_SPREAD * std::min(t_s - r.t, LIFE_S)) *
+           (1.0 - 0.55 * static_cast<double>(hg.x) * static_cast<double>(hg.y));
+  }
   return r.w0 + wake_tan(r.ratio) * r.v * std::min(t_s - r.t, SPREAD_S);
 }
 
@@ -371,14 +386,16 @@ void WakeRibbon::build(double t_s) {
     const double reach[2] = {hw + feather + ex.x, hw + feather + ex.y};
     const int base = static_cast<int>(pos_.size());
     double centre = kind_ == 1 ? 1.0 : 0.0;
+    double line = kind_ == 1 ? 0.0 : clampd(LINE_M / std::max(hw, 1e-3), 0.0, 1.0);
     double a_draw = a;
     if (kind_ == 1) {
       // WakeRibbonRef: the turbulent wake emerges from under the transom over a hull's breadth
       const double ks = smooth(0.0, r.w0 / 0.45, r.v * (t_s - r.t));
       centre = 0.4 + 0.6 * ks;
-      a_draw = a * ks;
+      const Vector3 hg = hourglass(r.ratio, r.v, t_s - r.t);
+      a_draw = a * (ks * (1.0 + 0.3 * static_cast<double>(hg.x) * static_cast<double>(hg.y)));
+      line = hg.z;
     }
-    const double line = kind_ == 1 ? 0.0 : clampd(LINE_M / std::max(hw, 1e-3), 0.0, 1.0);
     const float vv = static_cast<float>(r.dist / 10.0);
     const double age = clampd((t_s - r.t) / LIFE_S, 0.0, 1.0);
     for (int i = 0; i < ACROSS; ++i) {

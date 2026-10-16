@@ -68,25 +68,30 @@ float wm_mist_alpha(vec2 uv, float n, float kind) {
 }
 
 // Wake foam coverage (shared with the offline preview, water_render.md §5). uv: (across 0..1, distance sailed /
-// 10 m); centre: the turbulent band's half width over the ribbon's (1 on the transom ribbon, 0 on the bow's); line:
-// the foam line's width over the half width (bow ribbon); a: row alpha; age: the row's age over the ribbon's life;
-// n1, n2: fine foam noise samples; p: the coarse patch noise. The edge vertices sit at across 0.2 and 0.8
-// (|2u - 1| = 0.6), the outer vertices at 0 and 1 are a feathered margin where nothing is drawn.
-float wm_wake_alpha(vec2 uv, float centre, float line, float a, float age, float n1, float n2, float p) {
+// 10 m); centre: the turbulent band's half width over the ribbon's (transom ribbon; 0 on the bow ribbon); b: on the
+// bow ribbon 0.25 m over the half width, on the transom ribbon the hollow behind a planing transom; a: row alpha;
+// age: the row's age over the ribbon's 9 s; n1: fine foam noise in world metres; n2, p: noise along the ribbon. The
+// edge vertices sit at across 0.2 and 0.8 (|2u - 1| = 0.6), the outer vertices at 0 and 1 are a feathered margin
+// where nothing is drawn.
+float wm_wake_alpha(vec2 uv, float centre, float b, float a, float age, float n1, float n2, float p) {
 	float s = abs(uv.x * 2.0 - 1.0) / 0.6;
-	// the diverging waves' breaking crests: thin broken lines just inside the edges, gone within a few boat lengths
-	// (soft, uneven: width and opacity vary slowly along the line with the coarse noise, which repeats only every
-	// 60 m; thinner and fainter with age, brightest at the hull)
-	float lw = line * (0.6 + 0.8 * p) * (1.0 - 0.5 * smoothstep(0.0, 0.3, age));
-	float lq = (s - (1.0 - lw)) / max(0.5 * lw, 1e-4);
-	float band = line > 0.0 && s <= 1.0 ? exp(-lq * lq) : 0.0;
-	float lace = smoothstep(0.4, 0.65, 0.6 * (n1 * 0.7 + n2 * 0.5) + 0.4 * p);
-	float lines = band * smoothstep(0.42, 0.68, 0.6 * p + 0.4 * n2) * (0.15 + 0.85 * lace)
-			* smoothstep(0.0, 0.015, age) * (1.0 - smoothstep(0.0, 0.3, age));
-	// the turbulent wake
-	float mid = 1.0 - smoothstep(0.6 * centre, centre, s);
+	float t = 9.0 * age;
+	float bands = 0.0;
+	float hollow = 0.0;
+	if (centre <= 0.0 && b > 0.0 && s <= 1.0) {
+		// the diverging waves' foam: bands inside the edges, narrow at the bow, widening and softening as they spread
+		float bw = (0.5 + 0.55 * t) * b / 0.25;
+		float band = smoothstep(1.0 - bw, 1.0 - 0.35 * bw, s) * (1.0 - smoothstep(0.9, 1.0, s));
+		float tl = 0.5 + 0.25 * age;
+		float lace = smoothstep(tl, tl + 0.35, 0.6 * (n1 * 0.7 + n2 * 0.5) + 0.4 * p);
+		bands = band * lace * (1.0 - smoothstep(0.05, 0.38, age)) * 0.65 / (1.0 + 0.25 * t);
+	} else if (centre > 0.0) {
+		hollow = b;
+	}
+	// the turbulent wake, hollow right behind a planing transom
+	float mid = (1.0 - smoothstep(0.6 * centre, centre, s)) * (1.0 - 0.85 * hollow * (1.0 - smoothstep(0.25, 0.75, s)));
 	// the bubbles break up into clumps and streaks, and with age into separate patches that thin out
 	float th = 0.45 + 0.35 * age;
 	float breakup = smoothstep(th, th + 0.4 - 0.25 * age, 0.6 * (n1 * 0.7 + n2 * 0.5) + 0.4 * p);
-	return clamp(a * a * (0.7 * lines + 0.9 * mid * breakup), 0.0, 1.0);
+	return clamp(a * a * (bands + 0.9 * mid * breakup), 0.0, 1.0);
 }

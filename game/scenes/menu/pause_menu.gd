@@ -55,18 +55,18 @@ func _ready() -> void:
 	_root.add_child(center)
 	_card = PanelContainer.new()
 	_card.name = "Card"
-	_card.custom_minimum_size = Vector2(340, 0)
+	_card.custom_minimum_size = Vector2(400, 0)
 	center.add_child(_card)
 	_list = VBoxContainer.new()
-	_list.add_theme_constant_override("separation", 2)
+	_list.add_theme_constant_override("separation", 4)
 	_card.add_child(_list)
 	_list.add_child(MenuTheme.heading("Paused"))
 	var gap := Control.new()
-	gap.custom_minimum_size = Vector2(0, 8)
+	gap.custom_minimum_size = Vector2(0, 12)
 	_list.add_child(gap)
 	for e in [["resume", "Resume"], ["restart", "Restart"], ["retire", RETIRE_TEXT], ["settings", "Settings"],
 			["quit", "Quit to menu"]]:
-		var b := MenuTheme.button(e[1], MenuTheme.ITEM_SIZE, e[0] == "quit" or e[0] == "retire")
+		var b := MenuTheme.button(e[1], MenuTheme.ITEM_SIZE, e[0] == "retire")
 		b.name = e[1].replace(" ", "")
 		var id: String = e[0]
 		b.pressed.connect(func() -> void: _pressed(id))

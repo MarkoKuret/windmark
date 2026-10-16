@@ -1,16 +1,12 @@
 class_name Settings
 extends RefCounted
 ## The player's settings (menus.md §3, controls.md §6): one ConfigFile per player, read by whatever needs them
-## through Settings.current(), and applied to the parts of the game that already have the option (apply_*).
-## Settings the game does not use yet are stored and listed in NOT_APPLIED.
+## through Settings.current(), and applied to the parts of the game that have the option (apply_*). Every setting
+## here is one the game reads; a key an older build saved and this one dropped (captions, the voice volume) is
+## ignored on load and not written again.
 
 const VERSION := 1
 const DEFAULT_PATH := "user://settings.cfg"
-
-## Stored but not used by the game yet (nothing reads them): kept here so the list stays honest.
-const NOT_APPLIED := [
-	"hud.captions",  # the audio has no caption lines yet (audio.md §8)
-]
 
 ## where current() loads from and save() writes to (tests point it elsewhere)
 static var path := DEFAULT_PATH
@@ -46,7 +42,6 @@ var hud_density := -1
 var ui_scale := 1.0
 ## standard, deuteranopia, protanopia, tritanopia
 var palette := "standard"
-var captions := false
 
 # ---- graphics (water_render.md §7) ----
 var quality := SeaQuality.Tier.M
@@ -65,8 +60,8 @@ var capture_preset := "off"
 # ---- audio (audio.md §1.1), linear 0..1 ----
 var master_volume := 0.8
 var effects_volume := 1.0
+## the race signals and the hails (the voice bus), menus.md §3
 var signals_volume := 1.0
-var voice_volume := 1.0
 var ambience_volume := 1.0
 var interface_volume := 1.0
 
@@ -84,10 +79,9 @@ const FIELDS := {
 		"rankings_toggle", "camera_boost_toggle", "sheet_turns_auto_trim_off", "vibration"],
 	"cameras": ["camera_speed", "invert_orbit_x", "invert_orbit_y", "invert_look_x", "invert_look_y", "heel_follow",
 		"smooth_switch", "reduced_motion"],
-	"hud": ["assist", "hud_density", "ui_scale", "palette", "captions"],
+	"hud": ["assist", "hud_density", "ui_scale", "palette"],
 	"graphics": ["quality", "render_scale", "fullscreen", "vsync", "fps_limit"],
-	"audio": ["master_volume", "effects_volume", "signals_volume", "voice_volume", "ambience_volume",
-		"interface_volume"],
+	"audio": ["master_volume", "effects_volume", "signals_volume", "ambience_volume", "interface_volume"],
 	"menu": ["last_setup", "welcomed"],
 	"bindings": ["bindings"],
 }
@@ -121,8 +115,7 @@ static var _size_before := Vector2i.ZERO
 const BUSES := {
 	"master_volume": ["Master"],
 	"effects_volume": ["own_boat", "fleet", "wind"],
-	"signals_volume": ["race"],
-	"voice_volume": ["voice"],
+	"signals_volume": ["race", "voice"],
 	"ambience_volume": ["ambience", "venue"],
 	"interface_volume": ["ui"],
 }

@@ -147,10 +147,10 @@ func _ready() -> void:
 	body.add_child(summary_box)
 	_footer = HBoxContainer.new()
 	_footer.name = "Footer"
-	_footer.add_theme_constant_override("separation", 10)
+	_footer.add_theme_constant_override("separation", 12)
 	col.add_child(_footer)
 	for e in [["again", "Race again"], ["setup", "Change setup"], ["menu", "Main menu"]]:
-		var b := MenuTheme.button(e[1], MenuTheme.ROW_SIZE + 2)
+		var b := MenuTheme.button(e[1], MenuTheme.ACTION_SIZE)
 		b.name = e[1].replace(" ", "")
 		var id: String = e[0]
 		b.pressed.connect(func() -> void: press(id))

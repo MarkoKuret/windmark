@@ -1,10 +1,11 @@
 ---
 id: WM-145
 title: 'HUD: next-mark arrow outside the chase camera'
-status: In Progress
+status: Done
 assignee:
   - '@hudux'
 created_date: '2026-10-16 19:42'
+updated_date: '2026-10-16 19:52'
 labels:
   - hud
 dependencies: []
@@ -19,8 +20,8 @@ In the onboard, aerial and free cameras the player loses where the next mark is.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 hud.md §7 and §16.4 specify the arrow: cameras, placement, direction, text, assist/density rules
-- [ ] #2 The arrow is drawn in onboard, aerial and free cameras and not in chase; it points to the mark (tested for a mark ahead, to the right and behind)
-- [ ] #3 Outside chase the mark's off-screen edge pointer is not drawn (the arrow replaces it)
-- [ ] #4 race_hud_test passes; headless renders in chase and one other camera
+- [x] #1 hud.md §7 and §16.4 specify the arrow: cameras, placement, direction, text, assist/density rules
+- [x] #2 The arrow is drawn in onboard, aerial and free cameras and not in chase; it points to the mark (tested for a mark ahead, to the right and behind)
+- [x] #3 Outside chase the mark's off-screen edge pointer is not drawn (the arrow replaces it)
+- [x] #4 race_hud_test passes; headless renders in chase and one other camera
 <!-- AC:END -->

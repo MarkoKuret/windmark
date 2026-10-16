@@ -1,7 +1,8 @@
 # Downwind and code zero check against ORC (2026-10)
 
 Question: is the boat too slow downwind, are the kite and code zero too close to the jib, and why does the code
-zero win at angles where no real crew would fly it? Investigation only; nothing in the model changed.
+zero win at angles where no real crew would fly it? The investigation below changed nothing; the fixes the owner
+approved (WM-138, WM-127) and their result are in "Result" at the end.
 
 Scripts (run from `tools/vpp`):
 
@@ -125,3 +126,93 @@ little, as Windmark does.
 3. Apply `MAIN_ALONE_CL` to the main-alone config only.
 4. After 1 to 3, look into the general low-speed deficit (item 5 above) by running the VPP on modelled reference
    boats.
+
+## Result (WM-138, WM-127)
+
+What changed in the model (spec: `tools/vpp/README.md` "Hydrodynamics", "Aerodynamics", "Calibration against ORC";
+`docs/specs/sails.md` §6):
+
+1. **Planing.** The blend towards a drag/lift of 0.055 (gated from DLR 100 to 106) is gone. A hull that can plane
+   takes the Delft residuary at the effective Froude number `Fn_e = 0.38 + 0.4 (Fn - 0.38)` (its hump stretched over
+   a wider speed range, as the ORC VPP's dynamic length does) and holds it where it levels off; the planing ability
+   gate runs from DLR 100 to 200, so wm7 (82, ability 1) and wm12 (108, ability 0.98) are treated alike. A hull
+   heavier than DLR 200 keeps the towed curve and its wave wall. The constants were fitted with grid runs
+   of the two classes against the Melges 24, J/70 and Farr 40 (best sail in each cell, 12 to 20 kn, run VMG, 135 and
+   150°); the gate's far end so that wm12 made 40 % heavier keeps its light-air offset to the J/122 in a breeze.
+   The stretch starts at Fn 0.38 so close-hauled speeds keep the towed curve: starting at 0.35 fitted downwind as
+   well but widened wm7's best beat in 16 to 20 kn from 40 to 45°.
+2. **Code zero.** Coefficients fitted to ORC Table 5.9 at HHW/HLP 62.5 % (`analysis/fit_code0.py`), blanketed
+   downwind like the gennaker; its sheet runs from 18° (was 12°: with 12° it beat the jib close-hauled in light air,
+   below the table's first angle of 27° AWA; the fit is as good with 18°). With a code zero set the reef goes no
+   lower than 0.91 (ORC §5.2.5) and the code zero itself is not reefed.
+3. **The main's slot.** `MAIN_ALONE_CL` (0.72) applies to the main-only config; behind a jib, genoa or code zero
+   the main keeps its full ORC coefficients (this fixes `Rig.forces`, which listed only jib and genoa). Under a kite
+   the loss fades out from 28 to 41° effective AWA, where the ORC spinnaker tables start to draw: with no loss at
+   all the kite configs sailed on the main alone at 34 to 38° TWA, an island of speeds ahead of their no-go edge.
+4. **Jib alone downwind** keeps the ORC jib coefficients; with the new hull law wm7's jib at 110° in 16 to 20 kn
+   (9.9 and 11.5 kn) is within 5 % of the best-sail ORC speeds, down from 20 to 35 % over.
+
+### Before / after / ORC
+
+#### wm7 (best sail per cell; old / new / ORC M24 / J70, % of new off the first reference)
+
+| | 6 kn | 8 kn | 10 kn | 12 kn | 16 kn | 20 kn |
+| --- | --- | --- | --- | --- | --- | --- |
+| run VMG | 3.54 / **3.57** / 3.74/3.54 (-5 %) | 4.44 / **4.44** / 4.73/4.46 (-6 %) | 5.13 / **5.18** / 5.42/5.11 (-4 %) | 5.62 / **6.02** / 5.97/5.52 (+1 %) | 8.25 / **7.60** / 7.57/6.67 (+0 %) | 11.42 / **9.84** / 10.64/9.13 (-7 %) |
+| 150° | 4.06 / **4.06** / 4.32/4.09 (-6 %) | 5.12 / **5.12** / 5.46/5.15 (-6 %) | 5.93 / **5.98** / 6.26/5.90 (-4 %) | 6.48 / **6.95** / 6.90/6.37 (+1 %) | 8.67 / **8.62** / 8.74/7.70 (-1 %) | 12.62 / **10.82** / 12.29/10.55 (-12 %) |
+| 135° | 4.78 / **4.89** / 5.12/4.81 (-5 %) | 5.80 / **5.91** / 6.21/5.85 (-5 %) | 6.52 / **7.04** / 6.95/6.46 (+1 %) | 7.37 / **8.05** / 7.89/7.14 (+2 %) | 11.57 / **10.45** / 10.46/9.03 (-0 %) | 14.63 / **13.32** / 13.33/12.62 (-0 %) |
+| best 110° | 5.35 / **5.56** / 5.88/5.53 (-5 %) | 6.24 / **6.66** / 6.73/6.32 (-1 %) | 6.89 / **7.58** / 7.66/7.04 (-1 %) | 7.86 / **8.26** / 8.29/7.82 (-0 %) | 11.20 / **9.88** / 9.45/8.76 (+5 %) | 13.41 / **11.47** / 11.14/9.89 (+3 %) |
+| best 90° | 5.34 / **5.40** / 5.79/5.46 (-7 %) | 6.11 / **6.21** / 6.59/6.22 (-6 %) | 6.70 / **7.31** / 7.05/6.76 (+4 %) | 7.52 / **8.07** / 7.68/7.06 (+5 %) | 9.44 / **9.02** / 9.11/8.01 (-1 %) | 10.80 / **9.71** / 9.60/9.01 (+1 %) |
+| beat VMG | 3.00 / **3.00** / 3.36/3.03 (-11 %) | 3.57 / **3.57** / 4.10/3.70 (-13 %) | 3.89 / **3.89** / 4.59/4.20 (-15 %) | 4.12 / **4.12** / 4.77/4.53 (-14 %) | 4.30 / **4.30** / 4.83/4.66 (-11 %) | 4.28 / **4.28** / 4.87/4.63 (-12 %) |
+
+#### wm12 (best sail per cell; old / new / ORC F40, % of new off the first reference)
+
+| | 6 kn | 8 kn | 10 kn | 12 kn | 16 kn | 20 kn |
+| --- | --- | --- | --- | --- | --- | --- |
+| run VMG | 4.04 / **4.10** / 4.44 (-8 %) | 5.08 / **5.10** / 5.59 (-9 %) | 5.93 / **5.93** / 6.48 (-9 %) | 6.59 / **6.65** / 7.20 (-8 %) | 7.53 / **8.26** / 8.38 (-1 %) | 8.53 / **10.11** / 10.21 (-1 %) |
+| 150° | 4.56 / **4.56** / 5.13 (-11 %) | 5.82 / **5.82** / 6.45 (-10 %) | 6.84 / **6.84** / 7.48 (-8 %) | 7.60 / **7.68** / 8.19 (-6 %) | 8.57 / **9.53** / 9.64 (-1 %) | 9.44 / **11.36** / 11.79 (-4 %) |
+| 135° | 5.44 / **5.58** / 6.08 (-8 %) | 6.69 / **6.82** / 7.50 (-9 %) | 7.59 / **7.75** / 8.24 (-6 %) | 8.30 / **8.98** / 9.00 (-0 %) | 9.45 / **11.10** / 10.88 (+2 %) | 11.39 / **13.47** / 12.42 (+8 %) |
+| best 90° | 6.41 / **6.77** / 7.16 (-5 %) | 7.38 / **7.67** / 7.95 (-4 %) | 8.04 / **8.68** / 8.46 (+3 %) | 8.40 / **9.20** / 9.00 (+2 %) | 9.03 / **10.17** / 9.71 (+5 %) | 9.45 / **10.96** / 10.03 (+9 %) |
+| best 60° | 5.79 / **6.16** / 6.90 (-11 %) | 6.79 / **6.94** / 7.77 (-11 %) | 7.34 / **7.34** / 8.09 (-9 %) | 7.64 / **7.67** / 8.26 (-7 %) | 8.07 / **8.38** / 8.49 (-1 %) | 8.22 / **8.75** / 8.72 (+0 %) |
+| beat VMG | 3.50 / **3.53** / 4.27 (-17 %) | 4.19 / **4.19** / 5.16 (-19 %) | 4.62 / **4.62** / 5.55 (-17 %) | 4.87 / **4.87** / 5.72 (-15 %) | 5.18 / **5.18** / 5.98 (-13 %) | 5.26 / **5.26** / 5.99 (-12 %) |
+
+Before: `old`, the tables on main before WM-138. 12 to 20 kn (the target): wm7 lies between the J/70 and the
+Melges 24 everywhere (at the Melges 24 within 2 % except 150° and run VMG in 20 kn, at the J/70); wm12 is within
+5 % of the Farr 40 from 16 kn except 135° in 20 kn (+8 %, larger righting moment and an asymmetric kite against the
+Farr 40's symmetric one) and 6 to 8 % slow at 12 kn running, the level of the light-air deficit (WM-139). Under
+12 kn nothing got slower. Reaching under the jib in breeze wm12 is 5 to 9 % over the Farr 40 at 90°.
+
+### Upwind
+
+The jib's beat VMG is unchanged on both classes at every wind (0.0 %), and wm7's best beating angles are unchanged
+(42° to 12 kn, 39 to 40° from 14 kn). The best-of-configs beat VMG of wm12 in 6 kn rises 0.9 % (3.50 to 3.53 kn):
+the code zero, at 45° TWA, edges out the jib there. Close reaching under the jib got faster in breeze (wm7 at 60°:
++5 to +10 % from 12 kn; wm12 at 60°: +2 to +6 % from 16 kn), towards ORC (wm12 best 60° now within 1 % of the
+Farr 40 from 16 kn).
+
+### Code zero crossover (wm12, best config per TWA)
+
+| TWS | jib | code zero | A2 |
+| --- | --- | --- | --- |
+| 6 kn | to 44° | 45 to 112° | from 112° |
+| 8 kn | to 48° | 49 to 108° | from 108° |
+| 10 kn | to 54° (and at 58°) | 55 to 110° (a near tie with the jib to 59°) | from 110° |
+| 12 kn | to 82° | 82 to 114° | from 114° |
+| 16 kn | to 102° | 102 to 120° | from 120° |
+| 20 kn | to 111° | 112 to 124° | from 124° |
+
+Before, the code zero won from 62° in 6 kn to 106° in 20 kn and again dead downwind (168 to 180°) in every wind.
+Now it never wins running; in light air it is the tight-reaching sail (North Sails 55 to 90° AWA, UK Sailmakers 50
+to 125° TWA, ORC Tripp 40 guide 60 to 90° TWA), and from 12 kn the jib takes the tight reach and the code zero only
+the narrow broad reach where the A2 is overpowered.
+
+### Tests
+
+VPP pytest, core (`-LE ai_long`) and the game suites pass (the known hud_test "the boat sails" failure aside). The
+core irons-recovery margin went from 17 to 17.5 s (spec `boat.md` §10.4; the 20 s target holds): wm12 needs 17.1 s
+to half its polar speed at 80°, which is 5 % higher. The `ai_long` AI races do not pass with the new tables (they
+pass with the old ones): the match-race cover count (leader covers in 3 or 4 of 5 seeds) and the Solent ebb
+overstand (8 to 18 s per windward approach against a limit of 8). Neither expectation encodes a speed; both move
+with every variant of the new tables tried, so they are AI behaviour to look at (in one of the failing match seeds
+the outside boat at the leeward mark does not give the inside boat room, rule 18.2), not a reason to loosen them.
+

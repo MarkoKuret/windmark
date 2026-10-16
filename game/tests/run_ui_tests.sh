@@ -3,7 +3,7 @@
 # (hud.md, tests/race_hud_test.gd: scripted race states and a race on the core), the race end and its results screen
 # (menus.md §5, tests/race_end_test.gd), the look panel (hud.md §18,
 # tests/look_panel_test.gd), the audio (audio.md §11,
-# tests/audio_test.gd), the frame-time overlay and its log (hud.md §17, tests/perf_test.gd, and the sail scene run
+# tests/audio_test.gd), the shot scripts (cameras.md §9.2, tests/shot_test.gd), the frame-time overlay and its log (hud.md §17, tests/perf_test.gd, and the sail scene run
 # with --perf-log and --perf-seconds from the command line), including
 # runs of scenes/sail_test.tscn with scripted input on the core (free sailing on practice_waters; the GDExtension is
 # built when missing) and on FakeSim with the Practice Waters sea. Needs the generated boats: when
@@ -42,7 +42,7 @@ sh "$here/native/register.sh"  # a built GDExtension loads at start-up (native/b
     cat "$here/generated/ui_import.log"; echo "import failed"; exit 1; }
 
 failed=0
-for t in controls_test cameras_test look_test look_panel_test hud_test race_hud_test race_end_test audio_test perf_test; do
+for t in controls_test cameras_test look_test look_panel_test hud_test race_hud_test race_end_test audio_test shot_test perf_test; do
     log="$here/generated/$t.log"
     set +e
     "$godot" --headless --path "$here" -s "res://tests/$t.gd" >"$log" 2>&1

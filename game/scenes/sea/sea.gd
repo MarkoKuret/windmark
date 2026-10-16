@@ -281,6 +281,12 @@ func update_frame(cam_pos: Vector3, cam: Camera3D = null) -> void:
 		material.set_shader_parameter("sky_zenith", sky.zenith_linear())
 		material.set_shader_parameter("sun_dir", sky.sun_direction())
 		material.set_shader_parameter("sun_color", sky.sun_radiance())
+		# §4.2 the body colours and §4.3 the puffs' darkening under the conditions
+		if sky.has_method("sea_colors"):
+			var sc: Dictionary = sky.sea_colors()
+			for k in sc:
+				material.set_shader_parameter(k, sc[k])
+			material.set_shader_parameter("puff_k", float(sky.puff_k))
 
 	_update_overlays(ox, oy, cam)
 

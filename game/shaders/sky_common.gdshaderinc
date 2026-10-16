@@ -40,8 +40,10 @@ float wm_fbm_hi(vec2 p) {
 // d: unit view direction; sun: unit direction toward the sun; horizon, zenith: the ramp colours (linear);
 // sun_col: sun colour times energy; cover: cloud cover 0..1; cloud_off: cloud layer offset (static per preset);
 // disc: 1 to draw the sun disc and its halo (0 for the radiance pass, where the light's own specular already gives
-// the glint).
-vec3 wm_sky_color(vec3 d, vec3 sun, vec3 horizon, vec3 zenith, vec3 sun_col, float cover, vec2 cloud_off, float disc) {
+// the glint); diffuse: 0 for sunlit cumulus, 1 for an overcast deck lit only by the diffuse light (water_render.md
+// §4.5: the ramp's grey, a little darker where the cloud is thick, no sunlit side, silver lining or disc).
+vec3 wm_sky_color(vec3 d, vec3 sun, vec3 horizon, vec3 zenith, vec3 sun_col, float cover, vec2 cloud_off, float disc,
+		float diffuse) {
 	float h = d.y;
 	vec3 col = mix(horizon, zenith, pow(clamp(h, 0.0, 1.0), 0.45));
 	// below the horizon: a darker sea haze, so reflections of low directions are not brighter than the horizon
@@ -69,6 +71,10 @@ vec3 wm_sky_color(vec3 d, vec3 sun, vec3 horizon, vec3 zenith, vec3 sun_col, flo
 			vec3 cc = mix(base, top, lit);
 			// thin edges toward the sun glow (silver lining)
 			cc += sun_col * pow(mu, 10.0) * (1.0 - c) * 0.8;
+			// the overcast deck: the ramp's colour from below, darker where the cloud is thick
+			vec3 deck = mix(horizon, zenith, pow(clamp(h, 0.0, 1.0), 0.45))
+					* (1.0 - 0.22 * clamp((n - (1.0 - cover)) * 2.5, 0.0, 1.0));
+			cc = mix(cc, deck, diffuse);
 			// distant clouds fade into the horizon haze
 			cc = mix(horizon * 1.08, cc, smoothstep(0.0, 0.3, h));
 			cloud = c * 0.95;
@@ -77,6 +83,6 @@ vec3 wm_sky_color(vec3 d, vec3 sun, vec3 horizon, vec3 zenith, vec3 sun_col, flo
 	}
 	// sun disc (0.53 deg across) with a soft rim, and a tight bright halo of a few degrees, hidden by a cloud in front
 	float disc_mu = smoothstep(0.999955, 0.999985, mu);
-	col += disc * (1.0 - cloud) * sun_col * (20.0 * disc_mu + 0.35 * pow(mu, 2048.0) + 0.06 * pow(mu, 256.0));
+	col += disc * (1.0 - cloud) * (1.0 - diffuse) * sun_col * (20.0 * disc_mu + 0.35 * pow(mu, 2048.0) + 0.06 * pow(mu, 256.0));
 	return col;
 }

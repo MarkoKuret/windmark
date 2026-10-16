@@ -530,8 +530,24 @@ void rules_overlay(AC& x, AB& a, const Me& m, Vec2 aim, bool obj_turn) {
     const std::int32_t j = p->i == a.i ? p->j : p->i;
     if (!x.race.racing(static_cast<std::size_t>(j))) continue;
     if (p->gap > 10.0f * m.L) continue;
-    if (p->kc_giver == a.i) {
-      const bool trig = p->kc_state != KcState::clear || p->ttc < a.P.h_avoid;
+    if (p->rule17_holder == a.i) r17 = true;
+    // §6.1: entitled to mark-room from her, the rounding keeps its own circle and does not keep clear of her (within
+    // her mark-room she is exonerated; steering away from the giver only pushes her onto the mark). Rule 14 stays:
+    // an emergency when the giver is in breach and a contact is near.
+    if (p->room_entitled == a.i && p->room_giver == j && p->room_mark >= 0) {
+      if ((p->room_state == KcState::breach || p->kc_state == KcState::breach) && p->ttc < 1.5f) {
+        emergency = true;
+        if (p->ttc < best_ttc) {
+          best_ttc = p->ttc;
+          B = j;
+        }
+      }
+      continue;
+    }
+    // Keeping clear (§7.2), or giving mark-room the engine says is not being given (§6.1): the same evaluation.
+    const bool room_owed = p->room_giver == a.i && p->room_entitled == j && p->room_state != KcState::clear;
+    if (p->kc_giver == a.i || room_owed) {
+      const bool trig = room_owed || p->kc_state != KcState::clear || p->ttc < a.P.h_avoid;
       if (trig && p->ttc < best_ttc) {
         best_ttc = p->ttc;
         B = j;
@@ -548,7 +564,6 @@ void rules_overlay(AC& x, AB& a, const Me& m, Vec2 aim, bool obj_turn) {
         holds.push_back(j);
       }
     }
-    if (p->rule17_holder == a.i) r17 = true;
   }
   const bool in_man = a.man != Man::straight;
   const bool rounding = a.tactic == AiTactic::Rounding && a.round_mark >= 0;  // the plan of this decision

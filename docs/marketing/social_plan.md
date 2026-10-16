@@ -128,7 +128,7 @@ Supporting lines: "Real racing. Real rules. Short races." (the tagline) and "Who
 
 | Pillar | Share | What it shows (all exists in the repo today) |
 | --- | --- | --- |
-| **1. Who's wrong?** (rules quiz) | 40% | A freeze frame before contact, "Who's wrong here?", the answer next post with the HUD's rule text and the penalty ring. Rules 10, 11, 12, 13, 15, 16, 18.2, 18.3, 31 and the 44.1-late penalty (`docs/specs/rules.md`, `hud.md` §12.3) |
+| **1. Who's wrong?** (rules quiz) | 40% | A freeze frame before contact, "Who's wrong here?", the answer next post with the HUD's rule text and the penalty panel. Rules 10, 11, 12, 13, 15, 16, 18.2, 18.3, 31 and the 44.1-late penalty (`docs/specs/rules.md`, `hud.md` §12.3) |
 | **2. Close racing** | 25% | AI fleet starts (countdown, line, burn time), crossings, mark roundings with the rounding arrow, penalty 360s in traffic (`ai.md`, `hud.md` §9) |
 | **3. How it sails** | 20% | Puffs drifting down the course from the aerial camera, a shift on the TWD dial, let-fly and the boat stalling, trimmed vs eased sails, kite hoist and drop (`wind.md`, `sail_visuals.md`, `game/tests/previews/sails_*.jpg`) |
 | **4. Built by a sailor** | 15% | Boat generated from its class file (`tools/boatgen/previews`), the HUD mock-up to final, VPP polars, "why 350° counts as a turn", decisions with polls |
@@ -139,15 +139,11 @@ at the same hour.
 
 ## 6. First four weeks
 
-Weeks start Monday 5 October 2026. R = Reels + Shorts + TikTok (one file). Post Monday, Wednesday, Friday, Sunday;
-Reddit on Tuesday or Thursday. Reveal each quiz in the next post and in a pinned comment after 24 h.
-
-| Week | Mon | Wed | Fri | Sun | Reddit / other |
-| --- | --- | --- | --- | --- | --- |
-| **1** (5–11 Oct) | R: **"Every foul gets called."** Port boat crosses too close, rule 10 panel, penalty ring, the 360 (caption 1) | R: **Who's wrong? #1** port/starboard freeze frame (caption 2) | R: **From a class file to a boat**: wm7 lines, deck, textured, sailing (boatgen previews + in-game) (caption 3) | R: Answer #1 plus "what the umpire saw" (HUD rule text) | r/sailboatracing: "I sail and I'm building a racing game with an automatic umpire. It called this rule 10. Right call?" Discord opens (seeded with 10–20 sailing friends) |
-| **2** (12–18 Oct) | R: **Puffs you can see**: aerial camera, dark patches drift down, the boat accelerates (caption 4) | R: **Who's wrong? #2** clear astern (rule 12), from the incident shot | R: **Let-fly**: sheet eased to the stop, the sail flogs, the boat stops dead | R: Answer #2 plus the 45 s penalty deadline | r/Simulated or r/indiegaming: puffs clip as a GIF with a short tech note |
-| **3** (19–25 Oct) | R: **Five AI boats, one line**: start countdown, burn time, gun (caption 5) | R: **Who's wrong? #3** mark-room at the zone (rule 18.2), rounding arrow | R: **"Why 350°, not 360°?"** the penalty turn tracker and wind shifts (build-by-a-sailor) | R: Answer #3 | r/sailing: quiz #3 as a still with the answer in a comment |
-| **4** (26 Oct–1 Nov) | R: **Trimmed vs eased**: two sail shapes side by side, poll "which is faster?" | R: **Who's wrong? #4** tacking in the zone (rule 18.3) | R: **Protest or not?** the protest prompt (protest umpire mode): "Would you protest Nora?" | R: Month recap: best comments answered on screen, what's next | Month-1 review (section 8); r/SteamDeck only once a Deck capture exists |
+The launch slipped from 5 October: the calendar now starts **Monday 19 October 2026** and lives in
+`launch_kit.md` §3, with every caption, the four Reddit posts, the shot list and the launch-night checklist. Same
+content as planned here (four clips a week, Mon/Wed/Fri/Sun, quizzes on Wednesday with the answer on Sunday, one
+Reddit post a week), with the facts corrected: the penalty is one 360 turn completed within 120 s, or DSQ
+(`../specs/rules.md` §9.4), and it shows in the HUD's penalty panel, not as a ring on the water.
 
 About 3 hours a week: 1 h capture (the owner runs the game, section 7), 1.5 h edit (CapCut or DaVinci Resolve, both
 free), 0.5 h captions, replies and the metrics sheet. AI help drafts scripts, captions, alt text and replies; the

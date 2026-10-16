@@ -4,6 +4,7 @@ title: 'Marketing: take the playwindmark handles and set up the profiles'
 status: To Do
 assignee: []
 created_date: '2026-09-29 22:17'
+updated_date: '2026-10-16 20:33'
 labels:
   - marketing
 dependencies: []
@@ -22,3 +23,9 @@ Social plan (docs/marketing/social_plan.md 3, 4). Owner creates the accounts: In
 - [ ] #1 Accounts exist under playwindmark on Instagram, YouTube and TikTok, with bio and Discord link
 - [ ] #2 Handles and any that were taken recorded in docs/NAMING.md
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Launch kit: docs/marketing/launch_kit.md section 1 (step-by-step accounts, bios within limits, profile picture, guard handles, Buffer scheduling).
+<!-- SECTION:NOTES:END -->

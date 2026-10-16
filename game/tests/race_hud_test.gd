@@ -64,6 +64,10 @@ func _hud(sim: SimSource, b := 0) -> Hud:
 	return h
 
 
+static func me_px_of(m: CourseMapView) -> Vector2:
+	return m.icons.get(m.values.boat, Vector2.INF)
+
+
 func _refresh(h: Hud, sim: SimSource, b := 0, ticks := 1) -> void:
 	for i in ticks:
 		sim.step()
@@ -584,13 +588,18 @@ func test_penalties_prompts() -> void:
 		h.text_of("pen_head"))
 	t.ok(h.text_of("pen_deadline") == "Deadline  0:32", "deadline: " + h.text_of("pen_deadline"))
 	t.ok(h.text_of("pen_turn") == "Sail clear and turn: one tack and one gybe", h.text_of("pen_turn"))
-	# turning: the ring fills, tack tick lit
+	# turning: the turn as a number, TACK lit
 	sim.rules_d[0]["turning_for_penalty"] = true
 	sim.rules_d[0]["turn_progress"] = deg_to_rad(-210.0)
 	sim.rules_d[0]["turn_tacks"] = 1
 	_refresh(h, sim)
-	t.ok(h.text_of("pen_turn") == "Turn: 210°" and h.ring_view.turn_deg > 209.9 and h.ring_view.tack_done
-		and not h.ring_view.gybe_done, "turn progress: " + h.text_of("pen_turn"))
+	t.ok(h.text_of("pen_turn") == "Turn: 210°" and h.turn_view.turn_deg > 209.9 and h.turn_view.tack_done
+		and not h.turn_view.gybe_done, "turn progress: " + h.text_of("pen_turn"))
+	var turn_texts := h.turn_view.primitives().filter(func(q: Dictionary) -> bool: return q["k"] == "text") \
+		.map(func(q: Dictionary) -> String: return q["text"])
+	var turn_arcs := h.turn_view.primitives().filter(func(q: Dictionary) -> bool: return q["k"] == "arc")
+	t.ok(turn_texts.has("210°") and turn_texts.has("TACK") and turn_texts.has("GYBE") and turn_arcs.is_empty(),
+		"the panel's turn as plain text, no ring: %s" % str(turn_texts))
 	# the zone is the core's (rules.md §9.3): near the mark the HUD does not guess, the core's flag says not counted
 	sim.put(0, 0, 985, 0.7, 3.0)
 	sim.race_d["race_type"] = RaceText.RACE_MATCH
@@ -1000,7 +1009,7 @@ func test_density_key_and_settings() -> void:
 
 
 func test_name_tags_and_penalty_turn() -> void:
-	t.begin("name tags within 50 m or selected, the penalty turn by camera (hud.md §16.4, §12.1)")
+	t.begin("name tags within 50 m or selected, no penalty ring, the next-mark arrow by camera (hud.md §16.4, §12.1, §7.1)")
 	var sim := RaceStubSim.new(3)
 	sim.race_d["state"] = RaceText.RaceState.RACING
 	sim.race_d["race_time"] = 100.0
@@ -1047,7 +1056,7 @@ func test_name_tags_and_penalty_turn() -> void:
 	h.show_names = false
 	t.ok(h.name_tags().is_empty(), "boat_names off: no tags")
 	h.show_names = true
-	# penalty turn: chase and aerial only
+	# penalty turn: nothing drawn round the boat in any camera
 	var R := RaceText.Rule
 	sim.rules_d[0] = {"pending": [{"rule": R.R10, "other": 1, "count": 1}], "turn_progress": deg_to_rad(120.0),
 		"turn_tacks": 1, "turn_gybes": 0, "deadline_s": 30.0, "received": 1, "turning_for_penalty": true}
@@ -1059,9 +1068,43 @@ func test_name_tags_and_penalty_turn() -> void:
 		return false
 	for kind in ["chase", "aerial", "onboard", "free"]:
 		h.camera_kind = kind
-		var want: bool = kind in ["chase", "aerial"]
-		t.ok(h.penalty_turn_shown() == want and ring.call() == want, "penalty turn in the %s camera: %s" % [kind,
-			"drawn" if want else "not drawn"])
+		h.frame(0.01)
+		t.ok(not ring.call(), "no penalty ring on the water in the %s camera" % kind)
+	sim.rules_d[0] = {"pending": [], "turn_progress": 0.0, "turn_tacks": 0, "turn_gybes": 0, "deadline_s": -1.0,
+		"received": 0, "turning_for_penalty": false}
+	_refresh(h, sim)
+	# the next-mark arrow (hud.md §7.1): not in chase; in the others it points at the mark in the camera's frame
+	var mark_name := h.text_of("next").to_upper()
+	var mw := h.mark_world()
+	t.ok(mark_name != "" and absf(mw.x) < 1.0 and mw.y > 500.0, "a next mark ahead: %s at %s" % [mark_name, mw])
+	var looks := [["ahead", Vector3(0.0, 440.0, 2.0), 0.0], ["to the right", Vector3(-70.0, 370.0, 2.0), PI * 0.5],
+		["behind", Vector3(0.0, 300.0, 2.0), PI]]
+	for kind in ["chase", "onboard", "aerial", "free"]:
+		h.camera_kind = kind
+		for lk in looks:
+			cam.global_transform = Transform3D(Basis.IDENTITY, eye).looking_at(Frames.enu_to_scene(lk[1].x, lk[1].y,
+				lk[1].z), Vector3.UP)
+			h.frame(0.01)
+			var drawn := h.mark_arrow_block.visible and h.mark_arrow_block.primitives().any(
+				func(q: Dictionary) -> bool: return q["k"] == "poly" and (q["col"] as Color).is_equal_approx(HudStyle.MARK))
+			var pointer := h.world.primitives().any(func(q: Dictionary) -> bool: return q["k"] == "text" \
+				and q["text"] == mark_name)
+			if kind == "chase":
+				t.ok(not drawn, "no next-mark arrow in the chase camera (mark %s)" % lk[0])
+				if lk[0] == "behind":
+					t.ok(pointer, "chase: the mark's edge pointer with the mark behind")
+			else:
+				var a := h.mark_arrow_angle()
+				var err := absf(Frames.wrap_pi(a - float(lk[2])))
+				t.ok(drawn and err < deg_to_rad(3.0), "%s: the arrow drawn, the mark %s (%.1f°)" % [kind, lk[0],
+					rad_to_deg(a)])
+				if lk[0] == "behind":
+					t.ok(not pointer, "%s: no edge pointer for the mark, the arrow takes its place" % kind)
+	h.camera_kind = "onboard"
+	h.world_tags = false
+	h.frame(0.01)
+	t.ok(not h.mark_arrow_block.visible, "world_tags off hides the arrow")
+	h.world_tags = true
 	h.free()
 	vp.free()
 
@@ -1495,6 +1538,23 @@ func test_course_map() -> void:
 	# boats: radar colours, ghost grey, viewed boat in mark
 	t.ok(m.drawn.get(1) == HudStyle.TINTS[T.RED] and m.drawn.get(3) == HudStyle.TINTS[T.GREEN],
 		"boats in their radar colours: %s" % str(m.drawn))
+	var rims := m.primitives().filter(func(q: Dictionary) -> bool: return q["k"] == "polyline" \
+		and (q["col"] as Color).is_equal_approx(HudStyle.INK) and Geometry2D.is_point_in_polygon(me_px_of(m), q["pts"]))
+	t.ok(not rims.is_empty(), "the viewed boat has an ink rim")
+	var zones := m.primitives().filter(func(q: Dictionary) -> bool: return q["k"] == "arc" and absf(q["a1"] - q["a0"]) > 6.0)
+	t.ok(zones.size() == 1 and (zones[0]["col"] as Color).is_equal_approx(Color(HudStyle.MARK, 0.5)),
+		"one zone circle, the next step's (%d)" % zones.size())
+	var map_texts := m.primitives().filter(func(q: Dictionary) -> bool: return q["k"] == "text") \
+		.map(func(q: Dictionary) -> String: return q["text"])
+	var crs: Dictionary = h.race.course()
+	var want_names := []
+	for st in crs["steps"]:
+		if int(st["kind"]) == RaceText.Step.MARK:
+			want_names.append(h.race.mark_label(st["marks"][0]))
+		elif int(st["kind"]) == RaceText.Step.GATE:
+			want_names.append(CourseMapView.gate_label(h.race.mark_label(st["marks"][0]), h.race.mark_label(st["marks"][1])))
+	t.ok(not want_names.is_empty() and want_names.all(func(n: String) -> bool: return map_texts.has(n)),
+		"every rounding mark named on the map: %s" % str(want_names))
 	t.ok(m.drawn.get(2) == HudStyle.TINTS[T.GREY], "ghost grey")
 	var me_px: Vector2 = m.icons.get(0, Vector2.INF)
 	var mark_icon := false
@@ -1561,8 +1621,9 @@ func test_course_map() -> void:
 	h.show_names = false
 	h.frame(0.01)
 	m.primitives()
-	t.ok(m.drawn.get(1) == HudStyle.TINTS[T.WHITE] and m.drawn.get(3) == HudStyle.TINTS[T.WHITE] and not m.zone,
-		"Minimal: all white, no zone circles")
+	var quiet := Color(HudStyle.TINTS[T.WHITE], HudStyle.TINTS[T.WHITE].a * CourseMapView.QUIET)
+	t.ok(m.drawn.get(1) == quiet and m.drawn.get(3) == quiet and not m.zone,
+		"Minimal: all white (quiet), no zone circles")
 	t.ok(_same(m.chips, [0]), "boat_names off: the viewed boat's chip only")
 	h.assist = Hud.Assist.STANDARD
 	h.show_names = true

@@ -177,7 +177,7 @@ camera it is not drawn (the mark tag and its edge pointer do that job there).
   in `mark` caps (13 design px, tracked) and under it the distance in the §1 format in `paper` (24 design px, the
   unit at 45 %), on an `ink` 70 % chip just large enough for them so they read over bright water.
 - **Where**: landscape, centred over the helm notes (8 design px above them); portrait (§16.5), centred under the
-  alert lane at the top of the edge pointers' box.
+  alert lane at the top of the edge pointers' box, with the mark tag kept under it.
 - **With it**: outside the chase camera the mark's off-screen edge pointer (§16.4) is not drawn, so one cue points
   at the mark; the mark tag on the mark still shows when the mark is on screen.
 
@@ -242,7 +242,8 @@ cameras keep moving and every sound plays. Offline and online alike.
     hulls; virtual marks not drawn;
   - **mark names**: each rounding mark's label from the course (`courses.md` §8, the mark id without one) beside
     it, 13 design px, 14 design px right of the buoy and centred on it; a gate gets one label, `Gate 4S / 4P` as
-    in §7, right of its right-hand buoy. The next step's in `mark`, the others in `mist`;
+    in §7 (a buoy label that starts with `Gate` loses that word), right of its right-hand buoy. The next step's
+    in `mark`, the others in `mist`;
   - a **rounding arrow** on every rounding mark, as the radar draws it (a 0.6 π arc of 10 design px radius from the
     top of the mark, anticlockwise on the screen to leave it to port, clockwise to starboard, with a dot at its head):
     the next step's in `mark`, the others in `mist`. A mark rounded on more than one lap gets one arrow (its side

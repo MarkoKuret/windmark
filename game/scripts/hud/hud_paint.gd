@@ -667,6 +667,47 @@ static func table_size(widths: Array, rows: int) -> Vector2:
 	return Vector2(w, 96.0 + 38.0 * rows + 16.0)
 
 
+# ---- next-mark arrow (hud.md §7.1: onboard, aerial and free cameras) ----
+
+const MARK_ARROW := Vector2(360, 64)
+
+
+## A solid arrow head in `mark` pointing at the next mark in the camera's frame, the mark's name and distance on a
+## small ink chip beside it; the group centred in the block.
+static func mark_arrow(b: HudCanvas, h: Hud) -> void:
+	if not h.mark_arrow_shown():
+		return
+	var k := b.k
+	var name := h.text_of("next").to_upper()
+	var nfs := int(roundf(LAB_S * k))
+	var nw := HudCanvas.text_width(name, nfs, 700, TRACK) / k
+	var val := h.value_of("mark_dist")
+	var unit := h.unit_of("mark_dist")
+	var dw := HudCanvas.text_width(val, int(roundf(24 * k))) / k + HudCanvas.text_width(unit, int(roundf(13 * k)), 600,
+		0.06) / k + 4.0
+	var tw := maxf(nw, dw)
+	var cell := 44.0
+	var pad := 10.0
+	var x0 := (MARK_ARROW.x - (cell + 8.0 + tw + 2.0 * pad)) * 0.5
+	var cy := MARK_ARROW.y * 0.5
+	# the arrow head, notched at the back, with a thin ink edge so it reads over bright water
+	var a := h.mark_arrow_angle()
+	var c := Vector2(x0 + cell * 0.5, cy) * k
+	var u := Vector2(sin(a), -cos(a))
+	var s := Vector2(-u.y, u.x)
+	var l := 15.0 * k
+	var pts := PackedVector2Array([c + u * l, c - u * l + s * l * 0.75, c - u * l * 0.4, c - u * l - s * l * 0.75])
+	var edge := pts.duplicate()
+	edge.append(pts[0])
+	b._pl(edge, Color(HudStyle.INK, 0.7), 3.0 * k)
+	b._p(pts, HudStyle.MARK)
+	# the chip: name over distance
+	var tx := x0 + cell + 8.0
+	b._rect(Rect2(Vector2(tx, cy - 26.0) * k, Vector2(tw + 2.0 * pad, 52.0) * k), Color(HudStyle.INK, 0.7))
+	b._s(Vector2(tx + pad, cy - 8.0) * k, name, nfs, HudStyle.MARK, 700, TRACK)
+	number_unit(b, tx + pad, cy + 18.0, val, unit, 24)
+
+
 # ---- world: tags and marks on the scene (needs the camera) ----
 
 static func world(b: HudCanvas, h: Hud) -> void:
@@ -682,7 +723,8 @@ static func world(b: HudCanvas, h: Hud) -> void:
 		var d := 6.0 * k
 		b._pl(PackedVector2Array([p + Vector2(0, -d), p + Vector2(d, 0), p + Vector2(0, d), p + Vector2(-d, 0),
 			p + Vector2(0, -d)]), HudStyle.MARK, hw)
-	elif r.active and r.next_step > 0 and h.world_camera() != null and h.text_of("next") != "":
+	elif r.active and r.next_step > 0 and h.world_camera() != null and h.text_of("next") != "" \
+			and h.current_camera_kind() == "chase":  # elsewhere the next-mark arrow points at it (hud.md §7.1)
 		var eta := "--:--" if is_nan(r.eta) else HudFormat.clock(r.eta)
 		edge_pointer(b, h, h.mark_world(), h.text_of("next").to_upper(), "%s · ETA %s" % [
 			HudFormat.distance(r.next_dist), eta], HudStyle.MARK)
@@ -715,9 +757,6 @@ static func world(b: HudCanvas, h: Hud) -> void:
 		bracket(b, br["r"], br["col"])
 	for e in h.selected_off_screen():
 		edge_pointer(b, h, e["w"], e["name"], HudFormat.distance(e["d"]), e["col"])
-	# penalty turn on the water (chase and aerial cameras)
-	if h.penalty_turn_shown():
-		_penalty_turn(b, h)
 
 
 ## A boat icon (hud.md §8): a triangle `l` px long at `q`, bow along `psi_screen` (0 = up, clockwise), with a paper
@@ -917,46 +956,3 @@ static func edge_pointer(b: HudCanvas, h: Hud, w: Vector3, name: String, sub: St
 	var ty := q.y + (-6.0 * k if absf(u.y) < 0.7 else (-40.0 * k if u.y > 0.0 else 30.0 * k))
 	b._s(Vector2(tx, ty), name, int(roundf(LAB_S * k)), col, 700, 0.1, al)
 	b._s(Vector2(tx, ty + 20.0 * k), sub, int(roundf(18 * k)), HudStyle.PAPER, 500, 0.0, al)
-
-
-## a ring of 1.5 L round the boat on the water: faint in full, the turn so far thick in `port`, a head at the bow
-static func _penalty_turn(b: HudCanvas, h: Hud) -> void:
-	var k := b.k
-	var r := h.race
-	var pose := h.own_pose()
-	if pose == null:
-		return
-	var rad := 1.5 * r._loa
-	var o := Vector2(pose.pos_x, pose.pos_y)
-	var dirn := float(r.turn_sign if r.turn_sign != 0 else 1)
-	var f := clampf(r.turn_deg / maxf(r.turn_target, 1.0), 0.0, 1.0)
-	# the circle the bow sails round: centre abeam on the turning side; a point at compass angle a from it
-	var centre := o + rad * Vector2(sin(pose.psi + dirn * PI * 0.5), cos(pose.psi + dirn * PI * 0.5))
-	var a_bow := pose.psi - dirn * PI * 0.5  # the boat's position seen from the centre
-	var ring := PackedVector2Array()
-	var done := PackedVector2Array()
-	var n := 64
-	for i in n + 1:
-		var a := a_bow + TAU * i / n
-		var q: Variant = h.project(Vector3(centre.x + rad * sin(a), centre.y + rad * cos(a), 0.0))
-		if q == null:
-			return
-		ring.append(q)
-	var m := maxi(2, int(n * f) + 1)
-	for i in m:
-		var a := a_bow - dirn * TAU * f * (1.0 - float(i) / (m - 1))
-		var q: Variant = h.project(Vector3(centre.x + rad * sin(a), centre.y + rad * cos(a), 0.0))
-		if q == null:
-			return
-		done.append(q)
-	b._pl(ring, Color(HudStyle.PORT, 0.35), 2.0 * k)
-	if f > 0.0:
-		b._pl(done, HudStyle.PORT, 7.0 * k)
-	var tip: Vector2 = done[done.size() - 1]
-	var prev: Vector2 = done[maxi(done.size() - 2, 0)] if done.size() > 1 else ring[1]
-	var u := (tip - prev).normalized() if tip.distance_to(prev) > 0.1 else Vector2.RIGHT
-	var s := Vector2(-u.y, u.x)
-	b._p(PackedVector2Array([tip + u * 22.0 * k, tip + s * 13.0 * k, tip - s * 13.0 * k]), HudStyle.PORT)
-	var lab: Vector2 = ring[n / 2]
-	b._s(lab + Vector2(0, 30.0 * k), "TURN %d°" % int(HudFormat.round_half_away(r.turn_deg)), int(roundf(LAB * k)),
-		HudStyle.PAPER, 600, TRACK, HORIZONTAL_ALIGNMENT_CENTER)

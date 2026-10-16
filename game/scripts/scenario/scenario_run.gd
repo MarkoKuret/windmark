@@ -23,6 +23,8 @@ var scenario: Scenario
 var error := ""
 ## per boat: set-up heading (rad), speed (m/s), front sail index, position
 var psi: PackedFloat32Array
+## per boat: the headings of her `turns` (rad), in the file's order
+var turn_psi: Array[PackedFloat32Array] = []
 var speed: PackedFloat32Array
 var front: PackedInt32Array
 var setup_pos: PackedVector2Array
@@ -107,6 +109,7 @@ func make_core() -> CoreSimSource:
 func _resolve(cs: CoreSimSource) -> bool:
 	var s := scenario
 	var n := s.boats.size()
+	turn_psi.clear()
 	psi.resize(n)
 	speed.resize(n)
 	front.resize(n)
@@ -134,6 +137,10 @@ func _resolve(cs: CoreSimSource) -> bool:
 				return false
 		front[i] = f
 		psi[i] = Frames.wrap_2pi(twd - b.tack * b.twa)
+		var tp := PackedFloat32Array()
+		for tn in b.turns:
+			tp.append(Frames.wrap_2pi(twd - float(tn["tack"]) * float(tn["twa"])))
+		turn_psi.append(tp)
 		var v := b.speed
 		if v < 0.0:
 			v = cs.polar(i, s.wind_speed, b.tack * b.twa, _front_index(cs, i, f))
@@ -179,19 +186,31 @@ static func _dir(a: float) -> Vector2:
 	return Vector2(sin(a), cos(a))
 
 
-## race.md §14 step 5: the hold boats keep their set-up heading. Called before every step.
+## race.md §14 step 5: the hold boats keep their set-up heading, or that of their last turn begun. Called before
+## every step.
 func pilot(world: WeakRef) -> void:
 	var cs: CoreSimSource = world.get_ref()
 	if cs == null:
 		return
+	var ct := clip_time(cs)
 	for i in scenario.boats.size():
 		var b := scenario.boats[i]
 		if b.helm != "hold":
 			continue
-		var e := Frames.wrap_pi(psi[i] - cs.state(i).psi)
+		var e := Frames.wrap_pi(held_psi(i, ct) - cs.state(i).psi)
 		cs.core.set_helm(i, clampf(HOLD_GAIN * e, -HOLD_LIMIT, HOLD_LIMIT))
 		cs.core.set_let_fly(i, false)
 		cs.core.set_auto_trim(i, b.auto_trim)
+
+
+## The heading boat `i` holds at clip time `ct`: her set-up heading, or that of the last of her turns begun.
+func held_psi(i: int, ct: float) -> float:
+	var h := psi[i]
+	var tn := scenario.boats[i].turns
+	for k in tn.size():
+		if ct >= float(tn[k]["t"]) - 1e-6:
+			h = turn_psi[i][k]
+	return h
 
 
 ## Seconds since clip time 0.

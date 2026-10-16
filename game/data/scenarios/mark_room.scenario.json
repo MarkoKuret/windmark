@@ -1,0 +1,19 @@
+{
+  "schema": "windmark.scenario/1",
+  "id": "mark_room",
+  "name": "Mark-room at the zone",
+  "note": "Quiz #3. Both boats on starboard on the layline to the windward mark (left to port), overlapped when they reach the zone: boat 1 inside (leeward), boat 0 outside (windward), her bow a metre ahead. Boat 0 bears away round the mark early, across boat 1's bow. The outside boat (boat 0) must give the inside boat mark-room (rule 18.2) and takes the penalty.",
+  "class": "wm7",
+  "course": "practice_waters/example_wl",
+  "seed": 1,
+  "wind": { "speed_kn": 12, "from_deg": 0, "shifts": "steady", "puffs": false },
+  "lead": 20,
+  "after": 5,
+  "view": 0,
+  "boats": [
+    { "at": { "bearing_deg": 38.66, "dist": 9.06, "from": "w" }, "tack": "starboard", "twa_deg": 45, "livery": "petrel",
+      "turns": [ { "t": 18.5, "tack": "starboard", "twa_deg": 80 } ] },
+    { "at": { "bearing_deg": 45, "dist": 4.5, "from": "w" }, "tack": "starboard", "twa_deg": 45, "livery": "halcyon",
+      "turns": [ { "t": 19.8, "tack": "starboard", "twa_deg": 80 } ] }
+  ]
+}

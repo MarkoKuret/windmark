@@ -1,0 +1,19 @@
+{
+  "schema": "windmark.scenario/1",
+  "id": "tack_in_zone",
+  "name": "Tacking in the zone",
+  "note": "Quiz #4. Boat 1 is close-hauled on starboard, fetching the windward mark (left to port), on starboard since she entered the zone. Boat 0 comes in on port and tacks onto starboard inside the zone, just ahead of boat 1, and is slow out of the tack; boat 1 has to luff above close-hauled. The boat that tacked in the zone (boat 0) breaks rule 18.3 and takes the penalty, although she is clear ahead after the tack.",
+  "class": "wm7",
+  "course": "practice_waters/example_wl",
+  "seed": 1,
+  "wind": { "speed_kn": 12, "from_deg": 0, "shifts": "steady", "puffs": false },
+  "lead": 20,
+  "after": 5,
+  "view": 0,
+  "boats": [
+    { "at": { "bearing_deg": 66.03, "dist": 18.9, "from": "w" }, "tack": "port", "twa_deg": 42, "livery": "bora",
+      "turns": [ { "t": 13, "tack": "starboard", "twa_deg": 42 } ] },
+    { "at": { "bearing_deg": 71.11, "dist": 4.89, "from": "w" }, "tack": "starboard", "twa_deg": 42, "livery": "mistral",
+      "turns": [ { "t": 18.8, "tack": "starboard", "twa_deg": 28 } ] }
+  ]
+}

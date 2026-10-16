@@ -300,16 +300,16 @@ Semantics and reference shapes:
   10 kn: 8.0 kn at 80°, 8.5 kn at 90°, 7.7 kn at 125°, 5.5 kn at 150°, 4.0 kn at 180°. The no-go zone below the
   first sailing angle holds the sternway drift (`boat.md` §7.4), with a step (two equal breakpoints) at the edge.
   Downwind and reaching the shipped classes follow ORC velocity predictions of their nearest real boats within
-  about 5 % from 12 to 20 kn (wm7: Melges 24 and J/70; wm12: Farr 40; best sail in each cell, run VMG and 135 to
-  150°; `tools/vpp/README.md` "Calibration against ORC"). Under 12 kn they sit 5 to 10 % below (the open
-  light-air deficit).
+  about 5 % from 16 to 20 kn, and wm7 from 12 kn (wm7: Melges 24 and J/70; wm12: Farr 40; best sail in each cell,
+  run VMG and 135 to 150°; `tools/vpp/README.md` "Calibration against ORC"). Lighter they sit 5 to 10 % below
+  (the open light-air deficit).
 - **Which config is fastest** (the crossover, best polar speed per TWA): the jib or genoa upwind and close
   reaching, the spinnaker from a broad reach, and the code zero, where a class has one, on tight reaches between
   them. The code zero is the ORC headsail set flying of HHW/HLP 62.5 % (a flat reacher; ORC VPP Documentation
   2023 §5.2.5 and Table 5.9), with the main in its slot behind it and almost no depowering (reef no lower than
   0.91, the ORC value; the code zero itself is never reefed). wm12 flies it from about 45 to 110° TWA in 6 kn,
-  60 to 110° in 10 kn, and only on a broad reach from about 100 to 120° from 16 kn, where the asymmetric kite
-  broaches and the jib is slower; it never wins running. Real crossovers: North Sails, code zero 55 to 90° AWA;
+  60 to 110° in 10 kn, 82 to 114° in 12 kn, and only from about 100 to 120° from 16 kn, where the asymmetric
+  kite is overpowered and the jib is slower; it never wins running. Real crossovers: North Sails, code zero 55 to 90° AWA;
   UK Sailmakers, 50 to 125° TWA; ORC speed guides (Tripp 40), flying headsail best from 60 to 90° TWA in every
   wind.
 - **heel**: reference S main + genoa at 10 kn: 14° at 39°, peaking about 18° at 40°, 0 at 180°; spinnaker at

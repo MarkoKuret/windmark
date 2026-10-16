@@ -313,9 +313,12 @@ trimaran lifting its main hull. Appendage buoyancy sits at its centroid and roll
   and lengthened by its own bow and stern waves as it speeds up (the ORC VPP models the second with a
   speed-dependent dynamic length, 2023 documentation §6.3.1), so it meets its wave hump later and more gently. A
   hull that can plane takes the regression at the effective Froude number
-  `Fn_e = 0.35 + 0.5 (Fn − 0.35)` beyond Fn 0.35 (`hydro.HUMP_FN0`, `HUMP_STRETCH`; the curve as is below), and
-  holds it where it levels off (`Fn_e` 0.6 to 0.75, a real Fn of 0.85 to 1.15). The two constants were fitted to
-  ORC velocity predictions of real boats (below, "Calibration against ORC").
+  `Fn_e = 0.38 + 0.4 (Fn − 0.38)` beyond Fn 0.38 (`hydro.HUMP_FN0`, `HUMP_STRETCH`; the curve as is below), and
+  holds it where it levels off (`Fn_e` 0.6 to 0.75, a real Fn of 0.93 to 1.3). The stretch was fitted to ORC
+  velocity predictions of real boats (below, "Calibration against ORC"); its start was set where close-hauled
+  speeds end (wm7 beats at Fn 0.34 to 0.37), so the upwind polars, which the owner tuned, keep the towed curve
+  (an earlier start, Fn 0.35, widened wm7's best beating angle in 16 to 20 kn from 40 to 45° with a faster,
+  lower beat).
   - How much of the stretch a hull gets, its planing ability, is gated on its weight for its length, the
     displacement-length ratio `DLR = (displacement / 1016 kg) / (LWL / 30.48 m)³` on `hull.displacement`
     (without crew, the usual convention): 1 up to DLR 100, 0 from DLR 200, smooth in between (wm7: 82, ability 1;
@@ -424,16 +427,18 @@ J/122 certificates as checks (`analysis/downwind_2026-10.md` has the references,
 
 | | 12 kn | 16 kn | 20 kn |
 | --- | --- | --- | --- |
-| wm7 run VMG (Melges 24 / J/70) | 6.14 (5.97 / 5.52) | 7.52 (7.57 / 6.67) | 9.81 (10.64 / 9.13) |
-| wm7 150° | 7.09 (6.90 / 6.37) | 8.59 (8.74 / 7.70) | 10.58 (12.29 / 10.55) |
-| wm7 135° | 8.09 (7.89 / 7.14) | 10.25 (10.46 / 9.03) | 13.32 (13.33 / 12.62) |
-| wm12 run VMG (Farr 40) | 6.83 (7.20) | 8.38 (8.38) | 10.01 (10.21) |
-| wm12 150° | 7.89 (8.19) | 9.68 (9.64) | 11.28 (11.79) |
-| wm12 135° | 9.20 (9.00) | 11.04 (10.88) | 13.35 (12.42) |
+| wm7 run VMG (Melges 24 / J/70) | 6.02 (5.97 / 5.52) | 7.60 (7.57 / 6.67) | 9.84 (10.64 / 9.13) |
+| wm7 150° | 6.95 (6.90 / 6.37) | 8.62 (8.74 / 7.70) | 10.82 (12.29 / 10.55) |
+| wm7 135° | 8.05 (7.89 / 7.14) | 10.45 (10.46 / 9.03) | 13.32 (13.33 / 12.62) |
+| wm12 run VMG (Farr 40) | 6.65 (7.20) | 8.26 (8.38) | 10.11 (10.21) |
+| wm12 150° | 7.68 (8.19) | 9.53 (9.64) | 11.36 (11.79) |
+| wm12 135° | 8.98 (9.00) | 11.10 (10.88) | 13.47 (12.42) |
 
-wm7 lies between its two references in every cell; wm12 is within 5 % of the Farr 40 except at 135° in 20 kn (+8 %,
-where its 20 % larger righting moment carries the asymmetric kite harder than the Farr 40's symmetric one).
-Under 12 kn both classes sit 5 to 10 % below ORC (17 % on wm12's beat): a general deficit at low speed, open.
+wm7 lies between its two references, within 1 % of the Melges 24, in every cell but 150° and run VMG in 20 kn,
+where it is at the J/70. wm12 is within 5 % of the Farr 40 from 16 kn except at 135° in 20 kn (+8 %, where its
+20 % larger righting moment carries the asymmetric kite harder than the Farr 40's symmetric one); at 12 kn its run
+VMG and 150° are 6 to 8 % slow, as in lighter air. Under 12 kn both classes sit 5 to 10 % below ORC (12 to 19 %
+on the beat): a general deficit at low speed, open.
 
 ## Sources
 

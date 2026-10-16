@@ -786,8 +786,8 @@ fair, hazy, overcast). The venue's look file (`data/venues/<venue>.look.json`, `
 environment after the tone mapping), the contact shading (SSAO, tier H) and the depth of field
 of the long lens and mark clip cameras. There is no vignette on any camera (owner decision 2026-10-11).
 Previews of the grade and late light: `tests/look_lut_dump.gd`, `tests/water_preview_dump.gd` (with
-`-- --sky=late` for the late light) and `tests/cine_preview.py --publish` (`tests/previews/cine_*.jpg`; the
-commands are in its header). The daylight previews: `python3 tests/daylight_preview.py --dump --publish` (the
+`-- --sky=late` for the late light) and `tests/cine_preview.py` (writes `generated/cine_preview/`; the commands are
+in its header). The daylight previews: `python3 tests/daylight_preview.py --dump --publish` (the
 chase shot at five hours and four conditions, grade off against the default: `tests/previews/daylight_*.jpg`).
 `tests/look_test.gd` (in `run_ui_tests.sh`) checks the sun position, the hour keys and conditions, the look files,
 the grade and the SSAO per tier. The anti-aliasing is SMAA 1x on every tier (`water_render.md` §7): the project default, kept with

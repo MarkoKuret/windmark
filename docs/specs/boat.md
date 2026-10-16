@@ -601,7 +601,7 @@ start needs speed built before the gun.
    more distance than the helm-0.5 tack. Every class tacks at 6, 10, 16 and 22 kn with both helms.
 4. **In irons**: placed head to wind at 0 speed, helm 0: sternway develops and the bow stays within 15° of the wind
    for 30 s; with helm reversed to back the bow, the boat reaches 50 % polar speed within 20 s (with a margin: the
-   shipped classes within 17 s).
+   shipped classes within 17.5 s; wm12's polar at 80° is about 8.2 kn in 10 kn since the 2026-10 ORC fit).
 5. **Determinism**: two runs with the same inputs give identical checksums every tick; a run split into two
    halves through a snapshot save/load gives the same checksum as an unbroken run, also with the boat drifting
    sideways (§6.4) at the split.

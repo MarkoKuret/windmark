@@ -347,10 +347,14 @@ the line's middle and start as in fleet with `u* = 0.5`. Dial-ups and hooks are 
     the long way round (through a gybe) only when the boat is nearly stopped: a loop near a mark and other boats is
     worse than a late tack.
   - A tack in progress keeps its target; pending tacks of the strategy are dropped when the rounding plan starts.
-- If entitled to mark-room: keep `c_lvl` and ignore boats outside (the engine protects the corridor). If giving
-  room: add the entitled boats' widths to ρ (above) and, if still overlapped outside when 1 L from the zone, slow
-  (let fly partially) so they can go inside. If clear astern at the zone with no room: aim at the stern of the boat
-  ahead + `1·L` until she has rounded.
+- If entitled to mark-room: keep `c_lvl` and ignore boats outside (the engine protects the corridor): the keeping
+  clear of §7.2 is not run towards the boat that owes her the room, even where she is the windward or clear-astern
+  boat (within her mark-room she is exonerated, `rules.md` §4 and §6.1), only the emergency evasion of §7.4 when that
+  boat is in `Breach` and `ttc < 1.5 s`. Steering away from the giver would only push her onto the mark. If giving
+  room: add the entitled boats' widths to ρ (above), run the evaluation of §7.2 towards an entitled boat while the
+  engine's room state towards her is `Warning` or `Breach` (the giver's course runs into her mark-room), and, if still
+  overlapped outside when 1 L from the zone, slow (let fly partially) so they can go inside. If clear astern at the
+  zone with no room: aim at the stern of the boat ahead + `1·L` until she has rounded.
 
 ### 6.2 Sails around marks
 
@@ -454,7 +458,9 @@ right of way; it trusts the engine, which is the same verdict that will penalise
 
 ### 7.2 Keeping clear (the AI must keep clear of B)
 
-Trigger: state `Warning` or `Breach`, or `ttc < H_avoid` (§13).
+Trigger: state `Warning` or `Breach`, or `ttc < H_avoid` (§13). The same evaluation runs for a boat that owes B
+mark-room while the pair's room state is `Warning` or `Breach` (§6.1), and not towards a boat that owes the AI
+mark-room (§6.1).
 
 Candidate evaluation (runs at 10 Hz while triggered, and 1.5 s after the trigger ends):
 
@@ -481,16 +487,23 @@ The `wrong_side` term keeps the avoidance from trading a keep-clear penalty for 
 a starboard boat by at the windward mark must not luff onto the wrong side of the mark, from where the rounding can
 only turn her into it. It is a cost, not a ban, so a candidate that is the only way clear of a boat is still taken.
 The usual manoeuvres come out of this: ducking a starboard boat (bear away behind her stern), tacking to leeward
-and ahead ("lee-bow") when that clears, slowing when crossing is impossible. The brake (the `slow` candidate, and
-letting fly when no candidate clears) is dropped for a boat that has started and has been nearly stopped (under
-0.3 m/s) for more than 5 s: she keeps her sails drawing so that she can gather way and steer clear.
+and ahead ("lee-bow") when that clears, slowing when crossing is impossible. When no candidate clears, she lets fly
+and turns 30° away from B, unless that turn (predicted as the `slow` candidate) touches a course object: then she
+holds her heading and brakes, since a turn onto a mark or a committee boat leaves her pinned on it (§6.5) with a touch
+to clear as well. The brake (the `slow` candidate, and letting fly when no candidate clears) is dropped for a boat
+that has started and has been nearly stopped (under 0.3 m/s) for more than 5 s: she keeps her sails drawing so that
+she can gather way and steer clear.
 
 ### 7.3 Before gaining right of way (rules 13, 15, 16)
 
 Before a tack, gybe, luff of more than 10°, or an overtaking move that would make the AI the right-of-way boat
 over a boat B within `5·L`, it predicts its pose 3 s after the manoeuvre and evaluates the rules engine's
 `Escape(B, me)` (`rules.md` §3.6) from that pose. If B would have no escape, the manoeuvre is not made (the AI waits
-or chooses another). It never tacks within `3·L` directly into the path of a boat on the other tack (rule 13).
+or chooses another). It never tacks within `3·L` directly into the path of another boat (rule 13): a tack whose
+predicted hull comes within `L` of hers (over the 6 s of §7.2) and closer than the two are now by more than `0.1·L`. A
+tack that only keeps the present distance, such as the boat astern of two sailing a length apart on the same tack
+turning away behind the other, is not into her path: counting the gap the two already have would bar both from tacking
+until they drift apart, and at a layline both would sail on past it.
 Nor does it tack or gybe onto a heading that, sailed on from where the manoeuvre ends, runs at a course object within
 the object check's reach and clearance (§6.4; the buoys of the boat's next step excepted): the object check would
 then have to turn her across the object's bow or stern straight after the manoeuvre, too close to clear it.

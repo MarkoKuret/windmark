@@ -359,7 +359,7 @@ IronsResult irons(const wm::PerfData& p) {
 }  // namespace
 
 // §10.4: head to wind at rest with the helm centred the boat gathers sternway and the bow stays within 15 deg of
-// the wind for 30 s; backing the bow off with reversed helm gets it sailing at half its polar speed within 20 s, 17 s
+// the wind for 30 s; backing the bow off with reversed helm gets it sailing at half its polar speed within 20 s, 17.5 s
 // on the shipped classes (the fall_off table swings the bow away while the boat has no way on, accel_rest gets it
 // moving out of the sternway).
 TEST_CASE("boat: in irons and recovery") {
@@ -372,7 +372,7 @@ TEST_CASE("boat: in irons and recovery") {
     CHECK(r.v_after < -0.05f);
     CHECK(r.worst_twa < deg(15.0f));
     CHECK(r.t50 > 0.0f);
-    CHECK(r.t50 < 17.0f);  // the 20 s target with a 3 s margin
+    CHECK(r.t50 < 17.5f);  // the 20 s target with a 2.5 s margin (wm12: 17.1 s with its faster 2026-10 reach)
   }
 }
 

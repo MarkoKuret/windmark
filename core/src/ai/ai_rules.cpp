@@ -192,8 +192,13 @@ bool tack_safe(AC& x, AB& a, const Me& m, float psi_new, bool gybe) {
     predict_ctrv(motion_of(x, j), kSamples, tj);
     const float tj_twa = wrap_pi(water_wind_clean(x.w.env(j)).from - x.w.boat(j).state().psi);
     const float g = tracks_gap(hull(x, j), x.r_hull[j], tj, oh, ro, own, 0, kSamples, 2.0f * m.L);
-    // Rule 13: never tack within 3 L into the path of a boat on the tack we go to... or of one we must keep clear of.
-    if (v_dist(x.race.boat(j).c, m.c) < 3.0f * m.L + x.r_hull[j] && g < m.L) return false;
+    // Rule 13: never tack within 3 L into her path: the tack brings the hulls within a length and closer than they
+    // are now. A tack that keeps the present gap (the boat astern turning away behind her) is not into her path;
+    // counting the gap they already have locks two boats a length apart out of tacking, past the layline.
+    if (v_dist(x.race.boat(j).c, m.c) < 3.0f * m.L + x.r_hull[j] && g < m.L &&
+        g < tracks_gap(hull(x, j), x.r_hull[j], tj, oh, ro, own, 0, 0, 2.0f * m.L) - 0.1f * m.L) {
+      return false;
+    }
     if (g < margin(x)) return false;
     // Rules 13/15: from the poses 3 s on, the other boat must still be able to keep clear of us.
     const bool we_gain = sgn(tj_twa) != new_tack || gybe;
@@ -525,8 +530,24 @@ void rules_overlay(AC& x, AB& a, const Me& m, Vec2 aim, bool obj_turn) {
     const std::int32_t j = p->i == a.i ? p->j : p->i;
     if (!x.race.racing(static_cast<std::size_t>(j))) continue;
     if (p->gap > 10.0f * m.L) continue;
-    if (p->kc_giver == a.i) {
-      const bool trig = p->kc_state != KcState::clear || p->ttc < a.P.h_avoid;
+    if (p->rule17_holder == a.i) r17 = true;
+    // §6.1: entitled to mark-room from her, the rounding keeps its own circle and does not keep clear of her (within
+    // her mark-room she is exonerated; steering away from the giver only pushes her onto the mark). Rule 14 stays:
+    // an emergency when the giver is in breach and a contact is near.
+    if (p->room_entitled == a.i && p->room_giver == j && p->room_mark >= 0) {
+      if ((p->room_state == KcState::breach || p->kc_state == KcState::breach) && p->ttc < 1.5f) {
+        emergency = true;
+        if (p->ttc < best_ttc) {
+          best_ttc = p->ttc;
+          B = j;
+        }
+      }
+      continue;
+    }
+    // Keeping clear (§7.2), or giving mark-room the engine says is not being given (§6.1): the same evaluation.
+    const bool room_owed = p->room_giver == a.i && p->room_entitled == j && p->room_state != KcState::clear;
+    if (p->kc_giver == a.i || room_owed) {
+      const bool trig = room_owed || p->kc_state != KcState::clear || p->ttc < a.P.h_avoid;
       if (trig && p->ttc < best_ttc) {
         best_ttc = p->ttc;
         B = j;
@@ -543,7 +564,6 @@ void rules_overlay(AC& x, AB& a, const Me& m, Vec2 aim, bool obj_turn) {
         holds.push_back(j);
       }
     }
-    if (p->rule17_holder == a.i) r17 = true;
   }
   const bool in_man = a.man != Man::straight;
   const bool rounding = a.tactic == AiTactic::Rounding && a.round_mark >= 0;  // the plan of this decision
@@ -681,6 +701,14 @@ void rules_overlay(AC& x, AB& a, const Me& m, Vec2 aim, bool obj_turn) {
         a.let_fly = !(m.rb.started && a.slow_t > 5.0f);
         const float eb = wrap_pi(brg_B - m.s.psi);
         a.psi_target = wrap_2pi(m.s.psi - sgn(eb) * 30.0f * DEG);
+        // Not into a course object (§6.4): a turn away that runs her onto a mark or a committee boat leaves her
+        // pinned on it; then she holds her heading and brakes.
+        static thread_local Track fb;
+        own_track(m, a.psi_target, 0, true, false, fb);
+        if (!track_clear_of_objects(x, a, fb)) {
+          own_track(m, m.s.psi, 0, true, false, fb);
+          if (track_clear_of_objects(x, a, fb)) a.psi_target = m.s.psi;
+        }
         a.forced = true;
         a.tactic = emergency ? AiTactic::Emergency : AiTactic::KeepClear;
         return;

@@ -6,8 +6,8 @@ from windmark_vpp.boatclass import SHEET_LIMITS
 from windmark_vpp.constants import DEG
 
 
-@pytest.mark.parametrize("t,st", [("main", "main"), ("jib", "jib"), ("spinnaker", "spinnaker_sym"),
-                                  ("gennaker", "spinnaker_asym")])
+@pytest.mark.parametrize("t,st", [("main", "main"), ("jib", "jib"), ("code0", "code_zero"),
+                                  ("spinnaker", "spinnaker_sym"), ("gennaker", "spinnaker_asym")])
 def test_envelope_follows_orc(t, st):
     """Best-trim drive and side coefficients stay close to the ORC per-sail envelopes over the sailing range."""
     lo, hi = SHEET_LIMITS[st]

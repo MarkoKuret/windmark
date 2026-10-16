@@ -82,7 +82,13 @@ def test_thin_ship_agrees_with_dsyhs_in_magnitude(raw):
     assert np.all(r / a > 0.4) and np.all(r / a < 2.5)
 
 
-def test_planing_unloads_light_hulls_only():
-    w = hydro.planing_weight(np.array([5.0]), 8.5, 1150 * G)[0]       # sportsboat at 10 kn
-    h = hydro.planing_weight(np.array([6.0]), 50.0, 25500 * G)[0]     # 24 m keelboat at 12 kn
-    assert w > 0.5 and h < 0.1
+def test_planing_stretches_the_hump(raw):
+    """A hull that can plane meets the same towed curve below HUMP_FN0 and a lower one through its hump."""
+    b, m = _model(raw)
+    fn, towed = hydro.residuary_curve(m.dsyhs_params, 1.0)
+    for f in (0.2, 0.3):
+        assert np.interp(f, m.rr_fn, m.rr_coef) == pytest.approx(np.interp(f, fn, towed), rel=0.05, abs=1e-4)
+    for f in (0.5, 0.6):
+        assert np.interp(f, m.rr_fn, m.rr_coef) < 0.9 * np.interp(f, fn, towed)
+
+

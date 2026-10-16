@@ -59,7 +59,7 @@ Figures from `../BUSINESS.md` unless linked here.
 | AC Sailing | Official America's Cup game, free; peak 120 players, now 1–4 | Brand and prize money did not keep a lobby: AI fleets matter, and so does a reason to come back |
 | Sailaway III, eSail | Solo sims for cruising and training; eSail ~800 reviews, 92% | Realism audience; eSail's YouTube reveal had 205K views ([YouTube](https://youtu.be/6uVq134G8hM)) |
 | Sailwind | Solo trade and navigation sim, 50k–100k owners | Proof that a sailing game can get creator coverage: Splattercat's video 302K views ([YouTube](https://youtu.be/qYsQH4dRiXU)), Citizen Bob 37K views two months ago ([YouTube](https://youtu.be/XizT1s-Wnuc)) |
-| Virtual Skipper 5 (Nadeo, 2007) | The classic PC racing game; clubs still race weekly (VSK-USA, Hellenic Dream Team, VSK-Fleet ladder, VSKsailing hosting) ([VSK wiki](https://vsk.fandom.com/wiki/Virtual_Regatta_Network_(Virtual_Skipper_5_/_VSK5_Online))) | Rules-literate racers with nothing new to play: the Founders' Fleet audience. Recent activity levels were not verified |
+| A classic PC sailing racing game (2007) | Its online clubs still race weekly | Rules-literate racers with nothing new to play: the Founders' Fleet audience. Recent activity levels were not verified |
 | Laylines (Omniteca Lab, March 2027) | Syndicate management plus real-time match race duels "under real racing rules" ([Steam](https://store.steampowered.com/app/5053220/Laylines/)) | Will also say "real racing rules". Our answer is fleet racing, short races, AI fleets and a visible penalty engine |
 | eSailGP | SailGP's own esports game ([SailGP](https://sailgp.com/general/esailgp/)); details could not be read: **not verified** | Big-brand foiling content saturates "foiling"; we stay on the rules angle |
 
@@ -202,7 +202,7 @@ No contact yet (plan only). From week 5, once four quizzes exist:
 | [Captain Boomies](https://www.youtube.com/@CaptainBoomies) | 8.7K subs; "What is a sailboat race? for non-sailors" | Explains racing to non-sailors: our Steam audience |
 | [Sailing Doodles](https://www.youtube.com/@Sailingdoodles), [Slim & Soph](https://www.youtube.com/@SlimandSophSailingNakama) | 69.9K, 66.9K subs | Sailing lifestyle with racing episodes; a fun "sailors play the game" video at demo time |
 | [Splattercat](https://www.youtube.com/@Splattercatgaming), [Citizen Bob](https://www.youtube.com/@Citizen-Bob), [Sim UK Reviews](https://www.youtube.com/@SimUKReviews), [SimGamerTV](https://www.youtube.com/@SimGamerTV) | 990K, 18.7K, 39.1K, 3.5K subs; all covered sailing sims | Keys at playtest or demo, not before |
-| Virtual Skipper clubs (VSK-USA, Hellenic Dream Team, VSK-Fleet) | not verified | Founders' Fleet invites when online races work (`../MARKETING.md`) |
+| Classic sailing game clubs | not verified | Founders' Fleet invites when online races work (`../MARKETING.md`) |
 
 Clubs: from week 5, offer club newsletters and Facebook groups a free monthly "Who's wrong?" still with the answer
 (useful content for them, a link for us). Nearby clubs first (Slovenia, Croatia, Italy).

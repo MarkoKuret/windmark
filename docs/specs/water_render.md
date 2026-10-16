@@ -368,7 +368,7 @@ tap of the foam texture where `F > 0`; nothing below 8 kn or beyond 2.5 km. The 
 metres wide, narrower than the vertex spacing at the chase camera's distance (1.5 m at 25 m, 6 m at 100 m on tier
 M), so they are evaluated per pixel; what the vertex stage already has (exposure, venue factor) comes as varyings.
 Measured with `tests/water_cost.py` (the development M1, OpenGL proxy, 1280 × 800): the helicopter view of the
-25 kn open sea, where every water pixel runs the loop, +0.15 ms on tier L, +0.22 ms on M, +0.25 ms on H (round 4: the streak tap on every pixel in a breeze, the foam lanes; round 3 +0.16, +0.18, +0.13 ms)
+25 kn open sea, where every water pixel runs the loop, +0.16 to 0.18 ms on tier L, +0.21 to 0.24 ms on M, +0.22 to 0.24 ms on H (round 5, the streak tap near caps only again; runs vary by ±0.05 ms)
 (the first version +0.10, +0.14, +0.10 ms on the same view; the runs vary by ±0.05 ms); the game's chase view at
 25 kn +0.00 to 0.01 ms. On the Steam Deck (about 0.6 of the M1's GPU) about
 +0.25 ms, inside the 2.5 ms of §7.
@@ -382,19 +382,16 @@ ALBEDO  *= 1 − 0.22·ahead                                              // the
 bubbles  = near · behind · g                                           // under and behind it
 ALBEDO   = mix(ALBEDO, (0.05, 0.20, 0.23), 0.35·bubbles)               // the bubble cloud
 ```
-**Residual foam and foam streaks**: foam that a cap leaves stays where it fell and drifts with the surface (about 3 %
-of the wind speed), so the trail's streaks no longer ride the crest: their frame `caps_str` drifts along the wind
-at `0.03·U`. Between the caps, the same streak tap (its R channel the streaks, its G channel their breakup) draws
-faint, wind-aligned foam lanes whose density rises with the wind (Beaufort 7, 28 to 33 kn: "foam blown in streaks
-along the direction of the wind"), nothing at 12 kn; and faint patches where a cap has stopped breaking:
+**Residual foam**: foam that a cap leaves stays where it fell and drifts with the surface (about 3 % of the wind
+speed), so the trail's streaks no longer ride the crest: their frame `caps_str` drifts along the wind at `0.03·U`.
+Behind a cap that has stopped breaking, faint patches stay:
 ```
-dens     = smoothstep(15 kn, 32 kn, U)
-lanes    = 0.22 · dens · smoothstep(0.62, 0.82, st.r) · smoothstep(0.35, 0.7, st.g) · fade
-residual = 0.15 · smoothstep(12 kn, 20 kn, U) · smoothstep(−1.5, −0.8, xj) · (1 − smoothstep(−0.8, 0, xj)) · behind · smoothstep(0.3, 0.75, st.r) · g
-a        = max(a, max(lanes, residual))
+residual = 0.15 · smoothstep(12 kn, 20 kn, U) · smoothstep(−1.5, −0.8, xj) · (1 − smoothstep(−0.8, 0, xj)) · behind · smoothstep(0.3, 0.75, st) · g
+a        = max(a, residual)
 ```
-The streak tap is now taken wherever the caps are evaluated (gate and fade, within 2.5 km), not only near a cap:
-one tap more on most water pixels in a breeze.
+(Round 4 also drew wind-aligned foam lanes between the caps from the same streak tap; in the game they read as
+hundreds of short white dashes, like rain over the sea, and were dropped on 2026-10-16. The streak tap is again
+taken only near a cap, `x > −1.5`.)
 
 The opacity grades from the core (up to 0.95) to the trail (at most 0.5, streaky lace); the trail reaches a little
 below the threshold (`x > −1`), the residual foam of a cap that has stopped breaking, and fades with it. The cover
@@ -697,7 +694,7 @@ less than 3° high.
 **Mesh**: a 32 × 16 grid over the rectangle that holds the polygons and the footprint (one side along the shadow,
 plus 0.5 m all round), draped on the drawn sea like the wake ribbons (`wm_drape`, lift 0.03 m, the same pull toward
 the camera so the sea's facets never cover it), unshaded, multiplying the colour behind it, no depth write, depth
-test on (the hull, deck and sails in front hide it), no shadows, no fog, drawn before the wakes, bow waves and mist
+test on (the hull, deck and sails in front hide it), no shadows, no fog, drawn before the wakes and mist
 (render priority −1), which take no shadows on tier H either. The grid moves by its transform only. All boats share
 one material: each boat's polygons are one row of a small RGBA32F texture (160 texels: origin and fade, sun and
 polygon count, footprint count, then the polygons, their bounding circles, the edge lines and the footprint's),
@@ -731,7 +728,7 @@ overcast 0.35; `Daylight.CONDITIONS`), set by `BoatShadows` when the sky's light
 the GPU draws one 32 × 16 grid per boat with a loop over at most 96 edges, skipping polygons by their bounding
 circle, on the pixels of its rectangle.
 
-## 5. Bow waves, wakes and spray
+## 5. Wakes and bow spray
 
 Per boat, a **wake ribbon**: a strip of the water laid down behind the bow and left where it was laid, which opens
 into the V of the wake and fades. It is visual only and runs per rendered frame on the render clock.
@@ -776,31 +773,19 @@ stick where they reach the surface and become the ribbon's outer vertices (pushe
 from the row, flying or landed, never inside the edge, so the strip does not fold; that reach is smoothed over the
 four rows either side with triangular weights, so the outer edge has no steps from row to row): the sheet of spray
 thrown off the bow lands and spreads into the wake. The particles themselves are **not drawn** (small sprites read
-as dots); what the eye sees is the bow wave and the mist below.
+as dots); what the eye sees is the mist and the bursts below.
 
-**Bow wave** (every tier, every boat with a wake): on each side a sheet of water peels off the stem, rises along
-the bow and breaks into a foam crest that runs aft and outward into the ribbon's edge. It moves with the boat
-(rebuilt every frame from the pose, in world space, draped on the drawn sea like the ribbon) and is drawn with the
-wake's foam, transparent, no depth write, no shadows.
+**Bow wave** (not drawn): a sheet of water peeling off the stem into a foam crest was drawn on every tier until
+2026-10-16; the owner found it read as a knife edge and the boats look better without it. Its crest still places the
+bow spray and the mist (below), from the bow's drivers:
 ```
 v, ratio  = the bow's speed and speed ratio of the last emission (above), smoothed over 0.3 s
-k         = smoothstep(0.25, 0.6, ratio)                       // nothing at low speed
 plunge    = the bow sinking into the sea: max(0, -d(bow height above the sea)/dt), m/s, smoothed over 0.3 s
 H         = min(0.08·lwl, 0.55·v²/(2g)) · (1 + 0.6·min(plunge, 1.5))          // crest height, m
 L         = lwl · (0.18 + 0.22·min(ratio, 1.3)) · (1 + 0.3·min(plunge, 1.5))  // length along the hull
-side s    = +1 lee, −1 windward: heel factor h_s = 1 + 0.6·s·|sin(heel)|
-grid      = 14 stations from the stem aft (σ = 0..1) × 7 across (τ = 0 at the hull .. 1 at the sea)
-station   x = bow_x − σ·L ; hull half breadth y_h = bwl/2 · min(1, σ·L / (0.5·lwl))^0.7 · (1 + 0.5·s·|sin(heel)|)
-across    y = y_h − 0.02 + τ · (0.12 + 0.5·σ·L) · (1 + 0.3·ratio)      // starts just inside the hull
-lift      at the hull H·h_s·(1 − σ)^1.6, crest (τ_c = 0.45) 0.75·H·h_s·(1 − σ)^0.7, 0 at τ = 1 (smoothstep between)
-alpha     k · smoothstep(0, 0.08, σ) · (1 − smoothstep(0.7, 1, σ))
 ```
-The drape adds the lift to the sea height and keeps the ribbon's clearance pull, reduced by the lift above 0.1 m
-(so the high part is not pulled). Shading (`wm_bow_alpha`): a translucent, lighter water sheet between the hull and
-the crest (alpha 0.18), a broken foam band on the crest (τ 0.28 to 0.78) and foam spilling on its outer face, the
-foam texture flowing aft at the boat's speed; foam is the wake's colour, roughness 0.6. The foam is speckled along
-its length (the blob channel of the foam noise at 0.6 m, not the streak channel, which drew the sheet as rigid
-rays) and ends raggedly, each part at its own length (`σ` from 0.35..0.75 to 0.6..1.0 with the coarse noise).
+The crest runs aft from the stem along the hull (`σ = 0..1` of `L`), a crest width `(0.12 + 0.5·σ·L)·(1 + 0.3·ratio)`
+off the hull at `τ = 0.45` of it, `0.75·H` above the sea.
 
 **Mist** (quality H, and M for the own boat): soft spray clouds, never dots. They appear only above
 `ratio = 0.55`, when the bow plunges, and in bursts when the bow meets a wave:
@@ -913,7 +898,6 @@ colour-blind palettes).
 | puffs and lulls (§4.3) | yes (gameplay information) | yes | yes |
 | whitecaps (§4.4) | the 4 heaviest foam components | the 6 heaviest | the 6 heaviest |
 | wake ribbons | own boat | own + 6 nearest | all within 400 m |
-| bow wave | all boats with a wake | all boats with a wake | all boats with a wake |
 | mist (and spray reach) | no | own boat | yes |
 | wake normal buffer | no | yes | yes |
 | screen-space reflections | no | no | yes |

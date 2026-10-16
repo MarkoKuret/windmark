@@ -85,7 +85,7 @@ func _ready() -> void:
 		sky = get_node_or_null(sky_path)
 	_material = ShaderMaterial.new()
 	_material.shader = SHADER
-	_material.render_priority = -1  # before the wakes, mist and bow waves, which take no shadows on tier H either
+	_material.render_priority = -1  # before the wakes and mist, which take no shadows on tier H either
 	_zero_row.resize(ROW_WIDTH * 4)
 	_grow(8)
 

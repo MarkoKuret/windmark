@@ -160,7 +160,7 @@ func _place_camera() -> void:
 	elif camera_mode == CameraMode.OVERVIEW:
 		eye = p - fwd * 450.0 + Vector3(0.0, 520.0, 0.0)
 	elif camera_mode == CameraMode.BOW:
-		# abeam of the bow, a little ahead: the bow wave and the mist on the near side
+		# abeam of the bow, a little ahead: the bow spray and the mist on the near side
 		var side := fwd.cross(Vector3.UP)
 		eye = p + fwd * 7.0 - side * 9.0 + Vector3(0.0, 2.6, 0.0)
 		cam.look_at_from_position(eye, p + fwd * 2.2 + Vector3(0.0, 0.4, 0.0), Vector3.UP)

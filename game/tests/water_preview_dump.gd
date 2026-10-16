@@ -413,11 +413,6 @@ func _dump(name: String, light := false) -> void:
 			ribbons.append(_write_arrays(dir, n, mi.mesh.surface_get_arrays(0)))
 			ribbons[-1]["name"] = n
 			wake_uniforms = _uniforms(mi.material_override)
-		elif sh == SeaWakes.BOW_SHADER:
-			var n := "wave%d" % waves.size()
-			waves.append(_write_arrays(dir, n, mi.mesh.surface_get_arrays(0)))
-			waves[-1]["name"] = n
-			waves[-1]["flow"] = mi.get_instance_shader_parameter("flow")
 	data["wakes"] = ribbons
 	data["wake_uniforms"] = wake_uniforms
 	data["bow_waves"] = waves

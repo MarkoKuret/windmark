@@ -1,11 +1,10 @@
 class_name BowWave
 extends RefCounted
-## Bow wave sheets and mist (water_render.md §5): per boat, a sheet of water on each side that peels off the stem
-## into a foam crest, rebuilt every frame from the boat pose (draped on the drawn sea by shaders/bow_wave.gdshader),
-## and the soft mist clouds thrown off it at speed or when the bow plunges. World coordinates are ENU metres.
+## Bow spray (water_render.md §5): the drivers of a boat's bow (speed, plunge, impact), the soft mist clouds and the
+## burst droplet sheets thrown off the bow wave's crest at speed or when the bow meets a wave. The bow wave itself is
+## not drawn (removed 2026-10-16: the sheet read as a knife edge); its crest size places the spray. World coordinates
+## are ENU metres.
 
-const NS := 14
-const NT := 7
 const TAU_CREST := 0.45
 const GRAVITY := 9.81
 const MIST_RATE := 14.0
@@ -41,76 +40,12 @@ class Drivers:
 			impact *= exp(-dt / 0.25)
 
 
-## Visibility of the bow wave at a speed ratio (none at low speed).
-static func strength(ratio: float) -> float:
-	return smoothstep(0.25, 0.6, ratio)
-
-
-## Crest height (m) and length along the hull (m).
+## The bow wave crest height (m) and length along the hull (m), where the spray leaves it.
 static func size(d: Drivers, lwl: float) -> Vector2:
 	var pl := minf(d.plunge, 1.5)
 	var h := minf(0.08 * lwl, 0.55 * d.v * d.v / (2.0 * GRAVITY)) * (1.0 + 0.6 * pl)
 	var l := lwl * (0.18 + 0.22 * minf(d.ratio, 1.3)) * (1.0 + 0.3 * pl)
 	return Vector2(h, l)
-
-
-## Mesh arrays of both sheets (port first) for a boat state (SeaWakes.update_boat keys) and its drivers; empty
-## arrays when the wave is not visible. Scene axes with y = 0 (the shader drapes it): UV (tau, sigma),
-## UV2 (lift above the sea, distance aft of the stem), COLOR.a the alpha.
-static func build_arrays(st: Dictionary, d: Drivers) -> Array:
-	var arrays := []
-	arrays.resize(Mesh.ARRAY_MAX)
-	var k := strength(d.ratio)
-	if k <= 0.0:
-		return arrays
-	var lwl: float = st.get("lwl", 6.0)
-	var bwl: float = st.get("bwl", 2.0)
-	var psi: float = st.get("psi", 0.0)
-	var heel: float = st.get("heel", 0.0)
-	var fwd := Vector2(sin(psi), cos(psi))
-	var port := Vector2(-fwd.y, fwd.x)
-	var pos := Vector2(st.get("x", 0.0), st.get("y", 0.0))
-	var stem := pos + fwd * float(st.get("bow_x", 0.5 * lwl))
-	var hl := size(d, lwl)
-	var sh := absf(sin(heel))
-	var verts := PackedVector3Array()
-	var uvs := PackedVector2Array()
-	var uv2s := PackedVector2Array()
-	var cols := PackedColorArray()
-	var idx := PackedInt32Array()
-	for side in 2:
-		var sgn := 1.0 if side == 0 else -1.0
-		# heel > 0 puts the starboard side down: the lee side there has the bigger wave
-		var lee := (-1.0 if heel > 0.0 else 1.0) * sgn
-		var hs := 1.0 + 0.6 * lee * sh
-		var base := verts.size()
-		for i in NS:
-			var sg := float(i) / float(NS - 1)
-			var along := sg * hl.y
-			var yh := 0.5 * bwl * pow(minf(1.0, along / (0.5 * lwl)), 0.7) * (1.0 + 0.5 * lee * sh)
-			var width := (0.12 + 0.5 * along) * (1.0 + 0.3 * d.ratio)
-			var li := hl.x * hs * pow(1.0 - sg, 1.6)
-			var lc := 0.75 * hl.x * hs * pow(1.0 - sg, 0.7)
-			var a := k * smoothstep(0.0, 0.08, sg) * (1.0 - smoothstep(0.7, 1.0, sg))
-			for j in NT:
-				var tau := float(j) / float(NT - 1)
-				var lift := lerpf(li, lc, smoothstep(0.0, TAU_CREST, tau)) if tau <= TAU_CREST \
-						else lc * (1.0 - smoothstep(TAU_CREST, 1.0, tau))
-				var q := stem - fwd * along + port * sgn * (yh - 0.02 + tau * width)
-				verts.append(Vector3(q.x, 0.0, -q.y))
-				uvs.append(Vector2(tau, sg))
-				uv2s.append(Vector2(lift + 0.1, along))
-				cols.append(Color(0.0, 0.0, 0.0, a))
-		for i in NS - 1:
-			for j in NT - 1:
-				var v0 := base + i * NT + j
-				idx.append_array([v0, v0 + NT, v0 + 1, v0 + 1, v0 + NT, v0 + NT + 1])
-	arrays[Mesh.ARRAY_VERTEX] = verts
-	arrays[Mesh.ARRAY_TEX_UV] = uvs
-	arrays[Mesh.ARRAY_TEX_UV2] = uv2s
-	arrays[Mesh.ARRAY_COLOR] = cols
-	arrays[Mesh.ARRAY_INDEX] = idx
-	return arrays
 
 
 ## The impact burst I (0..2): the bow meeting the sea fast, at speed (water_render.md §5).

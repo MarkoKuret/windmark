@@ -2,10 +2,9 @@
 //   SeaSampler     the sea height of SeaModel.height (sea.md §7.2, double precision) from the wave components and
 //                  the exposure grid, handed over once when they change
 //   WakeRibbon     one wake ribbon: rows, spray, and its mesh written in place into a fixed-size surface
-//   BowWaveSheets  the two bow wave sheets of a boat, written in place into a fixed-size surface
 //   MistCloud      the mist sprites, moved and written into their MultiMesh with one buffer call
 // Presentation only: nothing here touches the core. The GDScript references with the same maths are
-// game/scenes/sea/wake_ribbon_ref.gd (WakeRibbonRef), bow_wave.gd (BowWave.build_arrays, mist_step, mist_look)
+// game/scenes/sea/wake_ribbon_ref.gd (WakeRibbonRef), bow_wave.gd (BowWave.mist_step, mist_look)
 // and sea_model.gd (SeaModel.height); SeaWakes uses them when the extension is missing, and
 // game/tests/wakes_native_test.gd compares the two. Keep them in step.
 #pragma once
@@ -134,36 +133,6 @@ class WakeRibbon : public godot::RefCounted {
   std::vector<godot::Color> col_;
   std::vector<uint16_t> idx_;
   std::vector<godot::Vector2> excess_;
-  FixedSurface surf_;
-};
-
-class BowWaveSheets : public godot::RefCounted {
-  GDCLASS(BowWaveSheets, godot::RefCounted)
-
- public:
-  static constexpr int NS = 14;
-  static constexpr int NT = 7;
-  static constexpr int N_VERT = 2 * NS * NT;
-  static constexpr int N_INDEX = 2 * (NS - 1) * (NT - 1) * 6;
-
-  // BowWave.build_arrays for a boat state (SeaWakes.update_boat keys) and the drivers v, ratio, plunge
-  godot::Array build_arrays(const godot::Dictionary& st, double v, double ratio, double plunge);
-  godot::Array blank_arrays() const;
-  bool attach_mesh(const godot::RID& mesh);
-  // false (nothing written) when the wave is not visible
-  bool write_mesh(const godot::Dictionary& st, double v, double ratio, double plunge);
-  godot::PackedByteArray vertex_bytes() const { return surf_.vbytes; }
-  godot::PackedByteArray attribute_bytes() const { return surf_.abytes; }
-
- protected:
-  static void _bind_methods();
-
- private:
-  bool build(const godot::Dictionary& st, double v, double ratio, double plunge);
-  std::vector<godot::Vector3> pos_;
-  std::vector<godot::Vector2> uv_, uv2_;
-  std::vector<godot::Color> col_;
-  std::vector<uint16_t> idx_;
   FixedSurface surf_;
 };
 

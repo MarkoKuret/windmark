@@ -1,4 +1,4 @@
-// Wakes, bow waves and mist: docs/specs/water_render.md §5. See sea_wakes.h.
+// Wakes and bow mist: docs/specs/water_render.md §5. See sea_wakes.h.
 #include "sea_wakes.h"
 
 #include <godot_cpp/classes/mesh.hpp>
@@ -22,15 +22,14 @@ namespace {
 
 constexpr double TAU_D = 6.283185307179586;
 constexpr double LIFE_S = 9.0;
-constexpr double SPREAD_S = 4.0;
+constexpr double SPREAD_S = 4.0;      // the edges stop opening (the diverging waves have broken)
 constexpr double TURB_SPREAD = 0.15;  // the transom ribbon: w = w0 (1 + TURB_SPREAD t)
-constexpr double LINE_M = 0.25;        // the bow ribbon's foam lines, just inside each edge  // the edges stop opening (the diverging waves have broken)
+constexpr double LINE_M = 0.25;        // the bow ribbon's band scale: COLOR.b = LINE_M / half width
 constexpr double KELVIN = 0.354;
 constexpr double GRAVITY = 9.81;
 constexpr double U_OUTER = 0.0;
 constexpr double U_EDGE = 0.2;
 constexpr int REACH_SMOOTH = 4;
-constexpr double TAU_CREST = 0.45;
 constexpr double MIST_GRAVITY = 2.0;
 constexpr double MIST_DRAG = 2.5;
 constexpr double MIST_ALPHA = 0.16;
@@ -487,118 +486,6 @@ void WakeRibbon::_bind_methods() {
   ClassDB::bind_method(D_METHOD("vertex_bytes"), &WakeRibbon::vertex_bytes);
   ClassDB::bind_method(D_METHOD("attribute_bytes"), &WakeRibbon::attribute_bytes);
   ClassDB::bind_method(D_METHOD("index_bytes"), &WakeRibbon::index_bytes);
-}
-
-// ---------------------------------------------------------------------------------------------------------------
-// BowWaveSheets
-
-bool BowWaveSheets::build(const Dictionary& st, double v, double ratio, double plunge) {
-  pos_.clear();
-  uv_.clear();
-  uv2_.clear();
-  col_.clear();
-  const double k = smooth(0.25, 0.6, ratio);
-  if (k <= 0.0) return false;
-  const double lwl = getd(st, "lwl", 6.0);
-  const double bwl = getd(st, "bwl", 2.0);
-  const double psi = getd(st, "psi", 0.0);
-  const double heel = getd(st, "heel", 0.0);
-  const Vector2 fwd(std::sin(psi), std::cos(psi));
-  const Vector2 port(-fwd.y, fwd.x);
-  const Vector2 pos(getd(st, "x", 0.0), getd(st, "y", 0.0));
-  const Vector2 stem = pos + fwd * getd(st, "bow_x", 0.5 * lwl);
-  // BowWave.size, kept as a (float) Vector2 like the reference
-  const double pl = std::min(plunge, 1.5);
-  const Vector2 hl(std::min(0.08 * lwl, 0.55 * v * v / (2.0 * GRAVITY)) * (1.0 + 0.6 * pl),
-                   lwl * (0.18 + 0.22 * std::min(ratio, 1.3)) * (1.0 + 0.3 * pl));
-  const double sh = std::fabs(std::sin(heel));
-  for (int side = 0; side < 2; ++side) {
-    const double sgn = side == 0 ? 1.0 : -1.0;
-    const double lee = (heel > 0.0 ? -1.0 : 1.0) * sgn;
-    const double hs = 1.0 + 0.6 * lee * sh;
-    for (int i = 0; i < NS; ++i) {
-      const double sg = double(i) / double(NS - 1);
-      const double along = sg * hl.y;
-      const double yh = 0.5 * bwl * std::pow(std::min(1.0, along / (0.5 * lwl)), 0.7) * (1.0 + 0.5 * lee * sh);
-      const double width = (0.12 + 0.5 * along) * (1.0 + 0.3 * ratio);
-      const double li = hl.x * hs * std::pow(1.0 - sg, 1.6);
-      const double lc = 0.75 * hl.x * hs * std::pow(1.0 - sg, 0.7);
-      const double a = k * smooth(0.0, 0.08, sg) * (1.0 - smooth(0.7, 1.0, sg));
-      const Vector2 row = stem - fwd * along;
-      const Vector2 ps = port * sgn;
-      for (int j = 0; j < NT; ++j) {
-        const double tau = double(j) / double(NT - 1);
-        const double lift = tau <= TAU_CREST ? lerpd(li, lc, smooth(0.0, TAU_CREST, tau))
-                                             : lc * (1.0 - smooth(TAU_CREST, 1.0, tau));
-        const Vector2 q = row + ps * (yh - 0.02 + tau * width);
-        pos_.emplace_back(q.x, 0.0f, -q.y);
-        uv_.emplace_back(static_cast<real_t>(tau), static_cast<real_t>(sg));
-        uv2_.emplace_back(static_cast<real_t>(lift + 0.1), static_cast<real_t>(along));
-        col_.emplace_back(0.0f, 0.0f, 0.0f, static_cast<float>(a));
-      }
-    }
-  }
-  return true;
-}
-
-Array BowWaveSheets::build_arrays(const Dictionary& st, double v, double ratio, double plunge) {
-  Array a;
-  a.resize(Mesh::ARRAY_MAX);
-  if (!build(st, v, ratio, plunge)) return a;
-  PackedVector3Array pv;
-  PackedVector2Array uv, uv2;
-  PackedColorArray col;
-  for (size_t k = 0; k < pos_.size(); ++k) {
-    pv.push_back(pos_[k]);
-    uv.push_back(uv_[k]);
-    uv2.push_back(uv2_[k]);
-    col.push_back(col_[k]);
-  }
-  const Array blank = blank_arrays();
-  a[Mesh::ARRAY_VERTEX] = pv;
-  a[Mesh::ARRAY_TEX_UV] = uv;
-  a[Mesh::ARRAY_TEX_UV2] = uv2;
-  a[Mesh::ARRAY_COLOR] = col;
-  a[Mesh::ARRAY_INDEX] = blank[Mesh::ARRAY_INDEX];
-  return a;
-}
-
-Array BowWaveSheets::blank_arrays() const {
-  Array a = FixedSurface::blank(N_VERT, N_INDEX);
-  PackedInt32Array idx;
-  for (int side = 0; side < 2; ++side) {
-    const int base = side * NS * NT;
-    for (int i = 0; i < NS - 1; ++i)
-      for (int j = 0; j < NT - 1; ++j) {
-        const int v0 = base + i * NT + j;
-        const int t[6] = {v0, v0 + NT, v0 + 1, v0 + 1, v0 + NT, v0 + NT + 1};
-        for (int x : t) idx.push_back(x);
-      }
-  }
-  a[Mesh::ARRAY_INDEX] = idx;
-  return a;
-}
-
-bool BowWaveSheets::attach_mesh(const RID& mesh) { return surf_.attach(mesh, N_VERT, N_INDEX); }
-
-bool BowWaveSheets::write_mesh(const Dictionary& st, double v, double ratio, double plunge) {
-  if (!build(st, v, ratio, plunge)) return false;
-  surf_.write(pos_, uv_, uv2_, col_, idx_, false);
-  if (surf_.mesh.is_valid()) {
-    // every frame the sheet moves with the boat: keep it from being culled on stale bounds
-    RenderingServer::get_singleton()->mesh_set_custom_aabb(
-        surf_.mesh, AABB(pos_[0] - Vector3(20.0f, 10.0f, 20.0f), Vector3(40.0f, 20.0f, 40.0f)));
-  }
-  return true;
-}
-
-void BowWaveSheets::_bind_methods() {
-  ClassDB::bind_method(D_METHOD("build_arrays", "state", "v", "ratio", "plunge"), &BowWaveSheets::build_arrays);
-  ClassDB::bind_method(D_METHOD("blank_arrays"), &BowWaveSheets::blank_arrays);
-  ClassDB::bind_method(D_METHOD("attach_mesh", "mesh"), &BowWaveSheets::attach_mesh);
-  ClassDB::bind_method(D_METHOD("write_mesh", "state", "v", "ratio", "plunge"), &BowWaveSheets::write_mesh);
-  ClassDB::bind_method(D_METHOD("vertex_bytes"), &BowWaveSheets::vertex_bytes);
-  ClassDB::bind_method(D_METHOD("attribute_bytes"), &BowWaveSheets::attribute_bytes);
 }
 
 // ---------------------------------------------------------------------------------------------------------------

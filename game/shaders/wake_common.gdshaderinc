@@ -35,26 +35,6 @@ vec3 wm_wake_drape(vec3 v, vec3 cam, float grid_q, float grid_segments) {
 	return wm_drape(v, 0.1, cam, grid_q, grid_segments);
 }
 
-// Bow wave sheet coverage (water_render.md §5). uv: (tau across, 0 at the hull .. 1 at the sea; sigma along, 0 at
-// the stem); a: the vertex alpha; n1, n2: foam noise samples flowing aft. Returns (foam, alpha): foam 0..1 is the
-// share of foam colour, alpha the coverage (a lighter water sheet between the hull and the crest, foam on it).
-vec2 wm_bow_alpha(vec2 uv, float a, float n1, float n2) {
-	float tau = uv.x;
-	float sigma = uv.y;
-	float crest = smoothstep(0.28, 0.42, tau) * (1.0 - smoothstep(0.58, 0.78, tau));
-	float spill = smoothstep(0.5, 0.62, tau) * (1.0 - smoothstep(0.8, 1.0, tau));
-	float br = smoothstep(0.35, 0.8, n1 * 0.75 + n2 * 0.45);
-	// thrown water, not rays: speckled along its length, ragged ends of varied length
-	float speck = smoothstep(0.38, 0.62, n1);
-	float ends = 1.0 - smoothstep(0.35 + 0.4 * n2, 0.6 + 0.4 * n2, sigma);
-	float foam = clamp((crest * (0.25 + 0.75 * speck) + spill * (0.25 + 0.75 * br) * speck * (1.0 - 0.5 * sigma)) * ends,
-			0.0, 1.0);
-	// the stem throws white water right at the bow
-	foam = max(foam, (1.0 - smoothstep(0.0, 0.22, sigma)) * (1.0 - smoothstep(0.0, 0.5, tau)) * (0.6 + 0.4 * br));
-	float sheet = 0.18 * (1.0 - smoothstep(0.35, 0.5, tau));
-	return vec2(foam, clamp(a * max(foam, sheet), 0.0, 1.0));
-}
-
 // Mist sprite coverage (water_render.md §5): a soft round cloud broken up by the foam noise, or (kind 1, a burst's
 // sheet of droplets) only the noise's high values, a speckle thinning toward the edge. uv: the quad's 0..1; n: a
 // foam noise sample for the sprite.

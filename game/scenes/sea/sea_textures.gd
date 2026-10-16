@@ -1,7 +1,7 @@
 class_name SeaTextures
 extends RefCounted
 ## Tiling textures of the sea shader, generated at load from Godot's seamless noise (no texture files):
-## the detail normal map (water_render.md §4.1), the foam noise of the wakes and bow waves (§5: R = streaks, G = coarse
+## the detail normal map (water_render.md §4.1), the foam noise of the wakes and the whitecap streaks (§5: R = streaks, G = coarse
 ## breakup) and the whitecap foam levels (§4.4).
 ## Built once and shared by every Sea node.
 

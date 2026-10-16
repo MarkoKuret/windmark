@@ -3,9 +3,9 @@ extends SceneTree
 ## references, run by tests/run_water_test.sh when the GDExtension is built:
 ##   SeaSampler.height = SeaModel.height (the core's sea components and exposure);
 ##   WakeRibbon = WakeRibbonRef (rows, spray on a wavy sea, current, arrays: positions, UV, UV2, colours, indices);
-##   BowWaveSheets = BowWave.build_arrays; MistCloud = BowWave.mist_step and SeaWakes.mist_buffer;
+##   MistCloud = BowWave.mist_step and SeaWakes.mist_buffer;
 ##   the in-place buffers byte for byte against Godot's own encoding of the same arrays;
-##   SeaWakes drawing natively and with the references give the same ribbons, bow waves and mist;
+##   SeaWakes drawing natively and with the references give the same ribbons and mist;
 ##   and the cost per boat of both paths.
 ## Exit code 0 when every check passes (or the extension is not built: then it says so and passes).
 
@@ -45,7 +45,6 @@ func _run() -> void:
 	_sampler()
 	_ribbon()
 	_ribbon_bytes()
-	_bow()
 	_mist()
 	_sea_wakes()
 	_cost()
@@ -241,44 +240,6 @@ func _ribbon_bytes() -> void:
 		ok = ok and ab.slice(0, stride * nv) == (g["attribute_data"] as PackedByteArray).slice(0, stride * nv)
 		ok = ok and nat.index_bytes() == g["index_data"]
 	_report(ok and nv > 0, "ribbon: positions, colours, UVs and indices byte for byte as Godot encodes them (%d vertices in use)" % nv)
-	var bw: Object = ClassDB.instantiate("BowWaveSheets")
-	var bm := ArrayMesh.new()
-	bm.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, bw.blank_arrays())
-	_report(bw.attach_mesh(bm.get_rid()), "a bow wave attaches to its fixed-size mesh")
-	var st := {"x": 12.0, "y": -40.0, "psi": 0.7, "heel": 0.25, "lwl": 6.8, "bwl": 2.2, "bow_x": 3.4}
-	_report(bw.write_mesh(st, 3.2, 0.9, 0.4), "the bow wave is drawn at speed ratio 0.9")
-	var g2 := _godot_bytes(bw.build_arrays(st, 3.2, 0.9, 0.4))
-	_report(bw.vertex_bytes() == g2["vertex_data"] and bw.attribute_bytes() == g2["attribute_data"],
-		"bow wave: vertex and attribute buffers byte for byte as Godot encodes them")
-	_report(not bw.write_mesh(st, 0.5, 0.1, 0.0), "no bow wave at speed ratio 0.1")
-
-
-## BowWaveSheets against BowWave.build_arrays on random states and drivers.
-func _bow() -> void:
-	t.begin("bow wave")
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 5
-	var bw: Object = ClassDB.instantiate("BowWaveSheets")
-	var worst := {"size": true, "index": true, "pos": 0.0, "uv": 0.0, "uv2": 0.0, "col": 0.0}
-	var drawn := 0
-	for k in 500:
-		var st := {"x": rng.randf_range(-500.0, 500.0), "y": rng.randf_range(-500.0, 500.0),
-			"psi": rng.randf_range(-PI, PI), "heel": rng.randf_range(-0.6, 0.6), "lwl": rng.randf_range(5.0, 12.0),
-			"bwl": rng.randf_range(1.5, 3.5), "own": false}
-		st["bow_x"] = 0.5 * st["lwl"]
-		var d := BowWave.Drivers.new()
-		d.v = rng.randf_range(0.0, 7.0)
-		d.ratio = rng.randf_range(0.0, 1.4)
-		d.plunge = rng.randf_range(0.0, 2.0) if rng.randf() < 0.5 else 0.0
-		var a := BowWave.build_arrays(st, d)
-		var b: Array = bw.build_arrays(st, d.v, d.ratio, d.plunge)
-		if a[Mesh.ARRAY_VERTEX] == null:
-			worst["size"] = worst["size"] and b[Mesh.ARRAY_VERTEX] == null
-			continue
-		drawn += 1
-		_merge_worst(worst, _diff(a, b))
-	_report(drawn > 200 and _parity_ok(worst), "500 random boats (%d drawn), same vertices and indices: %s" % [drawn,
-		_worst_text(worst)])
 
 
 ## MistCloud against BowWave.mist_step, mist_look and SeaWakes.mist_buffer.
@@ -319,8 +280,8 @@ func _mist() -> void:
 		most, String.num_scientific(worst)])
 
 
-## A SeaWakes drawing natively and one on the references, the same boats on the same sea: the same ribbons, bow
-## waves and mist (the native ribbons read back through build_arrays).
+## A SeaWakes drawing natively and one on the references, the same boats on the same sea: the same ribbons and
+## mist (the native ribbons read back through build_arrays).
 func _sea_wakes() -> void:
 	t.begin("SeaWakes native = reference")
 	var holder := Node3D.new()
@@ -340,7 +301,6 @@ func _sea_wakes() -> void:
 	root.add_child(holder)
 	_report(ws[0].is_native() and not ws[1].is_native(), "one draws natively, one on the references")
 	var worst := {"size": true, "index": true, "pos": 0.0, "uv": 0.0, "uv2": 0.0, "col": 0.0}
-	var wave_worst := {"size": true, "index": true, "pos": 0.0, "uv": 0.0, "uv2": 0.0, "col": 0.0}
 	var mist_worst := 0.0
 	var mist_most := 0
 	for f in 240:
@@ -361,16 +321,6 @@ func _sea_wakes() -> void:
 			var rb: Array = ws[1].boat_ribbons(id)
 			for k in 2:
 				_merge_worst(worst, _diff(rb[k].build_arrays(t_s), ra[k].build_arrays(t_s)))
-			var b0: Dictionary = ws[0]._boats[id]
-			var b1: Dictionary = ws[1]._boats[id]
-			var st: Dictionary = b1["state"]
-			var d: BowWave.Drivers = b0["drv"]
-			var wa: Array = b0["sheets"].build_arrays(st, d.v, d.ratio, d.plunge)
-			var wb := BowWave.build_arrays(st, b1["drv"])
-			if wb[Mesh.ARRAY_VERTEX] != null:
-				_merge_worst(wave_worst, _diff(wb, wa))
-			else:
-				wave_worst["size"] = wave_worst["size"] and wa[Mesh.ARRAY_VERTEX] == null
 		var ma: Array = ws[0].mist_sprites()
 		var mb: Array = ws[1].mist_sprites()
 		mist_most = maxi(mist_most, ma.size())
@@ -380,7 +330,6 @@ func _sea_wakes() -> void:
 			for i in ma.size():
 				mist_worst = maxf(mist_worst, (ma[i]["pos"] as Vector3).distance_to(mb[i]["pos"]))
 	_report(_parity_ok(worst), "3 boats for 4 s on tier H: ribbons as the reference: %s" % _worst_text(worst))
-	_report(_parity_ok(wave_worst), "bow waves as the reference: %s" % _worst_text(wave_worst))
 	_report(mist_most > 5 and mist_worst <= POS_TOL, "mist as the reference (%d sprites, within %s m)" % [mist_most,
 		String.num_scientific(mist_worst)])
 	holder.free()

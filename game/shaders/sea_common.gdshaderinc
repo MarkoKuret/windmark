@@ -369,16 +369,16 @@ void wm_apply_caps(inout WmSurface S, vec2 xl, float px, float expo, float dist,
 	if (g <= 0.0) {
 		return;
 	}
-	// the streak tap (R streaks, G their breakup), drifting with the surface: the trail's streaks and, between the
-	// caps, wind-aligned foam lanes that thicken with the wind (§4.4)
-	vec2 q = vec2(dot(xl, caps_uv.xy), dot(xl, vec2(-caps_uv.y, caps_uv.x)));
-	vec2 stv = texture(foam_tex, q / WM_STREAK_TILE + caps_str).rg;
-	float st = stv.x;
+	if (cf.x <= -1.5) {
+		return;
+	}
 	float kn = S.m * base_speed / WM_KNOT;
-	float dens = smoothstep(15.0, 32.0, kn);
-	float a = 0.22 * dens * smoothstep(0.62, 0.82, st) * smoothstep(0.35, 0.7, stv.y) * fade;
-	if (cf.x > -1.5) {
-		// a breaking core on the crest and its forward face, lacy edges, a translucent streaky trail behind it
+	float a = 0.0;
+	{
+		// a breaking core on the crest and its forward face, lacy edges, a translucent streaky trail behind it (the
+		// trail's streaks drift with the surface)
+		vec2 q = vec2(dot(xl, caps_uv.xy), dot(xl, vec2(-caps_uv.y, caps_uv.x)));
+		float st = texture(foam_tex, q / WM_STREAK_TILE + caps_str).r;
 		vec4 L = texture(caps_tex, q / WM_CAPS_TILE + caps_uv.zw);
 		float xj = cf.x + 1.2 * (L.g - 0.5) + 0.8 * (st - 0.5);
 		float front = smoothstep(-4.0, -1.0, cf.y);
@@ -393,8 +393,8 @@ void wm_apply_caps(inout WmSurface S, vec2 xl, float px, float expo, float dist,
 		float trail = smoothstep(-1.0, 0.7, xj) * behind * smoothstep(0.3, 0.75, st) * g;
 		float residual = 0.15 * smoothstep(12.0, 20.0, kn) * smoothstep(-1.5, -0.8, xj) * (1.0 - smoothstep(-0.8, 0.0, xj)) * behind
 				* smoothstep(0.3, 0.75, st) * g;
-		a = max(a, max(residual, clamp(0.95 * core * mix(L.b, L.a, smoothstep(1.0, 2.0, xj))
-				+ 0.5 * trail * L.g * (1.0 - core), 0.0, 1.0)));
+		a = max(residual, clamp(0.95 * core * mix(L.b, L.a, smoothstep(1.0, 2.0, xj))
+				+ 0.5 * trail * L.g * (1.0 - core), 0.0, 1.0));
 	}
 	if (a <= 0.0) {
 		return;

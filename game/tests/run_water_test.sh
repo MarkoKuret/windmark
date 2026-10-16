@@ -5,7 +5,7 @@
 #   2. imports the project and fails on any error or warning;
 #   3. runs tests/water_test.gd: shaders parse, height, slope, puff and exposure parity with the core,
 #      far-field fade, wake geometry, and the test scene on every quality tier;
-#   4. runs tests/wakes_native_test.gd: the native wakes (SeaSampler, WakeRibbon, BowWaveSheets, MistCloud) against
+#   4. runs tests/wakes_native_test.gd: the native wakes (SeaSampler, WakeRibbon, MistCloud) against
 #      their GDScript references and Godot's buffer encoding, and the cost per boat of both (passes with a note
 #      when the GDExtension is not built);
 #   5. runs tests/boat_shadow_test.gd: the drawn boat shadows of tiers L and M on the sail scene (§9.10), the native

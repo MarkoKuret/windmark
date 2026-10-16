@@ -39,9 +39,13 @@ CD_FLOG = 0.30
 FLATS = np.linspace(0.1, 1.0, 16)
 REEFS = np.linspace(0.55, 1.0, 10)
 REEFABLE = ("main", "jib", "genoa")
-# A mainsail without a headsail in front loses the slot's upwash: its lift is scaled by MAIN_ALONE_CL close-hauled,
-# fading to no loss by 110 deg effective AWA (calibration, README).
+# A mainsail with no front sail at all (the main-only config) loses the slot's upwash: its lift is scaled by
+# MAIN_ALONE_CL close-hauled, fading to no loss by 110 deg effective AWA (calibration, README). Behind any front sail
+# (jib, genoa, code zero or a kite) the main keeps its ORC in-situ coefficients.
 MAIN_ALONE_CL = 0.72
+# A headsail set flying (code zero) allows very little depowering: the config's reef goes no lower than the ORC
+# VPP's 0.91 (VPP Documentation 2023 section 5.2.5); the code zero itself is never reefed (REEFABLE).
+FLYING_HEADSAIL_REEF_MIN = 0.91
 # Twist function (ORC VPP Documentation 2023, eq. 5.49, from wind tunnel tests): flattening a sail plan twists its
 # heads off, lowering the centre of effort of its heeling force by TWIST_A (1 - flat) + TWIST_B (1 - flat)(1 - frac)
 # of its height, frac = I / (P + BAS) the fractionality (BAS: boom above the sheer).
@@ -68,6 +72,11 @@ class Rig:
     @property
     def downwind(self) -> bool:
         return any(s.type in SPINNAKER_TYPES for s in self.sails)
+
+    @property
+    def reef_min(self) -> float:
+        """Lowest reef factor the config may use: FLYING_HEADSAIL_REEF_MIN with a code zero set, else none."""
+        return FLYING_HEADSAIL_REEF_MIN if any(s.type == "code_zero" for s in self.sails) else 0.0
 
     @property
     def kite(self) -> bool:
@@ -111,7 +120,7 @@ class Rig:
         cl = 0.0
         cd = 0.0
         deltas = []
-        alone = not any(s.type in ("jib", "genoa") for s in self.sails)
+        alone = all(s.type == "main" for s in self.sails)
         for s, e, a in zip(self.sails, self.env, areas):
             c_l, c_d, de = e.at(fi, beta_e)
             if eps is not None:
@@ -297,7 +306,7 @@ class Solver:
     def solve(self, rig, fi, reef, tws, twa, eps=None) -> State:
         shape = np.broadcast(fi, reef, tws, twa, 0.0 if eps is None else eps).shape
         fi = np.broadcast_to(fi, shape)
-        reef = np.broadcast_to(reef, shape)
+        reef = np.broadcast_to(np.maximum(reef, rig.reef_min), shape)
         tws = np.broadcast_to(tws, shape)
         twa = np.broadcast_to(twa, shape)
         if eps is not None:

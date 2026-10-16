@@ -1,12 +1,11 @@
 """Downwind what-if runs: speeds per config at ORC-style TWS/TWA points under model variants.
 
 Usage (from tools/vpp): .venv/bin/python analysis/downwind_variants.py [variant ...]
-Variants are named patches of model constants (see VARIANTS); 'base' is the shipped model. Prints, per class and
-variant, the best speed of each config (kn) and the run VMG, at TWS 6 8 10 12 16 20 kn.
+Variants are named patches of model constants (see VARIANTS); 'base' is the shipped model. The variants of the
+first study (hull_a, c0_orc, slot_all, ...) went into the shipped model in 2026-10 (downwind_2026-10.md).
+Prints, per class and variant, the best speed of each config (kn) and the run VMG, at TWS 6 8 10 12 16 20 kn.
 """
-import inspect
 import math
-import textwrap
 import os
 import sys
 from contextlib import contextmanager
@@ -16,10 +15,9 @@ import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 
-from windmark_vpp import boatclass, hydro, sails, solver  # noqa: E402
+from windmark_vpp import boatclass, hydro, solver  # noqa: E402
 from windmark_vpp.perf import Generator, NF, NR  # noqa: E402
 from windmark_vpp.solver import REEFS  # noqa: E402
-from windmark_vpp.constants import DEG  # noqa: E402
 
 KN = 0.514444
 CLASSES = os.path.join(HERE, "..", "..", "..", "data", "classes")
@@ -41,44 +39,21 @@ def patched(pairs):
             setattr(obj, name, val)
 
 
-def _forces_with_slot(types):
-    """Rig.forces with the main's slot loss waived when any sail of `types` is set (instead of jib/genoa only)."""
-    src = textwrap.dedent(inspect.getsource(solver.Rig.forces))
-    src = src.replace('("jib", "genoa")', repr(tuple(types)))
-    ns = {}
-    exec(src, vars(solver), ns)
-    return [(solver.Rig, "forces", ns["forces"])]
-
-
-def _c0(**kw):
-    return [(sails, "COEFFS", {**sails.COEFFS, "code0": sails.replace(sails.COEFFS["code0"], **kw)})]
-
-
 VARIANTS = {
     "base": [],
     # kite: no flat floor, and the class heel limit instead of 21.5 deg
     "kite_free": [(solver, "KITE_FLAT_MIN", 0.1), (boatclass, "KITE_MAX_HEEL", math.radians(40))],
     "kite_heel25": [(boatclass, "KITE_MAX_HEEL", math.radians(25))],
-    # planing gate: full ability to DLR 100 ... none from 140 (instead of 106)
-    "plane_gate140": [(hydro, "PLANING_DLR_NONE", 140.0)],
-    "plane_gate200": [(hydro, "PLANING_DLR_NONE", 200.0)],
-    # one planing law for both hull sizes, a less generous planing branch
-    "hull_a": [(hydro, "PLANING_DLR_NONE", 140.0), (hydro, "PLANING_DRAG_LIFT", 0.075)],
-    "hull_b": [(hydro, "PLANING_DLR_NONE", 140.0), (hydro, "PLANING_START", 0.45), (hydro, "PLANING_FULL", 1.3)],
-    "hull_c": [(hydro, "PLANING_DLR_NONE", 140.0), (hydro, "PLANING_DRAG_LIFT", 0.075),
-               (hydro, "PLANING_START", 0.40), (hydro, "PLANING_FULL", 1.1)],
+    # planing (2026-10 law: the Delft hump stretched past Fn 0.35, gated from DLR 100 to 200)
+    "towed": [(hydro, "HUMP_STRETCH", 1.0)],                                  # no stretch: the towed Delft curve
+    "gate_narrow": [(hydro, "PLANING_DLR_NONE", 106.0)],                      # the old gate (wm12 does not plane)
+    "stretch_045": [(hydro, "HUMP_STRETCH", 0.45)],
+    "stretch_055": [(hydro, "HUMP_STRETCH", 0.55)],
     # wave wall: a non-planing hull keeps the Delft curve flat past its peak (no extra wall)
     "wall_flat": [(hydro, "WAVE_WALL_SLOPE", (0.0, 0.0))],
-    # code zero blanketed in the main's lee like the gennaker
-    "c0_blanket": _c0(blanket=0.557),
-    # code zero fitted to the ORC flying-headsail table (62.5 % HHW/HLP, analysis/fit_code0.py), main in its slot
-    "c0_orc": _forces_with_slot(("jib", "genoa", "code_zero")) + _c0(
-        alpha_luff=3.45 * DEG, alpha_stall=10.0 * DEG, cl_max=1.356, cd0=0.0048, kp=0.0055, cn_max=0.40,
-        blend=51.0 * DEG, kt=0.357, blanket=0.51),
-    # the main keeps its slot behind a code zero too / behind any front sail
-    "slot_c0": _forces_with_slot(("jib", "genoa", "code_zero")),
-    "slot_all": _forces_with_slot(("jib", "genoa", "code_zero", "spinnaker_sym", "spinnaker_asym")),
-    "slot_c0_blanket": _forces_with_slot(("jib", "genoa", "code_zero")) + _c0(blanket=0.557),
+    # code zero sheeted as close as before the 2026-10 fit
+    "c0_sheet12": [(boatclass, "SHEET_LIMITS", {**boatclass.SHEET_LIMITS,
+                                                "code_zero": (math.radians(12.0), math.radians(55.0))})],
 }
 
 

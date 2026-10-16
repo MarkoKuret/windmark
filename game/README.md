@@ -320,7 +320,7 @@ Flags after `--`:
 | `--haze=0.5` | the distance haze as a factor of the light preset's (0 to 1.5) |
 | `--caps=on` | whitecaps on (off by default, `water_render.md` §4.4); `--caps=off` turns them off |
 | `--drawn-wind=18` | the wind the water draws (whitecaps, puffs) in knots, over the simulation's; the waves stay |
-| `--breathing=off` | the chase camera's plain follow instead of its breathing (`cameras.md` §2.1) |
+| `--chase-bank=off` | the chase camera keeps the horizon level in turns too, no bank (`cameras.md` §2.1) |
 | `--skip=S` | the race world fast-forwarded S seconds before the first frame (a measured moment of the race) |
 | `--lod=0` | every boat's meshes at the own boat's LOD bias (the full model at chase range, `sail_visuals.md` §11.4) |
 | `--hide-parts=rigging,hardware` | these model part nodes of every boat never shown (hull, deck, keel, rudder, mast, rigging, boom, hardware, mainsheet) |
@@ -346,7 +346,7 @@ anti-aliasing (Off, FXAA, SMAA), grade on or off, grade strength, SSAO (Tier, Of
 preset, quality tier (sea grid and water shader, wakes, shadows, glow, SSAO, reflections; a short hitch while the
 shaders compile), haze strength (x0 to x1.5) and its reset, whitecaps, drawn wind for the sea (8 to 25 kn), the wind
 for a restart and "Restart with wind" (restart only: the core takes its wind when the world is made; a rules
-scenario keeps its own), chase camera breathing, drawn boat shadows, boat sun shadows, render scale and the
+scenario keeps its own), chase camera bank, drawn boat shadows, boat sun shadows, render scale and the
 frame-time overlay, with an fps and frame time readout. Up and Down pick a row, Left and Right change it, Enter or
 Space toggles or runs it, Esc gives the keys back to the boat (the panel stays up), F9 closes it; the mouse clicks,
 right clicks or scrolls a row. While it has the focus the boat takes no keys and the simulation keeps running.

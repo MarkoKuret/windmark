@@ -1,8 +1,7 @@
 class_name ChaseCamera
 extends RefCounted
-## cameras.md §2: an orbit around the boat that follows the heading, not heel or pitch, and breathes with the boat
-## (§2.1): an eased heading follow, a slight bank in turns, the target trailing a little on speed changes and leaning
-## with the heel.
+## cameras.md §2: an orbit around the boat that follows the heading tightly (one first-order lag of tau_yaw), not
+## heel or pitch, with a slight bank into turns (§2.1) that adds no lag.
 
 const EL_DEFAULT := deg_to_rad(13.5)
 const FOV_DEFAULT := 40.0
@@ -12,23 +11,10 @@ const MOUSE_RATE := deg_to_rad(0.3)
 const NOTCH := 1.12
 const AUTO_RECENTRE_AFTER := 5.0
 
-## cameras.md §2.1 breathing. The heading follow is critically damped with this natural frequency times 1/tau_yaw:
-## 5/3 puts it within 4 % of a heading step after 3·tau_yaw (test 2) and starts the swing gently.
-const YAW_W_TAU := 5.0 / 3.0
-## bank into a turn: this many seconds times the camera's own yaw rate (rad/s), at most BANK_MAX
+## cameras.md §2.1 bank into a turn: this many seconds times the camera's own yaw rate (rad/s), at most BANK_MAX.
+## An offset of the view's roll in the same frame, never a delay.
 const BANK_K := 0.06
 const BANK_MAX := deg_to_rad(1.5)
-## the target trails a speed change: (smoothed velocity - velocity) times SURGE_K, at most SURGE_MAX, the offset
-## itself smoothed with SURGE_TAU_OFFSET
-const SURGE_K := 0.8
-const SURGE_MAX := 0.8
-const SURGE_TAU_V := 0.6
-const SURGE_TAU_OFFSET := 0.15
-## the target leans with the heel toward the masthead side: LEAN_K · loa · sin(smoothed heel)
-const LEAN_K := 0.2
-const LEAN_TAU := 0.6
-## a pose jump faster than this (reset, another boat) snaps instead of trailing
-const SNAP_SPEED := 40.0
 
 var R := 24.5
 var el := EL_DEFAULT
@@ -42,21 +28,14 @@ var fov_min := 25.0
 var fov_max := 75.0
 var zoom_is_fov := false
 
-## §2.1 breathing on; off (`--breathing=off`, the look panel) is the plain follow: a first-order heading lag of
-## tau_yaw, the target on the boat, no bank, to compare
-var breathing := true
+## §2.1 the bank into turns on; off (`--chase-bank=off`, the look panel) keeps the horizon level in turns too
+var banking := true
 ## smoothed heading and heave (state, not parameters)
 var psi_c := 0.0
 var zt := 0.0
-## §2.1 state: heading rate of the camera, the bank, the target's velocity and its smoothing, the surge and lean
-## offsets (scene metres) and the smoothed heel
+## §2.1 state: the camera's heading rate (rad/s, from the follow) and the bank (rad)
 var psi_rate := 0.0
 var bank := 0.0
-var surge := Vector3.ZERO
-var lean := Vector3.ZERO
-var phi_s := 0.0
-var _vel_s := Vector3.ZERO
-var _prev_pos := Vector3.ZERO
 var _started := false
 var _idle := 0.0
 var clearance := CamTypes.Clearance.new()
@@ -90,11 +69,6 @@ func snap(t: CamTypes.Target) -> void:
 	zt = t.pose.z
 	psi_rate = 0.0
 	bank = 0.0
-	surge = Vector3.ZERO
-	lean = Vector3.ZERO
-	phi_s = t.pose.phi
-	_vel_s = Vector3.ZERO
-	_prev_pos = t.point(0.0)
 	clearance.reset()
 	land.reset()
 	_started = true
@@ -127,12 +101,11 @@ func update(t: CamTypes.Target, o: CamTypes.Options, dt: float) -> CamTypes.View
 		snap(t)
 	var ty := maxf(tau_yaw, 0.5) if o.reduced_motion else tau_yaw
 	zt += (t.pose.z - zt) * Frames.smooth_k(dt, 0.0 if o.follow_waves else tau_heave)
-	if breathing:
-		_follow_heading(t.pose.psi, dt, ty)
-		_breathe(t, o, dt)
-	else:
-		_plain_follow(t, dt, ty)
-	var target := t.point(zt) + surge + lean
+	var prev := psi_c
+	psi_c = Frames.smooth_angle(psi_c, t.pose.psi, dt, ty)
+	psi_rate = Frames.angle_diff(psi_c, prev) / dt if dt > 0.0 else 0.0
+	bank = clampf(BANK_K * psi_rate, -BANK_MAX, BANK_MAX) if banking and not o.reduced_motion else 0.0
+	var target := t.point(zt)
 	var v := CamTypes.View.new()
 	v.xform = frame(target, t, dt)
 	if bank != 0.0:
@@ -141,67 +114,6 @@ func update(t: CamTypes.Target, o: CamTypes.Options, dt: float) -> CamTypes.View
 	v.near = CamTypes.near_for(v.xform.origin.y)
 	v.focus = v.xform.origin.distance_to(target + Vector3(0, lift, 0))
 	return v
-
-
-## §2.1: the heading followed by a critically damped spring (natural frequency YAW_W_TAU / tau), so a tack's swing
-## eases in and out; tau = 0 follows at once.
-func _follow_heading(psi: float, dt: float, tau: float) -> void:
-	if tau <= 0.0 or dt <= 0.0:
-		psi_c = Frames.wrap_2pi(psi)
-		psi_rate = 0.0
-		return
-	var w := YAW_W_TAU / tau
-	var e := Frames.angle_diff(psi_c, psi)  # camera minus boat
-	# exact step of x'' = -2w x' - w² x over dt
-	var ex := exp(-w * dt)
-	var c := psi_rate + w * e
-	var e1 := (e + c * dt) * ex
-	psi_rate = (psi_rate - w * c * dt) * ex
-	psi_c = Frames.wrap_2pi(psi + e1)
-
-
-## The follow without breathing: the heading eased toward the boat's with one time constant, the target on the
-## boat. The breathing state is kept current so turning it back on starts from rest.
-func _plain_follow(t: CamTypes.Target, dt: float, tau: float) -> void:
-	psi_c = Frames.smooth_angle(psi_c, t.pose.psi, dt, tau)
-	psi_rate = 0.0
-	bank = 0.0
-	surge = Vector3.ZERO
-	lean = Vector3.ZERO
-	_vel_s = Vector3.ZERO
-	phi_s = t.pose.phi
-	_prev_pos = t.point(0.0)
-
-
-## §2.1: bank with the camera's yaw rate, the target trailing speed changes and leaning with the heel; all off with
-## reduced motion.
-func _breathe(t: CamTypes.Target, o: CamTypes.Options, dt: float) -> void:
-	var p := t.point(0.0)
-	var v := (p - _prev_pos) / dt if dt > 0.0 else Vector3.ZERO
-	v.y = 0.0
-	_prev_pos = p
-	if v.length() > SNAP_SPEED:
-		_vel_s = Vector3.ZERO
-		surge = Vector3.ZERO
-		v = Vector3.ZERO
-	if o.reduced_motion:
-		bank = 0.0
-		surge = Vector3.ZERO
-		lean = Vector3.ZERO
-		_vel_s = v
-		phi_s = t.pose.phi
-		return
-	bank = clampf(BANK_K * psi_rate, -BANK_MAX, BANK_MAX)
-	if _vel_s == Vector3.ZERO and surge == Vector3.ZERO:
-		_vel_s = v  # first moving frame: no trail from rest
-	_vel_s += (v - _vel_s) * Frames.smooth_k(dt, SURGE_TAU_V)
-	var want := (_vel_s - v) * SURGE_K
-	if want.length() > SURGE_MAX:
-		want = want.normalized() * SURGE_MAX
-	surge += (want - surge) * Frames.smooth_k(dt, SURGE_TAU_OFFSET)
-	phi_s += (t.pose.phi - phi_s) * Frames.smooth_k(dt, LEAN_TAU)
-	var up := Frames.boat_basis(t.pose.psi, 0.0, phi_s).y
-	lean = Vector3(up.x, 0.0, up.z) * (LEAN_K * t.loa)
 
 
 ## eye and view for a target point, with the water clearance (the aim point is kept)

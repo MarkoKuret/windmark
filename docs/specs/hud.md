@@ -751,7 +751,7 @@ the same:
 | Drawn wind (sea) | Sim, 8 to 25 kn | `--drawn-wind=` | live: the wind the water draws (whitecaps, puffs); waves and boats keep the world's | puff patches and whitecaps on the water |
 | Wind for restart | 4 to 30 kn | `--wind=` | the value for the next row | |
 | Restart with wind | action | | restart only: the core takes its wind when the world is made, so the race or free sail starts again with that wind, every other setting kept (a rules scenario keeps its file's wind) | the waves and the boat speed after the restart |
-| Chase breathing | On, Off | `--breathing=` | live: off is the plain follow (one heading lag, no bank, trail or lean) | chase camera in a tack or a gybe |
+| Chase bank | On, Off | `--chase-bank=` | live: off keeps the horizon level in turns too (the heading follow is the same) | chase camera in a tack or a gybe |
 | Drawn boat shadows | On, Off | `--no-drawn-shadows` | live (tiers L and M) | tiers L and M: the boat's shadow on the water |
 | Boat sun shadows | On, Off | `--no-boat-shadows` | live: the shadow proxies hidden and the sails not casting (`sail_visuals.md` §11.4) | the sails' and boom's shadows on the deck |
 | Render scale | Setting, 50, 67, 75, 85, 100 % | `--render-scale=` | live (root viewport) | fine detail: rigging, sail numbers, the far fleet |

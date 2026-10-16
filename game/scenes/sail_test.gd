@@ -163,8 +163,8 @@ var perf_seconds := 0.0
 var _tick_usec := 0
 ## the developer look panel (hud.md §18, LookPanel): F9
 var look_panel: LookPanel
-## the chase camera breathes (cameras.md §2.1); `--breathing=off` and the look panel turn it off (DevLook)
-var chase_breathing := true
+## the chase camera banks into turns (cameras.md §2.1); `--chase-bank=off` and the look panel turn it off (DevLook)
+var chase_bank := true
 ## the scene is built: DevLook's setters apply at once from here on (before, the flags only store their values)
 var built := false
 ## the light (water_render.md §4.5): the time of day (-1: the venue's look file, by the weather mode), the conditions
@@ -239,7 +239,7 @@ func _ready() -> void:
 	rig.name = "CameraRig"
 	add_child(rig)
 	rig.camera.current = true
-	rig.chase.breathing = chase_breathing
+	rig.chase.banking = chase_bank
 	rig.clip_allowed = not online
 	capture.allowed = not online
 	sea.camera = rig.camera
@@ -291,7 +291,7 @@ func _ready() -> void:
 		Settings.current().apply_render_scale(get_tree().root)
 	if no_hud:
 		hud.toggle_hidden()
-	DevLook.apply_built(self)  # the look flags (shadows, grade, breathing) on the built scene
+	DevLook.apply_built(self)  # the look flags (shadows, grade, chase bank) on the built scene
 	_apply_measure_off()
 	if scenario_run != null:
 		view_boat(scenario_run.scenario.view)
@@ -409,7 +409,7 @@ func _apply_setup() -> void:
 ## hazy|late` (the old preset names), `--light-advance=<rate>`, `--grade=<k>` (0 to 1.5),
 ## `--look=off` (no colour grade, contact shading or depth of field, to
 ## compare), `--ssao=on|off|tier` (contact shading over the tier), `--dof=off`, `--haze=<factor>`,
-## `--caps=off`, `--drawn-wind=<kn>`, `--breathing=off`, `--aa=off|fxaa|smaa`, `--quality=L|M|H`,
+## `--caps=off`, `--drawn-wind=<kn>`, `--chase-bank=off`, `--aa=off|fxaa|smaa`, `--quality=L|M|H`,
 ## `--render-scale=0.67`, `--no-boat-shadows`, `--no-drawn-shadows`;
 ## `--course=<venue>/<id>` (race mode), `--seed=<n>` (0: from the clock), `--livery=<id>` (the player's livery),
 ## `--wind=<kn>`, `--wind-from=<deg>`,

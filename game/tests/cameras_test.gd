@@ -695,81 +695,81 @@ func test_clip_choosing() -> void:
 
 
 func test_breathing() -> void:
-	t.begin("13 chase breathing")
+	t.begin("13 chase follow without lag, bank into turns")
 	var dt := 1.0 / 60.0
 	var o := CamTypes.Options.new()
 	t.near(ChaseCamera.BANK_MAX, deg_to_rad(1.5), 1e-9, "bank at most 1.5 deg")
-	t.near(ChaseCamera.SURGE_MAX, 0.8, 1e-9, "surge trail at most 0.8 m")
-	t.near(ChaseCamera.LEAN_K, 0.2, 1e-9, "lean 0.2 loa sin(heel)")
-	# eased heading: no overshoot, a gentler start than a first-order follow, settled by 3 tau_yaw
+	# a heading step: at least as far as the first-order follow of tau_yaw = 0.35 s, never past the new heading
 	var cam := ChaseCamera.new()
 	var tg := _target(0.0)
 	cam.update(tg, o, dt)
 	tg.pose.psi = PI * 0.5
-	var prev := 0.0
-	var mono := true
-	var at_01 := 0.0
+	var tight := true
+	var inside := true
 	for i in 63:
 		cam.update(tg, o, dt)
 		var a := Frames.angle_diff(cam.psi_c, 0.0)
-		mono = mono and a >= prev - 1e-9 and a <= PI * 0.5 + 1e-6
-		prev = a
-		if i == 5:
-			at_01 = a
-	t.ok(mono, "the swing never overshoots")
-	t.ok(at_01 < PI * 0.5 * (1.0 - exp(-0.1 / 0.35)), "eases in: %.1f deg after 0.1 s" % rad_to_deg(at_01))
-	# bank into a right turn (heading increasing): the right side of the frame goes down
+		var first_order := PI * 0.5 * (1.0 - exp(-(i + 1) * dt / 0.35))
+		tight = tight and a >= first_order - 1e-6
+		inside = inside and a <= PI * 0.5 + 1e-6
+	t.ok(tight, "follows a heading step at least as fast as a 0.35 s first-order lag")
+	t.ok(inside, "never swings past the new heading")
+	# a steady turn at 25 deg/s: the camera lags the heading by at most 0.35 s of the turn
 	cam = ChaseCamera.new()
 	tg = _target(0.0)
 	var v := cam.update(tg, o, dt)
 	var max_bank := 0.0
 	var right_down := false
-	for i in 120:
+	for i in 240:
 		tg.pose.psi = deg_to_rad(25.0) * (i + 1) * dt
 		v = cam.update(tg, o, dt)
 		max_bank = maxf(max_bank, absf(cam.bank))
 		right_down = right_down or v.xform.basis.x.y < -1e-4
+	var lag := Frames.angle_diff(tg.pose.psi, cam.psi_c) / deg_to_rad(25.0)
+	t.ok(lag <= 0.35 + 1e-3, "lag in a steady turn %.3f s (at most 0.35)" % lag)
+	# bank into a right turn (heading increasing): the right side of the frame goes down
 	t.ok(right_down and cam.bank > 0.0, "banks into a turn to starboard (%.2f deg)" % rad_to_deg(cam.bank))
 	t.ok(max_bank <= deg_to_rad(1.5) + 1e-6, "bank within 1.5 deg (%.2f)" % rad_to_deg(max_bank))
-	# surge: speeding up north the target trails (south, +Z), then settles back at a steady speed
+	# no trail: speeding up, the eye keeps its place behind the boat
 	cam = ChaseCamera.new()
 	tg = _target(0.0)
-	cam.update(tg, o, dt)
+	v = cam.update(tg, o, dt)
+	var rel0 := v.xform.origin - tg.point(0.0)
 	var speed := 0.0
-	var max_trail := 0.0
+	var worst := 0.0
 	for i in 120:  # 2 s at 1 m/s²
 		speed += 1.0 * dt
 		tg.pose.pos_y += speed * dt
-		cam.update(tg, o, dt)
-		max_trail = maxf(max_trail, cam.surge.z)
-	t.ok(max_trail > 0.1 and max_trail <= 0.8 + 1e-6, "trails a speed-up by %.2f m (at most 0.8)" % max_trail)
-	for i in 300:  # 5 s steady
-		tg.pose.pos_y += speed * dt
-		cam.update(tg, o, dt)
-	t.ok(cam.surge.length() < 0.02, "settles at a steady speed (%.3f m)" % cam.surge.length())
-	# a jump (reset) does not trail
-	tg.pose.pos_y += 500.0
-	cam.update(tg, o, dt)
-	t.ok(cam.surge.length() < 0.02, "a pose jump does not trail")
-	# lean: heeled 25 deg the target moves toward the masthead side by 0.2 loa sin(phi)
+		v = cam.update(tg, o, dt)
+		worst = maxf(worst, (v.xform.origin - tg.point(0.0) - rel0).length())
+	t.ok(worst < 1e-3, "no trail on a speed-up (%.4f m)" % worst)
+	# no lean: heeled 25 deg the eye and the aim stay where they are upright
 	cam = ChaseCamera.new()
 	tg = _target(0.0)
-	tg.pose.phi = deg_to_rad(25.0)
-	cam.update(tg, o, dt)
-	var mast := Frames.boat_basis(0.0, 0.0, tg.pose.phi).y
-	t.near(cam.lean.length(), 0.2 * 7.2 * sin(deg_to_rad(25.0)), 1e-3, "lean length")
-	t.ok(cam.lean.dot(Vector3(mast.x, 0, mast.z)) > 0.0, "lean toward the masthead side")
-	# reduced motion: none of it
-	o.reduced_motion = true
+	var up := cam.update(tg, o, dt)
 	cam = ChaseCamera.new()
-	tg = _target(0.0)
 	tg.pose.phi = deg_to_rad(25.0)
+	var heeled := cam.update(tg, o, dt)
+	t.ok(heeled.xform.origin.distance_to(up.xform.origin) < 1e-4 and absf(heeled.focus - up.focus) < 1e-4,
+		"heel moves neither the eye nor the aim")
+	# bank off (the look panel): level in turns
+	cam = ChaseCamera.new()
+	cam.banking = false
+	tg = _target(0.0)
 	cam.update(tg, o, dt)
 	for i in 60:
 		tg.pose.psi += deg_to_rad(25.0) * dt
-		tg.pose.pos_y += 3.0 * dt
 		cam.update(tg, o, dt)
-	t.ok(cam.bank == 0.0 and cam.surge == Vector3.ZERO and cam.lean == Vector3.ZERO, "reduced motion: no bank, trail or lean")
+	t.ok(cam.bank == 0.0, "bank off: level in turns")
+	# reduced motion: no bank
+	o.reduced_motion = true
+	cam = ChaseCamera.new()
+	tg = _target(0.0)
+	cam.update(tg, o, dt)
+	for i in 60:
+		tg.pose.psi += deg_to_rad(25.0) * dt
+		cam.update(tg, o, dt)
+	t.ok(cam.bank == 0.0, "reduced motion: no bank")
 
 
 func test_lens() -> void:

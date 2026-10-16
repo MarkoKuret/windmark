@@ -4,6 +4,7 @@ title: 'Marketing: run the first four weeks and the month-1 review'
 status: To Do
 assignee: []
 created_date: '2026-09-29 22:18'
+updated_date: '2026-10-16 20:33'
 labels:
   - marketing
 dependencies:
@@ -27,3 +28,9 @@ Social plan 6, 8. Post the calendar from Monday 5 October 2026: four vertical cl
 - [ ] #2 Metrics sheet filled for every post
 - [ ] #3 Month-1 review against the targets recorded in docs/marketing/social_plan.md, with the month-2 calendar
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Calendar re-dated to start Mon 19 Oct 2026: docs/marketing/launch_kit.md section 3 (all captions and Reddit posts), section 4 (shot list), metrics sheet docs/marketing/metrics.csv.
+<!-- SECTION:NOTES:END -->

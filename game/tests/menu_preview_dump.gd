@@ -49,6 +49,10 @@ func _init() -> void:
 		_dump("race_card_" + mode)
 	m.quick.rows["weather"].set_value("local", true)
 	m.close_page()
+	m.open_page("free")
+	await _frames(3)
+	_dump("free_sail")
+	m.close_page()
 	m.open_page("settings")
 	await _frames(2)
 	m.settings_panel.show_section("hud")
@@ -65,6 +69,27 @@ func _init() -> void:
 	await _frames(3)
 	_dump("bindings")
 	m.settings_panel.close()
+	m.close_page()
+	await _frames(2)
+	# the pause menu over the scene (menus.md §2), on its own (no host runner)
+	var pm := PauseMenu.new()
+	pm.act = false
+	root.add_child(pm)
+	await _frames(2)
+	pm.open()
+	await _frames(3)
+	_dump_node("pause", pm._root, SIZE)
+	pm.queue_free()
+	# the first-launch screen (menus.md §1)
+	m.queue_free()
+	await _frames(1)
+	Settings.current().welcomed = false
+	m = (load("res://scenes/menu/main_menu.tscn") as PackedScene).instantiate() as MainMenu
+	m.change_scenes = false
+	m.live_backdrop = false
+	root.add_child(m)
+	await _frames(4)
+	_dump("welcome")
 	await _race_end()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(Settings.path))
 	quit(0)

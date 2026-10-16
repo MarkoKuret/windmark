@@ -11,6 +11,7 @@ add_executable(windmark_core_tests
   test_checksum.cpp
   test_json.cpp
   test_perf.cpp
+  test_vmg_table.cpp
 )
 
 # boat and sails (WM-006)

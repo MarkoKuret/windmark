@@ -420,8 +420,33 @@ The whole core tick is now dominated by the rules engine, not the AI: in a `samp
 (`Rules::update` about three quarters of the tick, the AI about 13 %, the boats 8 %), a fifth of the tick is
 `polar_vmg`, which the rules
 engine calls for every boat on every tick whose true wind speed changed (it always does) to find the close-hauled
-angle by scanning the polar. Caching it on a speed grid would remove most of that, but changes the rules' angles
-slightly (a `rules.md` decision).
+angle by scanning the polar. WM-140 replaced the scan with a per-class table (next section).
+
+### Rules VMG angles from a per-class table (WM-140, 2026-10-16)
+
+`rules.md` §3.7: the close-hauled and running angles (and the VMG speeds of projected finishes and course scaling)
+come from a table built when the performance file loads, not from a 361-angle scan of every config per boat per
+tick. The table is the scan's answer as a staircase in wind speed: each change of winner found by bisection over the
+float bits, near ties kept as candidates, indexed every 0.05 m/s. A lookup equals the scan bit for bit (unit test:
+every 1 mm/s from -0.1 to 24 m/s, every 1021st float from 0.5 to 21 m/s, both sides of every switch: max angle and
+speed difference 0 for wm7 and wm12), so the races are unchanged (bench checksums identical before and after).
+Table: wm7 42 up / 76 down segments, 3.9 KB; wm12 31 / 21, 2.6 KB. Build 3 ms (wm7) and 13 ms (wm12) at load; a lookup
+0.08 to 0.15 µs against 9 µs for the scan.
+
+`windmark_race_bench` seed 7, Release, M5, the two builds alternated eleven times, the run with the lowest total of
+each shown (the four lowest totals of each within 1 %), µs per tick, mean / p99 / max:
+
+| Phase | 16 boats before | 16 boats after | 24 boats before | 24 boats after |
+| --- | --- | --- | --- | --- |
+| Free sailing | 46 / 54 / 92 | 23 / 29 / 54 | 71 / 82 / 125 | 36 / 42 / 83 |
+| Sequence | 96 / 245 / 566 | 73 / 232 / 566 | 189 / 445 / 726 | 155 / 416 / 698 |
+| Gun to +60 s | 100 / 126 / 215 | 77 / 100 / 196 | 176 / 240 / 306 | 140 / 204 / 274 |
+| Racing | 101 / 168 / 333 | 78 / 145 / 313 | 169 / 336 / 827 | 133 / 304 / 838 |
+| First finish to close | 70 / 138 / 251 | 46 / 82 / 224 | 111 / 274 / 408 | 76 / 234 / 356 |
+| Whole race | 92.5 | 69.3 | 154.3 | 119.1 |
+
+About 23 µs per tick off at 16 boats and 35 at 24 (a quarter and a fifth of the tick); the spikes are the AI's and
+barely move.
 
 ### Menu backdrop (4 boats)
 

@@ -62,7 +62,7 @@ rm -f "$csv"
 log="$here/generated/perf_smoke.log"
 set +e
 "$godot" --headless --path "$here" res://scenes/sail_test.tscn -- --fake --perf --perf-log="$csv" --perf-seconds=3 \
-    --look=off --caps=off --haze=0.5 --breathing=off --dof=off --aa=fxaa --drawn-wind=18 \
+    --look=off --caps=off --haze=0.5 --chase-bank=off --dof=off --aa=fxaa --drawn-wind=18 \
     >"$log" 2>&1
 rc=$?
 set -e

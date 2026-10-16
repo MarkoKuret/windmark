@@ -255,7 +255,7 @@ slot after `F`.
 | reduced motion | off | on: no camera shake, onboard horizon always level (`heel_follow = 0`), chase `tau_yaw ≥ 0.5 s`, no smooth-switch overshoot |
 | onboard heel follow | 0 | 0–1 (`cameras.md` §3) |
 | vibration | on, 1.0 | off, 0–1: contact rumble `min(1, closing_speed/2)` for 0.2 s; a light buzz (0.1) while let fly or `luff_shiver > 0.8` on the driving sail |
-| captions | off | on: every race sound that carries information (signals, hails, penalties, rule warnings) also shows a caption line (`audio.md` §8) |
+| captions | off | on: every race sound that carries information (signals, hails, penalties, rule warnings) also shows a caption line (`audio.md` §8); not offered until the audio has caption lines (`menus.md` §3) |
 | UI scale, colour-blind palette | 100 %, standard | `hud.md` |
 | assists | from the lobby | auto-trim and the HUD presets of `hud.md` §14 |
 
@@ -285,7 +285,7 @@ The options are saved per player in the settings file and set in the settings sc
     the pause menu) sets the rate back to ×1, ends a clean pause and clears the note without showing one.
   - Online both actions do nothing: the race runs on the server's clock.
 - **World tags** (`world_tags`, offline and online): hides or shows the world tags of `hud.md` §16.4 (mark tag,
-  tack point, name tags, edge pointers, penalty turn) and the on-water guides of the course (the start, gate and
+  tack point, name tags, edge pointers, next-mark arrow) and the on-water guides of the course (the start, gate and
   finish lines drawn on the water, the laylines, the zone circle, the rounding arrows and the far next-mark
   marker). Marks, committee and mark boats and their flags stay. It is separate from `hud_hide`, which hides the
   HUD panels: with both off only the boats, the course objects, the water and the land are drawn. Not saved: a

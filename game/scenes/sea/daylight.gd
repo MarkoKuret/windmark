@@ -72,7 +72,9 @@ const MORNING := [
 
 ## water_render.md §4.5 conditions: distance haze (WM-084), cloud cover (cumulus: times the hour's cloud factor),
 ## a factor on the sun's energy, the midday sun and sky colours (the per-channel ratio to fair's is applied to the
-## hour's colours), a factor on the exposure, on the drawn boat shadows (§4.7), and the grade's change.
+## hour's colours; a grey sky instead takes its own colours, dimmed and tinted by the hour), a factor on the exposure,
+## on the drawn boat shadows (§4.7) and on the sun shadows' blur (§4.6), the cloud deck's diffuse lighting, the sea
+## body colour's saturation and value (§4.2), the puffs' darkening (§4.3), and the grade's change.
 const FAIR_SUN := Color(1.0, 0.92, 0.80)
 const FAIR_HORIZON := Color(0.50, 0.74, 1.10)
 const FAIR_ZENITH := Color(0.05, 0.18, 0.62)
@@ -80,19 +82,25 @@ const CONDITIONS := {
 	"clear": {"haze_begin": 300.0, "haze_end": 16000.0, "haze_max": 0.45, "haze_curve": 0.42,
 		"cloud_cover": 0.0, "cumulus": true, "sun_k": 1.0, "sun_color": FAIR_SUN, "horizon": FAIR_HORIZON,
 		"zenith": FAIR_ZENITH, "exposure_k": 1.0, "shadow": 1.0,
+		"grey_sky": false, "diffuse": 0.0, "shadow_blur_k": 1.0, "sea_saturation": 1.0, "sea_value": 1.0, "puff_k": 1.0,
 		"contrast_add": 0.02, "warm_k": 1.0, "cool_k": 1.0, "saturation_k": 1.02},
 	"fair": {"haze_begin": 200.0, "haze_end": 14000.0, "haze_max": 0.60, "haze_curve": 0.40,
 		"cloud_cover": 0.40, "cumulus": true, "sun_k": 1.0, "sun_color": FAIR_SUN, "horizon": FAIR_HORIZON,
 		"zenith": FAIR_ZENITH, "exposure_k": 1.0, "shadow": 1.0,
+		"grey_sky": false, "diffuse": 0.0, "shadow_blur_k": 1.0, "sea_saturation": 1.0, "sea_value": 1.0, "puff_k": 1.0,
 		"contrast_add": 0.0, "warm_k": 1.0, "cool_k": 1.0, "saturation_k": 1.0},
 	"hazy": {"haze_begin": 150.0, "haze_end": 10000.0, "haze_max": 0.80, "haze_curve": 0.40,
 		"cloud_cover": 0.25, "cumulus": true, "sun_k": 2.8 / 3.6, "sun_color": Color(1.0, 0.95, 0.88),
 		"horizon": Color(0.80, 0.88, 1.00), "zenith": Color(0.24, 0.40, 0.74), "exposure_k": 1.10, "shadow": 0.85,
+		"grey_sky": false, "diffuse": 0.0, "shadow_blur_k": 1.0, "sea_saturation": 1.0, "sea_value": 1.0, "puff_k": 1.0,
 		"contrast_add": 0.06, "warm_k": 0.9, "cool_k": 0.9, "saturation_k": 1.0},
+	# a diffuse day: the deck gives the light (the sky's grey ramp, brighter overhead), the sun behind it about a
+	# tenth; the exposure brings the dimmer whole back up, the sea body greyer and darker
 	"overcast": {"haze_begin": 120.0, "haze_end": 9000.0, "haze_max": 0.75, "haze_curve": 0.40,
-		"cloud_cover": 0.88, "cumulus": false, "sun_k": 0.30, "sun_color": Color(1.0, 0.97, 0.94),
-		"horizon": Color(0.58, 0.62, 0.68), "zenith": Color(0.40, 0.44, 0.50), "exposure_k": 1.20, "shadow": 0.35,
-		"contrast_add": 0.04, "warm_k": 0.5, "cool_k": 0.8, "saturation_k": 0.92},
+		"cloud_cover": 0.88, "cumulus": false, "sun_k": 0.04, "sun_color": Color(1.0, 0.98, 0.96),
+		"horizon": Color(0.60, 0.63, 0.67), "zenith": Color(0.68, 0.71, 0.75), "exposure_k": 1.6, "shadow": 0.10,
+		"grey_sky": true, "diffuse": 1.0, "shadow_blur_k": 4.0, "sea_saturation": 0.5, "sea_value": 0.85, "puff_k": 2.4,
+		"contrast_add": -0.06, "warm_k": 0.3, "cool_k": 0.5, "saturation_k": 0.9},
 }
 
 ## The old light preset names (`--sky=`): conditions and the afternoon sun elevation of their hour.
@@ -171,8 +179,8 @@ static func is_condition(name: String) -> bool:
 
 ## Every value of the sky rig and the grade for a site, an hour (clamped) and conditions (unknown: fair):
 ## sun_elevation_deg, sun_azimuth_deg, sun_color, sun_energy, horizon, zenith, cloud_cover, exposure, haze_begin,
-## haze_end, haze_max, haze_curve, shadow, hour (the clamped hour), grade {contrast, warm, cool, saturation,
-## white_keep}.
+## haze_end, haze_max, haze_curve, shadow, diffuse, shadow_blur_k, sea_saturation, sea_value, puff_k, hour (the
+## clamped hour), grade {contrast, warm, cool, saturation, white_keep}.
 static func light(site: Dictionary, hour: float, conditions: String) -> Dictionary:
 	var h := clamp_hour(site, hour)
 	var sp := sun_position(site, h)
@@ -181,8 +189,13 @@ static func light(site: Dictionary, hour: float, conditions: String) -> Dictiona
 	var out := {"hour": h, "sun_elevation_deg": maxf(sp.x, MIN_SUN), "sun_azimuth_deg": sp.y}
 	out["sun_color"] = _ratio(k["sun_color"], c["sun_color"], FAIR_SUN, true)
 	out["sun_energy"] = float(k["sun_energy"]) * float(c["sun_k"])
-	out["horizon"] = _ratio(k["horizon"], c["horizon"], FAIR_HORIZON)
-	out["zenith"] = _ratio(k["zenith"], c["zenith"], FAIR_ZENITH)
+	if c["grey_sky"]:
+		var g := grey_sky_k(sp.x, k["sun_color"])
+		out["horizon"] = (c["horizon"] as Color) * g
+		out["zenith"] = (c["zenith"] as Color) * g
+	else:
+		out["horizon"] = _ratio(k["horizon"], c["horizon"], FAIR_HORIZON)
+		out["zenith"] = _ratio(k["zenith"], c["zenith"], FAIR_ZENITH)
 	out["cloud_cover"] = float(c["cloud_cover"]) * (float(k["cloud_k"]) if c["cumulus"] else 1.0)
 	out["exposure"] = float(k["exposure"]) * float(c["exposure_k"])
 	out["haze_begin"] = c["haze_begin"]
@@ -190,6 +203,8 @@ static func light(site: Dictionary, hour: float, conditions: String) -> Dictiona
 	out["haze_curve"] = c["haze_curve"]
 	out["haze_max"] = minf(float(c["haze_max"]) * float(k["haze_k"]), HAZE_MAX_CAP)
 	out["shadow"] = c["shadow"]
+	for key in ["diffuse", "shadow_blur_k", "sea_saturation", "sea_value", "puff_k"]:
+		out[key] = c[key]
 	out["grade"] = {
 		"contrast": float(k["contrast"]) + float(c["contrast_add"]),
 		"warm": (k["warm"] as Vector3) * float(c["warm_k"]),
@@ -198,6 +213,13 @@ static func light(site: Dictionary, hour: float, conditions: String) -> Dictiona
 		"white_keep": k["white_keep"],
 	}
 	return out
+
+
+## A grey sky's factor at a sun elevation (deg) and the hour's sun colour: the deck dims as the sun drops (the
+## square root of sin(el) over sin 38 deg, at least 0.45) and takes a quarter of the sun's tint (water_render.md §4.5).
+static func grey_sky_k(el: float, sun_col: Color) -> Color:
+	var dim := sqrt(clampf(sin(deg_to_rad(maxf(el, MIN_SUN))) / sin(deg_to_rad(38.0)), 0.2025, 1.0))
+	return Color.WHITE.lerp(sun_col, 0.25) * dim
 
 
 ## The hour's keys at a sun elevation (deg) and a solar time from noon (h): the morning and afternoon tables at
@@ -244,6 +266,25 @@ static func _ratio(col: Color, cond: Color, fair: Color, normalise := false) -> 
 		var m := maxf(o.r, maxf(o.g, o.b))
 		o = Color(o.r / m, o.g / m, o.b / m)
 	return o
+
+
+## water_render.md §4.2 sea body colours (linear) at full saturation and value: deep, shallow (crests), light
+## through the crests.
+const SEA_DEEP := Vector3(0.006, 0.042, 0.115)
+const SEA_SHALLOW := Vector3(0.012, 0.100, 0.155)
+const SEA_SSS := Vector3(0.03, 0.33, 0.40)
+const LUMA := Vector3(0.2126, 0.7152, 0.0722)
+
+
+## The sea body colours with their saturation and value scaled about their luminance:
+## value · mix(luma, colour, saturation). {col_deep, col_shallow, col_sss}.
+static func sea_colors(saturation: float, value: float) -> Dictionary:
+	var out := {}
+	for k in [["col_deep", SEA_DEEP], ["col_shallow", SEA_SHALLOW], ["col_sss", SEA_SSS]]:
+		var c: Vector3 = k[1]
+		var l := c.dot(LUMA)
+		out[k[0]] = (Vector3(l, l, l).lerp(c, saturation)) * value
+	return out
 
 
 # ---- clock text -------------------------------------------------------------------------------------------------

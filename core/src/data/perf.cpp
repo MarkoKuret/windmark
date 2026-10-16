@@ -505,6 +505,7 @@ bool parse_perf(std::string_view text, std::string_view file, PerfData& out, Loa
   }
   const auto* bytes = reinterpret_cast<const std::uint8_t*>(text.data());
   out.file_sha256 = to_hex(sha256(std::span<const std::uint8_t>(bytes, text.size())));
+  build_vmg_table(out, out.vmg);
   return true;
 }
 

@@ -15,20 +15,16 @@ var skip_button: Button
 func build(s: Settings, _screen: Vector2i) -> void:
 	settings = s
 	name = "WelcomePanel"
-	add_theme_constant_override("separation", 6)
+	add_theme_constant_override("separation", 4)
 	add_child(MenuTheme.heading("Welcome aboard"))
-	var line := MenuTheme.label("Two choices to start with. Both are in Settings later.", MenuTheme.SMALL_SIZE,
-		MenuTheme.MUTED)
-	line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	add_child(line)
 	var gap := Control.new()
-	gap.custom_minimum_size = Vector2(0, 8)
+	gap.custom_minimum_size = Vector2(0, 12)
 	add_child(gap)
 	var steer := MenuRow.choice("Steering", "helm_mode", [0, 1], ["Set and hold", "Hold to steer"], s.helm_mode)
 	steer.help = "Set and hold: a tap moves the helm and it stays. Hold to steer: it comes back when you let go."
 	_add(steer)
 	_add(MenuRow.choice("Quality", "quality", [0, 1, 2], ["Low", "Medium", "High"], s.quality))
-	var help := MenuTheme.label(steer.help, MenuTheme.SMALL_SIZE - 1, MenuTheme.MUTED)
+	var help := MenuTheme.label(steer.help, MenuTheme.SMALL_SIZE, MenuTheme.MUTED)
 	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	help.custom_minimum_size = Vector2(0, 40)
 	add_child(help)
@@ -36,15 +32,18 @@ func build(s: Settings, _screen: Vector2i) -> void:
 	for k in rows:
 		var r: MenuRow = rows[k]
 		r.focus_entered.connect(func() -> void: help.text = r.help)
+	var gap2 := Control.new()
+	gap2.custom_minimum_size = Vector2(0, 8)
+	add_child(gap2)
 	var foot := HBoxContainer.new()
 	foot.add_theme_constant_override("separation", 12)
 	add_child(foot)
-	go_button = MenuTheme.button("Let's sail", MenuTheme.ROW_SIZE + 2)
+	go_button = MenuTheme.button("Let's sail", MenuTheme.ACTION_SIZE)
 	go_button.name = "Go"
 	MenuTheme.set_primary(go_button)
 	go_button.pressed.connect(func() -> void: finish(true))
 	foot.add_child(go_button)
-	skip_button = MenuTheme.button("Skip", MenuTheme.ROW_SIZE + 2)
+	skip_button = MenuTheme.button("Skip", MenuTheme.ACTION_SIZE)
 	skip_button.name = "Skip"
 	skip_button.pressed.connect(func() -> void: finish(false))
 	foot.add_child(skip_button)

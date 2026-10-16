@@ -3,7 +3,7 @@
 What every in-race indicator means, how its value is computed, how it is rounded, and when it is shown.
 This file is the contract for the numbers and states behind them, so every front end (desktop, Steam Deck, a future
 browser client) shows the same values, and (§16) for what the player chooses to see: the instrument density levels,
-the colour meanings, the world tags and the cameras that draw the penalty turn. The exact layout and art are the
+the colour meanings, the world tags and the next-mark arrow. The exact layout and art are the
 front end's (`game/`, after `docs/design/hud_direction.md`).
 
 Conventions: `conventions.md` and `race.md` §0 (`twa` positive = wind from starboard). Knots: `m/s / KNOT`.
@@ -161,6 +161,26 @@ is within `6·L`, and a bouncing marker over the next mark when it is more than 
 The mark tag (§16.4) carries the name, distance, ETA and bearing on the mark itself; the distance to the layline is
 shown at the tack point on the water (the point along the current COG where she meets the other tack's layline).
 
+### 7.1 Next-mark arrow
+
+Outside the chase camera the view no longer follows the bow, so the player loses where the mark is. In the
+**onboard, aerial and free cameras** (`cameras.md` §3 to §5) one arrow shows the way to the next mark; in the chase
+camera it is not drawn (the mark tag and its edge pointer do that job there).
+
+- **When**: while the mark tag would show (racing, a next step after the start, not finished, `world_tags` on, a
+  3-D camera), at every density and assist preset. Hidden with the course map open (§8.1) and with `hud_hide`.
+- **Direction**: the bearing from the viewed boat to the next mark's point (§7: the nearer buoy of a gate, the
+  nearest point of a line) in the camera's frame on the water: straight up on the screen is the camera's forward
+  direction projected on the water (its up direction when it looks straight down), right is the camera's right.
+  Updated every frame (§1).
+- **Look**: a solid arrow head in `mark`, 30 design px long, no ring, no backing plate; to its right the mark's name
+  in `mark` caps (13 design px, tracked) and under it the distance in the §1 format in `paper` (24 design px, the
+  unit at 45 %), on an `ink` 70 % chip just large enough for them so they read over bright water.
+- **Where**: landscape, centred over the helm notes (8 design px above them); portrait (§16.5), centred under the
+  alert lane at the top of the edge pointers' box, with the mark tag kept under it.
+- **With it**: outside the chase camera the mark's off-screen edge pointer (§16.4) is not drawn, so one cue points
+  at the mark; the mark tag on the mark still shows when the mark is on screen.
+
 ## 8. Radar / minimap
 
 - Centred on the viewed boat; **heading-up** (default) or **north-up**; range 100 m – 3 km in steps of ×1.5; the
@@ -214,19 +234,25 @@ cameras keep moving and every sound plays. Offline and online alike.
   - the **start line** dashed in `paper` (2 px) and the **finish line** checkered `paper` and `ink` (4 px), as the
     race card's map draws them (`menus.md` §1.1); the start line at full strength until the viewed boat has
     started and at 45 % after, the finish line at full strength on the last leg and at 45 % before it;
-  - **zone circles** (§7: `zone_lengths·L` of the viewed boat plus the mark's radius) round each rounding mark, in
-    `hair`; the next step's in `mark` at 50 %. A circle under 4 px across is not drawn;
-  - **marks**: rounding marks (the sequence's marks and gate buoys) as diamonds 5 design px across their half
-    diagonal, the next step's in `mark` and the others in `paper`; other buoys as `paper` dots at 60 %; the
-    committee boat and mark boats as small `paper` hulls; virtual marks not drawn;
+  - the **zone circle** (§7: `zone_lengths·L` of the viewed boat plus the mark's radius) round the next step's
+    marks only, in `mark` at 50 % (the other marks' circles were clutter). A circle under 4 px across is not drawn;
+  - **marks**: rounding marks (the sequence's marks and gate buoys) as round buoys, a disc of 5 design px radius
+    with a 1.5 px `ink` rim so it reads where the course line runs through it, the next step's in `mark` and the
+    others in `paper`; other buoys as `paper` dots at 60 %; the committee boat and mark boats as small `paper`
+    hulls; virtual marks not drawn;
+  - **mark names**: each rounding mark's label from the course (`courses.md` §8, the mark id without one) beside
+    it, 13 design px, 14 design px right of the buoy and centred on it; a gate gets one label, `Gate 4S / 4P` as
+    in §7 (a buoy label that starts with `Gate` loses that word), right of its right-hand buoy. The next step's
+    in `mark`, the others in `mist`;
   - a **rounding arrow** on every rounding mark, as the radar draws it (a 0.6 π arc of 10 design px radius from the
     top of the mark, anticlockwise on the screen to leave it to port, clockwise to starboard, with a dot at its head):
     the next step's in `mark`, the others in `mist`. A mark rounded on more than one lap gets one arrow (its side
     is the same every lap).
 - **Boats**: every boat of the race as an oriented icon, the radar's triangle (§8) at least 14 design px long (its
   true length when that is larger), coloured as on the radar: the rules relation with the viewed boat, `ghost` for
-  ghosts, all `paper` with the Minimal assist, the same 2 Hz and 4 Hz pulses and the outline on `Breach`. The viewed
-  boat in `mark`, 1.3 times the size, drawn last. The selected boat (§16.4.1) gets the radar's four hairline corners.
+  ghosts, all `paper` with the Minimal assist, the same 2 Hz and 4 Hz pulses and the outline on `Breach`; a boat
+  with no relation (white) at 70 %, so the boats that matter stand out. The viewed boat in `mark`, 1.6 times the
+  size with a 2 px `ink` rim, drawn last, so she is never mistaken for the fleet. The selected boat (§16.4.1) gets the radar's four hairline corners.
 - **Name tags**: the viewed boat always (her name, or `YOU` for the player's own boat), the selected boat, and every
   boat with a rules relation to the viewed boat (red, green, orange or cyan): a chip above the icon as the world
   name tags draw it (§16.4: solid in her colour with a relation, `paper` on `ink` otherwise, the viewed boat's in
@@ -326,8 +352,9 @@ From the pair records of the viewed boat (`rules.md` §11.1), highest-priority f
 Visible while the boat has pending penalties, is taking one, or was penalised in the last 5 s:
 
 - **Pending count** and the current one's rule text (§12.3) and the other boat's name.
-- **Turn progress**: a ring filling with the tracker's `|Θ|` (`rules.md` §9.3) to 360° (every penalty is one turn),
-  with a tack tick and a gybe tick that light when done; state text, the first that applies:
+- **Turn progress**: plain text, no ring or dial: `TURN` over the tracker's `|Θ|` (`rules.md` §9.3) as a number
+  (`210°`, every penalty is one turn of 360°), and under it the words `TACK` and `GYBE`, each in `paper` once done
+  and in `mist` at 45 % before; state text, the first that applies:
   - `Not counted: inside the zone` while the core's `turn_in_zone` is set (match races only, `rules.md` §9.3; a
     fleet-race turn counts anywhere);
   - for 3 s after the core's last turn reset (`turn_reset`, `turn_reset_tick`, `rules.md` §11.2), by its reason:
@@ -341,9 +368,8 @@ Visible while the boat has pending penalties, is taking one, or was penalised in
 - **Disqualification warning**: `One more penalty = disqualification` when pending = `dsq_pending − 1` or
   received = `dsq_total − 1`.
 - **Finish blocked**: `Take your penalty before finishing` on a `FinishBlocked` event.
-- **Turn on the water**: while the panel shows a pending or running turn, a ring around the viewed boat (radius
-  `1.5·L`) fills with the same `|Θ|`, with a head at the filled end. Drawn in the chase and aerial cameras only, never
-  onboard (the boat is underneath the camera there) nor in the free camera; the panel carries it in every camera.
+- **Nothing on the water**: the turn is not drawn round the boat in any camera (the owner's call: the ring on the
+  water was ugly and hid the boat); the panel carries it in every camera.
 
 ### 12.2 Messages
 
@@ -474,8 +500,12 @@ density of §16.1: an item shows only when both allow it.
 - Density (§16.1): for each level and phase the table's items are shown and no others; the density key cycles
   Glance, Race, Data, Glance and the choice survives a restart; the defaults are Race at 1920 x 1080 and Glance at
   1280 x 800.
-- Name tags (§16.4): a boat at 45 m has a tag, one at 55 m has none until it is selected; the penalty ring is drawn in
-  the chase and aerial cameras and not onboard.
+- Name tags (§16.4): a boat at 45 m has a tag, one at 55 m has none until it is selected; with a penalty pending
+  and a turn running nothing is drawn round the boat in any camera, and the panel shows the turn as a number with
+  no arc.
+- Next-mark arrow (§7.1): drawn in the onboard, aerial and free cameras and not in the chase camera; with the mark
+  ahead of the camera it points up, to its right it points right, behind it points down; outside the chase camera
+  the mark's off-screen edge pointer is not drawn; it hides with `world_tags` and with the course map.
 - Selecting (§16.4.1): a click on a far boat's hull or rig selects her and draws her bracket and tag, a click on the
   water or on her again clears, a click on another boat replaces her, a press dragged 20 px picks nothing
   (`controls.md` §8 test 10), Esc clears it without pausing, `boat_select` goes nearest first, then the next, then
@@ -497,7 +527,8 @@ density of §16.1: an item shows only when both allow it.
   race runs on while it shows (the race time advances, the boat answers the helm); the frame fits every mark at
   1920 x 1080, 1280 x 800 and 1080 x 1920; every boat is drawn in its radar colour (ghosts grey, all white with
   Minimal) and the viewed boat in `mark`; the course line runs through every step with one rounding arrow per
-  rounding mark on the side of the course; the next step's marks are in `mark`; the scale bar's label matches its
+  rounding mark on the side of the course; the next step's marks are in `mark` and only they have a zone circle;
+  every rounding mark (one per gate) has its name; the scale bar's label matches its
   length; while it is open the alert lane shows and the radar, the instrument page and the world tags do not; a
   click on a boat's icon selects her.
 - Capture rate note (§16.6): each `capture_slow` press shows the note for the new rate, also with the HUD hidden;
@@ -513,7 +544,7 @@ What the player can choose to see and what the colours mean; the layout, sizes a
 Three levels, **Glance**, **Race** and **Data**, cycled in that order by the `hud_density` action (`controls.md`
 §2). Density decides how many instrument values show. It never hides a contextual item (countdown, OVER and OCS,
 the rules line, the penalty panel, banners, protest and hail prompts) or anything in the world (start line, mark
-tag, laylines, tack point, zone circle, rounding arrow, name tags, edge pointers, penalty turn) or the selected
+tag, next-mark arrow, laylines, tack point, zone circle, rounding arrow, name tags, edge pointers) or the selected
 boat's card (§16.7). The radar, the helm strip and, under manual trim, the trim gauges show at every level.
 
 | Phase | Glance | Race | Data |
@@ -592,7 +623,8 @@ Numbers keep the 4 Hz refresh of §1; dial and bars move every frame.
 ### 16.4 World tags
 
 - **Mark tag**: on the next mark (§7): name, distance, ETA, bearing and relative bearing. Off screen it becomes an
-  edge pointer at the screen edge towards the mark.
+  edge pointer at the screen edge towards the mark in the chase camera; in the other cameras the next-mark arrow
+  (§7.1) takes its place.
 - **Tack point**: on a beat or run with the layline distance of §6 shown, a point on the water where the current COG
   meets the other tack's layline (a ring in the colour of the tack she will sail after it), with
   `TACK IN <distance> <time>` on a beat and `GYBE IN <distance> <time>` on a run (the turn onto the other tack
@@ -603,7 +635,6 @@ Numbers keep the 4 Hz refresh of §1; dial and bars move every frame.
   ink otherwise) and pulses as the radar icon does. A selected boat off screen gets an edge pointer with her name
   and distance. `boat_names` turns all name tags off and on (the selected boat's included; her bracket and card
   stay).
-- **Penalty turn**: §12.1, chase and aerial cameras only.
 - `world_tags` (`controls.md` §7) hides and shows all of the above at once, with the course's on-water guides;
   it is independent of `hud_hide`.
 
@@ -751,7 +782,7 @@ the same:
 | Drawn wind (sea) | Sim, 8 to 25 kn | `--drawn-wind=` | live: the wind the water draws (whitecaps, puffs); waves and boats keep the world's | puff patches and whitecaps on the water |
 | Wind for restart | 4 to 30 kn | `--wind=` | the value for the next row | |
 | Restart with wind | action | | restart only: the core takes its wind when the world is made, so the race or free sail starts again with that wind, every other setting kept (a rules scenario keeps its file's wind) | the waves and the boat speed after the restart |
-| Chase breathing | On, Off | `--breathing=` | live: off is the plain follow (one heading lag, no bank, trail or lean) | chase camera in a tack or a gybe |
+| Chase bank | On, Off | `--chase-bank=` | live: off keeps the horizon level in turns too (the heading follow is the same) | chase camera in a tack or a gybe |
 | Drawn boat shadows | On, Off | `--no-drawn-shadows` | live (tiers L and M) | tiers L and M: the boat's shadow on the water |
 | Boat sun shadows | On, Off | `--no-boat-shadows` | live: the shadow proxies hidden and the sails not casting (`sail_visuals.md` §11.4) | the sails' and boom's shadows on the deck |
 | Render scale | Setting, 50, 67, 75, 85, 100 % | `--render-scale=` | live (root viewport) | fine detail: rigging, sail numbers, the far fleet |

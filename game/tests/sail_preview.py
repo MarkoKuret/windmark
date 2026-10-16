@@ -189,7 +189,7 @@ void main() {
     vec4 a = u_inv_vp * vec4(v_p, -1.0, 1.0);
     vec4 b = u_inv_vp * vec4(v_p, 1.0, 1.0);
     vec3 d = normalize(b.xyz / b.w - a.xyz / a.w);
-    frag = vec4(wm_sky_color(d, normalize(u_sun), u_hor, u_zen, u_sun_col, u_cloud_cover, u_cloud_offset, 1.0), 1.0);
+    frag = vec4(wm_sky_color(d, normalize(u_sun), u_hor, u_zen, u_sun_col, u_cloud_cover, u_cloud_offset, 1.0, 0.0), 1.0);
 }
 """
 

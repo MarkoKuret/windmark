@@ -127,13 +127,17 @@ detail fades out (fully gone at 0.5 m/s): glassy water.
 Godot's PBR does the lighting; the shader sets:
 ```
 crest    = clamp(eta / max(sum_a, 1e-3), 0, 1)
-ALBEDO   = mix(deep, shallow, 0.55 * crest)                         // deep (0.006, 0.042, 0.115), shallow (0.012, 0.100, 0.155), linear
+ALBEDO   = mix(deep, shallow, 0.55 * crest)                         // deep (0.006, 0.042, 0.115), shallow (0.012, 0.100, 0.155), linear (full sun)
 SPECULAR = 0.40                                                      // Godot's F0 = 0.16·SPECULAR² = 0.026 (water 0.02, a little lifted)
-ROUGHNESS = 0.035 + 0.025 * (1 - near) + 0.05 * clamp(m - 1, -0.4, 0.25) / 0.25 + 0.18 * fade_far(dist)   // rougher in puffs and far away
+ROUGHNESS = 0.035 + 0.025 * (1 - near) + 0.05 * (puff_k * clamp(m - 1, 0, 0.25) + clamp(m - 1, -0.4, 0)) / 0.25
+            + 0.18 * fade_far(dist)                                  // rougher in puffs (puff_k: §4.3) and far away
 EMISSION = sss * crest * (pow(max(0, dot(-view, sun)), 3) * 0.3 * sun_radiance + 0.05)  // light through the crests, sss (0.03, 0.33, 0.40)
 ```
 - **Body colour**: a deep, saturated blue (about sRGB `#004684` from the aerial camera in the default light), a
-  little greener on the crests; it is what the sea shows looking down, so it carries the race-day look.
+  little greener on the crests; it is what the sea shows looking down, so it carries the race-day look. The
+  conditions (§4.5) scale deep, shallow and sss about their luminance: `value · mix(luma, colour, saturation)`
+  (`Daylight.sea_colors`, set on the sea by `Sea` from `SkyRig` every frame); 1 and 1 except overcast (0.5, 0.85),
+  where the water under a grey sky is a dark slate blue-grey.
 - **Sky reflection** comes from the scene's sky radiance through PBR (Schlick Fresnel: under 3 % looking straight
   down, most of the sky at grazing angles), so the water takes the sky's colour at every time of day and weather:
   with the saturated sky of §4.5 this is a gradient from the deep blue below the camera to a light blue band at the
@@ -159,8 +163,14 @@ m = clamp(m, puff_cap_lo, puff_cap_hi)
 A puff (`m > 1`) is rougher and so darker (it mirrors less bright horizon), a lull (`m < 1`) smoother and brighter.
 The effect is also made explicit so it reads from the aerial camera and in flat light:
 ```
-ALBEDO *= 1 - k_puff * clamp((m - 1) / 0.25, 0, 1) + k_lull * clamp((1 - m) / 0.4, 0, 1)    // k_puff 0.25, k_lull 0.15
+ALBEDO *= 1 - k_puff * puff_k * clamp((m - 1) / 0.25, 0, 1) + k_lull * clamp((1 - m) / 0.4, 0, 1)    // k_puff 0.25, k_lull 0.15
 ```
+`puff_k` is the conditions' factor (§4.5, 1 except overcast 2.4); it also scales the puffs' extra roughness (§4.2).
+Under a diffuse sky the albedo carries less of the picture and there is no glitter to lose, so overcast doubles both
+to keep the puffs reading as well as in fair weather. Checked offline (2026-10-16, Practice Waters at 20 kn, 14:00,
+each shot rendered with and without its puffs, the display luminance inside the puffs): aerial fair −9.4 %
+(−0.030), overcast −9.2 % (−0.033); chase fair −2.6 % (−0.018), overcast −2.7 % (−0.021). Without the factor
+overcast gave −4.0 % from the aerial camera.
 Venues with a wind field (`wind.md` §8): the land-effect speed factor `f` multiplies `m` after the
 puff clamp (the caps bound the puffs, not the venue). The CPU keeps the eight sector grids of the venue file
 and uploads the two around the current direction (`k0`, `k1` of `wind.md` §8, from `global_from`) as one RG32F
@@ -306,22 +316,38 @@ lets the clock run. There is no night: the hour is clamped to the hours with the
 - **Conditions** (`Daylight.CONDITIONS`), over the hour: the distance haze (WM-084's numbers), the cloud cover, a
   factor on the sun's energy, the sky and sun colours as a per-channel ratio to fair (the conditions' midday colours
   over fair's, so hazy midday is exactly the former hazy preset and a hazy evening a pale, warm one), a factor on the
-  exposure, a factor on the drawn boat shadows (§4.7) and the grade's change (below).
+  exposure, a factor on the drawn boat shadows (§4.7) and the grade's change (below); and (second table) the cloud
+  deck's diffuse lighting, a factor on the sun shadows' blur (§4.6), the sea body colour's saturation and value
+  (§4.2) and a factor on the puffs' darkening (§4.3).
 
   | conditions | haze begin, end, max, curve | clouds | sun × | sun colour at midday | sky horizon, zenith at midday | exposure × | shadow × |
   | --- | --- | --- | --- | --- | --- | --- | --- |
   | clear | 300 m, 16 km, 0.45, 0.42 | 0 | 1.0 | as fair | as fair | 1.0 | 1.0 |
   | fair (default) | 200 m, 14 km, 0.60, 0.40 | 0.40, cumulus | 1.0 | (1.0, 0.92, 0.80) | (0.50, 0.74, 1.10), (0.05, 0.18, 0.62) | 1.0 | 1.0 |
   | hazy | 150 m, 10 km, 0.80, 0.40 | 0.25, cumulus | 0.78 | (1.0, 0.95, 0.88) | (0.80, 0.88, 1.00), (0.24, 0.40, 0.74) | 1.10 | 0.85 |
-  | overcast | 120 m, 9 km, 0.75, 0.40 | 0.88, a deck | 0.30 | (1.0, 0.97, 0.94) | (0.58, 0.62, 0.68), (0.40, 0.44, 0.50) | 1.20 | 0.35 |
+  | overcast | 120 m, 9 km, 0.75, 0.40 | 0.88, a deck | 0.04 | (1.0, 0.98, 0.96) | grey: (0.60, 0.63, 0.67), (0.68, 0.71, 0.75) | 1.6 | 0.10 |
+
+  | conditions | grey sky | deck diffuse | shadow blur × | sea saturation, value | puff × |
+  | --- | --- | --- | --- | --- | --- |
+  | clear, fair, hazy | no | 0 | 1 | 1, 1 | 1 |
+  | overcast | yes | 1 | 4 | 0.5, 0.85 | 2.4 |
 
   Cumulus build through the day (the hour's cloud factor); the overcast deck does not (its cover stays 0.88, so a
   few thinner patches show). `haze max` is the conditions' times the hour's factor, at most 0.9. The haze colour is the
   horizon colour, as before.
-- **Overcast** is kept because the sky shader can draw it: at cover 0.88 the cumulus layer becomes a grey deck with
-  its billowed texture and a few breaks, the sun disc and halo are hidden by the cloud in front of them (the disc is
-  drawn times `1 − cloud`), the weak sun (0.30 of the hour's) still gives soft, faint shadows and some shape on the
-  sails, and the sea reflects the grey ramp. It is a flat, grey racing day, not a storm: no rain, no dark base.
+- **Overcast** (owner decision 2026-10-16: real diffuse light). The sun is behind the deck, so the light comes from
+  the sky: the sun keeps 0.04 of the hour's energy (at 14:00 at Practice Waters about a tenth of the light on a
+  level deck, against four fifths on a fair day), the sky's grey ramp gives the rest as ambient light and
+  reflections, and the exposure (× 1.6) brings the dimmer whole back up, with the bright grey sky the lightest thing
+  in the picture. A **grey sky** does not take the hour's blue colours by ratio: its horizon and zenith are its own
+  (brighter overhead, as an overcast sky is) times `Daylight.grey_sky_k`: `mix(white, hour's sun colour, 0.25) ·
+  sqrt(clamp(sin(el)/sin 38°, 0.2025, 1))`, so the deck dims and warms a little as the sun drops. The deck itself is
+  drawn **diffuse** (`cloud_diffuse` 1 in the sky shader): the ramp's colour from below, up to 22 % darker where the
+  cloud is thick, no sunlit side, silver lining, disc or halo. With so little direct sun the boats' sun shadows are
+  faint and, with the blur × 4 (§4.6), soft; the drawn shadows keep 0.10 of their full-sun strength (§4.7); the sea
+  has no glitter, turns a dark slate grey-blue (§4.2) reflecting the grey sky toward the horizon, and the grade
+  lowers contrast and colour (below). The puffs keep their contrast (§4.3). It is a flat, grey racing day, not a
+  storm: no rain, no dark base.
 - **Old names**: `--sky=clear|fair|hazy|late` stays as an alias. clear, fair and hazy set those conditions at the
   hour of the afternoon sun at 38° (the former presets' sun; solar noon where the sun never gets so high); `late` is
   fair at the hour of the afternoon sun at 17°.
@@ -358,7 +384,8 @@ light blue, not grey.
   threshold (`smoothstep(1 − c, 1 − c + 0.16, n)`). One more look-up of the coarse octaves a little toward the sun
   lights the side of the cloud facing the sun (`sun · 0.40 + horizon · 0.25`) and leaves the far side and the base
   grey-blue (`mix(horizon, zenith, 0.35) · 0.85 + sun · 0.07`); thin edges toward the sun glow (silver lining);
-  clouds fade into the horizon haze below 17°. The sun disc and halo are drawn times `1 − 0.95·c` (hidden behind a
+  clouds fade into the horizon haze below 17°. Under overcast the deck is drawn diffuse instead (the
+  Overcast item above). The sun disc and halo are drawn times `1 − 0.95·c` (hidden behind a
   cloud). The sky has no `TIME`, so Godot only redraws its radiance map when a value changes.
 - **Distance haze** (WM-084): aerial perspective, so far boats, marks and land fade softly toward the horizon and
   the race area reads with depth and scale. Godot's depth fog (`FOG_MODE_DEPTH`) toward the horizon colour: at a
@@ -424,7 +451,7 @@ conditions:
 | clear | +0.02 | 1.0 | 1.0 | 1.02 |
 | fair | 0 | 1.0 | 1.0 | 1.0 |
 | hazy | +0.06 | 0.9 | 0.9 | 1.0 |
-| overcast | +0.04 | 0.5 | 0.8 | 0.92 |
+| overcast | −0.06 | 0.3 | 0.5 | 0.90 |
 
 **Grade strength** `k` (0 to 1.5, default 1; the look panel's row, `--grade=`): contrast, warm and cool times `k`,
 saturation `1 + (s − 1)·k`; 0 is no grade (the LUT is skipped). At strength 1 a display value moves by up to about
@@ -480,7 +507,8 @@ the whole race area: beyond the shadow distance the fleet is small on screen and
   not take them on L. The boats' casters are the boat view's (`SeaQuality` key `boat_cast_distance`); the venue's
   trees follow the tier (`VenueView.apply_quality`).
 - Bias 0.1, normal bias 2.0 (Godot's scaled units, the same on every tier), pancake 30 m (a mast of 20 m with the
-  sun at 38° stays inside the caster range), blur 1. With a low sun the masthead lies far up the light ray from its
+  sun at 38° stays inside the caster range), blur 1 times the conditions' shadow blur factor (§4.5: 4 under
+  overcast, a diffuse sun's soft edge; no effect with tier L's hard filter). With a low sun the masthead lies far up the light ray from its
   shadow (68 m at 17°, 191 m at the lowest sun of 6°), beyond the pancake: Godot then clamps that caster onto the
   cascade's near plane (its depth only; an orthographic light keeps its outline), which still shadows every receiver
   in the cascade, so no setting changes with the time of day. The own boat's long shadows on the water are the
@@ -562,7 +590,7 @@ water body, so it reads darker and slightly violet-navy rather than grey. A view
 engine (luminance 0.26 to 0.42) because Godot's light on the sea is not that model. Recheck the factor when the
 daylight of §4.5 or the water colours of §4.2 change. Under weaker sun the drawn shadow is fainter as the real one
 is: `shadow_keep` is `mix(1, keep, shadow)` with the conditions' shadow factor (clear and fair 1, hazy 0.85,
-overcast 0.35; `Daylight.CONDITIONS`), set by `BoatShadows` when the sky's light changes.
+overcast 0.10, the sun's share of the light under the deck; `Daylight.CONDITIONS`), set by `BoatShadows` when the sky's light changes.
 
 **Cost**: the per-boat geometry (about 70 points projected, five convex hulls) runs in the GDExtension
 (`BoatShadowShape`, with the GDScript reference `BoatShadows.build`); with the sails' outline read natively

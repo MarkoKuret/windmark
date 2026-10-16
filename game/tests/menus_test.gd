@@ -25,6 +25,7 @@ func _init() -> void:
 	await test_race_card()
 	test_briefing()
 	await test_weather_card()
+	await test_light_rows()
 	await test_touches()
 	await test_pause_menu()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
@@ -85,8 +86,17 @@ func test_look() -> void:
 	var focus := th.get_stylebox("focus", "Button") as StyleBoxFlat
 	t.ok(focus.bg_color == MenuTheme.ACCENT and th.get_color("font_focus_color", "Button") == MenuTheme.NAVY,
 		"focused button: yellow fill, navy text")
-	var quit := MenuTheme.button("Quit", MenuTheme.ITEM_SIZE, true)
-	t.ok(quit.get_theme_color("font_color") == MenuTheme.SIGNAL and quit.text == "QUIT", "Quit: red caps")
+	var quit := MenuTheme.button("Reset section", MenuTheme.ACTION_SIZE, true)
+	t.ok(quit.get_theme_color("font_color") == MenuTheme.SIGNAL and quit.text == "RESET SECTION",
+		"a destructive action: red caps")
+	t.ok(quit.custom_minimum_size.y >= MenuTheme.ACTION_H, "footer actions are at least %d px tall" % MenuTheme.ACTION_H)
+	var item := MenuTheme.button("Quit")
+	t.ok(not item.has_theme_color_override("font_color") and th.get_color("font_color", "Button") == MenuTheme.NAVY
+		and item.custom_minimum_size.y >= MenuTheme.ITEM_H,
+		"menu items: navy, at least %d px tall" % MenuTheme.ITEM_H)
+	item.free()
+	var pnl := MenuTheme.panel()
+	t.ok(pnl.shadow_size == 0 and pnl.border_width_bottom == 0, "cloth panels are flat: no shadow, no edge")
 	var f := quit.get_theme_font("font") as FontVariation
 	t.ok(f != null and f.base_font.resource_path.ends_with("BarlowSemiCondensed-Bold.ttf"), "buttons in Barlow Bold")
 	quit.free()
@@ -121,7 +131,6 @@ func _odd_settings() -> Settings:
 	s.hud_density = Hud.Density.DATA
 	s.ui_scale = 1.15
 	s.palette = "tritanopia"
-	s.captions = true
 	s.quality = SeaQuality.Tier.H
 	s.render_scale = 0.75
 	s.fullscreen = true
@@ -131,7 +140,6 @@ func _odd_settings() -> Settings:
 	s.master_volume = 0.5
 	s.effects_volume = 0.25
 	s.signals_volume = 0.75
-	s.voice_volume = 0.1
 	s.ambience_volume = 0.0
 	s.interface_volume = 0.6
 	s.last_setup = {"class_id": "wm12", "fleet_size": 7}
@@ -395,8 +403,8 @@ class StubSim extends SimSource:
 		return ev
 
 
-## menus.md §3 "Where each setting goes": every key of the settings file reaches its target, except the ones
-## NOT_APPLIED lists (captions: the audio has no caption lines yet).
+## menus.md §3 "Where each setting goes": every key of the settings file reaches its target (only settings the game
+## reads are offered).
 func test_every_key_applied() -> void:
 	t.begin("every setting is applied")
 	var s := _odd_settings()
@@ -450,16 +458,32 @@ func test_every_key_applied() -> void:
 		"bindings.bindings": Bindings.slots("let_fly") == s.bindings["let_fly"],
 	}
 	for f in Settings.BUSES:
-		got["audio." + f] = absf(bus.call(Settings.BUSES[f][0]) - float(s.get(f))) < 1e-3 or (float(s.get(f)) <= 0.0
-			and AudioServer.is_bus_mute(AudioServer.get_bus_index(Settings.BUSES[f][0])))
+		var ok := true
+		for b in Settings.BUSES[f]:
+			ok = ok and (absf(bus.call(b) - float(s.get(f))) < 1e-3 or (float(s.get(f)) <= 0.0
+				and AudioServer.is_bus_mute(AudioServer.get_bus_index(b))))
+		got["audio." + f] = ok
 	for sec in Settings.FIELDS:
 		for f in Settings.FIELDS[sec]:
 			var k: String = sec + "." + f
-			if k in Settings.NOT_APPLIED:
-				t.ok(not got.has(k), "%s stored only (listed in NOT_APPLIED)" % k)
-			else:
-				t.ok(got.get(k, false), "%s applied" % k)
-	t.ok(Settings.NOT_APPLIED == ["hud.captions"], "only captions stay stored: %s" % [Settings.NOT_APPLIED])
+			t.ok(got.get(k, false), "%s applied" % k)
+	t.ok("voice" in Settings.BUSES["signals_volume"], "the signals volume drives the hails' voice bus too")
+	# a file from an older build with the dropped keys: the others load, the dropped ones are not written again
+	var old := ConfigFile.new()
+	old.set_value("settings", "version", 1)
+	old.set_value("hud", "captions", true)
+	old.set_value("audio", "voice_volume", 0.2)
+	old.set_value("audio", "master_volume", 0.4)
+	var old_path := "user://menus_test_old.cfg"
+	old.save(old_path)
+	var older := Settings.new()
+	t.ok(older.load_file(old_path) == OK and is_equal_approx(older.master_volume, 0.4), "an older file still loads")
+	older.save_file(old_path)
+	var back := ConfigFile.new()
+	back.load(old_path)
+	t.ok(not back.has_section_key("hud", "captions") and not back.has_section_key("audio", "voice_volume"),
+		"the dropped keys are not saved again")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(old_path))
 	# back to the defaults
 	fresh.apply_hud(hud)
 	t.ok(HudStyle.palette == "standard" and HudStyle.PORT == Color("#FF4438"), "standard palette back")
@@ -862,30 +886,32 @@ func test_race_card() -> void:
 		and q.course_map.points["w"].x > 600.0, "the map follows the wind rows")
 	q.rows["fleet_size"].set_value(12.0, true)
 	q.rows["ai_level"].set_value("pro", true)
-	t.ok(q.fleet_text.text.contains("12 boats: you and 11 AI") and q.fleet_text.text.contains("Pro AI")
-		and q.fleet_text.text.contains(MenuData.name_of(MenuData.classes(), str(q.rows["class_id"].value))),
-		"fleet summary: %s" % q.fleet_text.text.replace("\n", " / "))
-	t.ok(q.course_text.text.contains("2 laps, 6 legs"), "course caption: %s" % q.course_text.text.replace("\n", " / "))
-	# keyboard: down from the last row is Start, up from Start the last row (Gusts in Custom, Weather otherwise)
-	t.ok(q.last_row() == q.rows["gusts"], "Custom: the last row is Gusts")
-	q.rows["gusts"].grab_focus()
+	t.ok(q.course_text.text == "2 laps, 6 legs", "course caption: %s" % q.course_text.text)
+	# keyboard: down from the last row is Start, up from Start the last row (Sky, after the weather rows)
+	t.ok(q.last_row() == q.rows["light_conditions"], "Custom: the last row is Sky")
+	q.rows["light_conditions"].grab_focus()
 	await process_frame
 	_key("ui_down")
 	await process_frame
 	t.ok(root.gui_get_focus_owner() == q.start_button, "down from the last row: Start")
 	_key("ui_up")
 	await process_frame
-	t.ok(root.gui_get_focus_owner() == q.rows["gusts"], "up from Start: the last row")
+	t.ok(root.gui_get_focus_owner() == q.rows["light_conditions"], "up from Start: the last row")
 	q.rows["weather"].set_value("local", true)
-	t.ok(q.last_row() == q.rows["weather"] and not q.rows["wind_kn"].visible, "Local: the Custom rows hidden")
+	t.ok(q.last_row() == q.rows["light_conditions"] and not q.rows["wind_kn"].visible, "Local: the Custom rows hidden")
 	q.rows["weather"].grab_focus()
 	await process_frame
 	_key("ui_down")
 	await process_frame
-	t.ok(root.gui_get_focus_owner() == q.start_button, "Local: down from Weather is Start")
+	t.ok(root.gui_get_focus_owner() == q.rows["light_time"], "Local: down from Weather is Time")
+	_key("ui_down")
+	await process_frame
+	_key("ui_down")
+	await process_frame
+	t.ok(root.gui_get_focus_owner() == q.start_button, "Local: down from Sky is Start")
 	_key("ui_up")
 	await process_frame
-	t.ok(root.gui_get_focus_owner() == q.rows["weather"], "Local: up from Start is Weather")
+	t.ok(root.gui_get_focus_owner() == q.rows["light_conditions"], "Local: up from Start is Sky")
 	# the layout: preview beside the rows when there is room, under them when not; Start always on screen
 	for c2 in [[Vector2i(1280, 800), 0.8], [Vector2i(1280, 800), 1.0], [Vector2i(1280, 800), 1.3],
 			[Vector2i(1080, 1920), 0.8], [Vector2i(1080, 1920), 1.0], [Vector2i(1080, 1920), 1.3]]:
@@ -1086,7 +1112,9 @@ func test_weather_card() -> void:
 		t.ok(not q.rows[k].visible, "Local: %s hidden" % k)
 	t.ok(q.briefing_header.visible and q.briefing_header.text == "PRACTICE WATERS · Practice",
 		"Local: the header %s" % q.briefing_header.text)
-	t.ok(q.briefing_grid.get_child_count() == 12, "Local: six lines with the Tip (%d cells)" % q.briefing_grid.get_child_count())
+	t.ok(q.briefing_grid.get_child_count() == 14, "Local: seven lines with Light and the Tip (%d cells)"
+		% q.briefing_grid.get_child_count())
+	t.ok(q.briefing_text().contains("Light\t14:30, fair\nTip\t"), "Local: the Light line before the Tip")
 	t.ok(q.briefing_text().contains("Tip\t"), "Local: the Tip")
 	t.ok(q.course_map.wind_shown and absf(q.course_map.wind_kn - 12.0) < 0.01 and q.course_map.wind_from_deg == 0.0,
 		"Local: the map's wind is the typical direction and the middle of the range")
@@ -1174,7 +1202,7 @@ func test_weather_card() -> void:
 		and q.rows["gusts"].value == "standard", "no conditions: 12 kn, 0°, Shifty, Moderate")
 	var ob := q.briefing_text()
 	t.ok(ob == "OLD BAY\nWind\t12 kn from the N\nShifts\tShifty: large, regular (15°)\n"
-		+ "Gusts\tModerate: to +25 %, frequent\nCurrent\tNone\nSea\tChop", "no conditions: %s" % ob.replace("\n", " / "))
+		+ "Gusts\tModerate: to +25 %, frequent\nCurrent\tNone\nSea\tChop\nLight\t14:30, fair", "no conditions: %s" % ob.replace("\n", " / "))
 	MenuData._venue_info.erase(BoatClassData.repo_path("data/venues/old_bay.venue.json"))
 	q.rows["venue"].set_value("practice_waters", true)
 	t.ok(q.rows["weather"].choices.size() == 3, "back on Practice Waters: three modes")
@@ -1215,6 +1243,81 @@ func test_weather_card() -> void:
 	t.ok(rs.today_text() == "", "results after Custom: no Today line")
 	rs.free()
 	host.free()
+	m.queue_free()
+	await process_frame
+	Settings.reset_current()
+
+
+## menus.md §1: the Time and Sky rows: Venue default or a pick, Surprise with Random weather, the venue's window,
+## GameSetup.light_time and light_conditions, the briefing's Light line, remembered and given to Continue.
+func test_light_rows() -> void:
+	t.begin("quick race: Time and Sky rows")
+	Settings.reset_current()
+	Settings.current().welcomed = true
+	var m := _menu()
+	root.size = Vector2i(1280, 800)
+	await process_frame
+	m.open_page("quick")
+	await process_frame
+	await process_frame
+	var q := m.quick
+	q.rows["venue"].set_value("practice_waters", true)
+	q.rows["weather"].set_value("local", true)
+	var tr: MenuRow = q.rows["light_time"]
+	var sr: MenuRow = q.rows["light_conditions"]
+	t.ok(tr.visible and sr.visible and tr.value == -1.0 and sr.value == "", "Time and Sky shown, Venue default")
+	t.ok(tr.value_text() == "Venue default" and sr.value_text() == "Venue default", "both read Venue default")
+	t.ok(tr.choices[1] == 10.0 and tr.choices[-1] == 18.5 and tr.choices.size() == 19,
+		"Time: 10:00 to 18:30 in 30 min steps (%d values)" % tr.choices.size())
+	t.ok(tr.names[1] == "10:00" and tr.names[-1] == "18:30", "Time names: %s .. %s" % [tr.names[1], tr.names[-1]])
+	t.ok(sr.names == ["Venue default", "Clear", "Fair", "Hazy", "Overcast"], "Sky names: %s" % [sr.names])
+	for n in sr.names + tr.names:
+		t.ok(not str(n).contains("—"), "no em dash in %s" % n)
+	q.start_button.pressed.emit()
+	var g := GameSetup.current()
+	t.ok(g.light_time == -1.0 and g.light_conditions == "", "Venue default: GameSetup light_time -1, conditions empty")
+	m.open_page("quick")
+	await process_frame
+	tr.set_value(16.5, true)
+	sr.set_value("overcast", true)
+	t.ok(tr.value_text() == "16:30" and sr.value_text() == "Overcast", "picked 16:30, Overcast")
+	t.ok(q.briefing_text().contains("Light\t16:30, overcast"), "the briefing's Light line follows the rows")
+	# Random: both Surprise and fixed; the picks come back after it
+	q.rows["weather"].set_value("random", true)
+	t.ok(tr.value_text() == "Surprise" and sr.value_text() == "Surprise", "Random: Surprise")
+	tr.step_value(1)
+	t.ok(tr.value_text() == "Surprise", "Random: the row does not step")
+	t.ok(not q.briefing_text().contains("Light"), "Random: no Light line")
+	q.start_button.pressed.emit()
+	g = GameSetup.current()
+	t.ok(g.light_time == -1.0 and g.light_conditions == "", "Random: the seed decides (-1, empty)")
+	t.ok(m.settings.last_setup.get("light_time") == 16.5 and m.settings.last_setup.get("light_conditions") == "overcast",
+		"the picks are remembered, not Surprise")
+	m.open_page("quick")
+	await process_frame
+	q.rows["weather"].set_value("custom", true)
+	t.ok(tr.value == 16.5 and sr.value == "overcast", "leaving Random gives the picks back")
+	q.start_button.pressed.emit()
+	g = GameSetup.current()
+	t.ok(g.light_time == 16.5 and g.light_conditions == "overcast", "GameSetup: 16.5 h, overcast")
+	m.continue_last()
+	t.ok(GameSetup.current().light_time == 16.5 and GameSetup.current().light_conditions == "overcast",
+		"Continue keeps the light")
+	m.open_page("quick")
+	await process_frame
+	# another venue: its window; a time it lacks falls back to Venue default
+	if MenuData.ids(MenuData.venues()).has("garda"):
+		tr.set_value(10.0, true)
+		q.rows["venue"].set_value("garda", true)
+		var w := VenueLook.load_venue("garda").race_window
+		t.ok(tr.choices[1] == w.x and tr.choices[-1] == w.y, "Garda: Time over %s to %s" % [tr.names[1], tr.names[-1]])
+		t.ok(tr.value == -1.0, "10:00 is outside Garda's window: Venue default")
+		t.ok(sr.value == "overcast", "the Sky pick stays")
+		tr.set_value(14.0, true)
+		q.rows["venue"].set_value("practice_waters", true)
+		t.ok(tr.value == 14.0, "back on Practice Waters 14:00 stays")
+	t.ok(SetupPanel.light_from({"light_time": 3.0, "light_conditions": "foggy"}, "practice_waters", "local")
+		== {"light_time": -1.0, "light_conditions": ""}, "a remembered time outside the window and unknown sky: defaults")
 	m.queue_free()
 	await process_frame
 	Settings.reset_current()
@@ -1352,18 +1455,23 @@ func test_touches() -> void:
 	await process_frame
 	t.ok(snd.played.has("focus") and snd.played.has("accept") and snd.played.has("back"),
 		"focus, accept and back: %s" % [snd.played])
-	# the help line: every row of every section has its line, and it follows the focus
+	# the help line: only where the name does not say it all (menus.md §3), and it follows the focus
 	m.close_page()
 	m.open_page("settings")
 	await process_frame
 	var sp := m.settings_panel
 	var missing := []
+	var shown := []
 	for sec in SettingsPanel.SECTIONS:
 		sp.show_section(sec)
 		for k in sp.rows:
-			if (sp.rows[k] as MenuRow).help == "":
+			shown.append(k)
+			if (sp.rows[k] as MenuRow).help == "" and k in ["helm_mode", "stick_dead_zone", "stick_curve",
+					"heel_follow", "assist", "hud_density", "palette", "quality", "render_scale", "capture_preset"]:
 				missing.append(k)
-	t.ok(missing.is_empty(), "every settings row has a help line (missing: %s)" % [missing])
+	t.ok(missing.is_empty(), "the rows that need it have a help line (missing: %s)" % [missing])
+	t.ok(not "captions" in shown and not "voice_volume" in shown, "no captions or voice rows")
+	t.ok((sp.rows["master_volume"] as MenuRow).help == "", "self-explanatory rows have no help line")
 	sp.show_section("graphics")
 	await process_frame
 	sp.rows["vsync"].grab_focus()

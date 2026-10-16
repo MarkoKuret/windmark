@@ -6,7 +6,7 @@ the boxes, texts, colour rects and the course map the menu draws at 1280 x 800) 
     python3 game/tests/menu_preview.py [--publish]
 
 The backdrop stands in for the live sail scene (menus.md section 4): a published render, tests/previews/
-cine_fair_chase.jpg, scaled to cover the frame. Text is set in the game's Barlow Semi Condensed (game/fonts/barlow)
+water_bay20_chase_M.jpg, scaled to cover the frame. Text is set in the game's Barlow Semi Condensed (game/fonts/barlow)
 with the dump's tracking; the layout is the game's own (every rect comes from Godot). Writes
 generated/menu_preview/<shot>.jpg; with --publish also docs/design/frames/menus_<shot>.jpg (the race end shots as
 race_end_results*.jpg).
@@ -23,7 +23,7 @@ GAME = os.path.dirname(HERE)
 REPO = os.path.dirname(GAME)
 SRC = os.path.join(GAME, "generated", "menu_preview")
 FONT_DIR = os.path.join(GAME, "fonts", "barlow")
-BACKDROP = os.path.join(HERE, "previews", "cine_fair_chase.jpg")
+BACKDROP = os.path.join(HERE, "previews", "water_bay20_chase_M.jpg")
 PUBLISH = os.path.join(REPO, "docs", "design", "frames")
 SS = 2
 

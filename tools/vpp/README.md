@@ -364,8 +364,11 @@ sail no longer beats the jib close-hauled). The crossover this gives is in `sail
 Rig: coefficients summed by area; induced drag `Cl² (1/(π AR) + 0.005)` with Hazen's effective height (the deck
 mirror close-hauled, `1.1 mast_height`, fading to `1.1 (mast_height − freeboard)` off the wind); windage
 `1.13 (beam · freeboard + mast height · mast chord)` (Hazen). The main-only config (no front sail at all) loses
-the slot: the main's lift is scaled by 0.72 close-hauled, recovering by 110° (calibrated). Behind any front sail
-(jib, genoa, code zero or a kite) the main keeps its ORC coefficients, which ORC uses unchanged with a spinnaker.
+the slot: the main's lift is scaled by 0.72 close-hauled, recovering by 110° (calibrated). Behind a drawing front
+sail (jib, genoa, code zero or a kite) the main keeps its ORC coefficients, which ORC uses unchanged with a
+spinnaker. A kite draws only from about 30 to 40° effective AWA (the ORC spinnaker tables have no lift at 28° and
+most of it by 41°); closer to the wind it luffs and gives the main no slot, so under a kite the 0.72 fades out
+from 28 to 41° instead (`solver.KITE_SLOT_AWA`), and the kite configs keep their no-go edge near 45° TWA.
 The true wind is given at 10 m and scaled to the centre of effort with a logarithmic sea profile (`z0` = 0.2 mm); the rig sees the apparent
 wind component normal to the heeled mast (Kerwin 1978).
 

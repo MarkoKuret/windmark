@@ -167,7 +167,8 @@ The game has no replay or clip export yet (WM-016.15, postponed). What works now
    Settings, Graphics, Capture preset, Portrait 9:16 (a 1080×1920 window with the HUD laid out for portrait;
    session only, the next start is back in the normal window).
 4. **Quiz set-ups:** `godot --path game res://scenes/sail_test.tscn -- --scenario=port_starboard` runs a scenario
-   file from `game/data/scenarios/` (`race.md` §14), the same 20 s clip every run; reset replays it.
+   file from `game/data/scenarios/` (`race.md` §14), the same 20 s clip every run; reset replays it. The four
+   quiz set-ups, freeze frames and checked answers: `quiz_scenarios.md`.
 5. **Headless stills now:** the offline previews (`game/tests/previews/race_hud_*.jpg`, `course_*.jpg`,
    `sails_*.jpg`, `tools/boatgen/previews/*.png`) are fine for carousels and Reddit stills today, with no window.
    They are stand-in renders (no shadows, near-engine colours): label them "offline render" or use them only for the

@@ -1,10 +1,11 @@
 ---
 id: WM-147
 title: 'HUD: next-mark arrow only when the mark is off screen'
-status: In Progress
+status: Done
 assignee:
   - '@hudux2'
 created_date: '2026-10-16 20:09'
+updated_date: '2026-10-16 20:28'
 labels:
   - hud
 dependencies: []
@@ -19,7 +20,7 @@ In the onboard, aerial and free cameras the next-mark arrow shows only while the
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 hud.md §7.1 updated
-- [ ] #2 Arrow hidden with the mark on screen and shown with it off screen in onboard, aerial and free; never in chase
-- [ ] #3 race_hud_test checks both cases; render of the off-screen case
+- [x] #1 hud.md §7.1 updated
+- [x] #2 Arrow hidden with the mark on screen and shown with it off screen in onboard, aerial and free; never in chase
+- [x] #3 race_hud_test checks both cases; render of the off-screen case
 <!-- AC:END -->

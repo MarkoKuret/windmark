@@ -309,7 +309,8 @@ func test_hud_text() -> void:
 	sim.sv.sails[2].progress = 0.4
 	h.tick(sim, 0)
 	h.refresh_text()
-	t.ok(h.text_of("sail") == "Sail  Jib, hoisting Kite 40 %", h.text_of("sail"))
+	t.ok(h.text_of("sail") == "Sail  Jib" and h.text_of("hoist") == "HOISTING KITE",
+		"hud.md §5.1: the sail up in the strip, the hoist in its one cue: %s, %s" % [h.text_of("sail"), h.text_of("hoist")])
 	var pc := PlayerControls.new()
 	pc.busy_flash = true
 	pc.messages.append(PlayerControls.MSG_AUTO_TRIM_REFUSED)

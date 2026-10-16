@@ -3,10 +3,11 @@ id: WM-154
 title: >-
   HUD: no target speed; optimum VMG angle on the TWA dial with a coloured
   pointer
-status: In Progress
+status: Done
 assignee:
   - '@hudux2'
 created_date: '2026-10-16 20:13'
+updated_date: '2026-10-16 20:28'
 labels:
   - hud
 dependencies: []
@@ -21,8 +22,8 @@ Drop the speed / target speed metric everywhere in the HUD (keep plain boat spee
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 hud.md §4, §16.1, §16.3 and hud_direction.md updated
-- [ ] #2 No target speed text or cell anywhere in the HUD
-- [ ] #3 The dial marks both optima and the TWA pointer goes green on the optimum to red far off
-- [ ] #4 race_hud_test checks it; render
+- [x] #1 hud.md §4, §16.1, §16.3 and hud_direction.md updated
+- [x] #2 No target speed text or cell anywhere in the HUD
+- [x] #3 The dial marks both optima and the TWA pointer goes green on the optimum to red far off
+- [x] #4 race_hud_test checks it; render
 <!-- AC:END -->

@@ -1,10 +1,11 @@
 ---
 id: WM-148
 title: 'HUD: course map uses the full width in landscape'
-status: In Progress
+status: Done
 assignee:
   - '@hudux2'
 created_date: '2026-10-16 20:09'
+updated_date: '2026-10-16 20:28'
 labels:
   - hud
 dependencies: []
@@ -19,7 +20,7 @@ In landscape the course map is squeezed into the right half because the alert co
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 hud.md §8.1 updated
-- [ ] #2 In landscape the frame fits the whole width when the alert lane is empty and is not squeezed by it otherwise as specified
-- [ ] #3 race_hud_test checks the frame; landscape map render
+- [x] #1 hud.md §8.1 updated
+- [x] #2 In landscape the frame fits the whole width when the alert lane is empty and is not squeezed by it otherwise as specified
+- [x] #3 race_hud_test checks the frame; landscape map render
 <!-- AC:END -->

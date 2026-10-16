@@ -41,7 +41,16 @@ const TAG_RANGE := 50.0
 ## hud.md §16.4.1: a click or tap within this many px of a boat's hull and rig triangle picks her (design px)
 const PICK_RADIUS := 40.0
 ## hud.md §16.4.1: the bracket stands this far outside the boat's screen box (design px)
-const BRACKET_GAP := 6.0
+## hud.md §16.4.1 the selection marker over the masthead (design px)
+const MARKER_GAP := 8.0
+const MARKER_W := 12.0
+const MARKER_H := 9.0
+## hud.md §16.4.2 ladder lines (m): past the boats across the axis, at least each side of a boat, sample step
+const LADDER_PAST := 40.0
+const LADDER_MIN := 80.0
+const LADDER_STEP := 4.0
+## design px kept clear round every boat's hull and rig on screen
+const LADDER_CLEAR := 6.0
 ## controls.md §3: a View press shorter than this is a tap (density), longer the ranking list
 const VIEW_TAP := 0.3
 const RANK_W := [70.0, 260.0, 130.0, 120.0, 120.0]
@@ -142,6 +151,7 @@ var _view_held := 0.0
 var _wired: PlayerControls = null
 var _map_sim: SimSource = null
 var _k := 1.0
+var _ladder_shapes: Array = []
 ## where edge pointers run in portrait (hud.md §16.5), screen px; empty in landscape (HudPaint.edge_pointer's own box)
 var edge_box := Rect2()
 
@@ -295,7 +305,7 @@ func phase() -> String:
 
 
 ## The items the density and the assist show now (hud.md §16.1, §14): instrument cells ("bsp", "twa_dial",
-## "twa", "cue", "hdg", "target", "vmg_kn", "awa", "sog", "cog", "aws", "heel_bar"), "bug", "bug_lap",
+## "twa", "hdg", "vmg_kn", "awa", "sog", "cog", "aws", "heel_bar"; no target speed, hud.md §4), "bug", "bug_lap",
 ## "bug_gaps", "wind_page", "shift", "feed", "feed_own", "start_min", "start_full", "hint", "radar", "helm".
 func items() -> Array[String]:
 	var out: Array[String] = ["bsp", "twa_dial", "twa", "radar", "helm"]
@@ -304,7 +314,6 @@ func items() -> Array[String]:
 	var data := ["vmg_kn", "awa", "sog", "cog", "aws", "heel_bar"]
 	match ph:
 		"free":
-			out.append("cue")
 			if lvl >= Density.RACE:
 				out.append_array(["hdg", "wind_page"])
 			if lvl == Density.DATA:
@@ -312,19 +321,16 @@ func items() -> Array[String]:
 		"pre":
 			out.append("start_min" if lvl == Density.GLANCE else "start_full")
 			if lvl >= Density.RACE:
-				out.append_array(["cue", "hdg", "target", "wind_page", "bug", "feed"])
+				out.append_array(["hdg", "wind_page", "bug", "feed"])
 			if lvl == Density.DATA:
 				out.append_array(data)
 				out.append("bug_lap")
 		_:
 			out.append("bug")
-			var leg := ph in ["beat", "run", "reach"]
 			if lvl == Density.GLANCE:
-				if leg:
-					out.append("cue")
 				out.append("feed_own")
 			else:
-				out.append_array(["cue", "hdg", "target", "wind_page", "shift", "bug_lap", "feed"])
+				out.append_array(["hdg", "wind_page", "shift", "bug_lap", "feed"])
 				if lvl == Density.DATA:
 					out.append_array(data)
 					out.append_array(["bug_gaps", "hint"])
@@ -339,19 +345,43 @@ func has_item(what: String) -> bool:
 	return items().has(what)
 
 
-## The target of the speed to target cue (hud.md §4), m/s: the leg's target speed while racing on a leg (beat V_up,
-## run V_dn, reach V_pol with the best sail), else the polar speed at the present TWA (NAN head to wind).
-func cue_target() -> float:
+## hud.md §4: the VMG angle the TWA pointer is coloured against (rad): the leg's on a beat or run, none on a reach
+## (NAN), the nearer half's before the start, free sailing and after the finish
+func dial_reference() -> float:
+	var up := values.vmg_up_twa
+	var dn := values.vmg_dn_twa
+	if is_nan(up) or is_nan(dn):
+		return NAN
 	if race.active and race.started and race.next_step > 0 and race.leg_type != "":
-		return race.target_speed
-	return values.polar_speed
+		match race.leg_type:
+			"beat":
+				return up
+			"run":
+				return dn
+			_:
+				return NAN
+	return up if absf(values.twa) < (up + dn) * 0.5 else dn
 
 
-## the target angle ticks on the TWA dial: the leg's target TWA on a beat or run, NAN otherwise
-func dial_target() -> float:
-	if race.active and race.leg_type in ["beat", "run"] and not is_nan(race.target_twa):
-		return race.target_twa
-	return NAN
+## hud.md §16.3: the true wind pointer's colour on the angle error: stbd up to 2 degrees, mark at 11, port from 20,
+## linear between; paper with no reference
+func pointer_colour() -> Color:
+	var ref := dial_reference()
+	if is_nan(ref):
+		return HudStyle.PAPER
+	return angle_error_colour(rad_to_deg(absf(absf(values.twa) - ref)), colours())
+
+
+static func angle_error_colour(err_deg: float, palette: Dictionary) -> Color:
+	var green: Color = palette[HudValues.Colour.GREEN]
+	var red: Color = palette[HudValues.Colour.RED]
+	if err_deg <= 2.0:
+		return green
+	if err_deg <= 11.0:
+		return green.lerp(HudStyle.MARK, (err_deg - 2.0) / 9.0)
+	if err_deg < 20.0:
+		return HudStyle.MARK.lerp(red, (err_deg - 11.0) / 9.0)
+	return red
 
 
 ## hud.md §13.1: the finish card shows now
@@ -579,24 +609,20 @@ func refresh_text() -> void:
 	_put("cog", "COG  %s" % ("---" if cog == "--" else cog), HudStyle.PAPER, cog)
 	var heel := HudFormat.side_angle(v.heel, "S", "P")
 	_put("heel", "Heel  %s" % heel, HudStyle.PAPER, heel)
-	var tg := cue_target()
-	var cue := "%s / %s" % [HudFormat.speed_kn(v.bsp), "--" if is_nan(tg) else HudFormat.speed_kn(tg)]
-	_put("cue", "Target  %s kn" % cue, HudStyle.PAPER, cue, "KN")
 	var twa := HudFormat.side_angle(v.twa, "S", "P")
 	_put("twa", "TWA  %s" % twa, HudStyle.PAPER, twa)
 	_put("twd", "TWD  %s" % HudFormat.compass_deg(v.twd), HudStyle.PAPER, HudFormat.compass_deg(v.twd))
 	var awa := HudFormat.side_angle(v.awa, "S", "P")
 	_put("awa", "AWA  %s" % awa, HudStyle.PAPER, awa)
 	var sail := _sail_name(v.sail_up) if v.sail_up != "" else "Main only"
-	if v.sail_hoisting != "":
-		sail += ", hoisting %s %s %%" % [_sail_name(v.sail_hoisting), HudFormat.percent(100.0 * v.hoist_progress)]
 	_put("sail", "Sail  %s" % sail, HudStyle.PAPER, sail.to_upper())
+	# hud.md §5.1: the one hoist cue
+	_put("hoist", "HOISTING %s" % _sail_name(v.sail_hoisting).to_upper() if v.sail_hoisting != "" else "")
 	_put("rudder", "Helm  %s" % _signed_pct(v.h), HudStyle.PAPER, _signed_pct(v.h))
 	var sheet := "AUTO" if v.auto_trim else "%s %%" % HudFormat.percent(100.0 * v.sheet_cmd)
 	_put("sheet", "Sheet  %s%s" % [sheet, "   LET FLY" if v.let_fly else ""], HudStyle.PAPER,
 		sheet + (", LET FLY" if v.let_fly else ""))
 	_put("vmg_kn", "", HudStyle.PAPER, "--")
-	_put("target_cell", "", HudStyle.PAPER, "--", "KN")
 	_race_text()
 	_card_text()
 
@@ -650,7 +676,7 @@ func _show_race(on: bool) -> void:
 		penalty_panel.visible = false
 		ranking_panel.visible = false
 		results_panel.visible = false
-		for k in ["vmg", "target", "shift", "banner", "rules", "prompt"]:
+		for k in ["vmg", "shift", "banner", "rules", "prompt"]:
 			_put(k, "")
 
 
@@ -816,18 +842,9 @@ func _race_text() -> void:
 		_put("leg", "%s  ·  ETA %s" % [r.leg_type.capitalize(), eta])
 		if r.leg_type == "reach":
 			_put("vmg", "VMC  %s kn" % HudFormat.speed_kn(r.vmc), white, HudFormat.speed_kn(r.vmc), "KN")
-			_put("target", "Target  %s kn" % HudFormat.speed_kn(r.target_speed))
-			_put("target_cell", "", white, HudFormat.speed_kn(r.target_speed), "KN")
 			_put("vmg_kn", "", white, HudFormat.speed_kn(r.vmc), "KN")
 		else:
 			_put("vmg", "VMG  %s kn" % HudFormat.speed_kn(r.vmg), white, HudFormat.speed_kn(r.vmg), "KN")
-			var tdeg := "" if is_nan(r.target_twa) else "%d°" % int(HudFormat.round_half_away(rad_to_deg(r.target_twa)))
-			var tt := "" if tdeg == "" else "  " + tdeg
-			_put("target", "Target  %s kn%s" % [HudFormat.speed_kn(r.target_speed), tt])
-			if tdeg != "":
-				_put("target_cell", "", white, tdeg, "%s KN" % HudFormat.speed_kn(r.target_speed))
-			else:
-				_put("target_cell", "", white, HudFormat.speed_kn(r.target_speed), "KN")
 			_put("vmg_kn", "", white, HudFormat.speed_kn(r.vmg), "KN")
 		var lay := ""
 		if shows("layline_distance"):
@@ -849,11 +866,8 @@ func _race_text() -> void:
 		_put("shift", sh, sh_col)
 		_put("hint", r.sail_hint if shows("sail_hint") else "", HudStyle.HAVE)
 	else:
-		for k in ["next", "lap", "mark_dist", "bearing", "leg", "layline", "hint", "vmg", "target", "shift"]:
+		for k in ["next", "lap", "mark_dist", "bearing", "leg", "layline", "hint", "vmg", "shift"]:
 			_put(k, "")
-		var tg := cue_target()
-		if not r.started and not is_nan(tg):
-			_put("target_cell", "", white, HudFormat.speed_kn(tg), "KN")
 	# position (§10)
 	_put("rank", "%d / %d" % [r.rank, r.fleet] if r.rank > 0 else "")
 	var gap := ""
@@ -995,8 +1009,7 @@ func name_tags() -> Array:
 	if me == null:
 		return out
 	for b in tag_boats():
-		var p := sim.render_pose(b, radar.alpha)
-		var q: Variant = project(Vector3(p.pos_x, p.pos_y, p.z + mast_height(b)))
+		var q: Variant = project(masthead(b))
 		if _on_screen(q):
 			out.append(_tag(b, q))
 	return out
@@ -1047,7 +1060,7 @@ func selected_off_screen() -> Array:
 		var p := sim.render_pose(b, radar.alpha)
 		if p == null:
 			continue
-		var w := Vector3(p.pos_x, p.pos_y, p.z + mast_height(b))
+		var w := masthead(b)
 		if _on_screen(project(w)):
 			continue
 		out.append({"w": w, "name": race.name_of(b).to_upper(), "col": HudStyle.PAPER,
@@ -1057,6 +1070,20 @@ func selected_off_screen() -> Array:
 
 func mast_height(b: int) -> float:
 	return 1.35 * sim.class_info(b).loa
+
+
+## a body-frame point (x fwd, y port, z up, m) of boat `b` in the world (ENU), heel and pitch included
+## (conventions.md §3 attitude)
+func boat_point(b: int, body: Vector3) -> Vector3:
+	var p := sim.render_pose(b, radar.alpha)
+	if p == null:
+		return Vector3.ZERO
+	return Vector3(p.pos_x, p.pos_y, p.z) + Frames.attitude_enu(p.psi, p.theta, p.phi) * body
+
+
+## hud.md §16.4: the masthead of boat `b` as she floats (ENU), so tags and the marker stay over her rig when she heels
+func masthead(b: int) -> Vector3:
+	return boat_point(b, Vector3(0.0, 0.0, mast_height(b)))
 
 
 ## the selected boat, -1 for none
@@ -1121,8 +1148,7 @@ func boat_triangle(b: int) -> PackedVector2Array:
 	var half := 0.5 * sim.class_info(b).loa
 	var f := Vector2(sin(p.psi), cos(p.psi)) * half
 	var out := PackedVector2Array()
-	for w in [Vector3(p.pos_x + f.x, p.pos_y + f.y, p.z), Vector3(p.pos_x - f.x, p.pos_y - f.y, p.z),
-			Vector3(p.pos_x, p.pos_y, p.z + mast_height(b))]:
+	for w in [Vector3(p.pos_x + f.x, p.pos_y + f.y, p.z), Vector3(p.pos_x - f.x, p.pos_y - f.y, p.z), masthead(b)]:
 		var q: Variant = project(w)
 		if q != null:
 			out.append(q)
@@ -1181,22 +1207,141 @@ func pick_at(pos: Vector2) -> int:
 	return b
 
 
-## the selected boat's bracket on screen (hud.md §16.4.1): {r (Rect2), col}; empty when she is off screen or none
-func selected_bracket() -> Dictionary:
+## the selected boat's marker on screen (hud.md §16.4.1): {boat, head (her masthead, px), tip (the pointer's tip, px),
+## pts (its triangle), col}; empty when her masthead is off screen or none is selected
+func selected_marker() -> Dictionary:
 	var b := selected_boat()
 	if b < 0 or sim == null or world_camera() == null or b >= sim.boat_count():
 		return {}
-	var tri := boat_triangle(b)
-	if tri.is_empty():
+	var q: Variant = project(masthead(b))
+	if not _on_screen(q):
 		return {}
-	var r := Rect2(tri[0], Vector2.ZERO)
-	for q in tri:
-		r = r.expand(q)
-	if not _on_screen(r.get_center()):
+	var head: Vector2 = q
+	var tip := head - Vector2(0.0, MARKER_GAP * _k)
+	var pts := PackedVector2Array([tip, tip + Vector2(MARKER_W * 0.5, -MARKER_H) * _k,
+		tip + Vector2(-MARKER_W * 0.5, -MARKER_H) * _k])
+	return {"boat": b, "head": head, "tip": tip, "pts": pts, "col": _tag(b, head)["col"]}
+
+
+# ---- ladder lines (hud.md §16.4.2) ----
+
+## the ladder axis (ENU unit vector pointing "ahead"): upwind on a beat, before the start and free sailing, downwind
+## on a run, to the next mark on a reach
+func ladder_axis() -> Vector2:
+	var twd := race.twd10() if race.active else values.twd
+	var up := Vector2(sin(twd), cos(twd))
+	if race.active and race.started and race.next_step > 0 and not race.finished:
+		if race.leg_type == "run":
+			return -up
+		if race.leg_type == "reach":
+			var o := own_world(0.0)
+			var m := mark_world()
+			var v := Vector2(m.x - o.x, m.y - o.y)
+			if v.length() > 1.0:
+				return v.normalized()
+	return up
+
+
+## the ladder lines while a boat is selected: {own: [PackedVector2Array], her: [...], gain (her lead along the axis
+## in the viewed boat's hull lengths), text, label (px or null)}; empty with none
+func ladder_lines() -> Dictionary:
+	var b := selected_boat()
+	if b < 0 or sim == null or viewed < 0 or world_camera() == null or map_open or not world_tags or race.race_over:
 		return {}
-	var c := r.get_center()
-	r = Rect2(c - (r.size * 0.5).max(Vector2(8, 8) * _k), (r.size * 0.5).max(Vector2(8, 8) * _k) * 2.0)
-	return {"r": r.grow(BRACKET_GAP * _k), "col": _tag(b, c)["col"]}
+	var me := own_pose()
+	var her := sim.render_pose(b, radar.alpha)
+	if me == null or her == null:
+		return {}
+	var a := ladder_axis()
+	var p := Vector2(a.y, -a.x)
+	var o := Vector2(me.pos_x, me.pos_y)
+	var s := Vector2(her.pos_x, her.pos_y)
+	var lo := minf(o.dot(p), s.dot(p)) - LADDER_PAST
+	var hi := maxf(o.dot(p), s.dot(p)) + LADDER_PAST
+	var loa := sim.class_info(viewed).loa
+	var gain := (s - o).dot(a) / maxf(loa, 0.1)
+	_ladder_shapes = []
+	for k in sim.boat_count():
+		var tri := boat_triangle(k)
+		if tri.size() == 3:
+			_ladder_shapes.append(tri)
+	var text := "EVEN" if absf(gain) < 0.05 else "%.1f L %s" % [absf(gain), "AHEAD" if gain > 0.0 else "BEHIND"]
+	var side := 1.0 if s.dot(p) >= o.dot(p) else -1.0
+	var lab := s + p * side * 2.0 * sim.class_info(b).loa
+	return {"own": _ladder(o, p, lo, hi, loa), "her": _ladder(s, p, lo, hi, sim.class_info(b).loa), "gain": gain,
+		"text": text, "label": project(Vector3(lab.x, lab.y, 0.0)), "axis": a,
+		"own_w": [o + p * (minf(lo, o.dot(p) - LADDER_MIN) - o.dot(p)), o + p * (maxf(hi, o.dot(p) + LADDER_MIN) - o.dot(p))],
+		"her_w": [s + p * (minf(lo, s.dot(p) - LADDER_MIN) - s.dot(p)), s + p * (maxf(hi, s.dot(p) + LADDER_MIN) - s.dot(p))]}
+
+
+## a line on the water through `c` along `p`, from `lo` to `hi` (ENU along p), at least LADDER_MIN each side of `c`,
+## with a gap of one hull length `l` at `c`: its runs on screen (the parts in front of the camera)
+func _ladder(c: Vector2, p: Vector2, lo: float, hi: float, l: float) -> Array:
+	var t0 := c.dot(p)
+	lo = minf(lo, t0 - LADDER_MIN)
+	hi = maxf(hi, t0 + LADDER_MIN)
+	var out := []
+	for half in [[lo, t0 - 0.5 * l], [t0 + 0.5 * l, hi]]:
+		var run := PackedVector2Array()
+		var n := maxi(1, ceili((half[1] - half[0]) / LADDER_STEP))
+		for i in n + 1:
+			var t: float = lerpf(half[0], half[1], float(i) / n)
+			var w := c + p * (t - t0)
+			var q: Variant = project(Vector3(w.x, w.y, 0.0))
+			if q != null and _over_boat(q):
+				q = null
+			if q == null:
+				if run.size() >= 2:
+					out.append(run)
+				run = PackedVector2Array()
+				continue
+			run.append(q)
+		if run.size() >= 2:
+			out.append(run)
+	return out
+
+
+## a ladder line's point over a boat's hull and rig on screen (the line is not drawn over boats)
+func _over_boat(q: Vector2) -> bool:
+	for tri in _ladder_shapes:
+		if _tri_distance(q, tri) < LADDER_CLEAR * _k:
+			return true
+	return false
+
+
+# ---- world labels keep clear of the HUD's blocks (hud.md §16.4) ----
+
+## the screen rects the HUD's own blocks draw now (instrument page and chip, radar, helm strip and notes, the
+## next-mark arrow, race bug, wind page, feed, alert lane, boat card)
+func keep_clear_rects() -> Array[Rect2]:
+	var out: Array[Rect2] = []
+	for blk in [inst_page, toast_block, radar, helm_notes, mark_arrow_block, bug_block, wind_page, feed_block,
+			start_block, penalty_panel, alerts_block, card_block]:
+		var c := blk as HudCanvas
+		if not c.visible or not c.is_visible_in_tree() and c.is_inside_tree():
+			continue
+		if c.get_parent() == race_panel and not race_panel.visible:
+			continue
+		var e := c.extent()
+		if e.size == Vector2.ZERO:
+			continue
+		var o := c.position + (race_panel.position if c.get_parent() == race_panel else Vector2.ZERO)
+		out.append(Rect2(e.position + o, e.size))
+	if helm_block.visible:
+		out.append(Rect2(helm_block.position, helm_block.size))
+	return out
+
+
+## whether a world label's screen rect is clear of the HUD's blocks and on screen
+func label_clear(r: Rect2, rects: Array[Rect2] = []) -> bool:
+	if rects.is_empty():
+		rects = keep_clear_rects()
+	if not Rect2(Vector2.ZERO, _screen_size()).encloses(r):
+		return false
+	for k in rects:
+		if r.intersects(k):
+			return false
+	return true
 
 
 # ---- selected boat card (hud.md §16.7) ----
@@ -1329,14 +1474,15 @@ func _card_race(c: Dictionary, b: int) -> void:
 			c["penalty"] += " · TURNING"
 
 
-## hud.md §7.1: the next-mark arrow, in the onboard, aerial and free cameras while the mark tag would show
+## hud.md §7.1: the next-mark arrow, in the onboard, aerial and free cameras while the mark tag would show and the
+## mark is off screen
 func mark_arrow_shown() -> bool:
 	var r := race
 	if not world_tags or map_open or not r.active or r.next_step <= 0 or r.finished or text_of("next") == "":
 		return false
 	if world_camera() == null or own_pose() == null:
 		return false
-	return current_camera_kind() != "chase"
+	return current_camera_kind() != "chase" and mark_screen() == null
 
 
 ## hud.md §7.1: the arrow's screen angle (rad, 0 = up, clockwise): the bearing from the viewed boat to the next
@@ -1392,7 +1538,7 @@ func _layout_map() -> void:
 	map_view.position = Vector2.ZERO
 	map_view.size = _screen_size()
 	map_view.k = _k
-	map_view.lane_left = 0.0
+	map_view.lane_rect = Rect2()
 	map_view.lane_top = 0.0
 	if map_open:
 		# the alert lane clear of the course, at the HUD's scale: a column on the left under the map's header
@@ -1405,8 +1551,19 @@ func _layout_map() -> void:
 			race_panel.position = Vector2(sc.x * 0.5 - HudPaint.LANE_W * _k * 0.5, top)
 			map_view.lane_top = MAP_LANE_BAND * _k
 		else:
+			# the lane's drawn area left under the header; the frame moves right of it only when needed
 			race_panel.position = Vector2(m.x, top)
-			map_view.lane_left = (HudPaint.LANE_W + 24.0) * _k
+			var lr := Rect2()
+			for blk in [start_block, penalty_panel, alerts_block]:
+				var c := blk as HudCanvas
+				if not c.visible:
+					continue
+				var e := c.extent()
+				if e.size == Vector2.ZERO:
+					continue
+				var r := Rect2(e.position + c.position + race_panel.position, e.size)
+				lr = r if not lr.has_area() else lr.merge(r)
+			map_view.lane_rect = lr
 	var on := not map_open
 	if on:
 		world.visible = world_tags
@@ -1501,6 +1658,7 @@ func _layout_blocks() -> void:
 			x = next_panel.position.x + next_panel.size.x + 16.0 * k  # beside the docked mark tag (no camera)
 		card_block.position = Vector2(x, maxf(y_min, inst_page.position.y - 48.0 * k - ch))
 		card_block.size = Vector2(HudPaint.CARD_W * k, ch)
+	_place_mark_tag(sc, k, m)
 	# tables, centred
 	var rs := HudPaint.table_size(RANK_W, race.ranking_rows().size() if ranking_panel.visible else 0) * k
 	ranking_panel.size = rs
@@ -1508,6 +1666,28 @@ func _layout_blocks() -> void:
 	var qs := HudPaint.table_size(RESULT_W, race.result_rows.size()) * k
 	results_panel.size = qs
 	results_panel.position = (sc - qs) * 0.5
+
+
+## hud.md §16.4: the mark tag on the mark keeps clear of the HUD's blocks: above-right of it, else under it, else
+## left of it; hidden when none is clear (the mark's diamond stays)
+func _place_mark_tag(sc: Vector2, k: float, m: Vector2) -> void:
+	if not next_panel.visible or world_camera() == null or HudStyle.portrait(sc):
+		return
+	var mp: Variant = mark_screen()
+	if mp == null:
+		return
+	var p: Vector2 = mp
+	var sz := next_panel.size
+	var rects := keep_clear_rects()
+	for at in [Vector2(p.x - 30.0 * k, p.y - 150.0 * k), Vector2(p.x - 30.0 * k, p.y + 24.0 * k),
+			Vector2(p.x - sz.x - 24.0 * k, p.y - 150.0 * k)]:
+		var pos := Vector2(clampf(at.x, m.x, sc.x - m.x - sz.x), clampf(at.y, m.y, sc.y - m.y - sz.y))
+		var e := next_panel.extent()
+		var r := Rect2(pos + e.position, e.size) if e.size != Vector2.ZERO else Rect2(pos, sz)
+		if label_clear(r, rects):
+			next_panel.position = pos
+			return
+	next_panel.visible = false
 
 
 ## hud.md §16.7: the card shows while a boat is selected, not with the results

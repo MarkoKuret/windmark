@@ -1,10 +1,11 @@
 ---
 id: WM-149
 title: 'HUD: world labels keep clear of the instrument corners'
-status: In Progress
+status: Done
 assignee:
   - '@hudux2'
 created_date: '2026-10-16 20:09'
+updated_date: '2026-10-16 20:28'
 labels:
   - hud
 dependencies: []
@@ -19,7 +20,7 @@ World labels on the water (TACK IN, the mark tag, name tags) must keep clear of 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 hud.md §16.4 specifies the keep-clear rule
-- [ ] #2 The tack point label is moved or hidden so it never overlaps the instrument page, radar, helm strip, race bug, wind page or alert lane
-- [ ] #3 race_hud_test checks a tack point under a corner block
+- [x] #1 hud.md §16.4 specifies the keep-clear rule
+- [x] #2 The tack point label is moved or hidden so it never overlaps the instrument page, radar, helm strip, race bug, wind page or alert lane
+- [x] #3 race_hud_test checks a tack point under a corner block
 <!-- AC:END -->

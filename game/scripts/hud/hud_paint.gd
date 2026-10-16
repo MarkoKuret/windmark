@@ -11,17 +11,13 @@ const TRACK := 0.14  # label tracking, em
 
 # ---- instrument page geometry (design px): the page sizes and the cell grid per level ----
 
-const PAGE := {Hud.Density.GLANCE: Vector2(486, 200), Hud.Density.RACE: Vector2(650, 246),
+const PAGE := {Hud.Density.GLANCE: Vector2(486, 150), Hud.Density.RACE: Vector2(486, 246),
 	Hud.Density.DATA: Vector2(720, 298)}
-const PAGE_GLANCE_NO_CUE := 150.0
 
 
-## The instrument page size of the level (design px); Glance is shorter without its cue strip.
+## The instrument page size of the level (design px).
 static func page_size(h: Hud) -> Vector2:
-	var s: Vector2 = PAGE[h.density]
-	if h.density == Hud.Density.GLANCE and not h.has_item("cue"):
-		s.y = PAGE_GLANCE_NO_CUE
-	return s
+	return PAGE[h.density]
 
 
 static func _hw(b: HudCanvas) -> float:
@@ -120,21 +116,6 @@ static func _bsp(b: HudCanvas, h: Hud) -> void:
 	number(b, 236, 134, h.value_of("bsp"), 112)
 
 
-## the cue cell: boat speed against the target speed in knots (hud.md §4 speed to target, §16.3), set smaller when the
-## pair would not fit between x and x_right
-static func _cue(b: HudCanvas, h: Hud, x: float, y_cap: float, x_right: float, y_num: float, size: float,
-		compact := false) -> void:
-	var text := h.value_of("cue")
-	if compact:
-		caption(b, x, y_cap, "SPEED / TARGET")
-		number_unit(b, x_right, y_num, text, "KN", size, HudStyle.PAPER, HORIZONTAL_ALIGNMENT_RIGHT)
-		return
-	caption(b, x, y_cap, "SPEED / TARGET", x_right, "KN")
-	var w := HudCanvas.text_width(text, int(roundf(size * b.k))) / b.k
-	var avail := x_right - x
-	number(b, x_right, y_num, text, size * avail / w if w > avail else size)
-
-
 static func _twa_value(b: HudCanvas, h: Hud, x_right: float, y: float, size: float) -> void:
 	var t := side_split(h.value_of("twa"))
 	number(b, x_right, y, t[0], size, HudStyle.PAPER, t[1])
@@ -146,45 +127,39 @@ static func _page_glance(b: HudCanvas, h: Hud, sz: Vector2) -> void:
 	caption(b, 264, 24, "TWA")
 	dial(b, h, Vector2(328, 88), 52.0, false)
 	_twa_value(b, h, 472, 134, 44)
-	if h.has_item("cue"):
-		divider(b, Vector2(10, 150), Vector2(sz.x - 10, 150))
-		_cue(b, h, 14, 182, 472, 188, 30, true)
 
 
+## Race: boat speed over heading, the TWA dial beside them; Data adds VMG (VMC on a reach) over SOG between them and
+## a row of COG, AWS and the heel bar. No target speed (hud.md §4, §16.3).
 static func _page_race(b: HudCanvas, h: Hud, data: bool) -> void:
 	var w: float = PAGE[h.density].x
 	_bsp(b, h)
 	divider(b, Vector2(250, 10), Vector2(250, 236))
-	if h.has_item("cue"):
-		_cue(b, h, 264, 24, 446, 112, 64)
-	divider(b, Vector2(460, 10), Vector2(460, 236))
-	caption(b, 474, 24, "TWA")
-	var dc := Vector2(474 + (w - 474) * 0.5 - 6.0, 104)
+	var tx := 264.0
+	if data:
+		var reach := h.race.active and h.race.leg_type == "reach"
+		caption(b, 264, 24, "VMC" if reach else "VMG", 446, "KN")
+		number(b, 446, 112, h.value_of("vmg_kn"), 64)
+		caption(b, 264, 174, "SOG", 446, "KN")
+		number(b, 446, 230, h.value_of("sog"), 44)
+		divider(b, Vector2(460, 10), Vector2(460, 236))
+		divider(b, Vector2(264, 150), Vector2(450, 150))
+		tx = 474.0
+	caption(b, tx, 24, "TWA")
+	var dc := Vector2(tx + (w - tx) * 0.5 - 6.0, 104)
 	dial(b, h, dc, 62.0, data)
 	_twa_value(b, h, w - 14, 232, 44)
-	divider(b, Vector2(10, 150), Vector2(450, 150))
-	var target: Dictionary = h.texts.get("target_cell", {})
-	if data:
-		caption(b, 474, 214, "AWA", -1, "", LAB_S)
-		var aw := side_split(h.value_of("awa"))
-		b._s(Vector2(474, 234) * b.k, aw[0] + aw[1], int(roundf(18 * b.k)), HudStyle.MIST, 600)
-		caption(b, 14, 174, "HDG")
-		number(b, 111, 230, h.value_of("hdg"), 44)
-		divider(b, Vector2(125, 160), Vector2(125, 236))
-		var reach := h.race.active and h.race.leg_type == "reach"
-		caption(b, 139, 174, "VMC" if reach else "VMG", 236, "KN")
-		number(b, 236, 230, h.value_of("vmg_kn"), 44)
-	else:
-		caption(b, 14, 174, "HEADING")
-		number(b, 236, 230, h.value_of("hdg"), 52)
-	if h.has_item("target"):
-		caption(b, 264, 174, "TARGET", 446, target.get("unit", ""))
-		number(b, 446, 230, target.get("value", "--"), 44)
+	divider(b, Vector2(10, 150), Vector2(240, 150))
+	caption(b, 14, 174, "HEADING")
+	number(b, 236, 230, h.value_of("hdg"), 52)
 	if not data:
 		return
+	caption(b, 474, 214, "AWA", -1, "", LAB_S)
+	var aw := side_split(h.value_of("awa"))
+	b._s(Vector2(474, 234) * b.k, aw[0] + aw[1], int(roundf(18 * b.k)), HudStyle.MIST, 600)
 	divider(b, Vector2(10, 246), Vector2(w - 10, 246))
 	# row 3: small cells, the label over the value (room for the 11 px floor of small screens)
-	var cells := [["SOG", "sog", 86.0], ["COG", "cog", 186.0], ["AWS", "aws", 294.0]]
+	var cells := [["COG", "cog", 120.0], ["AWS", "aws", 270.0]]
 	var x := 14.0
 	for c in cells:
 		caption(b, x, 268, c[0], -1, "", LAB_S)
@@ -214,8 +189,9 @@ static func _heel_bar(b: HudCanvas, h: Hud, r: Rect2) -> void:
 	b._rect(Rect2(minf(xc, xv), y - 2.5 * k, absf(xv - xc), 5.0 * k), HudStyle.STBD if phi > 0.0 else HudStyle.PORT)
 
 
-## TWA dial (hud.md §16.3): bow up, close-hauled sectors, the target ticks, the true wind pointer from the rim and
-## (with `apparent`) the apparent wind as a hollow pointer; a hull outline in the centre. Every frame.
+## TWA dial (hud.md §16.3): bow up, close-hauled sectors, the VMG angle notches (the reference pair strong), the
+## true wind pointer from the rim coloured by the angle error and (with `apparent`) the apparent wind as a hollow
+## pointer; a hull outline in the centre. Every frame.
 static func dial(b: HudCanvas, h: Hud, c_design: Vector2, r_design: float, apparent: bool) -> void:
 	var k := b.k
 	var c := c_design * k
@@ -232,31 +208,43 @@ static func dial(b: HudCanvas, h: Hud, c_design: Vector2, r_design: float, appar
 	var s1 := deg_to_rad(60.0)
 	b._a(c, r - 4.0 * k, -PI * 0.5 + s0, -PI * 0.5 + s1, 12, Color(HudStyle.STBD, 0.85), 3.0 * k)
 	b._a(c, r - 4.0 * k, -PI * 0.5 - s1, -PI * 0.5 - s0, 12, Color(HudStyle.PORT, 0.85), 3.0 * k)
-	var tt := h.dial_target()
-	if not is_nan(tt):
+	var ref := h.dial_reference()
+	for opt in [h.values.vmg_up_twa, h.values.vmg_dn_twa]:
+		if is_nan(opt):
+			continue
+		var strong: bool = is_nan(ref) or is_equal_approx(opt, ref)
+		var col := Color(HudStyle.MARK, 1.0 if strong else 0.45)
 		for sgn in [1.0, -1.0]:
-			var a: float = sgn * tt
-			b._l(c + dir.call(a) * (r - 2.0 * k), c + dir.call(a) * (r - 16.0 * k), HudStyle.MARK, 2.0 * k)
+			var a: float = sgn * opt
+			var u: Vector2 = dir.call(a)
+			var sd := Vector2(-u.y, u.x)
+			var tip := c + u * (r - 11.0 * k)
+			b._p(PackedVector2Array([tip, c + u * r + sd * 6.0 * k, c + u * r - sd * 6.0 * k]), col)
+			b._l(tip, c + u * (r - 18.0 * k), col, 2.0 * k)
 	# hull
 	var hl := r * 0.42
 	var hb := r * 0.14
 	b._pl(PackedVector2Array([c + Vector2(0, -hl), c + Vector2(hb, -hl * 0.2), c + Vector2(hb * 0.8, hl),
 		c + Vector2(-hb * 0.8, hl), c + Vector2(-hb, -hl * 0.2), c + Vector2(0, -hl)]), HudStyle.PAPER, hw)
-	_pointer(b, c, r, h.values.twa, true)
+	_pointer(b, c, r, h.values.twa, true, h.pointer_colour())
 	if apparent:
 		_pointer(b, c, r, h.values.awa, false)
 
 
-static func _pointer(b: HudCanvas, c: Vector2, r: float, a: float, solid: bool) -> void:
+static func _pointer(b: HudCanvas, c: Vector2, r: float, a: float, solid: bool, col := HudStyle.PAPER) -> void:
 	var k := b.k
 	var d := Vector2(sin(a), -cos(a))
 	var s := Vector2(-d.y, d.x)
 	var tip := c + d * (r - 14.0 * k)
 	var base := c + d * (r + 2.0 * k)
 	var pts := PackedVector2Array([tip, base + s * 6.0 * k, base - s * 6.0 * k])
-	if solid:
-		b._p(pts, HudStyle.PAPER)
-		b._l(tip, c + d * r * 0.5, HudStyle.PAPER, 2.0 * k)
+	if solid:  # an ink edge so the coloured pointer reads over the dial's sectors
+		var edge := pts.duplicate()
+		edge.append(pts[0])
+		b._l(tip, c + d * r * 0.5, Color(HudStyle.INK, 0.6), 4.0 * k)
+		b._pl(edge, Color(HudStyle.INK, 0.6), 3.0 * k)
+		b._p(pts, col)
+		b._l(tip, c + d * r * 0.5, col, 2.0 * k)
 	else:
 		pts.append(pts[0])
 		b._pl(pts, HudStyle.PAPER, 1.5 * k)
@@ -533,6 +521,22 @@ static func penalty(b: HudCanvas, h: Hud) -> void:
 			HORIZONTAL_ALIGNMENT_RIGHT)
 		b._s(Vector2(PEN.x - 16, 88) * k, h.value_of("pen_deadline"), int(roundf(52 * k)), h.colour_of("pen_deadline"),
 			600, 0.0, HORIZONTAL_ALIGNMENT_RIGHT)
+		# hud.md §12.1: a thin bar under the number shrinking towards 0:00
+		var bar := deadline_bar(h)
+		b._rect(Rect2(bar[0].position * k, bar[0].size * k), Color(HudStyle.HAIR, HudStyle.HAIR.a * 0.45))
+		if bar[1].size.x > 0.0:
+			b._rect(Rect2(bar[1].position * k, bar[1].size * k), h.colour_of("pen_deadline"))
+
+
+const DEADLINE_BAR := Vector2(150, 4)
+const DEADLINE_FULL := 120.0
+
+
+## the deadline bar's track and fill (design px, in the panel): the fill over time left / 120 s from the left
+static func deadline_bar(h: Hud) -> Array[Rect2]:
+	var track := Rect2(Vector2(PEN.x - 16 - DEADLINE_BAR.x, 100), DEADLINE_BAR)
+	var f := clampf(h.race.deadline / DEADLINE_FULL, 0.0, 1.0)
+	return [track, Rect2(track.position, Vector2(track.size.x * f, track.size.y))]
 
 
 # ---- alert lines (rules line, banner, prompt) ----
@@ -595,13 +599,23 @@ static func helm(b: HudCanvas, h: Hud) -> void:
 		HORIZONTAL_ALIGNMENT_CENTER)
 
 
-## the sail hint and the controls' messages, one line each over the helm strip
+## the hoist cue (hud.md §5.1), the sail hint and the controls' messages, one line each over the helm strip
 static func helm_notes(b: HudCanvas, h: Hud) -> void:
 	var k := b.k
 	var y := 16.0
+	var hoist := h.text_of("hoist")
+	if hoist != "":
+		var fs := int(roundf(16 * k))
+		var tw := HudCanvas.text_width(hoist, fs, 600, 0.1)
+		var cx := b.size.x * 0.5
+		b._s(Vector2(cx, y * k), hoist, fs, HudStyle.PAPER, 600, 0.1, HORIZONTAL_ALIGNMENT_CENTER)
+		var bar := Rect2(Vector2(cx - tw * 0.5, (y + 6.0) * k), Vector2(tw, 3.0 * k))
+		b._rect(bar, HudStyle.HAIR)
+		b._rect(Rect2(bar.position, Vector2(tw * clampf(h.values.hoist_progress, 0.0, 1.0), bar.size.y)), HudStyle.MARK)
+		y += 30.0
 	for key in ["message", "hint"]:
 		var t := h.text_of(key)
-		if t != "" and (key != "hint" or h.has_item("hint")):
+		if t != "" and (key != "hint" or (h.has_item("hint") and hoist == "")) and y < 56.0:
 			b._s(Vector2(b.size.x * 0.5, y * k), t, int(roundf(16 * k)), HudStyle.HAVE if key == "hint" else HudStyle.PAPER,
 				600, 0.04, HORIZONTAL_ALIGNMENT_CENTER)
 			y += 24.0
@@ -716,10 +730,14 @@ static func world(b: HudCanvas, h: Hud) -> void:
 	var r := h.race
 	# the mark tag's leader and the mark point
 	var mp: Variant = h.mark_screen()
-	if mp != null and h.next_panel.visible:
+	if mp != null and (h.next_panel.visible or h.world_camera() != null):
 		var p: Vector2 = mp
-		var tag_foot := h.next_panel.position + Vector2(30.0, 96.0) * k
-		b._l(tag_foot, p, Color(HudStyle.MARK, 0.9), hw)
+		if h.next_panel.visible:
+			var tag_foot := h.next_panel.position + Vector2(30.0, 96.0) * k
+			if tag_foot.y < p.y:
+				b._l(tag_foot, p, Color(HudStyle.MARK, 0.9), hw)
+			else:  # the tag under the mark: the leader from its top
+				b._l(h.next_panel.position + Vector2(30.0, 0.0) * k, p, Color(HudStyle.MARK, 0.9), hw)
 		var d := 6.0 * k
 		b._pl(PackedVector2Array([p + Vector2(0, -d), p + Vector2(d, 0), p + Vector2(0, d), p + Vector2(-d, 0),
 			p + Vector2(0, -d)]), HudStyle.MARK, hw)
@@ -728,7 +746,24 @@ static func world(b: HudCanvas, h: Hud) -> void:
 		var eta := "--:--" if is_nan(r.eta) else HudFormat.clock(r.eta)
 		edge_pointer(b, h, h.mark_world(), h.text_of("next").to_upper(), "%s · ETA %s" % [
 			HudFormat.distance(r.next_dist), eta], HudStyle.MARK)
-	# tack point: the ring and its label only, no line from the boat (hud.md §16.4)
+	var rects := h.keep_clear_rects()
+	# the ladder lines of the viewed and the selected boat (hud.md §16.4.2), under the tags
+	var lad := h.ladder_lines()
+	if not lad.is_empty():
+		for run in lad["own"]:
+			b._pl(run, Color(HudStyle.MARK, 0.9), hw)
+		for run in lad["her"]:
+			b._pl(run, Color(HudStyle.PAPER, 0.75), hw)
+		if lad["label"] != null:
+			var lq: Vector2 = lad["label"]
+			var fs := int(roundf(13 * k))
+			var tw := HudCanvas.text_width(lad["text"], fs, 700, 0.1) + 14.0 * k
+			var lr := Rect2(lq - Vector2(tw * 0.5, 11.0 * k), Vector2(tw, 22.0 * k))
+			if h.label_clear(lr, rects):
+				b._rect(lr, Color(HudStyle.INK, 0.7))
+				b._s(Vector2(lq.x, lq.y + 5.0 * k), lad["text"], fs, HudStyle.PAPER, 700, 0.1, HORIZONTAL_ALIGNMENT_CENTER)
+	# tack point: the ring and its label only, no line from the boat (hud.md §16.4); the label above the ring, else
+	# under it, else none, clear of the HUD's blocks
 	var tp: Variant = h.world_tack_point()
 	if tp != null:
 		var ts: Variant = h.project(Vector3(tp.x, tp.y, 0.0))
@@ -738,23 +773,43 @@ static func world(b: HudCanvas, h: Hud) -> void:
 			b._a(c, 7.0 * k, 0.0, TAU, 24, col, 2.0 * k)
 			var t := h.text_of("layline")
 			if t.begins_with("Layline"):
-				b._s(c + Vector2(0, -44.0 * k), turn_in_label(r.leg_type), int(roundf(LAB * k)), HudStyle.PAPER, 600, TRACK,
-					HORIZONTAL_ALIGNMENT_CENTER)
-				number_unit(b, c.x / k, c.y / k - 14.0, HudStyle.split_unit(HudFormat.distance(r.layline_dist))[0],
-					HudStyle.split_unit(HudFormat.distance(r.layline_dist))[1] + "  " + HudFormat.clock(r.layline_time), 36,
-					HudStyle.PAPER, HORIZONTAL_ALIGNMENT_CENTER)
-	# name tags
+				var du := HudStyle.split_unit(HudFormat.distance(r.layline_dist))
+				var unit: String = du[1] + "  " + HudFormat.clock(r.layline_time)
+				var w := maxf(HudCanvas.text_width(turn_in_label(r.leg_type), int(roundf(LAB * k)), 600, TRACK),
+					HudCanvas.text_width(du[0], int(roundf(36 * k))) + HudCanvas.text_width(unit, int(roundf(16.2 * k)), 600,
+					0.06) + 4.0 * k)
+				for below in [false, true]:
+					var top := c.y + (14.0 * k if below else -58.0 * k)
+					if not h.label_clear(Rect2(c.x - w * 0.5, top, w, 50.0 * k), rects):
+						continue
+					b._s(Vector2(c.x, top + 14.0 * k), turn_in_label(r.leg_type), int(roundf(LAB * k)), HudStyle.PAPER, 600,
+						TRACK, HORIZONTAL_ALIGNMENT_CENTER)
+					number_unit(b, c.x / k, (top / k) + 44.0, du[0], unit, 36, HudStyle.PAPER, HORIZONTAL_ALIGNMENT_CENTER)
+					break
+	# the selected boat's pointer over her masthead (hud.md §16.4.1); her tag stands on it
+	var mk := h.selected_marker()
+	if not mk.is_empty():
+		var edge: PackedVector2Array = mk["pts"].duplicate()
+		edge.append(edge[0])
+		b._pl(edge, Color(HudStyle.INK, 0.7), 1.5 * k)
+		b._p(mk["pts"], mk["col"])
+	# name tags, clear of the HUD's blocks
 	for tag in h.name_tags():
 		var q: Vector2 = tag["p"]
 		var name: String = tag["name"]
 		var col: Color = tag["col"]
 		var solid: bool = tag["solid"]
-		b._l(q + Vector2(0, -12.0 * k), q, Color(col, col.a * 0.8), hw)
-		name_chip(b, q + Vector2(0, -12.0 * k), name, col, solid, tag["outline"])
-	# the selected boat's bracket (hud.md §16.4.1)
-	var br := h.selected_bracket()
-	if br.has("r"):
-		bracket(b, br["r"], br["col"])
+		var on_marker: bool = not mk.is_empty() and int(mk["boat"]) == int(tag["boat"])
+		var foot := q + Vector2(0, -12.0 * k)
+		if on_marker:
+			foot = (mk["tip"] as Vector2) - Vector2(0, (Hud.MARKER_H + 4.0) * k)
+		var fs := int(roundf(13 * k))
+		var tw := HudCanvas.text_width(name, fs, 700, 0.1) + 16.0 * k
+		if not h.label_clear(Rect2(foot + Vector2(-tw * 0.5, -22.0 * k), Vector2(tw, 22.0 * k)), rects):
+			continue
+		if not on_marker:
+			b._l(foot, q, Color(col, col.a * 0.8), hw)
+		name_chip(b, foot, name, col, solid, tag["outline"])
 	for e in h.selected_off_screen():
 		edge_pointer(b, h, e["w"], e["name"], HudFormat.distance(e["d"]), e["col"])
 

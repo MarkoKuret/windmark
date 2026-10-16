@@ -1,10 +1,11 @@
 ---
 id: WM-153
 title: 'HUD: ladder lines on selection'
-status: In Progress
+status: Done
 assignee:
   - '@hudux2'
 created_date: '2026-10-16 20:09'
+updated_date: '2026-10-16 20:28'
 labels:
   - hud
 dependencies: []
@@ -19,7 +20,7 @@ With a boat selected, draw the viewed boat's ladder line and the selected boat's
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 hud.md specifies the ladder lines (no ladder lines existed before)
-- [ ] #2 Two lines through the boats perpendicular to the wind, own in mark, hers in paper, with the distance between them; none without a selection
-- [ ] #3 race_hud_test checks the lines' direction and the gap
+- [x] #1 hud.md specifies the ladder lines (no ladder lines existed before)
+- [x] #2 Two lines through the boats perpendicular to the wind, own in mark, hers in paper, with the distance between them; none without a selection
+- [x] #3 race_hud_test checks the lines' direction and the gap
 <!-- AC:END -->

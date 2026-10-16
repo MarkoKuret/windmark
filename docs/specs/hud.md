@@ -649,10 +649,11 @@ along the top edge and hairline dividers between the cells; no blur, no corner t
 has its label top left, the unit top right and the value right-aligned at the bottom. Numbers use tabular figures.
 The two analogue parts are the TWA dial and, at Data, the heel bar (centre zero, ±30°). The **TWA dial**: bow up,
 the close-hauled sectors in `port` and `stbd`; the **VMG angles** of §4 on both sides, each a solid `mark` notch on
-the rim (an inward triangle 9 design px deep and 10 wide, its tip on the rim's inner edge) with a 2 px tick under it,
+the rim (an inward triangle 11 design px deep and 12 wide) with a 2 px tick under it,
 the reference pair (§4) at full strength and the other pair at 45 % (both at full strength on a reach); the true
 wind pointer, **coloured by the angle error** `Δ` of §4 on a smooth gradient: `stbd` up to 2°, through `mark` at
-11° to `port` at 20° and beyond (linear in between in RGB), and `paper` with no reference (a reach); Data adds the
+11° to `port` at 20° and beyond (linear in between in RGB), with a thin `ink` edge so it reads over the sectors,
+and `paper` with no reference (a reach); Data adds the
 apparent wind pointer, hollow, in `paper`. No cell shows a target speed: Glance has boat speed and the dial, Race
 adds heading under the boat speed, Data adds VMG (VMC on a reach) and SOG beside them and COG, AWS and the heel bar
 under them. Numbers keep the 4 Hz refresh of §1; dial and bars move every frame.
@@ -718,7 +719,8 @@ ladder: one through the viewed boat and one through the selected boat, both squa
   point (§7), since across the wind says nothing there.
 - **Lines**: each a straight line on the water (sea level) through the boat's hull reference point, square to the
   axis, as long as the two boats are apart across the axis plus 40 m on each side (at least 80 m each side), so
-  both lines run past both boats. A gap of one hull length is left at each boat so no line crosses a hull. The
+  both lines run past both boats. A gap of one hull length is left at each boat, and no line is drawn over any
+  boat's hull and rig on screen (her pick triangle of §16.4.1 with 6 design px round it). The
   viewed boat's in `mark`, the selected boat's in `paper` at 75 %, hairlines (1.5 px). Drawn only where in front of
   the camera; nothing else (no fill between them).
 - **Gain**: at the selected boat's line, beside her, her distance ahead of or behind the viewed boat along the axis

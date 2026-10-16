@@ -487,9 +487,12 @@ The `wrong_side` term keeps the avoidance from trading a keep-clear penalty for 
 a starboard boat by at the windward mark must not luff onto the wrong side of the mark, from where the rounding can
 only turn her into it. It is a cost, not a ban, so a candidate that is the only way clear of a boat is still taken.
 The usual manoeuvres come out of this: ducking a starboard boat (bear away behind her stern), tacking to leeward
-and ahead ("lee-bow") when that clears, slowing when crossing is impossible. The brake (the `slow` candidate, and
-letting fly when no candidate clears) is dropped for a boat that has started and has been nearly stopped (under
-0.3 m/s) for more than 5 s: she keeps her sails drawing so that she can gather way and steer clear.
+and ahead ("lee-bow") when that clears, slowing when crossing is impossible. When no candidate clears, she lets fly
+and turns 30° away from B, unless that turn (predicted as the `slow` candidate) touches a course object: then she
+holds her heading and brakes, since a turn onto a mark or a committee boat leaves her pinned on it (§6.5) with a touch
+to clear as well. The brake (the `slow` candidate, and letting fly when no candidate clears) is dropped for a boat
+that has started and has been nearly stopped (under 0.3 m/s) for more than 5 s: she keeps her sails drawing so that
+she can gather way and steer clear.
 
 ### 7.3 Before gaining right of way (rules 13, 15, 16)
 

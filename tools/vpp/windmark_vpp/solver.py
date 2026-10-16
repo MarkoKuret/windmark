@@ -40,9 +40,12 @@ FLATS = np.linspace(0.1, 1.0, 16)
 REEFS = np.linspace(0.55, 1.0, 10)
 REEFABLE = ("main", "jib", "genoa")
 # A mainsail with no front sail at all (the main-only config) loses the slot's upwash: its lift is scaled by
-# MAIN_ALONE_CL close-hauled, fading to no loss by 110 deg effective AWA (calibration, README). Behind any front sail
-# (jib, genoa, code zero or a kite) the main keeps its ORC in-situ coefficients.
+# MAIN_ALONE_CL close-hauled, fading to no loss by 110 deg effective AWA (calibration, README). Behind a drawing front
+# sail (jib, genoa, code zero or a kite) the main keeps its ORC in-situ coefficients. A kite draws only from about
+# 30 to 40 deg AWA (the ORC spinnaker tables: no lift at 28 deg, most of it by 41 deg): closer to the wind it luffs and
+# the main has no slot, so under a kite the loss fades out from KITE_SLOT_AWA[0] to KITE_SLOT_AWA[1] instead.
 MAIN_ALONE_CL = 0.72
+KITE_SLOT_AWA = (math.radians(28.0), math.radians(41.0))
 # A headsail set flying (code zero) allows very little depowering: the config's reef goes no lower than the ORC
 # VPP's 0.91 (VPP Documentation 2023 section 5.2.5); the code zero itself is never reefed (REEFABLE).
 FLYING_HEADSAIL_REEF_MIN = 0.91
@@ -121,6 +124,7 @@ class Rig:
         cd = 0.0
         deltas = []
         alone = all(s.type == "main" for s in self.sails)
+        lo, hi = KITE_SLOT_AWA if self.kite else (math.radians(60), math.radians(110))
         for s, e, a in zip(self.sails, self.env, areas):
             c_l, c_d, de = e.at(fi, beta_e)
             if eps is not None:
@@ -130,8 +134,8 @@ class Rig:
                     c_l, c_d = over_sheeted(COEFFS[s.coeff_type], beta_e, de, de0, e.flat[fi])
                 else:
                     c_l, c_d = coefficients(COEFFS[s.coeff_type], beta_e - de, e.flat[fi], de)
-            if alone and s.type == "main":
-                u = np.clip((beta_e - np.radians(60)) / np.radians(50), 0, 1)
+            if (alone or self.kite) and s.type == "main":
+                u = np.clip((beta_e - lo) / (hi - lo), 0, 1)
                 c_l = c_l * (MAIN_ALONE_CL + (1 - MAIN_ALONE_CL) * u * u * (3 - 2 * u))
             cl = cl + c_l * a
             cd = cd + c_d * a

@@ -85,8 +85,8 @@ TE_B = np.array([
 # ability) is gated on its displacement-length ratio (design displacement without crew, the usual convention): 1
 # up to PLANING_DLR_FULL, 0 from PLANING_DLR_NONE, smooth in between; a hull heavy for its length keeps the towed
 # curve and climbs its wave wall however hard it is driven.
-HUMP_FN0 = 0.35             # Froude number where the stretch starts (below it the Delft curve as is)
-HUMP_STRETCH = 0.5          # rate at which the effective Froude number grows past HUMP_FN0 (fitted, README)
+HUMP_FN0 = 0.38             # Froude number where the stretch starts (below it the Delft curve as is; fitted, README)
+HUMP_STRETCH = 0.4          # rate at which the effective Froude number grows past HUMP_FN0 (fitted, README)
 PLANING_DLR_FULL = 100.0    # displacement-length ratio up to which a hull planes fully (sportsboats, racers) ...
 PLANING_DLR_NONE = 200.0    # ... and from which it never planes (heavy cruisers; fitted, README)
 WAVE_WALL_SLOPE = (2.0, 6.0)  # bounds of the log slope d ln(Rr) / d ln(Fn) a non-planing hull keeps on its wave wall

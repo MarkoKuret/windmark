@@ -27,8 +27,8 @@ The project's main scene. Items, top to bottom: **Continue**, **Quick race**, **
   saves the settings with `welcomed` set, so it shows once.
 
 - **Quick race**: class, sail number, venue, course, fleet size, AI level, weather (and in Custom: wind speed, wind
-  direction, shifts, gusts), then **Start**, on one screen, the **race card** (§1.1).
-- **Free sail**: class, sail number, venue, weather (as on the race card), then **Start** (in the card's footer, as
+  direction, shifts, gusts), time and sky, then **Start**, on one screen, the **race card** (§1.1).
+- **Free sail**: class, sail number, venue, weather, time and sky (as on the race card), then **Start** (in the card's footer, as
   on the race card, without the preview or the briefing).
 - Lists come from the data on disk: classes from `data/classes/*.boat.json` (name from the file), venues from
   `data/venues/*.venue.json`, courses from `game/data/courses/<venue>/*.course.json` that list the chosen class
@@ -57,6 +57,17 @@ The project's main scene. Items, top to bottom: **Continue**, **Quick race**, **
   - A venue without `conditions` (`data_format.md` §6.9) offers Custom only, at 12 kn, 0°, Shifty, Moderate.
   - Choosing another venue sets the Custom rows to that venue's defaults and offers its modes (a mode it lacks
     falls back to its first, Custom for a venue without `conditions`).
+- **Time** and **Sky**: the light of the session (`water_render.md` §4.5), two rows after the weather rows.
+  - **Time**: `Venue default` (the venue look file's hour, `data_format.md` §6.11) or a clock time in 30 min steps
+    across the venue's race window (`VenueLook.race_window`: at Practice Waters 10:00 to 18:30), shown as `14:30`.
+  - **Sky**: `Venue default` (the look file's conditions), `Clear`, `Fair`, `Hazy` or `Overcast`.
+  - With **Random** weather both rows show `Surprise` and do not step: the race seed draws the hour and the
+    conditions (`water_render.md` §4.5). Leaving Random gives back the earlier picks.
+  - Choosing another venue rebuilds the Time list for its window and keeps the time when the window has it, else
+    `Venue default`. Both are remembered like the other rows (a remembered time the venue's window lacks falls back
+    to `Venue default`).
+  - Start writes `GameSetup.light_time` (the hour, or −1 for `Venue default` and in Random) and
+    `GameSetup.light_conditions` (the conditions, or `""` for `Venue default` and in Random).
 - **Start** fills `GameSetup.current()` (mode `race` or `free`, the weather mode and the Custom picks, and the card's
   race seed) and changes to the sail scene, which reads it and resolves the weather once (`race.md` §2.1). The last
   choices are remembered in the settings file (§3) for the next visit; a remembered choice that is no longer
@@ -141,6 +152,7 @@ Shifts   Stable: small, slow (4°)
 Gusts    Light: to +15 %, frequent
 Current  Strong, 1.5 kn, flooding (sets E)
 Sea      Flat to chop
+Light    13:00, fair
 Tip      The stream runs hardest mid-channel; cheat it along the shore.
 ```
 
@@ -167,6 +179,7 @@ Ranges join with a hyphen (`10-16 kn`); equal ends show one value.
 | Gusts | `<word>: to +<g> %, <spread>`, or `None` | `g = min(puff_cap_up, puff_strength_max)`; `None` when puffs are off |
 | Current | `<word>, <c> kn` and `, flooding (sets <point>)` or `, ebbing (sets <point>)` (a tide), or `, sets <point>` (a uniform current only); `Slack, turning` (a tide near slack); or `None` | `c` below |
 | Sea | `<word>` or `<word> to <word>`, and `, swell <hs> m from the <point>` for each swell with `hs ≥ 0.3 m` | wind-sea `Hs` at `s0` and `s1` (below) |
+| Light | `<HH:MM>, <conditions>` | the hour and the conditions the race will have: the Time and Sky rows, or the venue's defaults for `Venue default` (§1); the conditions word in lower case |
 | Tip | `briefing.tip` | Local only (a tip is written for the venue's own weather); never in Custom, and none for a venue without `briefing` |
 
 **Shifts.** Word by `A`: Steady `< 1.5°`, Stable `< 5.5°`, Oscillating `< 11.5°`, Shifty `< 20°`, Unstable
@@ -212,7 +225,9 @@ so a language can reorder them: `briefing.header` (`{name} · {tag}`), `briefing
 `briefing.line.gusts`, `briefing.line.current`, `briefing.line.current_tide` (`{line}, {state} (sets {point})`),
 `briefing.line.current_tide_noset` (`{line}, {state}`), `briefing.line.current_slack` (`Slack, turning`),
 `briefing.line.current_sets`,
-`briefing.line.sea_range` and `briefing.line.swell`; the results' `results.today` (`Today: {wind} · {shifts} ·
+`briefing.line.sea_range`, `briefing.line.swell`, `briefing.label.light`, `briefing.line.light` (`{time}, {sky}`)
+and `briefing.sky.<clear|fair|hazy|overcast>`; the Time and Sky rows' `light.time`, `light.sky`,
+`light.venue_default`, `light.surprise` and `light.sky.<clear|fair|hazy|overcast>`; the results' `results.today` (`Today: {wind} · {shifts} ·
 {gusts}`), `results.today.gusts` (`{word} gusts`) and `results.today.no_gusts`. The table is
 `game/scripts/text/strings.gd`. The venue's
 name, tag and tip come from the venue file with its translations (`data_format.md` §6.8).

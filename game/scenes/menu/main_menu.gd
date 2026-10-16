@@ -253,6 +253,9 @@ func continue_last() -> void:
 	g.weather = str(last.get("weather", d.weather))
 	if not modes.has(g.weather):
 		g.weather = modes[0]
+	var light := SetupPanel.light_from(last, g.venue, g.weather)
+	g.light_time = light["light_time"]
+	g.light_conditions = light["light_conditions"]
 	g.seed = 0
 	request_scene(SAIL_SCENE)
 

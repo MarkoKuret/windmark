@@ -154,6 +154,9 @@ func render_pose(b: int, _alpha: float) -> RenderPose:
 	p.pos_x = states[b].pos_x
 	p.pos_y = states[b].pos_y
 	p.psi = states[b].psi
+	p.z = states[b].z
+	p.theta = states[b].theta
+	p.phi = states[b].phi
 	return p
 
 

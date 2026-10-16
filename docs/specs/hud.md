@@ -48,7 +48,7 @@ function; race and rules states (rank, penalties, right-of-way colours) come fro
 | Course over ground (COG) | `compass(sog_filt_x, sog_filt_y)` (shown only when SOG > 0.3 kn) |
 | Heel | `|φ|`, degrees, with the letter of the side that is down (φ > 0: starboard down, `conventions.md` §3) |
 | Rudder | helm `h` as a bar, −1 … +1 (positive turns the bow to starboard), with a second mark at `h_cmd` |
-| Sail | the front sail that is up (or "Main only"), and the one being hoisted during a change with its progress |
+| Sail | the front sail that is up (or "Main only"); the one being hoisted is the hoist cue's (§5.1), not this row's |
 
 The player's own commands (the `h_cmd` mark, the sheet setting and its bar, `AUTO`, `LET FLY`) show the local
 command of the rendered frame, not the value the simulation last applied, so they answer the key at once; the
@@ -97,14 +97,15 @@ A human boat's `performance_scale` is 1.
 | --- | --- |
 | VMG | on a beat: the boat's `vmg` (`v·cos(twa)`, `boat.md` §5.10); on a run: `−vmg`; so the display is positive for progress along the wind towards the mark. On a reach VMG is replaced by VMC. |
 | VMC | velocity made good on course: `dot((sog_filt_x, sog_filt_y), unit(R − c))`, R = the next step's target point (`race.md` §5; gate: the chosen buoy, see §7) |
-| Target speed | beat: `V_up`; run: `V_dn`; reach: `V_pol` at the current TWA with the best sail |
-| Target TWA | beat: `θ_up`; run: `θ_dn`; reach: none |
-| Speed to target | the boat speed (§2) against the target speed, both in knots: `7.1 / 7.4 kn`. The target is the target speed above while racing on a leg; before the start, free sailing and after the finish it is `V_pol` (the polar speed at the present TWA), `--` while that is below 0.3 kn (head to wind) |
+| VMG angles | `θ_up` and `θ_dn` at the felt TWS, always (racing or not): the angles the TWA dial marks (§16.3) |
+| Angle reference | the VMG angle the TWA pointer is coloured against: on a beat `θ_up`, on a run `θ_dn`, on a reach none; before the start, free sailing and after the finish the nearer half: `θ_up` while `|twa| < (θ_up + θ_dn) / 2`, else `θ_dn` |
+| Angle error | `Δ = ||twa| − reference|`, degrees |
 | Sail hint | when the best config for the present TWA and TWS (`ai.md` §3.1) is ≥ 3 % faster than the current one for 5 s: "Code zero +6 %" (the gain in polar speed) |
 
-The leg type is `ai.md` §4.1 (beat / run / reach). No indicator is a percentage of a target: the player compares
-speeds in knots. A boat speed above the target is possible (surfing, a puff before the boat has picked up speed, the
-carried speed of a tack) and is shown as it is.
+The leg type is `ai.md` §4.1 (beat / run / reach). **No target speed is shown anywhere** (the owner's call,
+2026-10-16: the speed against a target speed was dropped, as the VMG and polar percentages were before): the player
+sails by the angle. The HUD shows the boat speed plain and, on the TWA dial, the VMG angles with the true wind
+pointer coloured by the angle error (§16.3). No indicator is a percentage of a target.
 
 ## 5. Trim gauge
 
@@ -121,7 +122,18 @@ One gauge per trimmable sail (the main and the front sail that is up), fed by th
   "Stalled: ease"; `backed` → "Aback"; else "Flowing".
 - With `auto_trim` on (assist, and always for AI), the gauge shows a neutral needle at 0 labelled `AUTO` and no
   colour; a manual sheet control is hidden.
-- While a sail is in `prepare_hoist`, `hoisting`, `prepare_drop` or `dropping` its gauge is greyed.
+- While a sail is in `prepare_hoist`, `hoisting`, `prepare_drop` or `dropping` its gauge is greyed and shows no
+  tell-tale (the hoist cue says what is going on).
+
+### 5.1 Hoist cue
+
+While a front sail is being hoisted (`prepare_hoist` or `hoisting`, a change included) one cue says so, at every
+density: `HOISTING <SAIL>` (the sail's name in caps, 16 design px semibold, `paper`) with a thin progress bar under
+it (3 design px, the text's width, `hair` track, `mark` fill at the hoist's progress), as the first line of the helm
+notes over the helm strip. It is the only text about the hoist: the helm strip's sail value names the sail up, the
+greyed gauges have no tell-tale, and the sail hint is not shown while it runs (the controls' message line stays,
+under it). Before this the strip's sail value grew to `JIB, HOISTING SPINNAKER 45 %`, which ran into the sheet
+value centred in the same row, while the greyed gauges kept their tell-tales.
 
 ## 6. Laylines
 
@@ -168,7 +180,8 @@ Outside the chase camera the view no longer follows the bow, so the player loses
 camera it is not drawn (the mark tag and its edge pointer do that job there).
 
 - **When**: while the mark tag would show (racing, a next step after the start, not finished, `world_tags` on, a
-  3-D camera), at every density and assist preset. Hidden with the course map open (§8.1) and with `hud_hide`.
+  3-D camera) and the next mark is **off screen** (the mark tag is on it when it is on screen, so the two never
+  show together), at every density and assist preset. Hidden with the course map open (§8.1) and with `hud_hide`.
 - **Direction**: the bearing from the viewed boat to the next mark's point (§7: the nearer buoy of a gate, the
   nearest point of a line) in the camera's frame on the water: straight up on the screen is the camera's forward
   direction projected on the water (its up direction when it looks straight down), right is the camera's right.
@@ -179,7 +192,7 @@ camera it is not drawn (the mark tag and its edge pointer do that job there).
 - **Where**: landscape, centred over the helm notes (8 design px above them); portrait (§16.5), centred under the
   alert lane at the top of the edge pointers' box, with the mark tag kept under it.
 - **With it**: outside the chase camera the mark's off-screen edge pointer (§16.4) is not drawn, so one cue points
-  at the mark; the mark tag on the mark still shows when the mark is on screen.
+  at the mark: the arrow while the mark is off screen, the mark tag on the mark while it is on screen.
 
 ## 8. Radar / minimap
 
@@ -216,10 +229,14 @@ cameras keep moving and every sound plays. Offline and online alike.
   while the pause menu or the chat line has the keys, and it closes by itself when the race is gone (the scene
   leaves race mode, a new race starts). It is not remembered: every race starts with it closed. On a gamepad there
   is no default binding (the pause menu row of `controls.md` §3 is a later item).
-- **Frame**: north up, always (the radar's orientation setting does not apply). The view is fitted once per course
+- **Frame**: **course up**, fixed for the race: the course axis, from the start line's middle to the first
+  rounding step's point (the first windward mark on a windward-leeward course), points straight up the screen; a
+  course without a start line or rounding step uses the race's mean wind (`twd_mean`, wind from the top). It does
+  not turn with the boat or the wind and the radar's orientation setting does not apply. The view is fitted once per course
   to the bounds of every mark (start and finish line ends included, virtual marks excluded) with 12 % of the larger
   span added on each side, at least 300 m across, inside the screen's margins (§16.2.2, `hud_direction.md` §5) under
-  a header row of 72 design px, over a footer row of 48 and clear of the alert lane (below); the scale is the same
+  a header row of 72 design px, over a footer row of 48 and clear of the alert lane while it shows something
+  (below; in landscape the frame takes the full width between the margins when the lane is empty); the scale is the same
   on both axes and the course is centred. It does not follow the boats: a boat outside the frame is drawn as a small arrow on the frame's edge
   pointing towards her, in her colour.
 - **Background**: an `ink` scrim at 82 % over the whole screen; no grid, no land.
@@ -262,16 +279,18 @@ cameras keep moving and every sound plays. Offline and online alike.
   next step's name with its distance (`Next  Windward  420 m`, §7 and §1 formats), the name in `mark`. Before the
   start the second line reads `Start` with the distance to the line (§9.2). After the viewed boat finishes: `Finished`.
 - **Wind** (top right): the viewed boat's true wind (§3.1, `twd` and `tws`) as an arrow blowing the way the wind
-  goes, with `12 KN  000°` under it, and a small `N` with a north tick, as on the race card's map.
+  goes on the map (turned with it), with `12 KN  000°` under it, and a small `N` with a tick pointing to north on the
+  map, so the turned frame still reads.
 - **Footer**: a **scale bar** bottom left, the longest of 10, 20, 50, 100 and 150 m and 0.2, 0.25, 0.5, 1, 2 and
   5 nm that is not longer than a fifth of the frame's width (10 m when none is), with its length in the §1 distance
   format (`150 m`, `0.25 nm`), so the label is always a round number; and `M  CLOSE` bottom right in `mist`.
 - **The rest of the HUD**: while the map is open the alert lane stays above it (countdown and flags, the start
   numbers, OVER and OCS, the penalty panel, the rules line, banners and the protest and hail prompts: whatever
   needs an answer now) at its usual scale, moved clear of the course: in landscape to a column on the left under
-  the map's header (the frame starts 24 design px right of it), in portrait centred under the header with a band
-  of 440 design px kept for it above the frame. Both are kept whether the lane shows anything or not, so the frame
-  never moves. Everything else is hidden: the instrument page and its chip, the helm strip and its
+  the map's header, kept only while the lane shows something (the frame then starts 24 design px right of it, and
+  takes the full width again when the lane is empty: the owner's call, a course squeezed into the right half for
+  an empty column was too small); in portrait centred under the header with a band of 440 design px kept for it
+  above the frame whether it shows anything or not. Everything else is hidden: the instrument page and its chip, the helm strip and its
   notes, the race bug, the wind page, the feed, the radar, the ranking list, the boat card and every world tag. The
   results table and the finish card (§13) are not hidden by it: the map closes when either shows.
 - **Pointer**: with the map open, `boat_pick` picks on the map: a click within 24 design px of a boat's icon
@@ -352,9 +371,11 @@ From the pair records of the viewed boat (`rules.md` §11.1), highest-priority f
 Visible while the boat has pending penalties, is taking one, or was penalised in the last 5 s:
 
 - **Pending count** and the current one's rule text (§12.3) and the other boat's name.
-- **Turn progress**: plain text, no ring or dial: `TURN` over the tracker's `|Θ|` (`rules.md` §9.3) as a number
-  (`210°`, every penalty is one turn of 360°), and under it the words `TACK` and `GYBE`, each in `paper` once done
-  and in `mist` at 45 % before; state text, the first that applies:
+- **Turn progress**: a small ring gauge at the panel's left: a ring of 34 design px radius, its track in `hair`
+  (4 px), the progress arc in `paper` (4 px) from the top clockwise over `|Θ| / 360°` of the circle (the tracker's
+  `|Θ|`, `rules.md` §9.3; every penalty is one turn of 360°), the number `210°` in its middle (22 design px); right
+  of the ring `TURN` (`mist`) over the words `TACK` and `GYBE`, each in `paper` once done and in `mist` at 45 %
+  before. The ring is inside the panel only; state text, the first that applies:
   - `Not counted: inside the zone` while the core's `turn_in_zone` is set (match races only, `rules.md` §9.3; a
     fleet-race turn counts anywhere);
   - for 3 s after the core's last turn reset (`turn_reset`, `turn_reset_tick`, `rules.md` §11.2), by its reason:
@@ -365,11 +386,14 @@ Visible while the boat has pending penalties, is taking one, or was penalised in
   The HUD reads both states from the core and does not infer them.
 - **Deadline**: `rules.md` §9.4 countdown `1:32` to the time the turn must be **completed** (120 s after the
   incident), red below 30 s (a turn takes 10 to 25 s); hidden when there is no deadline (match race single penalty).
+  Under the number a thin bar (4 design px, 150 design px long, right-aligned with the number) shrinks towards
+  0:00: its track in `hair` at 45 %, its fill from the left over `time left / 120 s` of it in the countdown's
+  colour (`paper`, `port` below 30 s).
 - **Disqualification warning**: `One more penalty = disqualification` when pending = `dsq_pending − 1` or
   received = `dsq_total − 1`.
 - **Finish blocked**: `Take your penalty before finishing` on a `FinishBlocked` event.
 - **Nothing on the water**: the turn is not drawn round the boat in any camera (the owner's call: the ring on the
-  water was ugly and hid the boat); the panel carries it in every camera.
+  water was ugly and hid the boat); the panel's small ring carries it in every camera.
 
 ### 12.2 Messages
 
@@ -466,7 +490,7 @@ Assists change what is shown, never the physics or the rules.
 
 | Indicator | Full | Standard | Minimal |
 | --- | --- | --- | --- |
-| Instruments, wind, VMG / VMC, speed to target | yes | yes | yes |
+| Instruments, wind, VMG / VMC, VMG angles on the TWA dial and the pointer's colour | yes | yes | yes |
 | Trim gauge colours and tell-tales | yes | yes | tell-tales only |
 | Laylines (water and radar) | yes | yes | no |
 | Distance / time to layline | yes | yes | no |
@@ -488,9 +512,9 @@ density of §16.1: an item shows only when both allow it.
 - Through a scripted tack the shown TWA equals the core's `twa` every tick (no lag, no overshoot) and its tack letter
   changes on the tick the sign of `twa` does.
 - VMG on a run is positive when sailing towards the leeward mark; VMC is negative when sailing away from the mark.
-- Speed to target: the cue shows the boat speed over `V_up` on a beat, `V_dn` on a run, `V_pol` with the best sail
-  on a reach and the boat's `polar_speed` before the start and when free sailing (`--` head to wind); no HUD text is
-  a percentage of a target.
+- VMG angles (§4, §16.3): the dial marks `±θ_up` and `±θ_dn` at every phase; the true wind pointer is `stbd` at
+  the reference angle, `mark` 11° off and `port` 20° or more off, and neutral on a reach; no HUD text shows a target
+  speed or a percentage of a target.
 - Layline test: a boat placed on the computed starboard layline, sailing at `θ_up` with no current, reaches the mark
   within 0.5 L in a steady wind (headless sim).
 - Radar colours follow the pair records for the port–starboard, windward–leeward and mark-room scenarios of
@@ -501,19 +525,26 @@ density of §16.1: an item shows only when both allow it.
   Glance, Race, Data, Glance and the choice survives a restart; the defaults are Race at 1920 x 1080 and Glance at
   1280 x 800.
 - Name tags (§16.4): a boat at 45 m has a tag, one at 55 m has none until it is selected; with a penalty pending
-  and a turn running nothing is drawn round the boat in any camera, and the panel shows the turn as a number with
-  no arc.
-- Next-mark arrow (§7.1): drawn in the onboard, aerial and free cameras and not in the chase camera; with the mark
-  ahead of the camera it points up, to its right it points right, behind it points down; outside the chase camera
-  the mark's off-screen edge pointer is not drawn; it hides with `world_tags` and with the course map.
-- Selecting (§16.4.1): a click on a far boat's hull or rig selects her and draws her bracket and tag, a click on the
+  and a turn running nothing is drawn round the boat in any camera, and the panel shows the turn as a number in a
+  small ring whose arc spans the turn; the deadline bar's length is the time left over 120 s.
+- Next-mark arrow (§7.1): drawn in the onboard, aerial and free cameras and not in the chase camera, and only with
+  the mark off screen (hidden with it ahead and on screen); to the camera's right it points right, behind it points
+  down; outside the chase camera the mark's off-screen edge pointer is not drawn; it hides with `world_tags` and
+  with the course map.
+- Selecting (§16.4.1): a click on a far boat's hull or rig selects her and draws her pointer and tag over her
+  masthead (following her heel), a click on the
   water or on her again clears, a click on another boat replaces her, a press dragged 20 px picks nothing
   (`controls.md` §8 test 10), Esc clears it without pausing, `boat_select` goes nearest first, then the next, then
   none; the radar marks her.
 - Boat card (§16.7): for a scripted race state every row matches the boat states, race and rules records it comes
   from; at 1280 x 800 and 1080 x 1920 for UI scales 80 % to 130 % at every density, with a boat selected, every
   text is on screen and no two blocks overlap.
-- Tack point (§16.4): the point and its `TACK IN` label are drawn, and no line runs from the boat to it.
+- Tack point (§16.4): the point and its `TACK IN` label are drawn, and no line runs from the boat to it; with the
+  point under a corner block the label moves under the ring or is not drawn, never over the block.
+- Ladder lines (§16.4.2): with a boat selected two lines square to the axis, through each boat, own in `mark`; the
+  gain label reads her distance along the axis in hull lengths; none with nothing selected.
+- Hoist cue (§5.1): during a hoist one `HOISTING <SAIL>` cue with its bar shows, and no two texts of the helm strip
+  and its notes overlap.
 - Every text of the HUD fits its block at 1280 x 800 for UI scales 80 % to 130 %.
 - Portrait (§16.5): at 1080 x 1920 for UI scales 80 % to 130 %, in the pre-start, beat and penalty states at every
   density, every text is on screen and no two texts overlap, and no two blocks' drawn areas overlap (world tags
@@ -525,10 +556,12 @@ density of §16.1: an item shows only when both allow it.
   top speed and the distance sailed of a scripted race.
 - Course map (§8.1): `map` opens and closes it and Esc closes it without pausing or clearing the selection; the
   race runs on while it shows (the race time advances, the boat answers the helm); the frame fits every mark at
-  1920 x 1080, 1280 x 800 and 1080 x 1920; every boat is drawn in its radar colour (ghosts grey, all white with
+  1920 x 1080, 1280 x 800 and 1080 x 1920; the course axis points up the screen and the north tick and boat icons
+  turn with it; every boat is drawn in its radar colour (ghosts grey, all white with
   Minimal) and the viewed boat in `mark`; the course line runs through every step with one rounding arrow per
   rounding mark on the side of the course; the next step's marks are in `mark` and only they have a zone circle;
-  every rounding mark (one per gate) has its name; the scale bar's label matches its
+  every rounding mark (one per gate) has its name; in landscape the frame takes the full width with the alert lane
+  empty and starts right of the lane while it shows something; the scale bar's label matches its
   length; while it is open the alert lane shows and the radar, the instrument page and the world tags do not; a
   click on a boat's icon selects her.
 - Capture rate note (§16.6): each `capture_slow` press shows the note for the new rate, also with the HUD hidden;
@@ -549,9 +582,9 @@ boat's card (§16.7). The radar, the helm strip and, under manual trim, the trim
 
 | Phase | Glance | Race | Data |
 | --- | --- | --- | --- |
-| Pre-start (race sequence, not started) | boat speed, TWA dial; start block: countdown, time to burn with its late/early bar, the flag rule in one line; no race bug, no wind page | + speed to target (the polar speed at the present TWA), heading, target speed; full start block (distance and time to line, burn, bias, flags); wind page; race bug (fleet); feed 3 lines | + VMG, AWA, SOG, COG, AWS, heel bar; race bug adds laps and legs; feed 6 lines |
-| Beat or run | boat speed, TWA dial with the target ticks, speed to target (`V_up` on a beat, `V_dn` on a run) as the cue; race bug: clock and rank | + heading, target angle and speed; wind page and shift meter; lap, leg and leg type; feed 3 lines | + VMG, AWA, SOG, COG, AWS, heel bar; leader gap, ahead and behind; feed 6 lines; sail hint |
-| Reach | as a beat, with the target `V_pol` with the best sail and no target ticks | as a beat | as a beat, with VMC in place of VMG |
+| Pre-start (race sequence, not started) | boat speed, TWA dial; start block: countdown, time to burn with its late/early bar, the flag rule in one line; no race bug, no wind page | + heading; full start block (distance and time to line, burn, bias, flags); wind page; race bug (fleet); feed 3 lines | + VMG, AWA, SOG, COG, AWS, heel bar; race bug adds laps and legs; feed 6 lines |
+| Beat or run | boat speed, TWA dial with the VMG angles and the coloured pointer; race bug: clock and rank | + heading; wind page and shift meter; lap, leg and leg type; feed 3 lines | + VMG, AWA, SOG, COG, AWS, heel bar; leader gap, ahead and behind; feed 6 lines; sail hint |
+| Reach | as a beat, the pointer neutral | as a beat | as a beat, with VMC in place of VMG |
 | Rounding (within `6·L` of the next mark, and 6 s after a rounding) | boat speed, TWA dial | as the leg | as the leg |
 | Penalty (panel shown) | boat speed, TWA dial | as the leg | as the leg |
 
@@ -614,11 +647,16 @@ text fits its block at every step (§15); 11 px stays the floor for any text.
 The instrument values of a corner sit on one page: ink glass from 14 % at the top to 44 % at the bottom, a hairline
 along the top edge and hairline dividers between the cells; no blur, no corner ticks, no rounded corners. Each cell
 has its label top left, the unit top right and the value right-aligned at the bottom. Numbers use tabular figures.
-The two analogue parts are the TWA dial (bow up, the close-hauled sectors in `port` and `stbd`, the target angle
-ticks in `mark` on a beat or run, the true wind pointer; Data adds the apparent wind pointer) and, at Data, the heel
-bar (centre zero, ±30°). The cue cell (Glance and Race) shows the speed to target of §4 as one number pair,
-`7.1 / 7.4` with the unit `KN`, set smaller when it would not fit its cell; it has no meter and no percentage.
-Numbers keep the 4 Hz refresh of §1; dial and bars move every frame.
+The two analogue parts are the TWA dial and, at Data, the heel bar (centre zero, ±30°). The **TWA dial**: bow up,
+the close-hauled sectors in `port` and `stbd`; the **VMG angles** of §4 on both sides, each a solid `mark` notch on
+the rim (an inward triangle 11 design px deep and 12 wide) with a 2 px tick under it,
+the reference pair (§4) at full strength and the other pair at 45 % (both at full strength on a reach); the true
+wind pointer, **coloured by the angle error** `Δ` of §4 on a smooth gradient: `stbd` up to 2°, through `mark` at
+11° to `port` at 20° and beyond (linear in between in RGB), with a thin `ink` edge so it reads over the sectors,
+and `paper` with no reference (a reach); Data adds the
+apparent wind pointer, hollow, in `paper`. No cell shows a target speed: Glance has boat speed and the dial, Race
+adds heading under the boat speed, Data adds VMG (VMC on a reach) and SOG beside them and COG, AWS and the heel bar
+under them. Numbers keep the 4 Hz refresh of §1; dial and bars move every frame.
 
 ### 16.4 World tags
 
@@ -635,6 +673,15 @@ Numbers keep the 4 Hz refresh of §1; dial and bars move every frame.
   ink otherwise) and pulses as the radar icon does. A selected boat off screen gets an edge pointer with her name
   and distance. `boat_names` turns all name tags off and on (the selected boat's included; her bracket and card
   stay).
+- **Keep clear of the corners**: world labels never sit on the HUD's own blocks (the instrument page and its
+  chip, the radar, the helm strip and its notes, the next-mark arrow, the race bug, the wind page, the feed, the
+  alert lane, the boat card), as the edge pointers keep to their box. The tack point's label goes above its ring,
+  else under it, else it is not drawn (the ring stays); a name tag over a block is not drawn (the selected boat
+  keeps her marker); the mark tag goes above-right of the mark, else under it, else left of it, and hides when
+  none is clear (the mark's diamond stays).
+- **Masthead**: the name tags and the selection marker stand at the masthead of the boat as she floats, heel and
+  pitch included (`conventions.md` §3 attitude: the body point `(0, 0, 1.35·loa)` above the hull reference point),
+  so they stay over the rig when she heels.
 - `world_tags` (`controls.md` §7) hides and shows all of the above at once, with the course's on-water guides;
   it is independent of `hud_hide`.
 
@@ -653,12 +700,35 @@ One other boat at a time can be selected, to keep her tag up whatever the distan
 - **Clear**: Esc (`pause_menu`) with a boat selected clears the selection and does nothing else; the next Esc opens
   the pause menu as usual. Selecting the viewed boat (spectating) is not possible; when the viewed boat becomes the
   selected one, or she leaves the race's boats, the selection clears.
-- **Marking**: the selected boat gets a bracket on the hull: four hairline corners (1.5 px, `hair` width rules)
-  round the screen box of her hull and rig (at least 16 px square), 6 px outside it, each corner a quarter of the side and at most 14 px,
-  in her tag colour (paper with no relation). No glow, no fill. On the radar (§8) her icon gets the same four
-  corners in paper, 9 px from its centre.
+- **Marking**: the selected boat gets a small pointer over her masthead (§16.4, heel included): a solid downward
+  triangle 12 design px wide and 9 tall, its tip 8 design px above the masthead, in her tag colour (paper with no
+  relation) with a 1.5 px `ink` edge at 70 %; her name tag, when shown, stands on top of it instead of on its
+  leader line. No box round the boat: a screen-aligned box looked wrong once she heeled. No glow, no fill. On the
+  radar (§8) her icon gets four hairline corners in paper, 9 px from its centre.
+- **Ladder lines** (§16.4.2) show while she is selected.
 - The pointer picks only in the 3D view: not through the pause menu, the look panel (§18) or the chat line, and not
   while the simulation is paused with the menu open.
+
+#### 16.4.2 Ladder lines
+
+While a boat is selected (§16.4.1), two lines on the water show who is ahead on the leg, as a sailor reads the
+ladder: one through the viewed boat and one through the selected boat, both square to the ladder axis.
+
+- **Axis**: on a beat or a run, and before the start or free sailing, the wind: the viewed boat's clean wind
+  direction smoothed 10 s (the laylines' wind, §6). On a reach, the bearing from the viewed boat to the next mark's
+  point (§7), since across the wind says nothing there.
+- **Lines**: each a straight line on the water (sea level) through the boat's hull reference point, square to the
+  axis, as long as the two boats are apart across the axis plus 40 m on each side (at least 80 m each side), so
+  both lines run past both boats. A gap of one hull length is left at each boat, and no line is drawn over any
+  boat's hull and rig on screen (her pick triangle of §16.4.1 with 6 design px round it). The
+  viewed boat's in `mark`, the selected boat's in `paper` at 75 %, hairlines (1.5 px). Drawn only where in front of
+  the camera; nothing else (no fill between them).
+- **Gain**: at the selected boat's line, beside her, her distance ahead of or behind the viewed boat along the axis
+  in hull lengths of the viewed boat, one decimal: `2.1 L AHEAD`, `0.4 L BEHIND` (`EVEN` under 0.05 L), 13 design px
+  `paper` on an `ink` 70 % chip. Ahead means upwind on a beat (and before the start), downwind on a run, towards the
+  mark on a reach.
+- Hidden with no selection, with the course map open, with `world_tags` off and in the results; at every density
+  and assist preset. A scene without a 3-D camera draws none.
 
 ### 16.5 Portrait layout (capture)
 

@@ -6,8 +6,10 @@ extends SceneTree
 ##     for the portrait capture preset (hud.md §16.5), 1080 x 1920;
 ##   - a scripted incident on RaceStubSim (rules line, penalty panel, radar colours, the next-mark arrow, a
 ##     selected boat's tag, protest prompt) seen from a camera above (the backdrop is not the same scene), and the
-##     course map (hud.md §8.1) open over it;
-##   - the finish card (hud.md §13.1) and the results of a short race on the core;
+##     course map (hud.md §8.1) open over it; then, the incident over, a kite hoist (hud.md §5.1, hoist_race) and
+##     the map with the alert lane empty (map_clear_race);
+##   - the course map on the core's course, course up (map_course_race), the finish card (hud.md §13.1) and the
+##     results of a short race on the core;
 ##   - boat_pick: the "fleet" shot (8 boats, course preview "fleet") with the boat nearest the middle of the screen
 ##     picked (hud.md §16.4.1, §16.7: her bracket, tag and card), at 1280 x 720 and in portrait.
 ## Portrait shots end in _portrait. Every shot prints the block overlaps HudLayoutCheck finds ("no overlaps").
@@ -208,6 +210,8 @@ func _incident() -> void:
 	sim.put(2, 150.0, 460.0, Frames.wrap_2pi(-th), 3.2)
 	sim.put(3, 90.0, 360.0, Frames.wrap_2pi(-th), 3.0)
 	sim.put(4, 230.0, 380.0, th, 2.9)
+	for b in 5:  # heeled to leeward: starboard tack (twa > 0) heels to port
+		sim.states[b].phi = deg_to_rad(-22.0 if sim.states[b].twa > 0.0 else 22.0)
 	var RR := RaceText.Rule
 	sim.pairs_a = [sim.pair(0, 1, {"kc_giver": 1, "kc_holder": 0, "kc_rule": RR.R10, "kc_state": 1}),
 		sim.pair(0, 2, {"kc_giver": 0, "kc_holder": 2, "kc_rule": RR.R12, "kc_state": 2}),
@@ -256,6 +260,27 @@ func _incident() -> void:
 	vp.size = Vector2i(WIDE)
 	hud.screen_size = WIDE
 	await _shot(hud, "map_race", "race_aerial", WIDE)
+	hud.toggle_map()
+	# the incident over: no penalty, no prompt; a kite hoist under manual trim (hud.md §5.1), the map with the lane
+	# empty (full width)
+	sim.rules_d[0] = {"pending": [], "turn_progress": 0.0, "turn_tacks": 0, "turn_gybes": 0, "deadline_s": -1.0,
+		"received": 1, "turning_for_penalty": false}
+	sim.pairs_a = []
+	sim.ctrls[0].auto_trim = false
+	var P := SimSource.Phase
+	sim.sv.sails[2].phase = P.HOISTING
+	sim.sv.sails[2].progress = 0.45
+	sim.sv.sails[1].phase = P.PREPARE_DROP
+	sim.sv.queue = [SimSource.SailStep.new(2, P.HOISTING)]
+	sim.sv.queue_len = 1
+	sim.sv.queue_pos = 0
+	for i in 140:
+		sim.step()
+		hud.tick(sim, 0)
+	hud.select(-1)
+	await _shot(hud, "hoist_race", "race_aerial", WIDE)
+	hud.toggle_map()
+	await _shot(hud, "map_clear_race", "race_aerial", WIDE)
 	hud.queue_free()
 	vp.queue_free()
 
@@ -278,11 +303,20 @@ func _results() -> void:
 	var pilot := RacePilot.new(sim)
 	var n := 0
 	var card_done := false
+	var map_done := false
 	while n < 60000:
 		pilot.steer()
 		sim.step()
 		hud.tick(sim, 0)
 		n += 1
+		if not map_done and hud.race.started and n > 5000:
+			# hud.md §8.1 the course map, course up, on the real course
+			map_done = true
+			hud.density_auto = false
+			hud.density = R
+			hud.toggle_map()
+			await _shot(hud, "map_course_race", "committee", WIDE)
+			hud.toggle_map()
 		if not card_done and hud.race.card.get("kind", "") == "finish" and hud.race.card_ticks >= 12:
 			# hud.md §13.1 the finish card, fully shown
 			card_done = true

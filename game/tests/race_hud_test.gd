@@ -43,6 +43,11 @@ func _init() -> void:
 	await test_boat_pick()
 	await test_boat_card()
 	await test_tack_point_no_line()
+	await test_heeled_marker()
+	await test_ladder_lines()
+	await test_labels_keep_clear()
+	test_hoist_cue()
+	test_vmg_angle_dial()
 	test_text_fits()
 	test_card_fits()
 	test_course_map()
@@ -251,8 +256,10 @@ func test_next_mark() -> void:
 	t.ok(h.text_of("leg").begins_with("Beat  ·  ETA "), h.text_of("leg"))
 	t.ok(h.text_of("vmg").begins_with("VMG  %s kn" % HudFormat.speed_kn(r.vmg)), h.text_of("vmg"))
 	t.near(r.target_speed, 3.0, 1e-3, "target speed on a beat: V_up")
-	t.ok(h.value_of("cue") == "%s / %s" % [HudFormat.speed_kn(h.values.bsp), HudFormat.speed_kn(3.0)] and h.unit_of("cue") == "KN",
-		"cue on a beat: boat speed / V_up in knots: " + h.value_of("cue"))
+	t.near(h.dial_reference(), deg_to_rad(42.0), 1e-6, "beat: the TWA pointer is coloured against the upwind VMG angle")
+	h.frame(0.3)
+	var all_text := " ".join(_page_texts(h.inst_page))
+	t.ok(not all_text.contains("TARGET") and not all_text.contains(" / "), "no target speed on the page: " + all_text)
 	t.ok(not h.text_of("vmg").contains("%"), "no VMG %%: " + h.text_of("vmg"))
 	# no display smoothing (hud.md §1): a speed change shows in VMG and VMC on the next tick
 	sim.put(0, 200.0, 400.0, psi, 2.0)
@@ -268,8 +275,7 @@ func test_next_mark() -> void:
 	t.ok(r.leg_type == "run", "run to the gate")
 	t.ok(r.vmg > 0.0, "VMG on a run is positive towards the leeward mark (%.2f)" % r.vmg)
 	t.near(r.target_speed, 3.5, 1e-3, "target speed on a run: V_dn")
-	t.ok(h.value_of("cue") == "%s / %s" % [HudFormat.speed_kn(h.values.bsp), HudFormat.speed_kn(3.5)],
-		"cue on a run: boat speed / V_dn: " + h.value_of("cue"))
+	t.near(h.dial_reference(), deg_to_rad(150.0), 1e-6, "run: coloured against the downwind VMG angle")
 	t.ok(r.next_name == "Gate Gate left / Gate right" and r.next_sides.size() == 2, "gate: both buoys' arrows: " + r.next_name)
 	t.near(r.next_dist, (Vector2(60, 700) + 3.5 * Vector2(sin(psi_run), cos(psi_run))).distance_to(Vector2(20, 100)) - 1.0,
 		1e-2, "gate: the nearer buoy")
@@ -281,8 +287,7 @@ func test_next_mark() -> void:
 	t.ok(r.leg_type == "reach" and r.vmc < 0.0, "VMC negative when sailing away from the mark (%s, %.2f)" % [r.leg_type, r.vmc])
 	t.ok(is_nan(r.eta) and h.text_of("leg") == "Reach  ·  ETA --:--", "ETA --:-- below 0.3 kn of VMC: " + h.text_of("leg"))
 	t.ok(h.text_of("vmg").begins_with("VMC  "), "VMC replaces VMG on a reach")
-	t.ok(h.value_of("cue") == "%s / %s" % [HudFormat.speed_kn(h.values.bsp), HudFormat.speed_kn(r.target_speed)],
-		"cue on a reach: boat speed / the reach target: " + h.value_of("cue"))
+	t.ok(is_nan(h.dial_reference()) and h.pointer_colour() == HudStyle.PAPER, "reach: the pointer is neutral")
 	# the finish: distance to the nearest point of the line
 	for b in 2:
 		sim.boats_d[b]["next"] = 4
@@ -598,8 +603,8 @@ func test_penalties_prompts() -> void:
 	var turn_texts := h.turn_view.primitives().filter(func(q: Dictionary) -> bool: return q["k"] == "text") \
 		.map(func(q: Dictionary) -> String: return q["text"])
 	var turn_arcs := h.turn_view.primitives().filter(func(q: Dictionary) -> bool: return q["k"] == "arc")
-	t.ok(turn_texts.has("210°") and turn_texts.has("TACK") and turn_texts.has("GYBE") and turn_arcs.is_empty(),
-		"the panel's turn as plain text, no ring: %s" % str(turn_texts))
+	t.ok(turn_texts.has("210°") and turn_texts.has("TACK") and turn_texts.has("GYBE") and turn_arcs.size() == 2,
+		"the panel's turn: the number in a small ring (track and arc), TACK and GYBE: %s" % str(turn_texts))
 	# the zone is the core's (rules.md §9.3): near the mark the HUD does not guess, the core's flag says not counted
 	sim.put(0, 0, 985, 0.7, 3.0)
 	sim.race_d["race_type"] = RaceText.RACE_MATCH
@@ -864,16 +869,16 @@ func test_density() -> void:
 	_refresh(h, sim, 0, 5)
 	t.ok(h.phase() == "pre", "phase pre: " + h.phase())
 	var g := _items_at(h, G)
-	t.ok(_has_all(g, ["bsp", "twa_dial", "start_min", "radar", "helm"]) and _has_none(g, ["cue", "hdg", "bug",
+	t.ok(_has_all(g, ["bsp", "twa_dial", "start_min", "radar", "helm"]) and _has_none(g, ["hdg", "bug",
 		"wind_page", "start_full", "feed"]), "pre-start Glance: %s" % str(g))
 	var rc := _items_at(h, RC)
-	t.ok(_has_all(rc, ["cue", "hdg", "target", "start_full", "wind_page", "bug", "feed"]) and _has_none(rc, data_only),
+	t.ok(_has_all(rc, ["hdg", "start_full", "wind_page", "bug", "feed"]) and _has_none(rc, data_only + ["cue", "target"]),
 		"pre-start Race: %s" % str(rc))
 	var d := _items_at(h, D)
 	t.ok(_has_all(d, data_only + ["bug_lap"]), "pre-start Data: %s" % str(d))
 	h.frame(0.3)
-	t.ok(h.value_of("cue") == "%s / %s" % [HudFormat.speed_kn(h.values.bsp), HudFormat.speed_kn(h.values.polar_speed)],
-		"pre-start cue: boat speed / the polar speed at the present TWA: " + h.value_of("cue"))
+	t.ok(not _page_texts(h.inst_page).has("SPEED / TARGET") and not _page_texts(h.inst_page).has("TARGET"),
+		"pre-start: no target speed")
 	h.free()
 	# beat
 	sim = _beat_sim()
@@ -882,20 +887,20 @@ func test_density() -> void:
 	_refresh(h, sim, 0, 200)
 	t.ok(h.phase() == "beat", "phase beat: " + h.phase())
 	g = _items_at(h, G)
-	t.ok(_has_all(g, ["bsp", "twa_dial", "cue", "bug", "feed_own"]) and _has_none(g, ["hdg", "target", "wind_page",
+	t.ok(_has_all(g, ["bsp", "twa_dial", "bug", "feed_own"]) and _has_none(g, ["cue", "hdg", "target", "wind_page",
 		"shift", "bug_lap", "feed"] + data_only), "beat Glance: %s" % str(g))
 	h.frame(0.3)
 	var page := _page_texts(h.inst_page)
-	t.ok(page.has("BOAT SPEED") and page.has("SPEED / TARGET") and not page.has("HEADING")
-		and page.has(h.value_of("cue")) and not " ".join(page).contains("%"), "Glance page: speed, TWA dial, speed to target: %s" % str(page))
+	t.ok(page.has("BOAT SPEED") and page.has("TWA") and not page.has("SPEED / TARGET") and not page.has("HEADING")
+		and not " ".join(page).contains("%"), "Glance page: speed and the TWA dial, no target: %s" % str(page))
 	t.ok(h.radar.compact and not h.wind_page.visible and h.bug_block.visible, "Glance: small radar, no wind page")
 	rc = _items_at(h, RC)
-	t.ok(_has_all(rc, ["cue", "hdg", "target", "wind_page", "shift", "bug_lap", "feed"]) and _has_none(rc,
-		data_only + ["bug_gaps", "hint"]), "beat Race: %s" % str(rc))
+	t.ok(_has_all(rc, ["hdg", "wind_page", "shift", "bug_lap", "feed"]) and _has_none(rc,
+		data_only + ["bug_gaps", "hint", "cue", "target"]), "beat Race: %s" % str(rc))
 	h.frame(0.3)
 	page = _page_texts(h.inst_page)
-	t.ok(page.has("HEADING") and page.has("TARGET") and not page.has("SOG") and h.wind_page.visible,
-		"Race page: heading and target, wind page: %s" % str(page))
+	t.ok(page.has("HEADING") and not page.has("TARGET") and not page.has("SOG") and h.wind_page.visible,
+		"Race page: heading, no target, wind page: %s" % str(page))
 	d = _items_at(h, D)
 	t.ok(_has_all(d, data_only + ["bug_gaps", "hint"]), "beat Data: %s" % str(d))
 	h.frame(0.3)
@@ -918,15 +923,15 @@ func test_density() -> void:
 	h.frame(0.3)
 	t.ok(h.phase() == "penalty" and h.penalty_panel.visible and h.shown("rules") and h.alerts_block.visible,
 		"Glance keeps the penalty panel and the rules line")
-	t.ok(not h.has_item("cue") and h.has_item("bsp"), "penalty at Glance: speed and TWA dial only")
-	t.ok(_items_at(h, RC).has("cue"), "penalty at Race: as the leg")
+	t.ok(not h.has_item("hdg") and h.has_item("bsp"), "penalty at Glance: speed and TWA dial only")
+	t.ok(_items_at(h, RC).has("hdg"), "penalty at Race: as the leg")
 	h.free()
 	# rounding
 	sim = _beat_sim(true)
 	h = _hud(sim)
 	_refresh(h, sim, 0, 20)
 	t.ok(h.phase() == "rounding", "within 6 L of the mark: rounding (%s, %.0f m)" % [h.phase(), h.race.next_dist])
-	t.ok(not _items_at(h, G).has("cue") and _items_at(h, RC).has("cue"), "rounding: Glance drops the cue")
+	t.ok(not _items_at(h, G).has("hdg") and _items_at(h, RC).has("hdg"), "rounding: Glance has speed and the dial")
 	h.free()
 	# reach: the cue's target is the reach target, VMC in Data
 	sim = _beat_sim()
@@ -936,7 +941,7 @@ func test_density() -> void:
 	_refresh(h, sim, 0, 200)
 	if h.race.leg_type == "reach":
 		d = _items_at(h, D)
-		t.ok(d.has("cue") and d.has("vmg_kn") and h.cue_target() == h.race.target_speed, "reach: cue and VMC: %s" % str(d))
+		t.ok(d.has("vmg_kn") and not d.has("cue"), "reach: VMC, no target: %s" % str(d))
 		h.frame(0.3)
 		t.ok(_page_texts(h.inst_page).has("VMC"), "reach Data: VMC")
 	else:
@@ -1070,6 +1075,24 @@ func test_name_tags_and_penalty_turn() -> void:
 		h.camera_kind = kind
 		h.frame(0.01)
 		t.ok(not ring.call(), "no penalty ring on the water in the %s camera" % kind)
+	# the small ring inside the panel (hud.md §12.1): the hair track and the paper arc over 120 / 360 of the circle
+	var arcs := h.turn_view.primitives().filter(func(q: Dictionary) -> bool: return q["k"] == "arc")
+	var track := arcs.filter(func(q: Dictionary) -> bool: return (q["col"] as Color).is_equal_approx(HudStyle.HAIR))
+	var prog := arcs.filter(func(q: Dictionary) -> bool: return (q["col"] as Color).is_equal_approx(HudStyle.PAPER))
+	t.ok(track.size() == 1 and prog.size() == 1, "the panel's ring: a track and a progress arc (%d, %d)" % [track.size(),
+		prog.size()])
+	if prog.size() == 1:
+		t.near(float(prog[0]["a1"]) - float(prog[0]["a0"]), TAU / 3.0, 1e-3, "the arc spans 120 of 360 degrees")
+		t.ok(Rect2(Vector2.ZERO, h.turn_view.size).encloses(HudCanvas.prim_rect(prog[0])), "the ring is inside the panel")
+	t.ok(_page_texts(h.turn_view).has("120°"), "the degrees in the ring: %s" % str(_page_texts(h.turn_view)))
+	# the deadline bar (hud.md §12.1): time left over 120 s, in the countdown's colour
+	h.frame(0.3)
+	var bar := HudPaint.deadline_bar(h)
+	t.near(bar[1].size.x / bar[0].size.x, 30.0 / 120.0, 1e-3, "deadline bar: 30 s of 120 s left")
+	var fills := h.penalty_panel.primitives().filter(func(q: Dictionary) -> bool: return q["k"] == "rect" \
+		and (q["r"] as Rect2).is_equal_approx(Rect2(bar[1].position * h.penalty_panel.k, bar[1].size * h.penalty_panel.k)))
+	t.ok(fills.size() == 1 and (fills[0]["col"] as Color).is_equal_approx(h.colour_of("pen_deadline")),
+		"the bar's fill drawn in the countdown's colour")
 	sim.rules_d[0] = {"pending": [], "turn_progress": 0.0, "turn_tacks": 0, "turn_gybes": 0, "deadline_s": -1.0,
 		"received": 0, "turning_for_penalty": false}
 	_refresh(h, sim)
@@ -1089,6 +1112,10 @@ func test_name_tags_and_penalty_turn() -> void:
 				func(q: Dictionary) -> bool: return q["k"] == "poly" and (q["col"] as Color).is_equal_approx(HudStyle.MARK))
 			var pointer := h.world.primitives().any(func(q: Dictionary) -> bool: return q["k"] == "text" \
 				and q["text"] == mark_name)
+			if lk[0] == "ahead":
+				t.ok(h.mark_screen() != null, "%s: the mark is on screen ahead" % kind)
+				t.ok(not drawn, "%s: no next-mark arrow with the mark on screen" % kind)
+				continue
 			if kind == "chase":
 				t.ok(not drawn, "no next-mark arrow in the chase camera (mark %s)" % lk[0])
 				if lk[0] == "behind":
@@ -1160,14 +1187,17 @@ func test_boat_pick() -> void:
 	t.ok(h.selected_boat() == 3, "a click 22 px beside the far boat selects her (generous hit area)")
 	var names := h.name_tags().map(func(g: Dictionary) -> String: return g["name"])
 	t.ok(names.has("MAJA"), "her name tag shows at 320 m: %s" % str(names))
-	var br := h.selected_bracket()
-	var box := Rect2(tri[0], Vector2.ZERO).expand(tri[1]).expand(tri[2])
-	t.ok(br.has("r") and (br["r"] as Rect2).encloses(box), "the bracket stands round her hull and rig")
+	var mk := h.selected_marker()
+	t.ok(not mk.is_empty() and (mk["tip"] as Vector2).y < (mk["head"] as Vector2).y and (mk["head"] as Vector2).distance_to(
+		tri[2]) < 1.0, "the pointer stands over her masthead")
+	var marker_drawn := h.world.primitives().any(func(q: Dictionary) -> bool: return q["k"] == "poly" \
+		and q["pts"] == mk.get("pts"))
+	t.ok(marker_drawn, "the pointer is drawn")
 	var corners := 0
 	for q in h.world.primitives():
-		if q["k"] == "polyline" and (q["pts"] as PackedVector2Array).size() == 3 and (br["r"] as Rect2).grow(1.0).has_point(q["pts"][1]):
+		if q["k"] == "polyline" and (q["pts"] as PackedVector2Array).size() == 3:
 			corners += 1
-	t.ok(corners == 4, "four hairline corners drawn (%d)" % corners)
+	t.ok(corners == 0, "no box corners round her (%d)" % corners)
 	var ri := h.radar.range_index
 	h.radar.range_index = 4  # 506 m (not saved)
 	h.frame(0.1)
@@ -1595,8 +1625,11 @@ func test_course_map() -> void:
 			fits.append("%s: frame %s" % [sc, f])
 		var lane_areas := HudLayoutCheck.areas(h)
 		for lane in ["Start", "Penalty", "Alerts"]:
-			if lane_areas.has(lane) and (lane_areas[lane] as Rect2).intersects(f):
-				fits.append("%s: the alert lane's %s over the frame" % [sc, lane])
+			if not lane_areas.has(lane):
+				continue
+			for mk in h.race.course()["marks"]:
+				if (lane_areas[lane] as Rect2).has_point(m.to_px(Vector2(mk["x"], mk["y"]))):
+					fits.append("%s: the alert lane's %s over mark %s" % [sc, lane, mk["id"]])
 		# the scale bar: a round length in the distance format, at most a fifth of the frame
 		var sb: Array = m.scale_bar
 		if sb.size() != 3 or sb[2] != HudFormat.distance(sb[0]) or absf(sb[1] * m.m_per_px - sb[0]) > 1e-3 \
@@ -1606,6 +1639,40 @@ func test_course_map() -> void:
 	t.ok(fits.is_empty(), "every mark in the frame, the lane clear of it, the scale bar right at 1920 x 1080, 1280 x 800, 1080 x 1920 %s"
 		% str(fits))
 	h.screen_size = Vector2(1920, 1080)
+	h.frame(0.01)
+	m.primitives()
+	# landscape: the full width with the lane empty (hud.md §8.1); right of the lane when the course would run under it
+	h.screen_size = Vector2(1280, 720)
+	h.frame(0.01)
+	m.primitives()
+	t.ok(not m.lane_rect.has_area() and m.frame.is_equal_approx(m.full_rect()),
+		"lane empty: the frame takes the full width (%s)" % m.frame)
+	var centred := m.to_px(m.step_point(1)).x
+	t.ok(absf(centred - m.full_rect().get_center().x) < m.full_rect().size.x * 0.25, "the course sits in the middle")
+	m.lane_rect = Rect2(Vector2(40, 120), Vector2(560, 200))
+	var f2 := m.frame_rect()
+	t.ok(f2.position.x >= m.lane_rect.end.x, "a lane under a centred course moves the frame right of it (%s)" % f2)
+	m.lane_rect = Rect2(Vector2(40, 120), Vector2(120, 60))
+	t.ok(m.frame_rect().is_equal_approx(m.full_rect()), "a lane clear of the course leaves the full width")
+	m.lane_rect = Rect2()
+	# course up (hud.md §8.1): the axis from the start line's middle to the first mark points up the screen
+	t.near(m.up_bearing(), Frames.compass(m.step_point(1).x - m.step_point(0).x, m.step_point(1).y - m.step_point(0).y),
+		1e-6, "up is the course axis")
+	var a0 := m.to_px(m.step_point(0))
+	var a1 := m.to_px(m.step_point(1))
+	t.ok(absf(a1.x - a0.x) < 0.5 and a1.y < a0.y, "start to first mark straight up the screen")
+	var saved: Dictionary = (crs["marks"] as Array)[2].duplicate()
+	(crs["marks"] as Array)[2]["x"] = 600.0  # the windward mark 31 degrees right of north
+	var up := m.up_bearing()
+	t.near(rad_to_deg(up), rad_to_deg(Frames.compass(600.0, 1000.0)), 0.01, "a turned course: up %.1f°" % rad_to_deg(up))
+	a0 = m.to_px(m.step_point(0))
+	a1 = m.to_px(m.step_point(1))
+	t.ok(absf(a1.x - a0.x) < 0.5 and a1.y < a0.y, "the turned course still runs straight up (%s, %s)" % [a0, a1])
+	m.primitives()
+	var nt := m.primitives().filter(func(q: Dictionary) -> bool: return q["k"] == "text" and q["text"] == "N")
+	t.ok(nt.size() == 1, "the N label drawn")
+	h.screen_size = Vector2(1920, 1080)
+	(crs["marks"] as Array)[2] = saved
 	h.frame(0.01)
 	m.primitives()
 	# picking on the map
@@ -1913,3 +1980,245 @@ func _same(a: Variant, b: Array) -> bool:
 		if x[i] != b[i]:
 			return false
 	return true
+
+
+# ---- selection marker, ladder lines, keep-clear labels, hoist cue, VMG angles (hud.md §16.4, §5.1, §16.3) --------
+
+func test_heeled_marker() -> void:
+	t.begin("the selected boat's pointer sits over her heeled masthead (hud.md §16.4, §16.4.1)")
+	var sim := _pick_sim()
+	sim.states[1].phi = deg_to_rad(25.0)  # starboard down: the mast leans to starboard (east, she heads north)
+	await process_frame
+	var cam := _cam(Vector3(0.0, 370.0, 12.0), Vector3(0.0, 440.0, 2.0))
+	var h := Hud.new()
+	get_root().add_child(h)
+	h.screen_size = Vector2(1280, 720)
+	h.camera = cam
+	h.race.names = {1: "Nora", 2: "Ivo", 3: "Maja"}
+	h.tick(sim, 0)
+	h.select(1)
+	h.frame(0.1)
+	var mh := h.mast_height(1)
+	var top := h.masthead(1)
+	t.near(top.x - sim.states[1].pos_x, mh * sin(deg_to_rad(25.0)), 1e-3, "the masthead leans to starboard with the heel")
+	t.near(top.z, mh * cos(deg_to_rad(25.0)), 1e-3, "and comes down")
+	var mk := h.selected_marker()
+	var upright: Vector2 = h.project(Vector3(sim.states[1].pos_x, sim.states[1].pos_y, mh))
+	t.ok(not mk.is_empty() and (mk["head"] as Vector2).distance_to(h.project(top)) < 0.5
+		and (mk["head"] as Vector2).x > upright.x + 5.0, "the pointer follows the heeled masthead, not the upright one")
+	var tags := h.name_tags().filter(func(g: Dictionary) -> bool: return g["boat"] == 1)
+	t.ok(tags.size() == 1 and (tags[0]["p"] as Vector2).distance_to(mk["head"]) < 0.5, "her tag at the same masthead")
+	var chips := h.world.primitives().filter(func(q: Dictionary) -> bool: return q["k"] == "text" and q["text"] == "NORA")
+	t.ok(chips.size() == 1 and (chips[0]["p"] as Vector2).y < (mk["tip"] as Vector2).y - Hud.MARKER_H * h._k,
+		"her name tag stands on the pointer")
+	t.ok(not h.world.primitives().any(func(q: Dictionary) -> bool: return q["k"] == "polyline" \
+		and (q["pts"] as PackedVector2Array).size() == 3), "no screen-aligned box corners")
+	h.queue_free()
+	cam.get_parent().queue_free()
+	await process_frame
+
+
+func test_ladder_lines() -> void:
+	t.begin("ladder lines through the viewed and the selected boat (hud.md §16.4.2)")
+	var sim := _pick_sim()
+	await process_frame
+	var cam := _cam(Vector3(0.0, 330.0, 60.0), Vector3(0.0, 440.0, 0.0))
+	var h := Hud.new()
+	get_root().add_child(h)
+	h.screen_size = Vector2(1280, 720)
+	h.camera = cam
+	h.race.names = {1: "Nora", 2: "Ivo", 3: "Maja"}
+	for i in 3:
+		sim.step()
+		h.tick(sim, 0)
+	h.frame(0.1)
+	t.ok(h.ladder_lines().is_empty(), "nothing selected: no ladder lines")
+	var own_col := Color(HudStyle.MARK, 0.9)
+	var her_col := Color(HudStyle.PAPER, 0.75)
+	var count := func(col: Color) -> int:
+		return h.world.primitives().filter(func(q: Dictionary) -> bool: return q["k"] == "polyline" \
+			and (q["col"] as Color).is_equal_approx(col)).size()
+	t.ok(count.call(own_col) == 0, "and none drawn")
+	h.select(1)
+	h.frame(0.1)
+	var lad := h.ladder_lines()
+	t.ok(h.race.leg_type == "beat" and (lad["axis"] as Vector2).is_equal_approx(Vector2(0, 1)), "beat: the axis is the wind (north)")
+	for key in ["own_w", "her_w"]:
+		var e: Array = lad[key]
+		var d: Vector2 = e[1] - e[0]
+		t.ok(absf(d.normalized().dot(lad["axis"])) < 1e-6, "%s square to the axis" % key)
+	var o := Vector2(0, 400)
+	var s := Vector2(sim.states[1].pos_x, sim.states[1].pos_y)
+	t.ok(Geometry2D.get_closest_point_to_segment(o, lad["own_w"][0], lad["own_w"][1]).distance_to(o) < 1e-3
+		and Geometry2D.get_closest_point_to_segment(s, lad["her_w"][0], lad["her_w"][1]).distance_to(s) < 1e-3,
+		"each line through its boat")
+	var gain := (s.y - o.y) / sim.class_info(0).loa
+	t.near(float(lad["gain"]), gain, 1e-3, "her lead along the axis in hull lengths (%.2f)" % gain)
+	t.ok(lad["text"] == "%.1f L AHEAD" % gain, "label: %s" % lad["text"])
+	t.ok(count.call(own_col) >= 2 and count.call(her_col) >= 2, "both lines drawn, a gap at each boat (%d, %d runs)" % [
+		count.call(own_col), count.call(her_col)])
+	t.ok(h.world.primitives().any(func(q: Dictionary) -> bool: return q["k"] == "text" and q["text"] == lad["text"]),
+		"the gain label drawn")
+	# a run: downwind is ahead
+	for b in 4:
+		sim.boats_d[b]["next"] = 2
+	for i in 3:
+		sim.step()
+		h.tick(sim, 0)
+	h.frame(0.1)
+	lad = h.ladder_lines()
+	t.ok(h.race.leg_type == "run" and (lad["axis"] as Vector2).is_equal_approx(Vector2(0, -1))
+		and str(lad["text"]).ends_with("BEHIND"), "run: ahead is downwind, she is behind (%s, %s)" % [h.race.leg_type, lad["text"]])
+	h.select(-1)
+	h.frame(0.1)
+	t.ok(h.ladder_lines().is_empty() and count.call(own_col) == 0, "cleared: the lines go")
+	h.queue_free()
+	cam.get_parent().queue_free()
+	await process_frame
+
+
+func test_labels_keep_clear() -> void:
+	t.begin("world labels keep clear of the HUD's blocks (hud.md §16.4)")
+	var sim := RaceStubSim.new()
+	sim.race_d["state"] = RaceText.RaceState.RACING
+	sim.race_d["race_time"] = 100.0
+	for b in 2:
+		sim.boats_d[b]["started"] = true
+		sim.boats_d[b]["next"] = 1
+	var th := deg_to_rad(42.0)
+	sim.put(0, 300.0, 200.0, Frames.wrap_2pi(-th), 3.0)
+	sim.put(1, 0, 0, 0.0, 3.0)
+	await process_frame
+	var h := Hud.new()
+	get_root().add_child(h)
+	h.screen_size = Vector2(1280, 720)
+	h.assist = Hud.Assist.FULL
+	for i in 5:
+		sim.step()
+		h.tick(sim, 0)
+	h.frame(0.3)
+	h.refresh_text()
+	var dir := Vector2(sin(-th), cos(-th))
+	var o := Vector2(300, 200)
+	var tgt := o + dir * h.race.layline_dist
+	var eye := o - dir * 60.0
+	var cam := _cam(Vector3(eye.x, eye.y, 70.0), Vector3(tgt.x * 0.5 + o.x * 0.5, tgt.y * 0.5 + o.y * 0.5, 0.0), 70.0)
+	h.camera = cam
+	h.frame(0.1)
+	var tp: Variant = h.world_tack_point()
+	var ts: Vector2 = h.project(Vector3(tp.x, tp.y, 0.0))
+	var label_y := func() -> float:
+		for q in h.world.primitives():
+			if q["k"] == "text" and q["text"] == "TACK IN":
+				return (q["p"] as Vector2).y
+		return NAN
+	t.ok(label_y.call() < ts.y, "open water: TACK IN above the ring")
+	var rects := h.keep_clear_rects()
+	t.ok(not rects.is_empty() and not h.label_clear(rects[0].grow(-2.0)), "a rect on a block is not clear")
+	t.ok(h.label_clear(Rect2(Vector2(600, 330), Vector2(40, 20)), rects), "open water in the middle is clear")
+	# a block over the space above the ring: the label goes under it
+	h.inst_page.position = ts - Vector2(h.inst_page.size.x * 0.5, h.inst_page.size.y + 4.0)
+	var ly: float = label_y.call()
+	t.ok(not is_nan(ly) and ly > ts.y, "a block above the ring: TACK IN under it (%.0f, ring %.0f)" % [ly, ts.y])
+	# blocks above and below: no label, the ring stays
+	h.inst_page.position = ts - Vector2(h.inst_page.size.x * 0.5, h.inst_page.size.y * 0.5)
+	t.ok(is_nan(label_y.call()), "covered both ways: no label")
+	t.ok(h.world.primitives().any(func(q: Dictionary) -> bool: return q["k"] == "arc" and (q["p"] as Vector2).distance_to(ts) < 1.0),
+		"the ring stays")
+	# nothing world-drawn as text sits on a block after a normal layout
+	h.frame(0.1)
+	rects = h.keep_clear_rects()
+	var bad := []
+	for q in h.world.primitives():
+		if q["k"] != "text" or q["text"] == "":
+			continue
+		var r := HudCanvas.prim_rect(q)
+		for k in rects:
+			if r.intersects(k):
+				bad.append(q["text"])
+	t.ok(bad.is_empty(), "no world text on a block: %s" % str(bad))
+	if h.next_panel.visible:
+		var e := h.next_panel.extent()
+		var nr := Rect2(e.position + h.next_panel.position, e.size)
+		t.ok(h.label_clear(nr, rects), "the mark tag clear of the blocks")
+	h.queue_free()
+	cam.get_parent().queue_free()
+	await process_frame
+
+
+func test_hoist_cue() -> void:
+	t.begin("one hoist cue, no overlapping helm texts (hud.md §5.1)")
+	var sim := _beat_sim()
+	sim.ctrls[0].auto_trim = false
+	var P := SimSource.Phase
+	sim.sv.sails[2].phase = P.HOISTING
+	sim.sv.sails[2].progress = 0.45
+	sim.sv.sails[1].phase = P.PREPARE_DROP
+	sim.sv.queue = [SimSource.SailStep.new(2, P.HOISTING)]
+	sim.sv.queue_len = 1
+	sim.sv.queue_pos = 0
+	for screen in [Vector2(1280, 720), Vector2(1280, 800), Vector2(1920, 1080)]:
+		for lvl in [Hud.Density.GLANCE, Hud.Density.RACE, Hud.Density.DATA]:
+			var h := _hud(sim)
+			h.screen_size = screen
+			h.density_auto = false
+			h.density = lvl
+			h.local_commands = false
+			_refresh(h, sim, 0, 3)
+			h.frame(0.3)
+			var tag := "%s %s" % [screen, Hud.DENSITY_NAMES[lvl]]
+			t.ok(h.text_of("hoist") == "HOISTING CODE ZERO" and h.value_of("sail") == "JIB",
+				"%s: the cue names the sail, the strip the sail up (%s, %s)" % [tag, h.text_of("hoist"), h.value_of("sail")])
+			var notes := _page_texts(h.helm_notes)
+			t.ok(notes.count("HOISTING CODE ZERO") == 1, "%s: one cue over the strip" % tag)
+			var bars := h.helm_notes.primitives().filter(func(q: Dictionary) -> bool: return q["k"] == "rect" \
+				and (q["col"] as Color).is_equal_approx(HudStyle.MARK))
+			t.ok(bars.size() == 1, "%s: its progress bar" % tag)
+			var texts := []
+			for b in [h.helm_block, h.helm_notes] + h.gauge_views.filter(func(g: TrimGaugeView) -> bool: return g.visible):
+				var o := HudLayoutCheck.offset(h, b)
+				for q in b.primitives():
+					if q["k"] == "text" and q["text"] != "":
+						var r := HudCanvas.prim_rect(q)
+						r.position += o
+						texts.append([q["text"], r])
+			var over := []
+			for i in texts.size():
+				for j in range(i + 1, texts.size()):
+					if (texts[i][1] as Rect2).grow(-1.0).intersects((texts[j][1] as Rect2).grow(-1.0)):
+						over.append("%s / %s" % [texts[i][0], texts[j][0]])
+			t.ok(over.is_empty(), "%s: no two helm texts overlap %s" % [tag, str(over)])
+			var greyed := h.gauge_views.filter(func(g: TrimGaugeView) -> bool: return g.visible and g.greyed)
+			var tell := greyed.any(func(g: TrimGaugeView) -> bool: return _page_texts(g).has(g.telltale.to_upper()))
+			t.ok((lvl == Hud.Density.GLANCE or not greyed.is_empty()) and not tell,
+				"%s: the dropping jib's gauge greyed, no tell-tale (%d greyed)" % [tag, greyed.size()])
+			h.free()
+
+
+func test_vmg_angle_dial() -> void:
+	t.begin("the VMG angles on the TWA dial and the pointer's colour (hud.md §4, §16.3)")
+	var sim := _beat_sim()
+	var h := _hud(sim)
+	_refresh(h, sim, 0, 50)
+	t.ok(h.race.leg_type == "beat", "a beat")
+	var cases := [[42.0, HudStyle.STBD], [53.0, HudStyle.MARK], [62.0, HudStyle.PORT], [44.0, HudStyle.STBD]]
+	for cs in cases:
+		var psi := Frames.wrap_2pi(-deg_to_rad(cs[0]))
+		sim.put(0, sim.states[0].pos_x, sim.states[0].pos_y, psi, 3.0)
+		_refresh(h, sim)
+		t.ok(h.pointer_colour().is_equal_approx(cs[1]), "TWA %.0f: pointer %s" % [cs[0], h.pointer_colour()])
+	var mid := Hud.angle_error_colour(6.5, Hud.colours())
+	t.ok(mid.is_equal_approx(HudStyle.STBD.lerp(HudStyle.MARK, 0.5)), "a smooth gradient between")
+	for lvl in [Hud.Density.GLANCE, Hud.Density.RACE, Hud.Density.DATA]:
+		h.density_auto = false
+		h.density = lvl
+		h.frame(0.3)
+		var notches := h.inst_page.primitives().filter(func(q: Dictionary) -> bool: return q["k"] == "poly" \
+			and Color(q["col"].r, q["col"].g, q["col"].b).is_equal_approx(Color(HudStyle.MARK.r, HudStyle.MARK.g, HudStyle.MARK.b)) \
+			and (q["pts"] as PackedVector2Array).size() == 3)
+		var strong := notches.filter(func(q: Dictionary) -> bool: return is_equal_approx(q["col"].a, 1.0))
+		t.ok(notches.size() == 4 and strong.size() == 2, "%s: four VMG angle notches, the beat's pair strong (%d, %d)" % [
+			Hud.DENSITY_NAMES[lvl], notches.size(), strong.size()])
+		var page := " ".join(_page_texts(h.inst_page))
+		t.ok(not page.contains("TARGET"), "%s: no target on the page" % Hud.DENSITY_NAMES[lvl])
+	h.free()

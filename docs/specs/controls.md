@@ -285,7 +285,7 @@ The options are saved per player in the settings file and set in the settings sc
     the pause menu) sets the rate back to ×1, ends a clean pause and clears the note without showing one.
   - Online both actions do nothing: the race runs on the server's clock.
 - **World tags** (`world_tags`, offline and online): hides or shows the world tags of `hud.md` §16.4 (mark tag,
-  tack point, name tags, edge pointers, penalty turn) and the on-water guides of the course (the start, gate and
+  tack point, name tags, edge pointers, next-mark arrow) and the on-water guides of the course (the start, gate and
   finish lines drawn on the water, the laylines, the zone circle, the rounding arrows and the far next-mark
   marker). Marks, committee and mark boats and their flags stay. It is separate from `hud_hide`, which hides the
   HUD panels: with both off only the boats, the course objects, the water and the land are drawn. Not saved: a

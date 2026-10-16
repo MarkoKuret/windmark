@@ -4,7 +4,7 @@ extends SceneTree
 ##     frames its shots (the same seconds and cameras), so the world tags sit where the course preview frame has
 ##     the marks and boats; each at the instrument densities listed, at 1280 x 720, for the Deck 1280 x 800 and,
 ##     for the portrait capture preset (hud.md §16.5), 1080 x 1920;
-##   - a scripted incident on RaceStubSim (rules line, penalty panel and the turn on the water, radar colours, a
+##   - a scripted incident on RaceStubSim (rules line, penalty panel, radar colours, the next-mark arrow, a
 ##     selected boat's tag, protest prompt) seen from a camera above (the backdrop is not the same scene), and the
 ##     course map (hud.md §8.1) open over it;
 ##   - the finish card (hud.md §13.1) and the results of a short race on the core;

@@ -70,7 +70,7 @@ var camera: Camera3D = null
 var camera_kind := "chase"
 ## name tags on (the `boat_names` action) and the boats the player selected for a tag
 var show_names := true
-## controls.md §7 world_tags: the world tags (mark tag, tack point, name tags, edge pointers, penalty turn) shown
+## controls.md §7 world_tags: the world tags (mark tag, next-mark arrow, tack point, name tags, edge pointers) shown
 var world_tags := true
 ## the selected boat (hud.md §16.4.1): boat -> true, at most one; see selected_boat, select, clear_selection
 var selected := {}
@@ -98,12 +98,14 @@ var race_panel: Control
 var start_block: HudCanvas
 var flags_view: FlagsView
 var penalty_panel: HudCanvas
-var ring_view: PenaltyRingView
+var turn_view: PenaltyTurnView
 var alerts_block: HudCanvas
 var next_panel: HudCanvas
 ## hud.md §16.7 the selected boat's card
 var card_block: HudCanvas
 var arrow_view: RoundingArrowView
+## hud.md §7.1 the next-mark arrow outside the chase camera
+var mark_arrow_block: HudCanvas
 var radar: RadarView
 var helm_block: HudCanvas
 var helm_notes: HudCanvas
@@ -180,14 +182,15 @@ func _init() -> void:
 	flags_view.name = "Flags"
 	start_block.add_child(flags_view)
 	penalty_panel = _block("Penalty", HudPaint.penalty, race_panel)
-	ring_view = PenaltyRingView.new()
-	ring_view.name = "Ring"
-	penalty_panel.add_child(ring_view)
+	turn_view = PenaltyTurnView.new()
+	turn_view.name = "Turn"
+	penalty_panel.add_child(turn_view)
 	alerts_block = _block("Alerts", HudPaint.alerts, race_panel)
 	next_panel = _block("NextMark", HudPaint.mark_tag)
 	arrow_view = RoundingArrowView.new()
 	arrow_view.name = "Rounding"
 	next_panel.add_child(arrow_view)
+	mark_arrow_block = _block("MarkArrow", HudPaint.mark_arrow)
 	card_block = _block("BoatCard", HudPaint.boat_card)
 	card_block.visible = false
 	radar = RadarView.new()
@@ -668,10 +671,10 @@ func _race_frame() -> void:
 	flags_view.visible = not r.flags.is_empty() and has_item("start_full")
 	arrow_view.sides = r.next_sides
 	arrow_view.visible = r.next_step > 0
-	ring_view.turn_deg = r.turn_deg
-	ring_view.target_deg = r.turn_target
-	ring_view.tack_done = r.turn_tack
-	ring_view.gybe_done = r.turn_gybe
+	turn_view.turn_deg = r.turn_deg
+	turn_view.target_deg = r.turn_target
+	turn_view.tack_done = r.turn_tack
+	turn_view.gybe_done = r.turn_gybe
 	penalty_panel.visible = r.penalty_visible
 	# the prompt (protest, hail) and the banner answer at once
 	var prompt := ""
@@ -1326,12 +1329,36 @@ func _card_race(c: Dictionary, b: int) -> void:
 			c["penalty"] += " · TURNING"
 
 
-## hud.md §12.1: the turn on the water while a penalty is pending or being sailed, chase and aerial cameras only
-func penalty_turn_shown() -> bool:
+## hud.md §7.1: the next-mark arrow, in the onboard, aerial and free cameras while the mark tag would show
+func mark_arrow_shown() -> bool:
 	var r := race
-	if not r.active or world_camera() == null or not (r.pending > 0 or r.turn_deg >= 1.0):
+	if not world_tags or map_open or not r.active or r.next_step <= 0 or r.finished or text_of("next") == "":
 		return false
-	return current_camera_kind() in ["chase", "aerial"]
+	if world_camera() == null or own_pose() == null:
+		return false
+	return current_camera_kind() != "chase"
+
+
+## hud.md §7.1: the arrow's screen angle (rad, 0 = up, clockwise): the bearing from the viewed boat to the next
+## mark in the camera's frame on the water (up = its forward direction there, or its up direction looking down)
+func mark_arrow_angle() -> float:
+	var cam := world_camera()
+	if cam == null:
+		return 0.0
+	var o := own_world(0.0)
+	var mw := mark_world()
+	var v := Vector2(mw.x - o.x, mw.y - o.y)
+	var bs := cam.global_transform.basis
+	var f3 := Frames.scene_to_enu(-bs.z)
+	var fwd := Vector2(f3.x, f3.y)
+	if fwd.length() < 0.2:
+		var u3 := Frames.scene_to_enu(bs.y)
+		fwd = Vector2(u3.x, u3.y)
+	if fwd.length() < 1e-6 or v.length() < 1e-6:
+		return 0.0
+	fwd = fwd.normalized()
+	var right := Vector2(fwd.y, -fwd.x)
+	return atan2(v.dot(right), v.dot(fwd))
 
 
 # ---- layout (hud_direction.md §5) ----
@@ -1386,7 +1413,8 @@ func _layout_map() -> void:
 	for b in [inst_page, helm_block, helm_notes]:
 		(b as CanvasItem).visible = on
 	if map_open:
-		for b in [world, toast_block, bug_block, wind_page, feed_block, next_panel, card_block, radar, ranking_panel]:
+		for b in [world, toast_block, bug_block, wind_page, feed_block, next_panel, card_block, radar, ranking_panel,
+				mark_arrow_block]:
 			(b as CanvasItem).visible = false
 
 
@@ -1457,6 +1485,11 @@ func _layout_blocks() -> void:
 		next_panel.position = Vector2(m.x, m.y + 230.0 * k)
 	arrow_view.position = Vector2.ZERO
 	arrow_view.size = Vector2(26, 22) * k
+	# the next-mark arrow (hud.md §7.1): centred over the helm notes
+	mark_arrow_block.visible = mark_arrow_shown()
+	mark_arrow_block.size = HudPaint.MARK_ARROW * k
+	mark_arrow_block.position = Vector2(helm_block.position.x + helm_block.size.x * 0.5 - mark_arrow_block.size.x * 0.5,
+		helm_notes.position.y - 8.0 * k - mark_arrow_block.size.y)
 	# the selected boat's card (hud.md §16.7): left, 48 px over the page, never above 16 px under the race bug
 	if _card_shown():
 		var ch := HudPaint.card_height(self) * k
@@ -1504,7 +1537,7 @@ func _place_helm(pos: Vector2, hw: float, k: float) -> void:
 ## its flags, the penalty panel with its ring, the alert lines; returns the lane's height (px).
 func _place_lane(k: float) -> float:
 	race_panel.size = Vector2(HudPaint.LANE_W, 600) * k
-	for b in [start_block, flags_view, penalty_panel, ring_view, alerts_block]:
+	for b in [start_block, flags_view, penalty_panel, turn_view, alerts_block]:
 		(b as HudCanvas).k = k
 	var y := 0.0
 	var sh := HudPaint.start_height(self)
@@ -1521,8 +1554,8 @@ func _place_lane(k: float) -> float:
 	if penalty_panel.visible:
 		penalty_panel.position = Vector2((HudPaint.LANE_W - HudPaint.PEN.x) * 0.5, y) * k
 		penalty_panel.size = HudPaint.PEN * k
-		ring_view.position = Vector2(12, 10) * k
-		ring_view.size = Vector2(150, 96) * k
+		turn_view.position = Vector2(12, 10) * k
+		turn_view.size = Vector2(150, 96) * k
 		y += HudPaint.PEN.y + 12.0
 	var ah := HudPaint.alerts_height(self)
 	alerts_block.visible = ah > 0.0
@@ -1594,6 +1627,8 @@ func _layout_portrait(sc: Vector2, k: float, m: Vector2, its: Array[String]) -> 
 			var p: Vector2 = mp
 			# kept under the alert lane, so it never covers the rule text
 			var y_min := race_panel.position.y + lane_h + 12.0 * k if lane_h > 0.0 else m.y + top
+			if mark_arrow_shown():  # and under the next-mark arrow (hud.md §7.1)
+				y_min = race_panel.position.y + lane_h + (24.0 + HudPaint.MARK_ARROW.y + 12.0) * k
 			next_panel.position = Vector2(clampf(p.x - 30.0 * k, m.x, sc.x - m.x - next_panel.size.x),
 				clampf(p.y - 150.0 * k, y_min, maxf(y_min, sc.y - mb - next_panel.size.y)))
 	else:
@@ -1610,6 +1645,12 @@ func _layout_portrait(sc: Vector2, k: float, m: Vector2, its: Array[String]) -> 
 	# edge pointers between the alert lane and the feed, helm notes and card
 	var e_top := race_panel.position.y + lane_h + 24.0 * k
 	var e_bottom := minf(minf(helm_notes.position.y, feed_block.position.y if lines > 0 else INF), card_top) - 56.0 * k
+	# the next-mark arrow (hud.md §7.1) centred at the top of that box, the edge pointers under it
+	mark_arrow_block.visible = mark_arrow_shown()
+	mark_arrow_block.size = HudPaint.MARK_ARROW * k
+	mark_arrow_block.position = Vector2(sc.x * 0.5 - mark_arrow_block.size.x * 0.5, e_top)
+	if mark_arrow_block.visible:
+		e_top += mark_arrow_block.size.y + 12.0 * k
 	edge_box = Rect2(70.0 * k, e_top, sc.x - 140.0 * k, maxf(e_bottom - e_top, 1.0))
 	# tables centred, scaled down to the width
 	_place_table(ranking_panel, RANK_W, race.ranking_rows().size() if ranking_panel.visible else 0, k, inner, sc)
@@ -1625,7 +1666,8 @@ func _place_table(b: HudCanvas, widths: Array, rows: int, k: float, inner: float
 
 func _all_canvases() -> Array[HudCanvas]:
 	var out: Array[HudCanvas] = [world, inst_page, toast_block, bug_block, wind_page, feed_block, start_block,
-		flags_view, penalty_panel, ring_view, alerts_block, next_panel, card_block, arrow_view, radar, helm_block, helm_notes,
+		flags_view, penalty_panel, turn_view, alerts_block, next_panel, card_block, arrow_view, mark_arrow_block, radar,
+		helm_block, helm_notes,
 		rudder_bar, sheet_bar, ranking_panel, results_panel, map_view]
 	for g in gauge_views:
 		out.append(g)

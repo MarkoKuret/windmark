@@ -3,10 +3,11 @@ extends HudCanvas
 ## hud.md §8.1 course map: a full-screen overlay over the running race, north up, the whole course fitted once into
 ## the frame inside the margins (every mark with 12 % of the larger span added on each side, at least 300 m across).
 ## Drawn bottom to top: the ink scrim, the course boundary, the course line through the steps (sailed legs faint,
-## the current one in `mark`, the rest in `hair`), the start (dashed) and finish (checkered) lines, the zone circles,
-## the marks (rounding marks as diamonds, the next step's in `mark`), one rounding arrow per rounding mark, every
-## boat as the radar's icon in its radar colour (RadarView.contact_colour: pulses, ghosts, Minimal all white), the
-## viewed boat in `mark`, name chips (viewed boat, selected boat, boats with a rules relation), the header (lap and
+## the current one in `mark`, the rest in `hair`), the start (dashed) and finish (checkered) lines, the next step's
+## zone circle, the marks (rounding marks as round buoys with an ink rim, the next step's in `mark`), one rounding
+## arrow and one name per rounding mark (one name per gate), every boat as the radar's icon in its radar colour
+## (RadarView.contact_colour: pulses, ghosts, Minimal all white; boats with no relation at 70 %), the viewed boat
+## larger in `mark` with an ink rim, name chips (viewed boat, selected boat, boats with a rules relation), the header (lap and
 ## leg, the next step), the wind arrow, the scale bar and the close hint. Boats outside the frame are small arrows on
 ## its edge. Positions are the render poses of the frame, as on the radar.
 
@@ -19,6 +20,12 @@ const FOOTER := 48.0
 const ICON := 14.0
 const PICK := 24.0
 const SCRIM := 0.82
+## design px: the buoy radius, the name's gap from it; the viewed boat's size over the fleet's; the fleet's alpha
+## with no rules relation
+const BUOY := 5.0
+const NAME_GAP := 14.0
+const OWN_SCALE := 1.6
+const QUIET := 0.7
 ## the scale bar's lengths (m): round in the §1 distance format (metres under 200 m, nautical miles from 0.2 nm)
 const SCALES := [10.0, 20.0, 50.0, 100.0, 150.0, 0.2 * HudFormat.NM, 0.25 * HudFormat.NM, 0.5 * HudFormat.NM,
 	1.0 * HudFormat.NM, 2.0 * HudFormat.NM, 5.0 * HudFormat.NM]
@@ -111,6 +118,11 @@ func step_point(st: int) -> Vector2:
 	return pts[0] if pts.size() == 1 else (pts[0] + pts[1]) * 0.5
 
 
+## A gate's name on the map: `Gate 4S / 4P` (a buoy label that already starts with "Gate" loses that word).
+static func gate_label(a: String, b: String) -> String:
+	return "Gate %s / %s" % [a.trim_prefix("Gate ").trim_prefix("gate "), b.trim_prefix("Gate ").trim_prefix("gate ")]
+
+
 ## The boat whose icon is within PICK design px of `pos` (the nearest), -1 for none.
 func boat_at(pos: Vector2) -> int:
 	var best := -1
@@ -177,6 +189,8 @@ func _build() -> void:
 			for i in (1 if int(nst["kind"]) == RaceText.Step.MARK else 2):
 				next_marks[ms[i]] = true
 	var rounding := {}
+	var labels := []  # [mark index the name sits beside, text, the marks it names]
+	var named := {}
 	for st in steps:
 		var kd := int(st["kind"])
 		if kd != RaceText.Step.MARK and kd != RaceText.Step.GATE:
@@ -186,14 +200,23 @@ func _build() -> void:
 		for i in (1 if kd == RaceText.Step.MARK else 2):
 			if not rounding.has(ms[i]):
 				rounding[ms[i]] = sides[i]
-	# zone circles
+		if kd == RaceText.Step.MARK:
+			if not named.has(ms[0]):
+				named[ms[0]] = true
+				labels.append([ms[0], values.mark_label(ms[0]), [ms[0]]])
+		elif not named.has(ms[0]) and not named.has(ms[1]):
+			named[ms[0]] = true
+			named[ms[1]] = true
+			var right := ms[0] if float(marks[ms[0]]["x"]) >= float(marks[ms[1]]["x"]) else ms[1]
+			labels.append([right, gate_label(values.mark_label(ms[0]), values.mark_label(ms[1])), [ms[0], ms[1]]])
+	# the zone circle: the next step's marks only
 	if zone:
 		var zl := float(crs.get("zone_lengths", 3.0))
-		for mi in rounding:
+		for mi in next_marks:
 			var zr := (zl * values._loa + float(marks[mi].get("radius", 0.0))) / m_per_px
 			if zr * 2.0 >= 4.0:
 				var q := to_px(Vector2(marks[mi]["x"], marks[mi]["y"]))
-				_a(q, zr, 0.0, TAU, 40, Color(HudStyle.MARK, 0.5) if next_marks.has(mi) else HudStyle.HAIR, hw)
+				_a(q, zr, 0.0, TAU, 40, Color(HudStyle.MARK, 0.5), hw)
 	# marks
 	for i in marks.size():
 		var md: Dictionary = marks[i]
@@ -206,9 +229,8 @@ func _build() -> void:
 			_:
 				if rounding.has(i):
 					var col := HudStyle.MARK if next_marks.has(i) else HudStyle.PAPER
-					var dm := 5.0 * k
-					_p(PackedVector2Array([q + Vector2(0, -dm), q + Vector2(dm, 0), q + Vector2(0, dm), q + Vector2(-dm, 0)]),
-						col)
+					_c(q, (BUOY + 1.5) * k, HudStyle.INK)
+					_c(q, BUOY * k, col)
 				else:
 					_c(q, 2.5 * k, Color(HudStyle.PAPER, 0.6))
 	for mi in rounding:
@@ -216,6 +238,11 @@ func _build() -> void:
 		HudPaint.rounding_arc(self, to_px(Vector2(marks[mi]["x"], marks[mi]["y"])), 10.0 * k,
 			rounding[mi] == RaceText.Side.PORT, col, 2.0 * k)
 		arrows[mi] = [rounding[mi], col]
+	var lfs := int(roundf(HudPaint.LAB_S * k))
+	for lb in labels:
+		var nxt: bool = (lb[2] as Array).any(func(mi: int) -> bool: return next_marks.has(mi))
+		var q := to_px(Vector2(marks[lb[0]]["x"], marks[lb[0]]["y"]))
+		_s(q + Vector2(NAME_GAP * k, 0.36 * lfs), str(lb[1]), lfs, HudStyle.MARK if nxt else HudStyle.MIST, 600, 0.06)
 	# boats
 	if sim == null:
 		return
@@ -225,6 +252,8 @@ func _build() -> void:
 		if p == null:
 			continue
 		var col: Color = radar.contact_colour(ct) if radar != null else HudStyle.TINTS[ct.tint]
+		if not ct.ghost and (ct.tint == RaceHudValues.Tint.WHITE or (radar != null and not radar.colours)):
+			col = Color(col, col.a * QUIET)
 		drawn[ct.boat] = col
 		var q := to_px(Vector2(p.pos_x, p.pos_y))
 		var outline := (radar == null or radar.colours) and ct.pulse == RaceHudValues.Pulse.BREACH and not ct.ghost
@@ -245,7 +274,8 @@ func _build() -> void:
 		var q := to_px(Vector2(me.pos_x, me.pos_y))
 		if frame.has_point(q):
 			icons[values.boat] = q
-			HudPaint.boat_icon(self, q, me.psi, maxf(values._loa / m_per_px, ICON * k) * 1.3, HudStyle.MARK, false)
+			var ol := maxf(values._loa / m_per_px, ICON * k) * OWN_SCALE
+			_own_icon(q, me.psi, ol)
 		else:
 			icons[values.boat] = _edge_arrow(q, HudStyle.MARK)
 		tags.append([values.boat, icons[values.boat], HudStyle.MARK, true, false])
@@ -255,6 +285,17 @@ func _build() -> void:
 	_header()
 	_wind()
 	_footer()
+
+
+## The viewed boat: the radar's triangle `l` px long in `mark` with a 2 px ink rim (hud.md §8.1).
+func _own_icon(q: Vector2, psi: float, l: float) -> void:
+	var f := Vector2(sin(psi), -cos(psi))
+	var s := Vector2(-f.y, f.x)
+	var pts := PackedVector2Array([q + f * 0.5 * l, q - f * 0.5 * l + s * 0.22 * l, q - f * 0.5 * l - s * 0.22 * l])
+	var rim := pts.duplicate()
+	rim.append(pts[0])
+	_pl(rim, HudStyle.INK, 4.0 * k)
+	_p(pts, HudStyle.MARK)
 
 
 ## A dashed (start) or checkered (finish) line between two points, as the race card's map draws them.

@@ -551,6 +551,19 @@ and the game then leaves the window alone (no fullscreen, no capture resize). `-
 with or without a shot. A shot with `start` steps the world to that time before the first frame (a race shot at
 `-15` does not record the sequence before it). The run prints `shot: end at <s>` when it ends.
 
+On a screen shorter than 1920 px (a laptop) the OS shrinks the window and `--resolution` records 1280 × 800. Put
+an untracked `game/override.cfg` next to `project.godot` for the run, and delete it afterwards (it changes every
+launch):
+
+```
+[display]
+window/size/viewport_width=1080
+window/size/viewport_height=1920
+window/size/window_width_override=540
+window/size/window_height_override=960
+window/stretch/mode="viewport"
+```
+
 ## Menus
 
 `scenes/menu/main_menu.tscn` is the main scene (`docs/specs/menus.md`): Quick race, Free sail, Settings, Quit.

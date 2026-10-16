@@ -27,7 +27,7 @@ From the performance file (`data_format.md` §4.4). Reference values: S = sports
 
 | name | unit | meaning | reference |
 | --- | --- | --- | --- |
-| `sheet_min`, `sheet_max` | rad | range of the sail angle magnitude the sheet can reach; the main's `sheet_min` may be negative (the traveller carries the boom to windward, at most π/16) | main −3°–45° (S), −3°–60° (L); jib/genoa 14–70° (L), 25–90° (S genoa); code zero 26–180°; spinnaker sym 25–90°; asym 12–170° |
+| `sheet_min`, `sheet_max` | rad | range of the sail angle magnitude the sheet can reach; the main's `sheet_min` may be negative (the traveller carries the boom to windward, at most π/16) | main −3°–45° (S), −3°–60° (L); jib/genoa 14–70° (L), 25–90° (S genoa); code zero 18–55° (its unsupported luff sags to leeward, so it is never sheeted as close as a jib); spinnaker sym 25–90°; asym 12–170° |
 | `sheet_max_by_heel` | Table1D(`heel_abs`) → rad, optional | lower limit on `sheet_max` when heeled (the boom end reaches the water) | L main: (23°, 57°) (30°, 43°) (45°, 25°) (65°, 11°) |
 | `rate_in`, `rate_out` | 1/s | sheeting-in and easing speed factors (§5.5) | main 0.5–0.65 / 0.5–1.0; jib 0.5–0.8 / 0.9–1.0; spinnakers 0.1–0.5 / 0.7–1.0 |
 | `pole_angle` | Table2D(`tws`, `awa_abs`) → rad, optional | spinnaker pole / tack line angle target, magnitude | asym: 1–5° close reaching, 20–35° at 140–160° AWA |
@@ -299,6 +299,19 @@ Semantics and reference shapes:
   4.5 kn at 38°, 4.9 kn at 45°, 5.4 kn at 60°, 5.2 kn at 90°, 4.5 kn at 120°, 3.0 kn at 180°; main + spinnaker at
   10 kn: 8.0 kn at 80°, 8.5 kn at 90°, 7.7 kn at 125°, 5.5 kn at 150°, 4.0 kn at 180°. The no-go zone below the
   first sailing angle holds the sternway drift (`boat.md` §7.4), with a step (two equal breakpoints) at the edge.
+  Downwind and reaching the shipped classes follow ORC velocity predictions of their nearest real boats within
+  about 5 % from 12 to 20 kn (wm7: Melges 24 and J/70; wm12: Farr 40; best sail in each cell, run VMG and 135 to
+  150°; `tools/vpp/README.md` "Calibration against ORC"). Under 12 kn they sit 5 to 10 % below (the open
+  light-air deficit).
+- **Which config is fastest** (the crossover, best polar speed per TWA): the jib or genoa upwind and close
+  reaching, the spinnaker from a broad reach, and the code zero, where a class has one, on tight reaches between
+  them. The code zero is the ORC headsail set flying of HHW/HLP 62.5 % (a flat reacher; ORC VPP Documentation
+  2023 §5.2.5 and Table 5.9), with the main in its slot behind it and almost no depowering (reef no lower than
+  0.91, the ORC value; the code zero itself is never reefed). wm12 flies it from about 45 to 110° TWA in 6 kn,
+  60 to 110° in 10 kn, and only on a broad reach from about 100 to 120° from 16 kn, where the asymmetric kite
+  broaches and the jib is slower; it never wins running. Real crossovers: North Sails, code zero 55 to 90° AWA;
+  UK Sailmakers, 50 to 125° TWA; ORC speed guides (Tripp 40), flying headsail best from 60 to 90° TWA in every
+  wind.
 - **heel**: reference S main + genoa at 10 kn: 14° at 39°, peaking about 18° at 40°, 0 at 180°; spinnaker at
   10 kn: 13° at 80°, 5° at 136°.
 - **accel**: small close to the wind (0.005 m/s² from 15° to 30°), larger reaching (S jib at 10 kn: 0.09 m/s² at
@@ -361,7 +374,7 @@ Semantics and reference shapes:
   heeled near its limit, a helm of about 0.05); main alone: weather helm (S at 10 kn about +1.5°/s); spinnakers:
   negative close reaching in light air (the kite, far forward, pulls the bow off: S at 10 kn −3 to −6°/s from 50°
   to 80°, where the kite is the wrong sail), small across the normal range, a moderate weather helm broad reaching
-  in a breeze (S at 22 kn about +2°/s at 130°, L about +8°/s: the crew holds the heel within the spinnaker heel
+  in a breeze (S at 22 kn about +4°/s at 130°, L about +8°/s: the crew holds the heel within the spinnaker heel
   limit, `tools/vpp/README.md` "Heel and depowering"), and a broach where the kite is overpowered (S
   from 50° at 14 kn and on a reach from about 20 kn: +10 to +20°/s). Scaled by `trim_heel` (`boat.md` §5.5,
   §5.9), so an over-sheeted sail plan rounds up sooner and flogging sails have none.

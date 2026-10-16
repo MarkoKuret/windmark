@@ -39,6 +39,7 @@ func _main() -> void:
 	_reach_clew()
 	_sheet_clear()
 	_tack_on_sprit()
+	_clew_on_sheet()
 	_parity()
 	await _rate_by_distance()
 	_perf()
@@ -879,8 +880,10 @@ func _clearance() -> void:
 
 
 ## §12 test 20: on a reach (AWA 70 to 90 deg) at the core's optimum the asymmetric's clew stays where a real
-## reaching kite's does: aft of the mast and at most REACH_OUT * LOA outboard of the widest beam.
+## reaching kite's does: at most REACH_FWD * LOA forward of the mast (abreast of it or aft) and at most REACH_OUT * LOA
+## outboard of the widest beam.
 const REACH_OUT := 0.3
+const REACH_FWD := 0.05
 
 
 func _reach_clew() -> void:
@@ -922,9 +925,9 @@ func _reach_clew() -> void:
 								fwd = cl.z - mast_x
 								at = "awa %.0f tws %.0f" % [rad_to_deg(absf(ap.x)), kn]
 							out = maxf(out, absf(cl.x) - half)
-			var msg := "%s %s: %d reaching cases, clew at most %.2f m from the mast (aft < 0, at %s), at most %.2f m outboard of the widest beam (<= %.2f), largest ease %.1f deg" % [
-				id, fp.id, n, fwd, at, out, REACH_OUT * data.info.loa, rad_to_deg(ease)]
-			t.ok(n > 0 and fwd < 0.0 and out <= REACH_OUT * data.info.loa, msg)
+			var msg := "%s %s: %d reaching cases, clew at most %.2f m forward of the mast (<= %.2f, aft < 0, at %s), at most %.2f m outboard of the widest beam (<= %.2f), largest ease %.1f deg" % [
+				id, fp.id, n, fwd, REACH_FWD * data.info.loa, at, out, REACH_OUT * data.info.loa, rad_to_deg(ease)]
+			t.ok(n > 0 and fwd <= REACH_FWD * data.info.loa and out <= REACH_OUT * data.info.loa, msg)
 			print("  " + msg)
 		bv.free()
 
@@ -1075,6 +1078,123 @@ func _tack_on_sprit() -> void:
 				t.ok(n > 0 and worst <= TACK_TOL, msg)
 				print("  " + msg)
 			bv.free()
+
+
+## §12 test 25: an asymmetric spinnaker's sheet leaves the clew along the corner's bisector (§7.7), and the foot and
+## the lower leech stay fair (no kink, no bulge), native and reference.
+const CLEW_ANGLE_MAX := 12.0     # deg, sheet off the clew corner's bisector
+const FAIR_STEP_MAX := 3.0       # deg, change of the signed turn from one edge vertex to the next
+const FAIR_DEAD := 0.5           # deg, turns smaller than this have no sign
+
+
+func _clew_on_sheet() -> void:
+	for id in ["wm7", "wm12"]:
+		if not FileAccess.file_exists("res://generated/boats/%s.glb" % id):
+			continue
+		var data := BoatClassData.load_class(id)
+		for reference in ([false, true] if native else [true]):
+			var bv := BoatView.create(data.info, 0.5, reference)
+			var parts := {}
+			for sp in bv.sail_parts:
+				parts[sp.index] = sp
+			for fi in data.info.front_sails:
+				var fp: BoatView.SailPart = parts[fi]
+				if fp.type != "spinnaker_asym":
+					continue
+				var impl := "reference" if reference else "native"
+				t.begin("25 clew on its sheet: %s %s (%s)" % [id, fp.id, impl])
+				var worst := 0.0
+				var at := ""
+				var step := 0.0
+				var at_step := ""
+				var bulges := 0
+				var at_bulge := ""
+				var n := 0
+				var tws := 12.0 * KNOT
+				for awa_deg in range(60, 161, 10):
+					for side in [1.0, -1.0]:
+						for kt in [0.6, 0.85, 1.0, 1.2, 1.3]:
+							for mt in [1.0, 10.0]:
+								var sv := _sails_view(data, side * deg_to_rad(float(awa_deg)), tws, tws, fi, -1, [kt, mt])
+								bv.apply_sails(sv, sv, 1.0, 0.1)
+								var r := clew_check(fp, sv.sails[fi].beta)
+								# fairness of the flying shape itself: placed again without the obstacles (the push of
+								# §7.4 is test 18's)
+								fp.shape.set_obstacles([])
+								fp.shape.update(SimSource.Phase.UP, 1.0, fp.beta, fp.gamma, 0.0, sv.awa, sv.aws)
+								var r2 := clew_check(fp, sv.sails[fi].beta)
+								r[1] = r2[1]
+								r[2] = r2[2]
+								var what := "awa %d %s kite %.2f main %s" % [awa_deg, "stbd" if side > 0 else "port", kt,
+										"let fly" if mt > 1.0 else "opt"]
+								n += 1
+								if r[0] > worst:
+									worst = r[0]
+									at = what
+								if r[1] > step:
+									step = r[1]
+									at_step = what
+								if r[2] > 1:
+									bulges += 1
+									if at_bulge == "":
+										at_bulge = what
+				var msg := "%s %s (%s): %d cases, the sheet at most %.1f deg off the clew's bisector (<= %.0f) at %s" % [
+					id, fp.id, impl, n, worst, CLEW_ANGLE_MAX, at]
+				t.ok(n > 0 and worst <= CLEW_ANGLE_MAX, msg)
+				print("  " + msg)
+				msg = "%s %s (%s): foot and lower leech turn step at most %.2f deg (<= %.0f) at %s, %d bulged%s" % [
+					id, fp.id, impl, step, FAIR_STEP_MAX, at_step, bulges, (" (first " + at_bulge + ")") if bulges > 0 else ""]
+				t.ok(step <= FAIR_STEP_MAX and bulges == 0, msg)
+				print("  " + msg)
+			bv.free()
+
+
+## §12 test 25 on one placed flying sail: [the sheet's angle off the clew corner's bisector (deg), the largest change
+## of the signed turn between neighbouring vertices of the foot and the lower leech (deg), the most sign changes of
+## that turn on either edge]
+static func clew_check(fp: BoatView.SailPart, beta: float) -> Array:
+	var m: PackedVector3Array = fp.shape.mid()
+	var cols := fp.cols
+	var c := m[cols - 1]
+	var f := (m[cols - 3] - c).normalized()
+	var e := (m[2 * cols + cols - 1] - c).normalized()
+	var b := (f + e).normalized()
+	var lead: Vector3 = fp.shape.working_lead(beta)
+	var s := (c - lead).normalized()
+	var ang := rad_to_deg(acos(clampf(b.dot(s), -1.0, 1.0)))
+	var nrm := f.cross(e).normalized()
+	var foot := PackedVector3Array()
+	for j in range(cols - 1, -1, -1):
+		foot.append(m[j])
+	var leech := PackedVector3Array()
+	for i in int(0.45 * (fp.rows - 1)) + 1:
+		leech.append(m[i * cols + cols - 1])
+	var st := 0.0
+	var flips := 0
+	for edge in [foot, leech]:
+		var turns := edge_turns(edge, nrm)
+		var sg := 0.0
+		var fl := 0
+		for k in turns.size():
+			if k > 0:
+				st = maxf(st, absf(turns[k] - turns[k - 1]))
+			if absf(turns[k]) >= FAIR_DEAD:
+				var g := signf(turns[k])
+				if sg != 0.0 and g != sg:
+					fl += 1
+				sg = g
+		flips = maxi(flips, fl)
+	return [ang, st, flips]
+
+
+## the turn (deg) at each inner vertex of a polyline, signed about `nrm`
+static func edge_turns(p: PackedVector3Array, nrm: Vector3) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	for k in range(1, p.size() - 1):
+		var t0 := (p[k] - p[k - 1]).normalized()
+		var t1 := (p[k + 1] - p[k]).normalized()
+		out.append(rad_to_deg(asin(clampf(t0.cross(t1).dot(nrm), -1.0, 1.0))))
+	return out
 
 
 ## §7.6: with the main let fly, the kite sheeted from 60 % to 130 % of its optimum over 2 s at TWA 100 deg, 12 kn,

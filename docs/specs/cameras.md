@@ -76,13 +76,27 @@ the look-at. Reduced motion (`controls.md` §6) turns the bank, the trail and th
 
 The helmsman's eye, fixed in the heeled, pitching boat, looking forward past the sails.
 
-**Eye position** (body frame, computed at load from the generated boat):
+**Eye position** (body frame, computed at load from the generated boat): the skipper's own eyes at the helm, so the
+player sees what the helmsman sees (owner decision 2026-10-15, replacing the earlier "further aft" eye):
 ```
-tiller steering: xh = rudder_stock.x + 0.12 * loa ; zh = deck(xh, yh) + 0.95   // sitting out, eye height
-wheel steering:  xh = wheel_hub.x - 0.45          ; zh = deck(xh, yh) + 1.65   // standing behind the wheel
-yh_abs = 0.85 * half-beam of the deck at xh
-deck(x, y) = height of the deck mesh under (x, y), found by a vertical ray at load
+tiller steering (sitting on the windward side deck, just forward of the tiller's end, hand on the extension):
+  xh = tiller_tip.x + 0.15         ; yh_abs = 0.90 * half-beam of the deck at xh ; zh = deck(xh, yh) + 0.80
+wheel steering (standing on the cockpit floor behind the windward half of the rim, looking over it):
+  xh = wheel_hub.x - 0.70 * R      ; yh_abs = 0.55 * R                          ; zh = deck(xh, yh) + 1.60
+tiller_tip = the forward end of the rudder part at rest (it carries the tiller); rudder_stock.x + 0.13 * loa
+             without the mesh
+R          = the wheel's rim radius, half the wheel part's athwartships extent; 0.07 * loa without the mesh
+deck(x, y) = height of the deck mesh under (x, y), found by a vertical ray at load (for the wheel: the cockpit floor)
 ```
+The heights are adult eye heights: about 0.80 m above the seat sitting upright on the deck edge, about 1.60 m above
+the feet standing. On the classes this gives: `wm7` `xh ≈ −2.8 m`, on the side deck beside the cockpit's aft
+end; `wm12` `xh ≈ −4.75 m`, 0.6 m behind the wheel's plane and 0.47 m to windward of the centreline, where the
+helmsman's hands reach the rim's top. The gaze rests a little below the horizon (`look_down` in the view below:
+4° tiller, 8° wheel), so the wheel's top and its windward rim sit in the lower part of the frame and the tiller
+side deck shows low; the horizon stays level. The own boat is drawn whole for this camera (no part is hidden,
+culled by layer or swapped for a coarser level near the eye; the near plane of 0.1 m clears the rim). The eye
+stays clear of the boat: at least 0.3 m from any part of the model (wheel, tiller, lifelines, boom end, backstay)
+where it sits and along its whole crossing path.
 The helmsman sits to windward: `yh = −sgn(twa)·yh_abs` (starboard tack: wind from starboard, eye on the starboard
 side, `y < 0`). When the tack sign changes and has held for 0.6 s (the helmsman waits for the boom), the eye crosses
 at the same `x` in `2·yh_abs / 1.5 m/s` seconds along a smoothstep, dipping 0.3 m at the centreline. A tack back
@@ -92,12 +106,12 @@ during the crossing reverses it from where it is.
 ```
 eye   = boat pose applied to (xh, yh, zh)                       // moves with heel, pitch and heave
 yaw   = psi + look_yaw
-pitch = 0.5 * theta + look_pitch                                // half the boat's pitch
+pitch = 0.5 * theta - look_down + look_pitch                    // half the boat's pitch
 roll  = heel_follow * phi                                       // horizon: level by default
 ```
 | parameter | default | range |
 | --- | --- | --- |
-| `fov` | 65° vertical | 50° – 90° |
+| `fov` | 75° vertical (about 107° across at 16:9) | 50° – 90° |
 | `heel_follow` | 0 (horizon level) | 0 – 1 (accessibility, `controls.md` §6) |
 | `look_yaw` | 0 | ±150° |
 | `look_pitch` | 0 | −60° … +75° |
@@ -105,7 +119,8 @@ roll  = heel_follow * phi                                       // horizon: leve
 - Looking around: mouse drag (0.15° per pixel) or right stick as an absolute look (stick direction = look direction
   scaled to the limits), or the orbit keys as a rate (90°/s yaw, 60°/s pitch); on release the look returns to
   centre with `τ = 0.6 s` (option: stay).
-- Zoom changes `fov` within its range (×1.12 per notch, ×2 per second held).
+- Zoom changes `fov` within its range (×1.12 per notch, ×2 per second held). A profile saved with the earlier
+  default of 65° (never zoomed) loads with the new default.
 - The near plane is 0.1 m (the boom, the backstay and the crew pass close to the eye).
 - The own boat is drawn; nothing of it is hidden.
 
@@ -255,7 +270,12 @@ never saved as the profile's camera. Online the same (it is presentation only).
 3. Frame-rate independence: holding orbit for 1 s gives 120° ± 0.5° at 30, 60 and 144 fps.
 4. Water clearance: 10 minutes of chase at `el = 2°` in `Hs = 1.5 m`: the eye is never below `sea_height + 0.99`.
 5. Onboard side: a tack at `t = 0` (tack sign flips) puts the eye on the new windward side by
-   `0.6 + 2·yh_abs/1.5` s (±1 frame) and never crosses outside the deck edge.
+   `0.6 + 2·yh_abs/1.5` s (±1 frame) and never crosses outside the deck edge. On the generated `wm7` and `wm12`
+   the eye follows §3 (tiller: 0.15 m forward of the tiller's tip, seated 0.80 m above the side deck; wheel: 0.7·R
+   behind the hub and 0.55·R to windward, standing 1.60 m above the cockpit floor), is at least 0.3 m from the
+   model's meshes (sails excluded) where it sits and along the crossing; on `wm12` the wheel's top and windward
+   rim project into the lower half of the default frame, and the wheel and tiller meshes are visible; the
+   default `fov` is 75°.
 6. Aerial up modes: with `up = north` the scene `−Z` direction points to the top of the screen; with `up = wind` the
    true wind comes from the top of the screen within 1°.
 7. Presets: store in slot 3, change every parameter, recall slot 3: all parameters and the mode restored exactly;

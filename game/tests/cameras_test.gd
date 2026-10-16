@@ -11,6 +11,10 @@ func _init() -> void:
 	test_frame_rate()
 	test_water_clearance()
 	test_onboard_side()
+	if CoreSimSource.available():
+		test_onboard_classes()
+	else:
+		t.ok(false, "the GDExtension is not loaded: the onboard eye on the generated classes skipped")
 	test_aerial_up()
 	test_presets()
 	test_shake()
@@ -118,7 +122,7 @@ func test_water_clearance() -> void:
 	tg.sea_height = sim.sea_height
 	var cam := ChaseCamera.new()
 	cam.recentre(tg)
-	cam.el = deg_to_rad(2.0)
+	cam.el = deg_to_rad(1.0)
 	var o := CamTypes.Options.new()
 	var dt := 1.0 / 60.0
 	var acc := 0.0
@@ -203,6 +207,139 @@ func test_onboard_side() -> void:
 	cam.heel_follow = 1.0
 	v = cam.update(tg, CamTypes.Options.new(), 0.016)
 	t.ok(v.xform.basis.x.y < -0.3, "heel follow 1: starboard down rolls the frame")
+
+
+## cameras.md §3 and §10.5: the eye on the generated wm7 (tiller) and wm12 (wheel), clear of the boat
+func test_onboard_classes() -> void:
+	t.begin("5b onboard eye on the generated classes")
+	t.near(OnboardCamera.new().fov, 75.0, 1e-9, "default fov 75")
+	var saved := OnboardCamera.new()
+	saved.set_params({"fov": 65.0})
+	t.near(saved.fov, 75.0, 1e-9, "a profile with the old default 65 loads the new default")
+	saved.set_params({"fov": 58.0})
+	t.near(saved.fov, 58.0, 1e-9, "a zoomed profile keeps its fov")
+	for cls in ["wm7", "wm12"]:
+		var sim := CoreSimSource.new()
+		sim.settings = {"wind_speed": 6.0, "wind_from": 0.0, "shift_preset": 0, "puffs": false, "seed": 11}
+		if not t.ok(sim.create(), "%s: core created" % cls):
+			continue
+		var info := sim.class_info(sim.add_boat(cls, 0.0, 0.0, 0.0))
+		var bv := BoatView.create(info, info.rudder_max)
+		var g := BoatGeometry.onboard(info, bv.model)
+		var rig: Dictionary = info.physics.get("rig", {})
+		var deck := BoatGeometry._deck_triangles(bv.model)
+		if cls == "wm12":
+			var r := BoatGeometry._rim_radius(bv.model)
+			t.ok(r > 0.8 and r < 0.95, "wm12: rim radius from the wheel mesh (%.3f m)" % r)
+			t.near(g.xh, float(rig["wheel_hub"][0]) - 0.7 * r, 1e-4, "wm12: 0.7 R behind the wheel hub")
+			t.near(g.yh_abs, 0.55 * r, 1e-4, "wm12: behind the windward half of the rim")
+			t.near(g.zh - BoatGeometry._deck_height(deck, g.xh, g.yh_abs), 1.60, 1e-4, "wm12: standing eye height")
+			t.ok(BoatGeometry._deck_height(deck, g.xh, g.yh_abs) < 0.7, "wm12: standing on the cockpit floor")
+			# the wheel's top and windward rim in the lower half of the default frame, starboard tack
+			var cam := OnboardCamera.new()
+			var tg := _target()
+			tg.geometry = g
+			tg.pose.twa = deg_to_rad(40.0)
+			var v := cam.update(tg, CamTypes.Options.new(), 0.016)
+			var hub := Vector3(float(rig["wheel_hub"][0]), float(rig["wheel_hub"][1]), float(rig["wheel_hub"][2]))
+			var boat := Frames.boat_transform(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+			for e in [["top", hub + Vector3(0, 0, r)], ["windward rim", hub + Vector3(0, -0.55 * r, sqrt(r * r * (1.0 - 0.3025)))]]:
+				var w: Vector3 = boat * Frames.body_to_model(e[1])
+				var c := v.xform.affine_inverse() * w
+				var half := tan(deg_to_rad(0.5 * v.fov))
+				var sy := (c.y / -c.z) / half  # -1 bottom, +1 top
+				var sx := (c.x / -c.z) / (half * 16.0 / 9.0)
+				t.ok(c.z < 0.0 and sy < 0.0 and sy > -1.0 and absf(sx) < 1.0,
+						"wm12: the wheel's %s in the lower half of the frame (x %.2f, y %.2f)" % [e[0], sx, sy])
+		else:
+			var tip := BoatGeometry._part_box(bv.model, "rudder").end.x
+			t.ok(tip > float(rig["rudder_stock"][0]) + 0.5, "wm7: the tiller's tip from the rudder part (%.2f)" % tip)
+			t.near(g.xh, tip + 0.15, 1e-4, "wm7: just forward of the tiller's end")
+			t.near(g.yh_abs, 0.9 * g.deck_half_beam, 1e-4, "wm7: on the windward side deck")
+			t.near(g.zh - BoatGeometry._deck_height(deck, g.xh, g.yh_abs), 0.80, 1e-4, "wm7: seated eye height")
+		# the steering is drawn: its meshes visible at the onboard camera's distance (no LOD swap, no hidden part)
+		bv.update_lod(Vector3(g.xh, g.yh_abs, g.zh).length())
+		var part := bv.model.find_child("wheel" if cls == "wm12" else "rudder", true, false) as Node3D
+		var shown := part != null and bv.lod == 0
+		var up: Node = part
+		while shown and up != null and up != bv:
+			shown = not (up is Node3D) or (up as Node3D).visible
+			up = up.get_parent()
+		t.ok(shown, "%s: the %s drawn for the onboard camera" % [cls, "wheel" if cls == "wm12" else "tiller"])
+		t.ok(g.xh > BoatGeometry._aft_end(deck) + 0.2, "%s: over the deck, forward of the transom (x %.2f)" % [cls, g.xh])
+		var tris := _model_triangles(bv.model, g)
+		var side := INF
+		var path := INF
+		for i in 21:
+			var q := -1.0 + 2.0 * i / 20.0
+			var p := Vector3(g.xh, q * g.yh_abs, g.zh - OnboardCamera.DIP * (1.0 - q * q))
+			var d := _clearance(p, tris)
+			path = minf(path, d)
+			if i == 0 or i == 20:
+				side = minf(side, d)
+		t.ok(side >= 0.3, "%s: the eye clear of the boat where it sits (%.2f m)" % [cls, side])
+		t.ok(path >= 0.3, "%s: clear along the crossing (%.2f m)" % [cls, path])
+		bv.free()
+
+
+## the model's triangles (sails, sheets and shadow proxies left out) within 1.5 m of the eye's crossing, body frame
+static func _model_triangles(model: Node3D, g: BoatGeometry) -> Array:
+	var out := []
+	var lo := Vector3(g.xh - 1.5, -g.yh_abs - 1.5, g.zh - 2.0)
+	var hi := Vector3(g.xh + 1.5, g.yh_abs + 1.5, g.zh + 1.5)
+	var stack: Array = [model]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		stack.append_array(n.get_children())
+		var mi := n as MeshInstance3D
+		if mi == null or mi.mesh == null:
+			continue
+		var nm := String(mi.name)
+		if nm.begins_with("sail") or nm.begins_with("shadow") or nm == "sheets":
+			continue
+		var xf := BoatGeometry._relative(model, mi)
+		for si in mi.mesh.get_surface_count():
+			var arr := mi.mesh.surface_get_arrays(si)
+			var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+			var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX] if arr[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
+			var k := 0
+			while k + 2 < idx.size():
+				var tri := []
+				var a_lo := Vector3(INF, INF, INF)
+				var a_hi := -a_lo
+				for j in 3:
+					var m := xf * v[idx[k + j]]
+					var b := Vector3(m.z, m.x, m.y)  # model (port, up, bow) -> body (x, y, z)
+					tri.append(b)
+					a_lo = a_lo.min(b)
+					a_hi = a_hi.max(b)
+				k += 3
+				if a_hi.x >= lo.x and a_lo.x <= hi.x and a_hi.y >= lo.y and a_lo.y <= hi.y and a_hi.z >= lo.z and a_lo.z <= hi.z:
+					out.append(tri)
+	return out
+
+
+## shortest distance from p to the triangles
+static func _clearance(p: Vector3, tris: Array) -> float:
+	var best := INF
+	for tri in tris:
+		var a: Vector3 = tri[0]
+		var b: Vector3 = tri[1]
+		var c: Vector3 = tri[2]
+		var n := (b - a).cross(c - a)
+		var l := n.length()
+		if l > 1e-12:
+			n /= l
+			var d := (p - a).dot(n)
+			var q := p - d * n
+			if (b - a).cross(q - a).dot(n) >= 0.0 and (c - b).cross(q - b).dot(n) >= 0.0 \
+					and (a - c).cross(q - c).dot(n) >= 0.0:
+				best = minf(best, absf(d))
+				continue
+		best = minf(best, p.distance_to(Geometry3D.get_closest_point_to_segment(p, a, b)))
+		best = minf(best, p.distance_to(Geometry3D.get_closest_point_to_segment(p, b, c)))
+		best = minf(best, p.distance_to(Geometry3D.get_closest_point_to_segment(p, c, a)))
+	return best
 
 
 func test_aerial_up() -> void:

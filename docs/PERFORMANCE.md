@@ -388,6 +388,41 @@ quiet M5 (the audit's numbers above were taken on a busier machine), µs per tic
 Without AI, racing: 16 boats 201 to 77 µs mean, 24 boats 307 to 121. Seeds 3, 11 and 21 at 16 boats: racing max
 631 to 851 µs.
 
+### AI skippers alone, 16 boats (WM-130, 2026-10-15)
+
+The skippers' step timed on its own every tick from the warning signal to the close (`AI_REL=big|bigmix
+AI_SEEDS=1,10`, `windmark_ai_race_tests`, Release, M5, one process at a time; `big` is 16 Intermediate wm7 boats on
+the default course, `bigmix` 16 boats of every level and both classes; the wind cycles 8, 11, 15, 19 kn over the
+seeds), µs per tick over the ten races:
+
+| Build | Fleet | Mean | p50 | p99 | p99.9 | Max |
+| --- | --- | --- | --- | --- | --- | --- |
+| main before WM-126 | big | 24.0 | 4.8 | 249 | 408 | 815 |
+| | bigmix | 23.4 | 4.7 | 250 | 443 | 769 |
+| WM-126 fixes alone | big | 25.9 | 5.0 | 261 | 446 | 1,087 |
+| | bigmix | 23.8 | 4.8 | 259 | 452 | 971 |
+| WM-126 + WM-130 | big | 12.4 | 4.9 | 140 | 293 | 838 |
+| | bigmix | 12.8 | 4.8 | 166 | 343 | 679 |
+| main with the heel model and WM-119's fixes | big | 18.8 | 4.8 | 206 | 332 | 574 |
+| | bigmix | 22.9 | 4.9 | 234 | 368 | 680 |
+| the same merged with WM-126 + WM-130 | big | 10.1 | 4.8 | 110 | 246 | 539 |
+| | bigmix | 11.1 | 5.0 | 126 | 261 | 520 |
+
+The rows "WM-126 fixes alone" and "WM-126 + WM-130" race the same races bit for bit (the cost cut does not change a
+decision): the mean halves and the 99th percentile drops by about 40 %; against main with the new heel model the
+merged branch halves the mean and the 99th percentile too (the last two rows race different races). The cost was the keep-clear candidate
+evaluation (ai.md §7.2: about 70 % of the AI time, nearly all of it hull-to-hull gaps along the predicted tracks):
+the candidate held from the last decision is now checked first and stands when it is still clear, and the others are
+taken in the order of a lower bound of their cost, so the track checks of candidates that cannot win are skipped. The
+mean is about 0.8 µs per boat per tick; the worst ticks (several boats keeping clear at once) stay under 1 ms.
+
+The whole core tick is now dominated by the rules engine, not the AI: in a `sample` profile of the 16-boat race
+(`Rules::update` about three quarters of the tick, the AI about 13 %, the boats 8 %), a fifth of the tick is
+`polar_vmg`, which the rules
+engine calls for every boat on every tick whose true wind speed changed (it always does) to find the close-hauled
+angle by scanning the polar. Caching it on a speed grid would remove most of that, but changes the rules' angles
+slightly (a `rules.md` decision).
+
 ### Menu backdrop (4 boats)
 
 3.2 ms per frame (about 310 fps): GPU 2.6 ms, main 1.0 ms, about 300 draws, 280 to 340k primitives, about two

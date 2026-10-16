@@ -10,6 +10,9 @@
 
 namespace wm {
 
+// §6.5: the speed over the ground under which a boat in contact with an object counts as pinned.
+constexpr float kPinSog = 1.0f;
+
 using namespace ai_detail;
 
 const char* ai_tactic_name(AiTactic t) {
@@ -213,8 +216,8 @@ void perceive(AiSkippers::Ctx& x, AiSkippers::Boat& a) {
     }
   }
   const float sog = x.w.boat(i).outputs().sog;
-  if (x.now - a.pin_seen < 1.0f && rb.started && !rb.finished && sog < 0.3f) a.pin_t = a.pin_t + DT;
-  else if (x.now - a.pin_seen >= 1.0f || sog > 0.6f) a.pin_t = 0.0f;
+  if (x.now - a.pin_seen < 1.0f && rb.started && !rb.finished && sog < kPinSog) a.pin_t = a.pin_t + DT;
+  else if (x.now - a.pin_seen >= 1.0f || sog > kPinSog + 0.3f) a.pin_t = 0.0f;
   if (!a.ocs_counted && (rb.ocs || rb.ocs_i) && x.race.after_gun(x.n)) {
     a.ocs_counted = true;
     a.tel.ocs = a.tel.ocs + 1;

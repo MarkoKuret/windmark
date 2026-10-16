@@ -406,6 +406,12 @@ bool penalty_turns(AC& x, AB& a, const Me& m, Leg leg) {
   const std::int32_t next = m.rb.started ? m.rb.next : 0;
   // A turn counts anywhere in a fleet race; only a match race keeps it out of the zones (rules.md §9.3).
   const bool zones = x.race.race_type() == RaceType::match;
+  // Pinned on an object (§6.5): get off it first; a turn there only wedges her against it.
+  if (x.now < a.pin_until || a.pin_t >= 0.5f) {
+    if (a.pen_on) stop();
+    a.pen_prepare = true;
+    return false;
+  }
   if (a.pen_on) {
     if (br.served > a.pen_served0) {
       stop();
@@ -1001,6 +1007,9 @@ void beat_run(AC& x, AB& a, const Me& m, Vec2 R, bool beat, float mlay, bool tri
     auto man = [&](AiTactic why) {
       return beat ? request_tack(x, a, m, why, false) : request_gybe(x, a, m, why, false);
     };
+    // §4.4, §9: a match-race leader's cover yields only to laylines and rules avoidance.
+    const bool match_cover = x.race.race_type() == RaceType::match;
+    if (match_cover && cover(x, a, m, beat, R)) return;
     const Vec2 w = dir(a.twd_ref);
     const float e = v_cross(w, v_sub(m.c, R));
     const float D_axis = beat ? v_dot(d, w) : -v_dot(d, w);
@@ -1055,7 +1064,7 @@ void beat_run(AC& x, AB& a, const Me& m, Vec2 R, bool beat, float mlay, bool tri
       if (a.headed_t >= 6.0f && not_overstand && man(AiTactic::Shift)) return;
       if (a.pressure_t >= 10.0f && not_overstand && man(AiTactic::Pressure)) return;
     }
-    if (cover(x, a, m, beat, R)) return;
+    if (!match_cover && cover(x, a, m, beat, R)) return;
   }
   // §8 bad air on every beat and run (the zones excluded inside), also close to the mark.
   if (bad_air(x, a, m, beat ? Leg::beat : Leg::run) && a.man != Man::straight) return;
@@ -1179,41 +1188,57 @@ void racing(AC& x, AB& a, const Me& m) {
   }
 }
 
-// §6.5 pinned on an object (a mark the current holds her against, a committee boat, land): after 2 s in contact
-// with no way over the ground, sail for 6 s on the heading that takes her away from it: her bow not into it, and the
-// course over the ground leading most directly away; on the present tack (a stopped boat cannot tack), else on the
-// other by bearing away round. The sails drawing and the helm free of the drag limit.
+// §6.5 pinned on an object (a mark the current holds her against, a committee boat, land): after 0.5 s in contact
+// with little way over the ground she works herself off it. A hard helm only wedges a boat with no way on harder
+// against it, so she first keeps the helm steady on her present heading, and tries three ways off in turn, changing
+// over whenever 3 s pass without progress (the boat moved less than 0.4 m and turned less than 8°): the sails drawing
+// (lying along the object, she slides and pivots off it), the sails let fly (the drift to leeward of a stalled boat,
+// boat.md §6.4, takes her off it), and the heading on her present tack whose course over the ground leads most
+// directly away from it, the sails drawing and the helm free (against a stream that holds her on it; with a stream
+// of more than 0.2 m/s setting her onto it she starts with that one). Off it for 3 s, she sails on as planned.
 void pinned_escape(AC& x, AB& a, const Me& m) {
-  if (a.pin_t >= 2.0f && x.now >= a.pin_until) a.pin_until = x.now + 6.0f;
-  if (x.now >= a.pin_until || a.man == Man::penalty) return;
+  if (a.pin_t >= 0.5f && x.now >= a.pin_until) {
+    a.pin_until = x.now + 3.0f;
+    // In a stream that sets her onto it, sailing away over the ground first.
+    a.pin_mode = static_cast<std::int8_t>(v_dot(m.cur, a.pin_n) < -0.2f ? 2 : 0);
+    a.pin_check_t = x.now + 3.0f;
+    a.pin_c = m.c;
+    a.pin_psi = m.s.psi;
+  }
+  if (x.now >= a.pin_until) return;
+  if (x.now - a.pin_seen < 1.0f) a.pin_until = max(a.pin_until, a.pin_seen + 3.0f);
+  if (x.now >= a.pin_check_t) {
+    const bool progress = v_dist(m.c, a.pin_c) > 0.4f || std::fabs(wrap_pi(m.s.psi - a.pin_psi)) > 8.0f * DEG;
+    if (!progress) a.pin_mode = static_cast<std::int8_t>((a.pin_mode + 1) % 3);
+    a.pin_check_t = x.now + 3.0f;
+    a.pin_c = m.c;
+    a.pin_psi = m.s.psi;
+  }
+  a.man = Man::straight;
+  a.helm_fixed = NAN;
+  a.tactic = AiTactic::Land;
+  a.obj_turn = true;
+  a.turn_dir = 0;
+  a.psi_target = m.s.psi;
+  a.let_fly = a.pin_mode == 1;
+  a.forced = false;
+  if (a.pin_mode != 2) return;
   const Vec2 n = v_unit(a.pin_n, dir(m.s.psi));
   const float tk = m.tack != 0.0f ? m.tack : 1.0f;
-  float best = -1e30f, psi_best = m.s.psi;
-  bool other = false;
-  for (std::int32_t pass = 0; pass < 2 && best < -1e29f; ++pass) {
-    for (std::int32_t k = 0; k < 72; ++k) {
-      const float psi = static_cast<float>(k) * 5.0f * DEG;
-      const float twa = wrap_pi(m.twd - psi);
-      if (std::fabs(twa) < m.theta_up || (pass == 0 && sgn(twa) != tk)) continue;
-      const Vec2 f = dir(psi);
-      if (v_dot(f, n) < 0.0f) continue;  // the bow away from it, or along it
-      const Vec2 g = v_add(v_scale(f, polar_speed(a, m, std::fabs(twa))), m.cur);
-      const float score = v_dot(g, n) + 0.5f * v_dot(f, n) - 0.3f * std::fabs(wrap_pi(psi - m.s.psi));
-      if (score > best) {
-        best = score;
-        psi_best = psi;
-        other = pass == 1;
-      }
+  float best = -1e30f;
+  for (std::int32_t k = 0; k < 72; ++k) {
+    const float psi = static_cast<float>(k) * 5.0f * DEG;
+    const float twa = wrap_pi(m.twd - psi);
+    if (std::fabs(twa) < m.theta_up || sgn(twa) != tk) continue;
+    const Vec2 f = dir(psi);
+    const Vec2 g = v_add(v_scale(f, polar_speed(a, m, std::fabs(twa))), m.cur);
+    const float score = v_dot(g, n) + 0.5f * v_dot(f, n) - 0.3f * std::fabs(wrap_pi(psi - m.s.psi));
+    if (score > best) {
+      best = score;
+      a.psi_target = psi;
     }
   }
-  if (a.man == Man::tack || a.man == Man::gybe) a.man = Man::straight;
-  a.helm_fixed = NAN;
-  a.psi_target = psi_best;
-  a.turn_dir = other ? static_cast<std::int8_t>(-tk) : 0;  // to the other tack by bearing away (a gybe)
-  // Still held after a try under sail: let fly for a while and let the stream carry her round it, then sail again.
-  a.let_fly = a.pin_t >= 8.0f && (static_cast<std::int32_t>((a.pin_t - 8.0f) / 6.0f) % 2) == 0;
   a.forced = true;
-  a.tactic = AiTactic::Land;
 }
 
 // race.md §6.2 the finished-boat autopilot: 5 L beyond the finish line and 2·(i + 1)·L along it (i = the finishing
@@ -1287,8 +1312,8 @@ void ai_decide(AC& x, AB& a) {
         a.tactic = AiTactic::PenaltyTurn;
         a.psi_target = heading_for(m.twd, 110.0f * DEG);
         if (m.tack < 0.0f && std::fabs(m.twa) < HALF_PI) a.turn_dir = 1;
-        avoid_objects(x, a, m, -1);
-        if (!land_check(x, a, m)) rules_overlay(x, a, m, m.c);
+        const bool obj_turn = avoid_objects(x, a, m, -1);
+        if (!land_check(x, a, m)) rules_overlay(x, a, m, m.c, obj_turn);
         return;
       }
     }
@@ -1299,9 +1324,11 @@ void ai_decide(AC& x, AB& a) {
     racing(x, a, m);
     aim = a.dbg.aim;
   }
-  avoid_objects(x, a, m, a.tactic == AiTactic::Rounding ? a.round_mark : -1);
+  const bool obj_turn = avoid_objects(x, a, m, a.tactic == AiTactic::Rounding ? a.round_mark : -1);
   if (m.rb.started) pinned_escape(x, a, m);
-  if (!land_check(x, a, m)) rules_overlay(x, a, m, aim);
+  // Pinned (§6.5): no other plan can steer her until she is off it.
+  if (x.now < a.pin_until) return;
+  if (!land_check(x, a, m)) rules_overlay(x, a, m, aim, obj_turn);
 }
 
 }  // namespace wm::ai_detail

@@ -4,11 +4,12 @@ title: 'Server: replay recording'
 status: To Do
 assignee: []
 created_date: '2026-09-25 15:24'
+updated_date: '2026-10-15 17:30'
 labels:
   - server
 dependencies:
   - WM-015
-priority: medium
+priority: low
 ordinal: 30000
 ---
 

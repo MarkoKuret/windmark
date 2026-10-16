@@ -338,9 +338,11 @@ qd    = (dot(xl, e), dot(xl, perp(e)))
 env   = max(0, 1 + g_amp·(texture(foam_tex, qd / GROUP_TILE + (ug, vg)).g − G_mean))
 brk   = the short-crest breakup above, from texture(foam_tex, qd / BREAK_TILE + (ub, vb)).g
 S     = E · (S + caps_rest + Σ b·mean of the selected beyond the tier's count) · env · brk · seg
-x     = log2(W(U) / 0.0005) / 2                                  // 0..3 at the four calibrated covers
-S_b   = caps_thr piecewise linear in x (extrapolated beyond the ends)
-F     = clamp((S - S_b)/S_W, 0, 1) · gate · fade                 // foam intensity, S_W = 0.035
+x_c   = log2(W(U) / 0.0005) / 2                                  // 0..3 at the four calibrated covers
+S_b   = caps_thr piecewise linear in x_c (extrapolated beyond the ends)
+x     = (S − S_b) / (0.35·S_b)                                   // relative ramp (round 7)
+ev    = the breaking event at this crest spot now (life cycle, below)
+F     = min(clamp(x, 0, 1), ev) · gate · fade                    // active foam intensity
 ```
 The crest windows travel with their components, so a cap moves with its crests; the sum only passes the threshold
 where crests coincide inside a high group, and a cap builds and fades as they drift in and out of step and as its
@@ -354,30 +356,67 @@ lace and a milky film), A near-solid white with a few holes; built from periodic
 smooth warp that curves its borders, and seamless value noise for the breakup. It is mapped `4.5 m` along `e` by
 `3 m` across, moving with the dominant wave. Mip-mapped, anisotropic: the mips average coverage, so a distant cap
 fades to its true mean whiteness. With caps a few metres across and far apart the tiling inside them does not read.
-**A breaking cap, not a cut-out** (round 3, 2026-10-15: drawn as one flat opacity the caps read as white paper
-cut-outs up close). A real cap has a small bright, nearly opaque breaking core on the crest and its forward face,
-soft lacy edges, and a thinner, translucent, streaky residual foam trailing behind it (on the back of the wave,
-upwind), drawn out along the wind and decaying over seconds. The intensity keeps its definition (`F` above, which
-the cover and the calibration count); the look uses `x = (S − S_b)/S_W` before the clamp, and `dm`, the distance
-in metres from the crest of the heaviest foam component (ahead > 0; where the pixel cannot resolve that component,
-`front = behind = 1`):
+**The life cycle** (round 7, 2026-10-16: the owner saw each cap as a rigid foam shape carried across the sea at the
+wave's phase speed; whitecaps are events that happen, change and disappear with the wave). Two stages:
+
+*Active breaking (stage A).* A crest spot breaks once per event period `T_ev = 0.9·T_p` (dominant wave), at a phase
+of its own, for 0.4 of a wave period (1.7 s at 25 kn): the event envelope rises over 0.15 `T_p`, holds, and falls
+over the last 0.12 `T_p`. The phase is smooth noise riding the crests (the G channel in the segments' frame at
+another offset, features about 8 × 23 m, and the same channel over 8 segment tiles, `caps_seg.zw`): an event starts
+at one point of a crest and spreads a few metres along it as `ev` rises, rides the crest only while it lasts, and
+stops; the slow part spreads the phases evenly over the cycle across the sea (no sea-wide pulse) and makes
+neighbouring crests differ. (Fine noise for the phase, as first tried, swept into thin streaks in the foam left
+behind.) Where the pixel cannot resolve the spots, `ev = 0.35`.
 ```
-q        = (dot(xl, e), dot(xl, perp(e))) / (4.5, 3) + (u0, v0)
-L        = texture(caps_tex, q)                                        // lace, 4.5 m tile
-st       = texture(foam_tex, (dot(xl, e), dot(xl, perp(e))) / (14, 1.6) + caps_str).r   // streaks along the wind,
-                                                                       // drifting with the surface (one more tap)
-xj       = x + 1.2·(L.g − 0.5) + 0.8·(st − 0.5)                        // outlines from three noise scales (the
-                                                                       // breakup's 6 m, the lace's 1 m, the streaks)
-front    = smoothstep(−4 m, −1 m, dm)                              // the crest and its forward face
-behind   = (1 − smoothstep(0, 1.5 m, dm)) · smoothstep(−0.4·lam, −0.15·lam, dm)   // the back of the wave behind
-                                                                       // the crest, not across the trough (lam: the
-                                                                       // heaviest component's wavelength)
-core     = smoothstep(0.0, 1.2, xj) · front · g                        // g = gate · fade
-trail    = smoothstep(−1.0, 0.7, xs) · behind · smoothstep(0.3, 0.75, st) · g
-a        = 0.95 · core · mix(L.b, L.a, smoothstep(1, 2, xj)) + 0.5 · trail · L.g · (1 − core)
-ALBEDO   = mix(mix(ALBEDO, (0.05, 0.20, 0.23), 0.3·smoothstep(0.2, 0.8, max(core, 0.5·trail))), col_foam, a)
-ROUGHNESS = mix(ROUGHNESS, 0.55, a) ; EMISSION *= 1 - a ; normal = normalize(mix(normal, n_geo, 0.6·a))   // no glints in foam
+ph   = fract(t/T_ev + 1.5·G_ev + 8·G_slow)                         // caps_ev = (fract(t/T_ev), 1/T_ev, c_p, 3.5 s)
+ev   = smoothstep(0, 0.167, ph) · (1 − smoothstep(0.311, 0.444, ph))   // ph in event periods
 ```
+The event gates the foam, not the steepness: the threshold is still set by the crests (the calibration counts
+`S > S_b·1.175` together with `ev ≥ 0.5`, and since the events are independent of the steepness the share of time
+a point's event is on, the duty, divides the cover). The core: `xj = x + 1.2·(L.g − 0.5)` (the lace riding the
+crest), `core = smoothstep(0, 3, xj) · smoothstep(0, 0.7, ev) · front · g`, `a = 0.95·core·mix(L.b, L.a, solid)`
+with `solid = smoothstep(1, 2, xj)` only on a band at the crest (`dm` from −0.1 to +0.12 `lam`, fading from 0.04),
+the tumbling water, and dense lace on the rest of the face: its brightness follows the event, so a cap fades in and
+out instead of popping.
+
+*Residual foam (stage B).* What a crest left stays in the water and moves only with the surface drift (`caps_drift
+= 0.03·U` along the dominant wave), not with the crest: the crest runs ahead and the foam falls behind on the wave's
+back, then decays and erodes. Analytically, at a point, for the last two passings of the heaviest component's crest:
+```
+tau    = time since that crest passed where this foam fell (x − e·drift·tau; one fixed-point step, the passing
+         nearest the first guess)
+A      = min(clamp(x(t − tau), 0, 1), ev_wide(t − tau))   // the active foam then: the potential at that time (the
+                                                          // windows moved back by tau/T_j, the segments where the
+                                                          // crest was, c_p·tau back, the breakup at its mean: the
+                                                          // crest sweeps its fine detail into streaks along the wave,
+                                                          // which the residual's own lace replaces), the event at any
+                                                          // time within ±0.25 s of the passing
+R      = max over the two passings of A² · exp(−tau / 3.5 s) · smoothstep(0, 0.6 s, tau)
+         · (1 − smoothstep(1.5·T_0, 2·T_0, tau)) · (1 − smoothstep(300 m, 400 m, dist))
+age    = 1 − exp(−tau / 7 s)
+Lr     = texture(caps_tex, q/(5, 3) + caps_res.xy)                // the foam lace, drifting with the surface and
+                                                                  // wandering slowly, so outlines change
+cov    = 2·age < 1 ? mix(Lr.b, Lr.g, 2·age) : mix(Lr.g, Lr.r, 2·age − 1)   // dense foam, then the net, then fizz
+blob   = texture(foam_tex, q/(16, 10) + caps_res.zw).g            // erosion blobs in the same drifting frame
+a      = max(a, 0.6 · R · cov · smoothstep(th, th + 0.2, blob) · g),   th = 0.4 + 0.3·age   // breaking into fragments
+```
+It costs two more passes of the six-component loop and four taps each (breakup, segments, the two event-phase
+taps), evaluated within 400 m (fading out from 300 m) where the heaviest component is resolved, and two taps for
+its lace and blobs; the stage A field two taps more than round 6 (the event phase).
+
+*Around a breaking cap* (round 4, kept, now only while it breaks): `near = smoothstep(−0.8, 0.4, xj) ·
+smoothstep(0, 0.7, ev)`; the face ahead is darker (`ALBEDO ×= 1 − 0.22·near·(1 − behind)·(1 − smoothstep(0.5 m, 3 m,
+dm))`) and the bubble cloud behind glows (`mix(ALBEDO, (0.05, 0.20, 0.23), 0.35·near·behind)`), with `front =
+smoothstep(−4 m, −1 m, dm)` and `behind = (1 − smoothstep(0, 1.5 m, dm))·smoothstep(−0.4·lam, −0.15·lam, dm)`.
+Then `ALBEDO = mix(ALBEDO, col_foam, a)`, `ROUGHNESS = mix(ROUGHNESS, 0.55, a)`, `EMISSION ×= 1 − a`, the normal toward
+`n_geo` by `0.6·a` (no glints in foam).
+
+Measured (CPU mirror, 25 kn, fetch 30 km, a 150 m window): one second on, the drawn foam moved on by `c_p` (6.8 m)
+correlates 0.14 with itself (the steady caps of round 6: 0.92), its best-overlap IoU is 0.06 (0.59); residual foam
+older than 1.5 s moves with the drift, not with the crests (`c_p` 6.8); active breaking at points riding the crests
+lasts 1.1 s (median), the residual patches (their lace aside) at points drifting with the surface 2.5 s; the opacity
+changes by at most 0.10 per 60 Hz frame.
+
 **Cover** (the area with `F ≥ 0.5`, every component resolved, on the reference wind seas of `sea.md` §2 at fetch
 10 km) against the law, and the share of the water with any visible foam (`a > 0.1`): see the checks below, which
 print both; the area with visible foam stays within twice the law (the first version: about ten times). Puffs and lulls change it through the local wind `U`, so caps show the puffs and a lull is almost free of
@@ -390,47 +429,29 @@ tap of the foam texture where `F > 0`; nothing below 8 kn or beyond 2.5 km. The 
 metres wide, narrower than the vertex spacing at the chase camera's distance (1.5 m at 25 m, 6 m at 100 m on tier
 M), so they are evaluated per pixel; what the vertex stage already has (exposure, venue factor) comes as varyings.
 Measured with `tests/water_cost.py` (the development M1, OpenGL proxy, 1280 × 800): the helicopter view of the
-25 kn open sea, where every water pixel runs the loop, +0.21 ms on tier L, +0.23 ms on M, +0.14 ms on H (round 6, with the crest-segment tap; round 5 +0.16 to 0.18, +0.21 to 0.24, +0.22 to 0.24 ms; runs vary by ±0.05 ms)
+25 kn open sea, where every water pixel runs the loop, +0.26 ms on tier L, +0.28 ms on M, +0.27 ms on H (round 7,
+with the residual foam within 400 m; round 6 +0.21, +0.23, +0.14 ms; round 5 +0.16 to 0.18, +0.21 to 0.24, +0.22 to 0.24 ms; runs vary by ±0.05 ms)
 (the first version +0.10, +0.14, +0.10 ms on the same view; the runs vary by ±0.05 ms); the game's chase view at
-25 kn +0.00 to 0.01 ms. On the Steam Deck (about 0.6 of the M1's GPU) about
-+0.25 ms, inside the 2.5 ms of §7.
+25 kn +0.01 to 0.03 ms (round 7). On the Steam Deck (about 0.6 of the M1's GPU) about
++0.45 ms on the helicopter view, inside the 2.5 ms of §7.
 
-**Caps belong to the wave** (round 4): the face ahead of a breaking crest is the steepest and darkest part of the
-wave, and the bubble cloud under and behind the crest glows a lighter turquoise:
-```
-near     = smoothstep(−0.8, 0.4, xs)                                   // close to a cap (the cap's own outline)
-ahead    = near · (1 − behind) · (1 − smoothstep(0.5 m, 3 m, dm)) · g   // the face just ahead of it
-ALBEDO  *= 1 − 0.22·ahead                                              // the steep front, darker
-bubbles  = near · behind · g                                           // under and behind it
-ALBEDO   = mix(ALBEDO, (0.05, 0.20, 0.23), 0.35·bubbles)               // the bubble cloud
-```
-**Residual foam**: foam that a cap leaves stays where it fell and drifts with the surface (about 3 % of the wind
-speed), so the trail's streaks no longer ride the crest: their frame `caps_str` drifts along the wind at `0.03·U`.
-Behind a cap that has stopped breaking, faint patches stay:
-```
-residual = 0.15 · smoothstep(12 kn, 20 kn, U) · smoothstep(−1.5, −0.8, xs) · (1 − smoothstep(−0.8, 0, xs)) · behind · smoothstep(0.3, 0.75, st) · g
-a        = max(a, residual)
-```
-(Round 4 also drew wind-aligned foam lanes between the caps from the same streak tap; in the game they read as
-hundreds of short white dashes, like rain over the sea, and were dropped on 2026-10-16. The streak tap is again
-taken only near a cap, `x > −1.5`.)
-
-The opacity grades from the core (up to 0.95) to the trail (at most 0.5, streaky lace); the trail reaches a little
-below the threshold (`x > −1`), the residual foam of a cap that has stopped breaking, and fades with it. The cover
-counts the active area (`F ≥ 0.5`) as before.
+(Round 4 drew wind-aligned foam lanes between the caps; in the game they read as hundreds of short white dashes,
+like rain over the sea, and were dropped on 2026-10-16.)
 
 **Checks** (`tests/water_test.gd`, on the CPU mirror `SeaWhitecaps.intensity` and `SeaWhitecaps.drawn`): no caps under 8 kn (6 and 7.9 kn, and
 a puff on a 7 kn breeze); cover never falling and rising over 10 to 25 kn, within ×1.3 of the law at 12, 15, 20 and 25
 kn, on the fetch-10 km seas and on an open sea (fetch 30 km with a 0.8 m swell), tier L within ×1.6; the area with
-visible foam (`a > 0.1`, core and trail) at most twice the cover; the drawn opacity is never one flat value
+visible foam (`a > 0.1`, active and residual) at most 4.5 times the active cover (residual foam covers several
+times the actively breaking area); the drawn opacity is never one flat value
 (over the foamed points its spread is at least 0.15) and the core is brighter than the trail; with a swell bigger than the wind sea's peak (25 kn with 1.2 m, 18 and 12 kn
 with 0.8 m, 12 s): no swell component carries caps, cover within ×1.4 of the law, and in the chase view (0.5 m
 cells over 200 m) 95 % of the patches at most 8 m and the largest at most 16 m (the second version: 27 and 51 m); more caps in puffs, fewer in lulls; no lattice: the autocorrelation of the foam
 field at 25 kn over 512 m (8 m cells) rises nowhere more than 0.3 above its mean at the same distance (2 to 16 cells;
 the first version 0.8, the six crest windows alone 0.7); each component's window equal after moving with its phase velocity;
-the foam texture drifting with the dominant wave and the group envelope at half its speed; the foam field 0.5 s
-later correlating with itself moved with the waves, not in place; over 60 s at 60 frames per second, points riding
-the dominant wave see the opacity change by at most 0.15 per frame and caps living a median 0.8 s or more. No zebra crossing (an 800 m aerial window at 25 and
+the foam texture drifting with the dominant wave and the group envelope at half its speed; the life cycle (above): one second on, the foam moved on by `c_p` correlates under 0.4 with itself and its
+best-overlap IoU is under 0.5; residual foam older than 1.5 s moves under a quarter of `c_p`; active breaking lasts
+0.3 to 2 s (median, points riding the crests), residual foam 2 to 8 s (points drifting with the surface); the
+opacity never changes by more than 0.15 per 60 Hz frame (the active foam seen riding, the residual seen drifting). No zebra crossing (an 800 m aerial window at 25 and
 18 kn, fetch 30 km): caps linked along a crest (within 0.15 `lam_p` across and 0.6 `lam_p` along it) run at most 3
 peak wavelengths (99th percentile; round 5: 3.8 to 5.0).
 Previews: `tests/previews/whitecaps_{12,18,24}kn_{chase,heli}.jpg` and `whitecaps_20kn_sequence.jpg` (6 frames 0.5 s

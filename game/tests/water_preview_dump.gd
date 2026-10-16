@@ -69,6 +69,7 @@ const SHOTS := [
 	["sail18_close_M", SeaEnvSource.Mode.PLACEHOLDER, 18.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0, "close": 0.45}],
 	["sail12_aerial_M", SeaEnvSource.Mode.PLACEHOLDER, 12.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0, "aerial": true}],
 	["sail18_aerial_M", SeaEnvSource.Mode.PLACEHOLDER, 18.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0, "aerial": true}],
+	["sailseq25_chase_M6", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0, "seq": 6, "step_ms": 1000.0}],
 	["sailseq25_aerial_M", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0, "aerial": true, "seq": 6, "step_ms": 1000.0}],
 	["sail25_aerial_M", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0, "aerial": true}],
 	["sailseq25_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0, "seq": 24, "step_ms": 250.0}],

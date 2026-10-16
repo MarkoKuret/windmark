@@ -13,7 +13,9 @@ const MONAHAN_B := 3.41
 ## the covers the thresholds are calibrated at: COVER_0 · 4^k, k = 0..3 (0.05, 0.2, 0.8, 3.2 %)
 const COVER_0 := 0.0005
 ## steepness above the threshold for full foam intensity
-const S_W := 0.035
+## the steepness above the threshold for full foam intensity, as a share of the threshold (round 7: relative, so that
+## a sea whose breaking events leave most of the water at zero still ramps over the same share)
+const S_W := 0.35
 ## wave-group envelope: the foam noise's coarse channel over GROUP_TILE metres, drifting at half the dominant
 ## wave's phase speed; it scales the steepness sum by 1 + GROUP_AMP·(G − mean)/sd (at least 0)
 const GROUP_TILE := 600.0
@@ -35,6 +37,34 @@ const SEG_LO := 0.5
 const SEG_HI := 0.7
 const SEG_FEATURE := 9.0
 const SEG_FAR := 0.45
+## the event phase: the same channel in the segments' frame offset by EVENT_OFS, times EVENT_GAIN event periods, so
+## a breaking event starts at one point of a crest and spreads a few metres along it within the event's rise
+const EVENT_OFS := Vector2(0.37, 0.61)
+const EVENT_GAIN := 1.5
+## and the slow part: the same channel over EVENT_SCALE segment tiles, times EVENT_SLOW periods, so that the phases
+## spread evenly over the cycle across the sea (no sea-wide pulsing) while neighbouring crests still differ
+const EVENT_SCALE := 8.0
+const EVENT_SLOW := 8.0
+## the residual foam's lace and erosion-blob tiles (m along, across); a patch keeps the blobs above
+## RESID_ERODE + RESID_ERODE_AGE * age (age 0..1 over the e-folding RESID_TAU twice)
+const RESID_LACE_TILE := Vector2(5.0, 3.0)
+const RESID_BLOB_TILE := Vector2(16.0, 10.0)
+const RESID_ERODE := 0.4
+const RESID_ERODE_AGE := 0.3
+## the breaking event (round 7): each crest point breaks once per EVENT_PERIODS dominant wave periods, at a phase of
+## its own, for about a quarter of a period (event()); where the pixel cannot resolve it, EVENT_FAR
+const EVENT_PERIODS := 0.9
+const EVENT_FAR := 0.35
+## the active breaking of an event, in event periods: rises over EVENT_RISE, lasts EVENT_LIFE (0.4 T_p), falls over the
+## last EVENT_FALL
+const EVENT_RISE := 0.1667
+const EVENT_LIFE := 0.444
+const EVENT_FALL := 0.133
+## residual foam: e-folding time (s), and how far it is evaluated (m)
+const RESID_TAU := 3.5
+const RESID_DIST := 400.0
+## the foam a crest leaves at a point: the event at any time within +- RESID_WIDE s of the crest's passing
+const RESID_WIDE := 0.25
 ## the trail's streaks: the foam noise's streak channel over STREAK_TILE metres (along the dominant wave, across)
 const STREAK_TILE := Vector2(14.0, 1.6)
 ## wave age: a component is wind sea (forced by the wind, can break) when its phase speed is at most WIND_SEA_AGE
@@ -260,7 +290,10 @@ static func calibrate(components: Array, sel: PackedInt32Array) -> Dictionary:
 	rng.seed = 98
 	var tot := PackedFloat32Array()
 	tot.resize(CAL_POINTS)
+	var on := PackedByteArray()
+	on.resize(CAL_POINTS)
 	var amp := GROUP_AMP / maxf(gs.y, 1e-4)
+	var inv_tev := event_frame(components, 0.0).y
 	var side := int(sqrt(float(CAL_POINTS)))
 	for k in CAL_POINTS:
 		# a jittered grid: every part of the square sampled, so the rare high values are counted steadily
@@ -274,22 +307,24 @@ static func calibrate(components: Array, sel: PackedInt32Array) -> Dictionary:
 		var br := group_noise(q / BREAK_TILE + Vector2(0.13, 0.29))
 		var sg := group_noise(q / SEG_TILE + Vector2(0.71, 0.11))
 		tot[k] = s * maxf(0.0, 1.0 + amp * (g - gs.x)) * breakup(br, 0.0) * segment(sg, 0.0)
+		# the event phase over time at a point is uniform (the event noise only shifts it)
+		on[k] = 1 if event(rng.randf()) >= 0.5 else 0
+	# the breaking events are independent of the steepness: the share of the water whose event is on
+	var n_on := 0
+	for k in CAL_POINTS:
+		n_on += on[k]
+	var duty := maxf(float(n_on) / CAL_POINTS, 1e-4)
 	tot.sort()
-	# only the top of the distribution can pass a threshold for covers up to a few per cent
-	var top := tot.slice(int(CAL_POINTS * 0.85))
 	var lm := level_means()
 	var thr := PackedFloat32Array()
 	for k in 4:
 		var want := COVER_0 * pow(4.0, k)
 		var lo := tot[0]
-		var hi := tot[CAL_POINTS - 1] + S_W
+		var hi := tot[CAL_POINTS - 1] * 1.01 + 1e-6
 		for it in 40:
 			var mid := 0.5 * (lo + hi)
-			var a := 0.0
-			for v in top:
-				if v > mid + 0.5 * S_W:
-					a += 1.0
-			if a / CAL_POINTS > want:
+			var a := float(CAL_POINTS - tot.bsearch(mid * (1.0 + 0.5 * S_W), false))
+			if a / CAL_POINTS * duty > want:
 				lo = mid
 			else:
 				hi = mid
@@ -302,7 +337,7 @@ static func calibrate(components: Array, sel: PackedInt32Array) -> Dictionary:
 ## The short-crest breakup factor of a noise value g at a pixel footprint px (m): 0 below BREAK_LO, 1 above
 ## BREAK_HI; where the pixel cannot resolve the breakup's features it tends to BREAK_FAR.
 static func breakup(g: float, px: float) -> float:
-	var b := clampf((g - BREAK_LO) / (BREAK_HI - BREAK_LO), 0.0, 1.0)
+	var b := 0.2 + 0.8 * clampf((g - BREAK_LO) / (BREAK_HI - BREAK_LO), 0.0, 1.0)
 	if px <= 0.0:
 		return b
 	return lerpf(BREAK_FAR, b, smoothstep(2.0, 4.0, BREAK_FEATURE / px))
@@ -317,17 +352,20 @@ static func segment(g: float, px: float) -> float:
 
 
 ## The crest-segment frame (caps_seg) for a camera at (ox, oy) at t_ms, riding the dominant wave at its phase speed.
-static func segment_frame(components: Array, ox: float, oy: float, t_ms: float) -> Vector2:
+static func segment_frame(components: Array, ox: float, oy: float, t_ms: float) -> Vector4:
 	var p := dominant_index(components)
 	if p < 0:
-		return Vector2.ZERO
+		return Vector4.ZERO
 	var c: Array = components[p]
 	var kap := Vector2(c[1], c[2]).length()
 	var e := Vector2(c[1], c[2]) / kap
 	var speed := (1.0 / kap) / (float(c[4]) * 0.001)
 	var su := (ox * e.x + oy * e.y - speed * t_ms * 0.001) / SEG_TILE.x + 0.71
 	var sv := (-ox * e.y + oy * e.x) / SEG_TILE.y + 0.11
-	return Vector2(su - floorf(su), sv - floorf(sv))
+	# zw: the same frame over EVENT_SCALE segment tiles (the slow part of the event phase)
+	var eu := (ox * e.x + oy * e.y - speed * t_ms * 0.001) / (SEG_TILE.x * EVENT_SCALE) + 0.23
+	var ev := (-ox * e.y + oy * e.x) / (SEG_TILE.y * EVENT_SCALE) + 0.47
+	return Vector4(su - floorf(su), sv - floorf(sv), eu - floorf(eu), ev - floorf(ev))
 
 
 ## The breakup frame for a camera at (ox, oy) at t_ms: the camera-origin part of the breakup's texture coordinates,
@@ -377,18 +415,28 @@ static func foam_noise(uv: Vector2, ch: int) -> float:
 	return lerpf(lerpf(a, b, tx), lerpf(c, d, tx), ty)
 
 
-## CPU mirror of the drawn cap opacity of wm_apply_caps: x the intensity before the clamp, dm the distance from the
-## heaviest component's crest (m, ahead > 0), g the gate times the fade, L the lace texture sample, st the streak
-## noise. Returns (opacity, core, trail).
-static func drawn(x: float, dm: float, g: float, L: Color, st: float, lam0 := 1e9, xr := 1e9) -> Vector3:
-	var xj := x + 1.2 * (L.g - 0.5) + 0.8 * (st - 0.5)
-	var xs := minf(x, xr) + 1.2 * (L.g - 0.5) + 0.8 * (st - 0.5)
-	var front := smoothstep(-4.0, -1.0, dm)
-	var behind := (1.0 - smoothstep(0.0, 1.5, dm)) * (1.0 if dm == 0.0 else smoothstep(-0.4 * lam0, -0.15 * lam0, dm))
-	var core := smoothstep(0.0, 1.2, xj) * front * g
-	var trail := smoothstep(-1.0, 0.7, xs) * behind * smoothstep(0.3, 0.75, st) * g
-	var a := clampf(0.95 * core * lerpf(L.b, L.a, smoothstep(1.0, 2.0, xj)) + 0.5 * trail * L.g * (1.0 - core), 0.0, 1.0)
-	return Vector3(a, core, trail)
+## CPU mirror of the drawn foam of wm_apply_caps: f the field (x, dm, gate, xr) with the gate times the fade, res the
+## residual (resid, tau), L the lace texture sample, st the streak noise, nb the wandering lace noise, lam0 the heaviest
+## component's wavelength. Returns (opacity, active core, residual opacity).
+static func drawn(f: Vector4, res: Vector2, L: Color, st: float, Lr: Color, blob: float, lam0: float) -> Vector3:
+	var g := f.z
+	var a := 0.0
+	var ra := 0.0
+	if res.x > 0.0:
+		var u := 2.0 * (1.0 - exp(-res.y / (2.0 * RESID_TAU)))
+		var cov := lerpf(Lr.b, Lr.g, u) if u < 1.0 else lerpf(Lr.g, Lr.r, u - 1.0)
+		var th := RESID_ERODE + RESID_ERODE_AGE * (1.0 - exp(-res.y / (2.0 * RESID_TAU)))
+		ra = 0.6 * res.x * smoothstep(th, th + 0.2, blob) * g   # the patch (its lace aside)
+		a = ra * cov
+	var core := 0.0
+	if f.x > -1.5:
+		var xj := f.x + 1.2 * (L.g - 0.5)
+		var front := smoothstep(-4.0, -1.0, f.y)
+		core = smoothstep(0.0, 3.0, xj) * smoothstep(0.0, 0.7, f.w) * front * g
+		var solid := smoothstep(1.0, 2.0, xj) * (1.0 if f.y == 0.0
+				else (1.0 - smoothstep(0.0, 0.1 * lam0, -f.y)) * (1.0 - smoothstep(0.04 * lam0, 0.12 * lam0, f.y)))
+		a = maxf(a, clampf(0.95 * core * lerpf(L.b, L.a, solid), 0.0, 1.0))
+	return Vector3(a, core, ra)
 
 
 static func _dir(components: Array) -> Vector2:
@@ -414,24 +462,43 @@ static func group_frame(components: Array, cal: Dictionary, ox: float, oy: float
 	return Vector4(cal["amp"], cal["mean"], u - floorf(u), v - floorf(v))
 
 
-## CPU mirror of wm_caps_intensity: the foam intensity F in [0, 1] at a camera-relative point xl (m) for the
-## uniforms caps_k, caps_w, caps_rest, caps_thr, caps_grp and caps_brk (cal: the calibration; grp: the group frame;
-## brk: the breakup frame), the tier's
-## count n, a pixel footprint px (m; 0 = every component resolved), the exposure and the local wind (m/s, the puff
-## factor times the base).
-static func intensity(ck: PackedVector4Array, cw: PackedVector4Array, rest: float, n: int, xl: Vector2, px: float,
-		expo: float, wind: float, cal: Dictionary, grp: Vector4, e: Vector2, brk: Vector2, seg := Vector2(-1.0, 0.0)) -> float:
-	var f := field(ck, cw, rest, n, xl, px, expo, wind, cal, grp, e, brk, seg)
-	return clampf(f.x, 0.0, 1.0) * f.z
+## The breaking event pulse at an event phase ph in [0, 1) (wm_caps_event).
+static func event(ph: float, _inv_tev := 0.0) -> float:
+	return smoothstep(0.0, EVENT_RISE, ph) * (1.0 - smoothstep(EVENT_LIFE - EVENT_FALL, EVENT_LIFE, ph))
 
 
-## CPU mirror of wm_caps_field: (x, dm, gate, xr) as intensity's arguments.
-static func field(ck: PackedVector4Array, cw: PackedVector4Array, rest: float, n: int, xl: Vector2, px: float,
-		expo: float, wind: float, cal: Dictionary, grp: Vector4, e: Vector2, brk: Vector2, seg := Vector2(-1.0, 0.0)) -> Vector4:
-	var kn := wind / KNOT
-	var gate := smoothstep(GATE_KN.x, GATE_KN.y, kn)
-	if gate <= 0.0 or expo <= 0.0:
-		return Vector4(-1e3, 0.0, 0.0, -1e3)
+## The event frame (caps_ev) at t_ms: (fract(t / T_ev), 1 / T_ev, c_p, RESID_TAU), T_ev = EVENT_PERIODS T_p of the
+## dominant wave.
+static func event_frame(components: Array, t_ms: float) -> Vector4:
+	var p := dominant_index(components)
+	if p < 0:
+		return Vector4(0.0, 0.0, 0.0, RESID_TAU)
+	var c: Array = components[p]
+	var tp := float(c[4]) * 0.001
+	var tev := EVENT_PERIODS * tp
+	var ph := fposmod(t_ms * 0.001 / tev, 1.0)
+	var cp := (1.0 / Vector2(c[1], c[2]).length()) / tp
+	return Vector4(ph, 1.0 / tev, cp, RESID_TAU)
+
+
+## The residual foam frames (caps_res) for a camera at (ox, oy) at t_ms, both drifting with the surface at 3 % of the
+## wind u along the dominant wave and wandering slowly, so that the foam changes shape: xy the lace (RESID_LACE_TILE),
+## zw the erosion blobs (RESID_BLOB_TILE) that break a patch into fragments as it ages.
+static func residual_frame(components: Array, ox: float, oy: float, t_ms: float, u := 0.0) -> Vector4:
+	var e := _dir(components)
+	var ts := t_ms * 0.001
+	var a := ox * e.x + oy * e.y - 0.03 * u * ts
+	var c := -ox * e.y + oy * e.x
+	var su := a / RESID_LACE_TILE.x + 0.06 * sin(0.21 * ts) + 0.33
+	var sv := c / RESID_LACE_TILE.y + 0.06 * cos(0.17 * ts) + 0.52
+	var bu := a / RESID_BLOB_TILE.x + 0.02 * sin(0.13 * ts) + 0.71
+	var bv := c / RESID_BLOB_TILE.y + 0.02 * cos(0.11 * ts) + 0.18
+	return Vector4(su - floorf(su), sv - floorf(sv), bu - floorf(bu), bv - floorf(bv))
+
+
+## CPU mirror of wm_caps_sum: (S, dm) tau seconds ago, env the group envelope; frames as in field.
+static func sum_at(ck: PackedVector4Array, cw: PackedVector4Array, rest: float, n: int, xl: Vector2, px: float,
+		e: Vector2, env: float, brk: Vector2, seg: Vector4, ev: Vector4, tau: float, wide := 0.0) -> Vector3:
 	var dm := 0.0
 	var s := rest
 	for i in range(n, ck.size()):
@@ -440,18 +507,90 @@ static func field(ck: PackedVector4Array, cw: PackedVector4Array, rest: float, n
 		var k := ck[i]
 		var w := cw[i]
 		var r := 1.0 if px <= 0.0 else smoothstep(2.0, 4.0, w.w / px)
-		var ph := k.x * xl.x + k.y * xl.y + k.z
+		if wide > 0.0 and i > 0:
+			r = 0.0
+		var ph := k.x * xl.x + k.y * xl.y + k.z + (tau / sqrt(0.6405 * w.w) if w.w > 0.0 else 0.0)
 		s += k.w * lerpf(w.z, window(ph, w), r)
 		if i == 0:
 			var fr := ph - floorf(ph)
 			dm = (fr - (1.0 if fr >= 0.5 else 0.0)) * w.w * r
 	var q := Vector2(xl.dot(e), xl.dot(Vector2(-e.y, e.x)))
-	var g := group_noise(q / GROUP_TILE + Vector2(grp.z, grp.w))
-	var br := group_noise(q / BREAK_TILE + brk)
-	var sg := group_noise(q / SEG_TILE + seg) if seg.x >= 0.0 else 1.0
-	s = s * expo * maxf(0.0, 1.0 + grp.x * (g - grp.y)) * breakup(br, px) * (segment(sg, px) if seg.x >= 0.0 else 1.0)
+	var back := ev.z * tau
+	var bu := q / BREAK_TILE + brk + Vector2(back / BREAK_TILE.x, 0.0)
+	var br := group_noise(bu)
+	var su := q / SEG_TILE + Vector2(seg.x, seg.y) + Vector2(back / SEG_TILE.x, 0.0)
+	var sg := group_noise(su)
+	var rs := 1.0 if px <= 0.0 else smoothstep(2.0, 4.0, SEG_FEATURE / px)
+	# ev.y = 0: no events (the steady caps of round 6, for comparison)
+	var evp := 1.0
+	if ev.y > 0.0:
+		var eu := q / (SEG_TILE * EVENT_SCALE) + Vector2(seg.z, seg.w) + Vector2(back / (SEG_TILE.x * EVENT_SCALE), 0.0)
+		var ph := fposmod(ev.x - tau * ev.y + EVENT_GAIN * group_noise(su + EVENT_OFS) + EVENT_SLOW * group_noise(eu), 1.0)
+		var evv := event(ph, ev.y)
+		if wide > 0.0:
+			evv = maxf(evv, maxf(event(fposmod(ph + wide * ev.y, 1.0), ev.y), event(fposmod(ph - wide * ev.y, 1.0), ev.y)))
+		evp = lerpf(EVENT_FAR, evv, rs)
+	var bf := 0.6 if wide > 0.0 else breakup(br, px)
+	return Vector3(s * env * bf * segment(sg, px), dm, evp)   # the event gates the foam, not the steepness
+
+
+## CPU mirror of wm_caps_field: (x, dm, gate, ev) as intensity's arguments.
+static func field(ck: PackedVector4Array, cw: PackedVector4Array, rest: float, n: int, xl: Vector2, px: float,
+		expo: float, wind: float, cal: Dictionary, grp: Vector4, e: Vector2, brk: Vector2, seg: Vector4, ev: Vector4) -> Vector4:
+	var kn := wind / KNOT
+	var gate := smoothstep(GATE_KN.x, GATE_KN.y, kn)
+	if gate <= 0.0 or expo <= 0.0:
+		return Vector4(-1e3, 0.0, 0.0, -1e3)
+	var sd := sum_at(ck, cw, rest, n, xl, px, e, env_at(xl, e, grp), brk, seg, ev, 0.0)
+	var s := sd.x * expo
 	var sb := threshold(wind, cal["thr"])
-	return Vector4((s - sb) / S_W, dm, gate, (s - sb) / maxf(0.25 * sb, 1e-4))
+	var xv := (s - sb) / maxf(S_W * sb, 1e-6)
+	return Vector4(xv, sd.y, gate, sd.z)
+
+
+## The group envelope at a camera-relative point.
+static func env_at(xl: Vector2, e: Vector2, grp: Vector4) -> float:
+	var q := Vector2(xl.dot(e), xl.dot(Vector2(-e.y, e.x)))
+	return maxf(0.0, 1.0 + grp.x * (group_noise(q / GROUP_TILE + Vector2(grp.z, grp.w)) - grp.y))
+
+
+## CPU mirror of the residual foam of wm_apply_caps: (resid, tau) at a point with the current field f (field()),
+## px the footprint, dist the distance from the camera.
+static func residual(ck: PackedVector4Array, cw: PackedVector4Array, rest: float, n: int, xl: Vector2, px: float,
+		expo: float, wind: float, cal: Dictionary, grp: Vector4, e: Vector2, brk: Vector2, seg: Vector4, ev: Vector4,
+		f: Vector4, dist := 0.0, drift := 0.0) -> Vector2:
+	var lam0 := cw[0].w
+	if ev.y <= 0.0 or dist >= RESID_DIST or (px > 0.0 and lam0 / px <= 4.0) or f.z <= 0.0:
+		return Vector2.ZERO
+	var t0 := sqrt(0.6405 * lam0)
+	var d0 := f.y / lam0
+	var tau0 := (-d0 if d0 <= 0.0 else 1.0 - d0) * t0
+	var env := env_at(xl, e, grp)
+	var sb := threshold(wind, cal["thr"])
+	var best := Vector2.ZERO
+	for k in 2:
+		var tau := tau0 + k * t0
+		var xd := xl - e * (drift * tau)
+		# the time since the crest passed where this foam fell (one fixed-point step)
+		var fd := ck[0].x * xd.x + ck[0].y * xd.y + ck[0].z
+		fd -= floorf(fd)
+		var dd := fd - (1.0 if fd >= 0.5 else 0.0)
+		tau = (-dd + floorf((tau + dd * t0) / t0 + 0.5)) * t0
+		xd = xl - e * (drift * tau)
+		var sd := sum_at(ck, cw, rest, n, xd, px, e, env, brk, seg, ev, tau, RESID_WIDE)
+		var a := minf(clampf((sd.x * expo - sb) / maxf(S_W * sb, 1e-6), 0.0, 1.0), sd.z)
+		var r := a * a * exp(-tau / ev.w) * smoothstep(0.0, 0.6, tau) * (1.0 - smoothstep(1.5 * t0, 2.0 * t0, tau)) \
+				* (1.0 - smoothstep(300.0, RESID_DIST, dist))
+		if r > best.x:
+			best = Vector2(r, tau)
+	return best
+
+
+## CPU mirror of wm_caps_intensity: the active foam intensity F in [0, 1] (see field for the arguments).
+static func intensity(ck: PackedVector4Array, cw: PackedVector4Array, rest: float, n: int, xl: Vector2, px: float,
+		expo: float, wind: float, cal: Dictionary, grp: Vector4, e: Vector2, brk: Vector2, seg: Vector4, ev: Vector4) -> float:
+	var f := field(ck, cw, rest, n, xl, px, expo, wind, cal, grp, e, brk, seg, ev)
+	return minf(clampf(f.x, 0.0, 1.0), f.w) * f.z
 
 
 ## The foam coverage of intensity F on the four nested density levels L (r, g, b, a): F = 0.25 shows all of

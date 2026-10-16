@@ -333,6 +333,9 @@ func update_frame(cam_pos: Vector3, cam: Camera3D = null) -> void:
 		material.set_shader_parameter("caps_brk", SeaWhitecaps.break_frame(caps_comps, ox, oy, t))
 		material.set_shader_parameter("caps_seg", SeaWhitecaps.segment_frame(caps_comps, ox, oy, t))
 		material.set_shader_parameter("caps_str", SeaWhitecaps.streak_frame(caps_comps, ox, oy, t, _caps_u))
+		material.set_shader_parameter("caps_ev", SeaWhitecaps.event_frame(caps_comps, t))
+		material.set_shader_parameter("caps_res", SeaWhitecaps.residual_frame(caps_comps, ox, oy, t, _caps_u))
+		material.set_shader_parameter("caps_drift", 0.03 * _caps_u)
 
 	if sky:
 		material.set_shader_parameter("sky_horizon", sky.horizon_linear())

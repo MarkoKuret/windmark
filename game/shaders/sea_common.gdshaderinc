@@ -302,7 +302,10 @@ uniform vec4 caps_thr = vec4(1e3);              // breaking thresholds calibrate
 uniform vec4 caps_grp = vec4(0.0, 0.5, 0.0, 0.0);   // wave-group envelope: (amplitude / noise sd, noise mean, ug, vg)
 uniform vec2 caps_brk = vec2(0.0);                  // short-crest breakup frame (ub, vb)
 uniform vec2 caps_str = vec2(0.0);                  // the trail's streak frame (us, vs)
-uniform vec2 caps_seg = vec2(0.0);                  // the crest-segment frame (ug, vg)
+uniform vec4 caps_seg = vec4(0.0);                  // the crest-segment frame (ug, vg), and over 8 tiles (zw)
+uniform vec4 caps_ev = vec4(0.0, 0.0, 0.0, 3.5);    // (fract(t / T_ev), 1 / T_ev, c_p, residual e-folding time s)
+uniform vec4 caps_res = vec4(0.0);                  // the residual foam's lace (xy) and erosion (zw) frames (drifting)
+uniform float caps_drift = 0.0;                     // the surface drift along the dominant wave, m/s (3 % of the wind)
 const vec2 WM_SEG_TILE = vec2(45.0, 120.0);
 const vec2 WM_STREAK_TILE = vec2(14.0, 1.6);
 const float WM_GROUP_TILE = 600.0;
@@ -314,54 +317,100 @@ const vec2 WM_CAPS_TILE = vec2(4.5, 3.0);     // m along e, across
 // summed (crests meeting in a wave group make a cap), scaled by the wave-group envelope (the foam noise's coarse
 // channel, drifting at the group speed) and the short-crest breakup, against the sea's threshold for the measured cover at the local wind (m/s).
 // Components the pixel footprint px cannot show count with their window mean, so far caps never alias.
-// (x, dm, gate, xr): x = (S - S_b) / S_W before the clamp, dm the distance from the heaviest component's crest in
-// metres (ahead positive; 0 where the pixel cannot resolve it), gate the wind gate (0: no caps), xr = (S - S_b) /
-// (0.25 S_b) the same relative to the threshold (the cap's surroundings: trail, residual foam, bubbles).
-vec4 wm_caps_field(vec2 xl, float px, float expo, float wind) {
-	float kn = wind / WM_KNOT;
-	float gate = smoothstep(8.0, 10.0, kn);
-	if (gate <= 0.0 || expo <= 0.0) {
-		return vec4(-1e3, 0.0, 0.0, -1e3);
-	}
-	float dm = 0.0;
+// §4.4 the breaking event of a crest spot: once per event period (T_ev = 0.9 T_p), at a phase of its own, active for
+// 0.4 T_p, rising over 0.15 T_p and falling over the last 0.12 T_p (ph in event periods).
+float wm_caps_event(float ph, float inv_tev) {
+	return smoothstep(0.0, 0.1667, ph) * (1.0 - smoothstep(0.311, 0.444, ph));
+}
+
+// The breaking threshold S_b for the local wind (m/s): Monahan's cover W = 3.84e-6 U^3.41, x = log2(W / 0.0005) / 2
+// indexes the calibrated thresholds.
+float wm_caps_sb(float wind) {
+	float x = 0.5 * log2(3.84e-6 * pow(max(wind, 0.1), 3.41) / 0.0005);
+	return x < 1.0 ? mix(caps_thr.x, caps_thr.y, x) : (x < 2.0 ? mix(caps_thr.y, caps_thr.z, x - 1.0)
+			: mix(caps_thr.z, caps_thr.w, x - 2.0));
+}
+
+// The breaking potential at the time tau seconds ago (tau >= 0) at a point: the steepness-weighted crest windows
+// (each component's phase moved back by tau / T_j), times the short-crest breakup and the crest segments where they
+// were then (they ride the crests at c_p), times the breaking event, times the group envelope env (slow: the current
+// one). dm: the distance from the heaviest component's crest at that time, m (0 where unresolved).
+float wm_caps_sum(vec2 xl, vec2 qd, float inv_px, float tau, float env, float wide, out float dm, out float ev_out) {
+	dm = 0.0;
 	float S = caps_rest;
-	float inv_px = 1.0 / max(px, 1e-4);
 	for (int i = WM_CAPS_N; i < 6; i++) {
 		S += caps_k[i].w * caps_w[i].z;               // beyond the tier's count: the window mean
 	}
 	for (int i = 0; i < WM_CAPS_N; i++) {
 		vec4 k = caps_k[i];
 		vec4 w = caps_w[i];
-		float f = fract(k.x * xl.x + k.y * xl.y + k.z);
+		float f = fract(k.x * xl.x + k.y * xl.y + k.z + tau / sqrt(0.6405 * w.w));   // T = sqrt(2 pi lam / g)
 		float d = f - step(0.5, f);                        // cycles from the crest, ahead positive
 		float q = d * (d >= 0.0 ? w.x : w.y);
 		float r = smoothstep(2.0, 4.0, w.w * inv_px);
+		if (wide > 0.0 && i > 0) {
+			r = 0.0;   // the residual: the other crests at their mean (their coincidence lines swept along the wave
+			           // read as streaks; the residual's own lace carries the detail)
+		}
 		S += k.w * mix(w.z, exp(-q * q), r);
 		if (i == 0) {
 			dm = d * w.w * r;
 		}
 	}
-	// the wave groups scale the crests' steepness, and the short-crest breakup lets only a few metres of each crest
-	// break (multiplying: foam stays on the crests, never a sheet over a group)
+	float back = caps_ev.z * tau;   // how far the crests have run since
+	// the short-crest breakup
+	float bky = texture(foam_tex, qd / WM_BREAK_TILE + caps_brk + vec2(back / WM_BREAK_TILE.x, 0.0)).g;
+	float brk = clamp((bky - 0.55) * 4.0, 0.0, 1.0);
+	// the residual (wide > 0) takes the breakup's mean: the crest swept its fine detail into streaks along the wave
+	brk = wide > 0.0 ? 0.6 : mix(0.6, 0.2 + 0.8 * brk, smoothstep(2.0, 4.0, 6.0 * inv_px));
+	// crest segments
+	float sgy = texture(foam_tex, qd / WM_SEG_TILE + caps_seg.xy + vec2(back / WM_SEG_TILE.x, 0.0)).g;
+	float rs = smoothstep(2.0, 4.0, 9.0 * inv_px);
+	float seg = mix(0.45, clamp((sgy - 0.5) * 5.0, 0.0, 1.0), rs);
+	// each breaking patch's event phase: smooth noise a few metres across, so an event starts at a point of the crest
+	// and spreads along it (and the foam it leaves is a patch, not the fine noise swept into streaks)
+	// (the segments' frame, another part of the noise)
+	float pn = texture(foam_tex, qd / WM_SEG_TILE + caps_seg.xy + vec2(back / WM_SEG_TILE.x + 0.37, 0.61)).g;
+	// and a slow part over 8 tiles, so the phases spread evenly over the cycle across the sea (no sea-wide pulse)
+	float pf = texture(foam_tex, qd / (8.0 * WM_SEG_TILE) + caps_seg.zw + vec2(back / (8.0 * WM_SEG_TILE.x), 0.0)).g;
+	float ph = fract(caps_ev.x - tau * caps_ev.y + 1.5 * pn + 8.0 * pf);
+	float evv = wm_caps_event(ph, caps_ev.y);
+	if (wide > 0.0) {   // the foam a crest leaves: the event at any time within +- wide s of the crest's passing
+		evv = max(evv, max(wm_caps_event(fract(ph + wide * caps_ev.y), caps_ev.y),
+				wm_caps_event(fract(ph - wide * caps_ev.y), caps_ev.y)));
+	}
+	float ev = mix(0.35, evv, rs);
+	ev_out = ev;
+	return S * env * brk * seg;   // the steepness of the crests; the event gates the foam, not the steepness
+}
+
+// The group envelope at a point (qd: the point in the dominant wave's frame).
+float wm_caps_env(vec2 qd) {
+	return max(0.0, 1.0 + caps_grp.x * (texture(foam_tex, qd / WM_GROUP_TILE + caps_grp.zw).g - caps_grp.y));
+}
+
+// (x, dm, gate, ev): x = (S - S_b) / (0.35 S_b) before the clamp, dm the distance from the heaviest component's
+// crest in metres (ahead positive; 0 where the pixel cannot resolve it), gate the wind gate (0: no caps), ev the
+// breaking event's envelope now (the active foam's brightness follows it).
+vec4 wm_caps_field(vec2 xl, float px, float expo, float wind) {
+	float kn = wind / WM_KNOT;
+	float gate = smoothstep(8.0, 10.0, kn);
+	if (gate <= 0.0 || expo <= 0.0) {
+		return vec4(-1e3, 0.0, 0.0, -1e3);
+	}
+	float inv_px = 1.0 / max(px, 1e-4);
 	vec2 qd = vec2(dot(xl, caps_uv.xy), dot(xl, vec2(-caps_uv.y, caps_uv.x)));
-	float env = max(0.0, 1.0 + caps_grp.x * (texture(foam_tex, qd / WM_GROUP_TILE + caps_grp.zw).g - caps_grp.y));
-	float brk = clamp((texture(foam_tex, qd / WM_BREAK_TILE + caps_brk).g - 0.55) * 4.0, 0.0, 1.0);
-	brk = mix(0.6, brk, smoothstep(2.0, 4.0, 6.0 * inv_px));
-	// crest segments: a crest breaks over one or two peak wavelengths, not along its whole length, and its
-	// neighbours do not break in step (the field varies over about 25 m along the crests, 9 m across them)
-	float seg = clamp((texture(foam_tex, qd / WM_SEG_TILE + caps_seg).g - 0.5) * 5.0, 0.0, 1.0);
-	seg = mix(0.45, seg, smoothstep(2.0, 4.0, 9.0 * inv_px));
-	S = S * expo * env * brk * seg;
-	// Monahan's cover W = 3.84e-6 U^3.41; x = log2(W / 0.0005) / 2 indexes the calibrated thresholds
-	float x = 0.5 * log2(3.84e-6 * pow(max(wind, 0.1), 3.41) / 0.0005);
-	float Sb = x < 1.0 ? mix(caps_thr.x, caps_thr.y, x) : (x < 2.0 ? mix(caps_thr.y, caps_thr.z, x - 1.0)
-			: mix(caps_thr.z, caps_thr.w, x - 2.0));
-	return vec4((S - Sb) * 28.5714, dm, gate, (S - Sb) / max(0.25 * Sb, 1e-4));   // S_W = 0.035
+	float dm;
+	float ev;
+	float S = wm_caps_sum(xl, qd, inv_px, 0.0, wm_caps_env(qd), 0.0, dm, ev) * expo;
+	float Sb = wm_caps_sb(wind);
+	float x = (S - Sb) / max(0.35 * Sb, 1e-6);   // S_W = 0.35 of the threshold
+	return vec4(x, dm, gate, ev);
 }
 
 float wm_caps_intensity(vec2 xl, float px, float expo, float wind) {
 	vec4 f = wm_caps_field(xl, px, expo, wind);
-	return clamp(f.x, 0.0, 1.0) * f.z;
+	return min(clamp(f.x, 0.0, 1.0), f.w) * f.z;
 }
 
 // The whitecaps on a shaded surface (after wm_surface): xl camera-relative position, px pixel footprint (m), expo
@@ -376,34 +425,74 @@ void wm_apply_caps(inout WmSurface S, vec2 xl, float px, float expo, float dist,
 	if (g <= 0.0) {
 		return;
 	}
-	if (cf.x <= -1.5) {
+	float kn = S.m * base_speed / WM_KNOT;
+	vec2 q = vec2(dot(xl, caps_uv.xy), dot(xl, vec2(-caps_uv.y, caps_uv.x)));
+	// §4.4 residual foam (stage B): what the last two crests left here when they broke, staying where it fell (it
+	// drifts with the surface, not with the crests) and decaying, eroding from the inside
+	float resid = 0.0;
+	float tau_r = 0.0;
+	float lam0 = caps_w[0].w;
+	float inv_px = 1.0 / max(px, 1e-4);
+	if (dist < 400.0 && lam0 * inv_px > 4.0) {
+		float T0 = sqrt(0.6405 * lam0);
+		float d0 = cf.y / lam0;
+		float tau0 = (d0 <= 0.0 ? -d0 : 1.0 - d0) * T0;   // since the heaviest component's crest passed here
+		float env = wm_caps_env(q);
+		float Sb = wm_caps_sb(S.m * base_speed);
+		for (int n = 0; n < 2; n++) {
+			float tau = tau0 + float(n) * T0;
+			float dmd;
+			float evd;
+			// the foam here now fell where the crest broke, upwind by the drift since; the time since the crest passed
+			// there (one fixed-point step: the drift is slow against the crest)
+			vec2 xd = xl - caps_uv.xy * (caps_drift * tau);
+			float fd = fract(caps_k[0].x * xd.x + caps_k[0].y * xd.y + caps_k[0].z);
+			float dd = fd - step(0.5, fd);
+			tau = (-dd + floor((tau + dd * T0) / T0 + 0.5)) * T0;   // the passing nearest the first guess
+			xd = xl - caps_uv.xy * (caps_drift * tau);
+			vec2 qd0 = vec2(dot(xd, caps_uv.xy), dot(xd, vec2(-caps_uv.y, caps_uv.x)));
+			float A = min(clamp((wm_caps_sum(xd, qd0, inv_px, tau, env, 0.25, dmd, evd) * expo - Sb) / max(0.35 * Sb, 1e-6), 0.0, 1.0), evd);
+			float r = A * A * exp(-tau / caps_ev.w) * smoothstep(0.0, 0.6, tau) * (1.0 - smoothstep(1.5 * T0, 2.0 * T0, tau))
+					* (1.0 - smoothstep(300.0, 400.0, dist));
+			if (r > resid) {
+				resid = r;
+				tau_r = tau;
+			}
+		}
+	}
+	if (cf.x <= -1.5 && resid <= 0.0) {
 		return;
 	}
-	float kn = S.m * base_speed / WM_KNOT;
+	float st = texture(foam_tex, q / WM_STREAK_TILE + caps_str).r;
+	vec4 L = texture(caps_tex, q / WM_CAPS_TILE + caps_uv.zw);
 	float a = 0.0;
-	{
-		// a breaking core on the crest and its forward face, lacy edges, a translucent streaky trail behind it (the
-		// trail's streaks drift with the surface)
-		vec2 q = vec2(dot(xl, caps_uv.xy), dot(xl, vec2(-caps_uv.y, caps_uv.x)));
-		float st = texture(foam_tex, q / WM_STREAK_TILE + caps_str).r;
-		vec4 L = texture(caps_tex, q / WM_CAPS_TILE + caps_uv.zw);
-		float xj = cf.x + 1.2 * (L.g - 0.5) + 0.8 * (st - 0.5);
-		float xs = min(cf.w, cf.x) + 1.2 * (L.g - 0.5) + 0.8 * (st - 0.5);   // the surroundings: never wider than
-		                                                                       // a quarter of the threshold
+	if (resid > 0.0) {
+		// thinning and fragmenting: the foam lace in the drift frame (it drifts and wanders, so it changes shape),
+		// dense foam when young, then the lace net, then sparse fizz
+		// and eroding: blobs a few metres across, a threshold rising with age, break the patch into fragments
+		vec4 Lr = texture(caps_tex, q / vec2(5.0, 3.0) + caps_res.xy);
+		float blob = texture(foam_tex, q / vec2(16.0, 10.0) + caps_res.zw).g;
+		float age = 1.0 - exp(-tau_r / (2.0 * caps_ev.w));
+		float u = 2.0 * age;
+		float cov = u < 1.0 ? mix(Lr.b, Lr.g, u) : mix(Lr.g, Lr.r, u - 1.0);
+		float th = 0.4 + 0.3 * age;
+		a = 0.6 * resid * cov * smoothstep(th, th + 0.2, blob) * g;
+	}
+	if (cf.x > -1.5) {
+		// active breaking (stage A): a bright core on the crest and its forward face, lacy edges
+		float xj = cf.x + 1.2 * (L.g - 0.5);   // the lace rides the crest with the core
+		float xs = xj;
 		float front = smoothstep(-4.0, -1.0, cf.y);
-		// behind the crest, within the part of the wave's back a cap's foam trails over (never across the trough)
-		float lam0 = caps_w[0].w;
 		float behind = (1.0 - smoothstep(0.0, 1.5, cf.y)) * (cf.y == 0.0 ? 1.0 : smoothstep(-0.4 * lam0, -0.15 * lam0, cf.y));
-		// the steep face ahead of a crest near breaking is darker; the bubble cloud under and behind it glows
-		float near_cap = smoothstep(-0.8, 0.4, xs);
+		// the steep face ahead of a breaking crest is darker; the bubble cloud under and behind it glows
+		float near_cap = smoothstep(-0.8, 0.4, xs) * smoothstep(0.0, 0.7, cf.w);   // around a cap that is breaking
 		S.albedo *= 1.0 - 0.22 * near_cap * (1.0 - behind) * (1.0 - smoothstep(0.5, 3.0, cf.y)) * g;
 		S.albedo = mix(S.albedo, vec3(0.05, 0.20, 0.23), 0.35 * near_cap * behind * g);
-		float core = smoothstep(0.0, 1.2, xj) * front * g;
-		float trail = smoothstep(-1.0, 0.7, xs) * behind * smoothstep(0.3, 0.75, st) * g;
-		float residual = 0.15 * smoothstep(12.0, 20.0, kn) * smoothstep(-1.5, -0.8, xs) * (1.0 - smoothstep(-0.8, 0.0, xs)) * behind
-				* smoothstep(0.3, 0.75, st) * g;
-		a = max(residual, clamp(0.95 * core * mix(L.b, L.a, smoothstep(1.0, 2.0, xj))
-				+ 0.5 * trail * L.g * (1.0 - core), 0.0, 1.0));
+		float core = smoothstep(0.0, 3.0, xj) * smoothstep(0.0, 0.7, cf.w) * front * g;
+		// solid white only on the crest's front, the tumbling water; dense lace behind it
+		float solid = smoothstep(1.0, 2.0, xj) * (cf.y == 0.0 ? 1.0
+				: (1.0 - smoothstep(0.0, 0.1 * lam0, -cf.y)) * (1.0 - smoothstep(0.04 * lam0, 0.12 * lam0, cf.y)));
+		a = max(a, clamp(0.95 * core * mix(L.b, L.a, solid), 0.0, 1.0));
 	}
 	if (a <= 0.0) {
 		return;

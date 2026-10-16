@@ -1,0 +1,15 @@
+{
+  "schema": "windmark.shot/1",
+  "note": "First windward mark: --race --fleet=6 --watch (seed 1, practice_waters/example_wl). Boat 0 leads round at about 257 s after the gun, boat 5 at 266 s, boat 4 at 271 s. The mark camera stays on the viewed boat's next mark, so boat 4 is viewed (her next mark is this one until 271 s) and the shot aims at the leader in the zone. Half speed through the first rounding.",
+  "portrait": true,
+  "hud": false,
+  "world_tags": true,
+  "start": 245,
+  "cues": [
+    { "t": 245, "view": 4 },
+    { "t": 245, "camera": "mark" },
+    { "t": 254, "slow": 0.5 },
+    { "t": 260, "slow": 1 },
+    { "t": 270, "end": true }
+  ]
+}

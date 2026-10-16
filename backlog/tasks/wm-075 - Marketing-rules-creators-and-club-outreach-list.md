@@ -1,9 +1,11 @@
 ---
 id: WM-075
 title: 'Marketing: rules creators and club outreach list'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-09-29 22:18'
+updated_date: '2026-10-16 20:33'
 labels:
   - marketing
 dependencies: []
@@ -19,6 +21,12 @@ Social plan 8. Prepare (do not send before week 5): a short pitch 'judge our ump
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Contact list with channel, size, contact route and the angle for each
-- [ ] #2 Pitch text and the club quiz template drafted for the owner to send
+- [x] #1 Contact list with channel, size, contact route and the angle for each
+- [x] #2 Pitch text and the club quiz template drafted for the owner to send
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Contact list, pitch and club quiz template in docs/marketing/outreach.md (counts and routes read 2026-10-16). Send from week 5 (16 Nov 2026).
+<!-- SECTION:NOTES:END -->

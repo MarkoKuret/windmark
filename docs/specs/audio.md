@@ -35,7 +35,7 @@ Presentation only: nothing here feeds the simulation. Values come from the rende
 | `fleet` | other boats | effects |
 | `wind` | wind at the listener | effects |
 | `race` | signals, finish, penalty and rule sounds | signals |
-| `voice` | hails | voice |
+| `voice` | hails | signals (no separate voice setting until there are hail recordings, `menus.md` §3) |
 | `ambience` | the ambience bed and its one-shots | ambience |
 | `venue` | placed venue and course-object sources | ambience |
 | `ui` | menus and HUD clicks | interface |

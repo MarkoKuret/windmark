@@ -255,7 +255,7 @@ slot after `F`.
 | reduced motion | off | on: no camera shake, onboard horizon always level (`heel_follow = 0`), chase `tau_yaw ≥ 0.5 s`, no smooth-switch overshoot |
 | onboard heel follow | 0 | 0–1 (`cameras.md` §3) |
 | vibration | on, 1.0 | off, 0–1: contact rumble `min(1, closing_speed/2)` for 0.2 s; a light buzz (0.1) while let fly or `luff_shiver > 0.8` on the driving sail |
-| captions | off | on: every race sound that carries information (signals, hails, penalties, rule warnings) also shows a caption line (`audio.md` §8) |
+| captions | off | on: every race sound that carries information (signals, hails, penalties, rule warnings) also shows a caption line (`audio.md` §8); not offered until the audio has caption lines (`menus.md` §3) |
 | UI scale, colour-blind palette | 100 %, standard | `hud.md` |
 | assists | from the lobby | auto-trim and the HUD presets of `hud.md` §14 |
 

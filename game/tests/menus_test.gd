@@ -25,6 +25,7 @@ func _init() -> void:
 	await test_race_card()
 	test_briefing()
 	await test_weather_card()
+	await test_light_rows()
 	await test_touches()
 	await test_pause_menu()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
@@ -866,26 +867,31 @@ func test_race_card() -> void:
 		and q.fleet_text.text.contains(MenuData.name_of(MenuData.classes(), str(q.rows["class_id"].value))),
 		"fleet summary: %s" % q.fleet_text.text.replace("\n", " / "))
 	t.ok(q.course_text.text.contains("2 laps, 6 legs"), "course caption: %s" % q.course_text.text.replace("\n", " / "))
-	# keyboard: down from the last row is Start, up from Start the last row (Gusts in Custom, Weather otherwise)
-	t.ok(q.last_row() == q.rows["gusts"], "Custom: the last row is Gusts")
-	q.rows["gusts"].grab_focus()
+	# keyboard: down from the last row is Start, up from Start the last row (Sky, after the weather rows)
+	t.ok(q.last_row() == q.rows["light_conditions"], "Custom: the last row is Sky")
+	q.rows["light_conditions"].grab_focus()
 	await process_frame
 	_key("ui_down")
 	await process_frame
 	t.ok(root.gui_get_focus_owner() == q.start_button, "down from the last row: Start")
 	_key("ui_up")
 	await process_frame
-	t.ok(root.gui_get_focus_owner() == q.rows["gusts"], "up from Start: the last row")
+	t.ok(root.gui_get_focus_owner() == q.rows["light_conditions"], "up from Start: the last row")
 	q.rows["weather"].set_value("local", true)
-	t.ok(q.last_row() == q.rows["weather"] and not q.rows["wind_kn"].visible, "Local: the Custom rows hidden")
+	t.ok(q.last_row() == q.rows["light_conditions"] and not q.rows["wind_kn"].visible, "Local: the Custom rows hidden")
 	q.rows["weather"].grab_focus()
 	await process_frame
 	_key("ui_down")
 	await process_frame
-	t.ok(root.gui_get_focus_owner() == q.start_button, "Local: down from Weather is Start")
+	t.ok(root.gui_get_focus_owner() == q.rows["light_time"], "Local: down from Weather is Time")
+	_key("ui_down")
+	await process_frame
+	_key("ui_down")
+	await process_frame
+	t.ok(root.gui_get_focus_owner() == q.start_button, "Local: down from Sky is Start")
 	_key("ui_up")
 	await process_frame
-	t.ok(root.gui_get_focus_owner() == q.rows["weather"], "Local: up from Start is Weather")
+	t.ok(root.gui_get_focus_owner() == q.rows["light_conditions"], "Local: up from Start is Sky")
 	# the layout: preview beside the rows when there is room, under them when not; Start always on screen
 	for c2 in [[Vector2i(1280, 800), 0.8], [Vector2i(1280, 800), 1.0], [Vector2i(1280, 800), 1.3],
 			[Vector2i(1080, 1920), 0.8], [Vector2i(1080, 1920), 1.0], [Vector2i(1080, 1920), 1.3]]:
@@ -1086,7 +1092,9 @@ func test_weather_card() -> void:
 		t.ok(not q.rows[k].visible, "Local: %s hidden" % k)
 	t.ok(q.briefing_header.visible and q.briefing_header.text == "PRACTICE WATERS · Practice",
 		"Local: the header %s" % q.briefing_header.text)
-	t.ok(q.briefing_grid.get_child_count() == 12, "Local: six lines with the Tip (%d cells)" % q.briefing_grid.get_child_count())
+	t.ok(q.briefing_grid.get_child_count() == 14, "Local: seven lines with Light and the Tip (%d cells)"
+		% q.briefing_grid.get_child_count())
+	t.ok(q.briefing_text().contains("Light\t14:30, fair\nTip\t"), "Local: the Light line before the Tip")
 	t.ok(q.briefing_text().contains("Tip\t"), "Local: the Tip")
 	t.ok(q.course_map.wind_shown and absf(q.course_map.wind_kn - 12.0) < 0.01 and q.course_map.wind_from_deg == 0.0,
 		"Local: the map's wind is the typical direction and the middle of the range")
@@ -1174,7 +1182,7 @@ func test_weather_card() -> void:
 		and q.rows["gusts"].value == "standard", "no conditions: 12 kn, 0°, Shifty, Moderate")
 	var ob := q.briefing_text()
 	t.ok(ob == "OLD BAY\nWind\t12 kn from the N\nShifts\tShifty: large, regular (15°)\n"
-		+ "Gusts\tModerate: to +25 %, frequent\nCurrent\tNone\nSea\tChop", "no conditions: %s" % ob.replace("\n", " / "))
+		+ "Gusts\tModerate: to +25 %, frequent\nCurrent\tNone\nSea\tChop\nLight\t14:30, fair", "no conditions: %s" % ob.replace("\n", " / "))
 	MenuData._venue_info.erase(BoatClassData.repo_path("data/venues/old_bay.venue.json"))
 	q.rows["venue"].set_value("practice_waters", true)
 	t.ok(q.rows["weather"].choices.size() == 3, "back on Practice Waters: three modes")
@@ -1215,6 +1223,81 @@ func test_weather_card() -> void:
 	t.ok(rs.today_text() == "", "results after Custom: no Today line")
 	rs.free()
 	host.free()
+	m.queue_free()
+	await process_frame
+	Settings.reset_current()
+
+
+## menus.md §1: the Time and Sky rows: Venue default or a pick, Surprise with Random weather, the venue's window,
+## GameSetup.light_time and light_conditions, the briefing's Light line, remembered and given to Continue.
+func test_light_rows() -> void:
+	t.begin("quick race: Time and Sky rows")
+	Settings.reset_current()
+	Settings.current().welcomed = true
+	var m := _menu()
+	root.size = Vector2i(1280, 800)
+	await process_frame
+	m.open_page("quick")
+	await process_frame
+	await process_frame
+	var q := m.quick
+	q.rows["venue"].set_value("practice_waters", true)
+	q.rows["weather"].set_value("local", true)
+	var tr: MenuRow = q.rows["light_time"]
+	var sr: MenuRow = q.rows["light_conditions"]
+	t.ok(tr.visible and sr.visible and tr.value == -1.0 and sr.value == "", "Time and Sky shown, Venue default")
+	t.ok(tr.value_text() == "Venue default" and sr.value_text() == "Venue default", "both read Venue default")
+	t.ok(tr.choices[1] == 10.0 and tr.choices[-1] == 18.5 and tr.choices.size() == 19,
+		"Time: 10:00 to 18:30 in 30 min steps (%d values)" % tr.choices.size())
+	t.ok(tr.names[1] == "10:00" and tr.names[-1] == "18:30", "Time names: %s .. %s" % [tr.names[1], tr.names[-1]])
+	t.ok(sr.names == ["Venue default", "Clear", "Fair", "Hazy", "Overcast"], "Sky names: %s" % [sr.names])
+	for n in sr.names + tr.names:
+		t.ok(not str(n).contains("—"), "no em dash in %s" % n)
+	q.start_button.pressed.emit()
+	var g := GameSetup.current()
+	t.ok(g.light_time == -1.0 and g.light_conditions == "", "Venue default: GameSetup light_time -1, conditions empty")
+	m.open_page("quick")
+	await process_frame
+	tr.set_value(16.5, true)
+	sr.set_value("overcast", true)
+	t.ok(tr.value_text() == "16:30" and sr.value_text() == "Overcast", "picked 16:30, Overcast")
+	t.ok(q.briefing_text().contains("Light\t16:30, overcast"), "the briefing's Light line follows the rows")
+	# Random: both Surprise and fixed; the picks come back after it
+	q.rows["weather"].set_value("random", true)
+	t.ok(tr.value_text() == "Surprise" and sr.value_text() == "Surprise", "Random: Surprise")
+	tr.step_value(1)
+	t.ok(tr.value_text() == "Surprise", "Random: the row does not step")
+	t.ok(not q.briefing_text().contains("Light"), "Random: no Light line")
+	q.start_button.pressed.emit()
+	g = GameSetup.current()
+	t.ok(g.light_time == -1.0 and g.light_conditions == "", "Random: the seed decides (-1, empty)")
+	t.ok(m.settings.last_setup.get("light_time") == 16.5 and m.settings.last_setup.get("light_conditions") == "overcast",
+		"the picks are remembered, not Surprise")
+	m.open_page("quick")
+	await process_frame
+	q.rows["weather"].set_value("custom", true)
+	t.ok(tr.value == 16.5 and sr.value == "overcast", "leaving Random gives the picks back")
+	q.start_button.pressed.emit()
+	g = GameSetup.current()
+	t.ok(g.light_time == 16.5 and g.light_conditions == "overcast", "GameSetup: 16.5 h, overcast")
+	m.continue_last()
+	t.ok(GameSetup.current().light_time == 16.5 and GameSetup.current().light_conditions == "overcast",
+		"Continue keeps the light")
+	m.open_page("quick")
+	await process_frame
+	# another venue: its window; a time it lacks falls back to Venue default
+	if MenuData.ids(MenuData.venues()).has("garda"):
+		tr.set_value(10.0, true)
+		q.rows["venue"].set_value("garda", true)
+		var w := VenueLook.load_venue("garda").race_window
+		t.ok(tr.choices[1] == w.x and tr.choices[-1] == w.y, "Garda: Time over %s to %s" % [tr.names[1], tr.names[-1]])
+		t.ok(tr.value == -1.0, "10:00 is outside Garda's window: Venue default")
+		t.ok(sr.value == "overcast", "the Sky pick stays")
+		tr.set_value(14.0, true)
+		q.rows["venue"].set_value("practice_waters", true)
+		t.ok(tr.value == 14.0, "back on Practice Waters 14:00 stays")
+	t.ok(SetupPanel.light_from({"light_time": 3.0, "light_conditions": "foggy"}, "practice_waters", "local")
+		== {"light_time": -1.0, "light_conditions": ""}, "a remembered time outside the window and unknown sky: defaults")
 	m.queue_free()
 	await process_frame
 	Settings.reset_current()

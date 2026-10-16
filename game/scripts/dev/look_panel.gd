@@ -138,9 +138,9 @@ func _build_rows() -> void:
 		func() -> Variant: return null, func(_v: Variant) -> void: restart(),
 		"Restarts this race or free sail with that wind, other settings kept (--wind)",
 		"the waves and the boat speed after the restart")
-	_add("breathing", "Chase breathing", "choice", [true, false], on_off,
-		func() -> Variant: return DevLook.breathing(s), func(v: Variant) -> void: DevLook.set_breathing(s, v),
-		"Live. Off: the plain heading follow, no bank, trail or lean (--breathing)",
+	_add("chase_bank", "Chase bank", "choice", [true, false], on_off,
+		func() -> Variant: return DevLook.chase_bank(s), func(v: Variant) -> void: DevLook.set_chase_bank(s, v),
+		"Live. Off: the horizon stays level in turns too (--chase-bank)",
 		"chase camera in a tack or a gybe")
 	_add("drawn_shadows", "Drawn boat shadows", "choice", [true, false], on_off,
 		func() -> Variant: return DevLook.drawn_shadows(s), func(v: Variant) -> void: DevLook.set_drawn_shadows(s, v),

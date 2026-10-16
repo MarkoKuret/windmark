@@ -107,6 +107,21 @@ var grade := {}
 	set(v):
 		haze_curve = v
 		_apply()
+## The overcast deck's diffuse lighting in the sky shader (0 sunlit cumulus, 1 a grey deck; water_render.md §4.5).
+@export_range(0.0, 1.0) var cloud_diffuse := 0.0:
+	set(v):
+		cloud_diffuse = v
+		_apply()
+## A factor on the sun shadows' blur (water_render.md §4.6: a diffuse sun gives soft shadows).
+var shadow_blur_k := 1.0:
+	set(v):
+		shadow_blur_k = maxf(v, 0.0)
+		_apply()
+## The sea body colour's saturation and value and the puffs' darkening under these conditions (water_render.md
+## §4.2, §4.3): the Sea reads them through sea_colors() and puff_k.
+var sea_saturation := 1.0
+var sea_value := 1.0
+var puff_k := 1.0
 ## Development (`--haze=`, the look panel): a factor on the light's haze_max, kept when the hour or conditions change.
 var haze_scale := 1.0:
 	set(v):
@@ -177,6 +192,9 @@ func _resolve(grade_too := true) -> void:
 			"exposure", "haze_begin", "haze_end", "haze_max", "haze_curve"]:
 		set(k, light[k])
 	shadow_strength = light["shadow"]
+	for k in ["shadow_blur_k", "sea_saturation", "sea_value", "puff_k"]:
+		set(k, light[k])
+	cloud_diffuse = light["diffuse"]
 	_batch = false
 	_apply()
 	if grade_too or absf(hour - _grade_hour) >= GRADE_STEP_H:
@@ -235,6 +253,12 @@ func sun_radiance() -> Vector3:
 	return Vector3(sun_color.r, sun_color.g, sun_color.b) * sun_energy
 
 
+## The sea body colours (water_render.md §4.2) under these conditions: the shader's defaults with their saturation
+## and value scaled about their luminance; {col_deep, col_shallow, col_sss} as linear Vector3.
+func sea_colors() -> Dictionary:
+	return Daylight.sea_colors(sea_saturation, sea_value)
+
+
 func sun() -> DirectionalLight3D:
 	return get_node_or_null("Sun") as DirectionalLight3D
 
@@ -243,6 +267,7 @@ func sun() -> DirectionalLight3D:
 ## calls it when its tier is set.
 func apply_quality(tier: int) -> void:
 	SeaQuality.apply_shadows(sun(), tier as SeaQuality.Tier)
+	_apply()  # the conditions' shadow blur on the tier's
 	apply_glow(environment(), tier)
 	LookFx.apply_quality(environment(), tier)
 
@@ -280,6 +305,7 @@ func _apply() -> void:
 		sun.global_basis = Basis.looking_at(-d, up)
 		sun.light_color = sun_color
 		sun.light_energy = sun_energy
+		sun.shadow_blur = SeaQuality.SHADOW_BLUR * shadow_blur_k
 	var env := environment()
 	if env == null:
 		return
@@ -291,6 +317,7 @@ func _apply() -> void:
 		m.set_shader_parameter("sun_color", sun_radiance())
 		m.set_shader_parameter("cloud_cover", cloud_cover)
 		m.set_shader_parameter("cloud_offset", cloud_offset)
+		m.set_shader_parameter("cloud_diffuse", cloud_diffuse)
 	# Environment colours are sRGB-encoded Color values; the fog goes to the horizon colour.
 	env.fog_light_color = horizon.linear_to_srgb()
 	env.fog_mode = Environment.FOG_MODE_DEPTH

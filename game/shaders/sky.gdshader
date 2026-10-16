@@ -9,10 +9,11 @@ uniform vec3 sun_dir = vec3(0.0, 0.5, -0.866);
 uniform vec3 sun_color = vec3(1.0, 0.95, 0.88);
 uniform float cloud_cover = 0.35;
 uniform vec2 cloud_offset = vec2(0.0);
+uniform float cloud_diffuse = 0.0;   // 1: the overcast deck (water_render.md §4.5)
 
 #include "res://shaders/sky_common.gdshaderinc"
 
 void sky() {
 	float disc = AT_CUBEMAP_PASS ? 0.0 : 1.0;
-	COLOR = wm_sky_color(EYEDIR, normalize(sun_dir), sky_horizon, sky_zenith, sun_color, cloud_cover, cloud_offset, disc);
+	COLOR = wm_sky_color(EYEDIR, normalize(sun_dir), sky_horizon, sky_zenith, sun_color, cloud_cover, cloud_offset, disc, cloud_diffuse);
 }

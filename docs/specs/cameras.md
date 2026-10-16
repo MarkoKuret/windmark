@@ -55,22 +55,24 @@ view    = look along (target - eye + (0, lift, 0)), up = +Y   // the lift moves 
 - **Recentre** (`controls.md`): `R = R0`, `el = 13.5°`, `az = 0`, `fov = 40°`. Optional auto-recentre of `az` after
   5 s without camera input (off by default), with `τ = 1 s`.
 
-### 2.1 Breathing
+### 2.1 Follow without lag, bank into turns
 
-The chase camera is not locked rigidly to the boat: it eases into a tack, banks a trace into turns, trails a speed
-change for a moment and leans with the heel, so it moves like a camera boat or a helicopter following her. Every
-effect is small and settles back to the §2 geometry when the boat sails steadily; the long lens (§9) has them too.
+The chase camera follows the boat tightly (owner decision 2026-10-16: no camera lag). The heading follow is the
+first-order filter of §2 with `tau_yaw` (0.35 s by default: in a steady turn the camera trails the heading by
+`tau_yaw` of the turn, and less with a smaller `tau_yaw`); the target is the boat's reference point, never offset by
+the speed or the heel. The one effect on top is a bank, an offset of the view's roll taken from the same frame's
+follow, so it adds no delay:
 
 | effect | rule | constants |
 | --- | --- | --- |
-| eased heading | `psi_c` follows `ψ` as a critically damped spring of natural frequency `w = (5/3)/tau_yaw` (exact step per frame), not the first-order filter of §1: the swing starts gently and stops without overshoot | 4 % of a heading step left after `3·tau_yaw`; lag in a steady turn `2/w` (0.42 s at `tau_yaw = 0.35`, was 0.35 s) |
-| bank | the view rolls into the turn by `0.06 s · ω_c`, `ω_c` the camera's own yaw rate (right side down in a turn to starboard) | at most 1.5° |
-| trail | the target point is offset by `0.8 s · (v_s − v)`, `v` the boat's horizontal velocity (from the render pose, per frame), `v_s` it smoothed with `τ = 0.6 s`; the offset itself smoothed with `τ = 0.15 s`. Speeding up in a gust she pulls ahead in the frame, slowing she drops back; nothing at a steady speed | at most 0.8 m; a pose jump faster than 40 m/s (reset, retarget) snaps |
-| lean | the target point moves toward the masthead side by `0.2·loa·sin(φ_s)`, `φ_s` the heel smoothed with `τ = 0.6 s`, so the heeled rig stays nearer the centre of the frame | wm7 at 25° heel: 0.61 m |
+| bank | after the look-at the view rolls into the turn by `0.06 s · ω_c`, `ω_c` the camera's own yaw rate this frame (right side down in a turn to starboard) | at most 1.5° |
 
-The target of §2 becomes `boat reference point at height zt + trail + lean`, and the view is rolled by the bank after
-the look-at. Reduced motion (`controls.md` §6) turns the bank, the trail and the lean off (and keeps `tau_yaw` at
-0.5 s or more, as before).
+Reduced motion (`controls.md` §6) turns the bank off and keeps `tau_yaw` at 0.5 s or more. The look panel's Chase
+bank row (`hud.md` §18, `--chase-bank=off`) turns the bank off. The long lens (§9) is a chase camera and banks too.
+
+The cinematic pass of 2026-10-04 (a critically damped heading spring, about 20 % more lag in a steady turn, the
+target trailing speed changes and leaning with the heel) is removed: the spring and the trail are lag by nature, and
+the heel lean followed a smoothed heel, so it moved the aim behind the boat's motion.
 
 ## 3. Onboard camera
 
@@ -292,11 +294,10 @@ never saved as the profile's camera. Online the same (it is presentation only).
 12. Choosing: without a course `camera_clip` gives long lens, helicopter, long lens; with one start line, mark,
    long lens, helicopter, start line; `camera_next` from a clip camera gives chase; with clip cameras not allowed
    (online) the key changes nothing; store while a clip camera is shown leaves the presets as they were.
-13. Breathing (§2.1): a 90° heading step is followed without overshoot and more gently than the first-order
-   filter at 0.1 s; a turn to starboard at 25°/s banks right, never past 1.5°; speeding up at 1 m/s² for 2 s trails
-   the target astern by more than 0.1 m and at most 0.8 m, back under 2 cm after 5 s at a steady speed; a 500 m
-   pose jump does not trail; at 25° heel the lean is `0.2·loa·sin 25°` toward the masthead side; with reduced motion
-   none of it.
+13. Follow and bank (§2.1): a 90° heading step is followed at least as fast as a first-order filter of 0.35 s at
+   every frame and never past the new heading; in a steady turn at 25°/s the camera lags by at most 0.35 s and banks
+   right, never past 1.5°; speeding up at 1 m/s² for 2 s leaves the eye where it was behind the boat (within 1 mm);
+   at 25° heel the eye and the aim are those of the upright boat; with the bank off or reduced motion no bank.
 14. Lens: chase, onboard, aerial, free, start line and helicopter have no depth of field; the long lens focuses
    at about 150 m with the whole boat inside the sharp zone and follows the boat as she moves away; the mark shot
    has depth of field; none on tier L. No camera has a vignette: the rig adds no 2-D layer over the 3-D image.

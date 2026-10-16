@@ -157,6 +157,24 @@ func test_conditions() -> void:
 	t.ok(ok_cloud, "clouds: clear none, overcast 0.88 all day, fair more cumulus than hazy")
 	t.ok(ok_sun, "sun: overcast < hazy < fair, overcast exposed up, drawn shadows fainter")
 	t.ok(ok_pale, "hazy horizon paler than fair's at every hour")
+	# overcast is diffuse (water_render.md §4.5): the sun about a tenth of the light on a level deck at 14:00, the
+	# deck drawn diffuse, a grey sky brighter overhead, the sea body greyer and darker, soft shadows, puffs boosted
+	var oc14 := Daylight.light(pw, 14.0, "overcast")
+	var sun_lev := float(oc14["sun_energy"]) * sin(deg_to_rad(oc14["sun_elevation_deg"]))
+	var sky_lev := (oc14["horizon"] as Color).lerp(oc14["zenith"], 0.5).get_luminance()
+	t.ok(sun_lev / (sun_lev + sky_lev) < 0.2, "overcast: the sun %.0f %% of the light" % [100.0 * sun_lev / (sun_lev + sky_lev)])
+	t.ok(oc14["diffuse"] == 1.0 and Daylight.light(pw, 14.0, "fair")["diffuse"] == 0.0, "overcast deck diffuse, fair not")
+	t.ok((oc14["zenith"] as Color).get_luminance() > (oc14["horizon"] as Color).get_luminance(), "overcast: brighter overhead")
+	t.ok((Daylight.light(pw, 18.5, "overcast")["horizon"] as Color).get_luminance()
+		< (oc14["horizon"] as Color).get_luminance(), "overcast: the deck dims as the sun drops")
+	var sc_f := Daylight.sea_colors(1.0, 1.0)
+	var sc_o := Daylight.sea_colors(oc14["sea_saturation"], oc14["sea_value"])
+	var df: Vector3 = sc_f["col_deep"]
+	var do: Vector3 = sc_o["col_deep"]
+	t.ok(df.is_equal_approx(Daylight.SEA_DEEP) and (do.z - do.x) < 0.6 * (df.z - df.x) and do.dot(Daylight.LUMA) < df.dot(Daylight.LUMA),
+		"overcast sea body greyer and darker")
+	t.ok(oc14["shadow_blur_k"] > 1.0 and oc14["shadow"] <= 0.15 and oc14["puff_k"] > 1.0,
+		"overcast: soft faint shadows, puffs boosted")
 	var am := Daylight.light(pw, 8.0, "fair")
 	var md := Daylight.light(pw, 13.0, "fair")
 	t.ok(am["cloud_cover"] < md["cloud_cover"], "cumulus build through the day (%.2f at 08:00, %.2f at 13:00)"
@@ -280,7 +298,7 @@ func test_grade(sky: SkyRig) -> void:
 				var dv: Vector3 = (LookFx.grade(c, g) - c).abs()
 				worst = maxf(worst, dv[dv.max_axis_index()])
 		t.ok(mono, "%s: the grey ramp stays in order" % name)
-		var least := 0.04 if name.ends_with("overcast") else 0.06
+		var least := 0.02 if name.ends_with("overcast") else 0.06  # overcast: a flat, low-contrast grade
 		t.ok(worst > least and worst <= 0.16, "%s: clearly visible but bounded: values move up to %.3f" % [name, worst])
 	# whites at midday: a white or light grey sail stays neutral, at strength 1 and 1.5
 	for k in [1.0, 1.5]:

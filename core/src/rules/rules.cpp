@@ -181,7 +181,7 @@ void Rules::boat_step(std::uint32_t n, std::size_t i, const Race& race, const Ru
   s.twa_prev = s.has_prev ? s.twa : wrap_pi(in.twd - in.psi);
   s.twa = wrap_pi(in.twd - in.psi);
   if (in.tws != s.vmg_tws) {
-    const PolarVmg v = polar_vmg(*s.perf, in.tws, vmg_[s.perf]);
+    const PolarVmg v = polar_vmg(*s.perf, in.tws);
     s.theta_ch = v.up_twa > 0.0f ? v.up_twa : 0.7f;
     s.theta_dn = v.down_twa > 0.0f ? v.down_twa : 2.6f;
     s.vmg_tws = in.tws;

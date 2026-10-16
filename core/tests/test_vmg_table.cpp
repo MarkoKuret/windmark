@@ -53,6 +53,7 @@ TEST_CASE("vmg table: equal to the full scan over a fine wind sweep") {
 }
 
 TEST_CASE("vmg table: exact on both sides of every switch, including the best config's") {
+  std::int32_t jumps_all = 0;
   for (const std::string cls : {"wm7", "wm12"}) {
     const wm::PerfData& p = wm_test::perf(cls);
     std::int32_t jumps = 0;
@@ -80,6 +81,9 @@ TEST_CASE("vmg table: exact on both sides of every switch, including the best co
       }
     }
     MESSAGE(cls, ": ", jumps, " angle jumps");
-    CHECK(jumps > 0);
+    jumps_all += jumps;
   }
+  // The switches are exercised: a class need not have one (the ORC-fitted wm12 tables, WM-138, have none of more
+  // than a degree), but the shipped classes together do.
+  CHECK(jumps_all > 0);
 }

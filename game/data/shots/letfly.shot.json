@@ -1,0 +1,12 @@
+{
+  "schema": "windmark.shot/1",
+  "note": "Let fly: one boat free sailing; the player's boat lets her sheets fly for 4 s (the let_fly action held), then trims back in. Chase from the leeward bow quarter so the sails are seen flogging.",
+  "portrait": true,
+  "hud": false,
+  "world_tags": false,
+  "cues": [
+    { "t": 0, "camera": "chase", "params": { "R": 22, "el_deg": 12, "az_deg": 130 } },
+    { "t": 4, "input": "let_fly", "for": 4 },
+    { "t": 14, "end": true }
+  ]
+}

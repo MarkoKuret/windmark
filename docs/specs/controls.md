@@ -284,6 +284,8 @@ The options are saved per player in the settings file and set in the settings sc
     screen for the rate, so the frames stay clean. The clean pause itself shows nothing. A restart (`reset_boat`,
     the pause menu) sets the rate back to ×1, ends a clean pause and clears the note without showing one.
   - Online both actions do nothing: the race runs on the server's clock.
+  - A **shot script** (`cameras.md` §9.2, `--shot=<path>`) runs these actions, the HUD and world tags toggles, the
+    camera choice and held boat actions at set times and quits by itself, for unattended capture.
 - **World tags** (`world_tags`, offline and online): hides or shows the world tags of `hud.md` §16.4 (mark tag,
   tack point, name tags, edge pointers, next-mark arrow) and the on-water guides of the course (the start, gate and
   finish lines drawn on the water, the laylines, the zone circle, the rounding arrows and the far next-mark

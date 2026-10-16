@@ -263,6 +263,51 @@ centred. It takes no input; `camera_next` leaves it for the chase camera (the ot
 there is no way back to it in that race. It is not a clip camera (no depth of field) and is
 never saved as the profile's camera. Online the same (it is presentation only).
 
+### 9.2 Shot scripts (offline)
+
+For unattended clip capture (Godot's Movie Maker, `--write-movie` with `--fixed-fps`) an offline session can run a
+**shot script**: `--shot=<path>` after `--` (a `res://` or file path, or an id of `game/data/shots/<id>.shot.json`)
+on the sail scene, next to the session's own flags (`--scenario=<id>`, or `--race --fleet=6 --watch`, or free
+sailing). It does in order, at set times, what the capture keys do by hand (`controls.md` §7, the clip cameras of
+§9), and ends the run by itself. Online it is not read.
+
+**The file** (`windmark.shot/1`, JSON):
+
+| key | default | meaning |
+| --- | --- | --- |
+| `schema` | required | `"windmark.shot/1"` |
+| `portrait` | `false` | the portrait capture preset (`menus.md` §3, 9:16, the HUD's portrait layout) for this run |
+| `hud` | `true` | the HUD panels shown at the start (`hud_hide`) |
+| `world_tags` | `true` | the world tags and on-water guides shown at the start (`world_tags`) |
+| `start` | none | the shot time of the first frame: the world is stepped there before the first frame is drawn (a race shot starting at `-20` does not record the minutes of the sequence before it) |
+| `cues` | `[]` | the cues, each `{"t": <shot s>, <one action>}`, run in time order (the file's order for equal times) |
+| `note` | | free text, ignored |
+
+**Shot time** (s): the simulation's time from the session's zero (a rules scenario: its clip time 0, `race.md` §14;
+a race: the gun, so times before it are negative; free sailing: the world's start), taken at the rendered pose
+(tick plus the interpolation fraction). It follows the simulation, so slow motion stretches it on screen, and under
+`--fixed-fps` it advances by the same amount every frame. While the simulation does not run (a clean pause, the
+pause menu) the shot time runs on the frame time instead, so a `resume` or `end` after a `pause` comes: after a
+pause of `p` s every later cue is `p` s of shot time on from the simulation's clock. With a shot script a rules
+scenario does not pause at its clip's end: the shot ends the run.
+
+**Actions** (one per cue; the clip keys' notes and labels are not shown, so the frames stay clean):
+
+| action | effect |
+| --- | --- |
+| `"camera": "<mode>"` | selects `chase`, `onboard`, `aerial`, `free`, `start_line`, `mark`, `long_lens` or `helicopter` (a cut, as the keys do); optional `"preset": 1..8` recalls that slot instead (its mode and parameters), optional `"params": {...}` sets the mode's own parameters over it (chase and long lens `R`, `el`, `az`, `fov`, `tau_yaw`, `tau_heave`, `lift`; aerial `H`, `tilt`, `fov`; onboard `fov`; free `yaw`, `pitch`, `fov`; helicopter `scale`); angle keys may be written in degrees with `_deg` (`el_deg`, `az_deg`, `tilt_deg`, `yaw_deg`, `pitch_deg`). A clip camera that cannot be placed now (§9 Choosing) leaves the camera as it was, with a warning |
+| `"slow": 1 \| 0.5 \| 0.25` | the simulation rate (`capture_slow`) |
+| `"pause": true`, `"resume": true` | the clean pause on and off (`capture_pause`; the cameras keep moving) |
+| `"hud": true \| false` | the HUD panels shown or hidden |
+| `"tags": true \| false` | the world tags and guides shown or hidden |
+| `"view": <boat> \| "leader"` | views that boat (spectating, §1), the cameras cut to her |
+| `"input": "<action>", "for": <s>` | holds a boat action of `controls.md` §2 (`let_fly`, `helm_left`, ...) for `for` s of shot time, as if its key were held (a press on the first frame); for the player's own boat |
+| `"end": true` | quits the application cleanly (Movie Maker closes its file) |
+
+`--quit-at=<s>` (with or without a shot) quits at that shot time, the fallback when a file has no `end`. A file that
+does not load is reported and the session runs without it (nothing quits by itself then, save `--quit-at`). Shot
+files are tuned by eye: their times are the best guesses of the clip, not rules.
+
 ## 10. Tests (headless)
 
 1. Chase geometry: boat at the origin, `ψ = 0`, defaults, `wm7` (`R0 = 24.5` m): eye at
@@ -305,6 +350,11 @@ never saved as the profile's camera. Online the same (it is presentation only).
 15. Finish view: `ease_to` the finish view from the chase camera at a boat at the origin: the first frame's eye is
    the chase eye (within 1 cm), after 2.5 s the drift's (45 to 70 m from the boat, 5 to 11 m up), and halfway in
    between neither; `camera_next` from it gives chase; the profile keeps chase.
+
+16. Shot scripts (§9.2): a file loads, a wrong schema, an unknown action, a cue without a time or with two
+   actions is refused; cues run in time order; a camera cue selects its mode (a clip camera with the course); a
+   `slow`, `pause`, `resume`, `hud`, `tags` and `input` cue act as their keys do and the shot time keeps running
+   through the pause; `end` (and `--quit-at`) end the run; a race shot with `start` begins at that time from the gun.
 
 ## 11. Later: TV director and replay
 

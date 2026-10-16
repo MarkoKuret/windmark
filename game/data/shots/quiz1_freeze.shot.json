@@ -1,0 +1,12 @@
+{
+  "schema": "windmark.shot/1",
+  "note": "Quiz freeze frame (scenario port_starboard): the two boats converging, frozen 1.6 s before the contact (19.2 s), no HUD, world tags on. The pause holds 3 s of video, then the run ends.",
+  "portrait": true,
+  "hud": false,
+  "world_tags": true,
+  "cues": [
+    { "t": 0, "camera": "chase", "params": { "R": 60, "el_deg": 22, "az_deg": 20 } },
+    { "t": 17.6, "pause": true },
+    { "t": 20.6, "end": true }
+  ]
+}

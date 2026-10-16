@@ -169,6 +169,29 @@ func select_mode(m: int, t: CamTypes.Target) -> void:
 				cam(m).snap(t)
 
 
+## A shot script's camera cue (cameras.md §9.2): mode `m`, or preset slot `preset` (0..7) when given, then `params`
+## over that mode's own. A clip camera that cannot be placed now changes nothing: false.
+func cue(m: int, t: CamTypes.Target, params := {}, preset := -1) -> bool:
+	if _first:
+		factory_presets(t.r0())
+		chase.recentre(t)
+		_first = false
+	start_line.course = course
+	mark.course = course
+	if preset >= 0:
+		recall_preset(preset, t)
+	elif is_clip(m):
+		if not clip_allowed or not clip_available(m):
+			return false
+		select_mode(m, t)
+		_clip_last = m
+	else:
+		select_mode(m, t)
+	if not params.is_empty():
+		cam(mode).set_params(params)
+	return true
+
+
 func next_mode(t: CamTypes.Target) -> void:
 	select_mode(Mode.CHASE if is_clip(mode) or mode == Mode.FINISH else (mode + 1) % 4, t)
 

@@ -1,0 +1,13 @@
+{
+  "schema": "windmark.shot/1",
+  "note": "Puffs from above: a race watched with six boats, 20 s from 30 s after the gun; a wide helicopter orbit, then the aerial camera high and tilted so the puffs read on the water. Run with --race --fleet=6 --watch.",
+  "portrait": true,
+  "hud": false,
+  "world_tags": false,
+  "start": 30,
+  "cues": [
+    { "t": 30, "camera": "helicopter", "params": { "scale": 3 } },
+    { "t": 40, "camera": "aerial", "params": { "H": 450, "tilt_deg": 55, "fov": 50 } },
+    { "t": 50, "end": true }
+  ]
+}

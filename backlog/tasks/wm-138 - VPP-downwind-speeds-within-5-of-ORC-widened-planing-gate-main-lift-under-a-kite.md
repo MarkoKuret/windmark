@@ -7,7 +7,7 @@ status: In Progress
 assignee:
   - '@downwind'
 created_date: '2026-10-16 19:14'
-updated_date: '2026-10-16 20:25'
+updated_date: '2026-10-16 21:12'
 labels:
   - vpp
 dependencies: []
@@ -21,5 +21,5 @@ ordinal: 165000
 - [x] #2 planing gate kept but widened and fitted to ORC, no cliff between Froude-similar hulls
 - [x] #3 MAIN_ALONE_CL applies only to the main-alone config
 - [x] #4 jib alone downwind follows ORC
-- [ ] #5 spec, perf tables and tests updated, all suites green
+- [x] #5 spec, perf tables and tests updated, all suites green
 <!-- AC:END -->

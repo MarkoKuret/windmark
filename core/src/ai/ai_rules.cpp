@@ -192,8 +192,13 @@ bool tack_safe(AC& x, AB& a, const Me& m, float psi_new, bool gybe) {
     predict_ctrv(motion_of(x, j), kSamples, tj);
     const float tj_twa = wrap_pi(water_wind_clean(x.w.env(j)).from - x.w.boat(j).state().psi);
     const float g = tracks_gap(hull(x, j), x.r_hull[j], tj, oh, ro, own, 0, kSamples, 2.0f * m.L);
-    // Rule 13: never tack within 3 L into the path of a boat on the tack we go to... or of one we must keep clear of.
-    if (v_dist(x.race.boat(j).c, m.c) < 3.0f * m.L + x.r_hull[j] && g < m.L) return false;
+    // Rule 13: never tack within 3 L into her path: the tack brings the hulls within a length and closer than they
+    // are now. A tack that keeps the present gap (the boat astern turning away behind her) is not into her path;
+    // counting the gap they already have locks two boats a length apart out of tacking, past the layline.
+    if (v_dist(x.race.boat(j).c, m.c) < 3.0f * m.L + x.r_hull[j] && g < m.L &&
+        g < tracks_gap(hull(x, j), x.r_hull[j], tj, oh, ro, own, 0, 0, 2.0f * m.L) - 0.1f * m.L) {
+      return false;
+    }
     if (g < margin(x)) return false;
     // Rules 13/15: from the poses 3 s on, the other boat must still be able to keep clear of us.
     const bool we_gain = sgn(tj_twa) != new_tack || gybe;

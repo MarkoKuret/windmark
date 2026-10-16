@@ -701,6 +701,14 @@ void rules_overlay(AC& x, AB& a, const Me& m, Vec2 aim, bool obj_turn) {
         a.let_fly = !(m.rb.started && a.slow_t > 5.0f);
         const float eb = wrap_pi(brg_B - m.s.psi);
         a.psi_target = wrap_2pi(m.s.psi - sgn(eb) * 30.0f * DEG);
+        // Not into a course object (§6.4): a turn away that runs her onto a mark or a committee boat leaves her
+        // pinned on it; then she holds her heading and brakes.
+        static thread_local Track fb;
+        own_track(m, a.psi_target, 0, true, false, fb);
+        if (!track_clear_of_objects(x, a, fb)) {
+          own_track(m, m.s.psi, 0, true, false, fb);
+          if (track_clear_of_objects(x, a, fb)) a.psi_target = m.s.psi;
+        }
         a.forced = true;
         a.tactic = emergency ? AiTactic::Emergency : AiTactic::KeepClear;
         return;

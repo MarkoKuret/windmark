@@ -4,7 +4,7 @@ extends SceneTree
 ## the imported copies released, every opaque surface on the boat material, the sails on their own, and the baked
 ## AO (COLOR_0 red) on the ambient light only. Run by tests/run_boat_import_test.sh.
 
-const CLASSES := ["wm7", "wm12"]
+const CLASSES := ["wm7", "wm12", "wm10"]
 
 var failures := 0
 

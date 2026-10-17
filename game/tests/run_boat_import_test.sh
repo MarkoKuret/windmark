@@ -7,7 +7,7 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 repo=$(cd "$here/.." && pwd)
 out="$here/generated/boats"
 godot=${GODOT:-godot}
-classes="wm12 wm7"
+classes="wm12 wm7 wm10"
 # generator test classes (features no shipped class uses yet, such as a spinnaker pole)
 fixtures="$repo/tools/boatgen/tests/fixtures"
 

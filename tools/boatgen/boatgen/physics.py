@@ -46,7 +46,7 @@ def hydrostatics(boat):
     for g in boat.skin:
         below, _ = split_by_plane_z(g, 0.0)
         wet += mesh_area(below) if below is not None else 0.0
-    wet_app = mesh_area(app.fin_geom) + mesh_area(app.bulb)
+    wet_app = mesh_area(app.fin_geom) + (mesh_area(app.bulb) if app.has_bulb else 0.0)
     rb, _ = split_by_plane_z(app.rudder_geom, 0.0)
     wet_app += mesh_area(rb) if rb is not None else 0.0
     crew = cls["crew"]["weight"]

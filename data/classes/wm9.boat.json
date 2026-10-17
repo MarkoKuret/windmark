@@ -1,0 +1,66 @@
+{
+  "schema": "windmark.boatclass/1",
+  "id": "wm9",
+  "name": "Windmark 9 Classic",
+  "version": 1,
+  "hull": {
+    "loa": 9.2,
+    "lwl": 6.9,
+    "beam_max": 2.14,
+    "bwl": 1.72,
+    "draft_canoe": 0.34,
+    "displacement": 1520,
+    "prismatic": 0.54,
+    "section_shape": {"type": "round", "midship_coefficient": 0.70},
+    "rocker": {"fwd": 0.34, "aft": 0.34},
+    "freeboard": {"bow": 0.92, "mid": 0.58, "stern": 0.72},
+    "transom_width": 0.95,
+    "stem_x": 4.55,
+    "transom_x": -4.65,
+    "max_beam_station": 0.47,
+    "bow_fineness": 1.6
+  },
+  "keel": {
+    "type": "fin",
+    "depth": 1.42,
+    "chord_root": 1.85,
+    "chord_tip": 1.15,
+    "thickness": 0.12,
+    "sweep": 0.40,
+    "x": 0.10,
+    "fin_mass": 960,
+    "bulb_mass": 0
+  },
+  "rudder": {"type": "spade", "depth": 1.15, "chord_root": 0.46, "chord_tip": 0.27, "thickness": 0.12, "x": -3.25},
+  "rig": {
+    "I": 9.35,
+    "J": 2.70,
+    "P": 9.7,
+    "E": 3.4,
+    "mast_height": 11.5,
+    "mast_x": 1.80,
+    "boom_height": 1.55,
+    "fractional": 0.86,
+    "pole": 2.70
+  },
+  "sails": [
+    {"id": "main", "type": "main", "area": 19.5},
+    {"id": "jib", "type": "jib", "area": 10.0},
+    {"id": "kite", "type": "spinnaker_sym", "area": 44.5, "mid_girth_frac": 1.05}
+  ],
+  "crew": {"count": 3, "weight": 265},
+  "start": {"front_sail": "jib"},
+  "visual": {
+    "hull": {"bilge_fillet": 0.30, "topside_flare": 2.0, "sheer_spring": 0.06},
+    "rudder": {"sweep": 0.22},
+    "deck": {
+      "cockpit": {"length": 3.0, "width": 0.66, "depth": 0.36, "open_transom": false, "aft_deck": 1.15},
+      "cabin": {"height": 0.12, "meet_aft_of_mast": 0.05, "slope_from": 0.25, "width": 0.52, "side_rake": 0.40, "edge_radius": 0.03, "windows": false},
+      "lifelines": false,
+      "steering": "tiller",
+      "hatches": 1
+    },
+    "rig": {"spreaders": 1, "spreader_sweep": 0.30, "backstay": true},
+    "sails": {"main": {"head_width": 0.12}}
+  }
+}

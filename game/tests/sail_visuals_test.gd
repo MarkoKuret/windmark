@@ -438,7 +438,9 @@ func _camber_tests(impl: String) -> void:
 			var head := row_camber(la, 10, 11)
 			var msg := "%s awa %.0f deg: camber %.3f at mid height, %.3f foot, %.3f head" % [
 				"asym" if kind == K.ASYM else "sym", c[0], mid, foot, head]
-			t.ok(mid >= 0.20 and mid <= 0.30 and foot < mid and head < mid, msg)
+			# the asymmetric shallower at the foot; the symmetric as deep at the foot as at mid height (§6.4)
+			var foot_ok := foot < mid if kind == K.ASYM else foot >= 0.9 * mid
+			t.ok(mid >= 0.20 and mid <= 0.30 and foot_ok and head < mid, msg)
 			if impl == "ref":
 				print("  " + msg)
 	var cz: Variant = mk(impl, K.HEADSAIL, M.LUFF, {"fill_gain": 0.7, "fill_curve": 1.3, "flutter_amp": 0.08,
@@ -1325,7 +1327,7 @@ func _clear_check(fp: BoatView.SailPart, obs: Array, ms: Vector3, mh: Vector3, c
 ## §12 test 19: the generator's preview poses (tools/boatgen/boatgen/sail_set.py, written to
 ## generated/boats/<id>.sets.json) draw the sails as BoatView does, native and reference, within PARITY_TOL.
 const PARITY_TOL := 0.01
-const PARITY_CLASSES := ["wm7", "wm12", "test_sym"]
+const PARITY_CLASSES := ["wm7", "wm12", "wm9", "test_sym"]
 
 
 func _parity() -> void:

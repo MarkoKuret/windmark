@@ -2,7 +2,7 @@
   "schema": "windmark.boatclass/1",
   "id": "wm9",
   "name": "Windmark 9 Classic",
-  "version": 1,
+  "version": 2,
   "hull": {
     "loa": 9.2,
     "lwl": 7.3,
@@ -27,26 +27,26 @@
     "chord_tip": 0.85,
     "thickness": 0.09,
     "sweep": 0.40,
-    "x": 0.10,
+    "x": -0.22,
     "fin_mass": 960,
     "bulb_mass": 0
   },
   "rudder": {"type": "spade", "depth": 1.15, "chord_root": 0.46, "chord_tip": 0.27, "thickness": 0.12, "x": -3.25},
   "rig": {
     "I": 9.9,
-    "J": 2.70,
+    "J": 3.35,
     "P": 10.3,
     "E": 3.4,
     "mast_height": 12.1,
-    "mast_x": 1.80,
+    "mast_x": 1.15,
     "boom_height": 1.55,
     "fractional": 0.86,
-    "pole": 2.70
+    "pole": 3.35
   },
   "sails": [
-    {"id": "main", "type": "main", "area": 21.0},
-    {"id": "jib", "type": "jib", "area": 12.0},
-    {"id": "kite", "type": "spinnaker_sym", "area": 43.5, "mid_girth_frac": 0.97}
+    {"id": "main", "type": "main", "area": 20.0},
+    {"id": "jib", "type": "jib", "area": 13.5},
+    {"id": "kite", "type": "spinnaker_sym", "area": 44.5, "foot": 4.8, "mid_girth_frac": 0.95}
   ],
   "crew": {"count": 3, "weight": 285, "hiking_arm": 1.0},
   "start": {"front_sail": "jib"},

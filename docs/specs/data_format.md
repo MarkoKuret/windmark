@@ -789,6 +789,7 @@ The general rules of §1 hold; colours are `"#rrggbb"` sRGB strings. Top level:
 | `hull.graphic` | | none | one hull graphic (below) |
 | `deck.gelcoat` | | `#e2e2dc` | the smooth gelcoat: cabin, coamings, cockpit sides, margins and pads round the hardware |
 | `deck.nonslip` | | `#a8a8a0` | the moulded non-slip areas |
+| `deck.teak` | | none | a laid teak deck instead of the moulded non-slip (opt-in, baked by `tools/liverybake` into the deck maps): `{ "wood": "#9c6a3c", "caulk": "#1e1b18", "plank": 0.055, "seam": 0.005, "king": 0.12, "length": 2.4 }` (colours, plank and caulked seam widths, king plank width, plank length between staggered butt joints, m). On the deck the planks follow the sheer inboard of a smooth covering board and are nibbed into a king plank on the centreline; on the cockpit sole and the coachroof top they run fore and aft; the sliding hatch's track stays gelcoat. Set `deck.nonslip` to a teak tone too: the far levels and a boat without baked textures show that colour |
 
 The transom wears the hull's colours (`hull.topsides`, the graphic's return, `hull.boot_stripe` where the stripe's
 height reaches it).

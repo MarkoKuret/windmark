@@ -109,7 +109,7 @@ every size of boat.
 | `flutter_rate` `r_f` | rad/s per m/s | size rule | size rule | size rule | size rule | size rule | flutter phase speed per m/s of `aws` |
 | `flutter_rate_max` `w_max` | rad/s | size rule | … | … | … | … | cap of the phase speed |
 | `twist_top` | rad | 0.070 (4°) | 0.175 (10°) | 0.140 (8°) | 0.45 (26°) | 0 | extra rotation of the head row to leeward (§7.1; the asymmetric spinnaker's grows with the AWA, §7.3) |
-| `camber` `k_c` | – | – | – | 0.12 | 0.27 | 0.26 | largest camber over chord: flying sails when full, at a third of the height (asymmetric) or mid height (symmetric) (§6.3), the cap of the code zero (§6.2) |
+| `camber` `k_c` | – | – | – | 0.12 | 0.27 | 0.30 | largest camber over chord: flying sails when full, at a third of the height (asymmetric) or mid height (symmetric) (§6.3), the cap of the code zero (§6.2) |
 | `tack_line_max` | – | – | – | – | 0 | – | largest tack swing on a fixed sprit, fraction of `Sl` (§7.3); 0: the tack stays on its fitting (owner, 2026-10-11; was 0.04) |
 | `furl_radius` | m | – | size rule | size rule | – | – | radius of a furled sail's roll (§8.3) |
 
@@ -126,7 +126,9 @@ Fixed constants of the clew set (§7.7): fade height 0.3 of `Sl`, corner reach 2
 Fixed constants of the clearance (§7.4): push slope `k_p = 0.3` (m of push lost per m of cloth), ease threshold
 `P_e = 2·c` (the leech depth the push takes on before the sail is eased; 3·c before 2026-10-10: a push deeper than
 2·c could jump between frames where the stopped main of §7.6 lies along the kite's leech), ease cap `e_max = 0.35`
-rad (20°).
+rad (20°). Of the forestay (§7.4, a flying sail on a pole): margin `c_s = max(0.25·J_b, c)` and half width
+`w_s = 0.6·J_b` (`J_b` the horizontal distance from the mast axis to the forestay's tack fitting), full shift from
+`0.5` of the chord, `0.3` of it lost toward the leech, fading out over the top `0.3` of the height.
 The `camber` key replaces an earlier `depth` (0.30, 0.35 of the flat row chord, applied without shortening the
 chord), which drew the kites about 40 % too deep and too wide; a `depth` key in a look block is ignored. The
 asymmetric spinnaker's `camber` 0.27 and `twist_top` 0.45 (2026-10-04, were 0.26 and 0) follow the measured J/80
@@ -272,8 +274,12 @@ m   = (w.a + 0.1 * I2 * sin(q),  w.l,  w.n + I2 * cos(q))
 
 ### 6.4 Symmetric spinnaker
 As §6.3 with `F` from the sheet angle (§5.1: strapped in it goes flat, eased it fills slightly beyond the nominal
-camber, to 29 % at mid height with the defaults), but symmetric fore and aft: the height profile
-`p_i = 1 − 0.45·(2·h_i − 1)²` (deepest at mid height, 0.55 at the foot and the head) and the chordwise profile
+camber, to 34 % at mid height with the defaults), but symmetric fore and aft: the height profile
+`p_i = 1 − 0.3·max(0, 2·h_i − 1)²` (the full depth from the foot to mid height, 0.7 at the head; 2026-10-17, was
+`1 − 0.45·(2·h_i − 1)²` with `camber` 0.26: a real running symmetric spinnaker is as deep in its lower panels as
+anywhere, its foot curving round and forward between the clews, not a flat edge) and the lower panels' belly sags: each vertex's
+height along the luff drops by `0.35·e·max(0, 1 − h_row/0.35)²`, `e` its camber offset (`drow·s·C·prof`), so the foot
+curves round, forward and down between the clews and the chordwise profile
 `4·uc·(1 − uc)` in place of `sin(π·uc^q_i)`; plus a **luff collapse** along the windward edge (column 0, the pole
 side) while it luffs:
 ```
@@ -434,6 +440,29 @@ then the mast: P = P + g * (c_P + smax(x - c_P) - x)
   one for the vertices the local push moved; two passes over the grid for the spread; plus a few dozen for the
   ease: about 60 µs per flying sail on a 26 × 16 grid (native), with the kite sheeted at the main's angle so that
   most of it is near the main (the whole kite update 83 µs, a wm7 with three sails 100 µs per frame).
+
+**Forward of the forestay** (a flying sail on a pole; 2026-10-17). A real symmetric spinnaker flies well forward
+of the forestay, its shoulders and foot projected ahead of the bow, while the pole end, the head and the clew's
+sheet hold its corners. Placed by the core's angles alone its foot lies across the boat abreast the pole (with
+the pole squared on a run, abreast the mast), up to two metres aft of the forestay on wm9. After the placement and
+before the push above, the sail is shifted forward, row by row (sidecar `forestay_tack` → `hounds`, the stay):
+```
+J_b  = horizontal distance from the mast axis to forestay_tack
+c_s  = max(0.25 * J_b, c),  w_s = 0.6 * J_b
+w_j  = smoothstep(0, 1, uc_j / 0.5) * (1 - 0.3 * smoothstep(0, 1, (uc_j - 0.5) / 0.5))   // none at the luff
+for every vertex P of rows 0 .. last-1 with stay_tack.z <= P.z <= hounds.z and w_j >= 0.25:
+  Q = the stay at P's height;  dy = |dot(P - Q, port)|
+  d = (c_s - dot(P - Q, fwd)) * (1 - smoothstep(0, 1, (dy - w_s) / c_s))   // ahead of the stay by c_s near it
+  D_i = max(D_i, d / max(w_j, 0.5))
+D_i = max(D_i, D_(i+1))                                   // from the head row down: it grows toward the foot
+P   = P + fwd * D_i * smoothstep(0, 1, (1 - h_row_i) / 0.3) * w_j * f_a      // f_a: the flying share of 7.6
+```
+The shift scales with the foretriangle (`J_b`), so every pole class keeps its kite clear by the same proportion; the
+head stays at the halyard and the luff at the pole, the middle of the chord moves forward in full and the clew
+somewhat less, so the sail leans forward from the masthead with its foot well ahead of the bow, as a real one
+does. The rows only move forward, so the sail stays clear of the main and the mast, and the push above still
+follows. The terms are continuous in the placed sail (but at the stay's two ends), so it moves smoothly with trim,
+wind and gybes.
 
 ### 7.5 The tack on its fitting
 A flying sail on a sprit is tacked to the fitting at the sprit end (the generator puts the rest tack there,
@@ -1100,8 +1129,8 @@ Flutter phase `φ = 0` unless stated.
     and against the sun.
 17. **Camber.** Rectangle, asym defaults, `aws` 6 kn, `awa` 90° and 150° (`β` at the leeward optimum): the largest
     distance of a row from its luff–leech line over its chord is 0.20–0.30 at mid height and smaller at the foot
-    and the head (asymmetric 0.23 and 0.25 at mid height, 0.19 and 0.21 on the foot); symmetric the same at full
-    fill (at most 0.30); a code zero (`camber` 0.12) at `β` 25°, 40° and
+    and the head (asymmetric 0.23 and 0.25 at mid height, 0.19 and 0.21 on the foot); symmetric the same at mid
+    height at full fill (at most 0.30) but at least 0.9 of it on the foot (§6.4: a deep foot) and less at the head; a code zero (`camber` 0.12) at `β` 25°, 40° and
     60° 0.07–0.12, never above 0.12.
 18. **Clearance.** On the generated `wm7` and `wm12` (both kites and the code zero), over TWA 60–180° (20° steps),
     TWS 6, 12, 22 kn, both tacks and the trims optimum, 15 % over-sheeted and 20 % eased (apparent wind from the

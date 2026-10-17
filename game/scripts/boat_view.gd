@@ -109,6 +109,10 @@ var _pole_rest := Transform3D.IDENTITY
 var _pole_axis := Vector3.UP
 var _mast_step := Vector3.ZERO
 var _mast_head := Vector3.ZERO
+## the forestay, tack fitting and hounds (model axes), for a flying sail on a pole (sail_visuals.md §7.4)
+var _stay0 := Vector3.ZERO
+var _stay1 := Vector3.ZERO
+var _has_stay := false
 var _mast_axis := Vector3.UP
 ## §7.5 the flying sails' sheet lead block on starboard (model axes; the sidecar's rig.sheet_leads.flying.lead)
 var _flying_lead := Vector3.ZERO
@@ -304,6 +308,10 @@ func _find_parts() -> void:
 		_mast_step = Frames.body_to_model(_vec(rig["mast_step"]))
 		_mast_head = Frames.body_to_model(_vec(rig["masthead"]))
 		_mast_axis = (_mast_head - _mast_step).normalized()
+	if rig.has("forestay_tack") and rig.has("hounds"):  # §7.4: a kite on a pole flies forward of the forestay
+		_stay0 = Frames.body_to_model(_vec(rig["forestay_tack"]))
+		_stay1 = Frames.body_to_model(_vec(rig["hounds"]))
+		_has_stay = true
 	if rig.has("sheet_leads") and rig["sheet_leads"] is Dictionary and rig["sheet_leads"].has("flying"):
 		_flying_lead = Frames.body_to_model(_vec(rig["sheet_leads"]["flying"]["lead"]))
 		_has_flying_lead = true
@@ -774,7 +782,7 @@ func _shape_params(sp: SailPart, look: Dictionary, furling: bool) -> Dictionary:
 			"tack_line_max": 0.0}
 	elif t == "spinnaker_sym":
 		kind = SailShapeRef.Kind.SYM
-		d = {"fill_gain": 1.5, "fill_curve": 1.5, "flutter_amp": 1.0, "twist_top": 0.0, "camber": 0.26}
+		d = {"fill_gain": 1.5, "fill_curve": 1.5, "flutter_amp": 1.0, "twist_top": 0.0, "camber": 0.30}
 	var loa := info.loa
 	d["flutter_rate"] = 0.6 + 2.4 * clampf((12.0 - loa) / 5.0, 0.0, 1.0)
 	d["flutter_rate_max"] = 9.0 + clampf((loa - 7.0) / 5.0, 0.0, 1.0)
@@ -801,6 +809,9 @@ func _shape_params(sp: SailPart, look: Dictionary, furling: bool) -> Dictionary:
 		p["mast_head"] = _mast_head
 		if _has_flying_lead:  # §7.5, §7.6 its sheet's lead block
 			p["sheet_lead"] = _flying_lead
+		if _has_stay and sp.mode == Mode.POLE:  # §7.4 forward of the forestay
+			p["forestay_tack"] = _stay0
+			p["hounds"] = _stay1
 	return p
 
 

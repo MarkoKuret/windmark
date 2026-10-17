@@ -62,7 +62,9 @@
       "steering": "wheel",
       "wheel": {"twin": true, "diameter": 1.2},
       "grinders": 2,
-      "halyard_leads": "modelled"
+      "halyard_leads": "modelled",
+      "toe_rail": 0.012,
+      "hardware_finish": "black"
     },
     "rig": {"spreaders": 3, "spreader_sweep": 0.26, "backstay": true},
     "sails": {"main": {"head_width": 0.40}}

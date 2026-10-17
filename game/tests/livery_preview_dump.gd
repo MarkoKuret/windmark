@@ -533,6 +533,8 @@ static func _uniforms(m: ShaderMaterial) -> Dictionary:
 			out[n] = Array(v)
 		elif v is PackedVector4Array:
 			out[n] = Array(v).map(func(q: Vector4) -> Array: return [q.x, q.y, q.z, q.w])
+		elif v is PackedVector3Array:
+			out[n] = Array(v).map(func(q: Vector3) -> Array: return [q.x, q.y, q.z])
 		elif v is Texture2D:
 			out[n] = ProjectSettings.globalize_path((v as Texture2D).resource_path.get_slice("::", 0))
 		elif v is float or v is int or v is bool:

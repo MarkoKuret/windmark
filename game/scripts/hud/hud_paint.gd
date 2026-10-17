@@ -301,14 +301,19 @@ static func bug(b: HudCanvas, h: Hud) -> void:
 		elif not r.started and r.laps > 0:
 			line = "%d %s · %d LEGS" % [r.laps, "LAP" if r.laps == 1 else "LAPS", maxi(r.legs, 1)]
 		if line != "":
-			b._s(Vector2(0, y) * k, line, int(roundf(15 * k)), HudStyle.PAPER, 600, TRACK)
-			y += 32.0
+			b._s(Vector2(0, y) * k, line, int(roundf(LAB * k)), HudStyle.PAPER, 600, TRACK)
+			y += 30.0
+	# hud.md §16.1: the leader gap at Race, the boats ahead and behind at Data
+	var keys: Array[String] = []
+	if h.has_item("bug_gap") or h.has_item("bug_gaps"):
+		keys.append("gap")
 	if h.has_item("bug_gaps"):
-		for key in ["gap", "ahead", "behind"]:
-			var t := h.text_of(key)
-			if t != "":
-				b._s(Vector2(0, y) * k, t, int(roundf(20 * k)), HudStyle.PAPER, 500)
-				y += 28.0
+		keys.append_array(["ahead", "behind"])
+	for key in keys:
+		var t := h.text_of(key)
+		if t != "":
+			b._s(Vector2(0, y) * k, t, int(roundf(20 * k)), HudStyle.PAPER, 500)
+			y += 28.0
 
 
 # ---- wind page (top right) ----
@@ -318,36 +323,40 @@ const WIND := Vector2(312, 112)
 
 static func wind(b: HudCanvas, h: Hud) -> void:
 	var k := b.k
-	glass(b, Rect2(Vector2.ZERO, WIND))
-	caption(b, 14, 24, "TRUE WIND", 182, "KN")
-	number(b, 182, 96, h.value_of("tws"), 56)
-	divider(b, Vector2(196, 10), Vector2(196, 102))
-	caption(b, 208, 24, "TWD", 300, h.value_of("twd"))
-	var c := Vector2(254, 70) * k
-	var rr := 30.0 * k
-	var hw := _hw(b)
-	for i in 12:
-		var a := TAU * i / 12.0
-		var d := Vector2(sin(a), -cos(a))
-		b._l(c + d * rr, c + d * (rr - 6.0 * k), HudStyle.HAIR, hw)
-	b._s(c + Vector2(0, -rr + 16.0 * k), "N", int(roundf(TINY * k)), HudStyle.MIST, 600, 0.0,
-		HORIZONTAL_ALIGNMENT_CENTER)
-	# the true wind blowing across the dial from where it comes (north up)
-	var d := Vector2(sin(h.values.twd), -cos(h.values.twd))
-	var from := c + d * rr
-	var to := c - d * rr
-	b._l(from, to - d * -6.0 * k, HudStyle.PAPER, 2.0 * k)
-	var s := Vector2(-d.y, d.x)
-	b._p(PackedVector2Array([to, to + d * 10.0 * k + s * 5.0 * k, to + d * 10.0 * k - s * 5.0 * k]), HudStyle.PAPER)
-	if h.has_item("shift") and h.text_of("shift") != "" and h.race.shift_kind != "":
+	var y := 124.0  # the shift chip hangs under the page, or sits alone at the top (Race, hud.md §16.1)
+	if h.has_item("wind_page"):
+		glass(b, Rect2(Vector2.ZERO, WIND))
+		caption(b, 14, 24, "TRUE WIND", 182, "KN")
+		number(b, 182, 96, h.value_of("tws"), 52)
+		divider(b, Vector2(196, 10), Vector2(196, 102))
+		caption(b, 208, 24, "TWD", 300, h.value_of("twd"))
+		var c := Vector2(254, 70) * k
+		var rr := 30.0 * k
+		var hw := _hw(b)
+		for i in 12:
+			var a := TAU * i / 12.0
+			var d := Vector2(sin(a), -cos(a))
+			b._l(c + d * rr, c + d * (rr - 6.0 * k), HudStyle.HAIR, hw)
+		b._s(c + Vector2(0, -rr + 16.0 * k), "N", int(roundf(TINY * k)), HudStyle.LABEL, 600, 0.0,
+			HORIZONTAL_ALIGNMENT_CENTER)
+		# the true wind blowing across the dial from where it comes (north up)
+		var d := Vector2(sin(h.values.twd), -cos(h.values.twd))
+		var from := c + d * rr
+		var to := c - d * rr
+		b._l(from, to - d * -6.0 * k, HudStyle.PAPER, 2.0 * k)
+		var s := Vector2(-d.y, d.x)
+		b._p(PackedVector2Array([to, to + d * 10.0 * k + s * 5.0 * k, to + d * 10.0 * k - s * 5.0 * k]), HudStyle.PAPER)
+	else:
+		y = 0.0
+	if h.shift_chip_shown():
 		var col := HudStyle.STBD if h.race.shift_kind == "lift" else HudStyle.PORT
 		var t := h.text_of("shift")
-		var tw := HudCanvas.text_width(t, int(roundf(15 * k)), 700, 0.1) / k + 28.0
-		var r := Rect2(Vector2(WIND.x - tw, 124) * k, Vector2(tw, 30) * k)
+		var tw := HudCanvas.text_width(t, int(roundf(LAB * k)), 700, 0.1) / k + 28.0
+		var r := Rect2(Vector2(WIND.x - tw, y) * k, Vector2(tw, 30) * k)
 		b._rect(r, col)
 		var sv := b.text_shadow
 		b.text_shadow = false
-		b._s(Vector2(r.position.x + r.size.x * 0.5, r.position.y + 21.0 * k), t, int(roundf(15 * k)), HudStyle.INK, 700,
+		b._s(Vector2(r.position.x + r.size.x * 0.5, r.position.y + 20.0 * k), t, int(roundf(LAB * k)), HudStyle.INK, 700,
 			0.1, HORIZONTAL_ALIGNMENT_CENTER)
 		b.text_shadow = sv
 
@@ -642,19 +651,35 @@ static func helm_notes(b: HudCanvas, h: Hud) -> void:
 
 # ---- mark tag ----
 
+## the tag's height (design px) as drawn now: the name and distance, the ETA and bearing line (hud.md §16.4, by the
+## density), the layline line
+static func mark_tag_height(h: Hud) -> float:
+	var y := 68.0
+	if h.has_item("mark_eta") or h.has_item("mark_brg"):
+		y += 24.0
+	if h.world_tack_point() == null and h.text_of("layline") != "":
+		y += 24.0
+	return y
+
+
 static func mark_tag(b: HudCanvas, h: Hud) -> void:
 	var k := b.k
 	var r := h.race
 	var x := 30.0
-	b._s(Vector2(x, 16) * k, h.text_of("next").to_upper(), int(roundf(15 * k)), HudStyle.MARK, 600, TRACK)
-	number_unit(b, x, 60, h.value_of("mark_dist"), h.unit_of("mark_dist"), 44)
-	var eta := "--:--" if is_nan(r.eta) else HudFormat.clock(r.eta)
-	var sub := "ETA %s · BRG %s · %s" % [eta, HudFormat.compass_deg(r.next_bearing),
-		HudFormat.relative_bearing(r.next_rel)]
-	b._s(Vector2(x, 86) * k, sub, int(roundf(13 * k)), HudStyle.PAPER, 600, 0.1)
+	b._s(Vector2(x, 16) * k, h.text_of("next").to_upper(), int(roundf(LAB * k)), HudStyle.MARK, 600, TRACK)
+	number_unit(b, x, 58, h.value_of("mark_dist"), h.unit_of("mark_dist"), 40)
+	var y := 82.0
+	var sub: Array[String] = []
+	if h.has_item("mark_eta"):
+		sub.append("ETA %s" % ("--:--" if is_nan(r.eta) else HudFormat.clock(r.eta)))
+	if h.has_item("mark_brg"):
+		sub.append("BRG %s · %s" % [HudFormat.compass_deg(r.next_bearing), HudFormat.relative_bearing(r.next_rel)])
+	if not sub.is_empty():
+		b._s(Vector2(x, y) * k, " · ".join(sub), int(roundf(LAB * k)), HudStyle.PAPER, 600, 0.1)
+		y += 24.0
 	if h.world_tack_point() == null and h.text_of("layline") != "":
 		var t := h.text_of("layline")
-		b._s(Vector2(x, 112) * k, t.to_upper().replace("LAYLINE", turn_in_label(r.leg_type)), int(roundf(13 * k)),
+		b._s(Vector2(x, y) * k, t.to_upper().replace("LAYLINE", turn_in_label(r.leg_type)), int(roundf(LAB * k)),
 			HudStyle.PORT if t.begins_with("OVER") else HudStyle.PAPER, 600, 0.1)
 
 
@@ -752,7 +777,7 @@ static func world(b: HudCanvas, h: Hud) -> void:
 	if mp != null and (h.next_panel.visible or h.world_camera() != null):
 		var p: Vector2 = mp
 		if h.next_panel.visible:
-			var tag_foot := h.next_panel.position + Vector2(30.0, 96.0) * k
+			var tag_foot := h.next_panel.position + Vector2(30.0, mark_tag_height(h)) * k
 			if tag_foot.y < p.y:
 				b._l(tag_foot, p, Color(HudStyle.MARK, 0.9), hw)
 			else:  # the tag under the mark: the leader from its top

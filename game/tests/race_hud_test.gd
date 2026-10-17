@@ -872,10 +872,10 @@ func test_density() -> void:
 	t.ok(_has_all(g, ["bsp", "twa_dial", "start_min", "radar", "helm"]) and _has_none(g, ["hdg", "bug",
 		"wind_page", "start_full", "feed"]), "pre-start Glance: %s" % str(g))
 	var rc := _items_at(h, RC)
-	t.ok(_has_all(rc, ["hdg", "start_full", "wind_page", "bug", "feed"]) and _has_none(rc, data_only + ["cue", "target"]),
+	t.ok(_has_all(rc, ["hdg", "start_full", "feed_own"]) and _has_none(rc, data_only + ["wind_page", "bug", "feed"]),
 		"pre-start Race: %s" % str(rc))
 	var d := _items_at(h, D)
-	t.ok(_has_all(d, data_only + ["bug_lap"]), "pre-start Data: %s" % str(d))
+	t.ok(_has_all(d, data_only + ["wind_page", "bug", "bug_lap", "feed"]), "pre-start Data: %s" % str(d))
 	h.frame(0.3)
 	t.ok(not _page_texts(h.inst_page).has("SPEED / TARGET") and not _page_texts(h.inst_page).has("TARGET"),
 		"pre-start: no target speed")
@@ -888,25 +888,27 @@ func test_density() -> void:
 	t.ok(h.phase() == "beat", "phase beat: " + h.phase())
 	g = _items_at(h, G)
 	t.ok(_has_all(g, ["bsp", "twa_dial", "bug", "feed_own"]) and _has_none(g, ["cue", "hdg", "target", "wind_page",
-		"shift", "bug_lap", "feed"] + data_only), "beat Glance: %s" % str(g))
+		"shift", "bug_lap", "bug_gap", "mark_eta", "feed"] + data_only), "beat Glance: %s" % str(g))
 	h.frame(0.3)
 	var page := _page_texts(h.inst_page)
 	t.ok(page.has("BOAT SPEED") and page.has("TWA") and not page.has("SPEED / TARGET") and not page.has("HEADING")
 		and not " ".join(page).contains("%"), "Glance page: speed and the TWA dial, no target: %s" % str(page))
 	t.ok(h.radar.compact and not h.wind_page.visible and h.bug_block.visible, "Glance: small radar, no wind page")
 	rc = _items_at(h, RC)
-	t.ok(_has_all(rc, ["hdg", "wind_page", "shift", "bug_lap", "feed"]) and _has_none(rc,
-		data_only + ["bug_gaps", "hint", "cue", "target"]), "beat Race: %s" % str(rc))
+	t.ok(_has_all(rc, ["hdg", "shift", "bug_gap", "mark_eta", "feed_own"]) and _has_none(rc,
+		data_only + ["wind_page", "bug_lap", "bug_gaps", "mark_brg", "feed", "hint", "cue", "target"]),
+		"beat Race: the racer's list and nothing more: %s" % str(rc))
 	h.frame(0.3)
 	page = _page_texts(h.inst_page)
-	t.ok(page.has("HEADING") and not page.has("TARGET") and not page.has("SOG") and h.wind_page.visible,
-		"Race page: heading, no target, wind page: %s" % str(page))
+	t.ok(page.has("HEADING") and not page.has("TARGET") and not page.has("SOG")
+		and not _page_texts(h.wind_page).has("TRUE WIND"), "Race page: heading, no target, no wind page: %s" % str(page))
 	d = _items_at(h, D)
-	t.ok(_has_all(d, data_only + ["bug_gaps", "hint"]), "beat Data: %s" % str(d))
+	t.ok(_has_all(d, data_only + ["wind_page", "bug_lap", "bug_gaps", "mark_brg", "feed", "hint"]), "beat Data: %s" % str(d))
 	h.frame(0.3)
 	page = _page_texts(h.inst_page)
 	t.ok(page.has("SOG") and page.has("COG") and page.has("AWS") and not page.has("POLAR %") and page.has("HEEL")
-		and page.has("VMG") and page.has("AWA"), "Data page: %s" % str(page))
+		and page.has("VMG") and page.has("AWA") and h.wind_page.visible and _page_texts(h.wind_page).has("TRUE WIND"),
+		"Data page, with the wind page: %s" % str(page))
 	# the assist still decides: no sail hint below Full, no shift on Minimal
 	h.assist = Hud.Assist.STANDARD
 	t.ok(not _items_at(h, D).has("hint"), "sail hint needs the Full assist")

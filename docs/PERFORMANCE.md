@@ -526,7 +526,7 @@ section 0.025 ms in every run as the clock check). The GPU reads 0 headless: the
 | | M | course 0.137 ms | 0.056 ms | |
 | Wake nodes touched only when a wake comes or goes | L | wakes 0.118 ms | 0.109 ms | |
 | Other boats' ribbons at most 30 times a second (spec §5) | M | wakes 0.483 ms | 0.230 ms | at 145 fps; about half of that at 60 fps. Main on M 1.68 to 1.33 ms with the row above |
-| Whitecap texture and grade LUT from `user://cache` (A6) | all | 207 + 31 ms per light at load | 0 ms | the race scene's build: core 44 ms, boat views and liveries 124 ms, venue 192 ms, course 13 ms, pause menu and results 222 ms, sea and sky before the scene's `_ready` about 250 ms (now about 10 ms); whole race load 1.7 s wall headless incl. 0.46 s engine start |
+| Whitecap texture and grade LUT from `user://cache` (A6) | all | 207 + 31 ms per light at load | 0 ms | the race scene's build: core 44 ms, boat views and liveries 124 ms, venue 192 ms, course 13 ms, pause menu and results 222 ms, sea and sky before the scene's `_ready` about 250 ms (now about 10 ms); the race scene built (16 boats, headless, from the engine's start, cold and warm cache alternated three times, medians) 1.46 s to 1.19 s |
 | Sky cumulus in the half-resolution pass (G4) | L | every sky pixel 7 value noises | a quarter of them | estimate 0.2 to 0.4 ms on a UHD 620 at 67 % of 1080p |
 
 Main thread on L after the pass, 16 boats, clock-matched: 1.20 ms, of which `hud` 0.58 (`Hud.tick` and

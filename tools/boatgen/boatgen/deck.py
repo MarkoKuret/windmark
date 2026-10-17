@@ -241,7 +241,9 @@ class Deck:
 
     def y_inner(self, x):
         x = np.asarray(x, dtype=np.float64)
-        return np.where(x <= self.xc1, self.yc(x), np.where(x <= self.xk1, self.yk(x), 0.0))
+        # aft of a cockpit that stops short of the transom (aft_deck) the deck runs across to the centreline
+        return np.where(x < self.xc0 - 1e-9, 0.0,
+                        np.where(x <= self.xc1, self.yc(x), np.where(x <= self.xk1, self.yk(x), 0.0)))
 
     # ------------------------------------------------------------------------------------------------------
     # uv1 frames of the livery textures
@@ -380,6 +382,8 @@ class Deck:
         # deck stations: hull stations plus the feature breaks, dense near the cabin front
         xs = list(hull.stations_x(n_st))
         xs += [self.xc0, self.xc1, self.xk1]
+        if self.xc0 > 1e-6:
+            xs += [self.xc0 - 1e-4]     # the aft deck closes across to the centreline aft of the cockpit
         if self.has_cabin:
             xs += [self.xc1 + 1e-4]     # the deck steps in from the cockpit's edge to the coachroof's base here
         if self.has_cabin:

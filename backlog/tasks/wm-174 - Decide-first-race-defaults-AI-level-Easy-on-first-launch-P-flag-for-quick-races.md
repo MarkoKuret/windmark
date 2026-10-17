@@ -1,0 +1,25 @@
+---
+id: WM-174
+title: >-
+  Decide: first-race defaults (AI level Easy on first launch, P flag for quick
+  races)
+status: To Do
+assignee: []
+created_date: '2026-10-17 14:33'
+labels:
+  - decide-later
+dependencies: []
+priority: medium
+ordinal: 198000
+---
+
+## Description
+
+<!-- SECTION:DESCRIPTION:BEGIN -->
+Quick races start against Intermediate AI and every course sets the I flag, so a dip over in the last minute means rounding an end. Proposal from the 2026-10-17 playability review: AI Easy on a fresh profile, P flag for quick races (course files keep their own flag for events).
+<!-- SECTION:DESCRIPTION:END -->
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] #1 Owner decides; the chosen defaults are in menus.md and race.md
+<!-- AC:END -->

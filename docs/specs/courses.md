@@ -145,6 +145,14 @@ race, whatever the wind does.
 `"round": "port"` = the boat leaves the mark on her **port** side (she goes anticlockwise around it, seen from above).
 `"round": "starboard"` = leaves it to starboard.
 
+**Rounding an island.** A course leaves an island (or a headland) on one side the way a race committee lays it:
+with marks off the island, each rounded to the island's side, so that the loop the course sails (start, the marks,
+the finish, back to the start) goes once around the island: anticlockwise for an island left to port, clockwise for
+starboard. A boat that leaves every mark on its side passes outside them and so cannot leave the island on the
+other side; the island needs no step of its own. Lay the marks far enough off that no straight leg between
+consecutive steps crosses land (§7 warns if one does) and that a boat can round each mark wide of the shore. Example:
+`game/data/courses/practice_waters/island_port.course.json` (three marks off the Practice island, all to port).
+
 ### 4.2 Start and finish lines
 
 ```json
@@ -379,4 +387,6 @@ g1 (on the right when looking upwind) is on the boat's left, so g1 is rounded to
 
 The example files in `game/data/courses/` are the reference and are validated in CI. The shipped example is
 `game/data/courses/practice_waters/example_wl.course.json` (the course above with a 700 m beat, laid on the
-`practice_waters` venue); the core test suite loads it and validates it for every axis.
+`practice_waters` venue); the core test suite loads it and validates it for every axis. The round-the-island example is
+`practice_waters/island_port` (§4.1), a fixed course of about 6 km; the core test suite validates it on its venue
+and checks that its loop winds once around the island.

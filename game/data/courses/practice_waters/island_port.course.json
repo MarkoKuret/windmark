@@ -1,0 +1,30 @@
+{
+  "schema": "windmark.course/1",
+  "id": "island_port",
+  "name": "Round the island, island to port",
+  "venue": "practice_waters",
+  "classes": ["wm10", "wm12"],
+  "frame": "world",
+  "marks": [
+    { "id": "rc",  "type": "committee_boat", "at": { "x": 150.0, "y": 400.0 }, "heading": null },
+    { "id": "pin", "type": "buoy", "style": "tetra", "at": { "x": -150.0, "y": 400.0 } },
+    { "id": "e",   "type": "buoy", "style": "large", "at": { "x": 700.0, "y": 2450.0 } },
+    { "id": "n",   "type": "buoy", "style": "large", "at": { "x": 30.0, "y": 3100.0 } },
+    { "id": "w",   "type": "buoy", "style": "large", "at": { "x": -660.0, "y": 2450.0 } },
+    { "id": "fb",  "type": "mark_boat", "at": { "x": -150.0, "y": 900.0 }, "heading": null },
+    { "id": "fp",  "type": "buoy", "style": "tetra", "at": { "x": -450.0, "y": 900.0 } }
+  ],
+  "start": { "ends": ["pin", "rc"] },
+  "finish": { "ends": ["fp", "fb"] },
+  "sequence": [
+    { "mark": "e", "round": "port" },
+    { "mark": "n", "round": "port" },
+    { "mark": "w", "round": "port" }
+  ],
+  "race": { "type": "fleet", "sequence": "5-4-1-0", "prep_flag": "I", "time_limit": 3600, "target_duration": 1800, "zone_lengths": 3 },
+  "display": {
+    "labels": { "e": "East mark", "n": "North mark", "w": "West mark", "fb": "Finish", "fp": "Finish pin" },
+    "map_centre": { "x": 0.0, "y": 1750.0 },
+    "map_extent": 3200
+  }
+}

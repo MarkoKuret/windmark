@@ -27,6 +27,40 @@ LOOK_KEYS = ("fill_gain", "fill_curve", "flutter_amp", "flutter_rate", "flutter_
              "depth", "tack_line_max", "furl_radius")
 
 
+# a kite's set parameters, visual.sails.<id>.set (docs/specs/sail_visuals.md 4.1; spinnakers only): key -> range
+_DEG = math.pi / 180.0
+SET_KEYS = {"depth_peak_h": (0.1, 0.9), "depth_foot": (0.0, 1.5), "depth_head": (0.0, 1.5),
+            "draft_low": (0.25, 0.75), "draft_head": (0.25, 0.75), "draft_from_h": (0.0, 0.95),
+            "belly_aft": (0.0, 2.0), "belly_up": (0.0, 2.0), "twist_exp": (0.5, 5.0),
+            "twist_awa_lo": (20 * _DEG, 150 * _DEG), "twist_awa_hi": (40 * _DEG, 180 * _DEG),
+            "twist_run": (3 * _DEG, 60 * _DEG), "foot_sag": (0.0, 1.0), "foot_sag_h": (0.05, 0.9),
+            "girth_foot": (0.6, 1.4), "girth_mid": (0.6, 1.4), "girth_head": (0.6, 1.4),
+            "luff_curl": (-1.0, 1.0), "leech_curl": (-1.0, 1.0), "head_drop": (0.0, 0.15),
+            "clew_lift": (-0.3, 0.3), "clew_out": (-0.3, 0.3), "clew_h": (0.05, 0.8), "forward": (-0.1, 0.3),
+            "tack_rise": (0.0, 0.15), "stay_clear": (0.0, 1.0), "stay_width": (0.1, 1.5), "stay_head": (0.05, 0.9),
+            "stay_luff": (0.05, 0.95), "stay_leech": (0.0, 1.0)}
+
+
+def _set_block(given, st, where):
+    """visual.sails.<id>.set validated: an object of SET_KEYS within their ranges, on a spinnaker only."""
+    if given is None:
+        return {}
+    if not isinstance(given, dict):
+        raise ClassFileError(f"{where} must be an object")
+    if given and st not in ("spinnaker_asym", "spinnaker_sym"):
+        raise ClassFileError(f"{where}: set parameters are for spinnakers only (this sail is a {st})")
+    for k, x in given.items():
+        if k not in SET_KEYS:
+            raise ClassFileError(f"{where}.{k} is not a set parameter ({', '.join(SET_KEYS)})")
+        lo, hi = SET_KEYS[k]
+        if isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x) or not lo <= x <= hi:
+            raise ClassFileError(f"{where}.{k} must be a number from {lo:g} to {hi:g} (got {x})")
+    lo, hi = given.get("twist_awa_lo", 60 * _DEG), given.get("twist_awa_hi", 130 * _DEG)
+    if hi <= lo:
+        raise ClassFileError(f"{where}: twist_awa_hi must be above twist_awa_lo")
+    return dict(given)
+
+
 # flying-sail shaping keys on sails[] (docs/specs/data_format.md 3.5): key -> allowed range (None: > 0 m)
 FLYING_TYPES = ("code_zero", "spinnaker_sym", "spinnaker_asym")
 ROUND_RANGE = (-0.1, 0.3)       # edge round depth, fraction of the straight edge
@@ -401,6 +435,7 @@ def resolve(raw, path="<class>"):
                 raise ClassFileError(f"$.visual.sails.{sid}.look.{k} is not a look parameter ({', '.join(LOOK_KEYS)})")
             if isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x) or x < 0:
                 raise ClassFileError(f"$.visual.sails.{sid}.look.{k} must be a finite number >= 0")
+        _set_block(v.get("set"), st, f"$.visual.sails.{sid}.set")
         sails.append({"id": sid, "type": st, "area": float(_req(s, "area", f"$.sails[{i}]")),
                       "luff": s.get("luff"), "leech": s.get("leech"), "foot": s.get("foot"),
                       "tack_x": None if s.get("tack_x") is None else to_int(s["tack_x"]),

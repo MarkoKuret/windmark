@@ -3,9 +3,11 @@ id: WM-173
 title: >-
   Tools: live kite shape adjuster with sliders (owner tunes every class's flying
   kite in real time)
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-10-17 11:56'
+updated_date: '2026-10-17 19:17'
 labels:
   - tools
   - sails
@@ -22,7 +24,13 @@ Owner: kite shapes are still poor; wants a manual adjuster to shape them in real
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Spec says where the per-class kite shape values live and how the game and boatgen read them
-- [ ] #2 Windowed tool with live sliders, class/kite/heading/gybe pickers and fixed camera views
-- [ ] #3 Save and reload per class; game and boatgen previews show the saved shape; parity tests pass
+- [x] #1 Spec says where the per-class kite shape values live and how the game and boatgen read them
+- [x] #2 Windowed tool with live sliders, class/kite/heading/gybe pickers and fixed camera views
+- [x] #3 Save and reload per class; game and boatgen previews show the saved shape; parity tests pass
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Kite set parameters (sail_visuals.md 4.1, visual.sails.<id>.set) in native, reference and boatgen, defaults unchanged; kite tuner game/scenes/tools/kite_tuner.tscn (game/README.md 'Kite tuner'); tests 26, kite_tuner_test, boatgen SetParamsTest. Owner still to try the tool and shape the kites.
+<!-- SECTION:NOTES:END -->

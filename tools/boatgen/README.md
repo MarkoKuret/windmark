@@ -206,6 +206,7 @@ Every key is optional; defaults scale with LOA.
 | `sails.<id>.clew_height` | 0.35 (LOA/12)^0.5 | headsail clew height above the deck (m) |
 | `sails.<id>.luff_frac` | 0.96 | headsail luff as a fraction of the forestay |
 | `sails.<id>.look` | per sail type, `docs/specs/sail_visuals.md` §4 | the run-time look of the sail (below) |
+| `sails.<id>.set` | per kite type, `docs/specs/sail_visuals.md` §4.1 | spinnakers only: the flying shape's set parameters (below) |
 
 `sails.<id>.look` holds any of the look parameters of `sail_visuals.md` §4: `fill_gain`, `fill_curve`,
 `flutter_amp`, `flutter_rate`, `flutter_rate_max`, `twist_top`, `camber`, `tack_line_max`, `furl_radius` (numbers
@@ -215,6 +216,14 @@ an asymmetric and 0.26 on a symmetric spinnaker; `twist_top` 0.45 on an asymmetr
 code zero) from the flat sail's chord extent `Sa`. Keys that do not apply to a type (`camber` on a main) are
 written only when the class file gives them. The old `depth` key (replaced by `camber`) is still accepted and
 not written.
+
+`sails.<id>.set` (spinnakers only; `data_format.md` §3.7.5) holds any of the kite set parameters of
+`sail_visuals.md` §4.1 (depth and draft by height, belly direction, twist, foot sag, girth, edge curl, head, clew
+and tack moves, `forward`, the forestay margins on a pole), each within its range (`classfile.SET_KEYS`; an unknown
+key, a value out of range or the block on another sail type is an error). The generator copies them into the
+sidecar's `sails.<id>.set` with every missing key filled from the kite type's defaults (`sail_set.SET_DEFAULTS`), and
+draws the preview poses, `kite_preview` and `<id>.sets.json` with them. They do not change the planform, the rule
+area or the performance tables. The game's kite tuner (`game/README.md`) writes this block.
 
 ### Class character
 
@@ -500,7 +509,7 @@ Positions in the body frame.
 | `collision_meshes` | closed low-poly hull (canoe body to the deck crown), fin, bulb and rudder slabs |
 | `rig` | mast step, masthead, hounds, forestay tack, boom pivot and axis, sprit end, rudder stock and axis (with twin rudders the tiller's, plus `rudders`: each blade's `node`, `stock` and `axis`), wheel hub, spreader tips, `sheet_leads` (headsail and flying-sail sheet lead block and winch, starboard side, with the drum diameter); with a pole: `pole_pivot`, `pole_axis`, `pole_length` (from the mast front) and `pole_end` (rest position, the spinnaker tack) |
 | `model` | file, `triangles` and `surfaces` of the game model without the sails, `sail_triangles`, `full_triangles` (the full model), nodes, pivots |
-| `sails` | per sail: node, type, grid size, vertex order, flat area and target, centroid, corner vertices (tack, clew, head), `look` (the look parameters above, every applicable key filled); code zeros and spinnakers also `rule` (luff, leech, foot, mid girth and rule area of the planform) |
+| `sails` | per sail: node, type, grid size, vertex order, flat area and target, centroid, corner vertices (tack, clew, head), `look` (the look parameters above, every applicable key filled), spinnakers `set` (the set parameters above, every key filled); code zeros and spinnakers also `rule` (luff, leech, foot, mid girth and rule area of the planform) |
 
 ## Limits and next steps
 

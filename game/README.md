@@ -9,7 +9,7 @@ controls, the cameras, the minimal HUD, the audio and a sail test scene that put
 | Path | Role |
 | --- | --- |
 | `project.godot` | Project settings |
-| `scripts/` | GDScript. `sail_grid.gd` (`SailGrid`) maps imported sail vertices back to the boatgen sail grid; `frames.gd` (`Frames`) holds the axes and angle helpers; `boat_view.gd` (`BoatView`) places the generated boat, its rudder, wheel, boom and mainsheet, bends the sails and switches the levels of detail; `boat_sheets.gd` (`BoatSheets`) draws the running sheets, `sheet_ropes_ref.gd` (`SheetRopesRef`) is the GDScript reference of the native sheet ropes; `sail_shape_ref.gd` (`SailShapeRef`) is the GDScript reference of the native sail shapes; `boat_materials.gd` (`BoatMaterials`) puts the boat materials on the imported meshes |
+| `scripts/` | GDScript. `sail_grid.gd` (`SailGrid`) maps imported sail vertices back to the boatgen sail grid; `frames.gd` (`Frames`) holds the axes and angle helpers; `boat_view.gd` (`BoatView`) places the generated boat, its rudder, wheel, boom and mainsheet, bends the sails and switches the levels of detail; `boat_sheets.gd` (`BoatSheets`) draws the running sheets, `sheet_ropes_ref.gd` (`SheetRopesRef`) is the GDScript reference of the native sheet ropes; `sail_shape_ref.gd` (`SailShapeRef`) is the GDScript reference of the native sail shapes; `kite_set.gd` (`KiteSet`) the kite set parameters (`docs/specs/sail_visuals.md` §4.1); `json_edit.gd` (`JsonEdit`) minimal-diff edits of a JSON file (the kite tuner's save); `boat_materials.gd` (`BoatMaterials`) puts the boat materials on the imported meshes |
 | `scripts/sim/` | `SimSource` (the simulation interface), `CoreSimSource` (the core, through the GDExtension) and `CoreEnvSource` (its sea and wind for the Sea node), `FakeSim` and `FakeBoat` (placeholder), `SimRunner` (50 ms ticks), class loading |
 | `native/` | The GDExtension: `CoreSim` over `core/include/windmark.h` `SailShape` (the per-vertex sail shapes), `SheetRopes` (the running sheets) the wakes (`sea_wakes.h`: `SeaSampler`, `WakeRibbon`, `MistCloud`) and the drawn boat shadows (`boat_shadow.h`: `BoatShadowShape`) in `src/`, `build.sh`, `CMakeLists.txt`. Godot skips the folder (`.gdignore`) |
 | `bin/` | The built extension library and `windmark.gdextension`. Not committed |
@@ -27,7 +27,7 @@ controls, the cameras, the minimal HUD, the audio and a sail test scene that put
 | `scripts/scenario/` | The rules scenarios (`race.md` §14): `Scenario` (the file, loaded and validated), `ScenarioRun` (starts it on the core and steers its hold boats) |
 | `scripts/venue/` | `VenueShapes` (the venue's land polygons and obstacles, from the core or the venue file), `LandTerrain` (the drawn ground height and colours), `ColorMesh` (vertex-coloured mesh builder) |
 | `shaders/` | Shaders. `sea_common`, `sky_common`, `wake_common`, `boat_shadow_common` (`.gdshaderinc`) hold the water, sky, wake and drawn shadow maths, written so the offline preview can compile them as GLSL too; `water_l/m/h` are the sea per quality tier, `sky` (and `sky_l`, tier L: the cumulus in the half-resolution pass), `wake`, `wake_normal`, `boat_shadow` (the boats' shadows drawn on the water); `boat` is the boat surface shader; `sail` the sails, with the procedural cloth of `sail_cloth.gdshaderinc` (also compiled by the sail preview) |
-| `scenes/` | Scenes. `sea/` is the sea (`sea.tscn`, `Sea`), its data source, wakes and drawn boat shadows (`BoatShadows`), and the daytime sky (`sky_day.tscn`, `SkyRig`, `env_day.tres`); `water_test.tscn` shows them together; `sail_test.tscn` is one boat sailing freely on the core (FakeSim as fallback), or racing alone on the example course, with cameras, controls and HUD on that sea and sky; `venue/` draws the venue land and obstacles (`VenueView`, `land.gdshader`); `course/` the course (`CourseView`, `CourseProps`); `menu/` the menus (`main_menu.tscn`, the main scene; `pause_menu.tscn`; the setup and settings panels, rows, theme and backdrop) |
+| `scenes/` | Scenes. `sea/` is the sea (`sea.tscn`, `Sea`), its data source, wakes and drawn boat shadows (`BoatShadows`), and the daytime sky (`sky_day.tscn`, `SkyRig`, `env_day.tres`); `water_test.tscn` shows them together; `sail_test.tscn` is one boat sailing freely on the core (FakeSim as fallback), or racing alone on the example course, with cameras, controls and HUD on that sea and sky; `venue/` draws the venue land and obstacles (`VenueView`, `land.gdshader`); `course/` the course (`CourseView`, `CourseProps`); `menu/` the menus (`main_menu.tscn`, the main scene; `pause_menu.tscn`; the setup and settings panels, rows, theme and backdrop); `tools/` the developer tools (`kite_tuner.tscn`, below) |
 | `tests/` | Headless tests |
 | `generated/` | Build outputs staged for import (boatgen GLBs and sidecars). Not committed |
 | `.godot/` | Godot's import cache. Not committed |
@@ -427,6 +427,42 @@ the core into trimmed, eased, let-fly, tacking, hoisting, reaching, running and 
 bent boat, `tests/sail_preview.py` renders them offscreen to `generated/sail_preview/` (with `--publish` the
 JPEGs in `tests/previews/sails_*.jpg`). It lights the boat with the default daytime preset (`SkyRig`) under the
 game's sky; the lighting model is a stand-in for Godot's.
+
+## Kite tuner
+
+A windowed tool to shape a class's flying kite by hand, live (`docs/specs/sail_visuals.md` §4.1, WM-173):
+
+```
+godot --path game res://scenes/tools/kite_tuner.tscn -- --class=wm9
+godot --path game res://scenes/tools/kite_tuner.tscn -- --class=wm7 --kite=kite --twa=150 --tws=12 --gybe=port
+```
+
+It needs the generated boats (`tests/run_boat_import_test.sh`) and, for the native shapes, the built extension
+(`native/build.sh`; without it the GDScript reference draws the same shape, slower). On the left: the class, the
+kite, which side the wind comes from, the true wind angle (60 to 180°) and speed, and the kite's and the main's
+sheet as a share of the core's optimum (the main and the kite are set at the class's optimum angles, the jib is
+down); then one slider per set parameter of §4.1, grouped (depth, draft, belly, twist, foot, girth, edges, corners,
+forward; the forestay ones only on a pole kite, the twist-by-AWA ones only on an asymmetric), plus the kite's
+`camber` and `twist_top`. Hover a slider for what it does; `D` puts it back to its default. A bold name is away from
+its default, a red value is not saved yet. The kite is bent by the same `SailShape` as in a race, on the generated
+boat. Top right: fixed views (abeam windward and leeward, ahead, above, chase); drag on the boat to orbit, the wheel
+to zoom.
+
+- **Save** writes `visual.sails.<kite>.look` and `.set` in `data/classes/<id>.boat.json`: only the values away from
+  their defaults, everything else in the file as it was (one line changes in the shipped class files). A value
+  back at its default is removed.
+- **Revert** goes back to the class file; **Reset to defaults** sets every value to its default (save to keep it);
+  **Copy values** puts the changed values on the clipboard as JSON.
+
+After a save the game shows the new shape at the next race or sail scene start: `BoatView` reads the class file's
+blocks over the sidecar's copies, so no rebuild is needed. The generator's previews (`<id>_downwind.png`, the
+`kite_preview` sheets, `<id>.sets.json` for the parity test) follow after a rebuild of the boat:
+`cd tools/boatgen && python3 -m boatgen ../../data/classes/<id>.boat.json` (GLB, sidecar, previews), or
+`python3 -m boatgen.kite_preview ../../data/classes/<id>.boat.json` for the kite sheets only; then
+`game/tests/run_boat_import_test.sh`. The set parameters are presentation only: the core, the VPP and `data/perf`
+do not read them, so nothing else needs regenerating (the planform keys of `data_format.md` §3.5 do change the area
+and the tables). `tests/kite_tuner_test.gd` (in `tests/run_ui_tests.sh`) runs the tuner headless on copies of the
+class files.
 
 ## Race HUD
 

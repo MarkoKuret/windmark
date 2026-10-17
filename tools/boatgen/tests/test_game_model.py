@@ -16,7 +16,7 @@ from boatgen.build import Boat
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 CLASSES = {c: os.path.join(REPO, "data", "classes", f"{c}.boat.json") for c in ("wm12", "wm7", "wm16", "wm21", "wm10")}
-MOVING = ("rudder", "wheel", "wheel_2", "boom", "mainsheet", "pole")
+MOVING = ("rudder", "rudder_port", "rudder_starboard", "wheel", "wheel_2", "boom", "mainsheet", "pole")
 
 _boats = {}
 

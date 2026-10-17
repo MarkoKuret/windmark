@@ -193,7 +193,7 @@ abreast the cockpit and the sheet leads aft to the quarter.
 | `handling` | designer | feel multipliers and `dynamics` overrides (§3.7.1) |
 | `boards` | designer | daggerboards of a multihull, in place of `keel` (§3.9) |
 | `vpp` | designer | VPP settings (§3.10) |
-| `visual` | boat generator | deck layout (the coachroof: §3.7.2), hardware, the class character keys (bow profile, cockpit taper, rails and coaming boards, hardware finish, spars; `tools/boatgen/README.md` "Class character"), and per sail `sails.<id>.look` (the front-end sail look of `sail_visuals.md` §4, copied into the physics sidecar with the defaults filled in); keys in `tools/boatgen/README.md`; opaque to the core and the VPP |
+| `visual` | boat generator | deck layout (the coachroof: §3.7.2), hardware, the class character keys (bow profile, cockpit taper, rails and coaming boards, hardware finish, spars; `tools/boatgen/README.md` "Class character"), per sail `sails.<id>.look` (the front-end sail look of `sail_visuals.md` §4, copied into the physics sidecar with the defaults filled in) and, per spinnaker, `sails.<id>.set` (its flying shape, §3.7.5); keys in `tools/boatgen/README.md`; opaque to the core and the VPP |
 
 Top level: `"schema": "windmark.boatclass/1"`, `"id"`, `"name"`, `"version"` (integer, bumped on every change).
 
@@ -304,6 +304,25 @@ helm.
 
 All of them are static deck hardware in the shared material atlas (no new surface or draw call). The shadow proxy
 (`sail_visuals.md` §11.4) follows a coaming a little inside it and leaves the dodger out.
+
+#### 3.7.5 `visual.sails.<id>.set`: a kite's flying shape
+
+Optional, on a sail of type `spinnaker_asym` or `spinnaker_sym` only (an error on any other sail): the set
+parameters of `sail_visuals.md` §4.1, which shape the kite as it flies (depth and draft by height, the belly's
+direction, twist, foot sag, girth, edge curl, head, clew and tack positions, how far forward it flies and, on a pole,
+its clearance ahead of the forestay). Every key is optional and takes its type's default (the table in §4.1); an
+unknown key or a value outside its range is an error. Angles are in radians. Example:
+
+```json
+"visual": {"sails": {"kite": {"look": {"camber": 0.28}, "set": {"depth_foot": 0.9, "forward": 0.08, "twist_awa_hi": 2.1}}}}
+```
+
+The block is presentation only: the core, the VPP and the performance tables never read it, and the rule area does
+not change (the planform keys of §3.5 do that). The game reads it from the class file at boat set-up (falling back
+to the sidecar's copy), so a change shows at the next race without rebuilding the boat; the generator validates it
+and copies it, with the defaults filled in, into the sidecar's `sails.<id>.set`, and its previews follow it after a
+rebuild (`tools/boatgen/README.md`). The kite tuner (`game/README.md`) writes it: only the keys away from their
+default, the rest of the file left as it was.
 
 ### 3.8 Example (sportsboat)
 

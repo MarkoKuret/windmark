@@ -76,6 +76,7 @@ class Sail:
     def __init__(self, name, P, corners):
         self.name, self.P, self.corners = name, P, corners  # P: (nv, nu, 3) in the centreline plane
         self.look_override = {}
+        self.set_override = {}     # spinnakers: the class file's visual.sails.<id>.set (sail_visuals.md 4.1)
         self.measure = None        # flying sails: rule measurements (flying_measure)
         self.shape = None          # flying sails: edge rounds as drawn (_flying)
 
@@ -112,6 +113,13 @@ class Sail:
         d = {k: round(float(v), 6) for k, v in d.items()}
         d.update({k: v for k, v in self.look_override.items() if k != "depth"})
         return {k: d[k] for k in LOOK_KEYS if k in d}
+
+    def set_block(self):
+        """The sidecar `set` block of a spinnaker (sail_visuals.md 4.1): the class file's visual.sails.<id>.set
+        with every missing key filled from the defaults of its type; None for any other sail."""
+        from .sail_set import set_params
+        d = set_params(self.type, self.set_override)
+        return {k: round(float(v), 6) for k, v in d.items()} if d else None
 
     def part(self, P=None, gap=0.001):
         P = self.P if P is None else P
@@ -180,6 +188,7 @@ def build_sails(cls, rig, deck):
             sail = _flying(spec, cls, rig, deck)
         sail.type = t
         sail.look_override = dict(spec["visual"].get("look") or {})
+        sail.set_override = dict(spec["visual"].get("set") or {})
         out[spec["id"]] = sail
     return out
 

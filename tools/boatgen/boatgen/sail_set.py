@@ -94,6 +94,31 @@ CLEW_STEP = 0.01        # 7.7: the difference step of the solve
 CLEW_ITER = 2           # 7.7: Newton steps of the solve
 CLEW_FADE = (np.radians(75.0), np.radians(105.0))  # 7.7: the clew set fades out as |beta| goes round the bow
 CLEW_AWA = (np.radians(45.0), np.radians(65.0))    # 7.7: and in with the AWA, over the kite's lowest angles
+CURL_BAND = 0.25        # 4.1: the luff and leech curl reach this share of the chord in from the edge
+HOLD = 0.35             # 4.1: `forward` holds the corners over this share of Sl
+TACK_REACH = 0.5        # 4.1: `tack_rise` fades out over this share of Sl from the tack
+
+# 4.1: the kite set parameters (visual.sails.<id>.set) by kite type: the shape constants of 6.3, 6.4, 7.3, 7.4, 7.7
+_SET_COMMON = {"draft_from_h": 0.55, "belly_aft": 0.5, "belly_up": 0.5, "twist_awa_lo": float(np.radians(60.0)),
+               "twist_awa_hi": float(np.radians(130.0)), "twist_run": float(np.radians(25.0)), "foot_sag_h": 0.35,
+               "girth_foot": 1.0, "girth_mid": 1.0, "girth_head": 1.0, "luff_curl": 0.0, "leech_curl": 0.0,
+               "head_drop": 0.0, "clew_lift": 0.0, "clew_out": 0.0, "clew_h": 0.3, "forward": 0.0, "tack_rise": 0.0,
+               "stay_clear": 0.25, "stay_width": 0.6, "stay_head": 0.3, "stay_luff": 0.5, "stay_leech": 0.3}
+SET_DEFAULTS = {
+    "spinnaker_asym": dict(_SET_COMMON, depth_peak_h=0.3, depth_foot=0.8, depth_head=0.45,
+                           draft_low=0.5 ** (1 / 0.8), draft_head=0.5 ** (1 / 1.4), twist_exp=2.5, foot_sag=0.0),
+    "spinnaker_sym": dict(_SET_COMMON, depth_peak_h=0.5, depth_foot=1.0, depth_head=0.7, draft_low=0.5,
+                          draft_head=0.5, twist_exp=1.5, foot_sag=0.35),
+}
+
+
+def set_params(sail_type, given=None):
+    """4.1: the kite's set parameters, `given` over the defaults of its type ({} for any other sail)."""
+    if sail_type not in SET_DEFAULTS:
+        return {}
+    d = dict(SET_DEFAULTS[sail_type])
+    d.update({k: float(v) for k, v in (given or {}).items()})
+    return d
 
 
 def smoothstep01(x):
@@ -114,21 +139,23 @@ def smax(x, b):
     return (x + b) * (x + b) / (4 * b)
 
 
-def asym_height(h):
-    """6.3: the asymmetric spinnaker's camber over its largest by row height h: deepest at 0.3 of the height,
-    0.8 on the foot, 0.45 at the head."""
+def asym_height(h, peak=0.3, foot=0.8, head=0.45):
+    """6.3, 4.1: a kite's camber over its largest by row height h: deepest at `peak` of the height, `foot` on the
+    foot, `head` at the head (asymmetric defaults: 0.3, 0.8, 0.45)."""
     h = np.asarray(h, dtype=np.float64)
-    lo = (0.3 - h) / 0.3
-    hi = (h - 0.3) / 0.7
-    return np.where(h < 0.3, 1 - 0.2 * lo * lo, 1 - 0.55 * hi * hi)
+    lo = (peak - h) / peak
+    hi = (h - peak) / (1 - peak)
+    return np.where(h < peak, 1 - (1 - foot) * lo * lo, 1 - (1 - head) * hi * hi)
 
 
-def asym_draft(h):
-    """6.3: the exponent of the chordwise profile by row height: 0.8 (draft 0.42 of the chord) up to 0.55 of the
-    height, 1.4 (draft 0.61) at the head."""
+def asym_draft(h, low=0.5 ** (1 / 0.8), head=0.5 ** (1 / 1.4), from_h=0.55):
+    """6.3, 4.1: the exponent of the chordwise profile by row height: the draft at `low` of the chord up to
+    `from_h` of the height, moving to `head` at the head (asymmetric defaults: exponents 0.8 and 1.4, drafts 0.42
+    and 0.61, from 0.55)."""
     h = np.asarray(h, dtype=np.float64)
-    t = np.clip((h - 0.55) / 0.45, 0.0, 1.0)
-    return 0.8 + 0.6 * t * t * (3 - 2 * t)
+    ql, qh = np.log(0.5) / np.log(low), np.log(0.5) / np.log(head)
+    t = np.clip((h - from_h) / (1 - from_h), 0.0, 1.0)
+    return ql + (qh - ql) * t * t * (3 - 2 * t)
 
 
 def asym_profile(uc, q):
@@ -142,18 +169,19 @@ def asym_twist_h(h):
     return 1.0 - np.power(1.0 - np.clip(np.asarray(h, dtype=np.float64), 0.0, 1.0), 2.5)
 
 
-def asym_twist(awa):
-    """7.3: the share of twist_top an asymmetric spinnaker carries at the apparent wind angle awa: none to 60
-    deg, all from 130 to 155 deg, none again dead downwind (180 deg), so a gybe round the bow passes untwisted."""
-    t = min(max((abs(awa) - np.radians(60.0)) / np.radians(70.0), 0.0), 1.0)
-    r = min(max((np.pi - abs(awa)) / np.radians(25.0), 0.0), 1.0)
+def asym_twist(awa, lo=np.radians(60.0), hi=np.radians(130.0), run=np.radians(25.0)):
+    """7.3, 4.1: the share of twist_top an asymmetric spinnaker carries at the apparent wind angle awa: none to
+    `lo` (60 deg), all from `hi` (130 deg) to `run` (25 deg) short of a run, none again dead downwind (180 deg), so a
+    gybe round the bow passes untwisted."""
+    t = min(max((abs(awa) - lo) / (hi - lo), 0.0), 1.0)
+    r = min(max((np.pi - abs(awa)) / run, 0.0), 1.0)
     return t * t * (3 - 2 * t) * r * r * (3 - 2 * r)
 
 
 class SailSet:
     """One sail: configure from the flat grid and the look, then `update` places it (mid-surface in `self.mid`)."""
 
-    def __init__(self, P, sail_type, look, mode, rig, loa):
+    def __init__(self, P, sail_type, look, mode, rig, loa, kset=None):
         self.rows, self.cols = P.shape[:2]
         rows, cols = self.rows, self.cols
         Q = P.reshape(-1, 3).astype(np.float64)
@@ -191,7 +219,22 @@ class SailSet:
         A = self.a.reshape(rows, cols)
         self.amid = 0.5 * (A[:, 0] + A[:, -1])
         self.hrow = self.h.reshape(rows, cols)[:, 0].copy()
-        self.crow = np.clip(1.0 - self.hrow / CLEW_H, 0.0, 1.0) ** 3     # 7.7: the clew set's fade with height
+        # 4.1: the kite's set parameters (the defaults of its type for any key not given)
+        self.ks = ks = set_params(sail_type, kset)
+        self.crow = np.clip(1.0 - self.hrow / ks.get("clew_h", CLEW_H), 0.0, 1.0) ** 3  # 7.7: the clew set's fade
+        if ks:
+            hr = self.hrow
+            gm = ks["girth_mid"]
+            self.grow = np.where(hr < 0.5, gm + (ks["girth_foot"] - gm) * (1 - 2 * hr) ** 2,
+                                 gm + (ks["girth_head"] - gm) * (2 * hr - 1) ** 2)
+            dT = np.linalg.norm(Q - Q[0], axis=-1)
+            dH = np.linalg.norm(Q - Q[(rows - 1) * cols], axis=-1)
+            dC = np.linalg.norm(Q - Q[cols - 1], axis=-1)
+            R = HOLD * self.sl
+            self.hold = smoothstep_v(dT / R) * smoothstep_v(dH / R) * smoothstep_v(dC / R)
+            self.rise_w = (1.0 - np.minimum(dT / (TACK_REACH * self.sl), 1.0)) ** 2
+        else:
+            self.grow = np.ones(rows)
         self.kd = self.kl = 0.0
         dh = self.tack - self.head
         self.r_h = max(np.linalg.norm(dh - UP * (dh @ UP)), 1e-3)
@@ -209,7 +252,8 @@ class SailSet:
             f1 = np.asarray(rig["hounds"], dtype=np.float64)
             dm = f0 - self.mast_step
             jb = np.linalg.norm(dm - self.mast_axis * (dm @ self.mast_axis))   # the foretriangle base
-            self.stay = (f0, f1, STAY_WIDTH * jb, max(STAY_CLEAR * jb, self.clearance))
+            self.stay = (f0, f1, ks.get("stay_width", STAY_WIDTH) * jb,
+                         max(ks.get("stay_clear", STAY_CLEAR) * jb, self.clearance))
         self.tack_at = self.tack.copy()
         self._secs = []
         # 7.4: distances between grid neighbours on the rest cloth (along a row, up a column, the two diagonals)
@@ -264,17 +308,22 @@ class SailSet:
             else:
                 F = self.fill_gain * min(max(aws / KNOT, 3.0), 6.0) / 6.0
             uw = FWD * np.cos(awa) - PORT * np.sin(awa)
-            w = np.array([uw @ ap * 0.5 / self.fill_curve, uw @ lp * 0.5, uw @ np_])
+            ks = self.ks
+            w = np.array([uw @ ap * ks["belly_aft"] / self.fill_curve, uw @ lp * ks["belly_up"], uw @ np_])
             w = w / np.linalg.norm(w) if w @ w > 1e-12 else np.array([0, 0, 1.0])
             fc = self.camber * min(F, 1.15)
             i = np.repeat(np.arange(rows), cols)
+            # 6.3, 6.4, 4.1: the camber by height (the symmetric defaults: full depth from the foot to mid height)
+            drow = fc * asym_height(self.hrow, ks["depth_peak_h"], ks["depth_foot"], ks["depth_head"])
+            q = asym_draft(self.hrow, ks["draft_low"], ks["draft_head"], ks["draft_from_h"])[i]
             if self.kind == ASYM:
-                drow = fc * asym_height(self.hrow)
-                prof = asym_profile(self.uc, asym_draft(self.hrow)[i])
+                prof = asym_profile(self.uc, q)
             else:
-                hh = np.maximum(2 * self.hrow - 1, 0.0)     # full depth from the foot to mid height
-                drow = fc * (1 - SYM_ENDS * hh * hh)
-                prof = 4 * self.uc * (1 - self.uc)
+                x = np.power(self.uc, q)
+                prof = 4 * x * (1 - x)
+            fh = 4 * self.hrow[i] * (1 - self.hrow[i])         # 4.1: the edge curls, none at the corners
+            prof = prof + ks["luff_curl"] * np.clip(1 - self.uc / CURL_BAND, 0.0, 1.0) ** 2 * fh \
+                + ks["leech_curl"] * np.clip(1 - (1 - self.uc) / CURL_BAND, 0.0, 1.0) ** 2 * fh
             a0 = a.reshape(rows, cols)[:, 0][i]
             self._fly_args = (drow, prof, w, a0, i)
             loc = self._fly(0.0, 0.0)
@@ -282,11 +331,15 @@ class SailSet:
         # (signed, rad; the asymmetric spinnaker's on the side away from the wind at once: it is zero where awa
         # changes sign)
         if self.kind == ASYM:
-            self.trow = -sgn(awa) * self.twist_top * asym_twist(awa) * asym_twist_h(self.hrow)
+            ks = self.ks
+            self.trow = -sgn(awa) * self.twist_top * asym_twist(awa, ks["twist_awa_lo"], ks["twist_awa_hi"],
+                                                                ks["twist_run"]) * \
+                (1.0 - np.power(1.0 - np.clip(self.hrow, 0.0, 1.0), ks["twist_exp"]))
         else:
-            self.trow = tl * self.twist_top * self.hrow ** 1.5
+            self.trow = tl * self.twist_top * self.hrow ** (self.ks["twist_exp"] if self.kind == SYM else 1.5)
         self.loc = loc
-        hd = s_t(self.head)
+        ks = self.ks
+        hd = s_t(self.head - self.lh * (ks.get("head_drop", 0.0) * self.sl))   # 4.1: the head as dropped
         self.tack_at = s_t(self.tack)           # 7.4: the margin fades out at the tack as at the head
         clearing = self.clearance > 0
         self.ease = 0.0
@@ -313,6 +366,12 @@ class SailSet:
             mid[r * cols:(r + 1) * cols] = xr(rest[r * cols:(r + 1) * cols])
         self.mid = mid
         self.clew0 = mid[cols - 1].copy()      # 7.6: the clew as placed, before the clearance push
+        if ks and ks["forward"] != 0.0:         # 4.1: projected forward, the corners held
+            self.mid = self.mid + FWD[None] * (ks["forward"] * self.sl * self.hold)[:, None]
+        if ks and ks["tack_rise"] != 0.0:       # 4.1: the tack raised
+            r = ks["tack_rise"] * self.sl
+            self.mid = self.mid + UP[None] * (r * self.rise_w)[:, None]
+            self.tack_at = self.tack_at + UP * r
         if self.stay is not None:
             self._stay()
         if clearing:
@@ -326,16 +385,21 @@ class SailSet:
         a, l, uc = self.a, self.l, self.uc
         if k is not None:
             a, l, uc, prof, a0, i = a[k], l[k], uc[k], prof[k], a0[k], i[k]
+        ks = self.ks
+        h = self.h if k is None else self.h[k]
         srow = 1 / (1 + 8 / 3 * drow * drow)
         if kd != 0.0 or kl != 0.0:
             srow = np.minimum(srow * (1 - kd * self.crow), 1.0)
             drow = np.sqrt(np.maximum(1 / srow - 1, 0.0) * 3 / 8)       # the cloth keeps its length
-            l = l - kl * self.C[0] * self.crow[i] * uc * uc
+        cu = self.C[0] * self.crow[i] * uc * uc
+        l = l - (kl - ks["clew_lift"]) * cu - ks["head_drop"] * self.sl * h      # 7.7 draw-down, 4.1 clew and head
         s = srow[i]
-        e = drow[i] * s * self.C[i] * prof
-        if self.kind == SYM:        # 6.4: the lower panels' belly sags, so the foot curves round and down
-            l = l - SYM_SAG * e * np.clip(1.0 - self.hrow[i] / SYM_SAG_H, 0.0, 1.0) ** 2
-        return np.stack([a0 + (a - a0) * s, l, np.zeros_like(a)], -1) - e[:, None] * w[None]
+        g = self.grow[i]
+        e = drow[i] * s * g * self.C[i] * prof
+        # 6.4, 4.1: the lower panels' belly sags, so the foot curves round and down
+        l = l - ks["foot_sag"] * e * np.clip(1.0 - self.hrow[i] / ks["foot_sag_h"], 0.0, 1.0) ** 2
+        a_s = a0 + (a - a0) * s * g + ks["clew_out"] * cu
+        return np.stack([a_s, l, np.zeros_like(a)], -1) - e[:, None] * w[None]
 
     def _clew_set(self, beta, base, piv, ax, s_t):
         """7.7: the draw-in and draw-down (kd, kl) that lay the clew's bisector on the sheet: two Newton steps from
@@ -478,7 +542,9 @@ class SailSet:
         rows, cols = self.rows, self.cols
         M = self.mid.reshape(rows, cols, 3)
         uc = self.uc.reshape(rows, cols)
-        sw = smoothstep_v(uc / STAY_LUFF) * (1.0 - STAY_LEECH * smoothstep_v((uc - STAY_LUFF) / (1.0 - STAY_LUFF)))
+        ks = self.ks
+        sl, sle, shd = ks.get("stay_luff", STAY_LUFF), ks.get("stay_leech", STAY_LEECH), ks.get("stay_head", STAY_HEAD)
+        sw = smoothstep_v(uc / sl) * (1.0 - sle * smoothstep_v((uc - sl) / (1.0 - sl)))
         D = np.zeros(rows)
         for i in range(rows - 1):
             for j in range(cols):
@@ -494,7 +560,7 @@ class SailSet:
         S = D.copy()            # never less than a row above needs: the shift grows down to the foot
         for i in range(rows - 2, -1, -1):
             S[i] = max(S[i], S[i + 1])
-        S = S * smoothstep_v((1.0 - self.hrow) / STAY_HEAD)     # the head stays at the halyard
+        S = S * smoothstep_v((1.0 - self.hrow) / shd)           # the head stays at the halyard
         self.stay_max = float(S.max())
         M += FWD[None, None] * (S[:, None] * sw)[..., None]
         self.mid = M.reshape(-1, 3)
@@ -671,7 +737,8 @@ def set_sails(boat, pose):
     for sid, sail in boat.sails.items():
         if sail.type not in pose["sails"]:
             continue
-        shapes[sid] = SailSet(sail.P, sail.type, sail.look(L), sail_mode(boat, sail.type), rp, L)
+        shapes[sid] = SailSet(sail.P, sail.type, sail.look(L), sail_mode(boat, sail.type), rp, L,
+                              sail.set_override)
         order.append(sid)
     order.sort(key=lambda s: shapes[s].flying)
     aws = pose.get("aws", 6.0)

@@ -138,6 +138,91 @@ and its fill scale `b_j = 0.15` (§6.2), foot fade rate 8 (§6.1), flutter spati
 flake frequency 12 and flake amplitude 0.02 (§8.2). The jib's and genoa's `twist_top` 0.175 and the camber of §6.2
 (2026-10-09, were 0.105 and a belly of `0.5·|D|·(u − u⁴)` against the whole sail's chord) follow §14.5.
 
+### 4.1 Kite set parameters
+
+The flying shape of a spinnaker (§6.3, §6.4, §7.3, §7.4, §7.7) is drawn from named **set parameters**, one block per
+kite in the class file, `visual.sails.<id>.set` (`data_format.md` §3.7; spinnakers only). A missing key takes the
+default of the kite's type below, so a class without the block draws exactly the shapes of the sections that follow
+(the defaults are the constants they used before 2026-10-17, WM-173). They are presentation only: no core, VPP,
+performance table or rule area reads them, and changing them needs no regeneration of `data/perf`.
+
+Who reads them: the game's `BoatView` takes the class file's block (falling back to the sidecar's copy, `sails.<id>.set`,
+for a class with no class file, such as a generator test class) and hands every key to `SailShape` (native and
+reference) at set-up; the generator (`tools/boatgen`) validates the block, copies it with the defaults filled into the
+physics sidecar, and draws its previews and `kite_preview` with it (§12 test 19). The kite tuner
+(`game/scenes/tools/kite_tuner.tscn`, `game/README.md`) edits the block live and saves it. The kite's `look` keys
+`camber` and `twist_top` (§4) are read the same way, the class file's `visual.sails.<id>.look` over the sidecar's, so
+a saved change shows in the game without a rebuild.
+
+Angles in radians in the file (the tuner shows degrees). `Sl` is the luff extent (§3.2), `C_0` the flat foot chord,
+`h` a vertex's height (§3.2) and `h_i` its row's, `uc` its chordwise share (0 luff, 1 leech).
+
+| key | asym | sym | range | meaning |
+| --- | --- | --- | --- | --- |
+| `depth_peak_h` | 0.3 | 0.5 | 0.1 to 0.9 | height of the deepest row, share of the luff (§6.3 `p_i`) |
+| `depth_foot` | 0.8 | 1.0 | 0 to 1.5 | camber of the foot row over the deepest |
+| `depth_head` | 0.45 | 0.7 | 0 to 1.5 | camber at the head over the deepest |
+| `draft_low` | 0.5^(1/0.8) = 0.420 | 0.5 | 0.25 to 0.75 | draft position, share of the chord from the luff, from the foot up to `draft_from_h` |
+| `draft_head` | 0.5^(1/1.4) = 0.610 | 0.5 | 0.25 to 0.75 | draft position at the head |
+| `draft_from_h` | 0.55 | 0.55 | 0 to 0.95 | height where the draft starts to move from `draft_low` to `draft_head` |
+| `belly_aft` | 0.5 | 0.5 | 0 to 2 | weight of the wind's chordwise part in the belly's direction (over `fill_curve`; more moves the draft aft downwind) |
+| `belly_up` | 0.5 | 0.5 | 0 to 2 | weight of the wind's part along the luff in the belly's direction (more lifts the belly) |
+| `twist_exp` | 2.5 | 1.5 | 0.5 to 5 | the twist's height profile: asym `1 − (1 − h_i)^x` (larger: more twist low down), sym `h_i^x` (larger: twist kept to the top) |
+| `twist_awa_lo` | 60° | – | 20° to 150° | asym: the twist starts at this AWA |
+| `twist_awa_hi` | 130° | – | 40° to 180° | asym: all of `twist_top` from this AWA (above `twist_awa_lo`) |
+| `twist_run` | 25° | – | 3° to 60° | asym: the twist fades out over this much short of a dead run |
+| `foot_sag` | 0 | 0.35 | 0 to 1 | the low rows' belly sags down by this share of its depth (§6.4) |
+| `foot_sag_h` | 0.35 | 0.35 | 0.05 to 0.9 | ... fading out over this lower share of the height |
+| `girth_foot` | 1 | 1 | 0.6 to 1.4 | the flying chord of the foot row over the §6.3 one (the belly scales with it) |
+| `girth_mid` | 1 | 1 | 0.6 to 1.4 | the same at mid height |
+| `girth_head` | 1 | 1 | 0.6 to 1.4 | the same at the head |
+| `luff_curl` | 0 | 0 | −1 to 1 | extra belly along the luff, share of the row's camber at the edge (positive: the luff curls further to leeward; negative: it stands up to windward) |
+| `leech_curl` | 0 | 0 | −1 to 1 | the same along the leech |
+| `head_drop` | 0 | 0 | 0 to 0.15 | the head eased down the luff (halyard eased), share of `Sl` |
+| `clew_lift` | 0 | 0 | −0.3 to 0.3 | the clew raised (negative: lowered) up the luff, share of `C_0` |
+| `clew_out` | 0 | 0 | −0.3 to 0.3 | the clew let out along the chord (negative: drawn in), share of `C_0` |
+| `clew_h` | 0.3 | 0.3 | 0.05 to 0.8 | the clew's moves (`clew_lift`, `clew_out`, §7.7) fade out at this share of the height |
+| `forward` | 0 | 0 | −0.1 to 0.3 | the cloth projected forward of where the angles put it, share of `Sl`, the corners held |
+| `tack_rise` | 0 | 0 | 0 to 0.15 | the tack raised, share of `Sl` (a pole kite: the pole end goes up with it; a sprit kite: the tack line is eased) |
+| `stay_clear` | 0.25 | 0.25 | 0 to 1 | on a pole: margin ahead of the forestay, share of `J_b` (§7.4) |
+| `stay_width` | 0.6 | 0.6 | 0.1 to 1.5 | on a pole: the forestay's half width, share of `J_b` |
+| `stay_head` | 0.3 | 0.3 | 0.05 to 0.9 | on a pole: the forestay shift fades out over this top share of the height |
+| `stay_luff` | 0.5 | 0.5 | 0.05 to 0.95 | on a pole: chord share from which the forestay shift is taken in full |
+| `stay_leech` | 0.3 | 0.3 | 0 to 1 | on a pole: share of the forestay shift lost toward the leech |
+
+How each enters the shape (the sections below give the rest; with the defaults every added term is zero or one):
+```
+p_i  = h_i < depth_peak_h ? 1 - (1 - depth_foot) * ((depth_peak_h - h_i) / depth_peak_h)^2         // §6.3, §6.4
+                          : 1 - (1 - depth_head) * ((h_i - depth_peak_h) / (1 - depth_peak_h))^2
+q(d) = ln 0.5 / ln d                                        // the exponent that puts the draft at d
+t_i  = clamp((h_i - draft_from_h) / (1 - draft_from_h), 0, 1)
+q_i  = q(draft_low) + (q(draft_head) - q(draft_low)) * t_i^2 (3 - 2 t_i)
+prof = asym sin(PI x), sym 4 x (1 - x),  x = uc^q_i          // sym defaults: q = 1, the §6.4 parabola
+     + luff_curl * (1 - uc / 0.25)^2 * 4 h_i (1 - h_i)      for uc < 0.25
+     + leech_curl * (1 - (1 - uc) / 0.25)^2 * 4 h_i (1 - h_i) for uc > 0.75
+g_i  = h_i < 0.5 ? girth_mid + (girth_foot - girth_mid) * (1 - 2 h_i)^2
+                 : girth_mid + (girth_head - girth_mid) * (2 h_i - 1)^2
+c_i  = (1 - h_i / clew_h)^3 for h_i < clew_h, else 0        // §7.7
+e    = d_i * s_i * g_i * C_i * prof
+a'   = a0_i + (a - a0_i) * s_i * g_i + clew_out * C_0 * c_i * uc^2
+l'   = l - (k_l - clew_lift) * C_0 * c_i * uc^2 - head_drop * Sl * h - foot_sag * e * max(0, 1 - h_i / foot_sag_h)^2
+w    = normalize(dot(U, Ap) * belly_aft / K, dot(U, Lp) * belly_up, dot(U, Np))
+twist (asym) = twist_top * smoothstep((|awa| - twist_awa_lo) / (twist_awa_hi - twist_awa_lo))
+                         * smoothstep((PI - |awa|) / twist_run) * (1 - (1 - h_i)^twist_exp)
+twist (sym)  = tl * twist_top * h_i^twist_exp
+after the placement of §7.3, before the forestay shift and the push of §7.4, times the flying share f_a (§7.5):
+  hold_k = smoothstep(d_T / R) * smoothstep(d_H / R) * smoothstep(d_C / R),  R = 0.35 Sl   // d: rest distance from
+                                                                           // the tack, head and clew corners
+  P_k += fwd * forward * Sl * hold_k * f_a
+  P_k += up * tack_rise * Sl * (1 - min(d_T / (0.5 Sl), 1))^2 * f_a       // the clearance margin fades at the
+                                                                           // tack so raised (§7.5)
+```
+The head the margin of §7.4 fades at is the head so dropped. The forestay terms replace the constants of §4 and
+§7.4 (`c_s = max(stay_clear·J_b, c)`, `w_s = stay_width·J_b`, the fade `stay_head`, the chord shares `stay_luff`
+and `stay_leech`). On a pole kite the drawn pole tilts about its heel so its end follows the raised tack. The
+fixed constants of the clew solve, the tack pin, the clearance and the main's stop stay as listed above: they keep
+the shape continuous and clear rather than set its look.
+
 ## 5. Per-frame drivers
 
 ### 5.1 Fill
@@ -238,7 +323,8 @@ The flat grid carries no depth, so the flying shape is built from a camber field
 wind**, which keeps the belly to leeward on either gybe and during a gybe round the bow. The cloth does not
 stretch: as a row takes its camber its chord shortens so that the arc keeps the flat length. The camber's height
 profile, its chordwise profile (draft forward, a curled luff) and the twist (§7.3) follow the full-scale
-measurements of §14.2.
+measurements of §14.2. The numbers below are the asymmetric defaults of the set parameters (§4.1), which every
+class can change per kite.
 ```
 h_i = h of the row's luff vertex
 p_i = h_i < 0.3 ? 1 - 0.2 * ((0.3 - h_i) / 0.3)^2            // deepest at 0.3 of the height,
@@ -273,7 +359,7 @@ m   = (w.a + 0.1 * I2 * sin(q),  w.l,  w.n + I2 * cos(q))
   aft.
 
 ### 6.4 Symmetric spinnaker
-As §6.3 with `F` from the sheet angle (§5.1: strapped in it goes flat, eased it fills slightly beyond the nominal
+As §6.3 (with the symmetric defaults of the set parameters, §4.1) with `F` from the sheet angle (§5.1: strapped in it goes flat, eased it fills slightly beyond the nominal
 camber, to 34 % at mid height with the defaults), but symmetric fore and aft: the height profile
 `p_i = 1 − 0.3·max(0, 2·h_i − 1)²` (the full depth from the foot to mid height, 0.7 at the head; 2026-10-17, was
 `1 − 0.45·(2·h_i − 1)²` with `camber` 0.26: a real running symmetric spinnaker is as deep in its lower panels as
@@ -1197,6 +1283,14 @@ Flutter phase `φ = 0` unless stated.
     at each vertex, signed about the clew corner's normal, changes by at most 3° from one vertex to the next (no kink)
     and changes sign at most once outside a 0.5° dead band (no bulge; the 2026-10-10 clew turn fails it). The test
     prints the largest angle and turn step found.
+
+26. **Kite set parameters.** With no `set` block every class draws as before WM-173 (tests 7 to 25 and 19
+    unchanged). On the rectangle, native against reference with a non-default value of every key of §4.1 (both kites,
+    sprit and pole) over random drivers, within 1 mm. The generator's two set test classes (`test_set_asym` on a
+    sprit, `test_set_sym` on a pole, every key away from its default) pass test 19. The kite tuner, headless
+    (`game/tests/kite_tuner_test.gd`): moving a slider changes the drawn kite, Reset to defaults gives back the
+    default shape, and Save then a reload of the class file gives back the same values (and an unchanged class file
+    when every value is back at its default).
 
 ## 13. Dependencies and open points
 

@@ -6,7 +6,7 @@ title: >-
 status: In Progress
 assignee: []
 created_date: '2026-10-04 23:09'
-updated_date: '2026-10-05 15:16'
+updated_date: '2026-10-17 10:18'
 labels:
   - core
   - ai
@@ -52,4 +52,6 @@ Owner decision open: keep the AI fix (the pinned-pair behaviour is a real defect
 Owner decision (2026-10-05): the AI fix (commit e5fbf79) is NOT merged; it is parked on branch park/ai-pinned-tack (also on origin) and listed in WM-054. The full-race test stays a single race (seed 33). Consequence: on main, the long test 'full AI race' fails with 6 of 10 finishers since the WM-090 sails merge (a re-rolled chaotic race, no systematic regression over 40 seeds: 90.0 % vs 89.5 % finished). The telemetry tool (race_trace --telemetry) is merged.
 
 2026-10-05: after merging the rules update to the RRS 2025-2028 (one 360 within 120 s, etc.), the single-race full AI test passes again on main (re-rolled race); ai_races and core_long pass. The parked fix stays on park/ai-pinned-tack.
+
+2026-10-17: branch park/ai-pinned-tack deleted. WM-160 fixed the rule-13 lockout at its root, so make_room is not needed. Still open: past the layline on a reach, the boat turns through the wind on the helm or loops round instead of tacking (ai.md 4.2 part of e5fbf79); redo small on main if seen.
 <!-- SECTION:NOTES:END -->

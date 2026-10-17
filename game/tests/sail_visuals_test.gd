@@ -438,7 +438,9 @@ func _camber_tests(impl: String) -> void:
 			var head := row_camber(la, 10, 11)
 			var msg := "%s awa %.0f deg: camber %.3f at mid height, %.3f foot, %.3f head" % [
 				"asym" if kind == K.ASYM else "sym", c[0], mid, foot, head]
-			t.ok(mid >= 0.20 and mid <= 0.30 and foot < mid and head < mid, msg)
+			# the asymmetric shallower at the foot; the symmetric as deep at the foot as at mid height (§6.4)
+			var foot_ok := foot < mid if kind == K.ASYM else foot >= 0.9 * mid
+			t.ok(mid >= 0.20 and mid <= 0.30 and foot_ok and head < mid, msg)
 			if impl == "ref":
 				print("  " + msg)
 	var cz: Variant = mk(impl, K.HEADSAIL, M.LUFF, {"fill_gain": 0.7, "fill_curve": 1.3, "flutter_amp": 0.08,

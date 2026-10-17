@@ -41,8 +41,12 @@ constexpr float STAY_WIDTH = 0.6f;
 constexpr float STAY_HEAD = 0.3f;
 constexpr float STAY_LUFF = 0.5f;
 constexpr float STAY_LEECH = 0.3f;
-// §6.4 a symmetric spinnaker's camber at the foot and the head is 1 - this of its largest
+// §6.4 a symmetric spinnaker keeps its full camber from the foot to mid height, 1 - this of it at the head
 constexpr float SYM_ENDS = 0.3f;
+// §6.4 the belly of a symmetric spinnaker's foot sags down by this share of its depth, fading out over the lower
+// SYM_SAG_H of the height
+constexpr float SYM_SAG = 0.35f;
+constexpr float SYM_SAG_H = 0.35f;
 // §7.7 the clew set: corner reach (grid steps), fade height (of Sl), bounds of the draw-in and draw-down, the
 // difference step and the Newton steps of the solve
 constexpr int CLEW_REACH = 2;
@@ -216,7 +220,7 @@ bool SailShape::configure(const PackedVector3Array& rest, int64_t rows, int64_t 
       const float q = 0.8f + 0.6f * t * t * (3.0f - 2.0f * t);
       for (int j = 0; j < cols_; ++j) prof_[i * cols_ + j] = std::sin(PI_F * std::pow(uc_[i * cols_ + j], q));
     } else {
-      const float hh = 2.0f * hr - 1.0f;
+      const float hh = std::max(2.0f * hr - 1.0f, 0.0f);  // full depth from the foot to mid height
       prow_[i] = 1.0f - SYM_ENDS * hh * hh;
       for (int j = 0; j < cols_; ++j) {
         const float uc = uc_[i * cols_ + j];
@@ -336,6 +340,9 @@ Vector3 SailShape::fly(int k, int i, const Vector3& w, float shiver) const {
   const Vector3 m(w.x + 0.1f * i2 * std::sin(q), w.y, w.z + i2 * std::cos(q));
   Vector3 r = Vector3(a0 + (a_[k] - a0) * s, l_[k] - kl_ * c_[0] * crow_[i] * uc * uc, 0.0f) - m * e;
   if (kind_ == SYM) {
+    // §6.4 the lower panels' belly sags, so the foot curves round and down
+    const float fs = clampf(1.0f - hrow_[i] / SYM_SAG_H, 0.0f, 1.0f);
+    r.y -= SYM_SAG * e * fs * fs;
     const float hh = 2.0f * h_[k] - 1.0f;
     const float g = std::max(0.0f, shiver - uc) * (1.0f - hh * hh);
     r.x += (a0 + (amid_[i] - a0) * s - r.x) * 0.5f * g;

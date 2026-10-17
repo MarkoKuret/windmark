@@ -46,8 +46,12 @@ const STAY_WIDTH := 0.6
 const STAY_HEAD := 0.3
 const STAY_LUFF := 0.5
 const STAY_LEECH := 0.3
-## §6.4 a symmetric spinnaker's camber at the foot and the head is 1 - this of its largest
+## §6.4 a symmetric spinnaker keeps its full camber from the foot to mid height, 1 - this of it at the head
 const SYM_ENDS := 0.3
+## §6.4 the belly of a symmetric spinnaker's foot sags down by this share of its depth, fading out over the lower
+## SYM_SAG_H of the height
+const SYM_SAG := 0.35
+const SYM_SAG_H := 0.35
 ## §7.7 the clew set: corner reach (grid steps), fade height (of Sl), bounds of the draw-in and draw-down, the
 ## difference step and the Newton steps of the solve
 const CLEW_REACH := 2
@@ -273,7 +277,7 @@ func configure(rest_mid: PackedVector3Array, r: int, c: int, p: Dictionary) -> b
 			for j in cols:
 				_prof[i * cols + j] = sin(PI * pow(_uc[i * cols + j], q))
 		else:
-			var hh := 2.0 * hr - 1.0
+			var hh := maxf(2.0 * hr - 1.0, 0.0)  # full depth from the foot to mid height
 			_prow[i] = 1.0 - SYM_ENDS * hh * hh
 			for j in cols:
 				var uc := _uc[i * cols + j]
@@ -1019,6 +1023,9 @@ func _fly(k: int, i: int, wv: Vector3, shiver: float) -> Vector3:
 	var m := Vector3(wv.x + 0.1 * i2 * sin(q), wv.y, wv.z + i2 * cos(q))
 	var r := Vector3(a0 + (_a[k] - a0) * s, _l[k] - _kl * _c[0] * _crow[i] * uc * uc, 0.0) - m * e
 	if kind == Kind.SYM:
+		# §6.4 the lower panels' belly sags, so the foot curves round and down
+		var fs := clampf(1.0 - _hrow[i] / SYM_SAG_H, 0.0, 1.0)
+		r.y -= SYM_SAG * e * fs * fs
 		var h := _h[k]
 		var g := maxf(0.0, shiver - uc) * (1.0 - (2.0 * h - 1.0) * (2.0 * h - 1.0))
 		r.x += (a0 + (_amid[i] - a0) * s - r.x) * 0.5 * g

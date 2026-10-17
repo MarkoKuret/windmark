@@ -79,7 +79,9 @@ PUSH_SLOPE = 0.3        # 7.4 k_p: the local push falls off by this much per met
 PUSH_EASE = 2.0         # 7.4 P_e: the ease starts where the leech is deeper than this many clearances
 EASE_MAX = 0.35         # 7.4 e_max: the largest ease, rad
 STAY_CLEAR = 0.25       # 7.4 c_s: margin forward of the forestay for a kite on a pole, of the foretriangle base
-SYM_ENDS = 0.3          # 6.4: a symmetric spinnaker's camber at the foot and the head is 1 - this of its largest
+SYM_SAG = 0.35          # 6.4: the belly of a symmetric spinnaker's foot sags down by this share of its depth ...
+SYM_SAG_H = 0.35        # ... fading out over this lower share of the height
+SYM_ENDS = 0.3          # 6.4: a symmetric spinnaker keeps its full camber from the foot to mid height, 1 - this at the head
 STAY_HEAD = 0.3         # 7.4: the stay's shift fades to none over this top fraction of the height
 STAY_LEECH = 0.3        # 7.4: ... and fades to 1 - this of it at the leech (the clew stays nearer its sheet)
 STAY_LUFF = 0.5         # 7.4: the stay's shift is taken in full from this chord fraction aft of the luff
@@ -270,7 +272,7 @@ class SailSet:
                 drow = fc * asym_height(self.hrow)
                 prof = asym_profile(self.uc, asym_draft(self.hrow)[i])
             else:
-                hh = 2 * self.hrow - 1
+                hh = np.maximum(2 * self.hrow - 1, 0.0)     # full depth from the foot to mid height
                 drow = fc * (1 - SYM_ENDS * hh * hh)
                 prof = 4 * self.uc * (1 - self.uc)
             a0 = a.reshape(rows, cols)[:, 0][i]
@@ -331,6 +333,8 @@ class SailSet:
             l = l - kl * self.C[0] * self.crow[i] * uc * uc
         s = srow[i]
         e = drow[i] * s * self.C[i] * prof
+        if self.kind == SYM:        # 6.4: the lower panels' belly sags, so the foot curves round and down
+            l = l - SYM_SAG * e * np.clip(1.0 - self.hrow[i] / SYM_SAG_H, 0.0, 1.0) ** 2
         return np.stack([a0 + (a - a0) * s, l, np.zeros_like(a)], -1) - e[:, None] * w[None]
 
     def _clew_set(self, beta, base, piv, ax, s_t):

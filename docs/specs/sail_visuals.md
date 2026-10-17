@@ -275,8 +275,11 @@ m   = (w.a + 0.1 * I2 * sin(q),  w.l,  w.n + I2 * cos(q))
 ### 6.4 Symmetric spinnaker
 As §6.3 with `F` from the sheet angle (§5.1: strapped in it goes flat, eased it fills slightly beyond the nominal
 camber, to 34 % at mid height with the defaults), but symmetric fore and aft: the height profile
-`p_i = 1 − 0.3·(2·h_i − 1)²` (deepest at mid height, 0.7 at the foot and the head; 2026-10-17, was 0.45 with
-`camber` 0.26: a real running symmetric spinnaker is deep right down to its foot) and the chordwise profile
+`p_i = 1 − 0.3·max(0, 2·h_i − 1)²` (the full depth from the foot to mid height, 0.7 at the head; 2026-10-17, was
+`1 − 0.45·(2·h_i − 1)²` with `camber` 0.26: a real running symmetric spinnaker is as deep in its lower panels as
+anywhere, its foot curving round and forward between the clews, not a flat edge) and the lower panels' belly sags: each vertex's
+height along the luff drops by `0.35·e·max(0, 1 − h_row/0.35)²`, `e` its camber offset (`drow·s·C·prof`), so the foot
+curves round, forward and down between the clews and the chordwise profile
 `4·uc·(1 − uc)` in place of `sin(π·uc^q_i)`; plus a **luff collapse** along the windward edge (column 0, the pole
 side) while it luffs:
 ```
@@ -1125,8 +1128,8 @@ Flutter phase `φ = 0` unless stated.
     and against the sun.
 17. **Camber.** Rectangle, asym defaults, `aws` 6 kn, `awa` 90° and 150° (`β` at the leeward optimum): the largest
     distance of a row from its luff–leech line over its chord is 0.20–0.30 at mid height and smaller at the foot
-    and the head (asymmetric 0.23 and 0.25 at mid height, 0.19 and 0.21 on the foot); symmetric the same at full
-    fill (at most 0.30); a code zero (`camber` 0.12) at `β` 25°, 40° and
+    and the head (asymmetric 0.23 and 0.25 at mid height, 0.19 and 0.21 on the foot); symmetric the same at mid
+    height at full fill (at most 0.30) but at least 0.9 of it on the foot (§6.4: a deep foot) and less at the head; a code zero (`camber` 0.12) at `β` 25°, 40° and
     60° 0.07–0.12, never above 0.12.
 18. **Clearance.** On the generated `wm7` and `wm12` (both kites and the code zero), over TWA 60–180° (20° steps),
     TWS 6, 12, 22 kn, both tacks and the trims optimum, 15 % over-sheeted and 20 % eased (apparent wind from the

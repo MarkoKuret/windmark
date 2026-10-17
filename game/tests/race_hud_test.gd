@@ -1357,11 +1357,11 @@ func test_tack_point_no_line() -> void:
 
 
 func test_card_fits() -> void:
-	t.begin("the boat card fits: 1280 x 800 and 1080 x 1920, UI scale 80 % to 130 %, every density")
+	t.begin("the boat card fits: 1920 x 1080, 1280 x 800 and 1080 x 1920, UI scale 80 % to 130 %, every density")
 	var R := RaceText.Rule
 	var bad := []
 	var checked := 0
-	for scr in [Vector2(1280, 800), Vector2(1080, 1920), Vector2(1280, 720)]:
+	for scr in [Vector2(1920, 1080), Vector2(1280, 800), Vector2(1080, 1920), Vector2(1280, 720)]:
 		for sname in ["beat", "penalty"]:
 			for scale in [0.8, 1.0, 1.3]:
 				for lvl in 3:
@@ -1438,7 +1438,7 @@ static func _text_rects(h: Hud) -> Array:
 
 
 func test_text_fits() -> void:
-	t.begin("every text fits at 1280 x 800 and in portrait at 1080 x 1920, UI scale 80 % to 130 %")
+	t.begin("every text fits at 1920 x 1080, 1280 x 800 and in portrait at 1080 x 1920, UI scale 80 % to 130 %")
 	var R := RaceText.Rule
 	var scenarios := {}
 	var pre := _pre_sim()
@@ -1454,7 +1454,7 @@ func test_text_fits() -> void:
 	var bad := []
 	var blocks_bad := []
 	var checked := 0
-	for scr in [Vector2(1280, 800), Vector2(1080, 1920)]:
+	for scr in [Vector2(1920, 1080), Vector2(1280, 800), Vector2(1080, 1920)]:
 		var tag := "" if scr.x > scr.y else "portrait "
 		for sname in scenarios:
 			for scale in [0.8, 1.0, 1.3]:
@@ -1483,14 +1483,14 @@ func test_text_fits() -> void:
 							var c: Dictionary = rects[j]
 							if (a["r"] as Rect2).grow(-1.0).intersects((c["r"] as Rect2).grow(-1.0)):
 								bad.append("%s: '%s' (%s) overlaps '%s' (%s)" % [what, a["t"], a["b"], c["t"], c["b"]])
+					for p in HudLayoutCheck.problems(h, h.screen_size):
+						blocks_bad.append("%s: %s" % [what, p])
 					if tag != "":
-						for p in HudLayoutCheck.problems(h, h.screen_size):
-							blocks_bad.append("%s: %s" % [what, p])
 						if not h.radar.compact:
 							blocks_bad.append("%s: radar not compact" % what)
 					h.free()
 	t.ok(bad.is_empty(), "%d texts checked, %d problems: %s" % [checked, bad.size(), str(bad.slice(0, 8))])
-	t.ok(blocks_bad.is_empty(), "portrait: no block over another, all on screen, compact radar (%d problems: %s)" % [
+	t.ok(blocks_bad.is_empty(), "no block over another, all on screen, compact radar in portrait (%d problems: %s)" % [
 		blocks_bad.size(), str(blocks_bad.slice(0, 6))])
 	# portrait defaults and scale (hud.md §16.5)
 	t.ok(Hud.default_density(Vector2(1080, 1920)) == Hud.Density.GLANCE, "portrait: default Glance at 1080 x 1920")

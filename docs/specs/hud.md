@@ -561,7 +561,8 @@ density of §16.1: an item shows only when both allow it.
   `PENALTY · RULE 10` and is gone after 3 s.
 - Hoist cue (§5.1): during a hoist one `HOISTING <SAIL>` cue with its bar shows, and no two texts of the helm strip
   and its notes overlap.
-- Every text of the HUD fits its block at 1280 x 800 for UI scales 80 % to 130 %.
+- Every text of the HUD fits its block at 1920 x 1080 and 1280 x 800 for UI scales 80 % to 130 %, and no two blocks'
+  drawn areas overlap there (world tags aside).
 - Portrait (§16.5): at 1080 x 1920 for UI scales 80 % to 130 %, in the pre-start, beat and penalty states at every
   density, every text is on screen and no two texts overlap, and no two blocks' drawn areas overlap (world tags
   aside); the default density is Glance; the radar is compact.

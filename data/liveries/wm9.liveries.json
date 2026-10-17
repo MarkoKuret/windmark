@@ -5,8 +5,14 @@
   "sails": {
     "main": {"cloth": "dacron", "color": "#e2e0d6", "number": "#1b3a2d"},
     "headsail": {"cloth": "dacron", "color": "#e2e0d6", "number": "#1b3a2d"},
-    "spinnaker": {"cloth": "nylon", "color": "#1f4d3a", "design": "head", "radius": 0.24, "number": "#e2e0d6",
-      "colors": ["#d9d3bf"]}
+    "spinnaker": {
+      "cloth": "nylon",
+      "color": "#1f4d3a",
+      "design": "head",
+      "radius": 0.24,
+      "number": "#e2e0d6",
+      "colors": ["#d9d3bf"]
+    }
   },
   "ropes": {
     "mainsheet": {"color": "#ae7249", "fleck": "#2d3548"},
@@ -28,26 +34,218 @@
         "boot_stripe": "#d9d2bd",
         "antifouling": "#17181b",
         "keel": "#1c1e21",
-        "graphic": {"type": "stripes", "colors": ["#b39a5c"], "depth": [0.045], "width": [0.012],
-          "from": 0.0, "to": 0.965}
+        "graphic": {
+          "type": "stripes",
+          "colors": ["#b39a5c"],
+          "depth": [0.045],
+          "width": [0.012],
+          "from": 0.0,
+          "to": 0.965
+        }
       },
       "deck": {"gelcoat": "#d9d3c2", "nonslip": "#a8a291"}
+    },
+    {
+      "id": "cream",
+      "name": "Cream and green",
+      "hull": {
+        "topsides": "#ddd6c2",
+        "text": "#1b3a2d",
+        "boot_stripe": "#1b3a2d",
+        "antifouling": "#17181b",
+        "keel": "#1c1e21",
+        "graphic": {
+          "type": "stripes",
+          "colors": ["#1b3a2d"],
+          "depth": [0.045],
+          "width": [0.012],
+          "from": 0.0,
+          "to": 0.965
+        }
+      },
+      "deck": {"gelcoat": "#d9d3c2", "nonslip": "#a8a291"},
+      "sails": {
+        "spinnaker": {"color": "#d9d3bf", "design": "head", "colors": ["#1b3a2d"], "number": "#1b3a2d"}
+      }
+    },
+    {
+      "id": "navy",
+      "name": "Navy and gold",
+      "hull": {
+        "topsides": "#14284f",
+        "text": "#ddd6c2",
+        "boot_stripe": "#d9d2bd",
+        "antifouling": "#17181b",
+        "keel": "#1c1e21",
+        "graphic": {
+          "type": "stripes",
+          "colors": ["#b39a5c"],
+          "depth": [0.045],
+          "width": [0.012],
+          "from": 0.0,
+          "to": 0.965
+        }
+      },
+      "deck": {"gelcoat": "#d9d3c2", "nonslip": "#a8a291"},
+      "sails": {
+        "spinnaker": {"color": "#14284f", "design": "bands", "colors": ["#d9d3bf"], "number": "#e2e0d6", "stops": [0.4]}
+      }
+    },
+    {
+      "id": "burgundy",
+      "name": "Burgundy",
+      "hull": {
+        "topsides": "#5a1a22",
+        "text": "#ddd6c2",
+        "boot_stripe": "#ddd6c2",
+        "antifouling": "#2a1214",
+        "keel": "#1c1e21",
+        "graphic": {
+          "type": "stripes",
+          "colors": ["#b39a5c"],
+          "depth": [0.045],
+          "width": [0.012],
+          "from": 0.0,
+          "to": 0.965
+        }
+      },
+      "deck": {"gelcoat": "#d9d3c2", "nonslip": "#a8a291"},
+      "sails": {
+        "spinnaker": {"color": "#5a1a22", "design": "gores", "colors": ["#d9d3bf"], "number": "#e2e0d6", "count": 7}
+      }
+    },
+    {
+      "id": "grey",
+      "name": "Pewter",
+      "hull": {
+        "topsides": "#80837f",
+        "text": "#e2e0d6",
+        "boot_stripe": "#e2e0d6",
+        "antifouling": "#17181b",
+        "keel": "#1c1e21",
+        "graphic": {
+          "type": "stripes",
+          "colors": ["#1b3a2d"],
+          "depth": [0.045],
+          "width": [0.012],
+          "from": 0.0,
+          "to": 0.965
+        }
+      },
+      "deck": {"gelcoat": "#d9d3c2", "nonslip": "#a8a291"},
+      "sails": {
+        "main": {"color": "#c9cbc5", "number": "#1b3a2d"},
+        "headsail": {"color": "#c9cbc5", "number": "#1b3a2d"},
+        "spinnaker": {"color": "#e2e0d6", "design": "head", "colors": ["#80837f"], "number": "#1b3a2d", "radius": 0.3}
+      }
+    },
+    {
+      "id": "black",
+      "name": "Black and tan",
+      "hull": {
+        "topsides": "#1e2125",
+        "text": "#d9d3bf",
+        "boot_stripe": "#b39a5c",
+        "antifouling": "#17181b",
+        "keel": "#1c1e21",
+        "graphic": {
+          "type": "stripes",
+          "colors": ["#b39a5c"],
+          "depth": [0.045],
+          "width": [0.012],
+          "from": 0.0,
+          "to": 0.965
+        }
+      },
+      "deck": {"gelcoat": "#d9d3c2", "nonslip": "#a8a291"},
+      "sails": {
+        "main": {"color": "#a6a7a3", "number": "#e2e0d6"},
+        "headsail": {"color": "#a6a7a3", "number": "#e2e0d6"},
+        "spinnaker": {"color": "#2b2d31", "design": "diagonal", "colors": ["#b39a5c", "#d9d3bf"], "number": "#e2e0d6"}
+      }
+    },
+    {
+      "id": "white",
+      "name": "White and red",
+      "hull": {
+        "topsides": "#e2e2de",
+        "text": "#a3161c",
+        "boot_stripe": "#a3161c",
+        "antifouling": "#17181b",
+        "keel": "#1c1e21",
+        "graphic": {
+          "type": "stripes",
+          "colors": ["#a3161c"],
+          "depth": [0.045],
+          "width": [0.012],
+          "from": 0.0,
+          "to": 0.965
+        }
+      },
+      "deck": {"gelcoat": "#d9d3c2", "nonslip": "#a8a291"},
+      "sails": {
+        "spinnaker": {"color": "#a3161c", "design": "head", "colors": ["#e2e2de"], "number": "#e2e2de"}
+      }
     }
   ],
   "boats": [
     {"id": "aurelia", "boat_name": "Aurelia", "sail_number": "9", "nation": "SLO"},
-    {"id": "windflower", "boat_name": "Windflower", "sail_number": "118", "nation": "GBR"},
-    {"id": "libeccio", "boat_name": "Libeccio", "sail_number": "42", "nation": "ITA"},
-    {"id": "seeadler", "boat_name": "Seeadler", "sail_number": "305", "nation": "GER"},
-    {"id": "zwaluw", "boat_name": "Zwaluw", "sail_number": "61", "nation": "NED"},
+    {
+      "id": "windflower",
+      "boat_name": "Windflower",
+      "sail_number": "118",
+      "nation": "GBR",
+      "livery": "cream"
+    },
+    {
+      "id": "libeccio",
+      "boat_name": "Libeccio",
+      "sail_number": "42",
+      "nation": "ITA",
+      "livery": "burgundy"
+    },
+    {
+      "id": "seeadler",
+      "boat_name": "Seeadler",
+      "sail_number": "305",
+      "nation": "GER",
+      "livery": "navy"
+    },
+    {"id": "zwaluw", "boat_name": "Zwaluw", "sail_number": "61", "nation": "NED", "livery": "grey"},
     {"id": "jugo", "boat_name": "Jugo", "sail_number": "27", "nation": "CRO"},
-    {"id": "belle_ile", "boat_name": "Belle Ile", "sail_number": "714", "nation": "FRA"},
-    {"id": "levante", "boat_name": "Levante", "sail_number": "88", "nation": "ESP"},
-    {"id": "silverbirch", "boat_name": "Silverbirch", "sail_number": "233", "nation": "SWE"},
+    {
+      "id": "belle_ile",
+      "boat_name": "Belle Ile",
+      "sail_number": "714",
+      "nation": "FRA",
+      "livery": "burgundy"
+    },
+    {"id": "levante", "boat_name": "Levante", "sail_number": "88", "nation": "ESP", "livery": "black"},
+    {
+      "id": "silverbirch",
+      "boat_name": "Silverbirch",
+      "sail_number": "233",
+      "nation": "SWE",
+      "livery": "white"
+    },
     {"id": "lastavica", "boat_name": "Lastavica", "sail_number": "19", "nation": "SLO"},
-    {"id": "skylark", "boat_name": "Skylark", "sail_number": "560", "nation": "DEN"},
-    {"id": "southerly", "boat_name": "Southerly", "sail_number": "647", "nation": "AUS"},
-    {"id": "kotuku", "boat_name": "Kotuku", "sail_number": "35", "nation": "NZL"},
-    {"id": "gaivota", "boat_name": "Gaivota", "sail_number": "171", "nation": "POR"}
+    {"id": "skylark", "boat_name": "Skylark", "sail_number": "560", "nation": "DEN", "livery": "cream"},
+    {
+      "id": "southerly",
+      "boat_name": "Southerly",
+      "sail_number": "647",
+      "nation": "AUS",
+      "livery": "navy"
+    },
+    {"id": "kotuku", "boat_name": "Kotuku", "sail_number": "35", "nation": "NZL", "livery": "black"},
+    {"id": "gaivota", "boat_name": "Gaivota", "sail_number": "171", "nation": "POR", "livery": "grey"},
+    {
+      "id": "nordkapp",
+      "boat_name": "Nordkapp",
+      "sail_number": "93",
+      "nation": "NOR",
+      "livery": "white"
+    },
+    {"id": "brisa", "boat_name": "Brisa", "sail_number": "204", "nation": "ESP", "livery": "white"}
   ]
 }

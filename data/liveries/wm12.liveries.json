@@ -6,8 +6,14 @@
     "main": {"cloth": "laminate", "color": "#8b8e93", "fibre": "#2c2d30", "number": "#e2e2dc"},
     "headsail": {"cloth": "laminate", "color": "#8b8e93", "fibre": "#2c2d30", "number": "#e2e2dc"},
     "code_zero": {"cloth": "laminate", "color": "#8b8e93", "fibre": "#2c2d30", "number": "#e2e2dc"},
-    "spinnaker": {"cloth": "nylon", "color": "#2a62ad", "design": "head", "radius": 0.24, "number": "#e2e2dc",
-      "colors": ["#c3c5c7"]}
+    "spinnaker": {
+      "cloth": "nylon",
+      "color": "#2a62ad",
+      "design": "head",
+      "radius": 0.24,
+      "number": "#e2e2dc",
+      "colors": ["#c3c5c7"]
+    }
   },
   "ropes": {
     "mainsheet": {"color": "#ae7249", "fleck": "#2d3548"},
@@ -29,26 +35,269 @@
         "boot_stripe": "#dcdcd6",
         "antifouling": "#17181b",
         "keel": "#1c1e21",
-        "graphic": {"type": "stripes", "colors": ["#b7babd", "#a3161c"], "depth": [0.065, 0.118],
-          "width": [0.05, 0.014], "from": 0.0, "to": 0.965}
+        "graphic": {
+          "type": "stripes",
+          "colors": ["#b7babd", "#a3161c"],
+          "depth": [0.065, 0.118],
+          "width": [0.05, 0.014],
+          "from": 0.0,
+          "to": 0.965
+        }
       },
       "deck": {"gelcoat": "#dad8d0", "nonslip": "#a3a196"}
+    },
+    {
+      "id": "white",
+      "name": "White and navy",
+      "hull": {
+        "topsides": "#e2e2de",
+        "text": "#14284f",
+        "boot_stripe": "#14284f",
+        "antifouling": "#17181b",
+        "keel": "#1c1e21",
+        "graphic": {
+          "type": "stripes",
+          "colors": ["#14284f", "#a3161c"],
+          "depth": [0.065, 0.118],
+          "width": [0.05, 0.014],
+          "from": 0.0,
+          "to": 0.965
+        }
+      },
+      "deck": {"gelcoat": "#dad8d0", "nonslip": "#a3a196"},
+      "sails": {
+        "main": {"color": "#dcdcd6", "number": "#14284f"},
+        "headsail": {"color": "#dcdcd6", "number": "#14284f"},
+        "code_zero": {"color": "#dcdcd6", "number": "#14284f"},
+        "spinnaker": {"color": "#a3161c", "design": "head", "colors": ["#e2e2de"], "number": "#e2e2de"}
+      }
+    },
+    {
+      "id": "graphite",
+      "name": "Graphite and red",
+      "hull": {
+        "topsides": "#2b2d31",
+        "text": "#dedfda",
+        "boot_stripe": "#b3161d",
+        "antifouling": "#17181b",
+        "keel": "#1c1e21",
+        "graphic": {
+          "type": "stripes",
+          "colors": ["#b3161d", "#c9cacb"],
+          "depth": [0.065, 0.118],
+          "width": [0.05, 0.014],
+          "from": 0.0,
+          "to": 0.965
+        }
+      },
+      "deck": {"gelcoat": "#dad8d0", "nonslip": "#a3a196"},
+      "sails": {
+        "main": {"color": "#3a3c40", "fibre": "#5c5f66", "number": "#e2e2dc"},
+        "headsail": {"color": "#3a3c40", "fibre": "#5c5f66", "number": "#e2e2dc"},
+        "code_zero": {"color": "#3a3c40", "fibre": "#5c5f66", "number": "#e2e2dc"},
+        "spinnaker": {"color": "#2b2d31", "design": "diagonal", "colors": ["#b3161d", "#c9cacb"], "number": "#e2e2de"}
+      }
+    },
+    {
+      "id": "red",
+      "name": "Signal red",
+      "hull": {
+        "topsides": "#a3161c",
+        "text": "#e2e2de",
+        "boot_stripe": "#e2e2de",
+        "antifouling": "#2a1214",
+        "keel": "#1c1e21",
+        "graphic": {
+          "type": "stripes",
+          "colors": ["#e2e2de", "#14284f"],
+          "depth": [0.065, 0.118],
+          "width": [0.05, 0.014],
+          "from": 0.0,
+          "to": 0.965
+        }
+      },
+      "deck": {"gelcoat": "#dad8d0", "nonslip": "#a3a196"},
+      "sails": {
+        "spinnaker": {
+          "color": "#e2e2de",
+          "design": "bands",
+          "colors": ["#a3161c", "#14284f"],
+          "number": "#14284f",
+          "stops": [0.35, 0.7]
+        }
+      }
+    },
+    {
+      "id": "silver",
+      "name": "Silver and navy",
+      "hull": {
+        "topsides": "#a9adb2",
+        "text": "#14284f",
+        "boot_stripe": "#14284f",
+        "antifouling": "#17181b",
+        "keel": "#1c1e21",
+        "graphic": {
+          "type": "stripes",
+          "colors": ["#14284f", "#e2e2de"],
+          "depth": [0.065, 0.118],
+          "width": [0.05, 0.014],
+          "from": 0.0,
+          "to": 0.965
+        }
+      },
+      "deck": {"gelcoat": "#dad8d0", "nonslip": "#a3a196"},
+      "sails": {
+        "spinnaker": {"color": "#14284f", "design": "head", "colors": ["#a9adb2"], "number": "#e2e2de", "radius": 0.28}
+      }
+    },
+    {
+      "id": "green",
+      "name": "Racing green",
+      "hull": {
+        "topsides": "#1b3a2d",
+        "text": "#ddd6c2",
+        "boot_stripe": "#ddd6c2",
+        "antifouling": "#17181b",
+        "keel": "#1c1e21",
+        "graphic": {
+          "type": "stripes",
+          "colors": ["#b39a5c", "#ddd6c2"],
+          "depth": [0.065, 0.118],
+          "width": [0.05, 0.014],
+          "from": 0.0,
+          "to": 0.965
+        }
+      },
+      "deck": {"gelcoat": "#dad8d0", "nonslip": "#a3a196"},
+      "sails": {
+        "spinnaker": {"color": "#1f4d3a", "design": "gores", "colors": ["#d9d3bf"], "number": "#e2e2de", "count": 9}
+      }
+    },
+    {
+      "id": "blue",
+      "name": "Royal blue",
+      "hull": {
+        "topsides": "#1f4e9a",
+        "text": "#e2e2de",
+        "boot_stripe": "#e2e2de",
+        "antifouling": "#17181b",
+        "keel": "#1c1e21",
+        "graphic": {
+          "type": "stripes",
+          "colors": ["#e2e2de", "#e2e2de"],
+          "depth": [0.065, 0.118],
+          "width": [0.05, 0.014],
+          "from": 0.0,
+          "to": 0.965
+        }
+      },
+      "deck": {"gelcoat": "#dad8d0", "nonslip": "#a3a196"},
+      "sails": {
+        "main": {"color": "#dcdcd6", "number": "#1f4e9a"},
+        "headsail": {"color": "#dcdcd6", "number": "#1f4e9a"},
+        "code_zero": {"color": "#dcdcd6", "number": "#1f4e9a"},
+        "spinnaker": {"color": "#d6b23c", "design": "head", "colors": ["#1f4e9a"], "number": "#14284f"}
+      }
+    },
+    {
+      "id": "black",
+      "name": "Carbon",
+      "hull": {
+        "topsides": "#1e2125",
+        "text": "#c9cacb",
+        "boot_stripe": "#c9cacb",
+        "antifouling": "#17181b",
+        "keel": "#1c1e21",
+        "graphic": {
+          "type": "stripes",
+          "colors": ["#b7babd", "#b7babd"],
+          "depth": [0.065, 0.118],
+          "width": [0.05, 0.014],
+          "from": 0.0,
+          "to": 0.965
+        }
+      },
+      "deck": {"gelcoat": "#dad8d0", "nonslip": "#a3a196"},
+      "sails": {
+        "main": {"color": "#3a3c40", "fibre": "#5c5f66", "number": "#e2e2dc"},
+        "headsail": {"color": "#3a3c40", "fibre": "#5c5f66", "number": "#e2e2dc"},
+        "code_zero": {"color": "#3a3c40", "fibre": "#5c5f66", "number": "#e2e2dc"},
+        "spinnaker": {
+          "color": "#c9cacb",
+          "design": "diagonal",
+          "colors": ["#1e2125", "#a3161c"],
+          "number": "#1e2125",
+          "luff": 0.2,
+          "leech": 0.8,
+          "band": 0.4
+        }
+      }
     }
   ],
   "boats": [
     {"id": "seraphine", "boat_name": "Seraphine", "sail_number": "12", "nation": "SLO"},
-    {"id": "nightjar", "boat_name": "Nightjar", "sail_number": "101", "nation": "GBR"},
+    {
+      "id": "nightjar",
+      "boat_name": "Nightjar",
+      "sail_number": "101",
+      "nation": "GBR",
+      "livery": "white"
+    },
     {"id": "meridian", "boat_name": "Meridian", "sail_number": "230", "nation": "FRA"},
-    {"id": "maestrale", "boat_name": "Maestrale", "sail_number": "75", "nation": "ITA"},
-    {"id": "solano", "boat_name": "Solano", "sail_number": "318", "nation": "ESP"},
-    {"id": "halcyon", "boat_name": "Halcyon", "sail_number": "46", "nation": "CRO"},
-    {"id": "argentum", "boat_name": "Argentum", "sail_number": "520", "nation": "GER"},
-    {"id": "vendaval", "boat_name": "Vendaval", "sail_number": "607", "nation": "POR"},
-    {"id": "larkspur", "boat_name": "Larkspur", "sail_number": "88", "nation": "NZL"},
-    {"id": "polaris", "boat_name": "Polaris", "sail_number": "404", "nation": "SWE"},
-    {"id": "aurora", "boat_name": "Aurora", "sail_number": "777", "nation": "AUS"},
-    {"id": "tramontana", "boat_name": "Tramontana", "sail_number": "19", "nation": "NED"},
-    {"id": "petrel", "boat_name": "Petrel", "sail_number": "299", "nation": "DEN"},
-    {"id": "bellatrix", "boat_name": "Bellatrix", "sail_number": "150", "nation": "USA"}
+    {
+      "id": "maestrale",
+      "boat_name": "Maestrale",
+      "sail_number": "75",
+      "nation": "ITA",
+      "livery": "red"
+    },
+    {"id": "solano", "boat_name": "Solano", "sail_number": "318", "nation": "ESP", "livery": "blue"},
+    {"id": "halcyon", "boat_name": "Halcyon", "sail_number": "46", "nation": "CRO", "livery": "silver"},
+    {
+      "id": "argentum",
+      "boat_name": "Argentum",
+      "sail_number": "520",
+      "nation": "GER",
+      "livery": "graphite"
+    },
+    {
+      "id": "vendaval",
+      "boat_name": "Vendaval",
+      "sail_number": "607",
+      "nation": "POR",
+      "livery": "black"
+    },
+    {
+      "id": "larkspur",
+      "boat_name": "Larkspur",
+      "sail_number": "88",
+      "nation": "NZL",
+      "livery": "green"
+    },
+    {"id": "polaris", "boat_name": "Polaris", "sail_number": "404", "nation": "SWE", "livery": "white"},
+    {"id": "aurora", "boat_name": "Aurora", "sail_number": "777", "nation": "AUS", "livery": "red"},
+    {
+      "id": "tramontana",
+      "boat_name": "Tramontana",
+      "sail_number": "19",
+      "nation": "NED",
+      "livery": "black"
+    },
+    {
+      "id": "petrel",
+      "boat_name": "Petrel",
+      "sail_number": "299",
+      "nation": "DEN",
+      "livery": "graphite"
+    },
+    {
+      "id": "bellatrix",
+      "boat_name": "Bellatrix",
+      "sail_number": "150",
+      "nation": "USA",
+      "livery": "white"
+    },
+    {"id": "boreas", "boat_name": "Boreas", "sail_number": "361", "nation": "GRE", "livery": "silver"},
+    {"id": "calima", "boat_name": "Calima", "sail_number": "93", "nation": "ESP", "livery": "blue"}
   ]
 }

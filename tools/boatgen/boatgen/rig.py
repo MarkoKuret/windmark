@@ -111,14 +111,15 @@ class Rig:
                   .transformed(translate(crane[1] + [0.03 * s, sy * 0.012, -0.03 * s]) @ rot_axis([1, 0, 0], np.pi / 2)),
                   tag=f"crane_sheave_{sy}")
             p.attach(f"crane_sheave_{sy}", "crane")
-        # instruments on the mast front just above the gooseneck (a bank of three on the bigger boats)
+        # instruments on the mast's aft face just below the gooseneck, facing the cockpit
+        # (a bank of three on the bigger boats)
         n_ins = 3 if self.hull.L >= 9.0 else 1
         for k in range(n_ins):
-            z = self.z_boom + 0.35 * s + k * 0.2 * s
+            z = self.z_boom - 0.22 * s - k * 0.2 * s
             ins = Part()
-            ins.add("rubber", superellipsoid_box((0.04 * s, 0.2 * s, 0.16 * s), 0.2, 10, 5, center=(0.02 * s, 0, 0)))
-            ins.add("glass", superellipsoid_box((0.01 * s, 0.17 * s, 0.13 * s), 0.12, 10, 4, center=(0.042 * s, 0, 0)))
-            p.extend(ins, translate([self.x_mast + self.chord / 2, 0, z]), tag=f"mast_instrument_{k}")
+            ins.add("rubber", superellipsoid_box((0.04 * s, 0.2 * s, 0.16 * s), 0.2, 10, 5, center=(-0.02 * s, 0, 0)))
+            ins.add("glass", superellipsoid_box((0.01 * s, 0.17 * s, 0.13 * s), 0.12, 10, 4, center=(-0.042 * s, 0, 0)))
+            p.extend(ins, translate([self.x_mast_aft, 0, z]), tag=f"mast_instrument_{k}")
             p.attach(f"mast_instrument_{k}", "mast")
         # halyard sheave boxes at the hounds and below the masthead
         # (on the mast's front face, which narrows above the hounds)

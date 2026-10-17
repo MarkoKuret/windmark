@@ -895,9 +895,9 @@ func _penalties(sim: SimSource, b: int) -> void:
 			and reset_age <= RESET_TICKS and (pending > 0 or turning):
 		turn_text = RaceText.TURN_RESET_TEXT[why]
 	elif turn_deg >= 1.0:
-		turn_text = "Turn: %d°" % int(HudFormat.round_half_away(turn_deg))
+		turn_text = ""  # hud.md §12.1: the ring says how far
 	elif pending > 0:
-		turn_text = "Sail clear and turn: one tack and one gybe"
+		turn_text = "Sail clear and turn"
 	else:
 		turn_text = ""
 
@@ -1035,7 +1035,8 @@ func _events(sim: SimSource, b: int) -> void:
 					_last_penalty_tick = _tick
 				var other_txt := " (%s)" % name_of(eo) if eo >= 0 else ""
 				if eb == b:
-					_banner("PENALTY: %s%s" % [RaceText.rule_text(rule), other_txt], Tint.RED, BANNER_PENALTY)
+					# hud.md §12.2: short, the panel carries the rule text and the other boat
+					_banner("PENALTY · RULE %s" % RaceText.code(rule), Tint.RED, BANNER_SIGNAL)
 				else:
 					_feed("%s penalised, rule %s%s" % [name_of(eb), RaceText.code(rule), other_txt], [eb, eo])
 				hud_event.emit("penalty", {"boat": eb, "rule": rule, "other": eo})

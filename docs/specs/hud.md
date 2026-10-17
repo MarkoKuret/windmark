@@ -170,8 +170,9 @@ In the 3-D view: an arrow on the mark on the rounding side, the zone circle (rad
 boat plus the mark's radius, measured from the mark: `3·L` in a fleet race unless the course says otherwise, `2·L`
 in a match race, `rules.md` §7.1; drawn at the finishing line's ends too on the last leg) drawn on the water when she
 is within `6·L`, and a bouncing marker over the next mark when it is more than 500 m away.
-The mark tag (§16.4) carries the name, distance, ETA and bearing on the mark itself; the distance to the layline is
-shown at the tack point on the water (the point along the current COG where she meets the other tack's layline).
+The mark tag (§16.4) carries the name and distance on the mark itself (the ETA at Race, the bearing at Data,
+§16.1); the distance to the layline is shown at the tack point on the water (the point along the current COG where
+she meets the other tack's layline).
 
 ### 7.1 Next-mark arrow
 
@@ -197,7 +198,8 @@ camera it is not drawn (the mark tag and its edge pointer do that job there).
 ## 8. Radar / minimap
 
 - Centred on the viewed boat; **heading-up** (default) or **north-up**; range 100 m – 3 km in steps of ×1.5; the
-  last setting is remembered per player.
+  last setting is remembered per player. Under the disc the range (`100 M`) and, only when north-up, `NORTH UP`
+  (heading-up is the default and needs no label); none of them at Glance (§16.1).
 - **Boats** as oriented icons, scaled to at least 6 px. Colour from the rules engine's pair record between the viewed
   boat (me) and that boat (`rules.md` §11.1):
 
@@ -368,37 +370,47 @@ From the pair records of the viewed boat (`rules.md` §11.1), highest-priority f
 
 ### 12.1 Panel
 
-Visible while the boat has pending penalties, is taking one, or was penalised in the last 5 s:
+Visible while the boat has pending penalties, is taking one, or was penalised in the last 5 s. It is a compact
+chip, not a dashboard (the owner's call, 2026-10-17: the first panel, 620 x 118, took too much of the screen):
+540 x 76 design px, `ink` at 86 % with a 3 px `port` bar along its top, the ring on the left, three short lines in
+the middle (a rule text too long for its room is set smaller, down to the 11 px floor), the deadline on the right.
+It still reads at a glance; nothing in it is said twice.
 
-- **Pending count** and the current one's rule text (§12.3) and the other boat's name.
-- **Turn progress**: a small ring gauge at the panel's left: a ring of 34 design px radius, its track in `hair`
-  (4 px), the progress arc in `paper` (4 px) from the top clockwise over `|Θ| / 360°` of the circle (the tracker's
-  `|Θ|`, `rules.md` §9.3; every penalty is one turn of 360°), the number `210°` in its middle (22 design px); right
-  of the ring `TURN` (`mist`) over the words `TACK` and `GYBE`, each in `paper` once done and in `mist` at 45 %
-  before. The ring is inside the panel only; state text, the first that applies:
-  - `Not counted: inside the zone` while the core's `turn_in_zone` is set (match races only, `rules.md` §9.3; a
+- **Lines** (left-aligned after the ring): the caption `PENALTY · RULE 10` in `port` caps (13 design px; with more
+  than one pending `PENALTY 1 OF 2 · RULE 10`), the rule's text of §12.3 (20 design px, `paper`), and a state line
+  (13 design px, `mist`, caps): the other boat's name (`WITH NORA`) and, after a ` · `, the turn state, the first
+  that applies:
+  - `NOT COUNTED: INSIDE THE ZONE` while the core's `turn_in_zone` is set (match races only, `rules.md` §9.3; a
     fleet-race turn counts anywhere);
   - for 3 s after the core's last turn reset (`turn_reset`, `turn_reset_tick`, `rules.md` §11.2), by its reason:
-    `Turn reset: paused`, `Turn reset: turned back`, `Turn reset: inside the zone`, `Turn reset: mark rounded`;
-  - `Turn: 210°` while the turn has progress;
-  - with nothing turning yet: `Sail clear and turn: one tack and one gybe`.
+    `TURN RESET: PAUSED`, `TURN RESET: TURNED BACK`, `TURN RESET: INSIDE THE ZONE`, `TURN RESET: MARK ROUNDED`;
+  - with nothing turning yet: `SAIL CLEAR AND TURN`;
+  - while the turn has progress: nothing (the ring says how far).
 
-  The HUD reads both states from the core and does not infer them.
+  The HUD reads both states from the core and does not infer them. After the penalty is done the lines read
+  `PENALTY` and `Penalty done` for the 5 s the panel stays.
+- **Turn progress**: a small ring gauge at the panel's left: a ring of 22 design px radius, its track in `hair`
+  (3 px), the progress arc in `paper` (3 px) from the top clockwise over `|Θ| / 360°` of the circle (the tracker's
+  `|Θ|`, `rules.md` §9.3; every penalty is one turn of 360°), the number `210°` in its middle (14 design px); right
+  of the ring the words `TACK` over `GYBE` (11 design px), each in `paper` once done and in `mist` at 45 % before.
+  The ring is inside the panel only.
 - **Deadline**: `rules.md` §9.4 countdown `1:32` to the time the turn must be **completed** (120 s after the
-  incident), red below 30 s (a turn takes 10 to 25 s); hidden when there is no deadline (match race single penalty).
-  Under the number a thin bar (4 design px, 150 design px long, right-aligned with the number) shrinks towards
-  0:00: its track in `hair` at 45 %, its fill from the left over `time left / 120 s` of it in the countdown's
-  colour (`paper`, `port` below 30 s).
-- **Disqualification warning**: `One more penalty = disqualification` when pending = `dsq_pending − 1` or
-  received = `dsq_total − 1`.
+  incident), 40 design px right-aligned under a `DEADLINE` caption (11 design px, `mist`), red below 30 s (a turn
+  takes 10 to 25 s); hidden when there is no deadline (match race single penalty). Under the number a thin bar
+  (3 design px, 100 design px long, right-aligned with the number) shrinks towards 0:00: its track in `hair` at
+  45 %, its fill from the left over `time left / 120 s` of it in the countdown's colour (`paper`, `port` below
+  30 s).
+- **Disqualification warning**: a fourth line, `ONE MORE PENALTY = DISQUALIFICATION` in `port` (13 design px; the
+  panel grows by 20 design px for it), when pending = `dsq_pending − 1` or received = `dsq_total − 1`.
 - **Finish blocked**: `Take your penalty before finishing` on a `FinishBlocked` event.
 - **Nothing on the water**: the turn is not drawn round the boat in any camera (the owner's call: the ring on the
   water was ugly and hid the boat); the panel's small ring carries it in every camera.
 
 ### 12.2 Messages
 
-On a `Penalty` event for the viewed boat: a 4 s banner `PENALTY: <rule text> (<other boat>)` and a sound; for other
-boats, a fleet feed line `<boat> penalised, rule 10 (<other>)`. `PenaltyServed`: `Penalty done` banner 2 s.
+On a `Penalty` event for the viewed boat: a 3 s banner `PENALTY · RULE 10` and a sound (the panel of §12.1 appears
+at the same moment with the rule's text and the other boat, so the banner does not repeat them); for other boats, a
+fleet feed line `<boat> penalised, rule 10 (<other>)`. `PenaltyServed`: `Penalty done` banner 2 s.
 `PenaltyLate`: no banner of its own; the `Disqualified` event that follows it shows the full-width banner with the
 reason, `DISQUALIFIED: penalty not taken within 2 minutes`.
 
@@ -521,7 +533,8 @@ density of §16.1: an item shows only when both allow it.
   `rules.md` §13.
 - Time to burn: a boat 100 m behind the line at 5 m/s heading straight at it, 30 s before the gun, shows `t_line` 20 s
   and `+10 s` to burn.
-- Density (§16.1): for each level and phase the table's items are shown and no others; the density key cycles
+- Density (§16.1): for each level and phase the table's items are shown and no others (at Race on a beat: no wind
+  page, no lap line, no ahead and behind; the leader gap and the shift chip yes); the density key cycles
   Glance, Race, Data, Glance and the choice survives a restart; the defaults are Race at 1920 x 1080 and Glance at
   1280 x 800.
 - Name tags (§16.4): a boat at 45 m has a tag, one at 55 m has none until it is selected; with a penalty pending
@@ -536,16 +549,20 @@ density of §16.1: an item shows only when both allow it.
   water or on her again clears, a click on another boat replaces her, a press dragged 20 px picks nothing
   (`controls.md` §8 test 10), Esc clears it without pausing, `boat_select` goes nearest first, then the next, then
   none; the radar marks her.
-- Boat card (§16.7): for a scripted race state every row matches the boat states, race and rules records it comes
-  from; at 1280 x 800 and 1080 x 1920 for UI scales 80 % to 130 % at every density, with a boat selected, every
-  text is on screen and no two blocks overlap.
+- Boat card (§16.7): for a scripted race state every row matches the race and rules records it comes from, and
+  the card has no distance, bearing, speed or heading cell; at 1280 x 800 and 1080 x 1920 for UI scales 80 % to
+  130 % at every density, with a boat selected, every text is on screen and no two blocks overlap.
 - Tack point (§16.4): the point and its `TACK IN` label are drawn, and no line runs from the boat to it; with the
   point under a corner block the label moves under the ring or is not drawn, never over the block.
-- Ladder lines (§16.4.2): with a boat selected two lines square to the axis, through each boat, own in `mark`; the
-  gain label reads her distance along the axis in hull lengths; none with nothing selected.
+- Ladder lines (§16.4.2): with a boat selected two lines square to the axis, each from its boat's bow towards the
+  other boat and past her line, own in `mark`; the gain label reads her distance along the axis in hull lengths;
+  none with nothing selected.
+- Penalty panel (§12.1): the panel is 540 x 76 design px, its ring 22 px in radius; the own penalty banner reads
+  `PENALTY · RULE 10` and is gone after 3 s.
 - Hoist cue (§5.1): during a hoist one `HOISTING <SAIL>` cue with its bar shows, and no two texts of the helm strip
   and its notes overlap.
-- Every text of the HUD fits its block at 1280 x 800 for UI scales 80 % to 130 %.
+- Every text of the HUD fits its block at 1920 x 1080 and 1280 x 800 for UI scales 80 % to 130 %, and no two blocks'
+  drawn areas overlap there (world tags aside).
 - Portrait (§16.5): at 1080 x 1920 for UI scales 80 % to 130 %, in the pre-start, beat and penalty states at every
   density, every text is on screen and no two texts overlap, and no two blocks' drawn areas overlap (world tags
   aside); the default density is Glance; the radar is compact.
@@ -582,17 +599,24 @@ boat's card (§16.7). The radar, the helm strip and, under manual trim, the trim
 
 | Phase | Glance | Race | Data |
 | --- | --- | --- | --- |
-| Pre-start (race sequence, not started) | boat speed, TWA dial; start block: countdown, time to burn with its late/early bar, the flag rule in one line; no race bug, no wind page | + heading; full start block (distance and time to line, burn, bias, flags); wind page; race bug (fleet); feed 3 lines | + VMG, AWA, SOG, COG, AWS, heel bar; race bug adds laps and legs; feed 6 lines |
-| Beat or run | boat speed, TWA dial with the VMG angles and the coloured pointer; race bug: clock and rank | + heading; wind page and shift meter; lap, leg and leg type; feed 3 lines | + VMG, AWA, SOG, COG, AWS, heel bar; leader gap, ahead and behind; feed 6 lines; sail hint |
+| Pre-start (race sequence, not started) | boat speed, TWA dial; start block: countdown, time to burn with its late/early bar, the flag rule in one line; no race bug, no wind page | + heading; full start block (distance and time to line, burn, bias, flags); feed (own events, 3 lines); no race bug, no wind page | + VMG, AWA, SOG, COG, AWS, heel bar; wind page; race bug (fleet, laps and legs); feed 6 lines (every event) |
+| Beat or run | boat speed, TWA dial with the VMG angles and the coloured pointer; race bug: clock and rank; mark tag: name and distance | + heading; the shift chip; the race bug adds the gap to the leader; the mark tag adds the ETA; feed (own events, 3 lines) | + VMG, AWA, SOG, COG, AWS, heel bar; wind page; lap, leg and leg type; ahead and behind; the mark tag adds the bearing; feed 6 lines (every event); sail hint |
 | Reach | as a beat, the pointer neutral | as a beat | as a beat, with VMC in place of VMG |
 | Rounding (within `6·L` of the next mark, and 6 s after a rounding) | boat speed, TWA dial | as the leg | as the leg |
 | Penalty (panel shown) | boat speed, TWA dial | as the leg | as the leg |
 
+- Race is what a racer needs on each leg and nothing more (the owner's call, 2026-10-17: the HUD showed too many
+  numbers at once): speed, the TWA dial with the VMG angles, heading, the next mark's distance and time, the
+  countdown and line numbers before the start, rank and gap. The wind page (TWS, TWD), the lap and leg line, the
+  boats ahead and behind, the mark's bearing and the fleet's feed moved to Data.
 - At Glance the radar is drawn at 72 % of its size without the range and orientation labels, the helm strip has no
-  labels, and the feed shows only the viewed boat's own events.
+  labels. At Glance and Race the feed shows only the viewed boat's own events; Data shows every event.
 - Free sailing (no race): the instrument page and the helm strip as in the table's beat row without the race items.
 - **Defaults**: Race; Glance on the Steam Deck and on any screen under 900 px tall (after the UI scale). The player's
-  last choice is kept in the settings file (per device, `menus.md` §3) and wins over the default.
+  last choice is kept in the settings file (per device, `menus.md` §3) and wins over the default. Glance was
+  considered as the default everywhere (2026-10-17) and rejected: with Race cut down to the racer's list, Glance only
+  drops heading, the shift and the gap, which a new player on a large screen would miss without knowing the density
+  key; on the small screens Glance stays the default because the page and the radar are drawn smaller there.
 - A change shows an `INSTRUMENTS · <LEVEL>` chip above the instrument page for 1.5 s; three small squares on the page
   show the level at all times.
 
@@ -602,7 +626,8 @@ boat's card (§16.7). The radar, the helm strip and, under manual trim, the trim
 | --- | --- | --- |
 | `ink` | `#06121B` | scrims, glass pages (14 % to 44 %), chips (80 % to 90 %) |
 | `paper` | `#F5F8FA` | every number, primary text; boats with no relation |
-| `mist` | paper at 66 % | labels, units, secondary text |
+| `mist` | paper at 66 % | units, secondary text, the state lines |
+| `label` | paper at 55 % | the caps labels and captions of every cell, chip and panel (quieter than the values they name) |
 | `hair` | paper at 42 % | hairlines, rings, ticks, dividers (at 45 % of `hair`) |
 | `mark` | `#FFD23F` | the course and the viewed boat: next mark, zone circle, rounding arrow, own boat on the radar, the number to act on; the rule-17 line |
 | `stbd` | `#27D17C` | starboard layline, tack letter S, lift, she keeps clear of me, right of way |
@@ -617,7 +642,8 @@ These are the colours of §6, §8 and §11 (red = `port`, green = `stbd`, orange
 #### 16.2.1 Colour-blind palettes
 
 The settings' colour palette (`controls.md` §6, `menus.md` §3) swaps the four rules colours; `ink`, `paper`,
-`mist`, `hair`, `mark` and `ghost` never change, and neither do the words and letters that go with every colour.
+`mist`, `label`, `hair`, `mark` and `ghost` never change, and neither do the words and letters that go with every
+colour.
 
 | Palette | `stbd` | `port` | `owe` | `have` |
 | --- | --- | --- | --- | --- |
@@ -658,11 +684,20 @@ apparent wind pointer, hollow, in `paper`. No cell shows a target speed: Glance 
 adds heading under the boat speed, Data adds VMG (VMC on a reach) and SOG beside them and COG, AWS and the heel bar
 under them. Numbers keep the 4 Hz refresh of §1; dial and bars move every frame.
 
+**Type hierarchy** (design px at 1920 x 1080, `hud_direction.md` §4; every text is one of these sizes, so the eye
+learns what a size means): numbers 112 (boat speed, the hero), 52 (heading, true wind, VMG, SOG), 40 (the TWA
+value, the race bug, the start numbers, the mark distance, the tack point, the penalty deadline), 26 (the Data
+row of COG, AWS and heel, the card's place and name); the countdown 128. Text 20 (alert lines, table rows, the
+penalty's rule text, the gap lines), 16 (feed, helm notes, the card's standing, the next-mark arrow's distance in
+24), 13 (every label, caption and chip: `label` for labels and captions, `paper` or the state's colour for chips);
+11 is the floor (§16.2.2) and the deadline's caption. Labels sit in `label`, units in `mist`, values in `paper`.
+
 ### 16.4 World tags
 
-- **Mark tag**: on the next mark (§7): name, distance, ETA, bearing and relative bearing. Off screen it becomes an
-  edge pointer at the screen edge towards the mark in the chase camera; in the other cameras the next-mark arrow
-  (§7.1) takes its place.
+- **Mark tag**: on the next mark (§7): name and distance; at Race the ETA under them; at Data the bearing and
+  relative bearing too (§16.1: the tag is never hidden by the density, its second line follows it). Off screen it
+  becomes an edge pointer at the screen edge towards the mark in the chase camera; in the other cameras the
+  next-mark arrow (§7.1) takes its place.
 - **Tack point**: on a beat or run with the layline distance of §6 shown, a point on the water where the current COG
   meets the other tack's layline (a ring in the colour of the tack she will sail after it), with
   `TACK IN <distance> <time>` on a beat and `GYBE IN <distance> <time>` on a run (the turn onto the other tack
@@ -717,16 +752,19 @@ ladder: one through the viewed boat and one through the selected boat, both squa
 - **Axis**: on a beat or a run, and before the start or free sailing, the wind: the viewed boat's clean wind
   direction smoothed 10 s (the laylines' wind, §6). On a reach, the bearing from the viewed boat to the next mark's
   point (§7), since across the wind says nothing there.
-- **Lines**: each a straight line on the water (sea level) through the boat's hull reference point, square to the
-  axis, as long as the two boats are apart across the axis plus 40 m on each side (at least 80 m each side), so
-  both lines run past both boats. A gap of one hull length is left at each boat, and no line is drawn over any
-  boat's hull and rig on screen (her pick triangle of §16.4.1 with 6 design px round it). The
-  viewed boat's in `mark`, the selected boat's in `paper` at 75 %, hairlines (1.5 px). Drawn only where in front of
-  the camera; nothing else (no fill between them).
-- **Gain**: at the selected boat's line, beside her, her distance ahead of or behind the viewed boat along the axis
-  in hull lengths of the viewed boat, one decimal: `2.1 L AHEAD`, `0.4 L BEHIND` (`EVEN` under 0.05 L), 13 design px
-  `paper` on an `ink` 70 % chip. Ahead means upwind on a beat (and before the start), downwind on a run, towards the
-  mark on a reach.
+- **Lines**: each a straight line on the water (sea level) that starts at the boat's **bow** (the bow point of her
+  hull as she floats, heel and pitch included, dropped to the water) and runs square to the axis towards the other
+  boat's side, far enough to pass the other boat's line by 40 m (at least 80 m), so the two rungs overlap between
+  the boats, where the eye compares them: the rung further along the axis is the boat ahead. Nothing runs through
+  a hull: the line leaves the bow and is not drawn over any boat's hull and rig on screen (her pick triangle of
+  §16.4.1 with 6 design px round it). Before this the lines ran through the hull reference points with a one-hull-length
+  gap at each boat (owner, 2026-10-17: the bow is where a sailor sights the ladder from). The viewed boat's in
+  `mark`, the selected boat's in `paper` at 75 %, hairlines (1.5 px). Drawn only where in front of the camera;
+  nothing else (no fill between them).
+- **Gain**: at the selected boat's line, two of her hull lengths from her bow along it, her distance ahead of or
+  behind the viewed boat along the axis in hull lengths of the viewed boat, one decimal: `2.1 L AHEAD`,
+  `0.4 L BEHIND` (`EVEN` under 0.05 L), 13 design px `paper` on an `ink` 70 % chip. Ahead means upwind on a beat
+  (and before the start), downwind on a run, towards the mark on a reach.
 - Hidden with no selection, with the course map open, with `world_tags` off and in the results; at every density
   and assist preset. A scene without a 3-D camera draws none.
 
@@ -741,7 +779,7 @@ these clips, so the alert lane is at the top and large; the instruments are comp
   Margins 48 px left and right, 140 px top, 200 px bottom: the top margin keeps the alert lane under the apps' title
   bar, the bottom margin keeps the instruments above most of their caption and button strip.
 - **Top row**: the race bug top left (with its lap and gap lines), the wind page top right with the shift chip under
-  it.
+  it (at Race the chip alone, §16.1).
 - **Alert lane**, centred under the taller of the two (bug with its lines, wind page with its chip), 16 px below:
   before the start the countdown, flags and start numbers; in the race the penalty panel, then the rules line, the
   banners and the prompts (stacked as in landscape). The lane is drawn up to 1.15 times larger than the rest, as
@@ -779,20 +817,23 @@ x0.5`, `Slow motion x0.25` or `Normal speed`. It is the only capture feedback; t
 
 ### 16.7 Selected boat card
 
-While a boat is selected (§16.4.1) a small card says who she is and how she stands against the viewed boat. It
-uses only what the HUD already reads (the race and rules records, the boat states, the liveries); a field with no
-value is left out, never guessed. Numbers refresh at the 4 Hz of §1 with the rest.
+While a boat is selected (§16.4.1) a small card says who she is and how she stands against the viewed boat: what a
+racer glances at, nothing to study. It uses only what the HUD already reads (the race and rules records, the
+liveries); a field with no value is left out, never guessed. Numbers refresh at the 4 Hz of §1 with the rest.
 
 | Row | Content | Source |
 | --- | --- | --- |
 | Header | sail number and skipper in caps (`SLO 7 · AI EXPERT`; a human skipper is `PLAYER`, or the skipper's name when the race has one), then the boat name large; on the right, after the start, `PLACE` over her place `3 / 6` (her finishing place once finished) | livery (sail number, boat name), the race's skipper and AI level, the shown ranking order of §10 |
-| Cells | `DIST` her distance from the viewed boat; `BRG` the compass bearing to her with the relative bearing to the bow (`045 · 35° R`); `SPEED` her boat speed in knots; `HDG` her heading with her tack letter in the tack colour | the boat states of the tick, formats of §1 |
-| Course | `Next <mark>` (the label of her next step: a mark's label, `Gate`, `Finish`; `Start` before she starts), or her status (`Finished`, `RET`, `DSQ`), with `OCS · ` before it while she must return; after a ` · `, how far she is ahead of or behind the viewed boat along the course: `45 m behind you`, `120 m ahead of you` (the difference of the two course distances to go `D` of `race.md` §8.2), only while both are racing on the course | race record |
-| Rules | while the pair record with the viewed boat has a relation (the radar colour of §8): one line in that colour, `YOU KEEP CLEAR`, `SHE KEEPS CLEAR`, `YOU GIVE ROOM` or `SHE GIVES YOU ROOM` (room wins over keep-clear, as on the radar), with `· BREACH` when the state is Breach; under it the rule's text of §12.3 with its number (`Port tack keeps clear of starboard (10)`). Not with the Minimal assist (§14), as the radar colours | pair record (`rules.md` §11.1) |
-| Penalty | `1 PENALTY OWED` (or `2 PENALTIES OWED`) in `port` while she has penalties pending, `TURNING` added while she is taking one | her rules record |
+| Standing | `Next <mark>` (the label of her next step: a mark's label, `Gate`, `Finish`; `Start` before she starts), or her status (`Finished`, `RET`, `DSQ`), with `OCS · ` before it while she must return; after a ` · `, how far she is ahead of or behind the viewed boat along the course: `45 m behind you`, `120 m ahead of you`, `level with you` (the difference of the two course distances to go `D` of `race.md` §8.2), only while both are racing on the course. On a beat or a run the ladder lines (§16.4.2) show the same standing on the water, in hull lengths | race record |
+| Rules | while the pair record with the viewed boat has a relation (the radar colour of §8): one line in that colour, `YOU KEEP CLEAR`, `SHE KEEPS CLEAR`, `YOU GIVE ROOM` or `SHE GIVES YOU ROOM` (room wins over keep-clear, as on the radar), then `· RULE 10` (the rule's number of §12.3) and `· BREACH` when the state is Breach. The rule's text is not on the card: the rules line of §11 carries it while it matters, the rules help explains it. Not with the Minimal assist (§14), as the radar colours | pair record (`rules.md` §11.1) |
+| Penalty | `1 PENALTY OWED` (or `2 PENALTIES OWED`) in `port` while she has penalties pending, `· TURNING` added while she is taking one | her rules record |
 
+- **Dropped** (owner, 2026-10-17: too many numbers): the cells of her distance, bearing, speed and heading, and the
+  rule's text under the rules line. Her distance still shows on her edge pointer when she is off screen (§16.4),
+  and the radar has her position; her speed and heading are hers to know.
 - **Look**: an ink chip at 86 %, 340 design px wide, a hairline along the top edge and a 4 px bar down the left
-  side in her tag colour (`hair` with no relation); labels in `mist`, values in `paper`, numbers tabular. Text no
+  side in her tag colour (`hair` with no relation); labels in `label`, values in `paper`, numbers tabular. The
+  header's caption 13 design px, the name 26, the standing 16, the rules and penalty lines 15 caps. Text no
   smaller than the 11 px floor (§16.2.2): a line too long for the card is set smaller down to the floor, then cut
   with an ellipsis.
 - **Place**: landscape, left, its bottom 48 px above the instrument page (clear of the density chip) and never
@@ -801,7 +842,7 @@ value is left out, never guessed. Numbers refresh at the 4 Hz of §1 with the re
 - **Density**: it shows the same at every level (§16.1: density never hides it); it only appears on the player's
   request.
 - The card goes when the selection clears and in the results. Without a race (free sailing) it has the header
-  (without the place) and the cells only.
+  (without the place) only.
 
 ## 17. Frame-time overlay (development)
 

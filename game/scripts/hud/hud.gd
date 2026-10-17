@@ -86,8 +86,7 @@ var selected := {}
 ## the pointer picks (off while the scene's pause menu is open)
 var pick_enabled := true
 ## hud.md §16.7: the selected boat's card, refreshed with the texts; empty without one. Keys: boat, head, name,
-## place, fleet, dist [value, unit], brg [value, unit], speed [value, unit], hdg [value, tack letter], course,
-## rules, rules_col, rule_text, penalty, col (her tag colour), and the raw values d_m, brg_rad, rel_rad, v, psi
+## place, fleet, course (her standing), gap_m, rules, rules_col, rule, penalty, col (her tag colour)
 var card := {}
 var sim: SimSource
 ## the screen the HUD lays out for, when set (tests, previews); zero: its viewport's
@@ -306,7 +305,10 @@ func phase() -> String:
 
 ## The items the density and the assist show now (hud.md §16.1, §14): instrument cells ("bsp", "twa_dial",
 ## "twa", "hdg", "vmg_kn", "awa", "sog", "cog", "aws", "heel_bar"; no target speed, hud.md §4), "bug", "bug_lap",
-## "bug_gaps", "wind_page", "shift", "feed", "feed_own", "start_min", "start_full", "hint", "radar", "helm".
+## "bug_gap" (the leader gap), "bug_gaps" (ahead and behind), "wind_page", "shift", "feed" (every event, 6 lines),
+## "feed_own" (the viewed boat's events, 3 lines), "start_min", "start_full", "hint", "mark_eta", "mark_brg" (the
+## mark tag's second line), "radar", "helm". Race is the racer's list: speed, the dial, heading, the mark's distance
+## and time, rank and gap; the rest is Data.
 func items() -> Array[String]:
 	var out: Array[String] = ["bsp", "twa_dial", "twa", "radar", "helm"]
 	var ph := phase()
@@ -315,30 +317,37 @@ func items() -> Array[String]:
 	match ph:
 		"free":
 			if lvl >= Density.RACE:
-				out.append_array(["hdg", "wind_page"])
-			if lvl == Density.DATA:
-				out.append_array(["awa", "sog", "cog", "aws", "heel_bar"])
-		"pre":
-			out.append("start_min" if lvl == Density.GLANCE else "start_full")
-			if lvl >= Density.RACE:
-				out.append_array(["hdg", "wind_page", "bug", "feed"])
+				out.append("hdg")
 			if lvl == Density.DATA:
 				out.append_array(data)
-				out.append("bug_lap")
+				out.append("wind_page")
+		"pre":
+			out.append("start_min" if lvl == Density.GLANCE else "start_full")
+			if lvl == Density.RACE:
+				out.append_array(["hdg", "feed_own"])
+			if lvl == Density.DATA:
+				out.append_array(data)
+				out.append_array(["hdg", "wind_page", "bug", "bug_lap", "feed"])
 		_:
 			out.append("bug")
 			if lvl == Density.GLANCE:
 				out.append("feed_own")
+			elif lvl == Density.RACE:
+				out.append_array(["hdg", "shift", "bug_gap", "mark_eta", "feed_own"])
 			else:
-				out.append_array(["hdg", "wind_page", "shift", "bug_lap", "feed"])
-				if lvl == Density.DATA:
-					out.append_array(data)
-					out.append_array(["bug_gaps", "hint"])
+				out.append_array(data)
+				out.append_array(["hdg", "shift", "bug_gap", "mark_eta", "wind_page", "bug_lap", "bug_gaps", "mark_brg",
+					"hint", "feed"])
 	if not shows("shift"):
 		out.erase("shift")
 	if not shows("sail_hint"):
 		out.erase("hint")
 	return out
+
+
+## hud.md §16.1: the shift chip shows now (the shift item, a lift or a header of 2 degrees or more)
+func shift_chip_shown() -> bool:
+	return has_item("shift") and text_of("shift") != "" and race.shift_kind != ""
 
 
 func has_item(what: String) -> bool:
@@ -412,12 +421,13 @@ func flag_rule() -> String:
 	return RaceText.PREP_MEANING[clampi(race.prep_flag, 0, 4)].to_upper()
 
 
-## the feed lines the density shows: 6 at Data, 3 at Race, the own ones at Glance
+## the feed lines the density shows: every event, 6 lines, at Data; the viewed boat's own, 3 lines, at Glance and Race
 func feed_lines() -> Array:
 	var out := []
-	var n := 6 if has_item("feed") and density == Density.DATA else 3
+	var all := has_item("feed")
+	var n := 6 if all else 3
 	for l in race.feed:
-		if has_item("feed") or (has_item("feed_own") and l.own):
+		if all or (has_item("feed_own") and l.own):
 			out.append(l)
 	return out.slice(maxi(out.size() - n, 0))
 
@@ -1242,8 +1252,16 @@ func ladder_axis() -> Vector2:
 	return up
 
 
-## the ladder lines while a boat is selected: {own: [PackedVector2Array], her: [...], gain (her lead along the axis
-## in the viewed boat's hull lengths), text, label (px or null)}; empty with none
+## hud.md §16.4.2: the bow of boat `b` on the water (ENU, x and y): the bow point of her hull as she floats
+func bow_water(b: int) -> Vector2:
+	var w := boat_point(b, Vector3(0.5 * sim.class_info(b).loa, 0.0, 0.0))
+	return Vector2(w.x, w.y)
+
+
+## the ladder lines while a boat is selected (hud.md §16.4.2): each from its boat's bow, square to the axis, towards
+## the other boat and past her line. {own: [PackedVector2Array], her: [...], gain (her lead along the axis, bow to
+## bow, in the viewed boat's hull lengths), text, label (px or null), axis, own_w and her_w (each line's ends, ENU,
+## the bow first)}; empty with none
 func ladder_lines() -> Dictionary:
 	var b := selected_boat()
 	if b < 0 or sim == null or viewed < 0 or world_camera() == null or map_open or not world_tags or race.race_over:
@@ -1254,10 +1272,8 @@ func ladder_lines() -> Dictionary:
 		return {}
 	var a := ladder_axis()
 	var p := Vector2(a.y, -a.x)
-	var o := Vector2(me.pos_x, me.pos_y)
-	var s := Vector2(her.pos_x, her.pos_y)
-	var lo := minf(o.dot(p), s.dot(p)) - LADDER_PAST
-	var hi := maxf(o.dot(p), s.dot(p)) + LADDER_PAST
+	var o := bow_water(viewed)
+	var s := bow_water(b)
 	var loa := sim.class_info(viewed).loa
 	var gain := (s - o).dot(a) / maxf(loa, 0.1)
 	_ladder_shapes = []
@@ -1266,38 +1282,36 @@ func ladder_lines() -> Dictionary:
 		if tri.size() == 3:
 			_ladder_shapes.append(tri)
 	var text := "EVEN" if absf(gain) < 0.05 else "%.1f L %s" % [absf(gain), "AHEAD" if gain > 0.0 else "BEHIND"]
-	var side := 1.0 if s.dot(p) >= o.dot(p) else -1.0
-	var lab := s + p * side * 2.0 * sim.class_info(b).loa
-	return {"own": _ladder(o, p, lo, hi, loa), "her": _ladder(s, p, lo, hi, sim.class_info(b).loa), "gain": gain,
-		"text": text, "label": project(Vector3(lab.x, lab.y, 0.0)), "axis": a,
-		"own_w": [o + p * (minf(lo, o.dot(p) - LADDER_MIN) - o.dot(p)), o + p * (maxf(hi, o.dot(p) + LADDER_MIN) - o.dot(p))],
-		"her_w": [s + p * (minf(lo, s.dot(p) - LADDER_MIN) - s.dot(p)), s + p * (maxf(hi, s.dot(p) + LADDER_MIN) - s.dot(p))]}
+	# towards the other boat across the axis, past her line by LADDER_PAST, at least LADDER_MIN
+	var across := (s - o).dot(p)
+	var to_her := p if across >= 0.0 else -p
+	var length := maxf(absf(across) + LADDER_PAST, LADDER_MIN)
+	var own_end := o + to_her * length
+	var her_end := s - to_her * length
+	var lab := s - to_her * 2.0 * sim.class_info(b).loa
+	return {"own": _ladder(o, own_end), "her": _ladder(s, her_end), "gain": gain, "text": text,
+		"label": project(Vector3(lab.x, lab.y, 0.0)), "axis": a, "own_w": [o, own_end], "her_w": [s, her_end]}
 
 
-## a line on the water through `c` along `p`, from `lo` to `hi` (ENU along p), at least LADDER_MIN each side of `c`,
-## with a gap of one hull length `l` at `c`: its runs on screen (the parts in front of the camera)
-func _ladder(c: Vector2, p: Vector2, lo: float, hi: float, l: float) -> Array:
-	var t0 := c.dot(p)
-	lo = minf(lo, t0 - LADDER_MIN)
-	hi = maxf(hi, t0 + LADDER_MIN)
+## a line on the water from `from` to `to` (ENU): its runs on screen (the parts in front of the camera and not over
+## a boat's hull and rig)
+func _ladder(from: Vector2, to: Vector2) -> Array:
 	var out := []
-	for half in [[lo, t0 - 0.5 * l], [t0 + 0.5 * l, hi]]:
-		var run := PackedVector2Array()
-		var n := maxi(1, ceili((half[1] - half[0]) / LADDER_STEP))
-		for i in n + 1:
-			var t: float = lerpf(half[0], half[1], float(i) / n)
-			var w := c + p * (t - t0)
-			var q: Variant = project(Vector3(w.x, w.y, 0.0))
-			if q != null and _over_boat(q):
-				q = null
-			if q == null:
-				if run.size() >= 2:
-					out.append(run)
-				run = PackedVector2Array()
-				continue
-			run.append(q)
-		if run.size() >= 2:
-			out.append(run)
+	var run := PackedVector2Array()
+	var n := maxi(1, ceili(from.distance_to(to) / LADDER_STEP))
+	for i in n + 1:
+		var w := from.lerp(to, float(i) / n)
+		var q: Variant = project(Vector3(w.x, w.y, 0.0))
+		if q != null and _over_boat(q):
+			q = null
+		if q == null:
+			if run.size() >= 2:
+				out.append(run)
+			run = PackedVector2Array()
+			continue
+		run.append(q)
+	if run.size() >= 2:
+		out.append(run)
 	return out
 
 
@@ -1346,15 +1360,14 @@ func label_clear(r: Rect2, rects: Array[Rect2] = []) -> bool:
 
 # ---- selected boat card (hud.md §16.7) ----
 
-## the selected boat's card from the boat states and the race and rules records of the last tick
+## the selected boat's card from the race and rules records of the last tick (hud.md §16.7: who she is, her place,
+## how she stands against the viewed boat; no cells of her distance, bearing, speed or heading)
 func _card_text() -> void:
 	card = {}
 	var b := selected_boat()
 	if b < 0 or sim == null or viewed < 0 or b == viewed or b >= sim.boat_count():
 		return
-	var me := sim.state(viewed)
-	var s := sim.state(b)
-	if me == null or s == null:
+	if sim.state(viewed) == null or sim.state(b) == null:
 		return
 	var r := race
 	var c := {"boat": b}
@@ -1371,19 +1384,6 @@ func _card_text() -> void:
 		head.append(skipper.to_upper() if skipper != "" else "PLAYER")
 	c["head"] = " · ".join(head)
 	c["name"] = r.name_of(b).to_upper()
-	# cells
-	var d := Vector2(s.pos_x - me.pos_x, s.pos_y - me.pos_y)
-	var brg := Frames.compass(d.x, d.y)
-	var rel := Frames.wrap_pi(brg - me.psi)
-	c["d_m"] = d.length()
-	c["brg_rad"] = brg
-	c["rel_rad"] = rel
-	c["v"] = s.v
-	c["psi"] = s.psi
-	c["dist"] = HudStyle.split_unit(HudFormat.distance(d.length()))
-	c["brg"] = [HudFormat.compass_deg(brg), "· " + HudFormat.relative_bearing(rel).to_upper()]
-	c["speed"] = [HudFormat.speed_kn(s.v), "KN"]
-	c["hdg"] = [HudFormat.compass_deg(s.psi), "S" if s.twa > 0.0 else "P"]
 	var col := HudStyle.PAPER
 	var ct := r.contact(b)
 	if ct != null:
@@ -1460,9 +1460,9 @@ func _card_race(c: Dictionary, b: int) -> void:
 				st = int(p["kc_state"])
 				tint = RaceHudValues.Tint.GREEN
 			if text != "":
-				c["rules"] = text + (" · BREACH" if st == RaceText.Kc.BREACH else "")
+				# one line: the relation, the rule's number, BREACH (the rules line of §11 carries the text)
+				c["rules"] = "%s · RULE %s%s" % [text, RaceText.code(rule), " · BREACH" if st == RaceText.Kc.BREACH else ""]
 				c["rules_col"] = HudStyle.TINTS[tint]
-				c["rule_text"] = "%s (%s)" % [RaceText.rule_text(rule), RaceText.code(rule)]
 				c["rule"] = rule
 			break
 	# penalties owed
@@ -1603,13 +1603,13 @@ func _layout_blocks() -> void:
 	bug_block.visible = race.active and its.has("bug")
 	bug_block.position = m
 	bug_block.size = Vector2(520, 200) * k
-	# wind page and feed, top right
-	wind_page.visible = its.has("wind_page")
+	# wind page (or the shift chip alone) and the feed under it, top right
+	wind_page.visible = its.has("wind_page") or shift_chip_shown()
 	wind_page.size = Vector2(HudPaint.WIND.x, 160) * k
 	wind_page.position = Vector2(sc.x - m.x - HudPaint.WIND.x * k, m.y)
 	feed_block.visible = race.active and (its.has("feed") or its.has("feed_own"))
 	feed_block.size = Vector2(620, 170) * k
-	feed_block.position = Vector2(sc.x - m.x - feed_block.size.x, m.y + (172.0 * k if wind_page.visible else 0.0))
+	feed_block.position = Vector2(sc.x - m.x - feed_block.size.x, m.y + _under_wind(its) * k)
 	# radar, bottom right
 	radar.visible = race.active
 	radar.compact = density == Density.GLANCE
@@ -1666,6 +1666,14 @@ func _layout_blocks() -> void:
 	var qs := HudPaint.table_size(RESULT_W, race.result_rows.size()) * k
 	results_panel.size = qs
 	results_panel.position = (sc - qs) * 0.5
+
+
+## the room the feed leaves under the top right corner (design px): the wind page, or the shift chip's row (kept
+## whether the chip shows or not, so the feed does not jump), or nothing
+func _under_wind(its: Array[String]) -> float:
+	if its.has("wind_page"):
+		return 172.0
+	return 40.0 if its.has("shift") else 0.0
 
 
 ## hud.md §16.4: the mark tag on the mark keeps clear of the HUD's blocks: above-right of it, else under it, else
@@ -1732,11 +1740,12 @@ func _place_lane(k: float) -> float:
 	flags_view.size = Vector2(flags_view.width() + 2.0, 50.0 * k)
 	y += sh + (8.0 if sh > 0.0 else 0.0)
 	if penalty_panel.visible:
+		var ph := HudPaint.pen_height(self)
 		penalty_panel.position = Vector2((HudPaint.LANE_W - HudPaint.PEN.x) * 0.5, y) * k
-		penalty_panel.size = HudPaint.PEN * k
-		turn_view.position = Vector2(12, 10) * k
-		turn_view.size = Vector2(150, 96) * k
-		y += HudPaint.PEN.y + 12.0
+		penalty_panel.size = Vector2(HudPaint.PEN.x, ph) * k
+		turn_view.position = Vector2(10, 0) * k
+		turn_view.size = Vector2(HudPaint.PEN_X - 10.0, HudPaint.PEN.y) * k
+		y += ph + 12.0
 	var ah := HudPaint.alerts_height(self)
 	alerts_block.visible = ah > 0.0
 	alerts_block.position = Vector2(0, y) * k
@@ -1762,7 +1771,7 @@ func _layout_portrait(sc: Vector2, k: float, m: Vector2, its: Array[String]) -> 
 	bug_block.visible = race.active and its.has("bug")
 	bug_block.position = m
 	bug_block.size = Vector2(520, 200) * k
-	wind_page.visible = its.has("wind_page")
+	wind_page.visible = its.has("wind_page") or shift_chip_shown()
 	wind_page.size = Vector2(HudPaint.WIND.x, 160) * k
 	wind_page.position = Vector2(sc.x - m.x - HudPaint.WIND.x * k, m.y)
 	var top := 0.0

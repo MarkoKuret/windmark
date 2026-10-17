@@ -112,8 +112,9 @@ func _build() -> void:
 	_l(c - Vector2(0, r), c + Vector2(0, r), Color(HudStyle.HAIR, 0.45 * HudStyle.HAIR.a), hw)
 	if not compact:
 		var fs := int(roundf(13.0 * k))
-		_s(Vector2(0, 2.0 * r + 22.0 * k), "NORTH UP" if north_up else "HEAD UP", fs, HudStyle.MIST, 600, 0.14)
-		_s(Vector2(size.x, 2.0 * r + 22.0 * k), HudFormat.distance(range_m()).to_upper(), fs, HudStyle.MIST, 600, 0.14,
+		if north_up:  # hud.md §8: heading-up is the default and needs no label
+			_s(Vector2(0, 2.0 * r + 22.0 * k), "NORTH UP", fs, HudStyle.LABEL, 600, 0.14)
+		_s(Vector2(size.x, 2.0 * r + 22.0 * k), HudFormat.distance(range_m()).to_upper(), fs, HudStyle.LABEL, 600, 0.14,
 			HORIZONTAL_ALIGNMENT_RIGHT)
 	if sim == null or values == null or not values.active:
 		return

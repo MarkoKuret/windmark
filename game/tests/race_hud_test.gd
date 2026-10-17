@@ -588,18 +588,18 @@ func test_penalties_prompts() -> void:
 		"turn_gybes": 0, "deadline_s": 32.4, "received": 1, "turning_for_penalty": false}
 	_refresh(h, sim)
 	sim.rules_ev = []
-	t.ok(h.text_of("banner") == "PENALTY: Port tack keeps clear of starboard (Nora)", "penalty banner: " + h.text_of("banner"))
+	t.ok(h.text_of("banner") == "PENALTY · RULE 10", "penalty banner, short (hud.md §12.2): " + h.text_of("banner"))
 	t.ok(h.penalty_panel.visible and h.text_of("pen_head") == "Penalty: Port tack keeps clear of starboard (Nora)",
 		h.text_of("pen_head"))
 	t.ok(h.text_of("pen_deadline") == "Deadline  0:32", "deadline: " + h.text_of("pen_deadline"))
-	t.ok(h.text_of("pen_turn") == "Sail clear and turn: one tack and one gybe", h.text_of("pen_turn"))
-	# turning: the turn as a number, TACK lit
+	t.ok(h.text_of("pen_turn") == "Sail clear and turn", h.text_of("pen_turn"))
+	# turning: the turn as a number in the ring (no state text), TACK lit
 	sim.rules_d[0]["turning_for_penalty"] = true
 	sim.rules_d[0]["turn_progress"] = deg_to_rad(-210.0)
 	sim.rules_d[0]["turn_tacks"] = 1
 	_refresh(h, sim)
-	t.ok(h.text_of("pen_turn") == "Turn: 210°" and h.turn_view.turn_deg > 209.9 and h.turn_view.tack_done
-		and not h.turn_view.gybe_done, "turn progress: " + h.text_of("pen_turn"))
+	t.ok(h.text_of("pen_turn") == "" and h.turn_view.turn_deg > 209.9 and h.turn_view.tack_done
+		and not h.turn_view.gybe_done, "turn progress in the ring, no state text: '%s'" % h.text_of("pen_turn"))
 	var turn_texts := h.turn_view.primitives().filter(func(q: Dictionary) -> bool: return q["k"] == "text") \
 		.map(func(q: Dictionary) -> String: return q["text"])
 	var turn_arcs := h.turn_view.primitives().filter(func(q: Dictionary) -> bool: return q["k"] == "arc")
@@ -609,7 +609,7 @@ func test_penalties_prompts() -> void:
 	sim.put(0, 0, 985, 0.7, 3.0)
 	sim.race_d["race_type"] = RaceText.RACE_MATCH
 	_refresh(h, sim)
-	t.ok(h.text_of("pen_turn") == "Turn: 210°", "no zone guess near the mark: " + h.text_of("pen_turn"))
+	t.ok(h.text_of("pen_turn") == "", "no zone guess near the mark: '%s'" % h.text_of("pen_turn"))
 	sim.rules_d[0]["turn_in_zone"] = true
 	_refresh(h, sim)
 	t.ok(h.text_of("pen_turn") == "Not counted: inside the zone", h.text_of("pen_turn"))
@@ -620,7 +620,7 @@ func test_penalties_prompts() -> void:
 	sim.rules_d[0]["turning_for_penalty"] = false
 	sim.rules_d[0]["turn_progress"] = 0.0
 	_refresh(h, sim)
-	t.ok(h.text_of("pen_turn") == "Sail clear and turn: one tack and one gybe", "no reset inferred: "
+	t.ok(h.text_of("pen_turn") == "Sail clear and turn", "no reset inferred: "
 		+ h.text_of("pen_turn"))
 	# each reset reason from the core, shown for 3 s
 	var texts := {RaceText.TurnReset.PAUSED: "Turn reset: paused", RaceText.TurnReset.REVERSED: "Turn reset: turned back",
@@ -636,7 +636,7 @@ func test_penalties_prompts() -> void:
 	_refresh(h, sim, 0, RaceHudValues.RESET_TICKS - 2)
 	t.ok(h.text_of("pen_turn") == "Turn reset: mark rounded", "reset text over the new turn: " + h.text_of("pen_turn"))
 	_refresh(h, sim, 0, 3)
-	t.ok(h.text_of("pen_turn") == "Turn: 15°", "reset text gone after 3 s: " + h.text_of("pen_turn"))
+	t.ok(h.text_of("pen_turn") == "", "reset text gone after 3 s: '%s'" % h.text_of("pen_turn"))
 	sim.rules_d[0]["turning_for_penalty"] = false
 	sim.rules_d[0]["turn_progress"] = 0.0
 	sim.rules_d[0]["turn_reset"] = RaceText.TurnReset.NONE
@@ -872,10 +872,10 @@ func test_density() -> void:
 	t.ok(_has_all(g, ["bsp", "twa_dial", "start_min", "radar", "helm"]) and _has_none(g, ["hdg", "bug",
 		"wind_page", "start_full", "feed"]), "pre-start Glance: %s" % str(g))
 	var rc := _items_at(h, RC)
-	t.ok(_has_all(rc, ["hdg", "start_full", "wind_page", "bug", "feed"]) and _has_none(rc, data_only + ["cue", "target"]),
+	t.ok(_has_all(rc, ["hdg", "start_full", "feed_own"]) and _has_none(rc, data_only + ["wind_page", "bug", "feed"]),
 		"pre-start Race: %s" % str(rc))
 	var d := _items_at(h, D)
-	t.ok(_has_all(d, data_only + ["bug_lap"]), "pre-start Data: %s" % str(d))
+	t.ok(_has_all(d, data_only + ["wind_page", "bug", "bug_lap", "feed"]), "pre-start Data: %s" % str(d))
 	h.frame(0.3)
 	t.ok(not _page_texts(h.inst_page).has("SPEED / TARGET") and not _page_texts(h.inst_page).has("TARGET"),
 		"pre-start: no target speed")
@@ -888,25 +888,27 @@ func test_density() -> void:
 	t.ok(h.phase() == "beat", "phase beat: " + h.phase())
 	g = _items_at(h, G)
 	t.ok(_has_all(g, ["bsp", "twa_dial", "bug", "feed_own"]) and _has_none(g, ["cue", "hdg", "target", "wind_page",
-		"shift", "bug_lap", "feed"] + data_only), "beat Glance: %s" % str(g))
+		"shift", "bug_lap", "bug_gap", "mark_eta", "feed"] + data_only), "beat Glance: %s" % str(g))
 	h.frame(0.3)
 	var page := _page_texts(h.inst_page)
 	t.ok(page.has("BOAT SPEED") and page.has("TWA") and not page.has("SPEED / TARGET") and not page.has("HEADING")
 		and not " ".join(page).contains("%"), "Glance page: speed and the TWA dial, no target: %s" % str(page))
 	t.ok(h.radar.compact and not h.wind_page.visible and h.bug_block.visible, "Glance: small radar, no wind page")
 	rc = _items_at(h, RC)
-	t.ok(_has_all(rc, ["hdg", "wind_page", "shift", "bug_lap", "feed"]) and _has_none(rc,
-		data_only + ["bug_gaps", "hint", "cue", "target"]), "beat Race: %s" % str(rc))
+	t.ok(_has_all(rc, ["hdg", "shift", "bug_gap", "mark_eta", "feed_own"]) and _has_none(rc,
+		data_only + ["wind_page", "bug_lap", "bug_gaps", "mark_brg", "feed", "hint", "cue", "target"]),
+		"beat Race: the racer's list and nothing more: %s" % str(rc))
 	h.frame(0.3)
 	page = _page_texts(h.inst_page)
-	t.ok(page.has("HEADING") and not page.has("TARGET") and not page.has("SOG") and h.wind_page.visible,
-		"Race page: heading, no target, wind page: %s" % str(page))
+	t.ok(page.has("HEADING") and not page.has("TARGET") and not page.has("SOG")
+		and not _page_texts(h.wind_page).has("TRUE WIND"), "Race page: heading, no target, no wind page: %s" % str(page))
 	d = _items_at(h, D)
-	t.ok(_has_all(d, data_only + ["bug_gaps", "hint"]), "beat Data: %s" % str(d))
+	t.ok(_has_all(d, data_only + ["wind_page", "bug_lap", "bug_gaps", "mark_brg", "feed", "hint"]), "beat Data: %s" % str(d))
 	h.frame(0.3)
 	page = _page_texts(h.inst_page)
 	t.ok(page.has("SOG") and page.has("COG") and page.has("AWS") and not page.has("POLAR %") and page.has("HEEL")
-		and page.has("VMG") and page.has("AWA"), "Data page: %s" % str(page))
+		and page.has("VMG") and page.has("AWA") and h.wind_page.visible and _page_texts(h.wind_page).has("TRUE WIND"),
+		"Data page, with the wind page: %s" % str(page))
 	# the assist still decides: no sail hint below Full, no shift on Minimal
 	h.assist = Hud.Assist.STANDARD
 	t.ok(not _items_at(h, D).has("hint"), "sail hint needs the Full assist")
@@ -1263,37 +1265,27 @@ func test_boat_card() -> void:
 	h.frame(0.3)
 	h.refresh_text()
 	var c := h.card
-	var me := sim.states[0]
-	var her := sim.states[3]
-	var d := Vector2(her.pos_x - me.pos_x, her.pos_y - me.pos_y)
 	t.ok(c["head"] == "SLO 7 · AI EXPERT" and c["name"] == "MAJA", "header: %s / %s" % [c["head"], c["name"]])
 	t.ok(c["place"] == "1" and c["fleet"] == 4, "place 1 / 4 from the shown order")
-	t.near(c["d_m"], d.length(), 1e-6, "distance from the boat states")
-	t.ok(c["dist"] == HudStyle.split_unit(HudFormat.distance(d.length())), "distance text %s" % str(c["dist"]))
-	var brg := Frames.compass(d.x, d.y)
-	t.near(c["brg_rad"], brg, 1e-9, "bearing to her")
-	t.ok(c["brg"][0] == HudFormat.compass_deg(brg) and c["brg"][1] == "· " + HudFormat.relative_bearing(Frames.wrap_pi(brg - me.psi)).to_upper(),
-		"bearing text %s" % str(c["brg"]))
-	t.ok(c["speed"][0] == HudFormat.speed_kn(her.v) and c["hdg"][0] == HudFormat.compass_deg(her.psi),
-		"speed %s kn, heading %s" % [c["speed"][0], c["hdg"][0]])
-	t.ok(c["hdg"][1] == ("S" if her.twa > 0.0 else "P"), "her tack letter %s (TWA %.0f)" % [c["hdg"][1], rad_to_deg(her.twa)])
+	t.ok(not c.has("dist") and not c.has("brg") and not c.has("speed") and not c.has("hdg"),
+		"no distance, bearing, speed or heading cell (hud.md §16.7)")
 	t.ok(c["course"] == "Next Windward · 25 m ahead of you", "course line: %s" % c["course"])
-	t.ok(c["rules"] == "YOU KEEP CLEAR" and c["rule_text"] == "Port tack keeps clear of starboard (10)"
-		and (c["rules_col"] as Color).is_equal_approx(HudStyle.PORT), "rules: %s, %s" % [c["rules"], c["rule_text"]])
+	t.ok(c["rules"] == "YOU KEEP CLEAR · RULE 10" and int(c["rule"]) == R.R10 and not c.has("rule_text")
+		and (c["rules_col"] as Color).is_equal_approx(HudStyle.PORT), "rules, one line: %s" % c["rules"])
 	t.ok(c["penalty"] == "1 PENALTY OWED · TURNING", "penalty: %s" % c["penalty"])
 	t.ok((c["col"] as Color).is_equal_approx(HudStyle.PORT), "her tag colour is the radar's (red: I keep clear)")
 	h.layout_now()
 	t.ok(h.card_block.visible and h.card_block.position.y + h.card_block.size.y <= h.inst_page.position.y,
 		"the card sits left, over the instrument page")
 	var texts := _page_texts(h.card_block)
-	t.ok(texts.has("MAJA") and texts.has("YOU KEEP CLEAR") and texts.has("1 PENALTY OWED · TURNING"),
-		"the card draws its rows")
+	t.ok(texts.has("MAJA") and texts.has("YOU KEEP CLEAR · RULE 10") and texts.has("1 PENALTY OWED · TURNING")
+		and not texts.has("DIST") and not texts.has("HDG"), "the card draws its rows and no cells: %s" % str(texts))
 	# boat 1: she gives me room, breached; a player with no sail number
 	h.select(1)
 	h.refresh_text()
 	c = h.card
-	t.ok(c["head"] == "AI PRO" and c["rules"] == "SHE GIVES YOU ROOM · BREACH" and c["rule_text"] == "Give mark-room (18.2)"
-		and not c.has("penalty"), "boat 1: %s, %s, %s" % [c["head"], c["rules"], c["rule_text"]])
+	t.ok(c["head"] == "AI PRO" and c["rules"] == "SHE GIVES YOU ROOM · RULE 18.2 · BREACH" and not c.has("penalty"),
+		"boat 1: %s, %s" % [c["head"], c["rules"]])
 	t.ok(c["course"] == "Next Windward · 25 m behind you", "boat 1 course: %s" % c["course"])
 	h.select(2)
 	h.refresh_text()
@@ -1365,11 +1357,11 @@ func test_tack_point_no_line() -> void:
 
 
 func test_card_fits() -> void:
-	t.begin("the boat card fits: 1280 x 800 and 1080 x 1920, UI scale 80 % to 130 %, every density")
+	t.begin("the boat card fits: 1920 x 1080, 1280 x 800 and 1080 x 1920, UI scale 80 % to 130 %, every density")
 	var R := RaceText.Rule
 	var bad := []
 	var checked := 0
-	for scr in [Vector2(1280, 800), Vector2(1080, 1920), Vector2(1280, 720)]:
+	for scr in [Vector2(1920, 1080), Vector2(1280, 800), Vector2(1080, 1920), Vector2(1280, 720)]:
 		for sname in ["beat", "penalty"]:
 			for scale in [0.8, 1.0, 1.3]:
 				for lvl in 3:
@@ -1446,7 +1438,7 @@ static func _text_rects(h: Hud) -> Array:
 
 
 func test_text_fits() -> void:
-	t.begin("every text fits at 1280 x 800 and in portrait at 1080 x 1920, UI scale 80 % to 130 %")
+	t.begin("every text fits at 1920 x 1080, 1280 x 800 and in portrait at 1080 x 1920, UI scale 80 % to 130 %")
 	var R := RaceText.Rule
 	var scenarios := {}
 	var pre := _pre_sim()
@@ -1462,7 +1454,7 @@ func test_text_fits() -> void:
 	var bad := []
 	var blocks_bad := []
 	var checked := 0
-	for scr in [Vector2(1280, 800), Vector2(1080, 1920)]:
+	for scr in [Vector2(1920, 1080), Vector2(1280, 800), Vector2(1080, 1920)]:
 		var tag := "" if scr.x > scr.y else "portrait "
 		for sname in scenarios:
 			for scale in [0.8, 1.0, 1.3]:
@@ -1491,14 +1483,14 @@ func test_text_fits() -> void:
 							var c: Dictionary = rects[j]
 							if (a["r"] as Rect2).grow(-1.0).intersects((c["r"] as Rect2).grow(-1.0)):
 								bad.append("%s: '%s' (%s) overlaps '%s' (%s)" % [what, a["t"], a["b"], c["t"], c["b"]])
+					for p in HudLayoutCheck.problems(h, h.screen_size):
+						blocks_bad.append("%s: %s" % [what, p])
 					if tag != "":
-						for p in HudLayoutCheck.problems(h, h.screen_size):
-							blocks_bad.append("%s: %s" % [what, p])
 						if not h.radar.compact:
 							blocks_bad.append("%s: radar not compact" % what)
 					h.free()
 	t.ok(bad.is_empty(), "%d texts checked, %d problems: %s" % [checked, bad.size(), str(bad.slice(0, 8))])
-	t.ok(blocks_bad.is_empty(), "portrait: no block over another, all on screen, compact radar (%d problems: %s)" % [
+	t.ok(blocks_bad.is_empty(), "no block over another, all on screen, compact radar in portrait (%d problems: %s)" % [
 		blocks_bad.size(), str(blocks_bad.slice(0, 6))])
 	# portrait defaults and scale (hud.md §16.5)
 	t.ok(Hud.default_density(Vector2(1080, 1920)) == Hud.Density.GLANCE, "portrait: default Glance at 1080 x 1920")
@@ -2047,15 +2039,20 @@ func test_ladder_lines() -> void:
 		var e: Array = lad[key]
 		var d: Vector2 = e[1] - e[0]
 		t.ok(absf(d.normalized().dot(lad["axis"])) < 1e-6, "%s square to the axis" % key)
-	var o := Vector2(0, 400)
-	var s := Vector2(sim.states[1].pos_x, sim.states[1].pos_y)
-	t.ok(Geometry2D.get_closest_point_to_segment(o, lad["own_w"][0], lad["own_w"][1]).distance_to(o) < 1e-3
-		and Geometry2D.get_closest_point_to_segment(s, lad["her_w"][0], lad["her_w"][1]).distance_to(s) < 1e-3,
-		"each line through its boat")
+	# both heading north: the bows are half a hull length ahead of the hull reference points
+	var o := Vector2(0, 400 + 0.5 * sim.class_info(0).loa)
+	var s := Vector2(sim.states[1].pos_x, sim.states[1].pos_y + 0.5 * sim.class_info(1).loa)
+	t.ok((lad["own_w"][0] as Vector2).distance_to(o) < 1e-3 and (lad["her_w"][0] as Vector2).distance_to(s) < 1e-3,
+		"each line starts at its boat's bow")
+	var own_d: Vector2 = lad["own_w"][1] - lad["own_w"][0]
+	var her_d: Vector2 = lad["her_w"][1] - lad["her_w"][0]
+	t.ok(own_d.dot(s - o) > 0.0 and her_d.dot(o - s) > 0.0, "each line runs towards the other boat")
+	t.ok(own_d.length() >= absf(s.x - o.x) + Hud.LADDER_PAST - 1e-3 and own_d.length() >= Hud.LADDER_MIN - 1e-3
+		and her_d.length() >= absf(s.x - o.x) + Hud.LADDER_PAST - 1e-3, "each line past the other boat's line (%.0f m)" % own_d.length())
 	var gain := (s.y - o.y) / sim.class_info(0).loa
 	t.near(float(lad["gain"]), gain, 1e-3, "her lead along the axis in hull lengths (%.2f)" % gain)
 	t.ok(lad["text"] == "%.1f L AHEAD" % gain, "label: %s" % lad["text"])
-	t.ok(count.call(own_col) >= 2 and count.call(her_col) >= 2, "both lines drawn, a gap at each boat (%d, %d runs)" % [
+	t.ok(count.call(own_col) >= 1 and count.call(her_col) >= 1, "both lines drawn (%d, %d runs)" % [
 		count.call(own_col), count.call(her_col)])
 	t.ok(h.world.primitives().any(func(q: Dictionary) -> bool: return q["k"] == "text" and q["text"] == lad["text"]),
 		"the gain label drawn")

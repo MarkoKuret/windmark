@@ -4,7 +4,7 @@ extends RefCounted
 ## coordinates in its own px) and the Hud, and adds the primitives. Positions and sizes are the 1920 x 1080
 ## design's, times the block's `k`. What shows follows Hud.has_item (density and assist) and the Hud's texts.
 
-const LAB := 14  # cell labels
+const LAB := 13  # every label and caption (hud.md §16.3: one label size)
 const LAB_S := 13
 const TINY := 11
 const TRACK := 0.14  # label tracking, em
@@ -39,7 +39,7 @@ static func divider(b: HudCanvas, a: Vector2, c: Vector2) -> void:
 ## caption top left at (x, y), unit top right at x_right (design px)
 static func caption(b: HudCanvas, x: float, y: float, text: String, x_right := -1.0, unit := "", size := LAB) -> void:
 	var k := b.k
-	b._s(Vector2(x, y) * k, text, int(roundf(size * k)), HudStyle.MIST, 600, TRACK)
+	b._s(Vector2(x, y) * k, text, int(roundf(size * k)), HudStyle.LABEL, 600, TRACK)
 	if unit != "" and x_right >= 0.0:
 		b._s(Vector2(x_right, y) * k, unit, int(roundf(size * k)), HudStyle.MIST, 600, TRACK, HORIZONTAL_ALIGNMENT_RIGHT)
 
@@ -126,7 +126,7 @@ static func _page_glance(b: HudCanvas, h: Hud, sz: Vector2) -> void:
 	divider(b, Vector2(250, 10), Vector2(250, 140))
 	caption(b, 264, 24, "TWA")
 	dial(b, h, Vector2(328, 88), 52.0, false)
-	_twa_value(b, h, 472, 134, 44)
+	_twa_value(b, h, 472, 134, 40)
 
 
 ## Race: boat speed over heading, the TWA dial beside them; Data adds VMG (VMC on a reach) over SOG between them and
@@ -139,16 +139,16 @@ static func _page_race(b: HudCanvas, h: Hud, data: bool) -> void:
 	if data:
 		var reach := h.race.active and h.race.leg_type == "reach"
 		caption(b, 264, 24, "VMC" if reach else "VMG", 446, "KN")
-		number(b, 446, 112, h.value_of("vmg_kn"), 64)
+		number(b, 446, 112, h.value_of("vmg_kn"), 52)
 		caption(b, 264, 174, "SOG", 446, "KN")
-		number(b, 446, 230, h.value_of("sog"), 44)
+		number(b, 446, 230, h.value_of("sog"), 52)
 		divider(b, Vector2(460, 10), Vector2(460, 236))
 		divider(b, Vector2(264, 150), Vector2(450, 150))
 		tx = 474.0
 	caption(b, tx, 24, "TWA")
 	var dc := Vector2(tx + (w - tx) * 0.5 - 6.0, 104)
 	dial(b, h, dc, 62.0, data)
-	_twa_value(b, h, w - 14, 232, 44)
+	_twa_value(b, h, w - 14, 232, 40)
 	divider(b, Vector2(10, 150), Vector2(240, 150))
 	caption(b, 14, 174, "HEADING")
 	number(b, 236, 230, h.value_of("hdg"), 52)
@@ -258,7 +258,7 @@ static func toast(b: HudCanvas, h: Hud) -> void:
 	var w := 124.0 + HudCanvas.text_width(lvl, int(roundf(13 * k)), 700, 0.1) / k + 16.0
 	b._rect(Rect2(Vector2.ZERO, Vector2(w, 32) * k), Color(HudStyle.INK, 0.86))
 	b._rect(Rect2(Vector2.ZERO, Vector2(4, 32) * k), HudStyle.MARK)
-	b._s(Vector2(16, 21) * k, "INSTRUMENTS", int(roundf(13 * k)), HudStyle.MIST, 600, TRACK)
+	b._s(Vector2(16, 21) * k, "INSTRUMENTS", int(roundf(13 * k)), HudStyle.LABEL, 600, TRACK)
 	b._s(Vector2(124, 21) * k, lvl, int(roundf(13 * k)), HudStyle.PAPER, 700, 0.1)
 
 
@@ -283,7 +283,7 @@ static func bug(b: HudCanvas, h: Hud) -> void:
 	elif clock == "Abandoned":
 		cap = "RACE"
 		val = "ABANDONED"
-	b._s(Vector2(24, 22) * k, cap, int(roundf(15 * k)), HudStyle.MIST, 600, TRACK)
+	caption(b, 24, 22, cap)
 	var vs := 40.0 if val.length() <= 5 else 30.0
 	if cap == "FLEET":
 		number_unit(b, 24, 62, val, "BOATS", vs)
@@ -291,9 +291,9 @@ static func bug(b: HudCanvas, h: Hud) -> void:
 		b._s(Vector2(24, 62) * k, val, int(roundf(vs * k)), HudStyle.PAPER)
 	if r.started and r.rank > 0:
 		b._l(Vector2(190, 14) * k, Vector2(190, 58) * k, HudStyle.HAIR, _hw(b))
-		b._s(Vector2(210, 22) * k, "RANK", int(roundf(15 * k)), HudStyle.MIST, 600, TRACK)
+		caption(b, 210, 22, "RANK")
 		number_unit(b, 210, 62, str(r.rank), "/ %d" % r.fleet, 40)
-	var y := 102.0
+	var y := 100.0
 	if h.has_item("bug_lap"):
 		var line := ""
 		if r.started and r.next_step > 0:
@@ -301,14 +301,19 @@ static func bug(b: HudCanvas, h: Hud) -> void:
 		elif not r.started and r.laps > 0:
 			line = "%d %s · %d LEGS" % [r.laps, "LAP" if r.laps == 1 else "LAPS", maxi(r.legs, 1)]
 		if line != "":
-			b._s(Vector2(0, y) * k, line, int(roundf(15 * k)), HudStyle.PAPER, 600, TRACK)
-			y += 32.0
+			b._s(Vector2(0, y) * k, line, int(roundf(LAB * k)), HudStyle.PAPER, 600, TRACK)
+			y += 30.0
+	# hud.md §16.1: the leader gap at Race, the boats ahead and behind at Data
+	var keys: Array[String] = []
+	if h.has_item("bug_gap") or h.has_item("bug_gaps"):
+		keys.append("gap")
 	if h.has_item("bug_gaps"):
-		for key in ["gap", "ahead", "behind"]:
-			var t := h.text_of(key)
-			if t != "":
-				b._s(Vector2(0, y) * k, t, int(roundf(20 * k)), HudStyle.PAPER, 500)
-				y += 28.0
+		keys.append_array(["ahead", "behind"])
+	for key in keys:
+		var t := h.text_of(key)
+		if t != "":
+			b._s(Vector2(0, y) * k, t, int(roundf(20 * k)), HudStyle.PAPER, 500)
+			y += 28.0
 
 
 # ---- wind page (top right) ----
@@ -318,36 +323,40 @@ const WIND := Vector2(312, 112)
 
 static func wind(b: HudCanvas, h: Hud) -> void:
 	var k := b.k
-	glass(b, Rect2(Vector2.ZERO, WIND))
-	caption(b, 14, 24, "TRUE WIND", 182, "KN")
-	number(b, 182, 96, h.value_of("tws"), 56)
-	divider(b, Vector2(196, 10), Vector2(196, 102))
-	caption(b, 208, 24, "TWD", 300, h.value_of("twd"))
-	var c := Vector2(254, 70) * k
-	var rr := 30.0 * k
-	var hw := _hw(b)
-	for i in 12:
-		var a := TAU * i / 12.0
-		var d := Vector2(sin(a), -cos(a))
-		b._l(c + d * rr, c + d * (rr - 6.0 * k), HudStyle.HAIR, hw)
-	b._s(c + Vector2(0, -rr + 16.0 * k), "N", int(roundf(TINY * k)), HudStyle.MIST, 600, 0.0,
-		HORIZONTAL_ALIGNMENT_CENTER)
-	# the true wind blowing across the dial from where it comes (north up)
-	var d := Vector2(sin(h.values.twd), -cos(h.values.twd))
-	var from := c + d * rr
-	var to := c - d * rr
-	b._l(from, to - d * -6.0 * k, HudStyle.PAPER, 2.0 * k)
-	var s := Vector2(-d.y, d.x)
-	b._p(PackedVector2Array([to, to + d * 10.0 * k + s * 5.0 * k, to + d * 10.0 * k - s * 5.0 * k]), HudStyle.PAPER)
-	if h.has_item("shift") and h.text_of("shift") != "" and h.race.shift_kind != "":
+	var y := 124.0  # the shift chip hangs under the page, or sits alone at the top (Race, hud.md §16.1)
+	if h.has_item("wind_page"):
+		glass(b, Rect2(Vector2.ZERO, WIND))
+		caption(b, 14, 24, "TRUE WIND", 182, "KN")
+		number(b, 182, 96, h.value_of("tws"), 52)
+		divider(b, Vector2(196, 10), Vector2(196, 102))
+		caption(b, 208, 24, "TWD", 300, h.value_of("twd"))
+		var c := Vector2(254, 70) * k
+		var rr := 30.0 * k
+		var hw := _hw(b)
+		for i in 12:
+			var a := TAU * i / 12.0
+			var d := Vector2(sin(a), -cos(a))
+			b._l(c + d * rr, c + d * (rr - 6.0 * k), HudStyle.HAIR, hw)
+		b._s(c + Vector2(0, -rr + 16.0 * k), "N", int(roundf(TINY * k)), HudStyle.LABEL, 600, 0.0,
+			HORIZONTAL_ALIGNMENT_CENTER)
+		# the true wind blowing across the dial from where it comes (north up)
+		var d := Vector2(sin(h.values.twd), -cos(h.values.twd))
+		var from := c + d * rr
+		var to := c - d * rr
+		b._l(from, to - d * -6.0 * k, HudStyle.PAPER, 2.0 * k)
+		var s := Vector2(-d.y, d.x)
+		b._p(PackedVector2Array([to, to + d * 10.0 * k + s * 5.0 * k, to + d * 10.0 * k - s * 5.0 * k]), HudStyle.PAPER)
+	else:
+		y = 0.0
+	if h.shift_chip_shown():
 		var col := HudStyle.STBD if h.race.shift_kind == "lift" else HudStyle.PORT
 		var t := h.text_of("shift")
-		var tw := HudCanvas.text_width(t, int(roundf(15 * k)), 700, 0.1) / k + 28.0
-		var r := Rect2(Vector2(WIND.x - tw, 124) * k, Vector2(tw, 30) * k)
+		var tw := HudCanvas.text_width(t, int(roundf(LAB * k)), 700, 0.1) / k + 28.0
+		var r := Rect2(Vector2(WIND.x - tw, y) * k, Vector2(tw, 30) * k)
 		b._rect(r, col)
 		var sv := b.text_shadow
 		b.text_shadow = false
-		b._s(Vector2(r.position.x + r.size.x * 0.5, r.position.y + 21.0 * k), t, int(roundf(15 * k)), HudStyle.INK, 700,
+		b._s(Vector2(r.position.x + r.size.x * 0.5, r.position.y + 20.0 * k), t, int(roundf(LAB * k)), HudStyle.INK, 700,
 			0.1, HORIZONTAL_ALIGNMENT_CENTER)
 		b.text_shadow = sv
 
@@ -358,7 +367,7 @@ static func feed(b: HudCanvas, h: Hud) -> void:
 	var k := b.k
 	var y := 20.0
 	for l in h.feed_lines():
-		b._s(Vector2(b.size.x, y * k), l.text, int(roundf(18 * k)), Color(HudStyle.PAPER, clampf(l.ticks / 20.0, 0.0, 1.0)
+		b._s(Vector2(b.size.x, y * k), l.text, int(roundf(16 * k)), Color(HudStyle.PAPER, clampf(l.ticks / 20.0, 0.0, 1.0)
 			* 0.9), 500, 0.0, HORIZONTAL_ALIGNMENT_RIGHT)
 		y += 26.0
 
@@ -391,7 +400,7 @@ static func start(b: HudCanvas, h: Hud) -> void:
 	var y := 0.0
 	if h.countdown_shown():
 		var cap := "START IN" if clock.begins_with("Start") else "WARNING IN"
-		b._s(Vector2(cx, 22) * k, cap, int(roundf(15 * k)), HudStyle.MIST, 600, TRACK, HORIZONTAL_ALIGNMENT_CENTER)
+		b._s(Vector2(cx, 22) * k, cap, int(roundf(LAB * k)), HudStyle.LABEL, 600, TRACK, HORIZONTAL_ALIGNMENT_CENTER)
 		var t := clock.substr(clock.rfind(" ") + 1)
 		var last10 := cap == "START IN" and r.race_time > -10.0
 		b._s(Vector2(cx, 134) * k, t, int(roundf(128 * k)), HudStyle.MARK if last10 else HudStyle.PAPER, 600, 0.0,
@@ -409,7 +418,7 @@ static func start(b: HudCanvas, h: Hud) -> void:
 					shown.append(c)
 			var x := cx - 100.0 * (shown.size() - 1)
 			for c in shown:
-				b._s(Vector2(x, y + 20.0) * k, c[0], int(roundf(15 * k)), HudStyle.MIST, 600, TRACK,
+				b._s(Vector2(x, y + 20.0) * k, c[0], int(roundf(LAB * k)), HudStyle.LABEL, 600, TRACK,
 					HORIZONTAL_ALIGNMENT_CENTER)
 				number_unit(b, x, y + 62.0, h.value_of(c[1]), h.unit_of(c[1]), 40, h.colour_of(c[1]),
 					HORIZONTAL_ALIGNMENT_CENTER)
@@ -422,9 +431,9 @@ static func start(b: HudCanvas, h: Hud) -> void:
 			y += 96.0
 		else:
 			if h.text_of("burn") != "":
-				b._s(Vector2(cx, y + 20.0) * k, "BURN", int(roundf(15 * k)), HudStyle.MIST, 600, TRACK,
+				b._s(Vector2(cx, y + 20.0) * k, "BURN", int(roundf(LAB * k)), HudStyle.LABEL, 600, TRACK,
 					HORIZONTAL_ALIGNMENT_CENTER)
-				number_unit(b, cx, y + 56.0, h.value_of("burn"), h.unit_of("burn"), 36, h.colour_of("burn"),
+				number_unit(b, cx, y + 56.0, h.value_of("burn"), h.unit_of("burn"), 40, h.colour_of("burn"),
 					HORIZONTAL_ALIGNMENT_CENTER)
 				_burn_bar(b, h, Vector2(cx, y + 68.0))
 			y += 76.0
@@ -454,7 +463,7 @@ static func finish_card(b: HudCanvas, h: Hud, y: float) -> void:
 	var c: Dictionary = h.race.card
 	var a := h.finish_card_alpha()
 	var cx := LANE_W * 0.5
-	b._s(Vector2(cx, y + 22) * k, c.get("caption", ""), int(roundf(15 * k)), Color(HudStyle.MIST, HudStyle.MIST.a * a),
+	b._s(Vector2(cx, y + 22) * k, c.get("caption", ""), int(roundf(LAB * k)), Color(HudStyle.LABEL, HudStyle.LABEL.a * a),
 		600, TRACK, HORIZONTAL_ALIGNMENT_CENTER)
 	var big: String = c.get("big", "")
 	var gap: String = c.get("gap", "")
@@ -483,9 +492,9 @@ static func _burn_bar(b: HudCanvas, h: Hud, c_design: Vector2) -> void:
 	var hw := _hw(b)
 	b._l(c - Vector2(half, 0), c + Vector2(half, 0), HudStyle.HAIR, hw)
 	b._l(c - Vector2(0, 5.0 * k), c + Vector2(0, 5.0 * k), HudStyle.PAPER, hw)
-	b._s(c + Vector2(-half - 6.0 * k, 4.0 * k), "LATE", int(roundf(TINY * k)), HudStyle.MIST, 600, TRACK,
+	b._s(c + Vector2(-half - 6.0 * k, 4.0 * k), "LATE", int(roundf(TINY * k)), HudStyle.LABEL, 600, TRACK,
 		HORIZONTAL_ALIGNMENT_RIGHT)
-	b._s(c + Vector2(half + 6.0 * k, 4.0 * k), "EARLY", int(roundf(TINY * k)), HudStyle.MIST, 600, TRACK)
+	b._s(c + Vector2(half + 6.0 * k, 4.0 * k), "EARLY", int(roundf(TINY * k)), HudStyle.LABEL, 600, TRACK)
 	var burn := h.race.burn
 	if is_nan(burn):
 		return
@@ -495,31 +504,50 @@ static func _burn_bar(b: HudCanvas, h: Hud, c_design: Vector2) -> void:
 
 # ---- penalty panel (top centre, while racing) ----
 
-const PEN := Vector2(620, 118)
+## hud.md §12.1: a compact chip; the ring on the left, three lines from PEN_X, the deadline on the right
+const PEN := Vector2(540, 76)
+const PEN_X := 124.0
+## the deadline's column (design px): caption, number and bar, right-aligned at the panel's edge
+const PEN_DEADLINE_W := 116.0
+
+
+## the panel's height (design px): a line more for the disqualification warning
+static func pen_height(h: Hud) -> float:
+	return PEN.y + (20.0 if h.text_of("pen_dsq") != "" else 0.0)
 
 
 static func penalty(b: HudCanvas, h: Hud) -> void:
 	var k := b.k
 	var r := h.race
-	b._rect(Rect2(Vector2.ZERO, PEN * k), Color(HudStyle.INK, 0.86))
-	b._rect(Rect2(Vector2.ZERO, Vector2(PEN.x, 4) * k), HudStyle.PORT)
-	var x := 176.0
-	var head := "PENALTY"
+	var hgt := pen_height(h)
+	b._rect(Rect2(Vector2.ZERO, Vector2(PEN.x, hgt) * k), Color(HudStyle.INK, 0.86))
+	b._rect(Rect2(Vector2.ZERO, Vector2(PEN.x, 3) * k), HudStyle.PORT)
+	var x := PEN_X
+	var dl := h.text_of("pen_deadline") != ""
+	var w := PEN.x - 16.0 - x - (PEN_DEADLINE_W if dl else 0.0)
+	var cap := "PENALTY"
+	if r.pending > 1:
+		cap += " 1 OF %d" % r.pending
 	if r.pending > 0:
-		head += " · %d PENDING · RULE %s" % [r.pending, RaceText.code(r.penalty_rule)]
-	b._s(Vector2(x, 30) * k, head, int(roundf(14 * k)), HudStyle.PORT, 700, 0.1)
+		cap += " · RULE %s" % RaceText.code(r.penalty_rule)
+	b._s(Vector2(x, 22) * k, cap, int(roundf(LAB * k)), HudStyle.PORT, 700, 0.1)
 	var main := RaceText.rule_text(r.penalty_rule) if r.pending > 0 else h.text_of("pen_head")
-	b._s(Vector2(x, 62) * k, main, int(roundf(24 * k)), HudStyle.PAPER, 600)
-	var sub := h.text_of("pen_turn")
+	var mf := _fit_cut(b, main, 20, w, 600)
+	b._s(Vector2(x, 46) * k, mf[0], mf[1], HudStyle.PAPER, 600)
+	var state: Array[String] = []
 	if r.pending > 0 and r.penalty_other >= 0:
-		sub = "With %s · %s" % [r.name_of(r.penalty_other).to_upper(), sub]
-	b._s(Vector2(x, 88) * k, sub, int(roundf(16 * k)), HudStyle.MIST, 500)
+		state.append("WITH " + r.name_of(r.penalty_other).to_upper())
+	if h.text_of("pen_turn") != "":
+		state.append(h.text_of("pen_turn").to_upper())
+	if not state.is_empty():
+		var sf := _fit_cut(b, " · ".join(state), LAB, w, 600, 0.06)
+		b._s(Vector2(x, 66) * k, sf[0], sf[1], HudStyle.MIST, 600, 0.06)
 	if h.text_of("pen_dsq") != "":
-		b._s(Vector2(x, 110) * k, h.text_of("pen_dsq"), int(roundf(14 * k)), HudStyle.PORT, 700, 0.06)
-	if h.text_of("pen_deadline") != "":
-		b._s(Vector2(PEN.x - 16, 30) * k, "DEADLINE", int(roundf(14 * k)), HudStyle.MIST, 600, TRACK,
+		b._s(Vector2(x, 88) * k, h.text_of("pen_dsq").to_upper(), int(roundf(LAB * k)), HudStyle.PORT, 700, 0.06)
+	if dl:
+		b._s(Vector2(PEN.x - 16, 20) * k, "DEADLINE", int(roundf(TINY * k)), HudStyle.LABEL, 600, TRACK,
 			HORIZONTAL_ALIGNMENT_RIGHT)
-		b._s(Vector2(PEN.x - 16, 88) * k, h.value_of("pen_deadline"), int(roundf(52 * k)), h.colour_of("pen_deadline"),
+		b._s(Vector2(PEN.x - 16, 58) * k, h.value_of("pen_deadline"), int(roundf(40 * k)), h.colour_of("pen_deadline"),
 			600, 0.0, HORIZONTAL_ALIGNMENT_RIGHT)
 		# hud.md §12.1: a thin bar under the number shrinking towards 0:00
 		var bar := deadline_bar(h)
@@ -528,13 +556,13 @@ static func penalty(b: HudCanvas, h: Hud) -> void:
 			b._rect(Rect2(bar[1].position * k, bar[1].size * k), h.colour_of("pen_deadline"))
 
 
-const DEADLINE_BAR := Vector2(150, 4)
+const DEADLINE_BAR := Vector2(100, 3)
 const DEADLINE_FULL := 120.0
 
 
 ## the deadline bar's track and fill (design px, in the panel): the fill over time left / 120 s from the left
 static func deadline_bar(h: Hud) -> Array[Rect2]:
-	var track := Rect2(Vector2(PEN.x - 16 - DEADLINE_BAR.x, 100), DEADLINE_BAR)
+	var track := Rect2(Vector2(PEN.x - 16 - DEADLINE_BAR.x, 65), DEADLINE_BAR)
 	var f := clampf(h.race.deadline / DEADLINE_FULL, 0.0, 1.0)
 	return [track, Rect2(track.position, Vector2(track.size.x * f, track.size.y))]
 
@@ -552,7 +580,7 @@ static func alert_lines(h: Hud) -> Array:
 static func alerts_height(h: Hud) -> float:
 	var y := 0.0
 	for key in alert_lines(h):
-		y += 64.0 if key == "banner" and h.race.banner != null and h.race.banner.full else 52.0
+		y += 56.0 if key == "banner" and h.race.banner != null and h.race.banner.full else 44.0
 	return y
 
 
@@ -562,19 +590,19 @@ static func alerts(b: HudCanvas, h: Hud) -> void:
 	var y := 0.0
 	for key in alert_lines(h):
 		var full: bool = key == "banner" and h.race.banner != null and h.race.banner.full
-		var size := 34.0 if full else (24.0 if key != "prompt" else 20.0)
+		var size := 28.0 if full else 20.0
 		var t := h.text_of(key)
 		if key == "rules":
 			t = t.to_upper()
 		var col := h.colour_of(key)
 		var tw := HudCanvas.text_width(t, int(roundf(size * k)), 700, 0.04) / k + 40.0
-		var hgt := size + 18.0
+		var hgt := size + 16.0
 		var rr := Rect2(Vector2(cx - tw * 0.5, y), Vector2(tw, hgt))
 		b._rect(Rect2(rr.position * k, rr.size * k), Color(HudStyle.INK, 0.86))
 		b._rect(Rect2(rr.position * k, Vector2(6, hgt) * k), col)
 		b._s(Vector2(cx + 3.0, y + hgt * 0.5 + size * 0.36) * k, t, int(roundf(size * k)), col, 700, 0.04,
 			HORIZONTAL_ALIGNMENT_CENTER)
-		y += 64.0 if full else 52.0
+		y += 56.0 if full else 44.0
 
 
 # ---- helm strip (bottom centre) ----
@@ -591,7 +619,7 @@ static func helm(b: HudCanvas, h: Hud) -> void:
 	var left := "HELM"
 	if h.density == Hud.Density.DATA:
 		left += "  " + h.value_of("rudder")
-	b._s(Vector2(0, y) * k, left, fs, HudStyle.MIST, 600, TRACK)
+	b._s(Vector2(0, y) * k, left, fs, HudStyle.LABEL, 600, TRACK)
 	var sail := h.value_of("sail")
 	b._s(Vector2(HELM.x, y) * k, sail, fs, HudStyle.PAPER, 600, TRACK, HORIZONTAL_ALIGNMENT_RIGHT)
 	var sh := "SHEETS AUTO" if h.values.auto_trim else "SHEET " + h.value_of("sheet")
@@ -623,19 +651,35 @@ static func helm_notes(b: HudCanvas, h: Hud) -> void:
 
 # ---- mark tag ----
 
+## the tag's height (design px) as drawn now: the name and distance, the ETA and bearing line (hud.md §16.4, by the
+## density), the layline line
+static func mark_tag_height(h: Hud) -> float:
+	var y := 68.0
+	if h.has_item("mark_eta") or h.has_item("mark_brg"):
+		y += 24.0
+	if h.world_tack_point() == null and h.text_of("layline") != "":
+		y += 24.0
+	return y
+
+
 static func mark_tag(b: HudCanvas, h: Hud) -> void:
 	var k := b.k
 	var r := h.race
 	var x := 30.0
-	b._s(Vector2(x, 16) * k, h.text_of("next").to_upper(), int(roundf(15 * k)), HudStyle.MARK, 600, TRACK)
-	number_unit(b, x, 60, h.value_of("mark_dist"), h.unit_of("mark_dist"), 44)
-	var eta := "--:--" if is_nan(r.eta) else HudFormat.clock(r.eta)
-	var sub := "ETA %s · BRG %s · %s" % [eta, HudFormat.compass_deg(r.next_bearing),
-		HudFormat.relative_bearing(r.next_rel)]
-	b._s(Vector2(x, 86) * k, sub, int(roundf(13 * k)), HudStyle.PAPER, 600, 0.1)
+	b._s(Vector2(x, 16) * k, h.text_of("next").to_upper(), int(roundf(LAB * k)), HudStyle.MARK, 600, TRACK)
+	number_unit(b, x, 58, h.value_of("mark_dist"), h.unit_of("mark_dist"), 40)
+	var y := 82.0
+	var sub: Array[String] = []
+	if h.has_item("mark_eta"):
+		sub.append("ETA %s" % ("--:--" if is_nan(r.eta) else HudFormat.clock(r.eta)))
+	if h.has_item("mark_brg"):
+		sub.append("BRG %s · %s" % [HudFormat.compass_deg(r.next_bearing), HudFormat.relative_bearing(r.next_rel)])
+	if not sub.is_empty():
+		b._s(Vector2(x, y) * k, " · ".join(sub), int(roundf(LAB * k)), HudStyle.PAPER, 600, 0.1)
+		y += 24.0
 	if h.world_tack_point() == null and h.text_of("layline") != "":
 		var t := h.text_of("layline")
-		b._s(Vector2(x, 112) * k, t.to_upper().replace("LAYLINE", turn_in_label(r.leg_type)), int(roundf(13 * k)),
+		b._s(Vector2(x, y) * k, t.to_upper().replace("LAYLINE", turn_in_label(r.leg_type)), int(roundf(LAB * k)),
 			HudStyle.PORT if t.begins_with("OVER") else HudStyle.PAPER, 600, 0.1)
 
 
@@ -659,7 +703,7 @@ static func table(b: HudCanvas, title: String, header: Array, rows: Array, width
 	b._s(Vector2(24, 40) * k, title.to_upper(), int(roundf(22 * k)), HudStyle.PAPER, 700, 0.08)
 	var x := 24.0
 	for i in header.size():
-		b._s(Vector2(x, 78) * k, str(header[i]).to_upper(), int(roundf(LAB * k)), HudStyle.MIST, 600, TRACK)
+		b._s(Vector2(x, 78) * k, str(header[i]).to_upper(), int(roundf(LAB * k)), HudStyle.LABEL, 600, TRACK)
 		x += widths[i]
 	var y := 116.0
 	for ri in rows.size():
@@ -733,7 +777,7 @@ static func world(b: HudCanvas, h: Hud) -> void:
 	if mp != null and (h.next_panel.visible or h.world_camera() != null):
 		var p: Vector2 = mp
 		if h.next_panel.visible:
-			var tag_foot := h.next_panel.position + Vector2(30.0, 96.0) * k
+			var tag_foot := h.next_panel.position + Vector2(30.0, mark_tag_height(h)) * k
 			if tag_foot.y < p.y:
 				b._l(tag_foot, p, Color(HudStyle.MARK, 0.9), hw)
 			else:  # the tag under the mark: the leader from its top
@@ -776,7 +820,7 @@ static func world(b: HudCanvas, h: Hud) -> void:
 				var du := HudStyle.split_unit(HudFormat.distance(r.layline_dist))
 				var unit: String = du[1] + "  " + HudFormat.clock(r.layline_time)
 				var w := maxf(HudCanvas.text_width(turn_in_label(r.leg_type), int(roundf(LAB * k)), 600, TRACK),
-					HudCanvas.text_width(du[0], int(roundf(36 * k))) + HudCanvas.text_width(unit, int(roundf(16.2 * k)), 600,
+					HudCanvas.text_width(du[0], int(roundf(40 * k))) + HudCanvas.text_width(unit, int(roundf(18 * k)), 600,
 					0.06) + 4.0 * k)
 				for below in [false, true]:
 					var top := c.y + (14.0 * k if below else -58.0 * k)
@@ -784,7 +828,7 @@ static func world(b: HudCanvas, h: Hud) -> void:
 						continue
 					b._s(Vector2(c.x, top + 14.0 * k), turn_in_label(r.leg_type), int(roundf(LAB * k)), HudStyle.PAPER, 600,
 						TRACK, HORIZONTAL_ALIGNMENT_CENTER)
-					number_unit(b, c.x / k, (top / k) + 44.0, du[0], unit, 36, HudStyle.PAPER, HORIZONTAL_ALIGNMENT_CENTER)
+					number_unit(b, c.x / k, (top / k) + 44.0, du[0], unit, 40, HudStyle.PAPER, HORIZONTAL_ALIGNMENT_CENTER)
 					break
 	# the selected boat's pointer over her masthead (hud.md §16.4.1); her tag stands on it
 	var mk := h.selected_marker()
@@ -891,23 +935,22 @@ static func _fit_cut(b: HudCanvas, text: String, size: float, max_w: float, weig
 	return [t, sz]
 
 
-## the card's rows' baselines (design px) and its height, from what the card has
+## the card's rows' baselines (design px) and its height, from what the card has: the header (caption and name) over
+## a divider, then her standing, the rules line and the penalty line, each only with a value
 static func card_rows(h: Hud) -> Dictionary:
 	var c := h.card
-	var y := 166.0
+	var y := 70.0
 	var out := {}
 	if c.get("course", "") != "":
-		y += 34.0
+		y += 26.0
 		out["course"] = y
 	if c.get("rules", "") != "":
-		y += 30.0
-		out["rules"] = y
-		y += 22.0
-		out["rule_text"] = y
-	if c.get("penalty", "") != "":
 		y += 28.0
+		out["rules"] = y
+	if c.get("penalty", "") != "":
+		y += 26.0
 		out["penalty"] = y
-	out["height"] = y + 18.0
+	out["height"] = y + 14.0 if y > 70.0 else 70.0
 	return out
 
 
@@ -935,44 +978,26 @@ static func boat_card(b: HudCanvas, h: Hud) -> void:
 	var right_w := 0.0
 	var cap_w := 0.0
 	if place != "":
-		var csz := int(roundf(LAB_S * k))
-		b._s(Vector2(xr, 22) * k, "PLACE", csz, HudStyle.MIST, 600, TRACK, HORIZONTAL_ALIGNMENT_RIGHT)
+		var csz := int(roundf(LAB * k))
+		b._s(Vector2(xr, 22) * k, "PLACE", csz, HudStyle.LABEL, 600, TRACK, HORIZONTAL_ALIGNMENT_RIGHT)
 		cap_w = HudCanvas.text_width("PLACE", csz, 600, TRACK) / k + 12.0
 		right_w = number_unit(b, xr, 54, place, "/ %d" % int(c.get("fleet", 0)), 26, HudStyle.PAPER,
 			HORIZONTAL_ALIGNMENT_RIGHT)
 	if head != "":
-		var hf := _fit_cut(b, head, LAB_S, xr - x - cap_w, 600, TRACK)
-		b._s(Vector2(x, 22) * k, hf[0], hf[1], HudStyle.MIST, 600, TRACK)
+		var hf := _fit_cut(b, head, LAB, xr - x - cap_w, 600, TRACK)
+		b._s(Vector2(x, 22) * k, hf[0], hf[1], HudStyle.LABEL, 600, TRACK)
 	var name: String = c.get("name", "")
 	var nf := _fit_cut(b, name, 26, xr - x - right_w - 16.0, 700, 0.04)
 	b._s(Vector2(x, 54) * k, nf[0], nf[1], HudStyle.PAPER, 700, 0.04)
-	divider(b, Vector2(x, 70), Vector2(xr, 70))
-	# cells: distance and bearing, speed and heading
-	var cells := [["DIST", "dist", x, 94.0], ["BRG", "brg", 172.0, 94.0], ["SPEED", "speed", x, 150.0],
-		["HDG", "hdg", 172.0, 150.0]]
-	for cl in cells:
-		caption(b, cl[2], cl[3] - 2.0 - 14.0, cl[0])
-		var v: Array = c.get(cl[1], ["", ""])
-		if cl[1] == "hdg":
-			var w := number_unit(b, cl[2], cl[3] + 14.0, v[0], "", 26)
-			var tk: String = v[1]
-			if tk != "":
-				b._s(Vector2(cl[2] + w + 6.0, cl[3] + 14.0) * k, tk, int(roundf(16 * k)),
-					HudStyle.STBD if tk == "S" else HudStyle.PORT, 700)
-		else:
-			number_unit(b, cl[2], cl[3] + 14.0, v[0], v[1], 26)
+	if hgt > 70.0:
+		divider(b, Vector2(x, 70), Vector2(xr, 70))
 	if rows.has("course"):
-		divider(b, Vector2(x, 178), Vector2(xr, 178))
-		var t: String = c["course"]
-		var cf := _fit_cut(b, t, 16, xr - x, 600)
+		var cf := _fit_cut(b, c["course"], 16, xr - x, 600)
 		b._s(Vector2(x, rows["course"]) * k, cf[0], cf[1], HudStyle.PAPER, 600)
 	if rows.has("rules"):
-		var rc: Color = c.get("rules_col", HudStyle.PAPER)
 		var t: String = c["rules"]
-		b._s(Vector2(x, rows["rules"]) * k, t, _fit(b, t, 15, xr - x, 700, 0.06), rc, 700, 0.06)
-		var rt: String = c.get("rule_text", "")
-		var rf := _fit_cut(b, rt, 14, xr - x, 500)
-		b._s(Vector2(x, rows["rule_text"]) * k, rf[0], rf[1], HudStyle.PAPER, 500)
+		b._s(Vector2(x, rows["rules"]) * k, t, _fit(b, t, 15, xr - x, 700, 0.06), c.get("rules_col", HudStyle.PAPER),
+			700, 0.06)
 	if rows.has("penalty"):
 		var t: String = c["penalty"]
 		b._s(Vector2(x, rows["penalty"]) * k, t, _fit(b, t, 15, xr - x, 700, 0.06), HudStyle.PORT, 700, 0.06)
@@ -1010,4 +1035,4 @@ static func edge_pointer(b: HudCanvas, h: Hud, w: Vector3, name: String, sub: St
 	var tx := q.x + (-14.0 * k if right else (14.0 * k if left else 0.0))
 	var ty := q.y + (-6.0 * k if absf(u.y) < 0.7 else (-40.0 * k if u.y > 0.0 else 30.0 * k))
 	b._s(Vector2(tx, ty), name, int(roundf(LAB_S * k)), col, 700, 0.1, al)
-	b._s(Vector2(tx, ty + 20.0 * k), sub, int(roundf(18 * k)), HudStyle.PAPER, 500, 0.0, al)
+	b._s(Vector2(tx, ty + 20.0 * k), sub, int(roundf(16 * k)), HudStyle.PAPER, 500, 0.0, al)

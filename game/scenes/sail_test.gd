@@ -1205,14 +1205,16 @@ func _ui_actions(r: RawInput) -> void:
 		if r.was_pressed(&"pause_menu"):
 			_close_chat()
 		return
-	if r.was_pressed(&"chat"):
+	# a menu has the keys (controls.md §7): the pause key, the screenshot and the cameras stay, the rest waits
+	var menu := controls.menu_open or _results_open()
+	if not menu and r.was_pressed(&"chat"):
 		_chat.visible = true
 		_chat.grab_focus()
 		controls.set_text_focus(true)
 		return
-	if r.was_pressed(&"hud_hide"):
+	if not menu and r.was_pressed(&"hud_hide"):
 		hud.toggle_hidden()
-	if capture.handle(r):
+	if not menu and capture.handle(r):
 		_set_world_tags(capture.world_tags)
 	if r.was_pressed(&"pause_menu"):
 		# Esc closes the course map first (hud.md §8.1), then clears a selection (hud.md §16.4.1), then pauses
@@ -1221,9 +1223,9 @@ func _ui_actions(r: RawInput) -> void:
 			_paused_label.visible = runner.paused
 	if r.was_pressed(&"screenshot"):
 		_screenshot()
-	if r.was_pressed(&"reset_boat"):
+	if not menu and r.was_pressed(&"reset_boat"):
 		reset_boat()
-	if can_spectate():
+	if can_spectate() and not controls.menu_open:
 		var n := sim.boat_count()
 		var before := viewed
 		if r.was_pressed(&"spectate_next"):
@@ -1236,6 +1238,11 @@ func _ui_actions(r: RawInput) -> void:
 			hud.local_commands = viewed == runner.boat
 			_update_target(runner.alpha())
 			rig.retarget(target)
+
+
+## The results screen (menus.md §5) is open over the race.
+func _results_open() -> bool:
+	return results != null and bool(results.get("is_open"))
 
 
 ## cameras.md §1: the player steps through the boats when not racing, or once their boat has finished, retired

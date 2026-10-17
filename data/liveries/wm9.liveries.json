@@ -1,0 +1,53 @@
+{
+  "schema": "windmark.liveries/2",
+  "class": "wm9",
+  "insignia": {"text": "W9"},
+  "sails": {
+    "main": {"cloth": "dacron", "color": "#e2e0d6", "number": "#1b3a2d"},
+    "headsail": {"cloth": "dacron", "color": "#e2e0d6", "number": "#1b3a2d"},
+    "spinnaker": {"cloth": "nylon", "color": "#1f4d3a", "design": "head", "radius": 0.24, "number": "#e2e0d6",
+      "colors": ["#d9d3bf"]}
+  },
+  "ropes": {
+    "mainsheet": {"color": "#ae7249", "fleck": "#2d3548"},
+    "sheet": {"color": "#3e797b", "fleck": "#d6d6ce"},
+    "kite_sheet": {"color": "#91506f", "fleck": "#d6d6ce"},
+    "halyard_main": {"color": "#9c4c4e", "fleck": "#d6d6ce"},
+    "halyard_jib": {"color": "#486792", "fleck": "#d6d6ce"},
+    "halyard_kite": {"color": "#497551", "fleck": "#d6d6ce"},
+    "halyard_code": {"color": "#b79c5a", "fleck": "#2a2b2e"},
+    "control": {"color": "#6b5986", "fleck": "#d6d6ce"}
+  },
+  "liveries": [
+    {
+      "id": "green",
+      "name": "Green and cream",
+      "hull": {
+        "topsides": "#1b3a2d",
+        "text": "#ddd6c2",
+        "boot_stripe": "#d9d2bd",
+        "antifouling": "#17181b",
+        "keel": "#1c1e21",
+        "graphic": {"type": "stripes", "colors": ["#b39a5c"], "depth": [0.045], "width": [0.012],
+          "from": 0.0, "to": 0.965}
+      },
+      "deck": {"gelcoat": "#d9d3c2", "nonslip": "#a8a291"}
+    }
+  ],
+  "boats": [
+    {"id": "aurelia", "boat_name": "Aurelia", "sail_number": "9", "nation": "SLO"},
+    {"id": "windflower", "boat_name": "Windflower", "sail_number": "118", "nation": "GBR"},
+    {"id": "libeccio", "boat_name": "Libeccio", "sail_number": "42", "nation": "ITA"},
+    {"id": "seeadler", "boat_name": "Seeadler", "sail_number": "305", "nation": "GER"},
+    {"id": "zwaluw", "boat_name": "Zwaluw", "sail_number": "61", "nation": "NED"},
+    {"id": "jugo", "boat_name": "Jugo", "sail_number": "27", "nation": "CRO"},
+    {"id": "belle_ile", "boat_name": "Belle Ile", "sail_number": "714", "nation": "FRA"},
+    {"id": "levante", "boat_name": "Levante", "sail_number": "88", "nation": "ESP"},
+    {"id": "silverbirch", "boat_name": "Silverbirch", "sail_number": "233", "nation": "SWE"},
+    {"id": "lastavica", "boat_name": "Lastavica", "sail_number": "19", "nation": "SLO"},
+    {"id": "skylark", "boat_name": "Skylark", "sail_number": "560", "nation": "DEN"},
+    {"id": "southerly", "boat_name": "Southerly", "sail_number": "647", "nation": "AUS"},
+    {"id": "kotuku", "boat_name": "Kotuku", "sail_number": "35", "nation": "NZL"},
+    {"id": "gaivota", "boat_name": "Gaivota", "sail_number": "171", "nation": "POR"}
+  ]
+}

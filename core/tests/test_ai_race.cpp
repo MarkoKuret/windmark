@@ -50,6 +50,8 @@ TEST_CASE("ai dev: one race of 10 Intermediate boats" * doctest::skip(std::geten
     sp.levels.assign(2, wm::AiLevel::expert);
     sp.shifts = wm::ShiftPreset::oscillating;
   }
+  // AI_CLASS=<id>: every boat of that class (data/perf/<id>.perf.json)
+  if (const char* c = std::getenv("AI_CLASS")) sp.classes.assign(sp.levels.size(), c);
   sp.trace = std::getenv("AI_TRACE");
   {
     auto w = wm_test::ai_world(sp);

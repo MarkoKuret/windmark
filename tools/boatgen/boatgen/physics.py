@@ -47,8 +47,9 @@ def hydrostatics(boat):
         below, _ = split_by_plane_z(g, 0.0)
         wet += mesh_area(below) if below is not None else 0.0
     wet_app = mesh_area(app.fin_geom) + mesh_area(app.bulb)
-    rb, _ = split_by_plane_z(app.rudder_geom, 0.0)
-    wet_app += mesh_area(rb) if rb is not None else 0.0
+    for rg in app.rudder_geoms:
+        rb, _ = split_by_plane_z(rg, 0.0)
+        wet_app += mesh_area(rb) if rb is not None else 0.0
     crew = cls["crew"]["weight"]
     tpc = RHO_SEA * h["Aw"] * 0.01
     A_fin, A_rud = app.lateral_areas()
@@ -165,7 +166,9 @@ def collision(boat, n_st=14, n_g=4):
         parts["bulb"] = box(b1 - b0, 0.5 * (b0 + b1))
     rp = np.array([app.rud_le_root, app.rud_le_tip, app.rud_le_tip - [app.rud_ct, 0, 0],
                    app.rud_le_root - [app.rud_cr, 0, 0]])
-    parts["rudder"] = _slab(rp, app.rud_tc * app.rud_cr)
+    for name, M in app.side_matrices().items():
+        slab = _slab(rp, app.rud_tc * app.rud_cr)
+        parts[name] = slab if app.rud_count == 1 else slab.transformed(M)
     return parts
 
 
@@ -207,6 +210,9 @@ def rig_data(boat):
         "mast_chord": _r(rig.chord, 3), "mast_width": _r(rig.width, 3),
         "spreaders": [g(t) for _, t in rig.spreaders],
     }
+    if boat.app.rud_count > 1:
+        # twin blades, each turning about its own (canted) stock; `rudder_stock` is then the tiller's
+        d["rudders"] = [{"node": n, "stock": g(pv), "axis": _r(ax, 5)} for n, (pv, ax) in boat.app.blade_pivots().items()]
     if rig.pole_flown:
         # pivot on the mast axis at the heel height; at rest the pole points forward and its end is the tack
         d["pole_pivot"] = g(rig.pole_pivot)

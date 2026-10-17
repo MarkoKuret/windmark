@@ -343,6 +343,8 @@ def rudder_geoms(boat, ms=INSET_SPAR):
     """The rudder's blade and head, each shrunk toward its middle by ms a side (at least to 0.3 of its size), when
     the blade stands above the waterline; none for a rudder under the water."""
     from .appendages import Appendages
+    if int(boat.cls["rudder"].get("count", 1)) > 1:
+        return []                                          # twin spades: under the water, on their own nodes
     with segment_scale(0.1):
         app = Appendages(boat.cls, boat.hull)
         st = app.rud_stations

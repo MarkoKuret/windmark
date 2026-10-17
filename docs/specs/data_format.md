@@ -88,6 +88,15 @@ compute its performance. Required fields are marked **R**; the rest have the sta
 | `x` | R | m | body x of the stock |
 | `max_angle` | | rad | largest rudder angle [0.61] |
 | `count` | | – | rudders in the water at once (drag and lift counted per rudder, e.g. 2 on a catamaran or twin-rudder boat) [1] |
+| `y` | | m | twin rudders (`count` 2, monohull): distance of each stock from the centreline [0.22 · `beam_max`] |
+| `cant` | | rad | twin rudders: outward lean of each blade from the vertical, tip outboard, 0 to 0.5 [0] |
+
+**Twin rudders** (`count` 2 on a monohull, `type` `spade` only): one spade either side at `±y`, its stock axis leaning
+inboard at the top by `cant`, so the blade's tip is outboard; each tip reaches `depth` below the DWL, so the canted
+blade is longer by `1 / cos(cant)`. `chord_root`, `chord_tip`, `thickness` and `x` are those of each blade. Both
+turn together by the helm angle, each about its own stock. The VPP counts both blades' drag and lift (`count`) and
+does not model the cant or which blade is the more immersed when heeled. The boat generator draws a tiller on its
+own stock on the centreline above the blades (or the wheel). `y` and `cant` are an error with `count` 1.
 
 ### 3.4 `rig`
 

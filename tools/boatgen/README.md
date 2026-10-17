@@ -38,7 +38,8 @@ Nothing else: the GLB writer, triangulation, lofting and hydrostatics are in thi
 Previews in `previews/`: `<id>_upwind.png` (heeled, trimmed, demo livery), `<id>_downwind.png` (spinnaker set),
 `<id>_profile.png` (the exported model as is, dry, from starboard), `<id>_deck.png` (cockpit and deck
 hardware), close-ups `<id>_cockpit.png` (from aft, looking forward), `<id>_mastbase.png` (mast foot, halyard leads,
-chainplates) and `<id>_bow.png` (dry and low: stem, forefoot, bilge turn), `<id>_detail.png` (close on the cabin side and side deck: texture set and baked AO), `<id>_uv.png` (0.25 m checker on uv0 of every surface) and `<id>_lines.png` (lines plan: profile with
+chainplates), `<id>_bow.png` (dry and low: stem, forefoot, bilge turn), `<id>_stern.png` (dry and low from the
+starboard quarter: transom, run, chine, rudders), `<id>_detail.png` (close on the cabin side and side deck: texture set and baked AO), `<id>_uv.png` (0.25 m checker on uv0 of every surface) and `<id>_lines.png` (lines plan: profile with
 buttocks, half-breadths with waterlines, body plan).
 
 ## Tests
@@ -69,7 +70,7 @@ All base fields are those of `docs/specs/data_format.md` §3 and are used as spe
 `hull.{loa, lwl, beam_max, bwl, draft_canoe, displacement, prismatic, section_shape, rocker, freeboard,
 transom_width, stem_x, transom_x, max_beam_station, lcb_x, bow_fineness}`, `keel.{type, depth, chord_root,
 chord_tip, thickness, sweep, x, fin_mass, bulb_mass, bulb_length, bulb_diameter}`, `rudder.{type, depth,
-chord_root, chord_tip, thickness, x}`, `rig.{I, J, P, E, mast_height, mast_x, boom_height, fractional,
+chord_root, chord_tip, thickness, x, count, y, cant}`, `rig.{I, J, P, E, mast_height, mast_x, boom_height, fractional,
 bowsprit, pole}`, `sails[].{id, type, area, luff, tack_x}`, `crew.{count, weight}`; on code zeros and
 spinnakers also `sails[].{leech, foot, mid_girth, mid_girth_frac, luff_round, leech_round, foot_round,
 luff_round_pos, leech_round_pos, foot_round_pos}` (below).
@@ -83,6 +84,12 @@ How the generator reads a few of them:
   to the requested one (`hydrostatics.midship` and `midship_requested`).
 - `rocker.fwd` below `draft_canoe` gives a forefoot below the DWL (plumb-bow style); `rocker.aft` below
   `draft_canoe` gives an immersed transom and then needs `transom_x = -lwl/2`.
+- `rudder.count` 2 (twin rudders, `data_format.md` §3.3): the spade blade is drawn as for one rudder, then moved
+  out to `±y` and canted outward by `cant` about the fore-and-aft line through its top, which sits 4 cm inside the
+  hull's bottom where it stands (the highest bottom over the root chord); the tip reaches `-depth`. Each blade is
+  its own node (`rudder_port`, `rudder_starboard`) turning about its own stock; the tiller stands on its own stock on
+  the centreline (node `rudder`, the sidecar's `rig.rudder_stock`); with a wheel there is no `rudder` node. No
+  shadow proxy for the blades (under the water).
 - `lcb_x` is the LCB target (default 53.5 % LWL aft of the forward end when absent).
 - `max_beam_station` and `bow_fineness` shape the sheer plan view with the rule of `collisions.md` §2.1, so the
   2-D collision outline and the 3-D deck edge agree.
@@ -284,7 +291,7 @@ goes into the rudder head, a streamlined casting a wall thicker than the blade o
 chord, and the tiller butt sits in a slot in the head's forward end on its bolt (`Appendages.tiller_pivot`), and the pintle straps sit between the gudgeon arms below the transom's top. The builders tag each
 piece (`Part.add(..., tag=)`) and record what it is fitted to (`Part.attach(piece, *hosts)`); `Boat.attachment_gaps()`
 measures the gap of every attachment on the meshes as built, and `tests/test_attachments.py` holds it at 5 mm or
-less for wm7 and wm12. The same test checks the lifelines end by end (`Boat.lifelines`: the last 2 cm of every
+less for wm7, wm12 and wm10. The same test checks the lifelines end by end (`Boat.lifelines`: the last 2 cm of every
 segment within 1 mm of its stanchion, pushpit or pulpit; every stanchion's top and eye on its tier, with a segment
 ending on it from each side; the spacing between the pushpit, the stanchions and the pulpit 1 to 2.2 m) and the
 halyard leads (`Boat.rope_paths`: never inside the deck or coachroof, the spans along the surface within 5 mm of the
@@ -356,7 +363,8 @@ Nodes under the root (named after the class id):
 | node | pivot | note |
 | --- | --- | --- |
 | `body` | | every static part: hull, deck, keel, mast, rigging, hardware |
-| `rudder` | rudder stock, turns about the vertical | carries the tiller when steering is `tiller` |
+| `rudder` | rudder stock, turns about the vertical | carries the tiller when steering is `tiller`; with twin rudders only the tiller, on its own stock on the centreline |
+| `rudder_port`, `rudder_starboard` | each blade's own stock, turns about its canted axis (`rig.rudders`) | twin rudders only (`rudder.count` 2), in place of the blade in `rudder` |
 | `wheel` | wheel hub, turns about fore and aft | only with `wheel` steering |
 | `boom` | gooseneck, turns about the vertical | carries the upper mainsheet block |
 | `mainsheet` | | tackle between boom and traveller; rebuild it as the boom moves |
@@ -458,7 +466,7 @@ Positions in the body frame.
 | `waterline` | the DWL contour, port and starboard |
 | `buoyancy_samples` | skin samples up to the sheer with outward normal and area, for pressure integration at any heel and trim (`canoe_volume_check_m3` is their immersed volume by the divergence theorem) |
 | `collision_meshes` | closed low-poly hull (canoe body to the deck crown), fin, bulb and rudder slabs |
-| `rig` | mast step, masthead, hounds, forestay tack, boom pivot and axis, sprit end, rudder stock and axis, wheel hub, spreader tips, `sheet_leads` (headsail and flying-sail sheet lead block and winch, starboard side, with the drum diameter); with a pole: `pole_pivot`, `pole_axis`, `pole_length` (from the mast front) and `pole_end` (rest position, the spinnaker tack) |
+| `rig` | mast step, masthead, hounds, forestay tack, boom pivot and axis, sprit end, rudder stock and axis (with twin rudders the tiller's, plus `rudders`: each blade's `node`, `stock` and `axis`), wheel hub, spreader tips, `sheet_leads` (headsail and flying-sail sheet lead block and winch, starboard side, with the drum diameter); with a pole: `pole_pivot`, `pole_axis`, `pole_length` (from the mast front) and `pole_end` (rest position, the spinnaker tack) |
 | `model` | file, `triangles` and `surfaces` of the game model without the sails, `sail_triangles`, `full_triangles` (the full model), nodes, pivots |
 | `sails` | per sail: node, type, grid size, vertex order, flat area and target, centroid, corner vertices (tack, clew, head), `look` (the look parameters above, every applicable key filled); code zeros and spinnakers also `rule` (luff, leech, foot, mid girth and rule area of the planform) |
 
@@ -470,7 +478,7 @@ Positions in the body frame.
 - No crew yet; headsail and kite sheets only on the posed previews (the engine draws them from
   `rig.sheet_leads`).
 - The flat spinnaker outline is a centreline projection; its flying shape comes from the simulation.
-- Surfaces per boat: one per node (4 or 5, a pole class 6) plus the sails.
+- Surfaces per boat: one per node (4 or 5, a pole or twin-rudder class 6) plus the sails.
 - Multihulls are not supported (one canoe body, one keel).
 - `sails[].leech` and `foot` are used for code zeros and spinnakers only; the hull fit leaves Cm as an outcome
   (see above).

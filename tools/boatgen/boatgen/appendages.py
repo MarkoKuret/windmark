@@ -74,6 +74,8 @@ class Appendages:
         self.rud_cr, self.rud_ct = float(r["chord_root"]), float(r["chord_tip"])
         self.rud_tc = float(r["thickness"])
         self.transom_hung = r["type"] == "transom"
+        self.rud_count = int(r.get("count", 1))
+        self.rud_y, self.rud_cant = float(r.get("y", 0.0)), float(r.get("cant", 0.0))
         z_tip_r = -float(r["depth"])
         x_stock = float(r["x_stock"])
         if self.transom_hung:
@@ -84,9 +86,22 @@ class Appendages:
             # tiller runs forward low over the floor; on a closed one the deck
             z_top = (float(d.floor_z(0.0)) + 0.12 if d.open_transom
                      else float(hull.zs(np.array([0.0]))[0]) + 0.10)
+        elif self.rud_count > 1:
+            # twin spades: the root buried in the bottom where it stands, out at y; the canted blade reaches -depth
+            xs_c = np.linspace(x_stock - 0.75 * self.rud_cr, x_stock + 0.25 * self.rud_cr, 7)
+            z_top = max(self.bottom_z(x, self.rud_y) for x in xs_c) + 0.04
+            self.stub_low = self.bottom_z(x_stock, self.rud_y) - 0.03 - z_top   # the stock stub reaches out of the hull
+            z_tip_r = z_top - (z_top - z_tip_r) / np.cos(self.rud_cant)
         else:
             z_top = float(hull.zk(np.array([x_stock]))[0]) + 0.04
-        self.rud_stock = np.array([x_stock, 0.0, z_top])
+        # the blade is drawn on the centreline (its top on the stock axis); twin blades are then moved out and canted
+        # (side_matrix), and the helm (the tiller's stock) stays on the centreline over the cockpit floor
+        self.blade_stock = np.array([x_stock, 0.0, z_top])
+        if self.rud_count > 1:
+            from .deck import Deck
+            self.rud_stock = np.array([x_stock, 0.0, float(Deck(cls, hull).surface(x_stock, 0.0)[0])])
+        else:
+            self.rud_stock = self.blade_stock
         self.rud_le_root = np.array([x_stock + 0.25 * self.rud_cr, 0, z_top])
         span_r = z_top - z_tip_r
         self.rud_le_tip = np.array([x_stock - span_r * np.tan(float(r["sweep"])) + 0.25 * self.rud_ct, 0, z_tip_r])
@@ -184,6 +199,8 @@ class Appendages:
         blade = foil(self.rud_stations, n_chord=n_chord, tip_cap=True, root_cap=self.transom_hung)
         p.add("antifouling" if not self.transom_hung else "gelcoat", blade, tag="rudder")
         self.rudder_geom = blade
+        self.rudder_geoms = ([blade] if self.rud_count == 1 else
+                             [blade.transformed(M) for M in self.side_matrices().values()])
         if self.transom_hung:
             # rudder head with a through bolt; pintle straps round the leading edge at the transom gudgeons
             # (hardware.rudder_fittings), pins on the stock axis
@@ -215,11 +232,47 @@ class Appendages:
                 p.attach(f"pintle_strap_{i}", f"gudgeon_{i}")
         else:
             # stock stub visible inside the gap to the hull
-            p.add("metal", tube(np.array([self.rud_stock + [0, 0, -0.05], self.rud_stock + [0, 0, 0.2]]),
+            low = min(-0.05, self.stub_low) if self.rud_count > 1 else -0.05
+            p.add("metal", tube(np.array([self.blade_stock + [0, 0, low], self.blade_stock + [0, 0, 0.2]]),
                                 0.035 * (self.cls["hull"]["loa"] / 12) ** 0.5, 12), tag="rudder_stock")
             p.attach("rudder_stock", "rudder")
             p.attach("rudder_stock", "hull")
         return p
+
+    def bottom_z(self, x, y):
+        """Height of the hull's bottom at station x (from the transom), y off the centreline."""
+        ys, zs = self.hull.dense_section(x, 120)
+        i = int(np.argmax(ys))
+        if y > ys[i] - 0.05:
+            from .classfile import ClassFileError
+            raise ClassFileError(f"$.rudder.y {y:.2f} m is outside the hull's bottom at the rudder stock")
+        return float(np.interp(y, ys[:i + 1], zs[:i + 1]))
+
+    def side_matrices(self):
+        """{node: 4x4} placing the centreline blade: one `rudder` (identity), or twin blades `rudder_port` and
+        `rudder_starboard` moved out to +-y and canted outward (tip outboard) about the fore-and-aft axis through
+        the blade's top on the stock."""
+        if self.rud_count == 1:
+            return {"rudder": np.eye(4)}
+        from .mesh import translate, rot_axis
+        s = self.blade_stock
+        return {name: translate([0.0, sy * self.rud_y, 0.0]) @ translate(s) @ rot_axis([1.0, 0, 0], sy * self.rud_cant)
+                @ translate(-s) for name, sy in (("rudder_port", 1.0), ("rudder_starboard", -1.0))}
+
+    def blade_pivots(self):
+        """{node: (stock point, stock axis)} of each blade node, in the generator frame."""
+        out = {}
+        for name, M in self.side_matrices().items():
+            out[name] = ((M @ np.r_[self.blade_stock, 1.0])[:3], M[:3, :3] @ np.array([0.0, 0, 1.0]))
+        return out
+
+    def rudder_parts(self, n_chord=18):
+        """{node: Part} of the blades: the rudder_part as is, or its twin copies (side_matrices)."""
+        p = self.rudder_part(n_chord)
+        if self.rud_count == 1:
+            return {"rudder": p}
+        from .mesh import Part as _P
+        return {name: _P().extend(p, M) for name, M in self.side_matrices().items()}
 
     def pintle_z(self):
         """Heights of the pintles of a transom-hung rudder: on the transom face, the upper one below its top (the
@@ -236,11 +289,18 @@ class Appendages:
     def volumes(self):
         V_fin, C_fin = mesh_volume(self.fin_geom)
         V_bulb, C_bulb = mesh_volume(self.bulb) if self.has_bulb else (0.0, np.zeros(3))
-        V_rud, C_rud = mesh_volume(self.rudder_geom)
         # only the immersed part displaces (a transom rudder, or a spade root near the stern, is partly above the
         # DWL); scaled by the immersed share of its surface
-        below, _ = split_by_plane_z(self.rudder_geom, 0.0)
-        V_rud *= mesh_area(below) / mesh_area(self.rudder_geom) if below is not None else 0.0
+        vs = []
+        for g in self.rudder_geoms:
+            v, cg = mesh_volume(g)
+            below, _ = split_by_plane_z(g, 0.0)
+            v *= mesh_area(below) / mesh_area(g) if below is not None else 0.0
+            vs.append((v, np.asarray(cg)))
+        V_rud, C_rud = vs[0]
+        if len(vs) > 1:
+            V_rud = sum(v for v, _ in vs)
+            C_rud = sum(v * c for v, c in vs) / V_rud if V_rud > 0 else np.mean([c for _, c in vs], 0)
         return {"fin": (V_fin, C_fin), "bulb": (V_bulb, C_bulb), "rudder": (V_rud, C_rud)}
 
     def estimate_volume(self):
@@ -249,7 +309,8 @@ class Appendages:
         V_fin = 0.685 * self.fin_tc * span * (self.fin_cr ** 2 + self.fin_cr * self.fin_ct + self.fin_ct ** 2) / 3
         V_bulb = self.bulb_mass / RHO_LEAD
         rspan = float(self.cls["rudder"]["depth"])
-        V_rud = 0.685 * self.rud_tc * rspan * (self.rud_cr ** 2 + self.rud_cr * self.rud_ct + self.rud_ct ** 2) / 3
+        V_rud = self.rud_count * 0.685 * self.rud_tc * rspan * (self.rud_cr ** 2 + self.rud_cr * self.rud_ct
+                                                               + self.rud_ct ** 2) / 3
         return V_fin + V_bulb + V_rud
 
     def profiles(self):
@@ -271,5 +332,5 @@ class Appendages:
         span = self.fin_span_wet
         A_fin = span * 0.5 * (self.fin_cr + self.fin_ct)
         rspan = float(self.cls["rudder"]["depth"]) + min(0.0, self.rud_le_root[2])
-        A_rud = max(rspan, 0) * 0.5 * (self.rud_cr + self.rud_ct)
+        A_rud = self.rud_count * max(rspan, 0) * 0.5 * (self.rud_cr + self.rud_ct)
         return A_fin, A_rud

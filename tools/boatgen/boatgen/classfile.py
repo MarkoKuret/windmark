@@ -238,6 +238,22 @@ def resolve(raw, path="<class>"):
                    "chord_tip": float(R["chord_tip"]), "thickness": float(R.get("thickness", 0.11)),
                    "x_stock": to_int(R["x"]), "max_angle": float(R.get("max_angle", 0.61)),
                    "sweep": float(vr.get("sweep", 0.10))}
+    # twin rudders (data_format.md 3.3): `count` 2 hangs a spade either side at `y`, canted outward by `cant`
+    count = R.get("count", 1)
+    if isinstance(count, bool) or count not in (1, 2):
+        raise ClassFileError(f"$.rudder.count must be 1 or 2 (got {count})")
+    if count == 2 and c["rudder"]["type"] != "spade":
+        raise ClassFileError("$.rudder.count 2 (twin rudders) needs type spade")
+    for k in ("y", "cant"):
+        if k in R and count == 1:
+            raise ClassFileError(f"$.rudder.{k} is for twin rudders (count 2) only")
+    y = R.get("y", 0.22 * float(H["beam_max"]))
+    cant = R.get("cant", 0.0)
+    for k, v, lo, hi in (("y", y, 0.05, 0.5 * float(H["beam_max"])), ("cant", cant, 0.0, 0.5)):
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not lo <= v <= hi:
+            raise ClassFileError(f"$.rudder.{k} must be a number from {lo:g} to {hi:g} (got {v})")
+    c["rudder"].update({"count": count, "y": float(y) if count == 2 else 0.0,
+                        "cant": float(cant) if count == 2 else 0.0})
 
     # ---------------------------------------------------------------- rig
     G = _req(raw, "rig", "$")

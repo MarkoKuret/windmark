@@ -321,14 +321,14 @@ def stage(classes, data=DATA, dest=STAGE, log=print, hd=False, files=None):
     2048, or 4096 with `hd`) and layout.json, the rope set, the sails at half size (full with `hd`, the cloth zones
     in the albedo's alpha) and the shared cloth detail tiles. Returns the number of files written."""
     from . import atlas
-    files = Path(files or data)
+    lfiles = Path(files or data)
     n = 0
     code = _digest(*(Path(__file__).with_name(f).read_bytes() for f in ("atlas.py", "painted.py", "hull.py", "sails.py")))
     for c in classes:
         src = Path(data) / c
         if not src.exists():
             continue
-        liv = livery_file(c, files) if (files / f"{c}.liveries.json").exists() else {}
+        liv = livery_file(c, lfiles) if (lfiles / f"{c}.liveries.json").exists() else {}
         sail_lay = {}
         if (src / "sails" / "layout.json").exists():
             sail_lay = json.loads((src / "sails" / "layout.json").read_text()).get("sails", {})

@@ -5,9 +5,11 @@ extends RefCounted
 ## (BoatMaterials, shaders/boat_atlas.gdshader) goes on every node of every level: the livery's colours in its slot
 ## table (topsides, boot stripe, antifouling, keel, deck gelcoat and non-slip, rope functions) and, with the class's
 ## baked textures (BakedLivery, data_format.md §8.5), the staged boat atlas (hull, deck with the painted hardware,
-## transom, keel) with the boat's name and number over it; without them the procedural hull livery
-## (hull_livery.gdshaderinc) on the topsides. Each baked sail gets shaders/sail_baked.gdshader, else a copy of its
-## cloth material with the livery uniforms of sail_livery.gdshaderinc. One text texture per boat (LiveryText) and
+## transom, keel) with the boat's name and number over it, and for a livery other than the baked one the tint
+## uniforms that substitute its colours through the atlas's masks (§8.5 "Tinted liveries"); without them the
+## procedural hull livery (hull_livery.gdshaderinc) on the topsides. Each baked sail gets
+## shaders/sail_baked.gdshader (with the livery's sail colours and design as a tint), else a copy of its cloth
+## material with the livery uniforms of sail_livery.gdshaderinc. One text texture per boat (LiveryText) and
 ## surface override materials on the boat's own MeshInstance3Ds; draw calls are unchanged.
 ##
 ##   BoatLivery.apply(boat_view, livery)
@@ -38,11 +40,11 @@ static func apply(bv: BoatView, lv: Livery) -> int:
 	bv.livery_materials.clear()
 	var geo := hull_geometry(bv)
 	var cid := bv.info.id if bv.info else ""
-	var hs := BakedLivery.hull_set(cid, lv.look_id)
+	var ht := hull_textures(cid, lv)
 	var ss: Dictionary = BakedLivery.sail_set(cid).get("sails", {})
 	var n := 0
 	var shared := BoatMaterials.atlas()
-	var bm: ShaderMaterial = boat_material(shared, lv, text, geo, hs) if shared != null else null
+	var bm: ShaderMaterial = boat_material(shared, lv, text, geo, ht["set"], ht["tint"]) if shared != null else null
 	if bm != null:
 		bv.livery_materials.append(bm)
 	# every level of detail (sail_visuals.md §11.4): the same material on each level
@@ -86,12 +88,25 @@ static func apply(bv: BoatView, lv: Livery) -> int:
 	return n
 
 
+## The baked hull set a boat is drawn on (data_format.md §8.5): {"set": BakedLivery.hull_set of its livery, or of
+## its base livery when its own has no textures, "tint": true when it is the base's and the livery's colours are
+## substituted through the atlas's masks}.
+static func hull_textures(class_id: String, lv: Livery) -> Dictionary:
+	var hs := BakedLivery.hull_set(class_id, lv.look_id)
+	var tint := false
+	if hs.is_empty() and lv.base_id != "" and lv.base_id != lv.look_id:
+		hs = BakedLivery.hull_set(class_id, lv.base_id)
+		tint = not hs.is_empty()
+	return {"set": hs, "tint": tint}
+
+
 ## The boat's copy of the shared boat material `shared` in the livery: the slot colours (linear) of the livery's
 ## hull, keel, deck and ropes; with the baked set `hs` (BakedLivery.hull_set) the staged atlas, its region
-## rectangles and the keel's side view, the name and number on the topsides and the name on the transom; without it
-## the procedural hull livery on the topsides.
+## rectangles and the keel's side view, the name and number on the topsides and the name on the transom, and with
+## `tint` the livery's colours over the base livery's (§8.5 "Tinted liveries"); without it the procedural hull
+## livery on the topsides.
 static func boat_material(shared: ShaderMaterial, lv: Livery, text: LiveryText, geo: Dictionary,
-		hs: Dictionary) -> ShaderMaterial:
+		hs: Dictionary, tint: bool = false) -> ShaderMaterial:
 	var m := shared.duplicate() as ShaderMaterial
 	var col: PackedVector4Array = (shared.get_shader_parameter("slot_color") as PackedVector4Array).duplicate()
 	var paint := {"hull_gelcoat": lv.hull["topsides"], "hull_boottop": lv.hull["boot_stripe"],
@@ -127,9 +142,48 @@ static func boat_material(shared: ShaderMaterial, lv: Livery, text: LiveryText, 
 		m.set_shader_parameter("tr_box", box)
 		m.set_shader_parameter("tr_tex", text.rect(LiveryText.Row.NAME, false) if not text.rows[LiveryText.Row.NAME]["empty"] \
 				else Vector4.ZERO)
+		m.set_shader_parameter("tn_on", 1 if tint else 0)
+		if tint:
+			_hull_tint(m, lv)
 	else:
 		_hull_livery(m, lv, text, geo)
 	return m
+
+
+## The tint uniforms of a boat drawn on its base livery's atlas (data_format.md §8.5 "Tinted liveries"): per part
+## (antifouling, boot stripe, graphic colours 0 and 1, topsides paint, keel) the base's colour, the boat's and the
+## exponent that keeps the baked wear toward a darker colour and fades it toward a lighter one.
+static func _hull_tint(m: ShaderMaterial, lv: Livery) -> void:
+	var bg: Array = lv.base_graphic_colors
+	var g: Array = lv.graphic.get("colors", [])
+	var pairs := [
+		[lv.base_hull["antifouling"], lv.hull["antifouling"]],
+		[lv.base_hull["boot_stripe"], lv.hull["boot_stripe"]],
+	]
+	for k in 2:
+		# a graphic colour the livery leaves out keeps the base's; one the base has not is never in the mask
+		var f: Color = bg[k] if k < bg.size() else lv.base_hull["topsides"]
+		pairs.append([f, g[k] if k < g.size() and k < bg.size() else f])
+	pairs.append([lv.base_hull["topsides"], lv.hull["topsides"]])
+	pairs.append([lv.base_hull["keel"], lv.hull["keel"]])
+	var from := PackedVector3Array()
+	var to := PackedVector3Array()
+	var k := PackedFloat32Array()
+	for pr in pairs:
+		var f := _lin(pr[0])
+		var t := _lin(pr[1])
+		from.append(f)
+		to.append(t)
+		k.append(tint_k(f, t))
+	m.set_shader_parameter("tn_from", from)
+	m.set_shader_parameter("tn_to", to)
+	m.set_shader_parameter("tn_k", k)
+
+
+## The exponent of the tint (livery_tint.gdshaderinc wm_tint_k) from one linear colour to another.
+static func tint_k(from: Vector3, to: Vector3) -> float:
+	var lum := Vector3(0.2126, 0.7152, 0.0722)
+	return clampf(from.dot(lum) / maxf(to.dot(lum), 1e-4), 0.0, 1.0)
 
 
 ## The boat's name aft and number forward on both topsides in the generator's livery panels (the atlas path).
@@ -205,7 +259,72 @@ static func baked_sail_material(sp: BoatView.SailPart, bs: Dictionary, lv: Liver
 	m.set_shader_parameter("sn_box", lay["box"])
 	m.set_shader_parameter("sn_tex", lay["tex"])
 	m.set_meta("livery_layout", lay)
+	# a tinted livery's sail colours and design over the class set's (data_format.md §8.5 "Tinted liveries")
+	var e := lv.sail_for(sp.type)
+	var ce := lv.class_sail_for(sp.type)
+	var tint := e != ce
+	m.set_shader_parameter("st_on", 1 if tint else 0)
+	if tint:
+		var ccols: Array = ce.get("colors", [])
+		var from := PackedVector3Array([Vector3.ZERO, _lin(ce["number"]),
+			_lin(ccols[1] if ccols.size() > 1 else ce["color"]), _lin(ccols[0] if ccols.size() > 0 else ce["color"]),
+			_lin(ce["color"])])
+		m.set_shader_parameter("st_from", from)
+		var dsn := design_params(e)
+		m.set_shader_parameter("sd_design", dsn["design"])
+		m.set_shader_parameter("sd_dp", dsn["dp"])
+		m.set_shader_parameter("sd_cloth", _lin(e["color"]))
+		m.set_shader_parameter("sd_c0", dsn["c0"])
+		m.set_shader_parameter("sd_c1", dsn["c1"])
+		var pl := sail_plan_corners(sp, Vector2(sh[0], sh[1]), lay["up"], lay["tack"])
+		m.set_shader_parameter("sd_clew", pl["clew"])
+		m.set_shader_parameter("sd_head", pl["head"])
+		m.set_shader_parameter("sd_head_aft", pl["head_aft"])
+		m.set_shader_parameter("sd_height", pl["height"])
 	return m
+
+
+## The corners of a sail in its flat plan (sail_visuals.md §11.1: uv0 sheared by `shear` = (cos, sin)) and the
+## head's height above the tack along `up`: {"tack", "clew", "head", "head_aft": Vector2, "height": float}.
+static func sail_plan_corners(sp: BoatView.SailPart, shear: Vector2, up: Vector2, tack: Vector2) -> Dictionary:
+	var uv: PackedVector2Array = sp.uv0
+	var rows := sp.rows
+	var cols := sp.cols
+	var plan := func(a: Vector2) -> Vector2: return Vector2(a.x * shear.y, a.y + a.x * shear.x)
+	if uv.size() < rows * cols or rows < 2 or cols < 2:
+		return {"tack": tack, "clew": tack + Vector2(4, 0), "head": tack + Vector2(0, 10), "head_aft": tack + Vector2(0.5, 10),
+			"height": 10.0}
+	var head: Vector2 = plan.call(uv[(rows - 1) * cols])
+	var top := 0.0
+	for i in rows:
+		for j in [0, cols - 1]:
+			top = maxf(top, (plan.call(uv[i * cols + j]) - tack).dot(up))
+	return {"tack": plan.call(uv[0]), "clew": plan.call(uv[cols - 1]), "head": head,
+		"head_aft": plan.call(uv[rows * cols - 1]), "height": top}
+
+
+## The design uniforms of a sail entry (data_format.md §8.3, sail_design.gdshaderinc): {"design": int, "dp":
+## Vector4, "c0", "c1": Vector3 linear}.
+static func design_params(e: Dictionary) -> Dictionary:
+	var cols: Array = e.get("colors", [])
+	var c0: Color = cols[0] if cols.size() > 0 else e["color"]
+	var c1: Color = cols[1] if cols.size() > 1 else c0
+	var design: String = e.get("design", "plain")
+	var dp := Vector4.ZERO
+	match design:
+		"bands":
+			var stops: Array = e.get("stops", [0.35, 0.7])
+			dp = Vector4(float(stops[0]), float(stops[1]) if stops.size() > 1 else 2.0, 1.0 if cols.size() > 1 else 0.0, 0.0)
+		"head":
+			dp = Vector4(float(e.get("radius", 0.3)), float(e.get("corner", 0.0)) if cols.size() > 1 else 0.0, 0.0, 0.0)
+		"panels":
+			dp = Vector4(1.0 + mini(cols.size(), 2), 0.0, 0.0, 0.0)
+		"diagonal":
+			dp = Vector4(float(e.get("luff", 0.25)), float(e.get("leech", 0.75)), float(e.get("band", 0.25)),
+					1.0 if cols.size() > 1 else 0.0)
+		"gores":
+			dp = Vector4(float(e.get("count", 9)), 1.0 + mini(cols.size(), 2), 0.0, 0.0)
+	return {"design": Livery.DESIGNS.find(design), "dp": dp, "c0": _lin(c0), "c1": _lin(c1)}
 
 
 ## The boat's nation and number rows in the slots of a baked sail's layout (sail_visuals.md §11.2): per side the
@@ -365,28 +484,11 @@ static func sail_material(base: ShaderMaterial, sp: BoatView.SailPart, lv: Liver
 	m.set_shader_parameter("livery_text", text.texture)
 	m.set_shader_parameter("sl_on", 1)
 	m.set_shader_parameter("sl_layer_n", sp.rows * sp.cols)
-	var cols: Array = e.get("colors", [])
-	var c0: Color = cols[0] if cols.size() > 0 else e["color"]
-	var c1: Color = cols[1] if cols.size() > 1 else c0
-	m.set_shader_parameter("sl_c0", _lin(c0))
-	m.set_shader_parameter("sl_c1", _lin(c1))
-	var design: String = e.get("design", "plain")
-	var dp := Vector4.ZERO
-	match design:
-		"bands":
-			var stops: Array = e.get("stops", [0.35, 0.7])
-			dp = Vector4(float(stops[0]), float(stops[1]) if stops.size() > 1 else 2.0, 1.0 if cols.size() > 1 else 0.0, 0.0)
-		"head":
-			dp = Vector4(float(e.get("radius", 0.3)), float(e.get("corner", 0.0)) if cols.size() > 1 else 0.0, 0.0, 0.0)
-		"panels":
-			dp = Vector4(1.0 + mini(cols.size(), 2), 0.0, 0.0, 0.0)
-		"diagonal":
-			dp = Vector4(float(e.get("luff", 0.25)), float(e.get("leech", 0.75)), float(e.get("band", 0.25)),
-					1.0 if cols.size() > 1 else 0.0)
-		"gores":
-			dp = Vector4(float(e.get("count", 9)), 1.0 + mini(cols.size(), 2), 0.0, 0.0)
-	m.set_shader_parameter("sl_design", Livery.DESIGNS.find(design))
-	m.set_shader_parameter("sl_dp", dp)
+	var dsn := design_params(e)
+	m.set_shader_parameter("sl_c0", dsn["c0"])
+	m.set_shader_parameter("sl_c1", dsn["c1"])
+	m.set_shader_parameter("sl_design", dsn["design"])
+	m.set_shader_parameter("sl_dp", dsn["dp"])
 	m.set_shader_parameter("sl_text_color", _lin(e["number"]))
 	var lay := sail_layout(m, sp, lv, text, loa)
 	m.set_shader_parameter("sl_axis", lay["axis"])

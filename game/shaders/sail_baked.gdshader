@@ -2,7 +2,9 @@
 // procedural cloth. Per pixel: the layer's albedo (the port image, or the starboard image mirrored), the ORM map
 // (occlusion, roughness, light through the cloth), the normal map with the cloth's tiling detail, the tangent frame
 // from screen-space derivatives (livery_baked.gdshaderinc), and the boat's nation letters and sail number from its
-// text texture, one sample per side. Light, layers and shadows as shaders/sail.gdshader (keep light() in step).
+// text texture, one sample per side. A tinted livery (st_on, §8.5 "Tinted liveries") recolours the cloth zones of
+// the albedo's alpha to the boat's design (sail_design.gdshaderinc) and number colour (livery_tint.gdshaderinc).
+// Light, layers and shadows as shaders/sail.gdshader (keep light() in step).
 shader_type spatial;
 render_mode blend_mix, depth_draw_opaque, cull_back;
 
@@ -23,8 +25,25 @@ uniform float shadow_push = 0.05;
 // rows * cols: vertex indices from here are the starboard layer
 uniform int sl_layer_n = 0;
 
+// a tinted livery (data_format.md §8.5): the class set's colours the sail was baked in, by zone of the albedo's
+// alpha (0 fixed parts, 1 the number colour, 2 design colour 1, 3 design colour 0, 4 the cloth; linear), and the
+// boat's design in the plan frame of sn_axis, sn_up, sn_tack (sail_design.gdshaderinc)
+uniform int st_on = 0;
+uniform vec3 st_from[5];
+uniform int sd_design = 0;
+uniform vec3 sd_cloth = vec3(0.8);
+uniform vec3 sd_c0 = vec3(0.8);
+uniform vec3 sd_c1 = vec3(0.8);
+uniform vec4 sd_dp = vec4(0.0);
+uniform vec2 sd_clew = vec2(4.0, 0.0);
+uniform vec2 sd_head = vec2(0.0, 10.0);
+uniform vec2 sd_head_aft = vec2(0.5, 10.0);
+uniform float sd_height = 10.0;
+
 #include "res://shaders/livery_text.gdshaderinc"
 #include "res://shaders/livery_baked.gdshaderinc"
+#include "res://shaders/livery_tint.gdshaderinc"
+#include "res://shaders/sail_design.gdshaderinc"
 
 varying vec2 v_plan;
 varying float v_trans;
@@ -40,7 +59,19 @@ void vertex() {
 
 void fragment() {
 	vec2 t = vec2((v_plan.x - sk_rect.x) / sk_rect.z, (sk_rect.y - v_plan.y) / sk_rect.w);
-	vec3 a = v_side > 0.5 ? texture(sk_albedo_stbd, vec2(1.0 - t.x, t.y)).rgb : texture(sk_albedo_port, t).rgb;
+	vec4 ab = v_side > 0.5 ? texture(sk_albedo_stbd, vec2(1.0 - t.x, t.y)) : texture(sk_albedo_port, t);
+	vec3 a = ab.rgb;
+	if (st_on != 0) {
+		int z = clamp(int(ab.a * 4.0 + 0.5), 0, 4);
+		if (z >= 2) {
+			float px = max(fwidth(v_plan.x), fwidth(v_plan.y));
+			vec3 to = wm_design(sd_cloth, v_plan, 0.0, px, sn_tack, sd_clew, sd_head, sd_head_aft, sn_axis, sn_up,
+					sd_height, sd_design, sd_c0, sd_c1, sd_dp);
+			a = wm_tint(a, st_from[z], to, wm_tint_k(st_from[z], to));
+		} else if (z == 1) {
+			a = wm_tint(a, st_from[1], sn_color, wm_tint_k(st_from[1], sn_color));
+		}
+	}
 	vec3 orm = texture(sk_orm, t).rgb;
 	vec3 nm = wm_normal_texel(texture(sk_normal, t).rgb);
 	vec3 dt = texture(sk_detail, vec2(v_plan.x, -v_plan.y) / sk_detail_tile).rgb;

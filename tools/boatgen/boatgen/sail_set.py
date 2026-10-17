@@ -78,6 +78,12 @@ RUN_ON = 6.0            # 7.4: the last segment of an obstacle section runs on p
 PUSH_SLOPE = 0.3        # 7.4 k_p: the local push falls off by this much per metre of cloth
 PUSH_EASE = 2.0         # 7.4 P_e: the ease starts where the leech is deeper than this many clearances
 EASE_MAX = 0.35         # 7.4 e_max: the largest ease, rad
+STAY_CLEAR = 0.25       # 7.4 c_s: margin forward of the forestay for a kite on a pole, of the foretriangle base
+SYM_ENDS = 0.3          # 6.4: a symmetric spinnaker's camber at the foot and the head is 1 - this of its largest
+STAY_HEAD = 0.3         # 7.4: the stay's shift fades to none over this top fraction of the height
+STAY_LEECH = 0.3        # 7.4: ... and fades to 1 - this of it at the leech (the clew stays nearer its sheet)
+STAY_LUFF = 0.5         # 7.4: the stay's shift is taken in full from this chord fraction aft of the luff
+STAY_WIDTH = 0.6        # 7.4 w_s: half width of the forestay's wall for a kite on a pole, of the foretriangle base
 CLEW_REACH = 2          # 7.7: the grid steps from the clew that give the foot and leech directions
 CLEW_H = 0.3            # 7.7: the clew's draw-in and draw-down fade out at this share of the height
 CLEW_KD = (-0.1, 0.25)  # 7.7: bounds of the draw-in k_d (share of the row's chord)
@@ -194,6 +200,14 @@ class SailSet:
         self.push_max = 0.0     # the largest local push of the last update (7.4), m
         self.rest_q = Q.copy()
         self.lead = None if rig.get("flying_lead") is None else np.asarray(rig["flying_lead"], dtype=np.float64)
+        # 7.4: a flying sail on a pole also keeps forward of the forestay (tack fitting to hounds)
+        self.stay = None
+        if self.flying and mode == POLE and rig.get("forestay_tack") is not None:
+            f0 = np.asarray(rig["forestay_tack"], dtype=np.float64)
+            f1 = np.asarray(rig["hounds"], dtype=np.float64)
+            dm = f0 - self.mast_step
+            jb = np.linalg.norm(dm - self.mast_axis * (dm @ self.mast_axis))   # the foretriangle base
+            self.stay = (f0, f1, STAY_WIDTH * jb, max(STAY_CLEAR * jb, self.clearance))
         self.tack_at = self.tack.copy()
         self._secs = []
         # 7.4: distances between grid neighbours on the rest cloth (along a row, up a column, the two diagonals)
@@ -257,7 +271,7 @@ class SailSet:
                 prof = asym_profile(self.uc, asym_draft(self.hrow)[i])
             else:
                 hh = 2 * self.hrow - 1
-                drow = fc * (1 - 0.45 * hh * hh)
+                drow = fc * (1 - SYM_ENDS * hh * hh)
                 prof = 4 * self.uc * (1 - self.uc)
             a0 = a.reshape(rows, cols)[:, 0][i]
             self._fly_args = (drow, prof, w, a0, i)
@@ -297,6 +311,8 @@ class SailSet:
             mid[r * cols:(r + 1) * cols] = xr(rest[r * cols:(r + 1) * cols])
         self.mid = mid
         self.clew0 = mid[cols - 1].copy()      # 7.6: the clew as placed, before the clearance push
+        if self.stay is not None:
+            self._stay()
         if clearing:
             self._push(awa, hd)
         return self.mid
@@ -449,6 +465,36 @@ class SailSet:
         x = np.linalg.norm(rad)
         return x, (rad / x if x > 1e-6 else lee)
 
+    def _stay(self):
+        """7.4: a flying sail on a pole flies forward of the forestay: per row the shift forward that brings its
+        cloth within the stay's half width at least c_s ahead of the stay, the largest of its own and the rows'
+        above (so it grows down to the foot), faded out over the top STAY_HEAD of the height, and taken in full at the middle of the chord, fading to none at the luff
+        and to 1 - STAY_LEECH of it at the leech; the head row stays at the halyard."""
+        f0, f1, w, cs = self.stay
+        rows, cols = self.rows, self.cols
+        M = self.mid.reshape(rows, cols, 3)
+        uc = self.uc.reshape(rows, cols)
+        sw = smoothstep_v(uc / STAY_LUFF) * (1.0 - STAY_LEECH * smoothstep_v((uc - STAY_LUFF) / (1.0 - STAY_LUFF)))
+        D = np.zeros(rows)
+        for i in range(rows - 1):
+            for j in range(cols):
+                p = M[i, j]
+                if p[2] < f0[2] or p[2] > f1[2] or sw[i, j] < 0.25:
+                    continue
+                q = f0 + (f1 - f0) * ((p[2] - f0[2]) / (f1[2] - f0[2]))
+                dy = abs((p - q) @ PORT)
+                k = 1.0 - smoothstep01((dy - w) / cs)
+                d = (cs - (p - q) @ FWD) * k
+                if d > 0:
+                    D[i] = max(D[i], d / max(sw[i, j], 0.5))
+        S = D.copy()            # never less than a row above needs: the shift grows down to the foot
+        for i in range(rows - 2, -1, -1):
+            S[i] = max(S[i], S[i + 1])
+        S = S * smoothstep_v((1.0 - self.hrow) / STAY_HEAD)     # the head stays at the halyard
+        self.stay_max = float(S.max())
+        M += FWD[None, None] * (S[:, None] * sw)[..., None]
+        self.mid = M.reshape(-1, 3)
+
     def _margin(self, p, hd):
         return self.clearance * smoothstep01(np.linalg.norm(p - hd) / (5 * self.clearance)) * \
             smoothstep01(np.linalg.norm(p - self.tack_at) / (5 * self.clearance))
@@ -554,7 +600,9 @@ def rig_points(boat):
     from .running import sheet_leads
     return {"boom_pivot": np.asarray(rig.gooseneck, dtype=np.float64), "boom_axis": UP,
             "mast_step": np.array([rig.x_mast, 0.0, rig.z_step]), "masthead": np.array([rig.x_mast, 0.0, rig.z_top]),
-            "flying_lead": sheet_leads(boat)["flying"]["lead"]}
+            "flying_lead": sheet_leads(boat)["flying"]["lead"],
+            "forestay_tack": np.array([rig.x_tack, 0.0, rig.z_tack]),
+            "hounds": np.array([rig.x_mast + rig.chord / 2, 0.0, rig.z_hounds])}
 
 
 def sail_mode(boat, sail_type):

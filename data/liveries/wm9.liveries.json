@@ -31,7 +31,8 @@
         "graphic": {"type": "stripes", "colors": ["#b39a5c"], "depth": [0.045], "width": [0.012],
           "from": 0.0, "to": 0.965}
       },
-      "deck": {"gelcoat": "#d9d3c2", "nonslip": "#a8a291"}
+      "deck": {"gelcoat": "#d9d3c2", "nonslip": "#8f6239",
+        "teak": {"wood": "#9c6a3c", "caulk": "#1e1b18", "plank": 0.055, "seam": 0.005, "king": 0.12}}
     }
   ],
   "boats": [

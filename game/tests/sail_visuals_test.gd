@@ -1325,7 +1325,7 @@ func _clear_check(fp: BoatView.SailPart, obs: Array, ms: Vector3, mh: Vector3, c
 ## §12 test 19: the generator's preview poses (tools/boatgen/boatgen/sail_set.py, written to
 ## generated/boats/<id>.sets.json) draw the sails as BoatView does, native and reference, within PARITY_TOL.
 const PARITY_TOL := 0.01
-const PARITY_CLASSES := ["wm7", "wm12", "test_sym"]
+const PARITY_CLASSES := ["wm7", "wm12", "wm9", "test_sym"]
 
 
 func _parity() -> void:

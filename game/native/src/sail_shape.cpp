@@ -33,6 +33,16 @@ constexpr float DT_MAX = 0.1f;
 constexpr float PUSH_SLOPE = 0.3f;
 constexpr float PUSH_EASE = 2.0f;
 constexpr float EASE_MAX = 0.35f;
+// §7.4 a flying sail on a pole flies forward of the forestay: margin c_s and the stay's half width (of the
+// foretriangle base), the top share of the height the shift fades out over, the chord share it is taken in full
+// from (none at the luff) and the share it loses toward the leech
+constexpr float STAY_CLEAR = 0.25f;
+constexpr float STAY_WIDTH = 0.6f;
+constexpr float STAY_HEAD = 0.3f;
+constexpr float STAY_LUFF = 0.5f;
+constexpr float STAY_LEECH = 0.3f;
+// §6.4 a symmetric spinnaker's camber at the foot and the head is 1 - this of its largest
+constexpr float SYM_ENDS = 0.3f;
 // §7.7 the clew set: corner reach (grid steps), fade height (of Sl), bounds of the draw-in and draw-down, the
 // difference step and the Newton steps of the solve
 constexpr int CLEW_REACH = 2;
@@ -133,6 +143,15 @@ bool SailShape::configure(const PackedVector3Array& rest, int64_t rows, int64_t 
   sheet_lead_ = getv(p, "sheet_lead", Vector3());
   has_mast_head_ = p.has("mast_head");
   mast_head_ = getv(p, "mast_head", mast_step_ + mast_axis_);
+  has_stay_ = mode_ == POLE && clearance_ > 0.0f && p.has("forestay_tack") && p.has("hounds");
+  if (has_stay_) {
+    stay0_ = getv(p, "forestay_tack", Vector3());
+    stay1_ = getv(p, "hounds", Vector3());
+    const Vector3 dm = stay0_ - mast_step_;
+    const float jb = (dm - mast_axis_ * dm.dot(mast_axis_)).length();  // the foretriangle base
+    stay_w_ = STAY_WIDTH * jb;
+    stay_c_ = std::max(STAY_CLEAR * jb, clearance_);
+  }
   obs_.clear();
   ease_ = 0.0f;
 
@@ -198,7 +217,7 @@ bool SailShape::configure(const PackedVector3Array& rest, int64_t rows, int64_t 
       for (int j = 0; j < cols_; ++j) prof_[i * cols_ + j] = std::sin(PI_F * std::pow(uc_[i * cols_ + j], q));
     } else {
       const float hh = 2.0f * hr - 1.0f;
-      prow_[i] = 1.0f - 0.45f * hh * hh;
+      prow_[i] = 1.0f - SYM_ENDS * hh * hh;
       for (int j = 0; j < cols_; ++j) {
         const float uc = uc_[i * cols_ + j];
         prof_[i * cols_ + j] = 4.0f * uc * (1.0f - uc);
@@ -495,8 +514,40 @@ void SailShape::update(int64_t phase, double progress, double beta_in, double ga
     }
   }
   clew0_ = mid_[cols_ - 1];
+  if (has_stay_ && fa_ > 0.0f) stay();
   if (clearing) push(awa, hd);
   layers(np);
+}
+
+// §7.4 a flying sail on a pole flies forward of the forestay: per row the shift forward that brings its cloth
+// within the stay's half width at least c_s ahead of the stay, the largest of its own and the rows' above (so it
+// grows down to the foot), faded out over the top STAY_HEAD of the height, taken in full at the middle of the
+// chord, none at the luff and 1 - STAY_LEECH of it at the leech; times the flying shape's share.
+void SailShape::stay() {
+  const float z0 = stay0_.dot(up_), z1 = stay1_.dot(up_);
+  std::vector<float> sw(cols_), d_row(rows_, 0.0f);
+  for (int j = 0; j < cols_; ++j) {
+    const float uc = uc_[j];
+    sw[j] = smooth01(uc / STAY_LUFF) * (1.0f - STAY_LEECH * smooth01((uc - STAY_LUFF) / (1.0f - STAY_LUFF)));
+  }
+  for (int i = 0; i + 1 < rows_; ++i) {
+    for (int j = 0; j < cols_; ++j) {
+      const Vector3& pt = mid_[i * cols_ + j];
+      const float pz = pt.dot(up_);
+      if (pz < z0 || pz > z1 || sw[j] < 0.25f) continue;
+      const Vector3 q = stay0_ + (stay1_ - stay0_) * ((pz - z0) / (z1 - z0));
+      const float dy = std::fabs((pt - q).dot(port_));
+      const float k = 1.0f - smooth01((dy - stay_w_) / stay_c_);
+      const float d = (stay_c_ - (pt - q).dot(fwd_)) * k;
+      if (d > 0.0f) d_row[i] = std::max(d_row[i], d / std::max(sw[j], 0.5f));
+    }
+  }
+  for (int i = rows_ - 2; i >= 0; --i) d_row[i] = std::max(d_row[i], d_row[i + 1]);  // never less than above
+  for (int i = 0; i < rows_; ++i) {
+    const float s = d_row[i] * smooth01((1.0f - hrow_[i]) / STAY_HEAD) * fa_;
+    if (s <= 0.0f) continue;
+    for (int j = 0; j < cols_; ++j) mid_[i * cols_ + j] += fwd_ * (s * sw[j]);
+  }
 }
 
 // §6, §8 the local shape of every vertex, with the tack pin of §7.5

@@ -71,6 +71,63 @@ def _strokes(H, W, segs):
     return cov
 
 
+def _hash01(k, seed):
+    """A repeatable value in [0, 1) per integer k (array)."""
+    v = np.sin(np.asarray(k, dtype=np.float64) * 12.9898 + seed * 78.233) * 43758.5453
+    return (v - np.floor(v)).astype(F32)
+
+
+def _teak(tk, X, Y, ay, bs, deck, floor, roof, d_deck, d_floor, d_roof, edge, dk, m, px, S):
+    """Laid teak planking with dark caulked seams: on the deck the planks follow the sheer inboard of the smooth
+    covering board (`m`), nibbed into a king plank on the centreline forward of the cockpit and the coachroof and
+    aft of the cockpit; on the cockpit sole and the coachroof top they run straight fore and aft. Butt joints are
+    staggered from plank to plank. Returns (coverage 0..1, albedo, roughness, height)."""
+    wood = hex_lin(tk.get("wood", "#9c6a3c"))
+    caulk = hex_lin(tk.get("caulk", "#1e1b18"))
+    pw = float(tk.get("plank", 0.055))          # plank width, m
+    sw = float(tk.get("seam", 0.005))           # caulked seam width, m
+    king = float(tk.get("king", 0.12))          # king plank width, m
+    lp = float(tk.get("length", 2.4))           # plank length between butt joints, m
+    area = ((deck & (d_deck > m)) | (floor & (d_floor > 0.03)) | (roof & (d_roof > 0.04))) & ~edge
+    cp = dk.get("companion")
+    if cp:      # the sliding hatch and the roof it slides over stay gelcoat
+        hx0 = cp["hatch_x"] - 0.5 * cp["hatch_len"] - 0.03
+        hx1 = cp["hatch_x"] + 0.9 * cp["hatch_len"]
+        area &= ~((X > hx0) & (X < hx1) & (ay < 0.5 * cp["hatch_width"] + 0.035))
+    cov = blur(area.astype(F32), 0.004 / px)
+    cov = smoothstep(0.3, 0.7, cov)
+    # plank coordinate across (t) and its index; the deck's planks follow the sheer, the rest run straight
+    on_deck = deck & ~(floor | roof)
+    kingz = on_deck & (ay < 0.5 * king) & ((X > max(dk["xc1"], dk["xk1"] if dk["has_cabin"] else dk["xc1"]))
+                                           | (X < dk["xc0"]))
+    t = np.where(on_deck, bs - m - ay, Y + 0.5 * pw).astype(F32)
+    k = np.floor(t / pw)
+    fr = t - k * pw                                       # across the plank, 0..pw
+    k = np.where(on_deck, k, k + 1000 * (1 + floor))      # the sole's and the roof's planks are their own
+    k = np.where(kingz, -7, k)
+    side = np.where(Y >= 0, 1, -1)
+    kk = k * 2 + (side > 0)
+    # butt joints, staggered per plank
+    ph = _hash01(kk, S % 997) * lp
+    xb = np.mod(X - ph, lp)
+    seam_d = np.minimum(fr, pw - fr)                      # distance to the long seams
+    seam_d = np.where(kingz, np.abs(ay - 0.5 * king), seam_d)
+    butt_d = np.minimum(xb, lp - xb)
+    dseam = np.minimum(seam_d, butt_d)
+    seam = band(dseam, 0.5 * sw, px)
+    # the wood: per-plank tone, grain along the plank, a few darker streaks
+    tone = 0.86 + 0.24 * _hash01(kk, S % 991 + 5)
+    gx = X / 0.6
+    gy = np.where(on_deck & ~kingz, t, Y) / 0.0035
+    grain = fbm(gx, gy + 37.0 * _hash01(kk, 3), S + 21, 3)
+    streak = smoothstep(0.35, 0.8, fbm(X / 1.4, gy / 6.0, S + 22, 2))
+    alb = wood[None, None, :] * (tone * (1.0 + 0.10 * grain - 0.12 * streak))[..., None]
+    alb = mix(alb, caulk, seam)
+    rough = (0.66 + 0.06 * grain - 0.1 * seam).astype(F32)
+    hgt = (0.00025 * (1.0 - np.exp(-(dseam / (0.25 * pw)) ** 2)) - 0.0004 * seam + 0.00004 * grain).astype(F32)
+    return cov, alb.astype(F32), rough, hgt
+
+
 def bake_deck(geo, lv, width=4096, key=""):
     """Albedo (linear RGB), normal (unit vectors) and ORM (occlusion, roughness, non-slip mask) of the deck."""
     dk = geo["deck"]
@@ -271,6 +328,20 @@ def bake_deck(geo, lv, width=4096, key=""):
     rough = mix(rough, 0.5, bead)
     hgt = 0.0004 * blur(ns_f, 0.0015 / px) + 0.0007 * bead + 0.00012 * fbm(X / 0.5, Y / 0.5, S + 9, 2) \
         - 0.00004 * scuff
+
+    # ---- a laid teak deck (livery deck.teak, data_format.md 8.1) in place of the moulded non-slip
+    if isinstance(dkc.get("teak"), dict):
+        tk, t_alb, t_rough, t_hgt = _teak(dkc["teak"], X, Y, ay, bs, deck, floor, roof, d_deck, d_floor, d_roof,
+                                          edge, dk, m, px, S)
+        t_alb = mix(t_alb, t_alb * np.array([1.05, 1.03, 0.97], F32) + 0.01, 0.5 * fade)
+        t_alb = mix(t_alb, dirt, 0.3 * traffic)
+        t_alb = mix(t_alb, dirt * 0.8, 0.35 * grime)
+        t_alb = mix(t_alb, np.array([0.05, 0.05, 0.05], F32), 0.35 * scuff)
+        t_alb = mix(t_alb, np.array([0.40, 0.39, 0.36], F32), 0.8 * bead) * (1.0 - 0.18 * contact)[..., None]
+        alb = mix(alb, t_alb, tk)
+        rough = mix(rough, np.clip(t_rough + 0.06 * grime - 0.08 * traffic, 0.3, 0.95), tk)
+        hgt = hgt * (1 - tk) + (t_hgt + 0.0007 * bead) * tk
+        mask = mask * (1 - tk)
     occ = 1.0 - 0.25 * grime - 0.3 * contact
     occ = np.clip(occ, 0.4, 1.0)
 

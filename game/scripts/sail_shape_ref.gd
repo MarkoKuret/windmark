@@ -38,6 +38,16 @@ const DT_MAX := 0.1
 const PUSH_SLOPE := 0.3
 const PUSH_EASE := 2.0
 const EASE_MAX := 0.35
+## §7.4 a flying sail on a pole flies forward of the forestay: margin c_s and the stay's half width (of the
+## foretriangle base), the top share of the height the shift fades out over, the chord share it is taken in full
+## from (none at the luff) and the share it loses toward the leech
+const STAY_CLEAR := 0.25
+const STAY_WIDTH := 0.6
+const STAY_HEAD := 0.3
+const STAY_LUFF := 0.5
+const STAY_LEECH := 0.3
+## §6.4 a symmetric spinnaker's camber at the foot and the head is 1 - this of its largest
+const SYM_ENDS := 0.3
 ## §7.7 the clew set: corner reach (grid steps), fade height (of Sl), bounds of the draw-in and draw-down, the
 ## difference step and the Newton steps of the solve
 const CLEW_REACH := 2
@@ -70,6 +80,12 @@ var furl_radius := 0.05
 var clearance := 0.0
 var has_mast_head := false
 var mast_head := Vector3.UP
+## §7.4 the forestay (tack fitting, hounds) of a flying sail on a pole, its wall half width and margin
+var has_stay := false
+var stay0 := Vector3.ZERO
+var stay1 := Vector3.ZERO
+var stay_w := 0.0
+var stay_c := 0.0
 var fwd := Vector3(0, 0, 1)
 var port := Vector3(1, 0, 0)
 var up := Vector3(0, 1, 0)
@@ -181,6 +197,14 @@ func configure(rest_mid: PackedVector3Array, r: int, c: int, p: Dictionary) -> b
 	sheet_lead = p.get("sheet_lead", Vector3.ZERO)
 	has_mast_head = p.has("mast_head")
 	mast_head = p.get("mast_head", mast_step + mast_axis)
+	has_stay = mode == Mode.POLE and clearance > 0.0 and p.has("forestay_tack") and p.has("hounds")
+	if has_stay:
+		stay0 = p["forestay_tack"]
+		stay1 = p["hounds"]
+		var dm := stay0 - mast_step
+		var jb := (dm - mast_axis * dm.dot(mast_axis)).length()  # the foretriangle base
+		stay_w = STAY_WIDTH * jb
+		stay_c = maxf(STAY_CLEAR * jb, clearance)
 	_obs = []
 	_ease = 0.0
 	tack = rest_mid[0]
@@ -250,7 +274,7 @@ func configure(rest_mid: PackedVector3Array, r: int, c: int, p: Dictionary) -> b
 				_prof[i * cols + j] = sin(PI * pow(_uc[i * cols + j], q))
 		else:
 			var hh := 2.0 * hr - 1.0
-			_prow[i] = 1.0 - 0.45 * hh * hh
+			_prow[i] = 1.0 - SYM_ENDS * hh * hh
 			for j in cols:
 				var uc := _uc[i * cols + j]
 				_prof[i * cols + j] = 4.0 * uc * (1.0 - uc)
@@ -513,9 +537,50 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 		elif phase == 5:
 			_fa = 1.0 - pow(p, 0.3)
 	_clew0 = _mid[cols - 1]
+	if has_stay and _fa > 0.0:
+		_stay()
 	if clearing:
 		_push(awa, hd)
 	_layers(np)
+
+
+## §7.4 a flying sail on a pole flies forward of the forestay: per row the shift forward that brings its cloth
+## within the stay's half width at least c_s ahead of the stay, the largest of its own and the rows' above (so it
+## grows down to the foot), faded out over the top STAY_HEAD of the height, taken in full at the middle of the
+## chord, none at the luff and 1 - STAY_LEECH of it at the leech; times the flying shape's share.
+func _stay() -> void:
+	var z0 := stay0.dot(up)
+	var z1 := stay1.dot(up)
+	var sw := PackedFloat32Array()
+	sw.resize(cols)
+	for j in cols:
+		var uc := _uc[j]
+		var tt := clampf((uc - STAY_LUFF) / (1.0 - STAY_LUFF), 0.0, 1.0)
+		sw[j] = _smoothstep01(uc / STAY_LUFF) * (1.0 - STAY_LEECH * tt * tt * (3.0 - 2.0 * tt))
+	var d_row := PackedFloat32Array()
+	d_row.resize(rows)
+	for i in rows:
+		d_row[i] = 0.0
+	for i in rows - 1:
+		for j in cols:
+			var pt := _mid[i * cols + j]
+			var pz := pt.dot(up)
+			if pz < z0 or pz > z1 or sw[j] < 0.25:
+				continue
+			var q := stay0 + (stay1 - stay0) * ((pz - z0) / (z1 - z0))
+			var dy := absf((pt - q).dot(port))
+			var kk := 1.0 - _smoothstep01((dy - stay_w) / stay_c)
+			var d := (stay_c - (pt - q).dot(fwd)) * kk
+			if d > 0.0:
+				d_row[i] = maxf(d_row[i], d / maxf(sw[j], 0.5))
+	for i in range(rows - 2, -1, -1):  # never less than a row above needs
+		d_row[i] = maxf(d_row[i], d_row[i + 1])
+	for i in rows:
+		var s := d_row[i] * _smoothstep01((1.0 - _hrow[i]) / STAY_HEAD) * _fa
+		if s <= 0.0:
+			continue
+		for j in cols:
+			_mid[i * cols + j] += fwd * (s * sw[j])
 
 
 ## §6, §8 the local shape of every vertex, with the tack pin of §7.5

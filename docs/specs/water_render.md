@@ -997,6 +997,12 @@ and not through the perpendicular pixel size alone: a far start line is then a f
 into a staircase of dashes, where it should be a thin steady line out to the haze (the distance fog applies to the
 overlays as to the water).
 
+Each line also carries an opacity and an optional dash (`Sea.set_overlay_lines`: `opacity`, `dash` in metres, 0 for
+solid). The start, gate and finish lines are solid and opaque; the laylines are light and dashed, so they read as
+guides and not as marks on the water: opacity 0.6, a dash period of 8 m along the line or 12 px where that is
+longer (the along-line pixel size comes from the same foreshortening with the line's direction in place of `c`),
+60 % of it drawn, the dash ends anti-aliased over one pixel.
+
 A thin band on the water is also hidden by the wave crests just in front of it: from a camera `H` above the sea a
 crest of height `a` hides `a / sin e` of water behind it, which at a few hundred metres is longer than the band, so
 the line breaks into dashes that crawl as the waves pass, while the crests themselves are under a pixel tall and

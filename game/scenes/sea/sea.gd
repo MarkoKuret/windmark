@@ -140,7 +140,8 @@ func set_wake_buffer(tex: Texture2D, extent: float, strength: float) -> void:
 		material.set_shader_parameter("wake_strength", _wake_strength)
 
 
-## §6 overlays: lines [{a: Vector2, b: Vector2 (world ENU), color: Color, width: float (m)}], at most 8.
+## §6 overlays: lines [{a: Vector2, b: Vector2 (world ENU), color: Color, width: float (m), opacity: float [1],
+## dash: float (m, the dash period; 0 solid) [0]}], at most 8.
 func set_overlay_lines(lines: Array) -> void:
 	_overlay_lines = lines.slice(0, 8)
 
@@ -391,13 +392,16 @@ func land_upload() -> Array:
 func _update_overlays(ox: float, oy: float, cam: Camera3D) -> void:
 	var lines := PackedVector4Array()
 	var lcol := PackedVector4Array()
+	var lstyle := PackedVector4Array()
 	for l in _overlay_lines:
 		lines.append(Vector4(l["a"].x - ox, l["a"].y - oy, l["b"].x - ox, l["b"].y - oy))
 		var c: Color = l.get("color", Color.WHITE)
 		lcol.append(Vector4(c.r, c.g, c.b, l.get("width", 0.3)))
+		lstyle.append(Vector4(l.get("opacity", 1.0), l.get("dash", 0.0), 0.6, 0.0))
 	var n_l := lines.size()
 	lines.resize(8)
 	lcol.resize(8)
+	lstyle.resize(8)
 	var circles := PackedVector4Array()
 	var ccol := PackedVector4Array()
 	for o in _overlay_circles:
@@ -410,6 +414,7 @@ func _update_overlays(ox: float, oy: float, cam: Camera3D) -> void:
 	material.set_shader_parameter("n_ov_line", n_l)
 	material.set_shader_parameter("ov_line", lines)
 	material.set_shader_parameter("ov_line_col", lcol)
+	material.set_shader_parameter("ov_line_style", lstyle)
 	material.set_shader_parameter("n_ov_circle", n_c)
 	material.set_shader_parameter("ov_circle", circles)
 	material.set_shader_parameter("ov_circle_col", ccol)

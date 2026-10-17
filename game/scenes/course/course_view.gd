@@ -11,7 +11,7 @@ extends Node3D
 ##   - water overlays through the Sea hooks (water_render.md §6): the start line (hud.md §9.3: white from the
 ##     warning signal, red while the viewed boat is over in the last minute, green after the gun until she has
 ##     started, then hidden), the gate line when the next step is a gate, the finish line on the last leg,
-##     the laylines of hud.md §6 (red port tack, green starboard tack, refreshed at 2 Hz) and the zone circle of
+##     the laylines of hud.md §6 (red port tack, green starboard tack, light and dashed, refreshed at 2 Hz) and the zone circle of
 ##     hud.md §7 within 6 L of the next mark;
 ##   - hud.md §7 in 3-D: the rounding arrow on the next mark(s) and, beyond 500 m, a bouncing marker over it.
 ## Mark styles and labels come from the course file (the C API gives type, position, radius and heading).
@@ -473,7 +473,7 @@ func _update_overlays(pose: SimSource.RenderPose) -> void:
 		if show_laylines:
 			for l in laylines:
 				lines.append({"a": l["a"], "b": l["b"], "color": HudStyle.STBD if l["tack"] > 0 else HudStyle.PORT,
-					"width": 0.22, "kind": "layline", "tack": l["tack"]})
+					"width": 0.22, "opacity": 0.6, "dash": 8.0, "kind": "layline", "tack": l["tack"]})
 		if show_zone:
 			# rules.md §7.1: the zone from the mark (its radius added), 2 L in a match race; finishing ends too
 			var c := Vector2(pose.pos_x, pose.pos_y)

@@ -151,7 +151,7 @@ one pair per end) and the assist level allows (§14):
 - **Distance to layline**: along the current COG to the other tack's layline (`ai.md` §4.3 tack point); shown as
   `Layline 230 m · 0:41` (time = distance / SOG). When the boat is already past it: `OVERSTOOD 60 m` (her
   perpendicular distance beyond the line).
-- Lines refresh at 2 Hz and are drawn on the water and in the radar.
+- Lines refresh at 2 Hz and are drawn on the water (as light dashed lines, `water_render.md` §6) and in the radar.
 
 ## 7. Next mark
 

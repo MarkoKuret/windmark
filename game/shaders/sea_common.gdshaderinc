@@ -63,6 +63,7 @@ uniform float puff_k = 1.0;                  // §4.3 a factor on the puffs' dar
 uniform int n_ov_line = 0;
 uniform vec4 ov_line[8];
 uniform vec4 ov_line_col[8];
+uniform vec4 ov_line_style[8];   // opacity, dash period m (0: solid), dash share of the period, unused
 uniform int n_ov_circle = 0;
 uniform vec4 ov_circle[4];
 uniform vec4 ov_circle_col[4];
@@ -577,7 +578,18 @@ vec4 wm_overlays(vec2 xl, float dist, float view_y, float eta, float cam_h) {
 		float len = max(length(ab), 1e-3);
 		float t = clamp(dot(xl - L.xy, ab) / max(dot(ab, ab), 1e-6), 0.0, 1.0);
 		float d = length(xl - (L.xy + t * ab));
-		float a = wm_overlay_alpha(d, ov_line_col[i].w, wm_overlay_px(vec2(-ab.y, ab.x) / len, h, view_y, px_m));
+		vec2 l = ab / len;
+		float a = wm_overlay_alpha(d, ov_line_col[i].w, wm_overlay_px(vec2(-l.y, l.x), h, view_y, px_m));
+		vec4 st = ov_line_style[i];
+		if (st.y > 0.0) {
+			// dashed: a period of st.y m along the line, or 12 px where that is longer; st.z of it drawn
+			float px_l = wm_overlay_px(l, h, view_y, px_m);
+			float period = max(st.y, 12.0 * px_l);
+			float u = fract(dot(xl - L.xy, l) / period);
+			float e = px_l / period;
+			a *= smoothstep(0.0, e, u) * (1.0 - smoothstep(st.z - e, st.z, u));
+		}
+		a *= st.x;
 		o = mix(o, vec4(ov_line_col[i].rgb, 1.0), a);
 	}
 	for (int i = 0; i < n_ov_circle; i++) {

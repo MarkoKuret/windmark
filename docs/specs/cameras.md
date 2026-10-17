@@ -84,7 +84,8 @@ player sees what the helmsman sees (owner decision 2026-10-15, replacing the ear
 tiller steering (sitting on the windward side deck, just forward of the tiller's end, hand on the extension):
   xh = tiller_tip.x + 0.15         ; yh_abs = 0.90 * half-beam of the deck at xh ; zh = deck(xh, yh) + 0.80
 wheel steering (standing on the cockpit floor behind the windward half of the rim, looking over it):
-  xh = wheel_hub.x - 0.70 * R      ; yh_abs = 0.55 * R                          ; zh = deck(xh, yh) + 1.60
+  xh = wheel_hub.x - 0.70 * R      ; yh_abs = |wheel_hub.y| + 0.55 * R           ; zh = deck(xh, yh) + 1.60
+  (twin wheels: behind the windward wheel, the hub's |y| from rig.wheel_hub; one wheel: on the centreline, 0)
 tiller_tip = the forward end of the rudder part at rest (it carries the tiller); rudder_stock.x + 0.13 * loa
              without the mesh
 R          = the wheel's rim radius, half the wheel part's athwartships extent; 0.07 * loa without the mesh

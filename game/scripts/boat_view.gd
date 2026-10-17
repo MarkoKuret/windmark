@@ -95,6 +95,9 @@ var _rudder_rest := Transform3D.IDENTITY
 var _rudder_axis := Vector3.UP
 var _wheel: Node3D
 var _wheel_rest := Transform3D.IDENTITY
+## the second wheel of a twin-wheel class (data_format.md §3.7.3), null on the others
+var _wheel2: Node3D
+var _wheel2_rest := Transform3D.IDENTITY
 var _wheel_axis := Vector3.BACK
 var _rudder_max := 0.6
 var _boom: Node3D
@@ -179,7 +182,8 @@ var sun_shadows := true:
 var _proxies: Array[GeometryInstance3D] = []
 var _casting := true
 ## the levels of detail (sail_visuals.md §11.4), finest first: {"lod", "from", "root" (the GLB wrapper), "model",
-## "parts" (the non-sail part nodes), "rudder", "rudder_rest", "wheel", "wheel_rest", "boom", "boom_rest", "pole",
+## "parts" (the non-sail part nodes), "rudder", "rudder_rest", "wheel", "wheel_rest", "wheel_2", "wheel_2_rest",
+## "boom", "boom_rest", "pole",
 ## "pole_rest", "sheet" (the mainsheet's rebuild data)}; the sails are LOD0's at every level
 var levels: Array[Dictionary] = []
 ## the level shown
@@ -284,6 +288,8 @@ func _find_parts() -> void:
 		_rudder_axis = Frames.body_to_model(_vec(rig["rudder_axis"])).normalized()
 	_wheel = levels[0]["wheel"]
 	_wheel_rest = levels[0]["wheel_rest"]
+	_wheel2 = levels[0]["wheel_2"]
+	_wheel2_rest = levels[0]["wheel_2_rest"]
 	if rig.has("wheel_axis"):
 		_wheel_axis = Frames.body_to_model(_vec(rig["wheel_axis"])).normalized()
 	_boom = levels[0]["boom"]
@@ -369,7 +375,7 @@ func _level_parts(lv: Dictionary, sail_names: Dictionary) -> void:
 		if c is Node3D and not sail_names.has(String(c.name)) and not String(c.name).begins_with("shadow"):
 			parts.append(c)
 	lv["parts"] = parts
-	for k in ["rudder", "wheel", "boom", "pole"]:
+	for k in ["rudder", "wheel", "wheel_2", "boom", "pole"]:
 		var n := m.find_child(k, true, false) as Node3D
 		lv[k] = n
 		lv[k + "_rest"] = n.transform if n else Transform3D.IDENTITY
@@ -454,6 +460,8 @@ func _show_level(k: int) -> void:
 	_rudder_rest = lv["rudder_rest"]
 	_wheel = lv["wheel"]
 	_wheel_rest = lv["wheel_rest"]
+	_wheel2 = lv["wheel_2"]
+	_wheel2_rest = lv["wheel_2_rest"]
 	_boom = lv["boom"]
 	_boom_rest = lv["boom_rest"]
 	_pole = lv["pole"]
@@ -464,6 +472,8 @@ func _show_level(k: int) -> void:
 		_rudder.transform = _rudder_rest * Transform3D(Basis(_rudder_axis, _helm * _rudder_max), Vector3.ZERO)
 	if _wheel:
 		_wheel.transform = _wheel_rest * Transform3D(Basis(_wheel_axis, _helm * PI), Vector3.ZERO)
+	if _wheel2:
+		_wheel2.transform = _wheel2_rest * Transform3D(Basis(_wheel_axis, _helm * PI), Vector3.ZERO)
 	if _boom:
 		_boom.transform = _boom_rest * Transform3D(Basis(_boom_axis, boom_angle), Vector3.ZERO)
 	_update_sheet(boom_angle)
@@ -631,6 +641,8 @@ func apply(p: SimSource.RenderPose) -> void:
 		_rudder.transform = _rudder_rest * Transform3D(Basis(_rudder_axis, p.h * _rudder_max), Vector3.ZERO)
 	if _wheel:
 		_wheel.transform = _wheel_rest * Transform3D(Basis(_wheel_axis, p.h * PI), Vector3.ZERO)
+	if _wheel2:
+		_wheel2.transform = _wheel2_rest * Transform3D(Basis(_wheel_axis, p.h * PI), Vector3.ZERO)
 
 
 ## The sail's own grid-order mesh (sail_visuals.md §3.1) and its per-vertex shape. The imported flat sail gives

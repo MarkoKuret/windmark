@@ -418,12 +418,15 @@ func _test_materials(id: String, parts: Dictionary) -> void:
 
 func _test_pivots(side: Dictionary, parts: Dictionary) -> void:
 	var rig: Dictionary = side["rig"]
-	var pivots := {"rudder": "rudder_stock", "boom": "boom_pivot", "wheel": "wheel_hub", "pole": "pole_pivot"}
+	var pivots := {"rudder": "rudder_stock", "boom": "boom_pivot", "wheel": "wheel_hub", "wheel_2": "wheel_hubs",
+		"pole": "pole_pivot"}
 	for node in side["model"]["pivots"]:
 		if not _check(pivots.has(node) and parts.has(node), "pivot node %s is known and present" % node):
 			continue
 		var mi: MeshInstance3D = parts[node]
-		_near_v(mi.position, _body_to_model(rig[pivots[node]]), POS_TOL, "%s pivot" % node)
+		# twin wheels (data_format.md §3.7.3): the second wheel's hub is the second of rig.wheel_hubs
+		var at: Variant = rig[pivots[node]][1] if node == "wheel_2" else rig[pivots[node]]
+		_near_v(mi.position, _body_to_model(at), POS_TOL, "%s pivot" % node)
 		var local := mi.mesh.get_aabb()
 		print("  %s pivot %s, local aabb %s .. %s" % [node, mi.position, local.position, local.end])
 		match node:
@@ -440,7 +443,7 @@ func _test_pivots(side: Dictionary, parts: Dictionary) -> void:
 				# Spinnaker pole runs forward from its pivot on the mast axis (local +Z) to the pole end.
 				_near(local.end.z, float(rig["pole_length"]) + float(rig["mast_chord"]) / 2.0, 0.1, "pole reaches its end")
 				_check(local.position.z > -0.2 and absf(local.get_center().x) < 0.05, "pole runs forward from the mast on the centreline")
-			"wheel":
+			"wheel", "wheel_2":
 				# Wheel turns about fore and aft (local Z): round in X/Y about the hub, thin along Z.
 				_near(local.get_center().x, 0.0, 0.02, "wheel centred on the hub in X")
 				_near(local.get_center().y, 0.0, 0.05, "wheel centred on the hub in Y")

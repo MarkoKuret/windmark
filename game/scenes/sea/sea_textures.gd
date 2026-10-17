@@ -81,6 +81,14 @@ static func foam_image() -> Image:
 static func caps_image() -> Image:
 	if _caps_image == null:
 		var n := CAPS_SIZE
+		# about 0.2 s of GDScript on a fast machine: kept on disk after the first build (BakeCache)
+		var ck := BakeCache.key("res://scenes/sea/sea_textures.gd", "caps %d" % n)
+		var cached := BakeCache.read(ck)
+		if cached.size() == n * n * 4:
+			var cimg := Image.create_from_data(n, n, false, Image.FORMAT_RGBA8, cached)
+			cimg.generate_mipmaps()
+			_caps_image = cimg
+			return _caps_image
 		# a smooth periodic warp bends the straight cell borders into the curved lines of real foam
 		var wx := _noise(3301, 1.0 / 40.0, 2).get_seamless_image(n, n, false, false, 0.2, true)
 		var wy := _noise(3307, 1.0 / 40.0, 2).get_seamless_image(n, n, false, false, 0.2, true)
@@ -112,6 +120,7 @@ static func caps_image() -> Image:
 				data[4 * k + 1] = int(clampf(l1, 0.0, 1.0) * 255.0 + 0.5)
 				data[4 * k + 2] = int(clampf(l2, 0.0, 1.0) * 255.0 + 0.5)
 				data[4 * k + 3] = int(clampf(l3, 0.0, 1.0) * 255.0 + 0.5)
+		BakeCache.write(ck, data)
 		var img := Image.create_from_data(n, n, false, Image.FORMAT_RGBA8, data)
 		img.generate_mipmaps()
 		_caps_image = img

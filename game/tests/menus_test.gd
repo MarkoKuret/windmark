@@ -1532,6 +1532,12 @@ func test_pause_menu() -> void:
 	for i in 10:
 		sc.step_frame(1.0 / 60.0)
 	t.ok(sc.sim.tick() == tick, "no ticks while paused")
+	# the menu has the keys (controls.md §7): Enter on an item is not the chat, a stray capture or reset key waits
+	sc.scripted_input = RawInput.new().press(&"chat").press(&"capture_pause").press(&"reset_boat").press(&"hud_hide")
+	sc.step_frame(1.0 / 60.0)
+	sc.scripted_input = RawInput.new()
+	t.ok(not sc.controls.text_focus and not sc.capture.frozen and sc.hud.visible,
+		"chat, capture and HUD keys do nothing while the menu is open")
 	pm.buttons["resume"].pressed.emit()
 	t.ok(not sc.runner.paused and not pm.is_open and not sc.controls.menu_open, "Resume: running again")
 	# settings from the pause menu reach the scene when they close

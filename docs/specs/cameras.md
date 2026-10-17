@@ -221,11 +221,17 @@ defaults.
 
 | shot | eye | aim | fov |
 | --- | --- | --- | --- |
-| **start line** | `C + 20·û` at 6 m above the still water, `û` the horizontal unit vector from `P` to `C` (20 m outside the committee boat end, on the line's extension) | `P` on the still water: looking down the line | 30° |
+| **start line** | `C + 20·û + 12·p̂` at 8 m above the still water, `û` the horizontal unit vector from `P` to `C`, `p̂` the horizontal unit vector from the line to the pre-start side (20 m outside the committee boat end and 12 m behind the line, astern of the committee boat) | `P` on the still water: looking down the line | 30° |
 | **mark** | `M + 40·(sin β, cos β)` (east, north) at 6 m, `β = bearing(M → Q) + 45°·s`: on the approach side, 45° off the approach line, away from the side the boats pass | the leading boat (race order) inside the zone (within `3·loa` of `M`), else the viewed boat: her reference point 2 m up, smoothed with `τ = 0.5 s` (cut to it when the shot is selected) | 35° |
 | **long lens** | a chase camera (§2) with its own parameters: `R = 150` m, `el = 5°`, `az = 0`, `tau_yaw = 1.5 s`, `tau_heave = 0.3 s`, `lift = 1` m | as §2 | 12° |
 | **helicopter** | an orbit about the viewed boat at radius `r = 120` m and height `h = 60` m: `eye = target + (r·sin α, h, −r·cos α)`, `α` (compass, from the boat to the eye) starts astern (`ψ + 180°`) when the shot is selected and turns at 5°/s clockwise seen from above | the boat's reference point on the still water | 35° |
 
+- **Start line shot placement** (WM-159): a committee boat lies head to wind at its end, so her hull spans the
+  line's extension on both sides (7 m of a 14 m boat astern of the line) and her flybridge, about 5 m up, sat right
+  on the old sight line (20 m outside the end on the extension, 6 m up): the shot showed the cabin. From 12 m behind
+  the line and 8 m up the sight line to the pin passes 11 m astern of the committee boat and 7 m above the water at
+  her distance, so the fleet coming to the line is in view with the committee boat's stern low in the corner of
+  the frame.
 - **Fixed shots** (start line, mark) do not move with the boat. When the next mark changes (she has rounded), the
   mark camera cuts to the new one. When there is no next mark any more (finished, retired), it keeps its last eye
   and aims at the viewed boat.
@@ -329,8 +335,8 @@ files are tuned by eye: their times are the best guesses of the clip, not rules.
 7. Presets: store in slot 3, change every parameter, recall slot 3: all parameters and the mode restored exactly;
    factory reset restores the eight chase presets.
 8. Shake: a contact at 2 m/s gives a peak offset of 0.08 m and less than 5 % of it after 0.9 s.
-9. Start line shot: with `P` at (0, 0) and the committee boat end `C` at (100, 0) (east, north), the eye is at
-   east 120 m, north 0, 6 m up, and looks at `P` within 0.1°.
+9. Start line shot: with `P` at (0, 0), the committee boat end `C` at (100, 0) (east, north) and the pre-start
+   side to the south, the eye is at east 120 m, north −12 m, 8 m up, and looks at `P` within 0.1°.
 10. Mark shot: `M` at (0, 500) approached from `Q` = (0, 0): left to port the eye is at bearing 225° from `M`
    (east −28.28, north 471.72, 6 m up), left to starboard at 135°; with two boats in the zone it aims at the one
    ahead in race order, with the zone empty at the viewed boat.

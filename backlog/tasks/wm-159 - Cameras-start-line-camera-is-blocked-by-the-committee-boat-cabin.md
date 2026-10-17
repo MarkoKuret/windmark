@@ -1,9 +1,11 @@
 ---
 id: WM-159
 title: 'Cameras: start line camera is blocked by the committee boat cabin'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-10-16 20:47'
+updated_date: '2026-10-17 11:46'
 labels:
   - cameras
 dependencies: []
@@ -19,5 +21,5 @@ Found recording the ai_start clip (2026-10-16): in practice_waters/example_wl ra
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Start line camera clears the committee boat on every course and shows the line and the fleet
+- [x] #1 Start line camera clears the committee boat on every course and shows the line and the fleet
 <!-- AC:END -->

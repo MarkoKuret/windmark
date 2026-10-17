@@ -1,6 +1,6 @@
 {
   "schema": "windmark.shot/1",
-  "note": "An AI start: six boats watched (--race --fleet=6 --watch), the helicopter over the line from 15 s before the gun, the long lens on the leader at the gun, half speed for the last 3 s. The start line camera is blocked by the committee boat's cabin (WM-159).",
+  "note": "An AI start: six boats watched (--race --fleet=6 --watch), the helicopter over the line from 15 s before the gun, the long lens on the leader at the gun, half speed for the last 3 s. The start line camera (astern of the committee boat since WM-159) is an alternative for the gun.",
   "portrait": true,
   "hud": false,
   "world_tags": true,

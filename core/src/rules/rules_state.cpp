@@ -148,6 +148,7 @@ void Rules::save(SnapshotWriter& w) const {
       w.put_bool(m.frozen);
       put_vec2s(w, m.corridor);
       w.put_bool(m.could_act);
+      w.put_bool(m.e_was_in);
       put_enum(w, m.state);
       w.put_bool(m.breach);
     }
@@ -384,6 +385,7 @@ bool Rules::load(SnapshotReader& r) {
       mr.frozen = r.get_bool();
       get_vec2s(r, mr.corridor);
       mr.could_act = r.get_bool();
+      mr.e_was_in = r.get_bool();
       mr.state = get_enum(r, KcState::breach);
       mr.breach = r.get_bool();
       ps.rooms.push_back(std::move(mr));

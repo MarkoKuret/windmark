@@ -484,6 +484,11 @@ With `finish_window = on`, when the first boat finishes the race enters **Closin
 (an online-friendly version of the usual sailing-instruction limit after the first finisher). Humans still racing
 are warned at 60 s and 10 s before the window closes.
 
+An offline quick race (`menus.md` §1) runs with `finish_window = off`: nobody waits for the player there (the
+computer boats are projected the moment she finishes, §7.2), and a window that scores a slow first race `DNF` five
+minutes behind the winner would end the race before she learns to finish one. The time limit (§7.1) still closes
+it.
+
 ### 7.4 Abandonment
 
 The server may abandon a race (server stop, fewer than the minimum humans left in a ranked race). An abandoned race

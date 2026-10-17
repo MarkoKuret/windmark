@@ -663,8 +663,11 @@ void Rules::mark_rules(std::uint32_t n, PairState& ps, const Race& race, std::sp
     const std::size_t E = static_cast<std::size_t>(mr.entitled);
     bool keep = applies && mr.mark == M;
     if (keep && mr.rule == RuleCode::r18_2) {
+      // 18.2(b): the status ends when the entitled boat leaves the zone (she must have been in it: the giver may
+      // have reached the zone first, §7.3.2) or passes head to wind.
       const bool e_zone = E == A ? zone_a : zone_b;
-      if (!e_zone || st_[E].head_to_wind) keep = false;
+      if (e_zone) mr.e_was_in = true;
+      if ((!e_zone && mr.e_was_in) || st_[E].head_to_wind) keep = false;
       if (!mr.frozen && !overlapped(ps.raw)) keep = false;
     }
     if (!keep) ps.rooms.erase(ps.rooms.begin() + static_cast<std::ptrdiff_t>(k));

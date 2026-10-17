@@ -799,6 +799,39 @@ TEST_CASE("rules: 18.4, an inside right-of-way boat sailing wide before she gybe
   }
 }
 
+TEST_CASE("rules: 18.2(b), the status ends only when the entitled boat leaves the zone") {
+  // Overlapped on the approach, the outside boat 1 five metres ahead reaches the zone first (she is ahead; the inside
+  // boat 0 is nearer the mark laterally but still outside). The inside boat is entitled from that tick, while she has
+  // yet to reach the zone, and stays entitled when she enters; the outside boat squeezing her is penalised.
+  const Vec2 M{0.0f, 300.0f};
+  RulesRig rig(2, quick_settings(), mark_course());
+  const Reach g = reach(4.0f, 6.0f, -5.0f, 34.0f);
+  const Vec2 d = wm::dir(g.h), right{d.y, -d.x};
+  const float hi = wm::compass(wm::v_sub(wm::v_add(M, wm::v_scale(right, 4.0f)), g.inside));
+  const float ho = wm::compass(wm::v_sub(wm::v_add(M, wm::v_scale(right, 1.0f)), g.outside));
+  rig.start_at({{g.inside, hi, 3.0f, 0.0f}, {g.outside, ho, 3.0f, 0.0f}});
+  const float Z = 3.0f * rig.race.boat(0).L + 0.8f;
+  int first = -1, held = 0;
+  float d_inside_at_first = 0.0f;
+  for (int k = 0; k < 200; ++k) {
+    rig.step();
+    const wm::PairRecord* r = rig.rules.pair(0, 1);
+    const bool room = r != nullptr && r->room_rule == RuleCode::r18_2 && r->room_entitled == 0 && r->room_giver == 1;
+    if (first < 0 && room) {
+      first = k;
+      d_inside_at_first = wm::v_dist(rig.b[0].p, M);
+    }
+    if (first >= 0 && room) ++held;
+    if (first >= 0 && k - first >= 40) break;
+  }
+  REQUIRE(first >= 0);
+  CHECK(d_inside_at_first > Z + 3.5f);  // the inside boat's bow was still outside the zone when the status was set
+  CHECK(held >= 40);                    // and the status held through her entry (not dropped the next tick)
+  rig.run(8.0f);
+  CHECK(rig.penalties(1, RuleCode::r18_2) == 1);
+  CHECK(rig.penalties(0) == 0);
+}
+
 TEST_CASE("rules: 18.2(a)(2), not overlapped when the first boat reaches the zone") {
   // Boat 1 is clear ahead but wide of the mark; boat 0, clear astern on the line to it, reaches the zone first.
   RulesRig rig(2, quick_settings(), mark_course());

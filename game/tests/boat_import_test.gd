@@ -398,7 +398,13 @@ func _test_materials(id: String, parts: Dictionary) -> void:
 	_check(found.size() == 3, "%s: the boat, sailcloth and shadow materials (%s)" % [id, found.keys()])
 	for k in slots:
 		_check(not String(k).begins_with("?"), "%s: slot %s is in the table" % [id, k])
+	# a flush deck (visual.deck.cabin null) has no coachroof aft face
+	var vis: Variant = _read_json(_class_file(id)).get("visual", {})
+	var dk: Variant = (vis as Dictionary).get("deck", {}) if vis is Dictionary else {}
+	var flush: bool = dk is Dictionary and (dk as Dictionary).has("cabin") and (dk as Dictionary)["cabin"] == null
 	for k in REQUIRED_SLOTS:
+		if k == "deck_face" and flush:
+			continue
 		_check(slots.has(k), "%s has slot %s" % [id, k])
 	if found.has("boat"):
 		var m: StandardMaterial3D = found["boat"]

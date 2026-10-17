@@ -64,6 +64,12 @@ class Appendages:
         x_qc_tip = x_qc - span * np.tan(float(k["sweep"]))
         self.fin_le_root = np.array([x_qc + 0.25 * self.fin_cr, 0.0, z_root])
         self.fin_le_tip = np.array([x_qc_tip + 0.25 * self.fin_ct, 0.0, z_tip])
+        if not self.has_bulb:
+            # a fin without a bulb ends in its domed tip cap: raise the tip so the cap's bottom is at the draft
+            cap = foil(_foil_stations(self.fin_le_root, self.fin_le_tip, self.fin_cr, self.fin_ct, self.fin_tc),
+                       n_chord=22, tip_cap=True, root_cap=False)
+            z_tip += -self.draft - float(cap.P[:, 2].min())
+            self.fin_le_tip[2] = z_tip
         self.fin_span_wet = -z_tip
         if self.has_bulb:
             # bulb placed so its 40 % length sits under the fin tip quarter chord

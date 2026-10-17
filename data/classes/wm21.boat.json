@@ -32,7 +32,7 @@
     "fin_mass": 18000,
     "bulb_mass": 0
   },
-  "rudder": {"type": "spade", "depth": 2.35, "chord_root": 1.05, "chord_tip": 0.72, "thickness": 0.12, "x": -5.6},
+  "rudder": {"type": "spade", "depth": 2.35, "chord_root": 1.15, "chord_tip": 0.55, "thickness": 0.095, "x": -5.6},
   "rig": {
     "I": 19.0,
     "J": 7.2,
@@ -51,7 +51,6 @@
   ],
   "crew": {"count": 11, "weight": 935},
   "start": {"front_sail": "genoa"},
-  "handling": {"tack_time": 1.3},
   "visual": {
     "hull": {"bilge_fillet": 0.30, "counter_height": 0.84, "keel_line_exponent": 2.0, "max_draft_pos": 0.58},
     "deck": {

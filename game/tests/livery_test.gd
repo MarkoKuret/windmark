@@ -1,10 +1,13 @@
 extends SceneTree
 ## Headless checks of the liveries (data_format.md §8, sail_visuals.md §11.2, WM-014, WM-081): the class livery
-## files load and follow the rules, bad files are refused, the fleet rule is distinct and deterministic from the
-## seed, the baked textures are there (in data/liveries and staged for import) with their layouts, and a fleet of
-## both classes is painted: on the baked path (the staged boat atlas on the boat material, sail_baked for the sails,
-## per-boat name and number over them in the layout's slots, the starboard stack uppermost) and on the procedural
-## fallback, each at a measured cost. Run by tests/run_livery_test.sh (needs the generated boats and the staged textures).
+## files load and follow the rules (the first livery baked, the others tints of it worn by the boats that name
+## them), bad files are refused, the fleet rule is distinct and deterministic from the seed (a 16-boat fleet in
+## several liveries, repeats in the next one), the baked textures are there (in data/liveries and staged for
+## import, the atlas with its colour masks and the sails with their cloth zones) with their layouts, and a fleet
+## of every class is painted: on the baked path (the staged boat atlas on the boat material, sail_baked for the
+## sails, per-boat name and number over them in the layout's slots, the starboard stack uppermost, the tint
+## uniforms on a boat in a tinted livery and none on the default boat) and on the procedural fallback, each at a
+## measured cost. Run by tests/run_livery_test.sh (needs the generated boats and the staged textures).
 
 const CLASSES := ["wm7", "wm12", "wm9", "wm16"]
 const SAIL_FILES := ["_port_albedo.png", "_stbd_albedo.png", "_normal.png", "_orm.png"]
@@ -41,18 +44,40 @@ func check_files() -> void:
 		var ids := {}
 		var nums := {}
 		var looks := {}
+		var bases := {}
 		var bright := 0
+		var sails_ok := true
 		for l in list:
 			ids[l.id] = true
 			nums[l.sail_number] = true
 			looks[l.look_id] = true
+			bases[l.base_id] = true
 			for c in [l.hull["topsides"], l.hull["boot_stripe"], l.hull["antifouling"], l.deck["gelcoat"], l.deck["nonslip"]]:
 				if maxi(maxi(c.r8, c.g8), c.b8) > Livery.MAX_CHANNEL:
 					bright += 1
+			for role in Livery.ROLES:
+				var e: Dictionary = l.sails[role]
+				var ce: Dictionary = l.class_sails[role]
+				sails_ok = sails_ok and e["cloth"] == ce["cloth"] and e.has("color") and e.has("number")
+				for c in [e["color"], e["number"]] + e["colors"]:
+					if maxi(maxi(c.r8, c.g8), c.b8) > Livery.MAX_CHANNEL:
+						bright += 1
 		check(ids.size() == list.size() and nums.size() == list.size(), "%s: boat ids and sail numbers unique" % id)
-		check(looks.size() == 1 and list[0].look_id != "", "%s: every boat wears the class livery (%s)" % [id, list[0].look_id])
-		check(list[0].sails == list[-1].sails, "%s: one class sail set" % id)
-		check(bright == 0, "%s: no hull or deck colour above a linear albedo of 0.8" % id)
+		var first: Livery = list[0]
+		var file_looks := Livery.looks_of(id)
+		check(first.look_id == file_looks[0].look_id and first.base_id == first.look_id and first.look_index == 0,
+			"%s: the first boat wears the first livery, the baked one (%s)" % [id, first.look_id])
+		check(bases.size() == 1 and bases.has(first.look_id), "%s: every livery is drawn on the class livery's textures" % id)
+		check(looks.size() >= 6 and file_looks.size() >= 6, "%s: %d liveries, %d worn (at least 6)" % [id, file_looks.size(), looks.size()])
+		check(sails_ok, "%s: every boat's sails keep the class cloth, with colours per livery" % id)
+		var tinted := 0
+		for l in list:
+			if l.look_id != l.base_id:
+				tinted += 1
+				check(l.base_hull == first.hull and l.class_sails == first.sails, "%s %s: the base colours are the class livery's" % [id, l.id])
+				break
+		check(tinted == 1, "%s: a boat in a tinted livery" % id)
+		check(bright == 0, "%s: no hull, deck or sail colour above a linear albedo of 0.8" % id)
 
 
 func _doc() -> Dictionary:
@@ -76,6 +101,11 @@ func check_parse_errors() -> void:
 		"bad colour": func(d: Dictionary) -> void: d["liveries"][0]["hull"]["text"] = "navy",
 		"bright sail": func(d: Dictionary) -> void: d["sails"]["main"]["color"] = "#ffffff",
 		"unknown cloth": func(d: Dictionary) -> void: d["sails"]["main"]["cloth"] = "kevlar",
+		"unknown boat livery": func(d: Dictionary) -> void: d["boats"][3]["livery"] = "tartan",
+		"first boat in another livery": func(d: Dictionary) -> void: d["boats"][0]["livery"] = d["liveries"][1]["id"],
+		"unknown base": func(d: Dictionary) -> void: d["liveries"][1]["base"] = "tartan",
+		"bright livery sail": func(d: Dictionary) -> void: d["liveries"][1]["sails"] = {"main": {"color": "#ffffff"}},
+		"unknown livery sail design": func(d: Dictionary) -> void: d["liveries"][1]["sails"] = {"spinnaker": {"design": "flames"}},
 	}
 	for name in cases:
 		var d := _doc()
@@ -122,8 +152,29 @@ func check_assign() -> void:
 		names[l.boat_name] = true
 	check(nums.size() == 40 and names.size() == 40, "40 boats: sail numbers and names unique (%d, %d)" % [nums.size(), names.size()])
 	var rep: Livery = f[list.size()]
-	check(rep.boat_name.ends_with(" II") and rep.sail_number.to_int() > 1000 and rep.look_id == list[0].look_id,
-		"a repeat: \"%s\" %s in the class livery" % [rep.boat_name, rep.sail_number])
+	var orig: Livery = null
+	for l in list:
+		if l.id == rep.id:
+			orig = l
+	var file_looks := Livery.looks_of("wm7")
+	var next_look: Livery = file_looks[(orig.look_index + 1) % file_looks.size()]
+	check(rep.boat_name.ends_with(" II") and rep.sail_number.to_int() > 1000 and rep.look_id == next_look.look_id
+		and rep.hull == next_look.hull and rep.base_id == orig.base_id,
+		"a repeat: \"%s\" %s in the next livery (%s after %s)" % [rep.boat_name, rep.sail_number, rep.look_id, orig.look_id])
+	# a 16-boat race reads as different boats: several hull colours and sail colours among them
+	var race := []
+	for i in 16:
+		race.append({"human": i == 0, "choice": ""})
+	var r16 := Livery.assign(list, race, 2026)
+	var hulls := {}
+	var mains := {}
+	var kites := {}
+	for l in r16:
+		hulls[l.hull["topsides"].to_html(false)] = true
+		mains[l.sails["main"]["color"].to_html(false)] = true
+		kites[l.sails["spinnaker"]["color"].to_html(false) + l.sails["spinnaker"]["design"]] = true
+	check(hulls.size() >= 6 and mains.size() >= 2 and kites.size() >= 5,
+		"a 16-boat fleet: %d hull colours, %d sail colours, %d spinnakers" % [hulls.size(), mains.size(), kites.size()])
 	check(Livery.roman(2) == "II" and Livery.roman(4) == "IV" and Livery.roman(9) == "IX", "roman numerals")
 
 
@@ -132,8 +183,9 @@ func check_shaders() -> void:
 		"res://shaders/boat.gdshader": ["hl_on", "hl_sheer", "livery_text", "hl_name_tex"],
 		"res://shaders/sail.gdshader": ["sl_on", "sl_box", "sl_tex", "livery_text", "cloth_chord"],
 		"res://shaders/boat_atlas.gdshader": ["bk_albedo", "bk_normal", "bk_orm", "bk_rect", "bk_keel", "ov_box", "tr_box",
-			"livery_text", "slot_color", "tile_color", "hl_on", "hl_sheer"],
-		"res://shaders/sail_baked.gdshader": ["sk_albedo_port", "sk_albedo_stbd", "sk_orm", "sk_detail", "sn_box", "sl_layer_n"],
+			"livery_text", "slot_color", "tile_color", "hl_on", "hl_sheer", "tn_on", "tn_from", "tn_to", "tn_k"],
+		"res://shaders/sail_baked.gdshader": ["sk_albedo_port", "sk_albedo_stbd", "sk_orm", "sk_detail", "sn_box", "sl_layer_n",
+			"st_on", "st_from", "sd_design", "sd_cloth", "sd_clew", "sd_head"],
 	}
 	for path in want:
 		var s := load(path) as Shader
@@ -199,6 +251,7 @@ func check_baked_files() -> void:
 		if hs.has("atlas"):
 			var at: Texture2D = hs["atlas"]["albedo"]
 			check(at.get_width() == 2048 and at.get_height() == 2048, "%s: boat atlas 2048 x 2048 (data_format.md §8.5)" % id)
+			_check_masks(id, look, rects)
 			var inside := true
 			for k in rects:
 				var r: Vector4 = rects[k]
@@ -210,6 +263,47 @@ func check_baked_files() -> void:
 				t.get_width(), t.get_height()])
 		for d in ["dacron", "laminate", "nylon"]:
 			check(BakedLivery.detail(d) != null, "cloth detail %s staged" % d)
+
+
+## The colour masks of the staged atlas (data_format.md §8.5 "Staged boat atlas"): on the hull region the ORM's
+## blue is the paint coverage (the topsides about half of the band, none below the boot stripe) and its red the
+## zone levels; the staged sails carry the cloth zone in their albedo's alpha, mostly cloth.
+func _check_masks(id: String, look: String, rects: Dictionary) -> void:
+	var dir := "res://generated/liveries/%s/" % id
+	var orm := Image.load_from_file(ProjectSettings.globalize_path(dir + look + "/atlas_orm.png"))
+	var r: Vector4 = rects["hull"]
+	var w := orm.get_width()
+	var h := orm.get_height()
+	var x0 := int(r.x * w)
+	var y0 := int(r.y * h)
+	var hw := int(r.z * w)
+	var hh := int(r.w * h)
+	var paint := 0.0
+	var levels := {}
+	var n := 0
+	var bottom := 0.0
+	var nb := 0
+	for y in range(y0, y0 + hh, 8):
+		for x in range(x0, x0 + hw, 8):
+			var c := orm.get_pixel(x, y)
+			paint += c.b
+			levels[roundi(c.r * 3.0)] = true
+			n += 1
+			# the lowest rows of the starboard band: the keel line, antifouling
+			if y > y0 + hh / 2 - 8 and y < y0 + hh / 2:
+				bottom += c.b
+				nb += 1
+	check(paint / n > 0.3 and paint / n < 0.7 and bottom / maxi(nb, 1) < 0.05 and levels.size() >= 3,
+		"%s: atlas colour masks: paint %.2f of the hull region, none at the keel line, %d zone levels" % [id, paint / n, levels.size()])
+	var sail := Image.load_from_file(ProjectSettings.globalize_path(dir + "sails/main_port_albedo.png"))
+	var cloth := 0.0
+	var ns := 0
+	for y in range(0, sail.get_height(), 8):
+		for x in range(0, sail.get_width(), 8):
+			cloth += 1.0 if sail.get_pixel(x, y).a > 0.9 else 0.0
+			ns += 1
+	check(sail.get_format() == Image.FORMAT_RGBA8 and cloth / ns > 0.9,
+		"%s: staged main with the cloth zone in its alpha (%.2f cloth)" % [id, cloth / ns])
 
 
 ## The transom (the boat's name in the transom's name panel) and the deck (the deck region with the painted hardware
@@ -309,6 +403,42 @@ func _check_baked_boat(id: String, views: Array, lv: Livery) -> void:
 		and bm2.get_shader_parameter("bk_albedo") == bm.get_shader_parameter("bk_albedo")
 		and bm.get_shader_parameter("livery_text") == bv.livery_text.texture,
 		"%s baked: the atlas shared by the fleet, the name and number per boat" % id)
+	# the default boat as baked; a boat in another livery tinted on the same atlas (§8.5 "Tinted liveries")
+	check(bm.get_shader_parameter("tn_on") == 0, "%s baked: the default boat shows the atlas as baked (no tint)" % id)
+	var tinted: BoatView = null
+	for v in views:
+		if (v as BoatView).livery.look_id != lv.look_id:
+			tinted = v
+			break
+	if tinted == null:
+		check(false, "%s baked: a boat in a tinted livery among the first four" % id)
+	else:
+		var tm: ShaderMaterial = _boat_material(tinted)[0][0]
+		var to: PackedVector3Array = tm.get_shader_parameter("tn_to")
+		var from: PackedVector3Array = tm.get_shader_parameter("tn_from")
+		var k: PackedFloat32Array = tm.get_shader_parameter("tn_k")
+		var want := (tinted.livery.hull["topsides"] as Color).srgb_to_linear()
+		var base := (lv.hull["topsides"] as Color).srgb_to_linear()
+		check(tm.get_shader_parameter("tn_on") == 1 and tm.get_shader_parameter("bk_albedo") == hs["atlas"]["albedo"]
+			and to.size() == 6 and from.size() == 6 and k.size() == 6
+			and to[4].is_equal_approx(Vector3(want.r, want.g, want.b)) and from[4].is_equal_approx(Vector3(base.r, base.g, base.b))
+			and k[4] > 0.0 and k[4] <= 1.0,
+			"%s baked: \"%s\" (%s) tinted on the class atlas, topsides %s over %s, k %.2f" % [id, tinted.livery.boat_name,
+			tinted.livery.look_id, tinted.livery.hull["topsides"].to_html(false), lv.hull["topsides"].to_html(false), k[4]])
+		var kite_tinted := false
+		var kite_any := false
+		for sp in tinted.sail_parts:
+			if not sp.type.begins_with("spinnaker"):
+				continue
+			kite_any = true
+			var sm := (sp.node as MeshInstance3D).get_surface_override_material(0) as ShaderMaterial
+			if sm == null or sm.shader != BoatLivery.BAKED_SAIL:
+				continue
+			var e := tinted.livery.sail_for(sp.type)
+			var on: bool = sm.get_shader_parameter("st_on") == 1
+			kite_tinted = kite_tinted or (on and sm.get_shader_parameter("sd_design") == Livery.DESIGNS.find(e["design"])
+				and (sm.get_shader_parameter("sd_height") as float) > 1.0)
+		check(kite_tinted or not kite_any, "%s baked: the tinted boat's spinnaker in its livery's colours and design" % id)
 	var boxes: PackedVector4Array = bm.get_shader_parameter("ov_box")
 	var boxes_ok := boxes.size() == 4
 	for k in boxes.size():

@@ -2037,15 +2037,20 @@ func test_ladder_lines() -> void:
 		var e: Array = lad[key]
 		var d: Vector2 = e[1] - e[0]
 		t.ok(absf(d.normalized().dot(lad["axis"])) < 1e-6, "%s square to the axis" % key)
-	var o := Vector2(0, 400)
-	var s := Vector2(sim.states[1].pos_x, sim.states[1].pos_y)
-	t.ok(Geometry2D.get_closest_point_to_segment(o, lad["own_w"][0], lad["own_w"][1]).distance_to(o) < 1e-3
-		and Geometry2D.get_closest_point_to_segment(s, lad["her_w"][0], lad["her_w"][1]).distance_to(s) < 1e-3,
-		"each line through its boat")
+	# both heading north: the bows are half a hull length ahead of the hull reference points
+	var o := Vector2(0, 400 + 0.5 * sim.class_info(0).loa)
+	var s := Vector2(sim.states[1].pos_x, sim.states[1].pos_y + 0.5 * sim.class_info(1).loa)
+	t.ok((lad["own_w"][0] as Vector2).distance_to(o) < 1e-3 and (lad["her_w"][0] as Vector2).distance_to(s) < 1e-3,
+		"each line starts at its boat's bow")
+	var own_d: Vector2 = lad["own_w"][1] - lad["own_w"][0]
+	var her_d: Vector2 = lad["her_w"][1] - lad["her_w"][0]
+	t.ok(own_d.dot(s - o) > 0.0 and her_d.dot(o - s) > 0.0, "each line runs towards the other boat")
+	t.ok(own_d.length() >= absf(s.x - o.x) + Hud.LADDER_PAST - 1e-3 and own_d.length() >= Hud.LADDER_MIN - 1e-3
+		and her_d.length() >= absf(s.x - o.x) + Hud.LADDER_PAST - 1e-3, "each line past the other boat's line (%.0f m)" % own_d.length())
 	var gain := (s.y - o.y) / sim.class_info(0).loa
 	t.near(float(lad["gain"]), gain, 1e-3, "her lead along the axis in hull lengths (%.2f)" % gain)
 	t.ok(lad["text"] == "%.1f L AHEAD" % gain, "label: %s" % lad["text"])
-	t.ok(count.call(own_col) >= 2 and count.call(her_col) >= 2, "both lines drawn, a gap at each boat (%d, %d runs)" % [
+	t.ok(count.call(own_col) >= 1 and count.call(her_col) >= 1, "both lines drawn (%d, %d runs)" % [
 		count.call(own_col), count.call(her_col)])
 	t.ok(h.world.primitives().any(func(q: Dictionary) -> bool: return q["k"] == "text" and q["text"] == lad["text"]),
 		"the gain label drawn")

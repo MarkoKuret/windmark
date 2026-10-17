@@ -1241,8 +1241,16 @@ func ladder_axis() -> Vector2:
 	return up
 
 
-## the ladder lines while a boat is selected: {own: [PackedVector2Array], her: [...], gain (her lead along the axis
-## in the viewed boat's hull lengths), text, label (px or null)}; empty with none
+## hud.md §16.4.2: the bow of boat `b` on the water (ENU, x and y): the bow point of her hull as she floats
+func bow_water(b: int) -> Vector2:
+	var w := boat_point(b, Vector3(0.5 * sim.class_info(b).loa, 0.0, 0.0))
+	return Vector2(w.x, w.y)
+
+
+## the ladder lines while a boat is selected (hud.md §16.4.2): each from its boat's bow, square to the axis, towards
+## the other boat and past her line. {own: [PackedVector2Array], her: [...], gain (her lead along the axis, bow to
+## bow, in the viewed boat's hull lengths), text, label (px or null), axis, own_w and her_w (each line's ends, ENU,
+## the bow first)}; empty with none
 func ladder_lines() -> Dictionary:
 	var b := selected_boat()
 	if b < 0 or sim == null or viewed < 0 or world_camera() == null or map_open or not world_tags or race.race_over:
@@ -1253,10 +1261,8 @@ func ladder_lines() -> Dictionary:
 		return {}
 	var a := ladder_axis()
 	var p := Vector2(a.y, -a.x)
-	var o := Vector2(me.pos_x, me.pos_y)
-	var s := Vector2(her.pos_x, her.pos_y)
-	var lo := minf(o.dot(p), s.dot(p)) - LADDER_PAST
-	var hi := maxf(o.dot(p), s.dot(p)) + LADDER_PAST
+	var o := bow_water(viewed)
+	var s := bow_water(b)
 	var loa := sim.class_info(viewed).loa
 	var gain := (s - o).dot(a) / maxf(loa, 0.1)
 	_ladder_shapes = []
@@ -1265,38 +1271,36 @@ func ladder_lines() -> Dictionary:
 		if tri.size() == 3:
 			_ladder_shapes.append(tri)
 	var text := "EVEN" if absf(gain) < 0.05 else "%.1f L %s" % [absf(gain), "AHEAD" if gain > 0.0 else "BEHIND"]
-	var side := 1.0 if s.dot(p) >= o.dot(p) else -1.0
-	var lab := s + p * side * 2.0 * sim.class_info(b).loa
-	return {"own": _ladder(o, p, lo, hi, loa), "her": _ladder(s, p, lo, hi, sim.class_info(b).loa), "gain": gain,
-		"text": text, "label": project(Vector3(lab.x, lab.y, 0.0)), "axis": a,
-		"own_w": [o + p * (minf(lo, o.dot(p) - LADDER_MIN) - o.dot(p)), o + p * (maxf(hi, o.dot(p) + LADDER_MIN) - o.dot(p))],
-		"her_w": [s + p * (minf(lo, s.dot(p) - LADDER_MIN) - s.dot(p)), s + p * (maxf(hi, s.dot(p) + LADDER_MIN) - s.dot(p))]}
+	# towards the other boat across the axis, past her line by LADDER_PAST, at least LADDER_MIN
+	var across := (s - o).dot(p)
+	var to_her := p if across >= 0.0 else -p
+	var length := maxf(absf(across) + LADDER_PAST, LADDER_MIN)
+	var own_end := o + to_her * length
+	var her_end := s - to_her * length
+	var lab := s - to_her * 2.0 * sim.class_info(b).loa
+	return {"own": _ladder(o, own_end), "her": _ladder(s, her_end), "gain": gain, "text": text,
+		"label": project(Vector3(lab.x, lab.y, 0.0)), "axis": a, "own_w": [o, own_end], "her_w": [s, her_end]}
 
 
-## a line on the water through `c` along `p`, from `lo` to `hi` (ENU along p), at least LADDER_MIN each side of `c`,
-## with a gap of one hull length `l` at `c`: its runs on screen (the parts in front of the camera)
-func _ladder(c: Vector2, p: Vector2, lo: float, hi: float, l: float) -> Array:
-	var t0 := c.dot(p)
-	lo = minf(lo, t0 - LADDER_MIN)
-	hi = maxf(hi, t0 + LADDER_MIN)
+## a line on the water from `from` to `to` (ENU): its runs on screen (the parts in front of the camera and not over
+## a boat's hull and rig)
+func _ladder(from: Vector2, to: Vector2) -> Array:
 	var out := []
-	for half in [[lo, t0 - 0.5 * l], [t0 + 0.5 * l, hi]]:
-		var run := PackedVector2Array()
-		var n := maxi(1, ceili((half[1] - half[0]) / LADDER_STEP))
-		for i in n + 1:
-			var t: float = lerpf(half[0], half[1], float(i) / n)
-			var w := c + p * (t - t0)
-			var q: Variant = project(Vector3(w.x, w.y, 0.0))
-			if q != null and _over_boat(q):
-				q = null
-			if q == null:
-				if run.size() >= 2:
-					out.append(run)
-				run = PackedVector2Array()
-				continue
-			run.append(q)
-		if run.size() >= 2:
-			out.append(run)
+	var run := PackedVector2Array()
+	var n := maxi(1, ceili(from.distance_to(to) / LADDER_STEP))
+	for i in n + 1:
+		var w := from.lerp(to, float(i) / n)
+		var q: Variant = project(Vector3(w.x, w.y, 0.0))
+		if q != null and _over_boat(q):
+			q = null
+		if q == null:
+			if run.size() >= 2:
+				out.append(run)
+			run = PackedVector2Array()
+			continue
+		run.append(q)
+	if run.size() >= 2:
+		out.append(run)
 	return out
 
 

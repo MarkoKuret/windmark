@@ -60,7 +60,9 @@
       "cabin": null,
       "lifelines": true,
       "steering": "wheel",
-      "wheel": {"twin": true, "diameter": 1.3, "well": true, "hub_height": 0.48}
+      "wheel": {"twin": true, "diameter": 1.2},
+      "grinders": 0,
+      "halyard_leads": "modelled"
     },
     "rig": {"spreaders": 3, "spreader_sweep": 0.26, "backstay": true},
     "sails": {"main": {"head_width": 0.40}}

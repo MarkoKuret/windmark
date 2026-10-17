@@ -79,6 +79,14 @@ class SailPart:
 	var phase := 0
 	var shiver := 0.0
 
+	## the rest mid-surface in grid order (model axes), and the look and the kite set parameters (§4, §4.1) the
+	## shape was configured with (the class file's over the sidecar's); a kite's tack rise in m (§4.1)
+	var rest_mid := PackedVector3Array()
+	var furling := false
+	var look := {}
+	var kset := {}
+	var tack_rise_m := 0.0
+
 	## the placed clew (mid-surface, model axes)
 	func clew() -> Vector3:
 		return shape.mid()[cols - 1] if shape != null else Vector3.ZERO
@@ -111,6 +119,11 @@ var _boom_pivot := Vector3.ZERO
 var _pole: Node3D
 var _pole_rest := Transform3D.IDENTITY
 var _pole_axis := Vector3.UP
+## §4.1 the pole's tilt about its heel that lifts its end with a kite's raised tack: the axis (pole frame) and the
+## pole's length from heel to end; the tilt drawn last
+var _pole_tilt_axis := Vector3.ZERO
+var _pole_len := 0.0
+var _pole_tilt := 0.0
 var _mast_step := Vector3.ZERO
 var _mast_head := Vector3.ZERO
 ## the forestay, tack fitting and hounds (model axes), for a flying sail on a pole (sail_visuals.md §7.4)
@@ -157,6 +170,8 @@ static var _cam_size := 0.0
 static var _sail_mats := {}
 ## the levels of detail and the running sheets (off: the boat as before them, for cost comparisons)
 static var use_lods := true
+## where the class files are read from ("": the repository's data/classes; the kite tuner's test points it at a copy)
+static var class_dir := ""
 static var draw_sheets := true
 ## measured runs only (the sail scene's run-only flags, game/README.md "Measuring performance"): a level of detail
 ## for every distance (-1: by distance), model part nodes never shown (by name: "rigging", "hardware", ...), the
@@ -167,6 +182,9 @@ static var draw_sails := true
 static var animate_sails := true
 ## the GDScript reference shapes even when the native SailShape is loaded (set by create)
 var use_reference := false
+## the class file as read at set-up ({} when there is none: a generator test class); its `visual.sails.<id>`
+## `look` and `set` blocks go over the sidecar's copies (sail_visuals.md §4.1)
+var class_file := {}
 ## the hull and mast of the drawn shadow on the water (BoatShadows.caster_from_physics), built on first use
 var _shadow_caster: Variant = null
 ## sun shadows (sail_visuals.md §11.4): beyond this distance from the camera (m) the shadow proxies and sails of
@@ -337,10 +355,12 @@ func _find_parts() -> void:
 	var side_sails: Dictionary = info.physics.get("sails", {})
 	pole_class = _pole != null or float(rig.get("pole_length", 0.0)) > 0.0
 	var furling := {}
-	var cls: Variant = BoatClassData._read_json(BoatClassData.repo_path("data/classes/%s.boat.json" % info.id))
+	var cdir := class_dir if class_dir != "" else BoatClassData.repo_path("data/classes")
+	var cls: Variant = BoatClassData._read_json(cdir.path_join("%s.boat.json" % info.id))
 	if cls is Dictionary:
 		for cs in cls.get("sails", []):
 			furling[String(cs.get("id", ""))] = bool(cs.get("furling", false))
+	class_file = cls if cls is Dictionary else {}
 	for i in info.sails.size():
 		var si: SimSource.SailInfo = info.sails[i]
 		var sp := SailPart.new()
@@ -380,6 +400,11 @@ func _find_parts() -> void:
 			sp.mode = Mode.LUFF  # jib, genoa, code zero (tacked hard to the sprit end)
 		_setup_shape(sp, side, bool(furling.get(sp.id, false)))
 		sail_parts.append(sp)
+		if sp.mode == Mode.POLE and _pole and sp.shape != null:  # §4.1 the pole tilts with a raised tack
+			var end := _pole_rest.affine_inverse() * sp.tack
+			_pole_len = end.length()
+			var k := end.cross(_pole_axis)
+			_pole_tilt_axis = k.normalized() if k.length_squared() > 1e-9 else Vector3.ZERO
 
 
 ## The moving parts and the non-sail part nodes of one level (sail_visuals.md §11.4).
@@ -500,7 +525,7 @@ func _show_level(k: int) -> void:
 	_update_sheet(boom_angle)
 	if _pole:
 		_pole.visible = _pole_shown
-		_pole.transform = _pole_rest * Transform3D(Basis(_pole_axis, _pole_gamma), Vector3.ZERO)
+		_pole.transform = _pole_xf(_pole_gamma)
 
 
 ## Sun shadows (sail_visuals.md §11.4): the visible boat meshes cast none, each level's shadow proxy (`shadow`,
@@ -756,7 +781,16 @@ func _setup_shape(sp: SailPart, side: Dictionary, furling: bool) -> void:
 		extra = _boom_pivot.distance_to(sp.tack)
 	sp.radius = r * 1.25 + extra + 0.5
 	mesh.custom_aabb = AABB(sp.centre - Vector3.ONE * sp.radius, Vector3.ONE * 2.0 * sp.radius)
-	var look: Dictionary = side.get("look", {}) if side.get("look") is Dictionary else {}
+	# §4, §4.1: the look and a kite's set parameters, the class file's blocks over the sidecar's copies
+	var look: Dictionary = (side.get("look", {}) as Dictionary).duplicate() if side.get("look") is Dictionary else {}
+	var entry := KiteSet.class_entry(class_file, sp.id)
+	if entry.get("look") is Dictionary:
+		look.merge(entry["look"], true)
+	sp.look = look
+	sp.rest_mid = rest_mid
+	sp.furling = furling
+	if KiteSet.is_kite(sp.type):
+		sp.kset = KiteSet.resolve(sp.type, entry["set"] if entry.get("set") is Dictionary else side.get("set", {}))
 	var params := _shape_params(sp, look, furling)
 	var shape: Variant = null
 	if not use_reference and ClassDB.class_exists("SailShape"):
@@ -778,6 +812,7 @@ func _setup_shape(sp: SailPart, side: Dictionary, furling: bool) -> void:
 	mi.mesh = mesh
 	mi.transform = Transform3D.IDENTITY
 	sp.rest = Transform3D.IDENTITY
+	sp.tack_rise_m = float(sp.kset.get("tack_rise", 0.0)) * float(shape.frame()["sl"])
 	if not shape.attach_mesh(mesh.get_rid()):
 		push_warning("%s: sail mesh layout not writable in place; rebuilding it each update" % sp.node.name)
 		sp.arrays = out
@@ -825,6 +860,7 @@ func _shape_params(sp: SailPart, look: Dictionary, furling: bool) -> Dictionary:
 	p["port"] = Frames.body_to_model(Vector3(0, 1, 0))
 	p["up"] = Frames.body_to_model(Vector3(0, 0, 1))
 	p["phi"] = randf() * TAU  # §5.2: boats and sails do not flutter in step
+	p.merge(sp.kset, true)  # §4.1 a kite's set parameters (every key, filled from the defaults of its type)
 	if is_flying(t):  # §7.4: kept clear of the other sails and the mast
 		p["clearance"] = 0.042 * loa
 		p["mast_head"] = _mast_head
@@ -834,6 +870,36 @@ func _shape_params(sp: SailPart, look: Dictionary, furling: bool) -> Dictionary:
 			p["forestay_tack"] = _stay0
 			p["hounds"] = _stay1
 	return p
+
+
+## sail_visuals.md §4.1: shape a kite again with a look and set parameters (the kite tuner): `look_over` goes over
+## its look as configured, `kset` over the defaults of its type. Keeps its flutter phase; false when the sail is not
+## a kite with a shape.
+func reshape_kite(sail_id: String, look_over: Dictionary, kset: Dictionary) -> bool:
+	for sp in sail_parts:
+		if sp.id != sail_id or sp.shape == null or not KiteSet.is_kite(sp.type):
+			continue
+		var look := sp.look.duplicate()
+		look.merge(look_over, true)
+		var old_kset := sp.kset
+		sp.kset = KiteSet.resolve(sp.type, kset)
+		var p := _shape_params(sp, look, sp.furling)
+		p["phi"] = sp.shape.get_phase()
+		if not sp.shape.configure(sp.rest_mid, sp.rows, sp.cols, p):
+			sp.kset = old_kset
+			return false
+		sp.tack_rise_m = float(sp.kset["tack_rise"]) * float(sp.shape.frame()["sl"])
+		sp.updates = 0
+		return true
+	return false
+
+
+## The pole at its angle gamma, tilted about its heel by the raised tack of the kite on it (§4.1).
+func _pole_xf(gamma: float) -> Transform3D:
+	var t := _pole_rest * Transform3D(Basis(_pole_axis, gamma), Vector3.ZERO)
+	if _pole_tilt != 0.0 and _pole_tilt_axis != Vector3.ZERO:
+		t = t * Transform3D(Basis(_pole_tilt_axis, _pole_tilt), Vector3.ZERO)
+	return t
 
 
 ## sail_visuals.md §7.4: the sails that keep clear of the others (spinnakers and the code zero).
@@ -933,10 +999,13 @@ func apply_sails(prev: SimSource.SailsView, cur: SimSource.SailsView, alpha: flo
 		elif sp.mode == Mode.POLE:
 			_pole_shown = s1.phase != SimSource.Phase.DOWN
 			_pole_gamma = sp.gamma
+			_pole_tilt = 0.0
+			if sp.tack_rise_m > 0.0 and _pole_len > 1e-3 and sp.shape != null:
+				_pole_tilt = asin(clampf(sp.tack_rise_m * float(sp.shape.sheet_weight()) / _pole_len, 0.0, 1.0))
 			if _pole:
 				_pole.visible = _pole_shown
 				if _pole.visible:
-					_pole.transform = _pole_rest * Transform3D(Basis(_pole_axis, sp.gamma), Vector3.ZERO)
+					_pole.transform = _pole_xf(sp.gamma)
 	if sheets:
 		# §11.3: with the sails; thin (sub-pixel ropes) at most at the 15 Hz of §11
 		_sheets_since += dt

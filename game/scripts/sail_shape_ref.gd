@@ -46,8 +46,6 @@ const STAY_WIDTH := 0.6
 const STAY_HEAD := 0.3
 const STAY_LUFF := 0.5
 const STAY_LEECH := 0.3
-## §6.4 a symmetric spinnaker keeps its full camber from the foot to mid height, 1 - this of it at the head
-const SYM_ENDS := 0.3
 ## §6.4 the belly of a symmetric spinnaker's foot sags down by this share of its depth, fading out over the lower
 ## SYM_SAG_H of the height
 const SYM_SAG := 0.35
@@ -62,6 +60,11 @@ const CLEW_STEP := 0.01
 const CLEW_ITER := 2
 const CLEW_FADE := Vector2(1.3089969, 1.8325957)  # faded out as |beta| goes round the bow
 const CLEW_AWA := Vector2(0.7853982, 1.1344640)  # and in with the AWA over the kite's lowest angles
+## §4.1 the luff and leech curl reach this share of the chord in from the edge; `forward` holds the corners over this
+## share of Sl; `tack_rise` fades out over this share of Sl from the tack
+const CURL_BAND := 0.25
+const HOLD := 0.35
+const TACK_REACH := 0.5
 
 var rows := 0
 var cols := 0
@@ -134,6 +137,27 @@ var _d0row := PackedFloat32Array()  # §7.7 the camber of each row before the cl
 var _kd := 0.0                       # §7.7 the draw-in and draw-down of the last update
 var _kl := 0.0
 
+## §4.1 the kite set parameters read per update (the rest shape the per-row and per-vertex tables at set-up)
+var belly_aft := 0.5
+var belly_up := 0.5
+var twist_exp := 1.5
+var twist_lo := 0.0
+var twist_hi := 0.0
+var twist_run := 0.0
+var foot_sag := 0.0
+var foot_sag_h := 0.35
+var head_drop := 0.0
+var clew_lift := 0.0
+var clew_out := 0.0
+var forward := 0.0
+var tack_rise := 0.0
+var stay_head := 0.3
+var stay_luff := 0.5
+var stay_leech := 0.3
+var _grow := PackedFloat32Array()   # per row: the girth scale
+var _hold := PackedFloat32Array()   # per vertex: the corners' hold of `forward`
+var _rise := PackedFloat32Array()   # per vertex: the share of `tack_rise`
+
 ## drivers kept between frames
 var phi := 0.0
 var s_b := 1.0
@@ -201,14 +225,37 @@ func configure(rest_mid: PackedVector3Array, r: int, c: int, p: Dictionary) -> b
 	sheet_lead = p.get("sheet_lead", Vector3.ZERO)
 	has_mast_head = p.has("mast_head")
 	mast_head = p.get("mast_head", mast_step + mast_axis)
+	# §4.1 the kite set parameters: the keys given over the defaults of the kind (none on a main or headsail)
+	var kite := kind == Kind.ASYM or kind == Kind.SYM
+	var ks := KiteSet.defaults("spinnaker_asym" if kind == Kind.ASYM else "spinnaker_sym")
+	if kite:
+		for key in ks:
+			if p.has(key):
+				ks[key] = float(p[key])
+	belly_aft = ks["belly_aft"]
+	belly_up = ks["belly_up"]
+	twist_exp = ks["twist_exp"] if kite else 1.5
+	twist_lo = ks["twist_awa_lo"]
+	twist_hi = ks["twist_awa_hi"]
+	twist_run = ks["twist_run"]
+	foot_sag = ks["foot_sag"] if kite else 0.0
+	foot_sag_h = ks["foot_sag_h"]
+	head_drop = ks["head_drop"]
+	clew_lift = ks["clew_lift"]
+	clew_out = ks["clew_out"]
+	forward = ks["forward"]
+	tack_rise = ks["tack_rise"]
+	stay_head = ks["stay_head"]
+	stay_luff = ks["stay_luff"]
+	stay_leech = ks["stay_leech"]
 	has_stay = mode == Mode.POLE and clearance > 0.0 and p.has("forestay_tack") and p.has("hounds")
 	if has_stay:
 		stay0 = p["forestay_tack"]
 		stay1 = p["hounds"]
 		var dm := stay0 - mast_step
 		var jb := (dm - mast_axis * dm.dot(mast_axis)).length()  # the foretriangle base
-		stay_w = STAY_WIDTH * jb
-		stay_c = maxf(STAY_CLEAR * jb, clearance)
+		stay_w = float(ks["stay_width"]) * jb
+		stay_c = maxf(float(ks["stay_clear"]) * jb, clearance)
 	_obs = []
 	_ease = 0.0
 	tack = rest_mid[0]
@@ -253,6 +300,18 @@ func configure(rest_mid: PackedVector3Array, r: int, c: int, p: Dictionary) -> b
 	_trow.resize(rows)
 	_trow.fill(0.0)
 	_prof.resize(n)
+	_grow.resize(rows)
+	_grow.fill(1.0)
+	# §6.3, §6.4, §4.1: the camber's height profile, the draft's exponent, the girth and the edge curls
+	var pk: float = ks["depth_peak_h"]
+	var cf: float = 1.0 - float(ks["depth_foot"])
+	var chd: float = 1.0 - float(ks["depth_head"])
+	var ql: float = log(0.5) / log(float(ks["draft_low"]))
+	var dq: float = log(0.5) / log(float(ks["draft_head"])) - ql
+	var df: float = ks["draft_from_h"]
+	var gm: float = ks["girth_mid"]
+	var lcu: float = ks["luff_curl"]
+	var rcu: float = ks["leech_curl"]
 	for i in rows:
 		for j in cols:
 			var k := i * cols + j
@@ -262,30 +321,55 @@ func configure(rest_mid: PackedVector3Array, r: int, c: int, p: Dictionary) -> b
 		_c[i] = rest_mid[i * cols + cols - 1].distance_to(rest_mid[i * cols])
 		_amid[i] = 0.5 * (_a[i * cols] + _a[i * cols + cols - 1])
 		_hrow[i] = _h[i * cols]
-		var cr := clampf(1.0 - _hrow[i] / CLEW_H, 0.0, 1.0)
+		var cr := clampf(1.0 - _hrow[i] / float(ks["clew_h"] if kite else CLEW_H), 0.0, 1.0)
 		_crow[i] = cr * cr * cr
 		_u0row[i] = _u[i * cols]
 		_ulrow[i] = _u[i * cols + cols - 1]
-		# §6.3 (asymmetric: deepest at 0.3 of the height, the draft forward) and §6.4 (symmetric)
+		# §6.3 (asymmetric: deepest at 0.3 of the height, the draft forward) and §6.4 (symmetric: full depth from
+		# the foot to mid height, the draft in the middle), by the set parameters of §4.1
 		var hr := _hrow[i]
-		if kind == Kind.ASYM:
-			var lo := (0.3 - hr) / 0.3
-			var hi := (hr - 0.3) / 0.7
-			_prow[i] = 1.0 - 0.2 * lo * lo if hr < 0.3 else 1.0 - 0.55 * hi * hi
-			var t := clampf((hr - 0.55) / 0.45, 0.0, 1.0)
-			var q := 0.8 + 0.6 * t * t * (3.0 - 2.0 * t)
-			for j in cols:
-				_prof[i * cols + j] = sin(PI * pow(_uc[i * cols + j], q))
-		else:
-			var hh := maxf(2.0 * hr - 1.0, 0.0)  # full depth from the foot to mid height
-			_prow[i] = 1.0 - SYM_ENDS * hh * hh
+		if kite:
+			var lo := (pk - hr) / pk
+			var hi := (hr - pk) / (1.0 - pk)
+			_prow[i] = 1.0 - cf * lo * lo if hr < pk else 1.0 - chd * hi * hi
+			var t := clampf((hr - df) / (1.0 - df), 0.0, 1.0)
+			var q := ql + dq * t * t * (3.0 - 2.0 * t)
+			var b := 1.0 - 2.0 * hr if hr < 0.5 else 2.0 * hr - 1.0
+			_grow[i] = gm + (float(ks["girth_foot"] if hr < 0.5 else ks["girth_head"]) - gm) * b * b
+			var fh := 4.0 * hr * (1.0 - hr)  # the edge curls, none at the corners
 			for j in cols:
 				var uc := _uc[i * cols + j]
-				_prof[i * cols + j] = 4.0 * uc * (1.0 - uc)
+				var pr := 0.0
+				if kind == Kind.ASYM:
+					pr = sin(PI * pow(uc, q))
+				else:
+					var x := uc if q == 1.0 else pow(uc, q)
+					pr = 4.0 * x * (1.0 - x)
+				if lcu != 0.0:
+					var bl := clampf(1.0 - uc / CURL_BAND, 0.0, 1.0)
+					pr += lcu * bl * bl * fh
+				if rcu != 0.0:
+					var br := clampf(1.0 - (1.0 - uc) / CURL_BAND, 0.0, 1.0)
+					pr += rcu * br * br * fh
+				_prof[i * cols + j] = pr
 	furl_radius = float(p.get("furl_radius", 0.02 + 0.006 * sa))
 	_tack_d.resize(n)
 	for k in n:
 		_tack_d[k] = rest_mid[k].distance_to(rest_mid[0])
+	# §4.1 the corners' hold of `forward` and the share of `tack_rise`, from the rest distances to the corners
+	_hold.resize(n)
+	_hold.fill(0.0)
+	_rise.resize(n)
+	_rise.fill(0.0)
+	if kite:
+		var rr := HOLD * sl
+		var hc := rest_mid[(rows - 1) * cols]
+		var cc := rest_mid[cols - 1]
+		for k in n:
+			_hold[k] = _smoothstep01(_tack_d[k] / rr) * _smoothstep01(rest_mid[k].distance_to(hc) / rr) \
+					* _smoothstep01(rest_mid[k].distance_to(cc) / rr)
+			var w := 1.0 - minf(_tack_d[k] / (TACK_REACH * sl), 1.0)
+			_rise[k] = w * w
 	_fa = 0.0
 	_ec.resize(n)
 	_ec.fill(0.0)
@@ -467,7 +551,7 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 		else:
 			f_fly = fill_gain * clampf(aws / KNOT, 3.0, 6.0) / 6.0
 		var uw := fwd * cos(awa) - port * sin(awa)
-		wv = Vector3(uw.dot(ap) * 0.5 / fill_curve, uw.dot(lp) * 0.5, uw.dot(np))
+		wv = Vector3(uw.dot(ap) * belly_aft / fill_curve, uw.dot(lp) * belly_up, uw.dot(np))
 		wv = wv.normalized() if wv.length_squared() > 1e-12 else Vector3(0, 0, 1)
 		var fc := camber * minf(f_fly, 1.15)
 		for i in rows:
@@ -476,13 +560,13 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 	# §7.1 to §7.3 the row twist (an asymmetric spinnaker's opens with the AWA)
 	var tw := twist_top
 	if kind == Kind.ASYM:
-		var ta := clampf((absf(awa) - deg_to_rad(60.0)) / deg_to_rad(70.0), 0.0, 1.0)
-		var tr := clampf((PI - absf(awa)) / deg_to_rad(25.0), 0.0, 1.0)
+		var ta := clampf((absf(awa) - twist_lo) / (twist_hi - twist_lo), 0.0, 1.0)
+		var tr := clampf((PI - absf(awa)) / twist_run, 0.0, 1.0)
 		tw *= ta * ta * (3.0 - 2.0 * ta) * tr * tr * (3.0 - 2.0 * tr)
 	# (signed; the asymmetric spinnaker's on the side away from the wind at once: it is zero where awa changes sign)
 	for i in rows:
-		_trow[i] = -_sgn(awa) * tw * (1.0 - pow(1.0 - _hrow[i], 2.5)) if kind == Kind.ASYM \
-				else tl * tw * pow(_hrow[i], 1.5)
+		_trow[i] = -_sgn(awa) * tw * (1.0 - pow(1.0 - _hrow[i], twist_exp)) if kind == Kind.ASYM \
+				else tl * tw * pow(_hrow[i], twist_exp)
 	# §8.1 which shape
 	var up_shape := phase == 3 or phase == 4 or kind == Kind.MAIN
 	var p := 1.0
@@ -496,7 +580,7 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 		p = clampf(p, 0.0, 1.0)
 	_local(phase, up_shape, p, d_cam, amp, shiver, wv)
 	# §7.4 the ease of a flying sail off the other sails (the head lies on the luff axis)
-	var hd := s_t * head
+	var hd := s_t * (head - lh * (head_drop * sl))  # §4.1 the head as dropped
 	_tack_at = s_t * tack
 	var clearing := clearance > 0.0 and (not _obs.is_empty() or has_mast_head)
 	_ease = 0.0
@@ -541,11 +625,22 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 		elif phase == 5:
 			_fa = 1.0 - pow(p, 0.3)
 	_clew0 = _mid[cols - 1]
+	if _fa > 0.0 and (forward != 0.0 or tack_rise != 0.0):
+		_shift()
 	if has_stay and _fa > 0.0:
 		_stay()
 	if clearing:
 		_push(awa, hd)
 	_layers(np)
+
+
+## §4.1 the cloth projected forward (the corners held) and the tack raised, times the flying shape's share.
+func _shift() -> void:
+	var f := forward * sl * _fa
+	var t := tack_rise * sl * _fa
+	for k in n:
+		_mid[k] += fwd * (f * _hold[k]) + up * (t * _rise[k])
+	_tack_at += up * t
 
 
 ## §7.4 a flying sail on a pole flies forward of the forestay: per row the shift forward that brings its cloth
@@ -559,8 +654,8 @@ func _stay() -> void:
 	sw.resize(cols)
 	for j in cols:
 		var uc := _uc[j]
-		var tt := clampf((uc - STAY_LUFF) / (1.0 - STAY_LUFF), 0.0, 1.0)
-		sw[j] = _smoothstep01(uc / STAY_LUFF) * (1.0 - STAY_LEECH * tt * tt * (3.0 - 2.0 * tt))
+		var tt := clampf((uc - stay_luff) / (1.0 - stay_luff), 0.0, 1.0)
+		sw[j] = _smoothstep01(uc / stay_luff) * (1.0 - stay_leech * tt * tt * (3.0 - 2.0 * tt))
 	var d_row := PackedFloat32Array()
 	d_row.resize(rows)
 	for i in rows:
@@ -580,7 +675,7 @@ func _stay() -> void:
 	for i in range(rows - 2, -1, -1):  # never less than a row above needs
 		d_row[i] = maxf(d_row[i], d_row[i + 1])
 	for i in rows:
-		var s := d_row[i] * _smoothstep01((1.0 - _hrow[i]) / STAY_HEAD) * _fa
+		var s := d_row[i] * _smoothstep01((1.0 - _hrow[i]) / stay_head) * _fa
 		if s <= 0.0:
 			continue
 		for j in cols:
@@ -648,9 +743,15 @@ func _fly_at(k: int, wv: Vector3, kd: float, kl: float) -> Vector3:
 		s = minf(s * (1.0 - kd * _crow[i]), 1.0)
 		d = sqrt(maxf(1.0 / s - 1.0, 0.0) * 3.0 / 8.0)
 	var a0 := _a[i * cols]
-	var e := d * s * _c[i] * _prof[k]
+	var gi := _grow[i]
+	var e := d * s * gi * _c[i] * _prof[k]
 	var uc := _uc[k]
-	return Vector3(a0 + (_a[k] - a0) * s, _l[k] - kl * _c[0] * _crow[i] * uc * uc, 0.0) - wv * e
+	var r := Vector3(a0 + (_a[k] - a0) * s * gi + clew_out * _c[0] * _crow[i] * uc * uc,
+			_l[k] - (kl - clew_lift) * _c[0] * _crow[i] * uc * uc - head_drop * sl * _h[k], 0.0)
+	if foot_sag != 0.0:
+		var fs := clampf(1.0 - _hrow[i] / foot_sag_h, 0.0, 1.0)
+		r.y -= foot_sag * e * fs * fs
+	return r - wv * e
 
 
 ## §7.7 the corner's bisector and the sheet's direction with (kd, kl): [b, s]
@@ -1017,18 +1118,22 @@ func _fly(k: int, i: int, wv: Vector3, shiver: float) -> Vector3:
 	var uc := _uc[k]
 	var s := _srow[i]
 	var a0 := _a[i * cols]
-	var e := _drow[i] * s * _c[i] * _prof[k]
+	var gi := _grow[i]
+	var e := _drow[i] * s * gi * _c[i] * _prof[k]
 	var i2 := 0.33 * flutter_amp * shiver
 	var q := phi - 7.0 * uc
 	var m := Vector3(wv.x + 0.1 * i2 * sin(q), wv.y, wv.z + i2 * cos(q))
-	var r := Vector3(a0 + (_a[k] - a0) * s, _l[k] - _kl * _c[0] * _crow[i] * uc * uc, 0.0) - m * e
+	# §7.7 the draw-down; §4.1 the clew raised and let out, the head dropped, the girth
+	var r := Vector3(a0 + (_a[k] - a0) * s * gi + clew_out * _c[0] * _crow[i] * uc * uc,
+			_l[k] - (_kl - clew_lift) * _c[0] * _crow[i] * uc * uc - head_drop * sl * _h[k], 0.0) - m * e
+	if foot_sag != 0.0:
+		# §6.4, §4.1 the lower panels' belly sags, so the foot curves round and down
+		var fs := clampf(1.0 - _hrow[i] / foot_sag_h, 0.0, 1.0)
+		r.y -= foot_sag * e * fs * fs
 	if kind == Kind.SYM:
-		# §6.4 the lower panels' belly sags, so the foot curves round and down
-		var fs := clampf(1.0 - _hrow[i] / SYM_SAG_H, 0.0, 1.0)
-		r.y -= SYM_SAG * e * fs * fs
 		var h := _h[k]
 		var g := maxf(0.0, shiver - uc) * (1.0 - (2.0 * h - 1.0) * (2.0 * h - 1.0))
-		r.x += (a0 + (_amid[i] - a0) * s - r.x) * 0.5 * g
+		r.x += (a0 + (_amid[i] - a0) * s * gi - r.x) * 0.5 * g
 		r.z += g * flutter_amp * 0.1 * sa * sin(phi - _a[k])
 	return r
 

@@ -165,7 +165,7 @@ visibly sink into or float above the drawn surface. The components of §3 are ne
 
 ### 7.4 Boats on the drawn sea
 Boats are drawn at their interpolated physics state (`boat.md` §9), whose heave already follows the mean wave
-height with the lag of `heave_time`. Bow waves, wakes and spray are visual (renderer spec); they read the boat's
+height with the lag of `heave_time`. Wakes and bow spray are visual (renderer spec); they read the boat's
 speed and attitude and this height function.
 
 ## 8. Tests

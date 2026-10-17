@@ -1,4 +1,4 @@
-// Wakes, bow waves and mist: docs/specs/water_render.md §5. See sea_wakes.h.
+// Wakes and bow mist: docs/specs/water_render.md §5. See sea_wakes.h.
 #include "sea_wakes.h"
 
 #include <godot_cpp/classes/mesh.hpp>
@@ -21,13 +21,15 @@ namespace windmark_godot {
 namespace {
 
 constexpr double TAU_D = 6.283185307179586;
-constexpr double LIFE_S = 4.0;
+constexpr double LIFE_S = 9.0;
+constexpr double SPREAD_S = 4.0;      // the edges stop opening (the diverging waves have broken)
+constexpr double TURB_SPREAD = 0.15;  // the transom ribbon: w = w0 (1 + TURB_SPREAD t)
+constexpr double LINE_M = 0.25;        // the bow ribbon's band scale: COLOR.b = LINE_M / half width
 constexpr double KELVIN = 0.354;
 constexpr double GRAVITY = 9.81;
 constexpr double U_OUTER = 0.0;
 constexpr double U_EDGE = 0.2;
 constexpr int REACH_SMOOTH = 4;
-constexpr double TAU_CREST = 0.45;
 constexpr double MIST_GRAVITY = 2.0;
 constexpr double MIST_DRAG = 2.5;
 constexpr double MIST_ALPHA = 0.16;
@@ -212,7 +214,32 @@ void FixedSurface::write(const std::vector<Vector3>& pos, const std::vector<Vect
 // ---------------------------------------------------------------------------------------------------------------
 // WakeRibbon
 
-double WakeRibbon::half_width(const Row& r, double t_s) { return r.w0 + KELVIN * r.v * (t_s - r.t); }
+// WakeRibbonRef.wake_tan: Kelvin's angle at low Froude number, 0.1995 rad / Fr above (Fr = 0.399 ratio)
+static double wake_tan(double ratio) {
+  const double fr = 0.399 * ratio;
+  if (fr <= 0.1995 / 0.33983) return KELVIN;
+  return std::tan(0.1995 / fr);
+}
+
+// WakeRibbonRef.hourglass: (P, pinch, hollow) of a transom row behind a planing hull
+static Vector3 hourglass(double ratio, double v, double age_s) {
+  const double pl = Math::smoothstep(0.8, 1.05, 0.399 * ratio);
+  if (pl <= 0.0) return Vector3();
+  const double xw = std::max(0.7 * v * v / GRAVITY, 0.5);
+  const double d = v * age_s;
+  const double q = (d - xw) / (0.5 * xw);
+  return Vector3(static_cast<real_t>(pl), static_cast<real_t>(std::exp(-q * q)),
+                 static_cast<real_t>(pl * (1.0 - Math::smoothstep(0.3 * xw, xw, d))));
+}
+
+double WakeRibbon::half_width(const Row& r, double t_s) const {
+  if (kind_ == 1) {
+    const Vector3 hg = hourglass(r.ratio, r.v, t_s - r.t);
+    return r.w0 * (1.0 + TURB_SPREAD * std::min(t_s - r.t, LIFE_S)) *
+           (1.0 - 0.55 * static_cast<double>(hg.x) * static_cast<double>(hg.y));
+  }
+  return r.w0 + wake_tan(r.ratio) * r.v * std::min(t_s - r.t, SPREAD_S);
+}
 
 double WakeRibbon::alpha(const Row& r, double t_s) {
   if (!r.visible) return 0.0;
@@ -312,7 +339,7 @@ Dictionary WakeRibbon::row(int64_t k) const {
   return d;
 }
 
-Vector2 WakeRibbon::spray_excess(const Row& r, double t_s) {
+Vector2 WakeRibbon::spray_excess(const Row& r, double t_s) const {
   const double hw = half_width(r, t_s);
   const double base = hw + 0.3 + 0.25 * hw;
   const Vector2 lp = port(r);
@@ -357,8 +384,19 @@ void WakeRibbon::build(double t_s) {
     ex /= wsum;
     const double reach[2] = {hw + feather + ex.x, hw + feather + ex.y};
     const int base = static_cast<int>(pos_.size());
-    const double centre = clampd(r.w0 / std::max(hw + feather, 1e-3), 0.0, 1.0);
+    double centre = kind_ == 1 ? 1.0 : 0.0;
+    double line = kind_ == 1 ? 0.0 : clampd(LINE_M / std::max(hw, 1e-3), 0.0, 1.0);
+    double a_draw = a;
+    if (kind_ == 1) {
+      // WakeRibbonRef: the turbulent wake emerges from under the transom over a hull's breadth
+      const double ks = smooth(0.0, r.w0 / 0.45, r.v * (t_s - r.t));
+      centre = 0.4 + 0.6 * ks;
+      const Vector3 hg = hourglass(r.ratio, r.v, t_s - r.t);
+      a_draw = a * (ks * (1.0 + 0.3 * static_cast<double>(hg.x) * static_cast<double>(hg.y)));
+      line = hg.z;
+    }
     const float vv = static_cast<float>(r.dist / 10.0);
+    const double age = clampd((t_s - r.t) / LIFE_S, 0.0, 1.0);
     for (int i = 0; i < ACROSS; ++i) {
       const double u = i == 0 ? U_OUTER
                               : (i == ACROSS - 1 ? 1.0 - U_OUTER
@@ -374,8 +412,8 @@ void WakeRibbon::build(double t_s) {
       pos_.emplace_back(q.x, 0.0f, -q.y);
       uv_.emplace_back(static_cast<real_t>(u), vv);
       uv2_.push_back(lp);
-      col_.emplace_back(static_cast<float>(centre), 1.0f, 1.0f,
-                        (i == 0 || i == ACROSS - 1) ? 0.0f : static_cast<float>(a));
+      col_.emplace_back(static_cast<float>(centre), static_cast<float>(age), static_cast<float>(line),
+                        (i == 0 || i == ACROSS - 1) ? 0.0f : static_cast<float>(a_draw));
     }
     if (prev >= 0) {
       for (int i = 0; i < ACROSS - 1; ++i) {
@@ -432,6 +470,7 @@ bool WakeRibbon::write_mesh(double t_s) {
 }
 
 void WakeRibbon::_bind_methods() {
+  ClassDB::bind_method(D_METHOD("set_kind", "kind"), &WakeRibbon::set_kind);
   ClassDB::bind_method(D_METHOD("emit", "t_s", "p", "heading", "v", "w0", "ratio", "visible", "dist"),
                        &WakeRibbon::emit);
   ClassDB::bind_method(D_METHOD("last_edges", "t_s"), &WakeRibbon::last_edges);
@@ -450,118 +489,6 @@ void WakeRibbon::_bind_methods() {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// BowWaveSheets
-
-bool BowWaveSheets::build(const Dictionary& st, double v, double ratio, double plunge) {
-  pos_.clear();
-  uv_.clear();
-  uv2_.clear();
-  col_.clear();
-  const double k = smooth(0.25, 0.6, ratio);
-  if (k <= 0.0) return false;
-  const double lwl = getd(st, "lwl", 6.0);
-  const double bwl = getd(st, "bwl", 2.0);
-  const double psi = getd(st, "psi", 0.0);
-  const double heel = getd(st, "heel", 0.0);
-  const Vector2 fwd(std::sin(psi), std::cos(psi));
-  const Vector2 port(-fwd.y, fwd.x);
-  const Vector2 pos(getd(st, "x", 0.0), getd(st, "y", 0.0));
-  const Vector2 stem = pos + fwd * getd(st, "bow_x", 0.5 * lwl);
-  // BowWave.size, kept as a (float) Vector2 like the reference
-  const double pl = std::min(plunge, 1.5);
-  const Vector2 hl(std::min(0.08 * lwl, 0.55 * v * v / (2.0 * GRAVITY)) * (1.0 + 0.6 * pl),
-                   lwl * (0.18 + 0.22 * std::min(ratio, 1.3)) * (1.0 + 0.3 * pl));
-  const double sh = std::fabs(std::sin(heel));
-  for (int side = 0; side < 2; ++side) {
-    const double sgn = side == 0 ? 1.0 : -1.0;
-    const double lee = (heel > 0.0 ? -1.0 : 1.0) * sgn;
-    const double hs = 1.0 + 0.6 * lee * sh;
-    for (int i = 0; i < NS; ++i) {
-      const double sg = double(i) / double(NS - 1);
-      const double along = sg * hl.y;
-      const double yh = 0.5 * bwl * std::pow(std::min(1.0, along / (0.5 * lwl)), 0.7) * (1.0 + 0.5 * lee * sh);
-      const double width = (0.12 + 0.5 * along) * (1.0 + 0.3 * ratio);
-      const double li = hl.x * hs * std::pow(1.0 - sg, 1.6);
-      const double lc = 0.75 * hl.x * hs * std::pow(1.0 - sg, 0.7);
-      const double a = k * smooth(0.0, 0.08, sg) * (1.0 - smooth(0.7, 1.0, sg));
-      const Vector2 row = stem - fwd * along;
-      const Vector2 ps = port * sgn;
-      for (int j = 0; j < NT; ++j) {
-        const double tau = double(j) / double(NT - 1);
-        const double lift = tau <= TAU_CREST ? lerpd(li, lc, smooth(0.0, TAU_CREST, tau))
-                                             : lc * (1.0 - smooth(TAU_CREST, 1.0, tau));
-        const Vector2 q = row + ps * (yh - 0.02 + tau * width);
-        pos_.emplace_back(q.x, 0.0f, -q.y);
-        uv_.emplace_back(static_cast<real_t>(tau), static_cast<real_t>(sg));
-        uv2_.emplace_back(static_cast<real_t>(lift + 0.1), static_cast<real_t>(along));
-        col_.emplace_back(0.0f, 0.0f, 0.0f, static_cast<float>(a));
-      }
-    }
-  }
-  return true;
-}
-
-Array BowWaveSheets::build_arrays(const Dictionary& st, double v, double ratio, double plunge) {
-  Array a;
-  a.resize(Mesh::ARRAY_MAX);
-  if (!build(st, v, ratio, plunge)) return a;
-  PackedVector3Array pv;
-  PackedVector2Array uv, uv2;
-  PackedColorArray col;
-  for (size_t k = 0; k < pos_.size(); ++k) {
-    pv.push_back(pos_[k]);
-    uv.push_back(uv_[k]);
-    uv2.push_back(uv2_[k]);
-    col.push_back(col_[k]);
-  }
-  const Array blank = blank_arrays();
-  a[Mesh::ARRAY_VERTEX] = pv;
-  a[Mesh::ARRAY_TEX_UV] = uv;
-  a[Mesh::ARRAY_TEX_UV2] = uv2;
-  a[Mesh::ARRAY_COLOR] = col;
-  a[Mesh::ARRAY_INDEX] = blank[Mesh::ARRAY_INDEX];
-  return a;
-}
-
-Array BowWaveSheets::blank_arrays() const {
-  Array a = FixedSurface::blank(N_VERT, N_INDEX);
-  PackedInt32Array idx;
-  for (int side = 0; side < 2; ++side) {
-    const int base = side * NS * NT;
-    for (int i = 0; i < NS - 1; ++i)
-      for (int j = 0; j < NT - 1; ++j) {
-        const int v0 = base + i * NT + j;
-        const int t[6] = {v0, v0 + NT, v0 + 1, v0 + 1, v0 + NT, v0 + NT + 1};
-        for (int x : t) idx.push_back(x);
-      }
-  }
-  a[Mesh::ARRAY_INDEX] = idx;
-  return a;
-}
-
-bool BowWaveSheets::attach_mesh(const RID& mesh) { return surf_.attach(mesh, N_VERT, N_INDEX); }
-
-bool BowWaveSheets::write_mesh(const Dictionary& st, double v, double ratio, double plunge) {
-  if (!build(st, v, ratio, plunge)) return false;
-  surf_.write(pos_, uv_, uv2_, col_, idx_, false);
-  if (surf_.mesh.is_valid()) {
-    // every frame the sheet moves with the boat: keep it from being culled on stale bounds
-    RenderingServer::get_singleton()->mesh_set_custom_aabb(
-        surf_.mesh, AABB(pos_[0] - Vector3(20.0f, 10.0f, 20.0f), Vector3(40.0f, 20.0f, 40.0f)));
-  }
-  return true;
-}
-
-void BowWaveSheets::_bind_methods() {
-  ClassDB::bind_method(D_METHOD("build_arrays", "state", "v", "ratio", "plunge"), &BowWaveSheets::build_arrays);
-  ClassDB::bind_method(D_METHOD("blank_arrays"), &BowWaveSheets::blank_arrays);
-  ClassDB::bind_method(D_METHOD("attach_mesh", "mesh"), &BowWaveSheets::attach_mesh);
-  ClassDB::bind_method(D_METHOD("write_mesh", "state", "v", "ratio", "plunge"), &BowWaveSheets::write_mesh);
-  ClassDB::bind_method(D_METHOD("vertex_bytes"), &BowWaveSheets::vertex_bytes);
-  ClassDB::bind_method(D_METHOD("attribute_bytes"), &BowWaveSheets::attribute_bytes);
-}
-
-// ---------------------------------------------------------------------------------------------------------------
 // MistCloud
 
 void MistCloud::add(const Dictionary& m) {
@@ -574,18 +501,21 @@ void MistCloud::add(const Dictionary& m) {
   s.s0 = getd(m, "s0", 0.5);
   s.s1 = getd(m, "s1", 1.2);
   s.seed = getd(m, "seed", 0.0);
+  s.a = getd(m, "a", 1.0);
+  s.g = getd(m, "g", MIST_GRAVITY);
+  s.drag = getd(m, "drag", MIST_DRAG);
+  s.k = getd(m, "k", 0.0);
   m_.push_back(s);
 }
 
 void MistCloud::step(double dt) {
   size_t w = 0;
-  const double drag = std::exp(-MIST_DRAG * dt);
   for (size_t k = 0; k < m_.size(); ++k) {
     Sprite s = m_[k];
     s.age += dt;
     if (s.age >= s.life) continue;
-    Vector3 v = s.vel * drag;
-    v.z = static_cast<real_t>(static_cast<double>(v.z) - MIST_GRAVITY * dt);
+    Vector3 v = s.vel * std::exp(-s.drag * dt);
+    v.z = static_cast<real_t>(static_cast<double>(v.z) - s.g * dt);
     s.vel = v;
     s.pos += v * dt;
     m_[w++] = s;
@@ -604,6 +534,10 @@ Array MistCloud::sprites() const {
     d["s0"] = s.s0;
     d["s1"] = s.s1;
     d["seed"] = s.seed;
+    d["a"] = s.a;
+    d["g"] = s.g;
+    d["drag"] = s.drag;
+    d["k"] = s.k;
     out.push_back(d);
   }
   return out;
@@ -620,10 +554,10 @@ PackedFloat32Array MistCloud::buffer() {
     // BowWave.mist_look: size and alpha, kept as a (float) Vector2 like the reference
     const double f = s.age / s.life;
     const float size = static_cast<float>(lerpd(s.s0, s.s1, std::sqrt(f)));
-    const float a = static_cast<float>(MIST_ALPHA * clampd(s.age / 0.12, 0.0, 1.0) * (1.0 - f) * (1.0 - f));
+    const float a = static_cast<float>(MIST_ALPHA * s.a * clampd(s.age / 0.12, 0.0, 1.0) * (1.0 - f) * (1.0 - f));
     float* o = b + i * STRIDE;
     const float t[STRIDE] = {size, 0, 0, s.pos.x, 0, size, 0, s.pos.z, 0, 0, size, -s.pos.y,
-                             a,    static_cast<float>(s.seed), 0, 0};
+                             a,    static_cast<float>(s.seed), static_cast<float>(s.k), 0};
     std::memcpy(o, t, sizeof(t));
   }
   // the instances that lived out since the last buffer: zero, as a fresh buffer

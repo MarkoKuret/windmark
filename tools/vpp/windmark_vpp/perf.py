@@ -741,7 +741,9 @@ class Generator:
             "heel_damping": heel_damping,
             "pitch_freq": pitch_freq,
             "pitch_damping": _by_size(lwl, 0.63, 0.71),
-            "wave_roll_gain": 0.3,
+            # boat.md 6.3: the apparent gravity under a wave is normal to the surface, so the hull's attitude
+            # target is the full sampled slope; the springs above give the dynamic response
+            "wave_roll_gain": 1.0,
             "wave_pitch_gain": 1.0,
             "wobble_heel": 0.0175,
             "wobble_pitch": 0.0175,

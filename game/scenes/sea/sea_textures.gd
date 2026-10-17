@@ -1,7 +1,7 @@
 class_name SeaTextures
 extends RefCounted
 ## Tiling textures of the sea shader, generated at load from Godot's seamless noise (no texture files):
-## the detail normal map (water_render.md §4.1), the foam noise of the wakes and bow waves (§5: R = streaks, G = coarse
+## the detail normal map (water_render.md §4.1), the foam noise of the wakes and the whitecap streaks (§5: R = streaks, G = coarse
 ## breakup) and the whitecap foam levels (§4.4).
 ## Built once and shared by every Sea node.
 
@@ -38,6 +38,24 @@ static func detail_image() -> Image:
 		img.generate_mipmaps()
 		_detail_image = img
 	return _detail_image
+
+
+static var _detail_var := -1.0
+
+
+## The normal map's slope variance (water_render.md §4.1.1): the mean of |rg·2 − 1|² over its full-size level.
+static func detail_variance() -> float:
+	if _detail_var < 0.0:
+		var img := detail_image()
+		var s := 0.0
+		for y in SIZE:
+			for x in SIZE:
+				var c := img.get_pixel(x, y)
+				var dx := c.r * 2.0 - 1.0
+				var dy := c.g * 2.0 - 1.0
+				s += dx * dx + dy * dy
+		_detail_var = s / float(SIZE * SIZE)
+	return _detail_var
 
 
 ## RG8: R streak noise (stretched along the wind by the shader's uv), G coarse breakup, with mipmaps.

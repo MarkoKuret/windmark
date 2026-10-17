@@ -4,7 +4,7 @@
 The water, wake and sky colours come from the same shader functions Godot runs (shaders/sea_common.gdshaderinc,
 sky_common.gdshaderinc, wake_common.gdshaderinc), compiled here as GLSL 4.1 on an offscreen OpenGL context, with
 the uniforms, meshes and textures Godot computed. Only the lighting model around them is a stand-in for Godot's
-Forward+ (GGX sun specular, Schlick sky reflection, Lambert, Godot's fog, Godot's ACES curve), so colours are
+Forward+ (GGX sun specular, sky reflection blurred by the roughness with Godot's environment BRDF, Lambert, Godot's fog, Godot's ACES curve), so colours are
 close to, not identical with, the engine's. Boats are drawn with the boat shader's textures, factors and baked AO
 (on the ambient light only), without shadows.
 
@@ -95,6 +95,25 @@ float sun_vis(vec3 wpos, vec3 N) {
     return vis / 25.0;
 }
 
+// The sky seen in a rough mirror (Godot's radiance map, blurred by roughness): the sky averaged over a GGX-sized cone
+// of 13 fixed directions around R (half angle about 1.5 alpha), the sharp sky below alpha 0.01.
+vec3 env_rough(vec3 R, float a) {
+    if (a < 0.01) return env_sky(R);
+    vec3 t = normalize(abs(R.y) < 0.99 ? cross(R, vec3(0.0, 1.0, 0.0)) : cross(R, vec3(1.0, 0.0, 0.0)));
+    vec3 b = cross(R, t);
+    vec3 c = env_sky(R);
+    float w = 1.0;
+    for (int i = 0; i < 12; i++) {
+        float ang = float(i) * 2.39996;
+        float r = sqrt((float(i) + 0.5) / 12.0) * 1.5 * a;
+        vec3 d = normalize(R + r * (cos(ang) * t + sin(ang) * b));
+        d.y = max(d.y, 0.002);
+        c += env_sky(normalize(d));
+        w += 1.0;
+    }
+    return c / w;
+}
+
 // Stand-in for Godot's PBR: F0 = 0.16 specular^2, GGX with alpha = roughness^2, Schlick sky reflection. vis: the
 // sun's share that reaches the surface (its shadow).
 vec3 shade_vis(vec3 albedo, float rough, float spec, vec3 N, vec3 V, float vis_sun);
@@ -117,9 +136,14 @@ vec3 shade_vis(vec3 albedo, float rough, float spec, vec3 N, vec3 V, float vis_s
     float vis = 0.25 / ((NdotL * (1.0 - k) + k) * (NdotV * (1.0 - k) + k));
     float F = f0 + (1.0 - f0) * pow(1.0 - LdotH, 5.0);
     vec3 direct = vis_sun * sun_color * NdotL * (albedo * (1.0 - F) + WM_PI * D * vis * F);
-    float Fe = f0 + (max(1.0 - rough, f0) - f0) * pow(1.0 - NdotV, 5.0);
+    // Godot's environment BRDF approximation (scene_forward: Lazarov 2013 / Karis mobile), which dims the sky's
+    // reflection of a rough surface at grazing angles
+    vec4 rc = rough * vec4(-1.0, -0.0275, -0.572, 0.022) + vec4(1.0, 0.0425, 1.04, -0.04);
+    float a004 = min(rc.x * rc.x, exp2(-9.28 * NdotV)) * rc.x + rc.y;
+    vec2 envb = vec2(-1.04, 1.04) * a004 + rc.zw;
+    float Fe = envb.x * f0 + envb.y * clamp(50.0 * f0, 0.0, 1.0);
     vec3 R = reflect(-V, N);
-    vec3 refl = env_sky(R) * Fe;
+    vec3 refl = env_rough(R, a) * Fe;
     vec3 amb = albedo * mix(sky_horizon, sky_zenith, 0.5) * u_ambient * (1.0 - Fe);
     return direct + refl + amb;
 }
@@ -200,7 +224,7 @@ void main() {
     vec2 g = wm_faded_slope(v_local, v_spacing, px) * v_expo;
     n_geo = normalize(n_geo + vec3(-g.x, 0.0, g.y));
 #endif
-    WmSurface S = wm_surface(v_local, v_eta, n_geo, view, dist, vec2(0.0), v_land);
+    WmSurface S = wm_surface(v_local, v_eta, n_geo, view, dist, px, vec2(0.0), v_land);
 #ifdef WM_WHITECAPS
     wm_apply_caps(S, v_local, px, v_expo, dist, n_geo);
 #endif
@@ -220,12 +244,18 @@ in vec4 in_color;
 out vec2 v_uv;
 out float v_a;
 out float v_c;
+out float v_line;
+out float v_age;
 out vec3 v_wpos;
+out vec2 v_ground;
 void main() {
+    v_ground = in_pos.xz;
     v_wpos = wm_wake_drape(in_pos, u_cam, grid_q, grid_segments);
     v_uv = in_uv;
     v_a = in_color.a;
     v_c = in_color.r;
+    v_line = in_color.b;
+    v_age = in_color.g;
     gl_Position = u_vp * vec4(v_wpos, 1.0);
 }
 """
@@ -234,53 +264,17 @@ WAKE_FS = """
 in vec2 v_uv;
 in float v_a;
 in float v_c;
+in float v_line;
+in float v_age;
 in vec3 v_wpos;
+in vec2 v_ground;
 out vec4 frag;
 void main() {
-    float a = wm_wake_alpha(v_uv, v_c, v_a, texture(foam_tex, v_uv * vec2(1.5, 2.0)).r, texture(foam_tex, v_uv * vec2(0.6, 0.7) + 0.37).g);
+    float a = wm_wake_alpha(v_uv, v_c, v_line, v_a, v_age, texture(foam_tex, v_ground / 3.0).r,
+                            texture(foam_tex, v_uv * vec2(0.6, 0.7) + 0.37).g, texture(foam_tex, v_uv * vec2(0.15, 0.17) + 0.71).g);
     vec3 V = normalize(u_cam - v_wpos);
     vec3 c = shade(col_foam, 0.6, 0.3, vec3(0.0, 1.0, 0.0), V);
     frag = vec4(fogged(c, v_wpos), a);
-}
-"""
-
-BOW_VS = """
-uniform mat4 u_vp;
-uniform vec3 u_cam;
-uniform float grid_q;
-uniform float grid_segments;
-uniform float u_flow;
-in vec3 in_pos;
-in vec2 in_uv;
-in vec2 in_uv2;
-in vec4 in_color;
-out vec2 v_uv;
-out vec2 v_flow;
-out float v_a;
-out vec3 v_wpos;
-void main() {
-    v_wpos = wm_drape(in_pos, in_uv2.x, u_cam, grid_q, grid_segments);
-    v_uv = in_uv;
-    v_flow = vec2(in_uv.x * 2.0, in_uv2.y - u_flow);
-    v_a = in_color.a;
-    gl_Position = u_vp * vec4(v_wpos, 1.0);
-}
-"""
-
-# bow_wave.gdshader's fragment()
-BOW_FS = """
-in vec2 v_uv;
-in vec2 v_flow;
-in float v_a;
-in vec3 v_wpos;
-out vec4 frag;
-const vec3 COL_SHEET = vec3(0.10, 0.22, 0.24);
-void main() {
-    vec2 f = wm_bow_alpha(v_uv, v_a, texture(foam_tex, v_flow * vec2(0.9, 0.35)).r,
-                          texture(foam_tex, v_flow * vec2(0.45, 0.2) + 0.61).g);
-    vec3 V = normalize(u_cam - v_wpos);
-    vec3 c = shade(mix(COL_SHEET, col_foam, f.x), mix(0.12, 0.6, f.x), 0.4, vec3(0.0, 1.0, 0.0), V);
-    frag = vec4(fogged(c, v_wpos), f.y);
 }
 """
 
@@ -288,9 +282,9 @@ MIST_VS = """
 uniform mat4 u_vp;
 in vec3 in_pos;
 in vec2 in_uv;
-in vec2 in_as;
+in vec3 in_as;
 out vec2 v_uv;
-out vec2 v_as;
+out vec3 v_as;
 out vec3 v_wpos;
 void main() {
     v_wpos = in_pos;
@@ -303,16 +297,16 @@ void main() {
 # mist.gdshader's fragment() (the engine also fades the sprite against the scene depth)
 MIST_FS = """
 in vec2 v_uv;
-in vec2 v_as;
+in vec3 v_as;
 in vec3 v_wpos;
 out vec4 frag;
 void main() {
     float c = cos(v_as.y * 6.2831);
     float sn = sin(v_as.y * 6.2831);
     vec2 ruv = mat2(vec2(c, sn), vec2(-sn, c)) * (v_uv - 0.5);
-    float n = texture(foam_tex, ruv * 0.7 + v_as.y * 3.7).r;
+    float n = texture(foam_tex, ruv * (0.7 + 1.3 * v_as.z) + v_as.y * 3.7).r;
     float d = length(v_wpos - u_cam);
-    float a = wm_mist_alpha(v_uv, n) * v_as.x * smoothstep(1.0, 3.0, d);
+    float a = wm_mist_alpha(v_uv, n, v_as.z) * v_as.x * smoothstep(1.0, 3.0, d);
     vec3 view_dir = normalize(v_wpos - u_cam);
     float fwd = pow(max(dot(view_dir, normalize(sun_dir)), 0.0), 3.0);
     vec3 col = 0.35 * sky_horizon + 0.12 * sun_color * (1.0 + 2.0 * fwd);
@@ -658,7 +652,6 @@ def render(ctx, d, size, wakes=True, shadows="auto"):
 
     water = ctx.program(vertex_shader=hdr_inc + WATER_VS, fragment_shader=hdr_inc + sky_inc + LIGHTING + WATER_FS)
     wake = ctx.program(vertex_shader=hdr_inc + wake_inc + WAKE_VS, fragment_shader=hdr_inc + sky_inc + LIGHTING + wake_inc + WAKE_FS)
-    bow = ctx.program(vertex_shader=hdr_inc + wake_inc + BOW_VS, fragment_shader=hdr_inc + sky_inc + LIGHTING + wake_inc + BOW_FS)
     mist = ctx.program(vertex_shader=hdr_inc + MIST_VS, fragment_shader=hdr_inc + sky_inc + LIGHTING + wake_inc + MIST_FS)
     boat = ctx.program(vertex_shader=BOAT_VS, fragment_shader=hdr_inc + sky_inc + LIGHTING + BOAT_FS)
     drawn = ctx.program(vertex_shader=hdr_inc + wake_inc + DRAWN_VS,
@@ -690,7 +683,7 @@ def render(ctx, d, size, wakes=True, shadows="auto"):
 
     if shadow_tex is not None:
         shadow_tex.use(7)
-    for p in (water, wake, bow, mist, boat, sky, drawn):
+    for p in (water, wake, mist, boat, sky, drawn):
         set_uniforms(p, sc["water"])
         set_if(p, "u_shadow_map", 7)
         set_if(p, "u_use_shadow_map", 1.0 if shadow_tex is not None else 0.0)
@@ -703,8 +696,7 @@ def render(ctx, d, size, wakes=True, shadows="auto"):
         if "u_vp" in p:
             p["u_vp"].write(vp_bytes)
     set_uniforms(wake, sc["wake_uniforms"])
-    set_uniforms(bow, sc["wake_uniforms"])
-    # the sea takes the shadow map only for real shadows (tier H); the wakes, bow waves and mist take none
+    # the sea takes the shadow map only for real shadows (tier H); the wakes and mist take none
     set_if(water, "u_use_shadow_map", 1.0 if shadows == "real" else 0.0)
     set_uniforms(sky, {k: v for k, v in sc["sky"].items() if k in ("sky_horizon", "sky_zenith", "sun_dir", "sun_color")})
     sky["u_inv_vp"].write(inv_vp)
@@ -800,29 +792,19 @@ def render(ctx, d, size, wakes=True, shadows="auto"):
         rv = ctx.buffer(np.hstack([rp, ru, rc]).astype("f4").tobytes())
         ctx.vertex_array(wake, [(rv, "3f 2f 4f", "in_pos", "in_uv", "in_color")],
                          ctx.buffer(ri.astype("i4").tobytes())).render(moderngl.TRIANGLES)
-    for r in sc.get("bow_waves", []) if wakes else []:
-        if "indices" not in r:
-            continue
-        rp = load_bin(d, r["name"] + "_pos.bin", "f4", 3)
-        ru = load_bin(d, r["name"] + "_uv.bin", "f4", 2)
-        ru2 = load_bin(d, r["name"] + "_uv2.bin", "f4", 2)
-        rc = load_bin(d, r["name"] + "_color.bin", "f4", 4)
-        ri = load_bin(d, r["name"] + "_idx.bin", "i4", 1)
-        bow["u_flow"].value = float(r.get("flow", 0.0))
-        rv = ctx.buffer(np.hstack([rp, ru, ru2, rc]).astype("f4").tobytes())
-        ctx.vertex_array(bow, [(rv, "3f 2f 2f 4f", "in_pos", "in_uv", "in_uv2", "in_color")],
-                         ctx.buffer(ri.astype("i4").tobytes())).render(moderngl.TRIANGLES)
     if wakes and sc.get("mist"):
         # camera-facing quads, as the mist shader's billboard
         right, up = basis[:, 0], basis[:, 1]
         verts = []
-        for x, y, z, size, alpha, seed in sc["mist"]:
+        for m in sc["mist"]:
+            x, y, z, size, alpha, seed = m[:6]
+            kind = m[6] if len(m) > 6 else 0.0
             ctr = np.array([x, z, -y])
             for (cu, cv) in ((0, 0), (1, 0), (1, 1), (0, 0), (1, 1), (0, 1)):
                 p = ctr + right * (cu - 0.5) * size + up * (cv - 0.5) * size
-                verts.append([p[0], p[1], p[2], cu, 1 - cv, alpha, seed])
+                verts.append([p[0], p[1], p[2], cu, 1 - cv, alpha, seed, kind])
         mv = ctx.buffer(np.array(verts, "f4").tobytes())
-        ctx.vertex_array(mist, [(mv, "3f 2f 2f", "in_pos", "in_uv", "in_as")]).render(moderngl.TRIANGLES)
+        ctx.vertex_array(mist, [(mv, "3f 2f 3f", "in_pos", "in_uv", "in_as")]).render(moderngl.TRIANGLES)
     fbo.depth_mask = True
     ctx.disable(moderngl.BLEND)
 

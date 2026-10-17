@@ -2,10 +2,9 @@
 //   SeaSampler     the sea height of SeaModel.height (sea.md §7.2, double precision) from the wave components and
 //                  the exposure grid, handed over once when they change
 //   WakeRibbon     one wake ribbon: rows, spray, and its mesh written in place into a fixed-size surface
-//   BowWaveSheets  the two bow wave sheets of a boat, written in place into a fixed-size surface
 //   MistCloud      the mist sprites, moved and written into their MultiMesh with one buffer call
 // Presentation only: nothing here touches the core. The GDScript references with the same maths are
-// game/scenes/sea/wake_ribbon_ref.gd (WakeRibbonRef), bow_wave.gd (BowWave.build_arrays, mist_step, mist_look)
+// game/scenes/sea/wake_ribbon_ref.gd (WakeRibbonRef), bow_wave.gd (BowWave.mist_step, mist_look)
 // and sea_model.gd (SeaModel.height); SeaWakes uses them when the extension is missing, and
 // game/tests/wakes_native_test.gd compares the two. Keep them in step.
 #pragma once
@@ -78,7 +77,7 @@ class WakeRibbon : public godot::RefCounted {
   GDCLASS(WakeRibbon, godot::RefCounted)
 
  public:
-  static constexpr int N_ROWS = 80;
+  static constexpr int N_ROWS = 180;
   static constexpr int ACROSS = 15;
   static constexpr int MAX_INDEX = (N_ROWS - 1) * (ACROSS - 1) * 6;
 
@@ -92,6 +91,8 @@ class WakeRibbon : public godot::RefCounted {
   // spray lands on sea.height(x, y, t_ms)
   void step(double t_s, double dt, const godot::Ref<SeaSampler>& sea, double t_ms, const godot::Variant& current);
   int64_t row_count() const { return static_cast<int64_t>(rows_.size()); }
+  // WakeRibbonRef.set_kind: 0 the bow ribbon, 1 the transom ribbon (water_render.md §5)
+  void set_kind(int64_t k) { kind_ = static_cast<int>(k); }
   // row k (oldest first) as WakeRibbonRef keeps it: {t, p, fwd, v, w0, ratio, visible, dist, spray}
   godot::Dictionary row(int64_t k) const;
   // the reference's compact arrays (WakeRibbonRef.build_arrays)
@@ -120,47 +121,18 @@ class WakeRibbon : public godot::RefCounted {
     Spray spray[2];
   };
   static godot::Vector2 port(const Row& r) { return godot::Vector2(-r.fwd.y, r.fwd.x); }
-  static double half_width(const Row& r, double t_s);
+  double half_width(const Row& r, double t_s) const;
   static double alpha(const Row& r, double t_s);
-  static godot::Vector2 spray_excess(const Row& r, double t_s);
+  godot::Vector2 spray_excess(const Row& r, double t_s) const;
   void build(double t_s);
 
+  int kind_ = 0;  // 0 the bow ribbon (foam lines at the wake angle), 1 the transom ribbon (the turbulent wake)
   std::deque<Row> rows_;
   std::vector<godot::Vector3> pos_;
   std::vector<godot::Vector2> uv_, uv2_;
   std::vector<godot::Color> col_;
   std::vector<uint16_t> idx_;
   std::vector<godot::Vector2> excess_;
-  FixedSurface surf_;
-};
-
-class BowWaveSheets : public godot::RefCounted {
-  GDCLASS(BowWaveSheets, godot::RefCounted)
-
- public:
-  static constexpr int NS = 14;
-  static constexpr int NT = 7;
-  static constexpr int N_VERT = 2 * NS * NT;
-  static constexpr int N_INDEX = 2 * (NS - 1) * (NT - 1) * 6;
-
-  // BowWave.build_arrays for a boat state (SeaWakes.update_boat keys) and the drivers v, ratio, plunge
-  godot::Array build_arrays(const godot::Dictionary& st, double v, double ratio, double plunge);
-  godot::Array blank_arrays() const;
-  bool attach_mesh(const godot::RID& mesh);
-  // false (nothing written) when the wave is not visible
-  bool write_mesh(const godot::Dictionary& st, double v, double ratio, double plunge);
-  godot::PackedByteArray vertex_bytes() const { return surf_.vbytes; }
-  godot::PackedByteArray attribute_bytes() const { return surf_.abytes; }
-
- protected:
-  static void _bind_methods();
-
- private:
-  bool build(const godot::Dictionary& st, double v, double ratio, double plunge);
-  std::vector<godot::Vector3> pos_;
-  std::vector<godot::Vector2> uv_, uv2_;
-  std::vector<godot::Color> col_;
-  std::vector<uint16_t> idx_;
   FixedSurface surf_;
 };
 
@@ -171,7 +143,7 @@ class MistCloud : public godot::RefCounted {
   static constexpr int MAX = 256;
   static constexpr int STRIDE = 16;  // 3x4 transform and custom data
 
-  // a sprite as BowWave.mist_sprite makes it: {pos, vel (ENU), age, life, s0, s1, seed}
+  // a sprite as BowWave.mist_sprite makes it: {pos, vel (ENU), age, life, s0, s1, seed, a}
   void add(const godot::Dictionary& m);
   int64_t count() const { return static_cast<int64_t>(m_.size()); }
   // BowWave.mist_step on every sprite, dropping the lived-out ones
@@ -190,6 +162,7 @@ class MistCloud : public godot::RefCounted {
   struct Sprite {
     godot::Vector3 pos, vel;
     double age, life, s0, s1, seed;
+    double a, g, drag, k;  // a burst's droplet sheet: alpha scale, gravity, drag, look (1); mist: 1, MIST_*, 0
   };
   std::vector<Sprite> m_;
   godot::PackedFloat32Array buf_;

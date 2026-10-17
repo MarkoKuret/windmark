@@ -5,6 +5,7 @@ extends SceneTree
 ## renders them with the same shader functions (sea_common, sky_common, wake_common) on an offscreen GL context.
 ##   godot --headless --path game -s res://tests/water_preview_dump.gd [-- --sky=late] [shot ...]
 ##   godot --headless --path game -s res://tests/water_preview_dump.gd -- --time=08:00 --conditions=fair --tag=d0800 bay20_chase_M
+## `--caps=on` draws the whitecaps in every shot (the whitecaps_* shots always have them).
 ## `--sky=<name>` lights the shots with an old preset name (SkyRig.set_preset_name) and names them `<name>_<shot>`;
 ## `--time=HH:MM` and `--conditions=` set the daylight (water_render.md §4.5) and `--tag=` names them `<tag>_<shot>`;
 ## with shot names after `--`, only those (or the shots starting with them) are dumped. Each shot's folder also gets
@@ -35,7 +36,45 @@ const SHOTS := [
 			{"puffs": true, "seq": 6, "step_ms": 500.0, "speed": 0.0}],
 	["whitecaps_20kn_60s", SeaEnvSource.Mode.PLACEHOLDER, 20.0, 0, SeaQuality.Tier.M,
 			{"puffs": true, "seq": 120, "step_ms": 500.0, "speed": 0.0, "light": true}],
+	# the same from the helicopter (overview) camera
+	["whitecaps_12kn_heli", SeaEnvSource.Mode.PLACEHOLDER, 12.0, 2, SeaQuality.Tier.M, {"puffs": true}],
+	["whitecaps_18kn_heli", SeaEnvSource.Mode.PLACEHOLDER, 18.0, 2, SeaQuality.Tier.M, {"puffs": true}],
+	["whitecaps_24kn_heli", SeaEnvSource.Mode.PLACEHOLDER, 24.0, 2, SeaQuality.Tier.M, {"puffs": true}],
+	# an open-sea venue in a breeze (Fremantle: fetch 30 km, a 0.8 m / 12 s swell), the boat at 19 kn on a wide
+	# circle: the look of the sea, wake, bow spray and whitecaps by wind (water_render.md §4.1-§4.4, §5)
+	["sea25_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 0, SeaQuality.Tier.M, {"puffs": true, "fetch": 30000.0, "from": 230.0, "swell": [0.8, 12.0, 240.0], "radius": 400.0, "speed": 9.8}],
+	["sea25_aerial_M", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 1, SeaQuality.Tier.M, {"puffs": true, "fetch": 30000.0, "from": 230.0, "swell": [0.8, 12.0, 240.0], "radius": 400.0, "speed": 9.8}],
+	["sea25_heli_M", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 2, SeaQuality.Tier.M, {"puffs": true, "fetch": 30000.0, "from": 230.0, "swell": [0.8, 12.0, 240.0], "radius": 400.0, "speed": 9.8}],
+	["sea25_bow_M", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 4, SeaQuality.Tier.M, {"puffs": true, "fetch": 30000.0, "from": 230.0, "swell": [0.8, 12.0, 240.0], "radius": 400.0, "speed": 9.8}],
+	["sea25_sun_M", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 3, SeaQuality.Tier.M, {"puffs": true, "fetch": 30000.0, "from": 230.0, "swell": [0.8, 12.0, 240.0], "radius": 400.0, "speed": 9.8}],
+	["sea25_chase_L", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 0, SeaQuality.Tier.L, {"puffs": true, "fetch": 30000.0, "from": 230.0, "swell": [0.8, 12.0, 240.0], "radius": 400.0, "speed": 9.8}],
+	["sea25_chase_H", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 0, SeaQuality.Tier.H, {"puffs": true, "fetch": 30000.0, "from": 230.0, "swell": [0.8, 12.0, 240.0], "radius": 400.0, "speed": 9.8}],
+	["sea15_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 15.0, 0, SeaQuality.Tier.M, {"puffs": true, "fetch": 30000.0, "from": 230.0, "swell": [0.8, 12.0, 240.0], "radius": 400.0, "speed": 6.5}],
+	["sea15_aerial_M", SeaEnvSource.Mode.PLACEHOLDER, 15.0, 1, SeaQuality.Tier.M, {"puffs": true, "fetch": 30000.0, "from": 230.0, "swell": [0.8, 12.0, 240.0], "radius": 400.0, "speed": 6.5}],
+	["sea8_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 8.0, 0, SeaQuality.Tier.M, {"puffs": true, "fetch": 30000.0, "from": 230.0, "swell": [0.8, 12.0, 240.0], "radius": 400.0, "speed": 3.5}],
+	["sea8_aerial_M", SeaEnvSource.Mode.PLACEHOLDER, 8.0, 1, SeaQuality.Tier.M, {"puffs": true, "fetch": 30000.0, "from": 230.0, "swell": [0.8, 12.0, 240.0], "radius": 400.0, "speed": 3.5}],
+	# the wake at 8, 15 and 19 kn of boat speed (water_render.md §5), a 12 kn sea, a wide circle
+	["wake8_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 12.0, 0, SeaQuality.Tier.M, {"radius": 400.0, "speed": 4.1}],
+	["wake15_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 12.0, 0, SeaQuality.Tier.M, {"radius": 400.0, "speed": 7.7}],
+	["wake19_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 12.0, 0, SeaQuality.Tier.M, {"radius": 400.0, "speed": 9.8}],
+	["wake8_aerial_M", SeaEnvSource.Mode.PLACEHOLDER, 12.0, 1, SeaQuality.Tier.M, {"radius": 400.0, "speed": 4.1}],
+	["wake15_aerial_M", SeaEnvSource.Mode.PLACEHOLDER, 12.0, 1, SeaQuality.Tier.M, {"radius": 400.0, "speed": 7.7}],
+	["wake19_aerial_M", SeaEnvSource.Mode.PLACEHOLDER, 12.0, 1, SeaQuality.Tier.M, {"radius": 400.0, "speed": 9.8}],
+	# the game itself (scenes/sail_test.tscn on the core): WM7 at Fremantle running under main and jib, the chase
+	# camera, after `seconds` of sailing; the sea, wind and puffs are the core's (no swell in this setup)
+	["sail25_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0}],
+	["sail18_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 18.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0}],
+	["sail12_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 12.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0}],
+	["sail25_close_M", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0, "close": 0.45}],
+	["sail18_close_M", SeaEnvSource.Mode.PLACEHOLDER, 18.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0, "close": 0.45}],
+	["sail12_aerial_M", SeaEnvSource.Mode.PLACEHOLDER, 12.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0, "aerial": true}],
+	["sail18_aerial_M", SeaEnvSource.Mode.PLACEHOLDER, 18.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0, "aerial": true}],
+	["sailseq25_chase_M6", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0, "seq": 6, "step_ms": 1000.0}],
+	["sailseq25_aerial_M", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0, "aerial": true, "seq": 6, "step_ms": 1000.0}],
+	["sail25_aerial_M", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0, "aerial": true}],
+	["sailseq25_chase_M", SeaEnvSource.Mode.PLACEHOLDER, 25.0, 0, SeaQuality.Tier.M, {"sail": true, "seconds": 15.0, "seq": 24, "step_ms": 250.0}],
 ]
+
 
 var _shot := -1
 var _frames := 0
@@ -47,6 +86,7 @@ var _tag := ""
 var _only: PackedStringArray = []
 var _seq := 0
 var _dumped := 0
+var _caps := false
 
 
 func _init() -> void:
@@ -58,6 +98,8 @@ func _init() -> void:
 			_time = Daylight.parse_hour(a.trim_prefix("--time="))
 		elif a.begins_with("--conditions="):
 			_conditions = a.trim_prefix("--conditions=")
+		elif a == "--caps=on":
+			_caps = true
 		elif a.begins_with("--tag="):
 			_tag = a.trim_prefix("--tag=")
 		else:
@@ -95,6 +137,9 @@ func _next() -> void:
 		return
 	_seq = 0
 	var s: Array = SHOTS[_shot]
+	if _opt("sail", false):
+		_start_sail(s)
+		return
 	_scene = (load("res://scenes/water_test.tscn") as PackedScene).instantiate()
 	var rig: SkyRig = _scene.get_node("SkyDay")
 	if _sky != "":
@@ -108,10 +153,20 @@ func _next() -> void:
 	else:
 		src.wind_kn = s[2]
 		src.puffs_enabled = _opt("puffs", false)
+		src.fetch_m = _opt("fetch", src.fetch_m)
+		src.wind_from_deg = _opt("from", src.wind_from_deg)
+		var sw: Array = _opt("swell", [])
+		if not sw.is_empty():
+			src.swell_hs = sw[0]
+			src.swell_tp = sw[1]
+			src.swell_from_deg = sw[2]
 	_scene.camera_mode = s[3]
 	_scene.boat_speed = _opt("speed", _scene.boat_speed)
+	_scene.circle_radius = _opt("radius", _scene.circle_radius)
 	var sea: Sea = _scene.get_node("Sea")
 	sea.quality = s[4]
+	# the whitecaps are off by default (water_render.md §4.4): on for the whitecap shots and with --caps=on
+	sea.whitecaps = _caps or String(s[0]).begins_with("whitecaps")
 	sea.use_internal_clock = false
 	# headless meshes do not keep the native wakes' in-place updates: dump the references' meshes (the same
 	# geometry, tests/wakes_native_test.gd)
@@ -120,9 +175,73 @@ func _next() -> void:
 	_frames = 0
 
 
+var _sail_t0 := -1.0
+
+
+## A shot of the game scene: WM7 at Fremantle on the core (as generated/clip/downwind_clip.gd sets it up).
+func _start_sail(s: Array) -> void:
+	_scene = (load("res://scenes/sail_test.tscn") as PackedScene).instantiate()
+	_scene.class_id = "wm7"
+	_scene.venue = "fremantle"
+	_scene.start_x = 3000.0
+	_scene.start_y = -500.0
+	_scene.wind_speed_kn = s[2]
+	_scene.wind_from_deg = rad_to_deg(4.014257)
+	_scene.puffs = true
+	_scene.world_seed = 7
+	_scene.start_twa_deg = 145.0
+	_scene.with_pause_menu = false
+	_scene.with_results = false
+	_scene.no_hud = true
+	_scene.sea_quality = s[4]
+	_scene.scripted_input = RawInput.new()
+	root.add_child(_scene)
+	(_scene.get_node("Wakes") as SeaWakes).use_reference = true
+	(_scene.get_node("Sea") as Sea).whitecaps = _caps
+	_sail_t0 = -1.0
+	_frames = 0
+
+
+func _process_sail() -> bool:
+	var sea: Sea = _scene.get_node("Sea")
+	if _sail_t0 < 0.0:
+		_sail_t0 = sea.render_time_ms
+	if _opt("aerial", false) and sea.render_time_ms - _sail_t0 >= 1000.0 * float(_opt("seconds", 15.0)):
+		# a high aerial view: 120 m up, 90 m behind the boat, looking at it
+		var cam_a: Camera3D = _scene.rig.camera
+		var bpa: Vector3 = (_scene.boat_view as Node3D).global_position
+		var back := -(_scene.boat_view as Node3D).global_basis.z
+		back.y = 0.0
+		back = back.normalized() if back.length() > 1e-3 else Vector3(0, 0, 1)
+		cam_a.look_at_from_position(bpa + back * 90.0 + Vector3(0.0, 120.0, 0.0), bpa, Vector3.UP)
+	var close: float = _opt("close", 0.0)
+	if close > 0.0 and sea.render_time_ms - _sail_t0 >= 1000.0 * float(_opt("seconds", 15.0)):
+		# the camera moved toward the boat along its line (a close chase view), same direction
+		var cam: Camera3D = _scene.rig.camera
+		var bp: Vector3 = (_scene.boat_view as Node3D).global_position
+		cam.global_position = bp + (cam.global_position - bp) * close
+	var n_seq: int = _opt("seq", 0)
+	var due := 1000.0 * float(_opt("seconds", 15.0)) + _seq * float(_opt("step_ms", 250.0))
+	if sea.render_time_ms - _sail_t0 < due:
+		return false
+	if n_seq > 0:
+		_dump("%s_%02d" % [_name(SHOTS[_shot]), _seq])
+		_seq += 1
+		if _seq < n_seq:
+			return false
+	else:
+		_dump(_name(SHOTS[_shot]))
+	_scene.queue_free()
+	_scene = null
+	_next()
+	return false
+
+
 func _process(_delta: float) -> bool:
 	if _scene == null:
 		return false
+	if _opt("sail", false):
+		return _process_sail()
 	var sea: Sea = _scene.get_node("Sea")
 	sea.render_time_ms += DT_MS
 	_frames += 1
@@ -248,7 +367,8 @@ func _dump(name: String, light := false) -> void:
 				"water": _uniforms(sea.material)}, "  "))
 		_dumped += 1
 		return
-	var cam: Camera3D = _scene.get_node("Camera")
+	var sail: bool = _opt("sail", false)
+	var cam: Camera3D = _scene.rig.camera if sail else _scene.get_node("Camera")
 	var sky: SkyRig = _scene.get_node("SkyDay")
 	var env := sky.environment()
 	var data := {
@@ -296,11 +416,6 @@ func _dump(name: String, light := false) -> void:
 			ribbons.append(_write_arrays(dir, n, mi.mesh.surface_get_arrays(0)))
 			ribbons[-1]["name"] = n
 			wake_uniforms = _uniforms(mi.material_override)
-		elif sh == SeaWakes.BOW_SHADER:
-			var n := "wave%d" % waves.size()
-			waves.append(_write_arrays(dir, n, mi.mesh.surface_get_arrays(0)))
-			waves[-1]["name"] = n
-			waves[-1]["flow"] = mi.get_instance_shader_parameter("flow")
 	data["wakes"] = ribbons
 	data["wake_uniforms"] = wake_uniforms
 	data["bow_waves"] = waves
@@ -324,12 +439,12 @@ func _dump(name: String, light := false) -> void:
 	var mist := []
 	for m in wakes.mist_sprites():
 		var look := BowWave.mist_look(m)
-		mist.append([m["pos"].x, m["pos"].y, m["pos"].z, look.x, look.y, m["seed"]])
+		mist.append([m["pos"].x, m["pos"].y, m["pos"].z, look.x, look.y, m["seed"], m.get("k", 0.0)])
 	data["mist"] = mist
 	# boat triangles (world), one entry per mesh surface with its material (boat shader or a BaseMaterial3D)
 	var boats := []
 	var tex_files := {}
-	var stack: Array = [_scene.get_node("Boat")]
+	var stack: Array = [_scene.boat_view if sail else _scene.get_node("Boat")]
 	while not stack.is_empty():
 		var n: Node = stack.pop_back()
 		stack.append_array(n.get_children())

@@ -1,9 +1,11 @@
 ---
 id: WM-098
 title: 'Water: whitecaps that look natural from every camera (sparse, non-repeating)'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@sea-look'
 created_date: '2026-10-05 15:27'
+updated_date: '2026-10-15 19:33'
 labels:
   - front-end
   - visuals
@@ -20,8 +22,14 @@ Owner (2026-10-05): the WM-083 whitecaps are bad: far too many, and they follow 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 No visible repetition or regular pattern from the chase, aerial and helicopter cameras at 12, 18, 24 kn
-- [ ] #2 Cover within the measured whitecap fractions
-- [ ] #3 Tier M frame time unchanged on the M1
+- [x] #1 No visible repetition or regular pattern from the chase, aerial and helicopter cameras at 12, 18, 24 kn
+- [x] #2 Cover within the measured whitecap fractions
+- [x] #3 Tier M frame time unchanged on the M1
 - [ ] #4 Owner approves; then on by default
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Engine fix 2026-10-15: additive group envelope made foam sheets; now multiplicative envelope plus short-crest breakup, wind sea only (wave age 1.2), cover calibrated as area F>=0.5. Patches at 25 kn with swell: median 1 m, 95% 4 m, max 11 m (was 27/51 m). Game-scene previews: game/generated/sea_look/caps_engine.jpg.
+<!-- SECTION:NOTES:END -->

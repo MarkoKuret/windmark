@@ -1,15 +1,17 @@
 class_name WakeRibbonRef
 extends RefCounted
 ## One wake ribbon (water_render.md §5): rows laid down behind the bow (or the transom) every 50 ms of render
-## time, left where they were laid, opening at the Kelvin angle and fading over 4 s. Rows optionally launch two
+## time, left where they were laid, opening at the Kelvin angle for 4 s and fading over 9 s. Rows optionally launch two
 ## spray particles that fly under gravity, stick where they reach the surface and become the ribbon's outer
 ## vertices. World coordinates are ENU metres (x east, y north, z up); heights come from a callable.
 ##
 ## The GDScript reference of the native WakeRibbon (game/native/src/sea_wakes.h): SeaWakes uses it when the
 ## extension is missing, and tests/wakes_native_test.gd compares the two. Keep them in step.
 
-const N_ROWS := 80
-const LIFE_S := 4.0
+const N_ROWS := 180
+const LIFE_S := 9.0
+## the edges stop opening after SPREAD_S (the diverging waves have broken)
+const SPREAD_S := 4.0
 const KELVIN := 0.354      # tan 19.47 deg
 const GRAVITY := 9.81
 const U_OUTER := 0.0
@@ -17,6 +19,19 @@ const U_EDGE := 0.2
 ## Vertices across a row: the two outer (feathered) vertices and thirteen from edge to edge (at most about
 ## 0.8 m apart on a 4 s ribbon), so the ribbon follows the waves between its edges.
 const ACROSS := 15
+
+## 0: the bow ribbon (the diverging waves' foam lines, opening at the wake angle); 1: the transom ribbon (the
+## turbulent wake, widening slowly). water_render.md §5.
+var kind := 0
+## the transom ribbon's widening: w = w0·(1 + TURB_SPREAD·t)
+const TURB_SPREAD := 0.15
+## the bow ribbon's foam lines: LINE_M wide just inside each edge
+const LINE_M := 0.25
+
+
+func set_kind(k: int) -> void:
+	kind = k
+
 
 ## Rows, oldest first. Each: {t, p: Vector2, fwd: Vector2, v, w0, ratio, visible, dist, spray: Array}
 var rows: Array = []
@@ -44,8 +59,32 @@ static func age(row: Dictionary, t_s: float) -> float:
 	return t_s - float(row["t"])
 
 
-static func half_width(row: Dictionary, t_s: float) -> float:
-	return float(row["w0"]) + KELVIN * float(row["v"]) * age(row, t_s)
+## The tangent of the wake's half angle at a speed ratio: Kelvin's 19.47° at low Froude number, falling as 1/Fr
+## above (Rabaud and Moisy 2013: α ≈ 0.1995 rad / Fr), with Fr = 0.399·ratio (the hull Froude number).
+static func wake_tan(ratio: float) -> float:
+	var fr := 0.399 * ratio
+	if fr <= 0.1995 / 0.33983:
+		return KELVIN
+	return tan(0.1995 / fr)
+
+
+## The hourglass of a planing transom (water_render.md §5): [P, pinch, hollow] of a transom row at t_s.
+static func hourglass(row: Dictionary, t_s: float) -> Vector3:
+	var pl := smoothstep(0.8, 1.05, 0.399 * float(row["ratio"]))
+	if pl <= 0.0:
+		return Vector3.ZERO
+	var v := float(row["v"])
+	var xw := maxf(0.7 * v * v / GRAVITY, 0.5)
+	var d := v * age(row, t_s)
+	var q := (d - xw) / (0.5 * xw)
+	return Vector3(pl, exp(-q * q), pl * (1.0 - smoothstep(0.3 * xw, xw, d)))
+
+
+static func half_width(row: Dictionary, t_s: float, k := 0) -> float:
+	if k == 1:
+		var hg := hourglass(row, t_s)
+		return float(row["w0"]) * (1.0 + TURB_SPREAD * minf(age(row, t_s), LIFE_S)) * (1.0 - 0.55 * hg.x * hg.y)
+	return float(row["w0"]) + wake_tan(float(row["ratio"])) * float(row["v"]) * minf(age(row, t_s), SPREAD_S)
 
 
 static func alpha(row: Dictionary, t_s: float) -> float:
@@ -91,7 +130,7 @@ func launch_last_spray(speed: float, heel: float, z_port: float, z_stbd: float) 
 		launch_spray(rows[-1], speed, heel, [z_port, z_stbd])
 
 
-## Advances the ribbon to render time t_s: drops rows older than 4 s, drifts rows with the current and moves
+## Advances the ribbon to render time t_s: drops rows older than LIFE_S, drifts rows with the current and moves
 ## the spray. height: Callable(x, y) -> sea height (m); current: Callable(x, y) -> Vector2 (m/s) or null.
 func step(t_s: float, dt: float, height: Callable, current = null) -> void:
 	while not rows.is_empty() and age(rows[0], t_s) > LIFE_S:
@@ -145,8 +184,9 @@ static func spray_excess(row: Dictionary, t_s: float) -> Vector2:
 
 ## Mesh arrays of the ribbon at t_s, newest row first, ACROSS vertices per row from the outer port vertex to the
 ## outer starboard one in scene axes with y = 0 (the wake shader drapes it on the sea). UV: (across,
-## distance sailed / 10 m); UV2: the row's port direction (world x, y); COLOR.r: the bow half width as a
-## fraction of the ribbon's (the centre wake); COLOR.a: the row alpha. The outer vertices sit a feathered margin
+## distance sailed / 10 m); UV2: the row's port direction (world x, y);
+## COLOR.r: 1 on the transom ribbon (all of it is the turbulent wake), 0 on the bow ribbon; COLOR.g: the row's age over
+## LIFE_S; COLOR.b: the foam line's width over the half width (bow ribbon), 0 on the transom's; COLOR.a: the row alpha. The outer vertices sit a feathered margin
 ## outside the edges, pushed out by the spray reach smoothed over neighbouring rows (never inside the edge, so
 ## the strip does not fold, and without steps from row to row).
 func build_arrays(t_s: float) -> Array:
@@ -167,7 +207,7 @@ func build_arrays(t_s: float) -> Array:
 		if a <= 0.0:
 			prev = -1
 			continue
-		var hw := half_width(row, t_s)
+		var hw := half_width(row, t_s, kind)
 		var lp := port(row)
 		var feather := 0.3 + 0.25 * hw
 		# triangular smoothing of the spray reach over the neighbouring rows
@@ -183,7 +223,15 @@ func build_arrays(t_s: float) -> Array:
 		ex /= wsum
 		var reach := [hw + feather + ex.x, hw + feather + ex.y]
 		var base := verts.size()
-		var centre := clampf(float(row["w0"]) / maxf(hw + feather, 1e-3), 0.0, 1.0)
+		var centre := 1.0 if kind == 1 else 0.0
+		var line := 0.0 if kind == 1 else clampf(LINE_M / maxf(hw, 1e-3), 0.0, 1.0)
+		if kind == 1:
+			# the turbulent wake emerges from under the transom: feathered, rounded start over a hull's breadth
+			var ks := smoothstep(0.0, float(row["w0"]) / 0.45, float(row["v"]) * age(row, t_s))
+			centre = 0.4 + 0.6 * ks
+			var hg := hourglass(row, t_s)
+			a *= ks * (1.0 + 0.3 * hg.x * hg.y)
+			line = hg.z
 		var p: Vector2 = row["p"]
 		for i in ACROSS:
 			var u: float = U_OUTER if i == 0 else (1.0 - U_OUTER if i == ACROSS - 1 else
@@ -199,7 +247,7 @@ func build_arrays(t_s: float) -> Array:
 			verts.append(Vector3(q.x, 0.0, -q.y))
 			uvs.append(Vector2(u, float(row["dist"]) / 10.0))
 			uv2s.append(lp)
-			cols.append(Color(centre, 1, 1, 0.0 if i == 0 or i == ACROSS - 1 else a))
+			cols.append(Color(centre, clampf(age(row, t_s) / LIFE_S, 0.0, 1.0), line, 0.0 if i == 0 or i == ACROSS - 1 else a))
 		if prev >= 0:
 			for i in ACROSS - 1:
 				idx.append_array([prev + i, base + i, base + i + 1, prev + i, base + i + 1, prev + i + 1])

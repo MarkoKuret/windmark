@@ -63,7 +63,7 @@ void fragment() {
 #else
 	vec2 wake = vec2(0.0);
 #endif
-	WmSurface S = wm_surface(v_local, v_eta, n_geo, view, dist, wake, v_land);
+	WmSurface S = wm_surface(v_local, v_eta, n_geo, view, dist, px, wake, v_land);
 	wm_apply_caps(S, v_local, px, v_expo, dist, n_geo);
 	vec4 ov = wm_overlays(v_local, dist);
 	ALBEDO = mix(S.albedo, ov.rgb * 0.8, ov.a);

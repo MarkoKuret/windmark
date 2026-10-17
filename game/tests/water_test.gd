@@ -26,6 +26,8 @@ var _scene: Node
 var _tiers_left: Array = []
 
 
+var _last_glow := 0.0   # the bubble glow of the last _caps_drawn
+
 func f32(x: float) -> float:
 	_f[0] = x
 	return _f[0]
@@ -59,6 +61,7 @@ func _init() -> void:
 	check_land_core()
 	check_wake_ribbon()
 	check_whitecaps()
+	check_wind_roughness()
 	_tiers_left = [SeaQuality.Tier.L, SeaQuality.Tier.M, SeaQuality.Tier.H]
 	_start_scene()
 
@@ -272,7 +275,7 @@ func _sail_bow(tier: SeaQuality.Tier, ratio: float, heel := 0.0) -> Dictionary:
 	wakes._rng.seed = 7
 	var lwl := 6.8
 	var v := ratio * 1.34 * sqrt(lwl / 0.3048) * 0.51444447
-	var out := {"wave": 0, "mist": 0, "min_size": INF, "max_alpha": 0.0, "lift": 0.0, "lee_lift": 0.0, "wind_lift": 0.0}
+	var out := {"mist": 0, "min_size": INF, "max_alpha": 0.0}
 	for f in 180:
 		var t := f / 60.0
 		sea.render_time_ms = 1000.0 * t
@@ -280,46 +283,76 @@ func _sail_bow(tier: SeaQuality.Tier, ratio: float, heel := 0.0) -> Dictionary:
 		wakes.update_boat(1, {"x": 0.0, "y": v * t, "z": 0.0, "psi": 0.0, "heel": heel, "pitch": 0.0, "lwl": lwl,
 			"bwl": 2.0, "transom_width": 1.6, "bow_x": 0.5 * lwl, "stern_x": -0.5 * lwl, "own": true})
 		wakes._process(1.0 / 60.0)
-	var arrays := wakes.bow_wave_arrays(1)
-	if not arrays.is_empty():
-		var pos: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-		var uv2: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV2]
-		out["wave"] = pos.size()
-		var half := pos.size() / 2
-		for k in pos.size():
-			out["lift"] = maxf(out["lift"], uv2[k].x)
-			# port sheet first; heel > 0 puts starboard down (lee)
-			if k < half:
-				out["wind_lift"] = maxf(out["wind_lift"], uv2[k].x)
-			else:
-				out["lee_lift"] = maxf(out["lee_lift"], uv2[k].x)
 	for m in wakes.mist_sprites():
 		var look := BowWave.mist_look(m)
 		out["min_size"] = minf(out["min_size"], look.x)
 		out["max_alpha"] = maxf(out["max_alpha"], look.y)
 	out["mist"] = wakes.mist_sprites().size()
 	out["spray_nodes"] = wakes.get_node_or_null("Spray") != null
+	# no bow wave sheet is drawn (removed 2026-10-16): only the two ribbons per boat and the mist
+	var meshes := 0
+	for c in wakes.get_children():
+		if c is MeshInstance3D:
+			meshes += 1
+	out["meshes"] = meshes
 	holder.free()
 	return out
 
 
 func check_bow_spray() -> void:
 	var slow := _sail_bow(SeaQuality.Tier.H, 0.2)
-	check(slow["wave"] == 0 and slow["mist"] == 0, "bow: no bow wave and no mist at speed ratio 0.2")
+	check(slow["mist"] == 0, "bow: no mist at speed ratio 0.2")
 	var mid := _sail_bow(SeaQuality.Tier.H, 0.45)
-	check(mid["wave"] > 0 and mid["mist"] == 0, "bow: a bow wave and no mist at speed ratio 0.45 on flat water")
+	check(mid["mist"] == 0, "bow: no mist at speed ratio 0.45 on flat water")
 	var fast := _sail_bow(SeaQuality.Tier.H, 1.0, 0.3)
-	check(fast["wave"] == 2 * BowWave.NS * BowWave.NT, "bow: two sheets of %d x %d at hull speed" % [BowWave.NS, BowWave.NT])
-	check(fast["lift"] > mid["lift"] and fast["lift"] > 0.15 and fast["lift"] < 0.08 * 6.8 + 0.2,
-		"bow: the crest rises with speed (%.2f m at 0.45, %.2f m at hull speed)" % [mid["lift"], fast["lift"]])
-	check(fast["lee_lift"] > fast["wind_lift"], "bow: heeled, the lee sheet is higher (%.2f m, windward %.2f m)" % [
-		fast["lee_lift"], fast["wind_lift"]])
+	check(fast["meshes"] == 2, "bow: no bow wave sheet, the boat's two wake ribbons only (%d meshes)" % fast["meshes"])
 	check(fast["mist"] > 5 and fast["min_size"] >= 0.5 and fast["max_alpha"] <= BowWave.MIST_ALPHA + 1e-6,
 		"bow: mist at hull speed, %d soft sprites of at least 0.5 m (smallest %.2f m), alpha at most %.2f" % [
 		fast["mist"], fast["min_size"], fast["max_alpha"]])
 	check(not fast["spray_nodes"], "bow: no spray particles drawn (no dots)")
+	# impact bursts (§5): a bow sinking into the sea at 1 m/s for 0.3 s, at speed and slowly
+	var drv := BowWave.Drivers.new()
+	var steady := BowWave.Drivers.new()
+	var slow_drv := BowWave.Drivers.new()
+	var rel := 0.5
+	var n_burst := 0
+	var n_steady := 0
+	var top := 0.0
+	for k in 40:
+		var sink := 1.0 if k >= 10 and k < 16 else 0.0
+		rel -= sink * 0.05
+		drv.advance(0.05, 9.0, 2.5, rel)
+		steady.advance(0.05, 9.0, 2.5, 0.5)
+		slow_drv.advance(0.05, 0.8, 0.2, rel)
+		top = maxf(top, BowWave.burst(drv))
+		if k >= 10 and k < 22:
+			n_burst += BowWave.mist_count(drv, 1.0, 0.05)
+			n_steady += BowWave.mist_count(steady, 1.0, 0.05)
+	check(top > 1.2 and BowWave.burst(drv) < 0.2, "bow: the impact bursts (I %.2f) and dies down within a second (%.2f)" % [
+			top, BowWave.burst(drv)])
+	check(n_burst > 2 * n_steady, "bow: an impact throws more spray (%d sprites in 0.6 s, %d riding steadily)" % [n_burst, n_steady])
+	check(BowWave.burst(slow_drv) == 0.0, "bow: no burst at speed ratio 0.2")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	# at the peak of an impact: droplet sheets thrown flat and outboard, falling like water, short-lived
+	var drv_peak := BowWave.Drivers.new()
+	drv_peak.ratio = 2.5
+	drv_peak.v = 9.0
+	drv_peak.impact = 1.2
+	var n_drop := 0
+	var flat := true
+	for k in 200:
+		var spr := BowWave.mist_sprite({"lwl": 6.8, "bwl": 2.2}, drv_peak, 0.0, Vector2.ZERO, rng)
+		if float(spr.get("k", 0.0)) < 0.5:
+			continue
+		n_drop += 1
+		var vel: Vector3 = spr["vel"]
+		flat = flat and Vector2(vel.x, vel.y).length() > 1.5 * vel.z and float(spr["life"]) <= 0.6 \
+				and float(spr["g"]) > 9.0 and float(spr["s1"]) <= 0.9 and float(spr["a"]) <= 2.2
+	check(n_drop > 100 and n_drop < 180 and flat,
+			"bow: at impact %d of 200 sprites are droplet sheets: flat, fast-falling, short-lived, at most 0.9 m" % n_drop)
 	var low_tier := _sail_bow(SeaQuality.Tier.L, 1.0)
-	check(low_tier["wave"] > 0 and low_tier["mist"] == 0, "bow: tier L draws the bow wave without mist")
+	check(low_tier["mist"] == 0, "bow: tier L draws no mist")
 
 
 ## A Sea with SeaWakes but no boat has no wake buffer; the first boat makes it, removing it drops it, and a tier
@@ -520,7 +553,57 @@ func check_wake_ribbon() -> void:
 		for i in 10:
 			r.step(t + 0.05 * (i + 1), 0.05, flat)
 		check(row["p"] == p0 and absf(p0.y - v * 1.0) < 1e-6, "wake: rows stay where they were laid")
-	check(r.rows.size() <= WakeRibbonRef.N_ROWS, "wake: at most 80 rows")
+	check(r.rows.size() <= WakeRibbonRef.N_ROWS, "wake: at most %d rows" % WakeRibbonRef.N_ROWS)
+	# a long run: the ribbon stops opening at 4 s and lasts 9 s
+	var r2 := WakeRibbonRef.new()
+	t = 0.0
+	while t <= 12.0001:
+		r2.emit(t, Vector2(0.0, v * t), 0.0, v, w0, 0.5, true, v * t)
+		r2.step(t, 0.05, flat)
+		t += 0.05
+	t -= 0.05
+	var oldest: Dictionary = r2.rows[0]
+	var age_old := WakeRibbonRef.age(oldest, t)
+	check(age_old > 8.9 and age_old <= 9.0 + 1e-6, "wake: the ribbon lasts 9 s (oldest row %.2f s)" % age_old)
+	var row6 = null
+	for k in r2.rows:
+		if absf(WakeRibbonRef.age(k, t) - 6.0) < 1e-6:
+			row6 = k
+	check(row6 != null and absf(WakeRibbonRef.half_width(row6, t) - (w0 + 0.354 * v * 4.0)) < 1e-6,
+			"wake: it stops opening at 4 s (half width 6 s behind %.3f m)" % (WakeRibbonRef.half_width(row6, t) if row6 else 0.0))
+	# the wake angle (Rabaud and Moisy): Kelvin's 19.47° up to Fr 0.59, then 0.1995 rad / Fr
+	var lwl := 6.75
+	var ok_angle := true
+	var line_a := "  wake half angle:"
+	for kn in [8.0, 15.0, 19.0]:
+		var vv: float = kn * SeaWhitecaps.KNOT
+		var ratio: float = vv / (1.34 * sqrt(lwl / 0.3048) * SeaWhitecaps.KNOT)
+		var fr := vv / sqrt(9.81 * lwl)
+		var want := minf(deg_to_rad(19.47), 0.1995 / fr)
+		var got := atan(WakeRibbonRef.wake_tan(ratio))
+		line_a += "  %.0f kn (Fr %.2f) %.1f°" % [kn, fr, rad_to_deg(got)]
+		ok_angle = ok_angle and absf(got - want) < deg_to_rad(0.3)
+	print(line_a)
+	check(ok_angle, "wake: the wedge narrows with the Froude number as 1/Fr above Fr 0.59 (WM7: 19.5°, 12°, 9.5° at 8, 15, 19 kn)")
+	var st := WakeRibbonRef.new()
+	st.set_kind(1)
+	var row_t := {"t": 0.0, "w0": 1.0, "v": 9.8, "ratio": 3.0}
+	check(absf(WakeRibbonRef.half_width(row_t, 6.0, 1) - 1.9) < 1e-6, "wake: the turbulent wake widens slowly (1 m to 1.9 m in 6 s at 19 kn)")
+	# the hourglass behind a planing transom: a waist about a boat length behind it, none at displacement speed
+	var rp := {"t": 0.0, "w0": 1.0, "v": 9.8, "ratio": 3.0}
+	var xw := 0.7 * 9.8 * 9.8 / 9.81
+	var w_waist := WakeRibbonRef.half_width(rp, xw / 9.8, 1)
+	var w_before := WakeRibbonRef.half_width(rp, 0.1, 1)
+	var w_after := WakeRibbonRef.half_width(rp, 2.0 * xw / 9.8, 1)
+	var rd := {"t": 0.0, "w0": 1.0, "v": 3.5, "ratio": 1.0}
+	var hg_d := WakeRibbonRef.hourglass(rd, 1.0)
+	check(w_waist < 0.6 * w_before and w_after > 1.5 * w_waist and hg_d == Vector3.ZERO and WakeRibbonRef.hourglass(rp, 0.05).z > 0.9,
+			"wake: planing at 19 kn the turbulent wake is hollow behind the transom and pinches to %.2f m at %.1f m (%.2f m before, %.2f m after); none at displacement speed" % [
+			w_waist, xw, w_before, w_after])
+	var arr := r2.build_arrays(t)
+	var cols: PackedColorArray = arr[Mesh.ARRAY_COLOR]
+	check(cols.size() > 0 and absf(cols[0].g) < 1e-6 and cols[cols.size() - 1].g > 0.98,
+			"wake: COLOR.g carries the row age over the life (newest %.2f, oldest %.2f)" % [cols[0].g, cols[cols.size() - 1].g])
 	check_wake_edges()
 
 
@@ -578,24 +661,117 @@ func check_whitecaps() -> void:
 	rng.seed = 83
 	var pts := PackedVector2Array()
 	for k in 25000:
-		pts.append(Vector2(rng.randf_range(-200.0, 200.0), rng.randf_range(-200.0, 200.0)))
+		pts.append(Vector2(rng.randf_range(-300.0, 300.0), rng.randf_range(-300.0, 300.0)))
 	var covers := {}
 	var line := "  cover:"
 	for kn in [6.0, 7.9, 10.0, 12.0, 15.0, 18.0, 20.0, 24.0, 25.0]:
 		var sea := _caps_sea(kn, 100000.0)
 		covers[kn] = _caps_cover(sea, pts, kn * SeaWhitecaps.KNOT, lm)
-		line += "  %.1f kn %.3f %%" % [kn, 100.0 * covers[kn]]
+		line += "  %.1f kn %.4f %%" % [kn, 100.0 * covers[kn]]
 	print(line)
 	check(covers[6.0] == 0.0 and covers[7.9] == 0.0, "no caps under 8 kn (6 and 7.9 kn: none)")
 	var rising := true
 	for pair in [[10.0, 12.0], [12.0, 15.0], [15.0, 18.0], [18.0, 20.0], [20.0, 24.0], [24.0, 25.0]]:
-		rising = rising and covers[pair[1]] > covers[pair[0]]
+		# never falling (the fetch-limited seas of 24 and 25 kn are near-scaled copies with the same phases, so
+		# their foam fields can count alike), and rising over the range
+		rising = rising and covers[pair[1]] >= covers[pair[0]]
+	rising = rising and covers[25.0] > 4.0 * covers[12.0]
 	check(rising, "cover rises with the wind from 10 to 25 kn")
 	var near := true
-	for ref in [[15.0, 0.002], [20.0, 0.014], [25.0, 0.025]]:
-		near = near and covers[ref[0]] > ref[1] / 1.6 and covers[ref[0]] < ref[1] * 1.6
-	check(near, "cover near measured whitecap cover (0.2 %% at 15 kn, 1.4 %% at 20, 2.5 %% at 25, within x1.6): %.2f, %.2f, %.2f %%" % [
-			100.0 * covers[15.0], 100.0 * covers[20.0], 100.0 * covers[25.0]])
+	var line2 := "  law:"
+	for kn in [12.0, 15.0, 20.0, 25.0]:
+		var w := SeaWhitecaps.cover_law(kn * SeaWhitecaps.KNOT)
+		near = near and covers[kn] > w / 1.3 and covers[kn] < w * 1.3
+		line2 += "  %.0f kn %.3f %%" % [kn, 100.0 * w]
+	print(line2)
+	check(near, "cover follows the measured law (Monahan) within x1.3 at 12, 15, 20 and 25 kn: %.2f, %.2f, %.2f, %.2f %%" % [
+			100.0 * covers[12.0], 100.0 * covers[15.0], 100.0 * covers[20.0], 100.0 * covers[25.0]])
+	var open := _caps_sea(25.0, 0.0, 30000.0, 0.8)
+	var c_open := _caps_cover(open, pts, 25.0 * SeaWhitecaps.KNOT, lm)
+	var w25 := SeaWhitecaps.cover_law(25.0 * SeaWhitecaps.KNOT)
+	check(c_open > w25 / 1.3 and c_open < w25 * 1.3, "open sea (fetch 30 km, 0.8 m swell) at 25 kn: cover %.2f %% (law %.2f %%)" % [
+			100.0 * c_open, 100.0 * w25])
+	# caps belong to the wind sea: on a sea with a swell bigger than the wind sea's peak, no swell component is
+	# selected, and the patches stay a few metres across in the chase view
+	for case in [[25.0, 1.2], [18.0, 0.8], [12.0, 0.8]]:
+		var sw := _caps_sea(case[0], 0.0, 30000.0, case[1])
+		var comps: Array = (sw["model"] as SeaModel).components
+		var p_all := SeaWhitecaps.dominant_index(comps)
+		var swell_sel := false
+		for i in sw["sel"]:
+			swell_sel = swell_sel or float(comps[i][4]) > 8000.0
+		var dom_swell := float(comps[p_all][4]) > 8000.0
+		var ps := _caps_patches(sw, case[0])
+		var w := SeaWhitecaps.cover_law(case[0] * SeaWhitecaps.KNOT)
+		print("    %.0f kn, %.1f m swell (largest component a swell: %s): foam %.2f %% (law %.2f %%), %d patches, median %.1f m, 95 %% %.1f m, largest %.1f m" % [
+				case[0], case[1], dom_swell, 100.0 * ps["cover"], 100.0 * w, ps["n"], ps["median"], ps["p95"], ps["max"]])
+		check(not swell_sel, "%.0f kn with a %.1f m swell: no swell component carries caps" % [case[0], case[1]])
+		check(ps["p95"] <= 8.0 and ps["max"] <= 16.0, "%.0f kn with a swell: caps a few metres across (95 %% at most 8 m: %.1f m, largest at most 16 m: %.1f m)" % [
+				case[0], ps["p95"], ps["max"]])
+		var cs := _caps_cover(sw, pts, case[0] * SeaWhitecaps.KNOT, lm)
+		check(cs > w / 1.4 and cs < w * 1.4, "%.0f kn with a swell: cover %.2f %% within x1.4 of the law (%.2f %%)" % [
+				case[0], 100.0 * cs, 100.0 * w])
+	# short-crested breaking, not a zebra crossing: crests break in segments of one or two peak wavelengths and
+	# neighbouring crests not in step (round 6)
+	for kn in [25.0, 18.0]:
+		var zs := _caps_sea(kn, 0.0, 30000.0)
+		var z := _caps_zebra(zs, kn)
+		print("    %.0f kn, 800 m aerial window: %d caps; crest-aligned runs 99th percentile %.1f lam_p (longest %.1f)" % [
+				kn, z["caps"], z["run99"], z["run_max"]])
+		check(z["run99"] < ZEBRA_RUN,
+				"%.0f kn: no zebra crossing: crest-aligned runs of caps (99 %%) %.1f lam_p (under %.1f; the synchronised lines of round 5: 3.8 to 5.0)" % [
+				kn, z["run99"], ZEBRA_RUN])
+	var sea25 := _caps_sea(25.0, 0.0)
+	# a cap grades from a bright core to a translucent trail, never one flat opacity
+	var ck_g := _caps_comp(sea25, 100000.0)
+	var grp_g := _caps_grp(sea25, 100000.0)
+	var a_all := PackedFloat32Array()
+	var core_a := 0.0
+	var core_n := 0
+	var trail_a := 0.0
+	var trail_n := 0
+	for x in pts:
+		var dr := _caps_drawn(sea25, ck_g, grp_g, x, 25.0 * SeaWhitecaps.KNOT, 100000.0)
+		if dr.x > 0.02:
+			a_all.append(dr.x)
+		if dr.y > 0.5:
+			core_a += dr.x
+			core_n += 1
+		elif dr.y < 0.1 and dr.z > 0.05:
+			trail_a += dr.x
+			trail_n += 1
+	var am := 0.0
+	for v in a_all:
+		am += v
+	am /= maxf(a_all.size(), 1)
+	var asd := 0.0
+	for v in a_all:
+		asd += (v - am) * (v - am)
+	asd = sqrt(asd / maxf(a_all.size(), 1))
+	core_a /= maxf(core_n, 1)
+	trail_a /= maxf(trail_n, 1)
+	print("    drawn caps at 25 kn: opacity mean %.2f, spread %.2f; core %.2f (%d points), residual %.2f (%d points)" % [
+			am, asd, core_a, core_n, trail_a, trail_n])
+	check(asd >= 0.15 and core_a > trail_a + 0.2 and trail_n > 0,
+			"caps grade from a bright active core (%.2f) to translucent residual foam (%.2f), opacity spread %.2f (at least 0.15)" % [core_a, trail_a, asd])
+	var area25 := _caps_cover(sea25, pts, 25.0 * SeaWhitecaps.KNOT, lm, SeaWhitecaps.MAX_CAPS, true)
+	var area15 := _caps_cover(_caps_sea(15.0, 0.0), pts, 15.0 * SeaWhitecaps.KNOT, lm, SeaWhitecaps.MAX_CAPS, true)
+	check(area25 < 4.5 * covers[25.0] and area15 < 4.5 * covers[15.0] + 0.0005,
+			"sparse: water with visible foam, active and residual, %.2f %% at 25 kn, %.2f %% at 15 kn (at most 4.5 times the active cover)" % [
+			100.0 * area25, 100.0 * area15])
+	# no lattice: the foam field over 512 m (2 m samples, averaged into 8 m cells) has no secondary autocorrelation
+	# peak above 0.3
+	var nf := 64
+	var field := PackedFloat32Array()
+	field.resize(nf * nf)
+	var ck25 := _caps_comp(sea25, 100000.0)
+	var grp25 := _caps_grp(sea25, 100000.0)
+	for j in nf * 4:
+		for i in nf * 4:
+			field[(j / 4) * nf + i / 4] += 0.0625 * _caps_f(sea25, ck25, grp25, Vector2(i * 2.0 - 256.0, j * 2.0 - 256.0),
+					25.0 * SeaWhitecaps.KNOT, SeaWhitecaps.MAX_CAPS, 0.0, 100000.0)
+	var peak := _second_peak(field, nf)
+	check(peak < 0.3, "no regular pattern: the 25 kn foam field's autocorrelation rises at most %.2f above its ring mean (limit 0.3)" % peak)
 	# the puffs: the same 20 kn sea under local winds of m times the base
 	var sea20 := _caps_sea(20.0, 100000.0)
 	var pc := []
@@ -609,7 +785,8 @@ func check_whitecaps() -> void:
 			_caps_cover(_caps_sea(25.0, 0.0), pts, 25.0 * SeaWhitecaps.KNOT, lm, 4)]
 	lc[1] = _caps_cover(sea20, pts, 20.0 * SeaWhitecaps.KNOT, lm, 4)
 	print("  tier L (the 4 heaviest components): 15 kn %.3f %%, 20 kn %.3f %%, 25 kn %.3f %%" % [100.0 * lc[0], 100.0 * lc[1], 100.0 * lc[2]])
-	check(lc[0] < lc[1] and lc[1] < lc[2] and lc[1] > 0.014 / 2.0, "tier L: cover rises with the wind, at least half the measured cover at 20 kn")
+	var w20 := SeaWhitecaps.cover_law(20.0 * SeaWhitecaps.KNOT)
+	check(lc[0] < lc[1] and lc[1] < lc[2] and lc[1] > w20 / 1.6 and lc[1] < w20 * 1.6, "tier L: cover rises with the wind, within x1.6 of the law at 20 kn")
 	var sea7 := _caps_sea(7.0, 100000.0)
 	check(_caps_cover(sea7, pts, 1.1 * 7.0 * SeaWhitecaps.KNOT, lm) == 0.0, "a puff on a 7 kn breeze (7.7 kn) makes no caps")
 
@@ -653,87 +830,549 @@ func check_whitecaps() -> void:
 	dv -= roundf(dv)
 	check(absf(du) < 1e-5 and absf(dv) < 1e-5, "the foam texture drifts with the dominant wave (%.2f m/s; texture slip %s, %s)" % [
 			vp.length(), sci(du), sci(dv)])
-	# the whole field: foam half a second later matches the foam moved on with the dominant wave, not the foam in place
-	var f0 := PackedFloat32Array()
-	var f_moved := PackedFloat32Array()
-	var f_still := PackedFloat32Array()
-	var wind := 20.0 * SeaWhitecaps.KNOT
-	var n6 := SeaWhitecaps.MAX_CAPS
-	for k in 20000:
-		f0.append(SeaWhitecaps.intensity(ck0, cw, sea20["rest"], n6, pts[k], 0.0, 1.0, wind))
-		f_moved.append(SeaWhitecaps.intensity(ck1, cw, sea20["rest"], n6, pts[k] + vp * dt, 0.0, 1.0, wind))
-		f_still.append(SeaWhitecaps.intensity(ck1, cw, sea20["rest"], n6, pts[k], 0.0, 1.0, wind))
-	var r_moved := _corr(f0, f_moved)
-	var r_still := _corr(f0, f_still)
-	check(r_moved > 0.6 and r_moved > r_still + 0.3, "the caps move with the crests: foam 0.5 s later correlates %.2f with the foam moved on with the waves, %.2f in place" % [
-			r_moved, r_still])
-
-	# 60 s at 60 frames per second, points riding the dominant wave: no jumps, caps build and fade over seconds
-	var img := SeaTextures.caps_image()
-	var n_img := img.get_width()
-	var n_pts := 150
-	var prev := PackedFloat32Array()
-	prev.resize(n_pts)
-	var run := PackedInt32Array()
-	run.resize(n_pts)
-	var lives := []
-	var max_jump := 0.0
-	var frames := 3600
-	for fr in frames:
-		var t := t0 + fr * 1000.0 / 60.0
-		var comp := _caps_comp(sea20, t)
-		for k in n_pts:
-			var x := pts[k] * 0.5 + vp * (fr / 60.0)
-			# the texture coordinate stays fixed for a point riding the dominant wave
-			var L := img.get_pixel(int(absf(pts[k].x) * 37.0) % n_img, int(absf(pts[k].y) * 53.0) % n_img)
-			var a := SeaWhitecaps.opacity(SeaWhitecaps.intensity(comp, cw, sea20["rest"], n6, x, 0.0, 1.0, wind), L)
-			if fr > 0:
-				max_jump = maxf(max_jump, absf(a - prev[k]))
-			prev[k] = a
-			if a > 0.02:
-				run[k] += 1
-			elif run[k] > 0:
-				lives.append(run[k] / 60.0)
-				run[k] = 0
-	lives.sort()
-	var med: float = lives[lives.size() / 2] if lives.size() > 0 else 0.0
-	print("  60 s riding the dominant wave: %d caps seen, lifetime median %.2f s (10 %%: %.2f s, 90 %%: %.2f s), largest change in one frame %.3f" % [
-			lives.size(), med, lives[lives.size() / 10] if lives.size() > 0 else 0.0,
-			lives[lives.size() * 9 / 10] if lives.size() > 0 else 0.0, max_jump])
-	check(lives.size() >= 20 and max_jump < 0.15, "no popping: the foam opacity changes by at most %.3f in a frame (limit 0.15)" % max_jump)
-	check(med >= 0.8, "caps build and fade over seconds (median lifetime %.2f s, at least 0.8 s)" % med)
+	var gg0 := _caps_grp(sea20, t0)
+	var gg1 := _caps_grp(sea20, t0 + dt * 1000.0)
+	var xg1 := xr + 0.5 * vp * dt
+	var dug := (xg1.dot(e) / SeaWhitecaps.GROUP_TILE + gg1.z) - (xr.dot(e) / SeaWhitecaps.GROUP_TILE + gg0.z)
+	dug -= roundf(dug)
+	check(absf(dug) < 1e-5, "the wave-group envelope drifts at half the dominant wave's speed (slip %s)" % sci(dug))
+	check_caps_lifecycle()
+	check_caps_solid_and_glow()
 
 
 ## The reference wind sea of sea.md §2 at kn knots (fetch 10 km) through the Sea's model, with the whitecap uniforms.
-func _caps_sea(kn: float, _t_ms: float) -> Dictionary:
+## §4.1.1 wind roughness: the slope the picture carries follows Cox and Munk's clean-sea mean square slope.
+func check_wind_roughness() -> void:
+	print("- wind roughness (§4.1.1)")
+	var v := SeaTextures.detail_variance()
+	check(v > 0.05 and v < 0.3, "normal map slope variance %.3f" % v)
+	var r := {}
+	for kn in [0.0, 8.0, 15.0, 25.0]:
+		var sea := _caps_sea(maxf(kn, 1.0), 0.0)
+		var geo := Sea.geo_slope_variance((sea["model"] as SeaModel).components) if kn > 0.0 else 0.0
+		var u: float = kn * SeaWhitecaps.KNOT
+		r[kn] = Sea.wind_roughness(u, geo, 0.02, 20.0, 0.5, v, 3)
+		# near the camera the picture carries the clean sea's slope: the waves, the layers and the roughness
+		var near_var: float = geo + r[kn][1] * r[kn][1] * v / 3.0 + r[kn][2] * r[kn][2] * v + pow(r[kn][0], 4.0)
+		print("    %2d kn: roughness %.3f, k_detail %.3f, k_glint %.3f, slope variance %.4f (Cox-Munk %.4f)" % [
+				kn, r[kn][0], r[kn][1], r[kn][2], near_var, 0.003 + 0.00512 * u])
+		if kn > 0.0:
+			check(absf(near_var - (0.003 + 0.00512 * u)) < 0.25 * (0.003 + 0.00512 * u) or geo > 0.008 + 0.00156 * u,
+					"%d kn: the slope variance drawn near the camera within 25 %% of Cox-Munk" % kn)
+	check(r[0.0][0] == 0.035 and r[0.0][1] == 0.0, "flat calm stays glassy")
+	check(r[8.0][0] < r[15.0][0] and r[15.0][0] < r[25.0][0], "rougher with the wind (8 < 15 < 25 kn)")
+	var far8: float = Sea.wind_roughness(8.0 * SeaWhitecaps.KNOT, 0.005, 1.0, 1500.0, 0.3, v, 3)[0]
+	var far25: float = Sea.wind_roughness(25.0 * SeaWhitecaps.KNOT, 0.011, 1.0, 1500.0, 0.3, v, 3)[0]
+	check(far25 > far8 and far25 > 0.4, "far away 25 kn matte (%.2f), 8 kn %.2f" % [far25, far8])
+	var lv := Sea.wind_roughness(15.0 * SeaWhitecaps.KNOT, 0.008, 0.02, 20.0, 0.5, v, 2)
+	var mv := Sea.wind_roughness(15.0 * SeaWhitecaps.KNOT, 0.008, 0.02, 20.0, 0.5, v, 3)
+	check(absf(lv[1] * lv[1] / 2.0 - mv[1] * mv[1] / 3.0) < 1e-6, "tiers L and M draw the same detail slope variance")
+
+
+func _caps_sea(kn: float, _t_ms: float, fetch := 10000.0, swell := 0.0) -> Dictionary:
 	var src := SeaEnvSource.new()
 	src.wind_kn = kn
-	src.fetch_m = 10000.0
+	src.fetch_m = fetch
 	src.puffs_enabled = false
+	src.swell_hs = swell
+	src.swell_tp = 12.0
+	src.swell_from_deg = src.wind_from_deg + 10.0
 	var m := SeaModel.new()
 	m.set_components(src.sea_components())
 	src.free()
-	var sel := SeaWhitecaps.select(m.components)
-	return {"model": m, "sel": sel, "cw": SeaWhitecaps.window_uniforms(m.components, sel),
-			"rest": SeaWhitecaps.rest_mean(m.components, sel)}
+	var cc := SeaWhitecaps.wind_sea_only(m.components, kn * SeaWhitecaps.KNOT)
+	var sel := SeaWhitecaps.select(cc)
+	return {"model": m, "comps": cc, "sel": sel, "cw": SeaWhitecaps.window_uniforms(cc, sel),
+			"rest": SeaWhitecaps.rest_mean(cc, sel), "cal": SeaWhitecaps.calibrate(cc, sel),
+			"e": SeaWhitecaps._dir(cc)}
 
 
 ## The shader's per-frame caps_k (kx, ky, d', b) at t_ms for a camera at the origin.
 func _caps_comp(sea: Dictionary, t_ms: float) -> PackedVector4Array:
 	var m: SeaModel = sea["model"]
-	return SeaWhitecaps.wave_uniforms(m.components, sea["sel"], m.phases(t_ms, 0.0, 0.0))
+	return SeaWhitecaps.wave_uniforms(sea["comps"], sea["sel"], m.phases(t_ms, 0.0, 0.0))
 
 
-## Drawn foam cover: the mean opacity over the points at two times, on the texture's mean density levels.
-func _caps_cover(sea: Dictionary, pts: PackedVector2Array, wind: float, lm: Color, n_caps := SeaWhitecaps.MAX_CAPS) -> float:
+## The shader's caps_grp at t_ms for a camera at the origin.
+func _caps_grp(sea: Dictionary, t_ms: float) -> Vector4:
+	return SeaWhitecaps.group_frame(sea["comps"], sea["cal"], 0.0, 0.0, t_ms)
+
+
+## The shader's caps_brk at t_ms for a camera at the origin.
+func _caps_brk(sea: Dictionary, t_ms: float) -> Vector2:
+	return SeaWhitecaps.break_frame(sea["comps"], 0.0, 0.0, t_ms)
+
+
+## The shader's caps_ev at t_ms (legacy: no events, the steady caps of round 6).
+func _caps_ev(sea: Dictionary, t_ms: float, legacy := false) -> Vector4:
+	var ev := SeaWhitecaps.event_frame(sea["comps"], t_ms)
+	if legacy:
+		ev.y = 0.0
+	return ev
+
+
+## Foam intensity of a caps sea at a point, time and local wind (m/s), every component resolved.
+func _caps_f(sea: Dictionary, ck: PackedVector4Array, grp: Vector4, x: Vector2, wind: float, n_caps := SeaWhitecaps.MAX_CAPS,
+		px := 0.0, t_ms := -1.0, legacy := false) -> float:
+	var tt := maxf(t_ms, 0.0)
+	return SeaWhitecaps.intensity(ck, sea["cw"], sea["rest"], n_caps, x, px, 1.0, wind, sea["cal"], grp, sea["e"],
+			_caps_brk(sea, tt), SeaWhitecaps.segment_frame(sea["comps"], 0.0, 0.0, tt), _caps_ev(sea, tt, legacy))
+
+
+## Foam cover: the share of the points at two times with a foam intensity of at least 0.5 (the whitecap area a
+## photograph counts); with `area` the share with any visible foam (opacity over 0.1) instead.
+func _caps_cover(sea: Dictionary, pts: PackedVector2Array, wind: float, lm: Color, n_caps := SeaWhitecaps.MAX_CAPS,
+		area := false) -> float:
 	var s := 0.0
 	var n := 0
-	for t in [100000.0, 157300.0]:
+	for t in [100000.0, 157300.0, 213900.0, 271100.0]:
 		var ck := _caps_comp(sea, t)
+		var grp := _caps_grp(sea, t)
 		for x in pts:
-			s += SeaWhitecaps.opacity(SeaWhitecaps.intensity(ck, sea["cw"], sea["rest"], n_caps, x, 0.0, 1.0, wind), lm)
+			if area:
+				s += 1.0 if _caps_drawn(sea, ck, grp, x, wind, t).x > 0.1 else 0.0
+			else:
+				s += 1.0 if _caps_f(sea, ck, grp, x, wind, n_caps, 0.0, t) >= 0.5 else 0.0
 			n += 1
 	return s / n
+
+
+## An image sampled like a repeating linear-filtered texture at uv.
+func _bilinear(img: Image, uv: Vector2) -> Color:
+	var n := img.get_width()
+	var x := uv.x * n - 0.5
+	var y := uv.y * n - 0.5
+	var i := int(floorf(x))
+	var j := int(floorf(y))
+	var tx := x - i
+	var ty := y - j
+	var c00 := img.get_pixel(posmod(i, n), posmod(j, n))
+	var c10 := img.get_pixel(posmod(i + 1, n), posmod(j, n))
+	var c01 := img.get_pixel(posmod(i, n), posmod(j + 1, n))
+	var c11 := img.get_pixel(posmod(i + 1, n), posmod(j + 1, n))
+	return c00.lerp(c10, tx).lerp(c01.lerp(c11, tx), ty)
+
+
+## The drawn foam at a point (SeaWhitecaps.drawn: opacity, active core, residual), every component resolved; L the
+## lace sample (by default the caps texture at the point), st the streaks and nb the wandering lace from the foam noise.
+func _caps_drawn(sea: Dictionary, ck: PackedVector4Array, grp: Vector4, x: Vector2, wind: float, t_ms: float,
+		L = null, st := -1.0, brk = null, legacy := false) -> Vector4:
+	var b: Vector2 = brk if brk != null else _caps_brk(sea, t_ms)
+	var sg := SeaWhitecaps.segment_frame(sea["comps"], 0.0, 0.0, t_ms)
+	var ev := _caps_ev(sea, t_ms, legacy)
+	var f := SeaWhitecaps.field(ck, sea["cw"], sea["rest"], SeaWhitecaps.MAX_CAPS, x, 0.0, 1.0, wind, sea["cal"], grp,
+			sea["e"], b, sg, ev)
+	if f.z <= 0.0:
+		return Vector4.ZERO
+	var res := SeaWhitecaps.residual(ck, sea["cw"], sea["rest"], SeaWhitecaps.MAX_CAPS, x, 0.0, 1.0, wind, sea["cal"], grp,
+			sea["e"], b, sg, ev, f, 0.0, 0.03 * wind)
+	if f.x <= -1.5 and res.x <= 0.0:
+		return Vector4.ZERO
+	var e: Vector2 = sea["e"]
+	var q := Vector2(x.dot(e), x.dot(Vector2(-e.y, e.x)))
+	if st < 0.0:
+		st = SeaWhitecaps.foam_noise(q / SeaWhitecaps.STREAK_TILE + SeaWhitecaps.streak_frame(sea["comps"], 0.0, 0.0, t_ms,
+				wind), 0)
+	var img := SeaTextures.caps_image()
+	var rf := SeaWhitecaps.residual_frame(sea["comps"], 0.0, 0.0, t_ms, wind)
+	var cr := q / SeaWhitecaps.RESID_LACE_TILE + Vector2(rf.x, rf.y)
+	var blob := SeaWhitecaps.foam_noise(q / SeaWhitecaps.RESID_BLOB_TILE + Vector2(rf.z, rf.w), 1)
+	var nimg := img.get_width()
+	var nb := _bilinear(img, cr)
+	if L == null:
+		var uv := SeaWhitecaps.uv_frame(sea["comps"], 0.0, 0.0, t_ms)
+		var c := Vector2(q.x / SeaWhitecaps.TILE.x + uv.z, q.y / SeaWhitecaps.TILE.y + uv.w)
+		var n := img.get_width()
+		L = img.get_pixel(posmod(int(floorf(c.x * n)), n), posmod(int(floorf(c.y * n)), n))
+	var d := SeaWhitecaps.drawn(f, res, L, st, nb, blob, (sea["cw"] as PackedVector4Array)[0].w)
+	_last_glow = SeaWhitecaps.glow(f, L, (sea["cw"] as PackedVector4Array)[0].w)
+	# w: the residual foam older than 1.5 s (no longer growing at the crest)
+	return Vector4(d.x, d.y, d.z, d.z if res.y > 1.5 else 0.0)
+
+
+## The cap mask (F >= 0.5) of an 800 m aerial window at 2 m: {caps, run99, run_max: crest-aligned runs of caps in
+## peak wavelengths (caps linked when within an ellipse of 0.15 lam_p across the crests and 0.6 lam_p along them)}.
+## threshold of the zebra check, calibrated on the synchronised lines of round 5 (3.8 to 5.0 lam_p over five 800 m
+## windows at 25 kn) and on caps shifted at random across the crests (1.5 to 2.1)
+const ZEBRA_RUN := 3.0
+
+
+## §4.4 the whitecap life cycle (round 7): caps are events, not shapes carried across the sea. On the 25 kn sea
+## (fetch 30 km), a 150 m window at 1.5 m, the drawn foam now (and with the steady caps of round 6 for comparison):
+## (a) one second later, moved on with the dominant wave, it correlates weakly with itself; (d) its best-overlap IoU
+## after one second is low (the shapes change); (b) the residual foam moves at about the drift, far below c_p; (c)
+## active breaking at points riding the crests lasts 0.3 to 1.2 s (median), residual foam at fixed points 2 to 8 s,
+## and the opacity never jumps.
+func check_caps_lifecycle() -> void:
+	var sea := _caps_sea(25.0, 0.0, 30000.0)
+	var wind := 25.0 * SeaWhitecaps.KNOT
+	var comps: Array = sea["comps"]
+	var cpv := SeaWhitecaps.event_frame(comps, 0.0).z
+	var e: Vector2 = sea["e"]
+	var t0 := 100000.0
+	var res := {}
+	for legacy in [true, false]:
+		var a0 := _caps_grid(sea, wind, t0, legacy, 0)
+		var a1 := _caps_grid(sea, wind, t0 + 1000.0, legacy, 0)
+		var a1s := _caps_grid(sea, wind, t0 + 1000.0, legacy, 0, e * cpv)
+		var best_iou := 0.0
+		var best_shift := 0.0
+		for sh in range(-2, int(cpv) + 3):
+			var iou := _iou(a0, _caps_grid(sea, wind, t0 + 1000.0, legacy, 0, e * float(sh)))
+			if iou > best_iou:
+				best_iou = iou
+				best_shift = sh
+		res[legacy] = {"corr": _corr(a0, a1s), "iou": best_iou, "shift": best_shift}
+		print("    %s: one second on, moved with the crests (%.1f m) the foam correlates %.2f; best overlap %.2f at a %.0f m shift" % [
+				"steady caps (round 6)" if legacy else "life cycle", cpv, res[legacy]["corr"], best_iou, best_shift])
+	check(res[false]["corr"] < 0.4 and res[true]["corr"] > 0.6,
+			"caps are not carried across: correlation with the foam moved on by c_p after 1 s %.2f (round 6: %.2f)" % [
+			res[false]["corr"], res[true]["corr"]])
+	check(res[false]["iou"] < 0.5, "the foam changes shape: best-overlap IoU after 1 s %.2f (round 6: %.2f)" % [
+			res[false]["iou"], res[true]["iou"]])
+	# (b) the residual foam alone: its best shift over 2 s
+	var r0 := _caps_grid(sea, wind, t0, false, 3)
+	var best_r := -2.0
+	var v_r := 0.0
+	for sh in range(-4, 2 * int(cpv) + 4):
+		var c := _corr(r0, _caps_grid(sea, wind, t0 + 2000.0, false, 3, e * (0.5 * sh)))
+		if c > best_r:
+			best_r = c
+			v_r = 0.5 * sh / 2.0
+	check(absf(v_r) < 0.25 * cpv, "residual foam (older than 1.5 s) stays where it fell: it moves %.2f m/s (c_p %.1f m/s, drift %.2f m/s)" % [
+			v_r, cpv, 0.03 * wind])
+	# (c) lifetimes and popping, 30 s at 30 frames per second
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 17
+	var n_pts := 400
+	var fixed := PackedVector2Array()
+	for k in n_pts:
+		fixed.append(Vector2(rng.randf_range(-150.0, 150.0), rng.randf_range(-150.0, 150.0)))
+	var vp := e * cpv
+	var run_a := PackedInt32Array()
+	run_a.resize(n_pts)
+	var run_r := PackedInt32Array()
+	run_r.resize(n_pts)
+	var prev := PackedFloat32Array()
+	prev.resize(n_pts)
+	var prev_r := PackedFloat32Array()
+	prev_r.resize(n_pts)
+	var prev_c := PackedFloat32Array()
+	prev_c.resize(n_pts)
+	var lives_a := []
+	var lives_r := []
+	var max_jump := 0.0
+	var fps := 30.0
+	for fr in int(30.0 * fps):
+		var t := t0 + fr * 1000.0 / fps
+		var ck := _caps_comp(sea, t)
+		var grp := _caps_grp(sea, t)
+		for k in n_pts:
+			var ride := _caps_drawn(sea, ck, grp, fixed[k] * 0.5 + vp * (fr / fps), wind, t)
+			var fa := _caps_f(sea, ck, grp, fixed[k] * 0.5 + vp * (fr / fps), wind, SeaWhitecaps.MAX_CAPS, 0.0, t)
+			if fa >= 0.5:
+				run_a[k] += 1
+			elif run_a[k] > 0:
+				lives_a.append(run_a[k] / fps)
+				run_a[k] = 0
+			var dr := _caps_drawn(sea, ck, grp, fixed[k] + e * (0.03 * wind * fr / fps), wind, t)
+			# popping: the active foam seen riding the crests, the residual foam seen drifting with it (both moving
+			# past a fixed point is motion, not popping)
+			var core_a := ride.y * 0.95
+			if fr > 0:
+				var jr := 0.0 if dr.y > 0.0 or prev_c[k] > 0.0 else absf(dr.x - prev_r[k])   # the active foam passing is motion
+				max_jump = maxf(max_jump, maxf(absf(core_a - prev[k]), jr) * fps / 60.0)   # per 60 fps frame
+			prev[k] = core_a
+			prev_c[k] = dr.y
+			prev_r[k] = dr.x
+			if dr.z > 0.05:
+				run_r[k] += 1
+			elif run_r[k] > 0:
+				lives_r.append(run_r[k] / fps)
+				run_r[k] = 0
+	lives_a.sort()
+	lives_r.sort()
+	var med_a: float = lives_a[lives_a.size() / 2] if lives_a.size() > 0 else 0.0
+	var med_r: float = lives_r[lives_r.size() / 2] if lives_r.size() > 0 else 0.0
+	print("    active breaking at points riding the crests: %d events, median %.2f s; residual foam at points drifting with the surface: %d, median %.2f s; largest change per frame %.3f" % [
+			lives_a.size(), med_a, lives_r.size(), med_r, max_jump])
+	check(lives_a.size() >= 10 and med_a >= 0.3 and med_a <= 2.0, "active breaking lasts %.2f s (median, 0.3 to 2 s: a third to half of a period at 25 kn)" % med_a)
+	check(lives_r.size() >= 10 and med_r >= 2.0 and med_r <= 8.0, "residual foam lasts %.2f s (median, 2 to 8 s)" % med_r)
+	check(max_jump < 0.15, "no popping: the foam opacity changes by at most %.3f in a frame at 60 fps (limit 0.15)" % max_jump)
+
+
+## The drawn foam (what 0 all, 2 the residual alone, 3 the residual older than 1.5 s) on a 150 m window at 1.5 m around the origin, shifted by `shift`.
+## Foam patches (4-connected cells with opacity over 0.1, at least 20 cells, 11 m2) of a side x side grid: for each,
+## the share of its cells that are opaque (over 0.9).
+func _opaque_shares(a: PackedFloat32Array, side := 100) -> PackedFloat32Array:
+	var seen := PackedByteArray()
+	seen.resize(a.size())
+	var out := PackedFloat32Array()
+	for k in a.size():
+		if seen[k] or a[k] <= 0.1:
+			continue
+		var stack := [k]
+		seen[k] = 1
+		var n := 0
+		var op := 0
+		while stack.size() > 0:
+			var c: int = stack.pop_back()
+			n += 1
+			op += 1 if a[c] > 0.9 else 0
+			var ci := c % side
+			var cj := c / side
+			for nb in [[ci - 1, cj], [ci + 1, cj], [ci, cj - 1], [ci, cj + 1]]:
+				if nb[0] < 0 or nb[0] >= side or nb[1] < 0 or nb[1] >= side:
+					continue
+				var m: int = nb[1] * side + nb[0]
+				if not seen[m] and a[m] > 0.1:
+					seen[m] = 1
+					stack.append(m)
+		if n >= 20:
+			out.append(float(op) / n)
+	return out
+
+
+func check_caps_solid_and_glow() -> void:
+	var sea := _caps_sea(25.0, 0.0, 30000.0)
+	var wind := 25.0 * SeaWhitecaps.KNOT
+	var worst := 0.0
+	var n_p := 0
+	var glow_max := 0.0
+	for k in 6:
+		var t := 100000.0 + 1700.0 * k
+		# a 150 m window at 0.75 m
+		var g := PackedFloat32Array()
+		var ckg := _caps_comp(sea, t)
+		var grpg := _caps_grp(sea, t)
+		for j in 200:
+			for i in 200:
+				g.append(_caps_drawn(sea, ckg, grpg, Vector2(i * 0.75 - 75.0, j * 0.75 - 75.0), wind, t).x)
+		var sh := _opaque_shares(g, 200)
+		n_p += sh.size()
+		for v in sh:
+			worst = maxf(worst, v)
+		var ck := _caps_comp(sea, t)
+		var grp := _caps_grp(sea, t)
+		for j in range(0, 100, 2):
+			for i in range(0, 100, 2):
+				_caps_drawn(sea, ck, grp, Vector2(i * 1.5 - 75.0, j * 1.5 - 75.0), wind, t)
+				glow_max = maxf(glow_max, _last_glow)
+	print("    25 kn: %d foam patches, the most opaque has %.0f %% of its area over 0.9; bubble glow mix at most %.3f" % [n_p, 100.0 * worst, glow_max])
+	check(n_p >= 10 and worst < 0.3, "no solid foam slabs: under 30 %% of any patch is opaque (worst %.0f %%)" % (100.0 * worst))
+	check(glow_max <= SeaWhitecaps.GLOW_MAX + 1e-4, "the bubble glow is a slight lift: its mix toward green-blue at most %.2f (%.3f)" % [SeaWhitecaps.GLOW_MAX, glow_max])
+
+
+func _caps_grid(sea: Dictionary, wind: float, t_ms: float, legacy: bool, what: int, shift := Vector2.ZERO) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	var ck := _caps_comp(sea, t_ms)
+	var grp := _caps_grp(sea, t_ms)
+	var brk := _caps_brk(sea, t_ms)
+	for j in 100:
+		for i in 100:
+			var dr := _caps_drawn(sea, ck, grp, Vector2(i * 1.5 - 75.0, j * 1.5 - 75.0) + shift, wind, t_ms, null, -1.0, brk, legacy)
+			out.append(dr.z if what == 2 else (dr.w if what == 3 else dr.x))
+	return out
+
+
+## Intersection over union of two foam fields thresholded at 0.3.
+func _iou(a: PackedFloat32Array, b: PackedFloat32Array) -> float:
+	var inter := 0
+	var uni := 0
+	for k in a.size():
+		var x := a[k] > 0.3
+		var y := b[k] > 0.3
+		if x and y:
+			inter += 1
+		if x or y:
+			uni += 1
+	return float(inter) / maxf(uni, 1)
+
+
+func _caps_zebra(sea: Dictionary, kn: float) -> Dictionary:
+	var res := 2.0
+	var n := 400
+	var t := 100000.0
+	var ck := _caps_comp(sea, t)
+	var grp := _caps_grp(sea, t)
+	var comps: Array = sea["comps"]
+	var p := SeaWhitecaps.dominant_index(comps)
+	var lam := 1.0 / Vector2(comps[p][1], comps[p][2]).length()
+	var e: Vector2 = sea["e"]
+	var perp := Vector2(-e.y, e.x)
+	var on := PackedByteArray()
+	on.resize(n * n)
+	for j in n:
+		for i in n:
+			var x := Vector2(i * res - 400.0, j * res - 400.0)
+			if _caps_f(sea, ck, grp, x, kn * SeaWhitecaps.KNOT, SeaWhitecaps.MAX_CAPS, 0.0, t) >= 0.5:
+				on[j * n + i] = 1
+	# caps: connected cells, their centroids in (along e, along the crest)
+	var seen := PackedByteArray()
+	seen.resize(n * n)
+	var cents := PackedVector2Array()
+	var stack := PackedInt32Array()
+	for k in n * n:
+		if on[k] == 0 or seen[k] == 1:
+			continue
+		var sum := Vector2.ZERO
+		var cnt := 0
+		stack.append(k)
+		seen[k] = 1
+		while not stack.is_empty():
+			var c := stack[stack.size() - 1]
+			stack.resize(stack.size() - 1)
+			var cx := c % n
+			var cy := c / n
+			var cp := Vector2(cx * res - 400.0, cy * res - 400.0)
+			sum += cp
+			cnt += 1
+			for d in [[1, 0], [-1, 0], [0, 1], [0, -1]]:
+				var nx: int = cx + d[0]
+				var ny: int = cy + d[1]
+				if nx < 0 or ny < 0 or nx >= n or ny >= n:
+					continue
+				var q := ny * n + nx
+				if on[q] == 1 and seen[q] == 0:
+					seen[q] = 1
+					stack.append(q)
+		var cpt := sum / cnt
+		cents.append(Vector2(cpt.dot(e), cpt.dot(perp)))
+	# crest-aligned runs (union-find)
+	var m := cents.size()
+	var parent := PackedInt32Array()
+	parent.resize(m)
+	for i in m:
+		parent[i] = i
+	for i in m:
+		for j in range(i + 1, m):
+			var da := (cents[i].x - cents[j].x) / (0.15 * lam)
+			var db := (cents[i].y - cents[j].y) / (0.6 * lam)
+			if da * da + db * db < 1.0:
+				var a := i
+				while parent[a] != a:
+					a = parent[a]
+				var b := j
+				while parent[b] != b:
+					b = parent[b]
+				if a != b:
+					parent[a] = b
+	var lo := {}
+	var hi := {}
+	for i in m:
+		var r := i
+		while parent[r] != r:
+			r = parent[r]
+		lo[r] = minf(lo.get(r, INF), cents[i].y)
+		hi[r] = maxf(hi.get(r, -INF), cents[i].y)
+	var runs := []
+	for r in lo:
+		runs.append((hi[r] - lo[r]) / lam)
+	runs.sort()
+	return {"caps": m, "run99": runs[int(runs.size() * 0.99)] if runs.size() > 0 else 0.0,
+			"run_max": runs[-1] if runs.size() > 0 else 0.0}
+
+
+## Foam patches in the chase view (every component resolved, 0.5 m cells over 200 m, a cell foamed when its
+## intensity is at least 0.5, the active area): {cover: the foamed share, n, median, p95, max: patch sizes (the longer side of the bounding
+## box, m)}.
+func _caps_patches(sea: Dictionary, kn: float) -> Dictionary:
+	var n := 400
+	var res := 0.5
+	var lm := SeaWhitecaps.level_means()
+	var t := 100000.0
+	var ck := _caps_comp(sea, t)
+	var grp := _caps_grp(sea, t)
+	var on := PackedByteArray()
+	on.resize(n * n)
+	var count := 0
+	for j in n:
+		for i in n:
+			var a := _caps_f(sea, ck, grp, Vector2(i * res - 100.0, j * res - 100.0),
+					kn * SeaWhitecaps.KNOT, SeaWhitecaps.MAX_CAPS, 0.0, t)
+			if a >= 0.5:
+				on[j * n + i] = 1
+				count += 1
+	var seen := PackedByteArray()
+	seen.resize(n * n)
+	var sizes := []
+	var stack := PackedInt32Array()
+	for k in n * n:
+		if on[k] == 0 or seen[k] == 1:
+			continue
+		var x0 := n
+		var x1 := -1
+		var y0 := n
+		var y1 := -1
+		stack.append(k)
+		seen[k] = 1
+		while not stack.is_empty():
+			var c := stack[stack.size() - 1]
+			stack.resize(stack.size() - 1)
+			var cx := c % n
+			var cy := c / n
+			x0 = mini(x0, cx)
+			x1 = maxi(x1, cx)
+			y0 = mini(y0, cy)
+			y1 = maxi(y1, cy)
+			for d in [[1, 0], [-1, 0], [0, 1], [0, -1]]:
+				var nx: int = cx + d[0]
+				var ny: int = cy + d[1]
+				if nx < 0 or ny < 0 or nx >= n or ny >= n:
+					continue
+				var q := ny * n + nx
+				if on[q] == 1 and seen[q] == 0:
+					seen[q] = 1
+					stack.append(q)
+		sizes.append(maxf(x1 - x0 + 1, y1 - y0 + 1) * res)
+	sizes.sort()
+	if sizes.is_empty():
+		return {"cover": 0.0, "n": 0, "median": 0.0, "p95": 0.0, "max": 0.0}
+	return {"cover": float(count) / (n * n), "n": sizes.size(), "median": sizes[sizes.size() / 2],
+			"p95": sizes[int(sizes.size() * 0.95)], "max": sizes[-1]}
+
+
+## Periodicity of an n x n field: the largest rise of its normalised autocorrelation (circular, brute force) above
+## its mean at the same distance, over shifts of 2 to 16 cells. A lattice shows as peaks near 1, clusters do not.
+func _second_peak(f: PackedFloat32Array, n: int) -> float:
+	var m := 0.0
+	for v in f:
+		m += v
+	m /= f.size()
+	var c := PackedFloat32Array()
+	c.resize(f.size())
+	var var0 := 0.0
+	for k in f.size():
+		c[k] = f[k] - m
+		var0 += c[k] * c[k]
+	if var0 <= 0.0:
+		return 0.0
+	var ring_sum := PackedFloat32Array()
+	var ring_max := PackedFloat32Array()
+	var ring_n := PackedInt32Array()
+	ring_sum.resize(17)
+	ring_max.resize(17)
+	ring_n.resize(17)
+	ring_max.fill(-1.0)
+	for dy in range(-16, 17):
+		for dx in range(-16, 17):
+			var r := roundi(sqrt(float(dx * dx + dy * dy)))
+			if r < 2 or r > 16:
+				continue
+			var s := 0.0
+			for j in n:
+				var jj := posmod(j + dy, n) * n
+				var row := j * n
+				for i in n:
+					s += c[row + i] * c[jj + posmod(i + dx, n)]
+			s /= var0
+			ring_sum[r] += s
+			ring_n[r] += 1
+			ring_max[r] = maxf(ring_max[r], s)
+	var best := 0.0
+	for r in range(2, 17):
+		best = maxf(best, ring_max[r] - ring_sum[r] / ring_n[r])
+	return best
 
 
 func _corr(a: PackedFloat32Array, b: PackedFloat32Array) -> float:

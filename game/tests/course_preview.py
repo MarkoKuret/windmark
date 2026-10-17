@@ -48,7 +48,7 @@ void main() {
     vec2 g = wm_faded_slope(v_local, v_spacing, px) * v_expo;
     n_geo = normalize(n_geo + vec3(-g.x, 0.0, g.y));
 #endif
-    WmSurface S = wm_surface(v_local, v_eta, n_geo, view, dist, vec2(0.0), v_land);
+    WmSurface S = wm_surface(v_local, v_eta, n_geo, view, dist, px, vec2(0.0), v_land);
 #ifdef WM_WHITECAPS
     wm_apply_caps(S, v_local, px, v_expo, dist, n_geo);
 #endif

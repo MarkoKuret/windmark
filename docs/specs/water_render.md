@@ -107,12 +107,10 @@ detail   = 2 to 4 layers of a tiling normal map, sampled in a wind-aligned frame
            uv_k = rot(angle_k) * scale_k * (dot(p, dir) - drift_k * t, dot(p, perp(dir)))
            dir = the median wind's downwind direction (base_from + π), so the pattern does not swirl in shifts
            scales 1/13 m, 1/22 m, 1/48 m, 1/70 m; drifts 1.4, 1.0, 0.9, 0.6 m/s; angles 0, 0.35, -0.6, 0.95 rad
-           break the tiling
-m        = wind factor at the pixel (§4.3)
-k_detail = 0.22 * clamp(m * base_speed / 7.2, 0.15, 1.6) * fade(dist; 300 m -> 1, 3 km -> 0)
+           break the tiling; the layers are averaged
 glint    = one more tap of the same normal map in the same frame: scale 1/3.2 m, drift 1.6 m/s, angle 1.25 rad
 near     = 1 - smoothstep(30 m, 200 m, dist)
-k_glint  = 0.12 * clamp(m * base_speed / 7.2, 0.2, 1.4) * near
+k_detail, k_glint = the strengths of §4.1.1 (wind roughness)
 n        = normalize(n_geo + k_detail * detail + k_glint * glint, each as (x * wind_to + y * perp(wind_to)) in the
            water plane)
 ```
@@ -123,16 +121,70 @@ The normal map (256², tiling) and the foam noise are generated at load from God
 (`FastNoiseLite`, bump to normal map), so no texture files ship. Under 1.5 m/s of wind (`m·base_speed`) the
 detail fades out (fully gone at 0.5 m/s): glassy water.
 
+#### 4.1.1 Wind roughness
+How rough the water looks follows the local wind by the measured slope statistics of the sea surface (Cox and Munk,
+1954, from the sun's glitter): the mean square slope of a clean sea is
+```
+U         = m·base_speed                         // local wind, m/s (§4.3: puffs, lulls and the venue's land effect)
+sig2_all  = 0.003 + 0.00512·U                    // all waves, down to the capillaries
+sig2_long = min(0.008 + 0.00156·U, sig2_all)     // a slick sea (an oil film damps the waves shorter than ~0.3 m)
+sig2_short = sig2_all - sig2_long                 // the capillaries and short ripples: smaller than a pixel
+```
+At 8 kn that is a mean square slope of 0.024 (rms 8.9°), at 15 kn 0.042, at 25 kn 0.069 (rms 15°): a 25 kn sea has
+three times the slope variance of an 8 kn one, and the extra is mostly in the short waves, which is what turns a
+mirror into a rough, broken surface. The slope is split between what the picture can show and what it cannot:
+- the **waves of the sea** (§3) carry `geo_var = Σ (2π·a_i/lam_i)²/2` (CPU, once per sea);
+- the **detail and glint layers** carry the rest of the long waves, `sig2_d = max(sig2_long - geo_var, 0.3·sig2_long)`,
+  0.6 of it in the detail layers and 0.4 in the glint layer near the camera, and the glint layer also the short waves
+  the pixel resolves. With a saturated slope spectrum every octave of the short waves (0.3 m down to the capillaries'
+  4 mm) carries the same slope, so the share smaller than the pixel footprint `px` is
+  `sub = clamp(log(2·px / 4 mm) / log(0.3 m / 4 mm), 0, 1)` (about 0.4 at 1 cm, 0.75 at 5 cm, 1 from 15 cm):
+  ```
+  V        = mean of |rg·2 − 1|² over the normal map (CPU at load, about 0.118); N layers averaged have V/N
+  k_detail = sqrt(0.6·sig2_d / (V/N)) · (1 − smoothstep(300 m, 3 km, dist)) · glassy
+  k_glint  = sqrt((0.4·sig2_d + sig2_short·(1 − sub)) / V) · near · glassy     // glassy = smoothstep(0.5, 1.5, U)
+  ```
+- the **roughness** of the lighting carries the short waves under the pixel, and the share of the long waves the
+  layers lose with distance (their fade, and the mip-maps averaging the map once the footprint passes their
+  ripples):
+  ```
+  vis      = (0.6·(1 − smoothstep(300 m, 3 km, dist)) + 0.4·near) / (1 + (px / 0.25 m)²)
+  sig2_r   = (sig2_short·(1 − (1 − sub)·near) + sig2_d·(1 − vis)) · glassy
+  r        = sqrt(sqrt(sig2_r))                     // GGX alpha = r² = rms slope (Beckmann match)
+  ROUGHNESS = clamp(r · (1 − 0.6·(1 − n_geo·v)⁶), 0.035, 0.6)
+  ```
+  The last factor is for Godot's lighting: its environment BRDF (the Lazarov/Karis approximation) dims the sky's
+  reflection of a rough surface toward grazing far below a measured rough sea, which still reflects about half of
+  what a calm one does near the horizon (at roughness 0.45 it would keep 0.19 of the calm 0.94); lowering the
+  roughness only in the last few degrees above the horizon keeps the horizon band of §4.5 and leaves the sun's
+  glitter (seen at steeper angles) as computed.
+So an 8 kn sea is a mirror broken by ripples (roughness about 0.27 near the boats), a 25 kn sea is matte with a wide
+sun glitter (about 0.4 near, 0.5 far away), and flat calm stays glassy (0.035). Godot's sky reflection is blurred by the
+roughness and its Fresnel term falls with it (`F0 + (max(1 − roughness, F0) − F0)·(1 − n·v)⁵`), so the long bright sky
+streaks of a glassy sea shorten and dim as the wind rises. Every tier uses it; it costs a few arithmetic operations
+per pixel (a log and two square roots) from the uniforms `geo_var` and `detail_var`, no texture taps. The tiers keep their layer counts: the
+`V/N` normalisation gives each tier the same slope variance.
+
 ### 4.2 Colour, Fresnel, reflection
 Godot's PBR does the lighting; the shader sets:
 ```
 crest    = clamp(eta / max(sum_a, 1e-3), 0, 1)
 ALBEDO   = mix(deep, shallow, 0.55 * crest)                         // deep (0.006, 0.042, 0.115), shallow (0.012, 0.100, 0.155), linear (full sun)
 SPECULAR = 0.40                                                      // Godot's F0 = 0.16·SPECULAR² = 0.026 (water 0.02, a little lifted)
-ROUGHNESS = 0.035 + 0.025 * (1 - near) + 0.05 * (puff_k * clamp(m - 1, 0, 0.25) + clamp(m - 1, -0.4, 0)) / 0.25
-            + 0.18 * fade_far(dist)                                  // rougher in puffs (puff_k: §4.3) and far away
+ROUGHNESS = the wind roughness of §4.1.1                            // rougher in puffs, in a breeze and far away
 EMISSION = sss * crest * (pow(max(0, dot(-view, sun)), 3) * 0.3 * sun_radiance + 0.05)  // light through the crests, sss (0.03, 0.33, 0.40)
 ```
+- **Wind on the body colour** (round 4): in a strong breeze the sea looks greyer and darker, not the saturated blue of
+  a fair-weather day. The water under a rough, aerated surface scatters more white from bubbles near the top and
+  shows less of its deep blue, and its glossy blue reflections are broken up; Beaufort's own descriptions run from
+  "blue" through "white horses" to "sea heaps up, foam blown in streaks". From 12 kn of local wind the body colour
+  moves toward its own grey (its luminance) and darkens:
+  ```
+  gw     = smoothstep(12 kn, 30 kn, U)                // U = m·base_speed (§4.3)
+  ALBEDO = mix(ALBEDO, luma(ALBEDO)·(0.75, 0.82, 0.88), 0.45·gw)        // 25 kn: about 30 % greyer, 10 % darker
+  sss    × (1 − 0.35·gw)                                // less clear-water glow through the crests
+  ```
+  8 to 12 kn are unchanged; the sun, the sky, the exposure and the grade (§4.5, WM-080) are not touched.
 - **Body colour**: a deep, saturated blue (about sRGB `#004684` from the aerial camera in the default light), a
   little greener on the crests; it is what the sea shows looking down, so it carries the race-day look. The
   conditions (§4.5) scale deep, shallow and sss about their luminance: `value · mix(luma, colour, saturation)`
@@ -146,8 +198,9 @@ EMISSION = sss * crest * (pow(max(0, dot(-view, sun)), 3) * 0.3 * sun_radiance +
   detail facet into a white blotch at grazing angles; the PBR reflection of the stronger sky gradient shows the
   wave shapes by itself.
 - **Boats and marks in the reflection**: screen-space reflections on tier H only; elsewhere the sky alone.
-- **Sun glitter** is the PBR specular on the detail and glint normals, sharp near the camera (roughness 0.035) and
-  a broad glitter path far away; the glow of §4.5 blooms the brightest glints.
+- **Sun glitter** is the PBR specular on the detail and glint normals with the wind roughness of §4.1.1: sharp
+  sparkle in light air, a wide glitter path in a breeze, broader far away; the glow of §4.5 blooms the brightest
+  glints.
 - **Fog** blends to the sky's horizon colour with distance; the detail normals flatten between 2 and 4 km.
 
 ### 4.3 Wind on the water
@@ -160,14 +213,17 @@ for each patch j:
     if r2 <= R2: m *= 1 + puff[j].es * (1 - r2 / R2)
 m = clamp(m, puff_cap_lo, puff_cap_hi)
 ```
-A puff (`m > 1`) is rougher and so darker (it mirrors less bright horizon), a lull (`m < 1`) smoother and brighter.
+A puff (`m > 1`) is rougher and so darker (it mirrors less bright horizon), a lull (`m < 1`) smoother and brighter:
+the wind roughness of §4.1.1 takes the local wind `U = m·base_speed`, so a puff of 1.25 on 16 kn has the slope of
+20 kn.
 The effect is also made explicit so it reads from the aerial camera and in flat light:
 ```
 ALBEDO *= 1 - k_puff * puff_k * clamp((m - 1) / 0.25, 0, 1) + k_lull * clamp((1 - m) / 0.4, 0, 1)    // k_puff 0.25, k_lull 0.15
 ```
-`puff_k` is the conditions' factor (§4.5, 1 except overcast 2.4); it also scales the puffs' extra roughness (§4.2).
-Under a diffuse sky the albedo carries less of the picture and there is no glitter to lose, so overcast doubles both
-to keep the puffs reading as well as in fair weather. Checked offline (2026-10-16, Practice Waters at 20 kn, 14:00,
+`puff_k` is the conditions' factor (§4.5, 1 except overcast 2.4); the puffs' extra roughness comes from their wind
+(§4.1.1) and is not scaled. Under a diffuse sky the albedo carries less of the picture and there is no glitter to
+lose, so overcast strengthens the darkening to keep the puffs reading as well as in fair weather. Checked offline
+(before the wind roughness of §4.1.1, when `puff_k` also scaled a fixed puff roughness; 2026-10-16, Practice Waters at 20 kn, 14:00,
 each shot rendered with and without its puffs, the display luminance inside the puffs): aerial fair −9.4 %
 (−0.030), overcast −9.2 % (−0.033); chase fair −2.6 % (−0.018), overcast −2.7 % (−0.021). Without the factor
 overcast gave −4.0 % from the aerial camera.
@@ -190,79 +246,243 @@ blotches that popped on and off and slid over the waves; it was removed on 2026-
 worst from the helicopter camera, so the game draws none until a version that is sparse and non-repeating at every
 camera height is approved. The look panel and `--caps=on` still turn the mechanism below on for judging it.
 
-**Per component** (CPU, once per sea, `SeaWhitecaps`), with `lam_i` the wavelength, `k_i = 2π/lam_i` and `lam_p` the
-wavelength of the largest-amplitude component:
+**Why the first version read as too many** (2026-10-15): its threshold let about a fifth of the water (22 % at 25 kn)
+carry some foam, as faint lace over wide patches; the mean opacity matched the measured cover, but the eye counts the
+area with any foam. And the sum of six crest windows tops out on a regular lattice (the beats of components of
+nearly the same wavelength and direction), which from the helicopter is a grid of dots. The version below draws
+the measured cover as the **area** of foam, nearly opaque where it is, and lets the waves break in groups.
+
+**Why the second version drew foam sheets in the game** (2026-10-15, the engine clip at 25 kn): its group envelope
+was **added** to the steepness sum, so where the envelope was high it lifted troughs and crests alike over the
+threshold: white sheets tens of metres across near the boat and long bars further off (patches up to 50 m, 95 % up
+to 27 m, measured on the same sea). The offline helicopter preview hid it (from 500 m the sheets read as clusters).
+It was not the swell (the clip's sea had none), but a swell bigger than the wind sea's peak would have made it
+worse: it was the "dominant" wave, with crest windows of 18 and 45 m. Now the envelope and a short-crest breakup
+**multiply** the crest windows (foam stays on crests, a few metres long), only the wind sea carries caps, and the
+law is calibrated on the foamed area.
+
+**Cover law** (Monahan and O'Muircheartaigh, 1980, the fraction of the sea surface covered by whitecaps):
+```
+W(U) = 3.84e-6 · U^3.41          // U the local wind at 10 m, m/s: 8 kn 0.05 %, 12 kn 0.19 %, 15 kn 0.41 %,
+                                 // 20 kn 1.1 %, 25 kn 2.3 %
+```
+
+**Wind sea only**: breaking whitecaps are wind-forced waves; a swell outruns the wind and does not break in deep
+water. A component is wind sea when its phase speed `c_i = g·T_i/2π` is at most `1.2·U` (the wave age of a fully
+developed sea, Pierson–Moskowitz), `U` the base wind; the others (the swell) take amplitude 0 for everything below:
+they carry no foam and are never the dominant wave. The choice is made again when the drawn base wind changes by
+more than 5 %.
+
+**Per component** (CPU, once per sea, `SeaWhitecaps`, on the wind sea), with `lam_i` the wavelength, `k_i = 2π/lam_i`
+and `lam_p` the wavelength of the largest-amplitude wind-sea component:
 ```
 b_i       = a_i·k_i · min(1, lam_i/lam_p)²              // foam weight: steepness, waves shorter than the peak weighed down
 sf_i      = max(0.08, 0.6 m / lam_i)                    // crest window half widths, cycles: ahead of the crest
-sb_i      = max(0.20, 1.2 m / lam_i)                    //   and behind it (the trail)
+sb_i      = max(0.15, 1.2 m / lam_i)                    //   and behind it (the trail)
 mean_i    = mean over a cycle of W_i (below)
 selected  = the 6 components with the largest b_i ≥ 0.004, heaviest first (tier L evaluates the first 4)
 caps_w[j] = (1/sf, 1/sb, mean, lam) of selected j ; caps_rest = Σ b_i·mean_i of the components not selected
 ```
-Every frame: `caps_k[j] = (kx, ky, d', b)` of selected `j`, with the phase `d'` of `comp` (§2), and the foam texture
-frame `caps_uv = (e, u0, v0)`: `e` the travel direction of the largest-amplitude component, `(u0, v0)` the camera-origin
-part of the texture coordinates below, drifting along `e` at that component's phase speed `c_p = lam_p/T_p` (in double,
-mod 1).
+**Wave groups**: waves break where a group of them is highest, and a group travels at the group speed, half the
+phase speed of its waves, so the crests run through it: a cap builds at the back of a group and fades at its front.
+The six crest windows alone give groups on a regular lattice; a slow envelope breaks it up: the coarse channel (G)
+of the wake foam noise (`foam_tex`, §5), mapped over a `GROUP_TILE = 600 m` square along the dominant wave and
+drifting with it at the group speed `c_p/2` (features of about 100 m, a few groups of the peak waves), scales the
+crests' steepness:
+```
+env = max(0, 1 + 0.5·(G − G_mean)/σ_G)          // g_amp = 0.5/σ_G
+```
+**Short crests**: our components are long-crested, so the crests of two of them coincide along a line tens of metres
+long; a real whitecap breaks over a few metres of a crest. The same noise channel over `BREAK_TILE = 30 m` along the
+dominant wave by `15 m` across (features of about 6 m), riding the dominant wave at `c_p` (so a cap keeps its piece of
+crest), passes a crest's foam only where it is high:
+```
+brk = clamp((G_b − 0.55)/0.25, 0, 1), and 0.6 where the pixel cannot resolve it (mix by smoothstep(2, 4, 6 m/px))
+```
+**Crest segments, not lines** (round 6, 2026-10-16): with the windows, the groups and the 6 m breakup alone, whole
+crests of the dominant wave broke in step across the sea, a line of caps, a line of nothing, like a zebra crossing
+(from the air, runs of caps along a crest of 4 to 5 peak wavelengths). Real wind seas are short-crested: a breaking
+crest segment is half to two peak wavelengths long, and neighbouring crests do not break in step. A third factor of
+the same noise channel over `SEG_TILE = 45 m` along the dominant wave by `120 m` across it (features of about 9 m
+across the crests, so neighbouring crests differ, and 25 m along them), riding the crests at `c_p`, passes a crest's
+foam only on its segments:
+```
+seg = clamp((G_s − 0.5)/0.2, 0, 1), and 0.45 where the pixel cannot resolve it (mix by smoothstep(2, 4, 9 m/px))
+S  ×= seg
+```
+Measured on the CPU mirror, 25 kn, fetch 30 km, a 1.2 km aerial window: the 99th percentile of crest-aligned runs of
+caps fell from 4.4 to 2.2 peak wavelengths (18 kn: 1.0); the mask's power within 20° of the wave direction on the
+ring 0.6 to 1.4 `k_p`, over the same for the caps moved at random across the crests, from 2.1 to 1.3 (18 kn 1.4). A
+narrow peak at `k_p` itself remains: the caps sit on the crests of the dominant wave, which are long in a sea of ten
+components.
+
+The cap's surroundings (the trail, the residual foam, the darker face and the bubble glow) are measured relative to
+the threshold, `xr = (S − S_b)/(0.25·S_b)`, and take `xs = min(x, xr)` plus the same lace and streak noise as `xj`:
+with the segments multiplying `S` the thresholds of a sea can be small, and a fixed band below them (`x > −1.5`)
+then lit whole bands of the wave's back.
+
+**Calibration** (CPU, once per sea): the steepness sum `S` (below, every component resolved) times `env`, `brk` and `seg` at
+65 536 points of a jittered grid over a 600 m square (one tile of the envelope), at time 0, gives its distribution; for each of the
+four covers `W_k = 0.05, 0.2, 0.8, 3.2 %` the threshold `caps_thr[k]` at which the share of those points with
+`F ≥ 0.5` (the whitecap area a photograph counts, as Monahan's data) equals `W_k` (bisection). So the cover follows
+the law on any sea (a short fetch, a swell, an open ocean) without a per-sea tuning. It takes about 0.2 s of
+GDScript on the development Mac, once per sea (at the race start, when the caps are turned on, or when the base wind
+changes by more than 5 %).
+
+Every frame: `caps_k[j] = (kx, ky, d', b)` of selected `j`, with the phase `d'` of `comp` (§2), the foam texture frame
+`caps_uv = (e, u0, v0)` (`e` the travel direction of the largest-amplitude component, `(u0, v0)` the camera-origin
+part of the texture coordinates below, drifting along `e` at that component's phase speed `c_p = lam_p/T_p`), and the
+group frame `caps_grp = (g_amp, G_mean, ug, vg)` (the same along `GROUP_TILE`, drifting at `c_p/2`) and the breakup
+frame `caps_brk = (ub, vb)` (along `BREAK_TILE`, drifting at `c_p`), in double, mod 1.
 
 **Per pixel** (`wm_caps_intensity`, `wm_apply_caps`; `m` the drawn wind factor of §4.3, `E` the exposure, `px` the pixel
 footprint):
 ```
-U     = m·base_speed / KNOT                                      // local wind, kn
-gate  = smoothstep(8, 10, U)                                     // no caps under 8 kn
+U     = m·base_speed                                             // local wind, m/s
+gate  = smoothstep(8, 10, U/KNOT)                                // no caps under 8 kn
 fade  = 1 - smoothstep(1200 m, 2500 m, dist)                     // both 0: no further work
-for each selected j:  d = signed cycles from the crest (fract of the phase, ahead > 0)
-                      W = exp(-(d/sf)²) ahead, exp(-(d/sb)²) behind
+for each selected j:  d = signed cycles from the crest (fract of the phase, ahead > 0; for j > 0 the phase
+                          bent by 0.5·(G_b − 0.5), the breakup noise below: straight crest lines cut straight
+                          edges into caps)
+                      W = exp(-(d/sf)²) ahead, exp(-(d/sb)²) behind, times 1 − smoothstep(0.3, 0.5, |d|)
+                          (0 at the trough: a broad back window cut there drew a straight edge along it)
                       S += b · mix(mean, W, smoothstep(2, 4, lam/px))   // too short for the pixel: its mean
-S     = E · (S + caps_rest + Σ b·mean of the selected beyond the tier's count)
-S_b   = 0.0677 + 0.0208·(15/U)³                                  // breaking threshold, falls with the wind
-F     = clamp((S - S_b)/0.06, 0, 1) · gate · fade                // foam intensity
+qd    = (dot(xl, e), dot(xl, perp(e)))
+env   = max(0, 1 + g_amp·(texture(foam_tex, qd / GROUP_TILE + (ug, vg)).g − G_mean))
+brk   = the short-crest breakup above, from texture(foam_tex, qd / BREAK_TILE + (ub, vb)).g
+S     = E · (S + caps_rest + Σ b·mean of the selected beyond the tier's count) · env · brk · seg
+x_c   = log2(W(U) / 0.0005) / 2                                  // 0..3 at the four calibrated covers
+S_b   = caps_thr piecewise linear in x_c (extrapolated beyond the ends)
+x     = (S − S_b) / (0.35·S_b)                                   // relative ramp (round 7)
+ev    = the breaking event at this crest spot now (life cycle, below)
+F     = min(clamp(x, 0, 1), ev) · gate · fade                    // active foam intensity
 ```
 The crest windows travel with their components, so a cap moves with its crests; the sum only passes the threshold
-where crests coincide, and a cap builds and fades as they drift in and out of step (median life about 1.5 s for a point
-riding the waves at 20 kn, at most about 0.05 opacity change between frames). The components the pixel cannot
-resolve count with their mean, so far away the caps thin out instead of aliasing.
+where crests coincide inside a high group, and a cap builds and fades as they drift in and out of step and as its
+crest runs through the group. Patches: in the chase view at 25 kn with a swell, median 1 m, 95 % under 4 m, the
+largest about 11 m (real caps at 25 kn: 1 to 5 m, a trail of a few metres, rarely over 10 m). The
+components the pixel cannot resolve count with their mean, so far away the caps thin out instead of aliasing.
 
 **Look**: the foam texture (`SeaTextures.caps`, 256², RGBA8, tiling, generated at load) holds four nested density
 levels as coverage: R sparse fizz (broken fine lace and a few longer filaments), G the lace net, B dense foam (thick
 lace and a milky film), A near-solid white with a few holes; built from periodic cellular noise (exact tiling) with a
 smooth warp that curves its borders, and seamless value noise for the breakup. It is mapped `4.5 m` along `e` by
 `3 m` across, moving with the dominant wave. Mip-mapped, anisotropic: the mips average coverage, so a distant cap
-fades to its true mean whiteness.
-```
-q        = (dot(xl, e), dot(xl, perp(e))) / (4.5, 3) + (u0, v0)
-L        = texture(caps_tex, q)
-cover    = L.r·min(4F, 1) + (L.g - L.r)·clamp(4F - 1, 0, 1) + (L.b - L.g)·clamp(4F - 2, 0, 1) + (L.a - L.b)·clamp(4F - 3, 0, 1)
-a        = 0.92 · cover · (0.3 + 0.7·smoothstep(0, 0.6, F))      // thin foam is translucent
-ALBEDO   = mix(mix(ALBEDO, (0.05, 0.20, 0.23), 0.3·smoothstep(0.2, 0.8, F)), col_foam, a)   // aerated water, then foam
-ROUGHNESS = mix(ROUGHNESS, 0.55, a) ; EMISSION *= 1 - a ; normal = normalize(mix(normal, n_geo, 0.6·a))   // no glints in foam
-```
-**Cover** (drawn foam, the mean of `a` over the water, on the reference wind seas of `sea.md` §2, fetch 10 km), against
-measured whitecap cover (about 0.2 % at 15 kn, 1.4 % at 20 kn, 2.5 % at 25 kn):
+fades to its true mean whiteness. With caps a few metres across and far apart the tiling inside them does not read.
+**The life cycle** (round 7, 2026-10-16: the owner saw each cap as a rigid foam shape carried across the sea at the
+wave's phase speed; whitecaps are events that happen, change and disappear with the wave). Two stages:
 
-| wind | 8 kn | 12 kn | 15 kn | 18 kn | 20 kn | 24 kn | 25 kn |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| cover (tiers M, H) | 0 | 0.004 % | 0.18 % | 0.75 % | 1.2 % | 2.4 % | 2.5 % |
-| cover (tier L) | 0 | | 0.14 % | | 1.1 % | | 2.3 % |
+*Active breaking (stage A).* A patch of crest breaks once per event period `T_ev = 0.9·T_p` (dominant wave) for 0.4
+of a wave period (1.7 s at 25 kn). The patch phase is a smooth field riding the crests, stretched across them
+(`G` over 270 m along the wave by 900 m across, `caps_seg.zw`, lookup warped slightly by the local noise): along a
+crest it changes by about 0.01 periods per metre, so an event's edges are soft and no band of phase shows on a cap,
+while from one crest to the next it changes by most of a period, so neighbouring crests do not break in step and
+the cover holds steady over any view. Each point joins its patch's event after a delay `dl` (from the local event
+noise `G_ev`, features about 8 × 23 m, and the breakup noise: the break starts at a point and spreads) and parts
+stop early by `ee` (from the segments' fine channel: a ragged end, and a ragged outline to the foam left behind).
+The whole patch otherwise stops together; ending by a local phase left rings where the first points stopped while
+later ones still broke. Where the pixel cannot resolve the spots, `ev = 0.15` (about the mean on-share; 0.35 drew a
+grey blanket at the horizon).
+```
+ph   = fract(t/T_ev + 2·G_slow)                                   // caps_ev = (fract(t/T_ev), 1/T_ev, c_p, 3.5 s)
+dl   = 0.06·clamp((G_ev − 0.35)/0.3, 0, 1) + 0.15·clamp((G_b − 0.3)/0.4, 0, 1)
+ee   = 0.22·clamp((R_s − 0.3)/0.4, 0, 1)
+ev   = smoothstep(dl, dl + 0.15, ph) · (1 − smoothstep(0.311 − ee, 0.444 − ee, ph))   // ph in event periods
+```
+(Two rejected phases: fine noise swept into thin streaks in the foam left behind; a phase from noise with a large
+gradient, 8 periods over a 360 m tile, made the event a band of phase about 3 m wide, drawn as stripes and rings.)
+The event gates the foam, not the steepness: the threshold is still set by the crests. Since the delay and early
+end come from the same noise as the breakup and segments, the calibration weighs each point's `S` by the share of
+the cycle its event is on (32 phases) and sets the threshold where the weighted share above `S_b·1.175` is the
+cover. The core: `xj = x + 1.2·(L.g − 0.5)` (the lace riding the crest), `core = smoothstep(0, 3, xj) ·
+smoothstep(0, 0.7, ev) · front · g`, `a = core·mix(0.85·mix(L.g, L.b, smoothstep(2, 5, xj)), 0.95·L.a, solid)`:
+the lace net at the edges, dense foam inside, at most 0.85 opaque, and solid white only on `solid =
+smoothstep(1.5, 2.5, xj) · band · smoothstep(0.55, 0.75, st)`, a band of ±0.03 `lam` at the crest (the tumbling
+water) broken along its length by the streak noise `st`. Its brightness follows the event, so a cap fades in and
+out instead of popping. `front = smoothstep(−4 m, −1 m, dm)·(1 − smoothstep(0.25·lam, 0.45·lam, dm))`: back to 0
+before the trough, where `dm` jumps from `+lam/2` to `−lam/2` (a factor that differed on the two sides drew a
+straight edge along the trough).
 
-On a 20 kn sea the puffs and lulls change it (local wind `m` times the base): m 0.6: 0.06 %, 0.8: 0.6 %, 1.1: 1.4 %,
-1.25: 1.7 %; caps show the puffs, and a lull is almost free of them.
+*Residual foam (stage B).* What a crest left stays in the water and moves only with the surface drift (`caps_drift
+= 0.03·U` along the dominant wave), not with the crest: the crest runs ahead and the foam falls behind on the wave's
+back, then decays and erodes. Analytically, at a point, for the last two passings of the heaviest component's crest:
+```
+tau    = time since that crest passed where this foam fell (x − e·drift·tau; one fixed-point step, the passing
+         nearest the first guess)
+A      = min(clamp(x(t − tau), 0, 1), ev_wide(t − tau))   // the active foam then: the potential at that time (the
+                                                          // windows moved back by tau/T_j, the segments where the
+                                                          // crest was, c_p·tau back, the breakup at its mean: the
+                                                          // crest sweeps its fine detail into streaks along the wave,
+                                                          // which the residual's own lace replaces), the event at any
+                                                          // time within ±0.25 s of the passing
+R      = max over the two passings of A² · exp(−tau / 3.5 s) · smoothstep(0, 0.6 s, tau)
+         · (1 − smoothstep(1.5·T_0, 2·T_0, tau)) · (1 − smoothstep(300 m, 400 m, dist))
+age    = 1 − exp(−tau / 7 s)
+Lr     = texture(caps_tex, q/(5, 3) + caps_res.xy)                // the foam lace, drifting with the surface and
+                                                                  // wandering slowly, so outlines change
+cov    = 2·age < 1 ? mix(Lr.b, Lr.g, 2·age) : mix(Lr.g, Lr.r, 2·age − 1)   // dense foam, then the net, then fizz
+blob   = texture(foam_tex, q/(16, 10) + caps_res.zw).g            // erosion blobs in the same drifting frame
+a      = max(a, 0.6 · R · cov · smoothstep(th, th + 0.2, blob) · g),   th = 0.4 + 0.3·age   // breaking into fragments
+```
+It costs two more passes of the six-component loop and four taps each (breakup, segments, the two event-phase
+taps; the breakup tap now comes before the loop, which it bends), evaluated within 400 m (fading out from 300 m) where the heaviest component is resolved, and two taps for
+its lace and blobs; the stage A field two taps more than round 6 (the event phase).
+
+*Around a breaking cap* (round 4, kept, now only while it breaks): `near = smoothstep(−0.8, 0.4, xj) ·
+smoothstep(0, 0.7, ev)`; the face ahead is darker (`ALBEDO ×= 1 − 0.22·near·(1 − behind)·(1 − smoothstep(0.5 m, 3 m,
+dm))`) and the bubble cloud behind lifts it slightly toward green-blue, broken like the foam and fading faster than
+it (`mix(ALBEDO, (0.05, 0.20, 0.23), 0.1·near·behind·ev²·L.b)`, at most 0.1; 0.35 flat made bright turquoise pools),
+with `behind = (1 − smoothstep(0, 1.5 m, dm))·smoothstep(−0.4·lam, −0.15·lam, dm)` (0 where `dm` is unresolved).
+Then `ALBEDO = mix(ALBEDO, col_foam, a)`, `ROUGHNESS = mix(ROUGHNESS, 0.55, a)`, `EMISSION ×= 1 − a`, the normal toward
+`n_geo` by `0.6·a` (no glints in foam).
+
+Measured (CPU mirror, 25 kn, fetch 30 km, a 150 m window): one second on, the drawn foam moved on by `c_p` (6.8 m)
+correlates 0.01 with itself (the steady caps of round 6: 0.95), its best-overlap IoU is 0.03 (0.30); residual foam
+older than 1.5 s moves with the drift, not with the crests (`c_p` 6.8); active breaking at points riding the crests
+lasts 0.5 s (median, round 7b), the residual patches (their lace aside) at points drifting with the surface 2.7 s;
+the opacity changes by at most 0.10 per 60 Hz frame; the most opaque foam patch is 4 % opaque.
+
+**Cover** (the area with `F ≥ 0.5`, every component resolved, on the reference wind seas of `sea.md` §2 at fetch
+10 km) against the law, and the share of the water with any visible foam (`a > 0.1`): see the checks below, which
+print both; the area with visible foam stays within twice the law (the first version: about ten times). Puffs and lulls change it through the local wind `U`, so caps show the puffs and a lull is almost free of
+them.
 
 **Cost**: one loop of 6 (tier L 4) components with a fract, an exp and a smoothstep each, from 12 vec4 uniforms with
-a constant bound, and one texture tap where `F > 0`; nothing below 8 kn or beyond 2.5 km. The per-component windows are
-a few metres wide, narrower than the vertex spacing at the chase camera's distance (1.5 m at 25 m, 6 m at 100 m on
-tier M), so they are evaluated per pixel; what the vertex stage already has (exposure, venue factor) comes as varyings.
-Measured on the development M1 (OpenGL proxy, `tests/water_cost.py`, the 1280 × 800 chase view): about +0.15 ms on
-tier L and +0.2 ms on tiers M and H, 10 to 15 % of the water pass; on the Steam Deck (about 0.6 of the M1's GPU)
-about +0.3 ms, inside the 2.5 ms of §7.
+a constant bound, two taps of the foam noise (group envelope, short-crest breakup), a `pow` and a `log2` for the
+threshold, and one
+tap of the foam texture where `F > 0`; nothing below 8 kn or beyond 2.5 km. The per-component windows are a few
+metres wide, narrower than the vertex spacing at the chase camera's distance (1.5 m at 25 m, 6 m at 100 m on tier
+M), so they are evaluated per pixel; what the vertex stage already has (exposure, venue factor) comes as varyings.
+Measured with `tests/water_cost.py` (the development M1, OpenGL proxy, 1280 × 800): the helicopter view of the
+25 kn open sea, where every water pixel runs the loop, +0.35 ms on tier L, +0.39 ms on M, +0.34 ms on H (round 7b;
+round 7 +0.26, +0.28, +0.27 ms, with the residual foam within 400 m; round 6 +0.21, +0.23, +0.14 ms; round 5 +0.16 to 0.18, +0.21 to 0.24, +0.22 to 0.24 ms; runs vary by ±0.05 ms)
+(the first version +0.10, +0.14, +0.10 ms on the same view; the runs vary by ±0.05 ms); the game's chase view at
+25 kn +0.01 to 0.02 ms (round 7b). On the Steam Deck (about 0.6 of the M1's GPU) about
++0.65 ms on the helicopter view, inside the 2.5 ms of §7.
 
-**Checks** (`tests/water_test.gd`, on the CPU mirror `SeaWhitecaps.intensity`): no caps under 8 kn (6 and 7.9 kn, and
-a puff on a 7 kn breeze); cover rising with the wind from 10 to 25 kn and within ×1.6 of the measured cover at 15,
-20 and 25 kn (tier L at least half at 20 kn); more caps in puffs, fewer in lulls; each component's window equal after
-moving with its phase velocity; the foam texture drifting with the dominant wave; the foam field 0.5 s later
-correlating with itself moved with the waves (0.9), not in place (0); over 60 s at 60 frames per second, points riding
-the dominant wave see the opacity change by at most 0.15 per frame and caps living a median 0.8 s or more.
-Previews: `tests/previews/whitecaps_{12,18,24}kn_chase.jpg` and `whitecaps_20kn_sequence.jpg` (6 frames 0.5 s apart).
+(Round 4 drew wind-aligned foam lanes between the caps; in the game they read as hundreds of short white dashes,
+like rain over the sea, and were dropped on 2026-10-16.)
+
+**Checks** (`tests/water_test.gd`, on the CPU mirror `SeaWhitecaps.intensity` and `SeaWhitecaps.drawn`): no caps under 8 kn (6 and 7.9 kn, and
+a puff on a 7 kn breeze); cover never falling and rising over 10 to 25 kn, within ×1.3 of the law at 12, 15, 20 and 25
+kn, on the fetch-10 km seas and on an open sea (fetch 30 km with a 0.8 m swell), tier L within ×1.6; the area with
+visible foam (`a > 0.1`, active and residual) at most 4.5 times the active cover (residual foam covers several
+times the actively breaking area); the drawn opacity is never one flat value
+(over the foamed points its spread is at least 0.15) and the core is brighter than the trail; with a swell bigger than the wind sea's peak (25 kn with 1.2 m, 18 and 12 kn
+with 0.8 m, 12 s): no swell component carries caps, cover within ×1.4 of the law, and in the chase view (0.5 m
+cells over 200 m) 95 % of the patches at most 8 m and the largest at most 16 m (the second version: 27 and 51 m); more caps in puffs, fewer in lulls; no lattice: the autocorrelation of the foam
+field at 25 kn over 512 m (8 m cells) rises nowhere more than 0.3 above its mean at the same distance (2 to 16 cells;
+the first version 0.8, the six crest windows alone 0.7); each component's window equal after moving with its phase velocity;
+the foam texture drifting with the dominant wave and the group envelope at half its speed; the life cycle (above): one second on, the foam moved on by `c_p` correlates under 0.4 with itself and its
+best-overlap IoU is under 0.5; residual foam older than 1.5 s moves under a quarter of `c_p`; active breaking lasts
+0.3 to 2 s (median, points riding the crests), residual foam 2 to 8 s (points drifting with the surface); the
+opacity never changes by more than 0.15 per 60 Hz frame (the active foam seen riding, the residual seen drifting). No zebra crossing (an 800 m aerial window at 25 and
+18 kn, fetch 30 km): caps linked along a crest (within 0.15 `lam_p` across and 0.6 `lam_p` along it) run at most 3
+peak wavelengths (99th percentile; round 5: 3.8 to 5.0). No solid slabs (25 kn, six 150 m windows at 0.75 m): in every foam
+patch of at least 20 cells under 30 % of the area is opaque (over 0.9); the bubble glow mixes at most 0.1 toward
+green-blue.
+Previews: `tests/previews/whitecaps_{12,18,24}kn_{chase,heli}.jpg` and `whitecaps_20kn_sequence.jpg` (6 frames 0.5 s
+apart).
 
 ### 4.5 Daylight
 Target look (WM-080): a bright, sunny, high-contrast racing day. A hard sun, a clear saturated blue sky (deep at
@@ -564,7 +784,7 @@ less than 3° high.
 **Mesh**: a 32 × 16 grid over the rectangle that holds the polygons and the footprint (one side along the shadow,
 plus 0.5 m all round), draped on the drawn sea like the wake ribbons (`wm_drape`, lift 0.03 m, the same pull toward
 the camera so the sea's facets never cover it), unshaded, multiplying the colour behind it, no depth write, depth
-test on (the hull, deck and sails in front hide it), no shadows, no fog, drawn before the wakes, bow waves and mist
+test on (the hull, deck and sails in front hide it), no shadows, no fog, drawn before the wakes and mist
 (render priority −1), which take no shadows on tier H either. The grid moves by its transform only. All boats share
 one material: each boat's polygons are one row of a small RGBA32F texture (160 texels: origin and fade, sun and
 polygon count, footprint count, then the polygons, their bounding circles, the edge lines and the footprint's),
@@ -598,7 +818,7 @@ overcast 0.10, the sun's share of the light under the deck; `Daylight.CONDITIONS
 the GPU draws one 32 × 16 grid per boat with a loop over at most 96 edges, skipping polygons by their bounding
 circle, on the pixels of its rectangle.
 
-## 5. Bow waves, wakes and spray
+## 5. Wakes and bow spray
 
 Per boat, a **wake ribbon**: a strip of the water laid down behind the bow and left where it was laid, which opens
 into the V of the wake and fades. It is visual only and runs per rendered frame on the render clock.
@@ -613,18 +833,25 @@ if the bow point is more than 1 m above the sea (a bow out of the water on a wav
 row = { frozen boat frame (heading, heel), P, v, age 0, alpha 1,
         w0 = 0.35 * bwl * min(1, ratio + 0.2),               // half width at the bow
         spray: two particles, port and starboard }
-push the row into a ring buffer of N = 80 rows (a 4 s ribbon)
+push the row into a ring buffer of N = 180 rows (a 9 s ribbon)
 ```
 **Each frame**, for every row of age `t` (a row is drawn with 15 vertices across: a feathered, transparent outer
 vertex `0.3 + 0.25·w` outside each edge, and 13 from edge to edge, so it follows the waves between its edges):
 ```
-half width  w = w0 + 0.354 * v_row * t                       // edges open at the Kelvin angle, tan 19.47°
+half width  w = w0 + tan(α) * v_row * min(t, 4 s)            // edges open at the wake angle α while the diverging
+                                                              // waves break (their foam is gone well before 4 s)
+wake angle  Fr = 0.399·ratio_row                               // hull Froude number v/sqrt(g·lwl) (hull speed: 0.4)
+            α = min(19.47°, 0.1995 rad / Fr)                   // Kelvin's angle at low speed; at high Froude the
+                                                              // apparent angle falls as 1/Fr (Rabaud and Moisy, 2013:
+                                                              // α ≈ 1/(2·sqrt(2π)·Fr)): WM7 at 8 kn 19.5°, 15 kn 12°,
+                                                              // 19 kn 9.5°
 edges       = row point ± w across the frozen heading, each draped on the drawn sea + 0.1 m (in the vertex shader,
               with the sea's uniforms and grid fade) and pulled toward the camera along the view ray (the pixel
               stays, only the depth moves) far enough to clear the sea by h_c = 0.15 m + 2 Σ a_i·w_i·(1 − fade_i(1 m))
               (the short waves the sea grid carries but the ribbon, flat between its vertices, does not):
               pull = min(h_c / sin(elevation of the view), 0.3 · distance), so the sea's facets never cover it
-alpha       = (1 - t / 4 s) * min(1, ratio_row * 2)          // fades with age, faint at low speed
+alpha       = (1 - t / 9 s) * min(1, ratio_row * 2)          // fades with age, faint at low speed
+age         = t / 9 s (COLOR.g)                               // the foam's breakup (below)
 texture v   = distance sailed at emission / 10 m              // foam texture along the ribbon
 the row drifts with the surface current at its point (wind.md §7)
 ```
@@ -636,45 +863,108 @@ stick where they reach the surface and become the ribbon's outer vertices (pushe
 from the row, flying or landed, never inside the edge, so the strip does not fold; that reach is smoothed over the
 four rows either side with triangular weights, so the outer edge has no steps from row to row): the sheet of spray
 thrown off the bow lands and spreads into the wake. The particles themselves are **not drawn** (small sprites read
-as dots); what the eye sees is the bow wave and the mist below.
+as dots); what the eye sees is the mist and the bursts below.
 
-**Bow wave** (every tier, every boat with a wake): on each side a sheet of water peels off the stem, rises along
-the bow and breaks into a foam crest that runs aft and outward into the ribbon's edge. It moves with the boat
-(rebuilt every frame from the pose, in world space, draped on the drawn sea like the ribbon) and is drawn with the
-wake's foam, transparent, no depth write, no shadows.
+**Bow wave** (not drawn): a sheet of water peeling off the stem into a foam crest was drawn on every tier until
+2026-10-16; the owner found it read as a knife edge and the boats look better without it. Its crest still places the
+bow spray and the mist (below), from the bow's drivers:
 ```
 v, ratio  = the bow's speed and speed ratio of the last emission (above), smoothed over 0.3 s
-k         = smoothstep(0.25, 0.6, ratio)                       // nothing at low speed
 plunge    = the bow sinking into the sea: max(0, -d(bow height above the sea)/dt), m/s, smoothed over 0.3 s
 H         = min(0.08·lwl, 0.55·v²/(2g)) · (1 + 0.6·min(plunge, 1.5))          // crest height, m
 L         = lwl · (0.18 + 0.22·min(ratio, 1.3)) · (1 + 0.3·min(plunge, 1.5))  // length along the hull
-side s    = +1 lee, −1 windward: heel factor h_s = 1 + 0.6·s·|sin(heel)|
-grid      = 14 stations from the stem aft (σ = 0..1) × 7 across (τ = 0 at the hull .. 1 at the sea)
-station   x = bow_x − σ·L ; hull half breadth y_h = bwl/2 · min(1, σ·L / (0.5·lwl))^0.7 · (1 + 0.5·s·|sin(heel)|)
-across    y = y_h − 0.02 + τ · (0.12 + 0.5·σ·L) · (1 + 0.3·ratio)      // starts just inside the hull
-lift      at the hull H·h_s·(1 − σ)^1.6, crest (τ_c = 0.45) 0.75·H·h_s·(1 − σ)^0.7, 0 at τ = 1 (smoothstep between)
-alpha     k · smoothstep(0, 0.08, σ) · (1 − smoothstep(0.7, 1, σ))
 ```
-The drape adds the lift to the sea height and keeps the ribbon's clearance pull, reduced by the lift above 0.1 m
-(so the high part is not pulled). Shading (`wm_bow_alpha`): a translucent, lighter water sheet between the hull and
-the crest (alpha 0.18), a broken foam band on the crest (τ 0.28 to 0.78) and foam spilling on its outer face, the
-foam texture flowing aft at the boat's speed; foam is the wake's colour, roughness 0.6.
+The crest runs aft from the stem along the hull (`σ = 0..1` of `L`), a crest width `(0.12 + 0.5·σ·L)·(1 + 0.3·ratio)`
+off the hull at `τ = 0.45` of it, `0.75·H` above the sea.
 
 **Mist** (quality H, and M for the own boat): soft spray clouds, never dots. They appear only above
-`ratio = 0.55` or when the bow plunges:
+`ratio = 0.55`, when the bow plunges, and in bursts when the bow meets a wave:
 ```
-rate      = 14 /s · (clamp((ratio − 0.55) / 0.5, 0, 1) · pulse + 0.8 · clamp(plunge, 0, 1.5))   // per boat
+impact    = the bow sinking into the sea, as the plunge (the bow's height above the sea the front end evaluates,
+            sea.md §7, so a bow meeting a wave face counts as much as one dropping off a crest), but quick:
+            it follows a rise within 0.05 s and decays over 0.25 s
+I         = clamp(impact / 0.6 m/s, 0, 2) · smoothstep(0.3, 1.0, ratio)          // the impact burst, 0..2
+rate      = 14 /s · (clamp((ratio − 0.55) / 0.5, 0, 1) · pulse + 0.8 · clamp(plunge, 0, 1.5) + 3 · I)   // per boat
 spawn     on the crest, σ = 0.05..0.35, the lee side twice as often as the windward side
 velocity  outward (0.8..2.0)·ratio m/s, up 0.5..1.5 m/s (· (1 + plunge)), plus 0.7 of the boat's velocity
 motion    drag exp(−2.5 t) on the velocity, gravity 2 m/s² (fine droplets fall slowly), life 0.8..1.3 s
 size      0.5 m growing to (1.2 + 0.8·ratio) m over its life
 alpha     0.16 · fade in over 0.12 s · (1 − age/life)² ; at most 256 sprites in the scene
+burst     at impact I, each sprite launched is, with probability I/(1 + I), a sheet of droplets instead of mist:
+          thrown outboard along the flare and a little aft, flat and fast, falling like water:
+          velocity  outboard (2.5..4.5)·(0.5 + 0.5·min(ratio, 1.5))·(0.6 + 0.4·I) m/s, aft 0.15 of that,
+                    up (0.8..1.6)·(0.5 + 0.5·I) m/s, plus 0.85 of the boat's velocity
+          motion    gravity 9.81 m/s² (drops of a millimetre or more fall almost ballistically), drag 1.0/s,
+                    life 0.35..0.6 s
+          size      0.25 m growing to 0.6..0.9 m ; alpha 0.16 · min(1 + I, 2.2)
+          look      droplets: the soft disc keeps only the high values of the foam noise (a speckle that thins
+                    toward the edge), not a round cloud (wm_mist_alpha, kind 1)
 ```
+Why: a hull section entering the water at a relative speed `w` throws a jet of several times `w` along its surface
+(Wagner's wedge-entry result, the jet tip at about π/(2·tan β)·w, 4 to 5 times `w` for the 20° to 25° deadrise of a
+sportsboat's forward sections); drag in the air and the breakup into droplets keep only a share of that. The
+relative sink speed is what matters, so the same bow that rides the sea quietly bursts into spray when it overtakes
+a wave and its stem meets the back of the next one; and a slow boat does not throw spray (the `ratio` term). The
+bursts reuse the mist sprites and their cap: no other particle system. (A first version made the burst sprites
+bigger and denser mist; in the engine that read as a round puff of smoke beside the bow.)
 Each is a camera-facing quad with a soft round falloff broken up by the foam texture (`wm_mist_alpha`), unshaded
 with the sky's horizon colour plus a share of the sun that grows looking toward it (forward scattering), faded where
 it meets the water or the hull (depth fade over 0.6 m) and near the camera (under 3 m).
 
-A second, narrower ribbon from the **transom** (`w0 = 0.4·transom width`, no spray) gives the stern wake. On tiers
+**Wake foam** (`wm_wake_alpha`): the foam of a real wake is not a set of even stripes. Two things make it:
+- the **diverging waves** off the bow and quarters: their crests break into bands of foam along the wake's edges that
+  start narrow at the bow and quarters and widen and soften as the waves spread away from the boat (round 4: the
+  owner preferred these broad bands to thin lines), gone within a few boat lengths;
+- the **turbulent wake** behind the hull: churned water about the hull's width, the widest and most lasting foam
+  (tens of seconds behind a sportsboat at speed), which spreads slowly and, as the bubbles rise, breaks up into
+  separate patches and streaks that thin and fade.
+
+The bow ribbon draws the bands, the transom ribbon (below) the turbulent wake. Per vertex `COLOR.r` is the turbulent
+band's half width over the ribbon's (1 on the transom ribbon; 0 on the bow ribbon), `COLOR.b` on the bow ribbon
+`0.25 m / w` (so `w = 0.25/b`), on the transom ribbon the hollow behind a planing transom (below), `COLOR.g` the age.
+With `s = |2u − 1| / 0.6` the distance across in half widths (1 at the edge vertex, beyond it the feathered margin),
+`t = 9 s·age`, `n = 0.7·n1 + 0.5·n2` the fine foam noise (`n1` sampled in **world metres**, `world xz / 3 m`, so it
+is never stretched across a wide ribbon into a comb; `n2` along the ribbon) and `p` the coarse patch noise (one tap
+along the ribbon):
+```
+W       = 0.5 m + 0.55 m/s · t                              // the band's width, m: narrow at the bow, widening
+bw      = W · b / 0.25                                      // in half widths
+band    = s ≤ 1 ? smoothstep(1 − bw, 1 − 0.35·bw, s) · (1 − smoothstep(0.9, 1, s)) : 0   // soft, inside the edge
+lace    = smoothstep(th, th + 0.35, 0.6·n + 0.4·p)          // th = 0.5 + 0.25·age: broken foam, thinning
+bands   = band · lace · (1 − smoothstep(0.05, 0.38, age)) · 0.65 / (1 + 0.25·t)   // softer as it spreads, gone
+                                                            // after 2 to 3 s (a few boat lengths at speed)
+mid     = 1 − smoothstep(0.6·r, r, s)                       // the turbulent wake (hollowed when planing, below)
+th      = 0.45 + 0.35·age                                   // the foam thins: more of it falls under the threshold
+breakup = smoothstep(th, th + 0.4 − 0.25·age, 0.6·n + 0.4·p)   // and its patches get sharper borders
+a       = alpha² · (bands + 0.9·mid·breakup)
+```
+Nothing is drawn beyond the edge vertex, so the spray reach (which pushes the outer vertices out, invisible) no
+longer smears foam sideways into a comb of streaks (the first ribbons: a band out to 0.9 of the ribbon and texture
+coordinates stretched over the spray's reach). The ribbons stop widening at 4 s, so the long tail adds rows but no
+wide transparent area to the blending. Cost: the same three foam noise taps per wake pixel as before and a few more
+operations; nothing in the sea shader.
+
+**Planing: the hourglass.** Behind a planing transom the flow off the two quarters converges: right behind the
+transom the water is hollow, the foam closes in to a waist and, past it, spreads again (and sometimes peaks in a small
+rooster tail at the waist). The waist lies where the quarter flows meet, at a distance that scales with the
+transom's Froude length `v²/g`; for a sportsboat it is half to one and a half boat lengths behind. Above a length
+Froude number of about 0.8 the transom ribbon follows that profile, with `d = v·t` the distance behind the transom:
+```
+P       = smoothstep(0.8, 1.05, Fr)                         // Fr = 0.399·ratio; displacement speeds: off
+x_w     = 0.7 · v²/g                                        // the waist: WM7 at 19 kn about 6.8 m, one boat length
+pinch   = exp(−((d − x_w)/(0.5·x_w))²)
+w       = w0·(1 + 0.15·t)·(1 − 0.55·P·pinch)                // narrows to under half at the waist, widens after
+hollow  = P · (1 − smoothstep(0.3·x_w, x_w, d))             // COLOR.b: the centre right behind the transom is clear
+mid    ×= 1 − 0.85·hollow·(1 − smoothstep(0.25, 0.75, s))   // foam on the converging sides only
+alpha  ×= 1 + 0.3·P·pinch                                   // the waist is the brightest
+```
+
+A second ribbon from the **transom** (no spray) is the **turbulent wake**: `w0 = 0.45·bwl` (the hull's breadth near
+the stern), widening slowly as the turbulence spreads, `w = w0·(1 + 0.15·t)` (to about twice the hull's width after
+9 s), not at the wake angle. It emerges from under the transom: over the first `bwl` of distance sailed
+(`v·t`) its alpha ramps in and its band narrows to 0.4 of its width at the start
+(`k = smoothstep(0, bwl, v·t)`: alpha × k, `COLOR.r = 0.4 + 0.6·k`), so it has a feathered, rounded start instead of
+a straight edge. On tiers
 M and H every ribbon is also drawn into a camera-centred **wake normal buffer** (RG8, 512 × 512 over 400 m, cleared
 each frame) as a normal disturbance that the sea shader adds to its detail normal, so wakes also ripple the
 reflections. The buffer is a sub-viewport with its own world (the ribbons' meshes shared), so the scene's cameras
@@ -698,7 +988,6 @@ colour-blind palettes).
 | puffs and lulls (§4.3) | yes (gameplay information) | yes | yes |
 | whitecaps (§4.4) | the 4 heaviest foam components | the 6 heaviest | the 6 heaviest |
 | wake ribbons | own boat | own + 6 nearest | all within 400 m |
-| bow wave | all boats with a wake | all boats with a wake | all boats with a wake |
 | mist (and spray reach) | no | own boat | yes |
 | wake normal buffer | no | yes | yes |
 | screen-space reflections | no | no | yes |
@@ -770,8 +1059,9 @@ stated clearly.
    base speed (puffs off) within 1e-3 at 2000 random points over eight directions, and the shader's texture path
    (float32 emulation on the uploaded texture) equals the mirror within 1e-3; the texture follows the wind into the
    next sector.
-6. **Wake geometry**: a boat at a steady 3 m/s: the ribbon's half width 2 s behind the bow is `w0 + 2.12 m` (±5 %),
-   and its rows stay where they were laid (no drift without current).
+6. **Wake geometry**: a boat at a steady 3 m/s: the ribbon's half width 2 s behind the bow is `w0 + 2.12 m` (±5 %)
+   and 6 s behind `w0 + 4.25 m` (it stops opening at 4 s), the ribbon lasts 9 s, and its rows stay where they were
+   laid (no drift without current).
 7. **Band loop**: the components the sea uploads are sorted by wavelength, longest first, `comp_lam` equals
    `1/|(kx, ky)|` of each, and the band loop of §3.2 equals the per-pixel slope summed over every component with the
    full weights (CPU mirror, random points, spacings and footprints).

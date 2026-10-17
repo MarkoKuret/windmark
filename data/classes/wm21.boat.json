@@ -34,25 +34,25 @@
   },
   "rudder": {"type": "spade", "depth": 2.35, "chord_root": 1.15, "chord_tip": 0.55, "thickness": 0.095, "x": -5.6},
   "rig": {
-    "I": 19.0,
+    "I": 24.777,
     "J": 7.2,
     "P": 23.2,
     "E": 6.9,
     "mast_height": 26.4,
     "mast_x": 2.9,
     "boom_height": 2.6,
-    "fractional": 0.75,
-    "pole": 6.8
+    "fractional": 0.974,
+    "pole": 7.2
   },
   "sails": [
-    {"id": "main", "type": "main", "area": 88.0},
-    {"id": "genoa", "type": "genoa", "area": 108.0},
-    {"id": "spin", "type": "spinnaker_sym", "area": 250.5}
+    {"id": "main", "type": "main", "area": 84.0},
+    {"id": "genoa", "type": "genoa", "area": 122.0},
+    {"id": "spin", "type": "spinnaker_sym", "area": 294.0, "mid_girth_frac": 1.05}
   ],
   "crew": {"count": 11, "weight": 935},
   "start": {"front_sail": "genoa"},
   "visual": {
-    "hull": {"bilge_fillet": 0.30, "counter_height": 0.84, "keel_line_exponent": 2.0, "max_draft_pos": 0.58},
+    "hull": {"bilge_fillet": 0.30, "counter_height": 0.84, "keel_line_exponent": 2.0, "max_draft_pos": 0.58, "topside_flare": 1.5},
     "deck": {
       "cockpit": {"length": 5.6, "width": 0.60, "depth": 0.50, "aft_deck": 3.2},
       "cabin": null,
@@ -61,6 +61,7 @@
       "wheel": {"diameter": 1.7, "well": true, "hub_height": 0.45},
       "hatches": 2
     },
-    "rig": {"spreaders": 3, "backstay": true}
+    "rig": {"spreaders": 3, "backstay": true},
+    "sails": {"main": {"head_width": 0.05}, "spin": {"look": {"camber": 0.32}}}
   }
 }

@@ -205,6 +205,8 @@ def resolve(raw, path="<class>"):
         "steering": None,
         "wheel": {"diameter": None, "well": False, "hub_height": None, "twin": False, "spacing": None},   # data_format.md 3.7.3
         "hatches": 1 if L < 9.0 else 2,
+        "grinders": 0,                  # coffee-grinder pedestals on the cockpit's centreline
+        "halyard_leads": "painted",     # the halyards on deck: painted into the deck maps, or "modelled"
     }
     vcab = (vis.get("deck", {}) or {}).get("cabin", {})
     deck = _deep_merge(deck_defaults, vis.get("deck", {}))
@@ -297,6 +299,11 @@ def resolve(raw, path="<class>"):
             raise ClassFileError(f"$.visual.deck.wheel.{k} must be a number > 0 m (got {v})")
     if not isinstance(wh.get("well", False), bool):
         raise ClassFileError("$.visual.deck.wheel.well must be true or false")
+    g = c["deck"]["grinders"]
+    if isinstance(g, bool) or not isinstance(g, int) or not 0 <= g <= 4:
+        raise ClassFileError(f"$.visual.deck.grinders must be an integer 0 to 4 (got {g})")
+    if c["deck"]["halyard_leads"] not in ("painted", "modelled"):
+        raise ClassFileError("$.visual.deck.halyard_leads must be \"painted\" or \"modelled\"")
     if not isinstance(wh.get("twin", False), bool):
         raise ClassFileError("$.visual.deck.wheel.twin must be true or false")
     return c

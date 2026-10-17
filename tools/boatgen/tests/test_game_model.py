@@ -52,6 +52,8 @@ class GameModelTest(unittest.TestCase):
                         for g in gs:
                             t = g.tag or ""
                             painted = hardware.is_painted(t) and not t.startswith("hatch_")
+                            if b._modelled_lead(t):
+                                continue                # visual.deck.halyard_leads "modelled": geometry
                             if hardware.is_painted_line(t):
                                 # a painted line's geometry only where it leaves the surface
                                 h = g.P[:, 2] - b.deck.surface_z(g.P[:, 0], g.P[:, 1])
@@ -61,6 +63,10 @@ class GameModelTest(unittest.TestCase):
                 tags = {(g.tag or "").split("_")[0] for gs in parts["body"].slots.values() for g in gs}
                 self.assertIn("wind", tags)          # the wind wand
                 self.assertIn("winch", tags)
+                if b.cls["deck"].get("grinders"):
+                    self.assertIn("grinder", tags)     # modelled, low-poly
+                    gr = [g for gs in parts["body"].slots.values() for g in gs if (g.tag or "").startswith("grinder_")]
+                    self.assertLessEqual(sum(g.tri_count for g in gr), 800 * b.cls["deck"]["grinders"])
                 self.assertNotIn("pod", tags)          # a regatta helm: no instrument pod or guard
                 self.assertNotIn("pedestal_guard", {g.tag for gs in parts["body"].slots.values() for g in gs})
 
@@ -69,7 +75,10 @@ class GameModelTest(unittest.TestCase):
             p = boat(c).painted_part()
             tags = {g.tag.split("_")[0] for gs in p.slots.values() for g in gs}
             with self.subTest(cls=c):
-                for t in ("jib", "halyard", "traveller", "hatch", "organiser"):
+                want = ("jib", "traveller", "hatch")
+                if boat(c).cls["deck"].get("halyard_leads") != "modelled":
+                    want += ("halyard", "organiser")    # modelled leads (wm16): halyards and organisers are geometry
+                for t in want:
                     self.assertIn(t, tags)
                 self.assertNotIn("mast", tags)       # the mast-foot blocks stand up: modelled
 

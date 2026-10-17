@@ -43,20 +43,29 @@ class HelmTest(unittest.TestCase):
         self.assertAlmostEqual(float(d.surface_z(hub[0], sl["y"] + 0.05)), float(d.floor_z(hub[0])))
 
     def test_twin_wheels(self):
-        """Twin wheels (wm16): two hubs abreast, `spacing` apart, each in its own slot that clears the rim, the slots
-        apart on the centreline and inside the cockpit; the floor reports the slot's bottom inside each."""
+        """Twin wheels (wm16): two hubs abreast, `spacing` apart, rims clear of each other, of the cockpit's sides and
+        of the floor (no slots); with `well` each gets its own slot that clears the rim, apart on the centreline."""
         cls = classfile.load(os.path.join(CLASSES, "wm16.boat.json"))
         d = Deck(cls, HullShape(cls))
         h = d.helm
         self.assertEqual(len(h["hubs"]), 2)
-        self.assertEqual(len(h["slots"]), 2)
+        self.assertEqual(h["slots"], [])
+        self.assertIsNone(h["slot"])
         R = h["diameter"] / 2
+        self.assertTrue(1.1 <= h["diameter"] <= 1.3)
         y0, y1 = h["hubs"][0][1], h["hubs"][1][1]
         self.assertGreater(y0, 0)                                  # port first
         self.assertAlmostEqual(y0, -y1)
         self.assertGreater(y0 - y1, h["diameter"] + 0.1)            # the rims clear each other
         self.assertLess(y0 + R, 0.95 * float(d.yc(h["x"])))        # and the cockpit's sides
+        self.assertGreater(h["hub"][2] - R, h["floor_z"] + 0.1)    # and the floor
+        # the same wheels let into the floor: a slot each
+        cls["deck"]["wheel"].update({"well": True, "hub_height": 0.48, "diameter": 1.3})
+        d = Deck(cls, HullShape(cls))
+        h = d.helm
+        R = h["diameter"] / 2
         y_floor = np.sqrt(R * R - (h["hub"][2] - h["floor_z"]) ** 2)
+        self.assertEqual(len(h["slots"]), 2)
         for hub, sl in zip(h["hubs"], h["slots"]):
             self.assertAlmostEqual(sl["yc"], hub[1])
             self.assertGreater(sl["y"] - y_floor, 0.04)

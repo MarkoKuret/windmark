@@ -184,6 +184,8 @@ Every key is optional; defaults scale with LOA.
 | `deck.steering` | wheel from 11 m, else tiller | `wheel` or `tiller` |
 | `deck.wheel` | diameter min(0.855 cockpit width, 1.35 (LOA/12)^0.7) (twin: min(0.45 cockpit width, 1.2 (LOA/12)^0.7)), well false, hub_height (well) 0.62 (LOA/12)^0.5 else diameter/2 + 0.12, twin false, spacing (twin) each rim 0.25 m inside the cockpit's side | the helm of a wheel boat (`docs/specs/data_format.md` §3.7.3): with `well` the wheel's lower part runs through a slot in the cockpit floor; with `twin` two wheels abreast, `spacing` m between the hubs, each with its own pedestal and slot |
 | `deck.hatches` | 2 from 9 m, else 1 | foredeck hatch, plus one on the cabin top |
+| `deck.halyard_leads` | `painted` | the halyards where they lie on the deck, and their deck organisers: painted into the deck maps (`painted`), or kept as geometry in the game model (`modelled`, wm16: one continuous line from the mast foot through the organiser into the clutch at every distance; about 3,300 more triangles, no extra draw) |
+| `deck.grinders` | 0 | coffee-grinder pedestals (0 to 4) on the cockpit's centreline, 0.85 s forward of the traveller and 0.9 s apart: a carbon column, a gearbox head and two cranks with grips (about 700 triangles each in the game model, part of `body`, so no extra draw) |
 | `keel.bulb_flat` | 1.25 | bulb cross-section width / height |
 | `rudder.sweep` | 0.10 | rudder quarter-chord sweep (rad) |
 | `rig.mast_chord` | 0.0105 · mast_height + 0.02 | mast section fore-and-aft size (m) |

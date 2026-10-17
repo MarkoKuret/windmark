@@ -177,6 +177,9 @@ class Boat:
                         g.uv1 = self.deck.plan_uv1(g.P)
                         parts["deck"] = Part().extend(parts["deck"]).add(mat, g)
                         continue
+                    if self._modelled_lead(t):
+                        q.add(mat, g)       # visual.deck.halyard_leads "modelled": the whole lead is geometry
+                        continue
                     if hardware.is_painted_line(t):
                         # the line's lengths off the surface stay geometry (the deck maps paint the rest)
                         g = self._rope_off_surface(g)
@@ -229,9 +232,16 @@ class Boat:
         for name in ("hardware",):
             for mat, gs in self.parts[name].slots.items():
                 for g in gs:
-                    if hardware.is_painted(g.tag or ""):
+                    if hardware.is_painted(g.tag or "") and not self._modelled_lead(g.tag or ""):
                         out.add(mat, g)
         return out
+
+    def _modelled_lead(self, tag):
+        """A halyard or its deck organiser kept as geometry in the game model (visual.deck.halyard_leads
+        "modelled"): one continuous line from the mast foot to the clutch, drawn at every distance."""
+        if self.cls["deck"].get("halyard_leads", "painted") != "modelled":
+            return False
+        return tag.startswith("organiser_") or (tag.startswith("halyard_") and hardware.is_painted_line(tag))
 
     def shadow_proxy(self):
         """The shadow casters (sail_visuals.md 11.4, shadow.py): (static, boom, rudder) for the nodes `shadow`,

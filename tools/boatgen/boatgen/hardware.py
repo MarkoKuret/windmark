@@ -217,6 +217,48 @@ def winch(d, handle=False):
     return p
 
 
+def grinder(h):
+    """Coffee-grinder pedestal, h = height of the crank axle above the floor (local origin on the floor, x forward):
+    a flanged base, a slim tapered carbon column flaring into a round gearbox drum with its axle athwartships, and
+    two cranks 180 degrees apart, each a round arm from a hub on the axle end to a grip pointing outboard. Smooth
+    profiles throughout; about 700 triangles in the game model."""
+    lp = _LP[0] is not None
+    n = 12 if lp else 24
+    p = Part()
+    R = 0.085 * h                       # the drum's radius
+    p.add("metal", revolve([(0, 0), (0.15 * h, 0), (0.15 * h, 0.012 * h), (0.12 * h, 0.03 * h),
+                            (0.075 * h, 0.045 * h), (0, 0.045 * h)], n, sharp=(1,)))
+    col = [(0.075 * h, 0.04 * h), (0.062 * h, 0.12 * h), (0.052 * h, 0.45 * h), (0.046 * h, 0.72 * h),
+           (0.05 * h, h - 1.15 * R), (0.07 * h, h - 0.85 * R), (0, h - 0.85 * R)]
+    p.add("carbon", revolve(col, n, cap_ends=False))
+    # the drum: a capsule about the axle (y)
+    half = 0.075 * h
+    k = 4 if lp else 7
+    prof = [(0, -half - R)]
+    prof += [(R * np.sin(a), -half - R * np.cos(a)) for a in np.linspace(0.25, np.pi / 2, k)]
+    prof += [(R * np.sin(a), half - R * np.cos(a)) for a in np.linspace(np.pi / 2, np.pi - 0.25, k)]
+    prof += [(0, half + R)]
+    drum = revolve(prof, n, cap_ends=False).transformed(translate([0, 0, h]) @ rot_axis([1, 0, 0], -np.pi / 2))
+    p.add("carbon", drum)
+    arm = 0.27 * h
+    ang = np.radians(35.0)
+    for side, sg in ((1.0, 1.0), (-1.0, -1.0)):
+        y0 = side * (half + 0.8 * R)
+        ya = side * (half + R + 0.03 * h)
+        p.add("metal", tube(np.array([[0, y0, h], [0, ya + side * 0.012 * h, h]]), 0.025 * h, 8 if lp else 12))
+        tip = np.array([sg * arm * np.cos(ang), ya, h + sg * arm * np.sin(ang)])
+        hub = np.array([0, ya, h])
+        p.add("metal", tube(np.array([hub, tip]), 0.018 * h, 6 if lp else 10))
+        p.add("metal", superellipsoid_box((0.06 * h, 0.04 * h, 0.06 * h), 0.9, 8 if lp else 12, 4 if lp else 8,
+                                          center=hub))
+        g0 = tip + np.array([0, side * 0.015 * h, 0])
+        g1 = tip + np.array([0, side * 0.16 * h, 0])
+        p.add("rubber", tube(np.array([g0, g1]), 0.026 * h, 8 if lp else 12))
+        p.add("rubber", superellipsoid_box((0.056 * h, 0.03 * h, 0.056 * h), 0.9, 8 if lp else 12, 4 if lp else 8,
+                                           center=g1))
+    return p
+
+
 def winch_handle(d):
     """Winch handle standing in the socket: square shank, arm aft, grip up (local origin on the socket)."""
     p = Part()
@@ -899,6 +941,15 @@ def place_all(cls, hull, deck, rig, lod=0):
                 hw.extend(on_surface(deck, horn_cleat(0.2 * s), x, side * y), tag=f"horn_cleat_{side}_{x:.2f}")
                 hw.attach(f"horn_cleat_{side}_{x:.2f}", "deck")
 
+    # --- coffee-grinder pedestals on the cockpit's centreline forward of the traveller (visual.deck.grinders)
+    for k in range(int(d.get("grinders", 0) or 0)):
+        xg = x_tr + (0.85 + 0.9 * k) * s
+        if xg > deck.xc1 - 0.45 * s:
+            raise ValueError(f"grinder {k + 1} at {xg:.2f} m does not fit the cockpit forward of the traveller "
+                             "(visual.deck.grinders)")
+        hw.extend(on_surface(deck, grinder(0.88), xg, 0.0), tag=f"grinder_{k}")
+        hw.attach(f"grinder_{k}", "deck")
+
     # --- hatches (a flush deck keeps the foredeck hatch forward of the mast)
     x_fh = max(deck.xk1 + 0.55 * s, rig.x_mast + 0.55 * s)
     if x_fh < L - 1.2 * s:
@@ -922,7 +973,8 @@ def place_all(cls, hull, deck, rig, lod=0):
         hm = deck.helm
         x_w, dw = hm["x"], hm["diameter"]
         # the pedestal stands forward of the wheel, clear of the slot
-        xp = x_w + 0.12 if hm["slot"] is None else max(x_w + 0.12, hm["slot"]["x1"] + 0.1 * s)
+        # (clear of the wheel: the shaft shows between them and ends inside the head)
+        xp = x_w + 0.12 + 0.1 * s if hm["slot"] is None else max(x_w + 0.12, hm["slot"]["x1"] + 0.1 * s)
         zp = float(deck.floor_z(xp))
         for k, hub in enumerate(hm["hubs"]):
             # twin wheels (data_format.md 3.7.3): the second one's pieces tagged with a suffix

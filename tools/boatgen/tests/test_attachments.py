@@ -75,6 +75,7 @@ class AttachmentTest(unittest.TestCase):
             have = {(piece, h) for piece, hosts, _ in gs for h in hosts}
             want = list(REQUIRED)
             want += REQUIRED_WHEEL if boat.cls["deck"]["steering"] == "wheel" else REQUIRED_TILLER
+            want += [(f"grinder_{k}", "deck") for k in range(boat.cls["deck"].get("grinders", 0))]
             if boat.cls["deck"]["wheel"].get("twin") and boat.cls["deck"]["steering"] == "wheel":
                 want += [("wheel_2", "wheel_shaft_2"), ("wheel_shaft_2", "binnacle_2"), ("pedestal_2", "deck")]
             if boat.cls["rig"]["backstay"]:

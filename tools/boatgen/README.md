@@ -177,12 +177,12 @@ Every key is optional; defaults scale with LOA.
 | `hull.lcb_fraction` | 0.535 | LCB target when `hull.lcb_x` is absent |
 | `hull.chine_start` | 0.42 | where a hard chine begins, fraction of LOA aft of the stem |
 | `deck.cockpit` | length 0.30 LOA, width 0.62, depth 0.42 (LOA/12)^0.5, open_transom true, aft_deck 0 | cockpit well: width as a fraction of the local half-beam |
-| `deck.cabin` | height 0.26 (LOA/12)^0.6, meet_aft_of_mast 0.05 (LOA/12)^0.5, slope_from 0.3, width 0.58, side_rake 0.35, edge_radius 0.05 (LOA/12)^0.5, windows true | the coachroof (`docs/specs/data_format.md` §3.7.2: height aft, where the top meets the deck, where it starts to slope, base width, side rake, edge radius; `length` instead of `meet_aft_of_mast`); `null` for a flush deck |
+| `deck.cabin` | height 0.26 (LOA/12)^0.6, meet_aft_of_mast 0.05 (LOA/12)^0.5, slope_from 0.3, width 0.58, side_rake 0.35, edge_radius 0.05 (LOA/12)^0.5, windows true | the coachroof (`docs/specs/data_format.md` §3.7.2: height aft, where the top meets the deck, where it starts to slope, base width, side rake, edge radius; `length` instead of `meet_aft_of_mast`); `null` for a flush deck (wm16), whose cockpit's forward bulkhead then takes the face's own rectangle of the deck plan (`Deck.face_frame`) |
 | `deck.nonslip_margin` | 0.05 | smooth gelcoat border around non-slip panels (m) |
 | `deck.toe_rail` | 0.035 (LOA/12)^0.4 | toe-rail size (m) |
 | `deck.lifelines` | LOA >= 9 m | stanchions, lifelines, pulpit and pushpit |
 | `deck.steering` | wheel from 11 m, else tiller | `wheel` or `tiller` |
-| `deck.wheel` | diameter min(0.855 cockpit width, 1.35 (LOA/12)^0.7), well false, hub_height (well) 0.62 (LOA/12)^0.5 else diameter/2 + 0.12 | the helm of a wheel boat (`docs/specs/data_format.md` §3.7.3): with `well` the wheel's lower part runs through a slot in the cockpit floor |
+| `deck.wheel` | diameter min(0.855 cockpit width, 1.35 (LOA/12)^0.7) (twin: min(0.45 cockpit width, 1.2 (LOA/12)^0.7)), well false, hub_height (well) 0.62 (LOA/12)^0.5 else diameter/2 + 0.12, twin false, spacing (twin) each rim 0.25 m inside the cockpit's side | the helm of a wheel boat (`docs/specs/data_format.md` §3.7.3): with `well` the wheel's lower part runs through a slot in the cockpit floor; with `twin` two wheels abreast, `spacing` m between the hubs, each with its own pedestal and slot |
 | `deck.hatches` | 2 from 9 m, else 1 | foredeck hatch, plus one on the cabin top |
 | `keel.bulb_flat` | 1.25 | bulb cross-section width / height |
 | `rudder.sweep` | 0.10 | rudder quarter-chord sweep (rad) |
@@ -331,7 +331,7 @@ builds the game model and `Boat.write_game_glb` writes it with the shadow proxy:
 
 | | wm7 | wm12 |
 | --- | --- | --- |
-| nodes drawn without the sails | 4 (body, rudder, boom, mainsheet) | 5 (with the wheel) |
+| nodes drawn without the sails | 4 (body, rudder, boom, mainsheet) | 5 (with the wheel); wm16 6 (twin wheels) |
 | model triangles without the sails (full model: 72 k, 92 k) | ~51 k | ~60 k |
 
 The sidecar's `model` gives the game model's `triangles` and `surfaces` without the sails, `sail_triangles`, the
@@ -357,7 +357,8 @@ Nodes under the root (named after the class id):
 | --- | --- | --- |
 | `body` | | every static part: hull, deck, keel, mast, rigging, hardware |
 | `rudder` | rudder stock, turns about the vertical | carries the tiller when steering is `tiller` |
-| `wheel` | wheel hub, turns about fore and aft | only with `wheel` steering |
+| `wheel` | wheel hub, turns about fore and aft | only with `wheel` steering (twin wheels: the port one) |
+| `wheel_2` | the starboard wheel's hub, turns about fore and aft | only with twin wheels (`deck.wheel.twin`) |
 | `boom` | gooseneck, turns about the vertical | carries the upper mainsheet block |
 | `mainsheet` | | tackle between boom and traveller; rebuild it as the boom moves |
 | `pole` | on the mast axis at the heel height, turns about the vertical | spinnaker pole, only for a class that flies a spinnaker on a pole (below) |
@@ -470,7 +471,7 @@ Positions in the body frame.
 - No crew yet; headsail and kite sheets only on the posed previews (the engine draws them from
   `rig.sheet_leads`).
 - The flat spinnaker outline is a centreline projection; its flying shape comes from the simulation.
-- Surfaces per boat: one per node (4 or 5, a pole class 6) plus the sails.
+- Surfaces per boat: one per node (4 or 5, a pole class or twin wheels 6) plus the sails.
 - Multihulls are not supported (one canoe body, one keel).
 - `sails[].leech` and `foot` are used for code zeros and spinnakers only; the hull fit leaves Cm as an outcome
   (see above).

@@ -899,16 +899,15 @@ def place_all(cls, hull, deck, rig, lod=0):
                 hw.extend(on_surface(deck, horn_cleat(0.2 * s), x, side * y), tag=f"horn_cleat_{side}_{x:.2f}")
                 hw.attach(f"horn_cleat_{side}_{x:.2f}", "deck")
 
-    # --- hatches
-    if deck.has_cabin:
-        x_fh = max(deck.xk1 + 0.55 * s, rig.x_mast + 0.55 * s)
-        if x_fh < L - 1.2 * s:
-            hw.extend(on_surface(deck, hatch(0.6 * s, 0.6 * s), x_fh, 0.0, conform=True), tag="hatch_fore")
-            hw.attach("hatch_fore", "deck")
-        x_rh = _cabin_hatch_x(deck, d)
-        if x_rh is not None:
-            hw.extend(on_surface(deck, hatch(0.5 * s, 0.5 * s), x_rh, 0.0, conform=True), tag="hatch_cabin")
-            hw.attach("hatch_cabin", "deck")
+    # --- hatches (a flush deck keeps the foredeck hatch forward of the mast)
+    x_fh = max(deck.xk1 + 0.55 * s, rig.x_mast + 0.55 * s)
+    if x_fh < L - 1.2 * s:
+        hw.extend(on_surface(deck, hatch(0.6 * s, 0.6 * s), x_fh, 0.0, conform=True), tag="hatch_fore")
+        hw.attach("hatch_fore", "deck")
+    x_rh = _cabin_hatch_x(deck, d)
+    if x_rh is not None:
+        hw.extend(on_surface(deck, hatch(0.5 * s, 0.5 * s), x_rh, 0.0, conform=True), tag="hatch_cabin")
+        hw.attach("hatch_cabin", "deck")
 
     # --- lifelines, pulpit and pushpit
     if d.get("lifelines"):
@@ -918,27 +917,35 @@ def place_all(cls, hull, deck, rig, lod=0):
     # shaft (no guard, no instrument pod), its lower part in a slot in the floor with `well`; or a tiller on the
     # rudder head
     helm = Part()
+    helms = []
     if deck.helm is not None:
         hm = deck.helm
-        x_w, zf, dw, hub = hm["x"], hm["floor_z"], hm["diameter"], hm["hub"]
+        x_w, dw = hm["x"], hm["diameter"]
         # the pedestal stands forward of the wheel, clear of the slot
         xp = x_w + 0.12 if hm["slot"] is None else max(x_w + 0.12, hm["slot"]["x1"] + 0.1 * s)
         zp = float(deck.floor_z(xp))
-        hw.add("carbon", revolve([(0, 0), (0.09 * s, 0), (0.085 * s, 0.02 * s), (0.045 * s, 0.08 * s),
-                                  (0.04 * s, hub[2] - zp - 0.04), (0, hub[2] - zp - 0.04)], 16, sharp=(1,))
-               .transformed(translate([xp, 0, zp])), tag="pedestal")
-        hw.attach("pedestal", "deck")
-        hw.add("carbon", superellipsoid_box((0.16 * s, 0.11 * s, 0.11 * s), 0.4, 12, 6, center=[xp - 0.02, 0, hub[2]]),
-               tag="binnacle")
-        hw.attach("binnacle", "pedestal")
-        hw.add("metal", tube(np.array([[x_w + 0.02, 0, hub[2]], [xp - 0.02, 0, hub[2]]]), 0.02, 10), tag="wheel_shaft")
-        hw.attach("wheel_shaft", "binnacle")
-        helm.extend(wheel(dw, grip=mid), translate(hub), tag="wheel")
-        helm.attach("wheel", "wheel_shaft")
-        helm_pivot = hub
+        for k, hub in enumerate(hm["hubs"]):
+            # twin wheels (data_format.md 3.7.3): the second one's pieces tagged with a suffix
+            sfx = "" if k == 0 else f"_{k + 1}"
+            yh = float(hub[1])
+            hw.add("carbon", revolve([(0, 0), (0.09 * s, 0), (0.085 * s, 0.02 * s), (0.045 * s, 0.08 * s),
+                                      (0.04 * s, hub[2] - zp - 0.04), (0, hub[2] - zp - 0.04)], 16, sharp=(1,))
+                   .transformed(translate([xp, yh, zp])), tag="pedestal" + sfx)
+            hw.attach("pedestal" + sfx, "deck")
+            hw.add("carbon", superellipsoid_box((0.16 * s, 0.11 * s, 0.11 * s), 0.4, 12, 6,
+                                                center=[xp - 0.02, yh, hub[2]]), tag="binnacle" + sfx)
+            hw.attach("binnacle" + sfx, "pedestal" + sfx)
+            hw.add("metal", tube(np.array([[x_w + 0.02, yh, hub[2]], [xp - 0.02, yh, hub[2]]]), 0.02, 10),
+                   tag="wheel_shaft" + sfx)
+            hw.attach("wheel_shaft" + sfx, "binnacle" + sfx)
+            h = Part()
+            h.extend(wheel(dw, grip=mid), translate(hub), tag="wheel" + sfx)
+            h.attach("wheel" + sfx, "wheel_shaft" + sfx)
+            helms.append((h, hub))
+        helm, helm_pivot = helms[0]
     else:
         helm_pivot = None
-    return {"hardware": hw, "helm": helm, "helm_pivot": helm_pivot, "boom_hardware": boom_hw, "mainsheet": sheet,
+    return {"hardware": hw, "helm": helm, "helm_pivot": helm_pivot, "helms": helms, "boom_hardware": boom_hw, "mainsheet": sheet,
             "mainsheet_ends": (lower, upper, w_tr, s), "leads": leads, "rope_paths": rope_paths,
             "lifelines": lifelines}
 

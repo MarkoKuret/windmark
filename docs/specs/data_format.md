@@ -226,7 +226,8 @@ The coachroof of a performance cruiser-racer (generator only, like the rest of `
 companionway that slopes down forward and fairs into the deck, with radiused edges and sides raked inward that follow
 the sheer in plan. There is no vertical front: forward the top's height runs smoothly to zero, tangent to the deck,
 where the coachroof meets the deck at or just aft of the mast. Only its aft face, over the cockpit, is upright (with
-the companionway). `null` gives a flush deck. Every key is optional; `s = (loa / 12)^0.5`.
+the companionway). `null` gives a flush deck; the cockpit's forward bulkhead then takes the aft face's own rectangle
+of the deck plan (§8.5). Every key is optional; `s = (loa / 12)^0.5`.
 
 | key | unit | default | range | meaning |
 | --- | --- | --- | --- | --- |
@@ -251,12 +252,18 @@ the texels of their narrow footprint between the base and the roof edge.
 | `diameter` | min(0.855 · cockpit width, 1.35 · (LOA/12)^0.7) m | outer diameter of the rim |
 | `well` | false | true: the lower part of the wheel runs through a slot in the cockpit floor, as on a regatta boat with one big wheel |
 | `hub_height` | with a well 0.62 · (LOA/12)^0.5 m, else `diameter`/2 + 0.12 m | hub above the cockpit floor |
+| `twin` | false | true: two wheels abreast, one each side of the centreline, as on a grand prix boat (the default `diameter` is then min(0.45 · cockpit width, 1.2 · (LOA/12)^0.7) m) |
+| `spacing` | each rim 0.25 m inside the cockpit's side | with `twin`: athwartships distance between the two hubs (m); the rims must clear each other by 0.1 m |
 
 A regatta helm on the centreline: the wheel on a slim pedestal with a small head round its shaft, no guard,
 instrument pod or arms. With `well` the slot is a box let into the floor: fore and aft the rim's thickness plus
 5 cm each side, athwartships the rim's chord at the floor plus 5 cm each side, 4 cm deeper than the rim, with
 gelcoat walls and bottom, at least 5 cm inside the hull's bottom and sides. The rudder stock stays clear of it: the wheel moves forward until the slot's aft wall is
 5 cm ahead of the stock's bearing. `diameter` must fit the cockpit (at most 0.95 of its width at the wheel).
+With `twin` each wheel has its own pedestal and, with `well`, its own slot, centred under its hub; the floor runs
+between the two slots (at least 5 cm on each side of the centreline). Each wheel is its own moving node (`wheel`
+port, `wheel_2` starboard), both turned by the helm the same way; the physics sidecar gives `rig.wheel_hub` (the
+first) and `rig.wheel_hubs` (both).
 ### 3.8 Example (sportsboat)
 
 ```json

@@ -122,8 +122,10 @@ class Boat:
             self.parts["pole"] = self.rig.pole_part()
             self.pivots["pole"] = self.rig.pole_pivot
         if hw["helm"].tri_count():
-            self.parts["wheel"] = hw["helm"]
-            self.pivots["wheel"] = hw["helm_pivot"]
+            for k, (h, hub) in enumerate(hw["helms"]):
+                n = "wheel" if k == 0 else f"wheel_{k + 1}"     # twin wheels: `wheel` (port) and `wheel_2`
+                self.parts[n] = h
+                self.pivots[n] = hub
         else:
             # a tiller turns with the rudder
             self.parts["rudder"].extend(hardware.tiller(self.app, self.deck, self.hull, (self.hull.L / 12) ** 0.7))
@@ -158,10 +160,11 @@ class Boat:
             if rig.pole_flown:
                 parts["pole"] = rig.pole_part()
             if hw["helm"].tri_count():
-                parts["wheel"] = hw["helm"]
+                for k, (h, _) in enumerate(hw["helms"]):
+                    parts["wheel" if k == 0 else f"wheel_{k + 1}"] = h
             else:
                 parts["rudder"].extend(hardware.tiller(app, self.deck, self.hull, (self.hull.L / 12) ** 0.7))
-        for name in ("mast", "rigging", "boom", "hardware", "rudder", "wheel", "pole"):
+        for name in ("mast", "rigging", "boom", "hardware", "rudder", "wheel", "wheel_2", "pole"):
             if name not in parts:
                 continue
             q = Part()

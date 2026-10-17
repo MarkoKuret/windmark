@@ -216,6 +216,9 @@ def rig_data(boat):
     if "wheel" in boat.pivots:
         d["wheel_hub"] = g(boat.pivots["wheel"])
         d["wheel_axis"] = [1.0, 0.0, 0.0]
+    if "wheel_2" in boat.pivots:
+        # twin wheels: every hub, port first (node `wheel`, then `wheel_2`); `wheel_hub` is the first
+        d["wheel_hubs"] = [g(boat.pivots[n]) for n in ("wheel", "wheel_2")]
     # sheet leads for the engine to draw the sheets of the set sails (starboard side; mirror y for port):
     # headsails clew -> car block -> primary winch, flying sails clew -> quarter block -> winch
     from .running import sheet_leads

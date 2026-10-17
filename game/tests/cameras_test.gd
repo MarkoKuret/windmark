@@ -283,13 +283,14 @@ func test_onboard_classes() -> void:
 			bv._turn_rudders(0.0)
 		# the steering is drawn: its meshes visible at the onboard camera's distance (no LOD swap, no hidden part)
 		bv.update_lod(Vector3(g.xh, g.yh_abs, g.zh).length())
-		var part := bv.model.find_child("rudder" if cls == "wm7" else "wheel", true, false) as Node3D
+		var is_wheel: bool = rig.has("wheel_hub")
+		var part := bv.model.find_child("wheel" if is_wheel else "rudder", true, false) as Node3D
 		var shown := part != null and bv.lod == 0
 		var up: Node = part
 		while shown and up != null and up != bv:
 			shown = not (up is Node3D) or (up as Node3D).visible
 			up = up.get_parent()
-		t.ok(shown, "%s: the %s drawn for the onboard camera" % [cls, "tiller" if cls == "wm7" else "wheel"])
+		t.ok(shown, "%s: the %s drawn for the onboard camera" % [cls, "wheel" if is_wheel else "tiller"])
 		t.ok(g.xh > BoatGeometry._aft_end(deck) + 0.2, "%s: over the deck, forward of the transom (x %.2f)" % [cls, g.xh])
 		var tris := _model_triangles(bv.model, g)
 		var side := INF

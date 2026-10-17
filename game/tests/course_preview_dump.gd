@@ -297,6 +297,9 @@ func _dump(name: String) -> void:
 		"ambient_energy": env.ambient_light_energy,
 		"hud": "%s\n%s" % [_scene.hud.text_of("clock"), _scene.hud.text_of("next")] if _scene.hud.race.active else "",
 	}
+	# the headless window is 64 px high, so the Sea's overlay pixel angle (water_render.md §6) would draw the guide
+	# lines a dozen times too wide: take the angle of the previews' 720 px frame instead
+	data["water"]["ov_px_angle"] = deg_to_rad(cam.fov) / 720.0
 	var surf: MeshInstance3D = sea.get_node("Surface")
 	data["grid"] = _write_arrays(dir, "grid", surf.mesh.surface_get_arrays(0), Transform3D.IDENTITY)
 	var g := sea.model.exposure

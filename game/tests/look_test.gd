@@ -377,3 +377,22 @@ func test_ssao(sky: SkyRig) -> void:
 	t.ok(not LookFx.dof_allowed(), "tier L: no depth of field")
 	sky.apply_quality(SeaQuality.Tier.M)
 	t.ok(LookFx.dof_allowed(), "tier M: depth of field allowed")
+	t.begin("sky shader per tier")
+	var sm := env.sky.sky_material as ShaderMaterial
+	for tier in [SeaQuality.Tier.L, SeaQuality.Tier.M, SeaQuality.Tier.H, SeaQuality.Tier.L]:
+		sky.apply_quality(tier)
+		var want := SkyRig.SKY_SHADER_L if tier == SeaQuality.Tier.L else SkyRig.SKY_SHADER
+		t.ok(sm.shader != null and sm.shader.resource_path == want, "tier %s: %s" % ["LMH"[tier], want.get_file()])
+		t.ok(sm.shader != null and sm.shader.code.contains("use_half_res_pass") == (tier == SeaQuality.Tier.L),
+			"tier %s: the half-resolution pass only on L" % "LMH"[tier])
+		t.ok(sm.get_shader_parameter("sun_dir") is Vector3
+			and (sm.get_shader_parameter("sun_dir") as Vector3).is_equal_approx(sky.sun_direction()),
+			"tier %s: the sun stays on the swapped shader" % "LMH"[tier])
+	var other := ShaderMaterial.new()
+	other.shader = Shader.new()
+	other.shader.code = "shader_type sky;\nvoid sky() { COLOR = vec3(0.5); }\n"
+	env.sky.sky_material = other
+	sky.apply_quality(SeaQuality.Tier.L)
+	t.ok(env.sky.sky_material == other and other.shader.resource_path == "", "another sky material is left alone")
+	env.sky.sky_material = sm
+	sky.apply_quality(SeaQuality.Tier.M)

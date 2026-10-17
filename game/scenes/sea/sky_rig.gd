@@ -20,6 +20,10 @@ const GRADE_STEP_H := 0.25
 ## Glow on the brightest highlights only (the sun disc and its glints on the water), per quality tier
 ## (water_render.md §4.5): off on L, the coarse levels on M, one finer level more on H. Godot's levels 1 to 7.
 const GLOW_LEVELS := {0: [], 1: [3, 4, 5], 2: [2, 3, 4, 5]}
+## The sky shaders per tier (water_render.md §7): tier L draws the cumulus in the half-resolution pass; the
+## same uniforms, so the rig only swaps the shader (apply_quality).
+const SKY_SHADER := "res://shaders/sky.gdshader"
+const SKY_SHADER_L := "res://shaders/sky_l.gdshader"
 ## Linear radiance before the exposure above which a pixel blooms: over the sunlit white hulls and sails (about 2.5)
 ## and the clouds, under the sun disc and the glints.
 const GLOW_THRESHOLD := 4.0
@@ -267,7 +271,8 @@ func sun() -> DirectionalLight3D:
 ## calls it when its tier is set.
 func apply_quality(tier: int) -> void:
 	SeaQuality.apply_shadows(sun(), tier as SeaQuality.Tier)
-	_apply()  # the conditions' shadow blur on the tier's
+	apply_sky_shader(environment(), tier)
+	_apply()  # the conditions' shadow blur on the tier's, and the sky's uniforms on the tier's shader
 	apply_glow(environment(), tier)
 	LookFx.apply_quality(environment(), tier)
 
@@ -288,6 +293,20 @@ static func apply_glow(env: Environment, tier: int) -> void:
 	env.glow_hdr_threshold = GLOW_THRESHOLD
 	env.glow_hdr_scale = 2.0
 	env.glow_hdr_luminance_cap = 12.0
+
+
+## The tier's sky shader on the environment's sky material (SKY_SHADER_L on L, SKY_SHADER elsewhere); a material
+## with any other shader (the sail test's --no-sky gradient) is left alone. Returns whether the shader changed.
+static func apply_sky_shader(env: Environment, tier: int) -> bool:
+	if env == null or env.sky == null or not (env.sky.sky_material is ShaderMaterial):
+		return false
+	var m := env.sky.sky_material as ShaderMaterial
+	var want := SKY_SHADER_L if tier == SeaQuality.Tier.L else SKY_SHADER
+	var have := m.shader.resource_path if m.shader != null else ""
+	if have == want or (have != SKY_SHADER and have != SKY_SHADER_L):
+		return false
+	m.shader = load(want)
+	return true
 
 
 func environment() -> Environment:

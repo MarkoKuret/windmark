@@ -37,13 +37,10 @@ float wm_fbm_hi(vec2 p) {
 	return s;
 }
 
+// The ramp, the sea haze below the horizon and the forward scattering around the sun (no clouds, no disc).
 // d: unit view direction; sun: unit direction toward the sun; horizon, zenith: the ramp colours (linear);
-// sun_col: sun colour times energy; cover: cloud cover 0..1; cloud_off: cloud layer offset (static per preset);
-// disc: 1 to draw the sun disc and its halo (0 for the radiance pass, where the light's own specular already gives
-// the glint); diffuse: 0 for sunlit cumulus, 1 for an overcast deck lit only by the diffuse light (water_render.md
-// §4.5: the ramp's grey, a little darker where the cloud is thick, no sunlit side, silver lining or disc).
-vec3 wm_sky_color(vec3 d, vec3 sun, vec3 horizon, vec3 zenith, vec3 sun_col, float cover, vec2 cloud_off, float disc,
-		float diffuse) {
+// sun_col: sun colour times energy.
+vec3 wm_sky_base(vec3 d, vec3 sun, vec3 horizon, vec3 zenith, vec3 sun_col) {
 	float h = d.y;
 	vec3 col = mix(horizon, zenith, pow(clamp(h, 0.0, 1.0), 0.45));
 	// below the horizon: a darker sea haze, so reflections of low directions are not brighter than the horizon
@@ -52,37 +49,63 @@ vec3 wm_sky_color(vec3 d, vec3 sun, vec3 horizon, vec3 zenith, vec3 sun_col, flo
 	// forward scattering around the sun, stronger near the horizon
 	float haze = 1.0 - clamp(abs(h) * 2.5, 0.0, 1.0);
 	col += sun_col * (0.03 * pow(mu, 8.0) * (0.5 + haze) + 0.12 * pow(mu, 64.0));
-	// fair-weather cumulus: a layer projected on a plane above the camera. The coarse octaves give the cloud masses,
-	// the fine ones their billowed edges; one more look-up of the coarse octaves a little toward the sun lights the
-	// side facing the sun and leaves the far side and the base grey.
-	float cloud = 0.0;
-	if (h > 0.0 && cover > 0.0) {
-		vec2 uv = d.xz / (h + 0.06) * 0.55 + cloud_off;
-		vec2 p = uv * 1.7;
-		float lo = wm_fbm_lo(p);
-		float n = lo + wm_fbm_hi(p);
-		float c = smoothstep(1.0 - cover, 1.0 - cover + 0.16, n) * smoothstep(0.0, 0.10, h);
-		if (c > 0.0) {
-			vec2 to_sun = normalize(sun.xz + vec2(1e-4, 0.0));
-			float lo_s = wm_fbm_lo(p + to_sun * 0.35);
-			float lit = clamp(0.62 + 5.0 * (lo - lo_s) - 1.2 * max(n - (1.0 - cover) - 0.25, 0.0), 0.0, 1.0);
-			vec3 base = mix(horizon, zenith, 0.35) * 0.85 + sun_col * 0.07;
-			vec3 top = sun_col * 0.40 + horizon * 0.25;
-			vec3 cc = mix(base, top, lit);
-			// thin edges toward the sun glow (silver lining)
-			cc += sun_col * pow(mu, 10.0) * (1.0 - c) * 0.8;
-			// the overcast deck: the ramp's colour from below, darker where the cloud is thick
-			vec3 deck = mix(horizon, zenith, pow(clamp(h, 0.0, 1.0), 0.45))
-					* (1.0 - 0.22 * clamp((n - (1.0 - cover)) * 2.5, 0.0, 1.0));
-			cc = mix(cc, deck, diffuse);
-			// distant clouds fade into the horizon haze
-			cc = mix(horizon * 1.08, cc, smoothstep(0.0, 0.3, h));
-			cloud = c * 0.95;
-			col = mix(col, cc, cloud);
-		}
+	return col;
+}
+
+// Fair-weather cumulus: a layer projected on a plane above the camera. The coarse octaves give the cloud masses,
+// the fine ones their billowed edges; one more look-up of the coarse octaves a little toward the sun lights the
+// side facing the sun and leaves the far side and the base grey. cover: cloud cover 0..1; cloud_off: cloud layer
+// offset (static per preset); diffuse: 0 for sunlit cumulus, 1 for an overcast deck lit only by the diffuse light
+// (water_render.md §4.5: the ramp's grey, a little darker where the cloud is thick, no sunlit side, silver lining
+// or disc). Returns the cloud colour (rgb, not premultiplied) and its coverage (a), both 0 where there is none.
+vec4 wm_sky_clouds(vec3 d, vec3 sun, vec3 horizon, vec3 zenith, vec3 sun_col, float cover, vec2 cloud_off,
+		float diffuse) {
+	float h = d.y;
+	if (h <= 0.0 || cover <= 0.0) {
+		return vec4(0.0);
 	}
-	// sun disc (0.53 deg across) with a soft rim, and a tight bright halo of a few degrees, hidden by a cloud in front
+	float mu = max(dot(d, sun), 0.0);
+	vec2 uv = d.xz / (h + 0.06) * 0.55 + cloud_off;
+	vec2 p = uv * 1.7;
+	float lo = wm_fbm_lo(p);
+	float n = lo + wm_fbm_hi(p);
+	float c = smoothstep(1.0 - cover, 1.0 - cover + 0.16, n) * smoothstep(0.0, 0.10, h);
+	if (c <= 0.0) {
+		return vec4(0.0);
+	}
+	vec2 to_sun = normalize(sun.xz + vec2(1e-4, 0.0));
+	float lo_s = wm_fbm_lo(p + to_sun * 0.35);
+	float lit = clamp(0.62 + 5.0 * (lo - lo_s) - 1.2 * max(n - (1.0 - cover) - 0.25, 0.0), 0.0, 1.0);
+	vec3 base = mix(horizon, zenith, 0.35) * 0.85 + sun_col * 0.07;
+	vec3 top = sun_col * 0.40 + horizon * 0.25;
+	vec3 cc = mix(base, top, lit);
+	// thin edges toward the sun glow (silver lining)
+	cc += sun_col * pow(mu, 10.0) * (1.0 - c) * 0.8;
+	// the overcast deck: the ramp's colour from below, darker where the cloud is thick
+	vec3 deck = mix(horizon, zenith, pow(clamp(h, 0.0, 1.0), 0.45))
+			* (1.0 - 0.22 * clamp((n - (1.0 - cover)) * 2.5, 0.0, 1.0));
+	cc = mix(cc, deck, diffuse);
+	// distant clouds fade into the horizon haze
+	cc = mix(horizon * 1.08, cc, smoothstep(0.0, 0.3, h));
+	return vec4(cc, c * 0.95);
+}
+
+// The sun disc (0.53 deg across) with a soft rim, and a tight bright halo of a few degrees, hidden by a cloud in
+// front (cloud: the coverage at the pixel); disc: 1 to draw them (0 for the radiance pass, where the light's own
+// specular already gives the glint).
+vec3 wm_sky_sun(vec3 d, vec3 sun, vec3 sun_col, float cloud, float disc, float diffuse) {
+	float mu = max(dot(d, sun), 0.0);
 	float disc_mu = smoothstep(0.999955, 0.999985, mu);
-	col += disc * (1.0 - cloud) * (1.0 - diffuse) * sun_col * (20.0 * disc_mu + 0.35 * pow(mu, 2048.0) + 0.06 * pow(mu, 256.0));
+	return disc * (1.0 - cloud) * (1.0 - diffuse) * sun_col * (20.0 * disc_mu + 0.35 * pow(mu, 2048.0) + 0.06 * pow(mu, 256.0));
+}
+
+// The whole sky at a pixel: the base, the clouds over it and the sun (the pieces above; sky.gdshader and the
+// offline previews). sky_l.gdshader draws the clouds in the half-resolution pass and composes the same way.
+vec3 wm_sky_color(vec3 d, vec3 sun, vec3 horizon, vec3 zenith, vec3 sun_col, float cover, vec2 cloud_off, float disc,
+		float diffuse) {
+	vec3 col = wm_sky_base(d, sun, horizon, zenith, sun_col);
+	vec4 cl = wm_sky_clouds(d, sun, horizon, zenith, sun_col, cover, cloud_off, diffuse);
+	col = mix(col, cl.rgb, cl.a);
+	col += wm_sky_sun(d, sun, sun_col, cl.a, disc, diffuse);
 	return col;
 }

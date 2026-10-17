@@ -15,6 +15,7 @@ const SHADERS := {
 	"res://shaders/water_m.gdshader": ["comp", "puff", "expo_tex", "wake_tex"],
 	"res://shaders/water_h.gdshader": ["comp", "puff", "expo_tex", "wake_tex"],
 	"res://shaders/sky.gdshader": ["sky_horizon", "sky_zenith", "sun_dir"],
+	"res://shaders/sky_l.gdshader": ["sky_horizon", "sky_zenith", "sun_dir", "cloud_cover"],
 	"res://shaders/wake.gdshader": ["comp", "grid_q"],
 	"res://shaders/wake_normal.gdshader": [],
 }

@@ -606,7 +606,11 @@ light blue, not grey.
   grey-blue (`mix(horizon, zenith, 0.35) · 0.85 + sun · 0.07`); thin edges toward the sun glow (silver lining);
   clouds fade into the horizon haze below 17°. Under overcast the deck is drawn diffuse instead (the
   Overcast item above). The sun disc and halo are drawn times `1 − 0.95·c` (hidden behind a
-  cloud). The sky has no `TIME`, so Godot only redraws its radiance map when a value changes.
+  cloud). The sky has no `TIME`, so Godot only redraws its radiance map when a value changes. On tier L the
+  cumulus (the noise, the lit side and the silver lining) are drawn in the sky's half-resolution pass
+  (`sky_l.gdshader`, a quarter of the sky pixels) and blended over the full-resolution ramp, haze and sun
+  disc; the ramp and the disc stay sharp, the soft cloud edges are bilinear-filtered up. M and H draw every
+  pixel in full.
 - **Distance haze** (WM-084): aerial perspective, so far boats, marks and land fade softly toward the horizon and
   the race area reads with depth and scale. Godot's depth fog (`FOG_MODE_DEPTH`) toward the horizon colour: at a
   distance `d` from the camera the share of haze is `max · smoothstep(begin, end, d)^curve`. None on the near water
@@ -995,6 +999,7 @@ colour-blind palettes).
 | boat shadows drawn on the sea (§4.7) | own boat | own boat and the 6 nearest within 90 m | no (real shadows) |
 | automatic mesh LOD threshold (the boats, `sail_visuals.md` §11.4) | 2 px | 1 px (Godot's default) | 1 px |
 | anti-aliasing | SMAA 1x | SMAA 1x | SMAA 1x |
+| sky cumulus (§4.5) | half-resolution pass | full | full |
 
 Anti-aliasing (WM-084, owner decision 2026-10-03: keep it simple): SMAA 1x on every tier, no per-tier choice
 (FXAA only if SMAA turned out too costly for tier L; it did not need to). It is the project default

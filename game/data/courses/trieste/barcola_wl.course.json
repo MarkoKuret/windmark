@@ -3,7 +3,7 @@
   "id": "barcola_wl",
   "name": "Barcola windward-leeward, 2 laps",
   "venue": "trieste",
-  "classes": ["wm7", "wm12"],
+  "classes": ["wm7", "wm12", "wm21"],
   "frame": "wind",
   "reference": { "x": 450.0, "y": 200.0 },
   "marks": [

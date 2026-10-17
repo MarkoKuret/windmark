@@ -3,9 +3,11 @@ id: WM-165
 title: >-
   Boats: wm21 classic 12 Metre style (long overhangs, low freeboard, tall rig,
   symmetric kite)
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-10-17 09:53'
+updated_date: '2026-10-17 09:54'
 labels:
   - boats
 dependencies: []

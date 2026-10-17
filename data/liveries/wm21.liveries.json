@@ -1,0 +1,53 @@
+{
+  "schema": "windmark.liveries/2",
+  "class": "wm21",
+  "insignia": {"text": "W21"},
+  "sails": {
+    "main": {"cloth": "dacron", "color": "#e3e0d4", "number": "#13261d"},
+    "headsail": {"cloth": "dacron", "color": "#e3e0d4", "number": "#13261d"},
+    "spinnaker": {"cloth": "nylon", "color": "#e3e0d4", "design": "bands", "stops": [0.3, 0.62], "number": "#13261d",
+      "colors": ["#1f4a35", "#a8231f"]}
+  },
+  "ropes": {
+    "mainsheet": {"color": "#c9bfa4", "fleck": "#2d3548"},
+    "sheet": {"color": "#c9bfa4", "fleck": "#8a2a26"},
+    "kite_sheet": {"color": "#c9bfa4", "fleck": "#1f4a35"},
+    "halyard_main": {"color": "#d3cdbb", "fleck": "#8a2a26"},
+    "halyard_jib": {"color": "#d3cdbb", "fleck": "#2d3548"},
+    "halyard_kite": {"color": "#d3cdbb", "fleck": "#1f4a35"},
+    "halyard_code": {"color": "#d3cdbb", "fleck": "#2a2b2e"},
+    "control": {"color": "#8f8a7a", "fleck": "#d6d6ce"}
+  },
+  "liveries": [
+    {
+      "id": "green",
+      "name": "Racing green and cream",
+      "hull": {
+        "topsides": "#173a2a",
+        "text": "#ddd6bf",
+        "boot_stripe": "#d8d1bb",
+        "antifouling": "#1a1d22",
+        "keel": "#1a1d22",
+        "graphic": {"type": "stripes", "colors": ["#c2a14f"], "depth": [0.07], "width": [0.022], "from": 0.0,
+          "to": 0.975}
+      },
+      "deck": {"gelcoat": "#d6d2c4", "nonslip": "#a9a596"}
+    }
+  ],
+  "boats": [
+    {"id": "tamarisk", "boat_name": "Tamarisk", "sail_number": "21", "nation": "SLO"},
+    {"id": "calliope", "boat_name": "Calliope", "sail_number": "3", "nation": "GBR"},
+    {"id": "westering", "boat_name": "Westering", "sail_number": "17", "nation": "USA"},
+    {"id": "cormorant", "boat_name": "Cormorant", "sail_number": "5", "nation": "AUS"},
+    {"id": "sirocco", "boat_name": "Sirocco", "sail_number": "9", "nation": "ITA"},
+    {"id": "evenstar", "boat_name": "Evenstar", "sail_number": "11", "nation": "NZL"},
+    {"id": "kestrel", "boat_name": "Kestrel", "sail_number": "14", "nation": "CAN"},
+    {"id": "morning_tide", "boat_name": "Morning Tide", "sail_number": "22", "nation": "SWE"},
+    {"id": "altair", "boat_name": "Altair", "sail_number": "8", "nation": "FRA"},
+    {"id": "saltire", "boat_name": "Saltire", "sail_number": "27", "nation": "GBR"},
+    {"id": "bellwether", "boat_name": "Bellwether", "sail_number": "31", "nation": "USA"},
+    {"id": "ondine", "boat_name": "Ondine", "sail_number": "6", "nation": "GER"},
+    {"id": "gallant", "boat_name": "Gallant", "sail_number": "19", "nation": "DEN"},
+    {"id": "mistral_rose", "boat_name": "Mistral Rose", "sail_number": "24", "nation": "ESP"}
+  ]
+}

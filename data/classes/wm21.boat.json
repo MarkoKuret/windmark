@@ -1,0 +1,67 @@
+{
+  "schema": "windmark.boatclass/1",
+  "id": "wm21",
+  "name": "Windmark Classic 21",
+  "version": 1,
+  "hull": {
+    "loa": 20.8,
+    "lwl": 13.8,
+    "beam_max": 3.70,
+    "bwl": 3.15,
+    "draft_canoe": 1.20,
+    "displacement": 25000,
+    "prismatic": 0.56,
+    "section_shape": {"type": "v", "midship_coefficient": 0.74, "deadrise": 0.32},
+    "rocker": {"fwd": 1.20, "aft": 1.20},
+    "freeboard": {"bow": 1.30, "mid": 0.92, "stern": 1.08},
+    "transom_width": 1.45,
+    "stem_x": 10.30,
+    "transom_x": -10.50,
+    "max_beam_station": 0.47,
+    "lcb_x": -0.45,
+    "bow_fineness": 2.4
+  },
+  "keel": {
+    "type": "fin",
+    "depth": 2.70,
+    "chord_root": 6.0,
+    "chord_tip": 3.6,
+    "thickness": 0.12,
+    "sweep": 0.85,
+    "x": 0.9,
+    "fin_mass": 18000,
+    "bulb_mass": 0
+  },
+  "rudder": {"type": "spade", "depth": 2.35, "chord_root": 1.05, "chord_tip": 0.72, "thickness": 0.12, "x": -5.6},
+  "rig": {
+    "I": 19.0,
+    "J": 7.2,
+    "P": 23.2,
+    "E": 6.9,
+    "mast_height": 26.4,
+    "mast_x": 2.9,
+    "boom_height": 2.6,
+    "fractional": 0.75,
+    "pole": 6.8
+  },
+  "sails": [
+    {"id": "main", "type": "main", "area": 88.0},
+    {"id": "genoa", "type": "genoa", "area": 108.0},
+    {"id": "spin", "type": "spinnaker_sym", "area": 250.5}
+  ],
+  "crew": {"count": 11, "weight": 935},
+  "start": {"front_sail": "genoa"},
+  "handling": {"tack_time": 1.3},
+  "visual": {
+    "hull": {"bilge_fillet": 0.30, "counter_height": 0.84, "keel_line_exponent": 2.0, "max_draft_pos": 0.58},
+    "deck": {
+      "cockpit": {"length": 5.6, "width": 0.60, "depth": 0.50, "aft_deck": 3.2},
+      "cabin": null,
+      "lifelines": false,
+      "steering": "wheel",
+      "wheel": {"diameter": 1.7, "well": true, "hub_height": 0.45},
+      "hatches": 2
+    },
+    "rig": {"spreaders": 3, "backstay": true}
+  }
+}

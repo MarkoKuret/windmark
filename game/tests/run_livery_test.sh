@@ -8,7 +8,7 @@ set -eu
 here=$(cd "$(dirname "$0")/.." && pwd)
 repo=$(cd "$here/.." && pwd)
 godot=${GODOT:-godot}
-if [ ! -f "$here/generated/boats/wm7.glb" ] || [ ! -f "$here/generated/boats/wm12.glb" ]; then
+if [ ! -f "$here/generated/boats/wm7.glb" ] || [ ! -f "$here/generated/boats/wm12.glb" ] || [ ! -f "$here/generated/boats/wm21.glb" ]; then
     sh "$here/tests/run_boat_import_test.sh"
 fi
 

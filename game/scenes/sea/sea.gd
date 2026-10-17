@@ -63,6 +63,11 @@ var _land_factor := 1.0
 var _land_k0 := -1
 var _land_image: Image
 var _land_texture: ImageTexture
+## the native sea height (SeaSampler, game/native/src/sea_wakes.h) height_at answers from when the GDExtension is
+## loaded, following the model's data (handed over again only when it changes); null without the extension
+var _sampler: Object
+var _sampler_comps: Variant = null
+var _sampler_expo: Variant = null
 
 
 func _ready() -> void:
@@ -153,7 +158,18 @@ func set_overlay_circles(circles: Array) -> void:
 ## CPU sea height at a world point (sea.md §7.2, every component, double precision). For wakes and tests until
 ## the core binding provides sea_height.
 func height_at(x: float, y: float, t_ms: float = NAN) -> float:
-	return model.height(x, y, render_time_ms if is_nan(t_ms) else t_ms)
+	var t := render_time_ms if is_nan(t_ms) else t_ms
+	if _sampler == null and ClassDB.class_exists("SeaSampler"):
+		_sampler = ClassDB.instantiate("SeaSampler")
+	if _sampler == null:
+		return model.height(x, y, t)
+	if not is_same(_sampler_comps, model.components):
+		_sampler_comps = model.components
+		_sampler.set_components(_sampler_comps)
+	if not is_same(_sampler_expo, model.exposure):
+		_sampler_expo = model.exposure
+		_sampler.set_exposure(_sampler_expo)
+	return _sampler.height(x, y, t)
 
 
 ## Grid spacing ratio q of the current tier (water_render.md §3.1).

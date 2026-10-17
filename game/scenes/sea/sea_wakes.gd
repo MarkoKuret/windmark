@@ -208,6 +208,7 @@ func _add_buffer_instances(b: Dictionary) -> void:
 		bi.mesh = b["mesh_" + r].mesh
 		bi.material_override = _buffer_material
 		bi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		bi.visible = b["mesh_" + r].visible
 		_buffer.add_child(bi)
 		b["buf_" + r] = bi
 
@@ -300,10 +301,12 @@ func _frame() -> void:
 	for id in _boats:
 		var b: Dictionary = _boats[id]
 		var on: bool = active.has(id)
-		for r in RIBBONS:
-			b["mesh_" + r].visible = on
-			if b["buf_" + r]:
-				b["buf_" + r].visible = on
+		if b.get("on", -1) != int(on):  # the nodes are touched only when a boat's wake comes or goes
+			b["on"] = int(on)
+			for r in RIBBONS:
+				b["mesh_" + r].visible = on
+				if b["buf_" + r]:
+					b["buf_" + r].visible = on
 		if not on:
 			continue
 		var st: Dictionary = b["state"]

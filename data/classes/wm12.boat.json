@@ -60,7 +60,8 @@
       "cabin": {"height": 0.30, "meet_aft_of_mast": 0.06, "slope_from": 0.3, "width": 0.56, "side_rake": 0.38, "edge_radius": 0.06},
       "lifelines": true,
       "steering": "wheel",
-      "wheel": {"diameter": 1.7, "well": true, "hub_height": 0.42}
+      "wheel": {"diameter": 1.7, "well": true, "hub_height": 0.42},
+      "toe_rail_material": "alloy"
     },
     "rig": {"spreaders": 2, "spreader_sweep": 0.31, "backstay": true},
     "sails": {"main": {"head_width": 0.30}}

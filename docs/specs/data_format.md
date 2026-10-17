@@ -193,7 +193,7 @@ abreast the cockpit and the sheet leads aft to the quarter.
 | `handling` | designer | feel multipliers and `dynamics` overrides (§3.7.1) |
 | `boards` | designer | daggerboards of a multihull, in place of `keel` (§3.9) |
 | `vpp` | designer | VPP settings (§3.10) |
-| `visual` | boat generator | deck layout (the coachroof: §3.7.2), hardware, and per sail `sails.<id>.look` (the front-end sail look of `sail_visuals.md` §4, copied into the physics sidecar with the defaults filled in); keys in `tools/boatgen/README.md`; opaque to the core and the VPP |
+| `visual` | boat generator | deck layout (the coachroof: §3.7.2), hardware, the class character keys (bow profile, cockpit taper, rails and coaming boards, hardware finish, spars; `tools/boatgen/README.md` "Class character"), and per sail `sails.<id>.look` (the front-end sail look of `sail_visuals.md` §4, copied into the physics sidecar with the defaults filled in); keys in `tools/boatgen/README.md`; opaque to the core and the VPP |
 
 Top level: `"schema": "windmark.boatclass/1"`, `"id"`, `"name"`, `"version"` (integer, bumped on every change).
 
@@ -248,6 +248,8 @@ of the deck plan (§8.5). Every key is optional; `s = (loa / 12)^0.5`.
 | `side_rake` | rad | 0.35 | 0 to 0.8 | inward lean of the sides from the vertical |
 | `edge_radius` | m | 0.05 s | 0.01 to 0.15 | radius of the edge between the sides (and the aft face) and the top; the foot of each side has a fillet of 0.4 of it into the deck; both shrink with the height where the top runs down |
 | `windows` | | true | | dark glazing along the sides where the top is at least 0.15 m high |
+| `front` | | `faired` | | `upright`: a trunk cabin front (class character, `tools/boatgen/README.md`): the top slopes gently to `front_height` (0.2 to 1, default 0.75) of `height`, then drops along a quarter ellipse over `front_length` (m, default 0.12 s) to the deck |
+| `plan_round` | of the length | 0.2 | 0.02 to 0.95 | how far from the nose the plan starts rounding in to the centreline |
 
 Hatches on the coachroof are flush, their frames following the top's curve; the companionway's sliding hatch lies on
 the top aft. The deck's uv1 (the plan view, §8.5) covers the coachroof like every other deck surface: its sides take

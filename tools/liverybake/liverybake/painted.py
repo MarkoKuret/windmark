@@ -21,6 +21,9 @@ SLOTS = {
     "gelcoat": ((0.72, 0.72, 0.70), 0.25),
     "nonslip": ((0.47, 0.47, 0.45), 0.80),
     "rope": ((0.34, 0.33, 0.31), 0.85),
+    "alloy": ((0.54, 0.55, 0.57), 0.45),
+    "bronze": ((0.42, 0.27, 0.14), 0.38),
+    "wood": ((0.30, 0.14, 0.05), 0.18),
 }
 ROPE_FN = {"rope_halyard_main": "halyard_main", "rope_halyard_jib": "halyard_jib", "rope_halyard_kite": "halyard_kite",
            "rope_halyard_code": "halyard_code", "rope_control": "control", "rope_mainsheet": "mainsheet",

@@ -43,7 +43,10 @@ class ClassFileError(ValueError):
 
 # the coachroof keys of visual.deck.cabin (docs/specs/data_format.md 3.7.2): key -> allowed range
 CABIN_KEYS = {"height": (0.05, 0.6), "meet_aft_of_mast": (0.0, 1.5), "length": (0.5, 1e9), "slope_from": (0.0, 0.8),
-              "width": (0.2, 0.85), "side_rake": (0.0, 0.8), "edge_radius": (0.01, 0.15), "windows": None}
+              "width": (0.2, 0.85), "side_rake": (0.0, 0.8), "edge_radius": (0.01, 0.15), "windows": None,
+              # class character (tools/boatgen/README.md): the plan's rounding and a trunk cabin's upright front
+              "plan_round": (0.02, 0.95), "front": ("faired", "upright"), "front_length": (0.02, 1.5),
+              "front_height": (0.2, 1.0)}
 
 
 def _cabin(cab, given, L):
@@ -59,6 +62,10 @@ def _cabin(cab, given, L):
         if rng is None:
             if not isinstance(x, bool):
                 raise ClassFileError(f"{where}.{k} must be true or false")
+            continue
+        if isinstance(rng[0], str):
+            if x not in rng:
+                raise ClassFileError(f"{where}.{k} must be one of {', '.join(rng)}")
             continue
         if isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x):
             raise ClassFileError(f"{where}.{k} must be a number")
@@ -83,6 +90,39 @@ OFFSHORE_KEYS = {
                "solar_panel": (False, None, None)},
     "offshore": {"foot_braces": ([], None, None), "liferaft": (False, None, None), "autopilot": (False, None, None)},
 }
+
+
+def _character(deck):
+    """Check the class-character deck keys (tools/boatgen/README.md "Class character")."""
+    where = "$.visual.deck"
+    if deck["toe_rail_material"] not in ("gelcoat", "alloy", "wood"):
+        raise ClassFileError(f"{where}.toe_rail_material must be \"gelcoat\", \"alloy\" or \"wood\"")
+    if deck["hardware_finish"] not in ("stainless", "bronze", "black"):
+        raise ClassFileError(f"{where}.hardware_finish must be \"stainless\", \"bronze\" or \"black\"")
+    if deck["hatch_style"] not in ("flush", "classic"):
+        raise ClassFileError(f"{where}.hatch_style must be \"flush\" or \"classic\"")
+    tr = deck["toe_rail"]
+    if isinstance(tr, bool) or not isinstance(tr, (int, float)) or not 0.0 <= tr <= 0.3:
+        raise ClassFileError(f"{where}.toe_rail must be a number from 0 (none) to 0.3 m")
+    cb = deck.get("coaming_board")
+    if cb is not None:
+        if not isinstance(cb, dict):
+            raise ClassFileError(f"{where}.coaming_board must be an object or null")
+        out = {"height": 0.12, "thickness": 0.03, "material": "wood"}
+        for k, x in cb.items():
+            if k not in out:
+                raise ClassFileError(f"{where}.coaming_board.{k} is not a coaming board key ({', '.join(out)})")
+            out[k] = x
+        for k, lo, hi in (("height", 0.03, 0.5), ("thickness", 0.01, 0.1)):
+            x = out[k]
+            if isinstance(x, bool) or not isinstance(x, (int, float)) or not lo <= x <= hi:
+                raise ClassFileError(f"{where}.coaming_board.{k} must be a number from {lo} to {hi} m")
+        if out["material"] not in ("wood", "gelcoat", "carbon"):
+            raise ClassFileError(f"{where}.coaming_board.material must be \"wood\", \"gelcoat\" or \"carbon\"")
+        deck["coaming_board"] = out
+    wa = deck["cockpit"].get("width_aft")
+    if wa is not None and (isinstance(wa, bool) or not isinstance(wa, (int, float)) or not 0.2 <= wa <= 1.0):
+        raise ClassFileError(f"{where}.cockpit.width_aft must be a number from 0.2 to 1 (of the half-beam)")
 
 
 def _offshore(deck, L):
@@ -229,6 +269,7 @@ def resolve(raw, path="<class>"):
         "stem_radius": 0.10 * (L / 12) ** 0.5,  # forefoot rounding (m, blend height of keel line and stem)
         "bilge_fillet": 0.12,          # bilge-turn fairing radius, fraction of the station depth (hull.py)
         "counter_height": None,        # counter stern: profile height at the transom above the DWL (hull.zk)
+        "stem_curve": 0.0,             # spoon bow: the stem's forward bow above the DWL (m, class character)
     }
     hull.update(_deep_merge(hull_vis_defaults, {k: v for k, v in vh.items() if k in hull_vis_defaults}))
     c["hull"] = hull
@@ -251,6 +292,11 @@ def resolve(raw, path="<class>"):
         "coaming": None,          # data_format.md 3.7.4: raised cockpit coamings
         "dodger": None,           # hard dodger over the companionway
         "offshore": None,         # foot braces, liferaft, autopilot ram
+        # class character (tools/boatgen/README.md "Class character")
+        "toe_rail_material": "gelcoat",     # gelcoat (moulded), alloy or wood
+        "coaming_board": None,              # {height, thickness, material}: low boards round the cockpit
+        "hardware_finish": "stainless",     # stainless, bronze or black: winches, cleats, blocks, tracks
+        "hatch_style": "flush",             # flush (alloy frame, painted) or classic (a raised wooden hatch)
     }
     vcab = (vis.get("deck", {}) or {}).get("cabin", {})
     deck = _deep_merge(deck_defaults, vis.get("deck", {}))
@@ -260,6 +306,7 @@ def resolve(raw, path="<class>"):
         deck["cabin"] = _cabin(deck["cabin"], vcab, L)
     c["deck"] = deck
     _offshore(deck, L)
+    _character(deck)
 
     # ---------------------------------------------------------------- keel
     K = _req(raw, "keel", "$")
@@ -318,8 +365,20 @@ def resolve(raw, path="<class>"):
         "spreaders": 2 if mh > 13 else 1,
         "spreader_sweep": 0.35,             # rad
         "backstay": rig["fractional"] > 0.93,
+        # class character (tools/boatgen/README.md "Class character")
+        "spars": "carbon",                  # the spars' finish: carbon, alloy (anodised) or white (painted)
+        "boom_section": "rect",             # rect (a deep rounded rectangle) or round (a classic boom)
+        "runners": False,                   # running backstays to the quarters
+        "jumpers": False,                   # jumper struts and stays on the topmast (a classic masthead rig)
     }
     rig.update(_deep_merge(rig_vis_defaults, {k: v for k, v in vg.items() if k in rig_vis_defaults}))
+    if rig["spars"] not in ("carbon", "alloy", "white"):
+        raise ClassFileError("$.visual.rig.spars must be \"carbon\", \"alloy\" or \"white\"")
+    if rig["boom_section"] not in ("rect", "round"):
+        raise ClassFileError("$.visual.rig.boom_section must be \"rect\" or \"round\"")
+    for k in ("runners", "jumpers"):
+        if not isinstance(rig[k], bool):
+            raise ClassFileError(f"$.visual.rig.{k} must be true or false")
     c["rig"] = rig
 
     # ---------------------------------------------------------------- sails

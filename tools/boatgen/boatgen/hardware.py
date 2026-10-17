@@ -151,7 +151,7 @@ def _turnbuckle_lp(length, r):
     return p
 
 
-def _wheel_lp(d, grip):
+def _wheel_lp(d, grip, classic=False):
     """The game model's wheel (about 1,100 triangles; it is near the camera): a smooth rim, 48 segments round and 10
     round its section, five spokes, the hub."""
     p = Part()
@@ -159,10 +159,11 @@ def _wheel_lp(d, grip):
     with segment_scale(1.0):
         th = np.linspace(0, 2 * np.pi, 49)[:-1]
         ring = np.stack([np.zeros_like(th), R * np.cos(th), R * np.sin(th)], -1)
-        p.add("rubber" if grip else "carbon", sweep(np.vstack([ring, ring[:1]]), circle(0.018 * d / 0.9, 10), caps=False))
+        p.add("wood" if classic else ("rubber" if grip else "carbon"),
+              sweep(np.vstack([ring, ring[:1]]), circle(0.018 * d / 0.9, 10), caps=False))
         for k in range(5):
             a = 2 * np.pi * k / 5
-            p.add("carbon", tube(np.array([[0, 0, 0], [0, R * np.cos(a), R * np.sin(a)]]), 0.012, 6))
+            p.add("alloy" if classic else "carbon", tube(np.array([[0, 0, 0], [0, R * np.cos(a), R * np.sin(a)]]), 0.012, 6))
         p.add("metal", revolve([(0, -0.05), (0.06, -0.05), (0.06, 0.05), (0, 0.05)], 12)
               .transformed(rot_axis([0, 1, 0], np.pi / 2)))
     return p
@@ -491,24 +492,25 @@ def rounded_path(pts, r, n=6):
     return np.array(out)
 
 
-def wheel(d, grip=True):
+def wheel(d, grip=True, classic=False):
     """Racing wheel in the local frame, axis along x (forward), centre at the origin: carbon rim with a dark grip
-    wrap (`grip`), five spokes, hub."""
+    wrap (`grip`), five spokes, hub; `classic` (the bronze finish) a varnished wood rim on alloy spokes."""
     if _LP[0] is not None:
-        return _wheel_lp(d, grip)
+        return _wheel_lp(d, grip, classic)
     p = Part()
     R = d / 2
+    spoke = "alloy" if classic else "carbon"
     th = np.linspace(0, 2 * np.pi, seg(49, 6))[:-1]
     ring = np.stack([np.zeros_like(th), R * np.cos(th), R * np.sin(th)], -1)
     rim = sweep(np.vstack([ring, ring[:1]]), circle(0.018 * d / 0.9, 10), caps=False)
-    p.add("rubber" if grip else "carbon", rim)
-    if grip:
+    p.add("wood" if classic else ("rubber" if grip else "carbon"), rim)
+    if grip and not classic:
         # inner carbon rim the spokes run into
         ring2 = ring * (1 - 0.05)
         p.add("carbon", sweep(np.vstack([ring2, ring2[:1]]), circle(0.009 * d / 0.9, 8), caps=False))
     for k in range(5):
         a = 2 * np.pi * k / 5
-        p.add("carbon", tube(np.array([[0, 0, 0], [0, R * np.cos(a), R * np.sin(a)]]), 0.012, 8))
+        p.add(spoke, tube(np.array([[0, 0, 0], [0, R * np.cos(a), R * np.sin(a)]]), 0.012, 8))
     p.add("metal", revolve([(0, -0.05), (0.06, -0.05), (0.06, 0.05), (0, 0.05)], 16)
           .transformed(rot_axis([0, 1, 0], np.pi / 2)))
     return p
@@ -526,6 +528,36 @@ def hatch(lx, ly):
         p.add("metal", superellipsoid_box((0.05, 0.07, 0.02), 0.4, 8, 4, center=(-lx / 2 + 0.01, sy * ly, 0.03)))
         p.add("rubber", superellipsoid_box((0.035, 0.09, 0.012), 0.4, 8, 4, center=(lx * 0.38, sy * ly, 0.039)))
     return p
+
+
+def classic_hatch(lx, ly):
+    """A classic raised hatch (class character, `hatch_style` "classic"): a varnished wood coaming box with a
+    framed lens on top, about 9 cm proud; modelled in the game (few triangles), not painted."""
+    p = Part()
+    h = 0.07
+    p.add("wood", superellipsoid_box((lx, ly, h), 0.15, 8, 4, center=(0, 0, 0.5 * h)))
+    p.add("wood", superellipsoid_box((lx + 0.04, ly + 0.04, 0.02), 0.2, 8, 4, center=(0, 0, h + 0.01)))
+    p.add("glass", superellipsoid_box((lx - 0.06, ly - 0.06, 0.012), 0.1, 8, 4, center=(0, 0, h + 0.024)))
+    return p
+
+
+# the deck hardware a class finish changes (`hardware_finish`): their stainless parts become bronze (the
+# classics) or black anodised alloy (the carbon slot: dark, slightly glossy)
+FINISH_TAGS = ("winch_", "horn_cleat_", "cam_cleat_", "clutches_", "organiser_", "jib_track_", "jib_car_", "traveller",
+               "mast_block_", "mainsheet_lower", "runner_block_")
+
+
+def apply_finish(part, finish):
+    """Move the stainless pieces of the tagged fittings to the finish's slot (in place)."""
+    slot = {"stainless": None, "bronze": "bronze", "black": "carbon"}[str(finish)]
+    if slot is None or "metal" not in part.slots:
+        return part
+    keep, moved = [], []
+    for g in part.slots["metal"]:
+        (moved if (g.tag or "").startswith(FINISH_TAGS) else keep).append(g)
+    part.slots["metal"] = keep
+    part.slots.setdefault(slot, []).extend(moved)
+    return part
 
 
 def mooring_chock(length):
@@ -957,14 +989,17 @@ def place_all(cls, hull, deck, rig, lod=0):
     # --- hatches
     # the foredeck hatch (a flush deck has it too, its sail hatch forward of the mast)
     x_fh = max(deck.xk1 + 0.55 * s, rig.x_mast + 0.55 * s)
+    classic = d.get("hatch_style", "flush") == "classic"
+    # a classic raised hatch is modelled (tag `skylight`), a flush one painted with its box on the deck node
+    mk, pre = (classic_hatch, "skylight") if classic else (hatch, "hatch")
     if x_fh < L - 1.2 * s:
-        hw.extend(on_surface(deck, hatch(0.6 * s, 0.6 * s), x_fh, 0.0, conform=True), tag="hatch_fore")
-        hw.attach("hatch_fore", "deck")
+        hw.extend(on_surface(deck, mk(0.6 * s, 0.6 * s), x_fh, 0.0, conform=not classic), tag=f"{pre}_fore")
+        hw.attach(f"{pre}_fore", "deck")
     if deck.has_cabin:
         x_rh = _cabin_hatch_x(deck, d)
         if x_rh is not None:
-            hw.extend(on_surface(deck, hatch(0.5 * s, 0.5 * s), x_rh, 0.0, conform=True), tag="hatch_cabin")
-            hw.attach("hatch_cabin", "deck")
+            hw.extend(on_surface(deck, mk(0.5 * s, 0.5 * s), x_rh, 0.0, conform=not classic), tag=f"{pre}_cabin")
+            hw.attach(f"{pre}_cabin", "deck")
 
     # --- shorthanded-offshore fittings (data_format.md 3.7.4): hard dodger, foot braces, liferaft, autopilot ram
     from . import offshore
@@ -981,6 +1016,7 @@ def place_all(cls, hull, deck, rig, lod=0):
     # --- lifelines, pulpit and pushpit
     if d.get("lifelines"):
         lifelines = _lifelines(hw, hull, deck, s, lod)
+    apply_finish(hw, d.get("hardware_finish", "stainless"))
 
     # --- helm: a regatta helm (data_format.md 3.7.3), the wheel on a slim pedestal with a small head round its
     # shaft (no guard, no instrument pod), its lower part in a slot in the floor with `well`; or a tiller on the
@@ -1009,7 +1045,7 @@ def place_all(cls, hull, deck, rig, lod=0):
                    tag="wheel_shaft" + sfx)
             hw.attach("wheel_shaft" + sfx, "binnacle" + sfx)
             h = Part()
-            h.extend(wheel(dw, grip=mid), translate(hub), tag="wheel" + sfx)
+            h.extend(wheel(dw, grip=mid, classic=d.get("hardware_finish") == "bronze"), translate(hub), tag="wheel" + sfx)
             h.attach("wheel" + sfx, "wheel_shaft" + sfx)
             helms.append((h, hub))
         helm, helm_pivot = helms[0]
@@ -1060,14 +1096,16 @@ def tiller(app, deck, hull, s):
         p.add("metal", superellipsoid_box((0.16 * s, 0.07 * s, 0.07 * s), 0.35, 10, 5, center=head + [0.06 * s, 0, 0.0]),
               tag="tiller_socket")
         p.attach("tiller_socket", "tiller_stock")
+    # the tiller: carbon, or varnished wood on a classic (the bronze hardware finish)
+    tslot = "wood" if deck.cls["deck"].get("hardware_finish") == "bronze" else "carbon"
     length = 1.25 * s * (1.0 if app.transom_hung else 1.1)
     end = head + np.array([length, 0, 0.18 * s])
     t = np.linspace(0, 1, seg(12, 2))
     # straight out of the head, then a gentle rise to the hand
     path = head[None] + t[:, None] * (end - head)[None]
     path[:, 2] = head[2] + (end[2] - head[2]) * t ** 1.6 + 0.06 * s * np.sin(np.pi * t)
-    p.add("carbon", sweep(path, rounded_rect(ht, wt, 0.3 * wt, 3), scale_along=1.0 - 0.35 * t,
-                          up=np.array([0, 0, 1.0])), tag="tiller")
+    p.add(tslot, sweep(path, rounded_rect(ht, wt, 0.3 * wt, 3), scale_along=1.0 - 0.35 * t,
+                       up=np.array([0, 0, 1.0])), tag="tiller")
     p.attach("tiller", "tiller_socket")
     # extension lying along the tiller, universal joint at the end
     p.add("rubber", superellipsoid_box((0.05, 0.04, 0.04), 0.6, 8, 5, center=end), tag="tiller_joint")

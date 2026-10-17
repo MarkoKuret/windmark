@@ -75,7 +75,9 @@ class GameModelTest(unittest.TestCase):
             p = boat(c).painted_part()
             tags = {g.tag.split("_")[0] for gs in p.slots.values() for g in gs}
             with self.subTest(cls=c):
-                want = ("jib", "traveller", "hatch")
+                want = ("jib", "traveller")
+                if boat(c).cls["deck"].get("hatch_style", "flush") != "classic":
+                    want += ("hatch",)          # classic hatches (wm21) are modelled, not painted
                 if boat(c).cls["deck"].get("halyard_leads") != "modelled":
                     want += ("halyard", "organiser")    # modelled leads (wm16): halyards and organisers are geometry
                 for t in want:

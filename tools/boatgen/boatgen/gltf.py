@@ -29,6 +29,11 @@ MATERIALS = {
     "face":        ((0.72, 0.72, 0.70, 1.0), 0.0, 0.22),     # the coachroof's aft face: deck gelcoat on its own uv1
     "rope":        ((0.34, 0.33, 0.31, 1.0), 0.0, 0.85),
     "rubber":      ((0.05, 0.05, 0.05, 1.0), 0.0, 0.80),
+    # class character finishes (tools/boatgen/README.md "Class character"): anodised alloy spars, bronze deck
+    # hardware and varnished wood trim on the classics, in place of carbon and stainless
+    "alloy":       ((0.54, 0.55, 0.57, 1.0), 0.6, 0.45),    # silver anodised aluminium (satin): a mast, a toe rail
+    "bronze":      ((0.42, 0.27, 0.14, 1.0), 1.0, 0.38),    # polished bronze winches, cleats and ports
+    "wood":        ((0.30, 0.14, 0.05, 1.0), 0.0, 0.18),    # varnished teak or mahogany: coamings, rails, hatches
     "shadow":      ((0.5, 0.5, 0.5, 1.0), 0.0, 1.0),       # the shadow proxy: never drawn, only casts
 }
 
@@ -104,6 +109,9 @@ ATLAS_SLOTS = [
     ("rope_halyard_kite", "rope_halyard_kite", ""),
     ("rope_halyard_code", "rope_halyard_code", ""),
     ("deck_face", "gelcoat", "deck"),
+    ("alloy", "alloy", ""),
+    ("bronze", "bronze", ""),
+    ("wood", "wood", ""),
 ]
 SLOT_ID = {n: i for i, (n, _, _) in enumerate(ATLAS_SLOTS)}
 # the source part of a merged node's vertex (COLOR_0 blue, data_format.md 8.5): 0 the node itself

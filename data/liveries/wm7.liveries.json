@@ -5,8 +5,8 @@
   "sails": {
     "main": {"cloth": "dacron", "color": "#e2e2dc", "number": "#14284f"},
     "headsail": {"cloth": "dacron", "color": "#e2e2dc", "number": "#14284f"},
-    "spinnaker": {"cloth": "nylon", "color": "#2a62ad", "design": "head", "radius": 0.24, "number": "#e2e2dc",
-      "colors": ["#c3c5c7"]}
+    "spinnaker": {"cloth": "nylon", "color": "#d9541f", "design": "head", "radius": 0.24, "number": "#e2e2dc",
+      "colors": ["#e2e2dc"]}
   },
   "ropes": {
     "mainsheet": {"color": "#ae7249", "fleck": "#2d3548"},
@@ -21,17 +21,17 @@
   "liveries": [
     {
       "id": "navy",
-      "name": "Navy and silver",
+      "name": "White and flame",
       "hull": {
-        "topsides": "#14284f",
-        "text": "#dedfda",
-        "boot_stripe": "#dcdcd6",
+        "topsides": "#e4e4df",
+        "text": "#14284f",
+        "boot_stripe": "#d9541f",
         "antifouling": "#17181b",
         "keel": "#1c1e21",
-        "graphic": {"type": "stripes", "colors": ["#b7babd", "#a3161c"], "depth": [0.045, 0.083],
-          "width": [0.035, 0.01], "from": 0.0, "to": 0.965}
+        "graphic": {"type": "swoosh", "colors": ["#d9541f", "#2a2d33"], "aft": [0.04, 0.82], "fwd": [0.97, 0.12],
+          "width": [0.17, 0.025]}
       },
-      "deck": {"gelcoat": "#dad8d0", "nonslip": "#a3a196"}
+      "deck": {"gelcoat": "#dedcd4", "nonslip": "#8d9ba6"}
     }
   ],
   "boats": [

@@ -52,16 +52,21 @@
   "crew": {"count": 11, "weight": 935},
   "start": {"front_sail": "genoa"},
   "visual": {
-    "hull": {"bilge_fillet": 0.30, "counter_height": 0.84, "keel_line_exponent": 2.0, "max_draft_pos": 0.58, "topside_flare": 1.5},
+    "hull": {"bilge_fillet": 0.30, "counter_height": 0.84, "keel_line_exponent": 2.0, "max_draft_pos": 0.58, "topside_flare": 1.5, "stem_curve": 0.45},
     "deck": {
-      "cockpit": {"length": 5.6, "width": 0.60, "depth": 0.50, "aft_deck": 3.2},
+      "cockpit": {"length": 5.6, "width": 0.64, "width_aft": 0.58, "depth": 0.50, "aft_deck": 3.2},
       "cabin": null,
       "lifelines": false,
       "steering": "wheel",
-      "wheel": {"diameter": 1.7, "well": true, "hub_height": 0.45},
-      "hatches": 2
+      "wheel": {"diameter": 1.65, "well": true, "hub_height": 0.45},
+      "hatches": 2,
+      "toe_rail": 0.05,
+      "toe_rail_material": "wood",
+      "coaming_board": {"height": 0.14, "thickness": 0.035, "material": "wood"},
+      "hardware_finish": "bronze",
+      "hatch_style": "classic"
     },
-    "rig": {"spreaders": 3, "backstay": true},
+    "rig": {"spreaders": 3, "spreader_sweep": 0.0, "backstay": true, "spars": "alloy", "boom_section": "round", "runners": true, "jumpers": true},
     "sails": {"main": {"head_width": 0.05}, "spin": {"look": {"camber": 0.32}}}
   }
 }

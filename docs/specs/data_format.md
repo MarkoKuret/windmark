@@ -88,6 +88,15 @@ compute its performance. Required fields are marked **R**; the rest have the sta
 | `x` | R | m | body x of the stock |
 | `max_angle` | | rad | largest rudder angle [0.61] |
 | `count` | | – | rudders in the water at once (drag and lift counted per rudder, e.g. 2 on a catamaran or twin-rudder boat) [1] |
+| `y` | | m | twin rudders (`count` 2, monohull): distance of each stock from the centreline [0.22 · `beam_max`] |
+| `cant` | | rad | twin rudders: outward lean of each blade from the vertical, tip outboard, 0 to 0.5 [0] |
+
+**Twin rudders** (`count` 2 on a monohull, `type` `spade` only): one spade either side at `±y`, its stock axis leaning
+inboard at the top by `cant`, so the blade's tip is outboard; each tip reaches `depth` below the DWL, so the canted
+blade is longer by `1 / cos(cant)`. `chord_root`, `chord_tip`, `thickness` and `x` are those of each blade. Both
+turn together by the helm angle, each about its own stock. The VPP counts both blades' drag and lift (`count`) and
+does not model the cant or which blade is the more immersed when heeled. The boat generator draws a tiller on its
+own stock on the centreline above the blades (or the wheel). `y` and `cant` are an error with `count` 1.
 
 ### 3.4 `rig`
 
@@ -264,6 +273,36 @@ With `twin` each wheel has its own pedestal and, with `well`, its own slot, cent
 between the two slots (at least 5 cm on each side of the centreline). Each wheel is its own moving node (`wheel`
 port, `wheel_2` starboard), both turned by the helm the same way; the physics sidecar gives `rig.wheel_hub` (the
 first) and `rig.wheel_hubs` (both).
+
+#### 3.7.4 `visual.deck.coaming`, `dodger`, `offshore`: a shorthanded offshore deck
+
+Generator only, each block optional (`null` or absent: none); every key has the default shown. Sizes in metres.
+
+**`coaming`**: the side deck rises to a raised coaming along the cockpit's edge, so the cockpit is deep and the
+crew sits on, and leans against, its flat top. It is part of the deck's surface (the walls, hardware and liveries
+follow it): `height` (0.15, 0.03 to 0.4) over the plain deck on a flat top `width` (0.26, 0.05 to 0.6) wide from the
+cockpit's edge outward, then a smooth ramp `ramp` (0.08, 0.02 to 0.4) wide down to the side deck. Along the cockpit
+it fades in over `fade_aft` (0.5) from the transom and out over `fade_fwd` (0.4) to the coachroof's aft face. The
+cockpit's winches stand in the middle of the flat top. Keep `width + ramp` at least 0.09 m inside the stanchions'
+line (the sheer less 0.07 s).
+
+**`dodger`**: a hard dodger (spray shelter) over the companionway: a rounded composite canopy on the coachroof's
+top, open at the back, in gelcoat with a dark windscreen and a side window each side. Its section is a rounded
+superellipse arch whose feet stand on the top at `width` (0.95, 0.4 to 1) of the top's half-width; its crown keeps
+`height` (0.42, 0.15 to 1) over the aft 40 % of its `length` (1.1, 0.4 to 3), then sinks forward along a half
+cosine to a lip `lip` (0.05, 0.02 to 0.15) high, under which the halyards run aft to the clutches and halyard
+winches it shelters. It overhangs the coachroof's aft face by `overhang` (0.1, 0 to 0.6); the shell is `thickness`
+(0.018) thick. `solar_panel` (false) puts a flat panel on its crown. The coachroof's top must be at least 0.15 m
+high (the clutches and winches stand under it).
+
+**`offshore`**: `foot_braces` ([]): bars across the cockpit floor, 6 cm over it, at these distances aft of the
+cockpit's forward end; `liferaft` (false): a liferaft canister in its cradle on the cockpit floor at the transom,
+against the starboard wall; `autopilot` (false): a tiller pilot's ram stowed in brackets on the port wall by the
+helm.
+
+All of them are static deck hardware in the shared material atlas (no new surface or draw call). The shadow proxy
+(`sail_visuals.md` §11.4) follows a coaming a little inside it and leaves the dodger out.
+
 ### 3.8 Example (sportsboat)
 
 ```json

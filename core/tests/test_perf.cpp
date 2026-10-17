@@ -153,6 +153,7 @@ void check_class(const std::string& id, std::size_t n_sails) {
 
 TEST_CASE("wm7 perf file loads and validates") { check_class("wm7", 3); }
 TEST_CASE("wm12 perf file loads and validates") { check_class("wm12", 4); }
+TEST_CASE("wm10 perf file loads and validates") { check_class("wm10", 4); }
 
 TEST_CASE("wm7 values read as binary32 of the file's decimals") {
   wm::PerfData perf;
@@ -179,7 +180,7 @@ TEST_CASE("wm7 values read as binary32 of the file's decimals") {
 // boat.md §6.4, data_format.md §4.2, §4.3: the shipped classes drift when stalled, full leeway off, and a file
 // without the drift keys and tables (an older one) still loads, with no drift.
 TEST_CASE("sideways drift data in the shipped files") {
-  for (const std::string cls : {"wm7", "wm12"}) {
+  for (const std::string cls : {"wm7", "wm12", "wm10"}) {
     const std::string file = kData + "/perf/" + cls + ".perf.json";
     wm::PerfData perf;
     wm::LoadError err;

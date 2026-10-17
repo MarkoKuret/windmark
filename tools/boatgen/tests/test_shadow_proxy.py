@@ -15,7 +15,7 @@ from boatgen.mesh import merge, normalize
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
-CLASSES = {c: os.path.join(REPO, "data", "classes", f"{c}.boat.json") for c in ("wm12", "wm7", "wm16", "wm21")}
+CLASSES = {c: os.path.join(REPO, "data", "classes", f"{c}.boat.json") for c in ("wm12", "wm7", "wm16", "wm21", "wm10")}
 # what the checks hold the proxy to: most of the inset from every drawn surface the sun can light (the drawn
 # surfaces' facets and the proxy's chords take some of it, and near the transom the cockpit's sides come within a
 # few centimetres of the narrowing topsides); from one that looks down (the hull's bottom, which gives way to the

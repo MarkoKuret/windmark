@@ -90,7 +90,7 @@ class Boat:
         self.parts["hull"] = paint_zones([port, stbd], cls["hull"]["boot_top"]).tag_all("hull")
         self.parts["deck"] = self.deck.build().tag_all("deck")
         self.parts["keel"] = self.app.keel_part()
-        self.parts["rudder"] = self.app.rudder_part()
+        self.parts.update(self.app.rudder_parts())
         self.rig = Rig(cls, self.hull, self.deck)
         self.sails = build_sails(cls, self.rig, self.deck)
         for spec in cls["sails"]:
@@ -117,7 +117,9 @@ class Boat:
         self.parts["boom"].extend(hw["boom_hardware"])
         self.parts["mainsheet"] = hw["mainsheet"]
         self.mainsheet_ends = hw["mainsheet_ends"]
-        self.pivots = {"rudder": self.app.rud_stock, "boom": self.rig.gooseneck}
+        self.pivots = {**{n: pv for n, (pv, _) in self.app.blade_pivots().items()}, "boom": self.rig.gooseneck}
+        if self.app.rud_count > 1:
+            self.pivots["rudder"] = self.app.rud_stock      # twin blades: the tiller's stock on the centreline
         if self.rig.pole_flown:
             self.parts["pole"] = self.rig.pole_part()
             self.pivots["pole"] = self.rig.pole_pivot
@@ -127,8 +129,8 @@ class Boat:
                 self.parts[n] = h
                 self.pivots[n] = hub
         else:
-            # a tiller turns with the rudder
-            self.parts["rudder"].extend(hardware.tiller(self.app, self.deck, self.hull, (self.hull.L / 12) ** 0.7))
+            # a tiller turns with the rudder (with twin rudders: on its own stock, node `rudder`)
+            self.parts.setdefault("rudder", Part()).extend(hardware.tiller(self.app, self.deck, self.hull, (self.hull.L / 12) ** 0.7))
         for name, sail in self.sails.items():
             self.parts["sail_" + name] = sail.part()
 
@@ -147,7 +149,7 @@ class Boat:
         with hardware.lowpoly():
             app = Appendages(cls, self.hull)
             app.keel_part()
-            parts["rudder"] = app.rudder_part()
+            parts.update(app.rudder_parts())
             rig = self.rig
             parts["mast"] = rig.mast_part()
             parts["rigging"] = rig.rigging_part()
@@ -163,8 +165,8 @@ class Boat:
                 for k, (h, _) in enumerate(hw["helms"]):
                     parts["wheel" if k == 0 else f"wheel_{k + 1}"] = h
             else:
-                parts["rudder"].extend(hardware.tiller(app, self.deck, self.hull, (self.hull.L / 12) ** 0.7))
-        for name in ("mast", "rigging", "boom", "hardware", "rudder", "wheel", "wheel_2", "pole"):
+                parts.setdefault("rudder", Part()).extend(hardware.tiller(app, self.deck, self.hull, (self.hull.L / 12) ** 0.7))
+        for name in ("mast", "rigging", "boom", "hardware", "rudder", "rudder_port", "rudder_starboard", "wheel", "wheel_2", "pole"):
             if name not in parts:
                 continue
             q = Part()

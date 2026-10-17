@@ -73,6 +73,46 @@ def _cabin(cab, given, L):
     return out
 
 
+# the shorthanded-offshore deck keys (data_format.md 3.7.4): block -> {key: (default, low, high)}; None default =
+# required number, a bool default = a switch
+OFFSHORE_KEYS = {
+    "coaming": {"height": (0.15, 0.03, 0.4), "width": (0.26, 0.05, 0.6), "ramp": (0.08, 0.02, 0.4),
+                "fade_aft": (0.5, 0.05, 2.0), "fade_fwd": (0.4, 0.05, 2.0)},
+    "dodger": {"length": (1.1, 0.4, 3.0), "height": (0.42, 0.15, 1.0), "overhang": (0.1, 0.0, 0.6),
+               "width": (0.95, 0.4, 1.0), "lip": (0.05, 0.02, 0.15), "thickness": (0.018, 0.005, 0.05),
+               "solar_panel": (False, None, None)},
+    "offshore": {"foot_braces": ([], None, None), "liferaft": (False, None, None), "autopilot": (False, None, None)},
+}
+
+
+def _offshore(deck, L):
+    """Fill and check the coaming, dodger and offshore blocks of visual.deck (each null when absent)."""
+    for blk, keys in OFFSHORE_KEYS.items():
+        given = deck.get(blk)
+        if given is None:
+            continue
+        where = f"$.visual.deck.{blk}"
+        if not isinstance(given, dict):
+            raise ClassFileError(f"{where} must be an object or null")
+        out = {}
+        for k, x in given.items():
+            if k not in keys:
+                raise ClassFileError(f"{where}.{k} is not a {blk} key ({', '.join(keys)})")
+        for k, (dflt, lo, hi) in keys.items():
+            x = given.get(k, dflt)
+            if isinstance(dflt, bool):
+                if not isinstance(x, bool):
+                    raise ClassFileError(f"{where}.{k} must be true or false")
+            elif isinstance(dflt, list):
+                if not isinstance(x, list) or not all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                                                      and 0 < v for v in x):
+                    raise ClassFileError(f"{where}.{k} must be a list of distances > 0 m")
+            elif isinstance(x, bool) or not isinstance(x, (int, float)) or not lo <= x <= hi:
+                raise ClassFileError(f"{where}.{k} must be a number from {lo:g} to {hi:g} (got {x})")
+            out[k] = x
+        deck[blk] = out
+
+
 def _shape(s, st, where):
     """The flying-sail shaping keys of one sails[] entry, validated; {key: float} of the keys given."""
     out = {}
@@ -208,6 +248,9 @@ def resolve(raw, path="<class>"):
         "hatches": 1 if L < 9.0 else 2,
         "grinders": 0,                  # coffee-grinder pedestals on the cockpit's centreline
         "halyard_leads": "painted",     # the halyards on deck: painted into the deck maps, or "modelled"
+        "coaming": None,          # data_format.md 3.7.4: raised cockpit coamings
+        "dodger": None,           # hard dodger over the companionway
+        "offshore": None,         # foot braces, liferaft, autopilot ram
     }
     vcab = (vis.get("deck", {}) or {}).get("cabin", {})
     deck = _deep_merge(deck_defaults, vis.get("deck", {}))
@@ -216,6 +259,7 @@ def resolve(raw, path="<class>"):
     else:
         deck["cabin"] = _cabin(deck["cabin"], vcab, L)
     c["deck"] = deck
+    _offshore(deck, L)
 
     # ---------------------------------------------------------------- keel
     K = _req(raw, "keel", "$")
@@ -241,6 +285,22 @@ def resolve(raw, path="<class>"):
                    "chord_tip": float(R["chord_tip"]), "thickness": float(R.get("thickness", 0.11)),
                    "x_stock": to_int(R["x"]), "max_angle": float(R.get("max_angle", 0.61)),
                    "sweep": float(vr.get("sweep", 0.10))}
+    # twin rudders (data_format.md 3.3): `count` 2 hangs a spade either side at `y`, canted outward by `cant`
+    count = R.get("count", 1)
+    if isinstance(count, bool) or count not in (1, 2):
+        raise ClassFileError(f"$.rudder.count must be 1 or 2 (got {count})")
+    if count == 2 and c["rudder"]["type"] != "spade":
+        raise ClassFileError("$.rudder.count 2 (twin rudders) needs type spade")
+    for k in ("y", "cant"):
+        if k in R and count == 1:
+            raise ClassFileError(f"$.rudder.{k} is for twin rudders (count 2) only")
+    y = R.get("y", 0.22 * float(H["beam_max"]))
+    cant = R.get("cant", 0.0)
+    for k, v, lo, hi in (("y", y, 0.05, 0.5 * float(H["beam_max"])), ("cant", cant, 0.0, 0.5)):
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not lo <= v <= hi:
+            raise ClassFileError(f"$.rudder.{k} must be a number from {lo:g} to {hi:g} (got {v})")
+    c["rudder"].update({"count": count, "y": float(y) if count == 2 else 0.0,
+                        "cant": float(cant) if count == 2 else 0.0})
 
     # ---------------------------------------------------------------- rig
     G = _req(raw, "rig", "$")

@@ -18,6 +18,11 @@ class Rig:
         self.scale = (L / 12.0) ** 0.6
         self.chord = float(r["mast_chord"])
         self.width = self.chord * float(r["mast_width"])
+        # class character (tools/boatgen/README.md): the spars' finish, the boom's section, runners and jumpers
+        self.spar_slot = {"carbon": "carbon", "alloy": "alloy", "white": "gelcoat"}[str(r.get("spars", "carbon"))]
+        self.boom_round = str(r.get("boom_section", "rect")) == "round"
+        self.runners = bool(r.get("runners", False))
+        self.jumpers = bool(r.get("jumpers", False))
         self.x_mast = float(r["mast_x"]) - self.chord / 2        # mast axis; mast_x is the front at the deck
         self.x_tack = float(r["mast_x"]) + float(r["J"])
         self.z_tack = float(deck.surface(min(self.x_tack, L - 0.02), 0.0)[0]) + 0.04
@@ -85,7 +90,7 @@ class Rig:
         taper = self.taper(zs)
         path = np.stack([np.full_like(zs, self.x_mast), np.zeros_like(zs), zs], -1)
         prof = _mast_section(self.chord, self.width, seg(24, 4))
-        p.add("carbon", sweep(path, prof, scale_along=taper, up=np.array([1.0, 0, 0])), tag="mast")
+        p.add(self.spar_slot, sweep(path, prof, scale_along=taper, up=np.array([1.0, 0, 0])), tag="mast")
         p.attach("mast", "deck")
         # mast collar / partner ring at the deck
         ring = revolve([(0.0, 0.0), (self.chord * 0.75, 0.0), (self.chord * 0.72, 0.035), (self.chord * 0.55, 0.06),
@@ -99,11 +104,11 @@ class Rig:
         p.attach("mast_step", "deck")
         # masthead crane: a cap with an arm reaching aft over the main halyard sheave, wind wand and antenna
         top = np.array([self.x_mast, 0, self.z_top])
-        p.add("carbon", superellipsoid_box((self.chord * 1.3, self.width * 0.8, 0.07 * s), 0.3, 12, 6,
+        p.add(self.spar_slot, superellipsoid_box((self.chord * 1.3, self.width * 0.8, 0.07 * s), 0.3, 12, 6,
                                            center=top + [-0.1 * self.chord, 0, 0.02]), tag="masthead")
         p.attach("masthead", "mast")
         crane = self.crane
-        p.add("carbon", sweep(crane, rounded_rect(0.05 * s, 0.045 * s, 0.012 * s, 2), up=np.array([0, 0, 1.0]),
+        p.add(self.spar_slot, sweep(crane, rounded_rect(0.05 * s, 0.045 * s, 0.012 * s, 2), up=np.array([0, 0, 1.0]),
                               scale_along=np.array([1.0, 0.7])), tag="crane")
         p.attach("crane", "masthead")
         for sy in (-1, 1):
@@ -155,7 +160,7 @@ class Rig:
                 path = np.linspace(root, t, seg(8, 2))
                 sc = np.linspace(1.0, 0.55, seg(8, 2))
                 sp = sweep(path, ellipse(0.045 * s, 0.014 * s, 12), scale_along=sc, up=np.array([1.0, 0, 0]))
-                p.add("carbon", sp, tag=sp_tag)
+                p.add(self.spar_slot, sp, tag=sp_tag)
                 p.attach(sp_tag, "mast")
                 # tip: end fitting clamping the cap shroud, in a rubber boot; root bracket on the mast wall
                 p.add("metal", superellipsoid_box((0.05 * s, 0.03 * s, 0.03 * s), 0.4, 8, 5, center=t), tag=sp_tag + "_tip")
@@ -185,18 +190,55 @@ class Rig:
         p.add("metal", superellipsoid_box((0.08 * s, self.width * 0.9, 0.12 * s), 0.3, 8, 5,
                                           center=[self.x_mast + self.chord * 0.5, 0, self.z_hounds]), tag="hounds")
         p.attach("hounds", "mast")
+        if self.jumpers:
+            # jumper struts (a classic masthead rig): a pair of short struts from the mast front at 0.72 of the
+            # height, angled forward and outboard, with jumper stays from their tips up to the masthead and down to
+            # the mast; the stays are in rigging_part
+            for side in (1.0, -1.0):
+                tag = f"jumper_{'port' if side > 0 else 'stbd'}"
+                root, tip = self.jumper_strut(side)
+                p.add(self.spar_slot, sweep(np.linspace(root, tip, seg(6, 2)), ellipse(0.03 * s, 0.012 * s, 10),
+                                            scale_along=np.linspace(1.0, 0.6, seg(6, 2)), up=np.array([0, 0, 1.0])),
+                      tag=tag)
+                p.attach(tag, "mast")
+                p.add("metal", superellipsoid_box((0.04 * s, 0.03 * s, 0.03 * s), 0.4, 8, 5, center=tip), tag=tag + "_tip")
+                p.attach(tag + "_tip", tag)
         if self.sprit > 0:
             L = self.hull.L
             a = np.array([L - 0.9 * s, 0, float(self.deck.deck_z(L - 0.9 * s, 0)) + 0.06 * s])
             path = np.linspace(a, self.sprit_end, seg(10, 2))
             r0 = 0.04 * s
-            p.add("carbon", sweep(path, _circle(r0, seg(16, 4)), scale_along=np.linspace(1, 0.75, seg(10, 2))),
+            p.add(self.spar_slot, sweep(path, _circle(r0, seg(16, 4)), scale_along=np.linspace(1, 0.75, seg(10, 2))),
                   tag="sprit")
             p.attach("sprit", "deck", "hull")
             p.add("metal", superellipsoid_box((0.06 * s, 0.06 * s, 0.06 * s), 0.5, 8, 5, center=self.sprit_end),
                   tag="sprit_end")
             p.attach("sprit_end", "sprit")
         return p
+
+    def jumper_strut(self, side):
+        """(root, tip) of a jumper strut: from the mast front at 0.72 of the height, forward and outboard."""
+        s = self.scale
+        zj = self.z_step + 0.72 * (self.z_top - self.z_step)
+        root = np.array([self.x_mast + 0.45 * self.chord * float(self.taper(zj)), side * 0.012 * s, zj])
+        ln = 0.052 * (self.z_top - self.z_step)
+        return root, root + ln * normalize(np.array([0.8, side * 0.6, 0.12]))
+
+    def runner_foot(self, side):
+        """Where a running backstay lands: a padeye on the quarter, aft of the cockpit on an aft deck, else beside
+        it; (x, y, z on the deck)."""
+        d, h = self.deck, self.hull
+        L = h.L
+        x = 0.5 * d.xc0 if d.xc0 > 0.6 else min(0.12 * L, d.xc1 - 0.2)
+        y = side * (float(h.bs(np.array([x]))[0]) - 0.11 * self.scale)
+        if d.in_cockpit(x, y):
+            y = side * (float(d.yc(x)) + 0.5 * (float(h.bs(np.array([x]))[0]) - float(d.yc(x))))
+        return np.array([x, y, float(d.surface(x, y)[0])])
+
+    def runner_head(self):
+        """Where the runners leave the mast: the hounds on a fractional rig, 0.78 of the height on a masthead one."""
+        z = self.z_hounds if not self.masthead_rig else self.z_step + 0.78 * (self.z_top - self.z_step)
+        return np.array([self.x_mast - 0.45 * self.chord * float(self.taper(z)), 0.0, z])
 
     def turnbuckle_len(self):
         return 0.16 * self.scale
@@ -298,6 +340,26 @@ class Rig:
             else:
                 F, d, _ = feet["backstay"]
                 segs.append((head, F + d * tb, r_cap * 0.9, "backstay", "crane", "screw_backstay"))
+        if self.runners:
+            # running backstays: a wire from the mast down to a tackle block over the quarter (the tail is in
+            # rigging_part); both set up, as on the model's symmetric rest
+            hd = self.runner_head()
+            for side in (1.0, -1.0):
+                sd = "port" if side > 0 else "stbd"
+                F = self.runner_foot(side)
+                blk = F + [0, 0, 0.55 * s]
+                segs.append((hd + [0, side * 0.012 * s, 0], blk, r_cap * 0.8, f"runner_{sd}", "mast",
+                             f"runner_block_{sd}"))
+        if self.jumpers:
+            # the stays run into the mast's front wall (at its tapered width) below the masthead and below the strut
+            zt = self.z_top - 0.12
+            top = np.array([self.x_mast + 0.45 * self.chord * float(self.taper(zt)), 0.0, zt])
+            for side in (1.0, -1.0):
+                sd = "port" if side > 0 else "stbd"
+                root, tip = self.jumper_strut(side)
+                low = np.array([self.x_mast + 0.45 * self.chord, side * 0.01 * s, root[2] - 0.22 * (self.z_top - self.z_step)])
+                segs.append((tip, top + [0, side * 0.01 * s, 0], r_cap * 0.7, f"jumper_stay_up_{sd}", f"jumper_{sd}_tip", "mast"))
+                segs.append((tip, low, r_cap * 0.7, f"jumper_stay_down_{sd}", f"jumper_{sd}_tip", "mast"))
         if self.sprit > 0:
             # bobstay from the sprit end to an eye on the stem near the waterline
             segs.append((self.sprit_end, self.bobstay_foot(), r_cap * 0.9, "bobstay", "sprit_end", "bobstay_eye"))
@@ -372,6 +434,21 @@ class Rig:
               tag="stemhead")
         p.add("metal", tube(np.array([F - [0, 0.024 * s, 0], F + [0, 0.024 * s, 0]]), 0.006 * s, 8), tag="stemhead")
         p.attach("stemhead", "deck")
+        if self.runners:
+            from .hardware import block, rope_tube
+            for side in (1.0, -1.0):
+                sd = "port" if side > 0 else "stbd"
+                F = self.runner_foot(side)
+                blk = F + [0, 0, 0.55 * s]
+                # the wire's lower block, a padeye plate on the deck and the tackle's tail between the two
+                p.extend(block(0.06 * s, swivel=False), translate(blk - [0, 0, 0.62 * 0.06 * s]), tag=f"runner_block_{sd}")
+                p.attach(f"runner_block_{sd}", f"runner_{sd}")
+                p.add("metal", superellipsoid_box((0.09 * s, 0.06 * s, 0.012), 0.3, 8, 4, center=F + [0, 0, 0.004]),
+                      tag=f"runner_plate_{sd}")
+                p.attach(f"runner_plate_{sd}", "deck")
+                p.add("rope_control", rope_tube(np.array([blk - [0, 0, 0.62 * 0.06 * s], F + [0, 0, 0.012]]),
+                                                max(0.004, 0.0045 * s), 6), tag=f"runner_tail_{sd}")
+                p.attach(f"runner_tail_{sd}", f"runner_block_{sd}", f"runner_plate_{sd}")
         if self.split_backstay():
             sp = self.backstay_split()
             p.add("metal", superellipsoid_box((0.05 * s, 0.1 * s, 0.07 * s), 0.3, 8, 5, center=sp), tag="backstay_split")
@@ -397,9 +474,10 @@ class Rig:
         t = np.linspace(0, 1, n)
         path = np.stack([self.gooseneck[0] - t * self.boom_len, np.zeros(n), np.full(n, self.gooseneck[2])], -1)
         depth = 0.17 * s
-        prof = rounded_rect(depth, 0.085 * s, 0.03 * s, 3)
+        # a classic boom is a round section (`boom_section` "round"), a modern one a deep rounded rectangle
+        prof = ellipse(0.5 * depth, 0.5 * 0.1 * s, seg(16, 4)) if self.boom_round else rounded_rect(depth, 0.085 * s, 0.03 * s, 3)
         sc = 1.0 - 0.25 * t ** 2
-        p.add("carbon", sweep(path, prof, scale_along=sc, up=np.array([0, 0, 1.0])), tag="boom")
+        p.add(self.spar_slot, sweep(path, prof, scale_along=sc, up=np.array([0, 0, 1.0])), tag="boom")
         p.attach("boom", "gooseneck_pin")
         # end fitting and outhaul
         end = path[-1]
@@ -441,7 +519,7 @@ class Rig:
         n = seg(10, 2)
         path = np.linspace(heel + [0.04 * s, 0, 0], self.pole_end - [0.05 * s, 0, 0], n)
         t = np.linspace(-1.0, 1.0, n)
-        p.add("carbon", sweep(path, _circle(0.03 * s, seg(16, 4)), scale_along=1.0 - 0.3 * t ** 2))
+        p.add(self.spar_slot, sweep(path, _circle(0.03 * s, seg(16, 4)), scale_along=1.0 - 0.3 * t ** 2))
         # heel fitting on the mast ring and end fitting at the tack
         p.add("metal", superellipsoid_box((0.08 * s, 0.05 * s, 0.05 * s), 0.5, 8, 5, center=heel + [0.03 * s, 0, 0]))
         p.add("metal", superellipsoid_box((0.08 * s, 0.045 * s, 0.045 * s), 0.5, 8, 5,

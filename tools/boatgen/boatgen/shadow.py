@@ -359,7 +359,12 @@ def boom_geom(rig, ms=INSET_SPAR):
     path = np.column_stack([g0[0] - t * ln, np.zeros(3), np.full(3, g0[2])])
     depth, width = 0.17 * s - 2 * ms, 0.085 * s - 2 * ms
     with segment_scale(1.0):
-        prof = rounded_rect(depth, width, max(0.03 * s - ms, 0.004), 1)
+        if getattr(rig, "boom_round", False):
+            # a round boom (rig.py `boom_section`): the oval section shrunk ms a side
+            from .mesh import ellipse
+            prof = ellipse(0.5 * depth, 0.5 * 0.1 * s - ms, 8)
+        else:
+            prof = rounded_rect(depth, width, max(0.03 * s - ms, 0.004), 1)
     return sweep(path, prof, scale_along=1.0 - 0.25 * t ** 2, up=np.array([0, 0, 1.0]), max_seg=1e9)
 
 

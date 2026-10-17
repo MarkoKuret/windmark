@@ -199,6 +199,12 @@ func _main() -> void:
 		want.erase("procedural")
 		BakedLivery.enabled = false
 		OUT = "res://generated/livery_preview_procedural"
+	if want.has("classes"):
+		# the class character set: every class from the same views, cameras scaled by LOA (to generated/class_preview)
+		want.erase("classes")
+		OUT = "res://generated/class_preview"
+		SHOTS = _class_shots(want)
+		want = []
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT))
 	var names := []
 	for spec in SHOTS:
@@ -208,6 +214,35 @@ func _main() -> void:
 			names.append(spec["name"])
 	FileAccess.open(OUT.path_join("index.json"), FileAccess.WRITE).store_string(JSON.stringify(names))
 	quit(0)
+
+
+## The class character shots (`-- classes [wm7 ...]`): one boat of each class, the same views for all, the camera
+## scaled by the class LOA (boat frame: port, up, forward): the side profile, the chase camera three-quarter from
+## astern, dead astern, the bow quarter, the deck from above and the helm up close.
+static func _class_shots(only: Array) -> Array:
+	var loa := {"wm7": 7.2, "wm9": 9.2, "wm10": 10.0, "wm12": 12.0, "wm16": 15.85, "wm21": 20.8}
+	var views := {
+		"profile": {"eye": [-2.1, 0.55, 0.0], "at": [0.0, 0.52, 0.0], "fov": 50.0},
+		"hull": {"eye": [-1.35, 0.12, 0.0], "at": [0.0, 0.07, 0.0], "fov": 40.0},
+		"chase": {"eye": [-0.75, 0.55, -1.85], "at": [0.0, 0.33, 0.04], "fov": 55.0},
+		"astern": {"eye": [-0.16, 0.16, -1.1], "at": [0.0, 0.06, -0.47], "fov": 42.0},
+		"bowq": {"eye": [-0.95, 0.28, 1.25], "at": [0.0, 0.08, 0.15], "fov": 45.0},
+		"deck": {"eye": [0.15, 0.63, -0.42], "at": [0.0, 0.075, -0.13], "fov": 50.0},
+		"helm": {"eye": [0.0, 0.2, -0.47], "at": [0.0, 0.083, -0.13], "fov": 60.0},
+	}
+	var out := []
+	for cls in ["wm7", "wm9", "wm10", "wm12", "wm16", "wm21"]:
+		if not only.is_empty() and not only.has(cls):
+			continue
+		var L: float = loa[cls]
+		for v in views:
+			var cam: Dictionary = views[v]
+			var e: Array = cam["eye"]
+			var a: Array = cam["at"]
+			out.append({"name": "cls_%s_%s" % [v, cls], "cls": cls, "n": 1, "twa": 42.0, "t": 20.0,
+				"cam": {"mode": "boat", "eye": [e[0] * L, e[1] * L, e[2] * L], "at": [a[0] * L, a[1] * L, a[2] * L],
+					"fov": cam["fov"]}})
+	return out
 
 
 func _shot(spec: Dictionary) -> void:

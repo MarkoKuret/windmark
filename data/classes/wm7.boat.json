@@ -58,9 +58,10 @@
       "cabin": {"height": 0.15, "meet_aft_of_mast": 0.04, "slope_from": 0.2, "width": 0.50, "side_rake": 0.40, "edge_radius": 0.035},
       "lifelines": false,
       "steering": "tiller",
-      "hatches": 1
+      "hatches": 1,
+      "toe_rail": 0.025
     },
-    "rig": {"spreaders": 1, "spreader_sweep": 0.42, "backstay": false},
+    "rig": {"spreaders": 1, "spreader_sweep": 0.42, "backstay": false, "spars": "white"},
     "sails": {"main": {"head_width": 0.26}}
   }
 }

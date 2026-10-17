@@ -216,6 +216,32 @@ code zero) from the flat sail's chord extent `Sa`. Keys that do not apply to a t
 written only when the class file gives them. The old `depth` key (replaced by `camber`) is still accepted and
 not written.
 
+### Class character
+
+Each class is meant to read as its own design, from its own yard and era, at a glance from the chase camera and
+up close: the generator takes the class's design language from these keys (all optional; without them a class
+builds exactly as before). The materials they use are three slots of the shared atlas added for them: `alloy`
+(silver anodised aluminium, brushed), `bronze` (polished bronze, metallic) and `wood` (varnished teak or mahogany,
+glossy), so no extra draw call.
+
+| key | default | meaning |
+| --- | --- | --- |
+| `hull.stem_curve` | 0 | a spoon bow: above the DWL the stem bows forward of the straight raked line by up to this (m), fullest a third of the way up, meeting the DWL and the stem head where the straight stem does (the waterline, the overhang and the hydrostatics stay; clamped so the profile stays a function of height). wm9 0.12, wm21 0.45 |
+| `deck.cockpit.width_aft` | = `width` | a tapered cockpit: the well's width at its aft end (of the local half-beam), linear to `width` at the forward end. The wheel must still fit (3.7.3) |
+| `deck.cabin.front` | `faired` | `upright`: a trunk cabin whose top slopes gently to `front_height` (0.75) of `height`, then drops along a quarter ellipse over `front_length` (0.12 s) to the deck, so the front stands nearly upright (the classic one-design, wm9) |
+| `deck.cabin.plan_round` | 0.2 | how far from the nose, as a fraction of the coachroof's length, its plan starts rounding in to the centreline (0.1 keeps the sides straight almost to the front) |
+| `deck.toe_rail` | 0.035 (LOA/12)^0.4 | the rail's size (m); 0 leaves it out (a flush grand-prix deck edge keeps only the rub strake) |
+| `deck.toe_rail_material` | `gelcoat` | `gelcoat` (a moulded lip), `alloy` (an anodised rail, wm12) or `wood` (a varnished rail, taller than wide with a flat top, wm9 and wm21) |
+| `deck.coaming_board` | none | `{"height": 0.12, "thickness": 0.03, "material": "wood"}`: low boards standing on the deck round the cockpit (along both sides, across the aft end on an aft deck, across the forward end on a flush deck), in `wood`, `gelcoat` or `carbon` |
+| `deck.hardware_finish` | `stainless` | `bronze`: the winches, cleats, clutch and organiser plates, tracks, cars, traveller and blocks in polished bronze, the tiller and the wheel's rim in varnished wood on alloy spokes (the classics); `black`: the same fittings in black anodised alloy (the carbon slot; the grand prix boat) |
+| `deck.hatch_style` | `flush` | `classic`: raised varnished-wood hatches with a framed lens, modelled in the game (tag `skylight_*`, about 60 triangles each) instead of the flush alloy hatches painted into the deck maps |
+| `rig.spars` | `carbon` | the mast, boom, spreaders, crane, sprit and pole: `carbon` (dark clear-coated), `alloy` (silver anodised, wm9 and wm21) or `white` (painted, the gelcoat slot, wm7) |
+| `rig.boom_section` | `rect` | `round`: an oval boom section (the classics) instead of the deep rounded rectangle |
+| `rig.runners` | false | running backstays: a wire each side from the mast (the hounds on a fractional rig, 0.78 of the height on a masthead one) down to a tackle block over the quarter, a padeye on the aft deck (or beside the cockpit) and the tail between the two |
+| `rig.jumpers` | false | jumper struts on the topmast (0.72 of the height, forward and outboard) with jumper stays to the masthead and down the mast (the classic masthead rig, wm21) |
+
+The classes as set: wm7 (sportboat) white painted spars, a small moulded toe rail; wm9 (classic one-design) a spoon bow, a trunk cabin with an upright front, a tapered cockpit with wood coaming boards, a wood toe rail, bronze hardware, classic hatches, alloy spars with a round boom, straight spreaders and runners; wm10 (offshore) as 3.7.4; wm12 (40-footer) an alloy toe rail; wm16 (grand prix) a flush deck edge and black hardware; wm21 (12 Metre style) a long spoon bow, a tapered cockpit with wood coaming boards, a wood toe rail, bronze hardware, classic hatches, alloy spars with a round boom, in-line spreaders, runners and jumpers. The colour language is in each class's livery file (`data/liveries`, `data_format.md` §8).
+
 ## How the geometry is made
 
 **Hull** (`hull.py`). Each station is a superellipse bottom from the keel point to the bilge turn, then a topside
@@ -397,7 +423,7 @@ earlier material slots split by where they are: `hull_gelcoat`, `hull_boottop`, 
 `deck_gelcoat`, `deck_nonslip` (region `deck`), `transom`, `keel` (region `keel`), `rudder` (region `keel_colour`),
 `deck_face` (the coachroof's aft face, region `deck` on its own rectangle of the plan, `Deck.face_frame`), and
 `gelcoat`, `carbon` (spars, pedestal, wheel, tiller: dark and slightly glossy, the clear coat's orange peel, no
-weave), `metal`, `rubber`,
+weave), `metal`, `rubber`, `alloy`, `bronze`, `wood` (the class character finishes above),
 `glass`, `nonslip`, `antifouling`, `boottop` and the ropes (`rope` for the lifelines and the rope functions
 `rope_mainsheet`, `rope_halyard_main`, `rope_halyard_jib`, `rope_halyard_kite`, `rope_halyard_code`, `rope_control`,
 `rope_sheet`,
@@ -415,8 +441,8 @@ wraps each tile itself (`shaders/boat_atlas.gdshader`); a plain glTF viewer show
 | --- | --- | --- | --- |
 | `orange_peel` | gelcoat, boottop, transom, carbon (its clear coat) | 0.5 | ambientCG Plastic013A |
 | `diamond` | nonslip | 0.1 | procedural (textures.py): moulded raised-diamond non-slip, about 6 mm pitch |
-| `grain` | antifouling, rubber | 0.5, 0.1 | ambientCG Rubber004 |
-| `brushed` | metal | 0.2 | ambientCG Metal009 |
+| `grain` | antifouling, rubber, wood (varnish over a fine grain) | 0.5, 0.1, 0.4 | ambientCG Rubber004 |
+| `brushed` | metal, alloy (0.3), bronze (0.15) | 0.2 | ambientCG Metal009 |
 | `weave` | sailcloth | 0.5 | ambientCG Fabric062 (no normal map: the run-time sail mesh has no tangents) |
 | `braid` | rope and every `rope_*` slot | 0.05 | ambientCG Rope002 |
 

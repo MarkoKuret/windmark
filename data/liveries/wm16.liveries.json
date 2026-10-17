@@ -22,17 +22,17 @@
   "liveries": [
     {
       "id": "graphite",
-      "name": "Graphite and red",
+      "name": "Silver over graphite",
       "hull": {
-        "topsides": "#1e2125",
-        "text": "#dedfda",
+        "topsides": "#c2c5c8",
+        "text": "#1b1d21",
         "boot_stripe": "#b3161d",
         "antifouling": "#141518",
         "keel": "#17181b",
-        "graphic": {"type": "stripes", "colors": ["#b3161d", "#c9cacb"], "depth": [0.07, 0.125],
-          "width": [0.06, 0.012], "from": 0.0, "to": 0.97}
+        "graphic": {"type": "two_tone", "colors": ["#1e2125", "#b3161d"], "split": 0.70, "rise": -0.10,
+          "pinstripe": 0.03}
       },
-      "deck": {"gelcoat": "#c9c9c4", "nonslip": "#8e8f8b"}
+      "deck": {"gelcoat": "#4f5257", "nonslip": "#3a3d41"}
     }
   ],
   "boats": [

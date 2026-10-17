@@ -106,6 +106,19 @@ class HullShape:
         keel_f = -self.Tc + h["rocker_fwd"] * np.abs(ef) ** self.k_prof
         keel_a = -self.Tc + h["rocker_aft"] * np.abs(ea) ** k_aft
         stem = (x - self.x_fwl) * self.stem_slope
+        sc = float(h.get("stem_curve") or 0.0)
+        if sc > 0 and self.L - self.x_fwl > 0.02:
+            # a spoon bow (class character, `stem_curve`): above the DWL the stem bows forward of the straight
+            # line by up to `stem_curve` m, fullest a third of the way up, meeting the DWL and the stem head where
+            # the straight stem does (so the waterline, the overhang and the physics stay); below the DWL the
+            # straight line runs on into the forefoot
+            fb = h["freeboard_bow"]
+            sc = min(sc, 0.9 * (self.L - self.x_fwl) / 3.08)      # keeps x(z) monotonic (see below)
+            zt = np.linspace(0.0, fb, 240)
+            t = zt / fb
+            bulge = np.sqrt(t) * (1 - t) / 0.3849                  # 1 at t = 1/3
+            xt = self.x_fwl + zt / self.stem_slope + sc * bulge
+            stem = np.where(x >= self.x_fwl, np.interp(x, xt, zt, right=fb), stem)
         r = h["stem_radius"]
         fwd = smax(keel_f, stem, r)
         # the smooth max lifts the waterline crossing slightly: remove it with a ramp so it stays at x_fwl

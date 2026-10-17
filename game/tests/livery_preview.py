@@ -7,7 +7,7 @@ sail numbers on both sides and through the cloth), each boat's text texture, and
 (livery) colours; the same files Godot compiles. Lighting, sea and sky are the stand-in of tests/sail_preview.py
 (a low sun, a sky ambient, a flat sea, no shadows): for judging the liveries, not the engine's exact colours.
 
-    python3 game/tests/livery_preview.py [--size 1600x900] [--publish] [shot ...]
+    python3 game/tests/livery_preview.py [--size 1600x900] [--publish] [--dir DIR] [shot ...]
 
 Writes game/generated/livery_preview/<shot>.png and contact.png (with --publish also game/tests/previews/livery_contact.png and
 game/tests/previews/livery_*.jpg). Needs numpy, Pillow and moderngl (docs/THIRD_PARTY.md).
@@ -670,8 +670,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--size", default="1600x900")
     ap.add_argument("--publish", action="store_true")
+    ap.add_argument("--dir", default=None, help="the dump folder to render (default generated/livery_preview; "
+                    "the class character set of livery_preview_dump.gd `-- classes` is generated/class_preview)")
     ap.add_argument("shots", nargs="*")
     a = ap.parse_args()
+    global OUT
+    if a.dir:
+        OUT = Path(a.dir).resolve()
     w, h = (int(x) for x in a.size.split("x"))
     names = a.shots or json.loads((OUT / "index.json").read_text())
     ctx = moderngl.create_standalone_context(require=410)

@@ -58,6 +58,9 @@ SLOTS = {
     "rope_halyard_kite": ("braid", 0.05),
     "rope_halyard_code": ("braid", 0.05),
     "face": ("orange_peel", 0.5),
+    "alloy": ("brushed", 0.3),           # anodised alloy: a fine brushed grain
+    "bronze": ("brushed", 0.15),
+    "wood": ("grain", 0.4),              # varnish over a fine grain
     "glass": (None, 1.0),
     "shadow": (None, 1.0),
 }

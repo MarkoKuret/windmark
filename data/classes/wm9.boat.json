@@ -51,16 +51,22 @@
   "crew": {"count": 3, "weight": 285, "hiking_arm": 1.0},
   "start": {"front_sail": "jib"},
   "visual": {
-    "hull": {"bilge_fillet": 0.30, "topside_flare": 2.0, "sheer_spring": 0.06},
+    "hull": {"bilge_fillet": 0.30, "topside_flare": 2.0, "sheer_spring": 0.06, "stem_curve": 0.12},
     "rudder": {"sweep": 0.22},
     "deck": {
-      "cockpit": {"length": 3.0, "width": 0.66, "depth": 0.36, "open_transom": false, "aft_deck": 1.15},
-      "cabin": {"height": 0.12, "meet_aft_of_mast": 0.05, "slope_from": 0.25, "width": 0.52, "side_rake": 0.40, "edge_radius": 0.03, "windows": false},
+      "cockpit": {"length": 3.0, "width": 0.66, "width_aft": 0.54, "depth": 0.36, "open_transom": false, "aft_deck": 1.15},
+      "cabin": {"height": 0.14, "meet_aft_of_mast": 0.05, "slope_from": 0.45, "width": 0.52, "side_rake": 0.30, "edge_radius": 0.03, "windows": false,
+        "front": "upright", "plan_round": 0.1, "front_length": 0.1, "front_height": 0.8},
       "lifelines": false,
       "steering": "tiller",
-      "hatches": 1
+      "hatches": 1,
+      "toe_rail": 0.045,
+      "toe_rail_material": "wood",
+      "coaming_board": {"height": 0.10, "thickness": 0.03, "material": "wood"},
+      "hardware_finish": "bronze",
+      "hatch_style": "classic"
     },
-    "rig": {"spreaders": 1, "spreader_sweep": 0.30, "backstay": true},
+    "rig": {"spreaders": 1, "spreader_sweep": 0.05, "backstay": true, "spars": "alloy", "boom_section": "round", "runners": true},
     "sails": {"main": {"head_width": 0.12}}
   }
 }

@@ -31,6 +31,8 @@ class Deck:
         self.xc0 = float(ck.get("aft_deck", 0.0))
         self.xc1 = self.xc0 + float(ck["length"])
         self.ck_frac = float(ck["width"])
+        # a tapered cockpit (`width_aft`, class character): narrower at its aft end than at the coachroof
+        self.ck_frac_aft = float(ck["width_aft"]) if ck.get("width_aft") is not None else self.ck_frac
         self.ck_depth = float(ck["depth"])
         self.open_transom = bool(ck.get("open_transom", True)) and self.xc0 <= 1e-6
         cb = d.get("cabin")
@@ -50,6 +52,11 @@ class Deck:
             self.cab_slope_from = float(cb.get("slope_from", 0.3))
             self.cab_rake = float(cb.get("side_rake", 0.35))
             self.cab_r = float(cb.get("edge_radius", 0.05 * (L / 12) ** 0.5))
+            # class character: how far from the nose the plan rounds in, and an upright trunk-cabin front
+            self.cab_plan_round = float(cb.get("plan_round", 0.2))
+            self.cab_front = str(cb.get("front", "faired"))
+            self.cab_front_len = float(cb.get("front_length", 0.12 * (L / 12) ** 0.5))
+            self.cab_front_h = float(cb.get("front_height", 0.75))
         else:
             self.xk0 = self.xk1 = self.xc1
         self.margin = float(d["nonslip_margin"])
@@ -151,7 +158,7 @@ class Deck:
         c = self.coaming
         x, y = np.broadcast_arrays(np.asarray(x, dtype=np.float64), np.asarray(y, dtype=np.float64))
         sm = lambda t: (lambda u: u * u * (3 - 2 * u))(np.clip(t, 0.0, 1.0))
-        d = np.abs(y) - self.ck_frac * self.hull.bs(np.clip(x, self.xc0, self.xc1))
+        d = np.abs(y) - self.yc(x)
         prof = np.where(d < -1e-9, 0.0, 1.0 - sm((d - c["w"]) / c["r"]))
         env = sm((x - self.xc0) / max(c["aft"], 1e-6)) * (1.0 - sm((x - (self.xc1 - c["fwd"])) / max(c["fwd"], 1e-6)))
         env = np.where((x >= self.xc0) & (x <= self.xc1), env, 0.0)
@@ -163,9 +170,16 @@ class Deck:
         dzdy = (float(self.deck_z(x, y + h)) - float(self.deck_z(x, y - h))) / (2 * h)
         return normalize(np.array([-dzdx, -dzdy, 1.0]))
 
+    def ck_width_frac(self, x):
+        """The cockpit's width as a fraction of the local half-beam: `width` at its forward end, `width_aft` at the
+        aft end, linear between (arrays)."""
+        t = np.clip((np.asarray(x, dtype=np.float64) - self.xc0) / max(self.xc1 - self.xc0, 1e-6), 0, 1)
+        return self.ck_frac_aft + (self.ck_frac - self.ck_frac_aft) * t
+
     def yc(self, x):
         """Cockpit half-width."""
-        return self.ck_frac * self.hull.bs(np.clip(x, self.xc0, self.xc1))
+        xc = np.clip(x, self.xc0, self.xc1)
+        return self.ck_width_frac(xc) * self.hull.bs(xc)
 
     def floor_z(self, x):
         return self.deck_z(x, 0.0) - self.ck_depth
@@ -178,7 +192,8 @@ class Deck:
         x = np.asarray(x, dtype=np.float64)
         u = np.clip((x - self.xk0) / (self.xk1 - self.xk0), 0, 1)
         base = np.minimum(self.cab_frac * self.hull.bs(x), float(self.yc(self.xk0)))
-        e = np.clip((u - 0.8) / 0.2, 0, 1)
+        pr = min(max(self.cab_plan_round, 0.02), 0.95)
+        e = np.clip((u - (1 - pr)) / pr, 0, 1)
         return np.where((x >= self.xk0) & (x <= self.xk1), base * np.sqrt(np.clip(1 - e * e, 0, 1)), 0.0)
 
     def cab_height(self, x):
@@ -190,8 +205,19 @@ class Deck:
             return np.zeros_like(x)
         u = (x - self.xk0) / (self.xk1 - self.xk0)
         sf = self.cab_slope_from
-        v = np.clip((u - sf) / max(1 - sf, 1e-6), 0, 1)
-        h = self.cab_h * 0.5 * (1 + np.cos(np.pi * v))
+        if self.cab_front == "upright":
+            # a trunk cabin: the top slopes gently from `height` at slope_from to front_height of it, then drops
+            # along a quarter ellipse over `front_length` to the deck, so the front stands nearly upright
+            lk = self.xk1 - self.xk0
+            fl = min(self.cab_front_len, 0.5 * lk)
+            x_f = self.xk1 - fl
+            uf = np.clip((x - self.xk0 - sf * lk) / max(x_f - self.xk0 - sf * lk, 1e-6), 0, 1)
+            h_top = self.cab_h * (1 - (1 - self.cab_front_h) * uf)
+            q = np.clip((x - x_f) / max(fl, 1e-6), 0, 1)
+            h = np.where(x <= x_f, h_top, self.cab_h * self.cab_front_h * np.sqrt(np.clip(1 - q * q, 0, 1)))
+        else:
+            v = np.clip((u - sf) / max(1 - sf, 1e-6), 0, 1)
+            h = self.cab_h * 0.5 * (1 + np.cos(np.pi * v))
         r = min(self.cab_r, 0.8 * self.cab_h)
         dx = np.clip(self.xk0 + r - x, 0, r)
         h = np.minimum(h, self.cab_h - r + np.sqrt(np.maximum(r * r - dx * dx, 0)))
@@ -494,6 +520,8 @@ class Deck:
         if self.has_cabin:
             self._cabin(part, xs, n_roof=max(3, round(7 * n_st / 90)), fine=n_st >= 60)
         self._sheer_trim(part, n=max(16, round(120 * n_st / 90)), lite=lite)
+        if self.cls["deck"].get("coaming_board"):
+            self._coaming_boards(part, lite=lite)
         for mat, gs in part.slots.items():      # every deck surface: the plan view (the transom has its own)
             for g in gs:
                 g.uv1 = self.face_uv1(g.P) if mat == "face" and self.face_frame() else self.plan_uv1(g.P)
@@ -736,20 +764,53 @@ class Deck:
         g.uv1 = self.transom_uv1(g.P)
         part.add("transom", g)
 
+    def _coaming_boards(self, part, lite=0):
+        """Low coaming boards round the cockpit (class character, `visual.deck.coaming_board`): a varnished wood (or
+        gelcoat, carbon) plank standing on the deck along each side of the well, across its aft end on an aft deck
+        and across its forward end on a flush deck, `height` high and `thickness` thick."""
+        cb = self.cls["deck"]["coaming_board"]
+        h, t = float(cb["height"]), float(cb["thickness"])
+        mat = {"wood": "wood", "gelcoat": "gelcoat", "carbon": "carbon"}[str(cb.get("material", "wood"))]
+        n = 24 if lite else 40
+        for side in (1.0, -1.0):
+            xs = np.linspace(self.xc0 - 0.5 * t, self.xc1 + (0.5 * t if not self.has_cabin else 0.0), n)
+            y = side * (self.yc(xs) + 0.5 * t + 0.004)
+            path = np.stack([xs, y, self.plain_deck_z(xs, y)], -1)
+            _board(part, path, h, t, mat, lite)
+        ends = []
+        if self.xc0 > 1e-6:
+            ends.append(self.xc0 - 0.5 * t)
+        if not self.has_cabin:
+            ends.append(self.xc1 + 0.5 * t)
+        for x in ends:
+            yc = float(self.yc(x))
+            ys = np.linspace(-(yc + t), yc + t, 9)
+            path = np.stack([np.full_like(ys, x), ys, self.plain_deck_z(x, ys)], -1)
+            _board(part, path, h, t, mat, lite)
+
     def _sheer_trim(self, part, n=120, lite=0):
         """Toe rail on the deck edge and a rub strake just below the sheer on the hull (`lite`: plainer sections,
         2 without the rub strake)."""
         hull = self.hull
         xs = np.linspace(0.0, hull.L - 0.01, n)
         tr = float(self.cls["deck"]["toe_rail"])
+        # the rail's material (class character): moulded gelcoat, an anodised alloy rail or a varnished wood rail
+        # (taller than wide, a flat top); none at all with a size of 0 (a flush grand-prix deck)
+        trm = {"gelcoat": "gelcoat", "alloy": "alloy", "wood": "wood"}[str(self.cls["deck"].get("toe_rail_material", "gelcoat"))]
         for side in (1.0, -1.0):
+            if tr <= 1e-4:
+                continue
             bs = hull.bs(xs)
             inboard = np.minimum(tr * 0.6, bs * 0.5)
-            path = np.stack([xs, side * (bs - inboard), self.deck_z(xs, bs - inboard) + tr * 0.35], -1)
-            prof = rounded_rect(tr * 0.9, tr * 0.7, tr * 0.25, 2)
+            if trm == "wood":
+                path = np.stack([xs, side * (bs - inboard), self.deck_z(xs, bs - inboard) + tr * 0.5], -1)
+                prof = rounded_rect(tr * 1.1, tr * 0.55, tr * 0.08, 1)
+            else:
+                path = np.stack([xs, side * (bs - inboard), self.deck_z(xs, bs - inboard) + tr * 0.35], -1)
+                prof = rounded_rect(tr * 0.9, tr * 0.7, tr * 0.25, 2)
             if lite:
                 prof = np.array([[0.45, 0.35], [-0.45, 0.35], [-0.45, -0.35], [0.45, -0.35]]) * tr
-            part.add("gelcoat", sweep(path, prof, up=np.array([0, 0, 1.0])))
+            part.add(trm, sweep(path, prof, up=np.array([0, 0, 1.0])))
             if lite >= 2:
                 continue
             # rub strake: a small half-round just below the sheer, following the topside
@@ -760,6 +821,12 @@ class Deck:
                 rs = rounded_rect(0.022, 0.018, 0.008, 2) if not lite else \
                     np.array([[0.009, 0.011], [-0.009, 0.011], [-0.009, -0.011], [0.009, -0.011]])
                 part.add("rubber", sweep(path2[ok], rs, up=np.array([0, 0, 1.0])))
+
+
+def _board(part, path, height, thick, mat, lite=0):
+    """A low board standing on a path along the deck (its lower edge on the surface): a thin rounded plank."""
+    prof = rounded_rect(height, thick, 0.3 * thick, 1 if lite else 2)
+    part.add(mat, sweep(path + np.array([0, 0, 0.5 * height - 0.004]), prof, up=np.array([0, 0, 1.0])))
 
 
 def _orient(g, want):

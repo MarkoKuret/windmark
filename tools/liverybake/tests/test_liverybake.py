@@ -140,12 +140,21 @@ def test_hull_zones(baked):
     assert np.abs(np.median(img[tops, mid], axis=0) - want_top).max() < 20
 
 
-def test_transom(baked):
+@pytest.fixture(scope="module")
+def baked12(tmp_path_factory):
+    """wm12, whose class livery wears sheer stripes (wm7's is a swoosh, which has no return on the transom)."""
+    out = tmp_path_factory.mktemp("liveries12")
+    assert cli.main(["wm12", "--out", str(out)] + SMALL) == 0
+    return out
+
+
+def test_transom(baked12):
     """The transom in the topsides colour, the stripe's return near the quarters' top, the name panel clear."""
-    geo = geometry.load("wm7")
-    img = np.asarray(Image.open(Path(baked) / "wm7" / "navy" / "transom_albedo.png"), dtype=float)
+    geo = geometry.load("wm12")
+    img = np.asarray(Image.open(Path(baked12) / "wm12" / "navy" / "transom_albedo.png"), dtype=float)
     H, W = img.shape[:2]
-    liv = json.loads((common.DATA / "wm7.liveries.json").read_text())["liveries"][0]["hull"]
+    liv = json.loads((common.DATA / "wm12.liveries.json").read_text())["liveries"][0]["hull"]
+    assert liv["graphic"]["type"] == "stripes"
     hexc = lambda c: np.array([int(c[i:i + 2], 16) for i in (1, 3, 5)])
     u0, v0, u1, v1 = geo["transom"]["panel"]["uv1"]
     panel = img[int(v0 * H) + 1:int(v1 * H) - 1, int(u0 * W) + 1:int(u1 * W) - 1].reshape(-1, 3)

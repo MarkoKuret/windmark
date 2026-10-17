@@ -24,7 +24,8 @@ does, so a first-time player sees at once what to press:
   and whenever the remembered setup cannot start any more (a class, venue or course no longer on disk); the focus
   then starts on Race.
 - Under the items one quiet **key line** (`Arrows choose · Enter or A select · Esc or B back`, small, muted): the
-  only place the menus explain their keys.
+  only place the menus explain their keys. On a window too short for the card under the logo (1280 × 800 at
+  130 % UI scale) the hints and the key line hide and the items alone show.
 - **Wordmark**: the game's logo, `WINDMARK` with the tagline bar under it (§1.2), in the top-left corner. It is
   one scene (`scenes/menu/wordmark.tscn`), so a later logo replaces it without touching the menu.
 - **Version**: the bottom-right corner shows the build, small and dim: `v<version>` from the project settings
@@ -133,14 +134,15 @@ the venue and the race rows together. A race has four steps, a free sail three:
   follow the picker at once.
 - **Venue step.** A wide page in two columns. Left: the **venue picker** `‹  PRACTICE WATERS  ›` (as the class
   picker, the focus when the step opens), the venue's one-line character (`Open water and one island: a steady
-  breeze, a light current.`; one line per shipped venue in the menu's data, a venue without one gets its briefing
-  tag), the **briefing** of §1.3 in its box (the weather mode chosen on the Race step, Local at first: the full
-  briefing with the Tip; Random: the one Unknown line), and, in a race, the **Course** row (the courses of the venue
-  for the class). Right: the **venue chart**: the course map of §1.1.1 drawn at the venue's extent (its `bounds`)
-  with the venue's **land** (the venue file's land polygons, `data_format.md` §6.5) filled in a muted sand on the
-  dark chart, the course's marks and lines at their place in the venue, a scale bar and N; under it the course's
-  laps and legs. Changing the venue redraws the chart, the briefing and the Course row at once; changing the
-  course redraws the chart.
+  breeze and a light current. Learn the boat and the rules.`; one line per shipped venue in the menu's data, a
+  venue without one gets its briefing tag) and, in a race, the **Course** row (the courses of the venue for the
+  class). Right: the **briefing** of §1.3 in its box (the weather mode chosen on the Race step, Local at first: the
+  full briefing with the Tip; Random: the one Unknown line; a race only) over the **venue chart**: the course map
+  of §1.1.1 drawn at the venue's extent (its `bounds`) with the venue's **land** (the venue file's land polygons,
+  `data_format.md` §6.5) filled in a muted sand on the dark chart, the course's marks and lines at their place in
+  the venue, a scale bar and N, and the course's laps and legs in its corner; the chart takes the column's height.
+  Changing the venue redraws the chart, the briefing and the Course row at once; changing the course redraws the
+  chart.
 - **Race step.** Left: the rows **Fleet**, **AI level**, **Weather** (Local, Random, Custom), the Custom rows when
   Custom (**Wind speed**, **Wind from**, **Shifts**, **Gusts**), **Time**, **Sky** (§1). Right: the **race card**:
   the briefing box (§1.3) and the **course map** at the course's extent (§1.1.1) with its caption, following the
@@ -172,7 +174,7 @@ marks as yellow diamonds (the HUD's `mark`, the course colour), other buoys as s
 mark boats as small paper hulls; the start line (between its two ends) as a dashed paper line, the finish line as a
 checkered one; the course as a faint hairline from the start through the sequence's marks and gates to the finish;
 the wind as an arrow in the top-right corner, blowing the way the wind goes, with the speed and the direction under
-it (`12 KN  000°`), and a small N. Under the map: the laps and legs (`2 laps, 6 legs`), muted.
+it (`12 KN  000°`), and a small N. In the map's bottom-right corner: the laps and legs (`2 laps, 6 legs`), muted.
 
 - **Extent**: the marks' box with a margin (the race card), or the venue's `bounds` (the venue chart, the Venue
   step); the venue's land polygons inside the extent are filled in a muted sand (`#5e5a4c`) with a paper shore
@@ -461,7 +463,8 @@ command line (`--resolution 1080x1920`).
   SemiBold with tabular figures, as the HUD numerals. Headings: Bold caps; sentence text (sub-lines, notes, help)
   Medium in sentence case.
 - Every screen works with the mouse, the keyboard (arrows, Enter, Esc) and the gamepad (D-pad or left stick, A,
-  B), through Godot's built-in `ui_*` navigation actions. On a setting, left and right change the value; Enter or
+  B), through Godot's built-in `ui_*` navigation actions; the engine's defaults bind no pad button to `ui_accept`
+  and `ui_cancel`, so the main menu adds A and B to them when it starts (`MenuTheme.ensure_pad_actions`). On a setting, left and right change the value; Enter or
   A steps it forward. B or Esc goes back one level (Esc in the pause menu resumes, it is `pause_menu`).
 - Fits 1280 × 800 (Steam Deck) at every UI scale; lists scroll with the focus.
 - **Sounds** on the `ui` bus (`audio.md` §1.1, the Interface volume): a soft tick when the focus moves or a value

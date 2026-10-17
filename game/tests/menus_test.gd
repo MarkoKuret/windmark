@@ -1,5 +1,5 @@
 extends SceneTree
-## Menus tests (menus.md): the lists come from the data on disk, a quick race and a free sail write GameSetup and
+## Menus tests (menus.md): the lists come from the data on disk, the stepped race setup and the free sail write GameSetup and
 ## ask for the sail scene, keyboard navigation reaches and changes the rows, the settings file round-trips, the
 ## apply calls reach their targets, and the pause menu follows the sail scene's pause. Headless.
 ##   godot --headless --path game -s res://tests/menus_test.gd
@@ -693,6 +693,70 @@ func test_live_backdrop() -> void:
 		var d := Vector2(p1.x, p1.z).distance_to(Vector2(m.stage._focus.x, m.stage._focus.z))
 		t.ok(p0.distance_to(p1) > 0.01 and d > MenuStage.DIST.x * 0.8 and d < MenuStage.DIST.y * 1.2
 			and p1.y >= 3.0, "the camera drifts round the boat at %.0f m, %.1f m up" % [d, p1.y])
+		# the showcase boat (menus.md §4.1): the Boat step puts the chosen class on the water and the camera
+		# circles it; the class swaps it, the sail number repaints it, leaving the step frees it
+		root.size = Vector2i(1280, 800)
+		m.open_page("quick")
+		await process_frame
+		await process_frame
+		var st := m.stage
+		var q := m.quick
+		var cls0 := str(q.rows["class_id"].value)
+		t.ok(st.showcase != null and st.showcase_class == cls0 and st.showcase.get_parent() == sc
+			and st.showcase.model != null, "the Boat step: a showcase %s on the stage" % cls0)
+		var sv := st._show_sails
+		var info := st.showcase.info
+		t.ok(sv != null and sv.sails.size() == info.sails.size() and sv.sails[info.main_sail].phase == SimSource.Phase.UP
+			and sv.front >= 0 and sv.sails[sv.front].phase == SimSource.Phase.UP
+			and sv.sails[info.main_sail].beta < 0.0 and sv.sails[sv.front].beta < 0.0,
+			"the main and the headsail up, trimmed to port on starboard tack")
+		var down := 0
+		for i in sv.sails.size():
+			if i != info.main_sail and i != sv.front:
+				down += 1 if sv.sails[i].phase == SimSource.Phase.DOWN else 0
+		t.ok(down == sv.sails.size() - 2, "the other sails down")
+		var first := st.showcase
+		for i in 20:
+			await process_frame
+		var at := st.showcase.global_position
+		var want := Frames.enu_to_scene(MenuStage.SHOW_POS.x, MenuStage.SHOW_POS.y, 0.0)
+		t.ok(Vector2(at.x, at.z).distance_to(Vector2(want.x, want.z)) < 0.01 and absf(at.y) < 3.0,
+			"the boat sits at its place on the water: %s" % at)
+		t.ok(absf(st._show_sails.awa - MenuStage.SHOW_AWA) < 1e-9 and MenuStage.SHOW_HEEL < 0.0, "heeled to port")
+		var cp := cam.global_position
+		var focus := Frames.enu_to_scene(MenuStage.SHOW_POS.x, MenuStage.SHOW_POS.y, 0.0)
+		var dist := Vector2(cp.x, cp.z).distance_to(Vector2(focus.x, focus.z))
+		var mast: float = MenuData.class_facts(cls0)["mast_height"]
+		t.ok(absf(dist - (MenuStage.SHOW_DIST * mast + MenuStage.SHOW_DIST_ADD)) < 0.5
+			and absf(cp.y - MenuStage.SHOW_HEIGHT * mast) < 0.5, "the camera circles it at %.1f m, %.1f m up" % [dist, cp.y])
+		t.ok(st.frame_x > 0.0 and st.frame_x < 0.5 and st.frame_offset(cam) < 0.0,
+			"the boat framed left of centre, clear of the page (frame_x %.2f)" % st.frame_x)
+		var b0 := st._show_bearing
+		for i in 10:
+			await process_frame
+		t.ok(st._show_bearing != b0, "the camera goes round")
+		q.rows["class_id"].step_value(1)
+		await process_frame
+		var cls1 := str(q.rows["class_id"].value)
+		t.ok(st.showcase != first and st.showcase_class == cls1 and (not is_instance_valid(first) or first.is_queued_for_deletion()),
+			"a new class: a new showcase boat (%s), the old one freed" % cls1)
+		var second := st.showcase
+		var lv0 := st.showcase_livery
+		q.rows["livery"].step_value(1)
+		await process_frame
+		t.ok(st.showcase == second and st.showcase_livery != lv0 and st.showcase_livery == str(q.rows["livery"].value),
+			"a new sail number repaints the same boat: %s" % st.showcase_livery)
+		q.next()
+		await process_frame
+		t.ok(st.showcase == null and st.showcase_class == "", "the Venue step: the showcase boat freed")
+		for i in 5:
+			await process_frame
+		var p2 := cam.global_position
+		var d2 := Vector2(p2.x, p2.z).distance_to(Vector2(st._focus.x, st._focus.z))
+		t.ok(d2 > MenuStage.DIST.x * 0.8 and d2 < MenuStage.DIST.y * 1.2, "the drift is back on the fleet at %.0f m" % d2)
+		m.close_page()
+		await process_frame
+		t.ok(st.showcase == null, "no showcase boat on the menu")
 		Settings.current().quality = SeaQuality.Tier.H
 		m._setting_changed("quality")
 		t.ok(sc.sea.quality == SeaQuality.Tier.H, "a quality change reaches the backdrop at once")
@@ -719,7 +783,7 @@ func test_live_backdrop() -> void:
 
 
 func test_main_menu() -> void:
-	t.begin("main menu: quick race and free sail")
+	t.begin("main menu: the race setup's steps and the free sail")
 	Settings.reset_current()
 	Settings.current().welcomed = true
 	var m := (load("res://scenes/menu/main_menu.tscn") as PackedScene).instantiate() as MainMenu
@@ -729,36 +793,135 @@ func test_main_menu() -> void:
 	m.scene_requested.connect(func(p: String) -> void: asked.append(p))
 	root.add_child(m)
 	await process_frame
+	root.size = Vector2i(1280, 800)
 	await process_frame
-	t.ok(root.gui_get_focus_owner() == m.buttons["quick"], "focus starts on Quick race")
+	await process_frame
+	t.ok(root.gui_get_focus_owner() == m.buttons["quick"], "focus starts on Race")
+	t.ok(InputMap.action_get_events("ui_accept").any(func(e: InputEvent) -> bool:
+		return e is InputEventJoypadButton and e.button_index == JOY_BUTTON_A)
+		and InputMap.action_get_events("ui_cancel").any(func(e: InputEvent) -> bool:
+		return e is InputEventJoypadButton and e.button_index == JOY_BUTTON_B), "the pad's A accepts and B goes back")
+	# menus.md §1: the items in order with their hints, the key line
+	var names := []
+	for e in MainMenu.ITEMS:
+		names.append(m.buttons[e[0]].text)
+	t.ok(names == ["CONTINUE", "RACE", "FREE SAIL", "SETTINGS", "QUIT"], "items: %s" % [names])
+	for id in ["quick", "free", "settings"]:
+		var hint := m.find_child("Hint_" + id, true, false) as Label
+		t.ok(hint != null and hint.text != "" and hint.is_visible_in_tree(), "%s has its hint: %s" % [id, hint.text if hint else ""])
+	t.ok(m.find_child("Hint_quit", true, false) == null, "Quit has no hint")
+	t.ok((m.find_child("KeyLine", true, false) as Label).text == MainMenu.KEY_LINE, "the key line")
 	var q := m.quick
-	t.ok(q.rows["class_id"].choices == MenuData.ids(MenuData.classes()), "quick race: classes from disk")
-	t.ok(q.rows["venue"].choices == MenuData.ids(MenuData.venues()), "quick race: venues from disk")
-	t.ok(q.rows["course"].choices.has("practice_waters/example_wl"), "quick race: the venue's courses")
+	t.ok(q.steps == SetupPanel.STEPS_RACE and m.free_sail.steps == SetupPanel.STEPS_FREE, "four race steps, three free sail steps")
+	t.ok(q.rows["class_id"].choices == MenuData.ids(MenuData.classes()), "race: classes from disk")
+	t.ok(q.rows["venue"].choices == MenuData.ids(MenuData.venues()), "race: venues from disk")
+	t.ok(q.rows["course"].choices.has("practice_waters/example_wl"), "race: the venue's courses")
 	t.ok(q.rows["livery"].choices == MenuData.ids(MenuData.liveries(str(q.rows["class_id"].value)))
-		and q.rows["livery"].choices.size() >= 12, "quick race: the class's boats (sail numbers) from disk")
-	# keyboard: Enter opens the page, the focus lands on the first row, down and right change the fleet size
+		and q.rows["livery"].choices.size() >= 12, "race: the class's boats (sail numbers) from disk")
+	t.ok(q.rows["class_id"].is_picker and q.rows["venue"].is_picker and not q.rows["livery"].is_picker,
+		"the class and the venue are pickers")
+	# keyboard: Enter opens Race at the Boat step, the menu card hidden, the page narrow, the focus on the picker
+	var boats: Array = []
+	q.boat_changed.connect(func(c: String, l: String) -> void: boats.append([c, l]))
 	_key("ui_accept")
 	await process_frame
 	await process_frame
-	t.ok(m.page == "quick" and m.quick.is_visible_in_tree(), "Enter opens Quick race")
-	t.ok(root.gui_get_focus_owner() == q.rows["class_id"], "focus on the first row")
-	for i in 4:
-		_key("ui_down")
-		await process_frame
-	t.ok(root.gui_get_focus_owner() == q.rows["fleet_size"], "down x4 reaches the fleet row")
+	t.ok(m.page == "quick" and q.is_visible_in_tree() and q.step_id() == "boat", "Enter opens Race at the Boat step")
+	t.ok(not m._card.visible, "the menu card is hidden while the page shows")
+	t.ok(root.gui_get_focus_owner() == q.rows["class_id"], "focus on the class picker")
+	t.ok(q.narrow_page() and absf(m.page_width() - (SetupPanel.NARROW_W + 56.0)) < 1.0,
+		"the Boat step's page is narrow: %d px" % m.page_width())
+	t.ok(q.class_line.text == MenuData.class_line("wm7") and q.class_line.is_visible_in_tree(), "the class's character line")
+	t.ok(q._fact_values["length"].text == "7.2 m" and q._fact_values["sail_area"].text == "37 m²"
+		and q._fact_values["crew"].text == "4" and q._fact_values["kite"].text == "Asymmetric 54 m²",
+		"the key numbers: %s %s %s %s" % [q._fact_values["length"].text, q._fact_values["sail_area"].text,
+		q._fact_values["crew"].text, q._fact_values["kite"].text])
+	t.ok(not q._preview.visible and not q.rows["venue"].visible and not q.rows["fleet_size"].visible,
+		"the Boat step shows no venue, course or race rows")
+	var cls0 := str(q.rows["class_id"].value)
+	_key("ui_right")
+	await process_frame
+	var cls1 := str(q.rows["class_id"].value)
+	t.ok(cls1 != cls0 and cls1 == q.rows["class_id"].choices[(q.rows["class_id"].choices.find(cls0) + 1)
+		% q.rows["class_id"].choices.size()], "right cycles the class: %s -> %s" % [cls0, cls1])
+	t.ok(boats.size() == 1 and boats[0][0] == cls1, "the showcase boat follows: %s" % [boats])
+	t.ok(q.class_line.text == MenuData.class_line(cls1) and q.rows["livery"].choices == MenuData.ids(MenuData.liveries(cls1)),
+		"the character line and the sail numbers follow the class")
+	_key("ui_left")
+	await process_frame
+	t.ok(str(q.rows["class_id"].value) == cls0, "left cycles back")
+	_key("ui_down")
+	await process_frame
+	t.ok(root.gui_get_focus_owner() == q.rows["livery"], "down: the Sail number row")
+	_key("ui_right")
+	await process_frame
+	t.ok(boats.size() == 3 and boats[2][1] == str(q.rows["livery"].value), "a new sail number repaints the showcase boat")
+	_key("ui_down")
+	await process_frame
+	t.ok(root.gui_get_focus_owner() == q.next_button, "down from the last row: Next")
+	_key("ui_left")
+	await process_frame
+	t.ok(root.gui_get_focus_owner() == q.back_button, "left from Next: Back")
+	_key("ui_right")
+	await process_frame
+	_key("ui_accept")
+	await process_frame
+	await process_frame
+	t.ok(q.step_id() == "venue" and root.gui_get_focus_owner() == q.rows["venue"], "Next: the Venue step, focus on the venue picker")
+	t.ok(not q.narrow_page() and m.page_width() > SetupPanel.NARROW_W + 100.0, "the Venue step's page is wide: %d px" % m.page_width())
+	t.ok(q._preview.visible and q.course_map.extent.has_area() and not q.course_map.land.is_empty(),
+		"the venue chart: the venue's bounds and land")
+	t.ok(q.venue_line.text == MenuData.venue_line("practice_waters") and q.rows["course"].visible, "the venue's line and the Course row")
+	var ven0 := str(q.rows["venue"].value)
+	_key("ui_right")
+	await process_frame
+	var ven1 := str(q.rows["venue"].value)
+	t.ok(ven1 != ven0 and q.venue_line.text == MenuData.venue_line(ven1)
+		and q.briefing_header.text.begins_with(MenuData.name_of(MenuData.venues(), ven1).to_upper()),
+		"right cycles the venue, the line and the briefing follow: %s" % ven1)
+	t.ok(q.course_map.extent == MenuData.venue_shapes(ven1)["bounds"], "the chart shows the new venue")
+	_key("ui_left")
+	await process_frame
+	t.ok(str(q.rows["venue"].value) == ven0, "left cycles back")
+	# Enter on a picker is Next (menus.md §1.1)
+	_key("ui_accept")
+	await process_frame
+	await process_frame
+	t.ok(q.step_id() == "race" and root.gui_get_focus_owner() == q.rows["fleet_size"], "Enter on the picker: the Race step, focus on Fleet")
+	t.ok(not q.course_map.extent.has_area(), "the Race step's map is the course's")
 	var fleet := int(q.rows["fleet_size"].value)
 	_key("ui_right")
 	_key("ui_right")
 	await process_frame
 	t.ok(int(q.rows["fleet_size"].value) == fleet + 2, "right x2: fleet %d -> %d" % [fleet, q.rows["fleet_size"].value])
+	for i in 5:
+		_key("ui_down")
+		await process_frame
+	t.ok(root.gui_get_focus_owner() == q.next_button, "down x5 (AI level, Weather, Time, Sky): Next")
+	_key("ui_accept")
+	await process_frame
+	await process_frame
+	t.ok(q.step_id() == "start" and root.gui_get_focus_owner() == q.start_button, "the Start step, focus on Start race")
+	var sl := q.summary_lines()
+	t.ok(sl.size() == 6 and sl[0][0] == "Boat" and sl[3][1] == "%d boats · Intermediate" % (fleet + 2)
+		and sl[4][1] == "Local", "the summary: %s" % [sl])
+	# Esc goes back one step, from the first step to the menu
+	_key("ui_cancel")
+	await process_frame
+	await process_frame
+	t.ok(q.step_id() == "race" and root.gui_get_focus_owner() == q.rows["fleet_size"], "Esc: back to the Race step")
+	q.go(3)
+	await process_frame
 	q.rows["class_id"].set_value("wm12", true)
 	t.ok(q.rows["livery"].choices == MenuData.ids(MenuData.liveries("wm12")), "the sail number list follows the class")
 	q.rows["livery"].set_value("nightjar", true)
 	q.rows["ai_level"].set_value("pro", true)
 	q.rows["wind_kn"].set_value(15.0, true)
 	q.rows["wind_from_deg"].set_value(90.0, true)
-	q.start_button.pressed.emit()
+	q.start_button.grab_focus()
+	await process_frame
+	_key("ui_accept")
+	await process_frame
 	var g := GameSetup.current()
 	t.ok(g.mode == "race" and g.class_id == "wm12" and g.venue == "practice_waters", "GameSetup: race, wm12, venue")
 	t.ok(g.course == "practice_waters/example_wl" and g.fleet_size == fleet + 2 and g.ai_level == "pro",
@@ -770,14 +933,62 @@ func test_main_menu() -> void:
 	var saved := Settings.new()
 	saved.load_file(TEST_PATH)
 	t.ok(saved.last_setup.get("fleet_size", 0) == fleet + 2, "last setup remembered in the settings file")
-	# Esc goes back to the menu, then Free sail
+	# Esc from the first step closes the page to the menu; the card is back
+	q.go(0)
+	await process_frame
 	_key("ui_cancel")
 	await process_frame
-	t.ok(m.page == "" and root.gui_get_focus_owner() == m.buttons["quick"], "Esc back to the menu")
+	t.ok(m.page == "" and m._card.visible and root.gui_get_focus_owner() == m.buttons["quick"], "Esc from the Boat step: back to the menu")
+	# the gamepad: A opens Race, the D-pad cycles the class and reaches Next, A goes on, B goes back
+	_pad(JOY_BUTTON_A)
+	await process_frame
+	await process_frame
+	t.ok(m.page == "quick" and q.step_id() == "boat" and root.gui_get_focus_owner() == q.rows["class_id"],
+		"A opens Race at the Boat step")
+	_pad(JOY_BUTTON_DPAD_RIGHT)
+	await process_frame
+	t.ok(str(q.rows["class_id"].value) != "wm12", "D-pad right cycles the class: %s" % q.rows["class_id"].value)
+	_pad(JOY_BUTTON_DPAD_DOWN)
+	_pad(JOY_BUTTON_DPAD_DOWN)
+	await process_frame
+	t.ok(root.gui_get_focus_owner() == q.next_button, "D-pad down x2: Next")
+	_pad(JOY_BUTTON_A)
+	await process_frame
+	await process_frame
+	t.ok(q.step_id() == "venue", "A: the Venue step")
+	_pad(JOY_BUTTON_B)
+	await process_frame
+	await process_frame
+	t.ok(q.step_id() == "boat" and root.gui_get_focus_owner() == q.rows["class_id"], "B: back to the Boat step")
+	_pad(JOY_BUTTON_B)
+	await process_frame
+	t.ok(m.page == "" and root.gui_get_focus_owner() == m.buttons["quick"], "B: back to the menu")
+	# the step bar: a click on a step done goes back to it
+	m.open_page("quick")
+	await process_frame
+	q.go(2)
+	await process_frame
+	q.step_buttons[0].pressed.emit()
+	await process_frame
+	t.ok(q.step_id() == "boat", "the step bar: a click on 1 Boat goes back to it")
+	q.step_buttons[3].pressed.emit()
+	await process_frame
+	t.ok(q.step_id() == "boat", "a step ahead cannot be clicked")
+	m.close_page()
+	# Free sail: Boat, Venue, Set sail; the weather rows on the last step with the summary; Set sail starts
 	m.buttons["free"].pressed.emit()
 	await process_frame
-	m.free_sail.rows["wind_kn"].set_value(8.0, true)
-	m.free_sail.start_button.pressed.emit()
+	var f := m.free_sail
+	t.ok(m.page == "free" and f.step_id() == "boat" and f.narrow_page(), "Free sail opens at the Boat step")
+	f.next()
+	await process_frame
+	t.ok(f.step_id() == "venue" and not f.rows.has("course") and f.course_map.extent.has_area(), "Venue step: the chart, no Course row")
+	f.next()
+	await process_frame
+	t.ok(f.step_id() == "sail" and f.rows["weather"].visible and f.summary.get_parent().visible
+		and f.primary() == f.start_button and f.start_button.text == "SET SAIL", "Set sail step: weather rows, the summary, Set sail")
+	f.rows["wind_kn"].set_value(8.0, true)
+	f.start_button.pressed.emit()
 	t.ok(g.mode == "free" and g.class_id == "wm12" and absf(g.wind_kn - 8.0) < 1e-9,
 		"free sail: mode free, the remembered class, its wind")
 	t.ok(asked.size() == 2 and asked[1] == MainMenu.SAIL_SCENE, "sail scene requested again")
@@ -785,12 +996,13 @@ func test_main_menu() -> void:
 	m.close_page()
 	m.open_page("settings")
 	await process_frame
+	t.ok(not m._card.visible, "the menu card hides for the settings too")
 	m.settings_panel.show_section("graphics")
 	m.settings_panel.rows["fps_limit"].set_value(60, true)
 	t.ok(Engine.max_fps == 60, "frame rate limit applied at once")
 	m.settings_panel.close()
 	saved.load_file(TEST_PATH)
-	t.ok(saved.fps_limit == 60 and m.page == "", "settings saved on close")
+	t.ok(saved.fps_limit == 60 and m.page == "" and m._card.visible, "settings saved on close, the card back")
 	Engine.max_fps = 0
 	# render scale from the settings screen: applied to the viewport at once, saved on close
 	m.open_page("settings")
@@ -814,27 +1026,42 @@ func test_main_menu() -> void:
 	m.settings_panel.show_section("controls")
 	t.ok(SettingsPanel.binding_text("let_fly").contains("Space") and SettingsPanel.binding_text("let_fly").contains("A"),
 		"bindings shown: let fly = %s" % SettingsPanel.binding_text("let_fly"))
-	# Steam Deck and the portrait capture window: every page inside 1280 x 800 and 1080 x 1920 at 80 %, 100 %
-	# and 130 %
+	# Steam Deck and the portrait capture window: every page and every step inside 1280 x 800 and 1080 x 1920 at
+	# 80 %, 100 % and 130 %: the page, Back, the primary action, the step bar; the menu card when no page shows
 	for scr in [Vector2i(1280, 800), Vector2i(1080, 1920)]:
 		root.size = scr
 		for sc in [0.8, 1.0, 1.3]:
 			m.settings.ui_scale = sc
 			m.settings.apply_display(root)
+			await process_frame
+			await process_frame
+			var vis := root.get_visible_rect().grow(1)
+			t.ok(vis.encloses(m._card.get_global_rect()) and vis.encloses(m.buttons["quit"].get_global_rect()),
+				"the menu card within %s at %d %%: %s" % [scr, roundi(sc * 100), m._card.get_global_rect()])
+			t.ok(m.hints_shown() == (scr != Vector2i(1280, 800) or sc < 1.3),
+				"the hints show when the card fits (%s at %d %%: %s)" % [scr, roundi(sc * 100), m.hints_shown()])
 			for p in ["quick", "free", "settings"]:
 				m.open_page(p)
 				await process_frame
 				await process_frame
-				var vis := root.get_visible_rect().grow(1)
-				var need: Array = [m.buttons["quit"], m._panel]
-				need.append(m.settings_panel.get_child(-1) if p == "settings"
-					else (m.quick if p == "quick" else m.free_sail).start_button)
-				var inside := true
-				for c in need:
-					inside = inside and vis.encloses((c as Control).get_global_rect())
-				if not inside:
-					print("  vis %s: %s" % [vis, need.map(func(c: Control) -> Rect2: return c.get_global_rect())])
-				t.ok(inside, "%s page within %s at %d %%" % [p, scr, roundi(sc * 100)])
+				var sp: SetupPanel = m.quick if p == "quick" else m.free_sail if p == "free" else null
+				var n_steps := sp.steps.size() if sp != null else 1
+				for i in n_steps:
+					if sp != null:
+						sp.go(i)
+						await process_frame
+						await process_frame
+					var need: Array = [m._panel]
+					if sp != null:
+						need.append_array([sp.back_button, sp.primary(), sp.step_buttons[i], sp.first_row()])
+					else:
+						need.append(m.settings_panel.get_child(-1))
+					var inside := true
+					for c in need:
+						inside = inside and vis.encloses((c as Control).get_global_rect())
+					if not inside:
+						print("  vis %s: %s" % [vis, need.map(func(c: Control) -> Rect2: return c.get_global_rect())])
+					t.ok(inside, "%s%s within %s at %d %%" % [p, " step " + sp.step_id() if sp else "", scr, roundi(sc * 100)])
 				m.close_page()
 			# the logo inside the window, clear of the menu (menus.md §1.2)
 			await process_frame
@@ -852,9 +1079,22 @@ func test_main_menu() -> void:
 	Settings.reset_current()
 
 
-## menus.md §1.1: the course map from the course file, the fleet summary, Start always reachable, the layout.
+## A gamepad button press and release.
+func _pad(button: JoyButton) -> void:
+	var e := InputEventJoypadButton.new()
+	e.button_index = button
+	e.pressed = true
+	root.push_input(e)
+	var r := InputEventJoypadButton.new()
+	r.button_index = button
+	r.pressed = false
+	root.push_input(r)
+
+
+## menus.md §1.1, §1.1.1: the course map from the course file, the venue chart with the land, the keys on the Race
+## step, the layout of every step at the Deck's size and in portrait.
 func test_race_card() -> void:
-	t.begin("quick race: the race card")
+	t.begin("race setup: the race card, the chart and the layout")
 	Settings.reset_current()
 	Settings.current().welcomed = true
 	var c := MenuData.course_file("practice_waters/example_wl")
@@ -868,6 +1108,26 @@ func test_race_card() -> void:
 	t.ok(CourseMap.laps_legs(c) == Vector2i(2, 6), "2 laps, 6 legs")
 	t.ok(CourseMap.rounding_ids(c).has("w") and CourseMap.rounding_ids(c).has("g1")
 		and not CourseMap.rounding_ids(c).has("rc"), "rounding marks: the sequence's marks and gates")
+	# the venue chart (menus.md §1.1.1): the venue's bounds and land, a scale bar, the marks at their place
+	var shapes := MenuData.venue_shapes("practice_waters")
+	t.ok(shapes["bounds"] == Rect2(-2000, -2000, 4000, 5400) and shapes["land"].size() == 1,
+		"Practice Waters: bounds %s, %d land polygon" % [shapes["bounds"], shapes["land"].size()])
+	for v in MenuData.ids(MenuData.venues()):
+		var sh := MenuData.venue_shapes(v)
+		t.ok(sh["bounds"].has_area(), "%s has bounds for the chart" % v)
+	var cm := CourseMap.new()
+	cm.size = Vector2(400, 400)
+	cm.show_course(c, 0.0, 12.0, true, shapes["land"], shapes["bounds"])
+	var k := cm.scale_px()
+	t.near(k * 5400.0, 400.0 - 16.0, 0.5, "the chart fits the venue's taller side: %.4f px per m" % k)
+	t.ok(cm.scale_length(k) == 1000.0 and CourseMap.scale_text(1000.0) == "1 km", "scale bar 1 km on a 400 px chart")
+	t.ok(cm.land_px().size() == 1 and cm.land_px()[0].size() == 12, "the island in px")
+	var fit := cm._fit()
+	var w_px: Vector2 = fit.call(p["w"])
+	t.ok(w_px.x > 180.0 and w_px.x < 220.0 and w_px.y > 200.0, "the windward mark on the chart where the racing is: %s" % w_px)
+	cm.show_course(c, 0.0, 12.0, true, shapes["land"], Rect2())
+	t.ok(cm.scale_length(cm.scale_px()) == 0.0 and not cm.extent.has_area(), "the course map has no scale bar")
+	cm.free()
 	var m := (load("res://scenes/menu/main_menu.tscn") as PackedScene).instantiate() as MainMenu
 	m.change_scenes = false
 	m.live_backdrop = false
@@ -878,6 +1138,8 @@ func test_race_card() -> void:
 	await process_frame
 	await process_frame
 	var q := m.quick
+	q.go(2)
+	await process_frame
 	t.ok(q.course_map != null and q.course_map.points.has("w"), "the course map shows the chosen course")
 	q.rows["weather"].set_value("custom", true)
 	q.rows["wind_from_deg"].set_value(90.0, true)
@@ -886,17 +1148,17 @@ func test_race_card() -> void:
 		and q.course_map.points["w"].x > 600.0, "the map follows the wind rows")
 	q.rows["fleet_size"].set_value(12.0, true)
 	q.rows["ai_level"].set_value("pro", true)
-	t.ok(q.course_text.text == "2 laps, 6 legs", "course caption: %s" % q.course_text.text)
-	# keyboard: down from the last row is Start, up from Start the last row (Sky, after the weather rows)
+	t.ok(q.course_map.caption == "2 laps, 6 legs", "course caption: %s" % q.course_map.caption)
+	# keyboard: down from the last row is Next, up from Next the last row (Sky, after the weather rows)
 	t.ok(q.last_row() == q.rows["light_conditions"], "Custom: the last row is Sky")
 	q.rows["light_conditions"].grab_focus()
 	await process_frame
 	_key("ui_down")
 	await process_frame
-	t.ok(root.gui_get_focus_owner() == q.start_button, "down from the last row: Start")
+	t.ok(root.gui_get_focus_owner() == q.next_button, "down from the last row: Next")
 	_key("ui_up")
 	await process_frame
-	t.ok(root.gui_get_focus_owner() == q.rows["light_conditions"], "up from Start: the last row")
+	t.ok(root.gui_get_focus_owner() == q.rows["light_conditions"], "up from Next: the last row")
 	q.rows["weather"].set_value("local", true)
 	t.ok(q.last_row() == q.rows["light_conditions"] and not q.rows["wind_kn"].visible, "Local: the Custom rows hidden")
 	q.rows["weather"].grab_focus()
@@ -908,37 +1170,61 @@ func test_race_card() -> void:
 	await process_frame
 	_key("ui_down")
 	await process_frame
-	t.ok(root.gui_get_focus_owner() == q.start_button, "Local: down from Sky is Start")
+	t.ok(root.gui_get_focus_owner() == q.next_button, "Local: down from Sky is Next")
 	_key("ui_up")
 	await process_frame
-	t.ok(root.gui_get_focus_owner() == q.rows["light_conditions"], "Local: up from Start is Sky")
-	# the layout: preview beside the rows when there is room, under them when not; Start always on screen
+	t.ok(root.gui_get_focus_owner() == q.rows["light_conditions"], "Local: up from Next is Sky")
+	q.rows["fleet_size"].grab_focus()
+	await process_frame
+	_key("ui_up")
+	await process_frame
+	t.ok(root.gui_get_focus_owner() == q.rows["fleet_size"], "up from the first row stays")
+	# no course for the boat: Next stops on the Venue step with the reason, Start is disabled
+	q.go(1)
+	q.rows["course"].set_choices([], [])
+	q.rows["course"].set_value("", false)
+	q.start_button.disabled = true
+	q.next_button.disabled = true
+	q._note.text = "This venue has no course for this boat yet."
+	t.ok(not q.can_start() and q.next_button.disabled and q._note.text.begins_with("This venue has no course"),
+		"no course: Next and Start blocked with the reason")
+	q._refresh_courses()
+	t.ok(q.can_start() and not q.next_button.disabled and q._note.text == "", "a course again: unblocked")
+	# the layout of every step: the right column beside the rows when there is room, under them when not; the
+	# primary action always on screen; the chart and the briefing on screen on the wide steps
 	for c2 in [[Vector2i(1280, 800), 0.8], [Vector2i(1280, 800), 1.0], [Vector2i(1280, 800), 1.3],
 			[Vector2i(1080, 1920), 0.8], [Vector2i(1080, 1920), 1.0], [Vector2i(1080, 1920), 1.3]]:
 		root.size = c2[0]
 		m.settings.ui_scale = c2[1]
 		m.settings.apply_display(root)
-		await process_frame
-		await process_frame
-		var vis := root.get_visible_rect().grow(1)
-		var wide: bool = q.size.x >= SetupPanel.TWO_COLUMNS_MIN
-		print("  race card %s at %d %%: page %d px, %s" % [c2[0], roundi(c2[1] * 100), q.size.x,
-			"two columns" if wide else "one column"])
-		t.ok(q.body.vertical != wide, "%s at %d %%: %s (page %d px)" % [c2[0], roundi(c2[1] * 100),
-			"preview beside the rows" if wide else "preview under the rows", q.size.x])
-		t.ok(vis.encloses(q.start_button.get_global_rect()), "Start on screen")
-		if c2[0] == Vector2i(1280, 800) and c2[1] <= 1.0:
-			t.ok(wide, "the logo leaves the race card two columns at %d %%" % roundi(c2[1] * 100))
-		if wide:
-			t.ok(vis.encloses(q.course_map.get_global_rect()), "the course map on screen")
-		if wide:
-			t.ok(vis.encloses(q.briefing.get_global_rect()), "the briefing on screen")
-		# the last row and Start reachable by the keyboard at this size
-		q.last_row().grab_focus()
-		await process_frame
-		_key("ui_down")
-		await process_frame
-		t.ok(root.gui_get_focus_owner() == q.start_button, "down to Start")
+		for i in q.steps.size():
+			q.go(i)
+			await process_frame
+			await process_frame
+			var vis := root.get_visible_rect().grow(1)
+			var wide: bool = q.size.x >= SetupPanel.TWO_COLUMNS_MIN
+			print("  %s %s at %d %%: page %d px, %s" % [q.step_id(), c2[0], roundi(c2[1] * 100), q.size.x,
+				"two columns" if wide else "one column"])
+			t.ok(q.body.vertical != wide, "%s %s at %d %%: %s (page %d px)" % [q.step_id(), c2[0], roundi(c2[1] * 100),
+				"preview beside the rows" if wide else "preview under the rows", q.size.x])
+			t.ok(vis.encloses(q.primary().get_global_rect()) and vis.encloses(q.back_button.get_global_rect()),
+				"%s: Back and the primary action on screen" % q.step_id())
+			if q.step_id() == "boat":
+				t.ok(q.narrow_page() and not q._preview.visible, "the Boat step: no preview column")
+				t.ok(vis.encloses(q.facts.get_global_rect()) and vis.encloses(q.rows["livery"].get_global_rect()),
+					"the key numbers and the Sail number on screen")
+			elif c2[0] == Vector2i(1280, 800) and c2[1] <= 1.0:
+				t.ok(wide, "the logo leaves the %s step two columns at %d %%" % [q.step_id(), roundi(c2[1] * 100)])
+			if wide and q.step_id() != "boat":
+				t.ok(vis.encloses(q.course_map.get_global_rect()), "the map on screen")
+				t.ok(vis.encloses(q.briefing.get_global_rect()), "the briefing on screen")
+			# the last row and the primary action reachable by the keyboard at this size
+			if q.last_row() != null:
+				q.last_row().grab_focus()
+				await process_frame
+				_key("ui_down")
+				await process_frame
+				t.ok(root.gui_get_focus_owner() == q.primary(), "down to the primary action")
 	m.settings.ui_scale = 1.0
 	m.settings.apply_display(root)
 	root.size = Vector2i(1280, 800)
@@ -1104,6 +1390,7 @@ func test_weather_card() -> void:
 	await process_frame
 	await process_frame
 	var q := m.quick
+	q.go(2)  # the Race step holds the weather rows (menus.md §1.1)
 	q.rows["venue"].set_value("practice_waters", true)
 	t.ok(q.rows["weather"].choices == ["local", "random", "custom"] and q.rows["weather"].value == "local",
 		"Weather row: Local, Random, Custom; Local by default")
@@ -1219,7 +1506,7 @@ func test_weather_card() -> void:
 			await process_frame
 			var vis := root.get_visible_rect().grow(1)
 			var wide: bool = q.size.x >= SetupPanel.TWO_COLUMNS_MIN
-			t.ok(vis.encloses(q.start_button.get_global_rect()), "%s at %d %%: Start on screen" % [mode, roundi(sc * 100)])
+			t.ok(vis.encloses(q.primary().get_global_rect()), "%s at %d %%: Next on screen" % [mode, roundi(sc * 100)])
 			if wide:
 				t.ok(vis.encloses(q.briefing.get_global_rect()), "%s at %d %%: the briefing on screen" % [mode,
 					roundi(sc * 100)])
@@ -1261,6 +1548,7 @@ func test_light_rows() -> void:
 	await process_frame
 	await process_frame
 	var q := m.quick
+	q.go(2)  # the Race step holds the Time and Sky rows (menus.md §1.1)
 	q.rows["venue"].set_value("practice_waters", true)
 	q.rows["weather"].set_value("local", true)
 	var tr: MenuRow = q.rows["light_time"]
@@ -1422,7 +1710,7 @@ func test_touches() -> void:
 	m.quick.rows["wind_kn"].set_value(9.0, true)
 	m.quick.start_button.pressed.emit()
 	m.close_page()
-	t.ok(m.buttons["continue"].visible and m.continue_line.text.contains("Quick race") and
+	t.ok(m.buttons["continue"].visible and m.continue_line.text.begins_with("Race ·") and
 		m.continue_line.text.contains("6 boats"), "Continue after a race: %s" % m.continue_line.text)
 	GameSetup.next = null
 	m.buttons["continue"].pressed.emit()

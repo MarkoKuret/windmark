@@ -3,6 +3,8 @@ extends Node
 ## The main menu's live backdrop (menus.md §4): the sail scene racing a few AI boats on the example venue with no
 ## HUD, no pause menu, no course guides, no player input and no sound, filmed by a slow cinematic drift. build()
 ## returns false when the sail scene is not there or does not load; the menu then draws the painted backdrop.
+## On the Boat step of the setup (menus.md §4.1) show_boat() puts a showcase boat of the chosen class on the water,
+## heeled and trimmed, and the camera circles it instead.
 
 const SAIL_SCENE := "res://scenes/sail_test.tscn"
 const VENUE := "practice_waters"
@@ -24,6 +26,22 @@ const EASE_TAU := 1.4
 const FRAME_OFFSET := deg_to_rad(9.0)
 ## restart the race this long after the first boat finishes
 const RESTART_AFTER_S := 30.0
+## the showcase boat (menus.md §4.1): where it sits (ENU m, east of the course), its heading (compass, rad: NW,
+## the backdrop's north wind on the starboard bow), heel (starboard tack: port side down), the apparent wind its
+## sails are trimmed for, the camera's orbit (rate, distance and height by the mast height, the aim up the mast)
+## and the bearing it starts from (the leeward bow quarter)
+const SHOW_POS := Vector2(700.0, 0.0)
+const SHOW_PSI := deg_to_rad(315.0)
+const SHOW_HEEL := deg_to_rad(-12.0)
+const SHOW_AWA := deg_to_rad(30.0)
+const SHOW_AWS := 7.5
+const SHOW_TWS := 6.0
+const SHOW_ORBIT := deg_to_rad(2.5)
+const SHOW_DIST := 1.9
+const SHOW_DIST_ADD := 2.0
+const SHOW_HEIGHT := 0.35
+const SHOW_AIM := 0.33
+const SHOW_START_BEARING := deg_to_rad(265.0)
 
 ## the sail scene instance (null before build or after a failed one)
 var scene: Node3D
@@ -37,6 +55,16 @@ var _focus := Vector3.ZERO
 var _eye := Vector3.ZERO
 var _started := false
 var _finished_for := 0.0
+## the showcase boat (menus.md §4.1), null when the stage shows the fleet
+var showcase: BoatView
+var showcase_class := ""
+var showcase_livery := ""
+## where on the screen the followed point sits, 0 the left edge to 1 the right (menus.md §4.1: the boat centred in
+## the room beside the page); below 0 the drift's FRAME_OFFSET
+var frame_x := -1.0
+var _show_sails: SimSource.SailsView
+var _show_mast := 10.0
+var _show_bearing := SHOW_START_BEARING
 
 
 ## Loads the sail scene under `host` and starts the backdrop race. `path` replaces the scene (tests: a missing
@@ -172,8 +200,13 @@ func _process(dt: float) -> void:
 	frame(dt)
 
 
-## One frame of the drift; also restarts the race after the finish.
+## One frame of the drift (or of the showcase, menus.md §4.1); also restarts the race after the finish.
 func frame(dt: float) -> void:
+	if showcase != null and is_instance_valid(showcase):
+		_showcase_frame(dt)
+		_showcase_camera(dt)
+		_restart_check(dt)
+		return
 	var rate := 1.0 / 3.0 if reduced_motion else 1.0
 	_t += dt * rate
 	_hold += dt
@@ -224,3 +257,141 @@ func _restart_check(dt: float) -> void:
 ## The camera the backdrop is seen through.
 func camera() -> Camera3D:
 	return scene.rig.camera if scene != null else null
+
+
+## The showcase boat of a class in a livery (menus.md §4.1): made when the class changes, repainted when only the
+## livery does. Nothing without the live scene.
+func show_boat(class_id: String, livery_id: String) -> void:
+	if scene == null:
+		return
+	if showcase != null and class_id == showcase_class:
+		if livery_id != showcase_livery:
+			_paint(livery_id)
+		return
+	hide_boat()
+	var data := BoatClassData.load_class(class_id)
+	if data == null:
+		return
+	showcase = BoatView.create(data.info, data.info.rudder_max)
+	showcase.name = "Showcase_" + class_id
+	showcase.full_rate = true
+	showcase.own = true
+	scene.add_child(showcase)
+	showcase_class = class_id
+	_show_mast = maxf(MenuData.class_facts(class_id)["mast_height"], 0.5 * data.info.loa)
+	_show_sails = showcase_sails(data, SHOW_AWA, SHOW_AWS, SHOW_TWS)
+	_paint(livery_id)
+	_show_bearing = SHOW_START_BEARING
+	_started = false
+	frame(0.0)
+
+
+func _paint(livery_id: String) -> void:
+	showcase_livery = livery_id
+	var list := Livery.load_class(showcase_class)
+	if list.is_empty():
+		return
+	var lv: Livery = list[0]
+	for l in list:
+		if l.id == livery_id:
+			lv = l
+	showcase.set_livery(lv)
+
+
+## Frees the showcase boat; the drift cuts back to the fleet.
+func hide_boat() -> void:
+	if showcase == null:
+		return
+	if is_instance_valid(showcase):
+		showcase.queue_free()
+	showcase = null
+	showcase_class = ""
+	showcase_livery = ""
+	_show_sails = null
+	_started = false
+
+
+## The sails of a boat on a beat (menus.md §4.1): the main and the headsail up at their optimal angles for the
+## apparent wind, the other sails down; the sign of the angles from the wind's side (sail_visuals.md §2).
+static func showcase_sails(data: BoatClassData, awa: float, aws: float, tws: float) -> SimSource.SailsView:
+	var sv := SimSource.SailsView.new()
+	sv.awa = awa
+	sv.aws = aws
+	sv.tws = tws
+	var fi := data.start_front
+	if fi < 0:
+		for i in data.info.sails.size():
+			if data.info.sails[i].type in ["jib", "genoa"] and fi < 0:
+				fi = i
+	var cfg: Dictionary = data.configs.get(fi, data.configs.get(-1, {}))
+	for i in data.info.sails.size():
+		var st := SimSource.SailState.new()
+		var si: SimSource.SailInfo = data.info.sails[i]
+		if i == data.info.main_sail or i == fi:
+			st.phase = SimSource.Phase.UP
+			var opt: PerfTable = cfg.get("optimal", {}).get(i)
+			var m: float = opt.at(tws, absf(awa)) if opt != null else si.sheet_min
+			st.beta = -Frames.sgn(awa) * clampf(m, si.sheet_min, si.sheet_max)
+		sv.sails.append(st)
+		sv.out.append(SimSource.SailOutput.new())
+	sv.front = fi
+	return sv
+
+
+## The showcase boat on the water this frame: the sea's height under it, pitch and roll from the sea's slope over
+## the hull, the fixed heel; its sails placed.
+func _showcase_frame(dt: float) -> void:
+	var info := showcase.info
+	var sea: Variant = scene.get("sea")
+	var fwd := Vector2(sin(SHOW_PSI), cos(SHOW_PSI))
+	var stb := Vector2(cos(SHOW_PSI), -sin(SHOW_PSI))
+	var half_l := 0.5 * maxf(info.lwl, 1.0)
+	var half_b := 0.5 * maxf(info.bwl, 0.5)
+	var h := 0.0
+	var theta := 0.0
+	var roll := 0.0
+	if sea != null and sea.has_method("height_at"):
+		h = sea.height_at(SHOW_POS.x, SHOW_POS.y)
+		var hb: float = sea.height_at(SHOW_POS.x + fwd.x * half_l, SHOW_POS.y + fwd.y * half_l)
+		var hs: float = sea.height_at(SHOW_POS.x - fwd.x * half_l, SHOW_POS.y - fwd.y * half_l)
+		var hp: float = sea.height_at(SHOW_POS.x - stb.x * half_b, SHOW_POS.y - stb.y * half_b)
+		var hst: float = sea.height_at(SHOW_POS.x + stb.x * half_b, SHOW_POS.y + stb.y * half_b)
+		theta = atan2(hb - hs, 2.0 * half_l)
+		roll = atan2(hp - hst, 2.0 * half_b)
+	var pose := SimSource.RenderPose.new()
+	pose.pos_x = SHOW_POS.x
+	pose.pos_y = SHOW_POS.y
+	pose.z = h
+	pose.psi = SHOW_PSI
+	pose.theta = theta
+	pose.phi = SHOW_HEEL + roll
+	pose.twd_from = 0.0
+	pose.twa = -SHOW_AWA
+	showcase.apply(pose)
+	showcase.apply_sails(_show_sails, _show_sails, 1.0, maxf(dt, 0.0))
+
+
+## The camera round the showcase boat (menus.md §4.1): a three-quarter view circling slowly.
+func _showcase_camera(dt: float) -> void:
+	var rate := 1.0 / 3.0 if reduced_motion else 1.0
+	_show_bearing = wrapf(_show_bearing + SHOW_ORBIT * rate * dt, 0.0, TAU)
+	var focus := Frames.enu_to_scene(SHOW_POS.x, SHOW_POS.y, showcase.position.y + SHOW_AIM * _show_mast)
+	var dist := SHOW_DIST * _show_mast + SHOW_DIST_ADD
+	var eye := focus + Vector3(sin(_show_bearing) * dist, 0.0, -cos(_show_bearing) * dist)
+	eye.y = maxf(SHOW_HEIGHT * _show_mast, 2.5)
+	var cam: Camera3D = scene.rig.camera
+	cam.global_position = eye
+	cam.look_at(focus, Vector3.UP)
+	cam.rotate_object_local(Vector3.UP, frame_offset(cam))
+	_started = true
+
+
+## The yaw that puts the followed point at `frame_x` of the screen width (menus.md §4.1), the drift's FRAME_OFFSET
+## without one.
+func frame_offset(cam: Camera3D) -> float:
+	if frame_x < 0.0:
+		return FRAME_OFFSET
+	var vp := cam.get_viewport()
+	var sz := vp.get_visible_rect().size if vp != null else Vector2(16, 9)
+	var aspect := sz.x / maxf(sz.y, 1.0)
+	return atan((2.0 * frame_x - 1.0) * tan(deg_to_rad(cam.fov) * 0.5) * aspect)

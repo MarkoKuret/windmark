@@ -2,8 +2,8 @@
 """Offline previews of the menus: draws what tests/menu_preview_dump.gd wrote (generated/menu_preview/<shot>.json:
 the boxes, texts, colour rects and the course map the menu draws at 1280 x 800) over a backdrop. No window opens.
 
-    godot --headless --path game -s res://tests/menu_preview_dump.gd
-    python3 game/tests/menu_preview.py [--publish]
+    godot --headless --path game -s res://tests/menu_preview_dump.gd [-- --size=1920x1080]
+    python3 game/tests/menu_preview.py [--publish] [--src generated/menu_preview/1920x1080]
 
 The backdrop stands in for the live sail scene (menus.md section 4): a published render, tests/previews/
 water_bay20_chase_M.jpg, scaled to cover the frame. Text is set in the game's Barlow Semi Condensed (game/fonts/barlow)
@@ -31,6 +31,8 @@ INK = (6, 18, 27)
 PAPER = (245, 248, 250)
 MARK = (255, 210, 63)
 HAZE = (228, 236, 233)
+LAND = (94, 90, 76)
+SHORE = (245, 248, 250, 115)
 
 _fonts = {}
 
@@ -156,6 +158,34 @@ def draw_map(layer, it):
     def P(p):
         return (x + S(p[0]), y + S(p[1]))
 
+    # the venue's land under the course (menus.md section 1.1.1), clipped to the chart
+    for poly in it.get("land", []):
+        if len(poly) < 3:
+            continue
+        lay = Image.new("RGBA", layer.size, (0, 0, 0, 0))
+        ld = ImageDraw.Draw(lay)
+        pts = [P(p) for p in poly]
+        ld.polygon(pts, fill=LAND + (255,), outline=SHORE)
+        mask = Image.new("L", layer.size, 0)
+        ImageDraw.Draw(mask).rectangle([x, y, x + w - 1, y + h - 1], fill=255)
+        lay.putalpha(Image.composite(lay.getchannel("A"), Image.new("L", layer.size, 0), mask))
+        layer.alpha_composite(lay)
+        d = ImageDraw.Draw(layer)
+    if it.get("scale_px", 0) > 0:
+        sw = S(it["scale_px"])
+        ax, ay = x + S(14), y + h - S(14)
+        d.line([(ax, ay), (ax + sw, ay)], fill=PAPER + (255,), width=S(2))
+        d.line([(ax, ay), (ax, ay - S(6))], fill=PAPER + (255,), width=S(2))
+        d.line([(ax + sw, ay), (ax + sw, ay - S(6))], fill=PAPER + (255,), width=S(2))
+        sf = font("BarlowSemiCondensed-SemiBold.ttf", 12)
+        st = it.get("scale_text", "")
+        draw_text_line(d, ax + sw / 2 - text_width(sf, st, 0.7) / 2, ay - S(9) - sf.getmetrics()[0], st, sf,
+                       (164, 170, 175, 255), 0.7)
+    if it.get("caption", ""):
+        cf = font("BarlowSemiCondensed-SemiBold.ttf", 13)
+        ct = it["caption"]
+        draw_text_line(d, x + w - S(12) - text_width(cf, ct, 0.8), y + h - S(10) - cf.getmetrics()[0], ct, cf,
+                       (164, 170, 175, 255), 0.8)
     if len(it["path"]) >= 2:
         d.line([P(p) for p in it["path"]], fill=(73, 84, 92, 255), width=int(1.5 * SS), joint="curve")
     for key, ln in it["lines"].items():
@@ -263,12 +293,15 @@ def render(path):
 
 def main():
     publish = "--publish" in sys.argv
-    for f in sorted(os.listdir(SRC)):
+    src = SRC
+    if "--src" in sys.argv:
+        src = os.path.abspath(sys.argv[sys.argv.index("--src") + 1])
+    for f in sorted(os.listdir(src)):
         if not f.endswith(".json"):
             continue
-        img = render(os.path.join(SRC, f))
+        img = render(os.path.join(src, f))
         name = f[:-5]
-        out = os.path.join(SRC, name + ".jpg")
+        out = os.path.join(src, name + ".jpg")
         img.save(out, quality=90)
         print(out)
         if publish:

@@ -1,14 +1,21 @@
 class_name CourseMap
 extends Control
-## The race card's course map (menus.md §1.1): a course file drawn north up on a dark chart, its marks resolved as
-## courses.md §3 resolves them with the course axis on the chosen wind (at the file's distances, without the
-## scaling of courses.md §6.3), the start and finish lines, the course through the sequence, and the wind arrow.
+## The race card's course map and the venue chart (menus.md §1.1.1): a course file drawn north up on a dark chart,
+## its marks resolved as courses.md §3 resolves them with the course axis on the chosen wind (at the file's
+## distances, without the scaling of courses.md §6.3), the start and finish lines, the course through the sequence,
+## and the wind arrow; at a venue's extent (`extent`, its bounds) with the venue's land polygons filled under the
+## course and a scale bar.
 
 const INK := Color("06121b")
 const PAPER := Color("f5f8fa")
 const MIST := Color(0.961, 0.973, 0.98, 0.66)
 const HAIR := Color(0.961, 0.973, 0.98, 0.30)
 const MARK := Color("ffd23f")
+## the land on the chart: a muted sand, with a paper shore line
+const LAND := Color("5e5a4c")
+const SHORE := Color(0.961, 0.973, 0.98, 0.45)
+## the scale bar's round lengths, m
+const SCALES := [100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0]
 
 ## the course file (courses.md), {} for none
 var course := {}
@@ -19,6 +26,12 @@ var wind_kn := 12.0
 var wind_shown := true
 ## mark id -> Vector2 world ENU m (x east, y north), filled by show_course
 var points := {}
+## the venue's land polygons (world ENU m), drawn under the course; [] for none
+var land: Array = []
+## the world box shown (the venue's bounds on the venue chart); an empty Rect2 fits the marks
+var extent := Rect2()
+## the caption in the bottom-right corner (the laps and legs, menus.md §1.1.1); "" for none
+var caption := ""
 
 
 func _init() -> void:
@@ -27,13 +40,33 @@ func _init() -> void:
 	clip_contents = true
 
 
-func show_course(c: Dictionary, from_deg: float, kn: float, shown := true) -> void:
+## `land_polys` and `ext`: the venue chart (menus.md §1.1.1); without them the marks' box with a margin.
+func show_course(c: Dictionary, from_deg: float, kn: float, shown := true, land_polys: Array = [],
+		ext := Rect2()) -> void:
 	course = c
 	wind_from_deg = from_deg
 	wind_kn = kn
 	wind_shown = shown
+	land = land_polys
+	extent = ext
 	points = resolve(c, deg_to_rad(from_deg))
 	queue_redraw()
+
+
+## The scale bar's length (m) for the chart's scale `k` (px per m): the largest round length under a third of the
+## width; 0 without an extent.
+func scale_length(k: float) -> float:
+	if not extent.has_area() or k <= 0.0:
+		return 0.0
+	var best := 0.0
+	for l in SCALES:
+		if l * k <= size.x / 3.0:
+			best = l
+	return best
+
+
+static func scale_text(l: float) -> String:
+	return "%d km" % roundi(l / 1000.0) if l >= 1000.0 else "%d m" % roundi(l)
 
 
 static func _dir(psi: float) -> Vector2:
@@ -124,20 +157,48 @@ func path() -> PackedVector2Array:
 	return pts
 
 
-## World m -> local px: the marks' bounds fitted into the control with a margin, north up.
+## World m -> local px: the marks' bounds (or the extent) fitted into the control with a margin, north up.
 func _fit() -> Callable:
+	var k := scale_px()
+	var mid := _world_box().get_center()
+	var c := size * 0.5
+	return func(p: Vector2) -> Vector2: return c + Vector2(p.x - mid.x, -(p.y - mid.y)) * k
+
+
+## The world box shown: the extent, else the marks' box.
+func _world_box() -> Rect2:
+	if extent.has_area():
+		return extent
 	var lo := Vector2(INF, INF)
 	var hi := Vector2(-INF, -INF)
 	for p in points.values():
 		lo = lo.min(p)
 		hi = hi.max(p)
-	var pad := Vector2(28, 28)
+	if points.is_empty():
+		return Rect2(-25, -25, 50, 50)
+	return Rect2(lo, (hi - lo).max(Vector2(50, 50)))
+
+
+## px per m of the chart as drawn.
+func scale_px() -> float:
+	var pad := Vector2(28, 28) if not extent.has_area() else Vector2(8, 8)
 	var room := (size - pad * 2.0).max(Vector2.ONE)
-	var span := (hi - lo).max(Vector2(50, 50))
-	var k := minf(room.x / span.x, room.y / span.y)
-	var mid := (lo + hi) * 0.5
-	var c := size * 0.5
-	return func(p: Vector2) -> Vector2: return c + Vector2(p.x - mid.x, -(p.y - mid.y)) * k
+	var span := _world_box().size.max(Vector2(50, 50))
+	return minf(room.x / span.x, room.y / span.y)
+
+
+## The land polygons in local px (menus.md §1.1.1), for the drawing and the preview dump.
+func land_px() -> Array:
+	var out := []
+	if land.is_empty():
+		return out
+	var to_px := _fit()
+	for poly in land:
+		var px := PackedVector2Array()
+		for p in poly:
+			px.append(to_px.call(p))
+		out.append(px)
+	return out
 
 
 func _draw() -> void:
@@ -152,8 +213,15 @@ func _draw() -> void:
 	while y < size.y:
 		draw_line(Vector2(0, y), Vector2(size.x, y), Color(HAIR, 0.12), 1.0)
 		y += step
+	for px in land_px():
+		if px.size() >= 3:
+			draw_colored_polygon(px, LAND)
+			draw_polyline(px, SHORE, 1.0, true)
+	_scale_bar()
+	_caption()
 	if points.is_empty():
-		_text(Vector2(size.x * 0.5, size.y * 0.5), "No course", MIST, 16, HORIZONTAL_ALIGNMENT_CENTER)
+		if land.is_empty():
+			_text(Vector2(size.x * 0.5, size.y * 0.5), "No course", MIST, 16, HORIZONTAL_ALIGNMENT_CENTER)
 		_wind()
 		return
 	var to_px := _fit()
@@ -200,6 +268,25 @@ func _line(key: String, to_px: Callable, checkered: bool) -> void:
 			draw_line(p0, p1, PAPER if i % 2 == 0 else Color(INK.lightened(0.25)), 4.0)
 		elif i % 2 == 0:
 			draw_line(p0, p1, PAPER, 2.0)
+
+
+## The scale bar in the bottom-left corner (the venue chart only).
+func _scale_bar() -> void:
+	var l := scale_length(scale_px())
+	if l <= 0.0:
+		return
+	var w := l * scale_px()
+	var a := Vector2(14, size.y - 14)
+	draw_line(a, a + Vector2(w, 0), PAPER, 2.0)
+	draw_line(a, a + Vector2(0, -6), PAPER, 2.0)
+	draw_line(a + Vector2(w, 0), a + Vector2(w, -6), PAPER, 2.0)
+	_text(a + Vector2(w * 0.5, -9), scale_text(l), MIST, 12, HORIZONTAL_ALIGNMENT_CENTER)
+
+
+## The caption, bottom right.
+func _caption() -> void:
+	if caption != "":
+		_text(Vector2(size.x - 12, size.y - 10), caption, MIST, 13, HORIZONTAL_ALIGNMENT_RIGHT)
 
 
 func _hull(p: Vector2, l: float) -> void:

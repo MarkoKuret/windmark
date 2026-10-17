@@ -1,20 +1,30 @@
 extends SceneTree
 ## Dumps the menus for the offline previews (tests/menu_preview.py draws them). No window opens. Each shot is the
-## main menu at 1280 x 800 (100 % UI scale) in one state; the dump lists what the menu draws: the boxes (StyleBoxFlat
-## of panels, buttons and rows), the texts (with their font file, size, tracking and colour), the colour rects and
-## the course map's geometry, each with the clip rect of the scroll container it sits in. The race end shots
+## main menu at 1280 x 800 (100 % UI scale) in one state (menus.md §1.1 lists them); the dump lists what the menu
+## draws: the boxes (StyleBoxFlat of panels, buttons and rows), the texts (with their font file, size, tracking and
+## colour), the colour rects and the course map's geometry (marks, lines, land, scale bar), each with the clip rect
+## of the scroll container it sits in. The showcase boat of the Boat step (menus.md §4.1) is in the live scene
+## only: the previews show the page over the still backdrop. The race end shots
 ## (menus.md §5) are the results screen after a short race on the core (the player steered by RacePilot against AI
 ## boats), at 1280 x 800 and in the portrait window (race_end, race_end_portrait).
-##   godot --headless --path game -s res://tests/menu_preview_dump.gd
-## Writes generated/menu_preview/<shot>.json.
+##   godot --headless --path game -s res://tests/menu_preview_dump.gd [-- --size=1920x1080]
+## Writes generated/menu_preview/<shot>.json; with `--size=WxH` the menu shots are taken at that window size and
+## written to generated/menu_preview/<W>x<H>/ (the race end shots keep their own sizes).
 
-const OUT := "res://generated/menu_preview"
-const SIZE := Vector2i(1280, 800)
+const OUT_BASE := "res://generated/menu_preview"
+var OUT := OUT_BASE
+var SIZE := Vector2i(1280, 800)
 
 var m: MainMenu
 
 
 func _init() -> void:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--size="):
+			var wh := a.trim_prefix("--size=").split("x")
+			if wh.size() == 2:
+				SIZE = Vector2i(int(wh[0]), int(wh[1]))
+				OUT = OUT_BASE.path_join("%dx%d" % [SIZE.x, SIZE.y])
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT))
 	Settings.path = "user://menu_preview_settings.cfg"
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(Settings.path))
@@ -35,21 +45,38 @@ func _init() -> void:
 	m.buttons["continue"].grab_focus()
 	await _frames(2)
 	_dump("main")
+	# the race setup's steps (menus.md §1.1): Boat (the narrow page; the stage shows the boat in the game), Venue,
+	# Race in the three weather modes (Local with the full briefing, Random with only the Unknown line, Custom with
+	# its four rows and the briefing without the Tip), Start
 	m.open_page("quick")
+	await _frames(3)
+	_dump("race_boat")
+	m.quick.next()
+	await _frames(3)
+	_dump("race_venue")
+	m.quick.next()
 	await _frames(3)
 	m.quick.rows["fleet_size"].grab_focus()
 	await _frames(2)
-	_dump("race_card")
-	# the weather modes (menus.md §1, §1.3): Local with the full briefing, Random with only the Unknown line, Custom
-	# with its four rows and the briefing without the Tip
-	for mode in ["local", "random", "custom"]:
+	_dump("race_race")
+	for mode in ["random", "custom"]:
 		m.quick.rows["weather"].set_value(mode, true)
 		m.quick.rows["weather"].grab_focus()
 		await _frames(3)
-		_dump("race_card_" + mode)
+		_dump("race_race_" + mode)
 	m.quick.rows["weather"].set_value("local", true)
+	m.quick.next()
+	await _frames(3)
+	_dump("race_start")
 	m.close_page()
+	# the free sail's steps: Boat, Venue, Set sail
 	m.open_page("free")
+	await _frames(3)
+	_dump("free_boat")
+	m.free_sail.next()
+	await _frames(3)
+	_dump("free_venue")
+	m.free_sail.next()
 	await _frames(3)
 	_dump("free_sail")
 	m.close_page()
@@ -151,12 +178,12 @@ func _race_end() -> void:
 		sim.step()
 		host.hud.tick(sim, 0)
 		n += 1
-	for sz in [SIZE, Vector2i(1080, 1920)]:
+	for sz in [Vector2i(1280, 800), Vector2i(1080, 1920)]:
 		root.size = sz
 		await _frames(4)
 		rs._process(1.0)
 		await _frames(3)
-		_dump_node("race_end" if sz == SIZE else "race_end_portrait", rs._root, sz)
+		_dump_node("race_end" if sz.x > sz.y else "race_end_portrait", rs._root, sz)
 	print("menu preview: race end after %d ticks, %s" % [n, str(rs.shown_rows)])
 	host.queue_free()
 
@@ -271,7 +298,7 @@ func _walk(n: Node, clip: Rect2, items: Array) -> void:
 			var d := _box(sb, r, clip)
 			if not d.is_empty():
 				items.append(d)
-			var txt := l.text
+			var txt := l.text.to_upper() if l.uppercase else l.text
 			if l.text_overrun_behavior != TextServer.OVERRUN_NO_TRIMMING:
 				var font := l.get_theme_font("font")
 				var fs := l.get_theme_font_size("font_size")
@@ -306,5 +333,14 @@ func _map(cm: CourseMap, r: Rect2) -> Dictionary:
 			var a: Vector2 = to_px.call(cm.points[str(ends[0])])
 			var b: Vector2 = to_px.call(cm.points[str(ends[1])])
 			lines[key] = [a.x, a.y, b.x, b.y]
+	var land := []
+	for poly in cm.land_px():
+		var pts := []
+		for q in poly:
+			pts.append([q.x, q.y])
+		land.append(pts)
+	var sl := cm.scale_length(cm.scale_px())
 	return {"k": "map", "r": _rect(r), "marks": marks, "path": path, "lines": lines,
-		"wind_from": cm.wind_from_deg, "wind_kn": cm.wind_kn, "wind_shown": cm.wind_shown}
+		"wind_from": cm.wind_from_deg, "wind_kn": cm.wind_kn, "wind_shown": cm.wind_shown, "land": land,
+		"scale_px": sl * cm.scale_px(), "scale_text": CourseMap.scale_text(sl) if sl > 0.0 else "",
+		"caption": cm.caption}

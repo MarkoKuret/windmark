@@ -566,20 +566,39 @@ window/stretch/mode="viewport"
 
 ## Menus
 
-`scenes/menu/main_menu.tscn` is the main scene (`docs/specs/menus.md`): Quick race, Free sail, Settings, Quit.
-Start writes `GameSetup.current()` and changes to `scenes/sail_test.tscn`. The pause menu is a scene of its own
-that the sail scene instances as a child; it follows the scene's pause, holds the boat's controls while open and
-applies the settings to the scene.
+`scenes/menu/main_menu.tscn` is the main scene (`docs/specs/menus.md`): the wordmark, the live backdrop and the
+menu card with Continue, Race, Free sail, Settings and Quit, each with a one-line hint. Race and Free sail open
+the stepped setup (`setup_panel.gd`, `SetupPanel`): 1 Boat, 2 Venue, 3 Race, 4 Start (free sail: Boat, Venue, Set
+sail), one page with a step bar, Back and Next (or Start race / Set sail) and Esc or B one step back. On the Boat
+step the page is narrow and the live backdrop (`menu_stage.gd`, `MenuStage`) shows the chosen class as a showcase
+boat the camera circles; the class and the venue are pickers (`MenuRow.picker`: left and right cycle, Enter or A is
+Next); the Venue step draws the venue chart (`course_map.gd` at the venue's bounds with its land); the Race and
+Start steps show the race card (the briefing and the course map). The class facts, the character lines and the
+venue shapes come from `menu_data.gd`. Start writes `GameSetup.current()` and changes to `scenes/sail_test.tscn`.
+The pause menu is a scene of its own that the sail scene instances as a child; it follows the scene's pause,
+holds the boat's controls while open and applies the settings to the scene.
 
 ```
 game/tests/run_menus_test.sh
 ```
 
-checks that the lists match the files on disk, that a quick race and a free sail write `GameSetup` and ask for
-the sail scene, keyboard navigation, the settings file round trip, the apply calls (the render scale on the
-root viewport's 3D scale and upscaler, Auto's rule), the layout at 1280 × 800 at
-every UI scale, and the pause menu over the sail scene on FakeSim. To look at the menus (opens a window):
-`godot --path game`.
+checks that the lists match the files on disk, that the race setup's steps and the free sail write `GameSetup`
+and ask for the sail scene (walked with the keyboard and the gamepad: the pickers cycle the classes and the
+venues, Next, Back, Esc and B), the venue chart, the showcase boat on the live backdrop, the settings file round
+trip, the apply calls (the render scale on the root viewport's 3D scale and upscaler, Auto's rule), the layout of
+every step at 1280 × 800 and in portrait at every UI scale, and the pause menu over the sail scene on FakeSim.
+To look at the menus (opens a window): `godot --path game`. Headless previews of every screen and step
+(`docs/specs/menus.md` §1.1 lists the states):
+
+```
+godot --headless --path game -s res://tests/menu_preview_dump.gd [-- --size=1920x1080]
+python3 game/tests/menu_preview.py [--publish] [--src game/generated/menu_preview/1920x1080]
+```
+
+The dump writes what each screen draws to `generated/menu_preview/<shot>.json` (a size subfolder with `--size`),
+the renderer draws them in Barlow over a still backdrop to `<shot>.jpg` (with `--publish` also
+`docs/design/frames/menus_<shot>.jpg`); the showcase boat is in the live scene only, so the Boat step's preview
+shows the page over the still backdrop.
 
 ## Audio
 

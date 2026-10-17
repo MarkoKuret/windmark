@@ -46,6 +46,25 @@ const LABEL_TRACKING := 0.08
 static var _theme: Theme = null
 
 
+## The gamepad in the menus (menus.md §4): A accepts and B goes back through Godot's `ui_accept` and `ui_cancel`,
+## which the engine's defaults do not bind to the pad; added once at the menu's start when missing.
+static func ensure_pad_actions() -> void:
+	for pair in [["ui_accept", JOY_BUTTON_A], ["ui_cancel", JOY_BUTTON_B]]:
+		var action: String = pair[0]
+		var button: JoyButton = pair[1]
+		if not InputMap.has_action(action):
+			InputMap.add_action(action)
+		var found := false
+		for ev in InputMap.action_get_events(action):
+			if ev is InputEventJoypadButton and (ev as InputEventJoypadButton).button_index == button:
+				found = true
+		if not found:
+			var ev := InputEventJoypadButton.new()
+			ev.button_index = button
+			ev.device = -1
+			InputMap.action_add_event(action, ev)
+
+
 ## Barlow Semi Condensed at a weight (500, 600, 700), tabular figures, `tracking` em at `size` px.
 static func font(weight := 500, tracking := 0.0, size := ROW_SIZE) -> Font:
 	return HudStyle.font(weight, tracking, size)

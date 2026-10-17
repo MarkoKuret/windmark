@@ -6,14 +6,26 @@ of `controls.md` §6, `cameras.md` §3 and §6, `hud.md` §14, `water_render.md`
 
 ## 1. Main menu
 
-The project's main scene. Items, top to bottom: **Continue**, **Quick race**, **Free sail**, **Settings**,
-**Quit**.
+The project's main scene: the wordmark top-left, the live backdrop (§4), the **menu card** bottom-left with few,
+large items, and the build in the bottom-right corner. Items, top to bottom: **Continue**, **Race**, **Free sail**,
+**Settings**, **Quit**. Under every item but Quit a one-line **hint** in sentence case (muted, small) says what it
+does, so a first-time player sees at once what to press:
 
-- **Continue** starts the last remembered session again (§1: the setup Start last wrote, its mode, quick race or
-  free sail, with a new seed), straight to the sail scene, and has the focus when the menu opens. A line under it
-  says what it starts (`Quick race · Practice Waters · 10 boats` or `Free sail · Practice Waters`). Hidden on the first
-  launch, and whenever the remembered setup cannot start any more (a class, venue or course no longer on disk);
-  the focus then starts on Quick race.
+| item | hint | does |
+| --- | --- | --- |
+| Continue | what it starts: `Race · Practice Waters · 10 boats` or `Free sail · Practice Waters` | the last remembered session again (below) |
+| Race | `Pick a boat and a venue, race the fleet` | the race setup (§1.1), four steps |
+| Free sail | `Sail on your own: no fleet, no clock` | the free sail setup (§1.1), three steps |
+| Settings | `Controls, cameras, HUD, graphics, audio` | the settings screen (§3) |
+| Quit | none | leaves the game |
+
+- **Continue** starts the last remembered session again (the setup Start last wrote, its mode, race or free sail,
+  with a new seed), straight to the sail scene, and has the focus when the menu opens. Hidden on the first launch,
+  and whenever the remembered setup cannot start any more (a class, venue or course no longer on disk); the focus
+  then starts on Race.
+- Under the items one quiet **key line** (`Arrows choose · Enter or A select · Esc or B back`, small, muted): the
+  only place the menus explain their keys. On a window too short for the card under the logo (1280 × 800 at
+  130 % UI scale) the hints and the key line hide and the items alone show.
 - **Wordmark**: the game's logo, `WINDMARK` with the tagline bar under it (§1.2), in the top-left corner. It is
   one scene (`scenes/menu/wordmark.tscn`), so a later logo replaces it without touching the menu.
 - **Version**: the bottom-right corner shows the build, small and dim: `v<version>` from the project settings
@@ -26,15 +38,15 @@ The project's main scene. Items, top to bottom: **Continue**, **Quick race**, **
   start the device default of §3), the help line of the focused row (§3), and **Let's sail** (keeps them, the
   primary action) and **Skip** (keeps the defaults, the device's for quality; Esc or B too). Either
   saves the settings with `welcomed` set, so it shows once.
-
-- **Quick race**: class, sail number, venue, course, fleet size, AI level, weather (and in Custom: wind speed, wind
-  direction, shifts, gusts), time and sky, then **Start**, on one screen, the **race card** (§1.1).
-- **Free sail**: class, sail number, venue, weather, time and sky (as on the race card), then **Start** (in the card's footer, as
-  on the race card, without the preview or the briefing).
+- **Pages.** Race, Free sail and Settings open a **page**: a cloth panel on the right of the window (under the
+  wordmark in a portrait window), the menu card hidden while a page is open, so the page and the backdrop are the
+  screen; Back, Done, Esc or B bring the card back with the focus on the item that opened the page. The page is
+  **wide** (the window's width inside the margins, at most 980 px logical: on a big window the backdrop stays in
+  view on the left) or **narrow** (540 px: the Boat step, §1.1, which leaves the stage room for the boat).
 - Lists come from the data on disk: classes from `data/classes/*.boat.json` (name from the file), venues from
   `data/venues/*.venue.json`, courses from `game/data/courses/<venue>/*.course.json` that list the chosen class
   in their `classes` (a course without `classes` suits every class). A venue without a course for the class cannot
-  start a quick race.
+  start a race.
 - **Sail number**: the player's boat, from the boats of the class's livery file (`data_format.md` §8.4, in file
   order, shown as sail number and name, for example `7  Kestrel`); the list follows the class. Every boat wears the
   class livery and sails; the AI boats get the other sail numbers and names by the fleet rule of
@@ -44,19 +56,19 @@ The project's main scene. Items, top to bottom: **Continue**, **Quick race**, **
 - The race runs on the course's race settings (`race.md` §2) with the finishing window off (`race.md` §7.3: no
   `DNF` for being slow in a race nobody waits for; the time limit still closes it).
 - **Weather**: **Local** (default), **Random** or **Custom** (`race.md` §2.1).
-  - **Local**: the venue's own conditions, drawn within its ranges from the seed. Nothing to adjust; the card shows
-    the full briefing with the Tip.
+  - **Local**: the venue's own conditions, drawn within its ranges from the seed. Nothing to adjust; the briefing
+    is the full one with the Tip.
   - **Random**: a surprise day from everything the venue can produce. Nothing to adjust and **no briefing**, ever:
-    the card shows only `Weather  Unknown: read it on the water` (key `briefing.unknown`), and nothing before the
-    start or in the race tells the conditions; the player reads them from the instruments and the water. After the
-    finish the results screen reveals them (§ results panel, `Today:` line).
+    the briefing box shows only `Weather  Unknown: read it on the water` (key `briefing.unknown`), and nothing
+    before the start or in the race tells the conditions; the player reads them from the instruments and the
+    water. After the finish the results screen reveals them (§5, `Today:` line).
   - **Custom**: four more rows. **Wind speed** 4 to 25 kn in 1 kn steps and **wind direction** 0° to 355° in 5°
     steps (defaults: the middle of the venue's range, rounded, and its typical direction rounded to 5°); **Shifts**
     Steady, Stable, Oscillating, Shifty, Unstable (the shift presets of `wind.md` §1); **Gusts** None, Light,
     Moderate, Very strong (the puff presets `none`, `light`, `standard`, `gusty` of `wind.md` §6.1, named after the
     word the briefing gives them). Shifts and Gusts default to the venue's (for an explicit venue shift, the preset
     whose band in §1.3 holds it). The shifts themselves still come from the seed; current, tide and sea stay the
-    venue's. The card shows the briefing without the Tip.
+    venue's. The briefing shows without the Tip.
   - A venue without `conditions` (`data_format.md` §6.9) offers Custom only, at 12 kn, 0°, Shifty, Moderate.
   - Choosing another venue sets the Custom rows to that venue's defaults and offers its modes (a mode it lacks
     falls back to its first, Custom for a venue without `conditions`).
@@ -71,45 +83,106 @@ The project's main scene. Items, top to bottom: **Continue**, **Quick race**, **
     to `Venue default`).
   - Start writes `GameSetup.light_time` (the hour, or −1 for `Venue default` and in Random) and
     `GameSetup.light_conditions` (the conditions, or `""` for `Venue default` and in Random).
-- **Start** fills `GameSetup.current()` (mode `race` or `free`, the weather mode and the Custom picks, and the card's
-  race seed) and changes to the sail scene, which reads it and resolves the weather once (`race.md` §2.1). The last
-  choices are remembered in the settings file (§3) for the next visit; a remembered choice that is no longer
-  offered (a venue, class or mode gone) falls back to the default (Practice Waters, Local), else the first.
-- **Race seed**: the card draws the race seed (non-zero, from the clock) when it opens and again after each start,
+- **Start** fills `GameSetup.current()` (mode `race` or `free`, the weather mode and the Custom picks, and the
+  setup's race seed) and changes to the sail scene, which reads it and resolves the weather once (`race.md` §2.1).
+  The last choices are remembered in the settings file (§3) for the next visit; a remembered choice that is no
+  longer offered (a venue, class or mode gone) falls back to the default (Practice Waters, Local), else the first.
+- **Race seed**: the setup draws the race seed (non-zero, from the clock) when it opens and again after each start,
   and computes the briefing for it (§1.3), so the tide the briefing names is the one the race gets. Starts without
-  the card (Continue, Race again) take a new seed from the clock and show no briefing.
+  the setup (Continue, Race again) take a new seed from the clock and show no briefing.
 - **Backdrop** (§4): the live sail scene behind the menu.
 - Rules scenarios (`race.md` §14) have no menu item: they start from the command line of the sail scene,
   `--scenario=<id>`, which sets `GameSetup` mode `scenario` with the scenario id.
 
-### 1.1 Race card
+### 1.1 Race setup: the steps
 
-The quick race is one screen: a header (the heading alone), the body and a footer.
+Race and Free sail are one page each, walked in **steps**, one choice at a time: the player never sees the boat,
+the venue and the race rows together. A race has four steps, a free sail three:
 
-- **Body**: the setup rows on the left, the **briefing** (§1.3, Local and Custom) and the **preview** on the right; when the page is narrower than 760 px
-  (logical, after the UI scale: a large UI scale on the Steam Deck, a narrow window) the preview goes under the
-  rows. The body scrolls with the focus when it does not fit; the header and the footer never scroll.
-- **Briefing**: the venue briefing of §1.3, at the top of the right column above the course map, following the
-  rows as they change (venue, course, weather and the Custom rows). It moves with the preview when the preview goes
-  under the rows. In Random its place holds the one `Unknown` line.
-- **Preview**: the **course map** with its caption, following the rows as they change (no fleet summary: the
-  fleet, AI level and boat are the rows beside it). In Local the
-  map's wind arrow shows the venue's typical direction and the middle of its speed range; in Custom the chosen
-  values; in Random the course is drawn on the venue's typical direction with no wind arrow and no numbers.
-  - The course map is drawn from the course file (`courses.md`) on a dark chart (the HUD's `ink`), north up: the
-    marks resolved as `courses.md` §3 resolves them with the course axis on the chosen wind direction, at the
-    file's distances (the preview skips the scaling of §6.3, so it shows the course's shape, not its exact size);
-    rounding marks as yellow diamonds (the HUD's `mark`, the course colour), other buoys as small paper dots, the
-    committee and mark boats as small paper hulls; the start line (between its two ends) as a dashed paper line, the
-    finish line as a checkered one; the course as a faint hairline from the start through the sequence's marks and
-    gates to the finish; the wind as an arrow in the top-right corner, blowing the way the wind goes, with the speed
-    and the direction under it (`12 KN  000°`), and a small N.
-  - Under the map: the laps and legs (`2 laps, 6 legs`), muted; the course's name is the Course row's.
-- **Footer**: **Start race**, the screen's one primary action (a menu-item sized yellow button, §4), always
-  visible, and under it the reason it cannot start when it cannot (a venue without a course for the class), in
-  red.
+| step | Race | Free sail |
+| --- | --- | --- |
+| 1 | **Boat** (narrow page): the class picker, the class shown on the stage, the Sail number | the same |
+| 2 | **Venue**: the venue picker, the venue chart, the briefing, the Course row | the same without the Course row |
+| 3 | **Race**: Fleet, AI level, Weather and its Custom rows, Time, Sky; the race card beside them | **Set sail**: Weather and its Custom rows, Time, Sky; the summary and the venue chart; **Set sail** |
+| 4 | **Start**: the summary, the race card and **Start race** | |
+
+- **Step bar**, the page's header, the same on every step: the steps in order as `1 BOAT  2 VENUE  3 RACE  4 START`
+  (free sail `1 BOAT  2 VENUE  3 SET SAIL`), caps in the setting-name style (§4); the current step navy on a
+  yellow bar (the accent as a fill, §4), the steps done navy, the steps ahead muted. A click on a step done goes
+  back to it. There is no other heading: the bar says where the player is.
+- **Footer**, the same on every step: **Back** on the left and the step's one primary action on the right: **Next**
+  (a yellow bar, menu-item sized) on every step but the last, **Start race** or **Set sail** on the last. Back on
+  step 1 closes the page to the menu. Under the footer, in red, the reason the player cannot go on when there is
+  one (a venue without a course for the boat: `This venue has no course for this boat yet.`; Next is then disabled
+  on the Venue step).
+- **Keys** (§4): up and down move through the step's rows, down from the last row is the primary action, up from it
+  the last row; left and right move between Back and the primary action; Esc or B is Back on every step (to the
+  menu from step 1). On the **pickers** (the class and the venue, below) left and right cycle the list and
+  **Enter or A is Next** (the picker's value is the thing chosen; a press on it goes on). On every other row Enter
+  or A steps the value forward as before. The mouse focuses on hover and accepts on a click, the pickers' arrows
+  included.
+- **Boat step.** The page is narrow (§1) so the stage shows the boat: the chosen class as a **showcase boat** on
+  the live backdrop (§4.1), heeled and trimmed on the water, the camera circling it slowly at a three-quarter view;
+  changing the class swaps the boat at once, changing the sail number repaints it. On the page: the **class
+  picker**, `‹  WINDMARK 7 SPORTSBOAT  ›` (menu-item sized caps, centred, the focus when the step opens); under
+  it the class's one-line **character** in sentence case (`Modern sportsboat: light, quick to plane, asymmetric
+  kite, tiller.`; one hand-written line per shipped class in the menu's data, a class without one gets
+  `<crew> crew, <kite> kite, <tiller|wheel>` from its file); then four **key numbers** as label and value pairs
+  (SemiBold caps labels, tabular values): **Length** (`7.2 m`, `hull.loa`), **Sail area** (`37 m²`, the main and
+  the headsail, `sails[].area`), **Crew** (`4`, `crew.count`), **Kite** (`Asymmetric 54 m²`, `Symmetric 45 m²`, or
+  `None`, from the spinnaker's type and area); then the **Sail number** row (§1). The character and the numbers
+  follow the picker at once.
+- **Venue step.** A wide page in two columns. Left: the **venue picker** `‹  PRACTICE WATERS  ›` (as the class
+  picker, the focus when the step opens), the venue's one-line character (`Open water and one island: a steady
+  breeze and a light current. Learn the boat and the rules.`; one line per shipped venue in the menu's data, a
+  venue without one gets its briefing tag) and, in a race, the **Course** row (the courses of the venue for the
+  class). Right: the **briefing** of §1.3 in its box (the weather mode chosen on the Race step, Local at first: the
+  full briefing with the Tip; Random: the one Unknown line; a race only) over the **venue chart**: the course map
+  of §1.1.1 drawn at the venue's extent (its `bounds`) with the venue's **land** (the venue file's land polygons,
+  `data_format.md` §6.5) filled in a muted sand on the dark chart, the course's marks and lines at their place in
+  the venue, a scale bar and N, and the course's laps and legs in its corner; the chart takes the column's height.
+  Changing the venue redraws the chart, the briefing and the Course row at once; changing the course redraws the
+  chart.
+- **Race step.** Left: the rows **Fleet**, **AI level**, **Weather** (Local, Random, Custom), the Custom rows when
+  Custom (**Wind speed**, **Wind from**, **Shifts**, **Gusts**), **Time**, **Sky** (§1). Right: the **race card**:
+  the briefing box (§1.3) and the **course map** at the course's extent (§1.1.1) with its caption, following the
+  rows as they change. Free sail's **Set sail** step has the Weather, Custom, Time and Sky rows on the left, and on
+  the right the summary lines (below) and the venue chart; its primary action is **Set sail**.
+- **Start step.** Left: the **summary**, label and value lines in the briefing's style: `Boat  Windmark 7
+  Sportsboat · 7 Kestrel`, `Venue  Practice Waters`, `Course  Windward-leeward, 2 laps`, `Fleet  10 boats ·
+  Expert`, `Weather  Local` (`Custom · 14 kn from the NE · Shifty · Moderate gusts`, `Random`), `Light  Venue
+  default` (`14:30, fair`, `Surprise`). Right: the race card (the briefing and the course map). The primary action
+  is **Start race**, menu-item sized.
+- **Narrow pages** (a portrait capture window, a large UI scale): when a wide page is narrower than 760 px
+  (logical, after the UI scale), its right column goes under the left one. The body scrolls with the focus when
+  it does not fit; the step bar and the footer never scroll.
+- **Remembered setup.** Opening Race or Free sail takes the remembered choices (§1) and starts at the Boat step.
+  **Change setup** on the results screen (§5) opens Race at the Boat step with that race's setup, so the player
+  walks the same steps again; Race again does not come here.
 - Fits 1280 × 800 at every UI scale (80 % to 130 %) and the portrait capture window; the keyboard and the gamepad
-  reach every row and Start (down from the last row is Start, up from Start the last row).
+  reach every row, Back and the primary action on every step.
+- **Preview states** (`tests/menu_preview_dump.gd`, §4): `main`, `race_boat`, `race_venue`, `race_race` (Local),
+  `race_race_random`, `race_race_custom`, `race_start`, `free_boat`, `free_venue`, `free_sail`, `settings`,
+  `bindings`, `pause`, `welcome`, `race_end`, `race_end_portrait`.
+
+#### 1.1.1 Course map and venue chart
+
+The course map is drawn from the course file (`courses.md`) on a dark chart (the HUD's `ink`), north up: the marks
+resolved as `courses.md` §3 resolves them with the course axis on the chosen wind direction, at the file's
+distances (the preview skips the scaling of §6.3, so it shows the course's shape, not its exact size); rounding
+marks as yellow diamonds (the HUD's `mark`, the course colour), other buoys as small paper dots, the committee and
+mark boats as small paper hulls; the start line (between its two ends) as a dashed paper line, the finish line as a
+checkered one; the course as a faint hairline from the start through the sequence's marks and gates to the finish;
+the wind as an arrow in the top-right corner, blowing the way the wind goes, with the speed and the direction under
+it (`12 KN  000°`), and a small N. In the map's bottom-right corner: the laps and legs (`2 laps, 6 legs`), muted.
+
+- **Extent**: the marks' box with a margin (the race card), or the venue's `bounds` (the venue chart, the Venue
+  step); the venue's land polygons inside the extent are filled in a muted sand (`#5e5a4c`) with a paper shore
+  line, under the course. At the venue's extent the marks keep their size, so a short course on a wide venue is a
+  small yellow shape where the racing is, and a **scale bar** in the bottom-left corner shows a round length
+  (`1 km`, `2 km`, `500 m`: the largest under a third of the width).
+- **Wind**: in Local the arrow shows the venue's typical direction and the middle of its speed range; in Custom the
+  chosen values; in Random the course is drawn on the venue's typical direction with no wind arrow and no numbers.
 
 ### 1.2 Logo and app icon
 
@@ -128,7 +201,7 @@ menus' cloth, navy and accent, §4).
   slant), with a hard navy shadow offset 5.3 % of the WINDMARK size (4 px at 76 px). The bar starts under the left
   edge of WINDMARK, 4 % of its size below the yellow shadow.
 - **Main menu**: WINDMARK at 76 px, the lockup 368 x 97 px, top-left. It scales down (a smaller font size, not a
-  scaled image) to fit the window's width inside the menu's margins, and beside the page it leaves the race card
+  scaled image) to fit the window's width inside the menu's margins, and beside the page it leaves a wide page
   its two columns (760 px, §1.1) when that costs it at most 10 % (73 px at 1280 x 800 and 100 % UI scale). It fits
   1280 x 800 at 80 % to 130 % UI scale and the portrait capture window.
 - **App icon**: the owner's art, `docs/branding/app_icon_1080.png` (outside `game/` so it does not ship; 1080 x 1080, a rounded square with a
@@ -142,9 +215,9 @@ menus' cloth, navy and accent, §4).
 
 ### 1.3 Venue briefing
 
-A short, standard briefing of the conditions the race will have, on the quick race card only (not on the loading
-screen, the free sail card or before the start), in the Local and Custom weather modes; Random has none (§1). Fixed lines in a fixed order, fixed rating words chosen by the
-thresholds below from the venue's numbers (`data_format.md` §6.7) and the card's choices, plus one hand-written Tip.
+A short, standard briefing of the conditions the race will have, in the race setup only (the Venue, Race and Start
+steps of §1.1; not on the loading screen, in the free sail setup or before the start), in the Local and Custom weather modes; Random has none (§1). Fixed lines in a fixed order, fixed rating words chosen by the
+thresholds below from the venue's numbers (`data_format.md` §6.7) and the setup's choices, plus one hand-written Tip.
 Computed in the menu when a row changes; it reads exactly the settings the race will resolve (`race.md` §2.1), so
 every line stays true for the race that starts.
 
@@ -159,7 +232,7 @@ Light    13:00, fair
 Tip      The stream runs hardest mid-channel; cheat it along the shore.
 ```
 
-Layout: a box on the course map's dark chart colour (the HUD's `ink`): the header line in the card's heading
+Layout: a box on the course map's dark chart colour (the HUD's `ink`): the header line in the page's heading
 style, then the labels in one column (dim) and the values beside them (paper), one line each; the Tip may wrap to
 two lines. No em dashes anywhere in it. In Random the box holds the one line `Weather  Unknown: read it on the
 water`.
@@ -167,8 +240,8 @@ water`.
 **Inputs.** `S = [s0, s1]` the wind speed (Local: the venue's range; Custom: `[v, v]`), `θ` the direction (Local:
 the venue's `from`; Custom: the chosen one), the shift and puff values (Local: the venue's after presets; Custom: the
 chosen presets), the venue's current, tide and sea values
-(`race.md` §2.1), the chosen course's `T_race` and `t_gun` (`race.md` §2.1; the card's sequence and
-`free_sailing_s`), and the card's race seed (§1), which fixes the tide's phase.
+(`race.md` §2.1), the chosen course's `T_race` and `t_gun` (`race.md` §2.1; the setup's sequence and
+`free_sailing_s`), and the setup's race seed (§1), which fixes the tide's phase.
 
 **Number formats.** Knots: speeds as whole knots (`round_half_even`), current to 0.1 kn. Degrees: whole degrees.
 Compass: 8 points, `N NE E SE S SW W NW`, point `round_half_even(deg / 45) mod 8`. Percentages: whole percent.
@@ -196,7 +269,7 @@ for a positive rate, backs for a negative one. The oscillation is not rated (at 
 puff cover `k = puff_count · π · ((puff_diameter_min + puff_diameter_max) / 4)² / puff_tile²`: scattered `< 0.15`,
 frequent `< 0.35`, everywhere `≥ 0.35`.
 
-**Current.** The tide at the start signal of the race the card will start: the settings resolved for the card's
+**Current.** The tide at the start signal of the race the setup will start: the settings resolved for the setup's
 seed (`race.md` §2.1) give `τ = tide_scale · cos(2π · ((t_gun + tide_phase_ms) mod P) / P)` (`wind.md` §7; `τ = 0`
 without a tide), the tidal stream `c_t = |τ| · ref_speed` and `c = |uniform| + c_t` (`data_format.md` §6.3; 0 for a
 missing part), in knots. The tide keeps the real period, so the stream named holds through the race (in 20 minutes
@@ -373,30 +446,44 @@ command line (`--resolution 1080x1920`).
 - **One accent across the game**: the HUD's `mark` yellow (`#FFD23F`, `hud.md` §16.2). Yellow on the cream cloth
   fails as text (1.3:1), so the menus use it as a **fill** with navy text on it (navy `#1A2A3A` on yellow is
   10:1): the focused row or button is a yellow bar with a 5 px navy edge on its left (the edge keeps the focus
-  visible against the cloth); each screen's one primary action (Start race, Set sail, Race again, Let's sail, Done)
-  is a yellow bar at all times; the selected settings section's underline and the scroll grabber are yellow bars.
+  visible against the cloth); each screen's one primary action (Next, Start race, Set sail, Race again, Let's sail, Done)
+  is a yellow bar at all times; the current step of the step bar (§1.1) is a yellow bar too; the selected settings section's underline and the scroll grabber are yellow bars.
   Navy text on the cloth is 13:1, the muted grey `#56646E` 5.4:1.
 - **Red** (`#B8361C`, 5.2:1 on the cloth) only for warnings, actions that throw something away (**Retire**,
   **Reset section**, reset bindings) and penalties; Quit and Quit to menu are plain items. A focused red button is a
   red bar with cloth-coloured text (5.2:1).
 - **Plain surfaces**: the cloth panels are flat (no shadow, no edge line), headings have no rule under them, and
   there are no sub-lines restating a heading or a row; a screen says a thing once.
-- **Sizes**: menu items (main menu, pause menu, Start race and Set sail) Bold caps 28 px, at least 58 px tall with
-  22 px side padding; footer actions (Race again, Change setup, Main menu, Done, Reset section, Let's sail, Skip)
-  24 px, at least 54 px tall; setting rows at least 46 px tall with 18 px side padding; sentence text (help, notes)
+- **Sizes**: menu items (main menu, pause menu, Next, Start race and Set sail) Bold caps 28 px, at least 58 px tall
+  with 22 px side padding; footer actions (Back, Race again, Change setup, Main menu, Done, Reset section, Let's
+  sail, Skip) 24 px, at least 54 px tall; setting rows at least 46 px tall with 18 px side padding; sentence text (help, notes)
   at least 16 px.
 - **Type**: Barlow Semi Condensed, the HUD's family (`docs/design/hud_direction.md` §2). Menu items and buttons:
   Bold, all caps, tracking +6 %. Setting names and section tabs: SemiBold, all caps, tracking +8 %. Values:
   SemiBold with tabular figures, as the HUD numerals. Headings: Bold caps; sentence text (sub-lines, notes, help)
   Medium in sentence case.
 - Every screen works with the mouse, the keyboard (arrows, Enter, Esc) and the gamepad (D-pad or left stick, A,
-  B), through Godot's built-in `ui_*` navigation actions. On a setting, left and right change the value; Enter or
+  B), through Godot's built-in `ui_*` navigation actions; the engine's defaults bind no pad button to `ui_accept`
+  and `ui_cancel`, so the main menu adds A and B to them when it starts (`MenuTheme.ensure_pad_actions`). On a setting, left and right change the value; Enter or
   A steps it forward. B or Esc goes back one level (Esc in the pause menu resumes, it is `pause_menu`).
 - Fits 1280 × 800 (Steam Deck) at every UI scale; lists scroll with the focus.
 - **Sounds** on the `ui` bus (`audio.md` §1.1, the Interface volume): a soft tick when the focus moves or a value
   steps, a brighter click on accept (Enter, A, a click), a lower one on back (Esc, B). Made by `tools/soundgen`
   (`ui/focus`, `ui/accept`, `ui/back`), short (under 0.1 s) and quiet (peaks at -12 dBFS or lower).
 - Player-facing text has no em dashes.
+
+### 4.1 Showcase boat
+
+On the Boat step (§1.1) the stage shows the chosen class: one boat (`BoatView`) of the class in the player's
+livery (the Sail number row), placed on the water of the backdrop venue clear of the racing (600 m east of the
+course), heading north-east with the wind on the starboard bow, heeled 12° to port with the main and the headsail
+trimmed for a beat and the kite down, sitting on the sea (the sea's height under it, the hull's pitch and roll from
+the sea's slope). It does not sail: a boat on a turntable. The camera circles it at a three-quarter view (distance
+1.9 x the mast height + 2 m, height 0.35 x the mast height, aimed a third of the way up the mast), going round at
+2.5° a second (a third with reduced motion), starting from the leeward bow quarter, with the boat centred in the
+room left of the page. Changing the class frees the boat and makes the new one at once (the first make of a class
+takes its load); changing the sail number repaints it. Leaving the step frees the boat and the drift cuts back to
+the fleet. The painted backdrop (no live scene) shows no boat: the page alone.
 
 ## 5. Race end
 
@@ -432,7 +519,7 @@ scene, then the next race or the menu.
 - **Summary** (`YOUR RACE`, a heading in caps and label value lines): the items of `hud.md` §13.3 that have data.
 - **Actions** in the footer, footer-action sized (§4): **Race again** (primary, the focus when the screen opens): the same setup (class,
   sail number, venue, course, fleet, AI level, wind) with a new seed. **Change setup**: this setup becomes the
-  remembered one (§1) and the main menu opens on the race card (§1.1) with it. **Main menu**: the main menu.
+  remembered one (§1) and the main menu opens the race setup (§1.1) at its Boat step with it. **Main menu**: the main menu.
 - **Input** (§4): left and right move between the actions, Enter or A accepts, the mouse focuses on hover and
   accepts on a click; up and down scroll the table and summary; `pause_menu` opens the pause menu over the screen
   (§2), and when it closes the focus is back on the action it was on.

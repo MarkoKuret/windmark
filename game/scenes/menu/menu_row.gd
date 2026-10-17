@@ -3,13 +3,18 @@ extends PanelContainer
 ## One setting on a menu (menus.md §4): its name on the left in caps, its value on the right between ‹ and ›
 ## (tabular figures, as the HUD numerals); focused, a yellow bar with a navy edge.
 ## Left and right (keys, D-pad, stick) step the value; Enter or A steps it forward; the mouse clicks the left or
-## right half of the value. INFO rows only show a value (the bindings).
+## right half of the value. INFO rows only show a value (the bindings). A PICKER (menus.md §1.1: the class and the
+## venue) is a CHOICE without a name, its value large and centred; on it Enter or A emits `accepted` (Next) instead
+## of stepping.
 
 signal changed(value: Variant)
+signal accepted
 
 enum Kind { CHOICE, RANGE, BOOL, INFO }
 
 var kind := Kind.CHOICE
+## a picker (menus.md §1.1): no name, the value centred in menu-item caps, Enter or A accepts
+var is_picker := false
 var key := ""
 var value: Variant
 ## the settings screen's help line for this row (menus.md §3)
@@ -35,6 +40,19 @@ static func choice(text: String, k: String, vals: Array, shown: Array, v: Varian
 	r.choices = vals
 	r.names = shown
 	r._init_row(text, v)
+	return r
+
+
+## A picker (menus.md §1.1): the list's names in menu-item caps, centred, with the arrows; left and right cycle,
+## Enter or A emits `accepted`.
+static func picker(k: String, vals: Array, shown: Array, v: Variant) -> MenuRow:
+	var r := MenuRow.new()
+	r.kind = Kind.CHOICE
+	r.is_picker = true
+	r.key = k
+	r.choices = vals
+	r.names = shown
+	r._init_row(k, v)
 	return r
 
 
@@ -69,7 +87,7 @@ func _init_row(text: String, v: Variant) -> void:
 	name = "Row_" + (key if key != "" else text.validate_node_name())
 	focus_mode = Control.FOCUS_ALL
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	custom_minimum_size = Vector2(0, MenuTheme.ROW_H)
+	custom_minimum_size = Vector2(0, MenuTheme.ITEM_H if is_picker else MenuTheme.ROW_H)
 	var h := HBoxContainer.new()
 	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(h)
@@ -78,11 +96,20 @@ func _init_row(text: String, v: Variant) -> void:
 	_name.clip_text = true
 	_name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	_name.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_name.visible = not is_picker
 	h.add_child(_name)
-	_value = MenuTheme.label("", MenuTheme.ROW_SIZE, MenuTheme.NAVY, 600)
-	_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	if is_picker:
+		_value = MenuTheme.label("", MenuTheme.ITEM_SIZE, MenuTheme.NAVY, 700, MenuTheme.ITEM_TRACKING)
+		_value.uppercase = true
+		_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_value.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_value.clip_text = true
+		_value.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	else:
+		_value = MenuTheme.label("", MenuTheme.ROW_SIZE, MenuTheme.NAVY, 600)
+		_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		_value.custom_minimum_size = Vector2(170 if kind != Kind.INFO else 0, 0)
 	_value.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_value.custom_minimum_size = Vector2(170 if kind != Kind.INFO else 0, 0)
 	h.add_child(_value)
 	focus_entered.connect(func() -> void: _focused = true; _style())
 	focus_exited.connect(func() -> void: _focused = false; _style())
@@ -165,7 +192,10 @@ func _gui_input(e: InputEvent) -> void:
 		step_value(1)
 		accept_event()
 	elif e.is_action_pressed("ui_accept"):
-		step_value(1)
+		if is_picker:
+			accepted.emit()
+		else:
+			step_value(1)
 		accept_event()
 	elif e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 		var x: float = (e as InputEventMouseButton).position.x

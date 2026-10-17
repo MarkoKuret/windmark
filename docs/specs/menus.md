@@ -41,6 +41,8 @@ The project's main scene. Items, top to bottom: **Continue**, **Quick race**, **
   `data_format.md` §8.4.
 - Ranges: fleet size 2 to 40 boats including the player (default 10); AI level Easy, Intermediate (default),
   Expert, Pro (`ai.md` §13).
+- The race runs on the course's race settings (`race.md` §2) with the finishing window off (`race.md` §7.3: no
+  `DNF` for being slow in a race nobody waits for; the time limit still closes it).
 - **Weather**: **Local** (default), **Random** or **Custom** (`race.md` §2.1).
   - **Local**: the venue's own conditions, drawn within its ranges from the seed. Nothing to adjust; the card shows
     the full briefing with the Tip.

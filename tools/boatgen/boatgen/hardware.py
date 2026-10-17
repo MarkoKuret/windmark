@@ -666,6 +666,8 @@ def place_all(cls, hull, deck, rig, lod=0):
     x_prim = deck.xc1 - 0.42 * (deck.xc1 - deck.xc0)
     d_prim = 0.14 * s if not small else 0.10 * s
     y_prim = float(deck.yc(x_prim)) + 0.11 * s + d_prim * 0.55
+    if deck.coaming is not None:                    # on the middle of the coaming's flat top
+        y_prim = float(deck.yc(x_prim)) + 0.5 * deck.coaming["w"]
     for side in (1, -1):
         hw.extend(on_surface(deck, winch(d_prim, handle=fine and side < 0), x_prim, side * y_prim, yaw=np.pi / 2 * side),
                   tag=f"winch_primary_{side}")
@@ -674,6 +676,8 @@ def place_all(cls, hull, deck, rig, lod=0):
     if not small:
         x_sec = deck.xc1 - 0.8 * s
         y_sec = float(deck.yc(x_sec)) + 0.12 * s + 0.4 * d_prim
+        if deck.coaming is not None:
+            y_sec = float(deck.yc(x_sec)) + 0.5 * deck.coaming["w"]
         for side in (1, -1):
             hw.extend(on_surface(deck, winch(d_prim * 0.8), x_sec, side * y_sec), tag=f"winch_secondary_{side}")
             hw.attach(f"winch_secondary_{side}", "deck")
@@ -909,6 +913,18 @@ def place_all(cls, hull, deck, rig, lod=0):
         if x_rh is not None:
             hw.extend(on_surface(deck, hatch(0.5 * s, 0.5 * s), x_rh, 0.0, conform=True), tag="hatch_cabin")
             hw.attach("hatch_cabin", "deck")
+
+    # --- shorthanded-offshore fittings (data_format.md 3.7.4): hard dodger, foot braces, liferaft, autopilot ram
+    from . import offshore
+    if d.get("dodger") and deck.has_cabin:
+        hw.extend(offshore.dodger(deck, d["dodger"], s, lod))
+    off = d.get("offshore") or {}
+    if off.get("foot_braces"):
+        hw.extend(offshore.foot_braces(deck, [deck.xc1 - float(f) for f in off["foot_braces"]], s))
+    if off.get("liferaft"):
+        hw.extend(offshore.liferaft(deck, s))
+    if off.get("autopilot"):
+        hw.extend(offshore.autopilot_ram(deck, float(cls["rudder"]["x_stock"]) + 0.25 * s, s))
 
     # --- lifelines, pulpit and pushpit
     if d.get("lifelines"):

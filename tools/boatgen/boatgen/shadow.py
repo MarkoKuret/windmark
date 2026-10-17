@@ -34,6 +34,7 @@ N_STATIONS = 12       # hull and deck stations
 N_CABIN = 10          # coachroof stations
 ROW_COCKPIT = 0.4     # m: the cockpit's floor, walls and side decks have a row at least this often (the sheer's
                       # rise must not lift a chord through the inset)
+CM_IN = 0.05          # m: the proxy's coaming ramp this far inboard of the drawn one
 RUDDER_ABOVE = 0.05   # m: a rudder whose blade reaches this far above the DWL casts (a transom-hung one)
 
 
@@ -162,7 +163,14 @@ def hull_and_deck(hull, deck, m=INSET):
 
     xi = secs[:, 0, 0]                                     # the pulled-in stations
     edge = lambda x: float(np.interp(x, xi, secs[:, -1, 1]))   # the deck edge: the proxy hull's sheer
-    dz = lambda x, y: np.asarray(deck.deck_z(x, y), dtype=np.float64) - m
+    cm = getattr(deck, "coaming", None)
+    if cm is None:
+        dz = lambda x, y: np.asarray(deck.deck_z(x, y), dtype=np.float64) - m
+    else:
+        # under a raised coaming (data_format.md 3.7.4) the proxy rises 0.9 of it, its ramp CM_IN inboard of the
+        # drawn one: its chords over the coaming's curves stay under the eroded surface, and clear of the steep ramp
+        dz = lambda x, y: (np.asarray(deck.plain_deck_z(x, y), dtype=np.float64)
+                           + 0.9 * deck.coaming_h(x, np.sign(y) * (np.abs(y) + CM_IN)) - m)
     open_transom = deck.xc0 <= m + 1e-6
     x_ck0, x_ck1, yo, zf = _cockpit_frame(deck, m)
     for x in (x_ck0, x_ck1):
@@ -188,8 +196,24 @@ def hull_and_deck(hull, deck, m=INSET):
     if not open_transom and x_ck0 > m + 0.02:
         out.append(strip(rows(m, x_ck0), lambda x: -edge(x), edge, 5))
     rb = rows(x_ck0, x_ck1, ROW_COCKPIT)
-    for s in (1.0, -1.0):
-        out.append(strip(rb, lambda x, s=s: s * yo(x), lambda x, s=s: s * edge(x), 3))
+    if cm is None:
+        for s in (1.0, -1.0):
+            out.append(strip(rb, lambda x, s=s: s * yo(x), lambda x, s=s: s * edge(x), 3))
+    else:
+        # a raised coaming (data_format.md 3.7.4): rows through its fades, and columns on its flat top 0.4 of the
+        # ramp in from the ramp's head and at its foot, so every chord stays under the eroded surface
+        rb = np.unique(np.concatenate([rb, [deck.xc0 + cm["aft"], deck.xc1 - cm["fwd"], deck.xc1 - 0.5 * cm["fwd"]]]))
+        rb = rb[(rb >= x_ck0) & (rb <= x_ck1)]
+        for s in (1.0, -1.0):
+            P = []
+            for x in rb:
+                yc = float(deck.yc(x))
+                ys = np.array([yo(x), max(yc + cm["w"] - 0.4 * cm["r"] - CM_IN, yo(x) + 0.01),
+                               yc + cm["w"] + cm["r"] - CM_IN, edge(x)])
+                ys = np.maximum.accumulate(np.minimum(ys, edge(x)))
+                ys[-1] = edge(x)
+                P.append(np.column_stack([np.full(4, x), s * ys, dz(x, s * ys)]))
+            out.append(_face(np.stack(P), [0, 0, 1]))
     cab_rows = np.linspace(deck.xk0 + m, deck.xk1, N_CABIN) if deck.has_cabin else np.zeros(0)
     out.append(strip(rows(x_ck1, float(xi[-1])), lambda x: -edge(x), edge, 5))
 

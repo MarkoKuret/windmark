@@ -191,6 +191,7 @@ Every key is optional; defaults scale with LOA.
 | `deck.steering` | wheel from 11 m, else tiller | `wheel` or `tiller` |
 | `deck.wheel` | diameter min(0.855 cockpit width, 1.35 (LOA/12)^0.7), well false, hub_height (well) 0.62 (LOA/12)^0.5 else diameter/2 + 0.12 | the helm of a wheel boat (`docs/specs/data_format.md` §3.7.3): with `well` the wheel's lower part runs through a slot in the cockpit floor |
 | `deck.hatches` | 2 from 9 m, else 1 | foredeck hatch, plus one on the cabin top |
+| `deck.coaming`, `deck.dodger`, `deck.offshore` | none | a shorthanded offshore deck (`docs/specs/data_format.md` §3.7.4): raised coamings, a hard dodger over the companionway (with a solar panel), foot braces, liferaft canister, stowed autopilot ram (`boatgen/offshore.py`) |
 | `keel.bulb_flat` | 1.25 | bulb cross-section width / height |
 | `rudder.sweep` | 0.10 | rudder quarter-chord sweep (rad) |
 | `rig.mast_chord` | 0.0105 · mast_height + 0.02 | mast section fore-and-aft size (m) |

@@ -6,6 +6,8 @@ extends RefCounted
 const INK := Color("#06121B")
 const PAPER := Color("#F5F8FA")
 const MIST := Color(0.961, 0.973, 0.98, 0.66)
+## hud.md §16.2: the caps labels and captions, quieter than the values they name
+const LABEL := Color(0.961, 0.973, 0.98, 0.55)
 const HAIR := Color(0.961, 0.973, 0.98, 0.42)
 const MARK := Color("#FFD23F")
 const GHOST := Color(0.961, 0.973, 0.98, 0.35)

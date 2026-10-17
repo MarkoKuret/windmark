@@ -68,7 +68,7 @@ LOOK_DEFAULTS = {
     "code_zero": {"fill_gain": 0.7, "fill_curve": 1.3, "flutter_amp": 0.08, "twist_top": 0.140, "camber": 0.12},
     "spinnaker_asym": {"fill_gain": 1.0, "fill_curve": 1.0, "flutter_amp": 1.0, "twist_top": 0.45, "camber": 0.27,
                        "tack_line_max": 0.0},
-    "spinnaker_sym": {"fill_gain": 1.5, "fill_curve": 1.5, "flutter_amp": 1.0, "twist_top": 0.0, "camber": 0.26},
+    "spinnaker_sym": {"fill_gain": 1.5, "fill_curve": 1.5, "flutter_amp": 1.0, "twist_top": 0.0, "camber": 0.30},
 }
 
 

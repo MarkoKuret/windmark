@@ -105,6 +105,7 @@ class SailShape : public godot::RefCounted {
              float base, const godot::Vector3& hd) const;
   void spread(std::vector<float>& d) const;
   void push(float awa, const godot::Vector3& hd);
+  void stay();
   void encode();
 
   int rows_ = 0, cols_ = 0, n_ = 0;
@@ -115,6 +116,9 @@ class SailShape : public godot::RefCounted {
   float furl_radius_ = 0.05f;
   float clearance_ = 0.0f, ease_ = 0.0f;
   bool has_mast_head_ = false;
+  bool has_stay_ = false;  // §7.4 a flying sail on a pole: the forestay (tack fitting, hounds), half width, margin
+  godot::Vector3 stay0_, stay1_;
+  float stay_w_ = 0.0f, stay_c_ = 0.0f;
   godot::Vector3 mast_head_;
   std::vector<godot::Ref<SailShape>> obs_;
   std::vector<Section> secs_;

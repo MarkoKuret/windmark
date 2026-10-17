@@ -5,6 +5,10 @@
 //   windmark_race_trace full [--seed S] [--out FILE]               the scripted six-boat race of the full-race tests
 //   windmark_race_trace ai --profile [--boats N]                   per-tick cost, split by how bunched the fleet is
 //   windmark_race_trace ai --telemetry FILE                        a per-boat CSV of the AI fleet every 0.5 s
+//   windmark_race_trace ai --course FILE --class ID [--wind KN] [--from RAD]
+//                                                                  the AI fleet, one class, on any course file and
+//                                                                  its venue (oscillating shifts); prints each
+//                                                                  boat's place and elapsed time
 //
 // The telemetry CSV (for finding where a boat loses time): race time, boat, class, level, next step, rank,
 // position, heading, speed and polar target, true wind angle and speed at the boat, heel and its target, the
@@ -52,7 +56,40 @@ struct Options {
   const char* out = nullptr;
   bool profile = false;
   const char* telemetry = nullptr;
+  std::string course;     // --course: a course file instead of the fleet race's (ai mode)
+  std::string cls;        // --class: every boat of this class (with --course)
+  float wind_kn = 11.0f;  // --wind (with --course)
+  float from = 0.0f;      // --from, rad (with --course)
 };
+
+// The AI fleet (levels in turn) on any course file, on its own venue, all boats of one class, steady wind with
+// oscillating shifts and puffs.
+struct CourseRace {
+  wm::VenueData venue;
+  wm::PerfData perf;
+  wm::CourseData course;
+};
+
+std::unique_ptr<wm::World> course_world(const Options& o, const CourseRace& d, wm::AiSkippers& ai,
+                                        std::string& error) {
+  wm::WorldSetup s;
+  s.venue = &d.venue;
+  s.race_seed = o.seed;
+  s.wind.base_speed = o.wind_kn * wm::KNOT;
+  s.wind.base_from = o.from;
+  wm::apply_shift_preset(s.wind, wm::ShiftPreset::oscillating);
+  s.race.free_sailing_s = 10.0f;
+  auto w = std::make_unique<wm::World>(s);
+  for (int i = 0; i < o.boats; ++i) {
+    if (w->add_boat(wm::ai_entry(&d.perf, wm_test::AiFleetRace::level(i))) != i) {
+      error = "add_boat failed";
+      return nullptr;
+    }
+  }
+  if (!w->create_race(d.course, error)) return nullptr;
+  for (int i = 0; i < o.boats; ++i) ai.add(i, wm_test::AiFleetRace::level(i));
+  return w;
+}
 
 std::unique_ptr<wm::World> full_world(const Options& o, const wm_test::AiFleetRace& data) {
   wm::WorldSetup s;
@@ -118,6 +155,14 @@ int main(int argc, char** argv) {
       o.profile = true;
     } else if (a == "--telemetry") {
       o.telemetry = next();
+    } else if (a == "--course") {
+      o.course = next();
+    } else if (a == "--class") {
+      o.cls = next();
+    } else if (a == "--wind") {
+      o.wind_kn = std::strtof(next(), nullptr);
+    } else if (a == "--from") {
+      o.from = std::strtof(next(), nullptr);
     } else {
       die("unknown argument " + a);
     }
@@ -129,13 +174,27 @@ int main(int argc, char** argv) {
   wm_test::AiFleetRace data;
   std::string why;
   if (!data.load(why)) die(why);
+  CourseRace cr;
+  if (!o.course.empty()) {
+    if (o.mode != "ai") die("--course needs the ai race");
+    if (o.cls.empty()) die("--course needs --class");
+    wm::LoadError err;
+    const std::string dir = WINDMARK_DATA_DIR;
+    if (!wm::load_course(o.course, cr.course, err) ||
+        !wm::load_venue(dir + "/venues/" + cr.course.venue + ".venue.json", cr.venue, err) ||
+        !wm::load_perf(dir + "/perf/" + o.cls + ".perf.json", cr.perf, err)) {
+      die(err.message());
+    }
+  }
   wm::AiSkippers ai;
   wm_test::Pilot pilot(6);
   pilot.boat(1).early = true;
   pilot.boat(2).rogue_port = true;
   pilot.boat(3).leave_bounds_at = 20.0f;
   pilot.boat(3).exclusion = {245.0f, -250.0f};
-  std::unique_ptr<wm::World> w = o.mode == "ai" ? data.world(o.seed, o.boats, ai, why) : full_world(o, data);
+  std::unique_ptr<wm::World> w = o.mode != "ai"         ? full_world(o, data)
+                                 : !o.course.empty() ? course_world(o, cr, ai, why)
+                                                     : data.world(o.seed, o.boats, ai, why);
   if (w == nullptr) die(why);
   // The controller is timed on its own in a profile run.
   double ai_s = 0.0;
@@ -273,6 +332,14 @@ int main(int argc, char** argv) {
                "final checksum %016" PRIx64 "\n",
                o.mode.c_str(), o.seed, w->race().state() == wm::RaceState::closed ? "closed" : "NOT closed", w->tick(),
                finished, w->boat_count(), contacts, penalties, last);
+  if (!o.course.empty()) {
+    for (const wm::ResultRow& r : w->race().results()) {
+      const std::string_view code = wm::score_code_name(r.code);
+      std::fprintf(stderr, "  boat %d (%s, level %d): place %d %.*s, %.1f min\n", r.boat, o.cls.c_str(),
+                   static_cast<int>(wm_test::AiFleetRace::level(r.boat)), r.place, static_cast<int>(code.size()),
+                   code.data(), static_cast<double>(r.t_finish_us) / 60e6);
+    }
+  }
   if (o.profile) {
     std::fprintf(stderr, "per-tick cost by boats within 4 L_max (%.1f m) of a mark:\n", static_cast<double>(r_bunch));
     for (const auto& [near, b] : buckets) {

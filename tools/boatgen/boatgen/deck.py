@@ -53,6 +53,10 @@ class Deck:
         else:
             self.xk0 = self.xk1 = self.xc1
         self.margin = float(d["nonslip_margin"])
+        # raised cockpit coamings (data_format.md 3.7.4): the side deck rises to a flat top along the cockpit's edge
+        cm = d.get("coaming")
+        self.coaming = None if not cm else {"h": float(cm["height"]), "w": float(cm["width"]), "r": float(cm["ramp"]),
+                                            "aft": float(cm.get("fade_aft", 0.5)), "fwd": float(cm.get("fade_fwd", 0.4))}
         self.helm = self._helm() if d.get("steering") == "wheel" else None
 
     def _helm(self):
@@ -130,7 +134,28 @@ class Deck:
 
     def deck_z(self, x, y):
         bs = np.maximum(self.hull.bs(x), 1e-6)
+        z = self.hull.zs(x) + self.camber(x) * (1 - np.clip(np.abs(y) / bs, 0, 1) ** 2)
+        if self.coaming is None:
+            return z
+        return z + self.coaming_h(x, y)
+
+    def plain_deck_z(self, x, y):
+        """The deck without its coamings."""
+        bs = np.maximum(self.hull.bs(x), 1e-6)
         return self.hull.zs(x) + self.camber(x) * (1 - np.clip(np.abs(y) / bs, 0, 1) ** 2)
+
+    def coaming_h(self, x, y):
+        """Height of the coaming over the plain deck at (x, y): `height` over a flat top `width` wide outboard of the
+        cockpit's edge, then down a smooth ramp `ramp` wide to the side deck; fading to nothing toward the transom
+        (`fade_aft`) and toward the coachroof's aft face (`fade_fwd`). Zero inside the cockpit."""
+        c = self.coaming
+        x, y = np.broadcast_arrays(np.asarray(x, dtype=np.float64), np.asarray(y, dtype=np.float64))
+        sm = lambda t: (lambda u: u * u * (3 - 2 * u))(np.clip(t, 0.0, 1.0))
+        d = np.abs(y) - self.ck_frac * self.hull.bs(np.clip(x, self.xc0, self.xc1))
+        prof = np.where(d < -1e-9, 0.0, 1.0 - sm((d - c["w"]) / c["r"]))
+        env = sm((x - self.xc0) / max(c["aft"], 1e-6)) * (1.0 - sm((x - (self.xc1 - c["fwd"])) / max(c["fwd"], 1e-6)))
+        env = np.where((x >= self.xc0) & (x <= self.xc1), env, 0.0)
+        return c["h"] * env * prof
 
     def deck_normal(self, x, y, h=1e-3):
         x, y = float(x), float(y)
@@ -403,6 +428,8 @@ class Deck:
 
     # ------------------------------------------------------------------------------------------------------
     def build(self, n_out=9, n_st=90, skin=(18, 13), lite=0):
+        if self.coaming is not None:
+            n_out = max(n_out, 18)
         """Deck part; `n_st` deck stations (plus the feature breaks) and the hull skin's girth counts `skin`
         (the transom face must meet the skin) set the level of detail. `lite` 1 (the game's LOD0) keeps the coaming
         bevels and trims with plainer sections, 2 (LOD1) leaves the bevels and the rub strake out."""
@@ -437,6 +464,20 @@ class Deck:
         S[:, 1] = a
         S[:, -2] = 1 - a
         S[:, 2:-2] = a[:, None] + (1 - 2 * a[:, None]) * ((np.arange(2, n_out - 1) - 1) / (n_out - 2))[None, :]
+        if self.coaming is not None:
+            # columns over the coaming: its flat top and its ramp (from the inner edge outward), the rest of the side
+            # deck evenly between the margins
+            c = self.coaming
+            dz = np.concatenate([np.linspace(0.0, c["w"], 4)[1:], c["w"] + c["r"] * np.linspace(0.0, 1.0, 7)[1:]])
+            n_in = len(dz)
+            # where the side deck is narrower than the coaming (forward, aft of the transom fade) the columns squeeze
+            room = (1 - 2 * a) * span * 0.85
+            k = np.minimum(1.0, room / dz[-1])
+            S_in = 1 - (dz[None, :] * k[:, None]) / span[:, None]          # from the inner edge outward
+            S_in = np.minimum(S_in, (1 - a - 1e-3)[:, None])
+            k_out = n_out - 3 - n_in                                     # even columns outboard of the coaming
+            S_out = a[:, None] + (S_in[:, -1:] - a[:, None]) * (np.arange(1, k_out + 1) / (k_out + 1))[None, :]
+            S[:, 2:-2] = np.sort(np.concatenate([S_out, S_in[:, ::-1]], 1), 1)
         Y = bs[:, None] - S * span[:, None]
         X = np.broadcast_to(xs[:, None], Y.shape)
         Z = self.deck_z(X, Y)

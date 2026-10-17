@@ -35,7 +35,7 @@ controls, the cameras, the minimal HUD, the audio and a sail test scene that put
 ## Boat import test
 
 ```
-game/tests/run_boat_import_test.sh           # generate wm12, wm7 and wm16, import, test
+game/tests/run_boat_import_test.sh           # generate every shipped class, import, test
 game/tests/run_boat_import_test.sh --no-gen  # reuse the GLBs already in game/generated/boats
 ```
 
@@ -202,7 +202,7 @@ starts. The prefetch and the spreading are on while the scene processes itself (
 - **Simulation** (`sim_kind`): `AUTO` (the default) runs the core through `CoreSimSource` when the GDExtension is
   loaded and `FakeSim` otherwise; `CORE` and `FAKE` force one. On the core the scene is free sailing without a race
   (`create(venue)`, `add_entry`, `place_boat` at `start_x`, `start_y`, `start_twa_deg` off the wind) on
-  `practice_waters`, one `class_id` boat (`wm7`, or `wm12`), with the wind of `wind_speed_kn`, `wind_from_deg`,
+  `practice_waters`, one `class_id` boat (`wm7`, `wm10` or `wm12`), with the wind of `wind_speed_kn`, `wind_from_deg`,
   `puffs`, `shift_preset` and `world_seed`. The Sea's source is a `CoreEnvSource`, its clock the core's
   `render_time_ms`, the wakes `CoreSimSource.wake_state`, so the puffs drawn are the ones the boat sails in.
 - **Boat** (`BoatView`): the node at the render pose (`conventions.md` §11), the rudder (with the tiller it

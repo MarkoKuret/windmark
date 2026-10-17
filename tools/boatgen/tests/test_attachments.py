@@ -32,6 +32,8 @@ REQUIRED = [
 ]
 REQUIRED_TILLER = [("tiller", "tiller_socket"), ("tiller_socket", "rudder_head"), ("tiller_bolt", "rudder_head"),
                    ("rudder_head", "rudder"), ("pintle_strap_0", "gudgeon_0"), ("gudgeon_plate_0", "deck")]
+REQUIRED_SPADE_TILLER = [("tiller", "tiller_socket"), ("tiller_socket", "tiller_stock"), ("tiller_stock", "rudder_bearing"),
+                         ("rudder_bearing", "deck"), ("rudder_stock", "hull")]
 REQUIRED_WHEEL = [("wheel", "wheel_shaft"), ("pedestal", "deck"), ("rudder_bearing", "deck"), ("rudder_stock", "hull")]
 REQUIRED_BACKSTAY = [("backstay_a", "crane")]
 REQUIRED_BACKSTAY_SPLIT = [("backstay_b", "backstay_split"), ("backstay_leg_port_b", "screw_backstay_port"),
@@ -59,7 +61,7 @@ class AttachmentTest(unittest.TestCase):
     def setUpClass(cls):
         np.seterr(all="ignore")
         cls.boats = {cid: _boat(cid)
-                     for cid in ("wm7", "wm12", "wm16", "wm21")}
+                     for cid in ("wm7", "wm12", "wm16", "wm21", "wm10")}
         cls.gaps = {cid: b.attachment_gaps() for cid, b in cls.boats.items()}
 
     def test_no_gaps(self):
@@ -102,7 +104,7 @@ class LifelineTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         np.seterr(all="ignore")
-        cls.boats = {cid: _boat(cid) for cid in ("wm7", "wm12", "wm16", "wm21")}
+        cls.boats = {cid: _boat(cid) for cid in ("wm7", "wm12", "wm16", "wm21", "wm10")}
 
     def _recs(self):
         for cid, boat in self.boats.items():
@@ -173,7 +175,7 @@ class RopeLeadTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         np.seterr(all="ignore")
-        cls.boats = {cid: _boat(cid) for cid in ("wm7", "wm12", "wm16", "wm21")}
+        cls.boats = {cid: _boat(cid) for cid in ("wm7", "wm12", "wm16", "wm21", "wm10")}
 
     def test_leads_lie_on_the_deck(self):
         from boatgen.attach import _point_tri_dist

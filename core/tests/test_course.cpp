@@ -100,6 +100,36 @@ TEST_CASE("course: the example course loads and validates for every wind directi
   }
 }
 
+TEST_CASE("course: the round-the-island course leaves the island to port") {
+  wm::CourseData c;
+  wm::LoadError err;
+  REQUIRE_MESSAGE(wm::load_course(kCourses + "/practice_waters/island_port.course.json", c, err), err.message());
+  CHECK(c.venue == "practice_waters");
+  CHECK(c.frame == wm::CourseFrame::world);
+  std::vector<std::string> warnings;
+  CHECK_MESSAGE(wm::validate_course(c, bay(), {12.0f, 12}, warnings, err), err.message());
+  CHECK(warnings.empty());  // no leg crosses the island
+  for (const std::string& w : warnings) MESSAGE("warning: ", w);
+
+  // courses.md §4.1: the marks off the island, each rounded to port, put the island inside the loop the course
+  // sails anticlockwise (start, e, n, w, finish): every point of the island is wound once, positive.
+  wm::ResolvedCourse rc;
+  wm::resolve_course(c, 0.0f, 1.0f, rc);
+  REQUIRE(rc.steps.size() == 5);
+  for (std::size_t i = 1; i + 1 < rc.steps.size(); ++i) CHECK(rc.steps[i].sides[0] == wm::Side::port);
+  const auto winding = [&](wm::Vec2 p) {
+    double a = 0.0;
+    for (std::size_t i = 0; i < rc.steps.size(); ++i) {
+      const wm::Vec2 u = rc.steps[i].ref, v = rc.steps[(i + 1) % rc.steps.size()].ref;
+      a += std::atan2(static_cast<double>((u.x - p.x) * (v.y - p.y) - (u.y - p.y) * (v.x - p.x)),
+                      static_cast<double>((u.x - p.x) * (v.x - p.x) + (u.y - p.y) * (v.y - p.y)));
+    }
+    return a / (2.0 * 3.14159265358979);
+  };
+  REQUIRE(bay().land.size() == 1);
+  for (const wm::Vec2& q : bay().land[0].points) CHECK(winding(q) == doctest::Approx(1.0));
+}
+
 TEST_CASE("course: the Garda course validates on its venue for every wind direction") {
   wm::VenueData garda;
   wm::LoadError err;
@@ -374,7 +404,17 @@ TEST_CASE("course: geometry refusals") {
       {"id": "w", "type": "buoy", "at": {"x": 0, "y": 2400}},
       {"id": "g1", "type": "buoy", "at": {"x": 30, "y": 100}},
       {"id": "g2", "type": "buoy", "at": {"x": -30, "y": 100}}])";
-    CHECK(geometry_fails("mark on the island", p.text(), "outside the venue bounds"));
+    CHECK(geometry_fails("mark on the island", p.text(), "is on land"));
+  }
+  {
+    Parts p;
+    p.marks = R"([
+      {"id": "rc", "type": "committee_boat", "at": {"x": 100, "y": 0}, "heading": 0},
+      {"id": "pin", "type": "buoy", "at": {"x": -100, "y": 0}},
+      {"id": "w", "type": "buoy", "at": {"x": 0, "y": 3600}},
+      {"id": "g1", "type": "buoy", "at": {"x": 30, "y": 100}},
+      {"id": "g2", "type": "buoy", "at": {"x": -30, "y": 100}}])";
+    CHECK(geometry_fails("mark beyond the island", p.text(), "outside the venue bounds"));
   }
   {
     Parts p;

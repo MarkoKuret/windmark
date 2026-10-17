@@ -64,7 +64,9 @@ fleet race by how many boats are near a mark. `windmark_race_trace ai --seed S -
 every boat of the AI fleet race every 0.5 s (leg, position, speed and target, wind, heel, front sail and sail
 changes, the AI's tactic, leg type, target heading and last manoeuvre reason, penalties and penalty turns, race
 status), the rules events and each boat's splits with the distance still to sail at the close: the tool for finding
-where a boat loses time.
+where a boat loses time. `windmark_race_trace ai --course FILE --class ID [--wind KN] [--from RAD] [--boats N]` races the AI
+fleet of one class on any course file and its venue and prints every boat's place and elapsed time (the
+round-the-island course: `game/data/courses/practice_waters/island_port.course.json`).
 
 ## Float rules
 

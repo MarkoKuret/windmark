@@ -97,6 +97,9 @@ How the images lie:
   blue channel is the non-slip mask**: 255 where the moulded non-slip pattern is, 0 on smooth gelcoat, in between a
   worn pattern; paint it together with the albedo (non-slip grey `deck.nonslip`, gelcoat `deck.gelcoat`) so the
   game's tiling relief matches. Hardware is not in the image, only its traces: pads, sealant beads, scuffs.
+  With `deck.teak` in the livery (opt-in, wm9) the bake lays teak planks with dark caulked seams instead of the
+  non-slip: along the sheer on the deck, nibbed into a king plank on the centreline, fore and aft on the cockpit
+  sole and the coachroof top; the non-slip mask is 0 there, so the planks carry their own relief.
 - **Sails**: each sail flat, the luff straight up the left edge (the sailmaker's view from port), head at the top.
   The starboard image is the same sail seen from the other side (luff on the right). Cloth, seams and patches must
   match between the two; the insignia and tell-tales are each side's own. Leave the **number slots** clear (below

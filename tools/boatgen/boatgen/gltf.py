@@ -126,7 +126,7 @@ def atlas_slot(node, mat):
         return SLOT_ID["deck_" + mat]
     if node == "keel" and mat == "antifouling":
         return SLOT_ID["keel"]
-    if node == "rudder" and mat == "antifouling":
+    if node in ("rudder", "rudder_port", "rudder_starboard") and mat == "antifouling":
         return SLOT_ID["rudder"]
     return SLOT_ID[mat]
 

@@ -54,6 +54,9 @@ def render_all(boat, out_dir, preview_dir, size=(1600, 1000), log=print):
     shot("mastbase", eye=orbit(t, 0.17 * L, -130, 20), target=t - [0, 0.2 * (L / 12) ** 0.5, 0], fov=44)
     t = np.array([0.0, 0.55 * boat.cls["hull"]["freeboard"], L - ox - 0.12 * L])
     shot("bow", eye=orbit(t, 0.38 * L, -35, 20), target=t, fov=44, water=False, ground=True)
+    # stern: dry and low from the starboard quarter (transom, run, rudders)
+    t = np.array([0.0, -0.15 * boat.cls["hull"]["freeboard"], -ox + 0.2 * L])
+    shot("stern", eye=orbit(t, 0.75 * L, -150, 6), target=t, fov=44, water=False, ground=True)
     # 3. profile: the model as exported (flat standard sails), dry, from starboard
     r.load(glb, hide=tuple(f"sail_{sid}" for sid, s in boat.sails.items() if s.type not in ("main", "jib", "genoa")),
            battened=bat)

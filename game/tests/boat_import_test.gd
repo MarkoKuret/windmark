@@ -345,7 +345,9 @@ func _test_axes(boat: Dictionary, parts: Dictionary) -> void:
 	_check(h.end.y > 0.3, "sheer above the DWL (%.3f)" % h.end.y)
 	# Appendages and rig: total draft and masthead height set the vertical scale.
 	_near(_part_aabb(root, "keel").position.y, -float(boat["keel"]["depth"]), 0.02, "keel bottom at -keel.depth")
-	_near(_mesh_aabb(parts["rudder"]).position.y, -float(boat["rudder"]["depth"]), 0.02, "rudder tip at -rudder.depth")
+	# twin rudders (rudder.count 2): each blade on its own node, the tiller alone in `rudder`
+	for rn in (["rudder_port", "rudder_starboard"] if int(boat["rudder"].get("count", 1)) == 2 else ["rudder"]):
+		_near(_mesh_aabb(parts[rn]).position.y, -float(boat["rudder"]["depth"]), 0.02, "%s tip at -rudder.depth" % rn)
 	# The masthead carries a wind wand up to about 1 m above mast_height.
 	var mast_top := _part_aabb(root, "mast").end.y
 	var mh := float(boat["rig"]["mast_height"])
@@ -426,16 +428,27 @@ func _test_pivots(side: Dictionary, parts: Dictionary) -> void:
 	var rig: Dictionary = side["rig"]
 	var pivots := {"rudder": "rudder_stock", "boom": "boom_pivot", "wheel": "wheel_hub", "wheel_2": "wheel_hubs",
 		"pole": "pole_pivot"}
+	var blades := {}                                  # twin rudders: node -> its stock (rig.rudders)
+	for r in rig.get("rudders", []):
+		blades[String(r["node"])] = r["stock"]
 	for node in side["model"]["pivots"]:
-		if not _check(pivots.has(node) and parts.has(node), "pivot node %s is known and present" % node):
+		if not _check((pivots.has(node) or blades.has(node)) and parts.has(node), "pivot node %s is known and present" % node):
 			continue
 		var mi: MeshInstance3D = parts[node]
 		# twin wheels (data_format.md §3.7.3): the second wheel's hub is the second of rig.wheel_hubs
-		var at: Variant = rig[pivots[node]][1] if node == "wheel_2" else rig[pivots[node]]
+		var at: Variant = blades[node] if blades.has(node) else (rig[pivots[node]][1] if node == "wheel_2" else rig[pivots[node]])
 		_near_v(mi.position, _body_to_model(at), POS_TOL, "%s pivot" % node)
 		var local := mi.mesh.get_aabb()
 		print("  %s pivot %s, local aabb %s .. %s" % [node, mi.position, local.position, local.end])
 		match node:
+			"rudder_port", "rudder_starboard":
+				# Each twin blade hangs below its own stock, the axis through its top.
+				_check(local.position.x < 0.0 and local.end.x > 0.0 and local.position.z < 0.0 and local.end.z > 0.0,
+					"%s: its stock axis passes through the blade top" % node)
+				_check(local.position.y < -0.3, "%s hangs below its pivot" % node)
+			"rudder" when not blades.is_empty():
+				# Twin rudders: the tiller alone, forward from its stock on the centreline.
+				_check(local.end.z > 0.5 and local.position.y > -0.3, "the tiller runs forward from its stock")
 			"rudder":
 				# The stock (turning axis, local Y) runs through the blade.
 				_check(local.position.x < 0.0 and local.end.x > 0.0 and local.position.z < 0.0 and local.end.z > 0.0,

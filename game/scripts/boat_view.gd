@@ -93,6 +93,10 @@ var boom_angle := 0.0
 var _rudder: Node3D
 var _rudder_rest := Transform3D.IDENTITY
 var _rudder_axis := Vector3.UP
+## twin rudders: each blade's node name -> its stock axis (model frame), from the sidecar's `rig.rudders`; the blades
+## of the shown level, [{"node", "rest", "axis"}], turn with the helm like the rudder node
+var _blade_axes := {}
+var _blades: Array = []
 var _wheel: Node3D
 var _wheel_rest := Transform3D.IDENTITY
 ## the second wheel of a twin-wheel class (data_format.md §3.7.3), null on the others
@@ -109,6 +113,10 @@ var _pole_rest := Transform3D.IDENTITY
 var _pole_axis := Vector3.UP
 var _mast_step := Vector3.ZERO
 var _mast_head := Vector3.ZERO
+## the forestay, tack fitting and hounds (model axes), for a flying sail on a pole (sail_visuals.md §7.4)
+var _stay0 := Vector3.ZERO
+var _stay1 := Vector3.ZERO
+var _has_stay := false
 var _mast_axis := Vector3.UP
 ## §7.5 the flying sails' sheet lead block on starboard (model axes; the sidecar's rig.sheet_leads.flying.lead)
 var _flying_lead := Vector3.ZERO
@@ -280,10 +288,13 @@ func _find_parts() -> void:
 	var sail_names := {}
 	for s in info.physics.get("sails", {}).values():
 		sail_names[String(s.get("node", ""))] = true
+	for r in rig.get("rudders", []):
+		_blade_axes[String(r["node"])] = Frames.body_to_model(_vec(r["axis"])).normalized()
 	for lv in levels:
 		_level_parts(lv, sail_names)
 	_rudder = levels[0]["rudder"]
 	_rudder_rest = levels[0]["rudder_rest"]
+	_blades = levels[0]["blades"]
 	if rig.has("rudder_axis"):
 		_rudder_axis = Frames.body_to_model(_vec(rig["rudder_axis"])).normalized()
 	_wheel = levels[0]["wheel"]
@@ -304,6 +315,10 @@ func _find_parts() -> void:
 		_mast_step = Frames.body_to_model(_vec(rig["mast_step"]))
 		_mast_head = Frames.body_to_model(_vec(rig["masthead"]))
 		_mast_axis = (_mast_head - _mast_step).normalized()
+	if rig.has("forestay_tack") and rig.has("hounds"):  # §7.4: a kite on a pole flies forward of the forestay
+		_stay0 = Frames.body_to_model(_vec(rig["forestay_tack"]))
+		_stay1 = Frames.body_to_model(_vec(rig["hounds"]))
+		_has_stay = true
 	if rig.has("sheet_leads") and rig["sheet_leads"] is Dictionary and rig["sheet_leads"].has("flying"):
 		_flying_lead = Frames.body_to_model(_vec(rig["sheet_leads"]["flying"]["lead"]))
 		_has_flying_lead = true
@@ -379,6 +394,12 @@ func _level_parts(lv: Dictionary, sail_names: Dictionary) -> void:
 		var n := m.find_child(k, true, false) as Node3D
 		lv[k] = n
 		lv[k + "_rest"] = n.transform if n else Transform3D.IDENTITY
+	var blades := []
+	for k: String in _blade_axes:
+		var b := m.find_child(k, true, false) as Node3D
+		if b:
+			blades.append({"node": b, "rest": b.transform, "axis": _blade_axes[k]})
+	lv["blades"] = blades
 	lv["sheet"] = _find_sheet(m)
 
 
@@ -458,6 +479,7 @@ func _show_level(k: int) -> void:
 	_apply_casting()
 	_rudder = lv["rudder"]
 	_rudder_rest = lv["rudder_rest"]
+	_blades = lv["blades"]
 	_wheel = lv["wheel"]
 	_wheel_rest = lv["wheel_rest"]
 	_wheel2 = lv["wheel_2"]
@@ -468,8 +490,7 @@ func _show_level(k: int) -> void:
 	_pole_rest = lv["pole_rest"]
 	_use_sheet(lv["sheet"])
 	# the moving parts of the level coming in, at once
-	if _rudder:
-		_rudder.transform = _rudder_rest * Transform3D(Basis(_rudder_axis, _helm * _rudder_max), Vector3.ZERO)
+	_turn_rudders(_helm)
 	if _wheel:
 		_wheel.transform = _wheel_rest * Transform3D(Basis(_wheel_axis, _helm * PI), Vector3.ZERO)
 	if _wheel2:
@@ -632,13 +653,21 @@ static func _about(p: Vector3, axis: Vector3, angle: float) -> Transform3D:
 	return Transform3D(b, p - b * p)
 
 
+## The rudder node (blade and tiller, or the tiller alone) and any twin blades turned to helm h: +h * rudder_max
+## about each one's own upward stock axis.
+func _turn_rudders(h: float) -> void:
+	if _rudder:
+		_rudder.transform = _rudder_rest * Transform3D(Basis(_rudder_axis, h * _rudder_max), Vector3.ZERO)
+	for b: Dictionary in _blades:
+		(b["node"] as Node3D).transform = (b["rest"] as Transform3D) * Transform3D(Basis(b["axis"], h * _rudder_max), Vector3.ZERO)
+
+
 func apply(p: SimSource.RenderPose) -> void:
 	transform = Frames.boat_transform(p.pos_x, p.pos_y, p.z, p.psi, p.theta, p.phi)
 	_helm = p.h
 	# helm h > 0 turns the bow to starboard: the blade's trailing edge swings to starboard (model -X) and a tiller
 	# on the stock to port, a turn of +h * rudder_max about the upward stock axis
-	if _rudder:
-		_rudder.transform = _rudder_rest * Transform3D(Basis(_rudder_axis, p.h * _rudder_max), Vector3.ZERO)
+	_turn_rudders(p.h)
 	if _wheel:
 		_wheel.transform = _wheel_rest * Transform3D(Basis(_wheel_axis, p.h * PI), Vector3.ZERO)
 	if _wheel2:
@@ -774,7 +803,7 @@ func _shape_params(sp: SailPart, look: Dictionary, furling: bool) -> Dictionary:
 			"tack_line_max": 0.0}
 	elif t == "spinnaker_sym":
 		kind = SailShapeRef.Kind.SYM
-		d = {"fill_gain": 1.5, "fill_curve": 1.5, "flutter_amp": 1.0, "twist_top": 0.0, "camber": 0.26}
+		d = {"fill_gain": 1.5, "fill_curve": 1.5, "flutter_amp": 1.0, "twist_top": 0.0, "camber": 0.30}
 	var loa := info.loa
 	d["flutter_rate"] = 0.6 + 2.4 * clampf((12.0 - loa) / 5.0, 0.0, 1.0)
 	d["flutter_rate_max"] = 9.0 + clampf((loa - 7.0) / 5.0, 0.0, 1.0)
@@ -801,6 +830,9 @@ func _shape_params(sp: SailPart, look: Dictionary, furling: bool) -> Dictionary:
 		p["mast_head"] = _mast_head
 		if _has_flying_lead:  # §7.5, §7.6 its sheet's lead block
 			p["sheet_lead"] = _flying_lead
+		if _has_stay and sp.mode == Mode.POLE:  # §7.4 forward of the forestay
+			p["forestay_tack"] = _stay0
+			p["hounds"] = _stay1
 	return p
 
 

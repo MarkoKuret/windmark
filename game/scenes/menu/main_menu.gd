@@ -1,9 +1,12 @@
 class_name MainMenu
 extends Control
-## The main menu (menus.md §1): Quick race, Free sail, Settings, Quit on the left, the chosen page on a cloth
-## panel on the right (under them in a portrait window, the capture preset of menus.md §3). Start writes
-## GameSetup.current() and changes to the sail scene (with the fade of menus.md §5). `open_on` opens a page when the
-## menu starts (the results screen's Change setup: the race card with the setup it remembered).
+## The main menu (menus.md §1): the wordmark top-left, the menu card (Continue, Race, Free sail, Settings, Quit,
+## each with its hint) bottom-left, the chosen page on a cloth panel on the right (under the wordmark in a portrait
+## window, the capture preset of menus.md §3) with the card hidden while it shows. Race and Free sail are the
+## stepped setup of menus.md §1.1 (SetupPanel); on its Boat step the page is narrow and the stage shows the chosen
+## class (MenuStage, menus.md §4.1). Start writes GameSetup.current() and changes to the sail scene (with the fade
+## of menus.md §5). `open_on` opens a page when the menu starts (the results screen's Change setup: the race setup
+## with the setup it remembered).
 
 signal scene_requested(path: String)
 
@@ -12,6 +15,11 @@ const SAIL_SCENE := "res://scenes/sail_test.tscn"
 const WORDMARK_SCENE := "res://scenes/menu/wordmark.tscn"
 ## the space round the menu, px
 const MARGIN := 40
+## the items and their hints (menus.md §1); Continue's hint is what it starts
+const ITEMS := [["continue", "Continue", ""], ["quick", "Race", "Pick a boat and a venue, race the fleet"],
+	["free", "Free sail", "Sail on your own: no fleet, no clock"],
+	["settings", "Settings", "Controls, cameras, HUD, graphics, audio"], ["quit", "Quit", ""]]
+const KEY_LINE := "Arrows choose · Enter or A select · Esc or B back"
 
 ## the page to open when the menu starts next ("quick": the race card), cleared when it has; "" none
 static var open_on := ""
@@ -46,6 +54,7 @@ var _opener: Control
 var _left: Control
 var _row: BoxContainer
 var _mark: Control
+var _card: PanelContainer
 
 
 func _ready() -> void:
@@ -55,6 +64,7 @@ func _ready() -> void:
 	settings.apply_display(get_tree().root)
 	settings.apply_audio()
 	settings.apply_bindings()
+	MenuTheme.ensure_pad_actions()
 	backdrop = MenuBackdrop.new()
 	backdrop.name = "Backdrop"
 	if live_backdrop:
@@ -99,25 +109,38 @@ func _ready() -> void:
 	var card := PanelContainer.new()
 	card.name = "Menu"
 	left.add_child(card)
+	_card = card
 	var list := VBoxContainer.new()
-	list.add_theme_constant_override("separation", 4)
+	list.add_theme_constant_override("separation", 2)
 	card.add_child(list)
-	for e in [["continue", "Continue"], ["quick", "Quick race"], ["free", "Free sail"], ["settings", "Settings"],
-			["quit", "Quit"]]:
+	for e in ITEMS:
 		var b := MenuTheme.button(e[1], MenuTheme.ITEM_SIZE)
-		b.name = e[1].replace(" ", "")
+		b.name = String(e[1]).replace(" ", "")
 		var id: String = e[0]
 		b.pressed.connect(func() -> void: _pressed(id))
 		list.add_child(b)
 		buttons[id] = b
-		if id == "continue":
-			continue_line = MenuTheme.label("", MenuTheme.SMALL_SIZE - 1, MenuTheme.MUTED, 600)
-			continue_line.name = "ContinueLine"
+		if e[2] != "" or id == "continue":
+			# the hint under the item (menus.md §1): what it does, or what Continue starts
+			var hint := MenuTheme.label(e[2], MenuTheme.SMALL_SIZE, MenuTheme.MUTED, 500)
+			hint.name = "Hint_" + id
 			var pad := MarginContainer.new()
+			pad.name = "HintPad_" + id
 			pad.add_theme_constant_override("margin_left", int(MenuTheme.ITEM_PAD.x))
-			pad.add_theme_constant_override("margin_bottom", 8)
-			pad.add_child(continue_line)
+			pad.add_theme_constant_override("margin_top", -8)
+			pad.add_theme_constant_override("margin_bottom", 4)
+			pad.add_child(hint)
 			list.add_child(pad)
+			if id == "continue":
+				continue_line = hint
+	var keys := MenuTheme.label(KEY_LINE, MenuTheme.SMALL_SIZE - 2, Color(MenuTheme.MUTED, 0.8), 500)
+	keys.name = "KeyLine"
+	var kpad := MarginContainer.new()
+	kpad.name = "KeyLinePad"
+	kpad.add_theme_constant_override("margin_left", int(MenuTheme.ITEM_PAD.x))
+	kpad.add_theme_constant_override("margin_top", 6)
+	kpad.add_child(keys)
+	list.add_child(kpad)
 	_refresh_continue()
 	var spacer2 := Control.new()
 	spacer2.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -131,7 +154,6 @@ func _ready() -> void:
 	_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_panel.visible = false
 	row.add_child(_panel)
-	_fit()
 	get_viewport().size_changed.connect(_fit)
 	quick = _setup_page(true)
 	free_sail = _setup_page(false)
@@ -140,6 +162,7 @@ func _ready() -> void:
 	settings_panel.changed.connect(_setting_changed)
 	settings_panel.closed.connect(close_page)
 	_add_page("settings", settings_panel)
+	_fit()
 	# the build in the bottom-right corner (menus.md §1)
 	version_label = MenuTheme.label(BuildInfo.text(), MenuTheme.SMALL_SIZE - 3, Color(1, 1, 1, 0.75), 600, 0.04)
 	version_label.name = "Version"
@@ -206,6 +229,8 @@ func _refresh_continue() -> void:
 	continue_line.get_parent().visible = ok
 	if ok:
 		continue_line.text = continue_text()
+	if _mark != null and _panel != null:
+		_fit()
 
 
 ## Whether the last remembered setup can start: a mode, and its class, venue (and course) still on disk.
@@ -221,12 +246,12 @@ func can_continue() -> bool:
 	return mode == "free" or MenuData.ids(MenuData.courses(ven, cls)).has(str(last.get("course", "")))
 
 
-## "Quick race · Practice Waters · 10 boats" or "Free sail · Practice Waters"
+## "Race · Practice Waters · 10 boats" or "Free sail · Practice Waters"
 func continue_text() -> String:
 	var last := settings.last_setup
 	var ven := MenuData.name_of(MenuData.venues(), str(last.get("venue", "")))
 	if str(last.get("mode", "")) == "race":
-		return "Quick race · %s · %d boats" % [ven, int(last.get("fleet_size", 10))]
+		return "Race · %s · %d boats" % [ven, int(last.get("fleet_size", 10))]
 	return "Free sail · %s" % ven
 
 
@@ -261,7 +286,8 @@ func continue_last() -> void:
 
 
 ## Menu beside the page, or above it in a portrait window (too narrow for both side by side); the logo scaled
-## down when the window is narrower than it and the margins (menus.md §1.2).
+## down when the window is narrower than it and the margins (menus.md §1.2); the page's width (menus.md §1):
+## narrow on the Boat step, else the room beside the logo up to SetupPanel.WIDE_MAX.
 func _fit() -> void:
 	var s := get_viewport_rect().size
 	_row.vertical = s.y > s.x
@@ -269,23 +295,102 @@ func _fit() -> void:
 	if mark == null:
 		return
 	var room := s.x - 2 * MARGIN
+	var sep := float(_row.get_theme_constant("separation"))
+	var pad := _panel.get_theme_stylebox("panel")
+	var pads := pad.get_content_margin(SIDE_LEFT) + pad.get_content_margin(SIDE_RIGHT)
 	if not _row.vertical:
-		# beside the page: leave the race card its two columns (§1.1) when that costs the logo at most 10 %
-		var pad := _panel.get_theme_stylebox("panel")
-		var beside := room - _row.get_theme_constant("separation") - SetupPanel.TWO_COLUMNS_MIN \
-			- pad.get_content_margin(SIDE_LEFT) - pad.get_content_margin(SIDE_RIGHT)
+		# beside the page: leave a wide page its two columns (§1.1) when that costs the logo at most 10 %
+		var beside := room - sep - SetupPanel.TWO_COLUMNS_MIN - pads
 		if beside >= mark.natural_size(roundi(0.9 * Wordmark.SIZE)).x:
 			room = minf(room, beside)
 	mark.fit_width(room)
+	_fit_card(s.y - 2 * MARGIN - mark.natural_size(mark.title_px).y - 3 * 4)
+	# the page: its width beside the logo (the left column, the logo's width, takes the rest while a page is
+	# open, so the page sits at the right edge), full width in portrait
+	var narrow := page_narrow()
+	if _row.vertical:
+		_panel.custom_minimum_size = Vector2(0, 0)
+		_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_panel.size_flags_vertical = Control.SIZE_SHRINK_BEGIN if narrow else Control.SIZE_EXPAND_FILL
+		_left.size_flags_horizontal = Control.SIZE_FILL
+		return
+	var left_w := maxf(_left.custom_minimum_size.x, mark.natural_size(mark.title_px).x)
+	var avail := s.x - 2 * MARGIN - left_w - sep
+	var want := minf(avail, SetupPanel.NARROW_W + pads if narrow else SetupPanel.WIDE_MAX + pads)
+	_panel.custom_minimum_size = Vector2(maxf(want, 0.0), 0)
+	_panel.size_flags_horizontal = Control.SIZE_FILL
+	_panel.size_flags_vertical = Control.SIZE_SHRINK_BEGIN if narrow else Control.SIZE_EXPAND_FILL
+	_left.size_flags_horizontal = Control.SIZE_EXPAND_FILL if page != "" else Control.SIZE_FILL
+
+
+## The hints and the key line show when the card fits under the logo (menus.md §1); on a short window (1280 x 800
+## at 130 %) the items alone.
+func _fit_card(avail: float) -> void:
+	_hints_visible(true)
+	if _card.get_combined_minimum_size().y > avail:
+		_hints_visible(false)
+
+
+func _hints_visible(on: bool) -> void:
+	for c in _card.get_child(0).get_children():
+		if String(c.name).begins_with("HintPad_") or c.name == "KeyLinePad":
+			c.visible = on and (c.name != "HintPad_continue" or buttons["continue"].visible)
+
+
+## Whether the hints show (tests).
+func hints_shown() -> bool:
+	return (_card.get_child(0).find_child("KeyLinePad", false, false) as Control).visible
+
+
+## Whether the page shown is narrow (the Boat step, menus.md §1).
+func page_narrow() -> bool:
+	if page == "quick":
+		return quick.narrow_page()
+	if page == "free":
+		return free_sail.narrow_page()
+	return false
+
+
+## The page's width as shown (tests).
+func page_width() -> float:
+	return _panel.size.x
 
 
 func _setup_page(race: bool) -> SetupPanel:
 	var p := SetupPanel.new()
 	p.build(race, settings.last_setup)
 	p.start_pressed.connect(func() -> void: start(p))
+	p.closed.connect(close_page)
+	p.step_changed.connect(func(_i: int) -> void: _step_changed(p))
+	p.boat_changed.connect(func(cls: String, lv: String) -> void: _boat_changed(p, cls, lv))
 	p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_add_page("quick" if race else "free", p)
 	return p
+
+
+## A setup page changed its step (menus.md §1.1): the page's width, and the showcase boat on the Boat step (§4.1).
+func _step_changed(p: SetupPanel) -> void:
+	if not p.visible:
+		return
+	_fit()
+	_showcase(p)
+
+
+func _boat_changed(p: SetupPanel, _cls: String, _lv: String) -> void:
+	if p.visible:
+		_showcase(p)
+
+
+## The stage shows the page's class on its Boat step, the fleet otherwise (menus.md §4.1).
+func _showcase(p: SetupPanel) -> void:
+	if stage == null:
+		return
+	if p != null and p.visible and p.step_id() == "boat":
+		stage.show_boat(str(p.rows["class_id"].value), str(p.rows["livery"].value))
+		stage.frame_x = (get_viewport_rect().size.x - _panel.custom_minimum_size.x - MARGIN) \
+			/ (2.0 * get_viewport_rect().size.x)
+	else:
+		stage.hide_boat()
 
 
 func _add_page(id: String, c: Control) -> void:
@@ -304,15 +409,22 @@ func _pressed(id: String) -> void:
 	open_page(id)
 
 
+## Opens a page (menus.md §1): the menu card hides, a setup page starts at its Boat step with the remembered setup.
 func open_page(id: String) -> void:
 	_opener = buttons.get(id)
 	page = id
 	_panel.visible = true
+	_card.visible = false
 	for k in pages:
 		pages[k].visible = k == id
-	if id != "settings":
-		(quick if id == "quick" else free_sail).load_from(settings.last_setup)
-	var first: Control = (quick if id == "quick" else free_sail if id == "free" else settings_panel).first_row()
+	var p: SetupPanel = quick if id == "quick" else free_sail if id == "free" else null
+	if p != null:
+		p.load_from(settings.last_setup)
+		p.go(0)
+	_fit()
+	if p != null:
+		_showcase(p)
+	var first: Control = p.first_row() if p != null else settings_panel.first_row()
 	if sounds != null:
 		sounds.quiet_next_focus()
 	first.grab_focus.call_deferred()
@@ -323,8 +435,11 @@ func close_page() -> void:
 		return
 	page = ""
 	_panel.visible = false
+	_card.visible = true
 	for k in pages:
 		pages[k].visible = false
+	_showcase(null)
+	_fit()
 	if _opener != null:
 		if sounds != null:
 			sounds.quiet_next_focus()
@@ -338,6 +453,10 @@ func _unhandled_input(e: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		if page == "settings":
 			settings_panel.close()
+		elif page == "quick":
+			quick.back()
+		elif page == "free":
+			free_sail.back()
 		else:
 			close_page()
 

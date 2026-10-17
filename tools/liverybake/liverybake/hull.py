@@ -65,7 +65,7 @@ def atlas(geo, W, H):
 
 
 # ----------------------------------------------------------------------------------------------------------------
-# hull graphic (data_format.md §8.2) as vinyl layers: [(coverage, colour)]
+# hull graphic (data_format.md §8.2) as vinyl layers: [(coverage, colour, index of the colour in `colors`)]
 
 def graphic_layers(gr, xf, d, th, px_g, px_x, L):
     t = d / th
@@ -80,14 +80,14 @@ def graphic_layers(gr, xf, d, th, px_g, px_x, L):
         lean = d / L                 # the ends' cut leans aft toward the boot stripe
         span = inside(f0 - lean - xf, pxx) * inside(xf - (f1 - lean), pxx)
         for k in range(min(len(cols), len(dep), len(wid))):
-            out.append((band(d - dep[k], 0.5 * wid[k], px_g) * span, cols[k]))
+            out.append((band(d - dep[k], 0.5 * wid[k], px_g) * span, cols[k], k))
     elif typ == "two_tone":
         split, rise, pin = gr.get("split", 0.45), gr.get("rise", -0.15), gr.get("pinstripe", 0.025)
         ds = (split + rise * (xf - 0.5)) * th
         if cols:
-            out.append((inside(ds - d, px_g), cols[0]))
+            out.append((inside(ds - d, px_g), cols[0], 0))
         if len(cols) > 1 and pin > 0:
-            out.append((band(d - ds, 0.5 * pin, px_g), cols[1]))
+            out.append((band(d - ds, 0.5 * pin, px_g), cols[1], 1))
     elif typ == "swoosh":
         a, f = gr.get("aft", [0.04, 0.8]), gr.get("fwd", [0.96, 0.1])
         wd = gr.get("width", [0.24, 0.03])
@@ -97,23 +97,115 @@ def graphic_layers(gr, xf, d, th, px_g, px_x, L):
         w = (wd[0] + (wd[1] - wd[0]) * sc) * smoothstep(0.0, 0.08, s) * (1 - smoothstep(0.97, 1.0, s))
         inx = ((s >= 0) & (s <= 1)).astype(F32)
         if cols:
-            out.append((band(d - dc, 0.5 * w, px_g) * inx, cols[0]))
+            out.append((band(d - dc, 0.5 * w, px_g) * inx, cols[0], 0))
         if len(cols) > 1:
             out.append((band(d - (dc - 0.5 * w - 0.03), 0.012 * np.minimum(1.0, w / 0.04), px_g) * inx
-                        * (w > 0.004), cols[1]))
+                        * (w > 0.004), cols[1], 1))
     elif typ == "gradient":
         f0, f1, sl = gr.get("from", 0.25), gr.get("to", 0.85), gr.get("slant", 0.12)
         xs_ = xf + sl * (1 - np.clip(t, 0, 1))
         if cols:
-            out.append((smoothstep(f0, f1, xs_), cols[0]))
+            out.append((smoothstep(f0, f1, xs_), cols[0], 0))
     elif typ == "bow":
         at, sl, ln = gr.get("at", 0.78), gr.get("slant", 0.10), gr.get("line", 0.03)
         xe = at - sl * np.clip(t, 0, 1)
         if cols:
-            out.append((inside(xe - xf, pxx), cols[0]))
+            out.append((inside(xe - xf, pxx), cols[0], 0))
         if len(cols) > 1 and ln > 0:
-            out.append((band((xf - xe) * L + 0.5 * ln + 0.02, 0.5 * ln, px_x), cols[1]))
+            out.append((band((xf - xe) * L + 0.5 * ln + 0.02, 0.5 * ln, px_x), cols[1], 1))
     return out
+
+
+# ----------------------------------------------------------------------------------------------------------------
+# colour masks of the staged atlas (data_format.md §8.5 "Staged boat atlas"), for the tinted liveries
+
+ZONE_ANTIFOULING, ZONE_BOOT, ZONE_GRAPHIC0, ZONE_GRAPHIC1 = 0, 1, 2, 3
+
+
+def _spread_zones(zone, paint):
+    """Each zone spread across the paint to the nearest zone texel (so a compressed block never mixes far-apart
+    zone values where the paint coverage is partial)."""
+    from scipy import ndimage
+    other = paint < 0.5
+    if not other.any():
+        return zone
+    idx = ndimage.distance_transform_edt(~other, return_distances=False, return_indices=True)
+    return zone[idx[0], idx[1]]
+
+
+def hull_masks(geo, lv, W, H):
+    """The colour masks of a livery's hull image at W x H: `paint`, the topsides paint coverage (1 on the paint,
+    name and number panels included, 0 on the graphic's vinyl, the boot stripe and the antifouling, fractional on
+    their edges), and `zone`, the colour zone of what is not paint (ZONE_ANTIFOULING, ZONE_BOOT, ZONE_GRAPHIC0,
+    ZONE_GRAPHIC1), spread across the paint. The same zones as bake_hull lays its colours."""
+    A = atlas(geo, W, H)
+    L = geo["L"]
+    x, g, px_x, px_g = A["x"], A["g"], A["px_x"], A["px_g"]
+    xf = x / L
+    d = A["gs"] - g
+    th = np.maximum(A["gs"] - A["gbt"], 0.05)
+    m_af = inside(g - A["gaf"], px_g)
+    m_below_bt = inside(g - A["gbt"], px_g)
+    m_bt = np.clip(m_below_bt - m_af, 0, 1)
+    m_top = 1.0 - m_below_bt
+    zone = np.where(m_af > 0.5, ZONE_ANTIFOULING, ZONE_BOOT).astype(np.uint8)
+    vinyl = np.zeros((H, W), F32)
+    for cov, _col, k in graphic_layers(lv["hull"].get("graphic") or {"type": "none"}, xf, d, th, px_g, px_x, L):
+        cov = cov * m_top
+        zone = np.where(cov > 0.5, ZONE_GRAPHIC0 + k, zone)
+        vinyl = np.maximum(vinyl, cov)
+    paint = np.clip(m_top * (1.0 - vinyl), 0, 1).astype(F32)
+    return {"paint": paint, "zone": _spread_zones(zone, paint)}
+
+
+def transom_masks(geo, lv, W, H):
+    """The colour masks of a livery's transom image at W x H (as hull_masks): the paint coverage and the zone of
+    the stripes' return, the boot stripe and the antifouling, as bake_transom lays them."""
+    T = geo["transom"]
+    h, top, bot = T["rect"]
+    px_y, px_z = 2 * h / W, (top - bot) / H
+    px = 0.5 * (px_y + px_z)
+    y1 = h - (np.arange(W) + 0.5) * px_y
+    z1 = top - (np.arange(H) + 0.5) * px_z
+    Yv = np.broadcast_to(y1[None, :], (H, W)).astype(F32)
+    Z = np.broadcast_to(z1[:, None], (H, W)).astype(F32)
+    ay = np.abs(Yv)
+    z_af, z_bt = geo["boot_top"]
+    yc, bs, zf = T["yc"], T["bs"], T["floor_z"]
+    is_open = T["open"]
+    quarter = (ay >= yc) if is_open else np.ones_like(ay, bool)
+    top_e = np.where(quarter, np.interp(ay, T["top_y"], T["top_z"]), zf).astype(F32)
+    d = top_e - Z
+    gr = lv["hull"].get("graphic") or {"type": "none"}
+    ncol = len(gr.get("colors", []))
+    vinyl = np.zeros((H, W), F32)
+    zone = np.full((H, W), ZONE_BOOT, np.uint8)
+    if gr.get("type") == "stripes" and gr.get("from", 0.04) <= 1e-3:
+        dep, wid = gr.get("depth", [0.08, 0.17]), gr.get("width", [0.05, 0.02])
+        y_end = (yc + 0.5 * (bs - yc)) if is_open else (2.0 / 3.0) * bs
+        for k in range(min(ncol, len(dep), len(wid))):
+            span = inside(y_end + 0.6 * (d - dep[k]) - ay, px)
+            c = band(d - dep[k], 0.5 * wid[k], px) * span * quarter
+            zone = np.where(c > 0.5, ZONE_GRAPHIC0 + k, zone)
+            vinyl = np.maximum(vinyl, c)
+    elif gr.get("type") == "two_tone" and ncol:
+        split, rise, pin = gr.get("split", 0.45), gr.get("rise", -0.15), gr.get("pinstripe", 0.025)
+        zs0 = float(np.interp(bs, T["top_y"], T["top_z"]))
+        ds = (split - 0.5 * rise) * max(zs0 - z_bt, 0.05)
+        dd = zs0 - Z
+        c = inside(ds - dd, px)
+        zone = np.where(c > 0.5, ZONE_GRAPHIC0, zone)
+        vinyl = np.maximum(vinyl, c)
+        if ncol > 1 and pin > 0:
+            c = band(dd - ds, 0.5 * pin, px)
+            zone = np.where(c > 0.5, ZONE_GRAPHIC1, zone)
+            vinyl = np.maximum(vinyl, c)
+    m_af = inside(Z - z_af, px)
+    m_bt = np.clip(inside(Z - z_bt, px) - m_af, 0, 1)
+    zone = np.where(m_bt > 0.5, ZONE_BOOT, zone)
+    zone = np.where(m_af > 0.5, ZONE_ANTIFOULING, zone)
+    paint = np.clip((1.0 - vinyl) * (1.0 - m_bt) * (1.0 - m_af), 0, 1).astype(F32)
+    return {"paint": paint, "zone": _spread_zones(zone, paint)}
 
 
 def _segments(H, W, px_x, px_g, segs, rng=None):
@@ -180,7 +272,7 @@ def bake_hull(geo, lv, W=4096, H=2048, key=""):
 
     # ---- graphics: cut vinyl with crisp edges, a hairline of dirt along them and a 0.1 mm step
     vinyl = np.zeros((H, W), F32)
-    for cov, col in graphic_layers(hull.get("graphic") or {"type": "none"}, xf, d, th, px_g, px_x, L):
+    for cov, col, _k in graphic_layers(hull.get("graphic") or {"type": "none"}, xf, d, th, px_g, px_x, L):
         cov = cov * m_top
         tops = mix(tops, col[None, None, :] * (1.0 + 0.01 * var)[..., None], cov)
         vinyl = np.maximum(vinyl, cov)

@@ -3,7 +3,9 @@
 Bakes the starting textures of a class's livery from its livery file (`data/liveries/<class>.liveries.json`,
 `docs/specs/data_format.md` §8): the hull, the keel and the class sail set, as plain PNG images the owner then edits
 by hand in any paint program (and the transom and deck of the livery). Once written they are **hand-owned assets, not generated tables**: the tool never
-overwrites them unless asked (§8.6 and "Ownership" below). It also stages them for the game.
+overwrites them unless asked (§8.6 and "Ownership" below). It also stages them for the game. Only the file's
+**first livery** is baked: the later ones are tints of it (§8.1), drawn by the game on the first's textures with
+their own colours through the masks the stage writes (below), and get no folder unless named with `--livery`.
 
 ## Running
 
@@ -40,8 +42,9 @@ uv run --no-project --with pytest --with numpy --with pillow --with scipy --with
 ## Which file is which
 
 ```
-data/liveries/<class>.liveries.json     the source: class livery, class sail set, insignia, boats
-data/liveries/<class>/<livery id>/      the livery worn by every boat (today the only one, "navy")
+data/liveries/<class>.liveries.json     the source: the liveries (the first baked, the others tints of it), the
+                                        class sail set, insignia, boats (each naming its livery)
+data/liveries/<class>/<livery id>/      the baked livery's textures (the first livery: "navy", "green", "graphite")
     hull_albedo.png   4096 x 2048  colour, sRGB
     hull_normal.png   4096 x 2048  relief, linear
     hull_orm.png      4096 x 2048  R occlusion, G roughness, B metallic; linear
@@ -146,11 +149,17 @@ metres, so after a hull, deck or sail plan change decide whether to repaint or r
 Godot import settings. The game draws every opaque surface of a boat with one material
 (`docs/specs/sail_visuals.md` §11.4), so it does not read the hull, deck, transom and keel images themselves:
 
-- **Boat atlas**, per livery: `atlas_albedo.png`, `atlas_normal.png`, `atlas_orm.png` (2048 x 2048) and
+- **Boat atlas**, per baked livery: `atlas_albedo.png`, `atlas_normal.png`, `atlas_orm.png` (2048 x 2048) and
   `atlas.json` (`docs/specs/data_format.md` §8.5 "Staged boat atlas"). The hull image (2:1) runs across the top,
   the deck below it at its own aspect, then the transom and the keel side by side, each region padded by its edge
   texels into a 16-texel gutter; `atlas.json` gives each region's rectangle in atlas uv (`regions`) and in texels
   (`pixels`). The masters in `data/liveries` keep their full size; the atlas is made from them.
+- **Colour masks** for the tinted liveries (`hull.hull_masks`, `hull.transom_masks`, from the livery file's hull
+  colours and graphic on the class geometry, not from the images): on the hull and transom regions the ORM's blue
+  is the topsides paint coverage and its red the colour zone of what is not paint (antifouling 0, boot stripe 1/3,
+  graphic colour 0 2/3, graphic colour 1 1, spread across the paint to the nearest zone). The masters' occlusion
+  (1) and metallic (0) there are not read by the game. A hand-painted part of the hull in another colour is
+  recoloured with its zone (the delta from the baked colour carries over).
 - **Baked realism** in the deck region (`atlas.deck_wear`, from the generator's height field of everything on the
   deck): ambient occlusion and contact shadows under and round every fitting, along the coachroof's base, the toe
   rail and in the cockpit's corners, faint grime where occluded, wear on the non-slip round the winches, the mast foot
@@ -168,8 +177,11 @@ Godot import settings. The game draws every opaque surface of a boat with one ma
   baked shading so they read solid without geometry (a soft contact shadow in occlusion and a little in the deck
   colour, the low parts of a fitting darker and its upper edges lighter). It is generated: repaint the deck image
   and the fittings stay on top.
-- **Sails** at half the master size (1024 on the longer side), normal maps renormalised; the rope set and the
-  layouts as they are; the shared tiling cloth detail (`_cloth/<cloth>_detail.png`, procedural, not hand-owned).
+- **Sails** at half the master size (1024 on the longer side), normal maps renormalised, each albedo with the
+  **cloth zone** in its alpha (`sails.zone`: cloth 1, design colour 0 0.75, design colour 1 0.5, the number colour
+  0.25, fixed parts such as rings and the headboard 0, by the nearest of the bake's colours and roughness; the
+  import leaves the alpha border alone); the rope set and the layouts as they are; the shared tiling cloth detail
+  (`_cloth/<cloth>_detail.png`, procedural, not hand-owned).
 - `--hd` stages the atlas at 4096 x 4096 and the sails at full size (for a high tier or an HD set; the game does
   not pick it on its own).
 

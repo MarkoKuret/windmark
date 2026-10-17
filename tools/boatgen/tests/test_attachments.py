@@ -59,7 +59,7 @@ class AttachmentTest(unittest.TestCase):
     def setUpClass(cls):
         np.seterr(all="ignore")
         cls.boats = {cid: _boat(cid)
-                     for cid in ("wm7", "wm12", "wm16")}
+                     for cid in ("wm7", "wm12", "wm16", "wm21")}
         cls.gaps = {cid: b.attachment_gaps() for cid, b in cls.boats.items()}
 
     def test_no_gaps(self):
@@ -102,7 +102,7 @@ class LifelineTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         np.seterr(all="ignore")
-        cls.boats = {cid: _boat(cid) for cid in ("wm7", "wm12", "wm16")}
+        cls.boats = {cid: _boat(cid) for cid in ("wm7", "wm12", "wm16", "wm21")}
 
     def _recs(self):
         for cid, boat in self.boats.items():
@@ -173,7 +173,7 @@ class RopeLeadTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         np.seterr(all="ignore")
-        cls.boats = {cid: _boat(cid) for cid in ("wm7", "wm12", "wm16")}
+        cls.boats = {cid: _boat(cid) for cid in ("wm7", "wm12", "wm16", "wm21")}
 
     def test_leads_lie_on_the_deck(self):
         from boatgen.attach import _point_tri_dist

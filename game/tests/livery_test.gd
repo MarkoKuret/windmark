@@ -6,7 +6,7 @@ extends SceneTree
 ## per-boat name and number over them in the layout's slots, the starboard stack uppermost) and on the procedural
 ## fallback, each at a measured cost. Run by tests/run_livery_test.sh (needs the generated boats and the staged textures).
 
-const CLASSES := ["wm7", "wm12", "wm9", "wm16"]
+const CLASSES := ["wm7", "wm12", "wm9", "wm16", "wm21"]
 const SAIL_FILES := ["_port_albedo.png", "_stbd_albedo.png", "_normal.png", "_orm.png"]
 
 var failures := 0

@@ -52,7 +52,7 @@ enum SeaSource { AUTO, CORE_SAMPLES, PLACEHOLDER }
 
 ## AUTO: the core when the GDExtension is loaded, else FakeSim
 @export var sim_kind: SimKind = SimKind.AUTO
-@export_enum("wm7", "wm9", "wm12", "wm16") var class_id := "wm7"
+@export_enum("wm7", "wm9", "wm12", "wm16", "wm21") var class_id := "wm7"
 ## core: the venue (data/venues/<venue>.venue.json) and the start point (world ENU m)
 @export var venue := "practice_waters"
 @export var start_x := 0.0

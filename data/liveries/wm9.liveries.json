@@ -5,31 +5,29 @@
   "sails": {
     "main": {"cloth": "dacron", "color": "#e2e0d6", "number": "#1b3a2d"},
     "headsail": {"cloth": "dacron", "color": "#e2e0d6", "number": "#1b3a2d"},
-    "spinnaker": {"cloth": "nylon", "color": "#1f4d3a", "design": "head", "radius": 0.24, "number": "#e2e0d6",
-      "colors": ["#d9d3bf"]}
+    "spinnaker": {"cloth": "nylon", "color": "#d9d3bf", "design": "bands", "stops": [0.4, 0.7], "number": "#1b3a2d",
+      "colors": ["#5a1d22", "#d9d3bf"]}
   },
   "ropes": {
-    "mainsheet": {"color": "#ae7249", "fleck": "#2d3548"},
-    "sheet": {"color": "#3e797b", "fleck": "#d6d6ce"},
-    "kite_sheet": {"color": "#91506f", "fleck": "#d6d6ce"},
-    "halyard_main": {"color": "#9c4c4e", "fleck": "#d6d6ce"},
-    "halyard_jib": {"color": "#486792", "fleck": "#d6d6ce"},
-    "halyard_kite": {"color": "#497551", "fleck": "#d6d6ce"},
-    "halyard_code": {"color": "#b79c5a", "fleck": "#2a2b2e"},
-    "control": {"color": "#6b5986", "fleck": "#d6d6ce"}
+    "mainsheet": {"color": "#d3cdbb", "fleck": "#5a1d22"},
+    "sheet": {"color": "#d3cdbb", "fleck": "#2d3548", "pattern": "tracer"},
+    "kite_sheet": {"color": "#d3cdbb", "fleck": "#8a6d2a"},
+    "halyard_main": {"color": "#cfc8b4", "fleck": "#5a1d22", "pattern": "tracer"},
+    "halyard_jib": {"color": "#cfc8b4", "fleck": "#2d3548"},
+    "halyard_kite": {"color": "#cfc8b4", "fleck": "#497551"},
+    "halyard_code": {"color": "#cfc8b4", "fleck": "#2a2b2e"},
+    "control": {"color": "#8f8a7a", "fleck": "#d6d6ce"}
   },
   "liveries": [
     {
       "id": "green",
-      "name": "Green and cream",
+      "name": "Oxblood and cream",
       "hull": {
-        "topsides": "#1b3a2d",
+        "topsides": "#5a1d22",
         "text": "#ddd6c2",
         "boot_stripe": "#d9d2bd",
         "antifouling": "#17181b",
-        "keel": "#1c1e21",
-        "graphic": {"type": "stripes", "colors": ["#b39a5c"], "depth": [0.045], "width": [0.012],
-          "from": 0.0, "to": 0.965}
+        "keel": "#1c1e21"
       },
       "deck": {"gelcoat": "#d9d3c2", "nonslip": "#8f6239",
         "teak": {"wood": "#9c6a3c", "caulk": "#1e1b18", "plank": 0.055, "seam": 0.005, "king": 0.12}}

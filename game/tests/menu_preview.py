@@ -2,8 +2,8 @@
 """Offline previews of the menus: draws what tests/menu_preview_dump.gd wrote (generated/menu_preview/<shot>.json:
 the boxes, texts, colour rects and the course map the menu draws at 1280 x 800) over a backdrop. No window opens.
 
-    godot --headless --path game -s res://tests/menu_preview_dump.gd
-    python3 game/tests/menu_preview.py [--publish]
+    godot --headless --path game -s res://tests/menu_preview_dump.gd [-- --size=1920x1080]
+    python3 game/tests/menu_preview.py [--publish] [--src generated/menu_preview/1920x1080]
 
 The backdrop stands in for the live sail scene (menus.md section 4): a published render, tests/previews/
 water_bay20_chase_M.jpg, scaled to cover the frame. Text is set in the game's Barlow Semi Condensed (game/fonts/barlow)
@@ -263,12 +263,15 @@ def render(path):
 
 def main():
     publish = "--publish" in sys.argv
-    for f in sorted(os.listdir(SRC)):
+    src = SRC
+    if "--src" in sys.argv:
+        src = os.path.abspath(sys.argv[sys.argv.index("--src") + 1])
+    for f in sorted(os.listdir(src)):
         if not f.endswith(".json"):
             continue
-        img = render(os.path.join(SRC, f))
+        img = render(os.path.join(src, f))
         name = f[:-5]
-        out = os.path.join(SRC, name + ".jpg")
+        out = os.path.join(src, name + ".jpg")
         img.save(out, quality=90)
         print(out)
         if publish:

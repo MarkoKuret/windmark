@@ -5,16 +5,24 @@ extends SceneTree
 ## the course map's geometry, each with the clip rect of the scroll container it sits in. The race end shots
 ## (menus.md §5) are the results screen after a short race on the core (the player steered by RacePilot against AI
 ## boats), at 1280 x 800 and in the portrait window (race_end, race_end_portrait).
-##   godot --headless --path game -s res://tests/menu_preview_dump.gd
-## Writes generated/menu_preview/<shot>.json.
+##   godot --headless --path game -s res://tests/menu_preview_dump.gd [-- --size=1920x1080]
+## Writes generated/menu_preview/<shot>.json; with `--size=WxH` the menu shots are taken at that window size and
+## written to generated/menu_preview/<W>x<H>/ (the race end shots keep their own sizes).
 
-const OUT := "res://generated/menu_preview"
-const SIZE := Vector2i(1280, 800)
+const OUT_BASE := "res://generated/menu_preview"
+var OUT := OUT_BASE
+var SIZE := Vector2i(1280, 800)
 
 var m: MainMenu
 
 
 func _init() -> void:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--size="):
+			var wh := a.trim_prefix("--size=").split("x")
+			if wh.size() == 2:
+				SIZE = Vector2i(int(wh[0]), int(wh[1]))
+				OUT = OUT_BASE.path_join("%dx%d" % [SIZE.x, SIZE.y])
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT))
 	Settings.path = "user://menu_preview_settings.cfg"
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(Settings.path))
@@ -151,12 +159,12 @@ func _race_end() -> void:
 		sim.step()
 		host.hud.tick(sim, 0)
 		n += 1
-	for sz in [SIZE, Vector2i(1080, 1920)]:
+	for sz in [Vector2i(1280, 800), Vector2i(1080, 1920)]:
 		root.size = sz
 		await _frames(4)
 		rs._process(1.0)
 		await _frames(3)
-		_dump_node("race_end" if sz == SIZE else "race_end_portrait", rs._root, sz)
+		_dump_node("race_end" if sz.x > sz.y else "race_end_portrait", rs._root, sz)
 	print("menu preview: race end after %d ticks, %s" % [n, str(rs.shown_rows)])
 	host.queue_free()
 

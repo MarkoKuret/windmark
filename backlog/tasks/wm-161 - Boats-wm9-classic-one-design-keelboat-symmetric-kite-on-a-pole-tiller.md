@@ -1,9 +1,11 @@
 ---
 id: WM-161
 title: 'Boats: wm9 classic one-design keelboat (symmetric kite on a pole, tiller)'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-10-17 09:49'
+updated_date: '2026-10-17 09:54'
 labels:
   - boats
 dependencies: []

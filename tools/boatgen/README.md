@@ -48,8 +48,8 @@ cd tools/boatgen
 python3 -m unittest discover -s tests
 ```
 
-About 30 s. `tests/fixtures/` holds generator test classes for features no shipped class uses yet (a
-symmetric spinnaker on a pole); the headless Godot import test (`game/tests/run_boat_import_test.sh`) builds and
+About 30 s. `tests/fixtures/` holds generator test classes for features they keep covered (a symmetric
+spinnaker on a pole, which wm9 now flies); the headless Godot import test (`game/tests/run_boat_import_test.sh`) builds and
 checks them too.
 
 ## Frames and units
@@ -230,7 +230,8 @@ rail and rub strake close it off. `Deck.surface` and `Deck.surface_z` give the w
 its sides, the cockpit floor, the deck) that the hardware and the rope leads sit on.
 
 **Appendages** (`appendages.py`). NACA 00xx fin and rudder lofted from root to tip; the bulb is a flattened body
-of revolution sized so its volume holds the bulb mass in lead. A transom-hung rudder has a sportboat's blade: a
+of revolution sized so its volume holds the bulb mass in lead. A `fin` keel (`keel.type`, wm9) has no bulb: the
+fin alone, down to the full draft. A transom-hung rudder has a sportboat's blade: a
 straight swept leading edge on the pintles, a neck narrowing to 0.6 of the root chord (at the root's thickness)
 from the hull's bottom up to the head, a taper below and a quarter-elliptical tip over the last 30 % of the immersed
 span; the immersed chords are scaled so the blade below the DWL keeps the class trapezoid's area. Its head sits

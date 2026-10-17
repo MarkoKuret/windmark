@@ -650,12 +650,16 @@ sound on FakeSim and in a race on the core (the warning signal's horns, the flee
 
 ## Liveries
 
-Every boat of a class wears the class livery and carries the class sail set; only its name, sail number and nation
-letters differ (`data/liveries/<class>.liveries.json`, `docs/specs/data_format.md` §8). The look comes from baked,
-hand-owned textures in `data/liveries/<class>/` (§8.5): the hull, transom, deck and keel of the livery, and one sail
-set per class with the insignia. The sail scene gives the player's boat the chosen sail number (`GameSetup.livery`,
-a boat id: the Sail number row of the Quick race and Free sail menus, or `--livery=<id>`) and the AI boats theirs by
-the fleet rule from the world seed (`Livery.assign`).
+Every boat of a class carries the class sail set and wears one of the file's liveries
+(`data/liveries/<class>.liveries.json`, `docs/specs/data_format.md` §8): the first livery is the class livery with
+the baked, hand-owned textures in `data/liveries/<class>/` (§8.5: the hull, transom, deck and keel, and one sail
+set per class with the insignia); the others (six to eight per class: navy, white, grey, red, green, black, the odd
+royal blue or cream, each with its stripe and boot stripe colours, sail cloth colours and a spinnaker colour and
+design) are **tints** of it, drawn on the same textures with their colours substituted (§8.5 "Tinted liveries"), so
+they cost no texture at all. Each boat identity names its livery (`boats[].livery`); the file's first boat wears the
+class livery as baked. The sail scene gives the player's boat the chosen boat (`GameSetup.livery`, a boat id: the
+Sail number row of the Quick race and Free sail menus, or `--livery=<id>`) and the AI boats theirs by the fleet rule
+from the world seed (`Livery.assign`; a repeat in a large fleet wears the next livery of the file).
 
 **Textures in the game.** The game loads imported copies: `tools/liverybake` stages `data/liveries/<class>/` into
 `generated/liveries/<class>/` (git-ignored) with import settings (albedo BPTC/ASTC, normal maps RGTC, ORM S3TC/ETC2,
@@ -683,9 +687,19 @@ Godot reimports only the files whose content changed (it compares their hashes).
   gelcoat tiling detail per pixel, steep faces kept plain; the keel in side view), the boat's name and number in the
   hull's livery panels and its name in the transom's name panel, and on `shaders/sail_baked.gdshader` each baked sail
   (the layer's albedo, ORM, normal map with the cloth detail, the tangent frame from screen-space derivatives). No
-  procedural livery or cloth runs. The atlas is loaded once per class and livery and shared by every boat; per boat
+  procedural livery or cloth runs. The atlas is loaded once per class and shared by every boat; per boat
   only uniforms and its text texture (one sample on the hull, one per side on a sail). A faint dirt line follows the
   edge of the per-boat vinyl and stuck-on numbers.
+- **Tinted liveries** on the baked path (`BoatLivery.hull_textures`, `_hull_tint`; `shaders/livery_tint.gdshaderinc`):
+  a boat in a livery other than the baked one gets the base's atlas with `tn_on` and, per part (antifouling, boot
+  stripe, the two graphic colours, the topsides paint, the keel), the colour it was baked in, the boat's colour and
+  an exponent; the shader reads the part from the atlas ORM's red (the zone) and blue (the paint coverage) that
+  `tools/liverybake` stages, and recolours the texel as `new · (baked / old)^k`, so the baked scuffs, dirt lines and
+  variation carry over to a darker colour and fade on a lighter one. The baked sails carry the cloth zone in their
+  albedo's alpha (cloth, the two design colours, the number colour, fixed parts); `sail_baked.gdshader` recolours the
+  cloth zones to the livery's design evaluated per pixel (`shaders/sail_design.gdshaderinc`, the same function the
+  procedural sails use) and the insignia and draft stripes to its number colour (`st_on`, `sd_*`). The class
+  livery's boats skip both and show the textures as baked.
 - **Procedural fallback** (no baked textures, or `BakedLivery.enabled = false`): the same boat material with the
   livery path of `shaders/hull_livery.gdshaderinc` on the topsides and the livery colours on the other slots, and a
   copy of each sail's material on `sail.gdshader` with the cloth of `sail_cloth.gdshaderinc` and
@@ -716,22 +730,27 @@ ns against 0.34 to 0.70 ns on the development Mac, `livery_cost.py`; one more ti
 game/tests/run_livery_test.sh   # also run by run_boat_import_test.sh
 ```
 
-`tests/livery_test.gd` checks the livery files (the class livery, at least 12 boats, unique ids and sail numbers,
-the 0.8 linear albedo rule, bad files refused), the fleet rule (distinct, deterministic from the seed, the player's
-choice kept, repeats with unique names and sail numbers in a 40-boat fleet), the shaders (the baked ones free of
-the procedural includes), the baked files (in `data/liveries`, the sizes, every class sail, staged and imported),
-and a painted fleet of both classes on each path: baked (the hull images shared and the name and number per boat,
-the panels on both sides, the keel's side view holding the keel, every sail baked with its layer split, the boat's
-rows in the layout's slots with the starboard stack uppermost, the insignia baked on the main) and procedural (the
+`tests/livery_test.gd` checks the livery files (the first livery baked and worn by the first boat, the others tints
+of it, at least six per class, at least 12 boats, unique ids and sail numbers, the 0.8 linear albedo rule, bad
+files refused), the fleet rule (distinct, deterministic from the seed, the player's choice kept, repeats with unique
+names and sail numbers in the next livery in a 40-boat fleet, several hull, sail and spinnaker colours in a 16-boat
+one), the shaders (the baked ones free of the procedural includes, the tint uniforms), the baked files (in
+`data/liveries`, the sizes, every class sail, staged and imported, the atlas colour masks and the sails' cloth
+zones), and a painted fleet of every class on each path: baked (the hull images shared and the name and number per
+boat, the default boat untinted and a tinted boat with its colours over the base's and its spinnaker's design, the
+panels on both sides, the keel's side view holding the keel, every sail baked with its layer split, the boat's rows
+in the layout's slots with the starboard stack uppermost, the insignia baked on the main) and procedural (the
 livery path, the sheer curves, the number stacks), with the load cost per boat. `run_livery_test.sh` also checks the
 ownership rule: a plain bake leaves the committed textures byte for byte.
 
 The previews (no window): `tests/livery_preview_dump.gd` sails fleets and single boats on the core, paints them
 and dumps them to `generated/livery_preview/` (`-- procedural`: the fallback, to `generated/livery_preview_procedural/`),
 and `tests/livery_preview.py` renders them with the same shader includes and images (`--publish` writes
-`tests/previews/livery_*.jpg` and `livery_contact.png`): start lines of both classes, fleets under spinnaker, hull
-sides with name and number, the bow at the waterline, stern quarters, the keel out of the water, mains from each
-side, close and against the sun, a laminate jib and a kite. `tests/livery_cost.py` times both paths.
+`tests/previews/livery_*.jpg` and `livery_contact.png`): 16-boat fleets of every class from the chase camera, the
+raked aerial and under spinnaker (`fleet_chase_*`, `fleet_aerial_*`, `fleet_kites_*`: the liveries' variety), start
+lines, fleets under spinnaker, hull sides with name and number, the bow at the waterline, stern quarters, the keel
+out of the water, mains from each side, close and against the sun, a laminate jib and a kite. `tests/livery_cost.py`
+times both paths.
 
 ```
 godot --headless --path game -s res://tests/livery_preview_dump.gd

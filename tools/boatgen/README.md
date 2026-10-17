@@ -473,7 +473,7 @@ Positions in the body frame.
 - The flat spinnaker outline is a centreline projection; its flying shape comes from the simulation.
 - Surfaces per boat: one per node (4 or 5, a pole class 6) plus the sails.
 - Multihulls are not supported (one canoe body, one keel).
-- A `fin` keel (no bulb) closes its tip; the ballast is then in the fin (`keel.fin_mass`), and the sidecar's
+- A `fin` keel (no bulb) closes its tip with a domed cap whose bottom is at `keel.depth`; the ballast is then in the fin (`keel.fin_mass`), and the sidecar's
   `hydrostatics.bulb` reads 0.
 - `sails[].leech` and `foot` are used for code zeros and spinnakers only; the hull fit leaves Cm as an outcome
   (see above).

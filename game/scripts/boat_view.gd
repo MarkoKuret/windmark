@@ -170,6 +170,8 @@ static var _cam_size := 0.0
 static var _sail_mats := {}
 ## the levels of detail and the running sheets (off: the boat as before them, for cost comparisons)
 static var use_lods := true
+## where the class files are read from ("": the repository's data/classes; the kite tuner's test points it at a copy)
+static var class_dir := ""
 static var draw_sheets := true
 ## measured runs only (the sail scene's run-only flags, game/README.md "Measuring performance"): a level of detail
 ## for every distance (-1: by distance), model part nodes never shown (by name: "rigging", "hardware", ...), the
@@ -353,7 +355,8 @@ func _find_parts() -> void:
 	var side_sails: Dictionary = info.physics.get("sails", {})
 	pole_class = _pole != null or float(rig.get("pole_length", 0.0)) > 0.0
 	var furling := {}
-	var cls: Variant = BoatClassData._read_json(BoatClassData.repo_path("data/classes/%s.boat.json" % info.id))
+	var cdir := class_dir if class_dir != "" else BoatClassData.repo_path("data/classes")
+	var cls: Variant = BoatClassData._read_json(cdir.path_join("%s.boat.json" % info.id))
 	if cls is Dictionary:
 		for cs in cls.get("sails", []):
 			furling[String(cs.get("id", ""))] = bool(cs.get("furling", false))

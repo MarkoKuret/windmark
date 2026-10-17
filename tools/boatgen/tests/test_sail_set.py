@@ -150,3 +150,49 @@ class PoseTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SetParamsTest(unittest.TestCase):
+    """sail_visuals.md 4.1: the kite set parameters of visual.sails.<id>.set."""
+
+    def _raw(self, cid="wm7"):
+        with open(CLASSES[cid]) as f:
+            return json.load(f)
+
+    def test_defaults_draw_the_same(self):
+        # every default given as a key draws what no keys draw
+        for t, mode in (("spinnaker_asym", sail_set.SPRIT), ("spinnaker_sym", sail_set.POLE)):
+            a = sail_set.SailSet(rect(), t, RECT_LOOK, mode, RIG, 7.2)
+            b = sail_set.SailSet(rect(), t, RECT_LOOK, mode, RIG, 7.2, dict(sail_set.SET_DEFAULTS[t]))
+            for awa in (90, 150):
+                ma = a.update(-np.radians(0.45 * awa), -0.3, np.radians(awa), 6.0)
+                mb = b.update(-np.radians(0.45 * awa), -0.3, np.radians(awa), 6.0)
+                self.assertEqual(float(np.abs(ma - mb).max()), 0.0, t)
+
+    def test_parameters_move_the_kite(self):
+        a = sail_set.SailSet(rect(), "spinnaker_asym", RECT_LOOK, sail_set.SPRIT, RIG, 7.2)
+        b = sail_set.SailSet(rect(), "spinnaker_asym", RECT_LOOK, sail_set.SPRIT, RIG, 7.2,
+                             {"depth_foot": 1.0, "forward": 0.1, "head_drop": 0.05})
+        ma = a.update(-0.7, 0.0, 1.6, 6.0)
+        mb = b.update(-0.7, 0.0, 1.6, 6.0)
+        self.assertGreater(float(np.abs(ma - mb).max()), 0.2)
+
+    def test_validation(self):
+        raw = self._raw()
+        raw["visual"]["sails"]["kite"] = {"set": {"forward": 0.1, "depth_foot": 0.9}}
+        self.assertIsNotNone(classfile.resolve(raw))
+        for bad in ({"nope": 1.0}, {"forward": 2.0}, {"twist_awa_lo": 2.0, "twist_awa_hi": 1.5}, {"depth_foot": True}):
+            raw["visual"]["sails"]["kite"] = {"set": bad}
+            with self.assertRaises(classfile.ClassFileError):
+                classfile.resolve(raw)
+        raw["visual"]["sails"]["kite"] = {}
+        raw["visual"]["sails"]["main"]["set"] = {"forward": 0.1}
+        with self.assertRaises(classfile.ClassFileError):
+            classfile.resolve(raw)
+
+    def test_sidecar_block(self):
+        # the sidecar's set block: the class file's keys over the defaults, on the kite only
+        b = boat("wm7")
+        kite = b.sails["kite"]
+        self.assertEqual(kite.set_block(), {k: round(float(v), 6) for k, v in sail_set.SET_DEFAULTS[kite.type].items()})
+        self.assertIsNone(b.sails["main"].set_block())

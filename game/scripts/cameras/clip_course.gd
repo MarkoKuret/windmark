@@ -8,6 +8,8 @@ extends RefCounted
 var has_line := false
 var committee := Vector3.ZERO
 var pin := Vector3.ZERO
+## the horizontal unit vector from the line to the pre-start side (the side the fleet starts from)
+var pre_start := Vector3(0, 0, 1)
 ## the next mark `M`, the approach point `Q` and the side `s` (+1 left to port, -1 to starboard)
 var has_mark := false
 var mark := Vector3.ZERO
@@ -44,6 +46,9 @@ static func from_race(cv: CourseView, viewed: int, loa: float) -> ClipCourse:
 		c.has_line = true
 		c.committee = _scene(committee)
 		c.pin = _scene(other)
+		var d: Vector2 = ab[1] - ab[0]
+		if d.length() > 1e-6:
+			c.pre_start = _scene(Vector2(d.y, -d.x)).normalized()  # the right of A -> B (race.md §3.3)
 	var rb: Dictionary = cv.sim.core.race_boat(viewed)
 	var s := cv.sim.state(viewed)
 	var here := Vector2(s.pos_x, s.pos_y)

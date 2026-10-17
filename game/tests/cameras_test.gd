@@ -553,6 +553,7 @@ func _course(side := 1) -> ClipCourse:
 	c.has_line = true
 	c.pin = Frames.enu_to_scene(0.0, 0.0, 0.0)
 	c.committee = Frames.enu_to_scene(100.0, 0.0, 0.0)
+	c.pre_start = Frames.enu_to_scene(0.0, -1.0, 0.0)  # the course to the north, the pre-start side south
 	c.has_mark = true
 	c.mark = Frames.enu_to_scene(0.0, 500.0, 0.0)
 	c.approach = Frames.enu_to_scene(0.0, 0.0, 0.0)
@@ -579,7 +580,8 @@ func test_clip_start_line() -> void:
 	var tg := _target()
 	var v := _select_clip(rig, tg, CameraRig.Mode.START_LINE)
 	t.ok(rig.mode == CameraRig.Mode.START_LINE, "camera_clip selects the start line first")
-	t.near_v(v.xform.origin, Frames.enu_to_scene(120.0, 0.0, 6.0), 0.001, "eye 20 m outside the committee end, 6 m up")
+	t.near_v(v.xform.origin, Frames.enu_to_scene(120.0, -12.0, 8.0), 0.001,
+		"eye 20 m outside the committee end, 12 m behind the line, 8 m up")
 	var want := (rig.course.pin - v.xform.origin).normalized()
 	var ang := rad_to_deg((-v.xform.basis.z).angle_to(want))
 	t.ok(ang < 0.1, "looks at the pin end (%.4f deg off)" % ang)

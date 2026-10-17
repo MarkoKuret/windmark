@@ -726,9 +726,10 @@ func test_capture_scene_race() -> void:
 	var rig: CameraRig = sc.rig
 	t.ok(rig.mode == CameraRig.Mode.START_LINE and rig.course != null and rig.course.has_line,
 		"camera_clip: the start line shot from the race")
-	var want := StartLineCamera.place(rig.course.committee, rig.course.pin)[0]
+	var want := StartLineCamera.place(rig.course.committee, rig.course.pin, rig.course.pre_start)[0]
 	t.ok(Vector2(rig.view.xform.origin.x - want.x, rig.view.xform.origin.z - want.z).length() < 0.01
-		and rig.view.xform.origin.y >= 6.0 - 1e-6, "start line eye 20 m outside the committee end, 6 m up or more")
+		and rig.view.xform.origin.y >= StartLineCamera.HEIGHT - 1e-6,
+		"start line eye 20 m outside the committee end, 12 m behind the line, 8 m up or more")
 	_frame_with(sc, [&"camera_clip"])
 	t.ok(rig.mode == CameraRig.Mode.MARK and rig.course.has_mark, "camera_clip: the mark shot")
 	var me := MarkCamera.eye_for(rig.course.mark, rig.course.approach, rig.course.side)

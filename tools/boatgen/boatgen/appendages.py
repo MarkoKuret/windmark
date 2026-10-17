@@ -150,7 +150,7 @@ class Appendages:
     def keel_part(self, n_chord=22):
         p = Part()
         fin = foil(_foil_stations(self.fin_le_root, self.fin_le_tip, self.fin_cr, self.fin_ct, self.fin_tc),
-                   n_chord=n_chord, tip_cap=False, root_cap=False)
+                   n_chord=n_chord, tip_cap=not self.has_bulb, root_cap=False)   # a fin without a bulb closes its tip
         p.add("antifouling", fin, tag="keel_fin")
         p.attach("keel_fin", "hull")
         if self.has_bulb:
@@ -216,7 +216,8 @@ class Appendages:
         else:
             # stock stub visible inside the gap to the hull
             p.add("metal", tube(np.array([self.rud_stock + [0, 0, -0.05], self.rud_stock + [0, 0, 0.2]]),
-                                0.035 * (self.cls["hull"]["loa"] / 12) ** 0.5, 12), tag="rudder_stock")
+                                max(0.035 * (self.cls["hull"]["loa"] / 12) ** 0.5, 0.5 * self.rud_tc * self.rud_cr),
+                                12), tag="rudder_stock")      # at least the blade root's thickness
             p.attach("rudder_stock", "rudder")
             p.attach("rudder_stock", "hull")
         return p

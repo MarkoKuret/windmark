@@ -900,11 +900,12 @@ def place_all(cls, hull, deck, rig, lod=0):
                 hw.attach(f"horn_cleat_{side}_{x:.2f}", "deck")
 
     # --- hatches
+    # the foredeck hatch (a flush deck has it too, its sail hatch forward of the mast)
+    x_fh = max(deck.xk1 + 0.55 * s, rig.x_mast + 0.55 * s)
+    if x_fh < L - 1.2 * s:
+        hw.extend(on_surface(deck, hatch(0.6 * s, 0.6 * s), x_fh, 0.0, conform=True), tag="hatch_fore")
+        hw.attach("hatch_fore", "deck")
     if deck.has_cabin:
-        x_fh = max(deck.xk1 + 0.55 * s, rig.x_mast + 0.55 * s)
-        if x_fh < L - 1.2 * s:
-            hw.extend(on_surface(deck, hatch(0.6 * s, 0.6 * s), x_fh, 0.0, conform=True), tag="hatch_fore")
-            hw.attach("hatch_fore", "deck")
         x_rh = _cabin_hatch_x(deck, d)
         if x_rh is not None:
             hw.extend(on_surface(deck, hatch(0.5 * s, 0.5 * s), x_rh, 0.0, conform=True), tag="hatch_cabin")

@@ -114,6 +114,18 @@ class HullShape:
         # (cubic ramp: flat at the deepest point, so the canoe-body draft stays exact)
         fwd = fwd - lift * np.clip((x - self.x_md) / (self.x_fwl - self.x_md), 0, 1) ** 3
         z = np.where(x >= self.x_md, fwd, keel_a)
+        ch = h.get("counter_height")
+        if ch is not None and self.x_awl > 1e-3 and h["rocker_aft"] >= self.Tc - 1e-3:
+            # a long counter stern: aft of the waterline the profile runs on as a cubic from the waterline end (its
+            # slope continued) to the transom bottom `counter_height` above the DWL, arriving at its mean slope
+            T = self.x_awl
+            a = h["rocker_aft"] * k_aft / max(self.x_md - self.x_awl, 1e-6)
+            z0 = -self.Tc + h["rocker_aft"]
+            m = (float(ch) - z0) / T
+            t = np.clip((self.x_awl - x) / T, 0, 1)
+            hz = (z0 * (2 * t ** 3 - 3 * t ** 2 + 1) + a * T * (t ** 3 - 2 * t ** 2 + t)
+                  + float(ch) * (-2 * t ** 3 + 3 * t ** 2) + m * T * (t ** 3 - t ** 2))
+            z = np.where(x < self.x_awl, hz, z)
         return np.minimum(z, self.zs(x) - 1e-4)
 
     def zm(self, x):

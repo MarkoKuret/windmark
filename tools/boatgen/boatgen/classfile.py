@@ -188,6 +188,7 @@ def resolve(raw, path="<class>"):
         "boot_top": [0.04, 0.10],      # antifouling up to [0], boot-top stripe up to [1] above the DWL
         "stem_radius": 0.10 * (L / 12) ** 0.5,  # forefoot rounding (m, blend height of keel line and stem)
         "bilge_fillet": 0.12,          # bilge-turn fairing radius, fraction of the station depth (hull.py)
+        "counter_height": None,        # counter stern: profile height at the transom above the DWL (hull.zk)
     }
     hull.update(_deep_merge(hull_vis_defaults, {k: v for k, v in vh.items() if k in hull_vis_defaults}))
     c["hull"] = hull

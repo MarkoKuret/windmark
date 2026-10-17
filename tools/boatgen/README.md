@@ -176,6 +176,7 @@ Every key is optional; defaults scale with LOA.
 | `hull.bilge_fillet` | 0.12 | bilge-turn fairing radius as a fraction of the station depth (keel to sheer); 0 leaves the raw curves |
 | `hull.lcb_fraction` | 0.535 | LCB target when `hull.lcb_x` is absent |
 | `hull.chine_start` | 0.42 | where a hard chine begins, fraction of LOA aft of the stem |
+| `hull.counter_height` | none | a counter stern: aft of the waterline the profile runs on as a smooth cubic (the keel line's slope continued at the waterline end) up to this height above the DWL at the transom, so a long stern overhang ends in a small transom instead of the keel line's power law meeting the sheer; needs `rocker.aft` = `draft_canoe` |
 | `deck.cockpit` | length 0.30 LOA, width 0.62, depth 0.42 (LOA/12)^0.5, open_transom true, aft_deck 0 | cockpit well: width as a fraction of the local half-beam |
 | `deck.cabin` | height 0.26 (LOA/12)^0.6, meet_aft_of_mast 0.05 (LOA/12)^0.5, slope_from 0.3, width 0.58, side_rake 0.35, edge_radius 0.05 (LOA/12)^0.5, windows true | the coachroof (`docs/specs/data_format.md` §3.7.2: height aft, where the top meets the deck, where it starts to slope, base width, side rake, edge radius; `length` instead of `meet_aft_of_mast`); `null` for a flush deck |
 | `deck.nonslip_margin` | 0.05 | smooth gelcoat border around non-slip panels (m) |
@@ -183,7 +184,7 @@ Every key is optional; defaults scale with LOA.
 | `deck.lifelines` | LOA >= 9 m | stanchions, lifelines, pulpit and pushpit |
 | `deck.steering` | wheel from 11 m, else tiller | `wheel` or `tiller` |
 | `deck.wheel` | diameter min(0.855 cockpit width, 1.35 (LOA/12)^0.7), well false, hub_height (well) 0.62 (LOA/12)^0.5 else diameter/2 + 0.12 | the helm of a wheel boat (`docs/specs/data_format.md` §3.7.3): with `well` the wheel's lower part runs through a slot in the cockpit floor |
-| `deck.hatches` | 2 from 9 m, else 1 | foredeck hatch, plus one on the cabin top |
+| `deck.hatches` | 2 from 9 m, else 1 | foredeck hatch, plus one on the cabin top (a flush deck, `cabin` null, has the foredeck hatch only) |
 | `keel.bulb_flat` | 1.25 | bulb cross-section width / height |
 | `rudder.sweep` | 0.10 | rudder quarter-chord sweep (rad) |
 | `rig.mast_chord` | 0.0105 · mast_height + 0.02 | mast section fore-and-aft size (m) |
@@ -472,5 +473,7 @@ Positions in the body frame.
 - The flat spinnaker outline is a centreline projection; its flying shape comes from the simulation.
 - Surfaces per boat: one per node (4 or 5, a pole class 6) plus the sails.
 - Multihulls are not supported (one canoe body, one keel).
+- A `fin` keel (no bulb) closes its tip; the ballast is then in the fin (`keel.fin_mass`), and the sidecar's
+  `hydrostatics.bulb` reads 0.
 - `sails[].leech` and `foot` are used for code zeros and spinnakers only; the hull fit leaves Cm as an outcome
   (see above).

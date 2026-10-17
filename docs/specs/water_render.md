@@ -839,7 +839,9 @@ row = { frozen boat frame (heading, heel), P, v, age 0, alpha 1,
         spray: two particles, port and starboard }
 push the row into a ring buffer of N = 180 rows (a 9 s ribbon)
 ```
-**Each frame**, for every row of age `t` (a row is drawn with 15 vertices across: a feathered, transparent outer
+**Each frame** (the own boat; the other boats' ribbons at most 30 times a second, the frames' time added up,
+since nobody sees a wake 10 m away move between two frames), for every row of age `t` (a row is drawn with 15
+vertices across: a feathered, transparent outer
 vertex `0.3 + 0.25·w` outside each edge, and 13 from edge to edge, so it follows the waves between its edges):
 ```
 half width  w = w0 + tan(α) * v_row * min(t, 4 s)            // edges open at the wake angle α while the diverging

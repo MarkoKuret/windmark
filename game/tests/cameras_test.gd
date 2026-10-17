@@ -218,7 +218,7 @@ func test_onboard_classes() -> void:
 	t.near(saved.fov, 75.0, 1e-9, "a profile with the old default 65 loads the new default")
 	saved.set_params({"fov": 58.0})
 	t.near(saved.fov, 58.0, 1e-9, "a zoomed profile keeps its fov")
-	for cls in ["wm7", "wm12"]:
+	for cls in ["wm7", "wm12", "wm10"]:
 		var sim := CoreSimSource.new()
 		sim.settings = {"wind_speed": 6.0, "wind_from": 0.0, "shift_preset": 0, "puffs": false, "seed": 11}
 		if not t.ok(sim.create(), "%s: core created" % cls):
@@ -253,10 +253,23 @@ func test_onboard_classes() -> void:
 						"wm12: the wheel's %s in the lower half of the frame (x %.2f, y %.2f)" % [e[0], sx, sy])
 		else:
 			var tip := BoatGeometry._part_box(bv.model, "rudder").end.x
-			t.ok(tip > float(rig["rudder_stock"][0]) + 0.5, "wm7: the tiller's tip from the rudder part (%.2f)" % tip)
-			t.near(g.xh, tip + 0.15, 1e-4, "wm7: just forward of the tiller's end")
-			t.near(g.yh_abs, 0.9 * g.deck_half_beam, 1e-4, "wm7: on the windward side deck")
-			t.near(g.zh - BoatGeometry._deck_height(deck, g.xh, g.yh_abs), 0.80, 1e-4, "wm7: seated eye height")
+			t.ok(tip > float(rig["rudder_stock"][0]) + 0.5, "%s: the tiller's tip from the rudder part (%.2f)" % [cls, tip])
+			t.near(g.xh, tip + 0.15, 1e-4, "%s: just forward of the tiller's end" % cls)
+			t.near(g.yh_abs, 0.9 * g.deck_half_beam, 1e-4, "%s: on the windward side deck" % cls)
+			t.near(g.zh - BoatGeometry._deck_height(deck, g.xh, g.yh_abs), 0.80, 1e-4, "%s: seated eye height" % cls)
+		if rig.has("rudders"):
+			# twin rudders: each blade turns with the helm about its own canted stock, the trailing edge to
+			# starboard when the bow turns to starboard (h > 0), on every level of detail
+			for lv in bv.levels:
+				t.ok((lv["blades"] as Array).size() == 2, "%s: two rudder blades on every level" % cls)
+			bv._turn_rudders(0.5)
+			for b: Dictionary in bv._blades:
+				var n := b["node"] as Node3D
+				var want := (b["rest"] as Transform3D).basis * Basis(b["axis"], 0.5 * info.rudder_max)
+				t.ok(n.transform.basis.is_equal_approx(want), "%s: %s turned by the helm" % [cls, n.name])
+				t.ok(n.transform.origin.is_equal_approx((b["rest"] as Transform3D).origin), "%s: %s on its stock" % [cls, n.name])
+				t.ok((n.transform.basis * Vector3.FORWARD).x < 0.0, "%s: %s trailing edge to starboard" % [cls, n.name])
+			bv._turn_rudders(0.0)
 		# the steering is drawn: its meshes visible at the onboard camera's distance (no LOD swap, no hidden part)
 		bv.update_lod(Vector3(g.xh, g.yh_abs, g.zh).length())
 		var part := bv.model.find_child("wheel" if cls == "wm12" else "rudder", true, false) as Node3D

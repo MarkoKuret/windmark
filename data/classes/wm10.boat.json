@@ -37,7 +37,7 @@
     "I": 12.4,
     "J": 3.75,
     "P": 12.7,
-    "E": 4.75,
+    "E": 4.4,
     "mast_height": 15.0,
     "mast_x": 1.15,
     "boom_height": 2.05,
@@ -57,7 +57,7 @@
     "deck": {
       "cockpit": {"length": 3.4, "width": 0.74, "depth": 0.40, "open_transom": true},
       "cabin": {"height": 0.24, "meet_aft_of_mast": 0.08, "slope_from": 0.3, "width": 0.56, "side_rake": 0.38, "edge_radius": 0.05},
-      "lifelines": true,
+      "lifelines": false,
       "steering": "tiller",
       "hatches": 2
     },

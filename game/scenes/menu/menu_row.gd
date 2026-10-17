@@ -69,6 +69,7 @@ func _init_row(text: String, v: Variant) -> void:
 	name = "Row_" + (key if key != "" else text.validate_node_name())
 	focus_mode = Control.FOCUS_ALL
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	custom_minimum_size = Vector2(0, MenuTheme.ROW_H)
 	var h := HBoxContainer.new()
 	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(h)
@@ -76,9 +77,11 @@ func _init_row(text: String, v: Variant) -> void:
 	_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_name.clip_text = true
 	_name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_name.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	h.add_child(_name)
 	_value = MenuTheme.label("", MenuTheme.ROW_SIZE, MenuTheme.NAVY, 600)
 	_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_value.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_value.custom_minimum_size = Vector2(170 if kind != Kind.INFO else 0, 0)
 	h.add_child(_value)
 	focus_entered.connect(func() -> void: _focused = true; _style())
@@ -90,7 +93,7 @@ func _init_row(text: String, v: Variant) -> void:
 
 
 func _style() -> void:
-	var pad := Vector2(16, 7)
+	var pad := MenuTheme.ROW_PAD
 	add_theme_stylebox_override("panel", MenuTheme.focus_box(pad) if _focused
 		else MenuTheme.box(Color(0, 0, 0, 0), 0, 2, pad))
 	_name.add_theme_color_override("font_color", MenuTheme.NAVY if _focused else MenuTheme.INK)

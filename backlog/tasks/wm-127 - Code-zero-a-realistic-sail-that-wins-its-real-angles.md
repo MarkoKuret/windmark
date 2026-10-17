@@ -1,9 +1,11 @@
 ---
 id: WM-127
 title: 'Code zero: a realistic sail that wins its real angles'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@downwind'
 created_date: '2026-10-15 16:45'
+updated_date: '2026-10-16 21:12'
 labels:
   - physics
   - vpp
@@ -21,6 +23,6 @@ Owner (2026-10-15): the code zero is broken and works at no angle in a realistic
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Spec and VPP README give the code zero's coefficients and crossover with sources
-- [ ] #2 wm12 crossover: code zero best only on tight reaches in light/medium air, never dead downwind; tests green
+- [x] #1 Spec and VPP README give the code zero's coefficients and crossover with sources
+- [x] #2 wm12 crossover: code zero best only on tight reaches in light/medium air, never dead downwind; tests green
 <!-- AC:END -->

@@ -47,6 +47,9 @@ var sail_up := ""
 var sail_hoisting := ""
 var hoist_progress := 0.0
 var gauges: Array[Gauge] = []
+## hud.md §4: the VMG angles (rad, |twa|) of the class at the felt TWS, NAN when the sim has no polar
+var vmg_up_twa := NAN
+var vmg_dn_twa := NAN
 ## h_cmd, sheet_cmd, auto_trim and let_fly come from the local controls (set_commands), not from the sim's
 ## controls record
 var commands_local := false
@@ -100,6 +103,9 @@ func tick(sim: SimSource, boat: int) -> void:
 			or run.phase == SimSource.Phase.HOISTING):
 		sail_hoisting = info.sails[run.sail].name
 		hoist_progress = sv.sails[run.sail].progress
+	var vm := sim.polar_vmg(boat, s.tws)
+	vmg_up_twa = float(vm.get("up_twa", NAN))
+	vmg_dn_twa = float(vm.get("down_twa", NAN))
 	_gauges(sim, boat, s, sv, info, auto_trim)
 
 

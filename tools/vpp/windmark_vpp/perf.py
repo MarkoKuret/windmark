@@ -227,7 +227,8 @@ class Generator:
         src = np.maximum.accumulate(rows, axis=0)
         return ConfigResult(front=front, rig=rig, V=np.where(ok, take(st.V), 0.0),
                             heel=np.where(ok, take(st.heel), 0.0), awa=take(st.awa), aws=take(st.aws),
-                            fi=k // NR, reef=REEFS[k % NR], valid=ok, deltas=[take(d) for d in st.deltas],
+                            fi=k // NR, reef=np.maximum(REEFS[k % NR], rig.reef_min), valid=ok,
+                            deltas=[take(d) for d in st.deltas],
                             fh=np.where(ok, take(st.fh), 0.0), broached=~ok, src=src, heel_limited=limited)
 
     def _broached(self, r: ConfigResult, acc):

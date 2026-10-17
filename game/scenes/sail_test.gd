@@ -20,6 +20,10 @@ extends Node3D
 ## Spectating (spectate_next / prev / leader) steps through the boats when not racing (`racing` off, `watch`)
 ## or once the player has finished, retired or left the race (cameras.md §1).
 ##
+## A shot script (`--shot=<path>`, cameras.md §9.2, ShotScript) runs the capture actions, the camera choice and held
+## boat actions at set shot times and quits by itself (unattended Movie Maker capture); `--quit-at=<s>` quits at a
+## shot time without one. With a shot the scenario's end pause is off.
+##
 ## The race end (menus.md §5, hud.md §13.1 to §13.3): offline the player's boat has the finished-boat autopilot
 ## (race.md §6.2), so she sails clear after her finish; when her race is over the camera eases into the finish view
 ## (cameras.md §9.1) and the results screen of scenes/menu (ResultsScreen, a child like the pause menu) takes over
@@ -163,8 +167,8 @@ var perf_seconds := 0.0
 var _tick_usec := 0
 ## the developer look panel (hud.md §18, LookPanel): F9
 var look_panel: LookPanel
-## the chase camera breathes (cameras.md §2.1); `--breathing=off` and the look panel turn it off (DevLook)
-var chase_breathing := true
+## the chase camera banks into turns (cameras.md §2.1); `--chase-bank=off` and the look panel turn it off (DevLook)
+var chase_bank := true
 ## the scene is built: DevLook's setters apply at once from here on (before, the flags only store their values)
 var built := false
 ## the light (water_render.md §4.5): the time of day (-1: the venue's look file, by the weather mode), the conditions
@@ -181,6 +185,16 @@ var venue_look: VenueLook
 var capture := CaptureMode.new()
 ## an online session (not built yet): the capture actions and the clip cameras are offline only
 var online := false
+## cameras.md §9.2: the shot script of `--shot=` (offline only), null without one; `--quit-at=` (shot s, NAN: none)
+var shot: ShotScript = null
+var shot_path := ""
+var quit_at := NAN
+## the run quits when the shot ends (tests turn it off and read shot_ended)
+var shot_quits := true
+var shot_ended := false
+## the shot time run on the frame time while the simulation was stopped (s), and a camera cue for this frame
+var _shot_stopped := 0.0
+var _shot_camera := {}
 
 var _chat: LineEdit
 var _paused_label: Label
@@ -209,6 +223,7 @@ func _ready() -> void:
 	_apply_setup()
 	_user_args()
 	_load_scenario()
+	_load_shot()
 	if world_seed == 0:
 		world_seed = 1 + (Time.get_ticks_usec() ^ int(Time.get_unix_time_from_system() * 1000.0)) % 2000000000
 	_apply_light()
@@ -239,7 +254,7 @@ func _ready() -> void:
 	rig.name = "CameraRig"
 	add_child(rig)
 	rig.camera.current = true
-	rig.chase.breathing = chase_breathing
+	rig.chase.banking = chase_bank
 	rig.clip_allowed = not online
 	capture.allowed = not online
 	sea.camera = rig.camera
@@ -285,13 +300,14 @@ func _ready() -> void:
 		late.name = "EndOfFrame"
 		late.scene = self
 		add_child(late)
+	_shot_window()
 	_add_pause_menu()
 	_add_results()
 	if Settings.render_scale_override > 0.0 or Settings.upscaler_override != "" or Settings.aa_override != "":
 		Settings.current().apply_render_scale(get_tree().root)
 	if no_hud:
 		hud.toggle_hidden()
-	DevLook.apply_built(self)  # the look flags (shadows, grade, breathing) on the built scene
+	DevLook.apply_built(self)  # the look flags (shadows, grade, chase bank) on the built scene
 	_apply_measure_off()
 	if scenario_run != null:
 		view_boat(scenario_run.scenario.view)
@@ -305,6 +321,7 @@ func _ready() -> void:
 	look_panel = LookPanel.new()
 	look_panel.scene = self
 	add_child(look_panel)
+	_shot_begin()
 	built = true
 
 
@@ -409,7 +426,7 @@ func _apply_setup() -> void:
 ## hazy|late` (the old preset names), `--light-advance=<rate>`, `--grade=<k>` (0 to 1.5),
 ## `--look=off` (no colour grade, contact shading or depth of field, to
 ## compare), `--ssao=on|off|tier` (contact shading over the tier), `--dof=off`, `--haze=<factor>`,
-## `--caps=off`, `--drawn-wind=<kn>`, `--breathing=off`, `--aa=off|fxaa|smaa`, `--quality=L|M|H`,
+## `--caps=off`, `--drawn-wind=<kn>`, `--chase-bank=off`, `--aa=off|fxaa|smaa`, `--quality=L|M|H`,
 ## `--render-scale=0.67`, `--no-boat-shadows`, `--no-drawn-shadows`;
 ## `--course=<venue>/<id>` (race mode), `--seed=<n>` (0: from the clock), `--livery=<id>` (the player's livery),
 ## `--wind=<kn>`, `--wind-from=<deg>`,
@@ -417,7 +434,8 @@ func _apply_setup() -> void:
 ## `--perf-seconds=N`, `--upscaler=fsr|bilinear|metalfx`, `--no-vsync`,
 ## `--shadow-splits=0|1|2|4`, `--shadow-atlas=N`, `--shadow-distance=M`, `--shadow-soft=0..5`, `--no-wake-buffer`,
 ## `--sea-grid=RINGSxSEGMENTS`, `--water-shader=l|m|h` and `--no-hud` (this run only, not saved);
-## `--scenario=<id>` (a rules scenario of game/data/scenarios, or a .scenario.json path; race.md §14).
+## `--scenario=<id>` (a rules scenario of game/data/scenarios, or a .scenario.json path; race.md §14);
+## `--shot=<id or path>` (a shot script, cameras.md §9.2) and `--quit-at=<shot s>`.
 func _user_args() -> void:
 	var fleet_given := false
 	var race_flag := false
@@ -495,6 +513,10 @@ func _user_args() -> void:
 			no_hud = true
 		elif a.begins_with("--scenario="):
 			scenario = a.trim_prefix("--scenario=")
+		elif a.begins_with("--shot="):
+			shot_path = a.trim_prefix("--shot=")
+		elif a.begins_with("--quit-at="):
+			quit_at = a.trim_prefix("--quit-at=").to_float()
 		else:
 			_measure_flag(a)
 	if race_flag and not fleet_given and fleet_size < 2:
@@ -718,6 +740,7 @@ func _setup_core() -> int:
 		return _setup_fake()
 	if skip_s > 0.0:
 		cs.step_ticks(roundi(skip_s / SimSource.DT), false)
+	_shot_skip(cs)
 	sim = cs
 	core_env = CoreEnvSource.new()
 	core_env.name = "CoreEnv"
@@ -895,7 +918,7 @@ func _setup_fake() -> int:
 func _on_tick(_t: int) -> void:
 	_ticked_this_frame = true
 	_flush_tick_work()
-	if scenario_run != null and scenario_run.finished(sim):
+	if scenario_run != null and shot == null and scenario_run.finished(sim):
 		runner.paused = true  # race.md §14: the clip ends paused; reset_boat runs it again
 	_snapshot_sails()
 	_tick_due = [TickWork.HUD, TickWork.AUDIO, TickWork.COURSE]
@@ -1025,6 +1048,8 @@ func step_frame(dt: float) -> void:
 	var raw := scripted_input if scripted_input != null else reader.read()
 	if look_panel != null and look_panel.blocks_input():
 		raw = raw.without_buttons()  # the look panel has the keys (hud.md §18); the sim keeps running
+	if shot != null or not is_nan(quit_at):
+		_shot_frame(raw)  # cameras.md §9.2
 	_ui_actions(raw)
 	hud.pick_enabled = not runner.paused and not controls.text_focus  # not through the menu or chat (hud.md §16.4.1)
 	hud.map_enabled = hud.pick_enabled  # nor the map key (hud.md §8.1)
@@ -1038,6 +1063,8 @@ func step_frame(dt: float) -> void:
 	_in_advance = true
 	runner.advance(capture.sim_dt(dt))  # slow motion and the clean pause (controls.md §7)
 	_in_advance = false
+	if runner.paused or capture.sim_dt(dt) <= 0.0:
+		_shot_stopped += dt  # the shot time runs on the frame time while the simulation is stopped
 	var t2 := Time.get_ticks_usec()
 	PerfStats.add(&"sim", t2 - t1 - _tick_usec)
 	if not _ticked_this_frame and not _tick_due.is_empty():
@@ -1052,6 +1079,8 @@ func step_frame(dt: float) -> void:
 		rig.aerial.next_mark = course_view.next_mark_scene()
 	var t4 := Time.get_ticks_usec()
 	PerfStats.add(&"course", t4 - t3)
+	if not _shot_camera.is_empty():
+		_shot_apply_camera()
 	var cin := CameraInput.from_raw(raw if not controls.text_focus else raw.without_buttons(), controls.free_camera)
 	if course_view == null:
 		rig.course = null
@@ -1182,9 +1211,7 @@ func _ui_actions(r: RawInput) -> void:
 	if r.was_pressed(&"hud_hide"):
 		hud.toggle_hidden()
 	if capture.handle(r):
-		hud.world_tags = capture.world_tags
-		if course_view:
-			course_view.show_guides = capture.world_tags
+		_set_world_tags(capture.world_tags)
 	if r.was_pressed(&"pause_menu"):
 		# Esc closes the course map first (hud.md §8.1), then clears a selection (hud.md §16.4.1), then pauses
 		if runner.paused or not (hud.close_map() or hud.clear_selection()):
@@ -1255,3 +1282,134 @@ func _screenshot() -> void:
 		return
 	DirAccess.make_dir_recursive_absolute("user://screenshots")
 	img.save_png("user://screenshots/windmark_%s.png" % Time.get_datetime_string_from_system().replace(":", "-"))
+
+
+## The world tags and the on-water guides shown or hidden (controls.md §7 world_tags).
+func _set_world_tags(on: bool) -> void:
+	capture.world_tags = on
+	hud.world_tags = on
+	if course_view:
+		course_view.show_guides = on
+
+
+# ---- shot scripts (cameras.md §9.2) ----
+
+## The shot of `--shot=` (offline only); a file that does not load is reported and the session runs without it.
+func _load_shot() -> void:
+	if shot_path == "" or online:
+		return
+	var why := []
+	shot = ShotScript.load_file(shot_path, why)
+	if shot == null:
+		push_error("shot: %s" % (why[0] if not why.is_empty() else shot_path))
+
+
+## The world tick of shot time 0: a scenario's clip time 0, a race's gun, else the world's start.
+func _shot_zero_tick(s: SimSource) -> int:
+	if scenario_run != null:
+		return scenario_run.tick0
+	if on_core and race_mode and s.has_race():
+		return int(s.race().get("n_gun", 0))
+	return 0
+
+
+## The shot time of the rendered pose (s).
+func shot_time() -> float:
+	return (sim.tick() + runner.alpha() - _shot_zero_tick(sim)) * SimSource.DT + _shot_stopped
+
+
+## The shot's `start`: the new world stepped to that shot time before the first frame (a scenario's hold boats are
+## steered on every step).
+func _shot_skip(cs: CoreSimSource) -> void:
+	if shot == null or is_nan(shot.start):
+		return
+	var n := _shot_zero_tick(cs) + roundi(shot.start / SimSource.DT) - cs.tick()
+	if n <= 0:
+		return
+	if cs.before_step.is_valid():
+		for i in n:
+			cs.step()
+	else:
+		cs.step_ticks(n, false)
+
+
+## Before the pause menu applies the settings: the portrait capture preset (menus.md §3) for this run, and under
+## Movie Maker the window kept as the command line made it (its frame size is fixed at start: `--resolution`).
+func _shot_window() -> void:
+	if shot == null:
+		return
+	var st := Settings.current()
+	if shot.portrait:
+		st.capture_preset = "portrait"
+	if OS.has_feature("movie"):
+		st.keep_window = true
+		var win := get_tree().root
+		if shot.portrait and win.size.x > win.size.y:
+			push_warning("shot: a portrait shot under Movie Maker wants --resolution 1080x1920")
+
+
+## The shot's start state on the built scene: HUD and world tags, the render scale of the capture preset.
+func _shot_begin() -> void:
+	if shot == null:
+		return
+	hud.visible = shot.hud
+	_set_world_tags(shot.world_tags)
+	if shot.portrait:
+		Settings.current().apply_render_scale(get_tree().root)
+
+
+## One frame of the shot: its cues up to the shot time, the held actions into `raw`, the end.
+func _shot_frame(raw: RawInput) -> void:
+	if shot_ended:
+		return
+	var now := shot_time()
+	if shot != null:
+		for c in shot.due(now):
+			_shot_cue(c, now)
+			if shot_ended:
+				return
+		shot.apply_input(raw, now)
+	if not is_nan(quit_at) and now >= quit_at - 1e-6:
+		_shot_end()
+
+
+func _shot_cue(c: Dictionary, now: float) -> void:
+	match c["action"]:
+		"camera":
+			_shot_camera = c
+		"slow":
+			capture.rate_index = maxi(CaptureMode.RATES.find(float(c["slow"])), 0)
+		"pause":
+			capture.frozen = capture.frozen or bool(c["pause"])
+		"resume":
+			capture.frozen = capture.frozen and not bool(c["resume"])
+		"hud":
+			hud.visible = bool(c["hud"])
+		"tags":
+			_set_world_tags(bool(c["tags"]))
+		"view":
+			view_boat(leader() if c["view"] is String else int(c["view"]))
+		"input":
+			shot.hold(c, now)
+		"end":
+			if bool(c["end"]):
+				_shot_end()
+
+
+## A camera cue, with the course of the clip cameras (cameras.md §9).
+func _shot_apply_camera() -> void:
+	var c := _shot_camera
+	_shot_camera = {}
+	var m: int = ShotScript.CAMERAS[c["camera"]]
+	if CameraRig.is_clip(m) and course_view != null:
+		rig.course = ClipCourse.from_race(course_view, viewed, target.loa)
+	if not rig.cue(m, target, ShotScript.camera_params(c), int(c.get("preset", 0)) - 1):
+		push_warning("shot: the %s camera cannot be placed at %.2f s" % [c["camera"], float(c["t"])])
+
+
+## The shot's end: the run quits (Movie Maker closes its file).
+func _shot_end() -> void:
+	shot_ended = true
+	print("shot: end at %.3f s, tick %d, frame %d" % [shot_time(), sim.tick(), Engine.get_process_frames()])
+	if shot_quits:
+		get_tree().quit()

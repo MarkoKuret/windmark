@@ -38,6 +38,16 @@ const DT_MAX := 0.1
 const PUSH_SLOPE := 0.3
 const PUSH_EASE := 2.0
 const EASE_MAX := 0.35
+## §7.7 the clew set: corner reach (grid steps), fade height (of Sl), bounds of the draw-in and draw-down, the
+## difference step and the Newton steps of the solve
+const CLEW_REACH := 2
+const CLEW_H := 0.3
+const CLEW_KD := Vector2(-0.1, 0.25)
+const CLEW_KL := Vector2(-0.1, 0.3)
+const CLEW_STEP := 0.01
+const CLEW_ITER := 2
+const CLEW_FADE := Vector2(1.3089969, 1.8325957)  # faded out as |beta| goes round the bow
+const CLEW_AWA := Vector2(0.7853982, 1.1344640)  # and in with the AWA over the kite's lowest angles
 
 var rows := 0
 var cols := 0
@@ -99,6 +109,10 @@ var _srow := PackedFloat32Array()
 var _prow := PackedFloat32Array()   # §6.3, §6.4 the camber's height profile p_i
 var _prof := PackedFloat32Array()   # §6.3, §6.4 the chordwise camber profile per vertex
 var _trow := PackedFloat32Array()   # §7 the twist of each row toward leeward, rad
+var _crow := PackedFloat32Array()   # §7.7 the clew set's share of each row
+var _d0row := PackedFloat32Array()  # §7.7 the camber of each row before the clew set, per update
+var _kd := 0.0                       # §7.7 the draw-in and draw-down of the last update
+var _kl := 0.0
 
 ## drivers kept between frames
 var phi := 0.0
@@ -205,6 +219,9 @@ func configure(rest_mid: PackedVector3Array, r: int, c: int, p: Dictionary) -> b
 	_srow.resize(rows)
 	_srow.fill(1.0)
 	_prow.resize(rows)
+	_crow.resize(rows)
+	_d0row.resize(rows)
+	_d0row.fill(0.0)
 	_trow.resize(rows)
 	_trow.fill(0.0)
 	_prof.resize(n)
@@ -217,6 +234,8 @@ func configure(rest_mid: PackedVector3Array, r: int, c: int, p: Dictionary) -> b
 		_c[i] = rest_mid[i * cols + cols - 1].distance_to(rest_mid[i * cols])
 		_amid[i] = 0.5 * (_a[i * cols] + _a[i * cols + cols - 1])
 		_hrow[i] = _h[i * cols]
+		var cr := clampf(1.0 - _hrow[i] / CLEW_H, 0.0, 1.0)
+		_crow[i] = cr * cr * cr
 		_u0row[i] = _u[i * cols]
 		_ulrow[i] = _u[i * cols + cols - 1]
 		# §6.3 (asymmetric: deepest at 0.3 of the height, the draft forward) and §6.4 (symmetric)
@@ -424,8 +443,8 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 		wv = wv.normalized() if wv.length_squared() > 1e-12 else Vector3(0, 0, 1)
 		var fc := camber * minf(f_fly, 1.15)
 		for i in rows:
-			_drow[i] = fc * _prow[i]
-			_srow[i] = 1.0 / (1.0 + 8.0 / 3.0 * _drow[i] * _drow[i])
+			_d0row[i] = fc * _prow[i]
+		_clew_rows(0.0, 0.0)
 	# §7.1 to §7.3 the row twist (an asymmetric spinnaker's opens with the AWA)
 	var tw := twist_top
 	if kind == Kind.ASYM:
@@ -434,7 +453,8 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 		tw *= ta * ta * (3.0 - 2.0 * ta) * tr * tr * (3.0 - 2.0 * tr)
 	# (signed; the asymmetric spinnaker's on the side away from the wind at once: it is zero where awa changes sign)
 	for i in rows:
-		_trow[i] = -_sgn(awa) * tw * sqrt(_hrow[i]) if kind == Kind.ASYM else tl * tw * pow(_hrow[i], 1.5)
+		_trow[i] = -_sgn(awa) * tw * (1.0 - pow(1.0 - _hrow[i], 2.5)) if kind == Kind.ASYM \
+				else tl * tw * pow(_hrow[i], 1.5)
 	# §8.1 which shape
 	var up_shape := phase == 3 or phase == 4 or kind == Kind.MAIN
 	var p := 1.0
@@ -446,7 +466,63 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 		else:
 			p = 0.0
 		p = clampf(p, 0.0, 1.0)
-	for k in n:
+	_local(phase, up_shape, p, d_cam, amp, shiver, wv)
+	# §7.4 the ease of a flying sail off the other sails (the head lies on the luff axis)
+	var hd := s_t * head
+	_tack_at = s_t * tack
+	var clearing := clearance > 0.0 and (not _obs.is_empty() or has_mast_head)
+	_ease = 0.0
+	if clearing and not _obs.is_empty():
+		_sections(s_t, piv, ax, base)
+		_ease = _ease_for(beta, s_t, piv, ax, base, hd)
+	else:
+		_secs = []  # no obstacles: none left over from the last update
+	var es := _sgn(beta) * _ease
+	# §7.7 the clew set by its sheet (with the sail as eased): the low rows again with the solved draw-in, draw-down
+	_kd = 0.0
+	_kl = 0.0
+	var g_c := (1.0 - _smoothstep01((absf(_wrap_pi(beta)) - CLEW_FADE.x) / (CLEW_FADE.y - CLEW_FADE.x))) \
+			* _smoothstep01((absf(awa) - CLEW_AWA.x) / (CLEW_AWA.y - CLEW_AWA.x))
+	if kind == Kind.ASYM and has_lead and g_c > 0.0:
+		var kk := _clew_set(beta, base + es, piv, ax, s_t, wv)
+		_kd = g_c * kk.x
+		_kl = g_c * kk.y
+		if _kd != 0.0 or _kl != 0.0:
+			_clew_rows(_kd, _kl)
+			# only the rows the clew set reaches change (the tack corner does not: its offset is the same)
+			var r_to := 0
+			while r_to < rows and _crow[r_to] > 0.0:
+				r_to += 1
+			_local(phase, up_shape, p, d_cam, amp, shiver, wv, r_to)
+	# §7 placement, row by row with the twist toward leeward
+	for i in rows:
+		var th := base + _trow[i] + es
+		var xr := _about(piv, ax, th) * s_t
+		for j in cols:
+			var k := i * cols + j
+			var lc := _loc[k]
+			_mid[k] = xr * (tack + ah * lc.x + lh * lc.y + nh * lc.z)
+	# §7.6 the share of the flying shape: 1 up, growing over the last tenth of the hoist, going with the drop
+	_fa = 0.0
+	if kind == Kind.ASYM or kind == Kind.SYM:
+		if up_shape:
+			_fa = 1.0
+		elif phase == 2:
+			var kh := clampf((p - 0.9) / 0.1, 0.0, 1.0)
+			_fa = kh * kh
+		elif phase == 5:
+			_fa = 1.0 - pow(p, 0.3)
+	_clew0 = _mid[cols - 1]
+	if clearing:
+		_push(awa, hd)
+	_layers(np)
+
+
+## §6, §8 the local shape of every vertex, with the tack pin of §7.5
+func _local(phase: int, up_shape: bool, p: float, d_cam: float, amp: float, shiver: float,
+		wv: Vector3, rows_to: int = -1) -> void:
+	var nk := n if rows_to < 0 else mini(rows_to, rows) * cols
+	for k in nk:
 		var loc: Vector3
 		@warning_ignore("integer_division")
 		var i := k / cols
@@ -473,41 +549,85 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 	if kind == Kind.ASYM or kind == Kind.SYM:
 		var dt0 := _loc[0] - Vector3(_a[0], _l[0], 0.0)
 		if dt0.length_squared() > 0.0:
-			for k in n:
+			for k in nk:
 				var w := 1.0 - clampf(_tack_d[k] / (TACK_PIN * sl), 0.0, 1.0)
 				if w > 0.0:
 					_loc[k] -= dt0 * (w * w)
-	# §7.4 the ease of a flying sail off the other sails (the head lies on the luff axis)
-	var hd := s_t * head
-	_tack_at = s_t * tack
-	var clearing := clearance > 0.0 and (not _obs.is_empty() or has_mast_head)
-	_ease = 0.0
-	if clearing and not _obs.is_empty():
-		_sections(s_t, piv, ax, base)
-		_ease = _ease_for(beta, s_t, piv, ax, base, hd)
-	var es := _sgn(beta) * _ease
-	# §7 placement, row by row with the twist toward leeward
+
+
+## §7.7 the rows' chord over flat chord and camber with the draw-in kd (the low rows drawn in, the cloth's length
+## kept as camber)
+func _clew_rows(kd: float, kl: float) -> void:
 	for i in rows:
-		var th := base + _trow[i] + es
-		var xr := _about(piv, ax, th) * s_t
-		for j in cols:
-			var k := i * cols + j
-			var lc := _loc[k]
-			_mid[k] = xr * (tack + ah * lc.x + lh * lc.y + nh * lc.z)
-	# §7.6 the share of the flying shape: 1 up, growing over the last tenth of the hoist, going with the drop
-	_fa = 0.0
-	if kind == Kind.ASYM or kind == Kind.SYM:
-		if up_shape:
-			_fa = 1.0
-		elif phase == 2:
-			var kh := clampf((p - 0.9) / 0.1, 0.0, 1.0)
-			_fa = kh * kh
-		elif phase == 5:
-			_fa = 1.0 - pow(p, 0.3)
-	_clew0 = _mid[cols - 1]
-	if clearing:
-		_push(awa, hd)
-	_layers(np)
+		var s := 1.0 / (1.0 + 8.0 / 3.0 * _d0row[i] * _d0row[i])
+		if kd != 0.0 and _crow[i] > 0.0:
+			s = minf(s * (1.0 - kd * _crow[i]), 1.0)
+			_drow[i] = sqrt(maxf(1.0 / s - 1.0, 0.0) * 3.0 / 8.0)
+		else:
+			_drow[i] = _d0row[i]
+		_srow[i] = s
+	_kl = kl
+
+
+## §7.7 the flying shape (up, no flutter) of vertex k with the draw-in kd and draw-down kl
+func _fly_at(k: int, wv: Vector3, kd: float, kl: float) -> Vector3:
+	@warning_ignore("integer_division")
+	var i := k / cols
+	var s := 1.0 / (1.0 + 8.0 / 3.0 * _d0row[i] * _d0row[i])
+	var d := _d0row[i]
+	if kd != 0.0 and _crow[i] > 0.0:
+		s = minf(s * (1.0 - kd * _crow[i]), 1.0)
+		d = sqrt(maxf(1.0 / s - 1.0, 0.0) * 3.0 / 8.0)
+	var a0 := _a[i * cols]
+	var e := d * s * _c[i] * _prof[k]
+	var uc := _uc[k]
+	return Vector3(a0 + (_a[k] - a0) * s, _l[k] - kl * _c[0] * _crow[i] * uc * uc, 0.0) - wv * e
+
+
+## §7.7 the corner's bisector and the sheet's direction with (kd, kl): [b, s]
+func _clew_corner(kd: float, kl: float, beta: float, base: float, piv: Vector3, ax: Vector3, s_t: Transform3D,
+		wv: Vector3) -> Array:
+	var x0 := _about(piv, ax, base + _trow[0]) * s_t
+	var x2 := _about(piv, ax, base + _trow[CLEW_REACH]) * s_t
+	var lc := _fly_at(cols - 1, wv, kd, kl)
+	var cl := x0 * (tack + ah * lc.x + lh * lc.y + nh * lc.z)
+	lc = _fly_at(cols - 1 - CLEW_REACH, wv, kd, kl)
+	var ft := x0 * (tack + ah * lc.x + lh * lc.y + nh * lc.z)
+	lc = _fly_at(CLEW_REACH * cols + cols - 1, wv, kd, kl)
+	var et := x2 * (tack + ah * lc.x + lh * lc.y + nh * lc.z)
+	var b := ((ft - cl).normalized() + (et - cl).normalized()).normalized()
+	return [b, (cl - working_lead(beta)).normalized()]
+
+
+## §7.7 the draw-in and draw-down that lay the clew's bisector on the sheet: two Newton steps from (0, 0) with
+## difference derivatives, each clamped to its bounds
+func _clew_set(beta: float, base: float, piv: Vector3, ax: Vector3, s_t: Transform3D, wv: Vector3) -> Vector2:
+	var bs := _clew_corner(0.0, 0.0, beta, base, piv, ax, s_t, wv)
+	var s0: Vector3 = bs[1]
+	var u1 := s0.cross(up)
+	if u1.length_squared() < 1e-12:
+		u1 = s0.cross(fwd)
+	u1 = u1.normalized()
+	var u2 := u1.cross(s0)
+	var kd := 0.0
+	var kl := 0.0
+	for it in CLEW_ITER:
+		var r0 := _clew_res(kd, kl, beta, base, piv, ax, s_t, wv, u1, u2)
+		var j0 := (_clew_res(kd + CLEW_STEP, kl, beta, base, piv, ax, s_t, wv, u1, u2) - r0) / CLEW_STEP
+		var j1 := (_clew_res(kd, kl + CLEW_STEP, beta, base, piv, ax, s_t, wv, u1, u2) - r0) / CLEW_STEP
+		var det := j0.x * j1.y - j1.x * j0.y
+		if absf(det) < 1e-9:
+			break
+		kd = clampf(kd - (j1.y * r0.x - j1.x * r0.y) / det, CLEW_KD.x, CLEW_KD.y)
+		kl = clampf(kl - (-j0.y * r0.x + j0.x * r0.y) / det, CLEW_KL.x, CLEW_KL.y)
+	return Vector2(kd, kl)
+
+
+func _clew_res(kd: float, kl: float, beta: float, base: float, piv: Vector3, ax: Vector3, s_t: Transform3D,
+		wv: Vector3, u1: Vector3, u2: Vector3) -> Vector2:
+	var bs := _clew_corner(kd, kl, beta, base, piv, ax, s_t, wv)
+	var d: Vector3 = bs[0] - bs[1]
+	return Vector2(d.dot(u1), d.dot(u2))
 
 
 ## §7.6 the working lead block: the starboard lead mirrored to the side of beta (starboard for beta > 0)
@@ -595,6 +715,7 @@ func _clear_x(o: Dictionary, p: Vector3, reach: float) -> Array:
 	var box: PackedFloat32Array = o["box"]
 	var px := p.dot(fwd)
 	var py := p.dot(port)
+	reach += RUN_ON * clearance  # the bounds cover the leech's run-on
 	if px < box[4 * r] - reach or px > box[4 * r + 1] + reach or py < box[4 * r + 2] - reach \
 			or py > box[4 * r + 3] + reach:
 		return [INF, Vector3.ZERO]
@@ -831,7 +952,7 @@ func _fly(k: int, i: int, wv: Vector3, shiver: float) -> Vector3:
 	var i2 := 0.33 * flutter_amp * shiver
 	var q := phi - 7.0 * uc
 	var m := Vector3(wv.x + 0.1 * i2 * sin(q), wv.y, wv.z + i2 * cos(q))
-	var r := Vector3(a0 + (_a[k] - a0) * s, _l[k], 0.0) - m * e
+	var r := Vector3(a0 + (_a[k] - a0) * s, _l[k] - _kl * _c[0] * _crow[i] * uc * uc, 0.0) - m * e
 	if kind == Kind.SYM:
 		var h := _h[k]
 		var g := maxf(0.0, shiver - uc) * (1.0 - (2.0 * h - 1.0) * (2.0 * h - 1.0))

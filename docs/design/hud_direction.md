@@ -26,7 +26,7 @@ on the water, not in boxes).
 4. **Colour means something or it isn't there.** The chrome is ink and paper. Colour appears only for the course and
    you (yellow) and for the rules colours of `hud.md` §8 (§3 below). If everything is white, nothing needs your attention.
 5. **Put it where it belongs.** Mark distance sits on the mark, tack distance on the layline, the start line numbers
-   under the countdown, the penalty turn around your boat. Corner blocks keep only what has no place in the world:
+   under the countdown. Corner blocks keep only what has no place in the world:
    speed, wind, clock, rank.
 6. **Always on vs contextual, and the player picks the density.** A small constant frame whose size the player chooses
    (§6); everything else appears when it applies and leaves when it doesn't (§7).
@@ -69,7 +69,7 @@ Colour is never the only signal: every coloured state also has a word (the rules
 | Size (1080p) | Deck (800 px) | Values |
 | --- | --- | --- |
 | 128 px | 105 px | Hero: boat speed; the countdown before the start |
-| 52 to 72 px | 43 to 59 px | Primary: speed to target (`7.1 / 7.4`), TWA, HDG, VMG, TWS, deadline, mark distance (44) |
+| 52 to 72 px | 43 to 59 px | Primary: TWA, HDG, VMG, TWS, deadline, mark distance (44) |
 | 22 to 40 px | 18 to 33 px | Tertiary row (SOG, COG, AWS, AWA, heel), clock and rank in the bug (40), table values |
 | 14 px labels | 11.5 px | Caps labels in instrument cells; 11 px is the floor for any text (smaller sizes clamp to it on the Deck) |
 
@@ -89,8 +89,8 @@ A bit more instrument, no dashboard:
   owner 2026-09-29), hairline dividers between cells at 45 % of `hair`. No rounded corners, no bevels, no reflections.
 - **Cells.** Label top left, unit top right, value right-aligned at the bottom; the same grid on every page and level.
 - **Analogue parts, two only.** The **TWA dial** (bow up; red and green sectors for close-hauled on port and on
-  starboard, 20° to 60°; yellow ticks at the target angle of the leg; the true wind as a solid pointer coming in from
-  the rim; Data adds the apparent wind as a hollow pointer; a small hull outline in the centre). The **heel bar** in
+  starboard, 20° to 60°; yellow notches at the VMG angles up and down (the leg's pair at full strength); the true wind as a solid pointer
+  coming in from the rim, coloured green on the VMG angle through yellow to red far off (`hud.md` §16.3); Data adds the apparent wind as a hollow pointer; a small hull outline in the centre). The **heel bar** in
   Data (centre zero, ±30°, bar in the tack colour to the side that is down). Both move every frame; the numbers beside
   them keep the 4 Hz refresh.
 - **Level pips.** Three 7 px squares top right of the page, filled to the level.
@@ -111,7 +111,7 @@ Four corners, a top-centre alert lane, a bottom-centre helm strip, and the world
 |                  world tags: marks, boats, laylines, tack point                |
 | edge pointers <                                               > edge pointers  |
 |                                                                                |
-| INSTRUMENTS (hero BSP, speed to target)                                RADAR   |
+| INSTRUMENTS (hero BSP, TWA dial)                                       RADAR   |
 | TWA  HDG  VMG                        trim gauges (manual)                      |
 | sog cog aws awa heel                 HELM ------+------ SAIL                   |
 +-------------------------------------------------------------------------------+
@@ -123,10 +123,9 @@ Four corners, a top-centre alert lane, a bottom-centre helm strip, and the world
   and the one rules line (stacked, penalty first). Nothing else ever goes here.
 - **Top right, wind page** (Race and Data): TWS cell and a north-up TWD dial cell. The shift chip hangs under it, then
   the event feed, right-aligned, fading.
-- **Bottom left, instrument page:** row 1: boat speed (hero), speed to target (boat speed over the leg's target
-  speed in knots, `7.1 / 7.4`; the polar speed at the present TWA before the start), the TWA dial spanning rows 1 and 2 with the TWA number
-  under it. Row 2: heading (Data: HDG and VMG) and target angle with target speed as its unit. Row 3 (Data): SOG, COG,
-  AWS, heel bar.
+- **Bottom left, instrument page:** row 1: boat speed (hero), (Data: VMG), the TWA dial spanning rows 1 and 2 with
+  the TWA number under it. Row 2: heading (Data: and SOG). Row 3 (Data): COG, AWS, heel bar. No target speed
+  anywhere (owner 2026-10-16).
 - **Bottom right, radar:** heading-up, hairline rings, a soft ink disc (38 %), boats as rule-coloured triangles, the
   next mark as a yellow diamond, laylines, wind arrow outside the ring, range under it.
 - **Bottom centre, helm strip:** one hairline for the helm with the command mark in yellow, the sail on the right;
@@ -134,8 +133,9 @@ Four corners, a top-centre alert lane, a bottom-centre helm strip, and the world
 - **World:** the next mark's tag (name, distance, ETA, bearing, rounding side, ZONE chip inside the zone), name tags on
   mast tops (paper on ink when there is no relation, solid rule colour when there is), laylines, zone circle, rounding
   arrow, start line, course to the line, the tack point (a ring and its label; no line from the boat to it, owner
-  2026-10-05), penalty turn around your boat. A boat the player picks gets a hairline bracket and a small card
-  (`hud.md` §16.4.1, §16.7). Anything worth pointing at that is off screen gets an edge pointer with name and distance.
+  2026-10-05). A boat the player picks gets a hairline bracket and a small card
+  (`hud.md` §16.4.1, §16.7). Anything worth pointing at that is off screen gets an edge pointer with name and distance; outside the chase
+  camera one next-mark arrow over the helm strip points the way to the mark (`hud.md` §7.1).
 
 **Steam Deck (1280 x 800, 16:10):** margins 32 px left and right, 28 px top and bottom. The same layout scaled by 0.82 of
 the 1080p sizes (not the 0.74 that pure height would give), text clamped to 11 px, numbers 18 px or more on the 7"
@@ -148,17 +148,17 @@ layout at 1080p scale.
 The player cycles three levels with one key: **Glance**, **Race**, **Data**. Density decides how many instrument
 values show; it never hides a contextual item (countdown, OVER and OCS, rules line, penalty panel, own-event banners,
 protest and hail prompts) or anything on the water (start line and course to it, mark tag, laylines, tack or gybe
-point, zone circle, rounding arrow, name tags, edge pointers, penalty turn). The radar, the helm strip and, under manual
+point, zone circle, rounding arrow, name tags, edge pointers, next-mark arrow). The radar, the helm strip and, under manual
 trim, the trim gauges show at every level. Density is independent of the assist preset (`hud.md` §14): an item shows
 only when both allow it.
 
 | Phase | Glance | Race | Data |
 | --- | --- | --- | --- |
-| Pre-start | Boat speed, TWA dial. Start block: countdown and burn with the late/early bar, the flag rule in one line. No race bug, no wind page | + speed to target, heading, target speed. Full start block (line, to line, burn, bias, flags). Wind page. Race bug (class, fleet). Feed 3 lines | + VMG, AWA, SOG, COG, AWS, heel bar. Race bug adds laps and legs. Feed 6 lines |
-| Upwind | Boat speed, TWA dial with target ticks, speed to target in knots (the one cue). Race bug: clock and rank | + heading, target angle and speed. Wind page, shift chip. Lap and leg line. Feed 3 lines | + VMG, AWA pointer and value, SOG, COG, AWS, heel bar. Leader gap, ahead and behind. Feed 6 lines. Sail hint (assist allowing) |
-| Downwind | As upwind with the run targets; on a reach the target is the polar speed with the best sail and the dial has no target ticks | As upwind | As upwind |
-| Rounding (within 6 L and 6 s after) | Boat speed, TWA dial. Live order cut to ahead, you, behind | + speed to target, heading, target. Full live order. Wind page, shift chip | + all of Data upwind; live order with rounded tags and the estimate note |
-| Penalty | Boat speed, TWA dial; the panel and the turn on the water carry the rest | As the leg it is taken on | As the leg it is taken on |
+| Pre-start | Boat speed, TWA dial. Start block: countdown and burn with the late/early bar, the flag rule in one line. No race bug, no wind page | + heading. Full start block (line, to line, burn, bias, flags). Wind page. Race bug (class, fleet). Feed 3 lines | + VMG, AWA, SOG, COG, AWS, heel bar. Race bug adds laps and legs. Feed 6 lines |
+| Upwind | Boat speed, TWA dial with the VMG angles and the coloured pointer (the one cue). Race bug: clock and rank | + heading. Wind page, shift chip. Lap and leg line. Feed 3 lines | + VMG, AWA pointer and value, SOG, COG, AWS, heel bar. Leader gap, ahead and behind. Feed 6 lines. Sail hint (assist allowing) |
+| Downwind | As upwind with the run angles; on a reach the pointer is neutral | As upwind | As upwind |
+| Rounding (within 6 L and 6 s after) | Boat speed, TWA dial. Live order cut to ahead, you, behind | + heading. Full live order. Wind page, shift chip | + all of Data upwind; live order with rounded tags and the estimate note |
+| Penalty | Boat speed, TWA dial; the penalty panel carries the rest | As the leg it is taken on | As the leg it is taken on |
 
 In Glance the radar is drawn at 72 % size without its range and orientation labels, the helm strip loses its labels,
 and the feed shows only the player's own events.
@@ -183,7 +183,7 @@ and the feed shows only the player's own events.
 | Helm strip | Rounding arrow: from 500 m out; far marker beyond 500 m |
 | | Name tags: boats within 150 m or with a relation; edge pointers for those off screen |
 | | Rules line: while a condition of `hud.md` §11 holds, one line |
-| | Penalty panel and the turn on the water: while a penalty is pending or being taken, and 5 s after |
+| | Penalty panel: while a penalty is pending or being taken, and 5 s after |
 | | Live order: within 6 L of a mark and 6 s after each rounding; full ranking on Tab |
 | | Trim gauges: manual trim only |
 | | Feed: 6 lines, 8 s each; signal banner 3 s under the countdown |
@@ -228,13 +228,13 @@ the v1 question about instrument pages on a button.
    player a separate accent.
 2. Level names: Glance, Race, Data. "Minimal, Standard, Full" would clash with the assist presets of `hud.md` §14,
    which already use those words for something else.
-3. Glance upwind shows speed to target in knots as its one cue (VMG % and polar % were dropped by the owner,
-   2026-10-09: percentages are not useful). The alternative is the shift (lift or header); speed to target is always
-   meaningful, and the shift chip joins at Race.
+3. Glance's one cue is the TWA dial's pointer coloured by how far the TWA is from the VMG angle (owner
+   2026-10-16; VMG % and polar % were dropped on 2026-10-09 and the speed against the target speed on 2026-10-16).
 4. The glass page: is 14 to 44 % ink the right amount, or should it be lighter still (the numbers keep their text
    shadow either way)?
 5. Gamepad control: a tap of `View` (hold stays the ranking). If the ranking is set to toggle, the density needs its own
    button; which one?
-6. The penalty turn drawn on the water: keep it in every camera, or only in chase and aerial?
+6. The penalty turn drawn on the water: removed (owner, 2026-10-16: the ring round the boat was ugly); the panel
+   shows the turn as a number.
 7. Name tags: skipper names (as mocked) or boat names, and within what range?
 8. Downwind has no mock-up frame yet (no run frame was rendered); it follows the upwind layout with the run targets.

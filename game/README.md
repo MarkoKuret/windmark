@@ -320,7 +320,7 @@ Flags after `--`:
 | `--haze=0.5` | the distance haze as a factor of the light preset's (0 to 1.5) |
 | `--caps=on` | whitecaps on (off by default, `water_render.md` §4.4); `--caps=off` turns them off |
 | `--drawn-wind=18` | the wind the water draws (whitecaps, puffs) in knots, over the simulation's; the waves stay |
-| `--breathing=off` | the chase camera's plain follow instead of its breathing (`cameras.md` §2.1) |
+| `--chase-bank=off` | the chase camera keeps the horizon level in turns too, no bank (`cameras.md` §2.1) |
 | `--skip=S` | the race world fast-forwarded S seconds before the first frame (a measured moment of the race) |
 | `--lod=0` | every boat's meshes at the own boat's LOD bias (the full model at chase range, `sail_visuals.md` §11.4) |
 | `--hide-parts=rigging,hardware` | these model part nodes of every boat never shown (hull, deck, keel, rudder, mast, rigging, boom, hardware, mainsheet) |
@@ -346,7 +346,7 @@ anti-aliasing (Off, FXAA, SMAA), grade on or off, grade strength, SSAO (Tier, Of
 preset, quality tier (sea grid and water shader, wakes, shadows, glow, SSAO, reflections; a short hitch while the
 shaders compile), haze strength (x0 to x1.5) and its reset, whitecaps, drawn wind for the sea (8 to 25 kn), the wind
 for a restart and "Restart with wind" (restart only: the core takes its wind when the world is made; a rules
-scenario keeps its own), chase camera breathing, drawn boat shadows, boat sun shadows, render scale and the
+scenario keeps its own), chase camera bank, drawn boat shadows, boat sun shadows, render scale and the
 frame-time overlay, with an fps and frame time readout. Up and Down pick a row, Left and Right change it, Enter or
 Space toggles or runs it, Esc gives the keys back to the boat (the panel stays up), F9 closes it; the mouse clicks,
 right clicks or scrolls a row. While it has the focus the boat takes no keys and the simulation keeps running.
@@ -508,6 +508,11 @@ Runs headless, with scripted input at fixed frame rates:
   wind state the core's, the HUD commands the local ones (while the core's lag a step); at the end the HUD
   numbers against the core's state; and a short wm12 run. The script writes the core sea samples first when they
   are missing, and builds the GDExtension when `game/bin` has none.
+- `tests/shot_test.gd`: shot scripts (`cameras.md` §9.2, §10 test 16): the files of `data/shots` load, bad ones
+  are refused, cues run in time order and once; the sail scene runs a shot on the core (camera cues, slow, pause
+  and resume with the shot time running through the pause, HUD and tags off, let fly held for 1 s, the end after
+  the expected number of frames) and a race shot that starts 10 s before the gun with the start line camera and
+  ends by `--quit-at`.
 - `tests/perf_test.gd`: the frame-time overlay (`hud.md` §17): the 1 % worst statistic, the sections, and the
   sail scene (a three-boat race on the core, FakeSim without it) with the overlay shown and a log for 2.6 s of
   real frames: every column, one line per second, the sections timed, Shift+F9 hiding it. The runner then starts the
@@ -526,6 +531,38 @@ frame-time overlay.
 Capture (offline): X the clip cameras (start line, mark, long lens, helicopter), `.` clean pause (no menu, no
 label), `,` slow motion (x0.5, x0.25, x1; a small note shows the new rate for 1.5 s), `/` world tags and
 on-water guides on and off.
+
+### Shot scripts (unattended clips)
+
+A shot script (`cameras.md` §9.2, `scripts/controls/shot_script.gd`) runs the capture keys, the cameras, the HUD
+and held boat actions at set times and quits by itself, for Godot's Movie Maker. Times are simulation seconds from
+the scenario's clip start, the race's gun (negative before it) or the start of free sailing; slow motion stretches
+them on screen, a clean pause runs them on the frame time. The files are in `data/shots/`:
+
+```
+godot --path game --write-movie out/rule10.avi --fixed-fps 60 --resolution 1080x1920 res://scenes/sail_test.tscn \
+    -- --scenario=port_starboard --shot=rule10_penalty
+godot --path game --write-movie out/start.avi --fixed-fps 60 --resolution 1080x1920 res://scenes/sail_test.tscn \
+    -- --race --fleet=6 --watch --shot=ai_start
+```
+
+Under Movie Maker the frame size is fixed when the run starts, so a portrait shot takes `--resolution 1080x1920`
+and the game then leaves the window alone (no fullscreen, no capture resize). `--quit-at=<s>` quits at a shot time
+with or without a shot. A shot with `start` steps the world to that time before the first frame (a race shot at
+`-15` does not record the sequence before it). The run prints `shot: end at <s>` when it ends.
+
+On a screen shorter than 1920 px (a laptop) the OS shrinks the window and `--resolution` records 1280 × 800. Put
+an untracked `game/override.cfg` next to `project.godot` for the run, and delete it afterwards (it changes every
+launch):
+
+```
+[display]
+window/size/viewport_width=1080
+window/size/viewport_height=1920
+window/size/window_width_override=540
+window/size/window_height_override=960
+window/stretch/mode="viewport"
+```
 
 ## Menus
 
@@ -786,8 +823,8 @@ fair, hazy, overcast). The venue's look file (`data/venues/<venue>.look.json`, `
 environment after the tone mapping), the contact shading (SSAO, tier H) and the depth of field
 of the long lens and mark clip cameras. There is no vignette on any camera (owner decision 2026-10-11).
 Previews of the grade and late light: `tests/look_lut_dump.gd`, `tests/water_preview_dump.gd` (with
-`-- --sky=late` for the late light) and `tests/cine_preview.py --publish` (`tests/previews/cine_*.jpg`; the
-commands are in its header). The daylight previews: `python3 tests/daylight_preview.py --dump --publish` (the
+`-- --sky=late` for the late light) and `tests/cine_preview.py` (writes `generated/cine_preview/`; the commands are
+in its header). The daylight previews: `python3 tests/daylight_preview.py --dump --publish` (the
 chase shot at five hours and four conditions, grade off against the default: `tests/previews/daylight_*.jpg`).
 `tests/look_test.gd` (in `run_ui_tests.sh`) checks the sun position, the hour keys and conditions, the look files,
 the grade and the SSAO per tier. The anti-aliasing is SMAA 1x on every tier (`water_render.md` §7): the project default, kept with

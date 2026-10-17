@@ -60,6 +60,7 @@ LIGHTING = """
 uniform vec3 u_cam;
 uniform float u_cloud_cover;
 uniform vec2 u_cloud_offset;
+uniform float u_cloud_diffuse;
 uniform float u_fog_density;
 uniform vec3 u_fog_color;
 uniform int u_fog_mode;        // Godot's Environment.fog_mode: 0 exponential, 1 depth (the haze, water_render.md §4.5)
@@ -70,7 +71,7 @@ uniform float u_ambient;
 const float WM_PI = 3.14159265;
 
 vec3 env_sky(vec3 d) {
-    return wm_sky_color(d, normalize(sun_dir), sky_horizon, sky_zenith, sun_color, u_cloud_cover, u_cloud_offset, 0.0);
+    return wm_sky_color(d, normalize(sun_dir), sky_horizon, sky_zenith, sun_color, u_cloud_cover, u_cloud_offset, 0.0, u_cloud_diffuse);
 }
 
 // The sun's shadow map (water_render.md §4.6, stand-in): the boats' depth seen from the sun, filtered over about
@@ -447,7 +448,7 @@ void main() {
     vec4 a = u_inv_vp * vec4(v_ndc, -1.0, 1.0);
     vec4 b = u_inv_vp * vec4(v_ndc, 1.0, 1.0);
     vec3 d = normalize(b.xyz / b.w - a.xyz / a.w);
-    frag = vec4(wm_sky_color(d, normalize(sun_dir), sky_horizon, sky_zenith, sun_color, u_cloud_cover, u_cloud_offset, 1.0), 1.0);
+    frag = vec4(wm_sky_color(d, normalize(sun_dir), sky_horizon, sky_zenith, sun_color, u_cloud_cover, u_cloud_offset, 1.0, u_cloud_diffuse), 1.0);
 }
 """
 
@@ -644,6 +645,7 @@ def render(ctx, d, size, wakes=True, shadows="auto"):
         "u_cam": tuple(origin),
         "u_cloud_cover": float(sc["sky"].get("cloud_cover", 0.3)),
         "u_cloud_offset": tuple(sc["sky"].get("cloud_offset", [0.0, 0.0])),
+        "u_cloud_diffuse": float(sc["sky"].get("cloud_diffuse", 0.0)),
         **fog_uniforms(sc["fog"]),
         "u_ambient": float(sc["ambient_energy"]),
     }

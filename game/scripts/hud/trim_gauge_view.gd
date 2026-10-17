@@ -24,8 +24,9 @@ func _build() -> void:
 	var fs := int(roundf(13.0 * k))
 	if labels:
 		_s(Vector2(0, 14.0 * k), (title + ("  AUTO" if auto else "")).to_upper(), fs, _al(HudStyle.MIST, a), 600, 0.14)
-		_s(Vector2(size.x, 14.0 * k), telltale.to_upper(), fs, _al(HudStyle.PAPER, a), 600, 0.14,
-			HORIZONTAL_ALIGNMENT_RIGHT)
+		if not greyed:  # hud.md §5: a sail going up or down has no tell-tale
+			_s(Vector2(size.x, 14.0 * k), telltale.to_upper(), fs, _al(HudStyle.PAPER, a), 600, 0.14,
+				HORIZONTAL_ALIGNMENT_RIGHT)
 	var y := 28.0 * k
 	var w := maxf(1.0, 1.5 * k)
 	_l(Vector2(0, y), Vector2(size.x, y), _al(HudStyle.HAIR, a), w)

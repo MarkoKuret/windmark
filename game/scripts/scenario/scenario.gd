@@ -34,6 +34,8 @@ class Boat:
 	var ai_level := "intermediate"
 	## a boat id of the class's livery file, "": the fleet rule
 	var livery := ""
+	## hold boats: course changes during the clip, {t (s of clip time), tack (+1/-1), twa (rad)} in order of t
+	var turns: Array[Dictionary] = []
 
 
 var id := ""
@@ -154,6 +156,10 @@ static func parse(d: Variant, why: Array) -> Scenario:
 		if b == null:
 			return null
 		s.boats.append(b)
+	for i in s.boats.size():
+		var tn := s.boats[i].turns
+		if not tn.is_empty() and float(tn[-1]["t"]) > s.lead + s.after:
+			return _bad(why, "$.boats[%d].turns[%d].t" % [i, tn.size() - 1], "s up to lead + after required")
 	if d.has("view"):
 		if not _is_num(d["view"]) or int(d["view"]) < 0 or int(d["view"]) >= s.boats.size():
 			return _bad(why, "$.view", "a boat index required")
@@ -220,6 +226,29 @@ static func _parse_boat(d: Variant, i: int, why: Array) -> Boat:
 		if not _is_id(d["livery"]):
 			return _bad(why, at + ".livery", "a boat id of the class's livery file")
 		b.livery = d["livery"]
+	if d.has("turns"):
+		if b.helm != "hold":
+			return _bad(why, at + ".turns", "only a hold boat turns")
+		if not d["turns"] is Array:
+			return _bad(why, at + ".turns", "a list of {\"t\", \"tack\", \"twa\"} required")
+		var last := -1.0
+		for k in (d["turns"] as Array).size():
+			var tat := "%s.turns[%d]" % [at, k]
+			var td: Variant = d["turns"][k]
+			if not td is Dictionary:
+				return _bad(why, tat, "not an object")
+			if not _is_num(td.get("t")) or float(td["t"]) < 0.0 or float(td["t"]) <= last:
+				return _bad(why, tat + ".t", "s >= 0, after the turn before, required")
+			last = float(td["t"])
+			var ttk: Variant = td.get("tack")
+			if ttk != "starboard" and ttk != "port":
+				return _bad(why, tat + ".tack", "\"starboard\" or \"port\" required")
+			var ttw := _unit(td, "twa", "_deg", DEG, tat, why)
+			if ttw.is_empty():
+				return null
+			if not ttw["num"] or ttw["v"] < 0.0 or ttw["v"] > PI + 1e-6:
+				return _bad(why, ttw["at"], "degrees in [0, 180] required" if ttw["hand"] else "rad in [0, π] required")
+			b.turns.append({"t": last, "tack": 1 if ttk == "starboard" else -1, "twa": minf(ttw["v"], PI)})
 	return b
 
 

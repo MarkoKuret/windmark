@@ -4,6 +4,7 @@ title: 'Marketing: open the Discord'
 status: To Do
 assignee: []
 created_date: '2026-09-29 22:17'
+updated_date: '2026-10-16 20:33'
 labels:
   - marketing
 dependencies: []
@@ -22,3 +23,9 @@ Social plan 8. Open in the first week of posting as the one link from every bio:
 - [ ] #1 Server live with the channels, rules and onboarding question
 - [ ] #2 Invite link in every profile bio; at least 10 seed members
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Launch kit: docs/marketing/launch_kit.md section 2 (paste-ready channels, topics, rules, welcome, onboarding question and roles, seed invite).
+<!-- SECTION:NOTES:END -->

@@ -1,0 +1,16 @@
+{
+  "schema": "windmark.shot/1",
+  "note": "Port meets starboard (scenario port_starboard): the port boat (boat 1, viewed) is penalised under rule 10 at 18.6 s, contact at 19.2 s, then she turns for her penalty tangled with boat 0 until about 35 s. Long lens on the approach, chase for the contact in half speed, HUD on for the rule 10 panel and the penalty.",
+  "portrait": true,
+  "hud": true,
+  "world_tags": true,
+  "cues": [
+    { "t": 0, "view": 1 },
+    { "t": 0, "camera": "long_lens" },
+    { "t": 12, "camera": "chase", "params": { "R": 38, "el_deg": 16, "az_deg": 35 } },
+    { "t": 17.5, "slow": 0.5 },
+    { "t": 21.5, "slow": 1 },
+    { "t": 22, "camera": "chase", "params": { "R": 45, "el_deg": 24, "az_deg": 0 } },
+    { "t": 34, "end": true }
+  ]
+}

@@ -39,9 +39,16 @@ CD_FLOG = 0.30
 FLATS = np.linspace(0.1, 1.0, 16)
 REEFS = np.linspace(0.55, 1.0, 10)
 REEFABLE = ("main", "jib", "genoa")
-# A mainsail without a headsail in front loses the slot's upwash: its lift is scaled by MAIN_ALONE_CL close-hauled,
-# fading to no loss by 110 deg effective AWA (calibration, README).
+# A mainsail with no front sail at all (the main-only config) loses the slot's upwash: its lift is scaled by
+# MAIN_ALONE_CL close-hauled, fading to no loss by 110 deg effective AWA (calibration, README). Behind a drawing front
+# sail (jib, genoa, code zero or a kite) the main keeps its ORC in-situ coefficients. A kite draws only from about
+# 30 to 40 deg AWA (the ORC spinnaker tables: no lift at 28 deg, most of it by 41 deg): closer to the wind it luffs and
+# the main has no slot, so under a kite the loss fades out from KITE_SLOT_AWA[0] to KITE_SLOT_AWA[1] instead.
 MAIN_ALONE_CL = 0.72
+KITE_SLOT_AWA = (math.radians(28.0), math.radians(41.0))
+# A headsail set flying (code zero) allows very little depowering: the config's reef goes no lower than the ORC
+# VPP's 0.91 (VPP Documentation 2023 section 5.2.5); the code zero itself is never reefed (REEFABLE).
+FLYING_HEADSAIL_REEF_MIN = 0.91
 # Twist function (ORC VPP Documentation 2023, eq. 5.49, from wind tunnel tests): flattening a sail plan twists its
 # heads off, lowering the centre of effort of its heeling force by TWIST_A (1 - flat) + TWIST_B (1 - flat)(1 - frac)
 # of its height, frac = I / (P + BAS) the fractionality (BAS: boom above the sheer).
@@ -68,6 +75,11 @@ class Rig:
     @property
     def downwind(self) -> bool:
         return any(s.type in SPINNAKER_TYPES for s in self.sails)
+
+    @property
+    def reef_min(self) -> float:
+        """Lowest reef factor the config may use: FLYING_HEADSAIL_REEF_MIN with a code zero set, else none."""
+        return FLYING_HEADSAIL_REEF_MIN if any(s.type == "code_zero" for s in self.sails) else 0.0
 
     @property
     def kite(self) -> bool:
@@ -111,7 +123,8 @@ class Rig:
         cl = 0.0
         cd = 0.0
         deltas = []
-        alone = not any(s.type in ("jib", "genoa") for s in self.sails)
+        alone = all(s.type == "main" for s in self.sails)
+        lo, hi = KITE_SLOT_AWA if self.kite else (math.radians(60), math.radians(110))
         for s, e, a in zip(self.sails, self.env, areas):
             c_l, c_d, de = e.at(fi, beta_e)
             if eps is not None:
@@ -121,8 +134,8 @@ class Rig:
                     c_l, c_d = over_sheeted(COEFFS[s.coeff_type], beta_e, de, de0, e.flat[fi])
                 else:
                     c_l, c_d = coefficients(COEFFS[s.coeff_type], beta_e - de, e.flat[fi], de)
-            if alone and s.type == "main":
-                u = np.clip((beta_e - np.radians(60)) / np.radians(50), 0, 1)
+            if (alone or self.kite) and s.type == "main":
+                u = np.clip((beta_e - lo) / (hi - lo), 0, 1)
                 c_l = c_l * (MAIN_ALONE_CL + (1 - MAIN_ALONE_CL) * u * u * (3 - 2 * u))
             cl = cl + c_l * a
             cd = cd + c_d * a
@@ -297,7 +310,7 @@ class Solver:
     def solve(self, rig, fi, reef, tws, twa, eps=None) -> State:
         shape = np.broadcast(fi, reef, tws, twa, 0.0 if eps is None else eps).shape
         fi = np.broadcast_to(fi, shape)
-        reef = np.broadcast_to(reef, shape)
+        reef = np.broadcast_to(np.maximum(reef, rig.reef_min), shape)
         tws = np.broadcast_to(tws, shape)
         twa = np.broadcast_to(twa, shape)
         if eps is not None:

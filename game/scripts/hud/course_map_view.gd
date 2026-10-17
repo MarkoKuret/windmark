@@ -1,12 +1,14 @@
 class_name CourseMapView
 extends HudCanvas
-## hud.md §8.1 course map: a full-screen overlay over the running race, north up, the whole course fitted once into
+## hud.md §8.1 course map: a full-screen overlay over the running race, course up (the axis from the start line's
+## middle to the first rounding step points up the screen, fixed for the race), the whole course fitted once into
 ## the frame inside the margins (every mark with 12 % of the larger span added on each side, at least 300 m across).
 ## Drawn bottom to top: the ink scrim, the course boundary, the course line through the steps (sailed legs faint,
-## the current one in `mark`, the rest in `hair`), the start (dashed) and finish (checkered) lines, the zone circles,
-## the marks (rounding marks as diamonds, the next step's in `mark`), one rounding arrow per rounding mark, every
-## boat as the radar's icon in its radar colour (RadarView.contact_colour: pulses, ghosts, Minimal all white), the
-## viewed boat in `mark`, name chips (viewed boat, selected boat, boats with a rules relation), the header (lap and
+## the current one in `mark`, the rest in `hair`), the start (dashed) and finish (checkered) lines, the next step's
+## zone circle, the marks (rounding marks as round buoys with an ink rim, the next step's in `mark`), one rounding
+## arrow and one name per rounding mark (one name per gate), every boat as the radar's icon in its radar colour
+## (RadarView.contact_colour: pulses, ghosts, Minimal all white; boats with no relation at 70 %), the viewed boat
+## larger in `mark` with an ink rim, name chips (viewed boat, selected boat, boats with a rules relation), the header (lap and
 ## leg, the next step), the wind arrow, the scale bar and the close hint. Boats outside the frame are small arrows on
 ## its edge. Positions are the render poses of the frame, as on the radar.
 
@@ -19,6 +21,12 @@ const FOOTER := 48.0
 const ICON := 14.0
 const PICK := 24.0
 const SCRIM := 0.82
+## design px: the buoy radius, the name's gap from it; the viewed boat's size over the fleet's; the fleet's alpha
+## with no rules relation
+const BUOY := 5.0
+const NAME_GAP := 14.0
+const OWN_SCALE := 1.6
+const QUIET := 0.7
 ## the scale bar's lengths (m): round in the §1 distance format (metres under 200 m, nautical miles from 0.2 nm)
 const SCALES := [10.0, 20.0, 50.0, 100.0, 150.0, 0.2 * HudFormat.NM, 0.25 * HudFormat.NM, 0.5 * HudFormat.NM,
 	1.0 * HudFormat.NM, 2.0 * HudFormat.NM, 5.0 * HudFormat.NM]
@@ -36,9 +44,10 @@ var zone := true
 var names := true
 ## the selected boat (hud.md §16.4.1), -1 for none
 var selected := -1
-## px kept clear for the alert lane (hud.md §8.1): a column on the left (landscape) or a band on top (portrait)
-var lane_left := 0.0
+## px kept clear for the alert lane (hud.md §8.1): a band on top (portrait); in landscape the lane's drawn screen
+## rect while it shows something (the frame moves right of it only when the course would run under it)
 var lane_top := 0.0
+var lane_rect := Rect2()
 
 ## drawn last (tests, picking): the frame (px), m per px, boat -> icon centre (px), boat -> colour, rounding mark
 ## index -> [side, colour], scale bar [metres, px, label], chips' boats
@@ -56,16 +65,52 @@ func _init() -> void:
 	super()
 
 
-## The frame (px) inside the screen's margins under the header and over the footer, clear of the alert lane.
-func frame_rect() -> Rect2:
+## The area (px) inside the screen's margins under the header and over the footer (under the portrait lane band).
+func full_rect() -> Rect2:
 	var m := HudStyle.margins(size)
 	var top := m.y + HEADER * k + lane_top
 	var bottom := size.y - HudStyle.bottom_margin(size) - FOOTER * k
-	var left := m.x + lane_left
-	return Rect2(left, top, maxf(size.x - m.x - left, 1.0), maxf(bottom - top, 1.0))
+	return Rect2(m.x, top, maxf(size.x - 2.0 * m.x, 1.0), maxf(bottom - top, 1.0))
 
 
-## The world (ENU m) bounds the frame shows: every mark but virtual ones, padded, at least MIN_SPAN across.
+## The frame (px) the course is fitted in: the full width, or right of the alert lane while the lane shows something
+## and the course centred in the full width would run under it (hud.md §8.1).
+func frame_rect() -> Rect2:
+	var f := full_rect()
+	if not lane_rect.has_area():
+		return f
+	var b := world_bounds()
+	var s := minf(f.size.x / b.size.x, f.size.y / b.size.y)
+	var r := Rect2(f.get_center() - b.size * s * 0.5, b.size * s)
+	var gap := 24.0 * k
+	if not r.grow(gap).intersects(lane_rect):
+		return f
+	var left := lane_rect.end.x + gap
+	return Rect2(left, f.position.y, maxf(f.end.x - left, 1.0), f.size.y)
+
+
+## hud.md §8.1: the compass bearing (rad) that points up the screen: from the start line's middle to the first
+## rounding step's point; without them the race's mean wind
+func up_bearing() -> float:
+	if values == null:
+		return 0.0
+	var steps: Array = values.course().get("steps", [])
+	if steps.size() >= 2 and int(steps[0]["kind"]) == RaceText.Step.START:
+		var a := step_point(0)
+		var b := step_point(1)
+		if a.distance_to(b) > 1.0:
+			return Frames.compass(b.x - a.x, b.y - a.y)
+	return values.twd_mean if "twd_mean" in values else 0.0
+
+
+## World (ENU) -> the map's frame (m): x right, y up the screen, the course axis along +y.
+func to_map(p: Vector2) -> Vector2:
+	var u := up_bearing()
+	return Vector2(p.x * cos(u) - p.y * sin(u), p.x * sin(u) + p.y * cos(u))
+
+
+## The world bounds the frame shows in the map's frame (m): every mark but virtual ones, padded, at least MIN_SPAN
+## across.
 func world_bounds() -> Rect2:
 	var crs := values.course() if values != null else {}
 	var lo := Vector2(INF, INF)
@@ -73,7 +118,7 @@ func world_bounds() -> Rect2:
 	for m in crs.get("marks", []):
 		if int(m["type"]) == 3:
 			continue
-		var p := Vector2(m["x"], m["y"])
+		var p := to_map(Vector2(m["x"], m["y"]))
 		lo = lo.min(p)
 		hi = hi.max(p)
 	if not lo.is_finite():
@@ -87,13 +132,14 @@ func world_bounds() -> Rect2:
 	return r
 
 
-## World (ENU m) -> px, north up, the bounds centred in the frame at one scale on both axes.
+## World (ENU m) -> px, course up, the bounds centred in the frame at one scale on both axes.
 func to_px(p: Vector2) -> Vector2:
 	var b := world_bounds()
 	var f := frame_rect()
 	var s := minf(f.size.x / b.size.x, f.size.y / b.size.y)
 	var c := b.get_center()
-	return f.get_center() + Vector2(p.x - c.x, -(p.y - c.y)) * s
+	var q := to_map(p)
+	return f.get_center() + Vector2(q.x - c.x, -(q.y - c.y)) * s
 
 
 ## The scale bar: the longest of SCALES not longer than a fifth of the frame's width (the shortest when none is).
@@ -109,6 +155,11 @@ static func scale_length(frame_w_px: float, m_px: float) -> float:
 func step_point(st: int) -> Vector2:
 	var pts := values.step_points(st)
 	return pts[0] if pts.size() == 1 else (pts[0] + pts[1]) * 0.5
+
+
+## A gate's name on the map: `Gate 4S / 4P` (a buoy label that already starts with "Gate" loses that word).
+static func gate_label(a: String, b: String) -> String:
+	return "Gate %s / %s" % [a.trim_prefix("Gate ").trim_prefix("gate "), b.trim_prefix("Gate ").trim_prefix("gate ")]
 
 
 ## The boat whose icon is within PICK design px of `pos` (the nearest), -1 for none.
@@ -141,6 +192,7 @@ func _build() -> void:
 	if steps.is_empty() or marks.is_empty():
 		return
 	frame = frame_rect()
+	var up := up_bearing()
 	var wb := world_bounds()
 	m_per_px = maxf(wb.size.x / frame.size.x, wb.size.y / frame.size.y)
 	var hw := maxf(1.0, 1.5 * k)
@@ -177,6 +229,8 @@ func _build() -> void:
 			for i in (1 if int(nst["kind"]) == RaceText.Step.MARK else 2):
 				next_marks[ms[i]] = true
 	var rounding := {}
+	var labels := []  # [mark index the name sits beside, text, the marks it names]
+	var named := {}
 	for st in steps:
 		var kd := int(st["kind"])
 		if kd != RaceText.Step.MARK and kd != RaceText.Step.GATE:
@@ -186,14 +240,24 @@ func _build() -> void:
 		for i in (1 if kd == RaceText.Step.MARK else 2):
 			if not rounding.has(ms[i]):
 				rounding[ms[i]] = sides[i]
-	# zone circles
+		if kd == RaceText.Step.MARK:
+			if not named.has(ms[0]):
+				named[ms[0]] = true
+				labels.append([ms[0], values.mark_label(ms[0]), [ms[0]]])
+		elif not named.has(ms[0]) and not named.has(ms[1]):
+			named[ms[0]] = true
+			named[ms[1]] = true
+			var right := ms[0] if to_map(Vector2(marks[ms[0]]["x"], marks[ms[0]]["y"])).x \
+				>= to_map(Vector2(marks[ms[1]]["x"], marks[ms[1]]["y"])).x else ms[1]
+			labels.append([right, gate_label(values.mark_label(ms[0]), values.mark_label(ms[1])), [ms[0], ms[1]]])
+	# the zone circle: the next step's marks only
 	if zone:
 		var zl := float(crs.get("zone_lengths", 3.0))
-		for mi in rounding:
+		for mi in next_marks:
 			var zr := (zl * values._loa + float(marks[mi].get("radius", 0.0))) / m_per_px
 			if zr * 2.0 >= 4.0:
 				var q := to_px(Vector2(marks[mi]["x"], marks[mi]["y"]))
-				_a(q, zr, 0.0, TAU, 40, Color(HudStyle.MARK, 0.5) if next_marks.has(mi) else HudStyle.HAIR, hw)
+				_a(q, zr, 0.0, TAU, 40, Color(HudStyle.MARK, 0.5), hw)
 	# marks
 	for i in marks.size():
 		var md: Dictionary = marks[i]
@@ -206,9 +270,8 @@ func _build() -> void:
 			_:
 				if rounding.has(i):
 					var col := HudStyle.MARK if next_marks.has(i) else HudStyle.PAPER
-					var dm := 5.0 * k
-					_p(PackedVector2Array([q + Vector2(0, -dm), q + Vector2(dm, 0), q + Vector2(0, dm), q + Vector2(-dm, 0)]),
-						col)
+					_c(q, (BUOY + 1.5) * k, HudStyle.INK)
+					_c(q, BUOY * k, col)
 				else:
 					_c(q, 2.5 * k, Color(HudStyle.PAPER, 0.6))
 	for mi in rounding:
@@ -216,6 +279,11 @@ func _build() -> void:
 		HudPaint.rounding_arc(self, to_px(Vector2(marks[mi]["x"], marks[mi]["y"])), 10.0 * k,
 			rounding[mi] == RaceText.Side.PORT, col, 2.0 * k)
 		arrows[mi] = [rounding[mi], col]
+	var lfs := int(roundf(HudPaint.LAB_S * k))
+	for lb in labels:
+		var nxt: bool = (lb[2] as Array).any(func(mi: int) -> bool: return next_marks.has(mi))
+		var q := to_px(Vector2(marks[lb[0]]["x"], marks[lb[0]]["y"]))
+		_s(q + Vector2(NAME_GAP * k, 0.36 * lfs), str(lb[1]), lfs, HudStyle.MARK if nxt else HudStyle.MIST, 600, 0.06)
 	# boats
 	if sim == null:
 		return
@@ -225,6 +293,8 @@ func _build() -> void:
 		if p == null:
 			continue
 		var col: Color = radar.contact_colour(ct) if radar != null else HudStyle.TINTS[ct.tint]
+		if not ct.ghost and (ct.tint == RaceHudValues.Tint.WHITE or (radar != null and not radar.colours)):
+			col = Color(col, col.a * QUIET)
 		drawn[ct.boat] = col
 		var q := to_px(Vector2(p.pos_x, p.pos_y))
 		var outline := (radar == null or radar.colours) and ct.pulse == RaceHudValues.Pulse.BREACH and not ct.ghost
@@ -233,7 +303,7 @@ func _build() -> void:
 			icons[ct.boat] = _edge_arrow(q, col)
 			continue
 		icons[ct.boat] = q
-		HudPaint.boat_icon(self, q, p.psi, len_px, col, outline)
+		HudPaint.boat_icon(self, q, p.psi - up, len_px, col, outline)
 		if ct.boat == selected:
 			var e := 9.0 * k
 			HudPaint.bracket(self, Rect2(q - Vector2(e, e), Vector2(e, e) * 2.0), HudStyle.PAPER, 4.0)
@@ -245,7 +315,8 @@ func _build() -> void:
 		var q := to_px(Vector2(me.pos_x, me.pos_y))
 		if frame.has_point(q):
 			icons[values.boat] = q
-			HudPaint.boat_icon(self, q, me.psi, maxf(values._loa / m_per_px, ICON * k) * 1.3, HudStyle.MARK, false)
+			var ol := maxf(values._loa / m_per_px, ICON * k) * OWN_SCALE
+			_own_icon(q, me.psi - up, ol)
 		else:
 			icons[values.boat] = _edge_arrow(q, HudStyle.MARK)
 		tags.append([values.boat, icons[values.boat], HudStyle.MARK, true, false])
@@ -255,6 +326,17 @@ func _build() -> void:
 	_header()
 	_wind()
 	_footer()
+
+
+## The viewed boat: the radar's triangle `l` px long in `mark` with a 2 px ink rim (hud.md §8.1).
+func _own_icon(q: Vector2, psi: float, l: float) -> void:
+	var f := Vector2(sin(psi), -cos(psi))
+	var s := Vector2(-f.y, f.x)
+	var pts := PackedVector2Array([q + f * 0.5 * l, q - f * 0.5 * l + s * 0.22 * l, q - f * 0.5 * l - s * 0.22 * l])
+	var rim := pts.duplicate()
+	rim.append(pts[0])
+	_pl(rim, HudStyle.INK, 4.0 * k)
+	_p(pts, HudStyle.MARK)
 
 
 ## A dashed (start) or checkered (finish) line between two points, as the race card's map draws them.
@@ -347,15 +429,20 @@ func header_parts() -> Array[String]:
 	return []
 
 
-## Top right: the true wind as an arrow blowing the way it goes, speed and direction under it; a small N.
+## Top right: the true wind as an arrow blowing the way it goes on the map, speed and direction under it; a small N
+## with a tick pointing to north on the turned map.
 func _wind() -> void:
 	var m := HudStyle.margins(size)
 	var fs := int(roundf(13.0 * k))
-	var nx := size.x - m.x - 130.0 * k
-	_s(Vector2(nx, m.y + 16.0 * k), "N", fs, HudStyle.MIST, 600, 0.06, HORIZONTAL_ALIGNMENT_CENTER)
-	_l(Vector2(nx, m.y + 22.0 * k), Vector2(nx, m.y + 40.0 * k), HudStyle.MIST, maxf(1.0, 1.5 * k))
+	var up := up_bearing()
+	var nc := Vector2(size.x - m.x - 130.0 * k, m.y + 28.0 * k)
+	var nd := Vector2(sin(-up), -cos(-up))  # north on the screen
+	_l(nc - nd * 9.0 * k, nc + nd * 9.0 * k, HudStyle.MIST, maxf(1.0, 1.5 * k))
+	_c(nc + nd * 9.0 * k, 2.0 * k, HudStyle.MIST)
+	var nl := nc + nd * 20.0 * k
+	_s(Vector2(nl.x, nl.y + 0.36 * fs), "N", fs, HudStyle.MIST, 600, 0.06, HORIZONTAL_ALIGNMENT_CENTER)
 	var c := Vector2(size.x - m.x - 40.0 * k, m.y + 22.0 * k)
-	var d := Vector2(sin(twd + PI), -cos(twd + PI))  # where it blows, screen north up
+	var d := Vector2(sin(twd + PI - up), -cos(twd + PI - up))  # where it blows on the map
 	var tail := c - d * 16.0 * k
 	var tip := c + d * 16.0 * k
 	_l(tail, tip - d * 6.0 * k, HudStyle.PAPER, 2.5 * k)

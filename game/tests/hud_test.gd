@@ -309,7 +309,8 @@ func test_hud_text() -> void:
 	sim.sv.sails[2].progress = 0.4
 	h.tick(sim, 0)
 	h.refresh_text()
-	t.ok(h.text_of("sail") == "Sail  Jib, hoisting Kite 40 %", h.text_of("sail"))
+	t.ok(h.text_of("sail") == "Sail  Jib" and h.text_of("hoist") == "HOISTING KITE",
+		"hud.md §5.1: the sail up in the strip, the hoist in its one cue: %s, %s" % [h.text_of("sail"), h.text_of("hoist")])
 	var pc := PlayerControls.new()
 	pc.busy_flash = true
 	pc.messages.append(PlayerControls.MSG_AUTO_TRIM_REFUSED)
@@ -468,7 +469,7 @@ func test_scene() -> void:
 
 
 ## The sail test scene on the core (CoreSimSource, free sailing on practice_waters): 40 s at 60 fps with a set-and-hold
-## tack, a kite hoist and auto-trim off. Every frame the boat node is where the core's render pose puts it, the
+## tack, a bear-away with the kite hoisted and auto-trim off. Every frame the boat node is where the core's render pose puts it, the
 ## boom and the main follow the interpolated sail angle, the sails show their phases, the Sea's clock is the
 ## core's render time; the Sea's source is the core; the HUD shows the core's values and the local commands.
 func test_core_scene() -> void:
@@ -507,6 +508,9 @@ func test_core_scene() -> void:
 	var err_boom := 0.0
 	var err_main := 0.0
 	var main_bent := 0
+	var stop_frames := 0
+	var stop_bad := 0
+	var stop_max := 0.0
 	var err_rudder := 0.0
 	var rudder_side_bad := 0
 	var err_mark := 0.0
@@ -516,6 +520,8 @@ func test_core_scene() -> void:
 	var lag_frames := 0
 	var tacked_at := -1
 	var centred := false
+	var bear_at := -1
+	var reaching := false
 	var hoist_seen := false
 	var hoist_scale_ok := true
 	var puff_ok := true
@@ -542,8 +548,18 @@ func test_core_scene() -> void:
 		if not centred and tacked_at >= 0 and sim.state(0).twa < deg_to_rad(-38.0):
 			r.press(&"helm_centre")
 			centred = true
+		# bear away for the kite (set and hold), helm centred on a broad reach: hoisted close-hauled, a kite is
+		# inside its no-go zone or overpowered and the boat stalls (sails.md §6, boat.md §7.4)
+		if centred and bear_at < 0 and i >= 960:
+			r.hold(&"helm_right")
+			bear_at = i
+		if i == bear_at + 20:
+			r.held.erase(&"helm_right")
+		if bear_at >= 0 and not reaching and sim.state(0).twa < deg_to_rad(-100.0):
+			r.press(&"helm_centre")
+			reaching = true
 		if i == 1080:
-			r.press(&"sail_2")  # the kite: the jib comes down, the kite goes up
+			r.press(&"sail_2")  # the kite: the jib comes down, the kite goes up while the boat bears away
 		if i == 1800:
 			r.press(&"auto_trim")
 		if i == 1801:
@@ -578,13 +594,23 @@ func test_core_scene() -> void:
 		if sim.tick() > 0:
 			err_clock = maxf(err_clock, absf(sea.render_time_ms - 50.0 * (sim.tick() - 1 + alpha)))
 			err_clock = maxf(err_clock, absf(sea.render_time_ms - sim.render_time_ms(alpha)))
-		# boom and main at the sail angle interpolated between the last two ticks
+		# boom and main at the sail angle interpolated between the last two ticks, less the stop on a flying sail's
+		# sheet (sail_visuals.md §7.6): only with a flying sail shown, and it only holds the main in
 		var beta := Frames.wrap_pi(beta_prev + Frames.angle_diff(beta_cur, beta_prev) * alpha)
-		err_boom = maxf(err_boom, absf(Frames.angle_diff(bv.boom_angle, beta)))
-		err_boom = maxf(err_boom, (boom.transform.basis * Vector3.BACK).distance_to(Basis(axis, beta) * Vector3.BACK))
+		var drawn := beta + bv.main_stop
+		var flying := false
+		for sp in bv.sail_parts:
+			flying = flying or (sp.node.visible and BoatView.is_flying(sp.type))
+		if absf(bv.main_stop) > 1e-6:
+			stop_frames += 1
+			stop_max = maxf(stop_max, absf(bv.main_stop))
+			if not flying or absf(drawn) > absf(beta) + 1e-6 or drawn * beta < 0.0:
+				stop_bad += 1
+		err_boom = maxf(err_boom, absf(Frames.angle_diff(bv.boom_angle, drawn)))
+		err_boom = maxf(err_boom, (boom.transform.basis * Vector3.BACK).distance_to(Basis(axis, drawn) * Vector3.BACK))
 		# the main's foot turns with the boom: its placed clew at the boom's angle about the boom axis
 		var mc: Vector3 = main_part.clew() - pivot
-		var mr: Vector3 = Basis(axis, beta) * (main_clew0 - pivot)
+		var mr: Vector3 = Basis(axis, drawn) * (main_clew0 - pivot)
 		if main_part.since == 0.0:  # bent this frame (not skipped as out of view, sail_visuals.md §11)
 			err_main = maxf(err_main, absf(Frames.angle_diff(atan2(mc.x, mc.z), atan2(mr.x, mr.z))))
 			main_bent += 1
@@ -624,7 +650,9 @@ func test_core_scene() -> void:
 	t.ok(err_rudder < tol, "rudder at +h * rudder_max of the render pose (%.7f)" % err_rudder)
 	t.ok(rudder_side_bad == 0, "rudder trailing edge to starboard when the bow turns to starboard (%d bad frames)" % rudder_side_bad)
 	t.ok(err_clock < 1e-3, "Sea clock = core render_time_ms (%.7f ms)" % err_clock)
-	t.ok(err_boom < tol, "boom at the interpolated main beta (%.7f)" % err_boom)
+	t.ok(err_boom < tol, "boom at the interpolated main beta less its stop on the kite sheet (%.7f)" % err_boom)
+	t.ok(stop_bad == 0, "the main stops only with the kite shown, and only held in (%d frames stopped, up to %.1f deg)"
+		% [stop_frames, rad_to_deg(stop_max)])
 	t.ok(err_main < 0.03 and main_bent > 1200, "main foot turns with the boom (%.4f rad, %d frames bent)" % [err_main, main_bent])
 	t.ok(vis_ok, "sails shown unless down")
 	t.ok(side_ok and side_n > 0, "placed clews on the side of the sail angle (%d samples)" % side_n)
@@ -638,6 +666,7 @@ func test_core_scene() -> void:
 	t.ok(s.twa < 0.0 and twa0 > 0.0, "starboard to port tack (twa %.0f to %.0f deg)" % [rad_to_deg(twa0),
 		rad_to_deg(s.twa)])
 	t.ok(sim.tick() >= 799 and sim.tick() <= 801, "40 s at 60 fps is 800 ticks (%d)" % sim.tick())
+	t.ok(reaching and s.twa < deg_to_rad(-90.0), "bore away for the kite (twa %.0f deg)" % rad_to_deg(s.twa))
 	t.ok(s.v > 1.0, "the boat sails (%.2f m/s)" % s.v)
 	var ribs: Array = sc.wakes.boat_ribbons(0)
 	t.ok(ribs.size() == 2 and ribs[0].row_count() > 10, "wakes from CoreSimSource.wake_state")
@@ -658,8 +687,8 @@ func test_core_scene() -> void:
 	var shown := ""
 	for k in ["bsp", "hdg", "heel", "tws", "twa", "twd", "aws", "awa", "sail", "rudder", "sheet"]:
 		shown += hud.text_of(k) + " | "
-	print("  core pose errors: %.7f m, %.7f rad; boom %.7f; tack at frame %d; HUD: %s" % [err_pos, err_ang,
-		err_boom, tacked_at, shown])
+	print("  core pose errors: %.7f m, %.7f rad; boom %.7f; main stopped %d frames, up to %.1f deg; tack at frame %d; HUD: %s"
+		% [err_pos, err_ang, err_boom, stop_frames, rad_to_deg(stop_max), tacked_at, shown])
 	sc.queue_free()
 	await process_frame
 

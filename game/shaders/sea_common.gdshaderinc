@@ -57,6 +57,7 @@ uniform vec3 col_deep = vec3(0.006, 0.042, 0.115);
 uniform vec3 col_shallow = vec3(0.012, 0.100, 0.155);
 uniform vec3 col_sss = vec3(0.03, 0.33, 0.40);
 uniform vec3 col_foam = vec3(0.86, 0.90, 0.92);
+uniform float puff_k = 1.0;                  // §4.3 a factor on the puffs' darkening (the conditions')
 
 // §6 overlays: line segments (ax, ay, bx, by camera-relative) and circles (cx, cy, r, 0), colour (rgb, width m)
 uniform int n_ov_line = 0;
@@ -265,7 +266,7 @@ WmSurface wm_surface(vec2 xl, float eta, vec3 n_geo, vec3 view, float dist, floa
 	vec3 albedo = mix(col_deep, col_shallow, 0.55 * crest);
 
 	// §4.3 puffs darker, lulls brighter
-	albedo *= 1.0 - 0.25 * clamp((m - 1.0) / 0.25, 0.0, 1.0) + 0.15 * clamp((1.0 - m) / 0.4, 0.0, 1.0);
+	albedo *= 1.0 - 0.25 * puff_k * clamp((m - 1.0) / 0.25, 0.0, 1.0) + 0.15 * clamp((1.0 - m) / 0.4, 0.0, 1.0);
 
 	// §4.2 a strong breeze greys and darkens the water's body colour (from 12 kn of local wind)
 	float gw = smoothstep(12.0, 30.0, wind / WM_KNOT);

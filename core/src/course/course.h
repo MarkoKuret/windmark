@@ -196,20 +196,8 @@ void resolve_course(const CourseData& c, float twd_c, float k, ResolvedCourse& o
 // for world-frame courses).
 float course_scale(const CourseData& c, float twd_c, const PerfData& perf, float tws);
 
-// Polar helpers shared with the race (race.md §7.2): best VMG up and down over every sail config, and the best
-// speed at a true wind angle. Angles in rad.
-struct PolarVmg {
-  float up_speed = 0.0f, up_twa = 0.0f;      // vmg > 0
-  float down_speed = 0.0f, down_twa = 0.0f;  // vmg toward downwind, > 0
-};
-PolarVmg polar_vmg(const PerfData& perf, float tws);
-// The same, bit for bit, with the polar rows along the search angles kept in `cache` (filled on first use for a
-// performance file): for callers that ask every tick.
-struct PolarVmgCache {
-  const PerfData* perf = nullptr;
-  std::vector<std::vector<float>> rows;  // per configuration
-};
-PolarVmg polar_vmg(const PerfData& perf, float tws, PolarVmgCache& cache);
+// Polar helpers shared with the race (race.md §7.2): best VMG up and down over every sail config (PolarVmg,
+// polar_vmg in data/vmg_table.h, from the class's table), and the best speed at a true wind angle. Angles in rad.
 float polar_best(const PerfData& perf, float tws, float twa_abs);
 
 // courses.md §7 geometry checks of a resolved course.

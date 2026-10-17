@@ -1,0 +1,17 @@
+{
+  "schema": "windmark.scenario/1",
+  "id": "clear_astern",
+  "name": "Clear astern",
+  "note": "Quiz #2. Both boats close-hauled on starboard, in line on the first beat. Boat 0 sails with no jib and is slower; boat 1, clear astern on the same course, sails into her transom. The boat clear astern (boat 1) must keep clear (rule 12) and takes the penalty.",
+  "class": "wm7",
+  "course": "practice_waters/example_wl",
+  "seed": 1,
+  "wind": { "speed_kn": 12, "from_deg": 0, "shifts": "steady", "puffs": false },
+  "lead": 20,
+  "after": 5,
+  "view": 0,
+  "boats": [
+    { "at": { "bearing_deg": 359.07, "dist": 305 }, "tack": "starboard", "twa_deg": 45, "front_sail": "none", "livery": "firecrest" },
+    { "at": { "bearing_deg": 0, "dist": 300 }, "tack": "starboard", "twa_deg": 45, "livery": "swift" }
+  ]
+}

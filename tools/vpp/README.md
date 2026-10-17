@@ -265,7 +265,9 @@ heel. Three things keep that heel where crews sail:
   outhaul, traveller), so in a spinnaker config the flat goes no lower than the ORC VPP's minimum of 0.42; a kite that
   still heels the boat beyond the limit is overpowered and broached ("Broached speed"). wm7 and wm12 broach an
   asymmetric kite at 110° TWA from 12 m/s (23 kn), and hold it at 135° to 16 m/s. A code zero is a flying headsail (ORC
-  measures it apart from the spinnakers), sheeted flat and set low: it sails to `vpp.max_heel` like a jib.
+  measures it apart from the spinnakers), sheeted flat and set low: it sails to `vpp.max_heel` like a jib. It allows
+  very little depowering: with a code zero set the reef goes no lower than 0.91 (`solver.FLYING_HEADSAIL_REEF_MIN`,
+  the ORC VPP's value, 2023 documentation §5.2.5), and the code zero itself is never reefed.
 
 Reference heel figures (racing practice and design data; the shipped classes are checked against them):
 
@@ -307,23 +309,32 @@ trimaran lifting its main hull. Appendage buoyancy sits at its centroid and roll
   foil form factor `1 + 2t/c + 60(t/c)^4`; bulb: body-of-revolution form factor `1 + 1.5(d/l)^1.5 + 7(d/l)^3`.
 - Residuary, monohull: the Delft Systematic Yacht Hull Series bare-hull regression of Keuning and Katgert (2008),
   Fn 0.15 to 0.75, made monotone and fading as Fn⁴ below the range.
-- Planing is gated on the hull's weight for its length, the displacement-length ratio
-  `DLR = (displacement / 1016 kg) / (LWL / 30.48 m)³` on `hull.displacement` (without crew, the usual
-  convention): planing ability 1 up to DLR 100, 0 from DLR 106, smooth in between (wm7: 82, a typical 7 m
-  sportsboat about 100, wm12: 108).
-  - A hull that can plane holds the regression where it levels off; once the bottom's dynamic lift
-    `0.5 ρ V² 0.08 Aw` reaches 30 % of the weight its coefficient blends towards `min(coefficient, 0.055)` (a
-    planing hull's residuary drag/lift ratio), fully at 90 % (calibrated, below). The blend is scaled by the
-    ability.
+- Planing. The Delft models were towed at fixed displacement; a hull light for its length is lifted by its bottom
+  and lengthened by its own bow and stern waves as it speeds up (the ORC VPP models the second with a
+  speed-dependent dynamic length, 2023 documentation §6.3.1), so it meets its wave hump later and more gently. A
+  hull that can plane takes the regression at the effective Froude number
+  `Fn_e = 0.38 + 0.4 (Fn − 0.38)` beyond Fn 0.38 (`hydro.HUMP_FN0`, `HUMP_STRETCH`; the curve as is below), and
+  holds it where it levels off (`Fn_e` 0.6 to 0.75, a real Fn of 0.93 to 1.3). The stretch was fitted to ORC
+  velocity predictions of real boats (below, "Calibration against ORC"); its start was set where close-hauled
+  speeds end (wm7 beats at Fn 0.34 to 0.37), so the upwind polars, which the owner tuned, keep the towed curve
+  (an earlier start, Fn 0.35, widened wm7's best beating angle in 16 to 20 kn from 40 to 45° with a faster,
+  lower beat).
+  - How much of the stretch a hull gets, its planing ability, is gated on its weight for its length, the
+    displacement-length ratio `DLR = (displacement / 1016 kg) / (LWL / 30.48 m)³` on `hull.displacement`
+    (without crew, the usual convention): 1 up to DLR 100, 0 from DLR 200, smooth in between (wm7: 82, ability 1;
+    wm12: 108, ability 0.98; the residuary coefficient is `(1 − a)` of the towed curve plus `a` of the stretched
+    one). Froude-similar hulls of DLR 80 to 120 (wm7, wm12, J/70, Melges 24, Farr 40) are treated alike, as ORC
+    does; the gate's far end was set so that wm12 made 40 % heavier (DLR 150, ability 0.5) keeps the same
+    offset to the ORC J/122 in a breeze as in light air.
   - A hull that cannot plane keeps climbing its wave wall from the point where the monotone regression levels
-    off, with the regression's log slope just before it (bounded to 2 to 6), so it never gets over the hump
-    however hard it is driven.
+    off, with the regression's log slope just before it (bounded to 2 to 6) scaled by `1 − a`, so it never gets
+    over the hump however hard it is driven.
   - The total upright resistance (canoe body, appendages) is made to grow at least in proportion to the speed:
-    where the planing blend or a levelling regression would make it flatter, the residuary part ahead of the hump
-    is lowered to the largest curve that does (the hump is shaved; the planing branch beyond it is kept). The
-    drive of a reaching rig grows with the boat's speed, so a flatter resistance curve has two speed roots and the
-    polar would jump where the lower one disappears; with this rule a planing boat's speed climbs steeply but
-    continuously with the wind, to the same high-wind speeds as before.
+    where a levelling curve would make it flatter, the residuary part ahead of it is lowered to the largest
+    curve that does. The drive of a reaching rig grows with the boat's speed, so a flatter resistance curve has
+    two speed roots and the polar would jump where the lower one disappears; with this rule a planing boat's speed
+    climbs steeply but continuously with the wind (at most 1.5 kn of boat speed per knot of wind under a kite and
+    3 under the jib on a reach, `tests/test_planing.py`).
 - Keel residuary and its heel increment: Keuning and Sonnenberg (1998), on the fin volume (the Delft keel series
   were fins; a deep bulb is charged through its friction and form drag).
 - Induced resistance: `Fh² / (π Te² q)` with the effective draft `Te` of Keuning and Sonnenberg (1998) (heel and
@@ -344,14 +355,24 @@ attack `α = β_e − δ` (sheet angle `δ` from the centreline, limited by the 
 `cd0 + kp Cl²`, then a blend over `blend` into a stalled plate (normal force saturating at `cn_max`), a twist
 drag `kt δ²` for eased sheets, and for front sails a blanketing loss behind the main from 110° to 180°. For each
 `β_e` and flattening the best sheet angle maximises the drive coefficient; the envelope of these optima is fitted
-to the ORC (2023) per-sail coefficient tables (main and jib "high", symmetric and asymmetric spinnaker;
-`tests/test_sails.py` re-checks the fit). Code zero has no published table and sits between jib and gennaker.
+to the ORC (2023) per-sail coefficient tables (main and jib "high", symmetric and asymmetric spinnaker, and the
+headsail set flying for the code zero; `tests/test_sails.py` re-checks the fit). The code zero is the ORC
+headsail set flying of HHW/HLP 62.5 % (Table 5.9, a flat reacher; `analysis/fit_code0.py` fits it): `alpha_luff`
+3°, `alpha_stall` 10°, `cl_max` 1.358, `cd0` 0.005, `kp` 0.0059, `cn_max` 0.40, `blend` 50.5°, `kt` 0.351, and
+it is blanketed behind the main downwind (`blanket` 0.50) as the gennaker is. Its sheet runs from 18 to 55°: its
+luff, tacked on the sprit and unsupported, sags to leeward, so it cannot be sheeted as close as a jib (the ORC
+table starts at 27° AWA and its lift falls below 41°; with an 18° stop the fit is as good as with 12°, and the
+sail no longer beats the jib close-hauled). The crossover this gives is in `sails.md` §6.
 
 Rig: coefficients summed by area; induced drag `Cl² (1/(π AR) + 0.005)` with Hazen's effective height (the deck
 mirror close-hauled, `1.1 mast_height`, fading to `1.1 (mast_height − freeboard)` off the wind); windage
-`1.13 (beam · freeboard + mast height · mast chord)` (Hazen). A main with no jib or genoa in front loses the
-slot: its lift is scaled by 0.72 close-hauled, recovering by 110° (calibrated). The true wind is given at 10 m
-and scaled to the centre of effort with a logarithmic sea profile (`z0` = 0.2 mm); the rig sees the apparent
+`1.13 (beam · freeboard + mast height · mast chord)` (Hazen). The main-only config (no front sail at all) loses
+the slot: the main's lift is scaled by 0.72 close-hauled, recovering by 110° (calibrated). Behind a drawing front
+sail (jib, genoa, code zero or a kite) the main keeps its ORC coefficients, which ORC uses unchanged with a
+spinnaker. A kite draws only from about 30 to 40° effective AWA (the ORC spinnaker tables have no lift at 28° and
+most of it by 41°); closer to the wind it luffs and gives the main no slot, so under a kite the 0.72 fades out
+from 28 to 41° instead (`solver.KITE_SLOT_AWA`), and the kite configs keep their no-go edge near 45° TWA.
+The true wind is given at 10 m and scaled to the centre of effort with a logarithmic sea profile (`z0` = 0.2 mm); the rig sees the apparent
 wind component normal to the heeled mast (Kerwin 1978).
 
 Depowering: `flat` (0.1 to 1, scales attached lift) and `reef` (0.55 to 1, area × reef², heights × reef;
@@ -387,11 +408,37 @@ no table was copied. Changes it drove, all generic:
 - later, on owner decisions: planing gated on the displacement-length ratio, the upright resistance growing at
   least with the speed, and speed and heel solved together (the alternating solution could settle on either of
   two states near the heel limit). The comparison was rerun after these; see the calibration report.
+- 2026-10, against ORC (below): the planing law (the stretched hump and the wider gate replaced a blend towards a
+  drag/lift of 0.055 gated from DLR 100 to 106), the code zero fitted to ORC, and the main's slot loss limited to
+  the main-only config.
 
 Resulting agreement: shape correlation of speed against TWA per TWS 0.71 to 0.97 per config, mean upwind VMG
 angle difference 3 to 8°, downwind 7 to 14°, sail crossovers 65 to 88 % in agreement. The remaining
 differences (the references are faster upwind and pointing higher, penalise the main alone more, and heel more)
 were judged to be properties of the references, not of the physics, and left alone.
+
+### Calibration against ORC
+
+Downwind the model was fitted to ORC velocity predictions (best sail in each cell, flat water) of the nearest real
+boats: the 2019 one-design certificates of the Melges 24 and J/70 for wm7 (the Melges 24 has the same sail area
+per tonne) and of the Farr 40 for wm12 (its near twin in size, weight and sail area), with the 2026 J/111 and
+J/122 certificates as checks (`analysis/downwind_2026-10.md` has the references, scripts and full tables). From
+12 to 20 kn TWS, run VMG and 135 to 150°:
+
+| | 12 kn | 16 kn | 20 kn |
+| --- | --- | --- | --- |
+| wm7 run VMG (Melges 24 / J/70) | 6.02 (5.97 / 5.52) | 7.60 (7.57 / 6.67) | 9.84 (10.64 / 9.13) |
+| wm7 150° | 6.95 (6.90 / 6.37) | 8.62 (8.74 / 7.70) | 10.82 (12.29 / 10.55) |
+| wm7 135° | 8.05 (7.89 / 7.14) | 10.45 (10.46 / 9.03) | 13.32 (13.33 / 12.62) |
+| wm12 run VMG (Farr 40) | 6.65 (7.20) | 8.26 (8.38) | 10.11 (10.21) |
+| wm12 150° | 7.68 (8.19) | 9.53 (9.64) | 11.36 (11.79) |
+| wm12 135° | 8.98 (9.00) | 11.10 (10.88) | 13.47 (12.42) |
+
+wm7 lies between its two references, within 1 % of the Melges 24, in every cell but 150° and run VMG in 20 kn,
+where it is at the J/70. wm12 is within 5 % of the Farr 40 from 16 kn except at 135° in 20 kn (+8 %, where its
+20 % larger righting moment carries the asymmetric kite harder than the Farr 40's symmetric one); at 12 kn its run
+VMG and 150° are 6 to 8 % slow, as in lighter air. Under 12 kn both classes sit 5 to 10 % below ORC (12 to 19 %
+on the beat): a general deficit at low speed, open.
 
 ## Sources
 
@@ -410,8 +457,13 @@ were judged to be properties of the references, not of the physics, and left alo
   SNAME.
 - Offshore Racing Congress (2023). ORC VPP Documentation (sail force coefficient tables; crew righting moment
   eq. 4.30; twist function eq. 5.49; spinnaker heel limit §5.2.3; rail-under drag eq. 6.60).
-- Offshore Racing Congress (2019). One-design certificates: Farr 40, J/70, Melges 24, X-41 (righting moment at 1°);
-  J/122E ORC International certificate (2018).
+- Offshore Racing Congress (2019). One-design certificates: Farr 40, J/70, Melges 24, X-41 (righting moment at 1°;
+  velocity predictions for the downwind calibration); J/122E ORC International certificate (2018); ORC
+  International certificates J/111 and J/122 (2026, ORC public feed).
+- Offshore Racing Congress (2023). ORC VPP Documentation: headsail set flying coefficients (Table 5.9) and its
+  minimum reef (§5.2.5); dynamic length in the residuary resistance (§6.3.1).
+- Code zero use: North Sails and UK Sailmakers sail guides (code zero 55 to 90° AWA; 50 to 125° TWA); ORC Tripp 40
+  speed guide (flying headsail best from 60 to 90° TWA).
 - Heel practice: Quantum Sails J/70 tuning guide; North Sails, J/70 upwind tips for big breeze and chop and J/121
   notes; W. Cross, Three modes of upwind sailing (Sailing Scuttlebutt, 2021); Doyle Sails, ClubSwan 50.
 - Kerwin, J.E. (1978). A velocity prediction program for ocean racing yachts. MIT report 78-11.
@@ -485,12 +537,12 @@ real fix would need.
   blade in a turn (the rest is the flow curving round the stern and the drift the turn needs), the same for
   every helm; a manoeuvring model would give it per helm and speed.
 - Level trim only; no pitch trim with speed, no wave added resistance, no leeway in the apparent wind.
-- The planing blend and the mainsail-alone loss are calibrated, not derived; flat-bottomed sportsboats sit at the
+- The planing stretch and the mainsail-alone loss are calibrated, not derived; flat-bottomed sportsboats sit at the
   edge of the Delft series.
 - Multihull resistance ignores hull interference; the float wave resistance uses the upright shape.
 - Sail handling times are reference values scaled by length, not a crew-work model.
 - The broached speed is a rule of thumb (a share of the last held speed), not a model of a broach.
-- Planing is a gate on the displacement-length ratio and a calibrated blend, not a planing-hull model (no
-  dynamic trim, no spray drag); a class near the gate (DLR 100 to 106) planes partly. The gate is
-  dimensionless, so it separates hulls by weight for their length, not by size: wm12 sits just past it (a wm12
-  some 2 % lighter would start to plane, smoothly).
+- Planing is a gate on the displacement-length ratio and a hump stretch fitted to ORC, not a planing-hull model
+  (no dynamic trim, no spray drag, no bottom shape). The gate is dimensionless and wide (DLR 100 to 200), so it
+  separates hulls by weight for their length, not by size, with no cliff between similar hulls. It was fitted on
+  two classes and five reference boats of DLR 80 to 150; skiffs and heavy cruisers are extrapolation.

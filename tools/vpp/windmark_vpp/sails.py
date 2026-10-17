@@ -43,15 +43,15 @@ class SailCoeffs:
 
 
 # Per sail type, fitted to the ORC (2023) per-sail envelopes with the sheet limits in boatclass.SHEET_LIMITS_DEG
-# (tests/test_sails.py re-checks the fit). Code 0 has no published table: a flat, high-clewed reacher between the
-# jib and the gennaker, set by the calibration runs.
+# (tests/test_sails.py re-checks the fit). Code 0: the ORC headsail set flying at HHW/HLP 62.5 % (a flat reacher;
+# analysis/fit_code0.py), blanketed behind the main downwind like the gennaker.
 COEFFS: Dict[str, SailCoeffs] = {
     "main": SailCoeffs(alpha_luff=3.0 * DEG, alpha_stall=12.1 * DEG, cl_max=1.39, cd0=0.006, kp=0.005,
                        cn_max=1.23, blend=25.6 * DEG, kt=0.131),
     "jib": SailCoeffs(alpha_luff=4.0 * DEG, alpha_stall=12.1 * DEG, cl_max=1.46, cd0=0.005, kp=0.005,
                       cn_max=0.51, blend=37.7 * DEG, kt=0.308),
-    "code0": SailCoeffs(alpha_luff=4.0 * DEG, alpha_stall=20.0 * DEG, cl_max=1.25, cd0=0.020, kp=0.05,
-                        cn_max=0.60, blend=30.0 * DEG, kt=0.20),
+    "code0": SailCoeffs(alpha_luff=3.0 * DEG, alpha_stall=10.0 * DEG, cl_max=1.358, cd0=0.0050, kp=0.0059,
+                        cn_max=0.40, blend=50.5 * DEG, kt=0.351, blanket=0.50),
     "spinnaker": SailCoeffs(alpha_luff=5.3 * DEG, alpha_stall=38.8 * DEG, cl_max=0.96, cd0=0.123, kp=0.290,
                             cn_max=0.45, blend=43.3 * DEG, kt=0.072),
     "gennaker": SailCoeffs(alpha_luff=6.0 * DEG, alpha_stall=47.6 * DEG, cl_max=1.02, cd0=0.194, kp=0.155,
@@ -61,7 +61,8 @@ COEFFS["genoa"] = COEFFS["jib"]
 COEFFS["staysail"] = replace(COEFFS["jib"], cl_max=1.40)
 
 # ORC (2023) per-sail coefficient tables the parameters above were fitted to: AWA (deg), Cl, parasitic Cd.
-# ("high lift" main and jib; symmetric spinnaker; asymmetric spinnaker tacked on the centreline.)
+# ("high lift" main and jib; symmetric spinnaker; asymmetric spinnaker tacked on the centreline; headsail set flying
+# at HHW/HLP 62.5 %, Table 5.9.)
 ORC_REFERENCE = {
     "main": ([0, 7, 9, 12, 28, 60, 90, 120, 150, 180],
              [0.000, 0.948, 1.138, 1.250, 1.427, 1.383, 1.267, 0.931, 0.388, -0.112],
@@ -72,6 +73,11 @@ ORC_REFERENCE = {
     "spinnaker": ([28, 41, 50, 60, 67, 75, 100, 115, 130, 150, 170, 180],
                   [-0.024, 0.660, 0.861, 0.992, 1.026, 1.026, 0.920, 0.805, 0.635, 0.360, 0.110, 0.000],
                   [0.182, 0.267, 0.337, 0.417, 0.465, 0.506, 0.588, 0.615, 0.636, 0.650, 0.650, 0.640]),
+    "code0": ([27, 35, 41, 45, 50, 60, 67, 75, 80, 90, 100, 115, 120, 130, 150, 170, 180],
+              [1.315, 1.440, 1.475, 1.480, 1.460, 1.400, 1.265, 1.090, 0.995, 0.800, 0.608, 0.357, 0.291, 0.176,
+               0.024, -0.012, -0.022],
+              [0.060, 0.095, 0.135, 0.165, 0.205, 0.295, 0.355, 0.415, 0.455, 0.500, 0.522, 0.510, 0.504, 0.486,
+               0.451, 0.392, 0.370]),
     "gennaker": ([28, 41, 50, 60, 67, 75, 100, 115, 130, 150, 170, 180],
                  [0.017, 0.698, 0.899, 1.040, 1.072, 1.075, 0.985, 0.805, 0.372, 0.100, 0.020, 0.000],
                  [0.154, 0.239, 0.309, 0.389, 0.436, 0.477, 0.545, 0.566, 0.475, 0.352, 0.290, 0.262]),

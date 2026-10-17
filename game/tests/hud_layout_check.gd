@@ -2,7 +2,7 @@ class_name HudLayoutCheck
 extends RefCounted
 ## Layout checks of the HUD as laid out now (hud.md §15, §16.5), for the tests and the offline previews: the screen
 ## area each block draws (HudCanvas.extent), and the overlaps between blocks. A block's children (the flags in the
-## start block, the ring in the penalty panel, the bars and gauges in the helm strip) belong to it. World tags (the
+## start block, the turn in the penalty panel, the bars and gauges in the helm strip) belong to it. World tags (the
 ## world layer, the mark tag), the centred tables (ranking, results), which sit over everything by design, and the
 ## course map (hud.md §8.1, under the alert lane by design) are left out.
 

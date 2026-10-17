@@ -40,7 +40,8 @@ SHEET_LIMITS = {
     "main": (0.0, math.radians(74.0)),
     "jib": (math.radians(8.0), math.radians(68.0)),
     "genoa": (math.radians(9.0), math.radians(68.0)),
-    "code_zero": (math.radians(12.0), math.radians(55.0)),
+    "code_zero": (math.radians(18.0), math.radians(55.0)),   # tacked on the sprit, clew led to the rail; the
+    # unsupported luff sags to leeward, so the sail cannot be sheeted as close as a jib (fit to ORC Table 5.9)
     "spinnaker_sym": (math.radians(20.0), math.radians(79.0)),
     "spinnaker_asym": (math.radians(15.0), math.radians(64.0)),
 }

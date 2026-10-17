@@ -1,7 +1,8 @@
 #!/bin/sh
 # Headless test of the rules scenarios (tests/scenario_test.gd, WM-016.33, race.md §14): the scenario files load,
 # the port/starboard scenario calls rule 10 on the port boat in every run with the same checksums, the
-# windward/leeward one calls rule 11, and the sail scene runs a scenario to its pause and restarts it. Builds the
+# windward/leeward one calls rule 11, the "Who's wrong?" quiz scenarios give their calls (rules 10, 12, 18.2,
+# 18.3), and the sail scene runs a scenario to its pause and restarts it. Builds the
 # GDExtension when game/bin has none; needs the generated boats (runs run_boat_import_test.sh when missing).
 # Nothing opens a window.
 #   game/tests/run_scenario_test.sh
@@ -24,7 +25,7 @@ set +e
 "$godot" --headless --path "$here" -s res://tests/scenario_test.gd >"$log" 2>&1
 rc=$?
 set -e
-grep -E "^- |FAIL|checks|penalty" "$log" || true
+grep -E "^- |FAIL|checks|penalty|^quiz" "$log" || true
 if [ $rc -ne 0 ] || grep -qE "SCRIPT ERROR|^ERROR|^WARNING" "$log"; then
     grep -E "SCRIPT ERROR|^ERROR|^WARNING" -A2 "$log" | head -20 || true
     echo "scenario test failed (full log: $log)"

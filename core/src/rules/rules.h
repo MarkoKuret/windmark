@@ -370,7 +370,6 @@ class Rules {
   const ResolvedCourse* course_ = nullptr;
   UmpireMode umpire_ = UmpireMode::standard;
   std::vector<BoatState> st_;
-  std::map<const PerfData*, PolarVmgCache> vmg_;  // derived: polar_vmg rows per class, filled on first use
   std::vector<BoatRules> rec_;
   std::vector<const PerfData*> boats_;
   std::map<std::uint64_t, PairState> pairs_;  // key i << 32 | j, i < j (ordered: deterministic iteration)

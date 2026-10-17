@@ -96,7 +96,7 @@ func test_keys() -> void:
 	_key(KEY_ENTER)
 	t.ok(sc.sea.whitecaps == caps0, "Enter toggles it back")
 	# a click on a row
-	var box := panel.get_node("Panel").find_child("Row_breathing", true, false) as Control
+	var box := panel.get_node("Panel").find_child("Row_chase_bank", true, false) as Control
 	var rect := box.get_global_rect()
 	t.ok(rect.size.x > 50.0 and rect.size.y > 5.0, "rows laid out (%s)" % rect)
 	var mb := InputEventMouseButton.new()
@@ -108,8 +108,8 @@ func test_keys() -> void:
 	var mu := mb.duplicate() as InputEventMouseButton
 	mu.pressed = false
 	root.push_input(mu)
-	t.ok(panel.selected == panel.row_index("breathing") and not sc.rig.chase.breathing, "a click picks and steps a row")
-	panel.step("breathing", 1)
+	t.ok(panel.selected == panel.row_index("chase_bank") and not sc.rig.chase.banking, "a click picks and steps a row")
+	panel.step("chase_bank", 1)
 	var p0 := panel.get_node("Panel") as Control
 	var vis := root.get_visible_rect().size
 	t.ok(p0.get_global_rect().position.x > vis.x * 0.5, "a side column on the right (x %.0f of %.0f)"
@@ -288,16 +288,14 @@ func test_rows() -> void:
 	sea.update_frame(cam, rig.camera)
 	t.near(sea.material.get_shader_parameter("base_speed"), 25.0 * HudFormat.KNOT, 1e-4, "drawn wind 25 kn")
 	panel.rows[panel.row_index("drawn_wind")]["set"].call(0.0)
-	# breathing: the chase camera
-	_round_trip("breathing", func(n: int) -> void:
-		t.ok(rig.chase.breathing == (n == 0), "breathing step %d" % n))
-	panel.step("breathing", 1)
+	# the chase camera's bank into turns
+	_round_trip("chase_bank", func(n: int) -> void:
+		t.ok(rig.chase.banking == (n == 0), "chase bank step %d" % n))
+	panel.step("chase_bank", 1)
 	_frames(30)
-	t.ok(rig.chase.bank == 0.0 and rig.chase.surge == Vector3.ZERO and rig.chase.lean == Vector3.ZERO,
-		"plain follow: no bank, trail or lean")
-	panel.step("breathing", -1)
+	t.ok(rig.chase.bank == 0.0, "chase bank off: the horizon level")
+	panel.step("chase_bank", -1)
 	_frames(30)
-	t.ok(rig.chase.lean != Vector3.ZERO or absf(sc.target.pose.phi) < 1e-3, "breathing again: the lean back")
 	# drawn shadows: BoatShadows
 	_round_trip("drawn_shadows", func(n: int) -> void:
 		var on := n == 0
@@ -394,8 +392,8 @@ func test_flags() -> void:
 		["--caps=on", func() -> bool: return panel.value("caps") == true],
 		["--drawn-wind=18", func() -> bool: return is_equal_approx(panel.value("drawn_wind"), 18.0)],
 		["--drawn-wind=0", func() -> bool: return panel.value("drawn_wind") == 0.0],
-		["--breathing=off", func() -> bool: return not sc.rig.chase.breathing and panel.value("breathing") == false],
-		["--breathing=on", func() -> bool: return panel.value("breathing") == true],
+		["--chase-bank=off", func() -> bool: return not sc.rig.chase.banking and panel.value("chase_bank") == false],
+		["--chase-bank=on", func() -> bool: return panel.value("chase_bank") == true],
 		["--no-drawn-shadows", func() -> bool: return not sc.shadows.enabled and panel.value("drawn_shadows") == false],
 		["--no-boat-shadows", func() -> bool: return panel.value("boat_shadows") == false],
 		["--render-scale=75", func() -> bool: return is_equal_approx(root.scaling_3d_scale, 0.75) and is_equal_approx(panel.value("render_scale"), 0.75)],

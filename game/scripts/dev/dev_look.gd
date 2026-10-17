@@ -310,33 +310,33 @@ static func boat_shadows(scene: Node) -> bool:
 
 # ---- cameras ----------------------------------------------------------------------------------------------------
 
-## `--breathing=off`: the chase camera's breathing (cameras.md §2.1) or the plain follow.
-static func set_breathing(scene: Node, on: bool) -> void:
-	if scene != null and "chase_breathing" in scene:
-		scene.set("chase_breathing", on)
+## `--chase-bank=off`: the chase camera's bank into turns (cameras.md §2.1) or a level horizon in turns too.
+static func set_chase_bank(scene: Node, on: bool) -> void:
+	if scene != null and "chase_bank" in scene:
+		scene.set("chase_bank", on)
 	var rig: Variant = _member(scene, "rig")
 	if rig is CameraRig:
-		(rig as CameraRig).chase.breathing = on
+		(rig as CameraRig).chase.banking = on
 
 
-static func breathing(scene: Node) -> bool:
+static func chase_bank(scene: Node) -> bool:
 	var rig: Variant = _member(scene, "rig")
 	if rig is CameraRig:
-		return (rig as CameraRig).chase.breathing
-	return bool(_member(scene, "chase_breathing")) if scene != null and "chase_breathing" in scene else true
+		return (rig as CameraRig).chase.banking
+	return bool(_member(scene, "chase_bank")) if scene != null and "chase_bank" in scene else true
 
 
 # ---- everything a built scene takes from the stored values ------------------------------------------------------
 
 ## The stored look on a scene that has just been built (the end of the sail scene's _ready): grade, SSAO,
-## shadows and the camera breathing. The render scale, anti-aliasing and tier follow the settings' own
+## shadows and the chase camera's bank. The render scale, anti-aliasing and tier follow the settings' own
 ## apply calls.
 static func apply_built(scene: Node) -> void:
 	set_look(scene, LookFx.enabled)
 	set_drawn_shadows(scene, not bool(_member(scene, "no_drawn_shadows")))
 	if bool(_member(scene, "no_boat_shadows")):
 		set_boat_shadows(scene, false)
-	set_breathing(scene, bool(_member(scene, "chase_breathing")) if "chase_breathing" in scene else true)
+	set_chase_bank(scene, bool(_member(scene, "chase_bank")) if "chase_bank" in scene else true)
 
 
 ## A startup flag after `--` that sets a look setting; returns false for any other argument (the scene reads
@@ -383,8 +383,8 @@ static func apply_flag(scene: Node, a: String) -> bool:
 			set_drawn_shadows(scene, false)
 		"--no-boat-shadows":
 			set_boat_shadows(scene, false)
-		"--breathing":
-			set_breathing(scene, not off)
+		"--chase-bank":
+			set_chase_bank(scene, not off)
 		"--render-scale":
 			set_render_scale(scene, val.to_float())
 		_:

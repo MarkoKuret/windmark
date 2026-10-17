@@ -3,7 +3,8 @@ extends VBoxContainer
 ## The quick race and free sail setup (menus.md §1): the race card of §1.1 (a header, the rows, the venue briefing
 ## of §1.3 and the preview in a body that scrolls, Start in a footer that does not), and write() into a GameSetup.
 ## The Weather row offers the venue's modes (Local, Random, Custom); the Custom rows (wind speed, wind from,
-## shifts, gusts) show in Custom only.
+## shifts, gusts) show in Custom only. The Time and Sky rows (the light) follow them; with Random weather both show
+## Surprise.
 
 signal start_pressed
 
@@ -15,15 +16,19 @@ var rows := {}
 var start_button: Button
 ## the Custom weather rows, shown in Custom only (menus.md §1)
 const CUSTOM_ROWS := ["wind_kn", "wind_from_deg", "shift", "gusts"]
+## the light rows (menus.md §1): GameSetup.light_time (-1: the venue's) and light_conditions ("": the venue's)
+const LIGHT_ROWS := ["light_time", "light_conditions"]
+const SKY_CHOICES := ["", "clear", "fair", "hazy", "overcast"]
+## the one value of both light rows with Random weather
+const SURPRISE := "surprise"
 
 ## the race card's briefing (quick race only, menus.md §1.3): its box, the header and the [label, value] lines
 var briefing: PanelContainer
 var briefing_header: Label
 var briefing_grid: GridContainer
-## the race card's preview (quick race only): the course map, its caption and the fleet summary
+## the race card's preview (quick race only): the course map and its caption (laps and legs)
 var course_map: CourseMap
 var course_text: Label
-var fleet_text: Label
 var body: BoxContainer
 var scroll: ScrollContainer
 var _note: Label
@@ -33,6 +38,9 @@ var _venues := []
 ## the race seed the card shows the briefing for and Start passes on (menus.md §1): drawn when the card is built
 var race_seed := 0
 var _tide_cache := {}
+## the light picks kept while Random shows Surprise (and remembered): light_time, light_conditions
+var _light_keep := {"light_time": -1.0, "light_conditions": ""}
+var _looks := {}
 
 
 ## `last`: the last setup (GameSetup fields) to start from.
@@ -43,10 +51,7 @@ func build(race: bool, last: Dictionary) -> void:
 	add_theme_constant_override("separation", 4)
 	size_flags_vertical = Control.SIZE_EXPAND_FILL
 	add_child(MenuTheme.heading("Quick race" if race else "Free sail"))
-	var sub := MenuTheme.label("Race the AI fleet round a course." if race else
-		"Sail on your own, no course and no clock.", MenuTheme.SMALL_SIZE, MenuTheme.MUTED)
-	add_child(sub)
-	add_child(_gap(8))
+	add_child(_gap(12))
 	scroll = ScrollContainer.new()
 	scroll.name = "Body"
 	scroll.follow_focus = true
@@ -98,6 +103,16 @@ func build(race: bool, last: Dictionary) -> void:
 	_add(MenuRow.choice(Strings.t("weather.gusts"), "gusts", VenueWeather.GUSTS,
 		VenueWeather.GUSTS.map(func(s: String) -> String: return Strings.t(VenueWeather.GUST_NAMES[s])),
 		_pick(VenueWeather.GUSTS, str(last.get("gusts", cd["gusts"])))))
+	_light_keep = light_from(last, str(rows["venue"].value), "local")
+	var tv := time_choices(str(rows["venue"].value))
+	_add(MenuRow.choice(Strings.t("light.time"), "light_time", tv, time_names(tv), _light_keep["light_time"]))
+	_add(MenuRow.choice(Strings.t("light.sky"), "light_conditions", SKY_CHOICES, sky_names(),
+		_light_keep["light_conditions"]))
+	for k in LIGHT_ROWS:
+		var key: String = k
+		rows[key].changed.connect(func(v: Variant) -> void:
+			if typeof(v) != TYPE_STRING or v != SURPRISE:
+				_light_keep[key] = v)
 	rows["class_id"].changed.connect(func(_v: Variant) -> void: _refresh_courses())
 	rows["class_id"].changed.connect(func(_v: Variant) -> void: _refresh_liveries())
 	rows["venue"].changed.connect(func(_v: Variant) -> void: _venue_changed())
@@ -107,11 +122,11 @@ func build(race: bool, last: Dictionary) -> void:
 		for k in rows:
 			rows[k].changed.connect(func(_v: Variant) -> void: refresh_preview())
 	# the footer: Start, always visible, and the reason it cannot start
-	add_child(_gap(6))
-	start_button = MenuTheme.button("Start race" if race else "Set sail")
+	add_child(_gap(16))
+	start_button = MenuTheme.button("Start race" if race else "Set sail", MenuTheme.ITEM_SIZE)
 	start_button.name = "Start"
 	start_button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	start_button.custom_minimum_size = Vector2(220, 0)
+	start_button.custom_minimum_size = Vector2(280, MenuTheme.ITEM_H)
 	MenuTheme.set_primary(start_button)
 	start_button.pressed.connect(func() -> void: start_pressed.emit())
 	add_child(start_button)
@@ -143,14 +158,9 @@ func _build_preview() -> void:
 	course_map = CourseMap.new()
 	course_map.name = "CourseMap"
 	v.add_child(course_map)
-	course_text = MenuTheme.label("", MenuTheme.SMALL_SIZE, MenuTheme.INK, 600)
+	course_text = MenuTheme.label("", MenuTheme.SMALL_SIZE, MenuTheme.MUTED, 600)
 	course_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(course_text)
-	v.add_child(MenuTheme.caps("Fleet", MenuTheme.SMALL_SIZE - 2, MenuTheme.MUTED))
-	fleet_text = MenuTheme.label("", MenuTheme.SMALL_SIZE, MenuTheme.INK, 600)
-	fleet_text.name = "FleetSummary"
-	fleet_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	v.add_child(fleet_text)
 
 
 ## The briefing box at the top of the preview column (menus.md §1.3): dark like the course map, the header in the
@@ -175,6 +185,72 @@ func _build_briefing(parent: Control) -> void:
 	v.add_child(briefing_grid)
 
 
+## The Time row's values for a venue (menus.md §1): -1 (Venue default), then its race window in 30 min steps.
+static func time_choices(venue: String) -> Array:
+	var w := VenueLook.load_venue(venue).race_window
+	var out: Array = [-1.0]
+	var n := int(floor((w.y - w.x) / VenueLook.RANDOM_STEP_H + 1e-6))
+	for i in n + 1:
+		out.append(w.x + VenueLook.RANDOM_STEP_H * i)
+	return out
+
+
+static func time_names(vals: Array) -> Array:
+	return vals.map(func(h: float) -> String:
+		return Strings.t("light.venue_default") if h < 0.0 else Daylight.hour_text(h))
+
+
+static func sky_names() -> Array:
+	return SKY_CHOICES.map(func(c: String) -> String:
+		return Strings.t("light.venue_default") if c == "" else Strings.t("light.sky." + c))
+
+
+## The light picks of a remembered setup on a venue, as {light_time, light_conditions}: a time the venue's window
+## lacks, or unknown conditions, give the venue's (-1, ""); Random weather always the venue's (the seed decides).
+static func light_from(last: Dictionary, venue: String, weather: String) -> Dictionary:
+	var out := {"light_time": -1.0, "light_conditions": ""}
+	if weather == "random":
+		return out
+	var lt: Variant = last.get("light_time", -1.0)
+	if typeof(lt) in [TYPE_INT, TYPE_FLOAT]:
+		for h in time_choices(venue):
+			if absf(float(h) - float(lt)) < 1e-4:
+				out["light_time"] = h
+	var lc := str(last.get("light_conditions", ""))
+	if SKY_CHOICES.has(lc):
+		out["light_conditions"] = lc
+	return out
+
+
+## The light the race will have (the briefing's Light line): {hour, conditions}, the venue's for Venue default.
+func light_resolved() -> Dictionary:
+	var venue := str(rows["venue"].value)
+	if not _looks.has(venue):
+		_looks[venue] = VenueLook.load_venue(venue)
+	var look: VenueLook = _looks[venue]
+	var h := float(_light_keep["light_time"])
+	var c := str(_light_keep["light_conditions"])
+	return {"hour": h if h >= 0.0 else look.time, "conditions": c if c != "" else look.conditions}
+
+
+## The Time and Sky rows: Surprise with Random weather, else the venue's list with the kept picks (a time the
+## venue's window lacks: Venue default).
+func _refresh_light() -> void:
+	if not rows.has("light_time"):
+		return
+	if str(rows["weather"].value) == "random":
+		for k in LIGHT_ROWS:
+			rows[k].set_choices([SURPRISE], [Strings.t("light.surprise")])
+			rows[k].set_value(SURPRISE)
+		return
+	var tv := time_choices(str(rows["venue"].value))
+	_light_keep = light_from(_light_keep, str(rows["venue"].value), "local")
+	rows["light_time"].set_choices(tv, time_names(tv))
+	rows["light_time"].set_value(_light_keep["light_time"])
+	rows["light_conditions"].set_choices(SKY_CHOICES, sky_names())
+	rows["light_conditions"].set_value(_light_keep["light_conditions"])
+
+
 ## The current Custom picks: {kn, from_deg, shift, gusts}.
 func custom_picks() -> Dictionary:
 	return {"kn": float(rows["wind_kn"].value), "from_deg": float(rows["wind_from_deg"].value),
@@ -192,14 +268,32 @@ func briefing_lines() -> Array:
 	var vi := MenuData.venue_info(str(rows["venue"].value))
 	if vi.is_empty():
 		return []
-	return VenueWeather.lines(vi, str(rows["weather"].value), custom_picks(), _timing(vi))
+	var mode := str(rows["weather"].value)
+	var out := VenueWeather.lines(vi, mode, custom_picks(), _timing(vi))
+	if mode == "random" or not rows.has("light_time"):
+		return out
+	# the Light line, before the Tip
+	var li := light_resolved()
+	var line := [Strings.t("briefing.label.light"), Strings.t("briefing.line.light",
+		{"time": Daylight.hour_text(li["hour"]), "sky": Strings.t("briefing.sky." + str(li["conditions"]))})]
+	var at := out.size()
+	if at > 0 and out[at - 1][0] == Strings.t("briefing.label.tip"):
+		at -= 1
+	out.insert(at, line)
+	return out
 
 
+## The briefing as text, the header then one line per entry, label and value separated by a tab (tests).
 func briefing_text() -> String:
 	var vi := MenuData.venue_info(str(rows["venue"].value))
 	if vi.is_empty():
 		return ""
-	return VenueWeather.text(vi, str(rows["weather"].value), custom_picks(), _timing(vi))
+	var parts := PackedStringArray()
+	if str(rows["weather"].value) != "random":
+		parts.append(VenueWeather.header(vi))
+	for l in briefing_lines():
+		parts.append("%s\t%s" % [l[0], l[1]])
+	return "\n".join(parts)
 
 
 func _timing(vi: Dictionary) -> Dictionary:
@@ -258,29 +352,19 @@ func map_wind() -> Array:
 	return [rad_to_deg(c["from"]), mid, mode == "local"]
 
 
-## The course map, the briefing and the fleet summary from the rows (menus.md §1.1).
+## The course map, its caption and the briefing from the rows (menus.md §1.1).
 func refresh_preview() -> void:
 	if course_map == null:
 		return
 	var c := _course_doc()
-	var cid := str(rows["course"].value) if rows["course"].value != null else ""
 	var mw := map_wind()
 	course_map.show_course(c, mw[0], mw[1], mw[2])
 	refresh_briefing()
 	if c.is_empty():
-		course_text.text = "No course"
+		course_text.text = ""
 	else:
 		var ll := CourseMap.laps_legs(c)
-		course_text.text = "%s\n%d %s, %d legs" % [str(c.get("name", cid)), ll.x, "lap" if ll.x == 1 else "laps", ll.y]
-	fleet_text.text = fleet_summary()
-
-
-## "10 boats: you and 9 AI\nIntermediate AI\nWindmark 7 Sportsboat"
-func fleet_summary() -> String:
-	var n := int(rows["fleet_size"].value)
-	var lvl: String = MenuData.AI_NAMES[maxi(MenuData.AI_LEVELS.find(rows["ai_level"].value), 0)]
-	return "%d boats: you and %d AI\n%s AI\n%s" % [n, n - 1, lvl,
-		MenuData.name_of(_classes, str(rows["class_id"].value))]
+		course_text.text = "%d %s, %d legs" % [ll.x, "lap" if ll.x == 1 else "laps", ll.y]
 
 
 static func _gap(h: float) -> Control:
@@ -334,6 +418,7 @@ func _refresh_weather() -> void:
 	var custom := str(rows["weather"].value) == "custom"
 	for k in CUSTOM_ROWS:
 		rows[k].visible = custom
+	_refresh_light()
 	if start_button == null:
 		return
 	var last_row: MenuRow = null
@@ -381,8 +466,9 @@ func load_from(last: Dictionary) -> void:
 	if last.has("venue") and rows["venue"].choices.has(last["venue"]):
 		rows["venue"].set_value(last["venue"])
 		_venue_changed()
+	_light_keep = light_from(last, str(rows["venue"].value), "local")
 	for k in last:
-		if rows.has(k) and k != "course" and k != "venue":
+		if rows.has(k) and k != "course" and k != "venue" and not LIGHT_ROWS.has(k):
 			var r: MenuRow = rows[k]
 			if r.kind != MenuRow.Kind.CHOICE or r.choices.has(last[k]):
 				r.set_value(last[k])
@@ -416,6 +502,10 @@ func write(g: GameSetup) -> void:
 	g.wind_from_deg = float(rows["wind_from_deg"].value)
 	g.shift = str(rows["shift"].value)
 	g.gusts = str(rows["gusts"].value)
+	# the light: the picks, or the venue's (-1, "") for Venue default and with Random weather (the seed decides)
+	var random := g.weather == "random"
+	g.light_time = -1.0 if random else float(_light_keep["light_time"])
+	g.light_conditions = "" if random else str(_light_keep["light_conditions"])
 	g.seed = race_seed  # the seed the briefing was computed for
 	race_seed = draw_seed()  # the next start from this card is another race
 	_tide_cache.clear()
@@ -426,4 +516,6 @@ func to_dict() -> Dictionary:
 	var d := {}
 	for k in rows:
 		d[k] = rows[k].value
+	for k in LIGHT_ROWS:
+		d[k] = _light_keep[k]  # the picks, not Surprise
 	return d

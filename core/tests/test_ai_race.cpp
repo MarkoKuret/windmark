@@ -536,3 +536,210 @@ TEST_CASE("ai dev: a venue's fleet over seeds" * doctest::skip(std::getenv("AI_V
               ap.side_n > 0 ? ap.side_sum / ap.side_n : 0.0);
 }
 
+
+// Development probe (AI_PIN=t_race, AI_PIN_B=boat, AI_REL=kind as the sweep, AI_SEED): the race run to race time t,
+// then boat b sailed with fixed controls for 60 s (the others on their last controls); prints where she gets to.
+TEST_CASE("ai dev: pinned probe" * doctest::skip(std::getenv("AI_PIN") == nullptr)) {
+  wm_test::AiRaceSpec sp;
+  sp.seed = std::getenv("AI_SEED") != nullptr ? std::strtoull(std::getenv("AI_SEED"), nullptr, 10) : 5;
+  const std::string kind = std::getenv("AI_REL") != nullptr ? std::getenv("AI_REL") : "match7";
+  const float winds[4] = {8.0f, 11.0f, 15.0f, 19.0f};
+  sp.wind_kn = winds[sp.seed % 4];
+  if (kind == "match7" || kind == "match12") {
+    sp.course = &wm_test::ai_match_course();
+    sp.levels.assign(2, wm::AiLevel::expert);
+    sp.shifts = wm::ShiftPreset::oscillating;
+    if (kind == "match12") sp.classes = {"wm12", "wm12"};
+  } else if (kind == "big") {
+    sp.levels.assign(16, wm::AiLevel::intermediate);
+  } else {
+    for (int k = 0; k < 10; ++k) {
+      sp.levels.push_back(static_cast<wm::AiLevel>(k % 4));
+      sp.classes.push_back(kind == "fleet12" ? "wm12" : (kind == "mixed" && k % 2 == 1 ? "wm12" : "wm7"));
+    }
+  }
+  const wm::CourseData& course = sp.course != nullptr ? *sp.course : wm_test::ai_default_course();
+  const std::int32_t bi = std::getenv("AI_PIN_B") != nullptr ? std::atoi(std::getenv("AI_PIN_B")) : 0;
+  const float t_at = std::strtof(std::getenv("AI_PIN"), nullptr);
+  auto w = wm_test::ai_world(sp);
+  std::string why;
+  REQUIRE(w->create_race(course, why));
+  auto ai = std::make_unique<wm::AiSkippers>();
+  wm_test::ai_add_all(*ai, sp);
+  wm::AiSkippers* aip = ai.get();
+  w->set_controller([aip](wm::World& world) { aip->step(world); });
+  while (w->race().race_time(w->tick()) < t_at) w->step();
+  wm::SnapshotWriter sw;
+  w->save(sw);
+  const std::size_t b = static_cast<std::size_t>(bi);
+  const wm::BoatState s0 = w->boat(b).state();
+  std::printf("at t %.1f: boat %d (%.2f, %.2f) psi %.1f v %.2f twa %.1f\n", static_cast<double>(t_at), bi,
+              static_cast<double>(s0.pos_x), static_cast<double>(s0.pos_y), static_cast<double>(s0.psi / wm::DEG),
+              static_cast<double>(s0.v), static_cast<double>(wm::wrap_pi(w->env(b).wind_from_clean - s0.psi) / wm::DEG));
+  if (const char* seqs = std::getenv("AI_PIN_SEQ")) {
+    // "mode,helm,seconds;...|..." : mode 0 sails drawing, 1 let fly; sequences separated by |
+    const std::string all = seqs;
+    std::size_t sa = 0;
+    while (sa < all.size()) {
+    std::size_t se = all.find('|', sa);
+    if (se == std::string::npos) se = all.size();
+    auto w2 = wm_test::ai_world(sp);
+    REQUIRE(w2->load(sw.bytes(), &course, why));
+    std::string q = all.substr(sa, se - sa);
+    sa = se + 1;
+    std::size_t at = 0;
+    while (at < q.size()) {
+      std::size_t e = q.find(';', at);
+      if (e == std::string::npos) e = q.size();
+      int mode = 0;
+      float h = 0.0f, secs = 0.0f;
+      std::sscanf(q.substr(at, e - at).c_str(), "%d,%f,%f", &mode, &h, &secs);
+      for (int k = 0; k < static_cast<int>(secs * 20.0f); ++k) {
+        w2->set_helm(bi, h);
+        w2->set_let_fly(bi, mode == 1);
+        w2->set_auto_trim(bi, true);
+        w2->step();
+      }
+      const wm::BoatState& s = w2->boat(b).state();
+      std::printf("  seq %d,%+.1f,%.0f: (%.2f, %.2f) psi %.1f v %.2f moved %.1f\n", mode, static_cast<double>(h),
+                  static_cast<double>(secs), static_cast<double>(s.pos_x), static_cast<double>(s.pos_y),
+                  static_cast<double>(s.psi / wm::DEG), static_cast<double>(s.v),
+                  static_cast<double>(std::hypot(s.pos_x - s0.pos_x, s.pos_y - s0.pos_y)));
+      at = e + 1;
+    }
+    const wm::BoatState& s = w2->boat(b).state();
+    std::printf("RESULT %s moved %.1f\n", q.c_str(), static_cast<double>(std::hypot(s.pos_x - s0.pos_x, s.pos_y - s0.pos_y)));
+    }
+    return;
+  }
+  for (const int mode : {0, 1, 2, 3}) {  // sails drawing, let fly, sheet hard in, sheet free
+    for (const float h : {-1.0f, -0.5f, 0.0f, 0.5f, 1.0f}) {
+      auto w2 = wm_test::ai_world(sp);
+      REQUIRE(w2->load(sw.bytes(), &course, why));
+      float vmax = -9.0f;
+      for (int k = 0; k < 1200; ++k) {
+        w2->set_helm(bi, h);
+        w2->set_let_fly(bi, mode == 1);
+        w2->set_auto_trim(bi, mode <= 1);
+        if (mode == 2) w2->set_sheet(bi, 0.0f);
+        if (mode == 3) w2->set_sheet(bi, 1.0f);
+        w2->step();
+        vmax = std::max(vmax, w2->boat(b).state().v);
+      }
+      const wm::BoatState& s = w2->boat(b).state();
+      std::printf("  mode %d helm %+.1f: (%.2f, %.2f) psi %.1f v %.2f vmax %.2f moved %.1f\n", mode, static_cast<double>(h),
+                  static_cast<double>(s.pos_x), static_cast<double>(s.pos_y), static_cast<double>(s.psi / wm::DEG),
+                  static_cast<double>(s.v), static_cast<double>(vmax),
+                  static_cast<double>(std::hypot(s.pos_x - s0.pos_x, s.pos_y - s0.pos_y)));
+    }
+  }
+}
+
+// Development reliability sweep (WM-130): AI_REL=fleet7|fleet12|mixed|match7|match12|big|bigmix over AI_SEEDS=first,count.
+// fleet7 / fleet12: 10 boats of one class, levels mixed (boat k at level k mod 4); mixed: 10 boats, wm7 and wm12
+// alternating, levels mixed; match7 / match12: two Expert boats on the match course, oscillating shifts; big: 16
+// Intermediate wm7 boats; bigmix: 16 boats, levels and classes mixed. The wind cycles 8, 11, 15, 19 kn over the seeds. One line per race: finished, DNF, DSQ,
+// the longest stuck time, contacts, penalties, mark touches and the skippers' cost (µs per tick, mean and worst).
+TEST_CASE("ai dev: reliability sweep" * doctest::skip(std::getenv("AI_REL") == nullptr)) {
+  const std::string kind = std::getenv("AI_REL");
+  unsigned long long s0 = 1, ns = 8;
+  if (const char* e = std::getenv("AI_SEEDS")) std::sscanf(e, "%llu,%llu", &s0, &ns);
+  int t_fin = 0, t_boats = 0, t_dnf = 0, t_dsq = 0, t_con = 0, t_pen = 0, t_touch = 0, t_stuck60 = 0;
+  double t_stuck_max = 0.0, t_us = 0.0, t_us_max = 0.0;
+  std::uint32_t t_ticks = 0;
+  std::vector<float> t_all_us;
+  for (unsigned long long seed = s0; seed < s0 + ns; ++seed) {
+    wm_test::AiRaceSpec sp;
+    sp.seed = seed;
+    sp.time_ai = true;
+    const float winds[4] = {8.0f, 11.0f, 15.0f, 19.0f};
+    sp.wind_kn = winds[seed % 4];
+    if (kind == "match7" || kind == "match12") {
+      sp.course = &wm_test::ai_match_course();
+      sp.levels.assign(2, wm::AiLevel::expert);
+      sp.shifts = wm::ShiftPreset::oscillating;
+      if (kind == "match12") sp.classes = {"wm12", "wm12"};
+    } else if (kind == "big") {
+      sp.levels.assign(16, wm::AiLevel::intermediate);
+    } else if (kind == "bigmix") {
+      for (int k = 0; k < 16; ++k) {
+        sp.levels.push_back(static_cast<wm::AiLevel>(k % 4));
+        sp.classes.push_back(k % 2 == 1 ? "wm12" : "wm7");
+      }
+    } else {
+      for (int k = 0; k < 10; ++k) {
+        sp.levels.push_back(static_cast<wm::AiLevel>(k % 4));
+        sp.classes.push_back(kind == "fleet12" ? "wm12" : (kind == "mixed" && k % 2 == 1 ? "wm12" : "wm7"));
+      }
+    }
+    sp.trace = std::getenv("AI_TRACE");
+    if (sp.trace != nullptr) {
+      auto w = wm_test::ai_world(sp);
+      std::string why;
+      REQUIRE_MESSAGE(w->create_race(sp.course != nullptr ? *sp.course : wm_test::ai_default_course(), why), why);
+      for (const wm::ResolvedMark& m : w->course().marks)
+        std::printf("MARK %d %.1f %.1f %.1f\n", static_cast<int>(m.type), static_cast<double>(m.pos.x),
+                    static_cast<double>(m.pos.y), static_cast<double>(m.radius));
+    }
+    const wm_test::AiRaceOutcome o = wm_test::run_ai_race(sp);
+    int fin = 0, dnf = 0, dsq = 0, touch = 0;
+    double stuck = 0.0;
+    std::string who;
+    for (const wm::ResultRow& r : o.results) {
+      fin += r.place > 0 ? 1 : 0;
+      dsq += r.code == wm::ScoreCode::DSQ ? 1 : 0;
+      if (r.place <= 0 && r.code != wm::ScoreCode::DSQ) {
+        ++dnf;
+        who += " dnf:b" + std::to_string(r.boat);
+      }
+    }
+    double pinned = 0.0, pinned_tot = 0.0;
+    for (std::size_t k = 0; k < o.pinned_max.size(); ++k) {
+      pinned = std::max(pinned, static_cast<double>(o.pinned_max[k]));
+      pinned_tot += static_cast<double>(o.pinned_s[k]);
+      if (o.pinned_max[k] > 30.0f) who += " pinned:b" + std::to_string(k) + "=" + std::to_string(static_cast<int>(o.pinned_max[k]));
+    }
+    for (std::size_t k = 0; k < o.tel.size(); ++k) {
+      stuck = std::max(stuck, static_cast<double>(o.tel[k].stuck_s));
+      if (o.tel[k].stuck_s > 60.0f) {
+        ++t_stuck60;
+        who += " stuck:b" + std::to_string(k) + "=" + std::to_string(static_cast<int>(o.tel[k].stuck_s));
+      }
+    }
+    for (const wm::RulesEvent& e : o.rules_events) {
+      touch += e.kind == wm::RulesEventKind::mark_touch ? 1 : 0;
+      if (sp.trace != nullptr && e.kind == wm::RulesEventKind::mark_touch)
+        std::printf("TOUCH t %.1f boat %d mark %d\n", static_cast<double>(e.tick) * 0.05 - static_cast<double>(o.n_gun_s),
+                    e.boat, e.mark);
+      if (e.kind == wm::RulesEventKind::disqualified)
+        who += " dsq:b" + std::to_string(e.boat) + ":" + std::string(wm::rule_code_str(e.rule));
+    }
+    const double us = o.ai_ticks > 0 ? o.ai_us_sum / o.ai_ticks : 0.0;
+    std::printf("REL %s seed %3llu wind %2.0f: fin %2d/%zu dnf %d dsq %d stuck %6.1f pinned %6.1f pintot %6.1f contacts %2d pen %2d touch %2d "
+                "ai us %6.1f max %7.1f%s\n",
+                kind.c_str(), seed, static_cast<double>(sp.wind_kn), fin, o.results.size(), dnf, dsq, stuck, pinned,
+                pinned_tot, o.contacts, o.penalties, touch, us, o.ai_us_max, who.c_str());
+    t_fin += fin;
+    t_boats += static_cast<int>(o.results.size());
+    t_dnf += dnf;
+    t_dsq += dsq;
+    t_con += o.contacts;
+    t_pen += o.penalties;
+    t_touch += touch;
+    t_stuck_max = std::max(t_stuck_max, stuck);
+    t_us += o.ai_us_sum;
+    t_ticks += o.ai_ticks;
+    t_us_max = std::max(t_us_max, o.ai_us_max);
+    t_all_us.insert(t_all_us.end(), o.ai_us.begin(), o.ai_us.end());
+  }
+  std::sort(t_all_us.begin(), t_all_us.end());
+  if (!t_all_us.empty()) {
+    auto pct = [&](double q) { return static_cast<double>(t_all_us[static_cast<std::size_t>(q * static_cast<double>(t_all_us.size() - 1))]); };
+    std::printf("RELCOST %s %zu ticks: mean %.1f us, p50 %.1f, p99 %.1f, p99.9 %.1f, max %.1f\n", kind.c_str(),
+                t_all_us.size(), t_us / static_cast<double>(t_ticks), pct(0.5), pct(0.99), pct(0.999), t_us_max);
+  }
+  std::printf("RELTOTAL %s %llu races: fin %d/%d dnf %d dsq %d stuck>60 %d (max %.1f) contacts %d pen %d touch %d "
+              "ai us %.1f max %.1f\n",
+              kind.c_str(), ns, t_fin, t_boats, t_dnf, t_dsq, t_stuck60, t_stuck_max, t_con, t_pen, t_touch,
+              t_ticks > 0 ? t_us / t_ticks : 0.0, t_us_max);
+}

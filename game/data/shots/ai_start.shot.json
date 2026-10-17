@@ -1,0 +1,14 @@
+{
+  "schema": "windmark.shot/1",
+  "note": "An AI start: six boats watched (--race --fleet=6 --watch), the helicopter over the line from 15 s before the gun, the long lens on the leader at the gun, half speed for the last 3 s. The start line camera is blocked by the committee boat's cabin (WM-159).",
+  "portrait": true,
+  "hud": false,
+  "world_tags": true,
+  "start": -15,
+  "cues": [
+    { "t": -15, "camera": "helicopter", "params": { "scale": 1.5 } },
+    { "t": -3, "camera": "long_lens" },
+    { "t": 2, "slow": 0.5 },
+    { "t": 5, "end": true }
+  ]
+}

@@ -1,9 +1,11 @@
 ---
 id: WM-163
 title: 'Boats: wm16 grand prix 52 footer (twin wheels, big crew)'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-10-17 09:49'
+updated_date: '2026-10-17 09:54'
 labels:
   - boats
 dependencies: []

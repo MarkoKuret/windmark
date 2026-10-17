@@ -3,7 +3,7 @@
   "id": "example_wl",
   "name": "Windward-leeward, 2 laps",
   "venue": "practice_waters",
-  "classes": ["wm7", "wm12"],
+  "classes": ["wm7", "wm12", "wm16"],
   "frame": "wind",
   "reference": { "x": 0.0, "y": -300.0 },
   "marks": [

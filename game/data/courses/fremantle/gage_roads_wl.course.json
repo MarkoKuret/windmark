@@ -3,7 +3,7 @@
   "id": "gage_roads_wl",
   "name": "Gage Roads windward-leeward, 2 laps",
   "venue": "fremantle",
-  "classes": ["wm7", "wm12"],
+  "classes": ["wm7", "wm12", "wm16"],
   "frame": "wind",
   "reference": { "x": 3000.0, "y": -500.0 },
   "marks": [

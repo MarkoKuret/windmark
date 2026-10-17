@@ -1732,11 +1732,12 @@ func _place_lane(k: float) -> float:
 	flags_view.size = Vector2(flags_view.width() + 2.0, 50.0 * k)
 	y += sh + (8.0 if sh > 0.0 else 0.0)
 	if penalty_panel.visible:
+		var ph := HudPaint.pen_height(self)
 		penalty_panel.position = Vector2((HudPaint.LANE_W - HudPaint.PEN.x) * 0.5, y) * k
-		penalty_panel.size = HudPaint.PEN * k
-		turn_view.position = Vector2(12, 10) * k
-		turn_view.size = Vector2(150, 96) * k
-		y += HudPaint.PEN.y + 12.0
+		penalty_panel.size = Vector2(HudPaint.PEN.x, ph) * k
+		turn_view.position = Vector2(10, 0) * k
+		turn_view.size = Vector2(HudPaint.PEN_X - 10.0, HudPaint.PEN.y) * k
+		y += ph + 12.0
 	var ah := HudPaint.alerts_height(self)
 	alerts_block.visible = ah > 0.0
 	alerts_block.position = Vector2(0, y) * k

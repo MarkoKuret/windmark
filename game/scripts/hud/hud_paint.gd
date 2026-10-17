@@ -495,31 +495,50 @@ static func _burn_bar(b: HudCanvas, h: Hud, c_design: Vector2) -> void:
 
 # ---- penalty panel (top centre, while racing) ----
 
-const PEN := Vector2(620, 118)
+## hud.md §12.1: a compact chip; the ring on the left, three lines from PEN_X, the deadline on the right
+const PEN := Vector2(540, 76)
+const PEN_X := 124.0
+## the deadline's column (design px): caption, number and bar, right-aligned at the panel's edge
+const PEN_DEADLINE_W := 116.0
+
+
+## the panel's height (design px): a line more for the disqualification warning
+static func pen_height(h: Hud) -> float:
+	return PEN.y + (20.0 if h.text_of("pen_dsq") != "" else 0.0)
 
 
 static func penalty(b: HudCanvas, h: Hud) -> void:
 	var k := b.k
 	var r := h.race
-	b._rect(Rect2(Vector2.ZERO, PEN * k), Color(HudStyle.INK, 0.86))
-	b._rect(Rect2(Vector2.ZERO, Vector2(PEN.x, 4) * k), HudStyle.PORT)
-	var x := 176.0
-	var head := "PENALTY"
+	var hgt := pen_height(h)
+	b._rect(Rect2(Vector2.ZERO, Vector2(PEN.x, hgt) * k), Color(HudStyle.INK, 0.86))
+	b._rect(Rect2(Vector2.ZERO, Vector2(PEN.x, 3) * k), HudStyle.PORT)
+	var x := PEN_X
+	var dl := h.text_of("pen_deadline") != ""
+	var w := PEN.x - 16.0 - x - (PEN_DEADLINE_W if dl else 0.0)
+	var cap := "PENALTY"
+	if r.pending > 1:
+		cap += " 1 OF %d" % r.pending
 	if r.pending > 0:
-		head += " · %d PENDING · RULE %s" % [r.pending, RaceText.code(r.penalty_rule)]
-	b._s(Vector2(x, 30) * k, head, int(roundf(14 * k)), HudStyle.PORT, 700, 0.1)
+		cap += " · RULE %s" % RaceText.code(r.penalty_rule)
+	b._s(Vector2(x, 22) * k, cap, int(roundf(LAB * k)), HudStyle.PORT, 700, 0.1)
 	var main := RaceText.rule_text(r.penalty_rule) if r.pending > 0 else h.text_of("pen_head")
-	b._s(Vector2(x, 62) * k, main, int(roundf(24 * k)), HudStyle.PAPER, 600)
-	var sub := h.text_of("pen_turn")
+	var mf := _fit_cut(b, main, 20, w, 600)
+	b._s(Vector2(x, 46) * k, mf[0], mf[1], HudStyle.PAPER, 600)
+	var state: Array[String] = []
 	if r.pending > 0 and r.penalty_other >= 0:
-		sub = "With %s · %s" % [r.name_of(r.penalty_other).to_upper(), sub]
-	b._s(Vector2(x, 88) * k, sub, int(roundf(16 * k)), HudStyle.MIST, 500)
+		state.append("WITH " + r.name_of(r.penalty_other).to_upper())
+	if h.text_of("pen_turn") != "":
+		state.append(h.text_of("pen_turn").to_upper())
+	if not state.is_empty():
+		var sf := _fit_cut(b, " · ".join(state), LAB, w, 600, 0.06)
+		b._s(Vector2(x, 66) * k, sf[0], sf[1], HudStyle.MIST, 600, 0.06)
 	if h.text_of("pen_dsq") != "":
-		b._s(Vector2(x, 110) * k, h.text_of("pen_dsq"), int(roundf(14 * k)), HudStyle.PORT, 700, 0.06)
-	if h.text_of("pen_deadline") != "":
-		b._s(Vector2(PEN.x - 16, 30) * k, "DEADLINE", int(roundf(14 * k)), HudStyle.MIST, 600, TRACK,
+		b._s(Vector2(x, 88) * k, h.text_of("pen_dsq").to_upper(), int(roundf(LAB * k)), HudStyle.PORT, 700, 0.06)
+	if dl:
+		b._s(Vector2(PEN.x - 16, 20) * k, "DEADLINE", int(roundf(TINY * k)), HudStyle.LABEL, 600, TRACK,
 			HORIZONTAL_ALIGNMENT_RIGHT)
-		b._s(Vector2(PEN.x - 16, 88) * k, h.value_of("pen_deadline"), int(roundf(52 * k)), h.colour_of("pen_deadline"),
+		b._s(Vector2(PEN.x - 16, 58) * k, h.value_of("pen_deadline"), int(roundf(40 * k)), h.colour_of("pen_deadline"),
 			600, 0.0, HORIZONTAL_ALIGNMENT_RIGHT)
 		# hud.md §12.1: a thin bar under the number shrinking towards 0:00
 		var bar := deadline_bar(h)
@@ -528,13 +547,13 @@ static func penalty(b: HudCanvas, h: Hud) -> void:
 			b._rect(Rect2(bar[1].position * k, bar[1].size * k), h.colour_of("pen_deadline"))
 
 
-const DEADLINE_BAR := Vector2(150, 4)
+const DEADLINE_BAR := Vector2(100, 3)
 const DEADLINE_FULL := 120.0
 
 
 ## the deadline bar's track and fill (design px, in the panel): the fill over time left / 120 s from the left
 static func deadline_bar(h: Hud) -> Array[Rect2]:
-	var track := Rect2(Vector2(PEN.x - 16 - DEADLINE_BAR.x, 100), DEADLINE_BAR)
+	var track := Rect2(Vector2(PEN.x - 16 - DEADLINE_BAR.x, 65), DEADLINE_BAR)
 	var f := clampf(h.race.deadline / DEADLINE_FULL, 0.0, 1.0)
 	return [track, Rect2(track.position, Vector2(track.size.x * f, track.size.y))]
 
@@ -552,7 +571,7 @@ static func alert_lines(h: Hud) -> Array:
 static func alerts_height(h: Hud) -> float:
 	var y := 0.0
 	for key in alert_lines(h):
-		y += 64.0 if key == "banner" and h.race.banner != null and h.race.banner.full else 52.0
+		y += 56.0 if key == "banner" and h.race.banner != null and h.race.banner.full else 44.0
 	return y
 
 
@@ -562,19 +581,19 @@ static func alerts(b: HudCanvas, h: Hud) -> void:
 	var y := 0.0
 	for key in alert_lines(h):
 		var full: bool = key == "banner" and h.race.banner != null and h.race.banner.full
-		var size := 34.0 if full else (24.0 if key != "prompt" else 20.0)
+		var size := 28.0 if full else 20.0
 		var t := h.text_of(key)
 		if key == "rules":
 			t = t.to_upper()
 		var col := h.colour_of(key)
 		var tw := HudCanvas.text_width(t, int(roundf(size * k)), 700, 0.04) / k + 40.0
-		var hgt := size + 18.0
+		var hgt := size + 16.0
 		var rr := Rect2(Vector2(cx - tw * 0.5, y), Vector2(tw, hgt))
 		b._rect(Rect2(rr.position * k, rr.size * k), Color(HudStyle.INK, 0.86))
 		b._rect(Rect2(rr.position * k, Vector2(6, hgt) * k), col)
 		b._s(Vector2(cx + 3.0, y + hgt * 0.5 + size * 0.36) * k, t, int(roundf(size * k)), col, 700, 0.04,
 			HORIZONTAL_ALIGNMENT_CENTER)
-		y += 64.0 if full else 52.0
+		y += 56.0 if full else 44.0
 
 
 # ---- helm strip (bottom centre) ----

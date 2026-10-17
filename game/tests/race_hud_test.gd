@@ -588,18 +588,18 @@ func test_penalties_prompts() -> void:
 		"turn_gybes": 0, "deadline_s": 32.4, "received": 1, "turning_for_penalty": false}
 	_refresh(h, sim)
 	sim.rules_ev = []
-	t.ok(h.text_of("banner") == "PENALTY: Port tack keeps clear of starboard (Nora)", "penalty banner: " + h.text_of("banner"))
+	t.ok(h.text_of("banner") == "PENALTY · RULE 10", "penalty banner, short (hud.md §12.2): " + h.text_of("banner"))
 	t.ok(h.penalty_panel.visible and h.text_of("pen_head") == "Penalty: Port tack keeps clear of starboard (Nora)",
 		h.text_of("pen_head"))
 	t.ok(h.text_of("pen_deadline") == "Deadline  0:32", "deadline: " + h.text_of("pen_deadline"))
-	t.ok(h.text_of("pen_turn") == "Sail clear and turn: one tack and one gybe", h.text_of("pen_turn"))
-	# turning: the turn as a number, TACK lit
+	t.ok(h.text_of("pen_turn") == "Sail clear and turn", h.text_of("pen_turn"))
+	# turning: the turn as a number in the ring (no state text), TACK lit
 	sim.rules_d[0]["turning_for_penalty"] = true
 	sim.rules_d[0]["turn_progress"] = deg_to_rad(-210.0)
 	sim.rules_d[0]["turn_tacks"] = 1
 	_refresh(h, sim)
-	t.ok(h.text_of("pen_turn") == "Turn: 210°" and h.turn_view.turn_deg > 209.9 and h.turn_view.tack_done
-		and not h.turn_view.gybe_done, "turn progress: " + h.text_of("pen_turn"))
+	t.ok(h.text_of("pen_turn") == "" and h.turn_view.turn_deg > 209.9 and h.turn_view.tack_done
+		and not h.turn_view.gybe_done, "turn progress in the ring, no state text: '%s'" % h.text_of("pen_turn"))
 	var turn_texts := h.turn_view.primitives().filter(func(q: Dictionary) -> bool: return q["k"] == "text") \
 		.map(func(q: Dictionary) -> String: return q["text"])
 	var turn_arcs := h.turn_view.primitives().filter(func(q: Dictionary) -> bool: return q["k"] == "arc")
@@ -609,7 +609,7 @@ func test_penalties_prompts() -> void:
 	sim.put(0, 0, 985, 0.7, 3.0)
 	sim.race_d["race_type"] = RaceText.RACE_MATCH
 	_refresh(h, sim)
-	t.ok(h.text_of("pen_turn") == "Turn: 210°", "no zone guess near the mark: " + h.text_of("pen_turn"))
+	t.ok(h.text_of("pen_turn") == "", "no zone guess near the mark: '%s'" % h.text_of("pen_turn"))
 	sim.rules_d[0]["turn_in_zone"] = true
 	_refresh(h, sim)
 	t.ok(h.text_of("pen_turn") == "Not counted: inside the zone", h.text_of("pen_turn"))
@@ -620,7 +620,7 @@ func test_penalties_prompts() -> void:
 	sim.rules_d[0]["turning_for_penalty"] = false
 	sim.rules_d[0]["turn_progress"] = 0.0
 	_refresh(h, sim)
-	t.ok(h.text_of("pen_turn") == "Sail clear and turn: one tack and one gybe", "no reset inferred: "
+	t.ok(h.text_of("pen_turn") == "Sail clear and turn", "no reset inferred: "
 		+ h.text_of("pen_turn"))
 	# each reset reason from the core, shown for 3 s
 	var texts := {RaceText.TurnReset.PAUSED: "Turn reset: paused", RaceText.TurnReset.REVERSED: "Turn reset: turned back",
@@ -636,7 +636,7 @@ func test_penalties_prompts() -> void:
 	_refresh(h, sim, 0, RaceHudValues.RESET_TICKS - 2)
 	t.ok(h.text_of("pen_turn") == "Turn reset: mark rounded", "reset text over the new turn: " + h.text_of("pen_turn"))
 	_refresh(h, sim, 0, 3)
-	t.ok(h.text_of("pen_turn") == "Turn: 15°", "reset text gone after 3 s: " + h.text_of("pen_turn"))
+	t.ok(h.text_of("pen_turn") == "", "reset text gone after 3 s: '%s'" % h.text_of("pen_turn"))
 	sim.rules_d[0]["turning_for_penalty"] = false
 	sim.rules_d[0]["turn_progress"] = 0.0
 	sim.rules_d[0]["turn_reset"] = RaceText.TurnReset.NONE

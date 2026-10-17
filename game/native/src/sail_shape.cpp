@@ -41,8 +41,6 @@ constexpr float STAY_WIDTH = 0.6f;
 constexpr float STAY_HEAD = 0.3f;
 constexpr float STAY_LUFF = 0.5f;
 constexpr float STAY_LEECH = 0.3f;
-// §6.4 a symmetric spinnaker keeps its full camber from the foot to mid height, 1 - this of it at the head
-constexpr float SYM_ENDS = 0.3f;
 // §6.4 the belly of a symmetric spinnaker's foot sags down by this share of its depth, fading out over the lower
 // SYM_SAG_H of the height
 constexpr float SYM_SAG = 0.35f;
@@ -57,6 +55,12 @@ constexpr float CLEW_STEP = 0.01f;
 constexpr int CLEW_ITER = 2;
 constexpr float CLEW_FADE0 = 75.0f * PI_F / 180.0f, CLEW_FADE1 = 105.0f * PI_F / 180.0f;  // round the bow
 constexpr float CLEW_AWA0 = 45.0f * PI_F / 180.0f, CLEW_AWA1 = 65.0f * PI_F / 180.0f;     // the lowest AWA
+// §4.1 the luff and leech curl reach this share of the chord in from the edge; `forward` holds the corners over
+// this share of Sl; `tack_rise` fades out over this share of Sl from the tack
+constexpr float CURL_BAND = 0.25f;
+constexpr float HOLD = 0.35f;
+constexpr float TACK_REACH = 0.5f;
+constexpr double DEG = 3.14159265358979323846 / 180.0;
 
 inline float sgn(float x) { return x >= 0.0f ? 1.0f : -1.0f; }
 inline float wrap_pi(float x) {
@@ -78,6 +82,10 @@ inline Transform3D about(const Vector3& p, const Vector3& axis, float angle) {
 
 float getf(const Dictionary& d, const char* key, float def) {
   return d.has(key) ? static_cast<float>(static_cast<double>(d[key])) : def;
+}
+
+double getd(const Dictionary& d, const char* key, double def) {
+  return d.has(key) ? static_cast<double>(d[key]) : def;
 }
 
 Vector3 getv(const Dictionary& d, const char* key, const Vector3& def) {
@@ -147,14 +155,42 @@ bool SailShape::configure(const PackedVector3Array& rest, int64_t rows, int64_t 
   sheet_lead_ = getv(p, "sheet_lead", Vector3());
   has_mast_head_ = p.has("mast_head");
   mast_head_ = getv(p, "mast_head", mast_step_ + mast_axis_);
+  // §4.1 the kite set parameters: the keys given over the defaults of the kind (none on a main or headsail)
+  const bool kite = kind_ == ASYM || kind_ == SYM;
+  const bool asym = kind_ == ASYM;
+  auto kp = [&](const char* key, double def) { return kite ? getd(p, key, def) : def; };
+  const double peak = kp("depth_peak_h", asym ? 0.3 : 0.5), foot = kp("depth_foot", asym ? 0.8 : 1.0);
+  const double headd = kp("depth_head", asym ? 0.45 : 0.7);
+  const double dlow = kp("draft_low", asym ? std::pow(0.5, 1.0 / 0.8) : 0.5);
+  const double dhead = kp("draft_head", asym ? std::pow(0.5, 1.0 / 1.4) : 0.5);
+  const double dfrom = kp("draft_from_h", 0.55);
+  const double lc = kp("luff_curl", 0.0), rc = kp("leech_curl", 0.0);
+  const double gf = kp("girth_foot", 1.0), gm = kp("girth_mid", 1.0), gh = kp("girth_head", 1.0);
+  const float clew_h = static_cast<float>(kp("clew_h", CLEW_H));
+  belly_aft_ = static_cast<float>(kp("belly_aft", 0.5));
+  belly_up_ = static_cast<float>(kp("belly_up", 0.5));
+  twist_exp_ = static_cast<float>(kp("twist_exp", asym ? 2.5 : 1.5));
+  twist_lo_ = static_cast<float>(kp("twist_awa_lo", 60.0 * DEG));
+  twist_hi_ = static_cast<float>(kp("twist_awa_hi", 130.0 * DEG));
+  twist_run_ = static_cast<float>(kp("twist_run", 25.0 * DEG));
+  foot_sag_ = static_cast<float>(kp("foot_sag", kind_ == SYM ? SYM_SAG : 0.0));
+  foot_sag_h_ = static_cast<float>(kp("foot_sag_h", SYM_SAG_H));
+  head_drop_ = static_cast<float>(kp("head_drop", 0.0));
+  clew_lift_ = static_cast<float>(kp("clew_lift", 0.0));
+  clew_out_ = static_cast<float>(kp("clew_out", 0.0));
+  forward_ = static_cast<float>(kp("forward", 0.0));
+  tack_rise_ = static_cast<float>(kp("tack_rise", 0.0));
+  stay_head_ = static_cast<float>(kp("stay_head", STAY_HEAD));
+  stay_luff_ = static_cast<float>(kp("stay_luff", STAY_LUFF));
+  stay_leech_ = static_cast<float>(kp("stay_leech", STAY_LEECH));
   has_stay_ = mode_ == POLE && clearance_ > 0.0f && p.has("forestay_tack") && p.has("hounds");
   if (has_stay_) {
     stay0_ = getv(p, "forestay_tack", Vector3());
     stay1_ = getv(p, "hounds", Vector3());
     const Vector3 dm = stay0_ - mast_step_;
     const float jb = (dm - mast_axis_ * dm.dot(mast_axis_)).length();  // the foretriangle base
-    stay_w_ = STAY_WIDTH * jb;
-    stay_c_ = std::max(STAY_CLEAR * jb, clearance_);
+    stay_w_ = static_cast<float>(kp("stay_width", STAY_WIDTH)) * jb;
+    stay_c_ = std::max(static_cast<float>(kp("stay_clear", STAY_CLEAR)) * jb, clearance_);
   }
   obs_.clear();
   ease_ = 0.0f;
@@ -197,6 +233,16 @@ bool SailShape::configure(const PackedVector3Array& rest, int64_t rows, int64_t 
   d0row_.assign(rows_, 0.0f);
   kd_ = kl_ = 0.0f;
   prof_.assign(n_, 0.0f);
+  grow_.assign(rows_, 1.0f);
+  // §6.3, §6.4, §4.1: the camber's height profile and the draft's exponent (coefficients in double, so the
+  // defaults give the constants they replace exactly)
+  const float pk = static_cast<float>(peak), pk1 = static_cast<float>(1.0 - peak);
+  const float cf = static_cast<float>(1.0 - foot), chd = static_cast<float>(1.0 - headd);
+  const double ql = std::log(0.5) / std::log(dlow), qh = std::log(0.5) / std::log(dhead);
+  const float q0 = static_cast<float>(ql), dq = static_cast<float>(qh - ql);
+  const float df = static_cast<float>(dfrom), df1 = static_cast<float>(1.0 - dfrom);
+  const float fgm = static_cast<float>(gm), fgf = static_cast<float>(gf - gm), fgh = static_cast<float>(gh - gm);
+  const float flc = static_cast<float>(lc), frc = static_cast<float>(rc);
   for (int i = 0; i < rows_; ++i) {
     for (int j = 0; j < cols_; ++j) {
       const int k = i * cols_ + j;
@@ -207,30 +253,57 @@ bool SailShape::configure(const PackedVector3Array& rest, int64_t rows, int64_t 
     c_[i] = r[i * cols_ + cols_ - 1].distance_to(r[i * cols_]);
     amid_[i] = 0.5f * (a_[i * cols_] + a_[i * cols_ + cols_ - 1]);
     hrow_[i] = h_[i * cols_];
-    const float cr = clampf(1.0f - hrow_[i] / CLEW_H, 0.0f, 1.0f);
+    const float cr = clampf(1.0f - hrow_[i] / clew_h, 0.0f, 1.0f);
     crow_[i] = cr * cr * cr;
     u0row_[i] = u_[i * cols_];
     ulrow_[i] = u_[i * cols_ + cols_ - 1];
-    // §6.3 (asymmetric: deepest at 0.3 of the height, the draft forward) and §6.4 (symmetric)
+    // §6.3 (asymmetric: deepest at 0.3 of the height, the draft forward) and §6.4 (symmetric: full depth from the
+    // foot to mid height, the draft in the middle), by the set parameters of §4.1
     const float hr = hrow_[i];
-    if (kind_ == ASYM) {
-      const float lo = (0.3f - hr) / 0.3f, hi = (hr - 0.3f) / 0.7f;
-      prow_[i] = hr < 0.3f ? 1.0f - 0.2f * lo * lo : 1.0f - 0.55f * hi * hi;
-      const float t = clampf((hr - 0.55f) / 0.45f, 0.0f, 1.0f);
-      const float q = 0.8f + 0.6f * t * t * (3.0f - 2.0f * t);
-      for (int j = 0; j < cols_; ++j) prof_[i * cols_ + j] = std::sin(PI_F * std::pow(uc_[i * cols_ + j], q));
-    } else {
-      const float hh = std::max(2.0f * hr - 1.0f, 0.0f);  // full depth from the foot to mid height
-      prow_[i] = 1.0f - SYM_ENDS * hh * hh;
+    if (kite) {
+      const float lo = (pk - hr) / pk, hi = (hr - pk) / pk1;
+      prow_[i] = hr < pk ? 1.0f - cf * lo * lo : 1.0f - chd * hi * hi;
+      const float t = clampf((hr - df) / df1, 0.0f, 1.0f);
+      const float q = q0 + dq * t * t * (3.0f - 2.0f * t);
+      const float b = hr < 0.5f ? 1.0f - 2.0f * hr : 2.0f * hr - 1.0f;
+      grow_[i] = fgm + (hr < 0.5f ? fgf : fgh) * b * b;
+      const float fh = 4.0f * hr * (1.0f - hr);  // the edge curls, none at the corners
       for (int j = 0; j < cols_; ++j) {
         const float uc = uc_[i * cols_ + j];
-        prof_[i * cols_ + j] = 4.0f * uc * (1.0f - uc);
+        float pr;
+        if (kind_ == ASYM) {
+          pr = std::sin(PI_F * std::pow(uc, q));
+        } else {
+          const float x = q == 1.0f ? uc : std::pow(uc, q);
+          pr = 4.0f * x * (1.0f - x);
+        }
+        if (flc != 0.0f) {
+          const float bl = clampf(1.0f - uc / CURL_BAND, 0.0f, 1.0f);
+          pr += flc * bl * bl * fh;
+        }
+        if (frc != 0.0f) {
+          const float br = clampf(1.0f - (1.0f - uc) / CURL_BAND, 0.0f, 1.0f);
+          pr += frc * br * br * fh;
+        }
+        prof_[i * cols_ + j] = pr;
       }
     }
   }
   furl_radius_ = getf(p, "furl_radius", 0.02f + 0.006f * sa_);
   tack_d_.assign(n_, 0.0f);
   for (int k = 0; k < n_; ++k) tack_d_[k] = r[k].distance_to(r[0]);
+  // §4.1 the corners' hold of `forward` and the share of `tack_rise`, from the rest distances to the corners
+  hold_.assign(n_, 0.0f);
+  rise_.assign(n_, 0.0f);
+  if (kite) {
+    const float rr = HOLD * sl_;
+    const Vector3 hc = r[(rows_ - 1) * cols_], cc = r[cols_ - 1];
+    for (int k = 0; k < n_; ++k) {
+      hold_[k] = smooth01(tack_d_[k] / rr) * smooth01(r[k].distance_to(hc) / rr) * smooth01(r[k].distance_to(cc) / rr);
+      const float w = 1.0f - std::min(tack_d_[k] / (TACK_REACH * sl_), 1.0f);
+      rise_[k] = w * w;
+    }
+  }
   fa_ = 0.0f;
   // §7.4 rest distances between grid neighbours, for the spread of the push
   ec_.assign(n_, 0.0f);
@@ -333,19 +406,24 @@ Vector3 SailShape::furl(int k, float p, float d_cam, float amp, float shiver) co
 
 Vector3 SailShape::fly(int k, int i, const Vector3& w, float shiver) const {
   const float uc = uc_[k];
-  const float s = srow_[i], a0 = a_[i * cols_];
-  const float e = drow_[i] * s * c_[i] * prof_[k];
+  const float s = srow_[i], a0 = a_[i * cols_], gi = grow_[i];
+  const float e = drow_[i] * s * gi * c_[i] * prof_[k];
   const float i2 = 0.33f * flutter_amp_ * shiver;
   const float q = phi_ - 7.0f * uc;
   const Vector3 m(w.x + 0.1f * i2 * std::sin(q), w.y, w.z + i2 * std::cos(q));
-  Vector3 r = Vector3(a0 + (a_[k] - a0) * s, l_[k] - kl_ * c_[0] * crow_[i] * uc * uc, 0.0f) - m * e;
+  // §7.7 the draw-down; §4.1 the clew raised and let out, the head dropped, the girth
+  Vector3 r = Vector3(a0 + (a_[k] - a0) * s * gi + clew_out_ * c_[0] * crow_[i] * uc * uc,
+                      l_[k] - (kl_ - clew_lift_) * c_[0] * crow_[i] * uc * uc - head_drop_ * sl_ * h_[k], 0.0f) -
+              m * e;
+  if (foot_sag_ != 0.0f) {
+    // §6.4, §4.1 the lower panels' belly sags, so the foot curves round and down
+    const float fs = clampf(1.0f - hrow_[i] / foot_sag_h_, 0.0f, 1.0f);
+    r.y -= foot_sag_ * e * fs * fs;
+  }
   if (kind_ == SYM) {
-    // §6.4 the lower panels' belly sags, so the foot curves round and down
-    const float fs = clampf(1.0f - hrow_[i] / SYM_SAG_H, 0.0f, 1.0f);
-    r.y -= SYM_SAG * e * fs * fs;
     const float hh = 2.0f * h_[k] - 1.0f;
     const float g = std::max(0.0f, shiver - uc) * (1.0f - hh * hh);
-    r.x += (a0 + (amid_[i] - a0) * s - r.x) * 0.5f * g;
+    r.x += (a0 + (amid_[i] - a0) * s * gi - r.x) * 0.5f * g;
     r.z += g * flutter_amp_ * 0.1f * sa_ * std::sin(phi_ - a_[k]);
   }
   return r;
@@ -437,7 +515,7 @@ void SailShape::update(int64_t phase, double progress, double beta_in, double ga
     else
       f_fly = fill_gain_ * clampf(aws / KNOT, 3.0f, 6.0f) / 6.0f;
     const Vector3 uw = fwd_ * std::cos(awa) - port_ * std::sin(awa);
-    w = Vector3(uw.dot(ap) * 0.5f / fill_curve_, uw.dot(lp) * 0.5f, uw.dot(np));
+    w = Vector3(uw.dot(ap) * belly_aft_ / fill_curve_, uw.dot(lp) * belly_up_, uw.dot(np));
     w = w.length_squared() > 1e-12f ? w.normalized() : Vector3(0, 0, 1);
     const float fc = camber_ * std::min(f_fly, 1.15f);
     for (int i = 0; i < rows_; ++i) d0row_[i] = fc * prow_[i];
@@ -447,14 +525,14 @@ void SailShape::update(int64_t phase, double progress, double beta_in, double ga
   {
     float tw = twist_top_;
     if (kind_ == ASYM) {
-      const float ta = clampf((std::fabs(awa) - 60.0f * PI_F / 180.0f) / (70.0f * PI_F / 180.0f), 0.0f, 1.0f);
-      const float tr = clampf((PI_F - std::fabs(awa)) / (25.0f * PI_F / 180.0f), 0.0f, 1.0f);
+      const float ta = clampf((std::fabs(awa) - twist_lo_) / (twist_hi_ - twist_lo_), 0.0f, 1.0f);
+      const float tr = clampf((PI_F - std::fabs(awa)) / twist_run_, 0.0f, 1.0f);
       tw *= ta * ta * (3.0f - 2.0f * ta) * tr * tr * (3.0f - 2.0f * tr);
     }
     // (signed; the asymmetric spinnaker's on the side away from the wind at once: zero where awa changes sign)
     for (int i = 0; i < rows_; ++i)
-      trow_[i] = kind_ == ASYM ? -sgn(awa) * tw * (1.0f - std::pow(1.0f - hrow_[i], 2.5f))
-                               : tl_ * tw * std::pow(hrow_[i], 1.5f);
+      trow_[i] = kind_ == ASYM ? -sgn(awa) * tw * (1.0f - std::pow(1.0f - hrow_[i], twist_exp_))
+                               : tl_ * tw * std::pow(hrow_[i], kind_ == SYM ? twist_exp_ : 1.5f);
   }
 
   // §8.1 which shape in which phase
@@ -471,7 +549,7 @@ void SailShape::update(int64_t phase, double progress, double beta_in, double ga
   }
   locals(phase, up_shape, p, d_cam, amp, shiver, w);
   // §7.4 the ease of a flying sail off the other sails (the head lies on the luff axis)
-  const Vector3 hd = s_t.xform(head_);
+  const Vector3 hd = s_t.xform(head_ - lh_ * (head_drop_ * sl_));  // §4.1 the head as dropped
   tack_at_ = s_t.xform(tack_);
   const bool clearing = clearance_ > 0.0f && (!obs_.empty() || has_mast_head_);
   ease_ = 0.0f;
@@ -521,6 +599,7 @@ void SailShape::update(int64_t phase, double progress, double beta_in, double ga
     }
   }
   clew0_ = mid_[cols_ - 1];
+  if (fa_ > 0.0f && (forward_ != 0.0f || tack_rise_ != 0.0f)) shift();
   if (has_stay_ && fa_ > 0.0f) stay();
   if (clearing) push(awa, hd);
   layers(np);
@@ -535,7 +614,7 @@ void SailShape::stay() {
   std::vector<float> sw(cols_), d_row(rows_, 0.0f);
   for (int j = 0; j < cols_; ++j) {
     const float uc = uc_[j];
-    sw[j] = smooth01(uc / STAY_LUFF) * (1.0f - STAY_LEECH * smooth01((uc - STAY_LUFF) / (1.0f - STAY_LUFF)));
+    sw[j] = smooth01(uc / stay_luff_) * (1.0f - stay_leech_ * smooth01((uc - stay_luff_) / (1.0f - stay_luff_)));
   }
   for (int i = 0; i + 1 < rows_; ++i) {
     for (int j = 0; j < cols_; ++j) {
@@ -551,10 +630,17 @@ void SailShape::stay() {
   }
   for (int i = rows_ - 2; i >= 0; --i) d_row[i] = std::max(d_row[i], d_row[i + 1]);  // never less than above
   for (int i = 0; i < rows_; ++i) {
-    const float s = d_row[i] * smooth01((1.0f - hrow_[i]) / STAY_HEAD) * fa_;
+    const float s = d_row[i] * smooth01((1.0f - hrow_[i]) / stay_head_) * fa_;
     if (s <= 0.0f) continue;
     for (int j = 0; j < cols_; ++j) mid_[i * cols_ + j] += fwd_ * (s * sw[j]);
   }
+}
+
+// §4.1 the cloth projected forward (the corners held) and the tack raised, times the flying shape's share
+void SailShape::shift() {
+  const float f = forward_ * sl_ * fa_, t = tack_rise_ * sl_ * fa_;
+  for (int k = 0; k < n_; ++k) mid_[k] += fwd_ * (f * hold_[k]) + up_ * (t * rise_[k]);
+  tack_at_ += up_ * t;
 }
 
 // §6, §8 the local shape of every vertex, with the tack pin of §7.5
@@ -624,9 +710,15 @@ Vector3 SailShape::fly_at(int k, const Vector3& w, float kd, float kl) const {
     s = std::min(s * (1.0f - kd * crow_[i]), 1.0f);
     d = std::sqrt(std::max(1.0f / s - 1.0f, 0.0f) * 3.0f / 8.0f);
   }
-  const float a0 = a_[i * cols_], uc = uc_[k];
-  const float e = d * s * c_[i] * prof_[k];
-  return Vector3(a0 + (a_[k] - a0) * s, l_[k] - kl * c_[0] * crow_[i] * uc * uc, 0.0f) - w * e;
+  const float a0 = a_[i * cols_], uc = uc_[k], gi = grow_[i];
+  const float e = d * s * gi * c_[i] * prof_[k];
+  Vector3 r(a0 + (a_[k] - a0) * s * gi + clew_out_ * c_[0] * crow_[i] * uc * uc,
+            l_[k] - (kl - clew_lift_) * c_[0] * crow_[i] * uc * uc - head_drop_ * sl_ * h_[k], 0.0f);
+  if (foot_sag_ != 0.0f) {
+    const float fs = clampf(1.0f - hrow_[i] / foot_sag_h_, 0.0f, 1.0f);
+    r.y -= foot_sag_ * e * fs * fs;
+  }
+  return r - w * e;
 }
 
 // §7.7 the corner's bisector b and the sheet's direction s with (kd, kl)

@@ -34,6 +34,7 @@ func _main() -> void:
 	if native:
 		_native_vs_ref()
 		_vertex_bytes()
+	_set_params()
 	_boats()
 	_clearance()
 	_reach_clew()
@@ -523,6 +524,104 @@ func _native_vs_ref() -> void:
 		n2, eased, w2, we])
 	for bv in bvs:
 		bv.free()
+
+
+## §12 test 26: the kite set parameters (§4.1). The defaults given as keys draw exactly what no keys draw; every key
+## changes the drawn kite; native against reference with every key away from its default over random drivers.
+const SET_ASYM := {"depth_peak_h": 0.35, "depth_foot": 0.9, "depth_head": 0.5, "draft_low": 0.45, "draft_head": 0.58,
+	"draft_from_h": 0.5, "belly_aft": 0.6, "belly_up": 0.4, "twist_exp": 2.0, "twist_awa_lo": 1.13,
+	"twist_awa_hi": 2.2, "twist_run": 0.5, "foot_sag": 0.1, "foot_sag_h": 0.3, "girth_foot": 0.95, "girth_mid": 1.04,
+	"girth_head": 0.97, "luff_curl": 0.15, "leech_curl": -0.1, "head_drop": 0.02, "clew_lift": 0.03,
+	"clew_out": -0.02, "clew_h": 0.35, "forward": 0.05, "tack_rise": 0.03, "stay_clear": 0.3, "stay_width": 0.5,
+	"stay_head": 0.25, "stay_luff": 0.45, "stay_leech": 0.25}
+
+
+## the rectangle of §12 with its luff leaning aft (2 m over its 9 m), as a kite's does
+static func rect_lean() -> PackedVector3Array:
+	var g := PackedVector3Array()
+	for i in 11:
+		for j in 11:
+			g.append(Vector3(-2.0 * i / 10.0 - 3.0 * j / 10.0, 0.0, 9.0 * i / 10.0))
+	return g
+
+
+## the synthetic kite of test 26 (the leaning rectangle): on a sprit with a sheet lead (asymmetric), or on a pole
+## with a forestay (symmetric)
+func _set_kite(impl: String, kind: int, kset: Dictionary) -> Variant:
+	var ex := {"mast_step": Vector3(1.2, 0, 0.5)}
+	if kind == K.ASYM:
+		ex["sheet_lead"] = Vector3(-6.0, -1.0, 0.5)
+	else:
+		ex.merge({"clearance": 0.3, "forestay_tack": Vector3(-1.0, 0, 0.5), "hounds": Vector3(-1.2, 0, 8.0)})
+	ex.merge(kset, true)
+	return mk(impl, kind, M.SPRIT if kind == K.ASYM else M.POLE, ex, rect_lean())
+
+
+## the kite of test 26 placed at the apparent wind angle awa (rad, > 0), the sail 0.45 awa to leeward and the pole
+## 0.3 rad to windward (the core's signs)
+static func _set_place(sh: Variant, awa: float) -> PackedVector3Array:
+	sh.advance(0.0, 6.0, awa, false)
+	sh.set_twist_side(-1.0)
+	sh.update(UP, 1.0, -0.45 * awa, -0.3, 0.0, awa, 6.0)
+	return sh.mid()
+
+
+func _set_params() -> void:
+	t.begin("26 kite set parameters")
+	for impl in (["ref", "native"] if native else ["ref"]):
+		for kind in [K.ASYM, K.SYM]:
+			var type := "spinnaker_asym" if kind == K.ASYM else "spinnaker_sym"
+			var worst := 0.0
+			for awa_deg in [80.0, 120.0, 165.0]:
+				var a := _set_place(_set_kite(impl, kind, {}), deg_to_rad(awa_deg))
+				var b := _set_place(_set_kite(impl, kind, KiteSet.defaults(type)), deg_to_rad(awa_deg))
+				worst = maxf(worst, max_move(a, b))
+			t.ok(worst == 0.0, "%s %s: the defaults given as keys draw the same kite as no keys (%.9f m)" % [impl, type, worst])
+			var dead := []
+			# a base where every key acts: some foot sag, the draft moving up the sail, some twist and clew lift
+			var base := {"foot_sag": 0.2, "draft_head": 0.6, "twist_top": 0.1, "clew_lift": 0.05}
+			for row in KiteSet.PARAMS:
+				var key: String = row[0]
+				if (row[7] == "asym" and kind != K.ASYM) or (row[7] == "pole" and kind != K.SYM):
+					continue
+				var d: Dictionary = KiteSet.defaults(type)
+				d.merge(base, true)
+				var v: float = d[key]
+				var span: float = row[5] - row[4]
+				var nv := v + 0.15 * span if v + 0.15 * span <= row[5] else v - 0.15 * span
+				var moved := 0.0
+				for awa_deg in [80.0, 120.0, 165.0]:
+					var a := _set_place(_set_kite(impl, kind, base), deg_to_rad(awa_deg))
+					var bk := base.duplicate()
+					bk[key] = nv
+					var b := _set_place(_set_kite(impl, kind, bk), deg_to_rad(awa_deg))
+					moved = maxf(moved, max_move(a, b))
+				if moved < 1e-3:
+					dead.append(key)
+			t.ok(dead.is_empty(), "%s %s: every set parameter moves the kite (none: %s)" % [impl, type, ", ".join(dead)])
+	if not native:
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 26
+	var worst := 0.0
+	var cases := 0
+	for kind in [K.ASYM, K.SYM]:
+		var a: Variant = _set_kite("ref", kind, SET_ASYM)
+		var b: Variant = _set_kite("native", kind, SET_ASYM)
+		for r in 60:
+			var dt := rng.randf_range(0.0, 0.05)
+			var aws := rng.randf_range(0.5, 9.0)
+			var awa := rng.randf_range(-PI, PI)
+			a.advance(dt, aws, awa, false)
+			b.advance(dt, aws, awa, false)
+			var ph: int = [1, 2, 3, 4, 5][r % 5]
+			var args := [ph, rng.randf(), -0.6 * awa, rng.randf_range(-0.6, 0.6), rng.randf(), awa, aws]
+			a.update(args[0], args[1], args[2], args[3], args[4], args[5], args[6])
+			b.update(args[0], args[1], args[2], args[3], args[4], args[5], args[6])
+			worst = maxf(worst, max_move(a.positions(), b.positions()))
+			cases += 1
+	t.ok(worst < 1e-3, "%d random frames, every key away from its default: native within %.7f m of the reference" % [
+		cases, worst])
 
 
 ## The native buffer against Godot's own encoding of the same positions and normals.
@@ -1327,7 +1426,7 @@ func _clear_check(fp: BoatView.SailPart, obs: Array, ms: Vector3, mh: Vector3, c
 ## §12 test 19: the generator's preview poses (tools/boatgen/boatgen/sail_set.py, written to
 ## generated/boats/<id>.sets.json) draw the sails as BoatView does, native and reference, within PARITY_TOL.
 const PARITY_TOL := 0.01
-const PARITY_CLASSES := ["wm7", "wm12", "wm9", "test_sym"]
+const PARITY_CLASSES := ["wm7", "wm12", "wm9", "test_sym", "test_set_asym", "test_set_sym"]
 
 
 func _parity() -> void:

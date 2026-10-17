@@ -1,0 +1,66 @@
+{
+  "schema": "windmark.boatclass/1",
+  "id": "test_set_sym",
+  "name": "Set parameters test (wm9 hull)",
+  "version": 2,
+  "hull": {
+    "loa": 9.2,
+    "lwl": 7.3,
+    "beam_max": 2.14,
+    "bwl": 1.72,
+    "draft_canoe": 0.34,
+    "displacement": 1520,
+    "prismatic": 0.54,
+    "section_shape": {"type": "round", "midship_coefficient": 0.70},
+    "rocker": {"fwd": 0.34, "aft": 0.34},
+    "freeboard": {"bow": 0.92, "mid": 0.58, "stern": 0.72},
+    "transom_width": 0.95,
+    "stem_x": 4.55,
+    "transom_x": -4.65,
+    "max_beam_station": 0.47,
+    "bow_fineness": 1.6
+  },
+  "keel": {
+    "type": "fin",
+    "depth": 1.42,
+    "chord_root": 1.45,
+    "chord_tip": 0.85,
+    "thickness": 0.09,
+    "sweep": 0.40,
+    "x": -0.22,
+    "fin_mass": 960,
+    "bulb_mass": 0
+  },
+  "rudder": {"type": "spade", "depth": 1.15, "chord_root": 0.46, "chord_tip": 0.27, "thickness": 0.12, "x": -3.25},
+  "rig": {
+    "I": 9.9,
+    "J": 3.35,
+    "P": 10.3,
+    "E": 3.4,
+    "mast_height": 12.1,
+    "mast_x": 1.15,
+    "boom_height": 1.55,
+    "fractional": 0.86,
+    "pole": 3.35
+  },
+  "sails": [
+    {"id": "main", "type": "main", "area": 20.0},
+    {"id": "jib", "type": "jib", "area": 13.5},
+    {"id": "kite", "type": "spinnaker_sym", "area": 44.5, "foot": 4.8, "mid_girth_frac": 0.95}
+  ],
+  "crew": {"count": 3, "weight": 285, "hiking_arm": 1.0},
+  "start": {"front_sail": "jib"},
+  "visual": {
+    "hull": {"bilge_fillet": 0.30, "topside_flare": 2.0, "sheer_spring": 0.06},
+    "rudder": {"sweep": 0.22},
+    "deck": {
+      "cockpit": {"length": 3.0, "width": 0.66, "depth": 0.36, "open_transom": false, "aft_deck": 1.15},
+      "cabin": {"height": 0.12, "meet_aft_of_mast": 0.05, "slope_from": 0.25, "width": 0.52, "side_rake": 0.40, "edge_radius": 0.03, "windows": false},
+      "lifelines": false,
+      "steering": "tiller",
+      "hatches": 1
+    },
+    "rig": {"spreaders": 1, "spreader_sweep": 0.30, "backstay": true},
+    "sails": {"main": {"head_width": 0.12}, "kite": {"look": {"camber": 0.28}, "set": {"depth_peak_h": 0.45, "depth_foot": 0.92, "depth_head": 0.65, "draft_low": 0.48, "draft_head": 0.52, "draft_from_h": 0.6, "belly_aft": 0.45, "belly_up": 0.55, "twist_exp": 1.8, "twist_awa_lo": 1.2, "twist_awa_hi": 2.1, "twist_run": 0.4, "foot_sag": 0.3, "foot_sag_h": 0.4, "girth_foot": 1.05, "girth_mid": 0.97, "girth_head": 1.02, "luff_curl": -0.1, "leech_curl": 0.12, "head_drop": 0.015, "clew_lift": 0.02, "clew_out": 0.02, "clew_h": 0.28, "forward": 0.06, "tack_rise": 0.04, "stay_clear": 0.3, "stay_width": 0.65, "stay_head": 0.35, "stay_luff": 0.45, "stay_leech": 0.25}}}
+  }
+}

@@ -3,9 +3,11 @@ id: WM-173
 title: >-
   Tools: live kite shape adjuster with sliders (owner tunes every class's flying
   kite in real time)
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-10-17 11:56'
+updated_date: '2026-10-17 14:30'
 labels:
   - tools
   - sails

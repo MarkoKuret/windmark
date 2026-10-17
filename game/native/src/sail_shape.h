@@ -106,6 +106,7 @@ class SailShape : public godot::RefCounted {
   void spread(std::vector<float>& d) const;
   void push(float awa, const godot::Vector3& hd);
   void stay();
+  void shift();
   void encode();
 
   int rows_ = 0, cols_ = 0, n_ = 0;
@@ -119,6 +120,12 @@ class SailShape : public godot::RefCounted {
   bool has_stay_ = false;  // §7.4 a flying sail on a pole: the forestay (tack fitting, hounds), half width, margin
   godot::Vector3 stay0_, stay1_;
   float stay_w_ = 0.0f, stay_c_ = 0.0f;
+  // §4.1 the kite set parameters (defaults by kind in configure); the ones read per update
+  float belly_aft_ = 0.5f, belly_up_ = 0.5f, twist_exp_ = 1.5f, twist_lo_ = 0.0f, twist_hi_ = 0.0f, twist_run_ = 0.0f;
+  float foot_sag_ = 0.0f, foot_sag_h_ = 0.35f, head_drop_ = 0.0f, clew_lift_ = 0.0f, clew_out_ = 0.0f;
+  float forward_ = 0.0f, tack_rise_ = 0.0f, stay_head_ = 0.3f, stay_luff_ = 0.5f, stay_leech_ = 0.3f;
+  std::vector<float> grow_;                // per row: the girth scale
+  std::vector<float> hold_, rise_;         // per vertex: the corners' hold of `forward`, the share of `tack_rise`
   godot::Vector3 mast_head_;
   std::vector<godot::Ref<SailShape>> obs_;
   std::vector<Section> secs_;

@@ -1,0 +1,66 @@
+{
+  "schema": "windmark.boatclass/1",
+  "id": "test_set_asym",
+  "name": "Set parameters test (wm7 hull)",
+  "version": 1,
+  "hull": {
+    "loa": 7.2,
+    "lwl": 6.75,
+    "beam_max": 2.50,
+    "bwl": 1.86,
+    "draft_canoe": 0.24,
+    "displacement": 900,
+    "prismatic": 0.55,
+    "section_shape": {"type": "round", "midship_coefficient": 0.68},
+    "rocker": {"fwd": 0.17, "aft": 0.24},
+    "freeboard": {"bow": 0.86, "mid": 0.70, "stern": 0.60},
+    "transom_width": 2.10,
+    "stem_x": 3.455,
+    "transom_x": -3.745,
+    "max_beam_station": 0.38,
+    "bow_fineness": 1.7
+  },
+  "keel": {
+    "type": "fin_bulb",
+    "depth": 1.65,
+    "chord_root": 0.60,
+    "chord_tip": 0.44,
+    "thickness": 0.10,
+    "sweep": 0.05,
+    "x": 0.27,
+    "fin_mass": 55,
+    "bulb_mass": 380,
+    "bulb_length": 1.55
+  },
+  "rudder": {"type": "transom", "depth": 1.25, "chord_root": 0.34, "chord_tip": 0.24, "thickness": 0.12, "x": -3.85},
+  "rig": {
+    "I": 8.6,
+    "J": 2.55,
+    "P": 9.1,
+    "E": 3.25,
+    "mast_height": 11.0,
+    "mast_x": 0.87,
+    "boom_height": 1.62,
+    "fractional": 0.84,
+    "bowsprit": 1.65
+  },
+  "sails": [
+    {"id": "main", "type": "main", "area": 23.5},
+    {"id": "jib", "type": "jib", "area": 13.5},
+    {"id": "kite", "type": "spinnaker_asym", "area": 53.5}
+  ],
+  "crew": {"count": 4, "weight": 340},
+  "start": {"front_sail": "jib"},
+  "visual": {
+    "hull": {"bilge_fillet": 0.30, "transom_bottom_width": 1.64, "topside_flare": 2.3},
+    "deck": {
+      "cockpit": {"length": 3.1, "width": 0.72, "depth": 0.30, "open_transom": true},
+      "cabin": {"height": 0.15, "meet_aft_of_mast": 0.04, "slope_from": 0.2, "width": 0.50, "side_rake": 0.40, "edge_radius": 0.035},
+      "lifelines": false,
+      "steering": "tiller",
+      "hatches": 1
+    },
+    "rig": {"spreaders": 1, "spreader_sweep": 0.42, "backstay": false},
+    "sails": {"main": {"head_width": 0.26}, "kite": {"look": {"camber": 0.25, "twist_top": 0.5}, "set": {"depth_peak_h": 0.35, "depth_foot": 0.9, "depth_head": 0.5, "draft_low": 0.45, "draft_head": 0.58, "draft_from_h": 0.5, "belly_aft": 0.6, "belly_up": 0.4, "twist_exp": 2.0, "twist_awa_lo": 1.13, "twist_awa_hi": 2.2, "twist_run": 0.5, "foot_sag": 0.1, "foot_sag_h": 0.3, "girth_foot": 0.95, "girth_mid": 1.04, "girth_head": 0.97, "luff_curl": 0.15, "leech_curl": -0.1, "head_drop": 0.02, "clew_lift": 0.03, "clew_out": -0.02, "clew_h": 0.35, "forward": 0.05, "tack_rise": 0.03, "stay_clear": 0.3, "stay_width": 0.5, "stay_head": 0.25, "stay_luff": 0.45, "stay_leech": 0.25}}}
+  }
+}

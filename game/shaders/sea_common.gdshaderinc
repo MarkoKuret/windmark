@@ -539,24 +539,53 @@ void wm_apply_caps(inout WmSurface S, vec2 xl, float px, float expo, float dist,
 }
 #endif
 
-// §6 overlays: colour and coverage at a pixel; width grows with distance so lines stay visible.
-vec4 wm_overlays(vec2 xl, float dist) {
+// §6 overlays: colour and coverage at a pixel; width grows with distance so lines stay visible: at least 1.5 px
+// thick on the screen, the edge anti-aliased over 1 px. A band on the water seen from a low camera foreshortens:
+// its thickness on the screen, measured square to the line's own screen direction, is the water width times
+// sin(e) / sqrt((c.h)^2 + sin^2(e) (c x h)^2) (c across the line, h the horizontal view direction, e the view's
+// elevation): a line across the view is squeezed by sin(e), one along the view not at all, a diagonal one almost
+// like the cross one, since it projects to a nearly level screen line. Without this a far line is a fraction of a
+// pixel tall and breaks into a staircase of dashes. wm_overlay_px returns the metres across the line that one
+// screen pixel spans.
+float wm_overlay_px(vec2 c, vec2 h, float view_y, float px_m) {
+	float along = dot(c, h);
+	float across = c.x * h.y - c.y * h.x;
+	float f = view_y / max(sqrt(along * along + view_y * view_y * across * across), 1e-4);
+	return px_m / max(f, 0.002);
+}
+
+float wm_overlay_alpha(float d, float width, float px) {
+	float w = max(width, 1.5 * px);
+	return 1.0 - smoothstep(0.5 * w - 0.5 * px, 0.5 * w + 0.5 * px, d);
+}
+
+// A thin band is also hidden by the crests just in front of it (a crest a high hides a / sin e of water), so where the
+// waves are under a few pixels tall on the screen the overlay is tested where the pixel's view ray meets the mean
+// sea level (xl * H / (H - eta), H the camera height over the mean level) and a crest pixel in front of the line
+// counts as the line: a steady line as if drawn on the mean plane. Near the camera the ribbon rides the visible waves.
+vec4 wm_overlays(vec2 xl, float dist, float view_y, float eta, float cam_h) {
 	vec4 o = vec4(0.0);
-	float grow = dist * ov_px_angle * 1.5;
+	float px_m = dist * ov_px_angle;
+	float k_flat = 1.0 - smoothstep(2.0, 6.0, sum_a / max(px_m, 1e-4));
+	xl = mix(xl, xl * (cam_h / max(cam_h - eta, 0.1)), k_flat);
+	dist = length(xl);
+	px_m = dist * ov_px_angle;
+	vec2 h = xl / max(dist, 1e-3);
 	for (int i = 0; i < n_ov_line; i++) {
 		vec4 L = ov_line[i];
 		vec2 ab = L.zw - L.xy;
+		float len = max(length(ab), 1e-3);
 		float t = clamp(dot(xl - L.xy, ab) / max(dot(ab, ab), 1e-6), 0.0, 1.0);
 		float d = length(xl - (L.xy + t * ab));
-		float w = max(ov_line_col[i].w, grow);
-		float a = 1.0 - smoothstep(0.5 * w, 0.5 * w + max(grow, 0.05), d);
+		float a = wm_overlay_alpha(d, ov_line_col[i].w, wm_overlay_px(vec2(-ab.y, ab.x) / len, h, view_y, px_m));
 		o = mix(o, vec4(ov_line_col[i].rgb, 1.0), a);
 	}
 	for (int i = 0; i < n_ov_circle; i++) {
 		vec4 C = ov_circle[i];
-		float d = abs(length(xl - C.xy) - C.z);
-		float w = max(ov_circle_col[i].w, grow);
-		float a = 1.0 - smoothstep(0.5 * w, 0.5 * w + max(grow, 0.05), d);
+		vec2 r = xl - C.xy;
+		float rl = max(length(r), 1e-3);
+		float d = abs(rl - C.z);
+		float a = wm_overlay_alpha(d, ov_circle_col[i].w, wm_overlay_px(r / rl, h, view_y, px_m));
 		o = mix(o, vec4(ov_circle_col[i].rgb, 1.0), a);
 	}
 	return o;

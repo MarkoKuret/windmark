@@ -977,6 +977,36 @@ start line ribbon (`hud.md` §9.3), laylines (`hud.md` §6), gate lines, the zon
 shadow view (`hud.md` §3.3, from the core's shadow zones). Their colours come from the HUD palette (including the
 colour-blind palettes).
 
+Each line and circle has a width in metres on the water (`CourseView`: the start line 0.35 m, the laylines 0.22 m,
+the zone circle 0.25 m) and is drawn at least 1.5 px thick on the screen, with its edge anti-aliased over 1 px. A
+band on the water seen from a low camera foreshortens: its thickness on the screen, measured square to
+the line's own screen direction, is its width on the water times
+```
+f      = sin e / sqrt((c·h)² + sin²e · (c×h)²)
+c      = unit vector across the line in the water plane (the radial direction for a circle)
+h      = unit horizontal direction from the camera to the pixel's water point; e: the view's elevation
+```
+(a line across the view is squeezed by `sin e`, a layline running away from the camera, `c ⟂ h`, not at all, and a
+diagonal line almost like the cross one, since it projects to a nearly level screen line). So the 1.5 px are
+converted to metres across the line through that factor,
+```
+px     = dist · px_angle / max(f, 0.002)             // metres across the line per screen pixel (px_angle: rad per pixel)
+w      = max(width, 1.5 · px) ; a = 1 − smoothstep(w/2 − px/2, w/2 + px/2, d)
+```
+and not through the perpendicular pixel size alone: a far start line is then a fraction of a pixel tall and breaks
+into a staircase of dashes, where it should be a thin steady line out to the haze (the distance fog applies to the
+overlays as to the water).
+
+A thin band on the water is also hidden by the wave crests just in front of it: from a camera `H` above the sea a
+crest of height `a` hides `a / sin e` of water behind it, which at a few hundred metres is longer than the band, so
+the line breaks into dashes that crawl as the waves pass, while the crests themselves are under a pixel tall and
+invisible. So where the waves are small on the screen the overlay is tested not at the pixel's water point `xl` but
+where the pixel's view ray meets the mean sea level, `xl · H / (H − η)` (`η` the pixel's height, `H` the camera's
+height over the mean level): the crest pixel in front of the line then counts as the line, which stays a steady,
+straight line as if drawn on the mean plane. Near the camera, where the waves are visible shapes, the ribbon rides
+them instead: the two points blend by the waves' height on the screen, `k = 1 − smoothstep(2 px, 6 px, Σa / (dist ·
+px_angle))`, from the mean-plane point (`k = 1`) to the water point (`k = 0`).
+
 ## 7. Quality tiers
 
 | | L (low-end, integrated GPUs, Steam Deck default) | M (default) | H (desktop) |

@@ -5,11 +5,6 @@ hardware), transom and keel images packed into one atlas per map for the game's 
 Layout (v down): the hull (2:1) across the top, the deck at its own aspect below it, then the transom and the keel
 side by side in the band left; every region padded by its edge texels into a gutter (16 texels at 2048, scaled
 with the size), so mipmaps do not bleed between regions.
-
-On the hull and transom regions the ORM's red and blue carry the colour masks of the tinted liveries (data_format.md
-§8.5 "Staged boat atlas", hull.hull_masks and hull.transom_masks): blue the topsides paint coverage, red the colour
-zone of what is not paint (antifouling 0, boot stripe 1/3, graphic colour 0 2/3, graphic colour 1 1). The masters'
-occlusion and metallic there (1 and 0 in a bake) are not read by the game.
 """
 import json
 
@@ -17,7 +12,6 @@ import numpy as np
 from PIL import Image
 from scipy import ndimage
 
-from . import hull as hull_bake
 from . import painted
 from .common import F32, blur, fbm, lin_to_srgb, seed_of, smoothstep, srgb_to_lin
 
@@ -156,18 +150,9 @@ def faint_variation(alb, orm, seed, amount=0.008, rough=0.03, streaks=False):
         alb *= (1.0 - 0.035 * smoothstep(0.55, 0.8, s) * mask)[..., None]
 
 
-def masks(name, geo, lv, w, h):
-    """The hull or transom region's ORM red (the colour zone) and blue (the paint coverage) at w x h, from the
-    livery entry `lv` (the hull colours and graphic of the livery file); None without an entry."""
-    if lv is None:
-        return None
-    m = hull_bake.hull_masks(geo, lv, w, h) if name == "hull" else hull_bake.transom_masks(geo, lv, w, h)
-    return m["zone"].astype(F32) / 3.0, m["paint"]
-
-
-def build(folder, geo, rope_set, size=SIZE, lv=None):
+def build(folder, geo, rope_set, size=SIZE):
     """The atlas of a livery folder (data/liveries/<class>/<livery>/): ({"albedo", "normal", "orm"}: uint8
-    (size, size, 3) images, atlas.json dict). `lv`: the folder's entry of the livery file, for the colour masks."""
+    (size, size, 3) images, atlas.json dict)."""
     folder = str(folder)
     hull = {k: _load(f"{folder}/hull_{k}.png") for k in ("albedo", "normal", "orm")}
     deck = {k: _load(f"{folder}/deck_{k}.png") for k in ("albedo", "normal", "orm")}
@@ -193,9 +178,6 @@ def build(folder, geo, rope_set, size=SIZE, lv=None):
         a = srgb_to_lin(_fit(src["albedo"], w, h))
         o = _fit(src["orm"], w, h)
         faint_variation(a, o, f"{seed}:{name}", streaks=name == "transom")
-        mk = masks(name, geo, lv, w, h)
-        if mk is not None:
-            o[..., 0], o[..., 2] = mk
         put(name, lin_to_srgb(a), _unit(_fit(src["normal"], w, h)) * 0.5 + 0.5, o)
     # the deck with the painted hardware over it
     _, _, w, h = rects["deck"]

@@ -691,50 +691,6 @@ def bake_sail(sail, liv, loa, insignia, nation_asp, number_asp, long_side=2048, 
 
 
 # ----------------------------------------------------------------------------------------------------------------
-# the cloth zone of a staged sail (data_format.md §8.5, the albedo's alpha), for the tinted liveries
-
-ZONE_FIXED, ZONE_NUMBER, ZONE_DESIGN1, ZONE_DESIGN0, ZONE_CLOTH = 0, 1, 2, 3, 4
-# the bake's fixed parts: (linear colour, roughness): rings, the ring's hole, the headboard and its rivets,
-# tell-tales port and starboard
-FIXED = [((0.55, 0.56, 0.58), 0.22), ((0.06, 0.06, 0.065), 0.22), ((0.42, 0.43, 0.45), 0.35),
-         ((0.18, 0.18, 0.19), 0.35), ((0.55, 0.05, 0.04), 0.82), ((0.04, 0.32, 0.08), 0.82)]
-ROUGH_WEIGHT = 0.5
-
-
-def zone(alb, rough, entry, cloth):
-    """The cloth zone of every texel of a sail albedo (linear, (H, W, 3)) with its roughness (H, W): the nearest of
-    the bake's colours (with the roughness as a fourth coordinate): the class set's cloth colour (with the
-    laminate's fibre blend, the webbing and the stickers), its design colours, its number colour (the insignia and
-    draft stripes) and the fixed parts. Hand-painted parts in other colours fall to the nearest, mostly the cloth."""
-    style = CLOTHS.index(cloth) if cloth in CLOTHS else 0
-    r = STYLE_ROUGH[style]
-    base = hex_lin(entry["color"])
-    cols = [hex_lin(c) for c in entry.get("colors", [])]
-    keys = [(base, r, ZONE_CLOTH), (base * 0.82, 0.7, ZONE_CLOTH), (np.minimum(base * 1.08 + 0.04, ALBEDO_MAX), r, ZONE_CLOTH),
-            (hex_lin(entry["number"]), 0.6, ZONE_NUMBER), (hex_lin(entry["number"]), 0.42, ZONE_NUMBER)]
-    if style == 1:
-        keys.append((mix(base, hex_lin(entry["fibre"]), 0.45), r + 0.08, ZONE_CLOTH))
-    if cols:
-        keys.append((cols[0], r, ZONE_DESIGN0))
-        keys.append((cols[0] * 0.82, 0.7, ZONE_DESIGN0))
-    if len(cols) > 1:
-        keys.append((cols[1], r, ZONE_DESIGN1))
-    for c, rr in FIXED:
-        keys.append((np.asarray(c, F32), rr, ZONE_FIXED))
-    best = np.full(alb.shape[:2], np.inf, F32)
-    out = np.zeros(alb.shape[:2], np.uint8)
-    for c, rr, z in keys:
-        d = ((alb - np.asarray(c, F32)[None, None, :]) ** 2).sum(-1) + ROUGH_WEIGHT * (rough - rr) ** 2
-        out = np.where(d < best, z, out)
-        best = np.minimum(best, d)
-    # the thin number-colour parts (draft stripes, the insignia's edge) blend with the cloth at the staged size:
-    # grown by a texel into the cloth, so a recoloured stripe reads solid rather than dotted
-    from scipy import ndimage
-    grown = ndimage.binary_dilation(out == ZONE_NUMBER, iterations=1) & (out == ZONE_CLOTH)
-    return np.where(grown, ZONE_NUMBER, out).astype(np.uint8)
-
-
-# ----------------------------------------------------------------------------------------------------------------
 # the relief image (data_format.md §8.5): the hand-editable source of the normal map
 
 def relief_from_height(h, relief_m=RELIEF_M):

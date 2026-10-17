@@ -7,8 +7,7 @@
 Bakes the starting livery textures of each class (default: every data/liveries/*.liveries.json) into
 data/liveries/<class>/ where a part's files are all missing, never over hand-edited files unless asked (--force,
 --only), makes each sail's normal map from its relief image (data_format.md §8.5), then stages them for the game
-(game/generated/liveries, with Godot import settings). The first livery of a file is the baked one; the others are
-tints of it (§8.1) and get no folder unless named with --livery (or one exists already).
+(game/generated/liveries, with Godot import settings).
 """
 import argparse
 import hashlib
@@ -60,14 +59,10 @@ def bake_class(class_id, a, writer, log):
     geo = geometry.load(class_id)
     out = Path(a.out) / class_id
     origin = geo["origin_x"]
-    for i, lv in enumerate(liv["liveries"]):
+    for lv in liv["liveries"]:
         if a.livery and lv["id"] not in a.livery:
             continue
         folder = out / lv["id"]
-        # the first livery is the baked one (data_format.md §8.1); a later one is a tint of it unless it has a
-        # folder already, or is asked for by name (--livery), which makes it a baked livery of its own
-        if i > 0 and not folder.exists() and lv["id"] not in a.livery:
-            continue
         key = f"{class_id}:{lv['id']}"
         lay_path = folder / "layout.json"
         lay = json.loads(lay_path.read_text()) if lay_path.exists() else {}
@@ -217,7 +212,7 @@ process/channel_remap/red=0
 process/channel_remap/green=1
 process/channel_remap/blue=2
 process/channel_remap/alpha=3
-process/fix_alpha_border=false
+process/fix_alpha_border=true
 process/premult_alpha=false
 process/normal_map_invert_y=false
 process/hdr_as_srgb=false
@@ -267,31 +262,18 @@ def _digest(*blobs):
     return h.hexdigest()[:20]
 
 
-def _sail_png(src, normal, half, entry=None, cloth="dacron"):
-    """A staged sail image as PNG bytes: at half its size with `half` (Lanczos; normals renormalised), and an
-    albedo with the cloth zone in its alpha (sails.zone, data_format.md §8.5) when `entry` is the class set's
-    entry for the sail (the ORM map next to the albedo gives the roughness)."""
+def _half_png(src, normal):
+    """A sail image at half its size (Lanczos; normals renormalised), as PNG bytes."""
     im = Image.open(src).convert("RGB")
     w, h = im.size
-    if half:
-        im = im.resize((max(1, w // 2), max(1, h // 2)), Image.LANCZOS)
-    a = np.asarray(im, dtype=np.float32) / 255.0
+    small = im.resize((max(1, w // 2), max(1, h // 2)), Image.LANCZOS)
+    a = np.asarray(small, dtype=np.float32) / 255.0
     if normal:
         n = a * 2 - 1
         n /= np.maximum(np.linalg.norm(n, axis=-1, keepdims=True), 1e-9)
         a = n * 0.5 + 0.5
-    out = (np.clip(a, 0, 1) * 255 + 0.5).astype(np.uint8)
-    if entry is not None:
-        orm_path = Path(src).with_name(Path(src).name.rsplit("_", 2)[0] + "_orm.png")
-        om = Image.open(orm_path).convert("RGB") if orm_path.exists() else Image.new("RGB", im.size, (255, 128, 0))
-        if om.size != im.size:
-            om = om.resize(im.size, Image.LANCZOS)
-        rough = np.asarray(om, dtype=np.float32)[..., 1] / 255.0
-        from .common import srgb_to_lin
-        z = sails.zone(srgb_to_lin(a), rough, entry, cloth)
-        out = np.concatenate([out, (z.astype(np.float32) / 4.0 * 255 + 0.5).astype(np.uint8)[..., None]], -1)
     buf = io.BytesIO()
-    Image.fromarray(out).save(buf, "PNG", compress_level=6)
+    Image.fromarray((np.clip(a, 0, 1) * 255 + 0.5).astype(np.uint8)).save(buf, "PNG", compress_level=6)
     return buf.getvalue()
 
 
@@ -307,31 +289,22 @@ def _put(path, data):
 
 def _import_file(d, rel):
     imp = d.with_name(d.name + ".import")
-    want = import_settings(rel)
-    have = imp.read_text() if imp.exists() else ""
-    # Godot appends the import's own sections ([deps], [remap] path=) after ours: keep ours in step with the settings
-    if not have.startswith(want):
-        imp.write_text(want)
+    if not imp.exists():
+        imp.write_text(import_settings(rel))
 
 
-def stage(classes, data=DATA, dest=STAGE, log=print, hd=False, files=None):
-    """Stages the livery textures of `classes` (the folders under `data`, the livery files under `files`, `data` by
-    default) in `dest` for the game (only changed files) with their import settings: per livery the boat atlas
-    (atlas.py: hull, deck with the painted hardware, transom, keel, with the colour masks of the tinted liveries;
-    2048, or 4096 with `hd`) and layout.json, the rope set, the sails at half size (full with `hd`, the cloth zones
-    in the albedo's alpha) and the shared cloth detail tiles. Returns the number of files written."""
+def stage(classes, data=DATA, dest=STAGE, log=print, hd=False):
+    """Stages the livery textures of `classes` in `dest` for the game (only changed files) with their import
+    settings: per livery the boat atlas (atlas.py: hull, deck with the painted hardware, transom, keel; 2048, or
+    4096 with `hd`) and layout.json, the rope set, the sails at half size (full with `hd`) and the shared cloth
+    detail tiles. Returns the number of files written."""
     from . import atlas
-    lfiles = Path(files or data)
     n = 0
-    code = _digest(*(Path(__file__).with_name(f).read_bytes() for f in ("atlas.py", "painted.py", "hull.py", "sails.py")))
+    code = _digest(*(Path(__file__).with_name(f).read_bytes() for f in ("atlas.py", "painted.py")))
     for c in classes:
         src = Path(data) / c
         if not src.exists():
             continue
-        liv = livery_file(c, lfiles) if (lfiles / f"{c}.liveries.json").exists() else {}
-        sail_lay = {}
-        if (src / "sails" / "layout.json").exists():
-            sail_lay = json.loads((src / "sails" / "layout.json").read_text()).get("sails", {})
         for f in sorted(src.rglob("*")):
             if f.is_dir() or f.suffix not in (".png", ".json") or f.name.endswith("_relief.png"):
                 continue    # a relief image is the source of its normal map, the game does not load it
@@ -343,18 +316,11 @@ def stage(classes, data=DATA, dest=STAGE, log=print, hd=False, files=None):
                     if old.exists():
                         old.unlink()
                 continue
-            if f.parent.name == "sails" and f.name.endswith(SAIL_MAPS):
-                # halved (full with hd); an albedo with the cloth zone in its alpha from the class sail set
-                entry = cloth_name = None
-                if f.name.endswith("_albedo.png") and liv:
-                    sid = f.name.rsplit("_", 2)[0]
-                    info = sail_lay.get(sid, {})
-                    entry = sails.sail_entry(liv, info.get("type", "main"))
-                    cloth_name = info.get("cloth", entry.get("cloth") or "dacron")
+            if f.parent.name == "sails" and f.name.endswith(SAIL_MAPS) and not hd:
                 st = _stamp(d.parent)
-                key = _digest(f.read_bytes(), "full" if hd else "half", code, json.dumps(entry, sort_keys=True), cloth_name)
+                key = _digest(f.read_bytes(), "half")
                 if st.get(f.name) != key or not d.exists():
-                    if _put(d, _sail_png(f, f.name.endswith("_normal.png"), not hd, entry, cloth_name)):
+                    if _put(d, _half_png(f, f.name.endswith("_normal.png"))):
                         n += 1
                     st[f.name] = key
                     _save_stamp(d.parent, st)
@@ -363,9 +329,9 @@ def stage(classes, data=DATA, dest=STAGE, log=print, hd=False, files=None):
             if f.suffix == ".png":
                 _import_file(d, str(rel.as_posix()))
         # the boat atlas of every livery folder with a hull set
+        liv = livery_file(c, data) if (Path(data) / f"{c}.liveries.json").exists() else {}
         rs = ropes.rope_set(liv) if liv else {}
         for folder in sorted(p.parent for p in src.glob("*/hull_albedo.png")):
-            lv = next((e for e in liv.get("liveries", []) if e.get("id") == folder.name), None)
             need = [folder / f"{k}_{m}.png" for k in ("hull", "deck", "transom") for m in ("albedo", "normal", "orm")]
             need.append(folder / "keel_albedo.png")
             if not all(p.exists() for p in need):
@@ -374,13 +340,13 @@ def stage(classes, data=DATA, dest=STAGE, log=print, hd=False, files=None):
             out = Path(dest) / folder.relative_to(Path(data))
             size = 2 * atlas.SIZE if hd else atlas.SIZE
             key = _digest(code, size, geometry._key(c), json.dumps(rs, sort_keys=True),
-                          json.dumps(lv.get("hull") if lv else None, sort_keys=True), *(p.read_bytes() for p in need))
+                          *(p.read_bytes() for p in need))
             st = _stamp(out)
             files = [out / f"atlas_{m}.png" for m in ("albedo", "normal", "orm")] + [out / "atlas.json"]
             if st.get("atlas") == key and all(p.exists() for p in files):
                 continue
             t = time.time()
-            images, meta = atlas.build(folder, geometry.load(c), rs, size, lv)
+            images, meta = atlas.build(folder, geometry.load(c), rs, size)
             n += len(atlas.write(out, images, meta))
             for m in ("albedo", "normal", "orm"):
                 _import_file(out / f"atlas_{m}.png", f"{c}/{folder.name}/atlas_{m}.png")
@@ -443,7 +409,7 @@ def main(argv=None):
             log("kept the existing (hand-owned) textures; --force or --only PART to rebake")
     normals_from_relief(classes, a.out, log)
     if not a.no_stage:
-        stage(classes, a.out, a.stage_dir, log, hd=a.hd, files=a.data)
+        stage(classes, a.out, a.stage_dir, log, hd=a.hd)
     return 0
 
 

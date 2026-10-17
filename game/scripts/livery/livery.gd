@@ -1,11 +1,9 @@
 class_name Livery
 extends RefCounted
-## One boat's look and identity (docs/specs/data_format.md §8): the livery it wears (hull and deck colours, the hull
-## graphic, its sail colours over the class sail set) and its own name, sail number and nation. The first livery
-## of the file is the class livery with the baked textures; the others are drawn on those textures with their
-## colours substituted (§8.5 "Tinted liveries"), so `base_hull` and `class_sails` keep the baked colours. Loaded
-## from data/liveries/<class>.liveries.json with `load_class` (one entry per boat of the file's `boats`); a fleet
-## gets its boats with `assign` (the §8.4 fleet rule, deterministic from the race seed).
+## One boat's look and identity (docs/specs/data_format.md §8): the class livery (hull and deck colours, the hull
+## graphic) and the class sail set, which every boat of the class shares, and the boat's own name, sail number and
+## nation. Loaded from data/liveries/<class>.liveries.json with `load_class` (one entry per boat of the file's
+## `boats`); a fleet gets its boats with `assign` (the §8.4 fleet rule, deterministic from the race seed).
 
 const SCHEMA := "windmark.liveries/2"
 ## data_format.md §3.7 and §8: no channel above 231 (a linear albedo of 0.8)
@@ -36,19 +34,8 @@ var nation := ""
 ## the class insignia text (from the file's top level)
 var insignia := ""
 var class_id := ""
-## the livery worn (a baked livery's id names its texture folder, data_format.md §8.5) and its name
+## the livery worn (its id names the texture folder, data_format.md §8.5)
 var look_id := ""
-var look_name := ""
-## the baked livery this one is drawn on (§8.1 `base`): `look_id` itself when this livery is the baked one
-var base_id := ""
-## the base livery's hull colours (topsides, boot_stripe, antifouling, keel: Color) and graphic colours
-## (Array[Color]): what the baked textures carry, substituted by a tinted livery's own (§8.5)
-var base_hull := {}
-var base_graphic_colors := []
-## the class sail set by role, as `sails` (§8.3): the colours the baked sails carry
-var class_sails := {}
-## the index of this boat's livery in the file's list (`looks_of`; §8.4: a repeat wears the one after)
-var look_index := 0
 ## hull: topsides, boot_stripe, antifouling, keel, text (Color, sRGB)
 var hull := {}
 ## hull graphic: {"type": String, "colors": Array[Color], other keys as given}
@@ -62,45 +49,31 @@ var sails := {}
 var ropes := {}
 
 
-## The boat's sail entry for a sail type (main, jib, genoa, code_zero, spinnaker_asym, spinnaker_sym).
+## The sail entry for a sail type (main, jib, genoa, code_zero, spinnaker_asym, spinnaker_sym).
 func sail_for(sail_type: String) -> Dictionary:
-	return sails.get(sail_role(sail_type), _sail({}, "", []))
-
-
-## The class sail set's entry for a sail type (the colours the baked sail carries; `sail_for` gives the boat's).
-func class_sail_for(sail_type: String) -> Dictionary:
-	return class_sails.get(sail_role(sail_type), _sail({}, "", []))
-
-
-## The role of §8.3 of a sail type.
-static func sail_role(sail_type: String) -> String:
+	var role := "main"
 	if sail_type == "jib" or sail_type == "genoa":
-		return "headsail"
-	if sail_type == "code_zero":
-		return "code_zero"
-	if sail_type.begins_with("spinnaker"):
-		return "spinnaker"
-	return "main"
+		role = "headsail"
+	elif sail_type == "code_zero":
+		role = "code_zero"
+	elif sail_type.begins_with("spinnaker"):
+		role = "spinnaker"
+	return sails.get(role, _sail({}, "", []))
 
 
-## A copy with another boat name and sail number (a repeat in a large fleet, §8.4), wearing the livery `n` places
-## after this boat's in the file's list.
+## A copy with another boat name and sail number (a repeat in a large fleet, §8).
 func repeat(n: int) -> Livery:
 	var l := Livery.new()
-	for k in ["id", "name", "nation", "insignia", "class_id", "ropes", "class_sails"]:
+	for k in ["id", "name", "nation", "insignia", "class_id", "look_id"]:
 		l.set(k, get(k))
-	var looks := looks_of(class_id)
-	l._wear(looks[(look_index + n) % looks.size()] if not looks.is_empty() else self)
+	l.hull = hull
+	l.graphic = graphic
+	l.deck = deck
+	l.sails = sails
+	l.ropes = ropes
 	l.boat_name = boat_name + " " + roman(n + 1)
 	l.sail_number = str(1000 * n + sail_number.to_int())
 	return l
-
-
-## Takes the look of the livery entry `lk` (one of `looks`).
-func _wear(lk: Livery) -> void:
-	for k in ["hull", "graphic", "deck", "sails", "look_id", "look_name", "base_id", "base_hull",
-			"base_graphic_colors", "look_index"]:
-		set(k, lk.get(k))
 
 
 static func roman(n: int) -> String:
@@ -115,15 +88,6 @@ static func roman(n: int) -> String:
 
 
 static var _cache := {}
-## class id -> the file's liveries in order (one Livery per entry, with the look's fields)
-static var _looks := {}
-
-
-## The liveries of a class's file in order (the first is the baked class livery), as loaded by `load_class`.
-static func looks_of(class_id: String) -> Array:
-	if not _looks.has(class_id):
-		load_class(class_id)
-	return _looks.get(class_id, [])
 
 
 ## The boats of a class in file order (the first is the class default), each in the class livery and sail set;
@@ -138,22 +102,18 @@ static func load_class(class_id: String) -> Array[Livery]:
 	if not (d is Dictionary):
 		push_error("%s: missing or not JSON" % path)
 		return out
-	var looks := []
-	out = parse(d, class_id, errors, looks)
+	out = parse(d, class_id, errors)
 	for e in errors:
 		push_error("%s: %s" % [path, e])
 	if not errors.is_empty():
 		out.clear()
-		looks.clear()
 	_cache[class_id] = out
-	_looks[class_id] = looks
 	return out
 
 
-## Validates and parses a livery file (data_format.md §8): one Livery per entry of `boats`, each in its livery
-## (`liveries[]`, the first by default) with the class sail set in that livery's colours; `looks_out` receives the
-## file's liveries in order. Problems go to `errors` as "<json path>: <reason>".
-static func parse(d: Dictionary, class_id: String, errors: Array, looks_out: Array = []) -> Array[Livery]:
+## Validates and parses a livery file (data_format.md §8): one Livery per entry of `boats`, each in the class
+## livery (`liveries[0]`) and the class sail set. Problems go to `errors` as "<json path>: <reason>".
+static func parse(d: Dictionary, class_id: String, errors: Array) -> Array[Livery]:
 	var out: Array[Livery] = []
 	if d.get("schema", "") != SCHEMA:
 		errors.append("schema: expected %s" % SCHEMA)
@@ -166,21 +126,13 @@ static func parse(d: Dictionary, class_id: String, errors: Array, looks_out: Arr
 	var re_id := RegEx.create_from_string("^[a-z0-9_]+$")
 	var re_name := RegEx.create_from_string("^[A-Za-z0-9 '\\-.]{1,20}$")
 	var re_nat := RegEx.create_from_string("^[A-Z]{3}$")
-	# the class sail set (§8.3)
-	var sail_set := {}
-	var ss: Dictionary = d.get("sails", {}) if d.get("sails") is Dictionary else {}
-	for role in ROLES:
-		var s: Dictionary = ss.get(role, {}) if ss.get(role) is Dictionary else {}
-		sail_set[role] = _sail(s, "sails." + role, errors)
-	# the liveries (data_format.md §8.1): the first is the class livery with the baked textures, the others are
-	# drawn on a baked one (`base`) with their own colours
+	# the class livery (data_format.md §8.1): every boat wears the first; the others are checked and kept for later
 	var list: Variant = d.get("liveries")
 	if not (list is Array) or (list as Array).is_empty():
 		errors.append("liveries: at least 1")
 		return out
 	var looks := []
 	var look_ids := {}
-	var bases := []
 	for i in (list as Array).size():
 		var e: Variant = list[i]
 		var at := "liveries[%d]" % i
@@ -191,28 +143,9 @@ static func parse(d: Dictionary, class_id: String, errors: Array, looks_out: Arr
 		l.look_id = str(e.get("id", ""))
 		if not re_id.search(l.look_id) or look_ids.has(l.look_id):
 			errors.append(at + ".id: missing, not [a-z0-9_] or not unique")
-		look_ids[l.look_id] = l
-		l.look_name = str(e.get("name", ""))
-		if l.look_name == "":
+		look_ids[l.look_id] = true
+		if str(e.get("name", "")) == "":
 			errors.append(at + ".name: missing")
-		l.look_index = looks.size()
-		bases.append(str(e.get("base", "")))
-		# this livery's sails: the class set's entries with its own keys over them
-		var ls: Dictionary = e.get("sails", {}) if e.get("sails") is Dictionary else {}
-		l.sails = {}
-		for role in ROLES:
-			var cs: Dictionary = ss.get(role, {}) if ss.get(role) is Dictionary else {}
-			var ov: Dictionary = ls.get(role, {}) if ls.get(role) is Dictionary else {}
-			if ov.is_empty():
-				l.sails[role] = sail_set[role]
-				continue
-			var merged := cs.duplicate()
-			for k in ov:
-				merged[k] = ov[k]
-			l.sails[role] = _sail(merged, "%s.sails.%s" % [at, role], errors)
-		for k in ls:
-			if not ROLES.has(k):
-				errors.append("%s.sails.%s: one of %s" % [at, k, ", ".join(ROLES)])
 		var h: Dictionary = e.get("hull", {}) if e.get("hull") is Dictionary else {}
 		l.hull["topsides"] = _color(h, "topsides", "", at + ".hull", errors)
 		l.hull["boot_stripe"] = _color(h, "boot_stripe", "#e0e0dc", at + ".hull", errors)
@@ -229,21 +162,12 @@ static func parse(d: Dictionary, class_id: String, errors: Array, looks_out: Arr
 		l.deck["gelcoat"] = _color(dk, "gelcoat", "#e2e2dc", at + ".deck", errors)
 		l.deck["nonslip"] = _color(dk, "nonslip", "#a8a8a0", at + ".deck", errors)
 		looks.append(l)
-	# each livery's base (§8.1): the first is baked; the others default to it
-	for i in looks.size():
-		var l: Livery = looks[i]
-		var b: String = bases[i] if i > 0 else l.look_id
-		if i > 0 and b == "":
-			b = (looks[0] as Livery).look_id
-		if b != l.look_id and (not look_ids.has(b) or b == ""):
-			errors.append("liveries[%d].base: not a livery id of this file" % i)
-			b = (looks[0] as Livery).look_id
-		var base: Livery = look_ids.get(b, l) if b != l.look_id else l
-		l.base_id = b
-		l.base_hull = base.hull
-		l.base_graphic_colors = base.graphic.get("colors", [])
-		l.class_sails = sail_set
-	looks_out.append_array(looks)
+	# the class sail set (§8.3)
+	var sail_set := {}
+	var ss: Dictionary = d.get("sails", {}) if d.get("sails") is Dictionary else {}
+	for role in ROLES:
+		var s: Dictionary = ss.get(role, {}) if ss.get(role) is Dictionary else {}
+		sail_set[role] = _sail(s, "sails." + role, errors)
 	# the class rope set (§8.7)
 	var rope_set := rope_set_of(d.get("ropes", {}) if d.get("ropes") is Dictionary else {}, errors)
 	# the boats (§8.4)
@@ -253,6 +177,7 @@ static func parse(d: Dictionary, class_id: String, errors: Array, looks_out: Arr
 		return out
 	if looks.is_empty():
 		return out
+	var look: Livery = looks[0]
 	var ids := {}
 	var numbers := {}
 	for i in (boats as Array).size():
@@ -264,16 +189,12 @@ static func parse(d: Dictionary, class_id: String, errors: Array, looks_out: Arr
 		var l := Livery.new()
 		l.class_id = str(d.get("class", class_id))
 		l.insignia = ins
+		l.look_id = look.look_id
+		l.hull = look.hull
+		l.graphic = look.graphic
+		l.deck = look.deck
+		l.sails = sail_set
 		l.ropes = rope_set
-		l.class_sails = sail_set
-		# the livery it wears (§8.4): by id, the first by default (and always for the first boat)
-		var want := str(e.get("livery", ""))
-		if want != "" and not look_ids.has(want):
-			errors.append(at + ".livery: not a livery id of this file")
-			want = ""
-		if i == 0 and want != "" and want != (looks[0] as Livery).look_id:
-			errors.append(at + ".livery: the first boat wears the first livery")
-		l._wear(look_ids[want] if want != "" and i > 0 else looks[0])
 		l.id = str(e.get("id", ""))
 		if not re_id.search(l.id) or ids.has(l.id):
 			errors.append(at + ".id: missing, not [a-z0-9_] or not unique")

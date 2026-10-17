@@ -276,18 +276,7 @@ uniform vec4 bk_rect[5];
 uniform int tr_on;
 uniform vec4 tr_box;
 uniform vec4 tr_tex;
-uniform int tn_on;
-uniform vec3 tn_from[6];
-uniform vec3 tn_to[6];
-uniform float tn_k[6];
 out vec4 frag;
-vec3 wm_tint_hull(vec3 baked, float zone, float paint) {
-    int z = clamp(int(zone * 3.0 + 0.5), 0, 3);
-    vec3 f = mix(tn_from[z], tn_from[4], paint);
-    vec3 t = mix(tn_to[z], tn_to[4], paint);
-    float k = mix(tn_k[z], tn_k[4], paint);
-    return wm_tint(baked, f, t, k);
-}
 vec4 tile_tex(sampler2D s, vec2 uv, float tile) {
     vec2 cell = vec2(mod(tile, tile_grid.x), floor(tile / tile_grid.x));
     vec2 inner = vec2(1.0 - 2.0 * tile_inset);
@@ -319,14 +308,10 @@ void main() {
         vec2 at = r.xy + t * r.zw;
         vec3 base = srgb(texture(bk_albedo, at).rgb);
         if (region == 4) {
-            if (tn_on != 0) base = wm_tint(base, tn_from[5], tn_to[5], tn_k[5]);
             a = base * det;
         } else {
             vec3 orm = texture(bk_orm, at).rgb;
             float flat_k = 1.0;
-            float occ_map = 1.0;
-            if (region == 2) occ_map = orm.r;
-            else if (tn_on != 0) base = wm_tint_hull(base, orm.r, orm.b);
             if (region == 2) {
                 flat_k = max(smoothstep(0.35, 0.7, abs(normalize(v_n).y)), sm.w);
                 float ns = orm.b * flat_k;
@@ -336,7 +321,7 @@ void main() {
             }
             a = mix(sc.rgb, base, flat_k) * det;
             rough = mix(sp.x * rdet, orm.g * rdet, flat_k);
-            occ = mix(1.0, occ_map, flat_k);
+            occ = mix(1.0, orm.r, flat_k);
             vec3 nb = texture(bk_normal, at).rgb * 2.0 - 1.0;
             nb = mix(vec3(0.0, 0.0, 1.0), nb, flat_k);
             N = wm_perturb(N, v_w, t, nb, -1.0);
@@ -381,35 +366,12 @@ uniform float sk_detail_tile;
 uniform float sk_detail_amount;
 uniform vec2 sk_shear;
 uniform vec4 sk_rect;
-uniform int st_on;
-uniform vec3 st_from[5];
-uniform int sd_design;
-uniform vec3 sd_cloth;
-uniform vec3 sd_c0;
-uniform vec3 sd_c1;
-uniform vec4 sd_dp;
-uniform vec2 sd_clew;
-uniform vec2 sd_head;
-uniform vec2 sd_head_aft;
-uniform float sd_height;
 out vec4 frag;
 void main() {
     vec2 UV = v_uv.xy;
     vec2 p = vec2(UV.x * sk_shear.y, UV.y + UV.x * sk_shear.x);
     vec2 t = vec2((p.x - sk_rect.x) / sk_rect.z, (sk_rect.y - p.y) / sk_rect.w);
-    vec4 ab = v_side > 0.5 ? texture(sk_albedo_stbd, vec2(1.0 - t.x, t.y)) : texture(sk_albedo_port, t);
-    vec3 a = srgb(ab.rgb);
-    if (st_on != 0) {
-        int z = clamp(int(ab.a * 4.0 + 0.5), 0, 4);
-        if (z >= 2) {
-            float px = max(fwidth(p.x), fwidth(p.y));
-            vec3 to = wm_design(sd_cloth, p, 0.0, px, sn_tack, sd_clew, sd_head, sd_head_aft, sn_axis, sn_up,
-                    sd_height, sd_design, sd_c0, sd_c1, sd_dp);
-            a = wm_tint(a, st_from[z], to, wm_tint_k(st_from[z], to));
-        } else if (z == 1) {
-            a = wm_tint(a, st_from[1], sn_color, wm_tint_k(st_from[1], sn_color));
-        }
-    }
+    vec3 a = srgb(v_side > 0.5 ? texture(sk_albedo_stbd, vec2(1.0 - t.x, t.y)).rgb : texture(sk_albedo_port, t).rgb);
     vec3 orm = texture(sk_orm, t).rgb;
     vec3 nm = texture(sk_normal, t).rgb * 2.0 - 1.0;
     vec3 dt = texture(sk_detail, vec2(p.x, -p.y) / sk_detail_tile).rgb;
@@ -471,16 +433,15 @@ void main() {
 _images = {}
 
 
-def image_texture(ctx, path, repeat=False, fallback=(255, 255, 255), alpha=False):
-    """An RGB image file as a mipmapped texture (data as stored; the shaders decode sRGB), cached; `alpha` keeps
-    the image's alpha (the cloth zones of a staged sail albedo, data_format.md §8.5)."""
-    key = (path, repeat, alpha)
+def image_texture(ctx, path, repeat=False, fallback=(255, 255, 255)):
+    """An RGB image file as a mipmapped texture (data as stored; the shaders decode sRGB), cached."""
+    key = (path, repeat)
     if key not in _images:
         if path and Path(path).exists():
-            img = Image.open(path).convert("RGBA" if alpha else "RGB")
-            t = ctx.texture(img.size, 4 if alpha else 3, img.tobytes())
+            img = Image.open(path).convert("RGB")
+            t = ctx.texture(img.size, 3, img.tobytes())
         else:
-            t = ctx.texture((1, 1), 4 if alpha else 3, bytes(fallback) + (b"\xff" if alpha else b""))
+            t = ctx.texture((1, 1), 3, bytes(fallback))
         t.build_mipmaps()
         t.filter = (moderngl.LINEAR_MIPMAP_LINEAR, moderngl.LINEAR)
         t.anisotropy = 16.0
@@ -542,13 +503,12 @@ def render(ctx, d, size):
     boat = ctx.program(vertex_shader=VS, fragment_shader="#version 410\n" + LIGHT + hull_inc + BOAT_FS)
     sail = ctx.program(vertex_shader=VS, fragment_shader="#version 410\n" + LIGHT + inc("sail_cloth.gdshaderinc")
                        + inc("sail_livery.gdshaderinc") + SAIL_FS)
-    baked_inc = inc("livery_text.gdshaderinc") + inc("livery_baked.gdshaderinc") + inc("livery_tint.gdshaderinc")
+    baked_inc = inc("livery_text.gdshaderinc") + inc("livery_baked.gdshaderinc")
     boat_b = ctx.program(vertex_shader=VS, fragment_shader="#version 410\n" + LIGHT + PBR + baked_inc + BOAT_BAKED_FS)
-    sail_b = ctx.program(vertex_shader=VS, fragment_shader="#version 410\n" + LIGHT + PBR + baked_inc
-                         + inc("sail_design.gdshaderinc") + SAIL_BAKED_FS)
+    sail_b = ctx.program(vertex_shader=VS, fragment_shader="#version 410\n" + LIGHT + PBR + baked_inc + SAIL_BAKED_FS)
     rope = ctx.program(vertex_shader=VS, fragment_shader="#version 410\n" + LIGHT + PBR + baked_inc + ROPE_FS)
     atlas = ctx.program(vertex_shader=VS, fragment_shader="#version 410\n" + LIGHT + PBR + hull_inc
-                        + inc("livery_baked.gdshaderinc") + inc("livery_tint.gdshaderinc") + BOAT_ATLAS_FS)
+                        + inc("livery_baked.gdshaderinc") + BOAT_ATLAS_FS)
     sky = ctx.program(vertex_shader=spv.SKY_VS, fragment_shader="#version 410\n" + spv.LIGHT + spv.SKY_INC + spv.SKY_FS)
     tone = ctx.program(vertex_shader=spv.SKY_VS, fragment_shader=spv.TONE_FS)
     sea_p = ctx.program(vertex_shader=spv.VS, fragment_shader="#version 410\n" + spv.LIGHT + spv.FS)
@@ -615,8 +575,7 @@ def render(ctx, d, size):
             set_uniforms(sail_b, u)
             for unit, (k, rep) in enumerate([("sk_albedo_port", False), ("sk_albedo_stbd", False), ("sk_normal", False),
                                              ("sk_orm", False), ("sk_detail", True)]):
-                image_texture(ctx, u.get(k), rep, (128, 128, 255) if k in ("sk_normal", "sk_detail") else (255, 255, 255),
-                              alpha=k.startswith("sk_albedo")).use(unit)
+                image_texture(ctx, u.get(k), rep, (128, 128, 255) if k in ("sk_normal", "sk_detail") else (255, 255, 255)).use(unit)
                 sail_b[k].value = unit
             text_texture(ctx, d / m["text"]).use(5)
             sail_b["livery_text"].value = 5

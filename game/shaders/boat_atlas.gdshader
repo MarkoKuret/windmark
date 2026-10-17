@@ -7,11 +7,9 @@
 //   3 transom (the boat's livery atlas on uv1), 4 keel (the atlas in side
 //   view of the model frame), 5 keel colour (the slot colour, which the livery sets).
 // With the livery atlas (bk_on) the regions read its albedo, normal and ORM maps (the deck's ORM blue is the
-// non-slip mask, which picks the non-slip tile's detail over the gelcoat's; on the hull and transom the ORM's red
-// and blue are the colour masks of a tinted livery, tn_on: the colour zone and the paint coverage, data_format.md
-// §8.5 "Tinted liveries", livery_tint.gdshaderinc); without it the regions take the slot colours the livery set,
-// and the topsides the procedural hull livery (hull_livery.gdshaderinc). The boat's name and number (hull) and
-// name (transom) come from its text texture. Tangent frames come from screen-space derivatives
+// non-slip mask, which picks the non-slip tile's detail over the gelcoat's); without it the regions take the slot
+// colours the livery set, and the topsides the procedural hull livery (hull_livery.gdshaderinc). The boat's name and
+// number (hull) and name (transom) come from its text texture. Tangent frames come from screen-space derivatives
 // (wm_perturb): the meshes carry no tangents. The baked AO and the atlas occlusion darken the ambient and reflected
 // light only.
 shader_type spatial;
@@ -55,27 +53,8 @@ uniform int tr_on = 0;
 uniform vec4 tr_box = vec4(0.0);
 uniform vec4 tr_tex = vec4(0.0);
 
-// a tinted livery (data_format.md §8.5): per part the colour the atlas was baked in, the boat's colour and the
-// exponent of wm_tint: 0 antifouling, 1 boot stripe, 2 graphic colour 0, 3 graphic colour 1, 4 topsides paint,
-// 5 keel (linear)
-uniform int tn_on = 0;
-uniform vec3 tn_from[6];
-uniform vec3 tn_to[6];
-uniform float tn_k[6];
-
 #include "res://shaders/hull_livery.gdshaderinc"
 #include "res://shaders/livery_baked.gdshaderinc"
-#include "res://shaders/livery_tint.gdshaderinc"
-
-// A hull or transom texel of the atlas recoloured to the boat's livery: its zone's colours (ORM red) blended
-// with the paint's by the paint coverage (ORM blue).
-vec3 wm_tint_hull(vec3 baked, float zone, float paint) {
-	int z = clamp(int(zone * 3.0 + 0.5), 0, 3);
-	vec3 f = mix(tn_from[z], tn_from[4], paint);
-	vec3 t = mix(tn_to[z], tn_to[4], paint);
-	float k = mix(tn_k[z], tn_k[4], paint);
-	return wm_tint(baked, f, t, k);
-}
 
 varying flat int v_slot;
 varying vec2 v_keel;
@@ -129,19 +108,10 @@ void fragment() {
 		vec3 base = texture(bk_albedo, at).rgb;
 		if (region == 4) {
 			// the keel: its colour in side view, the slot's roughness and detail
-			if (tn_on != 0) {
-				base = wm_tint(base, tn_from[5], tn_to[5], tn_k[5]);
-			}
 			a = base * det;
 		} else {
 			vec3 orm = texture(bk_orm, at).rgb;
 			float flat_k = 1.0;
-			float occ_map = 1.0;
-			if (region == 2) {
-				occ_map = orm.r;
-			} else if (tn_on != 0) {
-				base = wm_tint_hull(base, orm.r, orm.b);
-			}
 			if (region == 2) {
 				// the deck's non-slip by the mask; steep faces (coamings, cabin sides) keep plain gelcoat
 				flat_k = max(smoothstep(0.35, 0.7, v_up), sm.w);
@@ -156,7 +126,7 @@ void fragment() {
 			// in the plan: plain gelcoat in the livery's deck colour there, so nothing painted on the top smears down
 			a = mix(sc.rgb, base, flat_k) * det;
 			rough = mix(sp.x * rdet, orm.g * rdet, flat_k);
-			occ = mix(1.0, occ_map, flat_k);
+			occ = mix(1.0, orm.r, flat_k);
 			// the livery's relief (vinyl and tape edges, fairing, non-slip edges, sealant, painted fittings)
 			vec3 nb = wm_normal_texel(texture(bk_normal, at).rgb);
 			nb = mix(vec3(0.0, 0.0, 1.0), nb, flat_k);

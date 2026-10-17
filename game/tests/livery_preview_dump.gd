@@ -10,40 +10,15 @@ extends SceneTree
 var OUT := "res://generated/livery_preview"
 const KNOT := 1852.0 / 3600.0
 const SEED := 2026
-const LOA := {"wm7": 7.2, "wm9": 9.2, "wm12": 12.0, "wm16": 15.85}
 
-## n boats of `cls` in a line abreast square to the wind, `gap` LOAs apart with a stagger (`pack`: boat 0 at the
-## back of a pack of rows ahead of it, as a fleet on a leg), sailing at `twa` (deg, negative: port tack; kite:
+## n boats of `cls` in a line abreast square to the wind, `gap` LOAs apart with a stagger, sailing at `twa` (deg,
+## negative: port tack; kite:
 ## the spinnaker hoisted); `liveries`: ids for the boats in order, else the fleet rule from SEED. Camera "boat":
 ## eye and target in boat 0's heading frame (port, up, fwd), m, level with the sea; "line": eye from the starboard
 ## (east) end of the line ("mid": from the fleet's middle) and target from the fleet's middle, in world east,
 ## north, up, m. "onboard": the game's onboard camera (cameras.md §3: OnboardCamera on BoatGeometry, look centred,
-## its default fov, near plane 0.1 m). "chase": the game's chase camera at its defaults behind boat 0 (cameras.md
-## §2: R = loa + 16 m, 13.5 deg up, fov 40); "aerial": the aerial camera raked from astern (§4: `H` and `at` in
-## LOAs, `tilt` deg).
+## its default fov, near plane 0.1 m).
 var SHOTS := [
-	# the fleet from the race cameras (the livery variety of data_format.md §8.4): a 16-boat pack ahead of the own
-	# boat on the beat, from the raked aerial, and under spinnaker
-	{"name": "fleet_chase_wm7", "cls": "wm7", "n": 16, "twa": 42.0, "pack": true, "t": 25.0, "cam": {"mode": "chase"}},
-	{"name": "fleet_aerial_wm7", "cls": "wm7", "n": 16, "twa": 42.0, "pack": true, "t": 25.0,
-		"cam": {"mode": "aerial", "H": 9.0, "tilt": 60.0, "at": 3.3, "fov": 45.0}},
-	{"name": "fleet_kites_wm7", "cls": "wm7", "n": 16, "twa": 135.0, "pack": true, "t": 40.0, "kite": true,
-		"cam": {"mode": "chase"}},
-	{"name": "fleet_chase_wm9", "cls": "wm9", "n": 16, "twa": 40.0, "pack": true, "t": 25.0, "cam": {"mode": "chase"}},
-	{"name": "fleet_aerial_wm9", "cls": "wm9", "n": 16, "twa": 40.0, "pack": true, "t": 25.0,
-		"cam": {"mode": "aerial", "H": 9.0, "tilt": 60.0, "at": 3.3, "fov": 45.0}},
-	{"name": "fleet_kites_wm9", "cls": "wm9", "n": 16, "twa": 150.0, "pack": true, "t": 40.0, "kite": true,
-		"cam": {"mode": "chase"}},
-	{"name": "fleet_chase_wm12", "cls": "wm12", "n": 16, "twa": 40.0, "pack": true, "t": 25.0, "cam": {"mode": "chase"}},
-	{"name": "fleet_aerial_wm12", "cls": "wm12", "n": 16, "twa": 40.0, "pack": true, "t": 25.0,
-		"cam": {"mode": "aerial", "H": 9.0, "tilt": 60.0, "at": 3.3, "fov": 45.0}},
-	{"name": "fleet_kites_wm12", "cls": "wm12", "n": 16, "twa": 120.0, "pack": true, "t": 40.0, "kite": true,
-		"cam": {"mode": "chase"}},
-	{"name": "fleet_chase_wm16", "cls": "wm16", "n": 16, "twa": 40.0, "pack": true, "t": 25.0, "cam": {"mode": "chase"}},
-	{"name": "fleet_aerial_wm16", "cls": "wm16", "n": 16, "twa": 40.0, "pack": true, "t": 25.0,
-		"cam": {"mode": "aerial", "H": 9.0, "tilt": 60.0, "at": 3.3, "fov": 45.0}},
-	{"name": "fleet_kites_wm16", "cls": "wm16", "n": 16, "twa": 125.0, "pack": true, "t": 40.0, "kite": true,
-		"cam": {"mode": "chase"}},
 	{"name": "start_wm7", "cls": "wm7", "n": 10, "twa": 42.0, "gap": 1.9, "t": 25.0,
 		"cam": {"mode": "mid", "eye": [80.0, 42.0, 3.5], "at": [30.0, 0.0, 3.2], "fov": 38.0}},
 	{"name": "start_wm12", "cls": "wm12", "n": 9, "twa": 40.0, "gap": 1.8, "t": 25.0,
@@ -247,23 +222,10 @@ func _shot(spec: Dictionary) -> void:
 	var boats := []
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 5
-	var loa: float = LOA.get(spec["cls"], 10.0)
-	# the heading frame in east, north: ahead and to starboard
-	var ahead := Vector2(sin(psi), cos(psi))
-	var stbd := Vector2(cos(psi), -sin(psi))
 	for k in n:
+		var loa := 7.2 if spec["cls"] == "wm7" else 12.0
 		var x := (k - 0.5 * (n - 1)) * float(spec.get("gap", 2.0)) * loa
 		var y := rng.randf_range(-0.6, 0.6) * loa
-		if spec.get("pack", false):
-			# boat 0 at the back, the others in rows of five ahead of it
-			var p := Vector2.ZERO
-			if k > 0:
-				var row := (k - 1) / 5 + 1
-				var col := (k - 1) % 5
-				p = stbd * ((col - 2) * 1.6 * loa + rng.randf_range(-0.3, 0.3) * loa) \
-					+ ahead * (row * 2.2 * loa + rng.randf_range(-0.4, 0.4) * loa)
-			x = p.x
-			y = p.y
 		boats.append(sim.add_boat(spec["cls"], x, y, psi))
 	var info := sim.class_info(boats[0])
 	var list := Livery.load_class(spec["cls"])
@@ -366,27 +328,12 @@ func _dump(spec: Dictionary, views: Array) -> void:
 	var target: Vector3
 	var fov: float = cam.get("fov", 50.0)
 	var near := 0.3
-	var loa: float = LOA.get(spec["cls"], 10.0)
 	if cam["mode"] == "onboard":
 		var v: CamTypes.View = cam["view"]
 		eye = v.xform.origin
 		target = eye - 10.0 * v.xform.basis.z
 		fov = v.fov
 		near = v.near
-	elif cam["mode"] == "chase":
-		# cameras.md §2 at the defaults: R0 = loa + 16 (every class's beam + 22 is less), el 13.5 deg, lift 1 m
-		var r := loa + 16.0
-		var el := deg_to_rad(13.5)
-		eye = frame * Vector3(0.0, r * sin(el) + 1.0, -r * cos(el))
-		target = frame * Vector3(0.0, 1.0, 0.0)
-		fov = cam.get("fov", 40.0)
-	elif cam["mode"] == "aerial":
-		# cameras.md §4 raked from astern of the heading: H above the target, tilt from the horizontal
-		var h := float(cam["H"]) * loa
-		var tilt := deg_to_rad(float(cam["tilt"]))
-		target = frame * Vector3(0.0, 0.0, float(cam["at"]) * loa)
-		eye = target + frame.basis * Vector3(0.0, h * sin(tilt), -h * cos(tilt))
-		fov = cam.get("fov", 45.0)
 	else:
 		var e: Array = cam["eye"]
 		var at: Array = cam["at"]
@@ -545,8 +492,6 @@ static func _uniforms(m: ShaderMaterial) -> Dictionary:
 			out[n] = Array(v)
 		elif v is PackedVector4Array:
 			out[n] = Array(v).map(func(q: Vector4) -> Array: return [q.x, q.y, q.z, q.w])
-		elif v is PackedVector3Array:
-			out[n] = Array(v).map(func(q: Vector3) -> Array: return [q.x, q.y, q.z])
 		elif v is Texture2D:
 			out[n] = ProjectSettings.globalize_path((v as Texture2D).resource_path.get_slice("::", 0))
 		elif v is float or v is int or v is bool:

@@ -221,7 +221,7 @@ def test_stbd_is_the_port_view_mirrored(baked):
 @pytest.fixture(scope="module")
 def staged(baked, tmp_path_factory):
     dest = tmp_path_factory.mktemp("stage")
-    n = cli.stage(["wm7"], baked, dest, log=lambda *a: None, files=common.DATA)
+    n = cli.stage(["wm7"], baked, dest, log=lambda *a: None)
     return dest, n
 
 
@@ -237,7 +237,7 @@ def test_stage_import_settings(baked, staged):
     assert (nv / "layout.json").exists()
     assert not any(nv.glob("hull_*")) and not any(nv.glob("deck_*")) and not any(nv.glob("keel_*"))
     assert (dest / "_cloth" / "nylon_detail.png").exists()
-    assert cli.stage(["wm7"], baked, dest, log=lambda *a: None, files=common.DATA) == 0     # nothing changed
+    assert cli.stage(["wm7"], baked, dest, log=lambda *a: None) == 0     # nothing changed, nothing written
 
 
 def test_atlas_layout(staged):
@@ -293,67 +293,6 @@ def test_painted_hardware(staged):
         if p["slot"].startswith("rope"):
             assert (p["H"][p["I"]] < 0.035 + 1e-9).all(), p["tag"]
     assert alb.shape == (2048, 2048, 3)
-
-
-def test_atlas_colour_masks(baked, staged):
-    """data_format.md §8.5 "Staged boat atlas": on the hull region the ORM's blue is the topsides paint coverage
-    (1 on the paint, 0 at the stripe, the boot stripe and the antifouling) and its red the zone (antifouling 0,
-    boot stripe 1/3, graphic colour 0 2/3, graphic colour 1 1), spread across the paint; the transom the same."""
-    dest, _ = staged
-    nv = dest / "wm7" / "navy"
-    meta = json.loads((nv / "atlas.json").read_text())
-    orm = np.asarray(Image.open(nv / "atlas_orm.png"), dtype=float)
-    x, y, w, h = meta["pixels"]["hull"]
-    hull = orm[y:y + h, x:x + w]
-    geo = geometry.load("wm7")
-    A = __import__("liverybake.hull", fromlist=["atlas"]).atlas(geo, w, h)
-    stbd = A["side"][: h // 2] == 0
-    top = (A["g"] < A["gs"] - 0.3)[: h // 2] & (A["g"] > A["gbt"] + 0.05)[: h // 2] & A["valid"][: h // 2] & stbd
-    assert np.median(hull[: h // 2][top][:, 2]) > 250, "paint on the topsides"
-    af = (A["g"] < A["gaf"] - 0.05)[: h // 2] & A["valid"][: h // 2] & stbd
-    assert hull[: h // 2][af][:, 2].max() < 5 and hull[: h // 2][af][:, 0].max() < 5, "no paint, zone 0 on the antifouling"
-    bt = (A["g"] < A["gbt"] - 0.01)[: h // 2] & (A["g"] > A["gaf"] + 0.01)[: h // 2] & A["valid"][: h // 2] & stbd
-    assert np.abs(np.median(hull[: h // 2][bt][:, 0]) - 85).max() < 3, "the boot stripe zone"
-    # the silver stripe (graphic colour 0) amidships at its depth below the sheer: no paint, zone 2/3
-    liv = json.loads((common.DATA / "wm7.liveries.json").read_text())["liveries"][0]["hull"]["graphic"]
-    c = w // 2
-    col_d = (A["gs"] - A["g"])[: h // 2, c]
-    r = int(np.argmin(np.abs(col_d - liv["depth"][0])))
-    assert hull[r, c, 2] < 60 and abs(hull[r, c, 0] - 170) < 3, (hull[r, c], "the stripe")
-    levels = set(np.unique(hull[..., 0]).tolist())
-    assert levels <= {0, 85, 170, 255}, levels
-    x, y, w, h = meta["pixels"]["transom"]
-    tr = orm[y:y + h, x:x + w]
-    assert tr[..., 2].mean() > 150 and set(np.unique(tr[..., 0]).tolist()) <= {0, 85, 170, 255}
-
-
-def test_sail_cloth_zones(baked, staged):
-    """The staged sail albedos carry the cloth zone in their alpha (data_format.md §8.5): mostly cloth, the kite's
-    head in design colour 0, the main's insignia in the number colour, the rings fixed."""
-    dest, _ = staged
-    main = np.asarray(Image.open(dest / "wm7" / "sails" / "main_port_albedo.png"))
-    assert main.shape[-1] == 4
-    z = main[..., 3]
-    shares = {int(v): float((z == v).mean()) for v in np.unique(z)}
-    assert shares.get(255, 0) > 0.8, shares
-    assert shares.get(64, 0) < 0.1, shares                   # the insignia and draft stripes (lost at this size)
-    kite = np.asarray(Image.open(dest / "wm7" / "sails" / "kite_port_albedo.png"))[..., 3]
-    kz = {int(v): float((kite == v).mean()) for v in np.unique(kite)}
-    assert kz.get(255, 0) > 0.6 and 0.02 < kz.get(191, 0) < 0.3, kz   # the head in design colour 0
-    assert set(kz) <= {0, 64, 128, 191, 255}
-    # a stage with the alpha border fix off, so the fixed parts keep their colour
-    imp = (dest / "wm7" / "sails" / "main_port_albedo.png.import").read_text()
-    assert "process/fix_alpha_border=false" in imp
-
-
-def test_tint_liveries_not_baked(tmp_path):
-    """A livery after the first (a tint, data_format.md §8.1) gets no folder from a plain bake; --livery bakes it."""
-    bake(tmp_path)
-    assert not (tmp_path / "wm7" / "white").exists()
-    liv = json.loads((common.DATA / "wm7.liveries.json").read_text())
-    assert len(liv["liveries"]) > 1 and liv["liveries"][1]["id"] == "white"
-    bake(tmp_path, "--livery", "white", "--only", "keel")
-    assert (tmp_path / "wm7" / "white" / "keel_albedo.png").exists()
 
 
 def test_sails_staged_at_half(baked, staged):

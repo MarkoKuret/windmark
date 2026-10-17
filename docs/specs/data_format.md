@@ -788,9 +788,8 @@ read any of it, and it changes no model (the front end paints the generated boat
 "Liveries"). Two parts:
 
 - the **livery file** `data/liveries/<class>.liveries.json`, written by hand: the class livery (hull and deck
-  colours, a hull graphic), the fleet's further liveries (the same colours, drawn on the class livery's textures,
-  §8.1), the class sail set (cloth, colours, panel design, number colour), the class insignia and the boat
-  identities (name, sail number, nation, livery) the fleet draws from. It is the source data of the textures and
+  colours, a hull graphic), the class sail set (cloth, colours, panel design, number colour), the class insignia and
+  the boat identities (name, sail number, nation) the fleet draws from. It is the source data of the textures and
   of the procedural fallback;
 - the **livery textures** in `data/liveries/<class>/`: PNG images baked once from the file by `tools/liverybake`
   and owned by hand from then on (§8.6), so they can be painted in any paint program.
@@ -799,8 +798,8 @@ What is shared and what differs per boat:
 
 | what | where | shared by |
 | --- | --- | --- |
-| hull albedo, normal and ORM maps (topsides, graphic, boot stripe, antifouling, waterline, wear), the same three for the transom and for the deck (non-slip, margins, wear, sealant), keel albedo | `<class>/<livery id>/` (§8.5) | every boat of the class: the class livery's boats as baked, the other liveries' boats with their own hull colours substituted through the staged atlas's masks (§8.5 "Tinted liveries") |
-| per sail: port and starboard albedo, normal and ORM maps (cloth, panels, seams, tapes, patches, battens, tell-tales, the class insignia) | `<class>/sails/` (§8.5) | every boat of the class: as baked, or with the livery's cloth and design colours substituted the same way |
+| hull albedo, normal and ORM maps (topsides, graphic, boot stripe, antifouling, waterline, wear), the same three for the transom and for the deck (non-slip, margins, wear, sealant), keel albedo | `<class>/<livery id>/` (§8.5) | every boat wearing the livery: today the whole fleet |
+| per sail: port and starboard albedo, normal and ORM maps (cloth, panels, seams, tapes, patches, battens, tell-tales, the class insignia) | `<class>/sails/` (§8.5) | every boat of the class |
 | the boat name and sail number on the topsides, the boat name on the transom; the nation letters and sail number on the sails | drawn by the front end over the shared textures from the boat's identity (§8.4), one small text texture per boat | one boat |
 
 The general rules of §1 hold; colours are `"#rrggbb"` sRGB strings. Top level:
@@ -810,19 +809,17 @@ The general rules of §1 hold; colours are `"#rrggbb"` sRGB strings. Top level:
 | `schema` | **R** | `"windmark.liveries/2"` |
 | `class` | **R** | the class id |
 | `insignia` | **R** | the class insignia on the main: `{ "text": "W7" }` (1 to 4 capital letters and digits, drawn bold italic over a wave mark) |
-| `sails` | | the class sail set by role (§8.3): every boat of the class carries the same sails, in the class colours or recoloured by its livery |
+| `sails` | | the class sail set by role (§8.3): every boat of the class carries the same sails |
 | `ropes` | | the class rope set by function (§8.7): every boat of the class carries the same ropes |
-| `liveries[]` | **R** | at least one livery (§8.1). The first is the **class livery**: it has the baked textures (§8.5) and the file's first boat wears it. The others are the fleet's liveries, worn by the boats that name them (§8.4): drawn on the class livery's textures with their own colours |
+| `liveries[]` | **R** | at least one livery (§8.1). Every boat wears the first, the class livery; further entries are kept for later (team liveries) and are not assigned yet |
 | `boats[]` | **R** | at least 12 boat identities (§8.4) |
 
 ### 8.1 Livery
 
 | key | | default | meaning |
 | --- | --- | --- | --- |
-| `id` | **R** | | `[a-z0-9_]`, unique in the file; names the texture folder of a baked livery |
+| `id` | **R** | | `[a-z0-9_]`, unique in the file; names the texture folder |
 | `name` | **R** | | the livery's name |
-| `base` | | the first livery's id | the baked livery (one with a texture folder, §8.5) this livery is drawn on: its textures with this livery's colours substituted (§8.5 "Tinted liveries"). A livery with its own folder is baked and ignores `base`; the first livery is always baked |
-| `sails` | | the class set | per role as §8.3 (`main`, `headsail`, `code_zero`, `spinnaker`): the cloth colour, number colour, design and design colours of this livery's sails, over the class set's. The cloth type is the class's (the baked structure stays: seams, patches, battens, the insignia) |
 | `hull.topsides` | **R** | | topsides colour |
 | `hull.boot_stripe` | | `#e0e0dc` | boot stripe |
 | `hull.antifouling` | | `#1a1d24` | the bottom below the boot stripe |
@@ -835,12 +832,6 @@ The general rules of §1 hold; colours are `"#rrggbb"` sRGB strings. Top level:
 
 The transom wears the hull's colours (`hull.topsides`, the graphic's return, `hull.boot_stripe` where the stripe's
 height reaches it).
-
-**A tinted livery** (one drawn on its base's textures) keeps the base's shapes and wear: its graphic is the base's
-graphic with this livery's `colors` (so give it the same `type` and geometry, which only the procedural fallback
-reads), its deck is the base's deck (its `deck` colours apply to the fallback only), and its `hull.text` is drawn
-per boat as always. What it recolours: `hull.topsides`, `hull.boot_stripe`, `hull.antifouling`, `hull.keel`, the
-graphic's `colors`, and its `sails`.
 
 **Colours.** Every hull, deck and sail colour has each channel at most `#e7` (231, a linear albedo of 0.8), the
 look rule of §3.7: a file with a brighter colour is a load error. White is `#e7e7e3` or below. The same cap holds
@@ -865,9 +856,7 @@ topsides height at that `x` (0 at the sheer, 1 at the top of the boot stripe). T
 ### 8.3 Sails
 
 The class sail set, `sails.main`, `sails.headsail` (every jib and genoa), `sails.code_zero`, `sails.spinnaker` (both
-spinnaker types), each `{ "cloth", "color", "fibre", "number", "design", "colors": [...], ... }`, all optional. A
-livery's `sails` block (§8.1) gives the same keys per role over the class set's; its `cloth` and `fibre` are read by
-the procedural fallback only:
+spinnaker types), each `{ "cloth", "color", "fibre", "number", "design", "colors": [...], ... }`, all optional:
 
 | key | default | meaning |
 | --- | --- | --- |
@@ -901,10 +890,9 @@ The boat identities, the only thing that differs from boat to boat:
 | `boat_name` | **R** | | the boat's name on the topsides aft: 1 to 20 characters of `A-Z a-z 0-9`, space, `'`, `-`, `.` |
 | `sail_number` | **R** | | `"1"` to `"999"`, unique in the file; on the topsides forward and on the sails |
 | `nation` | | none | 3 capital letters above the sail number on the sails |
-| `livery` | | `liveries[0].id` | the livery the boat wears (§8.1), by id. The first boat of the file (the default boat) wears the first livery, so the class look is what the player sees by default |
 
-**Fleet assignment.** Every boat of a race gets one identity of its class, and wears that identity's livery and
-the class sail set in that livery's colours, the same on every machine from the race seed:
+**Fleet assignment.** Every boat of a race wears the class livery (`liveries[0]`) and the class sail set, and gets
+one identity of its class, the same on every machine from the race seed:
 
 1. Order the class's boats by `fnv1a32("<seed>:<id>")` (32-bit FNV-1a of the UTF-8 text, the seed in decimal),
    ascending, ties in file order. This is the seeded order.
@@ -912,9 +900,7 @@ the class sail set in that livery's colours, the same on every machine from the 
    file); one already taken by an earlier entry gives the first free boat of the seeded order instead.
 3. AI entries in entry order take the free boats in the seeded order. When none is left, the order starts again
    from its beginning as repeat 1, then 2, and so on: a repeat's boat name gets `" II"`, `" III"`, ... (repeat + 1
-   in Roman numerals), its sail number becomes `1000 · repeat + number`, so sail numbers stay unique in the fleet,
-   and it wears the livery `repeat` places after its boat's in `liveries[]` (wrapping round), so a doubled identity
-   is told apart by colour as well as by name.
+   in Roman numerals) and its sail number becomes `1000 · repeat + number`, so sail numbers stay unique in the fleet.
 
 Offline the seed is the world seed (`GameSetup.seed`, `--seed`). Online the server sends the seed and each
 player's choice, and every client runs the same rule.
@@ -980,7 +966,7 @@ atlas per map, at 2048 × 2048 by default (`--hd`: 4096 × 4096, the masters' re
 | --- | --- |
 | `atlas_albedo.png` | sRGB: the hull image (2:1) across the top half, the deck (its own aspect) below it, then the transom and the keel side by side; each region padded by its edge colour into a 16-texel gutter (8 at 2048 per 4096 of the master), so mipmaps do not bleed |
 | `atlas_normal.png` | linear, the same layout; flat (`#8080ff`) in the keel region and the gutters |
-| `atlas_orm.png` | linear, the same layout; G the roughness. On the hull and transom regions R and B carry the **colour masks** of the tinted liveries (below): B the topsides paint coverage (1 on the paint, name and number panels included; 0 on the graphic's vinyl, the boot stripe and the antifouling; fractional on their edges), R the colour zone of what is not paint: antifouling 0, boot stripe 1/3, graphic colour 0 2/3, graphic colour 1 1, each zone spread across the paint to the nearest zone so a compressed block never mixes far-apart zones; the hull and transom masters' occlusion (1 in a bake) and metallic (0) are not read. On the deck region R is the occlusion and B the non-slip mask as before; the keel region R 255, B 0 |
+| `atlas_orm.png` | linear, the same layout; the keel region R 255, G its roughness, B 0 |
 | `atlas.json` | `schema` `"windmark.boatatlas/1"`, `size`, and per region (`hull`, `deck`, `transom`, `keel`) its rectangle `[u0, v0, width, height]` in atlas uv (0..1, v down); a region's own uv (the uv1 of §8.5, or the keel's side view) `t` maps to `rect.xy + t · rect.zw` |
 
 The deck region is the deck images with the **painted fittings** over them: what is flat on the deck and the game
@@ -992,23 +978,7 @@ tinted lens, the rope set's halyard and control colours), their relief in the no
 normals, roughness by material, the non-slip mask cleared under them, and baked shading so they read solid without
 geometry: a soft contact shadow round each fitting in occlusion and albedo, the lower parts of a fitting darker and
 its upper edges lighter. The game reads only the atlas (and the per-boat text texture); the sails are staged at half
-the master size (1024 on the longer side; `--hd` keeps 2048), their albedo with an alpha channel holding the
-**cloth zone** of each texel (below): cloth 1, design colour 0 0.75, design colour 1 0.5, the number colour
-(insignia, draft stripes) 0.25, fixed parts (rings, headboard, tell-tales, stickers) 0, found as the nearest of
-the bake's colours at that texel (hand-painted parts in other colours count as cloth).
-
-**Tinted liveries** (§8.1 `base`). A boat in a livery other than the baked one is drawn on the base's atlas and
-sails, with the colours substituted per texel from the masks: on the hull and transom regions a texel's old
-colour is the paint's (by B) blended with its zone's (by R), its new colour the livery's for the same parts, and
-the texel becomes `new · (baked / old)^k` with `k = min(1, L_old / L_new)` (`L` the luminance of the colours,
-blended the same way): the baked variation, scuffs and dirt lines carry over on a hull of similar lightness,
-fade out on a lighter one (a white hull shows none of a navy hull's light scratches) and stay on a darker one. The
-keel region is recoloured whole the same way (`hull.keel`), the rudder takes the slot colour as before. A sail
-texel in the cloth or design zones becomes the livery's design colour at its plan point (the design of §8.3
-evaluated per boat, as the procedural fallback draws it) by the same rule from the class set's colour of its
-zone (the `panels` design needs the cloth's panel ids, which a baked sail does not carry: it draws plain there);
-the number-colour zone takes the livery's number colour; fixed parts stay. The class livery's boats skip all of
-this and show the textures as baked.
+the master size (1024 on the longer side; `--hd` keeps 2048).
 
 **Painted lines** are opaque in their own braid's mean colour, roughness and relief (a texel half covered by a line
 is the line's), so a line reads the same over gelcoat and non-slip; they clear the non-slip mask and cast only a faint

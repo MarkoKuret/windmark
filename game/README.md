@@ -26,7 +26,7 @@ controls, the cameras, the minimal HUD, the audio and a sail test scene that put
 | `data/scenarios/` | Rules scenario files (`windmark.scenario/1`, `data_format.md` §9): `port_starboard`, `windward_leeward` |
 | `scripts/scenario/` | The rules scenarios (`race.md` §14): `Scenario` (the file, loaded and validated), `ScenarioRun` (starts it on the core and steers its hold boats) |
 | `scripts/venue/` | `VenueShapes` (the venue's land polygons and obstacles, from the core or the venue file), `LandTerrain` (the drawn ground height and colours), `ColorMesh` (vertex-coloured mesh builder) |
-| `shaders/` | Shaders. `sea_common`, `sky_common`, `wake_common`, `boat_shadow_common` (`.gdshaderinc`) hold the water, sky, wake and drawn shadow maths, written so the offline preview can compile them as GLSL too; `water_l/m/h` are the sea per quality tier, `sky`, `wake`, `wake_normal`, `boat_shadow` (the boats' shadows drawn on the water); `boat` is the boat surface shader; `sail` the sails, with the procedural cloth of `sail_cloth.gdshaderinc` (also compiled by the sail preview) |
+| `shaders/` | Shaders. `sea_common`, `sky_common`, `wake_common`, `boat_shadow_common` (`.gdshaderinc`) hold the water, sky, wake and drawn shadow maths, written so the offline preview can compile them as GLSL too; `water_l/m/h` are the sea per quality tier, `sky` (and `sky_l`, tier L: the cumulus in the half-resolution pass), `wake`, `wake_normal`, `boat_shadow` (the boats' shadows drawn on the water); `boat` is the boat surface shader; `sail` the sails, with the procedural cloth of `sail_cloth.gdshaderinc` (also compiled by the sail preview) |
 | `scenes/` | Scenes. `sea/` is the sea (`sea.tscn`, `Sea`), its data source, wakes and drawn boat shadows (`BoatShadows`), and the daytime sky (`sky_day.tscn`, `SkyRig`, `env_day.tres`); `water_test.tscn` shows them together; `sail_test.tscn` is one boat sailing freely on the core (FakeSim as fallback), or racing alone on the example course, with cameras, controls and HUD on that sea and sky; `venue/` draws the venue land and obstacles (`VenueView`, `land.gdshader`); `course/` the course (`CourseView`, `CourseProps`); `menu/` the menus (`main_menu.tscn`, the main scene; `pause_menu.tscn`; the setup and settings panels, rows, theme and backdrop) |
 | `tests/` | Headless tests |
 | `generated/` | Build outputs staged for import (boatgen GLBs and sidecars). Not committed |
@@ -810,7 +810,12 @@ surface before the binding exists.
 
 `scenes/sea/sky_day.tscn` (`SkyRig`) is the daytime light: the sky shader (saturated blue ramp, sun disc and halo,
 cumulus), the sun light, a distance haze toward the horizon colour, sky reflections, the camera exposure and the glow on the
-sun's glints, set from one group of parameters. Sun and sky keep their clear-day proportion (the sun about four
+sun's glints, set from one group of parameters. On tier L it swaps the sky shader for `sky_l.gdshader`, which draws
+the clouds in Godot's half-resolution pass (`water_render.md` §7). Two load-time bakes, the whitecap foam texture
+(`SeaTextures.caps_image`) and the grade's LUT (`LookFx.lut_images`), are kept in `user://cache/` by `BakeCache`
+(`scenes/sea/bake_cache.gd`, keyed by the building script's md5, the parameters and the engine version) so a later
+start reads them instead of building; `BakeCache.enabled = false` builds every time (the water test checks the
+read-back bytes). Sun and sky keep their clear-day proportion (the sun about four
 fifths of the light on a level surface), and the exposure brings the scene back to screen range. Two inputs
 set it (`water_render.md` §4.5, `scenes/sea/daylight.gd`, `Daylight`): the time of day (`SkyRig.hour`, a local clock
 hour; the sun from it and the venue's latitude, longitude and date) and the conditions (`SkyRig.conditions`: clear,

@@ -88,6 +88,14 @@ static func lut_coord(i: int, n := LUT_SIZE) -> float:
 ## The LUT's slices (blue along the depth), RGBA8.
 static func lut_images(g: Dictionary, n := LUT_SIZE) -> Array[Image]:
 	var out: Array[Image] = []
+	# about 30 ms of GDScript per light on a fast machine: kept on disk after the first build (BakeCache)
+	var ck := BakeCache.key("res://scenes/sea/look_fx.gd", "lut %d %s" % [n, _key(g)])
+	var cached := BakeCache.read(ck)
+	if cached.size() == n * n * n * 4:
+		for b in n:
+			out.append(Image.create_from_data(n, n, false, Image.FORMAT_RGBA8, cached.slice(b * n * n * 4, (b + 1) * n * n * 4)))
+		return out
+	var all := PackedByteArray()
 	var bytes := PackedByteArray()
 	bytes.resize(n * n * 4)
 	for b in n:
@@ -101,6 +109,8 @@ static func lut_images(g: Dictionary, n := LUT_SIZE) -> Array[Image]:
 				bytes[i + 3] = 255
 				i += 4
 		out.append(Image.create_from_data(n, n, false, Image.FORMAT_RGBA8, bytes))
+		all.append_array(bytes)
+	BakeCache.write(ck, all)
 	return out
 
 

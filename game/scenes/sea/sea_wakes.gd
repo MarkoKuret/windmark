@@ -14,6 +14,8 @@ extends Node3D
 ## every frame. Both draw the same (tests/wakes_native_test.gd).
 
 const DT_EMIT := 0.05
+## the other boats' ribbons step at most this often (s); the own boat's every frame (water_render.md §5)
+const OTHER_STEP := 1.0 / 30.0
 const SPRAY_K := 2.5
 const KNOT := 0.51444447
 const WAKE_SHADER := preload("res://shaders/wake.gdshader")
@@ -208,6 +210,7 @@ func _add_buffer_instances(b: Dictionary) -> void:
 		bi.mesh = b["mesh_" + r].mesh
 		bi.material_override = _buffer_material
 		bi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		bi.visible = b["mesh_" + r].visible
 		_buffer.add_child(bi)
 		b["buf_" + r] = bi
 
@@ -300,27 +303,36 @@ func _frame() -> void:
 	for id in _boats:
 		var b: Dictionary = _boats[id]
 		var on: bool = active.has(id)
-		for r in RIBBONS:
-			b["mesh_" + r].visible = on
-			if b["buf_" + r]:
-				b["buf_" + r].visible = on
+		if b.get("on", -1) != int(on):  # the nodes are touched only when a boat's wake comes or goes
+			b["on"] = int(on)
+			for r in RIBBONS:
+				b["mesh_" + r].visible = on
+				if b["buf_" + r]:
+					b["buf_" + r].visible = on
 		if not on:
 			continue
 		var st: Dictionary = b["state"]
 		var spray: bool = tier["spray"] == "all" or (tier["spray"] == "own" and st.get("own", false))
 		if b["last_t"] < 0.0 or t_s - b["last_t"] >= DT_EMIT:
 			_emit(b, st, t_s, spray)
+		# §5: the own boat's ribbons step every frame, the others' at most every OTHER_STEP (the time adds up)
+		var sdt: float = float(b.get("step_dt", 0.0)) + dt
+		if not st.get("own", false) and sdt + 1e-6 < OTHER_STEP and float(b.get("step_t", -1.0)) >= 0.0:
+			b["step_dt"] = sdt
+			continue
+		b["step_dt"] = 0.0
+		b["step_t"] = t_s
 		for r in RIBBONS:
 			var rib: Variant = b[r]
 			if rib is WakeRibbonRef:
-				rib.step(t_s, dt, h, current)
+				rib.step(t_s, sdt, h, current)
 				var mesh: ArrayMesh = b["mesh_" + r].mesh
 				mesh.clear_surfaces()
 				var arrays: Array = rib.build_arrays(t_s)
 				if (arrays[Mesh.ARRAY_INDEX] as PackedInt32Array).size() > 0:
 					mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 			else:
-				rib.step(t_s, dt, _sampler, t_ms, current)
+				rib.step(t_s, sdt, _sampler, t_ms, current)
 				rib.write_mesh(t_s)
 	_draw_mist(dt)
 

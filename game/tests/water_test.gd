@@ -15,6 +15,7 @@ const SHADERS := {
 	"res://shaders/water_m.gdshader": ["comp", "puff", "expo_tex", "wake_tex"],
 	"res://shaders/water_h.gdshader": ["comp", "puff", "expo_tex", "wake_tex"],
 	"res://shaders/sky.gdshader": ["sky_horizon", "sky_zenith", "sun_dir"],
+	"res://shaders/sky_l.gdshader": ["sky_horizon", "sky_zenith", "sun_dir", "cloud_cover"],
 	"res://shaders/wake.gdshader": ["comp", "grid_q"],
 	"res://shaders/wake_normal.gdshader": [],
 }
@@ -48,6 +49,7 @@ func check(ok: bool, what: String) -> void:
 func _init() -> void:
 	print("water renderer checks")
 	check_shaders()
+	check_bake_cache()
 	var data = JSON.parse_string(FileAccess.get_file_as_string(SAMPLES)) if FileAccess.file_exists(SAMPLES) else null
 	check(data is Dictionary, "core samples at %s (run tests/run_water_test.sh)" % SAMPLES)
 	if data is Dictionary:
@@ -64,6 +66,40 @@ func _init() -> void:
 	check_wind_roughness()
 	_tiers_left = [SeaQuality.Tier.L, SeaQuality.Tier.M, SeaQuality.Tier.H]
 	_start_scene()
+
+
+## PERFORMANCE.md A6: the whitecap texture and the grade LUT read back from the disk cache are the bytes that were
+## built; with the cache off they are built every time.
+func check_bake_cache() -> void:
+	BakeCache.clear()
+	BakeCache.enabled = false
+	var built := SeaTextures.caps_image().get_data()
+	var g: Dictionary = Daylight.light(Daylight.DEFAULT_SITE, 14.0, "fair")["grade"]
+	var lut_built := LookFx.lut_images(g)
+	BakeCache.enabled = true
+	BakeCache.hits = 0
+	BakeCache.misses = 0
+	SeaTextures._caps_image = null
+	var t0 := Time.get_ticks_usec()
+	var first := SeaTextures.caps_image().get_data()
+	var t1 := Time.get_ticks_usec()
+	SeaTextures._caps_image = null
+	var second := SeaTextures.caps_image().get_data()
+	var t2 := Time.get_ticks_usec()
+	check(BakeCache.misses == 1 and BakeCache.hits == 1, "caps texture: built once, read back once")
+	check(first == built and second == built, "caps texture from the cache: the same bytes (%d)" % built.size())
+	check(SeaTextures.caps_image().has_mipmaps(), "caps texture from the cache has mipmaps")
+	print("  caps texture: built in %d ms, from the cache in %d ms" % [(t1 - t0) / 1000, (t2 - t1) / 1000])
+	var lut_first := LookFx.lut_images(g)
+	var lut_second := LookFx.lut_images(g)
+	var same := lut_second.size() == lut_built.size()
+	for i in mini(lut_second.size(), lut_built.size()):
+		same = same and lut_second[i].get_data() == lut_built[i].get_data() and lut_first[i].get_data() == lut_built[i].get_data()
+	check(same and BakeCache.hits == 2 and BakeCache.misses == 2, "grade LUT from the cache: the same %d slices" % lut_built.size())
+	var other: Dictionary = Daylight.light(Daylight.DEFAULT_SITE, 14.0, "overcast")["grade"]
+	var lut_other := LookFx.lut_images(other)
+	check(lut_other[16].get_data() != lut_built[16].get_data(), "another grade is another bake")
+	BakeCache.clear()
 
 
 func check_shaders() -> void:

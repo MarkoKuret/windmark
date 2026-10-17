@@ -966,8 +966,9 @@ mesh the coarsest version whose error stays under the viewport's mesh LOD thresh
 `water_render.md` §7). No hand-made coarser models and no distance switches. The performance comes from fewer
 pieces and materials:
 - **Nodes**: `body` (hull, deck, keel, mast, rigging and the static hardware, one mesh), the moving parts `rudder`
-  (with the tiller), `wheel`, `boom`, `mainsheet`, `pole`, and the sails; each node is one surface. A boat at chase
-  range is 4 to 6 draws without the sails (wm7 4: body, rudder, boom, mainsheet; wm12 5 with the wheel) and 6 to 8
+  (with the tiller), `wheel` (and `wheel_2` on a twin-wheel class), `boom`, `mainsheet`, `pole`, and the sails; each
+  node is one surface. A boat at chase range is 4 to 6 draws without the sails (wm7 4: body, rudder, boom,
+  mainsheet; wm12 5 with the wheel; wm16 6 with twin wheels) and 6 to 8
   with the sails shown. The moving parts are their own nodes and follow the helm and the sail angles at every
   distance.
 - **One material**: every opaque surface but the sails is drawn with one material per boat,

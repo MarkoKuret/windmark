@@ -122,8 +122,10 @@ class Boat:
             self.parts["pole"] = self.rig.pole_part()
             self.pivots["pole"] = self.rig.pole_pivot
         if hw["helm"].tri_count():
-            self.parts["wheel"] = hw["helm"]
-            self.pivots["wheel"] = hw["helm_pivot"]
+            for k, (h, hub) in enumerate(hw["helms"]):
+                n = "wheel" if k == 0 else f"wheel_{k + 1}"     # twin wheels: `wheel` (port) and `wheel_2`
+                self.parts[n] = h
+                self.pivots[n] = hub
         else:
             # a tiller turns with the rudder
             self.parts["rudder"].extend(hardware.tiller(self.app, self.deck, self.hull, (self.hull.L / 12) ** 0.7))
@@ -158,10 +160,11 @@ class Boat:
             if rig.pole_flown:
                 parts["pole"] = rig.pole_part()
             if hw["helm"].tri_count():
-                parts["wheel"] = hw["helm"]
+                for k, (h, _) in enumerate(hw["helms"]):
+                    parts["wheel" if k == 0 else f"wheel_{k + 1}"] = h
             else:
                 parts["rudder"].extend(hardware.tiller(app, self.deck, self.hull, (self.hull.L / 12) ** 0.7))
-        for name in ("mast", "rigging", "boom", "hardware", "rudder", "wheel", "pole"):
+        for name in ("mast", "rigging", "boom", "hardware", "rudder", "wheel", "wheel_2", "pole"):
             if name not in parts:
                 continue
             q = Part()
@@ -173,6 +176,9 @@ class Boat:
                         g = g.copy()
                         g.uv1 = self.deck.plan_uv1(g.P)
                         parts["deck"] = Part().extend(parts["deck"]).add(mat, g)
+                        continue
+                    if self._modelled_lead(t):
+                        q.add(mat, g)       # visual.deck.halyard_leads "modelled": the whole lead is geometry
                         continue
                     if hardware.is_painted_line(t):
                         # the line's lengths off the surface stay geometry (the deck maps paint the rest)
@@ -226,9 +232,16 @@ class Boat:
         for name in ("hardware",):
             for mat, gs in self.parts[name].slots.items():
                 for g in gs:
-                    if hardware.is_painted(g.tag or ""):
+                    if hardware.is_painted(g.tag or "") and not self._modelled_lead(g.tag or ""):
                         out.add(mat, g)
         return out
+
+    def _modelled_lead(self, tag):
+        """A halyard or its deck organiser kept as geometry in the game model (visual.deck.halyard_leads
+        "modelled"): one continuous line from the mast foot to the clutch, drawn at every distance."""
+        if self.cls["deck"].get("halyard_leads", "painted") != "modelled":
+            return False
+        return tag.startswith("organiser_") or (tag.startswith("halyard_") and hardware.is_painted_line(tag))
 
     def shadow_proxy(self):
         """The shadow casters (sail_visuals.md 11.4, shadow.py): (static, boom, rudder) for the nodes `shadow`,

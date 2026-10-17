@@ -217,6 +217,48 @@ def winch(d, handle=False):
     return p
 
 
+def grinder(h):
+    """Coffee-grinder pedestal, h = height of the crank axle above the floor (local origin on the floor, x forward):
+    a flanged base, a slim tapered carbon column flaring into a round gearbox drum with its axle athwartships, and
+    two cranks 180 degrees apart, each a round arm from a hub on the axle end to a grip pointing outboard. Smooth
+    profiles throughout; about 700 triangles in the game model."""
+    lp = _LP[0] is not None
+    n = 12 if lp else 24
+    p = Part()
+    R = 0.085 * h                       # the drum's radius
+    p.add("metal", revolve([(0, 0), (0.15 * h, 0), (0.15 * h, 0.012 * h), (0.12 * h, 0.03 * h),
+                            (0.075 * h, 0.045 * h), (0, 0.045 * h)], n, sharp=(1,)))
+    col = [(0.075 * h, 0.04 * h), (0.062 * h, 0.12 * h), (0.052 * h, 0.45 * h), (0.046 * h, 0.72 * h),
+           (0.05 * h, h - 1.15 * R), (0.07 * h, h - 0.85 * R), (0, h - 0.85 * R)]
+    p.add("carbon", revolve(col, n, cap_ends=False))
+    # the drum: a capsule about the axle (y)
+    half = 0.075 * h
+    k = 4 if lp else 7
+    prof = [(0, -half - R)]
+    prof += [(R * np.sin(a), -half - R * np.cos(a)) for a in np.linspace(0.25, np.pi / 2, k)]
+    prof += [(R * np.sin(a), half - R * np.cos(a)) for a in np.linspace(np.pi / 2, np.pi - 0.25, k)]
+    prof += [(0, half + R)]
+    drum = revolve(prof, n, cap_ends=False).transformed(translate([0, 0, h]) @ rot_axis([1, 0, 0], -np.pi / 2))
+    p.add("carbon", drum)
+    arm = 0.27 * h
+    ang = np.radians(35.0)
+    for side, sg in ((1.0, 1.0), (-1.0, -1.0)):
+        y0 = side * (half + 0.8 * R)
+        ya = side * (half + R + 0.03 * h)
+        p.add("metal", tube(np.array([[0, y0, h], [0, ya + side * 0.012 * h, h]]), 0.025 * h, 8 if lp else 12))
+        tip = np.array([sg * arm * np.cos(ang), ya, h + sg * arm * np.sin(ang)])
+        hub = np.array([0, ya, h])
+        p.add("metal", tube(np.array([hub, tip]), 0.018 * h, 6 if lp else 10))
+        p.add("metal", superellipsoid_box((0.06 * h, 0.04 * h, 0.06 * h), 0.9, 8 if lp else 12, 4 if lp else 8,
+                                          center=hub))
+        g0 = tip + np.array([0, side * 0.015 * h, 0])
+        g1 = tip + np.array([0, side * 0.16 * h, 0])
+        p.add("rubber", tube(np.array([g0, g1]), 0.026 * h, 8 if lp else 12))
+        p.add("rubber", superellipsoid_box((0.056 * h, 0.03 * h, 0.056 * h), 0.9, 8 if lp else 12, 4 if lp else 8,
+                                           center=g1))
+    return p
+
+
 def winch_handle(d):
     """Winch handle standing in the socket: square shank, arm aft, grip up (local origin on the socket)."""
     p = Part()
@@ -899,16 +941,24 @@ def place_all(cls, hull, deck, rig, lod=0):
                 hw.extend(on_surface(deck, horn_cleat(0.2 * s), x, side * y), tag=f"horn_cleat_{side}_{x:.2f}")
                 hw.attach(f"horn_cleat_{side}_{x:.2f}", "deck")
 
-    # --- hatches
-    if deck.has_cabin:
-        x_fh = max(deck.xk1 + 0.55 * s, rig.x_mast + 0.55 * s)
-        if x_fh < L - 1.2 * s:
-            hw.extend(on_surface(deck, hatch(0.6 * s, 0.6 * s), x_fh, 0.0, conform=True), tag="hatch_fore")
-            hw.attach("hatch_fore", "deck")
-        x_rh = _cabin_hatch_x(deck, d)
-        if x_rh is not None:
-            hw.extend(on_surface(deck, hatch(0.5 * s, 0.5 * s), x_rh, 0.0, conform=True), tag="hatch_cabin")
-            hw.attach("hatch_cabin", "deck")
+    # --- coffee-grinder pedestals on the cockpit's centreline forward of the traveller (visual.deck.grinders)
+    for k in range(int(d.get("grinders", 0) or 0)):
+        xg = x_tr + (0.85 + 0.9 * k) * s
+        if xg > deck.xc1 - 0.45 * s:
+            raise ValueError(f"grinder {k + 1} at {xg:.2f} m does not fit the cockpit forward of the traveller "
+                             "(visual.deck.grinders)")
+        hw.extend(on_surface(deck, grinder(0.88), xg, 0.0), tag=f"grinder_{k}")
+        hw.attach(f"grinder_{k}", "deck")
+
+    # --- hatches (a flush deck keeps the foredeck hatch forward of the mast)
+    x_fh = max(deck.xk1 + 0.55 * s, rig.x_mast + 0.55 * s)
+    if x_fh < L - 1.2 * s:
+        hw.extend(on_surface(deck, hatch(0.6 * s, 0.6 * s), x_fh, 0.0, conform=True), tag="hatch_fore")
+        hw.attach("hatch_fore", "deck")
+    x_rh = _cabin_hatch_x(deck, d)
+    if x_rh is not None:
+        hw.extend(on_surface(deck, hatch(0.5 * s, 0.5 * s), x_rh, 0.0, conform=True), tag="hatch_cabin")
+        hw.attach("hatch_cabin", "deck")
 
     # --- lifelines, pulpit and pushpit
     if d.get("lifelines"):
@@ -918,27 +968,36 @@ def place_all(cls, hull, deck, rig, lod=0):
     # shaft (no guard, no instrument pod), its lower part in a slot in the floor with `well`; or a tiller on the
     # rudder head
     helm = Part()
+    helms = []
     if deck.helm is not None:
         hm = deck.helm
-        x_w, zf, dw, hub = hm["x"], hm["floor_z"], hm["diameter"], hm["hub"]
+        x_w, dw = hm["x"], hm["diameter"]
         # the pedestal stands forward of the wheel, clear of the slot
-        xp = x_w + 0.12 if hm["slot"] is None else max(x_w + 0.12, hm["slot"]["x1"] + 0.1 * s)
+        # (clear of the wheel: the shaft shows between them and ends inside the head)
+        xp = x_w + 0.12 + 0.1 * s if hm["slot"] is None else max(x_w + 0.12, hm["slot"]["x1"] + 0.1 * s)
         zp = float(deck.floor_z(xp))
-        hw.add("carbon", revolve([(0, 0), (0.09 * s, 0), (0.085 * s, 0.02 * s), (0.045 * s, 0.08 * s),
-                                  (0.04 * s, hub[2] - zp - 0.04), (0, hub[2] - zp - 0.04)], 16, sharp=(1,))
-               .transformed(translate([xp, 0, zp])), tag="pedestal")
-        hw.attach("pedestal", "deck")
-        hw.add("carbon", superellipsoid_box((0.16 * s, 0.11 * s, 0.11 * s), 0.4, 12, 6, center=[xp - 0.02, 0, hub[2]]),
-               tag="binnacle")
-        hw.attach("binnacle", "pedestal")
-        hw.add("metal", tube(np.array([[x_w + 0.02, 0, hub[2]], [xp - 0.02, 0, hub[2]]]), 0.02, 10), tag="wheel_shaft")
-        hw.attach("wheel_shaft", "binnacle")
-        helm.extend(wheel(dw, grip=mid), translate(hub), tag="wheel")
-        helm.attach("wheel", "wheel_shaft")
-        helm_pivot = hub
+        for k, hub in enumerate(hm["hubs"]):
+            # twin wheels (data_format.md 3.7.3): the second one's pieces tagged with a suffix
+            sfx = "" if k == 0 else f"_{k + 1}"
+            yh = float(hub[1])
+            hw.add("carbon", revolve([(0, 0), (0.09 * s, 0), (0.085 * s, 0.02 * s), (0.045 * s, 0.08 * s),
+                                      (0.04 * s, hub[2] - zp - 0.04), (0, hub[2] - zp - 0.04)], 16, sharp=(1,))
+                   .transformed(translate([xp, yh, zp])), tag="pedestal" + sfx)
+            hw.attach("pedestal" + sfx, "deck")
+            hw.add("carbon", superellipsoid_box((0.16 * s, 0.11 * s, 0.11 * s), 0.4, 12, 6,
+                                                center=[xp - 0.02, yh, hub[2]]), tag="binnacle" + sfx)
+            hw.attach("binnacle" + sfx, "pedestal" + sfx)
+            hw.add("metal", tube(np.array([[x_w + 0.02, yh, hub[2]], [xp - 0.02, yh, hub[2]]]), 0.02, 10),
+                   tag="wheel_shaft" + sfx)
+            hw.attach("wheel_shaft" + sfx, "binnacle" + sfx)
+            h = Part()
+            h.extend(wheel(dw, grip=mid), translate(hub), tag="wheel" + sfx)
+            h.attach("wheel" + sfx, "wheel_shaft" + sfx)
+            helms.append((h, hub))
+        helm, helm_pivot = helms[0]
     else:
         helm_pivot = None
-    return {"hardware": hw, "helm": helm, "helm_pivot": helm_pivot, "boom_hardware": boom_hw, "mainsheet": sheet,
+    return {"hardware": hw, "helm": helm, "helm_pivot": helm_pivot, "helms": helms, "boom_hardware": boom_hw, "mainsheet": sheet,
             "mainsheet_ends": (lower, upper, w_tr, s), "leads": leads, "rope_paths": rope_paths,
             "lifelines": lifelines}
 

@@ -218,7 +218,7 @@ func test_onboard_classes() -> void:
 	t.near(saved.fov, 75.0, 1e-9, "a profile with the old default 65 loads the new default")
 	saved.set_params({"fov": 58.0})
 	t.near(saved.fov, 58.0, 1e-9, "a zoomed profile keeps its fov")
-	for cls in ["wm7", "wm12"]:
+	for cls in ["wm7", "wm12", "wm16"]:
 		var sim := CoreSimSource.new()
 		sim.settings = {"wind_speed": 6.0, "wind_from": 0.0, "shift_preset": 0, "puffs": false, "seed": 11}
 		if not t.ok(sim.create(), "%s: core created" % cls):
@@ -251,6 +251,17 @@ func test_onboard_classes() -> void:
 				var sx := (c.x / -c.z) / (half * 16.0 / 9.0)
 				t.ok(c.z < 0.0 and sy < 0.0 and sy > -1.0 and absf(sx) < 1.0,
 						"wm12: the wheel's %s in the lower half of the frame (x %.2f, y %.2f)" % [e[0], sx, sy])
+		elif cls == "wm16":
+			# twin wheels: behind the windward one, standing on the cockpit floor
+			var r := BoatGeometry._rim_radius(bv.model)
+			var hy := absf(float(rig["wheel_hub"][1]))
+			t.ok(r > 0.5 and r < 0.75 and hy > r, "wm16: rim radius %.3f m, hub %.2f m off the centreline" % [r, hy])
+			t.ok(rig.has("wheel_hubs") and rig["wheel_hubs"].size() == 2, "wm16: both wheel hubs in the sidecar")
+			t.ok(bv.model.find_child("wheel_2", true, false) != null, "wm16: the second wheel's node")
+			t.near(g.xh, float(rig["wheel_hub"][0]) - 0.7 * r, 1e-4, "wm16: 0.7 R behind the wheel hub")
+			t.near(g.yh_abs, hy + 0.55 * r, 1e-4, "wm16: behind the windward half of the windward wheel")
+			t.near(g.zh - BoatGeometry._deck_height(deck, g.xh, g.yh_abs), 1.60, 1e-4, "wm16: standing eye height")
+			t.ok(BoatGeometry._deck_height(deck, g.xh, g.yh_abs) < 0.9, "wm16: standing on the cockpit floor")
 		else:
 			var tip := BoatGeometry._part_box(bv.model, "rudder").end.x
 			t.ok(tip > float(rig["rudder_stock"][0]) + 0.5, "wm7: the tiller's tip from the rudder part (%.2f)" % tip)
@@ -259,13 +270,13 @@ func test_onboard_classes() -> void:
 			t.near(g.zh - BoatGeometry._deck_height(deck, g.xh, g.yh_abs), 0.80, 1e-4, "wm7: seated eye height")
 		# the steering is drawn: its meshes visible at the onboard camera's distance (no LOD swap, no hidden part)
 		bv.update_lod(Vector3(g.xh, g.yh_abs, g.zh).length())
-		var part := bv.model.find_child("wheel" if cls == "wm12" else "rudder", true, false) as Node3D
+		var part := bv.model.find_child("rudder" if cls == "wm7" else "wheel", true, false) as Node3D
 		var shown := part != null and bv.lod == 0
 		var up: Node = part
 		while shown and up != null and up != bv:
 			shown = not (up is Node3D) or (up as Node3D).visible
 			up = up.get_parent()
-		t.ok(shown, "%s: the %s drawn for the onboard camera" % [cls, "wheel" if cls == "wm12" else "tiller"])
+		t.ok(shown, "%s: the %s drawn for the onboard camera" % [cls, "tiller" if cls == "wm7" else "wheel"])
 		t.ok(g.xh > BoatGeometry._aft_end(deck) + 0.2, "%s: over the deck, forward of the transom (x %.2f)" % [cls, g.xh])
 		var tris := _model_triangles(bv.model, g)
 		var side := INF

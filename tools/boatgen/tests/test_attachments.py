@@ -59,7 +59,7 @@ class AttachmentTest(unittest.TestCase):
     def setUpClass(cls):
         np.seterr(all="ignore")
         cls.boats = {cid: _boat(cid)
-                     for cid in ("wm7", "wm12")}
+                     for cid in ("wm7", "wm12", "wm16")}
         cls.gaps = {cid: b.attachment_gaps() for cid, b in cls.boats.items()}
 
     def test_no_gaps(self):
@@ -75,6 +75,9 @@ class AttachmentTest(unittest.TestCase):
             have = {(piece, h) for piece, hosts, _ in gs for h in hosts}
             want = list(REQUIRED)
             want += REQUIRED_WHEEL if boat.cls["deck"]["steering"] == "wheel" else REQUIRED_TILLER
+            want += [(f"grinder_{k}", "deck") for k in range(boat.cls["deck"].get("grinders", 0))]
+            if boat.cls["deck"]["wheel"].get("twin") and boat.cls["deck"]["steering"] == "wheel":
+                want += [("wheel_2", "wheel_shaft_2"), ("wheel_shaft_2", "binnacle_2"), ("pedestal_2", "deck")]
             if boat.cls["rig"]["backstay"]:
                 want += REQUIRED_BACKSTAY
                 want += REQUIRED_BACKSTAY_SPLIT if boat.rig.split_backstay() else REQUIRED_BACKSTAY_SINGLE
@@ -99,7 +102,7 @@ class LifelineTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         np.seterr(all="ignore")
-        cls.boats = {cid: _boat(cid) for cid in ("wm7", "wm12")}
+        cls.boats = {cid: _boat(cid) for cid in ("wm7", "wm12", "wm16")}
 
     def _recs(self):
         for cid, boat in self.boats.items():
@@ -170,7 +173,7 @@ class RopeLeadTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         np.seterr(all="ignore")
-        cls.boats = {cid: _boat(cid) for cid in ("wm7", "wm12")}
+        cls.boats = {cid: _boat(cid) for cid in ("wm7", "wm12", "wm16")}
 
     def test_leads_lie_on_the_deck(self):
         from boatgen.attach import _point_tri_dist

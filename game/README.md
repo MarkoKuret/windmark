@@ -35,7 +35,7 @@ controls, the cameras, the minimal HUD, the audio and a sail test scene that put
 ## Boat import test
 
 ```
-game/tests/run_boat_import_test.sh           # generate wm12 and wm7, import, test
+game/tests/run_boat_import_test.sh           # generate wm12, wm7 and wm16, import, test
 game/tests/run_boat_import_test.sh --no-gen  # reuse the GLBs already in game/generated/boats
 ```
 

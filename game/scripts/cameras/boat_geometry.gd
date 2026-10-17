@@ -37,7 +37,8 @@ static func onboard(info: SimSource.ClassInfo, model: Node3D) -> BoatGeometry:
 		if r <= 0.0:
 			r = 0.07 * info.loa
 		g.xh = float(rig["wheel_hub"][0]) - WHEEL_BEHIND * r
-		g.yh_abs = WHEEL_OUT * r
+		# twin wheels: behind the windward one (its hub off the centreline)
+		g.yh_abs = absf(float(rig["wheel_hub"][1])) + WHEEL_OUT * r
 		g.look_down = WHEEL_LOOK_DOWN
 	else:
 		var box := _part_box(model, "rudder")  # the rudder carries the tiller: its forward end is the tiller's

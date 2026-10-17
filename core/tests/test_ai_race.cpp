@@ -44,14 +44,14 @@ TEST_CASE("ai dev: one race of 10 Intermediate boats" * doctest::skip(std::geten
   if (std::getenv("AI_WM12") != nullptr) {
     for (std::size_t k = 0; k < sp.levels.size(); ++k) sp.classes.push_back(k % 2 == 1 ? "wm12" : "wm7");
   }
-  // AI_CLASS=<id>: every boat of class <id> (data/perf/<id>.perf.json)
-  if (std::getenv("AI_CLASS") != nullptr) sp.classes.assign(sp.levels.size(), std::getenv("AI_CLASS"));
   if (std::getenv("AI_WIND") != nullptr) sp.wind_kn = std::strtof(std::getenv("AI_WIND"), nullptr);
   if (std::getenv("AI_MATCH") != nullptr) {
     sp.course = &wm_test::ai_match_course();
     sp.levels.assign(2, wm::AiLevel::expert);
     sp.shifts = wm::ShiftPreset::oscillating;
   }
+  // AI_CLASS=<id>: every boat of that class (data/perf/<id>.perf.json)
+  if (const char* c = std::getenv("AI_CLASS")) sp.classes.assign(sp.levels.size(), c);
   sp.trace = std::getenv("AI_TRACE");
   {
     auto w = wm_test::ai_world(sp);

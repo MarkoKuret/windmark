@@ -1,0 +1,70 @@
+{
+  "schema": "windmark.boatclass/1",
+  "id": "wm16",
+  "name": "Windmark 16 Grand Prix",
+  "version": 1,
+  "hull": {
+    "loa": 15.85,
+    "lwl": 14.70,
+    "beam_max": 4.45,
+    "bwl": 3.40,
+    "draft_canoe": 0.44,
+    "displacement": 7400,
+    "prismatic": 0.56,
+    "section_shape": {"type": "round", "midship_coefficient": 0.70},
+    "rocker": {"fwd": 0.38, "aft": 0.44},
+    "freeboard": {"bow": 1.55, "mid": 1.20, "stern": 1.00},
+    "transom_width": 3.80,
+    "stem_x": 7.70,
+    "transom_x": -8.15,
+    "max_beam_station": 0.36,
+    "lcb_x": -0.55,
+    "bow_fineness": 1.8
+  },
+  "keel": {
+    "type": "fin_bulb",
+    "depth": 4.00,
+    "chord_root": 1.10,
+    "chord_tip": 0.78,
+    "thickness": 0.10,
+    "sweep": 0.05,
+    "x": 0.55,
+    "fin_mass": 450,
+    "bulb_mass": 3700,
+    "bulb_length": 3.6
+  },
+  "rudder": {"type": "spade", "depth": 2.60, "chord_root": 0.56, "chord_tip": 0.36, "thickness": 0.12, "x": -6.00},
+  "rig": {
+    "I": 20.7,
+    "J": 5.95,
+    "P": 21.4,
+    "E": 7.60,
+    "mast_height": 24.8,
+    "mast_x": 1.60,
+    "boom_height": 2.95,
+    "fractional": 0.88,
+    "bowsprit": 1.80
+  },
+  "sails": [
+    {"id": "main", "type": "main", "area": 106.0},
+    {"id": "jib", "type": "jib", "area": 60.0},
+    {"id": "code0", "type": "code_zero", "area": 142.0},
+    {"id": "a2", "type": "spinnaker_asym", "area": 268.5}
+  ],
+  "crew": {"count": 13, "weight": 1190},
+  "start": {"front_sail": "jib"},
+  "visual": {
+    "hull": {"bilge_fillet": 0.30},
+    "deck": {
+      "cockpit": {"length": 6.0, "width": 0.78, "depth": 0.48, "open_transom": true},
+      "cabin": null,
+      "lifelines": true,
+      "steering": "wheel",
+      "wheel": {"twin": true, "diameter": 1.2},
+      "grinders": 2,
+      "halyard_leads": "modelled"
+    },
+    "rig": {"spreaders": 3, "spreader_sweep": 0.26, "backstay": true},
+    "sails": {"main": {"head_width": 0.40}}
+  }
+}

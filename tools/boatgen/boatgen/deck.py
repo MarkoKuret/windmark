@@ -56,44 +56,71 @@ class Deck:
         self.helm = self._helm() if d.get("steering") == "wheel" else None
 
     def _helm(self):
-        """The helm of a wheel boat (data_format.md 3.7.3): wheel position, diameter and hub on the centreline, and
-        with `well` the slot let into the cockpit floor for the wheel's lower part (x0, x1, half width, bottom)."""
+        """The helm of a wheel boat (data_format.md 3.7.3): wheel position, diameter and hub, and with `well` the
+        slot let into the cockpit floor for the wheel's lower part (x0, x1, half width, bottom, centre `yc`). One
+        wheel on the centreline, or with `twin` two, their hubs `spacing` apart (`hubs`, `slots`: port first;
+        `hub` and `slot` are the first)."""
         L = self.hull.L
         s = (L / 12.0) ** 0.7
         w = self.cls["deck"].get("wheel") or {}
         well = bool(w.get("well", False))
+        twin = bool(w.get("twin", False))
         x_w = min(self.xc0 + 1.25 * s, self.xc1 - 0.8)
-        dw = float(w.get("diameter") or min(1.9 * float(self.yc(x_w)) * 0.9, 1.35 * s))
+        if twin:
+            dw = float(w.get("diameter") or min(0.9 * float(self.yc(x_w)), 1.2 * s))
+        else:
+            dw = float(w.get("diameter") or min(1.9 * float(self.yc(x_w)) * 0.9, 1.35 * s))
         hub_h = float(w.get("hub_height") or (0.62 * (L / 12.0) ** 0.5 if well else dw / 2 + 0.12))
-        slot = None
-        if well and hub_h < dw / 2:
-            half_x = 0.5 * 0.04 * dw + 0.05                    # the rim's thickness (hardware.wheel) and 5 cm
+        R = dw / 2
+        half_x = 0.5 * 0.04 * dw + 0.05                        # the rim's thickness (hardware.wheel) and 5 cm
+        if well and hub_h < R:
             r = self.cls.get("rudder") or {}
             if r.get("type", "spade") == "spade" and r.get("x_stock") is not None:
                 # the slot's aft wall 5 cm ahead of the rudder stock's bearing (hardware.rudder_fittings)
                 x_w = max(x_w, float(r["x_stock"]) + 0.11 * s + 0.05 + half_x)
-            zf = float(self.floor_z(x_w))
-            R = dw / 2
-            slot = {"x0": x_w - half_x, "x1": x_w + half_x, "y": float(np.sqrt(R * R - hub_h * hub_h)) + 0.05,
-                    "z": zf - (R - hub_h) - 0.04}
-            # the box stays inside the hull: 5 cm above the canoe body's bottom and inside its sides
-            for x in (slot["x0"], slot["x1"]):
-                zk = float(self.hull.zk(np.array([x]))[0])
-                if slot["z"] < zk + 0.05 or slot["y"] > self.hull.half_breadth_at(x, slot["z"]) - 0.05:
-                    raise ValueError(f"wheel slot ({2 * slot['y']:.2f} m wide, bottom {slot['z']:.2f} m) does not fit "
-                                     "inside the hull: raise visual.deck.wheel.hub_height (data_format.md 3.7.3)")
-        if dw > 1.9 * float(self.yc(x_w)):
-            raise ValueError(f"wheel diameter {dw:.2f} m does not fit the cockpit ({2 * float(self.yc(x_w)):.2f} m wide "
-                             "at the wheel; data_format.md 3.7.3)")
+        yc = float(self.yc(x_w))
+        if twin:
+            sp = w.get("spacing")
+            # default: each wheel's outer rim 0.25 m inside the cockpit's side
+            sp = float(sp) if sp is not None else 2 * (yc - R - 0.25)
+            if sp < dw + 0.1:
+                raise ValueError(f"twin wheels {sp:.2f} m apart overlap ({dw:.2f} m diameter; "
+                                 "visual.deck.wheel.spacing, data_format.md 3.7.3)")
+            ys = [sp / 2, -sp / 2]
+        else:
+            ys = [0.0]
         zf = float(self.floor_z(x_w))
-        return {"x": x_w, "diameter": dw, "hub": np.array([x_w, 0.0, zf + hub_h]), "floor_z": zf, "slot": slot}
+        slots = []
+        if well and hub_h < R:
+            for yh in ys:
+                slot = {"x0": x_w - half_x, "x1": x_w + half_x, "y": float(np.sqrt(R * R - hub_h * hub_h)) + 0.05,
+                        "z": zf - (R - hub_h) - 0.04, "yc": yh}
+                # the box stays inside the hull: 5 cm above the canoe body's bottom and inside its sides
+                for x in (slot["x0"], slot["x1"]):
+                    zk = float(self.hull.zk(np.array([x]))[0])
+                    if (slot["z"] < zk + 0.05
+                            or abs(yh) + slot["y"] > self.hull.half_breadth_at(x, slot["z"]) - 0.05):
+                        raise ValueError(f"wheel slot ({2 * slot['y']:.2f} m wide, bottom {slot['z']:.2f} m) does "
+                                         "not fit inside the hull: raise visual.deck.wheel.hub_height "
+                                         "(data_format.md 3.7.3)")
+                slots.append(slot)
+            if twin and slots[0]["yc"] - slots[0]["y"] < 0.05:
+                raise ValueError("twin wheel slots meet on the centreline: raise visual.deck.wheel.spacing "
+                                 "(data_format.md 3.7.3)")
+        if max(abs(y) for y in ys) + R > 0.95 * yc:
+            raise ValueError(f"wheel diameter {dw:.2f} m does not fit the cockpit ({2 * yc:.2f} m wide "
+                             "at the wheel; data_format.md 3.7.3)")
+        hubs = [np.array([x_w, yh, zf + hub_h]) for yh in ys]
+        return {"x": x_w, "diameter": dw, "hub": hubs[0], "hubs": hubs, "floor_z": zf,
+                "slot": slots[0] if slots else None, "slots": slots}
 
     def in_slot(self, x, y):
-        """Inside the wheel slot in the cockpit floor (arrays)."""
-        sl = self.helm["slot"] if self.helm else None
-        if sl is None:
-            return np.zeros(np.broadcast(np.asarray(x), np.asarray(y)).shape, dtype=bool)
-        return (np.asarray(x) > sl["x0"]) & (np.asarray(x) < sl["x1"]) & (np.abs(np.asarray(y)) < sl["y"])
+        """Inside a wheel slot in the cockpit floor (arrays)."""
+        x, y = np.asarray(x), np.asarray(y)
+        out = np.zeros(np.broadcast(x, y).shape, dtype=bool)
+        for sl in (self.helm["slots"] if self.helm else []):
+            out |= (x > sl["x0"]) & (x < sl["x1"]) & (np.abs(y - sl["yc"]) < sl["y"])
+        return out
 
     # ------------------------------------------------------------------------------------------------------
     # analytic surfaces (for placing hardware)
@@ -263,18 +290,23 @@ class Deck:
         """The coachroof's aft face on the deck's uv1 (data_format.md 8.5): its own rectangle in a corner of the plan
         image the deck does not use (forward of the bow on the port side), so lines painted down it read as on the
         top and the cockpit floor. {"x": the face's x, "y": (min, max), "z": (min, max) of the face, "plan": (x, y)
-        of the face's (y min, z max) corner in the plan, "scale": plan metres per face metre}, or None without a
-        coachroof."""
-        if not self.has_cabin:
-            return None
+        of the face's (y min, z max) corner in the plan, "scale": plan metres per face metre}. On a flush deck the face
+        is the cockpit's forward bulkhead."""
         if hasattr(self, "_face_frame"):
             return self._face_frame
-        x = float(self.xk0)
-        yb = float(self.yk(x))
-        yck = float(self.yc(x))
-        z0 = float(self.floor_z(x))
-        z1 = float(np.max(self.cabin_z(np.full(9, x), np.linspace(-yb, yb, 9))))
-        fy = max(yb, yck)
+        if self.has_cabin:
+            x = float(self.xk0)
+            yb = float(self.yk(x))
+            yck = float(self.yc(x))
+            z0 = float(self.floor_z(x))
+            z1 = float(np.max(self.cabin_z(np.full(9, x), np.linspace(-yb, yb, 9))))
+            fy = max(yb, yck)
+        else:
+            # a flush deck: the cockpit's forward bulkhead is the face
+            x = float(self.xc1)
+            fy = float(self.yc(x))
+            z0 = float(self.floor_z(x))
+            z1 = float(self.deck_z(x, 0.0))
         W, H = 2 * fy, max(z1 - z0, 0.05)
         x0, yt, w, h = self.plan_rect()
         L = self.hull.L
@@ -380,8 +412,8 @@ class Deck:
         # deck stations: hull stations plus the feature breaks, dense near the cabin front
         xs = list(hull.stations_x(n_st))
         xs += [self.xc0, self.xc1, self.xk1]
-        if self.has_cabin:
-            xs += [self.xc1 + 1e-4]     # the deck steps in from the cockpit's edge to the coachroof's base here
+        # the deck steps in from the cockpit's edge to the coachroof's base here (a flush deck: to the centreline)
+        xs += [self.xc1 + 1e-4]
         if self.has_cabin:
             # the coachroof: even stations, denser over the rounded aft edge and the nose
             lk = self.xk1 - self.xk0
@@ -467,8 +499,9 @@ class Deck:
         if sl is None:
             self._floor(part, xs, -yc, yc, 9)
         else:
-            # the floor round the wheel slot (data_format.md 3.7.3): aft and forward of it whole, beside it in two
-            # strips; the slot a box with gelcoat walls and bottom
+            # the floor round the wheel slots (data_format.md 3.7.3): aft and forward of them whole, beside them in
+            # strips; each slot a box with gelcoat walls and bottom (twin wheels: two slots abreast)
+            slots = sorted(self.helm["slots"], key=lambda q: q["yc"])
             xs_f = np.unique(np.concatenate([xs, [sl["x0"], sl["x1"]]]))
             aft, fwd = xs_f[xs_f <= sl["x0"] + 1e-9], xs_f[xs_f >= sl["x1"] - 1e-9]
             mid = xs_f[(xs_f >= sl["x0"] - 1e-9) & (xs_f <= sl["x1"] + 1e-9)]
@@ -476,19 +509,25 @@ class Deck:
                 self._floor(part, aft, -self.yc(aft), self.yc(aft), 9)
             if len(fwd) > 1:
                 self._floor(part, fwd, -self.yc(fwd), self.yc(fwd), 9)
-            self._floor(part, mid, -self.yc(mid), -sl["y"], 3)
-            self._floor(part, mid, sl["y"], self.yc(mid), 3)
-            x0, x1, yw, zb = sl["x0"], sl["x1"], sl["y"], sl["z"]
+            edges = [-self.yc(mid)]
+            for q in slots:
+                edges += [np.full_like(mid, q["yc"] - q["y"]), np.full_like(mid, q["yc"] + q["y"])]
+            edges.append(self.yc(mid))
+            for k in range(0, len(edges), 2):
+                self._floor(part, mid, edges[k], edges[k + 1], 3)
+            x0, x1 = sl["x0"], sl["x1"]
             z0, z1 = float(self.floor_z(x0)), float(self.floor_z(x1))
-            part.add("gelcoat", planar_polygon(np.array([[x0, -yw, zb], [x1, -yw, zb], [x1, yw, zb], [x0, yw, zb]]),
-                                               [0, 0, 1]))
-            part.add("gelcoat", planar_polygon(np.array([[x0, -yw, zb], [x0, yw, zb], [x0, yw, z0], [x0, -yw, z0]]),
-                                               [1, 0, 0]))
-            part.add("gelcoat", planar_polygon(np.array([[x1, yw, zb], [x1, -yw, zb], [x1, -yw, z1], [x1, yw, z1]]),
-                                               [-1, 0, 0]))
-            for sy in (1.0, -1.0):
-                part.add("gelcoat", planar_polygon(np.array([[x0, sy * yw, zb], [x1, sy * yw, zb], [x1, sy * yw, z1],
-                                                             [x0, sy * yw, z0]]), [0, -sy, 0]))
+            for q in slots:
+                yr, yl, zb = q["yc"] - q["y"], q["yc"] + q["y"], q["z"]
+                part.add("gelcoat", planar_polygon(np.array([[x0, yr, zb], [x1, yr, zb], [x1, yl, zb],
+                                                             [x0, yl, zb]]), [0, 0, 1]))
+                part.add("gelcoat", planar_polygon(np.array([[x0, yr, zb], [x0, yl, zb], [x0, yl, z0],
+                                                             [x0, yr, z0]]), [1, 0, 0]))
+                part.add("gelcoat", planar_polygon(np.array([[x1, yl, zb], [x1, yr, zb], [x1, yr, z1],
+                                                             [x1, yl, z1]]), [-1, 0, 0]))
+                for sy, yw in ((1.0, yl), (-1.0, yr)):
+                    part.add("gelcoat", planar_polygon(np.array([[x0, yw, zb], [x1, yw, zb], [x1, yw, z1],
+                                                                 [x0, yw, z0]]), [0, -sy, 0]))
         # side walls
         for side in (1.0, -1.0):
             ytop = side * yc
@@ -515,7 +554,8 @@ class Deck:
             ys = np.linspace(-float(self.yc(x)), float(self.yc(x)), 9)
             top = np.stack([np.full_like(ys, x), ys, self.deck_z(x, ys)], -1)
             bot = np.stack([np.full_like(ys, x), ys[::-1], np.full_like(ys, float(self.floor_z(x)))], -1)
-            part.add("gelcoat", planar_polygon(np.vstack([top, bot]), [-1, 0, 0]))
+            # its own rectangle of the deck plan (face_frame), as the coachroof's aft face
+            part.add("face", planar_polygon(np.vstack([top, bot]), [-1, 0, 0]))
         if not self.open_transom:
             x = self.xc0
             ys = np.linspace(-float(self.yc(x)), float(self.yc(x)), 9)

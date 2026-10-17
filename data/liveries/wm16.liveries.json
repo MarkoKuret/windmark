@@ -1,0 +1,54 @@
+{
+  "schema": "windmark.liveries/2",
+  "class": "wm16",
+  "insignia": {"text": "W16"},
+  "sails": {
+    "main": {"cloth": "laminate", "color": "#2b2d31", "fibre": "#5c5f66", "number": "#e2e2dc"},
+    "headsail": {"cloth": "laminate", "color": "#2b2d31", "fibre": "#5c5f66", "number": "#e2e2dc"},
+    "code_zero": {"cloth": "laminate", "color": "#2b2d31", "fibre": "#5c5f66", "number": "#e2e2dc"},
+    "spinnaker": {"cloth": "nylon", "color": "#d8d9d6", "design": "head", "radius": 0.26, "number": "#1b1d21",
+      "colors": ["#b3161d"]}
+  },
+  "ropes": {
+    "mainsheet": {"color": "#2a2c30", "fleck": "#c43a2c"},
+    "sheet": {"color": "#c6c7c2", "fleck": "#2a2c30"},
+    "kite_sheet": {"color": "#b3302a", "fleck": "#d6d6ce"},
+    "halyard_main": {"color": "#9c4c4e", "fleck": "#d6d6ce"},
+    "halyard_jib": {"color": "#486792", "fleck": "#d6d6ce"},
+    "halyard_kite": {"color": "#497551", "fleck": "#d6d6ce"},
+    "halyard_code": {"color": "#b79c5a", "fleck": "#2a2b2e"},
+    "control": {"color": "#6b5986", "fleck": "#d6d6ce"}
+  },
+  "liveries": [
+    {
+      "id": "graphite",
+      "name": "Graphite and red",
+      "hull": {
+        "topsides": "#1e2125",
+        "text": "#dedfda",
+        "boot_stripe": "#b3161d",
+        "antifouling": "#141518",
+        "keel": "#17181b",
+        "graphic": {"type": "stripes", "colors": ["#b3161d", "#c9cacb"], "depth": [0.07, 0.125],
+          "width": [0.06, 0.012], "from": 0.0, "to": 0.97}
+      },
+      "deck": {"gelcoat": "#c9c9c4", "nonslip": "#8e8f8b"}
+    }
+  ],
+  "boats": [
+    {"id": "valkyrie", "boat_name": "Valkyrie", "sail_number": "52", "nation": "SLO"},
+    {"id": "night_heron", "boat_name": "Night Heron", "sail_number": "1", "nation": "AUS"},
+    {"id": "tempesta", "boat_name": "Tempesta", "sail_number": "11", "nation": "ITA"},
+    {"id": "orion", "boat_name": "Orion", "sail_number": "8", "nation": "GBR"},
+    {"id": "cierzo", "boat_name": "Cierzo", "sail_number": "14", "nation": "ESP"},
+    {"id": "fortuna", "boat_name": "Fortuna", "sail_number": "33", "nation": "GER"},
+    {"id": "kaimana", "boat_name": "Kaimana", "sail_number": "62", "nation": "USA"},
+    {"id": "mistral", "boat_name": "Mistral", "sail_number": "70", "nation": "FRA"},
+    {"id": "taniwha", "boat_name": "Taniwha", "sail_number": "21", "nation": "NZL"},
+    {"id": "bura", "boat_name": "Bura", "sail_number": "16", "nation": "CRO"},
+    {"id": "nordlys", "boat_name": "Nordlys", "sail_number": "44", "nation": "NOR"},
+    {"id": "sudestada", "boat_name": "Sudestada", "sail_number": "5", "nation": "ARG"},
+    {"id": "gale_force", "boat_name": "Gale Force", "sail_number": "99", "nation": "CAN"},
+    {"id": "zephyr", "boat_name": "Zephyr", "sail_number": "27", "nation": "NED"}
+  ]
+}

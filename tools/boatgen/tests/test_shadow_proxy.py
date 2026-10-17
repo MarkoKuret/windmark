@@ -15,7 +15,7 @@ from boatgen.mesh import merge, normalize
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
-CLASSES = {c: os.path.join(REPO, "data", "classes", f"{c}.boat.json") for c in ("wm12", "wm7")}
+CLASSES = {c: os.path.join(REPO, "data", "classes", f"{c}.boat.json") for c in ("wm12", "wm7", "wm16")}
 # what the checks hold the proxy to: most of the inset from every drawn surface the sun can light (the drawn
 # surfaces' facets and the proxy's chords take some of it, and near the transom the cockpit's sides come within a
 # few centimetres of the narrowing topsides); from one that looks down (the hull's bottom, which gives way to the
@@ -138,11 +138,10 @@ class ShadowProxyTest(unittest.TestCase):
             lit = Surface(body, keep=lambda T: nz(T) > LOOKS_DOWN)
             P, N = map(np.vstack, zip(*[samples(g) for g in shadow.hull_and_deck(hull, d)]))
             # the wheel well under the cockpit floor stays shaded: the floor's proxy crosses its walls
-            sl = d.helm["slot"] if d.helm else None
-            if sl is not None:
+            for sl in (d.helm["slots"] if d.helm else []):
                 m = shadow.INSET
-                well = ((P[:, 0] > sl["x0"] - m) & (P[:, 0] < sl["x1"] + m) & (np.abs(P[:, 1]) < sl["y"] + m)
-                        & (P[:, 2] > sl["z"] - m))
+                well = ((P[:, 0] > sl["x0"] - m) & (P[:, 0] < sl["x1"] + m)
+                        & (np.abs(P[:, 1] - sl["yc"]) < sl["y"] + m) & (P[:, 2] > sl["z"] - m))
                 P, N = P[~well], N[~well]
             with self.subTest(cls=c):
                 self.assertTrue(((P[:, 0] > 0) & (P[:, 0] < hull.L)).all())

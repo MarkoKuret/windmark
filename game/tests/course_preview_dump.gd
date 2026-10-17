@@ -10,7 +10,8 @@ const OUT := "res://generated/course_preview"
 const DT := 0.1
 
 ## name, race mode, start (x, y, twa deg), seconds to run, camera: ["chase"] or ["look", eye ENU, at ENU, fov],
-## optional: {"fleet": boats, "seed": world seed, "sky": weather preset}. The haze shots (water_render.md §4.5) see
+## optional: {"fleet": boats, "seed": world seed, "sky": weather preset, "time": clock hour, "conditions": name
+## (the light of water_render.md §4.5)}. The haze shots (water_render.md §4.5) see
 ## the same fleet from 1, 3 and 10 km downwind at one image scale (["from_boat", distance, eye height, fov]).
 const HAZE := {"fleet": 8, "seed": 84}
 const GARDA := {"fleet": 8, "seed": 84, "venue": "garda", "course": "garda/garda_wl", "wind": 195.0}
@@ -48,6 +49,13 @@ const SHOTS := [
 	["trieste_miramare", true, [], 20.0, ["look", Vector3(400, 1300, 6), Vector3(-600, 2500, 40), 55.0], TRIESTE],
 	["trieste_city", true, [], 20.0, ["look", Vector3(800, -400, 8), Vector3(3000, -2600, 80), 55.0], TRIESTE],
 	["trieste_aerial", true, [], 262.0, ["aerial", 700.0], TRIESTE],
+	# the land under a low sun and under an overcast sky (the light of water_render.md §4.5 on the terrain)
+	["island_golden", false, [140.0, 1800.0, 50.0], 20.0, ["chase", 1.35, 0.14, 0.4], {"time": 19.0}],
+	["island_overcast", false, [140.0, 1800.0, 50.0], 20.0, ["chase", 1.35, 0.14, 0.4], {"conditions": "overcast"}],
+	["garda_golden", true, [], 20.0, ["look", Vector3(-1100, 600, 5), Vector3(-1500, 1100, 40), 55.0],
+			{"fleet": 8, "seed": 84, "venue": "garda", "course": "garda/garda_wl", "wind": 195.0, "time": 19.0}],
+	["trieste_golden", true, [], 185.0, ["chase", 1.35, 0.14, 0.4],
+			{"fleet": 8, "seed": 84, "venue": "trieste", "course": "trieste/barcola_wl", "wind": 65.0, "time": 19.0}],
 ]
 
 var _shot := -1
@@ -90,6 +98,8 @@ func _next() -> void:
 	# headless meshes do not keep the native wakes' in-place updates: dump the references' meshes (the same
 	# geometry, tests/wakes_native_test.gd)
 	(_scene.get_node("Wakes") as SeaWakes).use_reference = true
+	_scene.light_time = float(opts.get("time", -1.0))
+	_scene.light_conditions = String(opts.get("conditions", ""))
 	root.add_child(_scene)
 	if opts.has("sky"):
 		_scene.sky.set_preset_name(opts["sky"])
@@ -297,6 +307,9 @@ func _dump(name: String) -> void:
 		"ambient_energy": env.ambient_light_energy,
 		"hud": "%s\n%s" % [_scene.hud.text_of("clock"), _scene.hud.text_of("next")] if _scene.hud.race.active else "",
 	}
+	# the headless window is 64 px high, so the Sea's overlay pixel angle (water_render.md §6) would draw the guide
+	# lines a dozen times too wide: take the angle of the previews' 720 px frame instead
+	data["water"]["ov_px_angle"] = deg_to_rad(cam.fov) / 720.0
 	var surf: MeshInstance3D = sea.get_node("Surface")
 	data["grid"] = _write_arrays(dir, "grid", surf.mesh.surface_get_arrays(0), Transform3D.IDENTITY)
 	var g := sea.model.exposure

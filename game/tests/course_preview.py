@@ -52,7 +52,7 @@ void main() {
 #ifdef WM_WHITECAPS
     wm_apply_caps(S, v_local, px, v_expo, dist, n_geo);
 #endif
-    vec4 ov = wm_overlays(v_local, dist);
+    vec4 ov = wm_overlays(v_local, dist, view.y, v_eta, u_cam.y - (v_wpos.y - v_eta));
     vec3 albedo = mix(S.albedo, ov.rgb * 0.8, ov.a);
     vec3 emission = mix(S.emission, ov.rgb * 0.35, ov.a);
     float rough = mix(S.roughness, 0.5, ov.a);

@@ -61,7 +61,7 @@
       "lifelines": true,
       "steering": "wheel",
       "wheel": {"twin": true, "diameter": 1.2},
-      "grinders": 0,
+      "grinders": 2,
       "halyard_leads": "modelled"
     },
     "rig": {"spreaders": 3, "spreader_sweep": 0.26, "backstay": true},

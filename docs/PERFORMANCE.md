@@ -15,13 +15,13 @@ per-feature ablation measurements are in "Measured cost per feature" (to be fill
 | --- | --- | --- |
 | GPU, tier L, Intel UHD 620 | about 25 to 35 ms (30 to 40 fps) | 60 fps not plausible at native 1080p; plausible but marginal at 67 to 75 % render scale |
 | GPU, tier L, Vega 8 | about 2x faster | tier L at native 1080p plausible |
-| Default tier | M for everyone (`scripts/settings.gd:56`) | a weak laptop starts on the heavier tier |
-| Auto render scale | 100 % on a non-HiDPI 1080p screen (`settings.gd:94-98, 347-352`) | |
+| Default tier | Done (WM-101): integrated GPUs and the Steam Deck start on L (`Settings.device_graphics`) | was M for everyone |
+| Auto render scale | Done (WM-101): 67 % on an integrated GPU at the first start, Auto (native) on the Deck | was 100 % on a non-HiDPI 1080p screen |
 | Game CPU per frame | 3.6 ms on M5 (tier H), about 3 ms tier L | 7 to 11 ms on i3/Ryzen 3, about 20 ms on Celeron |
 | Core tick, 16 AI boats | mean 0.59 ms, p99 4.1 ms, max 7.5 ms on M5; after WM-102 racing mean 0.12 ms, p99 0.42 ms, max 0.94 ms | 15 to 45 ms one-frame hitches on cheap CPUs at starts and roundings (before WM-102) |
 | VRAM, one class, 16 boats | about 190 MB (L), 235 MB (M), 270 MB (H) | |
-| Download | about 237 MB of imported content | most of it 4K liveries and duplicated boat textures |
-| Threads | everything on the main thread | no Thread or WorkerThreadPool in `game/scripts` or `game/native/src` |
+| Download | 115 MB of imported content for 4 classes (2026-10-17, fresh import) | liveries 25 MB per class at 2K (hull atlas, sails), boats 5.9 MB, shared tiling textures 7.5 MB, cloth 0.75 MB, audio 0.8 MB |
+| Threads | Done (WM-103): the core steps on a worker thread one tick ahead | |
 | Export | no build can be exported today | see A4 |
 
 ### GPU time on tier L, UHD 620, 1080p (estimate)
@@ -66,18 +66,18 @@ Effort: S (hours), M (a day or two), L (several days). Grouped into the work pac
 
 | # | What | Where | Gain | Effort |
 | --- | --- | --- | --- | --- |
-| G1 | Pick tier and render scale from the GPU at first launch: integrated GPU (`RenderingServer.get_video_adapter_name()` or the RenderingDevice device type) starts on tier L at 67 to 75 % render scale | `scripts/settings.gd:56, 94-98, 347-352` | 2 to 3x on the first experience | S |
-| G4 | Sky clouds at half or quarter resolution (`AT_HALF_RES_PASS` / `AT_QUARTER_RES_PASS`), or bake the sky to a panorama per preset (clouds are static per preset) | `sky.gdshader:15-17`, `sky_common.gdshaderinc:56-73` | 0.7 to 1 ms GPU on UHD | S |
+| G1 | Done (WM-101). Pick tier and render scale from the GPU at first launch: integrated GPU (`RenderingServer.get_video_adapter_name()` or the RenderingDevice device type) starts on tier L at 67 to 75 % render scale | `scripts/settings.gd:56, 94-98, 347-352` | 2 to 3x on the first experience | S |
+| G4 | Done 2026-10-17 on tier L: `sky_l.gdshader` draws the cumulus in Godot's half-resolution pass (a quarter of the pixels, premultiplied) over the full-resolution ramp and sun disc; M and H keep `sky.gdshader`. Gain on an integrated GPU: an estimate (no such GPU here), about 70 % of the cloud cost, 0.2 to 0.4 ms at 67 % of 1080p; the half-res pass covers the whole screen, but below the horizon the cloud code exits at once | `sky_l.gdshader`, `sky_common.gdshaderinc`, `SkyRig.apply_sky_shader` | 0.2 to 0.4 ms GPU on UHD (estimate) | S |
 | C2 | Done (WM-102). Hull gap geometry: squared distances and a bounding-box cull in `vertex_edge_min` (prototyped: mean 0.595 to 0.450 ms, -24 %; max 7.5 to 5.45 ms; checksum bit-identical c574b95525e4ea39) | `core/src/course/geometry.cpp:93-140` | -24 % tick | S |
 | C2b | Done (WM-102), plus samples taken nearest first with an oriented-box bound. Further: cull in the other boat's frame; precompute unit edge normals (`max_separation` takes a sqrt per edge per call); cache placed outlines per track sample instead of rebuilding them per candidate and neighbour; stop allocating a vector per call | `ai/ai_predict.cpp:67-83`, `ai_rules.cpp:440-475`, `rules/rules_geom.cpp:69-160` | another 30 to 50 % of the tick (untested) | M |
 | C3 | Done (WM-102): `wm_world_step` takes no checksum, C API version 3. Checksum on demand or every N ticks instead of serialising the whole world every tick (game ignores it); check the networking spec first | `core/src/world/world.cpp:206-212, 328` | 12 % of the tick | S |
-| A2 | Boatgen tiling textures VRAM-compressed (187 of 207 imported lossless, mode 0; `BoatMaterials._shared` keeps the first-loaded, lossless copy) | `game/generated/boats/*.jpg.import` | about 33 MB to 5 MB VRAM for wm7 | S |
-| C5 | Wakes and drawn shadows: build `shadow_state()` only for selected boats (built for all 16 every frame though tier H draws none and L draws one: 0.15 ms on L); no Dictionary per boat per frame in `_wake_state`; copy the about 10 shader uniforms (textures included) onto the 2 materials only when the sea changes; avoid sorting arrays of arrays in `_select` | `sail_test.gd:752-753`, `boat_view.gd:739-759`, `sea_wakes.gd:303-308` | 0.3 to 0.8 ms CPU on M5 | S |
-| C6 | Sails: full-rate update by screen size or for the nearest N boats, others at 30 Hz on tier L (today every boat within `NEAR_M` 200 m, about 1,250 vertices each, every frame); move `cam.get_frustum()` out of the per-sail loop (48 Array allocations per frame) | `boat_view.gd:17-20, 684-694` | 0.3 to 0.4 ms CPU on M5 | S |
-| C7 | Audio: boat voice parameters at 20 to 30 Hz, reuse the scene's poses (today a Dictionary copy per voice, `render_pose(b, 1.0)` per boat and a lambda sort every frame) | `scripts/audio/game_audio.gd:546-620` | about 0.3 ms CPU on M5 | S |
-| C8 | Sim bridge: one packed array of all poses per frame instead of a new object plus 9 dynamic `Object.set` calls per boat; integer cache keys instead of `"state:%d" % boat` | `core_sim_source.gd:320-321, 485-488` | 0.1 to 0.2 ms CPU on M5 | S |
-| A9a | Cloth detail PNGs to VRAM-compressed (lossless today) | `liveries/_cloth` | about 4 MB VRAM | S |
-| A6 | Bake load-time work to files: `BoatLivery.texture_mean/channel_mean` (GPU readback, CPU decompress and resize per texture at race start; boatgen can write the means to the sidecar); `SeaTextures` 256x256 noise built in GDScript loops; `LookFx.lut` 33^3 `grade()` calls per preset. `LiveryText` (16 images of 1024x512 on the CPU, about 11 MB VRAM) can stay | `scripts/livery/boat_livery.gd:782-825`, `scenes/sea/sea_textures.gd`, `scenes/sea/look_fx.gd` | shorter race load | S each |
+| A2 | Done (WM-100): boatgen stages one shared tiling set in `generated/boats/_tex` with `compress/mode=2` (5 files, 7.5 MB imported, about 7 MB VRAM); the 120 lossless `.import` files still in an old checkout's `generated/boats` are stale output | `tools/boatgen/boatgen/textures.py` | about 33 MB to 7 MB VRAM | S |
+| C5 | Done (WM-103). Wakes and drawn shadows: build `shadow_state()` only for selected boats (built for all 16 every frame though tier H draws none and L draws one: 0.15 ms on L); no Dictionary per boat per frame in `_wake_state`; copy the about 10 shader uniforms (textures included) onto the 2 materials only when the sea changes; avoid sorting arrays of arrays in `_select` | `sail_test.gd:752-753`, `boat_view.gd:739-759`, `sea_wakes.gd:303-308` | 0.3 to 0.8 ms CPU on M5 | S |
+| C6 | Done (WM-103). Sails: full-rate update by screen size or for the nearest N boats, others at 30 Hz on tier L (today every boat within `NEAR_M` 200 m, about 1,250 vertices each, every frame); move `cam.get_frustum()` out of the per-sail loop (48 Array allocations per frame) | `boat_view.gd:17-20, 684-694` | 0.3 to 0.4 ms CPU on M5 | S |
+| C7 | Done (WM-103, formulas at 30 Hz). Audio: boat voice parameters at 20 to 30 Hz, reuse the scene's poses (today a Dictionary copy per voice, `render_pose(b, 1.0)` per boat and a lambda sort every frame) | `scripts/audio/game_audio.gd:546-620` | about 0.3 ms CPU on M5 | S |
+| C8 | Done (WM-103). Sim bridge: one packed array of all poses per frame instead of a new object plus 9 dynamic `Object.set` calls per boat; integer cache keys instead of `"state:%d" % boat` | `core_sim_source.gd:320-321, 485-488` | 0.1 to 0.2 ms CPU on M5 | S |
+| A9a | Cloth detail PNGs to VRAM-compressed (lossless today: 3 x 512² RGBA8, 0.75 MB imported, about 4 MB VRAM with mipmaps; `tools/liverybake` writes `compress/mode=0` for `_cloth/`, so the change is the livery tool's) | `liveries/_cloth` | about 3 MB VRAM | S |
+| A6 | Partly done 2026-10-17 (`BakeCache`, `user://cache/`): the whitecap foam texture (207 ms of GDScript on the M5, 0 ms from the cache) and the grade LUT (31 ms per light, 0 ms), keyed by the building script's md5, the parameters and the engine version. Open: the livery texture means, the venue build (192 ms), the pause menu and results screens (222 ms), below. Bake load-time work to files: `BoatLivery.texture_mean/channel_mean` (GPU readback, CPU decompress and resize per texture at race start; boatgen can write the means to the sidecar); `SeaTextures` 256x256 noise built in GDScript loops; `LookFx.lut` 33^3 `grade()` calls per preset. `LiveryText` (16 images of 1024x512 on the CPU, about 11 MB VRAM) can stay | `scripts/livery/boat_livery.gd:782-825`, `scenes/sea/sea_textures.gd`, `scenes/sea/look_fx.gd` | shorter race load | S each |
 | A8 | Shader warm-up on the loading screen: draw the boat, sail, wake, bow-wave, spray and mist materials for 1 or 2 frames off camera (Godot 4.6 ubershaders and pipeline cache are on, but each of the 14 custom shaders still compiles on first use) | loading screen | no first-use stutter | S |
 
 ### Package 2: texture diet
@@ -87,7 +87,7 @@ Effort: S (hours), M (a day or two), L (several days). Grouped into the work pac
 | A1 | Bake 2K hull/deck and 1K sail liveries by default, 4K only for tier H or an optional HD set (today hull 4096x2048, deck 4096x1336/1476, sails 2048 tall, BC7 albedo, BC5 normals, the same on every tier: about 89 MB wm12, 77 MB wm7) | `tools/liverybake`, `game/generated/liveries/<class>/navy/*`, `sails/*` | about 65 MB VRAM per class; about 120 MB off the download for both classes | M |
 | A1b | Liveries albedo DXT1 (`high_quality=false`) instead of BC7; check that lettering stays sharp | livery `.import` | about 20 MB more per class | S |
 | A3 | One shared boat texture set: every GLB (3 classes x LOD0/1/2) embeds the same about 22 images; 207 boat .jpg imported, 86 distinct, 24 used, 53.8 MB of imported .ctex. Boatgen writes `generated/boats/_tex/` referenced by URI, with a mode 2 import preset (also fixes A2) | `tools/boatgen` | about 48 MB off the download | S/M |
-| A9b | Shadow atlas 2048 instead of 4096 on tier M | `sea_quality.gd` | 24 MB VRAM | S |
+| A9b | Done (WM-101). Shadow atlas 2048 instead of 4096 on tier M | `sea_quality.gd` | 24 MB VRAM | S |
 
 ### Package 3: exportable build
 
@@ -102,7 +102,7 @@ Effort: S (hours), M (a day or two), L (several days). Grouped into the work pac
 | --- | --- | --- | --- | --- |
 | G3 | Boatgen emits LOD1 and LOD2 as 1 to 3 surfaces with one atlas or vertex-colour material, plus an impostor LOD3 beyond about 400 m. Today 32 to 36 surfaces at LOD0 (13 to 14 materials), 29 to 33 at LOD1 (from 30 m), 23 to 27 at LOD2 (from 100 m); Forward+ draws each in the depth prepass, colour pass and each shadow cascade: about 1,100 to 1,400 draws for 16 boats, about 5 to 10 ms render-thread CPU on a 15 W laptop | `tools/boatgen`, `generated/boats/wm*.physics.json`, `boat_view.gd:166-187` | about 60 % fewer draws | M |
 | A7 | LOD distances per tier (L: LOD1 from about 12 m). Triangles: wm12 LOD0 93.7k (hardware alone 37k), LOD1 35k, LOD2 11.6k; wm7 LOD0 72.8k; 16 boats inside 30 m at a start is about 1.5M triangles plus the shadow pass | `boat_view.gd:342-360` | fewer triangles on L | S |
-| A7b | Turn off `meshes/generate_lods` and `create_shadow_meshes` on the `_lod1`/`_lod2` GLBs (a second automatic LOD system and extra index buffers: 3.1 / 1.1 / 0.35 MB scene files); consider `visibility_range` instead of the per-boat LOD script (all three levels are instanced per boat) | boat GLB `.import`, `boat_view.gd` | less memory, simpler | S |
+| A7b | Superseded by WM-100 (one model, the engine's LOD). Turn off `meshes/generate_lods` and `create_shadow_meshes` on the `_lod1`/`_lod2` GLBs (a second automatic LOD system and extra index buffers: 3.1 / 1.1 / 0.35 MB scene files); consider `visibility_range` instead of the per-boat LOD script (all three levels are instanced per boat) | boat GLB `.import`, `boat_view.gd` | less memory, simpler | S |
 
 Already fine: meshes and materials are shared across identical boats; sails are per-boat dynamic meshes; wake and bow
 meshes are written in place with `mesh_surface_update_*_region` (ribbons 80x15 vertices, two per boat; bow sheets
@@ -112,7 +112,7 @@ meshes are written in place with `mesh_surface_update_*_region` (ribbons 80x15 v
 
 | # | What | Where | Gain | Effort |
 | --- | --- | --- | --- | --- |
-| C1 | Step the core on a worker thread one tick ahead; CoreSim keeps double-buffered render poses, sails and wakes so the frame never reads the world while it steps. Also spread the `_on_tick` work (HUD tick, audio tick, `_snapshot_sails`), which all lands on one frame in three | `scripts/sim/sim_runner.gd:29-53`, `native/src/core_sim.cpp:223`, `scenes/sail_test.gd:593-611` | removes the 7.5 ms (M5) / 15 to 45 ms (cheap) hitches, uses a second core | M/L |
+| C1 | Done (WM-103). Step the core on a worker thread one tick ahead; CoreSim keeps double-buffered render poses, sails and wakes so the frame never reads the world while it steps. Also spread the `_on_tick` work (HUD tick, audio tick, `_snapshot_sails`), which all lands on one frame in three | `scripts/sim/sim_runner.gd:29-53`, `native/src/core_sim.cpp:223`, `scenes/sail_test.gd:593-611` | removes the 7.5 ms (M5) / 15 to 45 ms (cheap) hitches, uses a second core | M/L |
 | C6b | Later: SailShape and ribbon updates as WorkerThreadPool tasks, upload on the main thread | native | | M |
 | C9 | Done (WM-102), neutral on the fleet measurements over 140 races. Stagger AI decisions by boat index (today all on even ticks, `(x.n % 2u) == 0u`): halves the AI peak. Changes behaviour: spec update and new checksum files | `core/src/ai/ai.cpp:365` | half the AI peak | S |
 
@@ -122,7 +122,7 @@ meshes are written in place with `mesh_surface_update_*_region` (ribbons 80x15 v
 | --- | --- | --- | --- | --- |
 | G2 | Potato tier below L: render scale 0.5 to 0.67 with FSR, FXAA instead of SMAA, sun shadows off (keep the drawn BoatShadows on the water), no LUT grade; water `unshaded` with a hand-written sun specular and the sky-ramp Fresnel (already uniforms in `sea_common.gdshaderinc:45-48`), so no IBL fetch; 1 detail layer, no glint tap, puff loop capped at 4; sky without clouds or a baked panorama | quality tiers, shaders | 50 to 65 % of tier L GPU time | M |
 | G6 | Try the Mobile renderer for tier L and potato: no depth prepass (about half the geometry and draws), no clustered-light compute. Everything tier L uses works there. Caveat: the 10-bit buffer clips highlights at exposure 0.5 / white 6 (`env_day.tres:26-28`), so the sun disc, glints and sails need a retune; renderer is chosen per export or launch, not live | `project.godot` | 15 to 30 % | M |
-| G7 | Tier L shadows: hard filter (`SHADOW_QUALITY_SOFT_VERY_LOW` still takes several PCF taps), boats beyond about 30 m do not cast | `sea_quality.gd` | 0.3 to 0.6 ms GPU | S |
+| G7 | Done (WM-101). Tier L shadows: hard filter (`SHADOW_QUALITY_SOFT_VERY_LOW` still takes several PCF taps), boats beyond about 30 m do not cast | `sea_quality.gd` | 0.3 to 0.6 ms GPU | S |
 | G8 | Done 2026-10-11: the vignette is gone on every tier (owner decision: no vignette at all) | | about 0.3 ms GPU on iGPU | |
 | G5 | SMAA to FXAA on L and potato, or SMAA only at 100 % scale (one pass instead of three). Against the owner's "SMAA everywhere" decision of 2026-10-03: owner decides after a measurement | `project.godot`, quality tiers | 1 to 2 ms GPU on iGPU | S |
 | G9 | Mobile textures: `rendering/textures/vram_compression/import_etc2_astc` is unset. Enabling it on today's BC set roughly doubles the imported size (pair with A1 and A3), or use Basis Universal (mode 4, UASTC with RDO), one transcodable texture for desktop and mobile. All dimensions are multiples of 4 (ETC2/ASTC-safe) | `project.godot` | phone builds | S to set, M to check |
@@ -140,7 +140,7 @@ Renderer compatibility:
 
 | # | What | Where | Gain | Effort |
 | --- | --- | --- | --- | --- |
-| C4 | HUD redraws every canvas every frame; `hud_canvas.gd` rebuilds shapes as string-keyed Dictionaries and `_draw` matches on strings and redraws text. Redraw only blocks that changed, cache text sizes | `scripts/hud/hud.gd:1261-1264`, `hud_canvas.gd:30-37, 123` | 0.75 to 1 ms on M5, 2 to 6 ms on target | M |
+| C4 | Partly done (WM-103: blocks redrawn only when their primitives change). Measured 2026-10-17 (below): 0.50 ms of the 1.20 ms main thread on L, 16 boats, clock-matched. HUD redraws every canvas every frame; `hud_canvas.gd` rebuilds shapes as string-keyed Dictionaries and `_draw` matches on strings and redraws text. Redraw only blocks that changed, cache text sizes | `scripts/hud/hud.gd:1261-1264`, `hud_canvas.gd:30-37, 123` | 0.75 to 1 ms on M5, 2 to 6 ms on target | M |
 
 ## Estimated VRAM: one class (wm12), 16 boats, 1080p
 
@@ -162,8 +162,11 @@ A race with both classes adds about 80 MB.
 
 ## Download size
 
-- Imported content today about 237 MB, roughly the pck size (VRAM-compressed .ctex is stored raw; Steam's
-  compression shrinks it somewhat). The 112 MB in `native/build`, `tests/previews` and `native/third_party` are
+- Imported content 115 MB for four classes on 2026-10-17 (a fresh import; the 237 MB of the audit counted stale
+  output of older generator runs in `generated/`), roughly the pck size (VRAM-compressed .ctex is stored raw; Steam's
+  compression shrinks it somewhat): liveries 25 MB per class (the 2K atlas and sails `tools/liverybake` stages by
+  default; 4K only with `hd`), boats 5.9 MB, the shared tiling set 7.5 MB, cloth 0.75 MB, audio 0.8 MB, fonts and
+  branding 1.4 MB. Tier L loads the same 2K set as M and H; there is no 4K set in the build. The 112 MB in `native/build`, `tests/previews` and `native/third_party` are
   excluded by `.gdignore`.
 - After A1, A3 and A4: about 50 to 60 MB on desktop.
 - ETC2/ASTC for mobile adds about 30 to 40 MB, or nothing with Basis Universal.
@@ -291,7 +294,7 @@ The sail relief images live in `data/liveries` and are baked into the normal map
 | Branding | icons and a 4 MB splash, boot only |
 | Earlier: whitecaps, SMAA, haze, LUT, SSAO on H, DOF | sea per pixel +4 to 6 `exp` and 1 texture read |
 
-Menu fix (M1): cap the backdrop at 30 fps or 2 boats on the low tiers.
+Menu fix (M1): done (WM-101): on tier L the backdrop has 2 boats, no sun shadows and a 30 fps cap.
 
 ### Shaders by per-pixel cost
 
@@ -508,3 +511,30 @@ godot --path game --resolution 1920x1080 res://scenes/sail_test.tscn -- --race -
 
 Repeat with `--skip=330` (open leg) and `--quality=L`, three times each, and compare the median `fps`, `main_ms`
 and draw calls in the CSVs.
+
+## Low-end pass (2026-10-17, branch `lowend`)
+
+What the audit's open items came to, measured headless on the dev Mac (M5, Godot 4.6.3, the GDExtension's debug
+build): `--race --fleet=16 --watch --seed=7 --skip=185 --no-vsync --perf-seconds=20`, the first 5 s dropped, medians
+of the per-second means; a busy loop on another core keeps the clock up (without it the main thread reads about
+twice as long and single runs differ by 30 %; with it two runs of the same build agree within 3 %, the `input`
+section 0.025 ms in every run as the clock check). The GPU reads 0 headless: the sky figure is an estimate.
+
+| Change | Tier | Before | After | What |
+| --- | --- | --- | --- | --- |
+| Sea height from the native sampler (`Sea.height_at`: the course marks take 30 heights a frame) | L | course 0.139 ms | 0.055 ms | main 1.34 to 1.21 ms |
+| | M | course 0.137 ms | 0.056 ms | |
+| Wake nodes touched only when a wake comes or goes | L | wakes 0.118 ms | 0.109 ms | |
+| Other boats' ribbons at most 30 times a second (spec §5) | M | wakes 0.483 ms | 0.230 ms | at 145 fps; about half of that at 60 fps. Main on M 1.68 to 1.33 ms with the row above |
+| Whitecap texture and grade LUT from `user://cache` (A6) | all | 207 + 31 ms per light at load | 0 ms | the race scene's build: core 44 ms, boat views and liveries 124 ms, venue 192 ms, course 13 ms, pause menu and results 222 ms, sea and sky before the scene's `_ready` about 250 ms (now about 10 ms); whole race load 1.7 s wall headless incl. 0.46 s engine start |
+| Sky cumulus in the half-resolution pass (G4) | L | every sky pixel 7 value noises | a quarter of them | estimate 0.2 to 0.4 ms on a UHD 620 at 67 % of 1080p |
+
+Main thread on L after the pass, 16 boats, clock-matched: 1.20 ms, of which `hud` 0.58 (`Hud.tick` and
+`Hud.frame`; with `--no-hud` 0.08, and the whole process step 1.95 to 1.40 ms), `sails` 0.19, `wakes` 0.11, `audio`
+0.09, `course` 0.055, `sim` 0.04, `sea` 0.03, `camera` 0.03, `boats` 0.025, `input` 0.025. The HUD is now half of the
+game's own main-thread work on L (C4). Clock-matched, these are about 2.5 to 3x on an i3 or Ryzen 3: about 3.5 ms,
+plus the renderer's draw submission on the same thread.
+
+Checked and already right: the first start on an integrated GPU picks L at 67 % and the Steam Deck L at Auto
+(native 1280 x 800), WM-101, `menus_test`; the boatgen tiling textures are VRAM-compressed and shared (A2); the
+liveries are 2K on every tier (no 4K in the build); C5 to C8 and C1 are in (WM-103).

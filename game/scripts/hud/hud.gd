@@ -86,8 +86,7 @@ var selected := {}
 ## the pointer picks (off while the scene's pause menu is open)
 var pick_enabled := true
 ## hud.md §16.7: the selected boat's card, refreshed with the texts; empty without one. Keys: boat, head, name,
-## place, fleet, dist [value, unit], brg [value, unit], speed [value, unit], hdg [value, tack letter], course,
-## rules, rules_col, rule_text, penalty, col (her tag colour), and the raw values d_m, brg_rad, rel_rad, v, psi
+## place, fleet, course (her standing), gap_m, rules, rules_col, rule, penalty, col (her tag colour)
 var card := {}
 var sim: SimSource
 ## the screen the HUD lays out for, when set (tests, previews); zero: its viewport's
@@ -1346,15 +1345,14 @@ func label_clear(r: Rect2, rects: Array[Rect2] = []) -> bool:
 
 # ---- selected boat card (hud.md §16.7) ----
 
-## the selected boat's card from the boat states and the race and rules records of the last tick
+## the selected boat's card from the race and rules records of the last tick (hud.md §16.7: who she is, her place,
+## how she stands against the viewed boat; no cells of her distance, bearing, speed or heading)
 func _card_text() -> void:
 	card = {}
 	var b := selected_boat()
 	if b < 0 or sim == null or viewed < 0 or b == viewed or b >= sim.boat_count():
 		return
-	var me := sim.state(viewed)
-	var s := sim.state(b)
-	if me == null or s == null:
+	if sim.state(viewed) == null or sim.state(b) == null:
 		return
 	var r := race
 	var c := {"boat": b}
@@ -1371,19 +1369,6 @@ func _card_text() -> void:
 		head.append(skipper.to_upper() if skipper != "" else "PLAYER")
 	c["head"] = " · ".join(head)
 	c["name"] = r.name_of(b).to_upper()
-	# cells
-	var d := Vector2(s.pos_x - me.pos_x, s.pos_y - me.pos_y)
-	var brg := Frames.compass(d.x, d.y)
-	var rel := Frames.wrap_pi(brg - me.psi)
-	c["d_m"] = d.length()
-	c["brg_rad"] = brg
-	c["rel_rad"] = rel
-	c["v"] = s.v
-	c["psi"] = s.psi
-	c["dist"] = HudStyle.split_unit(HudFormat.distance(d.length()))
-	c["brg"] = [HudFormat.compass_deg(brg), "· " + HudFormat.relative_bearing(rel).to_upper()]
-	c["speed"] = [HudFormat.speed_kn(s.v), "KN"]
-	c["hdg"] = [HudFormat.compass_deg(s.psi), "S" if s.twa > 0.0 else "P"]
 	var col := HudStyle.PAPER
 	var ct := r.contact(b)
 	if ct != null:
@@ -1460,9 +1445,9 @@ func _card_race(c: Dictionary, b: int) -> void:
 				st = int(p["kc_state"])
 				tint = RaceHudValues.Tint.GREEN
 			if text != "":
-				c["rules"] = text + (" · BREACH" if st == RaceText.Kc.BREACH else "")
+				# one line: the relation, the rule's number, BREACH (the rules line of §11 carries the text)
+				c["rules"] = "%s · RULE %s%s" % [text, RaceText.code(rule), " · BREACH" if st == RaceText.Kc.BREACH else ""]
 				c["rules_col"] = HudStyle.TINTS[tint]
-				c["rule_text"] = "%s (%s)" % [RaceText.rule_text(rule), RaceText.code(rule)]
 				c["rule"] = rule
 			break
 	# penalties owed

@@ -1263,37 +1263,27 @@ func test_boat_card() -> void:
 	h.frame(0.3)
 	h.refresh_text()
 	var c := h.card
-	var me := sim.states[0]
-	var her := sim.states[3]
-	var d := Vector2(her.pos_x - me.pos_x, her.pos_y - me.pos_y)
 	t.ok(c["head"] == "SLO 7 · AI EXPERT" and c["name"] == "MAJA", "header: %s / %s" % [c["head"], c["name"]])
 	t.ok(c["place"] == "1" and c["fleet"] == 4, "place 1 / 4 from the shown order")
-	t.near(c["d_m"], d.length(), 1e-6, "distance from the boat states")
-	t.ok(c["dist"] == HudStyle.split_unit(HudFormat.distance(d.length())), "distance text %s" % str(c["dist"]))
-	var brg := Frames.compass(d.x, d.y)
-	t.near(c["brg_rad"], brg, 1e-9, "bearing to her")
-	t.ok(c["brg"][0] == HudFormat.compass_deg(brg) and c["brg"][1] == "· " + HudFormat.relative_bearing(Frames.wrap_pi(brg - me.psi)).to_upper(),
-		"bearing text %s" % str(c["brg"]))
-	t.ok(c["speed"][0] == HudFormat.speed_kn(her.v) and c["hdg"][0] == HudFormat.compass_deg(her.psi),
-		"speed %s kn, heading %s" % [c["speed"][0], c["hdg"][0]])
-	t.ok(c["hdg"][1] == ("S" if her.twa > 0.0 else "P"), "her tack letter %s (TWA %.0f)" % [c["hdg"][1], rad_to_deg(her.twa)])
+	t.ok(not c.has("dist") and not c.has("brg") and not c.has("speed") and not c.has("hdg"),
+		"no distance, bearing, speed or heading cell (hud.md §16.7)")
 	t.ok(c["course"] == "Next Windward · 25 m ahead of you", "course line: %s" % c["course"])
-	t.ok(c["rules"] == "YOU KEEP CLEAR" and c["rule_text"] == "Port tack keeps clear of starboard (10)"
-		and (c["rules_col"] as Color).is_equal_approx(HudStyle.PORT), "rules: %s, %s" % [c["rules"], c["rule_text"]])
+	t.ok(c["rules"] == "YOU KEEP CLEAR · RULE 10" and int(c["rule"]) == R.R10 and not c.has("rule_text")
+		and (c["rules_col"] as Color).is_equal_approx(HudStyle.PORT), "rules, one line: %s" % c["rules"])
 	t.ok(c["penalty"] == "1 PENALTY OWED · TURNING", "penalty: %s" % c["penalty"])
 	t.ok((c["col"] as Color).is_equal_approx(HudStyle.PORT), "her tag colour is the radar's (red: I keep clear)")
 	h.layout_now()
 	t.ok(h.card_block.visible and h.card_block.position.y + h.card_block.size.y <= h.inst_page.position.y,
 		"the card sits left, over the instrument page")
 	var texts := _page_texts(h.card_block)
-	t.ok(texts.has("MAJA") and texts.has("YOU KEEP CLEAR") and texts.has("1 PENALTY OWED · TURNING"),
-		"the card draws its rows")
+	t.ok(texts.has("MAJA") and texts.has("YOU KEEP CLEAR · RULE 10") and texts.has("1 PENALTY OWED · TURNING")
+		and not texts.has("DIST") and not texts.has("HDG"), "the card draws its rows and no cells: %s" % str(texts))
 	# boat 1: she gives me room, breached; a player with no sail number
 	h.select(1)
 	h.refresh_text()
 	c = h.card
-	t.ok(c["head"] == "AI PRO" and c["rules"] == "SHE GIVES YOU ROOM · BREACH" and c["rule_text"] == "Give mark-room (18.2)"
-		and not c.has("penalty"), "boat 1: %s, %s, %s" % [c["head"], c["rules"], c["rule_text"]])
+	t.ok(c["head"] == "AI PRO" and c["rules"] == "SHE GIVES YOU ROOM · RULE 18.2 · BREACH" and not c.has("penalty"),
+		"boat 1: %s, %s" % [c["head"], c["rules"]])
 	t.ok(c["course"] == "Next Windward · 25 m behind you", "boat 1 course: %s" % c["course"])
 	h.select(2)
 	h.refresh_text()

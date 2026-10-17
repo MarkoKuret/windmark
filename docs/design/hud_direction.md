@@ -68,10 +68,14 @@ Colour is never the only signal: every coloured state also has a word (the rules
 
 | Size (1080p) | Deck (800 px) | Values |
 | --- | --- | --- |
-| 128 px | 105 px | Hero: boat speed; the countdown before the start |
-| 52 to 72 px | 43 to 59 px | Primary: TWA, HDG, VMG, TWS, deadline, mark distance (44) |
-| 22 to 40 px | 18 to 33 px | Tertiary row (SOG, COG, AWS, AWA, heel), clock and rank in the bug (40), table values |
-| 14 px labels | 11.5 px | Caps labels in instrument cells; 11 px is the floor for any text (smaller sizes clamp to it on the Deck) |
+| 112 px (128 the countdown) | 92 px | Hero: boat speed; the countdown before the start |
+| 52 px | 43 px | Primary: HDG, VMG, SOG, TWS |
+| 40 px | 33 px | Secondary: the TWA value, clock and rank in the bug, the start numbers, the mark distance, the tack point, the penalty deadline |
+| 26 px | 21 px | Small cells (COG, AWS, heel), the card's place and name |
+| 20 / 16 / 13 px | 16 / 13 / 11 px | Text: alert lines, table rows and gap lines (20); feed, notes and card lines (16); every label, caption and chip (13). 11 px is the floor for any text (smaller sizes clamp to it on the Deck) |
+
+One size per job (hud.md §16.3, 2026-10-17): the eye learns what a size means. Labels sit in `label` (paper at 55 %),
+quieter than the values they name; units and secondary text in `mist`.
 
 - In instrument cells the unit sits top right in `mist` at label size; the number is right-aligned in a fixed field, so
   `5.3` and `12.4` end in the same place. Outside the pages (mark tag, start numbers, tack point) units follow the
@@ -121,7 +125,8 @@ Four corners, a top-centre alert lane, a bottom-centre helm strip, and the world
   lap, leg and leg type, then leader gap and the boats ahead and behind.
 - **Top centre, alert lane:** before the start the countdown and the four start numbers; in the race the penalty panel
   and the one rules line (stacked, penalty first). Nothing else ever goes here.
-- **Top right, wind page** (Race and Data): TWS cell and a north-up TWD dial cell. The shift chip hangs under it, then
+- **Top right, wind page** (Data): TWS cell and a north-up TWD dial cell. The shift chip hangs under it (at Race it
+  sits there alone), then
   the event feed, right-aligned, fading.
 - **Bottom left, instrument page:** row 1: boat speed (hero), (Data: VMG), the TWA dial spanning rows 1 and 2 with
   the TWA number under it. Row 2: heading (Data: and SOG). Row 3 (Data): COG, AWS, heel bar. No target speed
@@ -154,14 +159,16 @@ only when both allow it.
 
 | Phase | Glance | Race | Data |
 | --- | --- | --- | --- |
-| Pre-start | Boat speed, TWA dial. Start block: countdown and burn with the late/early bar, the flag rule in one line. No race bug, no wind page | + heading. Full start block (line, to line, burn, bias, flags). Wind page. Race bug (class, fleet). Feed 3 lines | + VMG, AWA, SOG, COG, AWS, heel bar. Race bug adds laps and legs. Feed 6 lines |
-| Upwind | Boat speed, TWA dial with the VMG angles and the coloured pointer (the one cue). Race bug: clock and rank | + heading. Wind page, shift chip. Lap and leg line. Feed 3 lines | + VMG, AWA pointer and value, SOG, COG, AWS, heel bar. Leader gap, ahead and behind. Feed 6 lines. Sail hint (assist allowing) |
+| Pre-start | Boat speed, TWA dial. Start block: countdown and burn with the late/early bar, the flag rule in one line. No race bug, no wind page | + heading. Full start block (line, to line, burn, bias, flags). Feed: own events, 3 lines. No race bug, no wind page | + VMG, AWA, SOG, COG, AWS, heel bar. Wind page. Race bug (fleet, laps and legs). Feed 6 lines, every event |
+| Upwind | Boat speed, TWA dial with the VMG angles and the coloured pointer (the one cue). Race bug: clock and rank. Mark tag: name and distance | + heading. Shift chip. The bug adds the leader gap; the mark tag adds the ETA. Feed: own events, 3 lines | + VMG, AWA pointer and value, SOG, COG, AWS, heel bar. Wind page. Lap and leg line. Ahead and behind. The mark tag adds the bearing. Feed 6 lines, every event. Sail hint (assist allowing) |
 | Downwind | As upwind with the run angles; on a reach the pointer is neutral | As upwind | As upwind |
-| Rounding (within 6 L and 6 s after) | Boat speed, TWA dial. Live order cut to ahead, you, behind | + heading. Full live order. Wind page, shift chip | + all of Data upwind; live order with rounded tags and the estimate note |
+| Rounding (within 6 L and 6 s after) | Boat speed, TWA dial | As the leg | As the leg |
 | Penalty | Boat speed, TWA dial; the penalty panel carries the rest | As the leg it is taken on | As the leg it is taken on |
 
-In Glance the radar is drawn at 72 % size without its range and orientation labels, the helm strip loses its labels,
-and the feed shows only the player's own events.
+Race is the racer's list and nothing more (owner, 2026-10-17: too many numbers at once): speed, the dial, heading, the
+mark's distance and time, the countdown and line numbers, rank and gap; the wind page, the lap line, ahead and behind
+and the fleet's feed are Data. In Glance the radar is drawn at 72 % size without its range and orientation labels, the helm strip loses its labels,
+and the feed (own events at Glance and Race, every event at Data) is a short list, not a ticker.
 
 - **Defaults:** Race on 16:9; Glance on the Steam Deck and any screen under 900 px tall. The last choice is remembered
   per device.
@@ -175,13 +182,13 @@ and the feed shows only the player's own events.
 
 | Always (at the Race density, Standard assist) | Contextual |
 | --- | --- |
-| Race bug: clock, rank, lap and leg | Start panel: sequence only, gone when the boat has started (OCS keeps it with the return instruction) |
-| Wind page: TWS, TWD dial | Shift chip: on a beat or run when the shift is 2° or more |
-| Instrument page rows 1 and 2 | Leader gap, ahead and behind: after the start (Data) |
+| Race bug: clock, rank | Start panel: sequence only, gone when the boat has started (OCS keeps it with the return instruction) |
+| Instrument page rows 1 and 2 | Shift chip: on a beat or run when the shift is 2° or more |
+| | Leader gap: after the start; ahead and behind, the wind page and the lap line at Data |
 | Next mark tag or its edge pointer | Laylines and the tack point: beats and runs, assist allowing |
 | Radar | Zone circle: within 6 L of the next mark; ZONE chip inside it |
 | Helm strip | Rounding arrow: from 500 m out; far marker beyond 500 m |
-| | Name tags: boats within 150 m or with a relation; edge pointers for those off screen |
+| | Name tags: boats within 50 m or selected (hud.md §16.4); edge pointers for those off screen |
 | | Rules line: while a condition of `hud.md` §11 holds, one line |
 | | Penalty panel: while a penalty is pending or being taken, and 5 s after |
 | | Live order: within 6 L of a mark and 6 s after each rounding; full ranking on Tab |

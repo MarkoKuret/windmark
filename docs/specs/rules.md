@@ -429,6 +429,9 @@ Windmark:
      from before the change (an overlap made that late did not exist; an overlap broken that late still did).
 2. The status holds (18.2(b)) until the entitled boat leaves the zone, passes head to wind, or has completed her
    rounding of M and has no hull point within `Z + r_mark`; or rule 18 stops applying (§7.2). Then it is deleted.
+   Leaving the zone means she was in it: a status frozen when the **giver** reached the zone first (the outside
+   boat ahead of an inside overlap, or clear ahead but wide) holds while the entitled boat is still outside, and
+   ends only once she has entered the zone and left it again (WM-156).
 3. **18.2(c) without a status.** If rule 18 applies, the boats are overlapped and there is no frozen status between
    them (for example after the status ended because the entitled boat tacked), the outside boat gives the inside
    boat mark-room from the tick the overlap began.
@@ -867,7 +870,7 @@ list  pair states in ascending (i, j), per pair:
   bool r15_pending, r15_breach; uint32 r15_start; uint8 kc, kc_prev; uint8 kc_hist[32]
   bool has_breach_tick; uint32 last_breach_tick
   bool w161, w162, r161, r162; uint32 w161_start, w162_start; int32 w16_holder, r17_holder; bool r17
-  list  rooms: int32 mark, entitled, giver; uint8 rule; bool frozen; list<vec2> corridor; bool could_act;
+  list  rooms: int32 mark, entitled, giver; uint8 rule; bool frozen; list<vec2> corridor; bool could_act, e_was_in;
         uint8 state; bool breach
   list<int32> used_marks; bool r183, r184; int32 r183_holder, r184_holder
   bool r19_on, r19_could_act, r19_breach; int32 r19_entitled, r19_giver, r19_obst; uint8 r19_state

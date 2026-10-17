@@ -1,9 +1,11 @@
 ---
 id: WM-156
 title: 'Rules: 18.2 entitlement ends only when the entitled boat leaves the zone'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-10-16 20:40'
+updated_date: '2026-10-17 11:46'
 labels:
   - rules
 dependencies: []
@@ -19,5 +21,5 @@ Found in WM-073. Rules::mark_rules (core/src/rules/rules.cpp) drops 18.2 status 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 rules.md and the engine end 18.2 status only on leaving the zone (or the 18.2(d) cases); a test with the outside boat entering first
+- [x] #1 rules.md and the engine end 18.2 status only on leaving the zone (or the 18.2(d) cases); a test with the outside boat entering first
 <!-- AC:END -->

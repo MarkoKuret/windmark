@@ -267,6 +267,8 @@ class Rules {
     bool frozen = true;             // 18.2(b) status (false: 18.2(a) while overlapped)
     std::vector<Vec2> corridor;     // the entitled boat's mark-room path when the entitlement began
     bool could_act = false;
+    bool e_was_in = false;          // the entitled boat has been in the zone since the status began (18.2(b) ends it
+                                    // when she leaves the zone, not while she has yet to reach it)
     KcState state = KcState::clear;
     bool breach = false;
   };

@@ -153,7 +153,14 @@ def build(src, terrain_out=None):
     bounds = tuple(float(v) for v in src["bounds"])
     simp = _merged(SIMPLIFY_DEFAULTS, src.get("simplify"), "$.simplify")
     grids = dict(GRID_DEFAULTS)
+    field_bounds = bounds  # the bounds the fields are laid for (venues.md §5: grids.bounds)
     for k, v in (src.get("grids") or {}).items():
+        if k == "bounds":
+            if (not isinstance(v, list) or len(v) != 4 or not all(isinstance(q, (int, float)) for q in v)
+                    or not (v[0] < v[2] and v[1] < v[3])):
+                raise SourceError("$.grids.bounds: expected [xmin, ymin, xmax, ymax] with xmin < xmax, ymin < ymax")
+            field_bounds = tuple(float(q) for q in v)
+            continue
         if k not in grids:
             raise SourceError(f"$.grids.{k}: unknown key")
         grids[k] = float(v)
@@ -164,7 +171,7 @@ def build(src, terrain_out=None):
     origin = src.get("origin")
 
     land_box = _grow(bounds, simp["land_margin"])
-    field_box = _grow(bounds, max(simp["field_margin"], simp["land_margin"]))
+    field_box = _grow(field_bounds, max(simp["field_margin"], simp["land_margin"]))
     paths = []
     for k, e in enumerate(src.get("coastline", [])):
         try:
@@ -219,7 +226,7 @@ def build(src, terrain_out=None):
             notes.append(f"wind land heights from the elevation model: mean {land_h.mean():.0f} m, "
                          f"max {land_h.max():.0f} m")
 
-    gbox = _grow(bounds, grids["margin"])
+    gbox = _grow(field_bounds, grids["margin"])
     doc = {k: copy.deepcopy(src[k]) for k in COPY_HEADER if k in src}
     doc["schema"] = "windmark.venue/1"
     doc["source"] = _source_note(src)

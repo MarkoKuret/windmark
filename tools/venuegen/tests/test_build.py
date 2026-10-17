@@ -208,6 +208,23 @@ def test_unknown_source_keys_are_refused(src):
         build(src)
 
 
+def test_grids_bounds_keep_the_fields(src):
+    """grids.bounds (venues.md §5): the fields are laid for those bounds whatever the venue's own bounds."""
+    src["simplify"] = {"outside": 5}  # the island is simplified alike inside and outside the bounds
+    a, _ = build(copy.deepcopy(src))
+    grown = copy.deepcopy(src)
+    grown["grids"]["bounds"] = list(src["bounds"])
+    grown["bounds"] = [src["bounds"][0], src["bounds"][1], src["bounds"][2], src["bounds"][3] + 1000]
+    b, _ = build(grown)
+    assert b["bounds"] == grown["bounds"]
+    for k in ("wind_field", "exposure"):
+        assert a[k] == b[k]
+    bad = copy.deepcopy(src)
+    bad["grids"]["bounds"] = [0, 0, -1, 1]
+    with pytest.raises(SourceError):
+        build(bad)
+
+
 def test_shipped_venues_are_generated():
     """Every committed venue file with a source is exactly venuegen's output from it (no hand edits)."""
     srcdir = os.path.join(REPO, "data", "venue_sources")

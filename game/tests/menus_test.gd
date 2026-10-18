@@ -133,6 +133,7 @@ func _odd_settings() -> Settings:
 	s.palette = "tritanopia"
 	s.quality = SeaQuality.Tier.H
 	s.render_scale = 0.75
+	s.aa = "fxaa"
 	s.fullscreen = true
 	s.vsync = false
 	s.fps_limit = 90
@@ -156,49 +157,53 @@ func test_device_defaults() -> void:
 	var IG := RenderingDevice.DEVICE_TYPE_INTEGRATED_GPU
 	var DG := RenderingDevice.DEVICE_TYPE_DISCRETE_GPU
 	var cases := [
-		# adapter, vendor, device type, Steam Deck, class
-		["Intel(R) UHD Graphics 620", "Intel", IG, false, I],
-		["Intel(R) Iris(R) Xe Graphics", "Intel", IG, false, I],
-		["Intel(R) HD Graphics 520", "Intel", -1, false, I],
-		["Mesa Intel(R) UHD Graphics 620 (KBL GT2)", "Intel", IG, false, I],
-		["Intel(R) Arc(TM) Graphics", "Intel", IG, false, I],
-		["Intel(R) Arc(TM) A770 Graphics", "Intel", DG, false, D],
-		["Intel(R) Arc(TM) B580 Graphics", "Intel", -1, false, D],
-		["AMD Radeon(TM) Graphics", "AMD", IG, false, I],
-		["AMD Radeon(TM) Vega 8 Graphics", "AMD", -1, false, I],
-		["AMD Radeon(TM) RX Vega 10 Graphics", "AMD", IG, false, I],
-		["AMD Radeon 780M", "AMD", -1, false, I],
-		["AMD Radeon Graphics (RADV RENOIR)", "AMD", IG, false, I],
-		["AMD Radeon RX 6600", "AMD", DG, false, D],
-		["AMD Radeon RX 7600M XT", "AMD", DG, false, D],
-		["AMD Radeon Pro 5500M", "AMD", DG, false, D],
-		["NVIDIA GeForce RTX 3060", "NVIDIA", DG, false, D],
-		["NVIDIA GeForce MX450", "NVIDIA", DG, false, D],
-		["Apple M1", "Apple", IG, false, Settings.Gpu.APPLE],
-		["Apple M5", "Apple", -1, false, Settings.Gpu.APPLE],
-		["AMD Custom GPU 0405 (RADV VANGOGH)", "AMD", IG, false, Settings.Gpu.STEAM_DECK],
-		["AMD Custom GPU 0932", "AMD", IG, false, Settings.Gpu.STEAM_DECK],
-		["AMD Radeon Graphics", "AMD", IG, true, Settings.Gpu.STEAM_DECK],
-		["llvmpipe (LLVM 15.0.7, 256 bits)", "Mesa", RenderingDevice.DEVICE_TYPE_CPU, false, I],
-		["Qualcomm(R) Adreno(TM) X1-85 GPU", "Qualcomm", IG, false, I],
-		["Some New GPU", "Unknown", IG, false, I],
-		["Some New GPU", "Unknown", DG, false, D],
-		["", "", -1, false, Settings.Gpu.UNKNOWN],
+		# adapter, vendor, device type, Steam Deck, class, the anti-aliasing a first start picks
+		["Intel(R) UHD Graphics 620", "Intel", IG, false, I, "fxaa"],
+		["Intel(R) Iris(R) Xe Graphics", "Intel", IG, false, I, "fxaa"],
+		["Intel(R) HD Graphics 520", "Intel", -1, false, I, "fxaa"],
+		["Mesa Intel(R) UHD Graphics 620 (KBL GT2)", "Intel", IG, false, I, "fxaa"],
+		["Intel(R) Arc(TM) Graphics", "Intel", IG, false, I, "fxaa"],
+		["Intel(R) Arc(TM) A770 Graphics", "Intel", DG, false, D, "smaa"],
+		["Intel(R) Arc(TM) B580 Graphics", "Intel", -1, false, D, "smaa"],
+		["AMD Radeon(TM) Graphics", "AMD", IG, false, I, "fxaa"],
+		["AMD Radeon(TM) Vega 8 Graphics", "AMD", -1, false, I, "fxaa"],
+		["AMD Radeon(TM) RX Vega 10 Graphics", "AMD", IG, false, I, "fxaa"],
+		["AMD Radeon 780M", "AMD", -1, false, I, "fxaa"],
+		["AMD Radeon Graphics (RADV RENOIR)", "AMD", IG, false, I, "fxaa"],
+		["AMD Radeon RX 6600", "AMD", DG, false, D, "smaa"],
+		["AMD Radeon RX 7600M XT", "AMD", DG, false, D, "smaa"],
+		["AMD Radeon Pro 5500M", "AMD", DG, false, D, "smaa"],
+		["NVIDIA GeForce RTX 3060", "NVIDIA", DG, false, D, "smaa"],
+		["NVIDIA GeForce MX450", "NVIDIA", DG, false, D, "smaa"],
+		["Apple M1", "Apple", IG, false, Settings.Gpu.APPLE, "smaa"],
+		["Apple M5", "Apple", -1, false, Settings.Gpu.APPLE, "smaa"],
+		["AMD Custom GPU 0405 (RADV VANGOGH)", "AMD", IG, false, Settings.Gpu.STEAM_DECK, "smaa"],
+		["AMD Custom GPU 0932", "AMD", IG, false, Settings.Gpu.STEAM_DECK, "smaa"],
+		["AMD Radeon Graphics", "AMD", IG, true, Settings.Gpu.STEAM_DECK, "smaa"],
+		["llvmpipe (LLVM 15.0.7, 256 bits)", "Mesa", RenderingDevice.DEVICE_TYPE_CPU, false, I, "fxaa"],
+		["Qualcomm(R) Adreno(TM) X1-85 GPU", "Qualcomm", IG, false, I, "fxaa"],
+		["Some New GPU", "Unknown", IG, false, I, "fxaa"],
+		["Some New GPU", "Unknown", DG, false, D, "smaa"],
+		["", "", -1, false, Settings.Gpu.UNKNOWN, "smaa"],
 	]
 	var wrong := []
 	for c in cases:
 		var got := Settings.gpu_class(c[0], c[1], c[2], c[3])
 		if got != c[4]:
 			wrong.append("%s -> %s (want %s)" % [c[0], Settings.Gpu.keys()[got], Settings.Gpu.keys()[c[4]]])
-	t.ok(wrong.is_empty(), "adapter classes from %d names %s" % [cases.size(), wrong])
+		elif Settings.device_graphics(got)["aa"] != c[5]:
+			wrong.append("%s -> %s (want %s)" % [c[0], Settings.device_graphics(got)["aa"], c[5]])
+	t.ok(wrong.is_empty(), "adapter classes and anti-aliasing from %d names %s" % [cases.size(), wrong])
 	var g := Settings.device_graphics(I)
-	t.ok(g["quality"] == SeaQuality.Tier.L and is_equal_approx(g["render_scale"], 0.67), "integrated: tier L at 67 %")
+	t.ok(g["quality"] == SeaQuality.Tier.L and is_equal_approx(g["render_scale"], 0.67) and g["aa"] == "fxaa",
+		"integrated: tier L at 67 %, FXAA")
 	g = Settings.device_graphics(Settings.Gpu.STEAM_DECK)
-	t.ok(g["quality"] == SeaQuality.Tier.L and g["render_scale"] == 0.0, "Steam Deck: tier L, Auto (native)")
+	t.ok(g["quality"] == SeaQuality.Tier.L and g["render_scale"] == 0.0 and g["aa"] == "smaa",
+		"Steam Deck: tier L, Auto (native), SMAA")
 	for k in [D, Settings.Gpu.APPLE, Settings.Gpu.UNKNOWN]:
 		g = Settings.device_graphics(k)
-		t.ok(g["quality"] == SeaQuality.Tier.M and g["render_scale"] == 0.0,
-			"%s: today's defaults (M, Auto)" % Settings.Gpu.keys()[k])
+		t.ok(g["quality"] == SeaQuality.Tier.M and g["render_scale"] == 0.0 and g["aa"] == "smaa",
+			"%s: today's defaults (M, Auto, SMAA)" % Settings.Gpu.keys()[k])
 	# the first start: no file, so the detected device decides; a file keeps the player's values
 	var first := "user://menus_test_first_start.cfg"
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(first))
@@ -206,25 +211,37 @@ func test_device_defaults() -> void:
 	Settings.gpu_override = I
 	Settings.reset_current()
 	var s := Settings.current()
-	t.ok(s.quality == SeaQuality.Tier.L and is_equal_approx(s.render_scale, 0.67),
-		"first start on an integrated GPU: tier L at 67 %")
+	t.ok(s.quality == SeaQuality.Tier.L and is_equal_approx(s.render_scale, 0.67) and s.aa == "fxaa",
+		"first start on an integrated GPU: tier L at 67 %, FXAA")
 	s.quality = SeaQuality.Tier.H
 	s.render_scale = 1.0
+	s.aa = "smaa"
 	s.save_file()
 	Settings.reset_current()
 	s = Settings.current()
-	t.ok(s.quality == SeaQuality.Tier.H and s.render_scale == 1.0, "a saved file keeps the player's choice")
+	t.ok(s.quality == SeaQuality.Tier.H and s.render_scale == 1.0 and s.aa == "smaa",
+		"a saved file keeps the player's choice")
 	s.reset("graphics")
-	t.ok(s.quality == SeaQuality.Tier.L and is_equal_approx(s.render_scale, 0.67), "Reset Graphics: the device defaults")
+	t.ok(s.quality == SeaQuality.Tier.L and is_equal_approx(s.render_scale, 0.67) and s.aa == "fxaa",
+		"Reset Graphics: the device defaults")
+	# an older file without the key: SMAA, whatever the device
+	var cf := ConfigFile.new()
+	cf.load(first)
+	cf.erase_section_key("graphics", "aa")
+	cf.save(first)
+	Settings.reset_current()
+	t.ok(Settings.current().aa == "smaa", "a settings file from before the key keeps SMAA on an integrated GPU")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(first))
 	Settings.gpu_override = Settings.Gpu.APPLE
 	Settings.reset_current()
 	s = Settings.current()
-	t.ok(s.quality == SeaQuality.Tier.M and s.render_scale == 0.0, "first start on Apple silicon: M, Auto")
+	t.ok(s.quality == SeaQuality.Tier.M and s.render_scale == 0.0 and s.aa == "smaa",
+		"first start on Apple silicon: M, Auto, SMAA")
 	Settings.gpu_override = Settings.Gpu.STEAM_DECK
 	Settings.reset_current()
 	s = Settings.current()
-	t.ok(s.quality == SeaQuality.Tier.L and s.render_scale == 0.0, "first start on a Steam Deck: L, Auto")
+	t.ok(s.quality == SeaQuality.Tier.L and s.render_scale == 0.0 and s.aa == "smaa",
+		"first start on a Steam Deck: L, Auto, SMAA")
 	Settings.gpu_override = -1
 	Settings.path = TEST_PATH
 	Settings.reset_current()
@@ -254,6 +271,7 @@ func test_settings_round_trip() -> void:
 	cf.set_value("hud", "assist", 7)
 	cf.set_value("graphics", "vsync", 3)
 	cf.set_value("graphics", "render_scale", 7)
+	cf.set_value("graphics", "aa", "msaa")
 	t.ok(not cf.has_section_key("graphics", "capture_preset") and back.capture_preset == "off",
 		"the capture preset is session only: not saved, Off after a load (menus.md §3)")
 	cf.set_value("graphics", "capture_preset", "portrait")
@@ -265,6 +283,7 @@ func test_settings_round_trip() -> void:
 	t.ok(d.assist == Hud.Assist.MINIMAL, "assist clamped to Minimal")
 	t.ok(d.vsync == true, "vsync of the wrong type keeps the default")
 	t.near(d.render_scale, 1.0, 1e-9, "render scale clamped to 100 %")
+	t.ok(d.aa == "smaa", "an unknown anti-aliasing keeps SMAA")
 	t.ok(d.capture_preset == "off", "a capture preset in an older file is ignored: the game starts with it Off")
 	t.ok(Settings.new().capture_preset == "off", "capture preset defaults to Off")
 	t.near(Settings.new().render_scale, 0.0, 0.0, "render scale defaults to Auto")
@@ -350,8 +369,21 @@ func test_render_scale(s: Settings) -> void:
 		t.ok(Settings.screen_space_aa(m) == Viewport.SCREEN_SPACE_AA_SMAA, "SMAA with %s" % Settings.upscaler_name(m))
 	for m in [Viewport.SCALING_3D_MODE_FSR2, Viewport.SCALING_3D_MODE_METALFX_TEMPORAL]:
 		t.ok(Settings.screen_space_aa(m) == Viewport.SCREEN_SPACE_AA_DISABLED, "no SMAA under %s" % Settings.upscaler_name(m))
+	# the player's setting (menus.md §3), the temporal upscalers over it, the command line over both
+	t.ok(Settings.screen_space_aa(Viewport.SCALING_3D_MODE_FSR, "fxaa") == Viewport.SCREEN_SPACE_AA_FXAA, "setting: FXAA")
+	t.ok(Settings.screen_space_aa(Viewport.SCALING_3D_MODE_FSR2, "fxaa") == Viewport.SCREEN_SPACE_AA_DISABLED,
+		"no FXAA under FSR2 either")
+	a.aa = "fxaa"
+	a.apply_render_scale(root)
+	t.ok(root.screen_space_aa == Viewport.SCREEN_SPACE_AA_FXAA, "the FXAA setting on the root viewport")
+	a.aa = "smaa"
+	a.apply_render_scale(root)
+	t.ok(root.screen_space_aa == Viewport.SCREEN_SPACE_AA_SMAA, "and SMAA again")
 	Settings.aa_override = "fxaa"
 	t.ok(Settings.screen_space_aa(Viewport.SCALING_3D_MODE_FSR) == Viewport.SCREEN_SPACE_AA_FXAA, "--aa=fxaa for this run")
+	Settings.aa_override = "smaa"
+	t.ok(Settings.screen_space_aa(Viewport.SCALING_3D_MODE_FSR, "fxaa") == Viewport.SCREEN_SPACE_AA_SMAA,
+		"--aa=smaa over the FXAA setting")
 	Settings.aa_override = ""
 	for c in [[Vector2i(2560, 1600), 2.0, 0.67], [Vector2i(2560, 1600), 1.0, 0.67], [Vector2i(2880, 1800), 2.0, 0.67],
 			[Vector2i(3840, 2160), 1.0, 0.5301], [Vector2i(6880, 2880), 1.0, 0.3430],
@@ -450,6 +482,7 @@ func test_every_key_applied() -> void:
 			and HudStyle.TINTS[RaceHudValues.Tint.RED] == HudStyle.PALETTES["tritanopia"][1],
 		"graphics.quality": sea.quality == s.quality,
 		"graphics.render_scale": is_equal_approx(root.scaling_3d_scale, s.render_scale),
+		"graphics.aa": root.screen_space_aa == Viewport.SCREEN_SPACE_AA_FXAA,
 		"graphics.fullscreen": DisplayServer.get_name() == "headless",  # the window mode: not in headless runs
 		"graphics.vsync": DisplayServer.get_name() == "headless",
 		"graphics.fps_limit": Engine.max_fps == s.fps_limit,

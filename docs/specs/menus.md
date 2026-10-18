@@ -331,7 +331,7 @@ game has the setting and is saved when the settings screen closes, to one file p
 | Controls | helm key mode, stick dead zone, stick curve, sheet key rate, hold or toggle for let fly, fine helm, rankings and camera boost, sheet turns auto trim off, vibration (off, 10 % to 100 %), the bindings (rebinding, below) |
 | Cameras | camera and look speed, invert orbit X and Y, invert look X and Y, onboard heel follow, smooth switch, reduced motion |
 | HUD | assist preset (Full, Standard, Minimal; online lobbies may force a lower one), instruments (Auto, Glance, Race, Data: the density of `hud.md` §16.1; Auto picks the device default, the `hud_density` key stores its choice here), UI scale (80 % to 130 %, `hud.md` §16.2.2), colour-blind palette (standard, deuteranopia, protanopia, tritanopia: `hud.md` §16.2.1) |
-| Graphics | quality (Low, Medium, High: the tiers of `water_render.md` §7, default Medium or the device default, below), render scale (Auto, 50 %, 67 %, 75 %, 85 %, 100 %; default Auto or the device default; below), display (windowed, fullscreen), vsync, frame rate limit (off, 30, 60, 90, 120, 144), capture preset (Off, Portrait 9:16; below) |
+| Graphics | quality (Low, Medium, High: the tiers of `water_render.md` §7, default Medium or the device default, below), render scale (Auto, 50 %, 67 %, 75 %, 85 %, 100 %; default Auto or the device default; below), anti-aliasing (SMAA, FXAA: `water_render.md` §7; default SMAA or the device default, below), display (windowed, fullscreen), vsync, frame rate limit (off, 30, 60, 90, 120, 144), capture preset (Off, Portrait 9:16; below) |
 | Audio | master, effects, signals (the race signals and the hails), ambience, interface volumes, 0 to 100 % (default 100 %, master 80 %) |
 
 Only settings the game reads are offered. Captions (`controls.md` §6) and a separate voice volume come back when
@@ -343,20 +343,26 @@ keeps its other values, and the next save drops them (unknown keys are ignored o
 **Reset section** restores the section's defaults (in Controls, the options; the bindings have their own reset;
 in Graphics, the device defaults below).
 
-**Device defaults** (WM-101, `PERFORMANCE.md` G1). At the first start (no settings file) the game picks quality and
-render scale from the graphics adapter, so a cheap laptop starts on a frame rate it can hold; the player can change
-both at once. The adapter's name and vendor (`RenderingServer.get_video_adapter_name()` and `_vendor()`) and the
+**Device defaults** (WM-101, `PERFORMANCE.md` G1 and G5). At the first start (no settings file) the game picks
+quality, render scale and anti-aliasing from the graphics adapter, so a cheap laptop starts on a frame rate it can
+hold; the player can change all three at once. The adapter's name and vendor (`RenderingServer.get_video_adapter_name()` and `_vendor()`) and the
 RenderingDevice's device type (integrated, discrete, CPU; none on the Compatibility renderer) are read once:
 
-| adapter | examples | quality | render scale |
-| --- | --- | --- | --- |
-| Steam Deck (the `SteamDeck` environment variable Steam sets, or an AMD Custom GPU 0405 / 0932, VanGogh or Sephiroth) | | Low | Auto (native on its 1280 × 800 screen) |
-| Apple (Apple silicon: the adapter name says Apple) | Apple M1 to M5 | Medium | Auto |
-| integrated Intel (any Intel but an Arc A or B card) | Intel UHD 620, Iris Xe, HD Graphics, Arc Graphics (Core Ultra) | Low | 67 % |
-| integrated AMD (a Radeon whose name ends in `Graphics`, or a number with M or S and no RX or Pro) | Radeon Graphics, Radeon Vega 8 Graphics, Radeon RX Vega 10 Graphics, Radeon 780M | Low | 67 % |
-| other integrated or software (Adreno, Mali, PowerVR, llvmpipe, SwiftShader, Microsoft Basic Render, or device type integrated or CPU) | | Low | 67 % |
-| discrete (NVIDIA, AMD RX or Pro, Intel Arc A or B, or device type discrete) | GeForce RTX 3060, Radeon RX 6600 | Medium | Auto |
-| unknown (headless, no name) | | Medium | Auto |
+| adapter | examples | quality | render scale | anti-aliasing |
+| --- | --- | --- | --- | --- |
+| Steam Deck (the `SteamDeck` environment variable Steam sets, or an AMD Custom GPU 0405 / 0932, VanGogh or Sephiroth) | | Low | Auto (native on its 1280 × 800 screen) | SMAA |
+| Apple (Apple silicon: the adapter name says Apple) | Apple M1 to M5 | Medium | Auto | SMAA |
+| integrated Intel (any Intel but an Arc A or B card) | Intel UHD 620, Iris Xe, HD Graphics, Arc Graphics (Core Ultra) | Low | 67 % | FXAA |
+| integrated AMD (a Radeon whose name ends in `Graphics`, or a number with M or S and no RX or Pro) | Radeon Graphics, Radeon Vega 8 Graphics, Radeon RX Vega 10 Graphics, Radeon 780M | Low | 67 % | FXAA |
+| other integrated or software (Adreno, Mali, PowerVR, llvmpipe, SwiftShader, Microsoft Basic Render, or device type integrated or CPU) | | Low | 67 % | FXAA |
+| discrete (NVIDIA, AMD RX or Pro, Intel Arc A or B, or device type discrete) | GeForce RTX 3060, Radeon RX 6600 | Medium | Auto | SMAA |
+| unknown (headless, no name) | | Medium | Auto | SMAA |
+
+FXAA on the integrated classes (2026-10-18, `PERFORMANCE.md` G5): SMAA's three passes are estimated at 1.5 to 3 ms on
+an Intel UHD 620 at 1080p against 0.3 to 0.5 ms for FXAA, and nobody here has such a laptop to measure on; the Steam
+Deck measured 0.35 to 0.8 ms for SMAA (`water_render.md` §7) and keeps it. An AMD APU is told from a card by its
+name alone (above) and, when the name does not say, by the RenderingDevice's device type; there is no other
+integrated signal.
 
 A settings file that exists keeps the player's values; the device defaults are not applied again (Reset section in
 Graphics and Skip on the first-launch screen use them).
@@ -375,7 +381,7 @@ opens and closes it, and `View` then no longer cycles the density, `controls.md`
 the free camera (toggle: a press turns the boost on and the next off); vibration to the gamepad rumble of
 `controls.md` §6 (scaled by the setting, none at Off, only while the player sails); the cameras' options to the
 camera rig; assists, density and the colour-blind palette to the HUD (`hud.md` §16.2.1); UI scale, display,
-render scale and the capture preset to the window; quality to the sea and sky; the volumes to the audio buses
+render scale, anti-aliasing and the capture preset to the window; quality to the sea and sky; the volumes to the audio buses
 (signals to the `race` and `voice` buses).
 
 **Rebinding** (the Controls section, `controls.md` §3 and §6). Under the options, a **Bindings** list: one row per

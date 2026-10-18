@@ -301,7 +301,7 @@ Flags after `--`:
 | `--perf-seconds=N` | quit after N seconds (from the scene's start, after loading) |
 | `--render-scale=0.67` | this run's render scale (0.5 to 1, or 50 to 100), over the setting; not saved |
 | `--upscaler=fsr` | this run's upscaler: `fsr`, `bilinear` or `metalfx` (MetalFX spatial, Metal only) |
-| `--aa=off` | this run's anti-aliasing: `off`, `fxaa` or `smaa` (the default, `water_render.md` §7); not saved |
+| `--aa=off` | this run's anti-aliasing: `off`, `fxaa` or `smaa`, over the setting (SMAA, or FXAA on an integrated GPU's first start, `water_render.md` §7); not saved |
 | `--quality=M` | this run's quality tier: `L`, `M` or `H`, over the setting; not saved |
 | `--no-vsync` | this run without vsync, to see the headroom; not saved |
 | `--shadow-splits=0` | this run's sun shadow cascades: `0` (off), `1`, `2` or `4`, over the tier; not saved |
@@ -888,7 +888,8 @@ in its header). The daylight previews: `python3 tests/daylight_preview.py --dump
 chase shot at five hours and four conditions, grade off against the default: `tests/previews/daylight_*.jpg`).
 `tests/look_test.gd` (in `run_ui_tests.sh`) checks the sun position, the hour keys and conditions, the look files,
 the grade and the SSAO per tier. The anti-aliasing is SMAA 1x on every tier (`water_render.md` §7): the project default, kept with
-the upscaler by `Settings.apply_render_scale` (off only under a temporal upscaler).
+the upscaler by `Settings.apply_render_scale` (off only under a temporal upscaler); the Graphics setting can make it
+FXAA, which a first start on an integrated GPU picks (`menus.md` §3 device defaults, `tests/menus_test.gd`).
 
 ### Water tests
 

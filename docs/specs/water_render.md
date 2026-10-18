@@ -1036,13 +1036,19 @@ px_angle))`, from the mean-plane point (`k = 1`) to the water point (`k = 0`).
 | sun shadows (§4.6) | 1 map to 45 m, hard, 2048 atlas, no trees or boats beyond 30 m casting, no shadows on the sea | 2 cascades to 90 m, 2048 atlas, no shadows on the sea | 4 blended cascades to 150 m, 4096 atlas |
 | boat shadows drawn on the sea (§4.7) | own boat | own boat and the 6 nearest within 90 m | no (real shadows) |
 | automatic mesh LOD threshold (the boats, `sail_visuals.md` §11.4) | 2 px | 1 px (Godot's default) | 1 px |
-| anti-aliasing | SMAA 1x | SMAA 1x | SMAA 1x |
+| anti-aliasing | SMAA 1x (FXAA where the first start found an integrated GPU, below) | SMAA 1x | SMAA 1x |
 | sky cumulus (§4.5) | half-resolution pass | full | full |
 
-Anti-aliasing (WM-084, owner decision 2026-10-03: keep it simple): SMAA 1x on every tier, no per-tier choice
-(FXAA only if SMAA turned out too costly for tier L; it did not need to). It is the project default
-(`rendering/anti_aliasing/quality/screen_space_aa` = SMAA, so every scene starts with it) and `Settings.apply_render_scale`
-keeps it on the root viewport with the upscaler (`Settings.screen_space_aa`). Godot runs it after tone mapping at
+Anti-aliasing (WM-084, owner decision 2026-10-03: keep it simple): SMAA 1x on every tier, no per-tier choice.
+It is the project default (`rendering/anti_aliasing/quality/screen_space_aa` = SMAA, so every scene starts with it)
+and `Settings.apply_render_scale` keeps it on the root viewport with the upscaler (`Settings.screen_space_aa`). The
+one exception is per device, not per tier (`menus.md` §3 device defaults, 2026-10-18): a first start on an
+integrated GPU (Intel, an AMD APU, the other integrated or software renderers) gets the `aa` graphics setting as
+FXAA, because SMAA's three passes are estimated at 1.5 to 3 ms on an Intel UHD 620 at 1080p against 0.3 to 0.5 ms
+for FXAA (`PERFORMANCE.md` G5); the Steam Deck keeps SMAA (0.35 to 0.8 ms there, below), and so do discrete and
+Apple GPUs. The setting is the player's from then on (a settings file is never changed by the detection again; Reset
+section in Graphics applies the device default) and the sail scene's `--aa` flag wins over it for that run. Godot
+runs SMAA (or FXAA) after tone mapping at
 the 3D render resolution and before a spatial upscaler (FSR 1.0, MetalFX spatial), which wants an antialiased input,
 so the render scale and SMAA go together. A temporal upscaler (FSR 2, MetalFX temporal, not used now) antialiases
 by itself: with one SMAA is off, not stacked. No MSAA or TAA. SMAA smooths the edges of masts, stays, sheets,

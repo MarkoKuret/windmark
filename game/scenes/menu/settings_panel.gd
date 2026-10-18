@@ -28,6 +28,7 @@ const HELP := {
 	"palette": "Rules colours for colour-blind eyes. Every colour also comes with a word or a letter.",
 	"quality": "The detail of the sea, the sky and the shadows. Low suits built-in graphics and the Steam Deck.",
 	"render_scale": "Draws the 3D view at fewer pixels and sharpens it up to the screen. The HUD stays sharp.",
+	"aa": "Smooths the edges of masts, stays and sheets. SMAA looks best; FXAA is cheaper on built-in graphics.",
 	"vsync": "On: no tearing; the frame rate follows the screen.",
 	"capture_preset": "Portrait 9:16: a tall window and HUD for vertical clips. Off again at the next start.",
 	"effects_volume": "The boats, the water and the wind.",
@@ -300,6 +301,7 @@ func _graphics() -> void:
 	for v in Settings.RENDER_SCALES.slice(1):
 		names.append(pct(v))
 	_row(MenuRow.choice("Render scale", "render_scale", Settings.RENDER_SCALES, names, s.render_scale))
+	_row(MenuRow.choice("Anti-aliasing", "aa", Settings.AA_MODES, ["SMAA", "FXAA"], s.aa))
 	_row(MenuRow.choice("Display", "fullscreen", [false, true], ["Windowed", "Fullscreen"], s.fullscreen))
 	_row(MenuRow.toggle("Vertical sync", "vsync", s.vsync))
 	_row(MenuRow.choice("Frame rate limit", "fps_limit", [0, 30, 60, 90, 120, 144],

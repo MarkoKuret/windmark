@@ -462,13 +462,13 @@ func _unhandled_input(e: InputEvent) -> void:
 
 
 func _setting_changed(key: String) -> void:
-	if key in ["fullscreen", "vsync", "fps_limit", "ui_scale", "render_scale", "capture_preset"]:
+	if key in ["fullscreen", "vsync", "fps_limit", "ui_scale", "render_scale", "aa", "capture_preset"]:
 		settings.apply_display(get_tree().root, key in ["fullscreen", "capture_preset"])
 	elif key.ends_with("_volume"):
 		settings.apply_audio()
 	if stage != null and key in ["quality", "reduced_motion"]:
 		stage.apply_settings(settings)
-	elif stage != null and key in ["fullscreen", "vsync", "fps_limit", "ui_scale", "render_scale", "capture_preset"]:
+	elif stage != null and key in ["fullscreen", "vsync", "fps_limit", "ui_scale", "render_scale", "aa", "capture_preset"]:
 		stage.apply_frame_cap(settings)  # menus.md §4: apply_display put the player's limit back
 
 

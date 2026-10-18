@@ -47,6 +47,9 @@ var palette := "standard"
 var quality := SeaQuality.Tier.M
 ## the 3D view's share of the window's pixels in each direction (menus.md §3): 0 = Auto, else one of RENDER_SCALES
 var render_scale := 0.0
+## the screen-space anti-aliasing of the 3D view (water_render.md §7): "smaa", or "fxaa" (the device default on an
+## integrated GPU, menus.md §3)
+var aa := "smaa"
 var fullscreen := false
 ## the window mode was set this run (apply_display): after that only a display or capture change sets it
 var _mode_set := false
@@ -83,7 +86,7 @@ const FIELDS := {
 	"cameras": ["camera_speed", "invert_orbit_x", "invert_orbit_y", "invert_look_x", "invert_look_y", "heel_follow",
 		"smooth_switch", "reduced_motion"],
 	"hud": ["assist", "hud_density", "ui_scale", "palette"],
-	"graphics": ["quality", "render_scale", "fullscreen", "vsync", "fps_limit"],
+	"graphics": ["quality", "render_scale", "aa", "fullscreen", "vsync", "fps_limit"],
 	"audio": ["master_volume", "effects_volume", "signals_volume", "ambience_volume", "interface_volume"],
 	"menu": ["last_setup", "welcomed"],
 	"bindings": ["bindings"],
@@ -91,6 +94,8 @@ const FIELDS := {
 
 ## the render scale choices (menus.md §3); 0 is Auto
 const RENDER_SCALES := [0.0, 0.5, 0.67, 0.75, 0.85, 1.0]
+## the anti-aliasing choices (menus.md §3, water_render.md §7)
+const AA_MODES := ["smaa", "fxaa"]
 ## what Auto picks on a large or HiDPI window, and the window sizes that count as large
 const AUTO_RENDER_SCALE := 0.67
 const AUTO_LARGE := Vector2i(1920, 1200)
@@ -194,22 +199,24 @@ static func detect_gpu() -> Gpu:
 		OS.get_environment("SteamDeck") == "1")
 
 
-## The graphics a first start picks for an adapter class (menus.md §3): integrated GPUs tier L at 67 %, the Steam
-## Deck tier L at Auto (native on its screen), everything else the plain defaults (tier M, Auto).
+## The graphics a first start picks for an adapter class (menus.md §3): integrated GPUs tier L at 67 % with FXAA
+## (PERFORMANCE.md G5: SMAA's three passes are estimated at 1.5 to 3 ms on an Intel UHD 620 at 1080p), the Steam
+## Deck tier L at Auto (native on its screen) with SMAA, everything else the plain defaults (tier M, Auto, SMAA).
 static func device_graphics(gpu: Gpu) -> Dictionary:
 	match gpu:
 		Gpu.INTEGRATED:
-			return {"quality": SeaQuality.Tier.L, "render_scale": INTEGRATED_RENDER_SCALE}
+			return {"quality": SeaQuality.Tier.L, "render_scale": INTEGRATED_RENDER_SCALE, "aa": "fxaa"}
 		Gpu.STEAM_DECK:
-			return {"quality": SeaQuality.Tier.L, "render_scale": 0.0}
+			return {"quality": SeaQuality.Tier.L, "render_scale": 0.0, "aa": "smaa"}
 	var d := Settings.new()
-	return {"quality": d.quality, "render_scale": d.render_scale}
+	return {"quality": d.quality, "render_scale": d.render_scale, "aa": d.aa}
 
 
 func apply_device_defaults(gpu: Gpu) -> void:
 	var g := device_graphics(gpu)
 	quality = g["quality"]
 	render_scale = g["render_scale"]
+	aa = g["aa"]
 
 
 ## The defaults for this device: Settings.new() with the device's graphics (Reset section, the first-launch Skip).
@@ -277,6 +284,8 @@ func _clamp() -> void:
 	quality = clampi(quality, 0, 2) as SeaQuality.Tier
 	render_scale = 0.0 if render_scale < 0.25 else clampf(render_scale, 0.5, 1.0)
 	fps_limit = maxi(fps_limit, 0)
+	if not aa in AA_MODES:
+		aa = "smaa"
 	if not capture_preset in CAPTURE_PRESETS:
 		capture_preset = "off"
 	for f in BUSES:
@@ -481,18 +490,21 @@ static func upscaler(scale: float) -> Viewport.Scaling3DMode:
 	return Viewport.SCALING_3D_MODE_FSR if rd else Viewport.SCALING_3D_MODE_BILINEAR
 
 
-## Anti-aliasing (water_render.md §7): SMAA 1x on every tier, at the 3D render resolution after tone mapping and
-## before a spatial upscaler (FSR 1.0, MetalFX spatial), which wants an antialiased input. A temporal upscaler
-## (FSR 2, MetalFX temporal) antialiases by itself, so SMAA is off with it.
-static func screen_space_aa(mode: Viewport.Scaling3DMode) -> Viewport.ScreenSpaceAA:
+## Anti-aliasing (water_render.md §7): SMAA 1x on every tier, or FXAA where the `aa` setting says so (the device
+## default on an integrated GPU, menus.md §3), at the 3D render resolution after tone mapping and before a spatial
+## upscaler (FSR 1.0, MetalFX spatial), which wants an antialiased input. A temporal upscaler (FSR 2, MetalFX
+## temporal) antialiases by itself, so both are off with it. The sail scene's `--aa` wins for its run.
+static func screen_space_aa(mode: Viewport.Scaling3DMode, setting := "smaa") -> Viewport.ScreenSpaceAA:
 	match aa_override:
 		"off":
 			return Viewport.SCREEN_SPACE_AA_DISABLED
 		"fxaa":
 			return Viewport.SCREEN_SPACE_AA_FXAA
+		"smaa":
+			return Viewport.SCREEN_SPACE_AA_SMAA
 	if mode in [Viewport.SCALING_3D_MODE_FSR2, Viewport.SCALING_3D_MODE_METALFX_TEMPORAL]:
 		return Viewport.SCREEN_SPACE_AA_DISABLED
-	return Viewport.SCREEN_SPACE_AA_SMAA
+	return Viewport.SCREEN_SPACE_AA_FXAA if setting == "fxaa" else Viewport.SCREEN_SPACE_AA_SMAA
 
 
 static func upscaler_name(mode: Viewport.Scaling3DMode) -> String:
@@ -516,7 +528,7 @@ func apply_render_scale(win: Window) -> void:
 	var sc := effective_render_scale(win)
 	win.scaling_3d_scale = sc
 	win.scaling_3d_mode = upscaler(sc)
-	win.screen_space_aa = screen_space_aa(win.scaling_3d_mode)
+	win.screen_space_aa = screen_space_aa(win.scaling_3d_mode, aa)
 	if _resize_hooked != win:
 		if is_instance_valid(_resize_hooked) and _resize_hooked.size_changed.is_connected(_window_resized):
 			_resize_hooked.size_changed.disconnect(_window_resized)

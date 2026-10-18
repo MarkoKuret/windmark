@@ -43,7 +43,7 @@ static func _env(scene: Node) -> Environment:
 
 # ---- anti-aliasing and render scale (the root viewport) ---------------------------------------------------------
 
-## `--aa=off|fxaa|smaa`: the screen-space anti-aliasing (water_render.md §7), over the project's SMAA.
+## `--aa=off|fxaa|smaa`: the screen-space anti-aliasing (water_render.md §7), over the player's setting.
 static func set_aa(scene: Node, mode: String) -> void:
 	Settings.aa_override = mode.to_lower()
 	if _live(scene):
@@ -59,7 +59,7 @@ static func aa(scene: Node) -> String:
 			Viewport.SCREEN_SPACE_AA_SMAA:
 				return "smaa"
 		return "off"
-	return Settings.aa_override if Settings.aa_override != "" else "smaa"
+	return Settings.aa_override if Settings.aa_override != "" else Settings.current().aa
 
 
 ## `--render-scale=`: this run's render scale (0.5 to 1, or 50 to 100); 0 goes back to the player's setting.

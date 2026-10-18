@@ -23,8 +23,11 @@ function; race and rules states (rank, penalties, right-of-way colours) come fro
   `k = 1 − wm_exp(−DT/τ)`; directions are filtered as unit vectors.
 - **Refresh**: numeric text refreshes at 4 Hz (so digits do not flicker at the tick rate); needles, arrows and lines
   follow the latest tick every frame.
-- **Drawing**: every frame each shown block builds its drawing (its primitives) and is redrawn only when they
-  differ from what it shows; a block that shows the same is not drawn again. The HUD's tick work (`Hud.tick`) may
+- **Drawing**: each shown block builds its drawing (its primitives) whenever what it reads may have changed (a
+  tick, the text refresh, a player command, a setting, a selection, the camera coming or going) and is redrawn only
+  when it differs from what it shows; the blocks that follow the camera or the frame time (the world tags, the
+  radar, the course map, the next-mark arrow, the finish card while it fades) build every frame. A block that shows
+  the same is not drawn again. The HUD's tick work (`Hud.tick`) may
   run one frame after the tick that it reads (`controls.md` §1.1: the tick's work is spread over the frames of a tick).
 - **Formats**:
 

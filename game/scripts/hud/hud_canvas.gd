@@ -14,16 +14,22 @@ var painter := Callable()
 ## texts get a soft drop shadow (hud_direction.md: data over the scene)
 var text_shadow := true
 
-## the HUD's frame the memo below is for: while a Hud lays out and redraws (Hud.frame) every block is built at most
-## once per frame at a given scale and size, however often its primitives or extent are asked for (the layout and
-## the world tags read the blocks' extents); -1 outside a frame, so tests and previews always see a fresh build
+## The build memo (hud.md §1): while a Hud lays out and redraws (Hud.frame) a block is built at most once per
+## `memo_frame` (a block that follows the camera or the frame time, `dynamic`) or per `content_version` (the
+## others: the Hud raises it when a tick, the text refresh, a command, a setting, a selection or the camera may have
+## changed what they read), at a given scale and size, however often its primitives or extent are asked for (the
+## layout and the world tags read the blocks' extents). memo_frame is -1 outside a frame, so tests and previews
+## always see a fresh build.
 static var memo_frame := -1
+static var content_version := 0
+## built every frame (the world tags, the radar, the course map, the next-mark arrow, the fading finish card)
+var dynamic := false
 
 var _prims: Array = []
 ## the primitives last drawn or about to be (refresh), and whether the next _draw uses them as they are
 var _drawn: Array = []
 var _fresh := false
-var _memo_frame := -1
+var _memo_key := -1
 var _memo_k := 0.0
 var _memo_size := Vector2.ZERO
 ## the extent of `_ext_prims` (extent is asked for far more often than a block changes)
@@ -43,13 +49,19 @@ func _build() -> void:
 
 
 func primitives() -> Array:
-	if memo_frame >= 0 and _memo_frame == memo_frame and _memo_k == k and _memo_size == size:
+	if memo_frame >= 0:
+		var key := memo_frame if dynamic else content_version
+		if _memo_key == key and _memo_k == k and _memo_size == size:
+			return _prims
+		_prims = []
+		_build()
+		_memo_key = key
+		_memo_k = k
+		_memo_size = size
 		return _prims
 	_prims = []
 	_build()
-	_memo_frame = memo_frame
-	_memo_k = k
-	_memo_size = size
+	_memo_key = -1
 	return _prims
 
 

@@ -56,11 +56,18 @@ const VIEW_TAP := 0.3
 const RANK_W := [70.0, 260.0, 130.0, 120.0, 120.0]
 const RESULT_W := [70.0, 220.0, 200.0, 120.0, 170.0, 110.0, 90.0, 90.0]
 
-var assist := Assist.STANDARD
+var assist := Assist.STANDARD:
+	set(a):
+		if a != assist:
+			assist = a
+			_bump()
 ## the instrument density (hud.md §16.1); while `density_auto` it follows the screen (default_density)
 var density := Density.RACE:
 	set(d):
-		density = clampi(d, 0, 2) as Density
+		var nd := clampi(d, 0, 2) as Density
+		if nd != density:
+			density = nd
+			_bump()
 var density_auto := true
 var values := HudValues.new()
 var race := RaceHudValues.new()
@@ -155,8 +162,14 @@ var _ladder_shapes: Array = []
 var _items: Array[String] = []
 var _items_key := []
 var _canvases: Array[HudCanvas] = []
-## frames so far (HudCanvas.memo_frame while frame() runs)
+## frames so far (HudCanvas.memo_frame while frame() runs), and the content version of the blocks that read only
+## the tick's values, the texts and the settings (hud.md §1): raised by _bump whenever those may have changed
 static var _frames := 0
+static var _versions := 0
+var _version := 0
+var _phase_seen := ""
+var _palette_seen := ""
+var _camera_seen := false
 ## where edge pointers run in portrait (hud.md §16.5), screen px; empty in landscape (HudPaint.edge_pointer's own box)
 var edge_box := Rect2()
 
@@ -184,6 +197,7 @@ func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	race.hud_event.connect(func(kd: String, d: Dictionary) -> void: hud_event.emit(kd, d))
 	world = _block("World", HudPaint.world)
+	world.dynamic = true
 	inst_page = _block("Instruments", HudPaint.instruments)
 	toast_block = _block("InstrumentsChip", HudPaint.toast)
 	toast_block.visible = false
@@ -194,6 +208,7 @@ func _init() -> void:
 	map_view.name = "CourseMap"
 	map_view.values = race
 	map_view.visible = false
+	map_view.dynamic = true
 	add_child(map_view)
 	race_panel = Control.new()
 	race_panel.name = "Race"
@@ -213,11 +228,13 @@ func _init() -> void:
 	arrow_view.name = "Rounding"
 	next_panel.add_child(arrow_view)
 	mark_arrow_block = _block("MarkArrow", HudPaint.mark_arrow)
+	mark_arrow_block.dynamic = true
 	card_block = _block("BoatCard", HudPaint.boat_card)
 	card_block.visible = false
 	radar = RadarView.new()
 	radar.name = "Radar"
 	radar.values = race
+	radar.dynamic = true
 	add_child(radar)
 	map_view.radar = radar
 	helm_block = _block("Boat", HudPaint.helm)
@@ -253,7 +270,18 @@ func _block(n: String, painter: Callable, parent: Node = self, bind_hud := true)
 # ---- texts ----
 
 func _put(key: String, text: String, colour := HudStyle.PAPER, value := "", unit := "") -> void:
+	var old: Variant = texts.get(key)
 	texts[key] = {"text": text, "col": colour, "value": value, "unit": unit}
+	if old == null or old["text"] != text or old["col"] != colour or old["value"] != value or old["unit"] != unit:
+		_bump()
+
+
+## What the blocks read may have changed (hud.md §1): the blocks that do not follow the camera or the frame time
+## build again at their next refresh.
+func _bump() -> void:
+	_versions += 1
+	_version = _versions
+	HudCanvas.content_version = _version
 
 
 ## the full text of an item ("" when it shows nothing)
@@ -470,6 +498,7 @@ func tick(s: SimSource, boat: int) -> void:
 	race.tick(s, boat)
 	radar.sim = s
 	_since_tick = 0.0
+	_bump()
 
 
 ## The HUD keys of this frame (controls.md §2): rankings (Tab, or a long View press), the course map (M), radar zoom
@@ -565,9 +594,19 @@ func frame(dt: float, controls: PlayerControls = null) -> void:
 	radar.advance(dt)
 	_race_frame()
 	_map_frame()
+	# the other inputs of the blocks that build per content version (hud.md §1)
+	var ph := phase()
+	var cam := world_camera() != null
+	if ph != _phase_seen or HudStyle.palette != _palette_seen or cam != _camera_seen:
+		_phase_seen = ph
+		_palette_seen = HudStyle.palette
+		_camera_seen = cam
+		_bump()
+	start_block.dynamic = finish_card_shown()
 	# from here the blocks' inputs are set for the frame: each is built once (HudCanvas.memo_frame)
 	_frames += 1
 	HudCanvas.memo_frame = _frames
+	HudCanvas.content_version = _version
 	_layout()
 	_redraw()
 	HudCanvas.memo_frame = -1
@@ -634,6 +673,7 @@ func shows(what: String) -> bool:
 
 ## Rewrites every number from the values of the last tick.
 func refresh_text() -> void:
+	_bump()
 	var v := values
 	for kv in [["bsp", "BSP", v.bsp], ["sog", "SOG", v.sog], ["tws", "TWS", v.tws], ["aws", "AWS", v.aws]]:
 		var s := HudFormat.speed_kn(kv[2])
@@ -1390,6 +1430,7 @@ func label_clear(r: Rect2, rects: Array[Rect2] = []) -> bool:
 ## how she stands against the viewed boat; no cells of her distance, bearing, speed or heading)
 func _card_text() -> void:
 	card = {}
+	_bump()
 	var b := selected_boat()
 	if b < 0 or sim == null or viewed < 0 or b == viewed or b >= sim.boat_count():
 		return

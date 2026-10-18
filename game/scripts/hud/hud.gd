@@ -162,9 +162,9 @@ var _ladder_shapes: Array = []
 var _items: Array[String] = []
 var _items_key := []
 var _canvases: Array[HudCanvas] = []
-## frames so far (HudCanvas.memo_frame while frame() runs), and the content version of the blocks that read only
-## the tick's values, the texts and the settings (hud.md §1): raised by _bump whenever those may have changed
-static var _frames := 0
+## the content version of the blocks that read only the tick's values, the texts and the settings (hud.md §1):
+## raised by _bump whenever those may have changed; the frame keys (HudCanvas.memo_frame) come from the same
+## counter, so a block that turns dynamic never meets a key it was built under
 static var _versions := 0
 var _version := 0
 var _phase_seen := ""
@@ -351,9 +351,10 @@ func phase() -> String:
 ## mark tag's second line), "radar", "helm". Race is the racer's list: speed, the dial, heading, the mark's distance
 ## and time, rank and gap; the rest is Data.
 func items() -> Array[String]:
-	var key := [int(density), phase(), int(assist)]
+	var ph := phase()
+	var key := [int(density), ph, int(assist)]
 	if key != _items_key:
-		_items = _items_of(phase())
+		_items = _items_of(ph)
 		_items_key = key
 	return _items
 
@@ -604,8 +605,8 @@ func frame(dt: float, controls: PlayerControls = null) -> void:
 		_bump()
 	start_block.dynamic = finish_card_shown()
 	# from here the blocks' inputs are set for the frame: each is built once (HudCanvas.memo_frame)
-	_frames += 1
-	HudCanvas.memo_frame = _frames
+	_versions += 1
+	HudCanvas.memo_frame = _versions
 	HudCanvas.content_version = _version
 	_layout()
 	_redraw()

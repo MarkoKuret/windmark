@@ -124,7 +124,7 @@ meshes are written in place with `mesh_surface_update_*_region` (ribbons 80x15 v
 | G6 | Try the Mobile renderer for tier L and potato: no depth prepass (about half the geometry and draws), no clustered-light compute. Everything tier L uses works there. Caveat: the 10-bit buffer clips highlights at exposure 0.5 / white 6 (`env_day.tres:26-28`), so the sun disc, glints and sails need a retune; renderer is chosen per export or launch, not live | `project.godot` | 15 to 30 % | M |
 | G7 | Done (WM-101). Tier L shadows: hard filter (`SHADOW_QUALITY_SOFT_VERY_LOW` still takes several PCF taps), boats beyond about 30 m do not cast | `sea_quality.gd` | 0.3 to 0.6 ms GPU | S |
 | G8 | Done 2026-10-11: the vignette is gone on every tier (owner decision: no vignette at all) | | about 0.3 ms GPU on iGPU | |
-| G5 | SMAA to FXAA on L and potato, or SMAA only at 100 % scale (one pass instead of three). Against the owner's "SMAA everywhere" decision of 2026-10-03: owner decides after a measurement | `project.godot`, quality tiers | 1 to 2 ms GPU on iGPU | S |
+| G5 | Done 2026-10-18 (branch `hudcost`): an `aa` graphics setting (SMAA, FXAA; `menus.md` §3); a first start on an integrated GPU (Intel, an AMD APU, the other integrated or software classes) picks FXAA, the Steam Deck, Apple and discrete GPUs keep SMAA; a saved settings file keeps the player's choice and `--aa` wins for its run. Not measured on an iGPU (nobody has one here): the estimate stays 1.5 to 3 ms for SMAA against 0.3 to 0.5 ms for FXAA on a UHD 620 at 1080p | `settings.gd` device defaults | 1 to 2 ms GPU on iGPU | S |
 | G9 | Mobile textures: `rendering/textures/vram_compression/import_etc2_astc` is unset. Enabling it on today's BC set roughly doubles the imported size (pair with A1 and A3), or use Basis Universal (mode 4, UASTC with RDO), one transcodable texture for desktop and mobile. All dimensions are multiples of 4 (ETC2/ASTC-safe) | `project.godot` | phone builds | S to set, M to check |
 
 Renderer compatibility:
@@ -140,7 +140,7 @@ Renderer compatibility:
 
 | # | What | Where | Gain | Effort |
 | --- | --- | --- | --- | --- |
-| C4 | Partly done (WM-103: blocks redrawn only when their primitives change). Measured 2026-10-17 (below): 0.50 ms of the 1.20 ms main thread on L, 16 boats, clock-matched. HUD redraws every canvas every frame; `hud_canvas.gd` rebuilds shapes as string-keyed Dictionaries and `_draw` matches on strings and redraws text. Redraw only blocks that changed, cache text sizes | `scripts/hud/hud.gd:1261-1264`, `hud_canvas.gd:30-37, 123` | 0.75 to 1 ms on M5, 2 to 6 ms on target | M |
+| C4 | Done 2026-10-18 (branch `hudcost`, "HUD cost pass" below): the blocks build once per frame (a primitives memo and a cached extent: the world tags and the layout used to rebuild seven blocks a frame for their extents), the page, bug, wind, start, helm, bars, gauges and tables only when what they read may have changed (a content version: tick, text refresh, command, setting, selection, camera), `items()` and `colours()` cached, no per-point lambdas in the dial and the radar. `hud` on L, 16 boats, clock-matched: 0.59 to 0.24 ms (main thread 1.21 to 0.95 ms). Left: the primitives are string-keyed Dictionaries (about 150 allocations a frame in the per-frame blocks), the radar's 16 icons every frame, the rules pair loop in the tick | `scripts/hud/hud_canvas.gd`, `hud.gd` | done | |
 
 ## Estimated VRAM: one class (wm12), 16 boats, 1080p
 
@@ -173,7 +173,8 @@ A race with both classes adds about 80 MB.
 
 ## Owner decisions
 
-1. SMAA to FXAA on tier L (G5): decide after a measurement.
+1. SMAA to FXAA on tier L (G5): done per device, not per tier (2026-10-18: a first start on an integrated GPU picks
+   FXAA, a Graphics row lets the player choose); the measurement on a real laptop is still wanted.
 2. 4K liveries only on tier H (A1).
 3. AI decisions staggered by boat (C9): done in WM-102; it changes individual races but not the fleet averages.
 4. A real cheap laptop to measure on (ideally Windows, Intel UHD): `--quality=L --no-vsync --perf-log --fleet=16`
@@ -538,3 +539,24 @@ plus the renderer's draw submission on the same thread.
 Checked and already right: the first start on an integrated GPU picks L at 67 % and the Steam Deck L at Auto
 (native 1280 x 800), WM-101, `menus_test`; the boatgen tiling textures are VRAM-compressed and shared (A2); the
 liveries are 2K on every tier (no 4K in the build); C5 to C8 and C1 are in (WM-103).
+
+## HUD cost pass (2026-10-18, branch `hudcost`)
+
+C4, measured as above (L, 16 boats, `--watch --seed=7 --skip=185`, 20 s, the first 5 s dropped, medians of the
+per-second means, two runs each, a busy loop on another core; `input` 0.025 ms in every run). The `hud` column is
+`Hud.tick` plus `Hud.frame`. A profile with timers round the suspects (not committed) put 0.55 of the 0.59 ms in
+the frame's redraw: 0.30 ms of it was `keep_clear_rects` (the world tags keep clear of the blocks) rebuilding seven
+blocks' primitives for their extents, then the instrument page 0.07 (the dial 0.02), the radar 0.05, the start block
+0.03, the wind page and the race bug 0.02 each, `items()` 0.04 over 19 calls; the tick side was 0.025 ms a frame
+(the rules pair loop 0.01). Text formatting runs at 4 Hz already and cost nothing measurable.
+
+| Change | hud before | hud after | main thread |
+| --- | --- | --- | --- |
+| Blocks built once per frame: a primitives memo keyed on the frame, scale and size, and the extent kept while the primitives are unchanged (`hud_canvas.gd`) | 0.59 ms | 0.36 ms | 1.21 to 1.00 ms |
+| `items()` kept for its density, phase and assist, `colours()` per palette, gauge node names set only on a sail change, the canvas list kept, the font cache keyed by an int, no per-point lambdas in the dial and the radar | 0.36 ms | 0.34 ms | |
+| The page, bug, wind, start, helm, bars, gauges and tables built only when what they read may have changed (a content version raised on a tick, a text change, a command, density, assist, selection, palette, phase, the camera coming or going; `hud.md` §1); the world tags, radar, map, next-mark arrow and the fading finish card still build every frame | 0.34 ms | 0.24 ms | 0.95 ms |
+
+At 60 fps on a real low-end machine the last row helps less than at the dev Mac's 145 fps: a tick comes every third
+frame there, so those blocks build on a third of the frames instead of a seventh. The race HUD previews
+(`tests/race_hud_preview_dump.gd`, 23 shots) are byte-identical before and after every row; `hud_test`,
+`race_hud_test` and the layout check pass.

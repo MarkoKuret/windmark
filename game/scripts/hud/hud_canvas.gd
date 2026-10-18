@@ -14,10 +14,22 @@ var painter := Callable()
 ## texts get a soft drop shadow (hud_direction.md: data over the scene)
 var text_shadow := true
 
+## the HUD's frame the memo below is for: while a Hud lays out and redraws (Hud.frame) every block is built at most
+## once per frame at a given scale and size, however often its primitives or extent are asked for (the layout and
+## the world tags read the blocks' extents); -1 outside a frame, so tests and previews always see a fresh build
+static var memo_frame := -1
+
 var _prims: Array = []
 ## the primitives last drawn or about to be (refresh), and whether the next _draw uses them as they are
 var _drawn: Array = []
 var _fresh := false
+var _memo_frame := -1
+var _memo_k := 0.0
+var _memo_size := Vector2.ZERO
+## the extent of `_ext_prims` (extent is asked for far more often than a block changes)
+var _ext := Rect2()
+var _ext_prims: Array = []
+var _ext_valid := false
 
 
 func _init() -> void:
@@ -31,8 +43,13 @@ func _build() -> void:
 
 
 func primitives() -> Array:
+	if memo_frame >= 0 and _memo_frame == memo_frame and _memo_k == k and _memo_size == size:
+		return _prims
 	_prims = []
 	_build()
+	_memo_frame = memo_frame
+	_memo_k = k
+	_memo_size = size
 	return _prims
 
 
@@ -84,9 +101,19 @@ func _s(p: Vector2, text: String, size_px: int, col: Color, weight := 600, track
 ## The area this block draws now, in its own coordinates (the union of its primitives' bounds; texts from the
 ## baseline up the font's ascent and down its descent). Rect2() when it draws nothing. The layout and the tests.
 func extent() -> Rect2:
+	var prims := primitives()
+	if _ext_valid and prims == _ext_prims:
+		return _ext
+	_ext = _extent_of(prims)
+	_ext_prims = prims
+	_ext_valid = true
+	return _ext
+
+
+static func _extent_of(prims: Array) -> Rect2:
 	var out := Rect2()
 	var any := false
-	for q in primitives():
+	for q in prims:
 		var r := prim_rect(q)
 		if r.size == Vector2.ZERO and r.position == Vector2.ZERO:
 			continue

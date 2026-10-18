@@ -151,6 +151,8 @@ var _wired: PlayerControls = null
 var _map_sim: SimSource = null
 var _k := 1.0
 var _ladder_shapes: Array = []
+## frames so far (HudCanvas.memo_frame while frame() runs)
+static var _frames := 0
 ## where edge pointers run in portrait (hud.md §16.5), screen px; empty in landscape (HudPaint.edge_pointer's own box)
 var edge_box := Rect2()
 
@@ -545,8 +547,12 @@ func frame(dt: float, controls: PlayerControls = null) -> void:
 	radar.advance(dt)
 	_race_frame()
 	_map_frame()
+	# from here the blocks' inputs are set for the frame: each is built once (HudCanvas.memo_frame)
+	_frames += 1
+	HudCanvas.memo_frame = _frames
 	_layout()
 	_redraw()
+	HudCanvas.memo_frame = -1
 
 
 ## PlayerControls asks the HUD whether the protest prompt shows and whether a hail can be made or answered.
@@ -1863,7 +1869,7 @@ func _all_canvases() -> Array[HudCanvas]:
 	return out
 
 
-## hud.md §17: every visible block built again, redrawn only when what it draws changed.
+## hud.md §1: every visible block built again (once per frame), redrawn only when what it draws changed.
 func _redraw() -> void:
 	for n in _all_canvases():
 		if n.is_visible_in_tree():

@@ -199,10 +199,10 @@ static func dial(b: HudCanvas, h: Hud, c_design: Vector2, r_design: float, appar
 	var hw := _hw(b)
 	b._c(c, r, Color(HudStyle.INK, 0.30))
 	b._a(c, r, 0.0, TAU, 72, HudStyle.HAIR, hw)
-	var dir := func(a: float) -> Vector2: return Vector2(sin(a), -cos(a))
 	for i in 12:
 		var a := TAU * i / 12.0
-		b._l(c + dir.call(a) * r, c + dir.call(a) * (r - 8.0 * k), HudStyle.HAIR, hw)
+		var d := Vector2(sin(a), -cos(a))
+		b._l(c + d * r, c + d * (r - 8.0 * k), HudStyle.HAIR, hw)
 	# close-hauled sectors 20..60 degrees, port on the left
 	var s0 := deg_to_rad(20.0)
 	var s1 := deg_to_rad(60.0)
@@ -216,7 +216,7 @@ static func dial(b: HudCanvas, h: Hud, c_design: Vector2, r_design: float, appar
 		var col := Color(HudStyle.MARK, 1.0 if strong else 0.45)
 		for sgn in [1.0, -1.0]:
 			var a: float = sgn * opt
-			var u: Vector2 = dir.call(a)
+			var u := Vector2(sin(a), -cos(a))
 			var sd := Vector2(-u.y, u.x)
 			var tip := c + u * (r - 11.0 * k)
 			b._p(PackedVector2Array([tip, c + u * r + sd * 6.0 * k, c + u * r - sd * 6.0 * k]), col)

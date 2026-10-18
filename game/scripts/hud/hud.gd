@@ -151,6 +151,10 @@ var _wired: PlayerControls = null
 var _map_sim: SimSource = null
 var _k := 1.0
 var _ladder_shapes: Array = []
+## items() for the density, phase and assist of `_items_key`
+var _items: Array[String] = []
+var _items_key := []
+var _canvases: Array[HudCanvas] = []
 ## frames so far (HudCanvas.memo_frame while frame() runs)
 static var _frames := 0
 ## where edge pointers run in portrait (hud.md §16.5), screen px; empty in landscape (HudPaint.edge_pointer's own box)
@@ -158,14 +162,21 @@ var edge_box := Rect2()
 
 
 
-## HudValues.Colour -> token, in the colour-blind palette in use (hud.md §16.2.1)
+## HudValues.Colour -> token, in the colour-blind palette in use (hud.md §16.2.1); read only
 static func colours() -> Dictionary:
-	return {
-		HudValues.Colour.NONE: HudStyle.PAPER,
-		HudValues.Colour.GREEN: HudStyle.STBD,
-		HudValues.Colour.YELLOW: HudStyle.MARK,
-		HudValues.Colour.RED: HudStyle.PORT,
-	}
+	if _colours_palette != HudStyle.palette:
+		_colours = {
+			HudValues.Colour.NONE: HudStyle.PAPER,
+			HudValues.Colour.GREEN: HudStyle.STBD,
+			HudValues.Colour.YELLOW: HudStyle.MARK,
+			HudValues.Colour.RED: HudStyle.PORT,
+		}
+		_colours_palette = HudStyle.palette
+	return _colours
+
+
+static var _colours := {}
+static var _colours_palette := ""
 
 func _init() -> void:
 	name = "Hud"
@@ -312,8 +323,15 @@ func phase() -> String:
 ## mark tag's second line), "radar", "helm". Race is the racer's list: speed, the dial, heading, the mark's distance
 ## and time, rank and gap; the rest is Data.
 func items() -> Array[String]:
+	var key := [int(density), phase(), int(assist)]
+	if key != _items_key:
+		_items = _items_of(phase())
+		_items_key = key
+	return _items
+
+
+func _items_of(ph: String) -> Array[String]:
 	var out: Array[String] = ["bsp", "twa_dial", "twa", "radar", "helm"]
-	var ph := phase()
 	var lvl := density
 	var data := ["vmg_kn", "awa", "sog", "cog", "aws", "heel_bar"]
 	match ph:
@@ -672,8 +690,10 @@ func _bars() -> void:
 		if i >= v.gauges.size():
 			continue
 		var g: HudValues.Gauge = v.gauges[i]
-		gv.name = "Gauge" + g.name.capitalize().replace(" ", "")
-		gv.title = g.name.capitalize()
+		var title := g.name.capitalize()
+		if gv.title != title:
+			gv.title = title
+			gv.name = "Gauge" + title.replace(" ", "")
 		gv.auto = g.auto
 		gv.greyed = g.greyed
 		gv.needle = g.needle
@@ -1860,13 +1880,15 @@ func _place_table(b: HudCanvas, widths: Array, rows: int, k: float, inner: float
 
 
 func _all_canvases() -> Array[HudCanvas]:
-	var out: Array[HudCanvas] = [world, inst_page, toast_block, bug_block, wind_page, feed_block, start_block,
-		flags_view, penalty_panel, turn_view, alerts_block, next_panel, card_block, arrow_view, mark_arrow_block, radar,
-		helm_block, helm_notes,
-		rudder_bar, sheet_bar, ranking_panel, results_panel, map_view]
-	for g in gauge_views:
-		out.append(g)
-	return out
+	var n := 23 + gauge_views.size()
+	if _canvases.size() != n:
+		_canvases = [world, inst_page, toast_block, bug_block, wind_page, feed_block, start_block,
+			flags_view, penalty_panel, turn_view, alerts_block, next_panel, card_block, arrow_view, mark_arrow_block, radar,
+			helm_block, helm_notes,
+			rudder_bar, sheet_bar, ranking_panel, results_panel, map_view]
+		for g in gauge_views:
+			_canvases.append(g)
+	return _canvases
 
 
 ## hud.md §1: every visible block built again (once per frame), redrawn only when what it draws changed.

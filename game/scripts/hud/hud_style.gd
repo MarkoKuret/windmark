@@ -71,9 +71,10 @@ static func set_palette(name: String) -> void:
 ## The family at a weight (500, 600, 700) with tabular figures and `tracking` (em) between the letters.
 static func font(weight := 600, tracking := 0.0, size_px := 16) -> Font:
 	var spacing := int(roundf(tracking * size_px))
-	var key := "%d:%d" % [weight, spacing]
-	if _fonts.has(key):
-		return _fonts[key]
+	var key := (weight << 16) + spacing + 32768
+	var have: Variant = _fonts.get(key)
+	if have != null:
+		return have
 	var base: Font = load(FONT_FILES.get(weight, FONT_FILES[600]))
 	var fv := FontVariation.new()
 	fv.base_font = base

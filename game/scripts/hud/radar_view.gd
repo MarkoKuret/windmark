@@ -34,6 +34,11 @@ var selected := -1
 var selected_at := Vector2.INF
 
 var _t := 0.0
+## the build's frame (_px): the viewed boat, the rotation, the disc centre and the px per metre
+var _disc_o := Vector2.ZERO
+var _disc_rot := 0.0
+var _disc_c := Vector2.ZERO
+var _disc_scale := 1.0
 
 
 func _init() -> void:
@@ -124,29 +129,30 @@ func _build() -> void:
 	var o := Vector2(me.pos_x, me.pos_y)
 	var rot := 0.0 if north_up else me.psi
 	var scale := r / range_m()
-	var to_px := func(p: Vector2) -> Vector2:
-		var d := (p - o).rotated(rot)  # ENU rotated so that the heading points up
-		return c + Vector2(d.x, -d.y) * scale
-	var clip := func(p: Vector2) -> bool: return p.distance_to(c) <= r
+	# a point to the disc: ENU rotated so that the heading points up (_px); inside the disc when within r of c
+	_disc_o = o
+	_disc_rot = rot
+	_disc_c = c
+	_disc_scale = scale
 	var crs := values.course()
 	var steps: Array = crs.get("steps", [])
 	var marks: Array = crs.get("marks", [])
 	# boundary
 	var bnd: PackedVector2Array = crs.get("boundary", PackedVector2Array())
 	for i in bnd.size():
-		_seg(to_px.call(bnd[i]), to_px.call(bnd[(i + 1) % bnd.size()]), c, r, Color(HudStyle.PORT, 0.5), hw)
+		_seg(_px(bnd[i]), _px(bnd[(i + 1) % bnd.size()]), c, r, Color(HudStyle.PORT, 0.5), hw)
 	# lines
 	if not values.started and steps.size() > 0:
 		var p := values.step_points(0)
-		_seg(to_px.call(p[0]), to_px.call(p[1]), c, r, HudStyle.PAPER, 2.0 * k)
+		_seg(_px(p[0]), _px(p[1]), c, r, HudStyle.PAPER, 2.0 * k)
 	if values.next_step == steps.size() - 1 and values.next_step > 0:
 		var p := values.step_points(values.next_step)
-		_seg(to_px.call(p[0]), to_px.call(p[1]), c, r, HudStyle.PAPER, 2.0 * k)
+		_seg(_px(p[0]), _px(p[1]), c, r, HudStyle.PAPER, 2.0 * k)
 	# laylines
 	if laylines:
 		for l in values.laylines:
 			var col := HudStyle.STBD if int(l["tack"]) > 0 else HudStyle.PORT
-			_seg(to_px.call(l["a"]), to_px.call(l["b"]), c, r, col, 1.5 * k)
+			_seg(_px(l["a"]), _px(l["b"]), c, r, col, 1.5 * k)
 	# marks
 	var nk := values.next_step
 	var following := nk + 1 if nk > 0 else -1
@@ -162,8 +168,8 @@ func _build() -> void:
 				continue
 			shown[ms[i]] = true
 			var mp := Vector2(marks[ms[i]]["x"], marks[ms[i]]["y"])
-			var q: Vector2 = to_px.call(mp)
-			if not clip.call(q):
+			var q: Vector2 = _px(mp)
+			if q.distance_to(c) > r:
 				q = c + (q - c).normalized() * (r - 4.0)
 			var col := HudStyle.MARK if st == nk else HudStyle.PAPER
 			var dm := 5.0 * self.k
@@ -177,16 +183,16 @@ func _build() -> void:
 	for i in marks.size():
 		if shown.has(i) or int(marks[i]["type"]) == 3:
 			continue
-		var q: Vector2 = to_px.call(Vector2(marks[i]["x"], marks[i]["y"]))
-		if clip.call(q):
+		var q: Vector2 = _px(Vector2(marks[i]["x"], marks[i]["y"]))
+		if q.distance_to(c) <= r:
 			_c(q, 2.5 * self.k, Color(HudStyle.PAPER, 0.6))
 	# boats
 	for ct in values.contacts:
 		var p := sim.render_pose(ct.boat, alpha)
 		if p == null:
 			continue
-		var q: Vector2 = to_px.call(Vector2(p.pos_x, p.pos_y))
-		if not clip.call(q):
+		var q: Vector2 = _px(Vector2(p.pos_x, p.pos_y))
+		if q.distance_to(c) > r:
 			continue
 		var col := contact_colour(ct)
 		drawn[ct.boat] = col
@@ -201,8 +207,8 @@ func _build() -> void:
 	if values.message != null and values.message.other >= 0:
 		var tp := sim.render_pose(values.message.other, alpha)
 		if tp != null:
-			var q: Vector2 = to_px.call(Vector2(tp.pos_x, tp.pos_y))
-			if clip.call(q):
+			var q: Vector2 = _px(Vector2(tp.pos_x, tp.pos_y))
+			if q.distance_to(c) <= r:
 				_a(q, 10.0 * self.k, 0.0, TAU, 20, HudStyle.PAPER, 1.5 * self.k)
 	# true wind arrow at the edge, pointing where it blows
 	var wa := twd - rot  # from
@@ -214,6 +220,11 @@ func _build() -> void:
 	_l(tail, head, HudStyle.PAPER, 2.0 * k)
 	var side := Vector2(-inward.y, inward.x)
 	_p(PackedVector2Array([head + inward * 7.0 * k, head + side * 6.0 * k, head - side * 6.0 * k]), HudStyle.PAPER)
+
+
+func _px(p: Vector2) -> Vector2:
+	var d := (p - _disc_o).rotated(_disc_rot)
+	return _disc_c + Vector2(d.x, -d.y) * _disc_scale
 
 
 func _boat(q: Vector2, psi_screen: float, len_px: float, col: Color, outline: bool) -> void:

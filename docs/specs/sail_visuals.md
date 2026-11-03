@@ -22,6 +22,8 @@ below holds in either frame once the axes are mapped).
   smooth, an eased sail on the wind line goes flat and flutters from the luff aft, a let-fly sail flogs, a backed
   headsail pops through to the other side, a spinnaker rises as a thin bundle and fills over the last tenth of its
   hoist.
+- A kite on the lofted model (§6.5) is the exception: its flying shapes are built once by the generator from measured
+  sections, and every update only blends them by the apparent wind and places the kite as a whole.
 - One mid-surface grid is deformed; the two cloth layers and their normals are derived from it (§9), so the drawn
   sail is always two-sided and correctly lit from both sides.
 
@@ -189,6 +191,14 @@ Angles in radians in the file (the tuner shows degrees). `Sl` is the luff extent
 | `stay_head` | 0.3 | 0.3 | 0.05 to 0.9 | on a pole: the forestay shift fades out over this top share of the height |
 | `stay_luff` | 0.5 | 0.5 | 0.05 to 0.95 | on a pole: chord share from which the forestay shift is taken in full |
 | `stay_leech` | 0.3 | 0.3 | 0 to 1 | on a pole: share of the forestay shift lost toward the leech |
+| `model` | `hinge` | `hinge` | `hinge`, `loft` | the shape model: `hinge` the shapes of §6.3, §6.4 placed by §7.3 to §7.7; `loft` the lofted shapes of §6.5 (a string) |
+| `shape` | – | – | a file name | for `loft`: the kite shape file the generator lofts from, `data/sails/<shape>.kite_shape.json` (`data_format.md` §3.7.6; a string; asymmetric only for now) |
+| `loft_depth` | 1 | 1 | 0.3 to 1.5 | `loft` only: the lofted depth over the measured (§6.5 `D`) |
+| `loft_trim` | 0 | 0 | −20° to 20° | `loft` only: the whole kite turned further out about its luff (negative: in), on top of the core's angle (§6.5) |
+
+A lofted kite (`model` `loft`, §6.5) reads only `loft_depth` and `loft_trim`; every other key is kept for the hinge
+model and has no effect on it. Only wm7 flies the loft (2026-11-03); every other class stays on the hinge model until
+measured sections for it arrive.
 
 How each enters the shape (the sections below give the rest; with the defaults every added term is zero or one):
 ```
@@ -357,6 +367,110 @@ m   = (w.a + 0.1 * I2 * sin(q),  w.l,  w.n + I2 * cos(q))
   only a little up the luff and aft along the chord; `K` flattens it further fore and aft.
 - Luffing makes the belly breathe: the flutter modulates the extrusion, strongest where the depth is, travelling
   aft.
+
+### 6.5 Lofted asymmetric spinnaker
+
+The hinge model of §6.3 and §7 bends the flat grid every update into a computed belly and then corrects it locally:
+the clearance push (§7.4), the forestay shift, the clew solve (§7.7), the row twist and the tack pin. Each correction
+is local, so where they overlap the cloth dents and bulges. The lofted model draws a kite's flying shape as one
+coherent surface, built **once** by the generator from measured full-scale sections (as a sail modeller would
+sculpt it), and at run time only blends it by the apparent wind and places it as a whole. Picked per kite by the set
+block's `model` (§4.1); the measured sections are a kite shape file (`data_format.md` §3.7.6), the lofted shapes are
+generated into the physics sidecar (`sails.<id>.loft`, `data_format.md` §3.7.5).
+
+**The loft (generator, `tools/boatgen/boatgen/kite_loft.py`).** For each measured AWA, on the class's own flat grid
+(`P`, rows `i` from the foot, columns `j` from the luff):
+```
+h_i  = i / (rows - 1)                       // the row's stripe: its share of the luff and of the leech, as measured
+G_i  = sum over j of |P[i][j+1] - P[i][j]|  // the row's flat girth; t_ij its vertices' shares of it
+f_i, e_i = the measured camber and entry at h_i: a monotone cubic (Fritsch-Carlson) through the sections and a head
+           point h = 1: the camber run on along the top two sections' slope toward zero (never up, never below 0;
+           a camber forced to 0 over the top sixth pinches the head into a waist, and the depth goes to 0 with the
+           chord anyway), the entry 0
+d_i   = a least-squares cubic in h through the measured drafts, held above the top section (the reach's 0.44, 0.39,
+        0.44 would wave the line of deepest points, and the light on the cloth, from side to side)
+tau_i = a least-squares cubic in h_i through the measured twists, 0 at the foot (fair: the reach's 6, 6, 3, 4 deg up
+        the top half would bend the leech back and forth)
+rho_i = flying chord over girth: the longest a convex section of (f_i, d_i) has (no luff curl), less a shortening
+        that is a least-squares cubic in h through the measured sections' own (from their entry), 0 at the head,
+        kept >= 0 with a smooth floor (+-0.01); the leech the chords make is fair (the measured entries scatter
+        from 50 to 129 deg)
+section of row i: a convex curve of arc length G_i (the cloth keeps its length) with camber f_i, draft d_i and chord
+                  rho_i G_i (so the flying chord comes out of the camber), its curvature over the arc share t
+    kappa(t) = k (e^{s (t - 1/2)} - e^{-s/2} w(t)) + g w(t) + q_i w_e(t),   w(t) = max(0, 1 - t / 0.3)^2,
+               w_e(t) = max(0, 1 - (1 - t) / 0.5)^2
+    k the depth, s the draft (s >= -2 / 0.3), g >= 0 the luff curl (spread over 0.3 of the girth: no crease),
+    q_i the clew hook (below); every term >= 0: a membrane under pressure has no hollow
+row i in 3D: from its flat luff vertex L_i, the chord along the flat row turned by tau_i about the vertical toward the
+    belly, the belly to port; vertex j at its arc share t_ij:  Q_ij = L_i + G_i (X(t_ij) r_i' + Y(t_ij) n_i')
+written per vertex in the sail frame of §3.2: (a, l, n) = (Q - T) . (Ah, Lh, Nh)
+```
+The tack, the head and the luff stay where the flat sail has them; the clew and the leech come out of the chords and
+the twist. Then the loft is fitted to the kite as it flies, at a nominal trim per measured AWA (the class's optimum
+kite angle at 12 kn true wind from its performance file, else `|awa| - 48 deg` within 15 to 64 deg), set alone with
+the run-time placement below:
+- **As flown.** A turn about the leaning luff changes the rows' horizontal chord angles by itself, and the clew's
+  lift (below) the low rows' camber against their own chords, so `tau_i` and `f_i` are corrected, three times each
+  before and after the clew is set, by the difference between the target and the drawn one (the chords' horizontal
+  angles from the foot's; the largest distance from the chord, a parabola through the deepest vertex and its
+  neighbours, over the chord).
+- **Clew on its sheet** (what §7.7 did every update, done once): the clew hook `q_i = q (1 - h_i / 0.3)^3`
+  (0 <= q <= 8: the foot's last half curving round into the clew, the low rows' chords drawn in) and the clew lift
+  (the clew end of the low rows raised along the luff by `lift * C_0 * (1 - h_i / 0.3)^3 * uc^2`, |lift| <= 0.3) are
+  chosen to bring the sheet nearest the clew corner's bisector (as test 25 measures it): seven hooks, then golden
+  sections. The sidecar records them and the angle left.
+
+On wm7 from the J/80 (Deparday et al. 2016), as drawn (test 27): the camber within 0.3 % of the measured on every
+section, the draft within 0.03 (the cubic), the twist within 1.2° (the cubic, on the reach) at both AWAs and half
+way; the entry angles where convexity allows them (the run's foot 66° for 61°); the clew hook 0 reaching and 8
+running (the bound), the lift 0.01 and 0.13 of the foot; at the nominal trims the sheet leaves the clew 18° (reach)
+and 12° (run) off its bisector, mostly out of the corner's plane: the measured sections leave the clew corner only
+these two terms to turn it with (the hinge model's per-update clew solve, §7.7, gets within 4°).
+
+**Run time (`SailShape`, native and reference; the generator's preview port in `sail_set.py`).** Per update, with
+`S_m` the lofted shapes at their AWAs `A_m` (rising) and `(a, l, 0)` the rest grid:
+```
+x    = |wrap_pi(awa)|
+L    = S_0 for x <= A_0, S_last for x >= A_last, else S_m + (S_{m+1} - S_m) * smoothstep((x - A_m) / (A_{m+1} - A_m))
+D    = min(F, 1) * loft_depth                     // F: the asymmetric fill of §5.1 (light air)
+sd   = clamp(sin(wrap_pi(beta + awa)) / 0.1, -1, 1) ; side = sd (3 - sd^2) / 2      // the belly on the side the wind
+                                                  // blows it to; through the wind line it goes flat and over
+fly  = (a, l, 0) + D * (L - (a, l, 0)),  fly.n *= side
+I2   = 0.33 * flutter_amp * I ;  q = phi - 7 uc   // luffing: the belly breathes, strongest where it is deep
+fly += (0.1 I2 sin(q) |fly.n|, 0, I2 cos(q) fly.n)
+loc  = fly (up), §8.4 hoist / §8.5 drop toward fly (with the tack pin of §7.5)
+                                                  // the swing S and the turn about the (swung) luff as in §7.3:
+ease = the turn further out, about the same luff (below)
+k_e  = smoothstep(|wrap_pi(beta)| / 0.1) * (1 - smoothstep((|wrap_pi(beta)| - 100 deg) / 60 deg))   // the trim and
+                                                  // the ease fade out where sgn(beta) flips (the centreline, round
+                                                  // the bow in a gybe), so the kite does not jump there
+th   = beta - gamma_e + sgn(beta) * k_e * loft_trim
+P''  = R(Lh', T', th + sgn(beta) * k_e * ease) . (S . (T + a Ah + l Lh + n Nh) - T') + T'   // every vertex, one turn
+```
+No row twist on top of the measured, no clearance push, no forestay shift, no clew solve, no `forward` or
+`tack_rise`: the kite moves only as a whole. The tack stays on its fitting and the head at its halyard (the luff axis
+is the turn's axis), the clew where the turn puts it; the sheet runs straight from the placed clew to its block
+(§11.3) and the main stops on it as before (§7.6, with the placed clew).
+
+**Clear as a whole.** Where the kite would come within the clearance `c` (§4) of the main, a shown headsail or the
+mast (as §7.4 measures it: horizontal sections, the margin fading at the head and the tack), it is turned further out
+about its luff, as one body, just far enough:
+```
+X(delta) = min over every vertex of x - 1.2 c_P   // 1.2: the horizontal distance keeps a margin over the true one up
+                                                  // by the head, where the sails lean
+delta = 0; 6 times: stop when X >= 0; delta = min(delta + (-X) / max(r, 0.5), 0.5 rad)   // r: the worst vertex's
+                                                  // distance from the luff axis
+after the first step only the vertices then within 2 c of the worst are looked at again
+```
+On wm7 at the optimum trims (12 kn) the reach at AWA 64° (kite 16°, main 10°) needs about 16° of this turn, AWA 80°
+and more none; the largest over test 18's sweep (over-sheeted, the main eased, the jib up) is 27°, and on the closest
+reaches (test 20) it takes the clew up to 2.2 m outboard of the widest beam (the hinge model 1.9 m: it bends the
+leech off the main instead). The forestay needs nothing: tacked to the sprit end ahead of it, the wm7 kite stays at
+least 0.8 m off the forestay (AWA 60° to 150°, the kite at 60 to 130 % of its optimum, 2026-11-03).
+Cost: about 77 µs per update native (the hinge kite 81 µs).
+
+The lofted model replaces §6.3, §7.3's row twist, §7.4 (but the turn above), §7.5's shift and §7.7 for that kite;
+the hoist and drop (§8.4, §8.5), the layers (§9), the sheets (§11.3) and the main's stop (§7.6) are unchanged.
 
 ### 6.4 Symmetric spinnaker
 As §6.3 (with the symmetric defaults of the set parameters, §4.1) with `F` from the sheet angle (§5.1: strapped in it goes flat, eased it fills slightly beyond the nominal
@@ -1291,6 +1405,22 @@ Flutter phase `φ = 0` unless stated.
     (`game/tests/kite_tuner_test.gd`): moving a slider changes the drawn kite, Reset to defaults gives back the
     default shape, and Save then a reload of the class file gives back the same values (and an unchanged class file
     when every value is back at its default).
+    The lofted model (§6.5) on the leaning rectangle with a synthetic two-AWA loft: `loft_depth` and `loft_trim`
+    move the kite, the tack and the head stay where they are hoisted, and native against reference over random
+    drivers in every phase (hoist, drop) with the clearance on, within 1 mm. The tuner on wm7 (lofted): only the
+    loft's sliders, the switch to the hinge model and back, Save writes `model` and the keys, and back at the
+    defaults the class file is unchanged byte for byte.
+
+27. **Lofted kite against its sections.** On the generated `wm7` (`model` `loft`, the J/80 sections), through
+    BoatView (native and reference), the kite alone and full at AWA 64°, 94° and 124° on both tacks: at each measured
+    section's height (between the rows either side) the drawn row's camber (its largest distance from its chord over
+    the chord), draft and twist (its chord's horizontal angle from the foot's, to leeward) are within 0.025, 0.05 and
+    2.5° of the measured (half way: the two shapes' numbers blended by the smoothstep of §6.5). The test prints the
+    table. On a lofted kite tests 8, 20 and 25 read: 8, every inner vertex on the downwind side of the vertical plane
+    through its row's chord, with `β` at most the kite's `sheet_max` (64°; test 9 takes it round the bow); 20, the
+    clew at most `0.32·LOA` outboard (the kite is cleared of the main by turning it out whole); 25, the sheet at most
+    50° off the clew's bisector over the whole sweep of trims (the clew is set once per measured AWA at its nominal
+    trim, not every update) and the foot and lower leech fair with turn steps up to 4° (the clew hook) and no bulge.
 
 ## 13. Dependencies and open points
 
@@ -1334,7 +1464,9 @@ counts an asymmetric with `SHW/SFL` above 0.85 as the normal case (certificate n
 
 ### 14.2 Asymmetric spinnaker flying shape
 
-Measured on a J/80 at full scale by photogrammetry (Deparday et al. 2016, table 3; camber and draft over the
+Measured on a J/80 at full scale by photogrammetry (Deparday J., Bot P., Hauville F., Augier B., Rabaud M., "Full-scale
+flying shape measurement of offwind yacht sails with photogrammetry", Ocean Engineering 127 (2016) 135-143, table 3;
+the lofted model of §6.5 is built from these numbers, `data/sails/j80_deparday2016.kite_shape.json`; camber and draft over the
 section's chord, twist the horizontal angle of the section's chord from the foot's, entry the angle between the luff
 tangent and the chord):
 

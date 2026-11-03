@@ -119,7 +119,21 @@ class Sail:
         with every missing key filled from the defaults of its type; None for any other sail."""
         from .sail_set import set_params
         d = set_params(self.type, self.set_override)
-        return {k: round(float(v), 6) for k, v in d.items()} if d else None
+        return {k: (v if isinstance(v, str) else round(float(v), 6)) for k, v in d.items()} if d else None
+
+    def loft_block(self, boat=None):
+        """The sidecar `loft` block of a kite whose set block names a kite shape file (sail_visuals.md 6.5): the
+        flying shapes lofted from its measured sections on this planform, the clew hook solved on `boat` (its
+        sheet lead and nominal trims; none without a boat); None for any other sail. Built once and kept."""
+        name = (self.set_override or {}).get("shape") if self.type.startswith("spinnaker") else None
+        if not name:
+            return None
+        key = (name, id(self.P), boat is not None)
+        if getattr(self, "_loft", None) is None or self._loft[0] != key:
+            from .kite_loft import sidecar_block
+            from .sail_set import loft_place
+            self._loft = (key, sidecar_block(self.P, name, place=loft_place(boat, self) if boat is not None else None))
+        return self._loft[1]
 
     def part(self, P=None, gap=0.001):
         P = self.P if P is None else P

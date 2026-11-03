@@ -121,9 +121,15 @@ class PoseTest(unittest.TestCase):
     def test_reach_clew(self):
         # 7.4, 12 test 20: on the reach the upper leech is pushed off the main locally, not the whole kite turned:
         # the clew stays aft of the mast and at most 0.3 LOA outboard of the widest beam, with no ease
+        # (on the hinge model: wm7's kite is lofted, 6.5, and cleared by turning it out whole: test_kite_loft.py)
         for cid, sid in (("wm7", "kite"), ("wm12", "a2")):
             b = boat(cid)
-            grids, shapes = sail_set.set_sails(b, set_pose("spinnaker_asym", "reach"))
+            keep = b.sails[sid].set_override
+            b.sails[sid].set_override = {k: v for k, v in keep.items() if k not in ("model", "shape")}
+            try:
+                grids, shapes = sail_set.set_sails(b, set_pose("spinnaker_asym", "reach"))
+            finally:
+                b.sails[sid].set_override = keep
             clew = grids[sid][0, -1]
             self.assertLess(clew[0], b.rig.x_mast, cid)
             self.assertLessEqual(abs(clew[1]) - 0.5 * b.cls["hull"]["beam_max"], 0.3 * b.hull.L, cid)
@@ -194,5 +200,7 @@ class SetParamsTest(unittest.TestCase):
         # the sidecar's set block: the class file's keys over the defaults, on the kite only
         b = boat("wm7")
         kite = b.sails["kite"]
-        self.assertEqual(kite.set_block(), {k: round(float(v), 6) for k, v in sail_set.SET_DEFAULTS[kite.type].items()})
+        want = {k: round(float(v), 6) for k, v in sail_set.SET_DEFAULTS[kite.type].items()}
+        want.update(model="loft", shape="j80_deparday2016")     # wm7's kite is lofted (sail_visuals.md 6.5)
+        self.assertEqual(kite.set_block(), want)
         self.assertIsNone(b.sails["main"].set_block())

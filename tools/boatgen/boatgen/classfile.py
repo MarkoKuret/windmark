@@ -38,7 +38,10 @@ SET_KEYS = {"depth_peak_h": (0.1, 0.9), "depth_foot": (0.0, 1.5), "depth_head": 
             "luff_curl": (-1.0, 1.0), "leech_curl": (-1.0, 1.0), "head_drop": (0.0, 0.15),
             "clew_lift": (-0.3, 0.3), "clew_out": (-0.3, 0.3), "clew_h": (0.05, 0.8), "forward": (-0.1, 0.3),
             "tack_rise": (0.0, 0.15), "stay_clear": (0.0, 1.0), "stay_width": (0.1, 1.5), "stay_head": (0.05, 0.9),
-            "stay_luff": (0.05, 0.95), "stay_leech": (0.0, 1.0)}
+            "stay_luff": (0.05, 0.95), "stay_leech": (0.0, 1.0), "loft_depth": (0.3, 1.5),
+            "loft_trim": (-20 * _DEG, 20 * _DEG)}
+# the set block's string keys (sail_visuals.md 6.5): the shape model, and the kite shape file a loft is built from
+SET_MODELS = ("hinge", "loft")
 
 
 def _set_block(given, st, where):
@@ -50,14 +53,31 @@ def _set_block(given, st, where):
     if given and st not in ("spinnaker_asym", "spinnaker_sym"):
         raise ClassFileError(f"{where}: set parameters are for spinnakers only (this sail is a {st})")
     for k, x in given.items():
+        if k == "model":
+            if x not in SET_MODELS:
+                raise ClassFileError(f"{where}.model must be one of {SET_MODELS} (got {x!r})")
+            continue
+        if k == "shape":
+            if not isinstance(x, str) or not x.strip():
+                raise ClassFileError(f"{where}.shape must name a kite shape file (data/sails/<name>.kite_shape.json)")
+            if st != "spinnaker_asym":
+                raise ClassFileError(f"{where}.shape: lofted shapes are for asymmetric spinnakers for now")
+            from .kite_loft import load, KiteShapeError
+            try:
+                load(x)
+            except KiteShapeError as e:
+                raise ClassFileError(f"{where}.shape: {e}")
+            continue
         if k not in SET_KEYS:
-            raise ClassFileError(f"{where}.{k} is not a set parameter ({', '.join(SET_KEYS)})")
+            raise ClassFileError(f"{where}.{k} is not a set parameter (model, shape, {', '.join(SET_KEYS)})")
         lo, hi = SET_KEYS[k]
         if isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x) or not lo <= x <= hi:
             raise ClassFileError(f"{where}.{k} must be a number from {lo:g} to {hi:g} (got {x})")
     lo, hi = given.get("twist_awa_lo", 60 * _DEG), given.get("twist_awa_hi", 130 * _DEG)
     if hi <= lo:
         raise ClassFileError(f"{where}: twist_awa_hi must be above twist_awa_lo")
+    if given.get("model") == "loft" and not given.get("shape"):
+        raise ClassFileError(f"{where}: model loft needs a shape (the kite shape file it is lofted from)")
     return dict(given)
 
 

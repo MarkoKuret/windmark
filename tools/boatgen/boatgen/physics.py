@@ -250,6 +250,8 @@ def sail_data(boat):
                      "corners": corners, "look": s.look(boat.hull.L)}
         if s.set_block() is not None:   # sail_visuals.md 4.1: a kite's set parameters
             out[name]["set"] = s.set_block()
+        if s.loft_block(boat) is not None:  # sail_visuals.md 6.5: a kite's lofted flying shapes
+            out[name]["loft"] = s.loft_block(boat)
         if s.measure:
             out[name]["rule"] = {"luff": _r(s.measure["luff"], 3), "leech": _r(s.measure["leech"], 3),
                                  "foot": _r(s.measure["foot"], 3), "mid_girth": _r(s.measure["mid_girth"], 3),

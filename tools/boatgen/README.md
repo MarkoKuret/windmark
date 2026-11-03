@@ -128,6 +128,17 @@ All keys are optional; with none the sail keeps the standard proportions above (
 | `luff_round`, `leech_round`, `foot_round` | of the edge | -0.1 to 0.3 | greatest depth of the edge's curve over its straight line: luff bows forward, leech aft, foot down; negative is a hollow |
 | `luff_round_pos`, `leech_round_pos`, `foot_round_pos` | along the edge | 0.1 to 0.9 | where that depth sits: luff and leech from the bottom corner (0.45 by default, so fullest just below half height), foot from the tack (0.5) |
 
+### A lofted kite
+
+A kite whose class file names a kite shape file (`visual.sails.<id>.set.shape`, `data/sails/<shape>.kite_shape.json`,
+`docs/specs/data_format.md` §3.7.6) is lofted by `boatgen/kite_loft.py` (`docs/specs/sail_visuals.md` §6.5): per
+measured apparent wind angle, every grid row becomes a convex section of the measured camber, draft and entry with
+the row's flat girth as its arc length, turned by the measured twist; then the twist and camber are corrected to the
+kite as it flies at its nominal trim (the class's optimum kite angle from `data/perf/<id>.perf.json`, when there is
+one) and the clew is hooked and lifted to face its sheet. The shapes go into the sidecar's `sails.<id>.loft`
+(generated, never hand-edited); the game draws them when the set block's `model` is `loft`. It adds about 10 s to a
+build. `tests/test_kite_loft.py` checks the file, the sections and the wm7 loft.
+
 How the luff and leech rounds and the mid girth interact: with neither round given, both are solved together to
 reach the mid girth (the default); with one given, the other is solved; with both given, the mid girth is the
 outcome (then `mid_girth` and `mid_girth_frac` are not allowed). The foot round is 0.08 (asym), 0.10 (sym) or

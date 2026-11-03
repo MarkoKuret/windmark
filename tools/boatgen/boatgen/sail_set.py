@@ -97,13 +97,24 @@ CLEW_AWA = (np.radians(45.0), np.radians(65.0))    # 7.7: and in with the AWA, o
 CURL_BAND = 0.25        # 4.1: the luff and leech curl reach this share of the chord in from the edge
 HOLD = 0.35             # 4.1: `forward` holds the corners over this share of Sl
 TACK_REACH = 0.5        # 4.1: `tack_rise` fades out over this share of Sl from the tack
+LOFT_SIDE = 0.1         # 6.5: the lofted belly crosses to the other side as sin(beta + awa) passes +-this
+LOFT_EASE_MAX = 0.5     # 6.5: the largest turn of a lofted kite off the main, the jib and the mast, rad
+LOFT_EASE_STEPS = 6     # 6.5: steps of that turn's solve
+LOFT_FADE = (0.1, np.radians(100.0), np.radians(60.0))  # 6.5: |beta| over which the turn fades in from the
+#                         centreline, and from where and over how much it fades out round the bow
+LOFT_MARGIN = 1.2       # 6.5: the turn keeps this many margins (horizontal) so the true distance keeps one
+LOFT_NEAR = 2.0         # 6.5: after its first step, the solve looks only at vertices this many clearances near the worst
 
 # 4.1: the kite set parameters (visual.sails.<id>.set) by kite type: the shape constants of 6.3, 6.4, 7.3, 7.4, 7.7
 _SET_COMMON = {"draft_from_h": 0.55, "belly_aft": 0.5, "belly_up": 0.5, "twist_awa_lo": float(np.radians(60.0)),
                "twist_awa_hi": float(np.radians(130.0)), "twist_run": float(np.radians(25.0)), "foot_sag_h": 0.35,
                "girth_foot": 1.0, "girth_mid": 1.0, "girth_head": 1.0, "luff_curl": 0.0, "leech_curl": 0.0,
                "head_drop": 0.0, "clew_lift": 0.0, "clew_out": 0.0, "clew_h": 0.3, "forward": 0.0, "tack_rise": 0.0,
-               "stay_clear": 0.25, "stay_width": 0.6, "stay_head": 0.3, "stay_luff": 0.5, "stay_leech": 0.3}
+               "stay_clear": 0.25, "stay_width": 0.6, "stay_head": 0.3, "stay_luff": 0.5, "stay_leech": 0.3,
+               "loft_depth": 1.0, "loft_trim": 0.0}
+# 4.1, 6.5: the kite's shape model (`hinge`: the shapes of 6.3, 6.4 placed by 7.3 to 7.7; `loft`: the lofted
+# shapes of 6.5) and, for a loft, the kite shape file it is lofted from; strings, not numbers
+SET_STRINGS = {"model": "hinge", "shape": ""}
 SET_DEFAULTS = {
     "spinnaker_asym": dict(_SET_COMMON, depth_peak_h=0.3, depth_foot=0.8, depth_head=0.45,
                            draft_low=0.5 ** (1 / 0.8), draft_head=0.5 ** (1 / 1.4), twist_exp=2.5, foot_sag=0.0),
@@ -116,8 +127,8 @@ def set_params(sail_type, given=None):
     """4.1: the kite's set parameters, `given` over the defaults of its type ({} for any other sail)."""
     if sail_type not in SET_DEFAULTS:
         return {}
-    d = dict(SET_DEFAULTS[sail_type])
-    d.update({k: float(v) for k, v in (given or {}).items()})
+    d = dict(SET_DEFAULTS[sail_type], **SET_STRINGS)
+    d.update({k: (str(v) if k in SET_STRINGS else float(v)) for k, v in (given or {}).items()})
     return d
 
 
@@ -181,7 +192,7 @@ def asym_twist(awa, lo=np.radians(60.0), hi=np.radians(130.0), run=np.radians(25
 class SailSet:
     """One sail: configure from the flat grid and the look, then `update` places it (mid-surface in `self.mid`)."""
 
-    def __init__(self, P, sail_type, look, mode, rig, loa, kset=None):
+    def __init__(self, P, sail_type, look, mode, rig, loa, kset=None, loft=None):
         self.rows, self.cols = P.shape[:2]
         rows, cols = self.rows, self.cols
         Q = P.reshape(-1, 3).astype(np.float64)
@@ -263,12 +274,20 @@ class SailSet:
         self._e1 = np.linalg.norm(E[1:, 1:] - E[:-1, :-1], axis=-1)
         self._e2 = np.zeros((rows - 1, cols))
         self._e2[:, 1:] = np.linalg.norm(E[1:, :-1] - E[:-1, 1:], axis=-1)
+        # 6.5: a lofted kite's shapes by AWA (the sidecar's `loft` block), when its set block picks the loft
+        self.loft_awa = self.loft_shapes = None
+        if ks and ks.get("model") == "loft" and loft is not None:
+            self.loft_awa = np.asarray(loft["awa"], dtype=np.float64)
+            self.loft_shapes = np.asarray(loft["shapes"], dtype=np.float64).reshape(len(self.loft_awa), -1, 3)
+        self.turn = 0.0
 
     # ------------------------------------------------------------------ shape and placement (7, 6.1 to 6.4)
 
     def update(self, beta, gamma, awa, aws, obstacles=()):
         rows, cols = self.rows, self.cols
         self.beta = beta
+        if self.loft_awa is not None:
+            return self._loft_update(beta, gamma, awa, aws, obstacles)
         tl = -sgn(awa)
         s_t = Xf()
         ge = 0.0
@@ -377,6 +396,106 @@ class SailSet:
         if clearing:
             self._push(awa, hd)
         return self.mid
+
+    # ------------------------------------------------------------------ the lofted kite (6.5)
+
+    def loft_local(self, awa, aws, beta):
+        """6.5: the lofted shape's local position of every vertex (a, l, n in the sail frame, up, no flutter): the
+        measured shapes blended by the AWA, the depth by the fill and `loft_depth`, the belly on the side the wind
+        blows it to."""
+        A, S = self.loft_awa, self.loft_shapes
+        x = abs(wrap_pi(awa))
+        if x <= A[0]:
+            L = S[0]
+        elif x >= A[-1]:
+            L = S[-1]
+        else:
+            m = int(np.searchsorted(A, x, side="right")) - 1
+            t = smoothstep01((x - A[m]) / (A[m + 1] - A[m]))
+            L = S[m] + (S[m + 1] - S[m]) * t
+        F = min(self.fill_gain * min(max(aws / KNOT, 3.0), 6.0) / 6.0, 1.0)
+        D = F * self.ks["loft_depth"]
+        sd = min(max(np.sin(wrap_pi(beta + awa)) / LOFT_SIDE, -1.0), 1.0)
+        side = sd * (3.0 - sd * sd) / 2.0
+        flat = np.stack([self.a, self.l, np.zeros_like(self.a)], -1)
+        loc = flat + (L - flat) * D
+        loc[:, 2] *= side
+        return loc
+
+    def _loft_update(self, beta, gamma, awa, aws, obstacles):
+        rows, cols = self.rows, self.cols
+        s_t = Xf()
+        ge = 0.0
+        if self.mode == SPRIT:
+            lim = np.arcsin(min(1.0, self.tack_line_max * self.sl / self.r_h))
+            ge = sgn(gamma) * min(abs(gamma), lim)
+            s_t = Xf.about(self.head, UP, ge)
+        elif self.mode == POLE:
+            ge = gamma
+            s_t = Xf.about(self.mast_step, self.mast_axis, ge)
+        piv = s_t(self.tack)
+        ax = s_t.R @ self.lh
+        ax = ax / np.linalg.norm(ax)
+        loc = self.loft_local(awa, aws, beta)
+        self.loc = loc
+        wb = abs(wrap_pi(beta))     # the trim and the turn off the obstacles fade out where sgn(beta) flips
+        es = sgn(beta) * smoothstep01(wb / LOFT_FADE[0]) * (1.0 - smoothstep01((wb - LOFT_FADE[1]) / LOFT_FADE[2]))
+        th = beta - ge + es * self.ks["loft_trim"]
+        self.turn = th
+        self.trow = np.zeros(rows)
+        self.kd = self.kl = 0.0
+        hd = s_t(self.head)
+        self.tack_at = piv.copy()
+        rest = self.tack + loc[:, :1] * self.ah + loc[:, 1:2] * self.lh + loc[:, 2:] * self.nh
+        self.ease = 0.0
+        self.push_max = 0.0
+        if self.clearance > 0:
+            if obstacles:
+                self._sections(obstacles, s_t, piv, ax, th, -sgn(awa))
+            else:
+                self._secs = []
+            self.ease = self._loft_ease(beta, s_t, piv, ax, th, hd, rest, -sgn(awa))
+        self.mid = (Xf.about(piv, ax, th + es * self.ease) * s_t)(rest)
+        self.clew0 = self.mid[cols - 1].copy()
+        return self.mid
+
+    def loft_clear(self, pts, hd, lee, idx):
+        """6.5: the clearance over its margin of each of the points `idx` (the obstacles' sections and the mast; inf
+        when none is near)."""
+        out = np.full(len(idx), np.inf)
+        for q, k in enumerate(idx):
+            p = pts[k]
+            cp = LOFT_MARGIN * self._margin(p, hd)
+            x = self._mast_x(p, lee)[0] - cp
+            for o in self._secs:
+                x = min(x, self._clear_x(o, p, cp)[0] - cp)
+            out[q] = x
+        return out
+
+    def _loft_ease(self, beta, s_t, piv, ax, th, hd, rest, tl):
+        """6.5: the kite turned as a whole about its luff, away from the centreline, just far enough that no vertex
+        is inside the clearance margin of the main, the jib or the mast (at most LOFT_EASE_MAX). After the first
+        step only the vertices then within LOFT_NEAR clearances of the worst are looked at again."""
+        es, delta = sgn(beta), 0.0
+        lee = -PORT * tl
+        q = s_t(rest)
+        idx = np.arange(len(q))
+        for it in range(LOFT_EASE_STEPS):
+            pts = Xf.about(piv, ax, th + es * delta)(q)
+            x = self.loft_clear(pts, hd, lee, idx)
+            j = int(np.argmin(x))
+            worst = float(x[j])
+            if not worst < 0.0:
+                break
+            at = idx[j]
+            if it == 0:
+                idx = idx[x < worst + LOFT_NEAR * self.clearance]
+            d = pts[at] - piv
+            r = np.linalg.norm(d - ax * (d @ ax))
+            delta = min(delta + (-worst) / max(r, 0.5), LOFT_EASE_MAX)
+            if delta >= LOFT_EASE_MAX:
+                break
+        return delta
 
     def _fly(self, kd, kl, k=None):
         """6.3, 6.4 (up, no flutter) with the clew set of 7.7 (draw-in kd, draw-down kl; 0 for none): the local
@@ -687,6 +806,46 @@ def sail_mode(boat, sail_type):
     return LUFF
 
 
+def nominal_kite_angle(boat, sail_id, awa):
+    """6.5: the kite's sheet angle (rad, a magnitude) at the apparent wind angle awa that the loft's clew hook is
+    solved for: the class's optimum at 12 kn true wind from its performance file (data/perf/<id>.perf.json, the
+    configuration with this sail in front), else |awa| - 48 deg within 15 to 64 deg."""
+    import json
+    import os
+    a = abs(awa)
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "data", "perf",
+                        f"{boat.cls['id']}.perf.json")
+    try:
+        with open(path) as f:
+            perf = json.load(f)
+        cfg = next(c for c in perf["configs"] if c.get("front_sail") == sail_id)
+        t = cfg["optimal_angle"][sail_id]
+        tws, aw = (np.asarray(x["points"], dtype=np.float64) for x in t["axes"])
+        v = np.asarray(t["values"], dtype=np.float64).reshape(len(tws), len(aw))
+        w = 12.0 * KNOT
+        col = np.array([np.interp(w, tws, v[:, k]) for k in range(len(aw))])
+        return float(np.interp(a, aw, col))
+    except (OSError, StopIteration, KeyError, ValueError):
+        return float(min(max(a - np.radians(48.0), np.radians(15.0)), np.radians(64.0)))
+
+
+def loft_place(boat, sail):
+    """6.5: for kite_loft.loft, the kite lofted as `loc` set alone at its nominal trim for the AWA (wind from
+    starboard, full, no flutter): (its placed grid (rows, cols, 3), the working lead block of its sheet)."""
+    rp = rig_points(boat)
+    L = boat.hull.L
+    sid = next(k for k, v in boat.sails.items() if v is sail)
+    lead = rp["flying_lead"]
+
+    def place(awa, loc):
+        beta = -nominal_kite_angle(boat, sid, awa)
+        sh = SailSet(sail.P, sail.type, sail.look(L), sail_mode(boat, sail.type), rp, L,
+                     dict(sail.set_override, model="loft"), {"awa": [awa], "shapes": [loc]})
+        sh.update(beta, 0.0, awa, 8.0, ())
+        return sh.grid().copy(), np.array([lead[0], -sgn(beta) * abs(lead[1]), lead[2]])
+    return place
+
+
 def preview_poses(boat):
     """Every pose the previews draw on this boat: [(name, pose)]: the build's POSES whose sails the boat carries,
     and kite_preview's run and reach per flying-sail type."""
@@ -738,7 +897,7 @@ def set_sails(boat, pose):
         if sail.type not in pose["sails"]:
             continue
         shapes[sid] = SailSet(sail.P, sail.type, sail.look(L), sail_mode(boat, sail.type), rp, L,
-                              sail.set_override)
+                              sail.set_override, sail.loft_block(boat))
         order.append(sid)
     order.sort(key=lambda s: shapes[s].flying)
     aws = pose.get("aws", 6.0)

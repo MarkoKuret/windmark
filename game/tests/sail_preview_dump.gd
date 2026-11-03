@@ -5,6 +5,8 @@ extends SceneTree
 ## boat (the sails from their SailShape) with a camera to generated/sail_preview/<shot>/. Step 2,
 ## tests/sail_preview.py, renders them offscreen with OpenGL.
 ##   godot --headless --path game -s res://tests/sail_preview_dump.gd [-- shot ...]
+##   godot --headless --path game -s res://tests/sail_preview_dump.gd -- kite_loft    (the comparison of
+##       sail_visuals.md §6.5: wm7's kite on the hinge and the lofted model, tests/kite_loft_preview.py)
 
 const KNOT := 1852.0 / 3600.0
 const OUT := "res://generated/sail_preview"
@@ -93,6 +95,26 @@ var SHOTS := [
 ]
 
 
+## sail_visuals.md §6.5: wm7's kite drawn on the hinge model and on the lofted one at AWA about 64, 95 and 124 deg
+## (12 kn, the helm holding the apparent wind), each from the leeward side, the stern quarter and the bow quarter
+var KITE_LOFT_VIEWS := {
+	"side": {"side": 1, "fwd": 0.05, "up": 0.1, "dist": 15.5},
+	"stern": {"side": 1, "fwd": -0.72, "up": 0.2, "dist": 15.5},
+	"bow": {"side": 1, "fwd": 0.72, "up": 0.12, "dist": 15.5},
+}
+
+
+func _kite_loft_shots() -> Array:
+	var out := []
+	for awa in [64, 95, 124]:
+		for model in ["hinge", "loft"]:
+			out.append({"name": "kite_loft_%d_%s" % [awa, model], "cls": "wm7", "tws": 12.0, "twa": float(awa) + 30.0,
+				"model": model, "views": KITE_LOFT_VIEWS,
+				"legs": [{"t": 12.0, "awa": float(awa)}, {"t": 45.0, "awa": float(awa), "req": "kite"}],
+				"cam": KITE_LOFT_VIEWS["side"]})
+	return out
+
+
 var _twa := 0.0
 
 
@@ -109,11 +131,17 @@ func _main() -> void:
 	var want := OS.get_cmdline_user_args()
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT))
 	var names := []
-	for spec in SHOTS:
+	var shots := SHOTS
+	if want.has("kite_loft"):
+		shots = _kite_loft_shots()
+		want = []
+	for spec in shots:
 		if want.is_empty() or want.has(spec["name"]):
 			_shot(spec)
-		if FileAccess.file_exists(OUT.path_join(spec["name"]).path_join("scene.json")):
-			names.append(spec["name"])
+		for v in spec.get("views", {"": null}):
+			var nm: String = spec["name"] + ("_" + v if v != "" else "")
+			if FileAccess.file_exists(OUT.path_join(nm).path_join("scene.json")):
+				names.append(nm)
 	var f := FileAccess.open(OUT.path_join("index.json"), FileAccess.WRITE)
 	f.store_string(JSON.stringify(names))
 	quit(0)
@@ -146,6 +174,8 @@ func _shot(spec: Dictionary) -> void:
 			f.tick = sim.tick()
 			if leg.has("h"):
 				f.h_cmd = float(leg["h"])
+			elif leg.has("awa"):  # hold the apparent wind angle
+				f.h_cmd = clampf(1.0 * Frames.angle_diff(s.awa, deg_to_rad(float(leg["awa"]))), -1.0, 1.0)
 			else:
 				f.h_cmd = clampf(1.5 * Frames.angle_diff(s.twa, deg_to_rad(float(leg["twa"]))), -1.0, 1.0)
 			var auto: bool = leg.get("auto", true)
@@ -163,8 +193,15 @@ func _shot(spec: Dictionary) -> void:
 			bv.apply_sails(prev, cur, 1.0, SimSource.DT)
 			if _until(String(leg.get("until", "")), cur, idx):
 				break
+	if spec.has("model"):  # sail_visuals.md §6.5: the kite on the model asked for
+		for sp in bv.sail_parts:
+			if KiteSet.is_kite(sp.type):
+				var ks := sp.kset.duplicate()
+				ks["model"] = spec["model"]
+				bv.reshape_kite(sp.id, {}, ks)
 	bv.apply(sim.render_pose(b, 1.0))
-	bv.apply_sails(prev, cur, 1.0, 1.0 / 60.0)
+	for k in 3:  # the main's stop (§7.6) reads the kite's clew as last placed
+		bv.apply_sails(prev, cur, 1.0, 1.0 / 60.0)
 	var st := sim.state(b)
 	var sails_note := []
 	for sp in bv.sail_parts:
@@ -175,7 +212,14 @@ func _shot(spec: Dictionary) -> void:
 	note = "%s: twa %.0f awa %.0f aws %.1f kn heel %.0f | %s" % [spec["name"], rad_to_deg(st.twa), rad_to_deg(st.awa),
 		st.aws / KNOT, rad_to_deg(st.phi), ", ".join(sails_note)]
 	print(note)
-	_dump(spec, bv, st, note)
+	if spec.has("views"):
+		for v in spec["views"]:
+			var sv := spec.duplicate()
+			sv["name"] = spec["name"] + "_" + v
+			sv["cam"] = spec["views"][v]
+			_dump(sv, bv, st, note + " | " + spec.get("model", "") + ", " + v)
+	else:
+		_dump(spec, bv, st, note)
 	bv.free()
 
 

@@ -41,6 +41,7 @@ func _main() -> void:
 	_sheet_clear()
 	_tack_on_sprit()
 	_clew_on_sheet()
+	_loft_sections()
 	_parity()
 	await _rate_by_distance()
 	_perf()
@@ -582,7 +583,7 @@ func _set_params() -> void:
 			var base := {"foot_sag": 0.2, "draft_head": 0.6, "twist_top": 0.1, "clew_lift": 0.05}
 			for row in KiteSet.PARAMS:
 				var key: String = row[0]
-				if (row[7] == "asym" and kind != K.ASYM) or (row[7] == "pole" and kind != K.SYM):
+				if (row[7] == "asym" and kind != K.ASYM) or (row[7] == "pole" and kind != K.SYM) or row[7] == "loft":
 					continue
 				var d: Dictionary = KiteSet.defaults(type)
 				d.merge(base, true)
@@ -621,6 +622,90 @@ func _set_params() -> void:
 			worst = maxf(worst, max_move(a.positions(), b.positions()))
 			cases += 1
 	t.ok(worst < 1e-3, "%d random frames, every key away from its default: native within %.7f m of the reference" % [
+		cases, worst])
+	_loft_params()
+
+
+## §6.5 a synthetic lofted kite on the leaning rectangle of test 26: two "measured" shapes (AWA 64 and 124 deg),
+## each row a circular-ish belly of its own camber with the chord drawn in to keep the cloth, the run's twisted
+static func synth_loft() -> Dictionary:
+	var g := rect_lean()
+	var tk := g[0]
+	var lh := (g[110] - tk).normalized()
+	var nh := Vector3(0, 1, 0)
+	var ah := lh.cross(nh).normalized()
+	var awa := PackedFloat32Array([deg_to_rad(64.0), deg_to_rad(124.0)])
+	var pts := PackedVector3Array()
+	for m in 2:
+		var cam := 0.22 if m == 0 else 0.3
+		for i in 11:
+			var h := i / 10.0
+			var tw := (0.05 if m == 0 else 0.4) * h
+			for j in 11:
+				var uc := j / 10.0
+				var d := g[i * 11 + j] - tk
+				var d0 := g[i * 11] - tk
+				var a := d.dot(ah)
+				var a0 := d0.dot(ah)
+				var sh := 1.0 / (1.0 + 8.0 / 3.0 * cam * cam)
+				var ar := a0 + (a - a0) * sh
+				var nn := cam * sh * 3.0 * sin(PI * uc) * (1.0 - 0.6 * h)
+				# the twist: the row turned about the luff toward the belly's side
+				var ra := ar - a0
+				pts.append(Vector3(a0 + ra * cos(tw) - nn * sin(tw), d.dot(lh), ra * sin(tw) + nn * cos(tw)))
+	return {"model": "loft", "loft_awa": awa, "loft_shapes": pts}
+
+
+func _loft_kite(impl: String, extra: Dictionary = {}) -> Variant:
+	var ex := synth_loft()
+	ex.merge(extra, true)
+	return _set_kite(impl, K.ASYM, ex)
+
+
+## §6.5, §12 test 26: the lofted model's keys (`loft_depth`, `loft_trim`) move the kite; native against reference
+## over random drivers in every phase, with the main as an obstacle.
+func _loft_params() -> void:
+	t.begin("26 kite set parameters: the lofted model")
+	for impl in (["ref", "native"] if native else ["ref"]):
+		var k0: Variant = _loft_kite(impl)
+		t.ok(k0.is_loft(), "%s: the synthetic kite is lofted" % impl)
+		for key in ["loft_depth", "loft_trim"]:
+			var moved := 0.0
+			for awa_deg in [70.0, 100.0, 140.0]:
+				var a := _set_place(_loft_kite(impl), deg_to_rad(awa_deg))
+				var b := _set_place(_loft_kite(impl, {key: 0.8 if key == "loft_depth" else 0.1}), deg_to_rad(awa_deg))
+				moved = maxf(moved, max_move(a, b))
+			t.ok(moved > 1e-2, "%s: %s moves the kite (%.3f m)" % [impl, key, moved])
+		# the tack and the head stay on their fittings
+		var kk: Variant = _loft_kite(impl)
+		kk.update(UP, 1.0, -0.8, 0.0, 0.0, deg_to_rad(100.0), 6.0)
+		var m: PackedVector3Array = kk.mid()
+		var g := rect_lean()
+		t.ok(m[0].distance_to(g[0]) < 1e-4 and m[110].distance_to(g[110]) < 1e-3,
+			"%s: the tack and the head stay where they are hoisted" % impl)
+	if not native:
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 65
+	var worst := 0.0
+	var cases := 0
+	var a: Variant = _loft_kite("ref", {"loft_depth": 1.1, "loft_trim": 0.05, "clearance": 0.3,
+		"mast_head": Vector3(1.2, 0, 9.5)})
+	var b: Variant = _loft_kite("native", {"loft_depth": 1.1, "loft_trim": 0.05, "clearance": 0.3,
+		"mast_head": Vector3(1.2, 0, 9.5)})
+	for r in 80:
+		var dt := rng.randf_range(0.0, 0.05)
+		var aws := rng.randf_range(0.5, 9.0)
+		var awa := rng.randf_range(-PI, PI)
+		a.advance(dt, aws, awa, false)
+		b.advance(dt, aws, awa, false)
+		var ph: int = [1, 2, 3, 4, 5][r % 5]
+		var args := [ph, rng.randf(), -0.6 * awa, rng.randf_range(-0.6, 0.6), rng.randf(), awa, aws]
+		a.update(args[0], args[1], args[2], args[3], args[4], args[5], args[6])
+		b.update(args[0], args[1], args[2], args[3], args[4], args[5], args[6])
+		worst = maxf(worst, max_move(a.positions(), b.positions()))
+		cases += 1
+	t.ok(worst < 1e-3, "lofted: %d random frames in every phase, native within %.7f m of the reference" % [
 		cases, worst])
 
 
@@ -788,6 +873,24 @@ func _asym_leeward(sp: BoatView.SailPart) -> void:
 		var downwind := -(fwd * cos(awa) - port * sin(awa))
 		var s := signf(downwind.dot(pn))
 		var bad := 0
+		if sp.shape.is_loft():
+			# §6.5 a lofted kite's sections are convex: every inner vertex lies on the downwind side of the vertical
+			# plane through its row's chord (the luff curl and the clew hook stay on the belly's side); in its
+			# working range, the sheet at most sheet_max (64 deg; test 9 takes it round the bow)
+			beta = -Frames.sgn(awa) * minf(deg_to_rad(absf(deg) - 25.0), deg_to_rad(64.0))
+			sp.shape.update(UP, 1.0, beta, gamma, 0.0, awa, 5.0)
+			m = sp.shape.mid()
+			for i in range(1, sp.rows - 1):
+				var c0 := m[i * sp.cols]
+				var ch := m[i * sp.cols + sp.cols - 1] - c0
+				var nc := ch.cross(up).normalized()
+				var sc := signf(downwind.dot(nc))
+				for j in range(1, sp.cols - 1):
+					if (m[i * sp.cols + j] - c0).dot(nc) * sc <= 0.0:
+						bad += 1
+			t.ok(bad == 0, "%s awa %+.0f deg, beta %+.0f deg: lofted belly to leeward of each row's chord (%d vertices not)" % [
+				sp.id, deg, rad_to_deg(beta), bad])
+			continue
 		for i in range(1, sp.rows - 1):
 			for j in range(1, sp.cols - 1):
 				# the plane through the row's own luff point (the luff is cut with a curve)
@@ -984,6 +1087,9 @@ func _clearance() -> void:
 ## reaching kite's does: at most REACH_FWD * LOA forward of the mast (abreast of it or aft) and at most REACH_OUT * LOA
 ## outboard of the widest beam.
 const REACH_OUT := 0.3
+## §6.5 a lofted kite is cleared of the main by turning it out whole (the hinge model bends its leech off the main
+## instead), so on the closest reaches (the core sheeting it inside the main) its clew flies a little further out
+const REACH_OUT_LOFT := 0.32
 const REACH_FWD := 0.05
 
 
@@ -1026,9 +1132,10 @@ func _reach_clew() -> void:
 								fwd = cl.z - mast_x
 								at = "awa %.0f tws %.0f" % [rad_to_deg(absf(ap.x)), kn]
 							out = maxf(out, absf(cl.x) - half)
+			var rout := REACH_OUT_LOFT if fp.shape.is_loft() else REACH_OUT
 			var msg := "%s %s: %d reaching cases, clew at most %.2f m forward of the mast (<= %.2f, aft < 0, at %s), at most %.2f m outboard of the widest beam (<= %.2f), largest ease %.1f deg" % [
-				id, fp.id, n, fwd, REACH_FWD * data.info.loa, at, out, REACH_OUT * data.info.loa, rad_to_deg(ease)]
-			t.ok(n > 0 and fwd <= REACH_FWD * data.info.loa and out <= REACH_OUT * data.info.loa, msg)
+				id, fp.id, n, fwd, REACH_FWD * data.info.loa, at, out, rout * data.info.loa, rad_to_deg(ease)]
+			t.ok(n > 0 and fwd <= REACH_FWD * data.info.loa and out <= rout * data.info.loa, msg)
 			print("  " + msg)
 		bv.free()
 
@@ -1186,6 +1293,11 @@ func _tack_on_sprit() -> void:
 const CLEW_ANGLE_MAX := 12.0     # deg, sheet off the clew corner's bisector
 const FAIR_STEP_MAX := 3.0       # deg, change of the signed turn from one edge vertex to the next
 const FAIR_DEAD := 0.5           # deg, turns smaller than this have no sign
+## §6.5 a lofted kite: its clew is shaped once, by the generator, for the nominal trim of each measured AWA (the
+## hook and lift of §6.5), not every frame, so over the whole sweep of trims the sheet strays further off the
+## bisector; its foot carries the clew hook, a little sharper than the hinge model's draw-in
+const CLEW_ANGLE_MAX_LOFT := 50.0
+const FAIR_STEP_MAX_LOFT := 4.0
 
 
 func _clew_on_sheet() -> void:
@@ -1239,13 +1351,15 @@ func _clew_on_sheet() -> void:
 									bulges += 1
 									if at_bulge == "":
 										at_bulge = what
+				var amax := CLEW_ANGLE_MAX_LOFT if fp.shape.is_loft() else CLEW_ANGLE_MAX
+				var smax := FAIR_STEP_MAX_LOFT if fp.shape.is_loft() else FAIR_STEP_MAX
 				var msg := "%s %s (%s): %d cases, the sheet at most %.1f deg off the clew's bisector (<= %.0f) at %s" % [
-					id, fp.id, impl, n, worst, CLEW_ANGLE_MAX, at]
-				t.ok(n > 0 and worst <= CLEW_ANGLE_MAX, msg)
+					id, fp.id, impl, n, worst, amax, at]
+				t.ok(n > 0 and worst <= amax, msg)
 				print("  " + msg)
 				msg = "%s %s (%s): foot and lower leech turn step at most %.2f deg (<= %.0f) at %s, %d bulged%s" % [
-					id, fp.id, impl, step, FAIR_STEP_MAX, at_step, bulges, (" (first " + at_bulge + ")") if bulges > 0 else ""]
-				t.ok(step <= FAIR_STEP_MAX and bulges == 0, msg)
+					id, fp.id, impl, step, smax, at_step, bulges, (" (first " + at_bulge + ")") if bulges > 0 else ""]
+				t.ok(step <= smax and bulges == 0, msg)
 				print("  " + msg)
 			bv.free()
 
@@ -1421,6 +1535,124 @@ func _clear_check(fp: BoatView.SailPart, obs: Array, ms: Vector3, mh: Vector3, c
 		if cp >= c - 1e-6 and d < r["worst"]:
 			r["worst"] = d
 			r["at"] = what
+
+
+## §12 test 27: the lofted wm7 kite as drawn (BoatView, native and reference, alone, full) against the measured
+## sections it is lofted from: camber, draft and twist by height at the measured AWAs and half way between them
+## (the AWA blend of §6.5: the measured numbers blended by the same smoothstep).
+const LOFT_CAMBER_TOL := 0.025
+const LOFT_DRAFT_TOL := 0.05
+const LOFT_TWIST_TOL := 2.5  # deg
+
+
+func _loft_sections() -> void:
+	t.begin("27 lofted kite against its measured sections: wm7")
+	if not FileAccess.file_exists("res://generated/boats/wm7.glb"):
+		return
+	var cls: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(BoatClassData.repo_path(
+			"data/classes/wm7.boat.json")))
+	var shape_name := String(KiteSet.class_entry(cls, "kite").get("set", {}).get("shape", ""))
+	var tab: Variant = JSON.parse_string(FileAccess.get_file_as_string(BoatClassData.repo_path(
+			"data/sails/%s.kite_shape.json" % shape_name)))
+	t.ok(tab is Dictionary and tab.get("shapes") is Array and tab["shapes"].size() >= 2,
+		"wm7 kite: kite shape file %s read" % shape_name)
+	if not tab is Dictionary:
+		return
+	var shapes: Array = tab["shapes"]
+	var a0 := float(shapes[0]["awa_deg"])
+	var a1 := float(shapes[shapes.size() - 1]["awa_deg"])
+	var data := BoatClassData.load_class("wm7")
+	for reference in ([false, true] if native else [true]):
+		var bv := BoatView.create(data.info, 0.5, reference)
+		var sp: BoatView.SailPart = null
+		for q in bv.sail_parts:
+			if q.type == "spinnaker_asym":
+				sp = q
+		t.ok(sp != null and sp.shape.is_loft(), "wm7 kite drawn with the lofted model (%s)" % (
+			"reference" if reference else "native"))
+		if sp == null or not sp.shape.is_loft():
+			bv.free()
+			continue
+		var worst := [0.0, 0.0, 0.0]
+		for awa_deg in [a0, 0.5 * (a0 + a1), a1]:
+			for side in [1.0, -1.0]:
+				var awa: float = side * deg_to_rad(awa_deg)
+				var beta: float = -side * deg_to_rad(clampf(awa_deg - 48.0, 15.0, 64.0))
+				sp.shape.set_obstacles([])
+				sp.shape.update(UP, 1.0, beta, 0.0, 0.0, awa, 8.0)
+				var w := clampf((awa_deg - a0) / (a1 - a0), 0.0, 1.0)
+				w = w * w * (3.0 - 2.0 * w)
+				var lines := []
+				for k in (shapes[0]["sections"] as Array).size():
+					var s0: Dictionary = shapes[0]["sections"][k]
+					var s1: Dictionary = shapes[shapes.size() - 1]["sections"][k]
+					var h := float(s0["h"])
+					var want := [lerpf(s0["camber"], s1["camber"], w), lerpf(s0["draft"], s1["draft"], w),
+						lerpf(float(s0.get("twist_deg", 0.0)), float(s1.get("twist_deg", 0.0)), w)]
+					var got := loft_row_measure(sp, h, awa)
+					for q in 3:
+						worst[q] = maxf(worst[q], absf(got[q] - want[q]))
+					lines.append("h %.2f camber %.1f/%.1f %% draft %.2f/%.2f twist %.1f/%.1f deg" % [h,
+						100.0 * want[0], 100.0 * got[0], want[1], got[1], want[2], got[2]])
+				if side > 0.0 and not reference:
+					print("  wm7 kite at AWA %.0f (measured/drawn): %s" % [awa_deg, "; ".join(lines)])
+		var msg := "wm7 kite (%s): camber within %.3f (<= %.3f), draft within %.3f (<= %.2f), twist within %.1f deg (<= %.1f) of the measured sections" % [
+			"reference" if reference else "native", worst[0], LOFT_CAMBER_TOL, worst[1], LOFT_DRAFT_TOL, worst[2],
+			LOFT_TWIST_TOL]
+		t.ok(worst[0] <= LOFT_CAMBER_TOL and worst[1] <= LOFT_DRAFT_TOL and worst[2] <= LOFT_TWIST_TOL, msg)
+		print("  " + msg)
+		bv.free()
+
+
+## §12 test 27: camber (over the chord), draft (share of the chord from the luff) and twist (deg, the chord's
+## horizontal angle from the foot's, to leeward) of the placed kite at height h (a share of the luff and the leech,
+## between the rows either side).
+static func loft_row_measure(sp: BoatView.SailPart, h: float, awa: float) -> Array:
+	var x := h * (sp.rows - 1)
+	var i0 := mini(int(floor(x)), sp.rows - 2)
+	var f := x - i0
+	var m0 := row_measure(sp, i0, awa)
+	var m1 := row_measure(sp, i0 + 1, awa)
+	return [lerpf(m0[0], m1[0], f), lerpf(m0[1], m1[1], f), lerpf(m0[2], m1[2], f)]
+
+
+static func row_measure(sp: BoatView.SailPart, i: int, awa: float) -> Array:
+	var m: PackedVector3Array = sp.shape.mid()
+	var c := sp.cols
+	var p0 := m[i * c]
+	var ch := m[i * c + c - 1] - p0
+	var cl := ch.length()
+	var cu := ch / cl
+	var xs := PackedFloat32Array()
+	var ds := PackedFloat32Array()
+	for j in c:
+		var v := m[i * c + j] - p0
+		var xx := v.dot(cu)
+		xs.append(xx)
+		ds.append((v - cu * xx).length())
+	var k := 0
+	for j in c:
+		if ds[j] > ds[k]:
+			k = j
+	var dmax := ds[k]
+	var xmax := xs[k]
+	if k > 0 and k < c - 1:  # a parabola through the deepest vertex and its neighbours
+		var den := (xs[k - 1] - xs[k]) * (xs[k - 1] - xs[k + 1]) * (xs[k] - xs[k + 1])
+		if absf(den) > 1e-9:
+			var aa := (xs[k + 1] * (ds[k] - ds[k - 1]) + xs[k] * (ds[k - 1] - ds[k + 1]) + xs[k - 1] * (ds[k + 1] - ds[k])) / den
+			var bb := (xs[k + 1] * xs[k + 1] * (ds[k - 1] - ds[k]) + xs[k] * xs[k] * (ds[k + 1] - ds[k - 1]) + xs[k - 1] * xs[k - 1] * (ds[k] - ds[k + 1])) / den
+			if aa < 0.0:
+				var xv := -bb / (2.0 * aa)
+				if xv > xs[k - 1] and xv < xs[k + 1]:
+					xmax = xv
+					dmax = ds[k] + aa * (xv - xs[k]) * (xv - xs[k]) + (2.0 * aa * xs[k] + bb) * (xv - xs[k])
+	var up := Frames.body_to_model(Vector3(0, 0, 1))
+	var aft := -Frames.body_to_model(Vector3(1, 0, 0))
+	var lee := Frames.body_to_model(Vector3(0, 1, 0)) * signf(awa)
+	var f0 := m[c - 1] - m[0]
+	var a_f := atan2(f0.dot(lee), f0.dot(aft))
+	var a_i := atan2(ch.dot(lee), ch.dot(aft))
+	return [dmax / cl, xmax / cl, rad_to_deg(Frames.wrap_pi(a_i - a_f))]
 
 
 ## §12 test 19: the generator's preview poses (tools/boatgen/boatgen/sail_set.py, written to

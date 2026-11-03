@@ -448,6 +448,12 @@ its default, a red value is not saved yet. The kite is bent by the same `SailSha
 boat. Top right: fixed views (abeam windward and leeward, ahead, above, chase); drag on the boat to orbit, the wheel
 to zoom.
 
+**Model** switches the kite between the hinge model (every slider above) and the lofted model of
+`docs/specs/sail_visuals.md` §6.5 (only for a kite whose class names a kite shape file, so its sidecar has lofted
+shapes; wm7 for now): the loft shows two sliders only, its depth over the measured shape and the whole kite turned
+further out or in about its luff. Save writes `model` with the keys. The lofted shapes themselves change only when
+the generator rebuilds the boat (from `data/sails/<shape>.kite_shape.json`).
+
 - **Save** writes `visual.sails.<kite>.look` and `.set` in `data/classes/<id>.boat.json`: only the values away from
   their defaults, everything else in the file as it was (one line changes in the shipped class files). A value
   back at its default is removed.

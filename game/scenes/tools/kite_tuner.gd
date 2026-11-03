@@ -9,6 +9,9 @@ extends Node3D
 ##   godot --path game res://scenes/tools/kite_tuner.tscn -- --class=wm9 [--kite=kite] [--twa=150] [--tws=12]
 ##       [--gybe=port|starboard]
 ##
+## The model pick switches a kite between the hinge model (every slider below) and the lofted model of §6.5 (a
+## kite whose sidecar has lofted shapes: only its depth and its turn about the luff); Save writes `model` too.
+##
 ## Mouse: drag on the boat to orbit (left or right button), the wheel to zoom. Presentation only: nothing here
 ## touches the core or the performance tables.
 
@@ -53,6 +56,8 @@ const HELP := {
 	"stay_head": "On a pole: the forestay push fades out over this top share of the height.",
 	"stay_luff": "On a pole: chord share from which the forestay push is taken in full.",
 	"stay_leech": "On a pole: share of the forestay push lost toward the leech.",
+	"loft_depth": "Lofted kite: its depth over the measured shape's (the cloth kept).",
+	"loft_trim": "Lofted kite: the whole kite turned further out about its luff (negative: in).",
 }
 
 ## where the class files are read and saved (tests point it at a copy); "" = the repository's data/classes
@@ -73,6 +78,9 @@ var main_trim := 1.0
 var values := {}
 var defaults := {}
 var saved := {}
+## §6.5 the shape model: "hinge" or "loft" (only for a kite whose sidecar has lofted shapes), and the class file's
+var model := "hinge"
+var saved_model := "hinge"
 ## key -> {"slider", "readout", "row", "label"}
 var rows := {}
 
@@ -91,6 +99,7 @@ var dist := 30.0
 var _class_pick: OptionButton
 var _kite_pick: OptionButton
 var _gybe_pick: OptionButton
+var _model_pick: OptionButton
 var _wind_rows := {}
 var _list: VBoxContainer
 var _status: Label
@@ -227,8 +236,13 @@ func _load_values() -> void:
 	var st: Variant = entry.get("set", {})
 	if st is Dictionary:
 		for k in st:
-			if saved.has(k):
+			if saved.has(k) and (st[k] is float or st[k] is int):
 				saved[k] = float(st[k])
+	saved_model = KiteSet.model_of(st)
+	if not can_loft():
+		saved_model = "hinge"
+	model = saved_model
+	_sync_model_pick()
 	var lk: Variant = entry.get("look", {})
 	if lk is Dictionary:
 		for row in KiteSet.LOOK_PARAMS:
@@ -245,8 +259,31 @@ func _look_default(key: String) -> float:
 	return 0.45 if asym else 0.0
 
 
+## §6.5 whether this kite has lofted shapes (its sidecar's `loft` block) to switch to.
+func can_loft() -> bool:
+	return bv != null and kite_part != null and not bv._loft_data(kite_part).is_empty()
+
+
+## §6.5 switches the shape model ("hinge" or "loft"; loft only when the kite has lofted shapes) and redraws.
+func set_model(m: String) -> void:
+	model = "loft" if m == "loft" and can_loft() else "hinge"
+	_sync_model_pick()
+	_build_rows()
+	_reshape()
+
+
+func _sync_model_pick() -> void:
+	if _model_pick == null:
+		return
+	_model_pick.set_item_disabled(1, not can_loft())
+	_model_pick.select(1 if model == "loft" else 0)
+
+
 func _shown(row: Array) -> bool:
 	var only: String = row[7] if row.size() > 7 else ""
+	# the lofted model reads only its own keys, the hinge model all but those
+	if (only == "loft") != (model == "loft"):
+		return false
 	if only == "asym":
 		return kite_type == "spinnaker_asym"
 	if only == "pole":
@@ -287,6 +324,7 @@ func _reshape() -> void:
 			look[k] = e[k]
 		else:
 			kset[k] = e[k]
+	kset["model"] = model
 	bv.reshape_kite(kite_id, look, kset)
 	step()
 	_update_status()
@@ -354,6 +392,8 @@ func changed_blocks() -> Dictionary:
 	for row in KiteSet.LOOK_PARAMS:
 		if e.has(row[0]) and e[row[0]] != defaults[row[0]]:
 			look[row[0]] = snappedf(e[row[0]], 0.0001)
+	if model != "hinge":
+		kset["model"] = model
 	for row in KiteSet.PARAMS:
 		if e.has(row[0]) and e[row[0]] != defaults[row[0]]:
 			kset[row[0]] = snappedf(e[row[0]], 0.0001)
@@ -371,6 +411,12 @@ func save() -> bool:
 	var e := effective()
 	var out := text
 	var base := PackedStringArray(["visual", "sails", kite_id])
+	# §6.5 the shape model (a string; hinge is the default and is left out)
+	var mp := base + PackedStringArray(["set", "model"])
+	out = JsonEdit.put(out, mp, JSON.stringify(model)) if model != "hinge" else JsonEdit.drop(out, mp, 2)
+	if out == "":
+		_set_status("Could not edit %s at visual.sails.%s.set.model" % [path.get_file(), kite_id], true)
+		return false
 	for row in KiteSet.LOOK_PARAMS + KiteSet.PARAMS:
 		var k: String = row[0]
 		if not e.has(k):
@@ -395,6 +441,7 @@ func save() -> bool:
 		f.store_string(out)
 		f.close()
 	_load_values()
+	_build_rows()
 	_sync_sliders()
 	_reshape()
 	_set_status("Saved to %s" % path.get_file() if out != text else "Nothing to save", false)
@@ -404,6 +451,7 @@ func save() -> bool:
 ## Back to the class file's values.
 func revert() -> void:
 	_load_values()
+	_build_rows()
 	_sync_sliders()
 	_reshape()
 	_set_status("Reverted to %s" % _class_path(class_id).get_file(), false)
@@ -576,6 +624,11 @@ func _build_ui() -> void:
 	_gybe_pick.item_selected.connect(func(i: int) -> void:
 		gybe = 1.0 if i == 0 else -1.0
 		_refresh_wind())
+	_model_pick = _option(picks, "Model")
+	_model_pick.add_item("Hinge")
+	_model_pick.add_item("Loft (measured)")
+	_model_pick.tooltip_text = "Hinge: the kite bent every frame (all sliders). Loft: lofted once from measured sections."
+	_model_pick.item_selected.connect(func(i: int) -> void: set_model("loft" if i == 1 else "hinge"))
 	# wind and trims
 	_wind_slider(col, "twa", "True wind angle", 60.0, 180.0, 1.0, "%d°")
 	_wind_slider(col, "tws", "True wind speed", 4.0, 30.0, 0.5, "%.1f kn")
@@ -822,7 +875,7 @@ func _update_row(key: String) -> void:
 
 
 func _update_status() -> void:
-	var n := 0
+	var n := 0 if model == saved_model else 1
 	for k in values:
 		if absf(effective()[k] - saved[k]) > 1e-9:
 			n += 1

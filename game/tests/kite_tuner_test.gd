@@ -88,6 +88,9 @@ func _tuner(id: String, dir: String) -> void:
 	t.ok(tu.select_class(id), "%s loads" % id)
 	await process_frame
 	var kite: String = tu.kite_id
+	if tu.model == "loft":
+		await _tuner_loft(tu, id, path, original, dir)
+		return
 	var pole: bool = tu.kite_part.mode == BoatView.Mode.POLE
 	var asym: bool = tu.kite_type == "spinnaker_asym"
 	t.ok(tu.rows.has("camber") and tu.rows.has("depth_foot") and tu.rows.has("forward"), "%s: the shape sliders" % id)
@@ -171,5 +174,70 @@ func _tuner(id: String, dir: String) -> void:
 		tu.set_view(v)
 		var cam: Camera3D = tu.camera
 		t.ok(cam.position.distance_to(tu.target) > 3.0 and is_finite(cam.position.x), "%s: %s view" % [id, v])
+	tu.queue_free()
+	await process_frame
+
+
+## A kite on the lofted model (sail_visuals.md §6.5, wm7): only the loft's sliders, a slider moves the kite, the
+## switch to the hinge model and back, Save writes the model and the slider, a second tuner and the game's BoatView
+## read them back, and at the defaults Save gives back the class file byte for byte.
+func _tuner_loft(tu: Node, id: String, path: String, original: String, dir: String) -> void:
+	var kite: String = tu.kite_id
+	t.ok(tu.can_loft() and tu.kite_part.shape.is_loft(), "%s: the kite is drawn lofted" % id)
+	t.ok(tu.rows.has("loft_depth") and tu.rows.has("loft_trim") and not tu.rows.has("depth_foot") \
+		and not tu.rows.has("camber"), "%s: only the loft's sliders (%s)" % [id, ", ".join(tu.rows.keys())])
+	var base: PackedVector3Array = tu.kite_mid().duplicate()
+	var sl: HSlider = tu.rows["loft_depth"]["slider"]
+	sl.value = 0.8
+	await process_frame
+	t.ok(max_move(base, tu.kite_mid()) > 0.05, "%s: the depth slider moves the kite (%.3f m)" % [id,
+		max_move(base, tu.kite_mid())])
+	var tr: HSlider = tu.rows["loft_trim"]["slider"]  # degrees on the slider, radians in the file
+	tr.value = 5.0
+	await process_frame
+	var shaped: PackedVector3Array = tu.kite_mid().duplicate()
+	t.ok(max_move(base, shaped) > 0.1, "%s: the trim turns it further" % id)
+	tu.set_model("hinge")
+	await process_frame
+	t.ok(not tu.kite_part.shape.is_loft() and tu.rows.has("depth_foot") and not tu.rows.has("loft_depth"),
+		"%s: switched to the hinge model, its sliders shown" % id)
+	t.ok(max_move(shaped, tu.kite_mid()) > 0.1, "%s: the hinge model draws another kite" % id)
+	tu.set_model("loft")
+	await process_frame
+	t.ok(tu.kite_part.shape.is_loft() and max_move(shaped, tu.kite_mid()) < 1e-4, "%s: and back to the loft" % id)
+	t.ok(tu.save(), "%s: saved" % id)
+	var cls: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var entry := KiteSet.class_entry(cls, kite)
+	var st: Dictionary = entry.get("set", {})
+	t.ok(st.get("model") == "loft" and absf(float(st.get("loft_depth", -1.0)) - 0.8) < 1e-4 \
+		and absf(float(st.get("loft_trim", 0.0)) - deg_to_rad(5.0)) < 1e-3 and not st.has("depth_foot"),
+		"%s: the set block saved: %s" % [id, st])
+	var tu2: Node = load(SCENE).instantiate()
+	tu2.set("class_dir", dir)
+	tu2.set("read_args", false)
+	root.add_child(tu2)
+	await process_frame
+	tu2.select_class(id, kite)
+	t.ok(tu2.model == "loft" and max_move(shaped, tu2.kite_mid()) < 1e-3, "%s: a second tuner reads it back (%.5f m)" % [
+		id, max_move(shaped, tu2.kite_mid())])
+	tu2.queue_free()
+	BoatView.class_dir = dir
+	var bv := BoatView.create(tu.data.info, 0.5)
+	root.add_child(bv)
+	for k in 3:
+		bv.apply_sails(tu.sv, tu.sv, 1.0, 1.0 / 60.0)
+	var game_mid := PackedVector3Array()
+	for sp in bv.sail_parts:
+		if sp.id == kite:
+			game_mid = sp.shape.mid()
+	t.ok(game_mid.size() > 0 and max_move(game_mid, shaped) < 1e-3,
+		"%s: the game's BoatView draws the saved shape (%.5f m)" % [id, max_move(game_mid, shaped)])
+	bv.free()
+	BoatView.class_dir = ""
+	tu.reset_defaults()
+	await process_frame
+	t.ok(max_move(base, tu.kite_mid()) < 1e-5, "%s: Reset to defaults draws the default kite" % id)
+	t.ok(tu.save() and FileAccess.get_file_as_string(path) == original,
+		"%s: saved at the defaults, the class file is as it was, byte for byte" % id)
 	tu.queue_free()
 	await process_frame

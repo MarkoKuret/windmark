@@ -61,6 +61,19 @@ constexpr float CURL_BAND = 0.25f;
 constexpr float HOLD = 0.35f;
 constexpr float TACK_REACH = 0.5f;
 constexpr double DEG = 3.14159265358979323846 / 180.0;
+// §6.5 the lofted belly crosses to the other side as sin(beta + awa) passes +-LOFT_SIDE; the whole kite's turn off
+// the main, the jib and the mast: at most LOFT_EASE_MAX (rad), in LOFT_EASE_STEPS steps
+constexpr float LOFT_SIDE = 0.1f;
+constexpr float LOFT_EASE_MAX = 0.5f;
+constexpr int LOFT_EASE_STEPS = 6;
+// §6.5 after its first step, the turn's solve looks only at vertices this many clearances near the worst
+constexpr float LOFT_NEAR = 2.0f;
+// §6.5 the turn keeps this many margins (horizontal, §7.4), so the true distance up by the head, where the sails
+// lean, keeps one
+constexpr float LOFT_MARGIN = 1.2f;
+// §6.5 |beta| over which the trim and the turn off the obstacles fade in from the centreline, and from where and over
+// how much they fade out round the bow (rad)
+constexpr float LOFT_FADE0 = 0.1f, LOFT_FADE1 = 1.7453293f, LOFT_FADE2 = 1.0471976f;
 
 inline float sgn(float x) { return x >= 0.0f ? 1.0f : -1.0f; }
 inline float wrap_pi(float x) {
@@ -183,6 +196,22 @@ bool SailShape::configure(const PackedVector3Array& rest, int64_t rows, int64_t 
   stay_head_ = static_cast<float>(kp("stay_head", STAY_HEAD));
   stay_luff_ = static_cast<float>(kp("stay_luff", STAY_LUFF));
   stay_leech_ = static_cast<float>(kp("stay_leech", STAY_LEECH));
+  loft_depth_ = static_cast<float>(kp("loft_depth", 1.0));
+  loft_trim_ = static_cast<float>(kp("loft_trim", 0.0));
+  // §6.5 the lofted shapes, when the set block picks the loft and the sidecar has them
+  loft_ = false;
+  turn_ = 0.0f;
+  loft_awa_.clear();
+  loft_pts_.clear();
+  if (kite && p.has("model") && String(p["model"]) == String("loft") && p.has("loft_awa") && p.has("loft_shapes")) {
+    const PackedFloat32Array la = p["loft_awa"];
+    const PackedVector3Array ls = p["loft_shapes"];
+    if (la.size() >= 1 && ls.size() == la.size() * rows * cols) {
+      loft_awa_.assign(la.ptr(), la.ptr() + la.size());
+      loft_pts_.assign(ls.ptr(), ls.ptr() + ls.size());
+      loft_ = true;
+    }
+  }
   has_stay_ = mode_ == POLE && clearance_ > 0.0f && p.has("forestay_tack") && p.has("hounds");
   if (has_stay_) {
     stay0_ = getv(p, "forestay_tack", Vector3());
@@ -469,6 +498,10 @@ void SailShape::update(int64_t phase, double progress, double beta_in, double ga
     tl_set_ = true;
   }
   const float shiver = clampf(static_cast<float>(luff_shiver), 0.0f, 1.0f);
+  if (loft_) {
+    update_loft(phase, static_cast<float>(progress), beta, gamma, shiver, awa, aws);
+    return;
+  }
   const float amp = flutter_amp_ * sa_;
 
   // §7: the swing S, then the rotation about the (swung) luff or the boom axis
@@ -603,6 +636,165 @@ void SailShape::update(int64_t phase, double progress, double beta_in, double ga
   if (has_stay_ && fa_ > 0.0f) stay();
   if (clearing) push(awa, hd);
   layers(np);
+}
+
+// §6.5 a lofted kite: the measured shapes blended by the AWA, scaled by the fill, the belly on the side the wind
+// blows it to, then placed whole: turned about its luff by the core's sheet angle (and the trim), and further out
+// only as far as the main, the jib and the mast need. No local bending.
+void SailShape::update_loft(int64_t phase, float progress, float beta, float gamma, float shiver, float awa,
+                            float aws) {
+  Transform3D s_t;
+  float ge = 0.0f;
+  if (mode_ == SPRIT) {
+    const float lim = std::asin(std::min(1.0f, tack_line_max_ * sl_ / r_h_));
+    ge = sgn(gamma) * std::min(std::fabs(gamma), lim);
+    s_t = about(head_, up_, ge);
+  } else if (mode_ == POLE) {
+    ge = gamma;
+    s_t = about(mast_step_, mast_axis_, ge);
+  }
+  const Vector3 piv = s_t.xform(tack_);
+  const Vector3 ax = s_t.basis.xform(lh_).normalized();
+  // the measured shapes by the AWA (smoothstep between neighbours, held beyond the ends)
+  const int m = static_cast<int>(loft_awa_.size());
+  const float x = std::fabs(wrap_pi(awa));
+  int i0 = 0, i1 = 0;
+  float t = 0.0f;
+  if (x >= loft_awa_[m - 1]) {
+    i0 = i1 = m - 1;
+  } else if (x > loft_awa_[0]) {
+    while (i0 + 2 < m && x >= loft_awa_[i0 + 1]) ++i0;
+    i1 = i0 + 1;
+    t = smooth01((x - loft_awa_[i0]) / (loft_awa_[i1] - loft_awa_[i0]));
+  }
+  const float dep = std::min(fill_gain_ * clampf(aws / KNOT, 3.0f, 6.0f) / 6.0f, 1.0f) * loft_depth_;
+  const float sd = clampf(std::sin(wrap_pi(beta + awa)) / LOFT_SIDE, -1.0f, 1.0f);
+  const float side = sd * (3.0f - sd * sd) / 2.0f;
+  const float i2 = 0.33f * flutter_amp_ * shiver;
+  fly_.resize(n_);
+  const Vector3* l0 = loft_pts_.data() + static_cast<size_t>(i0) * n_;
+  const Vector3* l1 = loft_pts_.data() + static_cast<size_t>(i1) * n_;
+  for (int k = 0; k < n_; ++k) {
+    const Vector3 lf = l0[k] + (l1[k] - l0[k]) * t;
+    Vector3 fl(a_[k], l_[k], 0.0f);
+    fl += (lf - fl) * dep;
+    fl.z *= side;
+    if (i2 > 0.0f) {  // luffing: the belly breathes, strongest where it is deep, travelling aft
+      const float q = phi_ - 7.0f * uc_[k];
+      fl += Vector3(0.1f * i2 * std::sin(q) * std::fabs(fl.z), 0.0f, i2 * std::cos(q) * fl.z);
+    }
+    fly_[k] = fl;
+  }
+  // the turn about the luff: the core's sheet angle (as the hinge model's, §7.3), plus the trim
+  // the trim and the turn off the obstacles fade out where sgn(beta) flips: on the centreline and round the bow
+  const float wb = std::fabs(wrap_pi(beta));
+  const float es = sgn(beta) * smooth01(wb / LOFT_FADE0) * (1.0f - smooth01((wb - LOFT_FADE1) / LOFT_FADE2));
+  const float th = beta - ge + es * loft_trim_;
+  turn_ = th;
+  // §8.1 which shape: the hoist and drop of §8.4, §8.5 toward the flying shape, the tack on its fitting
+  const bool up_shape = phase == 3 || phase == 4;
+  float p = 1.0f;
+  if (!up_shape) p = (phase == 2 || phase == 5) ? clampf(progress, 0.0f, 1.0f) : 0.0f;
+  for (int k = 0; k < n_; ++k) {
+    if (up_shape)
+      loc_[k] = fly_[k];
+    else if (phase == 5)
+      loc_[k] = drop(k, p, fly_[k]);
+    else
+      loc_[k] = hoist(k, p, fly_[k]);
+  }
+  if (!up_shape) {
+    const Vector3 dt0 = loc_[0] - Vector3(a_[0], l_[0], 0.0f);
+    if (dt0.length_squared() > 0.0f) {
+      for (int k = 0; k < n_; ++k) {
+        const float wt = 1.0f - clampf(tack_d_[k] / (TACK_PIN * sl_), 0.0f, 1.0f);
+        if (wt > 0.0f) loc_[k] -= dt0 * (wt * wt);
+      }
+    }
+  }
+  std::fill(trow_.begin(), trow_.end(), 0.0f);
+  kd_ = kl_ = 0.0f;
+  const Vector3 hd = s_t.xform(head_);
+  tack_at_ = piv;
+  ease_ = 0.0f;
+  if (clearance_ > 0.0f && (!obs_.empty() || has_mast_head_)) {
+    if (!obs_.empty())
+      sections(s_t, piv, ax, th);
+    else
+      secs_.clear();
+    ease_ = loft_ease(beta, awa, s_t, piv, ax, th, hd);
+  } else {
+    secs_.clear();
+  }
+  const Transform3D xr = about(piv, ax, th + es * ease_) * s_t;
+  for (int k = 0; k < n_; ++k) {
+    const Vector3& lc = loc_[k];
+    mid_[k] = xr.xform(tack_ + ah_ * lc.x + lh_ * lc.y + nh_ * lc.z);
+  }
+  fa_ = 0.0f;
+  if (up_shape) {
+    fa_ = 1.0f;
+  } else if (phase == 2) {
+    const float kh = clampf((p - 0.9f) / 0.1f, 0.0f, 1.0f);
+    fa_ = kh * kh;
+  } else if (phase == 5) {
+    fa_ = 1.0f - std::pow(p, 0.3f);
+  }
+  clew0_ = mid_[cols_ - 1];
+  layers(xr.basis.xform(nh_));
+}
+
+void SailShape::loft_clear(const std::vector<Vector3>& pts, const Vector3& hd, const Vector3& lee,
+                           const std::vector<int>& idx, std::vector<float>& out) const {
+  out.resize(idx.size());
+  Vector3 g;
+  for (size_t q = 0; q < idx.size(); ++q) {
+    const Vector3& pt = pts[idx[q]];
+    const float cp = LOFT_MARGIN * margin_at(pt, hd);
+    float x = has_mast_head_ ? mast_x(pt, lee, g) - cp : INFINITY;
+    for (const Section& o : secs_) x = std::min(x, clear_x(o, pt, cp, g) - cp);
+    out[q] = x;
+  }
+}
+
+float SailShape::loft_ease(float beta, float awa, const Transform3D& s_t, const Vector3& piv, const Vector3& ax,
+                           float th, const Vector3& hd) {
+  const float es = sgn(beta);
+  const Vector3 lee = port_ * sgn(awa);
+  float delta = 0.0f;
+  lq_.resize(n_);
+  lp_.resize(n_);
+  for (int k = 0; k < n_; ++k) {
+    const Vector3& lc = loc_[k];
+    lq_[k] = s_t.xform(tack_ + ah_ * lc.x + lh_ * lc.y + nh_ * lc.z);
+  }
+  lidx_.resize(n_);
+  for (int k = 0; k < n_; ++k) lidx_[k] = k;
+  for (int it = 0; it < LOFT_EASE_STEPS; ++it) {
+    const Transform3D xr = about(piv, ax, th + es * delta);
+    for (int k : lidx_) lp_[k] = xr.xform(lq_[k]);
+    loft_clear(lp_, hd, lee, lidx_, lx_);
+    float worst = INFINITY;
+    int at = -1;
+    for (size_t m = 0; m < lx_.size(); ++m) {
+      if (lx_[m] < worst) {
+        worst = lx_[m];
+        at = lidx_[m];
+      }
+    }
+    if (it == 0) {
+      size_t w = 0;
+      for (size_t m = 0; m < lx_.size(); ++m)
+        if (lx_[m] < worst + LOFT_NEAR * clearance_) lidx_[w++] = lidx_[m];
+      lidx_.resize(w);
+    }
+    if (!(worst < 0.0f)) break;
+    const Vector3 d = lp_[at] - piv;
+    const float rr = (d - ax * d.dot(ax)).length();
+    delta = std::min(delta + (-worst) / std::max(rr, 0.5f), LOFT_EASE_MAX);
+    if (delta >= LOFT_EASE_MAX) break;
+  }
+  return delta;
 }
 
 // §7.4 a flying sail on a pole flies forward of the forestay: per row the shift forward that brings its cloth
@@ -1115,6 +1307,8 @@ void SailShape::_bind_methods() {
   ClassDB::bind_method(D_METHOD("get_backed_factor"), &SailShape::get_backed_factor);
   ClassDB::bind_method(D_METHOD("set_backed_factor", "s_b"), &SailShape::set_backed_factor);
   ClassDB::bind_method(D_METHOD("get_twist_side"), &SailShape::get_twist_side);
+  ClassDB::bind_method(D_METHOD("get_turn"), &SailShape::get_turn);
+  ClassDB::bind_method(D_METHOD("is_loft"), &SailShape::is_loft);
   ClassDB::bind_method(D_METHOD("set_twist_side", "tl"), &SailShape::set_twist_side);
   ClassDB::bind_method(D_METHOD("frame"), &SailShape::frame);
   ClassDB::bind_method(D_METHOD("local_shape"), &SailShape::local_shape);

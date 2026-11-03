@@ -86,6 +86,8 @@ class SailPart:
 	var look := {}
 	var kset := {}
 	var tack_rise_m := 0.0
+	## §6.5 a kite's lofted shapes from the sidecar (read once; {} when it has none)
+	var loft: Variant = null
 
 	## the placed clew (mid-surface, model axes)
 	func clew() -> Vector3:
@@ -812,7 +814,7 @@ func _setup_shape(sp: SailPart, side: Dictionary, furling: bool) -> void:
 	mi.mesh = mesh
 	mi.transform = Transform3D.IDENTITY
 	sp.rest = Transform3D.IDENTITY
-	sp.tack_rise_m = float(sp.kset.get("tack_rise", 0.0)) * float(shape.frame()["sl"])
+	sp.tack_rise_m = 0.0 if shape.is_loft() else float(sp.kset.get("tack_rise", 0.0)) * float(shape.frame()["sl"])
 	if not shape.attach_mesh(mesh.get_rid()):
 		push_warning("%s: sail mesh layout not writable in place; rebuilding it each update" % sp.node.name)
 		sp.arrays = out
@@ -861,6 +863,14 @@ func _shape_params(sp: SailPart, look: Dictionary, furling: bool) -> Dictionary:
 	p["up"] = Frames.body_to_model(Vector3(0, 0, 1))
 	p["phi"] = randf() * TAU  # §5.2: boats and sails do not flutter in step
 	p.merge(sp.kset, true)  # §4.1 a kite's set parameters (every key, filled from the defaults of its type)
+	# §6.5 a lofted kite: the generated shapes of its sidecar entry (the model falls back to hinge without them)
+	if KiteSet.is_kite(t) and String(sp.kset.get("model", "hinge")) == "loft":
+		var lo := _loft_data(sp)
+		if not lo.is_empty():
+			p["loft_awa"] = lo["awa"]
+			p["loft_shapes"] = lo["shapes"]
+		else:
+			p["model"] = "hinge"
 	if is_flying(t):  # §7.4: kept clear of the other sails and the mast
 		p["clearance"] = 0.042 * loa
 		p["mast_head"] = _mast_head
@@ -870,6 +880,30 @@ func _shape_params(sp: SailPart, look: Dictionary, furling: bool) -> Dictionary:
 			p["forestay_tack"] = _stay0
 			p["hounds"] = _stay1
 	return p
+
+
+## sail_visuals.md §6.5: a kite's lofted shapes from the sidecar's `loft` block, {"awa": PackedFloat32Array,
+## "shapes": PackedVector3Array (every AWA's grid in turn)}, or {} when the sidecar has none. Read once per kite.
+func _loft_data(sp: SailPart) -> Dictionary:
+	if sp.loft != null:
+		return sp.loft
+	sp.loft = {}
+	var side: Variant = info.physics.get("sails", {}).get(sp.id, {})
+	var blk: Variant = side.get("loft") if side is Dictionary else null
+	if not blk is Dictionary or not blk.get("awa") is Array or not blk.get("shapes") is Array:
+		return sp.loft
+	var awa := PackedFloat32Array()
+	var pts := PackedVector3Array()
+	var n := sp.rows * sp.cols
+	for i in (blk["awa"] as Array).size():
+		var g: Variant = blk["shapes"][i] if i < (blk["shapes"] as Array).size() else null
+		if not g is Array or (g as Array).size() != n:
+			return sp.loft
+		awa.append(float(blk["awa"][i]))
+		for q in g:
+			pts.append(Vector3(float(q[0]), float(q[1]), float(q[2])))
+	sp.loft = {"awa": awa, "shapes": pts}
+	return sp.loft
 
 
 ## sail_visuals.md §4.1: shape a kite again with a look and set parameters (the kite tuner): `look_over` goes over
@@ -888,7 +922,7 @@ func reshape_kite(sail_id: String, look_over: Dictionary, kset: Dictionary) -> b
 		if not sp.shape.configure(sp.rest_mid, sp.rows, sp.cols, p):
 			sp.kset = old_kset
 			return false
-		sp.tack_rise_m = float(sp.kset["tack_rise"]) * float(sp.shape.frame()["sl"])
+		sp.tack_rise_m = 0.0 if sp.shape.is_loft() else float(sp.kset["tack_rise"]) * float(sp.shape.frame()["sl"])
 		sp.updates = 0
 		return true
 	return false

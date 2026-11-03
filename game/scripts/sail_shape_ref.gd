@@ -15,7 +15,9 @@ extends RefCounted
 ##
 ## params: kind (Kind), mode (Mode), furling, fill_gain, fill_curve, flutter_amp, flutter_rate, flutter_rate_max,
 ## twist_top, camber, tack_line_max, furl_radius, boom_pivot, boom_axis, mast_step, mast_axis, fwd, port, up, phi,
-## clearance, mast_head (§7.4; set_obstacles(sails) before each update of a flying sail).
+## clearance, mast_head (§7.4; set_obstacles(sails) before each update of a flying sail); a lofted kite (§6.5):
+## model "loft", loft_awa (the measured AWAs, rad, rising), loft_shapes (per AWA every vertex's local position in
+## grid order, concatenated), loft_depth, loft_trim.
 
 enum Kind { MAIN, HEADSAIL, ASYM, SYM }
 ## BOOM: the main about the boom axis; LUFF: jib, genoa, code zero about the luff; SPRIT: asymmetric on a fixed
@@ -65,6 +67,18 @@ const CLEW_AWA := Vector2(0.7853982, 1.1344640)  # and in with the AWA over the 
 const CURL_BAND := 0.25
 const HOLD := 0.35
 const TACK_REACH := 0.5
+## §6.5 the lofted belly crosses to the other side as sin(beta + awa) passes +-LOFT_SIDE; the whole kite's turn off
+## the main, the jib and the mast: at most LOFT_EASE_MAX (rad), in LOFT_EASE_STEPS steps
+const LOFT_SIDE := 0.1
+const LOFT_EASE_MAX := 0.5
+const LOFT_EASE_STEPS := 6
+## §6.5 after its first step, the turn's solve looks only at vertices this many clearances near the worst; it keeps
+## LOFT_MARGIN margins (horizontal, §7.4), so the true distance up by the head, where the sails lean, keeps one
+const LOFT_NEAR := 2.0
+const LOFT_MARGIN := 1.2
+## §6.5 |beta| over which the trim and the turn off the obstacles fade in from the centreline, and from where and over
+## how much they fade out round the bow (rad)
+const LOFT_FADE := Vector3(0.1, 1.7453293, 1.0471976)
 
 var rows := 0
 var cols := 0
@@ -170,6 +184,13 @@ var _ease := 0.0
 ## §7.6 the working lead block on starboard (model axes), with the flag
 var has_lead := false
 var sheet_lead := Vector3.ZERO
+## §6.5 a lofted kite: its measured AWAs and shapes (grid order, one block per AWA), depth scale and trim
+var loft := false
+var _loft_awa := PackedFloat32Array()
+var _loft := PackedVector3Array()
+var loft_depth := 1.0
+var loft_trim := 0.0
+var _turn := 0.0      # §6.5 the turn about the luff of the last update, before the ease
 var _fa := 0.0        # §7.6 the flying shape's share this update (the main's stop weight)
 var _clew0 := Vector3.ZERO  # §7.6 the clew as placed, before the clearance push
 var _tack_d := PackedFloat32Array()  # §7.3 rest distance of each vertex from the tack (the tack pin)
@@ -248,6 +269,15 @@ func configure(rest_mid: PackedVector3Array, r: int, c: int, p: Dictionary) -> b
 	stay_head = ks["stay_head"]
 	stay_luff = ks["stay_luff"]
 	stay_leech = ks["stay_leech"]
+	loft_depth = ks["loft_depth"] if kite else 1.0
+	loft_trim = ks["loft_trim"] if kite else 0.0
+	# §6.5 the lofted shapes, when the set block picks the loft and the sidecar has them
+	loft = false
+	_turn = 0.0
+	if kite and String(p.get("model", "hinge")) == "loft" and p.get("loft_awa") != null:
+		_loft_awa = PackedFloat32Array(p["loft_awa"])
+		_loft = PackedVector3Array(p.get("loft_shapes", PackedVector3Array()))
+		loft = _loft_awa.size() >= 1 and _loft.size() == _loft_awa.size() * r * c
 	has_stay = mode == Mode.POLE and clearance > 0.0 and p.has("forestay_tack") and p.has("hounds")
 	if has_stay:
 		stay0 = p["forestay_tack"]
@@ -506,6 +536,9 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 		tl = -_sgn(awa)
 		_tl_set = true
 	var shiver := clampf(luff_shiver, 0.0, 1.0)
+	if loft:
+		_update_loft(phase, progress, beta, gamma, shiver, awa, aws)
+		return
 	var amp := flutter_amp * sa
 	# §7: the swing S and the rotation about the (swung) luff or the boom axis
 	var s_t := Transform3D.IDENTITY
@@ -632,6 +665,175 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 	if clearing:
 		_push(awa, hd)
 	_layers(np)
+
+
+## §6.5 a lofted kite: the measured shapes blended by the AWA, scaled by the fill, the belly on the side the wind
+## blows it to, then placed whole: turned about its luff by the core's sheet angle (and the trim), and further out
+## only as far as the main, the jib and the mast need. No local bending.
+func _update_loft(phase: int, progress: float, beta: float, gamma: float, shiver: float, awa: float,
+		aws: float) -> void:
+	var s_t := Transform3D.IDENTITY
+	var ge := 0.0
+	if mode == Mode.SPRIT:
+		var lim := asin(minf(1.0, tack_line_max * sl / r_h))
+		ge = _sgn(gamma) * minf(absf(gamma), lim)
+		s_t = _about(head, up, ge)
+	elif mode == Mode.POLE:
+		ge = gamma
+		s_t = _about(mast_step, mast_axis, ge)
+	var piv := s_t * tack
+	var ax := (s_t.basis * lh).normalized()
+	# the measured shapes by the AWA (smoothstep between neighbours, held beyond the ends)
+	var m := _loft_awa.size()
+	var x := absf(_wrap_pi(awa))
+	var i0 := 0
+	var i1 := 0
+	var t := 0.0
+	if x >= _loft_awa[m - 1]:
+		i0 = m - 1
+		i1 = m - 1
+	elif x > _loft_awa[0]:
+		while i0 + 2 < m and x >= _loft_awa[i0 + 1]:
+			i0 += 1
+		i1 = i0 + 1
+		t = _smoothstep01((x - _loft_awa[i0]) / (_loft_awa[i1] - _loft_awa[i0]))
+	var dep := minf(fill_gain * clampf(aws / KNOT, 3.0, 6.0) / 6.0, 1.0) * loft_depth
+	var sd := clampf(sin(_wrap_pi(beta + awa)) / LOFT_SIDE, -1.0, 1.0)
+	var side := sd * (3.0 - sd * sd) / 2.0
+	var i2 := 0.33 * flutter_amp * shiver
+	var fly := PackedVector3Array()
+	fly.resize(n)
+	for k in n:
+		var a := _loft[i0 * n + k]
+		var lf := a + (_loft[i1 * n + k] - a) * t
+		var fl := Vector3(_a[k], _l[k], 0.0)
+		fl += (lf - fl) * dep
+		fl.z *= side
+		if i2 > 0.0:  # luffing: the belly breathes, strongest where it is deep, travelling aft
+			var q := phi - 7.0 * _uc[k]
+			fl += Vector3(0.1 * i2 * sin(q) * absf(fl.z), 0.0, i2 * cos(q) * fl.z)
+		fly[k] = fl
+	# the turn about the luff: the core's sheet angle (as the hinge model's, §7.3), plus the trim
+	# the trim and the turn off the obstacles fade out where sgn(beta) flips: on the centreline and round the bow
+	var wb := absf(_wrap_pi(beta))
+	var es := _sgn(beta) * _smoothstep01(wb / LOFT_FADE.x) * (1.0 - _smoothstep01((wb - LOFT_FADE.y) / LOFT_FADE.z))
+	var th := beta - ge + es * loft_trim
+	_turn = th
+	# §8.1 which shape: the hoist and drop of §8.4, §8.5 toward the flying shape, the tack on its fitting
+	var up_shape := phase == 3 or phase == 4
+	var p := 1.0
+	if not up_shape:
+		if phase == 2 or phase == 5:
+			p = clampf(progress, 0.0, 1.0)
+		else:
+			p = 0.0
+	for k in n:
+		if up_shape:
+			_loc[k] = fly[k]
+		elif phase == 5:
+			_loc[k] = _drop(k, p, fly[k])
+		else:
+			_loc[k] = _hoist(k, p, fly[k])
+	if not up_shape:
+		var dt0 := _loc[0] - Vector3(_a[0], _l[0], 0.0)
+		if dt0.length_squared() > 0.0:
+			for k in n:
+				var w := 1.0 - clampf(_tack_d[k] / (TACK_PIN * sl), 0.0, 1.0)
+				if w > 0.0:
+					_loc[k] -= dt0 * (w * w)
+	for i in rows:
+		_trow[i] = 0.0
+	var hd := s_t * head
+	_tack_at = piv
+	_ease = 0.0
+	if clearance > 0.0 and (not _obs.is_empty() or has_mast_head):
+		if not _obs.is_empty():
+			_sections(s_t, piv, ax, th)
+		else:
+			_secs = []
+		_ease = _loft_ease(beta, awa, s_t, piv, ax, th, hd)
+	var xr := _about(piv, ax, th + es * _ease) * s_t
+	for k in n:
+		var lc := _loc[k]
+		_mid[k] = xr * (tack + ah * lc.x + lh * lc.y + nh * lc.z)
+	_fa = 0.0
+	if up_shape:
+		_fa = 1.0
+	elif phase == 2:
+		var kh := clampf((p - 0.9) / 0.1, 0.0, 1.0)
+		_fa = kh * kh
+	elif phase == 5:
+		_fa = 1.0 - pow(p, 0.3)
+	_clew0 = _mid[cols - 1]
+	_layers(xr.basis * nh)
+
+
+## §6.5 the clearance over its margin of each placed point `idx` (the obstacles' sections and the mast; INF when
+## none is near).
+func _loft_clear(pts: PackedVector3Array, hd: Vector3, lee: Vector3, idx: PackedInt32Array) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	out.resize(idx.size())
+	for q in idx.size():
+		var pt := pts[idx[q]]
+		var cp := LOFT_MARGIN * _margin_at(pt, hd)
+		var x := INF
+		if has_mast_head:
+			x = float(_mast_x(pt, lee)[0]) - cp
+		for o in _secs:
+			x = minf(x, float(_clear_x(o, pt, cp)[0]) - cp)
+		out[q] = x
+	return out
+
+
+## §6.5 the kite turned as a whole about its luff, away from the centreline, just far enough that no vertex is
+## inside the margin of the main, the jib or the mast (at most LOFT_EASE_MAX). After the first step only the
+## vertices then within LOFT_NEAR clearances of the worst are looked at again.
+func _loft_ease(beta: float, awa: float, s_t: Transform3D, piv: Vector3, ax: Vector3, th: float,
+		hd: Vector3) -> float:
+	var es := _sgn(beta)
+	var lee := port * _sgn(awa)
+	var delta := 0.0
+	var q := PackedVector3Array()
+	q.resize(n)
+	for k in n:
+		var lc := _loc[k]
+		q[k] = s_t * (tack + ah * lc.x + lh * lc.y + nh * lc.z)
+	var idx := PackedInt32Array()
+	idx.resize(n)
+	for k in n:
+		idx[k] = k
+	var pts := PackedVector3Array()
+	pts.resize(n)
+	for it in LOFT_EASE_STEPS:
+		var xr := _about(piv, ax, th + es * delta)
+		for k in idx:
+			pts[k] = xr * q[k]
+		var x := _loft_clear(pts, hd, lee, idx)
+		var worst := INF
+		var at := -1
+		for m in x.size():
+			if x[m] < worst:
+				worst = x[m]
+				at = idx[m]
+		if it == 0:
+			var keep := PackedInt32Array()
+			for m in x.size():
+				if x[m] < worst + LOFT_NEAR * clearance:
+					keep.append(idx[m])
+			idx = keep
+		if not worst < 0.0:
+			break
+		var d := pts[at] - piv
+		var rr := (d - ax * d.dot(ax)).length()
+		delta = minf(delta + (-worst) / maxf(rr, 0.5), LOFT_EASE_MAX)
+		if delta >= LOFT_EASE_MAX:
+			break
+	return delta
+
+
+## §6.5 the turn of the last update (rad, about the luff, before the ease).
+func get_turn() -> float:
+	return _turn
 
 
 ## §4.1 the cloth projected forward (the corners held) and the tack raised, times the flying shape's share.
@@ -1229,3 +1431,8 @@ func vertex_bytes() -> PackedByteArray:
 func write_mesh() -> void:
 	if _rid.is_valid():
 		RenderingServer.mesh_surface_update_vertex_region(_rid, 0, 0, vertex_bytes())
+
+
+## §6.5 whether the sail is drawn as a lofted kite.
+func is_loft() -> bool:
+	return loft

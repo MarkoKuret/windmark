@@ -9,7 +9,11 @@ extends RefCounted
 const DEG := PI / 180.0
 
 ## every key in tuner order: [key, group, label, unit ("" share, "deg" an angle in rad shown in degrees),
-## min, max, step, kinds ("" both, "asym", "sym", "pole": only a kite on a pole)]
+## min, max, step, kinds ("" both, "asym", "sym", "pole": only a kite on a pole, "loft": only a lofted kite)];
+## the hinge model (§6.3, §6.4, §7) reads all but the "loft" rows, the lofted model (§6.5) only those
+## the shape models (§6.5): `hinge` (the shapes of §6.3, §6.4 placed by §7.3 to §7.7) and `loft`
+const MODELS := ["hinge", "loft"]
+
 const PARAMS := [
 	["depth_peak_h", "Depth", "Deepest at height", "", 0.1, 0.9, 0.01, ""],
 	["depth_foot", "Depth", "Foot depth", "", 0.0, 1.5, 0.01, ""],
@@ -41,6 +45,8 @@ const PARAMS := [
 	["stay_head", "Forward", "Stay shift fades over top", "", 0.05, 0.9, 0.01, "pole"],
 	["stay_luff", "Forward", "Stay shift full from chord", "", 0.05, 0.95, 0.01, "pole"],
 	["stay_leech", "Forward", "Stay shift lost at leech", "", 0.0, 1.0, 0.01, "pole"],
+	["loft_depth", "Loft", "Depth (of the measured)", "", 0.3, 1.5, 0.01, "loft"],
+	["loft_trim", "Loft", "Turned out (about the luff)", "deg", -20.0 * DEG, 20.0 * DEG, 0.5 * DEG, "loft"],
 ]
 
 ## the look keys (§4) the tuner edits with the set: [key, group, label, unit, min, max, step]
@@ -53,7 +59,7 @@ const _COMMON := {"draft_from_h": 0.55, "belly_aft": 0.5, "belly_up": 0.5, "twis
 	"twist_awa_hi": 130.0 * DEG, "twist_run": 25.0 * DEG, "foot_sag_h": 0.35, "girth_foot": 1.0, "girth_mid": 1.0,
 	"girth_head": 1.0, "luff_curl": 0.0, "leech_curl": 0.0, "head_drop": 0.0, "clew_lift": 0.0, "clew_out": 0.0,
 	"clew_h": 0.3, "forward": 0.0, "tack_rise": 0.0, "stay_clear": 0.25, "stay_width": 0.6, "stay_head": 0.3,
-	"stay_luff": 0.5, "stay_leech": 0.3}
+	"stay_luff": 0.5, "stay_leech": 0.3, "loft_depth": 1.0, "loft_trim": 0.0}
 
 
 ## The defaults of a kite type (`spinnaker_asym` or `spinnaker_sym`); {} for any other sail.
@@ -71,14 +77,24 @@ static func defaults(sail_type: String) -> Dictionary:
 
 
 ## The kite's parameters: `given` (a class file's or sidecar's set block) over the defaults of its type, every key
-## a float; unknown keys are left out.
+## a float, plus the shape `model` (§6.5, a string: "hinge" unless the block names "loft"); unknown keys are left
+## out.
 static func resolve(sail_type: String, given: Variant) -> Dictionary:
 	var d := defaults(sail_type)
 	if given is Dictionary:
 		for k in given:
 			if d.has(k) and (given[k] is float or given[k] is int):
 				d[k] = float(given[k])
+	if not d.is_empty():
+		d["model"] = model_of(given)
 	return d
+
+
+## §6.5 the shape model a set block picks: "loft" or "hinge" (the default).
+static func model_of(given: Variant) -> String:
+	if given is Dictionary and String((given as Dictionary).get("model", "hinge")) == "loft":
+		return "loft"
+	return "hinge"
 
 
 static func is_kite(sail_type: String) -> bool:

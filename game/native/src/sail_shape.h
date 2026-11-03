@@ -47,6 +47,9 @@ class SailShape : public godot::RefCounted {
   double get_backed_factor() const { return s_b_; }
   void set_backed_factor(double v) { s_b_ = static_cast<float>(v); }
   double get_twist_side() const { return tl_; }
+  // §6.5 a lofted kite: the turn about the luff of the last update (before the ease)
+  double get_turn() const { return turn_; }
+  bool is_loft() const { return loft_; }
   void set_twist_side(double v) {
     tl_ = static_cast<float>(v);
     tl_set_ = true;
@@ -89,6 +92,13 @@ class SailShape : public godot::RefCounted {
   void clew_set(float beta, float base, const godot::Vector3& piv, const godot::Vector3& ax,
                 const godot::Transform3D& s_t, const godot::Vector3& w);
   void layers(const godot::Vector3& np);
+  // §6.5 the lofted kite's update, its clearance over the margin (and the vertex it is at) and its turn off the
+  // obstacles
+  void update_loft(int64_t phase, float progress, float beta, float gamma, float shiver, float awa, float aws);
+  void loft_clear(const std::vector<godot::Vector3>& pts, const godot::Vector3& hd, const godot::Vector3& lee,
+                  const std::vector<int>& idx, std::vector<float>& out) const;
+  float loft_ease(float beta, float awa, const godot::Transform3D& s_t, const godot::Vector3& piv,
+                  const godot::Vector3& ax, float th, const godot::Vector3& hd);
   // §7.4 clearance
   struct Section {
     const SailShape* s = nullptr;
@@ -124,6 +134,13 @@ class SailShape : public godot::RefCounted {
   float belly_aft_ = 0.5f, belly_up_ = 0.5f, twist_exp_ = 1.5f, twist_lo_ = 0.0f, twist_hi_ = 0.0f, twist_run_ = 0.0f;
   float foot_sag_ = 0.0f, foot_sag_h_ = 0.35f, head_drop_ = 0.0f, clew_lift_ = 0.0f, clew_out_ = 0.0f;
   float forward_ = 0.0f, tack_rise_ = 0.0f, stay_head_ = 0.3f, stay_luff_ = 0.5f, stay_leech_ = 0.3f;
+  // §6.5 a lofted kite: its measured AWAs (rising), the shapes (n_ per AWA, grid order), depth scale and trim
+  bool loft_ = false;
+  std::vector<float> loft_awa_;
+  std::vector<godot::Vector3> loft_pts_, fly_, lq_, lp_;
+  std::vector<int> lidx_;
+  std::vector<float> lx_;
+  float loft_depth_ = 1.0f, loft_trim_ = 0.0f, turn_ = 0.0f;
   std::vector<float> grow_;                // per row: the girth scale
   std::vector<float> hold_, rise_;         // per vertex: the corners' hold of `forward`, the share of `tack_rise`
   godot::Vector3 mast_head_;

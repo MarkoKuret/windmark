@@ -325,26 +325,32 @@ rebuild (`tools/boatgen/README.md`). The kite tuner (`game/README.md`) writes it
 default, the rest of the file left as it was.
 
 Two string keys pick the shape model (`sail_visuals.md` §6.5): `model`, `"hinge"` (the default: the shapes of
-`sail_visuals.md` §6.3, §6.4 placed by §7.3 to §7.7) or `"loft"` (the kite lofted once from measured flying
-sections), and `shape`, the kite shape file (§3.7.6) a loft is built from, by name (`data/sails/<shape>.kite_shape.json`;
-asymmetric spinnakers only for now). `model: "loft"` without a `shape` is an error. With `loft` only the numeric keys
-`loft_depth` and `loft_trim` act; the others are kept for the hinge model. Example (wm7):
+`sail_visuals.md` §6.3, §6.4 placed by §7.3 to §7.7) or `"loft"` (a fixed flying shape built once by the generator),
+and `shape`, the kite shape file (§3.7.6) it is built from, by name (`data/sails/<shape>.kite_shape.json`): a sections
+file (asymmetric spinnakers only) or a surface file (either kind). `model: "loft"` without a `shape` is an error.
+With `loft` only the numeric keys `loft_depth` and `loft_trim` act; the others are kept for the hinge model. Examples
+(wm7, wm21):
 
 ```json
-"visual": {"sails": {"kite": {"set": {"model": "loft", "shape": "j80_deparday2016"}}}}
+"visual": {"sails": {"kite": {"set": {"model": "loft", "shape": "ac33_asym"}}}}
+"visual": {"sails": {"spin": {"set": {"model": "loft", "shape": "iacc_sym_series"}}}}
 ```
 
 The generator writes the lofted shapes into the sidecar's `sails.<id>.loft` (generated, never hand-edited): `shape`
 and `source` (the file's name and citation), `awa` (the measured apparent wind angles, rad, rising), `clew` (per AWA
 the clew `hook` and `lift` it solved and the sheet's angle off the clew's bisector at the nominal trim, deg), and
 `shapes`: per AWA, every grid vertex in grid order as `[a, l, n]`, metres in the sail frame of `sail_visuals.md` §3.2
-(from the tack: `a` aft square to the luff, `l` along the luff, `n` to port, the belly's side).
+(from the tack: `a` aft square to the luff, `l` along the luff, `n` to port, the belly's side). From a surface file
+the block has `kind: "surface"` and, in place of `clew`, `depth` and `surface` (per AWA the depth factor and the
+surface used) and `map` (the measured and the class outline along the cloth over the luff, and the depth scale).
 
 #### 3.7.6 Kite shape file (`windmark.kiteshape/1`)
 
-Measured flying sections of a spinnaker, one file per measured kite in `data/sails/<name>.kite_shape.json`, hand-owned
-(they are measurements, not generated). A class's kite names one in its set block (§3.7.5); several classes may share
-one until their own data arrives. The generator lofts the class's own planform through them (`sail_visuals.md` §6.5).
+A measured flying shape of a spinnaker, one file per measured kite in `data/sails/<name>.kite_shape.json`: measured
+**sections** (below) or a measured **surface** (`kind: "surface"`, after the sections table). They are measurements,
+not generated from a class (a surface's grid is resampled once from its source by `boatgen.kite_surface` and then
+kept). A class's kite names one in its set block (§3.7.5); several classes may share one. The generator builds the
+class's own fixed shapes from it (`sail_visuals.md` §6.5).
 
 | key | content |
 | --- | --- |
@@ -358,6 +364,19 @@ one until their own data arrives. The generator lofts the class's own planform t
 The sections need not be at the same heights in every shape, but the test of `sail_visuals.md` §12 test 27 compares
 them height by height, so a file measured at matching stripes is easiest to check. `data/sails/j80_deparday2016` is
 the J/80 asymmetric of Deparday et al. (2016), table 3, at AWA 64° and 124° (`sail_visuals.md` §14.2).
+
+A **surface** file (`sail_visuals.md` §6.5 "The surface source", §14.7):
+
+| key | content |
+| --- | --- |
+| `schema`, `kind` | `"windmark.kiteshape/1"`, `"surface"` |
+| `name`, `definitions` | as above |
+| `source` | `citation` and `licence` (both required), `url`, `method`, `sail` |
+| `surfaces` | by name, one or more: `{"form": "grid", "points": [...]}`: rows (4 or more) from the foot of columns (4 or more) from the luff of `[a, l, n]`, row `i` the stripe `h = i / (rows − 1)` (a share of the luff and of the leech from the foot), column `j` the share `j / (cols − 1)` of the row's girth, in the source's units from the tack (`l` toward the head, `a` square to it toward the clew in the tack-head-clew plane, `n` the belly's side); or `{"form": "moore_iacc", "k": [kx, ky, kz], "coef": {"a": [5], "b": [5], "c": [4], "d": [4]}}`, the closed-form series of Moore and Lasher-Richards |
+| `shapes` | one or more, one per apparent wind angle: `awa_deg` (20 to 180), `surface` (a name in `surfaces`) and `depth` (0.5 to 1.5, default 1: the depth over the measured) |
+
+`data/sails/ac33_asym` is the AC33 benchmark asymmetric (wind tunnel, AWA 55°, CC-BY 4.0), `data/sails/iacc_sym_series`
+the five IACC symmetric sails.
 
 ### 3.8 Example (sportsboat)
 

@@ -192,13 +192,14 @@ Angles in radians in the file (the tuner shows degrees). `Sl` is the luff extent
 | `stay_luff` | 0.5 | 0.5 | 0.05 to 0.95 | on a pole: chord share from which the forestay shift is taken in full |
 | `stay_leech` | 0.3 | 0.3 | 0 to 1 | on a pole: share of the forestay shift lost toward the leech |
 | `model` | `hinge` | `hinge` | `hinge`, `loft` | the shape model: `hinge` the shapes of §6.3, §6.4 placed by §7.3 to §7.7; `loft` the lofted shapes of §6.5 (a string) |
-| `shape` | – | – | a file name | for `loft`: the kite shape file the generator lofts from, `data/sails/<shape>.kite_shape.json` (`data_format.md` §3.7.6; a string; asymmetric only for now) |
+| `shape` | – | – | a file name | for `loft`: the kite shape file the fixed shapes come from, `data/sails/<shape>.kite_shape.json` (`data_format.md` §3.7.6; a string): measured sections (asymmetric only) or a measured surface (either kind, §6.5 "The surface source") |
 | `loft_depth` | 1 | 1 | 0.3 to 1.5 | `loft` only: the lofted depth over the measured (§6.5 `D`) |
 | `loft_trim` | 0 | 0 | −20° to 20° | `loft` only: the whole kite turned further out about its luff (negative: in), on top of the core's angle (§6.5) |
 
 A lofted kite (`model` `loft`, §6.5) reads only `loft_depth` and `loft_trim`; every other key is kept for the hinge
-model and has no effect on it. Only wm7 flies the loft (2026-11-03); every other class stays on the hinge model until
-measured sections for it arrive.
+model and has no effect on it. wm7 (the AC33 asymmetric) and wm21 (the IACC symmetric series) fly fixed shapes from
+measured surfaces (2026-11-06; wm7 flew the J/80 sections from 2026-11-03); every other class stays on the hinge
+model.
 
 How each enters the shape (the sections below give the rest; with the defaults every added term is zero or one):
 ```
@@ -368,15 +369,18 @@ m   = (w.a + 0.1 * I2 * sin(q),  w.l,  w.n + I2 * cos(q))
 - Luffing makes the belly breathe: the flutter modulates the extrusion, strongest where the depth is, travelling
   aft.
 
-### 6.5 Lofted asymmetric spinnaker
+### 6.5 Lofted spinnaker: a fixed flying shape
 
 The hinge model of §6.3 and §7 bends the flat grid every update into a computed belly and then corrects it locally:
 the clearance push (§7.4), the forestay shift, the clew solve (§7.7), the row twist and the tack pin. Each correction
 is local, so where they overlap the cloth dents and bulges. The lofted model draws a kite's flying shape as one
 coherent surface, built **once** by the generator from measured full-scale sections (as a sail modeller would
 sculpt it), and at run time only blends it by the apparent wind and places it as a whole. Picked per kite by the set
-block's `model` (§4.1); the measured sections are a kite shape file (`data_format.md` §3.7.6), the lofted shapes are
-generated into the physics sidecar (`sails.<id>.loft`, `data_format.md` §3.7.5).
+block's `model` (§4.1); the source is a kite shape file (`data_format.md` §3.7.6) of one of two kinds: measured
+**sections** (camber, draft, twist and entry by height, lofted as below) or a measured **surface** (a complete 3D
+flying shape, resampled and mapped onto the class, "The surface source" below). Either way the shapes are generated
+into the physics sidecar (`sails.<id>.loft`, `data_format.md` §3.7.5) in the same form, so the run time below does
+not know which source made them.
 
 **The loft (generator, `tools/boatgen/boatgen/kite_loft.py`).** For each measured AWA, on the class's own flat grid
 (`P`, rows `i` from the foot, columns `j` from the luff):
@@ -426,6 +430,49 @@ way; the entry angles where convexity allows them (the run's foot 66° for 61°)
 running (the bound), the lift 0.01 and 0.13 of the foot; at the nominal trims the sheet leaves the clew 18° (reach)
 and 12° (run) off its bisector, mostly out of the corner's plane: the measured sections leave the clew corner only
 these two terms to turn it with (the hinge model's per-update clew solve, §7.7, gets within 4°).
+
+**The surface source (generator, `tools/boatgen/boatgen/kite_surface.py`, 2026-11-06).** Lofting curves through a
+handful of section numbers drew odd edges, a crease along the luff, a bowl at the clew and a poor outline (owner,
+2026-11-06, on the J/80 loft). A surface source takes the whole measured surface instead and changes it as little as
+possible: its outline, the curvature of its edges and its corners are the measured ones.
+```
+M(h, uc)   the measured surface by stripe and girth share: row h joins the luff's point at the share h of the luff's
+           length from the foot to the leech's at the share h of the leech's, uc the share of that row's girth from
+           the luff (h = 0 is the foot, h = 1 the pointed head); written in its own frame: from the tack, l toward
+           the head, a square to it toward the clew in the tack-head-clew plane, n square to both on the belly's side
+vertex (i, j) of the class grid: h_i = i / (rows - 1), uc_ij = its share of the flat row's girth
+S_ij = M(h_i, uc_ij)                         // Catmull-Rom across the measured grid (49 x 41), the edges kept
+the corner map (one linear map A of (a, l), the same for every vertex):
+    head  -> the flat head: l = |head - tack| of the flat sail (the luff axis of 3.2), a = 0
+    clew  -> where |T C'| = |T C|_m * SF_c / SF_m and |H C'| = |H C|_m * SLE_c / SLE_m meet, aft of the luff
+             (the measured tack-clew and head-clew distances, each scaled by the class's foot or leech over the
+             measured, both along the cloth)
+    (a', l') = A (a, l),  n' = |A e_a| * n * depth          // the depth scales as the measured chord does
+the head row collapsed to its mean (a pointed head)
+```
+No fit to a trim, no clew hook or lift, no section solve: the tack and the head sit where the flat sail has them and
+the clew where the map puts it; the clew lies in the rest plane, so the foot chord lies at the core's sheet angle `β`
+as the lofted shapes' do. Each measured surface gives one shape per apparent wind angle listed in the file, with a
+depth factor (`n` only):
+- **Asymmetric, the AC33 benchmark A-sail** (`data/sails/ac33_asym.kite_shape.json`): measured at AWA 55° only. The
+  reach is the measured surface (55°); the run (130°) is the same surface 10 % deeper, turned out whole by the core's
+  larger sheet angle at run time like any lofted kite. Between them the run-time blend; beyond, held.
+- **Symmetric, the IACC parametric series** (`data/sails/iacc_sym_series.kite_shape.json`): five sails of the same
+  girth that differ mainly in how close their clews are (foot camber 23 to 45 %): sail I at AWA 60°, II 90°, III 120°,
+  IV 150°, V 180°, neighbours blended by the run-time smoothstep. The rows are the series' horizontal sections, the
+  stripes shares of the luff from the foot (`t = 0.1`) to where its two luffs meet (`t` about 1.004).
+
+On wm7 (AC33): the corner map is nearly a plain scale (`a` 0.0318, `l` 0.0350 of the model's millimetres to metres, no
+shear); the outline along the cloth over the luff, measured against the class: leech 0.87 / 0.86, foot 0.59 / 0.56,
+mid girth 0.51 / 0.53 (the AC33 is about 10 % narrower at half height than the class planform; kept). On wm21 (IACC):
+`a` 18.3 to 18.7, `l` 20.8, a shear of up to 0.05 (the series' luffs lean in toward the head); leech and luff 1.00
+both, foot 0.53 / 0.49, mid girth 0.59 / 0.52 (the series is wider in the shoulders; kept). The sidecar's `map` block
+records both outlines.
+
+The surface files are third-party data, resampled once (`python3 -m boatgen.kite_surface ac33 <file.igs>` for the
+AC33 geometry; the series is evaluated from its published equations) and recorded in `docs/THIRD_PARTY.md`;
+`python3 -m boatgen.kite_surface render` draws every surface alone (no boat, plain shaded, three views) to check the
+raw data before it goes on a boat (`docs/design/kite_ac_2026-11-06/raw_*.png`).
 
 **Run time (`SailShape`, native and reference; the generator's preview port in `sail_set.py`).** Per update, with
 `S_m` the lofted shapes at their AWAs `A_m` (rising) and `(a, l, 0)` the rest grid:
@@ -1411,7 +1458,10 @@ Flutter phase `φ = 0` unless stated.
     loft's sliders, the switch to the hinge model and back, Save writes `model` and the keys, and back at the
     defaults the class file is unchanged byte for byte.
 
-27. **Lofted kite against its sections.** On the generated `wm7` (`model` `loft`, the J/80 sections), through
+27. **Lofted kite against its sections.** On the generated `wm7` (`model` `loft`). From a surface file (the AC33,
+    2026-11-06): through BoatView (native and reference), the kite alone and full at the file's first AWA on both
+    tacks, at heights 1/6 to 5/6 the drawn row's camber and draft are within 0.025 and 0.05 of the measured surface's
+    row at that stripe (computed from the file's grid the same way). From a sections file (the J/80): through
     BoatView (native and reference), the kite alone and full at AWA 64°, 94° and 124° on both tacks: at each measured
     section's height (between the rows either side) the drawn row's camber (its largest distance from its chord over
     the chord), draft and twist (its chord's horizontal angle from the foot's, to leeward) are within 0.025, 0.05 and
@@ -1629,3 +1679,18 @@ ORC certificate data (`data.orc.org`, boat RMS files) for the J/121, J/122, J/12
 [North Sails Melges 24 tuning guide](https://www.northsails.com/sailing/en/resources/melges-24-tuning-guide),
 [Yachting World, spinnaker trim](https://www.yachtingworld.com/features/sail-faster-sail-safer-advanced-techniques-series-part-9-spinnaker-trim-76224),
 [UK Sailmakers, spinnaker design brief](https://www.uksailmakers.com/2023/10/02/spinnaker-design-technical-brief-in-seahorse-magazine/).
+
+### 14.7 Measured kite surfaces (2026-11-06)
+
+Complete measured 3D flying shapes, the sources of §6.5's surface source (the research notes:
+`docs/design/kite_research/flying_shapes_2026-11.md`, sections 6 and 7):
+
+| kite | what it is | source | licence | used for |
+| --- | --- | --- | --- | --- |
+| AC33 benchmark asymmetric spinnaker | the flying shape at its optimum AWA 55°, measured by photogrammetry in the Auckland twisted-flow wind tunnel and built as a rigid 1:106 model (span 300 mm, 16° twist foot to head; 510 m² full size) | Arredondo-Galeana A., Viola I. M. (2020), *PIV dataset for near wake of spinnaker: Vortex flows of downwind sails*, University of Edinburgh DataShare, https://doi.org/10.7488/ds/2857, file `Geometries/IGS_format/Spinnaker_high_twist_16deg.igs`; Viola I. M., Flay R. G. J. (2011), Ocean Engineering 38, 1733-1743; Arredondo-Galeana A. (2019), PhD thesis, University of Edinburgh, http://hdl.handle.net/1842/36074 | CC-BY 4.0 | wm7 (`ac33_asym`) |
+| IACC parametric symmetric spinnaker series, sails I to V | rigid 1:25 wind-tunnel models in closed form, the same girth, foot camber 23.0, 28.5, 34.8, 39.8, 44.6 % | Moore P. (2004), ME thesis, University of Auckland; Lasher W. C., Richards P. J. (2007), Journal of Ship Research 51(1), 22-38, https://doi.org/10.5957/jsr.2007.51.1.22; equations and coefficients as reprinted in Peart T. (2022), PhD thesis, University of Auckland, appendix A, https://researchspace.auckland.ac.nz/handle/2292/64018 | published equations (cited) | wm21 (`iacc_sym_series`) |
+
+The AC33 model is solid (about 3 mm thick inside, bevelled to 10 mm at the edges); the surface used is its outer
+(leeward, convex) face, the largest of its 36 trimmed NURBS faces; the mounting bosses and the edge faces are left out.
+Along the cloth: luff 330.5 mm, leech 288.5 mm, foot 193.6 mm (leech / luff 0.87, foot / luff 0.59), deepest about
+0.40 of the tack-clew distance. The series reproduces Peart's foot cambers to 0.1 % (`tests/test_kite_surface.py`).

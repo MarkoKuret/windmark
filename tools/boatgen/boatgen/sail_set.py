@@ -99,7 +99,9 @@ HOLD = 0.35             # 4.1: `forward` holds the corners over this share of Sl
 TACK_REACH = 0.5        # 4.1: `tack_rise` fades out over this share of Sl from the tack
 LOFT_SIDE = 0.1         # 6.5: the lofted belly crosses to the other side as sin(beta + awa) passes +-this
 LOFT_EASE_MAX = 0.5     # 6.5: the largest turn of a lofted kite off the main, the jib and the mast, rad
-LOFT_STAY_MAX = 1.2     # 6.5: ... of a lofted kite on a pole, which also flies round the forestay, rad
+LOFT_STAY_MAX = 0.26    # 6.5: ... of a lofted kite on a pole, which also keeps off the forestay, rad (a last resort)
+POLE_RUN_RISE = 0.1     # 6.5: a lofted kite on a pole: the tack raised by this share of Sl on a run ...
+POLE_RUN_AWA = (np.radians(110.0), np.radians(60.0))   # ... from this |AWA| on, all of it this much further
 LOFT_EASE_STEPS = 12     # 6.5: steps of that turn's solve
 LOFT_FADE = (0.1, np.radians(100.0), np.radians(60.0))  # 6.5: |beta| over which the turn fades in from the
 #                         centreline, and from where and over how much it fades out round the bow
@@ -281,6 +283,7 @@ class SailSet:
             self.loft_awa = np.asarray(loft["awa"], dtype=np.float64)
             self.loft_shapes = np.asarray(loft["shapes"], dtype=np.float64).reshape(len(self.loft_awa), -1, 3)
         self.turn = 0.0
+        self.rise = 0.0     # 6.5: the tack raised on a pole (m), as last placed
 
     # ------------------------------------------------------------------ shape and placement (7, 6.1 to 6.4)
 
@@ -437,6 +440,16 @@ class SailSet:
         piv = s_t(self.tack)
         ax = s_t.R @ self.lh
         ax = ax / np.linalg.norm(ax)
+        self.rise = pole_run_rise(self.sl, awa) if self.mode == POLE else 0.0
+        if self.rise > 0.0:     # 6.5: the pole end up, the luff from the raised tack to the halyard
+            p2 = piv + UP * self.rise
+            ax2 = s_t(self.head) - p2
+            ax2 = ax2 / np.linalg.norm(ax2)
+            k = np.cross(ax, ax2)
+            sk = np.linalg.norm(k)
+            Rm = rot(k / sk, np.arctan2(sk, ax @ ax2)) if sk > 1e-12 else np.eye(3)
+            s_t = Xf(Rm, p2 - Rm @ piv) * s_t
+            piv, ax = p2, ax2
         loc = self.loft_local(awa, aws, beta)
         self.loc = loc
         wb = abs(wrap_pi(beta))     # the trim and the turn off the obstacles fade out where sgn(beta) flips
@@ -824,6 +837,30 @@ def sail_mode(boat, sail_type):
     return LUFF
 
 
+def pole_run_rise(sl, awa):
+    """6.5: how far a lofted kite's tack is raised on a pole at the apparent wind angle awa (m), Sl its luff extent."""
+    k = smoothstep01((abs(wrap_pi(awa)) - POLE_RUN_AWA[0]) / POLE_RUN_AWA[1])
+    return float(POLE_RUN_RISE * sl * k)
+
+
+def nominal_pole_angle(boat, sail_id, awa):
+    """6.5: the pole's angle (rad, a magnitude) at the AWA awa: the sail's pole angle table at 12 kn true wind from the
+    class's performance file, else the nominal sheet angle (the core's pole follows the sheet without a table)."""
+    import json
+    import os
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "data", "perf",
+                        f"{boat.cls['id']}.perf.json")
+    try:
+        with open(path) as f:
+            t = json.load(f)["sails"][sail_id]["pole_angle"]
+        tws, aw = (np.asarray(x["points"], dtype=np.float64) for x in t["axes"])
+        v = np.asarray(t["values"], dtype=np.float64).reshape(len(tws), len(aw))
+        col = np.array([np.interp(12.0 * KNOT, tws, v[:, k]) for k in range(len(aw))])
+        return float(np.interp(abs(awa), aw, col))
+    except (OSError, KeyError, ValueError):
+        return nominal_kite_angle(boat, sail_id, awa)
+
+
 def nominal_kite_angle(boat, sail_id, awa):
     """6.5: the kite's sheet angle (rad, a magnitude) at the apparent wind angle awa that the loft's clew hook is
     solved for: the class's optimum at 12 kn true wind from its performance file (data/perf/<id>.perf.json, the
@@ -855,11 +892,14 @@ def loft_place(boat, sail):
     sid = next(k for k, v in boat.sails.items() if v is sail)
     lead = rp["flying_lead"]
 
+    mode = sail_mode(boat, sail.type)
+
     def place(awa, loc):
         beta = -nominal_kite_angle(boat, sid, awa)
-        sh = SailSet(sail.P, sail.type, sail.look(L), sail_mode(boat, sail.type), rp, L,
+        gamma = -nominal_pole_angle(boat, sid, awa) if mode == POLE else 0.0
+        sh = SailSet(sail.P, sail.type, sail.look(L), mode, rp, L,
                      dict(sail.set_override, model="loft"), {"awa": [awa], "shapes": [loc]})
-        sh.update(beta, 0.0, awa, 8.0, ())
+        sh.update(beta, gamma, awa, 8.0, ())
         return sh.grid().copy(), np.array([lead[0], -sgn(beta) * abs(lead[1]), lead[2]])
     return place
 

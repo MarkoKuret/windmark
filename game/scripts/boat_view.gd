@@ -1034,7 +1034,9 @@ func apply_sails(prev: SimSource.SailsView, cur: SimSource.SailsView, alpha: flo
 			_pole_shown = s1.phase != SimSource.Phase.DOWN
 			_pole_gamma = sp.gamma
 			_pole_tilt = 0.0
-			if sp.tack_rise_m > 0.0 and _pole_len > 1e-3 and sp.shape != null:
+			if sp.shape != null and sp.shape.is_loft() and _pole_len > 1e-3:  # §6.5 the pole end up on a run
+				_pole_tilt = asin(clampf(float(sp.shape.get_tack_rise()) / _pole_len, 0.0, 1.0))
+			elif sp.tack_rise_m > 0.0 and _pole_len > 1e-3 and sp.shape != null:
 				_pole_tilt = asin(clampf(sp.tack_rise_m * float(sp.shape.sheet_weight()) / _pole_len, 0.0, 1.0))
 			if _pole:
 				_pole.visible = _pole_shown

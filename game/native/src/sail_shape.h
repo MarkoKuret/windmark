@@ -49,6 +49,7 @@ class SailShape : public godot::RefCounted {
   double get_twist_side() const { return tl_; }
   // §6.5 a lofted kite: the turn about the luff of the last update (before the ease)
   double get_turn() const { return turn_; }
+  double get_tack_rise() const { return tack_up_; }
   bool is_loft() const { return loft_; }
   void set_twist_side(double v) {
     tl_ = static_cast<float>(v);
@@ -141,7 +142,7 @@ class SailShape : public godot::RefCounted {
   std::vector<godot::Vector3> loft_pts_, fly_, lq_, lp_;
   std::vector<int> lidx_;
   std::vector<float> lx_;
-  float loft_depth_ = 1.0f, loft_trim_ = 0.0f, turn_ = 0.0f;
+  float loft_depth_ = 1.0f, loft_trim_ = 0.0f, turn_ = 0.0f, tack_up_ = 0.0f;
   std::vector<float> grow_;                // per row: the girth scale
   std::vector<float> hold_, rise_;         // per vertex: the corners' hold of `forward`, the share of `tack_rise`
   godot::Vector3 mast_head_;

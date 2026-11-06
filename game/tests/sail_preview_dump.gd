@@ -7,6 +7,8 @@ extends SceneTree
 ##   godot --headless --path game -s res://tests/sail_preview_dump.gd [-- shot ...]
 ##   godot --headless --path game -s res://tests/sail_preview_dump.gd -- kite_loft    (the comparison of
 ##       sail_visuals.md §6.5: wm7's kite on the hinge and the lofted model, tests/kite_loft_preview.py)
+##   godot --headless --path game -s res://tests/sail_preview_dump.gd -- kite_ac      (wm7 and wm21 on the hinge
+##       model and on the measured surfaces of §6.5, tests/kite_ac_preview.py)
 
 const KNOT := 1852.0 / 3600.0
 const OUT := "res://generated/sail_preview"
@@ -115,6 +117,30 @@ func _kite_loft_shots() -> Array:
 	return out
 
 
+## sail_visuals.md §6.5: the kites from measured surfaces (wm7 the AC33 asymmetric at AWA about 60, 95 and 130 deg;
+## wm21 the IACC symmetric series at TWA about 150 and 180 deg), each on the hinge model and on the fixed surface
+## shape, from the leeward side, the stern quarter and the bow quarter (tests/kite_ac_preview.py)
+func _kite_ac_shots() -> Array:
+	var out := []
+	for awa in [60, 95, 130]:
+		for model in ["hinge", "loft"]:
+			out.append({"name": "kite_ac_wm7_awa%d_%s" % [awa, model], "cls": "wm7", "tws": 12.0,
+				"twa": float(awa) + 30.0, "model": model, "views": KITE_LOFT_VIEWS,
+				"legs": [{"t": 12.0, "awa": float(awa)}, {"t": 45.0, "awa": float(awa), "req": "kite"}],
+				"cam": KITE_LOFT_VIEWS["side"]})
+	var big := {}
+	for v in KITE_LOFT_VIEWS:
+		big[v] = KITE_LOFT_VIEWS[v].duplicate()
+		big[v]["dist"] = 46.0
+	for twa in [150, 177]:
+		for model in ["hinge", "loft"]:
+			out.append({"name": "kite_ac_wm21_twa%d_%s" % [twa, model], "cls": "wm21", "tws": 12.0,
+				"twa": float(twa), "model": model, "views": big,
+				"legs": [{"t": 15.0, "twa": float(twa)}, {"t": 60.0, "twa": float(twa), "req": "spin"}],
+				"cam": big["side"]})
+	return out
+
+
 var _twa := 0.0
 
 
@@ -134,6 +160,9 @@ func _main() -> void:
 	var shots := SHOTS
 	if want.has("kite_loft"):
 		shots = _kite_loft_shots()
+		want = []
+	elif want.has("kite_ac"):
+		shots = _kite_ac_shots()
 		want = []
 	for spec in shots:
 		if want.is_empty() or want.has(spec["name"]):
@@ -207,8 +236,9 @@ func _shot(spec: Dictionary) -> void:
 	for sp in bv.sail_parts:
 		var ss: SimSource.SailState = cur.sails[sp.index]
 		var so: SimSource.SailOutput = cur.out[sp.index]
-		sails_note.append("%s %s p%.2f beta %.0f I %.2f%s" % [sp.id, ["down", "prep", "hoist", "up", "prep_drop",
-			"drop"][ss.phase], ss.progress, rad_to_deg(ss.beta), so.luff_shiver, " backed" if so.backed else ""])
+		sails_note.append("%s %s p%.2f beta %.0f I %.2f%s%s" % [sp.id, ["down", "prep", "hoist", "up", "prep_drop",
+			"drop"][ss.phase], ss.progress, rad_to_deg(ss.beta), so.luff_shiver, " backed" if so.backed else "",
+			(" gamma %.0f ease %.0f" % [rad_to_deg(ss.pole), rad_to_deg(sp.shape.get_ease())]) if KiteSet.is_kite(sp.type) else ""])
 	note = "%s: twa %.0f awa %.0f aws %.1f kn heel %.0f | %s" % [spec["name"], rad_to_deg(st.twa), rad_to_deg(st.awa),
 		st.aws / KNOT, rad_to_deg(st.phi), ", ".join(sails_note)]
 	print(note)

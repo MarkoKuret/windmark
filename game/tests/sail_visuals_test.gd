@@ -1554,6 +1554,9 @@ func _loft_sections() -> void:
 	var shape_name := String(KiteSet.class_entry(cls, "kite").get("set", {}).get("shape", ""))
 	var tab: Variant = JSON.parse_string(FileAccess.get_file_as_string(BoatClassData.repo_path(
 			"data/sails/%s.kite_shape.json" % shape_name)))
+	if tab is Dictionary and String(tab.get("kind", "")) == "surface":
+		_loft_surface(tab, shape_name)
+		return
 	t.ok(tab is Dictionary and tab.get("shapes") is Array and tab["shapes"].size() >= 2,
 		"wm7 kite: kite shape file %s read" % shape_name)
 	if not tab is Dictionary:
@@ -1602,6 +1605,100 @@ func _loft_sections() -> void:
 		t.ok(worst[0] <= LOFT_CAMBER_TOL and worst[1] <= LOFT_DRAFT_TOL and worst[2] <= LOFT_TWIST_TOL, msg)
 		print("  " + msg)
 		bv.free()
+
+
+## §12 test 27 from a surface file (§6.5 "The surface source"): the drawn wm7 kite (alone, full, at the file's first
+## AWA, both tacks) against the measured surface's own rows at the same stripes: camber and draft.
+func _loft_surface(tab: Dictionary, shape_name: String) -> void:
+	var first: Dictionary = tab["shapes"][0]
+	var srf: Dictionary = tab["surfaces"][first["surface"]]
+	t.ok(String(srf.get("form", "")) == "grid", "wm7 kite: surface file %s, its first shape a measured grid" % shape_name)
+	if String(srf.get("form", "")) != "grid":
+		return
+	var pts: Array = srf["points"]
+	var awa_deg := float(first["awa_deg"])
+	var data := BoatClassData.load_class("wm7")
+	for reference in ([false, true] if native else [true]):
+		var bv := BoatView.create(data.info, 0.5, reference)
+		var sp: BoatView.SailPart = null
+		for q in bv.sail_parts:
+			if q.type == "spinnaker_asym":
+				sp = q
+		t.ok(sp != null and sp.shape.is_loft(), "wm7 kite drawn with the lofted model (%s)" % (
+			"reference" if reference else "native"))
+		if sp == null or not sp.shape.is_loft():
+			bv.free()
+			continue
+		var worst := [0.0, 0.0]
+		for side in [1.0, -1.0]:
+			var awa: float = side * deg_to_rad(awa_deg)
+			var beta: float = -side * deg_to_rad(clampf(awa_deg - 48.0, 15.0, 64.0))
+			sp.shape.set_obstacles([])
+			sp.shape.update(UP, 1.0, beta, 0.0, 0.0, awa, 8.0)
+			var lines := []
+			for k in range(1, 6):
+				var h := k / 6.0
+				var want := surface_row_measure(pts, h)
+				var got := loft_row_measure(sp, h, awa)
+				for q in 2:
+					worst[q] = maxf(worst[q], absf(got[q] - want[q]))
+				lines.append("h %.2f camber %.1f/%.1f %% draft %.2f/%.2f" % [h, 100.0 * want[0], 100.0 * got[0],
+					want[1], got[1]])
+			if side > 0.0 and not reference:
+				print("  wm7 kite at AWA %.0f (measured surface/drawn): %s" % [awa_deg, "; ".join(lines)])
+		var msg := "wm7 kite (%s): camber within %.3f (<= %.3f), draft within %.3f (<= %.2f) of the measured surface" % [
+			"reference" if reference else "native", worst[0], LOFT_CAMBER_TOL, worst[1], LOFT_DRAFT_TOL]
+		t.ok(worst[0] <= LOFT_CAMBER_TOL and worst[1] <= LOFT_DRAFT_TOL, msg)
+		print("  " + msg)
+		bv.free()
+
+
+## §12 test 27: camber and draft of a measured surface grid's row at the stripe h (rows from the foot of [a, l, n]
+## points; the rows either side blended).
+static func surface_row_measure(pts: Array, h: float) -> Array:
+	var x := h * (pts.size() - 1)
+	var i0 := mini(int(floor(x)), pts.size() - 2)
+	var f := x - i0
+	var row := PackedVector3Array()
+	for j in (pts[i0] as Array).size():
+		var a: Array = pts[i0][j]
+		var b: Array = pts[i0 + 1][j]
+		row.append(Vector3(lerpf(a[0], b[0], f), lerpf(a[1], b[1], f), lerpf(a[2], b[2], f)))
+	return chord_measure(row)
+
+
+## camber (largest distance from the chord over the chord, a parabola through the deepest point and its
+## neighbours) and draft (its place along the chord from the first point) of a polyline row.
+static func chord_measure(row: PackedVector3Array) -> Array:
+	var c := row.size()
+	var p0 := row[0]
+	var ch := row[c - 1] - p0
+	var cl := ch.length()
+	var cu := ch / cl
+	var xs := PackedFloat32Array()
+	var ds := PackedFloat32Array()
+	for j in c:
+		var v := row[j] - p0
+		var xx := v.dot(cu)
+		xs.append(xx)
+		ds.append((v - cu * xx).length())
+	var k := 0
+	for j in c:
+		if ds[j] > ds[k]:
+			k = j
+	var dmax := ds[k]
+	var xmax := xs[k]
+	if k > 0 and k < c - 1:
+		var den := (xs[k - 1] - xs[k]) * (xs[k - 1] - xs[k + 1]) * (xs[k] - xs[k + 1])
+		if absf(den) > 1e-9:
+			var aa := (xs[k + 1] * (ds[k] - ds[k - 1]) + xs[k] * (ds[k - 1] - ds[k + 1]) + xs[k - 1] * (ds[k + 1] - ds[k])) / den
+			var bb := (xs[k + 1] * xs[k + 1] * (ds[k - 1] - ds[k]) + xs[k] * xs[k] * (ds[k + 1] - ds[k - 1]) + xs[k - 1] * xs[k - 1] * (ds[k] - ds[k + 1])) / den
+			if aa < 0.0:
+				var xv := -bb / (2.0 * aa)
+				if xv > xs[k - 1] and xv < xs[k + 1]:
+					xmax = xv
+					dmax = ds[k] + aa * (xv - xs[k]) * (xv - xs[k]) + (2.0 * aa * xs[k] + bb) * (xv - xs[k])
+	return [dmax / cl, xmax / cl]
 
 
 ## §12 test 27: camber (over the chord), draft (share of the chord from the luff) and twist (deg, the chord's
@@ -1658,7 +1755,7 @@ static func row_measure(sp: BoatView.SailPart, i: int, awa: float) -> Array:
 ## §12 test 19: the generator's preview poses (tools/boatgen/boatgen/sail_set.py, written to
 ## generated/boats/<id>.sets.json) draw the sails as BoatView does, native and reference, within PARITY_TOL.
 const PARITY_TOL := 0.01
-const PARITY_CLASSES := ["wm7", "wm12", "wm9", "test_sym", "test_set_asym", "test_set_sym"]
+const PARITY_CLASSES := ["wm7", "wm12", "wm9", "wm21", "test_sym", "test_set_asym", "test_set_sym"]
 
 
 func _parity() -> void:

@@ -62,10 +62,12 @@ constexpr float HOLD = 0.35f;
 constexpr float TACK_REACH = 0.5f;
 constexpr double DEG = 3.14159265358979323846 / 180.0;
 // §6.5 the lofted belly crosses to the other side as sin(beta + awa) passes +-LOFT_SIDE; the whole kite's turn off
-// the main, the jib and the mast: at most LOFT_EASE_MAX (rad), in LOFT_EASE_STEPS steps
+// the main, the jib and the mast: at most LOFT_EASE_MAX (rad; LOFT_STAY_MAX for a kite on a pole, which also flies
+// round the forestay), in at most LOFT_EASE_STEPS steps
 constexpr float LOFT_SIDE = 0.1f;
 constexpr float LOFT_EASE_MAX = 0.5f;
-constexpr int LOFT_EASE_STEPS = 6;
+constexpr float LOFT_STAY_MAX = 1.2f;
+constexpr int LOFT_EASE_STEPS = 12;
 // §6.5 after its first step, the turn's solve looks only at vertices this many clearances near the worst
 constexpr float LOFT_NEAR = 2.0f;
 // §6.5 the turn keeps this many margins (horizontal, §7.4), so the true distance up by the head, where the sails
@@ -717,7 +719,7 @@ void SailShape::update_loft(int64_t phase, float progress, float beta, float gam
   const Vector3 hd = s_t.xform(head_);
   tack_at_ = piv;
   ease_ = 0.0f;
-  if (clearance_ > 0.0f && (!obs_.empty() || has_mast_head_)) {
+  if (clearance_ > 0.0f && (!obs_.empty() || has_mast_head_ || has_stay_)) {
     if (!obs_.empty())
       sections(s_t, piv, ax, th);
     else
@@ -753,8 +755,19 @@ void SailShape::loft_clear(const std::vector<Vector3>& pts, const Vector3& hd, c
     const float cp = LOFT_MARGIN * margin_at(pt, hd);
     float x = has_mast_head_ ? mast_x(pt, lee, g) - cp : INFINITY;
     for (const Section& o : secs_) x = std::min(x, clear_x(o, pt, cp, g) - cp);
+    if (has_stay_) x = std::min(x, stay_x(pt) - cp);
     out[q] = x;
   }
+}
+
+// §6.5 how far a point lies ahead of the forestay, a wall LOFT_NEAR clearances either side of the stay between its
+// tack fitting and the hounds (INFINITY beside or above it)
+float SailShape::stay_x(const Vector3& pt) const {
+  const float z0 = stay0_.dot(up_), z1 = stay1_.dot(up_), pz = pt.dot(up_);
+  if (pz < z0 || pz > z1) return INFINITY;
+  const Vector3 q = stay0_ + (stay1_ - stay0_) * ((pz - z0) / (z1 - z0));
+  if (std::fabs((pt - q).dot(port_)) > LOFT_NEAR * clearance_) return INFINITY;
+  return (pt - q).dot(fwd_);
 }
 
 float SailShape::loft_ease(float beta, float awa, const Transform3D& s_t, const Vector3& piv, const Vector3& ax,
@@ -782,7 +795,7 @@ float SailShape::loft_ease(float beta, float awa, const Transform3D& s_t, const 
         at = lidx_[m];
       }
     }
-    if (it == 0) {
+    if (it == 0 && !has_stay_) {  // on a pole the whole kite may come round the stay: every vertex each step
       size_t w = 0;
       for (size_t m = 0; m < lx_.size(); ++m)
         if (lx_[m] < worst + LOFT_NEAR * clearance_) lidx_[w++] = lidx_[m];
@@ -791,8 +804,9 @@ float SailShape::loft_ease(float beta, float awa, const Transform3D& s_t, const 
     if (!(worst < 0.0f)) break;
     const Vector3 d = lp_[at] - piv;
     const float rr = (d - ax * d.dot(ax)).length();
-    delta = std::min(delta + (-worst) / std::max(rr, 0.5f), LOFT_EASE_MAX);
-    if (delta >= LOFT_EASE_MAX) break;
+    const float cap = has_stay_ ? LOFT_STAY_MAX : LOFT_EASE_MAX;
+    delta = std::min(delta + (-worst) / std::max(rr, 0.5f), cap);
+    if (delta >= cap) break;
   }
   return delta;
 }

@@ -99,7 +99,8 @@ HOLD = 0.35             # 4.1: `forward` holds the corners over this share of Sl
 TACK_REACH = 0.5        # 4.1: `tack_rise` fades out over this share of Sl from the tack
 LOFT_SIDE = 0.1         # 6.5: the lofted belly crosses to the other side as sin(beta + awa) passes +-this
 LOFT_EASE_MAX = 0.5     # 6.5: the largest turn of a lofted kite off the main, the jib and the mast, rad
-LOFT_EASE_STEPS = 6     # 6.5: steps of that turn's solve
+LOFT_STAY_MAX = 1.2     # 6.5: ... of a lofted kite on a pole, which also flies round the forestay, rad
+LOFT_EASE_STEPS = 12     # 6.5: steps of that turn's solve
 LOFT_FADE = (0.1, np.radians(100.0), np.radians(60.0))  # 6.5: |beta| over which the turn fades in from the
 #                         centreline, and from where and over how much it fades out round the bow
 LOFT_MARGIN = 1.2       # 6.5: the turn keeps this many margins (horizontal) so the true distance keeps one
@@ -469,13 +470,29 @@ class SailSet:
             x = self._mast_x(p, lee)[0] - cp
             for o in self._secs:
                 x = min(x, self._clear_x(o, p, cp)[0] - cp)
+            if self.stay is not None:
+                x = min(x, self._stay_x(p) - cp)
             out[q] = x
         return out
 
+    def _stay_x(self, p):
+        """6.5: how far the point p lies ahead of the forestay (a wall of the stay's half width either side of it,
+        between its tack fitting and the hounds; inf beside or above it)."""
+        f0, f1 = self.stay[0], self.stay[1]
+        w = LOFT_NEAR * self.clearance
+        z0, z1 = f0[2], f1[2]
+        if not z0 <= p[2] <= z1:
+            return np.inf
+        q = f0 + (f1 - f0) * ((p[2] - z0) / (z1 - z0))
+        if abs((p - q) @ PORT) > w:
+            return np.inf
+        return float((p - q) @ FWD)
+
     def _loft_ease(self, beta, s_t, piv, ax, th, hd, rest, tl):
         """6.5: the kite turned as a whole about its luff, away from the centreline, just far enough that no vertex
-        is inside the clearance margin of the main, the jib or the mast (at most LOFT_EASE_MAX). After the first
-        step only the vertices then within LOFT_NEAR clearances of the worst are looked at again."""
+        is inside the clearance margin of the main, the jib or the mast, or on a pole behind the forestay (at most
+        LOFT_EASE_MAX, LOFT_STAY_MAX on a pole). After the first step only the vertices then within LOFT_NEAR
+        clearances of the worst are looked at again (on a pole every vertex: the kite may come round the stay)."""
         es, delta = sgn(beta), 0.0
         lee = -PORT * tl
         q = s_t(rest)
@@ -488,12 +505,13 @@ class SailSet:
             if not worst < 0.0:
                 break
             at = idx[j]
-            if it == 0:
+            if it == 0 and self.stay is None:
                 idx = idx[x < worst + LOFT_NEAR * self.clearance]
             d = pts[at] - piv
             r = np.linalg.norm(d - ax * (d @ ax))
-            delta = min(delta + (-worst) / max(r, 0.5), LOFT_EASE_MAX)
-            if delta >= LOFT_EASE_MAX:
+            cap = LOFT_EASE_MAX if self.stay is None else LOFT_STAY_MAX
+            delta = min(delta + (-worst) / max(r, 0.5), cap)
+            if delta >= cap:
                 break
         return delta
 

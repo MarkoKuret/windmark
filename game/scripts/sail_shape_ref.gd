@@ -68,10 +68,12 @@ const CURL_BAND := 0.25
 const HOLD := 0.35
 const TACK_REACH := 0.5
 ## §6.5 the lofted belly crosses to the other side as sin(beta + awa) passes +-LOFT_SIDE; the whole kite's turn off
-## the main, the jib and the mast: at most LOFT_EASE_MAX (rad), in LOFT_EASE_STEPS steps
+## the main, the jib and the mast: at most LOFT_EASE_MAX (rad; LOFT_STAY_MAX for a kite on a pole, which also flies
+## round the forestay), in at most LOFT_EASE_STEPS steps
 const LOFT_SIDE := 0.1
 const LOFT_EASE_MAX := 0.5
-const LOFT_EASE_STEPS := 6
+const LOFT_STAY_MAX := 1.2
+const LOFT_EASE_STEPS := 12
 ## §6.5 after its first step, the turn's solve looks only at vertices this many clearances near the worst; it keeps
 ## LOFT_MARGIN margins (horizontal, §7.4), so the true distance up by the head, where the sails lean, keeps one
 const LOFT_NEAR := 2.0
@@ -746,7 +748,7 @@ func _update_loft(phase: int, progress: float, beta: float, gamma: float, shiver
 	var hd := s_t * head
 	_tack_at = piv
 	_ease = 0.0
-	if clearance > 0.0 and (not _obs.is_empty() or has_mast_head):
+	if clearance > 0.0 and (not _obs.is_empty() or has_mast_head or has_stay):
 		if not _obs.is_empty():
 			_sections(s_t, piv, ax, th)
 		else:
@@ -781,8 +783,24 @@ func _loft_clear(pts: PackedVector3Array, hd: Vector3, lee: Vector3, idx: Packed
 			x = float(_mast_x(pt, lee)[0]) - cp
 		for o in _secs:
 			x = minf(x, float(_clear_x(o, pt, cp)[0]) - cp)
+		if has_stay:
+			x = minf(x, _stay_x(pt) - cp)
 		out[q] = x
 	return out
+
+
+## §6.5 how far a point lies ahead of the forestay, a wall LOFT_NEAR clearances either side of the stay between its
+## tack fitting and the hounds (INF beside or above it).
+func _stay_x(pt: Vector3) -> float:
+	var z0 := stay0.dot(up)
+	var z1 := stay1.dot(up)
+	var pz := pt.dot(up)
+	if pz < z0 or pz > z1:
+		return INF
+	var q := stay0 + (stay1 - stay0) * ((pz - z0) / (z1 - z0))
+	if absf((pt - q).dot(port)) > LOFT_NEAR * clearance:
+		return INF
+	return (pt - q).dot(fwd)
 
 
 ## §6.5 the kite turned as a whole about its luff, away from the centreline, just far enough that no vertex is
@@ -815,7 +833,7 @@ func _loft_ease(beta: float, awa: float, s_t: Transform3D, piv: Vector3, ax: Vec
 			if x[m] < worst:
 				worst = x[m]
 				at = idx[m]
-		if it == 0:
+		if it == 0 and not has_stay:  # on a pole the whole kite may come round the stay: every vertex each step
 			var keep := PackedInt32Array()
 			for m in x.size():
 				if x[m] < worst + LOFT_NEAR * clearance:
@@ -825,8 +843,9 @@ func _loft_ease(beta: float, awa: float, s_t: Transform3D, piv: Vector3, ax: Vec
 			break
 		var d := pts[at] - piv
 		var rr := (d - ax * d.dot(ax)).length()
-		delta = minf(delta + (-worst) / maxf(rr, 0.5), LOFT_EASE_MAX)
-		if delta >= LOFT_EASE_MAX:
+		var cap := LOFT_STAY_MAX if has_stay else LOFT_EASE_MAX
+		delta = minf(delta + (-worst) / maxf(rr, 0.5), cap)
+		if delta >= cap:
 			break
 	return delta
 

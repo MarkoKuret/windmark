@@ -97,6 +97,7 @@ class SailShape : public godot::RefCounted {
   void update_loft(int64_t phase, float progress, float beta, float gamma, float shiver, float awa, float aws);
   void loft_clear(const std::vector<godot::Vector3>& pts, const godot::Vector3& hd, const godot::Vector3& lee,
                   const std::vector<int>& idx, std::vector<float>& out) const;
+  float stay_x(const godot::Vector3& pt) const;
   float loft_ease(float beta, float awa, const godot::Transform3D& s_t, const godot::Vector3& piv,
                   const godot::Vector3& ax, float th, const godot::Vector3& hd);
   // §7.4 clearance

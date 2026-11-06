@@ -65,6 +65,6 @@
       "hatches": 2
     },
     "rig": {"spreaders": 2, "spreader_sweep": 0.40, "backstay": false},
-    "sails": {"main": {"head_width": 0.36}}
+    "sails": {"main": {"head_width": 0.36}, "a2": {"set": {"model": "loft", "shape": "ac33_asym"}}}
   }
 }

@@ -64,6 +64,6 @@
       "toe_rail_material": "alloy"
     },
     "rig": {"spreaders": 2, "spreader_sweep": 0.31, "backstay": true},
-    "sails": {"main": {"head_width": 0.30}}
+    "sails": {"main": {"head_width": 0.30}, "a2": {"set": {"model": "loft", "shape": "ac33_asym"}}}
   }
 }

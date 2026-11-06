@@ -67,6 +67,6 @@
       "hardware_finish": "black"
     },
     "rig": {"spreaders": 3, "spreader_sweep": 0.26, "backstay": true},
-    "sails": {"main": {"head_width": 0.40}}
+    "sails": {"main": {"head_width": 0.40}, "a2": {"set": {"model": "loft", "shape": "ac33_asym"}}}
   }
 }

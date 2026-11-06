@@ -452,7 +452,7 @@ the head row collapsed to its mean (a pointed head)
 ```
 No section solve: the tack and the head sit where the flat sail has them and the clew where the map puts it; the clew
 lies in the rest plane, so the foot chord lies at the core's sheet angle `β` as the lofted shapes' do. Each measured
-surface gives one shape per apparent wind angle listed in the file, with a depth factor (`n` only). Then three smooth
+surface gives one shape per apparent wind angle listed in the file, with a depth factor (`n` only). Then two smooth
 changes, made once per shape by the generator (never per update; each is recorded in the sidecar's `loft` block):
 ```
 foot lift (a shape's `foot_lift` f, 0 to 1): the foot's sag below the straight tack-clew line, along l, taken out by f
@@ -460,15 +460,16 @@ foot lift (a shape's `foot_lift` f, 0 to 1): the foot's sag below the straight t
     l_ij += f * s_j * (1 - smoothstep(h_i / 0.25))        // the lift fades out over the lower quarter of the height
 head eased (a kite on a pole, below): l scaled about the tack so the head comes |H - (T + up r(awa))| from the tack,
     the luff's straight length less what the raised tack takes up; the head stays at the halyard
-clew turned toward its sheet: the kite set alone at its nominal trim for the shape's AWA (the class's optimum sheet
-    angle at 12 kn from its performance file, its nominal pole angle on a pole, as test 25 sets it), the sheet from
-    the placed clew to its lead block; the cloth round the clew turned about the clew, about the axis square to the
-    clew corner's bisector and the sheet, by theta * w:
-    w = 1 - smoothstep(d / R_c),  d the vertex's flat distance from the clew,  R_c = 0.5 * min(SF, SLE)
-    theta (|theta| <= 45 deg) the golden-section minimum of the sheet's angle off the bisector (test 25's measure)
 ```
-The turn is a twirl that is whole at the clew and fades to nothing across about the lower-aft quarter of the sail,
-with no slope at either end, so the foot and the leech bend into it without a kink.
+The sidecar also records, per shape, the sheet's angle off the clew corner's bisector with the kite set alone at its
+nominal trim (the class's optimum sheet angle at 12 kn, its nominal pole angle on a pole; test 25's measure). The
+clew is **not** turned toward its sheet (tried 2026-11-06, dropped): a twirl of the cloth round the clew, whole at
+the clew and fading out across the lower-aft quarter, shears the cloth by about its own angle. At 45° it folded a
+visible dent into the clew corner; at 8° over the lower-aft quarter it bent wm12's lower leech into an S (test 25's
+bulge); at 8° over a whole foot's length from the clew it changed the measured sections up to half height by 3
+points of camber (test 27). In each case it took only 6 to 7° off the sheet's angle; the rest (about 30 to 40° on
+the asymmetrics at their nominal trims) is the measured clew corner against our sheet leads, and a smooth stored
+shape cannot turn it further.
 - **Asymmetric, the AC33 benchmark A-sail** (`data/sails/ac33_asym.kite_shape.json`): measured at AWA 55° only. The
   reach is the measured surface (55°) with half its foot sag lifted out (`foot_lift` 0.5: the wind-tunnel model's
   foot dips 0.65 m below the tack on wm7's close reach, the sportsboat kite rides 0.3 m higher); the run (130°) is the
@@ -529,7 +530,7 @@ X(delta) = min over every vertex of x - 1.2 c_P   // 1.2: the horizontal distanc
 x includes, on a pole, how far the vertex lies ahead of the forestay (fwd), where it is between the stay's tack
     fitting and the hounds in height and within 2 c of the stay athwartships (a wall; beside or above it, none)
 delta = 0; 12 times: stop when X >= 0; delta = min(delta + (-X) / max(r, 0.5), cap)   // r: the worst vertex's
-                                                  // distance from the luff axis; cap 0.5 rad, 1.2 rad on a pole
+                                                  // distance from the luff axis; cap 0.5 rad, 0.26 rad on a pole
 after the first step only the vertices then within 2 c of the worst are looked at again (not on a pole: the whole
 kite may come round the stay)
 ```
@@ -544,9 +545,11 @@ The stored shapes' heads are eased by the same `r` at their AWAs (above), so the
 pole tilts by `asin(r / pole length)`. On a run the core squares the pole (wm21 at TWA 176°: pole 81°, kite 79°), so
 the tack sits beside the mast while the forestay meets the deck one foretriangle base ahead; a 13 m foot with a 4 m
 belly cannot reach round it from there. Raising the tack 2.5 m (wm21) takes the stay a little aft at the foot's
-height; the rest is still the turn above (about 45 to 50° at TWA 176° on wm21, against about 55° without the raise;
-nothing at TWA 150°). A pole held less square on a dead run (50°: no turn needed) is the core's call
-(`sails.md`, the pole angle table). Until 2026-11-06 the turn was capped at 0.5 rad in 6 steps for every kite.
+height; the rest is still the turn above, which would need about 45 to 50° at TWA 176° on wm21 (about 55° without the raise; nothing at TWA
+150°). Swung that far the kite reads as an arch blown to windward (owner, 2026-11-06), so on a pole the turn is a
+last resort capped at 0.26 rad (15°): on a dead run (pole squared past about 75°) the forestay still passes through
+one cell of the lower kite on wm21 and wm9. A pole held less square on a dead run (50°: no turn needed) is the core's
+call (`sails.md`, the pole angle table). Until 2026-11-06 the turn was capped at 0.5 rad in 6 steps for every kite.
 On wm7 at the optimum trims (12 kn) the reach at AWA 64° (kite 16°, main 10°) needs about 16° of this turn, AWA 80°
 and more none; the largest over test 18's sweep (over-sheeted, the main eased, the jib up) is 27°, and on the closest
 reaches (test 20) it takes the clew up to 2.2 m outboard of the widest beam (the hinge model 1.9 m: it bends the

@@ -137,7 +137,17 @@ the row's flat girth as its arc length, turned by the measured twist; then the t
 kite as it flies at its nominal trim (the class's optimum kite angle from `data/perf/<id>.perf.json`, when there is
 one) and the clew is hooked and lifted to face its sheet. The shapes go into the sidecar's `sails.<id>.loft`
 (generated, never hand-edited); the game draws them when the set block's `model` is `loft`. It adds about 10 s to a
-build. `tests/test_kite_loft.py` checks the file, the sections and the wm7 loft.
+build. `tests/test_kite_loft.py` checks the file, the sections and the J/80 loft on wm7.
+
+A kite shape file of `kind` `surface` is a complete measured flying shape instead (`boatgen/kite_surface.py`,
+`docs/specs/sail_visuals.md` §6.5 "The surface source"): the measured surface is resampled onto the class grid by
+stripe and girth share and mapped onto the class's corners (the tack and the head where the flat sail has them, the
+clew where the measured foot and leech, scaled by the class's, put it, the depth scaled with the chord); no fit, no
+section solve. wm7 flies the AC33 benchmark asymmetric (`data/sails/ac33_asym`), wm21 the IACC symmetric series
+(`data/sails/iacc_sym_series`). `python3 -m boatgen.kite_surface ac33 <Spinnaker_high_twist_16deg.igs>` rewrites
+the AC33 file from its source geometry (DataShare, `docs/THIRD_PARTY.md`; read by `boatgen/iges.py`, nothing in it
+is run); `python3 -m boatgen.kite_surface render` draws every surface alone for a check of the raw data.
+`tests/test_kite_surface.py` checks the files, the series against its published foot cambers and the mapping.
 
 How the luff and leech rounds and the mid girth interact: with neither round given, both are solved together to
 reach the mid girth (the default); with one given, the other is solved; with both given, the mid girth is the

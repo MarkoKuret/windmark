@@ -78,7 +78,12 @@ class Loft(unittest.TestCase):
     def test_wm7(self):
         b = wm7()
         s = b.sails["kite"]
-        blk = s.loft_block(b)
+        keep = s.set_override
+        s.set_override = dict(keep, shape="j80_deparday2016")      # wm7 flies the AC33 surface; the sections here
+        try:
+            blk = s.loft_block(b)
+        finally:
+            s.set_override = keep
         self.assertEqual(blk["shape"], "j80_deparday2016")
         P = s.P
         rows, cols = P.shape[:2]

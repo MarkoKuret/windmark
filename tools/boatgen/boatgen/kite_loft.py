@@ -55,6 +55,9 @@ def load(name, data_dir=None):
         raise KiteShapeError(f"kite shape {name!r}: no file {path}")
     with open(path) as f:
         d = json.load(f)
+    if isinstance(d, dict) and d.get("kind") == "surface":    # a measured 3D surface (boatgen/kite_surface.py)
+        from .kite_surface import validate as validate_surface
+        return dict(validate_surface(d, name), kind="surface")
     return validate(d, name)
 
 

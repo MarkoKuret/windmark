@@ -201,6 +201,6 @@ class SetParamsTest(unittest.TestCase):
         b = boat("wm7")
         kite = b.sails["kite"]
         want = {k: round(float(v), 6) for k, v in sail_set.SET_DEFAULTS[kite.type].items()}
-        want.update(model="loft", shape="j80_deparday2016")     # wm7's kite is lofted (sail_visuals.md 6.5)
+        want.update(model="loft", shape="ac33_asym")     # wm7's kite flies the AC33 surface (sail_visuals.md 6.5)
         self.assertEqual(kite.set_block(), want)
         self.assertIsNone(b.sails["main"].set_block())

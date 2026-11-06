@@ -60,13 +60,14 @@ def _set_block(given, st, where):
         if k == "shape":
             if not isinstance(x, str) or not x.strip():
                 raise ClassFileError(f"{where}.shape must name a kite shape file (data/sails/<name>.kite_shape.json)")
-            if st != "spinnaker_asym":
-                raise ClassFileError(f"{where}.shape: lofted shapes are for asymmetric spinnakers for now")
             from .kite_loft import load, KiteShapeError
             try:
-                load(x)
+                sh = load(x)
             except KiteShapeError as e:
                 raise ClassFileError(f"{where}.shape: {e}")
+            if st != "spinnaker_asym" and sh.get("kind") != "surface":
+                raise ClassFileError(f"{where}.shape: a symmetric spinnaker takes a surface shape file (sections are "
+                                     "for asymmetric spinnakers)")
             continue
         if k not in SET_KEYS:
             raise ClassFileError(f"{where}.{k} is not a set parameter (model, shape, {', '.join(SET_KEYS)})")

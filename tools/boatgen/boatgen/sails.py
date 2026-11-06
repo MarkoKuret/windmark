@@ -130,9 +130,15 @@ class Sail:
             return None
         key = (name, id(self.P), boat is not None)
         if getattr(self, "_loft", None) is None or self._loft[0] != key:
-            from .kite_loft import sidecar_block
-            from .sail_set import loft_place
-            self._loft = (key, sidecar_block(self.P, name, place=loft_place(boat, self) if boat is not None else None))
+            from .kite_loft import load, sidecar_block
+            sh = load(name)
+            if sh.get("kind") == "surface":     # a measured surface: mapped onto the corners, no fit to a trim
+                from .kite_surface import sidecar_block as surface_block
+                self._loft = (key, surface_block(self.P, name, sh))
+            else:
+                from .sail_set import loft_place
+                self._loft = (key, sidecar_block(self.P, name, sh,
+                                                 place=loft_place(boat, self) if boat is not None else None))
         return self._loft[1]
 
     def part(self, P=None, gap=0.001):

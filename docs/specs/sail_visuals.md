@@ -460,7 +460,11 @@ depth factor (`n` only):
 - **Symmetric, the IACC parametric series** (`data/sails/iacc_sym_series.kite_shape.json`): five sails of the same
   girth that differ mainly in how close their clews are (foot camber 23 to 45 %): sail I at AWA 60°, II 90°, III 120°,
   IV 150°, V 180°, neighbours blended by the run-time smoothstep. The rows are the series' horizontal sections, the
-  stripes shares of the luff from the foot (`t = 0.1`) to where its two luffs meet (`t` about 1.004).
+  stripes shares of the luff from the foot (`t = 0.1`) to where its two luffs meet (`t` about 1.004). The series'
+  model leans its luffs in toward the head (the clews about 28° downwind of the head); stood on the sail's luff axis
+  square to its corner plane that lean would tip the level foot down by 2 m on wm21, so its depth is taken along the
+  series' wind direction (`z`) instead of square to the corner plane: `p = T + a e_a + l e_l + n z` (an oblique
+  frame; the same corner map), and the foot and every section stay level with the belly down the wind.
 
 On wm7 (AC33): the corner map is nearly a plain scale (`a` 0.0318, `l` 0.0350 of the model's millimetres to metres, no
 shear); the outline along the cloth over the luff, measured against the class: leech 0.87 / 0.86, foot 0.59 / 0.56,
@@ -500,15 +504,24 @@ is the turn's axis), the clew where the turn puts it; the sheet runs straight fr
 (§11.3) and the main stops on it as before (§7.6, with the placed clew).
 
 **Clear as a whole.** Where the kite would come within the clearance `c` (§4) of the main, a shown headsail or the
-mast (as §7.4 measures it: horizontal sections, the margin fading at the head and the tack), it is turned further out
-about its luff, as one body, just far enough:
+mast (as §7.4 measures it: horizontal sections, the margin fading at the head and the tack), or, on a pole, behind
+the forestay, it is turned further out about its luff, as one body, just far enough:
 ```
 X(delta) = min over every vertex of x - 1.2 c_P   // 1.2: the horizontal distance keeps a margin over the true one up
                                                   // by the head, where the sails lean
-delta = 0; 6 times: stop when X >= 0; delta = min(delta + (-X) / max(r, 0.5), 0.5 rad)   // r: the worst vertex's
-                                                  // distance from the luff axis
-after the first step only the vertices then within 2 c of the worst are looked at again
+x includes, on a pole, how far the vertex lies ahead of the forestay (fwd), where it is between the stay's tack
+    fitting and the hounds in height and within 2 c of the stay athwartships (a wall; beside or above it, none)
+delta = 0; 12 times: stop when X >= 0; delta = min(delta + (-X) / max(r, 0.5), cap)   // r: the worst vertex's
+                                                  // distance from the luff axis; cap 0.5 rad, 1.2 rad on a pole
+after the first step only the vertices then within 2 c of the worst are looked at again (not on a pole: the whole
+kite may come round the stay)
 ```
+On a pole (wm21, 2026-11-06) the core squares the pole and sheets the foot square across the boat on a run (TWA 176°:
+pole 81°, kite 79°), with the tack beside the mast and the head at the masthead; a fixed shape set there has its
+lower belly behind the forestay (which runs from the bow to the hounds), and only this turn brings it clear: about
+69° (the cap) to windward at TWA 176°, so the kite flies round the stay to windward with its clew near the bow
+rather than square across it; at TWA 150° (AWA 111°) it needs about 1°. Until 2026-11-06 the turn was capped at
+0.5 rad in 6 steps for every kite.
 On wm7 at the optimum trims (12 kn) the reach at AWA 64° (kite 16°, main 10°) needs about 16° of this turn, AWA 80°
 and more none; the largest over test 18's sweep (over-sheeted, the main eased, the jib up) is 27°, and on the closest
 reaches (test 20) it takes the clew up to 2.2 m outboard of the widest beam (the hinge model 1.9 m: it bends the

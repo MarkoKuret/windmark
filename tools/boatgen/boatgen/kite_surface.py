@@ -28,6 +28,7 @@ KIND = "surface"
 GRID = (49, 41)        # rows (h) and columns (uc) a surface is resampled to before it is mapped onto a class grid
 N_ROW = 801            # samples along a row for its girth
 DEPTH_RANGE = (0.5, 1.5)
+FOOT_LIFT_H = 0.25     # the foot lift fades out over this lower share of the height
 
 
 # ---------------------------------------------------------------------------- the file
@@ -79,7 +80,10 @@ def validate(d, where="kite shape"):
         dep = s.get("depth", 1.0)
         if isinstance(dep, bool) or not isinstance(dep, (int, float)) or not DEPTH_RANGE[0] <= dep <= DEPTH_RANGE[1]:
             raise KiteShapeError(f"{w}.depth must be a number from {DEPTH_RANGE[0]:g} to {DEPTH_RANGE[1]:g}")
-        out.append({"awa": math.radians(awa), "surface": s["surface"], "depth": float(dep)})
+        lift = s.get("foot_lift", 0.0)
+        if isinstance(lift, bool) or not isinstance(lift, (int, float)) or not 0.0 <= lift <= 1.0:
+            raise KiteShapeError(f"{w}.foot_lift must be a number from 0 to 1")
+        out.append({"awa": math.radians(awa), "surface": s["surface"], "depth": float(dep), "foot_lift": float(lift)})
     out.sort(key=lambda s: s["awa"])
     if len({s["awa"] for s in out}) != len(out):
         raise KiteShapeError(f"{where}: one shape per apparent wind angle")
@@ -265,16 +269,63 @@ def class_shape(M, P, depth=1.0):
     return out.reshape(-1, 3)
 
 
-def sidecar_block(P, name, shape=None):
+def foot_lifted(L, f):
+    """The local shape L (rows, cols, 3) with the share f of its foot's sag below the straight tack-clew line (along
+    l) lifted out, fading out over the lower FOOT_LIFT_H of the height (sail_visuals.md 6.5)."""
+    if f <= 0.0:
+        return L
+    rows = L.shape[0]
+    a_c, l_c = L[0, -1, 0], L[0, -1, 1]
+    sag = np.maximum(0.0, l_c * L[0, :, 0] / a_c - L[0, :, 1])
+    h = np.arange(rows) / (rows - 1)
+    x = np.clip(h / FOOT_LIFT_H, 0.0, 1.0)
+    fade = 1.0 - x * x * (3.0 - 2.0 * x)
+    out = L.copy()
+    out[..., 1] += f * fade[:, None] * sag[None, :]
+    return out
+
+
+def head_eased(L, P, rise):
+    """The local shape L with l scaled about the tack so its head comes |H - (T + up rise)| from the tack: the head
+    stays at the halyard when the tack is raised by `rise` (m) on a pole (sail_visuals.md 6.5)."""
+    if rise <= 0.0:
+        return L
+    T, H = P[0, 0], P[-1, 0]
+    want = float(np.linalg.norm(H - (T + np.array([0.0, 0.0, rise]))))
+    out = L.copy()
+    out[..., 1] *= want / L[-1, 0, 1]
+    return out
+
+
+def sheet_angle(L, place, awa):
+    """The sheet's angle off the clew corner's bisector (rad, test 25's measure) of the local shape L set alone at its
+    nominal trim for `awa` (`place(awa, loc)`: the placed grid and the sheet's lead)."""
+    from .kite_loft import clew_angle
+    G, lead = place(awa, L.reshape(-1, 3))
+    return clew_angle(G, lead)
+
+
+def sidecar_block(P, name, shape=None, place=None, sl=None):
     """The sidecar's `loft` block of a kite whose shape file is a surface (sail_visuals.md 6.5): as kite_loft's
-    (`awa`, `shapes` per AWA in the sail frame, grid order) plus the outlines it was mapped between."""
+    (`awa`, `shapes` per AWA in the sail frame, grid order) plus the outlines it was mapped between, the two smooth
+    changes (the foot lift; the head eased on a kite on a pole: `sl` its luff extent, else None) and, with `place`
+    (as kite_loft.loft takes it), the sheet's angle off the clew's bisector at each AWA's nominal trim."""
+    from .sail_set import pole_run_rise
     shape = shape or load(name)
+    rows, cols = P.shape[:2]
     grids = {}
-    shapes = []
+    shapes, clew, eased = [], [], []
     for s in shape["shapes"]:
         if s["surface"] not in grids:
             grids[s["surface"]] = surface_grid(shape["surfaces"][s["surface"]])
-        shapes.append(class_shape(grids[s["surface"]], P, s["depth"]))
+        L = class_shape(grids[s["surface"]], P, s["depth"]).reshape(rows, cols, 3)
+        L = foot_lifted(L, s["foot_lift"])
+        rise = pole_run_rise(sl, s["awa"]) if sl is not None else 0.0
+        L = head_eased(L, P, rise)
+        eased.append(round(float(L.shape and (np.linalg.norm(P[-1, 0] - P[0, 0]) - L[-1, 0, 1])), 4))
+        if place is not None:
+            clew.append({"sheet_off_bisector_deg": round(math.degrees(sheet_angle(L, place, s["awa"])), 2)})
+        shapes.append(L.reshape(-1, 3))
     first = grids[shape["shapes"][0]["surface"]]
     mo, co = outline(first), outline(P)
     _, sd, _ = corner_map(first, P)
@@ -288,6 +339,9 @@ def sidecar_block(P, name, shape=None):
             "awa": [round(s["awa"], 6) for s in shape["shapes"]],
             "depth": [s["depth"] for s in shape["shapes"]],
             "surface": [s["surface"] for s in shape["shapes"]],
+            "foot_lift": [s["foot_lift"] for s in shape["shapes"]],
+            "head_ease": eased,
+            "clew": clew,
             "shapes": [np.round(s, 5).tolist() for s in shapes]}
 
 
@@ -361,10 +415,11 @@ def ac33_file(igs_path, rows=GRID[0], cols=GRID[1]):
                       "leech) of columns from the luff (uc = column / (cols - 1): a share of the row's girth); "
                       "[a, l, n] in model millimetres from the tack: l toward the head, a square to it toward the "
                       "clew in the tack-head-clew plane, n square to both on the belly's (leeward) side",
-            "shapes": "the run is the measured reach shape turned whole by the trim and a little deeper (depth)",
+            "shapes": "the run is the measured reach shape turned whole by the trim and a little deeper (depth); the reach "
+                      "has half its foot sag below the tack-clew line lifted out (foot_lift)",
         },
         "surfaces": {"ac33": {"form": "grid", "points": np.round(M, 3).tolist()}},
-        "shapes": [{"awa_deg": 55, "surface": "ac33"}, {"awa_deg": 130, "surface": "ac33", "depth": 1.1}],
+        "shapes": [{"awa_deg": 55, "surface": "ac33", "foot_lift": 0.5}, {"awa_deg": 130, "surface": "ac33", "depth": 1.1}],
     }
 
 

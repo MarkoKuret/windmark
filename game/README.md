@@ -428,7 +428,8 @@ bent boat, `tests/sail_preview.py` renders them offscreen to `generated/sail_pre
 JPEGs in `tests/previews/sails_*.jpg`). It lights the boat with the default daytime preset (`SkyRig`) under the
 game's sky; the lighting model is a stand-in for Godot's. `sail_preview_dump.gd -- kite_ac` then
 `tests/kite_ac_preview.py` draw the kites from measured surfaces (wm7, wm21) next to the hinge model, one sheet per
-class and view, into `docs/design/kite_ac_2026-11-06/`.
+class and view, into `docs/design/kite_ac_2026-11-06/`; `-- kite_ac2` then `kite_ac_preview.py --second` every
+spinnaker class, into `docs/design/kite_ac_2026-11-06b/`.
 
 ## Kite tuner
 
@@ -452,7 +453,7 @@ to zoom.
 
 **Model** switches the kite between the hinge model (every slider above) and the lofted model of
 `docs/specs/sail_visuals.md` §6.5 (only for a kite whose class names a kite shape file, so its sidecar has lofted
-shapes; wm7 and wm21 for now): the loft shows two sliders only, its depth over the measured shape and the whole kite turned
+shapes; every spinnaker class since 2026-11-06): the loft shows two sliders only, its depth over the measured shape and the whole kite turned
 further out or in about its luff. Save writes `model` with the keys. The lofted shapes themselves change only when
 the generator rebuilds the boat (from `data/sails/<shape>.kite_shape.json`).
 

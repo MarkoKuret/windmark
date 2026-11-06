@@ -9,6 +9,8 @@ extends SceneTree
 ##       sail_visuals.md §6.5: wm7's kite on the hinge and the lofted model, tests/kite_loft_preview.py)
 ##   godot --headless --path game -s res://tests/sail_preview_dump.gd -- kite_ac      (wm7 and wm21 on the hinge
 ##       model and on the measured surfaces of §6.5, tests/kite_ac_preview.py)
+##   godot --headless --path game -s res://tests/sail_preview_dump.gd -- kite_ac2     (every spinnaker class on
+##       its measured surface, tests/kite_ac_preview.py --second)
 
 const KNOT := 1852.0 / 3600.0
 const OUT := "res://generated/sail_preview"
@@ -141,6 +143,33 @@ func _kite_ac_shots() -> Array:
 	return out
 
 
+## sail_visuals.md §6.5 (2026-11-06b): every spinnaker class on its measured surface (asymmetrics at AWA about 60, 95
+## and 130 deg, symmetrics at TWA about 150 and 177 deg), from the leeward side, the stern quarter and the bow
+## quarter; wm7 and wm21 on the surface model only (tests/kite_ac_preview.py sets them against the first pass's
+## sheets), the others on the hinge model too. The camera distance scales with the boat (2.15 LOA).
+const KITE_AC_CLASSES := {"wm7": "kite", "wm10": "a2", "wm12": "a2", "wm16": "a2", "wm9": "kite", "wm21": "spin"}
+
+
+func _kite_ac2_shots() -> Array:
+	var out := []
+	for cls in KITE_AC_CLASSES:
+		var views := {}
+		for v in KITE_LOFT_VIEWS:  # wm7 and wm21 as the first pass framed them; the bigger boats a little wider
+			views[v] = KITE_LOFT_VIEWS[v].duplicate()
+			views[v]["dist_loa"] = 2.15 if cls in ["wm7", "wm21"] else 2.4
+		var sid: String = KITE_AC_CLASSES[cls]
+		var models: Array = ["loft"] if cls in ["wm7", "wm21"] else ["hinge", "loft"]
+		var sym: bool = cls in ["wm9", "wm21"]
+		for ang in ([150, 177] if sym else [60, 95, 130]):
+			for model in models:
+				var legs: Array = [{"t": 15.0, "twa": float(ang)}, {"t": 60.0, "twa": float(ang), "req": sid}] if sym \
+					else [{"t": 12.0, "awa": float(ang)}, {"t": 45.0, "awa": float(ang), "req": sid}]
+				out.append({"name": "kite_ac2_%s_%s%d_%s" % [cls, "twa" if sym else "awa", ang, model], "cls": cls,
+					"tws": 12.0, "twa": float(ang) if sym else float(ang) + 30.0, "model": model, "views": views,
+					"legs": legs, "cam": views["side"]})
+	return out
+
+
 var _twa := 0.0
 
 
@@ -163,6 +192,9 @@ func _main() -> void:
 		want = []
 	elif want.has("kite_ac"):
 		shots = _kite_ac_shots()
+		want = []
+	elif want.has("kite_ac2"):
+		shots = _kite_ac2_shots()
 		want = []
 	for spec in shots:
 		if want.is_empty() or want.has(spec["name"]):
@@ -246,7 +278,9 @@ func _shot(spec: Dictionary) -> void:
 		for v in spec["views"]:
 			var sv := spec.duplicate()
 			sv["name"] = spec["name"] + "_" + v
-			sv["cam"] = spec["views"][v]
+			sv["cam"] = spec["views"][v].duplicate()
+			if sv["cam"].has("dist_loa"):
+				sv["cam"]["dist"] = float(sv["cam"]["dist_loa"]) * info.loa
 			_dump(sv, bv, st, note + " | " + spec.get("model", "") + ", " + v)
 	else:
 		_dump(spec, bv, st, note)

@@ -1755,7 +1755,7 @@ static func row_measure(sp: BoatView.SailPart, i: int, awa: float) -> Array:
 ## §12 test 19: the generator's preview poses (tools/boatgen/boatgen/sail_set.py, written to
 ## generated/boats/<id>.sets.json) draw the sails as BoatView does, native and reference, within PARITY_TOL.
 const PARITY_TOL := 0.01
-const PARITY_CLASSES := ["wm7", "wm12", "wm9", "wm21", "test_sym", "test_set_asym", "test_set_sym"]
+const PARITY_CLASSES := ["wm7", "wm12", "wm9", "wm21", "wm10", "wm16", "test_sym", "test_set_asym", "test_set_sym"]
 
 
 func _parity() -> void:
@@ -1794,7 +1794,9 @@ func _parity() -> void:
 						ss.pole = float(w["gamma"])
 					sv.sails.append(ss)
 					sv.out.append(SimSource.SailOutput.new())
-				for k in 3:  # the main's stop (§7.6) reads the flying sail's clew as last placed
+				# the main's stop (§7.6) reads the flying sail's clew as last placed: as many updates as the generator
+				# settles it with (its first placement and three more), so a kite turned off the main lands the same
+				for k in 4:
 					bv.apply_sails(sv, sv, 1.0, 0.1)
 				for sid in want:
 					var sp: BoatView.SailPart = parts.get(sid)

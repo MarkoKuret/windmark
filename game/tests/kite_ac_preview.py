@@ -7,6 +7,8 @@ quarter): a row per wind angle, the hinge model (the current one) left, the surf
 
     godot --headless --path game -s res://tests/sail_preview_dump.gd -- kite_ac
     python3 game/tests/kite_ac_preview.py [--out DIR] [--size 960x600]
+    godot --headless --path game -s res://tests/sail_preview_dump.gd -- kite_ac2
+    python3 game/tests/kite_ac_preview.py --second      (every class: docs/design/kite_ac_2026-11-06b/)
 
 Default output: docs/design/kite_ac_2026-11-06/<class>_<view>.jpg. Needs numpy, Pillow and moderngl.
 """
@@ -27,11 +29,60 @@ CLASSES = {"wm7": ("AWA", (60, 95, 130), "the AC33 asymmetric (wind tunnel, AWA 
 MODELS = (("hinge", "hinge model (now)"), ("loft", "measured surface (new)"))
 
 
+SECOND = {"wm7": ("AWA", (60, 95, 130), "the AC33"), "wm10": ("AWA", (60, 95, 130), "the AC33"),
+          "wm12": ("AWA", (60, 95, 130), "the AC33"), "wm16": ("AWA", (60, 95, 130), "the AC33"),
+          "wm9": ("TWA", (150, 177), "the IACC series"), "wm21": ("TWA", (150, 177), "the IACC series")}
+FIRST = REPO / "docs" / "design" / "kite_ac_2026-11-06"     # the first pass's sheets (tag kite-ac-v1)
+
+
+def second(ctx, out, w, h):
+    """Every spinnaker class on its surface (`-- kite_ac2` shots): wm7 and wm21 against the first pass (the right
+    column of its sheets, the same shots), the others against the hinge model."""
+    head = 46
+    f, fs = _font(24), _font(17)
+    for cls, (kind, angles, what) in SECOND.items():
+        for view, title in VIEWS.items():
+            old = cls in ("wm7", "wm21")
+            left = "first pass (kite-ac-v1)" if old else "hinge model (now)"
+            sheet = Image.new("RGB", (2 * w, head + len(angles) * (h + 30)), (245, 245, 242))
+            d = ImageDraw.Draw(sheet)
+            d.text((14, 10), f"{cls} kite: {left} (left), {what} with the foot lift and the run set (right), {title}, 12 kn",
+                   fill=(20, 20, 30), font=f)
+            prev = Image.open(FIRST / f"{cls}_{view}.jpg") if old else None
+            for r, ang in enumerate(angles):
+                y = head + r * (h + 30)
+                if old:
+                    sheet.paste(prev.crop((w, y + 30, 2 * w, y + 30 + h)), (0, y + 30))
+                    d.text((10, y + 6), left, fill=(30, 30, 40), font=fs)
+                else:
+                    img, note = sp.render(ctx, sp.OUT / f"kite_ac2_{cls}_{kind.lower()}{ang}_hinge_{view}", (w, h))
+                    sheet.paste(img, (0, y + 30))
+                    d.text((10, y + 6), f"{left}: {note.split('|')[0].split(':', 1)[-1].strip()}", fill=(30, 30, 40),
+                           font=fs)
+                name = f"kite_ac2_{cls}_{kind.lower()}{ang}_loft_{view}"
+                img, note = sp.render(ctx, sp.OUT / name, (w, h))
+                sheet.paste(img, (w, y + 30))
+                d.text((w + 10, y + 6), f"new: {note.split('|')[0].split(':', 1)[-1].strip()}", fill=(30, 30, 40),
+                       font=fs)
+                print(f"{name}: {note}")
+            path = out / f"{cls}_{view}.jpg"
+            sheet.save(path, quality=90)
+            print(f"wrote {path}")
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--out", default=str(REPO / "docs" / "design" / "kite_ac_2026-11-06"))
+    ap.add_argument("--out", default=None)
     ap.add_argument("--size", default="960x600")
+    ap.add_argument("--second", action="store_true", help="every class (-- kite_ac2), into kite_ac_2026-11-06b")
     a = ap.parse_args()
+    if a.second:
+        w, h = (int(x) for x in a.size.split("x"))
+        out = Path(a.out or REPO / "docs" / "design" / "kite_ac_2026-11-06b")
+        out.mkdir(parents=True, exist_ok=True)
+        second(moderngl.create_standalone_context(require=410), out, w, h)
+        return
+    a.out = a.out or str(FIRST)
     w, h = (int(x) for x in a.size.split("x"))
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)

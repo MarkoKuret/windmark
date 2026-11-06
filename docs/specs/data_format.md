@@ -341,8 +341,10 @@ and `source` (the file's name and citation), `awa` (the measured apparent wind a
 the clew `hook` and `lift` it solved and the sheet's angle off the clew's bisector at the nominal trim, deg), and
 `shapes`: per AWA, every grid vertex in grid order as `[a, l, n]`, metres in the sail frame of `sail_visuals.md` §3.2
 (from the tack: `a` aft square to the luff, `l` along the luff, `n` to port, the belly's side). From a surface file
-the block has `kind: "surface"` and, in place of `clew`, `depth` and `surface` (per AWA the depth factor and the
-surface used) and `map` (the measured and the class outline along the cloth over the luff, and the depth scale).
+the block has `kind: "surface"`, `depth` and `surface` (per AWA the depth factor and the surface used), `map` (the
+measured and the class outline along the cloth over the luff, and the depth scale), `foot_lift` and `head_ease` (per
+AWA, m) and `clew` (per AWA the clew's turn toward its sheet, deg, and the sheet's angle off the clew's bisector
+before and after it at the nominal trim, deg).
 
 #### 3.7.6 Kite shape file (`windmark.kiteshape/1`)
 
@@ -373,7 +375,7 @@ A **surface** file (`sail_visuals.md` §6.5 "The surface source", §14.7):
 | `name`, `definitions` | as above |
 | `source` | `citation` and `licence` (both required), `url`, `method`, `sail` |
 | `surfaces` | by name, one or more: `{"form": "grid", "points": [...]}`: rows (4 or more) from the foot of columns (4 or more) from the luff of `[a, l, n]`, row `i` the stripe `h = i / (rows − 1)` (a share of the luff and of the leech from the foot), column `j` the share `j / (cols − 1)` of the row's girth, in the source's units from the tack (`l` toward the head, `a` square to it toward the clew in the tack-head-clew plane, `n` the belly's side); or `{"form": "moore_iacc", "k": [kx, ky, kz], "coef": {"a": [5], "b": [5], "c": [4], "d": [4]}}`, the closed-form series of Moore and Lasher-Richards |
-| `shapes` | one or more, one per apparent wind angle: `awa_deg` (20 to 180), `surface` (a name in `surfaces`) and `depth` (0.5 to 1.5, default 1: the depth over the measured) |
+| `shapes` | one or more, one per apparent wind angle: `awa_deg` (20 to 180), `surface` (a name in `surfaces`), `depth` (0.5 to 1.5, default 1: the depth over the measured) and `foot_lift` (0 to 1, default 0: the share of the foot's sag below the tack-clew line lifted out, `sail_visuals.md` §6.5) |
 
 `data/sails/ac33_asym` is the AC33 benchmark asymmetric (wind tunnel, AWA 55°, CC-BY 4.0), `data/sails/iacc_sym_series`
 the five IACC symmetric sails.

@@ -197,9 +197,9 @@ Angles in radians in the file (the tuner shows degrees). `Sl` is the luff extent
 | `loft_trim` | 0 | 0 | −20° to 20° | `loft` only: the whole kite turned further out about its luff (negative: in), on top of the core's angle (§6.5) |
 
 A lofted kite (`model` `loft`, §6.5) reads only `loft_depth` and `loft_trim`; every other key is kept for the hinge
-model and has no effect on it. wm7 (the AC33 asymmetric) and wm21 (the IACC symmetric series) fly fixed shapes from
-measured surfaces (2026-11-06; wm7 flew the J/80 sections from 2026-11-03); every other class stays on the hinge
-model.
+model and has no effect on it. Every spinnaker flies a fixed shape from a measured surface (2026-11-06): the
+asymmetrics (wm7, wm10, wm12, wm16) the AC33, the symmetrics on a pole (wm9, wm21) the IACC series; wm7 flew the J/80
+sections from 2026-11-03. The code zero, the jibs and the mains are unchanged.
 
 How each enters the shape (the sections below give the rest; with the defaults every added term is zero or one):
 ```
@@ -450,13 +450,30 @@ the corner map (one linear map A of (a, l), the same for every vertex):
     (a', l') = A (a, l),  n' = |A e_a| * n * depth          // the depth scales as the measured chord does
 the head row collapsed to its mean (a pointed head)
 ```
-No fit to a trim, no clew hook or lift, no section solve: the tack and the head sit where the flat sail has them and
-the clew where the map puts it; the clew lies in the rest plane, so the foot chord lies at the core's sheet angle `β`
-as the lofted shapes' do. Each measured surface gives one shape per apparent wind angle listed in the file, with a
-depth factor (`n` only):
+No section solve: the tack and the head sit where the flat sail has them and the clew where the map puts it; the clew
+lies in the rest plane, so the foot chord lies at the core's sheet angle `β` as the lofted shapes' do. Each measured
+surface gives one shape per apparent wind angle listed in the file, with a depth factor (`n` only). Then three smooth
+changes, made once per shape by the generator (never per update; each is recorded in the sidecar's `loft` block):
+```
+foot lift (a shape's `foot_lift` f, 0 to 1): the foot's sag below the straight tack-clew line, along l, taken out by f
+    s_j   = max(0, l_c * a_0j / a_c - l_0j)               // foot vertex j against the line from the tack to the clew
+    l_ij += f * s_j * (1 - smoothstep(h_i / 0.25))        // the lift fades out over the lower quarter of the height
+head eased (a kite on a pole, below): l scaled about the tack so the head comes |H - (T + up r(awa))| from the tack,
+    the luff's straight length less what the raised tack takes up; the head stays at the halyard
+clew turned toward its sheet: the kite set alone at its nominal trim for the shape's AWA (the class's optimum sheet
+    angle at 12 kn from its performance file, its nominal pole angle on a pole, as test 25 sets it), the sheet from
+    the placed clew to its lead block; the cloth round the clew turned about the clew, about the axis square to the
+    clew corner's bisector and the sheet, by theta * w:
+    w = 1 - smoothstep(d / R_c),  d the vertex's flat distance from the clew,  R_c = 0.5 * min(SF, SLE)
+    theta (|theta| <= 45 deg) the golden-section minimum of the sheet's angle off the bisector (test 25's measure)
+```
+The turn is a twirl that is whole at the clew and fades to nothing across about the lower-aft quarter of the sail,
+with no slope at either end, so the foot and the leech bend into it without a kink.
 - **Asymmetric, the AC33 benchmark A-sail** (`data/sails/ac33_asym.kite_shape.json`): measured at AWA 55° only. The
-  reach is the measured surface (55°); the run (130°) is the same surface 10 % deeper, turned out whole by the core's
-  larger sheet angle at run time like any lofted kite. Between them the run-time blend; beyond, held.
+  reach is the measured surface (55°) with half its foot sag lifted out (`foot_lift` 0.5: the wind-tunnel model's
+  foot dips 0.65 m below the tack on wm7's close reach, the sportsboat kite rides 0.3 m higher); the run (130°) is the
+  same surface 10 % deeper, turned out whole by the core's larger sheet angle at run time like any lofted kite.
+  Between them the run-time blend; beyond, held.
 - **Symmetric, the IACC parametric series** (`data/sails/iacc_sym_series.kite_shape.json`): five sails of the same
   girth that differ mainly in how close their clews are (foot camber 23 to 45 %): sail I at AWA 60°, II 90°, III 120°,
   IV 150°, V 180°, neighbours blended by the run-time smoothstep. The rows are the series' horizontal sections, the
@@ -516,12 +533,20 @@ delta = 0; 12 times: stop when X >= 0; delta = min(delta + (-X) / max(r, 0.5), c
 after the first step only the vertices then within 2 c of the worst are looked at again (not on a pole: the whole
 kite may come round the stay)
 ```
-On a pole (wm21, 2026-11-06) the core squares the pole and sheets the foot square across the boat on a run (TWA 176°:
-pole 81°, kite 79°), with the tack beside the mast and the head at the masthead; a fixed shape set there has its
-lower belly behind the forestay (which runs from the bow to the hounds), and only this turn brings it clear: about
-69° (the cap) to windward at TWA 176°, so the kite flies round the stay to windward with its clew near the bow
-rather than square across it; at TWA 150° (AWA 111°) it needs about 1°. Until 2026-11-06 the turn was capped at
-0.5 rad in 6 steps for every kite.
+**A kite on a pole flies higher on a run.** The pole end goes up and the halyard is eased as the wind comes aft:
+```
+k_r  = smoothstep((|awa| - 110 deg) / 60 deg)            // 0 to AWA 110, all of it from 170
+r    = 0.1 * Sl * k_r                                   // the tack raised (the pole tilts about its heel to follow)
+T'   = S T + up * r ;  L' = normalize(S H - T')          // the luff axis from the raised tack to the halyard
+the swung kite turned by the least rotation that takes S Lh to L', moved to T'; then the turn about L' as above
+```
+The stored shapes' heads are eased by the same `r` at their AWAs (above), so the head stays at the halyard. The drawn
+pole tilts by `asin(r / pole length)`. On a run the core squares the pole (wm21 at TWA 176°: pole 81°, kite 79°), so
+the tack sits beside the mast while the forestay meets the deck one foretriangle base ahead; a 13 m foot with a 4 m
+belly cannot reach round it from there. Raising the tack 2.5 m (wm21) takes the stay a little aft at the foot's
+height; the rest is still the turn above (about 45 to 50° at TWA 176° on wm21, against about 55° without the raise;
+nothing at TWA 150°). A pole held less square on a dead run (50°: no turn needed) is the core's call
+(`sails.md`, the pole angle table). Until 2026-11-06 the turn was capped at 0.5 rad in 6 steps for every kite.
 On wm7 at the optimum trims (12 kn) the reach at AWA 64° (kite 16°, main 10°) needs about 16° of this turn, AWA 80°
 and more none; the largest over test 18's sweep (over-sheeted, the main eased, the jib up) is 27°, and on the closest
 reaches (test 20) it takes the clew up to 2.2 m outboard of the widest beam (the hinge model 1.9 m: it bends the

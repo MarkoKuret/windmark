@@ -67,6 +67,6 @@
       "hatch_style": "classic"
     },
     "rig": {"spreaders": 3, "spreader_sweep": 0.0, "backstay": true, "spars": "alloy", "boom_section": "round", "runners": true, "jumpers": true},
-    "sails": {"main": {"head_width": 0.05}, "spin": {"look": {"camber": 0.32}}}
+    "sails": {"main": {"head_width": 0.05}, "spin": {"look": {"camber": 0.32}, "set": {"model": "loft", "shape": "iacc_sym_series"}}}
   }
 }

@@ -62,6 +62,6 @@
       "toe_rail": 0.025
     },
     "rig": {"spreaders": 1, "spreader_sweep": 0.42, "backstay": false, "spars": "white"},
-    "sails": {"main": {"head_width": 0.26}, "kite": {"set": {"model": "loft", "shape": "j80_deparday2016"}}}
+    "sails": {"main": {"head_width": 0.26}, "kite": {"set": {"model": "loft", "shape": "ac33_asym"}}}
   }
 }

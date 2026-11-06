@@ -7,6 +7,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-11-06 21:29'
+updated_date: '2026-11-06 22:29'
 labels:
   - kite
   - visuals
@@ -22,13 +23,19 @@ The kite's fixed flying shape taken from complete measured 3D surfaces instead o
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Spec first: sail_visuals.md 6.5, 4.1 and data_format.md describe the surface source type and its data files; sources cited in 14
-- [ ] #2 Raw-data check: the AC33 asym and the five symmetric sails rendered alone (three angles, plain shaded) and judged to look like kites before use
-- [ ] #3 Generator: surface source resampled by (uc, h) onto the class grid with a gentle corner map, depth scaled with chord; measured outline kept; asym run = the reach shape eased; sym series blended by AWA
-- [ ] #4 Native SailShape and the GDScript reference stay in parity; GDExtension rebuilt
-- [ ] #5 wm7 (asym) and wm21 (sym) use the surface model; every other class unchanged
-- [ ] #6 Green: sail visuals tests, parity test, kite tuner test, boatgen pytest, run_ui_tests.sh
-- [ ] #7 DataShare licence checked; source and licence recorded in docs/THIRD_PARTY.md
-- [ ] #8 Previews in docs/design/kite_ac_2026-11-06: wm7 AWA 60/95/130 and wm21 TWA 150/180, side, stern and bow quarter, main model left, new right
-- [ ] #9 Image check of luff, leech, foot and corners (no crease, fold, clew bowl or pinch, no cloth through main or forestay, sheet off the clew sensibly); findings reported honestly
+- [x] #1 Spec first: sail_visuals.md 6.5, 4.1 and data_format.md describe the surface source type and its data files; sources cited in 14
+- [x] #2 Raw-data check: the AC33 asym and the five symmetric sails rendered alone (three angles, plain shaded) and judged to look like kites before use
+- [x] #3 Generator: surface source resampled by (uc, h) onto the class grid with a gentle corner map, depth scaled with chord; measured outline kept; asym run = the reach shape eased; sym series blended by AWA
+- [x] #4 Native SailShape and the GDScript reference stay in parity; GDExtension rebuilt
+- [x] #5 wm7 (asym) and wm21 (sym) use the surface model; every other class unchanged
+- [x] #6 Green: sail visuals tests, parity test, kite tuner test, boatgen pytest, run_ui_tests.sh
+- [x] #7 DataShare licence checked; source and licence recorded in docs/THIRD_PARTY.md
+- [x] #8 Previews in docs/design/kite_ac_2026-11-06: wm7 AWA 60/95/130 and wm21 TWA 150/180, side, stern and bow quarter, main model left, new right
+- [x] #9 Image check of luff, leech, foot and corners (no crease, fold, clew bowl or pinch, no cloth through main or forestay, sheet off the clew sensibly); findings reported honestly
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Task id WM-191 (WM-188 to 190 are taken on branch kite-authored). Raw surfaces look like kites (docs/design/kite_ac_2026-11-06/raw_*.png). Open: on wm21 at a dead run the kite only clears the forestay by turning about 69 deg to windward (pole squared, tack beside the mast); the measured clew leaves the sheet 20 to 40 deg off its bisector on wm7 and 46 to 65 deg on wm21 (no per-frame clew solve). Owner to judge the images.
+<!-- SECTION:NOTES:END -->

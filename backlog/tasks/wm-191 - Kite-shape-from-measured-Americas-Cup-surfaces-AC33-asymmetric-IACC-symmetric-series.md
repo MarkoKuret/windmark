@@ -7,7 +7,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-11-06 21:29'
-updated_date: '2026-11-06 22:29'
+updated_date: '2026-11-06 23:16'
 labels:
   - kite
   - visuals
@@ -37,5 +37,5 @@ The kite's fixed flying shape taken from complete measured 3D surfaces instead o
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Task id WM-191 (WM-188 to 190 are taken on branch kite-authored). Raw surfaces look like kites (docs/design/kite_ac_2026-11-06/raw_*.png). Open: on wm21 at a dead run the kite only clears the forestay by turning about 69 deg to windward (pole squared, tack beside the mast); the measured clew leaves the sheet 20 to 40 deg off its bisector on wm7 and 46 to 65 deg on wm21 (no per-frame clew solve). Owner to judge the images.
+Task id WM-191 (WM-188 to 190 are taken on branch kite-authored). Second pass (2026-11-06b): surfaces on every spinnaker class; the reach foot lifted (wm7 0.57 m off the water on the close reach); the pole kite raised on a run with its head eased, the forestay turn a 15 deg last resort (the forestay still passes one cell of the lower kite at a dead run on wm9 and wm21); the clew turn toward the sheet tried and dropped (it folded or S-bent the cloth for 6 to 7 deg gained). Fallback tag kite-ac-v1.
 <!-- SECTION:NOTES:END -->

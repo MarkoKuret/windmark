@@ -86,10 +86,10 @@ func build(race: bool, last: Dictionary) -> void:
 	steps = STEPS_RACE if race else STEPS_FREE
 	name = "QuickRace" if race else "FreeSail"
 	race_seed = draw_seed()
-	add_theme_constant_override("separation", 4)
+	add_theme_constant_override("separation", MenuTheme.LIST_GAP)
 	size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_build_step_bar()
-	add_child(_gap(10))
+	add_child(MenuTheme.gap(MenuTheme.SECTION_GAP - 2))
 	scroll = ScrollContainer.new()
 	scroll.name = "Body"
 	scroll.follow_focus = true
@@ -101,11 +101,10 @@ func build(race: bool, last: Dictionary) -> void:
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL  # the chart grows into the room a tall window gives
 	body.add_theme_constant_override("separation", 24)
 	scroll.add_child(body)
-	_rows_box = VBoxContainer.new()
+	_rows_box = MenuTheme.list()
 	_rows_box.name = "Rows"
 	_rows_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_rows_box.size_flags_stretch_ratio = 1.4
-	_rows_box.add_theme_constant_override("separation", 4)
 	body.add_child(_rows_box)
 	var g := GameSetup.new()
 	_classes = MenuData.classes()
@@ -197,35 +196,28 @@ func build(race: bool, last: Dictionary) -> void:
 	_build_preview(race)
 	for k in rows:
 		rows[k].changed.connect(func(_v: Variant) -> void: refresh_preview())
-	# the footer (menus.md §1.1): Back, Next or the start, and the reason the player cannot go on
-	add_child(_gap(14))
-	var foot := HBoxContainer.new()
-	foot.name = "Footer"
-	foot.add_theme_constant_override("separation", 12)
-	add_child(foot)
+	# the footer (menus.md §1.1, §4): Back on the left, Next or the start on the right, and under it the reason
+	# the player cannot go on
+	add_child(MenuTheme.gap())
 	back_button = MenuTheme.button("Back", MenuTheme.ACTION_SIZE)
 	back_button.name = "Back"
 	back_button.custom_minimum_size = Vector2(130, MenuTheme.ITEM_H)
 	back_button.pressed.connect(back)
-	foot.add_child(back_button)
-	var sp := Control.new()
-	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	foot.add_child(sp)
 	next_button = MenuTheme.button("Next", MenuTheme.ITEM_SIZE)
 	next_button.name = "Next"
 	next_button.custom_minimum_size = Vector2(220, MenuTheme.ITEM_H)
 	next_button.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	MenuTheme.set_primary(next_button)
 	next_button.pressed.connect(next)
-	foot.add_child(next_button)
 	start_button = MenuTheme.button("Start race" if race else "Set sail", MenuTheme.ITEM_SIZE)
 	start_button.name = "Start"
 	start_button.custom_minimum_size = Vector2(280, MenuTheme.ITEM_H)
 	start_button.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	MenuTheme.set_primary(start_button)
 	start_button.pressed.connect(func() -> void: start_pressed.emit())
-	foot.add_child(start_button)
+	add_child(MenuTheme.footer([back_button], [next_button, start_button]))
 	_note = MenuTheme.label("", MenuTheme.SMALL_SIZE, MenuTheme.SIGNAL)
+	_note.name = "Note"
 	add_child(_note)
 	for b in [next_button, start_button]:
 		b.focus_neighbor_bottom = b.get_path_to(b)
@@ -662,12 +654,6 @@ func refresh_summary() -> void:
 		v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		v.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		summary.add_child(v)
-
-
-static func _gap(h: float) -> Control:
-	var c := Control.new()
-	c.custom_minimum_size = Vector2(0, h)
-	return c
 
 
 ## `c` with a margin above and below (and the row's side padding).

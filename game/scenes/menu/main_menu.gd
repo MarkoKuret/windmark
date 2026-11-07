@@ -13,8 +13,8 @@ signal scene_requested(path: String)
 const SAIL_SCENE := "res://scenes/sail_test.tscn"
 ## the logo (menus.md §1.2): the wordmark scene
 const WORDMARK_SCENE := "res://scenes/menu/wordmark.tscn"
-## the space round the menu, px
-const MARGIN := 40
+## the space round the menu, px (menus.md §4)
+const MARGIN := MenuTheme.MARGIN
 ## the items and their hints (menus.md §1); Continue's hint is what it starts
 const ITEMS := [["continue", "Continue", ""], ["quick", "Race", "Pick a boat and a venue, race the fleet"],
 	["free", "Free sail", "Sail on your own: no fleet, no clock"],
@@ -110,8 +110,7 @@ func _ready() -> void:
 	card.name = "Menu"
 	left.add_child(card)
 	_card = card
-	var list := VBoxContainer.new()
-	list.add_theme_constant_override("separation", 2)
+	var list := MenuTheme.list()
 	card.add_child(list)
 	for e in ITEMS:
 		var b := MenuTheme.button(e[1], MenuTheme.ITEM_SIZE)

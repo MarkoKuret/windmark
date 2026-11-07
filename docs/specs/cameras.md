@@ -164,6 +164,10 @@ A fly camera for looking around the course, spectating and replays.
 
 - **Cycle**: chase → onboard → aerial → free → chase. Direct keys select a mode (`controls.md` §3). The clip
   cameras (§9) have their own key and are outside this cycle: `camera_next` from a clip camera selects chase.
+- **Named**: a switch to another regular camera is named in the HUD's helm notes for 3 s (`Camera: chase`,
+  `Camera: onboard`, `Camera: aerial`, `Camera: free. The boat keys fly it, R puts it back`), so a player who
+  cycles into the free camera knows why the boat stopped answering. The camera the session starts in, the clip
+  cameras and the finish view are not named.
 - **Cuts** by default. Option "smooth switch": chase ↔ aerial blend over 0.4 s (position `lerp`, orientation
   `slerp`, `fov` `lerp`, smoothstep weight); other pairs always cut.
 - Each mode keeps its parameters across switches and across races (saved in the player profile); **recentre** resets

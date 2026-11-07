@@ -239,6 +239,10 @@ func title_words() -> Array:
 			return ["RET", "RETIRED"]
 		"dsq", "ghost":
 			var c := str(row.get("code", ""))
+			if c == "DNS":
+				return [c, "DID NOT START"]
+			if c == "DNC":
+				return [c, "DID NOT COMPETE"]
 			return [c if c != "" else "DSQ", "DISQUALIFIED"]
 		"dnf":
 			return ["DNF", "DID NOT FINISH"]

@@ -276,7 +276,7 @@ func test_next_mark() -> void:
 	t.ok(r.vmg > 0.0, "VMG on a run is positive towards the leeward mark (%.2f)" % r.vmg)
 	t.near(r.target_speed, 3.5, 1e-3, "target speed on a run: V_dn")
 	t.near(h.dial_reference(), deg_to_rad(150.0), 1e-6, "run: coloured against the downwind VMG angle")
-	t.ok(r.next_name == "Gate Gate left / Gate right" and r.next_sides.size() == 2, "gate: both buoys' arrows: " + r.next_name)
+	t.ok(r.next_name == "Gate left / right" and r.next_sides.size() == 2, "gate: both buoys' arrows: " + r.next_name)
 	t.near(r.next_dist, (Vector2(60, 700) + 3.5 * Vector2(sin(psi_run), cos(psi_run))).distance_to(Vector2(20, 100)) - 1.0,
 		1e-2, "gate: the nearer buoy")
 	# sailing away from the mark: VMC negative (a reach)
@@ -592,7 +592,7 @@ func test_penalties_prompts() -> void:
 	t.ok(h.penalty_panel.visible and h.text_of("pen_head") == "Penalty: Port tack keeps clear of starboard (Nora)",
 		h.text_of("pen_head"))
 	t.ok(h.text_of("pen_deadline") == "Deadline  0:32", "deadline: " + h.text_of("pen_deadline"))
-	t.ok(h.text_of("pen_turn") == "Sail clear and turn", h.text_of("pen_turn"))
+	t.ok(h.text_of("pen_turn") == "Sail clear, then one full turn", h.text_of("pen_turn"))
 	# turning: the turn as a number in the ring (no state text), TACK lit
 	sim.rules_d[0]["turning_for_penalty"] = true
 	sim.rules_d[0]["turn_progress"] = deg_to_rad(-210.0)
@@ -620,7 +620,7 @@ func test_penalties_prompts() -> void:
 	sim.rules_d[0]["turning_for_penalty"] = false
 	sim.rules_d[0]["turn_progress"] = 0.0
 	_refresh(h, sim)
-	t.ok(h.text_of("pen_turn") == "Sail clear and turn", "no reset inferred: "
+	t.ok(h.text_of("pen_turn") == "Sail clear, then one full turn", "no reset inferred: "
 		+ h.text_of("pen_turn"))
 	# each reset reason from the core, shown for 3 s
 	var texts := {RaceText.TurnReset.PAUSED: "Turn reset: paused", RaceText.TurnReset.REVERSED: "Turn reset: turned back",

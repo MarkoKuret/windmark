@@ -348,6 +348,11 @@ func test_scene() -> void:
 	root.add_child(sc)
 	await process_frame  # _ready runs once the tree is up
 	t.ok(sc.boat_view.model != null, "generated boat loaded (run tests/run_boat_import_test.sh first)")
+	sc.light_time = 14.5
+	sc.light_conditions = "hazy"
+	var again: GameSetup = sc.session_setup()
+	t.ok(is_equal_approx(again.light_time, 14.5) and again.light_conditions == "hazy",
+		"session_setup keeps the Time and Sky picks (Race again)")
 	var sea: Sea = sc.sea
 	t.ok(sea != null and sc.get_node_or_null("SeaPlaceholder") == null, "Sea node in place of the placeholder plane")
 	t.ok(sc.get_node_or_null("SkyDay") is SkyRig and sea.sky == sc.sky, "SkyRig present and lighting the sea")
@@ -390,6 +395,8 @@ func test_scene() -> void:
 			r.press(&"camera_next")
 		if i == 901:
 			r.held.erase(&"camera_next")
+		if i == 905:
+			t.ok(sc.hud.text_of("message") == "Camera: onboard", "the new camera named in the helm notes: %s" % sc.hud.text_of("message"))
 		sc.step_frame(dt)
 		# the camera after the rig's clearance, against the drawn surface at the frame's render time
 		var eye: Vector3 = sc.rig.camera.global_position

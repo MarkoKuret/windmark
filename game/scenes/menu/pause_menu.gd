@@ -20,7 +20,7 @@ const RETIRE_ASK := "Retire? Press again"
 const CARD_W := 400.0
 ## the items that ask, their plain text and the question (menus.md §2)
 const ITEM_TEXT := {"restart": "Restart", "retire": RETIRE_TEXT, "quit": "Main menu"}
-const ASK_TEXT := {"restart": "Restart? Press again", "retire": RETIRE_ASK, "quit": "Quit? Press again"}
+const ASK_TEXT := {"restart": "Restart? Press again", "retire": RETIRE_ASK, "quit": "Leave the race? Press again"}
 
 ## tests: false keeps restart and quit from changing scene (action_requested still fires)
 var act := true
@@ -195,6 +195,14 @@ func _asks_first() -> bool:
 
 
 ## Closes the menu and resumes the host.
+## The pause key while the settings show (menus.md §2): back to the card, the menu stays open. True when taken.
+func back_from_settings() -> bool:
+	if not is_open or not _settings_card.visible:
+		return false
+	settings_panel.close()
+	return true
+
+
 func close() -> void:
 	if _settings_card.visible:
 		settings_panel.close()
@@ -275,7 +283,8 @@ func _unhandled_input(e: InputEvent) -> void:
 		return
 	if _host_runner() == null and e.is_action_pressed("pause_menu"):
 		get_viewport().set_input_as_handled()
-		close()
+		if not back_from_settings():
+			close()
 	elif _card.visible and e.is_action_pressed("ui_cancel") and not e.is_action("pause_menu"):
 		get_viewport().set_input_as_handled()
 		close()

@@ -388,7 +388,8 @@ It still reads at a glance; nothing in it is said twice.
     fleet-race turn counts anywhere);
   - for 3 s after the core's last turn reset (`turn_reset`, `turn_reset_tick`, `rules.md` §11.2), by its reason:
     `TURN RESET: PAUSED`, `TURN RESET: TURNED BACK`, `TURN RESET: INSIDE THE ZONE`, `TURN RESET: MARK ROUNDED`;
-  - with nothing turning yet: `SAIL CLEAR AND TURN`;
+  - with nothing turning yet: `SAIL CLEAR, THEN ONE FULL TURN` (the penalty of `rules.md`: one 360° turn, a tack
+    and a gybe, within the deadline on the right);
   - while the turn has progress: nothing (the ring says how far).
 
   The HUD reads both states from the core and does not infer them. After the penalty is done the lines read

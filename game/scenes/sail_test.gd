@@ -206,6 +206,14 @@ var _shot_camera := {}
 
 var _chat: LineEdit
 var _paused_label: Label
+## the regular camera last named in the helm notes (-1 before the first frame)
+var _cam_noted := -1
+const CAMERA_NOTES := {
+	CameraRig.Mode.CHASE: "Camera: chase",
+	CameraRig.Mode.ONBOARD: "Camera: onboard",
+	CameraRig.Mode.AERIAL: "Camera: aerial",
+	CameraRig.Mode.FREE: "Camera: free. The boat keys fly it, R puts it back",
+}
 ## the capture rate note (hud.md §16.6): on the overlay layer, so it shows with the HUD hidden too
 var _rate_note: Label
 ## the own boat's sail states of the last two ticks (render interpolation)
@@ -377,6 +385,8 @@ func session_setup() -> GameSetup:
 	g.wind_from_deg = weather_from_deg if weather != "" else wind_from_deg
 	g.shift = weather_shift
 	g.gusts = weather_gusts
+	g.light_time = light_time
+	g.light_conditions = light_conditions
 	g.seed = world_seed
 	return g
 
@@ -1103,6 +1113,7 @@ func step_frame(dt: float) -> void:
 	elif CameraRig.is_clip(rig.mode) or cin.clip:
 		rig.course = ClipCourse.from_race(course_view, viewed, target.loa)  # cameras.md §9
 	rig.frame(target, cin, dt)
+	_note_camera()
 	var t5 := Time.get_ticks_usec()
 	PerfStats.add(&"camera", t5 - t4)
 	hud.frame(dt, controls)
@@ -1214,6 +1225,17 @@ func _wake_state(b: int, p: SimSource.RenderPose) -> Dictionary:
 	}
 
 
+## cameras.md §6: a switch to another regular camera is named in the helm notes for 3 s (the free camera says what
+## its keys do); the first camera, the clip cameras and the finish view are not.
+func _note_camera() -> void:
+	var m := rig.mode
+	if m == _cam_noted or CameraRig.is_clip(m) or m == CameraRig.Mode.FINISH:
+		return
+	if _cam_noted >= 0 and CAMERA_NOTES.has(m):
+		hud.note(CAMERA_NOTES[m])
+	_cam_noted = m
+
+
 func _ui_actions(r: RawInput) -> void:
 	if controls.text_focus:
 		if r.was_pressed(&"pause_menu"):
@@ -1234,8 +1256,12 @@ func _ui_actions(r: RawInput) -> void:
 		if capture.handle(r):
 			_set_world_tags(capture.world_tags)
 	if r.was_pressed(&"pause_menu"):
-		# Esc closes the course map first (hud.md §8.1), then clears a selection (hud.md §16.4.1), then pauses
-		if runner.paused or not (hud.close_map() or hud.clear_selection()):
+		# Esc closes the course map first (hud.md §8.1), then clears a selection (hud.md §16.4.1), then pauses;
+		# in the pause menu's settings it goes back to the card (menus.md §2)
+		var pm := get_node_or_null("PauseMenu")
+		if pm != null and pm.has_method("back_from_settings") and pm.back_from_settings():
+			pass
+		elif runner.paused or not (hud.close_map() or hud.clear_selection()):
 			runner.paused = not runner.paused  # offline: pause the simulation, the cameras still move
 			_paused_label.visible = runner.paused
 	if r.was_pressed(&"screenshot"):

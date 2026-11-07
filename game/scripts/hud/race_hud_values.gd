@@ -481,7 +481,7 @@ func _next_mark(sim: SimSource, rb: Dictionary, s: SimSource.BoatState) -> void:
 			next_name = mark_label(ms[0])
 			next_sides.append(sides[0])
 		RaceText.Step.GATE:
-			next_name = "Gate %s / %s" % [mark_label(ms[0]), mark_label(ms[1])]
+			next_name = CourseMapView.gate_label(mark_label(ms[0]), mark_label(ms[1]))
 			next_sides.append(sides[0])
 			next_sides.append(sides[1])
 		_:
@@ -897,7 +897,7 @@ func _penalties(sim: SimSource, b: int) -> void:
 	elif turn_deg >= 1.0:
 		turn_text = ""  # hud.md §12.1: the ring says how far
 	elif pending > 0:
-		turn_text = "Sail clear and turn"
+		turn_text = "Sail clear, then one full turn"
 	else:
 		turn_text = ""
 

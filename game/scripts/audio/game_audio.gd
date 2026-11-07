@@ -568,6 +568,9 @@ func frame(dt: float, cam: Camera3D = null, onboard := false) -> void:
 		return
 	time += dt
 	_k = Frames.smooth_k(dt, TAU)
+	if paused:  # a signal's later sounds wait for the game (the pause menu hears no race)
+		for q in _queue:
+			q["t"] += dt
 	while not _queue.is_empty() and float(_queue[0]["t"]) <= time + 1e-6:
 		_signal_sound(String(_queue.pop_front()["id"]))
 	_param_t += dt

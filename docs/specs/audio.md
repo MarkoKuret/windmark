@@ -279,3 +279,6 @@ Not in the default set yet: the voice hails (`voice.*`) and the venue placed sou
    warns once and the race runs.
 6. Voices: with 20 boats around the listener no more than 48 players are active and the own boat's sounds are never
    the ones dropped.
+7. Wrong mode and wrong time: minutes of free sailing on the core (sailing straight, steering about, the reset key, a
+   new world, a pause) play no race or voice sound and raise no HUD race event; a race plays nothing before its first
+   signal and nothing while paused, and a signal's later sounds wait for the game to resume.

@@ -216,11 +216,3 @@ static func _set_loop(s: AudioStream, loop: bool) -> void:
 			w.loop_end = int(w.get_length() * w.mix_rate)
 		elif not loop:
 			w.loop_mode = AudioStreamWAV.LOOP_DISABLED
-
-
-## The ambience bed streams in order (null for a missing one).
-func bed_streams() -> Array:
-	var out := []
-	for f in ambience.get("beds", []):
-		out.append(stream_at(resolve(String(f)), true))
-	return out

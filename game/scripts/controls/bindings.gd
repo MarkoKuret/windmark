@@ -6,7 +6,6 @@ extends RefCounted
 ## ["axis", joypad axis, -1 or 1]. The settings file keeps only the actions that differ from the defaults.
 
 const PAD := "pad"
-const MODS := ["shift", "ctrl", "alt"]
 
 
 ## The binding of one event, [] for none.

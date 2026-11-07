@@ -444,15 +444,6 @@ func _build_summary(lines: Array) -> void:
 		summary_box.add_child(v)
 
 
-## The summary as text lines ("Label  value", tests)
-func summary_text() -> Array[String]:
-	var out: Array[String] = []
-	var c := summary_box.get_children()
-	for i in range(0, c.size() - 1, 2):
-		out.append("%s  %s" % [(c[i] as Label).text, (c[i + 1] as Label).text])
-	return out
-
-
 # ---- layout ----
 
 ## The panel beside the title, or under it when narrow or portrait (menus.md §5); the finish view frames the boat

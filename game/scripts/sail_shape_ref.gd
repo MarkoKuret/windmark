@@ -38,18 +38,6 @@ const DT_MAX := 0.1
 const PUSH_SLOPE := 0.3
 const PUSH_EASE := 2.0
 const EASE_MAX := 0.35
-## §7.4 a flying sail on a pole flies forward of the forestay: margin c_s and the stay's half width (of the
-## foretriangle base), the top share of the height the shift fades out over, the chord share it is taken in full
-## from (none at the luff) and the share it loses toward the leech
-const STAY_CLEAR := 0.25
-const STAY_WIDTH := 0.6
-const STAY_HEAD := 0.3
-const STAY_LUFF := 0.5
-const STAY_LEECH := 0.3
-## §6.4 the belly of a symmetric spinnaker's foot sags down by this share of its depth, fading out over the lower
-## SYM_SAG_H of the height
-const SYM_SAG := 0.35
-const SYM_SAG_H := 0.35
 ## §7.7 the clew set: corner reach (grid steps), fade height (of Sl), bounds of the draw-in and draw-down, the
 ## difference step and the Newton steps of the solve
 const CLEW_REACH := 2
@@ -454,10 +442,6 @@ func set_backed_factor(v: float) -> void:
 	s_b = v
 
 
-func get_twist_side() -> float:
-	return tl
-
-
 func set_twist_side(v: float) -> void:
 	tl = v
 	_tl_set = true
@@ -645,8 +629,8 @@ func _shift() -> void:
 
 ## §7.4 a flying sail on a pole flies forward of the forestay: per row the shift forward that brings its cloth
 ## within the stay's half width at least c_s ahead of the stay, the largest of its own and the rows' above (so it
-## grows down to the foot), faded out over the top STAY_HEAD of the height, taken in full at the middle of the
-## chord, none at the luff and 1 - STAY_LEECH of it at the leech; times the flying shape's share.
+## grows down to the foot), faded out over the top `stay_head` of the height, taken in full at the middle of the
+## chord, none at the luff and 1 - `stay_leech` of it at the leech; times the flying shape's share.
 func _stay() -> void:
 	var z0 := stay0.dot(up)
 	var z1 := stay1.dot(up)

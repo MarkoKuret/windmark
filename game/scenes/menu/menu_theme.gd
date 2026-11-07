@@ -24,7 +24,6 @@ const SKY_HORIZON := Color("e4ece9")
 const SEA_HORIZON := Color("5f8fa6")
 const SEA_DEEP := Color("16344c")
 
-const TITLE_SIZE := 54
 const HEADING_SIZE := 30
 const ITEM_SIZE := 28
 const ROW_SIZE := 20

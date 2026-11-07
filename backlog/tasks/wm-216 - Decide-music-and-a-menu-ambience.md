@@ -4,6 +4,7 @@ title: 'Decide: music and a menu ambience'
 status: To Do
 assignee: []
 created_date: '2026-11-07 18:47'
+updated_date: '2026-11-07 19:09'
 labels:
   - decide-later
 dependencies: []
@@ -21,3 +22,9 @@ There is no music anywhere and the main menu is silent apart from the UI ticks (
 <!-- AC:BEGIN -->
 - [ ] #1 Owner decides: ambience only, or ambience plus a theme
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Decided 2026-11-07 (recommendation taken): a quiet menu ambience from the existing beds (wind, water, a halyard now and then) under the interface volume's neighbour, the ambience bus; no music.
+<!-- SECTION:NOTES:END -->

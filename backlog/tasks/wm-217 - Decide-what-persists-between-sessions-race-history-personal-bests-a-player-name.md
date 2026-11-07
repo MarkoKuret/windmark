@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-07 18:47'
+updated_date: '2026-11-07 19:09'
 labels:
   - decide-later
 dependencies: []
@@ -23,3 +24,9 @@ Nothing persists but settings: no race history, personal best per venue and clas
 <!-- AC:BEGIN -->
 - [ ] #1 Owner decides scope and timing
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Decided 2026-11-07 (recommendation taken): a small local history in user://history.cfg: the last 50 results, the best finishing time per course and class, races and wins per class. The results screen shows 'Your best here' and a new best; no player name or profile until networking.
+<!-- SECTION:NOTES:END -->

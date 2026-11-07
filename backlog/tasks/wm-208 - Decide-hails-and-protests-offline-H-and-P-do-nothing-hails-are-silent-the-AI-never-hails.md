@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-07 18:47'
+updated_date: '2026-11-07 19:09'
 labels:
   - decide-later
 dependencies: []
@@ -23,3 +24,9 @@ H (room to tack) and P (protest) are in the Bindings list but dead in a quick ra
 <!-- AC:BEGIN -->
 - [ ] #1 Owner decides; Bindings and the Settings hint match what works
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Decided 2026-11-07 (recommendation taken): option (a). Hail and Protest leave the Bindings list and their prompts stay off until online play exists; the signals volume hint drops 'hails'. The AI hailing the player is a later feature. D-pad up, freed, opens the course map (WM-215).
+<!-- SECTION:NOTES:END -->

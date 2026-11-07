@@ -4,6 +4,7 @@ title: 'Decide: countdown beeps at the Standard assist (today Full only)'
 status: To Do
 assignee: []
 created_date: '2026-11-07 18:47'
+updated_date: '2026-11-07 19:09'
 labels:
   - decide-later
 dependencies: []
@@ -21,3 +22,9 @@ Beeps at 30/20/10/5..1 s play only with the Full assist (sail_test.gd ~1115); th
 <!-- AC:BEGIN -->
 - [ ] #1 Owner decides; the assist table in hud.md updated
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Decided 2026-11-07 (owner: 'fix all of those', the recommendation taken): countdown beeps at the Full and Standard assists; Minimal stays silent.
+<!-- SECTION:NOTES:END -->

@@ -505,9 +505,15 @@ L    = S_0 for x <= A_0, S_last for x >= A_last, else S_m + (S_{m+1} - S_m) * sm
 D    = min(F, 1) * loft_depth                     // F: the asymmetric fill of §5.1 (light air)
 sd   = clamp(sin(wrap_pi(beta + awa)) / 0.1, -1, 1) ; side = sd (3 - sd^2) / 2      // the belly on the side the wind
                                                   // blows it to; through the wind line it goes flat and over
-fly  = (a, l, 0) + D * (L - (a, l, 0)),  fly.n *= side
-I2   = 0.33 * flutter_amp * I ;  q = phi - 7 uc   // luffing: the belly breathes, strongest where it is deep
-fly += (0.1 I2 sin(q) |fly.n|, 0, I2 cos(q) fly.n)
+k_f  = I                                          // the luff shiver (sails.md §7): the kite on the wind line, or flown
+                                                  // beyond its usable angle (its flogging share, boat.md §5.8)
+w_up = 1 - smoothstep((|awa| - 70 deg) / 40 deg)  // forward of the beam (abaft it the side still flips round the bow)
+side = side + (sgn(awa) - side) * min(1, 2 k_f) * w_up      // a flogging kite keeps its belly to leeward, never flat
+b    = 1 - k_f (0.3 + 0.2 sin(phi) + 0.15 sin(2.3 phi + 1))  // the fill breathes, irregular, never empty (0.35 to 1.05)
+fly  = (a, l, 0) + D b (L - (a, l, 0)),  fly.n *= side
+fly.n *= 1 - k_f (0.5 + 0.5 sin(1.7 phi + 0.5)) (1 - uc / 0.35)^2   for uc < 0.35    // the luff collapses, refills
+I2   = 0.33 * flutter_amp * I * (1 + 2 k_f) ;  q = phi - 7 uc   // luffing: the belly breathes, strongest where it is
+fly += (0.1 I2 sin(q) |fly.n|, 0, I2 cos(q) fly.n)              // deep; flogging, three times as hard
 loc  = fly (up), §8.4 hoist / §8.5 drop toward fly (with the tack pin of §7.5)
                                                   // the swing S and the turn about the (swung) luff as in §7.3:
 ease = the turn further out, about the same luff (below)
@@ -517,6 +523,8 @@ k_e  = smoothstep(|wrap_pi(beta)| / 0.1) * (1 - smoothstep((|wrap_pi(beta)| - 10
 th   = beta - gamma_e + sgn(beta) * k_e * loft_trim
 P''  = R(Lh', T', th + sgn(beta) * k_e * ease) . (S . (T + a Ah + l Lh + n Nh) - T') + T'   // every vertex, one turn
 ```
+A kite flown upwind therefore never draws flat or still: it flogs (owner, 2026-11-07), all of it whole-shape terms
+of the stored surface and the flutter phase, and the turn below still keeps it clear of the forestay.
 No row twist on top of the measured, no clearance push, no forestay shift, no clew solve, no `forward` or
 `tack_rise`: the kite moves only as a whole. The tack stays on its fitting and the head at its halyard (the luff axis
 is the turn's axis), the clew where the turn puts it; the sheet runs straight from the placed clew to its block

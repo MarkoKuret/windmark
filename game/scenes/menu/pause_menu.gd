@@ -8,6 +8,8 @@ extends CanvasLayer
 ## its SimRunner (`runner.paused`), the menu opens over it and holds the boat's controls (`controls.menu_open`);
 ## Resume or `pause_menu` again closes it. It also applies the player's settings to the scene when it starts and
 ## when the settings screen closes (Settings.apply_to_scene). Without such a host, open() and close() drive it.
+## The card is built when the menu first opens and the settings screen when it is first shown (WM-180: the race
+## scene's build behind the fade is shorter by them).
 
 signal action_requested(action: String)
 
@@ -46,6 +48,18 @@ func _ready() -> void:
 	layer = 60
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	host = get_parent()
+	_apply.call_deferred()
+
+
+## Whether the card is built (it is on the first open).
+func is_built() -> bool:
+	return _root != null
+
+
+## Builds the card (once): the items, the settings card (its panel comes with the first Settings), the sounds.
+func build() -> void:
+	if _root != null:
+		return
 	_root = Control.new()
 	_root.name = "Root"
 	_root.theme = MenuTheme.theme()
@@ -92,18 +106,23 @@ func _ready() -> void:
 	_margin.add_child(_settings_card)
 	_fit()
 	get_viewport().size_changed.connect(_fit)
+	_root.visible = false
+	sounds = MenuSounds.new()
+	sounds.name = "Sounds"
+	sounds.active = false
+	add_child(sounds)
+
+
+## The settings screen's panel (once), on the settings card.
+func _build_settings() -> void:
+	if settings_panel != null:
+		return
 	settings_panel = SettingsPanel.new()
 	settings_panel.esc_is_pause = true
 	settings_panel.build(Settings.current())
 	settings_panel.changed.connect(_setting_changed)
 	settings_panel.closed.connect(_settings_closed)
 	_settings_card.add_child(settings_panel)
-	_root.visible = false
-	sounds = MenuSounds.new()
-	sounds.name = "Sounds"
-	sounds.active = false
-	add_child(sounds)
-	_apply.call_deferred()
 
 
 ## The settings page's room (menus.md §4): the screen margins, and no wider than a wide page of the main menu.
@@ -150,6 +169,7 @@ func _process(dt: float) -> void:
 
 ## Opens the menu (and pauses the host's simulation).
 func open() -> void:
+	build()
 	is_open = true
 	sounds.active = true
 	sounds.quiet_next_focus()
@@ -197,18 +217,19 @@ func _asks_first() -> bool:
 ## Closes the menu and resumes the host.
 ## The pause key while the settings show (menus.md §2): back to the card, the menu stays open. True when taken.
 func back_from_settings() -> bool:
-	if not is_open or not _settings_card.visible:
+	if not is_open or _settings_card == null or not _settings_card.visible:
 		return false
 	settings_panel.close()
 	return true
 
 
 func close() -> void:
-	if _settings_card.visible:
+	if _settings_card != null and _settings_card.visible:
 		settings_panel.close()
 	is_open = false
-	sounds.active = false
-	_root.visible = false
+	if _root != null:
+		sounds.active = false
+		_root.visible = false
 	var r := _host_runner()
 	if r != null:
 		r.paused = false
@@ -235,6 +256,7 @@ func _pressed(id: String) -> void:
 		"resume":
 			close()
 		"settings":
+			_build_settings()
 			_card.visible = false
 			_settings_card.visible = true
 			settings_panel.show_section(settings_panel.section, true)
@@ -245,7 +267,7 @@ func _pressed(id: String) -> void:
 			action_requested.emit(id)
 			if act:
 				if get_tree().current_scene != null:
-					SceneFade.reload(get_tree())
+					SceneFade.reload(get_tree(), _restart_line())
 				elif host != null and host.has_method("reset_boat"):
 					host.reset_boat()
 		"retire":
@@ -262,7 +284,17 @@ func _pressed(id: String) -> void:
 			action_requested.emit(id)
 			if act:
 				MainMenu.open_on = ""
-				SceneFade.change(get_tree(), MAIN_MENU)
+				SceneFade.change(get_tree(), MAIN_MENU, SceneFade.LINE_MENU)
+
+
+## The loading line of a restart (menus.md §5): the host's session.
+func _restart_line() -> String:
+	if host != null and host.has_method("session_setup"):
+		var g: GameSetup = host.call("session_setup")
+		if host.get("scenario_run") != null:
+			g.mode = "scenario"
+		return SceneFade.line_for(g)
+	return ""
 
 
 func _setting_changed(key: String) -> void:

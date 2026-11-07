@@ -109,26 +109,29 @@ THIRD_DIR = REPO / "docs" / "design" / "kite_ac_2026-11-07"     # the third pass
 V2_DIR = REPO / "docs" / "design" / "kite_ac_2026-11-07b"      # the accepted state (tag kite-ac-v2)
 
 
-def fifth(ctx, out, w, h):
-    """wm9 and wm21 (`-- kite_ac5` shots: the run shape projected forward, wm21's fractional rig) against kite-ac-v2
-    (the right column of its sheets, the same shots), from the side, the bow quarter and above."""
+def fifth(ctx, out, w, h, prefix="kite_ac5", label="the run projected forward", top=True):
+    """wm9 and wm21 (`-- kite_ac5` shots: the run shape projected forward, wm21's fractional rig; `-- kite_ac6`: the
+    v2 run, wm21's fractional rig) against kite-ac-v2 (the right column of its sheets, the same shots), from the
+    side, the bow quarter and (`top`) above."""
     head = 46
     f, fs = _font(24), _font(17)
-    views = {"side": VIEWS["side"], "bow": VIEWS["bow"], "top": "from above the masthead"}
+    views = {"side": VIEWS["side"], "bow": VIEWS["bow"]}
+    if top:
+        views["top"] = "from above the masthead"
     for cls in ("wm9", "wm21"):
         kind, angles, what = SECOND[cls]
         rig = ", the fractional rig" if cls == "wm21" else ""
         for view, title in views.items():
             sheet = Image.new("RGB", (2 * w, head + len(angles) * (h + 30)), (245, 245, 242))
             d = ImageDraw.Draw(sheet)
-            d.text((14, 10), f"{cls} kite: kite-ac-v2 (left), the run projected forward{rig} (right), {title}, 12 kn",
+            d.text((14, 10), f"{cls} kite: kite-ac-v2 (left), {label}{rig} (right), {title}, 12 kn",
                    fill=(20, 20, 30), font=f)
             prev = Image.open(V2_DIR / f"{cls}_{view}.jpg")
             for r, ang in enumerate(angles):
                 y = head + r * (h + 30)
                 sheet.paste(prev.crop((w, y + 30, 2 * w, y + 30 + h)), (0, y + 30))
                 d.text((10, y + 6), "kite-ac-v2", fill=(30, 30, 40), font=fs)
-                name = f"kite_ac5_{cls}_{kind.lower()}{ang}_loft_{view}"
+                name = f"{prefix}_{cls}_{kind.lower()}{ang}_loft_{view}"
                 img, note = sp.render(ctx, sp.OUT / name, (w, h))
                 sheet.paste(img, (w, y + 30))
                 d.text((w + 10, y + 6), f"now: {note.split('|')[0].split(':', 1)[-1].strip()}", fill=(30, 30, 40),
@@ -179,7 +182,14 @@ def main():
     ap.add_argument("--third", action="store_true", help="wm9 and wm21 (-- kite_ac3), into kite_ac_2026-11-07")
     ap.add_argument("--fourth", action="store_true", help="wm9 and wm21 (-- kite_ac4), into kite_ac_2026-11-07b")
     ap.add_argument("--fifth", action="store_true", help="wm9 and wm21 (-- kite_ac5), into kite_ac_2026-11-07c")
+    ap.add_argument("--sixth", action="store_true", help="wm9 and wm21 (-- kite_ac6), into kite_ac_2026-11-07d")
     a = ap.parse_args()
+    if a.sixth:
+        w, h = (int(x) for x in a.size.split("x"))
+        out = Path(a.out or REPO / "docs" / "design" / "kite_ac_2026-11-07d")
+        out.mkdir(parents=True, exist_ok=True)
+        fifth(moderngl.create_standalone_context(require=410), out, w, h, "kite_ac6", "the v2 run", top=False)
+        return
     if a.fifth:
         w, h = (int(x) for x in a.size.split("x"))
         out = Path(a.out or REPO / "docs" / "design" / "kite_ac_2026-11-07c")

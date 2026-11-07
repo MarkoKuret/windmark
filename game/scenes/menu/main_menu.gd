@@ -181,6 +181,7 @@ func _ready() -> void:
 	add_child(version_label)
 	sounds = MenuSounds.new()
 	sounds.name = "Sounds"
+	sounds.back_check = back_does_something
 	add_child(sounds)
 	if not settings.welcomed:
 		_show_welcome()
@@ -445,8 +446,22 @@ func close_page() -> void:
 		_opener.grab_focus()
 
 
+## Whether Esc or B does something here (MenuSounds: the back sound only then): on the card it moves the focus to
+## Quit (menus.md §1), and once there it does nothing.
+func back_does_something() -> bool:
+	return welcome != null or page != "" or get_viewport().gui_get_focus_owner() != buttons["quit"]
+
+
 func _unhandled_input(e: InputEvent) -> void:
 	if welcome != null:
+		return
+	if page == "" and e.is_action_pressed("ui_cancel"):
+		# menus.md §1: on the card, back goes to Quit (which still wants Enter or A)
+		get_viewport().set_input_as_handled()
+		if get_viewport().gui_get_focus_owner() != buttons["quit"]:
+			if sounds != null:
+				sounds.quiet_next_focus()
+			buttons["quit"].grab_focus()
 		return
 	if page != "" and e.is_action_pressed("ui_cancel"):
 		get_viewport().set_input_as_handled()

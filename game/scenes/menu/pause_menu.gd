@@ -265,9 +265,13 @@ func _pressed(id: String) -> void:
 				SceneFade.change(get_tree(), MAIN_MENU)
 
 
+## A setting applies at once, as on the main menu (menus.md §2, §3): the display on the window, the rest (volumes,
+## quality, controls, cameras, HUD) on the running scene.
 func _setting_changed(key: String) -> void:
 	if key in ["fullscreen", "vsync", "fps_limit", "ui_scale", "render_scale", "aa", "capture_preset"]:
 		Settings.current().apply_display(get_tree().root, key in ["fullscreen", "capture_preset"])
+	else:
+		Settings.current().apply_live(host, key)
 
 
 func _settings_closed() -> void:

@@ -9,7 +9,7 @@ signal closed
 const SECTIONS := ["controls", "cameras", "hud", "graphics", "audio"]
 ## the help line of the rows whose name does not say it all (menus.md §3); the others show none
 const HELP := {
-	"helm_mode": "Set and hold: a tap moves the helm and it stays. Hold to steer: it comes back when you let go.",
+	"helm_mode": "How the steering keys move the helm. Set and hold: a tap moves it and it stays. Hold to steer: it comes back when you let go.",
 	"stick_dead_zone": "How far the stick moves before the helm answers. Raise it if the boat steers on its own.",
 	"keys_toggle": "Let fly, fine helm, rankings and camera boost. Hold: on while the key is down. Toggle: one press on, the next off.",
 	"weather_helm": "Off: the boat holds her course with the helm centred. On: she tries to luff up as she heels, like a real boat.",
@@ -30,6 +30,14 @@ const HELP := {
 	"tab": "LB and RB, or Page Up and Page Down, change the section.",
 }
 const TITLES := ["Controls", "Cameras", "HUD", "Graphics", "Audio"]
+## the Reset section button's help line, by section (menus.md §3): what it puts back
+const RESET_HELP := {
+	"controls": "Back to the default steering, dead zone, held keys, weather helm and vibration. Bindings have their own reset.",
+	"cameras": "Back to the default camera speed, inversions, heel follow and motion.",
+	"hud": "Back to the default assists, instruments, interface scale and palette.",
+	"graphics": "Back to this computer's quality, render scale and anti-aliasing, vsync on, no frame limit. The display stays.",
+	"audio": "Every volume back to 100 %, the master to 80 %.",
+}
 ## the section tabs: the setting-name style at this size with this side padding, so the five fit a page at 130 %
 ## UI scale in a 1280 x 800 window (menus.md §3)
 const TAB_SIZE := MenuTheme.SMALL_SIZE + 2
@@ -167,13 +175,12 @@ static func pct(v: float) -> String:
 	return "%d %%" % roundi(v * 100.0)
 
 
-## The Controls section (menus.md §3): the helm keys, the stick, the held keys, the vibration, then the bindings.
+## The Controls section (menus.md §3): the steering keys, the stick, the held keys, the vibration, then the bindings.
 ## A realism option (the weather helm) belongs after Vibration, before the bindings.
 func _controls() -> void:
 	var s := settings
-	_row(MenuRow.choice("Helm keys", "helm_mode", [0, 1], ["Set and hold", "Hold to steer"], s.helm_mode))
-	_row(MenuRow.range_row("Stick dead zone", "stick_dead_zone", 0.0, 0.30, 0.01, s.stick_dead_zone,
-		func(v: float) -> String: return "%.2f" % v))
+	_row(MenuRow.choice("Steering", "helm_mode", [0, 1], ["Set and hold", "Hold to steer"], s.helm_mode))
+	_row(MenuRow.range_row("Stick dead zone", "stick_dead_zone", 0.0, 0.30, 0.01, s.stick_dead_zone, pct))
 	_row(MenuRow.choice("Held keys", "keys_toggle", [false, true], ["Hold", "Toggle"], s.keys_toggle))
 	_row(MenuRow.toggle("Weather helm", "weather_helm", s.weather_helm))
 	_row(MenuRow.range_row("Vibration", "vibration", 0.0, 1.0, 0.1, s.vibration,
@@ -293,10 +300,9 @@ func _audio() -> void:
 		_row(MenuRow.range_row(e[0], e[1], 0.0, 1.0, 0.05, s.get(e[1]), pct))
 
 
-## "camera_zoom_in" -> "Camera zoom in"
+## An action's name in plain words (menus.md §3 Rebinding, ActionNames): "camera_orbit_drag" -> "Turn the camera (drag)".
 static func action_name(action: String) -> String:
-	var t := action.replace("_", " ")
-	return t.substr(0, 1).to_upper() + t.substr(1)
+	return ActionNames.of(action)
 
 
 ## The bindings of an action in the live input map, keys and mouse first, then the gamepad.
@@ -345,6 +351,8 @@ func help_for(c: Control) -> String:
 		return c.help
 	if tabs.values().has(c):
 		return HELP["tab"]
+	if c == _reset:
+		return RESET_HELP.get(section, "")
 	return HELP.get(str(c.name), "")
 
 

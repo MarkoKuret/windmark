@@ -315,13 +315,19 @@ func load_file(p := "") -> Error:
 	return OK
 
 
-## Back to the defaults of one section (the settings screen's reset), or of everything with "".
+## the fields a section's reset leaves alone (menus.md §3 Reset section): the display is the player's window mode
+const RESET_KEEPS := ["fullscreen"]
+
+
+## Back to the defaults of one section (the settings screen's reset; the display stays, RESET_KEEPS), or of
+## everything with "".
 func reset(section := "") -> void:
 	var fresh := device_defaults() if section in ["", "graphics"] else Settings.new()
 	for s in FIELDS:
 		if section == "" or s == section:
 			for f in FIELDS[s]:
-				set(f, fresh.get(f))
+				if section == "" or not f in RESET_KEEPS:
+					set(f, fresh.get(f))
 	if section == "" or section == "graphics":
 		capture_preset = fresh.capture_preset  # session only, but Reset section turns it off too
 
@@ -569,24 +575,51 @@ func apply_audio() -> void:
 func apply_to_scene(scene: Node) -> void:
 	if scene == null:
 		return
-	var pc: Variant = scene.get("controls")
-	if pc is PlayerControls:
-		apply_controls(pc)
-	var rig: Variant = scene.get("rig")
-	if rig is CameraRig:
-		apply_cameras(rig)
-	var hud: Variant = scene.get("hud")
-	if hud is Hud:
-		apply_hud(hud)
-		var cv: Variant = scene.get("course_view")
-		if cv is Object and cv != null and "show_laylines" in cv:
-			cv.show_laylines = assist != Hud.Assist.MINIMAL
-			cv.show_zone = assist != Hud.Assist.MINIMAL
-	var sea: Variant = scene.get("sea")
-	if sea is Sea:
-		var sky: Variant = scene.get("sky")
-		apply_sea(sea, sky if sky is SkyRig else null)
+	for section in ["controls", "cameras", "hud", "graphics"]:
+		_apply_section(scene, section)
 	if scene.is_inside_tree():
 		apply_display(scene.get_tree().root)
 	apply_audio()
 	apply_bindings()
+
+
+## One setting changed on the settings screen, applied to a running sail scene at once (menus.md §2, §3): its
+## section's part of apply_to_scene (the volumes on the buses, the quality on the sea and sky, the controls, the
+## cameras, the HUD). The display settings are the caller's (apply_display, which may set the window mode).
+func apply_live(scene: Node, key: String) -> void:
+	if key.ends_with("_volume"):
+		apply_audio()
+	elif key == "bindings":
+		apply_bindings()
+	elif scene != null:
+		if key in FIELDS["controls"] or key in FIELDS["cameras"] or key in FIELDS["hud"]:
+			for section in ["controls", "cameras", "hud"]:  # the held keys reach all three
+				_apply_section(scene, section)
+		elif key == "quality":
+			_apply_section(scene, "graphics")
+
+
+## The part of a sail scene a settings section drives (graphics: the quality on the sea and sky).
+func _apply_section(scene: Node, section: String) -> void:
+	match section:
+		"controls":
+			var pc: Variant = scene.get("controls")
+			if pc is PlayerControls:
+				apply_controls(pc)
+		"cameras":
+			var rig: Variant = scene.get("rig")
+			if rig is CameraRig:
+				apply_cameras(rig)
+		"hud":
+			var hud: Variant = scene.get("hud")
+			if hud is Hud:
+				apply_hud(hud)
+				var cv: Variant = scene.get("course_view")
+				if cv is Object and cv != null and "show_laylines" in cv:
+					cv.show_laylines = assist != Hud.Assist.MINIMAL
+					cv.show_zone = assist != Hud.Assist.MINIMAL
+		"graphics":
+			var sea: Variant = scene.get("sea")
+			if sea is Sea:
+				var sky: Variant = scene.get("sky")
+				apply_sea(sea, sky if sky is SkyRig else null)

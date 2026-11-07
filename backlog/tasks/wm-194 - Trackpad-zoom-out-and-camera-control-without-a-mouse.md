@@ -1,9 +1,11 @@
 ---
 id: WM-194
 title: 'Trackpad: zoom out and camera control without a mouse'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-11-07 17:44'
+updated_date: '2026-11-07 17:54'
 labels: []
 dependencies: []
 priority: high
@@ -18,5 +20,5 @@ On a laptop trackpad the camera cannot zoom out. Support trackpad scroll and pin
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Two-finger scroll and pinch zoom the chase camera in and out on macOS; keys for zoom are shown in the controls help. Orbit works with a trackpad (no right button needed).
+- [x] #1 Two-finger scroll and pinch zoom the chase camera in and out on macOS; keys for zoom are shown in the controls help. Orbit works with a trackpad (no right button needed).
 <!-- AC:END -->

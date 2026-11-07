@@ -8,7 +8,8 @@ extends CanvasLayer
 ## the same scene file in this session did, or it has not been built yet), `line` shows centred on the navy for
 ## LINE_FRAMES frames before the change, so it is on the screen while the main thread builds. The warm-up: after the
 ## change the navy stays opaque while the new scene draws under it with a ShaderWarmup's copies in front of its
-## cameras, at least WARM_MIN_FRAMES frames and then until a frame adds no pipeline compilation, at most WARM_MAX_S.
+## cameras, at least WARM_MIN_FRAMES frames and then until a frame adds no mesh, surface or draw pipeline compilation
+## (the specialisations compile in the background without a stutter), at most WARM_MAX_S.
 ## `--fade-log` prints each change's measures (`last`).
 
 const COLOUR := Color("0b1620")
@@ -169,7 +170,7 @@ func _warm_frame() -> void:
 	elif _frames == WARM_COPY_FRAMES + 1:
 		warmup.finish()
 	var now := _pipelines()
-	var still := now == _pipes
+	var still := now.slice(0, 3) == _pipes.slice(0, 3)  # the specialisations compile in the background
 	_pipes = now
 	var warm_s := (Time.get_ticks_usec() - _warm_t0) / 1e6
 	if (_frames >= WARM_MIN_FRAMES and still) or warm_s >= WARM_MAX_S:

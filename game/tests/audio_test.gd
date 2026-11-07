@@ -562,6 +562,18 @@ func test_buses_settings() -> void:
 	t.near(float(bed0["vol"]), 0.4, 0.01, "bed volume 0.4")
 	cam.free()
 	_free(a)
+	# §6.1 the menu ambience: the default map has its sounds; a race's signal duck does not follow into the menu
+	var m := _map()
+	t.ok(MenuAmbience.ONE_SHOTS.all(func(id: String) -> bool: return m.has(id) and not m.variants(id).is_empty())
+		and m.has("wind.bed"), "the menu ambience's sounds are in the default map")
+	AudioBuses.set_duck("ambience", -6.0)
+	var amb := MenuAmbience.new()
+	root.add_child(amb)
+	t.near(AudioBuses.duck("ambience"), 0.0, 1e-6, "the menu ambience clears the ambience duck")
+	t.ok(amb.beds.size() == 2 and amb.players().all(func(p: AudioStreamPlayer) -> bool: return p.bus == "ambience"),
+		"two beds on the ambience bus")
+	t.ok(amb.played.is_empty() and amb.fade == 0.0, "nothing before the first frame, faded in from silence")
+	amb.free()
 
 
 # ---- real players -----------------------------------------------------------------------------------------------

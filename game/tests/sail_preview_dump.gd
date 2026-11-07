@@ -176,6 +176,36 @@ func _kite_ac2_shots(only: Array = [], prefix: String = "kite_ac2", top: bool = 
 	return out
 
 
+## sail_visuals.md §6.5 (2026-11-07e): wm7 and wm21 with the kite hoisted at TWA 40 and 60 (12 kn, the helm holding
+## the true wind angle), from the leeward side and the bow quarter (tests/kite_ac_preview.py --flog)
+func _kite_flog_shots() -> Array:
+	var out := []
+	for cls in ["wm7", "wm21"]:
+		var sid: String = KITE_AC_CLASSES[cls]
+		var views := {}
+		for v in ["side", "bow"]:
+			views[v] = KITE_LOFT_VIEWS[v].duplicate()
+			views[v]["dist_loa"] = 2.15
+		for ang in [40, 60]:
+			out.append({"name": "kite_flog_%s_twa%d" % [cls, ang], "cls": cls, "tws": 12.0, "twa": float(ang),
+				"views": views, "legs": [{"t": 15.0, "twa": float(ang)}, {"t": 20.0, "twa": float(ang), "req": sid}],
+				"cam": views["side"]})
+	return out
+
+
+## (2026-11-07e) one gybe each for wm7 and wm21 seen from astern: 12 kn, the kite set on a broad reach (TWA 150),
+## then the helm to the other broad reach; 8 frames a second apart from the turn (tests/kite_ac_preview.py --gybe)
+func _kite_gybe_shots() -> Array:
+	var out := []
+	for cls in ["wm7", "wm21"]:
+		var sid: String = KITE_AC_CLASSES[cls]
+		var cam := {"side": 0.15, "fwd": -0.98, "up": 0.3, "dist": 19.0 if cls == "wm7" else 55.0}
+		out.append({"name": "kite_gybe_%s" % cls, "cls": cls, "tws": 12.0, "twa": 150.0, "cam": cam,
+			"snaps": [41.0, 42.0, 43.0, 44.0, 45.0, 46.0, 47.0, 48.0],
+			"legs": [{"t": 40.0, "twa": 150.0, "req": sid}, {"t": 9.0, "twa": -150.0}]})
+	return out
+
+
 var _twa := 0.0
 
 
@@ -214,6 +244,12 @@ func _main() -> void:
 	elif want.has("kite_ac6"):  # §6.5 (2026-11-07d): back to the v2 run; wm21's fractional rig
 		shots = _kite_ac2_shots(["wm9", "wm21"], "kite_ac6")
 		want = []
+	elif want.has("kite_flog"):  # §6.5 (2026-11-07e): the kite up close-hauled and on a close reach, flogging
+		shots = _kite_flog_shots()
+		want = []
+	elif want.has("kite_gybe"):  # §6.5, sails.md §5.5 (2026-11-07e): a gybe from astern, 8 frames
+		shots = _kite_gybe_shots()
+		want = []
 	for spec in shots:
 		if want.is_empty() or want.has(spec["name"]):
 			_shot(spec)
@@ -242,6 +278,9 @@ func _shot(spec: Dictionary) -> void:
 	var prev := sim.sails(b)
 	var cur := prev
 	var note := ""
+	var elapsed := 0.0
+	var snaps: Array = spec.get("snaps", [])
+	var snap_i := 0
 	for leg in spec["legs"]:
 		var ticks := int(float(leg["t"]) / SimSource.DT)
 		var req := InputFrame.SAIL_NONE
@@ -270,6 +309,15 @@ func _shot(spec: Dictionary) -> void:
 			_twa = sim.state(b).twa
 			# the shapes' drivers (flutter phase, backed factor) run every tick as in the scene
 			bv.apply_sails(prev, cur, 1.0, SimSource.DT)
+			elapsed += SimSource.DT
+			if snap_i < snaps.size() and elapsed >= float(snaps[snap_i]) - 1e-4:  # a frame of a strip (a gybe)
+				bv.apply(sim.render_pose(b, 1.0))
+				var st0 := sim.state(b)
+				var sv0 := spec.duplicate()
+				sv0["name"] = "%s_f%d" % [spec["name"], snap_i]
+				_dump(sv0, bv, st0, "%s: t %.1f s twa %.0f awa %.0f" % [sv0["name"], elapsed, rad_to_deg(st0.twa),
+					rad_to_deg(st0.awa)])
+				snap_i += 1
 			if _until(String(leg.get("until", "")), cur, idx):
 				break
 	if spec.has("model"):  # sail_visuals.md §6.5: the kite on the model asked for

@@ -174,6 +174,51 @@ def fourth(ctx, out, w, h):
             print(f"wrote {path}")
 
 
+def flog(ctx, out, w, h):
+    """wm7 and wm21 with the kite up at TWA 40 and 60, flogging (`-- kite_flog` shots): a sheet per class, a row per
+    angle, the leeward side and the bow quarter."""
+    head = 46
+    f, fs = _font(24), _font(17)
+    for cls in ("wm7", "wm21"):
+        sheet = Image.new("RGB", (2 * w, head + 2 * (h + 30)), (245, 245, 242))
+        d = ImageDraw.Draw(sheet)
+        d.text((14, 10), f"{cls}: the kite hoisted close-hauled and on a close reach, flogging, 12 kn (side, bow quarter)",
+               fill=(20, 20, 30), font=f)
+        for r, ang in enumerate((40, 60)):
+            y = head + r * (h + 30)
+            for c, view in enumerate(("side", "bow")):
+                name = f"kite_flog_{cls}_twa{ang}_{view}"
+                img, note = sp.render(ctx, sp.OUT / name, (w, h))
+                sheet.paste(img, (c * w, y + 30))
+                kite = [x for x in note.split("|")[1].split(",") if " up " in x and ("kite" in x or "spin" in x)]
+                d.text((c * w + 10, y + 6), f"TWA {ang} held: {note.split('|')[0].split(':', 1)[-1].strip()}; "
+                       f"{kite[0].strip() if kite else ''}", fill=(30, 30, 40), font=fs)
+                print(f"{name}: {note}")
+        path = out / f"{cls}_flog.jpg"
+        sheet.save(path, quality=90)
+        print(f"wrote {path}")
+
+
+def gybe(ctx, out, w, h):
+    """One gybe each for wm7 and wm21 from astern (`-- kite_gybe` shots): 8 frames a second apart, two rows of four."""
+    head = 46
+    f, fs = _font(24), _font(17)
+    for cls in ("wm7", "wm21"):
+        sheet = Image.new("RGB", (4 * w, head + 2 * (h + 30)), (245, 245, 242))
+        d = ImageDraw.Draw(sheet)
+        d.text((14, 10), f"{cls}: a gybe from a broad reach to the other, 12 kn, from astern, a frame a second",
+               fill=(20, 20, 30), font=f)
+        for k in range(8):
+            r, c = divmod(k, 4)
+            y = head + r * (h + 30)
+            img, note = sp.render(ctx, sp.OUT / f"kite_gybe_{cls}_f{k}", (w, h))
+            sheet.paste(img, (c * w, y + 30))
+            d.text((c * w + 10, y + 6), f"{k + 1}: {note.split(':', 1)[-1].strip()}", fill=(30, 30, 40), font=fs)
+        path = out / f"{cls}_gybe.jpg"
+        sheet.save(path, quality=90)
+        print(f"wrote {path}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=None)
@@ -183,7 +228,19 @@ def main():
     ap.add_argument("--fourth", action="store_true", help="wm9 and wm21 (-- kite_ac4), into kite_ac_2026-11-07b")
     ap.add_argument("--fifth", action="store_true", help="wm9 and wm21 (-- kite_ac5), into kite_ac_2026-11-07c")
     ap.add_argument("--sixth", action="store_true", help="wm9 and wm21 (-- kite_ac6), into kite_ac_2026-11-07d")
+    ap.add_argument("--flog", action="store_true", help="wm7, wm21 flogging (-- kite_flog), into kite_ac_2026-11-07e")
+    ap.add_argument("--gybe", action="store_true", help="wm7, wm21 gybe strips (-- kite_gybe), into kite_ac_2026-11-07e")
     a = ap.parse_args()
+    if a.flog or a.gybe:
+        w, h = (int(x) for x in a.size.split("x"))
+        out = Path(a.out or REPO / "docs" / "design" / "kite_ac_2026-11-07e")
+        out.mkdir(parents=True, exist_ok=True)
+        ctx = moderngl.create_standalone_context(require=410)
+        if a.flog:
+            flog(ctx, out, w, h)
+        if a.gybe:
+            gybe(ctx, out, 640, 400)
+        return
     if a.sixth:
         w, h = (int(x) for x in a.size.split("x"))
         out = Path(a.out or REPO / "docs" / "design" / "kite_ac_2026-11-07d")

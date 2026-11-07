@@ -43,6 +43,7 @@ func _main() -> void:
 	_clew_on_sheet()
 	_loft_sections()
 	_forestay()
+	_gybes()
 	_parity()
 	await _rate_by_distance()
 	_perf()
@@ -767,6 +768,7 @@ func _boats() -> void:
 			continue
 		var data := BoatClassData.load_class(id)
 		var bv := BoatView.create(data.info, 0.5)
+		bv.turn_rate_limit = false  # §6.5 steady states: the kite's turn not rate-limited
 		var shaped := 0
 		for sp in bv.sail_parts:
 			var ok: bool = sp.shape != null and sp.arrays.is_empty() and sp.mesh != null \
@@ -1038,6 +1040,7 @@ func _clearance() -> void:
 			continue
 		var data := BoatClassData.load_class(id)
 		var bv := BoatView.create(data.info, 0.5)
+		bv.turn_rate_limit = false  # §6.5 steady states: the kite's turn not rate-limited
 		var c: float = 0.042 * data.info.loa
 		var main_i: int = data.info.main_sail
 		var jib_i := int(data.sail_index.get("jib", -1))
@@ -1100,6 +1103,7 @@ func _reach_clew() -> void:
 			continue
 		var data := BoatClassData.load_class(id)
 		var bv := BoatView.create(data.info, 0.5)
+		bv.turn_rate_limit = false  # §6.5 steady states: the kite's turn not rate-limited
 		var jib_i := int(data.sail_index.get("jib", -1))
 		var parts := {}
 		for sp in bv.sail_parts:
@@ -1152,6 +1156,7 @@ func _sheet_clear() -> void:
 		var main_i: int = data.info.main_sail
 		for reference in ([false, true] if native else [true]):
 			var bv := BoatView.create(data.info, 0.5, reference)
+			bv.turn_rate_limit = false  # §6.5 steady states: the kite's turn not rate-limited
 			var c: float = 0.042 * data.info.loa
 			var parts := {}
 			for sp in bv.sail_parts:
@@ -1235,6 +1240,7 @@ func _tack_on_sprit() -> void:
 		var end := Frames.body_to_model(BoatView._vec(rig["bowsprit_end"]))
 		for reference in ([false, true] if native else [true]):
 			var bv := BoatView.create(data.info, 0.5, reference)
+			bv.turn_rate_limit = false  # §6.5 steady states: the kite's turn not rate-limited
 			var parts := {}
 			for sp in bv.sail_parts:
 				parts[sp.index] = sp
@@ -1308,6 +1314,7 @@ func _clew_on_sheet() -> void:
 		var data := BoatClassData.load_class(id)
 		for reference in ([false, true] if native else [true]):
 			var bv := BoatView.create(data.info, 0.5, reference)
+			bv.turn_rate_limit = false  # §6.5 steady states: the kite's turn not rate-limited
 			var parts := {}
 			for sp in bv.sail_parts:
 				parts[sp.index] = sp
@@ -1568,6 +1575,7 @@ func _loft_sections() -> void:
 	var data := BoatClassData.load_class("wm7")
 	for reference in ([false, true] if native else [true]):
 		var bv := BoatView.create(data.info, 0.5, reference)
+		bv.turn_rate_limit = false  # §6.5 steady states: the kite's turn not rate-limited
 		var sp: BoatView.SailPart = null
 		for q in bv.sail_parts:
 			if q.type == "spinnaker_asym":
@@ -1621,6 +1629,7 @@ func _loft_surface(tab: Dictionary, shape_name: String) -> void:
 	var data := BoatClassData.load_class("wm7")
 	for reference in ([false, true] if native else [true]):
 		var bv := BoatView.create(data.info, 0.5, reference)
+		bv.turn_rate_limit = false  # §6.5 steady states: the kite's turn not rate-limited
 		var sp: BoatView.SailPart = null
 		for q in bv.sail_parts:
 			if q.type == "spinnaker_asym":
@@ -1720,6 +1729,7 @@ func _forestay() -> void:
 			continue
 		var data := BoatClassData.load_class(id)
 		var bv := BoatView.create(data.info, 0.5)
+		bv.turn_rate_limit = false  # §6.5 steady states: the kite's turn not rate-limited
 		var s0: Vector3 = bv._stay0
 		var s1: Vector3 = bv._stay1
 		var parts := {}
@@ -1740,17 +1750,22 @@ func _forestay() -> void:
 			for awa_deg in range(60, 181, 10):  # in flight: hoisting and dropping are outside the rule (§6.5)
 				for side in [1.0, -1.0]:
 					for kt in [0.6, 0.85, 1.0, 1.3]:
-						cases.append([awa_deg, side, kt, UP, 1.0])
+						cases.append([awa_deg, side, kt, UP, 1.0, 0.0])
+					if awa_deg <= 100:  # flogging (§6.5): the luff shivering in full, the fill breathing
+						for ph in 4:
+							cases.append([awa_deg, side, 1.0, UP, 1.0, 1.0])
 			for cs in cases:
 				var awa: float = cs[1] * deg_to_rad(float(mini(cs[0], 179)))
 				var sv := _sails_view(data, awa, tws, tws, fi, -1, [cs[2], 1.0])
 				sv.sails[fi].phase = cs[3]
 				sv.sails[fi].progress = cs[4]
+				sv.out[fi].luff_shiver = cs[5]
 				for k in 3:
 					bv.apply_sails(sv, sv, 1.0, 0.1)
 				var m: PackedVector3Array = fp.shape.mid()
-				var what := "awa %d %s kite %.2f %s" % [cs[0], "stbd" if cs[1] > 0 else "port", cs[2],
-					"up" if cs[3] == UP else ("hoist %.1f" % cs[4] if cs[3] == SimSource.Phase.HOISTING else "drop %.1f" % cs[4])]
+				var what := "awa %d %s kite %.2f %s%s" % [cs[0], "stbd" if cs[1] > 0 else "port", cs[2],
+					"up" if cs[3] == UP else ("hoist %.1f" % cs[4] if cs[3] == SimSource.Phase.HOISTING else "drop %.1f" % cs[4]),
+					" flogging" if cs[5] > 0.0 else ""]
 				var r := stay_check(m, fp.rows, fp.cols, s0, s1)
 				n += 1
 				if r[0] < worst:
@@ -1765,6 +1780,103 @@ func _forestay() -> void:
 			t.ok(worst >= STAY_CLOTH and through == 0, msg)
 			print("  " + msg)
 		bv.free()
+
+
+## §12 test 29 (sail_visuals.md §6.5, sails.md §5.5): the kite moves continuously through gybes. Every class with a
+## spinnaker, on the core: settled on a broad reach (TWA 150) with the kite up, it gybes to the other broad reach in
+## 8 and 20 kn, both ways, with the auto helm and with the helm set and held until the new course is near; every
+## tick the drawn kite's vertices, its clew and the pole end move at most GYBE_SPEED * sqrt(g LOA) * dt (a few
+## metres a second, scaled by the size of the boat). Native, as BoatView draws it in the game (the turn's rate on).
+const GYBE_SPEED := 2.0
+
+
+func _gybes() -> void:
+	if not native:
+		return
+	for id in STAY_CLASSES:
+		if not FileAccess.file_exists("res://generated/boats/%s.glb" % id):
+			continue
+		t.begin("29 gybes: %s" % id)
+		var worst := [0.0, 0.0, 0.0]
+		var at := ["", "", ""]
+		var lim := 0.0
+		for kn in [8.0, 20.0]:
+			for dirn in [1.0, -1.0]:
+				for hold in [false, true]:
+					var r := gybe_run(id, kn, dirn, hold)
+					lim = r["lim"]
+					var what := "%.0f kn %s %s" % [kn, "stbd to port" if dirn > 0 else "port to stbd",
+						"helm held" if hold else "auto helm"]
+					for q in 3:
+						if r["d"][q] > worst[q]:
+							worst[q] = r["d"][q]
+							at[q] = what
+		var msg := "%s: largest move per tick: kite vertex %.2f m (%s), clew %.2f m (%s), pole end %.2f m (%s); limit %.2f m" % [
+			id, worst[0], at[0], worst[1], at[1], worst[2], at[2], lim]
+		t.ok(worst[0] <= lim and worst[1] <= lim and worst[2] <= lim, msg)
+		print("  " + msg)
+
+
+## §12 test 29: one gybe on the core (TWA 150 to -150 times dirn): the largest move per tick of any kite vertex, the
+## clew and the pole end, and the limit.
+static func gybe_run(id: String, kn: float, dirn: float, hold: bool) -> Dictionary:
+	var sim := CoreSimSource.new()
+	sim.settings = {"wind_speed": kn * KNOT, "wind_from": 0.0, "shift_preset": 0, "puffs": false, "seed": 11}
+	sim.create()
+	var twa0 := deg_to_rad(150.0) * dirn
+	var b := sim.add_boat(id, 0.0, 0.0, Frames.wrap_2pi(-twa0))
+	var info := sim.class_info(b)
+	var ki := -1
+	for i in info.sails.size():
+		if info.sails[i].type.begins_with("spinnaker"):
+			ki = i
+	var bv := BoatView.create(info, info.rudder_max)
+	var sp: BoatView.SailPart = null
+	for q in bv.sail_parts:
+		if q.index == ki:
+			sp = q
+	var end_local: Vector3 = bv._pole_rest.affine_inverse() * sp.tack if bv._pole != null else Vector3.ZERO
+	var prev := sim.sails(b)
+	var cur := prev
+	var d := [0.0, 0.0, 0.0]
+	var pm := PackedVector3Array()
+	var pc := Vector3.ZERO
+	var pp := Vector3.ZERO
+	for k in int(75.0 / SimSource.DT):
+		var s := sim.state(b)
+		var f := InputFrame.new()
+		f.tick = sim.tick()
+		var time := k * SimSource.DT
+		var tgt := twa0 if time < 40.0 else -twa0
+		if hold and time >= 40.0 and absf(Frames.angle_diff(s.twa, tgt)) > deg_to_rad(25.0):
+			f.h_cmd = -dirn * 0.6  # set and hold: bear away through the gybe
+		else:
+			f.h_cmd = clampf(1.5 * Frames.angle_diff(s.twa, tgt), -1.0, 1.0)
+		f.flags = InputFrame.FLAG_AUTO_TRIM
+		f.sheet_cmd = 0.5
+		f.sail_req = InputFrame.hoist_req(ki) if k == 0 else InputFrame.SAIL_NONE
+		sim.apply_input(b, f)
+		sim.step()
+		prev = cur
+		cur = sim.sails(b)
+		bv.apply(sim.render_pose(b, 1.0))
+		bv.apply_sails(prev, cur, 1.0, SimSource.DT)
+		if time < 30.0:
+			continue
+		var m: PackedVector3Array = sp.shape.mid()
+		var c := m[sp.cols - 1]
+		var pe: Vector3 = bv._pole.transform * end_local if bv._pole != null else Vector3.ZERO
+		if not pm.is_empty():
+			for j in m.size():
+				d[0] = maxf(d[0], m[j].distance_to(pm[j]))
+			d[1] = maxf(d[1], c.distance_to(pc))
+			d[2] = maxf(d[2], pe.distance_to(pp))
+		pm = m.duplicate()
+		pc = c
+		pp = pe
+	var lim := GYBE_SPEED * sqrt(9.81 * info.loa) * SimSource.DT
+	bv.free()
+	return {"d": d, "lim": lim}
 
 
 ## §12 test 28: [the smallest forward distance from the stay of any kite vertex within STAY_BAND of it athwartships
@@ -1864,6 +1976,7 @@ func _parity() -> void:
 		var info := _parity_info(id)
 		for reference in ([false, true] if native else [true]):
 			var bv := BoatView.create(info, 0.5, reference)
+			bv.turn_rate_limit = false  # §6.5 steady states: the kite's turn not rate-limited
 			var parts := {}
 			for sp in bv.sail_parts:
 				parts[sp.id] = sp
@@ -1956,6 +2069,7 @@ func _rate_by_distance() -> void:
 	# every frame large on screen, 30 Hz smaller within 200 m, 15 Hz to 800 m, 4 Hz beyond, none behind the camera
 	for c in [[12.0, 60], [100.0, 30], [500.0, 15], [1500.0, 4], [-300.0, 0]]:
 		var bv := BoatView.create(data.info, 0.5)
+		bv.turn_rate_limit = false  # §6.5 steady states: the kite's turn not rate-limited
 		root.add_child(bv)
 		# the camera looks north (-Z); the boat ahead at the distance, or behind it
 		bv.global_position = Vector3(0, 0, -float(c[0]))
@@ -1983,6 +2097,7 @@ func _perf() -> void:
 	var impls := [false, true] if native else [true]
 	for reference in impls:
 		var bv := BoatView.create(data.info, 0.5, reference)
+		bv.turn_rate_limit = false  # §6.5 steady states: the kite's turn not rate-limited
 		var line := ""
 		var total := 0.0
 		for sp in bv.sail_parts:

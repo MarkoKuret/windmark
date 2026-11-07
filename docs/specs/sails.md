@@ -244,8 +244,10 @@ elif m > 0 and fabsf(awa) < fabsf(beta_t):
 ```
 D = beta_t - beta
 motion = idle
-if fabsf(D) <= 1e-5 or type == spinnaker_sym:
-    beta = beta_t                                             // the symmetric kite is re-set, not sheeted
+if type == spinnaker_sym and the sail has a pole_angle table:   // the kite rides on its pole (below)
+    pass
+elif fabsf(D) <= 1e-5 or type == spinnaker_sym:
+    beta = beta_t                                             // a symmetric kite without a pole table is re-set
 else:
     if (-awa - beta) * D <= 0: rate = rate_in  ; motion = sheeting   // moving away from the wind line
     else:                      rate = rate_out ; motion = easing
@@ -254,10 +256,22 @@ else:
     beta = wrap_pi(beta + sgn(D) * min(step, fabsf(D)))
 if the sail has a pole_angle table:
     pole_t = -sgn(awa) * pole_angle(tws, fabsf(awa))
+    pole_0 = pole
     pole = pole + ((pole_t * k_h) - pole) * (DT * pole_rate)
+    if type == spinnaker_sym:                                 // the kite rides on its pole (2026-11-07)
+        o_t = wrap_pi(beta_t - pole_t * k_h) ; o = wrap_pi(beta - pole_0)          // the kite's angle off its pole
+        D_o = o_t - o ; step = ((fabsf(D_o) + 5°) * DT) * (rate_in, rate_out as above)
+        o = o + sgn(D_o) * min(step, fabsf(D_o))
+        beta = place ? beta_t : wrap_pi(pole + o)
 else:
     pole = beta
 ```
+A symmetric kite on a pole rides on it: its angle is the pole's plus its own angle off the pole, which follows its
+target at the sheeting rates. In a gybe the core turns the pole target to the other side at once and the pole
+swings across ahead of the mast at `pole_rate` (end for end), carrying the kite with it, while the kite's angle
+off the pole goes over to the new side at the sheeting rates; the drawn kite and pole move continuously. Until
+2026-11-07 the kite was re-set to its target at once while the pole swung, so the drawn kite jumped across in one
+tick.
 The motion is fast for big corrections and slows as the sail nears its target (a first-order approach plus a
 5° floor so it does arrive), so a tack swings the headsail across in 1–2 s and trim corrections settle smoothly.
 `motion` drives crew and winch animation and sounds.

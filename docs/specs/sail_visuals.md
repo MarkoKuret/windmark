@@ -544,7 +544,8 @@ forestay, it is turned about its luff (the line from the tack to the head), as o
 ```
 X(delta) = min over every vertex of x - 1.2 c_P   // 1.2: the horizontal distance keeps a margin over the true one up
                                                   // by the head, where the sails lean
-x includes how far the vertex lies ahead of the forestay (fwd), less c_f = 0.04 J_b (J_b the foretriangle base; 0.29
+x includes, while |β| <= 100° (not while an asymmetric goes round the bow in a gybe, where the cloth sweeps past the
+    stay's head and no turn clears it), how far the vertex lies ahead of the forestay (fwd), less c_f = 0.04 J_b (J_b the foretriangle base; 0.29
     m on wm21), where it is between the stay's tack fitting and the hounds in height and within 2 c of the stay
     athwartships (a wall; beside or above it, none)
 turn out (away from the centreline; on a run: the sheet eased, the clew and the belly forward):
@@ -552,9 +553,13 @@ turn out (away from the centreline; on a run: the sheet eased, the clew and the 
                                                   // vertex's distance from the luff axis
     cap 1.8 rad; without a forestay 0.5 rad, and after the first step only the vertices then within 2 c of the
     worst are looked at again (with it every vertex: the whole kite may come round the stay)
-the forestay still inside its margin at the end: the same solve turning in; the one that clears, or comes nearer
 ```
-The turn is solved every update from nothing, so it grows smoothly as the run deepens. On wm21 at TWA 176° (pole 81°,
+The turn is solved as it is drawn (out by `sgn(β)` times the fade where `sgn(β)` flips, the same factor that turns
+it, so nothing is solved where nothing would be drawn) and moves at most `LOFT_EASE_RATE` = 0.6 rad/s (34°/s) from
+the last update's (a placement's first update takes it at once): a whole-kite turn is never a jump, even where the
+solve flips between clear and not (2026-11-07: it went from 0 to its 1.8 rad cap and back within a tick in gybes).
+The core's `dt` of the update reaches the shape with its other drivers. The turn is solved every update from
+nothing, so it grows smoothly as the run deepens. On wm21 at TWA 176° (pole 81°,
 kite 79°) it is about 55° (the clew about 7.5 m forward); at TWA 150° about 1°. Leaning the kite forward about its
 foot (the halyard eased) was tried on paper and does not help: the foot, where the stay clips, does not move.
 On wm7 at the optimum trims (12 kn) the reach at AWA 64° (kite 16°, main 10°) needs about 16° of this turn, AWA 80°

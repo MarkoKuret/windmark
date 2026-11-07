@@ -24,7 +24,9 @@ does, so a first-time player sees at once what to press:
   and whenever the remembered setup cannot start any more (a class, venue or course no longer on disk); the focus
   then starts on Race.
 - Under the items one quiet **key line** (`Arrows choose · Enter or A select · Esc or B back`, small, muted): the
-  only place the menus explain their keys. On a window too short for the card under the logo (1280 × 800 at
+  only place the menus explain their keys. On the card there is nothing to go back to, so Esc or B moves the focus
+  to Quit (with the back sound; Quit still wants Enter or A), and with the focus on Quit it does nothing and is
+  silent. On a window too short for the card under the logo (1280 × 800 at
   130 % UI scale) the hints and the key line hide and the items alone show.
 - **Wordmark**: the game's logo, `WINDMARK` with the tagline bar under it (§1.2), in the top-left corner. It is
   one scene (`scenes/menu/wordmark.tscn`), so a later logo replaces it without touching the menu.
@@ -34,7 +36,7 @@ does, so a first-time player sees at once what to press:
 - **First launch**: the first time the game starts (the settings file has no `menu.welcomed`), a short screen comes
   before the menu: a heading, two rows,
   **Steering** (the helm key mode of `controls.md` §5.2: Set and hold or Hold to steer; the controls preset, since
-  the gamepad needs no choice) and **Quality** (Low, Medium, High; the settings' value preselected, on a first
+  the gamepad needs no choice; the same name and help line as in Settings, §3) and **Quality** (Low, Medium, High; the settings' value preselected, on a first
   start the device default of §3), the help line of the focused row (§3), and a footer (§4) with **Skip** on the
   left (keeps the defaults, the device's for quality; Esc or B too) and **Let's sail** on the right (keeps them,
   the primary action). Either saves the settings with `welcomed` set, so it shows once.
@@ -184,7 +186,8 @@ marks as yellow diamonds (the HUD's `mark`, the course colour), other buoys as s
 mark boats as small paper hulls; the start line (between its two ends) as a dashed paper line, the finish line as a
 checkered one; the course as a faint hairline from the start through the sequence's marks and gates to the finish;
 the wind as an arrow in the top-right corner, blowing the way the wind goes, with the speed and the direction under
-it (`12 KN  000°`), and a small N. In the map's bottom-right corner: the laps and legs (`2 laps, 6 legs`), muted.
+it (`12 KN  000°`), and a small N. In the map's bottom-right corner: the laps and legs (`2 laps, 6 legs`), muted; when the course's name already says
+its laps (`Windward-leeward, 2 laps`) the legs alone (`6 legs`), so the two lines never repeat each other.
 
 - **Extent**: the marks' box with a margin (the race card), or the venue's `bounds` (the venue chart, the Venue
   step); the venue's land polygons inside the extent are filled in a muted sand (`#5e5a4c`) with a paper shore
@@ -322,7 +325,9 @@ name, tag and tip come from the venue file with its translations (`data_format.m
 
 Opened by `pause_menu` in a race or free sail (`controls.md` §7). Offline the simulation stops while it is open.
 A card with the heading `PAUSED` and the items, menu-item sized (§4).
-Items: **Resume** (the focus when it opens), **Restart** (the same session from its start), **Retire** (a quick race only, from the warning
+Items: **Resume** (the focus when it opens), **Restart** (the same session from its start on the **same seed**: the
+same wind, shifts, weather, light and fleet again, whether the session came from Start, Continue or Race again;
+the reset key does the same in a race, `controls.md` §2; a new day is Race again on the results screen, §5), **Retire** (a quick race only, from the warning
 signal until the player's race is over, `race.md` §6.4: red, as a destructive action; the first press turns it into
 `Retire? Press again` for 3 s and a second press within them retires the boat and closes the menu), **Settings**,
 **Main menu**. While the player's race is on (the same window as Retire) **Restart** and **Main menu** ask
@@ -332,8 +337,9 @@ another item or 3 s cancels the question). `pause_menu` again resumes (in the se
 the menu stays open). Over the results screen (§5) it works the same, Retire hidden, and
 Resume goes back to the results. While it is open the boat's controls are held as in `controls.md` §7 (held let-fly and
 hold-to-steer keys count as released). Settings opens the settings screen (§3) in the card's place, a page as wide
-as the main menu's (§4), centred; settings changed here apply to the running scene when the settings screen
-closes, and the focus comes back to Settings.
+as the main menu's (§4), centred; a setting changed here applies to the running scene at once, as on the main menu
+(the volumes on the buses, the quality on the sea and sky, the controls, cameras and HUD; the display on the window),
+and when the settings screen closes the focus comes back to Settings.
 
 ## 3. Settings
 
@@ -343,7 +349,7 @@ game has the setting and is saved when the settings screen closes, to one file p
 
 | section | settings |
 | --- | --- |
-| Controls | helm key mode (Set and hold, Hold to steer), stick dead zone (0 to 0.30), held keys (Hold, Toggle: let fly, fine helm, the rankings and the camera boost together, below), vibration (off, 10 % to 100 %), the bindings (rebinding, below) |
+| Controls | **Steering**, the helm key mode (Set and hold, Hold to steer; the name of the first-launch screen too, §1), stick dead zone (0 to 30 %), held keys (Hold, Toggle: let fly, fine helm, the rankings and the camera boost together, below), vibration (off, 10 % to 100 %), the bindings (rebinding, below) |
 | Cameras | camera speed (0.25 to 3), invert left and right, invert up and down (each on the orbit of the chase and aerial cameras and the look of the onboard and free cameras alike), onboard heel follow (level horizon, 10 % to 100 %), reduced motion |
 | HUD | assist preset (Full, Standard, Minimal; online lobbies may force a lower one), instruments (Auto, Glance, Race, Data: the density of `hud.md` §16.1; Auto picks the device default, the `hud_density` key stores its choice here), UI scale (80 % to 130 %, `hud.md` §16.2.2), colour-blind palette (standard, deuteranopia, protanopia, tritanopia: `hud.md` §16.2.1) |
 | Graphics | quality (Low, Medium, High: the tiers of `water_render.md` §7, default Medium or the device default, below), render scale (Auto, 50 %, 67 %, 75 %, 85 %, 100 %; default Auto or the device default; below), anti-aliasing (SMAA, FXAA: `water_render.md` §7; default SMAA or the device default, below), display (windowed, fullscreen), vsync, frame rate limit (off, 30, 60, 90, 120, 144), capture preset (Off, Portrait 9:16; below) |
@@ -360,7 +366,16 @@ next save drops them (unknown keys are ignored on load).
 **Window mode.** The display setting is the player's: the game sets the window mode at its start (from the settings file) and when the display or capture setting changes, never when a race, free sail or the menu opens. Entering or leaving fullscreen through the system (the window's green button on macOS, a system shortcut) becomes the new display setting and is saved at once, so the game never puts the old mode back. A new windowed game opens at 1280 × 800 (the Steam Deck's size; the system may cap it to the screen). While the engine loads, the boot splash shows the logo on navy (`game/branding/boot_splash.png`, background #1A2A3A).
 
 **Reset section** restores the section's defaults (in Controls, the options; the bindings have their own reset;
-in Graphics, the device defaults below).
+in Graphics, the device defaults below, and the display stays as it is: windowed or fullscreen is the player's,
+see Window mode). Its help line says what it puts back in the section shown:
+
+| section | Reset section's help line |
+| --- | --- |
+| Controls | `Back to the default steering, dead zone, held keys, weather helm and vibration. Bindings have their own reset.` |
+| Cameras | `Back to the default camera speed, inversions, heel follow and motion.` |
+| HUD | `Back to the default assists, instruments, interface scale and palette.` |
+| Graphics | `Back to this computer's quality, render scale and anti-aliasing, vsync on, no frame limit. The display stays.` |
+| Audio | `Every volume back to 100 %, the master to 80 %.` |
 
 **Device defaults** (WM-101, `PERFORMANCE.md` G1 and G5). At the first start (no settings file) the game picks
 quality, render scale and anti-aliasing from the graphics adapter, so a cheap laptop starts on a frame rate it can
@@ -389,7 +404,7 @@ Graphics and Skip on the first-launch screen use them).
 **Help line.** Under the rows, one line of help for whatever has the focus, only where the name does not say it
 all: what the setting does, what its values mean, and for a binding how to change it or which action it conflicts
 with. Self-explanatory rows (the master and interface volumes, display, frame rate limit, interface scale, the
-inversions, camera speed) and the footer buttons have none; the line stays empty.
+inversions, camera speed) and the footer buttons but Reset section (above) have none; the line stays empty.
 
 **Footer.** **Reset section** (red) on the left and **Done** (the primary action, saves and goes back) on the
 right, both footer-action sized (§4).
@@ -426,6 +441,37 @@ map at once and are saved with the other settings when the screen closes, as the
 defaults (section `bindings` of the settings file); at start-up the defaults are put in and the saved ones over
 them.
 
+**Action names.** The rows and the conflict help name each action in plain words, never its id
+(`game/scripts/controls/action_names.gd`). The front-sail keys name the sails they hoist in the classes on disk
+(a class's front sails in file order, `controls.md` §5.4):
+
+| action | name | action | name |
+| --- | --- | --- | --- |
+| `helm_left` / `helm_right` | Steer left / Steer right | `camera_orbit_left` / `right` | Turn the camera left / right |
+| `helm_stick_left` / `right` | Steer left / right (stick) | `camera_orbit_up` / `down` | Tilt the camera up / down |
+| `helm_centre` | Centre the helm | `camera_orbit_drag` | Turn the camera (drag) |
+| `helm_fine` | Fine helm | `camera_look_left` … `down` | Look left … down (stick) |
+| `sheet_in` / `sheet_out` | Sheet in / Ease the sheet | `camera_zoom_in` / `out` | Zoom in / Zoom out |
+| `sheet_in_trigger` / `out` | Sheet in / Ease the sheet (trigger) | `camera_fov` | Lens angle (with zoom) |
+| `let_fly` | Let fly | `camera_recentre` | Recentre the camera |
+| `auto_trim` | Auto trim | `camera_preset_1` … `8` | Camera view 1 … 8 |
+| `sail_1` | Jib or genoa | `camera_preset_store` | Store a camera view |
+| `sail_2` | Code zero or kite | `camera_boost` | Free camera boost |
+| `sail_3` | Kite | `camera_clip` | Clip cameras |
+| `sail_4` … `sail_9` | Front sail 4 … 9 | `rankings` | Rankings |
+| `sail_prev` / `sail_next` | Previous sail / Next sail | `rankings_pad` | Rankings and instruments |
+| `sail_set` | Hoist the chosen sail | `hud_density` | Instruments |
+| `drop_front` | Drop the front sail | `map` | Course map |
+| `camera_next` | Next camera | `radar_zoom_in` / `out` | Radar zoom in / out |
+| `camera_chase` … `camera_free` | Chase, Onboard, Aerial, Free camera | `radar_orientation` | Radar orientation |
+| `boat_names` | Name tags | `wind_shadow_view` | Wind shadows |
+| `boat_select` | Select a boat | `hud_hide` | Hide the HUD |
+| `boat_pick` | Pick a boat (click) | `world_tags` | Tags and guides |
+| `spectate_next` / `prev` | Watch the next / previous boat | `chat` | Chat |
+| `spectate_leader` | Watch the leader | `pause_menu` | Pause menu |
+| `reset_boat` | Restart | `capture_pause` / `capture_slow` | Clean pause / Slow motion |
+| `screenshot` | Screenshot | | |
+
 **Render scale.** The 3D view is drawn at that fraction of the window's pixels in each direction and upscaled to
 the window; the HUD, the menus and everything 2D stay at the window's native resolution. The upscaler is AMD FSR
 1.0 (edge-adaptive upscale and sharpening) on the Forward+ and Mobile renderers, bilinear where FSR is not there
@@ -461,7 +507,7 @@ command line (`--resolution 1080x1920`).
   mill round the line, then beat up the course); 30 s after the first boat finishes it starts again. Nothing of the
   game's chrome shows: no HUD, no pause menu, no course guides on the water (laylines, start line, zone circles;
   the marks and the committee boat stay), no player input reaches the scene, and the scene is silent (the menu has
-  its own sounds). **Camera**: a slow cinematic drift, not one of the game's cameras: it circles the boat it
+  its own sounds and its quiet ambience, below). **Camera**: a slow cinematic drift, not one of the game's cameras: it circles the boat it
   follows at 45 to 70 m and 5 to 11 m above the water, going round it at 1.5° a second, its distance and height
   breathing over 40 s, with the boat a little right of centre (clear of the menu); every 35 s it eases (over about
   4 s) on to the next boat of the fleet. With reduced motion (`cameras.md` §6) the drift is a third of that speed.
@@ -510,8 +556,16 @@ command line (`--resolution 1080x1920`).
   A steps it forward. B or Esc goes back one level (Esc in the pause menu resumes, it is `pause_menu`).
 - Fits 1280 × 800 (Steam Deck) at every UI scale; lists scroll with the focus.
 - **Sounds** on the `ui` bus (`audio.md` §1.1, the Interface volume): a soft tick when the focus moves or a value
-  steps, a brighter click on accept (Enter, A, a click), a lower one on back (Esc, B). Made by `tools/soundgen`
+  steps, a brighter click on accept (Enter, A, a click), a lower one on back (Esc, B; only where back does
+  something). Holding left or right sweeps a value on the key's repeats, and each repeat step ticks 10 dB quieter
+  (none once a range stands at its end), so a sweep is heard without rattling. Made by `tools/soundgen`
   (`ui/focus`, `ui/accept`, `ui/back`), short (under 0.1 s) and quiet (peaks at -12 dBFS or lower).
+- **Ambience** (decided 2026-11-07, WM-216): while the main menu shows (the welcome screen and every page
+  included) a quiet bed of the game's own ambience plays on the `ambience` bus, so the Ambience and Master volumes
+  act on it at once: the sound map's sea bed for the backdrop's 12 kn (the moderate bed) at 0.24 and the wind bed
+  at 0.12, with a halyard or a gull (the map's `amb.halyard`, `amb.gull`) every 25 to 70 s at 0.12 to 0.25,
+  centred. It fades in over 2 s when the menu opens and out with the fade of a scene change (§5); the live
+  backdrop itself stays silent. No music, here or anywhere else (`audio.md` §6.1).
 - Player-facing text has no em dashes.
 
 ### 4.1 Showcase boat
@@ -565,7 +619,10 @@ scene, then the next race or the menu.
   it becomes the final table.
 - **Summary** (`YOUR RACE`, a heading in caps and label value lines): the items of `hud.md` §13.3 that have data.
 - **Actions** in the footer, footer-action sized (§4), from the left (there is no way back here): **Race again** (primary, the focus when the screen opens): the same setup (class,
-  sail number, venue, course, fleet, AI level, wind, Time and Sky) with a new seed. **Change setup**: this setup becomes the
+  sail number, venue, course, fleet, AI level, wind, Time and Sky) with a new seed: **a new day** on the same
+  setup (Random weather draws a new day, Local new shifts and puffs within the venue's ranges), where the pause
+  menu's Restart over this screen and the reset key (§2, `controls.md` §2) sail the same race again on its seed.
+  **Change setup**: this setup becomes the
   remembered one (§1) and the main menu opens the race setup (§1.1) at its Boat step with it. **Main menu**: the main menu.
 - **Input** (§4): left and right move between the actions, Enter or A accepts, the mouse focuses on hover and
   accepts on a click; up and down scroll the table and summary; `pause_menu` opens the pause menu over the screen

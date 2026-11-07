@@ -238,6 +238,9 @@ var _ticked_this_frame := false
 func _ready() -> void:
 	_apply_setup()
 	_user_args()
+	if GameSetup.restart_seed != 0 and not watch:
+		world_seed = GameSetup.restart_seed  # the pause menu's Restart: the same race again (menus.md §2)
+	GameSetup.restart_seed = 0
 	_load_scenario()
 	_load_shot()
 	if world_seed == 0:

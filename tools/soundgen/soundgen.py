@@ -253,20 +253,10 @@ def sheet_run(r):
 
 
 def sheet_load(r):
-    """The sheet takes the load: a block thump and a rope creak of stick-slip grains that slow as it settles. No
-    sustained tone (a tonal buzz here reads as the penalty signal)."""
     n = n_of(0.55)
-    creak = np.zeros(n)
-    k = 16
-    at = 0.012
-    for i in range(k):
-        m = n_of(0.035)
-        grain = shaped_noise(m, band(350, 2800), r) * env_ad(m, 0.0008, r.uniform(0.004, 0.012))
-        place(creak, grain * r.uniform(0.45, 1.0), n_of(at + r.uniform(0.0, 0.004)), circular=False)
-        at += 0.014 + 0.0022 * i
-    creak = rms_to(creak, -14) * env_asr(n, 0.002, 0.3)
-    thump = np.sin(2 * np.pi * np.cumsum(np.linspace(120, 80, n)) / SR) * env_ad(n, 0.002, 0.06)
-    return peak_to(creak + 0.9 * thump, -4)
+    creak = lowpass(np.sign(chirp(n, 240, 150, 0.7)) * env_asr(n, 0.02, 0.2), 1400)
+    thump = np.sin(2 * np.pi * 90 * np.arange(n) / SR) * env_ad(n, 0.002, 0.05)
+    return peak_to(0.5 * creak + thump, -4)
 
 
 def boom_cross(r):
@@ -453,13 +443,21 @@ def gull(r):
 
 
 def halyard_clink(r):
+    """A halyard slapping an alloy mast on a moored boat: short metallic impacts (a noise burst through a broad
+    resonant band around 1 to 3 kHz, falling 20 dB in 40 to 80 ms), three or four hits at irregular spacing. No
+    sustained pure tone: the earlier bell-like pings read as a race signal or a beep (penalty_done is two pure pings)."""
     n = n_of(1.6)
     y = np.zeros(n)
-    for i in range(3):
-        m = n_of(0.6)
-        base = r.uniform(1600, 2000)
-        ping = tone(m, [base, base * 1.62, base * 2.31], [1.0, 0.5, 0.3], r) * env_ad(m, 0.001, 0.12)
-        place(y, ping * r.uniform(0.5, 1.0), n_of(i * r.uniform(0.25, 0.45)), circular=False)
+    at = r.uniform(0.02, 0.1)
+    for i in range(int(r.integers(3, 5))):
+        m = n_of(0.3)
+        fc = r.uniform(1300, 2400)
+        ring = shaped_noise(m, lambda f, fc=fc: resonant(fc, 1.2)(f) * band(700, 4500, 1.5)(f), r)
+        ring = ring * env_ad(m, 0.0007, r.uniform(0.02, 0.038))
+        knock = shaped_noise(m, band(250, 1500, 1.5), r) * env_ad(m, 0.0005, 0.007)
+        hit = rms_to(ring, -18) + 0.5 * rms_to(knock, -18)
+        place(y, hit * r.uniform(0.45, 1.0), n_of(at), circular=False)
+        at += r.uniform(0.12, 0.45)
     return peak_to(y, -6)
 
 

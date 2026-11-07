@@ -7,6 +7,9 @@ extends RefCounted
 const AI_LEVELS := ["easy", "intermediate", "expert", "pro"]
 const AI_NAMES := ["Easy", "Intermediate", "Expert", "Pro"]
 
+## venue id -> display name, filled by venues() and venue_name()
+static var _venue_names := {}
+
 
 static func _read(p: String) -> Dictionary:
 	var v: Variant = BoatClassData._read_json(p)
@@ -61,6 +64,7 @@ static func venues() -> Array:
 		var d := _read(dir.path_join(f))
 		var id := f.trim_suffix(".venue.json")
 		out.append({"id": id, "name": str(d.get("name", id))})
+		_venue_names[id] = out[-1]["name"]
 	_sorted(out)
 	for i in out.size():
 		if out[i]["id"] == "practice_waters":  # GameSetup.venue's default
@@ -114,6 +118,26 @@ static func course_file(id: String) -> Dictionary:
 	if not FileAccess.file_exists(p):
 		return {}
 	return _read(ProjectSettings.globalize_path(p))
+
+
+## A venue's display name (the scene fade's loading line, menus.md §5) without reading every venue: the names
+## venues() read, else the "name" near the top of data/venues/<id>.venue.json (written first by tools/venuegen),
+## else the id.
+static func venue_name(id: String) -> String:
+	if _venue_names.has(id):
+		return _venue_names[id]
+	var nm := id
+	var f := FileAccess.open(BoatClassData.repo_path("data/venues").path_join(id + ".venue.json"), FileAccess.READ)
+	if f != null:
+		var buf := f.get_buffer(mini(f.get_length(), 2048))
+		var cut := buf.rfind(10)  # whole lines only: no character cut in two
+		var head := (buf.slice(0, cut) if cut > 0 else buf).get_string_from_utf8()
+		var re := RegEx.create_from_string("\"name\"\\s*:\\s*\"([^\"]*)\"")
+		var m := re.search(head)
+		if m != null:
+			nm = m.get_string(1)
+	_venue_names[id] = nm
+	return nm
 
 
 ## The display name of an id in a list ({"id", "name"}), the id when it is not there.

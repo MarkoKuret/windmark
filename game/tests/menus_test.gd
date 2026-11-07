@@ -28,6 +28,8 @@ func _init() -> void:
 	await test_light_rows()
 	await test_touches()
 	await test_pause_menu()
+	await test_warmup()
+	await test_scene_fade()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
 	t.finish(self, "menus")
 
@@ -1946,4 +1948,159 @@ func test_pause_menu() -> void:
 	pm.host = sc
 	stub.queue_free()
 	sc.queue_free()
+	await process_frame
+
+
+## menus.md §5 Warm-up (PERFORMANCE.md A8): a copy of every new mesh and shader combination of the sail scene in
+## front of the camera that draws it, the hidden ones too, freed by finish().
+func test_warmup() -> void:
+	t.begin("shader warm-up copies")
+	var sc := (load("res://scenes/sail_test.tscn") as PackedScene).instantiate()
+	sc.auto_process = false
+	sc.sim_kind = sc.SimKind.FAKE
+	sc.with_pause_menu = false
+	root.add_child(sc)
+	await process_frame
+	var shaders := {}
+	for n in sc.find_children("*", "GeometryInstance3D", true, false):
+		var gi := n as GeometryInstance3D
+		var mesh: Mesh = gi.get("mesh") if gi is MeshInstance3D else (gi.multimesh.mesh if gi is MultiMeshInstance3D
+				and gi.multimesh != null else null)
+		if mesh == null or mesh.get_surface_count() == 0:
+			continue
+		for m in [gi.material_override] + range(mesh.get_surface_count()).map(func(i: int) -> Material:
+				return mesh.surface_get_material(i)):
+			if m is ShaderMaterial and m.shader != null:
+				shaders[m.shader.resource_path if m.shader.resource_path != "" else str(m.shader.get_rid().get_id())] = true
+	var w := ShaderWarmup.start(sc)
+	var drawn := {}
+	var under_cam := true
+	for c in w.copies:
+		under_cam = under_cam and c.get_parent() is Camera3D and c.visible
+		var mesh: Mesh = c.get("mesh") if c is MeshInstance3D else (c as MultiMeshInstance3D).multimesh.mesh
+		for m in [c.material_override] + range(mesh.get_surface_count()).map(func(i: int) -> Material:
+				return mesh.surface_get_material(i)):
+			if m is ShaderMaterial and m.shader != null:
+				drawn[m.shader.resource_path if m.shader.resource_path != "" else str(m.shader.get_rid().get_id())] = true
+	t.ok(w.copies.size() > 0 and w.copies.size() <= w.keys.size(), "%d copies for %d combinations" % [w.copies.size(), w.keys.size()])
+	t.ok(under_cam, "every copy is shown, a child of the camera that draws its original")
+	var missing := shaders.keys().filter(func(k: String) -> bool: return not drawn.has(k))
+	t.ok(shaders.size() >= 3 and missing.is_empty(), "every shader of the scene drawn by a copy (%d, missing %s)" % [shaders.size(), missing])
+	var near_cam := true
+	for c in w.copies:
+		var cam := c.get_parent() as Camera3D
+		var box: AABB = c.global_transform * c.get_aabb()
+		near_cam = near_cam and box.size.length() < 0.1 and cam.is_position_in_frustum(box.get_center())
+	t.ok(near_cam, "every copy tiny and inside its camera's view")
+	print("  warm-up: %d copies, %d combinations, shaders %s" % [w.copies.size(), w.keys.size(), shaders.keys()])
+	var w2 := ShaderWarmup.start(sc)
+	t.ok(w2.copies.size() == w.copies.size(), "the copies do not copy themselves")
+	w2.finish()
+	var kept := w.copies.duplicate()
+	w.finish()
+	await process_frame
+	t.ok(w.copies.is_empty() and kept.all(func(c: Variant) -> bool: return not is_instance_valid(c)), "finish() frees them")
+	t.ok(ShaderWarmup.start(null).copies.is_empty(), "nothing to warm without a scene")
+	sc.queue_free()
+	await process_frame
+
+
+## menus.md §5 Loading line and Warm-up: the line on the navy before the change when the build is expected to be
+## long, the navy held while the new scene warms, then the fade in.
+func test_scene_fade() -> void:
+	t.begin("scene fade: loading line and warm-up")
+	var g := GameSetup.new()
+	g.mode = "race"
+	g.venue = "practice_waters"
+	t.ok(SceneFade.line_for(g) == "Setting up Practice Waters", "a race: %s" % SceneFade.line_for(g))
+	g.mode = "free"
+	g.venue = "garda"
+	MenuData._venue_names.clear()
+	t.ok(SceneFade.line_for(g) == "Lake Garda", "free sail: the venue's name from its file (%s)" % SceneFade.line_for(g))
+	g.mode = "scenario"
+	t.ok(SceneFade.line_for(g) == SceneFade.LINE_SCENARIO and SceneFade.line_for(null) == "", "a scenario, no setup")
+	g.mode = "free"
+	g.venue = "no_such_venue"
+	t.ok(SceneFade.line_for(g) == "no_such_venue", "an unknown venue: its id")
+	var lines := [SceneFade.LINE_MENU, SceneFade.LINE_SCENARIO, "Setting up Practice Waters"]
+	t.ok(lines.all(func(l: String) -> bool: return not l.contains("\u2014")), "no em dashes in the lines")
+	# a small scene with a hidden shader mesh, saved to change to
+	var top := Node3D.new()
+	top.name = "FadeTarget"
+	var cam := Camera3D.new()
+	cam.name = "Cam"
+	top.add_child(cam)
+	cam.owner = top
+	var mi := MeshInstance3D.new()
+	mi.name = "Hidden"
+	mi.mesh = BoxMesh.new()
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/wake.gdshader")
+	mi.material_override = mat
+	mi.visible = false
+	mi.position = Vector3(0, 0, 50)
+	top.add_child(mi)
+	mi.owner = top
+	var ps := PackedScene.new()
+	ps.pack(top)
+	top.free()
+	var path := "user://fade_test_scene.tscn"
+	ResourceSaver.save(ps, path)
+	SceneFade.build_s.erase(path)
+	t.ok(SceneFade.expect_long(path), "a scene not built this session: expected long")
+	SceneFade.change(self, path, "Setting up Practice Waters")
+	var f := SceneFade.running
+	await process_frame
+	var line_frames := 0
+	var changed_at := -1
+	var dark_after := 0
+	var copies_seen := 0
+	var label_ok := true
+	var frames := 0
+	while is_instance_valid(f) and frames < 400:
+		frames += 1
+		var before := current_scene
+		await process_frame
+		if not is_instance_valid(f):
+			break
+		if f.label.visible and current_scene == before and changed_at < 0:
+			line_frames += 1
+			label_ok = label_ok and f.label.text == "Setting up Practice Waters" and f.rect.color.a == 1.0
+		if changed_at < 0 and current_scene != null and current_scene.name == "FadeTarget":
+			changed_at = frames
+		if changed_at >= 0 and f.rect.color.a == 1.0:
+			dark_after += 1
+			copies_seen = maxi(copies_seen, current_scene.get_node("Cam").get_child_count())
+	t.ok(line_frames >= SceneFade.LINE_FRAMES and label_ok, "the line on the opaque navy for %d frames before the change" % line_frames)
+	t.ok(changed_at > 0 and SceneFade.last.get("line_shown", false), "then the scene changes (frame %d)" % changed_at)
+	t.ok(dark_after >= SceneFade.WARM_MIN_FRAMES, "the navy held %d frames after the change" % dark_after)
+	t.ok(copies_seen >= 1 and int(SceneFade.last.get("copies", 0)) >= 1, "the hidden mesh warmed in front of the camera")
+	t.ok(current_scene.get_node("Cam").get_child_count() == 0, "the copies gone before the fade in ends")
+	t.ok(SceneFade.running == null and SceneFade.build_s.has(path) and SceneFade.last.has("build_ms")
+		and SceneFade.last.has("warm_pipelines") and SceneFade.last.has("in_pipelines"),
+		"faded in and measured: %s" % JSON.stringify(SceneFade.last))
+	print("  fade: line %d frames, navy %d frames after the change, %s" % [line_frames, dark_after,
+		JSON.stringify(SceneFade.last)])
+	# the same scene again: its build was short, so no line
+	SceneFade.change(self, path, "Setting up Practice Waters")
+	f = SceneFade.running
+	var shown := false
+	frames = 0
+	while is_instance_valid(f) and frames < 400:
+		frames += 1
+		shown = shown or f.label.visible
+		await process_frame
+	t.ok(not shown and not SceneFade.last.get("line_shown", true), "a short build last time: no line (%.0f ms)" % (SceneFade.build_s[path] * 1000.0))
+	SceneFade.build_s.erase(path)
+	SceneFade.change(self, path)
+	f = SceneFade.running
+	shown = false
+	frames = 0
+	while is_instance_valid(f) and frames < 400:
+		frames += 1
+		shown = shown or f.label.visible
+		await process_frame
+	t.ok(not shown, "no line given: none shown")
+	unload_current_scene()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	await process_frame

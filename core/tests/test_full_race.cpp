@@ -47,7 +47,9 @@ int count(const Outcome& o, wm::RulesEventKind k) {
 }  // namespace
 
 TEST_CASE("full race: a headless race with penalties, and determinism" * doctest::test_suite("long")) {
-  const Outcome a = run_race(20260925);
+  // The seed picks the spawn slots; with the spawn of race.md §3.5 this one keeps the scripted misbehaviour
+  // apart (boat 1's OCS-I and return, boat 3 out of the race area).
+  const Outcome a = run_race(20260926);
   REQUIRE(!a.results.empty());
   MESSAGE("race closed after ", a.ticks, " ticks (", static_cast<float>(a.ticks) * wm::DT, " s)");
   for (const wm::ResultRow& r : a.results) {
@@ -81,7 +83,7 @@ TEST_CASE("full race: a headless race with penalties, and determinism" * doctest
   CHECK(returned);
 
   // The same seed: the same results table and final state.
-  const Outcome b = run_race(20260925);
+  const Outcome b = run_race(20260926);
   CHECK(b.ticks == a.ticks);
   CHECK(b.checksum == a.checksum);
   REQUIRE(b.results.size() == a.results.size());

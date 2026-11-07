@@ -36,13 +36,14 @@ BoatEnv World::env_at(Vec2 p) const {
   return e;
 }
 
-// race.md §3.5 placement: starboard tack at twa = +100°, 60 % of the polar speed.
+// race.md §3.5 placement: port tack at twa = −60° (a close reach towards the line and its starboard end B), 60 % of
+// the polar speed.
 void World::spawn(std::size_t i, Vec2 p, float psi_hint, bool use_hint) {
   (void)wind_->advance(t_ms());
   if (sea_) sea_tick_ = sea_->at(t_ms());
   const BoatEnv e = env_at(p);
   const BoatEntry& en = entries_[i];
-  const float twa = 100.0f * DEG;
+  const float twa = -60.0f * DEG;  // port: psi = TWD + 60°
   const float psi = use_hint ? psi_hint : wrap_2pi(e.wind_from - twa);
   const std::int32_t front = en.front_sail == -2 ? en.perf->start_front_sail : en.front_sail;
   Boat& b = boats_[i];

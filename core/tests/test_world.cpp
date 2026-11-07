@@ -95,12 +95,15 @@ TEST_CASE("world: a race on the example course") {
   }
   CHECK(w->scene().land().size() == bay().land.size());
 
-  // Spawned on the pre-start side, on starboard at a close reach, apart from each other.
+  // Spawned on the pre-start side, on port at a close reach towards the line, apart from each other.
   std::set<std::pair<float, float>> seen;
   for (std::size_t i = 0; i < w->boat_count(); ++i) {
     const wm::BoatState& s = w->boat(i).state();
     CHECK(race.start_s({s.pos_x, s.pos_y}) < 0.0f);
-    CHECK(wm::wrap_pi(s.twd_from - s.psi) == doctest::Approx(100.0f * wm::DEG).epsilon(0.02));
+    CHECK(wm::wrap_pi(s.twd_from - s.psi) == doctest::Approx(-60.0f * wm::DEG).epsilon(0.02));
+    // heading towards the line, not away (race.md §3.5): 10 m on she is nearer to it
+    const wm::Vec2 ahead = wm::v_add({s.pos_x, s.pos_y}, wm::v_scale(wm::dir(s.psi), 10.0f));
+    CHECK(race.start_s(ahead) > race.start_s({s.pos_x, s.pos_y}) + 2.0f);
     CHECK(s.v > 0.5f);
     seen.insert({s.pos_x, s.pos_y});
   }

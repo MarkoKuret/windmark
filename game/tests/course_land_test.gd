@@ -5,7 +5,8 @@ extends SceneTree
 ##     on their obstacles)
 ##   - the camera never inside land: the chase camera orbiting a boat by the island, and the free camera
 ##   - reset_boat re-places the boat at its start point (free sailing) and restarts the race (race mode)
-##   - race mode: marks at the core's course positions riding the sea, committee boat heading, start and finish
+##   - race mode: marks at the core's course positions riding the sea, committee boat heading, the start line white
+##     and in the chase camera's view from the first frame (hud.md §9.3, race.md §3.5), start and finish
 ##     lines from the race state, flags per signal, laylines per hud.md §6, and a run through every start signal
 ##   - race mode with AI (WM-016.24): the player and 5 AI boats of the core's skippers through the start and the
 ##     first mark in the scene, every boat's node at its core render pose with sails and wakes, the AI boats
@@ -236,6 +237,7 @@ func test_race() -> void:
 	t.ok(absf(Frames.angle_diff(Frames.compass(bow.x, -bow.z), hd)) < 0.1, "committee boat on its resolved heading")
 	var ol := CourseProps.outline(14.0, 4.5)
 	t.ok(ol.size() == 17 and absf(ol[8].x - 7.0) < 1e-4 and absf(ol[0].y + 1.8) < 1e-4, "17-point outline")
+	_first_frame(sc, cv)
 	# run through the sequence with the pilot
 	var r: RawInput = sc.scripted_input
 	var dt := 0.1
@@ -270,6 +272,8 @@ func test_race() -> void:
 		var want := "hidden"
 		if st == CourseView.RACE_SEQUENCE:
 			want = "red" if tr >= -60.0 and cv.is_over(sc.target.pose) else "white"
+		elif st < CourseView.RACE_SEQUENCE:
+			want = "white"
 		elif st >= CourseView.RACE_RACING and not rb["started"]:
 			want = "green"
 		line_ok = line_ok and cv.start_line_state == want
@@ -337,6 +341,42 @@ func test_race() -> void:
 	await process_frame
 
 
+## hud.md §9.3, race.md §3.5: on the first frame of a race the start line is drawn white, the committee boat is on
+## the water, the player's boat is behind the line heading towards it and the line is in the chase camera's view.
+func _first_frame(sc: Node, cv: CourseView) -> void:
+	sc.step_frame(0.0)
+	var sim: CoreSimSource = sc.sim
+	var st := int(sim.core.race()["state"])
+	var drawn := false
+	for l in cv.lines:
+		drawn = drawn or l["kind"] == "start"
+	t.ok(st <= CourseView.RACE_FREE and cv.start_line_state == "white" and drawn,
+		"first frame, before the warning: the start line drawn white (state %d, %s)" % [st, cv.start_line_state])
+	var rc := cv.mark_node("rc")
+	t.ok(rc != null and rc.is_visible_in_tree(), "and the committee boat on the water")
+	var s := sim.state(0)
+	var ab := cv.start_line()
+	var d := ab[1] - ab[0]
+	var p := Vector2(s.pos_x, s.pos_y)
+	var side := d.cross(p - ab[0]) / d.length()  # > 0 on the course side
+	var closing := d.cross(Vector2(sin(s.psi), cos(s.psi))) / d.length()
+	t.ok(side < 0.0 and closing > 0.2, "the boat behind the line heading towards it (%.0f m, closing %.2f)" % [side, closing])
+	# the chase camera's frustum on a 16:9 screen (the headless viewport is square): fov is vertical (keep height)
+	var cam: Camera3D = sc.rig.camera
+	var inv := cam.global_transform.affine_inverse()
+	var tv := tan(deg_to_rad(cam.fov) * 0.5)
+	var seen := 0
+	for i in 41:
+		var q := ab[0].lerp(ab[1], i / 40.0)
+		var lc := inv * Frames.enu_to_scene(q.x, q.y, 0.0)
+		if lc.z < 0.0 and absf(lc.y / -lc.z) <= tv and absf(lc.x / -lc.z) <= tv * 16.0 / 9.0:
+			seen += 1
+	print("  first frame: %.0f m behind the line, closing %.2f, %d of 41 line points in the chase camera" % [-side,
+		closing, seen])
+	t.ok(cam.current and sc.rig.mode == CameraRig.Mode.CHASE and seen >= 8,
+		"the line in the chase camera's view (%d of 41 points)" % seen)
+
+
 ## The node of every boat against the core's render pose at the frame's alpha (conventions.md §11 axes).
 func _pose_err(sc: Node) -> float:
 	var err := 0.0
@@ -369,6 +409,15 @@ func test_ai_race() -> void:
 	for v in sc.boat_views:
 		views_ok = views_ok and v.model != null and v.sail_parts.size() >= 2 and v.is_inside_tree()
 	t.ok(views_ok, "a BoatView with its sails for every boat")
+	_first_frame(sc, sc.course_view)
+	var ab := sc.course_view.start_line() as Array[Vector2]
+	var all_ok := true
+	for b in n:
+		var st := sim.state(b)
+		var d := ab[1] - ab[0]
+		all_ok = all_ok and d.cross(Vector2(st.pos_x, st.pos_y) - ab[0]) < 0.0 \
+			and d.cross(Vector2(sin(st.psi), cos(st.psi))) / d.length() > 0.2
+	t.ok(all_ok, "every boat spawned behind the line heading towards it (race.md §3.5)")
 	var started := {}
 	var rounded := {}
 	var race_ok := true

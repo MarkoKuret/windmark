@@ -132,11 +132,14 @@ std::vector<Vec2> spawn_slots(const ResolvedCourse& course, const VenueData* ven
   const Vec2 mid = v_mid(A, B);
   const float step = 3.0f * L;
   const std::int32_t J = static_cast<std::int32_t>(std::floor(len / step));
+  // Beyond the port end A by up to half the line, not beyond the starboard end B: the boats spawn on port heading
+  // for the line and B, so each has the line ahead of her.
+  const std::int32_t JB = static_cast<std::int32_t>(std::floor(0.5f * len / step));
   std::vector<Vec2> out;
   for (std::int32_t k = 0; k < 200 && out.size() < n; ++k) {
     const float dk = (4.0f + 3.0f * static_cast<float>(k)) * L;
     const Vec2 rc{mid.x + pre.x * dk, mid.y + pre.y * dk};
-    for (std::int32_t j = -J; j <= J; ++j) {
+    for (std::int32_t j = -J; j <= JB; ++j) {
       const float o = static_cast<float>(j) * step;
       const Vec2 p{rc.x + d.x * o, rc.y + d.y * o};
       bool ok = true;

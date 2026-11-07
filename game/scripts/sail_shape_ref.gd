@@ -61,6 +61,15 @@ const TACK_REACH := 0.5
 const LOFT_SIDE := 0.1
 const LOFT_EASE_MAX := 0.5
 const LOFT_STAY_MAX := 1.8
+## §6.5 the drawn whole-kite turn moves at most this fast (rad/s) from the last update's
+const LOFT_EASE_RATE := 0.6
+## §6.5 ... and its belly crosses to the other side at most this fast (per second; 2: a full crossing in 1 s)
+const LOFT_SIDE_RATE := 2.0
+## §6.5 a flogging kite: its side held to leeward forward of the beam (faded out from |AWA| LOFT_FLOG_UP0 over
+## LOFT_FLOG_UP1, rad), its luff collapsing over this share of the chord
+const LOFT_FLOG_UP0 := 70.0 * PI / 180.0
+const LOFT_FLOG_UP1 := 40.0 * PI / 180.0
+const LOFT_FLOG_LUFF := 0.35
 ## §6.5 a lofted kite on a pole keeps this share of the foretriangle base ahead of the forestay (the hard rule)
 const LOFT_STAY_CLEAR := 0.04
 const LOFT_EASE_STEPS := 12
@@ -101,6 +110,11 @@ var stay_w := 0.0
 var stay_c := 0.0
 var loft_stay_c := 0.0
 var loft_stay := false
+var stay_on := true
+var _turn_set := false
+var _turn_step := 0.0
+var _turn_prev := 0.0
+var _side_prev := 1.0
 var fwd := Vector3(0, 0, 1)
 var port := Vector3(1, 0, 0)
 var up := Vector3(0, 1, 0)
@@ -289,6 +303,9 @@ func configure(rest_mid: PackedVector3Array, r: int, c: int, p: Dictionary) -> b
 		loft_stay_c = LOFT_STAY_CLEAR * (dm2 - mast_axis * dm2.dot(mast_axis)).length()
 	_obs = []
 	_ease = 0.0
+	_turn_set = false
+	_turn_prev = 0.0
+	_side_prev = 1.0
 	tack = rest_mid[0]
 	head = rest_mid[(rows - 1) * cols]
 	lh = (head - tack).normalized()
@@ -688,16 +705,31 @@ func _update_loft(phase: int, progress: float, beta: float, gamma: float, shiver
 		t = Frames.smoothstep01((x - _loft_awa[i0]) / (_loft_awa[i1] - _loft_awa[i0]))
 	var dep := minf(fill_gain * clampf(aws / KNOT, 3.0, 6.0) / 6.0, 1.0) * loft_depth
 	var sd := clampf(sin(Frames.wrap_pi(beta + awa)) / LOFT_SIDE, -1.0, 1.0)
+	# a flogging kite (the shiver: on the wind line, or flown beyond its usable angle) keeps its belly to leeward
+	# forward of the beam, its fill breathing and its luff collapsing and refilling, the flutter three times as hard
+	var w_up := 1.0 - Frames.smoothstep01((absf(Frames.wrap_pi(awa)) - LOFT_FLOG_UP0) / LOFT_FLOG_UP1)
+	var kf := shiver * w_up  # forward of the beam: abaft it a luffing kite (a gybe) only shivers
 	var side := sd * (3.0 - sd * sd) / 2.0
-	var i2 := 0.33 * flutter_amp * shiver
+	var side_f := side + (Frames.sgn(awa) - side) * minf(1.0, 2.0 * kf)
+	# the belly crosses over at most at LOFT_SIDE_RATE per second (a gybe turns it inside out over a visible time)
+	if _turn_set and _turn_step > 0.0:
+		var lim_s := LOFT_SIDE_RATE * _turn_step
+		side_f = _side_prev + clampf(side_f - _side_prev, -lim_s, lim_s)
+	_side_prev = side_f
+	var breath := 1.0 - kf * (0.3 + 0.2 * sin(phi) + 0.15 * sin(2.3 * phi + 1.0))
+	var luff_c := kf * (0.5 + 0.5 * sin(1.7 * phi + 0.5))
+	var i2 := 0.33 * flutter_amp * shiver * (1.0 + 2.0 * kf)
 	var fly := PackedVector3Array()
 	fly.resize(n)
 	for k in n:
 		var a := _loft[i0 * n + k]
 		var lf := a + (_loft[i1 * n + k] - a) * t
 		var fl := Vector3(_a[k], _l[k], 0.0)
-		fl += (lf - fl) * dep
-		fl.z *= side
+		fl += (lf - fl) * (dep * breath)
+		fl.z *= side_f
+		if luff_c > 0.0 and _uc[k] < LOFT_FLOG_LUFF:
+			var r := 1.0 - _uc[k] / LOFT_FLOG_LUFF
+			fl.z *= 1.0 - luff_c * r * r
 		if i2 > 0.0:  # luffing: the belly breathes, strongest where it is deep, travelling aft
 			var q := phi - 7.0 * _uc[k]
 			fl += Vector3(0.1 * i2 * sin(q) * absf(fl.z), 0.0, i2 * cos(q) * fl.z)
@@ -740,8 +772,17 @@ func _update_loft(phase: int, progress: float, beta: float, gamma: float, shiver
 			_sections(s_t, piv, ax, th)
 		else:
 			_secs = []
-		_ease = _loft_ease(beta, awa, s_t, piv, ax, th, hd)
-	var xr := Frames.about(piv, ax, th + es * _ease) * s_t
+		stay_on = wb <= LOFT_FADE.y  # not while an asymmetric goes round the bow in a gybe
+		_ease = _loft_ease(es, awa, s_t, piv, ax, th, hd)
+	# the drawn turn moves at most LOFT_EASE_RATE from the last update's over the time since (a placement's first
+	# update, or a step of 0, takes it at once)
+	var turned := es * _ease  # the turn as drawn, out to the side of sgn(beta)
+	if _turn_set and _turn_step > 0.0:
+		var lim := LOFT_EASE_RATE * _turn_step
+		turned = _turn_prev + clampf(turned - _turn_prev, -lim, lim)
+	_turn_prev = turned
+	_turn_set = true
+	var xr := Frames.about(piv, ax, th + turned) * s_t
 	for k in n:
 		var lc := _loc[k]
 		_mid[k] = xr * (tack + ah * lc.x + lh * lc.y + nh * lc.z)
@@ -770,7 +811,7 @@ func _loft_clear(pts: PackedVector3Array, hd: Vector3, lee: Vector3, idx: Packed
 			x = float(_mast_x(pt, lee)[0]) - cp
 		for o in _secs:
 			x = minf(x, float(_clear_x(o, pt, cp)[0]) - cp)
-		if loft_stay:
+		if loft_stay and stay_on:
 			x = minf(x, _stay_x(pt) - loft_stay_c)
 		out[q] = x
 	return out
@@ -801,19 +842,18 @@ func _loft_ease(beta: float, awa: float, s_t: Transform3D, piv: Vector3, ax: Vec
 	for k in n:
 		var lc := _loc[k]
 		q[k] = s_t * (tack + ah * lc.x + lh * lc.y + nh * lc.z)
-	var r_out := _loft_turn(1.0, beta, awa, q, piv, ax, th, hd)
-	if not loft_stay or not (r_out[1] < 0.0):
-		return r_out[0]
-	var r_in := _loft_turn(-1.0, beta, awa, q, piv, ax, th, hd)
-	return -r_in[0] if r_in[1] > r_out[1] else r_out[0]
+	return float(_loft_turn(1.0, beta, awa, q, piv, ax, th, hd)[0])
 
 
 ## §6.5 the turn's solve one way (dir +1 out, -1 in): [the turn (rad, >= 0), the worst clearance over its margin
 ## there (>= 0 when clear)]. After the first step only the vertices then within LOFT_NEAR clearances of the worst are
 ## looked at again, but with the forestay every vertex (the whole kite may come round it).
-func _loft_turn(dir: float, beta: float, awa: float, q: PackedVector3Array, piv: Vector3, ax: Vector3, th: float,
+func _loft_turn(dir: float, es_f: float, awa: float, q: PackedVector3Array, piv: Vector3, ax: Vector3, th: float,
 		hd: Vector3) -> Array:
-	var es := Frames.sgn(beta) * dir
+	# the turn as it is drawn: es_f, the out side times the fade where sgn(beta) flips (_update_loft)
+	var es := es_f * dir
+	if absf(es_f) < 0.05:
+		return [0.0, 0.0]
 	var lee := port * Frames.sgn(awa)
 	var cap := LOFT_STAY_MAX if loft_stay else LOFT_EASE_MAX
 	var delta := 0.0
@@ -846,8 +886,13 @@ func _loft_turn(dir: float, beta: float, awa: float, q: PackedVector3Array, piv:
 			idx = keep
 		var d := pts[at] - piv
 		var rr := (d - ax * d.dot(ax)).length()
-		delta = minf(delta + (-worst) / maxf(rr, 0.5), cap)
+		delta = minf(delta + (-worst) / (maxf(rr, 0.5) * absf(es)), cap)
 	return [delta, left]
+
+
+## §6.5 the time since the last drawn update, for the turn's rate (0: no limit).
+func set_turn_step(dt: float) -> void:
+	_turn_step = dt
 
 
 ## §6.5 the turn of the last update (rad, about the luff, before the ease).

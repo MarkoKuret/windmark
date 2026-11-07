@@ -67,6 +67,15 @@ constexpr double DEG = 3.14159265358979323846 / 180.0;
 constexpr float LOFT_SIDE = 0.1f;
 constexpr float LOFT_EASE_MAX = 0.5f;
 constexpr float LOFT_STAY_MAX = 1.8f;
+// §6.5 the drawn whole-kite turn moves at most this fast (rad/s) from the last update's
+constexpr float LOFT_EASE_RATE = 0.6f;
+// §6.5 ... and its belly crosses to the other side at most this fast (per second; 2: a full crossing in 1 s)
+constexpr float LOFT_SIDE_RATE = 2.0f;
+// §6.5 a flogging kite: its side held to leeward forward of the beam (faded out from |AWA| LOFT_FLOG_UP0 over
+// LOFT_FLOG_UP1, rad), its luff collapsing over this share of the chord
+constexpr float LOFT_FLOG_UP0 = 70.0f * 3.14159265f / 180.0f;
+constexpr float LOFT_FLOG_UP1 = 40.0f * 3.14159265f / 180.0f;
+constexpr float LOFT_FLOG_LUFF = 0.35f;
 // §6.5 a lofted kite on a pole keeps this share of the foretriangle base ahead of the forestay (the hard rule)
 constexpr float LOFT_STAY_CLEAR = 0.04f;
 constexpr int LOFT_EASE_STEPS = 12;
@@ -235,6 +244,9 @@ bool SailShape::configure(const PackedVector3Array& rest, int64_t rows, int64_t 
   }
   obs_.clear();
   ease_ = 0.0f;
+  turn_set_ = false;
+  turn_prev_ = 0.0f;
+  side_prev_ = 1.0f;
 
   const Vector3* r = rest.ptr();
   tack_ = r[0];
@@ -686,16 +698,33 @@ void SailShape::update_loft(int64_t phase, float progress, float beta, float gam
   }
   const float dep = std::min(fill_gain_ * clampf(aws / KNOT, 3.0f, 6.0f) / 6.0f, 1.0f) * loft_depth_;
   const float sd = clampf(std::sin(wrap_pi(beta + awa)) / LOFT_SIDE, -1.0f, 1.0f);
+  // a flogging kite (the shiver: on the wind line, or flown beyond its usable angle) keeps its belly to leeward
+  // forward of the beam, its fill breathing and its luff collapsing and refilling, the flutter three times as hard
+  const float w_up = 1.0f - smooth01((std::fabs(wrap_pi(awa)) - LOFT_FLOG_UP0) / LOFT_FLOG_UP1);
+  const float kf = shiver * w_up;  // forward of the beam: abaft it a luffing kite (a gybe) only shivers
   const float side = sd * (3.0f - sd * sd) / 2.0f;
-  const float i2 = 0.33f * flutter_amp_ * shiver;
+  float side_f = side + (sgn(awa) - side) * std::min(1.0f, 2.0f * kf);
+  // the belly crosses over at most at LOFT_SIDE_RATE per second (a gybe turns it inside out over a visible time)
+  if (turn_set_ && turn_step_ > 0.0f) {
+    const float lim = LOFT_SIDE_RATE * turn_step_;
+    side_f = side_prev_ + clampf(side_f - side_prev_, -lim, lim);
+  }
+  side_prev_ = side_f;
+  const float breath = 1.0f - kf * (0.3f + 0.2f * std::sin(phi_) + 0.15f * std::sin(2.3f * phi_ + 1.0f));
+  const float luff_c = kf * (0.5f + 0.5f * std::sin(1.7f * phi_ + 0.5f));
+  const float i2 = 0.33f * flutter_amp_ * shiver * (1.0f + 2.0f * kf);
   fly_.resize(n_);
   const Vector3* l0 = loft_pts_.data() + static_cast<size_t>(i0) * n_;
   const Vector3* l1 = loft_pts_.data() + static_cast<size_t>(i1) * n_;
   for (int k = 0; k < n_; ++k) {
     const Vector3 lf = l0[k] + (l1[k] - l0[k]) * t;
     Vector3 fl(a_[k], l_[k], 0.0f);
-    fl += (lf - fl) * dep;
-    fl.z *= side;
+    fl += (lf - fl) * (dep * breath);
+    fl.z *= side_f;
+    if (luff_c > 0.0f && uc_[k] < LOFT_FLOG_LUFF) {
+      const float r = 1.0f - uc_[k] / LOFT_FLOG_LUFF;
+      fl.z *= 1.0f - luff_c * r * r;
+    }
     if (i2 > 0.0f) {  // luffing: the belly breathes, strongest where it is deep, travelling aft
       const float q = phi_ - 7.0f * uc_[k];
       fl += Vector3(0.1f * i2 * std::sin(q) * std::fabs(fl.z), 0.0f, i2 * std::cos(q) * fl.z);
@@ -739,11 +768,21 @@ void SailShape::update_loft(int64_t phase, float progress, float beta, float gam
       sections(s_t, piv, ax, th);
     else
       secs_.clear();
-    ease_ = loft_ease(beta, awa, s_t, piv, ax, th, hd);
+    stay_on_ = wb <= LOFT_FADE1;  // not while an asymmetric goes round the bow in a gybe
+    ease_ = loft_ease(es, awa, s_t, piv, ax, th, hd);
   } else {
     secs_.clear();
   }
-  const Transform3D xr = about(piv, ax, th + es * ease_) * s_t;
+  // the drawn turn moves at most LOFT_EASE_RATE from the last update's over the time since (a placement's first
+  // update, or a step of 0, takes it at once)
+  float turned = es * ease_;  // the turn as drawn, out to the side of sgn(beta)
+  if (turn_set_ && turn_step_ > 0.0f) {
+    const float lim = LOFT_EASE_RATE * turn_step_;
+    turned = turn_prev_ + clampf(turned - turn_prev_, -lim, lim);
+  }
+  turn_prev_ = turned;
+  turn_set_ = true;
+  const Transform3D xr = about(piv, ax, th + turned) * s_t;
   for (int k = 0; k < n_; ++k) {
     const Vector3& lc = loc_[k];
     mid_[k] = xr.xform(tack_ + ah_ * lc.x + lh_ * lc.y + nh_ * lc.z);
@@ -770,7 +809,7 @@ void SailShape::loft_clear(const std::vector<Vector3>& pts, const Vector3& hd, c
     const float cp = LOFT_MARGIN * margin_at(pt, hd);
     float x = has_mast_head_ ? mast_x(pt, lee, g) - cp : INFINITY;
     for (const Section& o : secs_) x = std::min(x, clear_x(o, pt, cp, g) - cp);
-    if (loft_stay_) x = std::min(x, stay_x(pt) - loft_stay_c_);
+    if (loft_stay_ && stay_on_) x = std::min(x, stay_x(pt) - loft_stay_c_);
     out[q] = x;
   }
 }
@@ -794,20 +833,18 @@ float SailShape::loft_ease(float beta, float awa, const Transform3D& s_t, const 
     lq_[k] = s_t.xform(tack_ + ah_ * lc.x + lh_ * lc.y + nh_ * lc.z);
   }
   float left = 0.0f;
-  const float out = loft_turn(1.0f, beta, awa, piv, ax, th, hd, left);
-  if (!loft_stay_ || !(left < 0.0f)) return out;
-  // the forestay not cleared turning out: turned in instead when that clears, or is nearer
-  float left_in = 0.0f;
-  const float in = loft_turn(-1.0f, beta, awa, piv, ax, th, hd, left_in);
-  return left_in > left ? -in : out;
+  return loft_turn(1.0f, beta, awa, piv, ax, th, hd, left);
 }
 
 // §6.5 the turn's solve one way (dir +1 out, -1 in): the turn (rad, >= 0) and, in `left`, the worst clearance over
 // its margin there (>= 0 when clear). After the first step only the vertices then within LOFT_NEAR clearances of the
 // worst are looked at again, but with the forestay every vertex (the whole kite may come round it).
-float SailShape::loft_turn(float dir, float beta, float awa, const Vector3& piv, const Vector3& ax, float th,
+float SailShape::loft_turn(float dir, float es_f, float awa, const Vector3& piv, const Vector3& ax, float th,
                            const Vector3& hd, float& left) {
-  const float es = sgn(beta) * dir;
+  // the turn as it is drawn: es_f, the out side times the fade where sgn(beta) flips (update_loft)
+  const float es = es_f * dir;
+  left = 0.0f;
+  if (std::fabs(es_f) < 0.05f) return 0.0f;
   const Vector3 lee = port_ * sgn(awa);
   const float cap = loft_stay_ ? LOFT_STAY_MAX : LOFT_EASE_MAX;
   float delta = 0.0f;
@@ -836,7 +873,7 @@ float SailShape::loft_turn(float dir, float beta, float awa, const Vector3& piv,
     }
     const Vector3 d = lp_[at] - piv;
     const float rr = (d - ax * d.dot(ax)).length();
-    delta = std::min(delta + (-worst) / std::max(rr, 0.5f), cap);
+    delta = std::min(delta + (-worst) / (std::max(rr, 0.5f) * std::fabs(es)), cap);
   }
   return delta;
 }
@@ -1352,6 +1389,7 @@ void SailShape::_bind_methods() {
   ClassDB::bind_method(D_METHOD("set_backed_factor", "s_b"), &SailShape::set_backed_factor);
   ClassDB::bind_method(D_METHOD("get_twist_side"), &SailShape::get_twist_side);
   ClassDB::bind_method(D_METHOD("get_turn"), &SailShape::get_turn);
+  ClassDB::bind_method(D_METHOD("set_turn_step", "dt"), &SailShape::set_turn_step);
   ClassDB::bind_method(D_METHOD("is_loft"), &SailShape::is_loft);
   ClassDB::bind_method(D_METHOD("set_twist_side", "tl"), &SailShape::set_twist_side);
   ClassDB::bind_method(D_METHOD("frame"), &SailShape::frame);

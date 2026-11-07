@@ -270,6 +270,7 @@ class SailSet:
         # 6.5: a lofted kite, on a pole or a sprit, keeps ahead of the forestay (the hard rule): (tack fitting, hounds,
         # margin)
         self.loft_stay = None
+        self.stay_on = True
         if self.flying and self.clearance > 0 and rig.get("forestay_tack") is not None and rig.get("hounds") is not None:
             f0 = np.asarray(rig["forestay_tack"], dtype=np.float64)
             f1 = np.asarray(rig["hounds"], dtype=np.float64)
@@ -464,7 +465,8 @@ class SailSet:
                 self._sections(obstacles, s_t, piv, ax, th, -sgn(awa))
             else:
                 self._secs = []
-            self.ease = self._loft_ease(beta, s_t, piv, ax, th, hd, rest, -sgn(awa))
+            self.stay_on = wb <= LOFT_FADE[1]     # not while an asymmetric goes round the bow in a gybe
+            self.ease = self._loft_ease(es, s_t, piv, ax, th, hd, rest, -sgn(awa))
         self.mid = (Xf.about(piv, ax, th + es * self.ease) * s_t)(rest)
         self.clew0 = self.mid[cols - 1].copy()
         return self.mid
@@ -479,7 +481,7 @@ class SailSet:
             x = self._mast_x(p, lee)[0] - cp
             for o in self._secs:
                 x = min(x, self._clear_x(o, p, cp)[0] - cp)
-            if self.loft_stay is not None:
+            if self.loft_stay is not None and self.stay_on:
                 x = min(x, self._stay_x(p) - self.loft_stay[2])
             out[q] = x
         return out
@@ -497,23 +499,20 @@ class SailSet:
             return np.inf
         return float((p - q) @ FWD)
 
-    def _loft_ease(self, beta, s_t, piv, ax, th, hd, rest, tl):
+    def _loft_ease(self, es_f, s_t, piv, ax, th, hd, rest, tl):
         """6.5: the kite turned as a whole about its luff, away from the centreline, just far enough that no vertex
         is inside the clearance margin of the main, the jib or the mast, or behind the forestay (at most
-        LOFT_EASE_MAX, LOFT_STAY_MAX with the forestay); with the forestay not cleared that way, turned in instead
-        when that clears it or comes nearer (a negative ease)."""
-        q = s_t(rest)
-        out, left = self._loft_turn(1.0, beta, q, piv, ax, th, hd, tl)
-        if self.loft_stay is None or not left < 0.0:
-            return out
-        inn, left_in = self._loft_turn(-1.0, beta, q, piv, ax, th, hd, tl)
-        return -inn if left_in > left else out
+        LOFT_EASE_MAX, LOFT_STAY_MAX with the forestay), solved as it is drawn: es_f, the out side times the fade
+        where sgn(beta) flips."""
+        return self._loft_turn(1.0, es_f, s_t(rest), piv, ax, th, hd, tl)[0]
 
-    def _loft_turn(self, dirn, beta, q, piv, ax, th, hd, tl):
-        """6.5: the turn's solve one way (dirn +1 out, -1 in): (the turn, rad, >= 0; the worst clearance over its
-        margin there, >= 0 when clear). After the first step only the vertices then within LOFT_NEAR clearances of
-        the worst are looked at again, but with the forestay every vertex (the whole kite may come round it)."""
-        es, delta = sgn(beta) * dirn, 0.0
+    def _loft_turn(self, dirn, es_f, q, piv, ax, th, hd, tl):
+        """6.5: the turn's solve one way (dirn +1 out): (the turn, rad, >= 0; the worst clearance over its margin
+        there, >= 0 when clear). After the first step only the vertices then within LOFT_NEAR clearances of the
+        worst are looked at again, but with the forestay every vertex (the whole kite may come round it)."""
+        es, delta = es_f * dirn, 0.0
+        if abs(es_f) < 0.05:
+            return 0.0, 0.0
         lee = -PORT * tl
         cap = LOFT_EASE_MAX if self.loft_stay is None else LOFT_STAY_MAX
         idx = np.arange(len(q))
@@ -531,7 +530,7 @@ class SailSet:
                 idx = idx[x < worst + LOFT_NEAR * self.clearance]
             d = pts[at] - piv
             r = np.linalg.norm(d - ax * (d @ ax))
-            delta = min(delta + (-worst) / max(r, 0.5), cap)
+            delta = min(delta + (-worst) / (max(r, 0.5) * abs(es)), cap)
         return delta, left
 
     def _fly(self, kd, kl, k=None):

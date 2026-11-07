@@ -49,6 +49,8 @@ class SailShape : public godot::RefCounted {
   double get_twist_side() const { return tl_; }
   // §6.5 a lofted kite: the turn about the luff of the last update (before the ease)
   double get_turn() const { return turn_; }
+  // §6.5 the time since the last drawn update, for the turn's rate (0: no limit)
+  void set_turn_step(double dt) { turn_step_ = static_cast<float>(dt); }
   bool is_loft() const { return loft_; }
   void set_twist_side(double v) {
     tl_ = static_cast<float>(v);
@@ -133,7 +135,8 @@ class SailShape : public godot::RefCounted {
   bool has_stay_ = false;  // §7.4 a flying sail on a pole: the forestay (tack fitting, hounds), half width, margin
   godot::Vector3 stay0_, stay1_;
   float stay_w_ = 0.0f, stay_c_ = 0.0f, loft_stay_c_ = 0.0f;
-  bool loft_stay_ = false;
+  bool loft_stay_ = false, stay_on_ = true, turn_set_ = false;
+  float turn_step_ = 0.0f, turn_prev_ = 0.0f, side_prev_ = 1.0f;
   // §4.1 the kite set parameters (defaults by kind in configure); the ones read per update
   float belly_aft_ = 0.5f, belly_up_ = 0.5f, twist_exp_ = 1.5f, twist_lo_ = 0.0f, twist_hi_ = 0.0f, twist_run_ = 0.0f;
   float foot_sag_ = 0.0f, foot_sag_h_ = 0.35f, head_drop_ = 0.0f, clew_lift_ = 0.0f, clew_out_ = 0.0f;

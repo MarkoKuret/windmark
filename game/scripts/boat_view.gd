@@ -124,6 +124,8 @@ var _pole_axis := Vector3.UP
 ## §4.1 the pole's tilt about its heel that lifts its end with a kite's raised tack: the axis (pole frame) and the
 ## pole's length from heel to end; the tilt drawn last
 var _pole_tilt_axis := Vector3.ZERO
+## sail_visuals.md §6.5: a kite's whole-shape turn is rate-limited in time (off for tests that set steady states)
+var turn_rate_limit := true
 var _pole_len := 0.0
 var _pole_tilt := 0.0
 var _mast_step := Vector3.ZERO
@@ -1136,6 +1138,9 @@ func _place(sp: SailPart, phase: int, prog: float, shiver: float, backed: bool, 
 	sp.since += dt
 	if not sp.node.visible or (not animate_sails and sp.updates > 0):
 		return was != sp.node.visible
+	# §6.5 a kite's whole-shape turn moves at most at its rate over the time since its last drawn update
+	if is_flying(sp.type) and sp.shape.has_method("set_turn_step"):
+		sp.shape.set_turn_step(sp.since if turn_rate_limit else 0.0)
 	sp.since = 0.0
 	sp.updates += 1
 	if is_flying(sp.type):

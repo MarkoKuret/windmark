@@ -505,10 +505,13 @@ L    = S_0 for x <= A_0, S_last for x >= A_last, else S_m + (S_{m+1} - S_m) * sm
 D    = min(F, 1) * loft_depth                     // F: the asymmetric fill of §5.1 (light air)
 sd   = clamp(sin(wrap_pi(beta + awa)) / 0.1, -1, 1) ; side = sd (3 - sd^2) / 2      // the belly on the side the wind
                                                   // blows it to; through the wind line it goes flat and over
-k_f  = I                                          // the luff shiver (sails.md §7): the kite on the wind line, or flown
+w_up = 1 - smoothstep((|awa| - 70 deg) / 40 deg)  // forward of the beam (abaft it a luffing kite, in a gybe, only
+                                                  // shivers, and the side still flips round the bow)
+k_f  = I w_up                                     // the luff shiver (sails.md §7): the kite on the wind line, or flown
                                                   // beyond its usable angle (its flogging share, boat.md §5.8)
-w_up = 1 - smoothstep((|awa| - 70 deg) / 40 deg)  // forward of the beam (abaft it the side still flips round the bow)
-side = side + (sgn(awa) - side) * min(1, 2 k_f) * w_up      // a flogging kite keeps its belly to leeward, never flat
+side = side + (sgn(awa) - side) * min(1, 2 k_f)   // a flogging kite keeps its belly to leeward, never flat
+side, the drawn turn (below) : each moves at most at its rate from the last update's (LOFT_SIDE_RATE 2/s: the belly
+                                                  // turns inside out in a gybe over half a second or more)
 b    = 1 - k_f (0.3 + 0.2 sin(phi) + 0.15 sin(2.3 phi + 1))  // the fill breathes, irregular, never empty (0.35 to 1.05)
 fly  = (a, l, 0) + D b (L - (a, l, 0)),  fly.n *= side
 fly.n *= 1 - k_f (0.5 + 0.5 sin(1.7 phi + 0.5)) (1 - uc / 0.35)^2   for uc < 0.35    // the luff collapses, refills
@@ -1531,7 +1534,12 @@ Flutter phase `φ = 0` unless stated.
     (native), the kite up at AWA 60° to 180° in 10° steps on both gybes, sheeted at 60, 85, 100 and 130 % of its
     optimum (hoisting and dropping are outside the rule): the forestay passes through no triangle of the
     kite, and no vertex within 0.5 m of it athwartships, between its ends in height, lies less than 0.05 m ahead of
-    it. The test prints the smallest such distance per kite.
+    it; and the same with the luff shivering in full (flogging, §6.5) at AWA 60° to 100°, over several flutter
+    phases. The test prints the smallest such distance per kite.
+29. **Gybes move continuously.** On the core, every class with a spinnaker settled on a broad reach (TWA 150°) with
+    the kite up gybes to the other broad reach in 8 and 20 kn, both ways, with the auto helm and with the helm set
+    and held until the new course is near: every tick no kite vertex, the clew or the pole end moves more than
+    `2 sqrt(g LOA) dt` (native, the turn's rate on, as in the game).
 
 ## 13. Dependencies and open points
 

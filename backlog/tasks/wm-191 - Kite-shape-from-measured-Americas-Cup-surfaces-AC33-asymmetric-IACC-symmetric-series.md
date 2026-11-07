@@ -3,11 +3,11 @@ id: WM-191
 title: >-
   Kite shape from measured America's Cup surfaces (AC33 asymmetric, IACC
   symmetric series)
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-06 21:29'
-updated_date: '2026-11-07 13:31'
+updated_date: '2026-11-07 19:15'
 labels:
   - kite
   - visuals

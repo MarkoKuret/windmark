@@ -32,6 +32,7 @@ func _init() -> void:
 	test_next_mark()
 	test_laylines_shift_hint()
 	test_position()
+	test_opponents()
 	test_rules_messages()
 	test_radar_colours()
 	test_penalties_prompts()
@@ -390,9 +391,11 @@ func test_position() -> void:
 	h.race.names = {1: "Nora"}
 	_refresh(h, sim)
 	t.ok(h.text_of("rank") == "2 / 3", "rank: " + h.text_of("rank"))
-	t.ok(h.text_of("gap") == "Leader  +100 m  +0:18 @ Windward", "gap to the leader at the common split: " + h.text_of("gap"))
-	t.ok(h.text_of("ahead") == "Ahead  Nora  +100 m" and h.text_of("behind") == "Behind  Boat 3  -100 m",
-		"%s | %s" % [h.text_of("ahead"), h.text_of("behind")])
+	t.ok(h.text_of("gap") == "Leader  Nora  +100 m  +0:18 @ Windward",
+		"the leader named, the gap at the common split: " + h.text_of("gap"))
+	t.ok(h.text_of("ahead") == "" and h.text_of("behind") == "Behind  Boat 3  -100 m",
+		"no ahead line when the boat ahead leads (the leader line names her): '%s' | %s" % [h.text_of("ahead"),
+			h.text_of("behind")])
 	# the order flips: shown only after it has held for 2 s
 	sim.order = PackedInt32Array([0, 1, 2])
 	_refresh(h, sim, 0, 39)
@@ -428,6 +431,69 @@ func test_position() -> void:
 	_refresh(h, sim)
 	var rows := h.ranking_text()
 	t.ok(h.ranking_panel.visible and rows.size() == 3 and rows[0].begins_with("1  Boat 3"), "ranking list: %s" % str(rows))
+	h.free()
+
+
+func test_opponents() -> void:
+	t.begin("opponents with a face: the leader named, the boat ahead with a time gap, sail numbers (hud.md §10)")
+	var sim := RaceStubSim.new(4)
+	sim.race_d["state"] = RaceText.RaceState.RACING
+	sim.race_d["race_time"] = 300.0
+	for b in 4:
+		sim.boats_d[b]["started"] = true
+		sim.boats_d[b]["next"] = 2
+		sim.boats_d[b]["last_rounded"] = 1
+		sim.put(b, 100.0 * b, 500.0, PI, 3.0)
+	sim.boats_d[0]["D"] = 1500.0
+	sim.boats_d[1]["D"] = 1400.0
+	sim.boats_d[2]["D"] = 1600.0
+	sim.boats_d[3]["D"] = 1450.0
+	sim.order = PackedInt32Array([1, 3, 0, 2])
+	sim.splits = {"0:1": 250.0, "1:1": 232.0, "2:1": 260.0, "3:1": 245.0}
+	var h := _hud(sim)
+	var r := h.race
+	r.names = {1: "Nora", 2: "Ivo", 3: "Kestrel"}
+	r.boat_names = {0: "Sirocco", 1: "Nora", 2: "Ivo", 3: "Kestrel"}
+	r.sail_numbers = {0: "7", 1: "12", 2: "3", 3: "21"}
+	r.ai_levels = {1: "Expert", 2: "Easy", 3: "Pro"}
+	h.density_auto = false
+	h.density = Hud.Density.RACE
+	_refresh(h, sim)
+	t.ok(h.text_of("gap") == "Leader  Nora  +100 m  +0:18 @ Windward", "leader named: " + h.text_of("gap"))
+	t.ok(h.text_of("ahead") == "Ahead  Kestrel  +50 m  +0:05 @ Windward",
+		"the boat ahead with her split gap: " + h.text_of("ahead"))
+	var bug := _page_texts(h.bug_block)
+	t.ok(h.has_item("bug_ahead") and bug.has(h.text_of("gap")) and bug.has(h.text_of("ahead"))
+		and not bug.has(h.text_of("behind")), "Race density: the leader and the boat ahead, not the one behind: %s"
+		% str(bug))
+	h.density = Hud.Density.GLANCE
+	h.frame(0.3)
+	bug = _page_texts(h.bug_block)
+	t.ok(not bug.has(h.text_of("gap")) and not bug.has(h.text_of("ahead")), "Glance: no gap lines: %s" % str(bug))
+	h.density = Hud.Density.DATA
+	h.frame(0.3)
+	bug = _page_texts(h.bug_block)
+	t.ok(bug.has(h.text_of("ahead")) and bug.has("Behind  Ivo  -100 m"), "Data: ahead and behind: %s" % str(bug))
+	# the boat ahead rounds the next mark: her gap is the estimate over V_ref, marked ~, with no split label
+	sim.boats_d[3]["last_rounded"] = 2
+	sim.boats_d[3]["next"] = 3
+	_refresh(h, sim)
+	t.ok(r.ahead_estimate and h.text_of("ahead").begins_with("Ahead  Kestrel  +50 m  ~+")
+		and not h.text_of("ahead").contains("@"), "between splits the estimate: " + h.text_of("ahead"))
+	t.near(r.ahead_time, 50.0 / r._v_ref(sim, 0), 1e-6, "estimate = distance / V_ref")
+	# the ranking list: sail numbers, the boat and skipper as the results name them (menus.md §5)
+	h.show_ranking = true
+	_refresh(h, sim)
+	var rows := h.ranking_text()
+	t.ok(rows.size() == 4 and rows[0] == "1  12  Nora  [AI · Expert]    " and rows[1].begins_with("2  21  Kestrel  [AI · Pro]  +50 m")
+		and rows[2].begins_with("3  7  Sirocco  [You]  +100 m"), "ranking rows: %s" % str(rows))
+	var tab := _page_texts(h.ranking_panel)
+	t.ok(tab.has("SAIL") and tab.has("SKIPPER") and tab.has("21") and tab.has("KESTREL") and tab.has("AI · Pro"),
+		"ranking table: a Sail column: %s" % str(tab))
+	for rw in r.ranking_rows():
+		var b := int(rw["boat"])
+		t.ok(rw["name"] == r.boat_label(b) and rw["skipper"] == r.skipper_label(b) and rw["sail"] == r.sail_numbers[b],
+			"row %d named as in the results: %s, %s, %s" % [b, rw["sail"], rw["name"], rw["skipper"]])
 	h.free()
 
 
@@ -757,9 +823,11 @@ func test_results_feed() -> void:
 	_refresh(h, sim, 0, RaceHudValues.CARD_TICKS)
 	var rows := h.results_text_rows()
 	t.ok(h.race.results_final and h.results_panel.visible and h.results_title == "Results", "final results shown")
-	t.ok(rows.size() == 3 and rows[0] == ["1", "Nora", "", "Expert", "0:23:20.00", "", "", "1"], "row 1: %s" % str(rows[0]))
-	t.ok(rows[1][4] == "0:23:32.35" and rows[1][5] == "+0:12" and rows[1][1] == "You", "row 2: %s" % str(rows[1]))
-	t.ok(rows[2][4] == "0:25:00.00 proj." and rows[2][3] == "Pro", "projected AI finish marked: %s" % str(rows[2]))
+	t.ok(rows.size() == 3 and rows[0] == ["1", "", "Nora", "AI · Expert", "0:23:20.00", "", "", "1"],
+		"row 1 (place, sail, boat, skipper as on the results screen): %s" % str(rows[0]))
+	t.ok(rows[1][4] == "0:23:32.35" and rows[1][5] == "+0:12" and rows[1][2] == "You" and rows[1][3] == "You",
+		"row 2: %s" % str(rows[1]))
+	t.ok(rows[2][4] == "0:25:00.00 proj." and rows[2][3] == "AI · Pro", "projected AI finish marked: %s" % str(rows[2]))
 	h.free()
 
 
@@ -892,7 +960,7 @@ func test_density() -> void:
 	t.ok(h.phase() == "beat", "phase beat: " + h.phase())
 	g = _items_at(h, G)
 	t.ok(_has_all(g, ["bsp", "twa_dial", "bug", "feed_own"]) and _has_none(g, ["cue", "target", "shift", "bug_lap",
-		"bug_gap", "mark_eta", "feed"] + race_cells + data_only), "beat Glance: %s" % str(g))
+		"bug_gap", "bug_ahead", "mark_eta", "feed"] + race_cells + data_only), "beat Glance: %s" % str(g))
 	h.frame(0.3)
 	var page := _page_texts(h.inst_page)
 	t.ok(page.has("BOAT SPEED") and page.has("TWA") and not page.has("SPEED / TARGET") and not page.has("HEADING")
@@ -900,7 +968,7 @@ func test_density() -> void:
 	t.ok(h.radar.compact and h.bug_block.visible and not page.has("TRUE WIND") and not page.has("HEEL"),
 		"Glance: small radar, no wind speed and no heel on the page")
 	rc = _items_at(h, RC)
-	t.ok(_has_all(rc, race_cells + ["shift", "bug_gap", "mark_eta", "feed_own"]) and _has_none(rc,
+	t.ok(_has_all(rc, race_cells + ["shift", "bug_gap", "bug_ahead", "mark_eta", "feed_own"]) and _has_none(rc,
 		data_only + ["bug_lap", "bug_gaps", "mark_brg", "feed", "hint", "cue", "target"]),
 		"beat Race: the racer's list and nothing more: %s" % str(rc))
 	h.frame(0.3)
@@ -911,7 +979,7 @@ func test_density() -> void:
 	t.ok(h.get_node_or_null("Wind") == null and h.feed_block.position.y == HudStyle.margins(h._screen_size()).y,
 		"no wind page: the top right holds the feed at the margin")
 	d = _items_at(h, D)
-	t.ok(_has_all(d, data_only + ["bug_lap", "bug_gaps", "mark_brg", "feed", "hint"]), "beat Data: %s" % str(d))
+	t.ok(_has_all(d, data_only + ["bug_ahead", "bug_lap", "bug_gaps", "mark_brg", "feed", "hint"]), "beat Data: %s" % str(d))
 	h.frame(0.3)
 	page = _page_texts(h.inst_page)
 	t.ok(page.has("SOG") and page.has("COG") and page.has("AWS") and not page.has("POLAR %") and page.has("HEEL")
@@ -1964,8 +2032,10 @@ func test_scene_race() -> void:
 	t.ok(hud.text_of("clock").begins_with("Warning in") or hud.text_of("clock").begins_with("Start in"),
 		"countdown: " + hud.text_of("clock"))
 	t.ok(hud.ranking_panel.visible and rows.size() == 4, "ranking list held open through ui_input")
-	var badges := rows.filter(func(r: String) -> bool: return r.contains("[Expert]"))
+	var badges := rows.filter(func(r: String) -> bool: return r.contains("[AI · Expert]"))
 	t.ok(badges.size() == 3, "AI badges from the sim (%d)" % badges.size())
+	t.ok(rows.all(func(r: String) -> bool: return r.split("  ")[1].is_valid_int()),
+		"every ranking row carries the sail number of her livery: %s" % str(rows))
 	t.ok(hud.race.contacts.size() == 3, "three boats on the radar")
 	raw.held.erase(&"rankings")
 	sc.call("step_frame", 1.0 / 30.0)

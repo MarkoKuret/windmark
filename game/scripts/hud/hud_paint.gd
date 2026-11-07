@@ -330,12 +330,14 @@ static func bug(b: HudCanvas, h: Hud) -> void:
 		if line != "":
 			b._s(Vector2(0, y) * k, line, int(roundf(LAB * k)), HudStyle.PAPER, 600, TRACK)
 			y += 30.0
-	# hud.md §16.1: the leader gap at Race, the boats ahead and behind at Data
+	# hud.md §16.1: the leader and the boat ahead at Race, the boat behind at Data
 	var keys: Array[String] = []
 	if h.has_item("bug_gap") or h.has_item("bug_gaps"):
 		keys.append("gap")
+	if h.has_item("bug_ahead") or h.has_item("bug_gaps"):
+		keys.append("ahead")
 	if h.has_item("bug_gaps"):
-		keys.append_array(["ahead", "behind"])
+		keys.append("behind")
 	for key in keys:
 		var t := h.text_of(key)
 		if t != "":
@@ -672,7 +674,10 @@ static func turn_in_label(leg_type: String) -> String:
 
 # ---- ranking list and results ----
 
-static func table(b: HudCanvas, title: String, header: Array, rows: Array, widths: Array, own_row := -1) -> void:
+## a centred table (the ranking list, the results): the boat names in column `name_col` in caps, column `mist_col`
+## (the skipper) in mist
+static func table(b: HudCanvas, title: String, header: Array, rows: Array, widths: Array, own_row := -1,
+		name_col := 2, mist_col := 3) -> void:
 	var k := b.k
 	var w := 0.0
 	for x in widths:
@@ -694,8 +699,8 @@ static func table(b: HudCanvas, title: String, header: Array, rows: Array, width
 		var col := HudStyle.MARK if ri == own_row else HudStyle.PAPER
 		for i in row.size():
 			var t := str(row[i])
-			b._s(Vector2(x, y) * k, t.to_upper() if i == 1 else t, int(roundf(20 * k)),
-				HudStyle.MIST if i == 3 else col, 600, 0.04 if i == 1 else 0.0)
+			b._s(Vector2(x, y) * k, t.to_upper() if i == name_col else t, int(roundf(20 * k)),
+				HudStyle.MIST if i == mist_col else col, 600, 0.04 if i == name_col else 0.0)
 			x += widths[i]
 		y += 38.0
 

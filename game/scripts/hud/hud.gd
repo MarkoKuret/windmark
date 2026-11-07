@@ -57,8 +57,8 @@ const LADDER_STEP := 4.0
 const LADDER_CLEAR := 6.0
 ## controls.md §3: a View press shorter than this is a tap (density), longer the ranking list
 const VIEW_TAP := 0.3
-const RANK_W := [70.0, 260.0, 130.0, 120.0, 120.0]
-const RESULT_W := [70.0, 220.0, 200.0, 120.0, 170.0, 110.0, 90.0, 90.0]
+const RANK_W := [70.0, 90.0, 260.0, 170.0, 130.0, 120.0]
+const RESULT_W := [70.0, 90.0, 220.0, 170.0, 170.0, 110.0, 90.0, 90.0]
 
 var assist := Assist.STANDARD:
 	set(a):
@@ -349,7 +349,8 @@ func phase() -> String:
 
 ## The items the density and the assist show now (hud.md §16.1, §14): instrument cells ("bsp", "twa_dial",
 ## "twa", "hdg", "tws", "heel_bar", "vmg_kn", "awa", "sog", "cog", "twd", "aws"; no target speed, hud.md §4), "bug",
-## "bug_lap", "bug_gap" (the leader gap), "bug_gaps" (ahead and behind), "shift" (the chip in the heading cell),
+## "bug_lap", "bug_gap" (the leader gap), "bug_ahead" (the boat ahead), "bug_gaps" (the boat behind), "shift" (the
+## chip in the heading cell),
 ## "feed" (every event, 6 lines), "feed_own" (the viewed boat's events, 3 lines), "start_min", "start_full", "hint",
 ## "mark_eta", "mark_brg" (the mark tag's second line), "radar", "helm". Race is the racer's list: speed, the dial,
 ## heading, heel, the true wind speed, the mark's distance and time, rank and gap; the rest is Data.
@@ -774,12 +775,12 @@ func _race_frame() -> void:
 		results_title = "Results" if r.results_final else "Provisional results"
 
 
-## the ranking list as text rows (tests, previews)
+## the ranking list as text rows (tests, previews): "2  12  Nora  [AI · Expert]  +45 m  "
 func ranking_text() -> Array[String]:
 	var out: Array[String] = []
 	for rw in race.ranking_rows():
-		out.append("%d  %s%s  %s  %s" % [rw["rank"], rw["name"], "  [%s]" % rw["ai"] if rw["ai"] != "" else "",
-			rw["gap"], rw["status"]])
+		out.append("%d  %s%s%s  %s  %s" % [rw["rank"], rw["sail"] + "  " if rw["sail"] != "" else "", rw["name"],
+			"  [%s]" % rw["skipper"] if rw["skipper"] != "" else "", rw["gap"], rw["status"]])
 	return out
 
 
@@ -789,8 +790,8 @@ func _paint_ranking(b: HudCanvas) -> void:
 	for rw in race.ranking_rows():
 		if int(rw.get("boat", -1)) == race.boat:
 			own = rows.size()
-		rows.append([str(rw["rank"]), rw["name"], rw["gap"], rw["ai"], rw["status"]])
-	HudPaint.table(b, "Ranking", ["", "Boat", "Gap", "", "Status"], rows, RANK_W, own)
+		rows.append([str(rw["rank"]), rw["sail"], rw["name"], rw["skipper"], rw["gap"], rw["status"]])
+	HudPaint.table(b, "Ranking", ["", "Sail", "Boat", "Skipper", "Gap", "Status"], rows, RANK_W, own)
 
 
 func _paint_results(b: HudCanvas) -> void:
@@ -798,11 +799,12 @@ func _paint_results(b: HudCanvas) -> void:
 	for i in race.result_rows.size():
 		if int(race.result_rows[i].get("boat", -1)) == race.boat:
 			own = i
-	HudPaint.table(b, results_title, ["Place", "Boat", "Skipper", "", "Time", "Gap", "Code", "Points"],
+	HudPaint.table(b, results_title, ["Place", "Sail", "Boat", "Skipper", "Time", "Gap", "Code", "Points"],
 		results_text_rows(), RESULT_W, own)
 
 
-## hud.md §13 results rows as text cells: place, boat, skipper, AI badge, finish time, gap, code, points
+## hud.md §13 results rows as text cells, as the results screen's (menus.md §5): place, sail, boat, skipper (You or
+## the AI badge), finish time, gap, code, points
 func results_text_rows() -> Array:
 	var out := []
 	for r in race.result_rows:
@@ -814,7 +816,9 @@ func results_text_rows() -> Array:
 		var pts := ""
 		if not is_nan(r["points"]):
 			pts = HudFormat.points(r["points"])
-		out.append([place, r["name"], r["skipper"], r["ai"], t, g, r["code"], pts])
+		var bi := int(r["boat"])
+		out.append([place, str(race.sail_numbers.get(bi, "")), race.boat_label(bi), race.skipper_label(bi), t, g,
+			r["code"], pts])
 	return out
 
 

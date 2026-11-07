@@ -390,6 +390,15 @@ func test_screen() -> void:
 	t.ok(own_box.bg_color == MenuTheme.ACCENT and own_box.border_width_left == MenuTheme.FOCUS_EDGE,
 		"the player's row in the accent with the navy edge")
 	t.ok(rs.shown_rows[0][3] == "AI · Expert" and rs.shown_rows[2][6] == "Racing", "AI badge, live status: %s" % str(rs.shown_rows[2]))
+	# hud.md §10: the HUD's ranking list names every boat as the results do (sail, boat, skipper)
+	var by_boat := {}
+	for rw in host.hud.race.ranking_rows():
+		by_boat[int(rw["boat"])] = [rw["sail"], rw["name"], rw["skipper"]]
+	var same := by_boat.size() == host.hud.race.result_rows.size()
+	for i in host.hud.race.result_rows.size():
+		var b := int(host.hud.race.result_rows[i]["boat"])
+		same = same and by_boat.has(b) and by_boat[b] == rs.shown_rows[i].slice(1, 4)
+	t.ok(same, "ranking list and results name the boats alike: %s | %s" % [str(by_boat), str(rs.shown_rows)])
 	# the close: final rows, codes and the projected finish
 	sim.results_a = [
 		{"boat": 1, "place": 1, "code": 0, "code_name": "", "points": 1.0, "t_finish_us": 1400000000, "projected": false},

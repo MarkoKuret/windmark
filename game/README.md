@@ -228,11 +228,14 @@ starts. The prefetch and the spreading are on while the scene processes itself (
   guy) and the asymmetric's tack line, from the placed clew through the sidecar's `rig.sheet_leads` (car block or
   quarter block) to the winch, three turns on the drum and the tail coiled on the cockpit floor. The working line
   sags by its tension (the sail's area, the apparent wind, the luff shiver: a trimmed sheet is straight, a flogging
-  one droops and swings with the sail's flutter phase); the lazy line hangs slack and lies on the deck (a 5 cm height
-  field of the class's deck), round the mast front or the forestay. One mesh per boat with two surfaces (headsail and
+  one droops and swings with the sail's flutter phase); the lazy line hangs slack and lies on the deck (a 2.5 cm height
+  field of the class's deck), round the mast front or the forestay. The rings move as a damped rope guided by that
+  hanging shape (`sail_visuals.md` §11.3 "Rope"): a sail corner or a route that jumps sends a smooth, damped wave
+  along the line instead of a jump or a zig-zag; `BoatSheets.snap()` lays the lines on their shapes at once (a
+  respawn). One mesh per boat with two surfaces (headsail and
   flying-sail lines), rewritten in place by the native `SheetRopes` in the frames a sail is redrawn (thin, when a
-  metre is under 31 px on screen, at most 15 Hz). Cost on an M-series Mac: about 50 µs per redraw for a wm7 with jib and kite (1 870 vertices), 1 µs per frame
-  between redraws; the GDScript `SheetRopesRef` about 15 times slower.
+  metre is under 31 px on screen, at most 15 Hz). Cost on an M-series Mac: about 45 µs per redraw for a wm7 with jib and kite (1 870 vertices), 1 µs per frame
+  between redraws; the GDScript `SheetRopesRef` about 25 times slower.
 - **Levels of detail** (`sail_visuals.md` §11.4): one model per boat, simplified by the engine by size on screen (see
   "Notes on the imported boats"); the moving parts follow the helm and the sails at every distance; the sheets are
   full, thin or hidden by the size of a metre on screen. `BoatLivery` puts the boat's one material on every node.
@@ -444,7 +447,12 @@ distance and the frustum, and prints the cost per sail. `tests/sheets_lod_test.g
 tests 21 and 22: the native `SheetRopes` against `SheetRopesRef` and against Godot's own vertex encoding, the wm7 and
 wm12 sheets from the clew to the lead and the drum, sag by load, the lazy sheet on the deck, a tack, a sail down,
 the kite's sheet, lazy sheet and tack line; the level switch with its hysteresis, the livery on every level and the
-moving parts; the rope materials by function, baked and procedural; and the cost per boat. The previews: `tests/sail_preview_dump.gd` sails a boat on
+moving parts; the rope materials by function, baked and procedural; and the cost per boat. `tests/ropes_test.gd`
+(run by the same script) runs test 29: every class sailed on the core through a kite hoist, the kite upwind, a gybe,
+let fly, an over-sheet, a drop and a tack, every line's rings measured each frame for kinks, jumps, stretched
+segments and NaNs (`-- probe` prints the numbers without the limits). `tests/ropes_preview_dump.gd -- <tag>` then
+`tests/ropes_preview.py before after` set the ropes of two builds side by side through those moments, into
+`docs/design/ropes_2026-11-07/`. The previews: `tests/sail_preview_dump.gd` sails a boat on
 the core into trimmed, eased, let-fly, tacking, hoisting, reaching, running and dropping situations and dumps the
 bent boat, `tests/sail_preview.py` renders them offscreen to `generated/sail_preview/` (with `--publish` the
 JPEGs in `tests/previews/sails_*.jpg`). It lights the boat with the default daytime preset (`SkyRig`) under the

@@ -319,8 +319,13 @@ func test_race() -> void:
 	sc.hud.refresh_text()
 	var txt: String = sc.hud.text_of("next")
 	t.ok(txt == "Windward", "the race HUD names the next mark (%s)" % txt)
-	# reset restarts the race
+	# reset asks first in a race (controls.md §2), the second press within 3 s restarts it
 	r.pressed.clear()
+	r.pressed.append(&"reset_boat")
+	sc.step_frame(0.0)
+	r.pressed.clear()
+	t.ok(sc.sim == sim and sc.hud.text_of("message").begins_with("Restart the race? Press "),
+		"reset once asks, restarts nothing: %s" % sc.hud.text_of("message"))
 	r.pressed.append(&"reset_boat")
 	sc.step_frame(0.0)
 	r.pressed.clear()

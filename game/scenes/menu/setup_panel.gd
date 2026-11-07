@@ -606,13 +606,22 @@ func refresh_preview() -> void:
 	refresh_briefing()
 
 
-## The map's caption: the course's laps and legs (`2 laps, 6 legs`), "" without a course.
+## The map's caption: the course's laps and legs (`2 laps, 6 legs`), the legs alone when the course's name already
+## says the laps (`Windward-leeward, 2 laps`: `6 legs`, menus.md §1.1.1); "" without a course.
 func course_caption() -> String:
 	var c := _course_doc()
 	if c.is_empty():
 		return ""
+	return caption_for(c)
+
+
+static func caption_for(c: Dictionary) -> String:
 	var ll := CourseMap.laps_legs(c)
-	return "%d %s, %d legs" % [ll.x, "lap" if ll.x == 1 else "laps", ll.y]
+	var laps := "%d %s" % [ll.x, "lap" if ll.x == 1 else "laps"]
+	var legs := "%d %s" % [ll.y, "leg" if ll.y == 1 else "legs"]
+	if str(c.get("name", "")).to_lower().contains(laps):
+		return legs
+	return "%s, %s" % [laps, legs]
 
 
 ## The Start step's summary lines (menus.md §1.1), [label, value].

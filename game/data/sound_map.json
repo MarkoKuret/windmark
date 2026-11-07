@@ -135,6 +135,7 @@
     "race.horn_long": {"files": ["race/horn_long.ogg"], "loop": false, "bus": "race", "space": "2d", "volume": 0.8,
                        "synth": "horn"},
     "race.horn_finish": {"files": ["race/horn_finish.ogg"], "loop": false, "bus": "race", "space": "2d", "volume": 0.8},
+    "race.ocs": {"files": ["race/ocs.ogg"], "loop": false, "bus": "race", "space": "2d", "volume": 0.7},
     "race.penalty": {"files": ["race/penalty.ogg"], "loop": false, "bus": "race", "space": "2d", "volume": 0.7},
     "race.penalty_done": {"files": ["race/penalty_done.ogg"], "loop": false, "bus": "race", "space": "2d", "volume": 0.7},
     "race.beep": {"files": ["race/beep.ogg"], "loop": false, "bus": "race", "space": "2d", "volume": 0.5},

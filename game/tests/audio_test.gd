@@ -309,14 +309,29 @@ func test_signals() -> void:
 	_run(a, sim, 0.2, null, h)
 	t.ok(_played(a, "race.penalty").size() == 1, "the own penalty sounds")
 	t.ok(_played(a, "race.penalty_done").size() == 1, "and penalty done")
+	# OCS (§5): the own boat's plays race.ocs once, another boat's nothing
+	a.played.clear()
+	sim.race_ev = [_rev(RaceText.Ev.BOAT_OCS, {"boat": 1, "flag": RaceText.Flag.P})]
+	_run(a, sim, SimSource.DT, null, h)
+	sim.race_ev = []
+	_run(a, sim, 0.2, null, h)
+	t.ok(_played(a, "race.ocs").is_empty(), "another boat's OCS is silent")
+	sim.race_ev = [_rev(RaceText.Ev.BOAT_OCS, {"boat": 0, "flag": RaceText.Flag.P})]
+	_run(a, sim, SimSource.DT, null, h)
+	sim.race_ev = []
+	_run(a, sim, 0.2, null, h)
+	var ocs := _played(a, "race.ocs")
+	t.ok(ocs.size() == 1 and ocs[0]["bus"] == "race" and ocs[0]["file"] != "", "the own OCS sounds: %s" % str(ocs))
 	# a rule warning with the own boat holding right of way: no voice files in the default set, so silent
 	sim.rules_ev = [_uev(RaceText.Rev.RULE_WARNING, {"boat": 1, "other": 0, "rule": RaceText.Rule.R10})]
 	_run(a, sim, SimSource.DT, null, h)
 	sim.rules_ev = []
 	t.ok(_played(a, "voice.hail_starboard").is_empty() and warnings.is_empty(), "hails silent without files")
-	# countdown beeps (Full assist)
+	# countdown beeps (§5, hud.md §14): Full and Standard, not Minimal
+	t.ok(GameAudio.beeps_at(Hud.Assist.FULL) and GameAudio.beeps_at(Hud.Assist.STANDARD)
+		and not GameAudio.beeps_at(Hud.Assist.MINIMAL), "countdown beeps at Full and Standard, not Minimal")
 	a.played.clear()
-	a.countdown_beeps = true
+	a.countdown_beeps = GameAudio.beeps_at(Hud.Assist.STANDARD)
 	sim.race_d["state"] = RaceText.RaceState.SEQUENCE
 	for i in 700:  # race time -32 s to +3 s
 		sim.race_d["race_time"] = -32.0 + i * SimSource.DT

@@ -113,10 +113,7 @@ class OnTheClass(unittest.TestCase):
             self.assertLess(np.linalg.norm(Q[0, 0] - P[0, 0]), 1e-4)        # the tack on its fitting
             self.assertLess(np.linalg.norm(Q[-1, 0] - P[-1, 0]), 1e-4)      # the head at its halyard
             self.assertLess(np.ptp(Q[-1], axis=0).max(), 1e-4)              # a pointed head
-            if spec["clew_ease"] == 0.0:
-                self.assertLess(abs(L[0, -1, 2]), 1e-4)                     # the clew in the rest plane
-            else:
-                self.assertGreater(L[0, -1, 2], 0.0)                        # the clew eased forward (6.5)
+            self.assertLess(abs(L[0, -1, 2]), 1e-4)                         # the clew in the rest plane
             self.assertGreater(L[rows // 3, cols // 2, 2], 0.0)             # the belly to port
             # the measured sections kept above the lifted foot: each row's camber within two points
             M = K.surface_grid(sh["surfaces"][spec["surface"]])
@@ -146,26 +143,6 @@ class OnTheClass(unittest.TestCase):
     def test_wm21(self):
         blk = self.check("wm21", "spin", "iacc_sym_series")
         self.assertEqual(blk["surface"], ["I", "II", "III", "IV", "V"])
-        # the dead-run sail projected forward with its clew eased; the 150 sail as it was
-        self.assertEqual(blk["run_bow"], [0.0, 0.0, 0.0, 0.0, 0.1])
-        self.assertEqual(blk["clew_ease_deg"], [0.0, 0.0, 0.0, 0.0, 55.0])
-
-    def test_run_projected(self):
-        # every row toward the belly by bow * luff * sin(PI h), then turned about the luff axis by ease (1 - h)^2:
-        # the luff axis, so the tack and the head, stays; the clew comes toward the belly
-        b = boat("wm21")
-        P = b.sails["spin"].P
-        M = K.surface_grid(kite_loft.load("iacc_sym_series")["surfaces"]["V"])
-        L = K.class_shape(M, P).reshape(P.shape)
-        L2 = K.run_projected(L, 0.1, np.radians(55.0))
-        self.assertLess(np.abs(L2[0, 0] - L[0, 0]).max(), 1e-9)
-        self.assertLess(np.abs(L2[-1] - L[-1]).max(), 1e-9)
-        self.assertGreater(L2[0, -1, 2], L[0, -1, 2] + 1.0)
-        mid = (P.shape[0] - 1) // 2
-        lu = K._arc(L[:, 0])[-1]
-        L3 = K.run_projected(L, 0.1, 0.0)      # the bow alone: the luff at mid height 0.1 of the luff forward
-        self.assertAlmostEqual(L3[mid, 0, 2] - L[mid, 0, 2], 0.1 * lu * np.sin(np.pi * mid / (P.shape[0] - 1)),
-                               delta=1e-9)
 
     def test_foot_lift(self):
         # half the sag below the tack-clew line taken out on the foot, nothing above the lower quarter

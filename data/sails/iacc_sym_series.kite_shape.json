@@ -11,7 +11,7 @@
   },
   "definitions": {
     "surface": "x = kx * sum(n=0..4) (a_n s^3 + b_n s) t^n (lateral, luff to luff), y = ky (t - 0.1) (up), z = kz * sum(n=0..3) (c_n s^2 + d_n) t^n (the belly's side), s from -0.5 to 0.5, t from 0.1 (the foot) to where the luffs meet (the head)",
-    "shapes": "flatter on a reach, deeper running: sail I at AWA 60 to sail V dead downwind, neighbours blended; the dead-run sail projected forward as a running kite flies (run_bow, a share of the luff at mid height) with its clew eased forward (clew_ease, deg at the foot)"
+    "shapes": "flatter on a reach, deeper running: sail I at AWA 60 to sail V dead downwind, neighbours blended"
   },
   "surfaces": {
     "I": {"form": "moore_iacc", "k": [1.18, 1.22, 0.85], "coef": {"a": [-0.75, 6.89, -31.39, 43.77, -18.62], "b": [0.658, -1.021, 5.119, -5.881, 1.164], "c": [-0.76, 1.44, -5.01, 4.31], "d": [0.601, -0.312, 1.285, -1.566]}},
@@ -25,6 +25,6 @@
     {"awa_deg": 90, "surface": "II"},
     {"awa_deg": 120, "surface": "III"},
     {"awa_deg": 150, "surface": "IV"},
-    {"awa_deg": 180, "surface": "V", "run_bow": 0.1, "clew_ease": 55}
+    {"awa_deg": 180, "surface": "V"}
   ]
 }

@@ -227,10 +227,6 @@ var _tick := 0
 var _events_tick := -1
 
 
-func _k(tau: float) -> float:
-	return 1.0 - exp(-DT / tau)
-
-
 func name_of(b: int) -> String:
 	if names.has(b):
 		return names[b]
@@ -351,11 +347,11 @@ func _wind(sim: SimSource, s: SimSource.BoatState) -> void:
 		_twd180 = u
 		_tws10 = s.tws
 		_started_filters = true
-	_twd2 += (u - _twd2) * _k(2.0)
-	_twd5 += (u - _twd5) * _k(5.0)
-	_twd10 += (u - _twd10) * _k(10.0)
-	_twd180 += (u - _twd180) * _k(180.0)
-	_tws10 += (s.tws - _tws10) * _k(10.0)
+	_twd2 += (u - _twd2) * Frames.smooth_k(DT, 2.0)
+	_twd5 += (u - _twd5) * Frames.smooth_k(DT, 5.0)
+	_twd10 += (u - _twd10) * Frames.smooth_k(DT, 10.0)
+	_twd180 += (u - _twd180) * Frames.smooth_k(DT, 180.0)
+	_tws10 += (s.tws - _tws10) * Frames.smooth_k(DT, 10.0)
 
 
 func twd10() -> float:

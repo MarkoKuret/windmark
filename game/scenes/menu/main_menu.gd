@@ -47,6 +47,8 @@ var continue_line: Label
 ## the first-launch screen while it shows (menus.md §1), else null
 var welcome: WelcomePanel
 var sounds: MenuSounds
+## the menu's quiet ambience (menus.md §4): wind and water, a halyard or a gull now and then
+var ambience: MenuAmbience
 var version_label: Label
 
 var _panel: PanelContainer
@@ -183,6 +185,9 @@ func _ready() -> void:
 	sounds.name = "Sounds"
 	sounds.back_check = back_does_something
 	add_child(sounds)
+	ambience = MenuAmbience.new()
+	ambience.name = "Ambience"
+	add_child(ambience)
 	if not settings.welcomed:
 		_show_welcome()
 	elif open_on in ["quick", "free", "settings"]:
@@ -504,4 +509,5 @@ func start(p: SetupPanel) -> void:
 func request_scene(path: String) -> void:
 	scene_requested.emit(path)
 	if change_scenes:
+		ambience.fade_out(SceneFade.OUT_S)
 		SceneFade.change(get_tree(), path)

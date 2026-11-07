@@ -1,7 +1,8 @@
 class_name MenuStage
 extends Node
 ## The main menu's live backdrop (menus.md §4): the sail scene racing a few AI boats on the example venue with no
-## HUD, no pause menu, no course guides, no player input and no sound, filmed by a slow cinematic drift. build()
+## HUD, no pause menu, no course guides, no player input and no sound of its own (the menu plays a quiet bed,
+## MenuAmbience), filmed by a slow cinematic drift. build()
 ## returns false when the sail scene is not there or does not load; the menu then draws the painted backdrop.
 ## On the Boat step of the setup (menus.md §4.1) show_boat() puts a showcase boat of the chosen class on the water,
 ## heeled and trimmed, and the camera circles it instead.

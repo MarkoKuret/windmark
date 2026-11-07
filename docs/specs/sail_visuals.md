@@ -481,21 +481,9 @@ shape cannot turn it further.
   square to its corner plane that lean would tip the level foot down by 2 m on wm21, so its depth is taken along the
   series' wind direction (`z`) instead of square to the corner plane: `p = T + a e_a + l e_l + n z` (an oblique
   frame; the same corner map), and the foot and every section stay level with the belly down the wind.
-  The dead-run sail (V, 180°) carries the forward projection of a real running kite, a stored change (the 150° sail,
-  IV, has none, so the blend fades it in from 150° and the 150° set does not change):
-  ```
-  run_bow b (share of the luff):  n_ij += b * Lu * sin(PI h_i)          // every row moved toward the belly (forward on
-                                                                         // a run), most at mid height: the luff and
-                                                                         // the leech bowed forward, the head and the
-                                                                         // foot's corners where they were
-  clew_ease e (deg):  row i turned about the luff axis by e (1 - h_i)^2, the clew toward the belly
-                      (a' = a cos t - n sin t,  n' = a sin t + n cos t)  // the sheet eased: the clew and the foot
-                                                                         // forward, fading out up the sail
-  ```
-  `run_bow` 0.1 and `clew_ease` 55° (2026-11-07): the head stays at the halyard and the tack on the pole end (both
-  on the luff axis, which the change leaves alone), and on a dead run the foot comes forward round the forestay by
-  itself, so the whole-kite turn below is left with a few degrees instead of about 55° (wm21) and 63° (wm9). The
-  kite does not lean forward as a whole: with the head and the tack fixed a lean would move one or the other.
+  On a pole the kite's head stays at the masthead on purpose (2026-11-07): wm21's 12 Metre rule caps the spinnaker
+  halyard at the foretriangle height I (rule 33.2), which the game does not follow, so the kite keeps its size and
+  its head above the forestay.
 
 On wm7 (AC33): the corner map is nearly a plain scale (`a` 0.0318, `l` 0.0350 of the model's millimetres to metres, no
 shear); the outline along the cloth over the luff, measured against the class: leech 0.87 / 0.86, foot 0.59 / 0.56,

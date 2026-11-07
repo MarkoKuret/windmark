@@ -298,8 +298,8 @@ a race, and nothing of the race itself (no start sequence, signals, clock, rules
   axis is the wind's median direction at the tick it is laid (§6.1 with that tick in place of the start signal),
   the scale as §6.3, the checks of §7 as at race creation (a course that fails them is not laid), and every mark
   but `virtual` ones becomes a collision object as in a race (§2), so a boat touches a buoy or a committee boat as
-  she would racing. The boats are placed as a race spawns them (`race.md` §3.5: on the pre-start side, starboard
-  tack at a close reach), taking the slots nearest the middle of the start line first. The world stays a free
+  she would racing. The boats are placed as a race spawns them (`race.md` §3.5: on the pre-start side, port
+  tack at TWA 60, the line ahead), taking the slots nearest the middle of the start line first. The world stays a free
   sailing world: `place_boat` still works (the reset key re-places the boat at her spawn point), and a race may be
   created later on it (which lays the course again for the race). The laid course is not part of the world
   snapshot (`conventions.md` §9.1): a world loaded from one has no laid course until it is laid again.

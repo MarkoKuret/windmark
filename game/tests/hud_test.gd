@@ -652,6 +652,7 @@ func test_core_scene() -> void:
 	var sc := packed.instantiate()
 	sc.auto_process = false
 	sc.sim_kind = sc.SimKind.CORE
+	sc.course = ""  # empty water: the scripted tack starts on starboard (a laid course spawns on port, race.md §3.5)
 	root.add_child(sc)
 	await process_frame
 	t.ok(sc.on_core and sc.sim is CoreSimSource, "the scene runs on CoreSimSource")

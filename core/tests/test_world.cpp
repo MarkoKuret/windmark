@@ -185,7 +185,7 @@ TEST_CASE("world: free sail lays the course without a race") {
   for (std::size_t m = 0; m < rc.marks.size(); ++m) {
     CHECK(w->scene().course()[m].solid == (rc.marks[m].type != wm::MarkType::virtual_point));
   }
-  // Placed on the pre-start side near the line's middle, on starboard at a close reach.
+  // Placed on the pre-start side near the line's middle, at the race's spawn heading (race.md §3.5: port, TWA -60).
   const wm::Vec2 A = rc.end_a(rc.start()), B = rc.end_b(rc.start());
   const wm::BoatState& s = w->boat(0).state();
   const wm::Vec2 c{s.pos_x, s.pos_y};
@@ -193,7 +193,7 @@ TEST_CASE("world: free sail lays the course without a race") {
   const float side = d.x * (c.y - A.y) - d.y * (c.x - A.x);  // > 0 on the course side (left of A->B)
   CHECK(side < 0.0f);
   CHECK(wm::v_dist(c, wm::v_mid(A, B)) < 0.25f * wm::v_dist(A, B) + 10.0f * 7.2f);
-  CHECK(wm::wrap_pi(s.twd_from - s.psi) == doctest::Approx(100.0f * wm::DEG).epsilon(0.02));
+  CHECK(wm::wrap_pi(s.twd_from - s.psi) == doctest::Approx(-60.0f * wm::DEG).epsilon(0.02));
   // Only once; a free sailing world: place_boat works and the boat sails with no race events.
   CHECK_FALSE(w->lay_course(example_course(), err));
   CHECK(w->place_boat(0, c, s.psi));

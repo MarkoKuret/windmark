@@ -111,21 +111,12 @@ func _odd_settings() -> Settings:
 	var s := Settings.new()
 	s.helm_mode = PlayerControls.HelmMode.HOLD_TO_STEER
 	s.stick_dead_zone = 0.2
-	s.stick_curve = 2.2
-	s.sheet_rate = 1.5
-	s.let_fly_toggle = true
-	s.helm_fine_toggle = true
-	s.rankings_toggle = true
-	s.camera_boost_toggle = true
-	s.sheet_turns_auto_trim_off = true
+	s.keys_toggle = true
 	s.vibration = 0.3
 	s.camera_speed = 1.75
-	s.invert_orbit_x = true
-	s.invert_orbit_y = true
-	s.invert_look_x = true
-	s.invert_look_y = true
+	s.invert_x = true
+	s.invert_y = true
 	s.heel_follow = 0.4
-	s.smooth_switch = true
 	s.reduced_motion = true
 	s.assist = Hud.Assist.MINIMAL
 	s.hud_density = Hud.Density.DATA
@@ -267,7 +258,7 @@ func test_settings_round_trip() -> void:
 	t.ok(cf.get_value("settings", "version", 0) == Settings.VERSION, "file carries its version")
 	# a damaged file: wrong types keep the defaults, out-of-range values are clamped
 	cf.set_value("controls", "stick_dead_zone", "wide")
-	cf.set_value("controls", "stick_curve", 9.0)
+	cf.set_value("controls", "vibration", 9.0)
 	cf.set_value("hud", "assist", 7)
 	cf.set_value("graphics", "vsync", 3)
 	cf.set_value("graphics", "render_scale", 7)
@@ -279,7 +270,7 @@ func test_settings_round_trip() -> void:
 	var d := Settings.new()
 	d.load_file(TEST_PATH)
 	t.near(d.stick_dead_zone, 0.10, 1e-9, "wrong type keeps the default")
-	t.near(d.stick_curve, 3.0, 1e-9, "curve clamped to 3.0")
+	t.near(d.vibration, 1.0, 1e-9, "vibration clamped to 100 %")
 	t.ok(d.assist == Hud.Assist.MINIMAL, "assist clamped to Minimal")
 	t.ok(d.vsync == true, "vsync of the wrong type keeps the default")
 	t.near(d.render_scale, 1.0, 1e-9, "render scale clamped to 100 %")
@@ -306,15 +297,14 @@ func test_apply() -> void:
 	s.apply_controls(pc)
 	t.ok(pc.helm_mode == PlayerControls.HelmMode.HOLD_TO_STEER, "controls: helm key mode")
 	t.near(pc.stick_dead_zone, 0.2, 1e-9, "controls: stick dead zone")
-	t.near(pc.stick_gamma, 2.2, 1e-9, "controls: stick curve")
-	t.near(pc.sheet_rate_scale, 1.5, 1e-9, "controls: sheet rate")
-	t.ok(pc.let_fly_toggle and pc.helm_fine_toggle and pc.sheet_turns_auto_trim_off, "controls: toggles")
+	t.ok(pc.let_fly_toggle and pc.helm_fine_toggle, "controls: the held keys as toggles")
 	var rig := CameraRig.new()
 	s.apply_cameras(rig)
 	var o := rig.options
 	t.near(o.speed, 1.75, 1e-9, "cameras: speed")
-	t.ok(o.invert_orbit_x and o.invert_orbit_y and o.invert_look_x and o.invert_look_y, "cameras: invert")
-	t.ok(o.smooth_switch and o.reduced_motion, "cameras: smooth switch, reduced motion")
+	t.ok(o.invert_orbit_x and o.invert_orbit_y and o.invert_look_x and o.invert_look_y,
+		"cameras: one inversion per axis on the orbit and the look")
+	t.ok(o.reduced_motion and o.boost_toggle, "cameras: reduced motion, the boost as a toggle")
 	t.near(rig.onboard.heel_follow, 0.4, 1e-9, "cameras: onboard heel follow")
 	rig.call("free")
 	var hud := Hud.new()
@@ -459,21 +449,13 @@ func test_every_key_applied() -> void:
 	var got := {
 		"controls.helm_mode": pc.helm_mode == s.helm_mode,
 		"controls.stick_dead_zone": is_equal_approx(pc.stick_dead_zone, s.stick_dead_zone),
-		"controls.stick_curve": is_equal_approx(pc.stick_gamma, s.stick_curve),
-		"controls.sheet_rate": is_equal_approx(pc.sheet_rate_scale, s.sheet_rate),
-		"controls.let_fly_toggle": pc.let_fly_toggle,
-		"controls.helm_fine_toggle": pc.helm_fine_toggle,
-		"controls.rankings_toggle": hud.rankings_toggle,
-		"controls.camera_boost_toggle": rig.options.boost_toggle,
-		"controls.sheet_turns_auto_trim_off": pc.sheet_turns_auto_trim_off,
+		"controls.keys_toggle": pc.let_fly_toggle and pc.helm_fine_toggle and hud.rankings_toggle
+			and rig.options.boost_toggle,
 		"controls.vibration": is_equal_approx(pc.rumble.strength, s.vibration),
 		"cameras.camera_speed": is_equal_approx(rig.options.speed, s.camera_speed),
-		"cameras.invert_orbit_x": rig.options.invert_orbit_x,
-		"cameras.invert_orbit_y": rig.options.invert_orbit_y,
-		"cameras.invert_look_x": rig.options.invert_look_x,
-		"cameras.invert_look_y": rig.options.invert_look_y,
+		"cameras.invert_x": rig.options.invert_orbit_x and rig.options.invert_look_x,
+		"cameras.invert_y": rig.options.invert_orbit_y and rig.options.invert_look_y,
 		"cameras.heel_follow": is_equal_approx(rig.onboard.heel_follow, s.heel_follow),
-		"cameras.smooth_switch": rig.options.smooth_switch,
 		"cameras.reduced_motion": rig.options.reduced_motion,
 		"hud.assist": hud.assist == s.assist,
 		"hud.hud_density": hud.density == s.hud_density and not hud.density_auto,
@@ -506,6 +488,10 @@ func test_every_key_applied() -> void:
 	old.set_value("settings", "version", 1)
 	old.set_value("hud", "captions", true)
 	old.set_value("audio", "voice_volume", 0.2)
+	old.set_value("controls", "stick_curve", 2.0)
+	old.set_value("controls", "let_fly_toggle", true)
+	old.set_value("cameras", "invert_look_y", true)
+	old.set_value("cameras", "smooth_switch", true)
 	old.set_value("audio", "master_volume", 0.4)
 	var old_path := "user://menus_test_old.cfg"
 	old.save(old_path)
@@ -514,7 +500,9 @@ func test_every_key_applied() -> void:
 	older.save_file(old_path)
 	var back := ConfigFile.new()
 	back.load(old_path)
-	t.ok(not back.has_section_key("hud", "captions") and not back.has_section_key("audio", "voice_volume"),
+	t.ok(not back.has_section_key("hud", "captions") and not back.has_section_key("audio", "voice_volume")
+		and not back.has_section_key("controls", "stick_curve") and not back.has_section_key("controls", "let_fly_toggle")
+		and not back.has_section_key("cameras", "invert_look_y") and not back.has_section_key("cameras", "smooth_switch"),
 		"the dropped keys are not saved again")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(old_path))
 	# back to the defaults
@@ -1787,7 +1775,7 @@ func test_touches() -> void:
 		sp.show_section(sec)
 		for k in sp.rows:
 			shown.append(k)
-			if (sp.rows[k] as MenuRow).help == "" and k in ["helm_mode", "stick_dead_zone", "stick_curve",
+			if (sp.rows[k] as MenuRow).help == "" and k in ["helm_mode", "stick_dead_zone", "keys_toggle",
 					"heel_follow", "assist", "hud_density", "palette", "quality", "render_scale", "capture_preset"]:
 				missing.append(k)
 	t.ok(missing.is_empty(), "the rows that need it have a help line (missing: %s)" % [missing])

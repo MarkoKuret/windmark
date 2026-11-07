@@ -1,7 +1,7 @@
 # Menus
 
 The front end's menus before the phase 4 online screens: the main menu, the session setup it writes, the settings
-the in-race pause menu and the race end with its results screen (§5). The session setup is `GameSetup` (`game/scripts/game_setup.gd`); the options are those
+the in-race pause menu, the race end with its results screen (§5) and the local race history (§6). The session setup is `GameSetup` (`game/scripts/game_setup.gd`); the options are those
 of `controls.md` §6, `cameras.md` §3 and §6, `hud.md` §14, `water_render.md` §7 and `audio.md` §1.1.
 
 ## 1. Main menu
@@ -314,7 +314,9 @@ so a language can reorder them: `briefing.header` (`{name} · {tag}`), `briefing
 `briefing.line.sea_range`, `briefing.line.swell`, `briefing.label.light`, `briefing.line.light` (`{time}, {sky}`)
 and `briefing.sky.<clear|fair|hazy|overcast>`; the Time and Sky rows' `light.time`, `light.sky`,
 `light.venue_default`, `light.surprise` and `light.sky.<clear|fair|hazy|overcast>`; the results' `results.today` (`Today: {wind} · {shifts} ·
-{gusts}`), `results.today.gusts` (`{word} gusts`) and `results.today.no_gusts`. The table is
+{gusts}`), `results.today.gusts` (`{word} gusts`) and `results.today.no_gusts`, and the best line's
+`results.best` (`Your best here: {time}`), `results.new_best` (`New best: {time}, was {old}`),
+`results.first_race` and `results.first_finish` (§5). The table is
 `game/scripts/text/strings.gd`. The venue's
 name, tag and tip come from the venue file with its translations (`data_format.md` §6.8).
 
@@ -564,6 +566,14 @@ scene, then the next race or the menu.
   and gap, the others with their status: `Racing`, `RET`, `DSQ`, `OCS`) and fill in as boats finish; at the close
   it becomes the final table.
 - **Summary** (`YOUR RACE`, a heading in caps and label value lines): the items of `hud.md` §13.3 that have data.
+- **Best line**: one muted line under the summary from the race history (§6), for this course and class, compared
+  with the history as it was before this race (one line, never more):
+  - she finished (a place) and beat her best here: `New best: 0:23:12.40, was 0:23:40.10`;
+  - she has a best here and did not beat it (or did not finish): `Your best here: 0:23:12.40`;
+  - no race here before: `First race here`;
+  - races here before but no finish, and now a finish: `First finish here`; and no finish again: no line.
+  Times in the finish format of the table. No line after an abandoned race. Keys `results.best`,
+  `results.new_best`, `results.first_race`, `results.first_finish`.
 - **Actions** in the footer, footer-action sized (§4), from the left (there is no way back here): **Race again** (primary, the focus when the screen opens): the same setup (class,
   sail number, venue, course, fleet, AI level, wind, Time and Sky) with a new seed. **Change setup**: this setup becomes the
   remembered one (§1) and the main menu opens the race setup (§1.1) at its Boat step with it. **Main menu**: the main menu.
@@ -577,3 +587,30 @@ scene, then the next race or the menu.
   scene in over 0.45 s; the input is ignored while the screen is dark.
 - The results screen is for the player's quick races: not in free sail, the rules scenarios (`race.md` §14) or
   the menu's backdrop (`--watch`).
+- **Recording.** The screen writes the player's result to the race history (§6) once: when the results become final
+  (`RaceClosed`; offline the race closes as soon as her race is over, `race.md` §7.2), or, if she leaves the screen
+  before that (an action, or the scene ends), from her row as it stands then (her place, time and gap are fixed at
+  her finish). An abandoned race is not recorded.
+
+## 6. Race history
+
+A small local record of the player's quick races, kept between sessions in `user://history.cfg` (a Godot
+ConfigFile with a `version`, beside the settings file of §3). Written only by the results screen (§5 Recording);
+free sail, the rules scenarios, the menu's backdrop and abandoned races are not recorded. No player name or
+profile: that comes with networking.
+
+- **Results**: the last **50** results, oldest first; a new one past the cap drops the oldest. Each one:
+  `date` (local, `2026-11-07 18:47`), `class`, `venue`, `course` (`<venue>/<id>`), `fleet` (boats including
+  her), `ai_level`, `weather` (`local`, `random`, `custom`), `place` (0 without one), `code` (`""`, `RET`, `DNF`,
+  `DSQ`, `OCS`, `DNS`, ...), `time` (her finishing time in seconds, −1 without one) and `gap` (to the winner in
+  seconds, 0 for the winner, −1 without one).
+- **Bests**: the best finishing time per course and class (a race she finished with a place; a code such as a
+  finish scored `OCS` does not count), kept past the cap of the results.
+- **Counts**: races and wins (place 1) per class, kept past the cap.
+- **Robust.** A missing, unreadable or corrupt file, or one whose `version` the game does not know, starts an empty
+  history (the next record writes a fresh file of the current version); an entry of the wrong shape is dropped and
+  the rest kept; a file with more than 50 results keeps the last 50. The file is written whole to a temporary file
+  and then moved over the old one, so a crash mid-write leaves the old file.
+- Shown only on the results screen (§5 Best line). The main menu's Continue hint stays as it is: the best time does
+  not fit its one line. No stats page for now.
+

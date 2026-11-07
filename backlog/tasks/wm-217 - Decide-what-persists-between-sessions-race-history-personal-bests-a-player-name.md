@@ -3,9 +3,11 @@ id: WM-217
 title: >-
   Decide: what persists between sessions (race history, personal bests, a player
   name)
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-07 18:47'
+updated_date: '2026-11-07 19:10'
 labels:
   - decide-later
 dependencies: []

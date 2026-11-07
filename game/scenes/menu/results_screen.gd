@@ -312,8 +312,7 @@ func table_rows() -> Array:
 		var g := "" if is_nan(float(row["gap"])) or float(row["gap"]) <= 0.0 else HudFormat.gap(row["gap"])
 		var pts := ""
 		if not is_nan(float(row["points"])):
-			var pv := float(row["points"])
-			pts = "%d" % int(pv) if fmod(pv, 1.0) == 0.0 else "%.1f" % pv
+			pts = HudFormat.points(float(row["points"]))
 		var skipper := "You" if b == r.own_boat else ""
 		var ai := str(row.get("ai", ""))
 		if skipper == "" and ai != "":

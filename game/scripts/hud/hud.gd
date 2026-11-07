@@ -179,7 +179,6 @@ var _camera_seen := false
 var edge_box := Rect2()
 
 
-
 ## HudValues.Colour -> token, in the colour-blind palette in use (hud.md §16.2.1); read only
 static func colours() -> Dictionary:
 	if _colours_palette != HudStyle.palette:
@@ -846,7 +845,7 @@ func results_text_rows() -> Array:
 		var g := "" if is_nan(r["gap"]) or float(r["gap"]) <= 0.0 else HudFormat.gap(r["gap"])
 		var pts := ""
 		if not is_nan(r["points"]):
-			pts = "%d" % int(r["points"]) if fmod(r["points"], 1.0) == 0.0 else "%.1f" % r["points"]
+			pts = HudFormat.points(r["points"])
 		out.append([place, r["name"], r["skipper"], r["ai"], t, g, r["code"], pts])
 	return out
 

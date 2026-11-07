@@ -354,8 +354,8 @@ func configure(rest_mid: PackedVector3Array, r: int, c: int, p: Dictionary) -> b
 		var hc := rest_mid[(rows - 1) * cols]
 		var cc := rest_mid[cols - 1]
 		for k in n:
-			_hold[k] = _smoothstep01(_tack_d[k] / rr) * _smoothstep01(rest_mid[k].distance_to(hc) / rr) \
-					* _smoothstep01(rest_mid[k].distance_to(cc) / rr)
+			_hold[k] = Frames.smoothstep01(_tack_d[k] / rr) * Frames.smoothstep01(rest_mid[k].distance_to(hc) / rr) \
+					* Frames.smoothstep01(rest_mid[k].distance_to(cc) / rr)
 			var w := 1.0 - minf(_tack_d[k] / (TACK_REACH * sl), 1.0)
 			_rise[k] = w * w
 	_fa = 0.0
@@ -404,14 +404,6 @@ static func fill(v: float, g: float, k: float) -> float:
 	return (1.0 if v >= 0.0 else -1.0) * 0.75 * g * m
 
 
-static func _sgn(x: float) -> float:
-	return 1.0 if x >= 0.0 else -1.0
-
-
-static func _wrap_pi(x: float) -> float:
-	return fposmod(x + PI, TAU) - PI
-
-
 ## sail_visuals.md §5.2, §5.3 and the twist side of §7.1; every frame, paused with the game.
 func advance(dt: float, aws: float, awa: float, backed: bool) -> void:
 	dt = clampf(dt, 0.0, DT_MAX)
@@ -420,10 +412,10 @@ func advance(dt: float, aws: float, awa: float, backed: bool) -> void:
 	var k := 1.0 - exp(-dt / TAU_SMOOTH)
 	s_b += ((-1.0 if backed else 1.0) - s_b) * k
 	if not _tl_set:
-		tl = -_sgn(awa)
+		tl = -Frames.sgn(awa)
 		_tl_set = true
 	else:
-		tl += (-_sgn(awa) - tl) * k
+		tl += (-Frames.sgn(awa) - tl) * k
 
 
 func get_phase() -> float:
@@ -487,7 +479,7 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 	if n == 0:
 		return
 	if not _tl_set:
-		tl = -_sgn(awa)
+		tl = -Frames.sgn(awa)
 		_tl_set = true
 	var shiver := clampf(luff_shiver, 0.0, 1.0)
 	var amp := flutter_amp * sa
@@ -502,7 +494,7 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 			ax = boom_axis
 		Mode.SPRIT:
 			var lim := asin(minf(1.0, tack_line_max * sl / r_h))
-			ge = _sgn(gamma) * minf(absf(gamma), lim)
+			ge = Frames.sgn(gamma) * minf(absf(gamma), lim)
 			s_t = _about(head, up, ge)
 		Mode.POLE:
 			ge = gamma
@@ -520,15 +512,15 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 	var f_fly := 0.0
 	var wv := Vector3.ZERO
 	if kind == Kind.MAIN:
-		var b := fill(sin(_wrap_pi(beta + awa)), fill_gain, fill_curve)
-		d_cam = _sgn(b) * 4.0 * sa * b * b
+		var b := fill(sin(Frames.wrap_pi(beta + awa)), fill_gain, fill_curve)
+		d_cam = Frames.sgn(b) * 4.0 * sa * b * b
 	elif kind == Kind.HEADSAIL:
 		var b := fill(sin(beta), fill_gain, fill_curve) * s_b
-		d_cam = _sgn(b) * 4.0 * sa * b * b
+		d_cam = Frames.sgn(b) * 4.0 * sa * b * b
 		if cam_cap > 0.0:
 			var dm := cam_cap * sa / 0.2362
 			d_cam = dm * tanh(d_cam / dm)
-		_jcam = _sgn(b) * JIB_CAMBER * tanh(absf(b) / JIB_FILL) if b != 0.0 else 0.0
+		_jcam = Frames.sgn(b) * JIB_CAMBER * tanh(absf(b) / JIB_FILL) if b != 0.0 else 0.0
 	else:
 		if kind == Kind.SYM:
 			f_fly = absf(fill(sin(beta), fill_gain, fill_curve))
@@ -549,7 +541,7 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 		tw *= ta * ta * (3.0 - 2.0 * ta) * tr * tr * (3.0 - 2.0 * tr)
 	# (signed; the asymmetric spinnaker's on the side away from the wind at once: it is zero where awa changes sign)
 	for i in rows:
-		_trow[i] = -_sgn(awa) * tw * (1.0 - pow(1.0 - _hrow[i], twist_exp)) if kind == Kind.ASYM \
+		_trow[i] = -Frames.sgn(awa) * tw * (1.0 - pow(1.0 - _hrow[i], twist_exp)) if kind == Kind.ASYM \
 				else tl * tw * pow(_hrow[i], twist_exp)
 	# §8.1 which shape
 	var up_shape := phase == 3 or phase == 4 or kind == Kind.MAIN
@@ -573,12 +565,12 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 		_ease = _ease_for(beta, s_t, piv, ax, base, hd)
 	else:
 		_secs = []  # no obstacles: none left over from the last update
-	var es := _sgn(beta) * _ease
+	var es := Frames.sgn(beta) * _ease
 	# §7.7 the clew set by its sheet (with the sail as eased): the low rows again with the solved draw-in, draw-down
 	_kd = 0.0
 	_kl = 0.0
-	var g_c := (1.0 - _smoothstep01((absf(_wrap_pi(beta)) - CLEW_FADE.x) / (CLEW_FADE.y - CLEW_FADE.x))) \
-			* _smoothstep01((absf(awa) - CLEW_AWA.x) / (CLEW_AWA.y - CLEW_AWA.x))
+	var g_c := (1.0 - Frames.smoothstep01((absf(Frames.wrap_pi(beta)) - CLEW_FADE.x) / (CLEW_FADE.y - CLEW_FADE.x))) \
+			* Frames.smoothstep01((absf(awa) - CLEW_AWA.x) / (CLEW_AWA.y - CLEW_AWA.x))
 	if kind == Kind.ASYM and has_lead and g_c > 0.0:
 		var kk := _clew_set(beta, base + es, piv, ax, s_t, wv)
 		_kd = g_c * kk.x
@@ -639,7 +631,7 @@ func _stay() -> void:
 	for j in cols:
 		var uc := _uc[j]
 		var tt := clampf((uc - stay_luff) / (1.0 - stay_luff), 0.0, 1.0)
-		sw[j] = _smoothstep01(uc / stay_luff) * (1.0 - stay_leech * tt * tt * (3.0 - 2.0 * tt))
+		sw[j] = Frames.smoothstep01(uc / stay_luff) * (1.0 - stay_leech * tt * tt * (3.0 - 2.0 * tt))
 	var d_row := PackedFloat32Array()
 	d_row.resize(rows)
 	for i in rows:
@@ -652,14 +644,14 @@ func _stay() -> void:
 				continue
 			var q := stay0 + (stay1 - stay0) * ((pz - z0) / (z1 - z0))
 			var dy := absf((pt - q).dot(port))
-			var kk := 1.0 - _smoothstep01((dy - stay_w) / stay_c)
+			var kk := 1.0 - Frames.smoothstep01((dy - stay_w) / stay_c)
 			var d := (stay_c - (pt - q).dot(fwd)) * kk
 			if d > 0.0:
 				d_row[i] = maxf(d_row[i], d / maxf(sw[j], 0.5))
 	for i in range(rows - 2, -1, -1):  # never less than a row above needs
 		d_row[i] = maxf(d_row[i], d_row[i + 1])
 	for i in rows:
-		var s := d_row[i] * _smoothstep01((1.0 - _hrow[i]) / stay_head) * _fa
+		var s := d_row[i] * Frames.smoothstep01((1.0 - _hrow[i]) / stay_head) * _fa
 		if s <= 0.0:
 			continue
 		for j in cols:
@@ -787,7 +779,7 @@ func _clew_res(kd: float, kl: float, beta: float, base: float, piv: Vector3, ax:
 ## §7.6 the working lead block: the starboard lead mirrored to the side of beta (starboard for beta > 0)
 func working_lead(beta: float) -> Vector3:
 	var y := sheet_lead.dot(port)
-	return sheet_lead + port * (-_sgn(beta) * absf(y) - y)
+	return sheet_lead + port * (-Frames.sgn(beta) * absf(y) - y)
 
 
 ## §7.6 the flying shape's share of the last update (0 down or bagged, 1 up)
@@ -798,11 +790,6 @@ func sheet_weight() -> float:
 ## §7.6 the clew the sheet leaves from: as placed, before the clearance push of §7.4
 func sheet_clew() -> Vector3:
 	return _clew0
-
-
-static func _smoothstep01(x: float) -> float:
-	var t := clampf(x, 0.0, 1.0)
-	return t * t * (3.0 - 2.0 * t)
 
 
 ## §7.4: the other sails this (flying) sail keeps clear of, as last placed; set before each update.
@@ -823,7 +810,7 @@ func _sections(s_t: Transform3D, piv: Vector3, ax: Vector3, base: float) -> void
 	var lc := _loc[cols - 1]
 	var xr := _about(piv, ax, base + _trow[0]) * s_t
 	var cl := xr * (tack + ah * lc.x + lh * lc.y + nh * lc.z)
-	var sk := _sgn((cl - mast_step).dot(port))
+	var sk := Frames.sgn((cl - mast_step).dot(port))
 	var bow := fwd + port * (0.3 * sk)
 	_secs = []
 	for o in _obs:
@@ -940,7 +927,7 @@ func _margin_at(p: Vector3, hd: Vector3) -> float:
 ## §7.4 the ease: the extra turn about the luff that brings the leech samples clear of the obstacles.
 func _ease_for(beta: float, s_t: Transform3D, piv: Vector3, ax: Vector3, base: float, hd: Vector3) -> float:
 	var delta := 0.0
-	var es := _sgn(beta)
+	var es := Frames.sgn(beta)
 	for it in 4:
 		var worst := INF
 		var rr := 1.0
@@ -1003,7 +990,7 @@ func _spread(d: PackedFloat32Array) -> PackedFloat32Array:
 ## margin push, then every vertex off the mast.
 func _push(awa: float, hd: Vector3) -> void:
 	var b := clearance
-	var lee := port * _sgn(awa)
+	var lee := port * Frames.sgn(awa)
 	var cp := PackedFloat32Array()
 	cp.resize(n)
 	for k in n:

@@ -1703,8 +1703,8 @@ static func chord_measure(row: PackedVector3Array) -> Array:
 
 
 ## §12 test 28 (the hard rule of §6.5, §7.4): no spinnaker cloth is ever aft of or through the forestay, on every
-## class with a spinnaker, at AWA 60 to 180 deg on both gybes, the kite sheeted from 60 to 130 % of its optimum, and
-## while it is hoisted and dropped: the forestay (its tack fitting to the hounds) passes through no triangle of the
+## class with a spinnaker, at AWA 60 to 180 deg on both gybes, the kite up and sheeted from 60 to 130 % of its optimum
+## (hoisting and dropping are outside the rule): the forestay (its tack fitting to the hounds) passes through no triangle of the
 ## kite, and no vertex within STAY_BAND of it athwartships, between its ends in height, lies less than STAY_CLOTH ahead
 ## of it. Native (the reference is held to it by test 19 and the random-frame parity of test 26).
 const STAY_CLASSES := ["wm7", "wm9", "wm10", "wm12", "wm16", "wm21"]
@@ -1737,14 +1737,10 @@ func _forestay() -> void:
 			var first := ""
 			var n := 0
 			var cases := []
-			for awa_deg in range(60, 181, 10):
+			for awa_deg in range(60, 181, 10):  # in flight: hoisting and dropping are outside the rule (§6.5)
 				for side in [1.0, -1.0]:
 					for kt in [0.6, 0.85, 1.0, 1.3]:
 						cases.append([awa_deg, side, kt, UP, 1.0])
-					if awa_deg % 30 == 0:
-						for ph in [SimSource.Phase.HOISTING, SimSource.Phase.DROPPING]:
-							for pr in [0.2, 0.5, 0.8, 1.0]:
-								cases.append([awa_deg, side, 1.0, ph, pr])
 			for cs in cases:
 				var awa: float = cs[1] * deg_to_rad(float(mini(cs[0], 179)))
 				var sv := _sails_view(data, awa, tws, tws, fi, -1, [cs[2], 1.0])

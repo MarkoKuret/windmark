@@ -208,6 +208,9 @@ func _main() -> void:
 	elif want.has("kite_ac4"):  # §6.5 (2026-11-07b): the symmetric kites ahead of the forestay, and from above
 		shots = _kite_ac2_shots(["wm9", "wm21"], "kite_ac4", true)
 		want = []
+	elif want.has("kite_ac5"):  # §6.5 (2026-11-07c): the run shape projected forward; wm21's fractional rig
+		shots = _kite_ac2_shots(["wm9", "wm21"], "kite_ac5", true)
+		want = []
 	for spec in shots:
 		if want.is_empty() or want.has(spec["name"]):
 			_shot(spec)

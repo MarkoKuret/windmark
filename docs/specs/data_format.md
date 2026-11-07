@@ -342,8 +342,7 @@ the clew `hook` and `lift` it solved and the sheet's angle off the clew's bisect
 `shapes`: per AWA, every grid vertex in grid order as `[a, l, n]`, metres in the sail frame of `sail_visuals.md` §3.2
 (from the tack: `a` aft square to the luff, `l` along the luff, `n` to port, the belly's side). From a surface file
 the block has `kind: "surface"`, `depth` and `surface` (per AWA the depth factor and the surface used), `map` (the
-measured and the class outline along the cloth over the luff, and the depth scale), `foot_lift` and `head_ease` (per
-AWA, m) and `clew` (per AWA `sheet_off_bisector_deg`: the sheet's angle off the clew's bisector at the nominal trim).
+measured and the class outline along the cloth over the luff, and the depth scale), `foot_lift` (per AWA) and `clew` (per AWA `sheet_off_bisector_deg`: the sheet's angle off the clew's bisector at the nominal trim).
 
 #### 3.7.6 Kite shape file (`windmark.kiteshape/1`)
 

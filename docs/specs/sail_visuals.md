@@ -452,14 +452,12 @@ the head row collapsed to its mean (a pointed head)
 ```
 No section solve: the tack and the head sit where the flat sail has them and the clew where the map puts it; the clew
 lies in the rest plane, so the foot chord lies at the core's sheet angle `β` as the lofted shapes' do. Each measured
-surface gives one shape per apparent wind angle listed in the file, with a depth factor (`n` only). Then two smooth
-changes, made once per shape by the generator (never per update; each is recorded in the sidecar's `loft` block):
+surface gives one shape per apparent wind angle listed in the file, with a depth factor (`n` only). Then one smooth
+change, made once per shape by the generator (never per update; recorded in the sidecar's `loft` block):
 ```
 foot lift (a shape's `foot_lift` f, 0 to 1): the foot's sag below the straight tack-clew line, along l, taken out by f
     s_j   = max(0, l_c * a_0j / a_c - l_0j)               // foot vertex j against the line from the tack to the clew
     l_ij += f * s_j * (1 - smoothstep(h_i / 0.25))        // the lift fades out over the lower quarter of the height
-head eased (a kite on a pole, below): l scaled about the tack so the head comes |H - (T + up r(awa))| from the tack,
-    the luff's straight length less what the raised tack takes up; the head stays at the halyard
 ```
 The sidecar also records, per shape, the sheet's angle off the clew corner's bisector with the kite set alone at its
 nominal trim (the class's optimum sheet angle at 12 kn, its nominal pole angle on a pole; test 25's measure). The
@@ -534,22 +532,15 @@ delta = 0; 12 times: stop when X >= 0; delta = min(delta + (-X) / max(r, 0.5), c
 after the first step only the vertices then within 2 c of the worst are looked at again (not on a pole: the whole
 kite may come round the stay)
 ```
-**A kite on a pole flies higher on a run.** The pole end goes up and the halyard is eased as the wind comes aft:
-```
-k_r  = smoothstep((|awa| - 110 deg) / 60 deg)            // 0 to AWA 110, all of it from 170
-r    = 0.1 * Sl * k_r                                   // the tack raised (the pole tilts about its heel to follow)
-T'   = S T + up * r ;  L' = normalize(S H - T')          // the luff axis from the raised tack to the halyard
-the swung kite turned by the least rotation that takes S Lh to L', moved to T'; then the turn about L' as above
-```
-The stored shapes' heads are eased by the same `r` at their AWAs (above), so the head stays at the halyard. The drawn
-pole tilts by `asin(r / pole length)`. On a run the core squares the pole (wm21 at TWA 176°: pole 81°, kite 79°), so
-the tack sits beside the mast while the forestay meets the deck one foretriangle base ahead; a 13 m foot with a 4 m
-belly cannot reach round it from there. Raising the tack 2.5 m (wm21) takes the stay a little aft at the foot's
-height; the rest is still the turn above, which would need about 45 to 50° at TWA 176° on wm21 (about 55° without the raise; nothing at TWA
-150°). Swung that far the kite reads as an arch blown to windward (owner, 2026-11-06), so on a pole the turn is a
-last resort capped at 0.26 rad (15°): on a dead run (pole squared past about 75°) the forestay still passes through
-one cell of the lower kite on wm21 and wm9. A pole held less square on a dead run (50°: no turn needed) is the core's
-call (`sails.md`, the pole angle table). Until 2026-11-06 the turn was capped at 0.5 rad in 6 steps for every kite.
+**A kite on a pole on a run** is set as at TWA 150°: the tack on the pole end where the core puts it, the head at the
+halyard, the same height. On a dead run the core squares the pole (wm21 at TWA 176°: pole 81°, kite 79°), so the tack
+sits beside the mast while the forestay meets the deck one foretriangle base ahead, and a 13 m foot with a 4 m belly
+cannot reach round it from there; swung far enough to clear it (about 55° on wm21) the kite reads as an arch blown to
+windward (owner, 2026-11-06), so on a pole the turn above is a last resort capped at 0.26 rad (15°) and the forestay
+still clips the lower kite on a dead run (pole squared past about 75°) on wm21 and wm9. A pole held less square on a
+dead run (50°: no turn needed) is the core's call (`sails.md`, the pole angle table). The pole end raised 0.1 `Sl` on
+a run with the head eased to match (2026-11-06) set the kite too high (owner, 2026-11-07) and was taken out. Until
+2026-11-06 the turn was capped at 0.5 rad in 6 steps for every kite.
 On wm7 at the optimum trims (12 kn) the reach at AWA 64° (kite 16°, main 10°) needs about 16° of this turn, AWA 80°
 and more none; the largest over test 18's sweep (over-sheeted, the main eased, the jib up) is 27°, and on the closest
 reaches (test 20) it takes the clew up to 2.2 m outboard of the widest beam (the hinge model 1.9 m: it bends the

@@ -357,41 +357,9 @@ func items() -> Array[String]:
 	var ph := phase()
 	var key := [int(density), ph, int(assist)]
 	if key != _items_key:
-		_items = _items_of(ph)
+		_items = HudItems.of(self, ph)
 		_items_key = key
 	return _items
-
-
-func _items_of(ph: String) -> Array[String]:
-	var out: Array[String] = ["bsp", "twa_dial", "twa", "radar", "helm"]
-	var lvl := density
-	# the cluster (hud.md §16.3): Race adds heading, the true wind speed and the heel bar; Data the rest
-	if lvl >= Density.RACE:
-		out.append_array(["hdg", "tws", "heel_bar"])
-	if lvl == Density.DATA:
-		out.append_array(["vmg_kn", "awa", "sog", "cog", "twd", "aws"])
-	match ph:
-		"pre":
-			out.append("start_min" if lvl == Density.GLANCE else "start_full")
-			if lvl == Density.RACE:
-				out.append("feed_own")
-			if lvl == Density.DATA:
-				out.append_array(["bug", "bug_lap", "feed"])
-		"free":
-			pass
-		_:
-			out.append("bug")
-			if lvl == Density.GLANCE:
-				out.append("feed_own")
-			elif lvl == Density.RACE:
-				out.append_array(["shift", "bug_gap", "mark_eta", "feed_own"])
-			else:
-				out.append_array(["shift", "bug_gap", "mark_eta", "bug_lap", "bug_gaps", "mark_brg", "hint", "feed"])
-	if not shows("shift"):
-		out.erase("shift")
-	if not shows("sail_hint"):
-		out.erase("hint")
-	return out
 
 
 ## hud.md §16.1, §16.3: the shift chip shows now in the page's heading cell (the shift item, a lift or a header of

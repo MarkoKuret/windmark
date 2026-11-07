@@ -1221,7 +1221,7 @@ func _ui_actions(r: RawInput) -> void:
 		return
 	# a menu has the keys (controls.md §7): the pause key, the screenshot and the cameras stay, the rest waits
 	var menu := controls.menu_open or _results_open()
-	if not menu and r.was_pressed(&"chat"):
+	if not menu and online and r.was_pressed(&"chat"):  # offline nobody listens: Enter must not take the keys
 		_chat.visible = true
 		_chat.grab_focus()
 		controls.set_text_focus(true)

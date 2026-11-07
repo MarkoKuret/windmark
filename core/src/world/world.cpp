@@ -1,5 +1,6 @@
 #include "world/world.h"
 
+#include <algorithm>
 #include <cmath>
 
 #include "course/geometry.h"
@@ -109,47 +110,14 @@ bool World::create_race(const CourseData& course, std::string& error) {
     return false;
   }
   const VenueData& venue = *setup_.venue;
-  float L_max = 0.0f;
-  const PerfData* longest = entries_.front().perf;
-  for (const BoatEntry& e : entries_) {
-    if (e.perf->dynamics.loa > L_max) {
-      L_max = e.perf->dynamics.loa;
-      longest = e.perf;
-    }
-  }
   // courses.md §6.1: the course axis from the median wind at the gun.
   const std::int64_t gun = static_cast<std::int64_t>(tick_) + Race::gun_after_creation(setup_.race, course.race);
   const std::uint32_t t_gun = static_cast<std::uint32_t>(gun) * DT_MS;
-  const float twd_c = course_axis(wind_settings_.base_from + wind_->trend(t_gun));
-  const float scale = course_scale(course, twd_c, *longest, wind_settings_.base_speed);
-  resolve_course(course, twd_c, scale, course_);
-  std::vector<std::string> warnings;
-  std::string why;
-  if (!check_resolved_course(course_, venue, {L_max, static_cast<std::int32_t>(boats_.size())}, warnings, why)) {
-    error = "course " + course.id + ": " + why;
+  float L_max = 0.0f;
+  if (!resolve_and_build(course, course_axis(wind_settings_.base_from + wind_->trend(t_gun)), L_max, error)) {
     return false;
   }
-
-  // The collision scene: course entries in course order (courses.md §2), then the venue.
-  scene_.clear();
-  for (std::size_t m = 0; m < course_.marks.size(); ++m) {
-    const ResolvedMark& rm = course_.marks[m];
-    std::int32_t idx = -1;
-    if (rm.type == MarkType::buoy) {
-      idx = scene_.add_mark(rm.pos, rm.radius);
-    } else if (rm.type == MarkType::virtual_point) {
-      idx = scene_.add_virtual();
-    } else {
-      for (const CourseObject& o : course_.objects) {
-        if (o.mark == static_cast<std::int32_t>(m)) idx = scene_.add_course_polygon(o.c, o.heading, o.outline);
-      }
-    }
-    if (idx != static_cast<std::int32_t>(m)) {
-      error = "course " + course.id + ": mark \"" + course_.mark_ids[m] + "\" is not a valid collision shape";
-      return false;
-    }
-  }
-  scene_.set_venue(venue);
+  laid_ = false;
 
   for (const BoatEntry& e : entries_) race_.add_boat(e.perf, e.human, e.performance_scale);
   const WindTick& wt = wind_->advance(t_ms());
@@ -185,6 +153,90 @@ bool World::create_race(const CourseData& course, std::string& error) {
   }
   created_ = true;
   entries_at_create_ = static_cast<std::uint32_t>(n);
+  return true;
+}
+
+bool World::resolve_and_build(const CourseData& course, float twd_c, float& L_max, std::string& error) {
+  const VenueData& venue = *setup_.venue;
+  L_max = 0.0f;
+  const PerfData* longest = entries_.front().perf;
+  for (const BoatEntry& e : entries_) {
+    if (e.perf->dynamics.loa > L_max) {
+      L_max = e.perf->dynamics.loa;
+      longest = e.perf;
+    }
+  }
+  const float scale = course_scale(course, twd_c, *longest, wind_settings_.base_speed);
+  resolve_course(course, twd_c, scale, course_);
+  std::vector<std::string> warnings;
+  std::string why;
+  if (!check_resolved_course(course_, venue, {L_max, static_cast<std::int32_t>(boats_.size())}, warnings, why)) {
+    error = "course " + course.id + ": " + why;
+    return false;
+  }
+
+  // The collision scene: course entries in course order (courses.md §2), then the venue.
+  scene_.clear();
+  for (std::size_t m = 0; m < course_.marks.size(); ++m) {
+    const ResolvedMark& rm = course_.marks[m];
+    std::int32_t idx = -1;
+    if (rm.type == MarkType::buoy) {
+      idx = scene_.add_mark(rm.pos, rm.radius);
+    } else if (rm.type == MarkType::virtual_point) {
+      idx = scene_.add_virtual();
+    } else {
+      for (const CourseObject& o : course_.objects) {
+        if (o.mark == static_cast<std::int32_t>(m)) idx = scene_.add_course_polygon(o.c, o.heading, o.outline);
+      }
+    }
+    if (idx != static_cast<std::int32_t>(m)) {
+      error = "course " + course.id + ": mark \"" + course_.mark_ids[m] + "\" is not a valid collision shape";
+      return false;
+    }
+  }
+  scene_.set_venue(venue);
+  return true;
+}
+
+bool World::lay_course(const CourseData& course, std::string& error) {
+  if (created_ || laid_) {
+    error = created_ ? "the race exists already" : "the course is laid already";
+    return false;
+  }
+  if (boats_.empty()) {
+    error = "no boats";
+    return false;
+  }
+  if (setup_.venue == nullptr) {
+    error = "no venue";
+    return false;
+  }
+  // courses.md §6.4: the axis on the median wind now (no gun), scaled and checked as for a race.
+  float L_max = 0.0f;
+  if (!resolve_and_build(course, course_axis(wind_settings_.base_from + wind_->trend(t_ms())), L_max, error)) {
+    course_ = ResolvedCourse{};
+    scene_.clear();
+    scene_.set_venue(*setup_.venue);
+    return false;
+  }
+  collisions_.reset();
+  contacts_.clear();
+  // race.md §3.5 slots, the nearest to the start line's middle first, in the race's spawn order.
+  const std::size_t n = boats_.size();
+  std::vector<Vec2> slots = spawn_slots(course_, setup_.venue, L_max, n + 64);
+  if (slots.size() < n) {
+    error = "course " + course.id + ": not enough spawn slots for " + std::to_string(n) + " boats";
+    course_ = ResolvedCourse{};
+    scene_.clear();
+    scene_.set_venue(*setup_.venue);
+    return false;
+  }
+  const Vec2 mid = v_mid(course_.end_a(course_.start()), course_.end_b(course_.start()));
+  std::stable_sort(slots.begin(), slots.end(),
+                   [&](Vec2 a, Vec2 b) { return v_dist(a, mid) < v_dist(b, mid); });
+  const std::vector<std::int32_t> order = spawn_order(setup_.race_seed, static_cast<std::int32_t>(n));
+  for (std::size_t k = 0; k < n; ++k) spawn(static_cast<std::size_t>(order[k]), slots[k], 0.0f, false);
+  laid_ = true;
   return true;
 }
 

@@ -650,6 +650,19 @@ wm_status wm_world_create_race(wm_world* w, const wm_course* course) {
   return WM_OK;
 }
 
+wm_status wm_world_lay_course(wm_world* w, const wm_course* course) {
+  if (w == nullptr || course == nullptr) return fail(WM_ERR_ARG, "null argument");
+  if (w->world->course_laid()) return fail(WM_ERR_STATE, "a course is laid already");
+  std::string err;
+  if (!w->world->lay_course(*course->c, err)) {
+    return fail(w->venue == nullptr || w->world->boat_count() == 0 ? WM_ERR_STATE : WM_ERR_LOAD, err);
+  }
+  w->course = course->c;
+  refresh_prev(w);
+  std::fill(w->req_valid.begin(), w->req_valid.end(), 0);
+  return WM_OK;
+}
+
 // ---- controls -----------------------------------------------------------------------------------------------
 
 void wm_input_encode(const wm_input_frame* f, uint8_t out[6]) {
@@ -769,6 +782,7 @@ int32_t wm_world_boat_count(const wm_world* w) {
   return w != nullptr ? static_cast<int32_t>(w->world->boat_count()) : 0;
 }
 int32_t wm_world_has_race(const wm_world* w) { return w != nullptr && w->world->race_created() ? 1 : 0; }
+int32_t wm_world_has_course(const wm_world* w) { return w != nullptr && w->world->course_laid() ? 1 : 0; }
 
 // ---- AI skippers --------------------------------------------------------------------------------------------
 
@@ -1297,10 +1311,15 @@ wm_status need_race(const wm_world* w, const void* out) {
   if (!w->world->race_created()) return fail(WM_ERR_STATE, "no race");
   return WM_OK;
 }
+wm_status need_course(const wm_world* w, const void* out) {
+  if (w == nullptr || out == nullptr) return fail(WM_ERR_ARG, "null argument");
+  if (!w->world->course_laid()) return fail(WM_ERR_STATE, "no course");
+  return WM_OK;
+}
 }  // namespace
 
 wm_status wm_world_course(const wm_world* w, wm_course_info* out) {
-  if (wm_status s = need_race(w, out)) return s;
+  if (wm_status s = need_course(w, out)) return s;
   const wm::ResolvedCourse& c = w->world->course();
   out->id = c.id.c_str();
   out->twd_c = c.twd_c;
@@ -1309,12 +1328,12 @@ wm_status wm_world_course(const wm_world* w, wm_course_info* out) {
   out->step_count = static_cast<int32_t>(c.steps.size());
   out->laps = c.laps;
   out->boundary_count = c.has_boundary ? static_cast<int32_t>(c.boundary.size()) : 0;
-  out->zone_lengths = w->world->race().zone_lengths();
+  out->zone_lengths = w->world->race_created() ? w->world->race().zone_lengths() : c.race.zone_lengths;
   return WM_OK;
 }
 
 wm_status wm_world_course_mark(const wm_world* w, int32_t mark, wm_mark* out) {
-  if (wm_status s = need_race(w, out)) return s;
+  if (wm_status s = need_course(w, out)) return s;
   const wm::ResolvedCourse& c = w->world->course();
   if (mark < 0 || static_cast<std::size_t>(mark) >= c.marks.size()) return fail(WM_ERR_ARG, "bad mark index");
   const wm::ResolvedMark& m = c.marks[static_cast<std::size_t>(mark)];
@@ -1334,7 +1353,7 @@ wm_status wm_world_course_mark(const wm_world* w, int32_t mark, wm_mark* out) {
 }
 
 wm_status wm_world_course_step(const wm_world* w, int32_t step, wm_step* out) {
-  if (wm_status s = need_race(w, out)) return s;
+  if (wm_status s = need_course(w, out)) return s;
   const wm::ResolvedCourse& c = w->world->course();
   if (step < 0 || static_cast<std::size_t>(step) >= c.steps.size()) return fail(WM_ERR_ARG, "bad step index");
   const wm::CourseStep& st = c.steps[static_cast<std::size_t>(step)];
@@ -1352,7 +1371,7 @@ wm_status wm_world_course_step(const wm_world* w, int32_t step, wm_step* out) {
 }
 
 wm_status wm_world_course_boundary(const wm_world* w, int32_t i, float* x, float* y) {
-  if (wm_status s = need_race(w, x)) return s;
+  if (wm_status s = need_course(w, x)) return s;
   const wm::ResolvedCourse& c = w->world->course();
   if (!c.has_boundary || i < 0 || static_cast<std::size_t>(i) >= c.boundary.size())
     return fail(WM_ERR_ARG, "bad boundary index");

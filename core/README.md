@@ -127,6 +127,7 @@ is the environment clock's zero, `race.md` §0).
 | `World(WorldSetup)` | venue, seed, wind and sea settings (the venue's fields applied, the wind sea grown from the venue fetch), race settings, rules parameters | race.md §2 |
 | `add_boat(BoatEntry)` | an entry (class, human or AI, performance scale, auto trim, start sail); after `create_race` a joiner placed in the first free slot, until the prep signal | race.md §3.5 |
 | `place_boat(i, p, psi)` | free sailing: places a boat (60 % of its polar speed, sails up and trimmed); only before `create_race`. A world that never creates a race steps boats, wind, sea, shadows and collisions without race or rules | race.md §3.5 |
+| `lay_course(CourseData, err)` | free sail: lays the course with no race (axis on the median wind now), checks it, builds the collision scene, places the boats at the spawn slots nearest the line's middle; `place_boat` still works; not in the snapshot | courses.md §6.4 |
 | `create_race(CourseData, err)` | lays the course to the median wind at the gun and scales it, checks it on the venue, builds the collision scene, creates the race and the rules, spawns the boats | courses.md §6, §7; race.md §3.1 |
 | `set_helm`, `set_sheet`, `set_auto_trim`, `set_let_fly`, `hoist`, `drop_front`, `retire`, `protest` | controls queued for step 2 of the next tick | boat.md §2, race.md §6.4, rules.md §10 |
 | `set_controller(fn)` | called in step 2 before the queued controls: computer skippers and scripts decide there | ai.md |
@@ -150,12 +151,12 @@ hosts that link it in. Everything is built under the float rules; hosts must not
 | group | calls |
 | --- | --- |
 | data | `wm_perf_load/parse`, `wm_venue_load/parse`, `wm_course_load/parse`; `wm_perf_info`, `wm_perf_sail`, `wm_perf_polar`, `wm_perf_polar_vmg`, `wm_perf_trim_speed`, `wm_perf_table` (any config table by name, e.g. `weather_helm`, `flog_drag`) |
-| set-up | `wm_world_settings_init`, `wm_world_create(settings, venue or NULL)`, `wm_world_add_boat`, `wm_world_place_boat` (free sailing), `wm_world_create_race`, `wm_world_scenario_place` (a pose and speed at any time: rules scenarios, tests) |
+| set-up | `wm_world_settings_init`, `wm_world_create(settings, venue or NULL)`, `wm_world_add_boat`, `wm_world_place_boat` (free sailing), `wm_world_lay_course` (free sail's course without a race, courses.md §6.4), `wm_world_create_race`, `wm_world_scenario_place` (a pose and speed at any time: rules scenarios, tests) |
 | controls | `wm_world_apply_input` (the input frame of networking.md §4.1; the sail request result is answered at once), `wm_input_encode/decode` (the 6-byte wire form), single controls, `wm_world_set_controller` (step-2 callback) |
 | step | `wm_world_step`, `wm_world_checksum` (on request, conventions.md §9), `wm_world_tick`, `wm_world_time_ms`, `wm_world_render_time_ms` |
 | boats | state, controls, outputs, the environment at the boat, `wm_world_render_pose(alpha)` (interpolated between the last two ticks), `wm_world_trim_speed_at` (HUD trim tolerance), sails, per-sail state and outputs, sail phase events |
 | environment | clean wind, global direction, current, puff patches (now or at any `t_ms`), `wm_world_wind_state`, sea height (now or at any `t_ms`), slope, exposure and its grid, wave components; the `t_ms` render queries take fractional milliseconds (wind.md §9, sea.md §7.2) |
-| race and rules | course marks, steps and boundary; race state, per-boat race state, order, results; per-boat rules state, pending penalties, pair records; race, rules and contact events of the last tick |
+| race and rules | course marks, steps and boundary (a race's or a laid one; `wm_world_has_course`); race state, per-boat race state, order, results; per-boat rules state, pending penalties, pair records; race, rules and contact events of the last tick |
 | AI skippers | `wm_ai_entry_init`, `wm_world_add_ai_boat(perf, level, speed_only)`, `wm_world_ai_add` (any boat), `wm_world_ai_take_over` / `wm_world_ai_release` (ai.md §14), `wm_world_ai_add_autopilot`, `wm_world_ai_has`, `wm_world_ai_count`; telemetry (`wm_world_ai_telemetry`, `wm_world_ai_bad_air`) and the last decision (`wm_world_ai_debug`, `wm_ai_tactic_name`); `wm_ai_performance_scale(level)` |
 | snapshots | `wm_world_save` / `wm_world_load(course)` (the world snapshot, conventions.md §9.1, into a world with the same settings and boats, reset first, so any number of loads; a failed load leaves it as it was) and `wm_world_ai_save` / `wm_world_ai_load` (the skippers' memory, ai.md §16, taken at the same moment) |
 

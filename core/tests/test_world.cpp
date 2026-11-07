@@ -162,3 +162,58 @@ TEST_CASE("world: a boat joining before the preparatory signal takes a free slot
   while (!w->race().rules_live()) w->step();
   CHECK(w->add_boat(e) == -1);
 }
+
+TEST_CASE("world: free sail lays the course without a race") {
+  auto w = std::make_unique<wm::World>(setup(5));
+  wm::BoatEntry e;
+  e.perf = &wm_test::perf("wm7");
+  REQUIRE(w->add_boat(e) == 0);
+  CHECK_FALSE(w->course_laid());
+  std::string err;
+  REQUIRE_MESSAGE(w->lay_course(example_course(), err), err);
+  CHECK(w->course_laid());
+  CHECK_FALSE(w->race_created());
+  const wm::ResolvedCourse& rc = w->course();
+  // courses.md §6.4: the axis on the median wind now (the base direction, no trend here), scaled as in a race.
+  CHECK(rc.twd_c == doctest::Approx(0.3f));
+  CHECK(rc.k >= 0.5f);
+  CHECK(rc.k <= 2.0f);
+  REQUIRE(w->scene().course().size() == rc.marks.size());
+  for (std::size_t m = 0; m < rc.marks.size(); ++m) {
+    CHECK(w->scene().course()[m].solid == (rc.marks[m].type != wm::MarkType::virtual_point));
+  }
+  // Placed on the pre-start side near the line's middle, on starboard at a close reach.
+  const wm::Vec2 A = rc.end_a(rc.start()), B = rc.end_b(rc.start());
+  const wm::BoatState& s = w->boat(0).state();
+  const wm::Vec2 c{s.pos_x, s.pos_y};
+  const wm::Vec2 d = wm::v_unit(wm::v_sub(B, A), {1.0f, 0.0f});
+  const float side = d.x * (c.y - A.y) - d.y * (c.x - A.x);  // > 0 on the course side (left of A->B)
+  CHECK(side < 0.0f);
+  CHECK(wm::v_dist(c, wm::v_mid(A, B)) < 0.25f * wm::v_dist(A, B) + 10.0f * 7.2f);
+  CHECK(wm::wrap_pi(s.twd_from - s.psi) == doctest::Approx(100.0f * wm::DEG).epsilon(0.02));
+  // Only once; a free sailing world: place_boat works and the boat sails with no race events.
+  CHECK_FALSE(w->lay_course(example_course(), err));
+  CHECK(w->place_boat(0, c, s.psi));
+  for (int k = 0; k < 200; ++k) {
+    w->step();
+    CHECK(w->events().race.empty());
+    CHECK(w->events().rules.empty());
+  }
+  // The marks are solid: a boat put on a buoy touches it.
+  std::size_t buoy = 0;
+  while (rc.marks[buoy].type != wm::MarkType::buoy) ++buoy;
+  const wm::Vec2 m = rc.marks[buoy].pos;
+  w->place_boat(0, m.x, m.y - 6.0f, 0.0f, 2.0f);
+  bool touched = false;
+  for (int k = 0; k < 100 && !touched; ++k) {
+    w->step();
+    for (const wm::ContactEvent& ce : w->events().contacts) {
+      touched = touched || (ce.other_kind == wm::ContactKind::mark && ce.other == static_cast<std::int32_t>(buoy));
+    }
+  }
+  CHECK(touched);
+  // A race may still be created on it; it lays the course again for the race.
+  REQUIRE_MESSAGE(w->create_race(example_course(), err), err);
+  CHECK(w->race_created());
+  CHECK(w->course_laid());
+}

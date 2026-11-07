@@ -49,9 +49,23 @@ func test_data() -> void:
 	sorted.sort()
 	t.ok(sorted == disk and disk.size() >= 2, "classes %s = files %s" % [cls, disk])
 	t.ok(MenuData.names(MenuData.classes()).has("Windmark 7 Sportsboat"), "class names from the class files")
+	var by_size := MenuData.classes().map(func(e: Dictionary) -> float: return MenuData.class_facts(e["id"])["loa"])
+	var ascending := true
+	for i in range(1, by_size.size()):
+		ascending = ascending and by_size[i] >= by_size[i - 1]
+	t.ok(ascending and cls[0] == "wm7", "the picker walks the fleet smallest first: %s" % [cls])
+	t.ok(MenuData.tallest_mast() > 20.0, "the tallest mast in the fleet: %.1f m" % MenuData.tallest_mast())
+	var pr := ClassLineup.profile("wm7")
+	t.ok(pr.size() >= 4 and pr[0].size() == 7, "a class's profile: hull, mast, main, headsail (%d shapes)" % pr.size())
+	t.ok(ClassLineup.profile("no_such_class").is_empty(), "no profile for an unknown class")
 	var ven := MenuData.ids(MenuData.venues())
 	t.ok(ven.has("practice_waters") and ven.size() == _disk_ids(BoatClassData.repo_path("data/venues"),
 		".venue.json").size(), "venues %s" % [ven])
+	t.ok(ven[0] == "practice_waters" and ven.slice(1) == (func() -> Array:
+		var rest := ven.slice(1).duplicate()
+		rest.sort_custom(func(a: String, b: String) -> bool:
+			return MenuData.name_of(MenuData.venues(), a) < MenuData.name_of(MenuData.venues(), b))
+		return rest).call(), "the practice venue first, the rest by name")
 	var c7 := MenuData.ids(MenuData.courses("practice_waters", "wm7"))
 	t.ok(c7.has("practice_waters/example_wl"), "practice_waters courses for wm7: %s" % [c7])
 	t.ok(MenuData.courses("practice_waters", "no_such_class").is_empty(), "no course lists an unknown class")
@@ -750,7 +764,9 @@ func test_live_backdrop() -> void:
 		var cp := cam.global_position
 		var focus := Frames.enu_to_scene(MenuStage.SHOW_POS.x, MenuStage.SHOW_POS.y, 0.0)
 		var dist := Vector2(cp.x, cp.z).distance_to(Vector2(focus.x, focus.z))
-		var mast: float = MenuData.class_facts(cls0)["mast_height"]
+		var mast := MenuStage.reference_mast(cls0, info.loa)
+		t.ok(absf(mast - MenuData.tallest_mast()) < 1e-6 and mast > MenuData.class_facts("wm7")["mast_height"] + 1.0,
+			"the camera's reference is the fleet's tallest mast (%.1f m), not this class's" % mast)
 		t.ok(absf(dist - (MenuStage.SHOW_DIST * mast + MenuStage.SHOW_DIST_ADD)) < 0.5
 			and absf(cp.y - MenuStage.SHOW_HEIGHT * mast) < 0.5, "the camera circles it at %.1f m, %.1f m up" % [dist, cp.y])
 		t.ok(st.frame_x > 0.0 and st.frame_x < 0.5 and st.frame_offset(cam) < 0.0,
@@ -759,11 +775,18 @@ func test_live_backdrop() -> void:
 		for i in 10:
 			await process_frame
 		t.ok(st._show_bearing != b0, "the camera goes round")
+		var bearing_before := st._show_bearing
+		var eye_before := cam.global_position
 		q.rows["class_id"].step_value(1)
 		await process_frame
 		var cls1 := str(q.rows["class_id"].value)
 		t.ok(st.showcase != first and st.showcase_class == cls1 and (not is_instance_valid(first) or first.is_queued_for_deletion()),
 			"a new class: a new showcase boat (%s), the old one freed" % cls1)
+		t.ok(absf(wrapf(st._show_bearing - bearing_before, -PI, PI)) < 0.05
+			and cam.global_position.distance_to(eye_before) < 1.0,
+			"a class swap keeps the camera where it was: the new boat at true scale beside the old one's place")
+		t.ok(q.lineup.is_visible_in_tree() and q.lineup.chosen == cls1 and q.lineup.classes == MenuData.ids(MenuData.classes()),
+			"the fleet line-up marks the chosen class")
 		var second := st.showcase
 		var lv0 := st.showcase_livery
 		q.rows["livery"].step_value(1)
@@ -1875,6 +1898,16 @@ func test_pause_menu() -> void:
 	t.near(sc.controls.stick_dead_zone, 0.25, 1e-9, "dead zone applied to the running scene")
 	t.ok(sc.hud.assist == Hud.Assist.FULL, "assist preset applied to the running scene")
 	t.ok(pm.is_open and pm.buttons["settings"].is_visible_in_tree(), "back on the pause menu")
+	# the pause key in the settings goes back to the card (menus.md §2), the race stays paused
+	pm.buttons["settings"].pressed.emit()
+	await process_frame
+	t.ok(pm._settings_card.visible, "settings open from the pause menu")
+	sc.scripted_input = RawInput.new().press(&"pause_menu")
+	sc.step_frame(1.0 / 60.0)
+	sc.scripted_input = RawInput.new()
+	await process_frame
+	t.ok(pm.is_open and sc.runner.paused and not pm._settings_card.visible
+		and pm.buttons["settings"].is_visible_in_tree(), "the pause key in the settings: back to the card, still paused")
 	# pause key again closes it
 	sc.scripted_input = RawInput.new().press(&"pause_menu")
 	sc.step_frame(1.0 / 60.0)
@@ -1898,7 +1931,7 @@ func test_pause_menu() -> void:
 	t.ok(pm.is_open and acts.is_empty() and pm.buttons["restart"].text == "RESTART? PRESS AGAIN",
 		"Restart in a race: the first press asks")
 	pm.buttons["quit"].pressed.emit()
-	t.ok(pm.is_open and acts.is_empty() and pm.buttons["quit"].text == "QUIT? PRESS AGAIN"
+	t.ok(pm.is_open and acts.is_empty() and pm.buttons["quit"].text == "LEAVE THE RACE? PRESS AGAIN"
 		and pm.buttons["restart"].text == "RESTART", "another item asks instead, the first question dropped")
 	pm.buttons["quit"].pressed.emit()
 	t.ok(acts == ["quit"] and not pm.is_open, "the second press quits")

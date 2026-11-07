@@ -30,15 +30,20 @@ static func _sorted(list: Array) -> Array:
 	return list
 
 
-## Boat classes: data/classes/<id>.boat.json.
+## Boat classes: data/classes/<id>.boat.json, smallest first (by length over all, then name: the picker walks
+## the fleet from the sportsboat up to the classic yacht, menus.md §1.1).
 static func classes() -> Array:
 	var dir := BoatClassData.repo_path("data/classes")
 	var out := []
 	for f in _files(dir, ".boat.json"):
 		var d := _read(dir.path_join(f))
 		var id := f.trim_suffix(".boat.json")
-		out.append({"id": id, "name": str(d.get("name", id))})
-	return _sorted(out)
+		out.append({"id": id, "name": str(d.get("name", id)), "loa": float(d.get("hull", {}).get("loa", 0.0))})
+	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return a["loa"] < b["loa"] if absf(a["loa"] - b["loa"]) > 1e-6 else a["name"] < b["name"])
+	for e in out:
+		e.erase("loa")
+	return out
 
 
 ## The boats of a class in file order (the default first), named "<sail number>  <boat name>":
@@ -47,7 +52,8 @@ static func liveries(class_id: String) -> Array:
 	return Livery.load_class(class_id).map(func(l: Livery) -> Dictionary: return {"id": l.id, "name": l.name})
 
 
-## Venues: data/venues/<id>.venue.json.
+## Venues: data/venues/<id>.venue.json, the practice venue first (the default, where a new player starts) and
+## the rest by name.
 static func venues() -> Array:
 	var dir := BoatClassData.repo_path("data/venues")
 	var out := []
@@ -55,7 +61,12 @@ static func venues() -> Array:
 		var d := _read(dir.path_join(f))
 		var id := f.trim_suffix(".venue.json")
 		out.append({"id": id, "name": str(d.get("name", id))})
-	return _sorted(out)
+	_sorted(out)
+	for i in out.size():
+		if out[i]["id"] == "practice_waters":  # GameSetup.venue's default
+			out.push_front(out.pop_at(i))
+			break
+	return out
 
 
 ## the venues' weather read once per file (VenueWeather.info), by path
@@ -164,6 +175,15 @@ static func class_facts(id: String) -> Dictionary:
 		elif t.begins_with("spinnaker") and a > out["kite_area"]:
 			out["kite"] = "asym" if t == "spinnaker_asym" else "sym"
 			out["kite_area"] = a
+	return out
+
+
+## The tallest mast among the classes (m): the showcase camera's reference (menus.md §4.1), so every class
+## shows at the same scale; 0 without classes.
+static func tallest_mast() -> float:
+	var out := 0.0
+	for c in classes():
+		out = maxf(out, float(class_facts(c["id"])["mast_height"]))
 	return out
 
 

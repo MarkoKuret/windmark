@@ -61,6 +61,8 @@ var briefing_grid: GridContainer
 var course_map: CourseMap
 ## the Boat step's character line and key numbers, the Venue step's character line, the Start step's summary
 var class_line: Label
+## the fleet line-up (menus.md §1.1): every class at one scale, the chosen one marked
+var lineup: ClassLineup
 var facts: GridContainer
 var venue_line: Label
 var summary: GridContainer
@@ -118,7 +120,12 @@ func build(race: bool, last: Dictionary) -> void:
 	class_line.name = "ClassLine"
 	class_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	class_line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_rows_box.add_child(_padded(class_line, 6, 10))
+	_rows_box.add_child(_padded(class_line, 6, 6))
+	lineup = ClassLineup.new()
+	lineup.name = "Lineup"
+	lineup.set_classes(MenuData.ids(_classes), str(rows["class_id"].value))
+	lineup.picked.connect(func(id: String) -> void: rows["class_id"].set_value(id, true))
+	_rows_box.add_child(_padded(lineup, 0, 2))
 	facts = GridContainer.new()
 	facts.name = "Facts"
 	facts.columns = 2
@@ -300,6 +307,7 @@ func go(i: int) -> void:
 	for k in rows:
 		rows[k].visible = shown.has(k)
 	class_line.get_parent().visible = id == "boat"
+	lineup.get_parent().visible = id == "boat"
 	facts.get_parent().visible = id == "boat"
 	venue_line.get_parent().visible = id == "venue"
 	summary.get_parent().visible = id in ["start", "sail"]
@@ -706,6 +714,7 @@ func _class_changed() -> void:
 func _refresh_class() -> void:
 	var id := str(rows["class_id"].value)
 	class_line.text = MenuData.class_line(id)
+	lineup.set_chosen(id)
 	var f := MenuData.class_facts(id)
 	_fact_values["length"].text = "%.1f m" % f["loa"]
 	_fact_values["sail_area"].text = "%d m²" % roundi(f["sail_area"])

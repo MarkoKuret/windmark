@@ -43,8 +43,10 @@ does, so a first-time player sees at once what to press:
   screen; Back, Done, Esc or B bring the card back with the focus on the item that opened the page. The page is
   **wide** (the window's width inside the margins, at most 980 px logical: on a big window the backdrop stays in
   view on the left) or **narrow** (540 px: the Boat step, §1.1, which leaves the stage room for the boat).
-- Lists come from the data on disk: classes from `data/classes/*.boat.json` (name from the file), venues from
-  `data/venues/*.venue.json`, courses from `game/data/courses/<venue>/*.course.json` that list the chosen class
+- Lists come from the data on disk: classes from `data/classes/*.boat.json` (name from the file), smallest first
+  (by length over all, so the picker walks the fleet from the sportsboat up to the classic yacht), venues from
+  `data/venues/*.venue.json`, Practice Waters first (the default, where a new player starts) and the rest by name,
+  courses from `game/data/courses/<venue>/*.course.json` that list the chosen class
   in their `classes` (a course without `classes` suits every class). A venue without a course for the class cannot
   start a race.
 - **Sail number**: the player's boat, from the boats of the class's livery file (`data_format.md` §8.4, in file
@@ -130,7 +132,12 @@ the venue and the race rows together. A race has four steps, a free sail three:
   picker**, `‹  WINDMARK 7 SPORTSBOAT  ›` (menu-item sized caps, centred, the focus when the step opens); under
   it the class's one-line **character** in sentence case (`Modern sportsboat: light, quick to plane, asymmetric
   kite, tiller.`; one hand-written line per shipped class in the menu's data, a class without one gets
-  `<crew> crew, <kite> kite, <tiller|wheel>` from its file); then four **key numbers** as label and value pairs
+  `<crew> crew, <kite> kite, <tiller|wheel>` from its file); then the **fleet line-up**: every class as a small
+  profile silhouette (hull with its sheer, mast, main and headsail, drawn from the class file's hull, rig and
+  freeboard numbers) side by side at one scale on a faint waterline, in the picker's order, the chosen class navy
+  and the others muted (`#b9b3a3`), the strip 76 px tall and the row centred, so one glance says how big the chosen
+  boat is next to the rest and which of the classes it is; a click on a silhouette picks that class. Then four
+  **key numbers** as label and value pairs
   (SemiBold caps labels, tabular values): **Length** (`7.2 m`, `hull.loa`), **Sail area** (`37 m²`, the main and
   the headsail, `sails[].area`), **Crew** (`4`, `crew.count`), **Kite** (`Asymmetric 54 m²`, `Symmetric 45 m²`, or
   `None`, from the spinnaker's type and area); then the **Sail number** row (§1). The character and the numbers
@@ -153,7 +160,7 @@ the venue and the race rows together. A race has four steps, a free sail three:
   the right the summary lines (below) and the venue chart; its primary action is **Set sail**.
 - **Start step.** Left: the **summary**, label and value lines in the briefing's style: `Boat  Windmark 7
   Sportsboat · 7 Kestrel`, `Venue  Practice Waters`, `Course  Windward-leeward, 2 laps`, `Fleet  10 boats ·
-  Expert`, `Weather  Local` (`Custom · 14 kn from the NE · Shifty · Moderate gusts`, `Random`), `Light  Venue
+  Easy`, `Weather  Local` (`Custom · 14 kn from the NE · Shifty · Moderate gusts`, `Random`), `Light  Venue
   default` (`14:30, fair`, `Surprise`). Right: the race card (the briefing and the course map). The primary action
   is **Start race**, menu-item sized.
 - **Narrow pages** (a portrait capture window, a large UI scale): when a wide page is narrower than 760 px
@@ -319,9 +326,10 @@ Items: **Resume** (the focus when it opens), **Restart** (the same session from 
 signal until the player's race is over, `race.md` §6.4: red, as a destructive action; the first press turns it into
 `Retire? Press again` for 3 s and a second press within them retires the boat and closes the menu), **Settings**,
 **Main menu**. While the player's race is on (the same window as Retire) **Restart** and **Main menu** ask
-the same way (`Restart? Press again`, `Quit? Press again`, 3 s), since either throws the race away; in free sail,
+the same way (`Restart? Press again`, `Leave the race? Press again`, 3 s), since either throws the race away; in free sail,
 before the warning signal and over the results screen they act at once. Only one item asks at a time (moving to
-another item or 3 s cancels the question). `pause_menu` again resumes. Over the results screen (§5) it works the same, Retire hidden, and
+another item or 3 s cancels the question). `pause_menu` again resumes (in the settings it goes back to the card,
+the menu stays open). Over the results screen (§5) it works the same, Retire hidden, and
 Resume goes back to the results. While it is open the boat's controls are held as in `controls.md` §7 (held let-fly and
 hold-to-steer keys count as released). Settings opens the settings screen (§3) in the card's place, a page as wide
 as the main menu's (§4), centred; settings changed here apply to the running scene when the settings screen
@@ -510,13 +518,17 @@ command line (`--resolution 1080x1920`).
 
 On the Boat step (§1.1) the stage shows the chosen class: one boat (`BoatView`) of the class in the player's
 livery (the Sail number row), placed on the water of the backdrop venue clear of the racing (600 m east of the
-course), heading north-east with the wind on the starboard bow, heeled 12° to port with the main and the headsail
+course), heading north-west with the wind on the starboard bow, heeled 12° to port with the main and the headsail
 trimmed for a beat and the kite down, sitting on the sea (the sea's height under it, the hull's pitch and roll from
 the sea's slope). It does not sail: a boat on a turntable. The camera circles it at a three-quarter view (distance
-1.9 x the mast height + 2 m, height 0.35 x the mast height, aimed a third of the way up the mast), going round at
+1.9 x the reference mast height + 2 m, height 0.35 x it, aimed a third of the way up it), going round at
 2.5° a second (a third with reduced motion), starting from the leeward bow quarter, with the boat centred in the
-room left of the page. Changing the class frees the boat and makes the new one at once (the first make of a class
-takes its load); changing the sail number repaints it. Leaving the step frees the boat and the drift cuts back to
+room left of the page. The **reference mast** is the tallest in the fleet (the classes on disk; at least the
+class's own mast and half its length), the same for every class: the camera stays where it is when the class
+changes, so the boats show at their true size next to each other, the sportsboat small on the water where the
+classic yacht filled the frame, the waves giving the scale. Changing the class frees the boat and makes the new
+one at once (the first make of a class takes its load) and keeps the camera's bearing (only the boat changes);
+changing the sail number repaints it. Leaving the step frees the boat and the drift cuts back to
 the fleet. The painted backdrop (no live scene) shows no boat: the page alone.
 
 ## 5. Race end
@@ -532,7 +544,8 @@ scene, then the next race or the menu.
 - **Title**, over the scene in the logo's styles (§1.2, the Wordmark lockup with other words): the place
   (`3RD`) or the code (`RET`, `DNF`, `DSQ`, `OCS`; `NO RACE` when the race was abandoned) as the title, and in the
   tagline bar the result in words: `FINISHED 0:23:32.35  +0:42`, `WINNER 0:23:32.35`, `RETIRED`,
-  `DID NOT FINISH`, `DISQUALIFIED`, `RACE ABANDONED`. Top left at 76 px, scaled down by font size to fit.
+  `DID NOT FINISH`, `DISQUALIFIED`, `DID NOT START` (a boat ghosted at the start limit, `race.md` §6.4, is a `DNS`,
+  not a disqualification), `DID NOT COMPETE`, `RACE ABANDONED`. Top left at 76 px, scaled down by font size to fit.
 - **Panel** (cloth, §4), beside the title on the right, or under it when the window is narrower than 1100 px or in
   portrait (there inside the HUD's portrait margins, `hud.md` §16.5), as tall as its content and at most the
   window's height, so the scene stays in view around it: the heading `RESULTS` with one line under it (`Practice Waters · Windward-leeward · 10 boats`; the venue is left out
@@ -552,7 +565,7 @@ scene, then the next race or the menu.
   it becomes the final table.
 - **Summary** (`YOUR RACE`, a heading in caps and label value lines): the items of `hud.md` §13.3 that have data.
 - **Actions** in the footer, footer-action sized (§4), from the left (there is no way back here): **Race again** (primary, the focus when the screen opens): the same setup (class,
-  sail number, venue, course, fleet, AI level, wind) with a new seed. **Change setup**: this setup becomes the
+  sail number, venue, course, fleet, AI level, wind, Time and Sky) with a new seed. **Change setup**: this setup becomes the
   remembered one (§1) and the main menu opens the race setup (§1.1) at its Boat step with it. **Main menu**: the main menu.
 - **Input** (§4): left and right move between the actions, Enter or A accepts, the mouse focuses on hover and
   accepts on a click; up and down scroll the table and summary; `pause_menu` opens the pause menu over the screen

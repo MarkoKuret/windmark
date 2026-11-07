@@ -117,7 +117,7 @@ func _odd_settings() -> Settings:
 	s.helm_fine_toggle = true
 	s.rankings_toggle = true
 	s.camera_boost_toggle = true
-	s.sheet_turns_auto_trim_off = true
+	s.sheet_turns_auto_trim_off = false
 	s.vibration = 0.3
 	s.camera_speed = 1.75
 	s.invert_orbit_x = true
@@ -308,7 +308,7 @@ func test_apply() -> void:
 	t.near(pc.stick_dead_zone, 0.2, 1e-9, "controls: stick dead zone")
 	t.near(pc.stick_gamma, 2.2, 1e-9, "controls: stick curve")
 	t.near(pc.sheet_rate_scale, 1.5, 1e-9, "controls: sheet rate")
-	t.ok(pc.let_fly_toggle and pc.helm_fine_toggle and pc.sheet_turns_auto_trim_off, "controls: toggles")
+	t.ok(pc.let_fly_toggle and pc.helm_fine_toggle and not pc.sheet_turns_auto_trim_off, "controls: toggles")
 	var rig := CameraRig.new()
 	s.apply_cameras(rig)
 	var o := rig.options
@@ -465,7 +465,7 @@ func test_every_key_applied() -> void:
 		"controls.helm_fine_toggle": pc.helm_fine_toggle,
 		"controls.rankings_toggle": hud.rankings_toggle,
 		"controls.camera_boost_toggle": rig.options.boost_toggle,
-		"controls.sheet_turns_auto_trim_off": pc.sheet_turns_auto_trim_off,
+		"controls.sheet_turns_auto_trim_off": pc.sheet_turns_auto_trim_off == s.sheet_turns_auto_trim_off,
 		"controls.vibration": is_equal_approx(pc.rumble.strength, s.vibration),
 		"cameras.camera_speed": is_equal_approx(rig.options.speed, s.camera_speed),
 		"cameras.invert_orbit_x": rig.options.invert_orbit_x,
@@ -936,7 +936,7 @@ func test_main_menu() -> void:
 	await process_frame
 	t.ok(q.step_id() == "start" and root.gui_get_focus_owner() == q.start_button, "the Start step, focus on Start race")
 	var sl := q.summary_lines()
-	t.ok(sl.size() == 6 and sl[0][0] == "Boat" and sl[3][1] == "%d boats · Intermediate" % (fleet + 2)
+	t.ok(sl.size() == 6 and sl[0][0] == "Boat" and sl[3][1] == "%d boats · Easy" % (fleet + 2)
 		and sl[4][1] == "Local", "the summary: %s" % [sl])
 	# Esc goes back one step, from the first step to the menu
 	_key("ui_cancel")

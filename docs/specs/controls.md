@@ -204,8 +204,10 @@ Two modes (option, per player):
 - **Triggers**: `u += (t_out' − t_in') · 0.5 · dt` with `t' = pow(clamp((t − 0.05)/0.95, 0, 1), 1.5)` for each
   trigger value `t`.
 - **Absolute axis** (`sheet`, optional): `u = (axis + 1)/2`, dead zone 0.02 at both ends.
-- Option "sheet turns auto-trim off": a sheet input while auto-trim is on switches it off (default off: the input is
-  ignored and the HUD shows `AUTO`).
+- Option "sheet turns auto-trim off" (default **on**): a sheet input while auto-trim is on switches it off and the
+  HUD notes it for 3 s with the key that turns it back on (`Auto trim off: T turns it back on`, the key as the
+  player's bindings name it), so a first press on W or S trims the boat instead of doing nothing. Off: the input is
+  ignored and the HUD shows `AUTO`.
 - When auto-trim is switched off, `u` starts from the value that matches the present trim (`sails.md` §5.2 inverted
   for the front sail, or the main if no front sail is up), so nothing jumps.
 
@@ -248,6 +250,7 @@ slot after `F`.
 | helm stick dead zone, curve | 0.10, 1.6 | 0–0.30, 1.0–3.0 |
 | sheet key rate scale | 1.0 | 0.5–2.0 |
 | hold or toggle | hold | per action: `let_fly`, `helm_fine`, `rankings`, `camera_boost` |
+| sheet turns auto-trim off | on | on, off (§5.3) |
 | mouse helm | off | while the left button is held, horizontal mouse offset from the press point sets `h_cmd` (300 px = full) |
 | one-hand layout | off | left-hand keyboard set (A/D helm, W/S sheet, Q let fly, 1–5 sails, E camera) or mouse-only (mouse helm, wheel = sheet, buttons = let fly and camera) |
 | camera invert X / Y | off | per camera kind |

@@ -21,7 +21,8 @@ var let_fly_toggle := false
 var helm_fine_toggle := false
 var rankings_toggle := false
 var camera_boost_toggle := false
-var sheet_turns_auto_trim_off := false
+## on (controls.md §5.3): a sheet key or trigger while AUTO shows hands the trim to the player; off: ignored
+var sheet_turns_auto_trim_off := true
 ## 0 = off
 var vibration := 1.0
 

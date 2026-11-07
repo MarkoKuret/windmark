@@ -1,7 +1,7 @@
 class_name PauseMenu
 extends CanvasLayer
 ## The in-race pause menu (menus.md §2, controls.md §7): Resume, Restart, Retire (a quick race until the player's race
-## is over: a second press within 3 s retires her), Settings, Quit to menu. Scene changes fade (SceneFade).
+## is over: a second press within 3 s retires her), Settings, Main menu. Scene changes fade (SceneFade).
 ##
 ## Instanced as a child of the sail scene, it follows the scene's own pause: the scene's `pause_menu` key pauses
 ## its SimRunner (`runner.paused`), the menu opens over it and holds the boat's controls (`controls.menu_open`);
@@ -15,6 +15,8 @@ const MAIN_MENU := "res://scenes/menu/main_menu.tscn"
 const RETIRE_CONFIRM_S := 3.0
 const RETIRE_TEXT := "Retire"
 const RETIRE_ASK := "Retire? Press again"
+## the card's least width, px
+const CARD_W := 400.0
 
 ## tests: false keeps restart and quit from changing scene (action_requested still fires)
 var act := true
@@ -28,6 +30,7 @@ var sounds: MenuSounds
 var _root: Control
 var _card: PanelContainer
 var _list: VBoxContainer
+var _margin: MarginContainer
 var _settings_card: PanelContainer
 var _was_paused := false
 ## seconds left to confirm Retire, 0 when not asking
@@ -55,17 +58,14 @@ func _ready() -> void:
 	_root.add_child(center)
 	_card = PanelContainer.new()
 	_card.name = "Card"
-	_card.custom_minimum_size = Vector2(400, 0)
+	_card.custom_minimum_size = Vector2(CARD_W, 0)
 	center.add_child(_card)
-	_list = VBoxContainer.new()
-	_list.add_theme_constant_override("separation", 4)
+	_list = MenuTheme.list()
 	_card.add_child(_list)
 	_list.add_child(MenuTheme.heading("Paused"))
-	var gap := Control.new()
-	gap.custom_minimum_size = Vector2(0, 12)
-	_list.add_child(gap)
+	_list.add_child(MenuTheme.gap())
 	for e in [["resume", "Resume"], ["restart", "Restart"], ["retire", RETIRE_TEXT], ["settings", "Settings"],
-			["quit", "Quit to menu"]]:
+			["quit", "Main menu"]]:
 		var b := MenuTheme.button(e[1], MenuTheme.ITEM_SIZE, e[0] == "retire")
 		b.name = e[1].replace(" ", "")
 		var id: String = e[0]
@@ -73,18 +73,17 @@ func _ready() -> void:
 		_list.add_child(b)
 		buttons[id] = b
 
-	var margin := MarginContainer.new()
-	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	for side in ["left", "right"]:
-		margin.add_theme_constant_override("margin_" + side, 120)
-	for side in ["top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + side, 40)
-	_root.add_child(margin)
+	# the settings screen: a page as wide as the main menu's, centred, inside the screen margins (menus.md §4)
+	_margin = MarginContainer.new()
+	_margin.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.add_child(_margin)
 	_settings_card = PanelContainer.new()
 	_settings_card.name = "SettingsCard"
 	_settings_card.visible = false
-	margin.add_child(_settings_card)
+	_margin.add_child(_settings_card)
+	_fit()
+	get_viewport().size_changed.connect(_fit)
 	settings_panel = SettingsPanel.new()
 	settings_panel.esc_is_pause = true
 	settings_panel.build(Settings.current())
@@ -97,6 +96,18 @@ func _ready() -> void:
 	sounds.active = false
 	add_child(sounds)
 	_apply.call_deferred()
+
+
+## The settings page's room (menus.md §4): the screen margins, and no wider than a wide page of the main menu.
+func _fit() -> void:
+	var s := get_viewport().get_visible_rect().size
+	var pad := _settings_card.get_theme_stylebox("panel")
+	var pads := pad.get_content_margin(SIDE_LEFT) + pad.get_content_margin(SIDE_RIGHT)
+	var side := maxf(MenuTheme.MARGIN, floorf((s.x - MenuTheme.PAGE_MAX - pads) / 2.0))
+	for name in ["margin_left", "margin_right"]:
+		_margin.add_theme_constant_override(name, int(side))
+	for name in ["margin_top", "margin_bottom"]:
+		_margin.add_theme_constant_override(name, MenuTheme.MARGIN)
 
 
 func _host_runner() -> Object:

@@ -8,7 +8,14 @@ extends PanelContainer
 signal rebound(action: String)
 
 const LISTEN_S := 5.0
-const SLOT_W := 104.0
+## the name's least width and its share of the row, a slot's width (SLOT_MAX, less on a narrow page down to
+## SLOT_W, menus.md §3), the gap between the columns and the row's side padding
+const NAME_W := 110.0
+const NAME_SHARE := 0.42
+const SLOT_W := 64.0
+const SLOT_MAX := 104.0
+const COL_GAP := 4
+const PAD := Vector2(12, 5)
 
 var action := ""
 var slot := 0
@@ -37,21 +44,17 @@ func _build() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	var h := HBoxContainer.new()
 	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	h.add_theme_constant_override("separation", 4)
+	h.add_theme_constant_override("separation", COL_GAP)
 	add_child(h)
 	_name = MenuTheme.caps(SettingsPanel.action_name(action), MenuTheme.SMALL_SIZE, MenuTheme.INK)
-	_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_name.clip_text = true
-	_name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	name_column(_name)
 	h.add_child(_name)
 	for i in Bindings.kbm_count(action) + 1:
 		var l := MenuTheme.label("", MenuTheme.SMALL_SIZE, MenuTheme.NAVY, 600)
-		l.custom_minimum_size = Vector2(SLOT_W, 0)
-		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		l.clip_text = true
-		l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		slot_column(l)
 		h.add_child(l)
 		_slots.append(l)
+	resized.connect(func() -> void: fit_slots(size.x, _slots))
 	focus_entered.connect(func() -> void: _focused = true; _style())
 	focus_exited.connect(func() -> void:
 		_focused = false
@@ -59,6 +62,39 @@ func _build() -> void:
 		_style())
 	mouse_entered.connect(grab_focus)
 	refresh()
+
+
+## The name column of a row (and of the list's header): at least NAME_W, it takes the spare width.
+static func name_column(c: Control) -> void:
+	c.custom_minimum_size = Vector2(NAME_W, 0)
+	c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if c is Label:
+		(c as Label).clip_text = true
+		(c as Label).text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+
+
+## A slot column: centred, SLOT_W wide until fit_slots widens it to what the row has (so a row never asks for more
+## width than its page).
+static func slot_column(l: Label) -> void:
+	l.custom_minimum_size = Vector2(SLOT_W, 0)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.clip_text = true
+	l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+
+
+## The slot width for a row `w` px wide with `n` slots: SLOT_MAX, or what leaves the name its share of the row
+## (at least NAME_W), at least SLOT_W.
+static func slot_width(w: float, n: int) -> float:
+	var room := w - 2.0 * PAD.x - maxf(NAME_W, NAME_SHARE * w) - COL_GAP * n
+	return clampf(floorf(room / maxf(n, 1)), SLOT_W, SLOT_MAX)
+
+
+## Sizes `slots` for a row `w` px wide (the rows and the list's header).
+static func fit_slots(w: float, slots: Array) -> void:
+	var sw := slot_width(w, slots.size())
+	for l in slots:
+		if absf((l as Control).custom_minimum_size.x - sw) > 0.5:
+			(l as Control).custom_minimum_size = Vector2(sw, 0)
 
 
 func pad_slot() -> int:
@@ -81,9 +117,8 @@ func refresh(snap := {}) -> void:
 
 
 func _style() -> void:
-	var pad := Vector2(12, 5)
-	add_theme_stylebox_override("panel", MenuTheme.focus_box(pad) if _focused
-		else MenuTheme.box(Color(0, 0, 0, 0), 0, 2, pad))
+	add_theme_stylebox_override("panel", MenuTheme.focus_box(PAD) if _focused
+		else MenuTheme.box(Color(0, 0, 0, 0), 0, 2, PAD))
 	_name.add_theme_color_override("font_color", MenuTheme.SIGNAL if not conflicts.is_empty()
 		else (MenuTheme.NAVY if _focused else MenuTheme.INK))
 	for i in _slots.size():

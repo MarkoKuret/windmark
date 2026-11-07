@@ -18,7 +18,7 @@ const SAIL_SCENE := "res://scenes/sail_test.tscn"
 const FADE_IN_S := 0.5
 ## narrower than this (logical px) the panel goes under the title (menus.md §5)
 const NARROW := 1100.0
-const MARGIN := 40
+const MARGIN := MenuTheme.MARGIN
 ## the panel's width beside the title, px
 const PANEL_W := 760.0
 ## the table's columns: header, width (0: takes the rest, at least BOAT_MIN), right-aligned
@@ -136,7 +136,7 @@ func _ready() -> void:
 	table.name = "Table"
 	table.add_theme_constant_override("separation", 0)
 	body.add_child(table)
-	summary_heading = MenuTheme.caps("Your race", MenuTheme.SMALL_SIZE, MenuTheme.NAVY)
+	summary_heading = MenuTheme.subheading("Your race")
 	summary_heading.name = "SummaryHeading"
 	body.add_child(summary_heading)
 	summary_box = GridContainer.new()
@@ -145,19 +145,20 @@ func _ready() -> void:
 	summary_box.add_theme_constant_override("h_separation", 18)
 	summary_box.add_theme_constant_override("v_separation", 4)
 	body.add_child(summary_box)
-	_footer = HBoxContainer.new()
-	_footer.name = "Footer"
-	_footer.add_theme_constant_override("separation", 12)
-	col.add_child(_footer)
+	# the footer (menus.md §5): no way back here, so the actions run from the primary, Race again, on the left
+	var actions := []
 	for e in [["again", "Race again"], ["setup", "Change setup"], ["menu", "Main menu"]]:
 		var b := MenuTheme.button(e[1], MenuTheme.ACTION_SIZE)
 		b.name = e[1].replace(" ", "")
 		var id: String = e[0]
 		b.pressed.connect(func() -> void: press(id))
 		b.focus_entered.connect(func() -> void: _last_focus = b)
-		_footer.add_child(b)
+		actions.append(b)
 		buttons[id] = b
 	MenuTheme.set_primary(buttons["again"])
+	col.add_child(MenuTheme.gap(MenuTheme.SECTION_GAP - 6))
+	_footer = MenuTheme.footer(actions, [])
+	col.add_child(_footer)
 	_root.visible = false
 	sounds = MenuSounds.new()
 	sounds.name = "Sounds"

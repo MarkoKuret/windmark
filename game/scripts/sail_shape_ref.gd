@@ -665,16 +665,16 @@ func _update_loft(phase: int, progress: float, beta: float, gamma: float, shiver
 	var ge := 0.0
 	if mode == Mode.SPRIT:
 		var lim := asin(minf(1.0, tack_line_max * sl / r_h))
-		ge = _sgn(gamma) * minf(absf(gamma), lim)
-		s_t = _about(head, up, ge)
+		ge = Frames.sgn(gamma) * minf(absf(gamma), lim)
+		s_t = Frames.about(head, up, ge)
 	elif mode == Mode.POLE:
 		ge = gamma
-		s_t = _about(mast_step, mast_axis, ge)
+		s_t = Frames.about(mast_step, mast_axis, ge)
 	var piv := s_t * tack
 	var ax := (s_t.basis * lh).normalized()
 	# the measured shapes by the AWA (smoothstep between neighbours, held beyond the ends)
 	var m := _loft_awa.size()
-	var x := absf(_wrap_pi(awa))
+	var x := absf(Frames.wrap_pi(awa))
 	var i0 := 0
 	var i1 := 0
 	var t := 0.0
@@ -685,9 +685,9 @@ func _update_loft(phase: int, progress: float, beta: float, gamma: float, shiver
 		while i0 + 2 < m and x >= _loft_awa[i0 + 1]:
 			i0 += 1
 		i1 = i0 + 1
-		t = _smoothstep01((x - _loft_awa[i0]) / (_loft_awa[i1] - _loft_awa[i0]))
+		t = Frames.smoothstep01((x - _loft_awa[i0]) / (_loft_awa[i1] - _loft_awa[i0]))
 	var dep := minf(fill_gain * clampf(aws / KNOT, 3.0, 6.0) / 6.0, 1.0) * loft_depth
-	var sd := clampf(sin(_wrap_pi(beta + awa)) / LOFT_SIDE, -1.0, 1.0)
+	var sd := clampf(sin(Frames.wrap_pi(beta + awa)) / LOFT_SIDE, -1.0, 1.0)
 	var side := sd * (3.0 - sd * sd) / 2.0
 	var i2 := 0.33 * flutter_amp * shiver
 	var fly := PackedVector3Array()
@@ -704,8 +704,8 @@ func _update_loft(phase: int, progress: float, beta: float, gamma: float, shiver
 		fly[k] = fl
 	# the turn about the luff: the core's sheet angle (as the hinge model's, §7.3), plus the trim
 	# the trim and the turn off the obstacles fade out where sgn(beta) flips: on the centreline and round the bow
-	var wb := absf(_wrap_pi(beta))
-	var es := _sgn(beta) * _smoothstep01(wb / LOFT_FADE.x) * (1.0 - _smoothstep01((wb - LOFT_FADE.y) / LOFT_FADE.z))
+	var wb := absf(Frames.wrap_pi(beta))
+	var es := Frames.sgn(beta) * Frames.smoothstep01(wb / LOFT_FADE.x) * (1.0 - Frames.smoothstep01((wb - LOFT_FADE.y) / LOFT_FADE.z))
 	var th := beta - ge + es * loft_trim
 	_turn = th
 	# §8.1 which shape: the hoist and drop of §8.4, §8.5 toward the flying shape, the tack on its fitting
@@ -741,7 +741,7 @@ func _update_loft(phase: int, progress: float, beta: float, gamma: float, shiver
 		else:
 			_secs = []
 		_ease = _loft_ease(beta, awa, s_t, piv, ax, th, hd)
-	var xr := _about(piv, ax, th + es * _ease) * s_t
+	var xr := Frames.about(piv, ax, th + es * _ease) * s_t
 	for k in n:
 		var lc := _loc[k]
 		_mid[k] = xr * (tack + ah * lc.x + lh * lc.y + nh * lc.z)
@@ -813,8 +813,8 @@ func _loft_ease(beta: float, awa: float, s_t: Transform3D, piv: Vector3, ax: Vec
 ## looked at again, but with the forestay every vertex (the whole kite may come round it).
 func _loft_turn(dir: float, beta: float, awa: float, q: PackedVector3Array, piv: Vector3, ax: Vector3, th: float,
 		hd: Vector3) -> Array:
-	var es := _sgn(beta) * dir
-	var lee := port * _sgn(awa)
+	var es := Frames.sgn(beta) * dir
+	var lee := port * Frames.sgn(awa)
 	var cap := LOFT_STAY_MAX if loft_stay else LOFT_EASE_MAX
 	var delta := 0.0
 	var idx := PackedInt32Array()
@@ -825,7 +825,7 @@ func _loft_turn(dir: float, beta: float, awa: float, q: PackedVector3Array, piv:
 	pts.resize(n)
 	var left := INF
 	for it in LOFT_EASE_STEPS + 1:
-		var xr := _about(piv, ax, th + es * delta)
+		var xr := Frames.about(piv, ax, th + es * delta)
 		for k in idx:
 			pts[k] = xr * q[k]
 		var x := _loft_clear(pts, hd, lee, idx)

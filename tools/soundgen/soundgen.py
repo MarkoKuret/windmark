@@ -253,10 +253,20 @@ def sheet_run(r):
 
 
 def sheet_load(r):
+    """The sheet takes the load: a block thump and a rope creak of stick-slip grains that slow as it settles. No
+    sustained tone (a tonal buzz here reads as the penalty signal)."""
     n = n_of(0.55)
-    creak = lowpass(np.sign(chirp(n, 240, 150, 0.7)) * env_asr(n, 0.02, 0.2), 1400)
-    thump = np.sin(2 * np.pi * 90 * np.arange(n) / SR) * env_ad(n, 0.002, 0.05)
-    return peak_to(0.5 * creak + thump, -4)
+    creak = np.zeros(n)
+    k = 16
+    at = 0.012
+    for i in range(k):
+        m = n_of(0.035)
+        grain = shaped_noise(m, band(350, 2800), r) * env_ad(m, 0.0008, r.uniform(0.004, 0.012))
+        place(creak, grain * r.uniform(0.45, 1.0), n_of(at + r.uniform(0.0, 0.004)), circular=False)
+        at += 0.014 + 0.0022 * i
+    creak = rms_to(creak, -14) * env_asr(n, 0.002, 0.3)
+    thump = np.sin(2 * np.pi * np.cumsum(np.linspace(120, 80, n)) / SR) * env_ad(n, 0.002, 0.06)
+    return peak_to(creak + 0.9 * thump, -4)
 
 
 def boom_cross(r):

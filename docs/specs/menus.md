@@ -51,10 +51,13 @@ does, so a first-time player sees at once what to press:
   order, shown as sail number and name, for example `7  Kestrel`); the list follows the class. Every boat wears the
   class livery and sails; the AI boats get the other sail numbers and names by the fleet rule of
   `data_format.md` §8.4.
-- Ranges: fleet size 2 to 40 boats including the player (default 10); AI level Easy, Intermediate (default),
-  Expert, Pro (`ai.md` §13).
+- Ranges: fleet size 2 to 40 boats including the player (default 10); AI level Easy (default: the first race is
+  against boats the player can beat while she learns the keys), Intermediate, Expert, Pro (`ai.md` §13). The
+  defaults hold until the player picks otherwise; her picks are remembered (below).
 - The race runs on the course's race settings (`race.md` §2) with the finishing window off (`race.md` §7.3: no
-  `DNF` for being slow in a race nobody waits for; the time limit still closes it).
+  `DNF` for being slow in a race nobody waits for; the time limit still closes it) and the **P flag** (`race.md`
+  §3.3: a boat over early dips back behind the line, nobody rounds an end in her first race; the course files keep
+  their own flag for events).
 - **Weather**: **Local** (default), **Random** or **Custom** (`race.md` §2.1).
   - **Local**: the venue's own conditions, drawn within its ranges from the seed. Nothing to adjust; the briefing
     is the full one with the Tip.

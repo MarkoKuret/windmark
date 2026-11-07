@@ -769,7 +769,10 @@ func _make_core() -> CoreSimSource:
 	cs.settings = {"wind_speed": wind_speed_kn * HudFormat.KNOT, "wind_from": deg_to_rad(wind_from_deg),
 		"puffs": puffs, "shift_preset": shift_preset, "race_seed": world_seed}
 	if race_mode and not watch:
-		cs.settings["finish_window"] = false  # race.md §7.3: no DNF for a slow finish in a quick race
+		# a quick race (menus.md §1): no DNF for a slow finish (race.md §7.3) and the P flag (race.md §3.3): a boat
+		# over early dips back behind the line, nobody has to round an end in her first race
+		cs.settings["finish_window"] = false
+		cs.settings["prep_flag"] = 0
 	cs.settings.merge(core_settings, true)
 	_resolve_weather(cs)
 	var ok := cs.create(venue)

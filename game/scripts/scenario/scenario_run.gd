@@ -160,8 +160,8 @@ func _resolve(cs: CoreSimSource) -> bool:
 			else:
 				error = "boat %d: at.from %s is not a mark of the course" % [i, b.from]
 				return false
-		var at := base + _dir(twd + b.bearing) * b.dist
-		setup_pos[i] = at - _dir(psi[i]) * (speed[i] * s.lead)
+		var at := base + Frames.compass_vec(twd + b.bearing) * b.dist
+		setup_pos[i] = at - Frames.compass_vec(psi[i]) * (speed[i] * s.lead)
 	return true
 
 
@@ -181,11 +181,6 @@ static func _mid_pair(ab: String, marks: Dictionary) -> Array:
 		if marks.has(a) and marks.has(b):
 			return [marks[a], marks[b]]
 	return []
-
-
-## dir(ψ) = (sin ψ, cos ψ), world ENU (x east, y north).
-static func _dir(a: float) -> Vector2:
-	return Vector2(sin(a), cos(a))
 
 
 ## race.md §14 step 5: the hold boats keep their set-up heading, or that of their last turn begun. Called before

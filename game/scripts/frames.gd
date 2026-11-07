@@ -21,6 +21,11 @@ static func angle_diff(a: float, b: float) -> float:
 	return wrap_pi(a - b)
 
 
+## conventions.md §2: the (east, north) unit vector of a compass angle
+static func compass_vec(psi: float) -> Vector2:
+	return Vector2(sin(psi), cos(psi))
+
+
 ## conventions.md §2: compass angle of an (east, north) vector
 static func compass(vx: float, vy: float) -> float:
 	return wrap_2pi(atan2(vx, vy))

@@ -1,9 +1,11 @@
 ---
 id: WM-198
 title: 'Codebase: focused cleanup of the front end scripts'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-07 17:44'
+updated_date: '2026-11-07 18:14'
 labels: []
 dependencies: []
 priority: high

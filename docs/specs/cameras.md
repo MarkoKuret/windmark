@@ -164,8 +164,9 @@ A fly camera for looking around the course, spectating and replays.
 
 - **Cycle**: chase → onboard → aerial → free → chase. Direct keys select a mode (`controls.md` §3). The clip
   cameras (§9) have their own key and are outside this cycle: `camera_next` from a clip camera selects chase.
-- **Cuts** by default. Option "smooth switch": chase ↔ aerial blend over 0.4 s (position `lerp`, orientation
-  `slerp`, `fov` `lerp`, smoothstep weight); other pairs always cut.
+- **Cuts** by default. The code's `smooth_switch` option (not offered in the settings, `menus.md` §3): chase ↔
+  aerial blend over 0.4 s (position `lerp`, orientation `slerp`, `fov` `lerp`, smoothstep weight); other pairs
+  always cut.
 - Each mode keeps its parameters across switches and across races (saved in the player profile); **recentre** resets
   only the current mode. A session always starts in a regular camera: a clip camera is never saved as the mode.
 - **Presets**: 8 slots, for the four regular cameras (store does nothing while a clip camera is shown). Recall = select the stored mode with its stored parameters; store = the current mode and

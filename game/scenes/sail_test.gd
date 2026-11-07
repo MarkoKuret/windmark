@@ -233,9 +233,20 @@ enum TickWork { HUD, AUDIO, COURSE }
 var _tick_due: Array[int] = []
 var _in_advance := false
 var _ticked_this_frame := false
+## the scene's build in ms by part (setup, core, views, venue, hud, course, audio, menus, rest; WM-180 measures)
+var build_ms := {}
+var _build_t := 0
+
+
+## Closes the build part `part` (ms since the last mark into build_ms).
+func _build_mark(part: String) -> void:
+	var t := Time.get_ticks_usec()
+	build_ms[part] = (t - _build_t) / 1000.0
+	_build_t = t
 
 
 func _ready() -> void:
+	_build_t = Time.get_ticks_usec()
 	_apply_setup()
 	_user_args()
 	_load_scenario()
@@ -244,8 +255,10 @@ func _ready() -> void:
 		world_seed = 1 + (Time.get_ticks_usec() ^ int(Time.get_unix_time_from_system() * 1000.0)) % 2000000000
 	_apply_light()
 	on_core = sim_kind == SimKind.CORE or (sim_kind == SimKind.AUTO and CoreSimSource.available())
+	_build_mark("setup")
 	var b := _setup_core() if on_core else _setup_fake()
 	assert(b >= 0, "class %s did not load" % class_id)
+	_build_mark("core")
 	controls = PlayerControls.new()
 	controls.bind(sim, b)
 	runner = SimRunner.new(sim, controls, b)
@@ -254,6 +267,7 @@ func _ready() -> void:
 	add_child(reader)
 	var info := sim.class_info(b)
 	_build_views()
+	_build_mark("views")
 	target.loa = info.loa
 	target.beam_max = info.beam_max
 	target.geometry = BoatGeometry.onboard(info, boat_view.model)
@@ -266,6 +280,7 @@ func _ready() -> void:
 	venue_view.build(VenueShapes.from_core((sim as CoreSimSource).core) if on_core else VenueShapes.from_file(venue),
 		venue)
 	target.ground = venue_view.ground_height
+	_build_mark("venue")
 	rig = CameraRig.new()
 	rig.name = "CameraRig"
 	add_child(rig)
@@ -298,7 +313,9 @@ func _ready() -> void:
 	layer.add_child(_paused_label)
 	_rate_note = _make_rate_note()
 	layer.add_child(_rate_note)
+	_build_mark("hud")
 	_build_course()
+	_build_mark("course")
 	audio = GameAudio.new()
 	audio.name = "Audio"
 	add_child(audio)
@@ -316,9 +333,12 @@ func _ready() -> void:
 		late.name = "EndOfFrame"
 		late.scene = self
 		add_child(late)
+	_build_mark("audio")
 	_shot_window()
 	_add_pause_menu()
+	_build_mark("pause")
 	_add_results()
+	_build_mark("results")
 	if Settings.render_scale_override > 0.0 or Settings.upscaler_override != "" or Settings.aa_override != "":
 		Settings.current().apply_render_scale(get_tree().root)
 	if no_hud:
@@ -338,6 +358,7 @@ func _ready() -> void:
 	look_panel.scene = self
 	add_child(look_panel)
 	_shot_begin()
+	_build_mark("rest")
 	built = true
 
 

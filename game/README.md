@@ -376,6 +376,26 @@ the driver does not measure (headless). With vsync on the frame rate stops at th
 settings (or compare `gpu_ms` with the frame time) to see the headroom. The first seconds include shader
 compilation.
 
+**Scene builds and the warm-up.** A scene change builds the new scene on the main thread behind the navy fade
+(`docs/specs/menus.md` §5). `tests/load_cost.gd` times the builds headless, from the engine's start: the sail scene
+as a 16-boat quick race (`--scene=race`, with the pause menu and results screen), free sail (`free`) or the main
+menu with its backdrop (`menu`), `--runs` builds in one process (the first cold, the later ones as Race again finds
+the caches), with the sail scene's parts (`build_ms`) and the warm-up's copies:
+
+```
+godot --headless --path game -s res://tests/load_cost.gd -- --scene=race --fleet=16 --runs=3
+```
+
+The GPU does nothing headless, so shader and pipeline compilation is not in those numbers. To see it, run the game
+in a window (asks the owner first) with `--fade-log`: each scene change prints its measures, the build, the warm-up
+frames under the navy and the renderer's pipeline compilations (mesh, surface, draw, specialization) under the navy
+(`warm_pipelines`) and during the fade in (`in_pipelines`). A `draw` count above 0 in `in_pipelines` is a stutter
+the warm-up missed.
+
+```
+godot --path game -- --fade-log
+```
+
 **Renderer comparison.** The project renders with Forward+. To try the Mobile renderer (built for tile-based GPUs
 such as Apple's M1) without changing the project, pass Godot's own flag before `--`:
 

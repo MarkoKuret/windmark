@@ -51,7 +51,10 @@ view    = look along (target - eye + (0, lift, 0)), up = +Y   // the lift moves 
   each wave; a "follow the waves" option sets `tau_heave = 0`.
 - Player input: orbit `az` at 120°/s and `el` at 60°/s at full deflection (keys, stick) or 0.3° per pixel of mouse
   drag (drag right = `az` +, drag down = `el` +); zoom `R` by ×1.12 per wheel notch or ×2 per second held (keys,
-  triggers); `fov` with the `camera_fov` modifier (Alt, `controls.md` §3) + zoom, by the same factors.
+  triggers); `fov` with the `camera_fov` modifier (Alt, `controls.md` §3) + zoom, by the same factors. A trackpad's
+  two-finger vertical scroll and pinch zoom continuously (fractional notches, `controls.md` §4) and its horizontal
+  scroll orbits as a mouse drag; the same gestures zoom and turn every camera that takes the wheel and the drag
+  (onboard and free `fov`, aerial `H`, the clip cameras of §9).
 - **Recentre** (`controls.md`): `R = R0`, `el = 13.5°`, `az = 0`, `fov = 40°`. Optional auto-recentre of `az` after
   5 s without camera input (off by default), with `τ = 1 s`.
 
@@ -362,6 +365,9 @@ files are tuned by eye: their times are the best guesses of the clip, not rules.
    actions is refused; cues run in time order; a camera cue selects its mode (a clip camera with the course); a
    `slow`, `pause`, `resume`, `hud`, `tags` and `input` cue act as their keys do and the shot time keeps running
    through the pause; `end` (and `--quit-at`) end the run; a race shot with `start` begins at that time from the gun.
+17. Trackpad zoom: a camera input of −2.5 notches (a pan gesture, `controls.md` §8 test 11) sets the chase `R`
+   to `R / 1.12^−2.5` within 1e-6 (fractional notches, no rounding), and +2.5 the inverse; the aerial `H` and the
+   onboard `fov` follow the same factor.
 
 ## 11. Later: TV director and replay
 

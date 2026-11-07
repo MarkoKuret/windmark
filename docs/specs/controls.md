@@ -57,7 +57,7 @@ keys become the boat's commands, and the accessibility options. The boat command
 | `protest` | button | protest while the protest prompt shows (`rules.md` §10) |
 | `camera_next`, `camera_chase`, `camera_onboard`, `camera_aerial`, `camera_free` | button | `cameras.md` §6 |
 | `camera_orbit` | 2 axes / 4 buttons | orbit or look (`cameras.md` §2–§5) |
-| `camera_zoom_in`, `camera_zoom_out` | button / wheel | zoom |
+| `camera_zoom_in`, `camera_zoom_out` | button / wheel / trackpad | zoom; a trackpad's two-finger scroll and pinch zoom too (§3 Trackpad, §4) |
 | `camera_fov` | modifier | with zoom: changes the chase camera's `fov` instead of its distance (`cameras.md` §2) |
 | `camera_recentre` | button | recentre the current camera |
 | `camera_preset_1` … `8` | button | recall; with the store modifier: store |
@@ -104,8 +104,8 @@ up to two keyboard or mouse bindings and one gamepad binding; all are rebindable
 | `protest` | P | D-pad up while the protest prompt shows | same |
 | `camera_next` | C | Y | Y |
 | `camera_chase` … `camera_free` | F5, F6, F7, F8 | – | – |
-| `camera_orbit` | right or left mouse drag; numpad 4/6/8/2; I/J/K/L | right stick | right stick, right trackpad, touch drag |
-| `camera_zoom_in` / `out` | wheel; numpad 9 / 7; O / U | RB / RB + LB held | R1 / R1 + L1 held |
+| `camera_orbit` | right or left mouse drag; two-finger horizontal scroll; numpad 4/6/8/2; I/J/K/L | right stick | right stick, right trackpad, touch drag |
+| `camera_zoom_in` / `out` | wheel, two-finger vertical scroll, pinch; numpad 9 / 7; O / U | RB / RB + LB held | R1 / R1 + L1 held |
 | `camera_recentre` | numpad 5, R | R3 (click) | R3 |
 | `camera_preset_1` … `8` | F1 … F4, Shift+F1 … F4 recall; Ctrl + key stores | – | – |
 | `camera_fov` | Alt (hold) | – | – |
@@ -134,6 +134,19 @@ camera drag: a press that is released within 8 px of where it went down is a cli
 further it is a drag, orbits (or looks) as the right button does from that point, and picks nothing on release. The
 right button always drags. A press over a menu, the look panel or the chat line belongs to them.
 
+**Trackpad.** A laptop trackpad has no wheel and no right button, and (on macOS) its two-finger scroll does not
+arrive as wheel notches at all but as a pan gesture, its pinch as a magnify gesture; the game reads both. A
+two-finger **vertical** scroll zooms the current camera continuously (the same direction as the wheel: fingers
+down with natural scrolling, wheel up, zooms in), a **pinch** zooms in (fingers apart) and out (together), and a
+two-finger **horizontal** scroll orbits or looks as a mouse drag does. Each scroll gesture takes one axis: the
+larger component of its first event picks zoom or orbit, and the gesture keeps that axis until it has been quiet
+for 0.25 s (its glide after the fingers lift counts as the same gesture), so a vertical scroll never jitters the
+orbit and a horizontal one never zooms. The scales are in §4. Orbit also works without a right button: a
+one-finger press-and-drag is the left-button drag above, a two-finger click (the system's secondary click) or
+Ctrl + click drags as the right button, and I/J/K/L orbit from the keys. The zoom keys O / U are on every
+keyboard (numpad 9 / 7 are the second binding); the settings' Bindings list shows them. A mouse wheel is unchanged:
+one notch per click.
+
 Notes: `helm_fine` and `camera_boost` share Shift, which is fine because the free camera takes no helm input.
 On the gamepad `View` is both `rankings` and `hud_density`: a press released within 0.3 s is a tap (density), a
 longer one shows the ranking list while held; with the rankings toggle option the density keeps only the keyboard key
@@ -159,6 +172,14 @@ elevation at full stick or held key, 0.3°/px mouse; onboard and free look 0.15�
 pitch (onboard stick look is absolute, `cameras.md` §3); zoom ×1.12 per wheel notch, ×2 per second held. Stick dead
 zone 0.12 radial, response `((|s| − 0.12)/(0.95 − 0.12))^1.5` along the stick direction. Invert X and Y options per
 camera kind (orbit, look).
+
+Trackpad gestures (§3) are read in the engine's units: a pan gesture's delta (on macOS 0.03 per point of finger
+travel, the sign of a wheel: + down), a magnify gesture's factor (1 + the pinch's magnification, > 1 apart). A
+vertical pan zooms by ×1.12 per 0.6 of delta (20 points of travel: a comfortable swipe of 150 points is about
+×2.3, seven wheel notches); pan delta `d` is therefore `−d / 0.6` wheel notches. A pinch zooms by its factor
+(fingers apart = in), the product of its events in a frame. A horizontal pan is a mouse drag of `d / 0.03` pixels
+(one point of finger travel = one pixel of drag, so 0.3°/pt on the chase camera), with the camera's mouse rate and
+invert options. The wheel keeps one notch per click; a wheel event's own factor is not read.
 
 ## 5. Boat input processing
 
@@ -324,3 +345,9 @@ The options are saved per player in the settings file and set in the settings sc
     dragged 20 px is a camera drag of the motion past the 8 px and picks nothing on release; in the race scene a
     click on a boat selects her (`hud.md` §16.4.1), Esc with a boat selected clears the selection and does not
     pause, the next Esc pauses, and a click while paused picks nothing.
+11. Trackpad (`InputReader`, scripted gesture events): a pan gesture of delta (0, 1.2) reads as −2 wheel notches
+    and zooms the chase camera out (`R` grows by ×1.12² within 1e-6), one of (0, −1.2) zooms in by the same; a
+    magnify gesture of factor 1.25 zooms in by ×1.25 and one of 0.8 out by ×0.8; a pan of (3, 0) is a 100 px
+    drag to the right and no zoom; a gesture that starts vertical keeps its axis: (1, 10) then (10, 1) within
+    0.25 s give 11 of vertical delta and no drag, and after 0.3 s of quiet (10, 1) starts a horizontal one; a
+    wheel click is still one notch; chat focus drops the gestures of the frame as it drops the wheel.

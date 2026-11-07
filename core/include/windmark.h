@@ -620,6 +620,7 @@ typedef struct wm_race_info {
   float twd_mean;
   float L_max;
   int32_t boat_count;
+  float start_limit_s;           /* race.md §4.4: a boat not started this long after the gun is out */
 } wm_race_info;
 
 /* race.md §4 to §8 per boat. */

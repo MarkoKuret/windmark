@@ -333,7 +333,9 @@ the menu stays open). Over the results screen (§5) it works the same, Retire hi
 Resume goes back to the results. While it is open the boat's controls are held as in `controls.md` §7 (held let-fly and
 hold-to-steer keys count as released). Settings opens the settings screen (§3) in the card's place, a page as wide
 as the main menu's (§4), centred; settings changed here apply to the running scene when the settings screen
-closes, and the focus comes back to Settings.
+closes, and the focus comes back to Settings. The card is built the first time the menu opens and the settings screen the first time
+it shows (not while the race scene builds behind the fade, §5); the player's settings still apply to the scene at
+its start.
 
 ## 3. Settings
 
@@ -575,5 +577,22 @@ scene, then the next race or the menu.
 - **Fades.** Scene changes from the results (Race again, Change setup, Main menu), the pause menu (Restart, Main
   menu) and the main menu (Start, Continue) fade to navy (`#0B1620`) over 0.35 s, change, and fade the new
   scene in over 0.45 s; the input is ignored while the screen is dark.
+  - **Loading line.** The new scene builds on the main thread, so the screen holds still while it builds (about
+    1.2 s for a 16-boat race from the menu on an Apple M5). When that build is expected to take longer than 0.3 s
+    (the last build of the same scene in this session did, or it has not been built yet this session), one quiet
+    line shows centred on the navy before the change starts: Barlow Semi Condensed Medium 22 px, sentence case,
+    the cloth colour at 55 % (5.4:1 on the navy, the muted grey's contrast on the cloth). The line is drawn on two
+    frames first and the scene changes after them, so it is on the screen for the whole build; there is no spinner
+    (it would freeze). It fades out with the navy. The words: a race or a restart **Setting up <venue>** (Setting
+    up Practice Waters), free sail the venue's name alone (Practice Waters), a rules scenario **Setting up the
+    scenario**, the way out (Main menu, Change setup) **Back to the menu**.
+  - **Warm-up.** After the change the navy stays fully opaque while the new scene draws under it, until the
+    renderer has finished compiling its pipelines: at least 3 frames, then until a frame passes with no new
+    pipeline compilation (the renderer's mesh, surface and draw counters), at most 1 s. For the first two of those
+    frames a tiny copy of every mesh and material the scene holds that is not drawn yet (other boats' sails, wakes,
+    mist, the course's hidden guides, the boats' levels of detail and shadows on the water) sits just in front of
+    the camera that draws it, so each shader and its passes compile under the navy instead of on the first frame
+    that shows it (`PERFORMANCE.md` A8). The fade in starts after that, so it runs without a first-frame stutter.
+- The results screen's controls are built when it first opens, not while the race scene builds behind the fade.
 - The results screen is for the player's quick races: not in free sail, the rules scenarios (`race.md` §14) or
   the menu's backdrop (`--watch`).

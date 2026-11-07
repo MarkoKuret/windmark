@@ -83,7 +83,14 @@ def validate(d, where="kite shape"):
         lift = s.get("foot_lift", 0.0)
         if isinstance(lift, bool) or not isinstance(lift, (int, float)) or not 0.0 <= lift <= 1.0:
             raise KiteShapeError(f"{w}.foot_lift must be a number from 0 to 1")
-        out.append({"awa": math.radians(awa), "surface": s["surface"], "depth": float(dep), "foot_lift": float(lift)})
+        bow = s.get("run_bow", 0.0)
+        if isinstance(bow, bool) or not isinstance(bow, (int, float)) or not 0.0 <= bow <= 0.2:
+            raise KiteShapeError(f"{w}.run_bow must be a number from 0 to 0.2")
+        ease = s.get("clew_ease", 0.0)
+        if isinstance(ease, bool) or not isinstance(ease, (int, float)) or not 0.0 <= ease <= 90.0:
+            raise KiteShapeError(f"{w}.clew_ease must be a number from 0 to 90")
+        out.append({"awa": math.radians(awa), "surface": s["surface"], "depth": float(dep), "foot_lift": float(lift),
+                    "run_bow": float(bow), "clew_ease": math.radians(ease)})
     out.sort(key=lambda s: s["awa"])
     if len({s["awa"] for s in out}) != len(out):
         raise KiteShapeError(f"{where}: one shape per apparent wind angle")
@@ -285,6 +292,24 @@ def foot_lifted(L, f):
     return out
 
 
+def run_projected(L, bow, ease):
+    """The local shape L (rows, cols, 3) with a running kite's forward projection (sail_visuals.md 6.5): every row
+    moved toward the belly by bow * (the luff along the cloth) * sin(PI h), and turned about the luff axis by
+    ease * (1 - h)^2, the clew toward the belly. The luff axis, so the tack and the head, stays."""
+    if bow <= 0.0 and ease <= 0.0:
+        return L
+    rows = L.shape[0]
+    h = np.arange(rows) / (rows - 1)
+    out = L.copy()
+    out[..., 2] += (bow * _arc(L[:, 0])[-1] * np.sin(np.pi * h))[:, None]
+    t = (ease * (1.0 - h) ** 2)[:, None]
+    a, n = out[..., 0].copy(), out[..., 2].copy()
+    out[..., 0] = a * np.cos(t) - n * np.sin(t)
+    out[..., 2] = a * np.sin(t) + n * np.cos(t)
+    out[-1] = L[-1]
+    return out
+
+
 def sheet_angle(L, place, awa):
     """The sheet's angle off the clew corner's bisector (rad, test 25's measure) of the local shape L set alone at its
     nominal trim for `awa` (`place(awa, loc)`: the placed grid and the sheet's lead)."""
@@ -307,6 +332,7 @@ def sidecar_block(P, name, shape=None, place=None):
             grids[s["surface"]] = surface_grid(shape["surfaces"][s["surface"]])
         L = class_shape(grids[s["surface"]], P, s["depth"]).reshape(rows, cols, 3)
         L = foot_lifted(L, s["foot_lift"])
+        L = run_projected(L, s["run_bow"], s["clew_ease"])
         if place is not None:
             clew.append({"sheet_off_bisector_deg": round(math.degrees(sheet_angle(L, place, s["awa"])), 2)})
         shapes.append(L.reshape(-1, 3))
@@ -324,6 +350,8 @@ def sidecar_block(P, name, shape=None, place=None):
             "depth": [s["depth"] for s in shape["shapes"]],
             "surface": [s["surface"] for s in shape["shapes"]],
             "foot_lift": [s["foot_lift"] for s in shape["shapes"]],
+            "run_bow": [s["run_bow"] for s in shape["shapes"]],
+            "clew_ease_deg": [round(math.degrees(s["clew_ease"]), 3) for s in shape["shapes"]],
             "clew": clew,
             "shapes": [np.round(s, 5).tolist() for s in shapes]}
 

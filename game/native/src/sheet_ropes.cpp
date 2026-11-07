@@ -17,12 +17,29 @@ namespace {
 
 constexpr float TAU_F = 6.28318530717959f;
 constexpr float NO_DECK = -1.0e9f;
-constexpr float WHIP_WAVE = 1.5f;  // m, wavelength of the whip along a flogging sheet
+constexpr float WHIP_WAVE = 1.5f;  // m, the shortest wavelength of the whip along a flogging sheet
+constexpr float WHIP_RINGS = 8.0f;  // ring spacings in the whip's wavelength at least (no zig-zag between rings)
+constexpr float WHIP_STEEP = 0.4f;  // the whip's amplitude at most this share of its wavelength times the whip
+// §11.3 "Rope": the free run moves as a damped string about its hanging shape
+constexpr float ROPE_STEP = 1.0f / 120.0f;  // s, the longest sub-step
+constexpr float ROPE_OMEGA = 8.0f;   // rad/s, the pull back to the hanging shape
+constexpr float ROPE_ZETA = 0.5f;    // its damping ratio
+constexpr float ROPE_SMOOTH = 0.25f; // the deviation's smoothing per sub-step
+constexpr float ROPE_VMAX = 4.0f;    // the fastest ring, in follow speeds
+constexpr float ROPE_WRAP_LO = 0.2f;  // rad, the turn at a waypoint from which the rope is wrapped round it ..
+constexpr float ROPE_WRAP_HI = 0.6f;  // .. fully from this
+constexpr float ROPE_SNAP = 0.3f;    // a start jumping more than this share of the run in one update relays the line
+constexpr int ROPE_ITER = 4;         // length passes
+constexpr double DECK_FALL = 4.0;    // m down per m out over the deck field's fall (build_deck)
+constexpr float DECK_SLOPE = 1.0f;   // a ring lifted onto the deck lifts its neighbours by as much less this per m
+constexpr float DRAPE_STEEP = 0.5f;  // a rise of the field from a fixed end steeper than this (m per m) bends the tube
 constexpr float DRAPE_STEP = 0.025f;  // m, the drape's sample step along a tube (under the field's widening)
 constexpr double PI_D = 3.14159265358979;
 constexpr double ROUTE_FADE = 0.1;  // rad, the angle over which an obstacle point fades in at an end of a route
 constexpr double ROUTE_UNDER = 0.1;  // m above the straight line from which an obstacle point lets the line under
 constexpr double ROUTE_UNDER_FADE = 0.2;  // m over which it fades out
+constexpr double ROUTE_OPEN = 0.05;  // rad short of PI between the ends' angles from which a route runs straight
+constexpr double ROUTE_OPEN_FADE = 0.3;  // rad before that over which its waypoints ease onto the straight line
 
 // Godot's octahedral normal encoding (Vector3::octahedron_encode) as the mesh stores it: two 16-bit units.
 inline void oct16(const Vector3& v, uint16_t out[2]) {
@@ -98,6 +115,7 @@ Vector3 side_of(const Vector3& a, const Vector3& g) {
 bool SheetRopes::configure(const Dictionary& params) {
   sides_ = std::max(3, geti(params, "sides", 6));
   tile_ = getf(params, "tile", 0.05f);
+  follow_ = std::max(getf(params, "follow", 2.0f), 1e-3f);
   lines_.clear();
   const Array lines = params.get("lines", Array());
   int ring = 0;
@@ -112,6 +130,9 @@ bool SheetRopes::configure(const Dictionary& params) {
     for (int64_t k = 0; k < fx.size(); ++k) l.fixed.push_back(fx[k]);
     if (l.lead_rings > 0 && l.fixed.empty()) return false;  // a lead run needs its drum entry
     if (l.lead_rings == 0) l.fixed.clear();
+    l.x.assign(l.free_rings, Vector3());
+    l.v.assign(l.free_rings, Vector3());
+    l.tp.assign(l.free_rings, Vector3());
     l.first_ring = ring;
     l.rings = l.free_rings + (l.lead_rings > 0 ? l.lead_rings + static_cast<int>(l.fixed.size()) - 1 : 0);
     ring += l.rings;
@@ -184,13 +205,13 @@ float SheetRopes::deck_at(float x, float z) const {
 double SheetRopes::deck_height(double x, double z) const { return deck_at(static_cast<float>(x), static_cast<float>(z)); }
 
 void SheetRopes::update(const PackedVector3Array& starts, const PackedVector3Array& ways,
-                        const PackedFloat32Array& drive, const Vector3& gravity) {
+                        const PackedFloat32Array& drive, const Vector3& gravity, double dt) {
   const Vector3 g = gravity.length_squared() > 1e-12f ? gravity.normalized() : Vector3(0, -1, 0);
   const int per = sides_ + 1;
   const int64_t nlines = static_cast<int64_t>(lines_.size());
   const int64_t slots = nlines > 0 ? std::min<int64_t>(ways.size() / nlines, MAX_WAYS) : 0;
   for (size_t i = 0; i < lines_.size(); ++i) {
-    const Line& l = lines_[i];
+    Line& l = lines_[i];
     const int64_t ii = static_cast<int64_t>(i);
     const Vector3 s0 = ii < starts.size() ? starts[ii] : l.anchor;
     const float* dv = drive.size() >= (ii + 1) * DRIVE ? drive.ptr() + ii * DRIVE : nullptr;
@@ -198,11 +219,13 @@ void SheetRopes::update(const PackedVector3Array& starts, const PackedVector3Arr
     Vector3* r = ring_.data() + l.first_ring;
     if (!shown) {
       for (int k = 0; k < l.rings; ++k) r[k] = s0;
+      l.live = false;
     } else {
       const float sag_f = dv[1], sag_l = dv[2], psi = dv[3], whip = dv[4], phi = dv[5];
-      // the free run: start, its waypoints (the unused slots NaN), anchor
+      // the free run: start (on the deck at least: a sail coming down into the boat), its waypoints (the unused
+      // slots NaN), anchor
       pts_.clear();
-      pts_.push_back(s0);
+      pts_.push_back(Vector3(s0.x, std::max(s0.y, deck_at(s0.x, s0.z) + l.radius), s0.z));
       for (int64_t j = 0; j < slots; ++j) {
         const Vector3 w = ways[ii * slots + j];
         if (!std::isnan(w.x)) pts_.push_back(w);
@@ -217,14 +240,44 @@ void SheetRopes::update(const PackedVector3Array& starts, const PackedVector3Arr
       const Vector3 side = side_of(l.anchor - s0, g);
       const Vector3 sag = (g * std::cos(psi) + side * std::sin(psi)) * (len * sag_f);
       const int nf = l.free_rings;
+      const float hs = len / static_cast<float>(nf - 1);  // the ring spacing
+      // the hanging shape (§11.3 "Shape"): the whip's wavelength at least WHIP_RINGS ring spacings
+      const float lam = std::max(WHIP_WAVE, WHIP_RINGS * hs);
+      const float amp = whip * std::min(len, WHIP_STEEP * lam);
+      tgt_.resize(nf);
+      bear_.resize(nf);
       for (int k = 0; k < nf; ++k) {
         const float t = static_cast<float>(k) / static_cast<float>(nf - 1);
         const float s = t * len;
         const float b = 4.0f * t * (1.0f - t);
-        Vector3 q = along(p, c, n, s) + sag * b + side * (b * whip * len * std::sin(phi - TAU_F * s / WHIP_WAVE));
-        if (k > 0 && k < nf - 1) q.y = std::max(q.y, deck_at(q.x, q.z) + l.radius);
-        r[k] = q;
+        tgt_[k] = along(p, c, n, s) + sag * b + side * (b * amp * std::sin(phi - TAU_F * s / lam));
+        // wrapped round an obstacle: within two ring spacings of a waypoint along the run (fading out over two
+        // more) where the run turns by ROPE_WRAP_LO .. ROPE_WRAP_HI or more
+        float wrap = 0.0f;
+        for (int j = 1; j + 1 < n; ++j) {
+          const float u = std::min(std::max((std::fabs(s - c[j]) - 2.0f * hs) / (2.0f * hs), 0.0f), 1.0f);
+          const Vector3 da = p[j] - p[j - 1], db = p[j + 1] - p[j];
+          const float tn = da.length_squared() > 1e-12f && db.length_squared() > 1e-12f ? da.angle_to(db) : 0.0f;
+          const float v = std::min(std::max((tn - ROPE_WRAP_LO) / (ROPE_WRAP_HI - ROPE_WRAP_LO), 0.0f), 1.0f);
+          wrap = std::max(wrap, (1.0f - u * u * (3.0f - 2.0f * u)) * v * v * (3.0f - 2.0f * v));
+        }
+        bear_[k] = wrap;
       }
+      lay_on_deck(tgt_.data(), nf, l.radius);
+      // §11.3 "Rope": the rings move as a rope toward it, or are laid on it
+      const Vector3 start = tgt_[0];
+      if (dt > 0.0 && l.live && (start - l.x[0]).length() <= ROPE_SNAP * len) {
+        rope_step(l, tgt_.data(), bear_.data(), static_cast<float>(dt));
+      } else {
+        for (int k = 0; k < nf; ++k) {
+          l.x[k] = tgt_[k];
+          l.v[k] = tgt_[k];
+        }
+      }
+      for (int k = 0; k < nf; ++k) l.tp[k] = tgt_[k];
+      l.live = true;
+      for (int k = 0; k < nf; ++k) r[k] = l.x[k];
+      lay_on_deck(r, nf, l.radius);
       drape(r, nf, l.radius);
       if (l.lead_rings > 0) {
         const Vector3 a = l.anchor, e = l.fixed[0];
@@ -233,9 +286,10 @@ void SheetRopes::update(const PackedVector3Array& starts, const PackedVector3Arr
         for (int k = 1; k <= l.lead_rings; ++k) {
           const float t = static_cast<float>(k) / static_cast<float>(l.lead_rings);
           Vector3 q = a + (e - a) * t + sag2 * (4.0f * t * (1.0f - t));
-          if (k < l.lead_rings) q.y = std::max(q.y, deck_at(q.x, q.z) + l.radius);
           r[nf - 1 + k] = q;
         }
+        lay_on_deck(r + nf - 1, l.lead_rings + 1, l.radius);
+        bridge(r + nf - 1, l.lead_rings + 1);
         drape(r + nf - 1, l.lead_rings + 1, l.radius);
         for (size_t k = 1; k < l.fixed.size(); ++k) r[nf - 1 + l.lead_rings + static_cast<int>(k)] = l.fixed[k];
       }
@@ -278,6 +332,129 @@ void SheetRopes::update(const PackedVector3Array& starts, const PackedVector3Arr
   }
 }
 
+// §11.3 "Rope": the free run's rings `l.x` (ends on the start and the anchor) as a damped Verlet rope guided by the
+// hanging shape `target`: they move with the shape up to the follow speed; what it moved faster (the sail jumping, a
+// route changing) is left as a deviation that a spring pulls back, the rings' neighbours smooth and the rope's length
+// carries along it (a start moving away drags the rings after it), so it dies away as a damped wave.
+void SheetRopes::rope_step(Line& l, const Vector3* target, const float* bear, float dt) {
+  const int n = l.free_rings;
+  Vector3* x = l.x.data();
+  Vector3* xp = l.v.data();  // the rings' positions a sub-step earlier (Verlet)
+  const Vector3* tp = l.tp.data();
+  // how far a ring moves with the shape at once: the follow speed, more near the start (it drags the rope after it:
+  // the start's move times (1 - k / (n - 1))^2) and all of it where the ring is wrapped round an obstacle (it is
+  // carried round it)
+  const float reach = follow_ * dt;
+  const float drag = (target[0] - tp[0]).length();
+  for (int k = 1; k < n - 1; ++k) {
+    Vector3 d = target[k] - tp[k];
+    const float dl = d.length();
+    const float u = 1.0f - static_cast<float>(k) / static_cast<float>(n - 1);
+    const float r = reach + drag * u * u;
+    if (dl > r) d *= (r + (dl - r) * bear[k]) / dl;
+    x[k] += d;
+    xp[k] += d;
+  }
+  x[0] = xp[0] = target[0];
+  x[n - 1] = xp[n - 1] = target[n - 1];
+  const int steps = std::max(1, static_cast<int>(std::ceil(dt / ROPE_STEP - 1e-4f)));
+  const float h = dt / static_cast<float>(steps);
+  const float pull = (ROPE_OMEGA * h) * (ROPE_OMEGA * h);
+  const float keep = std::exp(-2.0f * ROPE_ZETA * ROPE_OMEGA * h);
+  const float vmax = ROPE_VMAX * follow_ * h;
+  dev_.resize(n);
+  Vector3* d = dev_.data();
+  for (int st = 0; st < steps; ++st) {
+    for (int k = 1; k < n - 1; ++k) {
+      Vector3 vel = (x[k] - xp[k]) * keep;
+      const float sp = vel.length();
+      if (sp > vmax) vel *= vmax / sp;
+      xp[k] = x[k];
+      x[k] += vel + (target[k] - x[k]) * pull;
+    }
+    // the deviation smoothed along the rope (its shortest waves die at once: no zig-zag between rings)
+    for (int k = 0; k < n; ++k) d[k] = x[k] - target[k];
+    d[0] = d[n - 1] = Vector3();
+    for (int k = 1; k < n - 1; ++k) x[k] += (d[k - 1] - d[k] * 2.0f + d[k + 1]) * ROPE_SMOOTH;
+    // a ring wrapped round an obstacle lies on it
+    for (int k = 1; k < n - 1; ++k) {
+      x[k] += (target[k] - x[k]) * bear[k];
+      xp[k] += (target[k] - xp[k]) * bear[k];
+    }
+    // the rope's length: no segment longer than the hanging shape's (the ends stay)
+    for (int it = 0; it < ROPE_ITER; ++it) {
+      for (int k = 0; k + 1 < n; ++k) {
+        const Vector3 e = x[k + 1] - x[k];
+        const float el = e.length();
+        if (el < 1e-9f) continue;
+        const float w0 = k == 0 ? 0.0f : 1.0f, w1 = k + 1 == n - 1 ? 0.0f : 1.0f;
+        if (w0 + w1 <= 0.0f) continue;
+        const float rest = (target[k + 1] - target[k]).length();
+        if (el <= rest) continue;  // a rope stretches no further, but goes slack
+        const Vector3 c = e * ((el - rest) / el / (w0 + w1));
+        x[k] += c * w0;
+        x[k + 1] -= c * w1;
+      }
+    }
+  }
+}
+
+// §11.3 "Deck": every inner ring of a run at least the rope's radius over the field, and a ring lifted lifts its
+// neighbours by as much less DECK_SLOPE times the distance to them (the rope lies over a rail or a cabin edge and
+// falls away from it, it does not dive between rings on and off the deck).
+void SheetRopes::lay_on_deck(Vector3* r, int n, float radius) {
+  if (deck_.empty() || n < 3) return;
+  lift_.assign(n, 0.0f);
+  bool any = false;
+  for (int k = 1; k < n - 1; ++k) {
+    const float h = deck_at(r[k].x, r[k].z);
+    if (h > NO_DECK) lift_[k] = std::max(h + radius - r[k].y, 0.0f);
+    any = any || lift_[k] > 0.0f;
+  }
+  if (!any) return;
+  for (int k = 2; k < n - 1; ++k) lift_[k] = std::max(lift_[k], lift_[k - 1] - DECK_SLOPE * (r[k] - r[k - 1]).length());
+  for (int k = n - 3; k >= 1; --k) lift_[k] = std::max(lift_[k], lift_[k + 1] - DECK_SLOPE * (r[k + 1] - r[k]).length());
+  for (int k = 1; k < n - 1; ++k) r[k].y += lift_[k];
+}
+
+// §11.3 "Deck": a lead run under its load bridges over what it was lifted onto (a coaming, a winch base) as a taut
+// string: every ring up to the upper hull of the rings over the run's plan length (no dip between two lifts).
+void SheetRopes::bridge(Vector3* r, int n) {
+  if (n < 3) return;
+  cum_.assign(n, 0.0f);
+  for (int k = 1; k < n; ++k) cum_[k] = cum_[k - 1] + Vector2(r[k].x - r[k - 1].x, r[k].z - r[k - 1].z).length();
+  hull_.clear();
+  for (int k = 0; k < n; ++k) {
+    while (hull_.size() >= 2) {
+      const int a = hull_[hull_.size() - 2], b = hull_.back();
+      // b under the line from a to k: not on the upper hull
+      const float cr = (cum_[b] - cum_[a]) * (r[k].y - r[a].y) - (r[b].y - r[a].y) * (cum_[k] - cum_[a]);
+      if (cr < 0.0f) break;
+      hull_.pop_back();
+    }
+    hull_.push_back(k);
+  }
+  for (size_t j = 0; j + 1 < hull_.size(); ++j) {
+    const int a = hull_[j], b = hull_[j + 1];
+    for (int k = a + 1; k < b; ++k) {
+      const float f = cum_[b] > cum_[a] ? (cum_[k] - cum_[a]) / (cum_[b] - cum_[a]) : 0.0f;
+      r[k].y = std::max(r[k].y, r[a].y + (r[b].y - r[a].y) * f);
+    }
+  }
+}
+
+// The field's height at an end of the tube p0-p1 sampled in m steps: at the end, or off the field at the first sample
+// from that end that is on it (NO_DECK when none is).
+float SheetRopes::end_field(const Vector3& p0, const Vector3& p1, int m, bool far) const {
+  const Vector3 e = far ? p1 : p0;
+  float h = deck_at(e.x, e.z);
+  for (int j = 1; j < m && h <= NO_DECK; ++j) {
+    const float f = static_cast<float>(far ? m - j : j) / static_cast<float>(m);
+    h = deck_at(p0.x + (p1.x - p0.x) * f, p0.z + (p1.z - p0.z) * f);
+  }
+  return h;
+}
+
 // §11.3 "Deck": lifts the rings of a run (its ends fixed) so the straight tube between each pair clears the field at
 // every DRAPE_STEP, by the least lift of the pair. One pass: a lift only raises the tubes either side of a ring, so a
 // point already clear stays clear.
@@ -291,13 +468,20 @@ void SheetRopes::drape(Vector3* r, int n, float radius) const {
       const float dx = p1.x - p0.x, dz = p1.z - p0.z;
       const int m = std::min(std::max(static_cast<int>(std::ceil(std::sqrt(dx * dx + dz * dz) / DRAPE_STEP)), 1), 64);
       const float w0f = k == 0 ? 0.0f : 1.0f, w1f = k + 1 == n - 1 ? 0.0f : 1.0f;
-      // a fixed end inside the field (a block on the deck) lets its tube in by its own depth, fading along it
-      const float e0 = k == 0 ? std::max(deck_at(p0.x, p0.z) + radius - p0.y, 0.0f) : 0.0f;
-      const float e1 = k + 1 == n - 1 ? std::max(deck_at(p1.x, p1.z) + radius - p1.y, 0.0f) : 0.0f;
+      // a fixed end below the field (a block on the deck, a clew coming down outside the rail) lets its tube in by
+      // its own depth under the field (there, or where the tube first meets it), fading along it
+      const float e0 = k == 0 ? std::max(end_field(p0, p1, m, false) + radius - p0.y, 0.0f) : 0.0f;
+      const float e1 = k + 1 == n - 1 ? std::max(end_field(p0, p1, m, true) + radius - p1.y, 0.0f) : 0.0f;
+      // next to a fixed end under the field or below a steep rise of it (a clew down the hull side), the free ring goes
+      // no higher than the rope's radius over the highest field under the tube (the rise bends the tube there, it
+      // does not throw the ring up)
+      const float y0 = p0.y, y1 = p1.y;
+      float top = NO_DECK;
       for (int j = 1; j < m; ++j) {
         const float f = static_cast<float>(j) / static_cast<float>(m);
         const float h = deck_at(p0.x + dx * f, p0.z + dz * f);
         if (h <= NO_DECK) continue;
+        top = std::max(top, h + radius);
         const float d = h + radius - (p0.y + (p1.y - p0.y) * f) - e0 * (1.0f - f) - e1 * f;
         if (d <= 0.0f) continue;
         const float w0 = w0f * (1.0f - f), w1 = w1f * f;
@@ -306,6 +490,9 @@ void SheetRopes::drape(Vector3* r, int n, float radius) const {
         p0.y += d * w0 / den;
         p1.y += d * w1 / den;
       }
+      const float run = std::sqrt(dx * dx + dz * dz) * DRAPE_STEEP;
+      if (k + 1 == n - 1 && (e1 > 0.0f || top - y1 > run)) p0.y = std::min(p0.y, std::max(y0, top));
+      if (k == 0 && (e0 > 0.0f || top - y0 > run)) p1.y = std::min(p1.y, std::max(y1, top));
     }
   }
 }
@@ -329,7 +516,11 @@ PackedVector3Array SheetRopes::route(const Vector3& a, const Vector3& b, const V
   const double ox = pivot.x, oz = pivot.z;
   auto theta = [&](double x, double z) { return std::atan2(sg * (x - ox), z - oz); };
   const double ta = theta(a.x, a.z), tb = theta(b.x, b.z);
-  if (std::fabs(tb - ta) >= PI_D - 0.05 || std::fabs(tb - ta) < 1e-9) return out;
+  if (std::fabs(tb - ta) >= PI_D - ROUTE_OPEN || std::fabs(tb - ta) < 1e-9) return out;
+  // toward that limit the waypoints ease onto the straight line (no pop between a route and none)
+  const double ov = std::min(std::max((std::fabs(tb - ta) - (PI_D - ROUTE_OPEN - ROUTE_OPEN_FADE)) / ROUTE_OPEN_FADE,
+                                      0.0), 1.0);
+  const double open = ov * ov * (3.0 - 2.0 * ov);
   const double tlo = std::min(ta, tb), thi = std::max(ta, tb);
   const double cx = double(b.x) - a.x, cz = double(b.z) - a.z;
   const double so = cross2(cx, cz, ox - a.x, oz - a.z) >= 0.0 ? 1.0 : -1.0;  // the pivot's side of the chord
@@ -462,8 +653,15 @@ PackedVector3Array SheetRopes::route(const Vector3& a, const Vector3& b, const V
   out.resize(static_cast<int64_t>(ch.size()) - 2);
   for (size_t i = 1; i + 1 < ch.size(); ++i) {
     const double f = cl[i] / tot;
-    out.set(static_cast<int64_t>(i) - 1, Vector3(static_cast<float>(wx[i]), static_cast<float>(a.y + (b.y - a.y) * f),
-                                                 static_cast<float>(wz[i])));
+    double px = wx[i], pz = wz[i];
+    if (open > 0.0) {
+      const double g = std::min(std::max(((px - a.x) * cx + (pz - a.z) * cz) / std::max(cx * cx + cz * cz, 1e-12), 0.0),
+                                1.0);
+      px += (a.x + cx * g - px) * open;
+      pz += (a.z + cz * g - pz) * open;
+    }
+    out.set(static_cast<int64_t>(i) - 1, Vector3(static_cast<float>(px), static_cast<float>(a.y + (b.y - a.y) * f),
+                                                 static_cast<float>(pz)));
   }
   return out;
 }
@@ -502,7 +700,8 @@ void raster(const PackedVector3Array& pos, const PackedInt32Array& idx, double x
 
 }  // namespace
 
-Dictionary SheetRopes::build_deck(const Array& surfaces, double cell, int64_t skirt, int64_t dilate) const {
+Dictionary SheetRopes::build_deck(const Array& surfaces, double cell, int64_t skirt, int64_t dilate,
+                                  int64_t fall) const {
   Dictionary out;
   cell = std::max(cell, 1e-3);
   double xmin = 1e30, xmax = -1e30, zmin = 1e30, zmax = -1e30;
@@ -518,7 +717,8 @@ Dictionary SheetRopes::build_deck(const Array& surfaces, double cell, int64_t sk
     }
   }
   if (xmax < xmin) return out;
-  const int pad = static_cast<int>(std::max<int64_t>(skirt, 0) + std::max<int64_t>(dilate, 0)) + 2;
+  const int pad =
+      static_cast<int>(std::max<int64_t>(skirt, 0) + std::max<int64_t>(dilate, 0) + std::max<int64_t>(fall, 0)) + 2;
   const double x0 = xmin - pad * cell, z0 = zmin - pad * cell;
   const int nx = static_cast<int>(std::ceil((xmax - xmin) / cell)) + 2 * pad + 1;
   const int nz = static_cast<int>(std::ceil((zmax - zmin) / cell)) + 2 * pad + 1;
@@ -567,6 +767,24 @@ Dictionary SheetRopes::build_deck(const Array& surfaces, double cell, int64_t sk
           }
         }
         h[k * nx + i] = best;
+      }
+    }
+  }
+  // the fall: `fall` more cells out, each DECK_FALL * cell below its highest neighbour (the hull side, steep but not a
+  // cliff, so a rope swinging out over the rail falls away from it instead of popping off the field)
+  for (int64_t step = 0; step < fall; ++step) {
+    const std::vector<double> src = h;
+    for (int k = 0; k < nz; ++k) {
+      for (int i = 0; i < nx; ++i) {
+        if (src[k * nx + i] > NO_DECK) continue;
+        double best = NO_DECK;
+        for (int dk = -1; dk <= 1; ++dk) {
+          for (int di = -1; di <= 1; ++di) {
+            const int kk = k + dk, ii = i + di;
+            if (kk >= 0 && kk < nz && ii >= 0 && ii < nx) best = std::max(best, src[kk * nx + ii]);
+          }
+        }
+        if (best > NO_DECK) h[k * nx + i] = best - DECK_FALL * cell;
       }
     }
   }
@@ -648,6 +866,15 @@ PackedVector2Array SheetRopes::uvs() const {
   return out;
 }
 
+PackedVector3Array SheetRopes::hanging(int64_t line) const {
+  PackedVector3Array out;
+  if (line < 0 || line >= static_cast<int64_t>(lines_.size())) return out;
+  const Line& l = lines_[line];
+  out.resize(static_cast<int64_t>(l.tp.size()));
+  for (size_t k = 0; k < l.tp.size(); ++k) out.set(static_cast<int64_t>(k), l.tp[k]);
+  return out;
+}
+
 PackedVector3Array SheetRopes::centre(int64_t line) const {
   PackedVector3Array out;
   if (line < 0 || line >= static_cast<int64_t>(lines_.size())) return out;
@@ -721,7 +948,8 @@ void SheetRopes::write_mesh() {
 
 void SheetRopes::_bind_methods() {
   ClassDB::bind_method(D_METHOD("configure", "params"), &SheetRopes::configure);
-  ClassDB::bind_method(D_METHOD("update", "starts", "ways", "drive", "gravity"), &SheetRopes::update);
+  ClassDB::bind_method(D_METHOD("update", "starts", "ways", "drive", "gravity", "dt"), &SheetRopes::update,
+                       DEFVAL(0.0));
   ClassDB::bind_method(D_METHOD("get_line_count"), &SheetRopes::get_line_count);
   ClassDB::bind_method(D_METHOD("get_vertex_count"), &SheetRopes::get_vertex_count);
   ClassDB::bind_method(D_METHOD("indices"), &SheetRopes::indices);
@@ -730,10 +958,12 @@ void SheetRopes::_bind_methods() {
   ClassDB::bind_method(D_METHOD("tangents"), &SheetRopes::tangents);
   ClassDB::bind_method(D_METHOD("uvs"), &SheetRopes::uvs);
   ClassDB::bind_method(D_METHOD("centre", "line"), &SheetRopes::centre);
+  ClassDB::bind_method(D_METHOD("hanging", "line"), &SheetRopes::hanging);
   ClassDB::bind_method(D_METHOD("deck_height", "x", "z"), &SheetRopes::deck_height);
   ClassDB::bind_method(D_METHOD("route", "a", "b", "pivot", "side", "obstacles", "spacing", "max_ways"),
                        &SheetRopes::route);
-  ClassDB::bind_method(D_METHOD("build_deck", "surfaces", "cell", "skirt", "dilate"), &SheetRopes::build_deck);
+  ClassDB::bind_method(D_METHOD("build_deck", "surfaces", "cell", "skirt", "dilate", "fall"), &SheetRopes::build_deck,
+                       DEFVAL(0));
   ClassDB::bind_method(D_METHOD("attach_mesh", "mesh", "surface"), &SheetRopes::attach_mesh);
   ClassDB::bind_method(D_METHOD("vertex_bytes"), &SheetRopes::vertex_bytes);
   ClassDB::bind_method(D_METHOD("attribute_bytes"), &SheetRopes::attribute_bytes);

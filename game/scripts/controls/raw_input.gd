@@ -2,7 +2,8 @@ class_name RawInput
 extends RefCounted
 ## One rendered frame of device input after the input map (controls.md §1): what InputReader fills from Godot's
 ## Input each frame, and what tests script directly. Buttons and keys are in `held` and `pressed`; sticks,
-## triggers and the mouse have their own fields (they keep working under chat focus, controls.md §7).
+## triggers, the mouse and the trackpad gestures have their own fields (sticks and triggers keep working under
+## chat focus, controls.md §7).
 
 ## button actions held this frame: action name -> true
 var held := {}
@@ -22,8 +23,13 @@ var right_stick := Vector2.ZERO
 var left_stick := Vector2.ZERO
 ## mouse motion this frame while the orbit drag button is held, pixels
 var mouse_drag := Vector2.ZERO
-## mouse wheel notches this frame: + zoom in, - zoom out
-var wheel := 0
+## zoom notches this frame: + zoom in, - zoom out; one per mouse wheel click (controls.md §4)
+var wheel := 0.0
+## trackpad pan gesture this frame, the engine's units, one axis per gesture (controls.md §3 Trackpad): x + = the
+## fingers right (an orbit), y + = down as a wheel down (a zoom out)
+var pan := Vector2.ZERO
+## trackpad pinch this frame: the product of the magnify gestures' factors, > 1 = fingers apart (zoom in), 1 none
+var magnify := 1.0
 ## where the click or tap of a `boat_pick` press this frame was (viewport px); NAN when not given (controls.md §3)
 var pointer := Vector2(NAN, NAN)
 ## the left button (or a touch) is dragging the camera this frame (controls.md §3 click or drag)
@@ -71,6 +77,8 @@ func copy() -> RawInput:
 	r.left_stick = left_stick
 	r.mouse_drag = mouse_drag
 	r.wheel = wheel
+	r.pan = pan
+	r.magnify = magnify
 	r.pointer = pointer
 	r.pointer_drag = pointer_drag
 	r.gamepad = gamepad
@@ -83,7 +91,9 @@ func without_buttons() -> RawInput:
 	r.held = {}
 	r.pressed = []
 	r.mouse_drag = Vector2.ZERO
-	r.wheel = 0
+	r.wheel = 0.0
+	r.pan = Vector2.ZERO
+	r.magnify = 1.0
 	r.pointer = Vector2(NAN, NAN)
 	r.pointer_drag = false
 	return r

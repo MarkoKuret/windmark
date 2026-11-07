@@ -94,12 +94,12 @@ A bit more instrument, no dashboard:
 - **Cells.** Label top left, unit top right, value right-aligned at the bottom; the same grid on every page and level.
 - **Analogue parts, two only.** The **TWA dial** (bow up; red and green sectors for close-hauled on port and on
   starboard, 20° to 60°; yellow notches at the VMG angles up and down (the leg's pair at full strength); the true wind as a solid pointer
-  coming in from the rim, coloured green on the VMG angle through yellow to red far off (`hud.md` §16.3); Data adds the apparent wind as a hollow pointer; a small hull outline in the centre). The **heel bar** in
-  Data (centre zero, ±30°, bar in the tack colour to the side that is down). Both move every frame; the numbers beside
+  coming in from the rim, coloured green on the VMG angle through yellow to red far off (`hud.md` §16.3); Data adds the apparent wind as a hollow pointer; a small hull outline in the centre). The **heel bar** at
+  Race and Data (centre zero, ±30°, bar in the tack colour to the side that is down). Both move every frame; the numbers beside
   them keep the 4 Hz refresh.
 - **Level pips.** Three 7 px squares top right of the page, filled to the level.
-- **Pages at 1080p:** Glance 486 x 200 (150 without the cue strip), Race 650 x 246, Data 720 x 298, all anchored at the
-  bottom-left margin. The wind page (top right) is 312 x 112.
+- **Pages at 1080p:** Glance 486 x 150, Race 630 x 246, Data 760 x 298, all anchored at the bottom-left margin.
+  The wind is on the page (owner, 2026-11-07, `hud_wind_2026-11-07.md`): the top right wind page of 312 x 112 went.
 
 ## 5. Layout grid
 
@@ -108,16 +108,16 @@ Four corners, a top-centre alert lane, a bottom-centre helm strip, and the world
 
 ```
 +-------------------------------------------------------------------------------+
-| RACE BUG (clock, rank)          ALERT LANE              WIND (TWS, TWD, shift) |
-| lap, leg, gaps                  countdown / penalty       feed (events)        |
+| RACE BUG (clock, rank)          ALERT LANE                     feed (events) |
+| lap, leg, gaps                  countdown / penalty                           |
 | [live order, contextual]        rules line                                     |
 |                                                                                |
 |                  world tags: marks, boats, laylines, tack point                |
 | edge pointers <                                               > edge pointers  |
 |                                                                                |
-| INSTRUMENTS (hero BSP, TWA dial)                                       RADAR   |
-| TWA  HDG  VMG                        trim gauges (manual)                      |
-| sog cog aws awa heel                 HELM ------+------ SAIL                   |
+| INSTRUMENTS (hero BSP, TWS, VMG, TWA dial)                             RADAR   |
+| HDG [shift] HEEL SOG AWA             trim gauges (manual)                      |
+| cog twd aws                          HELM ------+------ SAIL                   |
 +-------------------------------------------------------------------------------+
 ```
 
@@ -125,12 +125,12 @@ Four corners, a top-centre alert lane, a bottom-centre helm strip, and the world
   lap, leg and leg type, then leader gap and the boats ahead and behind.
 - **Top centre, alert lane:** before the start the countdown and the four start numbers; in the race the penalty panel
   and the one rules line (stacked, penalty first). Nothing else ever goes here.
-- **Top right, wind page** (Data): TWS cell and a north-up TWD dial cell. The shift chip hangs under it (at Race it
-  sits there alone), then
-  the event feed, right-aligned, fading.
-- **Bottom left, instrument page:** row 1: boat speed (hero), (Data: VMG), the TWA dial spanning rows 1 and 2 with
-  the TWA number under it. Row 2: heading (Data: and SOG). Row 3 (Data): COG, AWS, heel bar. No target speed
-  anywhere (owner 2026-10-16).
+- **Top right:** the event feed, right-aligned, fading. Nothing else: the wind page that sat here felt out of
+  place (owner 2026-11-07) and went to the instrument page.
+- **Bottom left, instrument page:** row 1: boat speed (hero), (Race: true wind speed; Data: and VMG), the TWA dial
+  spanning rows 1 and 2 with the TWA number under it. Row 2: heading with the shift chip beside it (Race: and the
+  heel bar; Data: and SOG, the AWA value under the dial). Row 3 (Data): COG, TWD, AWS. No target speed anywhere
+  (owner 2026-10-16).
 - **Bottom right, radar:** heading-up, hairline rings, a soft ink disc (38 %), boats as rule-coloured triangles, the
   next mark as a yellow diamond, laylines, wind arrow outside the ring, range under it.
 - **Bottom centre, helm strip:** one hairline for the helm with the command mark in yellow, the sail on the right;
@@ -159,14 +159,15 @@ only when both allow it.
 
 | Phase | Glance | Race | Data |
 | --- | --- | --- | --- |
-| Pre-start | Boat speed, TWA dial. Start block: countdown and burn with the late/early bar, the flag rule in one line. No race bug, no wind page | + heading. Full start block (line, to line, burn, bias, flags). Feed: own events, 3 lines. No race bug, no wind page | + VMG, AWA, SOG, COG, AWS, heel bar. Wind page. Race bug (fleet, laps and legs). Feed 6 lines, every event |
-| Upwind | Boat speed, TWA dial with the VMG angles and the coloured pointer (the one cue). Race bug: clock and rank. Mark tag: name and distance | + heading. Shift chip. The bug adds the leader gap; the mark tag adds the ETA. Feed: own events, 3 lines | + VMG, AWA pointer and value, SOG, COG, AWS, heel bar. Wind page. Lap and leg line. Ahead and behind. The mark tag adds the bearing. Feed 6 lines, every event. Sail hint (assist allowing) |
+| Pre-start | Boat speed, TWA dial. Start block: countdown and burn with the late/early bar, the flag rule in one line. No race bug | + heading, true wind speed, heel bar. Full start block (line, to line, burn, bias, flags). Feed: own events, 3 lines. No race bug | + VMG, SOG, AWA, COG, TWD, AWS. Race bug (fleet, laps and legs). Feed 6 lines, every event |
+| Upwind | Boat speed, TWA dial with the VMG angles and the coloured pointer (the one cue). Race bug: clock and rank. Mark tag: name and distance | + heading, true wind speed, heel bar. Shift chip in the heading cell. The bug adds the leader gap; the mark tag adds the ETA. Feed: own events, 3 lines | + VMG, AWA pointer and value, SOG, COG, TWD, AWS. Lap and leg line. Ahead and behind. The mark tag adds the bearing. Feed 6 lines, every event. Sail hint (assist allowing) |
 | Downwind | As upwind with the run angles; on a reach the pointer is neutral | As upwind | As upwind |
 | Rounding (within 6 L and 6 s after) | Boat speed, TWA dial | As the leg | As the leg |
 | Penalty | Boat speed, TWA dial; the penalty panel carries the rest | As the leg it is taken on | As the leg it is taken on |
 
 Race is the racer's list and nothing more (owner, 2026-10-17: too many numbers at once): speed, the dial, heading, the
-mark's distance and time, the countdown and line numbers, rank and gap; the wind page, the lap line, ahead and behind
+mark's distance and time, the countdown and line numbers, rank and gap, heel and the true wind speed; TWD and the
+rest of the numbers, the lap line, ahead and behind
 and the fleet's feed are Data. In Glance the radar is drawn at 72 % size without its range and orientation labels, the helm strip loses its labels,
 and the feed (own events at Glance and Race, every event at Data) is a short list, not a ticker.
 
@@ -184,7 +185,7 @@ and the feed (own events at Glance and Race, every event at Data) is a short lis
 | --- | --- |
 | Race bug: clock, rank | Start panel: sequence only, gone when the boat has started (OCS keeps it with the return instruction) |
 | Instrument page rows 1 and 2 | Shift chip: on a beat or run when the shift is 2° or more |
-| | Leader gap: after the start; ahead and behind, the wind page and the lap line at Data |
+| | Leader gap: after the start; ahead and behind, TWD and the lap line at Data |
 | Next mark tag or its edge pointer | Laylines and the tack point: beats and runs, assist allowing |
 | Radar | Zone circle: within 6 L of the next mark; ZONE chip inside it |
 | Helm strip | Rounding arrow: from 500 m out; far marker beyond 500 m |

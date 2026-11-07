@@ -110,7 +110,3 @@ func update(t: CamTypes.Target, _o: CamTypes.Options, dt: float) -> CamTypes.Vie
 	v.fov = fov
 	v.near = CamTypes.near_for(eye.y)
 	return v
-
-
-func current_up() -> float:
-	return _upd

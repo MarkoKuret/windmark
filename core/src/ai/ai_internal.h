@@ -129,7 +129,10 @@ struct AiSkippers::Boat {
   float pin_until = -1e9f;         // the escape runs until then
   float pin_seen = -1e9f;          // the last contact with an object
   Vec2 pin_n{0.0f, 0.0f};          // the contact normal, from the object towards the boat
-  std::int8_t pin_mode = 0;        // the escape's way off: 0 sails drawing, 1 let fly, 2 sailing away
+  Vec2 pin_p{0.0f, 0.0f};          // the contact point
+  std::int8_t pin_mode = 0;        // the escape's way off: 0 sails drawing, 1 let fly and turn, 2 sailing away
+  std::int8_t pin_turn = 0;        // the helm of the let-fly mode (+1 = the bow to starboard), set when it starts
+  std::int8_t pin_try = 0;         // the let-fly mode's stint: 0 the chosen turn, 1 the other way
   float pin_check_t = 0.0f;        // the escape's next progress check, and the pose at the last one
   Vec2 pin_c{0.0f, 0.0f};
   float pin_psi = 0.0f;

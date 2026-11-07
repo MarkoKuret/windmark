@@ -276,7 +276,7 @@ func test_next_mark() -> void:
 	t.ok(r.vmg > 0.0, "VMG on a run is positive towards the leeward mark (%.2f)" % r.vmg)
 	t.near(r.target_speed, 3.5, 1e-3, "target speed on a run: V_dn")
 	t.near(h.dial_reference(), deg_to_rad(150.0), 1e-6, "run: coloured against the downwind VMG angle")
-	t.ok(r.next_name == "Gate Gate left / Gate right" and r.next_sides.size() == 2, "gate: both buoys' arrows: " + r.next_name)
+	t.ok(r.next_name == "Gate left / right" and r.next_sides.size() == 2, "gate: both buoys' arrows: " + r.next_name)
 	t.near(r.next_dist, (Vector2(60, 700) + 3.5 * Vector2(sin(psi_run), cos(psi_run))).distance_to(Vector2(20, 100)) - 1.0,
 		1e-2, "gate: the nearer buoy")
 	# sailing away from the mark: VMC negative (a reach)
@@ -592,7 +592,7 @@ func test_penalties_prompts() -> void:
 	t.ok(h.penalty_panel.visible and h.text_of("pen_head") == "Penalty: Port tack keeps clear of starboard (Nora)",
 		h.text_of("pen_head"))
 	t.ok(h.text_of("pen_deadline") == "Deadline  0:32", "deadline: " + h.text_of("pen_deadline"))
-	t.ok(h.text_of("pen_turn") == "Sail clear and turn", h.text_of("pen_turn"))
+	t.ok(h.text_of("pen_turn") == "Sail clear, then one full turn", h.text_of("pen_turn"))
 	# turning: the turn as a number in the ring (no state text), TACK lit
 	sim.rules_d[0]["turning_for_penalty"] = true
 	sim.rules_d[0]["turn_progress"] = deg_to_rad(-210.0)
@@ -620,7 +620,7 @@ func test_penalties_prompts() -> void:
 	sim.rules_d[0]["turning_for_penalty"] = false
 	sim.rules_d[0]["turn_progress"] = 0.0
 	_refresh(h, sim)
-	t.ok(h.text_of("pen_turn") == "Sail clear and turn", "no reset inferred: "
+	t.ok(h.text_of("pen_turn") == "Sail clear, then one full turn", "no reset inferred: "
 		+ h.text_of("pen_turn"))
 	# each reset reason from the core, shown for 3 s
 	var texts := {RaceText.TurnReset.PAUSED: "Turn reset: paused", RaceText.TurnReset.REVERSED: "Turn reset: turned back",
@@ -862,20 +862,21 @@ func test_density() -> void:
 	var G := Hud.Density.GLANCE
 	var RC := Hud.Density.RACE
 	var D := Hud.Density.DATA
-	var data_only := ["vmg_kn", "awa", "sog", "cog", "aws", "heel_bar"]
+	var data_only := ["vmg_kn", "awa", "sog", "cog", "twd", "aws"]
+	var race_cells := ["hdg", "tws", "heel_bar"]  # the cluster at Race and Data (hud.md §16.3)
 	# pre-start
 	var sim := _pre_sim()
 	var h := _hud(sim)
 	_refresh(h, sim, 0, 5)
 	t.ok(h.phase() == "pre", "phase pre: " + h.phase())
 	var g := _items_at(h, G)
-	t.ok(_has_all(g, ["bsp", "twa_dial", "start_min", "radar", "helm"]) and _has_none(g, ["hdg", "bug",
-		"wind_page", "start_full", "feed"]), "pre-start Glance: %s" % str(g))
+	t.ok(_has_all(g, ["bsp", "twa_dial", "start_min", "radar", "helm"]) and _has_none(g, race_cells + ["bug",
+		"start_full", "feed"]), "pre-start Glance: %s" % str(g))
 	var rc := _items_at(h, RC)
-	t.ok(_has_all(rc, ["hdg", "start_full", "feed_own"]) and _has_none(rc, data_only + ["wind_page", "bug", "feed"]),
+	t.ok(_has_all(rc, race_cells + ["start_full", "feed_own"]) and _has_none(rc, data_only + ["bug", "feed"]),
 		"pre-start Race: %s" % str(rc))
 	var d := _items_at(h, D)
-	t.ok(_has_all(d, data_only + ["wind_page", "bug", "bug_lap", "feed"]), "pre-start Data: %s" % str(d))
+	t.ok(_has_all(d, race_cells + data_only + ["bug", "bug_lap", "feed"]), "pre-start Data: %s" % str(d))
 	h.frame(0.3)
 	t.ok(not _page_texts(h.inst_page).has("SPEED / TARGET") and not _page_texts(h.inst_page).has("TARGET"),
 		"pre-start: no target speed")
@@ -887,28 +888,32 @@ func test_density() -> void:
 	_refresh(h, sim, 0, 200)
 	t.ok(h.phase() == "beat", "phase beat: " + h.phase())
 	g = _items_at(h, G)
-	t.ok(_has_all(g, ["bsp", "twa_dial", "bug", "feed_own"]) and _has_none(g, ["cue", "hdg", "target", "wind_page",
-		"shift", "bug_lap", "bug_gap", "mark_eta", "feed"] + data_only), "beat Glance: %s" % str(g))
+	t.ok(_has_all(g, ["bsp", "twa_dial", "bug", "feed_own"]) and _has_none(g, ["cue", "target", "shift", "bug_lap",
+		"bug_gap", "mark_eta", "feed"] + race_cells + data_only), "beat Glance: %s" % str(g))
 	h.frame(0.3)
 	var page := _page_texts(h.inst_page)
 	t.ok(page.has("BOAT SPEED") and page.has("TWA") and not page.has("SPEED / TARGET") and not page.has("HEADING")
 		and not " ".join(page).contains("%"), "Glance page: speed and the TWA dial, no target: %s" % str(page))
-	t.ok(h.radar.compact and not h.wind_page.visible and h.bug_block.visible, "Glance: small radar, no wind page")
+	t.ok(h.radar.compact and h.bug_block.visible and not page.has("TRUE WIND") and not page.has("HEEL"),
+		"Glance: small radar, no wind speed and no heel on the page")
 	rc = _items_at(h, RC)
-	t.ok(_has_all(rc, ["hdg", "shift", "bug_gap", "mark_eta", "feed_own"]) and _has_none(rc,
-		data_only + ["wind_page", "bug_lap", "bug_gaps", "mark_brg", "feed", "hint", "cue", "target"]),
+	t.ok(_has_all(rc, race_cells + ["shift", "bug_gap", "mark_eta", "feed_own"]) and _has_none(rc,
+		data_only + ["bug_lap", "bug_gaps", "mark_brg", "feed", "hint", "cue", "target"]),
 		"beat Race: the racer's list and nothing more: %s" % str(rc))
 	h.frame(0.3)
 	page = _page_texts(h.inst_page)
-	t.ok(page.has("HEADING") and not page.has("TARGET") and not page.has("SOG")
-		and not _page_texts(h.wind_page).has("TRUE WIND"), "Race page: heading, no target, no wind page: %s" % str(page))
+	t.ok(page.has("HEADING") and page.has("TRUE WIND") and page.has("HEEL") and not page.has("TARGET")
+		and not page.has("SOG") and not page.has("VMG") and not page.has("TWD"),
+		"Race page: heading, true wind and heel with the dial, no target, no Data cells: %s" % str(page))
+	t.ok(h.get_node_or_null("Wind") == null and h.feed_block.position.y == HudStyle.margins(h._screen_size()).y,
+		"no wind page: the top right holds the feed at the margin")
 	d = _items_at(h, D)
-	t.ok(_has_all(d, data_only + ["wind_page", "bug_lap", "bug_gaps", "mark_brg", "feed", "hint"]), "beat Data: %s" % str(d))
+	t.ok(_has_all(d, data_only + ["bug_lap", "bug_gaps", "mark_brg", "feed", "hint"]), "beat Data: %s" % str(d))
 	h.frame(0.3)
 	page = _page_texts(h.inst_page)
 	t.ok(page.has("SOG") and page.has("COG") and page.has("AWS") and not page.has("POLAR %") and page.has("HEEL")
-		and page.has("VMG") and page.has("AWA") and h.wind_page.visible and _page_texts(h.wind_page).has("TRUE WIND"),
-		"Data page, with the wind page: %s" % str(page))
+		and page.has("VMG") and page.has("AWA") and page.has("TRUE WIND") and page.has("TWD"),
+		"Data page, the wind on it: %s" % str(page))
 	# the assist still decides: no sail hint below Full, no shift on Minimal
 	h.assist = Hud.Assist.STANDARD
 	t.ok(not _items_at(h, D).has("hint"), "sail hint needs the Full assist")
@@ -1016,7 +1021,7 @@ func test_density_key_and_settings() -> void:
 
 
 func test_name_tags_and_penalty_turn() -> void:
-	t.begin("name tags within 50 m or selected, no penalty ring, the next-mark arrow by camera (hud.md §16.4, §12.1, §7.1)")
+	t.begin("name tags: boats to watch, all within 50 m, off, selected; no penalty ring; the next-mark arrow by camera (hud.md §16.4, §12.1, §7.1)")
 	var sim := RaceStubSim.new(3)
 	sim.race_d["state"] = RaceText.RaceState.RACING
 	sim.race_d["race_time"] = 100.0
@@ -1048,7 +1053,15 @@ func test_name_tags_and_penalty_turn() -> void:
 	var d2 := Vector2(sim.states[2].pos_x, sim.states[2].pos_y - 400.0).length()
 	t.near(d2, 55.0, 0.01, "boat 2 at 55 m")
 	var names := h.name_tags().map(func(g: Dictionary) -> String: return g["name"])
-	t.ok(names == ["NORA"], "tag on the boat at 45 m only: %s" % str(names))
+	t.ok(names.is_empty() and h.show_names and not h.names_all,
+		"watch (the default): no tag on a boat at 45 m without a rules relation: %s" % str(names))
+	var nkey := RawInput.new()
+	nkey.pressed.append(&"boat_names")
+	h.ui_input(nkey)
+	h.frame(0.01)
+	t.ok(h.names_all and h.text_of("message") == Hud.NOTE_NAMES_ALL, "boat_names: every boat nearby, with its note")
+	names = h.name_tags().map(func(g: Dictionary) -> String: return g["name"])
+	t.ok(names == ["NORA"], "all: tag on the boat at 45 m only: %s" % str(names))
 	h.select_next()
 	t.ok(h.selected.keys() == [1], "select key: nearest first")
 	h.select_next()
@@ -1060,9 +1073,22 @@ func test_name_tags_and_penalty_turn() -> void:
 	t.ok(mast != null and h.pick_at(mast) == 2 and h.selected.has(2), "click on a boat selects it")
 	t.ok(h.pick_at(mast) == 2 and not h.selected.has(2), "a second click clears it")
 	t.ok(h.pick_at(Vector2(2.0, 2.0)) == -1, "a click on empty water picks nothing")
-	h.show_names = false
-	t.ok(h.name_tags().is_empty(), "boat_names off: no tags")
-	h.show_names = true
+	h.ui_input(nkey)
+	h.frame(0.01)
+	t.ok(not h.show_names and not h.names_all and h.name_tags().is_empty() and h.text_of("message") == Hud.NOTE_NAMES_OFF,
+		"boat_names again: off, no tags, with its note")
+	h.ui_input(nkey)
+	h.frame(0.01)
+	t.ok(h.show_names and not h.names_all and h.text_of("message") == Hud.NOTE_NAMES_WATCH,
+		"boat_names again: back to boats to watch")
+	# watch: the boat at 45 m gets her tag once she has a rules relation to the viewed boat
+	sim.pairs_a = [sim.pair(0, 1, {"kc_giver": 0, "kc_holder": 1, "kc_rule": RaceText.Rule.R10})]
+	_refresh(h, sim)
+	names = h.name_tags().map(func(g: Dictionary) -> String: return g["name"])
+	t.ok(h.has_relation(1) and names == ["NORA"], "watch: the boat with a rules relation at 45 m is tagged: %s" % str(names))
+	sim.pairs_a = []
+	_refresh(h, sim)
+	t.ok(not h.has_relation(1) and h.name_tags().is_empty(), "the relation gone, the tag goes")
 	# penalty turn: nothing drawn round the boat in any camera
 	var R := RaceText.Rule
 	sim.rules_d[0] = {"pending": [{"rule": R.R10, "other": 1, "count": 1}], "turn_progress": deg_to_rad(120.0),
@@ -1552,7 +1578,7 @@ func test_course_map() -> void:
 	t.ok(h.map_open and h.map_view.visible, "the map key opens it")
 	# what it hides and what stays over it
 	t.ok(h.race_panel.visible and h.race_panel.get_index() > h.map_view.get_index(), "the alert lane stays over it")
-	var hidden := [h.radar, h.inst_page, h.helm_block, h.world, h.bug_block, h.feed_block, h.wind_page, h.next_panel,
+	var hidden := [h.radar, h.inst_page, h.helm_block, h.world, h.bug_block, h.feed_block, h.next_panel,
 		h.card_block, h.ranking_panel]
 	t.ok(hidden.all(func(b: CanvasItem) -> bool: return not b.visible), "radar, instruments, helm, world tags hidden")
 	var m := h.map_view
@@ -1798,6 +1824,7 @@ func test_core_race() -> void:
 	var pen_ok := true
 	var feeds := {}
 	var closed := false
+	var finish_card := {}  # the player's finish card, caught while it shows (5 s, hud.md §13.1)
 	var events := []
 	h.hud_event.connect(func(k: String, d: Dictionary) -> void: events.append(k))
 	var n := 0
@@ -1816,6 +1843,8 @@ func test_core_race() -> void:
 				closed = true
 		if h.race.banner != null:
 			banners[h.race.banner.text] = true
+		if finish_card.is_empty() and h.race.card.get("kind", "") == "finish":
+			finish_card = h.race.card.duplicate()
 		for l in h.race.feed:
 			feeds[l.text] = true
 		var r := h.race
@@ -1878,8 +1907,9 @@ func test_core_race() -> void:
 	t.ok(radar_ok, "radar colours follow the core's pair records (%d pair ticks)" % pairs_seen)
 	t.ok(pen_ok, "penalty panel follows the core's pending penalties")
 	t.ok(bool(rb0["finished"]), "the boat finished")
-	t.ok(h.race.card.get("kind", "") == "finish" and h.race.race_over and h.race.end_reason == "finished",
-		"finish card and race over: %s" % str(h.race.card))
+	# the card lasts 5 s of race time; the other boat may finish later than that, so it is checked when it showed
+	t.ok(finish_card.get("kind", "") == "finish" and h.race.race_over and h.race.end_reason == "finished",
+		"finish card and race over: %s" % str(finish_card))
 	for i in RaceHudValues.CARD_TICKS:
 		sim.step()
 		h.tick(sim, 0)

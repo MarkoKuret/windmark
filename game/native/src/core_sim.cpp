@@ -203,6 +203,7 @@ Dictionary settings_dict(const wm_world_settings& s) {
   d["sea"] = s.sea != 0;
   d["sea_scale"] = s.sea_scale;
   d["shadows"] = s.shadows != 0;
+  d["weather_helm"] = s.weather_helm != 0;
   d["race_type"] = s.race_type;
   d["sequence"] = s.sequence;
   d["prep_flag"] = s.prep_flag;
@@ -265,6 +266,7 @@ void settings_from(const Dictionary& d, wm_world_settings& s) {
   s.sea = i32(get_i(d, "sea", s.sea));
   s.sea_scale = f32(get_f(d, "sea_scale", s.sea_scale));
   s.shadows = i32(get_i(d, "shadows", s.shadows));
+  s.weather_helm = i32(get_i(d, "weather_helm", s.weather_helm));
   s.race_type = i32(get_i(d, "race_type", s.race_type));
   s.sequence = i32(get_i(d, "sequence", s.sequence));
   s.prep_flag = i32(get_i(d, "prep_flag", s.prep_flag));

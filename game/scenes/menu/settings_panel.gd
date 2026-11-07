@@ -11,17 +11,10 @@ const SECTIONS := ["controls", "cameras", "hud", "graphics", "audio"]
 const HELP := {
 	"helm_mode": "Set and hold: a tap moves the helm and it stays. Hold to steer: it comes back when you let go.",
 	"stick_dead_zone": "How far the stick moves before the helm answers. Raise it if the boat steers on its own.",
-	"stick_curve": "How the helm follows the stick: 1.0 is straight, higher is finer near the centre.",
-	"sheet_turns_auto_trim_off": "On: touching the sheet keys hands the trim back to you.",
-	"let_fly_toggle": "Hold: the sheets run free while the key is down. Toggle: one press frees them, the next trims.",
-	"helm_fine_toggle": "Hold: fine helm while the key is down. Toggle: one press turns it on, the next off.",
-	"rankings_toggle": "Hold: the ranking list shows while the key is down. Toggle: one press opens it, the next closes it.",
-	"camera_boost_toggle": "Hold: the free camera flies fast while the key is down. Toggle: one press on, the next off.",
+	"keys_toggle": "Let fly, fine helm, rankings and camera boost. Hold: on while the key is down. Toggle: one press on, the next off.",
+	"weather_helm": "Off: the boat holds her course with the helm centred. On: she tries to luff up as she heels, like a real boat.",
 	"vibration": "Gamepad rumble when you touch a boat or a mark, a light buzz while the sails flog. Off: none.",
-	"invert_look_x": "The onboard and free cameras.",
-	"invert_look_y": "The onboard and free cameras.",
 	"heel_follow": "How much the onboard camera leans with the boat. Level horizon keeps it upright.",
-	"smooth_switch": "On: the camera glides to the next view instead of cutting.",
 	"reduced_motion": "No camera shake, a level horizon and a calmer chase camera.",
 	"assist": "How much the HUD helps: laylines, rules hints, start numbers. Online races may set a lower level.",
 	"hud_density": "How many instrument numbers show. Auto picks for your screen; G or a tap of View changes it.",
@@ -37,6 +30,10 @@ const HELP := {
 	"tab": "LB and RB, or Page Up and Page Down, change the section.",
 }
 const TITLES := ["Controls", "Cameras", "HUD", "Graphics", "Audio"]
+## the section tabs: the setting-name style at this size with this side padding, so the five fit a page at 130 %
+## UI scale in a 1280 x 800 window (menus.md §3)
+const TAB_SIZE := MenuTheme.SMALL_SIZE + 2
+const TAB_PAD := 8
 
 var settings: Settings
 ## inside the pause menu Esc is `pause_menu` (it resumes, menus.md §4); B still goes back
@@ -57,20 +54,20 @@ var _reset: Button
 func build(s: Settings) -> void:
 	settings = s
 	name = "Settings"
-	add_theme_constant_override("separation", 10)
+	add_theme_constant_override("separation", MenuTheme.SECTION_GAP)
 	add_child(MenuTheme.heading("Settings"))
 	var bar := HBoxContainer.new()
 	bar.name = "Sections"
-	bar.add_theme_constant_override("separation", 2)
+	bar.add_theme_constant_override("separation", MenuTheme.LIST_GAP)
 	add_child(bar)
 	for i in SECTIONS.size():
-		var b := MenuTheme.button(TITLES[i], MenuTheme.ROW_SIZE)
+		var b := MenuTheme.button(TITLES[i], TAB_SIZE)
 		b.name = TITLES[i]
-		b.add_theme_font_override("font", MenuTheme.font(600, MenuTheme.LABEL_TRACKING, MenuTheme.ROW_SIZE))
+		b.add_theme_font_override("font", MenuTheme.font(600, MenuTheme.LABEL_TRACKING, TAB_SIZE))
 		for st in ["normal", "hover", "pressed", "focus", "hover_pressed", "disabled"]:
 			var sb := (MenuTheme.theme().get_stylebox(st, "Button") as StyleBoxFlat).duplicate() as StyleBoxFlat
-			sb.content_margin_left = 10
-			sb.content_margin_right = 10
+			sb.content_margin_left = TAB_PAD
+			sb.content_margin_right = TAB_PAD
 			b.add_theme_stylebox_override(st, sb)
 		var sec: String = SECTIONS[i]
 		b.pressed.connect(func() -> void: show_section(sec))
@@ -83,20 +80,13 @@ func build(s: Settings) -> void:
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	add_child(_scroll)
-	_body = VBoxContainer.new()
+	_body = MenuTheme.list()
 	_body.name = "Rows"
 	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_body.add_theme_constant_override("separation", 2)
 	_scroll.add_child(_body)
-	help_label = MenuTheme.label("", MenuTheme.SMALL_SIZE, MenuTheme.MUTED)
+	help_label = MenuTheme.help_label()
 	help_label.name = "Help"
-	help_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	help_label.custom_minimum_size = Vector2(0, 40)
-	help_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	add_child(help_label)
-	var foot := HBoxContainer.new()
-	foot.add_theme_constant_override("separation", 16)
-	add_child(foot)
 	_reset = MenuTheme.button("Reset section", MenuTheme.ACTION_SIZE, true)
 	_reset.name = "Reset"
 	_reset.pressed.connect(func() -> void:
@@ -105,15 +95,11 @@ func build(s: Settings) -> void:
 			changed.emit(k)
 		show_section(section, false)
 		_reset.grab_focus())
-	foot.add_child(_reset)
-	var push := Control.new()
-	push.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	foot.add_child(push)
 	_done = MenuTheme.button("Done", MenuTheme.ACTION_SIZE)
 	MenuTheme.set_primary(_done)
 	_done.name = "Done"
 	_done.pressed.connect(close)
-	foot.add_child(_done)
+	add_child(MenuTheme.footer([_reset], [_done]))
 	show_section("controls", false)
 
 
@@ -157,7 +143,7 @@ func _tab_style() -> void:
 	for sec in tabs:
 		var b: Button = tabs[sec]
 		var on: bool = sec == section
-		var sb := MenuTheme.box(Color(0, 0, 0, 0), 0, 0, Vector2(10, 10))
+		var sb := MenuTheme.box(Color(0, 0, 0, 0), 0, 0, Vector2(TAB_PAD, 10))
 		if on:
 			sb.border_width_bottom = 4
 			sb.border_color = MenuTheme.ACCENT
@@ -177,36 +163,19 @@ func _row(r: MenuRow) -> void:
 		changed.emit(r.key))
 
 
-func _sub(text: String) -> void:
-	var l := MenuTheme.label(text, MenuTheme.SMALL_SIZE, MenuTheme.MUTED)
-	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	l.custom_minimum_size = Vector2(0, 30)
-	l.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-	_body.add_child(l)
-
-
 static func pct(v: float) -> String:
 	return "%d %%" % roundi(v * 100.0)
 
 
-func _hold(text: String, key: String) -> void:
-	_row(MenuRow.choice(text, key, [false, true], ["Hold", "Toggle"], settings.get(key)))
-
-
+## The Controls section (menus.md §3): the helm keys, the stick, the held keys, the vibration, then the bindings.
+## A realism option (the weather helm) belongs after Vibration, before the bindings.
 func _controls() -> void:
 	var s := settings
 	_row(MenuRow.choice("Helm keys", "helm_mode", [0, 1], ["Set and hold", "Hold to steer"], s.helm_mode))
 	_row(MenuRow.range_row("Stick dead zone", "stick_dead_zone", 0.0, 0.30, 0.01, s.stick_dead_zone,
 		func(v: float) -> String: return "%.2f" % v))
-	_row(MenuRow.range_row("Stick curve", "stick_curve", 1.0, 3.0, 0.1, s.stick_curve,
-		func(v: float) -> String: return "%.1f" % v))
-	_row(MenuRow.range_row("Sheet key rate", "sheet_rate", 0.5, 2.0, 0.1, s.sheet_rate,
-		func(v: float) -> String: return "× %.1f" % v))
-	_row(MenuRow.toggle("Sheeting turns auto trim off", "sheet_turns_auto_trim_off", s.sheet_turns_auto_trim_off))
-	_hold("Let fly", "let_fly_toggle")
-	_hold("Fine helm", "helm_fine_toggle")
-	_hold("Rankings", "rankings_toggle")
-	_hold("Camera boost", "camera_boost_toggle")
+	_row(MenuRow.choice("Held keys", "keys_toggle", [false, true], ["Hold", "Toggle"], s.keys_toggle))
+	_row(MenuRow.toggle("Weather helm", "weather_helm", s.weather_helm))
 	_row(MenuRow.range_row("Vibration", "vibration", 0.0, 1.0, 0.1, s.vibration,
 		func(v: float) -> String: return "Off" if v <= 0.0 else pct(v)))
 	_bindings()
@@ -214,22 +183,32 @@ func _controls() -> void:
 
 ## The Bindings list (menus.md §3 Rebinding): Reset bindings, then a row per action of controls.md §3.
 func _bindings() -> void:
-	_sub("Bindings")
-	var head := HBoxContainer.new()
-	head.add_theme_constant_override("separation", 4)
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(spacer)
-	for t in ["Key 1", "Key 2", "Pad"]:
-		var l := MenuTheme.caps(t, MenuTheme.SMALL_SIZE - 3, MenuTheme.MUTED)
-		l.custom_minimum_size = Vector2(BindingRow.SLOT_W, 0)
-		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		head.add_child(l)
-	var reset := MenuTheme.button("Reset bindings", MenuTheme.SMALL_SIZE + 2, true)
+	_body.add_child(MenuTheme.subheading("Bindings", BindingRow.PAD.x))
+	var reset := MenuTheme.button("Reset bindings", MenuTheme.SMALL_SIZE + 2)
 	reset.name = "ResetBindings"
 	reset.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	var rpad := Vector2(BindingRow.PAD.x, MenuTheme.ROW_PAD.y)  # in line with the binding rows under it
+	reset.add_theme_stylebox_override("normal", MenuTheme.box(Color(0, 0, 0, 0), 0, 2, rpad))
+	MenuTheme.set_danger(reset, rpad)
 	reset.pressed.connect(reset_bindings)
 	_body.add_child(reset)
+	# the column heads, laid out as a row's columns (the rows with a Key 3 are a little off, menus.md §3)
+	var head := PanelContainer.new()
+	head.name = "BindingHeads"
+	head.add_theme_stylebox_override("panel", MenuTheme.box(Color(0, 0, 0, 0), 0, 2, Vector2(BindingRow.PAD.x, 2)))
+	var hh := HBoxContainer.new()
+	hh.add_theme_constant_override("separation", BindingRow.COL_GAP)
+	head.add_child(hh)
+	var spacer := Control.new()
+	BindingRow.name_column(spacer)
+	hh.add_child(spacer)
+	var heads := []
+	for t in ["Key 1", "Key 2", "Pad"]:
+		var l := MenuTheme.caps(t, MenuTheme.SMALL_SIZE - 3, MenuTheme.MUTED)
+		BindingRow.slot_column(l)
+		hh.add_child(l)
+		heads.append(l)
+	head.resized.connect(func() -> void: BindingRow.fit_slots(head.size.x, heads))
 	_body.add_child(head)
 	binding_rows.clear()
 	var snap := Bindings.snapshot()
@@ -266,15 +245,12 @@ func listening() -> bool:
 
 func _cameras() -> void:
 	var s := settings
-	_row(MenuRow.range_row("Camera and look speed", "camera_speed", 0.25, 3.0, 0.25, s.camera_speed,
+	_row(MenuRow.range_row("Camera speed", "camera_speed", 0.25, 3.0, 0.25, s.camera_speed,
 		func(v: float) -> String: return "× %.2f" % v))
-	_row(MenuRow.toggle("Invert orbit, left and right", "invert_orbit_x", s.invert_orbit_x))
-	_row(MenuRow.toggle("Invert orbit, up and down", "invert_orbit_y", s.invert_orbit_y))
-	_row(MenuRow.toggle("Invert look, left and right", "invert_look_x", s.invert_look_x))
-	_row(MenuRow.toggle("Invert look, up and down", "invert_look_y", s.invert_look_y))
+	_row(MenuRow.toggle("Invert left and right", "invert_x", s.invert_x))
+	_row(MenuRow.toggle("Invert up and down", "invert_y", s.invert_y))
 	_row(MenuRow.range_row("Onboard heel follow", "heel_follow", 0.0, 1.0, 0.1, s.heel_follow,
 		func(v: float) -> String: return "Level horizon" if v <= 0.0 else pct(v)))
-	_row(MenuRow.toggle("Smooth camera switch", "smooth_switch", s.smooth_switch))
 	_row(MenuRow.toggle("Reduced motion", "reduced_motion", s.reduced_motion))
 
 

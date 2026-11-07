@@ -26,7 +26,35 @@ func _init() -> void:
 	test_clip_choosing()
 	test_breathing()
 	test_lens()
+	test_trackpad_zoom()
 	t.finish(self, "cameras_test")
+
+
+## cameras.md §10 test 17: fractional notches (a trackpad pan or pinch) zoom the chase, aerial and onboard
+## cameras by exactly 1.12^notches, no rounding
+func test_trackpad_zoom() -> void:
+	t.begin("17 trackpad zoom")
+	var o := CamTypes.Options.new()
+	var dt := 1.0 / 60.0
+	var c := CameraInput.new()
+	c.zoom_notches = -2.5
+	var k := pow(ChaseCamera.NOTCH, 2.5)
+	var chase := ChaseCamera.new()
+	var r0 := chase.R
+	chase.handle_input(c, o, dt)
+	t.near(chase.R, r0 * k, 1e-6, "chase R by 1.12^2.5 out")
+	c.zoom_notches = 2.5
+	chase.handle_input(c, o, dt)
+	t.near(chase.R, r0, 1e-6, "and back in")
+	var aerial := AerialCamera.new()
+	var h0 := aerial.H
+	c.zoom_notches = -2.5
+	aerial.handle_input(c, o, dt)
+	t.near(aerial.H, h0 * k, 1e-6, "aerial H by the same factor")
+	var onboard := OnboardCamera.new()
+	onboard.fov = 60.0
+	onboard.handle_input(c, o, dt)
+	t.near(onboard.fov, 60.0 * k, 1e-6, "onboard fov by the same factor")
 
 
 func _target(psi := 0.0) -> CamTypes.Target:

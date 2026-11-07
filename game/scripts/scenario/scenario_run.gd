@@ -44,6 +44,8 @@ func world_settings() -> Dictionary:
 	var d := {
 		"race_seed": s.seed, "wind_speed": s.wind_speed, "wind_from": s.wind_from, "shift_preset": s.shift_preset,
 		"puffs": s.puffs, "oscillation": false, "free_sailing_s": 0.0, "sequence": 1, "prep_flag": 0,
+		# the scripts were written on the full model (boat.md §2): the helm balance stays on whatever the player's setting
+		"weather_helm": true,
 	}
 	d.merge(core_settings, true)
 	return d
@@ -158,8 +160,8 @@ func _resolve(cs: CoreSimSource) -> bool:
 			else:
 				error = "boat %d: at.from %s is not a mark of the course" % [i, b.from]
 				return false
-		var at := base + _dir(twd + b.bearing) * b.dist
-		setup_pos[i] = at - _dir(psi[i]) * (speed[i] * s.lead)
+		var at := base + Frames.compass_vec(twd + b.bearing) * b.dist
+		setup_pos[i] = at - Frames.compass_vec(psi[i]) * (speed[i] * s.lead)
 	return true
 
 
@@ -179,11 +181,6 @@ static func _mid_pair(ab: String, marks: Dictionary) -> Array:
 		if marks.has(a) and marks.has(b):
 			return [marks[a], marks[b]]
 	return []
-
-
-## dir(ψ) = (sin ψ, cos ψ), world ENU (x east, y north).
-static func _dir(a: float) -> Vector2:
-	return Vector2(sin(a), cos(a))
 
 
 ## race.md §14 step 5: the hold boats keep their set-up heading, or that of their last turn begun. Called before

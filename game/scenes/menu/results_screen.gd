@@ -18,7 +18,7 @@ const SAIL_SCENE := "res://scenes/sail_test.tscn"
 const FADE_IN_S := 0.5
 ## narrower than this (logical px) the panel goes under the title (menus.md §5)
 const NARROW := 1100.0
-const MARGIN := 40
+const MARGIN := MenuTheme.MARGIN
 ## the panel's width beside the title, px
 const PANEL_W := 760.0
 ## the table's columns: header, width (0: takes the rest, at least BOAT_MIN), right-aligned
@@ -136,7 +136,7 @@ func _ready() -> void:
 	table.name = "Table"
 	table.add_theme_constant_override("separation", 0)
 	body.add_child(table)
-	summary_heading = MenuTheme.caps("Your race", MenuTheme.SMALL_SIZE, MenuTheme.NAVY)
+	summary_heading = MenuTheme.subheading("Your race")
 	summary_heading.name = "SummaryHeading"
 	body.add_child(summary_heading)
 	summary_box = GridContainer.new()
@@ -145,19 +145,20 @@ func _ready() -> void:
 	summary_box.add_theme_constant_override("h_separation", 18)
 	summary_box.add_theme_constant_override("v_separation", 4)
 	body.add_child(summary_box)
-	_footer = HBoxContainer.new()
-	_footer.name = "Footer"
-	_footer.add_theme_constant_override("separation", 12)
-	col.add_child(_footer)
+	# the footer (menus.md §5): no way back here, so the actions run from the primary, Race again, on the left
+	var actions := []
 	for e in [["again", "Race again"], ["setup", "Change setup"], ["menu", "Main menu"]]:
 		var b := MenuTheme.button(e[1], MenuTheme.ACTION_SIZE)
 		b.name = e[1].replace(" ", "")
 		var id: String = e[0]
 		b.pressed.connect(func() -> void: press(id))
 		b.focus_entered.connect(func() -> void: _last_focus = b)
-		_footer.add_child(b)
+		actions.append(b)
 		buttons[id] = b
 	MenuTheme.set_primary(buttons["again"])
+	col.add_child(MenuTheme.gap(MenuTheme.SECTION_GAP - 6))
+	_footer = MenuTheme.footer(actions, [])
+	col.add_child(_footer)
 	_root.visible = false
 	sounds = MenuSounds.new()
 	sounds.name = "Sounds"
@@ -238,6 +239,10 @@ func title_words() -> Array:
 			return ["RET", "RETIRED"]
 		"dsq", "ghost":
 			var c := str(row.get("code", ""))
+			if c == "DNS":
+				return [c, "DID NOT START"]
+			if c == "DNC":
+				return [c, "DID NOT COMPETE"]
 			return [c if c != "" else "DSQ", "DISQUALIFIED"]
 		"dnf":
 			return ["DNF", "DID NOT FINISH"]
@@ -311,8 +316,7 @@ func table_rows() -> Array:
 		var g := "" if is_nan(float(row["gap"])) or float(row["gap"]) <= 0.0 else HudFormat.gap(row["gap"])
 		var pts := ""
 		if not is_nan(float(row["points"])):
-			var pv := float(row["points"])
-			pts = "%d" % int(pv) if fmod(pv, 1.0) == 0.0 else "%.1f" % pv
+			pts = HudFormat.points(float(row["points"]))
 		var skipper := "You" if b == r.own_boat else ""
 		var ai := str(row.get("ai", ""))
 		if skipper == "" and ai != "":
@@ -441,15 +445,6 @@ func _build_summary(lines: Array) -> void:
 		v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		v.custom_minimum_size = Vector2(160, 0)
 		summary_box.add_child(v)
-
-
-## The summary as text lines ("Label  value", tests)
-func summary_text() -> Array[String]:
-	var out: Array[String] = []
-	var c := summary_box.get_children()
-	for i in range(0, c.size() - 1, 2):
-		out.append("%s  %s" % [(c[i] as Label).text, (c[i + 1] as Label).text])
-	return out
 
 
 # ---- layout ----

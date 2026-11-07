@@ -131,8 +131,9 @@ void Boat::step(const BoatEnv& env) {
   }
   const float heel_wind = aws_p > 0.01f ? (s_.aws * s_.aws) / (aws_p * aws_p) : 1.0f;
   const float trim_heel = c.trim_heel.present ? c.trim_heel.table.at(s_.tws, eps < 0.0f ? aa_p : aa, eps) : 1.0f;
-  // sails.md §6: the weather-helm rate is scaled by trim_heel.
-  const float helm_luff = c.weather_helm.present ? c.weather_helm.table.at(s_.tws, ta) * trim_heel : 0.0f;
+  // sails.md §6: the weather-helm rate is scaled by trim_heel; an exact 0 with the option off (boat.md §2).
+  const float helm_luff =
+      (weather_helm_ && c.weather_helm.present) ? c.weather_helm.table.at(s_.tws, ta) * trim_heel : 0.0f;
   const float helm_fall = c.fall_off.present ? c.fall_off.table.at(s_.v, ta) : 0.0f;
   // §5.8: the sails eased toward the wind line flog on their free sheets and brake the boat.
   const float flog = c.flog_drag.present ? c.flog_drag.table.at(s_.aws, aa) : 0.0f;

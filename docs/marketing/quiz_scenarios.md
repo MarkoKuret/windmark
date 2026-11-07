@@ -74,7 +74,7 @@ The HUD texts: for the viewed boat a 4 s banner `PENALTY: <rule text> (<other bo
   mark at 19.8 s.
 - **Freeze frame:** 19.5 s. Petrel already turning down round the mark, Halcyon abeam the mark on the inside, about
   2 m between them.
-- **Engine's call:** Petrel penalised, rule 18.2, at 20.9 s (a rule 11 warning shows from 18.8 s). The boats touch
+- **Engine's call:** Petrel penalised, rule 18.2, at 20.85 s (a rule 11 warning shows from 18.8 s). The boats touch
   at 21.35 s, softly (no damage).
 - **HUD rule text:** `Give mark-room`; banner on Petrel `PENALTY: Give mark-room (Halcyon)`.
 - **Answer text:** Petrel is wrong. When the first of the two boats reached the zone they were overlapped, so the
@@ -102,7 +102,7 @@ The HUD texts: for the viewed boat a 4 s banner `PENALTY: <rule text> (<other bo
   from astern and has to luff above close-hauled (she luffs from 18.8 s).
 - **Freeze frame:** 17.5 s. Bora has just finished her tack, on starboard and slow, Mistral about 1.3 m behind her
   and closing.
-- **Engine's call:** Bora penalised, rule 18.3, at 18.7 s (a rule 10 warning while Bora is on port from 12.85 s,
+- **Engine's call:** Bora penalised, rule 18.3, at 18.9 s (a rule 10 warning while Bora is on port from 12.85 s,
   rule 13 while she tacks). No contact: Mistral luffs clear.
 - **HUD rule text:** `Tacked in the zone: keep clear`; banner on Bora `PENALTY: Tacked in the zone: keep clear
   (Mistral)`.

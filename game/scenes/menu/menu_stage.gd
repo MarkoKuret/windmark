@@ -28,8 +28,9 @@ const FRAME_OFFSET := deg_to_rad(9.0)
 const RESTART_AFTER_S := 30.0
 ## the showcase boat (menus.md §4.1): where it sits (ENU m, east of the course), its heading (compass, rad: NW,
 ## the backdrop's north wind on the starboard bow), heel (starboard tack: port side down), the apparent wind its
-## sails are trimmed for, the camera's orbit (rate, distance and height by the mast height, the aim up the mast)
-## and the bearing it starts from (the leeward bow quarter)
+## sails are trimmed for, the camera's orbit (rate, distance and height by the REFERENCE mast height, the tallest
+## in the fleet, the aim up that mast: the camera stays put when the class changes, so a sportsboat looks small
+## beside where the classic yacht stood) and the bearing it starts from (the leeward bow quarter)
 const SHOW_POS := Vector2(700.0, 0.0)
 const SHOW_PSI := deg_to_rad(315.0)
 const SHOW_HEEL := deg_to_rad(-12.0)
@@ -63,6 +64,7 @@ var showcase_livery := ""
 ## the room beside the page); below 0 the drift's FRAME_OFFSET
 var frame_x := -1.0
 var _show_sails: SimSource.SailsView
+## the camera's reference mast (m): the fleet's tallest (menus.md §4.1), at least half this class's length
 var _show_mast := 10.0
 var _show_bearing := SHOW_START_BEARING
 
@@ -268,6 +270,7 @@ func show_boat(class_id: String, livery_id: String) -> void:
 		if livery_id != showcase_livery:
 			_paint(livery_id)
 		return
+	var fresh := showcase == null
 	hide_boat()
 	var data := BoatClassData.load_class(class_id)
 	if data == null:
@@ -278,12 +281,20 @@ func show_boat(class_id: String, livery_id: String) -> void:
 	showcase.own = true
 	scene.add_child(showcase)
 	showcase_class = class_id
-	_show_mast = maxf(MenuData.class_facts(class_id)["mast_height"], 0.5 * data.info.loa)
+	_show_mast = reference_mast(class_id, data.info.loa)
 	_show_sails = showcase_sails(data, SHOW_AWA, SHOW_AWS, SHOW_TWS)
 	_paint(livery_id)
-	_show_bearing = SHOW_START_BEARING
+	if fresh:
+		_show_bearing = SHOW_START_BEARING  # a class swap keeps the bearing: only the boat changes
 	_started = false
 	frame(0.0)
+
+
+## The showcase camera's reference mast height (m, menus.md §4.1): the tallest mast in the fleet, so every class
+## is seen from the same place at its true size; at least this class's own mast and half its length.
+static func reference_mast(class_id: String, loa: float) -> float:
+	var own := maxf(float(MenuData.class_facts(class_id)["mast_height"]), 0.5 * loa)
+	return maxf(MenuData.tallest_mast(), own)
 
 
 func _paint(livery_id: String) -> void:

@@ -161,6 +161,9 @@ struct AiRaceSpec {
   float tide = NAN;
   bool no_current = false;  // the venue's conditions without any current (a reference for the tide's cost)
   bool time_ai = false;     // development: time the skippers' step every tick (AiRaceOutcome::ai_us_*)
+  // The helm balance (boat.md §2 weather_helm_enabled): the game's default, off. The pinned escape (ai.md §6.5)
+  // works without it since WM-202; AI_WH=1 runs the races with it on.
+  bool weather_helm = false;
 };
 
 inline std::vector<std::uint8_t> read_bytes(const std::string& path) {
@@ -218,6 +221,9 @@ inline std::unique_ptr<wm::World> ai_world(const AiRaceSpec& sp) {
   s.race_seed = sp.seed;
   s.wind.base_speed = kn(sp.wind_kn);
   s.wind.base_from = sp.wind_from;
+  s.weather_helm = sp.weather_helm;
+  // Development: AI_WH=1|0 forces the helm balance on or off for every race of a run (comparisons).
+  if (const char* e = std::getenv("AI_WH")) s.weather_helm = e[0] == '1';
   if (!sp.wind_default) wm::apply_shift_preset(s.wind, sp.shifts);
   s.wind.puffs_enabled = sp.puffs;
   s.race.free_sailing_s = sp.free_sailing_s;
@@ -434,6 +440,14 @@ inline AiRaceOutcome run_ai_race(const AiRaceSpec& sp) {
           o.pinned_s[i] += 0.05f;
           pin_run[i] += 0.05f;
           o.pinned_max[i] = std::max(o.pinned_max[i], pin_run[i]);
+          // Development: list the pinned episodes (2 s in) for the pinned probe.
+          if (pin_run[i] >= 2.0f && pin_run[i] < 2.05f && std::getenv("AI_PIN_LOG") != nullptr) {
+            const wm::BoatState& bs = w->boat(i).state();
+            std::printf("PINNED boat %zu at t %.1f (%.1f, %.1f) psi %.0f twa %.0f\n", i,
+                        static_cast<double>(w->race().race_time(w->tick())), static_cast<double>(bs.pos_x),
+                        static_cast<double>(bs.pos_y), static_cast<double>(bs.psi / wm::DEG),
+                        static_cast<double>(wm::wrap_pi(w->env(i).wind_from_clean - bs.psi) / wm::DEG));
+          }
         } else {
           pin_run[i] = 0.0f;
         }

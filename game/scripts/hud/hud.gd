@@ -34,6 +34,10 @@ const DENSITY_NAMES := ["GLANCE", "RACE", "DATA"]
 const REFRESH := 0.25
 const FLASH_TIME := 1.2
 const MESSAGE_TIME := 3.0
+## the notes of the `boat_names` states (hud.md §16.4)
+const NOTE_NAMES_ALL := "Name tags: every boat nearby"
+const NOTE_NAMES_OFF := "Name tags: off"
+const NOTE_NAMES_WATCH := "Name tags: boats to watch"
 const TOAST_TIME := 1.5
 const ROUNDING_TIME := 6.0
 ## hud.md §16.4: name tags within this range of the viewed boat, m
@@ -84,8 +88,10 @@ var camera_rig: Object = null
 ## a camera without a rig (previews, tests) and its kind ("chase", "onboard", "aerial", "free")
 var camera: Camera3D = null
 var camera_kind := "chase"
-## name tags on (the `boat_names` action) and the boats the player selected for a tag
+## name tags on (the `boat_names` action, hud.md §16.4) and the boats the player selected for a tag
 var show_names := true
+## the all state of `boat_names`: every boat within TAG_RANGE gets a tag; off (watch): those with a rules relation
+var names_all := false
 ## controls.md §7 world_tags: the world tags (mark tag, next-mark arrow, tack point, name tags, edge pointers) shown
 var world_tags := true
 ## the selected boat (hud.md §16.4.1): boat -> true, at most one; see selected_boat, select, clear_selection
@@ -106,7 +112,6 @@ var world: HudCanvas
 var inst_page: HudCanvas
 var toast_block: HudCanvas
 var bug_block: HudCanvas
-var wind_page: HudCanvas
 var feed_block: HudCanvas
 ## the top centre lane: start block, penalty panel, rules line, banner, prompt (visible while the sim has a race)
 var race_panel: Control
@@ -174,7 +179,6 @@ var _camera_seen := false
 var edge_box := Rect2()
 
 
-
 ## HudValues.Colour -> token, in the colour-blind palette in use (hud.md §16.2.1); read only
 static func colours() -> Dictionary:
 	if _colours_palette != HudStyle.palette:
@@ -202,7 +206,6 @@ func _init() -> void:
 	toast_block = _block("InstrumentsChip", HudPaint.toast)
 	toast_block.visible = false
 	bug_block = _block("RaceBug", HudPaint.bug)
-	wind_page = _block("Wind", HudPaint.wind)
 	feed_block = _block("Feed", HudPaint.feed)
 	map_view = CourseMapView.new()
 	map_view.name = "CourseMap"
@@ -345,56 +348,22 @@ func phase() -> String:
 
 
 ## The items the density and the assist show now (hud.md §16.1, §14): instrument cells ("bsp", "twa_dial",
-## "twa", "hdg", "vmg_kn", "awa", "sog", "cog", "aws", "heel_bar"; no target speed, hud.md §4), "bug", "bug_lap",
-## "bug_gap" (the leader gap), "bug_gaps" (ahead and behind), "wind_page", "shift", "feed" (every event, 6 lines),
-## "feed_own" (the viewed boat's events, 3 lines), "start_min", "start_full", "hint", "mark_eta", "mark_brg" (the
-## mark tag's second line), "radar", "helm". Race is the racer's list: speed, the dial, heading, the mark's distance
-## and time, rank and gap; the rest is Data.
+## "twa", "hdg", "tws", "heel_bar", "vmg_kn", "awa", "sog", "cog", "twd", "aws"; no target speed, hud.md §4), "bug",
+## "bug_lap", "bug_gap" (the leader gap), "bug_gaps" (ahead and behind), "shift" (the chip in the heading cell),
+## "feed" (every event, 6 lines), "feed_own" (the viewed boat's events, 3 lines), "start_min", "start_full", "hint",
+## "mark_eta", "mark_brg" (the mark tag's second line), "radar", "helm". Race is the racer's list: speed, the dial,
+## heading, heel, the true wind speed, the mark's distance and time, rank and gap; the rest is Data.
 func items() -> Array[String]:
 	var ph := phase()
 	var key := [int(density), ph, int(assist)]
 	if key != _items_key:
-		_items = _items_of(ph)
+		_items = HudItems.of(self, ph)
 		_items_key = key
 	return _items
 
 
-func _items_of(ph: String) -> Array[String]:
-	var out: Array[String] = ["bsp", "twa_dial", "twa", "radar", "helm"]
-	var lvl := density
-	var data := ["vmg_kn", "awa", "sog", "cog", "aws", "heel_bar"]
-	match ph:
-		"free":
-			if lvl >= Density.RACE:
-				out.append("hdg")
-			if lvl == Density.DATA:
-				out.append_array(data)
-				out.append("wind_page")
-		"pre":
-			out.append("start_min" if lvl == Density.GLANCE else "start_full")
-			if lvl == Density.RACE:
-				out.append_array(["hdg", "feed_own"])
-			if lvl == Density.DATA:
-				out.append_array(data)
-				out.append_array(["hdg", "wind_page", "bug", "bug_lap", "feed"])
-		_:
-			out.append("bug")
-			if lvl == Density.GLANCE:
-				out.append("feed_own")
-			elif lvl == Density.RACE:
-				out.append_array(["hdg", "shift", "bug_gap", "mark_eta", "feed_own"])
-			else:
-				out.append_array(data)
-				out.append_array(["hdg", "shift", "bug_gap", "mark_eta", "wind_page", "bug_lap", "bug_gaps", "mark_brg",
-					"hint", "feed"])
-	if not shows("shift"):
-		out.erase("shift")
-	if not shows("sail_hint"):
-		out.erase("hint")
-	return out
-
-
-## hud.md §16.1: the shift chip shows now (the shift item, a lift or a header of 2 degrees or more)
+## hud.md §16.1, §16.3: the shift chip shows now in the page's heading cell (the shift item, a lift or a header of
+## 2 degrees or more)
 func shift_chip_shown() -> bool:
 	return has_item("shift") and text_of("shift") != "" and race.shift_kind != ""
 
@@ -533,7 +502,7 @@ func ui_input(raw: RawInput, dt := 1.0 / 60.0) -> void:
 	if raw.was_pressed(&"boat_select"):
 		select_next()
 	if raw.was_pressed(&"boat_names"):
-		show_names = not show_names
+		cycle_names()
 	if raw.was_pressed(&"boat_pick") and pick_enabled:
 		if not is_nan(raw.pointer.x):
 			pick_at(raw.pointer)
@@ -698,8 +667,8 @@ func refresh_text() -> void:
 	_put("sheet", "Sheet  %s%s" % [sheet, "   LET FLY" if v.let_fly else ""], HudStyle.PAPER,
 		sheet + (", LET FLY" if v.let_fly else ""))
 	_put("vmg_kn", "", HudStyle.PAPER, "--")
-	_race_text()
-	_card_text()
+	HudText.race(self)
+	HudText.card(self)
 
 
 static func _sail_name(n: String) -> String:
@@ -844,135 +813,9 @@ func results_text_rows() -> Array:
 		var g := "" if is_nan(r["gap"]) or float(r["gap"]) <= 0.0 else HudFormat.gap(r["gap"])
 		var pts := ""
 		if not is_nan(r["points"]):
-			pts = "%d" % int(r["points"]) if fmod(r["points"], 1.0) == 0.0 else "%.1f" % r["points"]
+			pts = HudFormat.points(r["points"])
 		out.append([place, r["name"], r["skipper"], r["ai"], t, g, r["code"], pts])
 	return out
-
-
-## The race numbers at 4 Hz (hud.md §1 formats, §14 assists).
-func _race_text() -> void:
-	var r := race
-	if not r.active:
-		return
-	var red: Color = HudStyle.PORT
-	var white: Color = HudStyle.PAPER
-	# clock (§9.1)
-	var clock := ""
-	var clock_v := ""
-	if r.state <= RaceText.RaceState.FREE_SAILING or (r.state == RaceText.RaceState.SEQUENCE
-			and r.race_time < -r.warning_time):
-		clock_v = HudFormat.countdown(-r.race_time - r.warning_time)
-		clock = "Warning in %s" % clock_v
-	elif r.state == RaceText.RaceState.SEQUENCE:
-		clock_v = HudFormat.countdown(-r.race_time)
-		clock = "Start in %s" % clock_v
-	elif r.finished:
-		clock_v = HudFormat.finish_time(r.t_finish)
-		clock = "Finished  %s" % clock_v
-	elif r.state == RaceText.RaceState.ABANDONED:
-		clock = "Abandoned"
-	else:
-		clock_v = HudFormat.clock(r.race_time)
-		clock = "Race  %s" % clock_v
-	_put("clock", clock, white, clock_v)
-	# the finish card (§13.1)
-	_put("finish", r.card.get("line", "") if finish_card_shown() else "", HudStyle.PAPER)
-	# start line panel (§9.2)
-	if r.start_panel:
-		var dv := HudStyle.split_unit(HudFormat.signed_distance(r.line_dist) if not r.line_end
-			else HudFormat.distance(r.line_dist))
-		var d := "Line  %s" % HudFormat.signed_distance(r.line_dist) if not r.line_end \
-			else "Line  %s (end)" % HudFormat.distance(r.line_dist)
-		_put("line", d, white, dv[0], dv[1] + (" END" if r.line_end else ""))
-		var full := shows("burn_bias")
-		var tl := "--" if is_nan(r.t_line) else HudFormat.clock(r.t_line)
-		_put("tline", ("To line  %s" % tl) if full else "", white, tl)
-		var burn := ""
-		var burn_v := "--"
-		if full and r.race_time < 0.0:
-			burn = "Burn  --" if is_nan(r.burn) else "Burn  %s" % signed_seconds(r.burn)
-			if not is_nan(r.burn):
-				burn_v = signed_seconds(r.burn).trim_suffix(" s")
-		_put("burn", burn, white if is_nan(r.burn) or r.burn >= 0.0 else HudStyle.OWE, burn_v,
-			"" if burn_v == "--" else "S")
-		var bias := ""
-		if full and r.bias_end != "":
-			bias = "Bias  %s +%d° · %s" % [r.bias_end, int(HudFormat.round_half_away(rad_to_deg(r.bias))),
-				HudFormat.distance(r.bias_m)]
-		_put("bias", bias, white, r.bias_end)
-		if bias != "":
-			texts["bias"]["sub"] = ("+%d° · %s" % [int(HudFormat.round_half_away(rad_to_deg(r.bias))),
-				HudFormat.distance(r.bias_m)]).to_upper()
-	else:
-		for k in ["line", "tline", "burn", "bias"]:
-			_put(k, "")
-	_put("over", "OVER  %s" % r.over_text if r.over else "", red)
-	# next mark (§7) and performance (§4, §6, §3.2)
-	if r.next_step > 0:
-		_put("next", r.next_name, HudStyle.MARK)
-		_put("lap", "Lap %d/%d · Leg %d/%d" % [r.lap, r.laps, r.leg, r.legs])
-		var md := HudStyle.split_unit(HudFormat.distance(r.next_dist))
-		_put("mark_dist", HudFormat.distance(r.next_dist), white, md[0], md[1])
-		_put("bearing", "Bearing  %s  (%s)" % [HudFormat.compass_deg(r.next_bearing),
-			HudFormat.relative_bearing(r.next_rel)])
-		var eta := "--:--" if is_nan(r.eta) else HudFormat.clock(r.eta)
-		_put("leg", "%s  ·  ETA %s" % [r.leg_type.capitalize(), eta])
-		if r.leg_type == "reach":
-			_put("vmg", "VMC  %s kn" % HudFormat.speed_kn(r.vmc), white, HudFormat.speed_kn(r.vmc), "KN")
-			_put("vmg_kn", "", white, HudFormat.speed_kn(r.vmc), "KN")
-		else:
-			_put("vmg", "VMG  %s kn" % HudFormat.speed_kn(r.vmg), white, HudFormat.speed_kn(r.vmg), "KN")
-			_put("vmg_kn", "", white, HudFormat.speed_kn(r.vmg), "KN")
-		var lay := ""
-		if shows("layline_distance"):
-			if not is_nan(r.overstood):
-				lay = "OVERSTOOD %s" % HudFormat.distance(r.overstood)
-			elif not is_nan(r.layline_dist):
-				lay = "Layline %s · %s" % [HudFormat.distance(r.layline_dist), HudFormat.clock(r.layline_time)]
-		_put("layline", lay, red if lay.begins_with("OVER") else white)
-		var sh := ""
-		if shows("shift") and r.leg_type != "reach":
-			sh = "Shift  --"
-			if r.shift_kind != "":
-				sh = "%s %d°" % [r.shift_kind.to_upper(), int(HudFormat.round_half_away(rad_to_deg(absf(r.shift))))]
-		var sh_col := white
-		if r.shift_kind == "lift":
-			sh_col = HudStyle.STBD
-		elif r.shift_kind == "header":
-			sh_col = red
-		_put("shift", sh, sh_col)
-		_put("hint", r.sail_hint if shows("sail_hint") else "", HudStyle.HAVE)
-	else:
-		for k in ["next", "lap", "mark_dist", "bearing", "leg", "layline", "hint", "vmg", "shift"]:
-			_put(k, "")
-	# position (§10)
-	_put("rank", "%d / %d" % [r.rank, r.fleet] if r.rank > 0 else "")
-	var gap := ""
-	if r.leader >= 0 and r.leader != r.boat and r.started:
-		gap = "Leader  +%s" % HudFormat.distance(r.gap_dist)
-		if not is_nan(r.gap_time):
-			gap += "  %s%s%s" % ["~" if r.gap_estimate else "", HudFormat.gap(r.gap_time),
-				" @ %s" % r.gap_at if r.gap_at != "" and not r.gap_estimate else ""]
-	elif r.leader == r.boat and r.started and r.fleet > 1:
-		gap = "Leading"
-	_put("gap", gap)
-	_put("ahead", "Ahead  %s  %s" % [r.name_of(r.ahead), HudFormat.signed_distance(r.ahead_dist)]
-		if r.ahead >= 0 and r.started else "")
-	_put("behind", "Behind  %s  %s" % [r.name_of(r.behind), HudFormat.signed_distance(r.behind_dist)]
-		if r.behind >= 0 and r.started else "")
-	# penalties (§12.1)
-	if r.pending > 0:
-		var other := " (%s)" % r.name_of(r.penalty_other) if r.penalty_other >= 0 else ""
-		var head := "Penalty" if r.pending == 1 else "Penalty 1 of %d" % r.pending
-		_put("pen_head", "%s: %s%s" % [head, RaceText.rule_text(r.penalty_rule), other], red)
-	else:
-		_put("pen_head", "Penalty done" if r.penalty_visible else "")
-	_put("pen_turn", r.turn_text)
-	var dl := ""
-	if r.deadline >= 0.0 and r.pending > 0:
-		dl = "Deadline  %s" % HudFormat.clock(r.deadline)
-	_put("pen_deadline", dl, red if r.deadline < 30.0 else white, HudFormat.clock(maxf(r.deadline, 0.0)))
-	_put("pen_dsq", "One more penalty = disqualification" if r.dsq_warning and r.pending > 0 else "", red)
 
 
 ## "+10 s", "-3 s"
@@ -1076,8 +919,37 @@ func world_tack_point() -> Variant:
 	return Vector2(o.x, o.y) + g.normalized() * r.layline_dist
 
 
-## the name tags to draw now: [{boat, p (screen), name, col, solid, outline}] (hud.md §16.4: within 50 m or
-## selected, off with `boat_names`)
+## `boat_names` (hud.md §16.4): watch (a rules relation or selected, the default) -> all (every boat within
+## TAG_RANGE) -> off -> watch, each with its note.
+func cycle_names() -> void:
+	if show_names and not names_all:
+		names_all = true
+		note(NOTE_NAMES_ALL)
+	elif show_names:
+		show_names = false
+		names_all = false
+		note(NOTE_NAMES_OFF)
+	else:
+		show_names = true
+		note(NOTE_NAMES_WATCH)
+
+
+## A note in the helm notes for MESSAGE_TIME (the line the controls' notes use).
+func note(text: String) -> void:
+	_put("message", text)
+	_message_t = MESSAGE_TIME
+
+
+## hud.md §16.4: the boat has a rules relation to the viewed boat now (a radar colour other than white, not a ghost)
+func has_relation(b: int) -> bool:
+	for ct in race.contacts:
+		if ct.boat == b:
+			return not ct.ghost and ct.tint != RaceHudValues.Tint.WHITE
+	return false
+
+
+## the name tags to draw now: [{boat, p (screen), name, col, solid, outline}] (hud.md §16.4: within 50 m with a
+## rules relation, every boat within 50 m with `names_all`, or selected; none with `show_names` off)
 func name_tags() -> Array:
 	var out := []
 	if not show_names or sim == null or world_camera() == null:
@@ -1092,7 +964,8 @@ func name_tags() -> Array:
 	return out
 
 
-## the boats that get a name tag now, on screen or not: within TAG_RANGE of the viewed boat, or selected
+## the boats that get a name tag now, on screen or not: within TAG_RANGE of the viewed boat with a rules relation
+## (every boat within it in the all state), or selected
 func tag_boats() -> Array[int]:
 	var out: Array[int] = []
 	if not show_names or sim == null:
@@ -1106,7 +979,8 @@ func tag_boats() -> Array[int]:
 		var p := sim.render_pose(b, radar.alpha)
 		if p == null:
 			continue
-		if selected.has(b) or Vector2(p.pos_x - me.pos_x, p.pos_y - me.pos_y).length() <= TAG_RANGE:
+		var near := Vector2(p.pos_x - me.pos_x, p.pos_y - me.pos_y).length() <= TAG_RANGE
+		if selected.has(b) or (near and (names_all or has_relation(b))):
 			out.append(b)
 	return out
 
@@ -1173,7 +1047,7 @@ func select(b: int) -> void:
 	selected.clear()
 	if b >= 0:
 		selected[b] = true
-	_card_text()
+	HudText.card(self)
 
 
 ## clears the selection; whether there was one (Esc clears it before it pauses, hud.md §16.4.1)
@@ -1393,11 +1267,11 @@ func _over_boat(q: Vector2) -> bool:
 # ---- world labels keep clear of the HUD's blocks (hud.md §16.4) ----
 
 ## the screen rects the HUD's own blocks draw now (instrument page and chip, radar, helm strip and notes, the
-## next-mark arrow, race bug, wind page, feed, alert lane, boat card)
+## next-mark arrow, race bug, feed, alert lane, boat card)
 func keep_clear_rects() -> Array[Rect2]:
 	var out: Array[Rect2] = []
-	for blk in [inst_page, toast_block, radar, helm_notes, mark_arrow_block, bug_block, wind_page, feed_block,
-			start_block, penalty_panel, alerts_block, card_block]:
+	for blk in [inst_page, toast_block, radar, helm_notes, mark_arrow_block, bug_block, feed_block, start_block,
+			penalty_panel, alerts_block, card_block]:
 		var c := blk as HudCanvas
 		if not c.visible or not c.is_visible_in_tree() and c.is_inside_tree():
 			continue
@@ -1425,122 +1299,7 @@ func label_clear(r: Rect2, rects: Array[Rect2] = []) -> bool:
 	return true
 
 
-# ---- selected boat card (hud.md §16.7) ----
-
-## the selected boat's card from the race and rules records of the last tick (hud.md §16.7: who she is, her place,
-## how she stands against the viewed boat; no cells of her distance, bearing, speed or heading)
-func _card_text() -> void:
-	card = {}
-	_bump()
-	var b := selected_boat()
-	if b < 0 or sim == null or viewed < 0 or b == viewed or b >= sim.boat_count():
-		return
-	if sim.state(viewed) == null or sim.state(b) == null:
-		return
-	var r := race
-	var c := {"boat": b}
-	# header
-	var head: Array[String] = []
-	var sail := str(r.sail_numbers.get(b, ""))
-	if sail != "":
-		head.append(sail.to_upper())
-	var ai := r.ai_badge(b)
-	var skipper := str(r.skippers.get(b, ""))
-	if ai != "":
-		head.append(("%s · AI %s" % [skipper, ai] if skipper != "" else "AI " + ai).to_upper())
-	else:
-		head.append(skipper.to_upper() if skipper != "" else "PLAYER")
-	c["head"] = " · ".join(head)
-	c["name"] = r.name_of(b).to_upper()
-	var col := HudStyle.PAPER
-	var ct := r.contact(b)
-	if ct != null:
-		col = HudStyle.TINTS[RaceHudValues.Tint.GREY] if ct.ghost else (HudStyle.TINTS[ct.tint] if radar.colours
-			else HudStyle.PAPER)
-	c["col"] = col
-	if r.active:
-		_card_race(c, b)
-	card = c
-
-
-## the card's race rows: place, course and gap, the rules relation, penalties
-func _card_race(c: Dictionary, b: int) -> void:
-	var r := race
-	var rb := sim.race_boat(b)
-	var fin := bool(rb.get("finished", false))
-	if r.started:
-		var idx := r.shown_order.find(b)
-		var place := int(rb.get("place", idx + 1)) if fin else idx + 1
-		if place > 0:
-			c["place"] = str(place)
-			c["fleet"] = r.fleet
-	var course := ""
-	if fin:
-		course = "Finished"
-	elif bool(rb.get("dsq", false)):
-		course = "DSQ"
-	elif bool(rb.get("retired", false)):
-		course = "RET"
-	else:
-		var k := int(rb.get("next", 0))
-		var lab := "start" if k <= 0 or not bool(rb.get("started", false)) else r._step_label(k)
-		course = "Next " + (lab.capitalize() if lab in ["start", "gate", "finish"] else lab)
-		if bool(rb.get("ocs", false)) or bool(rb.get("ocs_i", false)):
-			course = "OCS · " + course
-		if r._racing_on_course(sim, b) and r._racing_on_course(sim, viewed) \
-				and not bool(sim.race_boat(viewed).get("finished", false)):
-			var g := float(rb.get("D", 0.0)) - float(sim.race_boat(viewed).get("D", 0.0))
-			c["gap_m"] = g
-			if absf(g) < 0.5:
-				course += " · level with you"
-			else:
-				course += " · %s %s" % [HudFormat.distance(absf(g)), "behind you" if g > 0.0 else "ahead of you"]
-	c["course"] = course
-	# the rules relation with the viewed boat (the radar colour's meaning, §8)
-	if shows("radar_colours"):
-		for p in sim.pairs():
-			var i := int(p["i"])
-			var j := int(p["j"])
-			if not ((i == viewed and j == b) or (i == b and j == viewed)):
-				continue
-			var text := ""
-			var rule := 0
-			var st := 0
-			var tint := RaceHudValues.Tint.WHITE
-			if int(p["room_rule"]) != 0 and int(p["room_giver"]) == viewed:
-				text = "YOU GIVE ROOM"
-				rule = int(p["room_rule"])
-				st = int(p["room_state"])
-				tint = RaceHudValues.Tint.ORANGE
-			elif int(p["room_rule"]) != 0 and int(p["room_entitled"]) == viewed:
-				text = "SHE GIVES YOU ROOM"
-				rule = int(p["room_rule"])
-				st = int(p["room_state"])
-				tint = RaceHudValues.Tint.CYAN
-			elif int(p["kc_rule"]) != 0 and int(p["kc_giver"]) == viewed:
-				text = "YOU KEEP CLEAR"
-				rule = int(p["kc_rule"])
-				st = int(p["kc_state"])
-				tint = RaceHudValues.Tint.RED
-			elif int(p["kc_rule"]) != 0 and int(p["kc_holder"]) == viewed:
-				text = "SHE KEEPS CLEAR"
-				rule = int(p["kc_rule"])
-				st = int(p["kc_state"])
-				tint = RaceHudValues.Tint.GREEN
-			if text != "":
-				# one line: the relation, the rule's number, BREACH (the rules line of §11 carries the text)
-				c["rules"] = "%s · RULE %s%s" % [text, RaceText.code(rule), " · BREACH" if st == RaceText.Kc.BREACH else ""]
-				c["rules_col"] = HudStyle.TINTS[tint]
-				c["rule"] = rule
-			break
-	# penalties owed
-	var br := sim.boat_rules(b)
-	var n: int = br.get("pending", []).size()
-	if n > 0:
-		c["penalty"] = "%d %s OWED" % [n, "PENALTY" if n == 1 else "PENALTIES"]
-		if bool(br.get("turning_for_penalty", false)):
-			c["penalty"] += " · TURNING"
-
+# ---- next-mark arrow (hud.md §7.1) ----
 
 ## hud.md §7.1: the next-mark arrow, in the onboard, aerial and free cameras while the mark tag would show and the
 ## mark is off screen
@@ -1595,336 +1354,14 @@ func layout_now() -> void:
 
 
 func _layout() -> void:
-	_layout_blocks()
-	_layout_map()
-
-
-## hud.md §8.1: the map over the whole screen; while it shows only the alert lane stays over it, the other blocks
-## and the world tags are hidden.
-func _layout_map() -> void:
-	map_view.visible = map_open
-	map_view.position = Vector2.ZERO
-	map_view.size = _screen_size()
-	map_view.k = _k
-	map_view.lane_rect = Rect2()
-	map_view.lane_top = 0.0
-	if map_open:
-		# the alert lane clear of the course, at the HUD's scale: a column on the left under the map's header
-		# (landscape), or a band under the header (portrait)
-		var sc := map_view.size
-		var m := HudStyle.margins(sc)
-		var top := m.y + (CourseMapView.HEADER + 8.0) * _k
-		_place_lane(_k)
-		if HudStyle.portrait(sc):
-			race_panel.position = Vector2(sc.x * 0.5 - HudPaint.LANE_W * _k * 0.5, top)
-			map_view.lane_top = MAP_LANE_BAND * _k
-		else:
-			# the lane's drawn area left under the header; the frame moves right of it only when needed
-			race_panel.position = Vector2(m.x, top)
-			var lr := Rect2()
-			for blk in [start_block, penalty_panel, alerts_block]:
-				var c := blk as HudCanvas
-				if not c.visible:
-					continue
-				var e := c.extent()
-				if e.size == Vector2.ZERO:
-					continue
-				var r := Rect2(e.position + c.position + race_panel.position, e.size)
-				lr = r if not lr.has_area() else lr.merge(r)
-			map_view.lane_rect = lr
-	var on := not map_open
-	if on:
-		world.visible = world_tags
-	for b in [inst_page, helm_block, helm_notes]:
-		(b as CanvasItem).visible = on
-	if map_open:
-		for b in [world, toast_block, bug_block, wind_page, feed_block, next_panel, card_block, radar, ranking_panel,
-				mark_arrow_block]:
-			(b as CanvasItem).visible = false
-
-
-func _layout_blocks() -> void:
-	var sc := _screen_size()
-	var k := HudStyle.ui_k(sc)
-	var m := HudStyle.margins(sc)
-	_k = k
-	if density_auto:
-		density = default_density(sc)
-	for b in _all_canvases():
-		b.k = k
-	var its := items()
-	world.position = Vector2.ZERO
-	world.size = sc
-	edge_box = Rect2()
-	if HudStyle.portrait(sc):
-		_layout_portrait(sc, k, m, its)
-		return
-	# instrument page, bottom left
-	var ps := HudPaint.page_size(self) * k
-	inst_page.position = Vector2(m.x, sc.y - m.y - ps.y)
-	inst_page.size = ps
-	toast_block.visible = _toast_t > 0.0
-	toast_block.position = inst_page.position - Vector2(0, 40.0 * k)
-	toast_block.size = Vector2(300, 32) * k
-	toast_block.modulate.a = clampf(_toast_t / 0.24, 0.0, 1.0)
-	# race bug, top left
-	bug_block.visible = race.active and its.has("bug")
-	bug_block.position = m
-	bug_block.size = Vector2(520, 200) * k
-	# wind page (or the shift chip alone) and the feed under it, top right
-	wind_page.visible = its.has("wind_page") or shift_chip_shown()
-	wind_page.size = Vector2(HudPaint.WIND.x, 160) * k
-	wind_page.position = Vector2(sc.x - m.x - HudPaint.WIND.x * k, m.y)
-	feed_block.visible = race.active and (its.has("feed") or its.has("feed_own"))
-	feed_block.size = Vector2(620, 170) * k
-	feed_block.position = Vector2(sc.x - m.x - feed_block.size.x, m.y + _under_wind(its) * k)
-	# radar, bottom right
-	radar.visible = race.active
-	radar.compact = density == Density.GLANCE
-	var d := 300.0 * k * (0.72 if radar.compact else 1.0)
-	radar.size = Vector2(d, d + (0.0 if radar.compact else 30.0 * k))
-	radar.position = Vector2(sc.x - m.x - d, sc.y - m.y - radar.size.y)
-	# helm strip between the page and the radar
-	var left := inst_page.position.x + ps.x + 24.0 * k
-	var right := (radar.position.x if radar.visible else sc.x - m.x) - 24.0 * k
-	var hw := minf(HudPaint.HELM.x * k, maxf(right - left, 160.0 * k))
-	_place_helm(Vector2((left + right) * 0.5 - hw * 0.5, sc.y - m.y - HudPaint.HELM.y * k), hw, k)
-	# top centre lane: start block, penalty panel, alerts
-	race_panel.position = Vector2(sc.x * 0.5 - HudPaint.LANE_W * k * 0.5, m.y)
-	_place_lane(k)
-	# the next mark tag: on the mark, or docked under the race bug without a camera
-	next_panel.size = Vector2(330, 120) * k
-	next_panel.visible = race.active and race.next_step > 0 and not race.finished and text_of("next") != ""
-	world.visible = world_tags
-	if not world_tags and world_camera() != null:
-		next_panel.visible = false
-	if next_panel.visible and world_camera() != null:
-		var mp: Variant = mark_screen()
-		if mp == null:
-			next_panel.visible = false
-		else:
-			var p: Vector2 = mp
-			next_panel.position = Vector2(clampf(p.x - 30.0 * k, m.x, sc.x - m.x - next_panel.size.x),
-				clampf(p.y - 150.0 * k, m.y, sc.y - m.y - next_panel.size.y))
-	else:
-		next_panel.position = Vector2(m.x, m.y + 230.0 * k)
-	arrow_view.position = Vector2.ZERO
-	arrow_view.size = Vector2(26, 22) * k
-	# the next-mark arrow (hud.md §7.1): centred over the helm notes
-	mark_arrow_block.visible = mark_arrow_shown()
-	mark_arrow_block.size = HudPaint.MARK_ARROW * k
-	mark_arrow_block.position = Vector2(helm_block.position.x + helm_block.size.x * 0.5 - mark_arrow_block.size.x * 0.5,
-		helm_notes.position.y - 8.0 * k - mark_arrow_block.size.y)
-	# the selected boat's card (hud.md §16.7): left, 48 px over the page, never above 16 px under the race bug
-	if _card_shown():
-		var ch := HudPaint.card_height(self) * k
-		var y_min := m.y
-		if bug_block.visible:
-			y_min = bug_block.position.y + bug_block.extent().end.y + 16.0 * k
-		var x := m.x
-		if next_panel.visible and world_camera() == null:
-			x = next_panel.position.x + next_panel.size.x + 16.0 * k  # beside the docked mark tag (no camera)
-		card_block.position = Vector2(x, maxf(y_min, inst_page.position.y - 48.0 * k - ch))
-		card_block.size = Vector2(HudPaint.CARD_W * k, ch)
-	_place_mark_tag(sc, k, m)
-	# tables, centred
-	var rs := HudPaint.table_size(RANK_W, race.ranking_rows().size() if ranking_panel.visible else 0) * k
-	ranking_panel.size = rs
-	ranking_panel.position = (sc - rs) * 0.5
-	var qs := HudPaint.table_size(RESULT_W, race.result_rows.size()) * k
-	results_panel.size = qs
-	results_panel.position = (sc - qs) * 0.5
-
-
-## the room the feed leaves under the top right corner (design px): the wind page, or the shift chip's row (kept
-## whether the chip shows or not, so the feed does not jump), or nothing
-func _under_wind(its: Array[String]) -> float:
-	if its.has("wind_page"):
-		return 172.0
-	return 40.0 if its.has("shift") else 0.0
-
-
-## hud.md §16.4: the mark tag on the mark keeps clear of the HUD's blocks: above-right of it, else under it, else
-## left of it; hidden when none is clear (the mark's diamond stays)
-func _place_mark_tag(sc: Vector2, k: float, m: Vector2) -> void:
-	if not next_panel.visible or world_camera() == null or HudStyle.portrait(sc):
-		return
-	var mp: Variant = mark_screen()
-	if mp == null:
-		return
-	var p: Vector2 = mp
-	var sz := next_panel.size
-	var rects := keep_clear_rects()
-	for at in [Vector2(p.x - 30.0 * k, p.y - 150.0 * k), Vector2(p.x - 30.0 * k, p.y + 24.0 * k),
-			Vector2(p.x - sz.x - 24.0 * k, p.y - 150.0 * k)]:
-		var pos := Vector2(clampf(at.x, m.x, sc.x - m.x - sz.x), clampf(at.y, m.y, sc.y - m.y - sz.y))
-		var e := next_panel.extent()
-		var r := Rect2(pos + e.position, e.size) if e.size != Vector2.ZERO else Rect2(pos, sz)
-		if label_clear(r, rects):
-			next_panel.position = pos
-			return
-	next_panel.visible = false
-
-
-## hud.md §16.7: the card shows while a boat is selected, not with the results
-func _card_shown() -> bool:
-	card_block.visible = not card.is_empty() and not race.race_over and not results_panel.visible \
-		and not (race.active and race.results_visible and race.results_final)
-	return card_block.visible
-
-
-## The helm strip at `pos`, `hw` wide: its bars and trim gauges inside it, the notes over it.
-func _place_helm(pos: Vector2, hw: float, k: float) -> void:
-	helm_block.size = Vector2(hw, HudPaint.HELM.y * k)
-	helm_block.position = pos
-	rudder_bar.position = Vector2(0, 116.0 * k)
-	rudder_bar.size = Vector2(hw, 12.0 * k)
-	sheet_bar.position = Vector2(hw * 0.3, 72.0 * k)
-	sheet_bar.size = Vector2(hw * 0.4, 10.0 * k)
-	var gw := (hw - 20.0 * k) * 0.5
-	for i in gauge_views.size():
-		gauge_views[i].position = Vector2(i * (gw + 20.0 * k), 0)
-		gauge_views[i].size = Vector2(gw, 56.0 * k)
-	helm_notes.size = Vector2(hw + 240.0 * k, 56.0 * k)
-	helm_notes.position = helm_block.position + Vector2(-120.0 * k, -60.0 * k)
-
-
-## The alert lane's blocks inside `race_panel` (placed by the caller) at the lane's scale `k`: the start block with
-## its flags, the penalty panel with its ring, the alert lines; returns the lane's height (px).
-func _place_lane(k: float) -> float:
-	race_panel.size = Vector2(HudPaint.LANE_W, 600) * k
-	for b in [start_block, flags_view, penalty_panel, turn_view, alerts_block]:
-		(b as HudCanvas).k = k
-	var y := 0.0
-	var sh := HudPaint.start_height(self)
-	start_block.visible = sh > 0.0
-	start_block.position = Vector2.ZERO
-	start_block.size = Vector2(HudPaint.LANE_W, maxf(sh, 1.0)) * k
-	var cw := 240.0
-	if countdown_shown():
-		var ct := text_of("clock")
-		cw = HudCanvas.text_width(ct.substr(ct.rfind(" ") + 1), int(roundf(128.0 * k))) / k
-	flags_view.position = Vector2(HudPaint.LANE_W * 0.5 + cw * 0.5 + 28.0, 44.0) * k
-	flags_view.size = Vector2(flags_view.width() + 2.0, 50.0 * k)
-	y += sh + (8.0 if sh > 0.0 else 0.0)
-	if penalty_panel.visible:
-		var ph := HudPaint.pen_height(self)
-		penalty_panel.position = Vector2((HudPaint.LANE_W - HudPaint.PEN.x) * 0.5, y) * k
-		penalty_panel.size = Vector2(HudPaint.PEN.x, ph) * k
-		turn_view.position = Vector2(10, 0) * k
-		turn_view.size = Vector2(HudPaint.PEN_X - 10.0, HudPaint.PEN.y) * k
-		y += ph + 12.0
-	var ah := HudPaint.alerts_height(self)
-	alerts_block.visible = ah > 0.0
-	alerts_block.position = Vector2(0, y) * k
-	alerts_block.size = Vector2(HudPaint.LANE_W, maxf(ah, 1.0)) * k
-	return (y + ah) * k
-
-
-# ---- portrait layout (hud.md §16.5) ----
-
-## hud.md §8.1: the band the alert lane keeps on top of the course map in portrait (design px)
-const MAP_LANE_BAND := 440.0
-
-## the alert lane's scale over the rest in portrait, at most (hud.md §16.5)
-const PORTRAIT_LANE_MAX := 1.15
-
-
-## Portrait: the race bug and wind page on top, the alert lane large under them, the instruments compact at the
-## bottom (page left, compact radar right, helm strip, notes, chip and feed over them), tables fitted to the width.
-func _layout_portrait(sc: Vector2, k: float, m: Vector2, its: Array[String]) -> void:
-	var mb := HudStyle.bottom_margin(sc)
-	var inner := sc.x - 2.0 * m.x
-	# top row: race bug left, wind page right
-	bug_block.visible = race.active and its.has("bug")
-	bug_block.position = m
-	bug_block.size = Vector2(520, 200) * k
-	wind_page.visible = its.has("wind_page") or shift_chip_shown()
-	wind_page.size = Vector2(HudPaint.WIND.x, 160) * k
-	wind_page.position = Vector2(sc.x - m.x - HudPaint.WIND.x * k, m.y)
-	var top := 0.0
-	if bug_block.visible:
-		top = maxf(top, bug_block.extent().end.y)
-	if wind_page.visible:
-		top = maxf(top, wind_page.extent().end.y)
-	# the alert lane under them, as large as fits
-	var kl := minf(k * PORTRAIT_LANE_MAX, inner / HudPaint.LANE_W)
-	race_panel.position = Vector2(sc.x * 0.5 - HudPaint.LANE_W * kl * 0.5, m.y + top + (16.0 * k if top > 0.0 else 0.0))
-	var lane_h := _place_lane(kl)
-	# bottom row: instrument page left, compact radar right
-	var ps := HudPaint.page_size(self) * k
-	radar.visible = race.active
-	radar.compact = true
-	var d := 300.0 * k * 0.72
-	radar.size = Vector2(d, d)
-	radar.position = Vector2(sc.x - m.x - d, sc.y - mb - d)
-	inst_page.position = Vector2(m.x, sc.y - mb - ps.y)
-	inst_page.size = ps
-	var row_top := minf(inst_page.position.y, radar.position.y if radar.visible else INF)
-	# helm strip centred over the row, notes over it, the density chip over the page
-	var hw := minf(HudPaint.HELM.x * k, inner)
-	_place_helm(Vector2(sc.x * 0.5 - hw * 0.5, row_top - 12.0 * k - HudPaint.HELM.y * k), hw, k)
-	toast_block.visible = _toast_t > 0.0
-	toast_block.position = inst_page.position - Vector2(0, 40.0 * k)
-	toast_block.size = Vector2(300, 32) * k
-	toast_block.modulate.a = clampf(_toast_t / 0.24, 0.0, 1.0)
-	# the feed right-aligned over the helm notes, its last line nearest them
-	feed_block.visible = race.active and (its.has("feed") or its.has("feed_own"))
-	var lines := feed_lines().size() if feed_block.visible else 0
-	feed_block.size = Vector2(minf(620.0 * k, inner), (lines * 26.0 + 2.0) * k)
-	feed_block.position = Vector2(sc.x - m.x - feed_block.size.x, helm_notes.position.y - 8.0 * k - feed_block.size.y)
-	# the next mark tag: on the mark, or docked under the alert lane without a camera
-	next_panel.size = Vector2(330, 120) * k
-	next_panel.visible = race.active and race.next_step > 0 and not race.finished and text_of("next") != ""
-	if next_panel.visible and world_camera() != null:
-		var mp: Variant = mark_screen()
-		if mp == null:
-			next_panel.visible = false
-		else:
-			var p: Vector2 = mp
-			# kept under the alert lane, so it never covers the rule text
-			var y_min := race_panel.position.y + lane_h + 12.0 * k if lane_h > 0.0 else m.y + top
-			if mark_arrow_shown():  # and under the next-mark arrow (hud.md §7.1)
-				y_min = race_panel.position.y + lane_h + (24.0 + HudPaint.MARK_ARROW.y + 12.0) * k
-			next_panel.position = Vector2(clampf(p.x - 30.0 * k, m.x, sc.x - m.x - next_panel.size.x),
-				clampf(p.y - 150.0 * k, y_min, maxf(y_min, sc.y - mb - next_panel.size.y)))
-	else:
-		next_panel.position = Vector2(m.x, race_panel.position.y + lane_h + 12.0 * k)
-	arrow_view.position = Vector2.ZERO
-	arrow_view.size = Vector2(26, 22) * k
-	# the selected boat's card (hud.md §16.7): left, over the helm notes, beside the feed
-	var card_top := INF
-	if _card_shown():
-		var ch := HudPaint.card_height(self) * k
-		card_block.size = Vector2(HudPaint.CARD_W * k, ch)
-		card_block.position = Vector2(m.x, helm_notes.position.y - 8.0 * k - ch)
-		card_top = card_block.position.y
-	# edge pointers between the alert lane and the feed, helm notes and card
-	var e_top := race_panel.position.y + lane_h + 24.0 * k
-	var e_bottom := minf(minf(helm_notes.position.y, feed_block.position.y if lines > 0 else INF), card_top) - 56.0 * k
-	# the next-mark arrow (hud.md §7.1) centred at the top of that box, the edge pointers under it
-	mark_arrow_block.visible = mark_arrow_shown()
-	mark_arrow_block.size = HudPaint.MARK_ARROW * k
-	mark_arrow_block.position = Vector2(sc.x * 0.5 - mark_arrow_block.size.x * 0.5, e_top)
-	if mark_arrow_block.visible:
-		e_top += mark_arrow_block.size.y + 12.0 * k
-	edge_box = Rect2(70.0 * k, e_top, sc.x - 140.0 * k, maxf(e_bottom - e_top, 1.0))
-	# tables centred, scaled down to the width
-	_place_table(ranking_panel, RANK_W, race.ranking_rows().size() if ranking_panel.visible else 0, k, inner, sc)
-	_place_table(results_panel, RESULT_W, race.result_rows.size(), k, inner, sc)
-
-
-func _place_table(b: HudCanvas, widths: Array, rows: int, k: float, inner: float, sc: Vector2) -> void:
-	var ds := HudPaint.table_size(widths, rows)
-	b.k = minf(k, inner / ds.x)
-	b.size = ds * b.k
-	b.position = (sc - b.size) * 0.5
+	HudLayout.blocks(self)
+	HudLayout.map(self)
 
 
 func _all_canvases() -> Array[HudCanvas]:
-	var n := 23 + gauge_views.size()
+	var n := 22 + gauge_views.size()
 	if _canvases.size() != n:
-		_canvases = [world, inst_page, toast_block, bug_block, wind_page, feed_block, start_block,
+		_canvases = [world, inst_page, toast_block, bug_block, feed_block, start_block,
 			flags_view, penalty_panel, turn_view, alerts_block, next_panel, card_block, arrow_view, mark_arrow_block, radar,
 			helm_block, helm_notes,
 			rudder_bar, sheet_bar, ranking_panel, results_panel, map_view]

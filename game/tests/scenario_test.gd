@@ -23,8 +23,8 @@ const RULE_18_3 := 11
 const QUIZ := [
 	["port_starboard", 1, 0, RULE_10, 18.60],
 	["clear_astern", 1, 0, RULE_12, 19.00],
-	["mark_room", 0, 1, RULE_18_2, 20.90],
-	["tack_in_zone", 0, 1, RULE_18_3, 18.70],
+	["mark_room", 0, 1, RULE_18_2, 20.85],
+	["tack_in_zone", 0, 1, RULE_18_3, 18.90],
 ]
 const REV_PENALTY := 2
 

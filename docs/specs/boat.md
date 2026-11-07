@@ -31,6 +31,13 @@ Controls (written in tick step 2, `conventions.md` §4.1; they persist until cha
 | sail requests | event | | hoist a front sail, drop the front sail (`sails.md` §4.2) |
 | `performance_scale` | float | (0, 2] | gameplay speed multiplier, 1.0 for players; set by the race layer for AI skill levels (`ai.md`) |
 
+Options (set when the boat is created, the same for every boat of a world so the fleet and the player sail one
+rule; not part of the serialised state):
+
+| name | type | default | meaning |
+| --- | --- | --- | --- |
+| `weather_helm_enabled` | bool | false | the helm balance of the sail plan acts on the heading (§5.5 `helm_luff`). Off: `helm_luff = 0`, the boat holds her heading with the helm centred at any trim and heel, and holding a course costs no rudder. On: she tries to luff up as she heels, like a real boat, and broaches when overpowered (§5.9). The performance file keeps its `weather_helm` table either way (`sails.md` §6); the option only decides whether the tick reads it |
+
 Environment at the boat for this tick (tick step 5; `wind.md`, `wind_shadow.md`, `sea.md`):
 
 | name | meaning |
@@ -191,12 +198,13 @@ if polar_speed > 0:
     aws_p = sqrtf(wx*wx + wy*wy) ; aa_p = atan2(wy, wx)
 heel_wind   = aws_p > 0.01f ? (aws*aws) / (aws_p*aws_p) : 1                  // the sail heel follows the boat's own wind
 trim_heel   = c.trim_heel  ? c.trim_heel(tws, eps < 0 ? aa_p : aa, eps) : 1
-helm_luff   = c.weather_helm ? c.weather_helm(tws, ta) * trim_heel : 0   // rad/s, + = toward the wind
+helm_luff   = (weather_helm_enabled && c.weather_helm) ? c.weather_helm(tws, ta) * trim_heel : 0   // rad/s, + = toward the wind
 helm_fall   = c.fall_off ? c.fall_off(v, ta) : 0                  // rad/s, >= 0, away from the wind
 flog        = c.flog_drag ? c.flog_drag(aws, aa) : 0              // m/s², >= 0, sails flogging (§5.8)
 ```
 `fall_off` is looked up with the speed **before** this tick's speed update. The weather helm is scaled by
-`trim_heel` (`sails.md` §6): an over-sheeted sail plan rounds up sooner, a flogging one not at all. The heel
+`trim_heel` (`sails.md` §6): an over-sheeted sail plan rounds up sooner, a flogging one not at all. With
+`weather_helm_enabled` off (the default, §2) `helm_luff` is an exact 0 whatever the table holds. The heel
 table holds the trimmed boat's heel at its polar speed; `heel_wind` carries it to the boat's own apparent wind
 (the heeling force grows with its square), so a boat slower than its polar on a reach, whose apparent wind is
 lighter, heels less, and upwind a boat coming out of a tack heels less until it has its speed back. Over-sheeted
@@ -372,7 +380,9 @@ the speed just updated (§5.8). Without `drift_grip` (an older performance file)
   class balances with the helm centred close-hauled in a moderate breeze (`sails.md` §6). A well-balanced boat
   holds its course with a few degrees of rudder: with the helm centred it drifts toward the wind at 1 to 3°/s
   upwind and reaching in a moderate breeze, more when it is pressed near its heel limit, and it broaches only
-  when the rudder cannot hold it (overpowered, or over-sheeted: the rate is scaled by `trim_heel`).
+  when the rudder cannot hold it (overpowered, or over-sheeted: the rate is scaled by `trim_heel`). All of this
+  only with `weather_helm_enabled` on (§2); off, `helm_luff = 0` and with the helm centred only `helm_fall` (a
+  boat without way) and collisions turn the hull.
 - `helm_fall` turns a slow or backing boat away from the wind; it is what lets a boat stuck head to wind fall
   off onto a tack (§7.4).
 - Position uses the heading at the middle of the tick, which is second-order accurate for the arc.
@@ -620,7 +630,7 @@ start needs speed built before the gun.
    boat within 20 s, and `trim_speed` is 0 from the first tick. From 90°, 120° and 150° TWA under the jib and the
    kite no sail's angle is ever beyond its fully eased angle; running at 150° the speed after 10 s is above 80 %
    of the speed before.
-7. **Helm balance**: close-hauled at 12 kn with the upwind config the helm balance is within 1°/s of 0 and the boat
+7. **Helm balance** (`weather_helm_enabled` on): close-hauled at 12 kn with the upwind config the helm balance is within 1°/s of 0 and the boat
    holds its course with the helm centred; with the helm centred the upwind config drifts at most 2°/s at its VMG
    angle from 6 to 16 kn and at most 3°/s reaching (60° to 120°) at 10 kn; on a spinnaker at 130° in 22 kn it
    rounds up with the helm centred (more than 5° in 5 s) and holding the course takes helm to bear away and
@@ -652,3 +662,12 @@ start needs speed built before the gun.
    racing-speed tracks are those of a boat without drift.
 13. **Full leeway switch**: with `full_leeway` on and a `leeway` table, close-hauled at steady speed the sideways
    speed is `v·tan(leeway)` to leeward within 1 %; with it off (the shipped files) it is 0.
+14. **Weather helm off**: every shipped class with `weather_helm_enabled` off (the default) and the `weather_helm`
+   table present, under the start front sail and the spinnaker, at 6, 10, 16 and 22 kn and 45° to 150° TWA, placed
+   at the table speed with the helm centred: auto-trimmed, over-sheeted (manual `sheet_cmd = 0`) and eased
+   (`sheet_cmd = 0.6`), every run that keeps way on (speed above the `fall_off` table's crawl range throughout,
+   `sails.md` §6) ends the 60 s within 0.5° of the placed heading; the start sail auto-trimmed keeps way on at
+   every point, the spinnaker from 90° on. A run that loses way (the spinnaker near the wind, a luffing eased jib)
+   falls off as in test 11, which is the fall-off, not the helm balance, and is reported. In the gust of test 7
+   (kite reaching at 100°, 20 to 26 kn) there is no broach: the boat stays within 0.5° of her heading. A world
+   created with the option off gives it to every boat it adds, human and AI; with it on, test 7 holds unchanged.

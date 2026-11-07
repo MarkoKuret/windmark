@@ -69,10 +69,6 @@ static func scale_text(l: float) -> String:
 	return "%d km" % roundi(l / 1000.0) if l >= 1000.0 else "%d m" % roundi(l)
 
 
-static func _dir(psi: float) -> Vector2:
-	return Vector2(sin(psi), cos(psi))
-
-
 ## courses.md §3: every mark's world position (ENU m) with the course axis `twd` (rad), unscaled. Wind frame:
 ## `p = base + dist · dir(twd + bearing)`, the base another mark, an `<a>_<b>_mid` point or the reference; world
 ## frame (or a world point in a wind-frame file): {x, y}.
@@ -101,7 +97,7 @@ static func resolve(c: Dictionary, twd: float) -> Dictionary:
 						break
 			elif from != "" and out.has(from):
 				base = out[from]
-			p = base + float(at["dist"]) * _dir(twd + float(at.get("bearing", 0.0)))
+			p = base + float(at["dist"]) * Frames.compass_vec(twd + float(at.get("bearing", 0.0)))
 		out[str(m["id"])] = p
 	return out
 

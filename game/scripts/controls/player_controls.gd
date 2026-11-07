@@ -16,6 +16,8 @@ const KEY_FINE_DIV := 3.0
 const STICK_HANDOVER := 0.5  # s inside the dead zone before the keys take over
 const RAMP_T := 0.8
 const MSG_AUTO_TRIM_REFUSED := "Auto trim is not allowed in this race"
+## the note when a sheet input switches auto trim off (controls.md §5.3), with the key that turns it back on
+const MSG_AUTO_TRIM_DROPPED := "Auto trim off: %s turns it back on"
 
 ## ---- options (controls.md §6) ----
 var helm_mode := HelmMode.SET_AND_HOLD
@@ -24,7 +26,9 @@ var stick_gamma := 1.6
 var sheet_rate_scale := 1.0
 var let_fly_toggle := false
 var helm_fine_toggle := false
-var sheet_turns_auto_trim_off := false
+## controls.md §5.3: a sheet input while auto trim is on switches it off (default on), with a note naming the key
+## that turns it back on; off: the input is ignored and the HUD shows AUTO
+var sheet_turns_auto_trim_off := true
 ## lobby assist preset allows auto-trim (hud.md §14)
 var auto_trim_allowed := true
 
@@ -248,6 +252,7 @@ func _sheet(r: RawInput, dt: float) -> void:
 	if auto_trim:
 		if active and sheet_turns_auto_trim_off:
 			_auto_trim_off()
+			messages.append(MSG_AUTO_TRIM_DROPPED % key_text(&"auto_trim", "the auto trim key"))
 		else:
 			_sheet_dir = 0
 			_sheet_e = 0.0
@@ -267,6 +272,15 @@ func _sheet(r: RawInput, dt: float) -> void:
 		u = clampf(((r.sheet_axis + 1.0) * 0.5 - 0.02) / 0.96, 0.0, 1.0)
 		_last_sheet_axis = r.sheet_axis
 	sheet_cmd = clampf(u, 0.0, 1.0)
+
+
+## The player's key for an action as she reads it (controls.md §3), for a note: the first keyboard or mouse binding
+## of the live input map, else the pad's, else `fallback`.
+static func key_text(action: StringName, fallback: String) -> String:
+	for b in Bindings.slots(action):
+		if b is Array and not (b as Array).is_empty():
+			return Bindings.text(b)
+	return fallback
 
 
 ## controls.md §5.3: switching auto-trim off starts the sheet from the present trim, so nothing jumps.

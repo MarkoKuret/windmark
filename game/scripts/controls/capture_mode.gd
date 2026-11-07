@@ -15,6 +15,10 @@ const NOTE_FADE := 0.4
 
 ## offline: the capture actions take effect
 var allowed := true
+## the capture keys are live (controls.md §7): the capture preset is on, a shot script runs, or the scene was
+## started with --capture-keys; otherwise `capture_pause` and `capture_slow` do nothing (a stray key never freezes
+## a race without a word). The world tags key always works. The scene sets it every frame.
+var keys := true
 ## clean pause: no ticks, no menu, no label
 var frozen := false
 ## index into RATES
@@ -28,7 +32,7 @@ var note_t := 0.0
 
 ## The actions of one frame. Returns true when the world tags toggle changed.
 func handle(r: RawInput) -> bool:
-	if allowed:
+	if allowed and keys:
 		if r.was_pressed(&"capture_pause"):
 			frozen = not frozen
 		if r.was_pressed(&"capture_slow"):

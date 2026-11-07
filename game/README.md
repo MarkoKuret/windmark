@@ -18,7 +18,7 @@ controls, the cameras, the minimal HUD, the audio and a sail test scene that put
 | `scripts/dev/` | Developer tools: `DevLook` (one function per look setting, for the flags and the panel) and `LookPanel` (the F9 look panel, `docs/specs/hud.md` §18) |
 | `scripts/controls/` | Input map defaults, device reader, `PlayerControls` (boat commands), sail key mapping, the input frame |
 | `scripts/cameras/` | `CameraRig` and the chase, onboard, aerial and free cameras, shake, onboard eye point |
-| `scripts/hud/` | `Hud`, `HudValues`, formats, bars and trim gauges; the race HUD: `RaceHudValues`, `RaceText` (rule texts, flags, signals), `RadarView`, `FlagsView`, `RoundingArrowView`, `PenaltyRingView` |
+| `scripts/hud/` | `Hud` (its layout, race texts and density table in `HudLayout`, `HudText`, `HudItems`), `HudValues`, formats, bars and trim gauges; the race HUD: `RaceHudValues` (the next mark and the events parts in `RaceHudMarks`, `RaceHudEvents`), `RaceText` (rule texts, flags, signals), `RadarView`, `FlagsView`, `RoundingArrowView`, `PenaltyRingView` |
 | `scripts/livery/` | The liveries (`docs/specs/data_format.md` §8): `Livery` (the class livery files and the fleet rule), `LiveryText` (the per-boat text texture), `BakedLivery` (the staged livery textures of a class), `BoatLivery` (paints a `BoatView`) |
 | `scripts/audio/` | The audio (`docs/specs/audio.md`): `GameAudio` (the node that plays the race), `SoundMap` (the sound map and its files), `SoundFormula` (terms, gates, triggers), `BoatSoundInputs` (the formula inputs of a boat), `AudioBuses` (the buses, ducking and wind pan), `SoundSynth` (the synthesised fallback) |
 | `audio/default/` | The default sound set: Ogg Vorbis files written by `tools/soundgen` (our own synthesis), with their `.import` files |
@@ -252,10 +252,9 @@ starts. The prefetch and the spreading are on while the scene processes itself (
   the same `SeaModel` (`FakeSim.use_sea`), and the Sea's clock follows the ticks (`sea_time_ms(tick - 1 + alpha)`),
   so hull and water agree. The cameras keep clear of the water through `CamTypes.Target.sea_height`, a function
   `(x east, y north) -> height`, set to `Sea.height_at` (`sea.md` §7.2 at the frame's render time).
-- **Options** not wired to a settings screen yet: `PlayerControls` (helm key mode, dead zone and curve, sheet rate,
-  hold or toggle, sheet turns auto-trim off), `CameraRig.options` (speed, invert, reduced motion, smooth switch,
-  auto-recentre), `Hud.assist` (Full, Standard, Minimal). Not implemented yet: mouse helm, one-hand layout,
-  rebinding UI, vibration.
+- **Options** the settings screen does not offer, kept at their defaults (`menus.md` §3): `PlayerControls`
+  (stick curve gamma, sheet rate scale, sheet turns auto-trim off), `CameraRig.options` (smooth switch). Not
+  implemented yet: mouse helm, one-hand layout.
 
 ## Rules scenarios
 
@@ -498,8 +497,8 @@ viewed boat. What it shows (`docs/specs/hud.md`):
 - **Feed and results** (§13): six lines of 8 s; provisional results at the own finish, the core's results at the
   close (AI badges, projected finishes marked `proj.`).
 - **Assists** (§14): `Hud.assist` and `Hud.shows(element)`; the wind shadow view is not drawn yet.
-- **Portrait** (§16.5): on any screen taller than wide the HUD lays out for 9:16 clips: race bug and wind page on
-  top, the alert lane (countdown, penalty panel, rule text) large under them, the instruments compact at the
+- **Portrait** (§16.5): on any screen taller than wide the HUD lays out for 9:16 clips: the race bug top
+  left, the alert lane (countdown, penalty panel, rule text) large under it, the instruments compact at the
   bottom, Glance by default. Turn it on with Settings, Graphics, Capture preset: Portrait 9:16 (a 1080 x 1920
   window, for the session only: the game always starts with it off), or open the game at that size:
   `godot --path game --resolution 1080x1920` (add `--write-movie out.avi --fixed-fps 60` for Movie Maker).

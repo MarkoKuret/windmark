@@ -70,6 +70,9 @@ struct Sim {
       : Sim(perf(cls), tws_kn, wind_from, seed, index) {}
   Sim(const wm::PerfData& p, float tws_kn, float wind_from, std::uint64_t seed = 1, std::uint32_t index = 0) {
     boat.init(&p, seed, index);
+    // The harness sails the full model: the helm balance on (boat.md §2 weather_helm_enabled; a boat's default is
+    // off). Tests that sail with the helm centred take perf_no_helm_balance or boat.set_weather_helm(false).
+    boat.set_weather_helm(true);
     env.wind_speed = kn(tws_kn);
     env.wind_speed_clean = env.wind_speed;
     env.wind_from = wind_from;

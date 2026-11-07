@@ -27,6 +27,7 @@ TEST_CASE("conditions: the C API resolves once and the world runs on the resolve
   CHECK(d.tide_scale == 0.0f);
   CHECK(d.swell_count == 0);
   CHECK(d.weather == WM_WEATHER_LOCAL);
+  CHECK(d.weather_helm == 0);  // boat.md §2: the helm balance is off unless the host asks for it
 
   wm_world_settings s;
   wm_world_settings_init(&s);

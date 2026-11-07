@@ -61,6 +61,23 @@ std::unique_ptr<wm::World> make_world(std::uint64_t seed, int boats) {
 
 }  // namespace
 
+// boat.md §2: the weather helm option is the world's, given to every boat it adds; off unless asked for.
+TEST_CASE("world: the weather helm option reaches every boat") {
+  CHECK_FALSE(wm::WorldSetup().weather_helm);
+  for (bool on : {false, true}) {
+    wm::WorldSetup s = setup(3);
+    s.weather_helm = on;
+    wm::World w(s);
+    for (int i = 0; i < 2; ++i) {
+      wm::BoatEntry e;
+      e.perf = &wm_test::perf(i == 0 ? "wm7" : "wm12");
+      e.human = i == 0;
+      REQUIRE(w.add_boat(e) == i);
+      CHECK(w.boat(static_cast<std::size_t>(i)).weather_helm() == on);
+    }
+  }
+}
+
 TEST_CASE("world: a race on the example course") {
   auto w = make_world(7, 8);
   const wm::Race& race = w->race();

@@ -36,7 +36,8 @@ const AI_LEVELS := ["easy", "intermediate", "expert", "pro"]
 ## the CoreSim object (untyped: see above); null until create()
 var core: Object = null
 ## world settings used by the next create(), CoreSim.default_settings() keys (race_seed, wind_speed, wind_from,
-## shift_preset, puffs, oscillation, sea, sea_scale, shadows, race and rules settings)
+## shift_preset, puffs, oscillation, sea, sea_scale, shadows, weather_helm, race and rules settings); `weather_helm`
+## left out takes the player's Weather helm setting (boat.md §2, controls.md §6)
 var settings := {}
 ## the drawn sea's clock offset is always 0 here; kept for FakeSim callers
 var sea_t0_ms := 0.0
@@ -128,7 +129,12 @@ func create(venue := "") -> bool:
 		return false
 	core = ClassDB.instantiate(&"CoreSim")
 	var path := venue_file(venue)
-	if not core.create(settings, path):
+	var s := settings
+	if not s.has("weather_helm"):
+		# boat.md §2: one rule for the whole world, the player's setting for an offline session
+		s = settings.duplicate()
+		s["weather_helm"] = Settings.current().weather_helm
+	if not core.create(s, path):
 		_err = core.last_error()
 		core = null
 		return false

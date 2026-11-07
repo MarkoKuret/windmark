@@ -227,10 +227,6 @@ var _tick := 0
 var _events_tick := -1
 
 
-func _k(tau: float) -> float:
-	return 1.0 - exp(-DT / tau)
-
-
 func name_of(b: int) -> String:
 	if names.has(b):
 		return names[b]
@@ -324,7 +320,7 @@ func tick(sim: SimSource, b: int) -> void:
 	_wind(sim, s)
 	_flags(race)
 	_start(sim, rb, s)
-	_next_mark(sim, rb, s)
+	RaceHudMarks.next_mark(self, sim, rb, s)
 	_position(sim, b)
 	_rules(sim, b)
 	_penalties(sim, b)
@@ -332,7 +328,7 @@ func tick(sim: SimSource, b: int) -> void:
 	# events and timers once per simulation tick (a scene may tick the HUD again without a step, e.g. on reset)
 	if sim.tick() != _events_tick:
 		_events_tick = sim.tick()
-		_events(sim, b)
+		RaceHudEvents.events(self, sim, b)
 		_race_end(sim)
 		_timers()
 
@@ -351,11 +347,11 @@ func _wind(sim: SimSource, s: SimSource.BoatState) -> void:
 		_twd180 = u
 		_tws10 = s.tws
 		_started_filters = true
-	_twd2 += (u - _twd2) * _k(2.0)
-	_twd5 += (u - _twd5) * _k(5.0)
-	_twd10 += (u - _twd10) * _k(10.0)
-	_twd180 += (u - _twd180) * _k(180.0)
-	_tws10 += (s.tws - _tws10) * _k(10.0)
+	_twd2 += (u - _twd2) * Frames.smooth_k(DT, 2.0)
+	_twd5 += (u - _twd5) * Frames.smooth_k(DT, 5.0)
+	_twd10 += (u - _twd10) * Frames.smooth_k(DT, 10.0)
+	_twd180 += (u - _twd180) * Frames.smooth_k(DT, 180.0)
+	_tws10 += (s.tws - _tws10) * Frames.smooth_k(DT, 10.0)
 
 
 func twd10() -> float:
@@ -445,227 +441,6 @@ func _start(sim: SimSource, rb: Dictionary, s: SimSource.BoatState) -> void:
 	elif after_gun and ocs and not started:
 		over = true
 		over_text = ocs_text
-
-
-# ---- next mark (§7), performance (§4), laylines (§6), shift meter (§3.2), sail hint (§4) ----
-
-func _next_mark(sim: SimSource, rb: Dictionary, s: SimSource.BoatState) -> void:
-	var steps: Array = _course["steps"]
-	laps = int(_course.get("laps", 1))
-	legs = steps.size() - 1
-	var k := int(rb.get("next", 0))
-	next_step = k if k > 0 and k < steps.size() and not finished and not bool(rb.get("ghost", false)) else -1
-	next_sides.clear()
-	leg_type = ""
-	eta = NAN
-	layline_dist = NAN
-	layline_time = NAN
-	overstood = NAN
-	shift_kind = ""
-	target_twa = NAN
-	sail_hint = ""
-	if next_step < 0:
-		laylines.clear()
-		next_kind = -1
-		next_name = ""
-		next_dist = INF
-		return
-	var st: Dictionary = steps[k]
-	next_kind = int(st["kind"])
-	lap = int(st["lap"])
-	leg = k
-	var ms: PackedInt32Array = st["marks"]
-	var sides: PackedInt32Array = st["sides"]
-	match next_kind:
-		RaceText.Step.MARK:
-			next_name = mark_label(ms[0])
-			next_sides.append(sides[0])
-		RaceText.Step.GATE:
-			next_name = "Gate %s / %s" % [mark_label(ms[0]), mark_label(ms[1])]
-			next_sides.append(sides[0])
-			next_sides.append(sides[1])
-		_:
-			next_name = "Finish"
-	var c := Vector2(s.pos_x, s.pos_y)
-	var fwd := Vector2(sin(s.psi), cos(s.psi))
-	var bow := c + fwd * 0.5 * _loa
-	var pts := step_points(k)
-	var r := pts[0]
-	if next_kind == RaceText.Step.FINISH:
-		r = Geometry2D.get_closest_point_to_segment(bow, pts[0], pts[1])
-		next_dist = bow.distance_to(r)
-	else:
-		next_dist = INF
-		for i in pts.size():
-			var dd := bow.distance_to(pts[i]) - float(_course["marks"][ms[i]]["radius"])
-			if dd < next_dist:
-				next_dist = dd
-				r = pts[i]
-		next_dist = maxf(next_dist, 0.0)
-	next_bearing = Frames.compass(r.x - c.x, r.y - c.y)
-	next_rel = Frames.wrap_pi(next_bearing - s.psi)
-	# leg type (ai.md §4.1) on the clean wind smoothed 2 s, 3 degrees of hysteresis
-	var vm := sim.polar_vmg(boat, s.tws)
-	var tw2 := _twd(_twd2)
-	var th_r := absf(Frames.wrap_pi(tw2 - Frames.compass(r.x - c.x, r.y - c.y)))
-	var th_up := float(vm.get("up_twa", deg_to_rad(42.0)))
-	var th_dn := float(vm.get("down_twa", deg_to_rad(150.0)))
-	var h := deg_to_rad(3.0)
-	var up_edge := th_up + (h if _leg_prev == "beat" else -h if _leg_prev == "reach" else 0.0)
-	var dn_edge := th_dn - (h if _leg_prev == "run" else -h if _leg_prev == "reach" else 0.0)
-	if th_r < up_edge:
-		leg_type = "beat"
-	elif th_r > dn_edge:
-		leg_type = "run"
-	else:
-		leg_type = "reach"
-	_leg_prev = leg_type
-	# VMG, VMC, targets (§4)
-	var o := sim.outputs(boat)
-	var g := Vector2(s.sog_filt_x, s.sog_filt_y)
-	var to_r := (r - c).normalized() if c.distance_to(r) > 0.01 else fwd
-	vmg = o.vmg if leg_type != "run" else -o.vmg
-	vmc = g.dot(to_r)
-	var v_up := float(vm.get("up_speed", NAN))
-	var v_dn := float(vm.get("down_speed", NAN))
-	var tgt := o.polar_speed
-	if leg_type == "beat" and not is_nan(v_up):
-		tgt = v_up
-		target_twa = th_up
-	elif leg_type == "run" and not is_nan(v_dn):
-		tgt = v_dn
-		target_twa = th_dn
-	else:
-		var best := _best_polar(sim, s)
-		if not is_nan(best.y):
-			tgt = best.y
-	target_speed = tgt
-	# ETA: axis distance of the leg / VMG (beat, run), distance / VMC (reach)
-	if leg_type == "reach":
-		eta = next_dist / vmc if vmc >= MIN_KN else NAN
-	elif vmg >= MIN_KN:
-		eta = _axis_distance(k, bow, float(sim.race().get("twd_mean", tw2))) / vmg
-	# laylines and the shift meter (beat and run only)
-	if leg_type == "reach":
-		laylines.clear()
-	elif _tick % 10 == 1 or laylines.is_empty():
-		_layline_lines(sim, c, r, pts)
-	if leg_type != "reach":
-		_layline(sim, s, c, r, g)
-		_shift_meter(c, r, s, th_up if leg_type == "beat" else th_dn)
-	_sail_hint(sim, s)
-
-
-## race.md §8.1 and §8.2: the leg axis distance from the bow to the step's reference point
-func _axis_distance(k: int, bow: Vector2, twd_mean: float) -> float:
-	var steps: Array = _course["steps"]
-	var rk: Vector2 = steps[k]["ref"]
-	var rp: Vector2 = steps[k - 1]["ref"]
-	var w := Vector2(sin(twd_mean), cos(twd_mean))
-	var leg_v := rk - rp
-	var e := leg_v.normalized()
-	if leg_v.length() > 0.01 and absf(e.dot(w)) >= cos(PI / 4.0):
-		e = w * signf(leg_v.dot(w))
-	if int(steps[k]["kind"]) == RaceText.Step.FINISH:
-		var p := step_points(k)
-		var q := Geometry2D.get_closest_point_to_segment(bow, p[0], p[1])
-		return maxf(0.0, (q - bow).dot(e))
-	return maxf(0.0, (rk - bow).dot(e))
-
-
-## hud.md §6 distance along the COG to the other tack's layline, or how far past it
-func _layline(sim: SimSource, s: SimSource.BoatState, c: Vector2, r: Vector2, g: Vector2) -> void:
-	var sog := g.length()
-	if sog < MIN_KN:
-		return
-	var vm := sim.polar_vmg(boat, _tws10)
-	if vm.is_empty():
-		return
-	var beat := leg_type == "beat"
-	var th := float(vm["up_twa"] if beat else vm["down_twa"])
-	var v := float(vm["up_speed"] if beat else vm["down_speed"])
-	var tw := twd10()
-	var tack := 1.0 if s.twa > 0.0 else -1.0
-	var other := -tack
-	var psi_o := Frames.wrap_2pi(tw - other * th)
-	var cur := sim.current_at(r.x, r.y, 50.0 * sim.tick())
-	var go := v * Vector2(sin(psi_o), cos(psi_o)) + cur
-	var ldir := -go.normalized()  # from the mark backwards along the layline
-	var dir := g / sog
-	var side := ldir.cross(c - r)
-	var closing := ldir.cross(dir)
-	if (c - r).dot(ldir) < 0.0:
-		return  # beyond the mark
-	if side * closing > 0.0:
-		overstood = absf(side)
-		return
-	var hit: Variant = Geometry2D.segment_intersects_segment(c, c + dir * 1.0e5, r, r + ldir * 1.0e5)
-	if hit != null:
-		layline_dist = c.distance_to(hit)
-		layline_time = layline_dist / sog
-
-
-## hud.md §6 the layline rays of both tacks through each point of the step
-func _layline_lines(sim: SimSource, c: Vector2, r: Vector2, pts: Array[Vector2]) -> void:
-	laylines.clear()
-	var vm := sim.polar_vmg(boat, _tws10)
-	if vm.is_empty():
-		return
-	var beat := leg_type == "beat"
-	var th := float(vm["up_twa"] if beat else vm["down_twa"])
-	var v := float(vm["up_speed"] if beat else vm["down_speed"])
-	var tw := twd10()
-	var length := 1.2 * maxf(c.distance_to(r), 500.0)
-	for p in pts:
-		var cur := sim.current_at(p.x, p.y, 50.0 * sim.tick())
-		for tack in [1.0, -1.0]:
-			var psi := Frames.wrap_2pi(tw - tack * th)
-			var go := v * Vector2(sin(psi), cos(psi)) + cur
-			laylines.append({"a": p, "b": p - go.normalized() * length, "tack": int(tack)})
-
-
-## hud.md §3.2: header when the shift turns the current tack's VMG heading away from the mark
-func _shift_meter(c: Vector2, r: Vector2, s: SimSource.BoatState, th: float) -> void:
-	var t5 := _twd(_twd5)
-	shift = Frames.wrap_pi(t5 - _twd(_twd180))
-	if absf(shift) < deg_to_rad(2.0):
-		shift_kind = ""
-		return
-	var tack := 1.0 if s.twa > 0.0 else -1.0
-	var psi_opt := Frames.wrap_2pi(t5 - tack * th)
-	var header := shift * signf(Frames.wrap_pi(psi_opt - Frames.compass(r.x - c.x, r.y - c.y))) > 0.0
-	shift_kind = "header" if header else "lift"
-
-
-## the best config at the present TWS and TWA: Vector2(front sail index or -1, polar speed); NAN speed unknown
-func _best_polar(sim: SimSource, s: SimSource.BoatState) -> Vector2:
-	var info := sim.class_info(boat)
-	var best := Vector2(-2, NAN)
-	var cands: Array[int] = [-1]
-	cands.append_array(info.front_sails)
-	for f in cands:
-		var p := sim.polar(boat, s.tws, absf(s.twa), f)
-		if not is_nan(p) and (is_nan(best.y) or p > best.y):
-			best = Vector2(f, p)
-	return best
-
-
-func _sail_hint(sim: SimSource, s: SimSource.BoatState) -> void:
-	var best := _best_polar(sim, s)
-	var front := sim.sails(boat).front
-	var cur := sim.polar(boat, s.tws, absf(s.twa), front)
-	if is_nan(best.y) or is_nan(cur) or cur <= 0.05 or int(best.x) == front or best.y < 1.03 * cur:
-		_hint_best = -2
-		_hint_ticks = 0
-		return
-	if int(best.x) != _hint_best:
-		_hint_best = int(best.x)
-		_hint_ticks = 0
-	_hint_ticks += 1
-	if _hint_ticks >= HINT_TICKS:
-		var info := sim.class_info(boat)
-		var nm := "Main only" if _hint_best < 0 else info.sails[_hint_best].name.capitalize()
-		sail_hint = "%s +%s %%" % [nm, HudFormat.percent(100.0 * (best.y / cur - 1.0))]
 
 
 # ---- position (§10) ----
@@ -897,7 +672,7 @@ func _penalties(sim: SimSource, b: int) -> void:
 	elif turn_deg >= 1.0:
 		turn_text = ""  # hud.md §12.1: the ring says how far
 	elif pending > 0:
-		turn_text = "Sail clear and turn"
+		turn_text = "Sail clear, then one full turn"
 	else:
 		turn_text = ""
 
@@ -964,239 +739,6 @@ func _feed(text: String, about: Array = []) -> void:
 		feed.remove_at(0)
 
 
-func _events(sim: SimSource, b: int) -> void:
-	for e in sim.race_events():
-		var kind := int(e["kind"])
-		var eb := int(e["boat"])
-		match kind:
-			RaceText.Ev.SIGNAL:
-				var sk := int(e["signal"])
-				var text := RaceText.signal_banner(sk, int(e["flag"]))
-				_banner(text, Tint.WHITE, BANNER_SIGNAL)
-				_feed(text)
-				hud_event.emit("signal", {"kind": sk, "flag": int(e["flag"])})
-			RaceText.Ev.BOAT_OCS:
-				if eb == own_boat:
-					start_ocs = true
-				if eb == b:
-					var fl := int(e["flag"])
-					var txt: String = "OVER: " + RaceText.OVER_CONSEQUENCE[clampi(fl, 0, 4)]
-					if fl == RaceText.Flag.P:
-						txt = RaceText.ocs_instruction(false)
-					_banner(txt, Tint.RED, BANNER_SIGNAL)
-					hud_event.emit("ocs", {"flag": fl})
-			RaceText.Ev.BOAT_RETURNED:
-				if eb == b:
-					_banner("Returned: now start", Tint.GREEN, BANNER_SERVED)
-			RaceText.Ev.STARTED:
-				if eb == b:
-					_banner("Started", Tint.GREEN, BANNER_SERVED)
-				if eb == own_boat:
-					start_t = float(e.get("t", race_time))
-			RaceText.Ev.ROUNDED:
-				_rounded(sim, b, eb, int(e["step"]))
-			RaceText.Ev.FINISH_BLOCKED:
-				if eb == b:
-					_banner("Take your penalty before finishing" if int(e["block"]) == 0
-						else "Return and start before you can finish", Tint.RED, BANNER_PENALTY)
-			RaceText.Ev.FINISHED:
-				_finished(sim, b, eb, e)
-			RaceText.Ev.RETIRED:
-				_feed("%s retired" % name_of(eb), [eb])
-				if eb == own_boat:
-					_card("ret", "RET", "RETIRED", "", "", "Retired")
-			RaceText.Ev.JOINED:
-				_feed("%s joined" % name_of(eb), [eb])
-			RaceText.Ev.LEFT:
-				_feed("%s left" % name_of(eb), [eb])
-			RaceText.Ev.WINDOW_WARNING:
-				if not finished:
-					_banner("Finishing window closes in %d s" % int(e["value"]), Tint.YELLOW, BANNER_SPLIT)
-			RaceText.Ev.RACE_CLOSING:
-				_feed("First boat home: finishing window %s" % HudFormat.clock(float(e["value"])))
-			RaceText.Ev.RACE_CLOSED:
-				_results(sim, true)
-				hud_event.emit("results", {})
-			RaceText.Ev.ABANDONED:
-				_banner("Race abandoned", Tint.RED, BANNER_DSQ, true)
-	for e in sim.rules_events():
-		var kind := int(e["kind"])
-		var eb := int(e["boat"])
-		var eo := int(e["other"])
-		var rule := int(e["rule"])
-		match kind:
-			RaceText.Rev.RULE_WARNING:
-				if eb == b or eo == b:
-					hud_event.emit("rule_warning", {"giver": eb, "holder": eo, "rule": rule})
-			RaceText.Rev.PENALTY:
-				if eb == own_boat:
-					penalties.append({"rule": rule, "other": eo, "state": "pending"})
-				if eb == b:
-					_last_penalty_tick = _tick
-				var other_txt := " (%s)" % name_of(eo) if eo >= 0 else ""
-				if eb == b:
-					# hud.md §12.2: short, the panel carries the rule text and the other boat
-					_banner("PENALTY · RULE %s" % RaceText.code(rule), Tint.RED, BANNER_SIGNAL)
-				else:
-					_feed("%s penalised, rule %s%s" % [name_of(eb), RaceText.code(rule), other_txt], [eb, eo])
-				hud_event.emit("penalty", {"boat": eb, "rule": rule, "other": eo})
-			RaceText.Rev.PENALTY_SERVED:
-				if eb == own_boat:
-					_penalty_state("done")
-				if eb == b:
-					_banner("Penalty done", Tint.GREEN, BANNER_SERVED)
-					hud_event.emit("penalty_served", {"boat": eb})
-			RaceText.Rev.PENALTY_CANCELLED:
-				if eb == own_boat:
-					_penalty_state("cancelled")
-				if eb == b:
-					_banner("Penalties offset: one each cancelled", Tint.GREEN, BANNER_SERVED)
-			RaceText.Rev.PENALTY_LATE:
-				# rules.md §9.4: no banner of its own, the disqualification that follows says why
-				if eb == own_boat:
-					_penalty_state("late")
-				if eb == b:
-					_last_penalty_tick = _tick
-			RaceText.Rev.PROTESTABLE:
-				if eo == b:
-					protest_culprit = eb
-					protest_rule = rule
-					protest_ticks = int(ceil(maxf(float(e["deadline"]), 1.0) / DT))
-					hud_event.emit("protest_prompt", {"culprit": eb, "rule": rule})
-			RaceText.Rev.PROTESTED:
-				if eo == b or eb == b:
-					protest_ticks = 0
-			RaceText.Rev.DISQUALIFIED:
-				var why := "too many penalties"
-				if rule == RaceText.Rule.SI_BOUNDARY:
-					why = "outside the race area"
-				elif rule == RaceText.Rule.LATE:
-					why = "penalty not taken within 2 minutes"
-				if eb == own_boat:
-					dsq_reason = why
-				if eb == b:
-					_banner("DISQUALIFIED: %s" % why, Tint.RED, BANNER_DSQ, true)
-				else:
-					_feed("%s disqualified, %s" % [name_of(eb), why], [eb])
-	if not _summary_done and state >= RaceText.RaceState.RACING and race_time >= START_SUMMARY_S:
-		_summary_done = true
-		var n_started := 0
-		var n_ocs := 0
-		for i in sim.boat_count():
-			var r := sim.race_boat(i)
-			if bool(r.get("started", false)):
-				n_started += 1
-			elif bool(r.get("ocs", false)) or bool(r.get("ocs_i", false)):
-				n_ocs += 1
-		_feed("%d %s started%s" % [n_started, "boat" if n_started == 1 else "boats",
-			", %d OCS" % n_ocs if n_ocs > 0 else ""])
-
-
-func _rounded(sim: SimSource, b: int, eb: int, k: int) -> void:
-	if k <= 0 or k >= _course["steps"].size():
-		return
-	var mine := sim.race_split(eb, k)
-	var first := mine
-	var place := 1
-	for i in sim.boat_count():
-		if i == eb:
-			continue
-		var t := sim.race_split(i, k)
-		if not is_nan(t) and not is_nan(mine) and t <= mine:
-			place += 1
-			first = minf(first, t)
-	var what := _step_label(k)
-	if eb == own_boat:
-		# §13.3: "Windward 2" on a course of more than one lap
-		var lbl := what.capitalize()
-		if int(_course.get("laps", 1)) > 1:
-			lbl += " %d" % int(_course["steps"][k].get("lap", 1))
-		roundings.append({"step": k, "label": lbl, "place": place,
-			"gap": mine - first if place > 1 and not is_nan(mine) else NAN})
-	if eb == b:
-		var txt := "%s · %s" % [what.capitalize() if what == "gate" else what, RaceText.ordinal(place)]
-		if place > 1 and not is_nan(mine):
-			txt += " · %s" % HudFormat.gap(mine - first)
-		_banner(txt, Tint.WHITE, BANNER_SPLIT)
-	if place <= 3:
-		_feed("%s %s %s %s" % [name_of(eb), _verb(eb, "rounds", "round"), what, RaceText.ordinal(place)], [eb])
-
-
-func _finished(sim: SimSource, b: int, eb: int, e: Dictionary) -> void:
-	var place := int(e["place"])
-	var t := float(e["t_us"]) * 1e-6
-	var t_win := t
-	for i in sim.boat_count():
-		var r := sim.race_boat(i)
-		if bool(r.get("finished", false)):
-			t_win = minf(t_win, float(r.get("t_finish_us", 0)) * 1e-6)
-	var place_txt := RaceText.ordinal(place) if place > 0 else "No place"
-	_feed("%s %s %s" % [name_of(eb), _verb(eb, "finishes", "finish"), place_txt], [eb])
-	if eb == own_boat:
-		# hud.md §13.1: the card, not a banner
-		var txt := "Finished %s · %s" % [place_txt, HudFormat.finish_time(t)]
-		var gap_txt := ""
-		if t > t_win:
-			gap_txt = HudFormat.gap(t - t_win)
-			txt += " · %s" % gap_txt
-		var code := RaceText.score(int(sim.race_boat(eb).get("code", 0)))
-		_card("finish", place_txt.to_upper() if place > 0 else (code if code != "" else "OCS"), "FINISHED", gap_txt,
-			HudFormat.finish_time(t), txt, place == 1)
-	if eb == b:
-		hud_event.emit("finished", {"place": place})
-		_results(sim, false)
-
-
-## hud.md §13 results: final from the core's results after the close, provisional from the ranking before
-func _results(sim: SimSource, final: bool) -> void:
-	results_visible = true
-	results_final = final
-	result_rows.clear()
-	var rows: Array = sim.results() if final else []
-	var t_win := NAN
-	if not rows.is_empty():
-		for r in rows:
-			var tf := float(r["t_finish_us"]) * 1e-6 if int(r["place"]) > 0 else NAN
-			if not is_nan(tf) and (is_nan(t_win) or tf < t_win):
-				t_win = tf
-		for r in rows:
-			var bi := int(r["boat"])
-			var tf := float(r["t_finish_us"]) * 1e-6 if int(r["place"]) > 0 else NAN
-			result_rows.append({"place": int(r["place"]), "boat": bi, "name": name_of(bi),
-				"skipper": skippers.get(bi, ""), "ai": ai_badge(bi), "time": tf,
-				"gap": tf - t_win if not is_nan(tf) else NAN, "code": str(r.get("code_name", RaceText.score(int(r["code"])))),
-				"points": float(r["points"]), "projected": bool(r["projected"]), "status": ""})
-		return
-	results_final = false
-	for bi in sim.race_order():
-		var rb := sim.race_boat(bi)
-		var fin := bool(rb.get("finished", false))
-		var tf := float(rb.get("t_finish_us", 0)) * 1e-6 if fin else NAN
-		if fin and (is_nan(t_win) or tf < t_win):
-			t_win = tf
-		result_rows.append({"place": int(rb.get("place", 0)) if fin else 0, "boat": bi, "name": name_of(bi),
-			"skipper": skippers.get(bi, ""), "ai": ai_badge(bi), "time": tf, "gap": NAN,
-			"code": RaceText.score(int(rb.get("code", 0))) if not fin else "", "points": NAN,
-			"projected": false, "status": "" if fin else _live_status(rb)})
-	for r in result_rows:
-		if not is_nan(r["time"]):
-			r["gap"] = r["time"] - t_win
-
-
-## a boat that has not finished in the live finishing rows (menus.md §5): Racing, RET, DSQ, OCS, or her score code
-static func _live_status(rb: Dictionary) -> String:
-	if bool(rb.get("dsq", false)):
-		return "DSQ"
-	if bool(rb.get("retired", false)):
-		return "RET"
-	if bool(rb.get("ocs", false)) or bool(rb.get("ocs_i", false)) or bool(rb.get("ocs_scored", false)):
-		return "OCS"
-	var code := RaceText.score(int(rb.get("code", 0)))
-	if code != "":
-		return code
-	return "Racing"
-
-
 # ---- race end (§13.1 to §13.3) ----
 
 func _card(kind: String, big: String, caption: String, gap_txt: String, time_txt: String, line: String,
@@ -1255,11 +797,11 @@ func _race_end(sim: SimSource) -> void:
 			if why == "dnf":
 				_card("dnf", "DNF", "RACE CLOSED", "", "", "Did not finish")
 			if not results_visible:
-				_results(sim, state == RaceText.RaceState.CLOSED)
+				RaceHudEvents.results(self, sim, state == RaceText.RaceState.CLOSED)
 	if race_over:
 		over_ticks += 1  # the card counts the tick it came up on too
 	if results_visible and not results_final:
-		_results(sim, false)
+		RaceHudEvents.results(self, sim, false)
 
 
 ## hud.md §13.2: the results screen's time has come (the card's 5 s after the race is over)

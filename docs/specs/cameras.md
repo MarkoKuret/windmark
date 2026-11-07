@@ -51,7 +51,10 @@ view    = look along (target - eye + (0, lift, 0)), up = +Y   // the lift moves 
   each wave; a "follow the waves" option sets `tau_heave = 0`.
 - Player input: orbit `az` at 120°/s and `el` at 60°/s at full deflection (keys, stick) or 0.3° per pixel of mouse
   drag (drag right = `az` +, drag down = `el` +); zoom `R` by ×1.12 per wheel notch or ×2 per second held (keys,
-  triggers); `fov` with the `camera_fov` modifier (Alt, `controls.md` §3) + zoom, by the same factors.
+  triggers); `fov` with the `camera_fov` modifier (Alt, `controls.md` §3) + zoom, by the same factors. A trackpad's
+  two-finger vertical scroll and pinch zoom continuously (fractional notches, `controls.md` §4) and its horizontal
+  scroll orbits as a mouse drag; the same gestures zoom and turn every camera that takes the wheel and the drag
+  (onboard and free `fov`, aerial `H`, the clip cameras of §9).
 - **Recentre** (`controls.md`): `R = R0`, `el = 13.5°`, `az = 0`, `fov = 40°`. Optional auto-recentre of `az` after
   5 s without camera input (off by default), with `τ = 1 s`.
 
@@ -161,8 +164,13 @@ A fly camera for looking around the course, spectating and replays.
 
 - **Cycle**: chase → onboard → aerial → free → chase. Direct keys select a mode (`controls.md` §3). The clip
   cameras (§9) have their own key and are outside this cycle: `camera_next` from a clip camera selects chase.
-- **Cuts** by default. Option "smooth switch": chase ↔ aerial blend over 0.4 s (position `lerp`, orientation
-  `slerp`, `fov` `lerp`, smoothstep weight); other pairs always cut.
+- **Named**: a switch to another regular camera is named in the HUD's helm notes for 3 s (`Camera: chase`,
+  `Camera: onboard`, `Camera: aerial`, `Camera: free. The boat keys fly it, R puts it back`), so a player who
+  cycles into the free camera knows why the boat stopped answering. The camera the session starts in, the clip
+  cameras and the finish view are not named.
+- **Cuts** by default. The code's `smooth_switch` option (not offered in the settings, `menus.md` §3): chase ↔
+  aerial blend over 0.4 s (position `lerp`, orientation `slerp`, `fov` `lerp`, smoothstep weight); other pairs
+  always cut.
 - Each mode keeps its parameters across switches and across races (saved in the player profile); **recentre** resets
   only the current mode. A session always starts in a regular camera: a clip camera is never saved as the mode.
 - **Presets**: 8 slots, for the four regular cameras (store does nothing while a clip camera is shown). Recall = select the stored mode with its stored parameters; store = the current mode and
@@ -362,6 +370,9 @@ files are tuned by eye: their times are the best guesses of the clip, not rules.
    actions is refused; cues run in time order; a camera cue selects its mode (a clip camera with the course); a
    `slow`, `pause`, `resume`, `hud`, `tags` and `input` cue act as their keys do and the shot time keeps running
    through the pause; `end` (and `--quit-at`) end the run; a race shot with `start` begins at that time from the gun.
+17. Trackpad zoom: a camera input of −2.5 notches (a pan gesture, `controls.md` §8 test 11) sets the chase `R`
+   to `R / 1.12^−2.5` within 1e-6 (fractional notches, no rounding), and +2.5 the inverse; the aerial `H` and the
+   onboard `fov` follow the same factor.
 
 ## 11. Later: TV director and replay
 

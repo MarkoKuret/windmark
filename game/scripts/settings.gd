@@ -2,8 +2,9 @@ class_name Settings
 extends RefCounted
 ## The player's settings (menus.md §3, controls.md §6): one ConfigFile per player, read by whatever needs them
 ## through Settings.current(), and applied to the parts of the game that have the option (apply_*). Every setting
-## here is one the game reads; a key an older build saved and this one dropped (captions, the voice volume) is
-## ignored on load and not written again.
+## here is one the game reads and one worth a row (docs/design/settings_audit_2026-11-07.md); a key an older build
+## saved and this one dropped (captions, the voice volume, the stick curve, the sheet key rate, the four hold or
+## toggle keys, the per-camera inversions, the smooth switch) is ignored on load and not written again.
 
 const VERSION := 1
 const DEFAULT_PATH := "user://settings.cfg"
@@ -15,24 +16,20 @@ static var _current: Settings = null
 # ---- controls (controls.md §6) ----
 var helm_mode := PlayerControls.HelmMode.SET_AND_HOLD
 var stick_dead_zone := 0.10
-var stick_curve := 1.6
-var sheet_rate := 1.0
-var let_fly_toggle := false
-var helm_fine_toggle := false
-var rankings_toggle := false
-var camera_boost_toggle := false
-var sheet_turns_auto_trim_off := false
+## the held keys (let fly, fine helm, the rankings, the camera boost) as toggles: one press on, the next off
+var keys_toggle := false
+## the sail plan's helm balance turns the boat with the helm centred (boat.md §2 `weather_helm_enabled`); off: she
+## holds her course with the helm centred
+var weather_helm := false
 ## 0 = off
 var vibration := 1.0
 
 # ---- cameras (cameras.md §3, §6; controls.md §4, §6) ----
 var camera_speed := 1.0
-var invert_orbit_x := false
-var invert_orbit_y := false
-var invert_look_x := false
-var invert_look_y := false
+## the orbit of the chase and aerial cameras and the look of the onboard and free cameras, together
+var invert_x := false
+var invert_y := false
 var heel_follow := 0.0
-var smooth_switch := false
 var reduced_motion := false
 
 # ---- HUD (hud.md §14) ----
@@ -81,10 +78,8 @@ var bindings := {}
 
 ## key -> [section, field]; the file layout
 const FIELDS := {
-	"controls": ["helm_mode", "stick_dead_zone", "stick_curve", "sheet_rate", "let_fly_toggle", "helm_fine_toggle",
-		"rankings_toggle", "camera_boost_toggle", "sheet_turns_auto_trim_off", "vibration"],
-	"cameras": ["camera_speed", "invert_orbit_x", "invert_orbit_y", "invert_look_x", "invert_look_y", "heel_follow",
-		"smooth_switch", "reduced_motion"],
+	"controls": ["helm_mode", "stick_dead_zone", "keys_toggle", "weather_helm", "vibration"],
+	"cameras": ["camera_speed", "invert_x", "invert_y", "heel_follow", "reduced_motion"],
 	"hud": ["assist", "hud_density", "ui_scale", "palette"],
 	"graphics": ["quality", "render_scale", "aa", "fullscreen", "vsync", "fps_limit"],
 	"audio": ["master_volume", "effects_volume", "signals_volume", "ambience_volume", "interface_volume"],
@@ -272,8 +267,6 @@ func _set_checked(f: String, v: Variant) -> void:
 
 func _clamp() -> void:
 	stick_dead_zone = clampf(stick_dead_zone, 0.0, 0.30)
-	stick_curve = clampf(stick_curve, 1.0, 3.0)
-	sheet_rate = clampf(sheet_rate, 0.5, 2.0)
 	vibration = clampf(vibration, 0.0, 1.0)
 	camera_speed = clampf(camera_speed, 0.25, 3.0)
 	heel_follow = clampf(heel_follow, 0.0, 1.0)
@@ -335,36 +328,36 @@ func reset(section := "") -> void:
 
 # ---- apply ----
 
+## The helm key mode, the stick dead zone, the held keys as toggles (let fly and fine helm here; the rankings in
+## the HUD, the camera boost in the camera rig) and the vibration.
 func apply_controls(pc: PlayerControls) -> void:
 	pc.helm_mode = helm_mode
 	pc.stick_dead_zone = stick_dead_zone
-	pc.stick_gamma = stick_curve
-	pc.sheet_rate_scale = sheet_rate
-	pc.let_fly_toggle = let_fly_toggle
-	pc.helm_fine_toggle = helm_fine_toggle
-	pc.sheet_turns_auto_trim_off = sheet_turns_auto_trim_off
+	pc.let_fly_toggle = keys_toggle
+	pc.helm_fine_toggle = keys_toggle
 	pc.rumble.strength = vibration
 
 
+## The camera speed, the one inversion per axis on the orbit and the look alike, reduced motion, the camera boost
+## as a toggle (keys_toggle) and the onboard heel follow.
 func apply_cameras(rig: CameraRig) -> void:
 	var o := rig.options
 	o.speed = camera_speed
-	o.invert_orbit_x = invert_orbit_x
-	o.invert_orbit_y = invert_orbit_y
-	o.invert_look_x = invert_look_x
-	o.invert_look_y = invert_look_y
-	o.smooth_switch = smooth_switch
+	o.invert_orbit_x = invert_x
+	o.invert_orbit_y = invert_y
+	o.invert_look_x = invert_x
+	o.invert_look_y = invert_y
 	o.reduced_motion = reduced_motion
-	o.boost_toggle = camera_boost_toggle
+	o.boost_toggle = keys_toggle
 	rig.onboard.heel_follow = heel_follow
 
 
-## The assist preset, the rankings hold or toggle, the colour-blind palette (hud.md §16.2.1) and the instrument
-## density; the density key's choice is stored here and saved at once (kept per device: the settings file is the
-## device's).
+## The assist preset, the rankings key as a toggle (keys_toggle), the colour-blind palette (hud.md §16.2.1) and
+## the instrument density; the density key's choice is stored here and saved at once (kept per device: the
+## settings file is the device's).
 func apply_hud(hud: Hud) -> void:
 	hud.assist = assist
-	hud.rankings_toggle = rankings_toggle
+	hud.rankings_toggle = keys_toggle
 	HudStyle.set_palette(palette)
 	hud.density_auto = hud_density < 0
 	if hud_density >= 0:

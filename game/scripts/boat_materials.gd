@@ -165,11 +165,6 @@ static func slot_id(slot_name: String) -> int:
 	return int(_slot_ids.get(slot_name, -1))
 
 
-## The slot names of the boat material by id.
-static func slot_names() -> Array[String]:
-	return _slot_names
-
-
 ## The boat material's colour of a slot (linear) and its tile, for code that draws a slot elsewhere (the sheets).
 static func slot_color(slot_name: String) -> Color:
 	var i := slot_id(slot_name)

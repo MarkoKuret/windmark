@@ -44,6 +44,9 @@ extends Node3D
 ## on the same SeaModel the Sea draws (FakeSim.use_sea) and the Sea's clock follows the sim ticks.
 
 const PAUSE_MENU := "res://scenes/menu/pause_menu.tscn"
+## controls.md §2 reset_boat in a race: the first press asks, a second within this many seconds restarts
+const RESTART_CONFIRM_S := 3.0
+const MSG_RESTART_ASK := "Restart the race? Press %s again"
 const RESULTS_SCREEN := "res://scenes/menu/results_screen.gd"
 const SETTINGS_SCRIPT := "res://scripts/settings.gd"
 
@@ -94,6 +97,9 @@ var weather_settings := {}
 ## the pause menu of scenes/menu as a child (it applies the player's settings); without it, `apply_settings`
 ## applies them at start
 @export var with_pause_menu := true
+## the capture keys (clean pause, slow motion; controls.md §7) are live without the capture preset or a shot
+## script (`--capture-keys`)
+@export var capture_keys := false
 ## the results screen of scenes/menu (menus.md §5) in a quick race (not watching, not a scenario)
 @export var with_results := true
 @export var apply_settings := true
@@ -140,6 +146,8 @@ var boat_views: Array[BoatView] = []
 var boat_liveries: Array = []
 ## the results screen (menus.md §5), null without one
 var results: Node = null
+## seconds left in which a second `reset_boat` press restarts the race (controls.md §2), 0 when not asking
+var _restart_ask_t := 0.0
 ## the player's race is over and the camera has eased into the finish view (cameras.md §9.1)
 var _race_over_seen := false
 ## the session set-up to apply instead of GameSetup.next (tests); null: GameSetup.next when the menus wrote one
@@ -198,6 +206,14 @@ var _shot_camera := {}
 
 var _chat: LineEdit
 var _paused_label: Label
+## the regular camera last named in the helm notes (-1 before the first frame)
+var _cam_noted := -1
+const CAMERA_NOTES := {
+	CameraRig.Mode.CHASE: "Camera: chase",
+	CameraRig.Mode.ONBOARD: "Camera: onboard",
+	CameraRig.Mode.AERIAL: "Camera: aerial",
+	CameraRig.Mode.FREE: "Camera: free. The boat keys fly it, R puts it back",
+}
 ## the capture rate note (hud.md §16.6): on the overlay layer, so it shows with the HUD hidden too
 var _rate_note: Label
 ## the own boat's sail states of the last two ticks (render interpolation)
@@ -369,6 +385,8 @@ func session_setup() -> GameSetup:
 	g.wind_from_deg = weather_from_deg if weather != "" else wind_from_deg
 	g.shift = weather_shift
 	g.gusts = weather_gusts
+	g.light_time = light_time
+	g.light_conditions = light_conditions
 	g.seed = world_seed
 	return g
 
@@ -461,6 +479,8 @@ func _user_args() -> void:
 			ai_level = a.trim_prefix("--level=").to_lower()
 		elif a == "--speed-only":
 			ai_speed_only = true
+		elif a == "--capture-keys":
+			capture_keys = true
 		elif a == "--watch":
 			watch = true
 		elif a.begins_with("--venue="):
@@ -769,7 +789,10 @@ func _make_core() -> CoreSimSource:
 	cs.settings = {"wind_speed": wind_speed_kn * HudFormat.KNOT, "wind_from": deg_to_rad(wind_from_deg),
 		"puffs": puffs, "shift_preset": shift_preset, "race_seed": world_seed}
 	if race_mode and not watch:
-		cs.settings["finish_window"] = false  # race.md §7.3: no DNF for a slow finish in a quick race
+		# a quick race (menus.md §1): no DNF for a slow finish (race.md §7.3) and the P flag (race.md §3.3): a boat
+		# over early dips back behind the line, nobody has to round an end in her first race
+		cs.settings["finish_window"] = false
+		cs.settings["prep_flag"] = 0
 	cs.settings.merge(core_settings, true)
 	_resolve_weather(cs)
 	var ok := cs.create(venue)
@@ -1052,6 +1075,7 @@ func step_frame(dt: float) -> void:
 		raw = raw.without_buttons()  # the look panel has the keys (hud.md §18); the sim keeps running
 	if shot != null or not is_nan(quit_at):
 		_shot_frame(raw)  # cameras.md §9.2
+	_restart_ask_t = maxf(_restart_ask_t - dt, 0.0)
 	_ui_actions(raw)
 	hud.pick_enabled = not runner.paused and not controls.text_focus  # not through the menu or chat (hud.md §16.4.1)
 	hud.map_enabled = hud.pick_enabled  # nor the map key (hud.md §8.1)
@@ -1089,6 +1113,7 @@ func step_frame(dt: float) -> void:
 	elif CameraRig.is_clip(rig.mode) or cin.clip:
 		rig.course = ClipCourse.from_race(course_view, viewed, target.loa)  # cameras.md §9
 	rig.frame(target, cin, dt)
+	_note_camera()
 	var t5 := Time.get_ticks_usec()
 	PerfStats.add(&"camera", t5 - t4)
 	hud.frame(dt, controls)
@@ -1200,6 +1225,17 @@ func _wake_state(b: int, p: SimSource.RenderPose) -> Dictionary:
 	}
 
 
+## cameras.md §6: a switch to another regular camera is named in the helm notes for 3 s (the free camera says what
+## its keys do); the first camera, the clip cameras and the finish view are not.
+func _note_camera() -> void:
+	var m := rig.mode
+	if m == _cam_noted or CameraRig.is_clip(m) or m == CameraRig.Mode.FINISH:
+		return
+	if _cam_noted >= 0 and CAMERA_NOTES.has(m):
+		hud.note(CAMERA_NOTES[m])
+	_cam_noted = m
+
+
 func _ui_actions(r: RawInput) -> void:
 	if controls.text_focus:
 		if r.was_pressed(&"pause_menu"):
@@ -1207,24 +1243,38 @@ func _ui_actions(r: RawInput) -> void:
 		return
 	# a menu has the keys (controls.md §7): the pause key, the screenshot and the cameras stay, the rest waits
 	var menu := controls.menu_open or _results_open()
-	if not menu and r.was_pressed(&"chat"):
+	if not menu and online and r.was_pressed(&"chat"):  # offline nobody listens: Enter must not take the keys
 		_chat.visible = true
 		_chat.grab_focus()
 		controls.set_text_focus(true)
 		return
 	if not menu and r.was_pressed(&"hud_hide"):
 		hud.toggle_hidden()
-	if not menu and capture.handle(r):
-		_set_world_tags(capture.world_tags)
+	if not menu:
+		# the capture keys only with the capture preset, a shot script or --capture-keys (controls.md §7)
+		capture.keys = capture_keys or shot != null or Settings.current().capture_preset != "off"
+		if capture.handle(r):
+			_set_world_tags(capture.world_tags)
 	if r.was_pressed(&"pause_menu"):
-		# Esc closes the course map first (hud.md §8.1), then clears a selection (hud.md §16.4.1), then pauses
-		if runner.paused or not (hud.close_map() or hud.clear_selection()):
+		# Esc closes the course map first (hud.md §8.1), then clears a selection (hud.md §16.4.1), then pauses;
+		# in the pause menu's settings it goes back to the card (menus.md §2)
+		var pm := get_node_or_null("PauseMenu")
+		if pm != null and pm.has_method("back_from_settings") and pm.back_from_settings():
+			pass
+		elif runner.paused or not (hud.close_map() or hud.clear_selection()):
 			runner.paused = not runner.paused  # offline: pause the simulation, the cameras still move
 			_paused_label.visible = runner.paused
 	if r.was_pressed(&"screenshot"):
 		_screenshot()
 	if not menu and r.was_pressed(&"reset_boat"):
-		reset_boat()
+		# controls.md §2: a race asks first (a second press within RESTART_CONFIRM_S restarts it); free sailing and
+		# a rules scenario re-place at once
+		if on_core and race_mode and scenario_run == null and _restart_ask_t <= 0.0:
+			_restart_ask_t = RESTART_CONFIRM_S
+			controls.messages.append(MSG_RESTART_ASK % PlayerControls.key_text(&"reset_boat", "it"))
+		else:
+			_restart_ask_t = 0.0
+			reset_boat()
 	if can_spectate() and not controls.menu_open:
 		var n := sim.boat_count()
 		var before := viewed

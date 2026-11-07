@@ -66,7 +66,7 @@ course also defines are overridden by the lobby.
 | --- | --- | --- |
 | `race_type` | `fleet`, `match` | `fleet` |
 | `sequence` | `5-4-1-0`, `3-2-1-0`, `match` | fleet `3-2-1-0` online quick race, `5-4-1-0` otherwise; `match` for match races |
-| `prep_flag` | `P`, `I`, `Z`, `U`, `black` (§3.3) | `I` fleet; `P` match |
+| `prep_flag` | `P`, `I`, `Z`, `U`, `black` (§3.3) | `I` fleet; `P` match; `P` in an offline quick race whatever the course says (`menus.md` §1) |
 | `free_sailing_s` | time between the boats' spawn and the warning signal | 30 s |
 | `general_recall` | off / on (§4.5) | off |
 | `rules_level` | `none`, `basic` (rules 10–16, 21, 31), `full` | `full` |
@@ -660,7 +660,8 @@ The file is `data_format.md` §9; the front end starts it (offline only, never o
 
 1. **World.** The scenario's wind (`base_speed`, `base_from`, the shift preset, puffs, oscillation off) and seed,
    `free_sailing_s = 0`, `sequence = 3-2-1-0`, `prep_flag = P`; the other settings of §2 keep their defaults (rules
-   `full`, umpire `standard`, one-turn penalties). The boats are added in file order on the scenario's class: boat 0
+   `full`, umpire `standard`, one-turn penalties) except `weather_helm_enabled`, which a scenario world keeps **on**
+   whatever the player's setting: the scripts were written on the full model (`boat.md` §2). The boats are added in file order on the scenario's class: boat 0
    is the human entry (the player's boat), the others are not human. The race is created on the scenario's course
    (§3.1).
 2. **To the gun.** Before every tick each boat is placed (`wm_world_scenario_place`) on the pre-start side,

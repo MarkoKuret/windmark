@@ -49,9 +49,23 @@ func test_data() -> void:
 	sorted.sort()
 	t.ok(sorted == disk and disk.size() >= 2, "classes %s = files %s" % [cls, disk])
 	t.ok(MenuData.names(MenuData.classes()).has("Windmark 7 Sportsboat"), "class names from the class files")
+	var by_size := MenuData.classes().map(func(e: Dictionary) -> float: return MenuData.class_facts(e["id"])["loa"])
+	var ascending := true
+	for i in range(1, by_size.size()):
+		ascending = ascending and by_size[i] >= by_size[i - 1]
+	t.ok(ascending and cls[0] == "wm7", "the picker walks the fleet smallest first: %s" % [cls])
+	t.ok(MenuData.tallest_mast() > 20.0, "the tallest mast in the fleet: %.1f m" % MenuData.tallest_mast())
+	var pr := ClassLineup.profile("wm7")
+	t.ok(pr.size() >= 4 and pr[0].size() == 7, "a class's profile: hull, mast, main, headsail (%d shapes)" % pr.size())
+	t.ok(ClassLineup.profile("no_such_class").is_empty(), "no profile for an unknown class")
 	var ven := MenuData.ids(MenuData.venues())
 	t.ok(ven.has("practice_waters") and ven.size() == _disk_ids(BoatClassData.repo_path("data/venues"),
 		".venue.json").size(), "venues %s" % [ven])
+	t.ok(ven[0] == "practice_waters" and ven.slice(1) == (func() -> Array:
+		var rest := ven.slice(1).duplicate()
+		rest.sort_custom(func(a: String, b: String) -> bool:
+			return MenuData.name_of(MenuData.venues(), a) < MenuData.name_of(MenuData.venues(), b))
+		return rest).call(), "the practice venue first, the rest by name")
 	var c7 := MenuData.ids(MenuData.courses("practice_waters", "wm7"))
 	t.ok(c7.has("practice_waters/example_wl"), "practice_waters courses for wm7: %s" % [c7])
 	t.ok(MenuData.courses("practice_waters", "no_such_class").is_empty(), "no course lists an unknown class")
@@ -111,21 +125,13 @@ func _odd_settings() -> Settings:
 	var s := Settings.new()
 	s.helm_mode = PlayerControls.HelmMode.HOLD_TO_STEER
 	s.stick_dead_zone = 0.2
-	s.stick_curve = 2.2
-	s.sheet_rate = 1.5
-	s.let_fly_toggle = true
-	s.helm_fine_toggle = true
-	s.rankings_toggle = true
-	s.camera_boost_toggle = true
-	s.sheet_turns_auto_trim_off = true
+	s.keys_toggle = true
+	s.weather_helm = true
 	s.vibration = 0.3
 	s.camera_speed = 1.75
-	s.invert_orbit_x = true
-	s.invert_orbit_y = true
-	s.invert_look_x = true
-	s.invert_look_y = true
+	s.invert_x = true
+	s.invert_y = true
 	s.heel_follow = 0.4
-	s.smooth_switch = true
 	s.reduced_motion = true
 	s.assist = Hud.Assist.MINIMAL
 	s.hud_density = Hud.Density.DATA
@@ -267,7 +273,7 @@ func test_settings_round_trip() -> void:
 	t.ok(cf.get_value("settings", "version", 0) == Settings.VERSION, "file carries its version")
 	# a damaged file: wrong types keep the defaults, out-of-range values are clamped
 	cf.set_value("controls", "stick_dead_zone", "wide")
-	cf.set_value("controls", "stick_curve", 9.0)
+	cf.set_value("controls", "vibration", 9.0)
 	cf.set_value("hud", "assist", 7)
 	cf.set_value("graphics", "vsync", 3)
 	cf.set_value("graphics", "render_scale", 7)
@@ -279,7 +285,7 @@ func test_settings_round_trip() -> void:
 	var d := Settings.new()
 	d.load_file(TEST_PATH)
 	t.near(d.stick_dead_zone, 0.10, 1e-9, "wrong type keeps the default")
-	t.near(d.stick_curve, 3.0, 1e-9, "curve clamped to 3.0")
+	t.near(d.vibration, 1.0, 1e-9, "vibration clamped to 100 %")
 	t.ok(d.assist == Hud.Assist.MINIMAL, "assist clamped to Minimal")
 	t.ok(d.vsync == true, "vsync of the wrong type keeps the default")
 	t.near(d.render_scale, 1.0, 1e-9, "render scale clamped to 100 %")
@@ -306,15 +312,14 @@ func test_apply() -> void:
 	s.apply_controls(pc)
 	t.ok(pc.helm_mode == PlayerControls.HelmMode.HOLD_TO_STEER, "controls: helm key mode")
 	t.near(pc.stick_dead_zone, 0.2, 1e-9, "controls: stick dead zone")
-	t.near(pc.stick_gamma, 2.2, 1e-9, "controls: stick curve")
-	t.near(pc.sheet_rate_scale, 1.5, 1e-9, "controls: sheet rate")
-	t.ok(pc.let_fly_toggle and pc.helm_fine_toggle and pc.sheet_turns_auto_trim_off, "controls: toggles")
+	t.ok(pc.let_fly_toggle and pc.helm_fine_toggle, "controls: the held keys as toggles")
 	var rig := CameraRig.new()
 	s.apply_cameras(rig)
 	var o := rig.options
 	t.near(o.speed, 1.75, 1e-9, "cameras: speed")
-	t.ok(o.invert_orbit_x and o.invert_orbit_y and o.invert_look_x and o.invert_look_y, "cameras: invert")
-	t.ok(o.smooth_switch and o.reduced_motion, "cameras: smooth switch, reduced motion")
+	t.ok(o.invert_orbit_x and o.invert_orbit_y and o.invert_look_x and o.invert_look_y,
+		"cameras: one inversion per axis on the orbit and the look")
+	t.ok(o.reduced_motion and o.boost_toggle, "cameras: reduced motion, the boost as a toggle")
 	t.near(rig.onboard.heel_follow, 0.4, 1e-9, "cameras: onboard heel follow")
 	rig.call("free")
 	var hud := Hud.new()
@@ -459,21 +464,15 @@ func test_every_key_applied() -> void:
 	var got := {
 		"controls.helm_mode": pc.helm_mode == s.helm_mode,
 		"controls.stick_dead_zone": is_equal_approx(pc.stick_dead_zone, s.stick_dead_zone),
-		"controls.stick_curve": is_equal_approx(pc.stick_gamma, s.stick_curve),
-		"controls.sheet_rate": is_equal_approx(pc.sheet_rate_scale, s.sheet_rate),
-		"controls.let_fly_toggle": pc.let_fly_toggle,
-		"controls.helm_fine_toggle": pc.helm_fine_toggle,
-		"controls.rankings_toggle": hud.rankings_toggle,
-		"controls.camera_boost_toggle": rig.options.boost_toggle,
-		"controls.sheet_turns_auto_trim_off": pc.sheet_turns_auto_trim_off,
+		"controls.keys_toggle": pc.let_fly_toggle and pc.helm_fine_toggle and hud.rankings_toggle
+			and rig.options.boost_toggle,
 		"controls.vibration": is_equal_approx(pc.rumble.strength, s.vibration),
+		# applied at world creation (core_sim_source.gd create), not by apply_controls
+		"controls.weather_helm": s.weather_helm == true,
 		"cameras.camera_speed": is_equal_approx(rig.options.speed, s.camera_speed),
-		"cameras.invert_orbit_x": rig.options.invert_orbit_x,
-		"cameras.invert_orbit_y": rig.options.invert_orbit_y,
-		"cameras.invert_look_x": rig.options.invert_look_x,
-		"cameras.invert_look_y": rig.options.invert_look_y,
+		"cameras.invert_x": rig.options.invert_orbit_x and rig.options.invert_look_x,
+		"cameras.invert_y": rig.options.invert_orbit_y and rig.options.invert_look_y,
 		"cameras.heel_follow": is_equal_approx(rig.onboard.heel_follow, s.heel_follow),
-		"cameras.smooth_switch": rig.options.smooth_switch,
 		"cameras.reduced_motion": rig.options.reduced_motion,
 		"hud.assist": hud.assist == s.assist,
 		"hud.hud_density": hud.density == s.hud_density and not hud.density_auto,
@@ -506,6 +505,10 @@ func test_every_key_applied() -> void:
 	old.set_value("settings", "version", 1)
 	old.set_value("hud", "captions", true)
 	old.set_value("audio", "voice_volume", 0.2)
+	old.set_value("controls", "stick_curve", 2.0)
+	old.set_value("controls", "let_fly_toggle", true)
+	old.set_value("cameras", "invert_look_y", true)
+	old.set_value("cameras", "smooth_switch", true)
 	old.set_value("audio", "master_volume", 0.4)
 	var old_path := "user://menus_test_old.cfg"
 	old.save(old_path)
@@ -514,7 +517,9 @@ func test_every_key_applied() -> void:
 	older.save_file(old_path)
 	var back := ConfigFile.new()
 	back.load(old_path)
-	t.ok(not back.has_section_key("hud", "captions") and not back.has_section_key("audio", "voice_volume"),
+	t.ok(not back.has_section_key("hud", "captions") and not back.has_section_key("audio", "voice_volume")
+		and not back.has_section_key("controls", "stick_curve") and not back.has_section_key("controls", "let_fly_toggle")
+		and not back.has_section_key("cameras", "invert_look_y") and not back.has_section_key("cameras", "smooth_switch"),
 		"the dropped keys are not saved again")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(old_path))
 	# back to the defaults
@@ -759,7 +764,9 @@ func test_live_backdrop() -> void:
 		var cp := cam.global_position
 		var focus := Frames.enu_to_scene(MenuStage.SHOW_POS.x, MenuStage.SHOW_POS.y, 0.0)
 		var dist := Vector2(cp.x, cp.z).distance_to(Vector2(focus.x, focus.z))
-		var mast: float = MenuData.class_facts(cls0)["mast_height"]
+		var mast := MenuStage.reference_mast(cls0, info.loa)
+		t.ok(absf(mast - MenuData.tallest_mast()) < 1e-6 and mast > MenuData.class_facts("wm7")["mast_height"] + 1.0,
+			"the camera's reference is the fleet's tallest mast (%.1f m), not this class's" % mast)
 		t.ok(absf(dist - (MenuStage.SHOW_DIST * mast + MenuStage.SHOW_DIST_ADD)) < 0.5
 			and absf(cp.y - MenuStage.SHOW_HEIGHT * mast) < 0.5, "the camera circles it at %.1f m, %.1f m up" % [dist, cp.y])
 		t.ok(st.frame_x > 0.0 and st.frame_x < 0.5 and st.frame_offset(cam) < 0.0,
@@ -768,11 +775,18 @@ func test_live_backdrop() -> void:
 		for i in 10:
 			await process_frame
 		t.ok(st._show_bearing != b0, "the camera goes round")
+		var bearing_before := st._show_bearing
+		var eye_before := cam.global_position
 		q.rows["class_id"].step_value(1)
 		await process_frame
 		var cls1 := str(q.rows["class_id"].value)
 		t.ok(st.showcase != first and st.showcase_class == cls1 and (not is_instance_valid(first) or first.is_queued_for_deletion()),
 			"a new class: a new showcase boat (%s), the old one freed" % cls1)
+		t.ok(absf(wrapf(st._show_bearing - bearing_before, -PI, PI)) < 0.05
+			and cam.global_position.distance_to(eye_before) < 1.0,
+			"a class swap keeps the camera where it was: the new boat at true scale beside the old one's place")
+		t.ok(q.lineup.is_visible_in_tree() and q.lineup.chosen == cls1 and q.lineup.classes == MenuData.ids(MenuData.classes()),
+			"the fleet line-up marks the chosen class")
 		var second := st.showcase
 		var lv0 := st.showcase_livery
 		q.rows["livery"].step_value(1)
@@ -936,7 +950,7 @@ func test_main_menu() -> void:
 	await process_frame
 	t.ok(q.step_id() == "start" and root.gui_get_focus_owner() == q.start_button, "the Start step, focus on Start race")
 	var sl := q.summary_lines()
-	t.ok(sl.size() == 6 and sl[0][0] == "Boat" and sl[3][1] == "%d boats · Intermediate" % (fleet + 2)
+	t.ok(sl.size() == 6 and sl[0][0] == "Boat" and sl[3][1] == "%d boats · Easy" % (fleet + 2)
 		and sl[4][1] == "Local", "the summary: %s" % [sl])
 	# Esc goes back one step, from the first step to the menu
 	_key("ui_cancel")
@@ -1787,7 +1801,7 @@ func test_touches() -> void:
 		sp.show_section(sec)
 		for k in sp.rows:
 			shown.append(k)
-			if (sp.rows[k] as MenuRow).help == "" and k in ["helm_mode", "stick_dead_zone", "stick_curve",
+			if (sp.rows[k] as MenuRow).help == "" and k in ["helm_mode", "stick_dead_zone", "keys_toggle",
 					"heel_follow", "assist", "hud_density", "palette", "quality", "render_scale", "capture_preset"]:
 				missing.append(k)
 	t.ok(missing.is_empty(), "the rows that need it have a help line (missing: %s)" % [missing])
@@ -1815,6 +1829,15 @@ func test_touches() -> void:
 	await process_frame
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
 	Settings.reset_current()
+
+
+## a stand-in sail scene whose race is on (menus.md §2: Retire shows, Restart and Main menu ask first)
+class _RaceHost extends Node:
+	func can_retire() -> bool:
+		return true
+
+	func retire() -> bool:
+		return true
 
 
 func test_pause_menu() -> void:
@@ -1875,6 +1898,16 @@ func test_pause_menu() -> void:
 	t.near(sc.controls.stick_dead_zone, 0.25, 1e-9, "dead zone applied to the running scene")
 	t.ok(sc.hud.assist == Hud.Assist.FULL, "assist preset applied to the running scene")
 	t.ok(pm.is_open and pm.buttons["settings"].is_visible_in_tree(), "back on the pause menu")
+	# the pause key in the settings goes back to the card (menus.md §2), the race stays paused
+	pm.buttons["settings"].pressed.emit()
+	await process_frame
+	t.ok(pm._settings_card.visible, "settings open from the pause menu")
+	sc.scripted_input = RawInput.new().press(&"pause_menu")
+	sc.step_frame(1.0 / 60.0)
+	sc.scripted_input = RawInput.new()
+	await process_frame
+	t.ok(pm.is_open and sc.runner.paused and not pm._settings_card.visible
+		and pm.buttons["settings"].is_visible_in_tree(), "the pause key in the settings: back to the card, still paused")
 	# pause key again closes it
 	sc.scripted_input = RawInput.new().press(&"pause_menu")
 	sc.step_frame(1.0 / 60.0)
@@ -1887,6 +1920,30 @@ func test_pause_menu() -> void:
 	pm.buttons["restart"].pressed.emit()
 	pm.open()
 	pm.buttons["quit"].pressed.emit()
-	t.ok(acts == ["restart", "quit"] and not pm.is_open, "restart and quit to menu requested: %s" % [acts])
+	t.ok(acts == ["restart", "quit"] and not pm.is_open, "restart and main menu requested: %s" % [acts])
+	# menus.md §2: while the player's race is on (the window of Retire) Restart and Main menu ask first
+	acts.clear()
+	var stub := _RaceHost.new()
+	root.add_child(stub)
+	pm.host = stub
+	pm.open()
+	pm.buttons["restart"].pressed.emit()
+	t.ok(pm.is_open and acts.is_empty() and pm.buttons["restart"].text == "RESTART? PRESS AGAIN",
+		"Restart in a race: the first press asks")
+	pm.buttons["quit"].pressed.emit()
+	t.ok(pm.is_open and acts.is_empty() and pm.buttons["quit"].text == "LEAVE THE RACE? PRESS AGAIN"
+		and pm.buttons["restart"].text == "RESTART", "another item asks instead, the first question dropped")
+	pm.buttons["quit"].pressed.emit()
+	t.ok(acts == ["quit"] and not pm.is_open, "the second press quits")
+	pm.open()
+	pm.buttons["restart"].pressed.emit()
+	pm._process(3.1)
+	t.ok(pm.buttons["restart"].text == "RESTART", "the question expires after 3 s")
+	pm.buttons["restart"].pressed.emit()
+	t.ok(pm.is_open and acts == ["quit"] and pm.buttons["restart"].text == "RESTART? PRESS AGAIN", "a later press asks again")
+	pm.buttons["restart"].pressed.emit()
+	t.ok(acts == ["quit", "restart"] and not pm.is_open, "the second press within 3 s restarts")
+	pm.host = sc
+	stub.queue_free()
 	sc.queue_free()
 	await process_frame

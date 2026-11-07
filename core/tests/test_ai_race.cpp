@@ -539,15 +539,40 @@ TEST_CASE("ai dev: a venue's fleet over seeds" * doctest::skip(std::getenv("AI_V
 }
 
 
-// Development probe (AI_PIN=t_race, AI_PIN_B=boat, AI_REL=kind as the sweep, AI_SEED): the race run to race time t,
+// Development probe (AI_PIN=t_race, AI_PIN_B=boat, AI_REL=kind as the sweep, AI_SEED; AI_FLEET=1 the ai_races fleet
+// or AI_VENUE/AI_TIDE a venue's fleet, as the sweeps above; AI_WH the helm balance): the race run to race time t,
 // then boat b sailed with fixed controls for 60 s (the others on their last controls); prints where she gets to.
+// AI_PIN_SEQ="mode,helm,seconds;...|..." plays sequences of fixed controls instead (mode 0 sails drawing, 1 let fly),
+// AI_PIN_V=1 prints her state every second of them.
 TEST_CASE("ai dev: pinned probe" * doctest::skip(std::getenv("AI_PIN") == nullptr)) {
   wm_test::AiRaceSpec sp;
   sp.seed = std::getenv("AI_SEED") != nullptr ? std::strtoull(std::getenv("AI_SEED"), nullptr, 10) : 5;
   const std::string kind = std::getenv("AI_REL") != nullptr ? std::getenv("AI_REL") : "match7";
   const float winds[4] = {8.0f, 11.0f, 15.0f, 19.0f};
   sp.wind_kn = winds[sp.seed % 4];
-  if (kind == "match7" || kind == "match12") {
+  if (std::getenv("AI_FLEET") != nullptr) {
+    // The ai_races fleet (the spec's defaults), as the scene sweep above with AI_FLEET=1.
+    wm_test::AiRaceSpec d;
+    sp.wind_kn = d.wind_kn;
+    sp.levels.assign(10, std::getenv("AI_LEVEL") != nullptr
+                             ? static_cast<wm::AiLevel>(std::strtoul(std::getenv("AI_LEVEL"), nullptr, 10))
+                             : wm::AiLevel::intermediate);
+  } else if (const char* venue = std::getenv("AI_VENUE")) {
+    // A venue's own conditions, as the venue sweep above (AI_VENUE, AI_TIDE, AI_N).
+    std::string course = std::string(venue) + "/";
+    if (const char* c = std::getenv("AI_COURSE")) course = c;
+    else if (std::string(venue) == "solent") course += "cowes_wl";
+    else course += "example_wl";
+    sp.venue = &wm_test::venue_by_id(venue);
+    sp.course = &wm_test::course_by_path(course);
+    sp.local_weather = true;
+    if (const char* e = std::getenv("AI_TIDE")) {
+      const std::string t = e;
+      sp.tide = t == "flood" ? 1.0f : (t == "ebb" ? -1.0f : (t == "slack" ? 0.0f : NAN));
+    }
+    sp.levels.assign(std::getenv("AI_N") != nullptr ? std::strtoul(std::getenv("AI_N"), nullptr, 10) : 10,
+                     wm::AiLevel::intermediate);
+  } else if (kind == "match7" || kind == "match12") {
     sp.course = &wm_test::ai_match_course();
     sp.levels.assign(2, wm::AiLevel::expert);
     sp.shifts = wm::ShiftPreset::oscillating;
@@ -579,7 +604,7 @@ TEST_CASE("ai dev: pinned probe" * doctest::skip(std::getenv("AI_PIN") == nullpt
               static_cast<double>(s0.pos_x), static_cast<double>(s0.pos_y), static_cast<double>(s0.psi / wm::DEG),
               static_cast<double>(s0.v), static_cast<double>(wm::wrap_pi(w->env(b).wind_from_clean - s0.psi) / wm::DEG));
   if (const char* seqs = std::getenv("AI_PIN_SEQ")) {
-    // "mode,helm,seconds;...|..." : mode 0 sails drawing, 1 let fly; sequences separated by |
+    // sequences separated by |, steps by ;
     const std::string all = seqs;
     std::size_t sa = 0;
     while (sa < all.size()) {
@@ -596,11 +621,31 @@ TEST_CASE("ai dev: pinned probe" * doctest::skip(std::getenv("AI_PIN") == nullpt
       int mode = 0;
       float h = 0.0f, secs = 0.0f;
       std::sscanf(q.substr(at, e - at).c_str(), "%d,%f,%f", &mode, &h, &secs);
+      const bool verbose = std::getenv("AI_PIN_V") != nullptr;
       for (int k = 0; k < static_cast<int>(secs * 20.0f); ++k) {
         w2->set_helm(bi, h);
         w2->set_let_fly(bi, mode == 1);
         w2->set_auto_trim(bi, true);
         w2->step();
+        if (verbose && k % 20 == 19) {
+          const wm::BoatState& s = w2->boat(b).state();
+          const wm::EnvAtBoat& env = w2->env(b);
+          int touch = 0;
+          float nx = 0.0f, ny = 0.0f;
+          for (const wm::ContactEvent& ev : w2->last_contacts()) {
+            if (ev.boat == bi && ev.other_kind != wm::ContactKind::boat) { touch = 1; nx = ev.normal.x; ny = ev.normal.y; }
+          }
+          const wm::BoatOutputs& out = w2->boat(b).outputs();
+          std::printf("    t+%3d (%.2f, %.2f) psi %6.1f v %+.2f sway %+.2f twa %+6.1f tr %+5.1f h %+.2f cur (%+.2f, %+.2f) touch %d n (%+.2f, %+.2f) tgt %.2f trim %.2f man %.2f busy %d kite %d\n",
+                      (k + 1) / 20, static_cast<double>(s.pos_x), static_cast<double>(s.pos_y),
+                      static_cast<double>(s.psi / wm::DEG), static_cast<double>(s.v), static_cast<double>(s.sway),
+                      static_cast<double>(wm::wrap_pi(env.wind_from_clean - s.psi) / wm::DEG),
+                      static_cast<double>(out.turn_rate / wm::DEG), static_cast<double>(s.h),
+                      static_cast<double>(env.current_x), static_cast<double>(env.current_y), touch,
+                      static_cast<double>(nx), static_cast<double>(ny), static_cast<double>(out.target_speed),
+                      static_cast<double>(out.trim_speed), static_cast<double>(out.man_coef),
+                      w2->boat(b).sails().busy() ? 1 : 0, w2->boat(b).sails().spinnaker_flying() ? 1 : 0);
+        }
       }
       const wm::BoatState& s = w2->boat(b).state();
       std::printf("  seq %d,%+.1f,%.0f: (%.2f, %.2f) psi %.1f v %.2f moved %.1f\n", mode, static_cast<double>(h),

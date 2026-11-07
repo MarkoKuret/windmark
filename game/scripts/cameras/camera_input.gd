@@ -1,10 +1,14 @@
 class_name CameraInput
 extends RefCounted
 ## The camera actions of one frame (controls.md §2-§4) after dead zones and curves, in the units the cameras
-## use: deflections -1..1, mouse pixels, wheel notches.
+## use: deflections -1..1, mouse pixels, wheel notches (fractional from a trackpad, controls.md §4).
 
 const STICK_DZ := 0.12
 const STICK_SAT := 0.95
+## controls.md §4 trackpad: a vertical pan zooms one notch per this much delta (20 points of finger travel)
+const PAN_NOTCH := 0.6
+## and a horizontal pan drags this many mouse pixels per unit of delta (one point of travel = one pixel)
+const PAN_PX := 1.0 / 0.03
 
 ## orbit keys or right stick (chase, aerial): x + = azimuth clockwise, y + = up
 var orbit := Vector2.ZERO
@@ -15,7 +19,7 @@ var look := Vector2.ZERO
 ## mouse drag this frame, pixels: x + = right, y + = down
 var mouse := Vector2.ZERO
 var dragging := false
-var zoom_notches := 0  # + = in
+var zoom_notches := 0.0  # + = in; fractional from a pan or a pinch
 var zoom_held := 0.0  # + = in, per second
 var fov_modifier := false
 ## free camera: x strafe right, y up, z forward, -1..1
@@ -42,6 +46,11 @@ static func stick(s: Vector2) -> Vector2:
 	return s / m * k
 
 
+## A pinch's factor as wheel notches (ChaseCamera.NOTCH each): pow(NOTCH, notches) gives the factor back.
+static func notches_of(factor: float) -> float:
+	return log(factor) / log(ChaseCamera.NOTCH) if factor > 0.0 else 0.0
+
+
 static func _axis(r: RawInput, neg: StringName, pos: StringName) -> float:
 	return (1.0 if r.is_held(pos) else 0.0) - (1.0 if r.is_held(neg) else 0.0)
 
@@ -54,10 +63,10 @@ static func from_raw(r: RawInput, free_camera: bool) -> CameraInput:
 		_axis(r, &"camera_orbit_down", &"camera_orbit_up"))
 	c.look = Vector2(rs.x, -rs.y)
 	c.orbit = (c.keys + c.look).clampf(-1.0, 1.0)
-	c.mouse = r.mouse_drag
-	c.dragging = r.is_held(&"camera_orbit_drag") or r.pointer_drag
+	c.mouse = r.mouse_drag + Vector2(r.pan.x * PAN_PX, 0.0)  # a horizontal pan drags as the mouse
+	c.dragging = r.is_held(&"camera_orbit_drag") or r.pointer_drag or r.pan.x != 0.0
 	c.fov_modifier = r.is_held(&"camera_fov")
-	c.zoom_notches = r.wheel
+	c.zoom_notches = r.wheel - r.pan.y / PAN_NOTCH + notches_of(r.magnify)
 	var zin := r.is_held(&"camera_zoom_in")
 	var zout := r.is_held(&"camera_zoom_out")
 	# gamepad: RB zooms in, RB + LB held zooms out

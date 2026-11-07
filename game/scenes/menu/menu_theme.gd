@@ -24,7 +24,6 @@ const SKY_HORIZON := Color("e4ece9")
 const SEA_HORIZON := Color("5f8fa6")
 const SEA_DEEP := Color("16344c")
 
-const TITLE_SIZE := 54
 const HEADING_SIZE := 30
 const ITEM_SIZE := 28
 const ROW_SIZE := 20
@@ -42,6 +41,16 @@ const ROW_PAD := Vector2(18, 10)
 ## tracking (em) of the caps styles (menus.md §4)
 const ITEM_TRACKING := 0.06
 const LABEL_TRACKING := 0.08
+
+## the layout rhythm (menus.md §4), px: the room round every screen, the gap between the rows or items of a list,
+## the gap under a heading and above a footer, the gap between footer actions, the help line's least height, and
+## the most a wide page or card takes
+const MARGIN := 40
+const LIST_GAP := 2
+const SECTION_GAP := 12
+const FOOTER_GAP := 12
+const HELP_H := 40
+const PAGE_MAX := 980.0
 
 static var _theme: Theme = null
 
@@ -176,6 +185,59 @@ static func heading(text: String) -> VBoxContainer:
 	var v := VBoxContainer.new()
 	v.add_child(label(text.to_upper(), HEADING_SIZE, NAVY, 700, ITEM_TRACKING))
 	return v
+
+
+## A sub-heading inside a page (Bindings, Your race): small navy caps, the setting-name style (menus.md §4),
+## `pad` px from the left so it lines up with what it heads.
+static func subheading(text: String, pad := 0.0) -> Label:
+	var l := caps(text, SMALL_SIZE, NAVY)
+	l.custom_minimum_size = Vector2(0, 30)
+	l.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	if pad > 0.0:
+		l.add_theme_stylebox_override("normal", box(Color(0, 0, 0, 0), 0, 0, Vector2(pad, 0)))
+	return l
+
+
+## A list of rows or items (menus.md §4): a column with the list gap.
+static func list() -> VBoxContainer:
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", LIST_GAP)
+	return v
+
+
+## A vertical gap of `h` px (under a heading, above a footer).
+static func gap(h := SECTION_GAP) -> Control:
+	var c := Control.new()
+	c.custom_minimum_size = Vector2(0, h)
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return c
+
+
+## The help line (menus.md §3, §4): sentence text, small and muted, wrapping, at least HELP_H tall so the screen
+## does not jump when it empties.
+static func help_label(text := "") -> Label:
+	var l := label(text, SMALL_SIZE, MUTED)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size = Vector2(0, HELP_H)
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	return l
+
+
+## A footer (menus.md §4): the way back or the lesser actions on the left, the primary action on the right, the
+## footer gap between them.
+static func footer(left: Array, right: Array) -> HBoxContainer:
+	var h := HBoxContainer.new()
+	h.name = "Footer"
+	h.add_theme_constant_override("separation", FOOTER_GAP)
+	for b in left:
+		h.add_child(b)
+	var push := Control.new()
+	push.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	push.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	h.add_child(push)
+	for b in right:
+		h.add_child(b)
+	return h
 
 
 ## The primary action (Start): a yellow bar with navy text at all times, the navy edge added when focused.

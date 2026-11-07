@@ -23,6 +23,7 @@ func _init() -> void:
 	test_input_frame()
 	test_capture_state()
 	test_click_or_drag()
+	test_trackpad()
 	await test_capture_scene_fake()
 	if CoreSimSource.available():
 		await test_capture_scene_race()
@@ -125,8 +126,9 @@ func test_sheet_keys() -> void:
 		run(pc, r, int(fps * 1.5), 1.0 / fps)
 		u.append(pc.sheet_cmd)
 	t.near(u[0], u[2], 1e-6, "1.5 s hold equal at 30 and 144 fps")
-	# ignored while auto-trim is on
+	# ignored while auto-trim is on, with the option off (controls.md §5.3; on by default, test_auto_trim_off)
 	pc = PlayerControls.new()
+	pc.sheet_turns_auto_trim_off = false
 	pc.sheet_cmd = 0.3
 	run(pc, RawInput.new().press(&"sheet_out"), 30, dt)
 	t.near(pc.sheet_cmd, 0.3, 1e-9, "ignored with auto-trim on")
@@ -369,6 +371,25 @@ func test_auto_trim_off() -> void:
 	pc.update(RawInput.new().press(&"auto_trim"), 0.016)
 	t.ok(not pc.auto_trim and pc.messages.size() == 1, "refused with a message when the lobby forbids it")
 	t.ok(not pc.messages[0].contains("—"), "message has no em dash")
+	# the option (controls.md §5.3, default on): a sheet key while AUTO shows hands the trim over, with a note
+	var pd := PlayerControls.new()
+	pd.bind(sim, 0)
+	pd.auto_trim = true
+	t.ok(pd.sheet_turns_auto_trim_off, "sheet turns auto trim off by default")
+	pd.update(RawInput.new().hold(&"sheet_out"), 0.016)
+	t.ok(not pd.auto_trim, "a sheet key while auto trim is on switches it off")
+	t.ok(pd.messages.size() == 1 and pd.messages[0].begins_with("Auto trim off: ")
+		and pd.messages[0].ends_with(" turns it back on") and not pd.messages[0].contains("—"),
+		"with a note naming the key: %s" % (pd.messages[0] if not pd.messages.is_empty() else ""))
+	pd.messages.clear()
+	pd.update(RawInput.new().hold(&"sheet_out"), 0.016)
+	t.ok(pd.messages.is_empty(), "no second note while it stays off")
+	var pe := PlayerControls.new()
+	pe.bind(sim, 0)
+	pe.auto_trim = true
+	pe.sheet_turns_auto_trim_off = false
+	pe.update(RawInput.new().hold(&"sheet_out"), 0.016)
+	t.ok(pe.auto_trim and pe.messages.is_empty(), "option off: the key is ignored, AUTO stays")
 
 
 func test_free_camera_keys() -> void:
@@ -553,6 +574,76 @@ func test_click_or_drag() -> void:
 	rd.free()
 
 
+## controls.md §3 Trackpad, §4, §8 test 11: a pan gesture zooms by fractional notches (vertical) or drags
+## (horizontal), one axis per gesture; a pinch zooms by its factor; the wheel keeps one notch per click
+func test_trackpad() -> void:
+	t.begin("11 trackpad gestures (InputReader)")
+	var rd := InputReader.new()
+	var pan := InputEventPanGesture.new()
+	pan.delta = Vector2(0, 1.2)  # two fingers up with natural scrolling: a wheel down
+	rd._input(pan)
+	var r := rd.read()
+	t.near(r.pan.y, 1.2, 1e-6, "the pan gesture reaches the frame")
+	var cin := CameraInput.from_raw(r, false)
+	t.near(cin.zoom_notches, -2.0, 1e-6, "a pan of 1.2 down is -2 notches (zoom out)")
+	t.ok(not cin.dragging and cin.mouse == Vector2.ZERO, "and no drag")
+	var chase := ChaseCamera.new()
+	var o := CamTypes.Options.new()
+	var r0 := chase.R
+	chase.handle_input(cin, o, 1.0 / 60.0)
+	t.near(chase.R, r0 * ChaseCamera.NOTCH * ChaseCamera.NOTCH, 1e-6, "the chase camera zooms out by x1.12^2")
+	pan.delta = Vector2(0, -1.2)
+	rd._input(pan)
+	chase.handle_input(CameraInput.from_raw(rd.read(), false), o, 1.0 / 60.0)
+	t.near(chase.R, r0, 1e-6, "a pan up zooms in by the same")
+	t.ok(rd.read().pan == Vector2.ZERO, "read drains the pan")
+	# pinch
+	var mag := InputEventMagnifyGesture.new()
+	mag.factor = 1.25
+	rd._input(mag)
+	r = rd.read()
+	t.near(r.magnify, 1.25, 1e-9, "the magnify gesture reaches the frame")
+	chase.handle_input(CameraInput.from_raw(r, false), o, 1.0 / 60.0)
+	t.near(chase.R, r0 / 1.25, 1e-6, "fingers apart: zoom in by the factor")
+	mag.factor = 0.8
+	rd._input(mag)
+	chase.handle_input(CameraInput.from_raw(rd.read(), false), o, 1.0 / 60.0)
+	t.near(chase.R, r0, 1e-6, "fingers together: zoom out by the factor")
+	t.near(rd.read().magnify, 1.0, 1e-9, "read drains the pinch")
+	# a horizontal pan is a drag
+	rd.pan_gesture(Vector2(3, 0), 10.0)
+	cin = CameraInput.from_raw(rd.read(), false)
+	t.ok(cin.dragging, "a horizontal pan drags")
+	t.near(cin.mouse.x, 100.0, 1e-6, "3 of delta is 100 px of drag")
+	t.near(cin.zoom_notches, 0.0, 1e-9, "and zooms nothing")
+	var az0 := chase.az
+	chase.handle_input(cin, o, 1.0 / 60.0)
+	t.near(chase.az - az0, 100.0 * ChaseCamera.MOUSE_RATE, 1e-9, "the chase camera orbits as a mouse drag")
+	# one axis per gesture, kept through its glide
+	rd.pan_gesture(Vector2(1, 10), 20.0)
+	rd.pan_gesture(Vector2(10, 1), 20.1)
+	r = rd.read()
+	t.ok(r.pan == Vector2(0, 11), "a gesture that starts vertical keeps its axis: %s" % r.pan)
+	rd.pan_gesture(Vector2(10, 1), 20.5)
+	r = rd.read()
+	t.ok(r.pan == Vector2(10, 0), "after 0.3 s of quiet a horizontal gesture starts: %s" % r.pan)
+	# the wheel is unchanged: one notch per click, whatever its factor
+	var wheel := InputEventMouseButton.new()
+	wheel.button_index = MOUSE_BUTTON_WHEEL_DOWN
+	wheel.pressed = true
+	wheel.factor = 0.3
+	rd._input(wheel)
+	wheel.pressed = false
+	rd._input(wheel)
+	t.near(rd.read().wheel, -1.0, 1e-9, "a wheel click of factor 0.3 is still one notch")
+	# chat focus drops the gestures of the frame as it drops the wheel
+	rd.pan_gesture(Vector2(0, 2), 30.0)
+	rd.magnify_gesture(1.5)
+	var quiet := rd.read().without_buttons()
+	t.ok(quiet.pan == Vector2.ZERO and quiet.magnify == 1.0 and quiet.wheel == 0.0, "chat focus: no gestures")
+	rd.free()
+
+
 ## one frame of the scene with `actions` pressed (and `held` held)
 func _frame_with(sc: Node, actions: Array = [], held: Array = [], dt := 1.0 / 60.0) -> void:
 	var r := RawInput.new()
@@ -587,6 +678,11 @@ func test_capture_scene_fake() -> void:
 	pm.act = false
 	await process_frame
 	t.ok(_ticks_over(sc, 1.0) >= 19, "running")
+	# controls.md §7: without the capture preset (or a shot script) the capture keys do nothing
+	_frame_with(sc, [&"capture_pause", &"capture_slow"])
+	t.ok(_ticks_over(sc, 1.0) >= 19 and sc.capture.rate() == 1.0 and not sc.capture.frozen,
+		"without the capture preset the capture keys do nothing")
+	sc.capture_keys = true
 	_frame_with(sc, [&"capture_pause"])
 	await process_frame
 	var tick0: int = sc.sim.tick()

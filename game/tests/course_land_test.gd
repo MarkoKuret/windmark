@@ -285,7 +285,9 @@ func test_race() -> void:
 		var tw := cv.warning_time()
 		var class_up: bool = st == CourseView.RACE_SEQUENCE and tr >= -tw and tr < 0.0
 		flags_ok = flags_ok and cv.flags_up.get(CourseProps.Flag.CLASS, false) == class_up
-		flags_ok = flags_ok and cv.flags_up.get(CourseProps.Flag.I, false) == (st == CourseView.RACE_SEQUENCE and tr >= -(tw - 60.0) and tr < -60.0)
+		# the quick race flies the P flag (menus.md §1), from the preparatory signal to one minute
+		flags_ok = flags_ok and cv.flags_up.get(CourseProps.Flag.P, false) == (st == CourseView.RACE_SEQUENCE and tr >= -(tw - 60.0) and tr < -60.0)
+		flags_ok = flags_ok and not cv.flags_up.get(CourseProps.Flag.I, false)
 		if rb["started"]:
 			started_seen = true
 		if not cv.laylines.is_empty():
@@ -310,15 +312,20 @@ func test_race() -> void:
 			break
 	t.ok(seen.has(0) and seen.has(1) and seen.has(2) and seen.has(3), "warning, prep up, one minute and start signals (%s)" % str(seen.keys()))
 	t.ok(white_seen and green_seen and line_ok, "start line drawn per the race state (white %s, green %s)" % [white_seen, green_seen])
-	t.ok(flags_ok, "class and I flags up in their windows")
+	t.ok(flags_ok, "class and P flags up in their windows (the quick race flies P, not the course's I)")
 	t.ok(bob_max - bob_min > 0.02, "the windward mark rides the sea (%.2f m)" % (bob_max - bob_min))
 	t.ok(started_seen, "the boat started")
 	t.ok(laylines_seen and layline_ok, "laylines at the polar VMG angles of the smoothed wind, red port, green starboard")
 	sc.hud.refresh_text()
 	var txt: String = sc.hud.text_of("next")
 	t.ok(txt == "Windward", "the race HUD names the next mark (%s)" % txt)
-	# reset restarts the race
+	# reset asks first in a race (controls.md §2), the second press within 3 s restarts it
 	r.pressed.clear()
+	r.pressed.append(&"reset_boat")
+	sc.step_frame(0.0)
+	r.pressed.clear()
+	t.ok(sc.sim == sim and sc.hud.text_of("message").begins_with("Restart the race? Press "),
+		"reset once asks, restarts nothing: %s" % sc.hud.text_of("message"))
 	r.pressed.append(&"reset_boat")
 	sc.step_frame(0.0)
 	r.pressed.clear()

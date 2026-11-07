@@ -416,25 +416,53 @@ limited by holding course (§7.4): rule 16 does not make a boat sail into a comm
 A boat in contact with a course object, an obstacle or land (the contacts of the last collision step, felt as a
 bump; one within the last second counts, since the contact comes and goes while she lies against it) with less than
 1 m/s over the ground for 0.5 s is **pinned** (a current holding her on a mark, a crowd pressing her onto a committee
-boat, a slow rounding that ends against the buoy). A boat pressed against an object by her own drive or her drift
-soon loses the last of her way, and with no way on the rudder cannot turn her: a hard helm only wedges her harder
-against it. So, racing, she tries three ways off in turn, changing over whenever 3 s pass without progress (she moved
-less than 0.4 m and turned less than 8°):
+boat, a slow rounding that ends against the buoy). A boat pressed against an object by her own drive, her drift or a
+stream soon loses the last of her way, and with no way on the rudder cannot turn her: a hard helm only wedges her
+harder against it, and the contact friction (`collisions.md` §4, 0.5 against a mark) eats the drive from rest while
+the drift presses her on. What still moves a stalled boat is the physics of `boat.md` §6.4 and §7.4: she falls off the
+wind at up to 8°/s between 20° and 60° off it (nothing head to wind, nothing beam on), she drifts to leeward at
+0.3 to 0.5 m/s, head to wind the windage pushes her astern at up to 1 m/s, the eased sails give her a crawl ahead
+across the wind, and the object itself kicks her bow round as it presses on the hull. The escape works with these:
+she turns so that the object comes round to her **windward side**, where the drift and the sternway carry her off it.
+Racing, she tries three ways off in turn, changing over whenever a check passes without progress (she moved less
+than 0.4 m and turned less than 8°):
 
-1. the sails drawing, the helm steady on her present heading: lying along the object, she slides and pivots off it;
-2. the sails let fly, the helm steady: the drift of a stalled boat (`boat.md` §6.4) carries her to leeward and off
-   it;
+1. the sails drawing, the helm steady on her present heading (checked every 3 s): lying along the object, she slides
+   and pivots off it (with the helm balance on, `boat.md` §2, the sail plan's luff does the pivoting);
+2. the sails let fly and the helm hard over for the turn that brings the object round to windward (checked every
+   6 s, progress from 5° of turn: the turn from rest is slow): an object to windward, or one on the lee bow close
+   enough for the fall-off to swing it past the bow before she lies beam on (`|twa|` + its angle off the bow + 20°
+   within 90°), goes round by **bearing away**, and the drift then slides her off; any other object to leeward by
+   **luffing**: on the crawl ahead of the eased sails the rudder takes her through the wind onto the other tack,
+   where the fall-off finishes the turn and the drift carries her off; or, once she backs, the stern swings to
+   windward and she backs off it. The helm is set for that turn with way ahead (`+tack` to luff, `−tack` to bear
+   away) and held for the stint; with sternway it works the other way, which takes her off a leeward object as well.
+   The object's bulk is taken 1 m behind the contact point along the contact normal (a mark's centre, about). Without
+   progress the stint is repeated once with the helm the other way before the next way off;
 3. the heading on her present tack whose course over the ground leads most directly away from it
    (`dot(V(ψ)·dir(ψ) + current, n) + 0.5·dot(dir(ψ), n) − 0.3·|ψ − ψ_now|`, `n` the contact normal towards her, 5°
-   steps, not above close-hauled), the sails drawing and the helm free of the drag limit: against a stream that
-   holds her on it.
+   steps, not above close-hauled), the sails drawing and the helm free of the drag limit (checked every 3 s): against
+   a stream that holds her on it, with way on (|v| ≥ 0.3 m/s; without way it is skipped: the rudder is idle).
 
-With a stream of more than 0.2 m/s setting her onto the object she starts with the third. The escape (tactic `Land`)
-lasts until the contact has been gone for 3 s; meanwhile no other plan steers her (no rules avoidance, no tack, no
-penalty turn, §7.6), since none can until she is off it. Measured on the contact states of 38 fleet races (each
-sailed on for 40 s with one fixed choice, from the moment the boat counts as pinned): the sails drawing frees 23, let
-fly 31, drawing for 3 s then let fly 32, a hard helm either way 15 to 16. Once a boat has lost all way against the
-object, none of them frees her.
+With no way on (|v| < 0.3 m/s, the crawl in which the fall-off acts and the rudder hardly does) she starts with the
+second; with way on she keeps the sails drawing, since letting fly would throw that way away (with the helm balance
+on, the drawing sail plan's luff pivots a boat with a crawl on off a mark; let fly at once, she stalls on it): in a
+stream of more than 0.2 m/s setting her onto the object with the third, otherwise with the first. The escape (tactic `Land`) lasts until the contact has been
+gone for 3 s; meanwhile no other plan steers her (no rules avoidance, no tack, no penalty turn, §7.6), since none can
+until she is off it.
+
+Measured with the helm balance on, on the contact states of 38 fleet races (each sailed on for 40 s with one fixed
+choice, from the moment the boat counts as pinned): the sails drawing freed 23, let fly 31, drawing for 3 s then let
+fly 32, a hard helm either way 15 to 16. With the helm balance off (the game's default) the luff that pivoted a boat
+off a mark is gone, and the three pinned states of the Solent fleet test (WM-202: flood seed 1 on the gate mark, flood
+seed 2 and slack seed 2 on the leeward mark, the mark on the lee side each time and in the flood the stream setting
+her onto it) were probed the same way: the sails drawing with the helm steady freed none for good, let fly with the
+helm steady one, and let fly with the helm hard over toward the wind all three (through the wind and off on the other
+tack in 20 s in the flood; backing off stern first; falling off and sliding off to leeward in the slack). The fleet
+runs went from stuck 72 and 118 s (flood), 0 and 12 s (ebb), 19 and 114 s (slack) to 27 and 17, 0 and 12, 19 and 23 s.
+Once a boat has lost all way with a mark on her lee bow near head to wind, the contact kicks luffing her and the
+fall-off bearing her away can balance for tens of seconds (slack seed 2), until she luffs into the no-go zone and
+backs off; the mode cycling and the second let-fly stint keep that from being undone.
 
 ### 6.3 Gate choice
 
@@ -813,6 +841,15 @@ where they have lost all way before the escape starts; most of the fleet DSQs ar
 (`44.2-late`), many of them by such boats. Keeping the start spots 1.5 L from the line's
 ends was tried and dropped (measured worse).
 
+The runs sail with the helm balance off, the game's default (`boat.md` §2; `AI_WH=1` turns it on for a run). After
+WM-202 (the pinned escape without it, §6.5), the same runs and seeds off / on: 10 Intermediate 98 % / 98 % finish,
+0.24 / 0.60 penalties per boat, 1.8 / 3.0 contacts per race, stuck ≤ 6 / 22 s, bad air 1.6 / 1.9 triggers per boat;
+mixed fleet mean place Easy 7.1 / 7.3, Intermediate 4.1 / 4.4, Expert 3.6 / 4.2, Pro 3.3 / 2.2, finishers' mean
+times within 2 %; 1 nm beat 5.2 / 5.0 tacks per boat; the match leader covers in every race (1 to 5 / 2 to 6
+activations), 6 / 1 penalties over the five races; the Solent fleets stuck ≤ 27 / 0 s in the flood, 12 / 8 s in the
+ebb, 23 / 19 s in the slack, 56 / 58 of 60 finish. The boats sail about as well either way; the few races move with
+any change of timing, as above.
+
 The keep-clear evaluation (§7.2) takes the candidate held from the last decision first and the others in the order
 of a lower bound of their cost; it makes the same choice as evaluating all of them, and halves the AI's time:
 `PERFORMANCE.md` ("AI skippers alone") has the numbers.
@@ -825,8 +862,9 @@ of the last manoeuvre and why a penalty turn waits), `AI_VENUE=<venue>` races a 
 `AI_SEEDS` (with `AI_TIDE`, `AI_N`, `AI_LEVEL`, `AI_MIXED`) and prints the windward approaches and the beats' side,
 `AI_REL=fleet7|fleet12|mixed|match7|match12|big|bigmix` with `AI_SEEDS` prints per race the finishes, DNF, DSQ,
 the longest stuck and pinned times, contacts, penalties, touches and the skippers' cost per tick (mean, percentiles,
-worst), `AI_PIN=<t>` (with `AI_REL`, `AI_SEED`, `AI_PIN_B`, `AI_PIN_SEQ`) replays a race to race time t and sails
-one boat on fixed controls from there (how a pinned boat can get free), and `AI_SNAP=<dir>` resumes a race the game saved (the world
+worst), `AI_PIN=<t>` (with `AI_REL`, `AI_FLEET` or `AI_VENUE`, `AI_SEED`, `AI_PIN_B`, `AI_PIN_SEQ`, `AI_PIN_V`) replays a race
+to race time t and sails one boat on fixed controls from there (how a pinned boat can get free; `AI_PIN_LOG=1` on any
+run lists the pinned episodes to probe), and `AI_SNAP=<dir>` resumes a race the game saved (the world
 snapshot and the skippers' block, `world.bin` and `ai.bin`, boat 0 the player) instead of creating one, so a
 failure seen in the game scene is replayed in the core.
 
@@ -838,7 +876,7 @@ themselves and serialise it as a **block of their own**, taken at the same momen
 ticks) and stored or sent next to it:
 
 ```
-uint32 magic 0x49414D57 ("WMAI"), uint32 version = 3
+uint32 magic 0x49414D57 ("WMAI"), uint32 version = 4
 uint32 tick (the world's next tick), uint64 race_seed, uint32 boat count of the world
 list   AI boats, in the order they were added:
   int32 boat index

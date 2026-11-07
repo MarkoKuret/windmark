@@ -371,6 +371,19 @@ func test_screen() -> void:
 		"finishing heading: %s / %s" % [rs.heading_label.text, rs.line_label.text])
 	t.ok(rs.title.text == "2ND" and rs.title.tagline_text == "FINISHED  0:23:32.35  +0:12",
 		"title: %s / %s" % [rs.title.text, rs.title.tagline_text])
+	# a boat ghosted at the start limit is a DNS, not a disqualification (menus.md §5)
+	var why_was: String = host.hud.race.end_reason
+	host.hud.race.end_reason = "ghost"
+	var code_was := ""
+	for row in host.hud.race.result_rows:
+		if int(row["boat"]) == host.hud.race.own_boat:
+			code_was = str(row.get("code", ""))
+			row["code"] = "DNS"
+	t.ok(rs.title_words() == ["DNS", "DID NOT START"], "a DNS ghost's title: %s" % str(rs.title_words()))
+	host.hud.race.end_reason = why_was
+	for row in host.hud.race.result_rows:
+		if int(row["boat"]) == host.hud.race.own_boat:
+			row["code"] = code_was
 	t.ok(rs.own_row == 1 and rs.shown_rows[1][2] == "Kestrel" and rs.shown_rows[1][3] == "You"
 		and rs.shown_rows[1][1] == "7", "the player's row: %s" % str(rs.shown_rows[1]))
 	var own_box := (rs.table.get_child(rs.own_row + 1) as PanelContainer).get_theme_stylebox("panel") as StyleBoxFlat
@@ -596,6 +609,19 @@ func test_scene_flow() -> void:
 		sc.queue_free()
 		return
 	rs.act = false
+	# controls.md §2: in a race Backspace asks first; a second press within 3 s restarts it, a later one asks again
+	var sim0: Object = sc.get("sim")
+	_press(sc, &"reset_boat")
+	t.ok(sc.get("sim") == sim0 and hud.text_of("message").begins_with("Restart the race? Press "),
+		"Backspace once: a note, no restart: %s" % hud.text_of("message"))
+	_press(sc, &"reset_boat")
+	t.ok(sc.get("sim") != sim0, "Backspace again within 3 s: the race restarts")
+	var sim1: Object = sc.get("sim")
+	_press(sc, &"reset_boat")
+	for i in 200:  # 3.3 s
+		sc.call("step_frame", 1.0 / 60.0)
+	_press(sc, &"reset_boat")
+	t.ok(sc.get("sim") == sim1, "a press after 3 s asks again")
 	(sc.get("sim") as CoreSimSource).ai_take_over(0)  # an AI skipper sails the player's boat round the course
 	var frames := 0
 	while frames < 20000 and not hud.race.race_over:
@@ -654,6 +680,13 @@ func test_scene_flow() -> void:
 	GameSetup.next = null
 	sc2.queue_free()
 	await process_frame
+
+
+## one frame of the scene with `action` pressed
+func _press(sc: Node, action: StringName) -> void:
+	sc.set("scripted_input", RawInput.new().press(action))
+	sc.call("step_frame", 1.0 / 60.0)
+	sc.set("scripted_input", RawInput.new())
 
 
 func test_scene_retire() -> void:

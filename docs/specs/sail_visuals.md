@@ -1510,6 +1510,12 @@ Flutter phase `φ = 0` unless stated.
     50° off the clew's bisector over the whole sweep of trims (the clew is set once per measured AWA at its nominal
     trim, not every update) and the foot and lower leech fair with turn steps up to 4° (the clew hook) and no bulge.
 
+28. **The forestay rule.** On every class with a spinnaker (wm7, wm9, wm10, wm12, wm16, wm21), through BoatView
+    (native), the kite at AWA 60° to 180° in 10° steps on both gybes, sheeted at 60, 85, 100 and 130 % of its optimum,
+    and every 30° hoisted and dropped (progress 0.2, 0.5, 0.8, 1): the forestay passes through no triangle of the
+    kite, and no vertex within 0.5 m of it athwartships, between its ends in height, lies less than 0.05 m ahead of
+    it. The test prints the smallest such distance per kite.
+
 ## 13. Dependencies and open points
 
 - The generator writes the `look` block per sail and a `pole` node (pivot at its heel on the mast, turning about the

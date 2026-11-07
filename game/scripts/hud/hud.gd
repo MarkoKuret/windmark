@@ -106,7 +106,6 @@ var world: HudCanvas
 var inst_page: HudCanvas
 var toast_block: HudCanvas
 var bug_block: HudCanvas
-var wind_page: HudCanvas
 var feed_block: HudCanvas
 ## the top centre lane: start block, penalty panel, rules line, banner, prompt (visible while the sim has a race)
 var race_panel: Control
@@ -202,7 +201,6 @@ func _init() -> void:
 	toast_block = _block("InstrumentsChip", HudPaint.toast)
 	toast_block.visible = false
 	bug_block = _block("RaceBug", HudPaint.bug)
-	wind_page = _block("Wind", HudPaint.wind)
 	feed_block = _block("Feed", HudPaint.feed)
 	map_view = CourseMapView.new()
 	map_view.name = "CourseMap"
@@ -345,11 +343,11 @@ func phase() -> String:
 
 
 ## The items the density and the assist show now (hud.md §16.1, §14): instrument cells ("bsp", "twa_dial",
-## "twa", "hdg", "vmg_kn", "awa", "sog", "cog", "aws", "heel_bar"; no target speed, hud.md §4), "bug", "bug_lap",
-## "bug_gap" (the leader gap), "bug_gaps" (ahead and behind), "wind_page", "shift", "feed" (every event, 6 lines),
-## "feed_own" (the viewed boat's events, 3 lines), "start_min", "start_full", "hint", "mark_eta", "mark_brg" (the
-## mark tag's second line), "radar", "helm". Race is the racer's list: speed, the dial, heading, the mark's distance
-## and time, rank and gap; the rest is Data.
+## "twa", "hdg", "tws", "heel_bar", "vmg_kn", "awa", "sog", "cog", "twd", "aws"; no target speed, hud.md §4), "bug",
+## "bug_lap", "bug_gap" (the leader gap), "bug_gaps" (ahead and behind), "shift" (the chip in the heading cell),
+## "feed" (every event, 6 lines), "feed_own" (the viewed boat's events, 3 lines), "start_min", "start_full", "hint",
+## "mark_eta", "mark_brg" (the mark tag's second line), "radar", "helm". Race is the racer's list: speed, the dial,
+## heading, heel, the true wind speed, the mark's distance and time, rank and gap; the rest is Data.
 func items() -> Array[String]:
 	var ph := phase()
 	var key := [int(density), ph, int(assist)]
@@ -362,31 +360,28 @@ func items() -> Array[String]:
 func _items_of(ph: String) -> Array[String]:
 	var out: Array[String] = ["bsp", "twa_dial", "twa", "radar", "helm"]
 	var lvl := density
-	var data := ["vmg_kn", "awa", "sog", "cog", "aws", "heel_bar"]
+	# the cluster (hud.md §16.3): Race adds heading, the true wind speed and the heel bar; Data the rest
+	if lvl >= Density.RACE:
+		out.append_array(["hdg", "tws", "heel_bar"])
+	if lvl == Density.DATA:
+		out.append_array(["vmg_kn", "awa", "sog", "cog", "twd", "aws"])
 	match ph:
-		"free":
-			if lvl >= Density.RACE:
-				out.append("hdg")
-			if lvl == Density.DATA:
-				out.append_array(data)
-				out.append("wind_page")
 		"pre":
 			out.append("start_min" if lvl == Density.GLANCE else "start_full")
 			if lvl == Density.RACE:
-				out.append_array(["hdg", "feed_own"])
+				out.append("feed_own")
 			if lvl == Density.DATA:
-				out.append_array(data)
-				out.append_array(["hdg", "wind_page", "bug", "bug_lap", "feed"])
+				out.append_array(["bug", "bug_lap", "feed"])
+		"free":
+			pass
 		_:
 			out.append("bug")
 			if lvl == Density.GLANCE:
 				out.append("feed_own")
 			elif lvl == Density.RACE:
-				out.append_array(["hdg", "shift", "bug_gap", "mark_eta", "feed_own"])
+				out.append_array(["shift", "bug_gap", "mark_eta", "feed_own"])
 			else:
-				out.append_array(data)
-				out.append_array(["hdg", "shift", "bug_gap", "mark_eta", "wind_page", "bug_lap", "bug_gaps", "mark_brg",
-					"hint", "feed"])
+				out.append_array(["shift", "bug_gap", "mark_eta", "bug_lap", "bug_gaps", "mark_brg", "hint", "feed"])
 	if not shows("shift"):
 		out.erase("shift")
 	if not shows("sail_hint"):
@@ -394,7 +389,8 @@ func _items_of(ph: String) -> Array[String]:
 	return out
 
 
-## hud.md §16.1: the shift chip shows now (the shift item, a lift or a header of 2 degrees or more)
+## hud.md §16.1, §16.3: the shift chip shows now in the page's heading cell (the shift item, a lift or a header of
+## 2 degrees or more)
 func shift_chip_shown() -> bool:
 	return has_item("shift") and text_of("shift") != "" and race.shift_kind != ""
 
@@ -1393,11 +1389,11 @@ func _over_boat(q: Vector2) -> bool:
 # ---- world labels keep clear of the HUD's blocks (hud.md §16.4) ----
 
 ## the screen rects the HUD's own blocks draw now (instrument page and chip, radar, helm strip and notes, the
-## next-mark arrow, race bug, wind page, feed, alert lane, boat card)
+## next-mark arrow, race bug, feed, alert lane, boat card)
 func keep_clear_rects() -> Array[Rect2]:
 	var out: Array[Rect2] = []
-	for blk in [inst_page, toast_block, radar, helm_notes, mark_arrow_block, bug_block, wind_page, feed_block,
-			start_block, penalty_panel, alerts_block, card_block]:
+	for blk in [inst_page, toast_block, radar, helm_notes, mark_arrow_block, bug_block, feed_block, start_block,
+			penalty_panel, alerts_block, card_block]:
 		var c := blk as HudCanvas
 		if not c.visible or not c.is_visible_in_tree() and c.is_inside_tree():
 			continue
@@ -1638,7 +1634,7 @@ func _layout_map() -> void:
 	for b in [inst_page, helm_block, helm_notes]:
 		(b as CanvasItem).visible = on
 	if map_open:
-		for b in [world, toast_block, bug_block, wind_page, feed_block, next_panel, card_block, radar, ranking_panel,
+		for b in [world, toast_block, bug_block, feed_block, next_panel, card_block, radar, ranking_panel,
 				mark_arrow_block]:
 			(b as CanvasItem).visible = false
 
@@ -1671,13 +1667,10 @@ func _layout_blocks() -> void:
 	bug_block.visible = race.active and its.has("bug")
 	bug_block.position = m
 	bug_block.size = Vector2(520, 200) * k
-	# wind page (or the shift chip alone) and the feed under it, top right
-	wind_page.visible = its.has("wind_page") or shift_chip_shown()
-	wind_page.size = Vector2(HudPaint.WIND.x, 160) * k
-	wind_page.position = Vector2(sc.x - m.x - HudPaint.WIND.x * k, m.y)
+	# the feed, top right (the only block there: the wind is on the instrument page, hud.md §16.3)
 	feed_block.visible = race.active and (its.has("feed") or its.has("feed_own"))
 	feed_block.size = Vector2(620, 170) * k
-	feed_block.position = Vector2(sc.x - m.x - feed_block.size.x, m.y + _under_wind(its) * k)
+	feed_block.position = Vector2(sc.x - m.x - feed_block.size.x, m.y)
 	# radar, bottom right
 	radar.visible = race.active
 	radar.compact = density == Density.GLANCE
@@ -1734,14 +1727,6 @@ func _layout_blocks() -> void:
 	var qs := HudPaint.table_size(RESULT_W, race.result_rows.size()) * k
 	results_panel.size = qs
 	results_panel.position = (sc - qs) * 0.5
-
-
-## the room the feed leaves under the top right corner (design px): the wind page, or the shift chip's row (kept
-## whether the chip shows or not, so the feed does not jump), or nothing
-func _under_wind(its: Array[String]) -> float:
-	if its.has("wind_page"):
-		return 172.0
-	return 40.0 if its.has("shift") else 0.0
 
 
 ## hud.md §16.4: the mark tag on the mark keeps clear of the HUD's blocks: above-right of it, else under it, else
@@ -1830,23 +1815,18 @@ const MAP_LANE_BAND := 440.0
 const PORTRAIT_LANE_MAX := 1.15
 
 
-## Portrait: the race bug and wind page on top, the alert lane large under them, the instruments compact at the
-## bottom (page left, compact radar right, helm strip, notes, chip and feed over them), tables fitted to the width.
+## Portrait: the race bug on top, the alert lane large under it, the instruments compact at the bottom (page left,
+## compact radar right, helm strip, notes, chip and feed over them), tables fitted to the width.
 func _layout_portrait(sc: Vector2, k: float, m: Vector2, its: Array[String]) -> void:
 	var mb := HudStyle.bottom_margin(sc)
 	var inner := sc.x - 2.0 * m.x
-	# top row: race bug left, wind page right
+	# top row: the race bug, left
 	bug_block.visible = race.active and its.has("bug")
 	bug_block.position = m
 	bug_block.size = Vector2(520, 200) * k
-	wind_page.visible = its.has("wind_page") or shift_chip_shown()
-	wind_page.size = Vector2(HudPaint.WIND.x, 160) * k
-	wind_page.position = Vector2(sc.x - m.x - HudPaint.WIND.x * k, m.y)
 	var top := 0.0
 	if bug_block.visible:
 		top = maxf(top, bug_block.extent().end.y)
-	if wind_page.visible:
-		top = maxf(top, wind_page.extent().end.y)
 	# the alert lane under them, as large as fits
 	var kl := minf(k * PORTRAIT_LANE_MAX, inner / HudPaint.LANE_W)
 	race_panel.position = Vector2(sc.x * 0.5 - HudPaint.LANE_W * kl * 0.5, m.y + top + (16.0 * k if top > 0.0 else 0.0))
@@ -1922,9 +1902,9 @@ func _place_table(b: HudCanvas, widths: Array, rows: int, k: float, inner: float
 
 
 func _all_canvases() -> Array[HudCanvas]:
-	var n := 23 + gauge_views.size()
+	var n := 22 + gauge_views.size()
 	if _canvases.size() != n:
-		_canvases = [world, inst_page, toast_block, bug_block, wind_page, feed_block, start_block,
+		_canvases = [world, inst_page, toast_block, bug_block, feed_block, start_block,
 			flags_view, penalty_panel, turn_view, alerts_block, next_panel, card_block, arrow_view, mark_arrow_block, radar,
 			helm_block, helm_notes,
 			rudder_bar, sheet_bar, ranking_panel, results_panel, map_view]

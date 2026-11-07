@@ -11,8 +11,8 @@ const TRACK := 0.14  # label tracking, em
 
 # ---- instrument page geometry (design px): the page sizes and the cell grid per level ----
 
-const PAGE := {Hud.Density.GLANCE: Vector2(486, 150), Hud.Density.RACE: Vector2(486, 246),
-	Hud.Density.DATA: Vector2(720, 298)}
+const PAGE := {Hud.Density.GLANCE: Vector2(486, 150), Hud.Density.RACE: Vector2(630, 246),
+	Hud.Density.DATA: Vector2(760, 298)}
 
 
 ## The instrument page size of the level (design px).
@@ -129,47 +129,73 @@ static func _page_glance(b: HudCanvas, h: Hud, sz: Vector2) -> void:
 	_twa_value(b, h, 472, 134, 40)
 
 
-## Race: boat speed over heading, the TWA dial beside them; Data adds VMG (VMC on a reach) over SOG between them and
-## a row of COG, AWS and the heel bar. No target speed (hud.md §4, §16.3).
+## Race (hud.md §16.3): boat speed over heading (the shift chip beside the heading), the true wind speed over the
+## heel bar, the TWA dial; Data adds VMG (VMC on a reach) over SOG before the dial, the AWA value under the dial and
+## a small row of COG, TWD and AWS. Every cell of the Race page keeps its place at Data. No target speed (hud.md §4).
 static func _page_race(b: HudCanvas, h: Hud, data: bool) -> void:
 	var w: float = PAGE[h.density].x
 	_bsp(b, h)
+	divider(b, Vector2(10, 150), Vector2(240, 150))
+	caption(b, 14, 174, "HEADING")
+	number(b, 236, 230, h.value_of("hdg"), 52)
+	_shift_chip(b, h, 14, 196)
 	divider(b, Vector2(250, 10), Vector2(250, 236))
-	var tx := 264.0
+	# the wind with the boat instruments: the true wind speed over the heel bar
+	caption(b, 264, 24, "TRUE WIND", 416, "KN")
+	number(b, 416, 112, h.value_of("tws"), 52)
+	divider(b, Vector2(264, 150), Vector2(420, 150))
+	caption(b, 264, 174, "HEEL")
+	_heel_bar(b, h, Rect2(264, 216, 76, 0))
+	var hs := side_split(h.value_of("heel"))
+	number(b, 416, 230, hs[0], 26, HudStyle.PAPER, hs[1])
+	divider(b, Vector2(430, 10), Vector2(430, 236))
+	var tx := 444.0
 	if data:
 		var reach := h.race.active and h.race.leg_type == "reach"
-		caption(b, 264, 24, "VMC" if reach else "VMG", 446, "KN")
-		number(b, 446, 112, h.value_of("vmg_kn"), 52)
-		caption(b, 264, 174, "SOG", 446, "KN")
-		number(b, 446, 230, h.value_of("sog"), 52)
-		divider(b, Vector2(460, 10), Vector2(460, 236))
-		divider(b, Vector2(264, 150), Vector2(450, 150))
-		tx = 474.0
+		caption(b, 444, 24, "VMC" if reach else "VMG", 556, "KN")
+		number(b, 556, 112, h.value_of("vmg_kn"), 52)
+		divider(b, Vector2(444, 150), Vector2(560, 150))
+		caption(b, 444, 174, "SOG", 556, "KN")
+		number(b, 556, 230, h.value_of("sog"), 52)
+		divider(b, Vector2(570, 10), Vector2(570, 236))
+		tx = 584.0
 	caption(b, tx, 24, "TWA")
 	var dc := Vector2(tx + (w - tx) * 0.5 - 6.0, 104)
 	dial(b, h, dc, 62.0, data)
 	_twa_value(b, h, w - 14, 232, 40)
-	divider(b, Vector2(10, 150), Vector2(240, 150))
-	caption(b, 14, 174, "HEADING")
-	number(b, 236, 230, h.value_of("hdg"), 52)
 	if not data:
 		return
-	caption(b, 474, 214, "AWA", -1, "", LAB_S)
+	caption(b, tx, 214, "AWA", -1, "", LAB_S)
 	var aw := side_split(h.value_of("awa"))
-	b._s(Vector2(474, 234) * b.k, aw[0] + aw[1], int(roundf(18 * b.k)), HudStyle.MIST, 600)
+	b._s(Vector2(tx, 234) * b.k, aw[0] + aw[1], int(roundf(18 * b.k)), HudStyle.MIST, 600)
 	divider(b, Vector2(10, 246), Vector2(w - 10, 246))
-	# row 3: small cells, the label over the value (room for the 11 px floor of small screens)
-	var cells := [["COG", "cog", 120.0], ["AWS", "aws", 270.0]]
-	var x := 14.0
-	for c in cells:
-		caption(b, x, 268, c[0], -1, "", LAB_S)
-		number(b, c[2], 292, h.value_of(c[1]), 26)
-		divider(b, Vector2(c[2] + 14.0, 256), Vector2(c[2] + 14.0, 290))
-		x = c[2] + 28.0
-	caption(b, 446, 268, "HEEL", -1, "", LAB_S)
-	_heel_bar(b, h, Rect2(446, 284, 170, 0))
-	var hs := side_split(h.value_of("heel"))
-	number(b, w - 14, 292, hs[0], 26)
+	# the small row: the label over the value, in thirds (room for the 11 px floor of small screens)
+	var cells := [["COG", "cog"], ["TWD", "twd"], ["AWS", "aws"]]
+	var cw := (w - 28.0) / 3.0
+	for i in 3:
+		var x := 14.0 + cw * i
+		caption(b, x, 268, cells[i][0], -1, "", LAB_S)
+		number(b, x + cw - 14.0, 292, h.value_of(cells[i][1]), 26)
+		if i < 2:
+			divider(b, Vector2(x + cw - 2.0, 256), Vector2(x + cw - 2.0, 290))
+
+
+## hud.md §3.2, §16.3: the shift chip (LIFT or HEADER and the degrees, ink on the tack colour) with its top left at
+## (x, y) design px, in the heading cell; nothing without a shift of 2 degrees or more
+static func _shift_chip(b: HudCanvas, h: Hud, x: float, y: float) -> void:
+	if not h.shift_chip_shown():
+		return
+	var k := b.k
+	var col := HudStyle.STBD if h.race.shift_kind == "lift" else HudStyle.PORT
+	var t := h.text_of("shift")
+	var tw := HudCanvas.text_width(t, int(roundf(LAB * k)), 700, 0.1) / k + 28.0
+	var r := Rect2(Vector2(x, y) * k, Vector2(tw, 30) * k)
+	b._rect(r, col)
+	var sv := b.text_shadow
+	b.text_shadow = false
+	b._s(Vector2(r.position.x + r.size.x * 0.5, r.position.y + 20.0 * k), t, int(roundf(LAB * k)), HudStyle.INK, 700,
+		0.1, HORIZONTAL_ALIGNMENT_CENTER)
+	b.text_shadow = sv
 
 
 ## centre zero, +-30 degrees, the bar in the tack colour to the side that is down
@@ -316,52 +342,7 @@ static func bug(b: HudCanvas, h: Hud) -> void:
 			y += 28.0
 
 
-# ---- wind page (top right) ----
-
-const WIND := Vector2(312, 112)
-
-
-static func wind(b: HudCanvas, h: Hud) -> void:
-	var k := b.k
-	var y := 124.0  # the shift chip hangs under the page, or sits alone at the top (Race, hud.md §16.1)
-	if h.has_item("wind_page"):
-		glass(b, Rect2(Vector2.ZERO, WIND))
-		caption(b, 14, 24, "TRUE WIND", 182, "KN")
-		number(b, 182, 96, h.value_of("tws"), 52)
-		divider(b, Vector2(196, 10), Vector2(196, 102))
-		caption(b, 208, 24, "TWD", 300, h.value_of("twd"))
-		var c := Vector2(254, 70) * k
-		var rr := 30.0 * k
-		var hw := _hw(b)
-		for i in 12:
-			var a := TAU * i / 12.0
-			var d := Vector2(sin(a), -cos(a))
-			b._l(c + d * rr, c + d * (rr - 6.0 * k), HudStyle.HAIR, hw)
-		b._s(c + Vector2(0, -rr + 16.0 * k), "N", int(roundf(TINY * k)), HudStyle.LABEL, 600, 0.0,
-			HORIZONTAL_ALIGNMENT_CENTER)
-		# the true wind blowing across the dial from where it comes (north up)
-		var d := Vector2(sin(h.values.twd), -cos(h.values.twd))
-		var from := c + d * rr
-		var to := c - d * rr
-		b._l(from, to - d * -6.0 * k, HudStyle.PAPER, 2.0 * k)
-		var s := Vector2(-d.y, d.x)
-		b._p(PackedVector2Array([to, to + d * 10.0 * k + s * 5.0 * k, to + d * 10.0 * k - s * 5.0 * k]), HudStyle.PAPER)
-	else:
-		y = 0.0
-	if h.shift_chip_shown():
-		var col := HudStyle.STBD if h.race.shift_kind == "lift" else HudStyle.PORT
-		var t := h.text_of("shift")
-		var tw := HudCanvas.text_width(t, int(roundf(LAB * k)), 700, 0.1) / k + 28.0
-		var r := Rect2(Vector2(WIND.x - tw, y) * k, Vector2(tw, 30) * k)
-		b._rect(r, col)
-		var sv := b.text_shadow
-		b.text_shadow = false
-		b._s(Vector2(r.position.x + r.size.x * 0.5, r.position.y + 20.0 * k), t, int(roundf(LAB * k)), HudStyle.INK, 700,
-			0.1, HORIZONTAL_ALIGNMENT_CENTER)
-		b.text_shadow = sv
-
-
-# ---- feed (under the wind page, right-aligned) ----
+# ---- feed (top right, right-aligned) ----
 
 static func feed(b: HudCanvas, h: Hud) -> void:
 	var k := b.k

@@ -519,28 +519,32 @@ No row twist on top of the measured, no clearance push, no forestay shift, no cl
 is the turn's axis), the clew where the turn puts it; the sheet runs straight from the placed clew to its block
 (§11.3) and the main stops on it as before (§7.6, with the placed clew).
 
+**The forestay rule (hard, owner 2026-11-07).** No spinnaker cloth is ever aft of or through the forestay, on any
+class, at any AWA or trim, flying, hoisting or dropping: the forestay (its tack fitting to the hounds) passes through
+no part of the kite, and no cloth near it athwartships lies behind it. The head stays at the halyard and the tack on
+its fitting (the sprit end, or the pole end where the core puts it); the halyard is never eased. The kite meets the
+rule by the whole-kite turn below, which on a run eases the sheet and brings the clew and the belly forward round the
+stay; its drop slides the flying shape down the luff (§8.5) instead of relaxing it toward the flat sail.
+
 **Clear as a whole.** Where the kite would come within the clearance `c` (§4) of the main, a shown headsail or the
-mast (as §7.4 measures it: horizontal sections, the margin fading at the head and the tack), or, on a pole, behind
-the forestay, it is turned further out about its luff, as one body, just far enough:
+mast (as §7.4 measures it: horizontal sections, the margin fading at the head and the tack), or within `c_f` of the
+forestay, it is turned about its luff (the line from the tack to the head), as one body, just far enough:
 ```
 X(delta) = min over every vertex of x - 1.2 c_P   // 1.2: the horizontal distance keeps a margin over the true one up
                                                   // by the head, where the sails lean
-x includes, on a pole, how far the vertex lies ahead of the forestay (fwd), where it is between the stay's tack
-    fitting and the hounds in height and within 2 c of the stay athwartships (a wall; beside or above it, none)
-delta = 0; 12 times: stop when X >= 0; delta = min(delta + (-X) / max(r, 0.5), cap)   // r: the worst vertex's
-                                                  // distance from the luff axis; cap 0.5 rad, 0.26 rad on a pole
-after the first step only the vertices then within 2 c of the worst are looked at again (not on a pole: the whole
-kite may come round the stay)
+x includes how far the vertex lies ahead of the forestay (fwd), less c_f = 0.04 J_b (J_b the foretriangle base; 0.29
+    m on wm21), where it is between the stay's tack fitting and the hounds in height and within 2 c of the stay
+    athwartships (a wall; beside or above it, none)
+turn out (away from the centreline; on a run: the sheet eased, the clew and the belly forward):
+    delta = 0; up to 12 steps: stop when X >= 0; delta = min(delta + (-X) / max(r, 0.5), cap)   // r: the worst
+                                                  // vertex's distance from the luff axis
+    cap 1.8 rad; without a forestay 0.5 rad, and after the first step only the vertices then within 2 c of the
+    worst are looked at again (with it every vertex: the whole kite may come round the stay)
+the forestay still inside its margin at the end: the same solve turning in; the one that clears, or comes nearer
 ```
-**A kite on a pole on a run** is set as at TWA 150°: the tack on the pole end where the core puts it, the head at the
-halyard, the same height. On a dead run the core squares the pole (wm21 at TWA 176°: pole 81°, kite 79°), so the tack
-sits beside the mast while the forestay meets the deck one foretriangle base ahead, and a 13 m foot with a 4 m belly
-cannot reach round it from there; swung far enough to clear it (about 55° on wm21) the kite reads as an arch blown to
-windward (owner, 2026-11-06), so on a pole the turn above is a last resort capped at 0.26 rad (15°) and the forestay
-still clips the lower kite on a dead run (pole squared past about 75°) on wm21 and wm9. A pole held less square on a
-dead run (50°: no turn needed) is the core's call (`sails.md`, the pole angle table). The pole end raised 0.1 `Sl` on
-a run with the head eased to match (2026-11-06) set the kite too high (owner, 2026-11-07) and was taken out. Until
-2026-11-06 the turn was capped at 0.5 rad in 6 steps for every kite.
+The turn is solved every update from nothing, so it grows smoothly as the run deepens. On wm21 at TWA 176° (pole 81°,
+kite 79°) it is about 55° (the clew about 7.5 m forward); at TWA 150° about 1°. Leaning the kite forward about its
+foot (the halyard eased) was tried on paper and does not help: the foot, where the stay clips, does not move.
 On wm7 at the optimum trims (12 kn) the reach at AWA 64° (kite 16°, main 10°) needs about 16° of this turn, AWA 80°
 and more none; the largest over test 18's sweep (over-sheeted, the main eased, the jib up) is 27°, and on the closest
 reaches (test 20) it takes the clew up to 2.2 m outboard of the widest beam (the hinge model 1.9 m: it bends the
@@ -898,7 +902,9 @@ bundle = (g * (af + sn),  l_min + (l - l_min) * hy,  g * (nf - sn))
 ```
 
 ### 8.5 Spinnaker drop
-The sail slides down the luff and gathers at the tack, fluttering as it comes down.
+The sail slides down the luff and gathers at the tack, fluttering as it comes down. A lofted kite (§6.5) keeps its
+flying shape as it slides (`Tg = (af + W, lf - (thr - l_min), nf + W)` for the cloth still up), so it never relaxes
+across the forestay.
 ```
 thr = l_min + Sl * c ; k = pow(c, 0.3)             // quick to start, then steady
 r = 1 - h

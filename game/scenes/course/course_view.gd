@@ -15,6 +15,9 @@ extends Node3D
 ##     hud.md §7 within 6 L of the next mark;
 ##   - hud.md §7 in 3-D: the rounding arrow on the next mark(s) and, beyond 500 m, a bouncing marker over it.
 ## Mark styles and labels come from the course file (the C API gives type, position, radius and heading).
+## Free sail's laid course (courses.md §6.4, hud.md §7.2) is drawn the same way without the race: no flags but the
+## orange, the next step from the free sail's progress (SimSource.free_course), the start line white while it is the
+## next step (a line to sail to, like the finish).
 ##
 ##   view.bind(sim, boat, sea, course_path); per tick view.tick(); per frame view.frame(alpha, dt, cam_pos)
 
@@ -56,6 +59,8 @@ var flags_up := {}
 var laylines: Array = []
 ## the leg type of the next step: "beat", "run", "reach", "" (none)
 var leg := ""
+## free sail's laid course (no race): the next step comes from the free sail's progress, the start line is step 0
+var free := false
 
 var _race := {}
 var _rb := {}
@@ -82,6 +87,7 @@ func bind(source: CoreSimSource, boat_index: int, sea_node: Sea, course_path := 
 	sim = source
 	boat = boat_index
 	sea = sea_node
+	free = not sim.has_race()
 	course = sim.core.course()
 	_loa = sim.class_info(boat).loa
 	_read_file(course_path)
@@ -220,8 +226,13 @@ func _build_guides() -> void:
 
 ## Once per simulation tick: race state, the smoothed wind for the laylines, the layline refresh at 2 Hz.
 func tick() -> void:
-	_race = sim.core.race()
-	_rb = sim.core.race_boat(boat)
+	if free:
+		var fc := sim.free_course()
+		_race = {}
+		_rb = fc.record() if fc != null and fc.boat == boat else {}
+	else:
+		_race = sim.core.race()
+		_rb = sim.core.race_boat(boat)
 	var s := sim.state(boat)
 	var w := sim.wind_clean(s.pos_x, s.pos_y)
 	var u := Vector2(sin(w.y), cos(w.y))
@@ -248,6 +259,15 @@ func next_step() -> int:
 	return int(_rb.get("next", 0))
 
 
+## The first step the boat sails to: 1 in a race (she starts at the gun), 0 in free sail (the start line).
+func first_step() -> int:
+	return 0 if free else 1
+
+
+static func is_line(kind: int) -> bool:
+	return kind == STEP_START or kind == STEP_FINISH
+
+
 ## The target points of a step: [buoy] for a mark, both buoys of a gate, both ends of a line.
 func step_points(k: int) -> Array[Vector2]:
 	var st: Dictionary = course["steps"][k]
@@ -263,7 +283,7 @@ func _refresh_laylines(s: SimSource.BoatState) -> void:
 	laylines.clear()
 	leg = ""
 	var k := next_step()
-	if k <= 0 or k >= course["steps"].size() or bool(_rb.get("finished", false)):
+	if k < first_step() or k >= course["steps"].size() or bool(_rb.get("finished", false)) or _rb.is_empty():
 		return
 	var st: Dictionary = course["steps"][k]
 	var c := Vector2(s.pos_x, s.pos_y)
@@ -271,7 +291,7 @@ func _refresh_laylines(s: SimSource.BoatState) -> void:
 	var r := pts[0]
 	if int(st["kind"]) == STEP_GATE:
 		r = pts[0] if c.distance_to(pts[0]) <= c.distance_to(pts[1]) else pts[1]
-	elif int(st["kind"]) == STEP_FINISH:
+	elif is_line(int(st["kind"])):
 		r = Geometry2D.get_closest_point_to_segment(c, pts[0], pts[1])
 	_vmg = sim.core.polar_vmg(boat, _tws)
 	if _vmg.is_empty():
@@ -453,7 +473,9 @@ func _update_overlays(pose: SimSource.RenderPose) -> void:
 	var started := bool(_rb.get("started", false))
 	var ends := start_line()
 	start_line_state = "hidden"
-	if state == RACE_SEQUENCE:
+	if free:
+		start_line_state = "white" if next_step() == 0 and not _rb.is_empty() else "hidden"
+	elif state == RACE_SEQUENCE:
 		start_line_state = "red" if t >= -60.0 and is_over(pose) else "white"
 	elif state >= RACE_RACING and state < RACE_CLOSED and not started:
 		start_line_state = "green"
@@ -462,7 +484,7 @@ func _update_overlays(pose: SimSource.RenderPose) -> void:
 		lines.append({"a": ends[0], "b": ends[1], "color": col, "width": 0.35, "kind": "start"})
 	var k := next_step()
 	var n_steps: int = course["steps"].size()
-	if started and k > 0 and k < n_steps and not bool(_rb.get("finished", false)):
+	if started and k >= first_step() and k < n_steps and not bool(_rb.get("finished", false)):
 		var st: Dictionary = course["steps"][k]
 		var pts := step_points(k)
 		match int(st["kind"]):
@@ -474,7 +496,7 @@ func _update_overlays(pose: SimSource.RenderPose) -> void:
 			for l in laylines:
 				lines.append({"a": l["a"], "b": l["b"], "color": HudStyle.STBD if l["tack"] > 0 else HudStyle.PORT,
 					"width": 0.22, "opacity": 0.6, "dash": 8.0, "kind": "layline", "tack": l["tack"]})
-		if show_zone:
+		if show_zone and int(st["kind"]) != STEP_START:
 			# rules.md §7.1: the zone from the mark (its radius added), 2 L in a match race; finishing ends too
 			var c := Vector2(pose.pos_x, pose.pos_y)
 			var zl := float(course.get("zone_lengths", 3.0))
@@ -500,13 +522,13 @@ func _update_guides(pose: SimSource.RenderPose, cam_pos: Vector3) -> void:
 		return
 	if not started:
 		k = 1 if int(_race.get("state", 0)) >= RACE_SEQUENCE else -1  # show the first mark from the warning
-	if k <= 0 or k >= course["steps"].size():
+	if k < first_step() or k >= course["steps"].size() or _rb.is_empty():
 		return
 	var st: Dictionary = course["steps"][k]
 	var c := Vector2(pose.pos_x, pose.pos_y)
 	var pts := step_points(k)
 	var nearest := pts[0]
-	if int(st["kind"]) != STEP_FINISH:
+	if not is_line(int(st["kind"])):
 		for i in pts.size():
 			var mi: int = st["marks"][i]
 			var rec: Dictionary = marks[mi]
@@ -532,7 +554,7 @@ func _update_guides(pose: SimSource.RenderPose, cam_pos: Vector3) -> void:
 		_marker.transform = Transform3D(Basis.from_scale(Vector3.ONE * sc), base + Vector3(0, 6.0 + sc * 0.4 + bounce, 0))
 		_marker.visible = true
 		var name_ := label(int(st["marks"][0])) if int(st["kind"]) == STEP_MARK else \
-			("Finish" if int(st["kind"]) == STEP_FINISH else "Gate")
+			("Finish" if int(st["kind"]) == STEP_FINISH else "Start" if int(st["kind"]) == STEP_START else "Gate")
 		_marker_label.text = "%s  %s" % [name_, HudFormat.distance(dist)]
 		_marker_label.position = base + Vector3(0, 6.0 + sc * 1.6 + bounce, 0)
 		_marker_label.visible = true
@@ -550,12 +572,12 @@ func mark_node(id: String) -> Node3D:
 ## nearest point of a line. INF without a next step.
 func distance_to_next(pose: SimSource.RenderPose) -> float:
 	var k := next_step()
-	if k <= 0 or k >= course["steps"].size():
+	if k < first_step() or k >= course["steps"].size() or _rb.is_empty():
 		return INF
 	var st: Dictionary = course["steps"][k]
 	var bow := Vector2(pose.pos_x, pose.pos_y) + 0.5 * _loa * Vector2(sin(pose.psi), cos(pose.psi))
 	var pts := step_points(k)
-	if int(st["kind"]) == STEP_FINISH:
+	if is_line(int(st["kind"])):
 		return bow.distance_to(Geometry2D.get_closest_point_to_segment(bow, pts[0], pts[1]))
 	var best := INF
 	for i in pts.size():
@@ -567,7 +589,7 @@ func distance_to_next(pose: SimSource.RenderPose) -> float:
 ## before the start and after the finish.
 func next_mark_scene() -> Variant:
 	var k := next_step()
-	if k <= 0 or k >= course["steps"].size():
+	if k < first_step() or k >= course["steps"].size() or _rb.is_empty():
 		return null
 	var r: Vector2 = course["steps"][k]["ref"]
 	return Frames.enu_to_scene(r.x, r.y, 0.0)

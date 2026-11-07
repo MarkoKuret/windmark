@@ -533,7 +533,7 @@ func briefing_text() -> String:
 
 
 func _timing(vi: Dictionary) -> Dictionary:
-	var tm := VenueWeather.timing(_course_doc())
+	var tm := VenueWeather.timing(_course_doc() if mode == "race" else {})
 	if vi.get("conditions", {}).get("tide", {}).is_empty():
 		return tm
 	var venue := str(rows["venue"].value)
@@ -549,6 +549,8 @@ func _timing(vi: Dictionary) -> Dictionary:
 
 
 func _course_doc() -> Dictionary:
+	if mode == "free":
+		return MenuData.course_file(free_course())
 	if not rows.has("course") or rows["course"].value == null:
 		return {}
 	var cid := str(rows["course"].value)
@@ -624,6 +626,13 @@ static func caption_for(c: Dictionary) -> String:
 	return "%s, %s" % [laps, legs]
 
 
+## The course free sail lays (menus.md §1.1): the venue's first course for the class (the first the race's Course
+## row offers), "" when the venue has none for it (free sail on empty water).
+func free_course() -> String:
+	var list := MenuData.courses(str(rows["venue"].value), str(rows["class_id"].value))
+	return str(list[0]["id"]) if not list.is_empty() else ""
+
+
 ## The Start step's summary lines (menus.md §1.1), [label, value].
 func summary_lines() -> Array:
 	var out := []
@@ -634,6 +643,10 @@ func summary_lines() -> Array:
 	if mode == "race":
 		out.append(["Course", rows["course"].value_text() if not _course_doc().is_empty() else "None"])
 		out.append(["Fleet", "%s · %s" % [rows["fleet_size"].value_text(), rows["ai_level"].value_text()]])
+	else:
+		var fc := free_course()
+		var list := MenuData.courses(str(rows["venue"].value), str(rows["class_id"].value))
+		out.append(["Course", MenuData.name_of(list, fc) if fc != "" else "None, open water"])
 	var wmode := str(rows["weather"].value)
 	var w: String = rows["weather"].value_text()
 	if wmode == "custom":
@@ -799,6 +812,8 @@ func _refresh_liveries() -> void:
 
 func _refresh_courses() -> void:
 	if not rows.has("course"):
+		refresh_preview()  # free sail: the course it lays follows the venue and the class
+		refresh_summary()
 		return
 	var list := MenuData.courses(str(rows["venue"].value), str(rows["class_id"].value))
 	rows["course"].set_choices(MenuData.ids(list), MenuData.names(list))
@@ -854,6 +869,8 @@ func write(g: GameSetup) -> void:
 		g.course = str(rows["course"].value)
 		g.fleet_size = int(rows["fleet_size"].value)
 		g.ai_level = str(rows["ai_level"].value)
+	else:
+		g.course = free_course()  # menus.md §1.1: free sail lays it, "" for open water
 	g.weather = str(rows["weather"].value)
 	g.wind_kn = float(rows["wind_kn"].value)
 	g.wind_from_deg = float(rows["wind_from_deg"].value)

@@ -80,7 +80,7 @@ func advance(dt: float) -> void:
 ## boat -> the colour it is drawn in now, for the contacts inside the range
 func contact_colours() -> Dictionary:
 	var out := {}
-	if sim == null or values == null or not values.active:
+	if sim == null or values == null or not values.on_course():
 		return out
 	var me := sim.render_pose(values.boat, alpha)
 	if me == null:
@@ -121,7 +121,7 @@ func _build() -> void:
 			_s(Vector2(0, 2.0 * r + 22.0 * k), "NORTH UP", fs, HudStyle.LABEL, 600, 0.14)
 		_s(Vector2(size.x, 2.0 * r + 22.0 * k), HudFormat.distance(range_m()).to_upper(), fs, HudStyle.LABEL, 600, 0.14,
 			HORIZONTAL_ALIGNMENT_RIGHT)
-	if sim == null or values == null or not values.active:
+	if sim == null or values == null or not values.on_course():
 		return
 	var me := sim.render_pose(values.boat, alpha)
 	if me == null:
@@ -142,7 +142,7 @@ func _build() -> void:
 	for i in bnd.size():
 		_seg(_px(bnd[i]), _px(bnd[(i + 1) % bnd.size()]), c, r, Color(HudStyle.PORT, 0.5), hw)
 	# lines
-	if not values.started and steps.size() > 0:
+	if (not values.started or (values.free and values.next_step == 0)) and steps.size() > 0:
 		var p := values.step_points(0)
 		_seg(_px(p[0]), _px(p[1]), c, r, HudStyle.PAPER, 2.0 * k)
 	if values.next_step == steps.size() - 1 and values.next_step > 0:
@@ -155,7 +155,7 @@ func _build() -> void:
 			_seg(_px(l["a"]), _px(l["b"]), c, r, col, 1.5 * k)
 	# marks
 	var nk := values.next_step
-	var following := nk + 1 if nk > 0 else -1
+	var following := nk + 1 if nk >= 0 else -1
 	var shown := {}
 	for st in [nk, following]:
 		if st <= 0 or st >= steps.size() or int(steps[st]["kind"]) == RaceText.Step.FINISH:

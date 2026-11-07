@@ -110,7 +110,7 @@ the venue and the race rows together. A race has four steps, a free sail three:
 | --- | --- | --- |
 | 1 | **Boat** (narrow page): the class picker, the class shown on the stage, the Sail number | the same |
 | 2 | **Venue**: the venue picker, the venue chart, the briefing, the Course row | the same without the Course row |
-| 3 | **Race**: Fleet, AI level, Weather and its Custom rows, Time, Sky; the race card beside them | **Set sail**: Weather and its Custom rows, Time, Sky; the summary and the venue chart; **Set sail** |
+| 3 | **Race**: Fleet, AI level, Weather and its Custom rows, Time, Sky; the race card beside them | **Set sail**: Weather and its Custom rows, Time, Sky; the summary (with the course laid) and the venue chart; **Set sail** |
 | 4 | **Start**: the summary, the race card and **Start race** | |
 
 - **Step bar**, the page's header, the same on every step: the steps in order as `1 BOAT  2 VENUE  3 RACE  4 START`
@@ -160,6 +160,13 @@ the venue and the race rows together. A race has four steps, a free sail three:
   the briefing box (§1.3) and the **course map** at the course's extent (§1.1.1) with its caption, following the
   rows as they change. Free sail's **Set sail** step has the Weather, Custom, Time and Sky rows on the left, and on
   the right the summary lines (below) and the venue chart; its primary action is **Set sail**.
+- **Free sail's course.** Free sail lays the venue's **first course for the class** (the first of the list the
+  race's Course row offers for that venue and class) so starts and roundings can be practised: its marks, start
+  and finish lines, committee and mark boats, with no start sequence, no clock, no results and no fleet
+  (`courses.md` §6.4; on the water `hud.md` §7.2). The player does not choose it (the setup stays three steps). The
+  Set sail summary names it, `Course  Windward-leeward, 2 laps`, after the Venue line, and the venue chart draws
+  it at its place; a venue without a course for the boat is never a block in free sail: the line reads
+  `Course  None, open water` and the boat sails on empty water as before.
 - **Start step.** Left: the **summary**, label and value lines in the briefing's style: `Boat  Windmark 7
   Sportsboat · 7 Kestrel`, `Venue  Practice Waters`, `Course  Windward-leeward, 2 laps`, `Fleet  10 boats ·
   Easy`, `Weather  Local` (`Custom · 14 kn from the NE · Shifty · Moderate gusts`, `Random`), `Light  Venue

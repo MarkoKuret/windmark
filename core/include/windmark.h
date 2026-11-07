@@ -46,7 +46,7 @@
 extern "C" {
 #endif
 
-#define WM_API_VERSION 7
+#define WM_API_VERSION 8
 
 /* ---- status ------------------------------------------------------------------------------------------------ */
 
@@ -245,6 +245,11 @@ WM_API wm_status wm_world_scenario_place(wm_world* w, int32_t boat, float x, flo
                                          int32_t front_sail);
 /* race.md §3.1: lays the course, checks it on the venue, creates the race and the rules, spawns every boat. */
 WM_API wm_status wm_world_create_race(wm_world* w, const wm_course* course);
+/* courses.md §6.4 free sail: lays the course with no race (the axis on the median wind now), checks it on the venue,
+ * builds its collision objects and places every boat as a race spawns them, the slots nearest the start line's
+ * middle first. Once, before any race; wm_world_place_boat still works after it. The course readers below then
+ * answer without a race. Not part of the world snapshot. */
+WM_API wm_status wm_world_lay_course(wm_world* w, const wm_course* course);
 
 /* ---- controls ---------------------------------------------------------------------------------------------- */
 
@@ -386,6 +391,7 @@ WM_API uint64_t wm_world_checksum(const wm_world* w);
 WM_API uint32_t wm_world_tick(const wm_world* w);
 WM_API int32_t wm_world_boat_count(const wm_world* w);
 WM_API int32_t wm_world_has_race(const wm_world* w);
+WM_API int32_t wm_world_has_course(const wm_world* w); /* a race's course or a laid one (wm_world_lay_course) */
 
 /* ---- boats ------------------------------------------------------------------------------------------------- */
 
@@ -574,7 +580,7 @@ typedef struct wm_course_info {
   float k;                       /* scale (courses.md §6.3) */
   int32_t mark_count, step_count, laps;
   int32_t boundary_count;        /* 0 = no boundary */
-  float zone_lengths;            /* rules.md §7.1 zone in hull lengths of the race (2 in a match race) */
+  float zone_lengths;            /* rules.md §7.1 zone in hull lengths of the race (2 in a match race; laid: the course's) */
 } wm_course_info;
 
 typedef struct wm_mark {
@@ -594,7 +600,7 @@ typedef struct wm_step {
   float ref_x, ref_y;
 } wm_step;
 
-/* The resolved course of the race (WM_ERR_STATE without a race). */
+/* The resolved course of the race or the laid course (WM_ERR_STATE without either). */
 WM_API wm_status wm_world_course(const wm_world* w, wm_course_info* out);
 WM_API wm_status wm_world_course_mark(const wm_world* w, int32_t mark, wm_mark* out);
 WM_API wm_status wm_world_course_step(const wm_world* w, int32_t step, wm_step* out);

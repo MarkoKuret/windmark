@@ -289,6 +289,36 @@ dist ← k · dist   for every offset not marked fixed
 Then the marks are resolved again. `k` (as a binary32) is part of the resolved course, so clients reproduce the
 same positions.
 
+### 6.4 Free sail: a course without a race
+
+Free sail (`menus.md` §1.1) lays a course with no race: the world gets the marks, lines, committee and mark boats of
+a race, and nothing of the race itself (no start sequence, signals, clock, rules, penalties, ranking or results).
+
+- **Laying** (the core, `wm_world_lay_course`): once, before any race, normally at the world's start. The course
+  axis is the wind's median direction at the tick it is laid (§6.1 with that tick in place of the start signal),
+  the scale as §6.3, the checks of §7 as at race creation (a course that fails them is not laid), and every mark
+  but `virtual` ones becomes a collision object as in a race (§2), so a boat touches a buoy or a committee boat as
+  she would racing. The boats are placed as a race spawns them (`race.md` §3.5: on the pre-start side, starboard
+  tack at a close reach), taking the slots nearest the middle of the start line first. The world stays a free
+  sailing world: `place_boat` still works (the reset key re-places the boat at her spawn point), and a race may be
+  created later on it (which lays the course again for the race). The laid course is not part of the world
+  snapshot (`conventions.md` §9.1): a world loaded from one has no laid course until it is laid again.
+- **Progress** (the front end, for the player's boat): the steps of §4.4 in order, the start line first (step 0,
+  a line to cross), then each mark and gate, then the finish line; after the finish it wraps to the start line
+  again, or to step 1 when the finish line is the start line (she has just crossed it). The reset key and a new
+  world start again at the start line. The next step is passed with the race's own tests on the boat's reference
+  point, each tick:
+  - **start line**: crossing it through the line band from the pre-start side to the course side (`race.md` §4.1;
+    the course side is the side of step 1's reference point); no OCS, no signal, any time;
+  - **mark**: the winding test of `race.md` §5.1 with the previous and next steps' reference points (the start
+    line's before step 1, the finish line's after the last mark); the winding starts when the mark becomes the
+    next step, so a boat that passes it on the wrong side has to come back round it, as rule 28 asks;
+  - **gate**: `race.md` §5.2 (pass between the buoys, then round either one; `gate_mode` `cross`: passing between
+    is enough);
+  - **finish line**: crossing it through the band from the side of the step before it to the other side
+    (`race.md` §6.1), whatever the penalties (there are none).
+  There is no distance limit and no time: a step stays next until it is passed.
+
 ## 7. Validation
 
 The loader rejects a file (error) or reports a warning:

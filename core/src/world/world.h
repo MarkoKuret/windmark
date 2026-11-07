@@ -63,6 +63,12 @@ class World {
   // (courses.md §7), builds the collision scene, creates the race and the rules, and spawns the boats.
   bool create_race(const CourseData& course, std::string& error);
 
+  // courses.md §6.4 free sail: lays the course with no race (the axis on the median wind now, the scale and the
+  // checks of a race), builds its collision scene and places every boat as a race spawns them, the slots nearest
+  // the start line's middle first. Once, before any race; the world stays a free sailing world (place_boat works,
+  // a race may still be created). Not part of the snapshot: load() and reset() clear it.
+  bool lay_course(const CourseData& course, std::string& error);
+
   // Free sailing (no race): places boat `boat` at `p` on heading `psi` with the spawn speed of race.md §3.5 (60 %
   // of the polar speed), sails up and trimmed. Only before create_race(), which places every boat itself; returns
   // false after it or for a bad index. A world that never creates a race steps without race, rules or course.
@@ -107,6 +113,7 @@ class World {
   const std::vector<ContactEvent>& last_contacts() const { return contacts_; }
   std::uint64_t checksum() const;  // conventions.md §9: tick index, then the snapshot body
   bool race_created() const { return created_; }
+  bool course_laid() const { return created_ || laid_; }  // a race's course or a free sail's (lay_course)
   const WorldSetup& setup() const { return setup_; }  // as given (the venue's fields are applied inside)
 
   // conventions.md §9.1 world snapshot, taken between ticks: everything the world carries to the next tick.
@@ -129,6 +136,8 @@ class World {
     std::int32_t sail;
   };
   void spawn(std::size_t i, Vec2 p, float psi_hint, bool use_hint);
+  // Resolves `course` on axis `twd_c` (scaled for the longest boat), checks it and builds the collision scene.
+  bool resolve_and_build(const CourseData& course, float twd_c, float& L_max, std::string& error);
   BoatEnv env_at(Vec2 p) const;
   void queue(Command c) { commands_.push_back(c); }
   void save_body(SnapshotWriter& w) const;
@@ -153,6 +162,7 @@ class World {
   Race race_;
   Rules rules_;
   bool created_ = false;
+  bool laid_ = false;  // lay_course(): a free sail's course, no race
   std::uint32_t entries_at_create_ = 0;
   std::vector<Vec2> slots_;
   std::vector<Command> commands_;

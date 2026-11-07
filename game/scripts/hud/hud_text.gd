@@ -9,6 +9,8 @@ extends RefCounted
 static func race(hud: Hud) -> void:
 	var r := hud.race
 	if not r.active:
+		if r.free:
+			next_mark(hud)  # hud.md §7.2: free sail's laid course, the next mark only
 		return
 	var red: Color = HudStyle.PORT
 	var white: Color = HudStyle.PAPER
@@ -63,10 +65,45 @@ static func race(hud: Hud) -> void:
 		for k in ["line", "tline", "burn", "bias"]:
 			hud._put(k, "")
 	hud._put("over", "OVER  %s" % r.over_text if r.over else "", red)
-	# next mark (§7) and performance (§4, §6, §3.2)
-	if r.next_step > 0:
+	next_mark(hud)
+	# position (§10)
+	hud._put("rank", "%d / %d" % [r.rank, r.fleet] if r.rank > 0 else "")
+	# the leader by name and the boat ahead with their time gaps (hud.md §10); no ahead line when she leads
+	var gap := ""
+	if r.leader >= 0 and r.leader != r.boat and r.started:
+		gap = gap_line("Leader", r.name_of(r.leader), "+" + HudFormat.distance(r.gap_dist), r.gap_time,
+			r.gap_estimate, r.gap_at)
+	elif r.leader == r.boat and r.started and r.fleet > 1:
+		gap = "Leading"
+	hud._put("gap", gap)
+	hud._put("ahead", gap_line("Ahead", r.name_of(r.ahead), HudFormat.signed_distance(r.ahead_dist), r.ahead_time,
+		r.ahead_estimate, r.ahead_at) if r.ahead >= 0 and r.ahead != r.leader and r.started else "")
+	hud._put("behind", "Behind  %s  %s" % [r.name_of(r.behind), HudFormat.signed_distance(r.behind_dist)]
+		if r.behind >= 0 and r.started else "")
+	# penalties (§12.1)
+	if r.pending > 0:
+		var other := " (%s)" % r.name_of(r.penalty_other) if r.penalty_other >= 0 else ""
+		var head := "Penalty" if r.pending == 1 else "Penalty 1 of %d" % r.pending
+		hud._put("pen_head", "%s: %s%s" % [head, RaceText.rule_text(r.penalty_rule), other], red)
+	else:
+		hud._put("pen_head", "Penalty done" if r.penalty_visible else "")
+	hud._put("pen_turn", r.turn_text)
+	var dl := ""
+	if r.deadline >= 0.0 and r.pending > 0:
+		dl = "Deadline  %s" % HudFormat.clock(r.deadline)
+	hud._put("pen_deadline", dl, red if r.deadline < 30.0 else white, HudFormat.clock(maxf(r.deadline, 0.0)))
+	hud._put("pen_dsq", "One more penalty = disqualification" if r.dsq_warning and r.pending > 0 else "", red)
+
+
+## The next mark (§7) and performance (§4, §6, §3.2) at 4 Hz: a race, or free sail's laid course (§7.2).
+static func next_mark(hud: Hud) -> void:
+	var r := hud.race
+	var red: Color = HudStyle.PORT
+	var white: Color = HudStyle.PAPER
+	if r.next_step >= 0:
 		hud._put("next", r.next_name, HudStyle.MARK)
-		hud._put("lap", "Lap %d/%d · Leg %d/%d" % [r.lap, r.laps, r.leg, r.legs])
+		hud._put("lap", "Lap %d/%d · Leg %d/%d" % [r.lap, r.laps, r.leg, r.legs] if r.next_kind != RaceText.Step.START
+			else "")
 		var md := HudStyle.split_unit(HudFormat.distance(r.next_dist))
 		hud._put("mark_dist", HudFormat.distance(r.next_dist), white, md[0], md[1])
 		hud._put("bearing", "Bearing  %s  (%s)" % [HudFormat.compass_deg(r.next_bearing),
@@ -101,33 +138,6 @@ static func race(hud: Hud) -> void:
 	else:
 		for k in ["next", "lap", "mark_dist", "bearing", "leg", "layline", "hint", "vmg", "shift"]:
 			hud._put(k, "")
-	# position (§10)
-	hud._put("rank", "%d / %d" % [r.rank, r.fleet] if r.rank > 0 else "")
-	# the leader by name and the boat ahead with their time gaps (hud.md §10); no ahead line when she leads
-	var gap := ""
-	if r.leader >= 0 and r.leader != r.boat and r.started:
-		gap = gap_line("Leader", r.name_of(r.leader), "+" + HudFormat.distance(r.gap_dist), r.gap_time,
-			r.gap_estimate, r.gap_at)
-	elif r.leader == r.boat and r.started and r.fleet > 1:
-		gap = "Leading"
-	hud._put("gap", gap)
-	hud._put("ahead", gap_line("Ahead", r.name_of(r.ahead), HudFormat.signed_distance(r.ahead_dist), r.ahead_time,
-		r.ahead_estimate, r.ahead_at) if r.ahead >= 0 and r.ahead != r.leader and r.started else "")
-	hud._put("behind", "Behind  %s  %s" % [r.name_of(r.behind), HudFormat.signed_distance(r.behind_dist)]
-		if r.behind >= 0 and r.started else "")
-	# penalties (§12.1)
-	if r.pending > 0:
-		var other := " (%s)" % r.name_of(r.penalty_other) if r.penalty_other >= 0 else ""
-		var head := "Penalty" if r.pending == 1 else "Penalty 1 of %d" % r.pending
-		hud._put("pen_head", "%s: %s%s" % [head, RaceText.rule_text(r.penalty_rule), other], red)
-	else:
-		hud._put("pen_head", "Penalty done" if r.penalty_visible else "")
-	hud._put("pen_turn", r.turn_text)
-	var dl := ""
-	if r.deadline >= 0.0 and r.pending > 0:
-		dl = "Deadline  %s" % HudFormat.clock(r.deadline)
-	hud._put("pen_deadline", dl, red if r.deadline < 30.0 else white, HudFormat.clock(maxf(r.deadline, 0.0)))
-	hud._put("pen_dsq", "One more penalty = disqualification" if r.dsq_warning and r.pending > 0 else "", red)
 
 
 ## "Leader  Nora  +120 m  ~+0:25", "Ahead  Kestrel  +45 m  +0:08 @ Windward" (hud.md §10): the time gap marked ~

@@ -114,8 +114,10 @@ static func resolve_settings(s: Dictionary, venue: String, course := "", why := 
 
 ## the venue file the world was created on ("" for open water)
 var venue_path := ""
-## the course file of the race ("" without one)
+## the course file of the race or of free sail's laid course ("" without one)
 var course_path := ""
+## courses.md §6.4: free sail's progress round the laid course (lay_course), followed every tick; null without one
+var free: FreeCourse = null
 
 
 ## Creates the world from `settings` on the venue file (data/venues/<venue>.venue.json when a bare name, "" for
@@ -273,9 +275,12 @@ func step_ticks(n: int, stop_when_closed := true) -> int:
 	return k
 
 
+## Free sailing: places boat b (before any race); on a laid course her progress starts again at the start line.
 func place_boat(b: int, x: float, y: float, psi: float) -> bool:
 	_invalidate()
 	if core.place_boat(b, x, y, psi):
+		if free != null and free.boat == b:
+			free.restart(Vector2(x, y))
 		return true
 	_err = core.last_error()
 	return false
@@ -310,6 +315,33 @@ func create_race(course: String) -> bool:
 		return true
 	_err = core.last_error()
 	return false
+
+
+## courses.md §6.4 free sail: lays the course with no race (wm_world_lay_course), which places the boats as a race
+## spawns them; `boat`'s progress round it (free) then follows every tick. False with last_error() on failure.
+func lay_course(course_id: String, boat := 0) -> bool:
+	var path := course_file(course_id)
+	_invalidate()
+	if not core.lay_course(path):
+		_err = core.last_error()
+		return false
+	course_path = path
+	_fixed.clear()
+	free = FreeCourse.new(course(), boat)
+	var s := state(boat)
+	free.restart(Vector2(s.pos_x, s.pos_y))
+	return true
+
+
+func free_course() -> FreeCourse:
+	return free
+
+
+## The free sail progress after a tick (the reference point of its boat).
+func _follow_free() -> void:
+	if free != null:
+		var s := state(free.boat)
+		free.update(Vector2(s.pos_x, s.pos_y))
 
 
 ## Environment clock (ms) at a fractional tick count, as FakeSim.sea_time_ms.
@@ -448,6 +480,7 @@ func step() -> void:
 		before_step.call()
 	core.step()
 	_invalidate()
+	_follow_free()
 
 
 ## The tick on the CoreSim's worker thread (game/README.md "The simulation on a second core"): step_begin() starts
@@ -467,6 +500,7 @@ func step_begin() -> void:
 func step_end() -> void:
 	core.step_end()
 	_invalidate()
+	_follow_free()
 
 
 # ---- race and rules (SimSource readers, cached until the next step) ------------------------------------------
@@ -479,6 +513,10 @@ func _put(k: int, v: Variant) -> Variant:
 
 func has_race() -> bool:
 	return core != null and core.has_race()
+
+
+func has_course() -> bool:
+	return core != null and core.has_course()
 
 
 func race() -> Dictionary:

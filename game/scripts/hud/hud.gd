@@ -341,13 +341,13 @@ func set_density(d: int) -> void:
 ## the phase the density table uses: "free" (no race), "pre", "beat", "run", "reach", "rounding", "penalty"
 func phase() -> String:
 	var r := race
-	if not r.active:
+	if not r.on_course():
 		return "free"
 	if not r.started:
 		return "pre"
 	if r.penalty_visible:
 		return "penalty"
-	if r.next_step > 0 and not r.finished and (r.next_dist <= 6.0 * r._loa or _rounded_t > 0.0):
+	if r.next_step >= 0 and not r.finished and (r.next_dist <= 6.0 * r._loa or _rounded_t > 0.0):
 		return "rounding"
 	return r.leg_type if r.leg_type != "" else "beat"
 
@@ -361,7 +361,7 @@ func phase() -> String:
 ## heading, heel, the true wind speed, the mark's distance and time, rank and gap; the rest is Data.
 func items() -> Array[String]:
 	var ph := phase()
-	var key := [int(density), ph, int(assist)]
+	var key := [int(density), ph, int(assist), race.free]
 	if key != _items_key:
 		_items = HudItems.of(self, ph)
 		_items_key = key
@@ -385,7 +385,7 @@ func dial_reference() -> float:
 	var dn := values.vmg_dn_twa
 	if is_nan(up) or is_nan(dn):
 		return NAN
-	if race.active and race.started and race.next_step > 0 and race.leg_type != "":
+	if race.on_course() and race.started and race.next_step >= 0 and race.leg_type != "":
 		match race.leg_type:
 			"beat":
 				return up
@@ -616,7 +616,7 @@ func _wire(c: PlayerControls) -> void:
 func toggle_map() -> void:
 	if map_open:
 		close_map()
-	elif race.active and sim != null:
+	elif race.on_course() and sim != null:
 		map_open = true
 		_map_sim = sim
 
@@ -631,7 +631,7 @@ func close_map() -> bool:
 ## Every frame: the map closes by itself without a race, on a new sim, or when the results or the finish card show;
 ## it follows the radar's pose blend, the felt wind, the assist, the name tags and the selection.
 func _map_frame() -> void:
-	if map_open and (not race.active or sim != _map_sim or results_panel.visible or finish_card_shown()):
+	if map_open and (not race.on_course() or sim != _map_sim or results_panel.visible or finish_card_shown()):
 		map_open = false
 	map_view.sim = sim
 	map_view.alpha = radar.alpha
@@ -766,6 +766,12 @@ func _race_frame() -> void:
 	if not r.active:
 		if race_panel.visible:
 			_show_race(false)
+		if r.free:  # hud.md §7.2: free sail's laid course, the mark tag's rounding arrows and the rounding phase
+			if r.next_step != _last_step and _last_step > 0:
+				_rounded_t = ROUNDING_TIME
+			_last_step = r.next_step
+			arrow_view.sides = r.next_sides
+			arrow_view.visible = r.next_step >= 0
 		return
 	if not race_panel.visible:
 		_show_race(true)
@@ -918,7 +924,7 @@ func mark_world() -> Vector3:
 	var o := own_world(0.0)
 	var c := Vector2(o.x, o.y)
 	var best := pts[0]
-	if int(r.course()["steps"][r.next_step]["kind"]) == RaceText.Step.FINISH:
+	if RaceHudMarks.is_line(int(r.course()["steps"][r.next_step]["kind"])):
 		best = Geometry2D.get_closest_point_to_segment(c, pts[0], pts[1])
 	else:
 		for p in pts:
@@ -929,7 +935,7 @@ func mark_world() -> Vector3:
 
 ## the next mark on screen, null when off screen or there is none
 func mark_screen() -> Variant:
-	if not race.active or race.next_step <= 0 or race.finished or world_camera() == null:
+	if not race.on_course() or race.next_step < 0 or race.finished or world_camera() == null:
 		return null
 	var p: Variant = project(mark_world())
 	return p if _on_screen(p, 20.0 * _k) else null
@@ -938,7 +944,7 @@ func mark_screen() -> Variant:
 ## the tack point (ENU) where the current COG meets the other tack's layline, null when not shown
 func world_tack_point() -> Variant:
 	var r := race
-	if world_camera() == null or sim == null or not r.active or r.next_step <= 0 or is_nan(r.layline_dist) \
+	if world_camera() == null or sim == null or not r.on_course() or r.next_step < 0 or is_nan(r.layline_dist) \
 			or not is_nan(r.overstood):
 		return null
 	if not shows("layline_distance") or not (r.leg_type in ["beat", "run"]):
@@ -1213,9 +1219,9 @@ func selected_marker() -> Dictionary:
 ## the ladder axis (ENU unit vector pointing "ahead"): upwind on a beat, before the start and free sailing, downwind
 ## on a run, to the next mark on a reach
 func ladder_axis() -> Vector2:
-	var twd := race.twd10() if race.active else values.twd
+	var twd := race.twd10() if race.on_course() else values.twd
 	var up := Vector2(sin(twd), cos(twd))
-	if race.active and race.started and race.next_step > 0 and not race.finished:
+	if race.on_course() and race.started and race.next_step >= 0 and not race.finished:
 		if race.leg_type == "run":
 			return -up
 		if race.leg_type == "reach":
@@ -1339,7 +1345,7 @@ func label_clear(r: Rect2, rects: Array[Rect2] = []) -> bool:
 ## mark is off screen
 func mark_arrow_shown() -> bool:
 	var r := race
-	if not world_tags or map_open or not r.active or r.next_step <= 0 or r.finished or text_of("next") == "":
+	if not world_tags or map_open or not r.on_course() or r.next_step < 0 or r.finished or text_of("next") == "":
 		return false
 	if world_camera() == null or own_pose() == null:
 		return false

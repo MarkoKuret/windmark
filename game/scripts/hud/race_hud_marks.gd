@@ -10,7 +10,10 @@ static func next_mark(rv: RaceHudValues, sim: SimSource, rb: Dictionary, s: SimS
 	rv.laps = int(rv._course.get("laps", 1))
 	rv.legs = steps.size() - 1
 	var k := int(rb.get("next", 0))
-	rv.next_step = k if k > 0 and k < steps.size() and not rv.finished and not bool(rb.get("ghost", false)) else -1
+	# free sail (hud.md §7.2): the start line is a step to sail to as well
+	var first := 0 if rv.free else 1
+	rv.next_step = k if k >= first and k < steps.size() and not rv.finished and not bool(rb.get("ghost", false)) \
+		else -1
 	rv.next_sides.clear()
 	rv.leg_type = ""
 	rv.eta = NAN
@@ -40,6 +43,8 @@ static func next_mark(rv: RaceHudValues, sim: SimSource, rb: Dictionary, s: SimS
 			rv.next_name = CourseMapView.gate_label(rv.mark_label(ms[0]), rv.mark_label(ms[1]))
 			rv.next_sides.append(sides[0])
 			rv.next_sides.append(sides[1])
+		RaceText.Step.START:
+			rv.next_name = "Start"
 		_:
 			rv.next_name = "Finish"
 	var c := Vector2(s.pos_x, s.pos_y)
@@ -47,7 +52,7 @@ static func next_mark(rv: RaceHudValues, sim: SimSource, rb: Dictionary, s: SimS
 	var bow := c + fwd * 0.5 * rv._loa
 	var pts := rv.step_points(k)
 	var r := pts[0]
-	if rv.next_kind == RaceText.Step.FINISH:
+	if is_line(rv.next_kind):
 		r = Geometry2D.get_closest_point_to_segment(bow, pts[0], pts[1])
 		rv.next_dist = bow.distance_to(r)
 	else:
@@ -112,7 +117,13 @@ static func next_mark(rv: RaceHudValues, sim: SimSource, rb: Dictionary, s: SimS
 	sail_hint(rv, sim, s)
 
 
-## race.md §8.1 and §8.2: the leg axis distance from the bow to the step's reference point
+## A line step: the start or the finish (the free sail's start line, hud.md §7.2, is sailed to like the finish).
+static func is_line(kind: int) -> bool:
+	return kind == RaceText.Step.FINISH or kind == RaceText.Step.START
+
+
+## race.md §8.1 and §8.2: the leg axis distance from the bow to the step's reference point (the step before the
+## start line is the finish, free sail's wrap)
 static func axis_distance(rv: RaceHudValues, k: int, bow: Vector2, twd_mean: float) -> float:
 	var steps: Array = rv._course["steps"]
 	var rk: Vector2 = steps[k]["ref"]
@@ -122,7 +133,7 @@ static func axis_distance(rv: RaceHudValues, k: int, bow: Vector2, twd_mean: flo
 	var e := leg_v.normalized()
 	if leg_v.length() > 0.01 and absf(e.dot(w)) >= cos(PI / 4.0):
 		e = w * signf(leg_v.dot(w))
-	if int(steps[k]["kind"]) == RaceText.Step.FINISH:
+	if is_line(int(steps[k]["kind"])):
 		var p := rv.step_points(k)
 		var q := Geometry2D.get_closest_point_to_segment(bow, p[0], p[1])
 		return maxf(0.0, (q - bow).dot(e))

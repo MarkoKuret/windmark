@@ -1043,10 +1043,20 @@ func test_main_menu() -> void:
 	await process_frame
 	t.ok(f.step_id() == "sail" and f.rows["weather"].visible and f.summary.get_parent().visible
 		and f.primary() == f.start_button and f.start_button.text == "SET SAIL", "Set sail step: weather rows, the summary, Set sail")
+	# menus.md §1.1: free sail lays the venue's first course for the class; the summary names it, the chart draws it
+	var fcs := MenuData.courses(str(f.rows["venue"].value), "wm12")
+	var c_lines := f.summary_lines().filter(func(l: Array) -> bool: return l[0] == "Course")
+	t.ok(not fcs.is_empty() and f.free_course() == fcs[0]["id"], "free sail lays the first course for the class (%s)"
+		% f.free_course())
+	t.ok(c_lines.size() == 1 and c_lines[0][1] == fcs[0]["name"] and f.summary_lines()[2][0] == "Course",
+		"Set sail summary: the Course line after the Venue (%s)" % str(c_lines))
+	t.ok(str(f.course_map.course.get("id", "")) == fcs[0]["id"].get_slice("/", 1) and f.course_caption() != "",
+		"Set sail chart: the course drawn on the venue (%s)" % f.course_caption())
 	f.rows["wind_kn"].set_value(8.0, true)
 	f.start_button.pressed.emit()
 	t.ok(g.mode == "free" and g.class_id == "wm12" and absf(g.wind_kn - 8.0) < 1e-9,
 		"free sail: mode free, the remembered class, its wind")
+	t.ok(g.course == fcs[0]["id"], "free sail: the setup carries the course it lays (%s)" % g.course)
 	t.ok(asked.size() == 2 and asked[1] == MainMenu.SAIL_SCENE, "sail scene requested again")
 	# settings page: a change is saved on close
 	m.close_page()

@@ -4,7 +4,8 @@ extends SceneTree
 ##     above the water inside the polygon away from its edge, never above the water outside it; quay and rock
 ##     on their obstacles)
 ##   - the camera never inside land: the chase camera orbiting a boat by the island, and the free camera
-##   - reset_boat re-places the boat at its start point (free sailing) and restarts the race (race mode)
+##   - reset_boat re-places the boat at its start point (free sailing on empty water), at her spawn on free sail's
+##     laid course (courses.md §6.4) and restarts the race (race mode)
 ##   - race mode: marks at the core's course positions riding the sea, committee boat heading, start and finish
 ##     lines from the race state, flags per signal, laylines per hud.md §6, and a run through every start signal
 ##   - race mode with AI (WM-016.24): the player and 5 AI boats of the core's skippers through the start and the
@@ -35,11 +36,14 @@ func _init() -> void:
 	t.finish(self, "course land test")
 
 
-func _scene(race: bool, x := 0.0, y := -300.0, twa := 45.0, fleet := 1, level := "intermediate") -> Node:
+func _scene(race: bool, x := 0.0, y := -300.0, twa := 45.0, fleet := 1, level := "intermediate",
+		free_course := "") -> Node:
 	var sc := (load("res://scenes/sail_test.tscn") as PackedScene).instantiate()
 	sc.auto_process = false
 	sc.sim_kind = sc.SimKind.CORE
 	sc.race_mode = race
+	if not race:
+		sc.course = free_course  # free sailing: empty water unless a course is given (courses.md §6.4)
 	sc.fleet_size = fleet
 	sc.ai_level = level
 	sc.core_settings = {"free_sailing_s": 5.0}
@@ -206,6 +210,24 @@ func test_reset_free() -> void:
 	t.ok(Vector2(fst.pos_x, fst.pos_y).length() < 1e-3, "FakeSim: re-placed at the start point")
 	t.ok(fs.venue_view.parts.has("land_island_n"), "FakeSim: land drawn from the venue file")
 	fs.queue_free()
+	await process_frame
+	# free sail's laid course: placed at the race's spawn, and the reset key puts her back there
+	var lc := _scene(false, 0.0, -300.0, 45.0, 1, "intermediate", "practice_waters/example_wl")
+	await process_frame
+	var lsim: CoreSimSource = lc.sim
+	var sp: Vector3 = lc.free_spawn
+	t.ok(lsim.has_course() and not lsim.has_race() and lc.course_view != null and sp != Vector3.INF,
+		"laid course: marks drawn, no race, a spawn point")
+	for i in 200:
+		lc.step_frame(0.1)
+	lc.scripted_input.pressed.append(&"reset_boat")
+	lc.step_frame(0.0)
+	lc.scripted_input.pressed.clear()
+	var ls := lsim.state(0)
+	t.ok(Vector2(ls.pos_x, ls.pos_y).distance_to(Vector2(sp.x, sp.y)) < 1e-3
+		and absf(Frames.angle_diff(ls.psi, sp.z)) < 1e-4 and lsim.free_course().next == 0,
+		"laid course: reset at the spawn, the start line next")
+	lc.queue_free()
 	await process_frame
 
 

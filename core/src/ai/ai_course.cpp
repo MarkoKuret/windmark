@@ -766,7 +766,11 @@ void sails(AC& x, AB& a, const Me& m, bool has_mark, const MarkTarget& t, Leg le
     const std::int32_t wantN = a.pol->best_sail(tws, twaN);
     if (wantN != cur && twaN < twa_now + 5.0f * DEG) {
       const float d = max(0.0f, v_dist(m.c, t.M) - t.rho);
-      const float V = max(1.0f, m.s.v);
+      // closing on the mark over the ground (the current sets her on or off it): a kite still up after the rounding
+      // flogs (boat.md §5.8), so the peel is timed by the ground speed toward the mark, not the water speed
+      const Vec2 to_m = v_unit(v_sub(t.M, m.c), dir(m.s.psi));
+      const Vec2 vg = v_add(v_scale(dir(m.s.psi), max(0.0f, m.s.v)), m.cur);
+      const float V = max(1.0f, max(m.s.v, v_dot(vg, to_m)));
       if (d <= V * (t_peel(wantN, cur, twa_now) + a.P.drop_lead)) {
         request(wantN);
         return;

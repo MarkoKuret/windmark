@@ -365,7 +365,9 @@ from the next leg's TWA:
 - **Hoist** (windward mark → downwind leg): start the hoist when the boat is 1 L past the mark and has borne away to
   a TWA where the new sail is faster (`best_sail`), not within `2·L` of another boat's hull ahead-to-leeward.
 - **Drop** (downwind → beat, or a reach too tight for the downwind sail): request `hoist(upwind sail)` when the
-  distance to the rounding tangent point is ≤ `V·(t_drop + 4 s)`, with `t_drop` the whole peel: the new sail's
+  distance to the rounding tangent point is ≤ `V·(t_drop + 4 s)`, with `V` the larger of the boat's speed through the
+  water and her speed over the ground toward the mark (the current sets her on to it; a kite still up after the
+  rounding flogs and stops her, `boat.md` §5.8; 2026-11-07), and `t_drop` the whole peel: the new sail's
   `prepare_hoist_time + hoist_time` plus the old sail's `prepare_drop_time + drop_time` at the present wind
   (`sails.md` §4.4); Pro uses 3 s instead of 4 s, Easy 7 s.
 - **Change** on a leg: when `best_sail` differs from the current sail and would be ≥ 3 % faster for 5 s, and the

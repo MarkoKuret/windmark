@@ -481,6 +481,21 @@ shape cannot turn it further.
   square to its corner plane that lean would tip the level foot down by 2 m on wm21, so its depth is taken along the
   series' wind direction (`z`) instead of square to the corner plane: `p = T + a e_a + l e_l + n z` (an oblique
   frame; the same corner map), and the foot and every section stay level with the belly down the wind.
+  The dead-run sail (V, 180°) carries the forward projection of a real running kite, a stored change (the 150° sail,
+  IV, has none, so the blend fades it in from 150° and the 150° set does not change):
+  ```
+  run_bow b (share of the luff):  n_ij += b * Lu * sin(PI h_i)          // every row moved toward the belly (forward on
+                                                                         // a run), most at mid height: the luff and
+                                                                         // the leech bowed forward, the head and the
+                                                                         // foot's corners where they were
+  clew_ease e (deg):  row i turned about the luff axis by e (1 - h_i)^2, the clew toward the belly
+                      (a' = a cos t - n sin t,  n' = a sin t + n cos t)  // the sheet eased: the clew and the foot
+                                                                         // forward, fading out up the sail
+  ```
+  `run_bow` 0.1 and `clew_ease` 55° (2026-11-07): the head stays at the halyard and the tack on the pole end (both
+  on the luff axis, which the change leaves alone), and on a dead run the foot comes forward round the forestay by
+  itself, so the whole-kite turn below is left with a few degrees instead of about 55° (wm21) and 63° (wm9). The
+  kite does not lean forward as a whole: with the head and the tack fixed a lean would move one or the other.
 
 On wm7 (AC33): the corner map is nearly a plain scale (`a` 0.0318, `l` 0.0350 of the model's millimetres to metres, no
 shear); the outline along the cloth over the luff, measured against the class: leech 0.87 / 0.86, foot 0.59 / 0.56,
@@ -520,11 +535,12 @@ is the turn's axis), the clew where the turn puts it; the sheet runs straight fr
 (§11.3) and the main stops on it as before (§7.6, with the placed clew).
 
 **The forestay rule (hard, owner 2026-11-07).** No spinnaker cloth is ever aft of or through the forestay, on any
-class, at any AWA or trim, flying, hoisting or dropping: the forestay (its tack fitting to the hounds) passes through
+class, at any AWA or trim in flight: the forestay (its tack fitting to the hounds) passes through
 no part of the kite, and no cloth near it athwartships lies behind it. The head stays at the halyard and the tack on
 its fitting (the sprit end, or the pole end where the core puts it); the halyard is never eased. The kite meets the
 rule by the whole-kite turn below, which on a run eases the sheet and brings the clew and the belly forward round the
-stay; its drop slides the flying shape down the luff (§8.5) instead of relaxing it toward the flat sail.
+stay; its drop slides the flying shape down the luff (§8.5) instead of relaxing it toward the flat sail. Hoisting and
+dropping are outside the rule (owner, 2026-11-07): the cloth may cross the forestay while it goes up or comes down.
 
 **Clear as a whole.** Where the kite would come within the clearance `c` (§4) of the main, a shown headsail or the
 mast (as §7.4 measures it: horizontal sections, the margin fading at the head and the tack), or within `c_f` of the
@@ -1511,8 +1527,8 @@ Flutter phase `φ = 0` unless stated.
     trim, not every update) and the foot and lower leech fair with turn steps up to 4° (the clew hook) and no bulge.
 
 28. **The forestay rule.** On every class with a spinnaker (wm7, wm9, wm10, wm12, wm16, wm21), through BoatView
-    (native), the kite at AWA 60° to 180° in 10° steps on both gybes, sheeted at 60, 85, 100 and 130 % of its optimum,
-    and every 30° hoisted and dropped (progress 0.2, 0.5, 0.8, 1): the forestay passes through no triangle of the
+    (native), the kite up at AWA 60° to 180° in 10° steps on both gybes, sheeted at 60, 85, 100 and 130 % of its
+    optimum (hoisting and dropping are outside the rule): the forestay passes through no triangle of the
     kite, and no vertex within 0.5 m of it athwartships, between its ends in height, lies less than 0.05 m ahead of
     it. The test prints the smallest such distance per kite.
 

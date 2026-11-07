@@ -272,6 +272,9 @@ func continue_last() -> void:
 	g.venue = str(last["venue"])
 	g.livery = str(last.get("livery", d.livery)) if last.get("livery") != null else ""
 	g.course = str(last.get("course", d.course))
+	if g.mode == "free":  # menus.md §1.1: free sail lays the venue's first course for the class
+		var list := MenuData.courses(g.venue, g.class_id)
+		g.course = str(list[0]["id"]) if not list.is_empty() else ""
 	g.fleet_size = int(last.get("fleet_size", d.fleet_size))
 	g.ai_level = str(last.get("ai_level", d.ai_level))
 	g.wind_kn = float(last.get("wind_kn", d.wind_kn))

@@ -90,8 +90,9 @@ world ENU metres, radians, compass angles clockwise from north, one tick = `DT` 
 | `step()` | one tick |
 
 Race and rules readers (empty without a race: `FakeSim`, free sailing), the Dictionaries of `CoreSim` with the C
-field names: `has_race()`, `race()`, `race_boat(b)`, `race_order()`, `course()`, `course_labels()` (the course
-file's display labels), `results()`, `race_split(b, step)` (race time at a completed step, `NAN` before),
+field names: `has_race()`, `has_course()` (a race's course or free sail's laid one), `free_course()` (free sail's
+progress round its laid course, `FreeCourse`, courses.md §6.4; null without one), `race()`, `race_boat(b)`,
+`race_order()`, `course()` (the race's or the laid course), `course_labels()` (the course file's display labels), `results()`, `race_split(b, step)` (race time at a completed step, `NAN` before),
 `race_start_status(b)` (the rules hull against the start line: oriented ends, `s_bow`, `u_bow`, `in_band`,
 `course_side`, `in_triangle`, `pre_start`, `over` under the prep flag), `boat_rules(b)`, `pairs()`, `race_events()`,
 `rules_events()`, `contact_events()` (collisions.md §5, for the audio), `hail_state(b)` (`{}` until the core has rule 20 hails), `polar_vmg(b, tws)`,
@@ -141,7 +142,7 @@ components within 1 mm of the core's sea height.
 | `create(venue = "")` | the world on a venue (`practice_waters` or a path; `""` open water); `last_error()` on failure |
 | `CoreSimSource.resolve_settings(settings, venue, course = "")` | `race.md` §2.1: the venue's conditions resolved for `settings.weather` (0 local, 1 random, 2 custom) and the seed into every wind, current and sea setting (the C API's `wm_world_settings_resolve`), once before `create()`; `{}` on failure |
 | `add_boat(id, x, y, psi, v, auto_trim)` | FakeSim's call: a free-sailing boat of class `id` (creates an open-water world when none exists); the core starts it at 60 % of its polar speed, so `v` is unused |
-| `add_entry(id, entry)`, `create_race(course)`, `place_boat(b, x, y, psi)` | a race entry (`human`, `ai`, `performance_scale`, `auto_trim`, `front_sail`), the race on `venue/course` or a path, free-sailing placement |
+| `add_entry(id, entry)`, `create_race(course)`, `lay_course(course, b)`, `place_boat(b, x, y, psi)` | a race entry (`human`, `ai`, `performance_scale`, `auto_trim`, `front_sail`), the race on `venue/course` or a path, free sail's course without a race (boat `b`'s progress followed every tick), free-sailing placement |
 | `apply_input(b, frame)` | applies the frame decoded from its 6-byte wire form, the values every peer applies; the controls take effect at the next step (`controls(b)` shows them after it) |
 | `sea_time_ms(ticks)`, `render_time_ms(alpha)` | the environment clock: tick n at 50 n ms (the world's tick 0 is its zero); a pose at alpha at `sea_time_ms(tick() - 1 + alpha)` |
 | `sea_height_at(x, y, t_s)` | sea height at any time (s since tick 0, fractional: the core resolves sub-millisecond render times) |
@@ -497,7 +498,7 @@ class files.
 ## Race HUD
 
 `Hud` shows the race whenever the sim it is ticked with has one (`SimSource.has_race()`), so the sail scene needs
-no extra call; `RaceHudValues` (`Hud.race`) computes the values every tick from the race and rules readers, for the
+no extra call (on free sail's laid course, hud.md §7.2, `RaceHudValues.free` and the next mark items only); `RaceHudValues` (`Hud.race`) computes the values every tick from the race and rules readers, for the
 viewed boat. What it shows (`docs/specs/hud.md`):
 
 - **Start** (§9): the countdown ("Warning in", "Start in" with tenths in the last 10 s, then the race clock), the

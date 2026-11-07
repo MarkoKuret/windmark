@@ -11,6 +11,9 @@ extends Node3D
 ## player races on `course` from the core's spawn through the start sequence (CoreSimSource.create_race) against
 ## `fleet_size - 1` AI boats of `ai_level` (the core's AI skippers, ai.md), every boat drawn by its own BoatView
 ## (hull, rig, sails at the distance update rates of sail_visuals.md §11, wakes). The player is boat 0.
+## Free sailing on the core lays `course` too when it is one of the venue's (courses.md §6.4, menus.md §1.1: the
+## marks, lines and committee boats with no race; the boat starts at the race's spawn and the HUD and the CourseView
+## lead her round it, hud.md §7.2); `course` "" sails on empty water from the start point.
 ##
 ## Set-up: the scene's exports, replaced by GameSetup.current() when the menus have written one (GameSetup.next
 ## set) or `setup` is given, then by the command-line flags (see _user_args). Seed 0 picks one from the clock.
@@ -86,6 +89,7 @@ var weather_settings := {}
 @export var racing := true
 ## core only: race on `course` (game/data/courses/<venue>/<id>) instead of free sailing
 @export var race_mode := false
+## the race's course; free sailing lays it too when it is on `venue` ("" for empty water)
 @export var course := "practice_waters/example_wl"
 ## race mode: boats in the race including the player (the rest are AI), the AI level (CoreSimSource.AI_LEVELS),
 ## "speed only" levels (ai.md §13), and `watch`: an AI sails the player's boat too and spectating is on
@@ -470,7 +474,8 @@ func _apply_setup() -> void:
 ## compare), `--ssao=on|off|tier` (contact shading over the tier), `--dof=off`, `--haze=<factor>`,
 ## `--caps=off`, `--drawn-wind=<kn>`, `--chase-bank=off`, `--aa=off|fxaa|smaa`, `--quality=L|M|H`,
 ## `--render-scale=0.67`, `--no-boat-shadows`, `--no-drawn-shadows`;
-## `--course=<venue>/<id>` (race mode), `--seed=<n>` (0: from the clock), `--livery=<id>` (the player's livery),
+## `--course=<venue>/<id>` (race mode; after `--free` the course free sailing lays, `none` for empty water),
+## `--seed=<n>` (0: from the clock), `--livery=<id>` (the player's livery),
 ## `--wind=<kn>`, `--wind-from=<deg>`,
 ## `--fake` (FakeSim), `--core`; measuring (hud.md §17): `--perf` (the frame-time overlay), `--perf-log=PATH`,
 ## `--perf-seconds=N`, `--upscaler=fsr|bilinear|metalfx`, `--no-vsync`,
@@ -481,6 +486,7 @@ func _apply_setup() -> void:
 func _user_args() -> void:
 	var fleet_given := false
 	var race_flag := false
+	var free_flag := false
 	for a in OS.get_cmdline_user_args():
 		if DevLook.apply_flag(self, a):
 			continue
@@ -491,11 +497,14 @@ func _user_args() -> void:
 			race_flag = true
 		elif a == "--free":
 			race_mode = false
+			free_flag = true
 			fleet_size = 1
 		elif a.begins_with("--course="):
 			course = a.trim_prefix("--course=")
-			race_mode = true
-			race_flag = true
+			if course == "none":
+				course = ""
+			race_mode = not free_flag
+			race_flag = not free_flag
 		elif a.begins_with("--fleet="):
 			fleet_size = clampi(a.trim_prefix("--fleet=").to_int(), 1, 40)
 			fleet_given = true
@@ -771,6 +780,8 @@ func _snapshot_sails(reset := false) -> void:
 
 ## extra world settings for the core (tests: a shorter free-sailing time before the warning signal)
 var core_settings := {}
+## free sailing on a laid course: the boat's spawn (x, y, heading) the reset key puts her back at; INF without one
+var free_spawn := Vector3.INF
 
 
 ## The core world on the venue: free sailing (no race), the boat placed at the start point, or in race mode
@@ -830,7 +841,7 @@ func _make_core() -> CoreSimSource:
 			if ok and watch:
 				cs.ai_take_over(b)
 		else:
-			ok = cs.place_boat(b, start_x, start_y, _start_psi())
+			ok = _lay_free_course(cs, b)
 	if not ok or b != 0:
 		push_warning("sail test: the core did not start (%s); using FakeSim" % cs.last_error())
 		return null
@@ -870,6 +881,29 @@ func _resolve_weather(cs: CoreSimSource) -> void:
 	puffs = bool(r["puffs"])
 
 
+## The course free sailing lays (courses.md §6.4): `course` when it is one of the venue's, else "" (empty water).
+func free_course_id() -> String:
+	if race_mode or course == "" or scenario_run != null:
+		return ""
+	if course.ends_with(".json"):
+		return course
+	return course if course.begins_with(venue + "/") else ""
+
+
+## Free sailing: lays the course with the boat at its spawn (remembered for the reset key), or places the boat at
+## the start point on empty water (no course, or one that cannot be laid in this wind).
+func _lay_free_course(cs: CoreSimSource, b: int) -> bool:
+	var id := free_course_id()
+	if id != "" and cs.lay_course(id, b):
+		var s := cs.state(b)
+		free_spawn = Vector3(s.pos_x, s.pos_y, s.psi)
+		return true
+	if id != "":
+		print("sail test: free sail on empty water, the course was not laid (%s)" % cs.last_error())
+	free_spawn = Vector3.INF
+	return cs.place_boat(b, start_x, start_y, _start_psi())
+
+
 func _start_psi() -> float:
 	return Frames.wrap_2pi(deg_to_rad(wind_from_deg) - deg_to_rad(start_twa_deg))
 
@@ -878,7 +912,7 @@ func _build_course() -> void:
 	if course_view:
 		course_view.queue_free()
 		course_view = null
-	if not (on_core and race_mode and (sim as CoreSimSource).core.has_race()):
+	if not (on_core and (sim as CoreSimSource).has_course()):
 		sea.set_overlay_lines([])
 		sea.set_overlay_circles([])
 		return
@@ -921,6 +955,8 @@ func reset_boat(new_world := false) -> void:
 			runner.paused = false
 			viewed = clampi(scenario_run.scenario.view, 0, sim.boat_count() - 1)
 			hud.local_commands = viewed == b
+	elif on_core and free_spawn != Vector3.INF:
+		(sim as CoreSimSource).place_boat(b, free_spawn.x, free_spawn.y, free_spawn.z)
 	elif on_core:
 		(sim as CoreSimSource).place_boat(b, start_x, start_y, _start_psi())
 	else:

@@ -325,7 +325,7 @@ func _build_course() -> void:
 		_free_voice(v)
 	_course_loops.clear()
 	_has_committee = false
-	if sim == null or not sim.has_race():
+	if sim == null or not sim.has_course():  # a race's course or free sail's laid one (courses.md §6.4)
 		return
 	var c := sim.course()
 	for m in c.get("marks", []):

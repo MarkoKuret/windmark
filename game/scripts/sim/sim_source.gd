@@ -265,6 +265,16 @@ func has_race() -> bool:
 	return false
 
 
+## whether a course is laid: the race's, or free sail's without a race (courses.md §6.4)
+func has_course() -> bool:
+	return has_race()
+
+
+## courses.md §6.4: free sail's progress round the laid course (no race), null without one
+func free_course() -> FreeCourse:
+	return null
+
+
 ## race.md §3 race record: state, sequence, prep_flag, n_gun, race_time, x_flag, rules_live, twd_mean, ...
 func race() -> Dictionary:
 	return {}

@@ -495,10 +495,10 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 		Mode.SPRIT:
 			var lim := asin(minf(1.0, tack_line_max * sl / r_h))
 			ge = Frames.sgn(gamma) * minf(absf(gamma), lim)
-			s_t = _about(head, up, ge)
+			s_t = Frames.about(head, up, ge)
 		Mode.POLE:
 			ge = gamma
-			s_t = _about(mast_step, mast_axis, ge)
+			s_t = Frames.about(mast_step, mast_axis, ge)
 	if mode == Mode.SPRIT or mode == Mode.POLE:
 		piv = s_t * tack
 		ax = (s_t.basis * lh).normalized()
@@ -585,7 +585,7 @@ func update(phase: int, progress: float, beta: float, gamma: float, luff_shiver:
 	# §7 placement, row by row with the twist toward leeward
 	for i in rows:
 		var th := base + _trow[i] + es
-		var xr := _about(piv, ax, th) * s_t
+		var xr := Frames.about(piv, ax, th) * s_t
 		for j in cols:
 			var k := i * cols + j
 			var lc := _loc[k]
@@ -733,8 +733,8 @@ func _fly_at(k: int, wv: Vector3, kd: float, kl: float) -> Vector3:
 ## §7.7 the corner's bisector and the sheet's direction with (kd, kl): [b, s]
 func _clew_corner(kd: float, kl: float, beta: float, base: float, piv: Vector3, ax: Vector3, s_t: Transform3D,
 		wv: Vector3) -> Array:
-	var x0 := _about(piv, ax, base + _trow[0]) * s_t
-	var x2 := _about(piv, ax, base + _trow[CLEW_REACH]) * s_t
+	var x0 := Frames.about(piv, ax, base + _trow[0]) * s_t
+	var x2 := Frames.about(piv, ax, base + _trow[CLEW_REACH]) * s_t
 	var lc := _fly_at(cols - 1, wv, kd, kl)
 	var cl := x0 * (tack + ah * lc.x + lh * lc.y + nh * lc.z)
 	lc = _fly_at(cols - 1 - CLEW_REACH, wv, kd, kl)
@@ -808,7 +808,7 @@ func get_ease() -> float:
 ## the ease.
 func _sections(s_t: Transform3D, piv: Vector3, ax: Vector3, base: float) -> void:
 	var lc := _loc[cols - 1]
-	var xr := _about(piv, ax, base + _trow[0]) * s_t
+	var xr := Frames.about(piv, ax, base + _trow[0]) * s_t
 	var cl := xr * (tack + ah * lc.x + lh * lc.y + nh * lc.z)
 	var sk := Frames.sgn((cl - mast_step).dot(port))
 	var bow := fwd + port * (0.3 * sk)
@@ -935,7 +935,7 @@ func _ease_for(beta: float, s_t: Transform3D, piv: Vector3, ax: Vector3, base: f
 		while true:  # rows 0, 3, 6, ... and the one below the head
 			var lc := _loc[i * cols + cols - 1]
 			var th := base + _trow[i] + es * delta
-			var pt := (_about(piv, ax, th) * s_t) * (tack + ah * lc.x + lh * lc.y + nh * lc.z)
+			var pt := (Frames.about(piv, ax, th) * s_t) * (tack + ah * lc.x + lh * lc.y + nh * lc.z)
 			var cp := _margin_at(pt, hd)
 			for o in _secs:
 				var x: float = _clear_x(o, pt, cp)[0] - cp
@@ -1157,12 +1157,6 @@ func _layers(np: Vector3) -> void:
 			_nrm[n + k] = -nn
 			_pos[k] = _mid[k] + nn * 0.001
 			_pos[n + k] = _mid[k] - nn * 0.001
-
-
-## Rotation by `angle` about the line through `p` along `axis` (right-handed).
-static func _about(p: Vector3, axis: Vector3, angle: float) -> Transform3D:
-	var b := Basis(axis, angle)
-	return Transform3D(b, p - b * p)
 
 
 ## The grid-order mesh (sail_visuals.md §3.1) built uncompressed; its vertex buffer is rewritten by write_mesh.

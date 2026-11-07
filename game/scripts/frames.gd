@@ -89,6 +89,12 @@ static func boat_transform(pos_x: float, pos_y: float, z: float, psi: float, the
 	return Transform3D(boat_basis(psi, theta, phi), enu_to_scene(pos_x, pos_y, z))
 
 
+## the rotation by `angle` about `axis` through the point `p` (p stays in place)
+static func about(p: Vector3, axis: Vector3, angle: float) -> Transform3D:
+	var b := Basis(axis, angle)
+	return Transform3D(b, p - b * p)
+
+
 ## smoothstep on [0, 1]
 static func smoothstep01(t: float) -> float:
 	var x := clampf(t, 0.0, 1.0)

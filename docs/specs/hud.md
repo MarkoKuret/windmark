@@ -82,7 +82,8 @@ controls record.
   - On a beat or run, the shift is a **lift** when it turns the current tack's optimal heading towards the next mark
     and a **header** when away: header ⇔ `Δ · sgn(wrap_pi(ψ_opt − compass(R − c))) > 0` (the same rule the AI uses,
     `ai.md` §4.4), with `ψ_opt` the VMG heading of the current tack.
-  - Shown as `LIFT 6°` (green) or `HEADER 4°` (red) when `|Δ| ≥ 2°`, else `--`. Hidden on reaches.
+  - Shown as `LIFT 6°` (green) or `HEADER 4°` (red) when `|Δ| ≥ 2°`, else `--`. Hidden on reaches. On the HUD it
+    is a chip in the heading cell of the instrument page (§16.3), at Race and Data.
 
 ### 3.3 Wind shadow view (assist)
 
@@ -296,7 +297,7 @@ cameras keep moving and every sound plays. Offline and online alike.
   takes the full width again when the lane is empty: the owner's call, a course squeezed into the right half for
   an empty column was too small); in portrait centred under the header with a band of 440 design px kept for it
   above the frame whether it shows anything or not. Everything else is hidden: the instrument page and its chip, the helm strip and its
-  notes, the race bug, the wind page, the feed, the radar, the ranking list, the boat card and every world tag. The
+  notes, the race bug, the feed, the radar, the ranking list, the boat card and every world tag. The
   results table and the finish card (§13) are not hidden by it: the map closes when either shows.
 - **Pointer**: with the map open, `boat_pick` picks on the map: a click within 24 design px of a boat's icon
   selects her (the nearest wins), a click on the selected boat again or anywhere else clears, as in §16.4.1. It
@@ -536,8 +537,9 @@ density of §16.1: an item shows only when both allow it.
   `rules.md` §13.
 - Time to burn: a boat 100 m behind the line at 5 m/s heading straight at it, 30 s before the gun, shows `t_line` 20 s
   and `+10 s` to burn.
-- Density (§16.1): for each level and phase the table's items are shown and no others (at Race on a beat: no wind
-  page, no lap line, no ahead and behind; the leader gap and the shift chip yes); the density key cycles
+- Density (§16.1): for each level and phase the table's items are shown and no others (at Race on a beat: no TWD,
+  no VMG and SOG, no lap line, no ahead and behind; the leader gap, the true wind speed, the heel bar and the
+  shift chip yes); the density key cycles
   Glance, Race, Data, Glance and the choice survives a restart; the defaults are Race at 1920 x 1080 and Glance at
   1280 x 800.
 - Name tags (§16.4): a boat at 45 m has a tag, one at 55 m has none until it is selected; with a penalty pending
@@ -602,16 +604,20 @@ boat's card (§16.7). The radar, the helm strip and, under manual trim, the trim
 
 | Phase | Glance | Race | Data |
 | --- | --- | --- | --- |
-| Pre-start (race sequence, not started) | boat speed, TWA dial; start block: countdown, time to burn with its late/early bar, the flag rule in one line; no race bug, no wind page | + heading; full start block (distance and time to line, burn, bias, flags); feed (own events, 3 lines); no race bug, no wind page | + VMG, AWA, SOG, COG, AWS, heel bar; wind page; race bug (fleet, laps and legs); feed 6 lines (every event) |
-| Beat or run | boat speed, TWA dial with the VMG angles and the coloured pointer; race bug: clock and rank; mark tag: name and distance | + heading; the shift chip; the race bug adds the gap to the leader; the mark tag adds the ETA; feed (own events, 3 lines) | + VMG, AWA, SOG, COG, AWS, heel bar; wind page; lap, leg and leg type; ahead and behind; the mark tag adds the bearing; feed 6 lines (every event); sail hint |
+| Pre-start (race sequence, not started) | boat speed, TWA dial; start block: countdown, time to burn with its late/early bar, the flag rule in one line; no race bug | + heading, true wind speed, heel bar; full start block (distance and time to line, burn, bias, flags); feed (own events, 3 lines); no race bug | + VMG, SOG, AWA, COG, TWD, AWS; race bug (fleet, laps and legs); feed 6 lines (every event) |
+| Beat or run | boat speed, TWA dial with the VMG angles and the coloured pointer; race bug: clock and rank; mark tag: name and distance | + heading, true wind speed, heel bar; the shift chip in the heading cell; the race bug adds the gap to the leader; the mark tag adds the ETA; feed (own events, 3 lines) | + VMG, SOG, AWA, COG, TWD, AWS; lap, leg and leg type; ahead and behind; the mark tag adds the bearing; feed 6 lines (every event); sail hint |
 | Reach | as a beat, the pointer neutral | as a beat | as a beat, with VMC in place of VMG |
 | Rounding (within `6·L` of the next mark, and 6 s after a rounding) | boat speed, TWA dial | as the leg | as the leg |
 | Penalty (panel shown) | boat speed, TWA dial | as the leg | as the leg |
 
 - Race is what a racer needs on each leg and nothing more (the owner's call, 2026-10-17: the HUD showed too many
-  numbers at once): speed, the TWA dial with the VMG angles, heading, the next mark's distance and time, the
-  countdown and line numbers before the start, rank and gap. The wind page (TWS, TWD), the lap and leg line, the
-  boats ahead and behind, the mark's bearing and the fleet's feed moved to Data.
+  numbers at once): speed, the TWA dial with the VMG angles, heading, heel, the true wind speed, the next mark's
+  distance and time, the countdown and line numbers before the start, rank and gap. VMG, SOG, AWA, COG, TWD and
+  AWS, the lap and leg line, the boats ahead and behind, the mark's bearing and the fleet's feed are Data.
+- The wind sits with the boat instruments (the owner's call, 2026-11-07: a wind page in the top right corner felt
+  out of place, and the page showed too many numbers): the TWA dial at every level, the true wind speed beside
+  it at Race, TWD at Data, and the shift chip in the heading cell, where the compass tells a sailor about the
+  shift. The top right corner holds race items only (the feed).
 - At Glance the radar is drawn at 72 % of its size without the range and orientation labels, the helm strip has no
   labels. At Glance and Race the feed shows only the viewed boat's own events; Data shows every event.
 - Free sailing (no race): the instrument page and the helm strip as in the table's beat row without the race items.
@@ -676,21 +682,26 @@ text fits its block at every step (§15); 11 px stays the floor for any text.
 The instrument values of a corner sit on one page: ink glass from 14 % at the top to 44 % at the bottom, a hairline
 along the top edge and hairline dividers between the cells; no blur, no corner ticks, no rounded corners. Each cell
 has its label top left, the unit top right and the value right-aligned at the bottom. Numbers use tabular figures.
-The two analogue parts are the TWA dial and, at Data, the heel bar (centre zero, ±30°). The **TWA dial**: bow up,
+The two analogue parts are the TWA dial and, at Race and Data, the heel bar (centre zero, ±30°, the bar in the
+tack colour to the side that is down, the heel number at 26 beside it). The **TWA dial**: bow up,
 the close-hauled sectors in `port` and `stbd`; the **VMG angles** of §4 on both sides, each a solid `mark` notch on
 the rim (an inward triangle 11 design px deep and 12 wide) with a 2 px tick under it,
 the reference pair (§4) at full strength and the other pair at 45 % (both at full strength on a reach); the true
 wind pointer, **coloured by the angle error** `Δ` of §4 on a smooth gradient: `stbd` up to 2°, through `mark` at
 11° to `port` at 20° and beyond (linear in between in RGB), with a thin `ink` edge so it reads over the sectors,
 and `paper` with no reference (a reach); Data adds the
-apparent wind pointer, hollow, in `paper`. No cell shows a target speed: Glance has boat speed and the dial, Race
-adds heading under the boat speed, Data adds VMG (VMC on a reach) and SOG beside them and COG, AWS and the heel bar
-under them. Numbers keep the 4 Hz refresh of §1; dial and bars move every frame.
+apparent wind pointer, hollow, in `paper`. No cell shows a target speed: Glance has boat speed and the dial
+(486 x 150 design px); Race (630 x 246) adds heading under the boat speed and, between them and the dial, the
+true wind speed over the heel bar; Data (760 x 298) adds VMG (VMC on a reach) over SOG beside them, the AWA
+value under the dial and a small row of COG, TWD and AWS along the bottom. Every cell of the Race page keeps its
+place at Data. The **shift chip** (§3.2) sits in the heading cell, left of the number, at Race and Data: the
+text in `ink` on a `stbd` (lift) or `port` (header) chip, 13 px. Numbers keep the 4 Hz refresh of §1; dial and
+bars move every frame.
 
 **Type hierarchy** (design px at 1920 x 1080, `hud_direction.md` §4; every text is one of these sizes, so the eye
 learns what a size means): numbers 112 (boat speed, the hero), 52 (heading, true wind, VMG, SOG), 40 (the TWA
-value, the race bug, the start numbers, the mark distance, the tack point, the penalty deadline), 26 (the Data
-row of COG, AWS and heel, the card's place and name); the countdown 128. Text 20 (alert lines, table rows, the
+value, the race bug, the start numbers, the mark distance, the tack point, the penalty deadline), 26 (the heel
+number, the Data row of COG, TWD and AWS, the card's place and name); the countdown 128. Text 20 (alert lines, table rows, the
 penalty's rule text, the gap lines), 16 (feed, helm notes, the card's standing, the next-mark arrow's distance in
 24), 13 (every label, caption and chip: `label` for labels and captions, `paper` or the state's colour for chips);
 11 is the floor (§16.2.2) and the deadline's caption. Labels sit in `label`, units in `mist`, values in `paper`.
@@ -712,8 +723,8 @@ penalty's rule text, the gap lines), 16 (feed, helm notes, the card's standing, 
   and distance. `boat_names` turns all name tags off and on (the selected boat's included; her bracket and card
   stay).
 - **Keep clear of the corners**: world labels never sit on the HUD's own blocks (the instrument page and its
-  chip, the radar, the helm strip and its notes, the next-mark arrow, the race bug, the wind page, the feed, the
-  alert lane, the boat card), as the edge pointers keep to their box. The tack point's label goes above its ring,
+  chip, the radar, the helm strip and its notes, the next-mark arrow, the race bug, the feed, the alert lane,
+  the boat card), as the edge pointers keep to their box. The tack point's label goes above its ring,
   else under it, else it is not drawn (the ring stays); a name tag over a block is not drawn (the selected boat
   keeps her marker); the mark tag goes above-right of the mark, else under it, else left of it, and hides when
   none is clear (the mark's diamond stays).
@@ -781,9 +792,9 @@ these clips, so the alert lane is at the top and large; the instruments are comp
 - **Scale and margins**: the design's px at 1080 x 1920, `k = width / 1080` (logical px, after the UI scale).
   Margins 48 px left and right, 140 px top, 200 px bottom: the top margin keeps the alert lane under the apps' title
   bar, the bottom margin keeps the instruments above most of their caption and button strip.
-- **Top row**: the race bug top left (with its lap and gap lines), the wind page top right with the shift chip under
-  it (at Race the chip alone, §16.1).
-- **Alert lane**, centred under the taller of the two (bug with its lines, wind page with its chip), 16 px below:
+- **Top row**: the race bug top left (with its lap and gap lines); nothing top right (the feed sits over the
+  helm notes, the shift chip is in the page's heading cell, §16.3).
+- **Alert lane**, centred under the bug with its lines, 16 px below (at the top margin when there is no bug):
   before the start the countdown, flags and start numbers; in the race the penalty panel, then the rules line, the
   banners and the prompts (stacked as in landscape). The lane is drawn up to 1.15 times larger than the rest, as
   large as its 900 px fits between the margins (1.09 at 1080 wide), so the rule text reads on a phone.

@@ -53,8 +53,8 @@ keys become the boat's commands, and the accessibility options. The boat command
 | `sail_1` … `sail_9` | button | front sail by slot (§5.4) |
 | `sail_prev`, `sail_next`, `sail_set` | button | gamepad sail selection (§5.4) |
 | `drop_front` | button | `drop_front()` |
-| `hail` | button | hail for room to tack, or answer "you tack" to a hail (`rules.md` §7.9, `hud.md` §11) |
-| `protest` | button | protest while the protest prompt shows (`rules.md` §10) |
+| `hail` | button | online only: hail for room to tack, or answer "you tack" to a hail (`rules.md` §7.9, `hud.md` §11) |
+| `protest` | button | online only: protest while the protest prompt shows (`rules.md` §10) |
 | `camera_next`, `camera_chase`, `camera_onboard`, `camera_aerial`, `camera_free` | button | `cameras.md` §6 |
 | `camera_orbit` | 2 axes / 4 buttons | orbit or look (`cameras.md` §2–§5) |
 | `camera_zoom_in`, `camera_zoom_out` | button / wheel / trackpad | zoom; a trackpad's two-finger scroll and pinch zoom too (§3 Trackpad, §4) |
@@ -66,7 +66,6 @@ keys become the boat's commands, and the accessibility options. The boat command
 | `rankings` | hold (option: toggle) | ranking list (`hud.md` §10) |
 | `map` | toggle | full course map, an overlay over the running race; Esc also closes it (`hud.md` §8.1) |
 | `radar_zoom_in`, `radar_zoom_out`, `radar_orientation` | button | radar range ×1.5 steps, heading-up / north-up |
-| `wind_shadow_view` | toggle | the wind shadow assist, when allowed (`hud.md` §3.3) |
 | `hud_hide` | toggle | hide every HUD element |
 | `world_tags` | toggle | hide or show the world tags and the on-water guides (§7, `hud.md` §16.4) |
 | `hud_density` | button | cycle the instrument density Glance, Race, Data (`hud.md` §16.1) |
@@ -82,6 +81,13 @@ keys become the boat's commands, and the accessibility options. The boat command
 | `reset_boat` | button | offline practice only: free sailing re-places the boat at its start point, sailing with its start sail and the helm centred, at once; an offline race asks first (the HUD notes `Restart the race? Press Backspace again`, the key as the player's bindings name it, for 3 s) and a second press within them restarts it from the spawn; a rules scenario (`race.md` §14) restarts at once. No effect online or in a ranked or timed session |
 
 There is no action for penalty turns (they are sailed), tacking or gybing (steered), or the main (always up).
+
+**Online only.** `hail` and `protest` work only in online races, which do not exist yet: offline the core does not
+use the hail flags and the race has no protest mode (`rules.md` §10). Until online play exists the two actions keep
+their keys and their code (the controls still latch them, the input frame still carries the flags) but they are
+not in the settings' Bindings list, take no part in its conflict checks, have no gamepad binding, and the HUD shows
+no hail or protest prompt (`hud.md` §11). A wind shadow view (drawing every boat's blanket on the water) is a
+later assist and has no action yet; the `Bad air` readout (`hud.md` §3.1) is the shadow cue meanwhile.
 
 ## 3. Default bindings
 
@@ -100,8 +106,8 @@ up to two keyboard or mouse bindings and one gamepad binding; all are rebindable
 | `sail_1` … `sail_9` | 1 … 9 | – | – |
 | `sail_prev` / `sail_next` / `sail_set` | – | D-pad left / right, X | D-pad left / right, X |
 | `drop_front` | 0 | B | B |
-| `hail` | H | D-pad up | D-pad up |
-| `protest` | P | D-pad up while the protest prompt shows | same |
+| `hail` | H | – | – |
+| `protest` | P | – | – |
 | `camera_next` | C | Y | Y |
 | `camera_chase` … `camera_free` | F5, F6, F7, F8 | – | – |
 | `camera_orbit` | right or left mouse drag; two-finger horizontal scroll; numpad 4/6/8/2; I/J/K/L | right stick | right stick, right trackpad, touch drag |
@@ -113,10 +119,9 @@ up to two keyboard or mouse bindings and one gamepad binding; all are rebindable
 | `camera_clip` | X | – | – |
 | `rankings` | Tab (hold) | View (hold) | View (hold) |
 | `hud_density` | G | View (tap) | View (tap), R4 |
-| `map` | M | – (in the pause menu) | – |
+| `map` | M | D-pad up | D-pad up |
 | `radar_zoom_in` / `out` | = / − | – | – |
 | `radar_orientation` | Z | – | – |
-| `wind_shadow_view` | V | – | – |
 | `hud_hide` | F10 | – | – |
 | `world_tags` | / | – | – |
 | `boat_names` | N | – | – |
@@ -146,6 +151,13 @@ one-finger press-and-drag is the left-button drag above, a two-finger click (the
 Ctrl + click drags as the right button, and I/J/K/L orbit from the keys. The zoom keys O / U are on every
 keyboard (numpad 9 / 7 are the second binding); the settings' Bindings list shows them. A mouse wheel is unchanged:
 one notch per click.
+
+**Prompts name the device in use.** Every key the HUD names (the course map's `M  CLOSE`, the auto trim note of
+§5.3, the restart note of §2, the sail strip of §5.4, the hail and protest prompts online) is the action's binding
+as the player's bindings name it now (rebinding included), on the device used last: after a key, mouse or trackpad
+input the first keyboard or mouse binding, after a gamepad button or a stick or trigger pushed past 0.3 the gamepad
+binding (`D-pad up`, `X`). An action with no binding on that device names the other device's. The default device
+is the keyboard.
 
 Notes: `helm_fine` and `camera_boost` share Shift, which is fine because the free camera takes no helm input.
 On the gamepad `View` is both `rankings` and `hud_density`: a press released within 0.3 s is a tap (density), a
@@ -234,7 +246,7 @@ Two modes (option, per player):
 
 ### 5.4 Sail requests
 Slots are the class's front sails in class-file order (`data_format.md` §3.5, the main excluded); the HUD sail strip
-shows each slot's name and key. With `F` the front sail that is up and the running change of `sails.md` §4.2:
+shows each slot's name and key (`hud.md` §5.3). With `F` the front sail that is up and the running change of `sails.md` §4.2:
 
 | press | situation | request |
 | --- | --- | --- |
@@ -245,22 +257,22 @@ shows each slot's name and key. With `F` the front sail that is up and the runni
 | slot `S` | a lone drop of `S` is running | `hoist(S)`: cancels the drop |
 | `drop_front` | idle, `F ≥ 0` | `drop_front()` |
 | slot `S` or `drop_front` | a lone hoist of `S` is going up and no front sail is up (`F = −1`) | `drop_front()`: cancels the first hoist (`sails.md` §4.2) |
-| anything else | busy | nothing sent; the HUD flashes the running change |
+| anything else | busy | nothing sent; the HUD flashes the running change (`hud.md` §5.3) |
 
 A latched press is mapped against the boat's sail state when its frame is stamped. A press that maps to nothing
 still uses its frame (a later press waits for the next one).
 
 Gamepad: `sail_prev`/`sail_next` move a highlight along the strip (wrapping), `sail_set` presses the highlighted
 slot with the rules above. The highlight starts on the sail the HUD suggests (`hud.md` §4 sail hint) or the next
-slot after `F`.
+slot after `F`: the first `sail_prev` or `sail_next` shows it there, the next ones move it.
 
 ### 5.5 Let-fly, auto-trim, hail, protest
 - `let_fly` sets the flag while held; with the toggle option one press sets it and the next clears it (the HUD then
   shows `LET FLY` until cleared).
 - `auto_trim` toggles the assist; refused (with a HUD message) when the lobby's assist preset forbids it.
-- `hail`: when a valid hail for room to tack is available (`hud.md` §11 shows the button), sends the hail flag; when
-  this boat has been hailed, sends the reply "you tack" (tacking needs no key).
-- `protest`: sends the protest flag only while the protest prompt is shown.
+- `hail` (online only, §2): when a valid hail for room to tack is available (`hud.md` §11 shows the button), sends
+  the hail flag; when this boat has been hailed, sends the reply "you tack" (tacking needs no key).
+- `protest` (online only, §2): sends the protest flag only while the protest prompt is shown.
 
 ## 6. Accessibility and options
 

@@ -9,8 +9,9 @@ extends Node3D
 ##     minute, X while shown; the finish mark boat flies blue from the start. Flags are hoisted and lowered on
 ##     their halyards over HOIST_TIME and stream downwind;
 ##   - water overlays through the Sea hooks (water_render.md §6): the start line (hud.md §9.3: white from the
-##     warning signal, red while the viewed boat is over in the last minute, green after the gun until she has
-##     started, then hidden), the gate line when the next step is a gate, the finish line on the last leg,
+##     first frame of the race, free sailing included, red while the viewed boat is over in the last minute, green
+##     after the gun until she has started, then hidden), the gate line when the next step is a gate, the finish
+##     line on the last leg,
 ##     the laylines of hud.md §6 (red port tack, green starboard tack, light and dashed, refreshed at 2 Hz) and the zone circle of
 ##     hud.md §7 within 6 L of the next mark;
 ##   - hud.md §7 in 3-D: the rounding arrow on the next mark(s) and, beyond 500 m, a bouncing marker over it.
@@ -477,6 +478,8 @@ func _update_overlays(pose: SimSource.RenderPose) -> void:
 		start_line_state = "white" if next_step() == 0 and not _rb.is_empty() else "hidden"
 	elif state == RACE_SEQUENCE:
 		start_line_state = "red" if t >= -60.0 and is_over(pose) else "white"
+	elif state < RACE_SEQUENCE and not _race.is_empty():
+		start_line_state = "white"  # hud.md §9.3: from the spawn, so the line is there before the warning
 	elif state >= RACE_RACING and state < RACE_CLOSED and not started:
 		start_line_state = "green"
 	if start_line_state != "hidden":

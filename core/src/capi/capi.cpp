@@ -1398,6 +1398,7 @@ wm_status wm_world_race(const wm_world* w, wm_race_info* out) {
   out->twd_mean = r.twd_mean();
   out->L_max = r.L_max();
   out->boat_count = static_cast<int32_t>(r.boat_count());
+  out->start_limit_s = r.settings().start_limit_s;
   return WM_OK;
 }
 

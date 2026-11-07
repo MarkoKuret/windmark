@@ -29,6 +29,8 @@ var t := TestLog.new()
 func _init() -> void:
 	test_countdown_flags()
 	test_start_panel()
+	test_banner_priority()
+	test_start_limit()
 	test_next_mark()
 	test_laylines_shift_hint()
 	test_position()
@@ -225,6 +227,125 @@ func test_start_panel() -> void:
 	_refresh(h, sim)
 	t.ok(not h.race.start_panel and not h.shown("line") and not h.race.over, "panel gone once started")
 	h.free()
+
+
+# ---- §9.1 banner priority, §9.4 start limit ----------------------------------------------------------------------
+
+## the gun tick: Start, the over boats' OCS and X up, in the core's order
+func _gun_events() -> Array:
+	return [_rev(RaceText.Ev.SIGNAL, {"signal": RaceText.SignalKind.START}),
+		_rev(RaceText.Ev.BOAT_OCS, {"boat": 0, "flag": RaceText.Flag.P}),
+		_rev(RaceText.Ev.SIGNAL, {"signal": RaceText.SignalKind.X_UP})]
+
+
+func test_banner_priority() -> void:
+	t.begin("banner priority at the gun: own OCS over Start over the recall (hud.md §9.1)")
+	var sim := RaceStubSim.new()
+	sim.put(0, 0.0, 2.0, 0.0, 3.0)
+	sim.line_status(0, true)
+	sim.put(1, 50.0, -30.0, 0.0, 3.0)
+	sim.line_status(1)
+	sim.race_d["race_time"] = -1.0
+	var h := _hud(sim)
+	var got := []
+	h.hud_event.connect(func(k: String, _d: Dictionary) -> void: got.append(k))
+	sim.race_d["state"] = RaceText.RaceState.RACING
+	sim.race_d["race_time"] = 0.0
+	sim.race_d["x_flag"] = true
+	sim.boats_d[0]["ocs"] = true
+	sim.race_ev = _gun_events()
+	_refresh(h, sim)
+	sim.race_ev = []
+	t.ok(h.text_of("banner") == "OCS: return behind the line", "over at the gun: her OCS line (%s)" % h.text_of("banner"))
+	t.ok(got.has("ocs"), "and the ocs event for its sound")
+	t.ok(h.feed_text().has("Start") and h.feed_text().has("Individual recall: X flag"),
+		"Start and the recall in the feed: %s" % str(h.feed_text()))
+	_refresh(h, sim, 0, 40)
+	t.ok(h.text_of("banner") == "OCS: return behind the line", "still her OCS line 2 s on")
+	h.free()
+	# the other boat, not over: Start; the recall does not replace it
+	var h2 := _hud(sim, 1)
+	var got2 := []
+	h2.hud_event.connect(func(k: String, _d: Dictionary) -> void: got2.append(k))
+	sim.race_ev = _gun_events()
+	_refresh(h2, sim, 1)
+	sim.race_ev = []
+	t.ok(h2.text_of("banner") == "Start", "not over: Start (%s)" % h2.text_of("banner"))
+	t.ok(not got2.has("ocs"), "no ocs event for another boat's OCS")
+	t.ok(h2.feed_text().has("Individual recall: X flag"), "the recall in the feed")
+	_refresh(h2, sim, 1, 20)
+	t.ok(h2.text_of("banner") == "Start", "Start stays up through its time")
+	# a lower banner while hers shows goes to the feed; a later one of her own replaces it
+	sim.race_ev = [_rev(RaceText.Ev.SIGNAL, {"signal": RaceText.SignalKind.X_DOWN})]
+	_refresh(h2, sim, 1)
+	t.ok(h2.text_of("banner") == "Start", "X down does not replace Start")
+	sim.race_ev = [_rev(RaceText.Ev.STARTED, {"boat": 1, "t": 1.2})]
+	_refresh(h2, sim, 1)
+	sim.race_ev = []
+	t.ok(h2.text_of("banner") == "Started", "her own Started replaces it (%s)" % h2.text_of("banner"))
+	h2.free()
+
+
+func test_start_limit() -> void:
+	t.begin("start limit: warnings at 2:00 and 1:00, DNS at the limit (hud.md §9.4)")
+	var sim := RaceStubSim.new(3)
+	sim.put(0, 0.0, -50.0, PI, 3.0)
+	sim.line_status(0)
+	sim.put(1, 30.0, 300.0, 0.0, 3.0)
+	sim.line_status(1)
+	sim.put(2, 60.0, 2.0, 0.0, 3.0)
+	sim.line_status(2, true)
+	sim.boats_d[1]["started"] = true
+	sim.boats_d[1]["next"] = 1
+	sim.race_d["state"] = RaceText.RaceState.RACING
+	sim.race_d["start_limit_s"] = 240.0
+	sim.race_d["race_time"] = 100.0
+	var h := _hud(sim)
+	var h_ocs := _hud(sim, 2)
+	var h_started := _hud(sim, 1)
+	sim.boats_d[2]["ocs"] = true
+	var warned := {}
+	for i in 1000:  # 100 s to 150 s: nothing; then the 2:00 warning
+		sim.race_d["race_time"] = 100.0 + i * SimSource.DT
+		_refresh(h, sim)
+		_refresh(h_ocs, sim, 2)
+		_refresh(h_started, sim, 1)
+		for x in [[h, 0], [h_ocs, 2], [h_started, 1]]:
+			var txt: String = x[0].text_of("banner")
+			if txt != "" and not warned.has("%d:%s" % [x[1], txt]):
+				warned["%d:%s" % [x[1], txt]] = sim.race_d["race_time"]
+	t.ok(warned.has("0:Start within 2:00 or you are out (DNS)"), "2:00 warning: %s" % str(warned.keys()))
+	t.near(float(warned.get("0:Start within 2:00 or you are out (DNS)", 0.0)), 120.0, 0.051, "at 2:00 before the limit")
+	t.ok(warned.has("2:Return within 2:00 or you score OCS"), "OCS: return to start")
+	t.ok(not warned.has("1:Start within 2:00 or you are out (DNS)") and warned.keys().filter(
+		func(k: String) -> bool: return k.begins_with("1:")).is_empty(), "nothing for a boat that started")
+	sim.race_d["race_time"] = 180.0
+	_refresh(h, sim)
+	t.ok(h.text_of("banner") == "Start within 1:00 or you are out (DNS)", "1:00 warning: " + h.text_of("banner"))
+	t.ok(h.race.banner != null and h.race.banner.tint == RaceHudValues.Tint.YELLOW, "in yellow")
+	# at the limit: the DNS ghost, another boat's in the feed
+	var got := []
+	h.hud_event.connect(func(k: String, _d: Dictionary) -> void: got.append(k))
+	sim.race_d["race_time"] = 240.0
+	sim.boats_d[0]["ghost"] = true
+	sim.boats_d[0]["ghost_reason"] = RaceText.Ghost.DNS
+	sim.boats_d[0]["code"] = 3
+	sim.boats_d[2]["ocs_scored"] = true
+	sim.race_ev = [_rev(RaceText.Ev.GHOSTED, {"boat": 0, "ghost": RaceText.Ghost.DNS})]
+	_refresh(h, sim)
+	_refresh(h_ocs, sim, 2)
+	sim.race_ev = []
+	t.ok(h.text_of("banner") == "DID NOT START: no start within 4:00" and h.race.banner.full,
+		"DNS: the full-width banner (%s)" % h.text_of("banner"))
+	t.ok(got.has("dns") and h.race.race_over and h.race.end_reason == "ghost", "her race is over")
+	t.ok(h_ocs.feed_text().has("You did not start"), "another boat's DNS in the feed: %s" % str(h_ocs.feed_text()))
+	t.ok(h_ocs.text_of("banner") == "Not returned: you score OCS", "OCS released: " + h_ocs.text_of("banner"))
+	sim.race_d["race_time"] = 250.0
+	_refresh(h_ocs, sim, 2, 100)
+	t.ok(h_ocs.text_of("banner") == "", "once")
+	h.free()
+	h_ocs.free()
+	h_started.free()
 
 
 # ---- §7, §4 ------------------------------------------------------------------------------------------------------

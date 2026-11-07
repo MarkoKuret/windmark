@@ -8,8 +8,8 @@ extends Node3D
 ## pose; the boat sounds hang under them at their boat-frame anchors), tick() after every sim step (the boat
 ## inputs, triggers, contacts, other boats' finishes, countdown beeps), frame(dt, camera, onboard) every frame (gates,
 ## formulas, smoothing, voices, wind pan, ambience, ducking), and connects Hud.hud_event to on_hud_event (signals,
-## own penalty and penalty done, rule warnings, the own finish). `viewed` is the boat on own_boat, `paused` ducks
-## for the pause menu, `countdown_beeps` is the Full assist's countdown.
+## the own OCS, own penalty and penalty done, rule warnings, the own finish). `viewed` is the boat on own_boat,
+## `paused` ducks for the pause menu, `countdown_beeps` is the assist's countdown (beeps_at: Full and Standard).
 ##
 ## Voices (§1): at most `max_voices` players at once, by priority: the viewed boat and the listener's sounds, then
 ## the race sounds, then other boats and course objects by distance. Other boats get their full set within
@@ -434,13 +434,20 @@ func _race_tick() -> void:
 	_last_race_time = rt
 
 
-## Hud.hud_event: signals, the own penalty and penalty done, rule warnings, the own finish.
+## audio.md §5: the countdown beeps play at the Full and Standard assists, not at Minimal.
+static func beeps_at(assist: int) -> bool:
+	return assist != Hud.Assist.MINIMAL
+
+
+## Hud.hud_event: signals, the own OCS, the own penalty and penalty done, rule warnings, the own finish.
 func on_hud_event(kind: String, d: Dictionary) -> void:
 	if map == null:
 		return
 	match kind:
 		"signal":
 			race_signal(int(d.get("kind", -1)))
+		"ocs":
+			play("race.ocs", {"priority": 1.0})
 		"penalty":
 			if int(d.get("boat", -1)) == viewed:
 				play("race.penalty", {"priority": 1.0})

@@ -480,7 +480,8 @@ TEST_CASE("race: spawn grid and order") {
   CHECK(s[1].x - s[0].x == doctest::Approx(3.0f * L));
   for (const Vec2 p : s) {
     CHECK(p.y < 0.0f);
-    CHECK(std::fabs(p.x) <= 200.0f + 0.01f);
+    CHECK(p.x >= -200.0f - 0.01f);
+    CHECK(p.x <= 100.0f);  // not beyond the starboard end B (race.md §3.5)
     // No slot within 2 L of the line-end buoys.
     CHECK(wm::v_dist(p, {100.0f, 0.0f}) - 0.8f >= 2.0f * L);
   }

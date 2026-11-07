@@ -51,10 +51,13 @@ does, so a first-time player sees at once what to press:
   order, shown as sail number and name, for example `7  Kestrel`); the list follows the class. Every boat wears the
   class livery and sails; the AI boats get the other sail numbers and names by the fleet rule of
   `data_format.md` §8.4.
-- Ranges: fleet size 2 to 40 boats including the player (default 10); AI level Easy, Intermediate (default),
-  Expert, Pro (`ai.md` §13).
+- Ranges: fleet size 2 to 40 boats including the player (default 10); AI level Easy (default: the first race is
+  against boats the player can beat while she learns the keys), Intermediate, Expert, Pro (`ai.md` §13). The
+  defaults hold until the player picks otherwise; her picks are remembered (below).
 - The race runs on the course's race settings (`race.md` §2) with the finishing window off (`race.md` §7.3: no
-  `DNF` for being slow in a race nobody waits for; the time limit still closes it).
+  `DNF` for being slow in a race nobody waits for; the time limit still closes it) and the **P flag** (`race.md`
+  §3.3: a boat over early dips back behind the line, nobody rounds an end in her first race; the course files keep
+  their own flag for events).
 - **Weather**: **Local** (default), **Random** or **Custom** (`race.md` §2.1).
   - **Local**: the venue's own conditions, drawn within its ranges from the seed. Nothing to adjust; the briefing
     is the full one with the Tip.
@@ -315,7 +318,10 @@ A card with the heading `PAUSED` and the items, menu-item sized (§4).
 Items: **Resume** (the focus when it opens), **Restart** (the same session from its start), **Retire** (a quick race only, from the warning
 signal until the player's race is over, `race.md` §6.4: red, as a destructive action; the first press turns it into
 `Retire? Press again` for 3 s and a second press within them retires the boat and closes the menu), **Settings**,
-**Main menu**. `pause_menu` again resumes. Over the results screen (§5) it works the same, Retire hidden, and
+**Main menu**. While the player's race is on (the same window as Retire) **Restart** and **Main menu** ask
+the same way (`Restart? Press again`, `Quit? Press again`, 3 s), since either throws the race away; in free sail,
+before the warning signal and over the results screen they act at once. Only one item asks at a time (moving to
+another item or 3 s cancels the question). `pause_menu` again resumes. Over the results screen (§5) it works the same, Retire hidden, and
 Resume goes back to the results. While it is open the boat's controls are held as in `controls.md` §7 (held let-fly and
 hold-to-steer keys count as released). Settings opens the settings screen (§3) in the card's place, a page as wide
 as the main menu's (§4), centred; settings changed here apply to the running scene when the settings screen
@@ -424,7 +430,8 @@ a 3840 × 2160 window at 53 % (2035 × 1145), a 6880 × 2880 window (a 3440 × 1
 34 % (2359 × 987), and the Steam Deck's 1280 × 800 at full size. Auto is resolved again whenever the display settings
 apply and when the window changes size. The setting is independent of the quality tier.
 
-**Capture preset.** For recording vertical clips. **Portrait 9:16** makes the window 1080 × 1920 pixels (windowed,
+**Capture preset.** For recording vertical clips; while it is on the capture keys of `controls.md` §7 (the clean
+pause and slow motion) are live, otherwise they do nothing. **Portrait 9:16** makes the window 1080 × 1920 pixels (windowed,
 centred on its screen; on a screen too small for that, the largest 9:16 window that fits its usable area) and the HUD
 takes its portrait layout (`hud.md` §16.5); the display row has no effect while it is on and render scale Auto picks
 100 % (clips want the full detail). On a HiDPI screen the pixels are the screen's, so a Retina MacBook shows it at

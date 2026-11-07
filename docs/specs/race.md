@@ -66,7 +66,7 @@ course also defines are overridden by the lobby.
 | --- | --- | --- |
 | `race_type` | `fleet`, `match` | `fleet` |
 | `sequence` | `5-4-1-0`, `3-2-1-0`, `match` | fleet `3-2-1-0` online quick race, `5-4-1-0` otherwise; `match` for match races |
-| `prep_flag` | `P`, `I`, `Z`, `U`, `black` (§3.3) | `I` fleet; `P` match |
+| `prep_flag` | `P`, `I`, `Z`, `U`, `black` (§3.3) | `I` fleet; `P` match; `P` in an offline quick race whatever the course says (`menus.md` §1) |
 | `free_sailing_s` | time between the boats' spawn and the warning signal | 30 s |
 | `general_recall` | off / on (§4.5) | off |
 | `rules_level` | `none`, `basic` (rules 10–16, 21, 31), `full` | `full` |

@@ -70,16 +70,16 @@ keys become the boat's commands, and the accessibility options. The boat command
 | `hud_hide` | toggle | hide every HUD element |
 | `world_tags` | toggle | hide or show the world tags and the on-water guides (§7, `hud.md` §16.4) |
 | `hud_density` | button | cycle the instrument density Glance, Race, Data (`hud.md` §16.1) |
-| `boat_names` | toggle | name tags over boats |
+| `boat_names` | button | name tags over boats: boats to watch (rules relation or selected, the default), every boat nearby, off (`hud.md` §16.4) |
 | `boat_select` | button | select the next boat for her tag and card, nearest first, then none (`hud.md` §16.4.1) |
 | `boat_pick` | pointer | a click or tap without a drag: select the boat under the pointer, or clear on open water or on the selected boat (`hud.md` §16.4.1) |
 | `spectate_next`, `spectate_prev`, `spectate_leader` | button | viewed boat, when not racing (`cameras.md` §1) |
-| `chat` | button | open the chat line |
+| `chat` | button | online: open the chat line; offline the key does nothing (nobody to talk to, and Enter must not steal the keys from a new player) |
 | `pause_menu` | button | pause offline, menu online (§7); with a boat selected it first clears the selection (`hud.md` §16.4.1) |
 | `capture_pause` | toggle | offline: clean pause, no menu and no label (§7) |
 | `capture_slow` | button | offline: slow motion, cycling ×1, ×0.5, ×0.25 (§7) |
 | `screenshot` | button | save a screenshot |
-| `reset_boat` | button | offline practice only: free sailing re-places the boat at its start point, sailing with its start sail and the helm centred; an offline race restarts from the spawn. No effect online or in a ranked or timed session |
+| `reset_boat` | button | offline practice only: free sailing re-places the boat at its start point, sailing with its start sail and the helm centred, at once; an offline race asks first (the HUD notes `Restart the race? Press Backspace again`, the key as the player's bindings name it, for 3 s) and a second press within them restarts it from the spawn; a rules scenario (`race.md` §14) restarts at once. No effect online or in a ranked or timed session |
 
 There is no action for penalty turns (they are sailed), tacking or gybing (steered), or the main (always up).
 
@@ -157,7 +157,8 @@ development keys outside the action table, not rebindable and not listed in the 
 the focus, Up, Down, Left, Right, Enter, Space and Esc are its own and the boat takes no keys (Esc gives them back,
 F9 closes it).
 The capture keys sit together on the bottom row (`,` slow motion, `.` clean pause, `/` world tags), next to `X`
-for the clip cameras; they have no gamepad binding (a capture is made at the keyboard).
+for the clip cameras; they have no gamepad binding (a capture is made at the keyboard). The two capture actions
+are live only while the capture preset is on (§7); `/` always works.
 
 **Free camera flying.** While the free camera is selected the boat's helm and sheet inputs fly it and the boat
 keeps its last `h_cmd` and `sheet_cmd` (a hold-to-steer key counts as released): `sheet_in` / `sheet_out` (W / S)
@@ -225,8 +226,9 @@ Two modes (option, per player):
 - **Triggers**: `u += (t_out' − t_in') · 0.5 · dt` with `t' = pow(clamp((t − 0.05)/0.95, 0, 1), 1.5)` for each
   trigger value `t`.
 - **Absolute axis** (`sheet`, optional): `u = (axis + 1)/2`, dead zone 0.02 at both ends.
-- Option "sheet turns auto-trim off": a sheet input while auto-trim is on switches it off (default off: the input is
-  ignored and the HUD shows `AUTO`).
+- A sheet input while auto-trim is on switches it off (always; no option) and the
+  HUD notes it for 3 s with the key that turns it back on (`Auto trim off: T turns it back on`, the key as the
+  player's bindings name it), so a first press on W or S trims the boat instead of doing nothing.
 - When auto-trim is switched off, `u` starts from the value that matches the present trim (`sails.md` §5.2 inverted
   for the front sail, or the main if no front sail is up), so nothing jumps.
 
@@ -266,14 +268,13 @@ slot after `F`.
 | --- | --- | --- |
 | rebinding | defaults of §3 | every action, two keyboard/mouse bindings and one gamepad binding; conflicts shown |
 | helm key mode | set and hold | set and hold, hold to steer (§5.2) |
-| helm stick dead zone, curve | 0.10, 1.6 | 0–0.30, 1.0–3.0 |
-| sheet key rate scale | 1.0 | 0.5–2.0 |
-| hold or toggle | hold | per action: `let_fly`, `helm_fine`, `rankings`, `camera_boost` |
+| helm stick dead zone | 0.10 | 0–0.30 (stick curve fixed at gamma 1.6) |
+| held keys | hold | hold or toggle, one choice for `let_fly`, `helm_fine`, `rankings`, `camera_boost` |
 | mouse helm | off | while the left button is held, horizontal mouse offset from the press point sets `h_cmd` (300 px = full) |
 | one-hand layout | off | left-hand keyboard set (A/D helm, W/S sheet, Q let fly, 1–5 sails, E camera) or mouse-only (mouse helm, wheel = sheet, buttons = let fly and camera) |
-| camera invert X / Y | off | per camera kind |
+| camera invert X / Y | off | each axis inverts the orbit and the look together |
 | camera and look speed | 1.0 | 0.25–3.0 |
-| reduced motion | off | on: no camera shake, onboard horizon always level (`heel_follow = 0`), chase `tau_yaw ≥ 0.5 s`, no smooth-switch overshoot |
+| reduced motion | off | on: no camera shake, onboard horizon always level (`heel_follow = 0`), chase `tau_yaw ≥ 0.5 s`, |
 | onboard heel follow | 0 | 0–1 (`cameras.md` §3) |
 | vibration | on, 1.0 | off, 0–1: contact rumble `min(1, closing_speed/2)` for 0.2 s; a light buzz (0.1) while let fly or `luff_shiver > 0.8` on the driving sail |
 | captions | off | on: every race sound that carries information (signals, hails, penalties, rule warnings) also shows a caption line (`audio.md` §8); not offered until the audio has caption lines (`menus.md` §3) |
@@ -307,6 +308,9 @@ The options are saved per player in the settings file and set in the settings sc
     time, fading out over its last 0.4 s, also with the HUD hidden and in a clean pause; after that nothing is on
     screen for the rate, so the frames stay clean. The clean pause itself shows nothing. A restart (`reset_boat`,
     the pause menu) sets the rate back to ×1, ends a clean pause and clears the note without showing one.
+  - The two capture actions are **live only while the capture preset** (`menus.md` §3) is on, a shot script runs,
+    or the scene was started with `--capture-keys`; otherwise the keys do nothing, so a stray `.` never freezes a
+    race without a word on screen. `world_tags` works in every session.
   - Online both actions do nothing: the race runs on the server's clock.
   - A **shot script** (`cameras.md` §9.2, `--shot=<path>`) runs these actions, the HUD and world tags toggles, the
     camera choice and held boat actions at set times and quits by itself, for unattended capture.
@@ -336,11 +340,15 @@ The options are saved per player in the settings file and set in the settings sc
    after release; ↓ then moves it by no more than a frame's step at once, is at 0.142 after 1/3 s and at 0 after
    0.5 s; holding ← from the centre for 1 s gives −0.85 and full helm by 1.2 s; a key during the easing stops it;
    `helm_fine` for 0.5 s gives 0.1417; the same at 30, 60 and 144 fps within 0.5 %.
-9. Capture: offline, `capture_pause` stops the ticks with no menu and no `Paused` label while the camera still
+9. Capture: offline, the capture keys do nothing until the capture preset is on (or the scene allows them);
+   then `capture_pause` stops the ticks with no menu and no `Paused` label while the camera still
    orbits, and a second press continues from the same tick; `capture_slow` gives rates 0.5, 0.25 and 1 in turn,
    and 2 s of frames at ×0.5 step 20 ticks (±1), at ×0.25 10 ticks (±1); each `capture_slow` press shows its rate
    note, gone after 1.5 s of frames (also in a clean pause), and `capture_pause` shows none; `world_tags` hides the HUD's world
    tags and the course's water overlays and shows them again; online the two capture actions change nothing.
+11. Restart: in an offline race `reset_boat` once shows the restart note and restarts nothing; a second press
+    within 3 s restarts the race from the spawn; a press after 3 s asks again; free sailing re-places the boat at
+    once.
 10. Click or drag: a left press released after 3 px of motion is one pick at its point and orbits nothing; one
     dragged 20 px is a camera drag of the motion past the 8 px and picks nothing on release; in the race scene a
     click on a boat selects her (`hud.md` §16.4.1), Esc with a boat selected clears the selection and does not

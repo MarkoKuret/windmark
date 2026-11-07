@@ -17,8 +17,9 @@ var venue := "practice_waters"
 var course := "practice_waters/example_wl"
 ## boats in the race including the player, 1 to 40
 var fleet_size := 10
-## AI level of the AI boats: easy, intermediate, expert or pro (ai.md)
-var ai_level := "intermediate"
+## AI level of the AI boats: easy, intermediate, expert or pro (ai.md); Easy until the player picks another (menus.md §1:
+## the first race is against boats she can beat while she learns the keys)
+var ai_level := "easy"
 ## weather mode (race.md §2.1): local (the venue's own weather), random (a surprise day) or custom (wind_kn,
 ## wind_from_deg, shift and gusts below); "" sets the wind of the fields below directly (tests, tools)
 var weather := "local"

@@ -34,6 +34,10 @@ const DENSITY_NAMES := ["GLANCE", "RACE", "DATA"]
 const REFRESH := 0.25
 const FLASH_TIME := 1.2
 const MESSAGE_TIME := 3.0
+## the notes of the `boat_names` states (hud.md §16.4)
+const NOTE_NAMES_ALL := "Name tags: every boat nearby"
+const NOTE_NAMES_OFF := "Name tags: off"
+const NOTE_NAMES_WATCH := "Name tags: boats to watch"
 const TOAST_TIME := 1.5
 const ROUNDING_TIME := 6.0
 ## hud.md §16.4: name tags within this range of the viewed boat, m
@@ -84,8 +88,10 @@ var camera_rig: Object = null
 ## a camera without a rig (previews, tests) and its kind ("chase", "onboard", "aerial", "free")
 var camera: Camera3D = null
 var camera_kind := "chase"
-## name tags on (the `boat_names` action) and the boats the player selected for a tag
+## name tags on (the `boat_names` action, hud.md §16.4) and the boats the player selected for a tag
 var show_names := true
+## the all state of `boat_names`: every boat within TAG_RANGE gets a tag; off (watch): those with a rules relation
+var names_all := false
 ## controls.md §7 world_tags: the world tags (mark tag, next-mark arrow, tack point, name tags, edge pointers) shown
 var world_tags := true
 ## the selected boat (hud.md §16.4.1): boat -> true, at most one; see selected_boat, select, clear_selection
@@ -529,7 +535,7 @@ func ui_input(raw: RawInput, dt := 1.0 / 60.0) -> void:
 	if raw.was_pressed(&"boat_select"):
 		select_next()
 	if raw.was_pressed(&"boat_names"):
-		show_names = not show_names
+		cycle_names()
 	if raw.was_pressed(&"boat_pick") and pick_enabled:
 		if not is_nan(raw.pointer.x):
 			pick_at(raw.pointer)
@@ -1072,8 +1078,37 @@ func world_tack_point() -> Variant:
 	return Vector2(o.x, o.y) + g.normalized() * r.layline_dist
 
 
-## the name tags to draw now: [{boat, p (screen), name, col, solid, outline}] (hud.md §16.4: within 50 m or
-## selected, off with `boat_names`)
+## `boat_names` (hud.md §16.4): watch (a rules relation or selected, the default) -> all (every boat within
+## TAG_RANGE) -> off -> watch, each with its note.
+func cycle_names() -> void:
+	if show_names and not names_all:
+		names_all = true
+		note(NOTE_NAMES_ALL)
+	elif show_names:
+		show_names = false
+		names_all = false
+		note(NOTE_NAMES_OFF)
+	else:
+		show_names = true
+		note(NOTE_NAMES_WATCH)
+
+
+## A note in the helm notes for MESSAGE_TIME (the line the controls' notes use).
+func note(text: String) -> void:
+	_put("message", text)
+	_message_t = MESSAGE_TIME
+
+
+## hud.md §16.4: the boat has a rules relation to the viewed boat now (a radar colour other than white, not a ghost)
+func has_relation(b: int) -> bool:
+	for ct in race.contacts:
+		if ct.boat == b:
+			return not ct.ghost and ct.tint != RaceHudValues.Tint.WHITE
+	return false
+
+
+## the name tags to draw now: [{boat, p (screen), name, col, solid, outline}] (hud.md §16.4: within 50 m with a
+## rules relation, every boat within 50 m with `names_all`, or selected; none with `show_names` off)
 func name_tags() -> Array:
 	var out := []
 	if not show_names or sim == null or world_camera() == null:
@@ -1088,7 +1123,8 @@ func name_tags() -> Array:
 	return out
 
 
-## the boats that get a name tag now, on screen or not: within TAG_RANGE of the viewed boat, or selected
+## the boats that get a name tag now, on screen or not: within TAG_RANGE of the viewed boat with a rules relation
+## (every boat within it in the all state), or selected
 func tag_boats() -> Array[int]:
 	var out: Array[int] = []
 	if not show_names or sim == null:
@@ -1102,7 +1138,8 @@ func tag_boats() -> Array[int]:
 		var p := sim.render_pose(b, radar.alpha)
 		if p == null:
 			continue
-		if selected.has(b) or Vector2(p.pos_x - me.pos_x, p.pos_y - me.pos_y).length() <= TAG_RANGE:
+		var near := Vector2(p.pos_x - me.pos_x, p.pos_y - me.pos_y).length() <= TAG_RANGE
+		if selected.has(b) or (near and (names_all or has_relation(b))):
 			out.append(b)
 	return out
 

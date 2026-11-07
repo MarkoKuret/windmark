@@ -126,8 +126,9 @@ func test_sheet_keys() -> void:
 		run(pc, r, int(fps * 1.5), 1.0 / fps)
 		u.append(pc.sheet_cmd)
 	t.near(u[0], u[2], 1e-6, "1.5 s hold equal at 30 and 144 fps")
-	# ignored while auto-trim is on
+	# ignored while auto-trim is on, with the option off (controls.md §5.3; on by default, test_auto_trim_off)
 	pc = PlayerControls.new()
+	pc.sheet_turns_auto_trim_off = false
 	pc.sheet_cmd = 0.3
 	run(pc, RawInput.new().press(&"sheet_out"), 30, dt)
 	t.near(pc.sheet_cmd, 0.3, 1e-9, "ignored with auto-trim on")
@@ -370,6 +371,25 @@ func test_auto_trim_off() -> void:
 	pc.update(RawInput.new().press(&"auto_trim"), 0.016)
 	t.ok(not pc.auto_trim and pc.messages.size() == 1, "refused with a message when the lobby forbids it")
 	t.ok(not pc.messages[0].contains("—"), "message has no em dash")
+	# the option (controls.md §5.3, default on): a sheet key while AUTO shows hands the trim over, with a note
+	var pd := PlayerControls.new()
+	pd.bind(sim, 0)
+	pd.auto_trim = true
+	t.ok(pd.sheet_turns_auto_trim_off, "sheet turns auto trim off by default")
+	pd.update(RawInput.new().hold(&"sheet_out"), 0.016)
+	t.ok(not pd.auto_trim, "a sheet key while auto trim is on switches it off")
+	t.ok(pd.messages.size() == 1 and pd.messages[0].begins_with("Auto trim off: ")
+		and pd.messages[0].ends_with(" turns it back on") and not pd.messages[0].contains("—"),
+		"with a note naming the key: %s" % (pd.messages[0] if not pd.messages.is_empty() else ""))
+	pd.messages.clear()
+	pd.update(RawInput.new().hold(&"sheet_out"), 0.016)
+	t.ok(pd.messages.is_empty(), "no second note while it stays off")
+	var pe := PlayerControls.new()
+	pe.bind(sim, 0)
+	pe.auto_trim = true
+	pe.sheet_turns_auto_trim_off = false
+	pe.update(RawInput.new().hold(&"sheet_out"), 0.016)
+	t.ok(pe.auto_trim and pe.messages.is_empty(), "option off: the key is ignored, AUTO stays")
 
 
 func test_free_camera_keys() -> void:
@@ -658,6 +678,11 @@ func test_capture_scene_fake() -> void:
 	pm.act = false
 	await process_frame
 	t.ok(_ticks_over(sc, 1.0) >= 19, "running")
+	# controls.md §7: without the capture preset (or a shot script) the capture keys do nothing
+	_frame_with(sc, [&"capture_pause", &"capture_slow"])
+	t.ok(_ticks_over(sc, 1.0) >= 19 and sc.capture.rate() == 1.0 and not sc.capture.frozen,
+		"without the capture preset the capture keys do nothing")
+	sc.capture_keys = true
 	_frame_with(sc, [&"capture_pause"])
 	await process_frame
 	var tick0: int = sc.sim.tick()

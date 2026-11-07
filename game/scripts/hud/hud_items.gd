@@ -5,11 +5,12 @@ extends RefCounted
 
 
 static func of(hud: Hud, ph: String) -> Array[String]:
-	var out: Array[String] = ["bsp", "twa_dial", "twa", "radar", "helm"]
+	# the cluster (hud.md §16.3): boat speed, the true wind speed and the TWA dial at every level; Race adds heading
+	# and the heel bar; Data the rest
+	var out: Array[String] = ["bsp", "tws", "twa_dial", "twa", "radar", "helm"]
 	var lvl := hud.density
-	# the cluster (hud.md §16.3): Race adds heading, the true wind speed and the heel bar; Data the rest
 	if lvl >= Hud.Density.RACE:
-		out.append_array(["hdg", "tws", "heel_bar"])
+		out.append_array(["hdg", "heel_bar"])
 	if lvl == Hud.Density.DATA:
 		out.append_array(["vmg_kn", "awa", "sog", "cog", "twd", "aws"])
 	match ph:

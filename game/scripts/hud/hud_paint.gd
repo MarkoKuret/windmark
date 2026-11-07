@@ -11,7 +11,7 @@ const TRACK := 0.14  # label tracking, em
 
 # ---- instrument page geometry (design px): the page sizes and the cell grid per level ----
 
-const PAGE := {Hud.Density.GLANCE: Vector2(486, 150), Hud.Density.RACE: Vector2(630, 246),
+const PAGE := {Hud.Density.GLANCE: Vector2(654, 150), Hud.Density.RACE: Vector2(630, 246),
 	Hud.Density.DATA: Vector2(760, 298)}
 
 
@@ -121,12 +121,18 @@ static func _twa_value(b: HudCanvas, h: Hud, x_right: float, y: float, size: flo
 	number(b, x_right, y, t[0], size, HudStyle.PAPER, t[1])
 
 
-static func _page_glance(b: HudCanvas, h: Hud, sz: Vector2) -> void:
+## Glance (hud.md §16.3): boat speed, the true wind speed (52, on the boat speed's baseline) and the TWA dial; the
+## wind speed is on the leanest level too (the owner, 2026-11-07: one of the most important parts).
+static func _page_glance(b: HudCanvas, h: Hud, _sz: Vector2) -> void:
 	_bsp(b, h)
 	divider(b, Vector2(250, 10), Vector2(250, 140))
-	caption(b, 264, 24, "TWA")
-	dial(b, h, Vector2(328, 88), 52.0, false)
-	_twa_value(b, h, 472, 134, 40)
+	# the cell is 168 wide: at the 11 px floor (UI scale 130 % on 1280 x 800) the label and the unit need that room
+	caption(b, 264, 24, "TRUE WIND", 404, "KN")
+	number(b, 404, 134, h.value_of("tws"), 52)
+	divider(b, Vector2(418, 10), Vector2(418, 140))
+	caption(b, 432, 24, "TWA")
+	dial(b, h, Vector2(496, 88), 52.0, false)
+	_twa_value(b, h, 640, 134, 40)
 
 
 ## Race (hud.md §16.3): boat speed over heading (the shift chip beside the heading), the true wind speed over the

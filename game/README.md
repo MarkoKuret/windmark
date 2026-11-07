@@ -611,7 +611,11 @@ Next); the Venue step draws the venue chart (`course_map.gd` at the venue's boun
 Start steps show the race card (the briefing and the course map). The class facts, the character lines and the
 venue shapes come from `menu_data.gd`. Start writes `GameSetup.current()` and changes to `scenes/sail_test.tscn`.
 The pause menu is a scene of its own that the sail scene instances as a child; it follows the scene's pause,
-holds the boat's controls while open and applies the settings to the scene.
+holds the boat's controls while open and applies each setting to the scene as it changes (`Settings.apply_live`).
+Its Restart reloads the scene on the running seed (`GameSetup.restart_seed`), the same race again; the results
+screen's Race again is the new day. While the main menu shows, `menu_ambience.gd` (`MenuAmbience`) plays a quiet sea
+and wind bed with a halyard or a gull now and then on the ambience bus; the live backdrop stays silent. The settings
+screen names the actions in plain words from `scripts/controls/action_names.gd`.
 
 ```
 game/tests/run_menus_test.sh
@@ -621,7 +625,8 @@ checks that the lists match the files on disk, that the race setup's steps and t
 and ask for the sail scene (walked with the keyboard and the gamepad: the pickers cycle the classes and the
 venues, Next, Back, Esc and B), the venue chart, the showcase boat on the live backdrop, the settings file round
 trip, the apply calls (the render scale on the root viewport's 3D scale and upscaler, Auto's rule), the layout of
-every step at 1280 × 800 and in portrait at every UI scale, and the pause menu over the sail scene on FakeSim.
+every step at 1280 × 800 and in portrait at every UI scale, the settings' names, the menu keys and sounds, the
+menu ambience, and the pause menu over the sail scene on FakeSim (settings applied at once, Restart's seed).
 To look at the menus (opens a window): `godot --path game`. Headless previews of every screen and step
 (`docs/specs/menus.md` §1.1 lists the states):
 

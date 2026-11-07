@@ -678,8 +678,8 @@ static func _sail_name(n: String) -> String:
 static func _signed_pct(h: float) -> String:
 	var p := int(HudFormat.round_half_away(100.0 * absf(h)))
 	if p == 0:
-		return "0"
-	return "%d %s" % [p, "S" if h > 0.0 else "P"]
+		return "0 %"
+	return "%d %% %s" % [p, "S" if h > 0.0 else "P"]
 
 
 func _bars() -> void:
@@ -816,12 +816,6 @@ func results_text_rows() -> Array:
 			pts = HudFormat.points(r["points"])
 		out.append([place, r["name"], r["skipper"], r["ai"], t, g, r["code"], pts])
 	return out
-
-
-## "+10 s", "-3 s"
-static func signed_seconds(s: float) -> String:
-	var t := int(HudFormat.round_half_away(absf(s)))
-	return "%s%d s" % ["-" if s < 0.0 and t > 0 else "+", t]
 
 
 # ---- world: camera, projection, tags (hud.md §16.4) ----

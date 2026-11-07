@@ -165,8 +165,11 @@ func test_start_panel() -> void:
 	t.near(r.line_dist, -100.0, 1e-3, "distance to line: s(bow)")
 	t.near(r.t_line, 20.0, 1e-3, "t_line 20 s")
 	t.near(r.burn, 10.0, 1e-3, "time to burn +10 s")
-	t.ok(h.text_of("line") == "Line  -100 m" and h.text_of("tline") == "To line  0:20" and h.text_of("burn") == "Burn  +10 s",
+	t.ok(h.text_of("line") == "Line  -100 m" and h.text_of("tline") == "To line  0:20" and h.text_of("burn") == "Burn  +0:10",
 		"%s | %s | %s" % [h.text_of("line"), h.text_of("tline"), h.text_of("burn")])
+	# hud.md §1, §9.2: the time to burn is a signed m:ss gap with no unit, never "S" (starboard) for seconds
+	t.ok(h.value_of("burn") == "+0:10" and h.unit_of("burn") == "", "burn value %s, unit '%s'" % [h.value_of("burn"),
+		h.unit_of("burn")])
 	# heading away from the line: the COG ray misses it
 	sim.put(0, 0.0, -103.5, PI, 5.0)
 	sim.line_status(0)

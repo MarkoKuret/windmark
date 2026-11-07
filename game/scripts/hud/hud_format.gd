@@ -17,10 +17,10 @@ static func speed_kn(ms: float) -> String:
 	return "%.1f" % (round_half_away(kn * 10.0) / 10.0)
 
 
-## compass 000-359
+## compass 000°-359°, with the degree sign (hud.md §1)
 static func compass_deg(rad: float) -> String:
 	var d := int(round_half_away(rad_to_deg(Frames.wrap_2pi(rad)))) % 360
-	return "%03d" % d
+	return "%03d°" % d
 
 
 ## integer degrees of |a| with a side letter: `pos_letter` for a > 0, `neg_letter` otherwise ("42° S")
@@ -80,12 +80,13 @@ static func signed_distance(m: float) -> String:
 	return ("-" if m < 0.0 and round_half_away(absf(m)) > 0.0 else "+") + distance(absf(m))
 
 
-## relative bearing to the bow, integer degrees with L or R ("35° L"); `rel` > 0 is to starboard
+## relative bearing to the bow, integer degrees with the side letter P or S ("35° P", hud.md §1: one side
+## convention); `rel` > 0 is to starboard
 static func relative_bearing(rel: float) -> String:
 	var d := int(round_half_away(rad_to_deg(absf(rel))))
 	if d == 0:
 		return "0°"
-	return "%d° %s" % [d, "R" if rel > 0.0 else "L"]
+	return "%d° %s" % [d, "S" if rel > 0.0 else "P"]
 
 
 ## scoring points: whole numbers without decimals ("3"), else one decimal ("2.5")

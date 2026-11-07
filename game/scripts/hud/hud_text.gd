@@ -46,11 +46,11 @@ static func race(hud: Hud) -> void:
 		var burn := ""
 		var burn_v := "--"
 		if full and r.race_time < 0.0:
-			burn = "Burn  --" if is_nan(r.burn) else "Burn  %s" % Hud.signed_seconds(r.burn)
+			# a signed m:ss gap, never bare seconds: an S after a number is starboard (hud.md §1, §9.2)
 			if not is_nan(r.burn):
-				burn_v = Hud.signed_seconds(r.burn).trim_suffix(" s")
-		hud._put("burn", burn, white if is_nan(r.burn) or r.burn >= 0.0 else HudStyle.OWE, burn_v,
-			"" if burn_v == "--" else "S")
+				burn_v = HudFormat.gap(r.burn)
+			burn = "Burn  %s" % burn_v
+		hud._put("burn", burn, white if is_nan(r.burn) or r.burn >= 0.0 else HudStyle.OWE, burn_v)
 		var bias := ""
 		if full and r.bias_end != "":
 			bias = "Bias  %s +%d° · %s" % [r.bias_end, int(HudFormat.round_half_away(rad_to_deg(r.bias))),

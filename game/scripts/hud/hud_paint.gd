@@ -170,11 +170,12 @@ static func _page_race(b: HudCanvas, h: Hud, data: bool) -> void:
 	b._s(Vector2(tx, 234) * b.k, aw[0] + aw[1], int(roundf(18 * b.k)), HudStyle.MIST, 600)
 	divider(b, Vector2(10, 246), Vector2(w - 10, 246))
 	# the small row: the label over the value, in thirds (room for the 11 px floor of small screens)
-	var cells := [["COG", "cog"], ["TWD", "twd"], ["AWS", "aws"]]
+	# units (hud.md §1): COG and TWD carry the degree sign in the value, AWS its KN in the unit corner
+	var cells := [["COG", "cog", ""], ["TWD", "twd", ""], ["AWS", "aws", "KN"]]
 	var cw := (w - 28.0) / 3.0
 	for i in 3:
 		var x := 14.0 + cw * i
-		caption(b, x, 268, cells[i][0], -1, "", LAB_S)
+		caption(b, x, 268, cells[i][0], x + cw - 14.0, cells[i][2], LAB_S)
 		number(b, x + cw - 14.0, 292, h.value_of(cells[i][1]), 26)
 		if i < 2:
 			divider(b, Vector2(x + cw - 2.0, 256), Vector2(x + cw - 2.0, 290))

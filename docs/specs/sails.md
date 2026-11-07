@@ -424,7 +424,8 @@ luff_shiver:
   else: q = clamp(fabsf(sin(d)) / (sin(shiver_angle(tws)) + 1e-4f), 0, 1) ; I = 1 - q*q
 ```
 `I = 1` when the sail lies on the wind line (let fly, or eased too far), 0 once it is more than `shiver_angle` off
-it. Events: every phase change emits `sail_phase(boat, sail, phase)` for crew actions and sounds.
+it. A hoisted spinnaker shivers at least its flogging share beyond its usable angle, `I = max(I, f_k)` (`boat.md`
+§5.8): the boat sets it after the trim each tick (`Sails::set_kite_flog`). Events: every phase change emits `sail_phase(boat, sail, phase)` for crew actions and sounds.
 
 ## 8. Tests
 

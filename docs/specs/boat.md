@@ -269,6 +269,11 @@ surf_coef = upwind ? (theta_w > 0 ? max(0, 1 - surf_gain*theta_w) : 1)
                    : (theta_w < 0 ? 1 + 0.5f*surf_gain*(-theta_w) : 1)
 trim_drive = polar_speed > 0 ? trim_speed : 1                    // trim scales the drive, not the no-go drift
 target_speed = ((((polar_speed * trim_drive) * man_coef) * heel_coef) * surf_coef) * performance_scale
+// a kite flown beyond its usable angle flogs (below): its drag lowers the speed the boat can hold and brakes it
+f_k = kite up ? clamp((polar_main(tws, ta) - polar_speed) / polar_main(tws, ta), 0, 1) : 0   // polar_main: the
+                                                                 // main-only config's; 0 where it is <= 0
+D_k = f_k * max(flog_drag(aws, aa) - flog_drag_main(aws, aa), 0) // m/s², the kite's own flogging drag
+if target_speed > 0: target_speed = max(target_speed - D_k / decel_linear, 0)
 err = target_speed - v
 if err > 0:
     a = accel
@@ -282,6 +287,7 @@ else:
     a = (decel_linear*err_d - decel_const) - wind
     free = let_fly || !auto_trim                                 // the sheets are free
     if free and v > 0 and eps > 0: a = a - (1 - trim_speed)*flog // flogging sails brake the boat
+    if v > 0: a = a - D_k                                         // and a flogging kite, sheets free or not
     if fabsf(err_d) < DT*fabsf(a): a = err_d / DT
 v = v + DT*a
 turning_up = (h * tack) > 0                                      // helm turns the bow toward the wind
@@ -321,6 +327,18 @@ drops.
   Downwind the fully eased sails still draw: let fly takes `trim_speed` at the fully eased trim (`sails.md` §5.3,
   §6), so a boat that lets fly on a run slows to the speed the table gives there, not to rest (and where a sail's
   fully eased angle reaches the wind line abaft the beam, the let-fly share of the windage push holds it).
+- **A kite beyond its usable angle** (2026-11-07): sailed closer to the wind than its config can use (where the
+  kite config's polar falls below the main-only config's: inside its no-go zone, or broached), a hoisted kite
+  cannot be made to draw and flogs on its sheet, whatever the crew does. Its flogging share `f_k` is the speed the
+  kite costs over the main alone, as a share of the main-alone speed: 0 where the kite pays, 1 where the kite
+  config makes no way. It brakes the boat with the kite's own flogging drag (the kite config's `flog_drag` less the
+  main-only config's: `0.5 ρ aws² (CD_flog − CD_luff)` on the kite's area, 0 with the apparent wind abaft the
+  beam) times `f_k`, sheets free or not, and lowers the speed the boat can hold by that drag over the hull's
+  resistance slope (`decel_linear`, the deceleration per m/s above the target): a steady drag `D` holds a boat
+  `D / decel_linear` below the speed it would hold without it. The sails module shows the share as the kite's luff
+  shiver (`sails.md` §7), so the drawn kite flogs (`sail_visuals.md` §6.5) and the sound and the rumble follow. On
+  wm7 at 12 kn: close-hauled (TWA 45) the kite costs all but a crawl of way where the main alone sails 5 kn; on a
+  close reach (TWA 60) a little; from TWA 70 nothing.
 - **From rest**: the acceleration table is fitted to the build-up from half the polar to 90 % of it (the speeds a
   boat rebuilds through after a tack or a gybe). From rest the drive meets no hull resistance ahead, so the boat
   starts faster: below half its target speed the rate blends linearly from `accel_rest` at rest (and in sternway

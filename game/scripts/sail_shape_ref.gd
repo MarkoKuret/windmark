@@ -72,7 +72,9 @@ const TACK_REACH := 0.5
 ## off the forestay, a last resort), in at most LOFT_EASE_STEPS steps
 const LOFT_SIDE := 0.1
 const LOFT_EASE_MAX := 0.5
-const LOFT_STAY_MAX := 0.26
+const LOFT_STAY_MAX := 1.8
+## §6.5 a lofted kite on a pole keeps this share of the foretriangle base ahead of the forestay (the hard rule)
+const LOFT_STAY_CLEAR := 0.04
 const LOFT_EASE_STEPS := 12
 ## §6.5 after its first step, the turn's solve looks only at vertices this many clearances near the worst; it keeps
 ## LOFT_MARGIN margins (horizontal, §7.4), so the true distance up by the head, where the sails lean, keeps one
@@ -109,6 +111,8 @@ var stay0 := Vector3.ZERO
 var stay1 := Vector3.ZERO
 var stay_w := 0.0
 var stay_c := 0.0
+var loft_stay_c := 0.0
+var loft_stay := false
 var fwd := Vector3(0, 0, 1)
 var port := Vector3(1, 0, 0)
 var up := Vector3(0, 1, 0)
@@ -288,6 +292,13 @@ func configure(rest_mid: PackedVector3Array, r: int, c: int, p: Dictionary) -> b
 		var jb := (dm - mast_axis * dm.dot(mast_axis)).length()  # the foretriangle base
 		stay_w = float(ks["stay_width"]) * jb
 		stay_c = maxf(float(ks["stay_clear"]) * jb, clearance)
+	# §6.5 a lofted kite, on a pole or a sprit, keeps ahead of the forestay (the hard rule)
+	loft_stay = loft and clearance > 0.0 and p.has("forestay_tack") and p.has("hounds")
+	if loft_stay:
+		stay0 = p["forestay_tack"]
+		stay1 = p["hounds"]
+		var dm2 := stay0 - mast_step
+		loft_stay_c = LOFT_STAY_CLEAR * (dm2 - mast_axis * dm2.dot(mast_axis)).length()
 	_obs = []
 	_ease = 0.0
 	tack = rest_mid[0]
@@ -733,7 +744,7 @@ func _update_loft(phase: int, progress: float, beta: float, gamma: float, shiver
 		if up_shape:
 			_loc[k] = fly[k]
 		elif phase == 5:
-			_loc[k] = _drop(k, p, fly[k])
+			_loc[k] = _drop(k, p, fly[k], true)
 		else:
 			_loc[k] = _hoist(k, p, fly[k])
 	if not up_shape:
@@ -748,7 +759,7 @@ func _update_loft(phase: int, progress: float, beta: float, gamma: float, shiver
 	var hd := s_t * head
 	_tack_at = piv
 	_ease = 0.0
-	if clearance > 0.0 and (not _obs.is_empty() or has_mast_head or has_stay):
+	if clearance > 0.0 and (not _obs.is_empty() or has_mast_head or loft_stay):
 		if not _obs.is_empty():
 			_sections(s_t, piv, ax, th)
 		else:
@@ -783,8 +794,8 @@ func _loft_clear(pts: PackedVector3Array, hd: Vector3, lee: Vector3, idx: Packed
 			x = float(_mast_x(pt, lee)[0]) - cp
 		for o in _secs:
 			x = minf(x, float(_clear_x(o, pt, cp)[0]) - cp)
-		if has_stay:
-			x = minf(x, _stay_x(pt) - cp)
+		if loft_stay:
+			x = minf(x, _stay_x(pt) - loft_stay_c)
 		out[q] = x
 	return out
 
@@ -804,25 +815,40 @@ func _stay_x(pt: Vector3) -> float:
 
 
 ## §6.5 the kite turned as a whole about its luff, away from the centreline, just far enough that no vertex is
-## inside the margin of the main, the jib or the mast (at most LOFT_EASE_MAX). After the first step only the
-## vertices then within LOFT_NEAR clearances of the worst are looked at again.
+## inside the margin of the main, the jib or the mast, or behind the forestay (at most LOFT_EASE_MAX, LOFT_STAY_MAX
+## with the forestay); with the forestay not cleared that way, turned in instead when that clears it or comes nearer
+## (a negative ease).
 func _loft_ease(beta: float, awa: float, s_t: Transform3D, piv: Vector3, ax: Vector3, th: float,
 		hd: Vector3) -> float:
-	var es := _sgn(beta)
-	var lee := port * _sgn(awa)
-	var delta := 0.0
 	var q := PackedVector3Array()
 	q.resize(n)
 	for k in n:
 		var lc := _loc[k]
 		q[k] = s_t * (tack + ah * lc.x + lh * lc.y + nh * lc.z)
+	var r_out := _loft_turn(1.0, beta, awa, q, piv, ax, th, hd)
+	if not loft_stay or not (r_out[1] < 0.0):
+		return r_out[0]
+	var r_in := _loft_turn(-1.0, beta, awa, q, piv, ax, th, hd)
+	return -r_in[0] if r_in[1] > r_out[1] else r_out[0]
+
+
+## §6.5 the turn's solve one way (dir +1 out, -1 in): [the turn (rad, >= 0), the worst clearance over its margin
+## there (>= 0 when clear)]. After the first step only the vertices then within LOFT_NEAR clearances of the worst are
+## looked at again, but with the forestay every vertex (the whole kite may come round it).
+func _loft_turn(dir: float, beta: float, awa: float, q: PackedVector3Array, piv: Vector3, ax: Vector3, th: float,
+		hd: Vector3) -> Array:
+	var es := _sgn(beta) * dir
+	var lee := port * _sgn(awa)
+	var cap := LOFT_STAY_MAX if loft_stay else LOFT_EASE_MAX
+	var delta := 0.0
 	var idx := PackedInt32Array()
 	idx.resize(n)
 	for k in n:
 		idx[k] = k
 	var pts := PackedVector3Array()
 	pts.resize(n)
-	for it in LOFT_EASE_STEPS:
+	var left := INF
+	for it in LOFT_EASE_STEPS + 1:
 		var xr := _about(piv, ax, th + es * delta)
 		for k in idx:
 			pts[k] = xr * q[k]
@@ -833,21 +859,19 @@ func _loft_ease(beta: float, awa: float, s_t: Transform3D, piv: Vector3, ax: Vec
 			if x[m] < worst:
 				worst = x[m]
 				at = idx[m]
-		if it == 0 and not has_stay:  # on a pole the whole kite may come round the stay: every vertex each step
+		left = worst
+		if not (worst < 0.0) or it == LOFT_EASE_STEPS or delta >= cap:
+			break
+		if it == 0 and not loft_stay:
 			var keep := PackedInt32Array()
 			for m in x.size():
 				if x[m] < worst + LOFT_NEAR * clearance:
 					keep.append(idx[m])
 			idx = keep
-		if not worst < 0.0:
-			break
 		var d := pts[at] - piv
 		var rr := (d - ax * d.dot(ax)).length()
-		var cap := LOFT_STAY_MAX if has_stay else LOFT_EASE_MAX
 		delta = minf(delta + (-worst) / maxf(rr, 0.5), cap)
-		if delta >= cap:
-			break
-	return delta
+	return [delta, left]
 
 
 ## §6.5 the turn of the last update (rad, about the luff, before the ease).
@@ -1375,8 +1399,9 @@ func _hoist(k: int, c: float, fly: Vector3) -> Vector3:
 	return bundle + (fly - bundle) * kk * kk
 
 
-## §8.5
-func _drop(k: int, c: float, fly: Vector3) -> Vector3:
+## §8.5; slide (a lofted kite, §6.5): the cloth still up slides down the luff keeping its flying shape instead of
+## relaxing to the flat sail (which, near the centreline, would cross the forestay)
+func _drop(k: int, c: float, fly: Vector3, slide: bool = false) -> Vector3:
 	var thr := l_min + sl * c
 	var kk := pow(c, 0.3)
 	var r := 1.0 - _h[k]
@@ -1387,7 +1412,10 @@ func _drop(k: int, c: float, fly: Vector3) -> Vector3:
 	else:
 		var t2 := (l - thr) / sl
 		var w := flutter_amp * 0.1 * sa * 0.63 * atan(8.0 * r) * (1.0 - t2) * 2.0 * sin(l + phi)
-		tg = Vector3(_a[k] + (fly.x - _a[k]) * t2 + w, l - (thr - l_min), t2 * fly.z + w)
+		if slide:
+			tg = Vector3(fly.x + w, fly.y - (thr - l_min), fly.z + w)
+		else:
+			tg = Vector3(_a[k] + (fly.x - _a[k]) * t2 + w, l - (thr - l_min), t2 * fly.z + w)
 	return fly + (tg - fly) * kk
 
 

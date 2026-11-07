@@ -79,7 +79,7 @@ class SailShape : public godot::RefCounted {
   godot::Vector3 furl(int k, float p, float d_cam, float amp, float shiver) const;
   godot::Vector3 fly(int k, int i, const godot::Vector3& w, float shiver) const;
   godot::Vector3 hoist(int k, float c, const godot::Vector3& f) const;
-  godot::Vector3 drop(int k, float c, const godot::Vector3& f) const;
+  godot::Vector3 drop(int k, float c, const godot::Vector3& f, bool slide = false) const;
   // rows 0 .. rows_to - 1 (all with -1)
   void locals(int64_t phase, bool up_shape, float p, float d_cam, float amp, float shiver, const godot::Vector3& w,
               int rows_to = -1);
@@ -98,6 +98,8 @@ class SailShape : public godot::RefCounted {
   void loft_clear(const std::vector<godot::Vector3>& pts, const godot::Vector3& hd, const godot::Vector3& lee,
                   const std::vector<int>& idx, std::vector<float>& out) const;
   float stay_x(const godot::Vector3& pt) const;
+  float loft_turn(float dir, float beta, float awa, const godot::Vector3& piv, const godot::Vector3& ax, float th,
+                  const godot::Vector3& hd, float& left);
   float loft_ease(float beta, float awa, const godot::Transform3D& s_t, const godot::Vector3& piv,
                   const godot::Vector3& ax, float th, const godot::Vector3& hd);
   // §7.4 clearance
@@ -130,7 +132,8 @@ class SailShape : public godot::RefCounted {
   bool has_mast_head_ = false;
   bool has_stay_ = false;  // §7.4 a flying sail on a pole: the forestay (tack fitting, hounds), half width, margin
   godot::Vector3 stay0_, stay1_;
-  float stay_w_ = 0.0f, stay_c_ = 0.0f;
+  float stay_w_ = 0.0f, stay_c_ = 0.0f, loft_stay_c_ = 0.0f;
+  bool loft_stay_ = false;
   // §4.1 the kite set parameters (defaults by kind in configure); the ones read per update
   float belly_aft_ = 0.5f, belly_up_ = 0.5f, twist_exp_ = 1.5f, twist_lo_ = 0.0f, twist_hi_ = 0.0f, twist_run_ = 0.0f;
   float foot_sag_ = 0.0f, foot_sag_h_ = 0.35f, head_drop_ = 0.0f, clew_lift_ = 0.0f, clew_out_ = 0.0f;

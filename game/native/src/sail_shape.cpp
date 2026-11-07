@@ -66,7 +66,9 @@ constexpr double DEG = 3.14159265358979323846 / 180.0;
 // off the forestay, a last resort), in at most LOFT_EASE_STEPS steps
 constexpr float LOFT_SIDE = 0.1f;
 constexpr float LOFT_EASE_MAX = 0.5f;
-constexpr float LOFT_STAY_MAX = 0.26f;
+constexpr float LOFT_STAY_MAX = 1.8f;
+// §6.5 a lofted kite on a pole keeps this share of the foretriangle base ahead of the forestay (the hard rule)
+constexpr float LOFT_STAY_CLEAR = 0.04f;
 constexpr int LOFT_EASE_STEPS = 12;
 // §6.5 after its first step, the turn's solve looks only at vertices this many clearances near the worst
 constexpr float LOFT_NEAR = 2.0f;
@@ -222,6 +224,14 @@ bool SailShape::configure(const PackedVector3Array& rest, int64_t rows, int64_t 
     const float jb = (dm - mast_axis_ * dm.dot(mast_axis_)).length();  // the foretriangle base
     stay_w_ = static_cast<float>(kp("stay_width", STAY_WIDTH)) * jb;
     stay_c_ = std::max(static_cast<float>(kp("stay_clear", STAY_CLEAR)) * jb, clearance_);
+  }
+  // §6.5 a lofted kite, on a pole or a sprit, keeps ahead of the forestay (the hard rule)
+  loft_stay_ = loft_ && clearance_ > 0.0f && p.has("forestay_tack") && p.has("hounds");
+  if (loft_stay_) {
+    stay0_ = getv(p, "forestay_tack", Vector3());
+    stay1_ = getv(p, "hounds", Vector3());
+    const Vector3 dm = stay0_ - mast_step_;
+    loft_stay_c_ = LOFT_STAY_CLEAR * (dm - mast_axis_ * dm.dot(mast_axis_)).length();
   }
   obs_.clear();
   ease_ = 0.0f;
@@ -474,7 +484,9 @@ Vector3 SailShape::hoist(int k, float c, const Vector3& f) const {
   return bundle + (f - bundle) * (kk * kk);
 }
 
-Vector3 SailShape::drop(int k, float c, const Vector3& f) const {
+// §8.5; slide (a lofted kite, §6.5): the cloth still up slides down the luff keeping its flying shape instead of
+// relaxing to the flat sail (which, near the centreline, would cross the forestay)
+Vector3 SailShape::drop(int k, float c, const Vector3& f, bool slide) const {
   const float thr = l_min_ + sl_ * c;
   const float kk = std::pow(c, 0.3f);
   const float r = 1.0f - h_[k];
@@ -485,7 +497,10 @@ Vector3 SailShape::drop(int k, float c, const Vector3& f) const {
   } else {
     const float t2 = (l - thr) / sl_;
     const float w = flutter_amp_ * 0.1f * sa_ * 0.63f * std::atan(8.0f * r) * (1.0f - t2) * 2.0f * std::sin(l + phi_);
-    tg = Vector3(a_[k] + (f.x - a_[k]) * t2 + w, l - (thr - l_min_), t2 * f.z + w);
+    if (slide)
+      tg = Vector3(f.x + w, f.y - (thr - l_min_), f.z + w);
+    else
+      tg = Vector3(a_[k] + (f.x - a_[k]) * t2 + w, l - (thr - l_min_), t2 * f.z + w);
   }
   return f + (tg - f) * kk;
 }
@@ -701,7 +716,7 @@ void SailShape::update_loft(int64_t phase, float progress, float beta, float gam
     if (up_shape)
       loc_[k] = fly_[k];
     else if (phase == 5)
-      loc_[k] = drop(k, p, fly_[k]);
+      loc_[k] = drop(k, p, fly_[k], true);
     else
       loc_[k] = hoist(k, p, fly_[k]);
   }
@@ -719,7 +734,7 @@ void SailShape::update_loft(int64_t phase, float progress, float beta, float gam
   const Vector3 hd = s_t.xform(head_);
   tack_at_ = piv;
   ease_ = 0.0f;
-  if (clearance_ > 0.0f && (!obs_.empty() || has_mast_head_ || has_stay_)) {
+  if (clearance_ > 0.0f && (!obs_.empty() || has_mast_head_ || loft_stay_)) {
     if (!obs_.empty())
       sections(s_t, piv, ax, th);
     else
@@ -755,7 +770,7 @@ void SailShape::loft_clear(const std::vector<Vector3>& pts, const Vector3& hd, c
     const float cp = LOFT_MARGIN * margin_at(pt, hd);
     float x = has_mast_head_ ? mast_x(pt, lee, g) - cp : INFINITY;
     for (const Section& o : secs_) x = std::min(x, clear_x(o, pt, cp, g) - cp);
-    if (has_stay_) x = std::min(x, stay_x(pt) - cp);
+    if (loft_stay_) x = std::min(x, stay_x(pt) - loft_stay_c_);
     out[q] = x;
   }
 }
@@ -772,18 +787,34 @@ float SailShape::stay_x(const Vector3& pt) const {
 
 float SailShape::loft_ease(float beta, float awa, const Transform3D& s_t, const Vector3& piv, const Vector3& ax,
                            float th, const Vector3& hd) {
-  const float es = sgn(beta);
-  const Vector3 lee = port_ * sgn(awa);
-  float delta = 0.0f;
   lq_.resize(n_);
   lp_.resize(n_);
   for (int k = 0; k < n_; ++k) {
     const Vector3& lc = loc_[k];
     lq_[k] = s_t.xform(tack_ + ah_ * lc.x + lh_ * lc.y + nh_ * lc.z);
   }
+  float left = 0.0f;
+  const float out = loft_turn(1.0f, beta, awa, piv, ax, th, hd, left);
+  if (!loft_stay_ || !(left < 0.0f)) return out;
+  // the forestay not cleared turning out: turned in instead when that clears, or is nearer
+  float left_in = 0.0f;
+  const float in = loft_turn(-1.0f, beta, awa, piv, ax, th, hd, left_in);
+  return left_in > left ? -in : out;
+}
+
+// §6.5 the turn's solve one way (dir +1 out, -1 in): the turn (rad, >= 0) and, in `left`, the worst clearance over
+// its margin there (>= 0 when clear). After the first step only the vertices then within LOFT_NEAR clearances of the
+// worst are looked at again, but with the forestay every vertex (the whole kite may come round it).
+float SailShape::loft_turn(float dir, float beta, float awa, const Vector3& piv, const Vector3& ax, float th,
+                           const Vector3& hd, float& left) {
+  const float es = sgn(beta) * dir;
+  const Vector3 lee = port_ * sgn(awa);
+  const float cap = loft_stay_ ? LOFT_STAY_MAX : LOFT_EASE_MAX;
+  float delta = 0.0f;
   lidx_.resize(n_);
   for (int k = 0; k < n_; ++k) lidx_[k] = k;
-  for (int it = 0; it < LOFT_EASE_STEPS; ++it) {
+  left = INFINITY;
+  for (int it = 0; it <= LOFT_EASE_STEPS; ++it) {
     const Transform3D xr = about(piv, ax, th + es * delta);
     for (int k : lidx_) lp_[k] = xr.xform(lq_[k]);
     loft_clear(lp_, hd, lee, lidx_, lx_);
@@ -795,18 +826,17 @@ float SailShape::loft_ease(float beta, float awa, const Transform3D& s_t, const 
         at = lidx_[m];
       }
     }
-    if (it == 0 && !has_stay_) {  // on a pole the whole kite may come round the stay: every vertex each step
+    left = worst;
+    if (!(worst < 0.0f) || it == LOFT_EASE_STEPS || delta >= cap) break;
+    if (it == 0 && !loft_stay_) {
       size_t w = 0;
       for (size_t m = 0; m < lx_.size(); ++m)
         if (lx_[m] < worst + LOFT_NEAR * clearance_) lidx_[w++] = lidx_[m];
       lidx_.resize(w);
     }
-    if (!(worst < 0.0f)) break;
     const Vector3 d = lp_[at] - piv;
     const float rr = (d - ax * d.dot(ax)).length();
-    const float cap = has_stay_ ? LOFT_STAY_MAX : LOFT_EASE_MAX;
     delta = std::min(delta + (-worst) / std::max(rr, 0.5f), cap);
-    if (delta >= cap) break;
   }
   return delta;
 }

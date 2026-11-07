@@ -876,7 +876,7 @@ func _shape_params(sp: SailPart, look: Dictionary, furling: bool) -> Dictionary:
 		p["mast_head"] = _mast_head
 		if _has_flying_lead:  # §7.5, §7.6 its sheet's lead block
 			p["sheet_lead"] = _flying_lead
-		if _has_stay and sp.mode == Mode.POLE:  # §7.4 forward of the forestay
+		if _has_stay:  # §7.4 a kite on a pole, §6.5 every lofted kite: ahead of the forestay
 			p["forestay_tack"] = _stay0
 			p["hounds"] = _stay1
 	return p

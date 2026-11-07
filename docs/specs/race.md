@@ -541,6 +541,7 @@ shows it with hysteresis (`hud.md` §10) so it does not flicker between two boat
 - **Time to the leader (split)**: at each completed step the race records the step time of every boat; the gap at
   step k is `t_me(k) − t_leader(k)`. The HUD shows the latest common split.
 - **Estimated time gap** between splits: `(D_me − D_leader) / V_ref(leg of me)` (as §7.2). Labelled as an estimate.
+- The same gaps to the boat directly ahead in the ranking (`hud.md` §10), with her in place of the leader.
 
 ## 9. Results and scoring
 

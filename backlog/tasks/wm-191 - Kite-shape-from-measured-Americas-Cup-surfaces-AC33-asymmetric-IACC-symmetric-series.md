@@ -7,7 +7,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-11-06 21:29'
-updated_date: '2026-11-06 23:16'
+updated_date: '2026-11-07 13:31'
 labels:
   - kite
   - visuals
@@ -37,5 +37,5 @@ The kite's fixed flying shape taken from complete measured 3D surfaces instead o
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Task id WM-191 (WM-188 to 190 are taken on branch kite-authored). Second pass (2026-11-06b): surfaces on every spinnaker class; the reach foot lifted (wm7 0.57 m off the water on the close reach); the pole kite raised on a run with its head eased, the forestay turn a 15 deg last resort (the forestay still passes one cell of the lower kite at a dead run on wm9 and wm21); the clew turn toward the sheet tried and dropped (it folded or S-bent the cloth for 6 to 7 deg gained). Fallback tag kite-ac-v1.
+Third pass (2026-11-07): the pole kite's run rise and eased head taken out; the run sits at the TWA 150 height; the 15 deg forestay turn stays and the forestay clips the lower kite at a dead run on wm9 and wm21.
 <!-- SECTION:NOTES:END -->

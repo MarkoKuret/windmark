@@ -327,6 +327,9 @@ buoys). After starting, each boat has a **next step** index `k` (initially 1) an
 Every step has a reference point `R_k`: the buoy position for a mark, the midpoint of the two buoys for a gate, the
 midpoint of the line for the start and the finish.
 
+Free sail on a laid course (no race) uses the tests of §4.1, §5.1, §5.2 and §6.1 in the front end to lead the
+player round the course (`courses.md` §6.4).
+
 ### 5.1 Rounding a mark: the winding test
 
 For a mark `M` with rounding side `side ∈ {port, starboard}` ("port" = the boat leaves the mark on her port side),

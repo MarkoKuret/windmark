@@ -246,6 +246,25 @@ camera it is not drawn (the mark tag and its edge pointer do that job there).
 - **With it**: outside the chase camera the mark's off-screen edge pointer (§16.4) is not drawn, so one cue points
   at the mark: the arrow while the mark is off screen, the mark tag on the mark while it is on screen.
 
+### 7.2 Free sail with a laid course
+
+Free sail on a laid course (`courses.md` §6.4) leads the player round it with the race's course items, the next
+step coming from the free sail's progress (`courses.md` §6.4) instead of the race:
+
+- **Shown as in a race**: the mark tag with its name and distance (the ETA at Race, the bearing at Data), the
+  next-mark arrow (§7.1), the laylines on the water and the radar and the distance to them with the tack point
+  (§6), the zone circle and the rounding arrows, the far marker, the leg type, VMG or VMC, the shift chip and the
+  sail hint as the density and the assist allow (§14, §16.1), the radar with the course's marks (§8) and the
+  course map (§8.1, its header `Next  <name>  <distance>`, without `Finished`).
+- **The start line is the first step**: named `Start`, a line like the finish (distance and bearing to its nearest
+  point, no rounding arrow, no zone circle), drawn on the water in `paper` while it is the next step; the finish
+  line is drawn blue while it is the next step, as in a race. The lap and leg line reads `Lap 1/2 · Leg 3/7` on the
+  marks and is empty for the start line.
+- **Not shown** (nothing of the race runs): the countdown and flags, the start line panel, OVER and OCS, the race
+  bug (clock, rank, gaps), the event feed and banners, the rules line, prompts, penalties, the ranking, the finish
+  card and the results. Passing a step makes no sound and no feed line; the mark tag simply moves on to the next
+  step.
+
 ## 8. Radar / minimap
 
 - Centred on the viewed boat; **heading-up** (default) or **north-up**; range 100 m – 3 km in steps of ×1.5; the
@@ -280,7 +299,8 @@ cameras keep moving and every sound plays. Offline and online alike.
 - **Open and close**: `map` toggles it; Esc (`pause_menu`) with the map open closes it and does nothing else (before
   clearing a selection, §16.4.1, and before the pause menu: the next Esc does those as usual). It does not open
   while the pause menu or the chat line has the keys, and it closes by itself when the race is gone (the scene
-  leaves race mode, a new race starts). It is not remembered: every race starts with it closed.
+  leaves race mode, a new race starts). In free sail it opens on a laid course (§7.2), not on empty water. It is
+  not remembered: every race starts with it closed.
 - **Frame**: **course up**, fixed for the race: the course axis, from the start line's middle to the first
   rounding step's point (the first windward mark on a windward-leeward course), points straight up the screen; a
   course without a start line or rounding step uses the race's mean wind (`twd_mean`, wind from the top). It does
@@ -686,7 +706,8 @@ boat's card (§16.7). The radar, the helm strip and, under manual trim, the trim
   about the shift. The top right corner holds race items only (the feed).
 - At Glance the radar is drawn at 72 % of its size without the range and orientation labels, the helm strip has no
   labels (the sail state shows, and the sail strip for 3 s after a sail key, §5.2, §5.3). At Glance and Race the feed shows only the viewed boat's own events; Data shows every event.
-- Free sailing (no race): the instrument page and the helm strip as in the table's beat row without the race items.
+- Free sailing (no race): the instrument page and the helm strip as in the table's beat row without the race items;
+  on a laid course (§7.2) the rows of the leg phases (beat, run, reach, rounding) without the race bug and the feed.
 - **Defaults**: Race; Glance on the Steam Deck and on any screen under 900 px tall (after the UI scale). The player's
   last choice is kept in the settings file (per device, `menus.md` §3) and wins over the default. Glance was
   considered as the default everywhere (2026-10-17) and rejected: with Race cut down to the racer's list, Glance only

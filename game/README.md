@@ -479,7 +479,7 @@ viewed boat. What it shows (`docs/specs/hud.md`):
 - **Position** (§10): rank with the 2 s hysteresis (finishes at once), gap to the leader at the last common split or
   as an estimate (`~`), the boats ahead and behind; the ranking list while `rankings` is held (Tab).
 - **Rules** (§11, §12): the highest priority awareness line, the protest prompt (8 s) and the hail button and reply,
-  both wired into `PlayerControls`; the penalty panel (rule text and other boat, turn ring with tack and gybe
+  both wired into `PlayerControls` and both off until online play exists (`Bindings.online_play`); the penalty panel (rule text and other boat, turn ring with tack and gybe
   ticks, zone and reset notes, deadline, the disqualification warning); penalty, served, late, finish blocked
   and disqualification banners.
 - **Radar** (§8): heading-up or north-up (Z), range 100 m to 3 km in x1.5 steps (= and -), both remembered in

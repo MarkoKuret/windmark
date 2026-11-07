@@ -685,10 +685,25 @@ func test_penalties_prompts() -> void:
 	_refresh(h, sim)
 	sim.rules_ev = []
 	t.ok(h.text_of("banner") == "DISQUALIFIED: penalty not taken within 2 minutes", h.text_of("banner"))
-	# protest prompt with its 8 s countdown, wired into PlayerControls
+	# protest prompt with its 8 s countdown, wired into PlayerControls; online only (controls.md §2): offline neither
+	# the protest nor the hail prompt shows and the hooks say no, so H and P send nothing
 	var pc := PlayerControls.new()
 	h.frame(0.01, pc)
 	t.ok(not pc.protest_prompt.call(), "no protest prompt")
+	t.ok(not Bindings.online_play, "no online play yet: hail and protest are off")
+	sim.rules_ev = [_uev(RaceText.Rev.PROTESTABLE, {"boat": 1, "other": 0, "rule": R.R11, "deadline": 8.0})]
+	_refresh(h, sim)
+	sim.rules_ev = []
+	h.frame(0.01, pc)
+	t.ok(h.race.protest_prompt() and not pc.protest_prompt.call() and h.text_of("prompt") == "",
+		"offline: a protestable incident shows no prompt and P sends nothing")
+	sim.hail = {"available": true, "hailed_by": 1}
+	_refresh(h, sim)
+	t.ok(not pc.hail_available.call() and not pc.hailed.call() and h.text_of("prompt") == "",
+		"offline: no hail prompt and H sends nothing")
+	sim.hail = {}
+	# the online code path stays (behind Bindings.online_play)
+	Bindings.online_play = true
 	sim.rules_ev = [_uev(RaceText.Rev.PROTESTABLE, {"boat": 1, "other": 0, "rule": R.R11, "deadline": 8.0})]
 	_refresh(h, sim)
 	sim.rules_ev = []
@@ -702,10 +717,20 @@ func test_penalties_prompts() -> void:
 	sim.hail = {"available": true, "hailed_by": -1}
 	_refresh(h, sim)
 	t.ok(pc.hail_available.call() and h.text_of("prompt") == "Hail: room to tack [H]", "hail button: " + h.text_of("prompt"))
+	# the prompt names the live binding (controls.md §3 Prompts): a rebound key; on the pad, which has no hail
+	# button, the key still
+	Bindings.set_slot("hail", 0, ["key", KEY_J, ""])
+	Bindings.pad_last = true
+	_refresh(h, sim)
+	t.ok(h.text_of("prompt") == "Hail: room to tack [J]", "rebound, pad last: " + h.text_of("prompt"))
+	Bindings.pad_last = false
+	DefaultBindings.apply_to_input_map()
 	sim.hail = {"available": false, "hailed_by": 1}
 	_refresh(h, sim)
 	t.ok(pc.hailed.call() and h.text_of("prompt") == "Nora hails for room to tack: tack, or reply [H] you tack",
 		h.text_of("prompt"))
+	Bindings.online_play = false
+	sim.hail = {}
 	h.free()
 
 
@@ -768,7 +793,7 @@ func test_assists_text() -> void:
 	var table := {
 		"laylines": [true, true, false], "layline_distance": [true, true, false], "zone": [true, true, false],
 		"radar_colours": [true, true, false], "shift": [true, true, false], "burn_bias": [true, true, false],
-		"shadow_view": [true, false, false], "sail_hint": [true, false, false],
+		"sail_hint": [true, false, false],
 	}
 	var ok := true
 	for k in table:
@@ -1603,6 +1628,20 @@ func test_course_map() -> void:
 			want_names.append(CourseMapView.gate_label(h.race.mark_label(st["marks"][0]), h.race.mark_label(st["marks"][1])))
 	t.ok(not want_names.is_empty() and want_names.all(func(n: String) -> bool: return map_texts.has(n)),
 		"every rounding mark named on the map: %s" % str(want_names))
+	# the close hint names the map binding on the device used last (controls.md §3 Prompts), rebinding included
+	var close_hint := func() -> String:
+		for q in m.primitives():
+			if q["k"] == "text" and (q["text"] as String).ends_with("CLOSE"):
+				return q["text"]
+		return ""
+	t.ok(map_texts.has("M  CLOSE"), "keyboard: M  CLOSE")
+	Bindings.pad_last = true
+	t.ok(CourseMapView.close_text() == "D-PAD UP  CLOSE", "gamepad: " + CourseMapView.close_text())
+	Bindings.pad_last = false
+	Bindings.set_slot("map", 0, ["key", KEY_K, ""])
+	t.ok(CourseMapView.close_text() == "K  CLOSE", "rebound: " + CourseMapView.close_text())
+	DefaultBindings.apply_to_input_map()
+	t.ok(close_hint.call() != "", "the hint is drawn: " + str(close_hint.call()))
 	t.ok(m.drawn.get(2) == HudStyle.TINTS[T.GREY], "ghost grey")
 	var me_px: Vector2 = m.icons.get(0, Vector2.INF)
 	var mark_icon := false

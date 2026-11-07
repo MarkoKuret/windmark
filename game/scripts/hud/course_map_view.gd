@@ -466,4 +466,9 @@ func _footer() -> void:
 	var label := HudFormat.distance(l)
 	_s(Vector2(x + w + 10.0 * k, y + 4.0 * k), label, fs, HudStyle.PAPER, 600, 0.06)
 	scale_bar = [l, w, label]
-	_s(Vector2(frame.end.x, y + 4.0 * k), "M  CLOSE", fs, HudStyle.MIST, 600, HudPaint.TRACK, HORIZONTAL_ALIGNMENT_RIGHT)
+	_s(Vector2(frame.end.x, y + 4.0 * k), close_text(), fs, HudStyle.MIST, 600, HudPaint.TRACK, HORIZONTAL_ALIGNMENT_RIGHT)
+
+
+## The close hint (hud.md §8.1): the `map` binding as the device used last names it, `M  CLOSE`, `D-PAD UP  CLOSE`.
+static func close_text() -> String:
+	return "%s  CLOSE" % Bindings.prompt(&"map", "M").to_upper()

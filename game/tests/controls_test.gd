@@ -441,12 +441,42 @@ func test_input_map() -> void:
 		"auto_trim", "sail_1", "sail_9", "sail_prev", "sail_next", "sail_set", "drop_front", "hail", "protest",
 		"camera_next", "camera_chase", "camera_onboard", "camera_aerial", "camera_free", "camera_zoom_in",
 		"camera_zoom_out", "camera_recentre", "camera_preset_1", "camera_preset_8", "camera_boost", "rankings",
-		"map", "radar_zoom_in", "radar_zoom_out", "radar_orientation", "wind_shadow_view", "hud_hide",
+		"map", "radar_zoom_in", "radar_zoom_out", "radar_orientation", "hud_hide",
 		"boat_names", "world_tags", "capture_pause", "capture_slow", "camera_clip", "hud_density", "boat_select", "boat_pick", "rankings_pad", "spectate_next", "spectate_prev", "spectate_leader", "chat", "pause_menu", "screenshot",
 		"helm_stick_left", "helm_stick_right", "sheet_in_trigger", "sheet_out_trigger", "camera_orbit_left",
 		"camera_orbit_drag", "camera_look_up"]
 	for a in spec:
 		t.ok(InputMap.has_action(a), "InputMap has %s" % a)
+	# WM-214, WM-215, WM-208: no wind shadow view key (not built); D-pad up opens the course map; hail and protest
+	# keep their keys, lose the pad button and leave the Bindings list until online play exists
+	t.ok(not InputMap.has_action(&"wind_shadow_view") and not table.has("wind_shadow_view"), "V is not bound")
+	var dpad_up := Bindings.decode(["button", JOY_BUTTON_DPAD_UP])
+	t.ok(InputMap.action_has_event(&"map", dpad_up), "the map has D-pad up")
+	t.ok(not InputMap.action_has_event(&"hail", dpad_up) and not InputMap.action_has_event(&"protest", dpad_up),
+		"hail and protest have no pad button")
+	t.ok(InputMap.action_has_event(&"hail", Bindings.decode(["key", KEY_H, ""]))
+		and InputMap.action_has_event(&"protest", Bindings.decode(["key", KEY_P, ""])), "H and P kept")
+	t.ok(not Bindings.online_play and not Bindings.actions().has("hail") and not Bindings.actions().has("protest")
+		and Bindings.actions().has("map"), "offline: hail and protest not listed")
+	Bindings.online_play = true
+	t.ok(Bindings.actions().has("hail") and Bindings.actions().has("protest"), "online: listed")
+	Bindings.online_play = false
+	t.ok(not Bindings.actions().has("hail"), "the list follows the switch back")
+	t.ok(Bindings.all_conflicts().is_empty(), "the defaults have no conflicts")
+	# controls.md §3 Prompts: the binding on the device used last, the other device's when that has none
+	t.ok(Bindings.prompt(&"map", "", false) == "M" and Bindings.prompt(&"map", "", true) == "D-pad up",
+		"map: M on the keys, D-pad up on the pad")
+	t.ok(Bindings.prompt(&"auto_trim", "", true) == "D-pad down" and Bindings.prompt(&"hail", "", true) == "H",
+		"auto trim on the pad: D-pad down; hail has no pad button: H")
+	t.ok(Bindings.prompt(&"sail_set", "", false) == "X" and Bindings.prompt(&"no_such", "x") == "x",
+		"no key for sail set: the pad's X; no action: the fallback")
+	Bindings.pad_last = true
+	t.ok(PlayerControls.key_text(&"auto_trim", "") == "D-pad down", "a note follows the pad")
+	Bindings.pad_last = false
+	t.ok(PlayerControls.key_text(&"auto_trim", "") == "T", "and the keyboard")
+	Bindings.set_slot("auto_trim", 0, ["key", KEY_Y, ""])
+	t.ok(PlayerControls.key_text(&"auto_trim", "") == "Y", "and a rebinding")
+	DefaultBindings.apply_to_input_map()
 	# a scripted key press through the live InputMap reaches the reader
 	var reader := InputReader.new()
 	root.add_child(reader)

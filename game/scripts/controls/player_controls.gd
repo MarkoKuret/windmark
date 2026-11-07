@@ -274,13 +274,10 @@ func _sheet(r: RawInput, dt: float) -> void:
 	sheet_cmd = clampf(u, 0.0, 1.0)
 
 
-## The player's key for an action as she reads it (controls.md §3), for a note: the first keyboard or mouse binding
-## of the live input map, else the pad's, else `fallback`.
+## The player's key for an action as she reads it, for a note (controls.md §3 Prompts): the live binding on the
+## device used last, else the other device's, else `fallback`.
 static func key_text(action: StringName, fallback: String) -> String:
-	for b in Bindings.slots(action):
-		if b is Array and not (b as Array).is_empty():
-			return Bindings.text(b)
-	return fallback
+	return Bindings.prompt(action, fallback)
 
 
 ## controls.md §5.3: switching auto-trim off starts the sheet from the present trim, so nothing jumps.

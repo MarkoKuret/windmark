@@ -582,14 +582,15 @@ func frame(dt: float, controls: PlayerControls = null) -> void:
 	HudCanvas.memo_frame = -1
 
 
-## PlayerControls asks the HUD whether the protest prompt shows and whether a hail can be made or answered.
+## PlayerControls asks the HUD whether the protest prompt shows and whether a hail can be made or answered (online
+## only, controls.md §2: no while Bindings.online_play is off).
 func _wire(c: PlayerControls) -> void:
 	if c == _wired:
 		return
 	_wired = c
-	c.protest_prompt = func() -> bool: return race.active and race.protest_prompt()
-	c.hail_available = func() -> bool: return race.active and race.hail_available
-	c.hailed = func() -> bool: return race.active and race.hailed_by >= 0
+	c.protest_prompt = func() -> bool: return Bindings.online_play and race.active and race.protest_prompt()
+	c.hail_available = func() -> bool: return Bindings.online_play and race.active and race.hail_available
+	c.hailed = func() -> bool: return Bindings.online_play and race.active and race.hailed_by >= 0
 
 
 # ---- course map (hud.md §8.1) ----
@@ -629,12 +630,12 @@ func toggle_hidden() -> void:
 
 
 ## hud.md §14: whether the assist preset shows a race element ("laylines", "layline_distance", "zone",
-## "radar_colours", "shift", "burn_bias", "sail_hint", "shadow_view"; everything else always)
+## "radar_colours", "shift", "burn_bias", "sail_hint"; everything else always)
 func shows(what: String) -> bool:
 	match what:
 		"laylines", "layline_distance", "zone", "radar_colours", "shift", "burn_bias":
 			return assist != Assist.MINIMAL
-		"sail_hint", "shadow_view":
+		"sail_hint":
 			return assist == Assist.FULL
 	return true
 
@@ -748,15 +749,18 @@ func _race_frame() -> void:
 	turn_view.tack_done = r.turn_tack
 	turn_view.gybe_done = r.turn_gybe
 	penalty_panel.visible = r.penalty_visible
-	# the prompt (protest, hail) and the banner answer at once
+	# the prompt (protest, hail: online only, hud.md §11) and the banner answer at once
 	var prompt := ""
-	if r.protest_prompt():
-		prompt = "Protest %s (rule %s)? [P]  %d" % [r.name_of(r.protest_culprit), RaceText.code(r.protest_rule),
-			ceili(r.protest_ticks * SimSource.DT)]
+	if not Bindings.online_play:
+		pass
+	elif r.protest_prompt():
+		prompt = "Protest %s (rule %s)? [%s]  %d" % [r.name_of(r.protest_culprit), RaceText.code(r.protest_rule),
+			Bindings.prompt(&"protest", "P"), ceili(r.protest_ticks * SimSource.DT)]
 	elif r.hailed_by >= 0:
-		prompt = "%s hails for room to tack: tack, or reply [H] you tack" % r.name_of(r.hailed_by)
+		prompt = "%s hails for room to tack: tack, or reply [%s] you tack" % [r.name_of(r.hailed_by),
+			Bindings.prompt(&"hail", "H")]
 	elif r.hail_available:
-		prompt = "Hail: room to tack [H]"
+		prompt = "Hail: room to tack [%s]" % Bindings.prompt(&"hail", "H")
 	_put("prompt", prompt, HudStyle.TINTS[RaceHudValues.Tint.YELLOW])
 	if r.banner != null:
 		_put("banner", r.banner.text, HudStyle.TINTS[r.banner.tint])

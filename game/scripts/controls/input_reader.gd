@@ -150,6 +150,7 @@ func read() -> RawInput:
 	r.pan = _pan
 	r.magnify = _magnify
 	r.gamepad = _gamepad
+	Bindings.pad_last = _gamepad  # the prompts name the device used last (controls.md §3 Prompts)
 	r.pointer_drag = _dragging
 	if not is_nan(_click.x):
 		r.pressed.append(&"boat_pick")

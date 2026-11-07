@@ -86,3 +86,8 @@ static func relative_bearing(rel: float) -> String:
 	if d == 0:
 		return "0°"
 	return "%d° %s" % [d, "R" if rel > 0.0 else "L"]
+
+
+## scoring points: whole numbers without decimals ("3"), else one decimal ("2.5")
+static func points(x: float) -> String:
+	return "%d" % int(x) if fmod(x, 1.0) == 0.0 else "%.1f" % x

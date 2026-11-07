@@ -1808,7 +1808,7 @@ func test_touches() -> void:
 	Settings.reset_current()
 
 
-## a stand-in sail scene whose race is on (menus.md §2: Retire shows, Restart and Quit to menu ask first)
+## a stand-in sail scene whose race is on (menus.md §2: Retire shows, Restart and Main menu ask first)
 class _RaceHost extends Node:
 	func can_retire() -> bool:
 		return true
@@ -1887,8 +1887,8 @@ func test_pause_menu() -> void:
 	pm.buttons["restart"].pressed.emit()
 	pm.open()
 	pm.buttons["quit"].pressed.emit()
-	t.ok(acts == ["restart", "quit"] and not pm.is_open, "restart and quit to menu requested: %s" % [acts])
-	# menus.md §2: while the player's race is on (the window of Retire) Restart and Quit to menu ask first
+	t.ok(acts == ["restart", "quit"] and not pm.is_open, "restart and main menu requested: %s" % [acts])
+	# menus.md §2: while the player's race is on (the window of Retire) Restart and Main menu ask first
 	acts.clear()
 	var stub := _RaceHost.new()
 	root.add_child(stub)

@@ -288,7 +288,7 @@ The options are saved per player in the settings file and set in the settings sc
 
 - **Offline** (solo against AI): `pause_menu` pauses the simulation (no ticks), audio ducks to ambience, the cameras
   can still orbit and zoom. Resuming continues from the same tick. The menu holds resume, restart, settings and
-  quit to menu (`menus.md` §2). While the pause menu or the results screen (`menus.md` §5) is open the menu has the
+  main menu (`menus.md` §2). While the pause menu or the results screen (`menus.md` §5) is open the menu has the
   keys: `chat`, `hud_hide`, the capture actions and `reset_boat` do nothing (Enter on a menu item must not open the
   chat line, and a stray key must not restart the race or freeze it behind the menu); `pause_menu`, `screenshot`
   and the camera actions keep working, and the spectating keys over the results screen.

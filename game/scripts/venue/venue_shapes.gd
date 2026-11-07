@@ -81,14 +81,6 @@ func land_distance(i: int, p: Vector2) -> float:
 	return signed_distance(pts, p)
 
 
-## Index of the land polygon containing p, -1 in the water.
-func land_at(p: Vector2) -> int:
-	for i in land.size():
-		if _land_boxes[i].has_point(p) and Geometry2D.is_point_in_polygon(p, land[i]["points"]):
-			return i
-	return -1
-
-
 ## Index of the obstacle containing p, -1 outside every obstacle.
 func obstacle_at(p: Vector2) -> int:
 	for i in obstacles.size():

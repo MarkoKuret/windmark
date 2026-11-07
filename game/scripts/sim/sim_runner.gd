@@ -102,11 +102,6 @@ func settle() -> int:
 	return 1
 
 
-## A tick runs ahead on the sim's thread.
-func is_ahead() -> bool:
-	return _ahead != null
-
-
 func alpha() -> float:
 	return clampf(_acc / SimSource.DT, 0.0, 1.0)
 

@@ -688,30 +688,6 @@ static func texture_mean(t: Variant) -> float:
 	return mean
 
 
-## The mean of one channel (0 R, 1 G, 2 B) of a data texture, as stored (no colour conversion); 1 without one.
-static func channel_mean(t: Variant, ch: int) -> float:
-	if not (t is Texture2D):
-		return 1.0
-	var key := "%s/%d" % [(t as Texture2D).get_rid(), ch]
-	if _tex_mean.has(key):
-		return _tex_mean[key]
-	var img := (t as Texture2D).get_image()
-	var mean := 1.0
-	if img != null and not img.is_empty():
-		img = img.duplicate()
-		if img.is_compressed():
-			img.decompress()
-		img.convert(Image.FORMAT_RGBA8)
-		img.resize(16, 16, Image.INTERPOLATE_TRILINEAR)
-		var s := 0.0
-		for y in 16:
-			for x in 16:
-				s += img.get_pixel(x, y)[ch]
-		mean = clampf(s / 256.0, 0.05, 1.0)
-	_tex_mean[key] = mean
-	return mean
-
-
 static func _lin(c: Color) -> Vector3:
 	var l := c.srgb_to_linear()
 	return Vector3(l.r, l.g, l.b)

@@ -67,9 +67,6 @@ const RULE_TEXT := {
 ## code names in Rule order (wm_rule_code_name)
 const RULE_CODES := ["", "10", "11", "12", "13", "14", "15", "16.1", "16.2", "17", "18.2", "18.3", "18.4", "19",
 	"20", "21.1", "21.2", "31", "44.2-late", "C-prep", "C-entry", "SI-boundary"]
-const FLAG_NAME := ["P", "I", "Z", "U", "Black"]
-## the RRS rule of each prep flag (race.md §3.3)
-const FLAG_RULE := ["29.1", "30.1", "30.2", "30.3", "30.4"]
 ## hud.md §9.1 signal banner, the prep flag's meaning
 const PREP_MEANING := [
 	"P flag: be behind the line at the start",
@@ -96,10 +93,6 @@ static func code(rule: int) -> String:
 static func rule_text(rule: Variant) -> String:
 	var c: String = code(int(rule)) if (rule is int or rule is float) else str(rule)
 	return RULE_TEXT.get(c, "Rule %s" % c)
-
-
-static func flag_name(flag: int) -> String:
-	return FLAG_NAME[clampi(flag, 0, 4)]
 
 
 ## hud.md §9.1 banner for a signal (flag: the prep flag shown)

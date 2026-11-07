@@ -672,12 +672,6 @@ static func _vec(a: Array) -> Vector3:
 	return Vector3(a[0], a[1], a[2])
 
 
-## Rotation by `angle` about the line through `p` along `axis` (right-handed).
-static func _about(p: Vector3, axis: Vector3, angle: float) -> Transform3D:
-	var b := Basis(axis, angle)
-	return Transform3D(b, p - b * p)
-
-
 ## The rudder node (blade and tiller, or the tiller alone) and any twin blades turned to helm h: +h * rudder_max
 ## about each one's own upward stock axis.
 func _turn_rudders(h: float) -> void:
@@ -1218,7 +1212,7 @@ func _update_sheet(beta: float) -> void:
 		return
 	var first := is_inf(_sheet_angle)
 	_sheet_angle = beta
-	var d := _about(_boom_pivot, _boom_axis, beta) * _sheet_top - _sheet_top
+	var d := Frames.about(_boom_pivot, _boom_axis, beta) * _sheet_top - _sheet_top
 	var v := PackedVector3Array()
 	v.resize(_sheet_rest.size())
 	for k in v.size():
@@ -1242,7 +1236,7 @@ func sheet_positions() -> PackedVector3Array:
 	var v := PackedVector3Array()
 	if _sheet == null:
 		return v
-	var d := _about(_boom_pivot, _boom_axis, boom_angle) * _sheet_top - _sheet_top
+	var d := Frames.about(_boom_pivot, _boom_axis, boom_angle) * _sheet_top - _sheet_top
 	v.resize(_sheet_rest.size())
 	for k in v.size():
 		v[k] = _sheet_rest[k] + d * _sheet_w[k]

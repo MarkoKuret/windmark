@@ -380,7 +380,8 @@ compilation.
 (`docs/specs/menus.md` §5). `tests/load_cost.gd` times the builds headless, from the engine's start: the sail scene
 as a 16-boat quick race (`--scene=race`, with the pause menu and results screen), free sail (`free`) or the main
 menu with its backdrop (`menu`), `--runs` builds in one process (the first cold, the later ones as Race again finds
-the caches), with the sail scene's parts (`build_ms`) and the warm-up's copies:
+the caches; `--after-menu` builds and frees the main menu first, as Start race finds them), with the sail scene's
+parts (`build_ms`) and the warm-up's copies:
 
 ```
 godot --headless --path game -s res://tests/load_cost.gd -- --scene=race --fleet=16 --runs=3

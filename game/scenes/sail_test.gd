@@ -233,7 +233,7 @@ enum TickWork { HUD, AUDIO, COURSE }
 var _tick_due: Array[int] = []
 var _in_advance := false
 var _ticked_this_frame := false
-## the scene's build in ms by part (setup, core, views, venue, hud, course, audio, menus, rest; WM-180 measures)
+## the scene's build in ms by part (setup, core, views, venue, hud, course, audio, pause, results, rest; tests/load_cost.gd)
 var build_ms := {}
 var _build_t := 0
 

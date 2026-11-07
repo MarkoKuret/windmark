@@ -496,7 +496,7 @@ viewed boat. What it shows (`docs/specs/hud.md`):
 
 Names, skippers and AI levels come from `Hud.race.names`, `skippers`, `ai_levels` (boat index to text; defaults
 "You" and "Boat n"). `Hud.hud_event(kind, data)` reports signals, OCS, penalties, served penalties, rule warnings,
-the finish, the protest prompt and the results for the audio. `Hud.ui_input(raw)` takes the ranking and radar keys
+the finish, the protest prompt, the start limit warnings and the DNS at the limit, and the results for the audio. `Hud.ui_input(raw)` takes the ranking and radar keys
 from a `RawInput`; without it the Hud polls the input map (not headless).
 
 ## UI tests

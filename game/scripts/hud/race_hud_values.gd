@@ -12,7 +12,7 @@ extends RefCounted
 
 ## hud_event(kind, data) for audio and anything else that follows the race: "signal" {kind, flag},
 ## "penalty" {boat, rule, other}, "penalty_served", "rule_warning" {giver, holder, rule}, "finished" {place},
-## "protest_prompt" {culprit, rule}, "ocs" {flag}, "results"
+## "protest_prompt" {culprit, rule}, "ocs" {flag}, "results", "start_limit" {left (s), ocs}, "dns"
 signal hud_event(kind: String, data: Dictionary)
 
 const DT := SimSource.DT
@@ -22,6 +22,12 @@ const BANNER_SPLIT := 80  # 4 s
 const BANNER_PENALTY := 80
 const BANNER_SERVED := 40
 const BANNER_DSQ := 200
+## hud.md §9.1 banner priority: the viewed boat's own over the race's over the individual recall
+const PRIO_RECALL := 0
+const PRIO_RACE := 1
+const PRIO_OWN := 2
+## hud.md §9.4: the start limit warnings, s before the limit
+const START_LIMIT_WARN := [120.0, 60.0]
 const FEED_TICKS := 160  # 8 s
 const FEED_LINES := 6
 const PENALTY_RECENT := 100  # hud.md §12.1: 5 s
@@ -64,6 +70,8 @@ class Line:
 	var full := false
 	## a feed line about the viewed boat or the whole race (signals, starts): the Glance feed shows only these
 	var own := true
+	## a banner's priority (hud.md §9.1): PRIO_RECALL, PRIO_RACE, PRIO_OWN
+	var prio := 1
 
 	func _init(t := "", c := Tint.WHITE, n := 0, f := false) -> void:
 		text = t
@@ -90,6 +98,8 @@ var race_time := 0.0
 var sequence := 0
 var prep_flag := 1
 var warning_time := 300.0
+## race.md §4.4 the start limit after the gun, s
+var start_limit := 240.0
 ## flags shown now: "class", "P", "I", "Z", "U", "black", "X", "1st substitute"
 var flags: Array[String] = []
 var start_panel := false
@@ -225,6 +235,8 @@ var _summary_done := false
 var _track_last := Vector2.INF
 var _tick := 0
 var _events_tick := -1
+var _prev_race_time := NAN
+var _release_shown := false
 
 
 func name_of(b: int) -> String:
@@ -313,6 +325,7 @@ func tick(sim: SimSource, b: int) -> void:
 	sequence = int(race.get("sequence", 0))
 	prep_flag = int(race.get("prep_flag", 1))
 	warning_time = 180.0 if sequence == RaceText.Sequence.S3210 else 300.0
+	start_limit = float(race.get("start_limit_s", 240.0))
 	started = bool(rb.get("started", false))
 	finished = bool(rb.get("finished", false))
 	t_finish = float(rb.get("t_finish_us", 0)) * 1e-6
@@ -726,8 +739,15 @@ func contact(b: int) -> Contact:
 
 # ---- events: banners, feed, splits, results (§9.1, §10, §12.2, §13) ----
 
-func _banner(text: String, tint: int, ticks: int, full := false) -> void:
+## hud.md §9.1: a banner replaces the one showing unless that one has a higher priority and is still up; then the
+## line goes to the feed instead, unless it is there already (`fed`, the signals).
+func _banner(text: String, tint: int, ticks: int, full := false, prio := PRIO_RACE, fed := false) -> void:
+	if banner != null and banner.ticks > 0 and banner.prio > prio:
+		if not fed:
+			_feed(text, [boat])
+		return
 	banner = Line.new(text, tint, ticks, full)
+	banner.prio = prio
 
 
 ## `about`: the boats the line is about (none: the whole race)

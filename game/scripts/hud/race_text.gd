@@ -17,6 +17,8 @@ enum Sequence { S5410, S3210, MATCH }
 ## race.md §11 (WM_EV_*)
 enum Ev { SIGNAL, BOAT_OCS, BOAT_RETURNED, STARTED, ROUNDED, FINISH_BLOCKED, FINISHED, GHOSTED, RETIRED, JOINED,
 	LEFT, WINDOW_WARNING, RACE_CLOSING, RACE_CLOSED, ABANDONED }
+## race.md §6.3 why a boat became a ghost (WM_GHOST_*)
+enum Ghost { NONE, FINISHED, RETIRED, DSQ, UFD, BFD, DNF, DNS, LEFT }
 ## race.md §11 signal kinds (WM_SIGNAL_*)
 enum SignalKind { WARNING, PREP_UP, PREP_DOWN, START, GENERAL_RECALL, X_UP, X_DOWN }
 ## rules.md §11.3 (WM_REV_*)

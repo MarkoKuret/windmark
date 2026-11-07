@@ -12,6 +12,7 @@ const HELP := {
 	"helm_mode": "Set and hold: a tap moves the helm and it stays. Hold to steer: it comes back when you let go.",
 	"stick_dead_zone": "How far the stick moves before the helm answers. Raise it if the boat steers on its own.",
 	"keys_toggle": "Let fly, fine helm, rankings and camera boost. Hold: on while the key is down. Toggle: one press on, the next off.",
+	"weather_helm": "Off: the boat holds her course with the helm centred. On: she tries to luff up as she heels, like a real boat.",
 	"vibration": "Gamepad rumble when you touch a boat or a mark, a light buzz while the sails flog. Off: none.",
 	"heel_follow": "How much the onboard camera leans with the boat. Level horizon keeps it upright.",
 	"reduced_motion": "No camera shake, a level horizon and a calmer chase camera.",
@@ -174,6 +175,7 @@ func _controls() -> void:
 	_row(MenuRow.range_row("Stick dead zone", "stick_dead_zone", 0.0, 0.30, 0.01, s.stick_dead_zone,
 		func(v: float) -> String: return "%.2f" % v))
 	_row(MenuRow.choice("Held keys", "keys_toggle", [false, true], ["Hold", "Toggle"], s.keys_toggle))
+	_row(MenuRow.toggle("Weather helm", "weather_helm", s.weather_helm))
 	_row(MenuRow.range_row("Vibration", "vibration", 0.0, 1.0, 0.1, s.vibration,
 		func(v: float) -> String: return "Off" if v <= 0.0 else pct(v)))
 	_bindings()

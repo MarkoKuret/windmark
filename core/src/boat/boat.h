@@ -72,6 +72,10 @@ class Boat {
   void set_auto_trim(bool on) { ctl_.auto_trim = on; }
   void set_let_fly(bool on) { ctl_.let_fly = on; }
   void set_performance_scale(float s);
+  // boat.md §2 options: the sail plan's helm balance acts on the heading (§5.5 helm_luff). Off (the default) the
+  // boat holds her heading with the helm centred; set by the world for every boat it adds, not serialised.
+  void set_weather_helm(bool on) { weather_helm_ = on; }
+  bool weather_helm() const { return weather_helm_; }
   SailRequest hoist(std::int32_t sail) { return sails_.hoist(sail); }
   SailRequest drop_front() { return sails_.drop_front(); }
 
@@ -118,6 +122,7 @@ class Boat {
   BoatControls ctl_;
   BoatOutputs out_;
   Sails sails_;
+  bool weather_helm_ = false;
 };
 
 }  // namespace wm

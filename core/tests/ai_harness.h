@@ -161,6 +161,11 @@ struct AiRaceSpec {
   float tide = NAN;
   bool no_current = false;  // the venue's conditions without any current (a reference for the tide's cost)
   bool time_ai = false;     // development: time the skippers' step every tick (AiRaceOutcome::ai_us_*)
+  // The helm balance (boat.md §2 weather_helm_enabled). The races sail the full model, which the skippers were
+  // tuned and measured on: the pinned escape (ai.md §6.5) counts on the sail plan's luff to pivot a boat with no
+  // way off a mark; with it off (the game's default) a boat pinned on the Solent leeward mark stays there until
+  // the penalty deadline (flood seed 2: 118 s, slack seed 2: 114 s). Open: an escape that works without way.
+  bool weather_helm = true;
 };
 
 inline std::vector<std::uint8_t> read_bytes(const std::string& path) {
@@ -218,6 +223,7 @@ inline std::unique_ptr<wm::World> ai_world(const AiRaceSpec& sp) {
   s.race_seed = sp.seed;
   s.wind.base_speed = kn(sp.wind_kn);
   s.wind.base_from = sp.wind_from;
+  s.weather_helm = sp.weather_helm;
   if (!sp.wind_default) wm::apply_shift_preset(s.wind, sp.shifts);
   s.wind.puffs_enabled = sp.puffs;
   s.race.free_sailing_s = sp.free_sailing_s;

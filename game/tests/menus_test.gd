@@ -112,6 +112,7 @@ func _odd_settings() -> Settings:
 	s.helm_mode = PlayerControls.HelmMode.HOLD_TO_STEER
 	s.stick_dead_zone = 0.2
 	s.keys_toggle = true
+	s.weather_helm = true
 	s.vibration = 0.3
 	s.camera_speed = 1.75
 	s.invert_x = true
@@ -452,6 +453,8 @@ func test_every_key_applied() -> void:
 		"controls.keys_toggle": pc.let_fly_toggle and pc.helm_fine_toggle and hud.rankings_toggle
 			and rig.options.boost_toggle,
 		"controls.vibration": is_equal_approx(pc.rumble.strength, s.vibration),
+		# applied at world creation (core_sim_source.gd create), not by apply_controls
+		"controls.weather_helm": s.weather_helm == true,
 		"cameras.camera_speed": is_equal_approx(rig.options.speed, s.camera_speed),
 		"cameras.invert_x": rig.options.invert_orbit_x and rig.options.invert_look_x,
 		"cameras.invert_y": rig.options.invert_orbit_y and rig.options.invert_look_y,

@@ -71,6 +71,7 @@ std::int32_t World::add_boat(const BoatEntry& e) {
   const std::uint32_t index = static_cast<std::uint32_t>(boats_.size());
   boats_.emplace_back();
   boats_.back().init(e.perf, setup_.race_seed, index);
+  boats_.back().set_weather_helm(setup_.weather_helm);
   entries_.push_back(e);
   shadow_classes_.push_back(make_shadow_class(e.perf->dynamics.wind_shadow));
   env_.emplace_back();

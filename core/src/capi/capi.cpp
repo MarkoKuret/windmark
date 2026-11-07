@@ -492,6 +492,7 @@ void wm_world_settings_init(wm_world_settings* s) {
   s->sea = 1;
   s->sea_scale = sd.sea_scale;
   s->shadows = 1;
+  s->weather_helm = 0;
   s->race_type = -1;
   s->sequence = -1;
   s->prep_flag = -1;
@@ -570,6 +571,7 @@ wm_status wm_world_create(const wm_world_settings* s, const wm_venue* venue, wm_
   for (int32_t i = 0; i < s->swell_count; ++i) ws.sea_settings.swells.push_back({s->swells[i].hs, s->swells[i].tp, s->swells[i].from});
   if (const char* why = wm::check_sea_settings(ws.sea_settings)) return fail(WM_ERR_ARG, std::string("sea: ") + why);
   ws.shadows = s->shadows != 0;
+  ws.weather_helm = s->weather_helm != 0;
   race_in(s, ws.race);
   h->world = std::make_unique<wm::World>(ws);
   h->wind = std::make_unique<wm::WindField>(ws.race_seed, h->world->wind().settings());

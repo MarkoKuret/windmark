@@ -18,6 +18,9 @@ var helm_mode := PlayerControls.HelmMode.SET_AND_HOLD
 var stick_dead_zone := 0.10
 ## the held keys (let fly, fine helm, the rankings, the camera boost) as toggles: one press on, the next off
 var keys_toggle := false
+## the sail plan's helm balance turns the boat with the helm centred (boat.md §2 `weather_helm_enabled`); off: she
+## holds her course with the helm centred
+var weather_helm := false
 ## 0 = off
 var vibration := 1.0
 
@@ -75,7 +78,7 @@ var bindings := {}
 
 ## key -> [section, field]; the file layout
 const FIELDS := {
-	"controls": ["helm_mode", "stick_dead_zone", "keys_toggle", "vibration"],
+	"controls": ["helm_mode", "stick_dead_zone", "keys_toggle", "weather_helm", "vibration"],
 	"cameras": ["camera_speed", "invert_x", "invert_y", "heel_follow", "reduced_motion"],
 	"hud": ["assist", "hud_density", "ui_scale", "palette"],
 	"graphics": ["quality", "render_scale", "aa", "fullscreen", "vsync", "fps_limit"],

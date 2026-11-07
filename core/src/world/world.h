@@ -30,6 +30,7 @@ struct WorldSetup {
   bool sea = true;
   SeaSettings sea_settings;          // wind_sea left at 0: grown from the base wind and the venue fetch
   bool shadows = true;
+  bool weather_helm = false;         // boat.md §2: the sail plan's helm balance, given to every boat added
   RaceSettings race;
   RulesParams rules;
 };

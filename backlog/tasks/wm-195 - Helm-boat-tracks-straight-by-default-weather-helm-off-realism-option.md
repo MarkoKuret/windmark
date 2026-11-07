@@ -1,9 +1,11 @@
 ---
 id: WM-195
 title: 'Helm: boat tracks straight by default (weather helm off), realism option'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-11-07 17:44'
+updated_date: '2026-11-07 18:08'
 labels: []
 dependencies: []
 priority: high
@@ -18,5 +20,5 @@ The owner wants the boat to go straight with the helm centred. Weather helm beco
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 With the option off a boat at any trim holds its heading with the helm centred (test). Settings expose Weather helm on/off, default off; boat.md documents it.
+- [x] #1 With the option off a boat at any trim holds its heading with the helm centred (test). Settings expose Weather helm on/off, default off; boat.md documents it.
 <!-- AC:END -->

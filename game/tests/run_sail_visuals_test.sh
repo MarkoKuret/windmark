@@ -3,7 +3,7 @@
 # GDScript reference and the native SailShape, native against reference, the vertex buffer against Godot's own
 # encoding, the generated wm7 and wm12 sails in BoatView, the generator's preview poses against BoatView (parity),
 # the update rate by distance and the cost per sail; then the running sheets, the levels of detail and the rope
-# materials (tests/sheets_lod_test.gd).
+# materials (tests/sheets_lod_test.gd), and the ropes through their edge cases on every class (tests/ropes_test.gd).
 # Builds the GDExtension when game/bin has no library and generates the boats when they are missing. Fails on any
 # failed check, script error or engine error. Nothing opens a window.
 #   game/tests/run_sail_visuals_test.sh [--rebuild] [--preview]
@@ -61,6 +61,20 @@ if [ $rc -ne 0 ] || grep -qE "SCRIPT ERROR|^ERROR|^WARNING|Parse Error" "$log"; 
     exit 1
 fi
 echo "sheets and LOD test passed"
+
+# the ropes through their edge cases on every class (sail_visuals.md §11.3 "Rope", test 29)
+log="$here/generated/ropes_test.log"
+set +e
+"$godot" --headless --path "$here" -s res://tests/ropes_test.gd >"$log" 2>&1
+rc=$?
+set -e
+grep -E "^- |FAIL|checks|^  wm" "$log" || true
+if [ $rc -ne 0 ] || grep -qE "SCRIPT ERROR|^ERROR|^WARNING|Parse Error" "$log"; then
+    grep -E "SCRIPT ERROR|^ERROR|^WARNING|Parse Error" -A2 "$log" | head -20 || true
+    echo "ropes test failed (full log: $log)"
+    exit 1
+fi
+echo "ropes test passed"
 
 if [ $preview -eq 1 ]; then
     "$godot" --headless --path "$here" -s res://tests/sail_preview_dump.gd

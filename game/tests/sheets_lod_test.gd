@@ -123,6 +123,26 @@ func _native_vs_ref() -> void:
 			dn = maxf(dn, na[k].distance_to(nb[k]))
 			du = maxf(du, ua[k].distance_to(ub[k]))
 		t.ok(dp < 1e-4 and dn < 1e-3 and du < 1e-4, "shown %s: positions %.7f m, normals %.6f, uv %.7f" % [shown, dp, dn, du])
+	# the rope's motion (§11.3 "Rope"): 2 s at 60 fps, the clew flogging, a waypoint appearing, the clew jumping
+	a.configure(_params())
+	b.configure(_params())
+	var dyn := 0.0
+	for f in 120:
+		var tt := f / 60.0
+		var st := PackedVector3Array([Vector3(0.9 + 0.5 * sin(5.0 * tt), 1.1 + 0.3 * cos(3.0 * tt),
+			0.4 + (0.6 if f >= 60 else 0.0)), Vector3(0.3, 1.0, 5.0)])
+		var wy := PackedVector3Array([Vector3(0.0, 1.0, 0.9) if f > 30 else Vector3(NAN, NAN, NAN),
+			Vector3(NAN, NAN, NAN)])
+		var dv := _drive([true, true])
+		dv[3] = 0.3 * sin(tt)
+		dv[5] = 3.0 * tt
+		a.update(st, wy, dv, Vector3(0.1, -1, 0), 1.0 / 60.0)
+		b.update(st, wy, dv, Vector3(0.1, -1, 0), 1.0 / 60.0)
+		var qa: PackedVector3Array = a.positions()
+		var qb: PackedVector3Array = b.positions()
+		for k in qa.size():
+			dyn = maxf(dyn, qa[k].distance_to(qb[k]))
+	t.ok(dyn < 1e-4, "the rope's motion over 2 s: positions agree within %.7f m" % dyn)
 	# the deck field builder: a deck plane with a raised box (a cabin) and a low and a tall fitting
 	var plane := PackedVector3Array([Vector3(-1, 0.5, -2), Vector3(1, 0.5, -2), Vector3(1, 0.6, 2), Vector3(-1, 0.6, 2)])
 	var cabin := PackedVector3Array([Vector3(-0.4, 0.8, -0.5), Vector3(0.4, 0.8, -0.5), Vector3(0.4, 0.8, 0.5),
@@ -133,8 +153,8 @@ func _native_vs_ref() -> void:
 	var surfs := [{"positions": plane, "indices": quad, "cap": -1.0}, {"positions": cabin, "indices": quad, "cap": -1.0},
 		{"positions": low, "indices": PackedInt32Array([0, 1, 2]), "cap": 0.07},
 		{"positions": tall, "indices": PackedInt32Array([0, 1, 2]), "cap": 0.07}]
-	var fa: Dictionary = a.build_deck(surfs, 0.025, 8, 1)
-	var fb: Dictionary = b.build_deck(surfs, 0.025, 8, 1)
+	var fa: Dictionary = a.build_deck(surfs, 0.025, 8, 1, 10)
+	var fb: Dictionary = b.build_deck(surfs, 0.025, 8, 1, 10)
 	var dh := 0.0
 	var ha: PackedFloat32Array = fa["heights"]
 	var hb: PackedFloat32Array = fb["heights"]
@@ -148,6 +168,8 @@ func _native_vs_ref() -> void:
 	t.near(probe.deck_height(0.7, 0.1), 0.6, 2e-3, "deck field: a low fitting counts")
 	t.ok(probe.deck_height(-0.7, 0.1) < 0.6, "deck field: a tall fitting does not")
 	t.near(probe.deck_height(1.15, 0.0), 0.55, 0.03, "deck field: the skirt holds the edge's height out over the side")
+	t.ok(probe.deck_height(1.35, 0.0) < 0.3 and probe.deck_height(1.35, 0.0) > -1.0,
+		"deck field: beyond the skirt it falls away down the hull side (%.3f m at 0.15 m out)" % probe.deck_height(1.35, 0.0))
 	a.update(starts, ways, _drive([true, true]), Vector3(0.1, -1, 0))
 	var c: PackedVector3Array = a.centre(0)
 	t.near_v(c[0], starts[0], 1e-4, "the line starts at the clew")
@@ -476,6 +498,7 @@ func _routes(id: String) -> void:
 						var sv := _sails_view(data, ap.x, ap.y, tws, kite_i, jib_i if jib_up else -1, tr)
 						var what := "twa %d tws %.0f %s trim %.2f jib %s" % [twa_deg, kn, "stbd" if side > 0 else "port",
 							tr[0], "up" if jib_up else "down"]
+						sh.snap()  # a jump to the next config, not sailing: the lines laid on their shapes (§11.3 "Rope")
 						_run(bv, sv, 2)
 						_check_lines(bv, deck, r, what)
 						# native against the reference on a subset (the reference shapes are slow)
@@ -570,6 +593,8 @@ static func _parity(bv: BoatView) -> float:
 		ref.configure({"sides": BoatSheets.SIDES[sh.detail], "tile": BoatSheets.TILE, "lines": sh.line_specs[surf],
 			"deck": sh._deck})
 		ref.update(sh.last_starts[surf], sh.last_ways[surf], sh.last_drive[surf], Vector3.DOWN)
+		# both laid on the hanging shapes of these inputs (the rope's motion is compared in _native_vs_ref)
+		shape.update(sh.last_starts[surf], sh.last_ways[surf], sh.last_drive[surf], Vector3.DOWN)
 		var pa: PackedVector3Array = shape.positions()
 		var pb := ref.positions()
 		for k in pa.size():

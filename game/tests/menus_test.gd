@@ -501,6 +501,8 @@ func test_every_key_applied() -> void:
 			var k: String = sec + "." + f
 			t.ok(got.get(k, false), "%s applied" % k)
 	t.ok("voice" in Settings.BUSES["signals_volume"], "the signals volume drives the hails' voice bus too")
+	t.ok(not (SettingsPanel.HELP["signals_volume"] as String).to_lower().contains("hail"),
+		"the signals help promises no hails (online only): %s" % SettingsPanel.HELP["signals_volume"])
 	# a file from an older build with the dropped keys: the others load, the dropped ones are not written again
 	var old := ConfigFile.new()
 	old.set_value("settings", "version", 1)
@@ -600,6 +602,10 @@ func test_rebinding() -> void:
 	var row: BindingRow = p.binding_rows.get("let_fly")
 	t.ok(row != null and p.binding_rows.size() == Bindings.actions().size(), "a row per action (%d)"
 		% p.binding_rows.size())
+	# WM-208: hail and protest are online only, not in the list until online play exists; no wind shadow view row
+	t.ok(not p.binding_rows.has("hail") and not p.binding_rows.has("protest") and p.binding_rows.has("map")
+		and not p.binding_rows.has("wind_shadow_view"), "no Hail, Protest or Wind shadow view row")
+	t.ok(Bindings.slots("map")[2] == ["button", JOY_BUTTON_DPAD_UP], "the map's Pad slot: D-pad up")
 	t.ok(row._slots.size() == 3 and p.binding_rows["camera_zoom_in"]._slots.size() == 4,
 		"Key 1, Key 2, Pad (zoom: three keys, its defaults have three)")
 	# keyboard: focus the row, pick Key 2, Enter listens, T binds

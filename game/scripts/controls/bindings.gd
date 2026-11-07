@@ -111,13 +111,41 @@ static func slots(action: String) -> Array:
 
 static var _defaults := {}
 static var _actions: Array = []
+static var _actions_online := false
+
+## the online-only actions (controls.md §2): bound to their keys and kept in the code, but not listed, not in the
+## conflict checks and without a HUD prompt until online play exists
+const ONLINE_ONLY := ["hail", "protest"]
+## whether online play exists; off until it does (tests turn it on to reach the online code paths)
+static var online_play := false
+## the device the player used last (controls.md §3 Prompts): true after a gamepad input; InputReader sets it
+static var pad_last := false
 
 
-## The actions of controls.md §3 in table order.
+## The actions of controls.md §3 in table order: the Bindings list, the conflicts and the stored overrides
+## (without the online-only ones while there is no online play).
 static func actions() -> Array:
-	if _actions.is_empty():
-		_actions = DefaultBindings.table().keys()
+	if _actions.is_empty() or _actions_online != online_play:
+		_actions_online = online_play
+		_actions = DefaultBindings.table().keys().filter(func(a: String) -> bool:
+			return online_play or not ONLINE_ONLY.has(a))
 	return _actions
+
+
+## The key a prompt names for an action (controls.md §3 Prompts): its binding as the player's bindings name it now,
+## on the device used last (`pad`, default pad_last): the gamepad slot after a pad input, else the first keyboard
+## or mouse slot; the other device's when that one has none; `fallback` when the action has no binding.
+static func prompt(action: StringName, fallback := "", pad: Variant = null) -> String:
+	var on_pad: bool = pad_last if pad == null else bool(pad)
+	var s := slots(String(action))
+	if s.is_empty():
+		return fallback
+	var kbm := s.slice(0, s.size() - 1).filter(func(b: Array) -> bool: return not b.is_empty())
+	var pb: Array = s[s.size() - 1]
+	var first: Array = pb if on_pad else ([] if kbm.is_empty() else kbm[0])
+	if first.is_empty():
+		first = ([] if kbm.is_empty() else kbm[0]) if on_pad else pb
+	return fallback if first.is_empty() else text(first)
 
 
 static func default_slots(action: String) -> Array:

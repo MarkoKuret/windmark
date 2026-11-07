@@ -3,9 +3,11 @@ id: WM-214
 title: >-
   Sailing feedback at the defaults: trim tell-tales with auto trim, V
   wind-shadow view, the sail strip and busy flash
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-11-07 18:47'
+updated_date: '2026-11-07 19:36'
 labels:
   - hud
 dependencies: []
@@ -21,6 +23,6 @@ With the defaults (auto trim on, Standard assist, Glance or Race density) the pl
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A one-word state (Luffing, Stalled, In irons, Let fly) shows at Race density with auto trim on
-- [ ] #2 V shows the wind shadow or is unbound; the sail strip or an equivalent says the sail keys
+- [x] #1 A one-word state (Luffing, Stalled, In irons, Let fly) shows at Race density with auto trim on
+- [x] #2 V shows the wind shadow or is unbound; the sail strip or an equivalent says the sail keys
 <!-- AC:END -->

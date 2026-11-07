@@ -597,27 +597,87 @@ static func alerts(b: HudCanvas, h: Hud) -> void:
 
 # ---- helm strip (bottom centre) ----
 
-const HELM := Vector2(360, 128)
+const HELM := Vector2(360, 150)
+## the helm strip's rows (design px): the trim gauges' row (0 to 56), the text row's baseline, the sail strip's
+const HELM_TEXT_Y := 108.0
+const HELM_STRIP_Y := 144.0
+const STATE_SIZE := 16
 
 
 static func helm(b: HudCanvas, h: Hud) -> void:
 	var k := b.k
+	var fs := int(roundf(LAB_S * k))
+	var y := HELM_TEXT_Y
+	# hud.md §5.2 the sail state: where the gauges are when auto trim hides them, else in the sheet value's place
+	var state := h.text_of("sail_state")
+	if state != "" and h.values.auto_trim:
+		b._s(Vector2(b.size.x * 0.5, 36.0 * k), state, int(roundf(STATE_SIZE * k)), h.colour_of("sail_state"), 600,
+			0.1, HORIZONTAL_ALIGNMENT_CENTER)
+	var in_row := state != "" and not h.values.auto_trim
+	if in_row:
+		b._s(Vector2(b.size.x * 0.5, y * k), state, int(roundf(STATE_SIZE * k)), h.colour_of("sail_state"), 600, 0.1,
+			HORIZONTAL_ALIGNMENT_CENTER)
+	if h.sail_strip_shown():
+		sail_strip(b, h, HELM_STRIP_Y)
 	if h.density == Hud.Density.GLANCE:
 		return
-	var fs := int(roundf(LAB_S * k))
-	var y := 108.0
 	var left := "HELM"
 	if h.density == Hud.Density.DATA:
 		left += "  " + h.value_of("rudder")
 	b._s(Vector2(0, y) * k, left, fs, HudStyle.LABEL, 600, TRACK)
-	var sail := h.value_of("sail")
-	b._s(Vector2(HELM.x, y) * k, sail, fs, HudStyle.PAPER, 600, TRACK, HORIZONTAL_ALIGNMENT_RIGHT)
+	if h.values.slot_names.is_empty():  # the sail strip names the sail up (hud.md §5.3)
+		b._s(Vector2(b.size.x, y * k), h.value_of("sail"), fs, HudStyle.PAPER, 600, TRACK, HORIZONTAL_ALIGNMENT_RIGHT)
+	if in_row:
+		return
 	var sh := "SHEETS AUTO" if h.values.auto_trim else "SHEET " + h.value_of("sheet")
-	b._s(Vector2(HELM.x * 0.5, y) * k, sh, fs, HudStyle.PORT if h.values.let_fly else HudStyle.PAPER, 600, TRACK,
+	b._s(Vector2(b.size.x * 0.5, y * k), sh, fs, HudStyle.PORT if h.values.let_fly else HudStyle.PAPER, 600, TRACK,
 		HORIZONTAL_ALIGNMENT_CENTER)
 
 
-## the hoist cue (hud.md §5.1), the sail hint and the controls' messages, one line each over the helm strip
+## hud.md §5.3 the sail strip at baseline `y` (design px): each front sail's key and name, the one up underlined,
+## the pad's highlighted slot with the set button, the running change blinking on a busy press.
+static func sail_strip(b: HudCanvas, h: Hud, y: float) -> void:
+	var k := b.k
+	var v := h.values
+	var pad := Bindings.pad_last
+	var items: Array[String] = []
+	for i in v.slot_names.size():
+		var key := "" if pad else Bindings.prompt(StringName("sail_%d" % (i + 1)), "", false)
+		if pad and i == h.sail_highlight:
+			key = Bindings.prompt(&"sail_set", "", true)
+		items.append(((key + " ") if key != "" else "") + v.slot_names[i].to_upper())
+	var fs := int(roundf(LAB_S * k))
+	var gap := 22.0 * k
+	var ws: Array[float] = []
+	var total := 0.0
+	for it in items:
+		ws.append(HudCanvas.text_width(it, fs, 600, TRACK))
+		total += ws.back()
+	total += gap * (items.size() - 1)
+	while total > b.size.x and fs > int(roundf(TINY * k)):  # 11 px is the floor (hud.md §16.2.2)
+		fs -= 1
+		gap = 14.0 * k
+		total = gap * (items.size() - 1)
+		for i in items.size():
+			ws[i] = HudCanvas.text_width(items[i], fs, 600, TRACK)
+			total += ws[i]
+	var x := (b.size.x - total) * 0.5
+	var flash := h.busy_flash_on()
+	for i in items.size():
+		var col := HudStyle.PAPER if i == v.slot_up or v.slot_change.has(i) else HudStyle.LABEL
+		if flash and v.slot_change.has(i):
+			col = HudStyle.MARK
+		b._s(Vector2(x, y * k), items[i], fs, col, 600, TRACK)
+		var under := HudStyle.PAPER if i == v.slot_up else Color(0, 0, 0, 0)
+		if pad and i == h.sail_highlight:
+			under = HudStyle.MARK
+		if under.a > 0.0:
+			b._rect(Rect2(Vector2(x, (y + 4.0) * k), Vector2(ws[i], 2.0 * k)), under)
+		x += ws[i] + gap
+
+
+## the hoist cue (hud.md §5.1), the controls' messages, the bad air line (§3.1) and the sail hint, one line each over the
+## helm strip
 static func helm_notes(b: HudCanvas, h: Hud) -> void:
 	var k := b.k
 	var y := 16.0
@@ -631,7 +691,7 @@ static func helm_notes(b: HudCanvas, h: Hud) -> void:
 		b._rect(bar, HudStyle.HAIR)
 		b._rect(Rect2(bar.position, Vector2(tw * clampf(h.values.hoist_progress, 0.0, 1.0), bar.size.y)), HudStyle.MARK)
 		y += 30.0
-	for key in ["message", "hint"]:
+	for key in ["message", "bad_air", "hint"]:
 		var t := h.text_of(key)
 		if t != "" and (key != "hint" or (h.has_item("hint") and hoist == "")) and y < 56.0:
 			b._s(Vector2(b.size.x * 0.5, y * k), t, int(roundf(16 * k)), HudStyle.HAVE if key == "hint" else HudStyle.PAPER,

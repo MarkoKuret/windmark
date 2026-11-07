@@ -3,10 +3,11 @@ id: WM-208
 title: >-
   Decide: hails and protests offline (H and P do nothing, hails are silent, the
   AI never hails)
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-11-07 18:47'
-updated_date: '2026-11-07 19:09'
+updated_date: '2026-11-07 19:36'
 labels:
   - decide-later
 dependencies: []
@@ -22,7 +23,7 @@ H (room to tack) and P (protest) are in the Bindings list but dead in a quick ra
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Owner decides; Bindings and the Settings hint match what works
+- [x] #1 Owner decides; Bindings and the Settings hint match what works
 <!-- AC:END -->
 
 ## Implementation Notes

@@ -353,7 +353,7 @@ game has the setting and is saved when the settings screen closes, to one file p
 | Cameras | camera speed (0.25 to 3), invert left and right, invert up and down (each on the orbit of the chase and aerial cameras and the look of the onboard and free cameras alike), onboard heel follow (level horizon, 10 % to 100 %), reduced motion |
 | HUD | assist preset (Full, Standard, Minimal; online lobbies may force a lower one), instruments (Auto, Glance, Race, Data: the density of `hud.md` §16.1; Auto picks the device default, the `hud_density` key stores its choice here), UI scale (80 % to 130 %, `hud.md` §16.2.2), colour-blind palette (standard, deuteranopia, protanopia, tritanopia: `hud.md` §16.2.1) |
 | Graphics | quality (Low, Medium, High: the tiers of `water_render.md` §7, default Medium or the device default, below), render scale (Auto, 50 %, 67 %, 75 %, 85 %, 100 %; default Auto or the device default; below), anti-aliasing (SMAA, FXAA: `water_render.md` §7; default SMAA or the device default, below), display (windowed, fullscreen), vsync, frame rate limit (off, 30, 60, 90, 120, 144), capture preset (Off, Portrait 9:16; below) |
-| Audio | master, effects, signals (the race signals and the hails), ambience, interface volumes, 0 to 100 % (default 100 %, master 80 %) |
+| Audio | master, effects, signals (the race signals; the hails too once online play has them, `controls.md` §2), ambience, interface volumes, 0 to 100 % (default 100 %, master 80 %) |
 
 Only settings the game reads and that a player would look for are offered: the audit of 2026-11-07
 (`docs/design/settings_audit_2026-11-07.md`) dropped the stick curve, the sheet key rate, sheeting turning the auto
@@ -422,7 +422,8 @@ anti-aliasing and the capture preset to the window; quality to the sea and sky; 
 
 **Rebinding** (the Controls section, `controls.md` §3 and §6). Under the options, a **Bindings** list under a
 sub-heading (§4): one row per
-action of `controls.md` §3, each with three slots, **Key 1**, **Key 2** (keyboard or mouse) and **Pad** (a
+action of `controls.md` §3 (not the online-only `hail` and `protest` until online play exists, `controls.md` §2),
+each with three slots, **Key 1**, **Key 2** (keyboard or mouse) and **Pad** (a
 gamepad button, or a stick or trigger direction). (Actions whose defaults have three keyboard or mouse bindings, the zoom keys with the wheel, get a **Key 3**.) The slots are 104 px wide on a wide page and
 narrow, down to 64 px, on a narrow one (a 1280 × 800 window at 130 % UI scale), the action's name keeping 42 % of
 the row; a name or a binding that does not fit is trimmed with an ellipsis. On a

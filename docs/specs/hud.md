@@ -55,7 +55,7 @@ function; race and rules states (rank, penalties, right-of-way colours) come fro
 | Course over ground (COG) | `compass(sog_filt_x, sog_filt_y)` (shown only when SOG > 0.3 kn) |
 | Heel | `|φ|`, degrees, with the letter of the side that is down (φ > 0: starboard down, `conventions.md` §3) |
 | Rudder | helm `h` as a bar, −1 … +1 (positive turns the bow to starboard), with a second mark at `h_cmd`; as text (the helm strip at Data) the size of `h` in percent with the side the bow turns to (`35 % S`, `0 %` amidships) |
-| Sail | the front sail that is up (or "Main only"); the one being hoisted is the hoist cue's (§5.1), not this row's |
+| Sail | the front sail that is up (or "Main only"), shown as the underlined slot of the sail strip (§5.3); the one being hoisted is the hoist cue's (§5.1), not this row's |
 
 The player's own commands (the `h_cmd` mark, the sheet setting and its bar, `AUTO`, `LET FLY`) show the local
 command of the rendered frame, not the value the simulation last applied, so they answer the key at once; the
@@ -72,7 +72,7 @@ controls record.
 | TWA | the boat's `twa = wrap_pi(twd_from − ψ)` (`boat.md` §5.1: the heading against the true wind direction, not the course over ground), shown as `|twa|` with the tack letter (`S` for `twa > 0`, `P` otherwise) |
 | TWD | the boat's `twd_from`, compass |
 | AWS, AWA | apparent wind at the masthead (`sails.md`), AWA with side letter |
-| Shadow | `d = 1 − wind_speed / wind_speed_clean` (`boat.md` §2) as a percentage, shown only when ≥ 3 % ("Bad air −8 %") |
+| Shadow | `d = 1 − wind_speed / wind_speed_clean` (`boat.md` §2, the boat's environment of `wind_shadow.md` §5) as a percentage, shown only when ≥ 3 % (`Bad air −8 %`): a line of the helm notes (§5.1), at every density, the only cue of another boat's shadow |
 
 ### 3.2 Wind indicators
 
@@ -89,11 +89,12 @@ controls record.
   - Shown as `LIFT 6°` (green) or `HEADER 4°` (red) when `|Δ| ≥ 2°`, else `--`. Hidden on reaches. On the HUD it
     is a chip in the heading cell of the instrument page (§16.3), at Race and Data.
 
-### 3.3 Wind shadow view (assist)
+### 3.3 Wind shadow view (later)
 
-With the assist on, each boat's blanket and backwind outlines (`wind_shadow.md` §7 `shadow_zones`) are drawn on the
-water, shaded by the loss `l` sampled at the outline's interior points; the part where `l ≥ d_bad` (`ai.md` §8) is
-drawn darker. The own boat's shadow is drawn fainter.
+Not built yet, and no key is bound to it (`controls.md` §2): a later assist would draw each boat's blanket and
+backwind outlines (`wind_shadow.md` §7 `shadow_zones`, which the core does not offer yet) on the water and in the
+radar, shaded by the loss `l`, darker where `l ≥ d_bad` (`ai.md` §8), the own boat's fainter. Until then the
+`Bad air` line of §3.1 is the shadow cue.
 
 ## 4. Performance
 
@@ -138,10 +139,52 @@ One gauge per trimmable sail (the main and the front sail that is up), fed by th
 While a front sail is being hoisted (`prepare_hoist` or `hoisting`, a change included) one cue says so, at every
 density: `HOISTING <SAIL>` (the sail's name in caps, 16 design px semibold, `paper`) with a thin progress bar under
 it (3 design px, the text's width, `hair` track, `mark` fill at the hoist's progress), as the first line of the helm
-notes over the helm strip. It is the only text about the hoist: the helm strip's sail value names the sail up, the
+notes over the helm strip. It is the only text about the hoist: the sail strip (§5.3) marks the sail up, the
 greyed gauges have no tell-tale, and the sail hint is not shown while it runs (the controls' message line stays,
 under it). Before this the strip's sail value grew to `JIB, HOISTING SPINNAKER 45 %`, which ran into the sheet
 value centred in the same row, while the greyed gauges kept their tell-tales.
+
+### 5.2 Sail state
+
+One word for how the sails are working, so a player on the defaults (auto trim on, which hides the gauges, Standard,
+Race) still hears about a luff, a stall or a stop. The first that applies:
+
+| Word | When | Colour |
+| --- | --- | --- |
+| `LET FLY` | the boat's `let_fly` command is on (the player's own command of the frame, §2) | `port` |
+| `IN IRONS` | inside the no-go zone (the boat's `polar_speed` ≤ 0, `boat.md` §7.4) with boat speed under 1 kn, for 1 s | `port` |
+| `LUFFING` | the driving sail (the front sail that is up, else the main, `boat.md` §5.4) has the tell-tale "Luffing" of §5 (`e > 1.0` or `luff_shiver > 0.5`), auto trim or not | `mark` |
+| `STALLED` | the driving sail has the tell-tale "Stalled" (`e < −1.0`) | `mark` |
+
+Otherwise nothing (sailing well needs no word), and nothing for a driving sail being hoisted or dropped (§5.1).
+With auto trim the trim error stays near 0, so `LUFFING` then means the sails cannot be trimmed for the course: a
+kite carried too close to the wind, a sail on the wind line. A tack carries way through the no-go zone and shows
+no `IN IRONS`.
+
+- **Where**: in the helm strip, 16 design px semibold caps: with auto trim centred in the trim gauges' row (the
+  gauges are hidden then); with manual trim centred in the strip's text row, in the sheet value's place (the sheet
+  bar still shows the sheet), so it never covers a gauge.
+- **When**: at every density (a contextual item, §16.1) and assist preset; hidden with the strip (course map,
+  `hud_hide`).
+
+### 5.3 Sail strip
+
+The front sails of the class in slot order (`controls.md` §5.4), one row under the helm strip's rudder bar, so the
+player sees which number key hoists which sail: each slot's key and name, `1 JIB   2 CODE ZERO   3 SPINNAKER`
+(13 design px caps, tracked, 22 design px apart, centred on the strip; smaller down to the 11 px floor when it
+does not fit), the key as the player's bindings name it (`controls.md` §3 Prompts).
+
+- **The sail up** in `paper` with a 2 px `paper` underline; the others in `label`; the sails of a running change
+  (going up or coming down) in `paper`. With no front sail up ("Main only") no slot is underlined. The strip
+  replaces the sail value the helm strip's text row had.
+- **Gamepad** (the device used last): the slots show their names without keys (the pad has no sail keys); the
+  slot the `sail_prev` and `sail_next` highlight is on gets the `sail_set` button before its name (`X SPINNAKER`)
+  and a `mark` underline.
+- **When**: at Race and Data always; at Glance (no labels there) for 3 s after a sail key, a sail step on the pad or
+  a busy press; not for a class without front sails; hidden with the helm strip.
+- **Busy flash**: a sail press that maps to nothing while a change runs (`controls.md` §5.4) flashes the running
+  change for 1.2 s: the strip shows (at Glance too) and the slots of the change blink between `mark` and `paper`
+  at 4 Hz, starting in `mark`.
 
 ## 6. Laylines
 
@@ -225,20 +268,19 @@ camera it is not drawn (the mark tag and its edge pointer do that job there).
 - **Marks**: the next step in yellow with its rounding arrow and zone circle; the following step in white; other
   marks as small grey dots; start and finish lines (start line until the boat has started; finish line on the last
   leg); the course area boundary if any.
-- **Laylines** (§6), **true wind arrow** at the edge, and the viewed boat's **shadow** (assist §3.3).
+- **Laylines** (§6) and the **true wind arrow** at the edge.
 - The **course map** (§8.1, the `map` action) shows the whole course with every boat.
 
 ### 8.1 Course map
 
-A full-screen overlay of the whole course, opened and closed with `map` (M, `controls.md` §2, §3). It is a view,
+A full-screen overlay of the whole course, opened and closed with `map` (M, D-pad up on a gamepad, `controls.md` §2, §3). It is a view,
 not a pause: the race and the simulation run on underneath, the boat answers the helm and the sheets as before, the
 cameras keep moving and every sound plays. Offline and online alike.
 
 - **Open and close**: `map` toggles it; Esc (`pause_menu`) with the map open closes it and does nothing else (before
   clearing a selection, §16.4.1, and before the pause menu: the next Esc does those as usual). It does not open
   while the pause menu or the chat line has the keys, and it closes by itself when the race is gone (the scene
-  leaves race mode, a new race starts). It is not remembered: every race starts with it closed. On a gamepad there
-  is no default binding (the pause menu row of `controls.md` §3 is a later item).
+  leaves race mode, a new race starts). It is not remembered: every race starts with it closed.
 - **Frame**: **course up**, fixed for the race: the course axis, from the start line's middle to the first
   rounding step's point (the first windward mark on a windward-leeward course), points straight up the screen; a
   course without a start line or rounding step uses the race's mean wind (`twd_mean`, wind from the top). It does
@@ -293,7 +335,9 @@ cameras keep moving and every sound plays. Offline and online alike.
   map, so the turned frame still reads.
 - **Footer**: a **scale bar** bottom left, the longest of 10, 20, 50, 100 and 150 m and 0.2, 0.25, 0.5, 1, 2 and
   5 nm that is not longer than a fifth of the frame's width (10 m when none is), with its length in the §1 distance
-  format (`150 m`, `0.25 nm`), so the label is always a round number; and `M  CLOSE` bottom right in `mist`.
+  format (`150 m`, `0.25 nm`), so the label is always a round number; and `M  CLOSE` bottom right in `mist`: the `map` binding as the
+  device used last names it (`controls.md` §3 Prompts: `M  CLOSE` after the keyboard, `D-PAD UP  CLOSE` after the
+  pad, the new key after a rebinding).
 - **The rest of the HUD**: while the map is open the alert lane stays above it (countdown and flags, the start
   numbers, OVER and OCS, the penalty panel, the rules line, banners and the protest and hail prompts: whatever
   needs an answer now) at its usual scale, moved clear of the course: in landscape to a column on the left under
@@ -375,9 +419,12 @@ From the pair records of the viewed boat (`rules.md` §11.1), highest-priority f
 | I have right of way and the other is in `Warning` | `Starboard!` / `Leeward!` / `Right of way` (the name of the rule in plain words) | green |
 
 - A **hail** sound can play on the rising edge of a right-of-way warning (option).
-- **Protest prompt** (protest mode, `rules.md` §10): `Protest <name> (rule 11)? [P]` with an 8 s countdown.
+- **Online only** (`controls.md` §2): offline the race has no protest mode and the core does not use the hail flags,
+  so neither prompt below shows until online play exists (the code stays, behind the online switch).
+- **Protest prompt** (protest mode, `rules.md` §10): `Protest <name> (rule 11)? [P]` with an 8 s countdown, the key
+  as the device used last names the `protest` binding (`controls.md` §3 Prompts).
 - **Hail for room to tack** (optional rule 20): action button when valid (`rules.md` §7.9) and the reply prompt for
-  the hailed boat.
+  the hailed boat, with the `hail` binding named the same way.
 - The texts use the table in §12.3.
 
 ## 12. Penalties
@@ -525,7 +572,6 @@ Assists change what is shown, never the physics or the rules.
 | Radar and course map right-of-way colours | yes | yes | no (all white) |
 | Rules awareness messages (§11) | all | all | `Breach` lines only |
 | Start: time to burn, bias | yes | yes | distance to line only |
-| Wind shadow view | yes | no | no |
 | Sail hint | yes | no | no |
 | Shift meter | yes | yes | no |
 
@@ -577,6 +623,13 @@ density of §16.1: an item shows only when both allow it.
   `PENALTY · RULE 10` and is gone after 3 s.
 - Hoist cue (§5.1): during a hoist one `HOISTING <SAIL>` cue with its bar shows, and no two texts of the helm strip
   and its notes overlap.
+- Sail state (§5.2): with auto trim on at Race the strip shows `LUFFING` for a luffing driving sail, `STALLED` for a
+  stalled one, `IN IRONS` after 1 s inside the no-go zone under 1 kn and not before, nothing with way on, `LET FLY`
+  at once on the key; at Glance too; with manual trim in the sheet value's place, overlapping nothing.
+- Bad air (§3.1): nothing at 2 % of the wind lost, `Bad air −8 %` in the helm notes at 8 %.
+- Sail strip (§5.3): at Race every slot's key and name with the sail up underlined; at Glance none until a sail key,
+  then gone after 3 s; a busy press shows it and blinks the running change in `mark`; on the pad no keys and the
+  highlighted slot with its set button.
 - Every text of the HUD fits its block at 1920 x 1080 and 1280 x 800 for UI scales 80 % to 130 %, and no two blocks'
   drawn areas overlap there (world tags aside).
 - Portrait (§16.5): at 1080 x 1920 for UI scales 80 % to 130 %, in the pre-start, beat and penalty states at every
@@ -609,7 +662,7 @@ What the player can choose to see and what the colours mean; the layout, sizes a
 
 Three levels, **Glance**, **Race** and **Data**, cycled in that order by the `hud_density` action (`controls.md`
 §2). Density decides how many instrument values show. It never hides a contextual item (countdown, OVER and OCS,
-the rules line, the penalty panel, banners, protest and hail prompts) or anything in the world (start line, mark
+the rules line, the penalty panel, banners, protest and hail prompts, the sail state of §5.2, the `Bad air` line) or anything in the world (start line, mark
 tag, next-mark arrow, laylines, tack point, zone circle, rounding arrow, name tags, edge pointers) or the selected
 boat's card (§16.7). The radar, the helm strip and, under manual trim, the trim gauges show at every level.
 
@@ -632,7 +685,7 @@ boat's card (§16.7). The radar, the helm strip and, under manual trim, the trim
   it beside the boat speed), TWD at Data, and the shift chip in the heading cell, where the compass tells a sailor
   about the shift. The top right corner holds race items only (the feed).
 - At Glance the radar is drawn at 72 % of its size without the range and orientation labels, the helm strip has no
-  labels. At Glance and Race the feed shows only the viewed boat's own events; Data shows every event.
+  labels (the sail state shows, and the sail strip for 3 s after a sail key, §5.2, §5.3). At Glance and Race the feed shows only the viewed boat's own events; Data shows every event.
 - Free sailing (no race): the instrument page and the helm strip as in the table's beat row without the race items.
 - **Defaults**: Race; Glance on the Steam Deck and on any screen under 900 px tall (after the UI scale). The player's
   last choice is kept in the settings file (per device, `menus.md` §3) and wins over the default. Glance was

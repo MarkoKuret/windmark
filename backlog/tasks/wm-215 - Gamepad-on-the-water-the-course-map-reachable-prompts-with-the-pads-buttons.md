@@ -1,9 +1,11 @@
 ---
 id: WM-215
 title: 'Gamepad on the water: the course map reachable, prompts with the pad''s buttons'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-11-07 18:47'
+updated_date: '2026-11-07 19:36'
 labels:
   - controls
 dependencies: []
@@ -19,5 +21,5 @@ The course map has no gamepad binding and no pause-menu item (default_bindings.g
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The map opens from the pad; prompts show the device's binding
+- [x] #1 The map opens from the pad; prompts show the device's binding
 <!-- AC:END -->

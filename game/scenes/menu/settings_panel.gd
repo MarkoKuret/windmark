@@ -25,7 +25,7 @@ const HELP := {
 	"vsync": "On: no tearing; the frame rate follows the screen.",
 	"capture_preset": "Portrait 9:16: a tall window and HUD for vertical clips. Off again at the next start.",
 	"effects_volume": "The boats, the water and the wind.",
-	"signals_volume": "Horns, beeps, penalties and hails.",
+	"signals_volume": "Horns, beeps and penalties.",
 	"ambience_volume": "The sea, the gulls and the venue.",
 	"tab": "LB and RB, or Page Up and Page Down, change the section.",
 }

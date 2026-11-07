@@ -979,8 +979,8 @@ need no layer setup. Quality: all boats within 400 m (H), own boat and 6 nearest
 ## 6. Overlays drawn on the water
 
 Drawn in the sea shader from uniforms (or as decals) with widths that grow with distance so they stay visible: the
-start line ribbon (`hud.md` §9.3), laylines (`hud.md` §6), gate lines, the zone circle (`hud.md` §7), and the wind
-shadow view (`hud.md` §3.3, from the core's shadow zones). Their colours come from the HUD palette (including the
+start line ribbon (`hud.md` §9.3), laylines (`hud.md` §6), gate lines, the zone circle (`hud.md` §7) and, later, the
+wind shadow view (`hud.md` §3.3, from the core's shadow zones; not built yet). Their colours come from the HUD palette (including the
 colour-blind palettes).
 
 Each line and circle has a width in metres on the water (`CourseView`: the start line 0.35 m, the laylines 0.22 m,

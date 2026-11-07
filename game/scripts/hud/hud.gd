@@ -33,6 +33,8 @@ enum Density { GLANCE, RACE, DATA }
 const DENSITY_NAMES := ["GLANCE", "RACE", "DATA"]
 const REFRESH := 0.25
 const FLASH_TIME := 1.2
+## hud.md §5.3: at Glance the sail strip shows this long after a sail key, a sail step or a busy press
+const STRIP_TIME := 3.0
 const MESSAGE_TIME := 3.0
 ## the notes of the `boat_names` states (hud.md §16.4)
 const NOTE_NAMES_ALL := "Name tags: every boat nearby"
@@ -152,6 +154,9 @@ var rankings_toggle := false
 
 var _refresh_t := INF
 var _flash_t := 0.0
+var _strip_t := 0.0
+## the gamepad's highlighted sail slot (PlayerControls.sail_highlight), -1 none (hud.md §5.3)
+var sail_highlight := -1
 var _message_t := 0.0
 var _toast_t := 0.0
 var _rounded_t := 0.0
@@ -539,11 +544,22 @@ func frame(dt: float, controls: PlayerControls = null) -> void:
 		if controls.busy_flash:
 			controls.busy_flash = false
 			_flash_t = FLASH_TIME
+			_strip_t = STRIP_TIME
+		if controls.sail_pressed:
+			controls.sail_pressed = false
+			_strip_t = STRIP_TIME
+			_bump()
+		if controls.sail_highlight != sail_highlight:
+			sail_highlight = controls.sail_highlight
+			_bump()
 		if not controls.messages.is_empty():
 			_put("message", controls.messages.back())
 			controls.messages.clear()
 			_message_t = MESSAGE_TIME
+	if _flash_t > 0.0 or (_strip_t > 0.0 and _strip_t <= dt):
+		_bump()  # the busy flash blinks; the strip goes at Glance (hud.md §5.3)
 	_flash_t = maxf(_flash_t - dt, 0.0)
+	_strip_t = maxf(_strip_t - dt, 0.0)
 	_message_t = maxf(_message_t - dt, 0.0)
 	_toast_t = maxf(_toast_t - dt, 0.0)
 	_rounded_t = maxf(_rounded_t - dt, 0.0)
@@ -583,14 +599,15 @@ func frame(dt: float, controls: PlayerControls = null) -> void:
 	HudCanvas.memo_frame = -1
 
 
-## PlayerControls asks the HUD whether the protest prompt shows and whether a hail can be made or answered.
+## PlayerControls asks the HUD whether the protest prompt shows and whether a hail can be made or answered (online
+## only, controls.md §2: no while Bindings.online_play is off).
 func _wire(c: PlayerControls) -> void:
 	if c == _wired:
 		return
 	_wired = c
-	c.protest_prompt = func() -> bool: return race.active and race.protest_prompt()
-	c.hail_available = func() -> bool: return race.active and race.hail_available
-	c.hailed = func() -> bool: return race.active and race.hailed_by >= 0
+	c.protest_prompt = func() -> bool: return Bindings.online_play and race.active and race.protest_prompt()
+	c.hail_available = func() -> bool: return Bindings.online_play and race.active and race.hail_available
+	c.hailed = func() -> bool: return Bindings.online_play and race.active and race.hailed_by >= 0
 
 
 # ---- course map (hud.md §8.1) ----
@@ -630,12 +647,12 @@ func toggle_hidden() -> void:
 
 
 ## hud.md §14: whether the assist preset shows a race element ("laylines", "layline_distance", "zone",
-## "radar_colours", "shift", "burn_bias", "sail_hint", "shadow_view"; everything else always)
+## "radar_colours", "shift", "burn_bias", "sail_hint"; everything else always)
 func shows(what: String) -> bool:
 	match what:
 		"laylines", "layline_distance", "zone", "radar_colours", "shift", "burn_bias":
 			return assist != Assist.MINIMAL
-		"sail_hint", "shadow_view":
+		"sail_hint":
 			return assist == Assist.FULL
 	return true
 
@@ -667,9 +684,25 @@ func refresh_text() -> void:
 	var sheet := "AUTO" if v.auto_trim else "%s %%" % HudFormat.percent(100.0 * v.sheet_cmd)
 	_put("sheet", "Sheet  %s%s" % [sheet, "   LET FLY" if v.let_fly else ""], HudStyle.PAPER,
 		sheet + (", LET FLY" if v.let_fly else ""))
+	# hud.md §5.2 the sail state word, §3.1 the bad air line
+	_put("sail_state", v.sail_state.to_upper(), HudStyle.PORT if v.sail_state == HudValues.STATE_LET_FLY \
+		or v.sail_state == HudValues.STATE_IRONS else HudStyle.MARK)
+	var bad := int(HudFormat.round_half_away(100.0 * v.shadow))
+	_put("bad_air", "Bad air −%d %%" % bad if v.shadow >= HudValues.BAD_AIR_MIN else "")
 	_put("vmg_kn", "", HudStyle.PAPER, "--")
 	HudText.race(self)
 	HudText.card(self)
+
+
+## hud.md §5.3: the sail strip shows at Race and Data, at Glance for STRIP_TIME after a sail key, a sail step or a
+## busy press; never for a class without front sails.
+func sail_strip_shown() -> bool:
+	return not values.slot_names.is_empty() and (density != Density.GLANCE or _strip_t > 0.0)
+
+
+## hud.md §5.3 the busy flash: the running change's slots blink while it lasts (on at the flash's start)
+func busy_flash_on() -> bool:
+	return _flash_t > 0.0 and fmod(FLASH_TIME - _flash_t, 0.25) < 0.125
 
 
 static func _sail_name(n: String) -> String:
@@ -749,15 +782,18 @@ func _race_frame() -> void:
 	turn_view.tack_done = r.turn_tack
 	turn_view.gybe_done = r.turn_gybe
 	penalty_panel.visible = r.penalty_visible
-	# the prompt (protest, hail) and the banner answer at once
+	# the prompt (protest, hail: online only, hud.md §11) and the banner answer at once
 	var prompt := ""
-	if r.protest_prompt():
-		prompt = "Protest %s (rule %s)? [P]  %d" % [r.name_of(r.protest_culprit), RaceText.code(r.protest_rule),
-			ceili(r.protest_ticks * SimSource.DT)]
+	if not Bindings.online_play:
+		pass
+	elif r.protest_prompt():
+		prompt = "Protest %s (rule %s)? [%s]  %d" % [r.name_of(r.protest_culprit), RaceText.code(r.protest_rule),
+			Bindings.prompt(&"protest", "P"), ceili(r.protest_ticks * SimSource.DT)]
 	elif r.hailed_by >= 0:
-		prompt = "%s hails for room to tack: tack, or reply [H] you tack" % r.name_of(r.hailed_by)
+		prompt = "%s hails for room to tack: tack, or reply [%s] you tack" % [r.name_of(r.hailed_by),
+			Bindings.prompt(&"hail", "H")]
 	elif r.hail_available:
-		prompt = "Hail: room to tack [H]"
+		prompt = "Hail: room to tack [%s]" % Bindings.prompt(&"hail", "H")
 	_put("prompt", prompt, HudStyle.TINTS[RaceHudValues.Tint.YELLOW])
 	if r.banner != null:
 		_put("banner", r.banner.text, HudStyle.TINTS[r.banner.tint])

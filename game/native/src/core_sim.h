@@ -38,6 +38,7 @@ class CoreSim : public godot::RefCounted {
   bool place_boat(int64_t boat, double x, double y, double psi);
   bool scenario_place(int64_t boat, double x, double y, double psi, double v, int64_t front_sail);
   bool create_race(const godot::String& course_path);
+  bool lay_course(const godot::String& course_path);
   godot::String last_error() const { return error_; }
   int64_t api_version() const { return wm_api_version(); }
 
@@ -83,6 +84,7 @@ class CoreSim : public godot::RefCounted {
   int64_t tick() const;
   int64_t boat_count() const;
   bool has_race() const;
+  bool has_course() const;
   int64_t time_ms() const;
   double render_time_ms(double alpha) const;
 

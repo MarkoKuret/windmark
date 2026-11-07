@@ -414,6 +414,19 @@ bool CoreSim::create_race(const String& course_path) {
   return r;
 }
 
+bool CoreSim::lay_course(const String& course_path) {
+  settle();
+  if (world_ == nullptr) {
+    error_ = "no world";
+    return false;
+  }
+  wm_course* c = nullptr;
+  if (!ok(wm_course_load(os_path(course_path).c_str(), &c))) return false;
+  const bool r = ok(wm_world_lay_course(world_, c));
+  wm_course_free(c);
+  return r;
+}
+
 // ---- controls -------------------------------------------------------------------------------------------------
 
 int64_t CoreSim::apply_input(int64_t boat, double h_cmd, double sheet_cmd, int64_t sail_req, int64_t flags) {
@@ -624,6 +637,7 @@ int64_t CoreSim::checksum() const { settle(); return static_cast<int64_t>(wm_wor
 int64_t CoreSim::tick() const { settle(); return wm_world_tick(world_); }
 int64_t CoreSim::boat_count() const { settle(); return wm_world_boat_count(world_); }
 bool CoreSim::has_race() const { settle(); return wm_world_has_race(world_) != 0; }
+bool CoreSim::has_course() const { settle(); return wm_world_has_course(world_) != 0; }
 int64_t CoreSim::time_ms() const { settle(); return wm_world_time_ms(world_); }
 double CoreSim::render_time_ms(double alpha) const { settle(); return wm_world_render_time_ms(world_, f32(alpha)); }
 
@@ -1260,6 +1274,7 @@ void CoreSim::_bind_methods() {
   ClassDB::bind_method(D_METHOD("scenario_place", "boat", "x", "y", "psi", "v", "front_sail"),
                        &CoreSim::scenario_place);
   ClassDB::bind_method(D_METHOD("create_race", "course_path"), &CoreSim::create_race);
+  ClassDB::bind_method(D_METHOD("lay_course", "course_path"), &CoreSim::lay_course);
   ClassDB::bind_method(D_METHOD("last_error"), &CoreSim::last_error);
   ClassDB::bind_method(D_METHOD("api_version"), &CoreSim::api_version);
 
@@ -1301,6 +1316,7 @@ void CoreSim::_bind_methods() {
   ClassDB::bind_method(D_METHOD("tick"), &CoreSim::tick);
   ClassDB::bind_method(D_METHOD("boat_count"), &CoreSim::boat_count);
   ClassDB::bind_method(D_METHOD("has_race"), &CoreSim::has_race);
+  ClassDB::bind_method(D_METHOD("has_course"), &CoreSim::has_course);
   ClassDB::bind_method(D_METHOD("time_ms"), &CoreSim::time_ms);
   ClassDB::bind_method(D_METHOD("render_time_ms", "alpha"), &CoreSim::render_time_ms);
 

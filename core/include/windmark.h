@@ -46,7 +46,7 @@
 extern "C" {
 #endif
 
-#define WM_API_VERSION 6
+#define WM_API_VERSION 7
 
 /* ---- status ------------------------------------------------------------------------------------------------ */
 
@@ -171,6 +171,8 @@ typedef struct wm_world_settings {
   int32_t sea;                   /* bool; 0 = flat water */
   float sea_scale;               /* 1 = as grown */
   int32_t shadows;               /* bool, wind shadows (wind_shadow.md) */
+  int32_t weather_helm;          /* bool, boat.md §2: the sail plan's helm balance turns the boat with the helm
+                                    centred (0, the default: every boat holds her heading with the helm centred) */
   /* race (race.md §2) */
   int32_t race_type;             /* WM_RACE_* or -1 */
   int32_t sequence;              /* WM_SEQUENCE_* or -1 */

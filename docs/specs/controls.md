@@ -245,6 +245,7 @@ slot after `F`.
 | --- | --- | --- |
 | rebinding | defaults of §3 | every action, two keyboard/mouse bindings and one gamepad binding; conflicts shown |
 | helm key mode | set and hold | set and hold, hold to steer (§5.2) |
+| weather helm | off | off: the boat holds her course with the helm centred; on: she tries to luff up as she heels, like a real boat (`boat.md` §2 `weather_helm_enabled`); one rule for the whole world, the player's setting for an offline session |
 | helm stick dead zone, curve | 0.10, 1.6 | 0–0.30, 1.0–3.0 |
 | sheet key rate scale | 1.0 | 0.5–2.0 |
 | hold or toggle | hold | per action: `let_fly`, `helm_fine`, `rankings`, `camera_boost` |

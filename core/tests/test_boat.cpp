@@ -562,6 +562,78 @@ TEST_CASE("boat: helm balance") {
   }
 }
 
+// §10.14: with the option off (a boat's default) the helm balance table is not read: at any trim and heel a boat
+// with way on holds her heading with the helm centred, and the gust that broaches her with it on (§10.7) leaves
+// her heading alone. A boat that loses way (a kite or a luffing jib near the wind) still falls off (§5.5 fall_off,
+// §10.11); those points are reported.
+TEST_CASE("boat: weather helm off") {
+  for (const std::string cls : kClasses) {
+    const wm::PerfData& p = perf(cls);
+    const std::int32_t kite = static_cast<std::int32_t>(p.sails.size()) - 1;
+    const float crawl = p.config_for(p.start_front_sail)->fall_off.table.axis(0).points.back();  // m/s
+    float worst = 0.0f, worst_v = 0.0f;
+    std::string worst_at;
+    int held = 0, lost = 0;
+    for (std::int32_t sail : {p.start_front_sail, kite}) {
+      const wm::ConfigPerf& c = *p.config_for(sail);
+      REQUIRE(c.weather_helm.present);
+      for (float tws : {6.0f, 10.0f, 16.0f, 22.0f}) {
+        for (float a = 45.0f; a <= 150.0f; a += 15.0f) {
+          const float twa = deg(a);
+          const float v0 = c.polar.at(kn(tws), twa);
+          if (v0 <= 0.0f) continue;
+          for (int trim = 0; trim < 3; ++trim) {  // auto-trimmed, over-sheeted, eased
+            Sim sim(p, tws, 0.0f);
+            sim.boat.set_weather_helm(false);
+            sim.place(twa, v0, sail, trim == 0);
+            if (trim > 0) sim.boat.set_sheet(trim == 1 ? 0.0f : 0.6f);
+            const float psi0 = sim.s().psi;
+            float v_min = sim.s().v;
+            for (int i = 0; i < static_cast<int>(60.0f / DT); ++i) {
+              sim.step();
+              v_min = wm::min(v_min, sim.s().v);
+            }
+            const float drift = std::fabs(wm::wrap_pi(sim.s().psi - psi0));
+            if (v_min > crawl) {
+              ++held;
+              CHECK_MESSAGE(drift < deg(0.5f), cls, " ", sail_name(p, sail), " ", tws, " kn ", a, " deg trim ", trim,
+                            ": heading drift ", to_deg(drift), " deg in 60 s, v ", to_kn(sim.s().v), " kn");
+            } else {
+              ++lost;
+              if (drift > worst) {
+                worst = drift;
+                worst_v = v_min;
+                worst_at = sail_name(p, sail) + " " + std::to_string(static_cast<int>(tws)) + " kn " +
+                           std::to_string(static_cast<int>(a)) + " deg trim " + std::to_string(trim);
+              }
+            }
+            // the start sail auto-trimmed keeps way on at every point, the kite from a beam reach on
+            if (trim == 0 && (sail == p.start_front_sail || a >= 90.0f)) CHECK(v_min > crawl);
+          }
+        }
+      }
+    }
+    MESSAGE(cls, ": weather helm off, helm centred 60 s: ", held, " runs with way on held their heading, ", lost,
+            " lost way and fell off, the most by ", to_deg(worst), " deg (", worst_at, ", slowest ", to_kn(worst_v),
+            " kn)");
+    // the gust of §10.7, helm centred throughout: no broach
+    const wm::ConfigPerf& dn = *p.config_for(kite);
+    Sim g(p, 20.0f, 0.0f);
+    g.boat.set_weather_helm(false);
+    const float twa_r = deg(100.0f);
+    g.place(twa_r, dn.polar.at(kn(20.0f), twa_r), kite);
+    const float psi0 = g.s().psi;
+    g.run(5.0f);
+    g.env.wind_speed = kn(26.0f);
+    g.env.wind_speed_clean = g.env.wind_speed;
+    g.run(5.0f);
+    const float drift = std::fabs(wm::wrap_pi(g.s().psi - psi0));
+    MESSAGE(cls, ": kite reaching at 100 deg, gust 20 to 26 kn, weather helm off: heading drift ", to_deg(drift),
+            " deg, heel ", to_deg(g.s().phi), " deg");
+    CHECK(drift < deg(0.5f));
+  }
+}
+
 // boat.md §8: in a calm the wind directions keep their last values and the boat coasts down along the
 // deceleration law; §5.1: the polar sees the wind over the water, so a current is felt as wind.
 TEST_CASE("boat: calm, current and invalid commands") {

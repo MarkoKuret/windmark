@@ -281,6 +281,7 @@ TEST_CASE("drift: determinism and snapshot round trip while drifting") {
     c->boat.save(w);
     wm::Boat fresh;
     fresh.init(&p, 0xD21F7, 0);
+    fresh.set_weather_helm(c->boat.weather_helm());  // the world's option, not part of the snapshot (boat.md §2)
     wm::SnapshotReader r(w.bytes());
     REQUIRE(fresh.load(r));
     CHECK(r.at_end());

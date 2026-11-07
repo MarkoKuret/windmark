@@ -24,7 +24,7 @@ func _init() -> void:
 		t.finish(self, "core sim test")
 		return
 	var probe: Object = ClassDB.instantiate(&"CoreSim")
-	t.ok(probe.api_version() == 6, "C API version 6")
+	t.ok(probe.api_version() == 7, "C API version 7")
 	t.ok(CoreSimSource.default_settings().has("race_seed"), "default settings")
 	_free_sailing()
 	_weather()

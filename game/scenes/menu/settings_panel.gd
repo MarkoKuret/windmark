@@ -13,6 +13,7 @@ const HELP := {
 	"stick_dead_zone": "How far the stick moves before the helm answers. Raise it if the boat steers on its own.",
 	"stick_curve": "How the helm follows the stick: 1.0 is straight, higher is finer near the centre.",
 	"sheet_turns_auto_trim_off": "On: touching the sheet keys hands the trim back to you.",
+	"weather_helm": "Off: the boat holds her course with the helm centred. On: she tries to luff up as she heels, like a real boat.",
 	"let_fly_toggle": "Hold: the sheets run free while the key is down. Toggle: one press frees them, the next trims.",
 	"helm_fine_toggle": "Hold: fine helm while the key is down. Toggle: one press turns it on, the next off.",
 	"rankings_toggle": "Hold: the ranking list shows while the key is down. Toggle: one press opens it, the next closes it.",
@@ -203,6 +204,7 @@ func _controls() -> void:
 	_row(MenuRow.range_row("Sheet key rate", "sheet_rate", 0.5, 2.0, 0.1, s.sheet_rate,
 		func(v: float) -> String: return "× %.1f" % v))
 	_row(MenuRow.toggle("Sheeting turns auto trim off", "sheet_turns_auto_trim_off", s.sheet_turns_auto_trim_off))
+	_row(MenuRow.toggle("Weather helm", "weather_helm", s.weather_helm))
 	_hold("Let fly", "let_fly_toggle")
 	_hold("Fine helm", "helm_fine_toggle")
 	_hold("Rankings", "rankings_toggle")

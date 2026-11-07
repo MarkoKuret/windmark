@@ -22,6 +22,9 @@ var helm_fine_toggle := false
 var rankings_toggle := false
 var camera_boost_toggle := false
 var sheet_turns_auto_trim_off := false
+## the sail plan's helm balance turns the boat with the helm centred (boat.md §2 `weather_helm_enabled`); off: she
+## holds her course with the helm centred
+var weather_helm := false
 ## 0 = off
 var vibration := 1.0
 
@@ -82,7 +85,7 @@ var bindings := {}
 ## key -> [section, field]; the file layout
 const FIELDS := {
 	"controls": ["helm_mode", "stick_dead_zone", "stick_curve", "sheet_rate", "let_fly_toggle", "helm_fine_toggle",
-		"rankings_toggle", "camera_boost_toggle", "sheet_turns_auto_trim_off", "vibration"],
+		"rankings_toggle", "camera_boost_toggle", "sheet_turns_auto_trim_off", "weather_helm", "vibration"],
 	"cameras": ["camera_speed", "invert_orbit_x", "invert_orbit_y", "invert_look_x", "invert_look_y", "heel_follow",
 		"smooth_switch", "reduced_motion"],
 	"hud": ["assist", "hud_density", "ui_scale", "palette"],

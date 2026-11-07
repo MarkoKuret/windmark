@@ -270,8 +270,9 @@ surf_coef = upwind ? (theta_w > 0 ? max(0, 1 - surf_gain*theta_w) : 1)
 trim_drive = polar_speed > 0 ? trim_speed : 1                    // trim scales the drive, not the no-go drift
 target_speed = ((((polar_speed * trim_drive) * man_coef) * heel_coef) * surf_coef) * performance_scale
 // a kite flown beyond its usable angle flogs (below): its drag lowers the speed the boat can hold and brakes it
-f_k = kite up ? clamp((polar_main(tws, ta) - polar_speed) / polar_main(tws, ta), 0, 1) : 0   // polar_main: the
-                                                                 // main-only config's; 0 where it is <= 0
+f_k = kite up ? clamp((polar_main(tws, ta) - polar_speed) / polar_main(tws, ta), 0, 1) * w_a : 0   // polar_main:
+                                                                 // the main-only config's; 0 where it is <= 0
+w_a = 1 - smoothstep((ta - 60°) / 20°)                           // close-hauled to a close reach only
 D_k = f_k * max(flog_drag(aws, aa) - flog_drag_main(aws, aa), 0) // m/s², the kite's own flogging drag
 if target_speed > 0: target_speed = max(target_speed - D_k / decel_linear, 0)
 err = target_speed - v
@@ -331,7 +332,8 @@ drops.
   kite config's polar falls below the main-only config's: inside its no-go zone, or broached), a hoisted kite
   cannot be made to draw and flogs on its sheet, whatever the crew does. Its flogging share `f_k` is the speed the
   kite costs over the main alone, as a share of the main-alone speed: 0 where the kite pays, 1 where the kite
-  config makes no way. It brakes the boat with the kite's own flogging drag (the kite config's `flog_drag` less the
+  config makes no way, faded out from TWA 60° to 80°: abaft that a kite slower than the main alone is
+  overpowered in a breeze (pressed, not flogging; the broach of §5.9 is that case). It brakes the boat with the kite's own flogging drag (the kite config's `flog_drag` less the
   main-only config's: `0.5 ρ aws² (CD_flog − CD_luff)` on the kite's area, 0 with the apparent wind abaft the
   beam) times `f_k`, sheets free or not, and lowers the speed the boat can hold by that drag over the hull's
   resistance slope (`decel_linear`, the deceleration per m/s above the target): a steady drag `D` holds a boat

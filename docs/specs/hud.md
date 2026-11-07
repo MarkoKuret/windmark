@@ -605,20 +605,21 @@ boat's card (§16.7). The radar, the helm strip and, under manual trim, the trim
 
 | Phase | Glance | Race | Data |
 | --- | --- | --- | --- |
-| Pre-start (race sequence, not started) | boat speed, TWA dial; start block: countdown, time to burn with its late/early bar, the flag rule in one line; no race bug | + heading, true wind speed, heel bar; full start block (distance and time to line, burn, bias, flags); feed (own events, 3 lines); no race bug | + VMG, SOG, AWA, COG, TWD, AWS; race bug (fleet, laps and legs); feed 6 lines (every event) |
-| Beat or run | boat speed, TWA dial with the VMG angles and the coloured pointer; race bug: clock and rank; mark tag: name and distance | + heading, true wind speed, heel bar; the shift chip in the heading cell; the race bug adds the gap to the leader; the mark tag adds the ETA; feed (own events, 3 lines) | + VMG, SOG, AWA, COG, TWD, AWS; lap, leg and leg type; ahead and behind; the mark tag adds the bearing; feed 6 lines (every event); sail hint |
+| Pre-start (race sequence, not started) | boat speed, true wind speed, TWA dial; start block: countdown, time to burn with its late/early bar, the flag rule in one line; no race bug | + heading, heel bar; full start block (distance and time to line, burn, bias, flags); feed (own events, 3 lines); no race bug | + VMG, SOG, AWA, COG, TWD, AWS; race bug (fleet, laps and legs); feed 6 lines (every event) |
+| Beat or run | boat speed, true wind speed, TWA dial with the VMG angles and the coloured pointer; race bug: clock and rank; mark tag: name and distance | + heading, heel bar; the shift chip in the heading cell; the race bug adds the gap to the leader; the mark tag adds the ETA; feed (own events, 3 lines) | + VMG, SOG, AWA, COG, TWD, AWS; lap, leg and leg type; ahead and behind; the mark tag adds the bearing; feed 6 lines (every event); sail hint |
 | Reach | as a beat, the pointer neutral | as a beat | as a beat, with VMC in place of VMG |
-| Rounding (within `6·L` of the next mark, and 6 s after a rounding) | boat speed, TWA dial | as the leg | as the leg |
-| Penalty (panel shown) | boat speed, TWA dial | as the leg | as the leg |
+| Rounding (within `6·L` of the next mark, and 6 s after a rounding) | boat speed, true wind speed, TWA dial | as the leg | as the leg |
+| Penalty (panel shown) | boat speed, true wind speed, TWA dial | as the leg | as the leg |
 
 - Race is what a racer needs on each leg and nothing more (the owner's call, 2026-10-17: the HUD showed too many
   numbers at once): speed, the TWA dial with the VMG angles, heading, heel, the true wind speed, the next mark's
   distance and time, the countdown and line numbers before the start, rank and gap. VMG, SOG, AWA, COG, TWD and
   AWS, the lap and leg line, the boats ahead and behind, the mark's bearing and the fleet's feed are Data.
 - The wind sits with the boat instruments (the owner's call, 2026-11-07: a wind page in the top right corner felt
-  out of place, and the page showed too many numbers): the TWA dial at every level, the true wind speed beside
-  it at Race, TWD at Data, and the shift chip in the heading cell, where the compass tells a sailor about the
-  shift. The top right corner holds race items only (the feed).
+  out of place, and the page showed too many numbers): the TWA dial and the true wind speed at every level (the
+  owner, 2026-11-07: the true wind speed is one of the most important parts, so Glance, the Deck's default, shows
+  it beside the boat speed), TWD at Data, and the shift chip in the heading cell, where the compass tells a sailor
+  about the shift. The top right corner holds race items only (the feed).
 - At Glance the radar is drawn at 72 % of its size without the range and orientation labels, the helm strip has no
   labels. At Glance and Race the feed shows only the viewed boat's own events; Data shows every event.
 - Free sailing (no race): the instrument page and the helm strip as in the table's beat row without the race items.
@@ -627,6 +628,7 @@ boat's card (§16.7). The radar, the helm strip and, under manual trim, the trim
   considered as the default everywhere (2026-10-17) and rejected: with Race cut down to the racer's list, Glance only
   drops heading, the shift and the gap, which a new player on a large screen would miss without knowing the density
   key; on the small screens Glance stays the default because the page and the radar are drawn smaller there.
+  Glance has the true wind speed since 2026-11-07 (it was Race and up before): a Glance player sees the wind.
 - A change shows an `INSTRUMENTS · <LEVEL>` chip above the instrument page for 1.5 s; three small squares on the page
   show the level at all times.
 
@@ -691,9 +693,11 @@ the reference pair (§4) at full strength and the other pair at 45 % (both at fu
 wind pointer, **coloured by the angle error** `Δ` of §4 on a smooth gradient: `stbd` up to 2°, through `mark` at
 11° to `port` at 20° and beyond (linear in between in RGB), with a thin `ink` edge so it reads over the sectors,
 and `paper` with no reference (a reach); Data adds the
-apparent wind pointer, hollow, in `paper`. No cell shows a target speed: Glance has boat speed and the dial
-(486 x 150 design px); Race (630 x 246) adds heading under the boat speed and, between them and the dial, the
-true wind speed over the heel bar; Data (760 x 298) adds VMG (VMC on a reach) over SOG beside them, the AWA
+apparent wind pointer, hollow, in `paper`. No cell shows a target speed: Glance has boat speed, the true wind
+speed and the dial (654 x 150 design px: the true wind cell, 168 wide with its value at 52, between the boat
+speed and the dial, the two numbers on one baseline; the cell's width is what its label and unit need at the
+11 px floor of §16.2.2 at UI scale 130 % on 1280 x 800); Race (630 x 246) adds heading under the boat speed and
+moves the true wind speed over the heel bar; Data (760 x 298) adds VMG (VMC on a reach) over SOG beside them, the AWA
 value under the dial and a small row of COG, TWD and AWS along the bottom. Every cell of the Race page keeps its
 place at Data. The **shift chip** (§3.2) sits in the heading cell, left of the number, at Race and Data: the
 text in `ink` on a `stbd` (lift) or `port` (header) chip, 13 px. Numbers keep the 4 Hz refresh of §1; dial and

@@ -863,14 +863,14 @@ func test_density() -> void:
 	var RC := Hud.Density.RACE
 	var D := Hud.Density.DATA
 	var data_only := ["vmg_kn", "awa", "sog", "cog", "twd", "aws"]
-	var race_cells := ["hdg", "tws", "heel_bar"]  # the cluster at Race and Data (hud.md §16.3)
+	var race_cells := ["hdg", "heel_bar"]  # the cluster at Race and Data (hud.md §16.3); "tws" is at every level
 	# pre-start
 	var sim := _pre_sim()
 	var h := _hud(sim)
 	_refresh(h, sim, 0, 5)
 	t.ok(h.phase() == "pre", "phase pre: " + h.phase())
 	var g := _items_at(h, G)
-	t.ok(_has_all(g, ["bsp", "twa_dial", "start_min", "radar", "helm"]) and _has_none(g, race_cells + ["bug",
+	t.ok(_has_all(g, ["bsp", "tws", "twa_dial", "start_min", "radar", "helm"]) and _has_none(g, race_cells + ["bug",
 		"start_full", "feed"]), "pre-start Glance: %s" % str(g))
 	var rc := _items_at(h, RC)
 	t.ok(_has_all(rc, race_cells + ["start_full", "feed_own"]) and _has_none(rc, data_only + ["bug", "feed"]),
@@ -888,14 +888,20 @@ func test_density() -> void:
 	_refresh(h, sim, 0, 200)
 	t.ok(h.phase() == "beat", "phase beat: " + h.phase())
 	g = _items_at(h, G)
-	t.ok(_has_all(g, ["bsp", "twa_dial", "bug", "feed_own"]) and _has_none(g, ["cue", "target", "shift", "bug_lap",
-		"bug_gap", "mark_eta", "feed"] + race_cells + data_only), "beat Glance: %s" % str(g))
+	t.ok(_has_all(g, ["bsp", "tws", "twa_dial", "bug", "feed_own"]) and _has_none(g, ["cue", "target", "shift",
+		"bug_lap", "bug_gap", "mark_eta", "feed"] + race_cells + data_only), "beat Glance: %s" % str(g))
 	h.frame(0.3)
 	var page := _page_texts(h.inst_page)
-	t.ok(page.has("BOAT SPEED") and page.has("TWA") and not page.has("SPEED / TARGET") and not page.has("HEADING")
-		and not " ".join(page).contains("%"), "Glance page: speed and the TWA dial, no target: %s" % str(page))
-	t.ok(h.radar.compact and h.bug_block.visible and not page.has("TRUE WIND") and not page.has("HEEL"),
-		"Glance: small radar, no wind speed and no heel on the page")
+	t.ok(page.has("BOAT SPEED") and page.has("TRUE WIND") and page.has("TWA") and not page.has("SPEED / TARGET")
+		and not page.has("HEADING") and not " ".join(page).contains("%"),
+		"Glance page: speed, the true wind speed and the TWA dial, no target: %s" % str(page))
+	t.ok(h.radar.compact and h.bug_block.visible and not page.has("HEEL") and not page.has("TWD"),
+		"Glance: small radar, no heel and no TWD on the page")
+	var tws_prims := h.inst_page.primitives().filter(func(q: Dictionary) -> bool:
+		return q["k"] == "text" and q["text"] == h.value_of("tws"))
+	t.ok(tws_prims.size() == 1 and is_equal_approx(tws_prims[0]["size"], roundf(52.0 * h._k))
+		and HudPaint.page_size(h) == Vector2(654, 150),
+		"Glance: the true wind speed at 52 on a 654 x 150 page (%s)" % str(tws_prims))
 	rc = _items_at(h, RC)
 	t.ok(_has_all(rc, race_cells + ["shift", "bug_gap", "mark_eta", "feed_own"]) and _has_none(rc,
 		data_only + ["bug_lap", "bug_gaps", "mark_brg", "feed", "hint", "cue", "target"]),
@@ -930,7 +936,8 @@ func test_density() -> void:
 	h.frame(0.3)
 	t.ok(h.phase() == "penalty" and h.penalty_panel.visible and h.shown("rules") and h.alerts_block.visible,
 		"Glance keeps the penalty panel and the rules line")
-	t.ok(not h.has_item("hdg") and h.has_item("bsp"), "penalty at Glance: speed and TWA dial only")
+	t.ok(not h.has_item("hdg") and h.has_item("bsp") and h.has_item("tws"),
+		"penalty at Glance: speed, the true wind speed and the TWA dial only")
 	t.ok(_items_at(h, RC).has("hdg"), "penalty at Race: as the leg")
 	h.free()
 	# rounding

@@ -98,7 +98,7 @@ A bit more instrument, no dashboard:
   Race and Data (centre zero, ±30°, bar in the tack colour to the side that is down). Both move every frame; the numbers beside
   them keep the 4 Hz refresh.
 - **Level pips.** Three 7 px squares top right of the page, filled to the level.
-- **Pages at 1080p:** Glance 486 x 150, Race 630 x 246, Data 760 x 298, all anchored at the bottom-left margin.
+- **Pages at 1080p:** Glance 654 x 150, Race 630 x 246, Data 760 x 298, all anchored at the bottom-left margin.
   The wind is on the page (owner, 2026-11-07, `hud_wind_2026-11-07.md`): the top right wind page of 312 x 112 went.
 
 ## 5. Layout grid
@@ -159,11 +159,11 @@ only when both allow it.
 
 | Phase | Glance | Race | Data |
 | --- | --- | --- | --- |
-| Pre-start | Boat speed, TWA dial. Start block: countdown and burn with the late/early bar, the flag rule in one line. No race bug | + heading, true wind speed, heel bar. Full start block (line, to line, burn, bias, flags). Feed: own events, 3 lines. No race bug | + VMG, SOG, AWA, COG, TWD, AWS. Race bug (fleet, laps and legs). Feed 6 lines, every event |
-| Upwind | Boat speed, TWA dial with the VMG angles and the coloured pointer (the one cue). Race bug: clock and rank. Mark tag: name and distance | + heading, true wind speed, heel bar. Shift chip in the heading cell. The bug adds the leader gap; the mark tag adds the ETA. Feed: own events, 3 lines | + VMG, AWA pointer and value, SOG, COG, TWD, AWS. Lap and leg line. Ahead and behind. The mark tag adds the bearing. Feed 6 lines, every event. Sail hint (assist allowing) |
+| Pre-start | Boat speed, true wind speed, TWA dial. Start block: countdown and burn with the late/early bar, the flag rule in one line. No race bug | + heading, heel bar. Full start block (line, to line, burn, bias, flags). Feed: own events, 3 lines. No race bug | + VMG, SOG, AWA, COG, TWD, AWS. Race bug (fleet, laps and legs). Feed 6 lines, every event |
+| Upwind | Boat speed, true wind speed, TWA dial with the VMG angles and the coloured pointer (the one cue). Race bug: clock and rank. Mark tag: name and distance | + heading, heel bar. Shift chip in the heading cell. The bug adds the leader gap; the mark tag adds the ETA. Feed: own events, 3 lines | + VMG, AWA pointer and value, SOG, COG, TWD, AWS. Lap and leg line. Ahead and behind. The mark tag adds the bearing. Feed 6 lines, every event. Sail hint (assist allowing) |
 | Downwind | As upwind with the run angles; on a reach the pointer is neutral | As upwind | As upwind |
-| Rounding (within 6 L and 6 s after) | Boat speed, TWA dial | As the leg | As the leg |
-| Penalty | Boat speed, TWA dial; the penalty panel carries the rest | As the leg it is taken on | As the leg it is taken on |
+| Rounding (within 6 L and 6 s after) | Boat speed, true wind speed, TWA dial | As the leg | As the leg |
+| Penalty | Boat speed, true wind speed, TWA dial; the penalty panel carries the rest | As the leg it is taken on | As the leg it is taken on |
 
 Race is the racer's list and nothing more (owner, 2026-10-17: too many numbers at once): speed, the dial, heading, the
 mark's distance and time, the countdown and line numbers, rank and gap, heel and the true wind speed; TWD and the

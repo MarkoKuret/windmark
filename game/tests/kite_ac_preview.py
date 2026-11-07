@@ -9,6 +9,8 @@ quarter): a row per wind angle, the hinge model (the current one) left, the surf
     python3 game/tests/kite_ac_preview.py [--out DIR] [--size 960x600]
     godot --headless --path game -s res://tests/sail_preview_dump.gd -- kite_ac2
     python3 game/tests/kite_ac_preview.py --second      (every class: docs/design/kite_ac_2026-11-06b/)
+    godot --headless --path game -s res://tests/sail_preview_dump.gd -- kite_ac3
+    python3 game/tests/kite_ac_preview.py --third       (wm9 and wm21: docs/design/kite_ac_2026-11-07/)
 
 Default output: docs/design/kite_ac_2026-11-06/<class>_<view>.jpg. Needs numpy, Pillow and moderngl.
 """
@@ -70,12 +72,50 @@ def second(ctx, out, w, h):
             print(f"wrote {path}")
 
 
+SECOND_DIR = REPO / "docs" / "design" / "kite_ac_2026-11-06b"   # the second pass's sheets
+
+
+def third(ctx, out, w, h):
+    """wm9 and wm21 (`-- kite_ac3` shots, the run set as at TWA 150) against the second pass (the right column of its
+    sheets, the same shots)."""
+    head = 46
+    f, fs = _font(24), _font(17)
+    for cls in ("wm9", "wm21"):
+        kind, angles, what = SECOND[cls]
+        for view, title in VIEWS.items():
+            sheet = Image.new("RGB", (2 * w, head + len(angles) * (h + 30)), (245, 245, 242))
+            d = ImageDraw.Draw(sheet)
+            d.text((14, 10), f"{cls} kite: before, the pole end raised on a run (left), now, the run set as at TWA 150 "
+                   f"(right), {title}, 12 kn", fill=(20, 20, 30), font=f)
+            prev = Image.open(SECOND_DIR / f"{cls}_{view}.jpg")
+            for r, ang in enumerate(angles):
+                y = head + r * (h + 30)
+                sheet.paste(prev.crop((w, y + 30, 2 * w, y + 30 + h)), (0, y + 30))
+                d.text((10, y + 6), "before (2026-11-06b)", fill=(30, 30, 40), font=fs)
+                name = f"kite_ac3_{cls}_{kind.lower()}{ang}_loft_{view}"
+                img, note = sp.render(ctx, sp.OUT / name, (w, h))
+                sheet.paste(img, (w, y + 30))
+                d.text((w + 10, y + 6), f"now: {note.split('|')[0].split(':', 1)[-1].strip()}", fill=(30, 30, 40),
+                       font=fs)
+                print(f"{name}: {note}")
+            path = out / f"{cls}_{view}.jpg"
+            sheet.save(path, quality=90)
+            print(f"wrote {path}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=None)
     ap.add_argument("--size", default="960x600")
     ap.add_argument("--second", action="store_true", help="every class (-- kite_ac2), into kite_ac_2026-11-06b")
+    ap.add_argument("--third", action="store_true", help="wm9 and wm21 (-- kite_ac3), into kite_ac_2026-11-07")
     a = ap.parse_args()
+    if a.third:
+        w, h = (int(x) for x in a.size.split("x"))
+        out = Path(a.out or REPO / "docs" / "design" / "kite_ac_2026-11-07")
+        out.mkdir(parents=True, exist_ok=True)
+        third(moderngl.create_standalone_context(require=410), out, w, h)
+        return
     if a.second:
         w, h = (int(x) for x in a.size.split("x"))
         out = Path(a.out or REPO / "docs" / "design" / "kite_ac_2026-11-06b")

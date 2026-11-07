@@ -11,6 +11,8 @@ extends SceneTree
 ##       model and on the measured surfaces of §6.5, tests/kite_ac_preview.py)
 ##   godot --headless --path game -s res://tests/sail_preview_dump.gd -- kite_ac2     (every spinnaker class on
 ##       its measured surface, tests/kite_ac_preview.py --second)
+##   godot --headless --path game -s res://tests/sail_preview_dump.gd -- kite_ac3     (wm9 and wm21 only, the
+##       surface model, tests/kite_ac_preview.py --third)
 
 const KNOT := 1852.0 / 3600.0
 const OUT := "res://generated/sail_preview"
@@ -150,21 +152,23 @@ func _kite_ac_shots() -> Array:
 const KITE_AC_CLASSES := {"wm7": "kite", "wm10": "a2", "wm12": "a2", "wm16": "a2", "wm9": "kite", "wm21": "spin"}
 
 
-func _kite_ac2_shots() -> Array:
+func _kite_ac2_shots(only: Array = [], prefix: String = "kite_ac2") -> Array:
 	var out := []
 	for cls in KITE_AC_CLASSES:
+		if not only.is_empty() and not cls in only:
+			continue
 		var views := {}
 		for v in KITE_LOFT_VIEWS:  # wm7 and wm21 as the first pass framed them; the bigger boats a little wider
 			views[v] = KITE_LOFT_VIEWS[v].duplicate()
 			views[v]["dist_loa"] = 2.15 if cls in ["wm7", "wm21"] else 2.4
 		var sid: String = KITE_AC_CLASSES[cls]
-		var models: Array = ["loft"] if cls in ["wm7", "wm21"] else ["hinge", "loft"]
+		var models: Array = ["loft"] if cls in ["wm7", "wm21"] or not only.is_empty() else ["hinge", "loft"]
 		var sym: bool = cls in ["wm9", "wm21"]
 		for ang in ([150, 177] if sym else [60, 95, 130]):
 			for model in models:
 				var legs: Array = [{"t": 15.0, "twa": float(ang)}, {"t": 60.0, "twa": float(ang), "req": sid}] if sym \
 					else [{"t": 12.0, "awa": float(ang)}, {"t": 45.0, "awa": float(ang), "req": sid}]
-				out.append({"name": "kite_ac2_%s_%s%d_%s" % [cls, "twa" if sym else "awa", ang, model], "cls": cls,
+				out.append({"name": "%s_%s_%s%d_%s" % [prefix, cls, "twa" if sym else "awa", ang, model], "cls": cls,
 					"tws": 12.0, "twa": float(ang) if sym else float(ang) + 30.0, "model": model, "views": views,
 					"legs": legs, "cam": views["side"]})
 	return out
@@ -195,6 +199,9 @@ func _main() -> void:
 		want = []
 	elif want.has("kite_ac2"):
 		shots = _kite_ac2_shots()
+		want = []
+	elif want.has("kite_ac3"):  # §6.5 (2026-11-07): the symmetric kites, the run set as at TWA 150
+		shots = _kite_ac2_shots(["wm9", "wm21"], "kite_ac3")
 		want = []
 	for spec in shots:
 		if want.is_empty() or want.has(spec["name"]):

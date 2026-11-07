@@ -3,9 +3,11 @@ id: WM-211
 title: >-
   Pause menu and settings quirks: live volume and quality from the pause menu,
   naming, Reset section
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-11-07 18:47'
+updated_date: '2026-11-07 19:29'
 labels:
   - polish
 dependencies: []
@@ -21,6 +23,6 @@ From the pause menu only the display keys apply live; volumes, quality, controls
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Volumes and quality apply live from the pause menu
-- [ ] #2 One name for the helm key mode; bindings in plain words; dead zone as %
+- [x] #1 Volumes and quality apply live from the pause menu
+- [x] #2 One name for the helm key mode; bindings in plain words; dead zone as %
 <!-- AC:END -->

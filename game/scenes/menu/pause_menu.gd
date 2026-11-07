@@ -189,6 +189,13 @@ func _confirmed(id: String) -> bool:
 	return false
 
 
+## Restart's seed (menus.md §2): the one the running session was made with, so the reload is the same race again
+## (Race again on the results screen is the one that draws a new day); 0 without a host that has one.
+func restart_seed() -> int:
+	var s: Variant = host.get("world_seed") if host != null else null
+	return int(s) if s is int else 0
+
+
 ## Restart and Main menu ask first while the player's race is on, the window of Retire (menus.md §2).
 func _asks_first() -> bool:
 	return can_retire()
@@ -245,6 +252,7 @@ func _pressed(id: String) -> void:
 			action_requested.emit(id)
 			if act:
 				if get_tree().current_scene != null:
+					GameSetup.restart_seed = restart_seed()
 					SceneFade.reload(get_tree())
 				elif host != null and host.has_method("reset_boat"):
 					host.reset_boat()
@@ -265,9 +273,13 @@ func _pressed(id: String) -> void:
 				SceneFade.change(get_tree(), MAIN_MENU)
 
 
+## A setting applies at once, as on the main menu (menus.md §2, §3): the display on the window, the rest (volumes,
+## quality, controls, cameras, HUD) on the running scene.
 func _setting_changed(key: String) -> void:
 	if key in ["fullscreen", "vsync", "fps_limit", "ui_scale", "render_scale", "aa", "capture_preset"]:
 		Settings.current().apply_display(get_tree().root, key in ["fullscreen", "capture_preset"])
+	else:
+		Settings.current().apply_live(host, key)
 
 
 func _settings_closed() -> void:

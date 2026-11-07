@@ -79,7 +79,7 @@ keys become the boat's commands, and the accessibility options. The boat command
 | `capture_pause` | toggle | offline: clean pause, no menu and no label (§7) |
 | `capture_slow` | button | offline: slow motion, cycling ×1, ×0.5, ×0.25 (§7) |
 | `screenshot` | button | save a screenshot |
-| `reset_boat` | button | offline practice only: free sailing re-places the boat at its start point, sailing with its start sail and the helm centred, at once; an offline race asks first (the HUD notes `Restart the race? Press Backspace again`, the key as the player's bindings name it, for 3 s) and a second press within them restarts it from the spawn; a rules scenario (`race.md` §14) restarts at once. No effect online or in a ranked or timed session |
+| `reset_boat` | button | offline practice only: free sailing re-places the boat at its start point, sailing with its start sail and the helm centred, at once; an offline race asks first (the HUD notes `Restart the race? Press Backspace again`, the key as the player's bindings name it, for 3 s) and a second press within them restarts it from the spawn on the same seed (the same wind, shifts, weather and fleet: the pause menu's Restart, `menus.md` §2; a new day is the results screen's Race again, `menus.md` §5); a rules scenario (`race.md` §14) restarts at once. No effect online or in a ranked or timed session |
 
 There is no action for penalty turns (they are sailed), tacking or gybing (steered), or the main (always up).
 
@@ -198,7 +198,7 @@ When the stick has been inside its dead zone for 0.5 s and a helm key is pressed
 the stick out of its dead zone takes it back. The source that moved last wins.
 
 ### 5.2 Helm keys
-Two modes (option, per player):
+Two modes (option, per player; the menus call the option **Steering**, `menus.md` §1 and §3):
 - **Set and hold** (default). A held key moves `h_cmd` linearly at `KEY_RATE = 0.85` per second (counting the
   frame the press is first read), with no ramp: a short press of 0.1 s gives 0.085 (about 3° of rudder), 0.5 s
   gives 0.425 and full helm from the centre takes about 1.18 s. The rudder follows at its own speed (`helm_rate`,
@@ -267,9 +267,9 @@ slot after `F`.
 | option | default | range / values |
 | --- | --- | --- |
 | rebinding | defaults of §3 | every action, two keyboard/mouse bindings and one gamepad binding; conflicts shown |
-| helm key mode | set and hold | set and hold, hold to steer (§5.2) |
+| helm key mode (the menus' Steering) | set and hold | set and hold, hold to steer (§5.2) |
 | weather helm | off | off: the boat holds her course with the helm centred; on: she tries to luff up as she heels, like a real boat (`boat.md` §2 `weather_helm_enabled`); one rule for the whole world, the player's setting for an offline session |
-| helm stick dead zone | 0.10 | 0–0.30 (stick curve fixed at gamma 1.6) |
+| helm stick dead zone | 0.10 (shown as 10 %) | 0–0.30 (stick curve fixed at gamma 1.6) |
 | held keys | hold | hold or toggle, one choice for `let_fly`, `helm_fine`, `rankings`, `camera_boost` |
 | mouse helm | off | while the left button is held, horizontal mouse offset from the press point sets `h_cmd` (300 px = full) |
 | one-hand layout | off | left-hand keyboard set (A/D helm, W/S sheet, Q let fly, 1–5 sails, E camera) or mouse-only (mouse helm, wheel = sheet, buttons = let fly and camera) |

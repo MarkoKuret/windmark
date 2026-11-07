@@ -42,6 +42,9 @@ var scenario := ""
 
 ## the setup the next scene reads; set by the menus, cleared by nobody (a new session overwrites it)
 static var next: GameSetup = null
+## the pause menu's Restart (menus.md §2): the seed the reloaded sail scene keeps, so the same race (wind, weather,
+## light, fleet) runs again whatever its setup or command line said; read and cleared by the next sail scene, 0 none
+static var restart_seed := 0
 
 
 static func current() -> GameSetup:

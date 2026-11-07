@@ -36,7 +36,7 @@ Presentation only: nothing here feeds the simulation. Values come from the rende
 | `wind` | wind at the listener | effects |
 | `race` | signals, finish, penalty and rule sounds | signals |
 | `voice` | hails | signals (no separate voice setting until there are hail recordings, `menus.md` §3) |
-| `ambience` | the ambience bed and its one-shots | ambience |
+| `ambience` | the ambience bed and its one-shots; the menu ambience (§6.1) | ambience |
 | `venue` | placed venue and course-object sources | ambience |
 | `ui` | menus and HUD clicks | interface |
 
@@ -181,6 +181,17 @@ Mark roundings are silent by default (option: a soft tick on the own boat's `Rou
   every 20–60 s (uniform) at a random pan and 0.3–0.6 volume. Until venues have look files (§7) the map's
   `ambience.one_shots` list serves every venue; the random pan is a 3-D source 30 m from the listener at a
   random bearing, `d_min` 30 m.
+
+### 6.1 Menu ambience
+
+The main menu (`menus.md` §4) plays a quiet bed of the same sounds while it shows, its welcome screen and pages
+included (decided 2026-11-07): the sea bed of §6 for the backdrop's wind (12 kn: the moderate bed) at 0.6 of the
+map's bed volume (0.24), the map's wind bed (`wind.bed`'s file) at 0.12, and every 25 to 70 s (uniform) a halyard
+or a gull (`amb.halyard`, `amb.gull`; an id the map lacks is skipped) at 0.12 to 0.25, centred. Everything is on
+the `ambience` bus, so the Ambience and Master volumes apply to it at once, and the bus's duck is cleared when the
+menu opens (a race's signal duck does not follow it). It fades in over 2 s and out with the scene change's fade
+(`menus.md` §5). The menu's live backdrop runs no `GameAudio` sound. There is **no music**: no menu theme and no
+results sting (a licensing and taste call, left out).
 
 ## 7. Venue and course objects
 

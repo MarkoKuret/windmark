@@ -614,8 +614,12 @@ func test_scene_flow() -> void:
 	_press(sc, &"reset_boat")
 	t.ok(sc.get("sim") == sim0 and hud.text_of("message").begins_with("Restart the race? Press "),
 		"Backspace once: a note, no restart: %s" % hud.text_of("message"))
+	var seed0 := int(sc.get("world_seed"))
 	_press(sc, &"reset_boat")
 	t.ok(sc.get("sim") != sim0, "Backspace again within 3 s: the race restarts")
+	# menus.md §2, controls.md §2 (WM-212): the restart is the same race, on the same seed
+	t.ok(int(sc.get("world_seed")) == seed0 and int((sc.get("sim") as CoreSimSource).settings.get("race_seed", -1)) == seed0,
+		"Backspace: the same seed (%d)" % seed0)
 	var sim1: Object = sc.get("sim")
 	_press(sc, &"reset_boat")
 	for i in 200:  # 3.3 s
@@ -677,8 +681,24 @@ func test_scene_flow() -> void:
 	await process_frame
 	t.ok(bool(sc2.get("race_mode")) and int(sc2.get("fleet_size")) == 3 and int(sc2.get("world_seed")) != old_seed
 		and int(sc2.get("world_seed")) != 0, "the new race: same fleet, seed %d (was %d)" % [sc2.get("world_seed"), old_seed])
-	GameSetup.next = null
+	# menus.md §2 (WM-212): the pause menu's Restart in that race is the same race again, although GameSetup still
+	# carries seed 0 (Race again's new day); the reloaded scene takes the running seed
+	var pm2 := sc2.get_node_or_null("PauseMenu") as PauseMenu
+	var seed2 := int(sc2.get("world_seed"))
+	t.ok(pm2 != null and GameSetup.next.seed == 0 and pm2.restart_seed() == seed2, "Restart's seed: %d" % seed2)
+	GameSetup.restart_seed = pm2.restart_seed() if pm2 != null else 0  # what Restart sets before the reload
 	sc2.queue_free()
+	await process_frame
+	var sc3: Node = (load("res://scenes/sail_test.tscn") as PackedScene).instantiate()
+	sc3.set("auto_process", false)
+	sc3.set("sim_kind", 1)
+	get_root().add_child(sc3)
+	await process_frame
+	t.ok(int(sc3.get("world_seed")) == seed2 and GameSetup.restart_seed == 0 and bool(sc3.get("race_mode"))
+		and int((sc3.get("sim") as CoreSimSource).settings.get("race_seed", -1)) == seed2,
+		"Restart: the same race again, seed %d" % sc3.get("world_seed"))
+	GameSetup.next = null
+	sc3.queue_free()
 	await process_frame
 
 

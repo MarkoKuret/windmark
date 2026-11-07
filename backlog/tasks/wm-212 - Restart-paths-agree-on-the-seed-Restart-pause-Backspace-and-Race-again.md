@@ -1,9 +1,11 @@
 ---
 id: WM-212
 title: 'Restart paths agree on the seed: Restart (pause), Backspace and Race again'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-11-07 18:47'
+updated_date: '2026-11-07 19:29'
 labels:
   - playability
 dependencies: []
@@ -19,5 +21,5 @@ Pause Restart reloads GameSetup.next unchanged (same seed after Start race, a ne
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Restart keeps the seed everywhere; Race again draws a new one; spec says so
+- [x] #1 Restart keeps the seed everywhere; Race again draws a new one; spec says so
 <!-- AC:END -->

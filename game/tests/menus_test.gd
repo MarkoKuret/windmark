@@ -27,6 +27,7 @@ func _init() -> void:
 	await test_weather_card()
 	await test_light_rows()
 	await test_touches()
+	await test_words_keys_ambience()
 	await test_pause_menu()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
 	t.finish(self, "menus")
@@ -1195,7 +1196,25 @@ func test_race_card() -> void:
 		and q.course_map.points["w"].x > 600.0, "the map follows the wind rows")
 	q.rows["fleet_size"].set_value(12.0, true)
 	q.rows["ai_level"].set_value("pro", true)
-	t.ok(q.course_map.caption == "2 laps, 6 legs", "course caption: %s" % q.course_map.caption)
+	# the course's name says "2 laps": the caption gives the legs alone (menus.md §1.1.1)
+	t.ok(q.course_map.caption == "6 legs", "course caption: %s" % q.course_map.caption)
+	var island := SetupPanel.caption_for({"name": "Round the island", "sequence": [{}, "lap", {}]})
+	t.ok(island == "2 laps, 3 legs", "caption: a name without its laps keeps them: %s" % island)
+	var no_dup := true
+	var seen := {}
+	for v in MenuData.venues():
+		for cl in MenuData.classes():
+			for cs in MenuData.courses(str(v["id"]), str(cl["id"])):
+				seen[str(cs["id"])] = true
+	t.ok(seen.size() >= 6, "captions: %d courses on disk" % seen.size())
+	for cid in seen:
+		var cdoc := MenuData.course_file(str(cid))
+		var lap_word := "%d lap" % CourseMap.laps_legs(cdoc).x
+		var cap := SetupPanel.caption_for(cdoc)
+		if str(cdoc.get("name", "")).to_lower().contains(lap_word) and cap.contains(lap_word):
+			no_dup = false
+			print("  caption repeats the name: %s / %s" % [cdoc.get("name"), cap])
+	t.ok(no_dup, "no course name and caption both say the laps")
 	# keyboard: down from the last row is Next, up from Next the last row (Sky, after the weather rows)
 	t.ok(q.last_row() == q.rows["light_conditions"], "Custom: the last row is Sky")
 	q.rows["light_conditions"].grab_focus()
@@ -1831,6 +1850,140 @@ func test_touches() -> void:
 	Settings.reset_current()
 
 
+func _arrow(right: bool, echo: bool) -> void:
+	var e := InputEventKey.new()
+	e.keycode = KEY_RIGHT if right else KEY_LEFT
+	e.physical_keycode = e.keycode
+	e.pressed = true
+	e.echo = echo
+	root.push_input(e)
+
+
+## WM-211, WM-216 (menus.md §1, §3, §4; audio.md §6.1): one name for the helm key mode, the dead zone in %, the
+## actions in plain words, Reset section keeps the display and says what it resets, Esc on the menu card, the quiet
+## ticks of a held arrow, the menu ambience.
+func test_words_keys_ambience() -> void:
+	t.begin("settings words, menu keys and sounds, menu ambience")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
+	Settings.reset_current()
+	root.size = Vector2i(1280, 800)
+	var m := _menu()
+	await process_frame
+	await process_frame
+	# the same name and help line on the welcome screen and in Settings
+	var wr: MenuRow = m.welcome.rows["helm_mode"]
+	var w_name := wr._name.text
+	var w_help := wr.help
+	m.welcome.finish(true)
+	await process_frame
+	m.open_page("settings")
+	await process_frame
+	var sp := m.settings_panel
+	sp.show_section("controls", false)
+	var sr: MenuRow = sp.rows["helm_mode"]
+	t.ok(w_name == sr._name.text and sr._name.text.to_lower() == "steering" and w_help == sr.help,
+		"one name for the helm key mode: %s / %s" % [w_name, sr._name.text])
+	t.ok((sp.rows["stick_dead_zone"] as MenuRow).value_text() == "10 %", "dead zone as %%: %s"
+		% (sp.rows["stick_dead_zone"] as MenuRow).value_text())
+	# the bindings in plain words (menus.md §3 Action names)
+	var raw := []
+	for a in Bindings.actions():
+		var nm := SettingsPanel.action_name(a)
+		if not ActionNames.NAMES.has(a) or nm.contains("_"):
+			raw.append(a)
+	t.ok(raw.is_empty(), "every action named in the table, in plain words (missing: %s)" % [raw])
+	t.ok(SettingsPanel.action_name("camera_orbit_drag") == "Turn the camera (drag)"
+		and SettingsPanel.action_name("sail_1") == "Jib or genoa"
+		and SettingsPanel.action_name("drop_front") == "Drop the front sail", "camera drag, sail 1, drop front")
+	var br: BindingRow = sp.binding_rows["camera_orbit_drag"]
+	t.ok(br._name.text.to_lower() == "turn the camera (drag)", "the row shows the name: %s" % br._name.text)
+	# Reset section: what it resets in the help line; Graphics keeps the display (menus.md §3)
+	var reset_btn: Button = sp._reset
+	for sec in SettingsPanel.SECTIONS:
+		sp.show_section(sec, false)
+		t.ok(sp.help_for(reset_btn) == SettingsPanel.RESET_HELP[sec] and sp.help_for(reset_btn) != "",
+			"Reset section's help in %s" % sec)
+	sp.show_section("graphics", false)
+	var st := Settings.current()
+	st.fullscreen = true
+	st.vsync = false
+	st.fps_limit = 60
+	reset_btn.pressed.emit()
+	t.ok(st.fullscreen and st.vsync and st.fps_limit == 0, "Reset section in Graphics: the rest back, fullscreen kept")
+	st.reset("")
+	t.ok(not st.fullscreen, "a full reset still puts the display back")
+	# a held arrow sweeps a value with quiet ticks (menus.md §4)
+	sp.show_section("audio", false)
+	var mv: MenuRow = sp.rows["master_volume"]
+	mv.set_value(0.8)
+	mv.grab_focus()
+	await process_frame
+	var snd := m.sounds
+	snd.played.clear()
+	_arrow(true, false)
+	await process_frame
+	for i in 4:
+		_arrow(true, true)
+		await process_frame
+	t.near(float(mv.value), 1.0, 1e-6, "the press and its repeats step up to the end")
+	t.ok(snd.played == ["focus", "focus:quiet", "focus:quiet", "focus:quiet"],
+		"a tick, then quiet ticks, none at the end: %s" % [snd.played])
+	snd.played.clear()
+	for i in 3:
+		_arrow(false, true)
+		await process_frame
+	t.ok(snd.played.size() == 3 and snd.played.all(func(x: String) -> bool: return x == "focus:quiet"),
+		"the repeats down tick quietly: %s" % [snd.played])
+	t.near(snd._players["focus"].volume_db, MenuSounds.ECHO_DB, 1e-6, "quiet: %.0f dB" % MenuSounds.ECHO_DB)
+	st.reset("audio")
+	st.apply_audio()
+	# Esc on the menu card: the focus to Quit with the back sound; on Quit nothing, silently (menus.md §1)
+	sp.close()
+	await process_frame
+	m.buttons["quick"].grab_focus()
+	await process_frame
+	snd.played.clear()
+	_key("ui_cancel")
+	await process_frame
+	t.ok(root.gui_get_focus_owner() == m.buttons["quit"] and m.page == "" and snd.played == ["back"],
+		"Esc on the card: the focus on Quit, the back sound: %s" % [snd.played])
+	snd.played.clear()
+	_key("ui_cancel")
+	await process_frame
+	t.ok(root.gui_get_focus_owner() == m.buttons["quit"] and snd.played.is_empty(), "Esc on Quit: nothing, no sound")
+	# the menu ambience (menus.md §4, audio.md §6.1)
+	var amb := m.ambience
+	var files := amb.beds.map(func(b: Dictionary) -> String: return String(b["file"]).get_file())
+	t.ok(amb != null and files.has("moderate.ogg") and files.has("bed_loop.ogg"),
+		"the sea bed for 12 kn and the wind bed: %s" % [files])
+	t.ok(amb.players().size() == amb.beds.size() and amb.players().all(
+		func(p: AudioStreamPlayer) -> bool: return p.bus == "ambience" and p.stream != null), "on the ambience bus")
+	t.ok(amb._shot.bus == "ambience", "the one-shots too")
+	amb.played.clear()
+	for i in 600:
+		amb.step(1.0)
+	t.ok(amb.fade == 1.0 and amb.played.size() >= 600 / 70 and amb.played.size() <= 600 / 25 + 1
+		and amb.played.all(func(x: String) -> bool: return x in MenuAmbience.ONE_SHOTS),
+		"a halyard or a gull every 25 to 70 s: %d in 10 min (%s)" % [amb.played.size(), str(amb.played.slice(0, 4))])
+	var g0 := amb.players()[0].volume_db
+	t.ok(g0 < linear_to_db(0.3) and g0 > linear_to_db(0.1), "quiet: the sea bed at %.1f dB" % g0)
+	m.open_page("settings")
+	await process_frame
+	sp.show_section("audio", false)
+	(sp.rows["ambience_volume"] as MenuRow).set_value(0.3, true)
+	t.near(AudioServer.get_bus_volume_db(AudioServer.get_bus_index("ambience")), linear_to_db(0.3), 1e-3,
+		"the ambience volume on it at once")
+	(sp.rows["ambience_volume"] as MenuRow).set_value(1.0, true)
+	amb.fade_out(SceneFade.OUT_S)
+	amb.step(0.4)
+	t.ok(amb.fade == 0.0 and amb.players()[0].volume_db <= -79.0, "fades out before a scene change")
+	sp.close()
+	m.queue_free()
+	await process_frame
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
+	Settings.reset_current()
+
+
 ## a stand-in sail scene whose race is on (menus.md §2: Retire shows, Restart and Main menu ask first)
 class _RaceHost extends Node:
 	func can_retire() -> bool:
@@ -1890,13 +2043,29 @@ func test_pause_menu() -> void:
 	sc.scripted_input = RawInput.new()
 	await process_frame
 	pm.buttons["settings"].pressed.emit()
+	# menus.md §2: a change applies at once, as on the main menu (WM-211), not only when the settings close
 	pm.settings_panel.show_section("controls")
 	pm.settings_panel.rows["stick_dead_zone"].set_value(0.25, true)
+	t.near(sc.controls.stick_dead_zone, 0.25, 1e-9, "dead zone applied to the running scene at once")
 	pm.settings_panel.show_section("hud")
 	pm.settings_panel.rows["assist"].set_value(Hud.Assist.FULL, true)
+	t.ok(sc.hud.assist == Hud.Assist.FULL, "assist preset applied to the running scene at once")
+	pm.settings_panel.show_section("audio")
+	var amb_bus := AudioServer.get_bus_index("ambience")
+	pm.settings_panel.rows["ambience_volume"].set_value(0.5, true)
+	t.near(AudioServer.get_bus_volume_db(amb_bus), linear_to_db(0.5), 1e-3, "ambience volume on its bus at once")
+	pm.settings_panel.rows["master_volume"].set_value(0.4, true)
+	t.near(AudioServer.get_bus_volume_db(AudioServer.get_bus_index("Master")), linear_to_db(0.4), 1e-3,
+		"master volume on its bus at once")
+	pm.settings_panel.show_section("graphics")
+	pm.settings_panel.rows["quality"].set_value(SeaQuality.Tier.H, true)
+	t.ok(sc.sea.quality == SeaQuality.Tier.H, "quality on the sea at once")
+	pm.settings_panel.rows["quality"].set_value(SeaQuality.Tier.L, true)
 	pm.settings_panel.close()
-	t.near(sc.controls.stick_dead_zone, 0.25, 1e-9, "dead zone applied to the running scene")
-	t.ok(sc.hud.assist == Hud.Assist.FULL, "assist preset applied to the running scene")
+	t.near(sc.controls.stick_dead_zone, 0.25, 1e-9, "dead zone still applied after Done")
+	t.ok(sc.hud.assist == Hud.Assist.FULL and sc.sea.quality == SeaQuality.Tier.L, "assist and quality after Done")
+	Settings.current().reset("audio")
+	Settings.current().apply_audio()
 	t.ok(pm.is_open and pm.buttons["settings"].is_visible_in_tree(), "back on the pause menu")
 	# the pause key in the settings goes back to the card (menus.md §2), the race stays paused
 	pm.buttons["settings"].pressed.emit()
@@ -1921,6 +2090,9 @@ func test_pause_menu() -> void:
 	pm.open()
 	pm.buttons["quit"].pressed.emit()
 	t.ok(acts == ["restart", "quit"] and not pm.is_open, "restart and main menu requested: %s" % [acts])
+	# menus.md §2 (WM-212): Restart keeps the running session's seed, whatever GameSetup carries (0 after Continue
+	# or Race again would draw a new day)
+	t.ok(sc.world_seed != 0 and pm.restart_seed() == sc.world_seed, "Restart's seed is the running one: %d" % pm.restart_seed())
 	# menus.md §2: while the player's race is on (the window of Retire) Restart and Main menu ask first
 	acts.clear()
 	var stub := _RaceHost.new()

@@ -336,6 +336,12 @@ func contact_events() -> Array:
 	return []
 
 
+## wind_shadow.md §5 the environment the boat stepped in ({wind_speed, wind_speed_clean, shadow_loss, ...}); {}
+## without one (no shadows)
+func boat_env(_boat: int) -> Dictionary:
+	return {}
+
+
 ## rules.md §7.9 hail for room to tack: {available (a valid hail can be made now), hailed_by (boat index or -1)};
 ## {} while the core has no hail state
 func hail_state(_boat: int) -> Dictionary:

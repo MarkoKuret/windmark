@@ -239,6 +239,13 @@ func test_sail_mapping() -> void:
 	pc.update(RawInput.new().press(&"sail_1"), 0.016)
 	var f := pc.stamp(sim.tick())
 	t.ok(f.sail_req == none and pc.busy_flash, "busy press: nothing sent, HUD flashes")
+	t.ok(pc.sail_pressed, "a sail key tells the HUD (the sail strip shows, hud.md §5.3)")
+	pc.sail_pressed = false
+	pc.update(RawInput.new().press(&"sail_next"), 0.016)
+	t.ok(pc.sail_pressed and pc.sail_highlight >= 0, "a pad sail step too (highlight %d)" % pc.sail_highlight)
+	pc.sail_pressed = false
+	pc.update(RawInput.new().press(&"let_fly"), 0.016)
+	t.ok(not pc.sail_pressed, "other keys do not")
 
 
 func _frame(req: int) -> InputFrame:

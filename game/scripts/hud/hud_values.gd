@@ -9,6 +9,17 @@ const TOL_DEFAULT := deg_to_rad(2.0)
 const TOL_STEP := deg_to_rad(0.1)
 const TOL_MAX := deg_to_rad(30.0)
 const POLAR_MIN := 0.3 * HudFormat.KNOT  # m/s: no polar target below this polar speed
+## hud.md §5.2: in irons below this boat speed inside the no-go zone, held this long
+const IRONS_SPEED := 1.0 * HudFormat.KNOT
+const IRONS_HOLD := 1.0
+## hud.md §3.1: the bad air line from this shadow loss
+const BAD_AIR_MIN := 0.03
+
+## hud.md §5.2 the sail state words, in priority order
+const STATE_LET_FLY := "Let fly"
+const STATE_IRONS := "In irons"
+const STATE_LUFFING := "Luffing"
+const STATE_STALLED := "Stalled"
 
 enum Colour { NONE, GREEN, YELLOW, RED }
 
@@ -47,6 +58,14 @@ var sail_up := ""
 var sail_hoisting := ""
 var hoist_progress := 0.0
 var gauges: Array[Gauge] = []
+## hud.md §5.2: one word for how the sails work ("" = nothing to say)
+var sail_state := ""
+## hud.md §3.1: the wind lost to other boats' shadow, 0..1 (1 - wind_speed / wind_speed_clean)
+var shadow := 0.0
+## hud.md §5.3 the sail strip: the front sails' names by slot, the slot up (-1 none), the slots of the running change
+var slot_names: PackedStringArray = []
+var slot_up := -1
+var slot_change: Array[int] = []
 ## hud.md §4: the VMG angles (rad, |twa|) of the class at the felt TWS, NAN when the sim has no polar
 var vmg_up_twa := NAN
 var vmg_dn_twa := NAN
@@ -55,6 +74,8 @@ var vmg_dn_twa := NAN
 var commands_local := false
 
 var _tol_cache := {}
+var _irons_t := 0.0
+var _in_nogo := false
 
 
 ## The player's own commands of this frame (PlayerControls): helm command, sheet, auto-trim, let fly.
@@ -68,6 +89,8 @@ func set_commands(c: PlayerControls) -> bool:
 	sheet_cmd = sheet_new
 	auto_trim = c.auto_trim
 	let_fly = c.let_fly
+	if changed:
+		_state()
 	return changed
 
 
@@ -107,6 +130,44 @@ func tick(sim: SimSource, boat: int) -> void:
 	vmg_up_twa = float(vm.get("up_twa", NAN))
 	vmg_dn_twa = float(vm.get("down_twa", NAN))
 	_gauges(sim, boat, s, sv, info, auto_trim)
+	# hud.md §5.2: in irons = inside the no-go zone (the polar is <= 0 there, boat.md §7.4), slow, for IRONS_HOLD
+	_in_nogo = o.polar_speed <= 0.0 and s.v_filt < IRONS_SPEED
+	_irons_t = _irons_t + DT if _in_nogo else 0.0
+	_state()
+	var env := sim.boat_env(boat)
+	var clean := float(env.get("wind_speed_clean", 0.0))
+	shadow = clampf(1.0 - float(env.get("wind_speed", clean)) / clean, 0.0, 1.0) if clean > 0.1 else 0.0
+	_slots(sv, info)
+
+
+## hud.md §5.2: let fly, in irons, the driving sail luffing or stalled; else nothing.
+func _state() -> void:
+	sail_state = ""
+	if let_fly:
+		sail_state = STATE_LET_FLY
+	elif _in_nogo and _irons_t >= IRONS_HOLD - 1e-6:
+		sail_state = STATE_IRONS
+	elif not gauges.is_empty():
+		var g: Gauge = gauges.back()  # the driving sail: the front sail up, else the main (boat.md §5.4)
+		if g.greyed:
+			return
+		if g.telltale == "Luffing: sheet in":
+			sail_state = STATE_LUFFING
+		elif g.telltale == "Stalled: ease":
+			sail_state = STATE_STALLED
+
+
+## hud.md §5.3: the strip's slots, the one up and the running change's slots.
+func _slots(sv: SimSource.SailsView, info: SimSource.ClassInfo) -> void:
+	slot_names.resize(info.front_sails.size())
+	for k in info.front_sails.size():
+		slot_names[k] = info.sails[info.front_sails[k]].name.capitalize()
+	slot_up = info.front_sails.find(sv.front)
+	slot_change.clear()
+	for i in range(sv.queue_pos, sv.queue_len):
+		var k := info.front_sails.find(sv.queue[i].sail)
+		if k >= 0 and not slot_change.has(k):
+			slot_change.append(k)
 
 
 func _gauges(sim: SimSource, boat: int, s: SimSource.BoatState, sv: SimSource.SailsView,

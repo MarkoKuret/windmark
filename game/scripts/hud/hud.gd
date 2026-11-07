@@ -33,6 +33,8 @@ enum Density { GLANCE, RACE, DATA }
 const DENSITY_NAMES := ["GLANCE", "RACE", "DATA"]
 const REFRESH := 0.25
 const FLASH_TIME := 1.2
+## hud.md §5.3: at Glance the sail strip shows this long after a sail key, a sail step or a busy press
+const STRIP_TIME := 3.0
 const MESSAGE_TIME := 3.0
 ## the notes of the `boat_names` states (hud.md §16.4)
 const NOTE_NAMES_ALL := "Name tags: every boat nearby"
@@ -152,6 +154,9 @@ var rankings_toggle := false
 
 var _refresh_t := INF
 var _flash_t := 0.0
+var _strip_t := 0.0
+## the gamepad's highlighted sail slot (PlayerControls.sail_highlight), -1 none (hud.md §5.3)
+var sail_highlight := -1
 var _message_t := 0.0
 var _toast_t := 0.0
 var _rounded_t := 0.0
@@ -538,11 +543,22 @@ func frame(dt: float, controls: PlayerControls = null) -> void:
 		if controls.busy_flash:
 			controls.busy_flash = false
 			_flash_t = FLASH_TIME
+			_strip_t = STRIP_TIME
+		if controls.sail_pressed:
+			controls.sail_pressed = false
+			_strip_t = STRIP_TIME
+			_bump()
+		if controls.sail_highlight != sail_highlight:
+			sail_highlight = controls.sail_highlight
+			_bump()
 		if not controls.messages.is_empty():
 			_put("message", controls.messages.back())
 			controls.messages.clear()
 			_message_t = MESSAGE_TIME
+	if _flash_t > 0.0 or (_strip_t > 0.0 and _strip_t <= dt):
+		_bump()  # the busy flash blinks; the strip goes at Glance (hud.md §5.3)
 	_flash_t = maxf(_flash_t - dt, 0.0)
+	_strip_t = maxf(_strip_t - dt, 0.0)
 	_message_t = maxf(_message_t - dt, 0.0)
 	_toast_t = maxf(_toast_t - dt, 0.0)
 	_rounded_t = maxf(_rounded_t - dt, 0.0)
@@ -667,9 +683,25 @@ func refresh_text() -> void:
 	var sheet := "AUTO" if v.auto_trim else "%s %%" % HudFormat.percent(100.0 * v.sheet_cmd)
 	_put("sheet", "Sheet  %s%s" % [sheet, "   LET FLY" if v.let_fly else ""], HudStyle.PAPER,
 		sheet + (", LET FLY" if v.let_fly else ""))
+	# hud.md §5.2 the sail state word, §3.1 the bad air line
+	_put("sail_state", v.sail_state.to_upper(), HudStyle.PORT if v.sail_state == HudValues.STATE_LET_FLY \
+		or v.sail_state == HudValues.STATE_IRONS else HudStyle.MARK)
+	var bad := int(HudFormat.round_half_away(100.0 * v.shadow))
+	_put("bad_air", "Bad air −%d %%" % bad if v.shadow >= HudValues.BAD_AIR_MIN else "")
 	_put("vmg_kn", "", HudStyle.PAPER, "--")
 	HudText.race(self)
 	HudText.card(self)
+
+
+## hud.md §5.3: the sail strip shows at Race and Data, at Glance for STRIP_TIME after a sail key, a sail step or a
+## busy press; never for a class without front sails.
+func sail_strip_shown() -> bool:
+	return not values.slot_names.is_empty() and (density != Density.GLANCE or _strip_t > 0.0)
+
+
+## hud.md §5.3 the busy flash: the running change's slots blink while it lasts (on at the flash's start)
+func busy_flash_on() -> bool:
+	return _flash_t > 0.0 and fmod(FLASH_TIME - _flash_t, 0.25) < 0.125
 
 
 static func _sail_name(n: String) -> String:

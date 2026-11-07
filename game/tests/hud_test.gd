@@ -14,6 +14,7 @@ class StubSim:
 	var c := BoatControls.new()
 	var o := BoatOutputs.new()
 	var sv := SailsView.new()
+	var env := {}
 	var trim_table := true
 
 	func _init() -> void:
@@ -48,6 +49,9 @@ class StubSim:
 	func sails(_b: int) -> SailsView:
 		return sv
 
+	func boat_env(_b: int) -> Dictionary:
+		return env
+
 	## a parabola: 1 at eps = 0, 0.98 at +-4 deg
 	func trim_speed_at(_b: int, _tws: float, _awa: float, eps: float) -> float:
 		if not trim_table:
@@ -62,6 +66,7 @@ func _init() -> void:
 	test_twa_tack()
 	test_trim_gauge()
 	test_hud_text()
+	test_sail_feedback()
 	await test_scene()
 	await test_core_scene()
 	await test_core_scene_wm12()
@@ -336,6 +341,151 @@ func test_hud_text() -> void:
 	h.toggle_hidden()
 	t.ok(not h.visible, "hud_hide")
 	h.queue_free()
+
+
+## hud.md §5.2 the sail state word, §3.1 the bad air line, §5.3 the sail strip and the busy flash, at the defaults
+## (auto trim, Standard, Race) and the other densities
+func test_sail_feedback() -> void:
+	t.begin("sail state, bad air, sail strip and busy flash (hud.md §5.2, §5.3, §3.1)")
+	var sim := StubSim.new()
+	sim.c.auto_trim = true
+	sim.s.v_filt = 3.0
+	sim.s.tws = 6.0
+	sim.o.polar_speed = 3.2
+	var h := _hud()
+	h.screen_size = Vector2(1920, 1080)
+	h.density_auto = false
+	h.density = Hud.Density.RACE
+	var pc := PlayerControls.new()
+	pc.bind(sim, 0)
+	var show := func() -> void:
+		h.tick(sim, 0)
+		h.refresh_text()
+		h.frame(0.016, pc)
+	show.call()
+	t.ok(h.assist == Hud.Assist.STANDARD and pc.auto_trim, "the defaults: Standard, auto trim")
+	pc.messages.append("Name tags: off")
+	h.frame(0.016, pc)
+	t.ok(h.text_of("message") == "Name tags: off" and pc.messages.is_empty(), "a note shows without a busy flash")
+	t.ok(h.text_of("sail_state") == "" and not _texts(h.helm_block).has("LUFFING"), "sailing well: no word")
+	t.ok(not h.gauge_views.any(func(g: TrimGaugeView) -> bool: return g.visible), "auto trim hides the gauges")
+	# luffing (the driving sail, the jib, on the wind line) and stalled, with auto trim on, at Race
+	sim.sv.out[1].luff_shiver = 0.8
+	show.call()
+	t.ok(h.text_of("sail_state") == "LUFFING" and _texts(h.helm_block).has("LUFFING"),
+		"luffing with auto trim at Race: %s" % str(_texts(h.helm_block)))
+	sim.sv.out[1].luff_shiver = 0.0
+	sim.sv.out[0].luff_shiver = 0.9
+	show.call()
+	t.ok(h.text_of("sail_state") == "", "the main alone luffing with the jib up (it flows): no word")
+	sim.sv.out[0].luff_shiver = 0.0
+	sim.sv.out[1].trim_error = deg_to_rad(-6.0)
+	show.call()
+	t.ok(h.text_of("sail_state") == "STALLED" and _texts(h.helm_block).has("STALLED"), "stalled")
+	sim.sv.out[1].trim_error = 0.0
+	# in irons: inside the no-go zone (polar <= 0) and slow for 1 s
+	sim.o.polar_speed = -0.4
+	sim.s.v_filt = 0.2
+	for i in 19:
+		h.tick(sim, 0)
+	h.refresh_text()
+	t.ok(h.text_of("sail_state") == "", "not yet in irons after 0.95 s")
+	show.call()
+	t.ok(h.text_of("sail_state") == "IN IRONS" and h.colour_of("sail_state") == HudStyle.PORT, "in irons after 1 s")
+	sim.s.v_filt = 2.0
+	show.call()
+	t.ok(h.text_of("sail_state") == "", "a tack through the wind with way on is not in irons")
+	sim.o.polar_speed = 3.2
+	sim.s.v_filt = 3.0
+	# let fly: the player's own command answers at once and wins
+	sim.sv.out[1].luff_shiver = 0.8
+	pc.update(RawInput.new().press(&"let_fly"), 0.016)
+	h.frame(0.016, pc)
+	t.ok(h.text_of("sail_state") == "LET FLY" and _texts(h.helm_block).has("LET FLY"), "let fly: LET FLY")
+	pc.update(RawInput.new(), 0.016)
+	sim.sv.out[1].luff_shiver = 0.0
+	show.call()
+	t.ok(h.text_of("sail_state") == "", "released: gone")
+	# at Glance (no labels) the word still shows: a contextual item (hud.md §16.1)
+	h.density = Hud.Density.GLANCE
+	sim.sv.out[1].luff_shiver = 0.8
+	show.call()
+	t.ok(_texts(h.helm_block).has("LUFFING"), "Glance: LUFFING")
+	# manual trim: the gauges are back, the word takes the sheet value's place
+	h.density = Hud.Density.RACE
+	pc.auto_trim = false
+	show.call()
+	var tx := _texts(h.helm_block)
+	t.ok(tx.has("LUFFING") and not tx.any(func(x: String) -> bool: return x.begins_with("SHEET ")),
+		"manual: LUFFING in the sheet value's place: %s" % str(tx))
+	pc.auto_trim = true
+	sim.sv.out[1].luff_shiver = 0.0
+	# bad air (hud.md §3.1): from 3 % of the wind lost to another boat's shadow, in the helm notes
+	sim.env = {"wind_speed": 5.88, "wind_speed_clean": 6.0}
+	show.call()
+	t.ok(h.text_of("bad_air") == "", "2 %: nothing")
+	sim.env = {"wind_speed": 5.52, "wind_speed_clean": 6.0}
+	show.call()
+	t.ok(h.text_of("bad_air") == "Bad air −8 %" and _texts(h.helm_notes).has("Bad air −8 %"),
+		"8 percent: %s" % h.text_of("bad_air"))
+	sim.env = {}
+	show.call()
+	t.ok(h.text_of("bad_air") == "", "clear air")
+	# the sail strip (hud.md §5.3): each slot's key and name, the one up underlined
+	show.call()
+	tx = _texts(h.helm_block)
+	t.ok(tx.has("1 JIB") and tx.has("2 KITE"), "Race: the sail strip %s" % str(tx))
+	t.ok(not tx.has("JIB"), "the strip names the sail up, no separate sail value")
+	var under := h.helm_block.primitives().filter(func(q: Dictionary) -> bool: return q["k"] == "rect" \
+		and (q["col"] as Color).is_equal_approx(HudStyle.PAPER))
+	t.ok(under.size() == 1, "the sail up underlined (%d)" % under.size())
+	h.density = Hud.Density.GLANCE
+	show.call()
+	t.ok(not _texts(h.helm_block).has("1 JIB"), "Glance: no strip")
+	pc.update(RawInput.new().press(&"sail_2"), 0.016)
+	h.frame(0.016, pc)
+	t.ok(_texts(h.helm_block).has("1 JIB"), "Glance: a sail key shows it")
+	pc.stamp(0)
+	for i in 200:
+		h.frame(0.016, pc)
+	t.ok(not _texts(h.helm_block).has("1 JIB"), "and it goes after 3 s")
+	# the busy flash: a press that maps to nothing flashes the running change (the kite going up), at Glance too
+	sim.sv.queue = [SimSource.SailStep.new(2, SimSource.Phase.HOISTING), SimSource.SailStep.new(2, SimSource.Phase.UP)]
+	sim.sv.queue_len = 2
+	sim.sv.queue_pos = 0
+	sim.sv.sails[2].phase = SimSource.Phase.HOISTING
+	h.tick(sim, 0)
+	pc.busy_flash = true
+	h.frame(0.016, pc)
+	var kite_col := func() -> Color:
+		for q in h.helm_block.primitives():
+			if q["k"] == "text" and q["text"] == "2 KITE":
+				return q["col"]
+		return Color(0, 0, 0, 0)
+	t.ok(_texts(h.helm_block).has("2 KITE") and (kite_col.call() as Color).is_equal_approx(HudStyle.MARK),
+		"busy flash: the strip shows, the change in mark")
+	h.frame(0.13, pc)
+	t.ok((kite_col.call() as Color).is_equal_approx(HudStyle.PAPER), "and blinks")
+	for i in 30:
+		h.frame(0.05, pc)
+	t.ok(not (kite_col.call() as Color).is_equal_approx(HudStyle.MARK), "the flash ends after 1.2 s")
+	sim.sv.queue = []
+	sim.sv.queue_len = 0
+	sim.sv.sails[2].phase = SimSource.Phase.DOWN
+	# on the gamepad: no keys, the highlighted slot with the set button and a mark underline
+	h.density = Hud.Density.RACE
+	Bindings.pad_last = true
+	pc.update(RawInput.new().press(&"sail_next"), 0.016)
+	show.call()
+	tx = _texts(h.helm_block)
+	t.ok(tx.has("JIB") and tx.has("X KITE"), "pad: names, the first step shows the highlight on the next sail, with X: %s"
+		% str(tx))
+	pc.update(RawInput.new().press(&"sail_next"), 0.016)
+	show.call()
+	tx = _texts(h.helm_block)
+	t.ok(tx.has("X JIB") and tx.has("KITE"), "the next step moves it: %s" % str(tx))
+	Bindings.pad_last = false
+	h.free()
 
 
 func test_scene() -> void:

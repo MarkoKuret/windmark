@@ -2240,20 +2240,35 @@ func test_hoist_cue() -> void:
 			var bars := h.helm_notes.primitives().filter(func(q: Dictionary) -> bool: return q["k"] == "rect" \
 				and (q["col"] as Color).is_equal_approx(HudStyle.MARK))
 			t.ok(bars.size() == 1, "%s: its progress bar" % tag)
-			var texts := []
-			for b in [h.helm_block, h.helm_notes] + h.gauge_views.filter(func(g: TrimGaugeView) -> bool: return g.visible):
-				var o := HudLayoutCheck.offset(h, b)
-				for q in b.primitives():
-					if q["k"] == "text" and q["text"] != "":
-						var r := HudCanvas.prim_rect(q)
-						r.position += o
-						texts.append([q["text"], r])
-			var over := []
-			for i in texts.size():
-				for j in range(i + 1, texts.size()):
-					if (texts[i][1] as Rect2).grow(-1.0).intersects((texts[j][1] as Rect2).grow(-1.0)):
-						over.append("%s / %s" % [texts[i][0], texts[j][0]])
+			var overlaps := func() -> Array:
+				var texts := []
+				for b in [h.helm_block, h.helm_notes] + h.gauge_views.filter(func(g: TrimGaugeView) -> bool: return g.visible):
+					var o := HudLayoutCheck.offset(h, b)
+					for q in b.primitives():
+						if q["k"] == "text" and q["text"] != "":
+							var r := HudCanvas.prim_rect(q)
+							r.position += o
+							texts.append([q["text"], r])
+				var over := []
+				for i in texts.size():
+					for j in range(i + 1, texts.size()):
+						if (texts[i][1] as Rect2).grow(-1.0).intersects((texts[j][1] as Rect2).grow(-1.0)):
+							over.append("%s / %s" % [texts[i][0], texts[j][0]])
+				return over
+			var over: Array = overlaps.call()
 			t.ok(over.is_empty(), "%s: no two helm texts overlap %s" % [tag, str(over)])
+			# the sail strip (hud.md §5.3) at Race and Data, and the sail state word (§5.2) in the sheet value's place
+			# with manual trim: inside the strip and over nothing
+			var strip := _page_texts(h.helm_block).has("2 CODE ZERO")
+			t.ok(strip == (lvl != Hud.Density.GLANCE), "%s: the sail strip %s" % [tag, "shown" if strip else "not shown"])
+			sim.ctrls[0].let_fly = true
+			_refresh(h, sim, 0, 1)
+			h.frame(0.3)
+			over = overlaps.call()
+			var bottom := h.helm_block.extent().end.y <= h.helm_block.size.y + 0.5
+			t.ok(_page_texts(h.helm_block).has("LET FLY") and over.is_empty() and bottom,
+				"%s: LET FLY in the strip, no overlap %s, inside it" % [tag, str(over)])
+			sim.ctrls[0].let_fly = false
 			var greyed := h.gauge_views.filter(func(g: TrimGaugeView) -> bool: return g.visible and g.greyed)
 			var tell := greyed.any(func(g: TrimGaugeView) -> bool: return _page_texts(g).has(g.telltale.to_upper()))
 			t.ok((lvl == Hud.Density.GLANCE or not greyed.is_empty()) and not tell,

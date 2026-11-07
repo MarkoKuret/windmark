@@ -279,6 +279,24 @@ func _incident() -> void:
 		hud.tick(sim, 0)
 	hud.select(-1)
 	await _shot(hud, "hoist_race", "race_aerial", WIDE)
+	# the hoist done, on the defaults (auto trim): the kite up and luffing in another boat's shadow, the sail strip
+	# (hud.md §5.2, §5.3, §3.1)
+	sim.ctrls[0].auto_trim = true
+	sim.sv.sails[2].phase = P.UP
+	sim.sv.sails[2].progress = 1.0
+	sim.sv.sails[1].phase = P.DOWN
+	sim.sv.front = 2
+	sim.sv.queue = []
+	sim.sv.queue_len = 0
+	sim.sv.queue_pos = 0
+	sim.sv.out[2].luff_shiver = 0.9
+	sim.env = {"wind_speed": 4.6, "wind_speed_clean": 5.0}
+	for i in 4:
+		sim.step()
+		hud.tick(sim, 0)
+	await _shot(hud, "sail_state_race", "race_aerial", WIDE)
+	sim.sv.out[2].luff_shiver = 0.0
+	sim.env = {}
 	hud.toggle_map()
 	await _shot(hud, "map_clear_race", "race_aerial", WIDE)
 	hud.queue_free()

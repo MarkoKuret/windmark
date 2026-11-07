@@ -25,6 +25,8 @@ var vmg := {"up_twa": deg_to_rad(42.0), "up_speed": 3.0, "down_twa": deg_to_rad(
 var polar_by_front := {-1: 2.8, 1: 3.0, 2: 3.4}
 var splits := {}  # "boat:step" -> t
 var hail := {}
+## wind_shadow.md §5 the boats' environment (boat_env), {} = clear air
+var env := {}
 var wind := Vector2(5.0, 0.0)  # clean wind: speed, from
 var current := Vector2.ZERO
 var ticks := 0
@@ -218,6 +220,10 @@ func race_events() -> Array:
 
 func rules_events() -> Array:
 	return rules_ev
+
+
+func boat_env(_b: int) -> Dictionary:
+	return env
 
 
 func hail_state(_b: int) -> Dictionary:

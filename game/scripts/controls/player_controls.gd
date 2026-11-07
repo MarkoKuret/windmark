@@ -61,6 +61,8 @@ var free_camera := false
 ## HUD feedback since the last read: messages, and a sail press that matched no row (flash the change)
 var messages: Array[String] = []
 var busy_flash := false
+## a sail key, a sail step or a sail set since the last read (the HUD shows the sail strip, hud.md §5.3)
+var sail_pressed := false
 
 var _stick_dz_time := INF
 var _prev_held := {}
@@ -150,6 +152,7 @@ func update(raw: RawInput, dt: float) -> void:
 		h_cmd = 0.0  # a hold-to-steer key counts as released while it flies the camera
 		_hold_dir = 0
 	# sails
+	var n_presses := _sail_presses.size()
 	for i in 9:
 		if r.was_pressed(StringName("sail_%d" % (i + 1))):
 			_sail_presses.append(i)
@@ -158,15 +161,20 @@ func update(raw: RawInput, dt: float) -> void:
 	var slots := _slot_count()
 	if slots > 0:
 		if r.was_pressed(&"sail_prev") or r.was_pressed(&"sail_next"):
-			if sail_highlight < 0:
+			if sail_highlight < 0:  # the first step shows the highlight where it starts (controls.md §5.4)
 				sail_highlight = _default_highlight()
-			var step := -1 if r.was_pressed(&"sail_prev") else 1
-			sail_highlight = posmod(sail_highlight + step, slots)
+			else:
+				var step := -1 if r.was_pressed(&"sail_prev") else 1
+				sail_highlight = posmod(sail_highlight + step, slots)
 		if r.was_pressed(&"sail_set"):
 			if sail_highlight < 0:
 				sail_highlight = _default_highlight()
 			_sail_presses.append(sail_highlight)
-	# hail, protest (the gamepad's D-pad up is both: the protest prompt takes it while it shows)
+		if r.was_pressed(&"sail_prev") or r.was_pressed(&"sail_next"):
+			sail_pressed = true
+	if _sail_presses.size() > n_presses:
+		sail_pressed = true
+	# hail, protest: online only (controls.md §2); offline the Hud's hooks say no, so the keys send nothing
 	var prompt: bool = protest_prompt.call()
 	if r.was_pressed(&"protest") and prompt:
 		_protest = true

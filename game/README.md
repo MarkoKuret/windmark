@@ -487,7 +487,12 @@ viewed boat. What it shows (`docs/specs/hud.md`):
   the wind arrow.
 - **Feed and results** (§13): six lines of 8 s; provisional results at the own finish, the core's results at the
   close (AI badges, projected finishes marked `proj.`).
-- **Assists** (§14): `Hud.assist` and `Hud.shows(element)`; the wind shadow view is not drawn yet.
+- **Helm strip** (§5): the trim gauges under manual trim, the sail state word (`LUFFING`, `STALLED`, `IN IRONS`,
+  `LET FLY`, auto trim too), the sail strip with each front sail's key (the busy flash blinks the running change),
+  the hoist cue and the `Bad air` line in the notes over it.
+- **Prompts**: every key the HUD names comes from `Bindings.prompt(action)`: the live binding on the device used
+  last (`Bindings.pad_last`, set by `InputReader`), so a pad shows `D-PAD UP  CLOSE` on the course map.
+- **Assists** (§14): `Hud.assist` and `Hud.shows(element)`; the wind shadow view is a later item (no key).
 - **Portrait** (§16.5): on any screen taller than wide the HUD lays out for 9:16 clips: the race bug top
   left, the alert lane (countdown, penalty panel, rule text) large under it, the instruments compact at the
   bottom, Glance by default. Turn it on with Settings, Graphics, Capture preset: Portrait 9:16 (a 1080 x 1920

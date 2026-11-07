@@ -5,7 +5,9 @@ extends SceneTree
 ## Race again or a second Main menu finds the caches), each timed from the load of the scene file to the end of
 ## its `_ready`, with the sail scene's own parts (`build_ms`). The GPU does nothing headless: pipeline compilation
 ## is not in these numbers.
+## With `--after-menu` the main menu is built and freed first, as Start race finds the caches.
 ##   godot --headless --path game -s res://tests/load_cost.gd -- [--scene=race|free|menu] [--fleet=16] [--runs=3]
+##       [--after-menu]
 
 const SAIL := "res://scenes/sail_test.tscn"
 const MENU := "res://scenes/menu/main_menu.tscn"
@@ -13,6 +15,7 @@ const MENU := "res://scenes/menu/main_menu.tscn"
 var which := "race"
 var fleet := 16
 var runs := 3
+var after_menu := false
 
 
 func _init() -> void:
@@ -21,6 +24,8 @@ func _init() -> void:
 			which = a.trim_prefix("--scene=")
 		elif a.begins_with("--fleet="):
 			fleet = a.trim_prefix("--fleet=").to_int()
+		elif a == "--after-menu":
+			after_menu = true
 		elif a.begins_with("--runs="):
 			runs = maxi(1, a.trim_prefix("--runs=").to_int())
 	_main()
@@ -32,6 +37,13 @@ func _main() -> void:
 		print("load cost: the GDExtension is not built (game/native/build.sh)")
 		quit(1)
 		return
+	if after_menu:
+		var m := (load(MENU) as PackedScene).instantiate()
+		root.add_child(m)
+		for i in 3:
+			await process_frame
+		m.queue_free()
+		await process_frame
 	for r in runs:
 		var t0 := Time.get_ticks_usec()
 		var sc := _build()

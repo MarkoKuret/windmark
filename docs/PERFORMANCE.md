@@ -77,8 +77,8 @@ Effort: S (hours), M (a day or two), L (several days). Grouped into the work pac
 | C7 | Done (WM-103, formulas at 30 Hz). Audio: boat voice parameters at 20 to 30 Hz, reuse the scene's poses (today a Dictionary copy per voice, `render_pose(b, 1.0)` per boat and a lambda sort every frame) | `scripts/audio/game_audio.gd:546-620` | about 0.3 ms CPU on M5 | S |
 | C8 | Done (WM-103). Sim bridge: one packed array of all poses per frame instead of a new object plus 9 dynamic `Object.set` calls per boat; integer cache keys instead of `"state:%d" % boat` | `core_sim_source.gd:320-321, 485-488` | 0.1 to 0.2 ms CPU on M5 | S |
 | A9a | Cloth detail PNGs to VRAM-compressed (lossless today: 3 x 512² RGBA8, 0.75 MB imported, about 4 MB VRAM with mipmaps; `tools/liverybake` writes `compress/mode=0` for `_cloth/`, so the change is the livery tool's) | `liveries/_cloth` | about 3 MB VRAM | S |
-| A6 | Partly done 2026-10-17 (`BakeCache`, `user://cache/`): the whitecap foam texture (207 ms of GDScript on the M5, 0 ms from the cache) and the grade LUT (31 ms per light, 0 ms), keyed by the building script's md5, the parameters and the engine version. Open: the livery texture means, the venue build (192 ms), the pause menu and results screens (222 ms), below. Bake load-time work to files: `BoatLivery.texture_mean` (GPU readback, CPU decompress and resize per texture at race start; boatgen can write the means to the sidecar); `SeaTextures` 256x256 noise built in GDScript loops; `LookFx.lut` 33^3 `grade()` calls per preset. `LiveryText` (16 images of 1024x512 on the CPU, about 11 MB VRAM) can stay | `scripts/livery/boat_livery.gd:782-825`, `scenes/sea/sea_textures.gd`, `scenes/sea/look_fx.gd` | shorter race load | S each |
-| A8 | Shader warm-up on the loading screen: draw the boat, sail, wake, bow-wave, spray and mist materials for 1 or 2 frames off camera (Godot 4.6 ubershaders and pipeline cache are on, but each of the 14 custom shaders still compiles on first use) | loading screen | no first-use stutter | S |
+| A6 | Partly done 2026-10-17 (`BakeCache`, `user://cache/`): the whitecap foam texture (207 ms of GDScript on the M5, 0 ms from the cache) and the grade LUT (31 ms per light, 0 ms), keyed by the building script's md5, the parameters and the engine version. Open: the livery texture means, the venue build (192 ms), below; the pause menu and results screens are built on first open since 2026-11-07 (WM-180, "Loading behind the fade" below). Bake load-time work to files: `BoatLivery.texture_mean` (GPU readback, CPU decompress and resize per texture at race start; boatgen can write the means to the sidecar); `SeaTextures` 256x256 noise built in GDScript loops; `LookFx.lut` 33^3 `grade()` calls per preset. `LiveryText` (16 images of 1024x512 on the CPU, about 11 MB VRAM) can stay | `scripts/livery/boat_livery.gd:782-825`, `scenes/sea/sea_textures.gd`, `scenes/sea/look_fx.gd` | shorter race load | S each |
+| A8 | Done 2026-11-07 (WM-206), to be confirmed in a window: behind the navy fade the new scene draws under the opaque navy with a tiny copy of every new mesh and shader combination (`ShaderWarmup`: 18 copies in a 16-boat race, 0.7 ms to make) in front of its camera for 2 frames, and the navy holds until the renderer's mesh, surface and draw pipeline counters stop rising (3 frames to 1 s). Was: draw the boat, sail, wake, bow-wave, spray and mist materials for 1 or 2 frames off camera (Godot 4.6 ubershaders and pipeline cache are on, but each of the 14 custom shaders still compiles on first use) | `scripts/scene_fade.gd`, `scripts/shader_warmup.gd` | no first-use stutter | S |
 
 ### Package 2: texture diet
 
@@ -560,3 +560,35 @@ At 60 fps on a real low-end machine the last row helps less than at the dev Mac'
 frame there, so those blocks build on a third of the frames instead of a seventh. The race HUD previews
 (`tests/race_hud_preview_dump.gd`, 23 shots) are byte-identical before and after every row; `hud_test`,
 `race_hud_test` and the layout check pass.
+
+## Loading behind the fade (2026-11-07, branch `loading`)
+
+WM-206 and the cheap part of WM-180. Measured headless on the dev Mac (M5, Godot 4.6.3, the GDExtension's debug
+build) with `tests/load_cost.gd` (`game/README.md` "Scene builds and the warm-up"): the build from the load of the
+scene file to the end of its `_ready`, a 16-boat quick race (pause menu and results screen), before (`ee450bc`) and
+after run alternately, 6 processes each (the menu and free sail 4 and 3), medians. The machine was shared with
+other builds (load average 30 to 150 on 10 cores), so single runs spread by 20 %; the before and after runs
+alternated so both saw the same load. Headless the GPU does nothing: no textures go up and no pipeline compiles,
+so a windowed build is longer (the freeze seen at Start race in a window is about 1.2 s; not measured here).
+
+| Build | Before | After | What |
+| --- | --- | --- | --- |
+| Race, from the engine's start (cold) | 1190 ms | 1108 ms | the pause menu's and results screen's controls built on first open; their scripts still compile with the scene (pause 120 to 175 ms, results 28 to 44 ms of script compilation when nothing loaded them yet) |
+| Race after the main menu (Start race) | 518 ms | 468 ms | the menu has compiled the shared menu scripts: pause 11 to 19 ms, results 22 to 37 ms left |
+| Race again (second build in the process) | 466 ms | 408 ms | pause and results 0 ms |
+| Main menu with its backdrop, cold / second | 1170 / 597 ms | 1181 / 595 ms | unchanged (not touched) |
+
+The race build after the main menu, by part (after, medians): venue 215 ms (terrain mesh and trees in GDScript),
+boat views and liveries 105 ms, core 53 ms, results 29 ms, pause 16 ms, course 10 ms, audio 6 ms, the rest (load
+and instancing of the scene file, sea and sky before the scene's `_ready`) about 30 ms. What is left of WM-180: the
+venue build baked per venue (about 215 ms), the livery texture means in the sidecar (part of the 105 ms), and the
+cloth tiles to compress mode 2 (A9a).
+
+The loading line (`menus.md` §5) shows on these builds: every one of them is over 0.3 s here, and a windowed build
+is longer. The warm-up adds at least 3 frames of navy after the build (about 20 ms headless; at 60 fps 50 ms) and
+at most 1 s while pipelines still compile; its pipeline counts (`--fade-log`) read 0 headless, so whether the first
+frames after the fade in are free of compilation stutter can only be checked in a window: `godot --path game --
+--fade-log`, Start race, Race again, Main menu, and read `in_pipelines` (draw 0 means no stutter from a
+compilation; `warm_pipelines` shows what was compiled under the navy, `warm_frames` and `warm_ms` how long it
+held). The first start after a driver or engine update compiles the most (the shader cache is empty then).
+

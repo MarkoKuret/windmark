@@ -178,8 +178,16 @@ void Boat::step(const BoatEnv& env) {
   // flogging sails do not remove; scaling it by trim_speed (0 with the sails on the wind line) would stop the boat
   // dead head to wind instead of letting it gather sternway (boat.md §7.4, §10.4).
   const float trim_drive = polar_speed > 0.0f ? trim_speed : 1.0f;
-  const float target_speed =
+  float target_speed =
       ((((polar_speed * trim_drive) * man_coef) * heel_coef) * surf_coef) * ctl_.performance_scale;
+  // A kite flown beyond its usable angle flogs on its sheet whatever the crew does: its own flogging drag, times
+  // the share of the main-alone speed the kite costs, brakes the boat and lowers the speed it can hold by that drag
+  // over the hull's resistance slope (boat.md §5.8); its luff shows the share (sails.md §7).
+  const float f_k = sails_.kite_flog_share(s_.tws, ta);
+  const float d_k = f_k > 0.0f ? f_k * sails_.kite_flog_drag(s_.aws, aa) : 0.0f;
+  sails_.set_kite_flog(f_k);
+  if (d_k > 0.0f && target_speed > 0.0f && d.decel_linear > 0.0f)
+    target_speed = max(target_speed - d_k / d.decel_linear, 0.0f);
   const float err = target_speed - s_.v;
   float a = accel;
   if (err > 0.0f && target_speed > 0.0f) {
@@ -199,6 +207,7 @@ void Boat::step(const BoatEnv& env) {
     // and the auto-trim crew never lets them. Only while the boat makes way ahead.
     const bool free_sheets = ctl_.let_fly || !ctl_.auto_trim;
     if (free_sheets && s_.v > 0.0f && eps > 0.0f) a = a - (1.0f - trim_speed) * flog;
+    if (s_.v > 0.0f) a = a - d_k;
     if (std::fabs(err_d) < DT * std::fabs(a)) a = err_d / DT;
   } else if (err < DT * a) {
     a = err / DT;

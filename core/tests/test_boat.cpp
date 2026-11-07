@@ -41,6 +41,17 @@ struct Steady {
   float sway;         // sideways drift at the end (boat.md §6.4): only below the grip speed (a broached polar)
 };
 
+bool is_kite(const wm::PerfData& p, std::int32_t sail) {
+  const wm::SailType t = p.sails[static_cast<std::size_t>(sail)].type;
+  return t == wm::SailType::spinnaker_sym || t == wm::SailType::spinnaker_asym;
+}
+
+// boat.md §5.8: the config flies a kite beyond its usable angle (slower there than the main alone)
+bool kite_flogs(const wm::PerfData& p, const wm::ConfigPerf& c, float tws_kn, float twa) {
+  return c.front_sail >= 0 && is_kite(p, c.front_sail) &&
+         c.polar.at(kn(tws_kn), twa) < p.config_for(-1)->polar.at(kn(tws_kn), twa);
+}
+
 Steady run_steady(const wm::PerfData& p, const wm::ConfigPerf& c, float tws_kn, float twa, float seconds) {
   wm::Boat boat;
   boat.init(&p, 7, 0);
@@ -92,6 +103,31 @@ const float kTwsSet[] = {4, 6, 8, 10, 12, 16, 20, 25};
 // 0.2 deg. Run without the wobble, which is not part of the tables. Points where the main-only config's boom limit
 // stops the main short of its optimum at the table heel are reported and skipped: there the boat over-sheets,
 // heels more and rounds into a heel of its own (a data consistency question for the VPP).
+// §5.8 a kite beyond its usable angle: hoisted close-hauled and on a close reach (12 kn) it flogs; the boat holds
+// the table's speed less the kite's flogging drag over the hull's resistance slope, far below the main alone where
+// the kite makes no way, and the kite's luff shivers at least its flogging share (sails.md §7).
+TEST_CASE("boat: a kite beyond its usable angle flogs and slows the boat") {
+  for (const std::string cls : kClasses) {
+    const wm::PerfData& p = perf_no_wobble(cls);
+    const wm::ConfigPerf* main = p.config_for(-1);
+    for (const wm::ConfigPerf& c : p.configs) {
+      if (c.front_sail < 0 || !is_kite(p, c.front_sail)) continue;
+      for (int twa_d : {50, 60}) {
+        const float ta = deg(static_cast<float>(twa_d));
+        const float v_m = main->polar.at(kn(12.0f), ta);
+        const float v_k = c.polar.at(kn(12.0f), ta);
+        const float f_k = wm::clamp((v_m - v_k) / v_m, 0.0f, 1.0f);
+        const Steady r = run_steady(p, c, 12.0f, ta, 120.0f);
+        const Steady m = run_steady(p, *main, 12.0f, ta, 120.0f);
+        MESSAGE(cls, " twa ", twa_d, ": kite ", to_kn(r.v), " kn (table ", to_kn(v_k), "), main alone ", to_kn(m.v),
+                " kn, flogging share ", f_k);
+        if (f_k > 0.05f) CHECK(r.v < r.expect_v - 0.05f);    // below the table: the flogging drag
+        if (f_k > 0.3f) CHECK(r.v < 0.5f * m.v);            // far below the main alone
+      }
+    }
+  }
+}
+
 TEST_CASE("boat: steady polar and heel match the tables") {
   for (const std::string cls : kClasses) {
     const wm::PerfData& p = perf_no_wobble(cls);
@@ -101,6 +137,8 @@ TEST_CASE("boat: steady polar and heel match the tables") {
       for (float tws : kTwsSet) {
         for (int twa_d = 30; twa_d <= 180; twa_d += 10) {
           if (!(c.polar.at(kn(tws), deg(static_cast<float>(twa_d))) > 0.0f)) continue;  // the config's no-go zone
+          // A kite beyond its usable angle flogs (boat.md §5.8): below the table there, its own test above.
+          if (kite_flogs(p, c, tws, deg(static_cast<float>(twa_d)))) continue;
           const Steady r = run_steady(p, c, tws, deg(static_cast<float>(twa_d)), 120.0f);
           if (r.boom_limited) {
             ++skipped;
@@ -143,6 +181,7 @@ TEST_CASE("boat: steady state with the attitude wobble") {
       for (float tws : kTwsSet) {
         for (int twa_d = 30; twa_d <= 180; twa_d += 10) {
           if (!(c.polar.at(kn(tws), deg(static_cast<float>(twa_d))) > 0.0f)) continue;
+          if (kite_flogs(p, c, tws, deg(static_cast<float>(twa_d)))) continue;  // boat.md §5.8, as above
           const Steady r = run_steady(p, c, tws, deg(static_cast<float>(twa_d)), 120.0f);
           if (r.boom_limited) continue;
           const float dv = (r.v_mean - r.expect_v) / wm::max(std::fabs(r.expect_v), 0.05f);

@@ -281,7 +281,10 @@ void Sails::trim(const TrimInput& in, bool place) {
     // §5.5 sail motion
     o.motion = SailMotion::idle;
     const float dbeta = beta_t - s.beta;
-    if (place || std::fabs(dbeta) <= 1e-5f || sp.type == SailType::spinnaker_sym) {
+    const bool rides_pole = sp.type == SailType::spinnaker_sym && sp.pole_angle.present;
+    if (rides_pole) {
+      // the kite rides on its pole: set below, after the pole
+    } else if (place || std::fabs(dbeta) <= 1e-5f || sp.type == SailType::spinnaker_sym) {
       s.beta = beta_t;
     } else {
       float rate;
@@ -298,10 +301,35 @@ void Sails::trim(const TrimInput& in, bool place) {
     }
     if (sp.pole_angle.present) {
       const float pole_t = side * sp.pole_angle.table.at(in.tws, aa);
+      const float pole_0 = s.pole;
       if (place) {
         s.pole = pole_t * k_h;
       } else {
         s.pole = s.pole + ((pole_t * k_h) - s.pole) * (DT * sp.pole_rate);
+      }
+      if (rides_pole) {
+        // §5.5: the symmetric kite's angle off its pole follows its target at the sheeting rates; the pole carries
+        // it, so in a gybe the pole swings across (end for end) with the kite on it, never a jump.
+        if (place) {
+          s.beta = beta_t;
+        } else {
+          const float o_t = wrap_pi(beta_t - pole_t * k_h);
+          float o_k = wrap_pi(s.beta - pole_0);
+          const float d_o = wrap_pi(o_t - o_k);
+          if (std::fabs(d_o) > 1e-5f) {
+            float rate;
+            if (((-in.awa) - s.beta) * d_o <= 0.0f) {
+              rate = sp.rate_in;
+              o.motion = SailMotion::sheeting;
+            } else {
+              rate = sp.rate_out;
+              o.motion = SailMotion::easing;
+            }
+            if (std::fabs(d_o) < kOneDeg) o.motion = SailMotion::idle;
+            o_k = o_k + sgn(d_o) * min(((std::fabs(d_o) + kFiveDeg) * DT) * rate, std::fabs(d_o));
+          }
+          s.beta = wrap_pi(s.pole + o_k);
+        }
       }
     } else {
       s.pole = s.beta;
@@ -322,6 +350,34 @@ void Sails::trim(const TrimInput& in, bool place) {
     // A main trimmed to windward on its traveller (sheet_min < 0) is not aback.
     o.backed = sgn(s.beta) == sgn(in.awa) && std::fabs(s.beta) > 0.02f + max(-sp.sheet_min, 0.0f);
   }
+}
+
+// boat.md §5.8: the kite's flogging share fades out from TWA 60° over 20° (rad)
+constexpr float kFlogTwa0 = 1.04719755f;
+constexpr float kFlogTwaSpan = 0.34906585f;
+
+float Sails::kite_flog_share(float tws, float twa_abs) const {
+  if (!spinnaker_flying()) return 0.0f;
+  const float v_m = perf_->config_for(-1)->polar.at(tws, twa_abs);
+  if (!(v_m > 0.0f)) return 0.0f;
+  // close-hauled to a close reach only: abaft that a kite slower than the main is overpowered, not flogging
+  const float x = clamp((twa_abs - kFlogTwa0) / kFlogTwaSpan, 0.0f, 1.0f);
+  const float w_a = 1.0f - x * x * (3.0f - 2.0f * x);
+  return clamp((v_m - config().polar.at(tws, twa_abs)) / v_m, 0.0f, 1.0f) * w_a;
+}
+
+float Sails::kite_flog_drag(float aws, float awa_abs) const {
+  const ConfigPerf& c = config();
+  const ConfigPerf& m = *perf_->config_for(-1);
+  const float f = c.flog_drag.present ? c.flog_drag.table.at(aws, awa_abs) : 0.0f;
+  const float f_m = m.flog_drag.present ? m.flog_drag.table.at(aws, awa_abs) : 0.0f;
+  return max(f - f_m, 0.0f);
+}
+
+void Sails::set_kite_flog(float f_k) {
+  if (front_ < 0 || !(f_k > 0.0f)) return;
+  SailOutput& o = out_[static_cast<std::size_t>(front_)];
+  o.luff_shiver = max(o.luff_shiver, f_k);
 }
 
 bool Sails::spinnaker_flying() const {

@@ -98,6 +98,11 @@ class Sails {
   std::size_t sail_count() const { return sails_.size(); }
   const SailState& sail(std::size_t i) const { return sails_[i]; }
   const SailOutput& output(std::size_t i) const { return out_[i]; }
+  // boat.md §5.8, sails.md §7: a hoisted kite flown beyond its usable angle flogs; its luff shiver is at least that.
+  void set_kite_flog(float f_k);
+  // boat.md §5.8: the kite's flogging share at (tws, twa_abs) (0 with no kite up) and its own flogging drag (m/s²)
+  float kite_flog_share(float tws, float twa_abs) const;
+  float kite_flog_drag(float aws, float awa_abs) const;
   // World snapshot load (conventions.md §9.1): the outputs of the last step, one per sail in sail order.
   void restore_outputs(const std::vector<SailOutput>& o) { out_ = o; }
   const std::vector<SailPhaseEvent>& events() const { return events_; }

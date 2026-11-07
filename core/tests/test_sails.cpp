@@ -366,22 +366,37 @@ TEST_CASE("sails: luffing and let-fly") {
   CHECK(sim.s().v > 0.8f * v_trim);
 }
 
-// sails.md §5.5: a symmetric spinnaker is re-set, not sheeted: its angle is its target at once (the class files
-// carry only asymmetric kites, so the wm7 kite is relabelled for this check).
-TEST_CASE("sails: symmetric spinnaker swaps sides at once") {
+// sails.md §5.5: a symmetric spinnaker on a pole rides on it: in a gybe the pole swings across ahead of the mast at
+// its pole rate with the kite on it, and the kite's angle off the pole goes over at the sheeting rates; neither
+// jumps (the class files' symmetric kites fly on poles; the wm7 kite, with its tack-line table, is relabelled).
+TEST_CASE("sails: symmetric spinnaker rides its pole across in a gybe") {
   wm::PerfData p = perf("wm7");
   const std::int32_t kite = p.find_sail("kite");
   p.sails[static_cast<std::size_t>(kite)].type = wm::SailType::spinnaker_sym;
+  REQUIRE(p.sails[static_cast<std::size_t>(kite)].pole_angle.present);
   Sim sim(p, 12.0f, 0.0f);
   sim.place(deg(150.0f), 3.0f, kite);
   sim.run(5.0f);
-  const float before = sim.boat.sails().sail(static_cast<std::size_t>(kite)).beta;
+  const std::size_t k = static_cast<std::size_t>(kite);
+  const float before = sim.boat.sails().sail(k).beta;
   wm::BoatState& s = sim.boat.mutable_state();
   s.psi = wm::wrap_2pi(s.psi - deg(60.0f));  // TWA 150 -> 210 = -150: wind now on the other side
-  sim.step();
-  const float after = sim.boat.sails().sail(static_cast<std::size_t>(kite)).beta;
+  float worst_b = 0.0f, worst_p = 0.0f;
+  float b0 = before, p0 = sim.boat.sails().sail(k).pole;
+  for (int i = 0; i < static_cast<int>(30.0f / DT); ++i) {
+    sim.step();
+    const wm::SailState& st = sim.boat.sails().sail(k);
+    worst_b = wm::max(worst_b, std::fabs(wm::wrap_pi(st.beta - b0)));
+    worst_p = wm::max(worst_p, std::fabs(wm::wrap_pi(st.pole - p0)));
+    b0 = st.beta;
+    p0 = st.pole;
+  }
+  const float after = sim.boat.sails().sail(k).beta;
+  MESSAGE("largest step per tick: kite ", worst_b * 57.29578f, " deg, pole ", worst_p * 57.29578f, " deg");
   CHECK(wm::sgn(before) == -wm::sgn(after));
-  CHECK(std::fabs(sim.boat.sails().output(static_cast<std::size_t>(kite)).trim_error) < deg(0.01f));
+  CHECK(worst_b < deg(6.0f));
+  CHECK(worst_p < deg(6.0f));
+  CHECK(std::fabs(sim.boat.sails().output(k).trim_error) < deg(1.0f));
 }
 
 // sails.md §6: every config's trim_heel is 0 where the driving sail lies on the wind line (eps = |awa| - m_opt, at

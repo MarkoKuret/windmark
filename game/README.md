@@ -14,6 +14,7 @@ controls, the cameras, the minimal HUD, the audio and a sail test scene that put
 | `native/` | The GDExtension: `CoreSim` over `core/include/windmark.h` `SailShape` (the per-vertex sail shapes), `SheetRopes` (the running sheets) the wakes (`sea_wakes.h`: `SeaSampler`, `WakeRibbon`, `MistCloud`) and the drawn boat shadows (`boat_shadow.h`: `BoatShadowShape`) in `src/`, `build.sh`, `CMakeLists.txt`. Godot skips the folder (`.gdignore`) |
 | `bin/` | The built extension library and `windmark.gdextension`. Not committed |
 | `scripts/settings.gd` | `Settings`: the player's settings (`docs/specs/menus.md` §3), saved in `user://settings.cfg`, read through `Settings.current()` and applied with `apply_*` |
+| `scripts/race_history.gd` | `RaceHistory`: the player's race history (`docs/specs/menus.md` §6: the last 50 results, the best time per course and class, races and wins per class), saved in `user://history.cfg` by the results screen |
 | `scripts/perf/` | `PerfMonitor` (the frame-time overlay and its CSV log, `docs/specs/hud.md` §17) and `PerfStats` (the per-frame section timings) |
 | `scripts/dev/` | Developer tools: `DevLook` (one function per look setting, for the flags and the panel) and `LookPanel` (the F9 look panel, `docs/specs/hud.md` §18) |
 | `scripts/controls/` | Input map defaults, device reader, `PlayerControls` (boat commands), sail key mapping, the input frame |
@@ -661,7 +662,9 @@ and ask for the sail scene (walked with the keyboard and the gamepad: the picker
 venues, Next, Back, Esc and B), the venue chart, the showcase boat on the live backdrop, the settings file round
 trip, the apply calls (the render scale on the root viewport's 3D scale and upscaler, Auto's rule), the layout of
 every step at 1280 × 800 and in portrait at every UI scale, the settings' names, the menu keys and sounds, the
-menu ambience, and the pause menu over the sail scene on FakeSim (settings applied at once, Restart's seed).
+menu ambience, and the pause menu over the sail scene on FakeSim (settings applied at once, Restart's seed);
+then `tests/history_test.gd` checks the race history file on a temporary file (load, save, the cap, the best per
+course and class, the best line, a corrupt file, an unknown version).
 To look at the menus (opens a window): `godot --path game`. Headless previews of every screen and step
 (`docs/specs/menus.md` §1.1 lists the states):
 

@@ -3,10 +3,11 @@ id: WM-217
 title: >-
   Decide: what persists between sessions (race history, personal bests, a player
   name)
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-11-07 18:47'
-updated_date: '2026-11-07 19:09'
+updated_date: '2026-11-07 19:38'
 labels:
   - decide-later
 dependencies: []
@@ -22,11 +23,11 @@ Nothing persists but settings: no race history, personal best per venue and clas
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Owner decides scope and timing
+- [x] #1 Owner decides scope and timing
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Decided 2026-11-07 (recommendation taken): a small local history in user://history.cfg: the last 50 results, the best finishing time per course and class, races and wins per class. The results screen shows 'Your best here' and a new best; no player name or profile until networking.
+Built on branch history: RaceHistory (game/scripts/race_history.gd, user://history.cfg, menus.md §6); results screen best line and recording (menus.md §5). Main menu Continue hint unchanged: the best time does not fit its one line.
 <!-- SECTION:NOTES:END -->

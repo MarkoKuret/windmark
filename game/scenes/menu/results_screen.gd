@@ -8,6 +8,11 @@ extends CanvasLayer
 ## beside the title, or under it in a narrow or portrait window; table and summary scroll, heading and footer do
 ## not. It fades in; the scene changes fade (SceneFade). The pause menu opens over it as in the race.
 ##
+## Under the summary one line from the race history (menus.md §5 Best line, §6): her best on this course and class,
+## a new best, or a first race here. The player's result goes into the history once (menus.md §5 Recording): when the
+## results are final, or from her row as it stands when she leaves the screen before that; never after an abandoned
+## race.
+##
 ## A child of the sail scene (`host`, duck typed: hud, rig, runner, session_setup(), venue, course, class_id); with
 ## `act` off (tests) the actions do everything but change the scene. The screen's controls are built when it first
 ## opens or refreshes (WM-180: not in the race scene's build behind the fade).
@@ -43,6 +48,13 @@ var line_label: Label
 var today_label: Label
 var summary_box: GridContainer
 var summary_heading: Label
+## the best line under the summary (menus.md §5), hidden when there is nothing to say
+var best_label: Label
+## the race history as it was before this race (read when the screen opens), and whether this race is recorded
+var history: RaceHistory
+var recorded := false
+## the history file ("": RaceHistory.path)
+var history_path := ""
 var table: VBoxContainer
 ## the table's rows as shown: [[cells...], ...] (tests), and the index of the player's row (-1 none)
 var shown_rows: Array = []
@@ -152,6 +164,11 @@ func build() -> void:
 	summary_box.add_theme_constant_override("h_separation", 18)
 	summary_box.add_theme_constant_override("v_separation", 4)
 	body.add_child(summary_box)
+	best_label = MenuTheme.label("", MenuTheme.SMALL_SIZE, MenuTheme.MUTED, 500)
+	best_label.name = "Best"
+	best_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	best_label.visible = false
+	body.add_child(best_label)
 	# the footer (menus.md §5): no way back here, so the actions run from the primary, Race again, on the left
 	var actions := []
 	for e in [["again", "Race again"], ["setup", "Change setup"], ["menu", "Main menu"]]:
@@ -217,6 +234,7 @@ func open() -> void:
 		_hud_was = (h as CanvasItem).visible
 		(h as CanvasItem).visible = false
 	_fit()
+	history = RaceHistory.load_from(history_path)
 	refresh()
 	sounds.active = true
 	sounds.quiet_next_focus()
@@ -267,6 +285,61 @@ func _own() -> Dictionary:
 		if int(row["boat"]) == r.own_boat:
 			return row
 	return {}
+
+
+## The best line under the summary (menus.md §5) from the history before this race; "" without one or after an
+## abandoned race.
+func best_text() -> String:
+	var r := _race()
+	if r == null or history == null or host == null or _abandoned():
+		return ""
+	var row := _own()
+	var place := int(row.get("place", 0))
+	var t := float(row.get("time", NAN))
+	if str(row.get("code", "")) != "" or bool(row.get("projected", false)):
+		place = 0
+	return history.best_line(str(host.get("course")), str(host.get("class_id")), place, t)
+
+
+func _abandoned() -> bool:
+	var r := _race()
+	return r != null and (r.state == RaceText.RaceState.ABANDONED or r.end_reason == "abandoned")
+
+
+## This race's result as a history entry (menus.md §6), from her row and the session; {} when there is nothing to
+## record (no race, not open, an abandoned race).
+func history_entry() -> Dictionary:
+	var r := _race()
+	if r == null or host == null or not is_open or _abandoned():
+		return {}
+	var row := _own()
+	if row.is_empty():
+		return {}
+	var code := str(row.get("code", ""))
+	if code == "":
+		code = {"retired": "RET", "dnf": "DNF", "dsq": "DSQ", "ghost": "DSQ"}.get(r.end_reason, "")
+	var place := int(row.get("place", 0)) if code == "" else 0
+	var t := float(row.get("time", NAN)) if place > 0 else NAN
+	var g := float(row.get("gap", NAN)) if place > 0 else NAN
+	var s: GameSetup = host.call("session_setup")
+	return RaceHistory.entry(s.class_id, s.venue, s.course, r.result_rows.size(), s.ai_level,
+		s.weather if s.weather != "" else "custom", place, code, t, 0.0 if place == 1 else g)
+
+
+## Writes this race into the history once (menus.md §5 Recording): at the close, or when she leaves before it.
+func record() -> void:
+	if recorded or history == null:
+		return
+	var e := history_entry()
+	if e.is_empty():
+		return
+	recorded = true
+	var h := RaceHistory.load_from(history_path)  # the file as it is now, so nothing written since is lost
+	h.record(e, history_path)
+
+
+func _exit_tree() -> void:
+	record()
 
 
 ## The heading and the line under it: final results, or finishing with the count home (menus.md §5)
@@ -366,6 +439,11 @@ func refresh() -> void:
 	if ss != _sum_sig:
 		_sum_sig = ss
 		_build_summary(lines)
+	var bt := best_text()
+	best_label.text = bt
+	best_label.visible = bt != ""
+	if r.results_final:
+		record()
 	_fit_height()
 
 
@@ -522,6 +600,7 @@ func _input(e: InputEvent) -> void:
 ## The actions (menus.md §5): "again" (this setup, a new seed), "setup" (this setup remembered, the main menu on the
 ## race card), "menu".
 func press(id: String) -> void:
+	record()
 	action_requested.emit(id)
 	match id:
 		"again":

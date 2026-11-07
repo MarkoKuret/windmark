@@ -105,6 +105,11 @@ const EN := {
 	"results.today": "Today: {wind} · {shifts} · {gusts}",
 	"results.today.gusts": "{word} gusts",
 	"results.today.no_gusts": "No gusts",
+	# the results screen's best line from the race history (menus.md §5, §6)
+	"results.best": "Your best here: {time}",
+	"results.new_best": "New best: {time}, was {old}",
+	"results.first_race": "First race here",
+	"results.first_finish": "First finish here",
 }
 
 ## the language in use ("" or "en": English); a later language table goes in TABLES

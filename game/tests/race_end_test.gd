@@ -15,6 +15,8 @@ extends SceneTree
 ##   godot --headless --path game -s res://tests/race_end_test.gd
 
 const TEST_PATH := "user://race_end_test_settings.cfg"
+## the race history the results screen records into (menus.md §6), never the player's own
+const HISTORY_PATH := "user://race_end_test_history.cfg"
 const KNOT := HudFormat.KNOT
 
 var t := TestLog.new()
@@ -25,10 +27,13 @@ func _init() -> void:
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
 	Settings.reset_current()
 	Settings.current().welcomed = true
+	RaceHistory.path = HISTORY_PATH
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(HISTORY_PATH))
 	test_card_and_over()
 	test_summary()
 	test_live_and_final()
 	await test_screen()
+	await test_screen_leave()
 	test_finish_view()
 	if CoreSimSource.available():
 		test_autopilot_core()
@@ -37,6 +42,7 @@ func _init() -> void:
 	else:
 		t.ok(false, "the GDExtension is not loaded: core tests skipped")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(HISTORY_PATH))
 	t.finish(self, "race_end_test")
 
 
@@ -350,6 +356,10 @@ func test_screen() -> void:
 	var sim := _racing(5)
 	var host := _screen_host(sim)
 	root.add_child(host)
+	# an earlier race here in the history: 3rd in 0:23:40.10 (menus.md §6)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(HISTORY_PATH))
+	RaceHistory.new().record(RaceHistory.entry("wm7", "practice_waters", "practice_waters/example_wl", 6, "easy",
+		"local", 3, "", 1420.1, 30.0))
 	var rs := ResultsScreen.new()
 	rs.act = false
 	host.add_child(rs)
@@ -384,6 +394,14 @@ func test_screen() -> void:
 	for row in host.hud.race.result_rows:
 		if int(row["boat"]) == host.hud.race.own_boat:
 			row["code"] = code_was
+	# the best line under the summary: faster than the 0:23:40.10 before (menus.md §5)
+	t.ok(rs.best_label.visible and rs.best_label.text == "New best: 0:23:32.35, was 0:23:40.10",
+		"best line: %s" % rs.best_label.text)
+	t.ok(RaceHistory.load_from().results.size() == 1 and not rs.recorded, "not recorded before the close")
+	var why_now: String = host.hud.race.end_reason
+	host.hud.race.end_reason = "abandoned"
+	t.ok(rs.history_entry().is_empty() and rs.best_text() == "", "an abandoned race: no entry, no best line")
+	host.hud.race.end_reason = why_now
 	t.ok(rs.own_row == 1 and rs.shown_rows[1][2] == "Kestrel" and rs.shown_rows[1][3] == "You"
 		and rs.shown_rows[1][1] == "7", "the player's row: %s" % str(rs.shown_rows[1]))
 	var own_box := (rs.table.get_child(rs.own_row + 1) as PanelContainer).get_theme_stylebox("panel") as StyleBoxFlat
@@ -418,6 +436,18 @@ func test_screen() -> void:
 	t.ok(codes == ["", "", "", "OCS", "DSQ"] and rs.shown_rows[2][4] == "0:25:00.00 proj." and rs.shown_rows[3][7] == "6",
 		"codes %s, projected %s" % [str(codes), rs.shown_rows[2][4]])
 	t.ok(rs.shown_rows[0][0] == "1" and rs.shown_rows[0][7] == "1" and rs.shown_rows[1][5] == "+0:12", "places, points, gap")
+	# recorded once at the close (menus.md §5 Recording): her place, time and gap, the session's setup
+	var hist := RaceHistory.load_from()
+	var last_e: Dictionary = hist.results.back() if hist.results.size() == 2 else {}
+	t.ok(rs.recorded and hist.results.size() == 2, "recorded at the close: %d results" % hist.results.size())
+	t.ok(last_e.get("place") == 2 and absf(float(last_e.get("time", 0.0)) - 1412.35) < 1e-6
+		and absf(float(last_e.get("gap", 0.0)) - 12.35) < 1e-6 and last_e.get("fleet") == 5
+		and last_e.get("ai_level") == "pro" and last_e.get("class") == "wm7" and last_e.get("weather") == "local"
+		and last_e.get("course") == "practice_waters/example_wl" and last_e.get("code") == "",
+		"the entry: %s" % str(last_e))
+	t.near(hist.best("practice_waters/example_wl", "wm7"), 1412.35, 1e-6, "the new best kept")
+	t.ok(hist.races.get("wm7") == 2 and hist.wins.get("wm7", 0) == 0, "races %s, wins %s" % [hist.races, hist.wins])
+	t.ok(rs.best_label.text == "New best: 0:23:32.35, was 0:23:40.10", "the line still against the earlier best")
 	# keyboard: right, right, left between the actions; down scrolls the body
 	_key("ui_right")
 	await process_frame
@@ -496,6 +526,7 @@ func test_screen() -> void:
 	t.ok(acts == ["again", "setup", "menu"] and MainMenu.open_on == "", "Main menu: %s" % str(acts))
 	host.queue_free()
 	await process_frame
+	t.ok(RaceHistory.load_from().results.size() == 2, "the actions and leaving record nothing more")
 	# the main menu opens on the race card with the remembered setup
 	MainMenu.open_on = "quick"
 	var m := (load("res://scenes/menu/main_menu.tscn") as PackedScene).instantiate() as MainMenu
@@ -514,6 +545,36 @@ func test_screen() -> void:
 	t.ok(root.gui_get_focus_owner() == q.rows["class_id"], "focus on its first row")
 	m.queue_free()
 	await process_frame
+
+
+## menus.md §5 Recording: she leaves the screen before the close; her row as it stands goes into the history, once.
+func test_screen_leave() -> void:
+	t.begin("results screen: leaving before the close records her row (menus.md §5, §6)")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(HISTORY_PATH))
+	var sim := _racing(3)
+	var host := _screen_host(sim)
+	root.add_child(host)
+	var rs := ResultsScreen.new()
+	rs.act = false
+	host.add_child(rs)
+	await process_frame
+	host.hud.tick(sim, 0)
+	sim.order = PackedInt32Array([0, 1, 2])
+	_finish(sim, 0, 1, 1500000000)
+	_tick(host.hud.race, sim, RaceHudValues.CARD_TICKS + 1)
+	await process_frame
+	await process_frame
+	t.ok(rs.is_open and not host.hud.race.results_final, "open, still finishing")
+	t.ok(rs.best_label.text == "First race here", "a first race here: %s" % rs.best_label.text)
+	rs.press("again")
+	rs.press("menu")
+	var h := RaceHistory.load_from()
+	t.ok(h.results.size() == 1 and h.results[0]["place"] == 1 and h.results[0]["gap"] == 0.0
+		and absf(float(h.results[0]["time"]) - 1500.0) < 1e-6, "recorded on leaving: %s" % str(h.results))
+	t.ok(h.wins.get("wm7") == 1 and h.races.get("wm7") == 1, "a win: races %s, wins %s" % [h.races, h.wins])
+	host.queue_free()
+	await process_frame
+	t.ok(RaceHistory.load_from().results.size() == 1, "once")
 
 
 # ---- cameras.md §9.1 ---------------------------------------------------------------------------------------------
@@ -606,6 +667,7 @@ func _scene(fleet: int) -> Node:
 
 func test_scene_flow() -> void:
 	t.begin("a quick race in the sail scene from the spawn to the results screen")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(HISTORY_PATH))
 	var sc := _scene(3)
 	get_root().add_child(sc)
 	sc.set("scripted_input", RawInput.new())
@@ -658,6 +720,13 @@ func test_scene_flow() -> void:
 	t.ok(labels.has("Start") and labels.has("Top speed") and labels.has("Distance sailed") and labels.has("Places"),
 		"summary items: %s" % str(labels))
 	t.ok(rs.shown_rows[rs.own_row][1] != "" and rs.shown_rows[rs.own_row][2] != "You", "sail number and boat name")
+	# the race history (menus.md §6): this race recorded at the close, the best line for a first race here
+	var hist := RaceHistory.load_from()
+	var e: Dictionary = hist.results[0] if hist.results.size() == 1 else {}
+	t.ok(rs.recorded and e.get("course") == str(sc.get("course")) and e.get("class") == str(sc.get("class_id"))
+		and e.get("fleet") == 3 and e.get("ai_level") == "expert" and int(e.get("place", 0)) == hud.race.own_place(),
+		"recorded: %s" % str(e))
+	t.ok(rs.best_label.text == "First race here", "best line: %s" % rs.best_label.text)
 	# the pause menu over the results: Retire hidden, Resume back to them
 	var pm := sc.get_node_or_null("PauseMenu") as PauseMenu
 	t.ok(pm != null, "the pause menu")

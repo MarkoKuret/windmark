@@ -1,9 +1,10 @@
 ---
 id: WM-178
 title: 'Scenario test: re-pin the quiz penalty times after the boat table regeneration'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-17 14:33'
+updated_date: '2026-11-07 18:14'
 labels: []
 dependencies: []
 priority: medium
@@ -18,5 +19,5 @@ run_scenario_test fails on main since the wm7 tables were regenerated: quiz mark
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 run_scenario_test.sh green on main
+- [x] #1 run_scenario_test.sh green on main
 <!-- AC:END -->

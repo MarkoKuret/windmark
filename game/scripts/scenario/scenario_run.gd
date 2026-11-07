@@ -44,6 +44,8 @@ func world_settings() -> Dictionary:
 	var d := {
 		"race_seed": s.seed, "wind_speed": s.wind_speed, "wind_from": s.wind_from, "shift_preset": s.shift_preset,
 		"puffs": s.puffs, "oscillation": false, "free_sailing_s": 0.0, "sequence": 1, "prep_flag": 0,
+		# the scripts were written on the full model (boat.md §2): the helm balance stays on whatever the player's setting
+		"weather_helm": true,
 	}
 	d.merge(core_settings, true)
 	return d

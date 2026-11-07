@@ -34,19 +34,19 @@
   },
   "rudder": {"type": "spade", "depth": 2.35, "chord_root": 1.15, "chord_tip": 0.55, "thickness": 0.095, "x": -5.6},
   "rig": {
-    "I": 24.777,
+    "I": 18.93,
     "J": 7.2,
     "P": 23.2,
     "E": 6.9,
     "mast_height": 26.4,
     "mast_x": 2.9,
     "boom_height": 2.6,
-    "fractional": 0.974,
+    "fractional": 0.744,
     "pole": 7.2
   },
   "sails": [
     {"id": "main", "type": "main", "area": 84.0},
-    {"id": "genoa", "type": "genoa", "area": 122.0},
+    {"id": "genoa", "type": "genoa", "area": 96.0},
     {"id": "spin", "type": "spinnaker_sym", "area": 294.0, "mid_girth_frac": 1.05}
   ],
   "crew": {"count": 11, "weight": 935},

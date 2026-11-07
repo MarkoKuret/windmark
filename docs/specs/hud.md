@@ -34,12 +34,16 @@ function; race and rules states (rank, penalties, right-of-way colours) come fro
 | Quantity | Format |
 | --- | --- |
 | speed | knots, 1 decimal (`7.4`); below 0.05 shows `0.0` |
-| angle | integer degrees; headings and bearings `000`–`359` (3 digits); signed angles with a side letter (`42° P`, `38° S`) |
+| angle | integer degrees with the degree sign; headings and bearings `000°`–`359°` (3 digits); signed angles with a side letter (`42° P`, `38° S`) |
 | distance | < 200 m: metres, integer (`85 m`); 200 m–0.2 nm: metres rounded to 5 m; ≥ 0.2 nm: nautical miles, 2 decimals (`0.43 nm`) |
-| time | race clock and gaps `m:ss`; countdown `m:ss`, with tenths in the last 10 s (`0:07.4`); finish times `h:mm:ss.ss` |
-| percent | integer |
+| time | race clock and gaps `m:ss`, a gap signed (`+0:23`, the time to burn too: `+0:10`); countdown `m:ss`, with tenths in the last 10 s (`0:07.4`); finish times `h:mm:ss.ss`. No time is shown in bare seconds: an `S` after a number is always starboard |
+| percent | integer with the `%` sign (`60 %`; the helm with its side letter, `35 % S`) |
 
 - Rounding is to nearest (half away from zero). Truncation is never used for display.
+- **One side convention**: the side letters are `P` (port) and `S` (starboard) everywhere: TWA, AWA, heel, the
+  helm and the relative bearing of the next mark (`35° P`: 35° to port of the bow); never `L` and `R`.
+- **Units**: every number carries its unit where its label does not say it, in a cell's unit corner (`KN`) or in
+  the value itself (the degree sign, `%`, `m`, `nm`); times in `m:ss` need none.
 
 ## 2. Boat instruments
 
@@ -50,7 +54,7 @@ function; race and rules states (rank, penalties, right-of-way colours) come fro
 | Heading (HDG) | ψ, compass |
 | Course over ground (COG) | `compass(sog_filt_x, sog_filt_y)` (shown only when SOG > 0.3 kn) |
 | Heel | `|φ|`, degrees, with the letter of the side that is down (φ > 0: starboard down, `conventions.md` §3) |
-| Rudder | helm `h` as a bar, −1 … +1 (positive turns the bow to starboard), with a second mark at `h_cmd` |
+| Rudder | helm `h` as a bar, −1 … +1 (positive turns the bow to starboard), with a second mark at `h_cmd`; as text (the helm strip at Data) the size of `h` in percent with the side the bow turns to (`35 % S`, `0 %` amidships) |
 | Sail | the front sail that is up (or "Main only"); the one being hoisted is the hoist cue's (§5.1), not this row's |
 
 The player's own commands (the `h_cmd` mark, the sheet setting and its bar, `AUTO`, `LET FLY`) show the local
@@ -166,7 +170,7 @@ For the next step (`race.md` §5):
 | Name | the label from the course (`courses.md` §8) or the mark id, with the lap and leg (`Lap 2/2 · Leg 3/5`) |
 | Rounding side | arrow: left arrow = leave to port, right arrow = leave to starboard; a gate shows both buoys' arrows |
 | Distance | buoy: distance from the bow to the buoy centre minus its radius; gate: to the nearer buoy, and the gate line; line (finish): to the nearest point of the segment |
-| Bearing | compass bearing from the boat to the mark (gate: nearer buoy; line: nearest point), integer, and the relative bearing to the bow (`35° L`) |
+| Bearing | compass bearing from the boat to the mark (gate: nearer buoy; line: nearest point), integer, and the relative bearing to the bow with its side letter (`35° P`, §1) |
 | Leg | Beat / Run / Reach |
 | ETA | beat or run: axis distance `D` of the leg (`race.md` §8.2) / VMG; reach: distance / VMC; `--:--` when the divisor is below 0.3 kn |
 
@@ -326,7 +330,7 @@ cameras keep moving and every sound plays. Offline and online alike.
 | --- | --- |
 | Distance to line | `s(bow)` (`race.md` §3.3): negative behind the line, positive over, when the bow's `u` is within [0, 1]; otherwise the distance to the nearer end, labelled "(end)" |
 | Time to line | the time to reach the line segment along the current COG at the current SOG: `t_line = distance along COG to the segment / SOG`; `--` if the COG ray misses the segment or SOG < 0.5 kn |
-| Time to burn | `(−t) − t_line`: positive = early by that much (burn it), negative = late |
+| Time to burn | `(−t) − t_line`: positive = early by that much (burn it), negative = late; shown as a signed `m:ss` gap (`+0:10`, `-0:03`), never in bare seconds (an `S` would read as starboard) |
 | Bias | `β = wrap_pi(compass(n̂) − TWD)` from the viewed boat's clean wind smoothed 10 s (`ai.md` §5.2 formula), shown as the favoured end and its advantage: `PIN +7° · 30 m` (the upwind distance `|Δu|` by which that end is ahead) |
 | Over | in the last minute and after the gun until started: `OVER` in red when the boat is over under the active flag rule (P: in the line band; I: course side incl. extensions; Z/U/black: in the triangle), with the consequence ("I flag: round an end") |
 | OCS | after the gun, when the boat is OCS: `OCS: return` with the specific instruction (`race.md` §4.3), until returned |
@@ -342,14 +346,20 @@ committee boat flies the flags of §9.1.
 | Field | Definition |
 | --- | --- |
 | Rank | the live rank (`race.md` §8.3) as `3 / 12`; the displayed rank changes only after the new order has held for 2 s (finishes change it at once) |
-| Gap to leader | distance `D_me − D_leader` and the last common split (`race.md` §8.4) as `+0:23 @ mark 2`; between splits the estimate, marked `~` |
-| Ahead / behind | the boats directly ahead and behind in the ranking with the distance difference |
+| Gap to leader | the leader by name, the distance `D_me − D_leader` and the time gap: `Leader  Nora  +120 m  +0:23 @ Windward` |
+| Time gap | to the leader or the boat ahead: at the last common split (`race.md` §8.4, both boats' last rounding is the same step) the difference of the split times, with the step's label (`+0:23 @ Windward`); else the estimate, the distance difference over the viewed boat's `V_ref` (`race.md` §7.2), marked `~` (`~+0:25`, no label); with both finished the difference of the finish times (`@ Finish`) |
+| Ahead | the boat directly ahead in the ranking: name, distance difference and time gap as the leader's (`Ahead  Kestrel  +45 m  ~+0:08`); not shown when she is the leader (the leader line names her) |
+| Behind | the boat directly behind: name and distance difference (`Behind  Maja  -30 m`) |
 | Race clock | time since the start signal |
 | Split at rounding | on each `Rounded` event: `Mark 2 · 4th · +0:18` for 4 s |
 | Finish | on the `Finished` event: place, time, gap to the winner |
 
-The ranking list (Tab) shows every boat: rank, name, AI level badge for AI boats, gap, status code (OCS, pending
-penalties count, RET, DSQ, finished time).
+The ranking list (Tab) shows every boat: rank, sail number (the one on her hull and sails, `data_format.md` §8.4),
+boat name, skipper, gap, status code (OCS, pending penalties count, RET, DSQ, finished time). The sail number, boat
+name and skipper read as in the results (§13, `menus.md` §5): the boat's livery name (the player's too), and in the
+skipper column `You` for the player's own boat and the AI badge (`AI · Easy`) for an AI boat, so a boat is named the
+same in the race bug's lines, the ranking list and the results (the race bug, the feed and the rules lines call the
+player's own boat `You`).
 
 ## 11. Rules awareness
 
@@ -455,7 +465,7 @@ umpire does not judge (`rules.md` §15). Rule numbers are those of the 2025-2028
 
 - **Feed** (bottom corner, 6 lines, 8 s each): signals, starts (`12 boats started, 2 OCS`), roundings of the first
   three boats, penalties, finishes, joins and leaves, retirements.
-- **Results screen** (`menus.md` §5): place, sail number and boat, skipper, AI badge, finish time, gap to winner,
+- **Results screen** (`menus.md` §5): place, sail number and boat, skipper (`You`, or the AI badge), finish time, gap to winner,
   code, points; series standings if a series. Projected AI finishes are marked `proj.`. Before `RaceClosed`
   (`race.md` §9) it is the live **finishing** table, which fills in as boats finish. Where there is no results
   screen (a front end without the menus, tests), the HUD draws the same rows as its own centred table
@@ -537,10 +547,10 @@ density of §16.1: an item shows only when both allow it.
 - Radar colours follow the pair records for the port–starboard, windward–leeward and mark-room scenarios of
   `rules.md` §13.
 - Time to burn: a boat 100 m behind the line at 5 m/s heading straight at it, 30 s before the gun, shows `t_line` 20 s
-  and `+10 s` to burn.
+  and `+0:10` to burn.
 - Density (§16.1): for each level and phase the table's items are shown and no others (at Race on a beat: no TWD,
-  no VMG and SOG, no lap line, no ahead and behind; the leader gap, the true wind speed, the heel bar and the
-  shift chip yes); the density key cycles
+  no VMG and SOG, no lap line, no boat behind; the leader gap with her name, the boat ahead with her time gap, the
+  true wind speed, the heel bar and the shift chip yes); the density key cycles
   Glance, Race, Data, Glance and the choice survives a restart; the defaults are Race at 1920 x 1080 and Glance at
   1280 x 800.
 - Name tags (§16.4): a boat at 45 m has a tag, one at 55 m has none until it is selected; with a penalty pending
@@ -606,15 +616,16 @@ boat's card (§16.7). The radar, the helm strip and, under manual trim, the trim
 | Phase | Glance | Race | Data |
 | --- | --- | --- | --- |
 | Pre-start (race sequence, not started) | boat speed, true wind speed, TWA dial; start block: countdown, time to burn with its late/early bar, the flag rule in one line; no race bug | + heading, heel bar; full start block (distance and time to line, burn, bias, flags); feed (own events, 3 lines); no race bug | + VMG, SOG, AWA, COG, TWD, AWS; race bug (fleet, laps and legs); feed 6 lines (every event) |
-| Beat or run | boat speed, true wind speed, TWA dial with the VMG angles and the coloured pointer; race bug: clock and rank; mark tag: name and distance | + heading, heel bar; the shift chip in the heading cell; the race bug adds the gap to the leader; the mark tag adds the ETA; feed (own events, 3 lines) | + VMG, SOG, AWA, COG, TWD, AWS; lap, leg and leg type; ahead and behind; the mark tag adds the bearing; feed 6 lines (every event); sail hint |
+| Beat or run | boat speed, true wind speed, TWA dial with the VMG angles and the coloured pointer; race bug: clock and rank; mark tag: name and distance | + heading, heel bar; the shift chip in the heading cell; the race bug adds the leader by name with her gap and the boat ahead with hers (§10); the mark tag adds the ETA; feed (own events, 3 lines) | + VMG, SOG, AWA, COG, TWD, AWS; lap, leg and leg type; the boat behind; the mark tag adds the bearing; feed 6 lines (every event); sail hint |
 | Reach | as a beat, the pointer neutral | as a beat | as a beat, with VMC in place of VMG |
 | Rounding (within `6·L` of the next mark, and 6 s after a rounding) | boat speed, true wind speed, TWA dial | as the leg | as the leg |
 | Penalty (panel shown) | boat speed, true wind speed, TWA dial | as the leg | as the leg |
 
 - Race is what a racer needs on each leg and nothing more (the owner's call, 2026-10-17: the HUD showed too many
   numbers at once): speed, the TWA dial with the VMG angles, heading, heel, the true wind speed, the next mark's
-  distance and time, the countdown and line numbers before the start, rank and gap. VMG, SOG, AWA, COG, TWD and
-  AWS, the lap and leg line, the boats ahead and behind, the mark's bearing and the fleet's feed are Data.
+  distance and time, the countdown and line numbers before the start, rank, the leader and the boat ahead by name
+  with their gaps (who she is racing). VMG, SOG, AWA, COG, TWD and AWS, the lap and leg line, the boat behind, the
+  mark's bearing and the fleet's feed are Data.
 - The wind sits with the boat instruments (the owner's call, 2026-11-07: a wind page in the top right corner felt
   out of place, and the page showed too many numbers): the TWA dial and the true wind speed at every level (the
   owner, 2026-11-07: the true wind speed is one of the most important parts, so Glance, the Deck's default, shows
@@ -698,7 +709,8 @@ speed and the dial (654 x 150 design px: the true wind cell, 168 wide with its v
 speed and the dial, the two numbers on one baseline; the cell's width is what its label and unit need at the
 11 px floor of §16.2.2 at UI scale 130 % on 1280 x 800); Race (630 x 246) adds heading under the boat speed and
 moves the true wind speed over the heel bar; Data (760 x 298) adds VMG (VMC on a reach) over SOG beside them, the AWA
-value under the dial and a small row of COG, TWD and AWS along the bottom. Every cell of the Race page keeps its
+value under the dial and a small row of COG, TWD and AWS along the bottom (COG and TWD with the degree sign like
+the heading, AWS with its `KN` in the cell's unit corner, §1). Every cell of the Race page keeps its
 place at Data. The **shift chip** (§3.2) sits in the heading cell, left of the number, at Race and Data: the
 text in `ink` on a `stbd` (lift) or `port` (header) chip, 13 px. Numbers keep the 4 Hz refresh of §1; dial and
 bars move every frame.

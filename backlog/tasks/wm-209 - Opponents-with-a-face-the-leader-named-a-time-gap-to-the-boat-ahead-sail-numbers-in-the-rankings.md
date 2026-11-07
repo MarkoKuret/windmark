@@ -3,9 +3,11 @@ id: WM-209
 title: >-
   Opponents with a face: the leader named, a time gap to the boat ahead, sail
   numbers in the rankings
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-11-07 18:47'
+updated_date: '2026-11-07 19:34'
 labels:
   - playability
 dependencies: []
@@ -21,6 +23,6 @@ At the default Race density the player never learns who she is racing: name tags
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Race density: leader named, the boat ahead with a time gap
-- [ ] #2 Rankings list shows sail numbers
+- [x] #1 Race density: leader named, the boat ahead with a time gap
+- [x] #2 Rankings list shows sail numbers
 <!-- AC:END -->

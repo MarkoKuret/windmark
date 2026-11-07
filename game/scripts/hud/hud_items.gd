@@ -27,9 +27,10 @@ static func of(hud: Hud, ph: String) -> Array[String]:
 			if lvl == Hud.Density.GLANCE:
 				out.append("feed_own")
 			elif lvl == Hud.Density.RACE:
-				out.append_array(["shift", "bug_gap", "mark_eta", "feed_own"])
+				out.append_array(["shift", "bug_gap", "bug_ahead", "mark_eta", "feed_own"])
 			else:
-				out.append_array(["shift", "bug_gap", "mark_eta", "bug_lap", "bug_gaps", "mark_brg", "hint", "feed"])
+				out.append_array(["shift", "bug_gap", "bug_ahead", "mark_eta", "bug_lap", "bug_gaps", "mark_brg", "hint",
+					"feed"])
 	if not hud.shows("shift"):
 		out.erase("shift")
 	if not hud.shows("sail_hint"):

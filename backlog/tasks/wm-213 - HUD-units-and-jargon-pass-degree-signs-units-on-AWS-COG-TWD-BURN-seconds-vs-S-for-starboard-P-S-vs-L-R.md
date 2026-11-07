@@ -3,9 +3,11 @@ id: WM-213
 title: >-
   HUD units and jargon pass: degree signs, units on AWS/COG/TWD, BURN seconds vs
   S for starboard, P/S vs L/R
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-11-07 18:47'
+updated_date: '2026-11-07 19:34'
 labels:
   - hud
 dependencies: []
@@ -21,5 +23,5 @@ Headings show no degree sign (hud_format.gd ~21); AWS, COG, TWD in the Data row 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 One side convention; every number with a unit where the label does not say it
+- [x] #1 One side convention; every number with a unit where the label does not say it
 <!-- AC:END -->

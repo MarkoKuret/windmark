@@ -176,11 +176,12 @@ static func _page_race(b: HudCanvas, h: Hud, data: bool) -> void:
 	b._s(Vector2(tx, 234) * b.k, aw[0] + aw[1], int(roundf(18 * b.k)), HudStyle.MIST, 600)
 	divider(b, Vector2(10, 246), Vector2(w - 10, 246))
 	# the small row: the label over the value, in thirds (room for the 11 px floor of small screens)
-	var cells := [["COG", "cog"], ["TWD", "twd"], ["AWS", "aws"]]
+	# units (hud.md §1): COG and TWD carry the degree sign in the value, AWS its KN in the unit corner
+	var cells := [["COG", "cog", ""], ["TWD", "twd", ""], ["AWS", "aws", "KN"]]
 	var cw := (w - 28.0) / 3.0
 	for i in 3:
 		var x := 14.0 + cw * i
-		caption(b, x, 268, cells[i][0], -1, "", LAB_S)
+		caption(b, x, 268, cells[i][0], x + cw - 14.0, cells[i][2], LAB_S)
 		number(b, x + cw - 14.0, 292, h.value_of(cells[i][1]), 26)
 		if i < 2:
 			divider(b, Vector2(x + cw - 2.0, 256), Vector2(x + cw - 2.0, 290))
@@ -335,12 +336,14 @@ static func bug(b: HudCanvas, h: Hud) -> void:
 		if line != "":
 			b._s(Vector2(0, y) * k, line, int(roundf(LAB * k)), HudStyle.PAPER, 600, TRACK)
 			y += 30.0
-	# hud.md §16.1: the leader gap at Race, the boats ahead and behind at Data
+	# hud.md §16.1: the leader and the boat ahead at Race, the boat behind at Data
 	var keys: Array[String] = []
 	if h.has_item("bug_gap") or h.has_item("bug_gaps"):
 		keys.append("gap")
+	if h.has_item("bug_ahead") or h.has_item("bug_gaps"):
+		keys.append("ahead")
 	if h.has_item("bug_gaps"):
-		keys.append_array(["ahead", "behind"])
+		keys.append("behind")
 	for key in keys:
 		var t := h.text_of(key)
 		if t != "":
@@ -677,7 +680,10 @@ static func turn_in_label(leg_type: String) -> String:
 
 # ---- ranking list and results ----
 
-static func table(b: HudCanvas, title: String, header: Array, rows: Array, widths: Array, own_row := -1) -> void:
+## a centred table (the ranking list, the results): the boat names in column `name_col` in caps, column `mist_col`
+## (the skipper) in mist
+static func table(b: HudCanvas, title: String, header: Array, rows: Array, widths: Array, own_row := -1,
+		name_col := 2, mist_col := 3) -> void:
 	var k := b.k
 	var w := 0.0
 	for x in widths:
@@ -699,8 +705,8 @@ static func table(b: HudCanvas, title: String, header: Array, rows: Array, width
 		var col := HudStyle.MARK if ri == own_row else HudStyle.PAPER
 		for i in row.size():
 			var t := str(row[i])
-			b._s(Vector2(x, y) * k, t.to_upper() if i == 1 else t, int(roundf(20 * k)),
-				HudStyle.MIST if i == 3 else col, 600, 0.04 if i == 1 else 0.0)
+			b._s(Vector2(x, y) * k, t.to_upper() if i == name_col else t, int(roundf(20 * k)),
+				HudStyle.MIST if i == mist_col else col, 600, 0.04 if i == name_col else 0.0)
 			x += widths[i]
 		y += 38.0
 

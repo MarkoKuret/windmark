@@ -146,6 +146,10 @@ var gap_estimate := false
 var gap_at := ""  # the split's mark label
 var ahead := -1
 var ahead_dist := 0.0
+## the time gap to the boat ahead, as the leader's (hud.md §10)
+var ahead_time := NAN
+var ahead_estimate := false
+var ahead_at := ""
 var behind := -1
 var behind_dist := 0.0
 
@@ -243,6 +247,21 @@ func ai_badge(b: int) -> String:
 	if ai_levels.has(b):
 		return ai_levels[b]
 	return _sim.ai_level(b) if _sim != null else ""
+
+
+## a boat as the results and the ranking list name her (menus.md §5, hud.md §10): her livery's boat name (the
+## player's too), else her display name
+func boat_label(b: int) -> String:
+	return str(boat_names.get(b, name_of(b)))
+
+
+## the skipper column of the results and the ranking list (menus.md §5): `You` for the player's own boat, the AI
+## badge (`AI · Easy`) for an AI boat, else her skipper
+func skipper_label(b: int) -> String:
+	if b == own_boat:
+		return "You"
+	var ai := ai_badge(b)
+	return "AI · %s" % ai if ai != "" else str(skippers.get(b, ""))
 
 
 func mark_label(m: int) -> String:
@@ -482,28 +501,40 @@ func _position(sim: SimSource, b: int) -> void:
 	gap_estimate = false
 	gap_at = ""
 	gap_dist = 0.0
+	ahead_time = NAN
+	ahead_estimate = false
+	ahead_at = ""
+	if ahead >= 0 and started:
+		var ga := _time_gap(sim, b, ahead, ahead_dist)
+		ahead_time = ga[0]
+		ahead_estimate = ga[1]
+		ahead_at = ga[2]
 	if leader < 0 or leader == b or not started or (not finished and not _racing_on_course(sim, b)):
 		return
-	var rl := sim.race_boat(leader)
-	gap_dist = maxf(0.0, d_me - float(rl.get("D", 0.0)))
+	gap_dist = maxf(0.0, d_me - float(sim.race_boat(leader).get("D", 0.0)))
+	var g := _time_gap(sim, b, leader, gap_dist)
+	gap_time = g[0]
+	gap_estimate = g[1]
+	gap_at = g[2]
+
+
+## race.md §8.4, hud.md §10: the time gap of boat `b` to boat `o` (`dist` m ahead of her): [seconds (NAN: none),
+## estimate, the split's label]. Both finished: the finish times; both last rounded the same step: the split times
+## there; else the estimate dist / V_ref of `b`.
+func _time_gap(sim: SimSource, b: int, o: int, dist: float) -> Array:
+	var ro := sim.race_boat(o)
+	if finished and bool(ro.get("finished", false)):
+		return [t_finish - float(ro.get("t_finish_us", 0)) * 1e-6, false, "Finish"]
 	var mine := int(sim.race_boat(b).get("last_rounded", -1))
-	var theirs := int(rl.get("last_rounded", -1))
-	var common := mini(mine, theirs)
-	if finished and bool(rl.get("finished", false)):
-		gap_time = t_finish - float(rl.get("t_finish_us", 0)) * 1e-6
-		gap_at = "Finish"
-		return
-	if common >= 1 and mine == theirs:
-		var t_me := sim.race_split(b, common)
-		var t_l := sim.race_split(leader, common)
-		if not is_nan(t_me) and not is_nan(t_l):
-			gap_time = t_me - t_l
-			gap_at = _step_label(common)
-			return
+	if mine >= 1 and mine == int(ro.get("last_rounded", -1)):
+		var t_me := sim.race_split(b, mine)
+		var t_o := sim.race_split(o, mine)
+		if not is_nan(t_me) and not is_nan(t_o):
+			return [t_me - t_o, false, _step_label(mine)]
 	var vref := _v_ref(sim, b)
 	if vref > 0.05:
-		gap_time = gap_dist / vref
-		gap_estimate = true
+		return [dist / vref, true, ""]
+	return [NAN, false, ""]
 
 
 func _racing_on_course(sim: SimSource, i: int) -> bool:
@@ -539,7 +570,8 @@ func _v_ref(sim: SimSource, b: int) -> float:
 	return k * sim.outputs(b).polar_speed
 
 
-## the ranking list rows (hud.md §10): [{rank, boat, name, ai, gap, status}]
+## the ranking list rows (hud.md §10): [{rank, boat, sail, name, skipper, ai, gap, status}]; sail, name and skipper
+## as the results show them
 func ranking_rows() -> Array:
 	var rows := []
 	if _sim == null or not active:
@@ -573,8 +605,8 @@ func ranking_rows() -> Array:
 				status = ("%s  " % status if status != "" else "") + ("%d pen" % np)
 			if i > 0 and bool(rb.get("started", false)):
 				gap_txt = HudFormat.signed_distance(float(rb.get("D", 0.0)) - d_lead)
-		rows.append({"rank": i + 1, "boat": bi, "name": name_of(bi), "ai": ai_badge(bi),
-			"gap": gap_txt, "status": status})
+		rows.append({"rank": i + 1, "boat": bi, "sail": str(sail_numbers.get(bi, "")), "name": boat_label(bi),
+			"skipper": skipper_label(bi), "ai": ai_badge(bi), "gap": gap_txt, "status": status})
 	return rows
 
 

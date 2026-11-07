@@ -448,7 +448,7 @@ func _wind() -> void:
 	_l(tail, tip - d * 6.0 * k, HudStyle.PAPER, 2.5 * k)
 	var s := Vector2(-d.y, d.x)
 	_p(PackedVector2Array([tip, tip - d * 9.0 * k + s * 5.5 * k, tip - d * 9.0 * k - s * 5.5 * k]), HudStyle.PAPER)
-	_s(Vector2(size.x - m.x, m.y + 64.0 * k), "%s KN  %s°" % [str(roundi(tws / HudFormat.KNOT)), HudFormat.compass_deg(twd)],
+	_s(Vector2(size.x - m.x, m.y + 64.0 * k), "%s KN  %s" % [str(roundi(tws / HudFormat.KNOT)), HudFormat.compass_deg(twd)],
 		fs, HudStyle.PAPER, 600, 0.06, HORIZONTAL_ALIGNMENT_RIGHT)
 
 

@@ -46,11 +46,11 @@ static func race(hud: Hud) -> void:
 		var burn := ""
 		var burn_v := "--"
 		if full and r.race_time < 0.0:
-			burn = "Burn  --" if is_nan(r.burn) else "Burn  %s" % Hud.signed_seconds(r.burn)
+			# a signed m:ss gap, never bare seconds: an S after a number is starboard (hud.md §1, §9.2)
 			if not is_nan(r.burn):
-				burn_v = Hud.signed_seconds(r.burn).trim_suffix(" s")
-		hud._put("burn", burn, white if is_nan(r.burn) or r.burn >= 0.0 else HudStyle.OWE, burn_v,
-			"" if burn_v == "--" else "S")
+				burn_v = HudFormat.gap(r.burn)
+			burn = "Burn  %s" % burn_v
+		hud._put("burn", burn, white if is_nan(r.burn) or r.burn >= 0.0 else HudStyle.OWE, burn_v)
 		var bias := ""
 		if full and r.bias_end != "":
 			bias = "Bias  %s +%d° · %s" % [r.bias_end, int(HudFormat.round_half_away(rad_to_deg(r.bias))),
@@ -103,17 +103,16 @@ static func race(hud: Hud) -> void:
 			hud._put(k, "")
 	# position (§10)
 	hud._put("rank", "%d / %d" % [r.rank, r.fleet] if r.rank > 0 else "")
+	# the leader by name and the boat ahead with their time gaps (hud.md §10); no ahead line when she leads
 	var gap := ""
 	if r.leader >= 0 and r.leader != r.boat and r.started:
-		gap = "Leader  +%s" % HudFormat.distance(r.gap_dist)
-		if not is_nan(r.gap_time):
-			gap += "  %s%s%s" % ["~" if r.gap_estimate else "", HudFormat.gap(r.gap_time),
-				" @ %s" % r.gap_at if r.gap_at != "" and not r.gap_estimate else ""]
+		gap = gap_line("Leader", r.name_of(r.leader), "+" + HudFormat.distance(r.gap_dist), r.gap_time,
+			r.gap_estimate, r.gap_at)
 	elif r.leader == r.boat and r.started and r.fleet > 1:
 		gap = "Leading"
 	hud._put("gap", gap)
-	hud._put("ahead", "Ahead  %s  %s" % [r.name_of(r.ahead), HudFormat.signed_distance(r.ahead_dist)]
-		if r.ahead >= 0 and r.started else "")
+	hud._put("ahead", gap_line("Ahead", r.name_of(r.ahead), HudFormat.signed_distance(r.ahead_dist), r.ahead_time,
+		r.ahead_estimate, r.ahead_at) if r.ahead >= 0 and r.ahead != r.leader and r.started else "")
 	hud._put("behind", "Behind  %s  %s" % [r.name_of(r.behind), HudFormat.signed_distance(r.behind_dist)]
 		if r.behind >= 0 and r.started else "")
 	# penalties (§12.1)
@@ -129,6 +128,15 @@ static func race(hud: Hud) -> void:
 		dl = "Deadline  %s" % HudFormat.clock(r.deadline)
 	hud._put("pen_deadline", dl, red if r.deadline < 30.0 else white, HudFormat.clock(maxf(r.deadline, 0.0)))
 	hud._put("pen_dsq", "One more penalty = disqualification" if r.dsq_warning and r.pending > 0 else "", red)
+
+
+## "Leader  Nora  +120 m  ~+0:25", "Ahead  Kestrel  +45 m  +0:08 @ Windward" (hud.md §10): the time gap marked ~
+## when estimated, with the split's label when not
+static func gap_line(label: String, name: String, dist: String, t: float, estimate: bool, at: String) -> String:
+	var s := "%s  %s  %s" % [label, name, dist]
+	if not is_nan(t):
+		s += "  %s%s%s" % ["~" if estimate else "", HudFormat.gap(t), " @ %s" % at if at != "" and not estimate else ""]
+	return s
 
 
 ## the selected boat's card from the race and rules records of the last tick (hud.md §16.7: who she is, her place,

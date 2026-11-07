@@ -317,18 +317,12 @@ func table_rows() -> Array:
 		var pts := ""
 		if not is_nan(float(row["points"])):
 			pts = HudFormat.points(float(row["points"]))
-		var skipper := "You" if b == r.own_boat else ""
-		var ai := str(row.get("ai", ""))
-		if skipper == "" and ai != "":
-			skipper = "AI · %s" % ai
-		elif skipper == "":
-			skipper = str(row.get("skipper", ""))
 		var code := str(row.get("code", ""))
 		var status := str(row.get("status", ""))
 		if code == "" and status != "":
 			code = status
-		out.append([place, str(r.sail_numbers.get(b, "")), str(r.boat_names.get(b, row["name"])), skipper, t, g, code,
-			pts])
+		# the same names as the HUD's ranking list (hud.md §10)
+		out.append([place, str(r.sail_numbers.get(b, "")), r.boat_label(b), r.skipper_label(b), t, g, code, pts])
 	return out
 
 

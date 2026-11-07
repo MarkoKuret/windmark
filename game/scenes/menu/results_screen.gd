@@ -9,7 +9,8 @@ extends CanvasLayer
 ## not. It fades in; the scene changes fade (SceneFade). The pause menu opens over it as in the race.
 ##
 ## A child of the sail scene (`host`, duck typed: hud, rig, runner, session_setup(), venue, course, class_id); with
-## `act` off (tests) the actions do everything but change the scene.
+## `act` off (tests) the actions do everything but change the scene. The screen's controls are built when it first
+## opens or refreshes (WM-180: not in the race scene's build behind the fade).
 
 signal action_requested(action: String)
 
@@ -70,6 +71,12 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	if host == null:
 		host = get_parent()
+
+
+## Builds the screen's controls (once; open() and refresh() call it).
+func build() -> void:
+	if _root != null:
+		return
 	_root = Control.new()
 	_root.name = "Root"
 	_root.theme = MenuTheme.theme()
@@ -200,6 +207,7 @@ func _pause_open() -> bool:
 func open() -> void:
 	if is_open:
 		return
+	build()
 	is_open = true
 	_fade_t = 0.0
 	_root.modulate.a = 0.0
@@ -331,6 +339,7 @@ func refresh() -> void:
 	var r := _race()
 	if r == null:
 		return
+	build()
 	var tw := title_words()
 	if tw[0] != title.text or tw[1] != title.tagline_text:
 		title.set_words(tw[0], tw[1])
@@ -517,14 +526,15 @@ func press(id: String) -> void:
 	match id:
 		"again":
 			GameSetup.next = (host.call("session_setup") as GameSetup).again()
-			_change(host.scene_file_path if host != null and host.scene_file_path != "" else SAIL_SCENE)
+			_change(host.scene_file_path if host != null and host.scene_file_path != "" else SAIL_SCENE,
+					SceneFade.line_for(GameSetup.next))
 		"setup":
 			remember_setup()
 			MainMenu.open_on = "quick"
-			_change(MAIN_MENU)
+			_change(MAIN_MENU, SceneFade.LINE_MENU)
 		"menu":
 			MainMenu.open_on = ""
-			_change(MAIN_MENU)
+			_change(MAIN_MENU, SceneFade.LINE_MENU)
 
 
 ## This session's setup becomes the remembered one (menus.md §1), saved.
@@ -538,6 +548,6 @@ func remember_setup() -> void:
 	s.save_file()
 
 
-func _change(path: String) -> void:
+func _change(path: String, line := "") -> void:
 	if act:
-		SceneFade.change(get_tree(), path)
+		SceneFade.change(get_tree(), path, line)

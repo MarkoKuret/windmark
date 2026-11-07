@@ -506,8 +506,9 @@ func start(p: SetupPanel) -> void:
 	request_scene(SAIL_SCENE)
 
 
+## Asks for the scene `path` (the sail scene on Start and Continue, with the session's loading line, menus.md §5).
 func request_scene(path: String) -> void:
 	scene_requested.emit(path)
 	if change_scenes:
 		ambience.fade_out(SceneFade.OUT_S)
-		SceneFade.change(get_tree(), path)
+		SceneFade.change(get_tree(), path, SceneFade.line_for(GameSetup.next) if path == SAIL_SCENE else "")

@@ -1189,28 +1189,72 @@ void racing(AC& x, AB& a, const Me& m) {
 }
 
 // §6.5 pinned on an object (a mark the current holds her against, a committee boat, land): after 0.5 s in contact
-// with little way over the ground she works herself off it. A hard helm only wedges a boat with no way on harder
-// against it, so she first keeps the helm steady on her present heading, and tries three ways off in turn, changing
-// over whenever 3 s pass without progress (the boat moved less than 0.4 m and turned less than 8°): the sails drawing
-// (lying along the object, she slides and pivots off it), the sails let fly (the drift to leeward of a stalled boat,
-// boat.md §6.4, takes her off it), and the heading on her present tack whose course over the ground leads most
-// directly away from it, the sails drawing and the helm free (against a stream that holds her on it; with a stream
-// of more than 0.2 m/s setting her onto it she starts with that one). Off it for 3 s, she sails on as planned.
+// with little way over the ground she works herself off it. With no way on the rudder cannot turn her and the
+// contact friction eats the drive from rest, so she tries three ways off in turn, changing over whenever a check
+// interval passes without progress (the boat moved less than 0.4 m and turned less than 8°):
+//   0. the sails drawing, the helm steady on her present heading (lying along the object, she slides and pivots
+//      off it; with the helm balance on the sail plan's luff does the pivoting);
+//   1. the sails let fly and the helm hard over to turn the object round to her windward side, where the drift
+//      of a stalled boat (boat.md §6.4) and the sternway of one head to wind (§7.4) carry her off it: bearing away
+//      with the fall-off when the object is to windward or close on the lee bow, else luffing through the wind on
+//      the crawl ahead of the eased sails (the fall-off on the new tack finishes the turn) or, once she backs,
+//      the stern swinging to windward (checked every 6 s: the turn from rest is slow);
+//   2. the heading on her present tack whose course over the ground leads most directly away from it, the sails
+//      drawing and the helm free (against a stream that holds her on it, with way on).
+// With no way on (|v| < 0.3 m/s) she starts with the second and skips the third (it needs way on); with way on in a
+// stream of more than 0.2 m/s setting her onto it she starts with the third, otherwise with the sails drawing. Off
+// it for 3 s, she sails on as planned.
 void pinned_escape(AC& x, AB& a, const Me& m) {
+  // The let-fly mode's turn, chosen when the mode starts and held: the object comes round to her windward side,
+  // where the drift and the sternway of a stalled boat carry her off it. The object lies at -pin_n from the
+  // contact point; its bulk is taken 1 m behind that point (a mark's centre, about). An object to windward, or on
+  // the lee bow close enough for the fall-off to swing it past the bow before she lies beam on (|twa| + its angle
+  // off the bow + 20° within 90°), goes round by bearing away; any other to leeward by luffing (through the wind
+  // onto the other tack on the crawl ahead of the eased sails, or, once she backs, the stern swinging to windward).
+  // The helm is set for that turn with way ahead; with sternway it works the other way, which takes her off a
+  // leeward object as well.
+  const auto choose_turn = [&]() {
+    const float tk = m.tack != 0.0f ? m.tack : 1.0f;
+    const Vec2 f = dir(m.s.psi);
+    const Vec2 o = v_sub(v_sub(a.pin_p, a.pin_n), m.c);
+    const float ox = v_dot(o, f), oy = v_dot(o, right_of(f));  // the object: ahead, to starboard
+    const bool windward = oy * tk > 0.0f;
+    const float off_bow = wm_atan2(std::fabs(oy), ox);
+    const bool bear_away = windward || std::fabs(m.twa) + off_bow + 20.0f * DEG <= 90.0f * DEG;
+    a.pin_turn = static_cast<std::int8_t>(bear_away ? -tk : tk);
+  };
+  const bool way_on = std::fabs(m.s.v) >= 0.3f;
   if (a.pin_t >= 0.5f && x.now >= a.pin_until) {
     a.pin_until = x.now + 3.0f;
-    // In a stream that sets her onto it, sailing away over the ground first.
-    a.pin_mode = static_cast<std::int8_t>(v_dot(m.cur, a.pin_n) < -0.2f ? 2 : 0);
-    a.pin_check_t = x.now + 3.0f;
+    if (!way_on) a.pin_mode = 1;
+    else a.pin_mode = static_cast<std::int8_t>(v_dot(m.cur, a.pin_n) < -0.2f ? 2 : 0);
+    if (a.pin_mode == 1) choose_turn();
+    a.pin_try = 0;
+    a.pin_check_t = x.now + (a.pin_mode == 1 ? 6.0f : 3.0f);
     a.pin_c = m.c;
     a.pin_psi = m.s.psi;
   }
   if (x.now >= a.pin_until) return;
   if (x.now - a.pin_seen < 1.0f) a.pin_until = max(a.pin_until, a.pin_seen + 3.0f);
   if (x.now >= a.pin_check_t) {
-    const bool progress = v_dist(m.c, a.pin_c) > 0.4f || std::fabs(wrap_pi(m.s.psi - a.pin_psi)) > 8.0f * DEG;
-    if (!progress) a.pin_mode = static_cast<std::int8_t>((a.pin_mode + 1) % 3);
-    a.pin_check_t = x.now + 3.0f;
+    // Progress: moved 0.4 m, or turned 8° (5° in the let-fly mode, whose turn from rest is slow and either way
+    // leads somewhere: bearing away to where the drift carries her off, luffing to where she backs off).
+    const float turned = std::fabs(wrap_pi(m.s.psi - a.pin_psi));
+    const bool progress = v_dist(m.c, a.pin_c) > 0.4f || turned > (a.pin_mode == 1 ? 5.0f : 8.0f) * DEG;
+    if (!progress) {
+      if (a.pin_mode == 1 && a.pin_try == 0) {
+        // The let-fly mode once more with the helm the other way.
+        a.pin_turn = static_cast<std::int8_t>(-a.pin_turn);
+        a.pin_try = 1;
+      } else {
+        // The next way off; sailing away over the ground needs way on.
+        a.pin_mode = static_cast<std::int8_t>((a.pin_mode + 1) % 3);
+        if (a.pin_mode == 2 && !way_on) a.pin_mode = 0;
+        if (a.pin_mode == 1) choose_turn();
+        a.pin_try = 0;
+      }
+    }
+    a.pin_check_t = x.now + (a.pin_mode == 1 ? 6.0f : 3.0f);
     a.pin_c = m.c;
     a.pin_psi = m.s.psi;
   }
@@ -1222,6 +1266,11 @@ void pinned_escape(AC& x, AB& a, const Me& m) {
   a.psi_target = m.s.psi;
   a.let_fly = a.pin_mode == 1;
   a.forced = false;
+  if (a.pin_mode == 1) {
+    if (a.pin_turn == 0) choose_turn();
+    a.helm_fixed = static_cast<float>(a.pin_turn);
+    return;
+  }
   if (a.pin_mode != 2) return;
   const Vec2 n = v_unit(a.pin_n, dir(m.s.psi));
   const float tk = m.tack != 0.0f ? m.tack : 1.0f;

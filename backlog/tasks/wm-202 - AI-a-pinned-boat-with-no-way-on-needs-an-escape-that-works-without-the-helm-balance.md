@@ -3,9 +3,11 @@ id: WM-202
 title: >-
   AI: a pinned boat with no way on needs an escape that works without the helm
   balance
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-11-07 18:08'
+updated_date: '2026-11-07 18:44'
 labels:
   - ai
   - bug
@@ -21,6 +23,6 @@ With the weather helm off (the game's default since WM-195, boat.md §2 weather_
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 With AiRaceSpec.weather_helm = false the Solent fleet test (test_ai_race.cpp) passes: stuck max under 60 s in flood, ebb and slack, seeds 1 and 2
-- [ ] #2 ai.md §6.5 describes the escape for a boat with no way on and the helm balance off
+- [x] #1 With AiRaceSpec.weather_helm = false the Solent fleet test (test_ai_race.cpp) passes: stuck max under 60 s in flood, ebb and slack, seeds 1 and 2
+- [x] #2 ai.md §6.5 describes the escape for a boat with no way on and the helm balance off
 <!-- AC:END -->

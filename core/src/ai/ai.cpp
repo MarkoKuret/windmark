@@ -213,6 +213,7 @@ void perceive(AiSkippers::Ctx& x, AiSkippers::Boat& a) {
     if (e.boat == a.i && e.other_kind != ContactKind::boat) {
       a.pin_seen = x.now;
       a.pin_n = e.normal;
+      a.pin_p = e.point;
     }
   }
   const float sog = x.w.boat(i).outputs().sog;

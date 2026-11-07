@@ -152,7 +152,7 @@ func _kite_ac_shots() -> Array:
 const KITE_AC_CLASSES := {"wm7": "kite", "wm10": "a2", "wm12": "a2", "wm16": "a2", "wm9": "kite", "wm21": "spin"}
 
 
-func _kite_ac2_shots(only: Array = [], prefix: String = "kite_ac2") -> Array:
+func _kite_ac2_shots(only: Array = [], prefix: String = "kite_ac2", top: bool = false) -> Array:
 	var out := []
 	for cls in KITE_AC_CLASSES:
 		if not only.is_empty() and not cls in only:
@@ -161,6 +161,8 @@ func _kite_ac2_shots(only: Array = [], prefix: String = "kite_ac2") -> Array:
 		for v in KITE_LOFT_VIEWS:  # wm7 and wm21 as the first pass framed them; the bigger boats a little wider
 			views[v] = KITE_LOFT_VIEWS[v].duplicate()
 			views[v]["dist_loa"] = 2.15 if cls in ["wm7", "wm21"] else 2.4
+		if top:  # looking down from above the masthead, the forestay's clearance in plan
+			views["top"] = {"side": 0.12, "fwd": 0.2, "up": 1.0, "dist_loa": 1.9}
 		var sid: String = KITE_AC_CLASSES[cls]
 		var models: Array = ["loft"] if cls in ["wm7", "wm21"] or not only.is_empty() else ["hinge", "loft"]
 		var sym: bool = cls in ["wm9", "wm21"]
@@ -202,6 +204,9 @@ func _main() -> void:
 		want = []
 	elif want.has("kite_ac3"):  # §6.5 (2026-11-07): the symmetric kites, the run set as at TWA 150
 		shots = _kite_ac2_shots(["wm9", "wm21"], "kite_ac3")
+		want = []
+	elif want.has("kite_ac4"):  # §6.5 (2026-11-07b): the symmetric kites ahead of the forestay, and from above
+		shots = _kite_ac2_shots(["wm9", "wm21"], "kite_ac4", true)
 		want = []
 	for spec in shots:
 		if want.is_empty() or want.has(spec["name"]):

@@ -103,13 +103,55 @@ def third(ctx, out, w, h):
             print(f"wrote {path}")
 
 
+THIRD_DIR = REPO / "docs" / "design" / "kite_ac_2026-11-07"     # the third pass's sheets
+
+
+def fourth(ctx, out, w, h):
+    """wm9 and wm21 (`-- kite_ac4` shots, ahead of the forestay) against the third pass (the right column of its
+    sheets), and a sheet from above the masthead (the new state only: the third pass has no such view)."""
+    head = 46
+    f, fs = _font(24), _font(17)
+    views = dict(VIEWS, top="from above the masthead")
+    for cls in ("wm9", "wm21"):
+        kind, angles, what = SECOND[cls]
+        for view, title in views.items():
+            sheet = Image.new("RGB", (2 * w, head + len(angles) * (h + 30)), (245, 245, 242))
+            d = ImageDraw.Draw(sheet)
+            d.text((14, 10), f"{cls} kite: before (left), now, never behind the forestay (right), {title}, 12 kn",
+                   fill=(20, 20, 30), font=f)
+            prev = Image.open(THIRD_DIR / f"{cls}_{view}.jpg") if view != "top" else None
+            for r, ang in enumerate(angles):
+                y = head + r * (h + 30)
+                if prev is not None:
+                    sheet.paste(prev.crop((w, y + 30, 2 * w, y + 30 + h)), (0, y + 30))
+                    d.text((10, y + 6), "before (2026-11-07)", fill=(30, 30, 40), font=fs)
+                else:
+                    d.text((10, y + 6), "(no view from above before)", fill=(30, 30, 40), font=fs)
+                name = f"kite_ac4_{cls}_{kind.lower()}{ang}_loft_{view}"
+                img, note = sp.render(ctx, sp.OUT / name, (w, h))
+                sheet.paste(img, (w, y + 30))
+                d.text((w + 10, y + 6), f"now: {note.split('|')[0].split(':', 1)[-1].strip()}", fill=(30, 30, 40),
+                       font=fs)
+                print(f"{name}: {note}")
+            path = out / f"{cls}_{view}.jpg"
+            sheet.save(path, quality=90)
+            print(f"wrote {path}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=None)
     ap.add_argument("--size", default="960x600")
     ap.add_argument("--second", action="store_true", help="every class (-- kite_ac2), into kite_ac_2026-11-06b")
     ap.add_argument("--third", action="store_true", help="wm9 and wm21 (-- kite_ac3), into kite_ac_2026-11-07")
+    ap.add_argument("--fourth", action="store_true", help="wm9 and wm21 (-- kite_ac4), into kite_ac_2026-11-07b")
     a = ap.parse_args()
+    if a.fourth:
+        w, h = (int(x) for x in a.size.split("x"))
+        out = Path(a.out or REPO / "docs" / "design" / "kite_ac_2026-11-07b")
+        out.mkdir(parents=True, exist_ok=True)
+        fourth(moderngl.create_standalone_context(require=410), out, w, h)
+        return
     if a.third:
         w, h = (int(x) for x in a.size.split("x"))
         out = Path(a.out or REPO / "docs" / "design" / "kite_ac_2026-11-07")

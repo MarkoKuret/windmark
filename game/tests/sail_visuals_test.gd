@@ -42,6 +42,7 @@ func _main() -> void:
 	_tack_on_sprit()
 	_clew_on_sheet()
 	_loft_sections()
+	_forestay()
 	_parity()
 	await _rate_by_distance()
 	_perf()
@@ -1699,6 +1700,101 @@ static func chord_measure(row: PackedVector3Array) -> Array:
 					xmax = xv
 					dmax = ds[k] + aa * (xv - xs[k]) * (xv - xs[k]) + (2.0 * aa * xs[k] + bb) * (xv - xs[k])
 	return [dmax / cl, xmax / cl]
+
+
+## §12 test 28 (the hard rule of §6.5, §7.4): no spinnaker cloth is ever aft of or through the forestay, on every
+## class with a spinnaker, at AWA 60 to 180 deg on both gybes, the kite sheeted from 60 to 130 % of its optimum, and
+## while it is hoisted and dropped: the forestay (its tack fitting to the hounds) passes through no triangle of the
+## kite, and no vertex within STAY_BAND of it athwartships, between its ends in height, lies less than STAY_CLOTH ahead
+## of it. Native (the reference is held to it by test 19 and the random-frame parity of test 26).
+const STAY_CLASSES := ["wm7", "wm9", "wm10", "wm12", "wm16", "wm21"]
+const STAY_CLOTH := 0.05   # m, the cloth's own margin ahead of the stay
+const STAY_BAND := 0.5     # m, either side of the stay
+
+
+func _forestay() -> void:
+	if not native:
+		return
+	for id in STAY_CLASSES:
+		if not FileAccess.file_exists("res://generated/boats/%s.glb" % id):
+			continue
+		var data := BoatClassData.load_class(id)
+		var bv := BoatView.create(data.info, 0.5)
+		var s0: Vector3 = bv._stay0
+		var s1: Vector3 = bv._stay1
+		var parts := {}
+		for sp in bv.sail_parts:
+			parts[sp.index] = sp
+		for fi in data.info.front_sails:
+			var fp: BoatView.SailPart = parts[fi]
+			if not fp.type.begins_with("spinnaker"):
+				continue
+			t.begin("28 forestay: %s %s" % [id, fp.id])
+			var tws := 12.0 * KNOT
+			var worst := INF
+			var at := ""
+			var through := 0
+			var first := ""
+			var n := 0
+			var cases := []
+			for awa_deg in range(60, 181, 10):
+				for side in [1.0, -1.0]:
+					for kt in [0.6, 0.85, 1.0, 1.3]:
+						cases.append([awa_deg, side, kt, UP, 1.0])
+					if awa_deg % 30 == 0:
+						for ph in [SimSource.Phase.HOISTING, SimSource.Phase.DROPPING]:
+							for pr in [0.2, 0.5, 0.8, 1.0]:
+								cases.append([awa_deg, side, 1.0, ph, pr])
+			for cs in cases:
+				var awa: float = cs[1] * deg_to_rad(float(mini(cs[0], 179)))
+				var sv := _sails_view(data, awa, tws, tws, fi, -1, [cs[2], 1.0])
+				sv.sails[fi].phase = cs[3]
+				sv.sails[fi].progress = cs[4]
+				for k in 3:
+					bv.apply_sails(sv, sv, 1.0, 0.1)
+				var m: PackedVector3Array = fp.shape.mid()
+				var what := "awa %d %s kite %.2f %s" % [cs[0], "stbd" if cs[1] > 0 else "port", cs[2],
+					"up" if cs[3] == UP else ("hoist %.1f" % cs[4] if cs[3] == SimSource.Phase.HOISTING else "drop %.1f" % cs[4])]
+				var r := stay_check(m, fp.rows, fp.cols, s0, s1)
+				n += 1
+				if r[0] < worst:
+					worst = r[0]
+					at = what
+				if r[1]:
+					through += 1
+					if first == "":
+						first = what
+			var msg := "%s %s: %d cases, the cloth at least %.2f m ahead of the forestay near it (>= %.2f) at %s; forestay through the cloth in %d%s" % [
+				id, fp.id, n, worst, STAY_CLOTH, at, through, "" if first == "" else " (first: %s)" % first]
+			t.ok(worst >= STAY_CLOTH and through == 0, msg)
+			print("  " + msg)
+		bv.free()
+
+
+## §12 test 28: [the smallest forward distance from the stay of any kite vertex within STAY_BAND of it athwartships
+## and between its ends in height (INF when none), whether the stay passes through a triangle of the kite].
+static func stay_check(m: PackedVector3Array, rows: int, cols: int, s0: Vector3, s1: Vector3) -> Array:
+	var up := Frames.body_to_model(Vector3(0, 0, 1))
+	var fwd := Frames.body_to_model(Vector3(1, 0, 0))
+	var port := Frames.body_to_model(Vector3(0, 1, 0))
+	var z0 := s0.dot(up)
+	var z1 := s1.dot(up)
+	var worst := INF
+	for p in m:
+		var pz := p.dot(up)
+		if pz < z0 or pz > z1:
+			continue
+		var q := s0 + (s1 - s0) * ((pz - z0) / (z1 - z0))
+		if absf((p - q).dot(port)) > STAY_BAND:
+			continue
+		worst = minf(worst, (p - q).dot(fwd))
+	var tris := grid_tris(m, rows, cols)
+	var through := false
+	for k in range(0, tris.size(), 3):
+		if Geometry3D.segment_intersects_triangle(s0, s1, tris[k], tris[k + 1], tris[k + 2]) != null:
+			through = true
+			break
+	return [worst, through]
 
 
 ## §12 test 27: camber (over the chord), draft (share of the chord from the luff) and twist (deg, the chord's

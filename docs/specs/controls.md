@@ -70,16 +70,16 @@ keys become the boat's commands, and the accessibility options. The boat command
 | `hud_hide` | toggle | hide every HUD element |
 | `world_tags` | toggle | hide or show the world tags and the on-water guides (§7, `hud.md` §16.4) |
 | `hud_density` | button | cycle the instrument density Glance, Race, Data (`hud.md` §16.1) |
-| `boat_names` | toggle | name tags over boats |
+| `boat_names` | button | name tags over boats: boats to watch (rules relation or selected, the default), every boat nearby, off (`hud.md` §16.4) |
 | `boat_select` | button | select the next boat for her tag and card, nearest first, then none (`hud.md` §16.4.1) |
 | `boat_pick` | pointer | a click or tap without a drag: select the boat under the pointer, or clear on open water or on the selected boat (`hud.md` §16.4.1) |
 | `spectate_next`, `spectate_prev`, `spectate_leader` | button | viewed boat, when not racing (`cameras.md` §1) |
-| `chat` | button | open the chat line |
+| `chat` | button | online: open the chat line; offline the key does nothing (nobody to talk to, and Enter must not steal the keys from a new player) |
 | `pause_menu` | button | pause offline, menu online (§7); with a boat selected it first clears the selection (`hud.md` §16.4.1) |
 | `capture_pause` | toggle | offline: clean pause, no menu and no label (§7) |
 | `capture_slow` | button | offline: slow motion, cycling ×1, ×0.5, ×0.25 (§7) |
 | `screenshot` | button | save a screenshot |
-| `reset_boat` | button | offline practice only: free sailing re-places the boat at its start point, sailing with its start sail and the helm centred; an offline race restarts from the spawn. No effect online or in a ranked or timed session |
+| `reset_boat` | button | offline practice only: free sailing re-places the boat at its start point, sailing with its start sail and the helm centred, at once; an offline race asks first (the HUD notes `Restart the race? Press Backspace again`, the key as the player's bindings name it, for 3 s) and a second press within them restarts it from the spawn; a rules scenario (`race.md` §14) restarts at once. No effect online or in a ranked or timed session |
 
 There is no action for penalty turns (they are sailed), tacking or gybing (steered), or the main (always up).
 

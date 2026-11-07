@@ -1016,7 +1016,7 @@ func test_density_key_and_settings() -> void:
 
 
 func test_name_tags_and_penalty_turn() -> void:
-	t.begin("name tags within 50 m or selected, no penalty ring, the next-mark arrow by camera (hud.md §16.4, §12.1, §7.1)")
+	t.begin("name tags: boats to watch, all within 50 m, off, selected; no penalty ring; the next-mark arrow by camera (hud.md §16.4, §12.1, §7.1)")
 	var sim := RaceStubSim.new(3)
 	sim.race_d["state"] = RaceText.RaceState.RACING
 	sim.race_d["race_time"] = 100.0
@@ -1048,7 +1048,15 @@ func test_name_tags_and_penalty_turn() -> void:
 	var d2 := Vector2(sim.states[2].pos_x, sim.states[2].pos_y - 400.0).length()
 	t.near(d2, 55.0, 0.01, "boat 2 at 55 m")
 	var names := h.name_tags().map(func(g: Dictionary) -> String: return g["name"])
-	t.ok(names == ["NORA"], "tag on the boat at 45 m only: %s" % str(names))
+	t.ok(names.is_empty() and h.show_names and not h.names_all,
+		"watch (the default): no tag on a boat at 45 m without a rules relation: %s" % str(names))
+	var nkey := RawInput.new()
+	nkey.pressed.append(&"boat_names")
+	h.ui_input(nkey)
+	h.frame(0.01)
+	t.ok(h.names_all and h.text_of("message") == Hud.NOTE_NAMES_ALL, "boat_names: every boat nearby, with its note")
+	names = h.name_tags().map(func(g: Dictionary) -> String: return g["name"])
+	t.ok(names == ["NORA"], "all: tag on the boat at 45 m only: %s" % str(names))
 	h.select_next()
 	t.ok(h.selected.keys() == [1], "select key: nearest first")
 	h.select_next()
@@ -1060,9 +1068,22 @@ func test_name_tags_and_penalty_turn() -> void:
 	t.ok(mast != null and h.pick_at(mast) == 2 and h.selected.has(2), "click on a boat selects it")
 	t.ok(h.pick_at(mast) == 2 and not h.selected.has(2), "a second click clears it")
 	t.ok(h.pick_at(Vector2(2.0, 2.0)) == -1, "a click on empty water picks nothing")
-	h.show_names = false
-	t.ok(h.name_tags().is_empty(), "boat_names off: no tags")
-	h.show_names = true
+	h.ui_input(nkey)
+	h.frame(0.01)
+	t.ok(not h.show_names and not h.names_all and h.name_tags().is_empty() and h.text_of("message") == Hud.NOTE_NAMES_OFF,
+		"boat_names again: off, no tags, with its note")
+	h.ui_input(nkey)
+	h.frame(0.01)
+	t.ok(h.show_names and not h.names_all and h.text_of("message") == Hud.NOTE_NAMES_WATCH,
+		"boat_names again: back to boats to watch")
+	# watch: the boat at 45 m gets her tag once she has a rules relation to the viewed boat
+	sim.pairs_a = [sim.pair(0, 1, {"kc_giver": 0, "kc_holder": 1, "kc_rule": RaceText.Rule.R10})]
+	_refresh(h, sim)
+	names = h.name_tags().map(func(g: Dictionary) -> String: return g["name"])
+	t.ok(h.has_relation(1) and names == ["NORA"], "watch: the boat with a rules relation at 45 m is tagged: %s" % str(names))
+	sim.pairs_a = []
+	_refresh(h, sim)
+	t.ok(not h.has_relation(1) and h.name_tags().is_empty(), "the relation gone, the tag goes")
 	# penalty turn: nothing drawn round the boat in any camera
 	var R := RaceText.Rule
 	sim.rules_d[0] = {"pending": [{"rule": R.R10, "other": 1, "count": 1}], "turn_progress": deg_to_rad(120.0),

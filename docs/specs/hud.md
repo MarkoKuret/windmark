@@ -706,11 +706,16 @@ penalty's rule text, the gap lines), 16 (feed, helm notes, the card's standing, 
   `TACK IN <distance> <time>` on a beat and `GYBE IN <distance> <time>` on a run (the turn onto the other tack
   downwind is a gybe), or `OVERSTOOD <distance>` at the boat. Only the point and its label: no line is drawn from
   the boat to it (the owner's call: the forward path line was clutter in front of the bow).
-- **Name tags**: another boat's name over her mast when she is within 50 m of the viewed boat, or when the player
-  has selected her (§16.4.1). The tag takes the radar colour of §8 (solid chip when there is a relation, paper on
+- **Name tags**: another boat's name over her mast when she is within 50 m of the viewed boat **and has a rules
+  relation to her** (a radar colour of §8 other than white: red, green, orange or cyan), or when the player has
+  selected her (§16.4.1, at any distance). A crowded start is therefore not one chip per mast: the tags name the
+  boats that matter now. The tag takes the radar colour of §8 (solid chip when there is a relation, paper on
   ink otherwise) and pulses as the radar icon does. A selected boat off screen gets an edge pointer with her name
-  and distance. `boat_names` turns all name tags off and on (the selected boat's included; her bracket and card
-  stay).
+  and distance. `boat_names` cycles three states, each noted in the helm notes for 3 s (`Name tags: every boat
+  nearby`, `Name tags: off`, `Name tags: boats to watch`): **watch** (the default above), **all** (every boat
+  within 50 m, relation or not, plus the selected one) and **off** (none, the selected boat's included; her
+  bracket and card stay). The radar's and the course map's tags (§8) show in watch and all, only the viewed
+  boat's when off. A session starts on watch.
 - **Keep clear of the corners**: world labels never sit on the HUD's own blocks (the instrument page and its
   chip, the radar, the helm strip and its notes, the next-mark arrow, the race bug, the wind page, the feed, the
   alert lane, the boat card), as the edge pointers keep to their box. The tack point's label goes above its ring,

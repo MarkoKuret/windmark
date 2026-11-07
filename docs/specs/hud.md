@@ -319,6 +319,13 @@ cameras keep moving and every sound plays. Offline and online alike.
   first substitute during a general recall. Each signal plays its sound (`race.md` §3.2).
 - **Signal banner**: "Preparatory signal, I flag: over in the last minute means round an end" etc. for 3 s at each
   signal.
+- **Banner priority**: one banner shows at a time, and each has a priority: the viewed boat's own (OCS and OVER,
+  `Returned` and `Started`, her penalties, `Take your penalty before finishing`, a disqualification, the start limit
+  of §9.4, an abandoned race) over the race's (the signals, the splits, the finishing window) over the individual
+  recall (`Individual recall: X flag`, `X flag down`). A new banner replaces the one showing unless that one has a
+  higher priority and is still up; then the new line goes to the feed instead (the signals are in the feed
+  anyway). So at a gun with boats over, the player sees `Start` or, when she is over herself, her own OCS line
+  (`OCS: return behind the line`), with its sound (`audio.md` §5); the recall is in the feed and the flags row.
 
 ### 9.2 Start line panel (from the warning signal until the boat starts)
 
@@ -333,9 +340,23 @@ cameras keep moving and every sound plays. Offline and online alike.
 
 ### 9.3 Line in the 3-D view
 
-The start line is drawn as a thin ribbon on the water between its ends: white from the warning signal, red on the
+The start line is drawn as a thin ribbon on the water between its ends: white from the first frame of the race (the
+boats' spawn, free sailing included, so a new player sees where the line is before the warning signal), red on the
 viewed boat's screen while she is over in the last minute, green after the gun until she has started, then hidden. The
-committee boat flies the flags of §9.1.
+committee boat and the pin are on the water from the first frame too; the committee boat flies the flags of §9.1.
+The boats spawn behind the line heading towards it (`race.md` §3.5), so the line is in the chase camera's view.
+
+### 9.4 Start limit
+
+A boat that has not started by the start limit (`race.md` §4.4: `start_limit_s` after the gun, 4:00 by default) is
+out: she scores `DNS` (or `DNC`) and becomes a ghost; an `OCS` boat is released onto the course instead and scores
+`OCS` (`race.md` §4.3). While the viewed boat has not started (and is not a ghost):
+
+- 2:00 and 1:00 before the limit, a yellow banner for 4 s: `Start within 2:00 or you are out (DNS)`, or when she is
+  `OCS`, `Return within 2:00 or you score OCS`.
+- At the limit, her `Ghosted` event (reason `DNS`) gives a red full-width banner for 10 s, `DID NOT START: no start
+  within 4:00`, and her race is over (§13.2: the results title says DID NOT START); another boat's gives a feed
+  line, `<boat> did not start`. Released `OCS`, she gets a red banner `Not returned: you score OCS` and races on.
 
 ## 10. Race position
 
@@ -518,6 +539,7 @@ Assists change what is shown, never the physics or the rules.
 | Wind shadow view | yes | no | no |
 | Sail hint | yes | no | no |
 | Shift meter | yes | yes | no |
+| Countdown beeps at 30, 20, 10, 5 to 1 s before the start (`audio.md` §5) | yes | yes | no |
 
 Online lobbies may force a maximum preset (e.g. ranked "Minimal"). The assist preset is independent of the instrument
 density of §16.1: an item shows only when both allow it.
@@ -538,6 +560,13 @@ density of §16.1: an item shows only when both allow it.
   `rules.md` §13.
 - Time to burn: a boat 100 m behind the line at 5 m/s heading straight at it, 30 s before the gun, shows `t_line` 20 s
   and `+10 s` to burn.
+- Banner priority (§9.1): on a gun tick with `Start`, the viewed boat's `BoatOCS` and `X` up, the banner is her OCS
+  line and the hud event `ocs` is raised; without her OCS it is `Start`; the recall is in the feed either way.
+- Start limit (§9.4): a boat not started gets the 2:00 and 1:00 banners at those race times (the OCS wording when
+  she is OCS), none once started; her `Ghosted` DNS event gives the full-width `DID NOT START` banner and another
+  boat's a feed line.
+- Start line (§9.3): on a quick race on the core the line is drawn white and the committee boat is on the water
+  from the first frame, and the line is in the chase camera's view at the spawn.
 - Density (§16.1): for each level and phase the table's items are shown and no others (at Race on a beat: no TWD,
   no VMG and SOG, no lap line, no ahead and behind; the leader gap, the true wind speed, the heel bar and the
   shift chip yes); the density key cycles

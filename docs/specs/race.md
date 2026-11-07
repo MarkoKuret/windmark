@@ -224,13 +224,19 @@ none, on an automatic grid:
 
 - Grid rows parallel to the start line on the pre-start side at distances `d_k = (4 + 3k)·L_max` from the line
   (`L_max` = the longest hull in the race), `k = 0, 1, 2, …`; slots along each row every `3·L_max`, the row
-  centred on the line midpoint and extended beyond the ends by at most half the line length. Slots closer than
-  `2·L_max` to a mark or obstruction are removed.
+  centred on the line midpoint and extended beyond the port end `A` by at most half the line length, not beyond
+  the starboard end `B` (the boats head for it, below). Slots closer than `2·L_max` to a mark or obstruction are
+  removed.
 - Slots are ordered by distance from the line, then by `u`. The boats are ordered by a Fisher–Yates shuffle of
   the entry list driven by the race seed (§10). Boat `k` of the shuffled order takes slot `k`; with more
   boats than slots, rows are added.
-- Heading: starboard tack at `twa = +100°` (a close reach), i.e. `ψ = wrap_2pi(TWD − 100°)` with the clean wind at
-  the slot. Speed: 60 % of the polar speed at that angle, so boats are sailing when they appear.
+- Heading: port tack at `twa = −60°` (a close reach), i.e. `ψ = wrap_2pi(TWD + 60°)` with the clean wind at the
+  slot: on a line square to the wind that is 30° towards the line and along it towards `B`, so every boat (the
+  slots run from beyond `A` to `B`) appears with the line ahead of her and in the chase camera's view (`hud.md`
+  §9.3, `cameras.md` §2) and sails towards it, not away. She is behind the line at the spawn and may cross it in
+  free sailing (no start rule applies before the last minute, §3.3). All boats are on the same tack and heading, so
+  neighbouring slots do not converge, and no rule but collisions applies before the warning signal. Speed: 60 % of
+  the polar speed at that angle, so boats are sailing when they appear.
 - Placement is `boat.md` §6.6 `reset(pos_x, pos_y, psi, v, front_sail, auto_trim)`: `front_sail` from the class's
   `start.front_sail` (`data_format.md` §3.7) unless the race says otherwise; `auto_trim` from the player's assist
   setting (always on for AI boats). At the same time the race layer sets the boat's `performance_scale`: 1.0 for

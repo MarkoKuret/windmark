@@ -1824,6 +1824,7 @@ func test_core_race() -> void:
 	var pen_ok := true
 	var feeds := {}
 	var closed := false
+	var finish_card := {}  # the player's finish card, caught while it shows (5 s, hud.md §13.1)
 	var events := []
 	h.hud_event.connect(func(k: String, d: Dictionary) -> void: events.append(k))
 	var n := 0
@@ -1842,6 +1843,8 @@ func test_core_race() -> void:
 				closed = true
 		if h.race.banner != null:
 			banners[h.race.banner.text] = true
+		if finish_card.is_empty() and h.race.card.get("kind", "") == "finish":
+			finish_card = h.race.card.duplicate()
 		for l in h.race.feed:
 			feeds[l.text] = true
 		var r := h.race
@@ -1904,8 +1907,9 @@ func test_core_race() -> void:
 	t.ok(radar_ok, "radar colours follow the core's pair records (%d pair ticks)" % pairs_seen)
 	t.ok(pen_ok, "penalty panel follows the core's pending penalties")
 	t.ok(bool(rb0["finished"]), "the boat finished")
-	t.ok(h.race.card.get("kind", "") == "finish" and h.race.race_over and h.race.end_reason == "finished",
-		"finish card and race over: %s" % str(h.race.card))
+	# the card lasts 5 s of race time; the other boat may finish later than that, so it is checked when it showed
+	t.ok(finish_card.get("kind", "") == "finish" and h.race.race_over and h.race.end_reason == "finished",
+		"finish card and race over: %s" % str(finish_card))
 	for i in RaceHudValues.CARD_TICKS:
 		sim.step()
 		h.tick(sim, 0)

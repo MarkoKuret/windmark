@@ -8,8 +8,6 @@ extends RefCounted
 ## node with the sail scene's `sea`, `sky`, `shadows`, `rig`, `boat_views` members works.
 
 const AA_MODES := ["off", "fxaa", "smaa"]
-## the old light preset names (`--sky=`), aliases of a time of day and conditions (Daylight.ALIASES)
-const PRESETS := ["clear", "fair", "hazy", "late"]
 const CONDITIONS := ["clear", "fair", "hazy", "overcast"]
 ## the time of day row's steps (h)
 const TIME_STEP := 0.5

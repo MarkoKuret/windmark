@@ -316,8 +316,7 @@ func table_rows() -> Array:
 		var g := "" if is_nan(float(row["gap"])) or float(row["gap"]) <= 0.0 else HudFormat.gap(row["gap"])
 		var pts := ""
 		if not is_nan(float(row["points"])):
-			var pv := float(row["points"])
-			pts = "%d" % int(pv) if fmod(pv, 1.0) == 0.0 else "%.1f" % pv
+			pts = HudFormat.points(float(row["points"]))
 		var skipper := "You" if b == r.own_boat else ""
 		var ai := str(row.get("ai", ""))
 		if skipper == "" and ai != "":
@@ -446,15 +445,6 @@ func _build_summary(lines: Array) -> void:
 		v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		v.custom_minimum_size = Vector2(160, 0)
 		summary_box.add_child(v)
-
-
-## The summary as text lines ("Label  value", tests)
-func summary_text() -> Array[String]:
-	var out: Array[String] = []
-	var c := summary_box.get_children()
-	for i in range(0, c.size() - 1, 2):
-		out.append("%s  %s" % [(c[i] as Label).text, (c[i + 1] as Label).text])
-	return out
 
 
 # ---- layout ----

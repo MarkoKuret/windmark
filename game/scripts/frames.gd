@@ -21,6 +21,11 @@ static func angle_diff(a: float, b: float) -> float:
 	return wrap_pi(a - b)
 
 
+## conventions.md §2: the (east, north) unit vector of a compass angle
+static func compass_vec(psi: float) -> Vector2:
+	return Vector2(sin(psi), cos(psi))
+
+
 ## conventions.md §2: compass angle of an (east, north) vector
 static func compass(vx: float, vy: float) -> float:
 	return wrap_2pi(atan2(vx, vy))
@@ -87,6 +92,12 @@ static func body_to_model(p: Vector3) -> Vector3:
 ## boat node transform for a pose (hull reference point at (pos_x, pos_y, z))
 static func boat_transform(pos_x: float, pos_y: float, z: float, psi: float, theta: float, phi: float) -> Transform3D:
 	return Transform3D(boat_basis(psi, theta, phi), enu_to_scene(pos_x, pos_y, z))
+
+
+## the rotation by `angle` about `axis` through the point `p` (p stays in place)
+static func about(p: Vector3, axis: Vector3, angle: float) -> Transform3D:
+	var b := Basis(axis, angle)
+	return Transform3D(b, p - b * p)
 
 
 ## smoothstep on [0, 1]

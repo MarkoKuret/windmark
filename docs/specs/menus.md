@@ -572,8 +572,8 @@ scene, then the next race or the menu.
   (§2), and when it closes the focus is back on the action it was on.
 - **Fit**: 1280 × 800 at every UI scale (80 % to 130 %) and the portrait capture window, every text inside the
   window (the table and summary may scroll); player-facing text has no em dashes.
-- **Fades.** Scene changes from the results (Race again, Change setup, Main menu), the pause menu (Restart, Quit
-  to menu) and the main menu (Start, Continue) fade to navy (`#0B1620`) over 0.35 s, change, and fade the new
+- **Fades.** Scene changes from the results (Race again, Change setup, Main menu), the pause menu (Restart, Main
+  menu) and the main menu (Start, Continue) fade to navy (`#0B1620`) over 0.35 s, change, and fade the new
   scene in over 0.45 s; the input is ignored while the screen is dark.
 - The results screen is for the player's quick races: not in free sail, the rules scenarios (`race.md` §14) or
   the menu's backdrop (`--watch`).

@@ -31,6 +31,10 @@ static func of(hud: Hud, ph: String) -> Array[String]:
 			else:
 				out.append_array(["shift", "bug_gap", "bug_ahead", "mark_eta", "bug_lap", "bug_gaps", "mark_brg", "hint",
 					"feed"])
+	if hud.race.free and not hud.race.active:
+		# hud.md §16.1: free sail's laid course, the leg rows without the race bug and the feed
+		for it in ["bug", "bug_gap", "bug_ahead", "bug_lap", "bug_gaps", "feed", "feed_own"]:
+			out.erase(it)
 	if not hud.shows("shift"):
 		out.erase("shift")
 	if not hud.shows("sail_hint"):

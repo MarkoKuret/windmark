@@ -87,7 +87,7 @@ static func blocks(hud: Hud) -> void:
 	hud.feed_block.size = Vector2(620, 170) * k
 	hud.feed_block.position = Vector2(sc.x - m.x - hud.feed_block.size.x, m.y)
 	# radar, bottom right
-	hud.radar.visible = hud.race.active
+	hud.radar.visible = hud.race.on_course()
 	hud.radar.compact = hud.density == Hud.Density.GLANCE
 	var d := 300.0 * k * (0.72 if hud.radar.compact else 1.0)
 	hud.radar.size = Vector2(d, d + (0.0 if hud.radar.compact else 30.0 * k))
@@ -102,7 +102,7 @@ static func blocks(hud: Hud) -> void:
 	place_lane(hud, k)
 	# the next mark tag: on the mark, or docked under the race bug without a camera
 	hud.next_panel.size = Vector2(330, 120) * k
-	hud.next_panel.visible = hud.race.active and hud.race.next_step > 0 and not hud.race.finished \
+	hud.next_panel.visible = hud.race.on_course() and hud.race.next_step >= 0 and not hud.race.finished \
 		and hud.text_of("next") != ""
 	hud.world.visible = hud.world_tags
 	if not hud.world_tags and hud.world_camera() != null:
@@ -242,7 +242,7 @@ static func portrait(hud: Hud, sc: Vector2, k: float, m: Vector2, its: Array[Str
 	var lane_h := place_lane(hud, kl)
 	# bottom row: instrument page left, compact radar right
 	var ps := HudPaint.page_size(hud) * k
-	hud.radar.visible = hud.race.active
+	hud.radar.visible = hud.race.on_course()
 	hud.radar.compact = true
 	var d := 300.0 * k * 0.72
 	hud.radar.size = Vector2(d, d)
@@ -265,7 +265,7 @@ static func portrait(hud: Hud, sc: Vector2, k: float, m: Vector2, its: Array[Str
 		hud.helm_notes.position.y - 8.0 * k - hud.feed_block.size.y)
 	# the next mark tag: on the mark, or docked under the alert lane without a camera
 	hud.next_panel.size = Vector2(330, 120) * k
-	hud.next_panel.visible = hud.race.active and hud.race.next_step > 0 and not hud.race.finished \
+	hud.next_panel.visible = hud.race.on_course() and hud.race.next_step >= 0 and not hud.race.finished \
 		and hud.text_of("next") != ""
 	if hud.next_panel.visible and hud.world_camera() != null:
 		var mp: Variant = hud.mark_screen()

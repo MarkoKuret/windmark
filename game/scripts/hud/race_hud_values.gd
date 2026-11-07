@@ -7,7 +7,9 @@ extends RefCounted
 ## hysteresis, gaps and splits, rules awareness messages, the penalty panel, protest and hail prompts, the radar
 ## colours, the event feed, banners and the results, and the race end of the player's own boat (§13.1 to §13.3: the
 ## finish card, when her race is over, the summary of her race). Timers count ticks, so the values are a function of the
-## sim's states and events. Without a race (FakeSim, free sailing) `active` is false and nothing else is set.
+## sim's states and events. Without a race (FakeSim, free sailing) `active` is false and nothing else is set, but
+## on free sail's laid course (courses.md §6.4, hud.md §7.2) `free` is true and the next mark part (§7, §4, §6,
+## §3.2) follows the free sail's progress (SimSource.free_course) as it follows the race.
 ## Player-facing text has no em dashes.
 
 ## hud_event(kind, data) for audio and anything else that follows the race: "signal" {kind, flag},
@@ -73,6 +75,8 @@ class Line:
 
 
 var active := false
+## hud.md §7.2: free sail on a laid course (no race): the next mark values only
+var free := false
 var boat := -1
 ## boat index -> display name / skipper / AI level ("" for humans); defaults "You" and "Boat n"
 var names := {}
@@ -288,6 +292,12 @@ func course() -> Dictionary:
 	return _course
 
 
+## Whether the course items show (the next mark, laylines, the course on the radar and the map): a race, or free
+## sail's laid course (hud.md §7.2).
+func on_course() -> bool:
+	return active or free
+
+
 ## Forget everything (a new sim or race).
 func reset() -> void:
 	var keep := [names, skippers, ai_levels, own_boat, dsq_pending, dsq_total, sail_numbers, boat_names]
@@ -312,6 +322,7 @@ func tick(sim: SimSource, b: int) -> void:
 		_sim = sim
 	if not sim.has_race():
 		active = false
+		_free_tick(sim, b)
 		return
 	if not active or _course.is_empty():
 		_course = sim.course()
@@ -350,6 +361,31 @@ func tick(sim: SimSource, b: int) -> void:
 		RaceHudEvents.events(self, sim, b)
 		_race_end(sim)
 		_timers()
+
+
+## hud.md §7.2: free sail on a laid course, the player's boat viewed: the next mark part from the free progress.
+func _free_tick(sim: SimSource, b: int) -> void:
+	var fc := sim.free_course()
+	if fc == null or fc.boat != b:
+		free = false
+		next_step = -1
+		return
+	if not free or _course.is_empty():
+		_course = sim.course()
+		_labels = sim.course_labels()
+		if _course.is_empty():
+			return
+	if b != boat:
+		_started_filters = false
+		boat = b
+	free = true
+	_tick += 1
+	_loa = sim.class_info(b).loa
+	started = true
+	finished = false
+	var s := sim.state(b)
+	_wind(sim, s)
+	RaceHudMarks.next_mark(self, sim, fc.record(), s)
 
 
 # ---- wind filters (clean wind at the boat, hud.md §3.2, §6, ai.md §3.3) ----

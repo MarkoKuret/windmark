@@ -184,7 +184,7 @@ func _build() -> void:
 	scale_bar = []
 	path_px = PackedVector2Array()
 	_rect(Rect2(Vector2.ZERO, size), Color(HudStyle.INK, SCRIM))
-	if values == null or not values.active:
+	if values == null or not values.on_course():
 		return
 	var crs := values.course()
 	var steps: Array = crs.get("steps", [])
@@ -217,7 +217,7 @@ func _build() -> void:
 		_l(path_px[i - 1], path_px[i], col, 2.0 * k if i == cur else hw)
 	# start and finish lines
 	var sp := values.step_points(0)
-	_line(sp, false, 1.0 if not values.started else 0.45)
+	_line(sp, false, 1.0 if not values.started or (values.free and values.next_step == 0) else 0.45)
 	if int(steps[last]["kind"]) == RaceText.Step.FINISH:
 		_line(values.step_points(last), true, 1.0 if cur == last else 0.45)
 	# rounding marks: the side of each (one per mark), the next step's in mark
@@ -421,6 +421,8 @@ func _header() -> void:
 func header_parts() -> Array[String]:
 	if values.finished:
 		return ["Finished"]
+	if values.free and values.next_step == 0:  # hud.md §7.2: free sail's start line, a step like the others
+		return ["Start", HudFormat.distance(values.next_dist)]
 	if not values.started:
 		return ["Start", HudFormat.distance(absf(values.line_dist))]
 	if values.next_step > 0:

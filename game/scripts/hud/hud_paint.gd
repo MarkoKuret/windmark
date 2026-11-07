@@ -157,7 +157,7 @@ static func _page_race(b: HudCanvas, h: Hud, data: bool) -> void:
 	divider(b, Vector2(430, 10), Vector2(430, 236))
 	var tx := 444.0
 	if data:
-		var reach := h.race.active and h.race.leg_type == "reach"
+		var reach := h.race.on_course() and h.race.leg_type == "reach"
 		caption(b, 444, 24, "VMC" if reach else "VMG", 556, "KN")
 		number(b, 556, 112, h.value_of("vmg_kn"), 52)
 		divider(b, Vector2(444, 150), Vector2(560, 150))
@@ -838,7 +838,7 @@ static func world(b: HudCanvas, h: Hud) -> void:
 		var d := 6.0 * k
 		b._pl(PackedVector2Array([p + Vector2(0, -d), p + Vector2(d, 0), p + Vector2(0, d), p + Vector2(-d, 0),
 			p + Vector2(0, -d)]), HudStyle.MARK, hw)
-	elif r.active and r.next_step > 0 and h.world_camera() != null and h.text_of("next") != "" \
+	elif r.on_course() and r.next_step >= 0 and h.world_camera() != null and h.text_of("next") != "" \
 			and h.current_camera_kind() == "chase":  # elsewhere the next-mark arrow points at it (hud.md §7.1)
 		var eta := "--:--" if is_nan(r.eta) else HudFormat.clock(r.eta)
 		edge_pointer(b, h, h.mark_world(), h.text_of("next").to_upper(), "%s · ETA %s" % [

@@ -1,7 +1,8 @@
 class_name PauseMenu
 extends CanvasLayer
 ## The in-race pause menu (menus.md §2, controls.md §7): Resume, Restart, Retire (a quick race until the player's race
-## is over: a second press within 3 s retires her), Settings, Quit to menu. Scene changes fade (SceneFade).
+## is over: a second press within 3 s retires her; Restart and Quit to menu ask the same way in that window),
+## Settings, Quit to menu. Scene changes fade (SceneFade).
 ##
 ## Instanced as a child of the sail scene, it follows the scene's own pause: the scene's `pause_menu` key pauses
 ## its SimRunner (`runner.paused`), the menu opens over it and holds the boat's controls (`controls.menu_open`);
@@ -11,10 +12,13 @@ extends CanvasLayer
 signal action_requested(action: String)
 
 const MAIN_MENU := "res://scenes/menu/main_menu.tscn"
-## menus.md §2: Retire asks again for this long
+## menus.md §2: Retire (and, while the race is on, Restart and Quit to menu) ask again for this long
 const RETIRE_CONFIRM_S := 3.0
 const RETIRE_TEXT := "Retire"
 const RETIRE_ASK := "Retire? Press again"
+## the items that ask, their plain text and the question (menus.md §2)
+const ITEM_TEXT := {"restart": "Restart", "retire": RETIRE_TEXT, "quit": "Quit to menu"}
+const ASK_TEXT := {"restart": "Restart? Press again", "retire": RETIRE_ASK, "quit": "Quit? Press again"}
 
 ## tests: false keeps restart and quit from changing scene (action_requested still fires)
 var act := true
@@ -30,8 +34,9 @@ var _card: PanelContainer
 var _list: VBoxContainer
 var _settings_card: PanelContainer
 var _was_paused := false
-## seconds left to confirm Retire, 0 when not asking
-var _retire_t := 0.0
+## the item asking ("" none) and the seconds left to confirm it, 0 when not asking
+var _ask_id := ""
+var _ask_t := 0.0
 
 
 func _ready() -> void:
@@ -70,6 +75,9 @@ func _ready() -> void:
 		b.name = e[1].replace(" ", "")
 		var id: String = e[0]
 		b.pressed.connect(func() -> void: _pressed(id))
+		b.focus_entered.connect(func() -> void:
+			if _ask_id != "" and _ask_id != id:
+				_ask("", false))  # moving to another item drops the question (menus.md §2)
 		_list.add_child(b)
 		buttons[id] = b
 
@@ -113,10 +121,10 @@ func _apply() -> void:
 
 
 func _process(dt: float) -> void:
-	if _retire_t > 0.0:
-		_retire_t -= dt
-		if _retire_t <= 0.0:
-			_retire_ask(false)
+	if _ask_t > 0.0:
+		_ask_t -= dt
+		if _ask_t <= 0.0:
+			_ask("", false)
 	var r := _host_runner()
 	if r == null:
 		return
@@ -143,7 +151,7 @@ func open() -> void:
 		_was_paused = true
 	_hold_controls(true)
 	_host_label(false)
-	_retire_ask(false)
+	_ask("", false)
 	buttons["retire"].visible = can_retire()
 	buttons["resume"].grab_focus.call_deferred()
 
@@ -153,9 +161,26 @@ func can_retire() -> bool:
 	return host != null and host.has_method("can_retire") and bool(host.call("can_retire"))
 
 
-func _retire_ask(on: bool) -> void:
-	_retire_t = RETIRE_CONFIRM_S if on else 0.0
-	buttons["retire"].text = (RETIRE_ASK if on else RETIRE_TEXT).to_upper()
+## `id` asks (its text becomes the question for RETIRE_CONFIRM_S), or nobody asks with `on` false.
+func _ask(id: String, on: bool) -> void:
+	_ask_id = id if on else ""
+	_ask_t = RETIRE_CONFIRM_S if on else 0.0
+	for k in ITEM_TEXT:
+		buttons[k].text = String(ASK_TEXT[k] if on and k == id else ITEM_TEXT[k]).to_upper()
+
+
+## The confirm step (menus.md §2): false on the first press (the item asks), true on the second within the time.
+func _confirmed(id: String) -> bool:
+	if _ask_id == id and _ask_t > 0.0:
+		_ask("", false)
+		return true
+	_ask(id, true)
+	return false
+
+
+## Restart and Quit to menu ask first while the player's race is on, the window of Retire (menus.md §2).
+func _asks_first() -> bool:
+	return can_retire()
 
 
 ## Closes the menu and resumes the host.
@@ -195,6 +220,8 @@ func _pressed(id: String) -> void:
 			_settings_card.visible = true
 			settings_panel.show_section(settings_panel.section, true)
 		"restart":
+			if _asks_first() and not _confirmed(id):
+				return
 			close()
 			action_requested.emit(id)
 			if act:
@@ -203,15 +230,15 @@ func _pressed(id: String) -> void:
 				elif host != null and host.has_method("reset_boat"):
 					host.reset_boat()
 		"retire":
-			if _retire_t <= 0.0:
-				_retire_ask(true)
+			if not _confirmed(id):
 				return
-			_retire_ask(false)
 			action_requested.emit(id)
 			if host != null and host.has_method("retire"):
 				host.call("retire")
 			close()
 		"quit":
+			if _asks_first() and not _confirmed(id):
+				return
 			close()
 			action_requested.emit(id)
 			if act:

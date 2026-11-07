@@ -318,7 +318,10 @@ A card with the heading `PAUSED` and the items, menu-item sized (§4).
 Items: **Resume** (the focus when it opens), **Restart** (the same session from its start), **Retire** (a quick race only, from the warning
 signal until the player's race is over, `race.md` §6.4: red, as a destructive action; the first press turns it into
 `Retire? Press again` for 3 s and a second press within them retires the boat and closes the menu), **Settings**,
-**Quit to menu**. `pause_menu` again resumes. Over the results screen (§5) it works the same, Retire hidden, and
+**Quit to menu**. While the player's race is on (the same window as Retire) **Restart** and **Quit to menu** ask
+the same way (`Restart? Press again`, `Quit? Press again`, 3 s), since either throws the race away; in free sail,
+before the warning signal and over the results screen they act at once. Only one item asks at a time (moving to
+another item or 3 s cancels the question). `pause_menu` again resumes. Over the results screen (§5) it works the same, Retire hidden, and
 Resume goes back to the results. While it is open the boat's controls are held as in `controls.md` §7 (held let-fly and
 hold-to-steer keys count as released). Settings changed here apply to the running scene when the settings
 screen closes.

@@ -1817,6 +1817,15 @@ func test_touches() -> void:
 	Settings.reset_current()
 
 
+## a stand-in sail scene whose race is on (menus.md §2: Retire shows, Restart and Quit to menu ask first)
+class _RaceHost extends Node:
+	func can_retire() -> bool:
+		return true
+
+	func retire() -> bool:
+		return true
+
+
 func test_pause_menu() -> void:
 	t.begin("pause menu over the sail scene")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
@@ -1888,5 +1897,29 @@ func test_pause_menu() -> void:
 	pm.open()
 	pm.buttons["quit"].pressed.emit()
 	t.ok(acts == ["restart", "quit"] and not pm.is_open, "restart and quit to menu requested: %s" % [acts])
+	# menus.md §2: while the player's race is on (the window of Retire) Restart and Quit to menu ask first
+	acts.clear()
+	var stub := _RaceHost.new()
+	root.add_child(stub)
+	pm.host = stub
+	pm.open()
+	pm.buttons["restart"].pressed.emit()
+	t.ok(pm.is_open and acts.is_empty() and pm.buttons["restart"].text == "RESTART? PRESS AGAIN",
+		"Restart in a race: the first press asks")
+	pm.buttons["quit"].pressed.emit()
+	t.ok(pm.is_open and acts.is_empty() and pm.buttons["quit"].text == "QUIT? PRESS AGAIN"
+		and pm.buttons["restart"].text == "RESTART", "another item asks instead, the first question dropped")
+	pm.buttons["quit"].pressed.emit()
+	t.ok(acts == ["quit"] and not pm.is_open, "the second press quits")
+	pm.open()
+	pm.buttons["restart"].pressed.emit()
+	pm._process(3.1)
+	t.ok(pm.buttons["restart"].text == "RESTART", "the question expires after 3 s")
+	pm.buttons["restart"].pressed.emit()
+	t.ok(pm.is_open and acts == ["quit"] and pm.buttons["restart"].text == "RESTART? PRESS AGAIN", "a later press asks again")
+	pm.buttons["restart"].pressed.emit()
+	t.ok(acts == ["quit", "restart"] and not pm.is_open, "the second press within 3 s restarts")
+	pm.host = sc
+	stub.queue_free()
 	sc.queue_free()
 	await process_frame

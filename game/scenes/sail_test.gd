@@ -44,6 +44,9 @@ extends Node3D
 ## on the same SeaModel the Sea draws (FakeSim.use_sea) and the Sea's clock follows the sim ticks.
 
 const PAUSE_MENU := "res://scenes/menu/pause_menu.tscn"
+## controls.md §2 reset_boat in a race: the first press asks, a second within this many seconds restarts
+const RESTART_CONFIRM_S := 3.0
+const MSG_RESTART_ASK := "Restart the race? Press %s again"
 const RESULTS_SCREEN := "res://scenes/menu/results_screen.gd"
 const SETTINGS_SCRIPT := "res://scripts/settings.gd"
 
@@ -94,6 +97,9 @@ var weather_settings := {}
 ## the pause menu of scenes/menu as a child (it applies the player's settings); without it, `apply_settings`
 ## applies them at start
 @export var with_pause_menu := true
+## the capture keys (clean pause, slow motion; controls.md §7) are live without the capture preset or a shot
+## script (`--capture-keys`)
+@export var capture_keys := false
 ## the results screen of scenes/menu (menus.md §5) in a quick race (not watching, not a scenario)
 @export var with_results := true
 @export var apply_settings := true
@@ -140,6 +146,8 @@ var boat_views: Array[BoatView] = []
 var boat_liveries: Array = []
 ## the results screen (menus.md §5), null without one
 var results: Node = null
+## seconds left in which a second `reset_boat` press restarts the race (controls.md §2), 0 when not asking
+var _restart_ask_t := 0.0
 ## the player's race is over and the camera has eased into the finish view (cameras.md §9.1)
 var _race_over_seen := false
 ## the session set-up to apply instead of GameSetup.next (tests); null: GameSetup.next when the menus wrote one
@@ -461,6 +469,8 @@ func _user_args() -> void:
 			ai_level = a.trim_prefix("--level=").to_lower()
 		elif a == "--speed-only":
 			ai_speed_only = true
+		elif a == "--capture-keys":
+			capture_keys = true
 		elif a == "--watch":
 			watch = true
 		elif a.begins_with("--venue="):
@@ -1055,6 +1065,7 @@ func step_frame(dt: float) -> void:
 		raw = raw.without_buttons()  # the look panel has the keys (hud.md §18); the sim keeps running
 	if shot != null or not is_nan(quit_at):
 		_shot_frame(raw)  # cameras.md §9.2
+	_restart_ask_t = maxf(_restart_ask_t - dt, 0.0)
 	_ui_actions(raw)
 	hud.pick_enabled = not runner.paused and not controls.text_focus  # not through the menu or chat (hud.md §16.4.1)
 	hud.map_enabled = hud.pick_enabled  # nor the map key (hud.md §8.1)
@@ -1217,8 +1228,11 @@ func _ui_actions(r: RawInput) -> void:
 		return
 	if not menu and r.was_pressed(&"hud_hide"):
 		hud.toggle_hidden()
-	if not menu and capture.handle(r):
-		_set_world_tags(capture.world_tags)
+	if not menu:
+		# the capture keys only with the capture preset, a shot script or --capture-keys (controls.md §7)
+		capture.keys = capture_keys or shot != null or Settings.current().capture_preset != "off"
+		if capture.handle(r):
+			_set_world_tags(capture.world_tags)
 	if r.was_pressed(&"pause_menu"):
 		# Esc closes the course map first (hud.md §8.1), then clears a selection (hud.md §16.4.1), then pauses
 		if runner.paused or not (hud.close_map() or hud.clear_selection()):
@@ -1227,7 +1241,14 @@ func _ui_actions(r: RawInput) -> void:
 	if r.was_pressed(&"screenshot"):
 		_screenshot()
 	if not menu and r.was_pressed(&"reset_boat"):
-		reset_boat()
+		# controls.md §2: a race asks first (a second press within RESTART_CONFIRM_S restarts it); free sailing and
+		# a rules scenario re-place at once
+		if on_core and race_mode and scenario_run == null and _restart_ask_t <= 0.0:
+			_restart_ask_t = RESTART_CONFIRM_S
+			controls.messages.append(MSG_RESTART_ASK % PlayerControls.key_text(&"reset_boat", "it"))
+		else:
+			_restart_ask_t = 0.0
+			reset_boat()
 	if can_spectate() and not controls.menu_open:
 		var n := sim.boat_count()
 		var before := viewed

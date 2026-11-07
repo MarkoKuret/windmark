@@ -596,6 +596,19 @@ func test_scene_flow() -> void:
 		sc.queue_free()
 		return
 	rs.act = false
+	# controls.md §2: in a race Backspace asks first; a second press within 3 s restarts it, a later one asks again
+	var sim0: Object = sc.get("sim")
+	_press(sc, &"reset_boat")
+	t.ok(sc.get("sim") == sim0 and hud.text_of("message").begins_with("Restart the race? Press "),
+		"Backspace once: a note, no restart: %s" % hud.text_of("message"))
+	_press(sc, &"reset_boat")
+	t.ok(sc.get("sim") != sim0, "Backspace again within 3 s: the race restarts")
+	var sim1: Object = sc.get("sim")
+	_press(sc, &"reset_boat")
+	for i in 200:  # 3.3 s
+		sc.call("step_frame", 1.0 / 60.0)
+	_press(sc, &"reset_boat")
+	t.ok(sc.get("sim") == sim1, "a press after 3 s asks again")
 	(sc.get("sim") as CoreSimSource).ai_take_over(0)  # an AI skipper sails the player's boat round the course
 	var frames := 0
 	while frames < 20000 and not hud.race.race_over:
@@ -654,6 +667,13 @@ func test_scene_flow() -> void:
 	GameSetup.next = null
 	sc2.queue_free()
 	await process_frame
+
+
+## one frame of the scene with `action` pressed
+func _press(sc: Node, action: StringName) -> void:
+	sc.set("scripted_input", RawInput.new().press(action))
+	sc.call("step_frame", 1.0 / 60.0)
+	sc.set("scripted_input", RawInput.new())
 
 
 func test_scene_retire() -> void:

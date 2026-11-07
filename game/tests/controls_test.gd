@@ -607,6 +607,11 @@ func test_capture_scene_fake() -> void:
 	pm.act = false
 	await process_frame
 	t.ok(_ticks_over(sc, 1.0) >= 19, "running")
+	# controls.md §7: without the capture preset (or a shot script) the capture keys do nothing
+	_frame_with(sc, [&"capture_pause", &"capture_slow"])
+	t.ok(_ticks_over(sc, 1.0) >= 19 and sc.capture.rate() == 1.0 and not sc.capture.frozen,
+		"without the capture preset the capture keys do nothing")
+	sc.capture_keys = true
 	_frame_with(sc, [&"capture_pause"])
 	await process_frame
 	var tick0: int = sc.sim.tick()

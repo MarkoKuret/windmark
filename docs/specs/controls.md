@@ -144,7 +144,8 @@ development keys outside the action table, not rebindable and not listed in the 
 the focus, Up, Down, Left, Right, Enter, Space and Esc are its own and the boat takes no keys (Esc gives them back,
 F9 closes it).
 The capture keys sit together on the bottom row (`,` slow motion, `.` clean pause, `/` world tags), next to `X`
-for the clip cameras; they have no gamepad binding (a capture is made at the keyboard).
+for the clip cameras; they have no gamepad binding (a capture is made at the keyboard). The two capture actions
+are live only while the capture preset is on (§7); `/` always works.
 
 **Free camera flying.** While the free camera is selected the boat's helm and sheet inputs fly it and the boat
 keeps its last `h_cmd` and `sheet_cmd` (a hold-to-steer key counts as released): `sheet_in` / `sheet_out` (W / S)
@@ -289,6 +290,9 @@ The options are saved per player in the settings file and set in the settings sc
     time, fading out over its last 0.4 s, also with the HUD hidden and in a clean pause; after that nothing is on
     screen for the rate, so the frames stay clean. The clean pause itself shows nothing. A restart (`reset_boat`,
     the pause menu) sets the rate back to ×1, ends a clean pause and clears the note without showing one.
+  - The two capture actions are **live only while the capture preset** (`menus.md` §3) is on, a shot script runs,
+    or the scene was started with `--capture-keys`; otherwise the keys do nothing, so a stray `.` never freezes a
+    race without a word on screen. `world_tags` works in every session.
   - Online both actions do nothing: the race runs on the server's clock.
   - A **shot script** (`cameras.md` §9.2, `--shot=<path>`) runs these actions, the HUD and world tags toggles, the
     camera choice and held boat actions at set times and quits by itself, for unattended capture.
@@ -318,11 +322,15 @@ The options are saved per player in the settings file and set in the settings sc
    after release; ↓ then moves it by no more than a frame's step at once, is at 0.142 after 1/3 s and at 0 after
    0.5 s; holding ← from the centre for 1 s gives −0.85 and full helm by 1.2 s; a key during the easing stops it;
    `helm_fine` for 0.5 s gives 0.1417; the same at 30, 60 and 144 fps within 0.5 %.
-9. Capture: offline, `capture_pause` stops the ticks with no menu and no `Paused` label while the camera still
+9. Capture: offline, the capture keys do nothing until the capture preset is on (or the scene allows them);
+   then `capture_pause` stops the ticks with no menu and no `Paused` label while the camera still
    orbits, and a second press continues from the same tick; `capture_slow` gives rates 0.5, 0.25 and 1 in turn,
    and 2 s of frames at ×0.5 step 20 ticks (±1), at ×0.25 10 ticks (±1); each `capture_slow` press shows its rate
    note, gone after 1.5 s of frames (also in a clean pause), and `capture_pause` shows none; `world_tags` hides the HUD's world
    tags and the course's water overlays and shows them again; online the two capture actions change nothing.
+11. Restart: in an offline race `reset_boat` once shows the restart note and restarts nothing; a second press
+    within 3 s restarts the race from the spawn; a press after 3 s asks again; free sailing re-places the boat at
+    once.
 10. Click or drag: a left press released after 3 px of motion is one pick at its point and orbits nothing; one
     dragged 20 px is a camera drag of the motion past the 8 px and picks nothing on release; in the race scene a
     click on a boat selects her (`hud.md` §16.4.1), Esc with a boat selected clears the selection and does not

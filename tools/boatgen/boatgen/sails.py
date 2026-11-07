@@ -134,15 +134,9 @@ class Sail:
             sh = load(name)
             if sh.get("kind") == "surface":     # a measured surface mapped onto the corners (sail_visuals.md 6.5)
                 from .kite_surface import sidecar_block as surface_block
-                from .sail_set import POLE, loft_place, sail_mode
-                sl = None
-                if boat is not None and sail_mode(boat, self.type) == POLE:
-                    from .kite_loft import sail_frame
-                    T, _, Lh, _ = sail_frame(self.P)
-                    lv = (self.P.reshape(-1, 3) - T) @ Lh
-                    sl = float(lv.max() - lv.min())
+                from .sail_set import loft_place
                 self._loft = (key, surface_block(self.P, name, sh, place=loft_place(boat, self) if boat is not None
-                                                 else None, sl=sl))
+                                                 else None))
             else:
                 from .sail_set import loft_place
                 self._loft = (key, sidecar_block(self.P, name, sh,

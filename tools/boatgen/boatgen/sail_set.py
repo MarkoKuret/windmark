@@ -100,8 +100,6 @@ TACK_REACH = 0.5        # 4.1: `tack_rise` fades out over this share of Sl from 
 LOFT_SIDE = 0.1         # 6.5: the lofted belly crosses to the other side as sin(beta + awa) passes +-this
 LOFT_EASE_MAX = 0.5     # 6.5: the largest turn of a lofted kite off the main, the jib and the mast, rad
 LOFT_STAY_MAX = 0.26    # 6.5: ... of a lofted kite on a pole, which also keeps off the forestay, rad (a last resort)
-POLE_RUN_RISE = 0.1     # 6.5: a lofted kite on a pole: the tack raised by this share of Sl on a run ...
-POLE_RUN_AWA = (np.radians(110.0), np.radians(60.0))   # ... from this |AWA| on, all of it this much further
 LOFT_EASE_STEPS = 12     # 6.5: steps of that turn's solve
 LOFT_FADE = (0.1, np.radians(100.0), np.radians(60.0))  # 6.5: |beta| over which the turn fades in from the
 #                         centreline, and from where and over how much it fades out round the bow
@@ -283,7 +281,6 @@ class SailSet:
             self.loft_awa = np.asarray(loft["awa"], dtype=np.float64)
             self.loft_shapes = np.asarray(loft["shapes"], dtype=np.float64).reshape(len(self.loft_awa), -1, 3)
         self.turn = 0.0
-        self.rise = 0.0     # 6.5: the tack raised on a pole (m), as last placed
 
     # ------------------------------------------------------------------ shape and placement (7, 6.1 to 6.4)
 
@@ -440,16 +437,6 @@ class SailSet:
         piv = s_t(self.tack)
         ax = s_t.R @ self.lh
         ax = ax / np.linalg.norm(ax)
-        self.rise = pole_run_rise(self.sl, awa) if self.mode == POLE else 0.0
-        if self.rise > 0.0:     # 6.5: the pole end up, the luff from the raised tack to the halyard
-            p2 = piv + UP * self.rise
-            ax2 = s_t(self.head) - p2
-            ax2 = ax2 / np.linalg.norm(ax2)
-            k = np.cross(ax, ax2)
-            sk = np.linalg.norm(k)
-            Rm = rot(k / sk, np.arctan2(sk, ax @ ax2)) if sk > 1e-12 else np.eye(3)
-            s_t = Xf(Rm, p2 - Rm @ piv) * s_t
-            piv, ax = p2, ax2
         loc = self.loft_local(awa, aws, beta)
         self.loc = loc
         wb = abs(wrap_pi(beta))     # the trim and the turn off the obstacles fade out where sgn(beta) flips
@@ -835,12 +822,6 @@ def sail_mode(boat, sail_type):
     if sail_type == "spinnaker_asym":
         return SPRIT
     return LUFF
-
-
-def pole_run_rise(sl, awa):
-    """6.5: how far a lofted kite's tack is raised on a pole at the apparent wind angle awa (m), Sl its luff extent."""
-    k = smoothstep01((abs(wrap_pi(awa)) - POLE_RUN_AWA[0]) / POLE_RUN_AWA[1])
-    return float(POLE_RUN_RISE * sl * k)
 
 
 def nominal_pole_angle(boat, sail_id, awa):

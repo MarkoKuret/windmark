@@ -68,11 +68,6 @@ constexpr float LOFT_SIDE = 0.1f;
 constexpr float LOFT_EASE_MAX = 0.5f;
 constexpr float LOFT_STAY_MAX = 0.26f;
 constexpr int LOFT_EASE_STEPS = 12;
-// §6.5 a lofted kite on a pole flies higher on a run: the tack raised by POLE_RUN_RISE of Sl, faded in from |AWA|
-// POLE_RUN_AWA0 over POLE_RUN_AWA1 (rad)
-constexpr float POLE_RUN_RISE = 0.1f;
-constexpr float POLE_RUN_AWA0 = 110.0f * 3.14159265f / 180.0f;
-constexpr float POLE_RUN_AWA1 = 60.0f * 3.14159265f / 180.0f;
 // §6.5 after its first step, the turn's solve looks only at vertices this many clearances near the worst
 constexpr float LOFT_NEAR = 2.0f;
 // §6.5 the turn keeps this many margins (horizontal, §7.4), so the true distance up by the head, where the sails
@@ -660,24 +655,8 @@ void SailShape::update_loft(int64_t phase, float progress, float beta, float gam
     ge = gamma;
     s_t = about(mast_step_, mast_axis_, ge);
   }
-  Vector3 piv = s_t.xform(tack_);
-  Vector3 ax = s_t.basis.xform(lh_).normalized();
-  // §6.5 on a pole the tack goes up on a run, the luff from the raised tack to the halyard
-  tack_up_ = 0.0f;
-  if (mode_ == POLE) {
-    tack_up_ = POLE_RUN_RISE * sl_ * smooth01((std::fabs(wrap_pi(awa)) - POLE_RUN_AWA0) / POLE_RUN_AWA1);
-    if (tack_up_ > 0.0f) {
-      const Vector3 p2 = piv + up_ * tack_up_;
-      const Vector3 ax2 = (s_t.xform(head_) - p2).normalized();
-      const Vector3 k = ax.cross(ax2);
-      const float sk = k.length();
-      Basis rm;
-      if (sk > 1e-12f) rm = Basis(k / sk, std::atan2(sk, ax.dot(ax2)));
-      s_t = Transform3D(rm, p2 - rm.xform(piv)) * s_t;
-      piv = p2;
-      ax = ax2;
-    }
-  }
+  const Vector3 piv = s_t.xform(tack_);
+  const Vector3 ax = s_t.basis.xform(lh_).normalized();
   // the measured shapes by the AWA (smoothstep between neighbours, held beyond the ends)
   const int m = static_cast<int>(loft_awa_.size());
   const float x = std::fabs(wrap_pi(awa));
@@ -1343,7 +1322,6 @@ void SailShape::_bind_methods() {
   ClassDB::bind_method(D_METHOD("set_backed_factor", "s_b"), &SailShape::set_backed_factor);
   ClassDB::bind_method(D_METHOD("get_twist_side"), &SailShape::get_twist_side);
   ClassDB::bind_method(D_METHOD("get_turn"), &SailShape::get_turn);
-  ClassDB::bind_method(D_METHOD("get_tack_rise"), &SailShape::get_tack_rise);
   ClassDB::bind_method(D_METHOD("is_loft"), &SailShape::is_loft);
   ClassDB::bind_method(D_METHOD("set_twist_side", "tl"), &SailShape::set_twist_side);
   ClassDB::bind_method(D_METHOD("frame"), &SailShape::frame);

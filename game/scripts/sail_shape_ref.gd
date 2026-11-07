@@ -74,11 +74,6 @@ const LOFT_SIDE := 0.1
 const LOFT_EASE_MAX := 0.5
 const LOFT_STAY_MAX := 0.26
 const LOFT_EASE_STEPS := 12
-## §6.5 a lofted kite on a pole flies higher on a run: the tack raised by POLE_RUN_RISE of Sl, faded in from |AWA|
-## POLE_RUN_AWA0 over POLE_RUN_AWA1 (rad)
-const POLE_RUN_RISE := 0.1
-const POLE_RUN_AWA0 := 110.0 * PI / 180.0
-const POLE_RUN_AWA1 := 60.0 * PI / 180.0
 ## §6.5 after its first step, the turn's solve looks only at vertices this many clearances near the worst; it keeps
 ## LOFT_MARGIN margins (horizontal, §7.4), so the true distance up by the head, where the sails lean, keeps one
 const LOFT_NEAR := 2.0
@@ -198,7 +193,6 @@ var _loft := PackedVector3Array()
 var loft_depth := 1.0
 var loft_trim := 0.0
 var _turn := 0.0      # §6.5 the turn about the luff of the last update, before the ease
-var _tack_up := 0.0   # §6.5 the tack raised on a pole (m), as last placed
 var _fa := 0.0        # §7.6 the flying shape's share this update (the main's stop weight)
 var _clew0 := Vector3.ZERO  # §7.6 the clew as placed, before the clearance push
 var _tack_d := PackedFloat32Array()  # §7.3 rest distance of each vertex from the tack (the tack pin)
@@ -691,21 +685,6 @@ func _update_loft(phase: int, progress: float, beta: float, gamma: float, shiver
 		s_t = _about(mast_step, mast_axis, ge)
 	var piv := s_t * tack
 	var ax := (s_t.basis * lh).normalized()
-	# §6.5 on a pole the tack goes up on a run, the luff from the raised tack to the halyard
-	_tack_up = 0.0
-	if mode == Mode.POLE:
-		_tack_up = POLE_RUN_RISE * sl * _smoothstep01((absf(_wrap_pi(awa)) - POLE_RUN_AWA0) / POLE_RUN_AWA1)
-		if _tack_up > 0.0:
-			var p2 := piv + up * _tack_up
-			var ax2 := (s_t * head - p2).normalized()
-			var k := ax.cross(ax2)
-			var sk := k.length()
-			var rm := Basis.IDENTITY
-			if sk > 1e-12:
-				rm = Basis(k / sk, atan2(sk, ax.dot(ax2)))
-			s_t = Transform3D(rm, p2 - rm * piv) * s_t
-			piv = p2
-			ax = ax2
 	# the measured shapes by the AWA (smoothstep between neighbours, held beyond the ends)
 	var m := _loft_awa.size()
 	var x := absf(_wrap_pi(awa))
@@ -875,10 +854,6 @@ func _loft_ease(beta: float, awa: float, s_t: Transform3D, piv: Vector3, ax: Vec
 func get_turn() -> float:
 	return _turn
 
-
-## §6.5 how far the tack is raised on a pole (m), as last placed.
-func get_tack_rise() -> float:
-	return _tack_up
 
 
 ## §4.1 the cloth projected forward (the corners held) and the tack raised, times the flying shape's share.

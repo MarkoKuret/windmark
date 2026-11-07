@@ -143,8 +143,7 @@ A kite shape file of `kind` `surface` is a complete measured flying shape instea
 `docs/specs/sail_visuals.md` §6.5 "The surface source"): the measured surface is resampled onto the class grid by
 stripe and girth share and mapped onto the class's corners (the tack and the head where the flat sail has them, the
 clew where the measured foot and leech, scaled by the class's, put it, the depth scaled with the chord); no fit, no
-section solve; then the reach's foot sag is partly lifted out (`foot_lift`) and, on a pole, each shape's head is
-eased by as much as the tack is raised on a run. The asymmetrics (wm7, wm10, wm12, wm16) fly the AC33 benchmark
+section solve; then the reach's foot sag is partly lifted out (`foot_lift`). The asymmetrics (wm7, wm10, wm12, wm16) fly the AC33 benchmark
 asymmetric (`data/sails/ac33_asym`), the symmetrics on a pole (wm9, wm21) the IACC series
 (`data/sails/iacc_sym_series`). `python3 -m boatgen.kite_surface ac33 <Spinnaker_high_twist_16deg.igs>` rewrites
 the AC33 file from its source geometry (DataShare, `docs/THIRD_PARTY.md`; read by `boatgen/iges.py`, nothing in it

@@ -107,12 +107,11 @@ class OnTheClass(unittest.TestCase):
         rows, cols = P.shape[:2]
         T, Ah, Lh, Nh = kite_loft.sail_frame(P)
         sh = kite_loft.load(name)
-        for spec, loc, ease in zip(sh["shapes"], blk["shapes"], blk["head_ease"]):
+        for spec, loc in zip(sh["shapes"], blk["shapes"]):
             L = np.asarray(loc).reshape(rows, cols, 3)
             Q = T + L[..., :1] * Ah + L[..., 1:2] * Lh + L[..., 2:] * Nh
             self.assertLess(np.linalg.norm(Q[0, 0] - P[0, 0]), 1e-4)        # the tack on its fitting
-            # the head on the luff axis, eased by the raised tack's share on a pole
-            self.assertLess(np.linalg.norm(Q[-1, 0] - (P[-1, 0] - Lh * ease)), 1e-3)
+            self.assertLess(np.linalg.norm(Q[-1, 0] - P[-1, 0]), 1e-4)      # the head at its halyard
             self.assertLess(np.ptp(Q[-1], axis=0).max(), 1e-4)              # a pointed head
             self.assertLess(abs(L[0, -1, 2]), 1e-4)                         # the clew in the rest plane
             self.assertGreater(L[rows // 3, cols // 2, 2], 0.0)             # the belly to port
@@ -127,9 +126,9 @@ class OnTheClass(unittest.TestCase):
         self.assertEqual(len(blk["clew"]), len(blk["awa"]))
         for c in blk["clew"]:
             self.assertTrue(0.0 <= c["sheet_off_bisector_deg"] <= 90.0)
-        # the outline: the class's foot and leech kept within 3 % along the cloth (on a shape with no foot lift and no
-        # eased head: lifting the foot's sag shortens it by about 4 %, easing the head the luff and the leech)
-        k = next(i for i, (f, e) in enumerate(zip(blk["foot_lift"], blk["head_ease"])) if f == 0.0 and e == 0.0)
+        # the outline: the class's foot and leech kept within 3 % along the cloth (on a shape with no foot lift:
+        # lifting the foot's sag shortens it by about 4 %)
+        k = blk["foot_lift"].index(0.0)
         Q0 = np.asarray(blk["shapes"][k]).reshape(rows, cols, 3)
         o, co = K.outline(Q0), K.outline(P)
         self.assertAlmostEqual(o["foot"] / co["foot"], 1.0, delta=0.03)
@@ -140,14 +139,10 @@ class OnTheClass(unittest.TestCase):
         blk = self.check("wm7", "kite", "ac33_asym")
         self.assertEqual(blk["depth"], [1.0, 1.1])
         self.assertEqual(blk["foot_lift"], [0.5, 0.0])
-        self.assertEqual(blk["head_ease"], [0.0, 0.0])
 
     def test_wm21(self):
         blk = self.check("wm21", "spin", "iacc_sym_series")
         self.assertEqual(blk["surface"], ["I", "II", "III", "IV", "V"])
-        # the head eased on a run, as far as the pole end goes up (0.1 Sl from AWA 170)
-        self.assertEqual(blk["head_ease"][:2], [0.0, 0.0])
-        self.assertGreater(blk["head_ease"][-1], 2.0)
 
     def test_foot_lift(self):
         # half the sag below the tack-clew line taken out on the foot, nothing above the lower quarter

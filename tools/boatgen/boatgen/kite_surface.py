@@ -285,18 +285,6 @@ def foot_lifted(L, f):
     return out
 
 
-def head_eased(L, P, rise):
-    """The local shape L with l scaled about the tack so its head comes |H - (T + up rise)| from the tack: the head
-    stays at the halyard when the tack is raised by `rise` (m) on a pole (sail_visuals.md 6.5)."""
-    if rise <= 0.0:
-        return L
-    T, H = P[0, 0], P[-1, 0]
-    want = float(np.linalg.norm(H - (T + np.array([0.0, 0.0, rise]))))
-    out = L.copy()
-    out[..., 1] *= want / L[-1, 0, 1]
-    return out
-
-
 def sheet_angle(L, place, awa):
     """The sheet's angle off the clew corner's bisector (rad, test 25's measure) of the local shape L set alone at its
     nominal trim for `awa` (`place(awa, loc)`: the placed grid and the sheet's lead)."""
@@ -305,24 +293,20 @@ def sheet_angle(L, place, awa):
     return clew_angle(G, lead)
 
 
-def sidecar_block(P, name, shape=None, place=None, sl=None):
+def sidecar_block(P, name, shape=None, place=None):
     """The sidecar's `loft` block of a kite whose shape file is a surface (sail_visuals.md 6.5): as kite_loft's
-    (`awa`, `shapes` per AWA in the sail frame, grid order) plus the outlines it was mapped between, the two smooth
-    changes (the foot lift; the head eased on a kite on a pole: `sl` its luff extent, else None) and, with `place`
-    (as kite_loft.loft takes it), the sheet's angle off the clew's bisector at each AWA's nominal trim."""
-    from .sail_set import pole_run_rise
+    (`awa`, `shapes` per AWA in the sail frame, grid order) plus the outlines it was mapped between, the foot lift
+    and, with `place` (as kite_loft.loft takes it), the sheet's angle off the clew's bisector at each AWA's nominal
+    trim."""
     shape = shape or load(name)
     rows, cols = P.shape[:2]
     grids = {}
-    shapes, clew, eased = [], [], []
+    shapes, clew = [], []
     for s in shape["shapes"]:
         if s["surface"] not in grids:
             grids[s["surface"]] = surface_grid(shape["surfaces"][s["surface"]])
         L = class_shape(grids[s["surface"]], P, s["depth"]).reshape(rows, cols, 3)
         L = foot_lifted(L, s["foot_lift"])
-        rise = pole_run_rise(sl, s["awa"]) if sl is not None else 0.0
-        L = head_eased(L, P, rise)
-        eased.append(round(float(L.shape and (np.linalg.norm(P[-1, 0] - P[0, 0]) - L[-1, 0, 1])), 4))
         if place is not None:
             clew.append({"sheet_off_bisector_deg": round(math.degrees(sheet_angle(L, place, s["awa"])), 2)})
         shapes.append(L.reshape(-1, 3))
@@ -340,7 +324,6 @@ def sidecar_block(P, name, shape=None, place=None, sl=None):
             "depth": [s["depth"] for s in shape["shapes"]],
             "surface": [s["surface"] for s in shape["shapes"]],
             "foot_lift": [s["foot_lift"] for s in shape["shapes"]],
-            "head_ease": eased,
             "clew": clew,
             "shapes": [np.round(s, 5).tolist() for s in shapes]}
 

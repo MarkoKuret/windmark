@@ -1,11 +1,11 @@
 ---
 id: WM-206
 title: 'Loading: a loading line on the navy fade, shaders warmed before the fade-in'
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-07 18:47'
-updated_date: '2026-11-07 19:37'
+updated_date: '2026-11-08 15:20'
 labels:
   - polish
 dependencies:
@@ -23,11 +23,11 @@ Start race, Race again and Main menu each freeze on a navy screen for about 1.2 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 A loading line shows when the build takes longer than 0.3 s
-- [ ] #2 No first-frame shader stutter after the fade-in
+- [x] #2 No first-frame shader stutter after the fade-in
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Loading line (menus.md §5): SceneFade draws the line on the navy two frames before the change when the last build of that scene this session took over 0.3 s or it has not been built yet; Setting up <venue> for a race or restart, the venue name for free sail, Setting up the scenario, Back to the menu. menus_test checks it. Warm-up: ShaderWarmup puts a tiny copy of every new mesh and shader combination in front of its camera for 2 frames under the opaque navy; the navy holds until the mesh, surface and draw pipeline counters stop rising (3 frames to 1 s). AC 2 needs a windowed check (headless renders nothing): godot --path game -- --fade-log, Start race, Race again, Main menu; in_pipelines draw should read 0.
+Owner's windowed check 2026-11-08 (Apple M5, --fade-log): Start race, Main menu, Race again, Main menu all in_pipelines.draw 0; warm-up 3-4 frames, 52-84 ms; build 329-499 ms behind the line.
 <!-- SECTION:NOTES:END -->

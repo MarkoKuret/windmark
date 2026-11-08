@@ -448,7 +448,7 @@ tests 21 and 22: the native `SheetRopes` against `SheetRopesRef` and against God
 wm12 sheets from the clew to the lead and the drum, sag by load, the lazy sheet on the deck, a tack, a sail down,
 the kite's sheet, lazy sheet and tack line; the level switch with its hysteresis, the livery on every level and the
 moving parts; the rope materials by function, baked and procedural; and the cost per boat. `tests/ropes_test.gd`
-(run by the same script) runs test 29: every class sailed on the core through a kite hoist, the kite upwind, a gybe,
+(run by the same script) runs test 30: every class sailed on the core through a kite hoist, the kite upwind, a gybe,
 let fly, an over-sheet, a drop and a tack, every line's rings measured each frame for kinks, jumps, stretched
 segments and NaNs (`-- probe` prints the numbers without the limits). `tests/ropes_preview_dump.gd -- <tag>` then
 `tests/ropes_preview.py before after` set the ropes of two builds side by side through those moments, into

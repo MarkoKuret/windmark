@@ -40,6 +40,8 @@ constexpr double ROUTE_UNDER = 0.1;  // m above the straight line from which an 
 constexpr double ROUTE_UNDER_FADE = 0.2;  // m over which it fades out
 constexpr double ROUTE_OPEN = 0.05;  // rad short of PI between the ends' angles from which a route runs straight
 constexpr double ROUTE_OPEN_FADE = 0.3;  // rad before that over which its waypoints ease onto the straight line
+constexpr double ROUTE_ASTERN_FADE = 0.8;  // rad before that, for the start dead astern of the pivot
+constexpr double ROUTE_NEAR = 0.2;  // m in plan from the pivot (and its offset) within which a route runs straight
 
 // Godot's octahedral normal encoding (Vector3::octahedron_encode) as the mesh stores it: two 16-bit units.
 inline void oct16(const Vector3& v, uint16_t out[2]) {
@@ -257,7 +259,10 @@ void SheetRopes::update(const PackedVector3Array& starts, const PackedVector3Arr
         for (int j = 1; j + 1 < n; ++j) {
           const float u = std::min(std::max((std::fabs(s - c[j]) - 2.0f * hs) / (2.0f * hs), 0.0f), 1.0f);
           const Vector3 da = p[j] - p[j - 1], db = p[j + 1] - p[j];
-          const float tn = da.length_squared() > 1e-12f && db.length_squared() > 1e-12f ? da.angle_to(db) : 0.0f;
+          // (a turn between two legs either side of it, not within a cluster of waypoints closer than a quarter
+          // spacing: those are points eased onto an end, not a wrap)
+          const float q2 = 0.0625f * hs * hs;
+          const float tn = da.length_squared() > q2 && db.length_squared() > q2 ? da.angle_to(db) : 0.0f;
           const float v = std::min(std::max((tn - ROPE_WRAP_LO) / (ROPE_WRAP_HI - ROPE_WRAP_LO), 0.0f), 1.0f);
           wrap = std::max(wrap, (1.0f - u * u * (3.0f - 2.0f * u)) * v * v * (3.0f - 2.0f * v));
         }
@@ -516,11 +521,23 @@ PackedVector3Array SheetRopes::route(const Vector3& a, const Vector3& b, const V
   const double ox = pivot.x, oz = pivot.z;
   auto theta = [&](double x, double z) { return std::atan2(sg * (x - ox), z - oz); };
   const double ta = theta(a.x, a.z), tb = theta(b.x, b.z);
-  if (std::fabs(tb - ta) >= PI_D - ROUTE_OPEN || std::fabs(tb - ta) < 1e-9) return out;
-  // toward that limit the waypoints ease onto the straight line (no pop between a route and none)
-  const double ov = std::min(std::max((std::fabs(tb - ta) - (PI_D - ROUTE_OPEN - ROUTE_OPEN_FADE)) / ROUTE_OPEN_FADE,
+  // a route runs straight from ROUTE_OPEN short of PI between the ends' angles, or with the start that close to dead
+  // astern of the pivot (a pole's end by the mast: its angle flips from PI to -PI there); toward either the waypoints
+  // ease onto the straight line (no pop between a route and none)
+  const double wide = std::max(std::fabs(tb - ta), std::fabs(ta));
+  if (wide >= PI_D - ROUTE_OPEN || std::fabs(tb - ta) < 1e-9) return out;
+  const double ow = std::min(std::max((std::fabs(tb - ta) - (PI_D - ROUTE_OPEN - ROUTE_OPEN_FADE)) / ROUTE_OPEN_FADE,
                                       0.0), 1.0);
-  const double open = ov * ov * (3.0 - 2.0 * ov);
+  const double oa = std::min(std::max((std::fabs(ta) - (PI_D - ROUTE_OPEN - ROUTE_ASTERN_FADE)) / ROUTE_ASTERN_FADE,
+                                      0.0), 1.0);
+  const double ov = std::max(ow, oa);
+  // nor with the start by the pivot, where its angle is no guide (a pole's end at the mast): straight within
+  // ROUTE_NEAR and the pivot's offset from the centreline of it in plan, easing in over as much again
+  const double near = std::hypot(double(a.x) - ox, double(a.z) - oz);
+  const double rn = ROUTE_NEAR + std::fabs(ox);  // the pivot's own offset from the centreline more
+  if (near <= rn) return out;
+  const double nv = std::min(std::max((2.0 * rn - near) / rn, 0.0), 1.0);
+  const double open = std::max(ov * ov * (3.0 - 2.0 * ov), nv * nv * (3.0 - 2.0 * nv));
   const double tlo = std::min(ta, tb), thi = std::max(ta, tb);
   const double cx = double(b.x) - a.x, cz = double(b.z) - a.z;
   const double so = cross2(cx, cz, ox - a.x, oz - a.z) >= 0.0 ? 1.0 : -1.0;  // the pivot's side of the chord
@@ -647,21 +664,23 @@ PackedVector3Array SheetRopes::route(const Vector3& a, const Vector3& b, const V
     wx[i] += nx * push;
     wz[i] += nz * push;
   }
+  // eased toward the chord by `open`, then the heights along the chain as it ends up
+  if (open > 0.0) {
+    for (size_t i = 1; i + 1 < ch.size(); ++i) {
+      const double g = std::min(
+          std::max(((wx[i] - a.x) * cx + (wz[i] - a.z) * cz) / std::max(cx * cx + cz * cz, 1e-12), 0.0), 1.0);
+      wx[i] += (a.x + cx * g - wx[i]) * open;
+      wz[i] += (a.z + cz * g - wz[i]) * open;
+    }
+  }
   std::vector<double> cl(ch.size(), 0.0);
   for (size_t i = 1; i < ch.size(); ++i) cl[i] = cl[i - 1] + std::hypot(wx[i] - wx[i - 1], wz[i] - wz[i - 1]);
   const double tot = std::max(cl.back(), 1e-9);
   out.resize(static_cast<int64_t>(ch.size()) - 2);
   for (size_t i = 1; i + 1 < ch.size(); ++i) {
     const double f = cl[i] / tot;
-    double px = wx[i], pz = wz[i];
-    if (open > 0.0) {
-      const double g = std::min(std::max(((px - a.x) * cx + (pz - a.z) * cz) / std::max(cx * cx + cz * cz, 1e-12), 0.0),
-                                1.0);
-      px += (a.x + cx * g - px) * open;
-      pz += (a.z + cz * g - pz) * open;
-    }
-    out.set(static_cast<int64_t>(i) - 1, Vector3(static_cast<float>(px), static_cast<float>(a.y + (b.y - a.y) * f),
-                                                 static_cast<float>(pz)));
+    out.set(static_cast<int64_t>(i) - 1, Vector3(static_cast<float>(wx[i]), static_cast<float>(a.y + (b.y - a.y) * f),
+                                                 static_cast<float>(wz[i])));
   }
   return out;
 }

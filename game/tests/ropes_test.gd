@@ -1,6 +1,6 @@
 extends SceneTree
 ## Headless sweep of the running sheets through their edge cases (docs/specs/sail_visuals.md §11.3 "Rope", §12 test
-## 29): every class sailed on the core through a kite hoist, the kite held upwind with its clew flogging, a gybe, let
+## 30): every class sailed on the core through a kite hoist, the kite held upwind with its clew flogging, a gybe, let
 ## fly and an over-sheet, the drop and a tack, drawn at 60 frames a second as the scene does, and every line's
 ## rings measured each frame: the largest bend between neighbouring segments (a kink or a zig-zag), the largest
 ## move of a ring beyond what its ends make it move (a jump), segments stretched or squashed against the rope's
@@ -14,7 +14,7 @@ extends SceneTree
 const KNOT := 1852.0 / 3600.0
 const FPS := 60.0
 const CLASSES := ["wm7", "wm9", "wm10", "wm12", "wm16", "wm21"]
-## limits (§12 test 29), sailing (the kite upwind, a gybe, let fly, an over-sheet, a tack) and through a sail change
+## limits (§12 test 30), sailing (the kite upwind, a gybe, let fly, an over-sheet, a tack) and through a sail change
 ## (a hoist, a drop: the sails themselves jump, a clew dives under the deck): the bend between neighbouring segments
 ## away from a contact (deg), the jump of a ring beyond its ends' (m a frame, times the class scale s), a segment
 ## against the run's mean spacing
@@ -262,9 +262,10 @@ static func _rings(sh: BoatSheets) -> Array:
 	return out
 
 
-## The per-frame measures of every shown line (sail_visuals.md §12 test 29). A bend at a ring within a ring spacing
+## The per-frame measures of every shown line (sail_visuals.md §12 test 30). A bend at a ring within a ring spacing
 ## (in plan) of one of the line's waypoints is its contact with an obstacle (round the forestay, the mast, the boom
-## end) and is not a kink, nor is a bend between segments shorter than 0.15 m; a frame in which a line's start jumps more than SheetRopes' snap share of the run (the sail
+## end) and is not a kink, nor is a bend between segments shorter than 0.15 m (nor a segment across a contact
+## measured against the spacing: it cuts the corner); a frame in which a line's start jumps more than SheetRopes' snap share of the run (the sail
 ## itself jumped) is counted, and its jump not measured.
 class Metrics:
 	const SNAP := 0.3
@@ -345,6 +346,12 @@ class Metrics:
 					var sl := pts[k].distance_to(pts[k - 1])
 					if absf(sl - mean) < SEG_ABS:
 						continue  # within a few cm of the spacing (a short line, the start lifted onto the deck)
+					var across := false  # the chord across a contact (round the forestay) is short by its corner
+					for w in wl:
+						across = across or (w as Vector2).distance_to(Vector2(pts[k].x, pts[k].z)) <= mean \
+							or (w as Vector2).distance_to(Vector2(pts[k - 1].x, pts[k - 1].z)) <= mean
+					if across:
+						continue
 					r["seg_hi"] = maxf(r["seg_hi"], sl / mean)
 					r["seg_lo"] = minf(r["seg_lo"], sl / mean)
 				# jumps beyond the ends: a ring's move less the move its place between the ends would make

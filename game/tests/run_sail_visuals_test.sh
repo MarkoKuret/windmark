@@ -62,7 +62,7 @@ if [ $rc -ne 0 ] || grep -qE "SCRIPT ERROR|^ERROR|^WARNING|Parse Error" "$log"; 
 fi
 echo "sheets and LOD test passed"
 
-# the ropes through their edge cases on every class (sail_visuals.md §11.3 "Rope", test 29)
+# the ropes through their edge cases on every class (sail_visuals.md §11.3 "Rope", test 30)
 log="$here/generated/ropes_test.log"
 set +e
 "$godot" --headless --path "$here" -s res://tests/ropes_test.gd >"$log" 2>&1

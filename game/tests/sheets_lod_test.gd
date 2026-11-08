@@ -485,6 +485,9 @@ func _routes(id: String) -> void:
 	if not t.ok(kite_i >= 0 and sh != null and not deck.is_empty(), "%s has a kite, sheets and a deck" % id):
 		bv.queue_free()
 		return
+	# the sweep jumps between steady configs: the kite's turn not rate-limited (§6.5), or 2 frames after a jump the
+	# kite is still turning and its clew passes inboard of the jib's leech
+	bv.turn_rate_limit = false
 	var r := {"n": 0, "near": INF, "near_at": "", "cross": 0, "first": "", "deep": INF, "deep_at": "", "under": 0,
 		"under_first": "", "par": 0.0, "par_n": 0, "routed": 0}
 	var t0 := Time.get_ticks_msec()
@@ -515,6 +518,7 @@ func _routes(id: String) -> void:
 	if ref != null:
 		t.ok(r["par_n"] > 0 and r["par"] < 1e-3, "native and reference routes agree within %.6f m over %d configs" % [
 			r["par"], r["par_n"]])
+	bv.turn_rate_limit = true  # sailed through from here: the kite turns as in the scene
 	# continuity: the kite sheeted from 60 % to 130 % of its optimum over 2 s, the main eased 20 %, the jib up
 	var kite: BoatView.SailPart = null
 	for sp in bv.sail_parts:

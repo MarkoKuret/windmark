@@ -45,6 +45,11 @@ const ROUTE_UNDER_FADE := 0.2
 ## waypoints ease onto the straight line
 const ROUTE_OPEN := 0.05
 const ROUTE_OPEN_FADE := 0.3
+## rad before the start's limit dead astern of the pivot over which its route's waypoints ease onto the straight line
+const ROUTE_ASTERN_FADE := 0.8
+## m in plan from the pivot (and its offset from the centreline more) within which the start's route runs straight
+## (its angle is no guide there)
+const ROUTE_NEAR := 0.2
 ## the binormal sign of the tube: cross(normal, along) points against the way round (+v)
 const TANGENT_SIGN := -1.0
 
@@ -226,7 +231,9 @@ func update(starts: PackedVector3Array, ways: PackedVector3Array, drive: PackedF
 					var u := clampf((absf(s - c[j]) - 2.0 * hs) / (2.0 * hs), 0.0, 1.0)
 					var da := p[j] - p[j - 1]
 					var db := p[j + 1] - p[j]
-					var tn := da.angle_to(db) if da.length_squared() > 1e-12 and db.length_squared() > 1e-12 else 0.0
+					# (not within a cluster of waypoints closer than a quarter spacing: points eased onto an end)
+					var q2 := 0.0625 * hs * hs
+					var tn := da.angle_to(db) if da.length_squared() > q2 and db.length_squared() > q2 else 0.0
 					var v := clampf((tn - ROPE_WRAP_LO) / (ROPE_WRAP_HI - ROPE_WRAP_LO), 0.0, 1.0)
 					wrap = maxf(wrap, (1.0 - u * u * (3.0 - 2.0 * u)) * v * v * (3.0 - 2.0 * v))
 				bear[k] = wrap
@@ -486,11 +493,21 @@ func route(a: Vector3, b: Vector3, pivot: Vector3, side: float, obstacles: Array
 	var sg := 1.0 if side >= 0.0 else -1.0
 	var ta := atan2(sg * (a.x - pivot.x), a.z - pivot.z)
 	var tb := atan2(sg * (b.x - pivot.x), b.z - pivot.z)
-	if absf(tb - ta) >= PI - ROUTE_OPEN or absf(tb - ta) < 1e-9:
+	# straight from ROUTE_OPEN short of PI between the ends' angles, or with the start that close to dead astern of the
+	# pivot (its angle flips from PI to -PI there); toward either the waypoints ease onto the straight line
+	var wide := maxf(absf(tb - ta), absf(ta))
+	if wide >= PI - ROUTE_OPEN or absf(tb - ta) < 1e-9:
 		return out
-	# toward that limit the waypoints ease onto the straight line (no pop between a route and none)
-	var ov := clampf((absf(tb - ta) - (PI - ROUTE_OPEN - ROUTE_OPEN_FADE)) / ROUTE_OPEN_FADE, 0.0, 1.0)
-	var open := ov * ov * (3.0 - 2.0 * ov)
+	var ow := clampf((absf(tb - ta) - (PI - ROUTE_OPEN - ROUTE_OPEN_FADE)) / ROUTE_OPEN_FADE, 0.0, 1.0)
+	var oa := clampf((absf(ta) - (PI - ROUTE_OPEN - ROUTE_ASTERN_FADE)) / ROUTE_ASTERN_FADE, 0.0, 1.0)
+	var ov := maxf(ow, oa)
+	# nor with the start by the pivot, where its angle is no guide: straight within ROUTE_NEAR, easing in over as much
+	var near := Vector2(a.x - pivot.x, a.z - pivot.z).length()
+	var rn := ROUTE_NEAR + absf(pivot.x)  # the pivot's own offset from the centreline more
+	if near <= rn:
+		return out
+	var nv := clampf((2.0 * rn - near) / rn, 0.0, 1.0)
+	var open := maxf(ov * ov * (3.0 - 2.0 * ov), nv * nv * (3.0 - 2.0 * nv))
 	var tlo := minf(ta, tb)
 	var thi := maxf(ta, tb)
 	var cx := b.x - a.x
@@ -612,18 +629,18 @@ func route(a: Vector3, b: Vector3, pivot: Vector3, side: float, obstacles: Array
 		var push: float = (float(ch[i][3]) + reach * sin(0.5 * ae)) / maxf(cos(0.5 * al), 0.3)
 		wx[i] += nx * push
 		wz[i] += nz * push
+	# eased toward the chord by `open`, then the heights along the chain as it ends up
+	if open > 0.0:
+		for i in range(1, ch.size() - 1):
+			var gg := clampf(((wx[i] - a.x) * cx + (wz[i] - a.z) * cz) / maxf(cx * cx + cz * cz, 1e-12), 0.0, 1.0)
+			wx[i] += (a.x + cx * gg - wx[i]) * open
+			wz[i] += (a.z + cz * gg - wz[i]) * open
 	var cl := PackedFloat64Array([0.0])
 	for i in range(1, ch.size()):
 		cl.append(cl[i - 1] + Vector2(wx[i] - wx[i - 1], wz[i] - wz[i - 1]).length())
 	var tot := maxf(cl[ch.size() - 1], 1e-9)
 	for i in range(1, ch.size() - 1):
-		var px := wx[i]
-		var pz := wz[i]
-		if open > 0.0:
-			var gg := clampf(((px - a.x) * cx + (pz - a.z) * cz) / maxf(cx * cx + cz * cz, 1e-12), 0.0, 1.0)
-			px += (a.x + cx * gg - px) * open
-			pz += (a.z + cz * gg - pz) * open
-		out.append(Vector3(px, a.y + (b.y - a.y) * cl[i] / tot, pz))
+		out.append(Vector3(wx[i], a.y + (b.y - a.y) * cl[i] / tot, wz[i]))
 	return out
 
 

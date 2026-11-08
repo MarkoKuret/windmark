@@ -2,7 +2,8 @@
 // its flying-sail lines): each line a rope tube from a moving start (the placed clew or tack) through an optional
 // waypoint to a fixed anchor (the lead block or the sprit end), then the lead run to the winch and the fixed turns on
 // the drum and the tail; every run hangs as a parabola along gravity with a sag from its tension, swings and whips as
-// the sail flogs, and never dips below the class's deck height field. Written straight into the mesh surface.
+// the sail flogs, and never dips below the class's deck height field; the free run's rings move as a damped rope
+// guided by that hanging shape (§11.3 "Rope"). Written straight into the mesh surface.
 // Presentation only. game/scripts/sheet_ropes_ref.gd is the GDScript reference with the same calls (tests compare
 // the two); keep them in step. `route` lays a flying sail's line outside the sails, the boom and the rail (the taut
 // string of §11.3 "Outside route"); `build_deck` builds the class's deck height field from its meshes (§11.3 "Deck").
@@ -34,8 +35,10 @@ class SheetRopes : public godot::RefCounted {
   static constexpr int MAX_WAYS = 16;
 
   bool configure(const godot::Dictionary& params);
+  // `dt` the time since the last update (s): the free runs move as ropes (§11.3 "Rope"); dt <= 0 lays every line
+  // on its hanging shape at once (a new line, a level change, a test)
   void update(const godot::PackedVector3Array& starts, const godot::PackedVector3Array& ways,
-              const godot::PackedFloat32Array& drive, const godot::Vector3& gravity);
+              const godot::PackedFloat32Array& drive, const godot::Vector3& gravity, double dt = 0.0);
 
   int64_t get_line_count() const { return static_cast<int64_t>(lines_.size()); }
   int64_t get_vertex_count() const { return nv_; }
@@ -47,6 +50,8 @@ class SheetRopes : public godot::RefCounted {
   godot::PackedVector2Array uvs() const;
   // the centreline of a line (its rings), for the tests
   godot::PackedVector3Array centre(int64_t line) const;
+  // the hanging shape of a line's free run as last updated (§11.3 "Rope"), for the tests
+  godot::PackedVector3Array hanging(int64_t line) const;
   // the deck height (model up) at (x, z), -1e9 off the deck
   double deck_height(double x, double z) const;
   // §11.3 "Outside route": the waypoints of the taut string from `a` to `b` round the obstacles on side `side`
@@ -56,8 +61,10 @@ class SheetRopes : public godot::RefCounted {
                                   double side, const godot::Array& obstacles, double spacing, int64_t max_ways) const;
   // §11.3 "Deck": the deck height field from `surfaces` = [{positions, indices, cap}] in model axes (cap < 0: deck,
   // else a fitting counted where it stands at most `cap` above the deck), on a grid of `cell`, the skirt `skirt`
-  // cells out over the hull side, widened by `dilate` cells. {heights, origin, cell, nx, nz, max, edge_lo, edge_hi}
-  godot::Dictionary build_deck(const godot::Array& surfaces, double cell, int64_t skirt, int64_t dilate) const;
+  // cells out over the hull side, then `fall` more cells falling DECK_FALL m per m (the hull side), widened by
+  // `dilate` cells. {heights, origin, cell, nx, nz, max, edge_lo, edge_hi}
+  godot::Dictionary build_deck(const godot::Array& surfaces, double cell, int64_t skirt, int64_t dilate,
+                               int64_t fall = 0) const;
 
   bool attach_mesh(const godot::RID& mesh, int64_t surface);
   godot::PackedByteArray vertex_bytes();
@@ -74,13 +81,22 @@ class SheetRopes : public godot::RefCounted {
     godot::Vector3 anchor;
     std::vector<godot::Vector3> fixed;  // the drum entry first, then the turns and the tail
     int first_ring = 0, rings = 0;      // into the ring arrays
+    // §11.3 "Rope": the free run's rings as last drawn (before the deck), a sub-step earlier (Verlet) and the
+    // hanging shape they followed; `live` once drawn shown
+    std::vector<godot::Vector3> x, v, tp;
+    bool live = false;
   };
+  void rope_step(Line& l, const godot::Vector3* target, const float* bear, float dt);
+  void lay_on_deck(godot::Vector3* r, int n, float radius);
+  void bridge(godot::Vector3* r, int n);
   float deck_at(float x, float z) const;
   void drape(godot::Vector3* r, int n, float radius) const;
+  float end_field(const godot::Vector3& p0, const godot::Vector3& p1, int m, bool far) const;
   void encode();
 
   int sides_ = 6;
   float tile_ = 0.05f;
+  float follow_ = 2.0f;  // m/s, the speed up to which a ring follows its hanging shape at once (§11.3 "Rope")
   std::vector<Line> lines_;
   int nr_ = 0, nv_ = 0;
   std::vector<godot::Vector3> ring_;  // centreline per ring
@@ -95,6 +111,9 @@ class SheetRopes : public godot::RefCounted {
   float dmax_ = -1.0e9f;  // the field's highest point (a span above it needs no drape)
   std::vector<godot::Vector3> pts_;  // the free run's polyline (scratch)
   std::vector<float> cum_;
+  std::vector<godot::Vector3> tgt_, dev_;  // the hanging shape of a free run and its deviation (scratch)
+  std::vector<int> hull_;
+  std::vector<float> bear_, lift_;  // a free run's rings bearing on an obstacle (0 to 1), the deck's lifts (scratch)
 
   godot::RID mesh_;
   int64_t surface_ = 0;

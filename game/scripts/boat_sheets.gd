@@ -3,8 +3,8 @@ extends RefCounted
 ## The running sheets of one boat (docs/specs/sail_visuals.md §11.3): the jib or genoa sheets, the flying sail's
 ## sheets (or sheet and guy) and the tack line, from the placed clew through the lead blocks of the sidecar's
 ## `rig.sheet_leads` to the winches, with the sag of their tension, the swing and whip of a flogging sail, the flying
-## sail's lines routed outside the main, the boom, the headsail and the rail, the lazy sheets draped on the deck, and
-## the fixed turns on the drums and the tails. One mesh per boat with two surfaces
+## sail's lines routed outside the main, the boom, the headsail and the rail, the lazy sheets draped on the deck, the
+## rings moving as a damped rope guided by that shape (§11.3 "Rope"), and the fixed turns on the drums and the tails. One mesh per boat with two surfaces
 ## (headsail lines, flying-sail lines), written in place by the native SheetRopes (SheetRopesRef without the
 ## GDExtension, rebuilding the mesh). BoatView owns it: `setup` at load, `advance` every frame, `update` when a sail
 ## was redrawn, `set_detail` with the boat's level of detail.
@@ -13,13 +13,18 @@ const TAU_SAG := 0.3
 const LAZY_SAG := 0.22
 ## the deepest a lazy line hangs below its straight run (m): a long kite sheet loops, it does not trail in the sea
 const LAZY_DEPTH := 0.5
-## how far across the centreline (m) the clew is when a lazy line runs fully round its obstacle
-const WAY_REACH := 0.4
+## the deepest a working line's free run hangs (m, times the class scale s), however much it is eased or flogs
+const WORK_DEPTH := 0.8
+## how far across the centreline (m, times the class scale s) the clew is when a lazy line runs fully round its
+## obstacle
+const WAY_REACH := 0.6
 ## the deck height field (§11.3 "Deck"): grid (m), the cells it reaches out over the hull side (a line drapes over the
 ## rail), the cells it is widened by (more than the drape's step), the tallest fitting it counts (m above the deck)
 const DECK_CELL := 0.025
 const DECK_SKIRT := 8
 const DECK_DILATE := 1
+## the cells beyond the skirt over which the field falls away down the hull side (DECK_FALL 4 m per m: 1 m)
+const DECK_FALL_CELLS := 10
 const FIT_MAX := 0.07
 ## §11.3 "Outside route": the rail's station step (m), the margin of the sails and the boom (m, plus the rope
 ## diameter), the rail's margin (m, plus the rope radius) and its fade forward of the lead (m), the pivot's offset to
@@ -42,6 +47,8 @@ const LEAD_RINGS := [4, 2]
 const DRUM_RINGS := 24
 const TURNS := 3.0
 const TILE := 0.05
+## §11.3 "Rope": the speed (m/s, times the class scale s) up to which a line follows its hanging shape at once
+const FOLLOW := 3.0
 
 enum Surface { HEADSAIL, FLYING }
 
@@ -67,6 +74,10 @@ var followed: Array = [null, null]
 var updates := 0
 
 var _last_aws := 0.0
+## the time since the last redraw (s): the ropes move by it (§11.3 "Rope"); `_snap` lays them on their hanging shapes
+## at the next redraw instead (snap())
+var _since := 0.0
+var _snap := false
 ## per surface the lines' sag targets (free, lead) of the last redraw
 var _targets: Array = [PackedFloat32Array(), PackedFloat32Array()]
 var _r := 0.005
@@ -198,7 +209,7 @@ static func deck_field(view: BoatView) -> Dictionary:
 				surfaces.append({"positions": e["positions"], "indices": e["indices"],
 					"cap": -1.0 if part == "deck" else FIT_MAX})
 	var builder: Variant = ClassDB.instantiate("SheetRopes") if ClassDB.class_exists("SheetRopes") else SheetRopesRef.new()
-	var out: Dictionary = builder.build_deck(surfaces, DECK_CELL, DECK_SKIRT, DECK_DILATE) if not surfaces.is_empty() else {}
+	var out: Dictionary = builder.build_deck(surfaces, DECK_CELL, DECK_SKIRT, DECK_DILATE, DECK_FALL_CELLS) if not surfaces.is_empty() else {}
 	_decks[key] = out
 	return out
 
@@ -391,7 +402,7 @@ func _build() -> void:
 				"anchor": lead, "fixed": fixed})
 		if fly and _flying_lines() == 3:
 			lines.append({"radius": 0.8 * _r, "free_rings": 3 if full else 2, "lead_rings": 0, "anchor": _sprit_end})
-		var params := {"sides": SIDES[detail], "tile": TILE, "lines": lines}
+		var params := {"sides": SIDES[detail], "tile": TILE, "lines": lines, "follow": FOLLOW * _s}
 		if not _deck.is_empty():
 			params["deck"] = _deck
 		var shape: Variant = ClassDB.instantiate("SheetRopes") if native else SheetRopesRef.new()
@@ -473,6 +484,12 @@ func set_detail(level: int) -> void:
 		step(_last_aws, 0.0, true)  # the new level's lines at once, from the sails as last placed
 
 
+## Lays every line on its hanging shape at the next redraw, without the rope's motion (§11.3 "Rope"): after a jump of
+## the boat or its sails that is not sailing (a respawn, a scripted pose).
+func snap() -> void:
+	_snap = true
+
+
 ## The sail a surface follows: the shown headsail (or flying sail) furthest hoisted, `up` first.
 func _pick(fly: bool) -> BoatView.SailPart:
 	var best: BoatView.SailPart = null
@@ -508,6 +525,7 @@ func step(aws: float, dt: float, draw: bool) -> void:
 	_last_aws = aws
 	if detail >= 2:
 		return
+	_since += maxf(dt, 0.0)
 	var a := 1.0 - exp(-maxf(dt, 0.0) / TAU_SAG)
 	if not draw:
 		# between redraws only the sag eases, toward the targets of the last redraw
@@ -573,7 +591,7 @@ func step(aws: float, dt: float, draw: bool) -> void:
 					start = tack  # the guy, from the tack at the pole end aft
 					working = true
 				elif not working:
-					way = _waypoint(clew, anchor, _stay_front if fly else _mast_front)
+					way = _waypoint(clew, anchor, _stay_front if fly else _mast_front, _s)
 				starts[i] = start
 				var route := PackedVector3Array()
 				if fly and i < 2:
@@ -597,7 +615,7 @@ func step(aws: float, dt: float, draw: bool) -> void:
 				var whip := 0.0
 				if working:
 					var sh := sp.shiver if i != 2 else 0.0
-					target_f = sag_of(l_free, t, sh)
+					target_f = minf(sag_of(l_free, t, sh), WORK_DEPTH * _s / maxf(l_free, 0.1))
 					target_l = sag_of(l_lead, t, 0.0)
 					shiver = sh
 					whip = 0.15 * sh
@@ -615,11 +633,13 @@ func step(aws: float, dt: float, draw: bool) -> void:
 		_targets[surf] = tg
 		if not draw:
 			continue
-		shape.update(starts, ways, drive, g)
+		shape.update(starts, ways, drive, g, 0.0 if _snap else _since)
 		last_starts[surf] = starts
 		last_ways[surf] = ways
 		last_drive[surf] = drive
 	if draw:
+		_since = 0.0
+		_snap = false
 		updates += 1
 		if native:
 			for surf in 2:
@@ -660,12 +680,12 @@ func _pivot(sg: float) -> Vector3:
 
 ## The lazy line's waypoint round the front of `obstacle` (§11.3): where the straight line from the clew to the lead
 ## crosses the centreline, moved forward to the obstacle when it lies aft of it (at the crossing's height), by a
-## share growing smoothly from 0 with the clew on the centreline to 1 at WAY_REACH across it, so the waypoint moves
-## continuously as the clew crosses; none (NAN) when the clew is on the lead's side.
-static func _waypoint(clew: Vector3, lead: Vector3, obstacle: Vector3) -> Vector3:
+## share growing smoothly from 0 with the clew on the centreline to 1 at WAY_REACH times the class scale `s` across
+## it, so the waypoint moves continuously as the clew crosses; none (NAN) when the clew is on the lead's side.
+static func _waypoint(clew: Vector3, lead: Vector3, obstacle: Vector3, s := 1.0) -> Vector3:
 	if signf(clew.x) == signf(lead.x) or absf(clew.x - lead.x) < 1e-6:
 		return Vector3(NAN, NAN, NAN)
 	var t := clew.x / (clew.x - lead.x)
 	var c := clew.lerp(lead, t)
-	var k := smoothstep(0.0, WAY_REACH, absf(clew.x))
+	var k := smoothstep(0.0, WAY_REACH * s, absf(clew.x))
 	return Vector3(0.0, c.y, lerpf(c.z, maxf(c.z, obstacle.z), k))

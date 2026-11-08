@@ -1183,7 +1183,7 @@ func step_frame(dt: float) -> void:
 	audio.paused = runner.paused or (capture.allowed and capture.frozen)
 	capture.frame(dt)
 	_place_rate_note()
-	audio.countdown_beeps = hud.assist == Hud.Assist.FULL
+	audio.countdown_beeps = GameAudio.beeps_at(hud.assist)
 	if not measure_off.has("audio"):
 		audio.frame(dt, rig.camera, rig.mode == CameraRig.Mode.ONBOARD)
 	PerfStats.add(&"audio", Time.get_ticks_usec() - t6)

@@ -159,15 +159,17 @@ late joiner does not hear past signals (`race.md` §3.2).
 | general recall | `race.horn` | 2, 0.8 s apart | "General recall" |
 | own boat finishes | `race.horn_finish` | 1 | "Finished, 3rd" |
 | other boat finishes | `race.horn_finish` at the committee boat, 3-D only | 1 | – |
+| own boat OCS or over at the gun (`BoatOCS`, `hud.md` §9.1) | `race.ocs` | 1 | "Over the line" |
 | own penalty (`Penalty`) | `race.penalty` | 1 | "Penalty: rule 10" |
 | penalty served (`PenaltyServed`) | `race.penalty_done` | 1 | "Penalty done" |
 | rule warning, own boat has right of way (`RuleWarning`, `hud.md` §11) | `voice.hail_starboard`, `voice.hail_leeward`, `voice.hail_room` by the rule, 3-D at the own boat on `voice` | 1 per rising edge, cooldown 4 s | "Starboard!" |
 | hail for room to tack (`Hail`) | `voice.hail_room_to_tack` at the hailing boat | 1 | "Room to tack!" |
-| optional countdown assist (`hud.md` §14 Full) | `race.beep` at 30, 20, 10, 5, 4, 3, 2, 1 s before the start | 1 each | – |
+| countdown assist (`hud.md` §14: Full and Standard, not Minimal) | `race.beep` at 30, 20, 10, 5, 4, 3, 2, 1 s before the start | 1 each | – |
 
-The race sounds follow the HUD's `hud_event` (`game/README.md`, Race HUD): `signal`, `penalty` (only when its boat
-is the viewed one), `penalty_served`, `rule_warning` (only when the viewed boat is the holder), `finished` (the own
-finish). Other boats' finishes come from the race events. The hails are picked by the rule's code name through the
+The race sounds follow the HUD's `hud_event` (`game/README.md`, Race HUD): `signal`, `ocs` (the viewed boat's
+`BoatOCS`), `penalty` (only when its boat is the viewed one), `penalty_served`, `rule_warning` (only when the viewed
+boat is the holder), `finished` (the own finish). `race.ocs` is three short rising pips, apart from the horns of the
+gun and the recall that sound on the same tick. Other boats' finishes come from the race events. The hails are picked by the rule's code name through the
 map's `hails` table (§9); a rule or sound the map does not name stays silent without a warning.
 
 Mark roundings are silent by default (option: a soft tick on the own boat's `Rounded`).
@@ -286,6 +288,8 @@ Not in the default set yet: the voice hails (`voice.*`) and the venue placed sou
    `luff` of 0.09 never starts it.
 3. Triggers: a scripted `bow_dz` series crossing −0.4 m/s at 0, 0.2, 0.4, 0.6 and 0.8 s plays slaps at 0, 0.4 and 0.8 s (cooldown).
 4. Signals: a 5-4-1-0 sequence produces horn, horn, long horn, horn at the signal ticks; a general recall two horns.
+   The viewed boat's OCS plays `race.ocs` once, another boat's nothing. The countdown beeps play with the Full and
+   Standard assists and not with Minimal.
 5. Swap: loading a second map with different files plays those files with no code change; a map with a missing file
    warns once and the race runs.
 6. Voices: with 20 boats around the listener no more than 48 players are active and the own boat's sounds are never

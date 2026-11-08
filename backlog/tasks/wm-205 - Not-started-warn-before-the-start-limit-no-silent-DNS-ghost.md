@@ -1,9 +1,11 @@
 ---
 id: WM-205
 title: 'Not started: warn before the start limit, no silent DNS ghost'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-11-07 18:47'
+updated_date: '2026-11-07 19:53'
 labels:
   - playability
 dependencies:
@@ -20,5 +22,11 @@ A boat that never starts becomes a DNS ghost at +4:00 with no banner (the GHOSTE
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Warnings before the limit and a banner at it
+- [x] #1 Warnings before the limit and a banner at it
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+hud.md 9.4: the viewed boat not started gets a yellow 4 s banner at 2:00 and 1:00 before the start limit ('Start within 2:00 or you are out (DNS)', OCS: 'Return within 2:00 or you score OCS'); her Ghosted DNS event gives the red full-width 'DID NOT START: no start within 4:00' (another boat's: feed line '<boat> did not start'); a released OCS boat gets 'Not returned: you score OCS'. The start limit comes from the race record (start_limit_s added to wm_race_info and CoreSim.race()). Tests: race_hud_test 'start limit'; the core race in race_hud_test shows both warnings for a late starter.
+<!-- SECTION:NOTES:END -->

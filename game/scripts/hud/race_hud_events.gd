@@ -2,7 +2,8 @@ class_name RaceHudEvents
 extends RefCounted
 ## The events part of RaceHudValues (hud.md §9.1, §10, §12.2, §13): the race and rules events of a tick turned into
 ## the banners, feed lines and splits, the finish card and the results rows of the values `rv`, from
-## RaceHudValues.tick.
+## RaceHudValues.tick. Banners carry the priority of hud.md §9.1: the viewed boat's own over the race's over the
+## individual recall.
 
 
 static func events(rv: RaceHudValues, sim: SimSource, b: int) -> void:
@@ -13,7 +14,9 @@ static func events(rv: RaceHudValues, sim: SimSource, b: int) -> void:
 			RaceText.Ev.SIGNAL:
 				var sk := int(e["signal"])
 				var text := RaceText.signal_banner(sk, int(e["flag"]))
-				rv._banner(text, RaceHudValues.Tint.WHITE, RaceHudValues.BANNER_SIGNAL)
+				var recall := sk == RaceText.SignalKind.X_UP or sk == RaceText.SignalKind.X_DOWN
+				rv._banner(text, RaceHudValues.Tint.WHITE, RaceHudValues.BANNER_SIGNAL, false,
+					RaceHudValues.PRIO_RECALL if recall else RaceHudValues.PRIO_RACE, true)
 				rv._feed(text)
 				rv.hud_event.emit("signal", {"kind": sk, "flag": int(e["flag"])})
 			RaceText.Ev.BOAT_OCS:
@@ -24,14 +27,16 @@ static func events(rv: RaceHudValues, sim: SimSource, b: int) -> void:
 					var txt: String = "OVER: " + RaceText.OVER_CONSEQUENCE[clampi(fl, 0, 4)]
 					if fl == RaceText.Flag.P:
 						txt = RaceText.ocs_instruction(false)
-					rv._banner(txt, RaceHudValues.Tint.RED, RaceHudValues.BANNER_SIGNAL)
+					rv._banner(txt, RaceHudValues.Tint.RED, RaceHudValues.BANNER_SIGNAL, false, RaceHudValues.PRIO_OWN)
 					rv.hud_event.emit("ocs", {"flag": fl})
 			RaceText.Ev.BOAT_RETURNED:
 				if eb == b:
-					rv._banner("Returned: now start", RaceHudValues.Tint.GREEN, RaceHudValues.BANNER_SERVED)
+					rv._banner("Returned: now start", RaceHudValues.Tint.GREEN, RaceHudValues.BANNER_SERVED, false,
+						RaceHudValues.PRIO_OWN)
 			RaceText.Ev.STARTED:
 				if eb == b:
-					rv._banner("Started", RaceHudValues.Tint.GREEN, RaceHudValues.BANNER_SERVED)
+					rv._banner("Started", RaceHudValues.Tint.GREEN, RaceHudValues.BANNER_SERVED, false,
+						RaceHudValues.PRIO_OWN)
 				if eb == rv.own_boat:
 					rv.start_t = float(e.get("t", rv.race_time))
 			RaceText.Ev.ROUNDED:
@@ -40,9 +45,18 @@ static func events(rv: RaceHudValues, sim: SimSource, b: int) -> void:
 				if eb == b:
 					rv._banner("Take your penalty before finishing" if int(e["block"]) == 0
 						else "Return and start before you can finish", RaceHudValues.Tint.RED,
-						RaceHudValues.BANNER_PENALTY)
+						RaceHudValues.BANNER_PENALTY, false, RaceHudValues.PRIO_OWN)
 			RaceText.Ev.FINISHED:
 				finished(rv, sim, b, eb, e)
+			RaceText.Ev.GHOSTED:
+				# hud.md §9.4: out at the start limit
+				if int(e["ghost"]) == RaceText.Ghost.DNS:
+					if eb == b:
+						rv._banner("DID NOT START: no start within %s" % HudFormat.clock(rv.start_limit),
+							RaceHudValues.Tint.RED, RaceHudValues.BANNER_DSQ, true, RaceHudValues.PRIO_OWN)
+						rv.hud_event.emit("dns", {})
+					else:
+						rv._feed("%s did not start" % rv.name_of(eb), [eb])
 			RaceText.Ev.RETIRED:
 				rv._feed("%s retired" % rv.name_of(eb), [eb])
 				if eb == rv.own_boat:
@@ -61,7 +75,8 @@ static func events(rv: RaceHudValues, sim: SimSource, b: int) -> void:
 				results(rv, sim, true)
 				rv.hud_event.emit("results", {})
 			RaceText.Ev.ABANDONED:
-				rv._banner("Race abandoned", RaceHudValues.Tint.RED, RaceHudValues.BANNER_DSQ, true)
+				rv._banner("Race abandoned", RaceHudValues.Tint.RED, RaceHudValues.BANNER_DSQ, true,
+					RaceHudValues.PRIO_OWN)
 	for e in sim.rules_events():
 		var kind := int(e["kind"])
 		var eb := int(e["boat"])
@@ -80,7 +95,7 @@ static func events(rv: RaceHudValues, sim: SimSource, b: int) -> void:
 				if eb == b:
 					# hud.md §12.2: short, the panel carries the rule text and the other boat
 					rv._banner("PENALTY · RULE %s" % RaceText.code(rule), RaceHudValues.Tint.RED,
-						RaceHudValues.BANNER_SIGNAL)
+						RaceHudValues.BANNER_SIGNAL, false, RaceHudValues.PRIO_OWN)
 				else:
 					rv._feed("%s penalised, rule %s%s" % [rv.name_of(eb), RaceText.code(rule), other_txt], [eb, eo])
 				rv.hud_event.emit("penalty", {"boat": eb, "rule": rule, "other": eo})
@@ -88,14 +103,15 @@ static func events(rv: RaceHudValues, sim: SimSource, b: int) -> void:
 				if eb == rv.own_boat:
 					rv._penalty_state("done")
 				if eb == b:
-					rv._banner("Penalty done", RaceHudValues.Tint.GREEN, RaceHudValues.BANNER_SERVED)
+					rv._banner("Penalty done", RaceHudValues.Tint.GREEN, RaceHudValues.BANNER_SERVED, false,
+						RaceHudValues.PRIO_OWN)
 					rv.hud_event.emit("penalty_served", {"boat": eb})
 			RaceText.Rev.PENALTY_CANCELLED:
 				if eb == rv.own_boat:
 					rv._penalty_state("cancelled")
 				if eb == b:
 					rv._banner("Penalties offset: one each cancelled", RaceHudValues.Tint.GREEN,
-						RaceHudValues.BANNER_SERVED)
+						RaceHudValues.BANNER_SERVED, false, RaceHudValues.PRIO_OWN)
 			RaceText.Rev.PENALTY_LATE:
 				# rules.md §9.4: no banner of its own, the disqualification that follows says why
 				if eb == rv.own_boat:
@@ -120,9 +136,11 @@ static func events(rv: RaceHudValues, sim: SimSource, b: int) -> void:
 				if eb == rv.own_boat:
 					rv.dsq_reason = why
 				if eb == b:
-					rv._banner("DISQUALIFIED: %s" % why, RaceHudValues.Tint.RED, RaceHudValues.BANNER_DSQ, true)
+					rv._banner("DISQUALIFIED: %s" % why, RaceHudValues.Tint.RED, RaceHudValues.BANNER_DSQ, true,
+						RaceHudValues.PRIO_OWN)
 				else:
 					rv._feed("%s disqualified, %s" % [rv.name_of(eb), why], [eb])
+	start_limit(rv, sim, b)
 	if not rv._summary_done and rv.state >= RaceText.RaceState.RACING and rv.race_time >= RaceHudValues.START_SUMMARY_S:
 		rv._summary_done = true
 		var n_started := 0
@@ -135,6 +153,33 @@ static func events(rv: RaceHudValues, sim: SimSource, b: int) -> void:
 				n_ocs += 1
 		rv._feed("%d %s started%s" % [n_started, "boat" if n_started == 1 else "boats",
 			", %d OCS" % n_ocs if n_ocs > 0 else ""])
+
+
+## hud.md §9.4: the viewed boat not started gets a banner 2:00 and 1:00 before the start limit; released OCS at the
+## limit, one more. The ghost at the limit is the GHOSTED event's.
+static func start_limit(rv: RaceHudValues, sim: SimSource, b: int) -> void:
+	var t := rv.race_time
+	var prev := rv._prev_race_time
+	rv._prev_race_time = t
+	if is_nan(prev) or rv.state < RaceText.RaceState.RACING or rv.state >= RaceText.RaceState.CLOSED:
+		return
+	var rb := sim.race_boat(b)
+	if bool(rb.get("started", false)) or bool(rb.get("ghost", false)) or bool(rb.get("finished", false)):
+		return
+	var is_ocs := bool(rb.get("ocs", false)) or bool(rb.get("ocs_i", false))
+	if bool(rb.get("ocs_scored", false)):
+		if not rv._release_shown and t < rv.start_limit + 1.0:
+			rv._release_shown = true
+			rv._banner("Not returned: you score OCS", RaceHudValues.Tint.RED, RaceHudValues.BANNER_PENALTY, false,
+				RaceHudValues.PRIO_OWN)
+		return
+	for w in RaceHudValues.START_LIMIT_WARN:
+		var at: float = rv.start_limit - w
+		if prev < at and t >= at:
+			var txt := ("Return within %s or you score OCS" if is_ocs else "Start within %s or you are out (DNS)") \
+				% HudFormat.clock(w)
+			rv._banner(txt, RaceHudValues.Tint.YELLOW, RaceHudValues.BANNER_SPLIT, false, RaceHudValues.PRIO_OWN)
+			rv.hud_event.emit("start_limit", {"left": w, "ocs": is_ocs})
 
 
 static func rounded(rv: RaceHudValues, sim: SimSource, b: int, eb: int, k: int) -> void:

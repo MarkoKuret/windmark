@@ -1039,6 +1039,7 @@ Dictionary CoreSim::race() const {
   d["twd_mean"] = r.twd_mean;
   d["L_max"] = r.L_max;
   d["boat_count"] = r.boat_count;
+  d["start_limit_s"] = r.start_limit_s;
   return d;
 }
 

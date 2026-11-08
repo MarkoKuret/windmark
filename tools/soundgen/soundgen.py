@@ -382,6 +382,19 @@ def penalty(r):
     return peak_to(y * e, -9)
 
 
+def ocs(r):
+    """Own boat over at the gun (audio.md section 5): three short rising square pips, apart from the horns of the
+    gun and the recall on the same tick."""
+    n = n_of(0.62)
+    y = np.zeros(n)
+    for k, f in enumerate((660.0, 784.0, 988.0)):
+        m = n_of(0.14)
+        t = np.arange(m) / SR
+        pip = np.sign(np.sin(2 * np.pi * f * t)) * np.clip(t / 0.005, 0, 1) * np.clip((0.14 - t) / 0.03, 0, 1)
+        place(y, pip, n_of(0.2 * k), circular=False)
+    return peak_to(lowpass(y, 2400), -8)
+
+
 def penalty_done(r):
     n = n_of(0.9)
     y = tone(n, [659.3], [1.0]) * env_ad(n, 0.003, 0.25)
@@ -520,6 +533,7 @@ SOUNDS = {
     "race/horn": horn(1.0),
     "race/horn_long": horn(2.5),
     "race/horn_finish": horn(1.0, 392.0, 494.0),
+    "race/ocs": ocs,
     "race/penalty": penalty,
     "race/penalty_done": penalty_done,
     "race/beep": beep,
